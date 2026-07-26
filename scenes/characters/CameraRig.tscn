@@ -1,0 +1,25 @@
+[gd_scene load_steps=2 format=3 uid="uid://cwj4h8m1k9p2q"]
+
+[ext_resource type="Script" path="res://scripts/systems/camera_rig.gd" id="1"]
+
+[node name="CameraRig" type="Node3D"]
+script = ExtResource("1")
+
+[node name="FppPivot" type="Node3D" parent="."]
+position = Vector3(0, 1.55, 0)
+
+[node name="FppCamera" type="Camera3D" parent="FppPivot"]
+current = false
+near = 0.05
+fov = 95.0
+
+[node name="TppArm" type="SpringArm3D" parent="."]
+position = Vector3(0, 1.2, 0)
+rotation_degrees = Vector3(-15, 180, 0)
+collision_mask = 1
+spring_length = 4.5
+
+[node name="TppCamera" type="Camera3D" parent="TppArm"]
+rotation_degrees = Vector3(0, 180, 0)
+current = false
+fov = 70.0

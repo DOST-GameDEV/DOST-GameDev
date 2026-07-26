@@ -34,6 +34,12 @@ var _current_distance: float
 var _fixed_basis: Basis
 
 func _ready() -> void:
+	# §3.4: retired from gameplay now that CameraRig (scripts/systems/camera_rig.gd)
+	# exists — every character's own rig explicitly sets `current` on exactly
+	# one of its two cameras when active. Default this to false so it can
+	# never win that contest by accident; a future spectator/record toggle
+	# would explicitly flip this back on.
+	current = false
 	_fixed_basis = global_transform.basis
 	_current_distance = global_position.length()
 	_offset_dir = global_position.normalized() if global_position.length() > 0.001 else Vector3(0, 0.6, 0.8).normalized()

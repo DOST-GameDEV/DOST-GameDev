@@ -143,6 +143,15 @@ func _start_local_test() -> void:
 	_wire_downed_flash(team_a_prop)
 	_wire_downed_flash(team_b_prop)
 	_register_local_can()
+	# Item 13: no authority concept in local test, unlike networked play,
+	# where each rig can activate itself from is_multiplayer_authority(). One
+	# rig has to be picked explicitly. Defaults to TeamAProp (the P1 slot),
+	# matching the debug switcher's own documented default (Dev_Plan.md §3.5.1)
+	# — the switcher (queue item 1, not yet built) is what makes this
+	# reassignable at runtime instead of fixed for the whole local session.
+	var default_rig := team_a_prop.get_node("CameraRig") as CameraRig
+	default_rig.set_active(true)
+	default_rig.set_aim_source(CameraRig.AimSource.MOUSE)
 	MatchManager.begin_next_round()
 
 ## (Re)tells RoundManager which local Prop is currently the Can — whichever
