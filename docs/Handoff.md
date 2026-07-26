@@ -510,6 +510,21 @@ finished **TUMBANG PRESO** logo. Adopt the logo's name everywhere (`Dev_Plan.md`
 **[FIXED]** `project.godot`, README, and GDD title all now say **Tumbang Preso**, matching the
 main menu and the moodboard logo.
 
+**B-50 · P1's Guard/Dash was bound to a Godot 3 keycode, so it never fired. (NEW)**
+`project.godot`'s `guard_dash_p1` held `physical_keycode = 16777237` — that is Godot **3**'s
+`KEY_SHIFT`. Godot 4's is `4194325`, and `16777237` is not a valid Godot 4 keycode at all, so the
+action could never be triggered by any key. The whole B-16 Guard/Dash mechanic was dead for
+player 1: the Can could not block (so `apply_stagger`/`apply_dent`'s guard checks were
+unreachable) and the Tsinelas could not dash. The settings panel rendered it as the nonsense
+string "Command+", which is what surfaced it. Nothing in the code was wrong — only the binding.
+**[FIXED]** `guard_dash_p1` is now `KEY_SHIFT`. That collided with `special_ability_p2`, which was
+also on Shift, so both were split by `location` (LEFT for P1's guard, RIGHT for P2's special) —
+otherwise one physical keypress fires two different players' actions on a shared keyboard.
+`guard_dash_p2` moved from Ctrl to **End**, matching the scheme `Dev_Plan.md` §3.5.1 already
+documented. Verified by matching synthetic `InputEventKey`s against the InputMap: left Shift
+resolves to `guard_dash_p1` only, right Shift to `special_ability_p2` only, and all 14 bound
+actions now have 14 distinct key+location pairs (no conflicts).
+
 **B-28 · No export presets, no build, no CI.** `export_presets.cfg` is gitignored and none
 exists. The game has never been run outside the editor, and the submission needs a real build.
 
