@@ -142,6 +142,15 @@ var _melee_hitbox: Hitbox = null
 ## stopped firing and nothing said so. This script no longer knows or cares what
 ## the mesh tree looks like.
 @onready var _visual: CharacterVisual = $Visual
+## B-60: this unit's own rig, consulted for who owns yaw this frame. Queried
+## live rather than cached as a bool because `aim_source` changes at runtime —
+## the debug switcher hands the mouse between units mid-match.
+@onready var _camera_rig: CameraRig = get_node_or_null("CameraRig")
+
+## True when the local player is aiming this unit with the mouse, i.e. the rig
+## is writing `rotation.y` and this script must not fight it.
+func _is_mouse_aimed() -> bool:
+	return _camera_rig != null and _camera_rig.aim_source == CameraRig.AimSource.MOUSE
 
 func _ready() -> void:
 	spawn_position = global_position
@@ -244,12 +253,32 @@ func _physics_process(delta: float) -> void:
 		return
 
 	var input_dir := Input.get_vector(_action("move_left"), _action("move_right"), _action("move_up"), _action("move_down"))
-	# B-05: world-space directly, NOT `transform.basis * input_dir` — this used
-	# to make movement direction depend on the character's own current facing,
-	# which would create a car-like relative-turning control scheme the moment
-	# facing started rotating (see look_at below) instead of the absolute WASD
-	# directions the camera's fixed pitch implies.
-	var direction := Vector3(input_dir.x, 0, input_dir.y).normalized()
+	# B-60: which frame WASD is read in depends on who owns this unit's yaw.
+	#
+	# Mouse-aimed (the unit you are personally driving): the CameraRig owns yaw
+	# and writes `rotation.y` from mouse motion, so input is read in the BODY's
+	# frame — W is "where I am looking". Reading it in world space instead, and
+	# then calling look_at() below to face the movement vector, snapped the body
+	# to the WASD direction on every keypress; since the rig is a CHILD of the
+	# body, that dragged the camera round with it. Measured: aim 90 deg left,
+	# then hold D, and the camera flipped a full 180.
+	#
+	# Everything else (remote peers, local-test dummies — aim_source MOVEMENT)
+	# keeps the original world-space scheme with look_at(), which is right for a
+	# unit nobody is aiming with a mouse.
+	#
+	# B-05's original note said world-space was deliberate, "NOT
+	# `transform.basis * input_dir`". That was correct when the only camera was
+	# the fixed-angle ArenaCamera; it stopped being correct the moment the
+	# per-character FPP/TPP rigs (item 13) made the camera turn with the player.
+	var mouse_aimed := _is_mouse_aimed()
+	var direction: Vector3
+	if mouse_aimed:
+		direction = (transform.basis * Vector3(input_dir.x, 0, input_dir.y))
+		direction.y = 0.0
+		direction = direction.normalized()
+	else:
+		direction = Vector3(input_dir.x, 0, input_dir.y).normalized()
 
 	if direction:
 		velocity.x = direction.x * SPEED * _speed_multiplier
@@ -258,7 +287,11 @@ func _physics_process(delta: float) -> void:
 		# so every directional attack (melee Hitbox offset, PersonAction,
 		# BakyaBash, FlickDash, all built on `-transform.basis.z`/local offsets)
 		# fired toward world -Z regardless of which way the player was moving.
-		look_at(global_position + direction, Vector3.UP)
+		# Skipped when mouse-aimed: the rig already wrote yaw this frame, and
+		# overwriting it here is exactly the bug above. Attacks still fire where
+		# you are looking, which is what B-05 actually wanted.
+		if not mouse_aimed:
+			look_at(global_position + direction, Vector3.UP)
 	else:
 		velocity.x = move_toward(velocity.x, 0, FRICTION * delta)
 		velocity.z = move_toward(velocity.z, 0, FRICTION * delta)
