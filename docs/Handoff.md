@@ -197,6 +197,12 @@ state and position don't carry over into round 2.
 `ability_base.gd:29` — `activate()` sets `_time_since_use = 0` and `_used_this_round = true`
 before calling `_do_activate()`, which may do nothing (Quick Stand while not Downed). Press
 the button once at the wrong moment and your once-per-round charge is gone.
+**[FIXED]** `_do_activate()` now returns `bool` (default `true` in the base class);
+`activate()` only sets `_time_since_use = 0` / `_used_this_round = true` when it returns
+`true`. `quick_stand.gd` returns `false` when the character isn't Downed (the real no-op
+case); the other five ability scripts (`shatter_trap`, `spin_guard`, `bagsak_bomb`,
+`bakya_bash`, `flick_dash`, `person_action`) always return `true`, matching their existing
+always-succeeds behavior — no change to when they fire, just to the return type.
 
 **B-12 · Friction is a per-frame constant, so there is no momentum and Flick Dash lasts three frames.**
 `move_toward(velocity.x, 0, SPEED)` uses `SPEED` (6.0) as an absolute per-tick step, not

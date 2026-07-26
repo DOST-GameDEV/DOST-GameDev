@@ -12,9 +12,10 @@ class_name FlickDash
 @export var dash_duration: float = 0.2
 @export var hit_radius: float = 1.0
 
-func _do_activate(character: CharacterBody3D) -> void:
+func _do_activate(character: CharacterBody3D) -> bool:
 	var c := character as CharacterBase
 	var forward := -c.transform.basis.z
 	c.velocity.x = forward.x * dash_speed
 	c.velocity.z = forward.z * dash_speed
 	AbilityUtils.spawn_pulse_hitbox(c, hit_radius, dash_duration, false, Vector3(0, 0, -1.5))
+	return true

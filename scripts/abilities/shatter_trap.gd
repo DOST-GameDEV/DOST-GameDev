@@ -13,8 +13,9 @@ class_name ShatterTrap
 
 var _armed: bool = false
 
-func _do_activate(_character: CharacterBody3D) -> void:
+func _do_activate(_character: CharacterBody3D) -> bool:
 	_armed = true
+	return true
 
 ## Optional passive hook — called by CharacterBase.go_downed() (see ability_base.gd).
 func _on_owner_downed(character: CharacterBase) -> void:

@@ -166,7 +166,10 @@ Fix the P1 bugs, then playtest the loop end to end for the first time.
       main.gd::_on_match_round_started now calls reset_for_new_round() and repositions every
       character to a SPAWN_POINTS slot each round, for both the networked and local-test
       flows, instead of leaving that to RoundManager's tracked-Can-only loop.)*
-- [ ] **B-11** cooldown consumed on a no-op activation
+- [x] **B-11** cooldown consumed on a no-op activation *(Fixed: _do_activate() now returns
+      bool; activate() only consumes _time_since_use/_used_this_round on true. Quick Stand
+      returns false when not Downed; the other five abilities always return true, matching
+      their previous always-succeeds behavior.)*
 - [ ] **B-12** frame-step friction / Flick Dash lasting three frames
 - [ ] Play a full Bo5 locally. Decide **Option A or Option B** and delete the other.
 
