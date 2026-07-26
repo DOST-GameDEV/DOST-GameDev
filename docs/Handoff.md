@@ -734,6 +734,23 @@ resolves to along-facing `+1.00` for W, `-1.00` for S, and right-of-facing `±1.
 MOVEMENT-aimed unit was regression-checked in the same run: still moves world −Z on `W` from a 90°
 yaw, and still turns to face its own movement.
 
+**B-61 · The FPP self-hide made every Person invisible to everyone. (NEW)**
+`camera_rig.gd::_apply_fpp_self_hide()` set every Person's meshes to
+`SHADOW_CASTING_SETTING_SHADOWS_ONLY` **unconditionally**, never consulting `_active`. The rule it
+was supposed to implement was already written in its own doc comment — *"other peers still need to
+see the mesh"* — but the code hid the body of every Person in the match, not just the one being
+looked through. Result: Persons rendered as walking shadows with no body, teammates and opponents
+alike, from every camera. Props were unaffected (TPP never self-hides).
+This was latent, not new: the self-hide had silently been a **no-op** because it ran in `_ready()`,
+which fires before `character_visual.gd` instances any meshes for it to find. Making it actually
+work (v1.5) is what exposed the underlying logic error.
+**[FIXED]** the hide is now gated on `_active and _mode == FPP`, restores
+`SHADOW_CASTING_SETTING_ON` otherwise, and is re-applied from `set_active()` so it tracks the
+camera being handed between units by the debug switcher. Verified: with a Prop active, all four
+units read `cast_shadow = 1`; switching the camera onto a Person drops **only that Person** to `3`
+and leaves everyone else at `1`. Confirmed in a rendered frame — both Persons visible, and the
+one you look through still casts its own shadow.
+
 **B-28 · No export presets, no build, no CI.** `export_presets.cfg` is gitignored and none
 exists. The game has never been run outside the editor, and the submission needs a real build.
 
