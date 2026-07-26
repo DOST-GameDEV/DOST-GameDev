@@ -27,17 +27,34 @@ const SPAWN_POINTS: Array[Vector3] = [
 ]
 
 var _spawned_peer_ids: Dictionary = {}
+## Session 6: real 2v2 team assignment. peer_id -> 0 (Team A) or 1 (Team B),
+## fixed for the whole match — replaces the old "alternate Can/Tsinelas by
+## join order" 1v1 smoke-test placeholder. First two peers to connect are
+## Team A, next two are Team B (GDD: 2v2, teams swap Attacker/Defender role
+## each round, per-team not per-player).
+var _peer_teams: Dictionary = {}
+var _spawned_characters: Dictionary = {} # peer_id -> CharacterBase
 
 func _ready() -> void:
 	spawner.spawn_function = _build_networked_character
+	MatchManager.round_started.connect(_on_match_round_started)
 
 	var join_target := ""
 	var should_host := false
-	for arg in OS.get_cmdline_user_args():
-		if arg == "--host":
-			should_host = true
-		elif arg.begins_with("--join="):
-			join_target = arg.substr(len("--join="))
+	if GameLaunch.pending_action != "":
+		# Came from MainMenu.tscn (see main_menu.gd) — this takes priority.
+		should_host = GameLaunch.pending_action == "host"
+		if GameLaunch.pending_action == "join":
+			join_target = GameLaunch.pending_join_address
+		GameLaunch.reset() # one-shot; a later replay from the menu sets it fresh
+	else:
+		# Debug > Run Multiple Instances workflow (see docs/Handoff_Session5.md)
+		# still works standalone, without going through the menu at all.
+		for arg in OS.get_cmdline_user_args():
+			if arg == "--host":
+				should_host = true
+			elif arg.begins_with("--join="):
+				join_target = arg.substr(len("--join="))
 
 	if should_host:
 		_start_hosting()
@@ -59,6 +76,10 @@ func _start_hosting() -> void:
 	NetworkManager.player_connected.connect(_on_player_connected)
 	NetworkManager.player_disconnected.connect(_on_player_disconnected)
 	_spawn_player(multiplayer.get_unique_id()) # host is player 1
+	# Rough pass: the match begins as soon as the host starts hosting, rather
+	# than waiting for a full 2v2 lobby to fill — matches the "no lobby UI"
+	# state of networking so far. Revisit once MainMenu has a real ready-up.
+	MatchManager.begin_next_round()
 
 func _start_joining(address: String) -> void:
 	_clear_local_test_characters()
@@ -79,18 +100,22 @@ func _on_player_disconnected(peer_id: int) -> void:
 	if node:
 		node.queue_free()
 	_spawned_peer_ids.erase(peer_id)
+	_peer_teams.erase(peer_id)
+	_spawned_characters.erase(peer_id)
 
 ## Host-only: tells every peer (via MultiplayerSpawner) to construct a
-## character for `peer_id`. Alternates Can/Tsinelas by join order — good
-## enough for a 1v1 network smoke test; real 2v2 team assignment still needs
-## the Attacker/Defender role-swap wiring from the GDD.
+## character for `peer_id`, assigned to a fixed team (2 peers per team, first
+## in gets Team A). Which team is Can vs Tsinelas THIS round comes from
+## MatchManager.team_a_is_can, kept in sync by _on_match_round_started below.
 func _spawn_player(peer_id: int) -> void:
 	if _spawned_peer_ids.has(peer_id):
 		return
 	var index := _spawned_peer_ids.size()
 	_spawned_peer_ids[peer_id] = true
+	var team := index / 2 # 0, 0, 1, 1 for up to MAX_PLAYERS = 4
 	var spawn_pos: Vector3 = SPAWN_POINTS[index % SPAWN_POINTS.size()]
-	spawner.spawn({"peer_id": peer_id, "position": spawn_pos, "is_can": index % 2 == 0})
+	var is_can := (team == 0) == MatchManager.team_a_is_can
+	spawner.spawn({"peer_id": peer_id, "position": spawn_pos, "is_can": is_can, "team": team})
 
 ## Runs on every peer (host and clients) when the spawner replicates a spawn.
 func _build_networked_character(data: Dictionary) -> Node:
@@ -99,12 +124,35 @@ func _build_networked_character(data: Dictionary) -> Node:
 	character.position = data["position"]
 	character.is_can = data["is_can"]
 	character.set_multiplayer_authority(data["peer_id"])
+	_peer_teams[data["peer_id"]] = data["team"]
+	_spawned_characters[data["peer_id"]] = character
 	if data["peer_id"] == multiplayer.get_unique_id():
 		# This is the character we personally control — DownedFlash should
 		# only ever reflect what's happening to OUR Can, never a teammate's
 		# or an opponent's (GDD Section 6: "clear visual read", per-player).
 		_wire_downed_flash.call_deferred(character)
 	return character
+
+## Fires on every peer identically (host emits locally, clients receive it via
+## MatchManager._sync_round_started — see match_manager.gd) since it's driven
+## by fields (team_a_is_can) that are already synced. No RPC needed here: each
+## peer just recomputes is_can for every spawned character from that
+## character's fixed team, which every peer already knows from spawn data.
+func _on_match_round_started(_round_number: int, _team_a_is_can: bool) -> void:
+	if NetworkManager.is_networked():
+		RoundManager.clear_tracked_cans()
+		for peer_id in _spawned_characters.keys():
+			var character: CharacterBase = _spawned_characters[peer_id]
+			if not is_instance_valid(character):
+				continue
+			var team: int = _peer_teams.get(peer_id, 0)
+			character.is_can = (team == 0) == MatchManager.team_a_is_can
+			if character.is_can:
+				RoundManager.register_can(character)
+	# Local single-PC flow: register_can(can_test_character) already happened
+	# once in _ready() and role-swap isn't wired for that flow (see GDD's
+	# single-PC fallback note) — this just (re)starts the round timer.
+	RoundManager.start_round()
 
 ## Shows/hides the HUD's DownedFlash whenever the given (locally-controlled)
 ## character enters/exits Downed — but only if it's a Can; Tsinelas never

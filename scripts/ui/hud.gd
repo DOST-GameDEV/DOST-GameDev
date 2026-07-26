@@ -27,7 +27,6 @@ func _on_round_started(round_number: int, team_a_is_can: bool) -> void:
 		"Defense" if team_a_is_can else "Offense",
 		"Offense" if team_a_is_can else "Defense",
 	]
-	RoundManager.start_round()
 
 func _on_match_won(winning_team: int) -> void:
 	round_label.text = "Team %s wins the match!" % ("A" if winning_team == 0 else "B")

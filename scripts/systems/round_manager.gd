@@ -19,6 +19,12 @@ const ROUND_TIME: float = 90.0
 var time_left: float = ROUND_TIME
 var round_active: bool = false
 
+## Session 6: MainMenu now lets the player pick GameLaunch.game_mode
+## (OPTION_A / OPTION_B) before a match starts — see game_launch.gd. Option A
+## (stock/health/dents) still has no rules implemented, so regardless of which
+## mode gets picked, this Option B testbed is what actually decides round wins
+## for now. Wire an Option A implementation here (or a sibling system) and
+## branch on GameLaunch.game_mode once it exists.
 ## --- Option B testbed (all Cans Sealed = Slippers win) ---------------------------
 ## Not auto-populated on its own — call register_can() for whichever characters are
 ## playing Can this round (see scripts/main.gd for a working example). Deliberately
