@@ -1,0 +1,46 @@
+[gd_scene load_steps=7 format=3 uid="uid://ctsinelas1slip2"]
+
+[sub_resource type="StandardMaterial3D" id="Mat_sole"]
+albedo_color = Color(0, 0.501961, 0.909804, 1)
+roughness = 0.6
+
+[sub_resource type="StandardMaterial3D" id="Mat_strap"]
+albedo_color = Color(0.956863, 0.407843, 0.658824, 1)
+roughness = 0.45
+
+[sub_resource type="StandardMaterial3D" id="Mat_footbed"]
+albedo_color = Color(0.972549, 0.815686, 0.156863, 1)
+roughness = 0.5
+
+[sub_resource type="BoxMesh" id="Mesh_sole"]
+material = SubResource("Mat_sole")
+size = Vector3(0.52, 1.35, 0.16)
+
+[sub_resource type="BoxMesh" id="Mesh_strap"]
+material = SubResource("Mat_strap")
+size = Vector3(0.44, 0.1, 0.05)
+
+[sub_resource type="CylinderMesh" id="Mesh_post"]
+material = SubResource("Mat_footbed")
+top_radius = 0.05
+bottom_radius = 0.05
+height = 0.06
+radial_segments = 8
+rings = 1
+
+[node name="TsinelasVisual" type="Node3D"]
+
+[node name="Sole" type="MeshInstance3D" parent="."]
+mesh = SubResource("Mesh_sole")
+
+[node name="StrapLeft" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.866025, 0.5, 0, -0.5, 0.866025, 0, 0, 0, 1, -0.13, 0.34, -0.095)
+mesh = SubResource("Mesh_strap")
+
+[node name="StrapRight" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.866025, -0.5, 0, 0.5, 0.866025, 0, 0, 0, 1, 0.13, 0.34, -0.095)
+mesh = SubResource("Mesh_strap")
+
+[node name="ToePost" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, -1, 0, 1, -4.37114e-08, 0, 0.13, -0.1)
+mesh = SubResource("Mesh_post")

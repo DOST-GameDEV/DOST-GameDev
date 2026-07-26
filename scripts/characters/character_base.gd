@@ -134,16 +134,14 @@ var _dash_active_time_left: float = 0.0
 ## — cached so opening the bump window can sweep already-overlapping targets
 ## (see _open_bump_window, B-08) without a scene-tree lookup every press.
 var _melee_hitbox: Hitbox = null
-## B-44: no visual reaction to a landed hit existed anywhere except the
-## Can-only, Option-B-only DownedFlash HUD overlay. A brief white flash on
-## whichever mesh this character actually has needs no new art/sound assets
-## and works for every character/hit kind/game mode.
-## B-44 (merge fix): CharacterBase.tscn moved the mesh under a "Visual"
-## wrapper node (for CameraRig's FPP self-hide, see camera_rig.gd) after this
-## was written against a direct "MeshInstance3D" child — get_node_or_null()
-## silently returned null post-merge, so the hit flash stopped firing at all.
-@onready var _mesh: MeshInstance3D = get_node_or_null("Visual/MeshInstance3D")
-var _base_albedo: Color = Color.WHITE
+## Everything about how this unit LOOKS lives on the `Visual` node's own script
+## (see character_visual.gd) — including the B-44 hit flash, which used to be a
+## hardcoded `get_node_or_null("Visual/MeshInstance3D")` here. That path broke
+## silently once already (commit 6f97e76) when the mesh moved under the `Visual`
+## wrapper: a wrong node path returns null with no error, so the flash simply
+## stopped firing and nothing said so. This script no longer knows or cares what
+## the mesh tree looks like.
+@onready var _visual: CharacterVisual = $Visual
 
 func _ready() -> void:
 	spawn_position = global_position
@@ -154,12 +152,9 @@ func _ready() -> void:
 		hitbox.owner_character = self
 		if hitbox.requires_bump_window:
 			_melee_hitbox = hitbox
-	if _mesh:
-		var mat := _mesh.get_surface_override_material(0) as StandardMaterial3D
-		if mat == null:
-			mat = StandardMaterial3D.new()
-			_mesh.set_surface_override_material(0, mat)
-		_base_albedo = mat.albedo_color
+	# Person / Can / Tsinelas each get their own model. Reapplied every round in
+	# reset_for_new_round(), because `is_can` flips with the role swap.
+	_visual.apply(is_person, is_can, team)
 
 func _physics_process(delta: float) -> void:
 	# Session 6: the bump-active window has to decay on every peer, not just
@@ -467,19 +462,9 @@ func _apply_hit_result(kind: String, duration: float) -> void:
 		"dent":
 			apply_dent(duration)
 
-## B-44: brief white flash on a landed hit, any kind, any character. Restarts
-## cleanly even if hits land in quick succession since it always tweens back
-## toward the color captured once in _ready(), never toward whatever the
-## material happened to be mid-flash.
+## B-44: brief white flash on a landed hit, any kind, any character.
 func _flash_hit() -> void:
-	if _mesh == null:
-		return
-	var mat := _mesh.get_surface_override_material(0) as StandardMaterial3D
-	if mat == null:
-		return
-	mat.albedo_color = Color.WHITE
-	var tween := create_tween()
-	tween.tween_property(mat, "albedo_color", _base_albedo, 0.15)
+	_visual.flash_hit()
 
 ## Maps a base action name (e.g. "move_left") to this character's own input
 ## action (e.g. "move_left_p1" / "move_left_p2"), per `player_id`.
@@ -524,3 +509,6 @@ func reset_for_new_round() -> void:
 	dents_changed.emit(dents)
 	if ability:
 		ability.reset_round_charge()
+	# Roles swap between rounds, so a Prop that was the Can is the Tsinelas now
+	# (and vice versa) and needs the other model. No-op when nothing changed.
+	_visual.apply(is_person, is_can, team)

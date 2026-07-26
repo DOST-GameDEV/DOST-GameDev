@@ -1,9 +1,10 @@
-[gd_scene load_steps=10 format=3 uid="uid://b8g1c2xw3q4r5"]
+[gd_scene load_steps=9 format=3 uid="uid://b8g1c2xw3q4r5"]
 
 [ext_resource type="Script" path="res://scripts/characters/character_base.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/characters/hurtbox.gd" id="2"]
 [ext_resource type="Script" path="res://scripts/characters/hitbox.gd" id="3"]
 [ext_resource type="PackedScene" path="res://scenes/characters/CameraRig.tscn" id="4"]
+[ext_resource type="Script" path="res://scripts/characters/character_visual.gd" id="5"]
 
 [sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_sync"]
 properties/0/path = NodePath(".:position")
@@ -20,10 +21,6 @@ properties/3/spawn = true
 properties/3/replication_mode = 2
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_1"]
-radius = 0.4
-height = 1.6
-
-[sub_resource type="CapsuleMesh" id="CapsuleMesh_1"]
 radius = 0.4
 height = 1.6
 
@@ -44,9 +41,7 @@ replication_config = SubResource("SceneReplicationConfig_sync")
 shape = SubResource("CapsuleShape3D_1")
 
 [node name="Visual" type="Node3D" parent="."]
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Visual"]
-mesh = SubResource("CapsuleMesh_1")
+script = ExtResource("5")
 
 [node name="CameraRig" parent="." instance=ExtResource("4")]
 

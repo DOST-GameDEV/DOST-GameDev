@@ -1,4 +1,4 @@
-[gd_scene load_steps=16 format=3 uid="uid://c3f7h9j1k2l4m"]
+[gd_scene load_steps=17 format=3 uid="uid://c3f7h9j1k2l4m"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="0"]
 [ext_resource type="PackedScene" path="res://scenes/characters/CharacterBase.tscn" id="1"]
@@ -12,7 +12,12 @@
 [sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
 size = Vector3(40, 1, 40)
 
+[sub_resource type="StandardMaterial3D" id="Mat_floor"]
+albedo_color = Color(0.827451, 0.815686, 0.784314, 1)
+roughness = 0.9
+
 [sub_resource type="BoxMesh" id="BoxMesh_floor"]
+material = SubResource("Mat_floor")
 size = Vector3(40, 1, 40)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_wall_ns"]
@@ -107,6 +112,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 1, 2)
 is_can = false
 is_person = false
 team_is_can_side = false
+team = 1
 player_id = 3
 
 [node name="TeamBPerson" parent="." instance=ExtResource("1")]
@@ -114,6 +120,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 1, 2)
 is_can = false
 is_person = true
 team_is_can_side = false
+team = 1
 player_id = 4
 
 [node name="Players" type="Node3D" parent="."]
