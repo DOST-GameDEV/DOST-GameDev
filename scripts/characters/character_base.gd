@@ -52,6 +52,14 @@ func _ready() -> void:
 		(child as Hitbox).owner_character = self
 
 func _physics_process(delta: float) -> void:
+	# Rough networking pass (Session 5): once a network peer exists, only the
+	# owning peer simulates movement/input for its own character — everyone
+	## else's copy is driven purely by MultiplayerSynchronizer (see
+	## CharacterBase.tscn). Local single-PC/split-keyboard testing is
+	# unaffected since NetworkManager.is_networked() is false there.
+	if NetworkManager.is_networked() and not is_multiplayer_authority():
+		return
+
 	if not is_on_floor():
 		velocity.y -= GRAVITY * delta
 
