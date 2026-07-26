@@ -66,6 +66,13 @@ const SPAWN_POINTS: Array[Vector3] = [
 ]
 
 var _spawned_peer_ids: Dictionary = {}
+## B-21: peer_id -> permanently-assigned join index (0..3), separate from
+## _spawned_peer_ids.size(). A disconnect/rejoin used to shift every
+## subsequent peer's index (and therefore team/role) since the index was
+## derived from how many peers happen to be connected right now. Assigned
+## once per peer_id and never reused/reassigned, even after that peer leaves.
+var _peer_join_index: Dictionary = {}
+var _next_join_index: int = 0
 ## Session 6: real 2v2 team assignment. peer_id -> 0 (Team A) or 1 (Team B),
 ## fixed for the whole match — replaces the old "alternate Can/Tsinelas by
 ## join order" 1v1 smoke-test placeholder. First two peers to connect are
@@ -174,6 +181,18 @@ func _clear_local_test_characters() -> void:
 func _on_player_connected(peer_id: int) -> void:
 	if NetworkManager.is_host():
 		_spawn_player(peer_id)
+		# B-29/B-48: a client joining after the host already started the match
+		# never learned round_number/team_a_is_can/scores/timer/game_mode at
+		# all — Godot doesn't replay reliable RPCs sent before this peer
+		# existed, so round_number stayed 0, the HUD showed placeholder text,
+		# and (B-48) the client's own GameLaunch.game_mode reflected only its
+		# own menu selection, not the host's. Send the current state directly
+		# to just this one peer.
+		_send_late_join_state.rpc_id(
+			peer_id, MatchManager.round_number, MatchManager.team_a_is_can,
+			MatchManager.team_a_wins, MatchManager.team_b_wins,
+			RoundManager.time_left, RoundManager.round_active, GameLaunch.game_mode
+		)
 
 func _on_player_disconnected(peer_id: int) -> void:
 	var node := players_root.get_node_or_null(str(peer_id))
@@ -197,8 +216,15 @@ func _on_player_disconnected(peer_id: int) -> void:
 func _spawn_player(peer_id: int) -> void:
 	if _spawned_peer_ids.has(peer_id):
 		return
-	var index := _spawned_peer_ids.size()
 	_spawned_peer_ids[peer_id] = true
+	# B-21: was `_spawned_peer_ids.size()` — a live count that shifts for every
+	# peer still connected after someone disconnects, scrambling team/role
+	# assignment for everyone whose index moved. Assign once, permanently, per
+	# peer_id instead.
+	if not _peer_join_index.has(peer_id):
+		_peer_join_index[peer_id] = _next_join_index
+		_next_join_index += 1
+	var index: int = _peer_join_index[peer_id]
 	var team := index / 2 # 0, 0, 1, 1 for up to MAX_PLAYERS = 4
 	var is_person := index % 2 == 0 # first peer of each team pair is the Person
 	var spawn_pos: Vector3 = SPAWN_POINTS[index % SPAWN_POINTS.size()]
@@ -207,6 +233,22 @@ func _spawn_player(peer_id: int) -> void:
 	spawner.spawn({
 		"peer_id": peer_id, "position": spawn_pos, "is_can": is_can,
 		"is_person": is_person, "team": team, "team_is_can_side": team_is_can_side,
+		# B-30: previously absent entirely, so every networked character kept
+		# CharacterBase's scene default (1) instead of anything explicit. On
+		# real LAN with one device per peer this is actually the CORRECT value,
+		# not a coincidence: _physics_process's input branch only ever runs on
+		# a character's own authoritative peer (see the is_multiplayer_authority
+		## guard), so every player only ever reads input via THEIR OWN player_id
+		# — and a solo player's own machine only has P1 bound by default (P2 is
+		# for a second LOCAL player sharing that same keyboard, see Settings'
+		# REBINDABLE_ACTIONS). Assigning player_id from `index` instead (2, 3,
+		# 4...) would actively break control for the 3rd/4th real joiner, since
+		# p3_p4 are deliberately left unbound in project.godot for the local
+		# test flow's stationary dummies. Per-peer distinct bindings only make
+		# sense for the shared-screen fallback (one machine, several humans),
+		# which is separate, not-yet-built work (see Dev_Plan.md's debug
+		# player-switcher item) — NOT ordinary one-device-per-peer LAN play.
+		"player_id": 1,
 	})
 
 ## Runs on every peer (host and clients) when the spawner replicates a spawn.
@@ -218,6 +260,7 @@ func _build_networked_character(data: Dictionary) -> Node:
 	character.is_person = data["is_person"]
 	character.team_is_can_side = data["team_is_can_side"]
 	character.team = data["team"] # B-09: no team identity on CharacterBase before this
+	character.player_id = data["player_id"] # B-30: previously never set at all
 	if data["is_person"]:
 		# Session 8: Person's Tag/Throw, replacing the previously-null `ability`
 		# for Person (see PersonAction doc). .duplicate() per PERSON_ACTION_ABILITY
@@ -242,6 +285,29 @@ func _build_networked_character(data: Dictionary) -> Node:
 	# nodes, so without this the camera never picked up real network peers.
 	arena_camera.add_target(character)
 	return character
+
+## B-29/B-48: host -> the one newly-connected peer, not a broadcast. Directly
+## sets the plain fields on MatchManager/RoundManager/GameLaunch (NOT their own
+## round_started-emitting sync methods) — this deliberately does NOT replay
+## _on_match_round_started, which would reset/reposition all four characters
+## just because a fifth-in-time peer joined mid-round. It only needs to bring
+## this one peer's autoload state and HUD text in line with what's already
+## true; every character's is_can/team_is_can_side is already correct from its
+## own spawn data (main.gd computed it from the CURRENT round when _spawn_player
+## ran), and RoundManager.report_round_win() is host-only regardless.
+@rpc("authority", "call_remote", "reliable")
+func _send_late_join_state(
+	new_round_number: int, new_team_a_is_can: bool, new_team_a_wins: int, new_team_b_wins: int,
+	new_time_left: float, new_round_active: bool, new_game_mode: GameLaunch.GameMode
+) -> void:
+	MatchManager.round_number = new_round_number
+	MatchManager.team_a_is_can = new_team_a_is_can
+	MatchManager.team_a_wins = new_team_a_wins
+	MatchManager.team_b_wins = new_team_b_wins
+	RoundManager.time_left = new_time_left
+	RoundManager.round_active = new_round_active
+	GameLaunch.game_mode = new_game_mode
+	hud.refresh_round_display(new_round_number, new_team_a_is_can)
 
 ## Fires on every peer identically (host emits locally, clients receive it via
 ## MatchManager._sync_round_started — see match_manager.gd) since it's driven
