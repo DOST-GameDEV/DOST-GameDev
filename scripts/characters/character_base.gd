@@ -97,13 +97,6 @@ enum State { NORMAL, STAGGERED, DOWNED, SEALED }
 ## simply never receives input, standing in as a local-test dummy. See
 ## main.gd's local _ready() branch for how p3/p4 are assigned.
 @export_range(1, 4, 1) var player_id: int = 1
-## B-15/B-35: where KillPlane sends this character back to after it falls out
-## of bounds. Captured from wherever this character actually was when it
-## first entered the tree (correct as-is for the local test flow's hand-placed
-## transforms); main.gd updates it explicitly whenever it assigns a fresh
-## position afterward (networked spawn, round reset), so a fall during round 2
-## respawns to round 2's spawn point, not round 1's stale one.
-var spawn_position: Vector3 = Vector3.ZERO
 
 signal state_changed(new_state: State)
 ## Option A only (see MAX_DENTS above). Fires whenever `dents` changes so
@@ -111,9 +104,15 @@ signal state_changed(new_state: State)
 signal dents_changed(new_dents: int)
 
 ## B-15/B-35: where this character respawns after falling into the KillPlane
-## (scripts/systems/kill_plane.gd). Kept up to date by main.gd every time it
-## positions a character for real (initial spawn and every round-start
-## reposition) — see _build_networked_character / _on_match_round_started.
+## (scripts/systems/kill_plane.gd). Captured from wherever this character
+## actually was when it first entered the tree (correct as-is for the local
+## test flow's hand-placed transforms); main.gd updates it explicitly whenever
+## it assigns a fresh position afterward (networked spawn, round reset), so a
+## fall during round 2 respawns to round 2's spawn point, not round 1's stale
+## one — see _build_networked_character / _on_match_round_started.
+## (Two independent PRs added this same field for the same bug; merging them
+## left it declared twice, which is a GDScript parse error — this is the
+## surviving single declaration.)
 var spawn_position: Vector3 = Vector3.ZERO
 var state: State = State.NORMAL
 ## Option A only. Always 0 for Persons and Slippers — only a Can (is_can true)
