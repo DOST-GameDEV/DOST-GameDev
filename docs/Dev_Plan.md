@@ -37,10 +37,42 @@ Both GDD lines predate the split and are now wrong. Section 3 below is the imple
 
 `_start_local_test()` and the `p3`/`p4` input sets exist to let one person exercise four units
 on one keyboard. **It is removed before submission.** Until then it gets one addition — a debug
-key to cycle which unit you are driving (§3.5) — and nothing else. Do not invest UI or polish
-in it, and do not let it constrain the LAN architecture.
+switcher for driving any of the four units manually (§3.5) — and nothing else. Do not invest UI
+or polish in it, and do not let it constrain the LAN architecture.
 
-### 0.3 Title
+### 0.3 Debug-only code — the removal contract
+
+Everything that exists only to make testing possible (the debug player switcher §3.5, the Local
+Match flow §0.2, any future noclip / state-force / hitbox-visualiser) must be **removable by
+deleting files and one line each, with nothing left behind and no gameplay script edited to put
+it back.** That is a design constraint on how it gets written, not a cleanup task for later.
+
+Five rules. A debug feature that breaks any of them is written wrong and should be rejected in
+review:
+
+1. **`debug_` / `Debug` prefix on every file, class, node, and autoload.** No exceptions. This is
+   what makes the removal verifiable — one `grep` proves the surface is gone (§3.5.5). A debug
+   helper hiding inside `character_base.gd` is invisible to that grep and will ship.
+2. **One-way dependency: debug code calls gameplay, gameplay never calls debug.** No gameplay
+   script may reference a debug class, autoload, signal, or group — not even behind an
+   `if OS.is_debug_build()`. If a debug feature needs a hook, it uses a **public API that earns
+   its place on gameplay grounds anyway** (e.g. `CameraRig.set_active()`, which the normal local
+   and networked paths both need). Deleting the debug file must never leave a dangling reference.
+3. **No footprint in `project.godot` beyond a single autoload line.** Debug input actions are
+   *not* added to the `[input]` map — read raw keys in `_unhandled_key_input()` instead. That
+   also keeps debug keys out of the Settings rebind panel, which iterates
+   `SettingsManager.REBINDABLE_ACTIONS`.
+4. **Self-disabling at runtime.** First lines of `_ready()`:
+   `if not OS.is_debug_build(): queue_free(); return`, and a
+   `if NetworkManager.is_networked(): return` guard on every input path. If someone forgets to
+   remove it, an exported release build strips it anyway and it can never reach a LAN match.
+   This is a safety net, **not** a substitute for deleting it.
+5. **A removal checklist ships with the feature**, in this document, written at the same time as
+   the feature. See §3.5.5 for the worked example.
+
+Removal is scheduled in Phase 6 (§5) and is part of the definition of done for submission.
+
+### 0.4 Title
 
 The moodboard ships a finished logo reading **TUMBANG PRESO** (with the "O" as a can top).
 That is now the display title. `project.godot` says "Tumbang Laro", the README and GDD say
@@ -247,23 +279,121 @@ recording the 3–5 min demo video (GDD Section 6) — in which case it must:
 Until then, **it is the LAN freeze** (B-03) and it must be disabled in the same commit that
 introduces the rigs.
 
-### 3.5 Debug player switcher (requested)
+### 3.5 Debug player switcher — manual control of any unit in local mode
 
-`scripts/systems/debug_player_switcher.gd`, debug-only, guarded by `OS.is_debug_build()`.
+**Purpose.** Local Match spawns all four units, but only two of them (`player_id` 1 and 2) have
+bound keys; `p3`/`p4` are deliberately unbound dummies. This lets one tester drive **any** of the
+four on demand, so the whole Bo5 loop, both roles, and every character can be exercised without
+four people in a room.
 
-- `F1` … `F4` — jump straight to controlling that unit.
-- `Tab` — cycle to the next unit.
-- Only active when `not NetworkManager.is_networked()`.
-- On switch: move `player_id`-driven input focus to the new unit, deactivate the old rig,
-  activate the new one, and set the new unit's `AimSource` to `MOUSE` (previous one back to
-  `MOVEMENT`).
-- Show the active unit in the HUD ("DEBUG · controlling TEAM A PROP (Can)") so it's obvious
-  which body the keyboard is attached to.
+**This is not a nicety.** From round 2 onward, `_on_match_round_started` flips `team_a_is_can`, so
+the tracked Can becomes `TeamBProp` — `player_id = 3`, unbound. The Can cannot be moved, cannot
+self-right, and the round can only end on the timer. **A local Bo5 is not playable past round 1
+today** (B-42). This switcher is what makes local playtesting possible at all, which is why it is
+first in the execution queue.
 
-This is not a nicety. From round 2 onward, the local test's Can becomes `TeamBProp`, which is
-`player_id = 3` and **deliberately unbound** — so today, round 2 of a local match has an
-uncontrollable Can and cannot be completed (B-42). The switcher is what makes local playtesting
-of the full Bo5 loop possible at all.
+Written to the removal contract in §0.3. §3.5.5 is the checklist that takes it back out.
+
+#### 3.5.1 Behaviour
+
+Two control slots, matching the two bound input sets in `project.godot`:
+
+| Slot | Keys | Default holder |
+|---|---|---|
+| **P1** | WASD · Space bump · Shift guard/dash · Q special | `TeamAProp` |
+| **P2** | Arrows · Enter bump · End guard/dash · RShift special | `TeamAPerson` |
+
+| Key | Action |
+|---|---|
+| `F1` `F2` `F3` `F4` | Assign that unit to the **P1** slot |
+| `Shift` + `F1`…`F4` | Assign that unit to the **P2** slot |
+| `Tab` | Cycle the P1 slot to the next unit |
+| `Shift`+`Tab` | Cycle the P2 slot to the next unit |
+| `F5` | Drop the P2 slot entirely (solo drive — one unit live, three inert) |
+| `F6` | Reset both slots to their defaults |
+
+Cycle order is the `Main.tscn` order: `TeamAProp` → `TeamAPerson` → `TeamBProp` → `TeamBPerson`.
+A slot skips a unit already held by the other slot, so the two can never collide.
+
+#### 3.5.2 How control actually moves — no gameplay edits
+
+`CharacterBase._physics_process` resolves its input through
+`_action(name) -> "%s_p%d" % [name, player_id]`, and `player_id` is already a public `@export`. So
+the switcher moves control by **reassigning `player_id` from the outside** — every unit not
+currently in a slot is parked on `4`, which is registered and permanently unbound, making it an
+inert dummy.
+
+That is the whole mechanism. It needs **zero** changes to `character_base.gd`, which is why rule
+0.3.2 (one-way dependency) holds for free.
+
+Three details that will bite otherwise:
+
+- **Park unused units on `4`; never leave two units sharing an id.** Two units on `player_id = 1`
+  both move on the same W press.
+- **`Input.is_action_just_pressed` is edge-triggered.** Reassign slots in `_unhandled_key_input`,
+  not mid-`_physics_process`, or a unit can inherit a half-consumed press and stutter on the frame
+  it gains control.
+- **`main.gd::_on_match_round_started` does not touch `player_id`**, so slot assignments survive
+  the round swap — which is what you want. Re-check that after B-10's world reset lands, since
+  `reset_world()` will be writing to all four units.
+
+#### 3.5.3 Camera handoff
+
+The switcher calls the rig's ordinary public API — `CameraRig.set_active(bool)` and
+`CameraRig.set_aim_source(...)` — which the normal local and networked paths need anyway (§3.2).
+`camera_rig.gd` never mentions the switcher and does not know it exists.
+
+On a slot change: deactivate the outgoing unit's rig, activate the incoming one's, set the
+incoming to `AimSource.MOUSE` and the outgoing back to `AimSource.MOVEMENT`.
+
+Only the **P1** slot drives the camera. With two slots live on one screen, the P2 unit is being
+driven blind off the P1 camera — fine and expected for a test harness, and exactly why `F5` (solo
+drive) exists. Do not build split-screen for this.
+
+The rig mode itself is untouchable: switching to a Person still gives FPP, switching to a Prop
+still gives TPP (§0.1). The switcher chooses *which* rig is active, never *what mode* it is in.
+
+#### 3.5.4 On-screen readout
+
+A `DebugBar` strip pinned to the bottom of the screen, deliberately ugly so nobody mistakes it for
+shipping UI — plain white monospace on a black bar, no theme, no `UiTheme` reference:
+
+```
+DEBUG  P1▶ TeamAProp (Can · Team A · DEFENSE)   P2▶ TeamAPerson (Person · Team A)
+       F1-F4 set P1 · Shift+F1-F4 set P2 · Tab cycle · F5 solo · F6 reset
+```
+
+Live-update the role/side text on `MatchManager.round_started` — after a swap you need to see at a
+glance that the unit you are holding is now the Can. It must show each held unit's `is_person`,
+`is_can`, team and current side, because that is precisely the state that silently changes under
+you between rounds.
+
+#### 3.5.5 Removal checklist
+
+Total footprint: **3 files, 2 lines.**
+
+- [ ] Delete `scripts/systems/debug_player_switcher.gd`
+- [ ] Delete `scripts/ui/debug_bar.gd`
+- [ ] Delete `scenes/ui/DebugBar.tscn`
+- [ ] Remove the single autoload line
+      `DebugPlayerSwitcher="*res://scripts/systems/debug_player_switcher.gd"` from `project.godot`
+- [ ] Remove the single `DebugBar` instance line from `Main.tscn` (under `HUDLayer`)
+- [ ] Verify nothing is left behind:
+
+```bash
+grep -rin "debug" --include="*.gd" --include="*.tscn" --include="*.tres" --include="project.godot" . | grep -iv "is_debug_build"
+```
+
+That grep returning nothing is the acceptance test for removal, and it only works because of the
+`debug_`/`Debug` prefix rule (§0.3.1). A hit inside a gameplay script means rule 0.3.2 was broken
+somewhere and the removal is not finished.
+
+- [ ] Open the project, press F5, play a Local Match round — confirm P1/P2 still work on their
+      `Main.tscn` defaults with the switcher gone.
+
+Removal happens in Phase 6 (§5), in the same pass that strips Local Match itself (§0.2). Since
+Local Match is going too, the switcher's entire reason to exist goes with it — expect to delete
+both together rather than one at a time.
 
 ---
 
@@ -554,7 +684,8 @@ round-win mode.
 
 - [ ] Multi-device LAN test on real hardware over real wifi (never done)
 - [ ] Export presets (none exist) and a build that runs outside the editor
-- [ ] **Strip Local Match mode** (§0.2) and the debug switcher
+- [ ] **Strip Local Match mode** (§0.2) and the debug switcher — run the removal checklist in
+      §3.5.5 and confirm the verification `grep` comes back empty
 - [ ] Trailer (1–2 min, loopable), demo video (3–5 min, narrated or captioned)
 - [ ] Forms 01–03, waiver, synopsis (≤500 words) — GDD Section 9. Form 03 needs the font and
       moodboard-asset licences.
@@ -646,8 +777,12 @@ document to ask.
 
 **Local controls** (rebindable in Settings): P1 = WASD, Space bump, Shift guard/dash, Q special.
 P2 = arrows, Enter bump, End guard/dash, Right Shift special. P3/P4 are registered but
-deliberately unbound — they are the dummy opponents. Once §3.5 lands, F1–F4 / Tab switch which
-unit you drive.
+deliberately unbound — they are the dummy opponents.
+
+Once §3.5 lands, you can point either input set at **any** of the four units: `F1`–`F4` assign
+the P1 slot, `Shift`+`F1`–`F4` assign P2, `Tab` cycles, `F5` drops to solo drive, `F6` resets.
+A `DebugBar` at the bottom of the screen always names what you are holding. **Debug-only, and it
+is deleted before submission — see §0.3 and the checklist in §3.5.5.**
 
 ### Orientation, quickly
 
