@@ -62,6 +62,10 @@ report from Session 9, which was investigated only against the local flow and wr
 not reproducible.
 *Fix:* emit the signal locally on the host as well as RPCing it, or make the RPCs
 `call_local` and drop the `else`.
+**[FIXED]** `_sync_round_started` and `_sync_match_won` are now `@rpc("authority", "call_local",
+"reliable")`, so the host's own call to `.rpc(...)` also runs its handler locally instead of
+only reaching remote peers. Needs verification with two editor instances
+(`--host` / `--join=127.0.0.1`) that both see the timer move.
 
 **B-02 · Every special and Tag/Throw is a no-op for anyone who isn't the host.**
 `scripts/abilities/ability_utils.gd:34` adds the pulse hitbox to `current_scene` on the

@@ -115,8 +115,11 @@ doing until a full 2v2 round can start, be won, and roll into the next round.
 
 Fix the four P0 bugs. Until these are done there is no LAN demo to show anyone.
 
-- [ ] **B-01** — `MatchManager` host never emits `round_started` / `match_won` locally, so a
-      networked match's timer never starts. One-line class of fix.
+- [x] **B-01** — `MatchManager` host never emits `round_started` / `match_won` locally, so a
+      networked match's timer never starts. One-line class of fix. *(Fixed: `_sync_round_started`
+      and `_sync_match_won` are now `call_local` instead of `call_remote`, so the host runs its
+      own handler — same RPC, no separate direct-emit path needed. Verify with two editor
+      instances, `--host` and `--join=127.0.0.1`, that both see the timer move.)*
 - [ ] **B-02** — abilities spawn their hitbox only on the activating peer, and hitboxes only
       resolve on the host, so every special and Tag/Throw is a no-op for anyone who isn't
       hosting. Needs an activation RPC to the host.
