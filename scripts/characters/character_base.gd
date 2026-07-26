@@ -88,6 +88,11 @@ signal state_changed(new_state: State)
 ## RoundManager can watch for a tracked Can reaching MAX_DENTS without polling.
 signal dents_changed(new_dents: int)
 
+## B-15/B-35: where this character respawns after falling into the KillPlane
+## (scripts/systems/kill_plane.gd). Kept up to date by main.gd every time it
+## positions a character for real (initial spawn and every round-start
+## reposition) — see _build_networked_character / _on_match_round_started.
+var spawn_position: Vector3 = Vector3.ZERO
 var state: State = State.NORMAL
 ## Option A only. Always 0 for Persons and Slippers — only a Can (is_can true)
 ## ever takes dents. Synced like `state` (see CharacterBase.tscn) so RoundManager
@@ -132,6 +137,18 @@ func _physics_process(delta: float) -> void:
 
 	if not is_on_floor():
 		velocity.y -= GRAVITY * delta
+
+	# Item 10 / B-37: freeze input during the round intermission (the gap
+	# between a round ending and the next one's timer starting — see
+	# MatchManager.round_intermission_started / main.gd::_reset_world) and
+	# before the very first round begins. round_active is already false in
+	# both cases; still apply gravity/friction above/below so nobody floats
+	# or skids, just can't act.
+	if not RoundManager.round_active:
+		velocity.x = move_toward(velocity.x, 0, FRICTION * delta)
+		velocity.z = move_toward(velocity.z, 0, FRICTION * delta)
+		move_and_slide()
+		return
 
 	if ability:
 		ability.tick(delta)
@@ -340,6 +357,13 @@ func _set_state(new_state: State) -> void:
 		return
 	state = new_state
 	state_changed.emit(state)
+
+## Called by KillPlane (B-15/B-35) when this character falls off the arena.
+## Stun-only, no elimination — same "straight back in the fight" rule as a
+## bump — so this returns to spawn_position rather than sitting anyone out.
+func respawn() -> void:
+	global_position = spawn_position
+	velocity = Vector3.ZERO
 
 ## Called by RoundManager at the start of a new round to clear Downed/Sealed/Staggered
 ## carryover from the previous round. Does NOT touch position — whatever resets a

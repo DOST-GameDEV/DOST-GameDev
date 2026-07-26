@@ -28,6 +28,7 @@ func _ready() -> void:
 	play_menu.visible = false
 	settings_panel.visible = false
 	status_label.text = ""
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE # item 14: defensive — Main.tscn captures it for a match
 
 	game_mode_option.clear()
 	game_mode_option.add_item("Option B — Capture & Seal", GameLaunch.GameMode.OPTION_B)

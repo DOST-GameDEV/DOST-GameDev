@@ -34,6 +34,7 @@ extends Node3D
 @onready var spawner: MultiplayerSpawner = $MultiplayerSpawner
 @onready var hud: Hud = $HUDLayer/HUD
 @onready var arena_camera: ArenaCamera = $Camera3D
+@onready var kill_plane: KillPlane = $KillPlane
 
 const CHARACTER_SCENE: PackedScene = preload("res://scenes/characters/CharacterBase.tscn")
 ## Every Person — networked or local — gets its own Tag/Throw ability
@@ -81,8 +82,23 @@ var _peer_is_person: Dictionary = {}
 var _spawned_characters: Dictionary = {} # peer_id -> CharacterBase
 
 func _ready() -> void:
+	# B-14: MatchManager/RoundManager are autoloads and previously carried a
+	# finished match's score/round_number into the next one. Main.tscn is the
+	# one scene every match path (Local/Host/Join from the menu, or a
+	# same-session Rematch that doesn't reload this scene — see
+	# match_result.gd) loads through, so reset here is the single point that
+	# guarantees a fresh 0-0 round 1 regardless of how we got here.
+	MatchManager.reset()
+	RoundManager.reset()
+	# Item 14: captured for the whole match — FPP without a captured cursor
+	# reads as broken, and TPP mouse-look needs it too. Esc toggles it back
+	# to visible; there's no pause menu yet (B-20, still open) to hang a real
+	# resume flow off of, so pressing Esc again re-captures for now.
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	spawner.spawn_function = _build_networked_character
 	MatchManager.round_started.connect(_on_match_round_started)
+	MatchManager.round_intermission_started.connect(_on_round_intermission_started)
+	kill_plane.character_respawned.connect(_on_character_respawned)
 
 	var join_target := ""
 	var should_host := false
@@ -132,6 +148,15 @@ func _start_local_test() -> void:
 	_wire_downed_flash(team_a_prop)
 	_wire_downed_flash(team_b_prop)
 	_register_local_can()
+	# Item 13: no authority concept in local test, unlike networked play,
+	# where each rig can activate itself from is_multiplayer_authority(). One
+	# rig has to be picked explicitly. Defaults to TeamAProp (the P1 slot),
+	# matching the debug switcher's own documented default (Dev_Plan.md §3.5.1)
+	# — the switcher (queue item 1, not yet built) is what makes this
+	# reassignable at runtime instead of fixed for the whole local session.
+	var default_rig := team_a_prop.get_node("CameraRig") as CameraRig
+	default_rig.set_active(true)
+	default_rig.set_aim_source(CameraRig.AimSource.MOUSE)
 	MatchManager.begin_next_round()
 
 ## (Re)tells RoundManager which local Prop is currently the Can — whichever
@@ -174,6 +199,40 @@ func _clear_local_test_characters() -> void:
 func _on_player_connected(peer_id: int) -> void:
 	if NetworkManager.is_host():
 		_spawn_player(peer_id)
+		# B-29/B-48: _start_hosting() already called MatchManager.begin_next_round()
+		# before anyone could possibly be connected (see B-13), so every joining
+		# peer — not just a "late" one — missed the one-shot _sync_round_started
+		# broadcast and is stuck at round_number 0. GameLaunch.game_mode is also
+		# never networked at all; each peer reads its own menu selection, so a
+		# client's copy can silently disagree with the host's. Catch this one
+		# peer up on both in a single reliable RPC.
+		_sync_state_to_late_joiner.rpc_id(
+			peer_id, MatchManager.round_number, MatchManager.team_a_is_can,
+			MatchManager.team_a_wins, MatchManager.team_b_wins,
+			RoundManager.time_left, RoundManager.round_active, GameLaunch.game_mode
+		)
+
+## B-15/B-35: only show the "OUT OF BOUNDS" toast for a character that's
+## actually ours — a client's screen shouldn't flash every time some OTHER
+## peer's unit falls off. In local test (not networked at all) every unit is
+## on this one screen, so any of them falling is worth a toast.
+func _on_character_respawned(character: CharacterBase) -> void:
+	if not NetworkManager.is_networked() or character.is_multiplayer_authority():
+		hud.show_toast("OUT OF BOUNDS")
+
+## Item 14: Esc toggles the mouse free — mandatory once FPP captures it, or a
+## captured cursor with no release path traps the player (B-20's real pause
+## menu will eventually own this transition properly). Focus loss always
+## releases outright: alt-tabbing away with the cursor still captured is a
+## bad experience regardless of what's on screen.
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel"):
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED else Input.MOUSE_MODE_CAPTURED
+		get_viewport().set_input_as_handled()
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func _on_player_disconnected(peer_id: int) -> void:
 	var node := players_root.get_node_or_null(str(peer_id))
@@ -204,9 +263,22 @@ func _spawn_player(peer_id: int) -> void:
 	var spawn_pos: Vector3 = SPAWN_POINTS[index % SPAWN_POINTS.size()]
 	var team_is_can_side := (team == 0) == MatchManager.team_a_is_can
 	var is_can := team_is_can_side and not is_person
+	# B-30: CharacterBase.player_id was never set on a networked spawn, so every
+	# networked character kept the scene default of 1 and read *_p1 actions —
+	# harmless by accident (one human per LAN machine binds p1 and controls
+	# whichever single character is theirs) except the Settings panel's entire
+	# P2 rebind column was dead in networked play. Mirror the is_person split
+	# (index % 2) so the Person of each team gets slot 1 (WASD default) and the
+	# Prop gets slot 2 (arrows default) — a fixed-for-the-match assignment,
+	# same lifetime as is_person. Note this does NOT give the moodboard's
+	# WASD-tracks-Attacker/arrows-tracks-Defender scheme, since Attacker/
+	# Defender swaps every round while a peer's is_person/player_id don't;
+	# that would need input rebinding on every role swap, not just this fix.
+	var player_id := (index % 2) + 1
 	spawner.spawn({
 		"peer_id": peer_id, "position": spawn_pos, "is_can": is_can,
 		"is_person": is_person, "team": team, "team_is_can_side": team_is_can_side,
+		"player_id": player_id,
 	})
 
 ## Runs on every peer (host and clients) when the spawner replicates a spawn.
@@ -214,10 +286,12 @@ func _build_networked_character(data: Dictionary) -> Node:
 	var character: CharacterBase = CHARACTER_SCENE.instantiate()
 	character.name = str(data["peer_id"])
 	character.position = data["position"]
+	character.spawn_position = data["position"] # B-15/B-35: where KillPlane sends it back to
 	character.is_can = data["is_can"]
 	character.is_person = data["is_person"]
 	character.team_is_can_side = data["team_is_can_side"]
 	character.team = data["team"] # B-09: no team identity on CharacterBase before this
+	character.player_id = data["player_id"] # B-30: was never assigned, stuck at the scene default of 1
 	if data["is_person"]:
 		# Session 8: Person's Tag/Throw, replacing the previously-null `ability`
 		# for Person (see PersonAction doc). .duplicate() per PERSON_ACTION_ABILITY
@@ -245,10 +319,27 @@ func _build_networked_character(data: Dictionary) -> Node:
 
 ## Fires on every peer identically (host emits locally, clients receive it via
 ## MatchManager._sync_round_started — see match_manager.gd) since it's driven
-## by fields (team_a_is_can) that are already synced. No RPC needed here: each
-## peer just recomputes is_can for every spawned character from that
-## character's fixed team, which every peer already knows from spawn data.
+## by fields (team_a_is_can) that are already synced.
 func _on_match_round_started(_round_number: int, team_a_is_can: bool) -> void:
+	_reset_world(team_a_is_can)
+	RoundManager.start_round()
+
+## Item 10 / B-37: called twice per round transition now instead of once —
+## immediately when MatchManager.round_intermission_started fires (so the
+## world is already reset while the intermission banner shows, per
+## Dev_Plan.md §4.6's "WORLD RESET" beat) and again, idempotently, from
+## _on_match_round_started when the round actually begins. Recomputes is_can
+## for every spawned character from that character's fixed team, which every
+## peer already knows from spawn data — no RPC needed, this runs identically
+## on every peer. Also frees any live HazardZone / transient ability hitbox
+## (B-43) so nothing from the previous round survives into the next.
+func _reset_world(team_a_is_can: bool) -> void:
+	for node in get_tree().get_nodes_in_group("hazard_zone"):
+		if is_instance_valid(node):
+			node.queue_free()
+	for node in get_tree().get_nodes_in_group("transient_hitbox"):
+		if is_instance_valid(node):
+			node.queue_free()
 	if NetworkManager.is_networked():
 		RoundManager.clear_tracked_cans()
 		var index := 0
@@ -274,6 +365,7 @@ func _on_match_round_started(_round_number: int, team_a_is_can: bool) -> void:
 			# reset at all. Reset + reposition every unit here instead.
 			character.reset_for_new_round()
 			character.position = SPAWN_POINTS[index % SPAWN_POINTS.size()]
+			character.spawn_position = character.position # B-15/B-35
 			index += 1
 			if character.is_can:
 				RoundManager.register_can(character)
@@ -296,8 +388,50 @@ func _on_match_round_started(_round_number: int, team_a_is_can: bool) -> void:
 			var character := _local_roster[i]
 			character.reset_for_new_round()
 			character.position = SPAWN_POINTS[i % SPAWN_POINTS.size()]
+			character.spawn_position = character.position # B-15/B-35
 		_register_local_can()
-	RoundManager.start_round()
+
+## Item 10 / B-37: fires on every peer (see MatchManager._sync_intermission_started)
+## the moment a round ends without finishing the match — the gap that never
+## used to exist between report_round_win and the next round's timer
+## starting. Resets the world early (so players see themselves back at spawn
+## during the banner, not just when the fight starts) and shows who won.
+## Item 19 (moodboard role-swap card) replaces this banner with the full
+## animated card; this is the functional beat it slots into.
+func _on_round_intermission_started(_next_round_number: int, next_team_a_is_can: bool, can_team_won: bool) -> void:
+	_reset_world(next_team_a_is_can)
+	# can_team_won tells us which SIDE held the round; recover which TEAM that
+	# was from this round's team_a_is_can — always the opposite of
+	# next_team_a_is_can, since role swaps every round.
+	var this_round_team_a_is_can := not next_team_a_is_can
+	var team_a_won := can_team_won == this_round_team_a_is_can
+	hud.show_round_banner("%s wins the round!" % ("Team A" if team_a_won else "Team B"))
+
+## Host → one late-joining peer (B-29, B-48). Sets every field directly rather
+## than replaying _on_match_round_started's reset cascade: that function calls
+## reset_for_new_round() and rewrites `position` on every character it knows
+## about, which is correct for an actual round transition but would wrongly
+## re-zero the position/state/dents of characters that already arrived on this
+## peer with correct current values, via MultiplayerSynchronizer's spawn=true
+## replication (CharacterBase.tscn's SceneReplicationConfig). Only refreshes
+## the HUD's round/role labels directly (Hud.set_round_display) and registers
+## already-known Cans with RoundManager for completeness — both side-effect
+## free, unlike a full reset.
+@rpc("authority", "call_remote", "reliable")
+func _sync_state_to_late_joiner(new_round_number: int, new_team_a_is_can: bool, new_team_a_wins: int, new_team_b_wins: int, new_time_left: float, new_round_active: bool, new_game_mode: GameLaunch.GameMode) -> void:
+	MatchManager.round_number = new_round_number
+	MatchManager.team_a_is_can = new_team_a_is_can
+	MatchManager.team_a_wins = new_team_a_wins
+	MatchManager.team_b_wins = new_team_b_wins
+	RoundManager.time_left = new_time_left
+	RoundManager.round_active = new_round_active
+	GameLaunch.game_mode = new_game_mode
+	hud.set_round_display(new_round_number, new_team_a_is_can)
+	RoundManager.clear_tracked_cans()
+	for peer_id in _spawned_characters:
+		var character: CharacterBase = _spawned_characters[peer_id]
+		if is_instance_valid(character) and character.is_can:
+			RoundManager.register_can(character)
 
 ## Shows/hides the HUD's DownedFlash whenever the given (locally-controlled)
 ## character enters/exits Downed — but only if it's a Can; Tsinelas/Person

@@ -24,6 +24,10 @@ static func spawn_pulse_hitbox(
 	area.set("requires_bump_window", false) # specials bypass the press-to-bump gate
 	area.collision_layer = 0
 	area.collision_mask = 2 # matches Hurtbox layer
+	# B-43: these already self-free via the timer below, but not if a round
+	# ends first — main.gd::_reset_world frees anything still in this group so
+	# a pulse hitbox never survives into the next round.
+	area.add_to_group("transient_hitbox")
 
 	var shape := CollisionShape3D.new()
 	var sphere := SphereShape3D.new()

@@ -142,3 +142,12 @@ func report_round_win(can_team_won: bool) -> void:
 func _sync_state(new_time_left: float, new_round_active: bool) -> void:
 	time_left = new_time_left
 	round_active = new_round_active
+
+## B-14: counterpart to MatchManager.reset() — see its doc for when this is
+## called. round_active stays false until the next begin_next_round() actually
+## starts a round, which also freezes input (character_base.gd) in the
+## meantime — appropriate between a match ending and a rematch/new match.
+func reset() -> void:
+	time_left = ROUND_TIME
+	round_active = false
+	clear_tracked_cans()

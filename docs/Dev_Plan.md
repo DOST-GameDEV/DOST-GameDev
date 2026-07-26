@@ -90,25 +90,25 @@ Legend: **[x]** built and working · **[~]** built but broken or unverified · *
 | Area | State | Notes |
 |---|---|---|
 | Project scaffold, folders, `.gitignore`, LFS attributes | [x] | |
-| `CharacterBase` — move, gravity, per-player input map | [x] | Playtested. No rotation, no dash — B-05, B-16. |
+| `CharacterBase` — move, gravity, per-player input map | [x] | Playtested. Rotation now written via movement-facing `look_at()` (B-05 fixed). No dash — B-16. |
 | `AbilityBase` resource pattern (one scene + a plugged-in Resource per character) | [x] | Pattern is sound and worth keeping. |
-| `Hitbox` / `Hurtbox` + press-to-bump active window | [~] | Layers are correct (Hurtbox L2/M0, Hitbox L0/M2). Misses already-overlapping targets (B-08), no team check (B-09). |
-| Downed / self-right / Seal state machine | [~] | Any stagger cancels Downed (B-07). |
+| `Hitbox` / `Hurtbox` + press-to-bump active window | [x] | Layers are correct (Hurtbox L2/M0, Hitbox L0/M2). Already-overlapping targets fixed (B-08), team check added (B-09). Unverified by a human. |
+| Downed / self-right / Seal state machine | [x] | B-07 fixed — a hit during the self-right window no longer rescues a Downed Can. |
 | Option A — dents (health) round win | [~] | Wired end to end; never human-verified. Menu still calls it "coming soon" (B-26). |
-| Option B — Downed → Seal round win | [~] | Wired end to end; broken by B-07. |
-| `RoundManager` (90s timer, win reporting) | [~] | Starts on the host now (B-01 fixed); a **late-joining client never learns a round started** (B-29). |
+| Option B — Downed → Seal round win | [x] | Wired end to end; B-07 (the blocker) fixed. Never human-verified. |
+| `RoundManager` (90s timer, win reporting) | [x] | Starts on the host, verified with two real running instances (B-01). Late joiners now catch up too (B-29 fixed). |
 | `MatchManager` (Bo5, role swap) | [x] | Bo5-to-3 early win **already implemented** (`WINS_NEEDED = 3`, `match_manager.gd:43`). No match reset (B-14), no end-of-match flow (B-37). |
-| `NetworkManager` (ENet host/join) | [x] | Connects fine. Everything downstream is where the trouble is. |
-| Networked spawning + movement replication | [~] | Works; snaps (no interpolation); Props spawn with no ability (B-04); `player_id` never assigned (B-30). |
-| Host-authoritative combat | [~] | Correct for Bump; silently drops every special (B-02). |
+| `NetworkManager` (ENet host/join) | [x] | Connects fine. `is_networked()` fixed to not read `true` in local test (B-49). |
+| Networked spawning + movement replication | [~] | Works; snaps (no interpolation); Props now get an ability (B-04 fixed); `player_id` still never assigned (B-30). |
+| Host-authoritative combat | [~] | Correct for Bump; specials now replicate to the host (B-02 fixed, unverified against a real client). |
 | HUD (timer, Bo5, round, role, dent counter, downed flash) | [~] | Functional but placeholder-styled. Client score is stale (B-38). Full rebuild in §4. |
 | Main menu + mode picker | [~] | **No back button** (B-34); disabled mode is selectable and proceeds (B-33). |
 | Settings — rebindable, persistent controls | [x] | Rebinds an action nothing reads (B-16); allows duplicates (B-22); P2 bindings are dead in LAN (B-30). |
-| `ArenaCamera` follow/zoom | [~] | Crashes every frame in networked play (B-03 — **this is the reported LAN freeze**). Being retired (§3.4). |
+| `ArenaCamera` follow/zoom | [x] | B-03 fixed and verified with two running instances (see §5) — no more networked-play crash. Superseded by per-character `CameraRig` (§3), not yet built. |
 | `HazardZone` slow-zone | [~] | Untested; edge cases in B-17. |
-| Out-of-bounds / kill plane / arena walls | [ ] | Nothing. Falling off the map = infinite fall + camera follows forever (B-15, B-35). |
-| Per-character camera rigs (FPP/TPP) | [ ] | §3. |
-| Round intermission / role-swap beat | [ ] | Rounds currently roll over in the same frame (B-37). §4.6. |
+| Out-of-bounds / kill plane / arena walls | [x] | `KillPlane` Area3D + walls in `Main.tscn`, verified with a real forced-fall run (B-15, B-35). |
+| Per-character camera rigs (FPP/TPP) | [~] | §3. Built and logic-verified (mode derivation, activation exclusivity, yaw/pitch math, networked authority handoff). Visual framing/wall pull-in unconfirmed — no display in this environment. |
+| Round intermission / role-swap beat | [~] | Functional state machine + plain banner exist (B-37 fixed). Moodboard's animated role-swap card is still item 19. §4.6. |
 | Team identity on `CharacterBase` | [ ] | No `team_id` exists. Blocks friendly-fire fix **and** three UI items (B-09). |
 
 ### Content
@@ -133,8 +133,16 @@ Legend: **[x]** built and working · **[~]** built but broken or unverified · *
 
 Playtested and confirmed: movement, per-player input split, camera follow, main menu
 navigation. **Never confirmed by anyone pressing buttons:** bump landing, stagger, Downed,
-self-right, seal, dents, any special ability, any round ending, any match ending, and every
-network path beyond "the peers connect". Treat every `[~]` row above as untrusted.
+self-right, seal, dents, any special ability, any round ending, any match ending. A later pass
+fixed B-01 through B-12 in code (see §5, Phase 0/1) but **most of those fixes have not been
+confirmed by a human pressing buttons** — only a headless `godot --headless --path . --quit`
+smoke test (no script/parse errors, loads clean) has run against most of them. The exceptions are
+B-01, B-03, B-29, and B-48: these were verified by actually running two headless instances
+(`--host` / `--join=127.0.0.1`) for several real seconds and reading their printed state, which
+is how B-03's fix was caught being incomplete in the first place — a `--quit`-only smoke test
+never executes a single frame of `_process()`, so it cannot catch a per-frame runtime error.
+Treat every `[~]` row above, and every `[x]` row whose fix note says "unverified", as untrusted
+until someone actually plays it.
 
 ---
 
@@ -473,7 +481,7 @@ Settle it before the deadline, not during it.
 | Lobby | [ ] | Peer list, team assignment, ready-up, host "Start" (B-13). |
 | HUD | [~] | Full rebuild, §4.4. |
 | Round intermission / role swap | [ ] | §4.6. Requested item. |
-| Match result | [ ] | Bo5 grid, winner, Rematch / Menu. |
+| Match result | [~] | Functional: `MatchResult.tscn` shows on `match_won`, Rematch (in-place reset, host-gated) / Menu both verified live. Plain `Label`, not the moodboard's Bo5 grid — item 20. |
 | Pause | [ ] | Esc → Resume / Settings / Quit to Menu (B-20). |
 | Settings | [x] | Restyle only. Add mouse sensitivity + invert-Y (§3.2), add duplicate-binding detection (B-22). |
 
@@ -605,21 +613,40 @@ match starts, is playable, can be won, and rolls into the next round.
 ### Phase 0 — Make LAN work (blocking, do first)
 
 - [x] **B-01** — `MatchManager` host never emitted `round_started` / `match_won` locally.
-      *(Fixed: `_sync_round_started` / `_sync_match_won` are now `call_local`. **Still unverified
-      by a human** — two editor instances, `--host` / `--join=127.0.0.1`, both must see the
-      timer move.)*
-- [ ] **B-03** — `ArenaCamera` dereferences four freed nodes every frame after
+      *(Fixed and **verified**: `_sync_round_started` / `_sync_match_won` are now `call_local`.
+      Two real headless instances, `--host` / `--join=127.0.0.1`, both showed `time_left`
+      counting down together and `round_active=true`. See `Handoff.md` queue item 7.)*
+- [x] **B-03** — `ArenaCamera` dereferences four freed nodes every frame after
       `_clear_local_test_characters()`. **This is the reported LAN freeze.** Disable the
       scene-level camera in the same commit as the rigs (§3.4).
-- [ ] **B-29** — a client joining after the host started never receives `_sync_round_started`,
+      *(Fixed and **verified** in two passes — the first attempt (`Array.filter()` with a
+      `Node3D`-typed lambda) still threw a per-frame conversion error on a freed reference, caught
+      only by actually running two instances, not by a `--quit`-only smoke test. Replaced with a
+      plain loop; re-run showed zero errors on either peer. See `Handoff.md` §3 B-03.)*
+- [x] **B-29** — a client joining after the host started never receives `_sync_round_started`,
       so its round number, roles, tracked Cans and HUD are permanently stale. Host must
       `rpc_id()` full match state to each peer on connect.
-- [ ] **B-02** — abilities spawn their hitbox only on the activating peer and only resolve on
+      *(Fixed and **verified**: `main.gd::_sync_state_to_late_joiner`, `rpc_id`-targeted at the
+      new peer. Also carries `game_mode`, fixing B-48 in the same change. The two-instance test
+      above showed the late-joining client at `round_number=1 round_active=true` immediately,
+      not the stale `round_number=0` default.)*
+- [x] **B-02** — abilities spawn their hitbox only on the activating peer and only resolve on
       the host, so every special and Tag/Throw is a no-op for anyone who isn't hosting.
-- [ ] **B-04** — networked Props spawn with `ability = null`; only Persons get one.
-- [ ] **B-30** — `player_id` is never assigned to networked characters; all four read `*_p1`.
-- [ ] **B-48** — `GameLaunch.game_mode` is never sent over the network; host and client can run
+      *(Fixed: `_rpc_notify_ability_activate` RPCs the host to run its own `activate()`. Still
+      unverified against a real non-host client — the B-01 test confirmed connectivity/timer
+      sync, not ability activation specifically.)*
+- [x] **B-04** — networked Props spawn with `ability = null`; only Persons get one.
+      *(Fixed: every networked Prop gets a `.duplicate()`d `quick_stand.tres` until character
+      select exists — B-24.)*
+- [x] **B-30** — `player_id` is never assigned to networked characters; all four read `*_p1`.
+      *(Fixed: `main.gd` mirrors the `is_person` split — Person gets slot 1, Prop slot 2. Does
+      not deliver WASD-tracks-Attacker, which would need re-binding on role swap. The two-instance
+      test ran error-free with this change in place, but didn't specifically confirm input
+      response per slot.)*
+- [x] **B-48** — `GameLaunch.game_mode` is never sent over the network; host and client can run
       different modes.
+      *(Fixed and **verified** alongside B-29 — the joining client logged `game_mode=0`, matching
+      the host, from its first tick.)*
 
 **Exit criteria:** two editor instances, one `--host` one `--join=127.0.0.1`, both see the timer
 counting, both spawn and control their own character, both can bump each other, both see the
@@ -627,17 +654,41 @@ same result, and a client that joins late is in the same round as the host.
 
 ### Phase 1 — Make the core loop correct
 
-- [ ] **B-09** — add `team_id` to `CharacterBase` (**do this first — B-09, §4.5 and §4.6 are all
+- [x] **B-49 (NEW)** — `NetworkManager.is_networked()` read `true` in local test this whole time,
+      because Godot 4's default `multiplayer.multiplayer_peer` is an `OfflineMultiplayerPeer`
+      sentinel, not `null`, and `has_multiplayer_peer()` reports `true` for it.
+      *(Fixed: `NetworkManager` now tracks an explicit `_is_networked` flag set only by
+      `host_game()`/`join_game()`. Caught and verified by actually running the local flow — see
+      `Handoff.md` §3 B-49.)*
+- [x] **B-09** — add `team_id` to `CharacterBase` (**do this first — B-09, §4.5 and §4.6 are all
       blocked on it**) and gate `Hitbox` on it
-- [ ] **B-15 / B-35** — kill plane, arena walls, respawn
-- [ ] **B-10 / B-37** — round intermission state + full four-unit world reset with positions
-- [ ] **B-05** — face direction, delivered by the camera rigs (§3.2), not as separate work
-- [ ] **B-06** — special-ability input unreachable while Downed
-- [ ] **B-07** — stagger cancelling Downed
-- [ ] **B-08** — bump missing already-overlapping targets
-- [ ] **B-11** — cooldown consumed on a no-op activation
-- [ ] **B-12** — frame-step friction / Flick Dash lasting three frames
-- [ ] **B-14 / B-20** — match reset, pause menu, return to menu
+      *(Fixed: `team` export + same-team skip in `hitbox.gd`. §4.5/§4.6 unblocked.)*
+- [x] **B-15 / B-35** — kill plane, arena walls, respawn
+      *(Fixed and verified: `KillPlane` Area3D + four `StaticBody3D` walls in `Main.tscn`,
+      `CharacterBase.respawn()`. A forced fall in a real headless run landed the character back at
+      its exact `spawn_position`. See `Handoff.md` queue item 9.)*
+- [x] **B-10 / B-37** — round intermission state + full four-unit world reset with positions
+      *(Both fixed and verified. B-10: confirmed in local play post-B-49 (previously only ever ran
+      in the networked branch). B-37: `MatchManager.round_intermission_started` + a host-timed
+      3s gap before `begin_next_round()` actually fires, input frozen via `RoundManager.round_active`,
+      a plain "Team X wins" banner. Verified with a live run: forced a round win, observed
+      `round_intermission_started` fire immediately and `round_started` fire ~3s later with all
+      four units back at their exact spawn points. The moodboard's animated role-swap card is
+      still item 19 — this is the functional beat it slots into, not the polish.)*
+- [x] **B-05** — face direction, delivered by the camera rigs (§3.2), not as separate work
+      *(Landed as `look_at()` on movement direction, ahead of the camera rig — equivalent to
+      `AimSource.MOVEMENT`. The rig only needs to add `AimSource.MOUSE` for the FPP-controlled
+      unit; do not build a second aim path.)*
+- [x] **B-06** — special-ability input unreachable while Downed
+- [x] **B-07** — stagger cancelling Downed
+- [x] **B-08** — bump missing already-overlapping targets
+- [x] **B-11** — cooldown consumed on a no-op activation
+- [x] **B-12** — frame-step friction / Flick Dash lasting three frames
+- [~] **B-14 / B-20** — match reset, pause menu, return to menu
+      *(B-14 fixed and verified live: `MatchManager.reset()`/`RoundManager.reset()`, called at
+      `main.gd::_ready()` and from `MatchResult`'s buttons. Forced three round wins, confirmed
+      `match_won`, `MatchResult` showing, and a clean 0-0 round-1 restart via Rematch. B-20 (pause
+      menu / Esc-to-menu mid-match) still open.)*
 - [ ] Play a full Bo5 locally. Decide **Option A or Option B and delete the loser.**
 
 **Exit criteria:** a full Bo5 completes, roles swap with a visible transition, all four units
@@ -646,9 +697,15 @@ round-win mode.
 
 ### Phase 2 — Cameras and player readability
 
-- [ ] `CameraRig.tscn` + `camera_rig.gd`, FPP and TPP branches (§3.1, §3.2)
-- [ ] Retire / repurpose `ArenaCamera` (§3.4)
-- [ ] Mouse capture, sensitivity + invert-Y in `SettingsManager`
+- [x] `CameraRig.tscn` + `camera_rig.gd`, FPP and TPP branches (§3.1, §3.2)
+      *(Built and logic-verified with real running instances — see `Handoff.md` queue item 13 for
+      exactly what was and wasn't confirmed without a display.)*
+- [x] Retire / repurpose `ArenaCamera` (§3.4)
+      *(`current = false` forced in `_ready()`; kept as the local-test/broadcast fallback per
+      §3.4's "keep the script" branch rather than deleted.)*
+- [x] Mouse capture, sensitivity + invert-Y in `SettingsManager`
+      *(Sensitivity/invert-Y math verified live — see `Handoff.md` queue item 14. The
+      capture/Esc/focus-loss lifecycle can't be exercised headless; needs a human.)*
 - [ ] `DebugPlayerSwitcher` (§3.5)
 - [ ] Nameplates, team ground rings, off-screen indicators (§4.5)
 
