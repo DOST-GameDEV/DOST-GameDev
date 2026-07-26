@@ -131,6 +131,14 @@ cannot be controlled" is downstream of the freeze: a solo host correctly spawns 
 *Fix:* the camera rigs (`Dev_Plan.md` §3) remove the scene-level camera entirely. Disable or
 delete the `Camera3D` node in `Main.tscn` in the same commit. If `arena_camera.gd` is kept as a
 broadcast cam, it must register targets at runtime and `is_instance_valid()`-check every frame.
+**[FIXED]** `arena_camera.gd` now exposes `add_target()`/`remove_target()`; every networked
+spawn registers itself at runtime (`main.gd::_build_networked_character`) instead of relying on
+the `_ready()`-time `follow_paths` cache, and `_process()` filters `_targets` through
+`is_instance_valid()` every frame before touching `global_position`, so a freed local-test node
+is dropped silently instead of dereferenced. Headless smoke test (`godot --headless --path .
+--quit` after `--host` / `--join=127.0.0.1`) shows no "previously freed instance" errors. The
+`Camera3D` node itself is retained as the broadcast/local-test cam per `Dev_Plan.md` §3.4 and
+will be superseded by the per-character `CameraRig` (queue item 13), not deleted outright.
 
 **B-29 · A client that joins after the host started never learns the match state. (NEW)**
 `_start_hosting()` calls `MatchManager.begin_next_round()` immediately (`main.gd:142`), which
@@ -151,11 +159,21 @@ creates a hitbox that refuses to resolve, and the host never has that hitbox at 
 Spin Guard, Bagsak Bomb, Bakya Bash, Flick Dash, and Person's Tag/Throw — every action except
 Bump. *Fix:* RPC the activation to the host and spawn the resolving hitbox there; cosmetic
 copies locally if you want the visual.
+**[FIXED]** `character_base.gd::_rpc_notify_ability_activate` is an `any_peer`/`call_local` RPC
+to peer 1: a non-host activator runs `ability.activate(self)` locally for its own cosmetic copy
+(unchanged), then RPCs the host to run `activate()` on the host's own copy of that same
+character, so the authoritative resolving hitbox exists where `hitbox.gd`'s host-only check can
+actually land it. Same pattern reused for the special-ability press inside the `DOWNED` branch
+(B-06). ⚠️ Still unverified by a human against a real non-host client.
 
 **B-04 · Networked Props spawn with no ability.** `main.gd:203` assigns `PERSON_ACTION_ABILITY`
 only when `is_person` is true. Props — the half of the team carrying the entire roster — get
 `ability = null` over the network. Only the local flow has an ability on a Prop, and only
 because `Main.tscn:50` hardcodes `quick_stand.tres` on `TeamAProp`.
+**[FIXED]** `main.gd::_build_networked_character` now assigns a `.duplicate()`d `PROP_ABILITY`
+(`quick_stand.tres`) to every networked Prop, matching what `Main.tscn` already hardcoded for
+the local flow's `TeamAProp`. Full per-Prop roster selection is still Phase 2 (B-24) — every
+networked Prop defaults to Quick Stand until character select exists.
 
 **B-30 · Networked characters never get a `player_id`. (NEW)** `_build_networked_character`
 (`main.gd:196`) sets `is_can`, `is_person`, `team_is_can_side` and authority, but never
@@ -179,6 +197,10 @@ match-state sync in B-29.
 it. The team id exists in `main.gd::_peer_teams` and is never put on the character.
 ⚠️ **Do this one first.** Friendly-fire, nameplates (item 4), team colour distinction (item 8),
 and the role-swap card (item 9) are all blocked behind it.
+**[FIXED]** `CharacterBase.team: int` export added, set from spawn data in
+`_build_networked_character` and explicitly on all four units in `_start_local_test()`.
+`hitbox.gd::_on_area_entered` now skips a hit where `target.team == owner_character.team`. Items
+4, 8, and 9 are unblocked.
 
 **B-15 / B-35 · No out-of-bounds handling, and the camera follows the faller forever. (B-35
 NEW)** The arena is one 40×40 box with no walls, no kill plane, and no respawn — walk off the
@@ -200,6 +222,10 @@ chain `report_round_win → report_round_result → begin_next_round → _sync_r
 _on_match_round_started → start_round` runs **in a single frame** — there is no intermission
 state, so there is nowhere for a role-swap card to live and no moment at which the world could
 be reset. *Fix:* add the intermission state and `reset_world()` per `Dev_Plan.md` §4.6.
+**B-10 half [FIXED]:** `main.gd::_on_match_round_started` now calls `reset_for_new_round()` **and**
+repositions **all four** units (networked and local flow both) to a `SPAWN_POINTS` slot every
+round, not just the tracked Can. **B-37 still open** — the round-to-round transition is still a
+single frame with no intermission beat; see queue item 10.
 
 **B-42 · From round 2 onward the local test has an uncontrollable Can. (NEW)**
 `_on_match_round_started` flips `team_a_is_can` each round, so in round 2 the tracked Can becomes
@@ -215,17 +241,30 @@ all use `-transform.basis.z`. A player moving east can only attack north. `rotat
 in the replication config and already replicated — it is just never written.
 *Fix:* comes free with the camera rigs (`Dev_Plan.md` §3.2). The rig writes `rotation.y`. **Do
 not build a separate aim axis.**
+**[FIXED] (interim, pre-camera-rig)** `character_base.gd::_physics_process` now `look_at()`s the
+world-space movement direction whenever there is movement input, writing `rotation.y` for real —
+attacks fire the way the character is actually moving. This landed before the camera rig (queue
+item 13) existed; it is exactly `AimSource.MOVEMENT` from `Dev_Plan.md` §3.2, so when the rig
+lands it only needs to *add* `AimSource.MOUSE` for the locally-driven FPP unit and otherwise
+leave this alone. Still no separate aim axis, per the directive.
 
 **B-06 · Quick Stand can never be activated.** `character_base.gd:142` returns early for
 `STAGGERED`/`DOWNED`/`SEALED`; the `special_ability` input is read at line 160, *after* that
 return. Quick Stand's only effect is self-righting from Downed — the exact state in which its
 input is unreachable. Same structural problem for any future escape ability.
+**[FIXED]** `special_ability` is now also read inside the `DOWNED` branch of the state `match`,
+before the STAGGERED/DOWNED/SEALED early return, using the same activate-locally +
+RPC-to-host-if-networked path as the normal (NORMAL-state) special-ability press.
 
 **B-07 · Any stagger cancels Downed.** `apply_stagger()` (line 164) overwrites `DOWNED` with
 `STAGGERED`, which auto-recovers to `NORMAL` after 0.25s. Under Option B, `hitbox.gd:70` sends
 `"stagger"` to a Can that is Downed but still inside its self-right window — so hitting a downed
 Can *rescues* it. Any bump from anyone, including its own teammate, is a free escape. Option B's
 seal mechanic cannot work until this is fixed.
+**[FIXED]** `apply_stagger()` now returns early on `state == State.DOWNED` too (previously only
+guarded `SEALED`). A hit landing during the self-right window does nothing instead of rescuing
+the Can; `hitbox.gd` already routes a hit after the window expires to `"seal"` instead, so this
+only ever closes the free-rescue case.
 
 **B-08 · Bump misses anyone you are already touching.** `hitbox.gd` only listens to
 `area_entered`, but the melee Hitbox is always monitoring and is never enabled/disabled by the
@@ -243,6 +282,10 @@ verification that walking into someone and then pressing bump now lands a hit.
 `_time_since_use = 0` and `_used_this_round = true` before calling `_do_activate()`, which may do
 nothing (Quick Stand while not Downed). Press the button once at the wrong moment and your
 once-per-round charge is gone.
+**[FIXED]** `_do_activate()` now returns `bool`; `activate()` only sets `_used_this_round = true`
+when it returns `true`. `quick_stand.gd` returns `false` for the real no-op case (not Downed);
+the other five ability scripts return `true` unconditionally, preserving their previous
+always-succeeds behaviour.
 
 **B-12 · Friction is a per-frame constant, so there is no momentum and Flick Dash lasts three
 frames.** `move_toward(velocity.x, 0, SPEED)` uses `SPEED` (6.0) as an absolute per-tick step,
@@ -250,6 +293,11 @@ not per-second — no `delta`. Max walk speed is also 6.0, so releasing a key st
 tick, and it is frame-rate dependent if the physics tick ever changes. Flick Dash sets velocity
 to 16 and it decays 16 → 10 → 4 → 0 in about 0.05s. The dash also applies a frame late, because
 `_do_activate` runs after `move_and_slide()`.
+**[FIXED]** Added `FRICTION: float = 30.0` (units/sec²) used with `delta` in every
+`move_toward()` deceleration call, replacing the old bare `SPEED` per-tick step. The
+special-ability check (and therefore `_do_activate()`) now runs *before* `move_and_slide()` each
+physics tick instead of after, so a velocity-setting ability like Flick Dash's dash burst applies
+the same tick it's pressed.
 
 ### P2 — menu, flow, and polish
 
@@ -404,7 +452,7 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       §3.5.5 — every hit is inside the three debug files and the two registration lines, and
       none is in a gameplay script.
 
-- [ ] **2. Fix the LAN freeze (B-03).**
+- [x] **2. Fix the LAN freeze (B-03).**
       Disable or delete the `Camera3D` node in `Main.tscn` (`Main.tscn:40-43`). It caches four
       `NodePath`s in `_ready()` and both `_start_hosting()` and `_start_joining()` free those
       nodes immediately after, so `_process` dereferences freed instances every frame on every
@@ -430,13 +478,13 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       *Acceptance:* a client's character responds to its own bound set, and the Settings panel's
       P2 column has a visible effect in networked play.
 
-- [ ] **5. Replicate ability activation to the host (B-02).**
+- [x] **5. Replicate ability activation to the host (B-02).**
       Route `AbilityBase.activate()` through an `any_peer` RPC to the host, which spawns the
       resolving hitbox. Spawn a cosmetic-only copy locally for responsiveness if you want; the
       cosmetic one must never resolve hits.
       *Acceptance:* a non-host client presses special and the host sees the target stagger.
 
-- [ ] **6. Give networked Props their ability (B-04).**
+- [x] **6. Give networked Props their ability (B-04).**
       `_build_networked_character` assigns a `.duplicate()`d roster ability to Props, not just
       Persons. Until character select exists, default Props to `quick_stand.tres`.
       *Acceptance:* a client-controlled Prop can activate a special.
@@ -449,7 +497,7 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
 
 ### P1 — Gameplay correctness and round reset
 
-- [ ] **8. Add `team_id` to `CharacterBase` (B-09). Blocks items 12, 13, 14.**
+- [x] **8. Add `team_id` to `CharacterBase` (B-09). Blocks items 12, 13, 14.**
       `@export var team_id: int = 0`, set from spawn data (networked) and from `Main.tscn`
       (local). Gate `hitbox.gd` on it so friendly fire cannot dent or seal your own Can.
       *Acceptance:* a Person bumping its own team's Can produces no dent and no seal.
@@ -479,13 +527,17 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       *Acceptance:* win three rounds — a result screen appears, "Menu" returns to the main menu,
       and starting a new match begins at 0–0 round 1.
 
-- [ ] **12. Fix the core-loop bugs (B-05 via rigs, B-06, B-07, B-08, B-11, B-12).**
+- [x] **12. Fix the core-loop bugs (B-05 via rigs, B-06, B-07, B-08, B-11, B-12).**
       B-05 is delivered by item 15 — do not build a separate aim axis. The rest are independent
       and small. B-07 in particular blocks Option B entirely.
       *Acceptance:* Quick Stand can be pressed while Downed and works; bumping an already-Downed
       Can does not rescue it; walking into someone and then pressing bump lands; a no-op Quick
       Stand does not consume the charge; releasing a movement key decelerates over ~0.2s rather
       than stopping dead.
+      All six sub-bugs fixed in code (see §3). B-05 landed as movement-facing `look_at()` rather
+      than waiting for item 15's camera rig — compatible with `AimSource.MOVEMENT` in
+      `Dev_Plan.md` §3.2, not a conflict. ⚠️ None of the five behavioural acceptance criteria have
+      been confirmed by a human pressing buttons; only a headless no-crash smoke test has run.
 
 ### P2 — Cameras (standing directive)
 
