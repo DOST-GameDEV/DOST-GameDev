@@ -33,6 +33,10 @@ extends Node3D
 @onready var players_root: Node3D = $Players
 @onready var spawner: MultiplayerSpawner = $MultiplayerSpawner
 @onready var hud: Hud = $HUDLayer/HUD
+## B-51 (residual): consulted by the Esc handler so pausing can't cover the
+## match-result screen. Read-only from here — MatchResult wires itself to
+## MatchManager and needs nothing from main.gd.
+@onready var match_result: MatchResult = $HUDLayer/MatchResult
 @onready var arena_camera: ArenaCamera = $Camera3D
 @onready var kill_plane: KillPlane = $KillPlane
 ## B-20: no way out of a match existed except Alt+F4.
@@ -492,6 +496,15 @@ func _wire_downed_flash(character: CharacterBase) -> void:
 ## OS cursor.
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
+		# B-51 (residual): the match is over and the result screen owns the
+		# screen — PauseLayer is layer 10 and MatchResult sits in HUDLayer, so
+		# pausing here draws the overlay ON TOP of the result, and Resume then
+		# re-captures the cursor and hands back a result screen you cannot click,
+		# which is exactly the softlock B-51 fixed. There is nothing to pause
+		# once the match has been decided, so ignore Esc entirely.
+		if match_result.visible:
+			get_viewport().set_input_as_handled()
+			return
 		pause_root.visible = not pause_root.visible
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if pause_root.visible else Input.MOUSE_MODE_CAPTURED
 		get_viewport().set_input_as_handled()

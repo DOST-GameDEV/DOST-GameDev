@@ -548,6 +548,68 @@ of a per-round reset is that both teams start a round on equal footing.
 **[FIXED]** `reset_round_charge()` now also resets `_time_since_use`. Verified: activate an
 ability, call `reset_round_charge()`, `is_ready()` goes back to `true` (it stayed `false` before).
 
+**B-53 · Esc could bury the match-result screen under the pause overlay. (NEW)**
+`PauseLayer` is `layer = 10`; `MatchResult` lives in `HUDLayer` at layer 0. Pressing Esc after a
+match ended therefore drew the pause overlay *over* the result screen, and Resume re-captured the
+cursor and handed back a result screen that could not be clicked — re-creating B-51 by another
+route. **[FIXED]** `main.gd::_unhandled_input` ignores `ui_cancel` entirely while the result
+screen is visible; there is nothing to pause once the match is decided. Verified live.
+
+**B-54 · Local spawn points ignore team membership. (OPEN — needs a design call, not a code fix)**
+`main.gd`'s `SPAWN_POINTS` are assigned in `_local_roster` order — `TeamAProp`, `TeamAPerson`,
+`TeamBProp`, `TeamBPerson` — against the fixed list `(0,1,-2) (0,1,2) (-3,1,0) (3,1,0)`. So Team A's
+two units start at opposite ends of the arena while Team B's start on the left/right flanks:
+teammates are not together and opponents are not separated. Worse for the camera, `TeamAPerson`
+spawns at `(0,1,2)` and `TeamAProp`'s third-person camera sits at `(0,3.66,2.35)` — your own
+teammate spawns essentially *inside* your camera, filling the frame at round start. Not fixed
+here because the right answer is per-map base placement (the GDD's Eskinita / Bayan Plaza bases),
+which is queue item 10's deferred "move `SPAWN_POINTS` into a `SpawnPoints` node on the map scene"
+— guessing at coordinates now would just be re-guessed when real maps land.
+
+**B-55 · `RoundManager`'s end-of-round state change rides an unreliable RPC. (OPEN — low)**
+`_sync_state` is `@rpc("unreliable_ordered")`, which is right for the 4Hz timer it was written for,
+but `report_round_win()` uses that same channel to broadcast the one-shot `round_active = false`.
+If that packet drops, the client keeps believing the round is live — and `_process` won't resend,
+because it returns early once `round_active` is false. Self-heals when the next round's
+`_sync_round_started` (reliable) arrives ~3s later, so the blast radius is a stale client HUD for
+one intermission. Left alone: the fix is to split the one-shot state change onto a reliable RPC,
+which is a networking change worth making deliberately rather than in passing.
+
+**B-56 · `KillPlane` respawns on every peer, not just the character's authority. (OPEN — low)**
+`_on_body_entered` calls `character.respawn()` wherever the Area3D overlap is detected, which is
+every peer. For a non-authoritative copy the position is immediately overwritten by
+`MultiplayerSynchronizer`, so the visible effect is at most a one-frame snap, and the
+"OUT OF BOUNDS" toast is already correctly gated on `is_multiplayer_authority()` in `main.gd`.
+Flagged rather than fixed because it is cosmetic and the correct guard placement depends on
+whether respawn should stay client-authoritative at all (see B-49's note on the movement model).
+
+**B-57 · Under Option A, `forces_downed` is silently ignored on a Can. (OPEN — question, not a bug)**
+`hitbox.gd` resolves any hit on a Can under Option A as `"dent"` before it ever consults
+`forces_downed`, so Bakya Bash's advertised "instant-down on direct hit" does nothing distinct in
+that mode. That may well be intended — Option A has no Downed/Seal state machine at all — but it
+means a heavy special and a light bump are worth exactly the same against a Can. **Someone needs
+to decide** whether Option A wants weighted hits (e.g. a heavy special costing 2 dents) or whether
+every hit really is one dent. Not changed: it is a balance decision, not a defect.
+
+**B-58 · `ArenaCamera._process` still does full follow-cam work every frame while retired.
+(OPEN — trivial)** `_ready()` sets `current = false` (§3.4, it lost the viewport to the per-character
+rigs), but `_process` still runs every frame computing the target midpoint, the pairwise spread and
+a lerped position for a camera nothing renders through. Harmless, just wasted work; worth
+`set_process(false)` whenever it isn't current, once someone decides whether the spectator/broadcast
+use-case it was kept for is real.
+
+**B-59 · Unreproduced: a completed match reset itself to round 1 / 0-0. (OPEN — question)**
+Twice, early in testing B-51, a scripted local Bo5 that had just reached 3-0 came back on the next
+sample reading `round_number = 1`, `wins = 0-0`, `round_active = true` and the result screen hidden
+— which is precisely the post-`_on_rematch_pressed()` state, with no input sent. It has not
+reproduced in six subsequent runs (including one with `print_stack()` instrumentation on both
+`_on_rematch_pressed` and `MatchManager.reset`, which showed `reset` called exactly once, from
+`main.gd::_ready`). The obvious suspect — `ui_accept` sharing Space/Enter with `bump_p1`/`bump_p2`,
+so a player still mashing bump when the match ends would trigger a focused Rematch button — was
+tested and does **not** hold: neither key matches `ui_accept`, and the button holds no focus.
+Recorded rather than closed, because "I could not reproduce it" is not "it does not happen". If a
+match ever restarts itself in a real playtest, start here.
+
 **B-28 · No export presets, no build, no CI.** `export_presets.cfg` is gitignored and none
 exists. The game has never been run outside the editor, and the submission needs a real build.
 
