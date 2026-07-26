@@ -168,11 +168,19 @@ func _start_local_test() -> void:
 	_register_local_can()
 	# Item 13: no authority concept in local test, unlike networked play,
 	# where each rig can activate itself from is_multiplayer_authority(). One
-	# rig has to be picked explicitly. Defaults to TeamAProp (the P1 slot),
-	# matching the P1 slot default documented in Dev_Plan.md §3.5.1
-	# — the switcher (queue item 1, not yet built) is what makes this
-	# reassignable at runtime instead of fixed for the whole local session.
-	var default_rig := team_a_prop.get_node("CameraRig") as CameraRig
+	# rig has to be picked explicitly.
+	#
+	# Defaults to TeamAPerson, so a fresh Local Match drops you into the human
+	# character. This used to be TeamAProp, which meant the first thing anyone
+	# saw on launch was a third-person shot of a tin can — correct per the GDD
+	# (a team is 1 Person + 1 Prop, and the Prop really is the Can) but a poor
+	# read as the default. Per the standing directive (§0.1) a Person is ALWAYS
+	# first-person, so this default is an FPP view: you see the arena and your
+	# own shadow, not your body. Press Tab, or F1-F4, to take the Prop instead.
+	# The switcher's own DEFAULT_P1_UNIT is kept in step — it re-applies slot
+	# defaults when the DebugBar registers, and would otherwise immediately
+	# override whatever is chosen here.
+	var default_rig := team_a_person.get_node("CameraRig") as CameraRig
 	default_rig.set_active(true)
 	default_rig.set_aim_source(CameraRig.AimSource.MOUSE)
 	MatchManager.begin_next_round()
