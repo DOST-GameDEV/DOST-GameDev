@@ -34,6 +34,10 @@ extends Node3D
 @onready var spawner: MultiplayerSpawner = $MultiplayerSpawner
 @onready var hud: Hud = $HUDLayer/HUD
 @onready var arena_camera: ArenaCamera = $Camera3D
+## B-20: no way out of a match existed except Alt+F4.
+@onready var pause_root: Control = %PauseRoot
+@onready var resume_button: Button = %ResumeButton
+@onready var menu_button: Button = %MenuButton
 
 const CHARACTER_SCENE: PackedScene = preload("res://scenes/characters/CharacterBase.tscn")
 ## Every Person — networked or local — gets its own Tag/Throw ability
@@ -90,6 +94,9 @@ var _spawned_characters: Dictionary = {} # peer_id -> CharacterBase
 func _ready() -> void:
 	spawner.spawn_function = _build_networked_character
 	MatchManager.round_started.connect(_on_match_round_started)
+	pause_root.visible = false
+	resume_button.pressed.connect(_on_resume_pressed)
+	menu_button.pressed.connect(_on_return_to_menu_pressed)
 
 	var join_target := ""
 	var should_host := false
@@ -389,3 +396,23 @@ func _wire_downed_flash(character: CharacterBase) -> void:
 		if character.is_can and GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A:
 			hud.set_dents(new_dents, CharacterBase.MAX_DENTS)
 	)
+
+## B-20: Esc toggles a pause overlay with Resume/Return to Menu — previously
+## the only way out of a match at all was Alt+F4.
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel"):
+		pause_root.visible = not pause_root.visible
+		get_viewport().set_input_as_handled()
+
+func _on_resume_pressed() -> void:
+	pause_root.visible = false
+
+func _on_return_to_menu_pressed() -> void:
+	if NetworkManager.is_networked():
+		NetworkManager.disconnect_network()
+	# B-14: leaving a match should reset the same as starting a fresh one does
+	# (see main_menu.gd _go_to_match()) — otherwise a Rematch/new match after
+	# using this button would resume this match's score.
+	MatchManager.reset()
+	RoundManager.reset()
+	get_tree().change_scene_to_file("res://scenes/ui/MainMenu.tscn")
