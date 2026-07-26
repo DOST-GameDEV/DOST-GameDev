@@ -1,8 +1,9 @@
 # Tumbang Laro: Isang Laban 🥫🩴
 
-2v2 arena brawler for **Gear Up NCR — Esports Game Dev Challenge**. No human characters —
-you play as the Can or the Tsinelas. Two Cans defend their turf while two Tsinelas try to
-knock them flat; teams swap Attacker/Defender role each round, Best of 5.
+2v2 arena brawler for **Gear Up NCR — Esports Game Dev Challenge**. Each team is 2 players:
+a Person and their Can (or Slipper). Defending Persons tag attackers while their Can holds
+the base; attacking Persons throw their Slipper at the Can to try to knock it flat; teams
+swap Attacker/Defender role each round, Best of 5.
 
 **Engine:** Godot 4.7 (Forward+, GDScript) · **Theme:** Philippine Games and Sports · **Format:** 2v2 LAN
 
@@ -16,7 +17,9 @@ knock them flat; teams swap Attacker/Defender role each round, Best of 5.
 ## Build order (see dev plan for details)
 
 1. **Single-player prototype** — one Can + one Tsinelas moving/bumping/using abilities,
-   no networking yet. *(scaffolded — see `scenes/main/Main.tscn`)*
+   no networking yet. *(scaffolded — see `scenes/main/Main.tscn`; NOTE: this local test
+   flow still models the old 1v1 direct Can-vs-Tsinelas control, not the corrected 4-player
+   Person+Prop structure — see `docs/Handoff_Session7.md`)*
 2. **Round/match logic**, still single-player — timer, Downed state, role swap, Bo5.
    *(scaffolded — see `scripts/systems/round_manager.gd`, `match_manager.gd`)*
 3. **Networking** — wire the working loop over LAN (`ENetMultiplayerPeer`).
@@ -53,7 +56,7 @@ tumbang-laro/
 
 ## Status
 
-See [`docs/Handoff_Session2.md`](docs/Handoff_Session2.md) for the latest detailed handoff.
+See [`docs/Handoff_Session7.md`](docs/Handoff_Session7.md) for the latest detailed handoff.
 
 - [x] Repo + project scaffold, folder structure, `.gitignore`
 - [x] `CharacterBase` scene/script (shared movement) + `AbilityBase` resource pattern
@@ -62,11 +65,18 @@ See [`docs/Handoff_Session2.md`](docs/Handoff_Session2.md) for the latest detail
 - [x] `RoundManager` / `MatchManager` / `NetworkManager` registered as autoloads
 - [x] One ability end-to-end (Sardinas' Quick Stand) proving the ability pattern
 - [x] Remaining 5 character abilities (Shatter Trap, Spin Guard, Bagsak Bomb, Bakya Bash, Flick Dash)
-- [x] Basic HUD (timer, Bo5 score, round, role) wired into `Main.tscn`
+- [x] Basic HUD (timer, Bo5 score, round, role, dent counter) wired into `Main.tscn`
 - [x] Option B round-win check, testable (`RoundManager.register_can`, see handoff doc)
-- [ ] Pick Option A vs Option B for real (Option B has a testbed now; Option A doesn't yet)
+- [x] Option A round-win check (dents), testable — both options now real
+- [x] LAN networking wired up (host/join, replicated movement + combat), needs real-device testing
+- [x] Downed-state visual flash actually triggered in-game
+- [x] Real 2v2 team assignment + main menu/lobby
+- [x] Corrected team structure to 1 Person + 1 Can/Slipper Prop per team (was wrongly 2 Props)
+- [ ] Person unit has no unique ability/roster yet — currently Move + Bump only
+- [ ] Local single-PC test flow still models the old 1v1 direct Can-vs-Tsinelas smoke test
+- [ ] Ring-outs (Option A's other win condition)
 - [ ] Maps: Eskinita, Bayan Plaza
-- [ ] LAN networking wired up + tested on real devices
-- [ ] Downed-state visual flash actually triggered in-game (hook exists in HUD)
+- [ ] Real device (multi-PC) network testing
+- [ ] Movement interpolation/smoothing for remote characters
 - [ ] Audio
 - [ ] Trailer + demo recording

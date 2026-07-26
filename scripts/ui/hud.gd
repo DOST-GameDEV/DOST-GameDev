@@ -10,6 +10,7 @@ class_name Hud
 @onready var round_label: Label = %RoundLabel
 @onready var role_label: Label = %RoleLabel
 @onready var downed_flash: ColorRect = %DownedFlash
+@onready var dent_label: Label = %DentLabel
 
 func _ready() -> void:
 	MatchManager.round_started.connect(_on_round_started)
@@ -35,3 +36,10 @@ func _on_match_won(winning_team: int) -> void:
 ## stream/demo per GDD Section 6.
 func set_downed_flash(active: bool) -> void:
 	downed_flash.visible = active
+
+## Option A only. Call with the locally-viewed Can's current dent count once
+## GameLaunch.game_mode == OPTION_A; leave uncalled (default hidden) under
+## Option B, which has no dent concept.
+func set_dents(current: int, max_dents: int) -> void:
+	dent_label.visible = true
+	dent_label.text = "Dents: %d / %d" % [current, max_dents]

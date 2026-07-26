@@ -45,10 +45,24 @@ func _on_area_entered(area: Area3D) -> void:
 	if NetworkManager.is_networked() and not NetworkManager.is_host():
 		return
 
-	# A Tsinelas hitbox touching an already-Downed (past self-right window) Can
-	# seals it, regardless of forces_downed — that's the GDD's "reach it and seal it".
+	# Session 7: this is generic to ANY hitbox/hurtbox pair — Person-vs-Person,
+	# Person-vs-Prop, or Prop-vs-Prop all resolve through the same stagger/
+	# downed/seal machinery below. Only round_manager.gd's tracked-Cans list
+	# (which only ever contains Props, never Persons — see is_can doc on
+	# CharacterBase) decides whether a given hit actually matters for round
+	# win; hitting a Person is stun-only flavor (tagging) with no win effect.
+	#
+	# An offense-side hitbox touching an already-Downed (past self-right
+	# window) Can seals it, regardless of forces_downed — GDD's "reach it and
+	# seal it".
 	var kind: String
-	if target.state == CharacterBase.State.DOWNED and not target.is_self_rightable():
+	if GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A and target.is_can:
+		# Option A: a hit landing on a Can is a dent, full stop — no Downed/Seal
+		# state machine involved at all (see CharacterBase.apply_dent). Hits on
+		# a Person or Slipper still just fall through to stagger below, same
+		# stun-only rule as Option B.
+		kind = "dent"
+	elif target.state == CharacterBase.State.DOWNED and not target.is_self_rightable():
 		kind = "seal"
 	elif forces_downed:
 		kind = "downed"
