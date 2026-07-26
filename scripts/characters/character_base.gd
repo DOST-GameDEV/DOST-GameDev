@@ -97,6 +97,13 @@ enum State { NORMAL, STAGGERED, DOWNED, SEALED }
 ## simply never receives input, standing in as a local-test dummy. See
 ## main.gd's local _ready() branch for how p3/p4 are assigned.
 @export_range(1, 4, 1) var player_id: int = 1
+## B-15/B-35: where KillPlane sends this character back to after it falls out
+## of bounds. Captured from wherever this character actually was when it
+## first entered the tree (correct as-is for the local test flow's hand-placed
+## transforms); main.gd updates it explicitly whenever it assigns a fresh
+## position afterward (networked spawn, round reset), so a fall during round 2
+## respawns to round 2's spawn point, not round 1's stale one.
+var spawn_position: Vector3 = Vector3.ZERO
 
 signal state_changed(new_state: State)
 ## Option A only (see MAX_DENTS above). Fires whenever `dents` changes so
@@ -131,6 +138,7 @@ var _melee_hitbox: Hitbox = null
 var _base_albedo: Color = Color.WHITE
 
 func _ready() -> void:
+	spawn_position = global_position
 	for child in find_children("*", "Hurtbox", true, false):
 		(child as Hurtbox).owner_character = self
 	for child in find_children("*", "Hitbox", true, false):
