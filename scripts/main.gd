@@ -33,6 +33,7 @@ extends Node3D
 @onready var players_root: Node3D = $Players
 @onready var spawner: MultiplayerSpawner = $MultiplayerSpawner
 @onready var hud: Hud = $HUDLayer/HUD
+@onready var arena_camera: ArenaCamera = $Camera3D
 
 const CHARACTER_SCENE: PackedScene = preload("res://scenes/characters/CharacterBase.tscn")
 ## Every Person — networked or local — gets its own Tag/Throw ability
@@ -162,6 +163,7 @@ func _on_player_connected(peer_id: int) -> void:
 func _on_player_disconnected(peer_id: int) -> void:
 	var node := players_root.get_node_or_null(str(peer_id))
 	if node:
+		arena_camera.remove_target(node)
 		node.queue_free()
 	_spawned_peer_ids.erase(peer_id)
 	_peer_teams.erase(peer_id)
@@ -216,6 +218,10 @@ func _build_networked_character(data: Dictionary) -> Node:
 		# per-player). Guard on is_can here since the local player might be
 		# controlling their team's Person this match, not its Prop.
 		_wire_downed_flash.call_deferred(character)
+	# B-03: register every spawned networked character as a camera target at
+	# runtime — Main.tscn's `follow_paths` only ever pointed at the local-test
+	# nodes, so without this the camera never picked up real network peers.
+	arena_camera.add_target(character)
 	return character
 
 ## Fires on every peer identically (host emits locally, clients receive it via

@@ -90,6 +90,12 @@ and then `main.gd::_clear_local_test_characters()` frees all four. `_process` de
 freed objects every frame. Networked characters are never added as targets, so even without
 the errors the camera would sit still while everyone plays off-screen.
 *Fix:* register/unregister targets at runtime instead of caching from `_ready()`.
+**[FIXED]** `ArenaCamera` now has `add_target()`/`remove_target()` and filters freed instances
+out of `_targets` every `_process()` frame instead of dereferencing them (fixes the crash from
+`_clear_local_test_characters()`). `main.gd` calls `add_target()` on every networked spawn
+(`_build_networked_character`) and `remove_target()` on disconnect, so real network peers are
+now actually followed. `follow_paths` still works unchanged for the local-test flow. Needs
+verification in networked play that the camera frames both peers instead of sitting still.
 
 **B-04 · Networked Props spawn with no ability.**
 `scripts/main.gd:205` assigns `PERSON_ACTION_ABILITY` only when `is_person` is true. Props —

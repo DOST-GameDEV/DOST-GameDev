@@ -127,8 +127,11 @@ Fix the four P0 bugs. Until these are done there is no LAN demo to show anyone.
       RPC — same pattern as the existing bump RPC — additionally tells the host to run
       `ability.activate(self)` on its own copy of the character, so the authoritative resolving
       hitbox actually exists where hitbox.gd can resolve it.)*
-- [ ] **B-03** — `ArenaCamera` holds freed local-test nodes in networked play and never picks
-      up the spawned networked characters.
+- [x] **B-03** — `ArenaCamera` holds freed local-test nodes in networked play and never picks
+      up the spawned networked characters. *(Fixed: ArenaCamera now exposes add_target()/
+      remove_target() and filters freed instances out of `_targets` every frame instead of
+      dereferencing them; main.gd calls add_target() on every networked spawn and
+      remove_target() on disconnect.)*
 - [ ] **B-04** — networked Props spawn with `ability = null`; only Persons get one.
 
 **Exit criteria:** two editor instances, one `--host` one `--join=127.0.0.1`, both see the
