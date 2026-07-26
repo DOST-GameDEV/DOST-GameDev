@@ -290,15 +290,16 @@ chain `report_round_win → report_round_result → begin_next_round → _sync_r
 _on_match_round_started → start_round` runs **in a single frame** — there is no intermission
 state, so there is nowhere for a role-swap card to live and no moment at which the world could
 be reset. *Fix:* add the intermission state and `reset_world()` per `Dev_Plan.md` §4.6.
-**B-10 half [FIXED]:** `main.gd::_on_match_round_started` now calls `reset_for_new_round()` **and**
-repositions **all four** units (networked and local flow both) to a `SPAWN_POINTS` slot every
-round, not just the tracked Can. ⚠️ **Correction:** this was written as "fixed" based on reading
-the code, but the local-flow branch was never actually exercised — B-49 (this section, above)
-meant `is_networked()` always read `true` in local test, so `_on_match_round_started` always took
-the *networked* branch, which iterates an empty `_spawned_characters` and does nothing. B-49's fix
-made this reachable for real; only then was it confirmed with a real run (KillPlane test, B-49's
-note). **B-37 still open** — the round-to-round transition is still a single frame with no
-intermission beat; see queue item 10.
+**B-10 [FIXED]:** `main.gd::_on_match_round_started` (via the new `_reset_world()`, see queue item
+10) calls `reset_for_new_round()` **and** repositions **all four** units (networked and local flow
+both) to a `SPAWN_POINTS` slot every round, not just the tracked Can. ⚠️ **Correction:** this was
+first written as "fixed" based on reading the code, but the local-flow branch was never actually
+exercised — B-49 (this section, above) meant `is_networked()` always read `true` in local test, so
+`_on_match_round_started` always took the *networked* branch, which iterates an empty
+`_spawned_characters` and does nothing. B-49's fix made this reachable for real, and it's now been
+confirmed with a real run twice over (the KillPlane test in B-49's note, and the full intermission
+cycle test in queue item 10). **B-37 also fixed** — see queue item 10 for the intermission state
+machine that closes it.
 
 **B-42 · From round 2 onward the local test has an uncontrollable Can. (NEW)**
 `_on_match_round_started` flips `team_a_is_can` each round, so in round 2 the tracked Can becomes
@@ -604,7 +605,7 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       everyone's midpoint regardless, so this is `[x]` for the respawn mechanic itself, not for
       those two camera-specific acceptance clauses.
 
-- [ ] **10. Round intermission state + full world reset (B-10, B-37).**
+- [x] **10. Round intermission state + full world reset (B-10, B-37).**
       Add the intermission phase from `Dev_Plan.md` §4.6. `reset_world()` must return **all four**
       units to their map spawn points (position, velocity, facing), call `reset_for_new_round()`
       on all four, free every live `HazardZone` and orphaned pulse `Hitbox`, and re-broadcast
@@ -612,6 +613,32 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       map scene.
       *Acceptance:* end a round with units scattered and one Downed — round 2 starts with all
       four at spawn, all `NORMAL`, dents cleared, once-per-round charges restored.
+      **B-37 fixed** — `MatchManager.round_intermission_started` fires the instant a non-match-
+      ending round ends, carrying what the next round's `team_a_is_can` will be (roles always
+      swap between rounds); `main.gd::_on_round_intermission_started` calls the new
+      `_reset_world()` immediately (world reset now happens during the gap, not waiting for the
+      round to actually start) and shows a plain "Team X wins the round!" banner via
+      `Hud.show_round_banner()`. `MatchManager._process` (host-only) counts down a 3s
+      `INTERMISSION_DURATION` then calls `begin_next_round()` for real, which runs
+      `_on_match_round_started` → `_reset_world()` again (idempotent) → `RoundManager.start_round()`.
+      `character_base.gd` freezes movement/action input whenever `RoundManager.round_active` is
+      false (covers this gap and the moment before round 1). `_reset_world()` also frees anything
+      in the new `hazard_zone` (only ability-spawned, timed ones — a future permanent map hazard
+      is excluded on purpose) and `transient_hitbox` groups (B-43).
+      This is the **functional** beat, not the polished moodboard card — the banner is a plain
+      `Label`, not the animated role-swap card with sliding team panels. That visual replacement
+      is queue item 19, which now has a real state machine to slot into instead of nothing.
+      **Not done:** moving `SPAWN_POINTS` out of `main.gd` into a per-map `SpawnPoints` node —
+      deferred, since there is only the one placeholder floor and no second map yet to make the
+      hardcoded constant actually wrong.
+      **Verified for real:** ran a live headless local-test session, scattered one unit and forced
+      another Downed, then force-called `RoundManager.report_round_win(false)` after 1s.
+      Observed, in order: `round_intermission_started` fired immediately with
+      `next_round=2 next_team_a_is_can=false`; ~3s later `round_started` fired for round 2 with
+      every unit's position back at its exact spawn point and the Downed unit's `state` back to
+      `NORMAL` (0). Zero errors. Also re-ran the two-instance networked test with these changes in
+      place — zero errors on either peer (the intermission RPC path itself wasn't exercised since
+      no round ended during that short run, but nothing regressed).
 
 - [ ] **11. Verify and finish the Bo5 early-win (B-14, B-37).**
       ⚠️ **The 3-points-wins rule is already implemented** — `match_manager.gd:11` sets

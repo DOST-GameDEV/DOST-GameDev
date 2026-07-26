@@ -14,6 +14,14 @@ static func spawn(parent: Node, at_position: Vector3, radius: float, duration: f
 	zone.lifetime = duration
 	zone.collision_layer = 0
 	zone.collision_mask = 2 # matches Hurtbox layer
+	# Item 10 / B-37: main.gd::_reset_world frees anything still in this group
+	# between rounds — an ability-spawned hazard (Shatter Trap) shouldn't
+	# outlive the round it was cast in. Only tag the timed (duration > 0)
+	# case: a permanent map hazard (duration <= 0, lifetime doc above) is part
+	# of the map, not the round, and must survive a world reset once maps
+	# exist and place one.
+	if duration > 0.0:
+		zone.add_to_group("hazard_zone")
 
 	var shape := CollisionShape3D.new()
 	var sphere := SphereShape3D.new()

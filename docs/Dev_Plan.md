@@ -108,7 +108,7 @@ Legend: **[x]** built and working · **[~]** built but broken or unverified · *
 | `HazardZone` slow-zone | [~] | Untested; edge cases in B-17. |
 | Out-of-bounds / kill plane / arena walls | [x] | `KillPlane` Area3D + walls in `Main.tscn`, verified with a real forced-fall run (B-15, B-35). |
 | Per-character camera rigs (FPP/TPP) | [ ] | §3. |
-| Round intermission / role-swap beat | [ ] | Rounds currently roll over in the same frame (B-37). §4.6. |
+| Round intermission / role-swap beat | [~] | Functional state machine + plain banner exist (B-37 fixed). Moodboard's animated role-swap card is still item 19. §4.6. |
 | Team identity on `CharacterBase` | [ ] | No `team_id` exists. Blocks friendly-fire fix **and** three UI items (B-09). |
 
 ### Content
@@ -668,10 +668,13 @@ same result, and a client that joins late is in the same round as the host.
       `CharacterBase.respawn()`. A forced fall in a real headless run landed the character back at
       its exact `spawn_position`. See `Handoff.md` queue item 9.)*
 - [x] **B-10 / B-37** — round intermission state + full four-unit world reset with positions
-      *(B-10 fixed and, as of the B-49 fix above, actually verified in local play — previously
-      this only ever ran in the networked branch. B-37 still open — no intermission gap/beat
-      exists yet; that's still queue item 10, "round intermission state," distinct from B-10's
-      position/state reset which this item is.)*
+      *(Both fixed and verified. B-10: confirmed in local play post-B-49 (previously only ever ran
+      in the networked branch). B-37: `MatchManager.round_intermission_started` + a host-timed
+      3s gap before `begin_next_round()` actually fires, input frozen via `RoundManager.round_active`,
+      a plain "Team X wins" banner. Verified with a live run: forced a round win, observed
+      `round_intermission_started` fire immediately and `round_started` fire ~3s later with all
+      four units back at their exact spawn points. The moodboard's animated role-swap card is
+      still item 19 — this is the functional beat it slots into, not the polish.)*
 - [x] **B-05** — face direction, delivered by the camera rigs (§3.2), not as separate work
       *(Landed as `look_at()` on movement direction, ahead of the camera rig — equivalent to
       `AimSource.MOVEMENT`. The rig only needs to add `AimSource.MOUSE` for the FPP-controlled

@@ -84,6 +84,7 @@ var _spawned_characters: Dictionary = {} # peer_id -> CharacterBase
 func _ready() -> void:
 	spawner.spawn_function = _build_networked_character
 	MatchManager.round_started.connect(_on_match_round_started)
+	MatchManager.round_intermission_started.connect(_on_round_intermission_started)
 	kill_plane.character_respawned.connect(_on_character_respawned)
 
 	var join_target := ""
@@ -282,10 +283,27 @@ func _build_networked_character(data: Dictionary) -> Node:
 
 ## Fires on every peer identically (host emits locally, clients receive it via
 ## MatchManager._sync_round_started — see match_manager.gd) since it's driven
-## by fields (team_a_is_can) that are already synced. No RPC needed here: each
-## peer just recomputes is_can for every spawned character from that
-## character's fixed team, which every peer already knows from spawn data.
+## by fields (team_a_is_can) that are already synced.
 func _on_match_round_started(_round_number: int, team_a_is_can: bool) -> void:
+	_reset_world(team_a_is_can)
+	RoundManager.start_round()
+
+## Item 10 / B-37: called twice per round transition now instead of once —
+## immediately when MatchManager.round_intermission_started fires (so the
+## world is already reset while the intermission banner shows, per
+## Dev_Plan.md §4.6's "WORLD RESET" beat) and again, idempotently, from
+## _on_match_round_started when the round actually begins. Recomputes is_can
+## for every spawned character from that character's fixed team, which every
+## peer already knows from spawn data — no RPC needed, this runs identically
+## on every peer. Also frees any live HazardZone / transient ability hitbox
+## (B-43) so nothing from the previous round survives into the next.
+func _reset_world(team_a_is_can: bool) -> void:
+	for node in get_tree().get_nodes_in_group("hazard_zone"):
+		if is_instance_valid(node):
+			node.queue_free()
+	for node in get_tree().get_nodes_in_group("transient_hitbox"):
+		if is_instance_valid(node):
+			node.queue_free()
 	if NetworkManager.is_networked():
 		RoundManager.clear_tracked_cans()
 		var index := 0
@@ -336,7 +354,22 @@ func _on_match_round_started(_round_number: int, team_a_is_can: bool) -> void:
 			character.position = SPAWN_POINTS[i % SPAWN_POINTS.size()]
 			character.spawn_position = character.position # B-15/B-35
 		_register_local_can()
-	RoundManager.start_round()
+
+## Item 10 / B-37: fires on every peer (see MatchManager._sync_intermission_started)
+## the moment a round ends without finishing the match — the gap that never
+## used to exist between report_round_win and the next round's timer
+## starting. Resets the world early (so players see themselves back at spawn
+## during the banner, not just when the fight starts) and shows who won.
+## Item 19 (moodboard role-swap card) replaces this banner with the full
+## animated card; this is the functional beat it slots into.
+func _on_round_intermission_started(_next_round_number: int, next_team_a_is_can: bool, can_team_won: bool) -> void:
+	_reset_world(next_team_a_is_can)
+	# can_team_won tells us which SIDE held the round; recover which TEAM that
+	# was from this round's team_a_is_can — always the opposite of
+	# next_team_a_is_can, since role swaps every round.
+	var this_round_team_a_is_can := not next_team_a_is_can
+	var team_a_won := can_team_won == this_round_team_a_is_can
+	hud.show_round_banner("%s wins the round!" % ("Team A" if team_a_won else "Team B"))
 
 ## Host → one late-joining peer (B-29, B-48). Sets every field directly rather
 ## than replaying _on_match_round_started's reset cascade: that function calls
