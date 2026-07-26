@@ -29,6 +29,13 @@ func _on_round_started(round_number: int, team_a_is_can: bool) -> void:
 		"Offense" if team_a_is_can else "Defense",
 	]
 
+## B-29: public entry point for a late-joining client to refresh this display
+## once, without going through the round_started signal — that signal also
+## drives main.gd's full round reset/reposition logic, which must NOT re-run
+## just because a new peer joined mid-round (see main.gd _send_late_join_state).
+func refresh_round_display(round_number: int, team_a_is_can: bool) -> void:
+	_on_round_started(round_number, team_a_is_can)
+
 func _on_match_won(winning_team: int) -> void:
 	round_label.text = "Team %s wins the match!" % ("A" if winning_team == 0 else "B")
 
