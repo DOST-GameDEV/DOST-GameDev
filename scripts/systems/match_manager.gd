@@ -1,5 +1,7 @@
 extends Node
-class_name MatchManager
+class_name MatchManagerScript
+## Registered as the "MatchManager" autoload singleton (Project Settings > Autoload).
+## Referenced globally as `MatchManager`, e.g. `MatchManager.report_round_result(...)`.
 
 ## Best of 5 tracker. Teams swap Attacker/Defender role each round (GDD Section 3).
 

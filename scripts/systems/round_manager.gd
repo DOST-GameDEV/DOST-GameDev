@@ -1,5 +1,7 @@
 extends Node
-class_name RoundManager
+class_name RoundManagerScript
+## Registered as the "RoundManager" autoload singleton (Project Settings > Autoload).
+## Referenced globally as `RoundManager`, e.g. `RoundManager.start_round()`.
 
 ## Deliberately decoupled from movement/combat/hit-registration (see GDD Section 3).
 ## Round-win logic is still an open decision between two options:
@@ -29,14 +31,18 @@ func _process(delta: float) -> void:
 		_on_time_up()
 
 func _on_time_up() -> void:
-	round_active = false
-	# TODO: Cans win on timer expiry per both Option A and Option B — confirm once
-	# stock/downed system is chosen and wire in the actual win check here.
-	round_won.emit(0) # 0 = Can team, placeholder
-
-## Call this from whichever round-win option gets implemented first.
-func report_round_win(winning_team: int) -> void:
 	if not round_active:
 		return
 	round_active = false
-	round_won.emit(winning_team)
+	# Cans win on timer expiry — true under both Option A and Option B (GDD Section 3).
+	round_won.emit(0) # 0 = Can team
+	MatchManager.report_round_result(true)
+
+## Call this from whichever round-win option gets implemented first (Slippers denting
+## a Can under Option A, or sealing it under Option B — see character_base.gd `seal()`).
+func report_round_win(can_team_won: bool) -> void:
+	if not round_active:
+		return
+	round_active = false
+	round_won.emit(0 if can_team_won else 1)
+	MatchManager.report_round_result(can_team_won)

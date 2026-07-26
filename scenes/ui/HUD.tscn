@@ -1,0 +1,56 @@
+[gd_scene load_steps=2 format=3 uid="uid://d5k8m2n4p6q9r"]
+
+[ext_resource type="Script" path="res://scripts/ui/hud.gd" id="1"]
+
+[node name="HUD" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("1")
+
+[node name="DownedFlash" type="ColorRect" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.9, 0.1, 0.1, 0.25)
+mouse_filter = 2
+
+[node name="TopBar" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -120.0
+offset_top = 12.0
+offset_right = 120.0
+alignment = 1
+
+[node name="TimerLabel" type="Label" parent="TopBar"]
+unique_name_in_owner = true
+layout_mode = 2
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 32
+text = "01:30"
+
+[node name="ScoreLabel" type="Label" parent="TopBar"]
+unique_name_in_owner = true
+layout_mode = 2
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 22
+text = "0 - 0"
+
+[node name="RoundLabel" type="Label" parent="TopBar"]
+unique_name_in_owner = true
+layout_mode = 2
+horizontal_alignment = 1
+text = "Round 1 / 5"
+
+[node name="RoleLabel" type="Label" parent="TopBar"]
+unique_name_in_owner = true
+layout_mode = 2
+horizontal_alignment = 1
+text = "Team A: Defense   Team B: Offense"

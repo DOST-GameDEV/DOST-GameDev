@@ -53,14 +53,19 @@ tumbang-laro/
 
 ## Status
 
+See [`docs/Handoff_Session2.md`](docs/Handoff_Session2.md) for the latest detailed handoff.
+
 - [x] Repo + project scaffold, folder structure, `.gitignore`
 - [x] `CharacterBase` scene/script (shared movement) + `AbilityBase` resource pattern
-- [x] `RoundManager` / `MatchManager` / `NetworkManager` skeletons
-- [ ] Bump hit detection
-- [ ] Pick Option A vs Option B for round-win (see GDD Section 3)
-- [ ] Character abilities (6x)
+- [x] Bump hit detection (`Hitbox`/`Hurtbox`, press-to-bump active window)
+- [x] Downed/Sealed state machine (self-right window + seal), option-agnostic by design
+- [x] `RoundManager` / `MatchManager` / `NetworkManager` registered as autoloads
+- [x] One ability end-to-end (Sardinas' Quick Stand) proving the ability pattern
+- [x] Basic HUD (timer, Bo5 score, round, role) wired into `Main.tscn`
+- [ ] Pick Option A vs Option B for round-win (see GDD Section 3) — infra ready for either
+- [ ] Remaining 5 character abilities
 - [ ] Maps: Eskinita, Bayan Plaza
 - [ ] LAN networking wired up + tested on real devices
-- [ ] HUD/UI
+- [ ] Downed-state visual flash actually triggered in-game (hook exists in HUD)
 - [ ] Audio
 - [ ] Trailer + demo recording
