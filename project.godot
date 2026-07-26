@@ -15,7 +15,7 @@ config/description="2v2 arena brawler — Cans vs Tsinelas. Built for Gear Up NC
 ; Single source of truth for the build version — see scripts/systems/game_version.gd.
 ; Bump the minor number with every gameplay/UI/model/scene change; shown on screen
 ; (main menu + in-match HUD) so a new build is visually confirmable.
-config/version="1.2"
+config/version="1.3"
 run/main_scene="res://scenes/ui/MainMenu.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
@@ -157,6 +157,14 @@ MatchManager="*res://scripts/systems/match_manager.gd"
 NetworkManager="*res://scripts/systems/network_manager.gd"
 GameLaunch="*res://scripts/systems/game_launch.gd"
 SettingsManager="*res://scripts/systems/settings_manager.gd"
+
+[gui]
+
+; Queue item 15. Project-wide default so every Control inherits the moodboard
+; design system without per-scene assignment — including screens not written
+; yet. GENERATED from scripts/ui/ui_theme.gd; regenerate with
+; `godot --headless -s tools/regenerate_ui_theme.gd`, never hand-edit.
+theme/custom="res://assets/ui/tumbang_preso.tres"
 
 [rendering]
 

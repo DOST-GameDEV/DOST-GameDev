@@ -24,7 +24,7 @@ func _ready() -> void:
 	round_banner_label.visible = false
 	# Build stamp in-match too, not just on the menu — confirms which build is
 	# actually running during a playtest without leaving the match.
-	GameVersion.attach_to(self)
+	GameVersion.attach_to(self, true) # over_3d: outlined, not muted ink
 
 func _process(delta: float) -> void:
 	var t := int(ceil(RoundManager.time_left))
