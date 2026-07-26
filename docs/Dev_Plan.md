@@ -107,7 +107,7 @@ Legend: **[x]** built and working · **[~]** built but broken or unverified · *
 | `ArenaCamera` follow/zoom | [x] | B-03 fixed and verified with two running instances (see §5) — no more networked-play crash. Superseded by per-character `CameraRig` (§3), not yet built. |
 | `HazardZone` slow-zone | [~] | Untested; edge cases in B-17. |
 | Out-of-bounds / kill plane / arena walls | [x] | `KillPlane` Area3D + walls in `Main.tscn`, verified with a real forced-fall run (B-15, B-35). |
-| Per-character camera rigs (FPP/TPP) | [ ] | §3. |
+| Per-character camera rigs (FPP/TPP) | [~] | §3. Built and logic-verified (mode derivation, activation exclusivity, yaw/pitch math, networked authority handoff). Visual framing/wall pull-in unconfirmed — no display in this environment. |
 | Round intermission / role-swap beat | [~] | Functional state machine + plain banner exist (B-37 fixed). Moodboard's animated role-swap card is still item 19. §4.6. |
 | Team identity on `CharacterBase` | [ ] | No `team_id` exists. Blocks friendly-fire fix **and** three UI items (B-09). |
 
@@ -697,8 +697,12 @@ round-win mode.
 
 ### Phase 2 — Cameras and player readability
 
-- [ ] `CameraRig.tscn` + `camera_rig.gd`, FPP and TPP branches (§3.1, §3.2)
-- [ ] Retire / repurpose `ArenaCamera` (§3.4)
+- [x] `CameraRig.tscn` + `camera_rig.gd`, FPP and TPP branches (§3.1, §3.2)
+      *(Built and logic-verified with real running instances — see `Handoff.md` queue item 13 for
+      exactly what was and wasn't confirmed without a display.)*
+- [x] Retire / repurpose `ArenaCamera` (§3.4)
+      *(`current = false` forced in `_ready()`; kept as the local-test/broadcast fallback per
+      §3.4's "keep the script" branch rather than deleted.)*
 - [ ] Mouse capture, sensitivity + invert-Y in `SettingsManager`
 - [ ] `DebugPlayerSwitcher` (§3.5)
 - [ ] Nameplates, team ground rings, off-screen indicators (§4.5)

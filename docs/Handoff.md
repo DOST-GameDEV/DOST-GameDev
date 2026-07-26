@@ -683,7 +683,7 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
 
 ### P2 — Cameras (standing directive)
 
-- [ ] **13. Build `CameraRig.tscn` + `camera_rig.gd` (`Dev_Plan.md` §3).**
+- [x] **13. Build `CameraRig.tscn` + `camera_rig.gd` (`Dev_Plan.md` §3).**
       Mode **derived** from `is_person` at `_ready()` — **FPP for Person, TPP for Prop**, no
       export, no toggle. FPP: pivot at eye height, `near = 0.05`, `fov = 95`, pitch clamped
       −80°…+70° on the rig node only, own mesh set to `SHADOW_CASTING_SETTING_SHADOWS_ONLY`. TPP:
@@ -694,6 +694,41 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       down far enough to see a Can at your feet. Control a Prop → third person, camera pulls in
       against a wall instead of clipping through. Attacks fire where you are looking (B-05
       closed).
+      Built `scenes/characters/CameraRig.tscn` + `scripts/systems/camera_rig.gd`, instanced as a
+      child of `CharacterBase.tscn`. `CharacterBase.tscn`'s mesh is now wrapped in a plain `Visual`
+      Node3D (the sibling the rig hides in FPP) rather than sitting directly under the root.
+      `ArenaCamera` explicitly sets `current = false` in `_ready()` so it can never contend with a
+      rig's camera for the viewport (§3.4).
+      ⚠️ **What headless testing can and can't confirm.** No display exists in this environment, so
+      nothing about how the camera actually *looks* — framing, the TPP wall pull-in, whether the
+      `SpringArm3D`'s baked `rotation_degrees = (-15, 180, 0)` really produces "behind and above
+      the character, tilted down" rather than something backwards — has been eyeballed. That needs
+      a human in the editor. What **was** verified with real running instances, not just reading
+      the code:
+      - Mode derivation: a Prop's rig reports `mode=TPP` (`tpp_camera.current` true when active,
+        `fpp_camera.current` false) and a Person's reports `mode=FPP`, on both a local-test run and
+        both peers of a two-instance networked run.
+      - Exactly one camera `current` across the whole scene at a time; `arena_camera.current` stays
+        `false`.
+      - Networked auto-activation: each peer's rig for its **own** `is_multiplayer_authority()`
+        character activates with `AimSource.MOUSE`; every other spawned character (including the
+        other peer's) stays inactive with `AimSource.MOVEMENT` — confirmed identically from both
+        the host's and the client's point of view.
+      - Yaw/pitch math, extracted into a directly-callable `apply_mouse_delta()` so it's testable
+        without a display server: a 100px/50px mouse delta at the flat 0.15°/px default produced
+        exactly −15°/−7.5° rotation, and pushing 10000px past either pitch limit clamped cleanly to
+        −80° and +70°. A TPP rig's `apply_mouse_delta()` left `tpp_arm.rotation.x` at its fixed
+        bake untouched, confirming TPP never lets mouse pitch touch the arm — only yaw.
+      - **Caught and fixed a real bug this same pass**: the first version of the FPP self-hide cast
+        `_character.get_node_or_null("Visual") as VisualInstance3D` — but `Visual` is a plain
+        `Node3D` wrapper (see above), not itself a `VisualInstance3D`, so the cast silently
+        returned `null` and the shadow-only setting never applied, with no error printed anywhere.
+        Fixed by walking `Visual`'s `GeometryInstance3D` descendants instead. Verified after the
+        fix: a Person's mesh reports `cast_shadow = 3` (`SHADOWS_ONLY`), a Prop's stays at the
+        default `1` (`ON`).
+      - Local test has no multiplayer-authority concept, so one rig has to be picked explicitly —
+        `main.gd::_start_local_test()` now activates `TeamAProp`'s rig by default (matching the
+        not-yet-built debug switcher's own documented P1 default), with `AimSource.MOUSE`.
 
 - [ ] **14. Mouse capture and sensitivity.**
       `Input.MOUSE_MODE_CAPTURED` during a match, released on pause/Esc/focus-loss. Sensitivity
