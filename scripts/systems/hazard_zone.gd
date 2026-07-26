@@ -32,14 +32,32 @@ func _ready() -> void:
 	if lifetime > 0.0:
 		get_tree().create_timer(lifetime).timeout.connect(_expire)
 
+## B-17: a Hurtbox whose owner_character was never wired (null) used to crash
+## here. And on exit, calling set_speed_multiplier(1.0) unconditionally reset
+## speed even if the character was still standing in a second overlapping
+## zone — enter_speed_zone()/exit_speed_zone() track per-zone state instead
+## (see character_base.gd) so this only ever adds/removes THIS zone's effect.
 func _on_area_entered(area: Area3D) -> void:
 	if area is Hurtbox:
-		(area as Hurtbox).owner_character.set_speed_multiplier(speed_multiplier)
+		var owner_character := (area as Hurtbox).owner_character
+		if owner_character:
+			owner_character.enter_speed_zone(speed_multiplier)
 
 func _on_area_exited(area: Area3D) -> void:
 	if area is Hurtbox:
-		(area as Hurtbox).owner_character.set_speed_multiplier(1.0)
+		var owner_character := (area as Hurtbox).owner_character
+		if owner_character:
+			owner_character.exit_speed_zone(speed_multiplier)
 
+## B-17: don't rely on Godot firing area_exited for everyone still overlapping
+## at the moment this zone frees itself — explicitly clear this zone's effect
+## from every character still inside first, so an expiring-while-occupied
+## hazard can't leave someone permanently slowed.
 func _expire() -> void:
 	if is_instance_valid(self):
+		for area in get_overlapping_areas():
+			if area is Hurtbox:
+				var owner_character := (area as Hurtbox).owner_character
+				if owner_character:
+					owner_character.exit_speed_zone(speed_multiplier)
 		queue_free()
