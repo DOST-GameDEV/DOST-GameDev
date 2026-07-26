@@ -191,6 +191,14 @@ actions. It works by accident on LAN (one character per machine), but: the Setti
 entire P2 column is dead in networked play; the moodboard's WASD-for-Attacker /
 arrow-keys-for-Defender scheme cannot be honoured; and any shared-screen fallback breaks
 immediately. *Fix:* pass `player_id` through the spawn dictionary.
+**[FIXED]** `main.gd::_spawn_player` now computes `player_id := (index % 2) + 1` — same `index %
+2` split that already decides `is_person` — and includes it in the spawn dictionary;
+`_build_networked_character` applies it. Each team's Person gets slot 1 (WASD default), its Prop
+gets slot 2 (arrows default), fixed for the match, so the Settings panel's P2 rebind column now
+has a real effect over LAN. ⚠️ This does **not** deliver the moodboard's WASD-tracks-Attacker /
+arrows-tracks-Defender scheme — that would need re-binding input on every role swap, since
+Attacker/Defender flips each round while `is_person`/`player_id` don't. Flagging, not silently
+building around it. Unverified by a human.
 
 **B-48 · `GameLaunch.game_mode` is never networked. (NEW)** Each peer reads its own menu
 selection. The host's mode governs hit resolution (`hitbox.gd:59`), but the client's
@@ -483,7 +491,7 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       timer matches the host's, the HUD shows the same round and roles, and the client's Can is
       registered.
 
-- [ ] **4. Assign `player_id` to networked characters (B-30).**
+- [x] **4. Assign `player_id` to networked characters (B-30).**
       Pass it through the spawn dictionary in `_spawn_player` and apply it in
       `_build_networked_character`. Per the moodboard, keep WASD on the Attacker/Person set and
       arrow keys on the Defender/Can set.
