@@ -159,7 +159,9 @@ Fix the P1 bugs, then playtest the loop end to end for the first time.
       re-resolves everyone already in get_overlapping_areas() when the bump window opens,
       called from a new shared _open_bump_window() helper used by both the local press and
       the host-side RPC handler.)*
-- [ ] **B-09** friendly fire — add a `team_id` to `CharacterBase` and gate `Hitbox`
+- [x] **B-09** friendly fire — add a `team_id` to `CharacterBase` and gate `Hitbox` *(Fixed:
+      new `team` export on CharacterBase, set from main.gd for both the networked and
+      local-test flows; hitbox.gd skips a hit when target.team == owner_character.team.)*
 - [ ] **B-10** per-round reset covers all four units and their positions
 - [ ] **B-11** cooldown consumed on a no-op activation
 - [ ] **B-12** frame-step friction / Flick Dash lasting three frames

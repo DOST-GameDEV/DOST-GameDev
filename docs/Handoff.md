@@ -171,6 +171,13 @@ all. `hitbox.gd` only skips `target == owner_character`. So under Option A a def
 Person bumping its own Can adds a dent, and three of those lose your own round. Under Option
 B a teammate can seal your Can. The team id exists in `main.gd::_peer_teams` but is never
 put on the character.
+**[FIXED]** New `team: int` export on `CharacterBase` (0 = Team A, 1 = Team B). `main.gd` sets
+it from spawn data (`data["team"]`) in `_build_networked_character`, and explicitly for all
+four local-test units in `_start_local_test()` (they'd otherwise all sit at the default 0 and
+block every bump against each other once the check below exists). `hitbox.gd`'s
+`_on_area_entered` now returns early when `target.team == owner_character.team`. Needs
+verification that bumping a teammate no longer does anything, and bumping an opponent still
+does.
 
 **B-10 · Only one of the four units is reset between rounds.**
 `round_manager.gd:99` loops `_tracked_cans`, which holds exactly the one Can. The two Persons

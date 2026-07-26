@@ -58,6 +58,13 @@ enum State { NORMAL, STAGGERED, DOWNED, SEALED }
 ## a Prop (which already has `is_can` for this). Kept in sync by main.gd, same
 ## lifetime/pattern as `is_can` — see _spawn_player / _on_match_round_started.
 @export var team_is_can_side: bool = true
+## B-09: which team (0 = Team A, 1 = Team B) this character belongs to.
+## Previously there was no team identity on CharacterBase at all — only
+## main.gd's own `_peer_teams` dict knew it — so Hitbox had no way to skip a
+## same-team hit, letting a defending Person dent/seal its own team's Can.
+## Fixed for the whole match, same lifetime as `is_person`. Set by main.gd at
+## spawn (both the networked flow and the local-test flow).
+@export var team: int = 0
 ## Which local input set this character reads from (1-4). Lets multiple
 ## characters share one keyboard without both moving on the same WASD press —
 ## see project.godot [input]: every action is suffixed "_p1".."_p4". p1/p2 are

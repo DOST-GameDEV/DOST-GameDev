@@ -120,6 +120,13 @@ func _ready() -> void:
 ## press the button itself.
 func _start_local_test() -> void:
 	_local_roster = [team_a_prop, team_a_person, team_b_prop, team_b_person]
+	# B-09: give every local-test unit a team id — without this they all sat at
+	# the CharacterBase default (team = 0), which would have made Hitbox's new
+	# same-team check treat all four as one team and block every bump.
+	team_a_prop.team = 0
+	team_a_person.team = 0
+	team_b_prop.team = 1
+	team_b_person.team = 1
 	team_a_person.ability = PERSON_ACTION_ABILITY.duplicate()
 	team_b_person.ability = PERSON_ACTION_ABILITY.duplicate()
 	_wire_downed_flash(team_a_prop)
@@ -210,6 +217,7 @@ func _build_networked_character(data: Dictionary) -> Node:
 	character.is_can = data["is_can"]
 	character.is_person = data["is_person"]
 	character.team_is_can_side = data["team_is_can_side"]
+	character.team = data["team"] # B-09: no team identity on CharacterBase before this
 	if data["is_person"]:
 		# Session 8: Person's Tag/Throw, replacing the previously-null `ability`
 		# for Person (see PersonAction doc). .duplicate() per PERSON_ACTION_ABILITY

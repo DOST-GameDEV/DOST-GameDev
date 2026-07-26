@@ -41,6 +41,11 @@ func _on_area_entered(area: Area3D) -> void:
 	var target := (area as Hurtbox).owner_character
 	if target == null or target == owner_character:
 		return
+	# B-09: no friendly fire — previously there was no team identity on
+	# CharacterBase at all, so a defending Person could dent/seal its own
+	# team's Can, and three of those under Option A lose your own round.
+	if owner_character and target.team == owner_character.team:
+		return
 	if requires_bump_window and owner_character and not owner_character.is_hitbox_active():
 		return
 
