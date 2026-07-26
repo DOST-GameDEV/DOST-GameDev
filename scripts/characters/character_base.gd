@@ -10,6 +10,13 @@ class_name CharacterBase
 ## it lives in its own decoupled system so Option A vs Option B can be swapped freely.
 
 const SPEED: float = 6.0
+## B-12: deceleration when there's no movement input, in units/sec² — separate
+## from SPEED because the old code reused SPEED itself as a per-tick
+## move_toward() step with no `delta`, which was an effectively-instant stop
+## every physics tick regardless of framerate (no momentum), and made a
+## velocity boost like Flick Dash's decay away in about 3 frames instead of
+## actually covering distance.
+const FRICTION: float = 30.0
 const GRAVITY: float = 20.0
 const BUMP_STAGGER_TIME: float = 0.25
 ## GDD Section 3, Option B: ~2s window to self-right before a Tsinelas can seal a
@@ -58,6 +65,13 @@ enum State { NORMAL, STAGGERED, DOWNED, SEALED }
 ## a Prop (which already has `is_can` for this). Kept in sync by main.gd, same
 ## lifetime/pattern as `is_can` — see _spawn_player / _on_match_round_started.
 @export var team_is_can_side: bool = true
+## B-09: which team (0 = Team A, 1 = Team B) this character belongs to.
+## Previously there was no team identity on CharacterBase at all — only
+## main.gd's own `_peer_teams` dict knew it — so Hitbox had no way to skip a
+## same-team hit, letting a defending Person dent/seal its own team's Can.
+## Fixed for the whole match, same lifetime as `is_person`. Set by main.gd at
+## spawn (both the networked flow and the local-test flow).
+@export var team: int = 0
 ## Which local input set this character reads from (1-4). Lets multiple
 ## characters share one keyboard without both moving on the same WASD press —
 ## see project.godot [input]: every action is suffixed "_p1".."_p4". p1/p2 are
@@ -85,12 +99,19 @@ var _downed_time_left: float = 0.0
 var _downed_self_rightable: bool = false ## true only within the self-right window
 var _bump_active_time_left: float = 0.0
 var _speed_multiplier: float = 1.0 ## set by hazard zones (mud, Shatter Trap patch, etc.)
+## The character's own always-present melee Hitbox (requires_bump_window = true)
+## — cached so opening the bump window can sweep already-overlapping targets
+## (see _open_bump_window, B-08) without a scene-tree lookup every press.
+var _melee_hitbox: Hitbox = null
 
 func _ready() -> void:
 	for child in find_children("*", "Hurtbox", true, false):
 		(child as Hurtbox).owner_character = self
 	for child in find_children("*", "Hitbox", true, false):
-		(child as Hitbox).owner_character = self
+		var hitbox := child as Hitbox
+		hitbox.owner_character = self
+		if hitbox.requires_bump_window:
+			_melee_hitbox = hitbox
 
 func _physics_process(delta: float) -> void:
 	# Session 6: the bump-active window has to decay on every peer, not just
@@ -116,7 +137,7 @@ func _physics_process(delta: float) -> void:
 		ability.tick(delta)
 
 	if state == State.NORMAL and Input.is_action_just_pressed(_action("bump")):
-		_bump_active_time_left = BUMP_ACTIVE_TIME
+		_open_bump_window()
 		# Tell the host our bump window just opened, since the host is the one
 		# resolving Hitbox/Hurtbox overlaps now (see hitbox.gd) and it can't
 		# see this peer's local-only timer any other way. No-op if we ARE the
@@ -136,33 +157,73 @@ func _physics_process(delta: float) -> void:
 					_downed_self_rightable = false # window expired, now sealable
 			if Input.is_action_just_pressed(_action("bump")) and _downed_self_rightable:
 				self_right()
+			# B-06: special_ability is normally only read further down, past the
+			# STAGGERED/DOWNED/SEALED early return below — unreachable for an
+			# "escape" ability like Quick Stand, whose only effect is self-
+			# righting from exactly this state. is_ready()/once_per_round on the
+			# ability itself already gates whether it actually does anything.
+			if Input.is_action_just_pressed(_action("special_ability")) and ability:
+				ability.activate(self)
+				if NetworkManager.is_networked() and not NetworkManager.is_host():
+					_rpc_notify_ability_activate.rpc_id(1)
 		State.SEALED:
 			pass # awaiting round reset / respawn logic
 
 	if state in [State.STAGGERED, State.DOWNED, State.SEALED]:
-		velocity.x = move_toward(velocity.x, 0, SPEED)
-		velocity.z = move_toward(velocity.z, 0, SPEED)
+		velocity.x = move_toward(velocity.x, 0, FRICTION * delta)
+		velocity.z = move_toward(velocity.z, 0, FRICTION * delta)
 		move_and_slide()
 		return
 
 	var input_dir := Input.get_vector(_action("move_left"), _action("move_right"), _action("move_up"), _action("move_down"))
-	var direction := (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
+	# B-05: world-space directly, NOT `transform.basis * input_dir` — this used
+	# to make movement direction depend on the character's own current facing,
+	# which would create a car-like relative-turning control scheme the moment
+	# facing started rotating (see look_at below) instead of the absolute WASD
+	# directions the camera's fixed pitch implies.
+	var direction := Vector3(input_dir.x, 0, input_dir.y).normalized()
 
 	if direction:
 		velocity.x = direction.x * SPEED * _speed_multiplier
 		velocity.z = direction.z * SPEED * _speed_multiplier
+		# Face the direction we're moving — nothing wrote `rotation` before this,
+		# so every directional attack (melee Hitbox offset, PersonAction,
+		# BakyaBash, FlickDash, all built on `-transform.basis.z`/local offsets)
+		# fired toward world -Z regardless of which way the player was moving.
+		look_at(global_position + direction, Vector3.UP)
 	else:
-		velocity.x = move_toward(velocity.x, 0, SPEED)
-		velocity.z = move_toward(velocity.z, 0, SPEED)
+		velocity.x = move_toward(velocity.x, 0, FRICTION * delta)
+		velocity.z = move_toward(velocity.z, 0, FRICTION * delta)
+
+	if Input.is_action_just_pressed(_action("special_ability")) and ability:
+		# B-12: this used to run AFTER move_and_slide(), so an ability that sets
+		# velocity directly (Flick Dash's dash burst) applied a full physics
+		# frame late. Moved above move_and_slide() so a velocity change this
+		# tick actually takes effect this tick.
+		#
+		# Same pattern as the bump RPC above: activate locally (so a client sees
+		# its own cosmetic hitbox/movement effect immediately, e.g. Flick Dash's
+		# velocity kick), and — since hitbox resolution only ever runs on the
+		# host (see hitbox.gd) — also tell the host to activate ITS OWN copy of
+		# this character so the actual resolving hitbox exists where it can be
+		# resolved (B-02: previously the activating peer's hitbox never reached
+		# the host at all, so every special/Tag/Throw was a no-op for clients).
+		ability.activate(self)
+		if NetworkManager.is_networked() and not NetworkManager.is_host():
+			_rpc_notify_ability_activate.rpc_id(1)
 
 	move_and_slide()
 
-	if Input.is_action_just_pressed(_action("special_ability")) and ability:
-		ability.activate(self)
-
 ## Called on this character when it's hit by an opponent's Hitbox (see hitbox.gd).
 func apply_stagger(duration: float = BUMP_STAGGER_TIME) -> void:
-	if state == State.SEALED:
+	# B-07: also skip DOWNED, not just SEALED — a hit landing on a Can that's
+	# still inside its self-right window used to overwrite DOWNED with
+	# STAGGERED, which auto-recovers to NORMAL, letting ANY bump (including a
+	# teammate's) rescue a Downed Can for free. A hit during that window
+	# should do nothing; hitbox.gd already routes a hit AFTER the window
+	# expires to "seal" instead of "stagger", so this only ever blocks the
+	# free-rescue case.
+	if state == State.SEALED or state == State.DOWNED:
 		return
 	_staggered_time_left = max(_staggered_time_left, duration)
 	_set_state(State.STAGGERED)
@@ -210,6 +271,15 @@ func seal() -> bool:
 	_set_state(State.SEALED)
 	return true
 
+## Opens the press-to-bump window and immediately sweeps for anyone already
+## overlapping the melee Hitbox (B-08) — area_entered alone only catches
+## someone who overlaps AFTER the window opens, so walking into someone and
+## then pressing bump (the natural order) used to never register a hit.
+func _open_bump_window() -> void:
+	_bump_active_time_left = BUMP_ACTIVE_TIME
+	if _melee_hitbox:
+		_melee_hitbox.sweep_overlaps()
+
 ## Whether this character's press-to-bump window is currently live. The melee
 ## Hitbox (requires_bump_window = true) checks this before landing a stagger;
 ## ability-spawned hitboxes (requires_bump_window = false) ignore it.
@@ -228,7 +298,18 @@ func is_self_rightable() -> bool:
 @rpc("any_peer", "call_local", "reliable")
 func _rpc_notify_bump() -> void:
 	if NetworkManager.is_networked() and NetworkManager.is_host():
-		_bump_active_time_left = BUMP_ACTIVE_TIME
+		_open_bump_window()
+
+## Client → host RPC (B-02): a non-host activator's own copy of `ability` already
+## ran _do_activate() locally (see the special_ability check above) for its
+## cosmetic effect, but its spawned hitbox only exists in that peer's own scene
+## tree, where hitbox.gd refuses to resolve anything (host-only). This tells
+## the host to run activate() on ITS OWN copy of this character/ability
+## instead, so the authoritative resolving hitbox actually exists on the host.
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_notify_ability_activate() -> void:
+	if NetworkManager.is_networked() and NetworkManager.is_host() and ability:
+		ability.activate(self)
 
 ## Host → target-owner RPC: the host is the only peer that decides hit
 ## outcomes now (see hitbox.gd), but state authority for THIS character still

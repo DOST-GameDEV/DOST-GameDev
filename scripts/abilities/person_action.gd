@@ -35,7 +35,7 @@ class_name PersonAction
 @export var throw_radius: float = 0.75
 @export var throw_duration: float = 0.2
 
-func _do_activate(character: CharacterBody3D) -> void:
+func _do_activate(character: CharacterBody3D) -> bool:
 	var c := character as CharacterBase
 	if c.team_is_can_side:
 		# Defense: tagging an attacker — short range, guard-range flavor.
@@ -43,3 +43,4 @@ func _do_activate(character: CharacterBody3D) -> void:
 	else:
 		# Offense: throwing the Slipper at the Can — reaches further.
 		AbilityUtils.spawn_pulse_hitbox(c, throw_radius, throw_duration, false, Vector3(0, 0, -throw_range))
+	return true

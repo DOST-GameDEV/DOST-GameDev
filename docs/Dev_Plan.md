@@ -120,12 +120,22 @@ Fix the four P0 bugs. Until these are done there is no LAN demo to show anyone.
       and `_sync_match_won` are now `call_local` instead of `call_remote`, so the host runs its
       own handler — same RPC, no separate direct-emit path needed. Verify with two editor
       instances, `--host` and `--join=127.0.0.1`, that both see the timer move.)*
-- [ ] **B-02** — abilities spawn their hitbox only on the activating peer, and hitboxes only
+- [x] **B-02** — abilities spawn their hitbox only on the activating peer, and hitboxes only
       resolve on the host, so every special and Tag/Throw is a no-op for anyone who isn't
-      hosting. Needs an activation RPC to the host.
-- [ ] **B-03** — `ArenaCamera` holds freed local-test nodes in networked play and never picks
-      up the spawned networked characters.
-- [ ] **B-04** — networked Props spawn with `ability = null`; only Persons get one.
+      hosting. Needs an activation RPC to the host. *(Fixed: activation still runs locally on
+      the activating peer for its own cosmetic/movement effect, and a new `_rpc_notify_ability_activate`
+      RPC — same pattern as the existing bump RPC — additionally tells the host to run
+      `ability.activate(self)` on its own copy of the character, so the authoritative resolving
+      hitbox actually exists where hitbox.gd can resolve it.)*
+- [x] **B-03** — `ArenaCamera` holds freed local-test nodes in networked play and never picks
+      up the spawned networked characters. *(Fixed: ArenaCamera now exposes add_target()/
+      remove_target() and filters freed instances out of `_targets` every frame instead of
+      dereferencing them; main.gd calls add_target() on every networked spawn and
+      remove_target() on disconnect.)*
+- [x] **B-04** — networked Props spawn with `ability = null`; only Persons get one. *(Fixed:
+      every networked Prop now gets a `.duplicate()` of quick_stand.tres, same resource
+      Main.tscn already hardcodes for the local flow's TeamAProp. Full per-character roster
+      selection is still Phase 2/B-24.)*
 
 **Exit criteria:** two editor instances, one `--host` one `--join=127.0.0.1`, both see the
 timer counting, both can bump each other, and both see the same result.
@@ -134,14 +144,36 @@ timer counting, both can bump each other, and both see the same result.
 
 Fix the P1 bugs, then playtest the loop end to end for the first time.
 
-- [ ] **B-05** face-direction (rotate the character toward movement, or add an aim axis)
-- [ ] **B-06** special-ability input unreachable while Downed
-- [ ] **B-07** stagger cancelling Downed
-- [ ] **B-08** bump missing already-overlapping targets
-- [ ] **B-09** friendly fire — add a `team_id` to `CharacterBase` and gate `Hitbox`
-- [ ] **B-10** per-round reset covers all four units and their positions
-- [ ] **B-11** cooldown consumed on a no-op activation
-- [ ] **B-12** frame-step friction / Flick Dash lasting three frames
+- [x] **B-05** face-direction (rotate the character toward movement, or add an aim axis)
+      *(Fixed: movement direction is now computed in world space instead of via
+      `transform.basis * input_dir`, and the character look_at()s its movement direction
+      whenever it's moving. Directional attacks now fire the way the player is actually
+      facing.)*
+- [x] **B-06** special-ability input unreachable while Downed *(Fixed: the DOWNED branch of
+      the state match now also reads special_ability and activates the ability there, same
+      RPC-to-host pattern as the main special_ability check. is_ready()/once_per_round already
+      guards whether it does anything.)*
+- [x] **B-07** stagger cancelling Downed *(Fixed: apply_stagger() now also skips DOWNED, not
+      just SEALED, so a hit during the self-right window no longer rescues a Downed Can.)*
+- [x] **B-08** bump missing already-overlapping targets *(Fixed: Hitbox.sweep_overlaps()
+      re-resolves everyone already in get_overlapping_areas() when the bump window opens,
+      called from a new shared _open_bump_window() helper used by both the local press and
+      the host-side RPC handler.)*
+- [x] **B-09** friendly fire — add a `team_id` to `CharacterBase` and gate `Hitbox` *(Fixed:
+      new `team` export on CharacterBase, set from main.gd for both the networked and
+      local-test flows; hitbox.gd skips a hit when target.team == owner_character.team.)*
+- [x] **B-10** per-round reset covers all four units and their positions *(Fixed:
+      main.gd::_on_match_round_started now calls reset_for_new_round() and repositions every
+      character to a SPAWN_POINTS slot each round, for both the networked and local-test
+      flows, instead of leaving that to RoundManager's tracked-Can-only loop.)*
+- [x] **B-11** cooldown consumed on a no-op activation *(Fixed: _do_activate() now returns
+      bool; activate() only consumes _time_since_use/_used_this_round on true. Quick Stand
+      returns false when not Downed; the other five abilities always return true, matching
+      their previous always-succeeds behavior.)*
+- [x] **B-12** frame-step friction / Flick Dash lasting three frames *(Fixed: new FRICTION
+      constant (30 units/sec²) replaces the old delta-less move_toward(..., SPEED) stops; the
+      special_ability activation check moved above move_and_slide() so a velocity-setting
+      ability like Flick Dash applies the same tick instead of one frame late.)*
 - [ ] Play a full Bo5 locally. Decide **Option A or Option B** and delete the other.
 
 **Exit criteria:** a full best-of-5 completes, roles swap each round, positions and states
