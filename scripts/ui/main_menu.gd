@@ -94,4 +94,9 @@ func _on_join_pressed() -> void:
 	_go_to_match()
 
 func _go_to_match() -> void:
+	# B-14: MatchManager/RoundManager are autoloads and survive scene changes —
+	# without this, a second match (Rematch, or Menu then Play again) would
+	# resume the first one's score/round number instead of starting at 0-0.
+	MatchManager.reset()
+	RoundManager.reset()
 	get_tree().change_scene_to_file(MAIN_SCENE_PATH)
