@@ -82,6 +82,14 @@ var _peer_is_person: Dictionary = {}
 var _spawned_characters: Dictionary = {} # peer_id -> CharacterBase
 
 func _ready() -> void:
+	# B-14: MatchManager/RoundManager are autoloads and previously carried a
+	# finished match's score/round_number into the next one. Main.tscn is the
+	# one scene every match path (Local/Host/Join from the menu, or a
+	# same-session Rematch that doesn't reload this scene — see
+	# match_result.gd) loads through, so reset here is the single point that
+	# guarantees a fresh 0-0 round 1 regardless of how we got here.
+	MatchManager.reset()
+	RoundManager.reset()
 	spawner.spawn_function = _build_networked_character
 	MatchManager.round_started.connect(_on_match_round_started)
 	MatchManager.round_intermission_started.connect(_on_round_intermission_started)

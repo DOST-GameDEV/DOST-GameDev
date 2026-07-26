@@ -481,7 +481,7 @@ Settle it before the deadline, not during it.
 | Lobby | [ ] | Peer list, team assignment, ready-up, host "Start" (B-13). |
 | HUD | [~] | Full rebuild, §4.4. |
 | Round intermission / role swap | [ ] | §4.6. Requested item. |
-| Match result | [ ] | Bo5 grid, winner, Rematch / Menu. |
+| Match result | [~] | Functional: `MatchResult.tscn` shows on `match_won`, Rematch (in-place reset, host-gated) / Menu both verified live. Plain `Label`, not the moodboard's Bo5 grid — item 20. |
 | Pause | [ ] | Esc → Resume / Settings / Quit to Menu (B-20). |
 | Settings | [x] | Restyle only. Add mouse sensitivity + invert-Y (§3.2), add duplicate-binding detection (B-22). |
 
@@ -684,7 +684,11 @@ same result, and a client that joins late is in the same round as the host.
 - [x] **B-08** — bump missing already-overlapping targets
 - [x] **B-11** — cooldown consumed on a no-op activation
 - [x] **B-12** — frame-step friction / Flick Dash lasting three frames
-- [ ] **B-14 / B-20** — match reset, pause menu, return to menu
+- [~] **B-14 / B-20** — match reset, pause menu, return to menu
+      *(B-14 fixed and verified live: `MatchManager.reset()`/`RoundManager.reset()`, called at
+      `main.gd::_ready()` and from `MatchResult`'s buttons. Forced three round wins, confirmed
+      `match_won`, `MatchResult` showing, and a clean 0-0 round-1 restart via Rematch. B-20 (pause
+      menu / Esc-to-menu mid-match) still open.)*
 - [ ] Play a full Bo5 locally. Decide **Option A or Option B and delete the loser.**
 
 **Exit criteria:** a full Bo5 completes, roles swap with a visible transition, all four units
