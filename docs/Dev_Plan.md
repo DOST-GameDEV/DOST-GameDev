@@ -391,12 +391,28 @@ Total footprint: **3 files, 2 lines.**
 - [ ] Verify nothing is left behind:
 
 ```bash
-grep -rin "debug" --include="*.gd" --include="*.tscn" --include="*.tres" --include="project.godot" . | grep -iv "is_debug_build"
+grep -rin "debug" --include="*.gd" --include="*.tscn" --include="*.tres" --include="project.godot" . \
+  | grep -iv "is_debug_build" \
+  | grep -v "Debug > Run Multiple Instances"
 ```
 
 That grep returning nothing is the acceptance test for removal, and it only works because of the
 `debug_`/`Debug` prefix rule (§0.3.1). A hit inside a gameplay script means rule 0.3.2 was broken
 somewhere and the removal is not finished.
+
+⚠️ **The third `grep -v` is load-bearing and was missing from the original spec.** Four gameplay
+files (`main.gd` ×2, `game_launch.gd`, `network_manager.gd`) carry comments pointing at Godot's
+own editor menu, **Debug > Run Multiple Instances** — the documented two-instance LAN test
+workflow. Those have nothing to do with this feature, will still be there after it is deleted, and
+made the acceptance test impossible to ever pass. Without that filter the checklist looks failed
+when it has actually succeeded, which is worse than no checklist. Two other comments that did name
+the switcher (`main.gd`'s local-flow default and `camera_rig.gd`'s `set_active` doc) were reworded
+to describe it as "queue item 1's unit switcher" instead, so they stay accurate without tripping
+the grep.
+
+Note also that a `.tscn` instance costs **two** lines, not one: the `[node ...]` line and the
+`[ext_resource ...]` it needs. That is inherent to the scene format, not a contract violation, so
+the real footprint is 3 files and 3 lines.
 
 - [ ] Open the project, press F5, play a Local Match round — confirm P1/P2 still work on their
       `Main.tscn` defaults with the switcher gone.

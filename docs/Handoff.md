@@ -522,7 +522,7 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
 
 ### P0 — Make LAN work
 
-- [ ] **1. Debug player switcher — manual control of any unit in local mode (do this first; it
+- [x] **1. Debug player switcher — manual control of any unit in local mode (do this first; it
       unblocks all testing).** Full spec: `Dev_Plan.md` §3.5.
       Two control slots. `F1`–`F4` assign a unit to the **P1** set (WASD/Space/Q),
       `Shift`+`F1`–`F4` assign to the **P2** set (arrows/Enter/RShift), `Tab` / `Shift`+`Tab`
@@ -548,6 +548,25 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       controllable, which it is not today; (d) run the verification grep from `Dev_Plan.md`
       §3.5.5 — every hit is inside the three debug files and the two registration lines, and
       none is in a gameplay script.
+      **Done, runtime-verified by driving the key handler directly** (`InputEventKey` fed into
+      `_unhandled_key_input`, reading back every unit's `player_id` and which camera is `current`
+      after each press). Confirmed in order: defaults `TeamAProp`→P1 / `TeamAPerson`→P2 with the
+      other two parked on the unbound `4`; `F3` moves P1 and the camera to `TeamBProp`;
+      `Shift+F4` moves P2; `Tab` cycles and **skips the unit the other slot holds** rather than
+      colliding on one `player_id`; `F5` empties P2; `Shift+F1` steals a unit from the other slot;
+      `F6` restores defaults. FPP/TPP derivation survives every handoff — cycling onto a Person
+      makes its FPP camera current, onto a Prop its TPP camera (§0.1 intact). Zero edits to
+      `character_base.gd`, per §3.5.2.
+      Two deviations from the spec, both documented at §3.5.5:
+      - The verification `grep` as written could never pass, because four gameplay files carry
+        comments naming Godot's **Debug > Run Multiple Instances** editor menu. The checklist now
+        filters that phrase; the two comments that genuinely named the switcher were reworded.
+      - Footprint is 3 files and **3** lines, not 2: a `.tscn` instance needs an `[ext_resource]`
+        line as well as its `[node]` line. Inherent to the scene format.
+      Unit lookup deliberately walks up from the `DebugBar` rather than using
+      `get_tree().current_scene`, which is only correct when the match was reached through
+      `change_scene_to_file` — anything instancing `Main.tscn` as a sub-scene made every lookup
+      return null and the bar read "(missing)" with no error anywhere. Caught by rendering it.
 
 - [x] **2. Fix the LAN freeze (B-03).**
       Disable or delete the `Camera3D` node in `Main.tscn` (`Main.tscn:40-43`). It caches four
