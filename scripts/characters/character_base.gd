@@ -146,11 +146,21 @@ func _physics_process(delta: float) -> void:
 		return
 
 	var input_dir := Input.get_vector(_action("move_left"), _action("move_right"), _action("move_up"), _action("move_down"))
-	var direction := (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
+	# B-05: world-space directly, NOT `transform.basis * input_dir` — this used
+	# to make movement direction depend on the character's own current facing,
+	# which would create a car-like relative-turning control scheme the moment
+	# facing started rotating (see look_at below) instead of the absolute WASD
+	# directions the camera's fixed pitch implies.
+	var direction := Vector3(input_dir.x, 0, input_dir.y).normalized()
 
 	if direction:
 		velocity.x = direction.x * SPEED * _speed_multiplier
 		velocity.z = direction.z * SPEED * _speed_multiplier
+		# Face the direction we're moving — nothing wrote `rotation` before this,
+		# so every directional attack (melee Hitbox offset, PersonAction,
+		# BakyaBash, FlickDash, all built on `-transform.basis.z`/local offsets)
+		# fired toward world -Z regardless of which way the player was moving.
+		look_at(global_position + direction, Vector3.UP)
 	else:
 		velocity.x = move_toward(velocity.x, 0, SPEED)
 		velocity.z = move_toward(velocity.z, 0, SPEED)

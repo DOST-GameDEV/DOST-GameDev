@@ -116,6 +116,13 @@ resources and a character-select step (B-24/Phase 2) — it just stops Props fro
 at a fixed local offset (`CharacterBase.tscn:60`), and `PersonAction`, `BakyaBash`, and
 `FlickDash` all use `-transform.basis.z`. A player moving east can only attack north. The
 `rotation` property is in the replication config and is replicated — it's just never changed.
+**[FIXED]** Movement direction is now computed as `Vector3(input_dir.x, 0, input_dir.y)`
+directly (world space) instead of `transform.basis * input_dir` — the old formula made
+movement direction depend on current facing, which would have produced relative/tank-style
+turning the moment facing started changing. The character now `look_at()`s its movement
+direction whenever `direction` is nonzero, so `-transform.basis.z` (and the melee Hitbox's
+local offset) actually points where the player is moving. Needs verification in-editor that
+movement still feels like absolute WASD and that Bump/specials land in the facing direction.
 
 **B-06 · Quick Stand can never be activated.**
 `character_base.gd:142` returns early for `STAGGERED`/`DOWNED`/`SEALED`; the

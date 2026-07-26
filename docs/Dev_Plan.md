@@ -144,7 +144,11 @@ timer counting, both can bump each other, and both see the same result.
 
 Fix the P1 bugs, then playtest the loop end to end for the first time.
 
-- [ ] **B-05** face-direction (rotate the character toward movement, or add an aim axis)
+- [x] **B-05** face-direction (rotate the character toward movement, or add an aim axis)
+      *(Fixed: movement direction is now computed in world space instead of via
+      `transform.basis * input_dir`, and the character look_at()s its movement direction
+      whenever it's moving. Directional attacks now fire the way the player is actually
+      facing.)*
 - [ ] **B-06** special-ability input unreachable while Downed
 - [ ] **B-07** stagger cancelling Downed
 - [ ] **B-08** bump missing already-overlapping targets
