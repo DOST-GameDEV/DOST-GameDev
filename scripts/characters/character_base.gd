@@ -138,7 +138,11 @@ var _melee_hitbox: Hitbox = null
 ## Can-only, Option-B-only DownedFlash HUD overlay. A brief white flash on
 ## whichever mesh this character actually has needs no new art/sound assets
 ## and works for every character/hit kind/game mode.
-@onready var _mesh: MeshInstance3D = get_node_or_null("MeshInstance3D")
+## B-44 (merge fix): CharacterBase.tscn moved the mesh under a "Visual"
+## wrapper node (for CameraRig's FPP self-hide, see camera_rig.gd) after this
+## was written against a direct "MeshInstance3D" child — get_node_or_null()
+## silently returned null post-merge, so the hit flash stopped firing at all.
+@onready var _mesh: MeshInstance3D = get_node_or_null("Visual/MeshInstance3D")
 var _base_albedo: Color = Color.WHITE
 
 func _ready() -> void:
