@@ -54,6 +54,12 @@ special_ability={
 ]
 }
 
+[autoload]
+
+RoundManager="*res://scripts/systems/round_manager.gd"
+MatchManager="*res://scripts/systems/match_manager.gd"
+NetworkManager="*res://scripts/systems/network_manager.gd"
+
 [rendering]
 
 renderer/rendering_method="forward_plus"

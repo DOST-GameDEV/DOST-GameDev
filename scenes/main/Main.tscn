@@ -1,6 +1,8 @@
-[gd_scene load_steps=6 format=3 uid="uid://c3f7h9j1k2l4m"]
+[gd_scene load_steps=8 format=3 uid="uid://c3f7h9j1k2l4m"]
 
+[ext_resource type="Script" path="res://scripts/main.gd" id="0"]
 [ext_resource type="PackedScene" path="res://scenes/characters/CharacterBase.tscn" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/ui/HUD.tscn" id="2"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
 size = Vector3(40, 1, 40)
@@ -16,6 +18,7 @@ ambient_light_color = Color(1, 1, 1, 1)
 ambient_light_energy = 0.6
 
 [node name="Main" type="Node3D"]
+script = ExtResource("0")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_default")
@@ -35,5 +38,14 @@ mesh = SubResource("BoxMesh_floor")
 [node name="Camera3D" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.87, 0.5, 0, -0.5, 0.87, 0, 8, 10)
 
-[node name="TestCharacter" parent="." instance=ExtResource("1")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+[node name="CanTestCharacter" parent="." instance=ExtResource("1")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, -2)
+is_can = true
+
+[node name="TsinelasTestCharacter" parent="." instance=ExtResource("1")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 2)
+is_can = false
+
+[node name="HUDLayer" type="CanvasLayer" parent="."]
+
+[node name="HUD" parent="HUDLayer" instance=ExtResource("2")]
