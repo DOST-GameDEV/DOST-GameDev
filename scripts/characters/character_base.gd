@@ -34,6 +34,21 @@ const BUMP_ACTIVE_TIME: float = 0.15
 ## Persons and Slippers never accumulate dents. 3 per user decision (Session 7).
 const MAX_DENTS: int = 3
 
+## B-16: GDD Section 4 shared basic — "Guard/Dash (Cans block, Tsinelas
+## dash-evade)" — for Props only; Persons don't get this (their assist/support
+## slot is Tag/Throw, see person_action.gd). Which half a Prop gets depends on
+## `is_can` this round, same as every other Can/Tsinelas-side split.
+## Guard: hold to block. A stamina meter (not an unlimited hold) so it can't be
+## held forever — drains while held, regenerates while released.
+const GUARD_MAX_STAMINA: float = 3.0
+const GUARD_DRAIN_RATE: float = 1.0
+const GUARD_REGEN_RATE: float = 0.6
+## Dash: a quick evasive burst in the current facing direction, on a short
+## cooldown rather than a stamina meter — it's one instant action, not a hold.
+const DASH_SPEED: float = 14.0
+const DASH_DURATION: float = 0.15
+const DASH_COOLDOWN: float = 2.5
+
 ## NORMAL — moving/acting freely.
 ## STAGGERED — brief no-control flinch from a bump (BUMP_STAGGER_TIME), auto-recovers.
 ## DOWNED — knocked down; can self-right (bump input) within DOWNED_SELF_RIGHT_WINDOW;
@@ -99,6 +114,11 @@ var _downed_time_left: float = 0.0
 var _downed_self_rightable: bool = false ## true only within the self-right window
 var _bump_active_time_left: float = 0.0
 var _speed_multiplier: float = 1.0 ## set by hazard zones (mud, Shatter Trap patch, etc.)
+## B-16: Guard/Dash state — see the constants above for the doc on each.
+var _guard_stamina: float = GUARD_MAX_STAMINA
+var _is_guarding: bool = false
+var _dash_cooldown_left: float = 0.0
+var _dash_active_time_left: float = 0.0
 ## The character's own always-present melee Hitbox (requires_bump_window = true)
 ## — cached so opening the bump window can sweep already-overlapping targets
 ## (see _open_bump_window, B-08) without a scene-tree lookup every press.
@@ -121,6 +141,8 @@ func _physics_process(delta: float) -> void:
 	# the non-networked local flow too.
 	if _bump_active_time_left > 0.0:
 		_bump_active_time_left -= delta
+	if _dash_active_time_left > 0.0:
+		_dash_active_time_left -= delta
 
 	# Rough networking pass (Session 5): once a network peer exists, only the
 	# owning peer simulates movement/input for its own character — everyone
@@ -144,6 +166,9 @@ func _physics_process(delta: float) -> void:
 		# host, or if we're not networked at all.
 		if NetworkManager.is_networked() and not NetworkManager.is_host():
 			_rpc_notify_bump.rpc_id(1)
+
+	if state == State.NORMAL:
+		_process_guard_dash(delta)
 
 	match state:
 		State.STAGGERED:
@@ -172,6 +197,14 @@ func _physics_process(delta: float) -> void:
 	if state in [State.STAGGERED, State.DOWNED, State.SEALED]:
 		velocity.x = move_toward(velocity.x, 0, FRICTION * delta)
 		velocity.z = move_toward(velocity.z, 0, FRICTION * delta)
+		move_and_slide()
+		return
+
+	if _dash_active_time_left > 0.0:
+		# B-16: a Tsinelas-side Dash burst (see _process_dash) is a brief
+		# committed action, not just a velocity nudge — without this guard,
+		# holding a movement key during the dash would overwrite the burst
+		# with normal walk speed on the very same physics frame it fired.
 		move_and_slide()
 		return
 
@@ -225,6 +258,10 @@ func apply_stagger(duration: float = BUMP_STAGGER_TIME) -> void:
 	# free-rescue case.
 	if state == State.SEALED or state == State.DOWNED:
 		return
+	# B-16: a Can actively Guarding blocks the incoming hit outright — no
+	# stagger, same as apply_dent() below no-ops the dent for the same reason.
+	if _is_guarding:
+		return
 	_staggered_time_left = max(_staggered_time_left, duration)
 	_set_state(State.STAGGERED)
 
@@ -259,6 +296,10 @@ func self_right() -> void:
 func apply_dent(stagger_duration: float = BUMP_STAGGER_TIME) -> void:
 	if not is_can:
 		return
+	# B-16: Guard blocks dents too — the whole point of a Can blocking is to
+	# protect its own health bar, not just avoid the cosmetic stagger.
+	if _is_guarding:
+		return
 	dents = min(dents + 1, MAX_DENTS)
 	dents_changed.emit(dents)
 	apply_stagger(stagger_duration)
@@ -279,6 +320,42 @@ func _open_bump_window() -> void:
 	_bump_active_time_left = BUMP_ACTIVE_TIME
 	if _melee_hitbox:
 		_melee_hitbox.sweep_overlaps()
+
+## B-16: Guard/Dash. Props only (a Person's assist slot is Tag/Throw instead —
+## see person_action.gd) — which half a Prop gets depends on `is_can` this
+## round, same split as everything else that differs between Can and Tsinelas.
+func _process_guard_dash(delta: float) -> void:
+	if is_person:
+		return
+	if is_can:
+		_process_guard(delta)
+	else:
+		_process_dash(delta)
+
+func _process_guard(delta: float) -> void:
+	var held := Input.is_action_pressed(_action("guard_dash"))
+	if held and _guard_stamina > 0.0:
+		_is_guarding = true
+		_guard_stamina = max(0.0, _guard_stamina - GUARD_DRAIN_RATE * delta)
+	else:
+		_is_guarding = false
+		_guard_stamina = min(GUARD_MAX_STAMINA, _guard_stamina + GUARD_REGEN_RATE * delta)
+
+func _process_dash(delta: float) -> void:
+	if _dash_cooldown_left > 0.0:
+		_dash_cooldown_left -= delta
+	if _dash_active_time_left <= 0.0 and _dash_cooldown_left <= 0.0 and Input.is_action_just_pressed(_action("guard_dash")):
+		var forward := -transform.basis.z
+		velocity.x = forward.x * DASH_SPEED
+		velocity.z = forward.z * DASH_SPEED
+		_dash_active_time_left = DASH_DURATION
+		_dash_cooldown_left = DASH_COOLDOWN
+
+## Whether this character is currently blocking (B-16 Guard). Gates incoming
+## stagger/dents in apply_stagger()/apply_dent() below — hitbox.gd itself stays
+## generic to any hit, same as the team check (B-09).
+func is_guarding() -> bool:
+	return _is_guarding
 
 ## Whether this character's press-to-bump window is currently live. The melee
 ## Hitbox (requires_bump_window = true) checks this before landing a stagger;
@@ -349,6 +426,13 @@ func reset_for_new_round() -> void:
 	_downed_time_left = 0.0
 	_downed_self_rightable = false
 	_speed_multiplier = 1.0
+	# B-16: fresh guard stamina and no leftover dash cooldown each round —
+	# otherwise a Can that emptied its stamina staying alive to round end
+	# would start the next round already unable to block.
+	_guard_stamina = GUARD_MAX_STAMINA
+	_is_guarding = false
+	_dash_cooldown_left = 0.0
+	_dash_active_time_left = 0.0
 	state = State.NORMAL
 	state_changed.emit(state)
 	dents = 0
