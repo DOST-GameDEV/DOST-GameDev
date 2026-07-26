@@ -23,6 +23,15 @@ func _process(_delta: float) -> void:
 	score_label.text = "%d - %d" % [MatchManager.team_a_wins, MatchManager.team_b_wins]
 
 func _on_round_started(round_number: int, team_a_is_can: bool) -> void:
+	set_round_display(round_number, team_a_is_can)
+
+## Public so a late-joining client can refresh the round/role labels directly
+## (see main.gd::_sync_state_to_late_joiner, B-29) without going through
+## MatchManager.round_started, which main.gd also listens on to reset and
+## reposition every character — correct for a real round transition, wrong for
+## a peer whose characters already have correct state via
+## MultiplayerSynchronizer's spawn=true replication.
+func set_round_display(round_number: int, team_a_is_can: bool) -> void:
 	round_label.text = "Round %d / 5" % round_number
 	role_label.text = "Team A: %s   Team B: %s" % [
 		"Defense" if team_a_is_can else "Offense",

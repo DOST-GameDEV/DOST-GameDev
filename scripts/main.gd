@@ -174,6 +174,18 @@ func _clear_local_test_characters() -> void:
 func _on_player_connected(peer_id: int) -> void:
 	if NetworkManager.is_host():
 		_spawn_player(peer_id)
+		# B-29/B-48: _start_hosting() already called MatchManager.begin_next_round()
+		# before anyone could possibly be connected (see B-13), so every joining
+		# peer — not just a "late" one — missed the one-shot _sync_round_started
+		# broadcast and is stuck at round_number 0. GameLaunch.game_mode is also
+		# never networked at all; each peer reads its own menu selection, so a
+		# client's copy can silently disagree with the host's. Catch this one
+		# peer up on both in a single reliable RPC.
+		_sync_state_to_late_joiner.rpc_id(
+			peer_id, MatchManager.round_number, MatchManager.team_a_is_can,
+			MatchManager.team_a_wins, MatchManager.team_b_wins,
+			RoundManager.time_left, RoundManager.round_active, GameLaunch.game_mode
+		)
 
 func _on_player_disconnected(peer_id: int) -> void:
 	var node := players_root.get_node_or_null(str(peer_id))
@@ -298,6 +310,32 @@ func _on_match_round_started(_round_number: int, team_a_is_can: bool) -> void:
 			character.position = SPAWN_POINTS[i % SPAWN_POINTS.size()]
 		_register_local_can()
 	RoundManager.start_round()
+
+## Host → one late-joining peer (B-29, B-48). Sets every field directly rather
+## than replaying _on_match_round_started's reset cascade: that function calls
+## reset_for_new_round() and rewrites `position` on every character it knows
+## about, which is correct for an actual round transition but would wrongly
+## re-zero the position/state/dents of characters that already arrived on this
+## peer with correct current values, via MultiplayerSynchronizer's spawn=true
+## replication (CharacterBase.tscn's SceneReplicationConfig). Only refreshes
+## the HUD's round/role labels directly (Hud.set_round_display) and registers
+## already-known Cans with RoundManager for completeness — both side-effect
+## free, unlike a full reset.
+@rpc("authority", "call_remote", "reliable")
+func _sync_state_to_late_joiner(new_round_number: int, new_team_a_is_can: bool, new_team_a_wins: int, new_team_b_wins: int, new_time_left: float, new_round_active: bool, new_game_mode: GameLaunch.GameMode) -> void:
+	MatchManager.round_number = new_round_number
+	MatchManager.team_a_is_can = new_team_a_is_can
+	MatchManager.team_a_wins = new_team_a_wins
+	MatchManager.team_b_wins = new_team_b_wins
+	RoundManager.time_left = new_time_left
+	RoundManager.round_active = new_round_active
+	GameLaunch.game_mode = new_game_mode
+	hud.set_round_display(new_round_number, new_team_a_is_can)
+	RoundManager.clear_tracked_cans()
+	for peer_id in _spawned_characters:
+		var character: CharacterBase = _spawned_characters[peer_id]
+		if is_instance_valid(character) and character.is_can:
+			RoundManager.register_can(character)
 
 ## Shows/hides the HUD's DownedFlash whenever the given (locally-controlled)
 ## character enters/exits Downed — but only if it's a Can; Tsinelas/Person
