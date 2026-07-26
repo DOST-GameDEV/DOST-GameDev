@@ -53,10 +53,12 @@ func _finish_match(winning_team: int) -> void:
 	else:
 		match_won.emit(winning_team)
 
-## Broadcast to every client (call_remote — host already applied this
-## directly above); mirrors the fields and re-fires the same signals so HUD
-## code doesn't need to know or care whether it's networked.
-@rpc("authority", "call_remote", "reliable")
+## Broadcast to every peer including the host itself (call_local — B-01: this
+## was call_remote, which meant the host, as sender, never ran its own
+## handler, so round_started/match_won never fired locally and nothing ever
+## started a networked round); mirrors the fields and re-fires the same
+## signals so HUD code doesn't need to know or care whether it's networked.
+@rpc("authority", "call_local", "reliable")
 func _sync_round_started(new_round_number: int, new_team_a_is_can: bool, new_team_a_wins: int, new_team_b_wins: int) -> void:
 	round_number = new_round_number
 	team_a_is_can = new_team_a_is_can
@@ -64,7 +66,7 @@ func _sync_round_started(new_round_number: int, new_team_a_is_can: bool, new_tea
 	team_b_wins = new_team_b_wins
 	round_started.emit(round_number, team_a_is_can)
 
-@rpc("authority", "call_remote", "reliable")
+@rpc("authority", "call_local", "reliable")
 func _sync_match_won(winning_team: int, new_team_a_wins: int, new_team_b_wins: int) -> void:
 	team_a_wins = new_team_a_wins
 	team_b_wins = new_team_b_wins
