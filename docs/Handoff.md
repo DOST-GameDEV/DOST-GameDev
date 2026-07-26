@@ -525,6 +525,17 @@ documented. Verified by matching synthetic `InputEventKey`s against the InputMap
 resolves to `guard_dash_p1` only, right Shift to `special_ability_p2` only, and all 14 bound
 actions now have 14 distinct key+location pairs (no conflicts).
 
+**B-51 · The match-result screen appeared with the cursor still captured, so neither of its
+buttons could be clicked. (NEW)** `main.gd::_ready()` sets `Input.mouse_mode = MOUSE_MODE_CAPTURED`
+for the whole match, and nothing released it when the match ended — `match_result.gd` only released
+it inside `_on_menu_pressed`, i.e. *after* a click that could not happen. Winning a Bo5 therefore
+left you on a result screen with an invisible, captured cursor and no way to press **Rematch** or
+**Menu**. Recoverable only via Esc, which opens the pause overlay *over* the result screen.
+**[FIXED]** released in `_on_match_won`, re-captured in `_on_rematch_pressed` (a rematch goes
+straight back into gameplay, and `camera_rig.gd` only mouse-aims while the cursor is captured).
+Verified by driving a real local Bo5 to 3-0 in a live instance: the result screen shows with
+`mouse_mode = VISIBLE`, and pressing Rematch returns round 1 / 0-0 with `mouse_mode = CAPTURED`.
+
 **B-28 · No export presets, no build, no CI.** `export_presets.cfg` is gitignored and none
 exists. The game has never been run outside the editor, and the submission needs a real build.
 
