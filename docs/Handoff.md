@@ -94,6 +94,13 @@ For any coding agent picking up this queue.
    a new one, add it with the next free B-number.
 10. **Do not delete Local Match yet** (§1) — it is the only way to playtest today. It goes in
     Phase 6.
+11. **Debug-only code follows the removal contract** in `Dev_Plan.md` §0.3, without exception:
+    `debug_`/`Debug` prefix on every file, class, node and autoload; debug code calls gameplay
+    and **gameplay never calls debug** (no gameplay script may reference a debug class, autoload,
+    signal or group — not even behind an `if OS.is_debug_build()`); no `[input]` map entries, read
+    raw keys instead; self-disables in a release build; and a removal checklist written into
+    `Dev_Plan.md` at the same time as the feature. A debug helper hiding inside a gameplay script
+    is invisible to the verification grep and **will ship**. Reject it in review.
 
 ---
 
@@ -350,7 +357,7 @@ Session 7. The main menu still labels Option A "(coming soon)" (see B-33).
 
 **B-27 · Name inconsistency.** `project.godot` says "Tumbang Laro", the README and GDD say
 "Tumbang Laro: Isang Laban", the main menu says "TUMBANG PRESO", and the moodboard ships a
-finished **TUMBANG PRESO** logo. Adopt the logo's name everywhere (`Dev_Plan.md` §0.3).
+finished **TUMBANG PRESO** logo. Adopt the logo's name everywhere (`Dev_Plan.md` §0.4).
 
 **B-28 · No export presets, no build, no CI.** `export_presets.cfg` is gitignored and none
 exists. The game has never been run outside the editor, and the submission needs a real build.
@@ -364,14 +371,32 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
 
 ### P0 — Make LAN work
 
-- [ ] **1. Debug player switcher (do this first — it unblocks all testing).**
-      New `scripts/systems/debug_player_switcher.gd`, autoload, guarded by `OS.is_debug_build()`
-      and inactive when `NetworkManager.is_networked()`. `F1`–`F4` select a unit directly, `Tab`
-      cycles. On switch, move input focus, swap which unit reads the bound input set, and show
-      `DEBUG · controlling TEAM A PROP (Can)` in the HUD. Fixes **B-42** — without it a local
-      Bo5 cannot be played past round 1, because round 2's Can is `player_id = 3` and unbound.
-      *Acceptance:* start a Local Match, press Tab four times, confirm you move a different unit
-      each time and the HUD names the one you are driving.
+- [ ] **1. Debug player switcher — manual control of any unit in local mode (do this first; it
+      unblocks all testing).** Full spec: `Dev_Plan.md` §3.5.
+      Two control slots. `F1`–`F4` assign a unit to the **P1** set (WASD/Space/Q),
+      `Shift`+`F1`–`F4` assign to the **P2** set (arrows/Enter/RShift), `Tab` / `Shift`+`Tab`
+      cycle each slot, `F5` drops to solo drive, `F6` resets. Control moves by **reassigning the
+      existing public `player_id` export from the outside** — unheld units get parked on `4`,
+      which is registered and permanently unbound. That needs **zero** edits to
+      `character_base.gd`. Reassign in `_unhandled_key_input`, never mid-`_physics_process`, or
+      a unit inherits a half-consumed edge-triggered press on the frame it gains control. Add a
+      deliberately-ugly `DebugBar` naming both held units with their team, role and current side,
+      refreshed on `MatchManager.round_started`.
+      Fixes **B-42** — without it a local Bo5 cannot be played past round 1, because round 2's
+      Can is `player_id = 3` and unbound.
+      ⚠️ **Must be built to the removal contract in `Dev_Plan.md` §0.3:** `debug_`/`Debug` prefix
+      on every file, class and node; debug calls gameplay and gameplay never calls debug (no
+      gameplay script may name it, not even behind an `if OS.is_debug_build()`); no `[input]`
+      map entries — read raw keys; self-disables via `if not OS.is_debug_build(): queue_free()`
+      plus a `NetworkManager.is_networked()` guard. Total footprint must be **3 files and 2
+      lines** (one autoload line in `project.godot`, one `DebugBar` instance line in
+      `Main.tscn`).
+      *Acceptance:* (a) start a Local Match, press `Tab` four times — you move a different unit
+      each time and the DebugBar names it; (b) `Shift`+`F3` puts the arrow keys on `TeamBProp`
+      and both units are drivable at once; (c) play into round 2 and confirm the swapped Can is
+      controllable, which it is not today; (d) run the verification grep from `Dev_Plan.md`
+      §3.5.5 — every hit is inside the three debug files and the two registration lines, and
+      none is in a gameplay script.
 
 - [ ] **2. Fix the LAN freeze (B-03).**
       Disable or delete the `Camera3D` node in `Main.tscn` (`Main.tscn:40-43`). It caches four
