@@ -2,12 +2,115 @@
 
 The one handoff doc. Design is in [`Tumbang_Preso_2v2_GDD.md`](Tumbang_Preso_2v2_GDD.md); the
 plan, architecture, and build status are in [`Dev_Plan.md`](Dev_Plan.md). **This file is the
-work queue.** Read §1 and §2, then start at the top of §4.
+work queue.** Read §0 for where things stand right now, then §1 and §2, then start at the top
+of §4.
 
 > **Note for the humans:** the previous version of this file had no "System Context" or "AI
 > Execution Protocol" sections. They were requested as sections to preserve verbatim, so they
 > have been **written fresh** below (§1, §2) rather than carried over. Review them once —
 > after that they are frozen and every future handoff must reproduce them unchanged.
+
+---
+
+## 0. Session log — where the project stands right now
+
+**Pass date:** 2026-07-27 · **Branch:** `claude/project-recovery-setup-2e9571` · **PR:** [#6](https://github.com/DOST-GameDEV/DOST-GameDev/pull/6)
+**Versions:** v1.1 → v1.9, nine commits, one task per commit.
+**Working copy:** `.claude/worktrees/project-recovery-setup-2e9571/` — a git worktree, **not** the
+main checkout. Opening the repo root in Godot shows `main` and none of this work. The tell is the
+build stamp: **no `vX.Y` in the bottom-right corner means you are on the old code.**
+
+### 0.1 The headline
+
+**The build was not actually broken at the parse/load level when this pass started.** That had
+already been fixed on `main` by `ec17859` (duplicate `spawn_position`) and `6f97e76` (hit-flash
+mesh path). `main` imported, booted, and loaded every scene cleanly.
+
+What was broken is what you *saw*: launching a Local Match gave you a blue sky, a sliver of ground,
+and no players. That is one bug — the third-person camera pointed away from its own character —
+not a load failure. **No rollback was needed and none was performed.** No backup branch was
+required, because nothing destructive was done.
+
+### 0.2 What shipped
+
+| Version | Commit | What |
+|---|---|---|
+| v1.1 | `1188f71` | Single build version string + on-screen stamp |
+| v1.2 | `e5a7b65` | **Fix: TPP camera aimed away from its own character** |
+| v1.3 | `ce4046b` | Moodboard design system; **fixes the invisible Back button** |
+| v1.4 | `ae97510` | Debug player switcher — local character switching (B-42) |
+| v1.5 | `2e4649a` | Per-class models — Person, Can, Tsinelas |
+| v1.6 | `8d9a242` | **B-50** P1's Guard/Dash bound to a Godot 3 keycode |
+| v1.7 | `9af8b44` | **B-51** match-result screen unclickable (cursor captured) |
+| v1.8 | `de0d4aa` | **B-52** ability cooldowns carried across rounds |
+| v1.9 | `dc9919f` | **B-53** Esc buried the result screen + Phase 6 triage |
+
+### 0.3 Root causes worth remembering
+
+**Camera (v1.2).** `SpringArm3D` pushes its children along its own **local +Z**, not −Z.
+`CameraRig.tscn` was baked at arm `(-15, 180, 0)` on the opposite assumption, which placed the
+camera 4.35 units *in front of* the character; the compensating `(0, 180, 0)` on the camera then
+aimed it further forward and 15° **up**. Measured `forward · (character − camera) = −0.972`, where
+≈ +1 is correct; now **+0.972**. Not a merge regression — it dates from `914077c`, and queue item
+13 had explicitly flagged those transforms as never eyeballed because that environment had no
+display. The warning now lives in `camera_rig.gd`'s header, because Godot strips `.tscn` comments
+on save.
+
+**"Go back" button (v1.3).** Not anchors, not z-index, not draw order — the button was correctly
+laid out and on screen the entire time. It was the stock Godot theme drawing a `#1B1B1F` button on
+a `#141419` background: roughly **1.1:1 contrast**. Start, Host Game and Local Match were equally
+invisible; Back is just where it got noticed. Fixed by adopting the design system (item 15) rather
+than recolouring one control, since a one-off would have left the same trap everywhere else.
+
+**Guard/Dash (v1.6).** `guard_dash_p1` held `physical_keycode = 16777237` — that is **Godot 3's**
+`KEY_SHIFT`, and not a valid Godot 4 keycode at all. The whole B-16 mechanic was dead for player 1:
+the Can could not block and the Tsinelas could not dash, which made the guard checks in
+`apply_stagger()`/`apply_dent()` unreachable. No code was wrong; only the binding.
+
+### 0.4 How this was verified
+
+Everything above was verified **by running the game**, not by reading code: real Metal renders at
+1152×648, synthetic `InputEventKey`s fed into handlers, and a scripted local Bo5 driven to a real
+3-0. That mattered — the camera bake, the theme contrast, the dead keybinding, the broken FPP
+self-hide and the unclickable result screen are all invisible to code review and only appear when
+something actually renders or a key is actually pressed. The throwaway harness scripts were
+deleted before the final commit.
+
+### 0.5 Blocker — needs a human
+
+🚧 **The moodboard display typeface is Harry's and was not supplied with the brief.** The theme
+ships on Godot's default font. Palette, chrome, layout logic and type scale are all
+moodboard-accurate; **only the typeface is standing in.** No substitute was downloaded — an
+unvetted font binary is both a licence and a supply-chain question, and Form 03 needs a recorded
+licence either way. Swapping it in is one line (`theme.default_font` in `ui_theme.gd`, then
+regenerate) plus adding `*.ttf`/`*.otf` to `.gitattributes` LFS. See item 15.
+
+### 0.6 Branch/PR consolidation — nothing to do
+
+Audited before touching anything, per instruction. **All five PRs are merged.** Every branch except
+this one is fully contained in `main`. The one branch reporting 11 commits "ahead" —
+`claude/godot-brawler-queue-f75049` — is a **squash-merge remnant of PR #1**; its B-02…B-12 content
+was verified already present in `main`. Therefore **no integration branch was created, nothing was
+merged, and no branch was deleted.** There is no consolidation work outstanding.
+
+### 0.7 Not done — read this before planning the next pass
+
+- **Queue items 16, 17, 19, 20** — menu logo swap, HUD pip rebuild, role-swap card, Bo5 result
+  grid. The design system they all depend on is in and applied project-wide, but those screens are
+  unchanged beyond being restyled.
+- **Item 18's team/player identification** — ground rings, `A1`/`A2`/`B1`/`B2` billboard tags, own-unit
+  chevron, off-screen edge arrows. **Class** differentiation is done (you can tell a Can from a
+  Tsinelas from a Person instantly); **team** differentiation is not.
+- **Animation.** Kenney's rig ships 32 clips. Only `idle` is wired — units slide around in their
+  idle pose. Nothing is driven by gameplay state.
+- **Six bugs found and deliberately left** — B-54 through B-59 in §3, each with the reason it was
+  not touched. B-57 is a balance question, not a defect. **B-59 is unreproduced and open**: a
+  completed match reset itself to round 1 / 0-0 twice early in testing and did not recur in six
+  later runs, including instrumented ones. The obvious suspect was tested and ruled out. If a match
+  ever restarts itself in a real playtest, start there.
+- **The design decisions in §4 "Decisions the team owes"** are all still owed. None of them can be
+  resolved by a coding agent, and Option A vs Option B in particular keeps doubling the cost of
+  every combat change.
 
 ---
 
