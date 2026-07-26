@@ -22,6 +22,9 @@ func _ready() -> void:
 	downed_flash.visible = false
 	toast_label.visible = false
 	round_banner_label.visible = false
+	# Build stamp in-match too, not just on the menu — confirms which build is
+	# actually running during a playtest without leaving the match.
+	GameVersion.attach_to(self)
 
 func _process(delta: float) -> void:
 	var t := int(ceil(RoundManager.time_left))

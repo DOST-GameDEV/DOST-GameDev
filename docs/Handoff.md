@@ -863,3 +863,13 @@ These are blocking someone's work and cannot be resolved by a coding agent.
   Fine for a LAN demo, out of scope to harden.
 - Set the base resolution (1920×1080) and stretch mode **before** building the UI theme, or every
   size gets retuned later.
+- **Build version.** Single source of truth is `application/config/version` in `project.godot`;
+  `scripts/systems/game_version.gd` (`GameVersion`, a static-only `class_name`, not an autoload)
+  reads it. Bump the minor number in the same commit as any gameplay/UI/model/scene change —
+  docs-only commits don't need it. `GameVersion.attach_to(control)` puts a dim `vX.Y` stamp in the
+  bottom-right; it's on the main menu and the in-match HUD, so which build is running is
+  confirmable on screen instead of by diffing files.
+- Adding a new `class_name` script requires a `godot --headless --import` pass before anything can
+  reference it — the global class cache is only rebuilt on import, and until then every referencing
+  script fails to parse with "Identifier not declared in the current scope". The same pass writes
+  the `.gd.uid` sidecar, which this repo tracks.
