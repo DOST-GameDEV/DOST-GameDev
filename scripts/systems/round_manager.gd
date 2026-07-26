@@ -15,7 +15,7 @@ class_name RoundManagerScript
 ##   Option B — Capture the Base + Downed/Seal: hit knocks Can out of its base circle
 ##              into a Downed state, ~2s self-right window before a Tsinelas can "seal" it.
 ## Build/test both cheaply against the same single-player loop before committing (see
-## Dev_Plan_and_Godot_Setup.md, Part 1, Build order step 2).
+## docs/Dev_Plan.md, Section 3, Phase 1).
 
 signal round_won(winning_team: int)
 

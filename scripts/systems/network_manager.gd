@@ -4,7 +4,7 @@ class_name NetworkManagerScript
 ## Autoload singleton "NetworkManager" — rough LAN pass (Session 5).
 ## ENet over Godot's high-level multiplayer API. Deliberately minimal for now:
 ## no lobby UI, no reconnect handling, no NAT/relay traversal — same-LAN only,
-## which is exactly what the GDD calls for. See docs/Handoff_Session5.md.
+## which is exactly what the GDD calls for. See docs/Handoff.md.
 ##
 ## - Host-authoritative: Downed state, seal/capture checks, timer, score
 ##   (all already live on the autoloads below RoundManager/MatchManager, which

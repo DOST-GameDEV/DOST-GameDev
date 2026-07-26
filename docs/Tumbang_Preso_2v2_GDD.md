@@ -11,15 +11,11 @@ take on before we commit. Read through, drop thoughts, let's move fast.
 
 ## 1. The Pitch
 
-A 2v2 arena brawler built on the classic street game. **Each team is 2 players: a Person
-and their Can (or Slipper).** On defense, one teammate plays the human guard tagging
-attackers while the other plays the living tin can they're protecting; on offense, one
-teammate plays the human thrower while the other plays the living slipper trying to knock
-the can flat — then the whole team swaps sides and does it again. Low-poly Filipino
-locations — kalye, probinsya, palengke. Built to look good live on demo day.
-
-*(Corrected Session 7: earlier drafts of this doc described "no human characters, two Cans
-vs two Tsinelas" — that's wrong, see Section 3.)*
+Each team is **one person + one living object** — Team 1 is a **Player + a Can**, Team 2 is
+a **Player + a Tsinelas**, and both units on a team can move and act. A 2v2 arena brawler
+where the classic street game becomes a full-contact sport: the Can side defends its turf
+while the Tsinelas side tries to knock it flat, then we swap sides and do it again. Low-poly
+Filipino locations — kalye, probinsya, palengke. Built to look good live on demo day.
 
 ---
 
@@ -27,7 +23,7 @@ vs two Tsinelas" — that's wrong, see Section 3.)*
 
 | Decision | Answer |
 |---|---|
-| Player characters | Each team = **1 Person** (tags on defense / throws on offense) + **1 Can or Slipper Prop** (carries the roster class ability). NOT two interchangeable Can/Tsinelas units — see Session 7 correction, Section 3. |
+| Player characters | Each team = **1 Person + 1 object**. Team 1: Player controls a **Person**, teammate controls the **Can**. Team 2: Player controls a **Person**, teammate controls the **Tsinelas**. Both units per team are player-controlled and can move. |
 | Match structure | **Round-based**, teams swap Attacker/Defender role each round, **Best of 5** |
 | Camera/Genre | **Full 3D, low-poly, third-person** |
 | Multiplayer | **LAN**, same wifi, different devices (Godot ENet, host + join by local IP) |
@@ -38,23 +34,7 @@ vs two Tsinelas" — that's wrong, see Section 3.)*
 
 ## 3. How a Match Actually Works
 
-**Session 7 correction:** it's 4 players total, not 2. Each team is 2 players — a **Person**
-and a **Prop** (their Can or Slipper) — not two identical Can/Tsinelas units. Both units on
-a team move independently and are separately player-controlled.
-
-- Each round: **Team A's Person + Can** defend vs **Team B's Person + Slipper** attack (or
-  vice versa). The whole team's *side* (Can vs Slipper) swaps next round; a given player
-  stays Person or stays Prop for the whole match, only which side their team is on flips.
-- **Person's job:** the human half of the team. On defense, tags attackers (the classic
-  Tumbang Preso "It"/guard) via a short-range Tag. On offense, throws the Slipper at the
-  Can via a longer-range Throw. Both are one action — Tag/Throw — on the same input,
-  automatically chosen by which side the Person's team is on this round; the player
-  doesn't pick. *(Implemented Session 8: see person_action.gd. Distinct from the shared
-  Bump/melee hit — a spawned ranged hitbox instead — though hit resolution itself
-  (stagger/downed/seal/dent) is generic across Bump, Tag/Throw, and every roster special.)*
-- **Prop's job:** the Can or Slipper. Carries the roster's class ability (Quick Stand,
-  Bakya Bash, etc. — Section 4) and is what the round-win check (Option A/B below) actually
-  watches. Hits on a Person are stun-only flavor with no effect on round outcome.
+- Each round: **Team A (Person + Can)** defends vs **Team B (Person + Tsinelas)** attacks. Roles swap next round.
 - **Round timer:** 90 seconds.
 - **Match winner:** first team to 3 round wins (Bo5).
 
@@ -66,8 +46,6 @@ both are good. Keeping both on the table for now:
 **Option A — Stock/Life (dents):** Cans have a health bar. Slippers win the round by fully
 denting a Can. Cans win by the timer running out, or by knocking Slippers out of bounds a
 set number of times (new ring-out idea, not previously in the doc).
-*(Implemented Session 7: 3 dents fully dents a Can, both tracked Cans need to be fully
-dented — see round_manager.gd. Ring-outs are still not implemented — separate item.)*
 
 **Option B — Capture the Base + Downed/Seal:** A circle marks each Can's home base. A solid
 hit knocks the Can out of the circle, which puts it in a **Downed** state — it gets a short
@@ -87,14 +65,12 @@ rewrite.
 
 ## 4. Roster (draft)
 
-**Session 7 note:** the roster below is for the **Prop** half of a team (the Can or
-Slipper) — see Section 3. The **Person** half doesn't have a roster/class — every Person
-is identical, Move + Bump + the one shared Tag/Throw action (Session 8, see Section 3).
-Whether Person ever gets its own roster (parallel to the 6 Prop characters below) instead
-of staying one generic design is still an open question, just no longer a functional gap.
-
-Shared basics for everyone: **Move**, **Bump** (light melee, small stagger, no cooldown),
-**Guard/Dash** (Cans block, Tsinelas dash-evade), one **Special Ability** per character.
+Each team pairs one **Person** with one **Can** (Team 1) or **Tsinelas** (Team 2) — both
+units are player-controlled and mobile. Shared basics for everyone: **Move**, **Bump**
+(light melee, small stagger, no cooldown), **Guard/Dash** (Cans block, Tsinelas dash-evade),
+one **Special Ability** per character. Person units use a separate, simpler moveset (TBD —
+likely Move + Bump + an assist/support action to help their Can or Tsinelas teammate) since
+they're the new addition to the roster.
 
 ### 🥫 Can Class (Defense)
 | Character | Vibe | Special |

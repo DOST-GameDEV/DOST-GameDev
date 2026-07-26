@@ -4,8 +4,8 @@ class_name CharacterBase
 ## Shared controller for every unit — both the human Person and the Can/Slipper
 ## Prop (see `is_person`/`is_can` below). A team is 2 players: 1 Person + 1 Prop,
 ## not two Props. Each of the 6 roster Props = this scene + a different
-## AbilityBase resource plugged into `ability`; Persons currently have no unique
-## ability (see docs/Handoff_Session7.md — open item).
+## AbilityBase resource plugged into `ability`; every Person shares one
+## Tag/Throw ability (see person_action.gd).
 ## Stock/Downed round-win logic is NOT here on purpose (see Section 3 of the GDD) —
 ## it lives in its own decoupled system so Option A vs Option B can be swapped freely.
 

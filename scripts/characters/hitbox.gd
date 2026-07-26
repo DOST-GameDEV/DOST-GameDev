@@ -3,7 +3,7 @@ class_name Hitbox
 
 ## Attach as a child Area3D on a character (or spawn transiently for a Special).
 ## Put it on physics layer "hitbox" / mask "hurtbox" (set in the editor — see
-## docs/Dev_Plan_and_Godot_Setup.md for the layer-naming convention once we add one;
+## docs/Dev_Plan.md for the layer-naming convention once we add one;
 ## for now both Hitbox and Hurtbox default to layer 1 so bump works out of the box,
 ## tighten this once we have more than one interaction type).
 
