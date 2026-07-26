@@ -31,6 +31,10 @@ enum State { NORMAL, STAGGERED, DOWNED, SEALED }
 
 @export var ability: AbilityBase
 @export var is_can: bool = true  ## true = Can (defense), false = Tsinelas (offense)
+## Which local input set this character reads from (1 or 2). Lets two characters
+## share one keyboard without both moving on the same WASD press — see
+## project.godot [input]: every action is suffixed "_p1"/"_p2".
+@export_range(1, 2, 1) var player_id: int = 1
 
 signal state_changed(new_state: State)
 
@@ -57,7 +61,7 @@ func _physics_process(delta: float) -> void:
 	if _bump_active_time_left > 0.0:
 		_bump_active_time_left -= delta
 
-	if state == State.NORMAL and Input.is_action_just_pressed("bump"):
+	if state == State.NORMAL and Input.is_action_just_pressed(_action("bump")):
 		_bump_active_time_left = BUMP_ACTIVE_TIME
 
 	match state:
@@ -70,7 +74,7 @@ func _physics_process(delta: float) -> void:
 				_downed_time_left -= delta
 				if _downed_time_left <= 0.0:
 					_downed_self_rightable = false # window expired, now sealable
-			if Input.is_action_just_pressed("bump") and _downed_self_rightable:
+			if Input.is_action_just_pressed(_action("bump")) and _downed_self_rightable:
 				self_right()
 		State.SEALED:
 			pass # awaiting round reset / respawn logic
@@ -81,7 +85,7 @@ func _physics_process(delta: float) -> void:
 		move_and_slide()
 		return
 
-	var input_dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	var input_dir := Input.get_vector(_action("move_left"), _action("move_right"), _action("move_up"), _action("move_down"))
 	var direction := (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
 
 	if direction:
@@ -93,7 +97,7 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
-	if Input.is_action_just_pressed("special_ability") and ability:
+	if Input.is_action_just_pressed(_action("special_ability")) and ability:
 		ability.activate(self)
 
 ## Called on this character when it's hit by an opponent's Hitbox (see hitbox.gd).
@@ -139,6 +143,11 @@ func seal() -> bool:
 ## ability-spawned hitboxes (requires_bump_window = false) ignore it.
 func is_hitbox_active() -> bool:
 	return _bump_active_time_left > 0.0
+
+## Maps a base action name (e.g. "move_left") to this character's own input
+## action (e.g. "move_left_p1" / "move_left_p2"), per `player_id`.
+func _action(base_name: String) -> String:
+	return "%s_p%d" % [base_name, player_id]
 
 func _set_state(new_state: State) -> void:
 	if new_state == state:
