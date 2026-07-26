@@ -148,6 +148,15 @@ func report_round_win(can_team_won: bool) -> void:
 	round_won.emit(0 if can_team_won else 1)
 	MatchManager.report_round_result(can_team_won)
 
+## B-14: nothing reset this autoload between matches, so a second match
+## resumed the first one's timer/tracked-Can state. Call before a fresh match
+## starts (see main_menu.gd _go_to_match()).
+func reset() -> void:
+	clear_tracked_cans()
+	time_left = ROUND_TIME
+	round_active = false
+	_sync_accum = 0.0
+
 ## Client-side mirror of the host's timer/round-active state. Unreliable is
 ## fine here — it's called every physics frame while a round is live and one
 ## dropped packet just means the HUD is stale for a frame, never wrong for long.

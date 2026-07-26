@@ -15,6 +15,15 @@ var team_b_wins: int = 0
 var round_number: int = 0
 var team_a_is_can: bool = true # roles swap each round
 
+## B-14: nothing reset this autoload between matches, so a second match
+## resumed the first one's score/round number. Call before a fresh match
+## starts (see main_menu.gd _go_to_match()).
+func reset() -> void:
+	team_a_wins = 0
+	team_b_wins = 0
+	round_number = 0
+	team_a_is_can = true
+
 ## Session 6: host-authoritative, same pattern as RoundManager. Only the host
 ## (or a non-networked single-PC game) ever calls begin_next_round() /
 ## report_round_result() for real; those RPC the resulting fields out to
