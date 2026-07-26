@@ -85,12 +85,19 @@ var _downed_time_left: float = 0.0
 var _downed_self_rightable: bool = false ## true only within the self-right window
 var _bump_active_time_left: float = 0.0
 var _speed_multiplier: float = 1.0 ## set by hazard zones (mud, Shatter Trap patch, etc.)
+## The character's own always-present melee Hitbox (requires_bump_window = true)
+## — cached so opening the bump window can sweep already-overlapping targets
+## (see _open_bump_window, B-08) without a scene-tree lookup every press.
+var _melee_hitbox: Hitbox = null
 
 func _ready() -> void:
 	for child in find_children("*", "Hurtbox", true, false):
 		(child as Hurtbox).owner_character = self
 	for child in find_children("*", "Hitbox", true, false):
-		(child as Hitbox).owner_character = self
+		var hitbox := child as Hitbox
+		hitbox.owner_character = self
+		if hitbox.requires_bump_window:
+			_melee_hitbox = hitbox
 
 func _physics_process(delta: float) -> void:
 	# Session 6: the bump-active window has to decay on every peer, not just
@@ -116,7 +123,7 @@ func _physics_process(delta: float) -> void:
 		ability.tick(delta)
 
 	if state == State.NORMAL and Input.is_action_just_pressed(_action("bump")):
-		_bump_active_time_left = BUMP_ACTIVE_TIME
+		_open_bump_window()
 		# Tell the host our bump window just opened, since the host is the one
 		# resolving Hitbox/Hurtbox overlaps now (see hitbox.gd) and it can't
 		# see this peer's local-only timer any other way. No-op if we ARE the
@@ -245,6 +252,15 @@ func seal() -> bool:
 	_set_state(State.SEALED)
 	return true
 
+## Opens the press-to-bump window and immediately sweeps for anyone already
+## overlapping the melee Hitbox (B-08) — area_entered alone only catches
+## someone who overlaps AFTER the window opens, so walking into someone and
+## then pressing bump (the natural order) used to never register a hit.
+func _open_bump_window() -> void:
+	_bump_active_time_left = BUMP_ACTIVE_TIME
+	if _melee_hitbox:
+		_melee_hitbox.sweep_overlaps()
+
 ## Whether this character's press-to-bump window is currently live. The melee
 ## Hitbox (requires_bump_window = true) checks this before landing a stagger;
 ## ability-spawned hitboxes (requires_bump_window = false) ignore it.
@@ -263,7 +279,7 @@ func is_self_rightable() -> bool:
 @rpc("any_peer", "call_local", "reliable")
 func _rpc_notify_bump() -> void:
 	if NetworkManager.is_networked() and NetworkManager.is_host():
-		_bump_active_time_left = BUMP_ACTIVE_TIME
+		_open_bump_window()
 
 ## Client → host RPC (B-02): a non-host activator's own copy of `ability` already
 ## ran _do_activate() locally (see the special_ability check above) for its

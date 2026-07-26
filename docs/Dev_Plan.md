@@ -155,7 +155,10 @@ Fix the P1 bugs, then playtest the loop end to end for the first time.
       guards whether it does anything.)*
 - [x] **B-07** stagger cancelling Downed *(Fixed: apply_stagger() now also skips DOWNED, not
       just SEALED, so a hit during the self-right window no longer rescues a Downed Can.)*
-- [ ] **B-08** bump missing already-overlapping targets
+- [x] **B-08** bump missing already-overlapping targets *(Fixed: Hitbox.sweep_overlaps()
+      re-resolves everyone already in get_overlapping_areas() when the bump window opens,
+      called from a new shared _open_bump_window() helper used by both the local press and
+      the host-side RPC handler.)*
 - [ ] **B-09** friendly fire — add a `team_id` to `CharacterBase` and gate `Hitbox`
 - [ ] **B-10** per-round reset covers all four units and their positions
 - [ ] **B-11** cooldown consumed on a no-op activation

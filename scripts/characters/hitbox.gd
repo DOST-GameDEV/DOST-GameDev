@@ -26,6 +26,15 @@ func _ready() -> void:
 	area_entered.connect(_on_area_entered)
 	monitoring = true
 
+## B-08: called by CharacterBase right when its bump window opens. area_entered
+## only fires on a NEW overlap, so someone already standing inside this Hitbox
+## at press time (the normal case — you walk into someone, then press bump)
+## never generated one, and the bump silently missed. Re-run the same
+## resolution against everyone already overlapping.
+func sweep_overlaps() -> void:
+	for area in get_overlapping_areas():
+		_on_area_entered(area)
+
 func _on_area_entered(area: Area3D) -> void:
 	if not (area is Hurtbox):
 		return
