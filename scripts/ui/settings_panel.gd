@@ -17,6 +17,9 @@ signal back_pressed
 @onready var status_label: Label = %SettingsStatusLabel
 @onready var reset_all_button: Button = %ResetAllButton
 @onready var back_button: Button = %BackButton
+@onready var sensitivity_slider: HSlider = %SensitivitySlider
+@onready var sensitivity_value_label: Label = %SensitivityValueLabel
+@onready var invert_y_check: CheckBox = %InvertYCheck
 
 ## action name -> the Button showing/capturing its key, so a rebind can
 ## refresh just that one row's label without rebuilding the whole list.
@@ -29,6 +32,16 @@ func _ready() -> void:
 	reset_all_button.pressed.connect(_on_reset_all_pressed)
 	back_button.pressed.connect(_on_back_pressed)
 	SettingsManager.binding_changed.connect(_on_binding_changed)
+	# Item 14.
+	sensitivity_slider.value = SettingsManager.mouse_sensitivity
+	sensitivity_value_label.text = "%.1fx" % SettingsManager.mouse_sensitivity
+	invert_y_check.button_pressed = SettingsManager.invert_y
+	sensitivity_slider.value_changed.connect(_on_sensitivity_changed)
+	invert_y_check.toggled.connect(SettingsManager.set_invert_y)
+
+func _on_sensitivity_changed(value: float) -> void:
+	SettingsManager.set_mouse_sensitivity(value)
+	sensitivity_value_label.text = "%.1fx" % value
 
 func _build_rows() -> void:
 	for child in bindings_list.get_children():

@@ -44,9 +44,25 @@ const ACTION_LABELS: Dictionary = {
 ## before any user override is ever applied. See _capture_defaults().
 var _default_keycodes: Dictionary = {}
 
+const SETTINGS_SECTION_CAMERA: String = "camera"
+## Item 14: multiplier on CameraRig.BASE_SENSITIVITY — kept as a plain
+## multiplier rather than an absolute degrees-per-pixel value here so the
+## slider range (0.2x - 3.0x) reads the same regardless of whatever the rig's
+## own base feels right at.
+var mouse_sensitivity: float = 1.0
+var invert_y: bool = false
+
 func _ready() -> void:
 	_capture_defaults()
 	_load_and_apply()
+
+func set_mouse_sensitivity(value: float) -> void:
+	mouse_sensitivity = value
+	_save()
+
+func set_invert_y(value: bool) -> void:
+	invert_y = value
+	_save()
 
 ## Snapshots each rebindable action's current (project-default) key so
 ## reset_action_to_default() has something to restore without hardcoding a
@@ -104,6 +120,8 @@ func _save() -> void:
 	config.load(SETTINGS_PATH)
 	for action in REBINDABLE_ACTIONS:
 		config.set_value(SETTINGS_SECTION, action, _first_physical_keycode(action))
+	config.set_value(SETTINGS_SECTION_CAMERA, "mouse_sensitivity", mouse_sensitivity)
+	config.set_value(SETTINGS_SECTION_CAMERA, "invert_y", invert_y)
 	var err := config.save(SETTINGS_PATH)
 	if err != OK:
 		push_warning("SettingsManager: failed to save %s (error %d)" % [SETTINGS_PATH, err])
@@ -111,7 +129,7 @@ func _save() -> void:
 func _load_and_apply() -> void:
 	var config := ConfigFile.new()
 	if config.load(SETTINGS_PATH) != OK:
-		return # no saved settings yet — project.godot defaults stand as-is
+		return # no saved settings yet — project.godot/coded defaults stand as-is
 	for action in REBINDABLE_ACTIONS:
 		if config.has_section_key(SETTINGS_SECTION, action):
 			var keycode: int = config.get_value(SETTINGS_SECTION, action)
@@ -120,3 +138,7 @@ func _load_and_apply() -> void:
 				var event := InputEventKey.new()
 				event.physical_keycode = keycode
 				InputMap.action_add_event(action, event)
+	if config.has_section_key(SETTINGS_SECTION_CAMERA, "mouse_sensitivity"):
+		mouse_sensitivity = config.get_value(SETTINGS_SECTION_CAMERA, "mouse_sensitivity")
+	if config.has_section_key(SETTINGS_SECTION_CAMERA, "invert_y"):
+		invert_y = config.get_value(SETTINGS_SECTION_CAMERA, "invert_y")

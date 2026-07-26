@@ -730,13 +730,30 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
         `main.gd::_start_local_test()` now activates `TeamAProp`'s rig by default (matching the
         not-yet-built debug switcher's own documented P1 default), with `AimSource.MOUSE`.
 
-- [ ] **14. Mouse capture and sensitivity.**
+- [x] **14. Mouse capture and sensitivity.**
       `Input.MOUSE_MODE_CAPTURED` during a match, released on pause/Esc/focus-loss. Sensitivity
       slider and invert-Y in `SettingsManager` next to the keybinds. Local test uses
       `AimSource.MOVEMENT` for every unit that isn't the debug-controlled one — two players on
       one keyboard cannot both mouse-look, and that is accepted, not solved.
       *Acceptance:* Esc releases the cursor and reopens it on resume; sensitivity persists across
       a restart.
+      `main.gd` captures the mouse when a match's `_ready()` runs, `ui_cancel` (Esc) toggles it
+      captured/visible (there's no real pause menu yet — B-20 — to hang a proper resume flow off
+      of, so pressing Esc again just re-captures), and `NOTIFICATION_APPLICATION_FOCUS_OUT`
+      releases it outright. `MainMenu` and `MatchResult`'s Menu button both force it visible
+      defensively. `SettingsManager` gained `mouse_sensitivity` (a plain multiplier on
+      `CameraRig.BASE_SENSITIVITY`, 0.2x–3.0x) and `invert_y`, both persisted to the same
+      `settings.cfg` as the keybinds, with a slider + checkbox added to `SettingsPanel.tscn`.
+      `CameraRig.apply_mouse_delta()` reads both.
+      ⚠️ **Headless limitation, not a code bug:** `Input.mouse_mode` cannot actually be driven to
+      `MOUSE_MODE_CAPTURED` in this environment — there is no real display/cursor for the engine
+      to capture, so the assignment silently has no effect and `Input.mouse_mode` reads back
+      `MOUSE_MODE_VISIBLE` regardless. **Confirmed with a live run:** `SettingsManager.set_mouse_sensitivity(2.0)`
+      then `apply_mouse_delta(Vector2(100, 50))` produced exactly double the 1.0x case's rotation
+      (−30° yaw, −15° pitch instead of −15°/−7.5°); flipping `invert_y` flipped the pitch's sign
+      from negative to positive for the same input. The sensitivity/invert-Y **math** is
+      confirmed correct. The capture/Esc/focus-loss **lifecycle** could not be exercised at all
+      in this environment and needs a human with a real mouse and window.
 
 ### P3 — UI overhaul (moodboard)
 

@@ -41,4 +41,5 @@ func _on_menu_pressed() -> void:
 	MatchManager.reset()
 	RoundManager.reset()
 	GameLaunch.reset()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE # item 14: Main.tscn captures it for the match
 	get_tree().change_scene_to_file("res://scenes/ui/MainMenu.tscn")
