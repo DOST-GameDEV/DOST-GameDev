@@ -713,6 +713,27 @@ tested and does **not** hold: neither key matches `ui_accept`, and the button ho
 Recorded rather than closed, because "I could not reproduce it" is not "it does not happen". If a
 match ever restarts itself in a real playtest, start here.
 
+**B-60 · Pressing WASD rotated the camera of the unit you were driving. (NEW)**
+`character_base.gd` called `look_at(global_position + direction, ...)` on *every* movement input,
+including for the unit whose `CameraRig` is mouse-aimed. Because the rig is a **child** of the
+body, snapping the body's yaw to the WASD direction dragged the camera round with it: aim 90° left,
+hold `D`, and the camera flipped a full **180°**. `camera_rig.gd`'s own header already described the
+intended contract — `look_at()` applies "when this rig's aim_source is MOVEMENT" — but
+`character_base.gd` never knew about `aim_source` and so never honoured it.
+Compounding it, movement was read in **world space** (B-05), which was right when the only camera
+was the fixed-angle `ArenaCamera` and became wrong the moment the per-character FPP/TPP rigs made
+the camera turn with the player: in first person, `W` has to go where you are looking.
+**[FIXED]** the two halves are coupled and both landed together. A mouse-aimed unit now reads WASD
+in the **body's** frame (so `W` is "where I'm looking") and does **not** call `look_at()` — the rig
+owns yaw. Every other unit (remote peers, local-test dummies, `aim_source = MOVEMENT`) keeps the
+original world-space scheme *and* its `look_at()`, which is correct for a unit nobody is aiming.
+Attacks now fire where you are looking, which is what B-05 actually wanted.
+Verified by driving a live instance: after a 90° mouse-look, holding each of W/A/S/D leaves body
+yaw and camera forward **completely unchanged** (0.0° drift, was up to 180°), while movement
+resolves to along-facing `+1.00` for W, `-1.00` for S, and right-of-facing `±1.00` for D/A. A
+MOVEMENT-aimed unit was regression-checked in the same run: still moves world −Z on `W` from a 90°
+yaw, and still turns to face its own movement.
+
 **B-28 · No export presets, no build, no CI.** `export_presets.cfg` is gitignored and none
 exists. The game has never been run outside the editor, and the submission needs a real build.
 
