@@ -12,7 +12,8 @@ static func spawn_pulse_hitbox(
 	radius: float,
 	duration: float,
 	forces_downed: bool = false,
-	local_offset: Vector3 = Vector3.ZERO
+	local_offset: Vector3 = Vector3.ZERO,
+	follow_character: bool = false
 ) -> void:
 	if character == null or not is_instance_valid(character):
 		return
@@ -31,8 +32,18 @@ static func spawn_pulse_hitbox(
 	shape.shape = sphere
 	area.add_child(shape)
 
-	character.get_tree().current_scene.add_child(area)
-	area.global_position = character.global_position + character.transform.basis * local_offset
+	# B-43: Flick Dash's own comment said the hitbox "rides along with" the
+	# dash, but every caller parented it to current_scene at a fixed world
+	# position — fine for a stationary pulse (Spin Guard, Bagsak Bomb), but a
+	# static sphere at the activation point while the character dashes away
+	# from it for a dash-throw. follow_character parents it to the character
+	# instead, as a plain local-offset child, so it moves with them for free.
+	if follow_character:
+		character.add_child(area)
+		area.position = local_offset
+	else:
+		character.get_tree().current_scene.add_child(area)
+		area.global_position = character.global_position + character.transform.basis * local_offset
 
 	var timer := character.get_tree().create_timer(duration)
 	timer.timeout.connect(func() -> void:
