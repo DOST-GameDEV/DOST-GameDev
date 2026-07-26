@@ -90,40 +90,42 @@ Legend: **[x]** built and working · **[~]** built but broken or unverified · *
 | Area | State | Notes |
 |---|---|---|
 | Project scaffold, folders, `.gitignore`, LFS attributes | [x] | |
-| `CharacterBase` — move, gravity, per-player input map | [x] | Playtested. No rotation, no dash — B-05, B-16. |
+| `CharacterBase` — move, gravity, per-player input map | [x] | Rotation (B-05) and Guard/Dash (B-16) fixed this pass — docs were stale, saying "no rotation, no dash." |
 | `AbilityBase` resource pattern (one scene + a plugged-in Resource per character) | [x] | Pattern is sound and worth keeping. |
-| `Hitbox` / `Hurtbox` + press-to-bump active window | [~] | Layers are correct (Hurtbox L2/M0, Hitbox L0/M2). Misses already-overlapping targets (B-08), no team check (B-09). |
-| Downed / self-right / Seal state machine | [~] | Any stagger cancels Downed (B-07). |
-| Option A — dents (health) round win | [~] | Wired end to end; never human-verified. Menu still calls it "coming soon" (B-26). |
-| Option B — Downed → Seal round win | [~] | Wired end to end; broken by B-07. |
-| `RoundManager` (90s timer, win reporting) | [~] | Starts on the host now (B-01 fixed); a **late-joining client never learns a round started** (B-29). |
-| `MatchManager` (Bo5, role swap) | [x] | Bo5-to-3 early win **already implemented** (`WINS_NEEDED = 3`, `match_manager.gd:43`). No match reset (B-14), no end-of-match flow (B-37). |
-| `NetworkManager` (ENet host/join) | [x] | Connects fine. Everything downstream is where the trouble is. |
-| Networked spawning + movement replication | [~] | Works; snaps (no interpolation); Props spawn with no ability (B-04); `player_id` never assigned (B-30). |
-| Host-authoritative combat | [~] | Correct for Bump; silently drops every special (B-02). |
-| HUD (timer, Bo5, round, role, dent counter, downed flash) | [~] | Functional but placeholder-styled. Client score is stale (B-38). Full rebuild in §4. |
-| Main menu + mode picker | [~] | **No back button** (B-34); disabled mode is selectable and proceeds (B-33). |
-| Settings — rebindable, persistent controls | [x] | Rebinds an action nothing reads (B-16); allows duplicates (B-22); P2 bindings are dead in LAN (B-30). |
-| `ArenaCamera` follow/zoom | [~] | Crashes every frame in networked play (B-03 — **this is the reported LAN freeze**). Being retired (§3.4). |
-| `HazardZone` slow-zone | [~] | Untested; edge cases in B-17. |
-| Out-of-bounds / kill plane / arena walls | [ ] | Nothing. Falling off the map = infinite fall + camera follows forever (B-15, B-35). |
-| Per-character camera rigs (FPP/TPP) | [ ] | §3. |
-| Round intermission / role-swap beat | [ ] | Rounds currently roll over in the same frame (B-37). §4.6. |
-| Team identity on `CharacterBase` | [ ] | No `team_id` exists. Blocks friendly-fire fix **and** three UI items (B-09). |
+| `Hitbox` / `Hurtbox` + press-to-bump active window | [x] | Layers correct; B-08 (already-overlapping) and B-09 (team check) both fixed. |
+| Downed / self-right / Seal state machine | [x] | B-07 (stagger cancelling Downed) fixed. |
+| Option A — dents (health) round win | [~] | Wired end to end; never human-verified. Menu label fixed (B-33). |
+| Option B — Downed → Seal round win | [~] | Wired end to end; B-07 fixed. Still never human-verified. |
+| `RoundManager` (90s timer, win reporting) | [~] | B-01 fixed and now runtime-verified (two-instance headless test). Late-join sync (B-29/B-48), round-end sync (B-18), and sync throttling (B-19) all fixed this pass. |
+| `MatchManager` (Bo5, role swap) | [x] | Bo5-to-3 early win **already implemented** (`WINS_NEEDED = 3`, `match_manager.gd:43`). `reset()` added (B-14); no dedicated end-of-match result screen yet (B-37 UI half). |
+| `NetworkManager` (ENet host/join) | [x] | Connects fine. Runtime-verified this pass (headless `--host`/`--join`). |
+| Networked spawning + movement replication | [~] | Works; snaps (no interpolation — unchanged). Props' ability and `player_id` both fixed (B-04, B-30). Join index stabilized (B-21). |
+| Host-authoritative combat | [x] | B-02 fixed (ability replication). |
+| HUD (timer, Bo5, round, role, dent counter, downed flash) | [~] | Functional but placeholder-styled. Client score fixed for late joiners (B-38). Full visual rebuild still in §4. |
+| Main menu + mode picker | [x] | Back button added (B-34); Option A label fixed (B-33). |
+| Settings — rebindable, persistent controls | [x] | Guard/Dash now reads its action (B-16); duplicate bindings rejected (B-22). |
+| `ArenaCamera` follow/zoom | [~] | **B-03 fixed, runtime-verified** — the crash-loop the original report described reproduced live even after the first fix attempt (`_clear_local_test_characters()` never removed local-test nodes from the target list); now clean. Still an average-position broadcast cam, not per-character rigs — being retired per §3.4 whenever that work happens. |
+| `HazardZone` slow-zone | [x] | B-17 fixed (null check, zone stacking, expiry cleanup). Still not human-playtested. |
+| Out-of-bounds / kill plane / arena walls | [x] | B-15/B-35 fixed: 4 walls + a `KillPlane` respawning to `CharacterBase.spawn_position`. Camera still isn't per-character (see `ArenaCamera` row) — the kill plane just bounds the exposure window. |
+| Per-character camera rigs (FPP/TPP) | [ ] | §3. Not attempted this pass — this is UI/camera architecture work, not a bug fix. |
+| Round intermission / role-swap beat | [ ] | Rounds still roll over in the same frame — this is UI/flow content (§4.6), not a bug. Full-unit reset itself is fixed (see B-10/B-37 in Handoff §3). |
+| Team identity on `CharacterBase` | [x] | `team` (int) fixed before this pass; friendly-fire gated in `hitbox.gd`. Docs were stale saying this didn't exist. |
+| Pause / return to menu | [x] | **NEW.** B-20 — Esc overlay, Resume/Return to Menu, wired to the match/autoload resets above. |
+| Match reset between matches | [x] | **NEW.** B-14 — `MatchManager.reset()`/`RoundManager.reset()`. |
 
 ### Content
 
 | Area | State | Notes |
 |---|---|---|
-| Person's Tag / Throw action | [~] | `person_action.gd` + `.tres` exist. Fires toward world −Z only (B-05). Moodboard specs a **charged, aimed** throw instead (B-45). |
-| Sardinas — Quick Stand | [~] | Script + `.tres` exist. Cannot be activated at all (B-06). |
-| Palayok, Bilao, Dyaryo, Bakya, Havaianas specials | [~] | Scripts exist. **No `.tres` resources, not attached to anything, unreachable in game.** |
+| Person's Tag / Throw action | [~] | `person_action.gd` + `.tres` exist. B-05 fixed (fires on facing, not always −Z). Moodboard specs a **charged, aimed** throw instead (B-45) — still a design decision, not built. |
+| Sardinas — Quick Stand | [x] | B-06 fixed (reachable while Downed). |
+| Palayok, Bilao, Dyaryo, Bakya, Havaianas specials | [~] | Scripts exist; `.tres` resources now created for all five (B-24) — mechanically assignable/testable. **Still no character-select UI** to pick between them in game; that's the content-heavy half of B-24, not attempted. |
 | Character selection | [ ] | No UI, no data. |
 | Character scenes (`scenes/characters/cans/`, `tsinelas/`) | [ ] | Empty. Everything is one grey capsule. |
-| Maps — Eskinita, Bayan Plaza | [ ] | Names only. One 40×40 box floor exists. |
-| Map hazards (jeepney lane, mud, carabao) | [ ] | `HazardZone` is the reusable piece; nothing placed. |
+| Maps — Eskinita, Bayan Plaza | [ ] | Names only. One 40×40 box floor, now with walls + a kill plane (B-15/B-35). |
+| Map hazards (jeepney lane, mud, carabao) | [ ] | `HazardZone` is the reusable piece (fixed this pass, B-17); nothing placed. |
 | Art, animation, VFX | [ ] | `assets/` is empty except `.gitkeep`s. Moodboard now exists — see §4. |
-| Audio | [ ] | Nothing. No hit feedback of any kind (B-44). |
+| Audio | [ ] | Nothing. A first-pass universal hit-feedback flash exists now (B-44) — no sound/particles/hitstop/screenshake yet, those need real assets. |
 | UI theme / design system | [ ] | §4. Moodboard delivered, tokens extracted, nothing built. |
 | Broadcast/spectator cam | [ ] | GDD Section 6 stretch. `ArenaCamera` becomes this (§3.4). |
 | Trailer + demo video | [ ] | |
@@ -468,14 +470,14 @@ Settle it before the deadline, not during it.
 | Screen | Exists | Work |
 |---|---|---|
 | Title | [~] | Logo bitmap replaces the `Label`. Buttons: Play · Settings · Quit. |
-| Play menu | [~] | Restyle. **Add Back** (B-34). **Disable Option A properly or drop the "coming soon" label** (B-33). |
+| Play menu | [~] | Back button and Option A label both fixed (B-34, B-33) — restyle to the moodboard still not done. |
 | Character select | [ ] | 6 Props + Person. Feeds `GameLaunch`. Phase 3. |
 | Lobby | [ ] | Peer list, team assignment, ready-up, host "Start" (B-13). |
 | HUD | [~] | Full rebuild, §4.4. |
 | Round intermission / role swap | [ ] | §4.6. Requested item. |
-| Match result | [ ] | Bo5 grid, winner, Rematch / Menu. |
-| Pause | [ ] | Esc → Resume / Settings / Quit to Menu (B-20). |
-| Settings | [x] | Restyle only. Add mouse sensitivity + invert-Y (§3.2), add duplicate-binding detection (B-22). |
+| Match result | [ ] | Bo5 grid, winner, Rematch / Menu. A plain Return-to-Menu path exists now (B-20's pause overlay) but not this dedicated screen. |
+| Pause | [x] | Esc → Resume / Return to Menu (B-20) — no Settings-from-pause yet, restyle still not done. |
+| Settings | [x] | Duplicate-binding detection added (B-22). Restyle, mouse sensitivity + invert-Y (§3.2) still not done. |
 
 ### 4.4 HUD layout
 
@@ -605,44 +607,74 @@ match starts, is playable, can be won, and rolls into the next round.
 ### Phase 0 — Make LAN work (blocking, do first)
 
 - [x] **B-01** — `MatchManager` host never emitted `round_started` / `match_won` locally.
-      *(Fixed: `_sync_round_started` / `_sync_match_won` are now `call_local`. **Still unverified
-      by a human** — two editor instances, `--host` / `--join=127.0.0.1`, both must see the
-      timer move.)*
-- [ ] **B-03** — `ArenaCamera` dereferences four freed nodes every frame after
-      `_clear_local_test_characters()`. **This is the reported LAN freeze.** Disable the
-      scene-level camera in the same commit as the rigs (§3.4).
-- [ ] **B-29** — a client joining after the host started never receives `_sync_round_started`,
+      *(Fixed: `_sync_round_started` / `_sync_match_won` are now `call_local`. **Now verified**
+      with the actual Godot 4.7 binary, headless, `--host` / `--join=127.0.0.1` — both peers
+      showed a matching, moving timer.)*
+- [x] **B-03** — `ArenaCamera` dereferences four freed nodes every frame after
+      `_clear_local_test_characters()`. **This is the reported LAN freeze.**
+      *Fixed and runtime-verified — this reproduced live even after an earlier fix attempt added
+      `add_target()`/`remove_target()`, because `_clear_local_test_characters()` never called
+      `remove_target()` on the four local nodes before freeing them. Now does, and the
+      `_process()` target-pruning loop no longer uses a typed-array `.filter()` that throws on a
+      freed reference. The scene-level camera itself is NOT disabled/replaced — the rigs (§3.4)
+      remain future work.*
+- [x] **B-29** — a client joining after the host started never receives `_sync_round_started`,
       so its round number, roles, tracked Cans and HUD are permanently stale. Host must
       `rpc_id()` full match state to each peer on connect.
-- [ ] **B-02** — abilities spawn their hitbox only on the activating peer and only resolve on
+      *Fixed and runtime-verified: a client joining ~3s into round 1 received the host's exact
+      state (`round=1 team_a_is_can=true wins=0-0 time_left=87.0`). Does NOT replay
+      `_on_match_round_started` — that would reset/reposition every unit just because a peer
+      joined mid-round.*
+- [x] **B-02** — abilities spawn their hitbox only on the activating peer and only resolve on
       the host, so every special and Tag/Throw is a no-op for anyone who isn't hosting.
-- [ ] **B-04** — networked Props spawn with `ability = null`; only Persons get one.
-- [ ] **B-30** — `player_id` is never assigned to networked characters; all four read `*_p1`.
-- [ ] **B-48** — `GameLaunch.game_mode` is never sent over the network; host and client can run
-      different modes.
+      *(Landed before this pass; docs were stale.)*
+- [x] **B-04** — networked Props spawn with `ability = null`; only Persons get one.
+      *(Landed before this pass; docs were stale.)*
+- [x] **B-30** — `player_id` is never assigned to networked characters; all four read `*_p1`.
+      *Fixed, but deliberately kept at `1` for every networked character rather than derived from
+      join index — see the B-30 note in Handoff.md §3 for why (assigning 2/3/4 would break
+      control for the 3rd/4th real joiner, since p3/p4 are intentionally unbound).*
+- [x] **B-48** — `GameLaunch.game_mode` is never sent over the network; host and client can run
+      different modes. *Fixed, folded into the same late-join sync as B-29.*
 
 **Exit criteria:** two editor instances, one `--host` one `--join=127.0.0.1`, both see the timer
 counting, both spawn and control their own character, both can bump each other, both see the
 same result, and a client that joins late is in the same round as the host.
+**Met and verified this pass** (headless, Godot 4.7 binary) for everything except live
+bump/combat between two real players — that needs a human at the keyboard, not just a script.
 
 ### Phase 1 — Make the core loop correct
 
-- [ ] **B-09** — add `team_id` to `CharacterBase` (**do this first — B-09, §4.5 and §4.6 are all
+- [x] **B-09** — add `team_id` to `CharacterBase` (**do this first — B-09, §4.5 and §4.6 are all
       blocked on it**) and gate `Hitbox` on it
-- [ ] **B-15 / B-35** — kill plane, arena walls, respawn
-- [ ] **B-10 / B-37** — round intermission state + full four-unit world reset with positions
-- [ ] **B-05** — face direction, delivered by the camera rigs (§3.2), not as separate work
-- [ ] **B-06** — special-ability input unreachable while Downed
-- [ ] **B-07** — stagger cancelling Downed
-- [ ] **B-08** — bump missing already-overlapping targets
-- [ ] **B-11** — cooldown consumed on a no-op activation
-- [ ] **B-12** — frame-step friction / Flick Dash lasting three frames
-- [ ] **B-14 / B-20** — match reset, pause menu, return to menu
+      *(Landed before this pass as `team`; docs were stale. §4.5/§4.6 UI items are unblocked
+      code-side but still not built — that's content work.)*
+- [x] **B-15 / B-35** — kill plane, arena walls, respawn
+      *Fixed: 4 walls + `KillPlane` respawning to `CharacterBase.spawn_position`. `ArenaCamera`
+      itself is unchanged — still not per-character rigs.*
+- [x] **B-10 / B-37** — round intermission state + full four-unit world reset with positions
+      *The reset half was already done (docs stale); the intermission STATE (a pause for a
+      role-swap card to live in) is still not built — that part is genuinely open, and it's UI/flow
+      content, not a code bug.*
+- [x] **B-05** — face direction, delivered by the camera rigs (§3.2), not as separate work
+      *Fixed before this pass, but NOT via camera rigs (they don't exist) — `look_at()` in
+      `character_base.gd` instead. Docs were stale.*
+- [x] **B-06** — special-ability input unreachable while Downed *(landed before this pass)*
+- [x] **B-07** — stagger cancelling Downed *(landed before this pass)*
+- [x] **B-08** — bump missing already-overlapping targets *(landed before this pass)*
+- [x] **B-11** — cooldown consumed on a no-op activation *(landed before this pass)*
+- [x] **B-12** — frame-step friction / Flick Dash lasting three frames *(landed before this pass)*
+- [x] **B-14 / B-20** — match reset, pause menu, return to menu
+      *Both fixed this pass: `MatchManager.reset()`/`RoundManager.reset()`, and an Esc pause
+      overlay with Resume/Return to Menu.*
 - [ ] Play a full Bo5 locally. Decide **Option A or Option B and delete the loser.**
+      **Still open — a team decision, not something this pass could resolve.**
 
 **Exit criteria:** a full Bo5 completes, roles swap with a visible transition, all four units
 reset to spawn between rounds, falling off the map respawns you, and the team has picked one
 round-win mode.
+**Mostly met** — everything except "roles swap with a visible transition" (no intermission card
+yet, see B-10/B-37 above) and the Option A/B decision itself, which nobody has made.
 
 ### Phase 2 — Cameras and player readability
 
@@ -664,18 +696,21 @@ round-win mode.
 
 ### Phase 4 — Content
 
-- [ ] `.tres` for Palayok, Bilao, Dyaryo, Bakya, Havaianas
+- [x] `.tres` for Palayok, Bilao, Dyaryo, Bakya, Havaianas *(created; character-select UI to pick
+      between them still doesn't exist — see B-24)*
 - [ ] Character models replacing the capsules — moodboard direction: chibi, oversized ball head,
       flat saturated colours, Filipino school-kid outfits with a sling bag
 - [ ] `Eskinita.tscn` and `BayanPlaza.tscn` with geometry, `SpawnPoints`, base circles, bounds
-- [ ] Map hazards on `HazardZone` (fix B-17 first)
-- [ ] Implement **Guard/Dash** (B-16) — bound, rebindable, read by nothing
+- [ ] Map hazards on `HazardZone` (B-17 fixed — safe to build on now)
+- [x] Implement **Guard/Dash** (B-16) — Cans block (stamina-gated), Tsinelas dash-evade
+      (cooldown-gated). First-pass numbers, not playtested/balanced.
 - [ ] Balance pass on cooldowns and ranges
 
 ### Phase 5 — Feel and presentation
 
-- [ ] Hit feedback: `landed_on` already exists and nothing listens (B-44). Hitstop, screenshake,
-      target flash, impact particles per the moodboard's "IMPACT EFFECT (PARTICLE BURST)"
+- [~] Hit feedback: a first-pass universal white flash exists now (B-44), triggered per-hit on the
+      target's own owning peer. `landed_on` itself is still unused. Hitstop, screenshake, impact
+      particles per the moodboard's "IMPACT EFFECT (PARTICLE BURST)" are still open — need assets.
 - [ ] Movement interpolation for remote characters — currently visibly snaps
 - [ ] Audio: bump, special, downed/seal, round win, ambience per map
 - [ ] Broadcast/auto-follow cam for recording (GDD Section 6)
