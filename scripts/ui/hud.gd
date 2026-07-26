@@ -11,16 +11,32 @@ class_name Hud
 @onready var role_label: Label = %RoleLabel
 @onready var downed_flash: ColorRect = %DownedFlash
 @onready var dent_label: Label = %DentLabel
+@onready var toast_label: Label = %ToastLabel
+
+var _toast_time_left: float = 0.0
 
 func _ready() -> void:
 	MatchManager.round_started.connect(_on_round_started)
 	MatchManager.match_won.connect(_on_match_won)
 	downed_flash.visible = false
+	toast_label.visible = false
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	var t := int(ceil(RoundManager.time_left))
 	timer_label.text = "%02d:%02d" % [t / 60, t % 60]
 	score_label.text = "%d - %d" % [MatchManager.team_a_wins, MatchManager.team_b_wins]
+	if _toast_time_left > 0.0:
+		_toast_time_left -= delta
+		if _toast_time_left <= 0.0:
+			toast_label.visible = false
+
+## B-15/B-35: brief on-screen call-out for a locally-relevant event that
+## isn't otherwise visible on the HUD, e.g. "OUT OF BOUNDS" from the
+## KillPlane respawn (see main.gd::_on_character_respawned).
+func show_toast(text: String, duration: float = 1.5) -> void:
+	toast_label.text = text
+	toast_label.visible = true
+	_toast_time_left = duration
 
 func _on_round_started(round_number: int, team_a_is_can: bool) -> void:
 	set_round_display(round_number, team_a_is_can)

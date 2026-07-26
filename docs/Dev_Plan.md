@@ -98,7 +98,7 @@ Legend: **[x]** built and working · **[~]** built but broken or unverified · *
 | Option B — Downed → Seal round win | [x] | Wired end to end; B-07 (the blocker) fixed. Never human-verified. |
 | `RoundManager` (90s timer, win reporting) | [x] | Starts on the host, verified with two real running instances (B-01). Late joiners now catch up too (B-29 fixed). |
 | `MatchManager` (Bo5, role swap) | [x] | Bo5-to-3 early win **already implemented** (`WINS_NEEDED = 3`, `match_manager.gd:43`). No match reset (B-14), no end-of-match flow (B-37). |
-| `NetworkManager` (ENet host/join) | [x] | Connects fine. Everything downstream is where the trouble is. |
+| `NetworkManager` (ENet host/join) | [x] | Connects fine. `is_networked()` fixed to not read `true` in local test (B-49). |
 | Networked spawning + movement replication | [~] | Works; snaps (no interpolation); Props now get an ability (B-04 fixed); `player_id` still never assigned (B-30). |
 | Host-authoritative combat | [~] | Correct for Bump; specials now replicate to the host (B-02 fixed, unverified against a real client). |
 | HUD (timer, Bo5, round, role, dent counter, downed flash) | [~] | Functional but placeholder-styled. Client score is stale (B-38). Full rebuild in §4. |
@@ -106,7 +106,7 @@ Legend: **[x]** built and working · **[~]** built but broken or unverified · *
 | Settings — rebindable, persistent controls | [x] | Rebinds an action nothing reads (B-16); allows duplicates (B-22); P2 bindings are dead in LAN (B-30). |
 | `ArenaCamera` follow/zoom | [x] | B-03 fixed and verified with two running instances (see §5) — no more networked-play crash. Superseded by per-character `CameraRig` (§3), not yet built. |
 | `HazardZone` slow-zone | [~] | Untested; edge cases in B-17. |
-| Out-of-bounds / kill plane / arena walls | [ ] | Nothing. Falling off the map = infinite fall + camera follows forever (B-15, B-35). |
+| Out-of-bounds / kill plane / arena walls | [x] | `KillPlane` Area3D + walls in `Main.tscn`, verified with a real forced-fall run (B-15, B-35). |
 | Per-character camera rigs (FPP/TPP) | [ ] | §3. |
 | Round intermission / role-swap beat | [ ] | Rounds currently roll over in the same frame (B-37). §4.6. |
 | Team identity on `CharacterBase` | [ ] | No `team_id` exists. Blocks friendly-fire fix **and** three UI items (B-09). |
@@ -654,13 +654,24 @@ same result, and a client that joins late is in the same round as the host.
 
 ### Phase 1 — Make the core loop correct
 
+- [x] **B-49 (NEW)** — `NetworkManager.is_networked()` read `true` in local test this whole time,
+      because Godot 4's default `multiplayer.multiplayer_peer` is an `OfflineMultiplayerPeer`
+      sentinel, not `null`, and `has_multiplayer_peer()` reports `true` for it.
+      *(Fixed: `NetworkManager` now tracks an explicit `_is_networked` flag set only by
+      `host_game()`/`join_game()`. Caught and verified by actually running the local flow — see
+      `Handoff.md` §3 B-49.)*
 - [x] **B-09** — add `team_id` to `CharacterBase` (**do this first — B-09, §4.5 and §4.6 are all
       blocked on it**) and gate `Hitbox` on it
       *(Fixed: `team` export + same-team skip in `hitbox.gd`. §4.5/§4.6 unblocked.)*
-- [ ] **B-15 / B-35** — kill plane, arena walls, respawn
-- [~] **B-10 / B-37** — round intermission state + full four-unit world reset with positions
-      *(B-10 half fixed: `_on_match_round_started` resets + repositions all four units every
-      round, not just the tracked Can. B-37 still open — no intermission gap/beat exists yet.)*
+- [x] **B-15 / B-35** — kill plane, arena walls, respawn
+      *(Fixed and verified: `KillPlane` Area3D + four `StaticBody3D` walls in `Main.tscn`,
+      `CharacterBase.respawn()`. A forced fall in a real headless run landed the character back at
+      its exact `spawn_position`. See `Handoff.md` queue item 9.)*
+- [x] **B-10 / B-37** — round intermission state + full four-unit world reset with positions
+      *(B-10 fixed and, as of the B-49 fix above, actually verified in local play — previously
+      this only ever ran in the networked branch. B-37 still open — no intermission gap/beat
+      exists yet; that's still queue item 10, "round intermission state," distinct from B-10's
+      position/state reset which this item is.)*
 - [x] **B-05** — face direction, delivered by the camera rigs (§3.2), not as separate work
       *(Landed as `look_at()` on movement direction, ahead of the camera rig — equivalent to
       `AimSource.MOVEMENT`. The rig only needs to add `AimSource.MOUSE` for the FPP-controlled

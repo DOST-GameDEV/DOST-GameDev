@@ -34,6 +34,7 @@ extends Node3D
 @onready var spawner: MultiplayerSpawner = $MultiplayerSpawner
 @onready var hud: Hud = $HUDLayer/HUD
 @onready var arena_camera: ArenaCamera = $Camera3D
+@onready var kill_plane: KillPlane = $KillPlane
 
 const CHARACTER_SCENE: PackedScene = preload("res://scenes/characters/CharacterBase.tscn")
 ## Every Person — networked or local — gets its own Tag/Throw ability
@@ -83,6 +84,7 @@ var _spawned_characters: Dictionary = {} # peer_id -> CharacterBase
 func _ready() -> void:
 	spawner.spawn_function = _build_networked_character
 	MatchManager.round_started.connect(_on_match_round_started)
+	kill_plane.character_respawned.connect(_on_character_respawned)
 
 	var join_target := ""
 	var should_host := false
@@ -187,6 +189,14 @@ func _on_player_connected(peer_id: int) -> void:
 			RoundManager.time_left, RoundManager.round_active, GameLaunch.game_mode
 		)
 
+## B-15/B-35: only show the "OUT OF BOUNDS" toast for a character that's
+## actually ours — a client's screen shouldn't flash every time some OTHER
+## peer's unit falls off. In local test (not networked at all) every unit is
+## on this one screen, so any of them falling is worth a toast.
+func _on_character_respawned(character: CharacterBase) -> void:
+	if not NetworkManager.is_networked() or character.is_multiplayer_authority():
+		hud.show_toast("OUT OF BOUNDS")
+
 func _on_player_disconnected(peer_id: int) -> void:
 	var node := players_root.get_node_or_null(str(peer_id))
 	if node:
@@ -239,6 +249,7 @@ func _build_networked_character(data: Dictionary) -> Node:
 	var character: CharacterBase = CHARACTER_SCENE.instantiate()
 	character.name = str(data["peer_id"])
 	character.position = data["position"]
+	character.spawn_position = data["position"] # B-15/B-35: where KillPlane sends it back to
 	character.is_can = data["is_can"]
 	character.is_person = data["is_person"]
 	character.team_is_can_side = data["team_is_can_side"]
@@ -300,6 +311,7 @@ func _on_match_round_started(_round_number: int, team_a_is_can: bool) -> void:
 			# reset at all. Reset + reposition every unit here instead.
 			character.reset_for_new_round()
 			character.position = SPAWN_POINTS[index % SPAWN_POINTS.size()]
+			character.spawn_position = character.position # B-15/B-35
 			index += 1
 			if character.is_can:
 				RoundManager.register_can(character)
@@ -322,6 +334,7 @@ func _on_match_round_started(_round_number: int, team_a_is_can: bool) -> void:
 			var character := _local_roster[i]
 			character.reset_for_new_round()
 			character.position = SPAWN_POINTS[i % SPAWN_POINTS.size()]
+			character.spawn_position = character.position # B-15/B-35
 		_register_local_can()
 	RoundManager.start_round()
 
