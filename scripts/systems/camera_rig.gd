@@ -94,6 +94,10 @@ func set_active(active: bool) -> void:
 	tpp_camera.current = active and _mode == Mode.TPP
 	set_process(active)
 	set_process_unhandled_input(active and aim_source == AimSource.MOUSE)
+	# B-61: the self-hide depends on whether this rig is the one being looked
+	# through, so it has to be re-evaluated whenever that changes — not just
+	# once at _ready().
+	_apply_fpp_self_hide()
 
 ## The rig mode (FPP/TPP) is derived and untouchable (§0.1) — this only
 ## chooses how the ACTIVE rig reads aim input, never what mode it renders in.
@@ -101,20 +105,33 @@ func set_aim_source(source: AimSource) -> void:
 	aim_source = source
 	set_process_unhandled_input(_active and aim_source == AimSource.MOUSE)
 
+## B-61: hides this character's own body ONLY while you are looking through its
+## eyes — i.e. an FPP rig that is currently the active camera. The original
+## version applied shadows-only to every Person unconditionally, ignoring
+## `_active` entirely, which meant *nobody* could see *any* Person: they were
+## walking shadows with no body, teammates and opponents alike. The doc comment
+## below already stated the correct rule ("other peers still need to see the
+## mesh"); the code just never implemented it.
+##
+## The bug was invisible until now because the self-hide had silently been a
+## no-op — it ran in `_ready()`, before `character_visual.gd` had instanced any
+## meshes to find. Fixing that (v1.5) is what exposed this.
 func _apply_fpp_self_hide() -> void:
-	if _mode != Mode.FPP:
-		return
 	var visual_root := _character.get_node_or_null("Visual")
 	if visual_root == null:
 		return
 	# "Visual" is a plain Node3D wrapper (see CharacterBase.tscn) so the whole
-	# subtree can be hidden as one unit later once it holds a real multi-mesh
-	# model — it is not itself a VisualInstance3D, so cast_shadow has to be
-	# set on every mesh underneath it individually. NOT hide() — losing your
-	# own shadow in FPP destroys the ground read, and other peers still need
-	# to see the mesh.
+	# subtree can be treated as one unit — it is not itself a VisualInstance3D,
+	# so cast_shadow has to be set on every mesh underneath it individually.
+	# NOT hide(): losing your own shadow in FPP destroys the ground read, so the
+	# body still casts, it just isn't drawn.
+	var looking_through_this_body := _active and _mode == Mode.FPP
+	var setting := (
+		GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if looking_through_this_body
+		else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	)
 	for node in visual_root.find_children("*", "GeometryInstance3D", true, false):
-		(node as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+		(node as GeometryInstance3D).cast_shadow = setting
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not _active or aim_source != AimSource.MOUSE:
