@@ -630,7 +630,9 @@ match starts, is playable, can be won, and rolls into the next round.
 - [x] **B-04** — networked Props spawn with `ability = null`; only Persons get one.
       *(Fixed: every networked Prop gets a `.duplicate()`d `quick_stand.tres` until character
       select exists — B-24.)*
-- [ ] **B-30** — `player_id` is never assigned to networked characters; all four read `*_p1`.
+- [x] **B-30** — `player_id` is never assigned to networked characters; all four read `*_p1`.
+      *(Fixed: `main.gd` mirrors the `is_person` split — Person gets slot 1, Prop slot 2. Does
+      not deliver WASD-tracks-Attacker, which would need re-binding on role swap. Unverified.)*
 - [x] **B-48** — `GameLaunch.game_mode` is never sent over the network; host and client can run
       different modes.
       *(Fixed alongside B-29 — see above. Unverified by a human.)*

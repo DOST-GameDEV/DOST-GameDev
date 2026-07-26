@@ -216,9 +216,22 @@ func _spawn_player(peer_id: int) -> void:
 	var spawn_pos: Vector3 = SPAWN_POINTS[index % SPAWN_POINTS.size()]
 	var team_is_can_side := (team == 0) == MatchManager.team_a_is_can
 	var is_can := team_is_can_side and not is_person
+	# B-30: CharacterBase.player_id was never set on a networked spawn, so every
+	# networked character kept the scene default of 1 and read *_p1 actions —
+	# harmless by accident (one human per LAN machine binds p1 and controls
+	# whichever single character is theirs) except the Settings panel's entire
+	# P2 rebind column was dead in networked play. Mirror the is_person split
+	# (index % 2) so the Person of each team gets slot 1 (WASD default) and the
+	# Prop gets slot 2 (arrows default) — a fixed-for-the-match assignment,
+	# same lifetime as is_person. Note this does NOT give the moodboard's
+	# WASD-tracks-Attacker/arrows-tracks-Defender scheme, since Attacker/
+	# Defender swaps every round while a peer's is_person/player_id don't;
+	# that would need input rebinding on every role swap, not just this fix.
+	var player_id := (index % 2) + 1
 	spawner.spawn({
 		"peer_id": peer_id, "position": spawn_pos, "is_can": is_can,
 		"is_person": is_person, "team": team, "team_is_can_side": team_is_can_side,
+		"player_id": player_id,
 	})
 
 ## Runs on every peer (host and clients) when the spawner replicates a spawn.
@@ -230,6 +243,7 @@ func _build_networked_character(data: Dictionary) -> Node:
 	character.is_person = data["is_person"]
 	character.team_is_can_side = data["team_is_can_side"]
 	character.team = data["team"] # B-09: no team identity on CharacterBase before this
+	character.player_id = data["player_id"] # B-30: was never assigned, stuck at the scene default of 1
 	if data["is_person"]:
 		# Session 8: Person's Tag/Throw, replacing the previously-null `ability`
 		# for Person (see PersonAction doc). .duplicate() per PERSON_ACTION_ABILITY
