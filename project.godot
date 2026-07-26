@@ -89,12 +89,70 @@ special_ability_p2={
 ]
 }
 
+move_left_p3={
+"deadzone": 0.5,
+"events": []
+}
+move_right_p3={
+"deadzone": 0.5,
+"events": []
+}
+move_up_p3={
+"deadzone": 0.5,
+"events": []
+}
+move_down_p3={
+"deadzone": 0.5,
+"events": []
+}
+bump_p3={
+"deadzone": 0.5,
+"events": []
+}
+guard_dash_p3={
+"deadzone": 0.5,
+"events": []
+}
+special_ability_p3={
+"deadzone": 0.5,
+"events": []
+}
+move_left_p4={
+"deadzone": 0.5,
+"events": []
+}
+move_right_p4={
+"deadzone": 0.5,
+"events": []
+}
+move_up_p4={
+"deadzone": 0.5,
+"events": []
+}
+move_down_p4={
+"deadzone": 0.5,
+"events": []
+}
+bump_p4={
+"deadzone": 0.5,
+"events": []
+}
+guard_dash_p4={
+"deadzone": 0.5,
+"events": []
+}
+special_ability_p4={
+"deadzone": 0.5,
+"events": []
+}
+
 [autoload]
 
 RoundManager="*res://scripts/systems/round_manager.gd"
 MatchManager="*res://scripts/systems/match_manager.gd"
 NetworkManager="*res://scripts/systems/network_manager.gd"
 GameLaunch="*res://scripts/systems/game_launch.gd"
+SettingsManager="*res://scripts/systems/settings_manager.gd"
 
 [rendering]
 

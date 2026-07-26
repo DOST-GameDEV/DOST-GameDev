@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3 uid="uid://bqk3n7x9m1p2s"]
+[gd_scene load_steps=3 format=3 uid="uid://bqk3n7x9m1p2s"]
 
 [ext_resource type="Script" path="res://scripts/ui/main_menu.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/ui/SettingsPanel.tscn" id="2"]
 
 [node name="MainMenu" type="Control"]
 layout_mode=3
@@ -51,6 +52,12 @@ unique_name_in_owner=true
 layout_mode=2
 theme_override_font_sizes/font_size=24
 text="Start"
+
+[node name="SettingsButton" type="Button" parent="TitleScreen"]
+unique_name_in_owner=true
+layout_mode=2
+theme_override_font_sizes/font_size=18
+text="Settings"
 
 [node name="PlayMenu" type="VBoxContainer" parent="."]
 unique_name_in_owner=true
@@ -108,3 +115,7 @@ unique_name_in_owner=true
 layout_mode=2
 horizontal_alignment=1
 autowrap_mode=2
+
+[node name="SettingsPanel" parent="." instance=ExtResource("2")]
+unique_name_in_owner=true
+visible=false
