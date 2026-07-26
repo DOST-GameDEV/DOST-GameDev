@@ -12,6 +12,13 @@ extends Node3D
 ## (or `--join=127.0.0.1` for two instances on one PC via
 ## Debug > Run Multiple Instances). No lobby UI yet — see
 ## docs/Handoff_Session5.md for what's still missing.
+##
+## Session 7 correction: a team is 2 players — 1 Person (tags/throws) + 1
+## Can/Slipper Prop (carries the roster's class ability) — NOT two
+## interchangeable Can/Tsinelas units. See CharacterBase.is_person /
+## _spawn_player below. The local single-PC fallback above (no launch args)
+## still models the OLD 1v1 direct Can-vs-Tsinelas smoke test and has NOT been
+## updated for this — see docs/Handoff_Session7.md known gaps.
 
 @onready var can_test_character: CharacterBase = $CanTestCharacter
 @onready var tsinelas_test_character: CharacterBase = $TsinelasTestCharacter
@@ -33,6 +40,12 @@ var _spawned_peer_ids: Dictionary = {}
 ## Team A, next two are Team B (GDD: 2v2, teams swap Attacker/Defender role
 ## each round, per-team not per-player).
 var _peer_teams: Dictionary = {}
+## Session 7: a team is 1 Person + 1 Can/Slipper Prop, NOT two identical Props
+## (corrects the Session 5/6 placeholder, which spawned two interchangeable
+## Can/Tsinelas units per team). peer_id -> bool, true if that peer is the
+## team's Person. Fixed for the whole match, same lifetime as _peer_teams —
+## see _spawn_player for how it's assigned.
+var _peer_is_person: Dictionary = {}
 var _spawned_characters: Dictionary = {} # peer_id -> CharacterBase
 
 func _ready() -> void:
@@ -101,21 +114,32 @@ func _on_player_disconnected(peer_id: int) -> void:
 		node.queue_free()
 	_spawned_peer_ids.erase(peer_id)
 	_peer_teams.erase(peer_id)
+	_peer_is_person.erase(peer_id)
 	_spawned_characters.erase(peer_id)
 
 ## Host-only: tells every peer (via MultiplayerSpawner) to construct a
 ## character for `peer_id`, assigned to a fixed team (2 peers per team, first
-## in gets Team A). Which team is Can vs Tsinelas THIS round comes from
-## MatchManager.team_a_is_can, kept in sync by _on_match_round_started below.
+## in gets Team A) AND a fixed role within that team — first peer to join a
+## team is its Person, second is its Can/Slipper Prop (Session 7: a team is 1
+## Person + 1 Prop, not two identical Props — see is_person doc on
+## CharacterBase). Which side the team's Prop plays (Can vs Slipper) THIS
+## round comes from MatchManager.team_a_is_can, kept in sync by
+## _on_match_round_started below; the Person doesn't have a Can/Slipper side,
+## it stays a Person all match regardless of role swaps.
 func _spawn_player(peer_id: int) -> void:
 	if _spawned_peer_ids.has(peer_id):
 		return
 	var index := _spawned_peer_ids.size()
 	_spawned_peer_ids[peer_id] = true
 	var team := index / 2 # 0, 0, 1, 1 for up to MAX_PLAYERS = 4
+	var is_person := index % 2 == 0 # first peer of each team pair is the Person
 	var spawn_pos: Vector3 = SPAWN_POINTS[index % SPAWN_POINTS.size()]
-	var is_can := (team == 0) == MatchManager.team_a_is_can
-	spawner.spawn({"peer_id": peer_id, "position": spawn_pos, "is_can": is_can, "team": team})
+	var team_is_can_side := (team == 0) == MatchManager.team_a_is_can
+	var is_can := team_is_can_side and not is_person
+	spawner.spawn({
+		"peer_id": peer_id, "position": spawn_pos, "is_can": is_can,
+		"is_person": is_person, "team": team,
+	})
 
 ## Runs on every peer (host and clients) when the spawner replicates a spawn.
 func _build_networked_character(data: Dictionary) -> Node:
@@ -123,13 +147,17 @@ func _build_networked_character(data: Dictionary) -> Node:
 	character.name = str(data["peer_id"])
 	character.position = data["position"]
 	character.is_can = data["is_can"]
+	character.is_person = data["is_person"]
 	character.set_multiplayer_authority(data["peer_id"])
 	_peer_teams[data["peer_id"]] = data["team"]
+	_peer_is_person[data["peer_id"]] = data["is_person"]
 	_spawned_characters[data["peer_id"]] = character
-	if data["peer_id"] == multiplayer.get_unique_id():
+	if data["peer_id"] == multiplayer.get_unique_id() and character.is_can:
 		# This is the character we personally control — DownedFlash should
 		# only ever reflect what's happening to OUR Can, never a teammate's
-		# or an opponent's (GDD Section 6: "clear visual read", per-player).
+		# Person or an opponent's (GDD Section 6: "clear visual read",
+		# per-player). Guard on is_can here since the local player might be
+		# controlling their team's Person this match, not its Prop.
 		_wire_downed_flash.call_deferred(character)
 	return character
 
@@ -146,7 +174,12 @@ func _on_match_round_started(_round_number: int, _team_a_is_can: bool) -> void:
 			if not is_instance_valid(character):
 				continue
 			var team: int = _peer_teams.get(peer_id, 0)
-			character.is_can = (team == 0) == MatchManager.team_a_is_can
+			var is_person: bool = _peer_is_person.get(peer_id, false)
+			var team_is_can_side := (team == 0) == MatchManager.team_a_is_can
+			# Only the team's Prop can ever be a Can — the Person stays a
+			# Person regardless of which side its team is on this round
+			# (Session 7: 1 Person + 1 Prop per team, not two Props).
+			character.is_can = team_is_can_side and not is_person
 			if character.is_can:
 				RoundManager.register_can(character)
 	# Local single-PC flow: register_can(can_test_character) already happened
@@ -155,11 +188,18 @@ func _on_match_round_started(_round_number: int, _team_a_is_can: bool) -> void:
 	RoundManager.start_round()
 
 ## Shows/hides the HUD's DownedFlash whenever the given (locally-controlled)
-## character enters/exits Downed — but only if it's a Can; Tsinelas never
-## flash since the GDD ties this to "your Can got knocked down".
+## character enters/exits Downed — but only if it's a Can; Tsinelas/Person
+## never flash since the GDD ties this to "your Can got knocked down". Under
+## Option A this doubles as the entry point for the dent counter too, since
+## both only ever apply to the locally-controlled Can.
 func _wire_downed_flash(character: CharacterBase) -> void:
 	if not character.is_can:
 		return
 	character.state_changed.connect(func(new_state: CharacterBase.State) -> void:
 		hud.set_downed_flash(new_state == CharacterBase.State.DOWNED)
 	)
+	if GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A:
+		hud.set_dents(character.dents, CharacterBase.MAX_DENTS)
+		character.dents_changed.connect(func(new_dents: int) -> void:
+			hud.set_dents(new_dents, CharacterBase.MAX_DENTS)
+		)

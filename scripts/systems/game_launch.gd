@@ -10,10 +10,10 @@ class_name GameLaunchScript
 ## Debug > Run Multiple Instances) if nothing was set here.
 
 enum GameMode {
-	OPTION_B, ## Capture-the-base + Downed/Seal — the only mode with a real testbed today.
-	OPTION_A, ## Stock/Health (dents) — GDD's other proposal. UI exists to pick it; the
-	          ## actual rules are NOT implemented yet (see round_manager.gd), so selecting
-	          ## it currently just falls back to running Option B underneath.
+	OPTION_B, ## Capture-the-base + Downed/Seal.
+	OPTION_A, ## Stock/Health (dents) — 3 dents on a Can ends the round for the
+	          ## Slippers (both Cans must be fully dented). Session 7: both modes
+	          ## are now real, see round_manager.gd / hitbox.gd.
 }
 
 var pending_action: String = "" ## "", "host", "join", or "local"

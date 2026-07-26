@@ -4,6 +4,11 @@ class_name RoundManagerScript
 ## Referenced globally as `RoundManager`, e.g. `RoundManager.start_round()`.
 
 ## Deliberately decoupled from movement/combat/hit-registration (see GDD Section 3).
+## Session 7: a team is 1 Person + 1 Can/Slipper Prop — only the Prop is ever
+## tracked here as a "Can". register_can() is only ever called with a
+## character whose `is_can` is true, and `is_can` is now false for Persons
+## unconditionally (see main.gd) — so Person-vs-Person or Person-vs-Prop hits
+## never affect round-win, only Prop-vs-Prop does, matching the GDD.
 ## Round-win logic is still an open decision between two options:
 ##   Option A — Stock/Life (dents): Cans have a health bar, Slippers win by fully
 ##              denting a Can; Cans win on timer or ring-outs.
@@ -19,12 +24,15 @@ const ROUND_TIME: float = 90.0
 var time_left: float = ROUND_TIME
 var round_active: bool = false
 
-## Session 6: MainMenu now lets the player pick GameLaunch.game_mode
-## (OPTION_A / OPTION_B) before a match starts — see game_launch.gd. Option A
-## (stock/health/dents) still has no rules implemented, so regardless of which
-## mode gets picked, this Option B testbed is what actually decides round wins
-## for now. Wire an Option A implementation here (or a sibling system) and
-## branch on GameLaunch.game_mode once it exists.
+## Session 6: MainMenu lets the player pick GameLaunch.game_mode (OPTION_A /
+## OPTION_B) before a match starts — see game_launch.gd.
+## Session 7: Option A is now implemented too (dents, see MAX_DENTS on
+## CharacterBase and _on_tracked_can_dents_changed below) — hitbox.gd branches
+## on GameLaunch.game_mode so a landed hit becomes a dent (Option A) instead of
+## stagger/downed/seal (Option B). Both win checks are wired up here
+## unconditionally, but only one ever actually fires per match: whichever mode
+## isn't selected never has its corresponding signal (`state_changed` to
+## SEALED, or `dents_changed` to MAX_DENTS) change in the first place.
 ## --- Option B testbed (all Cans Sealed = Slippers win) ---------------------------
 ## Not auto-populated on its own — call register_can() for whichever characters are
 ## playing Can this round (see scripts/main.gd for a working example). Deliberately
@@ -40,11 +48,16 @@ func register_can(can: CharacterBase) -> void:
 	_tracked_cans.append(can)
 	if not can.state_changed.is_connected(_on_tracked_can_state_changed):
 		can.state_changed.connect(_on_tracked_can_state_changed)
+	if not can.dents_changed.is_connected(_on_tracked_can_dents_changed):
+		can.dents_changed.connect(_on_tracked_can_dents_changed)
 
 func clear_tracked_cans() -> void:
 	for can in _tracked_cans:
-		if is_instance_valid(can) and can.state_changed.is_connected(_on_tracked_can_state_changed):
-			can.state_changed.disconnect(_on_tracked_can_state_changed)
+		if is_instance_valid(can):
+			if can.state_changed.is_connected(_on_tracked_can_state_changed):
+				can.state_changed.disconnect(_on_tracked_can_state_changed)
+			if can.dents_changed.is_connected(_on_tracked_can_dents_changed):
+				can.dents_changed.disconnect(_on_tracked_can_dents_changed)
 	_tracked_cans.clear()
 
 func _on_tracked_can_state_changed(_new_state: int) -> void:
@@ -54,6 +67,21 @@ func _on_tracked_can_state_changed(_new_state: int) -> void:
 		if not is_instance_valid(can) or can.state != CharacterBase.State.SEALED:
 			return
 	report_round_win(false) # every tracked Can Sealed -> Slippers win the round
+
+## Option A — parallel to the Option B check above, just watching `dents`
+## instead of `state`. Never fires under Option B since dents never changes
+## there (apply_dent() is Option-A-only, see hitbox.gd). Session 7 default:
+## requires BOTH tracked Cans to hit MAX_DENTS (mirrors Option B's "every Can
+## Sealed" rule) rather than either one alone — change the `for` loop below to
+## `break` on the first fully-dented Can instead if you'd rather have EITHER
+## Can alone end the round.
+func _on_tracked_can_dents_changed(_new_dents: int) -> void:
+	if not round_active or _tracked_cans.is_empty():
+		return
+	for can in _tracked_cans:
+		if not is_instance_valid(can) or can.dents < CharacterBase.MAX_DENTS:
+			return
+	report_round_win(false) # every tracked Can fully dented -> Slippers win the round
 ## ----------------------------------------------------------------------------------
 
 ## Session 6: networked, this whole autoload becomes host-authoritative — same

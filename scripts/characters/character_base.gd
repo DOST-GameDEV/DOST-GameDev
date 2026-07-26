@@ -1,9 +1,11 @@
 extends CharacterBody3D
 class_name CharacterBase
 
-## Shared controller for every Can and Tsinelas.
-## Each of the 6 characters = this scene + a different AbilityBase resource
-## plugged into `ability`, plus its own model/animations.
+## Shared controller for every unit — both the human Person and the Can/Slipper
+## Prop (see `is_person`/`is_can` below). A team is 2 players: 1 Person + 1 Prop,
+## not two Props. Each of the 6 roster Props = this scene + a different
+## AbilityBase resource plugged into `ability`; Persons currently have no unique
+## ability (see docs/Handoff_Session7.md — open item).
 ## Stock/Downed round-win logic is NOT here on purpose (see Section 3 of the GDD) —
 ## it lives in its own decoupled system so Option A vs Option B can be swapped freely.
 
@@ -19,6 +21,11 @@ const DOWNED_SELF_RIGHT_WINDOW: float = 2.0
 ## next to an opponent doesn't stagger them every physics tick — press-to-bump,
 ## briefly live, matches "light melee" better than always-on contact damage.
 const BUMP_ACTIVE_TIME: float = 0.15
+## Option A (GDD Section 3, "Stock/Life"): a Can's health bar. Slippers win the
+## round once a tracked Can reaches this many dents — see RoundManager
+## _on_tracked_can_dents_changed. Only ever meaningful for a Can (is_can true);
+## Persons and Slippers never accumulate dents. 3 per user decision (Session 7).
+const MAX_DENTS: int = 3
 
 ## NORMAL — moving/acting freely.
 ## STAGGERED — brief no-control flinch from a bump (BUMP_STAGGER_TIME), auto-recovers.
@@ -30,15 +37,35 @@ const BUMP_ACTIVE_TIME: float = 0.15
 enum State { NORMAL, STAGGERED, DOWNED, SEALED }
 
 @export var ability: AbilityBase
-@export var is_can: bool = true  ## true = Can (defense), false = Tsinelas (offense)
+## true = this is the team's Can/Slipper Prop this round (defense = Can, offense =
+## Slipper); false = this is the team's Person. See `is_person` below — a team is
+## 1 Person + 1 Prop, NOT two Props. `is_can` only ever describes the Prop; a
+## Person's `is_can` is always false regardless of which side its team is on this
+## round (see main.gd `_spawn_player` / `_on_match_round_started`).
+@export var is_can: bool = true
+## true = this unit is the team's human Person (tags opponents on defense, throws
+## the Slipper at the Can on offense — GDD Section 3/4). false = this unit is the
+## team's Can/Slipper Prop, which carries the roster's class abilities (Quick
+## Stand, Bakya Bash, etc.) via `ability`. Fixed for the whole match — unlike
+## Can/Slipper (which flips with the team's Attacker/Defender role each round),
+## a player stays Person or stays Prop all match. See main.gd for assignment.
+@export var is_person: bool = false
 ## Which local input set this character reads from (1 or 2). Lets two characters
 ## share one keyboard without both moving on the same WASD press — see
 ## project.godot [input]: every action is suffixed "_p1"/"_p2".
 @export_range(1, 2, 1) var player_id: int = 1
 
 signal state_changed(new_state: State)
+## Option A only (see MAX_DENTS above). Fires whenever `dents` changes so
+## RoundManager can watch for a tracked Can reaching MAX_DENTS without polling.
+signal dents_changed(new_dents: int)
 
 var state: State = State.NORMAL
+## Option A only. Always 0 for Persons and Slippers — only a Can (is_can true)
+## ever takes dents. Synced like `state` (see CharacterBase.tscn) so RoundManager
+## can watch it identically on every peer; only the host's report actually counts
+## (same pattern as _on_tracked_can_state_changed).
+var dents: int = 0
 var _staggered_time_left: float = 0.0
 var _downed_time_left: float = 0.0
 var _downed_self_rightable: bool = false ## true only within the self-right window
@@ -149,6 +176,18 @@ func self_right() -> void:
 	_downed_self_rightable = false
 	_set_state(State.NORMAL)
 
+## Option A only: a landed hit on this Can adds one dent (capped at MAX_DENTS)
+## and applies a brief stagger for hit feedback — deliberately does NOT use the
+## Downed/Seal state machine at all, since Option A's win condition is purely
+## the dent count, tracked independently by RoundManager (see
+## _on_tracked_can_dents_changed). No-op for a Person or Slipper.
+func apply_dent(stagger_duration: float = BUMP_STAGGER_TIME) -> void:
+	if not is_can:
+		return
+	dents = min(dents + 1, MAX_DENTS)
+	dents_changed.emit(dents)
+	apply_stagger(stagger_duration)
+
 ## Called by an opponent's Hitbox once this character is Downed and past its
 ## self-right window (see hitbox.gd forces_downed / seal handling).
 func seal() -> bool:
@@ -193,6 +232,8 @@ func _apply_hit_result(kind: String, duration: float) -> void:
 			go_downed()
 		"seal":
 			seal()
+		"dent":
+			apply_dent(duration)
 
 ## Maps a base action name (e.g. "move_left") to this character's own input
 ## action (e.g. "move_left_p1" / "move_left_p2"), per `player_id`.
@@ -215,5 +256,7 @@ func reset_for_new_round() -> void:
 	_speed_multiplier = 1.0
 	state = State.NORMAL
 	state_changed.emit(state)
+	dents = 0
+	dents_changed.emit(dents)
 	if ability:
 		ability.reset_round_charge()
