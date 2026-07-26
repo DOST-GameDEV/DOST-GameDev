@@ -123,6 +123,12 @@ var _dash_active_time_left: float = 0.0
 ## — cached so opening the bump window can sweep already-overlapping targets
 ## (see _open_bump_window, B-08) without a scene-tree lookup every press.
 var _melee_hitbox: Hitbox = null
+## B-44: no visual reaction to a landed hit existed anywhere except the
+## Can-only, Option-B-only DownedFlash HUD overlay. A brief white flash on
+## whichever mesh this character actually has needs no new art/sound assets
+## and works for every character/hit kind/game mode.
+@onready var _mesh: MeshInstance3D = get_node_or_null("MeshInstance3D")
+var _base_albedo: Color = Color.WHITE
 
 func _ready() -> void:
 	for child in find_children("*", "Hurtbox", true, false):
@@ -132,6 +138,12 @@ func _ready() -> void:
 		hitbox.owner_character = self
 		if hitbox.requires_bump_window:
 			_melee_hitbox = hitbox
+	if _mesh:
+		var mat := _mesh.get_surface_override_material(0) as StandardMaterial3D
+		if mat == null:
+			mat = StandardMaterial3D.new()
+			_mesh.set_surface_override_material(0, mat)
+		_base_albedo = mat.albedo_color
 
 func _physics_process(delta: float) -> void:
 	# Session 6: the bump-active window has to decay on every peer, not just
@@ -397,6 +409,7 @@ func _rpc_notify_ability_activate() -> void:
 ## everyone else — no change needed there.
 @rpc("any_peer", "call_local", "reliable")
 func _apply_hit_result(kind: String, duration: float) -> void:
+	_flash_hit() # B-44: runs on this character's own owning peer, any hit kind
 	match kind:
 		"stagger":
 			apply_stagger(duration)
@@ -406,6 +419,20 @@ func _apply_hit_result(kind: String, duration: float) -> void:
 			seal()
 		"dent":
 			apply_dent(duration)
+
+## B-44: brief white flash on a landed hit, any kind, any character. Restarts
+## cleanly even if hits land in quick succession since it always tweens back
+## toward the color captured once in _ready(), never toward whatever the
+## material happened to be mid-flash.
+func _flash_hit() -> void:
+	if _mesh == null:
+		return
+	var mat := _mesh.get_surface_override_material(0) as StandardMaterial3D
+	if mat == null:
+		return
+	mat.albedo_color = Color.WHITE
+	var tween := create_tween()
+	tween.tween_property(mat, "albedo_color", _base_albedo, 0.15)
 
 ## Maps a base action name (e.g. "move_left") to this character's own input
 ## action (e.g. "move_left_p1" / "move_left_p2"), per `player_id`.
