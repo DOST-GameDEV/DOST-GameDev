@@ -618,9 +618,11 @@ match starts, is playable, can be won, and rolls into the next round.
       *(Fixed: runtime `add_target()`/`remove_target()` + `is_instance_valid()` filter every
       frame, per §3.4's "keep the script" branch. Superseded, not deleted, once the per-character
       `CameraRig` lands — §3.)*
-- [ ] **B-29** — a client joining after the host started never receives `_sync_round_started`,
+- [x] **B-29** — a client joining after the host started never receives `_sync_round_started`,
       so its round number, roles, tracked Cans and HUD are permanently stale. Host must
       `rpc_id()` full match state to each peer on connect.
+      *(Fixed: `main.gd::_sync_state_to_late_joiner`, `rpc_id`-targeted at the new peer. Also
+      carries `game_mode`, fixing B-48 in the same change. Unverified by a human.)*
 - [x] **B-02** — abilities spawn their hitbox only on the activating peer and only resolve on
       the host, so every special and Tag/Throw is a no-op for anyone who isn't hosting.
       *(Fixed: `_rpc_notify_ability_activate` RPCs the host to run its own `activate()`. Still
@@ -629,8 +631,9 @@ match starts, is playable, can be won, and rolls into the next round.
       *(Fixed: every networked Prop gets a `.duplicate()`d `quick_stand.tres` until character
       select exists — B-24.)*
 - [ ] **B-30** — `player_id` is never assigned to networked characters; all four read `*_p1`.
-- [ ] **B-48** — `GameLaunch.game_mode` is never sent over the network; host and client can run
+- [x] **B-48** — `GameLaunch.game_mode` is never sent over the network; host and client can run
       different modes.
+      *(Fixed alongside B-29 — see above. Unverified by a human.)*
 
 **Exit criteria:** two editor instances, one `--host` one `--join=127.0.0.1`, both see the timer
 counting, both spawn and control their own character, both can bump each other, both see the

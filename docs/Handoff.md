@@ -151,6 +151,15 @@ happens to fire. This is the second half of "Host Game (LAN) does not work", alo
 *Fix:* on `player_connected`, the host `rpc_id()`s the full current state (round number,
 `team_a_is_can`, both win counts, `time_left`, `round_active`, `GameLaunch.game_mode`) to that
 one peer. Longer term this is the lobby (B-13).
+**[FIXED]** `main.gd::_on_player_connected` now calls a new `_sync_state_to_late_joiner` RPC
+targeted (`rpc_id`) at just the newly connected peer, carrying exactly that bundle. It sets the
+`MatchManager`/`RoundManager`/`GameLaunch` fields directly and calls the new
+`Hud.set_round_display()` and `RoundManager.register_can()` for already-known Cans — deliberately
+*not* by replaying `_on_match_round_started`'s reset cascade, which would wrongly re-zero the
+position/state/dents of characters that already arrived on this peer correctly via
+`MultiplayerSynchronizer`'s `spawn=true` replication. Since `_start_hosting()` still calls
+`begin_next_round()` before anyone can be connected (B-13), this fires for every join, not only a
+literal "late" one. ⚠️ Unverified by a human — needs the two-instance test in queue item 3/7.
 
 **B-02 · Every special and Tag/Throw is a no-op for anyone who isn't the host.**
 `ability_utils.gd:34` adds the pulse hitbox to `current_scene` on the activating peer only — it
@@ -188,6 +197,9 @@ selection. The host's mode governs hit resolution (`hitbox.gd:59`), but the clie
 `_wire_downed_flash` dent gate (`main.gd:279`) reads the *client's* value — so a client on
 Option B never shows a dent counter while the host runs Option A. Send `game_mode` with the
 match-state sync in B-29.
+**[FIXED]** — the same `_sync_state_to_late_joiner` RPC that fixes B-29 also carries
+`game_mode`, and since every join goes through it (B-13 means every join is effectively a "late"
+one), this is fixed for every join, not only a literal late one. ⚠️ Unverified by a human.
 
 ### P1 — the core loop is wrong
 
@@ -462,7 +474,7 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       *Acceptance:* Host Game (LAN) from the menu; no "previously freed instance" errors in the
       Output panel; the editor does not hang.
 
-- [ ] **3. Sync full match state to joining clients (B-29, B-48).**
+- [x] **3. Sync full match state to joining clients (B-29, B-48).**
       On `NetworkManager.player_connected`, the host `rpc_id()`s that one peer the current
       `round_number`, `team_a_is_can`, `team_a_wins`, `team_b_wins`, `time_left`, `round_active`,
       and `GameLaunch.game_mode`. The client applies it and runs the same
