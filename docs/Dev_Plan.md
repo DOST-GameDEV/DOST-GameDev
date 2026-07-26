@@ -162,7 +162,10 @@ Fix the P1 bugs, then playtest the loop end to end for the first time.
 - [x] **B-09** friendly fire — add a `team_id` to `CharacterBase` and gate `Hitbox` *(Fixed:
       new `team` export on CharacterBase, set from main.gd for both the networked and
       local-test flows; hitbox.gd skips a hit when target.team == owner_character.team.)*
-- [ ] **B-10** per-round reset covers all four units and their positions
+- [x] **B-10** per-round reset covers all four units and their positions *(Fixed:
+      main.gd::_on_match_round_started now calls reset_for_new_round() and repositions every
+      character to a SPAWN_POINTS slot each round, for both the networked and local-test
+      flows, instead of leaving that to RoundManager's tracked-Can-only loop.)*
 - [ ] **B-11** cooldown consumed on a no-op activation
 - [ ] **B-12** frame-step friction / Flick Dash lasting three frames
 - [ ] Play a full Bo5 locally. Decide **Option A or Option B** and delete the other.

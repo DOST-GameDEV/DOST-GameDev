@@ -251,6 +251,7 @@ func _build_networked_character(data: Dictionary) -> Node:
 func _on_match_round_started(_round_number: int, team_a_is_can: bool) -> void:
 	if NetworkManager.is_networked():
 		RoundManager.clear_tracked_cans()
+		var index := 0
 		for peer_id in _spawned_characters.keys():
 			var character: CharacterBase = _spawned_characters[peer_id]
 			if not is_instance_valid(character):
@@ -266,6 +267,14 @@ func _on_match_round_started(_round_number: int, team_a_is_can: bool) -> void:
 			# two Props).
 			character.team_is_can_side = team_is_can_side
 			character.is_can = team_is_can_side and not is_person
+			# B-10: previously only RoundManager's own tracked-Can loop reset
+			# anything, so the two Persons and the Slipper-side Prop carried
+			# their Downed/Sealed state, dents, speed multiplier, and spent
+			# once-per-round charges into the next round, and nobody's position
+			# reset at all. Reset + reposition every unit here instead.
+			character.reset_for_new_round()
+			character.position = SPAWN_POINTS[index % SPAWN_POINTS.size()]
+			index += 1
 			if character.is_can:
 				RoundManager.register_can(character)
 	elif not _local_roster.is_empty():
@@ -280,6 +289,13 @@ func _on_match_round_started(_round_number: int, team_a_is_can: bool) -> void:
 		team_b_prop.team_is_can_side = not team_a_is_can
 		team_b_prop.is_can = not team_a_is_can
 		team_b_person.team_is_can_side = not team_a_is_can
+		# B-10: same reset+reposition as the networked branch above, for all
+		# four local units — see _local_roster doc (order: TeamAProp,
+		# TeamAPerson, TeamBProp, TeamBPerson, matching SPAWN_POINTS 1:1).
+		for i in range(_local_roster.size()):
+			var character := _local_roster[i]
+			character.reset_for_new_round()
+			character.position = SPAWN_POINTS[i % SPAWN_POINTS.size()]
 		_register_local_can()
 	RoundManager.start_round()
 

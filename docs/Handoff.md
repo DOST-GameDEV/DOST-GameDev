@@ -185,6 +185,13 @@ and the Slipper-side Prop keep their `STAGGERED`/`DOWNED`/`SEALED` state, their 
 their speed multiplier, and their spent once-per-round ability charges across rounds. Nothing
 resets any character's *position* between rounds either, so round 2 starts wherever round 1
 ended.
+**[FIXED]** `main.gd::_on_match_round_started` now calls `character.reset_for_new_round()` and
+sets `character.position` from `SPAWN_POINTS` for all four units every round, in both the
+networked branch (looping `_spawned_characters`) and the local-test branch (looping
+`_local_roster`) — not just whichever Prop happens to be the tracked Can this round.
+`RoundManager.start_round()`'s own tracked-Can-only reset is now redundant for that one
+character but harmless (idempotent). Needs verification that Downed/dent/speed-multiplier
+state and position don't carry over into round 2.
 
 **B-11 · A no-op activation still burns the cooldown.**
 `ability_base.gd:29` — `activate()` sets `_time_since_use = 0` and `_used_this_round = true`
