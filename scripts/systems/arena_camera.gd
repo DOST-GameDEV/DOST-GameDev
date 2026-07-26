@@ -13,9 +13,9 @@ class_name ArenaCamera
 ## we know what needs to stay on-screen (bases, hazards, etc).
 
 @export var follow_paths: Array[NodePath] = []
-@export var min_distance: float = 8.0
-@export var max_distance: float = 20.0
-@export var distance_padding: float = 4.0 ## extra room added on top of target spread
+@export var min_distance: float = 6.0
+@export var max_distance: float = 45.0 ## must cover the ~57-unit floor diagonal
+@export var frame_padding: float = 3.0 ## extra room added around the target spread
 @export var position_smoothing: float = 5.0 ## higher = snappier follow
 @export var zoom_smoothing: float = 3.0 ## higher = snappier zoom response
 
@@ -50,7 +50,12 @@ func _process(delta: float) -> void:
 		for j in range(i + 1, _targets.size()):
 			spread = max(spread, _targets[i].global_position.distance_to(_targets[j].global_position))
 
-	var target_distance: float = clamp(spread + distance_padding, min_distance, max_distance)
+	# Distance needed so `spread` fits inside the camera's field of view, not a
+	# guessed linear clamp — otherwise targets silently fall outside the frame
+	# once they're farther apart than whatever number we picked by eye.
+	var half_fov_rad := deg_to_rad(fov * 0.5)
+	var required_distance: float = (spread * 0.5) / max(tan(half_fov_rad), 0.05) + frame_padding
+	var target_distance: float = clamp(required_distance, min_distance, max_distance)
 	_current_distance = lerp(_current_distance, target_distance, zoom_smoothing * delta)
 
 	var target_position := midpoint + _offset_dir * _current_distance
