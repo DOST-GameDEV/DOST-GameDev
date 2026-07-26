@@ -15,11 +15,10 @@ fov = 95.0
 
 [node name="TppArm" type="SpringArm3D" parent="."]
 position = Vector3(0, 1.2, 0)
-rotation_degrees = Vector3(-15, 180, 0)
+rotation_degrees = Vector3(-15, 0, 0)
 collision_mask = 1
 spring_length = 4.5
 
 [node name="TppCamera" type="Camera3D" parent="TppArm"]
-rotation_degrees = Vector3(0, 180, 0)
 current = false
 fov = 70.0
