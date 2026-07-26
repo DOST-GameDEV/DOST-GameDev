@@ -712,12 +712,20 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       Node3D (the sibling the rig hides in FPP) rather than sitting directly under the root.
       `ArenaCamera` explicitly sets `current = false` in `_ready()` so it can never contend with a
       rig's camera for the viewport (§3.4).
-      ⚠️ **What headless testing can and can't confirm.** No display exists in this environment, so
-      nothing about how the camera actually *looks* — framing, the TPP wall pull-in, whether the
-      `SpringArm3D`'s baked `rotation_degrees = (-15, 180, 0)` really produces "behind and above
-      the character, tilted down" rather than something backwards — has been eyeballed. That needs
-      a human in the editor. What **was** verified with real running instances, not just reading
-      the code:
+      ⚠️➡️✅ **The doubt flagged here was justified — the TPP bake WAS backwards, and is now fixed.**
+      The original `SpringArm3D rotation_degrees = (-15, 180, 0)` + `TppCamera (0, 180, 0)` did not
+      produce "behind and above, tilted down": `SpringArm3D` pushes children along its local **+Z**,
+      so the 180 yaw placed the camera 4.35 units *in front of* the character and the compensating
+      180 on the camera aimed it further forward and 15° **up**. Every Prop's third-person view was
+      a shot of empty sky with its own character behind the camera — which is exactly what the game
+      shipped looking like. Measured `forward · (character − camera) = −0.972`, where ≈ +1 is
+      correct. Fixed to arm `(-15, 0, 0)` with no rotation on the camera; the same measurement now
+      reads **+0.972**, and a real Metal-rendered frame shows the character framed from behind and
+      above with the arena visible. FPP re-checked in the same pass: eye height, own body correctly
+      shadow-only, other units visible. See `camera_rig.gd`'s header for why the transforms must
+      stay as they are. Remaining genuinely un-eyeballed: the TPP **wall pull-in** (needs a wall to
+      actually back into) and mouse-look feel.
+      What **was** verified earlier with real running instances, not just reading the code:
       - Mode derivation: a Prop's rig reports `mode=TPP` (`tpp_camera.current` true when active,
         `fpp_camera.current` false) and a Person's reports `mode=FPP`, on both a local-test run and
         both peers of a two-instance networked run.

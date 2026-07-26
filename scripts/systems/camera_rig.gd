@@ -18,6 +18,22 @@ class_name CameraRig
 ## over yaw when aim_source is MOUSE, for exactly the one unit a peer
 ## actually controls with a mouse.
 
+## ⚠️ TPP rig geometry — do not "correct" the baked transforms in CameraRig.tscn
+## without re-reading this. `SpringArm3D` pushes its children along its own
+## LOCAL **+Z**, not -Z. The character faces -Z (Godot convention, and what
+## `character_base.gd`'s `look_at()` writes), so the arm must carry pitch ONLY:
+## `rotation_degrees = (-15, 0, 0)` gives a local +Z of (0, +0.259, +0.966) —
+## behind and above the character — and its -Z is then already "forward and 15°
+## down", which is exactly where the camera should look, so `TppCamera` carries
+## no rotation of its own.
+##
+## The original bake was arm `(-15, 180, 0)` + camera `(0, 180, 0)`. The 180 on
+## the arm assumed the spring cast along -Z, so it actually placed the camera
+## 4.35 units IN FRONT of the character; the compensating 180 on the camera then
+## aimed it further forward and 15° UP. Net result: the camera looked away from
+## its own character into empty sky, which is what shipped. Measured as
+## `forward · (character - camera) = -0.972` (it should be ≈ +1). Comments can't
+## live in a .tscn — the editor strips them on save — so the warning lives here.
 enum Mode { FPP, TPP }
 enum AimSource { MOUSE, MOVEMENT }
 
