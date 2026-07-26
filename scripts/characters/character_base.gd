@@ -138,6 +138,18 @@ func _physics_process(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y -= GRAVITY * delta
 
+	# Item 10 / B-37: freeze input during the round intermission (the gap
+	# between a round ending and the next one's timer starting — see
+	# MatchManager.round_intermission_started / main.gd::_reset_world) and
+	# before the very first round begins. round_active is already false in
+	# both cases; still apply gravity/friction above/below so nobody floats
+	# or skids, just can't act.
+	if not RoundManager.round_active:
+		velocity.x = move_toward(velocity.x, 0, FRICTION * delta)
+		velocity.z = move_toward(velocity.z, 0, FRICTION * delta)
+		move_and_slide()
+		return
+
 	if ability:
 		ability.tick(delta)
 
