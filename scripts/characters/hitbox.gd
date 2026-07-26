@@ -2,10 +2,11 @@ extends Area3D
 class_name Hitbox
 
 ## Attach as a child Area3D on a character (or spawn transiently for a Special).
-## Put it on physics layer "hitbox" / mask "hurtbox" (set in the editor — see
-## docs/Dev_Plan.md for the layer-naming convention once we add one;
-## for now both Hitbox and Hurtbox default to layer 1 so bump works out of the box,
-## tighten this once we have more than one interaction type).
+## B-26: this used to say "both Hitbox and Hurtbox default to layer 1" — they
+## don't. CharacterBase.tscn sets Hurtbox to layer 2 / mask 0 and Hitbox to
+## layer 0 / mask 2 (Hitbox only ever emits into Hurtbox's layer, Hurtbox never
+## emits into anything), which is already correct; the old comment was just
+## wrong in a load-bearing place.
 
 ## Who owns this hitbox — used so a character can't hit itself and so the
 ## receiving side knows who staggered it.

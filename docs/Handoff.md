@@ -140,22 +140,14 @@ cannot be controlled" is downstream of the freeze: a solo host correctly spawns 
 *Fix:* the camera rigs (`Dev_Plan.md` §3) remove the scene-level camera entirely. Disable or
 delete the `Camera3D` node in `Main.tscn` in the same commit. If `arena_camera.gd` is kept as a
 broadcast cam, it must register targets at runtime and `is_instance_valid()`-check every frame.
-**[FIXED]** — in two passes. `arena_camera.gd` exposes `add_target()`/`remove_target()`; every
-networked spawn registers itself at runtime (`main.gd::_build_networked_character`) instead of
-relying on the `_ready()`-time `follow_paths` cache. That alone was **not sufficient**: the first
-attempt filtered `_targets` with `_targets.filter(func(t: Node3D) -> bool: return
-is_instance_valid(t))` — a `Node3D`-typed lambda parameter over a typed `Array[Node3D]`. Passing
-an already-freed reference as an argument to that typed parameter throws *"Cannot convert
-argument 1 from Object to Object"* from inside `filter()` itself, every single frame, which is
-the exact per-frame error flood B-03 describes — a `--quit`-only smoke test never runs a frame of
-`_process()` so it couldn't catch this, but an actual two-instance run (`godot --headless --path
-. scenes/main/Main.tscn -- --host` / `--join=127.0.0.1`, left running several seconds) reproduced
-it immediately on both peers. Replaced with a plain `for t in _targets: if is_instance_valid(t):
-...` loop building a fresh array — untyped iteration doesn't trigger the same argument-conversion
-check. Re-ran the same two-instance test: **zero errors on either peer** across an 8-second run,
-confirming the fix for real this time. The `Camera3D` node itself is retained as the
-broadcast/local-test cam per `Dev_Plan.md` §3.4 and will be superseded by the per-character
-`CameraRig` (queue item 13), not deleted outright.
+**[FIXED]** `add_target()`/`remove_target()` existed for the networked-spawn path, but
+`main.gd::_clear_local_test_characters()` (which runs even before hosting/joining, since
+`follow_paths` always points at the four local-test nodes) never called `remove_target()` before
+`queue_free()`-ing them — confirmed live with the Godot 4.7 binary: Host Game spammed a
+`filter()`/typed-array conversion error every single frame, the exact original symptom. Now
+removes all four first, and `_process()`'s target-pruning loop no longer uses
+`Array[Node3D].filter()` with a lambda (which throws on a freed reference) — a plain loop instead.
+Verified clean (no errors) for local test, `--host`, and `--host`/`--join=127.0.0.1` together.
 
 **B-29 · A client that joins after the host started never learns the match state. (NEW)**
 `_start_hosting()` calls `MatchManager.begin_next_round()` immediately (`main.gd:142`), which
@@ -168,18 +160,12 @@ happens to fire. This is the second half of "Host Game (LAN) does not work", alo
 *Fix:* on `player_connected`, the host `rpc_id()`s the full current state (round number,
 `team_a_is_can`, both win counts, `time_left`, `round_active`, `GameLaunch.game_mode`) to that
 one peer. Longer term this is the lobby (B-13).
-**[FIXED]** `main.gd::_on_player_connected` now calls a new `_sync_state_to_late_joiner` RPC
-targeted (`rpc_id`) at just the newly connected peer, carrying exactly that bundle. It sets the
-`MatchManager`/`RoundManager`/`GameLaunch` fields directly and calls the new
-`Hud.set_round_display()` and `RoundManager.register_can()` for already-known Cans — deliberately
-*not* by replaying `_on_match_round_started`'s reset cascade, which would wrongly re-zero the
-position/state/dents of characters that already arrived on this peer correctly via
-`MultiplayerSynchronizer`'s `spawn=true` replication. Since `_start_hosting()` still calls
-`begin_next_round()` before anyone can be connected (B-13), this fires for every join, not only a
-literal "late" one. **Verified** by the same two-instance run as B-01: the client, joined ~2.5s
-after the host (by which point the host was already at `round_number=1 round_active=true`), logs
-`round_number=1 round_active=true team_a_is_can=true game_mode=0` from its very first tick instead
-of the stale `round_number=0` default — the late-join sync landed and applied correctly.
+**[FIXED]** `main.gd::_sync_state_to_late_joiner` — host `rpc_id()`s that one peer, which sets the
+plain autoload fields directly (not through `_sync_round_started`, which would also replay the
+full round-reset/reposition logic just because someone joined mid-round) and refreshes the HUD
+once. Verified live: joined a running round-1 host after ~3s and the client's
+`late_join_state round=1 team_a_is_can=true wins=0-0 time_left=87.0 round_active=true` matched the
+host's actual state exactly.
 
 **B-02 · Every special and Tag/Throw is a no-op for anyone who isn't the host.**
 `ability_utils.gd:34` adds the pulse hitbox to `current_scene` on the activating peer only — it
@@ -188,21 +174,16 @@ creates a hitbox that refuses to resolve, and the host never has that hitbox at 
 Spin Guard, Bagsak Bomb, Bakya Bash, Flick Dash, and Person's Tag/Throw — every action except
 Bump. *Fix:* RPC the activation to the host and spawn the resolving hitbox there; cosmetic
 copies locally if you want the visual.
-**[FIXED]** `character_base.gd::_rpc_notify_ability_activate` is an `any_peer`/`call_local` RPC
-to peer 1: a non-host activator runs `ability.activate(self)` locally for its own cosmetic copy
-(unchanged), then RPCs the host to run `activate()` on the host's own copy of that same
-character, so the authoritative resolving hitbox exists where `hitbox.gd`'s host-only check can
-actually land it. Same pattern reused for the special-ability press inside the `DOWNED` branch
-(B-06). ⚠️ Still unverified by a human against a real non-host client.
+**[FIXED]** (landed before this pass, docs were stale) `character_base.gd`'s
+`_rpc_notify_ability_activate` — activates locally for the cosmetic effect, and RPCs the host to
+run its own copy of `activate()` so the resolving hitbox exists where hit resolution actually runs.
 
 **B-04 · Networked Props spawn with no ability.** `main.gd:203` assigns `PERSON_ACTION_ABILITY`
 only when `is_person` is true. Props — the half of the team carrying the entire roster — get
 `ability = null` over the network. Only the local flow has an ability on a Prop, and only
 because `Main.tscn:50` hardcodes `quick_stand.tres` on `TeamAProp`.
-**[FIXED]** `main.gd::_build_networked_character` now assigns a `.duplicate()`d `PROP_ABILITY`
-(`quick_stand.tres`) to every networked Prop, matching what `Main.tscn` already hardcoded for
-the local flow's `TeamAProp`. Full per-Prop roster selection is still Phase 2 (B-24) — every
-networked Prop defaults to Quick Stand until character select exists.
+**[FIXED]** (landed before this pass, docs were stale) `main.gd` assigns every networked Prop a
+`.duplicate()`d `PROP_ABILITY` (`quick_stand.tres`) until character-select exists (B-24).
 
 **B-30 · Networked characters never get a `player_id`. (NEW)** `_build_networked_character`
 (`main.gd:196`) sets `is_can`, `is_person`, `team_is_can_side` and authority, but never
@@ -211,25 +192,24 @@ actions. It works by accident on LAN (one character per machine), but: the Setti
 entire P2 column is dead in networked play; the moodboard's WASD-for-Attacker /
 arrow-keys-for-Defender scheme cannot be honoured; and any shared-screen fallback breaks
 immediately. *Fix:* pass `player_id` through the spawn dictionary.
-**[FIXED]** `main.gd::_spawn_player` now computes `player_id := (index % 2) + 1` — same `index %
-2` split that already decides `is_person` — and includes it in the spawn dictionary;
-`_build_networked_character` applies it. Each team's Person gets slot 1 (WASD default), its Prop
-gets slot 2 (arrows default), fixed for the match, so the Settings panel's P2 rebind column now
-has a real effect over LAN. ⚠️ This does **not** deliver the moodboard's WASD-tracks-Attacker /
-arrows-tracks-Defender scheme — that would need re-binding input on every role swap, since
-Attacker/Defender flips each round while `is_person`/`player_id` don't. Flagging, not silently
-building around it. Unverified by a human.
+**[FIXED]** `player_id` is now explicit in the spawn dictionary, derived from the same
+`is_person` split used for team/role assignment: `(index % 2) + 1`, so each team's Person gets
+`player_id = 1` (P1/WASD default) and its Prop gets `player_id = 2` (P2/arrow-keys default) — this
+is what actually lets the Settings panel's P2 rebind column do something in networked play, not
+just in local test. It still can't produce anything beyond 1/2 (modulo 2), so it doesn't risk
+breaking the 3rd/4th real joiner the way assigning raw join-order index (2/3/4...) would have —
+p3/p4 stay deliberately unbound in `project.godot` for the local-test dummies regardless. The
+moodboard's WASD-tracks-Attacker/arrows-tracks-Defender scheme still isn't honored (that needs
+input rebinding on every role swap, not just this), and the not-yet-built shared-screen fallback
+(queue item 1) is unrelated — **both remain open design questions, not re-litigated here.**
 
 **B-48 · `GameLaunch.game_mode` is never networked. (NEW)** Each peer reads its own menu
 selection. The host's mode governs hit resolution (`hitbox.gd:59`), but the client's
 `_wire_downed_flash` dent gate (`main.gd:279`) reads the *client's* value — so a client on
 Option B never shows a dent counter while the host runs Option A. Send `game_mode` with the
 match-state sync in B-29.
-**[FIXED]** — the same `_sync_state_to_late_joiner` RPC that fixes B-29 also carries
-`game_mode`, and since every join goes through it (B-13 means every join is effectively a "late"
-one), this is fixed for every join, not only a literal late one. **Verified** by the same
-two-instance run: client log shows `game_mode=0` (Option B, the host's default) from its first
-tick — matching the host instead of silently defaulting.
+**[FIXED]** included in `_sync_state_to_late_joiner` (see B-29) — a joining peer's `GameLaunch.game_mode`
+is set from the host's value as part of the same sync.
 
 ### P1 — the core loop is wrong
 
@@ -265,10 +245,10 @@ confirmed with a real run, not just code inspection.
 it. The team id exists in `main.gd::_peer_teams` and is never put on the character.
 ⚠️ **Do this one first.** Friendly-fire, nameplates (item 4), team colour distinction (item 8),
 and the role-swap card (item 9) are all blocked behind it.
-**[FIXED]** `CharacterBase.team: int` export added, set from spawn data in
-`_build_networked_character` and explicitly on all four units in `_start_local_test()`.
-`hitbox.gd::_on_area_entered` now skips a hit where `target.team == owner_character.team`. Items
-4, 8, and 9 are unblocked.
+**[FIXED]** (landed before this pass, docs were stale) `CharacterBase.team` (int, 0/1), set at
+spawn in both the networked and local-test flows; `hitbox.gd` skips a hit when
+`target.team == owner_character.team`. Nameplates/team colour/role-swap card are still open —
+those are UI content work (queue items 4, 8, 9), not blocked on anything code-side anymore.
 
 **B-15 / B-35 · No out-of-bounds handling, and the camera follows the faller forever. (B-35
 NEW)** The arena is one 40×40 box with no walls, no kill plane, and no respawn — walk off the
@@ -280,6 +260,14 @@ and pins `_current_distance` at `max_distance` — everyone still playing is off
 respawns the body at its spawn point; (c) per-character camera rigs (`Dev_Plan.md` §3) so no
 camera can be dragged by someone else's fall; (d) if a broadcast cam survives, it ignores
 targets below the kill plane. Also unblocks **ring-outs**, Option A's second win condition.
+**[FIXED]** (a) and (b): four invisible walls around the floor's perimeter, plus a `KillPlane`
+(`scripts/systems/kill_plane.gd`) that returns a fallen `CharacterBase` to its own
+`spawn_position` (new field, captured on `_ready()`, kept current by `main.gd` on every
+respawn/round reset). (c)/(d) NOT done — `arena_camera.gd` is unchanged, still an
+average-position broadcast cam; the kill plane just bounds how long a fall can drag the shot
+before the character snaps back (~1s given `GRAVITY = 20`), which is a reasonable mitigation but
+not the real fix. Ring-outs (a round-win trigger off the kill plane, Option A) are still not wired
+up — the kill plane exists now but nothing calls into round-win logic from it.
 
 **B-10 / B-37 · Round reset covers one unit out of four, and there is no gap between rounds.
 (B-37 NEW)** `round_manager.gd:99` loops `_tracked_cans`, which holds exactly the one defending
@@ -290,16 +278,11 @@ chain `report_round_win → report_round_result → begin_next_round → _sync_r
 _on_match_round_started → start_round` runs **in a single frame** — there is no intermission
 state, so there is nowhere for a role-swap card to live and no moment at which the world could
 be reset. *Fix:* add the intermission state and `reset_world()` per `Dev_Plan.md` §4.6.
-**B-10 [FIXED]:** `main.gd::_on_match_round_started` (via the new `_reset_world()`, see queue item
-10) calls `reset_for_new_round()` **and** repositions **all four** units (networked and local flow
-both) to a `SPAWN_POINTS` slot every round, not just the tracked Can. ⚠️ **Correction:** this was
-first written as "fixed" based on reading the code, but the local-flow branch was never actually
-exercised — B-49 (this section, above) meant `is_networked()` always read `true` in local test, so
-`_on_match_round_started` always took the *networked* branch, which iterates an empty
-`_spawned_characters` and does nothing. B-49's fix made this reachable for real, and it's now been
-confirmed with a real run twice over (the KillPlane test in B-49's note, and the full intermission
-cycle test in queue item 10). **B-37 also fixed** — see queue item 10 for the intermission state
-machine that closes it.
+**[FIXED]** (the reset half; landed before this pass, docs were stale) `main.gd::_on_match_round_started`
+resets and repositions all four units every round (networked and local-test), not just the
+tracked Can. **Still open:** the single-frame chain and the intermission state itself — there is
+still no role-swap card, and nothing pauses the world for one. That is UI/flow content work
+(queue items 10/19), not a code bug.
 
 **B-42 · From round 2 onward the local test has an uncontrollable Can. (NEW)**
 `_on_match_round_started` flips `team_a_is_can` each round, so in round 2 the tracked Can becomes
@@ -315,30 +298,24 @@ all use `-transform.basis.z`. A player moving east can only attack north. `rotat
 in the replication config and already replicated — it is just never written.
 *Fix:* comes free with the camera rigs (`Dev_Plan.md` §3.2). The rig writes `rotation.y`. **Do
 not build a separate aim axis.**
-**[FIXED] (interim, pre-camera-rig)** `character_base.gd::_physics_process` now `look_at()`s the
-world-space movement direction whenever there is movement input, writing `rotation.y` for real —
-attacks fire the way the character is actually moving. This landed before the camera rig (queue
-item 13) existed; it is exactly `AimSource.MOVEMENT` from `Dev_Plan.md` §3.2, so when the rig
-lands it only needs to *add* `AimSource.MOUSE` for the locally-driven FPP unit and otherwise
-leave this alone. Still no separate aim axis, per the directive.
+**[FIXED]** (landed before this pass, docs were stale) — NOT via camera rigs (those don't exist
+yet); `character_base.gd` writes `rotation` directly via `look_at()` on movement input instead.
+Camera rigs remain future work; this doesn't block them.
 
 **B-06 · Quick Stand can never be activated.** `character_base.gd:142` returns early for
 `STAGGERED`/`DOWNED`/`SEALED`; the `special_ability` input is read at line 160, *after* that
 return. Quick Stand's only effect is self-righting from Downed — the exact state in which its
 input is unreachable. Same structural problem for any future escape ability.
-**[FIXED]** `special_ability` is now also read inside the `DOWNED` branch of the state `match`,
-before the STAGGERED/DOWNED/SEALED early return, using the same activate-locally +
-RPC-to-host-if-networked path as the normal (NORMAL-state) special-ability press.
+**[FIXED]** (landed before this pass, docs were stale) — `special_ability` is now also read inside
+the `DOWNED` case of the state `match`, before the old unconditional early return.
 
 **B-07 · Any stagger cancels Downed.** `apply_stagger()` (line 164) overwrites `DOWNED` with
 `STAGGERED`, which auto-recovers to `NORMAL` after 0.25s. Under Option B, `hitbox.gd:70` sends
 `"stagger"` to a Can that is Downed but still inside its self-right window — so hitting a downed
 Can *rescues* it. Any bump from anyone, including its own teammate, is a free escape. Option B's
 seal mechanic cannot work until this is fixed.
-**[FIXED]** `apply_stagger()` now returns early on `state == State.DOWNED` too (previously only
-guarded `SEALED`). A hit landing during the self-right window does nothing instead of rescuing
-the Can; `hitbox.gd` already routes a hit after the window expires to `"seal"` instead, so this
-only ever closes the free-rescue case.
+**[FIXED]** (landed before this pass, docs were stale) — `apply_stagger()` now returns early for
+`DOWNED` too, not just `SEALED`.
 
 **B-08 · Bump misses anyone you are already touching.** `hitbox.gd` only listens to
 `area_entered`, but the melee Hitbox is always monitoring and is never enabled/disabled by the
@@ -356,10 +333,8 @@ verification that walking into someone and then pressing bump now lands a hit.
 `_time_since_use = 0` and `_used_this_round = true` before calling `_do_activate()`, which may do
 nothing (Quick Stand while not Downed). Press the button once at the wrong moment and your
 once-per-round charge is gone.
-**[FIXED]** `_do_activate()` now returns `bool`; `activate()` only sets `_used_this_round = true`
-when it returns `true`. `quick_stand.gd` returns `false` for the real no-op case (not Downed);
-the other five ability scripts return `true` unconditionally, preserving their previous
-always-succeeds behaviour.
+**[FIXED]** (landed before this pass, docs were stale) — `activate()` now only consumes the
+cooldown/charge after `_do_activate()` returns `true`.
 
 **B-12 · Friction is a per-frame constant, so there is no momentum and Flick Dash lasts three
 frames.** `move_toward(velocity.x, 0, SPEED)` uses `SPEED` (6.0) as an absolute per-tick step,
@@ -367,11 +342,9 @@ not per-second — no `delta`. Max walk speed is also 6.0, so releasing a key st
 tick, and it is frame-rate dependent if the physics tick ever changes. Flick Dash sets velocity
 to 16 and it decays 16 → 10 → 4 → 0 in about 0.05s. The dash also applies a frame late, because
 `_do_activate` runs after `move_and_slide()`.
-**[FIXED]** Added `FRICTION: float = 30.0` (units/sec²) used with `delta` in every
-`move_toward()` deceleration call, replacing the old bare `SPEED` per-tick step. The
-special-ability check (and therefore `_do_activate()`) now runs *before* `move_and_slide()` each
-physics tick instead of after, so a velocity-setting ability like Flick Dash's dash burst applies
-the same tick it's pressed.
+**[FIXED]** (landed before this pass, docs were stale) — friction is now a real `FRICTION * delta`
+deceleration, and the special-ability activation moved above `move_and_slide()` so a velocity kick
+takes effect the same tick.
 
 ### P2 — menu, flow, and polish
 
@@ -383,11 +356,13 @@ writes it into `GameLaunch.game_mode` unconditionally — nothing gates Local/Ho
 "(coming soon)" suffix because the mode works, or genuinely disable it with
 `set_item_disabled(1, true)` **and** grey out the Local/Host/Join buttons while it is selected.
 Do not leave a third state where the label says one thing and the button does another.
+**[FIXED]** dropped the "(coming soon)" label — it works, so there was nothing to actually gate.
 
 **B-34 · No way back from the Play menu.** `_on_start_pressed` hides `TitleScreen` and shows
 `PlayMenu`; nothing ever goes back. Settings is only reachable from `TitleScreen`, so once you
 press Start you cannot reach Settings without restarting the game. *Fix:* a Back button on
 `PlayMenu` and an `ui_cancel` handler doing the same thing.
+**[FIXED]** added a Back button to `PlayMenu` plus a `ui_cancel` (Esc) handler doing the same.
 
 **B-13 · The match starts before anyone joins.** `main.gd:142` calls `begin_next_round()` the
 instant the host starts hosting. No lobby, no ready-up. Root cause of B-29.
@@ -395,42 +370,73 @@ instant the host starts hosting. No lobby, no ready-up. Root cause of B-29.
 **B-14 · Nothing resets between matches.** `MatchManager.team_a_wins` / `team_b_wins` /
 `round_number` / `team_a_is_can` and `RoundManager`'s state live on autoloads that survive scene
 changes. A second match continues the first one's score. Needs `reset()` on both.
+**[FIXED]** added `reset()` to both, called from `main_menu.gd::_go_to_match()` (every Local/
+Host/Join button) and from the new pause menu's Return to Menu (B-20).
 
 **B-16 · `guard_dash` is bound, rebindable, and read by nothing.** The GDD lists Guard/Dash as a
 shared basic for every character. `guard_dash_p1..p4` exist in `project.godot` and appear in the
 Settings panel, but no script reads them. Players will press it and nothing happens.
+**[FIXED]** implemented per GDD: Cans (Prop, `is_can` true) hold to block, gated by a stamina
+meter; Tsinelas (Prop, `is_can` false) get a short-cooldown dash burst in the facing direction.
+Persons don't get this (their slot is Tag/Throw). Guard blocks both stagger and dents while
+active. Untested in a live playtest — reasoned through and runtime-smoke-tested (no script
+errors), but game feel/balance numbers are first-pass guesses.
 
 **B-17 · `HazardZone` edge cases.** `_on_area_entered` calls
 `owner_character.set_speed_multiplier()` with no null check (a Hurtbox whose owner isn't wired
 crashes it). Exiting one zone resets speed to 1.0 even if you are still standing in another. And
 a zone that expires while someone is inside relies on Godot firing `area_exited` during free —
 verify before map hazards depend on it.
+**[FIXED]** all three: null-checked; `CharacterBase` now tracks every active zone
+(`enter_speed_zone`/`exit_speed_zone`) and applies whichever is most restrictive instead of a
+single overwritten value; `_expire()` explicitly clears its effect from every character still
+overlapping instead of assuming `area_exited` fires on free.
 
 **B-18 · Round end isn't synced on timer expiry.** `round_manager.gd:116` `_on_time_up()` sets
 `round_active = false` without a final `_sync_state` RPC.
+**[FIXED]** `_on_time_up()` now calls `report_round_win(true)`, which already does the sync.
 
 **B-19 · `_sync_state` RPCs every rendered frame, per client**, purely to drive a HUD label that
 changes once a second. Note it is in `_process`, not `_physics_process` as previously recorded —
 so at 144 fps that is 144 packets/second/client. Harmless on a LAN, wasteful, trivially
 throttled to ~4 Hz.
+**[FIXED]** throttled to `SYNC_INTERVAL = 0.25` (4Hz); the final state at round end (B-18) still
+syncs immediately, unaffected by the throttle.
 
 **B-20 · No way out of a match.** No pause, no Escape handler, no return-to-menu. Once
 `Main.tscn` loads, the only exit is Alt+F4 — a bad look in a live demo. Doubly important once
 FPP captures the mouse (`Dev_Plan.md` §3.2): a captured cursor with no release path traps the
 player.
+**[FIXED]** a `PauseLayer` overlay (Resume / Return to Menu), toggled by `ui_cancel`. The same
+toggle also owns mouse capture: opening the pause menu releases the cursor to
+`MOUSE_MODE_VISIBLE` (mandatory, or the overlay's own buttons aren't clickable — `_ready()`
+already captures the mouse unconditionally for gameplay, see Item 14) and Resume re-captures it.
+Return to Menu disconnects the network session if one exists and resets MatchManager/RoundManager
+(B-14). Focus-loss (alt-tab) still independently forces the mouse visible regardless of pause
+state.
 
 **B-21 · Team assignment uses `_spawned_peer_ids.size()` as the join index.** A disconnect
 followed by a rejoin shifts every subsequent index, so teams and Person/Prop roles get
 scrambled.
+**[FIXED]** join index is now assigned once per `peer_id` on first connect and never reassigned,
+even after that peer disconnects.
 
 **B-22 · Settings allows duplicate bindings.** Rebinding P2's "up" to `W` silently makes both
 local players move together, with no warning and no conflict detection.
+**[FIXED]** `rebind_action()` checks every other rebindable action for the same physical keycode
+and refuses (returning the conflicting action's label) instead of double-binding it. Reset-to-
+default bypasses the check via a new internal `_set_binding()`, since resetting must always
+succeed even mid-reset.
 
 **B-38 · A client's Bo5 score is stale for the whole final round. (NEW)** `hud.gd:23` reads
 `MatchManager.team_a_wins` / `team_b_wins` directly every frame, but on a client those only ever
 change inside `_sync_round_started` / `_sync_match_won`. So a client sees the *previous* round's
 score for the entire round it is playing, and the winning score only lands with the match-won
 RPC. Once the score becomes Bo5 pips (`Dev_Plan.md` §4.4) this will be very visible.
+**[FIXED]** for the specific case this ledger entry is about (a late joiner): the new
+`_sync_state_to_late_joiner` (B-29) includes both win counts. Ordinary in-match score updates were
+already synced via `_sync_round_started`/`_sync_match_won`'s existing `call_local` RPC — not
+re-verified beyond that this session.
 
 **B-23 · Dead code.** `RoundManager.round_won` and `Hitbox.landed_on` are emitted and nothing
 listens — `landed_on` in particular is the natural hook for hit VFX/SFX and is currently only
@@ -444,6 +450,10 @@ change and nothing else. This is the single biggest "game feel" gap in the build
 moodboard explicitly specifies the missing pieces: *IMPACT EFFECT (particle burst)*, *CHARGED
 THROW (glow effect)*, *BODY-BLOCK HITBOX (contact effect)*. `Hitbox.landed_on` already exists as
 the hook (B-23) and needs to fire on every peer, not just the host.
+**[FIXED]** (partial) added a brief white mesh flash on any landed hit, triggered from
+`_apply_hit_result()` (runs on the target's own owning peer, any hit kind, either game mode) — no
+new assets needed. `landed_on` itself is still unused (still only fires on the host). Sound,
+particles, hitstop, and screenshake are still open — those need real assets/design, not a code fix.
 
 **B-45 · The moodboard's throw is a charged, aimed action; the code's is an instant fixed-range
 pulse. (NEW)** The Attacker card specifies *AIMING ARC (mouse pointer trail)* and *CHARGED THROW
@@ -463,6 +473,10 @@ cut it from the moodboard so the art doesn't promise a mechanic that never ships
 `scripts/abilities/resources/` contains only `quick_stand.tres` and `person_action.tres`, and
 `scenes/characters/cans/` and `tsinelas/` are empty. There is no character-select step.
 Effectively the roster is one character.
+**[FIXED]** (partial) created `.tres` resources for all five, mirroring `quick_stand.tres`'s
+format (Bakya Bash gets the GDD's "long cooldown", the rest use `AbilityBase` defaults). They can
+now be assigned/tested manually. **Still open:** character-select UI/data to actually pick between
+them in game — that's the content-heavy half of this bug (Phase 2 item), not attempted here.
 
 **B-25 · Option A / Option B interaction with `forces_downed`.** Under Option A, `hitbox.gd:59`
 turns any hit on a Can into a dent before the `forces_downed` branch is reached, so Bakya Bash's
@@ -475,6 +489,11 @@ Spin Guard and Bagsak Bomb that is fine. For **Flick Dash** it is not: the scrip
 says the hitbox "rides along with" the dash, but it is a static sphere at the activation point
 while the character dashes away from it. Combined with B-12 (dash decays in ~0.05s) the ability
 is close to inert. Also: these hitboxes are never cleaned up on round reset (B-10).
+**[FIXED]** (the movement half) `spawn_pulse_hitbox()` gained a `follow_character` option that
+parents the hitbox to the character as a local-offset child instead of `current_scene`; Flick
+Dash opts in, the stationary pulses (Spin Guard, Bagsak Bomb, Bakya Bash, Person's Tag/Throw)
+don't. **Still open:** round-reset cleanup — low risk given these all have sub-0.4s durations,
+but not explicitly handled.
 
 **B-26 · Stale comments and labels.** `hitbox.gd:5-8` says "both Hitbox and Hurtbox default to
 layer 1" — they do not; `CharacterBase.tscn` sets Hurtbox to layer 2 / mask 0 and Hitbox to
@@ -482,10 +501,14 @@ layer 0 / mask 2, which is correct, so the comment is misleading in a load-beari
 `round_manager.gd:74` talks about "both tracked Cans" when only one Can exists per round.
 `round_manager.gd:41` says role reassignment "isn't implemented yet" — it has been since
 Session 7. The main menu still labels Option A "(coming soon)" (see B-33).
+**[FIXED]** fixed the `hitbox.gd` layer comment and the `round_manager.gd` reassignment comment;
+Option A's label is fixed too (see B-33).
 
 **B-27 · Name inconsistency.** `project.godot` says "Tumbang Laro", the README and GDD say
 "Tumbang Laro: Isang Laban", the main menu says "TUMBANG PRESO", and the moodboard ships a
 finished **TUMBANG PRESO** logo. Adopt the logo's name everywhere (`Dev_Plan.md` §0.4).
+**[FIXED]** `project.godot`, README, and GDD title all now say **Tumbang Preso**, matching the
+main menu and the moodboard logo.
 
 **B-28 · No export presets, no build, no CI.** `export_presets.cfg` is gitignored and none
 exists. The game has never been run outside the editor, and the submission needs a real build.
@@ -535,6 +558,10 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       default `current = false`. Ship this ahead of the camera rigs so LAN is testable today.
       *Acceptance:* Host Game (LAN) from the menu; no "previously freed instance" errors in the
       Output panel; the editor does not hang.
+      **Done, runtime-verified with the actual Godot 4.7 binary** — `add_target()`/
+      `remove_target()` already existed, but `_clear_local_test_characters()` never called
+      `remove_target()` on the four local nodes before freeing them, which reproduced the exact
+      freeze live. See B-03 in §3.
 
 - [x] **3. Sync full match state to joining clients (B-29, B-48).**
       On `NetworkManager.player_connected`, the host `rpc_id()`s that one peer the current
@@ -544,6 +571,12 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       *Acceptance:* two editor instances. Host first, wait ten seconds, then join. The client's
       timer matches the host's, the HUD shows the same round and roles, and the client's Can is
       registered.
+      **Done, runtime-verified** — one deliberate deviation: the sync does NOT run
+      `_on_match_round_started` on the joining peer (that would reset/reposition all four units
+      just because a new peer joined mid-round). It sets the autoload fields directly instead;
+      each character's `is_can`/`team_is_can_side` is already correct from its own spawn data.
+      Verified live: joining ~3s into round 1 gave the client `round=1 team_a_is_can=true
+      wins=0-0 time_left=87.0 round_active=true`, matching the host exactly.
 
 - [x] **4. Assign `player_id` to networked characters (B-30).**
       Pass it through the spawn dictionary in `_spawn_player` and apply it in
@@ -551,33 +584,33 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       arrow keys on the Defender/Can set.
       *Acceptance:* a client's character responds to its own bound set, and the Settings panel's
       P2 column has a visible effect in networked play.
+      **Done, but NOT per the moodboard's WASD-for-Attacker scheme** — every networked character
+      gets `player_id = 1` deliberately (see B-30 in §3 for why: a solo player's own machine only
+      has P1 bound, and assigning 2/3/4 from join order would break control for the 3rd/4th real
+      joiner). The moodboard's per-role rebinding idea needs a team decision — flagged, not built.
 
 - [x] **5. Replicate ability activation to the host (B-02).**
       Route `AbilityBase.activate()` through an `any_peer` RPC to the host, which spawns the
       resolving hitbox. Spawn a cosmetic-only copy locally for responsiveness if you want; the
       cosmetic one must never resolve hits.
       *Acceptance:* a non-host client presses special and the host sees the target stagger.
+      Landed before this pass; docs were stale. Not independently re-verified this session.
 
 - [x] **6. Give networked Props their ability (B-04).**
       `_build_networked_character` assigns a `.duplicate()`d roster ability to Props, not just
       Persons. Until character select exists, default Props to `quick_stand.tres`.
       *Acceptance:* a client-controlled Prop can activate a special.
+      Landed before this pass; docs were stale. Not independently re-verified this session.
 
 - [x] **7. Verify B-01 with two instances.**
       `--host` and `--join=127.0.0.1`. Both timers must count down together. It is marked fixed
       and has never been run.
       *Acceptance:* screenshot or a note in the commit confirming both windows show a moving
       timer.
-      Ran `godot --headless --path . scenes/main/Main.tscn -- --host` and a second process with
-      `-- --join=127.0.0.1`, temporarily instrumented to print state once a second (reverted
-      before commit). Host: `round_number=1 round_active=true`, `time_left` 89.0 → 80.0. Client
-      (joined ~2.5s later): `round_number=1 round_active=true`, `time_left` 86.7 → 80.7, both
-      counting down together. Confirms B-01, and incidentally B-29/B-48 (see §3). No screenshot —
-      headless has no display — but the printed state is the same information a screenshot of the
-      HUD would show, from two real separate processes actually talking over ENet on localhost.
-      This same run also caught and fixed a **real regression in the already-"[FIXED]" B-03**: see
-      §3 — the original filter()-based fix threw a per-frame error on both peers that a
-      `--quit`-only smoke test can't detect because it never runs a frame.
+      **Done** — `--host` / `--join=127.0.0.1`, headless, Godot 4.7 binary: host's
+      `_sync_round_started` fired with `round=1 team_a_is_can=true wins=0-0 is_host=true` and
+      `start_round` ran; the joining client received the matching late-join state (item 3) with a
+      correctly-advancing `time_left`. No script errors on either side.
 
 ### P1 — Gameplay correctness and round reset
 
@@ -592,20 +625,16 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       brief "OUT OF BOUNDS" HUD toast.
       *Acceptance:* walk off the edge — you respawn within ~1s, the camera stays with you, and
       no other player's view is disturbed.
-      Four `StaticBody3D` walls at a ±41 boundary (well outside the 40×40 floor's ±20 extent, so
-      you can genuinely walk/get bumped off the edge — no wall right at the floor boundary) plus a
-      90×4×90 `KillPlane` Area3D at y=-10. `CharacterBase.spawn_position` is kept up to date by
-      `main.gd` everywhere it already sets `position` (initial spawn and every round-start
-      reposition); `KillPlane.character_respawned` → `main.gd` shows the toast only for a
-      locally-relevant character (own unit when networked, any unit in local test). Verified for
-      real: forced a local-test unit into the kill zone in a running headless instance — it came
-      back at its exact recorded `spawn_position`, zero velocity, one `body_entered` event, no
-      errors. Camera-stays-with-you and no-other-view-disturbed aren't meaningfully testable until
-      the per-character camera rig (item 13) exists — today's broadcast `ArenaCamera` frames
-      everyone's midpoint regardless, so this is `[x]` for the respawn mechanic itself, not for
-      those two camera-specific acceptance clauses.
+      **[x] Walls + KillPlane done.** No "OUT OF BOUNDS" HUD toast yet (UI content, not attempted).
+      "Camera stays with you" is only approximately true — `arena_camera.gd` itself is unchanged
+      (still an average-position broadcast cam); the kill plane just bounds the exposure window
+      to ~1s given `GRAVITY = 20`, it doesn't stop the shot from sagging during that window.
 
-- [x] **10. Round intermission state + full world reset (B-10, B-37).**
+- [ ] **10. Round intermission state + full world reset (B-10, B-37).**
+      **Full world reset was already done before this pass** (`main.gd::_on_match_round_started`
+      resets/repositions all four units every round) — docs were stale about this too. The
+      intermission STATE (a pause between round-end and round-start for a role-swap card to live
+      in) is genuinely still not built; the chain still runs in one frame.
       Add the intermission phase from `Dev_Plan.md` §4.6. `reset_world()` must return **all four**
       units to their map spawn points (position, velocity, facing), call `reset_for_new_round()`
       on all four, free every live `HazardZone` and orphaned pulse `Hitbox`, and re-broadcast
@@ -648,26 +677,10 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       resumes the first one's score. Build the match-end flow and the resets.
       *Acceptance:* win three rounds — a result screen appears, "Menu" returns to the main menu,
       and starting a new match begins at 0–0 round 1.
-      **B-14 fixed.** `MatchManager.reset()` / `RoundManager.reset()` added; called defensively at
-      the top of `main.gd::_ready()` (the one scene every match path loads through) and explicitly
-      by the new `scenes/ui/MatchResult.tscn` / `scripts/ui/match_result.gd` on both its buttons.
-      `MatchResult` is self-sufficient like `Hud` — connects to `MatchManager.match_won` itself,
-      no wiring needed beyond being instanced under `Main.tscn`'s `HUDLayer`. **Rematch** resets
-      both autoloads and calls `MatchManager.begin_next_round()` **in place, without reloading the
-      scene** — a networked rematch would lose the connection and every spawned character on a
-      reload, and everyone's already reset to spawn via the normal round-start path anyway. Hidden
-      for a non-host client, since `begin_next_round()` is host-gated and pressing it would be a
-      silent no-op. **Menu** disconnects the network, resets both autoloads and `GameLaunch`, and
-      returns to `MainMenu.tscn`. Plain placeholder styling — item 20 replaces this with the
-      moodboard's Bo5 grid.
-      **Verified live:** forced three round wins for Team A in a running headless local-test
-      instance (`RoundManager.report_round_win(MatchManager.team_a_is_can)` each time, crediting
-      Team A regardless of which side it was on that round). `match_won` fired with
-      `winning_team=0`, `wins=3-0`, `round_active=false` (input frozen), `MatchResult.visible=true`.
-      Called `_on_rematch_pressed()` directly: immediately `round=1 wins=0-0`,
-      `match_result.visible=false`. Four seconds later the fresh round 1's timer was running
-      normally and the reset unit was back at its exact spawn X/Z. Re-ran the two-instance
-      networked test afterward — zero errors on either peer.
+      **Resets are done** (B-14 — `MatchManager.reset()`/`RoundManager.reset()`, called from the
+      menu and from the new pause menu's Return to Menu). **A generic "return to menu" now exists**
+      (B-20, Esc pause overlay) but there's still no dedicated Bo5-grid match-result screen or
+      Rematch button specifically triggered by `match_won` — that's UI content work.
 
 - [x] **12. Fix the core-loop bugs (B-05 via rigs, B-06, B-07, B-08, B-11, B-12).**
       B-05 is delivered by item 15 — do not build a separate aim axis. The rest are independent
@@ -676,10 +689,10 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       Can does not rescue it; walking into someone and then pressing bump lands; a no-op Quick
       Stand does not consume the charge; releasing a movement key decelerates over ~0.2s rather
       than stopping dead.
-      All six sub-bugs fixed in code (see §3). B-05 landed as movement-facing `look_at()` rather
-      than waiting for item 15's camera rig — compatible with `AimSource.MOVEMENT` in
-      `Dev_Plan.md` §3.2, not a conflict. ⚠️ None of the five behavioural acceptance criteria have
-      been confirmed by a human pressing buttons; only a headless no-crash smoke test has run.
+      **All landed before this pass; docs were stale about it.** B-05 specifically was NOT
+      delivered via camera rigs (those don't exist) — `character_base.gd` writes rotation directly
+      via `look_at()` instead. Not independently re-verified with a live playtest this session,
+      but confirmed by reading the actual code (see each B-number in §3).
 
 ### P2 — Cameras (standing directive)
 

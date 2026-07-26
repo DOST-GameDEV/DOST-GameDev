@@ -76,9 +76,15 @@ func _unhandled_input(event: InputEvent) -> void:
 			status_label.text = "Rebind cancelled."
 			_listening_action = ""
 		else:
-			SettingsManager.rebind_action(_listening_action, key_event.physical_keycode)
-			status_label.text = "\"%s\" rebound." % SettingsManager.ACTION_LABELS.get(_listening_action, _listening_action)
-			_listening_action = ""
+			# B-22: rebind_action() now refuses (and reports) a key already used
+			# by another action instead of silently double-binding it.
+			var conflict_with := SettingsManager.rebind_action(_listening_action, key_event.physical_keycode)
+			if conflict_with != "":
+				_action_buttons[_listening_action].text = SettingsManager.get_binding_display_name(_listening_action)
+				status_label.text = "That key is already \"%s\". Choose a different key." % conflict_with
+			else:
+				status_label.text = "\"%s\" rebound." % SettingsManager.ACTION_LABELS.get(_listening_action, _listening_action)
+				_listening_action = ""
 		get_viewport().set_input_as_handled()
 
 ## Refreshes whichever row's button just changed — covers both rebinds made

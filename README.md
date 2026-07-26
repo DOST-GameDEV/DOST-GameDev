@@ -1,4 +1,4 @@
-# Tumbang Laro: Isang Laban 🥫🩴
+# Tumbang Preso 🥫🩴
 
 2v2 arena brawler for **Gear Up NCR — Esports Game Dev Challenge**. Each team is 2 players:
 a Person and their Can (or Slipper). Defending Persons tag attackers while their Can holds
@@ -25,21 +25,22 @@ For LAN: **Host Game** on one machine, **Join** with the host's local IP on the 
 test on one PC, use **Debug → Run Multiple Instances → 2** with per-instance arguments
 `--host` and `--join=127.0.0.1`.
 
-> ⚠️ Networked matches are currently broken — the round timer never starts and abilities do
-> nothing for non-host peers. See bugs **B-01** to **B-04** in the handoff.
+> ⚠️ Most of the round-start/ability-replication/friendly-fire bugs that used to block a LAN
+> demo are fixed, but several networked-only paths (late joiners learning match state, stable
+> team assignment on reconnect) are still open. See `docs/Handoff.md` §3 for the current list.
 
 ## Status
 
 | | |
 |---|---|
 | Core systems (movement, combat, states, round/match, LAN, HUD, menu, settings) | scaffolded, mostly unverified |
-| Roster | 6 specials written, only 1 reachable in game |
+| Roster | 6 specials have resources now; character-select UI to pick between them doesn't exist yet |
 | Maps, art, audio | not started |
 | Submission materials | not started |
 
 Movement, input split, camera, and menus have been playtested. Combat, abilities, rounds,
-and every network path have **not** — see [`docs/Handoff.md`](docs/Handoff.md) §3 for the 28
-known bugs and §4 for the order to tackle them.
+and every network path have **not** — see [`docs/Handoff.md`](docs/Handoff.md) §3 for the
+current bug list and §4 for the order to tackle them.
 
 ## Project structure
 
