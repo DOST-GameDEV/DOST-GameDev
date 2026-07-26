@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3 uid="uid://c3f7h9j1k2l4m"]
+[gd_scene load_steps=16 format=3 uid="uid://c3f7h9j1k2l4m"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="0"]
 [ext_resource type="PackedScene" path="res://scenes/characters/CharacterBase.tscn" id="1"]
@@ -7,6 +7,7 @@
 [ext_resource type="Script" path="res://scripts/systems/arena_camera.gd" id="4"]
 [ext_resource type="Script" path="res://scripts/systems/kill_plane.gd" id="5"]
 [ext_resource type="PackedScene" path="res://scenes/ui/MatchResult.tscn" id="6"]
+[ext_resource type="PackedScene" path="res://scenes/ui/DebugBar.tscn" id="7"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
 size = Vector3(40, 1, 40)
@@ -125,6 +126,8 @@ spawn_path = NodePath("../Players")
 [node name="HUD" parent="HUDLayer" instance=ExtResource("2")]
 
 [node name="MatchResult" parent="HUDLayer" instance=ExtResource("6")]
+
+[node name="DebugBar" parent="HUDLayer" instance=ExtResource("7")]
 
 [node name="PauseLayer" type="CanvasLayer" parent="."]
 layer = 10

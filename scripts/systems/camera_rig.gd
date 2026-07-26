@@ -75,7 +75,7 @@ func _ready() -> void:
 		set_aim_source(AimSource.MOUSE if is_mine else AimSource.MOVEMENT)
 
 ## Exactly one camera should be `current` at a time (per local peer) — the
-## public API the debug switcher (queue item 1) hands control between units
+## public API queue item 1's unit switcher hands control between units
 ## with, and what a networked spawn calls on itself above. Disables _process
 ## on an inactive rig so four idle rigs aren't doing four cameras' worth of
 ## work for nothing.
