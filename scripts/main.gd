@@ -256,6 +256,7 @@ func _build_networked_character(data: Dictionary) -> Node:
 	var character: CharacterBase = CHARACTER_SCENE.instantiate()
 	character.name = str(data["peer_id"])
 	character.position = data["position"]
+	character.spawn_position = data["position"] # B-15/B-35: KillPlane's respawn point
 	character.is_can = data["is_can"]
 	character.is_person = data["is_person"]
 	character.team_is_can_side = data["team_is_can_side"]
@@ -340,6 +341,7 @@ func _on_match_round_started(_round_number: int, team_a_is_can: bool) -> void:
 			# reset at all. Reset + reposition every unit here instead.
 			character.reset_for_new_round()
 			character.position = SPAWN_POINTS[index % SPAWN_POINTS.size()]
+			character.spawn_position = character.position # B-15/B-35: keep KillPlane's respawn point current
 			index += 1
 			if character.is_can:
 				RoundManager.register_can(character)
@@ -362,6 +364,7 @@ func _on_match_round_started(_round_number: int, team_a_is_can: bool) -> void:
 			var character := _local_roster[i]
 			character.reset_for_new_round()
 			character.position = SPAWN_POINTS[i % SPAWN_POINTS.size()]
+			character.spawn_position = character.position # B-15/B-35
 		_register_local_can()
 	RoundManager.start_round()
 
