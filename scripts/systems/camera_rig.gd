@@ -62,6 +62,15 @@ func _ready() -> void:
 	# SpringArm3D's shapecast would otherwise hit the character's own capsule
 	# every frame and drag the camera in against its own body.
 	tpp_arm.add_excluded_object(_character.get_rid())
+	# The meshes do not exist yet: this rig's _ready() runs before
+	# character_base.gd's (children are ready before parents), and the model is
+	# instanced there. Re-apply on every model change instead of only now —
+	# which also covers the round-swap, where a Prop's Can/Tsinelas model is
+	# rebuilt from scratch. Calling it once here too is harmless and keeps the
+	# behaviour correct if a Visual ever ships with meshes baked in.
+	var visual := _character.get_node_or_null("Visual") as CharacterVisual
+	if visual != null:
+		visual.model_changed.connect(_apply_fpp_self_hide)
 	_apply_fpp_self_hide()
 	set_active(false)
 	set_process_unhandled_input(false)

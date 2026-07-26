@@ -858,6 +858,29 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       `A2 · ARROWS`). Off-screen edge arrows for your teammate and the Can — mandatory for FPP.
       *Acceptance:* from any camera in either mode, you can name every unit's team and role
       within a second, and find your own body after a respawn.
+      **Partially done — the CLASS half is built, the TEAM/PLAYER half is not.**
+      Every unit now has a distinct model instead of four identical white capsules, driven by
+      `scripts/characters/character_visual.gd` on `CharacterBase.tscn`'s `Visual` node:
+      - **Person** — Kenney "Mini Characters" (CC0, `assets/characters/persons/`, licence committed
+        alongside as `KENNEY_LICENSE.txt`). Indexed by team so the two Persons in a match are
+        visibly different people; two spare models are in the repo for the character-select roster
+        (B-24). Their `idle` clip plays, so they don't stand in bind pose.
+      - **Can (Lata)** and **Tsinelas** — authored low-poly primitives in
+        `scenes/characters/visuals/`, in the moodboard's own colours (Can: `DEFENSE` blue body,
+        `OFFENSE` orange rims, `HIGHLIGHT` yellow face disc; Tsinelas: `DEFENSE` blue sole,
+        `IMPACT` pink straps). No Can/Slipper art shipped with the brief, so these are built, not
+        imported.
+      The model is chosen at runtime, not baked into the scene, because **`is_can` flips every
+      round** — a Prop is a Can one round and a Tsinelas the next, so `reset_for_new_round()`
+      reapplies it.
+      **Still open on this item:** the ground ring decal in the team's current role colour, the
+      `A1`/`A2`/`B1`/`B2` billboard tags, the own-unit chevron, the local-test input-set suffix,
+      and the off-screen edge arrows. None of the team/player identification is built — right now
+      you can tell a Can from a Tsinelas from a Person at a glance, but not Team A's Person from
+      Team B's beyond which model they happen to be using.
+      **Also still open:** only `idle` is wired. Kenney's rig ships 32 clips (walk, sprint, jump,
+      die, attack-melee, …) and none of the others are driven by gameplay state, so units slide
+      around in their idle pose.
 
 - [ ] **19. Role-swap intermission card (item 9; needs item 10's intermission state).**
       Sequence per `Dev_Plan.md` §4.6: round-result banner → role-swap card with both team panels
