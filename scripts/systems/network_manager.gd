@@ -28,6 +28,23 @@ const DEFAULT_PORT: int = 8910
 const MAX_PLAYERS: int = 4
 
 var connected_peer_ids: Array[int] = []
+## B-49: Godot 4's `multiplayer.multiplayer_peer` defaults to an
+## `OfflineMultiplayerPeer` sentinel, NOT null, and `multiplayer.has_multiplayer_peer()`
+## reports `true` for it — so `is_networked()` used to read `true` even for
+## the plain single-PC/split-keyboard local-test flow, which never calls
+## `host_game()`/`join_game()` at all. That silently sent every
+## `if NetworkManager.is_networked(): ...` branch throughout the codebase down
+## its "networked" path in local play. Most of those happened to be harmless
+## (`is_host()` was ALSO accidentally true, since the default peer reports as
+## server too, so "networked and not host" gates never actually skipped
+## anything) — but main.gd::_on_match_round_started branches on `is_networked()`
+## alone with no such accidental save: it took the networked branch and
+## iterated `_spawned_characters`, which is always empty in local test, so the
+## ENTIRE per-round reset (position, is_can/team_is_can_side recompute,
+## RoundManager.register_can()) silently did nothing for any local-test unit
+## from round 2 onward. Track "actually networked" explicitly instead of
+## trusting the engine's default-peer sentinel.
+var _is_networked: bool = false
 
 func _ready() -> void:
 	multiplayer.peer_connected.connect(_on_peer_connected)
@@ -45,6 +62,7 @@ func host_game(port: int = DEFAULT_PORT) -> Error:
 		push_error("NetworkManager: failed to host on port %d (error %d)" % [port, err])
 		return err
 	multiplayer.multiplayer_peer = peer
+	_is_networked = true
 	connected_peer_ids = [multiplayer.get_unique_id()]
 	server_created.emit()
 	return OK
@@ -56,6 +74,7 @@ func join_game(address: String, port: int = DEFAULT_PORT) -> Error:
 		push_error("NetworkManager: failed to connect to %s:%d (error %d)" % [address, port, err])
 		return err
 	multiplayer.multiplayer_peer = peer
+	_is_networked = true
 	return OK
 
 func disconnect_network() -> void:
@@ -63,11 +82,13 @@ func disconnect_network() -> void:
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = null
 	connected_peer_ids.clear()
+	_is_networked = false
 
-## True once a peer (host or client) has been created — false for the plain
-## single-PC/split-keyboard prototype flow, which keeps working unchanged.
+## True once host_game()/join_game() actually ran — false for the plain
+## single-PC/split-keyboard prototype flow. See _is_networked doc (B-49) for
+## why this can't just be multiplayer.has_multiplayer_peer().
 func is_networked() -> bool:
-	return multiplayer.has_multiplayer_peer()
+	return _is_networked
 
 func is_host() -> bool:
 	return is_networked() and multiplayer.is_server()
@@ -87,9 +108,11 @@ func _on_connected_to_server() -> void:
 
 func _on_connection_failed() -> void:
 	multiplayer.multiplayer_peer = null
+	_is_networked = false
 	connection_failed.emit()
 
 func _on_server_disconnected() -> void:
 	multiplayer.multiplayer_peer = null
 	connected_peer_ids.clear()
+	_is_networked = false
 	server_disconnected.emit()
