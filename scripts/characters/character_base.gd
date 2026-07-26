@@ -50,6 +50,14 @@ enum State { NORMAL, STAGGERED, DOWNED, SEALED }
 ## Can/Slipper (which flips with the team's Attacker/Defender role each round),
 ## a player stays Person or stays Prop all match. See main.gd for assignment.
 @export var is_person: bool = false
+## Session 8 (throw/tag mechanic): mirrors the Prop's `is_can` for a Person, who
+## doesn't have an `is_can` of its own (a Person's `is_can` is always false — see
+## above) but still needs to know which side its team is on this round to pick
+## Tag (defense) vs Throw (offense) — see person_action.gd. true = team is on the
+## Can/defense side, false = team is on the Slipper/offense side. Meaningless for
+## a Prop (which already has `is_can` for this). Kept in sync by main.gd, same
+## lifetime/pattern as `is_can` — see _spawn_player / _on_match_round_started.
+@export var team_is_can_side: bool = true
 ## Which local input set this character reads from (1 or 2). Lets two characters
 ## share one keyboard without both moving on the same WASD press — see
 ## project.godot [input]: every action is suffixed "_p1"/"_p2".
