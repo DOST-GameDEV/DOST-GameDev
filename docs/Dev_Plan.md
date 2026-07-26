@@ -1,11 +1,51 @@
-# Dev Plan — Tumbang Laro: Isang Laban
+# Dev Plan — Tumbang Preso
 
 Integration and development plan for the Godot 4.7 build. Written against the code that is
 actually in this repo, not against intent. Design source of truth is
-[`Tumbang_Preso_2v2_GDD.md`](Tumbang_Preso_2v2_GDD.md); current state, known bugs, and the
-"pick this up next" list are in [`Handoff.md`](Handoff.md).
+[`Tumbang_Preso_2v2_GDD.md`](Tumbang_Preso_2v2_GDD.md); current state, the bug ledger, and the
+"pick this up next" queue are in [`Handoff.md`](Handoff.md).
 
 **Engine:** Godot 4.7, Forward+, GDScript · **Target:** 4-player LAN (2v2), Bo5 · **Deliverable:** playable demo + 1–2 min trailer + 3–5 min gameplay video
+
+---
+
+## 0. Standing directives
+
+These override anything older in this document, in the GDD, or in previous handoffs. If you
+find contradicting guidance elsewhere, this section wins and the other document is stale.
+
+### 0.1 Camera paradigm — locked
+
+| Character type | Camera | Node |
+|---|---|---|
+| **Person** (`is_person == true`) | **FPP — first person, always** | `CameraRig` in FPP mode |
+| **Prop** — Can (Lata) and Slipper (Tsinelas) (`is_person == false`) | **TPP — third person, always** | `CameraRig` in TPP mode |
+
+There is no player-facing toggle, no per-map override, and no export flag. The mode is
+**derived** from `is_person` at `_ready()` so it cannot drift. A Person is never third-person;
+a Prop is never first-person.
+
+This overrides:
+- GDD Section 2 ("Camera/Genre: Full 3D, low-poly, **third-person**")
+- GDD Section 6 ("**Third-person cam per player**")
+- The existing scene-level `ArenaCamera` in `Main.tscn`, which is retired from gameplay
+  entirely (see §3.4).
+
+Both GDD lines predate the split and are now wrong. Section 3 below is the implementation.
+
+### 0.2 Local Match is a test harness, not a shipping mode
+
+`_start_local_test()` and the `p3`/`p4` input sets exist to let one person exercise four units
+on one keyboard. **It is removed before submission.** Until then it gets one addition — a debug
+key to cycle which unit you are driving (§3.5) — and nothing else. Do not invest UI or polish
+in it, and do not let it constrain the LAN architecture.
+
+### 0.3 Title
+
+The moodboard ships a finished logo reading **TUMBANG PRESO** (with the "O" as a can top).
+That is now the display title. `project.godot` says "Tumbang Laro", the README and GDD say
+"Tumbang Laro: Isang Laban", the menu says "TUMBANG PRESO" — three names for one game. Adopt
+the logo's. See B-27.
 
 ---
 
@@ -18,48 +58,51 @@ Legend: **[x]** built and working · **[~]** built but broken or unverified · *
 | Area | State | Notes |
 |---|---|---|
 | Project scaffold, folders, `.gitignore`, LFS attributes | [x] | |
-| `CharacterBase` — move, gravity, per-player input map | [x] | Playtested. No rotation, no dash — see B-05, B-16. |
+| `CharacterBase` — move, gravity, per-player input map | [x] | Playtested. No rotation, no dash — B-05, B-16. |
 | `AbilityBase` resource pattern (one scene + a plugged-in Resource per character) | [x] | Pattern is sound and worth keeping. |
-| `Hitbox` / `Hurtbox` + press-to-bump active window | [~] | Misses already-overlapping targets (B-08), no team check (B-09). |
+| `Hitbox` / `Hurtbox` + press-to-bump active window | [~] | Layers are correct (Hurtbox L2/M0, Hitbox L0/M2). Misses already-overlapping targets (B-08), no team check (B-09). |
 | Downed / self-right / Seal state machine | [~] | Any stagger cancels Downed (B-07). |
-| Option A — dents (health) round win | [~] | Wired end to end; never human-verified. |
+| Option A — dents (health) round win | [~] | Wired end to end; never human-verified. Menu still calls it "coming soon" (B-26). |
 | Option B — Downed → Seal round win | [~] | Wired end to end; broken by B-07. |
-| `RoundManager` (90s timer, win reporting) | [~] | Never starts in networked play (B-01). |
-| `MatchManager` (Bo5, role swap) | [~] | Host never sees its own signals (B-01); no match reset (B-14). |
-| `NetworkManager` (ENet host/join) | [x] | Connects fine. Everything downstream of it is where the trouble is. |
-| Networked spawning + movement replication | [~] | Works; snaps (no interpolation), Props spawn with no ability (B-04). |
+| `RoundManager` (90s timer, win reporting) | [~] | Starts on the host now (B-01 fixed); a **late-joining client never learns a round started** (B-29). |
+| `MatchManager` (Bo5, role swap) | [x] | Bo5-to-3 early win **already implemented** (`WINS_NEEDED = 3`, `match_manager.gd:43`). No match reset (B-14), no end-of-match flow (B-37). |
+| `NetworkManager` (ENet host/join) | [x] | Connects fine. Everything downstream is where the trouble is. |
+| Networked spawning + movement replication | [~] | Works; snaps (no interpolation); Props spawn with no ability (B-04); `player_id` never assigned (B-30). |
 | Host-authoritative combat | [~] | Correct for Bump; silently drops every special (B-02). |
-| HUD (timer, Bo5, round, role, dent counter, downed flash) | [x] | Reads the autoloads directly, needs no per-scene wiring. |
-| Main menu + mode picker | [x] | Stale "coming soon" label (B-25); no way back out of a match (B-20). |
-| Settings — rebindable, persistent controls | [x] | Offers to rebind an action nothing reads (B-16); allows duplicates (B-22). |
-| `ArenaCamera` follow/zoom | [~] | Errors every frame in networked play (B-03). |
+| HUD (timer, Bo5, round, role, dent counter, downed flash) | [~] | Functional but placeholder-styled. Client score is stale (B-38). Full rebuild in §4. |
+| Main menu + mode picker | [~] | **No back button** (B-34); disabled mode is selectable and proceeds (B-33). |
+| Settings — rebindable, persistent controls | [x] | Rebinds an action nothing reads (B-16); allows duplicates (B-22); P2 bindings are dead in LAN (B-30). |
+| `ArenaCamera` follow/zoom | [~] | Crashes every frame in networked play (B-03 — **this is the reported LAN freeze**). Being retired (§3.4). |
 | `HazardZone` slow-zone | [~] | Untested; edge cases in B-17. |
+| Out-of-bounds / kill plane / arena walls | [ ] | Nothing. Falling off the map = infinite fall + camera follows forever (B-15, B-35). |
+| Per-character camera rigs (FPP/TPP) | [ ] | §3. |
+| Round intermission / role-swap beat | [ ] | Rounds currently roll over in the same frame (B-37). §4.6. |
+| Team identity on `CharacterBase` | [ ] | No `team_id` exists. Blocks friendly-fire fix **and** three UI items (B-09). |
 
 ### Content
 
 | Area | State | Notes |
 |---|---|---|
-| Person's Tag / Throw action | [~] | `person_action.gd` + `.tres` exist. Fires toward world −Z only (B-05). |
+| Person's Tag / Throw action | [~] | `person_action.gd` + `.tres` exist. Fires toward world −Z only (B-05). Moodboard specs a **charged, aimed** throw instead (B-45). |
 | Sardinas — Quick Stand | [~] | Script + `.tres` exist. Cannot be activated at all (B-06). |
 | Palayok, Bilao, Dyaryo, Bakya, Havaianas specials | [~] | Scripts exist. **No `.tres` resources, not attached to anything, unreachable in game.** |
-| Character selection | [ ] | No UI, no data. Which of the 6 you play is not choosable. |
+| Character selection | [ ] | No UI, no data. |
 | Character scenes (`scenes/characters/cans/`, `tsinelas/`) | [ ] | Empty. Everything is one grey capsule. |
 | Maps — Eskinita, Bayan Plaza | [ ] | Names only. One 40×40 box floor exists. |
 | Map hazards (jeepney lane, mud, carabao) | [ ] | `HazardZone` is the reusable piece; nothing placed. |
-| Ring-outs / out-of-bounds | [ ] | No bounds check anywhere (B-15). |
-| Art, animation, VFX | [ ] | `assets/` is empty except `.gitkeep`s. |
-| Audio | [ ] | Nothing. |
-| Broadcast/spectator cam | [ ] | GDD Section 6 stretch. |
+| Art, animation, VFX | [ ] | `assets/` is empty except `.gitkeep`s. Moodboard now exists — see §4. |
+| Audio | [ ] | Nothing. No hit feedback of any kind (B-44). |
+| UI theme / design system | [ ] | §4. Moodboard delivered, tokens extracted, nothing built. |
+| Broadcast/spectator cam | [ ] | GDD Section 6 stretch. `ArenaCamera` becomes this (§3.4). |
 | Trailer + demo video | [ ] | |
-| Submission forms 01–03, synopsis | [ ] | GDD Section 9. |
+| Submission forms 01–03, synopsis | [ ] | GDD Section 9. Note Form 03 now needs the **font license** (§4.2). |
 
 ### What has and hasn't been verified by a human
 
 Playtested and confirmed: movement, per-player input split, camera follow, main menu
 navigation. **Never confirmed by anyone pressing buttons:** bump landing, stagger, Downed,
-self-right, seal, dents, any special ability, any round ending, any match ending, and
-every network path beyond "the peers connect". Treat all of Section 1's `[~]` rows as
-untrusted until someone has actually played them.
+self-right, seal, dents, any special ability, any round ending, any match ending, and every
+network path beyond "the peers connect". Treat every `[~]` row above as untrusted.
 
 ---
 
@@ -71,205 +114,550 @@ MainMenu.tscn ──(GameLaunch autoload)──> Main.tscn
         ┌───────────────────────────────────┼───────────────────────────────┐
         │                                   │                               │
    NetworkManager                     MatchManager ── round_started ──> main.gd
-   (ENet host/join,                   (Bo5, role swap)                      │
-    is_networked/is_host)                   ▲                    assigns is_can / registers Cans
+   (ENet host/join,                   (Bo5, role swap,                      │
+    is_networked/is_host)              intermission)                        │
+        │                                   ▲                    assigns is_can / registers Cans
         │                                   │                               │
         └──> MultiplayerSpawner ──> CharacterBase ×4          RoundManager (90s timer,
                     │                (Person | Prop)           tracked Cans, win check)
              MultiplayerSynchronizer        │                          │
              (position, rotation,           ├── AbilityBase (.tres per character)
               state, dents)                 ├── Hitbox  ──> resolves on host only
-                                            └── Hurtbox      ──> _apply_hit_result RPC
-                                                                    to the target's owner
+                                            ├── Hurtbox      ──> _apply_hit_result RPC
+                                            ├── CameraRig    ──> FPP if Person, TPP if Prop   ← NEW (§3)
+                                            └── Nameplate    ──> team + player identity       ← NEW (§4.5)
 ```
 
-Three rules this codebase is built on. Keep them:
+Four rules this codebase is built on. Keep them:
 
 1. **Round-win logic is decoupled from movement, combat, and hit registration.** `RoundManager`
    only watches `state_changed` / `dents_changed` on a registered list of Cans. That is what
    makes Option A vs Option B a config switch instead of a rewrite. Do not let win conditions
    leak into `character_base.gd` or `hitbox.gd` beyond the one `GameLaunch.game_mode` branch
    that already exists.
-2. **One `CharacterBase` scene, six abilities as Resources.** Adding or rebalancing a special
-   is one `.tres` edit, not a new script per character.
+2. **One `CharacterBase` scene, six abilities as Resources.** Adding or rebalancing a special is
+   one `.tres` edit, not a new script per character.
 3. **Host is authoritative for anything that decides a round.** Clients own only their own
    character's movement and state; the host resolves hits and tells the owning peer what
-   happened. Input is decoupled per player (`*_p1`..`*_p4`), so the GDD's shared-screen
-   fallback stays cheap.
+   happened.
+4. **The camera belongs to the character, not to the scene.** *(New — §3.)* Every camera is a
+   child of the `CharacterBase` it serves. No scene-level camera holds a `NodePath` to a
+   player. This is what permanently kills B-03 and half of the out-of-bounds camera bug.
 
 ### Autoloads
 
 `RoundManager` · `MatchManager` · `NetworkManager` · `GameLaunch` · `SettingsManager`
+*(planned: `UiTheme` §4.2, `DebugPlayerSwitcher` §3.5 — debug-only, stripped for release)*
 
-Autoloads persist across scene changes. Nothing currently resets them between matches —
-that is B-14 and it needs a `reset()` on both `RoundManager` and `MatchManager`.
+Autoloads persist across scene changes. Nothing currently resets them between matches — that
+is B-14 and it needs a `reset()` on both `RoundManager` and `MatchManager`.
 
 ---
 
-## 3. Build order
+## 3. Camera architecture — FPP / TPP split
 
-Ordered so each phase de-risks the next. Phases 0 and 1 are blocking; nothing else is worth
-doing until a full 2v2 round can start, be won, and roll into the next round.
+Implements directive §0.1. This is a new subsystem, not a patch on `ArenaCamera`.
 
-### Phase 0 — Make it run (blocking, do first)
+### 3.1 Node structure
 
-Fix the four P0 bugs. Until these are done there is no LAN demo to show anyone.
+One rig scene, `scenes/characters/CameraRig.tscn`, instanced as a child of `CharacterBase.tscn`:
 
-- [x] **B-01** — `MatchManager` host never emits `round_started` / `match_won` locally, so a
-      networked match's timer never starts. One-line class of fix. *(Fixed: `_sync_round_started`
-      and `_sync_match_won` are now `call_local` instead of `call_remote`, so the host runs its
-      own handler — same RPC, no separate direct-emit path needed. Verify with two editor
-      instances, `--host` and `--join=127.0.0.1`, that both see the timer move.)*
-- [ ] **B-02** — abilities spawn their hitbox only on the activating peer, and hitboxes only
-      resolve on the host, so every special and Tag/Throw is a no-op for anyone who isn't
-      hosting. Needs an activation RPC to the host.
-- [ ] **B-03** — `ArenaCamera` holds freed local-test nodes in networked play and never picks
-      up the spawned networked characters.
+```
+CharacterBase (CharacterBody3D)
+├── MultiplayerSynchronizer      (position, rotation, state, dents)
+├── CollisionShape3D
+├── Visual (Node3D)              ← wrap the mesh so FPP can hide it as one unit
+│   └── MeshInstance3D
+├── Hurtbox / Hitbox
+├── Nameplate (Node3D)           ← §4.5
+└── CameraRig (Node3D)           ← scripts/systems/camera_rig.gd
+    ├── FppPivot (Node3D)        y ≈ 1.55 (eye height)
+    │   └── FppCamera (Camera3D) near = 0.05, fov = 95
+    └── TppArm (SpringArm3D)     y ≈ 1.2, x-rot −15°, spring_length = 4.5,
+        │                        collision_mask = world layer only
+        └── TppCamera (Camera3D) fov = 70
+```
+
+`SpringArm3D` is doing the wall-clipping work in TPP; do not hand-roll a raycast.
+
+### 3.2 `camera_rig.gd` contract
+
+```gdscript
+enum Mode { FPP, TPP }
+
+# DERIVED, never exported. Directive §0.1 — a Person is always FPP, a Prop always TPP.
+func _ready() -> void:
+    _mode = Mode.FPP if _character.is_person else Mode.TPP
+```
+
+- **Activation.** Exactly one camera in the scene has `current = true`. Networked:
+  `is_multiplayer_authority()`. Local test: whichever unit `DebugPlayerSwitcher` currently
+  targets (§3.5). Everyone else's rig has `current = false` and should have `_process`
+  disabled — four active rigs is four cameras' worth of work for nothing.
+- **Yaw lives on the body, pitch lives on the rig.** The rig writes
+  `_character.rotation.y`; it must never touch `rotation.x` on the body. `Hitbox` sits at a
+  fixed local offset and every directional ability uses `-transform.basis.z` — tilting the body
+  would tilt the hitboxes into the floor.
+- **This is the fix for B-05.** Once yaw is a real value, `-transform.basis.z` becomes a real
+  aim vector, the melee `Hitbox` finally points where you're looking, and `Input.get_vector`'s
+  existing `transform.basis * input_dir` becomes camera-relative movement for free. Do **not**
+  build a separate aim axis — `rotation` is already in the replication config
+  (`CharacterBase.tscn:11`) and is already replicated. It has simply never been written to.
+- **Pitch clamp:** −80° … +70°. The low end has to be generous: a Person in FPP has to look
+  down at a knee-height Can to throw at it.
+- **FPP self-hide:** set `Visual.cast_shadow = SHADOW_CASTING_SETTING_SHADOWS_ONLY` — do not
+  `hide()` it. Losing your own shadow in FPP destroys the ground read, and other peers still
+  need to see the mesh.
+- **Aim source** — one export, because the two flows genuinely differ:
+  - `AimSource.MOUSE` — LAN, and the debug-controlled unit in local test. Mouse capture on,
+    `Input.MOUSE_MODE_CAPTURED`, released on pause/Esc and on focus loss.
+  - `AimSource.MOVEMENT` — auto-face the movement vector. Used by every unit that isn't the
+    locally-driven one, and by the whole local-test flow.
+
+  **Two players sharing one keyboard cannot both mouse-look.** That is not solvable and is not
+  worth solving — local test is dying anyway (§0.2). LAN is one player per machine, so mouse
+  look is correct there.
+- **Mouse sensitivity** goes in `SettingsManager` alongside the keybinds, plus an invert-Y
+  toggle. FPP without a sensitivity slider will read as broken to anyone testing it.
+
+### 3.3 Known asymmetry — accept it, mitigate it
+
+FPP gives the Person a much narrower cone of awareness than the TPP Prop. That is a real
+competitive asymmetry, but it is **symmetric across teams** (both teams field one Person and
+one Prop, and roles swap every round), so it does not favour anyone. Mitigate the feel, not the
+structure:
+
+- Wide FPP FOV (95, tunable).
+- Off-screen indicators for your teammate and for the Can (§4.5).
+- A hit taken from off-screen shows a directional damage arc.
+
+### 3.4 Retiring `ArenaCamera`
+
+`scripts/systems/arena_camera.gd` stops being a gameplay camera. Either delete the `Camera3D`
+node from `Main.tscn` outright, or keep the script and repurpose it as `BroadcastCamera` for
+recording the 3–5 min demo video (GDD Section 6) — in which case it must:
+
+- resolve targets at **runtime** via a `register_target()` / `unregister_target()` API, never
+  by caching `NodePath`s in `_ready()`;
+- hold `WeakRef`s or re-check `is_instance_valid()` every frame;
+- default to `current = false`, activated only by a spectator/record toggle;
+- ignore any target whose `global_position.y` is below the kill plane, so one player falling
+  out of the world can't drag the framing (B-35).
+
+Until then, **it is the LAN freeze** (B-03) and it must be disabled in the same commit that
+introduces the rigs.
+
+### 3.5 Debug player switcher (requested)
+
+`scripts/systems/debug_player_switcher.gd`, debug-only, guarded by `OS.is_debug_build()`.
+
+- `F1` … `F4` — jump straight to controlling that unit.
+- `Tab` — cycle to the next unit.
+- Only active when `not NetworkManager.is_networked()`.
+- On switch: move `player_id`-driven input focus to the new unit, deactivate the old rig,
+  activate the new one, and set the new unit's `AimSource` to `MOUSE` (previous one back to
+  `MOVEMENT`).
+- Show the active unit in the HUD ("DEBUG · controlling TEAM A PROP (Can)") so it's obvious
+  which body the keyboard is attached to.
+
+This is not a nicety. From round 2 onward, the local test's Can becomes `TeamBProp`, which is
+`player_id = 3` and **deliberately unbound** — so today, round 2 of a local match has an
+uncontrollable Can and cannot be completed (B-42). The switcher is what makes local playtesting
+of the full Bo5 loop possible at all.
+
+---
+
+## 4. UI architecture — moodboard implementation
+
+Source: `Mood Board.pdf` (Harry's Canva assets). Reference game called out on the board: **PEAK**
+— chunky stylised 3D, high-saturation, minimal in-world HUD.
+
+### 4.1 What the moodboard actually specifies
+
+Four role cards, each with a coloured accent bar, an all-caps display heading with a
+parenthetical Filipino subtitle, a keycap badge, three captioned state icons, and a keyword
+strip:
+
+| Card | Subtitle | Accent | Input badge | States illustrated |
+|---|---|---|---|---|
+| THE ATTACKER | (Striker) | orange | WASD | dynamic movement · **aiming arc (mouse pointer trail)** · **charged throw (glow)** |
+| THE DEFENDER | (Guard/Taya) | blue | arrow keys | stance variations · body-block hitbox (contact effect) · **lata reset channel (progress bar)** |
+| THE SLIPPER | (Tsinelas) | magenta | — | in-hand ready (glowing icon) · thrown trajectory (spinning trail + motion blur) · retrieval highlight (arena floor decal) |
+| THE CAN | (Lata) | magenta | arrow keys | standing (stable) · knocked down (tilted, dented) · impact effect (particle burst) |
+
+Card chrome to reproduce in the Godot theme: deep-navy 3px border, light blue-grey fill with a
+faint blueprint grid, a 6px full-height colour bar at the left of each heading, a bottom keyword
+strip, and a folded dark triangle in the bottom-right corner.
+
+**Three of these are mechanics that do not exist in code.** Flagged as decisions, not silently
+built — see B-45, B-46, B-16 in the ledger.
+
+### 4.2 Design tokens
+
+Sampled from the moodboard's embedded art at native resolution. Ship these as a `UiTheme`
+autoload of constants **and** a Godot `Theme` resource at `assets/ui/tumbang_preso.theme`, so
+`.tscn` files style themselves and code-built UI reads the same values.
+
+| Token | Hex | Use |
+|---|---|---|
+| `INK` | `#040838` | Borders, headings, body text, card outline. The single darkest value on the board. |
+| `PANEL` | `#E1E5E8` | Card and panel fill. |
+| `PAPER` | `#FFFFFF` | Inner wells, input fields. |
+| `OFFENSE` / `ATTACKER` | `#F87020` | Team-on-offense accent, WASD keycaps, charged-throw glow. |
+| `DEFENSE` / `DEFENDER` | `#0080E8` | Team-on-defence accent, Can body, arrow keycaps. |
+| `IMPACT` | `#F468A8` | Slipper/Can accent bar, impact bursts, retrieval decal edge. |
+| `HIGHLIGHT` | `#F8D028` | Can label, ready-state glow, timer urgency, progress-bar fill. |
+| `DANGER` | `#F80000` | Downed flash, kill-plane warning. |
+
+Two hard rules:
+
+- **Offense is always orange, defence is always blue, for the whole project** — HUD, nameplates,
+  team rings, scoreboard, role-swap card. A player must be able to learn one colour pair and
+  read every screen. Never reuse orange or blue for anything else.
+- The accent tracks **role**, not team. Team A is not "the orange team" — it is orange *while
+  attacking* and blue *while defending*, and it swaps on the intermission card (§4.6). Team
+  identity is carried separately by the **A / B letter mark**, not by hue.
+
+**Typography.** The logo and letter sheet are a heavy hand-drawn *unicase* marker face —
+lowercase renders as capitals. Get the actual font file from Harry (it is in the Canva project);
+if it can't be extracted or its licence doesn't permit redistribution, the closest free
+equivalents are **Luckiest Guy**, **Chewy**, or **Titan One** (all SIL OFL). Scale:
+
+| Role | Face | Size |
+|---|---|---|
+| Display (title, round banner, match result) | marker unicase | 64–96 |
+| Heading (panel titles, card headings) | marker unicase | 32–40 |
+| Body / labels | a clean grotesque (Inter, Work Sans) | 16–20 |
+| Caption (icon captions, keyword strips) | grotesque, all-caps, letter-spaced | 12–14 |
+
+**Whatever font ships, its licence goes on submission Form 03 (Asset and AI Usage Disclosure).**
+Settle it before the deadline, not during it.
+
+### 4.3 Screen inventory
+
+| Screen | Exists | Work |
+|---|---|---|
+| Title | [~] | Logo bitmap replaces the `Label`. Buttons: Play · Settings · Quit. |
+| Play menu | [~] | Restyle. **Add Back** (B-34). **Disable Option A properly or drop the "coming soon" label** (B-33). |
+| Character select | [ ] | 6 Props + Person. Feeds `GameLaunch`. Phase 3. |
+| Lobby | [ ] | Peer list, team assignment, ready-up, host "Start" (B-13). |
+| HUD | [~] | Full rebuild, §4.4. |
+| Round intermission / role swap | [ ] | §4.6. Requested item. |
+| Match result | [ ] | Bo5 grid, winner, Rematch / Menu. |
+| Pause | [ ] | Esc → Resume / Settings / Quit to Menu (B-20). |
+| Settings | [x] | Restyle only. Add mouse sensitivity + invert-Y (§3.2), add duplicate-binding detection (B-22). |
+
+### 4.4 HUD layout
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  ┌── TEAM A ─────┐        ╔═══════════╗        ┌───── TEAM B ──┐     │
+│  │ ● OFFENSE     │        ║   01:30   ║        │ ● DEFENSE     │     │
+│  │  ■ ■ □         │        ╚═══════════╝        │  ■ □ □         │     │
+│  └───────────────┘         ROUND 3 / 5         └───────────────┘     │
+│                                                                      │
+│                                                                      │
+│                              ✛  (FPP only)                           │
+│                                                                      │
+│  ┌───────────────┐                              ┌───────────────┐    │
+│  │ YOU           │                              │  LATA         │    │
+│  │ ▣ PROP · Can  │                              │  ●●○  dents   │    │
+│  │ [Q] ████░ 2.1s│                              │  (Option A)   │    │
+│  └───────────────┘                              └───────────────┘    │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+- **Bo5 pips, not "2 - 1".** Three squares per team, filled as rounds are won. A judge reads
+  pips instantly and a score string not at all.
+- Team panels carry the **role colour** (orange/blue) and the **team letter**. They swap sides
+  visually on the intermission card so the swap is impossible to miss.
+- Timer goes `HIGHLIGHT` under 15s and pulses under 10s.
+- Bottom-left "YOU" card: your character portrait, your role this round, ability icon with a
+  radial cooldown and a "READY" flash. This is item 4 (player distinction) at the HUD level;
+  the in-world half is §4.5.
+- Crosshair only in FPP. Props (TPP) get no crosshair.
+- `DownedFlash` stays but becomes a vignette rather than a flat 25% red rectangle over the
+  whole screen.
+
+### 4.5 In-world player and team distinction (items 4 and 8)
+
+The HUD tells you who *you* are. The world has to tell you who *everyone else* is. Add a
+`Nameplate` node to `CharacterBase`:
+
+- **Ground ring** — a flat decal under each unit, in the team's current role colour. This is the
+  primary read: visible from any camera angle, works in both FPP and TPP, never occluded by
+  geometry the way a floating label is.
+- **Floating tag** (`Label3D`, `billboard = BILLBOARD_ENABLED`, `no_depth_test` off) — `A1` /
+  `A2` / `B1` / `B2` plus a role glyph. Fades out past ~15m.
+- **Your own unit** gets a distinct marker — a chevron above the tag, and a brighter ring — so
+  the local player can find their body after a respawn or a camera cut.
+- **In local test only**, the tag also shows the input set: `A1 · WASD`, `A2 · ARROWS`. That is
+  the literal ask in item 4, and it is genuinely only meaningful when two people share a
+  keyboard. LAN players each own their whole machine and don't need it.
+- Teammate and objective **off-screen indicators** — arrows pinned to the screen edge. Mandatory
+  for FPP (§3.3), useful in TPP.
+
+**Prerequisite: `CharacterBase` has no team identity at all today.** `team_id` has to be added
+and set from spawn data before any of §4.5 — or the friendly-fire fix (B-09) — can work. Do that
+first; three separate items are blocked behind it.
+
+### 4.6 Round flow, intermission, and the role-swap card (items 9, 10, 11)
+
+**Today there is no gap between rounds.** `RoundManager.report_round_win()` →
+`MatchManager.report_round_result()` → `begin_next_round()` → `_sync_round_started` →
+`main.gd::_on_match_round_started()` → `RoundManager.start_round()` all runs in a single frame.
+There is no beat in which a role-swap card could be shown, and no point at which the world is
+reset. That missing state is the actual work (B-37):
+
+```
+round ends
+  → RoundManager.round_active = false, freeze input on all units
+  → MatchManager.report_round_result(can_team_won)
+      │
+      ├─ wins >= 3 ──> match_won ──> MATCH RESULT screen ──> Rematch | Menu
+      │                              (Bo5 is already correct — WINS_NEEDED = 3,
+      │                               match_manager.gd:43. Verify it, don't rebuild it.
+      │                               What's missing is everything *after* it fires.)
+      │
+      └─ else ──> MatchManager.round_intermission_started(next_round, next_team_a_is_can)
+                    │
+                    ├─ [0.0s] ROUND RESULT banner — who won and how
+                    ├─ [1.2s] ROLE SWAP card:
+                    │            ROUND 3
+                    │            TEAM A  🔵 DEFENSE  →  🟠 OFFENSE
+                    │            TEAM B  🟠 OFFENSE  →  🔵 DEFENSE
+                    │          Panels physically slide across and recolour.
+                    ├─ [3.0s] WORLD RESET (item 10) — see below
+                    ├─ [3.5s] "ROUND 3 — FIGHT" wipe
+                    └─ [4.0s] MatchManager.begin_next_round()
+```
+
+**World reset must cover all four units, not one.** `RoundManager.start_round()` currently loops
+`_tracked_cans`, which holds exactly the single defending Can (B-10). A `reset_world()` has to:
+
+1. Move **every** unit back to its map spawn point (`position` + `velocity = Vector3.ZERO` +
+   `rotation.y` facing the arena centre). **Nothing in the codebase writes `position` after
+   spawn today** — round 2 currently starts wherever round 1 ended.
+2. Call `reset_for_new_round()` on all four (state, dents, speed multiplier, ability charges) —
+   not just the Can.
+3. Free every live `HazardZone` and every orphaned pulse `Hitbox` from
+   `AbilityUtils.spawn_pulse_hitbox`.
+4. Reset the Can to its base circle, upright.
+5. On the host, re-broadcast full match state so clients cannot drift.
+
+Spawn points must come from the **map**, not from `main.gd`'s hardcoded `SPAWN_POINTS`
+(`main.gd:55`) — add a `SpawnPoints` node to each map scene and read it.
+
+### 4.7 Godot implementation notes
+
+- **One `Theme` resource** at `assets/ui/tumbang_preso.theme` with `StyleBoxFlat` variants for
+  the card chrome (border `INK` 3px, corner radius 6, content margins 16). Set it once on the
+  root `Control` of each scene; children inherit. Do not scatter
+  `theme_override_*` properties across `.tscn` files — that is how the current HUD is built and
+  it is why restyling it means touching every node.
+- **Theme type variations** for `Button` (`PrimaryButton`, `GhostButton`) and `Label`
+  (`Display`, `Heading`, `Caption`) instead of per-node font-size overrides.
+- **9-patch** (`NinePatchRect`) for the card frame so one exported PNG scales to any panel.
+- Every panel that can be entered must be exitable: a `Back`/`Esc` path is part of the
+  definition of done for each screen, not a follow-up.
+- Set a base resolution (1920×1080) and `canvas_items` / `expand` stretch mode in Project
+  Settings before building the theme, or every size gets retuned later.
+- Keep the HUD reading autoloads directly (as it does now) — it needs no per-scene wiring and
+  that property is worth preserving.
+
+---
+
+## 5. Build order
+
+Ordered so each phase de-risks the next. Phase 0 is blocking: nothing else matters until a LAN
+match starts, is playable, can be won, and rolls into the next round.
+
+### Phase 0 — Make LAN work (blocking, do first)
+
+- [x] **B-01** — `MatchManager` host never emitted `round_started` / `match_won` locally.
+      *(Fixed: `_sync_round_started` / `_sync_match_won` are now `call_local`. **Still unverified
+      by a human** — two editor instances, `--host` / `--join=127.0.0.1`, both must see the
+      timer move.)*
+- [ ] **B-03** — `ArenaCamera` dereferences four freed nodes every frame after
+      `_clear_local_test_characters()`. **This is the reported LAN freeze.** Disable the
+      scene-level camera in the same commit as the rigs (§3.4).
+- [ ] **B-29** — a client joining after the host started never receives `_sync_round_started`,
+      so its round number, roles, tracked Cans and HUD are permanently stale. Host must
+      `rpc_id()` full match state to each peer on connect.
+- [ ] **B-02** — abilities spawn their hitbox only on the activating peer and only resolve on
+      the host, so every special and Tag/Throw is a no-op for anyone who isn't hosting.
 - [ ] **B-04** — networked Props spawn with `ability = null`; only Persons get one.
+- [ ] **B-30** — `player_id` is never assigned to networked characters; all four read `*_p1`.
+- [ ] **B-48** — `GameLaunch.game_mode` is never sent over the network; host and client can run
+      different modes.
 
-**Exit criteria:** two editor instances, one `--host` one `--join=127.0.0.1`, both see the
-timer counting, both can bump each other, and both see the same result.
+**Exit criteria:** two editor instances, one `--host` one `--join=127.0.0.1`, both see the timer
+counting, both spawn and control their own character, both can bump each other, both see the
+same result, and a client that joins late is in the same round as the host.
 
 ### Phase 1 — Make the core loop correct
 
-Fix the P1 bugs, then playtest the loop end to end for the first time.
+- [ ] **B-09** — add `team_id` to `CharacterBase` (**do this first — B-09, §4.5 and §4.6 are all
+      blocked on it**) and gate `Hitbox` on it
+- [ ] **B-15 / B-35** — kill plane, arena walls, respawn
+- [ ] **B-10 / B-37** — round intermission state + full four-unit world reset with positions
+- [ ] **B-05** — face direction, delivered by the camera rigs (§3.2), not as separate work
+- [ ] **B-06** — special-ability input unreachable while Downed
+- [ ] **B-07** — stagger cancelling Downed
+- [ ] **B-08** — bump missing already-overlapping targets
+- [ ] **B-11** — cooldown consumed on a no-op activation
+- [ ] **B-12** — frame-step friction / Flick Dash lasting three frames
+- [ ] **B-14 / B-20** — match reset, pause menu, return to menu
+- [ ] Play a full Bo5 locally. Decide **Option A or Option B and delete the loser.**
 
-- [ ] **B-05** face-direction (rotate the character toward movement, or add an aim axis)
-- [ ] **B-06** special-ability input unreachable while Downed
-- [ ] **B-07** stagger cancelling Downed
-- [ ] **B-08** bump missing already-overlapping targets
-- [ ] **B-09** friendly fire — add a `team_id` to `CharacterBase` and gate `Hitbox`
-- [ ] **B-10** per-round reset covers all four units and their positions
-- [ ] **B-11** cooldown consumed on a no-op activation
-- [ ] **B-12** frame-step friction / Flick Dash lasting three frames
-- [ ] Play a full Bo5 locally. Decide **Option A or Option B** and delete the other.
+**Exit criteria:** a full Bo5 completes, roles swap with a visible transition, all four units
+reset to spawn between rounds, falling off the map respawns you, and the team has picked one
+round-win mode.
 
-**Exit criteria:** a full best-of-5 completes, roles swap each round, positions and states
-reset between rounds, and the team has picked one round-win mode.
+### Phase 2 — Cameras and player readability
 
-### Phase 2 — Roster and selection
+- [ ] `CameraRig.tscn` + `camera_rig.gd`, FPP and TPP branches (§3.1, §3.2)
+- [ ] Retire / repurpose `ArenaCamera` (§3.4)
+- [ ] Mouse capture, sensitivity + invert-Y in `SettingsManager`
+- [ ] `DebugPlayerSwitcher` (§3.5)
+- [ ] Nameplates, team ground rings, off-screen indicators (§4.5)
 
-The single biggest content gap: five of the six specials cannot be reached in game.
+### Phase 3 — UI overhaul
 
-- [ ] `.tres` resource for each of Palayok, Bilao, Dyaryo, Bakya, Havaianas
-- [ ] Character-select step (menu or lobby) writing the pick into `GameLaunch`
-- [ ] `_build_networked_character` assigns the picked ability (`.duplicate()` per character —
-      cooldown state lives on the Resource instance)
-- [ ] Implement **Guard/Dash** (`guard_dash_*` is bound, rebindable, and read by nothing — B-16)
-- [ ] Balance pass on cooldowns and ranges — every number in the ability scripts is a guess
+- [ ] `tumbang_preso.theme` + `UiTheme` autoload from the tokens in §4.2
+- [ ] Font decision + licence recorded for Form 03
+- [ ] Title / Play menu restyle, **Back button**, Option A gating
+- [ ] HUD rebuild (§4.4)
+- [ ] Intermission + role-swap card (§4.6)
+- [ ] Match result screen, pause menu
+- [ ] Character select + lobby with ready-up
 
-### Phase 3 — Maps and match flow
+### Phase 4 — Content
 
-- [ ] `Eskinita.tscn` and `BayanPlaza.tscn` with real geometry, spawn points, and base circles
-- [ ] Spawn points driven by the map, not `main.gd`'s hardcoded `SPAWN_POINTS`
-- [ ] Out-of-bounds handling + **ring-outs** (Option A's second win condition) — B-15
-- [ ] Map hazards on `HazardZone` (jeepney lane, mud, carabao) — fix B-17 first
-- [ ] Real lobby: wait for 4 players, ready-up, then start round 1 (B-13)
-- [ ] Match reset and return-to-menu (B-14, B-20)
+- [ ] `.tres` for Palayok, Bilao, Dyaryo, Bakya, Havaianas
+- [ ] Character models replacing the capsules — moodboard direction: chibi, oversized ball head,
+      flat saturated colours, Filipino school-kid outfits with a sling bag
+- [ ] `Eskinita.tscn` and `BayanPlaza.tscn` with geometry, `SpawnPoints`, base circles, bounds
+- [ ] Map hazards on `HazardZone` (fix B-17 first)
+- [ ] Implement **Guard/Dash** (B-16) — bound, rebindable, read by nothing
+- [ ] Balance pass on cooldowns and ranges
 
-### Phase 4 — Feel, presentation, netcode polish
+### Phase 5 — Feel and presentation
 
-- [ ] Movement interpolation/smoothing for remote characters — currently visibly snaps
-- [ ] Hit feedback: the `landed_on` signal already exists and nothing listens to it
-- [ ] Real models, materials, animation; replace the capsules
-- [ ] Audio: bump, special, downed/seal, ambience per map
+- [ ] Hit feedback: `landed_on` already exists and nothing listens (B-44). Hitstop, screenshake,
+      target flash, impact particles per the moodboard's "IMPACT EFFECT (PARTICLE BURST)"
+- [ ] Movement interpolation for remote characters — currently visibly snaps
+- [ ] Audio: bump, special, downed/seal, round win, ambience per map
 - [ ] Broadcast/auto-follow cam for recording (GDD Section 6)
 
-### Phase 5 — Submission
+### Phase 6 — Submission
 
 - [ ] Multi-device LAN test on real hardware over real wifi (never done)
 - [ ] Export presets (none exist) and a build that runs outside the editor
+- [ ] **Strip Local Match mode** (§0.2) and the debug switcher
 - [ ] Trailer (1–2 min, loopable), demo video (3–5 min, narrated or captioned)
-- [ ] Forms 01–03, waiver, synopsis (≤500 words) — GDD Section 9
+- [ ] Forms 01–03, waiver, synopsis (≤500 words) — GDD Section 9. Form 03 needs the font and
+      moodboard-asset licences.
 - [ ] Mention Circular Economy in the synopsis if the team wants the secondary-theme angle
 
 ### Fallback trigger
 
 Per GDD Section 7: if LAN sync is not stable and fun by roughly the halfway point of the
-remaining schedule, pivot to single-PC shared-screen for the same 2v2 loop. That pivot is
-already cheap — `_start_local_test()` in `main.gd` spawns all four units with independent
-input maps today, and every `NetworkManager.is_networked()` check is a no-op in that mode.
-The cost of the pivot is real player 3/4 keybinds (`*_p3` / `*_p4` are registered but
-deliberately unbound) plus a split or shared camera. Budget half a day, not a week.
+remaining schedule, pivot to single-PC shared-screen for the same 2v2 loop.
+
+**The FPP/TPP split raises the cost of this pivot and that should be said plainly.** Split-screen
+means four viewports, and FPP mouse-look does not work for more than one player on one machine —
+the two FPP Persons would have to fall back to `AimSource.MOVEMENT` (§3.2). Budget one to two
+days for the pivot now, not half a day. If the pivot looks likely, take it early.
 
 ---
 
-## 4. Working agreements
+## 6. Working agreements
 
 ### Repo layout
 
 ```
 assets/            characters, maps, audio, ui — binary, goes through Git LFS
+                   ui/  tumbang_preso.theme, logo, 9-patch frames, keycap glyphs, icons
 scenes/
-  characters/      CharacterBase.tscn + per-character scenes (cans/, tsinelas/)
+  characters/      CharacterBase.tscn, CameraRig.tscn, per-character scenes (cans/, tsinelas/)
   maps/            Eskinita.tscn, BayanPlaza.tscn
-  ui/              MainMenu.tscn, HUD.tscn, SettingsPanel.tscn
+  ui/              MainMenu.tscn, HUD.tscn, SettingsPanel.tscn, Intermission.tscn,
+                   MatchResult.tscn, PauseMenu.tscn, CharacterSelect.tscn, Lobby.tscn
   main/            Main.tscn — the match scene
 scripts/
   characters/      character_base.gd, hitbox.gd, hurtbox.gd
   systems/         round_manager, match_manager, network_manager, game_launch,
-                   settings_manager, arena_camera, hazard_zone
-  abilities/       ability_base.gd + one script per special + resources/*.tres
+                   settings_manager, camera_rig, debug_player_switcher, hazard_zone
+  ui/              hud.gd, main_menu.gd, settings_panel.gd, intermission.gd, …
 docs/
 ```
 
 ### Git
 
-- One branch per feature off `main` (`feature/networking`, `feature/map-eskinita`, …).
-  Small, frequent merges — long-lived branches are where scene conflicts come from.
-- `.tscn` / `.tres` are text and diff like code. Keep them text (don't switch to binary).
-- Binary assets do **not** merge. `git lfs install` before adding any model, texture, or
+- One branch per feature off `main` (`feature/camera-rigs`, `feature/ui-theme`, …). Small,
+  frequent merges — long-lived branches are where scene conflicts come from.
+- `.tscn` / `.tres` are text and diff like code. Keep them text.
+- Binary assets do **not** merge. `git lfs install` before adding any model, texture, font, or
   audio file — `.gitattributes` already tracks `.glb/.gltf/.fbx/.png/.jpg/.wav/.mp3/.ogg`.
+  **Add `*.ttf` and `*.otf`** before the display font lands.
 - **Give a heads-up in chat before editing a shared `.tscn`** (`Main.tscn`, `CharacterBase.tscn`).
-  Splitting work into sub-scenes is the real fix and is already how the structure is set up.
+  The camera rig and the nameplate both touch `CharacterBase.tscn` — sequence them, or one of
+  you loses work.
 - Keep `main` playable.
 
 ### Testing multiplayer without four laptops
 
-Godot's **Debug → Run Multiple Instances → 2+**, with per-instance arguments
-`--host` and `--join=127.0.0.1`. The menu's Host/Join buttons do the same thing through the
-`GameLaunch` autoload. Real-device testing over wifi still has to happen before submission —
-it never has.
+Godot's **Debug → Run Multiple Instances → 2+**, with per-instance arguments `--host` and
+`--join=127.0.0.1`. The menu's Host/Join buttons do the same thing through `GameLaunch`.
+
+⚠️ **Real-device testing over wifi has never happened and is on the critical path.** Real wifi
+adds latency and packet loss to a movement layer with no interpolation and no reconciliation. If
+that forces the shared-screen fallback, you want to know weeks before the deadline. Book a
+session with four laptops.
 
 ### Ownership
 
-Fill these in — GDD Section 8 has the same table and it is still blank.
+Still blank. GDD Section 8 has the same table and it is also still blank. This is the third
+document to ask.
 
 | Workstream | Owner |
 |---|---|
 | Gameplay programming (movement, combat, states) | |
 | Networking (LAN) | |
+| Cameras + player readability | |
+| UI/UX — theme, HUD, menus, scoreboard | |
 | 3D art — characters | |
 | 3D art — maps | |
-| UI/UX — HUD, menus, scoreboard | |
 | Sound/Music | |
 | Producer / docs & submission | |
 
 ---
 
-## 5. Godot setup (for anyone new to the project)
+## 7. Godot setup (for anyone new to the project)
 
 1. Install **Godot 4.7**, Standard build (not .NET — this project is GDScript), from
-   godotengine.org/download. It's a single executable; unzip and run.
+   godotengine.org/download. Single executable; unzip and run.
 2. Clone the repo, open `project.godot` in Godot.
-3. `git lfs install` before touching any art or audio.
-4. Press **F5**. That runs `scenes/ui/MainMenu.tscn` (the project's main scene) → **Start**
-   → **Local Match** for the single-PC 4-unit flow. Or open `scenes/main/Main.tscn` and press
-   **F6** to jump straight into a match.
+3. `git lfs install` before touching any art, font, or audio.
+4. Press **F5**. That runs `scenes/ui/MainMenu.tscn` → **Start** → **Local Match** for the
+   single-PC 4-unit flow. Or open `scenes/main/Main.tscn` and press **F6** to jump straight
+   into a match.
 
-**Local controls** (rebindable in Settings): P1 = WASD, Space bump, Shift guard/dash, Q
-special. P2 = arrows, Enter bump, End guard/dash, Right Shift special. P3/P4 exist but are
-deliberately unbound — they are the stationary dummy opponents in the local test flow.
+**Local controls** (rebindable in Settings): P1 = WASD, Space bump, Shift guard/dash, Q special.
+P2 = arrows, Enter bump, End guard/dash, Right Shift special. P3/P4 are registered but
+deliberately unbound — they are the dummy opponents. Once §3.5 lands, F1–F4 / Tab switch which
+unit you drive.
 
 ### Orientation, quickly
 
 - **FileSystem** (bottom-left) mirrors the folders on disk.
 - **Scene** (top-left) is the node tree of the open scene. A "scene" is a reusable prefab.
-- **Inspector** (right) shows the selected node's properties — this is where a character's
-  `ability`, `is_can`, `is_person`, `player_id` exports live.
-- Autoloads are under **Project → Project Settings → Globals → Autoload**.
-- Input actions are under **Project → Project Settings → Input Map**.
+- **Inspector** (right) shows the selected node's properties — a character's `ability`,
+  `is_can`, `is_person`, `player_id` exports live here.
+- Autoloads: **Project → Project Settings → Globals → Autoload**.
+- Input actions: **Project → Project Settings → Input Map**.
 
-Deeper reading: docs.godotengine.org — "Your first 3D game" for the basics, and
-"High-level multiplayer" for `MultiplayerSpawner` / `MultiplayerSynchronizer`, which is what
-the networking layer here is built on.
+Deeper reading: docs.godotengine.org — "Your first 3D game", "High-level multiplayer"
+(`MultiplayerSpawner` / `MultiplayerSynchronizer`), "GUI skinning and themes" (for §4.7), and
+`SpringArm3D` (for §3.1).
