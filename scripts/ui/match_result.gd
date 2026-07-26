@@ -19,8 +19,13 @@ func _ready() -> void:
 	menu_button.pressed.connect(_on_menu_pressed)
 
 func _on_match_won(winning_team: int) -> void:
-	message_label.text = "%s wins the match!" % ("Team A" if winning_team == 0 else "Team B")
+	message_label.text = "%s WINS THE MATCH!" % ("TEAM A" if winning_team == 0 else "TEAM B")
 	visible = true
+	# B-51: main.gd captures the cursor for the whole match and nothing released
+	# it when the match ended, so this screen appeared with an invisible, captured
+	# mouse and neither button below could be clicked — you needed the mouse to
+	# reach the button that frees the mouse. Released here, re-captured on Rematch.
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	# Only the host (or non-networked local play) can actually start a
 	# rematch — MatchManager.begin_next_round() is host-gated, so a client
 	# pressing this would be a silent no-op. Hide it there instead.
@@ -32,6 +37,10 @@ func _on_match_won(winning_team: int) -> void:
 ## _reset_world(), same as any other round start.
 func _on_rematch_pressed() -> void:
 	visible = false
+	# B-51: back into gameplay, so the cursor goes back to where main.gd's
+	# _ready() put it. Without this a rematch runs with a visible OS cursor and
+	# no mouse-look, since camera_rig.gd only aims while the mouse is captured.
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	MatchManager.reset()
 	RoundManager.reset()
 	MatchManager.begin_next_round()
