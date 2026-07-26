@@ -132,7 +132,10 @@ Fix the four P0 bugs. Until these are done there is no LAN demo to show anyone.
       remove_target() and filters freed instances out of `_targets` every frame instead of
       dereferencing them; main.gd calls add_target() on every networked spawn and
       remove_target() on disconnect.)*
-- [ ] **B-04** — networked Props spawn with `ability = null`; only Persons get one.
+- [x] **B-04** — networked Props spawn with `ability = null`; only Persons get one. *(Fixed:
+      every networked Prop now gets a `.duplicate()` of quick_stand.tres, same resource
+      Main.tscn already hardcodes for the local flow's TeamAProp. Full per-character roster
+      selection is still Phase 2/B-24.)*
 
 **Exit criteria:** two editor instances, one `--host` one `--join=127.0.0.1`, both see the
 timer counting, both can bump each other, and both see the same result.

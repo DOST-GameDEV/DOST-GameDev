@@ -46,6 +46,14 @@ const CHARACTER_SCENE: PackedScene = preload("res://scenes/characters/CharacterB
 ## TeamAProp has one wired directly in Main.tscn, since it's the only
 ## character using that particular resource instance.
 const PERSON_ACTION_ABILITY: AbilityBase = preload("res://scripts/abilities/resources/person_action.tres")
+## B-04: networked Props previously spawned with `ability = null` — only
+## Persons got one. Only quick_stand.tres exists as a real roster resource so
+## far (the other five specials have no .tres yet — see B-24/Phase 2 for
+## character select), so every networked Prop gets it for now, same as
+## Main.tscn already hardcodes for the local flow's TeamAProp. `.duplicate()`
+## per PERSON_ACTION_ABILITY doc — cooldown/charge state lives on the
+## Resource instance, don't share it across Props.
+const PROP_ABILITY: AbilityBase = preload("res://scripts/abilities/resources/quick_stand.tres")
 ## Local-test roster, in a flat array so round-swap/registration code (below)
 ## can treat all 4 the same way it treats _spawned_characters for the
 ## networked flow, rather than hand-writing 4 near-identical blocks.
@@ -207,6 +215,9 @@ func _build_networked_character(data: Dictionary) -> Node:
 		# for Person (see PersonAction doc). .duplicate() per PERSON_ACTION_ABILITY
 		# doc above — don't share cooldown state across the two Persons in a match.
 		character.ability = PERSON_ACTION_ABILITY.duplicate()
+	else:
+		# B-04: Props carry the roster's class ability — see PROP_ABILITY doc.
+		character.ability = PROP_ABILITY.duplicate()
 	character.set_multiplayer_authority(data["peer_id"])
 	_peer_teams[data["peer_id"]] = data["team"]
 	_peer_is_person[data["peer_id"]] = data["is_person"]

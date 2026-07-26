@@ -102,6 +102,12 @@ verification in networked play that the camera frames both peers instead of sitt
 the half of the team that carries the entire roster (Quick Stand, Bakya Bash, …) — get
 `ability = null` over the network. Only the local test flow has an ability on a Prop, and
 only because `Main.tscn` hardcodes `quick_stand.tres` on `TeamAProp`.
+**[FIXED]** `_build_networked_character` now assigns a `.duplicate()` of a new `PROP_ABILITY`
+constant (`quick_stand.tres`, the only roster resource that currently exists) to every
+networked Prop, mirroring what `Main.tscn` already hardcodes for the local flow. This does
+NOT give each Prop its own distinct roster ability — that needs the other five `.tres`
+resources and a character-select step (B-24/Phase 2) — it just stops Props from spawning with
+`ability = null` over the network.
 
 ### P1 — the core loop is wrong
 
