@@ -210,6 +210,14 @@ per-second — no `delta`. Max walk speed is also 6.0, so releasing a key stops 
 tick, and it's frame-rate dependent if the physics tick is ever changed. Flick Dash sets
 velocity to 16 and it decays 16 → 10 → 4 → 0 in about 0.05s. The dash also applies a frame
 late, because `_do_activate` runs after `move_and_slide()`.
+**[FIXED]** Added a `FRICTION` constant (30 units/sec²) used as `move_toward(..., FRICTION *
+delta)` in both no-input-movement and STAGGERED/DOWNED/SEALED decay, replacing the old
+delta-less `SPEED`-as-a-step stops — deceleration is now framerate-independent and Flick
+Dash's velocity boost actually covers distance instead of decaying in ~3 frames. The
+`special_ability` activation check also moved to run before `move_and_slide()` (was after),
+so an ability that sets velocity directly (Flick Dash) applies the same physics tick instead
+of one frame late. Needs an in-editor feel pass — 30 units/sec² is a first guess, not a
+playtested number.
 
 ### P2 — real problems, not blocking a first playtest
 

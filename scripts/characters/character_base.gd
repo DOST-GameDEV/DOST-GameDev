@@ -10,6 +10,13 @@ class_name CharacterBase
 ## it lives in its own decoupled system so Option A vs Option B can be swapped freely.
 
 const SPEED: float = 6.0
+## B-12: deceleration when there's no movement input, in units/sec² — separate
+## from SPEED because the old code reused SPEED itself as a per-tick
+## move_toward() step with no `delta`, which was an effectively-instant stop
+## every physics tick regardless of framerate (no momentum), and made a
+## velocity boost like Flick Dash's decay away in about 3 frames instead of
+## actually covering distance.
+const FRICTION: float = 30.0
 const GRAVITY: float = 20.0
 const BUMP_STAGGER_TIME: float = 0.25
 ## GDD Section 3, Option B: ~2s window to self-right before a Tsinelas can seal a
@@ -163,8 +170,8 @@ func _physics_process(delta: float) -> void:
 			pass # awaiting round reset / respawn logic
 
 	if state in [State.STAGGERED, State.DOWNED, State.SEALED]:
-		velocity.x = move_toward(velocity.x, 0, SPEED)
-		velocity.z = move_toward(velocity.z, 0, SPEED)
+		velocity.x = move_toward(velocity.x, 0, FRICTION * delta)
+		velocity.z = move_toward(velocity.z, 0, FRICTION * delta)
 		move_and_slide()
 		return
 
@@ -185,12 +192,15 @@ func _physics_process(delta: float) -> void:
 		# fired toward world -Z regardless of which way the player was moving.
 		look_at(global_position + direction, Vector3.UP)
 	else:
-		velocity.x = move_toward(velocity.x, 0, SPEED)
-		velocity.z = move_toward(velocity.z, 0, SPEED)
-
-	move_and_slide()
+		velocity.x = move_toward(velocity.x, 0, FRICTION * delta)
+		velocity.z = move_toward(velocity.z, 0, FRICTION * delta)
 
 	if Input.is_action_just_pressed(_action("special_ability")) and ability:
+		# B-12: this used to run AFTER move_and_slide(), so an ability that sets
+		# velocity directly (Flick Dash's dash burst) applied a full physics
+		# frame late. Moved above move_and_slide() so a velocity change this
+		# tick actually takes effect this tick.
+		#
 		# Same pattern as the bump RPC above: activate locally (so a client sees
 		# its own cosmetic hitbox/movement effect immediately, e.g. Flick Dash's
 		# velocity kick), and — since hitbox resolution only ever runs on the
@@ -201,6 +211,8 @@ func _physics_process(delta: float) -> void:
 		ability.activate(self)
 		if NetworkManager.is_networked() and not NetworkManager.is_host():
 			_rpc_notify_ability_activate.rpc_id(1)
+
+	move_and_slide()
 
 ## Called on this character when it's hit by an opponent's Hitbox (see hitbox.gd).
 func apply_stagger(duration: float = BUMP_STAGGER_TIME) -> void:

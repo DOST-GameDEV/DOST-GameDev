@@ -170,7 +170,10 @@ Fix the P1 bugs, then playtest the loop end to end for the first time.
       bool; activate() only consumes _time_since_use/_used_this_round on true. Quick Stand
       returns false when not Downed; the other five abilities always return true, matching
       their previous always-succeeds behavior.)*
-- [ ] **B-12** frame-step friction / Flick Dash lasting three frames
+- [x] **B-12** frame-step friction / Flick Dash lasting three frames *(Fixed: new FRICTION
+      constant (30 units/sec²) replaces the old delta-less move_toward(..., SPEED) stops; the
+      special_ability activation check moved above move_and_slide() so a velocity-setting
+      ability like Flick Dash applies the same tick instead of one frame late.)*
 - [ ] Play a full Bo5 locally. Decide **Option A or Option B** and delete the other.
 
 **Exit criteria:** a full best-of-5 completes, roles swap each round, positions and states
