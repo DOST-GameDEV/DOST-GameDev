@@ -703,7 +703,9 @@ round-win mode.
 - [x] Retire / repurpose `ArenaCamera` (§3.4)
       *(`current = false` forced in `_ready()`; kept as the local-test/broadcast fallback per
       §3.4's "keep the script" branch rather than deleted.)*
-- [ ] Mouse capture, sensitivity + invert-Y in `SettingsManager`
+- [x] Mouse capture, sensitivity + invert-Y in `SettingsManager`
+      *(Sensitivity/invert-Y math verified live — see `Handoff.md` queue item 14. The
+      capture/Esc/focus-loss lifecycle can't be exercised headless; needs a human.)*
 - [ ] `DebugPlayerSwitcher` (§3.5)
 - [ ] Nameplates, team ground rings, off-screen indicators (§4.5)
 

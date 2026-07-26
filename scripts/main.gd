@@ -90,6 +90,11 @@ func _ready() -> void:
 	# guarantees a fresh 0-0 round 1 regardless of how we got here.
 	MatchManager.reset()
 	RoundManager.reset()
+	# Item 14: captured for the whole match — FPP without a captured cursor
+	# reads as broken, and TPP mouse-look needs it too. Esc toggles it back
+	# to visible; there's no pause menu yet (B-20, still open) to hang a real
+	# resume flow off of, so pressing Esc again re-captures for now.
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	spawner.spawn_function = _build_networked_character
 	MatchManager.round_started.connect(_on_match_round_started)
 	MatchManager.round_intermission_started.connect(_on_round_intermission_started)
@@ -214,6 +219,20 @@ func _on_player_connected(peer_id: int) -> void:
 func _on_character_respawned(character: CharacterBase) -> void:
 	if not NetworkManager.is_networked() or character.is_multiplayer_authority():
 		hud.show_toast("OUT OF BOUNDS")
+
+## Item 14: Esc toggles the mouse free — mandatory once FPP captures it, or a
+## captured cursor with no release path traps the player (B-20's real pause
+## menu will eventually own this transition properly). Focus loss always
+## releases outright: alt-tabbing away with the cursor still captured is a
+## bad experience regardless of what's on screen.
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel"):
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED else Input.MOUSE_MODE_CAPTURED
+		get_viewport().set_input_as_handled()
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func _on_player_disconnected(peer_id: int) -> void:
 	var node := players_root.get_node_or_null(str(peer_id))

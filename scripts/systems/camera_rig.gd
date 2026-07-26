@@ -102,7 +102,12 @@ func _unhandled_input(event: InputEvent) -> void:
 ## display server to route InputEventMouseMotion to _unhandled_input — not
 ## available headless).
 func apply_mouse_delta(relative: Vector2) -> void:
-	_character.rotation.y -= deg_to_rad(relative.x * BASE_SENSITIVITY)
+	# Item 14: SettingsManager.mouse_sensitivity is a plain multiplier on this
+	# rig's own flat BASE_SENSITIVITY, so the Settings slider's range means
+	# the same thing regardless of whatever base rate feels right here.
+	var sensitivity := BASE_SENSITIVITY * SettingsManager.mouse_sensitivity
+	_character.rotation.y -= deg_to_rad(relative.x * sensitivity)
 	if _mode == Mode.FPP:
-		_pitch_deg = clamp(_pitch_deg - relative.y * BASE_SENSITIVITY, PITCH_MIN_DEG, PITCH_MAX_DEG)
+		var pitch_delta := relative.y * (-1.0 if SettingsManager.invert_y else 1.0)
+		_pitch_deg = clamp(_pitch_deg - pitch_delta * sensitivity, PITCH_MIN_DEG, PITCH_MAX_DEG)
 		fpp_pivot.rotation.x = deg_to_rad(_pitch_deg)
