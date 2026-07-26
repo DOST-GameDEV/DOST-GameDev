@@ -107,7 +107,9 @@ For any coding agent picking up this queue.
 ## 3. Bug & Issue Ledger
 
 Grouped by severity. B-01 to B-28 carry over from the previous audit; B-29 to B-48 are new from
-this pass. IDs are referenced from `Dev_Plan.md` §5.
+this pass; B-49 is new from the session that built the kill plane (queue item 9) and caught it by
+actually running the local flow instead of reading the code. IDs are referenced from
+`Dev_Plan.md` §5.
 
 ### P0 — LAN does not work today
 
@@ -231,6 +233,32 @@ tick — matching the host instead of silently defaulting.
 
 ### P1 — the core loop is wrong
 
+**B-49 · `NetworkManager.is_networked()` has been reading `true` in local test this whole time.
+(NEW)** Godot 4's `multiplayer.multiplayer_peer` defaults to an `OfflineMultiplayerPeer`
+sentinel, **not `null`**, and `multiplayer.has_multiplayer_peer()` reports `true` for it —
+confirmed by printing `multiplayer.multiplayer_peer` at `main.gd::_ready()` in a real headless
+run: `<OfflineMultiplayerPeer#...>`, before `host_game()`/`join_game()` has ever been called.
+`NetworkManager.is_networked()` was defined as `return multiplayer.has_multiplayer_peer()`, so it
+returned `true` for the plain single-PC/split-keyboard local-test flow too, which never touches
+`host_game()`/`join_game()` at all. Most `if NetworkManager.is_networked(): ...` gates throughout
+the codebase happened to be harmless because `is_host()` (`is_networked() and
+multiplayer.is_server()`) was *also* accidentally `true` — the default peer reports as server —
+so a paired "networked and not host, skip" check never actually skipped anything locally. There
+is no such accidental save in `main.gd::_on_match_round_started`, which branches on
+`is_networked()` alone: it took the **networked** branch and iterated `_spawned_characters`,
+which is always empty outside a real match — so from round 2 onward, **the entire per-round reset
+(position, `is_can`/`team_is_can_side` recompute, `RoundManager.register_can()`) silently did
+nothing for any local-test unit.** B-10's own fix (position reset for all four units, this same
+session) was therefore never actually exercised in local play, only in the networked branch —
+caught only by building the kill plane (queue item 9) and running the local flow for real instead
+of reading the code, the same lesson as B-03's regression above.
+**[FIXED]** `NetworkManager` now tracks an explicit `_is_networked: bool`, set `true` only inside
+`host_game()`/`join_game()` and `false` on disconnect/failure, instead of trusting
+`multiplayer.has_multiplayer_peer()`. `is_networked()` returns that flag. Re-ran the same headless
+local-test session: `_on_match_round_started` now reports `is_networked=false`, the local branch
+runs, and a character forced into the KillPlane came back at its exact `spawn_position` —
+confirmed with a real run, not just code inspection.
+
 **B-09 · No team identity — you can dent and seal your own Can.** `CharacterBase` has `is_can`,
 `is_person`, and `team_is_can_side`, but **no `team_id` at all**. `hitbox.gd` only skips
 `target == owner_character`, so a defending Person can dent its own Can and a teammate can seal
@@ -264,8 +292,13 @@ state, so there is nowhere for a role-swap card to live and no moment at which t
 be reset. *Fix:* add the intermission state and `reset_world()` per `Dev_Plan.md` §4.6.
 **B-10 half [FIXED]:** `main.gd::_on_match_round_started` now calls `reset_for_new_round()` **and**
 repositions **all four** units (networked and local flow both) to a `SPAWN_POINTS` slot every
-round, not just the tracked Can. **B-37 still open** — the round-to-round transition is still a
-single frame with no intermission beat; see queue item 10.
+round, not just the tracked Can. ⚠️ **Correction:** this was written as "fixed" based on reading
+the code, but the local-flow branch was never actually exercised — B-49 (this section, above)
+meant `is_networked()` always read `true` in local test, so `_on_match_round_started` always took
+the *networked* branch, which iterates an empty `_spawned_characters` and does nothing. B-49's fix
+made this reachable for real; only then was it confirmed with a real run (KillPlane test, B-49's
+note). **B-37 still open** — the round-to-round transition is still a single frame with no
+intermission beat; see queue item 10.
 
 **B-42 · From round 2 onward the local test has an uncontrollable Can. (NEW)**
 `_on_match_round_started` flips `team_a_is_can` each round, so in round 2 the tracked Can becomes
@@ -552,12 +585,24 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       (local). Gate `hitbox.gd` on it so friendly fire cannot dent or seal your own Can.
       *Acceptance:* a Person bumping its own team's Can produces no dent and no seal.
 
-- [ ] **9. Bounds, kill plane, and respawn (B-15, B-35).**
+- [x] **9. Bounds, kill plane, and respawn (B-15, B-35).**
       Invisible `StaticBody3D` walls around the arena, plus a `KillPlane` Area3D at y ≈ −10 that
       returns any body entering it to its spawn point with `velocity = Vector3.ZERO`. Add a
       brief "OUT OF BOUNDS" HUD toast.
       *Acceptance:* walk off the edge — you respawn within ~1s, the camera stays with you, and
       no other player's view is disturbed.
+      Four `StaticBody3D` walls at a ±41 boundary (well outside the 40×40 floor's ±20 extent, so
+      you can genuinely walk/get bumped off the edge — no wall right at the floor boundary) plus a
+      90×4×90 `KillPlane` Area3D at y=-10. `CharacterBase.spawn_position` is kept up to date by
+      `main.gd` everywhere it already sets `position` (initial spawn and every round-start
+      reposition); `KillPlane.character_respawned` → `main.gd` shows the toast only for a
+      locally-relevant character (own unit when networked, any unit in local test). Verified for
+      real: forced a local-test unit into the kill zone in a running headless instance — it came
+      back at its exact recorded `spawn_position`, zero velocity, one `body_entered` event, no
+      errors. Camera-stays-with-you and no-other-view-disturbed aren't meaningfully testable until
+      the per-character camera rig (item 13) exists — today's broadcast `ArenaCamera` frames
+      everyone's midpoint regardless, so this is `[x]` for the respawn mechanic itself, not for
+      those two camera-specific acceptance clauses.
 
 - [ ] **10. Round intermission state + full world reset (B-10, B-37).**
       Add the intermission phase from `Dev_Plan.md` §4.6. `reset_world()` must return **all four**
