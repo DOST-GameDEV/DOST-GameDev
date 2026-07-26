@@ -1103,9 +1103,13 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       Every unit now has a distinct model instead of four identical white capsules, driven by
       `scripts/characters/character_visual.gd` on `CharacterBase.tscn`'s `Visual` node:
       - **Person** — Kenney "Mini Characters" (CC0, `assets/characters/persons/`, licence committed
-        alongside as `KENNEY_LICENSE.txt`). Indexed by team so the two Persons in a match are
-        visibly different people; two spare models are in the repo for the character-select roster
-        (B-24). Their `idle` clip plays, so they don't stand in bind pose.
+        alongside as `KENNEY_LICENSE.txt`). **All 12 are in the repo**, so `PERSON_MODELS` doubles as
+        the character-select roster (B-24). Order is deliberate: `[0] male-f` is the character from
+        the art-direction reference (dark blocky hair, heavy brow, green top over a tan body) and
+        `[1] female-f` is Team B's default, picked to contrast it on the two things readable at
+        gameplay distance — ginger hair against dark, black/yellow outfit against green. Indexed by
+        team, so those two are the Persons actually seen in a match. Their `idle` clip plays, so
+        they don't stand in bind pose.
       - **Can (Lata)** and **Tsinelas** — authored low-poly primitives in
         `scenes/characters/visuals/`, in the moodboard's own colours (Can: `DEFENSE` blue body,
         `OFFENSE` orange rims, `HIGHLIGHT` yellow face disc; Tsinelas: `DEFENSE` blue sole,
