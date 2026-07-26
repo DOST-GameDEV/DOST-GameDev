@@ -90,13 +90,30 @@ func get_binding_display_name(action: String) -> String:
 		return "—"
 	return OS.get_keycode_string(keycode)
 
-## Rebinds `action` to a single physical key, replacing whatever was there
-## before (each rebindable action only ever has one key at a time — simpler
-## for a keyboard-split local prototype than stacking multiple bindings).
-## Saves immediately so a rebind survives even if the game crashes right after.
-func rebind_action(action: String, physical_keycode: int) -> void:
+## B-22: rebinding used to silently allow two actions to share a physical key
+## (e.g. P2 Up rebound onto P1's own W), with no warning — both would fire
+## together from then on. Returns "" on success, or the display label of
+## whichever OTHER action already owns that key, so the caller (Settings
+## panel) can show a clear conflict message instead of silently double-binding it.
+func rebind_action(action: String, physical_keycode: int) -> String:
 	if not InputMap.has_action(action):
-		return
+		return ""
+	var conflict := _find_conflicting_action(action, physical_keycode)
+	if conflict != "":
+		return ACTION_LABELS.get(conflict, conflict)
+	_set_binding(action, physical_keycode)
+	return ""
+
+## Whichever OTHER rebindable action already holds `physical_keycode`, or ""
+## if none do. Excludes `action` itself — rebinding a key to what it already is
+## isn't a conflict.
+func _find_conflicting_action(action: String, physical_keycode: int) -> String:
+	for other_action in REBINDABLE_ACTIONS:
+		if other_action != action and _first_physical_keycode(other_action) == physical_keycode:
+			return other_action
+	return ""
+
+func _set_binding(action: String, physical_keycode: int) -> void:
 	InputMap.action_erase_events(action)
 	var event := InputEventKey.new()
 	event.physical_keycode = physical_keycode
@@ -104,10 +121,14 @@ func rebind_action(action: String, physical_keycode: int) -> void:
 	binding_changed.emit(action)
 	_save()
 
+## Bypasses the conflict check above — resetting to a known-good default has
+## to always succeed, even mid-way through reset_all_to_default() where an
+## action not yet reset might still be sitting on a key that collides with
+## another action's default (that's the exact conflict being cleaned up).
 func reset_action_to_default(action: String) -> void:
 	if not _default_keycodes.has(action):
 		return
-	rebind_action(action, _default_keycodes[action])
+	_set_binding(action, _default_keycodes[action])
 
 func reset_all_to_default() -> void:
 	for action in REBINDABLE_ACTIONS:

@@ -17,5 +17,8 @@ func _do_activate(character: CharacterBody3D) -> bool:
 	var forward := -c.transform.basis.z
 	c.velocity.x = forward.x * dash_speed
 	c.velocity.z = forward.z * dash_speed
-	AbilityUtils.spawn_pulse_hitbox(c, hit_radius, dash_duration, false, Vector3(0, 0, -1.5))
+	# B-43: follow_character = true — this hitbox needs to ride along with the
+	# dash, not sit at a static world point the character immediately dashes
+	# away from (see AbilityUtils doc).
+	AbilityUtils.spawn_pulse_hitbox(c, hit_radius, dash_duration, false, Vector3(0, 0, -1.5), true)
 	return true

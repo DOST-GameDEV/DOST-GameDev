@@ -35,6 +35,10 @@ extends Node3D
 @onready var hud: Hud = $HUDLayer/HUD
 @onready var arena_camera: ArenaCamera = $Camera3D
 @onready var kill_plane: KillPlane = $KillPlane
+## B-20: no way out of a match existed except Alt+F4.
+@onready var pause_root: Control = %PauseRoot
+@onready var resume_button: Button = %ResumeButton
+@onready var menu_button: Button = %MenuButton
 
 const CHARACTER_SCENE: PackedScene = preload("res://scenes/characters/CharacterBase.tscn")
 ## Every Person — networked or local — gets its own Tag/Throw ability
@@ -67,6 +71,13 @@ const SPAWN_POINTS: Array[Vector3] = [
 ]
 
 var _spawned_peer_ids: Dictionary = {}
+## B-21: peer_id -> permanently-assigned join index (0..3), separate from
+## _spawned_peer_ids.size(). A disconnect/rejoin used to shift every
+## subsequent peer's index (and therefore team/role) since the index was
+## derived from how many peers happen to be connected right now. Assigned
+## once per peer_id and never reused/reassigned, even after that peer leaves.
+var _peer_join_index: Dictionary = {}
+var _next_join_index: int = 0
 ## Session 6: real 2v2 team assignment. peer_id -> 0 (Team A) or 1 (Team B),
 ## fixed for the whole match — replaces the old "alternate Can/Tsinelas by
 ## join order" 1v1 smoke-test placeholder. First two peers to connect are
@@ -99,6 +110,9 @@ func _ready() -> void:
 	MatchManager.round_started.connect(_on_match_round_started)
 	MatchManager.round_intermission_started.connect(_on_round_intermission_started)
 	kill_plane.character_respawned.connect(_on_character_respawned)
+	pause_root.visible = false
+	resume_button.pressed.connect(_on_resume_pressed)
+	menu_button.pressed.connect(_on_return_to_menu_pressed)
 
 	var join_target := ""
 	var should_host := false
@@ -190,6 +204,19 @@ func _start_joining(address: String) -> void:
 
 func _clear_local_test_characters() -> void:
 	RoundManager.clear_tracked_cans()
+	# B-03 (residual): Main.tscn's Camera3D.follow_paths always points at these
+	# four nodes regardless of mode, so arena_camera's own _ready() (which runs
+	# BEFORE this one — child _ready() before parent) already added all four as
+	# targets before _start_hosting()/_start_joining() ever ran. Freeing them
+	# without removing them first left arena_camera holding stale references —
+	# confirmed live in testing: Host Game spammed a filter()/typed-array error
+	# every single frame, the exact failure mode the original B-03 report
+	# described, despite add_target()/remove_target() existing for the
+	# networked-spawn path.
+	arena_camera.remove_target(team_a_prop)
+	arena_camera.remove_target(team_a_person)
+	arena_camera.remove_target(team_b_prop)
+	arena_camera.remove_target(team_b_person)
 	team_a_prop.queue_free()
 	team_a_person.queue_free()
 	team_b_prop.queue_free()
@@ -220,16 +247,11 @@ func _on_character_respawned(character: CharacterBase) -> void:
 	if not NetworkManager.is_networked() or character.is_multiplayer_authority():
 		hud.show_toast("OUT OF BOUNDS")
 
-## Item 14: Esc toggles the mouse free — mandatory once FPP captures it, or a
-## captured cursor with no release path traps the player (B-20's real pause
-## menu will eventually own this transition properly). Focus loss always
-## releases outright: alt-tabbing away with the cursor still captured is a
-## bad experience regardless of what's on screen.
-func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("ui_cancel"):
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED else Input.MOUSE_MODE_CAPTURED
-		get_viewport().set_input_as_handled()
-
+## Focus loss always releases the mouse outright: alt-tabbing away with the
+## cursor still captured is a bad experience regardless of what's on screen.
+## The Esc-driven capture/release toggle itself now lives in the pause menu's
+## _unhandled_input below (B-20), which owns that transition together with
+## showing/hiding the pause overlay.
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -256,8 +278,15 @@ func _on_player_disconnected(peer_id: int) -> void:
 func _spawn_player(peer_id: int) -> void:
 	if _spawned_peer_ids.has(peer_id):
 		return
-	var index := _spawned_peer_ids.size()
 	_spawned_peer_ids[peer_id] = true
+	# B-21: was `_spawned_peer_ids.size()` — a live count that shifts for every
+	# peer still connected after someone disconnects, scrambling team/role
+	# assignment for everyone whose index moved. Assign once, permanently, per
+	# peer_id instead.
+	if not _peer_join_index.has(peer_id):
+		_peer_join_index[peer_id] = _next_join_index
+		_next_join_index += 1
+	var index: int = _peer_join_index[peer_id]
 	var team := index / 2 # 0, 0, 1, 1 for up to MAX_PLAYERS = 4
 	var is_person := index % 2 == 0 # first peer of each team pair is the Person
 	var spawn_pos: Vector3 = SPAWN_POINTS[index % SPAWN_POINTS.size()]
@@ -365,7 +394,7 @@ func _reset_world(team_a_is_can: bool) -> void:
 			# reset at all. Reset + reposition every unit here instead.
 			character.reset_for_new_round()
 			character.position = SPAWN_POINTS[index % SPAWN_POINTS.size()]
-			character.spawn_position = character.position # B-15/B-35
+			character.spawn_position = character.position # B-15/B-35: keep KillPlane's respawn point current
 			index += 1
 			if character.is_can:
 				RoundManager.register_can(character)
@@ -454,3 +483,29 @@ func _wire_downed_flash(character: CharacterBase) -> void:
 		if character.is_can and GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A:
 			hud.set_dents(new_dents, CharacterBase.MAX_DENTS)
 	)
+
+## B-20: Esc toggles a pause overlay with Resume/Return to Menu — previously
+## the only way out of a match at all was Alt+F4. Also owns the Item 14 mouse
+## capture toggle (previously a bare Esc-only handler with no pause menu):
+## the cursor has to be released for the overlay's buttons to be clickable at
+## all, and re-captured on Resume so gameplay input isn't stuck showing the
+## OS cursor.
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel"):
+		pause_root.visible = not pause_root.visible
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if pause_root.visible else Input.MOUSE_MODE_CAPTURED
+		get_viewport().set_input_as_handled()
+
+func _on_resume_pressed() -> void:
+	pause_root.visible = false
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+func _on_return_to_menu_pressed() -> void:
+	if NetworkManager.is_networked():
+		NetworkManager.disconnect_network()
+	# B-14: leaving a match should reset the same as starting a fresh one does
+	# (see main_menu.gd _go_to_match()) — otherwise a Rematch/new match after
+	# using this button would resume this match's score.
+	MatchManager.reset()
+	RoundManager.reset()
+	get_tree().change_scene_to_file("res://scenes/ui/MainMenu.tscn")

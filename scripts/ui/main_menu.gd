@@ -22,6 +22,7 @@ const MAIN_SCENE_PATH: String = "res://scenes/main/Main.tscn"
 @onready var join_address_edit: LineEdit = %JoinAddressEdit
 @onready var game_mode_option: OptionButton = %GameModeOption
 @onready var status_label: Label = %StatusLabel
+@onready var back_button: Button = %BackButton
 
 func _ready() -> void:
 	title_screen.visible = true
@@ -31,17 +32,34 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE # item 14: defensive — Main.tscn captures it for a match
 
 	game_mode_option.clear()
+	# B-33: Option A has been fully implemented since Session 7 (hitbox.gd's
+	# dent branch, round_manager.gd's dent-based win check) — the "(coming
+	# soon)" label was stale and both items were always selectable/playable
+	# either way, so there was no actual gate to fix, just a wrong label.
 	game_mode_option.add_item("Option B — Capture & Seal", GameLaunch.GameMode.OPTION_B)
-	game_mode_option.add_item("Option A — Health / Dents (coming soon)", GameLaunch.GameMode.OPTION_A)
+	game_mode_option.add_item("Option A — Health / Dents", GameLaunch.GameMode.OPTION_A)
 	game_mode_option.select(0)
 	game_mode_option.item_selected.connect(_on_game_mode_selected)
 
 	start_button.pressed.connect(_on_start_pressed)
 	settings_button.pressed.connect(_on_settings_pressed)
 	settings_panel.back_pressed.connect(_on_settings_back_pressed)
+	back_button.pressed.connect(_on_back_pressed)
 	local_button.pressed.connect(_on_local_pressed)
 	host_button.pressed.connect(_on_host_pressed)
 	join_button.pressed.connect(_on_join_pressed)
+
+## B-34: Settings was reachable from TitleScreen but PlayMenu had no way back
+## to it (or to TitleScreen at all) without restarting the game.
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel") and play_menu.visible:
+		_on_back_pressed()
+		get_viewport().set_input_as_handled()
+
+func _on_back_pressed() -> void:
+	play_menu.visible = false
+	title_screen.visible = true
+	status_label.text = ""
 
 func _on_start_pressed() -> void:
 	title_screen.visible = false
@@ -77,4 +95,9 @@ func _on_join_pressed() -> void:
 	_go_to_match()
 
 func _go_to_match() -> void:
+	# B-14: MatchManager/RoundManager are autoloads and survive scene changes —
+	# without this, a second match (Rematch, or Menu then Play again) would
+	# resume the first one's score/round number instead of starting at 0-0.
+	MatchManager.reset()
+	RoundManager.reset()
 	get_tree().change_scene_to_file(MAIN_SCENE_PATH)

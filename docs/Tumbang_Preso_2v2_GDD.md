@@ -1,4 +1,4 @@
-# TUMBANG LARO: Isang Laban 🥫🩴
+# TUMBANG PRESO 🥫🩴
 ### Our 2v2 plan for Gear Up NCR — Esports Game Dev Challenge
 
 Hey team! Sending this over so we're all building off the same page for the rest of the

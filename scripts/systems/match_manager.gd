@@ -107,9 +107,9 @@ func _sync_match_won(winning_team: int, new_team_a_wins: int, new_team_b_wins: i
 	team_b_wins = new_team_b_wins
 	match_won.emit(winning_team)
 
-## B-14: nothing previously reset this autoload between matches, so a second
-## match resumed the first one's score. Called both when returning to the
-## main menu (scripts/ui/match_result.gd) and defensively at the top of
+## B-14: nothing reset this autoload between matches, so a second match
+## resumed the first one's score/round number. Called both when returning to
+## the main menu (scripts/ui/match_result.gd) and defensively at the top of
 ## main.gd::_ready() every time Main.tscn loads fresh, so a Local/Host/Join
 ## press from the menu always starts a match at 0-0 round 1 even if
 ## something upstream forgot to call this.
