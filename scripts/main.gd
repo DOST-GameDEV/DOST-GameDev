@@ -1,8 +1,8 @@
 extends Node3D
 
 ## Single-player prototype entry point, now dual-purpose (Session 5):
-## - No launch args: unchanged local single-PC/split-keyboard prototype
-##   (CanTestCharacter / TsinelasTestCharacter, as before).
+## - No launch args: local single-PC/split-keyboard prototype, spawning the
+##   real 4-unit Person+Prop structure (Session 9 — see below).
 ## - `--host`: starts a LAN server, removes the local test characters, and
 ##   spawns a real networked character per connected peer instead.
 ## - `--join=<address>`: connects to a host at that address, same swap.
@@ -16,28 +16,42 @@ extends Node3D
 ## Session 7 correction: a team is 2 players — 1 Person (tags/throws) + 1
 ## Can/Slipper Prop (carries the roster's class ability) — NOT two
 ## interchangeable Can/Tsinelas units. See CharacterBase.is_person /
-## _spawn_player below. The local single-PC fallback above (no launch args)
-## still models the OLD 1v1 direct Can-vs-Tsinelas smoke test and has NOT been
-## updated for this — see docs/Handoff_Session7.md known gaps.
+## _spawn_player below.
+##
+## Session 9: the local single-PC fallback above now matches this too, instead
+## of the old 1v1 direct Can-vs-Tsinelas smoke test (docs/Handoff_Session7.md's
+## "known gaps" — now closed). It spawns all 4 nodes from Main.tscn: the
+## player controls TeamAProp (P1 keys) and TeamAPerson (P2 keys) — i.e. one
+## full team, Prop + Person, so both Quick Stand and Tag/Throw are directly
+## testable locally. TeamBProp/TeamBPerson are local-test dummies (p3/p4,
+## deliberately unbound in project.godot — see CharacterBase.player_id doc)
+## standing in as a stationary opponent team. Round-swap (Can vs Slipper side)
+## is now wired for this flow too — see _on_match_round_started.
 
-@onready var can_test_character: CharacterBase = $CanTestCharacter
-@onready var tsinelas_test_character: CharacterBase = $TsinelasTestCharacter
+@onready var team_a_prop: CharacterBase = $TeamAProp
+@onready var team_a_person: CharacterBase = $TeamAPerson
+@onready var team_b_prop: CharacterBase = $TeamBProp
+@onready var team_b_person: CharacterBase = $TeamBPerson
 @onready var players_root: Node3D = $Players
 @onready var spawner: MultiplayerSpawner = $MultiplayerSpawner
 @onready var hud: Hud = $HUDLayer/HUD
 
 const CHARACTER_SCENE: PackedScene = preload("res://scenes/characters/CharacterBase.tscn")
-## Session 8 (throw/tag mechanic): every networked Person gets its own Tag/Throw
-## ability instance — see _build_networked_character. Loaded once here and
-## `.duplicate()`d per character rather than sharing this one Resource, since
-## AbilityBase.tick()/is_ready() carry per-instance cooldown state
-## (_time_since_use, _used_this_round) on the Resource itself; two Persons (one
-## per team) sharing the same instance would incorrectly share a cooldown. Note
-## this same trap applies to roster Prop abilities (Quick Stand, etc.) once
-## THEIR networked-spawn assignment gets built — today only the local test
-## flow's CanTestCharacter has one wired (see Main.tscn), so it hasn't bitten
-## anyone yet, but the fix should carry over then too.
+## Every Person — networked or local — gets its own Tag/Throw ability
+## instance, `.duplicate()`d from this one preloaded Resource rather than
+## shared directly, since AbilityBase.tick()/is_ready() carry per-instance
+## cooldown state (_time_since_use, _used_this_round) on the Resource itself;
+## two Persons sharing the same instance would incorrectly share a cooldown.
+## Same trap applies to roster Prop abilities (Quick Stand, etc.) once THEIR
+## networked-spawn assignment gets built — today only the local flow's
+## TeamAProp has one wired directly in Main.tscn, since it's the only
+## character using that particular resource instance.
 const PERSON_ACTION_ABILITY: AbilityBase = preload("res://scripts/abilities/resources/person_action.tres")
+## Local-test roster, in a flat array so round-swap/registration code (below)
+## can treat all 4 the same way it treats _spawned_characters for the
+## networked flow, rather than hand-writing 4 near-identical blocks.
+## Populated once in _ready(); order is [TeamAProp, TeamAPerson, TeamBProp, TeamBPerson].
+var _local_roster: Array[CharacterBase] = []
 ## Cycled through as players connect; only the first two matter until real
 ## map spawn points exist (GDD's Eskinita/Bayan Plaza bases).
 const SPAWN_POINTS: Array[Vector3] = [
@@ -85,13 +99,37 @@ func _ready() -> void:
 	elif join_target != "":
 		_start_joining(join_target)
 	else:
-		# Local single-PC/split-keyboard prototype flow, unchanged.
-		# Testbed for Option B (GDD Section 3) — see round_manager.gd's
-		# "Option B testbed" comment for why this is opt-in rather than
-		# auto-detected.
-		RoundManager.register_can(can_test_character)
-		MatchManager.begin_next_round()
-		_wire_downed_flash(can_test_character)
+		_start_local_test()
+
+## Session 9: local single-PC/split-keyboard flow, now spawning the real
+## 4-unit Person+Prop structure instead of the old 1v1 Can/Tsinelas smoke
+## test. TeamA's Person (P2) needs its own Tag/Throw instance same as any
+## networked Person — see PERSON_ACTION_ABILITY doc. TeamB's Person is a
+## local-test dummy (unbound input, see Main.tscn/project.godot) but still
+## gets its own duplicated instance too, rather than sharing TeamA Person's:
+## AbilityBase.tick() runs every physics frame regardless of whether the
+## character ever receives input, so two Persons sharing one Resource would
+## still incorrectly share cooldown state even though the dummy can never
+## press the button itself.
+func _start_local_test() -> void:
+	_local_roster = [team_a_prop, team_a_person, team_b_prop, team_b_person]
+	team_a_person.ability = PERSON_ACTION_ABILITY.duplicate()
+	team_b_person.ability = PERSON_ACTION_ABILITY.duplicate()
+	_wire_downed_flash(team_a_prop)
+	_wire_downed_flash(team_b_prop)
+	_register_local_can()
+	MatchManager.begin_next_round()
+
+## (Re)tells RoundManager which local Prop is currently the Can — whichever
+## of TeamAProp/TeamBProp has is_can true this round. Called once up front in
+## _start_local_test() and again every round from _on_match_round_started
+## once the swap below has updated is_can, so Option A/B win-checks always
+## watch the right one instead of staying locked to whoever was Can in round 1.
+func _register_local_can() -> void:
+	RoundManager.clear_tracked_cans()
+	for character in [team_a_prop, team_b_prop]:
+		if character.is_can:
+			RoundManager.register_can(character)
 
 func _start_hosting() -> void:
 	_clear_local_test_characters()
@@ -112,8 +150,12 @@ func _start_joining(address: String) -> void:
 	NetworkManager.join_game(address)
 
 func _clear_local_test_characters() -> void:
-	can_test_character.queue_free()
-	tsinelas_test_character.queue_free()
+	RoundManager.clear_tracked_cans()
+	team_a_prop.queue_free()
+	team_a_person.queue_free()
+	team_b_prop.queue_free()
+	team_b_person.queue_free()
+	_local_roster.clear()
 
 func _on_player_connected(peer_id: int) -> void:
 	if NetworkManager.is_host():
@@ -183,7 +225,7 @@ func _build_networked_character(data: Dictionary) -> Node:
 ## by fields (team_a_is_can) that are already synced. No RPC needed here: each
 ## peer just recomputes is_can for every spawned character from that
 ## character's fixed team, which every peer already knows from spawn data.
-func _on_match_round_started(_round_number: int, _team_a_is_can: bool) -> void:
+func _on_match_round_started(_round_number: int, team_a_is_can: bool) -> void:
 	if NetworkManager.is_networked():
 		RoundManager.clear_tracked_cans()
 		for peer_id in _spawned_characters.keys():
@@ -203,9 +245,19 @@ func _on_match_round_started(_round_number: int, _team_a_is_can: bool) -> void:
 			character.is_can = team_is_can_side and not is_person
 			if character.is_can:
 				RoundManager.register_can(character)
-	# Local single-PC flow: register_can(can_test_character) already happened
-	# once in _ready() and role-swap isn't wired for that flow (see GDD's
-	# single-PC fallback note) — this just (re)starts the round timer.
+	elif not _local_roster.is_empty():
+		# Session 9: role-swap for the local flow too — was previously a "known
+		# gap" (docs/Handoff_Session7.md). Same rule as networked: Team A's
+		# Prop/Person side comes straight from team_a_is_can, Team B is the
+		# mirror image. Persons never become Cans (team_is_can_side only, same
+		# as networked above).
+		team_a_prop.team_is_can_side = team_a_is_can
+		team_a_prop.is_can = team_a_is_can
+		team_a_person.team_is_can_side = team_a_is_can
+		team_b_prop.team_is_can_side = not team_a_is_can
+		team_b_prop.is_can = not team_a_is_can
+		team_b_person.team_is_can_side = not team_a_is_can
+		_register_local_can()
 	RoundManager.start_round()
 
 ## Shows/hides the HUD's DownedFlash whenever the given (locally-controlled)
@@ -213,14 +265,19 @@ func _on_match_round_started(_round_number: int, _team_a_is_can: bool) -> void:
 ## never flash since the GDD ties this to "your Can got knocked down". Under
 ## Option A this doubles as the entry point for the dent counter too, since
 ## both only ever apply to the locally-controlled Can.
+##
+## Session 9: the is_can check now happens INSIDE the connected callback
+## rather than gating the connection itself, so this keeps working correctly
+## for a character whose is_can flips between rounds (the local flow's two
+## Props, and — as of Session 7/8's role-swap — networked Props too) instead
+## of only ever reflecting whatever is_can happened to be true the one time
+## this was called.
 func _wire_downed_flash(character: CharacterBase) -> void:
-	if not character.is_can:
-		return
 	character.state_changed.connect(func(new_state: CharacterBase.State) -> void:
-		hud.set_downed_flash(new_state == CharacterBase.State.DOWNED)
+		if character.is_can:
+			hud.set_downed_flash(new_state == CharacterBase.State.DOWNED)
 	)
-	if GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A:
-		hud.set_dents(character.dents, CharacterBase.MAX_DENTS)
-		character.dents_changed.connect(func(new_dents: int) -> void:
+	character.dents_changed.connect(func(new_dents: int) -> void:
+		if character.is_can and GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A:
 			hud.set_dents(new_dents, CharacterBase.MAX_DENTS)
-		)
+	)

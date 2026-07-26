@@ -58,10 +58,16 @@ enum State { NORMAL, STAGGERED, DOWNED, SEALED }
 ## a Prop (which already has `is_can` for this). Kept in sync by main.gd, same
 ## lifetime/pattern as `is_can` — see _spawn_player / _on_match_round_started.
 @export var team_is_can_side: bool = true
-## Which local input set this character reads from (1 or 2). Lets two characters
-## share one keyboard without both moving on the same WASD press — see
-## project.godot [input]: every action is suffixed "_p1"/"_p2".
-@export_range(1, 2, 1) var player_id: int = 1
+## Which local input set this character reads from (1-4). Lets multiple
+## characters share one keyboard without both moving on the same WASD press —
+## see project.godot [input]: every action is suffixed "_p1".."_p4". p1/p2 are
+## bound to real keys (WASD+Space / Arrows+Enter); p3/p4 are registered but
+## deliberately left unbound (see project.godot [input]) — they exist so the
+## local single-PC test flow can spawn the real 4-unit Person+Prop structure
+## without needing 4 human players, and a character with an unbound player_id
+## simply never receives input, standing in as a local-test dummy. See
+## main.gd's local _ready() branch for how p3/p4 are assigned.
+@export_range(1, 4, 1) var player_id: int = 1
 
 signal state_changed(new_state: State)
 ## Option A only (see MAX_DENTS above). Fires whenever `dents` changes so

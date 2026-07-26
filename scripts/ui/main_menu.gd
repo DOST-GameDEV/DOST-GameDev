@@ -13,7 +13,9 @@ const MAIN_SCENE_PATH: String = "res://scenes/main/Main.tscn"
 
 @onready var title_screen: Control = %TitleScreen
 @onready var play_menu: Control = %PlayMenu
+@onready var settings_panel: SettingsPanel = %SettingsPanel
 @onready var start_button: Button = %StartButton
+@onready var settings_button: Button = %SettingsButton
 @onready var local_button: Button = %LocalButton
 @onready var host_button: Button = %HostButton
 @onready var join_button: Button = %JoinButton
@@ -24,6 +26,7 @@ const MAIN_SCENE_PATH: String = "res://scenes/main/Main.tscn"
 func _ready() -> void:
 	title_screen.visible = true
 	play_menu.visible = false
+	settings_panel.visible = false
 	status_label.text = ""
 
 	game_mode_option.clear()
@@ -33,6 +36,8 @@ func _ready() -> void:
 	game_mode_option.item_selected.connect(_on_game_mode_selected)
 
 	start_button.pressed.connect(_on_start_pressed)
+	settings_button.pressed.connect(_on_settings_pressed)
+	settings_panel.back_pressed.connect(_on_settings_back_pressed)
 	local_button.pressed.connect(_on_local_pressed)
 	host_button.pressed.connect(_on_host_pressed)
 	join_button.pressed.connect(_on_join_pressed)
@@ -40,6 +45,15 @@ func _ready() -> void:
 func _on_start_pressed() -> void:
 	title_screen.visible = false
 	play_menu.visible = true
+
+func _on_settings_pressed() -> void:
+	title_screen.visible = false
+	play_menu.visible = false
+	settings_panel.visible = true
+
+func _on_settings_back_pressed() -> void:
+	settings_panel.visible = false
+	title_screen.visible = true
 
 func _on_game_mode_selected(_index: int) -> void:
 	GameLaunch.game_mode = game_mode_option.get_selected_id() as GameLaunch.GameMode
