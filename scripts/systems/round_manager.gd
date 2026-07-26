@@ -20,9 +20,14 @@ class_name RoundManagerScript
 signal round_won(winning_team: int)
 
 const ROUND_TIME: float = 90.0
+## B-19: _sync_state used to RPC every rendered frame per client just to drive
+## a HUD label that changes once a second — harmless on a LAN, but wasteful
+## and easy to throttle. ~4Hz is still smooth for a timer display.
+const SYNC_INTERVAL: float = 0.25
 
 var time_left: float = ROUND_TIME
 var round_active: bool = false
+var _sync_accum: float = 0.0
 
 ## Session 6: MainMenu lets the player pick GameLaunch.game_mode (OPTION_A /
 ## OPTION_B) before a match starts — see game_launch.gd.
@@ -98,6 +103,7 @@ func start_round() -> void:
 		return # clients wait for the host's _sync_state RPC instead
 	time_left = ROUND_TIME
 	round_active = true
+	_sync_accum = 0.0
 	for can in _tracked_cans:
 		if is_instance_valid(can):
 			can.reset_for_new_round()
@@ -111,17 +117,22 @@ func _process(delta: float) -> void:
 		return
 	time_left = max(0.0, time_left - delta)
 	if NetworkManager.is_networked():
-		_sync_state.rpc(time_left, round_active) # cheap: HUD only reads these two fields
+		_sync_accum += delta
+		if _sync_accum >= SYNC_INTERVAL:
+			_sync_accum = 0.0
+			_sync_state.rpc(time_left, round_active)
 	if time_left <= 0.0:
 		_on_time_up()
 
+## B-18: this used to set round_active = false and report the win locally
+## without ever RPCing the change, so clients kept believing the round was
+## still live until the next round's _sync_round_started happened to arrive.
+## report_round_win() already does exactly this (set round_active false, sync,
+## emit, report) for the "Slippers sealed/dented every Can" win path — reuse
+## it instead of duplicating the same steps minus the sync.
 func _on_time_up() -> void:
-	if not round_active:
-		return
-	round_active = false
 	# Cans win on timer expiry — true under both Option A and Option B (GDD Section 3).
-	round_won.emit(0) # 0 = Can team
-	MatchManager.report_round_result(true)
+	report_round_win(true)
 
 ## Call this from whichever round-win option gets implemented first (Slippers denting
 ## a Can under Option A, or sealing it under Option B — see character_base.gd `seal()`).
