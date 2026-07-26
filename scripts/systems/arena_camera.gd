@@ -11,6 +11,15 @@ class_name ArenaCamera
 ## bounds) — just enough so testing isn't stuck on a locked static shot.
 ## Swap or extend this once real maps (Eskinita / Bayan Plaza) exist and
 ## we know what needs to stay on-screen (bases, hazards, etc).
+##
+## B-03 fix: targets are no longer just a one-shot cache resolved from
+## `follow_paths` in _ready(). `follow_paths` still works for local-test
+## scenes wired directly in the editor (see Main.tscn), but callers should
+## use add_target()/remove_target() at runtime instead — main.gd calls these
+## as networked characters spawn/despawn, and _process() also tolerates a
+## target being freed out from under it (e.g. _clear_local_test_characters()
+## queue_free()-ing the local-test nodes when a networked match starts),
+## instead of dereferencing a freed Node3D every frame.
 
 @export var follow_paths: Array[NodePath] = []
 @export var min_distance: float = 6.0
@@ -32,11 +41,25 @@ func _ready() -> void:
 	for path in follow_paths:
 		var n := get_node_or_null(path)
 		if n is Node3D:
-			_targets.append(n)
+			add_target(n)
 		else:
 			push_warning("ArenaCamera: follow path '%s' did not resolve to a Node3D" % path)
 
+## Start following `target` (e.g. a newly spawned networked character). Safe
+## to call more than once for the same target.
+func add_target(target: Node3D) -> void:
+	if target != null and not _targets.has(target):
+		_targets.append(target)
+
+## Stop following `target` (e.g. a disconnecting peer's character, or the
+## local-test dummies being cleared when a networked match starts).
+func remove_target(target: Node3D) -> void:
+	_targets.erase(target)
+
 func _process(delta: float) -> void:
+	# Drop anything freed since last frame (e.g. local-test characters torn
+	# down by _clear_local_test_characters()) instead of dereferencing it.
+	_targets = _targets.filter(func(t: Node3D) -> bool: return is_instance_valid(t))
 	if _targets.is_empty():
 		return
 

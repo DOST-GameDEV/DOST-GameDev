@@ -26,11 +26,25 @@ func _ready() -> void:
 	area_entered.connect(_on_area_entered)
 	monitoring = true
 
+## B-08: called by CharacterBase right when its bump window opens. area_entered
+## only fires on a NEW overlap, so someone already standing inside this Hitbox
+## at press time (the normal case — you walk into someone, then press bump)
+## never generated one, and the bump silently missed. Re-run the same
+## resolution against everyone already overlapping.
+func sweep_overlaps() -> void:
+	for area in get_overlapping_areas():
+		_on_area_entered(area)
+
 func _on_area_entered(area: Area3D) -> void:
 	if not (area is Hurtbox):
 		return
 	var target := (area as Hurtbox).owner_character
 	if target == null or target == owner_character:
+		return
+	# B-09: no friendly fire — previously there was no team identity on
+	# CharacterBase at all, so a defending Person could dent/seal its own
+	# team's Can, and three of those under Option A lose your own round.
+	if owner_character and target.team == owner_character.team:
 		return
 	if requires_bump_window and owner_character and not owner_character.is_hitbox_active():
 		return

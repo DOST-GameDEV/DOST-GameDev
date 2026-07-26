@@ -29,18 +29,26 @@ func tick(delta: float) -> void:
 func activate(character: CharacterBody3D) -> void:
 	if not is_ready():
 		return
+	# B-11: cooldown/charge used to be consumed BEFORE calling _do_activate(),
+	# so a no-op activation (e.g. Quick Stand pressed while not Downed) still
+	# burned the once-per-round charge for nothing. Consume only on success now.
+	if not _do_activate(character):
+		return
 	_time_since_use = 0.0
 	if once_per_round:
 		_used_this_round = true
-	_do_activate(character)
 
 ## Called by CharacterBase.reset_for_new_round() at the start of every round.
 func reset_round_charge() -> void:
 	_used_this_round = false
 
-## Actual per-ability behavior — override this, not activate().
-func _do_activate(character: CharacterBody3D) -> void:
-	pass
+## Actual per-ability behavior — override this, not activate(). Return true if
+## the ability actually did something; return false for a no-op activation
+## (e.g. Quick Stand pressed while not Downed) so activate() doesn't consume
+## the cooldown/charge for nothing (B-11). Default true — most abilities
+## always do something once called.
+func _do_activate(_character: CharacterBody3D) -> bool:
+	return true
 
 ## Optional passive hook: implement this in an ability script (don't need to declare
 ## it here since GDScript duck-types has_method checks) if the ability should react

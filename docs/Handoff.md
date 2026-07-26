@@ -75,6 +75,13 @@ and the host never has that hitbox at all. Affects Spin Guard, Bagsak Bomb, Baky
 Flick Dash, and Person's Tag/Throw — i.e. every action except Bump.
 *Fix:* RPC the activation to the host and spawn the resolving hitbox there (cosmetic copies
 locally if you want the visual).
+**[FIXED]** `CharacterBase._physics_process` still calls `ability.activate(self)` locally
+(cosmetic hitbox/movement effect on the activating peer, e.g. Flick Dash's velocity kick), and
+now also RPCs `_rpc_notify_ability_activate` to the host (id 1) when the activator isn't the
+host — same pattern as the existing bump RPC. The host runs `activate()` on its own copy of
+the character/ability, so the authoritative resolving hitbox exists on the host where
+hitbox.gd can actually process it. Needs verification with two editor instances that a
+client's special/Tag-Throw lands on the host.
 
 **B-03 · `ArenaCamera` breaks in networked play.**
 `scenes/main/Main.tscn:43` points `follow_paths` at the four local-test nodes. Godot runs
@@ -83,12 +90,24 @@ and then `main.gd::_clear_local_test_characters()` frees all four. `_process` de
 freed objects every frame. Networked characters are never added as targets, so even without
 the errors the camera would sit still while everyone plays off-screen.
 *Fix:* register/unregister targets at runtime instead of caching from `_ready()`.
+**[FIXED]** `ArenaCamera` now has `add_target()`/`remove_target()` and filters freed instances
+out of `_targets` every `_process()` frame instead of dereferencing them (fixes the crash from
+`_clear_local_test_characters()`). `main.gd` calls `add_target()` on every networked spawn
+(`_build_networked_character`) and `remove_target()` on disconnect, so real network peers are
+now actually followed. `follow_paths` still works unchanged for the local-test flow. Needs
+verification in networked play that the camera frames both peers instead of sitting still.
 
 **B-04 · Networked Props spawn with no ability.**
 `scripts/main.gd:205` assigns `PERSON_ACTION_ABILITY` only when `is_person` is true. Props —
 the half of the team that carries the entire roster (Quick Stand, Bakya Bash, …) — get
 `ability = null` over the network. Only the local test flow has an ability on a Prop, and
 only because `Main.tscn` hardcodes `quick_stand.tres` on `TeamAProp`.
+**[FIXED]** `_build_networked_character` now assigns a `.duplicate()` of a new `PROP_ABILITY`
+constant (`quick_stand.tres`, the only roster resource that currently exists) to every
+networked Prop, mirroring what `Main.tscn` already hardcodes for the local flow. This does
+NOT give each Prop its own distinct roster ability — that needs the other five `.tres`
+resources and a character-select step (B-24/Phase 2) — it just stops Props from spawning with
+`ability = null` over the network.
 
 ### P1 — the core loop is wrong
 
@@ -97,12 +116,27 @@ only because `Main.tscn` hardcodes `quick_stand.tres` on `TeamAProp`.
 at a fixed local offset (`CharacterBase.tscn:60`), and `PersonAction`, `BakyaBash`, and
 `FlickDash` all use `-transform.basis.z`. A player moving east can only attack north. The
 `rotation` property is in the replication config and is replicated — it's just never changed.
+**[FIXED]** Movement direction is now computed as `Vector3(input_dir.x, 0, input_dir.y)`
+directly (world space) instead of `transform.basis * input_dir` — the old formula made
+movement direction depend on current facing, which would have produced relative/tank-style
+turning the moment facing started changing. The character now `look_at()`s its movement
+direction whenever `direction` is nonzero, so `-transform.basis.z` (and the melee Hitbox's
+local offset) actually points where the player is moving. Needs verification in-editor that
+movement still feels like absolute WASD and that Bump/specials land in the facing direction.
 
 **B-06 · Quick Stand can never be activated.**
 `character_base.gd:142` returns early for `STAGGERED`/`DOWNED`/`SEALED`; the
 `special_ability` input is read at line 160, *after* that return. Quick Stand's only effect
 is self-righting from Downed — the exact state in which its input is unreachable. Same
 structural problem for any future "escape" ability.
+**[FIXED]** The `State.DOWNED` branch of the state `match` (which runs before the
+STAGGERED/DOWNED/SEALED early return) now also checks `special_ability` and calls
+`ability.activate(self)` there, same RPC-to-host call as the main check further down. Other
+states (STAGGERED, SEALED) still can't activate anything — only DOWNED needed the carve-out.
+`is_ready()`/`once_per_round` on the ability itself still gates whether anything actually
+happens; a non-escape ability (e.g. Spin Guard) pressed while Downed will still run its
+`_do_activate()` if off cooldown, same as it always could from NORMAL — worth a look once
+someone's playtesting, but not a new bug introduced by this fix.
 
 **B-07 · Any stagger cancels Downed.**
 `apply_stagger()` (line 164) overwrites `DOWNED` with `STAGGERED`, which auto-recovers to
@@ -110,6 +144,13 @@ structural problem for any future "escape" ability.
 but still inside its self-right window — so hitting a downed Can *rescues* it. Any bump from
 anyone, including its own teammate, is a free escape. Option B's seal mechanic cannot work
 until this is fixed.
+**[FIXED]** `apply_stagger()` now returns early for `DOWNED` as well as `SEALED`, so a hit
+landing on a still-self-rightable Can does nothing instead of bumping it back to STAGGERED/
+NORMAL. `hitbox.gd` still separately routes a hit AFTER the self-right window expires to
+`"seal"` rather than `"stagger"`, so sealing is unaffected — this only closes the free-rescue
+window. Needs verification that a teammate/opponent bumping a Downed Can no longer un-downs
+it, and that self-right (via the Can's own bump input, `character_base.gd`'s DOWNED match
+branch) still works.
 
 **B-08 · Bump misses anyone you're already touching.**
 `hitbox.gd` only listens to `area_entered`, but the melee Hitbox is always monitoring and is
@@ -117,6 +158,12 @@ never enabled/disabled by the bump window. Walk into someone and press bump → 
 `area_entered` → no hit. You have to press bump *before* closing distance, which is the
 opposite of how melee reads.
 *Fix:* on bump press, also sweep `get_overlapping_areas()`.
+**[FIXED]** `Hitbox.sweep_overlaps()` re-runs `_on_area_entered()` against everything already
+in `get_overlapping_areas()`. `CharacterBase` caches its melee Hitbox (`requires_bump_window
+== true`) in `_ready()` and calls `sweep_overlaps()` from a new shared `_open_bump_window()`
+helper, used both when the local player presses bump and in the host's `_rpc_notify_bump`
+handler (so a remote peer's already-touching bump also resolves correctly on the host). Needs
+verification that walking into someone and then pressing bump now lands a hit.
 
 **B-09 · No team check — you can dent and seal your own Can.**
 `CharacterBase` has `is_can`, `is_person`, and `team_is_can_side`, but no team identity at
@@ -124,6 +171,13 @@ all. `hitbox.gd` only skips `target == owner_character`. So under Option A a def
 Person bumping its own Can adds a dent, and three of those lose your own round. Under Option
 B a teammate can seal your Can. The team id exists in `main.gd::_peer_teams` but is never
 put on the character.
+**[FIXED]** New `team: int` export on `CharacterBase` (0 = Team A, 1 = Team B). `main.gd` sets
+it from spawn data (`data["team"]`) in `_build_networked_character`, and explicitly for all
+four local-test units in `_start_local_test()` (they'd otherwise all sit at the default 0 and
+block every bump against each other once the check below exists). `hitbox.gd`'s
+`_on_area_entered` now returns early when `target.team == owner_character.team`. Needs
+verification that bumping a teammate no longer does anything, and bumping an opponent still
+does.
 
 **B-10 · Only one of the four units is reset between rounds.**
 `round_manager.gd:99` loops `_tracked_cans`, which holds exactly the one Can. The two Persons
@@ -131,11 +185,24 @@ and the Slipper-side Prop keep their `STAGGERED`/`DOWNED`/`SEALED` state, their 
 their speed multiplier, and their spent once-per-round ability charges across rounds. Nothing
 resets any character's *position* between rounds either, so round 2 starts wherever round 1
 ended.
+**[FIXED]** `main.gd::_on_match_round_started` now calls `character.reset_for_new_round()` and
+sets `character.position` from `SPAWN_POINTS` for all four units every round, in both the
+networked branch (looping `_spawned_characters`) and the local-test branch (looping
+`_local_roster`) — not just whichever Prop happens to be the tracked Can this round.
+`RoundManager.start_round()`'s own tracked-Can-only reset is now redundant for that one
+character but harmless (idempotent). Needs verification that Downed/dent/speed-multiplier
+state and position don't carry over into round 2.
 
 **B-11 · A no-op activation still burns the cooldown.**
 `ability_base.gd:29` — `activate()` sets `_time_since_use = 0` and `_used_this_round = true`
 before calling `_do_activate()`, which may do nothing (Quick Stand while not Downed). Press
 the button once at the wrong moment and your once-per-round charge is gone.
+**[FIXED]** `_do_activate()` now returns `bool` (default `true` in the base class);
+`activate()` only sets `_time_since_use = 0` / `_used_this_round = true` when it returns
+`true`. `quick_stand.gd` returns `false` when the character isn't Downed (the real no-op
+case); the other five ability scripts (`shatter_trap`, `spin_guard`, `bagsak_bomb`,
+`bakya_bash`, `flick_dash`, `person_action`) always return `true`, matching their existing
+always-succeeds behavior — no change to when they fire, just to the return type.
 
 **B-12 · Friction is a per-frame constant, so there is no momentum and Flick Dash lasts three frames.**
 `move_toward(velocity.x, 0, SPEED)` uses `SPEED` (6.0) as an absolute per-tick step, not
@@ -143,6 +210,14 @@ per-second — no `delta`. Max walk speed is also 6.0, so releasing a key stops 
 tick, and it's frame-rate dependent if the physics tick is ever changed. Flick Dash sets
 velocity to 16 and it decays 16 → 10 → 4 → 0 in about 0.05s. The dash also applies a frame
 late, because `_do_activate` runs after `move_and_slide()`.
+**[FIXED]** Added a `FRICTION` constant (30 units/sec²) used as `move_toward(..., FRICTION *
+delta)` in both no-input-movement and STAGGERED/DOWNED/SEALED decay, replacing the old
+delta-less `SPEED`-as-a-step stops — deceleration is now framerate-independent and Flick
+Dash's velocity boost actually covers distance instead of decaying in ~3 frames. The
+`special_ability` activation check also moved to run before `move_and_slide()` (was after),
+so an ability that sets velocity directly (Flick Dash) applies the same physics tick instead
+of one frame late. Needs an in-editor feel pass — 30 units/sec² is a first guess, not a
+playtested number.
 
 ### P2 — real problems, not blocking a first playtest
 

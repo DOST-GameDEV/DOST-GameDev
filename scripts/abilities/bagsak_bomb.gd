@@ -10,5 +10,6 @@ class_name BagsakBomb
 @export var slam_radius: float = 2.0
 @export var slam_duration: float = 0.2
 
-func _do_activate(character: CharacterBody3D) -> void:
+func _do_activate(character: CharacterBody3D) -> bool:
 	AbilityUtils.spawn_pulse_hitbox(character as CharacterBase, slam_radius, slam_duration)
+	return true
