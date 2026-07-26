@@ -46,9 +46,12 @@ a team move independently and are separately player-controlled.
   vice versa). The whole team's *side* (Can vs Slipper) swaps next round; a given player
   stays Person or stays Prop for the whole match, only which side their team is on flips.
 - **Person's job:** the human half of the team. On defense, tags attackers (the classic
-  Tumbang Preso "It"/guard). On offense, throws the Slipper at the Can. Mechanically both
-  are the same Bump/hit interaction today (see character_base.gd) — no unique Person
-  ability yet, that's an open item.
+  Tumbang Preso "It"/guard) via a short-range Tag. On offense, throws the Slipper at the
+  Can via a longer-range Throw. Both are one action — Tag/Throw — on the same input,
+  automatically chosen by which side the Person's team is on this round; the player
+  doesn't pick. *(Implemented Session 8: see person_action.gd. Distinct from the shared
+  Bump/melee hit — a spawned ranged hitbox instead — though hit resolution itself
+  (stagger/downed/seal/dent) is generic across Bump, Tag/Throw, and every roster special.)*
 - **Prop's job:** the Can or Slipper. Carries the roster's class ability (Quick Stand,
   Bakya Bash, etc. — Section 4) and is what the round-win check (Option A/B below) actually
   watches. Hits on a Person are stun-only flavor with no effect on round outcome.
@@ -85,9 +88,10 @@ rewrite.
 ## 4. Roster (draft)
 
 **Session 7 note:** the roster below is for the **Prop** half of a team (the Can or
-Slipper) — see Section 3. The **Person** half doesn't have a roster/class yet; it's
-currently just Move + Bump with no special ability. Adding a Person roster (or at least one
-generic Person) is an open item, not yet designed.
+Slipper) — see Section 3. The **Person** half doesn't have a roster/class — every Person
+is identical, Move + Bump + the one shared Tag/Throw action (Session 8, see Section 3).
+Whether Person ever gets its own roster (parallel to the 6 Prop characters below) instead
+of staying one generic design is still an open question, just no longer a functional gap.
 
 Shared basics for everyone: **Move**, **Bump** (light melee, small stagger, no cooldown),
 **Guard/Dash** (Cans block, Tsinelas dash-evade), one **Special Ability** per character.

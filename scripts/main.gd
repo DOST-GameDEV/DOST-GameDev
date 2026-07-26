@@ -27,6 +27,17 @@ extends Node3D
 @onready var hud: Hud = $HUDLayer/HUD
 
 const CHARACTER_SCENE: PackedScene = preload("res://scenes/characters/CharacterBase.tscn")
+## Session 8 (throw/tag mechanic): every networked Person gets its own Tag/Throw
+## ability instance — see _build_networked_character. Loaded once here and
+## `.duplicate()`d per character rather than sharing this one Resource, since
+## AbilityBase.tick()/is_ready() carry per-instance cooldown state
+## (_time_since_use, _used_this_round) on the Resource itself; two Persons (one
+## per team) sharing the same instance would incorrectly share a cooldown. Note
+## this same trap applies to roster Prop abilities (Quick Stand, etc.) once
+## THEIR networked-spawn assignment gets built — today only the local test
+## flow's CanTestCharacter has one wired (see Main.tscn), so it hasn't bitten
+## anyone yet, but the fix should carry over then too.
+const PERSON_ACTION_ABILITY: AbilityBase = preload("res://scripts/abilities/resources/person_action.tres")
 ## Cycled through as players connect; only the first two matter until real
 ## map spawn points exist (GDD's Eskinita/Bayan Plaza bases).
 const SPAWN_POINTS: Array[Vector3] = [
@@ -138,7 +149,7 @@ func _spawn_player(peer_id: int) -> void:
 	var is_can := team_is_can_side and not is_person
 	spawner.spawn({
 		"peer_id": peer_id, "position": spawn_pos, "is_can": is_can,
-		"is_person": is_person, "team": team,
+		"is_person": is_person, "team": team, "team_is_can_side": team_is_can_side,
 	})
 
 ## Runs on every peer (host and clients) when the spawner replicates a spawn.
@@ -148,6 +159,12 @@ func _build_networked_character(data: Dictionary) -> Node:
 	character.position = data["position"]
 	character.is_can = data["is_can"]
 	character.is_person = data["is_person"]
+	character.team_is_can_side = data["team_is_can_side"]
+	if data["is_person"]:
+		# Session 8: Person's Tag/Throw, replacing the previously-null `ability`
+		# for Person (see PersonAction doc). .duplicate() per PERSON_ACTION_ABILITY
+		# doc above — don't share cooldown state across the two Persons in a match.
+		character.ability = PERSON_ACTION_ABILITY.duplicate()
 	character.set_multiplayer_authority(data["peer_id"])
 	_peer_teams[data["peer_id"]] = data["team"]
 	_peer_is_person[data["peer_id"]] = data["is_person"]
@@ -176,9 +193,13 @@ func _on_match_round_started(_round_number: int, _team_a_is_can: bool) -> void:
 			var team: int = _peer_teams.get(peer_id, 0)
 			var is_person: bool = _peer_is_person.get(peer_id, false)
 			var team_is_can_side := (team == 0) == MatchManager.team_a_is_can
-			# Only the team's Prop can ever be a Can — the Person stays a
-			# Person regardless of which side its team is on this round
-			# (Session 7: 1 Person + 1 Prop per team, not two Props).
+			# Session 8: every character on the team tracks team_is_can_side now,
+			# not just the Prop — Person needs it too, to pick Tag vs Throw (see
+			# person_action.gd). Only the team's Prop can ever be a Can, though —
+			# the Person's own is_can stays false regardless of which side its
+			# team is on this round (Session 7: 1 Person + 1 Prop per team, not
+			# two Props).
+			character.team_is_can_side = team_is_can_side
 			character.is_can = team_is_can_side and not is_person
 			if character.is_can:
 				RoundManager.register_can(character)

@@ -72,7 +72,8 @@ See [`docs/Handoff_Session7.md`](docs/Handoff_Session7.md) for the latest detail
 - [x] Downed-state visual flash actually triggered in-game
 - [x] Real 2v2 team assignment + main menu/lobby
 - [x] Corrected team structure to 1 Person + 1 Can/Slipper Prop per team (was wrongly 2 Props)
-- [ ] Person unit has no unique ability/roster yet — currently Move + Bump only
+- [x] Person's Tag/Throw action, replacing the old "Person = just Bump" gap (Session 8)
+- [ ] Person still has no roster/class beyond the one shared Tag/Throw action — open design question, not a functional gap anymore
 - [ ] Local single-PC test flow still models the old 1v1 direct Can-vs-Tsinelas smoke test
 - [ ] Ring-outs (Option A's other win condition)
 - [ ] Maps: Eskinita, Bayan Plaza

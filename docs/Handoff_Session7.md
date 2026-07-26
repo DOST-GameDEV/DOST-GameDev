@@ -53,11 +53,54 @@ infrastructure — no new plumbing needed there).
   Can-vs-Tsinelas control. It hasn't been rebuilt for 4 units. Fine as a quick movement/combat
   smoke test, not representative of the real match structure — use the networked flow
   (`--host`/`--join` or the menu) to actually test 2v2 Person+Prop play.
-- **Person has no roster/class/ability at all.** Right now every Person is identical:
-  Move + Bump, nothing else. No throw mechanic (offense Person "throwing" a Slipper is
-  currently just the same melee Bump as everything else), no tag-specific mechanic (defense
-  Person "tagging" is also just Bump). Whether Person needs its own roster (parallel to the
-  6 Prop characters) or just one generic design is an open design question.
+- ~~**Person has no roster/class/ability at all.** ... no throw mechanic ... no
+  tag-specific mechanic ...~~ — **done, see Session 8 addendum below.** Whether Person
+  needs its own roster (parallel to the 6 Prop characters) beyond the one shared action is
+  still an open design question, just no longer a functional gap.
+
+---
+
+## Session 8 addendum — Person's Tag/Throw mechanic
+
+Closes the biggest open item from above: Person now has a real action instead of just
+Move + Bump.
+
+- `character_base.gd` — new `team_is_can_side: bool` export. Mirrors the Prop's `is_can`
+  but for a Person, which doesn't have its own `is_can` (always false — see Session 7
+  above). Lets Person's ability know whether its team is on defense (Can side) or offense
+  (Slipper side) this round, without needing a separate input to choose.
+- `scripts/abilities/person_action.gd` (new) — `PersonAction` ability. One button
+  (the existing `special_ability` input, previously unused for Person since its `ability`
+  was always null): Tag (short range) when `team_is_can_side` is true, Throw (longer
+  range) when false. Both are a spawned pulse hitbox via `AbilityUtils` — same helper
+  every roster special already uses — placed ahead of the Person, not gated behind the
+  press-to-bump window. Hit resolution (stagger/downed/seal/dent) is unchanged and generic
+  across Bump, Tag/Throw, and every special — see `hitbox.gd`, untouched this session.
+  Range/radius/duration numbers are a judgment call, not confirmed by the team; see the
+  comment block in `person_action.gd` for the reasoning, and revisit once someone's
+  actually felt it in-editor.
+- `scripts/abilities/resources/person_action.tres` (new) — the one shared Person
+  ability resource, `cooldown = 1.5s`. Also a judgment call: short enough that Tag/Throw
+  still feels like Person's core action rather than a rare special, long enough it can't
+  be spammed. GDD doesn't specify.
+- `main.gd` — `_spawn_player` now sends `team_is_can_side` through the spawn dict;
+  `_build_networked_character` sets it on the character and, for a Person, assigns
+  `PERSON_ACTION_ABILITY.duplicate()` as its `ability` (`.duplicate()` because
+  `AbilityBase` cooldown state lives on the Resource instance — sharing one instance
+  between the two Persons in a match would incorrectly share their cooldowns; same trap
+  will apply to roster Prop abilities whenever *their* networked-spawn assignment gets
+  built, which isn't done yet either — today only the local test flow's `CanTestCharacter`
+  has an ability wired, via `Main.tscn`, not `_build_networked_character`).
+  `_on_match_round_started` now updates `team_is_can_side` on every character each round,
+  not just the Prop's `is_can`.
+- `docs/Tumbang_Preso_2v2_GDD.md` and `README.md` — Person's job description and the
+  roster note updated to describe the real Tag/Throw action instead of "no unique ability
+  yet".
+- **Not implemented / still open:** whether Person eventually gets its own roster of
+  distinct abilities (parallel to the 6 Prop characters) instead of one shared Tag/Throw
+  for every Person — open design question, not a code gap. No visual/audio feedback yet
+  distinguishing Tag from Throw or from Bump — same placeholder capsule mesh as everything
+  else. Untested in-editor, like every ability script in this codebase so far.
 
 ---
 
@@ -94,7 +137,8 @@ Option B's Downed→Seal state machine.
 
 ## Known gaps / not yet done (carried over + new)
 
-- Person has no roster/ability (see above) — biggest open item from this session.
+- ~~Person has no roster/ability~~ — done, Session 8 addendum above. Whether Person
+  eventually gets a full roster beyond the one shared Tag/Throw action is still open.
 - Local single-PC test flow doesn't reflect the 4-unit structure (see above).
 - Ring-outs for Option A.
 - No movement smoothing/interpolation on remote characters — still snaps (Session 5/6).
