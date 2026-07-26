@@ -20,13 +20,30 @@ class_name CharacterVisual
 ## instanced, so restructuring a visual scene cannot break it.
 
 ## Persons are Kenney "Mini Characters" (CC0 — see KENNEY_LICENSE.txt). Indexed
-## by team so the two Persons in a match are visibly different people; the spare
-## two are here for the character-select roster (B-24) rather than unused.
+## by team, so index 0 and 1 are the two Persons you actually see in a match and
+## the rest are the character-select roster (B-24).
+##
+## Order is deliberate, not alphabetical:
+##   [0] male-f   — the reference character from the art direction: dark blocky
+##                  hair, heavy brow, green top over a tan body.
+##   [1] female-f — Team B's default, picked to contrast [0] on the two things
+##                  readable at gameplay distance: ginger hair against dark, and
+##                  a black/yellow outfit against green.
+## Everything after those two is roster stock. Do not reorder the first two
+## without checking both still read apart from across the arena.
 const PERSON_MODELS: Array[String] = [
+	"res://assets/characters/persons/character-male-f.glb",
+	"res://assets/characters/persons/character-female-f.glb",
 	"res://assets/characters/persons/character-male-a.glb",
 	"res://assets/characters/persons/character-female-a.glb",
 	"res://assets/characters/persons/character-male-b.glb",
 	"res://assets/characters/persons/character-female-b.glb",
+	"res://assets/characters/persons/character-male-c.glb",
+	"res://assets/characters/persons/character-female-c.glb",
+	"res://assets/characters/persons/character-male-d.glb",
+	"res://assets/characters/persons/character-female-d.glb",
+	"res://assets/characters/persons/character-male-e.glb",
+	"res://assets/characters/persons/character-female-e.glb",
 ]
 const CAN_VISUAL: String = "res://scenes/characters/visuals/CanVisual.tscn"
 const TSINELAS_VISUAL: String = "res://scenes/characters/visuals/TsinelasVisual.tscn"
