@@ -120,9 +120,13 @@ Fix the four P0 bugs. Until these are done there is no LAN demo to show anyone.
       and `_sync_match_won` are now `call_local` instead of `call_remote`, so the host runs its
       own handler — same RPC, no separate direct-emit path needed. Verify with two editor
       instances, `--host` and `--join=127.0.0.1`, that both see the timer move.)*
-- [ ] **B-02** — abilities spawn their hitbox only on the activating peer, and hitboxes only
+- [x] **B-02** — abilities spawn their hitbox only on the activating peer, and hitboxes only
       resolve on the host, so every special and Tag/Throw is a no-op for anyone who isn't
-      hosting. Needs an activation RPC to the host.
+      hosting. Needs an activation RPC to the host. *(Fixed: activation still runs locally on
+      the activating peer for its own cosmetic/movement effect, and a new `_rpc_notify_ability_activate`
+      RPC — same pattern as the existing bump RPC — additionally tells the host to run
+      `ability.activate(self)` on its own copy of the character, so the authoritative resolving
+      hitbox actually exists where hitbox.gd can resolve it.)*
 - [ ] **B-03** — `ArenaCamera` holds freed local-test nodes in networked play and never picks
       up the spawned networked characters.
 - [ ] **B-04** — networked Props spawn with `ability = null`; only Persons get one.

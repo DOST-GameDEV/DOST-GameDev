@@ -158,7 +158,16 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 	if Input.is_action_just_pressed(_action("special_ability")) and ability:
+		# Same pattern as the bump RPC above: activate locally (so a client sees
+		# its own cosmetic hitbox/movement effect immediately, e.g. Flick Dash's
+		# velocity kick), and — since hitbox resolution only ever runs on the
+		# host (see hitbox.gd) — also tell the host to activate ITS OWN copy of
+		# this character so the actual resolving hitbox exists where it can be
+		# resolved (B-02: previously the activating peer's hitbox never reached
+		# the host at all, so every special/Tag/Throw was a no-op for clients).
 		ability.activate(self)
+		if NetworkManager.is_networked() and not NetworkManager.is_host():
+			_rpc_notify_ability_activate.rpc_id(1)
 
 ## Called on this character when it's hit by an opponent's Hitbox (see hitbox.gd).
 func apply_stagger(duration: float = BUMP_STAGGER_TIME) -> void:
@@ -229,6 +238,17 @@ func is_self_rightable() -> bool:
 func _rpc_notify_bump() -> void:
 	if NetworkManager.is_networked() and NetworkManager.is_host():
 		_bump_active_time_left = BUMP_ACTIVE_TIME
+
+## Client → host RPC (B-02): a non-host activator's own copy of `ability` already
+## ran _do_activate() locally (see the special_ability check above) for its
+## cosmetic effect, but its spawned hitbox only exists in that peer's own scene
+## tree, where hitbox.gd refuses to resolve anything (host-only). This tells
+## the host to run activate() on ITS OWN copy of this character/ability
+## instead, so the authoritative resolving hitbox actually exists on the host.
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_notify_ability_activate() -> void:
+	if NetworkManager.is_networked() and NetworkManager.is_host() and ability:
+		ability.activate(self)
 
 ## Host → target-owner RPC: the host is the only peer that decides hit
 ## outcomes now (see hitbox.gd), but state authority for THIS character still

@@ -75,6 +75,13 @@ and the host never has that hitbox at all. Affects Spin Guard, Bagsak Bomb, Baky
 Flick Dash, and Person's Tag/Throw — i.e. every action except Bump.
 *Fix:* RPC the activation to the host and spawn the resolving hitbox there (cosmetic copies
 locally if you want the visual).
+**[FIXED]** `CharacterBase._physics_process` still calls `ability.activate(self)` locally
+(cosmetic hitbox/movement effect on the activating peer, e.g. Flick Dash's velocity kick), and
+now also RPCs `_rpc_notify_ability_activate` to the host (id 1) when the activator isn't the
+host — same pattern as the existing bump RPC. The host runs `activate()` on its own copy of
+the character/ability, so the authoritative resolving hitbox exists on the host where
+hitbox.gd can actually process it. Needs verification with two editor instances that a
+client's special/Tag-Throw lands on the host.
 
 **B-03 · `ArenaCamera` breaks in networked play.**
 `scenes/main/Main.tscn:43` points `follow_paths` at the four local-test nodes. Godot runs
