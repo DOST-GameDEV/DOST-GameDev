@@ -30,9 +30,14 @@ const UNIT_NAMES: Array[String] = ["TeamAProp", "TeamAPerson", "TeamBProp", "Tea
 const PARKED_PLAYER_ID: int = 4
 const SLOT_P1: int = 0
 const SLOT_P2: int = 1
-## Defaults for F6, matching the two bound input sets' documented holders.
-const DEFAULT_P1_UNIT: String = "TeamAProp"
-const DEFAULT_P2_UNIT: String = "TeamAPerson"
+## Defaults for F6, and for the slot state established when the DebugBar
+## registers. P1 holds the Person so a fresh Local Match starts you in the human
+## character rather than third-person on a tin can; P2 gets the Prop. Kept in
+## step with `main.gd::_start_local_test()`, which picks the same unit for the
+## camera — these two must agree, because `debug_register_bar()` re-applies
+## these defaults and would otherwise silently override main.gd's choice.
+const DEFAULT_P1_UNIT: String = "TeamAPerson"
+const DEFAULT_P2_UNIT: String = "TeamAProp"
 
 ## Unit name currently held by each slot, or "" for empty (F5 solo drive).
 var _slot_units: Array[String] = [DEFAULT_P1_UNIT, DEFAULT_P2_UNIT]

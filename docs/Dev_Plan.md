@@ -310,8 +310,8 @@ Two control slots, matching the two bound input sets in `project.godot`:
 
 | Slot | Keys | Default holder |
 |---|---|---|
-| **P1** | WASD · Space bump · Shift guard/dash · Q special | `TeamAProp` |
-| **P2** | Arrows · Enter bump · End guard/dash · RShift special | `TeamAPerson` |
+| **P1** | WASD · Space bump · Shift guard/dash · Q special | `TeamAPerson` |
+| **P2** | Arrows · Enter bump · End guard/dash · RShift special | `TeamAProp` |
 
 | Key | Action |
 |---|---|
@@ -323,6 +323,12 @@ Two control slots, matching the two bound input sets in `project.godot`:
 | `F6` | Reset both slots to their defaults |
 
 Cycle order is the `Main.tscn` order: `TeamAProp` → `TeamAPerson` → `TeamBProp` → `TeamBPerson`.
+**The default holders were swapped** (P1 was `TeamAProp`, P2 was `TeamAPerson`): starting a Local
+Match on the Prop meant the first thing anyone saw was a third-person shot of a tin can. P1 now
+holds the Person. Note the consequence of §0.1 — a Person is *always* first-person, so the default
+view has no visible body, only the arena and your own shadow. `main.gd::_start_local_test()` picks
+the same unit for the camera and must be kept in step with `DEFAULT_P1_UNIT`, since
+`debug_register_bar()` re-applies these defaults and would otherwise override it.
 A slot skips a unit already held by the other slot, so the two can never collide.
 
 #### 3.5.2 How control actually moves — no gameplay edits
