@@ -536,6 +536,18 @@ straight back into gameplay, and `camera_rig.gd` only mouse-aims while the curso
 Verified by driving a real local Bo5 to 3-0 in a live instance: the result screen shows with
 `mouse_mode = VISIBLE`, and pressing Rematch returns round 1 / 0-0 with `mouse_mode = CAPTURED`.
 
+**B-52 · Ability cooldowns carried across the round boundary. (NEW)**
+`AbilityBase.reset_round_charge()` — called from `CharacterBase.reset_for_new_round()` — cleared
+`_used_this_round` but not `_time_since_use`, so a cooldown-based ability kept its remaining
+cooldown into the next round. The intermission does not absorb it either:
+`character_base.gd::_physics_process` returns before `ability.tick(delta)` whenever
+`RoundManager.round_active` is false, so the cooldown does not decay during the 3s gap at all.
+Worst case is Bakya Bash at **18s** — used near the end of a round, the next round started with
+most of that still to run, a fifth of a 90s round with no special. Not cosmetic: the whole point
+of a per-round reset is that both teams start a round on equal footing.
+**[FIXED]** `reset_round_charge()` now also resets `_time_since_use`. Verified: activate an
+ability, call `reset_round_charge()`, `is_ready()` goes back to `true` (it stayed `false` before).
+
 **B-28 · No export presets, no build, no CI.** `export_presets.cfg` is gitignored and none
 exists. The game has never been run outside the editor, and the submission needs a real build.
 
