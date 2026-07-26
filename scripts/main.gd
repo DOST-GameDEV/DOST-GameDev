@@ -179,6 +179,19 @@ func _start_joining(address: String) -> void:
 
 func _clear_local_test_characters() -> void:
 	RoundManager.clear_tracked_cans()
+	# B-03 (residual): Main.tscn's Camera3D.follow_paths always points at these
+	# four nodes regardless of mode, so arena_camera's own _ready() (which runs
+	# BEFORE this one — child _ready() before parent) already added all four as
+	# targets before _start_hosting()/_start_joining() ever ran. Freeing them
+	# without removing them first left arena_camera holding stale references —
+	# confirmed live in testing: Host Game spammed a filter()/typed-array error
+	# every single frame, the exact failure mode the original B-03 report
+	# described, despite add_target()/remove_target() existing for the
+	# networked-spawn path.
+	arena_camera.remove_target(team_a_prop)
+	arena_camera.remove_target(team_a_person)
+	arena_camera.remove_target(team_b_prop)
+	arena_camera.remove_target(team_b_person)
 	team_a_prop.queue_free()
 	team_a_person.queue_free()
 	team_b_prop.queue_free()
