@@ -59,7 +59,17 @@ func remove_target(target: Node3D) -> void:
 func _process(delta: float) -> void:
 	# Drop anything freed since last frame (e.g. local-test characters torn
 	# down by _clear_local_test_characters()) instead of dereferencing it.
-	_targets = _targets.filter(func(t: Node3D) -> bool: return is_instance_valid(t))
+	# B-03 (residual): Array[Node3D].filter() with a lambda throws "Cannot
+	# convert argument 1 from Object to Object" the instant the array holds a
+	# freed reference (confirmed live in testing: Host Game spammed this every
+	# frame) — the typed array can't validate a filtered-in freed Object
+	# against its Node3D element type. A plain loop building a fresh typed
+	# array sidesteps the typed-filter path entirely.
+	var still_valid: Array[Node3D] = []
+	for t in _targets:
+		if is_instance_valid(t):
+			still_valid.append(t)
+	_targets = still_valid
 	if _targets.is_empty():
 		return
 
