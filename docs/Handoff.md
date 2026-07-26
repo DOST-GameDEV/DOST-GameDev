@@ -232,6 +232,12 @@ seal mechanic cannot work until this is fixed.
 bump window. Walk into someone and press bump → no new `area_entered` → no hit. You have to
 press bump *before* closing distance, which is the opposite of how melee reads.
 *Fix:* on bump press, also sweep `get_overlapping_areas()`.
+**[FIXED]** `Hitbox.sweep_overlaps()` re-runs `_on_area_entered()` against everything already
+in `get_overlapping_areas()`. `CharacterBase` caches its melee Hitbox (`requires_bump_window
+== true`) in `_ready()` and calls `sweep_overlaps()` from a new shared `_open_bump_window()`
+helper, used both when the local player presses bump and in the host's `_rpc_notify_bump`
+handler (so a remote peer's already-touching bump also resolves correctly on the host). Needs
+verification that walking into someone and then pressing bump now lands a hit.
 
 **B-11 · A no-op activation still burns the cooldown.** `ability_base.gd:29` — `activate()` sets
 `_time_since_use = 0` and `_used_this_round = true` before calling `_do_activate()`, which may do

@@ -8,5 +8,6 @@ class_name SpinGuard
 @export var pulse_radius: float = 2.5
 @export var pulse_duration: float = 0.2
 
-func _do_activate(character: CharacterBody3D) -> void:
+func _do_activate(character: CharacterBody3D) -> bool:
 	AbilityUtils.spawn_pulse_hitbox(character as CharacterBase, pulse_radius, pulse_duration)
+	return true
