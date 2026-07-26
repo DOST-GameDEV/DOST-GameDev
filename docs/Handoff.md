@@ -640,7 +640,7 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       place — zero errors on either peer (the intermission RPC path itself wasn't exercised since
       no round ended during that short run, but nothing regressed).
 
-- [ ] **11. Verify and finish the Bo5 early-win (B-14, B-37).**
+- [x] **11. Verify and finish the Bo5 early-win (B-14, B-37).**
       ⚠️ **The 3-points-wins rule is already implemented** — `match_manager.gd:11` sets
       `WINS_NEEDED = 3` and `:43-48` calls `_finish_match()` on reaching it. Do not rebuild it.
       What is missing is everything *after* `match_won` fires: no match-result screen, no
@@ -648,6 +648,26 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       resumes the first one's score. Build the match-end flow and the resets.
       *Acceptance:* win three rounds — a result screen appears, "Menu" returns to the main menu,
       and starting a new match begins at 0–0 round 1.
+      **B-14 fixed.** `MatchManager.reset()` / `RoundManager.reset()` added; called defensively at
+      the top of `main.gd::_ready()` (the one scene every match path loads through) and explicitly
+      by the new `scenes/ui/MatchResult.tscn` / `scripts/ui/match_result.gd` on both its buttons.
+      `MatchResult` is self-sufficient like `Hud` — connects to `MatchManager.match_won` itself,
+      no wiring needed beyond being instanced under `Main.tscn`'s `HUDLayer`. **Rematch** resets
+      both autoloads and calls `MatchManager.begin_next_round()` **in place, without reloading the
+      scene** — a networked rematch would lose the connection and every spawned character on a
+      reload, and everyone's already reset to spawn via the normal round-start path anyway. Hidden
+      for a non-host client, since `begin_next_round()` is host-gated and pressing it would be a
+      silent no-op. **Menu** disconnects the network, resets both autoloads and `GameLaunch`, and
+      returns to `MainMenu.tscn`. Plain placeholder styling — item 20 replaces this with the
+      moodboard's Bo5 grid.
+      **Verified live:** forced three round wins for Team A in a running headless local-test
+      instance (`RoundManager.report_round_win(MatchManager.team_a_is_can)` each time, crediting
+      Team A regardless of which side it was on that round). `match_won` fired with
+      `winning_team=0`, `wins=3-0`, `round_active=false` (input frozen), `MatchResult.visible=true`.
+      Called `_on_rematch_pressed()` directly: immediately `round=1 wins=0-0`,
+      `match_result.visible=false`. Four seconds later the fresh round 1's timer was running
+      normally and the reset unit was back at its exact spawn X/Z. Re-ran the two-instance
+      networked test afterward — zero errors on either peer.
 
 - [x] **12. Fix the core-loop bugs (B-05 via rigs, B-06, B-07, B-08, B-11, B-12).**
       B-05 is delivered by item 15 — do not build a separate aim axis. The rest are independent

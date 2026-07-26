@@ -107,6 +107,19 @@ func _sync_match_won(winning_team: int, new_team_a_wins: int, new_team_b_wins: i
 	team_b_wins = new_team_b_wins
 	match_won.emit(winning_team)
 
+## B-14: nothing previously reset this autoload between matches, so a second
+## match resumed the first one's score. Called both when returning to the
+## main menu (scripts/ui/match_result.gd) and defensively at the top of
+## main.gd::_ready() every time Main.tscn loads fresh, so a Local/Host/Join
+## press from the menu always starts a match at 0-0 round 1 even if
+## something upstream forgot to call this.
+func reset() -> void:
+	team_a_wins = 0
+	team_b_wins = 0
+	round_number = 0
+	team_a_is_can = true
+	_intermission_time_left = 0.0
+
 ## Item 10 / B-37: broadcast counterpart of the local round_intermission_started
 ## emit above — call_local so the host's own _process (which drives the
 ## actual timer) doesn't need a separate non-networked code path.
