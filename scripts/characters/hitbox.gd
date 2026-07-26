@@ -35,15 +35,28 @@ func _on_area_entered(area: Area3D) -> void:
 	if requires_bump_window and owner_character and not owner_character.is_hitbox_active():
 		return
 
+	# Session 6, host-authoritative combat: every peer's Area3D still detects
+	# this overlap locally (positions are replicated to everyone), but only
+	# the host is allowed to act on it. Otherwise two peers hitting each other
+	# would each decide the outcome independently and disagree. Clients just
+	# wait for the state change to arrive via MultiplayerSynchronizer once the
+	# host tells the target's owning peer what happened (see
+	# CharacterBase._apply_hit_result).
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		return
+
 	# A Tsinelas hitbox touching an already-Downed (past self-right window) Can
 	# seals it, regardless of forces_downed — that's the GDD's "reach it and seal it".
-	if target.state == CharacterBase.State.DOWNED:
-		if target.seal():
-			landed_on.emit(target)
-			return
-
-	if forces_downed:
-		target.go_downed()
+	var kind: String
+	if target.state == CharacterBase.State.DOWNED and not target.is_self_rightable():
+		kind = "seal"
+	elif forces_downed:
+		kind = "downed"
 	else:
-		target.apply_stagger(stagger_duration)
+		kind = "stagger"
+
+	if NetworkManager.is_networked():
+		target._apply_hit_result.rpc_id(target.get_multiplayer_authority(), kind, stagger_duration)
+	else:
+		target._apply_hit_result(kind, stagger_duration)
 	landed_on.emit(target)

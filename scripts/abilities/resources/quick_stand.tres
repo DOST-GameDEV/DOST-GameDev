@@ -6,3 +6,4 @@
 script = ExtResource("1")
 ability_name = "Quick Stand"
 cooldown = 90.0
+once_per_round = true

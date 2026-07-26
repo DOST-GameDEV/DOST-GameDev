@@ -52,6 +52,14 @@ func _ready() -> void:
 		(child as Hitbox).owner_character = self
 
 func _physics_process(delta: float) -> void:
+	# Session 6: the bump-active window has to decay on every peer, not just
+	# the owning one — the host needs its own copy of this timer to resolve
+	# hits authoritatively (see hitbox.gd), and it never runs the input half
+	# of this function for a character it doesn't own. Cheap and harmless for
+	# the non-networked local flow too.
+	if _bump_active_time_left > 0.0:
+		_bump_active_time_left -= delta
+
 	# Rough networking pass (Session 5): once a network peer exists, only the
 	# owning peer simulates movement/input for its own character — everyone
 	## else's copy is driven purely by MultiplayerSynchronizer (see
@@ -66,11 +74,14 @@ func _physics_process(delta: float) -> void:
 	if ability:
 		ability.tick(delta)
 
-	if _bump_active_time_left > 0.0:
-		_bump_active_time_left -= delta
-
 	if state == State.NORMAL and Input.is_action_just_pressed(_action("bump")):
 		_bump_active_time_left = BUMP_ACTIVE_TIME
+		# Tell the host our bump window just opened, since the host is the one
+		# resolving Hitbox/Hurtbox overlaps now (see hitbox.gd) and it can't
+		# see this peer's local-only timer any other way. No-op if we ARE the
+		# host, or if we're not networked at all.
+		if NetworkManager.is_networked() and not NetworkManager.is_host():
+			_rpc_notify_bump.rpc_id(1)
 
 	match state:
 		State.STAGGERED:
@@ -152,6 +163,37 @@ func seal() -> bool:
 func is_hitbox_active() -> bool:
 	return _bump_active_time_left > 0.0
 
+## Whether this character is still inside its Downed self-right window (i.e.
+## NOT yet sealable). Hitbox needs this from the outside to decide seal vs.
+## downed/stagger without reaching into the private var directly.
+func is_self_rightable() -> bool:
+	return _downed_self_rightable
+
+## Client → host RPC (see _physics_process): lets the host keep its own copy
+## of _bump_active_time_left in sync with a remote peer's bump press, since
+## the host never runs this character's input logic itself.
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_notify_bump() -> void:
+	if NetworkManager.is_networked() and NetworkManager.is_host():
+		_bump_active_time_left = BUMP_ACTIVE_TIME
+
+## Host → target-owner RPC: the host is the only peer that decides hit
+## outcomes now (see hitbox.gd), but state authority for THIS character still
+## lives with its own owning peer (MultiplayerSynchronizer replicates `state`
+## from the authority outward). So the host tells the owning peer what
+## happened, that peer applies it locally exactly like the old local-only
+## flow, and the existing synchronizer replicates the resulting state to
+## everyone else — no change needed there.
+@rpc("any_peer", "call_local", "reliable")
+func _apply_hit_result(kind: String, duration: float) -> void:
+	match kind:
+		"stagger":
+			apply_stagger(duration)
+		"downed":
+			go_downed()
+		"seal":
+			seal()
+
 ## Maps a base action name (e.g. "move_left") to this character's own input
 ## action (e.g. "move_left_p1" / "move_left_p2"), per `player_id`.
 func _action(base_name: String) -> String:
@@ -173,3 +215,5 @@ func reset_for_new_round() -> void:
 	_speed_multiplier = 1.0
 	state = State.NORMAL
 	state_changed.emit(state)
+	if ability:
+		ability.reset_round_charge()

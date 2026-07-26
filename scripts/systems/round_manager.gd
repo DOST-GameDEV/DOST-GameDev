@@ -50,17 +50,32 @@ func _on_tracked_can_state_changed(_new_state: int) -> void:
 	report_round_win(false) # every tracked Can Sealed -> Slippers win the round
 ## ----------------------------------------------------------------------------------
 
+## Session 6: networked, this whole autoload becomes host-authoritative — same
+## pattern as combat (see hitbox.gd/character_base.gd). The host runs the real
+## timer and makes the real win call; clients just receive `_sync_state` RPCs
+## and mirror `time_left`/`round_active` for HUD display, they never decide
+## anything themselves. Non-networked local play is unaffected: every peer
+## check below is a no-op when NetworkManager.is_networked() is false.
+
 func start_round() -> void:
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		return # clients wait for the host's _sync_state RPC instead
 	time_left = ROUND_TIME
 	round_active = true
 	for can in _tracked_cans:
 		if is_instance_valid(can):
 			can.reset_for_new_round()
+	if NetworkManager.is_networked():
+		_sync_state.rpc(time_left, round_active)
 
 func _process(delta: float) -> void:
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		return # clients: time_left/round_active only ever change via _sync_state
 	if not round_active:
 		return
 	time_left = max(0.0, time_left - delta)
+	if NetworkManager.is_networked():
+		_sync_state.rpc(time_left, round_active) # cheap: HUD only reads these two fields
 	if time_left <= 0.0:
 		_on_time_up()
 
@@ -74,9 +89,22 @@ func _on_time_up() -> void:
 
 ## Call this from whichever round-win option gets implemented first (Slippers denting
 ## a Can under Option A, or sealing it under Option B — see character_base.gd `seal()`).
+## Host-only when networked — see class doc above.
 func report_round_win(can_team_won: bool) -> void:
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		return
 	if not round_active:
 		return
 	round_active = false
+	if NetworkManager.is_networked():
+		_sync_state.rpc(time_left, round_active)
 	round_won.emit(0 if can_team_won else 1)
 	MatchManager.report_round_result(can_team_won)
+
+## Client-side mirror of the host's timer/round-active state. Unreliable is
+## fine here — it's called every physics frame while a round is live and one
+## dropped packet just means the HUD is stale for a frame, never wrong for long.
+@rpc("authority", "call_remote", "unreliable_ordered")
+func _sync_state(new_time_left: float, new_round_active: bool) -> void:
+	time_left = new_time_left
+	round_active = new_round_active

@@ -17,6 +17,7 @@ extends Node3D
 @onready var tsinelas_test_character: CharacterBase = $TsinelasTestCharacter
 @onready var players_root: Node3D = $Players
 @onready var spawner: MultiplayerSpawner = $MultiplayerSpawner
+@onready var hud: Hud = $HUDLayer/HUD
 
 const CHARACTER_SCENE: PackedScene = preload("res://scenes/characters/CharacterBase.tscn")
 ## Cycled through as players connect; only the first two matter until real
@@ -49,6 +50,7 @@ func _ready() -> void:
 		# auto-detected.
 		RoundManager.register_can(can_test_character)
 		MatchManager.begin_next_round()
+		_wire_downed_flash(can_test_character)
 
 func _start_hosting() -> void:
 	_clear_local_test_characters()
@@ -97,4 +99,19 @@ func _build_networked_character(data: Dictionary) -> Node:
 	character.position = data["position"]
 	character.is_can = data["is_can"]
 	character.set_multiplayer_authority(data["peer_id"])
+	if data["peer_id"] == multiplayer.get_unique_id():
+		# This is the character we personally control — DownedFlash should
+		# only ever reflect what's happening to OUR Can, never a teammate's
+		# or an opponent's (GDD Section 6: "clear visual read", per-player).
+		_wire_downed_flash.call_deferred(character)
 	return character
+
+## Shows/hides the HUD's DownedFlash whenever the given (locally-controlled)
+## character enters/exits Downed — but only if it's a Can; Tsinelas never
+## flash since the GDD ties this to "your Can got knocked down".
+func _wire_downed_flash(character: CharacterBase) -> void:
+	if not character.is_can:
+		return
+	character.state_changed.connect(func(new_state: CharacterBase.State) -> void:
+		hud.set_downed_flash(new_state == CharacterBase.State.DOWNED)
+	)
