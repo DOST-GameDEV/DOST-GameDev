@@ -58,8 +58,19 @@ func remove_target(target: Node3D) -> void:
 
 func _process(delta: float) -> void:
 	# Drop anything freed since last frame (e.g. local-test characters torn
-	# down by _clear_local_test_characters()) instead of dereferencing it.
-	_targets = _targets.filter(func(t: Node3D) -> bool: return is_instance_valid(t))
+	# down by _clear_local_test_characters(), which never calls
+	# remove_target()) instead of dereferencing it. NOT Array.filter() with a
+	# Node3D-typed lambda parameter: passing an already-freed reference as an
+	# argument to a typed parameter throws "Cannot convert argument 1 from
+	# Object to Object" from inside filter() itself, every single frame — this
+	# was the actual remaining cause of B-03's per-frame error flood even
+	# after add_target()/remove_target() landed. A plain loop with an untyped
+	# local doesn't trigger that argument-type conversion.
+	var still_valid: Array[Node3D] = []
+	for t in _targets:
+		if is_instance_valid(t):
+			still_valid.append(t)
+	_targets = still_valid
 	if _targets.is_empty():
 		return
 

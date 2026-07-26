@@ -114,9 +114,16 @@ this pass. IDs are referenced from `Dev_Plan.md` §5.
 **B-01 · A networked match never starts.** `MatchManager.begin_next_round()` RPC'd
 `_sync_round_started` as `call_remote`, so the host never ran its own handler and
 `RoundManager.start_round()` was never called by anybody.
-**[FIXED]** `_sync_round_started` and `_sync_match_won` are now `@rpc("authority", "call_local",
-"reliable")`. ⚠️ **Still unverified by a human.** Two editor instances (`--host` /
-`--join=127.0.0.1`) must both see the timer move before this is closed.
+**[FIXED, verified]** `_sync_round_started` and `_sync_match_won` are now `@rpc("authority",
+"call_local", "reliable")`. Verified with two real running instances (not a human at the
+keyboard, but not just reading the code either): `godot --headless --path . scenes/main/Main.tscn
+-- --host` and a second process with `-- --join=127.0.0.1`, both instrumented temporarily to
+print `RoundManager.time_left`/`round_active` and `MatchManager.round_number`/`team_a_is_can`
+once a second (instrumentation reverted before commit, not shipped). Host log: `round_number=1
+round_active=true`, `time_left` counting down 89.0 → 80.0 over the run. Client (joined ~2.5s after
+the host started) log: `round_number=1 round_active=true`, `time_left` counting down 86.7 → 80.7,
+tracking the host's broadcast. Still worth a human eyeballing the actual HUD render, but the
+underlying state machine is confirmed working end to end, on both peers.
 
 **B-03 · `ArenaCamera` crashes every frame in networked play — this is the reported LAN
 freeze.** `Main.tscn:43` points `follow_paths` at the four local-test nodes. Godot runs child
@@ -131,14 +138,22 @@ cannot be controlled" is downstream of the freeze: a solo host correctly spawns 
 *Fix:* the camera rigs (`Dev_Plan.md` §3) remove the scene-level camera entirely. Disable or
 delete the `Camera3D` node in `Main.tscn` in the same commit. If `arena_camera.gd` is kept as a
 broadcast cam, it must register targets at runtime and `is_instance_valid()`-check every frame.
-**[FIXED]** `arena_camera.gd` now exposes `add_target()`/`remove_target()`; every networked
-spawn registers itself at runtime (`main.gd::_build_networked_character`) instead of relying on
-the `_ready()`-time `follow_paths` cache, and `_process()` filters `_targets` through
-`is_instance_valid()` every frame before touching `global_position`, so a freed local-test node
-is dropped silently instead of dereferenced. Headless smoke test (`godot --headless --path .
---quit` after `--host` / `--join=127.0.0.1`) shows no "previously freed instance" errors. The
-`Camera3D` node itself is retained as the broadcast/local-test cam per `Dev_Plan.md` §3.4 and
-will be superseded by the per-character `CameraRig` (queue item 13), not deleted outright.
+**[FIXED]** — in two passes. `arena_camera.gd` exposes `add_target()`/`remove_target()`; every
+networked spawn registers itself at runtime (`main.gd::_build_networked_character`) instead of
+relying on the `_ready()`-time `follow_paths` cache. That alone was **not sufficient**: the first
+attempt filtered `_targets` with `_targets.filter(func(t: Node3D) -> bool: return
+is_instance_valid(t))` — a `Node3D`-typed lambda parameter over a typed `Array[Node3D]`. Passing
+an already-freed reference as an argument to that typed parameter throws *"Cannot convert
+argument 1 from Object to Object"* from inside `filter()` itself, every single frame, which is
+the exact per-frame error flood B-03 describes — a `--quit`-only smoke test never runs a frame of
+`_process()` so it couldn't catch this, but an actual two-instance run (`godot --headless --path
+. scenes/main/Main.tscn -- --host` / `--join=127.0.0.1`, left running several seconds) reproduced
+it immediately on both peers. Replaced with a plain `for t in _targets: if is_instance_valid(t):
+...` loop building a fresh array — untyped iteration doesn't trigger the same argument-conversion
+check. Re-ran the same two-instance test: **zero errors on either peer** across an 8-second run,
+confirming the fix for real this time. The `Camera3D` node itself is retained as the
+broadcast/local-test cam per `Dev_Plan.md` §3.4 and will be superseded by the per-character
+`CameraRig` (queue item 13), not deleted outright.
 
 **B-29 · A client that joins after the host started never learns the match state. (NEW)**
 `_start_hosting()` calls `MatchManager.begin_next_round()` immediately (`main.gd:142`), which
@@ -159,7 +174,10 @@ targeted (`rpc_id`) at just the newly connected peer, carrying exactly that bund
 position/state/dents of characters that already arrived on this peer correctly via
 `MultiplayerSynchronizer`'s `spawn=true` replication. Since `_start_hosting()` still calls
 `begin_next_round()` before anyone can be connected (B-13), this fires for every join, not only a
-literal "late" one. ⚠️ Unverified by a human — needs the two-instance test in queue item 3/7.
+literal "late" one. **Verified** by the same two-instance run as B-01: the client, joined ~2.5s
+after the host (by which point the host was already at `round_number=1 round_active=true`), logs
+`round_number=1 round_active=true team_a_is_can=true game_mode=0` from its very first tick instead
+of the stale `round_number=0` default — the late-join sync landed and applied correctly.
 
 **B-02 · Every special and Tag/Throw is a no-op for anyone who isn't the host.**
 `ability_utils.gd:34` adds the pulse hitbox to `current_scene` on the activating peer only — it
@@ -207,7 +225,9 @@ Option B never shows a dent counter while the host runs Option A. Send `game_mod
 match-state sync in B-29.
 **[FIXED]** — the same `_sync_state_to_late_joiner` RPC that fixes B-29 also carries
 `game_mode`, and since every join goes through it (B-13 means every join is effectively a "late"
-one), this is fixed for every join, not only a literal late one. ⚠️ Unverified by a human.
+one), this is fixed for every join, not only a literal late one. **Verified** by the same
+two-instance run: client log shows `game_mode=0` (Option B, the host's default) from its first
+tick — matching the host instead of silently defaulting.
 
 ### P1 — the core loop is wrong
 
@@ -509,11 +529,21 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       Persons. Until character select exists, default Props to `quick_stand.tres`.
       *Acceptance:* a client-controlled Prop can activate a special.
 
-- [ ] **7. Verify B-01 with two instances.**
+- [x] **7. Verify B-01 with two instances.**
       `--host` and `--join=127.0.0.1`. Both timers must count down together. It is marked fixed
       and has never been run.
       *Acceptance:* screenshot or a note in the commit confirming both windows show a moving
       timer.
+      Ran `godot --headless --path . scenes/main/Main.tscn -- --host` and a second process with
+      `-- --join=127.0.0.1`, temporarily instrumented to print state once a second (reverted
+      before commit). Host: `round_number=1 round_active=true`, `time_left` 89.0 → 80.0. Client
+      (joined ~2.5s later): `round_number=1 round_active=true`, `time_left` 86.7 → 80.7, both
+      counting down together. Confirms B-01, and incidentally B-29/B-48 (see §3). No screenshot —
+      headless has no display — but the printed state is the same information a screenshot of the
+      HUD would show, from two real separate processes actually talking over ENet on localhost.
+      This same run also caught and fixed a **real regression in the already-"[FIXED]" B-03**: see
+      §3 — the original filter()-based fix threw a per-frame error on both peers that a
+      `--quit`-only smoke test can't detect because it never runs a frame.
 
 ### P1 — Gameplay correctness and round reset
 

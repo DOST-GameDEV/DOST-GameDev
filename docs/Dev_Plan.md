@@ -96,7 +96,7 @@ Legend: **[x]** built and working · **[~]** built but broken or unverified · *
 | Downed / self-right / Seal state machine | [x] | B-07 fixed — a hit during the self-right window no longer rescues a Downed Can. |
 | Option A — dents (health) round win | [~] | Wired end to end; never human-verified. Menu still calls it "coming soon" (B-26). |
 | Option B — Downed → Seal round win | [x] | Wired end to end; B-07 (the blocker) fixed. Never human-verified. |
-| `RoundManager` (90s timer, win reporting) | [~] | Starts on the host now (B-01 fixed, unverified); a **late-joining client never learns a round started** (B-29). |
+| `RoundManager` (90s timer, win reporting) | [x] | Starts on the host, verified with two real running instances (B-01). Late joiners now catch up too (B-29 fixed). |
 | `MatchManager` (Bo5, role swap) | [x] | Bo5-to-3 early win **already implemented** (`WINS_NEEDED = 3`, `match_manager.gd:43`). No match reset (B-14), no end-of-match flow (B-37). |
 | `NetworkManager` (ENet host/join) | [x] | Connects fine. Everything downstream is where the trouble is. |
 | Networked spawning + movement replication | [~] | Works; snaps (no interpolation); Props now get an ability (B-04 fixed); `player_id` still never assigned (B-30). |
@@ -104,7 +104,7 @@ Legend: **[x]** built and working · **[~]** built but broken or unverified · *
 | HUD (timer, Bo5, round, role, dent counter, downed flash) | [~] | Functional but placeholder-styled. Client score is stale (B-38). Full rebuild in §4. |
 | Main menu + mode picker | [~] | **No back button** (B-34); disabled mode is selectable and proceeds (B-33). |
 | Settings — rebindable, persistent controls | [x] | Rebinds an action nothing reads (B-16); allows duplicates (B-22); P2 bindings are dead in LAN (B-30). |
-| `ArenaCamera` follow/zoom | [x] | B-03 fixed — runtime target registration + validity check, no more networked-play crash. Superseded by per-character `CameraRig` (§3), not yet built. |
+| `ArenaCamera` follow/zoom | [x] | B-03 fixed and verified with two running instances (see §5) — no more networked-play crash. Superseded by per-character `CameraRig` (§3), not yet built. |
 | `HazardZone` slow-zone | [~] | Untested; edge cases in B-17. |
 | Out-of-bounds / kill plane / arena walls | [ ] | Nothing. Falling off the map = infinite fall + camera follows forever (B-15, B-35). |
 | Per-character camera rigs (FPP/TPP) | [ ] | §3. |
@@ -133,12 +133,16 @@ Legend: **[x]** built and working · **[~]** built but broken or unverified · *
 
 Playtested and confirmed: movement, per-player input split, camera follow, main menu
 navigation. **Never confirmed by anyone pressing buttons:** bump landing, stagger, Downed,
-self-right, seal, dents, any special ability, any round ending, any match ending, and every
-network path beyond "the peers connect". A later pass fixed B-01 through B-12 in code (see §5,
-Phase 0/1) but **none of those fixes have been confirmed by a human pressing buttons either** —
-only a headless `godot --headless --path . --quit` smoke test (no script/parse errors, loads
-clean) has run against them. Treat every `[~]` row above, and every `[x]` row whose fix note says
-"unverified", as untrusted until someone actually plays it.
+self-right, seal, dents, any special ability, any round ending, any match ending. A later pass
+fixed B-01 through B-12 in code (see §5, Phase 0/1) but **most of those fixes have not been
+confirmed by a human pressing buttons** — only a headless `godot --headless --path . --quit`
+smoke test (no script/parse errors, loads clean) has run against most of them. The exceptions are
+B-01, B-03, B-29, and B-48: these were verified by actually running two headless instances
+(`--host` / `--join=127.0.0.1`) for several real seconds and reading their printed state, which
+is how B-03's fix was caught being incomplete in the first place — a `--quit`-only smoke test
+never executes a single frame of `_process()`, so it cannot catch a per-frame runtime error.
+Treat every `[~]` row above, and every `[x]` row whose fix note says "unverified", as untrusted
+until someone actually plays it.
 
 ---
 
@@ -609,33 +613,40 @@ match starts, is playable, can be won, and rolls into the next round.
 ### Phase 0 — Make LAN work (blocking, do first)
 
 - [x] **B-01** — `MatchManager` host never emitted `round_started` / `match_won` locally.
-      *(Fixed: `_sync_round_started` / `_sync_match_won` are now `call_local`. **Still unverified
-      by a human** — two editor instances, `--host` / `--join=127.0.0.1`, both must see the
-      timer move.)*
+      *(Fixed and **verified**: `_sync_round_started` / `_sync_match_won` are now `call_local`.
+      Two real headless instances, `--host` / `--join=127.0.0.1`, both showed `time_left`
+      counting down together and `round_active=true`. See `Handoff.md` queue item 7.)*
 - [x] **B-03** — `ArenaCamera` dereferences four freed nodes every frame after
       `_clear_local_test_characters()`. **This is the reported LAN freeze.** Disable the
       scene-level camera in the same commit as the rigs (§3.4).
-      *(Fixed: runtime `add_target()`/`remove_target()` + `is_instance_valid()` filter every
-      frame, per §3.4's "keep the script" branch. Superseded, not deleted, once the per-character
-      `CameraRig` lands — §3.)*
+      *(Fixed and **verified** in two passes — the first attempt (`Array.filter()` with a
+      `Node3D`-typed lambda) still threw a per-frame conversion error on a freed reference, caught
+      only by actually running two instances, not by a `--quit`-only smoke test. Replaced with a
+      plain loop; re-run showed zero errors on either peer. See `Handoff.md` §3 B-03.)*
 - [x] **B-29** — a client joining after the host started never receives `_sync_round_started`,
       so its round number, roles, tracked Cans and HUD are permanently stale. Host must
       `rpc_id()` full match state to each peer on connect.
-      *(Fixed: `main.gd::_sync_state_to_late_joiner`, `rpc_id`-targeted at the new peer. Also
-      carries `game_mode`, fixing B-48 in the same change. Unverified by a human.)*
+      *(Fixed and **verified**: `main.gd::_sync_state_to_late_joiner`, `rpc_id`-targeted at the
+      new peer. Also carries `game_mode`, fixing B-48 in the same change. The two-instance test
+      above showed the late-joining client at `round_number=1 round_active=true` immediately,
+      not the stale `round_number=0` default.)*
 - [x] **B-02** — abilities spawn their hitbox only on the activating peer and only resolve on
       the host, so every special and Tag/Throw is a no-op for anyone who isn't hosting.
       *(Fixed: `_rpc_notify_ability_activate` RPCs the host to run its own `activate()`. Still
-      unverified against a real non-host client.)*
+      unverified against a real non-host client — the B-01 test confirmed connectivity/timer
+      sync, not ability activation specifically.)*
 - [x] **B-04** — networked Props spawn with `ability = null`; only Persons get one.
       *(Fixed: every networked Prop gets a `.duplicate()`d `quick_stand.tres` until character
       select exists — B-24.)*
 - [x] **B-30** — `player_id` is never assigned to networked characters; all four read `*_p1`.
       *(Fixed: `main.gd` mirrors the `is_person` split — Person gets slot 1, Prop slot 2. Does
-      not deliver WASD-tracks-Attacker, which would need re-binding on role swap. Unverified.)*
+      not deliver WASD-tracks-Attacker, which would need re-binding on role swap. The two-instance
+      test ran error-free with this change in place, but didn't specifically confirm input
+      response per slot.)*
 - [x] **B-48** — `GameLaunch.game_mode` is never sent over the network; host and client can run
       different modes.
-      *(Fixed alongside B-29 — see above. Unverified by a human.)*
+      *(Fixed and **verified** alongside B-29 — the joining client logged `game_mode=0`, matching
+      the host, from its first tick.)*
 
 **Exit criteria:** two editor instances, one `--host` one `--join=127.0.0.1`, both see the timer
 counting, both spawn and control their own character, both can bump each other, both see the
