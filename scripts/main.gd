@@ -33,6 +33,7 @@ extends Node3D
 @onready var players_root: Node3D = $Players
 @onready var spawner: MultiplayerSpawner = $MultiplayerSpawner
 @onready var hud: Hud = $HUDLayer/HUD
+@onready var arena_camera: ArenaCamera = $Camera3D
 
 const CHARACTER_SCENE: PackedScene = preload("res://scenes/characters/CharacterBase.tscn")
 ## Every Person — networked or local — gets its own Tag/Throw ability
@@ -45,6 +46,14 @@ const CHARACTER_SCENE: PackedScene = preload("res://scenes/characters/CharacterB
 ## TeamAProp has one wired directly in Main.tscn, since it's the only
 ## character using that particular resource instance.
 const PERSON_ACTION_ABILITY: AbilityBase = preload("res://scripts/abilities/resources/person_action.tres")
+## B-04: networked Props previously spawned with `ability = null` — only
+## Persons got one. Only quick_stand.tres exists as a real roster resource so
+## far (the other five specials have no .tres yet — see B-24/Phase 2 for
+## character select), so every networked Prop gets it for now, same as
+## Main.tscn already hardcodes for the local flow's TeamAProp. `.duplicate()`
+## per PERSON_ACTION_ABILITY doc — cooldown/charge state lives on the
+## Resource instance, don't share it across Props.
+const PROP_ABILITY: AbilityBase = preload("res://scripts/abilities/resources/quick_stand.tres")
 ## Local-test roster, in a flat array so round-swap/registration code (below)
 ## can treat all 4 the same way it treats _spawned_characters for the
 ## networked flow, rather than hand-writing 4 near-identical blocks.
@@ -111,6 +120,13 @@ func _ready() -> void:
 ## press the button itself.
 func _start_local_test() -> void:
 	_local_roster = [team_a_prop, team_a_person, team_b_prop, team_b_person]
+	# B-09: give every local-test unit a team id — without this they all sat at
+	# the CharacterBase default (team = 0), which would have made Hitbox's new
+	# same-team check treat all four as one team and block every bump.
+	team_a_prop.team = 0
+	team_a_person.team = 0
+	team_b_prop.team = 1
+	team_b_person.team = 1
 	team_a_person.ability = PERSON_ACTION_ABILITY.duplicate()
 	team_b_person.ability = PERSON_ACTION_ABILITY.duplicate()
 	_wire_downed_flash(team_a_prop)
@@ -162,6 +178,7 @@ func _on_player_connected(peer_id: int) -> void:
 func _on_player_disconnected(peer_id: int) -> void:
 	var node := players_root.get_node_or_null(str(peer_id))
 	if node:
+		arena_camera.remove_target(node)
 		node.queue_free()
 	_spawned_peer_ids.erase(peer_id)
 	_peer_teams.erase(peer_id)
@@ -200,11 +217,15 @@ func _build_networked_character(data: Dictionary) -> Node:
 	character.is_can = data["is_can"]
 	character.is_person = data["is_person"]
 	character.team_is_can_side = data["team_is_can_side"]
+	character.team = data["team"] # B-09: no team identity on CharacterBase before this
 	if data["is_person"]:
 		# Session 8: Person's Tag/Throw, replacing the previously-null `ability`
 		# for Person (see PersonAction doc). .duplicate() per PERSON_ACTION_ABILITY
 		# doc above — don't share cooldown state across the two Persons in a match.
 		character.ability = PERSON_ACTION_ABILITY.duplicate()
+	else:
+		# B-04: Props carry the roster's class ability — see PROP_ABILITY doc.
+		character.ability = PROP_ABILITY.duplicate()
 	character.set_multiplayer_authority(data["peer_id"])
 	_peer_teams[data["peer_id"]] = data["team"]
 	_peer_is_person[data["peer_id"]] = data["is_person"]
@@ -216,6 +237,10 @@ func _build_networked_character(data: Dictionary) -> Node:
 		# per-player). Guard on is_can here since the local player might be
 		# controlling their team's Person this match, not its Prop.
 		_wire_downed_flash.call_deferred(character)
+	# B-03: register every spawned networked character as a camera target at
+	# runtime — Main.tscn's `follow_paths` only ever pointed at the local-test
+	# nodes, so without this the camera never picked up real network peers.
+	arena_camera.add_target(character)
 	return character
 
 ## Fires on every peer identically (host emits locally, clients receive it via
@@ -226,6 +251,7 @@ func _build_networked_character(data: Dictionary) -> Node:
 func _on_match_round_started(_round_number: int, team_a_is_can: bool) -> void:
 	if NetworkManager.is_networked():
 		RoundManager.clear_tracked_cans()
+		var index := 0
 		for peer_id in _spawned_characters.keys():
 			var character: CharacterBase = _spawned_characters[peer_id]
 			if not is_instance_valid(character):
@@ -241,6 +267,14 @@ func _on_match_round_started(_round_number: int, team_a_is_can: bool) -> void:
 			# two Props).
 			character.team_is_can_side = team_is_can_side
 			character.is_can = team_is_can_side and not is_person
+			# B-10: previously only RoundManager's own tracked-Can loop reset
+			# anything, so the two Persons and the Slipper-side Prop carried
+			# their Downed/Sealed state, dents, speed multiplier, and spent
+			# once-per-round charges into the next round, and nobody's position
+			# reset at all. Reset + reposition every unit here instead.
+			character.reset_for_new_round()
+			character.position = SPAWN_POINTS[index % SPAWN_POINTS.size()]
+			index += 1
 			if character.is_can:
 				RoundManager.register_can(character)
 	elif not _local_roster.is_empty():
@@ -255,6 +289,13 @@ func _on_match_round_started(_round_number: int, team_a_is_can: bool) -> void:
 		team_b_prop.team_is_can_side = not team_a_is_can
 		team_b_prop.is_can = not team_a_is_can
 		team_b_person.team_is_can_side = not team_a_is_can
+		# B-10: same reset+reposition as the networked branch above, for all
+		# four local units — see _local_roster doc (order: TeamAProp,
+		# TeamAPerson, TeamBProp, TeamBPerson, matching SPAWN_POINTS 1:1).
+		for i in range(_local_roster.size()):
+			var character := _local_roster[i]
+			character.reset_for_new_round()
+			character.position = SPAWN_POINTS[i % SPAWN_POINTS.size()]
 		_register_local_can()
 	RoundManager.start_round()
 

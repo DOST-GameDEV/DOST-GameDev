@@ -12,6 +12,7 @@ class_name BakyaBash
 @export var active_duration: float = 0.35
 @export var hit_radius: float = 1.0
 
-func _do_activate(character: CharacterBody3D) -> void:
+func _do_activate(character: CharacterBody3D) -> bool:
 	var c := character as CharacterBase
 	AbilityUtils.spawn_pulse_hitbox(c, hit_radius, active_duration, true, Vector3(0, 0, -charge_range))
+	return true
