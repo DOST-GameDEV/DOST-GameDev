@@ -1,4 +1,42 @@
-# Handoff — Dev Session 2
+# Handoff — Dev Session 2 (+ Session 3 update below)
+
+### Update — Session 3
+
+Added on top of everything below:
+
+- **All 6 abilities now exist** (was just Quick Stand): `shatter_trap.gd`, `spin_guard.gd`,
+  `bagsak_bomb.gd`, `bakya_bash.gd`, `flick_dash.gd` — every one extends `AbilityBase` and
+  plugs into a character's `ability` slot the same way Quick Stand does.
+- **`AbilityUtils.spawn_pulse_hitbox()`** (`scripts/abilities/ability_utils.gd`) — shared
+  helper that builds a temporary AoE/forward Hitbox entirely from code, no separate scene
+  needed. Spin Guard, Bagsak Bomb, Bakya Bash, and Flick Dash all use it.
+- **`HazardZone`** (`scripts/systems/hazard_zone.gd`) — generic slow-zone Area3D. Palayok's
+  Shatter Trap uses it now; it's written to double as the map hazards later (Bayan Plaza
+  mud, Palengke wet floor — GDD Section 5) without any changes needed.
+- **`AbilityBase` gained an optional passive hook**, `_on_owner_downed(character)` — lets an
+  ability react to its owner going Downed instead of / in addition to a button press.
+  Shatter Trap is the first thing using it; `CharacterBase.go_downed()` calls it if defined.
+- **`CharacterBase.set_speed_multiplier()` / `reset_for_new_round()`** — the multiplier is
+  what HazardZone drives; the reset clears Downed/Sealed/Staggered state between rounds
+  (nothing was calling this before, so Sealed carried over forever).
+- **Option B is now actually testable, not just supported.** `RoundManager.register_can()` /
+  `clear_tracked_cans()` let you tell RoundManager which characters are playing Can this
+  round; once every registered Can is Sealed, it reports a Slippers round win automatically.
+  `scripts/main.gd` registers the test Can on scene load as a working example. **Caveat**:
+  this is opt-in on purpose, not auto-detected — see the comment in `round_manager.gd` for
+  why (the Attacker/Defender role swap implies characters change which side they're playing
+  each round, and that reassignment isn't built yet).
+- `scenes/main/Main.tscn`'s Can now has a real Quick Stand ability resource
+  (`scripts/abilities/resources/quick_stand.tres`) plugged in, so pressing `special_ability`
+  while Downed actually does something in the test scene.
+
+**Still nobody has opened this in the actual Godot editor** — everything above is
+hand-written text-format `.tscn`/`.gd`/`.tres`, consistent as far as static review can
+verify, but genuinely untested against the engine. First priority for whoever picks this up:
+open it, hit Play, see what breaks.
+
+---
+
 
 ### What's in this commit vs. the last one
 
