@@ -27,9 +27,9 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -220.0
-offset_top = -260.0
+offset_top = -300.0
 offset_right = 220.0
-offset_bottom = 260.0
+offset_bottom = 300.0
 alignment = 1
 
 [node name="TitleLabel" type="Label" parent="Layout"]
@@ -58,6 +58,38 @@ custom_minimum_size = Vector2(0, 280)
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
+
+[node name="Spacer1b" type="Control" parent="Layout"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 10)
+
+[node name="SensitivityRow" type="HBoxContainer" parent="Layout"]
+layout_mode = 2
+
+[node name="SensitivityLabel" type="Label" parent="Layout/SensitivityRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(160, 0)
+text = "Mouse Sensitivity"
+
+[node name="SensitivitySlider" type="HSlider" parent="Layout/SensitivityRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.2
+max_value = 3.0
+step = 0.1
+value = 1.0
+
+[node name="SensitivityValueLabel" type="Label" parent="Layout/SensitivityRow"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(40, 0)
+text = "1.0x"
+
+[node name="InvertYCheck" type="CheckBox" parent="Layout"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Invert Y (mouse look)"
 
 [node name="Spacer2" type="Control" parent="Layout"]
 layout_mode = 2

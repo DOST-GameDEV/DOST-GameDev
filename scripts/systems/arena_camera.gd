@@ -34,6 +34,12 @@ var _current_distance: float
 var _fixed_basis: Basis
 
 func _ready() -> void:
+	# §3.4: retired from gameplay now that CameraRig (scripts/systems/camera_rig.gd)
+	# exists — every character's own rig explicitly sets `current` on exactly
+	# one of its two cameras when active. Default this to false so it can
+	# never win that contest by accident; a future spectator/record toggle
+	# would explicitly flip this back on.
+	current = false
 	_fixed_basis = global_transform.basis
 	_current_distance = global_position.length()
 	_offset_dir = global_position.normalized() if global_position.length() > 0.001 else Vector3(0, 0.6, 0.8).normalized()
@@ -58,8 +64,19 @@ func remove_target(target: Node3D) -> void:
 
 func _process(delta: float) -> void:
 	# Drop anything freed since last frame (e.g. local-test characters torn
-	# down by _clear_local_test_characters()) instead of dereferencing it.
-	_targets = _targets.filter(func(t: Node3D) -> bool: return is_instance_valid(t))
+	# down by _clear_local_test_characters(), which never calls
+	# remove_target()) instead of dereferencing it. NOT Array.filter() with a
+	# Node3D-typed lambda parameter: passing an already-freed reference as an
+	# argument to a typed parameter throws "Cannot convert argument 1 from
+	# Object to Object" from inside filter() itself, every single frame — this
+	# was the actual remaining cause of B-03's per-frame error flood even
+	# after add_target()/remove_target() landed. A plain loop with an untyped
+	# local doesn't trigger that argument-type conversion.
+	var still_valid: Array[Node3D] = []
+	for t in _targets:
+		if is_instance_valid(t):
+			still_valid.append(t)
+	_targets = still_valid
 	if _targets.is_empty():
 		return
 
