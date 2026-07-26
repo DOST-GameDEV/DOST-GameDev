@@ -142,37 +142,41 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0, 0, 0, 0.6)
+color = Color(0.015686, 0.031373, 0.219608, 0.72)
 
-[node name="VBoxContainer" type="VBoxContainer" parent="PauseLayer/PauseRoot"]
+[node name="Card" type="PanelContainer" parent="PauseLayer/PauseRoot"]
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -100.0
-offset_top = -70.0
-offset_right = 100.0
-offset_bottom = 70.0
+offset_left = -180.0
+offset_top = -110.0
+offset_right = 180.0
+offset_bottom = 110.0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="PauseLayer/PauseRoot/Card"]
+layout_mode = 2
 alignment = 1
 
-[node name="PausedLabel" type="Label" parent="PauseLayer/PauseRoot/VBoxContainer"]
+[node name="PausedLabel" type="Label" parent="PauseLayer/PauseRoot/Card/VBoxContainer"]
 layout_mode = 2
+theme_type_variation = &"Heading"
 horizontal_alignment = 1
-theme_override_font_sizes/font_size = 28
-text = "Paused"
+text = "PAUSED"
 
-[node name="Spacer" type="Control" parent="PauseLayer/PauseRoot/VBoxContainer"]
+[node name="Spacer" type="Control" parent="PauseLayer/PauseRoot/Card/VBoxContainer"]
 layout_mode = 2
 custom_minimum_size = Vector2(0, 16)
 
-[node name="ResumeButton" type="Button" parent="PauseLayer/PauseRoot/VBoxContainer"]
+[node name="ResumeButton" type="Button" parent="PauseLayer/PauseRoot/Card/VBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Resume"
+theme_type_variation = &"PrimaryButton"
+text = "RESUME"
 
-[node name="MenuButton" type="Button" parent="PauseLayer/PauseRoot/VBoxContainer"]
+[node name="MenuButton" type="Button" parent="PauseLayer/PauseRoot/Card/VBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Return to Menu"
+text = "RETURN TO MENU"

@@ -16,7 +16,7 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0.9, 0.1, 0.1, 0.25)
+color = Color(0.972549, 0, 0, 0.25)
 mouse_filter = 2
 
 [node name="TopBar" type="VBoxContainer" parent="."]
@@ -24,42 +24,44 @@ layout_mode = 1
 anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -120.0
+offset_left = -220.0
 offset_top = 12.0
-offset_right = 120.0
+offset_right = 220.0
 alignment = 1
 
 [node name="TimerLabel" type="Label" parent="TopBar"]
 unique_name_in_owner = true
 layout_mode = 2
+theme_type_variation = &"HudTimer"
 horizontal_alignment = 1
-theme_override_font_sizes/font_size = 32
 text = "01:30"
 
 [node name="ScoreLabel" type="Label" parent="TopBar"]
 unique_name_in_owner = true
 layout_mode = 2
+theme_type_variation = &"HudScore"
 horizontal_alignment = 1
-theme_override_font_sizes/font_size = 22
 text = "0 - 0"
 
 [node name="RoundLabel" type="Label" parent="TopBar"]
 unique_name_in_owner = true
 layout_mode = 2
+theme_type_variation = &"HudBody"
 horizontal_alignment = 1
 text = "Round 1 / 5"
 
 [node name="RoleLabel" type="Label" parent="TopBar"]
 unique_name_in_owner = true
 layout_mode = 2
+theme_type_variation = &"HudCaption"
 horizontal_alignment = 1
 text = "Team A: Defense   Team B: Offense"
 
 [node name="DentLabel" type="Label" parent="TopBar"]
 unique_name_in_owner = true
 layout_mode = 2
+theme_type_variation = &"HudBody"
 horizontal_alignment = 1
-theme_override_font_sizes/font_size = 20
 text = "Dents: 0 / 3"
 visible = false
 
@@ -71,11 +73,11 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -260.0
-offset_top = -40.0
-offset_right = 260.0
-offset_bottom = 40.0
-theme_override_font_sizes/font_size = 40
+offset_left = -320.0
+offset_top = -46.0
+offset_right = 320.0
+offset_bottom = 46.0
+theme_type_variation = &"HudBanner"
 horizontal_alignment = 1
 vertical_alignment = 1
 text = "ROUND BANNER"
@@ -87,11 +89,10 @@ layout_mode = 1
 anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -160.0
-offset_top = 100.0
-offset_right = 160.0
-theme_override_font_sizes/font_size = 24
-theme_override_colors/font_color = Color(1, 0.3, 0.3, 1)
+offset_left = -200.0
+offset_top = 132.0
+offset_right = 200.0
+theme_type_variation = &"HudToast"
 horizontal_alignment = 1
 text = "OUT OF BOUNDS"
 visible = false

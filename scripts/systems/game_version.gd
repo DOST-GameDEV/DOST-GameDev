@@ -27,21 +27,26 @@ static func display_string() -> String:
 ## Builds the corner label and parents it to `parent`. Done in code rather than
 ## as a .tscn instanced into every screen so that adding the version readout to
 ## a new screen is one line and can never drift out of sync visually between
-## screens. Bottom-right, deliberately dim — it's a build stamp, not UI.
-static func attach_to(parent: Control) -> Label:
+## screens. Bottom-right, deliberately quiet — it's a build stamp, not UI.
+##
+## `over_3d` picks the readable treatment for where it's going: a menu sits on
+## the light PANEL background and wants muted INK, while the in-match HUD draws
+## over a live 3D scene and needs the outlined caption instead. Both come from
+## the design system's type variations (see scripts/ui/ui_theme.gd) rather than
+## `theme_override_*`.
+static func attach_to(parent: Control, over_3d: bool = false) -> Label:
 	var label := Label.new()
 	label.name = "VersionLabel"
 	label.text = display_string()
+	label.theme_type_variation = &"HudCaption" if over_3d else &"Caption"
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	label.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	label.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	label.offset_left = -140.0
-	label.offset_top = -28.0
-	label.offset_right = -10.0
-	label.offset_bottom = -6.0
+	label.offset_top = -30.0
+	label.offset_right = -12.0
+	label.offset_bottom = -8.0
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	label.add_theme_font_size_override("font_size", 13)
-	label.add_theme_color_override("font_color", Color(1, 1, 1, 0.45))
 	parent.add_child(label)
 	return label

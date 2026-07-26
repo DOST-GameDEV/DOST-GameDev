@@ -778,8 +778,8 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
 
 ### P3 — UI overhaul (moodboard)
 
-- [ ] **15. Design system (`Dev_Plan.md` §4.2).**
-      `assets/ui/tumbang_preso.theme` + a `UiTheme` autoload of the same constants.
+- [x] **15. Design system (`Dev_Plan.md` §4.2).**
+      `assets/ui/tumbang_preso.tres` + a `UiTheme` autoload of the same constants.
       `INK #040838`, `PANEL #E1E5E8`, `OFFENSE #F87020`, `DEFENSE #0080E8`, `IMPACT #F468A8`,
       `HIGHLIGHT #F8D028`, `DANGER #F80000`. `StyleBoxFlat` card chrome: 3px `INK` border,
       6px radius, 16px margins, 6px full-height accent bar. Theme type variations for buttons and
@@ -789,6 +789,32 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       `.gitattributes` LFS. **Record the licence for submission Form 03.**
       *Acceptance:* setting the theme on a scene root restyles its whole subtree with no per-node
       overrides.
+      **Done, with one deliberate deviation and one blocker.**
+      *Deviation:* `UiTheme` (`scripts/ui/ui_theme.gd`) is a static-only `class_name`, not an
+      autoload, and the `.theme` is **generated from it** by `tools/regenerate_ui_theme.gd` rather
+      than hand-authored beside it. The brief's "theme file + autoload of the same constants" is
+      two copies of the same palette that can drift; generating one from the other removes that
+      class of bug entirely. Regenerate and commit both after any constant change:
+      `godot --headless -s tools/regenerate_ui_theme.gd`.
+      Applied project-wide via `gui/theme/custom` in `project.godot`, so the acceptance test is
+      satisfied one level up from what was asked — no scene needs the theme assigned at all, and
+      screens nobody has written yet inherit it too. All five existing screens (MainMenu, PlayMenu,
+      SettingsPanel, MatchResult, Main's pause overlay) and the HUD were converted; the only
+      remaining `theme_override_*` in the project is the version stamp's, which is now a type
+      variation too. HUD text over the 3D scene uses the `Hud*` variations (CARD fill + INK
+      outline) — one variation per size, so no node needs a font-size override.
+      Also fixed in passing: `SettingsPanel`'s `Layout` was a fixed 600px-tall centred box in a
+      648px viewport, so its Back/Reset row sat 39px from the bottom edge and would be pushed
+      off-screen entirely at any smaller window size. It is now a full-height centred column with
+      the bindings `ScrollContainer` absorbing the slack, so the button row is reachable at any
+      window size.
+      🚧 **BLOCKER — display font.** The moodboard's heavy hand-drawn unicase marker face is
+      Harry's and was not supplied with this brief, and no substitute was downloaded (an unvetted
+      font binary is both a licence and a supply-chain question, and Form 03 needs a recorded
+      licence either way). The theme therefore ships on Godot's default font: **palette, chrome,
+      layout logic and type scale are all moodboard-accurate, only the typeface is standing in.**
+      Dropping the real face in is one line — `theme.default_font` in `ui_theme.gd`, then
+      regenerate — plus adding `*.ttf`/`*.otf` to `.gitattributes` LFS and recording the licence.
 
 - [ ] **16. Menu fixes and restyle (B-33, B-34, B-27).**
       Add a **Back** button to `PlayMenu` plus an `ui_cancel` handler. Resolve the Option A
