@@ -277,10 +277,29 @@ func apply_stagger(duration: float = BUMP_STAGGER_TIME) -> void:
 	_staggered_time_left = max(_staggered_time_left, duration)
 	_set_state(State.STAGGERED)
 
-## Called by a HazardZone (mud patch, Shatter Trap, wet floor, etc.) when this
-## character enters/exits it. 1.0 = normal speed.
-func set_speed_multiplier(multiplier: float) -> void:
-	_speed_multiplier = multiplier
+## B-17: HazardZone used to call a single set_speed_multiplier(1.0) on exit,
+## which reset speed to normal even while still standing in a second overlapping
+## zone. Track every zone this character is currently inside instead, and apply
+## whichever is most restrictive — normal speed only once none are left.
+var _active_speed_multipliers: Array[float] = []
+
+func enter_speed_zone(multiplier: float) -> void:
+	_active_speed_multipliers.append(multiplier)
+	_recompute_speed_multiplier()
+
+## `multiplier` identifies which zone is leaving (a zone could in principle change
+## multiplier mid-life, but none do today) — removes one matching entry, not all.
+func exit_speed_zone(multiplier: float) -> void:
+	var idx := _active_speed_multipliers.find(multiplier)
+	if idx != -1:
+		_active_speed_multipliers.remove_at(idx)
+	_recompute_speed_multiplier()
+
+func _recompute_speed_multiplier() -> void:
+	var lowest := 1.0
+	for m in _active_speed_multipliers:
+		lowest = min(lowest, m)
+	_speed_multiplier = lowest
 
 ## Knocks this character into the Downed state (out-of-base hit, or a heavy special
 ## like Bakya Bash's instant-down). Starts the self-right window.
@@ -452,6 +471,10 @@ func reset_for_new_round() -> void:
 	_staggered_time_left = 0.0
 	_downed_time_left = 0.0
 	_downed_self_rightable = false
+	# B-17: clear any hazard zones this character was standing in too — a
+	# lingering slow effect (or the reverse: a stale exit dropping speed to 1.0
+	# under a still-live zone) shouldn't survive a round reset either way.
+	_active_speed_multipliers.clear()
 	_speed_multiplier = 1.0
 	# B-16: fresh guard stamina and no leftover dash cooldown each round —
 	# otherwise a Can that emptied its stamina staying alive to round end
