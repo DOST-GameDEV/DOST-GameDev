@@ -3,10 +3,9 @@ class_name QuickStand
 
 ## Sardinas — Quick Stand: instantly self-rights from Downed once/round.
 ## (See docs/Tumbang_Preso_2v2_GDD.md, Roster: 🥫 Can Class.)
-## "Once/round" vs. the generic cooldown-based AbilityBase timer is a small design
-## choice still open — for now this uses the standard cooldown (set cooldown to
-## something long, e.g. 90s = the round timer, in the .tres resource to approximate
-## "once per round" until RoundManager can reset ability charges on round start).
+## Session 6: now a real once-per-round charge (AbilityBase.once_per_round),
+## reset every round via CharacterBase.reset_for_new_round() — set
+## once_per_round = true on quick_stand.tres, `cooldown` no longer matters.
 
 func _do_activate(character: CharacterBody3D) -> void:
 	var c := character as CharacterBase

@@ -8,10 +8,18 @@ class_name AbilityBase
 
 @export var ability_name: String = "Unnamed Special"
 @export var cooldown: float = 5.0
+## Session 6: real once-per-round charge, replacing the "set cooldown to ~90s
+## to approximate once/round" workaround (see quick_stand.gd). When true,
+## `cooldown` is ignored entirely — the ability is usable exactly once until
+## RoundManager.start_round() resets it via reset_round_charge().
+@export var once_per_round: bool = false
 
 var _time_since_use: float = 999.0
+var _used_this_round: bool = false
 
 func is_ready() -> bool:
+	if once_per_round:
+		return not _used_this_round
 	return _time_since_use >= cooldown
 
 func tick(delta: float) -> void:
@@ -22,7 +30,13 @@ func activate(character: CharacterBody3D) -> void:
 	if not is_ready():
 		return
 	_time_since_use = 0.0
+	if once_per_round:
+		_used_this_round = true
 	_do_activate(character)
+
+## Called by CharacterBase.reset_for_new_round() at the start of every round.
+func reset_round_charge() -> void:
+	_used_this_round = false
 
 ## Actual per-ability behavior — override this, not activate().
 func _do_activate(character: CharacterBody3D) -> void:
