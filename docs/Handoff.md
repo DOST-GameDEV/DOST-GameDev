@@ -129,6 +129,14 @@ movement still feels like absolute WASD and that Bump/specials land in the facin
 `special_ability` input is read at line 160, *after* that return. Quick Stand's only effect
 is self-righting from Downed — the exact state in which its input is unreachable. Same
 structural problem for any future "escape" ability.
+**[FIXED]** The `State.DOWNED` branch of the state `match` (which runs before the
+STAGGERED/DOWNED/SEALED early return) now also checks `special_ability` and calls
+`ability.activate(self)` there, same RPC-to-host call as the main check further down. Other
+states (STAGGERED, SEALED) still can't activate anything — only DOWNED needed the carve-out.
+`is_ready()`/`once_per_round` on the ability itself still gates whether anything actually
+happens; a non-escape ability (e.g. Spin Guard) pressed while Downed will still run its
+`_do_activate()` if off cooldown, same as it always could from NORMAL — worth a look once
+someone's playtesting, but not a new bug introduced by this fix.
 
 **B-07 · Any stagger cancels Downed.**
 `apply_stagger()` (line 164) overwrites `DOWNED` with `STAGGERED`, which auto-recovers to

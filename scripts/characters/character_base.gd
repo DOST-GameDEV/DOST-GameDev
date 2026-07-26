@@ -136,6 +136,15 @@ func _physics_process(delta: float) -> void:
 					_downed_self_rightable = false # window expired, now sealable
 			if Input.is_action_just_pressed(_action("bump")) and _downed_self_rightable:
 				self_right()
+			# B-06: special_ability is normally only read further down, past the
+			# STAGGERED/DOWNED/SEALED early return below — unreachable for an
+			# "escape" ability like Quick Stand, whose only effect is self-
+			# righting from exactly this state. is_ready()/once_per_round on the
+			# ability itself already gates whether it actually does anything.
+			if Input.is_action_just_pressed(_action("special_ability")) and ability:
+				ability.activate(self)
+				if NetworkManager.is_networked() and not NetworkManager.is_host():
+					_rpc_notify_ability_activate.rpc_id(1)
 		State.SEALED:
 			pass # awaiting round reset / respawn logic
 
