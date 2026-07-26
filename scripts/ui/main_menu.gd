@@ -30,6 +30,7 @@ func _ready() -> void:
 	settings_panel.visible = false
 	status_label.text = ""
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE # item 14: defensive — Main.tscn captures it for a match
+	GameVersion.attach_to(self) # build stamp, bottom-right — see game_version.gd
 
 	game_mode_option.clear()
 	# B-33: Option A has been fully implemented since Session 7 (hitbox.gd's
