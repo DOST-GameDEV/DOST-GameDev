@@ -1,8 +1,8 @@
 extends Node3D
 
-## Single-player prototype entry point, now dual-purpose (Session 5):
-## - No launch args: local single-PC/split-keyboard prototype, spawning the
-##   real 4-unit Person+Prop structure (Session 9 — see below).
+## Match scene entry point, dual-purpose:
+## - No launch args: local single-PC/split-keyboard flow, spawning the real
+##   4-unit Person+Prop structure (see below).
 ## - `--host`: starts a LAN server, removes the local test characters, and
 ##   spawns a real networked character per connected peer instead.
 ## - `--join=<address>`: connects to a host at that address, same swap.
@@ -11,22 +11,20 @@ extends Node3D
 ## exported/editor instance with `--host`, another with `--join=<host LAN IP>`
 ## (or `--join=127.0.0.1` for two instances on one PC via
 ## Debug > Run Multiple Instances). No lobby UI yet — see
-## docs/Handoff_Session5.md for what's still missing.
+## docs/Handoff.md for what's still missing.
 ##
-## Session 7 correction: a team is 2 players — 1 Person (tags/throws) + 1
-## Can/Slipper Prop (carries the roster's class ability) — NOT two
-## interchangeable Can/Tsinelas units. See CharacterBase.is_person /
-## _spawn_player below.
+## A team is 2 players — 1 Person (tags/throws) + 1 Can/Slipper Prop (carries
+## the roster's class ability) — NOT two interchangeable Can/Tsinelas units.
+## See CharacterBase.is_person / _spawn_player below.
 ##
-## Session 9: the local single-PC fallback above now matches this too, instead
-## of the old 1v1 direct Can-vs-Tsinelas smoke test (docs/Handoff_Session7.md's
-## "known gaps" — now closed). It spawns all 4 nodes from Main.tscn: the
-## player controls TeamAProp (P1 keys) and TeamAPerson (P2 keys) — i.e. one
-## full team, Prop + Person, so both Quick Stand and Tag/Throw are directly
-## testable locally. TeamBProp/TeamBPerson are local-test dummies (p3/p4,
-## deliberately unbound in project.godot — see CharacterBase.player_id doc)
-## standing in as a stationary opponent team. Round-swap (Can vs Slipper side)
-## is now wired for this flow too — see _on_match_round_started.
+## The local single-PC flow mirrors that structure: all 4 nodes come from
+## Main.tscn, and the player controls TeamAProp (P1 keys) and TeamAPerson
+## (P2 keys) — i.e. one full team, Prop + Person, so both Quick Stand and
+## Tag/Throw are directly testable locally. TeamBProp/TeamBPerson are
+## local-test dummies (p3/p4, deliberately unbound in project.godot — see
+## CharacterBase.player_id doc) standing in as a stationary opponent team.
+## Round-swap (Can vs Slipper side) is wired for this flow too — see
+## _on_match_round_started.
 
 @onready var team_a_prop: CharacterBase = $TeamAProp
 @onready var team_a_person: CharacterBase = $TeamAPerson
@@ -86,7 +84,7 @@ func _ready() -> void:
 			join_target = GameLaunch.pending_join_address
 		GameLaunch.reset() # one-shot; a later replay from the menu sets it fresh
 	else:
-		# Debug > Run Multiple Instances workflow (see docs/Handoff_Session5.md)
+		# Debug > Run Multiple Instances workflow (see docs/Handoff.md)
 		# still works standalone, without going through the menu at all.
 		for arg in OS.get_cmdline_user_args():
 			if arg == "--host":
@@ -247,7 +245,7 @@ func _on_match_round_started(_round_number: int, team_a_is_can: bool) -> void:
 				RoundManager.register_can(character)
 	elif not _local_roster.is_empty():
 		# Session 9: role-swap for the local flow too — was previously a "known
-		# gap" (docs/Handoff_Session7.md). Same rule as networked: Team A's
+		# gap" (docs/Handoff.md). Same rule as networked: Team A's
 		# Prop/Person side comes straight from team_a_is_can, Team B is the
 		# mirror image. Persons never become Cans (team_is_can_side only, same
 		# as networked above).
