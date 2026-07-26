@@ -153,7 +153,8 @@ Fix the P1 bugs, then playtest the loop end to end for the first time.
       the state match now also reads special_ability and activates the ability there, same
       RPC-to-host pattern as the main special_ability check. is_ready()/once_per_round already
       guards whether it does anything.)*
-- [ ] **B-07** stagger cancelling Downed
+- [x] **B-07** stagger cancelling Downed *(Fixed: apply_stagger() now also skips DOWNED, not
+      just SEALED, so a hit during the self-right window no longer rescues a Downed Can.)*
 - [ ] **B-08** bump missing already-overlapping targets
 - [ ] **B-09** friendly fire — add a `team_id` to `CharacterBase` and gate `Hitbox`
 - [ ] **B-10** per-round reset covers all four units and their positions

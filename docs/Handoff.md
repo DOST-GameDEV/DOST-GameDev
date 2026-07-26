@@ -144,6 +144,13 @@ someone's playtesting, but not a new bug introduced by this fix.
 but still inside its self-right window — so hitting a downed Can *rescues* it. Any bump from
 anyone, including its own teammate, is a free escape. Option B's seal mechanic cannot work
 until this is fixed.
+**[FIXED]** `apply_stagger()` now returns early for `DOWNED` as well as `SEALED`, so a hit
+landing on a still-self-rightable Can does nothing instead of bumping it back to STAGGERED/
+NORMAL. `hitbox.gd` still separately routes a hit AFTER the self-right window expires to
+`"seal"` rather than `"stagger"`, so sealing is unaffected — this only closes the free-rescue
+window. Needs verification that a teammate/opponent bumping a Downed Can no longer un-downs
+it, and that self-right (via the Can's own bump input, `character_base.gd`'s DOWNED match
+branch) still works.
 
 **B-08 · Bump misses anyone you're already touching.**
 `hitbox.gd` only listens to `area_entered`, but the melee Hitbox is always monitoring and is

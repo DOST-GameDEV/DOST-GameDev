@@ -190,7 +190,14 @@ func _physics_process(delta: float) -> void:
 
 ## Called on this character when it's hit by an opponent's Hitbox (see hitbox.gd).
 func apply_stagger(duration: float = BUMP_STAGGER_TIME) -> void:
-	if state == State.SEALED:
+	# B-07: also skip DOWNED, not just SEALED — a hit landing on a Can that's
+	# still inside its self-right window used to overwrite DOWNED with
+	# STAGGERED, which auto-recovers to NORMAL, letting ANY bump (including a
+	# teammate's) rescue a Downed Can for free. A hit during that window
+	# should do nothing; hitbox.gd already routes a hit AFTER the window
+	# expires to "seal" instead of "stagger", so this only ever blocks the
+	# free-rescue case.
+	if state == State.SEALED or state == State.DOWNED:
 		return
 	_staggered_time_left = max(_staggered_time_left, duration)
 	_set_state(State.STAGGERED)
