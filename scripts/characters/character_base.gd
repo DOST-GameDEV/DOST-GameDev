@@ -39,6 +39,7 @@ var _staggered_time_left: float = 0.0
 var _downed_time_left: float = 0.0
 var _downed_self_rightable: bool = false ## true only within the self-right window
 var _bump_active_time_left: float = 0.0
+var _speed_multiplier: float = 1.0 ## set by hazard zones (mud, Shatter Trap patch, etc.)
 
 func _ready() -> void:
 	for child in find_children("*", "Hurtbox", true, false):
@@ -84,8 +85,8 @@ func _physics_process(delta: float) -> void:
 	var direction := (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
 
 	if direction:
-		velocity.x = direction.x * SPEED
-		velocity.z = direction.z * SPEED
+		velocity.x = direction.x * SPEED * _speed_multiplier
+		velocity.z = direction.z * SPEED * _speed_multiplier
 	else:
 		velocity.x = move_toward(velocity.x, 0, SPEED)
 		velocity.z = move_toward(velocity.z, 0, SPEED)
@@ -102,6 +103,11 @@ func apply_stagger(duration: float = BUMP_STAGGER_TIME) -> void:
 	_staggered_time_left = max(_staggered_time_left, duration)
 	_set_state(State.STAGGERED)
 
+## Called by a HazardZone (mud patch, Shatter Trap, wet floor, etc.) when this
+## character enters/exits it. 1.0 = normal speed.
+func set_speed_multiplier(multiplier: float) -> void:
+	_speed_multiplier = multiplier
+
 ## Knocks this character into the Downed state (out-of-base hit, or a heavy special
 ## like Bakya Bash's instant-down). Starts the self-right window.
 func go_downed() -> void:
@@ -110,6 +116,8 @@ func go_downed() -> void:
 	_downed_time_left = DOWNED_SELF_RIGHT_WINDOW
 	_downed_self_rightable = true
 	_set_state(State.DOWNED)
+	if ability and ability.has_method("_on_owner_downed"):
+		ability._on_owner_downed(self)
 
 ## Player (or an ability, e.g. Sardinas' Quick Stand) recovers from Downed early.
 func self_right() -> void:
@@ -136,4 +144,15 @@ func _set_state(new_state: State) -> void:
 	if new_state == state:
 		return
 	state = new_state
+	state_changed.emit(state)
+
+## Called by RoundManager at the start of a new round to clear Downed/Sealed/Staggered
+## carryover from the previous round. Does NOT touch position — whatever resets a
+## character to its base spot (map-specific) is a separate concern.
+func reset_for_new_round() -> void:
+	_staggered_time_left = 0.0
+	_downed_time_left = 0.0
+	_downed_self_rightable = false
+	_speed_multiplier = 1.0
+	state = State.NORMAL
 	state_changed.emit(state)

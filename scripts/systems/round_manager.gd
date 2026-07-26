@@ -19,9 +19,43 @@ const ROUND_TIME: float = 90.0
 var time_left: float = ROUND_TIME
 var round_active: bool = false
 
+## --- Option B testbed (all Cans Sealed = Slippers win) ---------------------------
+## Not auto-populated on its own — call register_can() for whichever characters are
+## playing Can this round (see scripts/main.gd for a working example). Deliberately
+## opt-in rather than scanning the scene tree, since which characters ARE the Cans
+## changes with the Attacker/Defender role swap each round (GDD Section 3) — that
+## reassignment isn't implemented yet, this just gives Option B something real to
+## playtest against with a fixed pair of Cans in the meantime.
+var _tracked_cans: Array[CharacterBase] = []
+
+func register_can(can: CharacterBase) -> void:
+	if can in _tracked_cans:
+		return
+	_tracked_cans.append(can)
+	if not can.state_changed.is_connected(_on_tracked_can_state_changed):
+		can.state_changed.connect(_on_tracked_can_state_changed)
+
+func clear_tracked_cans() -> void:
+	for can in _tracked_cans:
+		if is_instance_valid(can) and can.state_changed.is_connected(_on_tracked_can_state_changed):
+			can.state_changed.disconnect(_on_tracked_can_state_changed)
+	_tracked_cans.clear()
+
+func _on_tracked_can_state_changed(_new_state: int) -> void:
+	if not round_active or _tracked_cans.is_empty():
+		return
+	for can in _tracked_cans:
+		if not is_instance_valid(can) or can.state != CharacterBase.State.SEALED:
+			return
+	report_round_win(false) # every tracked Can Sealed -> Slippers win the round
+## ----------------------------------------------------------------------------------
+
 func start_round() -> void:
 	time_left = ROUND_TIME
 	round_active = true
+	for can in _tracked_cans:
+		if is_instance_valid(can):
+			can.reset_for_new_round()
 
 func _process(delta: float) -> void:
 	if not round_active:

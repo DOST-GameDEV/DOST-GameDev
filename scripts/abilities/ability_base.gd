@@ -27,3 +27,10 @@ func activate(character: CharacterBody3D) -> void:
 ## Actual per-ability behavior — override this, not activate().
 func _do_activate(character: CharacterBody3D) -> void:
 	pass
+
+## Optional passive hook: implement this in an ability script (don't need to declare
+## it here since GDScript duck-types has_method checks) if the ability should react
+## to its owner going Downed rather than / in addition to an activate() button press
+## — e.g. Palayok's Shatter Trap. CharacterBase.go_downed() calls
+## `ability._on_owner_downed(self)` if the ability defines it.
+# func _on_owner_downed(character: CharacterBase) -> void: pass
