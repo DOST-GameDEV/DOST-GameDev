@@ -37,9 +37,11 @@ var round_active: bool = false
 ## Not auto-populated on its own — call register_can() for whichever characters are
 ## playing Can this round (see scripts/main.gd for a working example). Deliberately
 ## opt-in rather than scanning the scene tree, since which characters ARE the Cans
-## changes with the Attacker/Defender role swap each round (GDD Section 3) — that
-## reassignment isn't implemented yet, this just gives Option B something real to
-## playtest against with a fixed pair of Cans in the meantime.
+## changes with the Attacker/Defender role swap each round (GDD Section 3). B-26:
+## this used to say that reassignment "isn't implemented yet" — it has been since
+## Session 7 (main.gd's _on_match_round_started re-registers whichever Prop is
+## is_can true every round); this re-registration on every round_started is that
+## reassignment, not a placeholder for it.
 var _tracked_cans: Array[CharacterBase] = []
 
 func register_can(can: CharacterBase) -> void:
