@@ -2,7 +2,7 @@ extends AbilityBase
 class_name QuickStand
 
 ## Sardinas — Quick Stand: instantly self-rights from Downed once/round.
-## (See docs/Tumbang_Preso_2v2_GDD.md, Roster: 🥫 Can Class.)
+## (See docs/Dev_Plan.md, Roster: 🥫 Can Class.)
 ## Session 6: now a real once-per-round charge (AbilityBase.once_per_round),
 ## reset every round via CharacterBase.reset_for_new_round() — set
 ## once_per_round = true on quick_stand.tres, `cooldown` no longer matters.

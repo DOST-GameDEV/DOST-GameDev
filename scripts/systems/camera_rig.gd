@@ -44,7 +44,7 @@ class_name CameraRig
 ## whose face is painted on the front of a ball head — and the head is already
 ## hidden in FPP by `_apply_fpp_self_hide` below, so sitting inside it is
 ## correct rather than a clipping problem. Re-measure with the harness in
-## `docs/Interaction_Tuning_Agent_Brief.md` before changing it again.
+## `docs/Agent_Prompts.md` before changing it again.
 ##
 ## The original bake was arm `(-15, 180, 0)` + camera `(0, 180, 0)`. The 180 on
 ## the arm assumed the spring cast along -Z, so it actually placed the camera

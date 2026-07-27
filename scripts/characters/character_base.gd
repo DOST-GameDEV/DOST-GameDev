@@ -27,7 +27,7 @@ const BUMP_STAGGER_TIME: float = 0.25
 ## GDD Section 3, Option B: ~2s window to self-right before a Tsinelas can seal a
 ## Downed Can. Kept here (not in RoundManager) because it's shared by both Option A
 ## and Option B, and by abilities like Quick Stand / Shatter Trap that reference
-## "Downed" directly — see docs/Tumbang_Preso_2v2_GDD.md Section 4.
+## "Downed" directly — see docs/Dev_Plan.md Section 4.
 const DOWNED_SELF_RIGHT_WINDOW: float = 2.0
 ## Bump is "no cooldown" per the GDD but still needs an active window so standing
 ## next to an opponent doesn't stagger them every physics tick — press-to-bump,
