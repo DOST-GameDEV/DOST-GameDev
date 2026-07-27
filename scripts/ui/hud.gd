@@ -14,6 +14,9 @@ class_name Hud
 @onready var team_b_label: Label = %TeamBLabel
 @onready var team_a_pips_box: HBoxContainer = %TeamAPipsBox
 @onready var team_b_pips_box: HBoxContainer = %TeamBPipsBox
+@onready var lata_card: PanelContainer = %LataCard
+@onready var dent_pips_box: HBoxContainer = %DentPipsBox
+@onready var dent_text_label: Label = %DentTextLabel
 @onready var downed_flash: ColorRect = %DownedFlash
 @onready var toast_label: Label = %ToastLabel
 @onready var round_banner_label: Label = %RoundBannerLabel
@@ -21,6 +24,7 @@ class_name Hud
 @onready var crosshair: Control = %Crosshair
 
 var _toast_time_left: float = 0.0
+var _pulse_tween: Tween = null
 
 func _ready() -> void:
 	MatchManager.round_started.connect(_on_round_started)
@@ -28,6 +32,10 @@ func _ready() -> void:
 	downed_flash.visible = false
 	toast_label.visible = false
 	round_banner_label.visible = false
+	lata_card.visible = false
+	# Keep pivot at the TimerCard's centre so the pulse tween scales from the middle.
+	# Connect to resized so this stays correct if the card ever changes size.
+	timer_card.resized.connect(func(): timer_card.pivot_offset = timer_card.size / 2)
 	# Initialise panels from current MatchManager state so pips and colours are
 	# correct on load (e.g. a late-joining peer, or a match already in progress).
 	set_round_display(MatchManager.round_number, MatchManager.team_a_is_can)
@@ -37,9 +45,27 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	var t := int(ceil(RoundManager.time_left))
 	timer_label.text = "%02d:%02d" % [t / 60, t % 60]
+
+	# Timer urgency (§4.4): HIGHLIGHT colour under 15s, scale pulse under 10s.
+	# Scale tween instead of colour flash to avoid collision with the downed vignette.
+	if RoundManager.time_left < 15.0:
+		timer_label.add_theme_color_override("font_color", UiTheme.HIGHLIGHT)
+		if RoundManager.time_left < 10.0:
+			if _pulse_tween == null or not _pulse_tween.is_running():
+				timer_card.pivot_offset = timer_card.size / 2
+				_pulse_tween = create_tween().set_loops()
+				_pulse_tween.tween_property(timer_card, "scale", Vector2(1.05, 1.05), 0.5)
+				_pulse_tween.tween_property(timer_card, "scale", Vector2(1.0, 1.0), 0.5)
+		else:
+			_kill_pulse_tween()
+	else:
+		timer_label.remove_theme_color_override("font_color")
+		_kill_pulse_tween()
+
 	# Poll pip fill each frame — lightweight (just stylebox swaps on 6 Panel nodes).
 	_fill_pips(team_a_pips_box, MatchManager.team_a_wins)
 	_fill_pips(team_b_pips_box, MatchManager.team_b_wins)
+
 	if _toast_time_left > 0.0:
 		_toast_time_left -= delta
 		if _toast_time_left <= 0.0:
@@ -49,9 +75,16 @@ func _process(delta: float) -> void:
 	var local_char := you_card.get_local_character()
 	crosshair.visible = local_char != null and is_instance_valid(local_char) and local_char.is_person
 
+## Kills the pulse tween and resets the timer card to its natural scale.
+func _kill_pulse_tween() -> void:
+	if _pulse_tween != null:
+		_pulse_tween.kill()
+		_pulse_tween = null
+		timer_card.scale = Vector2.ONE
+
 ## Paints the first `filled` pips in a HBoxContainer of Panel nodes as filled
 ## (CARD fill, INK border) and the rest as empty (transparent fill, INK border).
-## 12×12 square StyleBoxFlat, 3 px INK border, 2 px separation (set on the HBox).
+## 14×14 square StyleBoxFlat, 3 px INK border, 2 px separation (set on the HBox).
 func _fill_pips(container: HBoxContainer, filled: int) -> void:
 	for i in container.get_child_count():
 		var pip: Control = container.get_child(i)
@@ -126,6 +159,12 @@ func set_downed_flash(active: bool) -> void:
 ## Option A only. Call with the locally-viewed Can's current dent count once
 ## GameLaunch.game_mode == OPTION_A; leave uncalled (default hidden) under
 ## Option B, which has no dent concept.
-## LATA card display implemented in U-1 step 2.
+## Filled pip = structural integrity remaining (max_dents − current).
 func set_dents(current: int, max_dents: int) -> void:
-	pass
+	lata_card.visible = true
+	_fill_pips(dent_pips_box, max_dents - current)
+	if current > 0:
+		dent_text_label.text = "Dents: %d / %d" % [current, max_dents]
+		dent_text_label.visible = true
+	else:
+		dent_text_label.visible = false
