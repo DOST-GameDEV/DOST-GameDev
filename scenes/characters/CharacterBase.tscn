@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3 uid="uid://b8g1c2xw3q4r5"]
+[gd_scene load_steps=14 format=3 uid="uid://b8g1c2xw3q4r5"]
 
 [ext_resource type="Script" path="res://scripts/characters/character_base.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/characters/hurtbox.gd" id="2"]
@@ -7,6 +7,7 @@
 [ext_resource type="Script" path="res://scripts/characters/character_visual.gd" id="5"]
 [ext_resource type="Script" path="res://scripts/characters/carriable.gd" id="6"]
 [ext_resource type="Script" path="res://scripts/characters/carrier.gd" id="7"]
+[ext_resource type="Script" path="res://scripts/characters/character_nameplate.gd" id="8"]
 
 [sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_sync"]
 properties/0/path = NodePath(".:position")
@@ -35,6 +36,15 @@ radius = 0.5
 
 [sub_resource type="SphereShape3D" id="SphereShape3D_grab"]
 radius = 1.7
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_ring"]
+top_radius = 0.55
+bottom_radius = 0.55
+height = 0.03
+cap_top = false
+cap_bottom = false
+radial_segments = 32
+rings = 1
 
 [node name="CharacterBase" type="CharacterBody3D"]
 script = ExtResource("1")
@@ -80,3 +90,20 @@ monitorable = false
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="GrabArea"]
 shape = SubResource("SphereShape3D_grab")
+
+[node name="Nameplate" type="Node3D" parent="."]
+script = ExtResource("8")
+
+[node name="NameplateRing" type="MeshInstance3D" parent="Nameplate"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, 0)
+mesh = SubResource("CylinderMesh_ring")
+cast_shadow = 0
+
+[node name="NameplateLabel" type="Label3D" parent="Nameplate"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 0)
+billboard = 3
+pixel_size = 0.007
+font_size = 32
+outline_size = 4
+outline_modulate = Color(0.016, 0.031, 0.22, 0.9)
+text = ""

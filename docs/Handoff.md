@@ -1390,7 +1390,8 @@ one it picked, on its own cooldown.
 
 ---
 
-#### U-6 · In-world nameplates and ground rings `[ ]`
+#### U-6 · In-world nameplates and ground rings `[~]`
+<!-- [DONE nameplate+ring @ v4.19; off-screen indicators deferred to U-6b] -->
 
 `Dev_Plan.md` §4.5. The HUD tells you who *you* are (the YOU card, done). The world does not tell
 you who anyone else is. **This matters more in FPP than any HUD element** — §3.3 accepts a
