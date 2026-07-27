@@ -141,7 +141,66 @@ than what is there now, because the error becomes invisible instead of obvious.
 
 ---
 
-### 2. What landed this pass
+#---
+
+## 1.9 · The throw — how it works, and what was added 2026-07-28
+
+Asked at playtest: *"can ppl grab the tsinelas? supposed to be able to grab the tsinelas, and
+then show realistic throwing animation... what button to use, how to control strength / where it
+goes and the animation for strength."*
+
+**Grabbing and charged throwing already existed** — `carrier.gd` has carried the whole mechanism
+since Task 1. What was missing was any way to *see* strength while aiming. Recorded here so the
+next person does not rebuild a system that is already there.
+
+### The verbs, and the buttons
+
+| Verb | Button | Where |
+|---|---|---|
+| **Pick up** the tsinelas | **Left click** (or `grab_p1`'s key) | `carrier.gd::_step_grab()` |
+| **Charge** the throw | **Hold right click** (or `special_ability_p1`) | `carrier.gd::_step_throw()` |
+| **Throw** | **Release** right click | `carriable.gd::host_throw(direction, power)` |
+
+Mouse bindings were added at v4.38 as *additional* events, so the keyboard bindings still work
+and split-keyboard local play is unaffected.
+
+### How strength works
+
+- `CHARGE_FULL_TIME = 0.9` seconds of hold reaches full power.
+- `CHARGE_MIN_POWER = 0.35` is the floor, so a panicked tap still throws rather than dropping the
+  slipper at your feet.
+- Power scales launch speed linearly: `speed = profile.launch_speed * power`, per the slipper's
+  own `ThrowProfile`, so a wooden bakya and a rubber flip-flop can fly differently.
+
+### Where it goes
+
+Direction is the Person's aim — the FPP camera's forward — not a separate aiming mode. The
+carried slipper's origin sits at `(0.260, 0.470, -0.480)` in character-local space, deliberately
+forward of the eye and to the right so it never covers the crosshair.
+
+### What was added: the wind-up
+
+The throwing arm now **cocks back progressively with charge**, up to `VIEWMODEL_WINDUP_RAD`
+(0.62 rad, ~36°) at full power, and snaps forward on release.
+
+This is the point of the change, and it is a design argument rather than a polish one: **in first
+person the wind-up is the only readout of throw strength in the player's eyeline.** The HUD's
+charge meter is on the YOU card in a bottom corner, and nobody looks at a corner while aiming at
+a can across an alley. The arm is where the eye already is.
+
+Driven by polling `carrier.charge_power()` from `character_visual.gd::_process`, matching how that
+file already drives carry scale and slipper spin — charge is a continuously-varying value, not an
+event, and a poll survives the model rebuild every round swap performs.
+
+⚠️ The idle sway clip animates the same rotation the wind-up writes, so the AnimationPlayer is
+stopped while charging and resumes on its own afterwards. Animating position instead of rotation
+is what made the arms float earlier; do not reintroduce it.
+
+**Still open (needs the design treatment, not more mechanism):** the moodboard's THE ATTACKER card
+draws *"charged throw (glow)"*. The wind-up covers strength; the glow does not exist yet. That is
+checklist 0.1's remaining half.
+
+## 2. What landed this pass
 
 - **Lighting and grade.** Ambient was `SKY` at 0.85 off a pale grey sky — a uniform fill that
   removed all form. Now an explicit cool ambient at 0.55 against a warm sun at 1.25, which is the

@@ -249,6 +249,41 @@ func _viewmodel_arms() -> Node3D:
 	return _arms
 
 
+## How far the throwing arm cocks back at FULL charge, in radians about the
+## elbow. The wind-up is the ONLY in-world readout of throw strength a Person
+## has in first person — the HUD charge meter is on the YOU card at the bottom
+## corner, which nobody looks at while aiming. 0.62 rad (~36°) is enough to be
+## unmistakable in peripheral vision without the fist leaving the frame.
+const VIEWMODEL_WINDUP_RAD: float = 0.62
+
+## Drives the throwing arm's wind-up from live charge power, 0..1, or -1 for
+## "not charging". Polled by character_visual.gd rather than driven by a signal,
+## for the same reason that file already polls carry scale and spin: charge is a
+## continuously-varying value, not an event, and a poll self-heals across a model
+## rebuild on the round swap.
+##
+## ⚠️ The idle clip animates the SAME rotation this writes, so it has to be
+## stopped while charging or it overwrites the pose every frame and the arm just
+## sways instead of cocking. It restarts on its own once charge ends and nothing
+## else is playing.
+func set_viewmodel_charge(power: float) -> void:
+	var arms := _viewmodel_arms()
+	if arms == null or not arms.visible:
+		return
+	var player := arms.get_node_or_null("AnimationPlayer") as AnimationPlayer
+	var arm := arms.get_node_or_null("RightPivot/Arm") as Node3D
+	if player == null or arm == null:
+		return
+	if power < 0.0:
+		# Not charging. Let a throw/grab one-shot finish before idle resumes.
+		if not player.is_playing():
+			player.play("idle")
+		return
+	if player.current_animation == "idle":
+		player.stop()
+	arm.rotation.x = VIEWMODEL_WINDUP_RAD * clampf(power, 0.0, 1.0)
+
+
 ## Plays a one-shot on the first-person viewmodel — the visible half of "your
 ## hand moves when you throw". Called by `character_visual.gd::play_action()`,
 ## which already resolves what kind of action happened for the third-person
