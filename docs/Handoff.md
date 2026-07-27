@@ -1213,7 +1213,7 @@ maximised, no aliasing, no stretch.
 All of these assume **F-1** (base resolution) and are much better after **F-2** (typeface) and
 **M-7** (a real background to tune contrast against).
 
-#### U-1 · Rebuild the HUD to the moodboard `[ ]`
+#### U-1 · Rebuild the HUD to the moodboard `[~]`
 
 `Dev_Plan.md` §4.4 has the target layout. The current `HUD.tscn` is a centred `VBoxContainer` of
 five stacked labels plus the Q-5 YOU card — functional, and nothing like the spec.
