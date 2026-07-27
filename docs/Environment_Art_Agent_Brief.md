@@ -6,8 +6,23 @@ load"*. It is the single biggest visual lever on the submission and one of only 
 whole remaining plan routed to Opus.
 
 **Lane:** 🎨 Design. **Worktree:** `.worktrees/design`, branch `art/<task>` off `integration`.
-**Checklist items owned:** **2.1a** (environment kit art direction), **2.2** (Eskinita).
+**Checklist items owned:** ~~**2.1a**~~ **done — see below**, **2.2** (Eskinita).
 **Paste-ready opener:** [`Agent_Prompts.md`](Agent_Prompts.md) → 🎨 Design lane.
+
+> ### ✅ 1.2 and 2.1a are closed (2026-07-28)
+>
+> - **1.2 · prop scale** — decided: props stay hero-scaled as units, the tsinelas scales to `0.32`
+>   only while `CARRIED`. Reasoning, measurements and the three rejected alternatives are in
+>   `Handoff.md` **§0.11**. §7 of this brief stated the fork; it is now answered, and the
+>   implementation is checklist **0.6** on the build lane.
+> - **2.1a · kit art direction** — delivered as
+>   **[`Environment_Kit_Spec.md`](Environment_Kit_Spec.md)**. Read that instead of re-deriving §5's
+>   suggested piece list; it audits and supersedes it. It also carries the Metro/Eskinita naming
+>   reconciliation §2 asks for, the `ENV_*` palette, the boundary technique, the measured
+>   **1.25-unit FPP eye height** that tiers every piece by height, and three defects found on the
+>   way (B-81, B-82, B-83).
+>
+> **What is left of this brief for the next agent: 2.2, Eskinita.**
 
 ---
 
@@ -93,9 +108,17 @@ That is worse than a visible wall, not better, and the fix is the same one the b
    `-0.8`, not `0`.** Four separate nodes were placed against an imagined character standing on
    `y = 0` and all four were wrong: the FPP camera pivot (B-78), the ground ring (B-80), the
    floating tag, and the hand carry point (B-79). **If you place anything relative to a character,
-   check this first.** For map geometry the equivalent question is the floor: `Main.tscn`'s `Floor`
-   is a `BoxShape3D` of `(40, 1, 40)` centred at the origin, so its **top surface is `y = 0`** and
-   the box extends to `-1`.
+   check this first.**
+
+   > ⚠️ **CORRECTED 2026-07-28 — the paragraph that used to be here was wrong. See B-82.** It
+   > claimed `Main.tscn`'s `Floor` has its **top surface at `y = 0`** and extends to `-1`. It does
+   > not. `Floor` and its `CollisionShape3D` carry **no transform**, and the shape is a
+   > `BoxShape3D` of `(40, 1, 40)` centred on the origin, so the slab spans **`y = -0.5 … +0.5`**
+   > and its **top surface is `y = +0.5`**. Anything placed against the old claim sinks half a
+   > metre. The same error consequently put all four units at `y = 1.0`, which is a capsule floor
+   > of `0.2` — 0.3 units *inside* the slab. Fixing the scene is checklist **0.7** (build lane,
+   > `Main.tscn` is shared). **`Eskinita.tscn` puts its own floor top at exactly `y = 0`** so the
+   > convention every other document assumes becomes true where it matters.
 
 2. **`HazardZone` must not join the `hazard_zone` group.** `main.gd::_reset_world()` frees every
    member of that group every round. The permanent map hazard is placed as a scene node with
