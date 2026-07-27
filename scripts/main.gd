@@ -63,14 +63,32 @@ const CHARACTER_SCENE: PackedScene = preload("res://scenes/characters/CharacterB
 ## TeamAProp has one wired directly in Main.tscn, since it's the only
 ## character using that particular resource instance.
 const PERSON_ACTION_ABILITY: AbilityBase = preload("res://scripts/abilities/resources/person_action.tres")
-## B-04: networked Props previously spawned with `ability = null` — only
-## Persons got one. Only quick_stand.tres exists as a real roster resource so
-## far (the other five specials have no .tres yet — see B-24/Phase 2 for
-## character select), so every networked Prop gets it for now, same as
-## Main.tscn already hardcodes for the local flow's TeamAProp. `.duplicate()`
-## per PERSON_ACTION_ABILITY doc — cooldown/charge state lives on the
-## Resource instance, don't share it across Props.
-const PROP_ABILITY: AbilityBase = preload("res://scripts/abilities/resources/quick_stand.tres")
+## B-76: every networked and local-test Prop used to get Quick Stand
+## regardless of which side of the round it was playing. Quick Stand has no
+## get_throw_profile(), so a Prop on the offence side threw with no identity
+## at all — carriable.gd's _profile() fell back to throw_default.tres and none
+## of the three Tsinelas specials (Bagsak Bomb, Bakya Bash, Flick Dash) were
+## ever reachable in a running game. `.tres` for the other two Can specials
+## (Spin Guard, Shatter Trap) exist too but aren't wired to any roster slot
+## yet — same B-24/Phase 2 gap as the Tsinelas side, character select assigns
+## both eventually.
+##
+## Interim fix, per checklist 0.2: _prop_ability_for() below picks the ability
+## from role (is_can) + team, called at spawn AND every round reset
+## (_reset_world) — is_can flips every round, so a Prop's ability has to be
+## re-picked every round or it goes stale exactly one round after spawn, which
+## is the same "resolved once, wrong from round 2" trap as B-42/B-80(c).
+## `.duplicate()` at every call site per PERSON_ACTION_ABILITY doc.
+const CAN_ABILITY: AbilityBase = preload("res://scripts/abilities/resources/quick_stand.tres")
+## Two of the three Tsinelas identities, picked one per team for the biggest
+## contrast a 2-Prop match can show: Bakya Bash is the heavy knockdown
+## (forces_downed, flattest-but-one arc), Flick Dash is the fast curving poke
+## (steers hardest, never forces downed). A 2v2 match only ever has 2 Props,
+## so a single sitting cannot reach all three roster identities regardless of
+## which two are picked here — that needs 3.3 (character select). Bagsak Bomb
+## (the lob) is reachable today only by swapping one of these two constants.
+const TSINELAS_ABILITY_TEAM_A: AbilityBase = preload("res://scripts/abilities/resources/bakya_bash.tres")
+const TSINELAS_ABILITY_TEAM_B: AbilityBase = preload("res://scripts/abilities/resources/flick_dash.tres")
 ## Local-test roster, in a flat array so round-swap/registration code (below)
 ## can treat all 4 the same way it treats _spawned_characters for the
 ## networked flow, rather than hand-writing 4 near-identical blocks.
@@ -174,6 +192,13 @@ func _start_local_test() -> void:
 	team_b_person.team = 1
 	team_a_person.ability = PERSON_ACTION_ABILITY.duplicate()
 	team_b_person.ability = PERSON_ACTION_ABILITY.duplicate()
+	# B-76: Main.tscn no longer hardcodes a Prop ability (see its own node
+	# comment) — assign the role-correct one here, same as the networked spawn
+	# path. _reset_world() re-picks this every round; this is just the round-1
+	# value so there's no null/wrong-ability window before the first
+	# begin_next_round() below runs it.
+	team_a_prop.ability = _prop_ability_for(team_a_prop.is_can, team_a_prop.team).duplicate()
+	team_b_prop.ability = _prop_ability_for(team_b_prop.is_can, team_b_prop.team).duplicate()
 	_wire_downed_flash(team_a_prop)
 	_wire_downed_flash(team_b_prop)
 	_register_local_can()
@@ -366,6 +391,14 @@ func _spawn_player(peer_id: int) -> void:
 		"player_id": player_id,
 	})
 
+## B-76. Picks the ability class a Prop should carry THIS round, given its
+## role (is_can) and team. Never cached on the caller's side — call this again
+## every time is_can might have changed (spawn, and every _reset_world()).
+func _prop_ability_for(is_can: bool, team: int) -> AbilityBase:
+	if is_can:
+		return CAN_ABILITY
+	return TSINELAS_ABILITY_TEAM_A if team == 0 else TSINELAS_ABILITY_TEAM_B
+
 ## Runs on every peer (host and clients) when the spawner replicates a spawn.
 func _build_networked_character(data: Dictionary) -> Node:
 	var character: CharacterBase = CHARACTER_SCENE.instantiate()
@@ -383,8 +416,9 @@ func _build_networked_character(data: Dictionary) -> Node:
 		# doc above — don't share cooldown state across the two Persons in a match.
 		character.ability = PERSON_ACTION_ABILITY.duplicate()
 	else:
-		# B-04: Props carry the roster's class ability — see PROP_ABILITY doc.
-		character.ability = PROP_ABILITY.duplicate()
+		# B-76: the class ability depends on which side of the round this Prop
+		# is playing — see _prop_ability_for() doc.
+		character.ability = _prop_ability_for(character.is_can, character.team).duplicate()
 	character.set_multiplayer_authority(data["peer_id"])
 	_peer_teams[data["peer_id"]] = data["team"]
 	_peer_is_person[data["peer_id"]] = data["is_person"]
@@ -456,6 +490,12 @@ func _reset_world(team_a_is_can: bool) -> void:
 		# a Can (Session 7: 1 Person + 1 Prop per team, not two Props).
 		character.team_is_can_side = team_is_can_side
 		character.is_can = team_is_can_side and not entry["is_person"]
+		# B-76: is_can just flipped (or held) above — a Prop's ability has to be
+		# re-picked every round or a Tsinelas keeps last round's Can ability
+		# (Quick Stand, no throw profile) one round after it stops being one.
+		# Persons never change class ability by role, only Props do.
+		if not entry["is_person"]:
+			character.ability = _prop_ability_for(character.is_can, entry["team"]).duplicate()
 		# B-10: reset + reposition every unit — Persons and the off-side Prop
 		# were carrying downed/sealed state, dents, and speed multipliers into
 		# the next round before this.
