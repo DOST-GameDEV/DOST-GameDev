@@ -508,9 +508,14 @@ func _rpc_notify_ability_activate() -> void:
 ## happened, that peer applies it locally exactly like the old local-only
 ## flow, and the existing synchronizer replicates the resulting state to
 ## everyone else — no change needed there.
+##
+## B-66: this used to also call _flash_hit() here, but rpc_id() only ever
+## targets the STRUCK character's own owning peer — every other peer watching
+## the hit land saw no feedback at all. State resolution stays exactly here,
+## on the authority; the cosmetic half moved to _rpc_play_hit_vfx below,
+## broadcast to everyone.
 @rpc("any_peer", "call_local", "reliable")
 func _apply_hit_result(kind: String, duration: float) -> void:
-	_flash_hit() # B-44: runs on this character's own owning peer, any hit kind
 	match kind:
 		"stagger":
 			apply_stagger(duration)
@@ -521,9 +526,36 @@ func _apply_hit_result(kind: String, duration: float) -> void:
 		"dent":
 			apply_dent(duration)
 
-## B-44: brief white flash on a landed hit, any kind, any character.
+## B-66: the cosmetic half of a landed hit, broadcast to every peer (unlike
+## _apply_hit_result above, which only ever reaches the struck character's own
+## owning peer) — see hitbox.gd for the call site. Deliberately separate from
+## state resolution: gameplay outcome must stay exactly where it already was,
+## on the authority.
+##
+## "any_peer", not "authority" — confirmed live: hit resolution always runs
+## on the HOST (hitbox.gd), but a struck character's multiplayer authority is
+## its OWNING peer, which for any non-host player's own unit is NOT the host.
+## An "authority"-mode RPC is only accepted when sent BY that node's own
+## authority, so the host calling it on a client's character was silently
+## rejected — logged as "RPC '_rpc_play_hit_vfx' is not allowed ... Mode is
+## authority" on the receiving client, meaning the VFX never played for any
+## hit landing on a non-host player. Same reasoning _apply_hit_result already
+## uses "any_peer" for, just missed here initially.
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_play_hit_vfx() -> void:
+	_flash_hit()
+
+## B-44/Q-8: brief white flash + impact particles on a landed hit, any kind,
+## on every peer (see _rpc_play_hit_vfx). Camera shake is additionally gated
+## to only the struck player's own screen — a shake when a stranger across
+## the map gets bumped is noise, not feedback.
 func _flash_hit() -> void:
 	_visual.flash_hit()
+	var is_mine := is_multiplayer_authority() if NetworkManager.is_networked() else player_id == 1
+	if is_mine:
+		var rig := get_node_or_null("CameraRig") as CameraRig
+		if rig:
+			rig.shake()
 
 ## Maps a base action name (e.g. "move_left") to this character's own input
 ## action (e.g. "move_left_p1" / "move_left_p2"), per `player_id`.

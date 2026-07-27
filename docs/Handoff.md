@@ -532,8 +532,9 @@ THROW (glow effect)*, *BODY-BLOCK HITBOX (contact effect)*. `Hitbox.landed_on` a
 the hook (B-23) and needs to fire on every peer, not just the host.
 **[FIXED]** (partial) added a brief white mesh flash on any landed hit, triggered from
 `_apply_hit_result()` (runs on the target's own owning peer, any hit kind, either game mode) — no
-new assets needed. `landed_on` itself is still unused (still only fires on the host). Sound,
-particles, hitstop, and screenshake are still open — those need real assets/design, not a code fix.
+new assets needed. **Q-8 added screenshake and impact particles** (see B-66) on top of this, both
+code-built with no new assets. `landed_on` itself is still unused. Sound and hitstop are still
+open — those need real assets/design, not a code fix.
 
 **B-45 · The moodboard's throw is a charged, aimed action; the code's is an instant fixed-range
 pulse. (NEW)** The Attacker card specifies *AIMING ARC (mouse pointer trail)* and *CHARGED THROW
@@ -845,6 +846,40 @@ ran, not the plain no-accent branch), accent `border_color` matched `UiTheme.DEF
 filled with that same `DEFENSE` color, and all three Team B pips at `UiTheme.CARD` (empty/unfilled,
 matching its 0 wins). Buttons unchanged (`Rematch`, relabelled `MAIN MENU` per `Dev_Plan.md` §4.3)
 through the existing theme; non-host Rematch hide untouched.
+
+**B-66 · Hit feedback only ever played on the struck character's own owning peer. (NEW, Q-8)**
+`_apply_hit_result` is `@rpc("any_peer", "call_local", "reliable")`, sent by the host via
+`rpc_id(target_authority, ...)` — reaching only that one peer. Every other peer watching the same
+hit land saw nothing at all: no flash, no shake, no particles.
+**[FIXED]** split the cosmetic half out into a new `_rpc_play_hit_vfx()`, broadcast to every peer
+from `hitbox.gd` right after the existing state-resolution call; state resolution
+(`apply_stagger`/`go_downed`/`seal`/`apply_dent`) stays exactly where it was, on the authority.
+Also added, per Q-8's scope: `CameraRig.shake()` — a decaying positional offset on the camera node
+(never the character body's rotation, which would fight `_is_mouse_aimed()` and reproduce B-60),
+FPP at half TPP's strength, clamped via `max(current, new)` so rapid multi-hits can't stack; and
+`CharacterVisual._spawn_impact_particles()` — a code-built one-shot `GPUParticles3D` burst in
+`UiTheme.IMPACT`, no art asset, self-freeing on `finished`. `CharacterBase._flash_hit()` gates the
+shake call to only the struck player's own screen (`is_multiplayer_authority()` when networked,
+`player_id == 1` in Local Match — same resolution Q-5's YOU card already uses).
+Found and fixed a second real bug while verifying this one, in code from THIS same task, not
+pre-existing: the queue's own instructions specified `_rpc_play_hit_vfx` as
+`@rpc("authority", ...)`. Confirmed live with two real headless peers that this is wrong — hit
+resolution always runs on the **host** (`hitbox.gd`), but a struck character's multiplayer
+authority is its *owning peer*, which for any non-host player's own unit is **not** the host.
+Godot's `"authority"` RPC mode only accepts a call sent **by** that specific node's own authority,
+so the host calling it on a client's own character was silently rejected — the client's console
+logged `RPC '_rpc_play_hit_vfx' is not allowed ... Mode is "authority"`, meaning the fix would have
+shipped working only for hits landing on the host's own unit and doing nothing for anyone else,
+the exact bug it was meant to close. Switched to `"any_peer"`, matching `_apply_hit_result`'s
+already-correct pattern one line above it.
+Verified live, headless: Local Match — the driven unit's rig shows an active shake and exactly one
+`GPUParticles3D` child after a simulated hit, a second (not-mine) character's rig never activates
+its shake, holding a movement key through the hit leaves body `rotation.y` provably unchanged
+(the B-60 regression check), the shake fully decays and the camera returns to its exact cached
+base position, and the particle node frees itself afterward. Networked, after the `any_peer` fix —
+both a hit landing on the host's own character and one landing on the client's own character
+broadcast correctly to both peers with no errors, where the initial `"authority"` version failed
+for the second case exactly as predicted.
 
 **B-64 · The pause menu never actually paused anything. (NEW, Q-3)** `main.gd::_unhandled_input`
 toggled `pause_root.visible` and the cursor, never `get_tree().paused` — `RoundManager`'s round
@@ -1281,7 +1316,7 @@ when the round ends does not carry a slow into the next round.
 
 ---
 
-#### Q-8 · Hit feedback — shake and particles `[ ]`
+#### Q-8 · Hit feedback — shake and particles `[x]`
 
 **Review item 7. Partly built:** `CharacterVisual.flash_hit()` (`FLASH_DURATION` 0.15) already
 white-flashes a struck character, called from `CharacterBase._flash_hit()` inside the

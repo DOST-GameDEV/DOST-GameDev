@@ -56,9 +56,20 @@ var _mode: Mode
 var _pitch_deg: float = 0.0
 var _active: bool = false
 
+## Q-8: decaying camera-shake offset, applied to whichever camera this rig's
+## _mode actually uses — never by writing the character body's rotation
+## (which would fight _is_mouse_aimed() and reproduce B-60).
+var _shake_strength: float = 0.0
+var _shake_duration: float = 0.18
+var _shake_time_left: float = 0.0
+var _fpp_camera_base_position: Vector3 = Vector3.ZERO
+var _tpp_camera_base_position: Vector3 = Vector3.ZERO
+
 func _ready() -> void:
 	_character = get_parent() as CharacterBase
 	_mode = Mode.FPP if _character.is_person else Mode.TPP
+	_fpp_camera_base_position = fpp_camera.position
+	_tpp_camera_base_position = tpp_camera.position
 	# SpringArm3D's shapecast would otherwise hit the character's own capsule
 	# every frame and drag the camera in against its own body.
 	tpp_arm.add_excluded_object(_character.get_rid())
@@ -104,6 +115,46 @@ func set_active(active: bool) -> void:
 func set_aim_source(source: AimSource) -> void:
 	aim_source = source
 	set_process_unhandled_input(_active and aim_source == AimSource.MOUSE)
+
+## Q-8: brief decaying camera kick on a landed hit. Lives here (never on
+## arena_camera.gd, which is retired — B-58) so it rides whichever mode this
+## rig is already in and can never violate the FPP/TPP directive.
+##
+## strength/duration match whatever _process() is already mid-shake with by
+## taking the max of the two, never summing — a rapid multi-hit stacking
+## additively would produce an unrecoverable offset instead of just staying
+## at "one hit's worth" of kick.
+func shake(strength: float = 0.35, duration: float = 0.18) -> void:
+	var remaining_ratio := _shake_time_left / _shake_duration if _shake_duration > 0.0 else 0.0
+	var current_effective_strength := _shake_strength * remaining_ratio
+	if strength > current_effective_strength:
+		_shake_strength = strength
+		_shake_duration = duration
+		_shake_time_left = duration
+
+func _process(delta: float) -> void:
+	if _shake_time_left > 0.0:
+		_shake_time_left = max(0.0, _shake_time_left - delta)
+		var ratio := _shake_time_left / _shake_duration
+		var magnitude := _shake_strength * ratio
+		# FPP strength is roughly half of TPP's — the same offset is far more
+		# violent from a first-person eye position and reads as nausea rather
+		# than impact.
+		var effective := magnitude * (0.5 if _mode == Mode.FPP else 1.0)
+		_apply_shake_offset(Vector3(
+			randf_range(-1.0, 1.0) * effective,
+			randf_range(-1.0, 1.0) * effective,
+			0.0,
+		))
+	elif _shake_strength > 0.0:
+		_shake_strength = 0.0
+		_apply_shake_offset(Vector3.ZERO)
+
+func _apply_shake_offset(offset: Vector3) -> void:
+	if _mode == Mode.FPP:
+		fpp_camera.position = _fpp_camera_base_position + offset
+	else:
+		tpp_camera.position = _tpp_camera_base_position + offset
 
 ## B-61: hides this character's own body ONLY while you are looking through its
 ## eyes — i.e. an FPP rig that is currently the active camera. The original

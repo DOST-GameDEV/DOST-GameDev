@@ -59,6 +59,14 @@ const CAPSULE_HALF_HEIGHT_DOWN: float = -0.8
 
 const FLASH_DURATION: float = 0.15
 
+## Q-8: impact particle burst on a landed hit — the moodboard's "IMPACT EFFECT
+## (particle burst)". Built from a primitive + StandardMaterial3D in code, no
+## art asset. Roughly chest height so it reads against the character instead
+## of bursting at ground level.
+const IMPACT_PARTICLE_COUNT: int = 16
+const IMPACT_PARTICLE_LIFETIME: float = 0.4
+const IMPACT_PARTICLE_HEIGHT: float = 1.0
+
 ## Emitted whenever the instanced model is replaced. `camera_rig.gd` listens so
 ## it can re-apply the FPP self-hide: rig `_ready()` runs BEFORE
 ## `character_base.gd`'s (children are ready before parents), so at the moment
@@ -177,7 +185,9 @@ func _play_idle(model: Node3D) -> void:
 			return
 
 ## B-44: brief white flash on a landed hit, on every mesh this unit has.
+## Q-8: also bursts impact particles — see _spawn_impact_particles below.
 func flash_hit() -> void:
+	_spawn_impact_particles()
 	if _materials.is_empty():
 		return
 	if _flash_tween != null and _flash_tween.is_valid():
@@ -186,6 +196,40 @@ func flash_hit() -> void:
 	for i in range(_materials.size()):
 		_materials[i].albedo_color = Color.WHITE
 		_flash_tween.tween_property(_materials[i], "albedo_color", _base_albedos[i], FLASH_DURATION)
+
+## Q-8: one-shot burst, no art asset — a primitive point mesh + unshaded
+## StandardMaterial3D in UiTheme.IMPACT, matching the moodboard's "IMPACT
+## EFFECT (particle burst)". Frees itself once spent rather than leaking one
+## GPUParticles3D node per hit for the rest of the match.
+func _spawn_impact_particles() -> void:
+	var material := ParticleProcessMaterial.new()
+	material.direction = Vector3(0, 1, 0)
+	material.spread = 180.0 ## spherical emission
+	material.initial_velocity_min = 1.5
+	material.initial_velocity_max = 3.5
+	material.gravity = Vector3(0, -9.8, 0)
+	material.color = UiTheme.IMPACT
+
+	var point_mesh := SphereMesh.new()
+	point_mesh.radius = 0.04
+	point_mesh.height = 0.08
+	var point_material := StandardMaterial3D.new()
+	point_material.albedo_color = UiTheme.IMPACT
+	point_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	point_mesh.material = point_material
+
+	var particles := GPUParticles3D.new()
+	particles.emitting = false
+	particles.one_shot = true
+	particles.explosiveness = 1.0 ## a burst, not a stream
+	particles.amount = IMPACT_PARTICLE_COUNT
+	particles.lifetime = IMPACT_PARTICLE_LIFETIME
+	particles.process_material = material
+	particles.draw_pass_1 = point_mesh
+	particles.position.y = IMPACT_PARTICLE_HEIGHT
+	particles.finished.connect(particles.queue_free)
+	add_child(particles)
+	particles.emitting = true
 
 ## Q-6: a Guard blocking a hit had no feedback at all. Deliberately
 ## DEFENSE-tinted rather than white, so a blocked hit is never mistaken for a

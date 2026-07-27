@@ -86,6 +86,12 @@ func _on_area_entered(area: Area3D) -> void:
 
 	if NetworkManager.is_networked():
 		target._apply_hit_result.rpc_id(target.get_multiplayer_authority(), kind, stagger_duration)
+		# B-66/Q-8: unlike _apply_hit_result above (targeted at the struck
+		# character's own owning peer only), this broadcasts to every peer —
+		# otherwise nobody except the struck player ever sees the flash/shake/
+		# particles land.
+		target._rpc_play_hit_vfx.rpc()
 	else:
 		target._apply_hit_result(kind, stagger_duration)
+		target._rpc_play_hit_vfx()
 	landed_on.emit(target)
