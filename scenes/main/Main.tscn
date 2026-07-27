@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3 uid="uid://c3f7h9j1k2l4m"]
+[gd_scene load_steps=20 format=3 uid="uid://c3f7h9j1k2l4m"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="0"]
 [ext_resource type="PackedScene" path="res://scenes/characters/CharacterBase.tscn" id="1"]
@@ -9,6 +9,7 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/MatchResult.tscn" id="6"]
 [ext_resource type="PackedScene" path="res://scenes/ui/DebugBar.tscn" id="7"]
 [ext_resource type="Script" path="res://scripts/ui/pause_layer.gd" id="8"]
+[ext_resource type="Script" path="res://scripts/systems/hazard_zone.gd" id="9"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
 size = Vector3(40, 1, 40)
@@ -29,6 +30,9 @@ size = Vector3(2, 40, 82)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_killplane"]
 size = Vector3(90, 4, 90)
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_hazard"]
+radius = 3.0
 
 [sub_resource type="Environment" id="Environment_default"]
 background_mode = 1
@@ -87,6 +91,19 @@ script = ExtResource("5")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="KillPlane"]
 shape = SubResource("BoxShape3D_killplane")
+
+[node name="Hazards" type="Node3D" parent="."]
+
+[node name="HazardZone" type="Area3D" parent="Hazards"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 0.5, 5)
+collision_layer = 0
+collision_mask = 2
+script = ExtResource("9")
+speed_multiplier = 0.5
+lifetime = 0.0
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Hazards/HazardZone"]
+shape = SubResource("SphereShape3D_hazard")
 
 [node name="Camera3D" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.87, 0.5, 0, -0.5, 0.87, 0, 8, 10)

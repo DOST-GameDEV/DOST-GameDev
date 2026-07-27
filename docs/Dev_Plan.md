@@ -653,7 +653,7 @@ than sitting inside one of them, because it came from review of a running build.
 | **Q-4** | Match-result screen: verify, freeze behind it, then the Bo5 grid — **[x] fixed, verified headless** | 3 |
 | **Q-5** | HUD "YOU" card — which unit am I? — **[x] fixed, verified headless** | 3 |
 | **Q-6** | Surface the existing Guard/Dash on the HUD — **[x] fixed, verified headless** | 3 |
-| **Q-7** | Give `HazardZone` a visible footprint and place one | 4 |
+| **Q-7** | Give `HazardZone` a visible footprint and place one — **[x] fixed, verified headless** | 4 |
 | **Q-8** | Hit feedback — camera shake, impact particles, fix **B-66** | 5 |
 | **Q-9** | Quit button + main-menu moodboard pass | 3 |
 | **Q-10** | Make the debug switcher discoverable | 2 |
@@ -776,7 +776,8 @@ yet, see B-10/B-37 above) and the Option A/B decision itself, which nobody has m
       Person, not the Can.)* `character_visual.gd` re-applies the correct model on every role swap.
       **These assets are finished and off-limits to the current code queue.**
 - [ ] `Eskinita.tscn` and `BayanPlaza.tscn` with geometry, `SpawnPoints`, base circles, bounds
-- [ ] Map hazards on `HazardZone` (B-17 fixed — safe to build on now)
+- [x] Map hazards on `HazardZone` (B-17 fixed) — one permanent visible zone placed in the test
+      arena (**Q-7**, v3.1); real per-map hazard placement still waits on `Eskinita.tscn`/`BayanPlaza.tscn`
 - [x] Implement **Guard/Dash** (B-16) — Cans block (stamina-gated), Tsinelas dash-evade
       (cooldown-gated). First-pass numbers, not playtested/balanced.
 - [ ] Balance pass on cooldowns and ranges
