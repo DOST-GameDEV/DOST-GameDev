@@ -1,4 +1,4 @@
-[gd_scene load_steps=19 format=3 uid="uid://c3f7h9j1k2l4m"]
+[gd_scene load_steps=22 format=3 uid="uid://c3f7h9j1k2l4m"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="0"]
 [ext_resource type="PackedScene" path="res://scenes/characters/CharacterBase.tscn" id="1"]
@@ -9,6 +9,11 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/DebugBar.tscn" id="7"]
 [ext_resource type="Script" path="res://scripts/ui/pause_layer.gd" id="8"]
 [ext_resource type="Script" path="res://scripts/systems/hazard_zone.gd" id="9"]
+[ext_resource type="Shader" path="res://assets/ui/card_fold.gdshader" id="10"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_pause_fold"]
+shader = ExtResource("10")
+shader_parameter/fold_color = Color(0.016, 0.031, 0.22, 1)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
 size = Vector3(40, 1, 40)
@@ -206,3 +211,15 @@ text = "RESUME"
 unique_name_in_owner = true
 layout_mode = 2
 text = "RETURN TO MENU"
+
+[node name="FoldCorner" type="Control" parent="PauseLayer/PauseRoot/Card"]
+layout_mode = 1
+anchors_preset = 4
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -16.0
+offset_top = -16.0
+mouse_filter = 2
+material = SubResource("ShaderMaterial_pause_fold")

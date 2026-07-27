@@ -1255,7 +1255,7 @@ and vignette the downed flash (v5.7)`
 
 ---
 
-#### U-2 · Main menu and pause to the moodboard `[ ]`
+#### U-2 · Main menu and pause to the moodboard `[~]`
 
 The menu is already themed and has Play/Settings/Quit (Q-9). This is the **blueprint-grid card
 chrome** the moodboard's role cards specify, which nothing in the project reproduces yet.
@@ -1281,6 +1281,8 @@ is legible against the background — this is the B-34/v1.3 contrast trap, and i
 first. Esc works from every panel.
 
 **Commit:** `Apply the moodboard card chrome to the menu and pause screens (v5.8)`
+
+**[DONE @ v3.8]** `assets/ui/blueprint_grid.gdshader` and `assets/ui/card_fold.gdshader` created. `MainMenu.tscn` Background switched to a ShaderMaterial with the blueprint grid. `FoldCorner` Control (16×16, bottom-right anchor, mouse_filter=ignore) added as a direct child of `TitleCard` and `PlayCard` with the fold shader. `KeywordSpacer` + `KeywordStrip` (Caption variation, centred) appended to `TitleCardContent` after `QuitButton`. `FoldCorner` added to the pause `Card` in `Main.tscn`. `[~]` not `[x]`: F-2 (display typeface) is still blocked on a human licence decision, and M-8 (logo asset) has not landed — steps 4 and 5 of U-2 are open. No human has visually verified the grid or triangle on screen.
 
 ---
 
