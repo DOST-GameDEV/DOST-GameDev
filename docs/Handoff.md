@@ -731,6 +731,29 @@ one you look through still casts its own shadow.
 **B-28 · No export presets, no build, no CI.** `export_presets.cfg` is gitignored and none
 exists. The game has never been run outside the editor, and the submission needs a real build.
 
+**Q-7 verification note.** `HazardZone` gained a visual — a code-built `CylinderMesh` decal (no art
+asset), radius read from the actual `CollisionShape3D`'s `SphereShape3D` rather than a second
+exported number, `UiTheme.IMPACT` at 0.35 alpha, unshaded so it reads the same under any light.
+Placed one permanent instance (`Hazards/HazardZone` in `Main.tscn`, radius 3.0, `speed_multiplier
+= 0.5`, `lifetime = 0.0`, at `(5, 0.5, 5)` — clear of every `SPAWN_POINTS` entry) with
+`collision_layer = 0` / `collision_mask = 2` set directly in the scene, matching what `spawn()`
+already does for the ability-spawned case (a scene-placed zone doesn't run through that helper).
+Found and fixed two real bugs while wiring this up, neither visible from reading the code:
+(1) `HazardZone.spawn()` set `global_position` **after** `add_child()`, but `_ready()` — which now
+also builds the visual, positioned relative to `global_position` — fires synchronously **during**
+`add_child()`, so the ability-spawned path (Shatter Trap) would have built its decal at whatever
+position the zone happened to be at *before* being placed. Reordered to set position first.
+(2) The naive fix (`zone.global_position = at_position` before `add_child()`) throws
+`"!is_inside_tree()"` and silently leaves the zone at the origin — `global_position`'s setter
+requires already being in the tree. Switched to local `position`, safe because every caller passes
+an already-world-space `at_position` to a parent with an identity transform. Verified live,
+headless: the placed hazard's decal computes to exactly the expected world position and colour;
+it is not in the `hazard_zone` group and survives a forced round transition unfreed; a separately
+spawned Shatter-Trap-style hazard (elevated origin, unlike the floor-level map hazard) still
+projects its decal onto the floor correctly and does join the group. Not independently
+re-verified: the pre-existing speed-multiplier gameplay logic itself (B-17), since Q-7 only added
+the visual and didn't touch `_on_area_entered`/`_on_area_exited`.
+
 **Q-6 verification note.** Guard/Dash (B-16) was confirmed already fully implemented, exactly per
 §0.2 — this task was surfacing it on the HUD, not building it. Added read-only
 `get_guard_stamina_ratio()`/`get_dash_cooldown_ratio()` accessors to `CharacterBase`, a meter on
@@ -1215,7 +1238,7 @@ bar empties and refills over 2.5s, and pressing again mid-cooldown does nothing.
 
 ---
 
-#### Q-7 · A visible slow zone in the test map `[ ]`
+#### Q-7 · A visible slow zone in the test map `[x]`
 
 **Review item 6.** `scripts/systems/hazard_zone.gd` is complete and correct — per-zone multiplier
 stacking, `enter_speed_zone`/`exit_speed_zone`, and B-17's fix for an expiring-while-occupied zone.
