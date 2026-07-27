@@ -1,6 +1,6 @@
 extends RefCounted
 
-## The environment kit — checklist 2.1b, built to docs/Environment_Kit_Spec.md.
+## The environment kit — checklist 2.1b, built to docs/Art_Direction.md.
 ##
 ## Called from generate_all.gd. Lives in its own file rather than as twenty-odd
 ## more functions in that one, because generate_all.gd is where a reader goes to
@@ -13,7 +13,7 @@ extends RefCounted
 ##   * COLOURS COME FROM UiTheme CONSTANTS, never a retyped hex.
 ##   * NO OFFENSE (#f87020) AND NO DEFENSE (#0080e8), ever, on any of it. Orange
 ##     is offence and blue is defence project-wide, and the world is the largest
-##     surface in the frame. See Environment_Kit_Spec.md §2 rule 1.
+##     surface in the frame. See Art_Direction.md §2 rule 1.
 ##   * NO OUTLINES. The M-4 inverted-hull pass is for characters and hero props.
 ##     Nothing here goes through _apply_toon_pass and nothing here should.
 ##
@@ -251,7 +251,7 @@ func _plaza_tile() -> void:
 # =============================================================================
 
 ## 3.0 tall, which is decisively above the measured 1.25-unit FPP eye height —
-## see Environment_Kit_Spec.md §2. The bottom 0.4 is a darker damp course, and
+## see Art_Direction.md §2. The bottom 0.4 is a darker damp course, and
 ## that one extra extrude is the whole difference between a grey rectangle and a
 ## Manila wall.
 func _wall_plain() -> void:
@@ -326,7 +326,7 @@ func _post_electric() -> void:
 	_finish(w, "env_post_electric")
 
 ## Sampay. This is the Barong Barong reference folded into Eskinita rather than
-## spent on a third map that would never be built — see Environment_Kit_Spec.md
+## spent on a third map that would never be built — see Art_Direction.md
 ## §1. Strung ACROSS the alley overhead, never along it.
 func _laundry_line() -> void:
 	var w := ObjWriter.new("LaundryLine")
@@ -566,7 +566,7 @@ func _wall_corrugated_leaning() -> void:
 ## PHILIPPINE alley rather than any alley, and that is carried entirely by the
 ## outline: a motorcycle with a roofed sidecar bolted to its side.
 ##
-## WAIST-COVER TIER at 1.25 tall, so per Environment_Kit_Spec.md §2 it goes at
+## WAIST-COVER TIER at 1.25 tall, so per Art_Direction.md §2 it goes at
 ## the boundary or as deliberate cover — never scattered in the play area, where
 ## it would block an FPP Person whose eye is at 1.25.
 ##
@@ -756,7 +756,7 @@ func _base_circle_decal() -> void:
 	_finish(w, "env_base_circle_decal")
 
 ## 6.0 units from the base circle is where this goes — see
-## Environment_Kit_Spec.md §9 for the ballistics, and for the finding that
+## Art_Direction.md §9 for the ballistics, and for the finding that
 ## throw_bakya cannot reach it.
 func _throwing_line_decal() -> void:
 	var w := ObjWriter.new("ThrowingLineDecal")

@@ -21,8 +21,8 @@ one names the model it should run on, the files to read first, its exact scope, 
 
 | Brief | Workstream | Run on |
 |---|---|---|
-| [`Design_Agent_Brief.md`](Design_Agent_Brief.md) | 3D modelling — the `M-` block, meshes and the generator | Opus (design) / Sonnet (toolchain) |
-| [`Environment_Art_Agent_Brief.md`](Environment_Art_Agent_Brief.md) | The maps, the dressed boundary, field markings, skyboxes | **Opus, high** |
+| [`Art_Direction.md`](Art_Direction.md) | 3D modelling — the `M-` block, meshes and the generator | Opus (design) / Sonnet (toolchain) |
+| [`Art_Direction.md`](Art_Direction.md) | The maps, the dressed boundary, field markings, skyboxes | **Opus, high** |
 | [`Interaction_Tuning_Agent_Brief.md`](Interaction_Tuning_Agent_Brief.md) | Carry / throw / grab / reset channel — playtest and retune | **Sonnet, high** |
 | [`UI_Completion_Agent_Brief.md`](UI_Completion_Agent_Brief.md) | Charge meters, character select, off-screen indicators, typeface | **Sonnet, medium** |
 | [`Audio_Agent_Brief.md`](Audio_Agent_Brief.md) | The entire audio workstream — nothing exists today | **Sonnet, medium** |
@@ -40,7 +40,7 @@ one names the model it should run on, the files to read first, its exact scope, 
 ### 0.11 CHECKLIST 1.2 — prop scale decided: hero-scaled props, carried-scale tsinelas (2026-07-28)
 
 **Branch:** `art/prop-scale-and-kit`. **Lane:** 🎨 Design. **Supersedes nothing** — 1.2 was open,
-never answered. `Environment_Art_Agent_Brief.md` §7 and `Checklist.md` 1.2 both carried option (a)
+never answered. `Art_Direction.md` §7 and `Checklist.md` 1.2 both carried option (a)
 as a *recommendation*; this section is the decision, the numbers, and the reasoning.
 
 #### The diagnosis, verified by render and not by arithmetic
@@ -159,11 +159,11 @@ Filed rather than fixed, per `Concurrency_Protocol.md` §10. All three are on th
    `UiTheme.DEFENSE`. The tsinelas only ever exists on the **offence** side, so the attacking
    team's prop is wearing the defence colour — a direct breach of `Dev_Plan.md` §4.2's hard rule.
    The board disagrees twice over: **THE SLIPPER's card accent is magenta**, not blue. Visible in
-   this pass's `viewmodel_tpp.png`. `Design_Agent_Brief.md` §2's table is the source of the error —
+   this pass's `viewmodel_tpp.png`. `Art_Direction.md` §2's table is the source of the error —
    it assigns `DEFENSE` to "Can body, tsinelas sole" — and **that table is wrong**, not the rule.
 2. **B-82 — `Main.tscn`'s floor top is `y = +0.5`, not `y = 0`.** `Floor` and its `CollisionShape3D`
    carry no transform, and the shape is a `(40, 1, 40)` box centred on the origin, so it spans
-   `-0.5 … +0.5`. `Environment_Art_Agent_Brief.md` §4.1 and `Checklist.md` both state the top
+   `-0.5 … +0.5`. `Art_Direction.md` §4.1 and `Checklist.md` both state the top
    surface is `y = 0` and the box extends to `-1`. **Both are wrong.** Consequence: all four units
    are placed at `y = 1.0`, giving a capsule floor of `0.2` — **0.3 units inside the slab** — and
    they depenetrate upward on the first frames of every match.
@@ -390,7 +390,7 @@ yet."* Confirmed in code, and architectural rather than cosmetic:
 **The finding that settled it.** The moodboard already disagreed with the GDD.
 Its **THE SLIPPER** card is the only one of the four with **no input badge**, and
 its three illustrated states are *in-hand ready → thrown trajectory → retrieval
-highlight* (§4.1 of `Dev_Plan.md`, and §1 of `Design_Agent_Brief.md`, recorded
+highlight* (§4.1 of `Dev_Plan.md`, and §1 of `Art_Direction.md`, recorded
 independently). The art direction has described a thrown, retrieved slipper the
 whole time; the GDD is the doc that was out of step. B-45 and B-46 stop being
 open questions and become the spec.
@@ -613,7 +613,7 @@ attacking team's prop wears the defending colour — a direct breach of `Dev_Pla
 reuse either hue for anything else"). The moodboard disagrees independently: **THE SLIPPER's card
 accent is magenta**, as is **THE CAN's**. Visible in this pass's `viewmodel_tpp.png` as a bright
 blue slab.
-*Root cause of the error:* `Design_Agent_Brief.md` §2's palette table assigns `DEFENSE` to "Can
+*Root cause of the error:* `Art_Direction.md` §2's palette table assigns `DEFENSE` to "Can
 body, **tsinelas sole**". **That table is wrong and the rule is right.**
 *Severity:* P1 — it teaches the player the wrong colour language on the most-looked-at object in
 the game.
@@ -625,7 +625,7 @@ it renders well.
 **B-82 · `Main.tscn`'s floor top surface is `y = +0.5`, not `y = 0` — and two docs say
 otherwise. (NEW)** `Floor` and its `CollisionShape3D` carry **no transform**, and the shape is a
 `BoxShape3D` of `(40, 1, 40)`, so the slab spans `y = -0.5 … +0.5`.
-`Environment_Art_Agent_Brief.md` §4.1 and `Checklist.md` both assert the top surface is `y = 0` and
+`Art_Direction.md` §4.1 and `Checklist.md` both assert the top surface is `y = 0` and
 the box extends to `-1`. Both are wrong, in the same direction, and §4.1 offers it as the
 authoritative fact to place map geometry against.
 *Consequence:* `Main.tscn` places all four units at `y = 1.0`. With a 1.6 capsule that puts the
@@ -645,7 +645,7 @@ past them to the `KillPlane`.
 than §0.10's "the walls are invisible".
 *Fix:* belongs to **2.2**, not to a patch. Eskinita's dressed boundary and its colliders both go at
 `±20`, and `Main.tscn`'s `Bounds` node dies with the grey box. Specified in
-`Environment_Kit_Spec.md` §4.
+`Art_Direction.md` §4.
 
 **B-84 · The generator's determinism test cannot pass on a Windows checkout, and the generator is
 not at fault. (NEW)** `.gitattributes` declares `*.obj text` and `*.mtl text`, and `core.autocrlf`

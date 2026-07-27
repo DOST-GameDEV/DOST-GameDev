@@ -11,44 +11,44 @@ next_pass = ExtResource("3")
 
 [sub_resource type="Animation" id="Anim_idle"]
 resource_name = "idle"
-length = 2.4
+length = 2.6
 loop_mode = 1
 tracks/0/type = "value"
 tracks/0/imported = false
 tracks/0/enabled = true
-tracks/0/path = NodePath("RightArm:position")
+tracks/0/path = NodePath("RightPivot/Arm:rotation")
 tracks/0/interp = 2
 tracks/0/loop_wrap = true
-tracks/0/keys = {"times": PackedFloat32Array(0, 1.2, 2.4), "transitions": PackedFloat32Array(1, 1, 1), "update": 0, "values": [Vector3(0.2800, -0.4600, -0.3000), Vector3(0.2800, -0.4420, -0.2880), Vector3(0.2800, -0.4600, -0.3000)]}
+tracks/0/keys = {"times": PackedFloat32Array(0, 1.3, 2.6), "transitions": PackedFloat32Array(1, 1, 1), "update": 0, "values": [Vector3(0, 0, 0), Vector3(-0.045, 0, 0.02), Vector3(0, 0, 0)]}
 tracks/1/type = "value"
 tracks/1/imported = false
 tracks/1/enabled = true
-tracks/1/path = NodePath("LeftArm:position")
+tracks/1/path = NodePath("LeftPivot/Arm:rotation")
 tracks/1/interp = 2
 tracks/1/loop_wrap = true
-tracks/1/keys = {"times": PackedFloat32Array(0, 1.2, 2.4), "transitions": PackedFloat32Array(1, 1, 1), "update": 0, "values": [Vector3(-0.3000, -0.4800, -0.2800), Vector3(-0.3000, -0.4640, -0.2700), Vector3(-0.3000, -0.4800, -0.2800)]}
+tracks/1/keys = {"times": PackedFloat32Array(0, 1.3, 2.6), "transitions": PackedFloat32Array(1, 1, 1), "update": 0, "values": [Vector3(0, 0, 0), Vector3(-0.038, 0, -0.02), Vector3(0, 0, 0)]}
 
 [sub_resource type="Animation" id="Anim_throw"]
 resource_name = "throw"
-length = 0.42
+length = 0.46
 tracks/0/type = "value"
 tracks/0/imported = false
 tracks/0/enabled = true
-tracks/0/path = NodePath("RightArm:position")
+tracks/0/path = NodePath("RightPivot/Arm:rotation")
 tracks/0/interp = 2
 tracks/0/loop_wrap = false
-tracks/0/keys = {"times": PackedFloat32Array(0, 0.12, 0.22, 0.42), "transitions": PackedFloat32Array(1, 1, 1, 1), "update": 0, "values": [Vector3(0.2800, -0.4600, -0.3000), Vector3(0.2800, -0.5200, -0.1400), Vector3(0.2800, -0.3600, -0.6000), Vector3(0.2800, -0.4600, -0.3000)]}
+tracks/0/keys = {"times": PackedFloat32Array(0, 0.14, 0.24, 0.46), "transitions": PackedFloat32Array(1, 1, 1, 1), "update": 0, "values": [Vector3(0, 0, 0), Vector3(0.52, 0.10, 0), Vector3(-0.68, -0.06, 0), Vector3(0, 0, 0)]}
 
 [sub_resource type="Animation" id="Anim_grab"]
 resource_name = "grab"
-length = 0.36
+length = 0.40
 tracks/0/type = "value"
 tracks/0/imported = false
 tracks/0/enabled = true
-tracks/0/path = NodePath("RightArm:position")
+tracks/0/path = NodePath("RightPivot/Arm:rotation")
 tracks/0/interp = 2
 tracks/0/loop_wrap = false
-tracks/0/keys = {"times": PackedFloat32Array(0, 0.16, 0.36), "transitions": PackedFloat32Array(1, 1, 1), "update": 0, "values": [Vector3(0.2800, -0.4600, -0.3000), Vector3(0.2800, -0.6600, -0.4400), Vector3(0.2800, -0.4600, -0.3000)]}
+tracks/0/keys = {"times": PackedFloat32Array(0, 0.18, 0.40), "transitions": PackedFloat32Array(1, 1, 1), "update": 0, "values": [Vector3(0, 0, 0), Vector3(0.46, -0.14, 0), Vector3(0, 0, 0)]}
 
 [sub_resource type="AnimationLibrary" id="Lib_arms"]
 _data = {
@@ -59,15 +59,19 @@ _data = {
 
 [node name="ViewmodelArms" type="Node3D"]
 
-[node name="RightArm" type="MeshInstance3D" parent="."]
-transform = Transform3D(-0.55810, -0.27005, -0.00000, -0.18667, 0.38579, -0.44802, 0.19514, -0.40329, -0.42858, 0.28000, -0.46000, -0.30000)
+[node name="RightPivot" type="Node3D" parent="."]
+transform = Transform3D(-0.90016, -0.43556, -0.00000, -0.30109, 0.62224, -0.72261, 0.31474, -0.65046, -0.69126, 0.5800, -1.0200, -0.3400)
+
+[node name="Arm" type="MeshInstance3D" parent="RightPivot"]
 mesh = ExtResource("1")
 surface_material_override/0 = SubResource("Mat_arm")
 surface_material_override/1 = SubResource("Mat_arm")
 cast_shadow = 0
 
-[node name="LeftArm" type="MeshInstance3D" parent="."]
-transform = Transform3D(-0.55810, 0.27005, 0.00000, 0.18667, 0.38579, -0.44802, -0.19514, -0.40329, -0.42858, -0.30000, -0.48000, -0.28000)
+[node name="LeftPivot" type="Node3D" parent="."]
+transform = Transform3D(-0.90016, 0.43556, 0.00000, 0.30109, 0.62224, -0.72261, -0.31474, -0.65046, -0.69126, -0.6000, -1.0400, -0.3200)
+
+[node name="Arm" type="MeshInstance3D" parent="LeftPivot"]
 mesh = ExtResource("1")
 surface_material_override/0 = SubResource("Mat_arm")
 surface_material_override/1 = SubResource("Mat_arm")
