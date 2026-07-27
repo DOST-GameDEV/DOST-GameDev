@@ -63,7 +63,23 @@ func debug_register_bar(bar: DebugBar) -> void:
 func debug_unregister_bar() -> void:
 	_bar = null
 
-func _unhandled_key_input(event: InputEvent) -> void:
+## ⚠️ `_input`, NOT `_unhandled_key_input`. Playtest 0.4 reported "I can't Tab to
+## the can", and there are TWO independent reasons for it — this fixes the one
+## that bites even in Local Match.
+##
+## Godot binds Tab to the built-in `ui_focus_next` action, and the viewport's GUI
+## layer consumes focus-navigation keys BEFORE unhandled input runs. The HUD and
+## the DebugBar are Controls, so as soon as anything on screen is focusable, Tab
+## moves focus instead of reaching here and `_unhandled_key_input` never fires
+## at all. F1-F6 were unaffected, which is why this looked like "Tab
+## specifically is broken" rather than "the handler is not being called".
+##
+## Handling it in `_input` puts this ahead of the GUI layer. Safe because every
+## branch below is gated on `_is_active()` (debug build, match scene, local
+## match) and every recognised key calls `set_input_as_handled()`, so nothing
+## else in the game ever sees these presses, and unrecognised keys fall straight
+## through untouched.
+func _input(event: InputEvent) -> void:
 	if not _is_active():
 		return
 	var key := event as InputEventKey
@@ -95,6 +111,18 @@ func _unhandled_key_input(event: InputEvent) -> void:
 ## Both guards from §0.3: no-op outside a local match, and no-op if the scene
 ## doesn't actually hold the four local-test units (menu, or a networked match
 ## where `_clear_local_test_characters()` freed them).
+##
+## ⚠️ THE SECOND REASON "I can't Tab to the can" HAPPENS, and it is not a bug.
+## A networked match returns false here on purpose: every peer owns exactly one
+## character, `character_base.gd::_physics_process` gates movement behind
+## `is_multiplayer_authority()`, and `main.gd::_clear_local_test_characters()`
+## has already freed the four local units this switcher addresses by name. There
+## is nothing to switch to and reassigning `player_id` would grant no control.
+##
+## So if Tab does nothing and Esc shows "PAUSED — the match is still running",
+## the session is HOSTED, not Local Match. That combination is the tell, and it
+## is exactly what the 0.4 playtest reported. **Solo-test through Local Match**,
+## which is the mode this switcher exists for.
 func _is_active() -> bool:
 	if _bar == null or NetworkManager.is_networked():
 		return false

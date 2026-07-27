@@ -402,6 +402,27 @@ touch map scenes.
       the mesh is. Minimum viable set: bump, slipper release, slipper impact on
       lata, lata knocked down, reset-channel complete, round win, match win, and
       one ambience loop per map. Licences go on Form 03 with everything else.
+- [x] **4.1a · Jump — every unit, Person and Prop.** 🎨 Design — **playtest 0.4 request.**
+      Did not exist: zero occurrences of "jump" in `project.godot` or
+      `character_base.gd`. Added `jump_p1..p4` (P1 Space, P2 Numpad-0, P3 RShift,
+      P4 Numpad-Enter), rebindable for P1/P2, and one impulse in
+      `character_base.gd`. Props jump too — the design pillar is *friendslop*, and
+      a hopping lata needs no justification where refusing one would.
+      ⚠️ `JUMP_VELOCITY = 5.8` apexes at **0.841**, and that ceiling is a MAP
+      constraint: interior clutter is capped at 1.0 so an FPP eye at 1.25 sees
+      over it. Above ~1.0 every crate becomes a platform. Verified to parse and
+      run 300 frames silent; **not yet felt by a human.**
+- [x] **4.1b · P0 from playtest 0.4 — Esc left the mouse captured and never paused.**
+      🎨 Design. Three reported bugs, one cause: `settings_panel.gd` had no
+      visibility guard on `_unhandled_input`, and a hidden Control still receives
+      it in Godot. The hidden panel ate Esc and emitted `back_pressed`, which
+      shows the overlay without setting `mouse_mode` or `get_tree().paused`.
+- [x] **4.1c · Tab could not reach the Can.** 🎨 Design. Two independent causes.
+      Godot binds Tab to `ui_focus_next` and the GUI layer eats it before
+      `_unhandled_key_input`, so the switcher never saw it — moved to `_input`.
+      Separately, the switcher no-ops in a **networked** match by design; the
+      0.4 session was hosted, not Local Match, which is also why pause did not
+      freeze. **Solo-test through Local Match.**
 - [ ] **4.2 · Movement interpolation for remote characters.** 🤖 Sonnet, high
       Remote units visibly snap. High effort because it sits directly on the
       replication model. **Do this before 6.1** — testing over real wifi without
