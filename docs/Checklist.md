@@ -251,7 +251,7 @@ HUD contrast or hazard placement against a grey box.
         twelve-token `ENV_*` environment palette added to `ui_theme.gd`, the three-layer boundary
         technique, and the height law derived from the measured **1.25-unit FPP eye height**.
         Ticked as a **specification** — no geometry exists yet; that is 2.1b.
-  - [ ] **2.1b-0 · `transform` parameter on `add_revolve` / `add_extrude`.** 🤖 Sonnet, medium
+  - [x] **2.1b-0 · `transform` parameter on `add_revolve` / `add_extrude`.** 🤖 Sonnet, medium
         **Prerequisite for 2.1b.** `obj_writer.gd`'s revolve is locked to the Y axis at the
         object's origin and its extrude only ever extrudes vertically, so an upright wheel or a
         leaning sheet is not expressible. Add an optional trailing
@@ -260,6 +260,12 @@ HUD contrast or hazard placement against a grey box.
         already mandates it per piece) and cannot break determinism (`_fmt` snaps after the
         transform, and the weld key is the printed form). Rationale and the no-change fallback are
         in `Environment_Kit_Spec.md` §5.
+        **Done, verified by running:** a 90°-about-X transform on a flat revolve profile produced
+        vertices spread across 5 distinct Y values (confirmed upright, not still flat); an
+        identity-transform call produced byte-identical vertices to the old no-arg call (zero
+        behaviour change for every existing caller); a translated `add_extrude` moved every
+        vertex. Generator run twice — clean. `wall_corrugated_leaning` and `tricycle` are
+        unblocked for whoever builds 2.1b.
   - [x] **2.1b · Generate the kit — 28 pieces, in `tools/models/env_kit.gd`.** 🎨 Design (reassigned)
         Reassigned from Sonnet to Design by the human because the path-ownership table already
         gives Design `generate_all.gd`'s shape functions; claimed in `SHARED_LOCKS.md` first.
@@ -414,7 +420,7 @@ touch map scenes.
       `Main.tscn` and `main.gd`'s spawn paths. **Do it late** — it is the only
       way to playtest without four laptops, so it dies after the last playtest,
       not before.
-- [ ] **5.4 · Decide the `.import` UID churn (B-71) — and the EOL churn (B-84).** 🤖 Sonnet, medium
+- [x] **5.4 · Decide the `.import` UID churn (B-71) — and the EOL churn (B-84).** 🤖 Sonnet, medium
       Either accept it or stop tracking `.import` UIDs. Low stakes, but it makes
       every "regenerate and check `git status`" acceptance test unreliable, and
       those are load-bearing for the whole M-block.
@@ -426,6 +432,9 @@ touch map scenes.
       broken.** Fix: `*.obj text eol=lf`, `*.mtl text eol=lf`, then `git add --renormalize .`.
       **Do this before 2.1b**, which adds ~26 more generated meshes to an acceptance test that
       currently cries wolf on every run.
+      **Done.** B-84 fixed (`eol=lf` pinned, renormalized, determinism test run twice clean).
+      B-71 decided: accept the churn, formalized as a standing pre-commit check rather than a
+      two-lane-period workaround. See `Handoff.md` B-71/B-84.
 
 ---
 
