@@ -32,6 +32,15 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE # item 14: defensive — Main.tscn captures it for a match
 	GameVersion.attach_to(self) # build stamp, bottom-right — see game_version.gd
 
+	# Q-1/B-62: a bounce back here from main.gd after the host quit or a join
+	# failed — land on the Play menu (not the title screen) since the player
+	# was mid-match and most likely wants to rejoin or re-host immediately.
+	if GameLaunch.pending_status_message != "":
+		title_screen.visible = false
+		play_menu.visible = true
+		status_label.text = GameLaunch.pending_status_message
+		GameLaunch.pending_status_message = ""
+
 	game_mode_option.clear()
 	# B-33: Option A has been fully implemented since Session 7 (hitbox.gd's
 	# dent branch, round_manager.gd's dent-based win check) — the "(coming

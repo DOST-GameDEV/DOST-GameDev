@@ -19,7 +19,14 @@ enum GameMode {
 var pending_action: String = "" ## "", "host", "join", or "local"
 var pending_join_address: String = ""
 var game_mode: GameMode = GameMode.OPTION_B
+## Q-1/B-62: set by main.gd right before bouncing back to MainMenu.tscn after
+## a network teardown the player didn't initiate (host quit, connection
+## failed), so main_menu.gd can explain why they're back here instead of a
+## silent, crash-looking bounce. Consumed once, same one-shot pattern as
+## pending_action.
+var pending_status_message: String = ""
 
 func reset() -> void:
 	pending_action = ""
 	pending_join_address = ""
+	pending_status_message = ""

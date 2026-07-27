@@ -731,6 +731,22 @@ one you look through still casts its own shadow.
 **B-28 · No export presets, no build, no CI.** `export_presets.cfg` is gitignored and none
 exists. The game has never been run outside the editor, and the submission needs a real build.
 
+**B-62 · Clients hung forever when the host quit. (NEW, Q-1)** `NetworkManager.server_disconnected`
+already fired and already nulled the peer / cleared `connected_peer_ids`, but nothing in the
+codebase listened to it — a client was left in `Main.tscn` with a dead peer, a frozen timer, and
+no way out but Alt+F4. A join to an unreachable address (`connection_failed`) had the same
+soft-lock, just triggered before anyone ever connected.
+**[FIXED]** `main.gd::_start_joining()` connects both signals (not `_ready()` — a host has no
+server to lose and Local Match has no `NetworkManager` session at all). Both handlers release the
+mouse, reset `MatchManager`/`RoundManager`/`GameLaunch`, set a new
+`GameLaunch.pending_status_message`, and return to `MainMenu.tscn`; `main_menu.gd` lands on the
+Play menu (not the title screen) and shows that message once. Verified live, headless, with the
+real Godot 4.7 binary: joining `127.0.0.1` with no host running printed
+`connection_failed fired` and the menu consumed `"Could not reach that host."`; hosting, joining
+from a second instance, then force-killing the host process printed `server_disconnected fired`
+and the client's menu consumed `"Host ended the match."` (temporary print instrumentation,
+reverted before commit, same as B-01/B-29's verification pattern).
+
 ---
 
 ## 4. Immediate Execution Queue
@@ -765,7 +781,7 @@ not *build*. Rewriting working code is a protocol violation, not initiative.
 
 ### P0 — Network soft-locks
 
-#### Q-1 · Clients hang forever when the host quits `[ ]`
+#### Q-1 · Clients hang forever when the host quits `[x]`
 
 **Review item 1. New bug — log it as B-62.**
 

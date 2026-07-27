@@ -647,7 +647,7 @@ than sitting inside one of them, because it came from review of a running build.
 
 | Item | What | Phase it belongs to |
 |---|---|---|
-| **Q-1** | Host quits → clients hang forever (**B-62**) | 0 |
+| **Q-1** | Host quits → clients hang forever (**B-62**) — **[x] fixed, verified headless** | 0 |
 | **Q-2** | Mid-round disconnect leaves a freed Can tracked (**B-63**) | 0 |
 | **Q-3** | Pause overlay does not freeze the game (**B-64**) | 3 |
 | **Q-4** | Match-result screen: verify, freeze behind it, then the Bo5 grid | 3 |
