@@ -117,7 +117,17 @@ const HAND_BONE_CANDIDATES: Array[String] = ["arm-right", "arm-left"]
 ## lives HERE rather than in carriable.gd on purpose: it is a fact about how the
 ## model is laid out, and character_base.gd must never learn it — same rule that
 ## keeps dents out of it.
-const HAND_CARRY_OFFSET: Vector3 = Vector3(0.0, 0.62, -0.12)
+##
+## ⚠️ WORLD UNITS, in the arm bone's rotated frame — NOT bone-local units.
+## `_build_hand_attachment` divides by PERSON_SCALE before writing it, because
+## the HandPoint hangs off a BoneAttachment3D whose global basis already carries
+## the model's 2.38 scale. The original code wrote this constant straight onto
+## the node, so every component was silently multiplied by 2.38: the measured
+## result was a slipper parked at CharacterBase-local (-1.00, +1.12, -0.45) —
+## a metre out to the character's left and above the top of its own head, which
+## is where "the held slipper isn't in their hand" came from. Verified in-engine
+## by rendering it, not by reading it.
+const HAND_CARRY_OFFSET: Vector3 = Vector3(0.65, 0.21, -0.25)
 
 const FLASH_DURATION: float = 0.15
 
@@ -335,7 +345,10 @@ func _build_hand_attachment() -> Node3D:
 		# it will here — the item simply sits at the elbow and nothing errors.
 		var point := Node3D.new()
 		point.name = "HandPoint"
-		point.position = HAND_CARRY_OFFSET
+		# Divided by PERSON_SCALE: this node's parent chain runs through the
+		# Skeleton3D, which inherits the model's 2.38 scale, so a raw assignment
+		# lands at 2.38x. See HAND_CARRY_OFFSET's own note.
+		point.position = HAND_CARRY_OFFSET / PERSON_SCALE
 		attachment.add_child(point)
 		return point
 	return null
