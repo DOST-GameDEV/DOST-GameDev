@@ -504,8 +504,8 @@ Settle it before the deadline, not during it.
 
 | Screen | Exists | Work |
 |---|---|---|
-| Title | [~] | Logo bitmap replaces the `Label`. Buttons: Play · Settings · Quit — **Quit does not exist yet (Q-9).** |
-| Play menu | [~] | Back button and Option A label both fixed (B-34, B-33) — moodboard layout pass still not done (Q-9). |
+| Title | [~] | Buttons: Play · Settings · Quit — **all three present (Q-9, v3.3)**, card chrome applied. Logo bitmap still doesn't replace the text `Label`. |
+| Play menu | [~] | Back button and Option A label both fixed (B-34, B-33); card chrome applied (**Q-9**, v3.3). |
 | Character select | [ ] | 6 Props + Person. Feeds `GameLaunch`. Phase 3. |
 | Lobby | [ ] | Peer list, team assignment, ready-up, host "Start" (B-13). |
 | HUD | [~] | Full rebuild, §4.4. The "YOU" card and its Guard/Dash meter are **done (Q-5/Q-6, v2.9/v3.0)**. |
@@ -655,7 +655,7 @@ than sitting inside one of them, because it came from review of a running build.
 | **Q-6** | Surface the existing Guard/Dash on the HUD — **[x] fixed, verified headless** | 3 |
 | **Q-7** | Give `HazardZone` a visible footprint and place one — **[x] fixed, verified headless** | 4 |
 | **Q-8** | Hit feedback — camera shake, impact particles, fix **B-66** — **[x] fixed, verified headless** | 5 |
-| **Q-9** | Quit button + main-menu moodboard pass | 3 |
+| **Q-9** | Quit button + main-menu moodboard pass — **[x] fixed, verified headless** | 3 |
 | **Q-10** | Make the debug switcher discoverable | 2 |
 
 Two standing constraints for this batch: **the FPP/TPP directive in §0.1 is not negotiable**, and
@@ -757,8 +757,8 @@ yet, see B-10/B-37 above) and the Option A/B decision itself, which nobody has m
 - [x] `tumbang_preso.theme` + `UiTheme` constants from the tokens in §4.2 *(v1.3, applied
       project-wide)*
 - [ ] Font decision + licence recorded for Form 03 — **still the open blocker**, see Handoff §0.5
-- [x] Title / Play menu restyle, **Back button**, Option A gating *(B-34, B-33; a moodboard layout
-      pass plus the Quit button is Q-9)*
+- [x] Title / Play menu restyle, **Back button**, Option A gating *(B-34, B-33; the moodboard card
+      chrome and Quit button landed in Q-9, v3.3)*
 - [~] HUD rebuild (§4.4) — the "YOU" card (**Q-5**, v2.9) and its Guard/Dash meter (**Q-6**, v3.0)
       are both done; the rest of the moodboard HUD layout (team panels, Bo5 pips in-match, timer
       urgency pulse) is still open

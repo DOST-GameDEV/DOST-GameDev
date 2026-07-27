@@ -847,6 +847,27 @@ filled with that same `DEFENSE` color, and all three Team B pips at `UiTheme.CAR
 matching its 0 wins). Buttons unchanged (`Rematch`, relabelled `MAIN MENU` per `Dev_Plan.md` §4.3)
 through the existing theme; non-host Rematch hide untouched.
 
+**Q-9 verification note.** Added a `QuitButton` to `TitleScreen` (order: Play · Settings · Quit,
+per `Dev_Plan.md` §4.3 — `StartButton`'s label also changed from "START" to "PLAY" to match), wired
+to a plain `get_tree().quit()`. Deliberately title-screen-only, not the in-match pause menu — a
+mid-match quit that skips `NetworkManager.disconnect_network()` would strand other peers, the same
+soft-lock Q-1 fixed from the other end. Moodboard pass: wrapped `TitleScreen`'s and `PlayMenu`'s
+existing content each in a new `PanelContainer` card (`UiTheme.card_style(PANEL, INK, IMPACT)` —
+IMPACT chosen as a neutral brand accent since neither panel is role-specific), applied in code via
+`add_theme_stylebox_override`, same pattern as the Q-4/Q-5 cards. Kept the existing node types
+(`VBoxContainer` positioning containers, unchanged anchors) and only added one nesting level rather
+than restructuring the proven layout — there is no way to visually inspect pixel layout in this
+headless-only session, so a larger structural rewrite would have been an unverifiable risk for a
+task whose acceptance criteria don't require one. Button font sizes and consistent width were
+already satisfied by the theme applied project-wide since v1.3 — no per-node change needed there.
+`GameVersion.attach_to(self)` build stamp untouched. Display typeface remains the open blocker in
+§0.5 — shipped on the default font, as before.
+Verified live, headless: `MainMenu.tscn` and the full `Main.tscn` flow both load with zero script
+errors after the restructure; pressing `QuitButton` (via its own `pressed` signal, connected
+identically to every other button on the screen) exits the process cleanly (exit code 0) with no
+further code executing afterward — confirmed by a print statement placed after the signal emission
+that correctly never ran.
+
 **B-66 · Hit feedback only ever played on the struck character's own owning peer. (NEW, Q-8)**
 `_apply_hit_result` is `@rpc("any_peer", "call_local", "reliable")`, sent by the host via
 `rpc_id(target_authority, ...)` — reaching only that one peer. Every other peer watching the same
@@ -1370,7 +1391,7 @@ the camera does not swing). Networked: both peers see the flash and particles on
 
 ### P3 — Menu and discoverability
 
-#### Q-9 · Quit button, and a moodboard pass on the main menu `[ ]`
+#### Q-9 · Quit button, and a moodboard pass on the main menu `[x]`
 
 **Review item 8.** Confirmed missing: `MainMenu.tscn` has `StartButton`, `SettingsButton`,
 `LocalButton`, `HostButton`, `JoinButton`, `BackButton` — no Quit.
