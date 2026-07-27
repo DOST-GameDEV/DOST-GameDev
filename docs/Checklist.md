@@ -243,16 +243,34 @@ HUD contrast or hazard placement against a grey box.
         already mandates it per piece) and cannot break determinism (`_fmt` snaps after the
         transform, and the weld key is the printed form). Rationale and the no-change fallback are
         in `Environment_Kit_Spec.md` §5.
-  - [ ] **2.1b · Generate the kit through `tools/models/generate_all.gd`.** 🤖 Sonnet, medium ⛔ 2.1b-0
-        **Build it from [`Environment_Kit_Spec.md`](Environment_Kit_Spec.md); §11 is the build
-        order and §12 is the acceptance.** Determinism rules unchanged (`Handoff.md` M-1): two runs
-        byte-identical, `git status` clean after the second. Convex collision per piece. Report the
-        actual triangle count per piece in the commit body, and grep the emitted `.mtl` files for
-        the two forbidden role colours.
-- [ ] **2.2 · Eskinita — the first real map (M-7).** 🤖 Opus, high ⛔ 2.1
+  - [x] **2.1b · Generate the kit — 28 pieces, in `tools/models/env_kit.gd`.** 🎨 Design (reassigned)
+        Reassigned from Sonnet to Design by the human because the path-ownership table already
+        gives Design `generate_all.gd`'s shape functions; claimed in `SHARED_LOCKS.md` first.
+        **Verified by running:** determinism (three runs, output hashed, byte-identical); every
+        piece under 400 tris (largest `sari_sari_store` at 216); no `#f87020`/`#0080e8` in any
+        `env_*.mtl`; imports clean; and **rendered** — five bugs were found that way and fixed
+        (invisible wires, unreadable corrugation, sampay posts standing in the road, a hazard decal
+        that shouted over the Props, and a base circle buried inside the road tiles).
+        **Two pieces still missing, on purpose:** `wall_corrugated_leaning` and `tricycle` need
+        2.1b-0. Nothing else is blocked.
+        *Deferred, do not lose:* **convex collision per piece was NOT generated** — Eskinita
+        collides on one invisible box ring behind the wall line instead, which
+        `Environment_Kit_Spec.md` §4 permits for a continuous wall. A `GridMap` map would need the
+        per-piece shapes.
+- [~] **2.2 · Eskinita — the first real map (M-7).** 🤖 Opus, high — **map built and rendered; NOT wired in**
       Opus rather than Sonnet: the hard question is "does this read as a
-      Philippine side street", not "does this scene load". Includes, in one
-      coherent pass rather than scattered:
+      Philippine side street", not "does this scene load".
+      **`scenes/maps/Eskinita.tscn` exists, loads, and renders as a street** — asphalt, kerbs,
+      GI-sheet wall line with rust skirts, electric posts with sagging service wire, sampay strung
+      overhead, building masses behind, seeded clutter, lane markings, base circle, throwing lines
+      and a chevroned jeepney lane. Authored by `tools/maps/build_eskinita.py` (123 instances is
+      too many to hand-place); edit the script, not the scene. Screenshots in the PR.
+      **⛔ WHAT IS NOT DONE, and why it is not the design lane's to finish:**
+      `main.gd` still loads the grey box — instancing the map means editing **`Main.tscn`, which
+      the build lane holds the lock on**, and `main.gd` is build-lane code outright. So the map is
+      committed but **unreachable from the running game**, and nobody has played it. The remaining
+      bullets below are build-lane work; see 2.2a.
+      Includes, in one coherent pass rather than scattered:
   - [ ] `scenes/maps/Eskinita.tscn`, playable area kept at roughly the current
         40×40 — **do not change arena scale in the same commit as arena art**,
         or a movement-feel regression is unattributable.
@@ -278,6 +296,16 @@ HUD contrast or hazard placement against a grey box.
         ships a flat `background_color` and no sky at all.
   - [ ] `Main.tscn` instances the map instead of carrying `Floor`/`Bounds`
         directly, so map #2 is a scene swap rather than a rebuild.
+- [ ] **2.2a · Wire Eskinita into the game.** 🤖 Sonnet, medium ⛔ needs the `Main.tscn` lock
+      The map is built and rendered but nothing loads it. Three things, all build-lane:
+      1. `Main.tscn` instances `scenes/maps/Eskinita.tscn` in place of its own `Floor` and
+         `Bounds` — which also retires B-83 (the old colliders sit at ±40 around a ±20 floor) and
+         B-82 (its floor top is y=+0.5; Eskinita's is y=0, as every doc assumes).
+      2. `main.gd` prefers the map's `SpawnPoints/Spawn0..3` `Marker3D`s over its hardcoded
+         `SPAWN_POINTS`. **This is where B-54 finally gets answered** — the four markers are
+         already placed as two team pairs at opposite ends of the alley.
+      3. Delete the temporary decals from 0.3; the map carries real ones now.
+      *Then* 0.4 can be played in a real map rather than a grey box.
 - [ ] **2.3 · Persons — moodboard restyle (M-5).** 🤖 Sonnet, medium ⛔ 2.1a
       Palette retint toward the moodboard's character render plus two or three
       silhouette-defining accessories. **Steps 1–3 only — step 4 (walk/run
