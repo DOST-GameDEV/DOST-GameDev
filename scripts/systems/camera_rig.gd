@@ -249,6 +249,24 @@ func _viewmodel_arms() -> Node3D:
 	return _arms
 
 
+## Plays a one-shot on the first-person viewmodel — the visible half of "your
+## hand moves when you throw". Called by `character_visual.gd::play_action()`,
+## which already resolves what kind of action happened for the third-person
+## model, so the two can never disagree about whether a throw occurred.
+##
+## No-ops on anything without a viewmodel (every Prop, every remote Person) and
+## on any clip this rig's arms do not carry, so a new action kind added to
+## ACTION_CLIPS never has to be mirrored here to avoid an error.
+func play_viewmodel_action(kind: String) -> void:
+	var arms := _viewmodel_arms()
+	if arms == null or not arms.visible:
+		return
+	var player := arms.get_node_or_null("AnimationPlayer") as AnimationPlayer
+	if player == null or not player.has_animation(kind):
+		return
+	player.play(kind)
+
+
 func _apply_fpp_self_hide() -> void:
 	# The viewmodel is the inverse of the self-hide: it is the one thing that
 	# must appear exactly when the rest of the body is being looked past. Driven
@@ -282,20 +300,28 @@ func _apply_fpp_self_hide() -> void:
 	# all, which is what "I can't see the arms in FPP" was. Dropping just the
 	# head keeps the body visible from the eye position and stops you looking at
 	# the inside of your own face.
-	var hid_anything := false
+	# ⚠️ B-73 ONCE HID ONLY THE HEAD. That is no longer right, and reverting to it
+	# brings back a bug the playtest found: "arms clip thru body, it feels
+	# disconnected from person".
+	#
+	# B-73 kept `body-mesh` visible because there was nothing else to look at in
+	# first person. There is now — the viewmodel above. Keeping the real body as
+	# well means two sets of arms in the same frustum: the viewmodel ones mounted
+	# to the camera, and the skinned ones hanging 0.37 below it. They intersect
+	# whenever the player looks down or the rig animates, which is exactly what
+	# "clipping through the body" is.
+	#
+	# The real body was never actually visible from the eye anyway — it sits
+	# below the frustum (see VIEWMODEL_ARMS_SCENE's note) — so hiding it costs
+	# nothing on screen and removes the intersection outright. This is what every
+	# first-person game does: the world sees the character, the player sees the
+	# viewmodel.
+	#
+	# SHADOWS_ONLY, never hide(): losing your own shadow in first person destroys
+	# the ground read, and it is the only cue a Person has for where they are
+	# standing relative to the base circle.
 	for node in meshes:
-		var is_head := node.name.to_lower().contains(FPP_HIDDEN_MESH_HINT)
-		(node as GeometryInstance3D).cast_shadow = (
-			GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if is_head
-			else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-		)
-		hid_anything = hid_anything or is_head
-	if not hid_anything:
-		# A model with no node matching the hint: fall back to the old
-		# hide-everything behaviour rather than parking the camera inside an
-		# opaque skull. Losing your body is bad; losing your view is worse.
-		for node in meshes:
-			(node as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+		(node as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not _active or aim_source != AimSource.MOUSE:
