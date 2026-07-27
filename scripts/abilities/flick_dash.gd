@@ -1,24 +1,27 @@
 extends AbilityBase
 class_name FlickDash
 
-## Havaianas — Flick Dash: short ranged dash-throw (see
-## docs/Tumbang_Preso_2v2_GDD.md, Roster: 🩴 Tsinelas Class). First-pass: a quick
-## forward velocity burst plus a small hitbox riding along with it. Whether this
-## should actually be a thrown projectile instead of a melee dash is a design detail
-## worth revisiting once the team feels this in-editor — flagged, not decided.
-## Untested.
+## Havaianas — Flick Dash. The line drive.
+##
+## TASK 0 CHANGED WHAT THIS IS — see bagsak_bomb.gd's header.
+##
+## This script's own comment already asked for this, before Task 0 existed:
+## "Whether this should actually be a thrown projectile instead of a melee dash
+## is a design detail worth revisiting once the team feels this in-editor —
+## flagged, not decided." It has now been decided, and the answer was thrown.
+##
+## A beach flip-flop is light and fast and goes a long way flat. throw_flick.tres
+## is the fastest launch (23) on the flattest arc (5°) with reduced gravity, the
+## most mid-flight steer (10.0 — it is the one slipper that genuinely curves),
+## and the only profile with `forces_downed` FALSE: it is a poke, not a
+## knockdown. Under Option A it still dents; under Option B it staggers and sets
+## up rather than finishing.
 
-@export var dash_speed: float = 16.0
-@export var dash_duration: float = 0.2
-@export var hit_radius: float = 1.0
+const PROFILE: ThrowProfile = preload("res://scripts/abilities/resources/throw_flick.tres")
 
-func _do_activate(character: CharacterBody3D) -> bool:
-	var c := character as CharacterBase
-	var forward := -c.transform.basis.z
-	c.velocity.x = forward.x * dash_speed
-	c.velocity.z = forward.z * dash_speed
-	# B-43: follow_character = true — this hitbox needs to ride along with the
-	# dash, not sit at a static world point the character immediately dashes
-	# away from (see AbilityUtils doc).
-	AbilityUtils.spawn_pulse_hitbox(c, hit_radius, dash_duration, false, Vector3(0, 0, -1.5), true)
-	return true
+func get_throw_profile() -> ThrowProfile:
+	return PROFILE
+
+## No-op by design — see bagsak_bomb.gd.
+func _do_activate(_character: CharacterBody3D) -> bool:
+	return false

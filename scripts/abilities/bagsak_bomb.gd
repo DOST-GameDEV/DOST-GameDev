@@ -1,15 +1,32 @@
 extends AbilityBase
 class_name BagsakBomb
 
-## Dyaryo — Bagsak Bomb: leap-slam, small AoE knockback (see
-## docs/Tumbang_Preso_2v2_GDD.md, Roster: 🩴 Tsinelas Class). Same AoE-pulse pattern as
-## Spin Guard but themed as an offensive slam; tune radius/duration separately per
-## character in the .tres resource. Doesn't force Downed on its own — GDD calls it
-## "knockback" not "instant-down", that's Bakya Bash's thing. First-pass / untested.
+## Dyaryo — Bagsak Bomb. The lob.
+##
+## TASK 0 CHANGED WHAT THIS IS. It used to be a leap-slam: the Tsinelas was a
+## character that walked around and this made it jump and burst. Since the
+## slipper is now a thrown, retrieved object rather than a unit that charges in
+## (see docs/Handoff.md §4's T-block), a Tsinelas special is no longer a button
+## the slipper presses — it is the identity of the slipper WHEN THROWN.
+##
+## The move survives intact, just relocated: Bagsak Bomb is still "goes up, comes
+## down hard, bursts on impact". It is now expressed as the arc (30°), the extra
+## gravity, and the wide impact radius in throw_bagsak.tres, and it is delivered
+## by the attacking Person's charge-throw instead of by the slipper's own legs.
 
-@export var slam_radius: float = 2.0
-@export var slam_duration: float = 0.2
+const PROFILE: ThrowProfile = preload("res://scripts/abilities/resources/throw_bagsak.tres")
 
-func _do_activate(character: CharacterBody3D) -> bool:
-	AbilityUtils.spawn_pulse_hitbox(character as CharacterBase, slam_radius, slam_duration)
-	return true
+## Read by carriable.gd when this slipper is launched. Duck-typed rather than
+## declared on AbilityBase, so the three Can abilities need no empty override.
+func get_throw_profile() -> ThrowProfile:
+	return PROFILE
+
+## Returns false, which per AbilityBase.activate()'s B-11 contract means "this
+## press did nothing, don't burn the cooldown". A thrown slipper has no button of
+## its own: its offensive power is the throw, and while LOOSE its escape tool is
+## the Prop-side Dash it already shares with every other Tsinelas
+## (character_base.gd::_process_dash). Adding a second self-propelled attack here
+## would put back exactly the "the slipper charges in by itself" reading Task 0
+## removed.
+func _do_activate(_character: CharacterBody3D) -> bool:
+	return false

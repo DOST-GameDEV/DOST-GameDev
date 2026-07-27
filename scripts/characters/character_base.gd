@@ -151,6 +151,12 @@ var _melee_hitbox: Hitbox = null
 ## live rather than cached as a bool because `aim_source` changes at runtime —
 ## the debug switcher hands the mouse between units mid-match.
 @onready var _camera_rig: CameraRig = get_node_or_null("CameraRig")
+## Task 0 — this unit's own carry state, when it is a throwable tsinelas. Present
+## on every character; reports is_throwable() false and stays LOOSE on a Person
+## or a Can. See carriable.gd.
+@onready var _carriable: Carriable = get_node_or_null("Carriable")
+## Task 0/1 — this unit's hands, when it is a Person. See carrier.gd.
+@onready var _carrier: Carrier = get_node_or_null("Carrier")
 
 ## True when the local player is aiming this unit with the mouse, i.e. the rig
 ## is writing `rotation.y` and this script must not fight it.
@@ -181,6 +187,17 @@ func _physics_process(delta: float) -> void:
 	if _dash_active_time_left > 0.0:
 		_dash_active_time_left -= delta
 
+	# Task 0: a tsinelas that is in someone's hand or in the air is not walking
+	# anywhere under its own power — the carry component owns its transform for
+	# the duration. Deliberately placed BEFORE the authority gate below so every
+	# peer runs it: both branches are deterministic from state the host has
+	# already broadcast (who is carrying / the launch origin and velocity), so
+	# computing them locally is cheaper and smoother than streaming a transform,
+	# and a carried slipper costs literally no bandwidth.
+	if _carriable != null and _carriable.drives_movement():
+		_carriable.physics_step(delta)
+		return
+
 	# Rough networking pass (Session 5): once a network peer exists, only the
 	# owning peer simulates movement/input for its own character — everyone
 	## else's copy is driven purely by MultiplayerSynchronizer (see
@@ -206,6 +223,11 @@ func _physics_process(delta: float) -> void:
 
 	if ability:
 		ability.tick(delta)
+
+	# Task 0/1: grab and charge-throw. Runs before the rest of the input block so
+	# a throw released this frame is not also read as an ability press below.
+	if _carrier != null and state == State.NORMAL:
+		_carrier.input_step(delta)
 
 	if state == State.NORMAL and Input.is_action_just_pressed(_action("bump")):
 		_open_bump_window()
@@ -288,9 +310,13 @@ func _physics_process(delta: float) -> void:
 	else:
 		direction = Vector3(input_dir.x, 0, input_dir.y).normalized()
 
+	# Task 0: a LOOSE tsinelas crawls rather than walks (CRAWL_SPEED_SCALE) — the
+	# retrieval scramble is only tense if getting home under your own power is
+	# genuinely slow. 1.0 for every other unit and every other carry state.
+	var carry_scale: float = _carriable.movement_speed_scale() if _carriable != null else 1.0
 	if direction:
-		velocity.x = direction.x * SPEED * _speed_multiplier
-		velocity.z = direction.z * SPEED * _speed_multiplier
+		velocity.x = direction.x * SPEED * _speed_multiplier * carry_scale
+		velocity.z = direction.z * SPEED * _speed_multiplier * carry_scale
 		# Face the direction we're moving — nothing wrote `rotation` before this,
 		# so every directional attack (melee Hitbox offset, PersonAction,
 		# BakyaBash, FlickDash, all built on `-transform.basis.z`/local offsets)
@@ -304,7 +330,10 @@ func _physics_process(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, 0, FRICTION * delta)
 		velocity.z = move_toward(velocity.z, 0, FRICTION * delta)
 
-	if Input.is_action_just_pressed(_action("special_ability")) and ability:
+	# Task 0: `and not _carrier_is_holding()` — with a slipper in hand this button
+	# is the charge-throw (carrier.gd owns it, above) and must not ALSO fire the
+	# ordinary ability. person_action.gd is now Tag-only for exactly this reason.
+	if Input.is_action_just_pressed(_action("special_ability")) and ability and not _carrier_is_holding():
 		# B-12: this used to run AFTER move_and_slide(), so an ability that sets
 		# velocity directly (Flick Dash's dash burst) applied a full physics
 		# frame late. Moved above move_and_slide() so a velocity change this
@@ -567,6 +596,36 @@ func _flash_hit() -> void:
 func _action(base_name: String) -> String:
 	return "%s_p%d" % [base_name, player_id]
 
+## Public form of _action(), for the Task 0 carry components (carriable.gd,
+## carrier.gd) which read this character's input set from outside this file.
+## Deliberately an alias rather than a rename: `_action` has ten call sites in
+## here and the string `_action(` is a substring of `play_action(`, so a blanket
+## rename is a silent-corruption risk for no benefit.
+func action_name(base_name: String) -> String:
+	return _action(base_name)
+
+## Task 1 — where a carried tsinelas rides on this character. Forwarded straight
+## to CharacterVisual, which is the only thing that knows this model has a
+## skeleton, let alone where its arm bone is. Returns null for a unit with no
+## hands or whose model has not been instanced yet; callers treat that as "not
+## ready", not as an error.
+func get_hand_attachment() -> Node3D:
+	return _visual.get_hand_attachment()
+
+## Task 1 — lets the carry components ask for an animation without reaching into
+## `_visual` themselves. Same contract the bump/throw calls already use: this
+## file says WHAT happened, CharacterVisual decides what it looks like and picks
+## a clip the model actually has.
+func play_visual_action(kind: String) -> void:
+	_visual.play_action(kind)
+
+## Task 0 — true while this unit is a Person with something in its hands, in
+## which case `special_ability` is the charge-throw and must NOT also fire the
+## ordinary ability (Tag). One button, and holding a slipper is what decides
+## which half of it you get.
+func _carrier_is_holding() -> bool:
+	return _carrier != null and _carrier.held() != null
+
 func _set_state(new_state: State) -> void:
 	if new_state == state:
 		return
@@ -605,6 +664,13 @@ func reset_for_new_round() -> void:
 	dents_changed.emit(dents)
 	if ability:
 		ability.reset_round_charge()
+	# Task 0: a slipper still in someone's hand, or still in the air, when the
+	# round ends goes back to LOOSE — otherwise round 2 starts with a tsinelas
+	# welded to a Person who is no longer even on the attacking side. Runs on
+	# every peer without an RPC, same as the team/role recompute in
+	# main.gd::_reset_world, because every peer already has the state to do it.
+	if _carriable != null:
+		_carriable.reset_for_new_round()
 	# Roles swap between rounds, so a Prop that was the Can is the Tsinelas now
 	# (and vice versa) and needs the other model. No-op when nothing changed.
 	_visual.apply(is_person, is_can, team)
