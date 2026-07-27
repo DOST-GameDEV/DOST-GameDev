@@ -18,7 +18,7 @@ to type.
 | `scenes/main/Main.tscn` | — free — | | |
 | `scenes/characters/CharacterBase.tscn` | — free — | | |
 | `scenes/characters/CameraRig.tscn` | — free — | | |
-| `scenes/ui/*.tscn` | — free — | | |
+| `scenes/ui/*.tscn` | 🎨 Design | `art/round-beat-polish` | 2026-07-28 |
 | `project.godot` | — free — | | |
 | `tools/models/generate_all.gd` | — free — | | |
 | `docs/Checklist.md` | *no lock needed* | | append-only-ish; conflicts resolved by taking both sides |
