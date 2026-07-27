@@ -5,11 +5,11 @@ class_name MainMenu
 ## run/main_scene). Two panels in one Control, swapped via visibility:
 ## - TitleScreen: name of the game + a single "Start" button.
 ## - PlayMenu: Local / Host / Join (with an address field) + a game-mode
-##   picker (see game_launch.gd). Picking Host or Join hands off to
-##   Main.tscn via GameLaunch, exactly like the existing `--host` /
-##   `--join=<ip>` command-line flow main.gd already understands.
+##   picker (see game_launch.gd). Picking Host or Join now lands in the
+##   pre-match Lobby (U-4 / B-13); Local still goes straight to Main.tscn.
 
-const MAIN_SCENE_PATH: String = "res://scenes/main/Main.tscn"
+const MAIN_SCENE_PATH:  String = "res://scenes/main/Main.tscn"
+const LOBBY_SCENE_PATH: String = "res://scenes/ui/Lobby.tscn"
 
 @onready var title_screen: Control = %TitleScreen
 @onready var play_menu: Control = %PlayMenu
@@ -109,10 +109,16 @@ func _on_local_pressed() -> void:
 	GameLaunch.pending_action = "local"
 	_go_to_match()
 
+## U-4: Host goes to the lobby so peers can ready-up before the match starts.
+## B-14 reset moved here (from the old shared _go_to_match()) so the lobby
+## lands on clean state the same way the old direct-to-Main path did.
 func _on_host_pressed() -> void:
 	GameLaunch.pending_action = "host"
-	_go_to_match()
+	MatchManager.reset()
+	RoundManager.reset()
+	get_tree().change_scene_to_file(LOBBY_SCENE_PATH)
 
+## U-4: Join also goes through the lobby for the same ready-up gate.
 func _on_join_pressed() -> void:
 	var address := join_address_edit.text.strip_edges()
 	if address.is_empty():
@@ -120,8 +126,11 @@ func _on_join_pressed() -> void:
 		return
 	GameLaunch.pending_action = "join"
 	GameLaunch.pending_join_address = address
-	_go_to_match()
+	MatchManager.reset()
+	RoundManager.reset()
+	get_tree().change_scene_to_file(LOBBY_SCENE_PATH)
 
+## Local match skips the lobby — no ready-up needed for single-PC split-keyboard.
 func _go_to_match() -> void:
 	# B-14: MatchManager/RoundManager are autoloads and survive scene changes —
 	# without this, a second match (Rematch, or Menu then Play again) would

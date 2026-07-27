@@ -1313,7 +1313,7 @@ teams on their new sides. Networked: both peers see it and stay in step.
 
 ---
 
-#### U-4 · The lobby `[ ]`
+#### U-4 · The lobby `[~]`
 
 **Fixes B-13.** `_start_hosting()` calls `MatchManager.begin_next_round()` immediately — the match
 starts before anyone has joined, which is why `_sync_state_to_late_joiner` (B-29) has to exist at
@@ -1340,6 +1340,13 @@ peer list. Start is disabled until both are ready, then the match begins on both
 in the lobby — the host's list updates.
 
 **Commit:** `Fix B-13: add the pre-match lobby with ready-up (v6.0)`
+**[DONE @ v4.13]** `scenes/ui/Lobby.tscn` + `scripts/ui/lobby.gd` added. Host/Join
+in `main_menu.gd` redirected to Lobby. Lobby starts ENet (host_game/join_game),
+shows peer list with team/role, ready-up per peer, host-only Start (disabled until
+all connected peers ready and ≥2 connected). `main.gd` patched with two is_networked()
+guards so host_game()/join_game() are not double-called when arriving from the lobby,
+and _start_hosting() now iterates connected_peer_ids to spawn all pre-lobby peers.
+B-65 (rejoin identity) is noted but not attempted here — needs a stable player token.
 
 ---
 
