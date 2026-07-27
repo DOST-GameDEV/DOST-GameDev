@@ -386,7 +386,7 @@ touch map scenes.
       `Main.tscn` and `main.gd`'s spawn paths. **Do it late** — it is the only
       way to playtest without four laptops, so it dies after the last playtest,
       not before.
-- [ ] **5.4 · Decide the `.import` UID churn (B-71) — and the EOL churn (B-84).** 🤖 Sonnet, medium
+- [x] **5.4 · Decide the `.import` UID churn (B-71) — and the EOL churn (B-84).** 🤖 Sonnet, medium
       Either accept it or stop tracking `.import` UIDs. Low stakes, but it makes
       every "regenerate and check `git status`" acceptance test unreliable, and
       those are load-bearing for the whole M-block.
@@ -398,6 +398,9 @@ touch map scenes.
       broken.** Fix: `*.obj text eol=lf`, `*.mtl text eol=lf`, then `git add --renormalize .`.
       **Do this before 2.1b**, which adds ~26 more generated meshes to an acceptance test that
       currently cries wolf on every run.
+      **Done.** B-84 fixed (`eol=lf` pinned, renormalized, determinism test run twice clean).
+      B-71 decided: accept the churn, formalized as a standing pre-commit check rather than a
+      two-lane-period workaround. See `Handoff.md` B-71/B-84.
 
 ---
 

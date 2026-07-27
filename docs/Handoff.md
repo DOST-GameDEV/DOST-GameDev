@@ -680,14 +680,23 @@ files.
 (v4.0 through v4.4). F-1 set 1920×1080 + stretch mode and bumped to v4.5, and added a rule to
 `Dev_Plan.md §6` that docs-only commits naming a version must still bump the file.
 
-**B-71 · Tracked `.import` UIDs regenerate on any cache rebuild. (NEW, low)** Opening the
+**B-71 · Tracked `.import` UIDs regenerate on any cache rebuild. (low)** Opening the
 project on a second machine rebuilt `.godot/` and reassigned
 `assets/characters/persons/Textures/colormap.png.import`'s `uid://` — a tracked file, so it
 surfaced as a permanent dirty working tree until committed (`5a2e0e0`). Nothing references that
 texture by UID, so this instance was inert, but it will recur on every fresh clone and machine
 switch, and it is exactly the kind of noise that makes a "regenerate and check `git status`"
 acceptance test unreliable. *Decision owed:* either accept the churn, or stop tracking `.import`
-UIDs. Not urgent; log it before it eats an hour of somebody's debugging.
+UIDs.
+**[DECIDED]** checklist 5.4, this pass: **accept the churn.** Untracking `.import` entirely trades
+a known, narrow annoyance for an unknown one — some `.import` files may carry hand-tuned settings
+(compression, filters) that a machine's first re-import wouldn't reproduce identically, and nobody
+has audited which ones. Formalizing what `Concurrency_Protocol.md` §7 already had lanes doing as an
+interim workaround into the standing rule, not just a two-lane-period one: **before any commit that
+touches `assets/`, run `git diff --cached -- '*.import'` and unstage any file whose only change is
+its `uid://` line.** The generator-determinism test (M-block) already only checks tracked `.obj`/
+`.mtl` output, which B-84 (above) just made reliable — a stray `.import` UID diff was never part of
+that check's own pass/fail and doesn't need to become one.
 
 ### P1 — found and fixed this pass (2026-07-27 audit)
 
