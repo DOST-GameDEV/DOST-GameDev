@@ -731,6 +731,32 @@ one you look through still casts its own shadow.
 **B-28 · No export presets, no build, no CI.** `export_presets.cfg` is gitignored and none
 exists. The game has never been run outside the editor, and the submission needs a real build.
 
+**B-65 · No reconnect path — a rejoining player can come back as a different team and role. (NEW,
+logged while doing Q-5)** A rejoining player gets a brand-new peer id, so `main.gd::_peer_join_index`
+assigns them the next free slot rather than restoring their previous one. **OPEN — needs a design
+call, not a code fix**: preserving identity across a rejoin needs a stable player token instead of
+a peer id, which is real work. Q-5 makes the *current* role legible (the new YOU card) but
+deliberately does not attempt reconnection — see the decision list in §4.
+
+**Q-5 verification note.** Added the HUD "YOU" card (`scenes/ui/YouCard.tscn` +
+`scripts/ui/you_card.gd`), instanced into `HUD.tscn`. Shows class (`PERSON`/`CAN (LATA)`/`TSINELAS`),
+team letter, and side this round, with a role-coloured (`UiTheme.OFFENSE`/`DEFENSE`) 6px accent
+bar — never team-coloured, per §4.2's hard rule. Resolves the local character two ways: networked
+via a new `main.gd::get_local_character()` (scans `_spawned_characters` for
+`is_multiplayer_authority()`); Local Match by scanning the scene tree for whichever unit currently
+holds `player_id == 1`. The card polls every 0.15s rather than listening for a debug-switcher
+event, since protocol rule 11 (`Dev_Plan.md` §0.3) forbids gameplay code from referencing anything
+debug-only — a plain public-var poll stays correct with zero coupling in either direction. Also
+connects to `MatchManager.round_started` directly and gets an explicit `hud.refresh_you_card()`
+call from `main.gd::_sync_state_to_late_joiner` so a joining client doesn't wait out the poll
+interval. Verified live, headless: Local Match round 1 reads `PERSON · TEAM A · DEFENSE` (matching
+the actual default-driven unit); reassigning `player_id` the same way the debug switcher does (Tab)
+correctly flips the card to the newly-selected unit; ending round 1 and starting round 2 flips the
+side the instant the role swap happens (`TEAM A · DEFENSE` → `TEAM A · OFFENSE`). Networked: a
+client joining ~3s into a running match already shows a populated, correct card
+(`CAN (LATA) · TEAM A · DEFENSE`, matching its actual spawned role) within 0.5s of connecting — not
+blank.
+
 **Q-4 verification note (2026-07-27).** Confirmed the match-result screen already works exactly as
 Handoff.md §0.2 said: driven a Local Match to a real 3-0 via direct `MatchManager.report_round_result()`
 calls spaced past `INTERMISSION_DURATION` (so `begin_next_round()` fires between them the same way
@@ -1076,7 +1102,7 @@ Networked: the client sees the same screen with Rematch hidden and is not frozen
 
 ---
 
-#### Q-5 · Tell the player which unit they are `[ ]`
+#### Q-5 · Tell the player which unit they are `[x]`
 
 **Review item 2.** `HUD.RoleLabel` currently reads `"Team A: Defense   Team B: Offense"` — which
 side each *team* holds. It never says which of the four units is **yours**, which is exactly the

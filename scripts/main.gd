@@ -489,6 +489,7 @@ func _sync_state_to_late_joiner(new_round_number: int, new_team_a_is_can: bool, 
 	RoundManager.round_active = new_round_active
 	GameLaunch.game_mode = new_game_mode
 	hud.set_round_display(new_round_number, new_team_a_is_can)
+	hud.refresh_you_card()
 	_reregister_tracked_cans()
 
 ## Q-2/B-63: shared by _sync_state_to_late_joiner (a joining peer needs to know
@@ -502,6 +503,17 @@ func _reregister_tracked_cans() -> void:
 		var character: CharacterBase = _spawned_characters[peer_id]
 		if is_instance_valid(character) and character.is_can:
 			RoundManager.register_can(character)
+
+## Q-5: the "YOU" card's networked path (scripts/ui/you_card.gd) — the one
+## character out of _spawned_characters that this peer actually controls.
+## Local Match never calls this; it resolves by scanning for player_id == 1
+## instead, since there is no is_multiplayer_authority() concept there.
+func get_local_character() -> CharacterBase:
+	for peer_id in _spawned_characters:
+		var character: CharacterBase = _spawned_characters[peer_id]
+		if is_instance_valid(character) and character.is_multiplayer_authority():
+			return character
+	return null
 
 ## Q-2/B-63: _on_player_disconnected only runs on the host, but every
 ## remaining peer should see the toast — call_local so the host's own HUD

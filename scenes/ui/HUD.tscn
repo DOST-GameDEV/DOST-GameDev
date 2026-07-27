@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3 uid="uid://d5k8m2n4p6q9r"]
+[gd_scene load_steps=3 format=3 uid="uid://d5k8m2n4p6q9r"]
 
 [ext_resource type="Script" path="res://scripts/ui/hud.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/ui/YouCard.tscn" id="2"]
 
 [node name="HUD" type="Control"]
 layout_mode = 3
@@ -82,6 +83,10 @@ horizontal_alignment = 1
 vertical_alignment = 1
 text = "ROUND BANNER"
 visible = false
+
+[node name="YouCard" parent="." instance=ExtResource("2")]
+unique_name_in_owner = true
+layout_mode = 1
 
 [node name="ToastLabel" type="Label" parent="."]
 unique_name_in_owner = true
