@@ -20,7 +20,7 @@ to type.
 | `scenes/characters/CameraRig.tscn` | — free — | | |
 | `scenes/ui/*.tscn` | — free — | | |
 | `project.godot` | — free — | | |
-| `tools/models/generate_all.gd` | 🎨 **Design** | `art/environment-kit` | 2026-07-28 |
+| `tools/models/generate_all.gd` | — free — | | |
 | `docs/Checklist.md` | *no lock needed* | | append-only-ish; conflicts resolved by taking both sides |
 
 > ### ⚠️ Why `generate_all.gd` has a line here, and why it is temporary
