@@ -251,6 +251,15 @@ subject still claims v3.4 and `GameVersion.attach_to()` stamps `v3.3` on the men
 The whole point of that stamp (§7) is that a playtester can name their build without diffing
 files. Reconcile it in **F-1**.
 
+**B-71 · Tracked `.import` UIDs regenerate on any cache rebuild. (NEW, low)** Opening the
+project on a second machine rebuilt `.godot/` and reassigned
+`assets/characters/persons/Textures/colormap.png.import`'s `uid://` — a tracked file, so it
+surfaced as a permanent dirty working tree until committed (`5a2e0e0`). Nothing references that
+texture by UID, so this instance was inert, but it will recur on every fresh clone and machine
+switch, and it is exactly the kind of noise that makes a "regenerate and check `git status`"
+acceptance test unreliable. *Decision owed:* either accept the churn, or stop tracking `.import`
+UIDs. Not urgent; log it before it eats an hour of somebody's debugging.
+
 ### P2 — open, carried over from the archive
 
 - **B-13 · The match starts before anyone joins.** `_start_hosting()` calls `begin_next_round()`
@@ -604,7 +613,28 @@ which is where the entire visual delta actually lives.
 
 ---
 
-#### M-1 · The mesh generator toolchain `[ ]`
+#### M-1 · The mesh generator toolchain `[x]`
+
+**Landed v3.5.** `tools/models/obj_writer.gd` + `tools/models/generate_all.gd`, plus
+`tools/models/preview.gd`/`preview.tscn` (frames a mesh at the 4.5-unit TPP distance).
+Acceptance met: two consecutive runs are byte-identical and `git status` is clean after the
+second. Imports as `type="Mesh"`, one surface per material, albedo exactly `UiTheme.DEFENSE`.
+
+Three things the next M- task should know:
+
+- **Winding was measured, not assumed.** Godot uses *clockwise* front faces and its `.obj`
+  importer flips index order, so every face reads as inverted under the familiar
+  counter-clockwise test. Godot's own `CylinderMesh` reports identically. `obj_writer.gd`'s
+  header carries the warning — do not "fix" it by eye.
+- **`_fmt` snaps before formatting.** `cos(3 * PI / 2)` is ~-1.8e-16 and printed as `-0.00000`,
+  a different weld key from `0.00000`; the proof cylinder had 28 vertices instead of 26 until
+  this was fixed.
+- **No screenshot yet.** The geometry is verified mathematically (AABB, surface count, material
+  albedo, winding vs. an engine primitive) but nothing has been rendered on screen. The preview
+  harness exists and M-2 is where it gets proven, because that is the first mesh whose success
+  criterion is "does it read as a can".
+
+Original task text follows.
 
 Nothing else in the M- block can start until this exists. Build it first, prove it on the
 simplest possible shape, then use it.
