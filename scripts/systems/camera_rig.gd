@@ -67,6 +67,22 @@ const BASE_SENSITIVITY: float = 0.15
 ## roster without naming each one.
 const FPP_HIDDEN_MESH_HINT: String = "head"
 
+## Playtest 0.4: "don't see arms of ppl". The rig's real arms are NOT hidden —
+## B-73 already drops only `head-mesh` — they are simply out of frame. Measured:
+## `body-mesh` tops out at CharacterBase-local +0.076 while the FPP eye sits at
+## +0.450, so the whole body hangs 0.37 below the camera and the arm bone at
+## y=-0.115 falls ~48 degrees below the view axis against a 37.5-degree
+## half-FOV. The chibi head is big enough that the eye is above the shoulders.
+##
+## So first person gets a dedicated viewmodel mounted to the camera pivot rather
+## than to the skeleton, which is how first-person games have always solved this.
+## Parented under `FppPivot` so it inherits pitch — the arms rise and fall with
+## the look, which is most of what sells them as yours.
+##
+## ⚠️ Only ever shown on a Person, and only in FPP on the LOCAL unit. A Prop has
+## no arms, and a remote player's rig is never the one being looked through.
+const VIEWMODEL_ARMS_SCENE: String = "res://scenes/characters/visuals/ViewmodelArms.tscn"
+
 @export var aim_source: AimSource = AimSource.MOVEMENT
 
 @onready var fpp_pivot: Node3D = $FppPivot
@@ -79,6 +95,10 @@ var _character: CharacterBase
 var _mode: Mode
 var _pitch_deg: float = 0.0
 var _active: bool = false
+## Playtest 0.4 first-person viewmodel arms, created on demand by
+## _viewmodel_arms(). Null on every Prop and on any Person that has never
+## been looked through.
+var _arms: Node3D = null
 
 ## Q-8: decaying camera-shake offset, applied to whichever camera this rig's
 ## _mode actually uses — never by writing the character body's rotation
@@ -211,7 +231,33 @@ func _apply_shake_offset(offset: Vector3) -> void:
 ## The bug was invisible until now because the self-hide had silently been a
 ## no-op — it ran in `_ready()`, before `character_visual.gd` had instanced any
 ## meshes to find. Fixing that (v1.5) is what exposed this.
+## Creates the viewmodel arms on first use and returns them, or null for any
+## unit that must never have them. Built lazily rather than in _ready() because
+## most rigs in a match are Props or remote Persons and would only pay for a
+## node tree nothing ever draws.
+func _viewmodel_arms() -> Node3D:
+	if _arms != null and is_instance_valid(_arms):
+		return _arms
+	if _character == null or not _character.is_person:
+		return null
+	var scene := load(VIEWMODEL_ARMS_SCENE) as PackedScene
+	if scene == null:
+		push_error("CameraRig: could not load '%s'" % VIEWMODEL_ARMS_SCENE)
+		return null
+	_arms = scene.instantiate() as Node3D
+	fpp_pivot.add_child(_arms)
+	return _arms
+
+
 func _apply_fpp_self_hide() -> void:
+	# The viewmodel is the inverse of the self-hide: it is the one thing that
+	# must appear exactly when the rest of the body is being looked past. Driven
+	# from here rather than from set_active() so it can never disagree with the
+	# body it is standing in for — both states come off the same two flags.
+	var arms := _viewmodel_arms()
+	if arms != null:
+		arms.visible = _active and _mode == Mode.FPP
+
 	var visual_root := _character.get_node_or_null("Visual")
 	if visual_root == null:
 		return
