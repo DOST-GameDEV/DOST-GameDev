@@ -368,10 +368,23 @@ HUD contrast or hazard placement against a grey box.
       **not** cleared by `reset()` — it is a preference, not a one-shot handoff like
       `pending_action`, so a player who picks Bayan Plaza does not re-pick it after every match.
       The tagline exists because "ESKINITA" means nothing to a judge who has never played it.
-- [ ] **3.4 · Off-screen indicators (U-6b).** 🤖 Sonnet, medium
+- [x] **3.4 · Off-screen indicators (U-6b).** 🤖 Sonnet, medium
       Screen-edge arrows for your teammate and the Can. `Dev_Plan.md` §3.3 calls
       these **mandatory** for FPP — they are the promised mitigation for the
       Person's narrower awareness cone — and U-6 deferred them.
+      **Done, verified by running.** New `OffscreenIndicators.tscn`/`.gd`, driven from `hud.gd`
+      with the same cached local character `you_card.gd` already resolves for the crosshair — no
+      second scan. Teammate found by team + not-self (a team is 1 Person + 1 Prop, never two of
+      the same, so no `is_person` check needed); the Can via a new `RoundManager.get_tracked_cans()`
+      accessor rather than re-deriving `is_can` a third time. Standard radar-arrow projection:
+      hidden when on-screen, clamped to the inset screen edge and rotated toward the target
+      otherwise, including the behind-camera case (`unproject_position()` mirrors instead of
+      flagging it — corrected for). Found and fixed one real bug while testing: a target sitting
+      exactly perpendicular to the camera's forward axis hits a `p.d == 0` divide inside
+      `unproject_position()` and logs an engine error every such frame — guarded against. Verified
+      by a headless probe forcing on-screen/behind/far-off-to-the-side cases, and visually via
+      `render_probe.gd` at 1280x720 and 1920x1080 (screenshot: an arrow correctly pinned to the
+      right edge, pointing at an off-screen teammate). Plain glyph styling; design lane restyles.
 
 ---
 
