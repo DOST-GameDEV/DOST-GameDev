@@ -144,3 +144,73 @@ stacks, sampay lines, aspins. Stretch goal; only after A–D.
 2. **Item C reverses a documented decision** (M-6 step 3). Worth 30 seconds of your opinion.
 3. **Item B changes arena scale**, which is a feel change, not an art change. It should not happen
    before somebody has played the current one (0.4).
+
+---
+
+## 5. Playtest findings, 2026-07-28 — the first time anyone played it (0.4)
+
+Reported by the human after a live session. **Root-caused before any of it was
+"planned around"** — three of the four reports turn out to be one bug plus one
+documented behaviour, not four separate problems.
+
+### P0 · Esc opens the pause menu with the mouse still captured, and nothing pauses
+
+Reported as three symptoms: *"mouse disappears when I pause"*, *"it doesn't really pause, the game
+keeps playing"*, *"I can't return to menu because no mouse (I have to alt-tab to get it back)"*.
+
+**Root cause: `scripts/ui/settings_panel.gd::_unhandled_input` has no visibility guard.** In Godot
+a hidden `Control` still receives `_unhandled_input` — visibility only gates `_gui_input`. So the
+*hidden* settings panel swallows the Esc press, calls `set_input_as_handled()`, and emits
+`back_pressed`. `main.gd:231` has that signal wired to
+`func(): settings_panel.hide(); pause_root.show()` — which shows the pause overlay but **never
+touches `Input.mouse_mode` and never sets `get_tree().paused`**, because
+`_on_pause_toggle_requested()` was never reached at all.
+
+That single missing guard produces all three symptoms exactly as described. `match_result.gd:29`
+already has the guard (`if not visible: return`), which is what makes the omission obvious once
+you look at both.
+
+**Fix:** add the same guard. One line. Everything else about the pause system is already correct.
+
+### P1 · Cannot Tab to the Can
+
+`debug_player_switcher.gd` **self-disables in a networked match** — "every handler no-ops in a
+networked match (where each peer owns exactly one character and reassigning `player_id` would be
+meaningless)". The pause report above confirms the session was networked: *"it doesn't really
+pause, the game keeps playing"* is precisely the `NetworkManager.is_networked()` branch of
+`_on_pause_toggle_requested()`, which deliberately refuses to freeze a networked match.
+
+So both reports are the same underlying condition: **the playtest was run as a host, not as Local
+Match.** Tab works in Local Match and is meaningless when hosting.
+
+This is defensible design that is nonetheless a bad experience for the one thing anybody actually
+does — solo-testing by hosting. **Recommendation:** when a networked match has exactly one human
+peer, treat it as local for pause and unit-switching purposes. Flagged rather than done: it is a
+`NetworkManager` semantics change.
+
+### P1 · Nothing can jump
+
+Confirmed absent, not broken: **zero occurrences of "jump" in `project.godot` or
+`character_base.gd`.** There is no jump action, no jump input binding and no vertical impulse
+anywhere. It was never built.
+
+The human wants it on **both** Persons and Props ("tsinelas can't jump, can you check if can can
+jump, they both should be"). Props are `CharacterBody3D` like Persons and already run gravity, so
+this is an input action plus an impulse, not a new movement system.
+
+⚠️ **Design consequence worth stating before it ships:** the interior-clutter height law
+(`Environment_Kit_Spec.md` — everything loose in the alley is ≤ 1.0 so an FPP Person at eye height
+1.25 can aim over it) assumes players cannot get on top of things. Jump makes every crate, drum
+and tricycle a platform, and the boundary walls are 12 units tall but the *dressing* is not. Jump
+height must stay below the lowest climbable surface, or the boundary needs revisiting.
+
+### P2 · No arms visible in first person
+
+This is **B-87**, already filed. Not a regression: `camera_rig.gd::_apply_fpp_self_hide` hides the
+entire `Visual` subtree, and the Kenney rig has no separate arm mesh — `body-mesh` is torso, arms
+and legs as one skinned mesh, so the arms cannot be kept while the torso is hidden.
+
+Options, in ascending cost: (a) accept it; (b) hide only `head-mesh` and pull the near clip plane
+in, accepting that the player sees their own chest; (c) build a dedicated viewmodel arm pair as
+generated `.obj`, parented to the arm bone and visible **only** in FPP. (c) is the right answer and
+is real modelling work — it belongs in this plan's next stage, not in the P0 fix batch.
