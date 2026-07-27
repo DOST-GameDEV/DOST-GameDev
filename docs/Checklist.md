@@ -469,6 +469,11 @@ touch map scenes.
       neither can be honestly ticked.**
 - [ ] **5.2 · Produce a release build and confirm it launches to the menu.** 🤖 Sonnet, medium ⛔ 5.1
 - [ ] **5.3 · Strip Local Match and the debug switcher.** 🤖 Sonnet, high ⛔ 0.4, 4.4
+      ⚠️ **RESOLVED CONFLICT — do NOT simply delete the harness.** `Art_Direction.md` Part 5 §3
+      makes the local 4-unit harness the demo failure-ladder's rung 3 — the only fallback that
+      needs no network. **Keep the harness, gate it behind a launch argument, and strip only the
+      on-screen debug overlay.** That satisfies this item's real intent (the build must not *look*
+      like a prototype) without removing the only network-free way to demo it.
       Run the removal checklist in `Dev_Plan.md` §3.5.5 and confirm the
       verification grep comes back empty. High effort because it touches
       `Main.tscn` and `main.gd`'s spawn paths. **Do it late** — it is the only
@@ -505,7 +510,7 @@ Budget this like a feature.
       before the deadline, and the FPP/TPP split makes that pivot cost one to
       two days, not half a day. **Book four laptops now.** No model can run this.
 - [x] **6.2 · Live-demo script and trailer beat sheet.** 🎨 Design (Opus) — **delivered as
-      [`Demo_Script_and_Trailer.md`](Demo_Script_and_Trailer.md).** Six-minute live running
+      [`Art_Direction.md`](Art_Direction.md).** Six-minute live running
       order, a printed controls card, a four-rung failure ladder, the 75-second
       loopable trailer beat sheet for 6.3 and the four-minute outline for 6.4.
       Written against what the build actually does — §0 is a verified/not-verified
@@ -541,7 +546,7 @@ Budget this like a feature.
 
 ## Already done — the ledger this list replaces
 
-Kept short on purpose; the detail is in `Handoff.md` §4 and `Bug_Ledger.md`.
+Kept short on purpose; the detail is in `Handoff.md` §4 and `Handoff.md`.
 Everything here was re-verified against the code on 2026-07-27 and is **not**
 simply carried forward from the previous pass's checkboxes.
 

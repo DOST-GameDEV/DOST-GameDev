@@ -19,7 +19,7 @@ lanes'. That is deliberate: it buys two extra concurrent workers for free.
 | **Model** | **Opus 5, high** | Sonnet 5, med/high | Sonnet 5, medium | Sonnet 5, medium |
 | **Hard question** | *"Does this match the moodboard?"* | *"Does this code do the right thing?"* | *"Does this actually work when run?"* | *"Is this submittable?"* |
 | **Writes code?** | Yes — assets, scenes | Yes — scripts, scenes | **No** | **No** |
-| **Owns** | Meshes, map layout, environment art direction, proportion, palette | Gameplay systems, networking, physics, state machines, generators, bug fixes, tooling | `Handoff.md` §3, `Bug_Ledger.md`, screenshots | `Checklist.md` phase 6, synopsis drafts, forms prep, licence register |
+| **Owns** | Meshes, map layout, environment art direction, proportion, palette | Gameplay systems, networking, physics, state machines, generators, bug fixes, tooling | `Handoff.md` §3, `Handoff.md`, screenshots | `Checklist.md` phase 6, synopsis drafts, forms prep, licence register |
 | **Branch prefix** | `art/<task>` | `code/<task>` | `qa/<task>` | `prod/<task>` |
 | **Worktree** | `.worktrees/design` | `.worktrees/build` | `.worktrees/qa` | shares `qa` or its own |
 | **Checklist items** | **1.2, 2.1a, 2.2** and the 6.2/6.3 creative direction | 0.1, 0.2, 0.3, 0.5, 2.1b, 2.3, 2.4, 3.1, 3.3, 3.4, 4.1–4.5, 5.2–5.4, 6.3, 6.4 | verification of everything; files `B-` numbers | 6.5–6.9 drafting; 6.6/6.7/6.9 stay 🧑 human |
@@ -105,7 +105,7 @@ collisions are prevented here rather than resolved later.
 | **`scenes/characters/CharacterBase.tscn`**, **`CameraRig.tscn`** | ⚠️ **SHARED** |
 | **`project.godot`** | ⚠️ **SHARED — special rule, §4** |
 | **`docs/Checklist.md`** | ⚠️ **SHARED — append-only-ish, §5** |
-| `docs/Handoff.md` §3 (open bugs), `docs/Bug_Ledger.md` | 🔬 QA |
+| `docs/Handoff.md` §3 (open bugs), `docs/Handoff.md` | 🔬 QA |
 | `docs/Checklist.md` phase 6, synopsis and forms drafts, the licence register | 📦 Producer |
 | `docs/*_Agent_Brief.md` | whichever lane the brief belongs to |
 
