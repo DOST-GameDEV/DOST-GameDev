@@ -654,7 +654,7 @@ than sitting inside one of them, because it came from review of a running build.
 | **Q-5** | HUD "YOU" card — which unit am I? — **[x] fixed, verified headless** | 3 |
 | **Q-6** | Surface the existing Guard/Dash on the HUD — **[x] fixed, verified headless** | 3 |
 | **Q-7** | Give `HazardZone` a visible footprint and place one — **[x] fixed, verified headless** | 4 |
-| **Q-8** | Hit feedback — camera shake, impact particles, fix **B-66** | 5 |
+| **Q-8** | Hit feedback — camera shake, impact particles, fix **B-66** — **[x] fixed, verified headless** | 5 |
 | **Q-9** | Quit button + main-menu moodboard pass | 3 |
 | **Q-10** | Make the debug switcher discoverable | 2 |
 
@@ -784,12 +784,12 @@ yet, see B-10/B-37 above) and the Option A/B decision itself, which nobody has m
 
 ### Phase 5 — Feel and presentation
 
-- [~] Hit feedback: a first-pass universal white flash exists (B-44), triggered per-hit on the
-      target's own owning peer — which means **every other peer sees a hit land with no feedback at
-      all** (**B-66**). `landed_on` itself is still unused. Screenshake and impact particles per the
-      moodboard's "IMPACT EFFECT (PARTICLE BURST)" are **Q-8**, and need no art assets: shake lives
-      on `CameraRig` (never `ArenaCamera`, so the FPP/TPP split is preserved) and the burst is a
-      code-built `GPUParticles3D` in `UiTheme.IMPACT`. Hitstop is still open.
+- [x] Hit feedback: white flash (B-44) + camera shake + impact particles, and **B-66** fixed — the
+      cosmetic half now broadcasts to every peer via a new `_rpc_play_hit_vfx()`, not just the
+      struck character's own owning peer (**Q-8**, v3.2). Shake lives on `CameraRig` (never
+      `ArenaCamera`, preserving the FPP/TPP split), gated to only the struck player's own screen;
+      particles are a code-built `GPUParticles3D` burst in `UiTheme.IMPACT`, no art asset.
+      `landed_on` itself is still unused. Hitstop and audio are still open.
 - [ ] Movement interpolation for remote characters — currently visibly snaps
 - [ ] Audio: bump, special, downed/seal, round win, ambience per map
 - [ ] Broadcast/auto-follow cam for recording (GDD Section 6)
