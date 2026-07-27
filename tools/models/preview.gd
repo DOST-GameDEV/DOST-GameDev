@@ -7,13 +7,37 @@ extends Node3D
 ## model is judged at the size it will really be read at rather than filling
 ## the screen.
 
-const MODEL_PATH: String = "res://assets/models/proof_cylinder.obj"
+## Which mesh to frame, and where to drop a PNG. Both overridable from the
+## command line so a model can be eyeballed without editing this file:
+##
+##     godot --path . res://tools/models/preview.tscn -- \
+##         --model=res://assets/models/lata.obj --shot=user://lata.png
+##
+## With --shot the window renders a few frames, writes the PNG and exits, which
+## is what makes "show me the mesh" a single command instead of a manual pose-
+## and-crop. Without it the window stays open so you can look around.
+const DEFAULT_MODEL: String = "res://assets/models/proof_cylinder.obj"
+## Matches CameraRig's SpringArm3D spring_length (Dev_Plan.md §3.1), so a Prop
+## is judged at the size it is actually read at in play.
 const CAMERA_DISTANCE: float = 4.5
+## Two frames, not one: the first frame of a fresh viewport can still be clearing
+## when the capture runs, which yields a blank or half-drawn PNG.
+const CAPTURE_FRAME_DELAY: int = 3
+
+var _screenshot_path: String = ""
 
 func _ready() -> void:
-	var mesh := load(MODEL_PATH) as Mesh
+	var model_path := DEFAULT_MODEL
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--model="):
+			model_path = arg.substr(len("--model="))
+		elif arg.begins_with("--shot="):
+			_screenshot_path = arg.substr(len("--shot="))
+
+	var mesh := load(model_path) as Mesh
 	if mesh == null:
-		push_error("preview: could not load " + MODEL_PATH)
+		push_error("preview: could not load " + model_path)
+		get_tree().quit(1)
 		return
 
 	var instance := MeshInstance3D.new()
@@ -43,3 +67,19 @@ func _ready() -> void:
 	camera.global_position = focus + Vector3(1.0, 0.7, 1.0).normalized() * CAMERA_DISTANCE
 	camera.look_at(focus, Vector3.UP)
 	camera.current = true
+
+	print("preview: %s  aabb=%s" % [model_path, bounds])
+	if _screenshot_path != "":
+		_capture_and_quit()
+
+func _capture_and_quit() -> void:
+	for _i in range(CAPTURE_FRAME_DELAY):
+		await RenderingServer.frame_post_draw
+	var image := get_viewport().get_texture().get_image()
+	var err := image.save_png(_screenshot_path)
+	if err != OK:
+		push_error("preview: could not write %s (error %d)" % [_screenshot_path, err])
+		get_tree().quit(1)
+		return
+	print("preview: wrote ", ProjectSettings.globalize_path(_screenshot_path))
+	get_tree().quit(0)
