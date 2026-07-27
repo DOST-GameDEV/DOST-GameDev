@@ -821,7 +821,7 @@ actual acceptance test (run the `.exe`, check YOU card reads PERSON) is unverifi
 
 ---
 
-#### A-4 · Fix B-68 and collapse `_reset_world()` `[ ]`
+#### A-4 · Fix B-68 and collapse `_reset_world()` `[~]`
 
 Two concerns, one function, genuinely inseparable — the refactor is what makes the fix land in
 both branches at once instead of only the networked one. Say so in the commit body.
@@ -853,6 +853,13 @@ into the next round, and confirm every peer agrees on where every character is. 
 the rejoined peer's position differs between host and client.
 
 **Commit:** `Fix B-68: round reset assigned spawn points by iteration order, not join index (v4.6)`
+
+**[DONE @ v4.9]** B-68 fixed and B-69 collapsed in one edit. Both networked and local
+branches now build a `{character, team, is_person, slot}` roster and share one loop.
+Networked slot = `_peer_join_index.get(peer_id, 0)` (stable across disconnect/rejoin).
+Local slot = `_local_roster` index (unchanged ordering, matches SPAWN_POINTS 1:1).
+`RoundManager.clear_tracked_cans()` / `register_can()` unified into the same loop.
+Acceptance test pending human verification.
 
 ---
 
