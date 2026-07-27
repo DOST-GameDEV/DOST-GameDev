@@ -398,56 +398,49 @@ func _reset_world(team_a_is_can: bool) -> void:
 	for node in get_tree().get_nodes_in_group("transient_hitbox"):
 		if is_instance_valid(node):
 			node.queue_free()
+	# Build a unified roster — {character, team, is_person, slot} — per mode.
+	# Networked: slot comes from _peer_join_index (B-21: stable across disconnect/
+	# rejoin, fixes B-68 which used iteration order instead). Local: _local_roster
+	# order [TeamAProp, TeamAPerson, TeamBProp, TeamBPerson] matches SPAWN_POINTS
+	# 1:1, so the array index is the slot.
+	var roster: Array = []
 	if NetworkManager.is_networked():
-		RoundManager.clear_tracked_cans()
-		var index := 0
 		for peer_id in _spawned_characters.keys():
 			var character: CharacterBase = _spawned_characters[peer_id]
 			if not is_instance_valid(character):
 				continue
-			var team: int = _peer_teams.get(peer_id, 0)
-			var is_person: bool = _peer_is_person.get(peer_id, false)
-			var team_is_can_side := (team == 0) == MatchManager.team_a_is_can
-			# Session 8: every character on the team tracks team_is_can_side now,
-			# not just the Prop — Person needs it too, to pick Tag vs Throw (see
-			# person_action.gd). Only the team's Prop can ever be a Can, though —
-			# the Person's own is_can stays false regardless of which side its
-			# team is on this round (Session 7: 1 Person + 1 Prop per team, not
-			# two Props).
-			character.team_is_can_side = team_is_can_side
-			character.is_can = team_is_can_side and not is_person
-			# B-10: previously only RoundManager's own tracked-Can loop reset
-			# anything, so the two Persons and the Slipper-side Prop carried
-			# their Downed/Sealed state, dents, speed multiplier, and spent
-			# once-per-round charges into the next round, and nobody's position
-			# reset at all. Reset + reposition every unit here instead.
-			character.reset_for_new_round()
-			character.position = SPAWN_POINTS[index % SPAWN_POINTS.size()]
-			character.spawn_position = character.position # B-15/B-35: keep KillPlane's respawn point current
-			index += 1
-			if character.is_can:
-				RoundManager.register_can(character)
+			roster.append({
+				"character": character,
+				"team": _peer_teams.get(peer_id, 0),
+				"is_person": _peer_is_person.get(peer_id, false),
+				"slot": _peer_join_index.get(peer_id, 0)
+			})
 	elif not _local_roster.is_empty():
-		# Session 9: role-swap for the local flow too — was previously a "known
-		# gap" (docs/Handoff.md). Same rule as networked: Team A's
-		# Prop/Person side comes straight from team_a_is_can, Team B is the
-		# mirror image. Persons never become Cans (team_is_can_side only, same
-		# as networked above).
-		team_a_prop.team_is_can_side = team_a_is_can
-		team_a_prop.is_can = team_a_is_can
-		team_a_person.team_is_can_side = team_a_is_can
-		team_b_prop.team_is_can_side = not team_a_is_can
-		team_b_prop.is_can = not team_a_is_can
-		team_b_person.team_is_can_side = not team_a_is_can
-		# B-10: same reset+reposition as the networked branch above, for all
-		# four local units — see _local_roster doc (order: TeamAProp,
-		# TeamAPerson, TeamBProp, TeamBPerson, matching SPAWN_POINTS 1:1).
 		for i in range(_local_roster.size()):
-			var character := _local_roster[i]
-			character.reset_for_new_round()
-			character.position = SPAWN_POINTS[i % SPAWN_POINTS.size()]
-			character.spawn_position = character.position # B-15/B-35
-		_register_local_can()
+			roster.append({
+				"character": _local_roster[i],
+				"team": _local_roster[i].team,
+				"is_person": _local_roster[i].is_person,
+				"slot": i
+			})
+
+	RoundManager.clear_tracked_cans()
+	for entry in roster:
+		var character: CharacterBase = entry["character"]
+		var team_is_can_side := (entry["team"] == 0) == team_a_is_can
+		# Session 8: every character on the team tracks team_is_can_side now,
+		# not just the Prop — Person needs it too. Only the team's Prop can be
+		# a Can (Session 7: 1 Person + 1 Prop per team, not two Props).
+		character.team_is_can_side = team_is_can_side
+		character.is_can = team_is_can_side and not entry["is_person"]
+		# B-10: reset + reposition every unit — Persons and the off-side Prop
+		# were carrying downed/sealed state, dents, and speed multipliers into
+		# the next round before this.
+		character.reset_for_new_round()
+		character.position = SPAWN_POINTS[entry["slot"] % SPAWN_POINTS.size()]
+		character.spawn_position = character.position # B-15/B-35
+		if character.is_can:
+			RoundManager.register_can(character)
 
 ## Item 10 / B-37: fires on every peer (see MatchManager._sync_intermission_started)
 ## the moment a round ends without finishing the match — the gap that never
