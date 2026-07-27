@@ -355,6 +355,12 @@ tagging the attacker mid-carry therefore does not make them drop it, which is
 most of the point of tagging. *Fix:* call `host_drop()` from the host when a
 carrier's state leaves NORMAL. **Do this in `carriable.gd`/`carrier.gd`, not in
 `character_base.gd`** — that file must not learn what carrying is.
+**[FIXED]** v4.1. `carriable.gd` subscribes to the carrier's existing
+`CharacterBase.state_changed` while (and only while) the slipper is CARRIED, and
+calls `host_drop()` on any state that is not NORMAL. Nothing was added to
+`character_base.gd`. The watch is dropped in `_rpc_set_flying` as well as on
+landing/reset — otherwise tagging the thrower mid-flight would have landed the
+slipper in mid-air. **Still `[~]`-grade: no human has been tagged mid-carry.**
 
 **B-76 · The local-test flow gives every Prop `quick_stand.tres`, so no slipper
 has a real throw profile. (NEW)** `main.gd`'s `PROP_ABILITY` is Quick Stand for

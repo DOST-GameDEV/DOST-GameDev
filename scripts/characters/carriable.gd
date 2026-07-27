@@ -243,6 +243,7 @@ func reset_for_new_round() -> void:
 	_thrower_ignore_left = 0.0
 	if carrier != null and is_instance_valid(carrier):
 		_character.remove_collision_exception_with(carrier)
+		_watch_carrier_state(carrier, false)
 	carrier = null
 	_set_state(CarryState.LOOSE)
 
@@ -279,6 +280,7 @@ func _rpc_set_carried(carrier_path: NodePath) -> void:
 	if who == null:
 		return
 	carrier = who
+	_watch_carrier_state(who, true)
 	_clear_flight_hitbox()
 	# While in a hand the slipper is part of the carrier: it must not shove its
 	# own teammate around, and it must not be independently hittable.
@@ -298,6 +300,12 @@ func _rpc_set_flying(origin: Vector3, velocity: Vector3) -> void:
 	if carrier != null and is_instance_valid(carrier):
 		_character.add_collision_exception_with(carrier)
 		_notify_carrier(carrier, null)
+		# B-75: stop watching the thrower the instant it leaves the hand. `carrier`
+		# is deliberately still set here (the collision exception is cleared
+		# against it on landing), but the slipper is no longer theirs to drop —
+		# without this, tagging the thrower mid-flight would land the slipper in
+		# mid-air.
+		_watch_carrier_state(carrier, false)
 	_spawn_flight_hitbox()
 	_set_state(CarryState.FLYING)
 
@@ -310,6 +318,7 @@ func _rpc_set_loose(where: Vector3) -> void:
 	if carrier != null and is_instance_valid(carrier):
 		_character.remove_collision_exception_with(carrier)
 		_notify_carrier(carrier, null)
+		_watch_carrier_state(carrier, false)
 	carrier = null
 	_set_physics_enabled(true)
 	_set_state(CarryState.LOOSE)
@@ -323,6 +332,37 @@ func _notify_carrier(who: CharacterBase, what: Carriable) -> void:
 	var component := who.get_node_or_null("Carrier") as Carrier
 	if component != null:
 		component.notify_holding(what)
+
+## B-75. A taya tagging the attacker mid-carry has to knock the slipper out of
+## their hands — that is most of the point of tagging, and without it the whole
+## retrieval scramble can be skipped by simply eating the hit. Any state that is
+## not NORMAL drops it: STAGGERED, DOWNED and SEALED are all "this Person is not
+## currently holding anything together".
+##
+## Watched from HERE rather than from character_base.gd, which must never learn
+## what carrying is — the same rule that keeps dents and round-win logic out of
+## that file. It subscribes to the state_changed signal that already exists, so
+## nothing had to be added on the CharacterBase side.
+##
+## Runs on every peer; only the host acts, because dropping is a transition like
+## every other one and host_drop() is where that is decided.
+func _on_carrier_state_changed(new_state: CharacterBase.State) -> void:
+	if new_state == CharacterBase.State.NORMAL:
+		return
+	if _is_host():
+		host_drop()
+
+## Connected while, and only while, this slipper is actually in someone's hand.
+## Guarded both ways because a carrier can be freed mid-hold (see _step_carried)
+## and a double-connect would fire host_drop() twice.
+func _watch_carrier_state(who: CharacterBase, enable: bool) -> void:
+	if who == null or not is_instance_valid(who):
+		return
+	if enable:
+		if not who.state_changed.is_connected(_on_carrier_state_changed):
+			who.state_changed.connect(_on_carrier_state_changed)
+	elif who.state_changed.is_connected(_on_carrier_state_changed):
+		who.state_changed.disconnect(_on_carrier_state_changed)
 
 func _set_state(new_state: CarryState) -> void:
 	if new_state == state:
