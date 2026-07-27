@@ -212,6 +212,11 @@ func _start_joining(address: String) -> void:
 	_clear_local_test_characters()
 	NetworkManager.player_connected.connect(_on_player_connected)
 	NetworkManager.player_disconnected.connect(_on_player_disconnected)
+	# Q-1/B-62: only a client can lose its server or fail to reach one — a host
+	# has no server to lose, and Local Match has no NetworkManager session at
+	# all, so these are wired here rather than _ready().
+	NetworkManager.server_disconnected.connect(_on_server_disconnected)
+	NetworkManager.connection_failed.connect(_on_connection_failed)
 	NetworkManager.join_game(address)
 
 func _clear_local_test_characters() -> void:
@@ -529,4 +534,30 @@ func _on_return_to_menu_pressed() -> void:
 	# using this button would resume this match's score.
 	MatchManager.reset()
 	RoundManager.reset()
+	get_tree().change_scene_to_file("res://scenes/ui/MainMenu.tscn")
+
+## Q-1/B-62: NetworkManager.server_disconnected already fires when the host's
+## peer goes away and already nulls the peer/clears connected_peer_ids itself —
+## nothing in the codebase was listening, so a client just sat in Main.tscn
+## with a dead peer, a frozen timer, and no way out but Alt+F4. Same teardown
+## _on_return_to_menu_pressed does, minus the redundant disconnect_network()
+## call (the peer's already gone), plus a status message so the bounce reads
+## as "the host left", not a crash.
+func _on_server_disconnected() -> void:
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	MatchManager.reset()
+	RoundManager.reset()
+	GameLaunch.reset()
+	GameLaunch.pending_status_message = "Host ended the match."
+	get_tree().change_scene_to_file("res://scenes/ui/MainMenu.tscn")
+
+## Q-1/B-62: a Join to a dead/unreachable address previously left the player on
+## a black Main.tscn forever — the same soft-lock as a mid-match host quit,
+## just triggered before anyone ever connected. Same teardown, different message.
+func _on_connection_failed() -> void:
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	MatchManager.reset()
+	RoundManager.reset()
+	GameLaunch.reset()
+	GameLaunch.pending_status_message = "Could not reach that host."
 	get_tree().change_scene_to_file("res://scenes/ui/MainMenu.tscn")
