@@ -18,9 +18,9 @@ extends Node3D
 ## See CharacterBase.is_person / _spawn_player below.
 ##
 ## The local single-PC flow mirrors that structure: all 4 nodes come from
-## Main.tscn, and the player controls TeamAProp (P1 keys) and TeamAPerson
-## (P2 keys) — i.e. one full team, Prop + Person, so both Quick Stand and
-## Tag/Throw are directly testable locally. TeamBProp/TeamBPerson are
+## Main.tscn, and the player controls TeamAPerson (P1 keys) and TeamAProp
+## (P2 keys) — i.e. one full team, Person + Prop, so both Tag and Quick Stand
+## are directly testable locally. TeamBProp/TeamBPerson are
 ## local-test dummies (p3/p4, deliberately unbound in project.godot — see
 ## CharacterBase.player_id doc) standing in as a stationary opponent team.
 ## Round-swap (Can vs Slipper side) is wired for this flow too — see

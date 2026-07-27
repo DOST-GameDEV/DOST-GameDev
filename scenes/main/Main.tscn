@@ -116,14 +116,14 @@ is_can = true
 is_person = false
 team_is_can_side = true
 ability = ExtResource("3")
-player_id = 1
+player_id = 2
 
 [node name="TeamAPerson" parent="." instance=ExtResource("1")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 1, -2)
 is_can = false
 is_person = true
 team_is_can_side = true
-player_id = 2
+player_id = 1
 
 [node name="TeamBProp" parent="." instance=ExtResource("1")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 1, 2)

@@ -772,7 +772,7 @@ working camera on every unit. Nothing renders from a fixed overhead angle at any
 
 ---
 
-#### A-3 · Fix B-67 — Local Match drives the wrong unit in a release build `[ ]`
+#### A-3 · Fix B-67 — Local Match drives the wrong unit in a release build `[~]`
 
 **Do not fix this by making `main.gd` or `you_card.gd` reference `DebugPlayerSwitcher`.** That is
 protocol rule 11 and it is exactly the trap this bug sets: the tempting fix is to let gameplay ask
@@ -798,7 +798,13 @@ Steps:
 view is first-person, and WASD moves the unit you are looking through. Then in the editor:
 identical behaviour, and `Tab` still hands control over correctly.
 
-**Commit:** `Fix B-67: release-build Local Match drove the Can from the Person's camera (v4.5)`
+**[DONE]** v4.6. Data fix only: `TeamAPerson.player_id = 1`, `TeamAProp.player_id = 2` in
+`Main.tscn`. `main.gd` header comment corrected. `debug_player_switcher.gd` comment at `:33`
+extended to note that all three sources (baked ids, switcher defaults, `_start_local_test()`)
+must stay in step. `[~]` not `[x]`: no release build exists yet (F-3 is still open), so the
+actual acceptance test (run the `.exe`, check YOU card reads PERSON) is unverified.
+
+**Commit:** `Fix B-67: release-build Local Match drove the Can from the Person's camera (v4.6)`
 
 ---
 
