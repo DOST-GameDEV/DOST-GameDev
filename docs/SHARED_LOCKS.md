@@ -37,10 +37,11 @@ to type.
 >
 > Remove this row when 2.1b is merged.
 >
-> **Waiting on 🔧 Build — checklist 2.1b-0.** Two kit pieces are deferred until `add_revolve` and
-> `add_extrude` take an optional `transform: Transform3D`: **`wall_corrugated_leaning`** and
-> **`tricycle`** (its wheels are upright, so they are not Y-axis revolves). Nothing else in the kit
-> is blocked. Rationale and the fallback are in `Environment_Kit_Spec.md` §5.
+> **2.1b-0 done, 2026-07-28** (🔧 Build) — `add_revolve` and `add_extrude` both take an optional
+> trailing `transform: Transform3D = Transform3D.IDENTITY` now, verified by running (see
+> `Checklist.md` 2.1b-0). **`wall_corrugated_leaning` and `tricycle` are unblocked.** Remember:
+> `recalculate_normals()` after any non-identity call — the analytic normals are dead the moment
+> `transform` isn't a pure translation, same rule `deform` already has.
 
 ## When both lanes need the same scene for one feature
 
