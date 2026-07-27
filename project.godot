@@ -15,7 +15,7 @@ config/description="2v2 arena brawler ??? Cans vs Tsinelas. Built for Gear Up NC
 ; Single source of truth for the build version ??? see scripts/systems/game_version.gd.
 ; Bump the minor number with every gameplay/UI/model/scene change; shown on screen
 ; (main menu + in-match HUD) so a new build is visually confirmable.
-config/version="3.7"
+config/version="4.0"
 run/main_scene="res://scenes/ui/MainMenu.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
@@ -55,6 +55,7 @@ guard_dash_p1={
 special_ability_p1={
 "deadzone": 0.5,
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":81,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+, Object(InputEventMouseButton,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"button_mask":0,"position":Vector2(0, 0),"global_position":Vector2(0, 0),"factor":1.0,"button_index":1,"canceled":false,"pressed":false,"double_click":false,"script":null)
 ]
 }
 move_left_p2={
@@ -93,6 +94,24 @@ special_ability_p2={
 ]
 }
 
+grab_p1={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":69,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
+grab_p2={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194326,"key_label":0,"unicode":0,"location":2,"echo":false,"script":null)
+]
+}
+grab_p3={
+"deadzone": 0.5,
+"events": []
+}
+grab_p4={
+"deadzone": 0.5,
+"events": []
+}
 move_left_p3={
 "deadzone": 0.5,
 "events": []

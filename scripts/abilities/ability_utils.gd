@@ -1,11 +1,18 @@
 extends RefCounted
 class_name AbilityUtils
 
-## Shared helper for AoE / spawned-hitbox specials (Spin Guard, Bagsak Bomb, Bakya
-## Bash, Flick Dash). Builds a temporary Hitbox entirely from code — no separate
-## scene needed. First-pass / untested in-editor: double check the collision layers
-## match CharacterBase.tscn's Hurtbox (layer 2, see scenes/characters/CharacterBase.tscn)
-## once someone has this open in Godot.
+## Shared helper for AoE / spawned-hitbox specials (Spin Guard, Person Tag) and
+## for the tsinelas' in-flight hitbox (Task 0 — see carriable.gd). Builds a
+## temporary Hitbox entirely from code — no separate scene needed. First-pass /
+## untested in-editor: double check the collision layers match CharacterBase.tscn's
+## Hurtbox (layer 2, see scenes/characters/CharacterBase.tscn) once someone has
+## this open in Godot.
+##
+## Returns the spawned Area3D so a caller that needs to end the hitbox EARLY can
+## free it — `carriable.gd` does, because a thrown slipper's hitbox has to die the
+## moment it lands, and a landing time is not knowable at spawn time. Callers that
+## just want a fixed-duration pulse can keep ignoring the return value; the timer
+## below still frees it either way.
 
 static func spawn_pulse_hitbox(
 	character: CharacterBase,
@@ -14,9 +21,9 @@ static func spawn_pulse_hitbox(
 	forces_downed: bool = false,
 	local_offset: Vector3 = Vector3.ZERO,
 	follow_character: bool = false
-) -> void:
+) -> Area3D:
 	if character == null or not is_instance_valid(character):
-		return
+		return null
 
 	var area := Area3D.new()
 	area.set_script(load("res://scripts/characters/hitbox.gd"))
@@ -54,3 +61,4 @@ static func spawn_pulse_hitbox(
 		if is_instance_valid(area):
 			area.queue_free()
 	)
+	return area

@@ -120,6 +120,24 @@ func set_aim_source(source: AimSource) -> void:
 	aim_source = source
 	set_process_unhandled_input(_active and aim_source == AimSource.MOUSE)
 
+## Where this rig is looking, in world space, for anything that needs to fire
+## along the player's aim rather than along the body's facing (Task 0's
+## charge-throw — see carrier.gd::_aim_direction).
+##
+## This has to come from the CAMERA, not the character. Yaw lives on the body but
+## PITCH lives on this rig (see the class doc above), so a throw aimed off
+## `-character.transform.basis.z` would travel dead flat regardless of whether
+## the player was looking up at a lob or down at their feet. That is the same
+## class of bug B-05 fixed for melee, and it would be invisible in a flat test
+## arena and obvious the moment a map has height.
+##
+## Returns the active camera's basis for this rig's mode, so it is correct for a
+## TPP Prop too even though only Persons throw today.
+func get_aim_basis() -> Basis:
+	if _mode == Mode.FPP:
+		return fpp_camera.global_transform.basis
+	return tpp_camera.global_transform.basis
+
 ## Q-8: brief decaying camera kick on a landed hit. Lives here (never on
 ## arena_camera.gd, which is retired — B-58) so it rides whichever mode this
 ## rig is already in and can never violate the FPP/TPP directive.

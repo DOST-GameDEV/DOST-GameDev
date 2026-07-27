@@ -83,6 +83,9 @@ const ACTION_CLIPS: Dictionary = {
 	"throw": ["holding-right-shoot", "pick-up", "interact-right"] as Array[String],
 	# Bump — a shove, so a melee swing rather than a throw.
 	"bump": ["attack-melee-right", "attack-kick-right", "interact-right"] as Array[String],
+	# Task 1 — reaching down for a loose tsinelas. `pick-up` is the literal clip
+	# for this and the reason the brief called it out.
+	"grab": ["pick-up", "interact-right", "interact-left"] as Array[String],
 }
 
 ## The Kenney rig is authored ~0.67 units tall with its origin at the feet, so
@@ -93,6 +96,28 @@ const PERSON_SCALE: float = 2.38
 ## sits here in local space. Every model is dropped to it — see
 ## `_align_to_capsule_floor`.
 const CAPSULE_HALF_HEIGHT_DOWN: float = -0.8
+
+## Task 0 / Task 1 — where a carried tsinelas rides. The Kenney rig has SEVEN
+## bones (root, leg-left, leg-right, torso, arm-left, arm-right, head) and the
+## arms are not separate meshes; they are skinned inside `body-mesh`. So a held
+## item cannot be parented to "the arm mesh" — there isn't one. It has to hang
+## off a BoneAttachment3D on the arm BONE, which is what _build_hand_attachment
+## below does.
+##
+## Right hand first: `holding-right`, `holding-right-shoot` and
+## `attack-melee-right` are the clips that actually exist on this rig, so the
+## right arm is the one the animation set is built around. `arm-left` is only a
+## fallback for a model that somehow lacks the right one.
+const HAND_BONE_CANDIDATES: Array[String] = ["arm-right", "arm-left"]
+## Offset from the arm bone to the point a carried unit's ORIGIN should sit —
+## note: its origin, not its palm. A CharacterBase's origin is the centre of its
+## 1.6-unit capsule, while its visible model is dropped to the capsule floor by
+## _align_to_capsule_floor, so parking the origin exactly at the palm would hang
+## the slipper most of a metre below the hand. This offset absorbs that, and it
+## lives HERE rather than in carriable.gd on purpose: it is a fact about how the
+## model is laid out, and character_base.gd must never learn it — same rule that
+## keeps dents out of it.
+const HAND_CARRY_OFFSET: Vector3 = Vector3(0.0, 0.62, -0.12)
 
 const FLASH_DURATION: float = 0.15
 
@@ -134,6 +159,11 @@ var _animator: AnimationPlayer = null
 ## Name of the one-shot action clip currently playing; empty when locomotion owns
 ## the animator. Guards _play_locomotion from stomping a throw mid-swing.
 var _action_clip: String = ""
+## Cached BoneAttachment3D child marking the hand. Rebuilt lazily rather than in
+## apply(), because apply() also runs for Cans and Tsinelas that will never carry
+## anything and a BoneAttachment3D on a model with no Skeleton3D is just waste.
+## Invalidated (not freed — it dies with the model tree) on every model swap.
+var _hand_attachment: Node3D = null
 
 func _ready() -> void:
 	# Children are ready before parents, so CharacterBase's own _ready() has not
@@ -217,6 +247,10 @@ func apply(is_person: bool, is_can: bool, team: int) -> void:
 	# reference here would make the first play_action() after a role swap throw.
 	_animator = null
 	_action_clip = ""
+	# Same reasoning: the BoneAttachment3D was a child of the outgoing skeleton
+	# and has just been freed with it. Null it rather than rebuilding eagerly —
+	# get_hand_attachment() rebuilds on demand, and most units never carry.
+	_hand_attachment = null
 
 	var scene := load(key) as PackedScene
 	if scene == null:
@@ -238,6 +272,52 @@ func apply(is_person: bool, is_can: bool, team: int) -> void:
 	if _character != null:
 		_refresh_can_damage(_character.dents)
 		_refresh_downed_tilt(_character.state == CharacterBase.State.DOWNED)
+
+## Task 1 — the node a carried tsinelas snaps to. Returns null for anything with
+## no skeleton (a Can, a Tsinelas, or a Person whose model has not been instanced
+## yet), which callers must treat as "not ready", never as an error: this file's
+## own `apply()` runs from character_base.gd's `_ready()`, so there is a real
+## window early in a match where a Person exists and its hand does not.
+##
+## The returned node's transform is where the carried unit's ORIGIN goes — see
+## HAND_CARRY_OFFSET. Its scale is deliberately meaningless: a Person model is
+## scaled PERSON_SCALE (2.38) and every bone under it inherits that, so a caller
+## copying this transform wholesale would inflate the slipper to match. Callers
+## orthonormalise; carriable.gd::_step_carried documents why at the call site.
+func get_hand_attachment() -> Node3D:
+	if _hand_attachment != null and is_instance_valid(_hand_attachment):
+		return _hand_attachment
+	_hand_attachment = _build_hand_attachment()
+	return _hand_attachment
+
+func _build_hand_attachment() -> Node3D:
+	if get_child_count() == 0:
+		return null
+	var model := get_child(0) as Node3D
+	if model == null:
+		return null
+	var skeletons := model.find_children("*", "Skeleton3D", true, false)
+	if skeletons.is_empty():
+		return null
+	var skeleton := skeletons[0] as Skeleton3D
+	for bone_name in HAND_BONE_CANDIDATES:
+		if skeleton.find_bone(bone_name) == -1:
+			continue
+		var attachment := BoneAttachment3D.new()
+		attachment.name = "HandAttachment"
+		attachment.bone_name = bone_name
+		skeleton.add_child(attachment)
+		# A separate child, rather than offsetting the BoneAttachment3D itself:
+		# BoneAttachment3D overwrites its own transform from the bone pose every
+		# frame, so anything written directly onto it is silently discarded on
+		# the next update. This has bitten people in far less obvious ways than
+		# it will here — the item simply sits at the elbow and nothing errors.
+		var point := Node3D.new()
+		point.name = "HandPoint"
+		point.position = HAND_CARRY_OFFSET
+		attachment.add_child(point)
+		return point
+	return null
 
 ## Drops the model so its lowest point rests on the bottom of CharacterBase's
 ## capsule, measured from the model that was actually instanced rather than
@@ -326,8 +406,33 @@ func _play_locomotion() -> void:
 	if _animator.has_animation(wanted) and _animator.current_animation != wanted:
 		_animator.play(wanted)
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	_play_locomotion()
+	_spin_while_airborne(delta)
+
+## Task 0 — the moodboard's THE SLIPPER card asks for "thrown trajectory (spin +
+## motion blur)", and a slipper that flies without tumbling reads as a floating
+## brick. Rate comes from the slipper's own ThrowProfile, so a wooden bakya
+## tumbles lazily and a flip-flop whirls.
+##
+## POLLED from _process rather than driven off Carriable's carry_state_changed
+## signal, deliberately. Spin is a continuous per-frame value, not an event —
+## same reasoning _play_locomotion already documents for reading velocity. It
+## also sidesteps a sibling-ready ordering question: Carriable and this node are
+## both children of CharacterBase, and nothing guarantees which is ready first.
+func _spin_while_airborne(delta: float) -> void:
+	if _character == null:
+		return
+	var carriable: Carriable = _character.get_node_or_null("Carriable") as Carriable
+	if carriable == null:
+		return
+	if carriable.state != Carriable.CarryState.FLYING:
+		# Land flat. Not an else-branch on a tween: a slipper that stops spinning
+		# mid-tumble and freezes at 37° looks like a physics bug.
+		if rotation.x != 0.0:
+			rotation.x = 0.0
+		return
+	rotation.x += deg_to_rad(carriable.spin_speed_deg()) * delta
 
 ## Plays a one-shot action clip — the visible half of "their arms move when they
 ## grab". Called by `character_base.gd` when an ability or a bump fires. Falls
