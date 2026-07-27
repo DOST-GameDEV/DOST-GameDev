@@ -95,14 +95,14 @@ shape = SubResource("SphereShape3D_grab")
 script = ExtResource("8")
 
 [node name="NameplateRing" type="MeshInstance3D" parent="Nameplate"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.78, 0)
 mesh = SubResource("CylinderMesh_ring")
 cast_shadow = 0
 
 [node name="NameplateLabel" type="Label3D" parent="Nameplate"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.05, 0)
 billboard = 1
-pixel_size = 0.007
+pixel_size = 0.005
 font_size = 32
 outline_size = 4
 outline_modulate = Color(0.016, 0.031, 0.22, 0.9)
