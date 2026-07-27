@@ -209,6 +209,9 @@ func _physics_process(delta: float) -> void:
 
 	if state == State.NORMAL and Input.is_action_just_pressed(_action("bump")):
 		_open_bump_window()
+		# Cosmetic only. CharacterVisual decides what a bump LOOKS like and picks
+		# a clip the model actually has; this file just says what happened.
+		_visual.play_action("bump")
 		# Tell the host our bump window just opened, since the host is the one
 		# resolving Hitbox/Hurtbox overlaps now (see hitbox.gd) and it can't
 		# see this peer's local-only timer any other way. No-op if we ARE the
@@ -315,6 +318,8 @@ func _physics_process(delta: float) -> void:
 		# resolved (B-02: previously the activating peer's hitbox never reached
 		# the host at all, so every special/Tag/Throw was a no-op for clients).
 		ability.activate(self)
+		# The grab/throw arm swing. Cosmetic, same contract as the bump above.
+		_visual.play_action("throw")
 		if NetworkManager.is_networked() and not NetworkManager.is_host():
 			_rpc_notify_ability_activate.rpc_id(1)
 

@@ -126,7 +126,12 @@ func add_quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3, material: String, 
 ##
 ## `smooth` shades the wall with radial normals. Set it false for a hard-edged
 ## facet look; it does not change the geometry either way.
-func add_revolve(profile: PackedVector2Array, segments: int, material: String, smooth: bool = true) -> void:
+## `deform`, if given, is called as `deform.call(radius, y, angle) -> float` and
+## returns a replacement radius. That is how the lata's dent variants are made:
+## same profile, a function that pushes a wedge of the wall inward. A deformed
+## revolve's analytic normals are no longer correct, so ALWAYS follow a deformed
+## call with `recalculate_normals()` — see that function's note.
+func add_revolve(profile: PackedVector2Array, segments: int, material: String, smooth: bool = true, deform: Callable = Callable()) -> void:
 	if profile.size() < 2 or segments < 3:
 		push_error("ObjWriter.add_revolve: need >= 2 profile points and >= 3 segments")
 		return
@@ -142,10 +147,22 @@ func add_revolve(profile: PackedVector2Array, segments: int, material: String, s
 			var y1 := upper.y
 			if r0 < EPSILON and r1 < EPSILON:
 				continue # both on the axis — nothing to draw
-			var v00 := _ring_point(r0, y0, a0)
-			var v01 := _ring_point(r1, y1, a0)
-			var v11 := _ring_point(r1, y1, a1)
-			var v10 := _ring_point(r0, y0, a1)
+			# Each corner gets its own deformed radius: a dent has to vary with
+			# angle, so the four corners of one quad are not all at the same
+			# radius any more.
+			var r00 := r0
+			var r01 := r1
+			var r11 := r1
+			var r10 := r0
+			if deform.is_valid():
+				r00 = deform.call(r0, y0, a0)
+				r01 = deform.call(r1, y1, a0)
+				r11 = deform.call(r1, y1, a1)
+				r10 = deform.call(r0, y0, a1)
+			var v00 := _ring_point(r00, y0, a0)
+			var v01 := _ring_point(r01, y1, a0)
+			var v11 := _ring_point(r11, y1, a1)
+			var v10 := _ring_point(r10, y0, a1)
 			var normals: Array = []
 			if smooth:
 				# Perpendicular to the profile edge, swept around Y. For a
@@ -203,6 +220,69 @@ func add_extrude(outline: PackedVector2Array, y_bottom: float, y_top: float, mat
 		var c := outline[indices[i + 2]]
 		_add_cap_tri(Vector3(a.x, y_top, a.y), Vector3(b.x, y_top, b.y), Vector3(c.x, y_top, c.y), Vector3.UP, material)
 		_add_cap_tri(Vector3(a.x, y_bottom, a.y), Vector3(b.x, y_bottom, b.y), Vector3(c.x, y_bottom, c.y), Vector3.DOWN, material)
+
+# --- Shading ------------------------------------------------------------------
+
+## Rebuilds every normal from the geometry, averaging across adjacent faces
+## whose normals are within `angle_threshold_deg` of each other.
+##
+## This is the "smooth by angle" / smoothing-group rule, and it is the whole
+## difference between a model that reads as a moulded object and one that reads
+## as a stack of primitives. A curved wall gets one smoothly-varying normal per
+## vertex; a hard edge like the can's rolled rim exceeds the threshold, so the
+## faces on either side keep their own normals and the edge stays crisp. Blindly
+## averaging everything instead — the obvious implementation — melts every hard
+## edge and makes the can look like a wax candle.
+##
+## Call it AFTER every add_* for a mesh. Two cases need it:
+##
+##   - Any deformed revolve. `add_revolve`'s analytic normals assume a surface of
+##     revolution; the moment a `deform` callable moves vertices off that
+##     surface they are wrong, and a dent lit by the pristine can's normals is
+##     invisible.
+##   - Anything built from `add_quad`/`add_tri` that should look curved, since
+##     those default to flat per-face normals.
+##
+## 40 degrees is the default because it sits comfortably between the 22.5 degree
+## step of a 16-segment revolve (which must smooth) and the near-90 degree turn
+## at a rim or cap (which must not).
+func recalculate_normals(angle_threshold_deg: float = 40.0) -> void:
+	var threshold := cos(deg_to_rad(angle_threshold_deg))
+
+	# Per-triangle geometric normals, and which triangles touch each vertex.
+	var face_normals: Array[Vector3] = []
+	var vertex_faces: Dictionary = {} # vertex index -> PackedInt32Array of face indices
+	for f in range(_faces.size()):
+		var vi: PackedInt32Array = _faces[f]["v"]
+		var normal := _face_normal(_verts[vi[0] - 1], _verts[vi[1] - 1], _verts[vi[2] - 1])
+		face_normals.append(normal)
+		for corner in range(3):
+			var v := vi[corner]
+			if not vertex_faces.has(v):
+				vertex_faces[v] = PackedInt32Array()
+			var list: PackedInt32Array = vertex_faces[v]
+			list.append(f)
+			vertex_faces[v] = list
+
+	# Rebuild the normal table from scratch; the old analytic entries are dead.
+	_normals = PackedVector3Array()
+	_normal_index = {}
+	for f in range(_faces.size()):
+		var vi: PackedInt32Array = _faces[f]["v"]
+		var ni := PackedInt32Array()
+		for corner in range(3):
+			var v := vi[corner]
+			var own := face_normals[f]
+			var sum := Vector3.ZERO
+			# Iterating a PackedInt32Array built in face order keeps this
+			# deterministic — the Dictionary is lookup only (see header rule 2).
+			for other in vertex_faces[v]:
+				if own.dot(face_normals[other]) >= threshold:
+					sum += face_normals[other]
+			if sum.length() < EPSILON:
+				sum = own
+			ni.append(_add_normal(sum.normalized()))
+		_faces[f]["n"] = ni
 
 # --- Output -------------------------------------------------------------------
 
@@ -262,7 +342,25 @@ func _write_mtl(path: String) -> void:
 		# the toon shader; until then this is already much closer than the
 		# importer's default grey.
 		file.store_line("Ks 0.00000 0.00000 0.00000")
-		file.store_line("Ns 1.00000")
+		# ⚠️ Ns MUST STAY 1000. Godot's .obj importer does not use Ns as the
+		# Wavefront spec's specular exponent — it maps it INVERSELY onto
+		# StandardMaterial3D.metallic. Measured on 4.7.1, three data points:
+		#
+		#     Ns 0     -> metallic 1.0
+		#     Ns 1     -> metallic 0.999
+		#     Ns 1000  -> metallic 0.0
+		#
+		# i.e. metallic = 1 - Ns/1000. So `Ns 1`, the spec-correct way to write
+		# "barely shiny", imports as an almost fully METALLIC surface. Metal has
+		# no diffuse response, so with no reflection probe or sky in the scene
+		# its unlit side renders pure black — measured at RGB(2,1,0) on the first
+		# lata render, which reads as a broken light and is nothing of the kind.
+		#
+		# Also note: the .mtl is NOT listed in the .obj's [deps], so editing it
+		# alone will NOT trigger a reimport. Delete assets/models/*.obj.import
+		# and re-run --import after changing anything here, or you will measure
+		# the previous values and conclude your fix did nothing.
+		file.store_line("Ns 1000.00000")
 		file.store_line("d %s" % _fmt(color.a))
 		file.store_line("illum 1")
 	file.close()

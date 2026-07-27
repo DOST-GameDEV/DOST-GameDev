@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://c3n8iuv5eegax"
+path="res://.godot/imported/lata_dent1.obj-5df9995d1c2ae91e45d9bf41b81f9474.mesh"
+
+[deps]
+
+files=["res://.godot/imported/lata_dent1.obj-5df9995d1c2ae91e45d9bf41b81f9474.mesh"]
+
+source_file="res://assets/models/lata_dent1.obj"
+dest_files=["res://.godot/imported/lata_dent1.obj-5df9995d1c2ae91e45d9bf41b81f9474.mesh", "res://.godot/imported/lata_dent1.obj-5df9995d1c2ae91e45d9bf41b81f9474.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false
