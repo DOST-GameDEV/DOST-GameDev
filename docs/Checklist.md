@@ -483,10 +483,17 @@ Budget this like a feature.
       forces the shared-screen fallback (GDD §7), you need to know **weeks**
       before the deadline, and the FPP/TPP split makes that pivot cost one to
       two days, not half a day. **Book four laptops now.** No model can run this.
-- [ ] **6.2 · Live-demo script and trailer beat sheet.** 🤖 **Opus, high** ⛔ 2.2
-      What gets shown, in what order, in how many minutes, and what the fallback
-      is if a peer drops. Demo-day reliability is a feature — arguably the most
-      important one. A crash in front of judges costs more than a missing map.
+- [x] **6.2 · Live-demo script and trailer beat sheet.** 🎨 Design (Opus) — **delivered as
+      [`Demo_Script_and_Trailer.md`](Demo_Script_and_Trailer.md).** Six-minute live running
+      order, a printed controls card, a four-rung failure ladder, the 75-second
+      loopable trailer beat sheet for 6.3 and the four-minute outline for 6.4.
+      Written against what the build actually does — §0 is a verified/not-verified
+      inventory. **Three findings a human must act on:** a full Bo5 at 90s/first-to-3
+      is longer than any booth demo, so the demo needs a shorter preset; **5.3's
+      "strip the local harness" directly contradicts the only network-free demo
+      fallback**; and nobody has ever tested what happens when a peer drops.
+      §7 lists all five open questions. `[x]` for the document, which is the
+      deliverable — 6.3 and 6.4 remain the capture work.
 - [ ] **6.3 · Trailer, 1–2 min, loopable — capture and edit.** 🤖 Sonnet, medium ⛔ 6.2, 4.1
       Needs the real map and audio to exist. `tools/arena_camera.gd` was
       deliberately preserved for exactly this — it is 100 lines of working
