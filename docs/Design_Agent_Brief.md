@@ -1,5 +1,33 @@
 # Brief — 3D Modeling & Art Agent
 
+> ## ⚠️ PARTLY SUPERSEDED — read this box first (2026-07-27)
+>
+> **Most of the `M-` block has shipped since this brief was written.** Re-verified against the
+> code, not against checkboxes:
+>
+> | | |
+> |---|---|
+> | **M-1** generator toolchain | `[x]` shipped v3.5, deterministic |
+> | **M-2** lata — revolved body, 3 dent states, knocked-down tilt | `[x]` shipped v3.7, **renders as a can** |
+> | **M-3** tsinelas — extruded sole, real Y-strap | `[x]` shipped v4.12. Geometry is good; its **scale** is now the open question |
+> | **M-4** flat toon + ink outline | `[x]` shipped v4.11 |
+> | **M-5** Persons — restyle | `[ ]` steps 1–3 open. **Step 4 (walk/run) is DONE** — the "only `idle` of 32 clips is wired" claim is stale |
+> | **M-6** environment kit · **M-7** Eskinita | `[ ]` — now owned by [`Environment_Art_Agent_Brief.md`](Environment_Art_Agent_Brief.md) |
+> | **M-8** logo | `[ ]` — blocked on the typeface decision |
+>
+> **Live state and ordering are in [`Checklist.md`](Checklist.md), not in this file.** The
+> branch instructions in §0 below are stale — see the box under it.
+>
+> **What this brief is still the best source for:** the moodboard record, the generator's traps
+> (winding, float snapping, determinism), the material/token rules, and the triangle budgets. Read
+> it for those. Take scope and ordering from the checklist.
+>
+> **Model routing:** the *design* half (silhouette, proportion, what a mesh should look like) is
+> **Opus 5, high effort**. The *generator code* half is **Sonnet 5, medium**. If more than one agent
+> is running, read [`Concurrency_Protocol.md`](Concurrency_Protocol.md) first — this brief's
+> workstream owns `assets/**` and `scenes/characters/visuals/**` and must take a lock before
+> touching `CharacterBase.tscn` or `Main.tscn`.
+
 A self-contained brief for the agent taking the **M- block** (3D modeling) of
 [`Handoff.md`](Handoff.md) §4. Paste §0 below as the opening prompt; the agent reads the rest of
 this file itself.
@@ -17,16 +45,18 @@ describes it second-hand. A description of a logo is not a logo.
 >
 > **Before anything else:**
 >
-> 1. Get on the branch that holds the plan:
->    ```
->    git fetch origin
->    git checkout design-ui-models-and-fixes && git pull
->    ```
->    **The plan is not on `main` yet.** `main` is at `6f6d3b7` (v3.4) — correct code, but it does
->    not have the queue you are about to work, `Bug_Ledger.md`, or this brief. If
->    `design-ui-models-and-fixes` has since been merged, use `main` instead and confirm
->    `docs/Design_Agent_Brief.md` exists before continuing. Then cut your own working branch:
->    `git checkout -b art/3d-models`.
+> 1. ⚠️ **STALE — the instruction below is from an earlier pass.** `design-ui-models-and-fixes` has
+>    long since merged; `main` carries everything. Branch off `main` (or off `integration` if a
+>    second agent is running — see [`Concurrency_Protocol.md`](Concurrency_Protocol.md)) and cut
+>    `art/<task>`. The original text is kept only so the history reads honestly:
+>
+>    > Get on the branch that holds the plan:
+>    > ```
+>    > git fetch origin
+>    > git checkout design-ui-models-and-fixes && git pull
+>    > ```
+>    > **The plan is not on `main` yet.** `main` is at `6f6d3b7` (v3.4) — correct code, but it does
+>    > not have the queue you are about to work, `Bug_Ledger.md`, or this brief.
 > 2. Set your identity **exactly**:
 >    ```
 >    git config user.name "M4tyu633"
