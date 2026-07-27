@@ -530,7 +530,8 @@ simply carried forward from the previous pass's checkboxes.
 | `[x]` | Bo5, role swap, 90s round, win reporting, match reset | |
 | `[x]` | FPP/TPP camera directive, enforced by `assert` + grep | A-1, A-2 |
 | `[x]` | Theme, main menu, play menu, settings, pause, match result | |
-| `[x]` | **HUD to `Dev_Plan.md` §4.4** | Bo5 pips, role-coloured panels, framed timer with urgency states, LATA card, YOU card, FPP-only crosshair. Verified by render. |
+| `[x]` | **HUD to `Dev_Plan.md` §4.4** | Bo5 pips, role-coloured panels, framed timer with urgency states, LATA card, YOU card. Verified by render. ⚠️ **The "FPP-only crosshair, verified by render" part of this row was false** — it does not appear on a Person in a real match. See **B-86**. Corrected 2026-07-28 by the design lane. |
+| `[x]` | **Round beats — verified present, 2026-07-28** | The design-lane brief listed the role-swap card, the downed vignette, the impact burst and the slipper spin as "still placeholder". **All four already exist.** `RoleSwapCard.tscn` + `role_swap_card.gd` run the full §4.6 timeline (result banner → panels slide in on a BACK/EASE_OUT overshoot and recolour to the *incoming* roles → "ROUND N — FIGHT!" wipe → reset); `%DownedFlash` carries `assets/ui/downed_vignette.gdshader`, a real radial vignette, not a flat rect. Confirmed by rendering the card mid-timeline. Nothing to do here. |
 | `[x]` | Lobby with ready-up (B-13) | U-4 |
 | `[x]` | Role-swap intermission card | U-3 |
 | `[x]` | `.obj` generator toolchain, deterministic | M-1 |
