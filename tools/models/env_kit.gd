@@ -26,14 +26,17 @@ extends RefCounted
 ##     top at exactly 0 so the documented convention becomes true.)
 ##   * Characters face -Z, so a wall panel's "front" faces +Z by default.
 ##
-## ⚠️ TWO PIECES ARE DELIBERATELY MISSING: `wall_corrugated_leaning` and
-## `tricycle`. Both need a primitive placed off-axis — a leaning sheet and an
-## upright wheel — and ObjWriter's `add_revolve` is locked to the Y axis at the
-## origin while `add_extrude` only ever extrudes vertically. That is checklist
-## **2.1b-0** (an optional `transform: Transform3D` on both), it belongs to the
-## Build lane because obj_writer.gd is theirs, and it is claimed in
-## docs/SHARED_LOCKS.md. Add the two pieces here once it lands; nothing else in
-## the kit is blocked by it.
+## `wall_corrugated_leaning` and `tricycle` were held back until the Build lane
+## landed checklist 2.1b-0 — an optional `transform: Transform3D` on add_revolve
+## and add_extrude. Without it a leaning sheet and an upright wheel are simply
+## not expressible: revolve is locked to the Y axis at the origin, and extrude
+## only ever extrudes vertically. Both are built now, and they are the only two
+## pieces in this file that pass a transform.
+##
+## ⚠️ A transformed primitive's analytic normals are WRONG — they still describe
+## the untransformed surface. `_finish()` calls recalculate_normals(), which
+## rebuilds them from the transformed geometry, so this is handled as long as
+## every piece goes through _finish(). Do not add one that does not.
 
 const ObjWriter = preload("res://tools/models/obj_writer.gd")
 
@@ -58,6 +61,7 @@ func build_all(output_dir: String) -> void:
 	# --- boundary -----------------------------------------------------------
 	_wall_plain()
 	_wall_corrugated()
+	_wall_corrugated_leaning()
 	_post_electric()
 	_laundry_line()
 	_sari_sari_store()
@@ -70,6 +74,7 @@ func build_all(output_dir: String) -> void:
 	_tire()
 	_monobloc_chair()
 	_oil_drum()
+	_tricycle()
 
 	# --- plaza --------------------------------------------------------------
 	_bench()
@@ -259,20 +264,26 @@ func _wall_plain() -> void:
 ## returns flat along the back. That ordering is what keeps it wound the way
 ## add_extrude needs — at +X it steps from front to back, i.e. toward +Z, which
 ## is the same handedness as every other outline here.
-func _wall_corrugated() -> void:
-	var w := ObjWriter.new("WallCorrugated")
-	w.set_material("sheet", UiTheme.ENV_GI_SHEET)
-	w.set_material("rust", UiTheme.ENV_RUST)
-
+## Shared by the plumb sheet and the leaning one, so the two can never drift
+## into different corrugation pitches — which would be visible the moment they
+## sit next to each other in a wall line.
+func _corrugated_outline() -> PackedVector2Array:
 	const RIDGES := 17 ## 8 full corrugations across 2 units.
-	const AMPLITUDE := 0.11 ## Was 0.05 and rendered as a blank panel — see below.
+	const AMPLITUDE := 0.11 ## Was 0.05 and rendered as a blank panel.
 	var outline := PackedVector2Array()
 	for i in range(RIDGES):
 		var x := -1.0 + 2.0 * float(i) / float(RIDGES - 1)
 		outline.append(Vector2(x, -AMPLITUDE if i % 2 == 0 else 0.0))
 	outline.append(Vector2(1.0, 0.10))
 	outline.append(Vector2(-1.0, 0.10))
+	return outline
 
+func _wall_corrugated() -> void:
+	var w := ObjWriter.new("WallCorrugated")
+	w.set_material("sheet", UiTheme.ENV_GI_SHEET)
+	w.set_material("rust", UiTheme.ENV_RUST)
+
+	var outline := _corrugated_outline()
 	w.add_extrude(outline, 0.30, 2.40, "sheet")
 	# Rust at the base, where a real sheet rots first because it stands in water.
 	w.add_extrude(outline, 0.00, 0.30, "rust")
@@ -463,6 +474,66 @@ func _oil_drum() -> void:
 		Vector2(0.28, 0.90), Vector2(0.00, 0.90),
 	]), 14, "rust")
 	_finish(w, "env_oil_drum")
+
+## The same sheet, off plumb. Every fourth bay of the wall line uses this one,
+## and it is the cheapest thing in the kit that stops a boundary reading as a
+## level editor — nothing in an eskinita is straight, and a wall of identical
+## plumb panels announces that a machine placed them.
+##
+## The lean is about X (the sheet is wide along X, thin along Z), so the top
+## edge tips ~0.25 units in Z while the base stays put.
+func _wall_corrugated_leaning() -> void:
+	var w := ObjWriter.new("WallCorrugatedLeaning")
+	w.set_material("sheet", UiTheme.ENV_GI_SHEET)
+	w.set_material("rust", UiTheme.ENV_RUST)
+	var outline := _corrugated_outline()
+	var lean := Transform3D(Basis(Vector3(1, 0, 0), deg_to_rad(6.0)), Vector3.ZERO)
+	w.add_extrude(outline, 0.30, 2.40, "sheet", lean)
+	w.add_extrude(outline, 0.00, 0.30, "rust", lean)
+	_finish(w, "env_wall_corrugated_leaning", 22.0)
+
+## Silhouette grade, and it is meant to be. This is read from four units away and
+## never inspected — a tricycle is the single piece that makes an alley a
+## PHILIPPINE alley rather than any alley, and that is carried entirely by the
+## outline: a motorcycle with a roofed sidecar bolted to its side.
+##
+## WAIST-COVER TIER at 1.25 tall, so per Environment_Kit_Spec.md §2 it goes at
+## the boundary or as deliberate cover — never scattered in the play area, where
+## it would block an FPP Person whose eye is at 1.25.
+##
+## The three wheels are the reason this piece needed 2.1b-0: a wheel stands
+## upright, so it is a revolve about a HORIZONTAL axis, and add_revolve only
+## spins around Y at the origin.
+func _tricycle() -> void:
+	var w := ObjWriter.new("Tricycle")
+	w.set_material("frame", UiTheme.ENV_RUST)
+	w.set_material("roof", UiTheme.ENV_GI_SHEET)
+	w.set_material("rubber", UiTheme.ENV_RUBBER)
+	w.set_material("trim", UiTheme.HIGHLIGHT)
+
+	# Motorcycle half, on -X. Sidecar half, on +X.
+	_box(w, -0.34, -0.05, 0.30, 1.30, 0.34, 0.72, "frame")
+	_box(w, -0.34, 0.18, 0.34, 0.46, 0.72, 0.82, "rubber")   # saddle
+	_box(w, -0.34, -0.62, 0.52, 0.08, 0.86, 0.94, "frame")   # handlebar
+	_box(w, 0.32, 0.10, 0.78, 0.92, 0.20, 0.86, "frame")     # sidecar body
+	_box(w, 0.32, 0.10, 0.84, 0.98, 0.86, 0.92, "trim")      # sidecar lip
+	for sz in SIDES:
+		_box(w, 0.32, 0.10 + sz * 0.40, 0.07, 0.07, 0.92, 1.20, "frame")
+	_box(w, 0.32, 0.10, 0.90, 1.04, 1.20, 1.26, "roof")      # GI roof
+
+	# Wheels. Rotating -90 degrees about Z maps the revolve's own +Y (its
+	# thickness axis) onto +X, which is the axle direction here. The extra
+	# -0.06 in X centres the 0.12-thick wheel on its axle.
+	for spec in [Vector3(-0.34, 0.26, -0.62), Vector3(-0.34, 0.26, 0.52),
+			Vector3(0.62, 0.24, 0.30)]:
+		var axle := Transform3D(
+			Basis(Vector3(0, 0, 1), -PI * 0.5),
+			Vector3(spec.x - 0.06, spec.y, spec.z))
+		w.add_revolve(PackedVector2Array([
+			Vector2(0.00, 0.00), Vector2(0.25, 0.00),
+			Vector2(0.25, 0.12), Vector2(0.00, 0.12),
+		]), 8, "rubber", true, Callable(), axle)
+	_finish(w, "env_tricycle")
 
 # =============================================================================
 # Plaza

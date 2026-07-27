@@ -54,8 +54,9 @@ def add(parent, name, mesh_name, x, y, z, yaw=0.0):
 # Seeded, never random: the pattern repeats on a 5-bay cycle and every third bay
 # steps back one cell. A flush wall of identical panels reads as a corridor in a
 # level editor, which is the failure this ring exists to avoid.
-PATTERN = ["wall_corrugated", "wall_corrugated", "wall_plain",
-           "wall_corrugated", "sari_sari_store"]
+PATTERN = ["wall_corrugated", "wall_corrugated_leaning", "wall_plain",
+           "wall_corrugated", "sari_sari_store", "wall_corrugated",
+           "wall_plain", "wall_corrugated_leaning"]
 i = 0
 z = -Z_END
 while z <= Z_END:
@@ -107,6 +108,12 @@ CLUTTER = [
 for n, (piece, x, zz) in enumerate(CLUTTER):
     add("Dressing/Clutter", f"Clutter_{n}", piece, x, 0.0, zz,
         [0.4, -0.9, 1.7, 2.6, -2.1][n % 5])
+
+# --- Tricycles. Waist-cover tier (1.25 tall) so they sit AGAINST the wall line,
+# --- never loose in the alley where they would block an FPP Person's aim.
+for n, (x, zz, yaw) in enumerate([
+        (-6.6, -6.0, 0.15), (6.6, 9.5, math.pi + 0.2), (-6.5, 15.0, -0.1)]):
+    add("Dressing/Clutter", f"Tricycle_{n}", "tricycle", x, 0.0, zz, yaw)
 
 # --- Field markings. These serve BOTH round-win modes. ----------------------
 # y = MARK_Y, not 0. Found by rendering: `road_tile_line` is a whole 2x2 asphalt

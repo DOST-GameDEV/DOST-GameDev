@@ -274,8 +274,9 @@ HUD contrast or hazard placement against a grey box.
         `env_*.mtl`; imports clean; and **rendered** — five bugs were found that way and fixed
         (invisible wires, unreadable corrugation, sampay posts standing in the road, a hazard decal
         that shouted over the Props, and a base circle buried inside the road tiles).
-        **Two pieces still missing, on purpose:** `wall_corrugated_leaning` and `tricycle` need
-        2.1b-0. Nothing else is blocked.
+        **Complete as of 2026-07-28 — 30 pieces.** `wall_corrugated_leaning` and `tricycle` landed
+        once the Build lane shipped 2.1b-0; they are the only two pieces that pass a `transform`.
+        Tricycle 192 tris, leaning sheet 144. Both placed in Eskinita and rendered.
         *Deferred, do not lose:* **convex collision per piece was NOT generated** — Eskinita
         collides on one invisible box ring behind the wall line instead, which
         `Environment_Kit_Spec.md` §4 permits for a continuous wall. A `GridMap` map would need the
