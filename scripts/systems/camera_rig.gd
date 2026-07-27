@@ -99,6 +99,10 @@ var _active: bool = false
 ## _viewmodel_arms(). Null on every Prop and on any Person that has never
 ## been looked through.
 var _arms: Node3D = null
+## The throwing arm's empty-handed pose, captured from ViewmodelArms.tscn the
+## first time it is needed. The carry pose is computed from the slipper, so
+## this is what the hand returns to when nothing is held.
+var _viewmodel_rest: Transform3D = Transform3D.IDENTITY
 
 ## Q-8: decaying camera-shake offset, applied to whichever camera this rig's
 ## _mode actually uses — never by writing the character body's rotation
@@ -196,7 +200,90 @@ func shake(strength: float = 0.35, duration: float = 0.18) -> void:
 		_shake_duration = duration
 		_shake_time_left = duration
 
+## Length of `viewmodel_arm.obj` from elbow to fingertip, in metres. The mesh is
+## authored along +Y from the elbow at the origin, so the fist sits exactly this
+## far along the pivot's y-axis. Re-measure if `_build_viewmodel_arm()` changes
+## its extents.
+const VIEWMODEL_ARM_LENGTH: float = 0.84
+## The direction the throwing forearm points while carrying, in FppPivot space:
+## up, forward and slightly inward toward the crosshair. The elbow is then placed
+## backwards along this from the slipper, which is what puts it below frame.
+const VIEWMODEL_CARRY_DIR: Vector3 = Vector3(-0.447, 0.745, -0.477)
+## Size of the throwing arm while it is holding something. See the block in
+## _update_viewmodel_carry() for why the carrying arm shrinks and the empty one
+## does not.
+const VIEWMODEL_CARRY_SCALE: float = 0.55
+## How fast the hand converges on the slipper. Instant snapping on pick-up reads
+## as a teleport; this is quick enough to feel attached, slow enough to see.
+const VIEWMODEL_REACH_SPEED: float = 14.0
+
+
+## Playtest: "the slippers just float when you hold it, its completely
+## unattached to person".
+##
+## Correct, and the cause is a seam this rig created. A carried unit is parented
+## to a BoneAttachment3D on the SKELETON's arm bone — but in first person the
+## skeleton is hidden (`_apply_fpp_self_hide`) and sits below the frustum
+## entirely, while the arms the player can actually see are the VIEWMODEL,
+## mounted to the camera. Two different spaces. The slipper was never detached
+## from the character; it was attached to the arm nobody can see.
+##
+## So the visible hand is moved to the slipper, rather than the slipper to the
+## hand. The fist is placed exactly on the carried unit and the elbow projected
+## backwards from it along `VIEWMODEL_CARRY_DIR`, which drops the elbow below
+## frame and keeps the forearm running off-screen the way it should.
+##
+## ⚠️ DELIBERATELY READS THE SLIPPER'S LIVE POSITION rather than baking a pose
+## from `HAND_CARRY_OFFSET`. That constant is being re-measured by the
+## proportions work, and `TSINELAS_CARRY_SCALE` is being removed with it — a
+## baked pose would silently drift the moment either lands. Tracking the actual
+## unit is correct for whatever those settle at.
+func _update_viewmodel_carry(delta: float) -> void:
+	var arms := _viewmodel_arms()
+	if arms == null or not arms.visible:
+		return
+	var pivot := arms.get_node_or_null("RightPivot") as Node3D
+	if pivot == null:
+		return
+	if _viewmodel_rest == Transform3D.IDENTITY:
+		_viewmodel_rest = pivot.transform
+
+	var carrier := _character.get_node_or_null("Carrier") as Carrier
+	var held: Carriable = carrier.held() if carrier != null else null
+	var wanted := _viewmodel_rest
+	if held != null and is_instance_valid(held) and held.get_parent() is Node3D:
+		# ⚠️ THE CARRYING ARM IS SCALED DOWN, and that is not a cheat.
+		#
+		# The slipper rides only ~0.48 units in front of the eye
+		# (HAND_CARRY_OFFSET, chosen so it never covers the crosshair), while the
+		# forearm mesh is 0.84 long. Any full-size arm reaching that point has to
+		# pass within centimetres of the lens, and at a 95-degree FOV that fills
+		# half the frame — measured twice, once with the elbow projected back from
+		# the slipper (elbow ended up BEHIND the camera) and once with the elbow
+		# anchored and the forearm stretched (still a wall of skin on the right).
+		#
+		# So the carrying arm renders at VIEWMODEL_CARRY_SCALE. It reads as a hand
+		# at arm's length rather than a forearm across the lens, and because the
+		# fist is placed exactly ON the carried unit the slipper is unambiguously
+		# held. The empty hand keeps its full size — nothing is close enough to
+		# the eye there for it to matter.
+		var target := fpp_pivot.to_local((held.get_parent() as Node3D).global_position)
+		var dir := VIEWMODEL_CARRY_DIR.normalized()
+		var reach := VIEWMODEL_ARM_LENGTH * VIEWMODEL_CARRY_SCALE
+		var elbow := target - dir * reach
+		# Any stable reference works; the arm never approaches vertical here, so
+		# the cross product is always well conditioned.
+		var right_axis := dir.cross(Vector3.FORWARD).normalized()
+		wanted = Transform3D(Basis(right_axis * VIEWMODEL_CARRY_SCALE,
+			dir * VIEWMODEL_CARRY_SCALE,
+			right_axis.cross(dir) * VIEWMODEL_CARRY_SCALE), elbow)
+
+	pivot.transform = pivot.transform.interpolate_with(
+		wanted, clampf(VIEWMODEL_REACH_SPEED * delta, 0.0, 1.0))
+
+
 func _process(delta: float) -> void:
+	_update_viewmodel_carry(delta)
 	if _shake_time_left > 0.0:
 		_shake_time_left = max(0.0, _shake_time_left - delta)
 		var ratio := _shake_time_left / _shake_duration
