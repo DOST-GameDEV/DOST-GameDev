@@ -32,10 +32,11 @@ const SLOT_P1: int = 0
 const SLOT_P2: int = 1
 ## Defaults for F6, and for the slot state established when the DebugBar
 ## registers. P1 holds the Person so a fresh Local Match starts you in the human
-## character rather than third-person on a tin can; P2 gets the Prop. Kept in
-## step with `main.gd::_start_local_test()`, which picks the same unit for the
-## camera — these two must agree, because `debug_register_bar()` re-applies
-## these defaults and would otherwise silently override main.gd's choice.
+## character rather than third-person on a tin can; P2 gets the Prop. Must stay
+## in step with Main.tscn's baked player_id values (TeamAPerson=1, TeamAProp=2)
+## AND with `main.gd::_start_local_test()`, which picks the same unit for the
+## camera — in a release build the switcher self-frees and the baked values are
+## the only source of truth (B-67), so all three must agree in both directions.
 const DEFAULT_P1_UNIT: String = "TeamAPerson"
 const DEFAULT_P2_UNIT: String = "TeamAProp"
 
