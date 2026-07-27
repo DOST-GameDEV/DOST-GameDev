@@ -238,3 +238,33 @@ Options, in ascending cost: (a) accept it; (b) hide only `head-mesh` and pull th
 in, accepting that the player sees their own chest; (c) build a dedicated viewmodel arm pair as
 generated `.obj`, parented to the arm bone and visible **only** in FPP. (c) is the right answer and
 is real modelling work — it belongs in this plan's next stage, not in the P0 fix batch.
+
+---
+
+## 6. Item C attempted and reverted — read this before trying again
+
+**`material_overlay` cannot produce an inverted-hull outline.** Tried at v4.36: an
+`env_outline.tres` (M-4's `outline.gdshader`, `cull_front` + vertex inflation) assigned as
+`material_overlay` on all 53 silhouette pieces — walls, building masses, posts, tricycles.
+Rendered with the width at both 0.022 and 0.085. **No outline appeared at either width.**
+
+The reason is that `material_overlay` re-draws the mesh *depth-tested against the depth the base
+pass just wrote*. The inflated hull sits behind the surface everywhere, so every fragment fails
+the test, including at the silhouette. `next_pass` works for the Persons because it is part of
+the surface material's own pass chain, not a separate overlay draw.
+
+**So the real fix needs per-surface `next_pass`, which means overriding each `.obj` surface
+material.** Each env piece carries several materials from its `.mtl` (a building has body, band,
+plinth, window), so this means either:
+
+- **(a)** emitting `surface_material_override/N` per node in the map builder, which re-declares
+  every colour in the builder and makes the `.mtl` no longer authoritative; or
+- **(b)** giving the env pieces the M-4 toon shader with the outline chained as `next_pass`, the
+  same treatment the Props already get in `character_visual.gd::_apply_toon_pass()` — but driven
+  at import or by a small scene script, since map dressing is plain `MeshInstance3D` and never
+  passes through `CharacterVisual`.
+
+**(b) is the right answer** and is a genuine piece of work, not a config change. Note that
+`outline_width` is in MODEL space, so it must scale with piece size: 0.008 suits a Person at
+`PERSON_SCALE` 2.38, while a 9-metre building needs roughly an order of magnitude more to read
+at 20 units. A single shared width will not work across the kit.

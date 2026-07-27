@@ -228,21 +228,26 @@ func _build_viewmodel_arm() -> void:
 
 	# Forearm, elbow at y=0 running to the wrist. Chunky and near-square in
 	# section, matching Kenney's blocky limbs rather than tapering realistically.
+	# ⚠️ CHUNKY ON PURPOSE, and the first version was not chunky enough. The
+	# Kenney rig is chibi: its real forearm is roughly as wide as it is long, and
+	# a viewmodel authored at human proportions read as two thin sticks against
+	# it. Width is now ~0.21 against a 0.42 total length - about 1:2 - which is
+	# what matches the body the player sees in third person.
 	writer.add_extrude(PackedVector2Array([
-		Vector2( 0.062, -0.058),
-		Vector2( 0.062,  0.058),
-		Vector2(-0.062,  0.058),
-		Vector2(-0.062, -0.058),
-	]), 0.0, 0.34, "skin_shade")
+		Vector2( 0.105, -0.098),
+		Vector2( 0.105,  0.098),
+		Vector2(-0.105,  0.098),
+		Vector2(-0.105, -0.098),
+	]), 0.0, 0.26, "skin_shade")
 
 	# Fist: wider than the forearm so the silhouette has a knuckle break in it.
 	# Without the step the arm reads as a plank.
 	writer.add_extrude(PackedVector2Array([
-		Vector2( 0.082, -0.075),
-		Vector2( 0.082,  0.075),
-		Vector2(-0.082,  0.075),
-		Vector2(-0.082, -0.075),
-	]), 0.34, 0.52, "skin")
+		Vector2( 0.132, -0.126),
+		Vector2( 0.132,  0.126),
+		Vector2(-0.132,  0.126),
+		Vector2(-0.132, -0.126),
+	]), 0.26, 0.44, "skin")
 
 	writer.recalculate_normals(40.0)
 	writer.write(OUTPUT_DIR + "viewmodel_arm")
