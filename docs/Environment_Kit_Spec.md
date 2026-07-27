@@ -378,11 +378,19 @@ boundary and say so** — every phase below leaves a coherent map.
 - `godot --headless -s tools/models/generate_all.gd` **twice**; `git status` clean after the second.
 - Every piece ≤ 400 triangles. Report the actual count per piece in the commit body.
 - Convex collision per piece.
-- **No `#F87020` and no `#0080E8` in any emitted `.mtl`.** Verify by grep, not by eye:
+- **Every kit piece is emitted as `assets/models/env_<piece>.obj`.** The `env_` prefix is not
+  cosmetic — it is what makes the next check scopeable, and it keeps 26 new files from burying the
+  five prop meshes in the same directory.
+- **No `#F87020` and no `#0080E8` in any emitted kit `.mtl`.** Verify by grep, not by eye:
   ```bash
-  grep -rniE '0\.9725|0\.4392|0\.1255|0\.5020|0\.9098' assets/models/*.mtl
+  grep -rnE '0\.97255 0\.43922 0\.12549|0\.00000 0\.50196 0\.90980' assets/models/env_*.mtl
   ```
-  (`Kd` is written as floats — those are the components of the two forbidden colours.)
+  Expect **no output**. `Kd` is written as floats, and those two lines are exactly `OFFENSE` and
+  `DEFENSE`.
+  > ⚠️ **Scope this to `env_*` and nothing wider.** `lata*.mtl` legitimately contains the `DEFENSE`
+  > line — the can is the *defending* side's prop and the rule is about **environment** geometry.
+  > A grep over all of `assets/models/` fails on the lata and tells you nothing. (Checked: it does,
+  > on all four lata variants.)
 - **Screenshots.** `godot --path . tools/render_probe.tscn --quit-after 400 --resolution 1280x720
   -- match <dir>`, run **without `--headless`**. A design-lane claim with no picture is not
   evidence; this project has shipped four geometry bugs that every headless check passed.
@@ -398,7 +406,7 @@ boundary and say so** — every phase below leaves a coherent map.
 | **2.1b** — generate the kit from this document | 🔧 Build | `Checklist.md` |
 | **0.6** — carried-scale the tsinelas | 🔧 Build (`character_visual.gd`) | `Checklist.md` 0.6, `Handoff.md` §0.11 |
 | **0.7 / B-82** — floor top is `y = +0.5`; units spawn inside the slab | 🔧 Build (`Main.tscn`, shared, locked) | `Checklist.md` 0.7, B-82 |
-| **B-81** — tsinelas sole is `DEFENSE` blue on an offence-only unit | 🎨 Design, its own commit | B-81 |
+| ~~**B-81**~~ — tsinelas sole was `DEFENSE` blue on an offence-only unit | 🎨 Design | **FIXED 2026-07-28**, verified by render |
 | **B-83** — boundary colliders at `±40` around a `±20` floor | 🎨 Design, inside 2.2 | B-83, §4 above |
 | **4.4a** — `throw_bakya` max range is 4.81 units | 🔧 Build (tuning) | §9 above, `Checklist.md` 4.4a |
 | Spawn-point *reading* logic (`main.gd` prefers map markers) | 🔧 Build | `Checklist.md` 2.2 |
