@@ -407,9 +407,17 @@ touch map scenes.
       been felt because B-76 means no Prop can select it. Retune, then re-check
       `Environment_Kit_Spec.md` §9's table. Filed separately from 4.4 because the map's throwing
       line is placed against these numbers.
-- [ ] **4.5 · Hitstop.** 🤖 Sonnet, medium
+- [x] **4.5 · Hitstop.** 🤖 Sonnet, medium
       The one piece of the Q-8 hit-feedback set that never landed. Cheap, and it
       is what makes a landed hit feel like contact rather than a colour change.
+      **Done, verified by running.** `character_base.gd::_flash_hit()` now dips `Engine.time_scale`
+      to 0.05 for 60ms real time (a `SceneTreeTimer` with `ignore_time_scale` restores it, so the
+      dip's own length doesn't get stretched by the dip). Global, not per-node, and broadcast the
+      same way the existing flash/particles/shake already are — every peer feels the same beat on
+      the same trigger. A headless probe forced a real bump between two opposing units and
+      confirmed `time_scale` dropped to 0.05 immediately and returned to exactly 1.0 shortly after.
+      Not verified: how 60ms/0.05 actually feels — a tuning number like every other one in the
+      T-block, cheap to adjust after 0.4.
 
 ---
 
