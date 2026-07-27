@@ -5,10 +5,16 @@ class_name MatchResult
 ## already correctly decides a Bo5 win (WINS_NEEDED = 3), but nothing used to
 ## exist after match_won fired. Self-sufficient like Hud: reads MatchManager
 ## directly and needs no wiring from main.gd beyond being present in the
-## scene tree. Plain placeholder styling — item 20 replaces this with the
-## moodboard's Bo5 grid.
+## scene tree.
+##
+## Q-4: restyled to the moodboard's Bo5 pip grid (Dev_Plan.md §4.4). Colour
+## tracks ROLE, never team identity — §4.2's hard rule ("Team A is not the
+## orange team"). Team identity is carried only by the A/B letter marks.
 
+@onready var card: PanelContainer = %Card
 @onready var message_label: Label = %MessageLabel
+@onready var team_a_pips: HBoxContainer = %TeamAPips
+@onready var team_b_pips: HBoxContainer = %TeamBPips
 @onready var rematch_button: Button = %RematchButton
 @onready var menu_button: Button = %MenuButton
 
@@ -20,6 +26,19 @@ func _ready() -> void:
 
 func _on_match_won(winning_team: int) -> void:
 	message_label.text = "%s WINS THE MATCH!" % ("TEAM A" if winning_team == 0 else "TEAM B")
+	# Q-4/§4.2 hard rule: the accent bar tracks ROLE, not team — colour the
+	# winning team's card by which side it held in the FINAL round
+	# (MatchManager.team_a_is_can), not by team identity. Nothing has reset
+	# this yet — match_won fires before Rematch/Menu ever touch MatchManager.
+	var team_a_is_can := MatchManager.team_a_is_can
+	var winner_is_can_side := team_a_is_can if winning_team == 0 else not team_a_is_can
+	var accent := UiTheme.DEFENSE if winner_is_can_side else UiTheme.OFFENSE
+	card.add_theme_stylebox_override("panel", UiTheme.card_style(UiTheme.PANEL, UiTheme.INK, accent))
+	# Same rule applied to both team blocks' pip fill colour, not just the
+	# winner's accent bar — each team's pips read as whichever role it held
+	# this same final round.
+	_fill_pips(team_a_pips, MatchManager.team_a_wins, UiTheme.DEFENSE if team_a_is_can else UiTheme.OFFENSE)
+	_fill_pips(team_b_pips, MatchManager.team_b_wins, UiTheme.OFFENSE if team_a_is_can else UiTheme.DEFENSE)
 	visible = true
 	# B-51: main.gd captures the cursor for the whole match and nothing released
 	# it when the match ended, so this screen appeared with an invisible, captured
@@ -41,6 +60,17 @@ func _on_match_won(winning_team: int) -> void:
 	# Main.tscn) to stay clickable while the tree is paused.
 	if not NetworkManager.is_networked():
 		get_tree().paused = true
+
+## Bo5 pip grid, three squares per team, filled for rounds won. fill_color is
+## that team's role colour THIS final round (see _on_match_won) — a plain
+## INK/CARD square would lose the role-colour read the moodboard specifies,
+## and reusing UiTheme.card_style keeps the border/radius identical to every
+## other box in the theme instead of a one-off number.
+func _fill_pips(container: HBoxContainer, wins: int, fill_color: Color) -> void:
+	for i in range(container.get_child_count()):
+		var pip: Panel = container.get_child(i)
+		var filled := i < wins
+		pip.add_theme_stylebox_override("panel", UiTheme.card_style(fill_color if filled else UiTheme.CARD))
 
 ## Resets in place — no scene reload — so a networked rematch doesn't tear
 ## down the connection or any spawned character. main.gd::_on_match_round_started
