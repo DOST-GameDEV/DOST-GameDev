@@ -838,6 +838,13 @@ scripts/
 docs/
 ```
 
+### Build version
+
+`application/config/version` in `project.godot` is the single source of truth. Bump the minor
+number in the **same commit** as any gameplay/UI/model/scene change. Rule: **a docs-only commit
+that names a version in its subject must still bump the file**, or the subject and the stamp
+diverge — which is exactly how B-70 happened (commit said v3.4, stamp stayed v3.3).
+
 ### Git
 
 - One branch per feature off `main` (`feature/camera-rigs`, `feature/ui-theme`, …). Small,

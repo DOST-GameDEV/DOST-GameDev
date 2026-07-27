@@ -326,7 +326,10 @@ over a `[character, team, is_person]` list built per mode. See **A-4**.
 That commit touched only `docs/`, so the bump was skipped as a docs-only change, but the commit
 subject still claims v3.4 and `GameVersion.attach_to()` stamps `v3.3` on the menu and the HUD.
 The whole point of that stamp (§7) is that a playtester can name their build without diffing
-files. Reconcile it in **F-1**.
+files.
+**[FIXED]** F-1, v4.5. The T-block work already brought the stamp into sync with real changes
+(v4.0 through v4.4). F-1 set 1920×1080 + stretch mode and bumped to v4.5, and added a rule to
+`Dev_Plan.md §6` that docs-only commits naming a version must still bump the file.
 
 **B-71 · Tracked `.import` UIDs regenerate on any cache rebuild. (NEW, low)** Opening the
 project on a second machine rebuilt `.godot/` and reassigned
@@ -567,7 +570,7 @@ leaves behind is old code that predates this queue, unchanged.
 
 ### F — Foundation (do these first; everything else assumes them)
 
-#### F-1 · Set the base resolution and stretch mode, and reconcile the version stamp `[ ]`
+#### F-1 · Set the base resolution and stretch mode, and reconcile the version stamp `[~]`
 
 **`Dev_Plan.md` §4.7 and §7 both say to do this before building UI. It has never been done —
 `project.godot` has no `[display]` section at all.** Every `offset_*` in `MainMenu.tscn`,
@@ -598,9 +601,15 @@ Steps:
 
 **Acceptance:** launch, resize the window from 1280×720 to maximised. The main menu card stays
 centred and legible at both; the HUD's top bar stays pinned to the top centre; no control leaves
-the viewport. Menu and HUD both stamp `v4.0`.
+the viewport. Menu and HUD both stamp the current build version.
 
-**Commit:** `Set the 1920x1080 base resolution and stretch mode, fix B-70 (v4.0)`
+**[DONE]** v4.5. `[display]` section added. B-70 fixed. Dev_Plan §6 "Build version" note added.
+Version bumped from 4.4 → 4.5 with this change. Step 3's "Set version to 4.0" instruction was
+superseded — T-block commits already consumed 4.0 through 4.4, so the correct next version is
+4.5. Step 2 (open existing UI scenes and confirm no layout drift) is `[~]`: no human has launched
+and resized the window.
+
+**Commit:** `Set the 1920x1080 base resolution and stretch mode, fix B-70 (v4.5)`
 
 ---
 
@@ -670,7 +679,7 @@ acceptance test for the §0.3 removal contract and the reproduction case for B-6
 
 ---
 
-#### F-4 · Reconcile `Dev_Plan.md` to the code `[ ]`
+#### F-4 · Reconcile `Dev_Plan.md` to the code `[x]`
 
 Small, and it stops the next agent building against fiction. Docs-only; no version bump.
 
