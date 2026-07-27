@@ -16,7 +16,7 @@ to type.
 | Shared file | Held by | Branch | Since |
 |---|---|---|---|
 | `scenes/main/Main.tscn` | — free — | | |
-| `scenes/characters/CharacterBase.tscn` | — free — | | |
+| `scenes/characters/CharacterBase.tscn` | 🔧 Build | code/proportions | 2026-07-28 |
 | `scenes/characters/CameraRig.tscn` | — free — | | |
 | `scenes/ui/*.tscn` | — free — | | |
 | `project.godot` | — free — | | |
