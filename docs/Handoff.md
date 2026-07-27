@@ -37,6 +37,155 @@ one names the model it should run on, the files to read first, its exact scope, 
 
 ## 0. Session log — where the project stands right now
 
+### 0.11 CHECKLIST 1.2 — prop scale decided: hero-scaled props, carried-scale tsinelas (2026-07-28)
+
+**Branch:** `art/prop-scale-and-kit`. **Lane:** 🎨 Design. **Supersedes nothing** — 1.2 was open,
+never answered. `Environment_Art_Agent_Brief.md` §7 and `Checklist.md` 1.2 both carried option (a)
+as a *recommendation*; this section is the decision, the numbers, and the reasoning.
+
+#### The diagnosis, verified by render and not by arithmetic
+
+Measured from the committed `.obj` files and confirmed in-engine with
+`tools/render_probe.gd` (viewmodel mode, real rendering device):
+
+| | Measured | vs. a 1.598-unit Person | Real-world equivalent |
+|---|---|---|---|
+| Person (Kenney, `PERSON_SCALE` 2.38) | **1.598** tall | — | ~165 cm |
+| Person head-mesh alone | **0.781** tall | 49% | — |
+| Lata | **1.125** tall, 0.68 across | **70%** | a can is ~7% |
+| Tsinelas | **1.350** long, 0.52 wide, **0.165** thick | **84%** | a slipper is ~17% |
+
+The render settles what the numbers only suggest. A Person holding the tsinelas does not read as a
+person holding a slipper; it reads as **a toddler holding a blue surfboard**, and in first person
+the slipper eats roughly a quarter of the screen as an untranslatable blue slab. The lata, by
+contrast, **reads correctly as a can** at the same distance and needs nothing.
+
+So the problem is narrower than "prop scale". It is one case: **the tsinelas while carried.**
+
+#### What the human asked for, and what it actually means
+
+Mid-pass steer, verbatim: *"make humans bigger, objects should fit in hand."*
+
+Those are a mechanism and an outcome, and only the outcome is load-bearing. Visually nothing
+distinguishes "make the human bigger" from "make the object smaller" — only *relative* proportion
+reaches the screen. **"Objects should fit in hand" is adopted as the acceptance criterion for this
+item, in exactly those words.** The mechanism chosen to deliver it is the cheap one, for the
+reasons below, and the literal larger-Person option is costed and kept live rather than dropped —
+see *The option that stays open*.
+
+#### The decision
+
+**(a) — props stay hero-scaled as units; the tsinelas is scaled down ONLY while `CARRIED`.**
+
+- `TSINELAS_CARRY_SCALE = 0.32`, applied to the `Visual` node, giving a carried slipper
+  **0.432 units long — 27% of the Person's height**, against 84% today.
+- Chosen, not split-the-difference: the true ratio is 17% and hero scale is 84%. 27% sits
+  deliberately at the stylised end, because the moodboard's whole language is chibi exaggeration
+  (a head that is half the body). At 0.432 the slipper is ~55% of the Person's own head — the one
+  proportional anchor a viewer reads instantly — which is "a big slipper, held", not "a surfboard".
+- **Acceptable tuning window without coming back to this lane: 0.28 – 0.40.** Outside that, reopen
+  the item.
+
+#### Alternatives considered and rejected
+
+- **(b) Scale the props toward plausible size and retune around them.** Rejected. Both the lata and
+  the tsinelas are **player-controlled units inside a 1.6-unit capsule with a TPP camera at ~4.5
+  units.** A 0.11-unit lata is not a character; it is a speck with a spring arm pointed at it, and
+  it drags in the capsule, the hurtbox (`CapsuleShape3D` r0.4/h1.6 and r0.45/h1.7), every
+  `hit_radius` in the four throw profiles, the grab radius, and the TPP distance. It also
+  contradicts the board, which gives **THE CAN** and **THE SLIPPER** their own role cards with the
+  same weight as **THE ATTACKER** and **THE DEFENDER** — in this game's fiction the can and the
+  slipper *are* characters. And decisively: it retunes movement feel **immediately before checklist
+  0.4, the first time a human will ever have played this**, which would make 0.4's notes
+  unattributable to either the mechanic or the rescale.
+- **(c) Raise `PERSON_SCALE` — the human's literal suggestion.** Rejected *for now*, on cost, not on
+  merit. `PERSON_SCALE` is visual-only, so raising it desynchronises the model from the 1.6 capsule
+  that governs its collision: at 2.85 the Person stands 1.913 tall and its head clears the capsule
+  by 0.31. That drags in the capsule height, the hurtbox, `FppPivot` (eye height would move from
+  +0.45 to ≈ +0.85 — reopening B-78's exact failure class), `HAND_CARRY_OFFSET`, the TPP spring
+  arm, and the arena's read at fixed movement speed. It is (b)'s cost with a different sign, and it
+  lands in **shared and build-lane files** (`CameraRig.tscn`, `CharacterBase.tscn`). Kept live —
+  see below.
+- **(d) Shrink the lata too, for consistency.** Rejected. The lata renders correctly today
+  (screenshot in this pass). Changing what reads right, to match a rule that only the tsinelas
+  breaks, is churn.
+
+#### What changes, and what explicitly does not
+
+**Changes** — all cosmetic, all in one file, none of it mine to implement (see the handover):
+
+- `character_visual.gd` gains `TSINELAS_CARRY_SCALE` and lerps `self.scale` toward it while the
+  sibling `Carriable` reports `CARRIED`, and back to `Vector3.ONE` otherwise.
+- `HAND_CARRY_OFFSET` needs a matched retune. **Predicted, not measured:** the model's sole sits at
+  CharacterVisual-local `y = -0.8` (dropped there by `_align_to_capsule_floor`), and scaling about
+  CharacterVisual's origin lifts it to `-0.8 × 0.32 = -0.256`, so the slipper will float **≈ 0.544
+  units higher in the hand** than it does now. Compensating drops `HAND_CARRY_OFFSET.y` from
+  `+0.21` toward `≈ -0.33`. That is a starting point to be **confirmed by render**, not a value to
+  paste in.
+
+**Does not change — and this is the entire reason (a) is the contained option:**
+
+- No `CollisionShape3D`, no `Hurtbox`, no capsule, no `hit_radius`, no grab radius, no
+  `CRAWL_SPEED_SCALE`, no `SPEED`, no camera distance, no `FppPivot`, no arena scale.
+- Not the mesh. `assets/models/tsinelas.obj` and `_build_tsinelas()` are untouched, so the LOOSE
+  and FLYING slipper — the thing you scramble for and the thing that hits the lata — stays
+  hero-scaled and stays readable at range. **Only the hand is small.**
+- `_align_to_capsule_floor()` is unaffected: it computes in CharacterVisual-**local** space from
+  `model.scale`, not from this node's scale, so a rebuilt model still lands on the capsule floor.
+
+#### Why a per-frame lerp rather than a signal and a tween
+
+`character_visual.gd` already polls `Carriable.state` every frame in `_spin_while_airborne`, and
+its comment there gives the reason: Carriable and CharacterVisual are **siblings with no guaranteed
+`_ready()` order**. A lerp in the same poll inherits that safety, and — more importantly — is
+**self-healing across a model rebuild**: `apply()` runs on every role swap and would otherwise
+need a third re-assert beside `_refresh_can_damage` and `_refresh_downed_tilt`. It also buys the
+scale-up on release for free, which reads as the slipper "growing" as it leaves the hand and is a
+better throw tell than a snap.
+
+#### The option that stays open
+
+**"Make the Person literally larger" is not closed — it is costed and gated on 0.4.** If, after a
+human has actually played it, the Person still reads too small against the world, the change is a
+named chain and must land as its own pass, never inside an art commit: `PERSON_SCALE` →
+capsule + hurtbox height → `FppPivot` → `HAND_CARRY_OFFSET` → TPP spring arm → a re-read of arena
+scale at unchanged `SPEED`. Filed as **checklist 1.2b**.
+
+#### Three defects found while measuring, none of them mine to fix
+
+Filed rather than fixed, per `Concurrency_Protocol.md` §10. All three are on the checklist.
+
+1. **B-81 — the tsinelas sole is painted `DEFENSE` blue.** `_build_tsinelas()` sets the sole to
+   `UiTheme.DEFENSE`. The tsinelas only ever exists on the **offence** side, so the attacking
+   team's prop is wearing the defence colour — a direct breach of `Dev_Plan.md` §4.2's hard rule.
+   The board disagrees twice over: **THE SLIPPER's card accent is magenta**, not blue. Visible in
+   this pass's `viewmodel_tpp.png`. `Design_Agent_Brief.md` §2's table is the source of the error —
+   it assigns `DEFENSE` to "Can body, tsinelas sole" — and **that table is wrong**, not the rule.
+2. **B-82 — `Main.tscn`'s floor top is `y = +0.5`, not `y = 0`.** `Floor` and its `CollisionShape3D`
+   carry no transform, and the shape is a `(40, 1, 40)` box centred on the origin, so it spans
+   `-0.5 … +0.5`. `Environment_Art_Agent_Brief.md` §4.1 and `Checklist.md` both state the top
+   surface is `y = 0` and the box extends to `-1`. **Both are wrong.** Consequence: all four units
+   are placed at `y = 1.0`, giving a capsule floor of `0.2` — **0.3 units inside the slab** — and
+   they depenetrate upward on the first frames of every match.
+3. **B-83 — the arena has no boundary where anyone thinks it does.** `Bounds/Wall*` sit at `±41`
+   with a half-thickness of 1, so their inner faces are at **`±40`** — while the floor ends at
+   **`±20`**. There is a 20-unit ring of empty space on all four sides that the invisible walls do
+   not enclose; a player walks off the slab edge and falls to the `KillPlane`. The walls are not
+   just invisible, they are **in the wrong place**, and 2.2's dressing belongs at `±20`.
+
+#### Verified by running vs. reasoned about
+
+- **Verified by rendering** (`render_probe.gd`, viewmodel + match, real device, screenshots taken):
+  every measurement in the first table; that the carried slipper reads as a surfboard; that the
+  lata reads as a can; that the tsinelas sole is blue.
+- **Verified by reading the scene text:** B-82 and B-83's node transforms and shape sizes.
+- **Reasoned about, NOT verified:** the `0.32` figure itself, the `HAND_CARRY_OFFSET ≈ -0.33`
+  compensation, and the claim that units depenetrate upward rather than falling through. All three
+  need a render once the build lane has implemented the carry scale. **1.2 is ticked as a
+  *decision*; the implementation it specifies is unbuilt and unrendered.**
+
+---
+
 ### 0.10 Full audit + replan, and four verified fixes (2026-07-27, v4.20 → v4.23)
 
 **Branch:** `plan/full-overhaul` off `main` @ `2c22f50` (v4.20). **PR, not a direct push** — this
@@ -413,6 +562,54 @@ marked `[FIXED]` there is done and settled. New bugs take the next free number *
 
 The three P0 network soft-locks (B-62, B-63, and the B-01/B-03/B-29 cluster) are all fixed and
 runtime-verified. See the archive.
+
+### P1 — found by the design lane while measuring for checklist 1.2 (2026-07-28)
+
+Filed, deliberately not fixed — `Concurrency_Protocol.md` §10. Full reasoning and the screenshot
+evidence are in §0.11. B-81 is in the design lane's own territory and is still filed rather than
+folded into an unrelated commit, because changing a hero prop's colour deserves its own commit and
+its own render.
+
+**B-81 · The tsinelas sole is painted `DEFENSE` blue, on a unit that only ever exists on
+offence. (NEW)** `tools/models/generate_all.gd::_build_tsinelas()` sets the sole material to
+`UiTheme.DEFENSE` (`#0080e8`). A Prop is a Tsinelas exactly when its team is **attacking**, so the
+attacking team's prop wears the defending colour — a direct breach of `Dev_Plan.md` §4.2 ("never
+reuse either hue for anything else"). The moodboard disagrees independently: **THE SLIPPER's card
+accent is magenta**, as is **THE CAN's**. Visible in this pass's `viewmodel_tpp.png` as a bright
+blue slab.
+*Root cause of the error:* `Design_Agent_Brief.md` §2's palette table assigns `DEFENSE` to "Can
+body, **tsinelas sole**". **That table is wrong and the rule is right.**
+*Severity:* P1 — it teaches the player the wrong colour language on the most-looked-at object in
+the game.
+*Fix:* sole → `UiTheme.IMPACT`, keep the straps readable against it (they are `IMPACT` today, so
+they move to `HIGHLIGHT`); regenerate; render both viewmodel shots. Correct the brief's table in
+the same commit. The lata is **not** in scope — a blue can on the defending side is consistent, and
+it renders well.
+
+**B-82 · `Main.tscn`'s floor top surface is `y = +0.5`, not `y = 0` — and two docs say
+otherwise. (NEW)** `Floor` and its `CollisionShape3D` carry **no transform**, and the shape is a
+`BoxShape3D` of `(40, 1, 40)`, so the slab spans `y = -0.5 … +0.5`.
+`Environment_Art_Agent_Brief.md` §4.1 and `Checklist.md` both assert the top surface is `y = 0` and
+the box extends to `-1`. Both are wrong, in the same direction, and §4.1 offers it as the
+authoritative fact to place map geometry against.
+*Consequence:* `Main.tscn` places all four units at `y = 1.0`. With a 1.6 capsule that puts the
+capsule floor at `0.2` — **0.3 units inside the slab** — so every unit begins each match
+interpenetrating the floor and depenetrates on the first frames.
+*Severity:* P1 — it is load-bearing for 2.2, and any kit piece placed against the documented
+`y = 0` sinks half a metre.
+*Fix:* correct both docs; then either move `Floor` to `y = -0.5` or drop the spawn `y` to `0.8`.
+The scene edit is the **build lane's** (`Main.tscn` is shared and currently locked).
+
+**B-83 · The boundary colliders are 20 units outside the floor they are meant to
+contain. (NEW)** `Bounds/Wall{North,South,East,West}` sit at `±41` with `BoxShape3D` half-depths
+of 1, so their inner faces are at **`±40`**. The floor ends at **`±20`**. There is a 20-unit ring
+of nothing on every side that the walls do not enclose: a player runs off the slab edge and falls
+past them to the `KillPlane`.
+*Severity:* P1 — the arena has no working boundary at all, which is a different and worse problem
+than §0.10's "the walls are invisible".
+*Fix:* belongs to **2.2**, not to a patch. Eskinita's dressed boundary and its colliders both go at
+`±20`, and `Main.tscn`'s `Bounds` node dies with the grey box. Specified in
+`Environment_Kit_Spec.md` §4.
 
 ### P1 — real, found this pass
 
