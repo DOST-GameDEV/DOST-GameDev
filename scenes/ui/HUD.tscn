@@ -1,7 +1,12 @@
-[gd_scene load_steps=3 format=3 uid="uid://d5k8m2n4p6q9r"]
+[gd_scene load_steps=5 format=3 uid="uid://d5k8m2n4p6q9r"]
 
 [ext_resource type="Script" path="res://scripts/ui/hud.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/ui/YouCard.tscn" id="2"]
+[ext_resource type="Shader" path="res://assets/ui/downed_vignette.gdshader" id="3"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_1"]
+shader = ExtResource("3")
+shader_parameter/vignette_color = Color(0.97, 0.0, 0.0, 0.6)
 
 [node name="HUD" type="Control"]
 layout_mode = 3
@@ -17,7 +22,7 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0.972549, 0, 0, 0.25)
+material = SubResource("ShaderMaterial_1")
 mouse_filter = 2
 visible = false
 
