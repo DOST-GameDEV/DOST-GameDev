@@ -75,7 +75,7 @@ first is spending a week on a bet.
 Three things have to land before that playtest is even *possible*. They are not
 polish; they are the instruments.
 
-- [ ] **0.1 · HUD charge meter, hold meter and reset-channel bar.** 🤖 Sonnet, medium
+- [x] **0.1 · HUD charge meter, hold meter and reset-channel bar.** 🤖 Sonnet, medium
       `carrier.gd` emits `charge_changed(0..1)`, `held_changed`, and
       `reset_channel_changed(0..1)`. **All three are emitted and nothing
       consumes them** (`Handoff.md` T-3). You cannot tune a hold-to-charge throw
@@ -86,7 +86,12 @@ polish; they are the instruments.
       illustrates *charged throw (glow)* and THE DEFENDER card illustrates
       *lata reset channel (progress bar)*.
       *Blocks:* 0.4.
-- [ ] **0.2 · Give each side a real default Prop ability (B-76).** 🤖 Sonnet, medium
+      **Done, verified by running** (not by a human): a headless probe drove
+      grab→charge→release and grab→hold→complete/cancel via `Input.action_press`
+      and read the live bar/label values back — all three signals wired
+      correctly. Screenshots at 1280x720 and 1920x1080, idle and mid-fill.
+      Plain styling only; the design lane restyles on top once merged.
+- [x] **0.2 · Give each side a real default Prop ability (B-76).** 🤖 Sonnet, medium
       `main.gd`'s `PROP_ABILITY` is `quick_stand.tres` for **every** Prop, and
       `Main.tscn` hardcodes the same. Quick Stand has no `get_throw_profile()`,
       so every throw falls back to `throw_default.tres` and **all three Tsinelas
@@ -96,13 +101,25 @@ polish; they are the instruments.
       default so a Can gets a Can ability and a Tsinelas gets a throw profile.
       *Blocks:* 0.4 — you cannot playtest three throw identities that cannot be
       selected.
-- [ ] **0.3 · Base circle and throwing line, in the current arena.** 🤖 Sonnet, medium
+      **Done, verified by running.** Also worse than described: `is_can` flips
+      every round and nothing re-picked a Prop's ability on the flip, so a
+      spawn-time-only fix would have gone stale one round later — fixed at
+      every spawn path and every round reset. Only 2 of the 3 Tsinelas
+      identities are reachable in a single 2v2 sitting (Bakya Bash / Flick
+      Dash) — a hard limit of 2 Props per match, not something this item can
+      close; 3.3 does that. See `Handoff.md` B-76.
+- [x] **0.3 · Base circle and throwing line, in the current arena.** 🤖 Sonnet, medium
       The game is named after a can standing in a circle and the circle is
       nowhere in the world. Two floor decals in `Main.tscn`, deliberately
       temporary — 2.2 replaces them properly with map geometry. Do them anyway:
       Option B is unreadable without the base circle, and a tester cannot judge
       throw range with no throwing line.
       *Blocks:* 0.4.
+      **Done, verified by rendering** (`tools/render_probe.gd`, real device, not
+      headless) at 1280x720 and 1920x1080 — both visible from a Person's FPP
+      camera. Centred at world origin as a nominal marker, not the Can's actual
+      spawn point, which isn't fixed (varies by ~3 units by which team holds it
+      — a `SPAWN_POINTS` limitation 2.2 is scoped to fix, not this item).
 - [ ] **0.4 · 🧑 PLAY A FULL BO5 IN LOCAL MATCH. Both game modes.** ⛔ 0.1, 0.2, 0.3
       Carry a slipper. Charge and release it at several arcs. Miss, and go get
       it back. Get tagged mid-carry. Crawl a loose slipper home. Hold the reset
