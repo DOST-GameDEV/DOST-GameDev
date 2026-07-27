@@ -1,6 +1,30 @@
 # TUMBANG PRESO 🥫🩴
 ### Our 2v2 plan for Gear Up NCR — Esports Game Dev Challenge
 
+> ## ⚠️ SUPERSEDED IN PART — read this first (2026-07-27)
+>
+> **The Tsinelas is no longer a character that walks around. It is a thrown,
+> retrieved object.** Agreed with the human as **Option B** of the Task 0
+> diagnosis; the reasoning, the rejected alternatives and the implementation are
+> in [`Handoff.md`](Handoff.md) §0.7 and §4's **T-block**.
+>
+> Why: this document specified a Slipper that moves under its own power, so
+> nothing was ever thrown, nothing landed, nothing was picked up, and there was
+> no retrieval scramble — the entire tension of the street game was absent, by
+> design rather than by bug. The human's verdict was *"this doesn't feel like
+> tumbang preso yet."* They were right.
+>
+> Note the **moodboard already agreed with them.** Its THE SLIPPER card is the
+> only one of the four with **no input badge**, and the three states it
+> illustrates are *in-hand ready → thrown trajectory → retrieval highlight*
+> (`Dev_Plan.md` §4.1). The art direction has described a thrown slipper the
+> whole time; this document is the one that was out of step.
+>
+> **What changed:** Sections 2 (Player characters row), 3 (round flow) and 4
+> (Tsinelas Class specials). Everything else — 2v2, 1 Person + 1 Prop, Bo5,
+> role swap, 90s rounds, stun-only, the Can class, the maps — stands unchanged.
+> Inline markers below say which is which.
+
 Hey team! Sending this over so we're all building off the same page for the rest of the
 sprint. This covers the core concept, what's locked in, and a couple things I still want your
 take on before we commit. Read through, drop thoughts, let's move fast.
@@ -23,7 +47,7 @@ Filipino locations — kalye, probinsya, palengke. Built to look good live on de
 
 | Decision | Answer |
 |---|---|
-| Player characters | Each team = **1 Person + 1 object**. Team 1: Player controls a **Person**, teammate controls the **Can**. Team 2: Player controls a **Person**, teammate controls the **Tsinelas**. Both units per team are player-controlled and can move. |
+| Player characters | Each team = **1 Person + 1 object**. Team 1: Player controls a **Person**, teammate controls the **Can**. Team 2: Player controls a **Person**, teammate controls the **Tsinelas**. Both units per team are player-controlled and can move. ⚠️ **AMENDED — the Tsinelas no longer walks around under its own power.** It is carried and thrown by its team's Person, and while loose on the ground its player can only crawl it slowly home. It is still a player-controlled unit with its own camera (so the 2v2 headcount, the 1 Person + 1 Prop structure and the standing camera directive are all unchanged) — it is simply an object that gets thrown rather than a fighter that charges in. See `Handoff.md` §0.7. |
 | Match structure | **Round-based**, teams swap Attacker/Defender role each round, **Best of 5** |
 | Camera/Genre | **Full 3D, low-poly, third-person** |
 | Multiplayer | **LAN**, same wifi, different devices (Godot ENet, host + join by local IP) |
@@ -79,12 +103,19 @@ they're the new addition to the roster.
 | **Palayok** | Clay pot, provincial, tanky/slow | *Shatter Trap* — downed state leaves a hazard patch that slows nearby attackers |
 | **Bilao** | Festive woven tray, light/fast | *Spin Guard* — knockback pulse pushes attackers away |
 
-### 🩴 Tsinelas Class (Offense)
-| Character | Vibe | Special |
+### 🩴 Tsinelas Class (Offense) — ⚠️ AMENDED
+
+**These are no longer buttons the slipper presses. They are how each slipper
+FLIES when its Person throws it** — see `throw_profile.gd` and the three
+`throw_*.tres` resources. The identities survive intact; only the delivery
+changed. A slipper's escape tool while loose is the Prop-side Dash it already
+shares with every Tsinelas, not a second self-propelled attack.
+
+| Character | Vibe | Throw identity |
 |---|---|---|
-| **Dyaryo** | Everyday rubber slipper, balanced | *Bagsak Bomb* — leap-slam, small AoE knockback |
-| **Bakya** | Wooden clog, provincial, heavy/slow | *Bakya Bash* — big charge, instant-down on direct hit, long cooldown |
-| **Havaianas** | Beach flip-flop, agile | *Flick Dash* — short ranged dash-throw |
+| **Dyaryo** | Everyday rubber slipper, balanced | *Bagsak Bomb* — **the lob.** High arc (30°), heavy gravity, wide impact radius. Comes down hard and bursts. |
+| **Bakya** | Wooden clog, provincial, heavy/slow | *Bakya Bash* — **the heavy.** Lowest arc (8°), heaviest gravity, barely steerable. Keeps `forces_downed`: a direct hit knocks the lata flat outright. |
+| **Havaianas** | Beach flip-flop, agile | *Flick Dash* — **the line drive.** Fastest launch, flattest arc, most mid-air steer, and the only profile that does **not** force Downed — a poke that sets up rather than finishes. |
 
 3×3 matchups, regional flavor built in without needing a huge art pipeline.
 

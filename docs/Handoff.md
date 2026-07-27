@@ -92,6 +92,82 @@ that one face. Two ways to unblock, in order of preference:
    game, so Form 03 is satisfiable. **Needs an explicit human yes before any font binary enters
    this repo.**
 
+### 0.7 TASK 0 — the Slipper is now a thrown, retrieved object (2026-07-27, v4.0)
+
+**Branch:** `design/mechanics-and-models` off `main` @ `3e423ed`. Note `main` was
+at **v3.7**, not the v3.4 §0 above still claims — the M-2 pass landed ahead of
+these docs.
+
+**The diagnosis.** The human's verdict was *"this doesn't feel like tumbang preso
+yet."* Confirmed in code, and architectural rather than cosmetic:
+
+- `TsinelasVisual.tscn` is a `BoxMesh` of size `(0.52, 1.35, 0.16)` — a slipper
+  standing on end, walking on a 1.6-unit capsule.
+- The only thing called "Throw" was `person_action.gd`'s offence branch:
+  `spawn_pulse_hitbox(c, 0.75, 0.2, false, Vector3(0, 0, -4.0))`. An invisible
+  sphere blinking on 4m ahead for 0.2s. **Nothing left anyone's hands.**
+- No carry state, no attach point, no held-object concept, no projectile, no
+  pickup anywhere in the repo.
+
+**The finding that settled it.** The moodboard already disagreed with the GDD.
+Its **THE SLIPPER** card is the only one of the four with **no input badge**, and
+its three illustrated states are *in-hand ready → thrown trajectory → retrieval
+highlight* (§4.1 of `Dev_Plan.md`, and §1 of `Design_Agent_Brief.md`, recorded
+independently). The art direction has described a thrown, retrieved slipper the
+whole time; the GDD is the doc that was out of step. B-45 and B-46 stop being
+open questions and become the spec.
+
+**Agreed with the human: Option B — "a thrown object with a pilot."** Rejected:
+*Option A* (attacking team = 2 Persons) would have flipped `is_person` per round
+and therefore flipped that unit's camera mode, which breaks the standing camera
+directive; *Option C* (projectile only, keep the walking Tsinelas) reads better
+but leaves two slippers and still no scramble. **C is a strict subset of B**, so
+the staging below is safe to stop at any point.
+
+Also agreed: retrieval works **both ways** (the Person can grab it OR the slipper
+can crawl home slowly, both taggable), and **B-46 is IN scope** for this pass.
+
+**What is structurally untouched, and why that mattered to the choice:** 2v2, 1
+Person + 1 Prop, `is_person` fixed for the match, the FPP/TPP camera directive,
+Bo5, the role swap, `RoundManager`, and both Option A (dents) and Option B
+(Downed→Seal) round wins. A thrown slipper hitting a lata goes through the
+ordinary `Hitbox` path, so neither win condition needed a single branch.
+
+### 0.8 What was NOT done this pass — READ THIS BEFORE PICKING UP
+
+The pass ended early on budget, mid-queue. Landed work is real and runtime-smoke-
+tested; everything else is untouched. Do not assume otherwise.
+
+**Landed (v4.0, one commit):** T-1 and T-2 below — `carriable.gd`, `carrier.gd`,
+`throw_profile.gd`, the three re-pointed Tsinelas abilities and their `.tres`
+profiles, the `CharacterBase.tscn` nodes, and the new input actions.
+
+**NOT started — the whole rest of the brief:**
+
+- **T-3 · B-46 lata reset channel.** Agreed in scope, zero lines written.
+- **Task 2 · the FPP viewmodel.** Still broken. `FppPivot` is still at `y = 1.55`
+  in `CameraRig.tscn` (confirmed) while the scaled body tops out ~0.88, so the
+  arms still hang low and behind the view. **The one thing the human called
+  "highest-visibility" and it is untouched.**
+- **Task 3 · arena layout / B-54.** `main.gd`'s `SPAWN_POINTS` still puts all
+  four units within 3 units of origin. No base circle, no throwing line, spawn
+  points still not in the map.
+- **Task 4 · M-3, M-4, M-6, M-7, U-1, U-2.** Nothing. The tsinelas is still the
+  four-box brick, and the HUD is still a centred column of Labels.
+- **Docs.** `Dev_Plan.md` §1's Content rows and §4 are **still stale** — they
+  describe the pre-Task-0 mechanic. The GDD carries a supersession banner and
+  amended Sections 2 and 4, but Section 3's round flow was not revisited.
+- **Nothing was pushed** if the push at the end of the session failed — see §0.9.
+
+**Verification status of what DID land — be precise about this:** it loads clean
+headless, and `Main.tscn` runs 200 frames with no runtime error, which is a
+genuine runtime check rather than a `--quit` parse test (the distinction that
+caught B-03). **But nobody has pressed a button.** No human has seen a slipper
+carried, thrown, landed or retrieved. Every tuning number in it — charge time,
+crawl speed, arc angles, `HAND_CARRY_OFFSET`, grab radius — is a first guess made
+without ever looking at it in motion. Mark these `[~]`, never `[x]`, until
+someone plays it.
+
 ### 0.6 What was NOT done this pass, and why
 
 - **No code, scene, or asset was touched.** Planner role, by instruction.
@@ -260,6 +336,34 @@ switch, and it is exactly the kind of noise that makes a "regenerate and check `
 acceptance test unreliable. *Decision owed:* either accept the churn, or stop tracking `.import`
 UIDs. Not urgent; log it before it eats an hour of somebody's debugging.
 
+### P1 — new this pass (Task 0)
+
+**B-74 · A thrown slipper is frozen mid-air by the round-end input freeze.
+(NEW, untested)** `character_base.gd::_physics_process` hands the frame to
+`Carriable.physics_step()` **before** the `RoundManager.round_active` check, so a
+slipper still airborne when a round ends keeps flying through the intermission
+until `reset_for_new_round()` sets it LOOSE. Placement is deliberate (every peer
+must run the carry maths, and the authority gate is below it) but the interaction
+with the freeze was not thought through. *Severity:* P1, cosmetic-to-confusing,
+never a wrong round outcome — `report_round_win` has already fired by then.
+*Fix:* have `physics_step` no-op on FLYING while `not RoundManager.round_active`.
+
+**B-75 · Nothing drops a carried slipper when its carrier is staggered, downed
+or sealed. (NEW, untested)** `Carriable.host_drop()` exists and is correct, but
+the only things that call it are a freed carrier and the round reset. A taya
+tagging the attacker mid-carry therefore does not make them drop it, which is
+most of the point of tagging. *Fix:* call `host_drop()` from the host when a
+carrier's state leaves NORMAL. **Do this in `carriable.gd`/`carrier.gd`, not in
+`character_base.gd`** — that file must not learn what carrying is.
+
+**B-76 · The local-test flow gives every Prop `quick_stand.tres`, so no slipper
+has a real throw profile. (NEW)** `main.gd`'s `PROP_ABILITY` is Quick Stand for
+every networked Prop (B-04's stopgap), and `Main.tscn` hardcodes the same for
+`TeamAProp`. Quick Stand has no `get_throw_profile()`, so every throw falls back
+to `throw_default.tres` and **the three Tsinelas identities are unreachable in
+game.** Not a defect in the new code — it is B-24's missing character-select
+surfacing through it. *Fix:* character select, or an interim per-side default.
+
 ### P2 — open, carried over from the archive
 
 - **B-13 · The match starts before anyone joins.** `_start_hosting()` calls `begin_next_round()`
@@ -281,9 +385,11 @@ UIDs. Not urgent; log it before it eats an hour of somebody's debugging.
   the critical path for B-67's acceptance test** — you cannot verify a release-build bug without
   a release build. See **F-3**.
 - **B-45 · The moodboard's throw is charged and aimed; the code's is an instant fixed-range
-  pulse.** Design decision, listed in §5.
+  pulse.** **[FIXED]** v4.0 — `carrier.gd` implements a real hold-to-charge, camera-aimed throw
+  that launches the slipper itself. No longer a design decision; it was the spec (§0.7).
+  Untested by a human.
 - **B-46 · The "Lata Reset Channel" is on the moodboard and in neither the code nor the GDD.**
-  Design decision, listed in §5.
+  **Decision made — it is IN.** Agreed with the human this pass. **Not built.** See **T-3**.
 - **B-65 · No reconnect path** — a rejoining player can come back as a different team and role.
 
 ### Doc corrections found this pass
@@ -329,6 +435,74 @@ toolchain has to exist before any model can be built with it.
   M- blocks.
 
 ---
+
+### T — Tumbang preso mechanic (Task 0, Option B). START HERE.
+
+This block outranks F-, A-, M- and U-. It is the reason the build did not read as
+the game it is named after (§0.7). T-1 and T-2 landed at v4.0; the rest did not.
+
+#### T-1 · The tsinelas becomes a thrown, retrieved object `[~]`
+
+Landed, v4.0. `carriable.gd` (LOOSE / CARRIED / FLYING, host-authoritative),
+`carrier.gd` (grab, charge, throw), `throw_profile.gd` + four `.tres` profiles.
+`Carriable`/`Carrier`/`GrabArea` added to `CharacterBase.tscn`.
+
+`[~]` **not** `[x]`: loads clean and runs 200 frames of `Main.tscn` with no
+runtime error, but **no human has pressed a button.** See §0.8.
+
+Things the next agent would otherwise re-derive:
+
+- **Held state is deliberately NOT on `CharacterBase.tscn`'s
+  `MultiplayerSynchronizer`,** even though that is less code. That synchronizer
+  replicates outward from each character's OWN peer, so routing held state
+  through it would make it client-asserted — the exact opposite of the
+  requirement. Clients call `_rpc_request_*` on the host; the host decides and
+  broadcasts `_rpc_set_*` with `call_local`.
+- **The broadcasts are `"any_peer"`, not `"authority"`,** for the reason
+  `CharacterBase._apply_hit_result` already documents: resolution runs on the
+  host, but a slipper's multiplayer authority is its own owning peer, so an
+  `"authority"` RPC sent by the host is silently rejected.
+- **Carrying costs zero bandwidth.** Once every peer knows who is carrying, each
+  recomputes the transform locally from that Person's hand.
+- **`_step_carried` orthonormalises the hand transform.** A Person's model is
+  scaled `PERSON_SCALE` (2.38) and bones inherit it — copying the transform
+  wholesale inflates the slipper 2.38×, with no error.
+- **The hand is a `Node3D` CHILD of the `BoneAttachment3D`, not the attachment
+  itself.** `BoneAttachment3D` overwrites its own transform from the bone pose
+  every frame, so an offset written onto it is silently discarded and the item
+  sits at the elbow.
+- **`get_hand_attachment()` returns null early in a match** — `CharacterVisual`
+  instances the model from `CharacterBase._ready()`, so there is a real window
+  where a Person exists and its hand does not. That is "not ready", not an error.
+
+#### T-2 · Grab ownership — an opponent's slipper is solid but not grabbable `[~]`
+
+Landed, v4.0, same commit. Enforced in exactly one place —
+`Carriable.can_be_grabbed_by()` — built on the existing `CharacterBase.team`
+(B-09). **No second team system.** Collision, hitboxes and the physics body are
+never touched on account of who owns what: an opponent's slipper is still solid,
+still kickable, still an obstacle, still staggerable by your bump. Only pick-up
+is gated. Same `[~]` caveat as T-1.
+
+#### T-3 · B-46 lata reset channel `[ ]`
+
+**Agreed in scope with the human and NOT STARTED.** The defending Person (taya)
+holds `grab` near a knocked-down lata to channel it back upright, on a progress
+bar; interrupting the channel cancels it. `carrier.gd` is the right home — it
+already owns "what this Person's hands are doing" and already reads the `grab`
+action, and `Carriable.can_be_grabbed_by()` already returns false for a Can with
+a comment pointing here. **Round-win logic stays out of `character_base.gd` and
+`hitbox.gd`** — the channel calls `self_right()` (Option B) or clears a dent
+(Option A) and nothing more.
+
+#### T-4 · Retire the old fake throw `[ ]`
+
+`person_action.gd` is now **Tag-only in effect** — `character_base.gd` gates the
+ability press behind `not _carrier_is_holding()`, so an attacker with a slipper
+gets the charge-throw instead. **But its offence branch is still in the file and
+still reachable** for an attacking Person with no slipper in hand. Decide whether
+that is a feature (a desperation lunge) or dead code, then either document it or
+delete it. Its header was not updated — do that at the same time.
 
 ### F — Foundation (do these first; everything else assumes them)
 
