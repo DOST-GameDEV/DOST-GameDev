@@ -731,6 +731,24 @@ one you look through still casts its own shadow.
 **B-28 · No export presets, no build, no CI.** `export_presets.cfg` is gitignored and none
 exists. The game has never been run outside the editor, and the submission needs a real build.
 
+**Q-6 verification note.** Guard/Dash (B-16) was confirmed already fully implemented, exactly per
+§0.2 — this task was surfacing it on the HUD, not building it. Added read-only
+`get_guard_stamina_ratio()`/`get_dash_cooldown_ratio()` accessors to `CharacterBase`, a meter on
+the Q-5 YOU card (one bar, GUARD or DASH picked by `is_can`, hidden for Persons), a key-label read
+live from `InputMap` so a Settings rebind stays truthful, and a `hit_blocked` signal +
+`CharacterVisual.flash_blocked()` (DEFENSE-tinted, deliberately distinct from B-44's white landed-
+hit flash) wired into `apply_stagger()`/`apply_dent()`'s existing `_is_guarding` early-returns.
+Verified live, headless: the meter is hidden while driving a Person; holding the bound key as a
+Can drains the stamina ratio and the YOU card's bar mirrors it in lockstep; a dent landed on a
+guarding Can changes neither `state` nor `dents` and fires `hit_blocked` exactly once (confirmed
+via a signal-count check — the first attempt used a bare `bool` in a lambda closure and read as a
+false negative, since GDScript lambdas capture locals **by value**; switching to a boxed `Array`
+counter confirmed the real behavior was correct all along); releasing the key regenerates stamina
+back to a full ratio; switching to a Tsinelas shows the dash cooldown ratio, a press drops it near
+0 and it climbs back to 1.0 after `DASH_COOLDOWN` elapses. One documentation note: the Handoff/
+Dev_Plan text calls the "ready again" flash colour `UiTheme.PAPER`, which isn't an actual defined
+constant — substituted `UiTheme.CARD` (the theme's actual near-white token) instead.
+
 **B-65 · No reconnect path — a rejoining player can come back as a different team and role. (NEW,
 logged while doing Q-5)** A rejoining player gets a brand-new peer id, so `main.gd::_peer_join_index`
 assigns them the next free slot rather than restoring their previous one. **OPEN — needs a design
@@ -1152,7 +1170,7 @@ Join a match in progress from a second instance: the card is populated on arriva
 
 ### P2 — Mechanics that exist but cannot be seen
 
-#### Q-6 · Surface Guard/Dash — do not rebuild it `[ ]`
+#### Q-6 · Surface Guard/Dash — do not rebuild it `[x]`
 
 **Review item 5 says this mechanic is missing. It is not.** It is fully implemented and bound:
 

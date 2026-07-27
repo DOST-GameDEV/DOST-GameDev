@@ -186,3 +186,16 @@ func flash_hit() -> void:
 	for i in range(_materials.size()):
 		_materials[i].albedo_color = Color.WHITE
 		_flash_tween.tween_property(_materials[i], "albedo_color", _base_albedos[i], FLASH_DURATION)
+
+## Q-6: a Guard blocking a hit had no feedback at all. Deliberately
+## DEFENSE-tinted rather than white, so a blocked hit is never mistaken for a
+## landed one (flash_hit() above) at a glance.
+func flash_blocked() -> void:
+	if _materials.is_empty():
+		return
+	if _flash_tween != null and _flash_tween.is_valid():
+		_flash_tween.kill()
+	_flash_tween = create_tween().set_parallel(true)
+	for i in range(_materials.size()):
+		_materials[i].albedo_color = UiTheme.DEFENSE
+		_flash_tween.tween_property(_materials[i], "albedo_color", _base_albedos[i], FLASH_DURATION)
