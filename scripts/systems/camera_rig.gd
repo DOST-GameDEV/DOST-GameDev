@@ -43,6 +43,10 @@ const PITCH_MAX_DEG: float = 70.0
 ## sensitivity slider) multiplies this by a user-configurable scalar; until
 ## that lands, every mouse-aimed rig uses this flat default.
 const BASE_SENSITIVITY: float = 0.15
+## B-73: which mesh to drop in first person. Matched as a lowercase substring of
+## the node name, so Kenney's `head-mesh` is caught across the whole 12-model
+## roster without naming each one.
+const FPP_HIDDEN_MESH_HINT: String = "head"
 
 @export var aim_source: AimSource = AimSource.MOVEMENT
 
@@ -177,12 +181,35 @@ func _apply_fpp_self_hide() -> void:
 	# NOT hide(): losing your own shadow in FPP destroys the ground read, so the
 	# body still casts, it just isn't drawn.
 	var looking_through_this_body := _active and _mode == Mode.FPP
-	var setting := (
-		GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if looking_through_this_body
-		else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	)
-	for node in visual_root.find_children("*", "GeometryInstance3D", true, false):
-		(node as GeometryInstance3D).cast_shadow = setting
+	var meshes := visual_root.find_children("*", "GeometryInstance3D", true, false)
+	if not looking_through_this_body:
+		for node in meshes:
+			(node as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		return
+
+	# B-73: hide ONLY the head, not the whole body.
+	#
+	# The Kenney rig is two meshes — `head-mesh` and `body-mesh` — and the arms
+	# are not separate geometry, they are skinned to the arm bones INSIDE
+	# `body-mesh`. So blanking every mesh under Visual (what this used to do)
+	# took the arms, torso and legs with it and left first person with no body at
+	# all, which is what "I can't see the arms in FPP" was. Dropping just the
+	# head keeps the body visible from the eye position and stops you looking at
+	# the inside of your own face.
+	var hid_anything := false
+	for node in meshes:
+		var is_head := node.name.to_lower().contains(FPP_HIDDEN_MESH_HINT)
+		(node as GeometryInstance3D).cast_shadow = (
+			GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if is_head
+			else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		)
+		hid_anything = hid_anything or is_head
+	if not hid_anything:
+		# A model with no node matching the hint: fall back to the old
+		# hide-everything behaviour rather than parking the camera inside an
+		# opaque skull. Losing your body is bad; losing your view is worse.
+		for node in meshes:
+			(node as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not _active or aim_source != AimSource.MOUSE:

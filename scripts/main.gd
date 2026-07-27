@@ -280,6 +280,20 @@ func _on_character_respawned(character: CharacterBase) -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	elif what == NOTIFICATION_APPLICATION_FOCUS_IN:
+		# B-72: alt-tabbing away released the cursor (above) and NOTHING ever
+		# recaptured it. camera_rig.gd::_unhandled_input only reads mouse motion
+		# while Input.mouse_mode == MOUSE_MODE_CAPTURED, so coming back left the
+		# player able to walk but unable to look — reported as "if you alt tab
+		# you can't move camera". Recapture on the way back in.
+		#
+		# Except when something on screen is meant to be clicked: the pause
+		# overlay and the match-result screen both deliberately release the
+		# cursor, and stealing it back on focus would undo B-51 and hand back a
+		# result screen with no usable pointer.
+		if pause_root.visible or match_result.visible:
+			return
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 func _on_player_disconnected(peer_id: int) -> void:
 	var node := players_root.get_node_or_null(str(peer_id))

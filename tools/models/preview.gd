@@ -28,11 +28,17 @@ var _screenshot_path: String = ""
 
 func _ready() -> void:
 	var model_path := DEFAULT_MODEL
+	var distance := CAMERA_DISTANCE
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--model="):
 			model_path = arg.substr(len("--model="))
 		elif arg.begins_with("--shot="):
 			_screenshot_path = arg.substr(len("--shot="))
+		elif arg.begins_with("--dist="):
+			# Judge silhouette and readability at the default 4.5; drop closer
+			# only to inspect a detail. A model that only works up close is not
+			# finished — nobody plays with their face against the Prop.
+			distance = arg.substr(len("--dist=")).to_float()
 
 	var mesh := load(model_path) as Mesh
 	if mesh == null:
@@ -54,8 +60,19 @@ func _ready() -> void:
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_color = Color.WHITE
 	environment.ambient_light_energy = 0.6
+	# Load-bearing, and the reason the first previews came out half-black.
+	# `ambient_light_sky_contribution` defaults to 1.0, meaning "the sky supplies
+	# all ambient light" — and with BG_COLOR there is no sky, so ambient
+	# evaluates to black no matter what ambient_light_color says. Setting it to 0
+	# is what actually hands control to ambient_light_color. Main.tscn had the
+	# same misconfiguration (B-72).
+	environment.ambient_light_sky_contribution = 0.0
 	env.environment = environment
 	add_child(env)
+	print("DEBUG ambient: source=", environment.ambient_light_source,
+		" sky_contrib=", environment.ambient_light_sky_contribution,
+		" energy=", environment.ambient_light_energy)
+	print("DEBUG world env: ", get_viewport().world_3d.environment)
 
 	var light := DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-45, -35, 0)
@@ -64,7 +81,7 @@ func _ready() -> void:
 
 	var camera := Camera3D.new()
 	add_child(camera)
-	camera.global_position = focus + Vector3(1.0, 0.7, 1.0).normalized() * CAMERA_DISTANCE
+	camera.global_position = focus + Vector3(1.0, 0.7, 1.0).normalized() * distance
 	camera.look_at(focus, Vector3.UP)
 	camera.current = true
 
