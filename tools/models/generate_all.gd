@@ -18,6 +18,7 @@ extends SceneTree
 ##     godot --path . res://tools/models/preview.tscn -- --model=res://assets/models/lata.obj
 
 const ObjWriter = preload("res://tools/models/obj_writer.gd")
+const EnvKit = preload("res://tools/models/env_kit.gd")
 
 const OUTPUT_DIR: String = "res://assets/models/"
 
@@ -57,6 +58,12 @@ func _initialize() -> void:
 		{"angle": 4.4, "y": 0.68, "depth": 0.105},
 	])
 	_build_tsinelas()
+	# Checklist 2.1b — the environment kit, built to docs/Environment_Kit_Spec.md.
+	# In its own file because it is ~25 pieces and this one is where a reader goes
+	# to understand the five PROP meshes; burying those under the scenery would be
+	# a net loss. Same rules apply to it — determinism, UiTheme constants, and no
+	# OFFENSE or DEFENSE hue anywhere on a map.
+	EnvKit.new().build_all(OUTPUT_DIR)
 	print("Model generation complete.")
 	quit(0)
 
