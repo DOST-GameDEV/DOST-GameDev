@@ -17,7 +17,16 @@ describes it second-hand. A description of a logo is not a logo.
 >
 > **Before anything else:**
 >
-> 1. `git checkout main && git pull` — confirm you are at or past `6f6d3b7` (v3.4).
+> 1. Get on the branch that holds the plan:
+>    ```
+>    git fetch origin
+>    git checkout design-ui-models-and-fixes && git pull
+>    ```
+>    **The plan is not on `main` yet.** `main` is at `6f6d3b7` (v3.4) — correct code, but it does
+>    not have the queue you are about to work, `Bug_Ledger.md`, or this brief. If
+>    `design-ui-models-and-fixes` has since been merged, use `main` instead and confirm
+>    `docs/Design_Agent_Brief.md` exists before continuing. Then cut your own working branch:
+>    `git checkout -b art/3d-models`.
 > 2. Set your identity **exactly**:
 >    ```
 >    git config user.name "M4tyu633"
