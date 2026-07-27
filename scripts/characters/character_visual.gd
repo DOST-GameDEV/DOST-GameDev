@@ -617,6 +617,17 @@ func _is_holding() -> bool:
 ## back through the roster in order, since not every clip exists on every model,
 ## and no-ops entirely on a Can or a Tsinelas (neither has an AnimationPlayer).
 func play_action(kind: String) -> void:
+	# Playtest 0.4: "make sure ur hand actually moves/animates when in interact
+	# like throw". The third-person model has always animated here; in FIRST
+	# person the player sees the viewmodel instead, and it was static. Driven
+	# from this one call site rather than from the input code so the two views
+	# can never disagree about whether a throw happened — and deliberately
+	# BEFORE the `_animator == null` early-out below, because a Prop has no
+	# AnimationPlayer and would otherwise return before the rig is told.
+	var rig := _character.get_node_or_null("CameraRig") as CameraRig if _character != null else null
+	if rig != null:
+		rig.play_viewmodel_action(kind)
+
 	if _animator == null:
 		return
 	var candidates: Array[String] = ACTION_CLIPS.get(kind, [] as Array[String])
