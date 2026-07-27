@@ -3,8 +3,8 @@ class_name KillPlane
 
 ## B-15/B-35: the 40x40 arena floor had no bounds, no walls, no kill plane —
 ## walk off the edge and you fall forever with gravity accumulating, and the
-## old ArenaCamera (framing the midpoint of every target) would get dragged
-## down with whoever fell, pinning everyone else off-screen too.
+## former ArenaCamera (removed A-2, v4.8) would have been dragged down with
+## whoever fell, pinning everyone else off-screen too.
 ##
 ## Sits well below the playable floor. Whichever character enters it gets
 ## reset to its own spawn_position with zero velocity — not despawned, not

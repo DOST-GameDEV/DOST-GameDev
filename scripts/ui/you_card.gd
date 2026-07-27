@@ -112,6 +112,12 @@ func _guard_dash_key_label(character: CharacterBase) -> String:
 			return (event as InputEventKey).as_text_physical_keycode().to_upper()
 	return "?"
 
+## Returns the locally-controlled character resolved by the last refresh cycle.
+## Use this from sibling HUD nodes rather than duplicating the scan logic —
+## the you_card already polls every REFRESH_INTERVAL and caches the result.
+func get_local_character() -> CharacterBase:
+	return _character
+
 func _find_local_character() -> CharacterBase:
 	if NetworkManager.is_networked():
 		var main := get_tree().current_scene

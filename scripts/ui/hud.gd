@@ -14,6 +14,7 @@ class_name Hud
 @onready var toast_label: Label = %ToastLabel
 @onready var round_banner_label: Label = %RoundBannerLabel
 @onready var you_card: YouCard = %YouCard
+@onready var crosshair: Control = %Crosshair
 
 var _toast_time_left: float = 0.0
 
@@ -35,6 +36,10 @@ func _process(delta: float) -> void:
 		_toast_time_left -= delta
 		if _toast_time_left <= 0.0:
 			toast_label.visible = false
+	# §4.4 crosshair: visible in FPP (Person) only. Reads the you_card's cached
+	# character so the scan logic stays in one place (you_card.gd::_find_local_character).
+	var local_char := you_card.get_local_character()
+	crosshair.visible = local_char != null and is_instance_valid(local_char) and local_char.is_person
 
 ## B-15/B-35: brief on-screen call-out for a locally-relevant event that
 ## isn't otherwise visible on the HUD, e.g. "OUT OF BOUNDS" from the

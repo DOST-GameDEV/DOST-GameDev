@@ -104,7 +104,7 @@ Legend: **[x]** built and working · **[~]** built but broken or unverified · *
 | HUD (timer, Bo5, round, role, dent counter, downed flash) | [~] | Functional but placeholder-styled. Client score fixed for late joiners (B-38). Full visual rebuild still in §4. |
 | Main menu + mode picker | [x] | Back button added (B-34); Option A label fixed (B-33). |
 | Settings — rebindable, persistent controls | [x] | Guard/Dash now reads its action (B-16); duplicate bindings rejected (B-22). |
-| `ArenaCamera` follow/zoom | [~] | **B-03 fixed, runtime-verified** — the crash-loop the original report described reproduced live even after the first fix attempt (`_clear_local_test_characters()` never removed local-test nodes from the target list); now clean. **Retired** as of the camera-rig work below (`current = false` in `_ready()`); kept as the broadcast/spectator fallback per §3.4. B-58 (it still does follow work every frame while retired) is open and low. |
+| `ArenaCamera` follow/zoom | [x] | **Deleted (A-2, v4.8).** `Camera3D` node removed from `Main.tscn`; script moved to `tools/arena_camera.gd` as the future broadcast/spectator camera (GDD Section 6). B-03 and B-58 both closed. |
 | `HazardZone` slow-zone | [~] | B-17 fixed (null check, zone stacking, expiry cleanup). **The node has no visual at all and no map instances one** — it is invisible in game. Handoff §4 **Q-7**. |
 | Out-of-bounds / kill plane / arena walls | [x] | B-15/B-35 fixed: 4 walls + a `KillPlane` respawning to `CharacterBase.spawn_position`. |
 | Per-character camera rigs (FPP/TPP) | [x] | **DONE (v1.2, v2.0, v2.1).** `CameraRig.tscn` + `camera_rig.gd`, FPP for Persons and TPP for Props, derived from `is_person` per §0.1. The SpringArm3D local-+Z bake that aimed TPP away from its own character is fixed and measured (`forward · (character − camera)` now **+0.972**). B-60 (WASD rotating the driven unit's camera) and B-61 (the FPP self-hide making every Person invisible) both fixed. |
@@ -278,6 +278,16 @@ structure:
 - Wide FPP FOV (95, tunable).
 - Off-screen indicators for your teammate and for the Can (§4.5).
 - A hit taken from off-screen shows a directional damage arc.
+
+### 3.3.1 Enforcement grep
+
+Run this after any camera-related edit to confirm the directive holds:
+
+```bash
+grep -rn "_mode = \|Mode\.FPP\|Mode\.TPP" scripts/ | grep -v camera_rig.gd
+```
+
+Any output is a violation — only `camera_rig.gd` may set or name `_mode`.
 
 ### 3.4 Retiring `ArenaCamera`
 
