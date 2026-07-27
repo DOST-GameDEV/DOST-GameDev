@@ -15,10 +15,10 @@ to type.
 
 | Shared file | Held by | Branch | Since |
 |---|---|---|---|
-| `scenes/main/Main.tscn` | — free — | | |
+| `scenes/main/Main.tscn` | 🎨 **Design** | `art/play-in-the-map` | 2026-07-28 |
 | `scenes/characters/CharacterBase.tscn` | — free — | | |
 | `scenes/characters/CameraRig.tscn` | — free — | | |
-| `scenes/ui/*.tscn` | — free — | | |
+| `scenes/ui/*.tscn` | 🎨 **Design** | `art/play-in-the-map` | 2026-07-28 |
 | `project.godot` | — free — | | |
 | `tools/models/generate_all.gd` | — free — | | |
 | `docs/Checklist.md` | *no lock needed* | | append-only-ish; conflicts resolved by taking both sides |
@@ -29,6 +29,18 @@ to type.
 > and 2.1b-0 (the `transform: Transform3D` param on `add_revolve`/`add_extrude`, 🔧 Build) landed
 > first to unblock it. Both are `[x]` in `Checklist.md`. Nothing left to coordinate here — the row
 > above reads **— free —** and stays that way unless `generate_all.gd` needs a lock again.
+
+> ### 🎨 Design is holding four BUILD-lane scripts as well — 2026-07-28
+>
+> **Reassigned by the human, not taken.** `main.gd`, `character_visual.gd`, `game_launch.gd` and
+> `main_menu.gd` are 🔧 Build's by `Concurrency_Protocol.md` §2, and this lane is editing them for
+> one task: making the game actually playable in Eskinita, with a map picker and a slipper that
+> fits in a hand.
+>
+> **🔧 Build: do not start 2.2a, 0.6, or 3.5 while this row stands.** Everything else is yours —
+> in particular **2.1b-0 is still wanted** (`obj_writer.gd`, still yours, still untouched).
+>
+> Remove this block when `art/play-in-the-map` merges.
 
 ## When both lanes need the same scene for one feature
 
