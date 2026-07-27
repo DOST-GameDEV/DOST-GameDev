@@ -1,10 +1,9 @@
-[gd_scene load_steps=23 format=3 uid="uid://c3f7h9j1k2l4m"]
+[gd_scene load_steps=22 format=3 uid="uid://c3f7h9j1k2l4m"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="0"]
 [ext_resource type="PackedScene" path="res://scenes/ui/SettingsPanel.tscn" id="11"]
 [ext_resource type="PackedScene" path="res://scenes/characters/CharacterBase.tscn" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/ui/HUD.tscn" id="2"]
-[ext_resource type="Resource" path="res://scripts/abilities/resources/quick_stand.tres" id="3"]
 [ext_resource type="Script" path="res://scripts/systems/kill_plane.gd" id="5"]
 [ext_resource type="PackedScene" path="res://scenes/ui/MatchResult.tscn" id="6"]
 [ext_resource type="PackedScene" path="res://scenes/ui/DebugBar.tscn" id="7"]
@@ -115,7 +114,6 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 1, -2)
 is_can = true
 is_person = false
 team_is_can_side = true
-ability = ExtResource("3")
 player_id = 2
 
 [node name="TeamAPerson" parent="." instance=ExtResource("1")]
