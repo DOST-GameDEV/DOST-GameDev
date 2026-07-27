@@ -58,6 +58,7 @@ func _initialize() -> void:
 		{"angle": 4.4, "y": 0.68, "depth": 0.105},
 	])
 	_build_tsinelas()
+	_build_viewmodel_arm()
 	# Checklist 2.1b — the environment kit, built to docs/Environment_Kit_Spec.md.
 	# In its own file because it is ~25 pieces and this one is where a reader goes
 	# to understand the five PROP meshes; burying those under the scenery would be
@@ -198,6 +199,56 @@ func _apply_dents(radius: float, y: float, angle: float, dents: Array) -> float:
 ## CCW from above means the right side runs toe->heel (+Z), and the left
 ## side runs heel->toe (-Z), completing the loop at the toe tip.
 ## Width profile: ±0.26 at ball, ±0.18 waisted at arch, ±0.22 at heel.
+## A first-person viewmodel forearm and fist. Playtest 0.4: "don't see arms of ppl".
+##
+## ⚠️ THE RIG'S OWN ARMS CANNOT BE USED FOR THIS, and it is worth knowing why
+## before anyone tries again. `camera_rig.gd` already hides only `head-mesh`
+## (B-73), so the real arms ARE being drawn — they are simply not in frame.
+## Measured on the actual model: `body-mesh` spans CharacterBase-local
+## -0.800..+0.076 while the FPP eye sits at +0.450, so the entire body is 0.37
+## below the camera, and the arm bone at y=-0.115 sits ~48 degrees below the
+## view axis against a 37.5-degree half-FOV. The chibi head is so large that the
+## eye is above the shoulders. No amount of self-hide logic fixes that; the arms
+## are out of the frustum, not hidden.
+##
+## So this is a dedicated viewmodel, mounted to the camera rather than the
+## skeleton, which is how first-person games have always done it.
+##
+## Authored pointing +Y with the elbow at the origin, so it can be built from
+## `add_extrude` (which only extrudes along Y) and then rotated into place in
+## ViewmodelArms.tscn. Keeping the mesh axis-aligned means the numbers here stay
+## readable; the aiming happens in the scene where it can be seen.
+func _build_viewmodel_arm() -> void:
+	var writer := ObjWriter.new("ViewmodelArm")
+	# The two Persons deliberately share one skin, so a single baked colour is
+	# correct here and this mesh never needs a per-Person variant. If that ever
+	# stops being true, this becomes a palette-shader surface like the Persons.
+	writer.set_material("skin", Color("c8875a"))
+	writer.set_material("skin_shade", Color("a66b45"))
+
+	# Forearm, elbow at y=0 running to the wrist. Chunky and near-square in
+	# section, matching Kenney's blocky limbs rather than tapering realistically.
+	writer.add_extrude(PackedVector2Array([
+		Vector2( 0.062, -0.058),
+		Vector2( 0.062,  0.058),
+		Vector2(-0.062,  0.058),
+		Vector2(-0.062, -0.058),
+	]), 0.0, 0.34, "skin_shade")
+
+	# Fist: wider than the forearm so the silhouette has a knuckle break in it.
+	# Without the step the arm reads as a plank.
+	writer.add_extrude(PackedVector2Array([
+		Vector2( 0.082, -0.075),
+		Vector2( 0.082,  0.075),
+		Vector2(-0.082,  0.075),
+		Vector2(-0.082, -0.075),
+	]), 0.34, 0.52, "skin")
+
+	writer.recalculate_normals(40.0)
+	writer.write(OUTPUT_DIR + "viewmodel_arm")
+	print("  viewmodel_arm")
+
+
 ## One arm of the Y-strap: a rectangular cross-section swept along a quadratic
 ## Bezier from `start` (anchored on the footbed edge) through `control` (the
 ## apex, above where the top of a foot would be) to `finish` (the top of the toe
