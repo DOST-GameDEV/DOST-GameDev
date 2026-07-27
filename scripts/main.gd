@@ -290,6 +290,17 @@ func _notification(what: int) -> void:
 		# overlay and the match-result screen both deliberately release the
 		# cursor, and stealing it back on focus would undo B-51 and hand back a
 		# result screen with no usable pointer.
+		#
+		# B-77: Godot delivers this notification once at WINDOW CREATION, which
+		# is BEFORE _ready() has run — so every @onready below is still null and
+		# the three-way `.visible` check threw "Invalid access to property
+		# 'visible' on a base object of type 'Nil'" on every single launch of
+		# Main.tscn. Found by actually running the scene for 300 frames rather
+		# than a --quit smoke test. _ready() sets MOUSE_MODE_CAPTURED itself
+		# (main.gd:120), so declining to recapture here is the correct
+		# behaviour, not a workaround for the crash.
+		if not is_node_ready():
+			return
 		if pause_root.visible or match_result.visible or settings_panel.visible:
 			return
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
