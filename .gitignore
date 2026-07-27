@@ -19,3 +19,6 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Git worktrees for concurrent agent lanes (docs/Concurrency_Protocol.md)
+.worktrees/

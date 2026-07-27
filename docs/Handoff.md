@@ -2,12 +2,32 @@
 
 The one handoff doc. Design is in [`Tumbang_Preso_2v2_GDD.md`](Tumbang_Preso_2v2_GDD.md); the
 plan, architecture, and build status are in [`Dev_Plan.md`](Dev_Plan.md); the fixed-bug forensic
-archive is in [`Bug_Ledger.md`](Bug_Ledger.md). **This file is the work queue.** Read §0 for where
-things stand right now, then §1 and §2, then start at the top of §4.
+archive is in [`Bug_Ledger.md`](Bug_Ledger.md).
 
-If you are the agent picking up the **M- block (3D modeling)**, start at
-[`Design_Agent_Brief.md`](Design_Agent_Brief.md) instead — it is that block's self-contained
-brief, and it carries the moodboard record and the code traps you will hit.
+> ## 📋 Progress is tracked in ONE place: [`Checklist.md`](Checklist.md)
+>
+> **[`Checklist.md`](Checklist.md) is the ordered master list from where the project stands right
+> now to a submitted entry.** Find the first unchecked box that is not marked 🧑 or ⛔ and that is
+> the next thing to do. Every status table in this file, in `Dev_Plan.md` and in the GDD defers to
+> it — if one of them disagrees, the checklist wins and the other is stale.
+>
+> **This file is the *detail* behind that list:** §0 is the session log, §1–§2 are the frozen
+> system context and execution protocol, §3 is the open bug ledger, §4 is the task detail with
+> acceptance criteria and **the model each task is routed to**, §5 is decisions the team owes.
+
+If you are picking up a specific workstream, start at its **self-contained brief** instead — each
+one names the model it should run on, the files to read first, its exact scope, what is explicitly
+*not* its scope, and the traps already found in the code it touches:
+
+| Brief | Workstream | Run on |
+|---|---|---|
+| [`Design_Agent_Brief.md`](Design_Agent_Brief.md) | 3D modelling — the `M-` block, meshes and the generator | Opus (design) / Sonnet (toolchain) |
+| [`Environment_Art_Agent_Brief.md`](Environment_Art_Agent_Brief.md) | The maps, the dressed boundary, field markings, skyboxes | **Opus, high** |
+| [`Interaction_Tuning_Agent_Brief.md`](Interaction_Tuning_Agent_Brief.md) | Carry / throw / grab / reset channel — playtest and retune | **Sonnet, high** |
+| [`UI_Completion_Agent_Brief.md`](UI_Completion_Agent_Brief.md) | Charge meters, character select, off-screen indicators, typeface | **Sonnet, medium** |
+| [`Audio_Agent_Brief.md`](Audio_Agent_Brief.md) | The entire audio workstream — nothing exists today | **Sonnet, medium** |
+| [`Netcode_Agent_Brief.md`](Netcode_Agent_Brief.md) | Interpolation, rejoin identity, real-device LAN hardening | **Sonnet, high** |
+| [`Submission_Agent_Brief.md`](Submission_Agent_Brief.md) | Trailer, demo video, synopsis, forms, demo-day script | **Opus, high** |
 
 > **Note for the humans:** §1 (System Context) and §2 (AI Execution Protocol) are **frozen**. They
 > are reproduced here unchanged, as every handoff must. Do not edit them without saying so out
@@ -16,6 +36,115 @@ brief, and it carries the moodboard record and the code traps you will hit.
 ---
 
 ## 0. Session log — where the project stands right now
+
+### 0.10 Full audit + replan, and four verified fixes (2026-07-27, v4.20 → v4.23)
+
+**Branch:** `plan/full-overhaul` off `main` @ `2c22f50` (v4.20). **PR, not a direct push** — this
+pass rewrites the planning docs every other agent reads as ground truth, which is a much larger
+blast radius than a queue item.
+
+#### What is mine to decide, and what is not
+
+Stated up front because this pass touched a lot:
+
+- **Mine, and acted on:** how a fix is implemented, how the docs are restructured, which model
+  runs which brief, and the ordering in [`Checklist.md`](Checklist.md).
+- **Not mine — flagged and stopped:** the display typeface (§0.5's gate is correct and is not
+  being relitigated), anything needing real multi-device hardware, and signing or submitting
+  Forms 01–03. These are on the checklist as explicitly human-owned items, not skipped.
+- **Deliberately left open:** **Option A vs Option B. Both stay in active, equal development.**
+  Every place in these docs that used to say "pick one and delete the other" has been rewritten.
+  Neither mode is deprioritised, both get playtested, both get balanced. The ship decision is the
+  human's, on their own timeline; it is checklist item 1.5 and it blocks nothing.
+
+#### The screenshot that prompted this pass is not from this project
+
+A live gameplay screenshot was supplied reading `0 - 0 · inning 1 · raid 1 · 0:46 · hits 0`, with
+an **ATTACKER** banner, **HIT THE CAN**, a charge-style bar, and **SLIPPER READY — hold LMB to
+charge, release to throw**, over an arena walled in by brown boxes with green roof caps. The brief
+asked me to find where that copy comes from and fix it.
+
+**It comes from nowhere in this repository.** Verified three independent ways:
+
+1. `git grep` for `\binning\b`, `\braid\b` and `hit the can` across **all 139 commits on every
+   ref** — `main`, `origin/design/mechanics-and-models`, and five local branches — returns
+   nothing. Not stale copy that was replaced; text that has never existed here.
+2. **Rendered the actual running build** (`tools/render_probe.gd`, match mode). The HUD reads
+   `01:28`, `Round 1 / 5`, `A · DEFENSE` / `B · OFFENSE` with three Bo5 pips each, a YOU card and
+   an FPP crosshair. There is no score string, no hit counter, no role banner, no charge bar.
+3. The brown box walls do not exist either — and the truth is **worse than the claim**.
+   `Main.tscn`'s `Bounds/Wall{North,South,East,West}` are `StaticBody3D` + `CollisionShape3D`
+   with **no `MeshInstance3D` at all**. The arena edge is invisible: the floor simply meets the
+   sky.
+
+So the HUD-terminology item is closed as **not applicable**, not as fixed. The *underlying* asks
+survive on their own merits and are on the checklist: the boundary genuinely does need the
+moodboard's dressing (2.2), and the HUD genuinely is missing the charge and reset-channel meters
+(0.1) — just not for the reasons the screenshot suggested. Recorded at length because inheriting a
+false premise and "fixing" it would have been the exact failure §2 rule 3 exists to prevent.
+
+#### Grand-vision fidelity: it is the game it says it is, and it does not look like it yet
+
+Checked against the pitch — *2v2 LAN, one Person + one living object per side, both
+player-controlled, roles swap every round, Bo5* — and the structure holds everywhere. `is_person`
+is fixed for the match and drives the camera directive; `is_can` flips every round and drives the
+model and the win condition; `team_is_can_side` drives every role colour. Nothing has quietly
+turned a Prop into a second fighter. §0.7's correction held.
+
+**Does it read as *tumbang preso*?** Structurally yes, experientially not yet — and the gap is not
+where the docs assumed. The mechanic is right: a Person carries a slipper, charges, throws it on a
+real arc at a guarded can, and has to run out and retrieve it. That is the street game. What is
+missing is everything that makes it *legible*: no base circle in the world, no throwing line, no
+sound when the lata is hit, no charge meter so the player can feel the throw building, and — until
+this pass — a first-person camera that could not see its own hands. It currently plays like a
+correct prototype of tumbang preso rather than a game about it.
+
+#### Four fixes landed and verified by rendering, not by reasoning
+
+The addendum asked for real runtime verification. `tools/render_probe.gd` (new, committed) loads
+either an isolated viewmodel scene or the real `Main.tscn` **with a rendering device**, runs real
+frames, and writes PNGs. Everything below was found by looking at the output.
+
+| | Found | Fixed at |
+|---|---|---|
+| **1** | `FppPivot` at `y = 1.55` sat **0.75 units above the top of its own head** — the Person's head-mesh tops out at `+0.798` in CharacterBase-local space. First person rendered nothing but sky. | v4.21, `y = 0.45` |
+| **2** | `HAND_CARRY_OFFSET` was written straight onto a node whose parent chain carries the model's `2.38` scale, so it was applied at 2.38× — a carried tsinelas sat at local `(-1.00, +1.12, -0.45)`, a metre to the character's left and above its own head. | v4.21, divided by `PERSON_SCALE` and retuned to `(0.65, 0.21, -0.25)` |
+| **3** | U-6's **"ground ring" was drawn at chest height** (`y = 0.03` against a capsule whose floor is `-0.8`), its colour keyed off `is_person` instead of role — breaking §4.2's hard rule — and it never refreshed on the round swap. The floating tag sat 1.4 units above the head with no distance fade. | v4.22 |
+| **4** | **B-77 — `Main.tscn` threw a script error on every single launch.** `_notification` handles `APPLICATION_FOCUS_IN`, which Godot delivers at window creation **before `_ready()`**, so three `@onready` vars were dereferenced while null. Also meant the first focus-in never recaptured the mouse. | v4.23 |
+
+Fixes 1, 3 and 4 share a root cause worth naming: **`CharacterBase`'s origin is the centre of a
+1.6-unit capsule, so a model's feet are at `-0.8`, not `0`.** Three separate nodes — the FPP pivot,
+the ground ring and the floating tag — were each positioned against an imagined character standing
+on `y = 0`. Check that before placing anything else on a character.
+
+`main.gd` now runs 400 real frames of `Main.tscn` with **no output at all**, where it previously
+threw on frame one.
+
+#### What this pass did NOT do — read before picking up
+
+- **Nobody played anything.** Every geometry claim above is verified by render; not one tuning
+  number was verified by feel. The T-block is still `[~]` and Phase 0 of the checklist exists
+  entirely to fix that.
+- **No release build.** Godot export templates are not installed here, so F-3's and B-67's
+  acceptance tests remain unrunnable. Checklist 5.1, marked human-owned.
+- **No real-device LAN test.** Needs hardware. Checklist 6.1.
+- **No font.** The gate held. Checklist 1.1.
+- **No map, no audio, no character select.** Untouched, all queued.
+- **`HAND_CARRY_OFFSET` is tuned, not final.** It is deliberately not tuned further until the prop
+  **scale** question (checklist 1.2) is answered — measured, the tsinelas is **84% of a Person's
+  height** and the lata is **70%**, so a Person carrying one reads closer to carrying a surfboard.
+  That is an art-direction fork, not a transform bug, and it is not mine to close.
+
+#### One factual note on authorship
+
+The convention in §2 and `Dev_Plan.md` §7.1 is that every commit is authored solely as
+`M4tyu633 <matthewtlabrador@gmail.com>`. **The last twelve commits on `main` are all authored
+`StarRayX <40836712+StarRayX@users.noreply.github.com>`.** This pass's four commits follow the
+stated convention; the history is left alone rather than rewritten. Flagging it because Form 01
+(team roles) and Form 02 (declaration of originality) both eventually have to agree with what the
+repository says.
+
+---
 
 **Pass date:** 2026-07-27 · **Type:** planning pass, no code written · **Branch:** `design-ui-models-and-fixes`
 **Build on `main`:** v3.4 (`6f6d3b7`).
@@ -340,6 +469,61 @@ switch, and it is exactly the kind of noise that makes a "regenerate and check `
 acceptance test unreliable. *Decision owed:* either accept the churn, or stop tracking `.import`
 UIDs. Not urgent; log it before it eats an hour of somebody's debugging.
 
+### P1 — found and fixed this pass (2026-07-27 audit)
+
+All four were found by **rendering the running game** (`tools/render_probe.gd`), not by reading
+code. Every one of them had passed a headless load, a `--quit` smoke test and a code review.
+
+**B-77 · `Main.tscn` threw a script error on every single launch. (NEW)**
+`Invalid access to property or key 'visible' on a base object of type 'Nil'` at
+`main.gd:293`. Godot delivers `NOTIFICATION_APPLICATION_FOCUS_IN` once at **window creation**,
+before `_ready()` has run, so the B-72 mouse-recapture branch dereferenced `pause_root`,
+`match_result` and `settings_panel` while all three were still null. Beyond the log line, the
+handler never reached its `MOUSE_MODE_CAPTURED` call, so the first focus-in never recaptured the
+cursor. Present since B-72 landed.
+*Severity:* P1 — non-fatal, so the scene loads and plays straight through it, which is exactly why
+it survived this long. It also appears in an exported build, in front of judges.
+**[FIXED]** v4.23. Guarded on `is_node_ready()`. `_ready()` sets the initial mouse mode itself
+(`main.gd:120`), so declining to recapture before it has run is correct behaviour rather than a
+workaround. Verified: 400 real frames of `Main.tscn` now produce no output at all.
+
+**B-78 · The FPP camera sat above its own character's head. (NEW)** `FppPivot` was at
+`y = 1.55`, a guess at eye height made before any Person model existed. Measured in-engine, the
+Person occupies `-0.800 .. +0.076` (body) and `+0.017 .. +0.798` (head) in CharacterBase-local
+space — so the camera was **0.752 above the top of the head**, and a first-person capture showed
+nothing but sky and horizon. This is the concrete cause of "you can't see your arms in FPP", which
+§0.8 diagnosed correctly in direction and estimated at `y ≈ 0.88`; the real figure is `0.798`.
+**[FIXED]** v4.21, `y = 0.45` — 55% up the head mesh, which `_apply_fpp_self_hide` already hides.
+
+**B-79 · `HAND_CARRY_OFFSET` was applied at 2.38×. (NEW)** The `HandPoint` node hangs off a
+`BoneAttachment3D` whose parent chain runs through the `Skeleton3D` and therefore already carries
+`PERSON_SCALE`. Writing the constant straight onto it multiplied every component by 2.38, parking a
+carried tsinelas at CharacterBase-local `(-1.00, +1.12, -0.45)` — a metre out to the character's
+left and above the top of its own head. The constant's own doc comment describes a world-space
+offset, so the code never did what the comment said.
+**[FIXED]** v4.21. Divided by `PERSON_SCALE` at the point of use and retuned against renders.
+*Still open behind it:* the tsinelas mesh is **1.35 units against a 1.598-unit Person**. That is a
+prop-scale design fork, not a bug — `Checklist.md` 1.2.
+
+**B-80 · U-6's ground ring was not on the ground, was the wrong colour, and never refreshed.
+(NEW)** Three defects in one node. (a) The ring sat at `y = 0.03` against a capsule whose floor is
+`-0.8`, so it drew a hoop around the character's chest — and around a carried tsinelas, in mid-air
+beside its carrier's head. (b) Its colour keyed off `is_person`, making every Person orange and
+every Prop blue on both teams at once, which breaks `Dev_Plan.md` §4.2's hard rule that orange and
+blue mean OFFENSE and DEFENCE **project-wide** and directly contradicted the HUD panel above it.
+(c) Resolved once in `_ready()`, so it was correct for round 1 and wrong for rounds 2–5 —
+`team_is_can_side` flips every round. The floating tag additionally sat 1.4 units above the head
+with no distance fade, so four billboards hung permanently across every first-person view.
+**[FIXED]** v4.22. Ring to `-0.78`, colour derived from `team_is_can_side` (the same derivation
+`you_card.gd` and `hud.gd` already use — not a third copy), refreshed on
+`MatchManager.round_started`, tag to `1.05` with a 12 m → 18 m fade, and `A1`/`A2`/`B1`/`B2` +
+`DEF`/`OFF` text per §4.5.
+
+> **The pattern behind B-78, B-79 and B-80(a):** `CharacterBase`'s origin is the **centre** of a
+> 1.6-unit capsule, so a model's feet are at `-0.8` and not at `0`. Four separate nodes were placed
+> against an imagined character standing on `y = 0`. Check this before positioning anything else on
+> a character.
+
 ### P1 — new this pass (Task 0)
 
 **B-74 · A thrown slipper is frozen mid-air by the round-end input freeze.
@@ -424,9 +608,86 @@ Not bugs; fix them where they sit rather than logging B-numbers.
 
 ---
 
-## 4. Immediate Execution Queue — Art, 3D Modeling, UI & Bugfix
+## 4. Execution Queue — task detail, acceptance criteria, and model routing
 
-Written 2026-07-27. **The Q-1 → Q-10 queue is retired**; all ten shipped, v2.4 → v3.4.
+> **Ordering and progress live in [`Checklist.md`](Checklist.md), not here.** This section is the
+> detail behind those lines: what each task actually involves, what "done" means for it, and what
+> the previous passes already learned about the code it touches. The `Checklist ref` column below
+> is the link between the two.
+
+### 4.0 Model routing — who works this queue
+
+Every remaining item, the model it runs on, and why in one line. The routing survives independently
+of the briefs; each brief repeats its own line in its opening block.
+
+> **Running more than one agent at once?** Read
+> **[`Concurrency_Protocol.md`](Concurrency_Protocol.md)** first. It defines four lanes (two that
+> write code, two that write only docs), a hard path-ownership table, an optimistic lock for the six
+> genuinely shared files, an amendment to the version-bump rule, and the six-command smoke gate every
+> lane runs before merging. Two agents in one working directory will corrupt each other's Godot
+> import cache; two agents bumping `config/version` will conflict on every single merge.
+
+**The split, stated once.** *Sonnet* takes anything whose hard question is "does this code do the
+right thing" — gameplay systems, networking, physics, the carry/throw state machine, generator
+scripts, bug fixes, doc reconciliation, playtest-and-retune passes. *High* effort specifically
+where a subtle mistake is expensive to unwind: shared scenes (`Main.tscn`, `CharacterBase.tscn`),
+the networking and authority model, and the host-authoritative carry transitions. *Medium* is right
+for contained, well-specified work. *Opus* takes anything whose hard question is "does this match
+the moodboard" — silhouette and proportion, how a generated mesh should actually look, screen
+layout, environment art direction, and the presentation package. Where a workstream needs both
+hats it is **split into two briefs** rather than handed to one agent wearing the wrong one.
+
+**Opus is deliberately scarce.** Only four items on the whole remaining plan are routed to it —
+prop scale (1.2), the environment kit's art direction (2.1a), the Eskinita layout and boundary
+dressing (2.2), and the demo/trailer direction (6.2). Those are the four places where the
+difficulty is judgement under ambiguity rather than execution. Everything else, including the
+second map, the Person restyle, the logo swap and the video edits, is Sonnet work following a
+specification Opus already wrote.
+
+| Checklist ref | Task | Model | Effort | Why |
+|---|---|---|---|---|
+| 0.1 | HUD charge / hold / reset-channel meters | Sonnet | medium | Contained UI wiring against three signals that already exist |
+| 0.2 | Per-side default Prop ability (B-76) | Sonnet | medium | Data plumbing in `main.gd`; well specified |
+| 0.3 | Base circle + throwing line decals | Sonnet | medium | Two decals in a scene, explicitly temporary |
+| 0.4 | **Play a full Bo5** | 🧑 human | — | No model can feel a charge time |
+| 0.5 | Retune the T-block from playtest notes | Sonnet | **high** | Touches `carriable.gd` + `carrier.gd` + profiles at once; host-authoritative transitions break subtly |
+| 1.1 | Display typeface decision | 🧑 human | — | Licence + brand call, correctly gated |
+| 1.2 | Prop scale — lata and tsinelas | **Opus** | **high** | "How big should a hero prop be" is a proportion judgement, not a number |
+| 1.3 | Person ability roster | 🧑 human | — | Design scope call |
+| 2.1a | Environment kit — art direction, piece list | **Opus** | **high** | "Does this read as an eskinita" is the whole question |
+| 2.1b | Environment kit — generator code | Sonnet | medium | Determinism and collision; the shape is already specified by 2.1a |
+| 2.2 | Eskinita — layout, boundary dressing, markings, skybox | **Opus** | **high** | Composition and art direction; the largest single visual lever |
+| 2.3 | Persons — moodboard restyle | Sonnet | medium | Execution once 2.1a has specified the palette: retint materials, parent two accessory meshes |
+| 2.4 | Bayan Plaza | Sonnet | medium | 2.2 solves the layout, kit and boundary technique; map two applies it |
+| 3.1 | Land the typeface (F-2) | Sonnet | medium | Mechanical once 1.1 exists |
+| 3.2 | Logo lockup (M-8) | Sonnet | medium | A `TextureRect` swap if the Canva export exists. **Escalate to Opus only if it doesn't** — hand-constructing the can-lid "O" is drawn art |
+| 3.3 | Character select (U-5) | Sonnet | medium | Data + a screen on existing chrome |
+| 3.4 | Off-screen indicators (U-6b) | Sonnet | medium | Screen-space maths against an existing derivation |
+| 4.1 | Audio — whole workstream | Sonnet | medium | Sourcing, wiring, licence recording; no shared-scene risk |
+| 4.2 | Remote movement interpolation | Sonnet | **high** | Sits directly on the replication model |
+| 4.3 | Rejoin identity (B-65) | Sonnet | **high** | Authority model; a wrong token scheme is expensive to unwind |
+| 4.4 | Balance pass, both modes | Sonnet | medium | Numbers with a written rationale, after 0.4 |
+| 4.5 | Hitstop | Sonnet | medium | Contained feel work |
+| 5.1 | Install export templates | 🧑 human | — | Environment, not code |
+| 5.2 | Produce and launch a release build | Sonnet | medium | Mechanical once 5.1 is done |
+| 5.3 | Strip Local Match + debug switcher | Sonnet | **high** | `Main.tscn` and `main.gd` spawn paths; the removal grep must come back empty |
+| 5.4 | `.import` UID churn (B-71) | Sonnet | medium | Repo hygiene decision |
+| 6.1 | Real-device LAN test | 🧑 human | — | Four laptops in a room |
+| 6.2 | Live-demo script + trailer beat sheet | **Opus** | **high** | What to show, in what order, in 90s, to people who will never play it — editorial judgement under a hard constraint |
+| 6.3 | Trailer — capture and edit | Sonnet | medium | Executes 6.2's shot list; `tools/arena_camera.gd` is the preserved broadcast cam |
+| 6.4 | Demo video — capture and edit | Sonnet | medium | A narrated walkthrough against 6.2's script |
+| 6.5, 6.8 | Synopsis draft, Form 03 licence register | Sonnet (📦 producer lane) | medium | Drafting and bookkeeping; the human approves and signs |
+| 6.6, 6.7, 6.9 | Forms 01–02 signature, portal upload | 🧑 human | — | Signing a declaration of originality and submitting are not a model's to do |
+| — | Verification of everything above | Sonnet (🔬 QA lane) | medium | Runs the smoke gate, plays what can be played, files `B-` numbers. **Never fixes them.** |
+
+---
+
+### 4.1 Task detail (historical numbering preserved)
+
+Written 2026-07-27. **The Q-1 → Q-10 queue is retired**; all ten shipped, v2.4 → v3.4. The `T-`,
+`F-`, `A-` blocks below are **complete**; `M-` and `U-` are partially complete. Their entries are
+kept because they carry the traps and the reasoning the next agent would otherwise re-derive —
+read the block for anything you are about to touch, even where the box is ticked.
 
 **Order is dependency order, not size order.** The `F-` block genuinely gates everything: setting
 a base resolution *after* building screens means retuning every offset by hand, and the model
@@ -1450,25 +1711,51 @@ menu and a sensitivity change applies immediately, without leaving the match.
 
 ## 5. Decisions the team owes
 
-Blocking someone's work; a coding agent cannot resolve them. **Unchanged from the previous two
-passes — none have been answered.**
+Only genuinely open questions live here. Anything answered has been moved out and written into the
+document that acts on it, so this list shrinks instead of accumulating.
 
-- [ ] **The display typeface** (§0.5). Now blocking five queue items. **Most urgent.**
-- [ ] **Option A or Option B.** Both alive doubles the cost of every combat change (B-25).
-- [ ] **B-45 — charged/aimed throw** (per the moodboard) **or the current instant pulse?** FPP +
-      mouse-look makes the moodboard version achievable and it is the better mechanic.
-- [x] **B-46 — is the "Lata Reset Channel" a real mechanic?** **Yes** (§0.7), and it is built
-      as of v4.3 (**T-3**). Still owed: fold it into the GDD's round flow.
-- [ ] **Does the Person get its own ability roster,** or does every Person share one Tag/Throw?
-      **Blocks U-5.**
-- [ ] **Maps** — Eskinita + Bayan Plaza locked, Palengke as stretch. **M-7 assumes Eskinita is a
-      yes.** Say so, or say otherwise before that task starts.
-- [ ] **Title** — adopt the moodboard's **TUMBANG PRESO** (recommended; the logo is finished) or
-      keep "Tumbang Laro: Isang Laban". **M-8 assumes the former.**
-- [ ] **Ownership tables** — `Dev_Plan.md` §6 and GDD Section 8. Both still blank, fifth time of
-      asking.
-- [ ] **Circular Economy** as a secondary theme angle in the synopsis — free scoring upside.
-- [ ] **Rejoin identity (B-65).** Needs a stable player token instead of a peer id.
+### Still open — a coding agent cannot resolve these
+
+- [ ] **The display typeface.** See §0.5 for the two routes and the licence reasoning. Now blocks
+      the logo, the round banner, the match-result headline and the finished look of every screen.
+      **Most urgent decision on the project.** `Checklist.md` 1.1.
+- [ ] **Does the Person get its own ability roster,** or does every Person share one Tag? Blocks
+      the Person half of character select. `Checklist.md` 1.3.
+- [ ] **Prop scale.** How big is a lata, and how big is a tsinelas, relative to a Person?
+      Measured today: 70% and 84% of a Person's height respectively. Routed to Opus as an
+      art-direction call, but a human veto is welcome. `Checklist.md` 1.2.
+- [ ] **Ownership.** `Dev_Plan.md` §6 is now the **single canonical table** — the duplicate copies
+      in this file and in GDD §8 have been removed and replaced with pointers. Still blank, and
+      **submission Form 01 is literally this table**, so it is no longer just hygiene.
+
+### Deliberately open, and blocking nothing
+
+- [ ] **Option A vs Option B — the ship decision.** **Both modes stay in active, equal
+      development.** This is *not* a "pick one and delete the other" item, and the language saying
+      so has been removed from this file, `Dev_Plan.md` and the GDD. Both are wired end to end,
+      both are selectable from the main menu, both get playtested (`Checklist.md` 0.4) and both get
+      balanced to shippable quality (4.4). Keeping both does genuinely cost surface area on every
+      combat change (B-25) — that cost is accepted deliberately, not overlooked. The human makes
+      the final call on their own timeline. **No item anywhere may deprioritise one mode's polish
+      on the assumption the other will win.**
+
+### Answered — recorded here only so nobody reopens them
+
+- [x] **B-45 — charged, aimed throw or instant pulse?** **Charged and aimed.** It was never
+      really a design question: §0.7 established the moodboard had specified a thrown, retrieved
+      slipper the whole time. Built in `carrier.gd` at v4.0; the fake pulse was deleted at v4.4.
+- [x] **B-46 — is the Lata Reset Channel a real mechanic?** **Yes.** Built at v4.3 as T-3. Now
+      folded into the GDD's Section 3 round flow, which §0.8 flagged as owed.
+- [x] **Maps.** **Eskinita + Bayan Plaza, Palengke as a stretch only.** `Checklist.md` 2.2 and 2.4
+      proceed on that basis; 2.4 is the first thing to cut under time pressure.
+- [x] **Title.** **TUMBANG PRESO**, the moodboard's lockup. `project.godot`'s
+      `application/config/name` already reads it; the README and the GDD have been brought into
+      line and the stale "Tumbang Laro: Isang Laban" is gone from every tracked file. B-27 closed.
+- [x] **Circular Economy as a secondary theme angle.** **Yes — take it.** The can/slipper premise
+      is literally about reusing everyday objects as sports equipment, and it costs two sentences.
+      Written into the synopsis plan (`Checklist.md` 6.5) rather than left as an open question.
+- [x] **Rejoin identity (B-65).** Not a decision — it is scheduled work needing a stable player
+      token instead of a peer id. `Checklist.md` 4.3.
 
 ---
 

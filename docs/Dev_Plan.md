@@ -72,12 +72,30 @@ review:
 
 Removal is scheduled in Phase 6 (§5) and is part of the definition of done for submission.
 
-### 0.4 Title
+### 0.4 Title — settled
 
-The moodboard ships a finished logo reading **TUMBANG PRESO** (with the "O" as a can top).
-That is now the display title. `project.godot` says "Tumbang Laro", the README and GDD say
-"Tumbang Laro: Isang Laban", the menu says "TUMBANG PRESO" — three names for one game. Adopt
-the logo's. See B-27.
+**TUMBANG PRESO**, the moodboard's finished lockup (with the "O" as a can top). B-27 logged three
+names for one game — `project.godot` saying "Tumbang Laro", the README and GDD saying "Tumbang
+Laro: Isang Laban", the menu saying "TUMBANG PRESO". As of the 2026-07-27 audit
+`application/config/name`, the README and the GDD all read **Tumbang Preso** and
+`grep -rn "Tumbang Laro"` over tracked files returns nothing but the historical ledger entries
+that describe the bug. **B-27 closed.**
+
+### 0.5 Both round-win modes stay in development
+
+**Option A (dents) and Option B (Downed → Seal) are both maintained, in parallel, to shippable
+quality.** This supersedes every earlier line in this document, in `Handoff.md` and in the GDD that
+framed it as "pick one and delete the loser" or "the team has to choose".
+
+Both are wired end to end behind `GameLaunch.game_mode`, both are offered on the main menu, both
+get playtested, and both get balanced. Neither may be deprioritised on the assumption that the
+other will win. The cost is real and is accepted with open eyes: every combat change has to be
+reasoned about twice (B-25), and `carriable.gd::can_be_reset_by` already carries a branch per mode.
+That is the price of keeping the option, not an argument against it.
+
+The **ship** decision — which mode the submitted demo actually leads with — is still open and
+belongs to the team, on their own timeline. It is tracked as `Checklist.md` item 1.5 and blocks
+nothing.
 
 ---
 
@@ -101,12 +119,12 @@ Legend: **[x]** built and working · **[~]** built but broken or unverified · *
 | `NetworkManager` (ENet host/join) | [x] | Connects fine. Runtime-verified this pass (headless `--host`/`--join`). |
 | Networked spawning + movement replication | [~] | Works; snaps (no interpolation — unchanged). Props' ability and `player_id` both fixed (B-04, B-30). Join index stabilized (B-21). |
 | Host-authoritative combat | [x] | B-02 fixed (ability replication). |
-| HUD (timer, Bo5, round, role, dent counter, downed flash) | [~] | Functional but placeholder-styled. Client score fixed for late joiners (B-38). Full visual rebuild still in §4. |
+| HUD (timer, Bo5 pips, round, role panels, dent counter, downed vignette, YOU card, crosshair) | [x] | **Rebuilt to §4.4 and verified by render** (U-1, v4.14–v4.16). Role-coloured team panels with three Bo5 pips each, framed timer with HIGHLIGHT under 15s and a scale pulse under 10s, LATA dent card, YOU card, FPP-only crosshair. Still missing the **charge / hold / reset-channel meters** — `carrier.gd` emits all three signals and nothing consumes them (`Checklist.md` 0.1). |
 | Main menu + mode picker | [x] | Back button added (B-34); Option A label fixed (B-33). |
 | Settings — rebindable, persistent controls | [x] | Guard/Dash now reads its action (B-16); duplicate bindings rejected (B-22). |
 | `ArenaCamera` follow/zoom | [x] | **Deleted (A-2, v4.8).** `Camera3D` node removed from `Main.tscn`; script moved to `tools/arena_camera.gd` as the future broadcast/spectator camera (GDD Section 6). B-03 and B-58 both closed. |
 | `HazardZone` slow-zone | [~] | B-17 fixed (null check, zone stacking, expiry cleanup). **The node has no visual at all and no map instances one** — it is invisible in game. Handoff §4 **Q-7**. |
-| Out-of-bounds / kill plane / arena walls | [x] | B-15/B-35 fixed: 4 walls + a `KillPlane` respawning to `CharacterBase.spawn_position`. |
+| Out-of-bounds / kill plane / arena walls | [~] | B-15/B-35 fixed: 4 walls + a `KillPlane` respawning to `CharacterBase.spawn_position`. **But the four `Bounds/Wall*` nodes are `StaticBody3D` + `CollisionShape3D` with no `MeshInstance3D` at all** — they are invisible. The arena edge renders as the floor meeting the sky. Functionally containing, visually absent. `Checklist.md` 2.2 replaces them with the moodboard's dressed boundary. |
 | Per-character camera rigs (FPP/TPP) | [x] | **DONE (v1.2, v2.0, v2.1).** `CameraRig.tscn` + `camera_rig.gd`, FPP for Persons and TPP for Props, derived from `is_person` per §0.1. The SpringArm3D local-+Z bake that aimed TPP away from its own character is fixed and measured (`forward · (character − camera)` now **+0.972**). B-60 (WASD rotating the driven unit's camera) and B-61 (the FPP self-hide making every Person invisible) both fixed. |
 | Round intermission / role-swap beat | [~] | The **functional** beat exists (B-37: `round_intermission_started`, a 3s gap, early world reset, a placeholder banner). The moodboard's animated role-swap card (§4.6) is not built. |
 | Team identity on `CharacterBase` | [x] | `team` (int) fixed before this pass; friendly-fire gated in `hitbox.gd`. Docs were stale saying this didn't exist. |
@@ -128,10 +146,10 @@ Legend: **[x]** built and working · **[~]** built but broken or unverified · *
 | Character model *systems* — swap, rebuild on role-change, FPP head-hide | [x] | **DONE (v1.5, v2.2, v2.3).** `CanVisual.tscn`, `TsinelasVisual.tscn`, 12-model Person roster in `assets/characters/persons/`, `character_visual.gd` owning all swaps and re-applying on every role change. **`[x]` means the plumbing is done, not the art — every model is still placeholder-grade geometry.** |
 | 3D art quality — Lata, Tsinelas, Persons, Eskinita | [ ] | Placeholder-grade today: a 6-cylinder Lata, a 4-box Tsinelas, Kenney CC0 mini-characters with one `idle` clip wired, a 40×40 box floor. The M-block replaces each with moodboard-accurate geometry. **Editing `assets/` and the model scenes is lifted for this queue (the prior "out of scope" note is retired).** |
 | Character scenes (`scenes/characters/visuals/`) | [x] | Built and wired through `CharacterVisual.apply(is_person, is_can, team)`. |
-| Maps — Eskinita, Bayan Plaza | [ ] | Names only. One 40×40 box floor, now with walls + a kill plane (B-15/B-35). |
+| Maps — Eskinita, Bayan Plaza | [ ] | Names only. One 40×40 box floor with **invisible** bounds and a kill plane. No `scenes/maps/*.tscn` exists. No base circle, no throwing line, no team markings, no skybox (`Main.tscn` ships a flat `background_color`). **The single biggest gap between this build and the moodboard.** |
 | Map hazards (jeepney lane, mud, carabao) | [ ] | `HazardZone` is the reusable piece (B-17 fixed) but it renders nothing and no map places one — Handoff §4 **Q-7** does the first visible test zone. |
-| Art, animation, VFX | [~] | Character models are in (row above). **Animation is not:** Kenney's rig ships 32 clips and only `idle` is wired, so units slide around in their idle pose. No VFX — no particle system exists anywhere in the repo yet (Handoff §4 **Q-8**). |
-| Audio | [ ] | Nothing. A first-pass universal hit-feedback flash exists (B-44) — sound, hitstop, particles and screenshake are still open; the last two are Handoff §4 **Q-8**. |
+| Art, animation, VFX | [~] | **Correction, 2026-07-27: locomotion IS wired.** `character_visual.gd::_play_locomotion` selects idle/walk/sprint from horizontal velocity, and `play_action()` fires one-shot throw/bump/grab clips. The repeated claim that "only `idle` of 32 is wired" is stale — that was M-5 step 4 and it shipped. VFX: hit flash (B-44), impact particles and camera shake (Q-8) all exist. **Hitstop and audio are still open.** |
+| Audio | [ ] | **Nothing. Not one `AudioStreamPlayer` anywhere in the repo** — verified by grep, 2026-07-27. Its own workstream and its own brief (`Audio_Agent_Brief.md`); `Checklist.md` 4.1. A lata taking a direct hit in silence reads as a bug to a judge no matter how good the mesh is. |
 | UI theme / design system | [x] | **DONE (v1.3).** `scripts/ui/ui_theme.gd` (`UiTheme` constants) + the generated `Theme` resource, applied project-wide. This is what fixed the invisible-button contrast trap (B-34) at the root rather than one control at a time. Individual **screens** are still placeholder-styled — see §4.3. |
 | Broadcast/spectator cam | [ ] | GDD Section 6 stretch. `ArenaCamera` becomes this (§3.4). |
 | Trailer + demo video | [ ] | |
@@ -219,7 +237,7 @@ CharacterBase (CharacterBody3D)
 ├── Hurtbox / Hitbox
 ├── Nameplate (Node3D)           ← §4.5
 └── CameraRig (Node3D)           ← scripts/systems/camera_rig.gd
-    ├── FppPivot (Node3D)        y ≈ 1.55 (eye height)
+    ├── FppPivot (Node3D)        y = 0.45 (MEASURED eye height — see below)
     │   └── FppCamera (Camera3D) near = 0.05, fov = 95
     └── TppArm (SpringArm3D)     y ≈ 1.2, x-rot −15°, spring_length = 4.5,
         │                        collision_mask = world layer only
@@ -253,6 +271,14 @@ func _ready() -> void:
   (`CharacterBase.tscn:11`) and is already replicated. It has simply never been written to.
 - **Pitch clamp:** −80° … +70°. The low end has to be generous: a Person in FPP has to look
   down at a knee-height Can to throw at it.
+- **Eye height is MEASURED, not assumed — `FppPivot.y = 0.45`.** It sat at `1.55` from the day the
+  rig was written until 2026-07-27, which was a guess at "eye height on a 1.6-unit capsule" made
+  before any Person model existed. `CharacterBase`'s origin is the **centre** of that capsule, so
+  its floor is at `-0.8`; the Kenney Person, scaled `PERSON_SCALE` (2.38) and dropped to that
+  floor, actually occupies `-0.800 .. +0.076` (body) and `+0.017 .. +0.798` (head). `1.55`
+  therefore parked the camera **0.75 units above the top of its own head** and first person
+  rendered nothing but sky — this is the whole of "you can't see your arms in FPP" (B-78).
+  Re-measure with `tools/render_probe.gd` before changing it again; do not adjust it by eye.
 - **FPP self-hide:** set `Visual.cast_shadow = SHADOW_CASTING_SETTING_SHADOWS_ONLY` — do not
   `hide()` it. Losing your own shadow in FPP destroys the ground read, and other peers still
   need to see the mesh.
@@ -646,8 +672,20 @@ Spawn points must come from the **map**, not from `main.gd`'s hardcoded `SPAWN_P
 
 ## 5. Build order
 
-Ordered so each phase de-risks the next. Phase 0 is blocking: nothing else matters until a LAN
-match starts, is playable, can be won, and rolls into the next round.
+> ### ⚠️ This section is HISTORY, not the plan.
+>
+> **The live, ordered, tickable plan is [`Checklist.md`](Checklist.md)** — one flat list from where
+> the project stands right now to a submitted entry, in strict execution order, with the model each
+> item is routed to. Go there to find out what is next.
+>
+> The phases below are kept as the record of how the build was sequenced and which bug closed
+> which exit criterion. They are **not** maintained as a status board any more; three documents
+> each keeping their own copy of "what is done" is exactly how this project kept shipping plans
+> that described work already finished. Where a checkbox here disagrees with `Checklist.md`, the
+> checklist is right.
+
+Ordered so each phase de-risks the next. Phase 0 was blocking: nothing else mattered until a LAN
+match started, was playable, could be won, and rolled into the next round.
 
 ### Current execution phase — PR review feedback (`Handoff.md` §4, Q-1 → Q-10)
 
@@ -878,10 +916,15 @@ adds latency and packet loss to a movement layer with no interpolation and no re
 that forces the shared-screen fallback, you want to know weeks before the deadline. Book a
 session with four laptops.
 
-### Ownership
+### Ownership — the single canonical table
 
-Still blank. GDD Section 8 has the same table and it is also still blank. This is the third
-document to ask.
+**This is the only ownership table in the project.** `Handoff.md` and GDD Section 8 used to carry
+their own blank copies; both now point here instead. Three documents each asking the same unanswered
+question was itself the problem — it made the gap look like a formatting quirk rather than a real
+one.
+
+**It is still blank, and it is no longer just hygiene: submission Form 01 (Game Development Team
+Roles) is literally this table.** `Checklist.md` 6.6.
 
 | Workstream | Owner |
 |---|---|
