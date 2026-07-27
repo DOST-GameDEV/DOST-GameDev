@@ -204,6 +204,11 @@ func _on_ready_pressed() -> void:
 func _on_start_pressed() -> void:
 	_rpc_begin_match.rpc()
 
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel"):
+		get_viewport().set_input_as_handled()
+		_on_back_pressed()
+
 func _on_back_pressed() -> void:
 	NetworkManager.disconnect_network()
 	get_tree().change_scene_to_file(MAIN_MENU_PATH)

@@ -42,6 +42,8 @@ extends Node3D
 @onready var pause_root: Control = %PauseRoot
 @onready var resume_button: Button = %ResumeButton
 @onready var menu_button: Button = %MenuButton
+@onready var settings_button: Button = %SettingsButton
+@onready var settings_panel: SettingsPanel = %SettingsPanel
 ## Q-3/B-64: text swaps to a non-freezing warning in networked play — see
 ## _on_pause_toggle_requested.
 @onready var paused_label: Label = %PausedLabel
@@ -123,6 +125,8 @@ func _ready() -> void:
 	pause_root.visible = false
 	resume_button.pressed.connect(_on_resume_pressed)
 	menu_button.pressed.connect(_on_return_to_menu_pressed)
+	settings_button.pressed.connect(func() -> void: pause_root.hide(); settings_panel.show())
+	settings_panel.back_pressed.connect(func() -> void: settings_panel.hide(); pause_root.show())
 	pause_layer.toggle_requested.connect(_on_pause_toggle_requested)
 
 	var join_target := ""
@@ -286,7 +290,7 @@ func _notification(what: int) -> void:
 		# overlay and the match-result screen both deliberately release the
 		# cursor, and stealing it back on focus would undo B-51 and hand back a
 		# result screen with no usable pointer.
-		if pause_root.visible or match_result.visible:
+		if pause_root.visible or match_result.visible or settings_panel.visible:
 			return
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
