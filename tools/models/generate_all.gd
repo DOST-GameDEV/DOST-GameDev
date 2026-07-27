@@ -160,7 +160,32 @@ func _apply_dents(radius: float, y: float, angle: float, dents: Array) -> float:
 #
 # Orientation: character faces -Z; toe is at Z = -0.675, heel at Z = +0.675.
 # Length: 1.35 units (centered, Z in [-0.675, +0.675]). X is width.
-# Materials: defense (sole), impact (straps), highlight (toe post).
+#
+# ⚠️ B-81 — WHY THE SOLE IS NOT BLUE, so nobody "restores" it.
+#
+# The sole used to be UiTheme.DEFENSE, and Design_Agent_Brief.md §2's palette
+# table told it to be. Both were wrong. A Prop is a Tsinelas exactly when its
+# team is on OFFENCE (carriable.gd::is_throwable — not a Person, not a Can), so
+# a blue sole painted the ATTACKING team's prop in the DEFENDING colour. That
+# breaks Dev_Plan.md §4.2's hard rule directly: a player has to be able to learn
+# one colour pair and read every screen, and the slipper is the most-looked-at
+# object in the game. The moodboard agrees independently — THE SLIPPER's card
+# accent is magenta, and §4.2's own token table lists IMPACT as the
+# "Slipper/Can accent".
+#
+# So: IMPACT sole, HIGHLIGHT straps, INK toe post. Neither role hue appears.
+#
+# ⚠️ The materials are named for the PART, not for the palette token. That is
+# deliberate and it is the second half of the fix: a material literally called
+# "defense" is a bug that reads as correct in every diff. The lata still names
+# its materials after tokens; it is not renamed here only because its colours
+# are unchanged and renaming would churn four .obj files for nothing.
+#
+# ⚠️ Renaming the materials also changes the .obj, which is what forces Godot to
+# reimport. obj_writer.gd's header warns that the .mtl is NOT in the .obj's
+# [deps], so a colour-only change rewrites the .mtl and the engine keeps serving
+# the OLD colours from its cache — you would measure the previous values and
+# conclude the fix did nothing.
 
 ## Sole outline is 12 points, CCW in the XZ plane viewed from above (+Y).
 ## CCW from above means the right side runs toe->heel (+Z), and the left
@@ -168,9 +193,9 @@ func _apply_dents(radius: float, y: float, angle: float, dents: Array) -> float:
 ## Width profile: ±0.26 at ball, ±0.18 waisted at arch, ±0.22 at heel.
 func _build_tsinelas() -> void:
 	var writer := ObjWriter.new("Tsinelas")
-	writer.set_material("defense", UiTheme.DEFENSE)
-	writer.set_material("impact", UiTheme.IMPACT)
-	writer.set_material("highlight", UiTheme.HIGHLIGHT)
+	writer.set_material("sole", UiTheme.IMPACT)
+	writer.set_material("strap", UiTheme.HIGHLIGHT)
+	writer.set_material("post", UiTheme.INK)
 
 	# --- Sole ---
 	# 12-point CCW outline in (x, z) — side walls face outward, caps correct.
@@ -188,7 +213,7 @@ func _build_tsinelas() -> void:
 		Vector2(-0.10, -0.620),  # 11  toe-left
 		Vector2( 0.00, -0.675),  # 12  toe-tip center
 	])
-	writer.add_extrude(sole_outline, 0.0, 0.10, "defense")
+	writer.add_extrude(sole_outline, 0.0, 0.10, "sole")
 
 	# --- Toe post ---
 	# Small cylindrical knob between the toes, sitting on top of the sole.
@@ -203,7 +228,7 @@ func _build_tsinelas() -> void:
 		var angle: float = TAU * float(i) / float(post_segs)
 		post_outline.append(Vector2(post_cx + post_r * cos(angle),
 		                            post_cz + post_r * sin(angle)))
-	writer.add_extrude(post_outline, 0.10, 0.165, "highlight")
+	writer.add_extrude(post_outline, 0.10, 0.165, "post")
 
 	# --- Y-straps ---
 	# Two diagonal ribbon quads from the toe post to the arch sides.
@@ -222,7 +247,7 @@ func _build_tsinelas() -> void:
 	var rb0 := Vector3(rpost.x - rperp.x * W, strap_y, rpost.y - rperp.y * W)
 	var ra1 := Vector3(rside.x + rperp.x * W, strap_y, rside.y + rperp.y * W)
 	var rb1 := Vector3(rside.x - rperp.x * W, strap_y, rside.y - rperp.y * W)
-	writer.add_quad(ra0, ra1, rb1, rb0, "impact")
+	writer.add_quad(ra0, ra1, rb1, rb0, "strap")
 
 	# Left strap: mirror of right.
 	var lpost := Vector2(0.0, -0.55)
@@ -233,7 +258,7 @@ func _build_tsinelas() -> void:
 	var lb0 := Vector3(lpost.x - lperp.x * W, strap_y, lpost.y - lperp.y * W)
 	var la1 := Vector3(lside.x + lperp.x * W, strap_y, lside.y + lperp.y * W)
 	var lb1 := Vector3(lside.x - lperp.x * W, strap_y, lside.y - lperp.y * W)
-	writer.add_quad(la0, la1, lb1, lb0, "impact")
+	writer.add_quad(la0, la1, lb1, lb0, "strap")
 
 	writer.recalculate_normals(40.0)
 	writer.write(OUTPUT_DIR + "tsinelas")
