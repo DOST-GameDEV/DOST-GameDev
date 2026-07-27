@@ -282,6 +282,14 @@ func _on_player_disconnected(peer_id: int) -> void:
 	_peer_teams.erase(peer_id)
 	_peer_is_person.erase(peer_id)
 	_spawned_characters.erase(peer_id)
+	# Q-2/B-63: the leaver's node is freed above, but RoundManager's
+	# _tracked_cans still held a reference if it was the Can — its guard
+	# (`is_instance_valid()`) then silently no-ops forever, so the round could
+	# only ever end on the timer. Only the host drives round-win logic (same
+	# gate RoundManager itself uses throughout).
+	if NetworkManager.is_host():
+		_reregister_tracked_cans()
+		_rpc_show_toast.rpc("A player left the match")
 
 ## Host-only: tells every peer (via MultiplayerSpawner) to construct a
 ## character for `peer_id`, assigned to a fixed team (2 peers per team, first
@@ -473,11 +481,26 @@ func _sync_state_to_late_joiner(new_round_number: int, new_team_a_is_can: bool, 
 	RoundManager.round_active = new_round_active
 	GameLaunch.game_mode = new_game_mode
 	hud.set_round_display(new_round_number, new_team_a_is_can)
+	_reregister_tracked_cans()
+
+## Q-2/B-63: shared by _sync_state_to_late_joiner (a joining peer needs to know
+## about every already-spawned Can) and _on_player_disconnected (a leaving Can
+## must stop being tracked, not leave RoundManager holding a freed reference —
+## its own is_instance_valid() guard would otherwise just silently no-op
+## forever and the round could then only ever end on the timer).
+func _reregister_tracked_cans() -> void:
 	RoundManager.clear_tracked_cans()
 	for peer_id in _spawned_characters:
 		var character: CharacterBase = _spawned_characters[peer_id]
 		if is_instance_valid(character) and character.is_can:
 			RoundManager.register_can(character)
+
+## Q-2/B-63: _on_player_disconnected only runs on the host, but every
+## remaining peer should see the toast — call_local so the host's own HUD
+## shows it too, same as _rpc_notify_ability_activate's pattern elsewhere.
+@rpc("authority", "call_local", "reliable")
+func _rpc_show_toast(text: String) -> void:
+	hud.show_toast(text)
 
 ## Shows/hides the HUD's DownedFlash whenever the given (locally-controlled)
 ## character enters/exits Downed — but only if it's a Can; Tsinelas/Person

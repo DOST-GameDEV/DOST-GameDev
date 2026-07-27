@@ -731,6 +731,29 @@ one you look through still casts its own shadow.
 **B-28 · No export presets, no build, no CI.** `export_presets.cfg` is gitignored and none
 exists. The game has never been run outside the editor, and the submission needs a real build.
 
+**B-63 · A mid-round client disconnect left `RoundManager` tracking a freed Can. (NEW, Q-2)**
+`main.gd::_on_player_disconnected()` freed the leaver's node and erased its dictionary entries,
+but never told `RoundManager` — if the leaver was the tracked Can, `_tracked_cans` kept a freed
+reference for the rest of that round (self-heals on the next round transition via `_reset_world`,
+which already clears and rebuilds it, but not before then). No toast either — remaining peers had
+no idea anyone had left.
+**[FIXED]** extracted the reregistration loop `_sync_state_to_late_joiner` already ran into a
+shared `_reregister_tracked_cans()` helper, called from both that function and
+`_on_player_disconnected()` (host-only, same gate `RoundManager` uses throughout). Added
+`@rpc("authority", "call_local", "reliable") func _rpc_show_toast()`, broadcast to every peer on
+disconnect. Verified live, headless, three real instances (one host, two clients): disconnecting
+the client holding the Can produced a clean re-registration with no dangling reference, and both
+remaining peers (host and the other client) printed the toast (temporary instrumentation,
+reverted before commit). One caveat, honestly reported: with only one Can per round by design
+(the Prop of whichever team holds the defensive side), disconnecting that exact Can leaves nobody
+left to dent/seal for the remainder of that round — the round can still only end by timer, same as
+before the fix. That is correct given the current 1-Can-per-round design, not a regression; the
+fix's actual contribution is the toast and the elimination of the dangling reference, not a new
+way to end a Can-less round early. A one-off `ERR_UNAUTHORIZED` replication error surfaced on the
+first test run (`on_despawn_receive`) but did not reproduce on a repeat with a longer settle time
+between join and disconnect — concluded to be a test-timing artifact (killing a client within ~2s
+of it joining, before spawn replication had settled), not a defect in this fix.
+
 **B-62 · Clients hung forever when the host quit. (NEW, Q-1)** `NetworkManager.server_disconnected`
 already fired and already nulled the peer / cleared `connected_peer_ids`, but nothing in the
 codebase listened to it — a client was left in `Main.tscn` with a dead peer, a frozen timer, and
@@ -837,7 +860,7 @@ match without restarting. Separately: Join `127.0.0.1` with no host running → 
 
 ---
 
-#### Q-2 · Host does not react to a client leaving mid-round `[ ]`
+#### Q-2 · Host does not react to a client leaving mid-round `[x]`
 
 **Not in the review list — found while checking Q-1. Log as B-63. Small; do it in the same pass.**
 
