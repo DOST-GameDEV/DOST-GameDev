@@ -104,13 +104,17 @@ Legend: **[x]** built and working · **[~]** built but broken or unverified · *
 | HUD (timer, Bo5, round, role, dent counter, downed flash) | [~] | Functional but placeholder-styled. Client score fixed for late joiners (B-38). Full visual rebuild still in §4. |
 | Main menu + mode picker | [x] | Back button added (B-34); Option A label fixed (B-33). |
 | Settings — rebindable, persistent controls | [x] | Guard/Dash now reads its action (B-16); duplicate bindings rejected (B-22). |
-| `ArenaCamera` follow/zoom | [~] | **B-03 fixed, runtime-verified** — the crash-loop the original report described reproduced live even after the first fix attempt (`_clear_local_test_characters()` never removed local-test nodes from the target list); now clean. Still an average-position broadcast cam, not per-character rigs — being retired per §3.4 whenever that work happens. |
-| `HazardZone` slow-zone | [x] | B-17 fixed (null check, zone stacking, expiry cleanup). Still not human-playtested. |
-| Out-of-bounds / kill plane / arena walls | [x] | B-15/B-35 fixed: 4 walls + a `KillPlane` respawning to `CharacterBase.spawn_position`. Camera still isn't per-character (see `ArenaCamera` row) — the kill plane just bounds the exposure window. |
-| Per-character camera rigs (FPP/TPP) | [ ] | §3. Not attempted this pass — this is UI/camera architecture work, not a bug fix. |
-| Round intermission / role-swap beat | [ ] | Rounds still roll over in the same frame — this is UI/flow content (§4.6), not a bug. Full-unit reset itself is fixed (see B-10/B-37 in Handoff §3). |
+| `ArenaCamera` follow/zoom | [~] | **B-03 fixed, runtime-verified** — the crash-loop the original report described reproduced live even after the first fix attempt (`_clear_local_test_characters()` never removed local-test nodes from the target list); now clean. **Retired** as of the camera-rig work below (`current = false` in `_ready()`); kept as the broadcast/spectator fallback per §3.4. B-58 (it still does follow work every frame while retired) is open and low. |
+| `HazardZone` slow-zone | [~] | B-17 fixed (null check, zone stacking, expiry cleanup). **The node has no visual at all and no map instances one** — it is invisible in game. Handoff §4 **Q-7**. |
+| Out-of-bounds / kill plane / arena walls | [x] | B-15/B-35 fixed: 4 walls + a `KillPlane` respawning to `CharacterBase.spawn_position`. |
+| Per-character camera rigs (FPP/TPP) | [x] | **DONE (v1.2, v2.0, v2.1).** `CameraRig.tscn` + `camera_rig.gd`, FPP for Persons and TPP for Props, derived from `is_person` per §0.1. The SpringArm3D local-+Z bake that aimed TPP away from its own character is fixed and measured (`forward · (character − camera)` now **+0.972**). B-60 (WASD rotating the driven unit's camera) and B-61 (the FPP self-hide making every Person invisible) both fixed. |
+| Round intermission / role-swap beat | [~] | The **functional** beat exists (B-37: `round_intermission_started`, a 3s gap, early world reset, a placeholder banner). The moodboard's animated role-swap card (§4.6) is not built. |
 | Team identity on `CharacterBase` | [x] | `team` (int) fixed before this pass; friendly-fire gated in `hitbox.gd`. Docs were stale saying this didn't exist. |
-| Pause / return to menu | [x] | **NEW.** B-20 — Esc overlay, Resume/Return to Menu, wired to the match/autoload resets above. |
+| Pause / return to menu | [~] | B-20 shipped the Esc overlay with Resume/Return to Menu — but **it does not actually pause anything.** `get_tree().paused` is never set, so the round timer keeps counting and WASD still moves you behind the overlay. Logged as **B-64**; Handoff §4 **Q-3**. |
+| Match end / result screen | [x] | **DONE (B-37 UI half, v1.7, v1.9).** `MatchResult.tscn` + `match_result.gd`, live in `Main.tscn` at `HUDLayer/MatchResult`, with Rematch (host-only) and Main Menu. B-51 (cursor captured, buttons unclickable) and B-53 (Esc burying it) both fixed. Placeholder-styled — the moodboard Bo5 grid is Handoff §4 **Q-4**. |
+| Guard / Dash (shared basic) | [x] | **DONE (B-16, keybinding fixed in B-50/v1.6).** Props only: Cans block on a stamina meter, Tsinelas dash-evade on a cooldown; blocking gates `apply_stagger()` and `apply_dent()`. **It has no UI of any kind**, which is why a reviewer read it as missing — Handoff §4 **Q-6**. |
+| Debug player switcher (local) | [x] | **DONE (v1.4).** `DebugPlayerSwitcher` autoload + `DebugBar`; Tab/F1–F4/F5/F6, Shift for slot 2. Honours the §0.3 removal contract in full. Discoverability only — Handoff §4 **Q-10**. |
+| Host-disconnect handling | [ ] | `NetworkManager.server_disconnected` and `connection_failed` are both emitted and **have no listeners anywhere**, so a client whose host quits hangs in-match forever. **B-62**; Handoff §4 **Q-1**. |
 | Match reset between matches | [x] | **NEW.** B-14 — `MatchManager.reset()`/`RoundManager.reset()`. |
 
 ### Content
@@ -121,12 +125,13 @@ Legend: **[x]** built and working · **[~]** built but broken or unverified · *
 | Sardinas — Quick Stand | [x] | B-06 fixed (reachable while Downed). |
 | Palayok, Bilao, Dyaryo, Bakya, Havaianas specials | [~] | Scripts exist; `.tres` resources now created for all five (B-24) — mechanically assignable/testable. **Still no character-select UI** to pick between them in game; that's the content-heavy half of B-24, not attempted. |
 | Character selection | [ ] | No UI, no data. |
-| Character scenes (`scenes/characters/cans/`, `tsinelas/`) | [ ] | Empty. Everything is one grey capsule. |
+| Character models — Person / Can / Tsinelas | [x] | **DONE (v1.5, v2.2, v2.3).** Each class has its own model: `CanVisual.tscn`, `TsinelasVisual.tscn`, and a 12-model Person roster under `assets/characters/persons/` with `male-f` as the reference rig. `character_visual.gd` owns all model swapping and re-applies on every role swap, so a Prop that becomes the Can gets the right mesh. Capsules are gone. **Out of scope for the current queue — do not edit these.** |
+| Character scenes (`scenes/characters/visuals/`) | [x] | Built and wired through `CharacterVisual.apply(is_person, is_can, team)`. |
 | Maps — Eskinita, Bayan Plaza | [ ] | Names only. One 40×40 box floor, now with walls + a kill plane (B-15/B-35). |
-| Map hazards (jeepney lane, mud, carabao) | [ ] | `HazardZone` is the reusable piece (fixed this pass, B-17); nothing placed. |
-| Art, animation, VFX | [ ] | `assets/` is empty except `.gitkeep`s. Moodboard now exists — see §4. |
-| Audio | [ ] | Nothing. A first-pass universal hit-feedback flash exists now (B-44) — no sound/particles/hitstop/screenshake yet, those need real assets. |
-| UI theme / design system | [ ] | §4. Moodboard delivered, tokens extracted, nothing built. |
+| Map hazards (jeepney lane, mud, carabao) | [ ] | `HazardZone` is the reusable piece (B-17 fixed) but it renders nothing and no map places one — Handoff §4 **Q-7** does the first visible test zone. |
+| Art, animation, VFX | [~] | Character models are in (row above). **Animation is not:** Kenney's rig ships 32 clips and only `idle` is wired, so units slide around in their idle pose. No VFX — no particle system exists anywhere in the repo yet (Handoff §4 **Q-8**). |
+| Audio | [ ] | Nothing. A first-pass universal hit-feedback flash exists (B-44) — sound, hitstop, particles and screenshake are still open; the last two are Handoff §4 **Q-8**. |
+| UI theme / design system | [x] | **DONE (v1.3).** `scripts/ui/ui_theme.gd` (`UiTheme` constants) + the generated `Theme` resource, applied project-wide. This is what fixed the invisible-button contrast trap (B-34) at the root rather than one control at a time. Individual **screens** are still placeholder-styled — see §4.3. |
 | Broadcast/spectator cam | [ ] | GDD Section 6 stretch. `ArenaCamera` becomes this (§3.4). |
 | Trailer + demo video | [ ] | |
 | Submission forms 01–03, synopsis | [ ] | GDD Section 9. Note Form 03 now needs the **font license** (§4.2). |
@@ -499,14 +504,14 @@ Settle it before the deadline, not during it.
 
 | Screen | Exists | Work |
 |---|---|---|
-| Title | [~] | Logo bitmap replaces the `Label`. Buttons: Play · Settings · Quit. |
-| Play menu | [~] | Back button and Option A label both fixed (B-34, B-33) — restyle to the moodboard still not done. |
+| Title | [~] | Logo bitmap replaces the `Label`. Buttons: Play · Settings · Quit — **Quit does not exist yet (Q-9).** |
+| Play menu | [~] | Back button and Option A label both fixed (B-34, B-33) — moodboard layout pass still not done (Q-9). |
 | Character select | [ ] | 6 Props + Person. Feeds `GameLaunch`. Phase 3. |
 | Lobby | [ ] | Peer list, team assignment, ready-up, host "Start" (B-13). |
-| HUD | [~] | Full rebuild, §4.4. |
-| Round intermission / role swap | [ ] | §4.6. Requested item. |
-| Match result | [ ] | Bo5 grid, winner, Rematch / Menu. A plain Return-to-Menu path exists now (B-20's pause overlay) but not this dedicated screen. |
-| Pause | [x] | Esc → Resume / Return to Menu (B-20) — no Settings-from-pause yet, restyle still not done. |
+| HUD | [~] | Full rebuild, §4.4. The "YOU" card is **Q-5** and its Guard/Dash meter is **Q-6**. |
+| Round intermission / role swap | [~] | Functional beat exists (B-37: gap, early world reset, placeholder banner). The animated card in §4.6 does not. |
+| Match result | [x] | **Built and wired** — `MatchResult.tscn` + `match_result.gd` at `Main.tscn::HUDLayer/MatchResult`, winner text + Rematch (host-only) + Menu, B-51/B-53 fixed. The moodboard **Bo5 grid** restyle and freezing the world behind it are **Q-4**. |
+| Pause | [~] | Esc → Resume / Return to Menu (B-20), **but it does not freeze the game** (B-64, **Q-3**). No Settings-from-pause; restyle not done. |
 | Settings | [x] | Duplicate-binding detection added (B-22). Restyle, mouse sensitivity + invert-Y (§3.2) still not done. |
 
 ### 4.4 HUD layout
@@ -634,6 +639,30 @@ Spawn points must come from the **map**, not from `main.gd`'s hardcoded `SPAWN_P
 Ordered so each phase de-risks the next. Phase 0 is blocking: nothing else matters until a LAN
 match starts, is playable, can be won, and rolls into the next round.
 
+### Current execution phase — PR review feedback (`Handoff.md` §4, Q-1 → Q-10)
+
+**This is what the next coding pass actually works on.** It cuts across the phases below rather
+than sitting inside one of them, because it came from review of a running build. Build order is
+`Handoff.md` §4; the one-line map is:
+
+| Item | What | Phase it belongs to |
+|---|---|---|
+| **Q-1** | Host quits → clients hang forever (**B-62**) | 0 |
+| **Q-2** | Mid-round disconnect leaves a freed Can tracked (**B-63**) | 0 |
+| **Q-3** | Pause overlay does not freeze the game (**B-64**) | 3 |
+| **Q-4** | Match-result screen: verify, freeze behind it, then the Bo5 grid | 3 |
+| **Q-5** | HUD "YOU" card — which unit am I? | 3 |
+| **Q-6** | Surface the existing Guard/Dash on the HUD | 3 |
+| **Q-7** | Give `HazardZone` a visible footprint and place one | 4 |
+| **Q-8** | Hit feedback — camera shake, impact particles, fix **B-66** | 5 |
+| **Q-9** | Quit button + main-menu moodboard pass | 3 |
+| **Q-10** | Make the debug switcher discoverable | 2 |
+
+Two standing constraints for this batch: **the FPP/TPP directive in §0.1 is not negotiable**, and
+**no 3D model or art asset may be touched** — Q-7 and Q-8 build primitive meshes and particle
+materials in code, nothing more. Three of the ten items (Q-4, Q-6, Q-10) are *verify and surface*
+tasks on features that already work; see `Handoff.md` §0.2 before assuming anything is missing.
+
 ### Phase 0 — Make LAN work (blocking, do first)
 
 - [x] **B-01** — `MatchManager` host never emitted `round_started` / `match_won` locally.
@@ -717,25 +746,33 @@ yet, see B-10/B-37 above) and the Option A/B decision itself, which nobody has m
 - [x] Mouse capture, sensitivity + invert-Y in `SettingsManager`
       *(Sensitivity/invert-Y math verified live — see `Handoff.md` queue item 14. The
       capture/Esc/focus-loss lifecycle can't be exercised headless; needs a human.)*
-- [ ] `DebugPlayerSwitcher` (§3.5)
-- [ ] Nameplates, team ground rings, off-screen indicators (§4.5)
+- [x] `DebugPlayerSwitcher` (§3.5) *(v1.4 — autoload + `DebugBar`, Tab/F1–F4/F5/F6. Removal
+      contract in §0.3 honoured in full; removal checklist is §3.5.5.)*
+- [ ] Nameplates, team ground rings, off-screen indicators (§4.5) — **class** differentiation is
+      done (a Can, a Tsinelas and a Person are instantly distinguishable); **team** differentiation
+      is not
 
 ### Phase 3 — UI overhaul
 
-- [ ] `tumbang_preso.theme` + `UiTheme` autoload from the tokens in §4.2
-- [ ] Font decision + licence recorded for Form 03
-- [ ] Title / Play menu restyle, **Back button**, Option A gating
-- [ ] HUD rebuild (§4.4)
-- [ ] Intermission + role-swap card (§4.6)
-- [ ] Match result screen, pause menu
+- [x] `tumbang_preso.theme` + `UiTheme` constants from the tokens in §4.2 *(v1.3, applied
+      project-wide)*
+- [ ] Font decision + licence recorded for Form 03 — **still the open blocker**, see Handoff §0.5
+- [x] Title / Play menu restyle, **Back button**, Option A gating *(B-34, B-33; a moodboard layout
+      pass plus the Quit button is Q-9)*
+- [ ] HUD rebuild (§4.4) — the "YOU" card half is **Q-5**, the Guard/Dash meter is **Q-6**
+- [ ] Intermission + role-swap card (§4.6) — functional beat exists (B-37), animated card does not
+- [x] Match result screen *(v1.7/v1.9 — functional; moodboard Bo5 grid is **Q-4**)*
+- [~] Pause menu — exists but does not freeze the game (**B-64**, **Q-3**)
 - [ ] Character select + lobby with ready-up
 
 ### Phase 4 — Content
 
 - [x] `.tres` for Palayok, Bilao, Dyaryo, Bakya, Havaianas *(created; character-select UI to pick
       between them still doesn't exist — see B-24)*
-- [ ] Character models replacing the capsules — moodboard direction: chibi, oversized ball head,
-      flat saturated colours, Filipino school-kid outfits with a sling bag
+- [x] **Character models replacing the capsules** *(v1.5 per-class models; v2.2 the full 12-model
+      Person roster with `male-f` as the reference rig; v2.3 Local Match now starts you on the
+      Person, not the Can.)* `character_visual.gd` re-applies the correct model on every role swap.
+      **These assets are finished and off-limits to the current code queue.**
 - [ ] `Eskinita.tscn` and `BayanPlaza.tscn` with geometry, `SpawnPoints`, base circles, bounds
 - [ ] Map hazards on `HazardZone` (B-17 fixed — safe to build on now)
 - [x] Implement **Guard/Dash** (B-16) — Cans block (stamina-gated), Tsinelas dash-evade
@@ -744,9 +781,12 @@ yet, see B-10/B-37 above) and the Option A/B decision itself, which nobody has m
 
 ### Phase 5 — Feel and presentation
 
-- [~] Hit feedback: a first-pass universal white flash exists now (B-44), triggered per-hit on the
-      target's own owning peer. `landed_on` itself is still unused. Hitstop, screenshake, impact
-      particles per the moodboard's "IMPACT EFFECT (PARTICLE BURST)" are still open — need assets.
+- [~] Hit feedback: a first-pass universal white flash exists (B-44), triggered per-hit on the
+      target's own owning peer — which means **every other peer sees a hit land with no feedback at
+      all** (**B-66**). `landed_on` itself is still unused. Screenshake and impact particles per the
+      moodboard's "IMPACT EFFECT (PARTICLE BURST)" are **Q-8**, and need no art assets: shake lives
+      on `CameraRig` (never `ArenaCamera`, so the FPP/TPP split is preserved) and the burst is a
+      code-built `GPUParticles3D` in `UiTheme.IMPACT`. Hitstop is still open.
 - [ ] Movement interpolation for remote characters — currently visibly snaps
 - [ ] Audio: bump, special, downed/seal, round win, ambience per map
 - [ ] Broadcast/auto-follow cam for recording (GDD Section 6)
