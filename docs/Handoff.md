@@ -654,7 +654,7 @@ licence file for every binary in it. `git lfs ls-files` lists the fonts.
 
 ---
 
-#### F-3 · A release export, so release-only bugs are testable `[ ]`
+#### F-3 · A release export, so release-only bugs are testable `[~]`
 
 **B-28, promoted out of the backlog because B-67 cannot be verified without it.**
 `OS.is_debug_build()` gates real behaviour in this codebase (the whole debug switcher), so "it
@@ -676,6 +676,14 @@ is **absent** in it (`debug_player_switcher.gd` self-frees), which is simultaneo
 acceptance test for the §0.3 removal contract and the reproduction case for B-67.
 
 **Commit:** `Add a Windows release export preset and build note (v4.2)`
+
+**[DONE @ v4.10]** `export_presets.cfg` created (Windows Desktop, x86_64, Release-compatible).
+`export_presets.cfg` un-ignored from `.gitignore`; `build/` added to `.gitignore`.
+`tools/export.md` documents the one-liner export command and template install step.
+`[~]` not `[x]`: Godot export templates are not installed on this machine
+(`%APPDATA%\Godot\export_templates\4.7.1.stable\` absent) so the `.exe` could not be
+produced and launch-confirmed. Install templates via `Editor → Manage Export Templates`
+then run the command in `tools/export.md` to complete the acceptance test.
 
 ---
 
