@@ -434,6 +434,20 @@ func apply_dent(stagger_duration: float = BUMP_STAGGER_TIME) -> void:
 	dents_changed.emit(dents)
 	apply_stagger(stagger_duration)
 
+## T-3 / B-46, Option A half: the taya's reset channel beats one dent back out of
+## this Can. The exact mirror of apply_dent() above and it lives here for the same
+## reason — `dents` is this file's business, and nothing outside it writes the
+## field directly. No stagger, because being repaired is not being hit.
+##
+## Deliberately NOT a round-win concern: RoundManager watches dents_changed and
+## re-evaluates on its own (_on_tracked_can_dents_changed), so dropping back below
+## MAX_DENTS needs no cooperation from here. Same contract apply_dent() relies on.
+func clear_dent() -> void:
+	if not is_can or dents <= 0:
+		return
+	dents -= 1
+	dents_changed.emit(dents)
+
 ## Called by an opponent's Hitbox once this character is Downed and past its
 ## self-right window (see hitbox.gd forces_downed / seal handling).
 func seal() -> bool:
