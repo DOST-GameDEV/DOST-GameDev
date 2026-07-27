@@ -21,6 +21,7 @@ class_name Hud
 @onready var toast_label: Label = %ToastLabel
 @onready var you_card: YouCard = %YouCard
 @onready var crosshair: Control = %Crosshair
+@onready var offscreen_indicators: OffscreenIndicators = %OffscreenIndicators
 
 var _toast_time_left: float = 0.0
 var _pulse_tween: Tween = null
@@ -72,6 +73,8 @@ func _process(delta: float) -> void:
 	# character so the scan logic stays in one place (you_card.gd::_find_local_character).
 	var local_char := you_card.get_local_character()
 	crosshair.visible = local_char != null and is_instance_valid(local_char) and local_char.is_person
+	# 3.4: same cached character, no second scan.
+	offscreen_indicators.update(local_char)
 
 ## Kills the pulse tween and resets the timer card to its natural scale.
 func _kill_pulse_tween() -> void:
