@@ -329,12 +329,15 @@ HUD contrast or hazard placement against a grey box.
          already placed as two team pairs at opposite ends of the alley.
       3. Delete the temporary decals from 0.3; the map carries real ones now.
       *Then* 0.4 can be played in a real map rather than a grey box.
-- [ ] **2.3 · Persons — moodboard restyle (M-5).** 🤖 Sonnet, medium ⛔ 2.1a
-      Palette retint toward the moodboard's character render plus two or three
-      silhouette-defining accessories. **Steps 1–3 only — step 4 (walk/run
-      locomotion) is already done** and the docs claiming "only `idle` of 32 is
-      wired" are stale: `character_visual.gd::_play_locomotion` selects
-      idle/walk/sprint from horizontal speed.
+- [~] **2.3 · Persons — moodboard restyle (M-5).** 🎨 Design — **steps 1+3 done and
+      render-verified; step 2 (accessories) NOT done, step 4 was already done.**
+      Palette retint landed as a UV-cell palette-remap shader
+      (`assets/characters/persons/materials/`), wired through each `.glb.import`'s
+      `use_external` material. Verified by render at 1.5u, 3.6u and the 20u the
+      acceptance criterion names. **Step 2 (accessory meshes on bones) is blocked
+      on lane ownership, not on art** — attaching a mesh to a bone is
+      `scripts/characters/character_visual.gd`, which is 🔧 Build's. See
+      `Handoff.md` M-5 for the exact 20 lines needed. Stays `[~]` until 0.4 plays it.
 - [~] **2.4 · Bayan Plaza — the second map.** 🎨 Design — **built and rendered, never played**
       A scene swap once 2.2 has proven the pattern. **First candidate to cut**
       under time pressure — see "If time runs short" at the bottom.
