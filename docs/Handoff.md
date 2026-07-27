@@ -847,6 +847,28 @@ filled with that same `DEFENSE` color, and all three Team B pips at `UiTheme.CAR
 matching its 0 wins). Buttons unchanged (`Rematch`, relabelled `MAIN MENU` per `Dev_Plan.md` §4.3)
 through the existing theme; non-host Rematch hide untouched.
 
+**Q-10 verification note — no code changed.** Confirmed §0.2's characterization exactly: the
+switcher and `DebugBar` are both fully built, wired into `Main.tscn`, and **already discoverable**.
+`debug_bar.gd`'s `_keys_label.text` has read `"F1-F4 set P1 · Shift+F1-F4 set P2 · Tab cycle · F5
+solo · F6 reset"` since the feature's original commit (v1.4) — this is not new. Step 1's concern
+(bar reading `"(missing)"`) does not reproduce: verified live, headless, that `Slots` reads a fully
+populated `"P1▶ TeamAPerson (Person · Team A · DEFENSE)   P2▶ TeamAProp (Can · Team A · DEFENSE)"`
+on a fresh Local Match — `_match_root()`'s walk-up-from-the-bar resolution is working correctly.
+Step 4 (does the switcher still work during Q-3's pause) — verified live: paused the tree, sent a
+real synthetic Tab keypress via `Input.parse_input_event`, and the readout correctly updated
+(`P1` cycled from `TeamAPerson` to `TeamBProp`) while `get_tree().paused` was still `true` —
+`DebugPlayerSwitcher`'s `PROCESS_MODE_ALWAYS` continues to work correctly after Q-3's changes.
+**Flagging a real conflict in the queue's own instructions, not building around it (protocol rule
+3):** step 2 asks for the key hint to be styled "at `UiTheme.FONT_SIZE_CAPTION` in
+`UiTheme.INK_MUTED`" — but `debug_bar.gd`'s own header comment explicitly states the opposite
+design intent: *"Deliberately ugly: plain white monospace on a black strip, with NO reference to
+`UiTheme` and no theme of its own, so nobody mistakes it for shipping UI and so removing it can
+never leave a hole in the real design system."* Styling this debug-only bar with real design-system
+tokens would violate that stated rationale and the §0.3 removal contract's spirit (a debug feature
+should never look like it belongs to the shipped product). Left `debug_bar.gd` completely
+unmodified rather than apply the conflicting instruction. No `Dev_Plan.md` §3.5 update needed —
+step 1 found no behavior change to record.
+
 **Q-9 verification note.** Added a `QuitButton` to `TitleScreen` (order: Play · Settings · Quit,
 per `Dev_Plan.md` §4.3 — `StartButton`'s label also changed from "START" to "PLAY" to match), wired
 to a plain `get_tree().quit()`. Deliberately title-screen-only, not the in-match pause menu — a
@@ -1427,7 +1449,7 @@ Every button is legible against the background, which is the B-34/v1.3 contrast 
 
 ---
 
-#### Q-10 · Make the debug player switcher discoverable `[ ]`
+#### Q-10 · Make the debug player switcher discoverable `[x]`
 
 **Review item 9 asks for a debug keybind to cycle between players in Local Match. It already
 exists** — `scripts/systems/debug_player_switcher.gd` (autoload `DebugPlayerSwitcher`) plus

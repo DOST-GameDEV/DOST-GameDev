@@ -656,7 +656,7 @@ than sitting inside one of them, because it came from review of a running build.
 | **Q-7** | Give `HazardZone` a visible footprint and place one — **[x] fixed, verified headless** | 4 |
 | **Q-8** | Hit feedback — camera shake, impact particles, fix **B-66** — **[x] fixed, verified headless** | 5 |
 | **Q-9** | Quit button + main-menu moodboard pass — **[x] fixed, verified headless** | 3 |
-| **Q-10** | Make the debug switcher discoverable | 2 |
+| **Q-10** | Make the debug switcher discoverable — **[x] already done, verified headless, no code changed** | 2 |
 
 Two standing constraints for this batch: **the FPP/TPP directive in §0.1 is not negotiable**, and
 **no 3D model or art asset may be touched** — Q-7 and Q-8 build primitive meshes and particle
