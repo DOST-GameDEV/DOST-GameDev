@@ -3,6 +3,13 @@
 *.tres text
 *.gd text
 
+# Generated geometry (Handoff.md §4, M-1). Wavefront .obj/.mtl are PLAIN TEXT and
+# must stay out of LFS — being diffable and mergeable is the entire reason this
+# project generates meshes as .obj instead of exporting .glb. Do not "tidy" these
+# into the LFS block below.
+*.obj text
+*.mtl text
+
 # Binary assets — track via Git LFS (run: git lfs install)
 *.glb filter=lfs diff=lfs merge=lfs -text
 *.gltf filter=lfs diff=lfs merge=lfs -text
