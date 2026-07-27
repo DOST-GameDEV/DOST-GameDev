@@ -87,11 +87,8 @@ func _update_guard_dash_meter() -> void:
 		_flash_bar_ready()
 	_was_ready = is_ready
 
-## Q-6: "flash to UiTheme.PAPER for ~0.2s on the frame it returns to full, so
-## 'ready again' is readable without watching the bar." UiTheme has no literal
-## PAPER constant (only INK/PANEL/CARD/OFFENSE/DEFENSE/IMPACT/HIGHLIGHT/DANGER)
-## — CARD is the closest actual token (the theme's near-white fill), used here
-## in place of the doc's aspirational name.
+## Q-6: flash to CARD (~off-white) for ~0.2s when the bar returns to full so
+## 'ready again' is readable without watching the bar.
 func _flash_bar_ready() -> void:
 	if _bar_flash_tween != null and _bar_flash_tween.is_valid():
 		_bar_flash_tween.kill()

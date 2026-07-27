@@ -125,7 +125,8 @@ Legend: **[x]** built and working · **[~]** built but broken or unverified · *
 | Sardinas — Quick Stand | [x] | B-06 fixed (reachable while Downed). |
 | Palayok, Bilao, Dyaryo, Bakya, Havaianas specials | [~] | Scripts exist; `.tres` resources now created for all five (B-24) — mechanically assignable/testable. **Still no character-select UI** to pick between them in game; that's the content-heavy half of B-24, not attempted. |
 | Character selection | [ ] | No UI, no data. |
-| Character models — Person / Can / Tsinelas | [x] | **DONE (v1.5, v2.2, v2.3).** Each class has its own model: `CanVisual.tscn`, `TsinelasVisual.tscn`, and a 12-model Person roster under `assets/characters/persons/` with `male-f` as the reference rig. `character_visual.gd` owns all model swapping and re-applies on every role swap, so a Prop that becomes the Can gets the right mesh. Capsules are gone. **Out of scope for the current queue — do not edit these.** |
+| Character model *systems* — swap, rebuild on role-change, FPP head-hide | [x] | **DONE (v1.5, v2.2, v2.3).** `CanVisual.tscn`, `TsinelasVisual.tscn`, 12-model Person roster in `assets/characters/persons/`, `character_visual.gd` owning all swaps and re-applying on every role change. **`[x]` means the plumbing is done, not the art — every model is still placeholder-grade geometry.** |
+| 3D art quality — Lata, Tsinelas, Persons, Eskinita | [ ] | Placeholder-grade today: a 6-cylinder Lata, a 4-box Tsinelas, Kenney CC0 mini-characters with one `idle` clip wired, a 40×40 box floor. The M-block replaces each with moodboard-accurate geometry. **Editing `assets/` and the model scenes is lifted for this queue (the prior "out of scope" note is retired).** |
 | Character scenes (`scenes/characters/visuals/`) | [x] | Built and wired through `CharacterVisual.apply(is_person, is_can, team)`. |
 | Maps — Eskinita, Bayan Plaza | [ ] | Names only. One 40×40 box floor, now with walls + a kill plane (B-15/B-35). |
 | Map hazards (jeepney lane, mud, carabao) | [ ] | `HazardZone` is the reusable piece (B-17 fixed) but it renders nothing and no map places one — Handoff §4 **Q-7** does the first visible test zone. |
@@ -280,19 +281,18 @@ structure:
 
 ### 3.4 Retiring `ArenaCamera`
 
-`scripts/systems/arena_camera.gd` stops being a gameplay camera. Either delete the `Camera3D`
-node from `Main.tscn` outright, or keep the script and repurpose it as `BroadcastCamera` for
-recording the 3–5 min demo video (GDD Section 6) — in which case it must:
+**Decision (A-2): delete the `Camera3D` node from `Main.tscn` outright.** The script moves to
+`tools/arena_camera.gd` — out of the gameplay tree and un-instantiable by accident, but still
+available when the demo video needs a broadcast framing camera (GDD Section 6, 3–5 min
+gameplay video). Until A-2 lands, the node runs wasted follow-cam maths every frame (B-58).
+
+If `arena_camera.gd` ever returns to a scene, it must:
 
 - resolve targets at **runtime** via a `register_target()` / `unregister_target()` API, never
   by caching `NodePath`s in `_ready()`;
 - hold `WeakRef`s or re-check `is_instance_valid()` every frame;
 - default to `current = false`, activated only by a spectator/record toggle;
-- ignore any target whose `global_position.y` is below the kill plane, so one player falling
-  out of the world can't drag the framing (B-35).
-
-Until then, **it is the LAN freeze** (B-03) and it must be disabled in the same commit that
-introduces the rigs.
+- ignore any target whose `global_position.y` is below the kill plane (B-35).
 
 ### 3.5 Debug player switcher — manual control of any unit in local mode
 
@@ -469,7 +469,7 @@ autoload of constants **and** a Godot `Theme` resource at `assets/ui/tumbang_pre
 |---|---|---|
 | `INK` | `#040838` | Borders, headings, body text, card outline. The single darkest value on the board. |
 | `PANEL` | `#E1E5E8` | Card and panel fill. |
-| `PAPER` | `#FFFFFF` | Inner wells, input fields. |
+| `CARD` | `#F5F7FA` | Inner wells, input fields. |
 | `OFFENSE` / `ATTACKER` | `#F87020` | Team-on-offense accent, WASD keycaps, charged-throw glow. |
 | `DEFENSE` / `DEFENDER` | `#0080E8` | Team-on-defence accent, Can body, arrow keycaps. |
 | `IMPACT` | `#F468A8` | Slipper/Can accent bar, impact bursts, retrieval decal edge. |
@@ -512,7 +512,7 @@ Settle it before the deadline, not during it.
 | Round intermission / role swap | [~] | Functional beat exists (B-37: gap, early world reset, placeholder banner). The animated card in §4.6 does not. |
 | Match result | [x] | **Built, wired, and restyled** — `MatchResult.tscn` + `match_result.gd` at `Main.tscn::HUDLayer/MatchResult`: winner headline + Bo5 pip grid (role-coloured, **Q-4**) + Rematch (host-only) + Main Menu, world frozen behind it in Local Match (**Q-4**), B-51/B-53 fixed. |
 | Pause | [~] | Esc → Resume / Return to Menu (B-20), **now actually freezes Local Match** (B-64, **Q-3** fixed) and shows a non-freezing "still running" overlay when networked. No Settings-from-pause; restyle not done. |
-| Settings | [x] | Duplicate-binding detection added (B-22). Restyle, mouse sensitivity + invert-Y (§3.2) still not done. |
+| Settings | [x] | Duplicate-binding detection added (B-22). Mouse sensitivity + invert-Y done (`SettingsManager.mouse_sensitivity` / `invert_y`, `SensitivitySlider` + `InvertYCheck` in `SettingsPanel.tscn`). Restyle outstanding. |
 
 ### 4.4 HUD layout
 
