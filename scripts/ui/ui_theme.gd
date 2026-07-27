@@ -80,6 +80,25 @@ const ENV_DIRT: Color = Color("c2a878")           ## dirt apron, mud, unpaved sh
 const ENV_TARP: Color = Color("dcd5c4")           ## awning canvas, sacks, hung laundry
 const ENV_RUBBER: Color = Color("2b2b30")         ## tires, wheels
 
+## Painted facades. A Philippine street is NOT grey — it is painted concrete in
+## whatever the hardware store had, weathered unevenly. `ENV_CONCRETE` alone made
+## every building read as an untextured box, which is the single loudest
+## "unfinished greybox" signal the set had.
+##
+## ⚠️ All four are deliberately WARM or DESATURATED-COOL, never a clean mid green
+## or blue. Person A wears `#1E9E5A` and Person B `#5C1F2A`, and a facade in the
+## same hue family would eat the character silhouette at arena distance. Warm
+## walls also push the green Person forward, which is the whole point of putting
+## a character in front of a wall. Neither hue goes anywhere near `OFFENSE`
+## `#F87020` or `DEFENSE` `#0080E8` — `Dev_Plan.md` §4.2 rule 1.
+const ENV_PAINT_CREAM: Color = Color("e2d2ac")    ## the default Manila facade
+const ENV_PAINT_TERRA: Color = Color("b5664c")    ## oxide-red / terracotta
+const ENV_PAINT_MINT: Color = Color("86b4a6")     ## the pale mint that is everywhere
+const ENV_PAINT_OCHRE: Color = Color("c9994a")    ## mustard / ochre
+## Ground-floor shopfronts are always darker than the storeys above them —
+## roll-up shutters, tiled skirting, or just forty years of splashback.
+const ENV_PAINT_PLINTH: Color = Color("6d5f52")
+
 # --- Chrome -------------------------------------------------------------------
 const BORDER_WIDTH: int = 3
 const CORNER_RADIUS: int = 6
