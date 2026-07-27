@@ -27,6 +27,25 @@ class_name CameraRig
 ## down", which is exactly where the camera should look, so `TppCamera` carries
 ## no rotation of its own.
 ##
+## ⚠️ FPP eye height — also measured, do not restore the old 1.55. `FppPivot`
+## sat at `y = 1.55` from the day the rig was written, which was a guess at
+## "eye height on a 1.6-unit capsule" and never checked against a model. The
+## Person is a Kenney Mini Character scaled by `CharacterVisual.PERSON_SCALE`
+## (2.38) and dropped to the capsule floor, so in CharacterBase-local space the
+## body actually occupies:
+##
+##     feet / body-mesh   -0.800 .. +0.076
+##     head-mesh          +0.017 .. +0.798      <- top of the head is +0.798
+##
+## `y = 1.55` therefore parked the camera **0.75 units above the top of its own
+## head**, looking out over it. That is why first person showed no body, no
+## arms, and nothing held: the whole character was below the near edge of the
+## frame. `0.45` is 55% of the way up the head mesh — the eye line on a model
+## whose face is painted on the front of a ball head — and the head is already
+## hidden in FPP by `_apply_fpp_self_hide` below, so sitting inside it is
+## correct rather than a clipping problem. Re-measure with the harness in
+## `docs/Interaction_Tuning_Agent_Brief.md` before changing it again.
+##
 ## The original bake was arm `(-15, 180, 0)` + camera `(0, 180, 0)`. The 180 on
 ## the arm assumed the spring cast along -Z, so it actually placed the camera
 ## 4.35 units IN FRONT of the character; the compensating 180 on the camera then
