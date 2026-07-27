@@ -27,37 +27,50 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -320.0
-offset_top = -140.0
+offset_top = -160.0
 offset_right = 320.0
-offset_bottom = 140.0
+offset_bottom = 160.0
 alignment = 1
 
-[node name="TitleLabel" type="Label" parent="TitleScreen"]
+[node name="TitleCard" type="PanelContainer" parent="TitleScreen"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="TitleCardContent" type="VBoxContainer" parent="TitleScreen/TitleCard"]
+layout_mode = 2
+alignment = 1
+
+[node name="TitleLabel" type="Label" parent="TitleScreen/TitleCard/TitleCardContent"]
 layout_mode = 2
 theme_type_variation = &"Display"
 horizontal_alignment = 1
 text = "TUMBANG PRESO"
 
-[node name="SubtitleLabel" type="Label" parent="TitleScreen"]
+[node name="SubtitleLabel" type="Label" parent="TitleScreen/TitleCard/TitleCardContent"]
 layout_mode = 2
 theme_type_variation = &"Caption"
 horizontal_alignment = 1
 text = "2v2 ARENA BRAWLER — CANS VS TSINELAS"
 
-[node name="Spacer" type="Control" parent="TitleScreen"]
+[node name="Spacer" type="Control" parent="TitleScreen/TitleCard/TitleCardContent"]
 layout_mode = 2
 custom_minimum_size = Vector2(0, 28)
 
-[node name="StartButton" type="Button" parent="TitleScreen"]
+[node name="StartButton" type="Button" parent="TitleScreen/TitleCard/TitleCardContent"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"PrimaryButton"
-text = "START"
+text = "PLAY"
 
-[node name="SettingsButton" type="Button" parent="TitleScreen"]
+[node name="SettingsButton" type="Button" parent="TitleScreen/TitleCard/TitleCardContent"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "SETTINGS"
+
+[node name="QuitButton" type="Button" parent="TitleScreen/TitleCard/TitleCardContent"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "QUIT"
 
 [node name="PlayMenu" type="VBoxContainer" parent="."]
 unique_name_in_owner = true
@@ -68,62 +81,70 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -220.0
-offset_top = -190.0
+offset_top = -210.0
 offset_right = 220.0
-offset_bottom = 190.0
+offset_bottom = 210.0
 alignment = 1
 
-[node name="ModeLabel" type="Label" parent="PlayMenu"]
+[node name="PlayCard" type="PanelContainer" parent="PlayMenu"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="PlayCardContent" type="VBoxContainer" parent="PlayMenu/PlayCard"]
+layout_mode = 2
+alignment = 1
+
+[node name="ModeLabel" type="Label" parent="PlayMenu/PlayCard/PlayCardContent"]
 layout_mode = 2
 theme_type_variation = &"Heading"
 horizontal_alignment = 1
 text = "GAME MODE"
 
-[node name="GameModeOption" type="OptionButton" parent="PlayMenu"]
+[node name="GameModeOption" type="OptionButton" parent="PlayMenu/PlayCard/PlayCardContent"]
 unique_name_in_owner = true
 layout_mode = 2
 
-[node name="Spacer1" type="Control" parent="PlayMenu"]
+[node name="Spacer1" type="Control" parent="PlayMenu/PlayCard/PlayCardContent"]
 layout_mode = 2
 custom_minimum_size = Vector2(0, 12)
 
-[node name="LocalButton" type="Button" parent="PlayMenu"]
+[node name="LocalButton" type="Button" parent="PlayMenu/PlayCard/PlayCardContent"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"PrimaryButton"
 text = "LOCAL MATCH (SINGLE PC)"
 
-[node name="HostButton" type="Button" parent="PlayMenu"]
+[node name="HostButton" type="Button" parent="PlayMenu/PlayCard/PlayCardContent"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "HOST GAME (LAN)"
 
-[node name="JoinRow" type="HBoxContainer" parent="PlayMenu"]
+[node name="JoinRow" type="HBoxContainer" parent="PlayMenu/PlayCard/PlayCardContent"]
 layout_mode = 2
 
-[node name="JoinAddressEdit" type="LineEdit" parent="PlayMenu/JoinRow"]
+[node name="JoinAddressEdit" type="LineEdit" parent="PlayMenu/PlayCard/PlayCardContent/JoinRow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 placeholder_text = "Host address, e.g. 127.0.0.1"
 
-[node name="JoinButton" type="Button" parent="PlayMenu/JoinRow"]
+[node name="JoinButton" type="Button" parent="PlayMenu/PlayCard/PlayCardContent/JoinRow"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "JOIN"
 
-[node name="StatusLabel" type="Label" parent="PlayMenu"]
+[node name="StatusLabel" type="Label" parent="PlayMenu/PlayCard/PlayCardContent"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"Caption"
 horizontal_alignment = 1
 autowrap_mode = 2
 
-[node name="Spacer2" type="Control" parent="PlayMenu"]
+[node name="Spacer2" type="Control" parent="PlayMenu/PlayCard/PlayCardContent"]
 layout_mode = 2
 custom_minimum_size = Vector2(0, 12)
 
-[node name="BackButton" type="Button" parent="PlayMenu"]
+[node name="BackButton" type="Button" parent="PlayMenu/PlayCard/PlayCardContent"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "◀  BACK"

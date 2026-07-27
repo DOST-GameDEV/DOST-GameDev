@@ -16,6 +16,7 @@ const MAIN_SCENE_PATH: String = "res://scenes/main/Main.tscn"
 @onready var settings_panel: SettingsPanel = %SettingsPanel
 @onready var start_button: Button = %StartButton
 @onready var settings_button: Button = %SettingsButton
+@onready var quit_button: Button = %QuitButton
 @onready var local_button: Button = %LocalButton
 @onready var host_button: Button = %HostButton
 @onready var join_button: Button = %JoinButton
@@ -23,6 +24,11 @@ const MAIN_SCENE_PATH: String = "res://scenes/main/Main.tscn"
 @onready var game_mode_option: OptionButton = %GameModeOption
 @onready var status_label: Label = %StatusLabel
 @onready var back_button: Button = %BackButton
+## Q-9: moodboard card chrome (Dev_Plan.md §4.2/§4.3) — PANEL fill, INK
+## border, an IMPACT accent bar. Applied in code, same pattern as the Q-4/Q-5
+## cards, rather than a one-off StyleBoxFlat baked into the .tscn.
+@onready var title_card: PanelContainer = %TitleCard
+@onready var play_card: PanelContainer = %PlayCard
 
 func _ready() -> void:
 	title_screen.visible = true
@@ -31,6 +37,10 @@ func _ready() -> void:
 	status_label.text = ""
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE # item 14: defensive — Main.tscn captures it for a match
 	GameVersion.attach_to(self) # build stamp, bottom-right — see game_version.gd
+
+	var card_style := UiTheme.card_style(UiTheme.PANEL, UiTheme.INK, UiTheme.IMPACT)
+	title_card.add_theme_stylebox_override("panel", card_style)
+	play_card.add_theme_stylebox_override("panel", card_style)
 
 	# Q-1/B-62: a bounce back here from main.gd after the host quit or a join
 	# failed — land on the Play menu (not the title screen) since the player
@@ -53,6 +63,7 @@ func _ready() -> void:
 
 	start_button.pressed.connect(_on_start_pressed)
 	settings_button.pressed.connect(_on_settings_pressed)
+	quit_button.pressed.connect(_on_quit_pressed)
 	settings_panel.back_pressed.connect(_on_settings_back_pressed)
 	back_button.pressed.connect(_on_back_pressed)
 	local_button.pressed.connect(_on_local_pressed)
@@ -74,6 +85,13 @@ func _on_back_pressed() -> void:
 func _on_start_pressed() -> void:
 	title_screen.visible = false
 	play_menu.visible = true
+
+## Q-9: title-screen-only, deliberately. A mid-match quit that skips
+## NetworkManager.disconnect_network() would strand the other peers — the
+## same soft-lock Q-1 fixed, just from the other end. Return to Menu → Quit
+## is two clear steps instead.
+func _on_quit_pressed() -> void:
+	get_tree().quit()
 
 func _on_settings_pressed() -> void:
 	title_screen.visible = false
