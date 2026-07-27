@@ -127,7 +127,75 @@ const HAND_BONE_CANDIDATES: Array[String] = ["arm-right", "arm-left"]
 ## a metre out to the character's left and above the top of its own head, which
 ## is where "the held slipper isn't in their hand" came from. Verified in-engine
 ## by rendering it, not by reading it.
-const HAND_CARRY_OFFSET: Vector3 = Vector3(0.65, 0.21, -0.25)
+## ⚠️ RETUNED for TSINELAS_CARRY_SCALE. Was (0.65, 0.21, -0.25) when a carried
+## slipper was full size. Scaling the Visual node happens about ITS OWN ORIGIN,
+## and the slipper's sole sits at local y = -0.8 (dropped there by
+## _align_to_capsule_floor), so shrinking to 0.32 lifts the sole by
+## 0.8 * (1 - 0.32) = 0.544 units and the slipper floats above the hand. The y
+## here absorbs that. Confirmed by render, not calculated and left alone.
+## ⚠️ MEASURED BY CALIBRATION, NOT GUESSED — and it is only valid for the
+## `holding-right` pose and TSINELAS_CARRY_SCALE below. Change either and this
+## is wrong again; re-measure rather than nudging it by eye.
+##
+## The offset is applied in the ARM BONE's rotated frame, so it is not readable
+## by inspection. Calibrated by sampling the HandPoint that render_probe reports
+## at four offsets — (0,0,0) and the three unit axes — which gives the map
+## exactly:
+##
+##     world = t + R * offset
+##     t = (-0.2378, -0.1152, -0.0411)   (the arm bone's origin, character-local)
+##     R = a +60 degree rotation about Y:  x -> (0.5, 0, -0.866)
+##                                         z -> (0.866, 0, 0.5)
+##
+## Inverting that puts the slipper wherever you want it in CHARACTER space:
+##     offset = R⁻¹ * (target - t),  R⁻¹: x -> 0.5x - 0.866z,  z -> 0.866x + 0.5z
+##
+## THE TARGET WAS CHOSEN FOR FIRST PERSON, because a Person is always FPP and
+## the carried slipper is the thing they aim with. Its origin lands at
+## (0.260, 0.470, -0.480): forward of the eye (which sits at +0.45), to the
+## right so it never covers the crosshair, and far enough out that the small
+## carried slipper reads without filling the frame the way the full-size one did.
+##
+## Two earlier attempts are worth recording so nobody repeats them. Targeting
+## "chest height" put it beside the head — this rig is chibi and its head spans
+## +0.017 to +0.798, so ordinary human landmarks do not transfer. Targeting the
+## palm itself buried it inside the arm mesh and dropped it ~60 degrees below the
+## camera, i.e. outside a 75-degree FOV entirely: correct in the hand, invisible
+## to the player.
+const HAND_CARRY_OFFSET: Vector3 = Vector3(0.629, 0.585, 0.212)
+
+## Checklist 0.6 / 1.2 — HOW BIG A CARRIED SLIPPER IS.
+##
+## The decision and its rejected alternatives are in docs/Handoff.md §0.11. In
+## one line: the tsinelas is 1.35 long against a 1.598-unit Person — 84% of the
+## character's own height — so carrying it read as carrying a surfboard, and in
+## first person it covered about a quarter of the screen.
+##
+## It is NOT fixed by shrinking the mesh. The tsinelas is a player-controlled
+## unit: LOOSE it crawls, FLYING it is the projectile that has to be readable
+## across the arena and has to visibly hit a lata. Only the HAND is wrong. So
+## only the hand is scaled.
+##
+## 0.32 gives 0.432 units — 27% of the Person, against a true-life ratio of 17%
+## and a hero scale of 84%. Deliberately at the stylised end, because the
+## moodboard's whole language is chibi exaggeration. Tuning window 0.28 - 0.40.
+##
+## ⚠️ COSMETIC ONLY. This touches no collision shape, no hurtbox, no hit_radius,
+## no grab radius and no speed. That containment is the entire reason this
+## option was chosen over rescaling the props for real.
+const TSINELAS_CARRY_SCALE: float = 0.32
+## Units per second of scale change. Fast enough to feel instant on pick-up,
+## slow enough that the slipper visibly GROWS as it leaves the hand, which turns
+## out to be a free throw tell.
+const CARRY_SCALE_LERP: float = 12.0
+
+## The persistent carry pose. Verified against the actual .glb rather than a
+## doc: the Kenney rig ships `holding-right` and `holding-right-shoot`, and
+## `HAND_BONE_CANDIDATES` already prefers the right arm for exactly that reason.
+## There is NO `holding-right-walk` on this rig, so a carrying Person who starts
+## moving falls back to plain `walk` — the slipper still tracks the arm bone
+## through the BoneAttachment3D, so it stays in hand either way.
+const CARRY_IDLE_CLIP: String = "holding-right"
 
 const FLASH_DURATION: float = 0.15
 
@@ -465,6 +533,13 @@ func _play_locomotion() -> void:
 		wanted = "sprint"
 	elif speed > WALK_SPEED_THRESHOLD:
 		wanted = "walk"
+	elif _is_holding():
+		# Standing still WITH something in hand is its own pose. Without this a
+		# Person aiming a throw stands in the empty-handed idle with a slipper
+		# stuck to their arm, which reads as a bug rather than as a wind-up.
+		# Only the standing case: the rig has no holding-right-walk, and plain
+		# `walk` with the slipper tracking the arm bone reads fine.
+		wanted = CARRY_IDLE_CLIP
 	if not _animator.has_animation(wanted):
 		wanted = "idle"
 	if _animator.has_animation(wanted) and _animator.current_animation != wanted:
@@ -473,6 +548,31 @@ func _play_locomotion() -> void:
 func _process(delta: float) -> void:
 	_play_locomotion()
 	_spin_while_airborne(delta)
+	_scale_while_carried(delta)
+
+## Checklist 0.6 — shrink the tsinelas to hand size while, and only while, it is
+## being carried.
+##
+## POLLED, not driven off Carriable's carry_state_changed signal, for the same
+## two reasons _spin_while_airborne documents right above: Carriable and this
+## node are siblings with no guaranteed _ready() order, and — the one that
+## actually matters here — a poll is SELF-HEALING across a model rebuild.
+## apply() runs on every role swap and resets this node; a signal-driven scale
+## would need a third re-assert beside _refresh_can_damage and
+## _refresh_downed_tilt, and the day someone forgets it a slipper comes back
+## from an intermission full size in someone's hand.
+func _scale_while_carried(delta: float) -> void:
+	if _character == null:
+		return
+	var carriable: Carriable = _character.get_node_or_null("Carriable") as Carriable
+	# A Can is never carried and a Person never becomes one. Guarding on
+	# is_throwable() rather than on state keeps this off every other unit.
+	var wants_small := carriable != null and carriable.is_throwable() 		and carriable.state == Carriable.CarryState.CARRIED
+	var target := TSINELAS_CARRY_SCALE if wants_small else 1.0
+	if is_equal_approx(scale.x, target):
+		return
+	var next := move_toward(scale.x, target, CARRY_SCALE_LERP * delta)
+	scale = Vector3.ONE * next
 
 ## Task 0 — the moodboard's THE SLIPPER card asks for "thrown trajectory (spin +
 ## motion blur)", and a slipper that flies without tumbling reads as a floating
@@ -497,6 +597,20 @@ func _spin_while_airborne(delta: float) -> void:
 			rotation.x = 0.0
 		return
 	rotation.x += deg_to_rad(carriable.spin_speed_deg()) * delta
+
+## Whether this Person currently has something in their hand. Asked of the
+## Carrier component (the holder's side), not of Carriable (the held thing's
+## side) — this node belongs to the Person.
+func _is_holding() -> bool:
+	if _character == null or not _character.is_person:
+		return false
+	var carrier := _character.get_node_or_null("Carrier") as Carrier
+	if carrier == null:
+		return false
+	# The public accessor, not the private field. carrier.gd exposes held() for
+	# exactly this, and reaching past it with get("_held") would break silently
+	# the day that field is renamed.
+	return carrier.held() != null
 
 ## Plays a one-shot action clip — the visible half of "their arms move when they
 ## grab". Called by `character_base.gd` when an ability or a bump fires. Falls

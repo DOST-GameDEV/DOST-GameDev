@@ -131,7 +131,7 @@ polish; they are the instruments.
       High effort rather than medium: this will touch `carriable.gd`,
       `carrier.gd` and the throw profiles at the same time, and the
       host-authoritative transitions in there are easy to break subtly.
-- [ ] **0.6 · Carried-scale the tsinelas (implements the 1.2 decision).** 🤖 Sonnet, medium
+- [x] **0.6 · Carried-scale the tsinelas (implements the 1.2 decision).** 🎨 Design (reassigned)
       **Design lane specified this; it is build-lane code and design must not write it.** Do it
       before 0.4 — in first person the carried slipper currently occupies about a quarter of the
       screen as an opaque slab, and a tester cannot judge an aiming arc through it.
@@ -319,7 +319,7 @@ HUD contrast or hazard placement against a grey box.
         ships a flat `background_color` and no sky at all.
   - [ ] `Main.tscn` instances the map instead of carrying `Floor`/`Bounds`
         directly, so map #2 is a scene swap rather than a rebuild.
-- [ ] **2.2a · Wire Eskinita into the game.** 🤖 Sonnet, medium ⛔ needs the `Main.tscn` lock
+- [x] **2.2a · Wire Eskinita into the game.** 🎨 Design (reassigned) — **verified by render**
       The map is built and rendered but nothing loads it. Three things, all build-lane:
       1. `Main.tscn` instances `scenes/maps/Eskinita.tscn` in place of its own `Floor` and
          `Bounds` — which also retires B-83 (the old colliders sit at ±40 around a ±20 floor) and
@@ -335,7 +335,7 @@ HUD contrast or hazard placement against a grey box.
       locomotion) is already done** and the docs claiming "only `idle` of 32 is
       wired" are stale: `character_visual.gd::_play_locomotion` selects
       idle/walk/sprint from horizontal speed.
-- [ ] **2.4 · Bayan Plaza — the second map.** 🤖 Sonnet, medium ⛔ 2.2
+- [~] **2.4 · Bayan Plaza — the second map.** 🎨 Design — **built and rendered, never played**
       A scene swap once 2.2 has proven the pattern. **First candidate to cut**
       under time pressure — see "If time runs short" at the bottom.
 
@@ -359,6 +359,15 @@ HUD contrast or hazard placement against a grey box.
       replicated with ready-up state, read in `_build_networked_character()` in
       place of the hardcoded `PROP_ABILITY`. `.duplicate()` the chosen `.tres`
       or two characters share one cooldown.
+- [x] **3.5 · Map picker in the opening UI.** 🎨 Design (new item) — **verified by render**
+      An `OptionButton` plus a one-line tagline on the Play card, mirroring the existing
+      `GameModeOption` exactly so it inherits the card chrome for free. Built from
+      **`GameLaunch.MAPS`**, not hardcoded in `main_menu.gd`: adding a map is one entry in the
+      autoload plus a scene, and the picker, the launch path and the fallback all read the same
+      list so they cannot disagree about what exists. `GameLaunch.selected_map` is deliberately
+      **not** cleared by `reset()` — it is a preference, not a one-shot handoff like
+      `pending_action`, so a player who picks Bayan Plaza does not re-pick it after every match.
+      The tagline exists because "ESKINITA" means nothing to a judge who has never played it.
 - [ ] **3.4 · Off-screen indicators (U-6b).** 🤖 Sonnet, medium
       Screen-edge arrows for your teammate and the Can. `Dev_Plan.md` §3.3 calls
       these **mandatory** for FPP — they are the promised mitigation for the
