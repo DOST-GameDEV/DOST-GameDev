@@ -114,6 +114,36 @@ polish; they are the instruments.
       High effort rather than medium: this will touch `carriable.gd`,
       `carrier.gd` and the throw profiles at the same time, and the
       host-authoritative transitions in there are easy to break subtly.
+- [ ] **0.6 · Carried-scale the tsinelas (implements the 1.2 decision).** 🤖 Sonnet, medium
+      **Design lane specified this; it is build-lane code and design must not write it.** Do it
+      before 0.4 — in first person the carried slipper currently occupies about a quarter of the
+      screen as an opaque slab, and a tester cannot judge an aiming arc through it.
+      In `scripts/characters/character_visual.gd` only:
+      1. `const TSINELAS_CARRY_SCALE: float = 0.32` and
+         `const CARRY_SCALE_LERP: float = 12.0`.
+      2. In the existing `_process` poll — **beside `_spin_while_airborne`, not on a signal**;
+         its comment explains why (Carriable and CharacterVisual are siblings with no guaranteed
+         `_ready()` order, and a poll self-heals across the model rebuild that every role swap
+         performs) — lerp `self.scale` toward `Vector3.ONE * TSINELAS_CARRY_SCALE` while the
+         sibling `Carriable.state == CARRIED`, and toward `Vector3.ONE` otherwise. Guard it to
+         `carriable.is_throwable()` so a Can is never touched.
+      3. Retune `HAND_CARRY_OFFSET`. **Predicted, not measured:** the sole sits at
+         CharacterVisual-local `y = -0.8`, so scaling about this node's origin lifts the slipper
+         ≈ `0.544` units; `y` wants to go from `+0.21` toward `≈ -0.33`. **Confirm by render, do
+         not paste the number in.**
+      *Acceptance:* `godot --path . tools/render_probe.tscn --quit-after 400 --resolution 960x540
+      -- viewmodel <dir>` — **without `--headless`** — and both shots show a slipper that reads as
+      held. Attach them. Tuning window `0.28 – 0.40` without consulting the design lane.
+      *Explicitly NOT in this item:* the mesh, any collision shape, any `hit_radius`, any speed,
+      the camera. `_align_to_capsule_floor()` needs no change — it computes from `model.scale` in
+      this node's local space, not from this node's scale.
+- [ ] **0.7 · B-82 — units spawn 0.3 units inside the floor slab.** 🤖 Sonnet, medium
+      `Main.tscn`'s `Floor` has no transform and its shape is a `(40,1,40)` box on the origin, so
+      the top surface is **`y = +0.5`, not `y = 0` as two docs claim.** All four units are placed
+      at `y = 1.0`, giving a capsule floor of `0.2`. Either move `Floor` to `y = -0.5` or drop the
+      spawn `y` to `0.8` — and correct `Environment_Art_Agent_Brief.md` §4.1 and this file's own
+      2.2 bullet in the same commit. `Main.tscn` is shared and currently locked; take the lock.
+      See `Handoff.md` §0.11 and B-82.
 
 ---
 
@@ -135,7 +165,13 @@ blocking real work.
       relitigated here. What *is* being escalated: this is now the difference
       between "a Godot project" and "the game on the moodboard", and it is one
       line of code behind a question nobody has answered.
-- [ ] **1.2 · Prop scale — how big is a lata, and how big is a tsinelas?** 🤖 Opus, high
+- [x] **1.2 · Prop scale — how big is a lata, and how big is a tsinelas? DECIDED 2026-07-28.**
+      **Option (a): props stay hero-scaled as units; the tsinelas scales to `0.32` ONLY while
+      `CARRIED`** (0.432 units long = 27% of a Person, against 84% today). Reasoning, the measured
+      numbers, the three rejected alternatives and the two follow-up items are in `Handoff.md`
+      §0.11. Ticked as a **decision** — the implementation is 0.6 below and is unbuilt. The kit's
+      2-unit grid in 2.1a is sized against this and 2.1 is unblocked.
+      *Original statement of the fork, kept so the history reads honestly:* 🤖 Opus, high
       Measured on 2026-07-27: the tsinelas mesh is **1.35 units long against a
       1.598-unit Person — 84% of the character's own height**, and the lata is
       **1.125 units, 70% of a Person**. Rendered, a Person carrying the slipper
@@ -148,7 +184,16 @@ blocking real work.
       numbers, and the moodboard's role cards draw the can and slipper as hero
       objects. Decide it before 2.1: the environment kit's 2-unit grid is sized
       against these props.
-      *Blocks:* 2.1, and the final tuning of `HAND_CARRY_OFFSET`.
+      *Blocked:* 2.1, and the final tuning of `HAND_CARRY_OFFSET`. **Both now released.**
+- [ ] **1.2b · Should the Person be literally larger? Deferred to after 0.4, deliberately.** 🧑 ⛔ 0.4
+      The human's steer during the 1.2 pass was *"make humans bigger, objects should fit in hand."*
+      The second half is delivered by 1.2/0.6. The first half is **not rejected — it is costed**:
+      `PERSON_SCALE` is visual-only, so raising it desynchronises the model from the 1.6 capsule and
+      drags in the capsule and hurtbox heights, `FppPivot` (reopening B-78's failure class),
+      `HAND_CARRY_OFFSET`, the TPP spring arm, and the arena's read at unchanged `SPEED`. That is a
+      pass of its own, in shared and build-lane files, and it must never land inside an art commit.
+      **Gate it on a human having actually played 0.4** — the question "is the Person too small"
+      cannot be answered from a screenshot. See `Handoff.md` §0.11.
 - [ ] **1.3 · 🧑 Does the Person get its own ability roster?** ⛔ HUMAN
       Or does every Person share the one Tag? Open since the GDD. **Blocks 3.3
       (character select)** — the Prop half of that screen is buildable without
