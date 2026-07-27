@@ -107,8 +107,26 @@ static func build() -> Theme:
 	_register_variations(theme)
 	return theme
 
-## A card/button face: flat fill, INK border, rounded, optionally with a
-## full-height accent bar down the left edge (the moodboard's role-colour marker).
+## A card/button face: flat fill, rounded, INK border — OR, when `accent` is
+## given, a full-height role-colour bar down the left edge.
+##
+## ⚠️ IT IS ONE OR THE OTHER, NOT BOTH, AND THAT IS A DELIBERATE DEVIATION FROM
+## THE MOODBOARD. `Dev_Plan.md` §4.1 specifies "deep-navy 3px border" AND "a 6px
+## full-height colour bar at the left of each heading". `StyleBoxFlat` carries a
+## single `border_color` for all four sides — Godot has no per-side border
+## colour — so the accent branch below necessarily repaints the whole border,
+## and an accented card ends up outlined edge-to-edge in its role colour rather
+## than in navy.
+##
+## This comment used to claim the card kept its INK border when accented. It
+## never has. Confirmed by rendering the role-swap card: both panels are outlined
+## completely in orange and blue, with no navy anywhere.
+##
+## Left as-is on purpose rather than "fixed". Getting both would mean a child
+## ColorRect on every accented Control — exactly what the note below deliberately
+## avoided — and the full outline reads *better* at HUD scale than a 6px bar
+## would: the top-corner team panels are legible across a room because of it.
+## Revisit only if 0.4 reports the role colour being missed.
 static func card_style(fill: Color, border: Color = INK, accent: Color = Color(0, 0, 0, 0)) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = fill
