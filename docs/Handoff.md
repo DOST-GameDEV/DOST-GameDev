@@ -387,8 +387,8 @@ surfacing through it. *Fix:* character select, or an interim per-side default.
 - **B-42 · Local Bo5 past round 1 depends on the debug switcher.** Mitigated, not fixed: the
   switcher makes it playable, but the Prop that becomes the Can in round 2 is `player_id = 3`,
   permanently unbound. Dies with Local Match in Phase 6.
-- **B-58 · `ArenaCamera._process` still does full follow-cam work every frame while retired.**
-  Closed by **A-2**, which deletes the node outright.
+- **[FIXED] B-58 · `ArenaCamera._process` still does full follow-cam work every frame while retired.**
+  Closed by **A-2** (v4.8) — node deleted from Main.tscn, script moved to tools/.
 - **B-54 · Local spawn points ignore team membership.** Design call. **M-7** puts spawn points in
   the map scene, which is where this gets answered.
 - **B-55 · `RoundManager`'s end-of-round state change rides an unreliable RPC.** Low.
@@ -700,7 +700,7 @@ Small, and it stops the next agent building against fiction. Docs-only; no versi
 
 ### A — Architecture and bugfixes (before art, so art isn't built on a moving floor)
 
-#### A-1 · Enforce the camera rule structurally `[ ]`
+#### A-1 · Enforce the camera rule structurally `[~]`
 
 The rule is currently obeyed by convention. Make it obeyed by construction, so no future pass can
 break it without the build telling them.
@@ -734,11 +734,20 @@ Steps:
 visible, first-person. Press Tab to take the Prop — crosshair gone, third-person. Play into round
 2 so the Prop's `is_can` flips: still TPP, still no crosshair.
 
-**Commit:** `Enforce the FPP/TPP directive in code and add the FPP-only crosshair (v4.3)`
+**[DONE]** v4.7. Assert added after `_mode` derivation in `_ready()`. Comment added above `_mode`
+var declaration confirming it is never written outside `_ready()`. §3.3.1 enforcement grep added
+to `Dev_Plan.md` §3. `Crosshair` `Control` + centered `Label` ("+") added to `HUD.tscn`, hidden
+by default; visibility driven from `you_card.get_local_character().is_person` in
+`hud.gd::_process()`. `YouCard.get_local_character()` public helper added so `hud.gd` reads the
+cached scan result rather than duplicating it. `[~]` not `[x]`: the assert and grep are verified
+by code inspection only — the crosshair has not been confirmed visible/hidden in a running Local
+Match by a human.
+
+**Commit:** `Enforce the FPP/TPP directive in code and add the FPP-only crosshair (v4.7)`
 
 ---
 
-#### A-2 · Delete the scene-level camera `[ ]`
+#### A-2 · Delete the scene-level camera `[~]`
 
 **Closes B-58 and removes the last violation of `Dev_Plan.md` §2's architecture rule 4.** The
 `Camera3D` in `Main.tscn` runs `arena_camera.gd`, caches four `NodePath`s to player nodes, and
@@ -768,7 +777,11 @@ Steps:
 Match and a two-instance `--host`/`--join=127.0.0.1` session both run with zero errors and a
 working camera on every unit. Nothing renders from a fixed overhead angle at any point.
 
-**Commit:** `Fix B-58: delete the retired scene-level camera, park the script in tools/ (v4.4)`
+**Commit:** `Fix B-58: delete the retired scene-level camera, park the script in tools/ (v4.8)`
+
+**[DONE]** v4.8. Camera3D node deleted from Main.tscn. arena_camera.gd moved to
+tools/. Six call sites removed from main.gd. kill_plane.gd and character_base.gd
+comments updated. B-58 closed.
 
 ---
 

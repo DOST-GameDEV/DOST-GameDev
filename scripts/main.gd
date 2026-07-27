@@ -37,7 +37,6 @@ extends Node3D
 ## match-result screen. Read-only from here — MatchResult wires itself to
 ## MatchManager and needs nothing from main.gd.
 @onready var match_result: MatchResult = $HUDLayer/MatchResult
-@onready var arena_camera: ArenaCamera = $Camera3D
 @onready var kill_plane: KillPlane = $KillPlane
 ## B-20: no way out of a match existed except Alt+F4.
 @onready var pause_root: Control = %PauseRoot
@@ -229,19 +228,7 @@ func _start_joining(address: String) -> void:
 
 func _clear_local_test_characters() -> void:
 	RoundManager.clear_tracked_cans()
-	# B-03 (residual): Main.tscn's Camera3D.follow_paths always points at these
-	# four nodes regardless of mode, so arena_camera's own _ready() (which runs
-	# BEFORE this one — child _ready() before parent) already added all four as
-	# targets before _start_hosting()/_start_joining() ever ran. Freeing them
-	# without removing them first left arena_camera holding stale references —
-	# confirmed live in testing: Host Game spammed a filter()/typed-array error
-	# every single frame, the exact failure mode the original B-03 report
-	# described, despite add_target()/remove_target() existing for the
-	# networked-spawn path.
-	arena_camera.remove_target(team_a_prop)
-	arena_camera.remove_target(team_a_person)
-	arena_camera.remove_target(team_b_prop)
-	arena_camera.remove_target(team_b_person)
+	# The scene-level ArenaCamera is removed — B-03 is closed, B-58 is closed.
 	team_a_prop.queue_free()
 	team_a_person.queue_free()
 	team_b_prop.queue_free()
@@ -298,7 +285,6 @@ func _notification(what: int) -> void:
 func _on_player_disconnected(peer_id: int) -> void:
 	var node := players_root.get_node_or_null(str(peer_id))
 	if node:
-		arena_camera.remove_target(node)
 		node.queue_free()
 	_spawned_peer_ids.erase(peer_id)
 	_peer_teams.erase(peer_id)
@@ -387,10 +373,6 @@ func _build_networked_character(data: Dictionary) -> Node:
 		# per-player). Guard on is_can here since the local player might be
 		# controlling their team's Person this match, not its Prop.
 		_wire_downed_flash.call_deferred(character)
-	# B-03: register every spawned networked character as a camera target at
-	# runtime — Main.tscn's `follow_paths` only ever pointed at the local-test
-	# nodes, so without this the camera never picked up real network peers.
-	arena_camera.add_target(character)
 	return character
 
 ## Fires on every peer identically (host emits locally, clients receive it via

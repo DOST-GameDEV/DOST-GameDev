@@ -1,3 +1,10 @@
+## RETIRED from the gameplay scene (A-2, v4.8). Moved here so it stays available
+## for the demo video broadcast camera (GDD Section 6, 3-5 min gameplay video)
+## without being instantiable in a match scene by accident.
+##
+## If this returns to a scene, it MUST register targets at runtime via
+## register_target()/unregister_target() (never NodePath caches in _ready()),
+## re-check is_instance_valid() every frame, and default current=false.
 extends Camera3D
 class_name ArenaCamera
 

@@ -299,7 +299,7 @@ func _physics_process(delta: float) -> void:
 	#
 	# B-05's original note said world-space was deliberate, "NOT
 	# `transform.basis * input_dir`". That was correct when the only camera was
-	# the fixed-angle ArenaCamera; it stopped being correct the moment the
+	# the fixed-angle ArenaCamera (removed A-2, v4.8); it stopped being correct the moment the
 	# per-character FPP/TPP rigs (item 13) made the camera turn with the player.
 	var mouse_aimed := _is_mouse_aimed()
 	var direction: Vector3

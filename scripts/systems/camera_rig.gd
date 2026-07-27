@@ -56,6 +56,7 @@ const FPP_HIDDEN_MESH_HINT: String = "head"
 @onready var tpp_camera: Camera3D = $TppArm/TppCamera
 
 var _character: CharacterBase
+# Written only in _ready(); never exposed publicly — Mode is derived, not settable.
 var _mode: Mode
 var _pitch_deg: float = 0.0
 var _active: bool = false
@@ -72,6 +73,8 @@ var _tpp_camera_base_position: Vector3 = Vector3.ZERO
 func _ready() -> void:
 	_character = get_parent() as CharacterBase
 	_mode = Mode.FPP if _character.is_person else Mode.TPP
+	assert((_mode == Mode.FPP) == _character.is_person,
+		"Camera directive: Person is always FPP, Prop is always TPP (Dev_Plan §0.1)")
 	_fpp_camera_base_position = fpp_camera.position
 	_tpp_camera_base_position = tpp_camera.position
 	# SpringArm3D's shapecast would otherwise hit the character's own capsule

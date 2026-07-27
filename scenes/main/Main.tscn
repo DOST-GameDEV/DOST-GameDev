@@ -1,10 +1,9 @@
-[gd_scene load_steps=20 format=3 uid="uid://c3f7h9j1k2l4m"]
+[gd_scene load_steps=19 format=3 uid="uid://c3f7h9j1k2l4m"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="0"]
 [ext_resource type="PackedScene" path="res://scenes/characters/CharacterBase.tscn" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/ui/HUD.tscn" id="2"]
 [ext_resource type="Resource" path="res://scripts/abilities/resources/quick_stand.tres" id="3"]
-[ext_resource type="Script" path="res://scripts/systems/arena_camera.gd" id="4"]
 [ext_resource type="Script" path="res://scripts/systems/kill_plane.gd" id="5"]
 [ext_resource type="PackedScene" path="res://scenes/ui/MatchResult.tscn" id="6"]
 [ext_resource type="PackedScene" path="res://scenes/ui/DebugBar.tscn" id="7"]
@@ -104,11 +103,6 @@ lifetime = 0.0
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Hazards/HazardZone"]
 shape = SubResource("SphereShape3D_hazard")
-
-[node name="Camera3D" type="Camera3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 0.87, 0.5, 0, -0.5, 0.87, 0, 8, 10)
-script = ExtResource("4")
-follow_paths = [NodePath("../TeamAProp"), NodePath("../TeamAPerson"), NodePath("../TeamBProp"), NodePath("../TeamBPerson")]
 
 [node name="TeamAProp" parent="." instance=ExtResource("1")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 1, -2)
