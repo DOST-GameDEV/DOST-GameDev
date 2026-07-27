@@ -1040,7 +1040,7 @@ Tsinelas) and it leads with the toe. Round-swap to Can and back and the mesh fol
 
 ---
 
-#### M-4 · Flat-shaded toon material pass `[ ]`
+#### M-4 · Flat-shaded toon material pass `[~]` [DONE @ v4.11]
 
 The moodboard and PEAK are both **flat, high-saturation, minimal gradient**. Godot's default
 `StandardMaterial3D` under one `DirectionalLight3D` gives soft PBR falloff — the opposite look.

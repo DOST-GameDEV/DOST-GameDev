@@ -121,6 +121,14 @@ const HAND_CARRY_OFFSET: Vector3 = Vector3(0.0, 0.62, -0.12)
 
 const FLASH_DURATION: float = 0.15
 
+## M-4: toon+outline shaders for Prop (Can/Tsinelas) models. Persons are
+## excluded (M-4 step 4) — their glTF ORMMaterial3D interacts badly with
+## ShaderMaterial in _collect_meshes and the interaction is fixed in M-5.
+## Loaded once and shared across all instances; the per-instance albedo_color
+## uniform lives in the duplicated ShaderMaterial, not in the shared Shader.
+const TOON_SHADER: Shader = preload("res://assets/models/materials/toon.gdshader")
+const OUTLINE_SHADER: Shader = preload("res://assets/models/materials/outline.gdshader")
+
 ## Q-8: impact particle burst on a landed hit — the moodboard's "IMPACT EFFECT
 ## (particle burst)". Built from a primitive + StandardMaterial3D in code, no
 ## art asset. Roughly chest height so it reads against the character instead
@@ -148,6 +156,12 @@ var _materials: Array[BaseMaterial3D] = []
 ## Parallel to `_materials`: the albedo each one started at, so a flash always
 ## tweens back to the real colour rather than to whatever it was mid-flash.
 var _base_albedos: Array[Color] = []
+## M-4: ShaderMaterials that have an albedo_color uniform (toon shader surfaces
+## on Prop models). flash_hit() / flash_blocked() set the uniform directly since
+## ShaderMaterial has no albedo_color property. The outline next_pass materials
+## are deliberately NOT tracked — they have no albedo_color and must not flash.
+var _shader_materials: Array[ShaderMaterial] = []
+var _shader_base_albedos: Array[Color] = []
 var _flash_tween: Tween = null
 ## The unit this Visual belongs to. Read for `dents` when a model is rebuilt
 ## mid-round — a Prop that swaps Can/Tsinelas/Can has to come back wearing the
@@ -203,9 +217,13 @@ func _refresh_can_damage(dent_count: int) -> void:
 	(meshes[0] as MeshInstance3D).mesh = mesh
 	# The swapped-in mesh arrives with the IMPORTER's shared materials, not this
 	# unit's duplicated ones, so re-collect or the B-44 hit flash silently starts
-	# tinting every can in the match at once.
+	# tinting every can in the match at once. The toon ShaderMaterial overrides set
+	# by _apply_toon_pass() survive a mesh swap (Godot does not clear overrides on
+	# mesh assignment), so _collect_meshes() re-duplicates them correctly.
 	_materials.clear()
 	_base_albedos.clear()
+	_shader_materials.clear()
+	_shader_base_albedos.clear()
 	_collect_meshes(model)
 	_align_to_capsule_floor(model)
 	# camera_rig.gd re-applies the FPP self-hide on this signal; a new mesh that
@@ -243,6 +261,8 @@ func apply(is_person: bool, is_can: bool, team: int) -> void:
 		child.queue_free()
 	_materials.clear()
 	_base_albedos.clear()
+	_shader_materials.clear()
+	_shader_base_albedos.clear()
 	# The old AnimationPlayer went with the old model tree; holding a freed
 	# reference here would make the first play_action() after a role swap throw.
 	_animator = null
@@ -261,6 +281,7 @@ func apply(is_person: bool, is_can: bool, team: int) -> void:
 		model.scale = Vector3.ONE * PERSON_SCALE
 	add_child(model)
 
+	_apply_toon_pass(model, is_person)
 	_collect_meshes(model)
 	_align_to_capsule_floor(model)
 	_play_idle(model)
@@ -351,27 +372,57 @@ func _model_path(is_person: bool, is_can: bool, team: int) -> String:
 		return PERSON_MODELS[team % PERSON_MODELS.size()]
 	return CAN_VISUAL if is_can else TSINELAS_VISUAL
 
-## Each mesh gets its OWN StandardMaterial3D via a surface override. Without
-## this, every unit sharing a model would share one material resource, and
-## flashing one of them white would flash all of them — including the enemy's.
+## Each mesh gets its OWN material via a surface override. Without this, every
+## unit sharing a model would share one material resource, and flashing one of
+## them white would flash all of them — including the enemy's.
+## M-4: also handles ShaderMaterial (toon shader surfaces on Props). Only tracks
+## ShaderMaterials that expose an albedo_color uniform; the outline next_pass
+## shader deliberately lacks it so it is excluded from the flash system.
 func _collect_meshes(model: Node3D) -> void:
 	for node in model.find_children("*", "MeshInstance3D", true, false):
 		var mesh_instance := node as MeshInstance3D
 		for surface in range(mesh_instance.get_surface_override_material_count()):
-			# Typed as BaseMaterial3D, not StandardMaterial3D: a glTF surface can
-			# import as ORMMaterial3D (or carry a ShaderMaterial), and casting
-			# those to StandardMaterial3D yields null — which then gets installed
-			# as the surface's override and makes the renderer spew "Parameter
-			# 'material' is null" every frame for a mesh that no longer draws.
-			# Anything that isn't a BaseMaterial3D has no albedo_color to flash,
-			# so it is left alone rather than replaced.
-			var source := mesh_instance.get_active_material(surface) as BaseMaterial3D
-			if source == null:
-				continue
-			var mat := source.duplicate() as BaseMaterial3D
-			mesh_instance.set_surface_override_material(surface, mat)
-			_materials.append(mat)
-			_base_albedos.append(mat.albedo_color)
+			var source: Material = mesh_instance.get_active_material(surface)
+			if source is ShaderMaterial:
+				var shader_mat := source as ShaderMaterial
+				if shader_mat.get_shader_parameter("albedo_color") == null:
+					continue
+				var duped := shader_mat.duplicate() as ShaderMaterial
+				mesh_instance.set_surface_override_material(surface, duped)
+				_shader_materials.append(duped)
+				_shader_base_albedos.append(duped.get_shader_parameter("albedo_color") as Color)
+			elif source is BaseMaterial3D:
+				# Typed as BaseMaterial3D, not StandardMaterial3D: a glTF surface can
+				# import as ORMMaterial3D, and casting to StandardMaterial3D yields
+				# null — which makes the renderer spew "Parameter 'material' is null".
+				var mat := (source as BaseMaterial3D).duplicate() as BaseMaterial3D
+				mesh_instance.set_surface_override_material(surface, mat)
+				_materials.append(mat)
+				_base_albedos.append(mat.albedo_color)
+
+## M-4: replaces every surface material on `model` with a toon ShaderMaterial,
+## then chains an inverted-hull outline as next_pass. Called in apply() before
+## _collect_meshes() so the toon materials are what _collect_meshes() duplicates.
+## Skipped for Persons — their glTF ORMMaterial3D stays until M-5 reskins them.
+func _apply_toon_pass(model: Node3D, is_person: bool) -> void:
+	if is_person:
+		return
+	var outline_mat := ShaderMaterial.new()
+	outline_mat.shader = OUTLINE_SHADER
+	for node in model.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := node as MeshInstance3D
+		for surface in range(mesh_instance.get_surface_override_material_count()):
+			var toon_mat := ShaderMaterial.new()
+			toon_mat.shader = TOON_SHADER
+			var original: Material = mesh_instance.get_active_material(surface)
+			if original is BaseMaterial3D:
+				toon_mat.set_shader_parameter("albedo_color", (original as BaseMaterial3D).albedo_color)
+			elif original is ShaderMaterial:
+				var orig_albedo = (original as ShaderMaterial).get_shader_parameter("albedo_color")
+				if orig_albedo != null:
+					toon_mat.set_shader_parameter("albedo_color", orig_albedo as Color)
+			toon_mat.next_pass = outline_mat
+			mesh_instance.set_surface_override_material(surface, toon_mat)
 
 ## Kenney's rig ships 32 clips. Without one playing, the model stands in its
 ## bind pose — a T-pose, which reads as broken art rather than as a character.
@@ -457,9 +508,10 @@ func _on_animation_finished(anim_name: StringName) -> void:
 
 ## B-44: brief white flash on a landed hit, on every mesh this unit has.
 ## Q-8: also bursts impact particles — see _spawn_impact_particles below.
+## M-4: also flashes ShaderMaterial (toon) surfaces on Props via set_shader_parameter.
 func flash_hit() -> void:
 	_spawn_impact_particles()
-	if _materials.is_empty():
+	if _materials.is_empty() and _shader_materials.is_empty():
 		return
 	if _flash_tween != null and _flash_tween.is_valid():
 		_flash_tween.kill()
@@ -467,6 +519,13 @@ func flash_hit() -> void:
 	for i in range(_materials.size()):
 		_materials[i].albedo_color = Color.WHITE
 		_flash_tween.tween_property(_materials[i], "albedo_color", _base_albedos[i], FLASH_DURATION)
+	for i in range(_shader_materials.size()):
+		var mat := _shader_materials[i]
+		var base_color := _shader_base_albedos[i]
+		mat.set_shader_parameter("albedo_color", Color.WHITE)
+		_flash_tween.tween_method(
+			func(c: Color) -> void: mat.set_shader_parameter("albedo_color", c),
+			Color.WHITE, base_color, FLASH_DURATION)
 
 ## Q-8: one-shot burst, no art asset — a primitive point mesh + unshaded
 ## StandardMaterial3D in UiTheme.IMPACT, matching the moodboard's "IMPACT
@@ -505,8 +564,9 @@ func _spawn_impact_particles() -> void:
 ## Q-6: a Guard blocking a hit had no feedback at all. Deliberately
 ## DEFENSE-tinted rather than white, so a blocked hit is never mistaken for a
 ## landed one (flash_hit() above) at a glance.
+## M-4: also flashes ShaderMaterial (toon) surfaces on Props.
 func flash_blocked() -> void:
-	if _materials.is_empty():
+	if _materials.is_empty() and _shader_materials.is_empty():
 		return
 	if _flash_tween != null and _flash_tween.is_valid():
 		_flash_tween.kill()
@@ -514,3 +574,10 @@ func flash_blocked() -> void:
 	for i in range(_materials.size()):
 		_materials[i].albedo_color = UiTheme.DEFENSE
 		_flash_tween.tween_property(_materials[i], "albedo_color", _base_albedos[i], FLASH_DURATION)
+	for i in range(_shader_materials.size()):
+		var mat := _shader_materials[i]
+		var base_color := _shader_base_albedos[i]
+		mat.set_shader_parameter("albedo_color", UiTheme.DEFENSE)
+		_flash_tween.tween_method(
+			func(c: Color) -> void: mat.set_shader_parameter("albedo_color", c),
+			UiTheme.DEFENSE, base_color, FLASH_DURATION)
