@@ -563,6 +563,36 @@ marked `[FIXED]` there is done and settled. New bugs take the next free number *
 The three P0 network soft-locks (B-62, B-63, and the B-01/B-03/B-29 cluster) are all fixed and
 runtime-verified. See the archive.
 
+### P1 — found by the design lane while rendering for checklist 2.3 (2026-07-28)
+
+Filed, deliberately not fixed. Both live in 🔧 Build's files and `scenes/ui/*.tscn` is under
+Build's lock for `code/offscreen-indicators` (3.4), so touching either would breach
+`Concurrency_Protocol.md` §2 and §3 at once.
+
+**B-86 · The FPP crosshair never appears, on a Person, in a real match.** `scenes/ui/HUD.tscn`
+has the `Crosshair` node with `visible = false` baked in, and `scripts/ui/hud.gd:74` is supposed to
+turn it on: `crosshair.visible = local_char != null and is_instance_valid(local_char) and
+local_char.is_person`. **Reproduction:** `godot --path . tools/render_probe.tscn --quit-after 400
+--resolution 1280x720 -- match <out>/` (NOT headless). In the resulting `match_fpp.png` the YOU
+card reads `PERSON · TEAM A · DEFENSE`, so the local unit *is* a Person, and screen centre is bare
+road — no `+`. Zoom (580,300)-(700,420) to confirm. Most likely `local_char` is still null at the
+moment that line runs and nothing re-runs it, but that is a guess; the render is the fact.
+`Dev_Plan.md` §4.4 lists the FPP-only crosshair as shipped HUD, and `Checklist.md`'s HUD row
+claims it is verified by render — **that claim is wrong**, which is the more useful half of this
+report.
+
+**B-87 · A carried tsinelas reads as floating, not held, in first person.** Not a regression and
+arguably not a bug — recorded because it will be noticed during 6.3/6.4 capture and someone will
+otherwise re-derive it. `camera_rig.gd::_apply_fpp_self_hide` hides the whole `Visual` subtree, so
+there is no arm in frame; the slipper sits alone at eye level, horizontal, ~0.54 units out. The
+placement itself is correct and deliberate (`HAND_CARRY_OFFSET`'s comment block explains the
+target and the two rejected alternatives). **This cannot be fixed by moving the offset.** A proper
+FPP viewmodel needs a separate arm mesh, and the Kenney rig has none — `body-mesh` is torso, arms
+and legs as one skinned mesh, so the arms cannot be kept while the torso is hidden. Either accept
+it, or add a dedicated viewmodel arm, which is new geometry and a new task. **Framing note for
+6.3:** the trailer's beat 5 is the FPP charge-and-throw, so shoot it tight enough that the slipper
+fills frame and the missing arm never becomes the question.
+
 ### P1 — found by the design lane while measuring for checklist 1.2 (2026-07-28)
 
 Filed, deliberately not fixed — `Concurrency_Protocol.md` §10. Full reasoning and the screenshot
