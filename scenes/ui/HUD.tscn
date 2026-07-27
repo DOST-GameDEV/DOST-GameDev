@@ -137,6 +137,60 @@ theme_type_variation = &"HudBody"
 horizontal_alignment = 1
 text = "Round 1 / 5"
 
+[node name="LataCard" type="PanelContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -216.0
+offset_top = -100.0
+offset_right = -16.0
+offset_bottom = -16.0
+theme_type_variation = &"HudCard"
+mouse_filter = 2
+visible = false
+
+[node name="VBoxContainer" type="VBoxContainer" parent="LataCard"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="LataLabel" type="Label" parent="LataCard/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"HudCaption"
+text = "LATA"
+
+[node name="DentPipsBox" type="HBoxContainer" parent="LataCard/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 2
+mouse_filter = 2
+
+[node name="DentPip0" type="Panel" parent="LataCard/VBoxContainer/DentPipsBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(14, 14)
+mouse_filter = 2
+
+[node name="DentPip1" type="Panel" parent="LataCard/VBoxContainer/DentPipsBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(14, 14)
+mouse_filter = 2
+
+[node name="DentPip2" type="Panel" parent="LataCard/VBoxContainer/DentPipsBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(14, 14)
+mouse_filter = 2
+
+[node name="DentTextLabel" type="Label" parent="LataCard/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"HudBody"
+text = ""
+visible = false
+
 [node name="RoundBannerLabel" type="Label" parent="."]
 unique_name_in_owner = true
 layout_mode = 1
