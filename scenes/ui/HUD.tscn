@@ -19,52 +19,123 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 color = Color(0.972549, 0, 0, 0.25)
 mouse_filter = 2
+visible = false
 
-[node name="TopBar" type="VBoxContainer" parent="."]
+[node name="TopLeft" type="PanelContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 0
+offset_left = 16.0
+offset_top = 12.0
+offset_right = 216.0
+offset_bottom = 92.0
+theme_type_variation = &"OffenseCard"
+mouse_filter = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="TopLeft"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="TeamALabel" type="Label" parent="TopLeft/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"HudBody"
+text = "A · OFFENSE"
+
+[node name="TeamAPipsBox" type="HBoxContainer" parent="TopLeft/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 2
+mouse_filter = 2
+
+[node name="TeamAPip0" type="Panel" parent="TopLeft/VBoxContainer/TeamAPipsBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(14, 14)
+mouse_filter = 2
+
+[node name="TeamAPip1" type="Panel" parent="TopLeft/VBoxContainer/TeamAPipsBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(14, 14)
+mouse_filter = 2
+
+[node name="TeamAPip2" type="Panel" parent="TopLeft/VBoxContainer/TeamAPipsBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(14, 14)
+mouse_filter = 2
+
+[node name="TopRight" type="PanelContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -216.0
+offset_top = 12.0
+offset_right = -16.0
+offset_bottom = 92.0
+theme_type_variation = &"DefenseCard"
+mouse_filter = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="TopRight"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="TeamBLabel" type="Label" parent="TopRight/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"HudBody"
+text = "B · DEFENSE"
+
+[node name="TeamBPipsBox" type="HBoxContainer" parent="TopRight/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 2
+mouse_filter = 2
+
+[node name="TeamBPip0" type="Panel" parent="TopRight/VBoxContainer/TeamBPipsBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(14, 14)
+mouse_filter = 2
+
+[node name="TeamBPip1" type="Panel" parent="TopRight/VBoxContainer/TeamBPipsBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(14, 14)
+mouse_filter = 2
+
+[node name="TeamBPip2" type="Panel" parent="TopRight/VBoxContainer/TeamBPipsBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(14, 14)
+mouse_filter = 2
+
+[node name="TopCentre" type="VBoxContainer" parent="."]
 layout_mode = 1
 anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -220.0
-offset_top = 12.0
-offset_right = 220.0
-alignment = 1
+offset_left = -120.0
+offset_top = 8.0
+offset_right = 120.0
+mouse_filter = 2
 
-[node name="TimerLabel" type="Label" parent="TopBar"]
+[node name="TimerCard" type="PanelContainer" parent="TopCentre"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"HudCard"
+mouse_filter = 2
+
+[node name="TimerLabel" type="Label" parent="TopCentre/TimerCard"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"HudTimer"
 horizontal_alignment = 1
 text = "01:30"
 
-[node name="ScoreLabel" type="Label" parent="TopBar"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_type_variation = &"HudScore"
-horizontal_alignment = 1
-text = "0 - 0"
-
-[node name="RoundLabel" type="Label" parent="TopBar"]
+[node name="RoundLabel" type="Label" parent="TopCentre"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"HudBody"
 horizontal_alignment = 1
 text = "Round 1 / 5"
-
-[node name="RoleLabel" type="Label" parent="TopBar"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_type_variation = &"HudCaption"
-horizontal_alignment = 1
-text = "Team A: Defense   Team B: Offense"
-
-[node name="DentLabel" type="Label" parent="TopBar"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_type_variation = &"HudBody"
-horizontal_alignment = 1
-text = "Dents: 0 / 3"
-visible = false
 
 [node name="RoundBannerLabel" type="Label" parent="."]
 unique_name_in_owner = true
