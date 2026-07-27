@@ -347,6 +347,12 @@ must run the carry maths, and the authority gate is below it) but the interactio
 with the freeze was not thought through. *Severity:* P1, cosmetic-to-confusing,
 never a wrong round outcome — `report_round_win` has already fired by then.
 *Fix:* have `physics_step` no-op on FLYING while `not RoundManager.round_active`.
+**[FIXED]** v4.2, exactly as prescribed: the FLYING branch of
+`Carriable.physics_step()` zeroes velocity and returns while `not
+RoundManager.round_active`, so a slipper in the air at the bell hangs where it is
+until `reset_for_new_round()` puts it back on the floor. The round is already
+decided by then (`report_round_win` has fired), so freezing the arc cannot change
+an outcome. **Untested by a human — nobody has thrown one at the bell.**
 
 **B-75 · Nothing drops a carried slipper when its carrier is staggered, downed
 or sealed. (NEW, untested)** `Carriable.host_drop()` exists and is correct, but

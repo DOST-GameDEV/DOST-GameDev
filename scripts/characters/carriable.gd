@@ -138,6 +138,18 @@ func physics_step(delta: float) -> void:
 		CarryState.CARRIED:
 			_step_carried()
 		CarryState.FLYING:
+			# B-74: this whole function runs ABOVE character_base.gd's
+			# `round_active` gate, deliberately — every peer has to run the carry
+			# maths and the authority gate sits below it. The side effect nobody
+			# thought through is that the round-end freeze, which stops all four
+			# players dead, did not stop a slipper already in the air: it sailed
+			# on through the entire intermission until reset_for_new_round() put
+			# it back on the floor. Hold it where it is instead. The round is
+			# already decided by this point (report_round_win has fired), so
+			# freezing the arc can never change an outcome.
+			if not RoundManager.round_active:
+				_character.velocity = Vector3.ZERO
+				return
 			_step_flying(delta)
 
 ## Snap to the carrier's hand. Every peer computes this identically from the
