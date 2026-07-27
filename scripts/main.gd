@@ -439,7 +439,7 @@ func _reset_world(team_a_is_can: bool) -> void:
 	RoundManager.clear_tracked_cans()
 	for entry in roster:
 		var character: CharacterBase = entry["character"]
-		var team_is_can_side := (entry["team"] == 0) == team_a_is_can
+		var team_is_can_side: bool = (entry["team"] == 0) == team_a_is_can
 		# Session 8: every character on the team tracks team_is_can_side now,
 		# not just the Prop — Person needs it too. Only the team's Prop can be
 		# a Can (Session 7: 1 Person + 1 Prop per team, not two Props).
