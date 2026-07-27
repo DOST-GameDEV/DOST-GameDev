@@ -2,8 +2,9 @@
 .godot/
 .import/
 export.cfg
-export_presets.cfg
 export_credentials.cfg
+# export_presets.cfg is tracked — it holds no secrets and a preset that only
+# exists on one machine is not a build process (F-3).
 *.translation
 .mono/
 data_*/
@@ -11,6 +12,9 @@ mono_crash.*.json
 .nomedia
 *.tmp
 .vscode/
+
+# Build output
+build/
 
 # OS
 .DS_Store
