@@ -510,7 +510,7 @@ Settle it before the deadline, not during it.
 | Lobby | [ ] | Peer list, team assignment, ready-up, host "Start" (B-13). |
 | HUD | [~] | Full rebuild, §4.4. The "YOU" card is **Q-5** and its Guard/Dash meter is **Q-6**. |
 | Round intermission / role swap | [~] | Functional beat exists (B-37: gap, early world reset, placeholder banner). The animated card in §4.6 does not. |
-| Match result | [x] | **Built and wired** — `MatchResult.tscn` + `match_result.gd` at `Main.tscn::HUDLayer/MatchResult`, winner text + Rematch (host-only) + Menu, B-51/B-53 fixed. The moodboard **Bo5 grid** restyle and freezing the world behind it are **Q-4**. |
+| Match result | [x] | **Built, wired, and restyled** — `MatchResult.tscn` + `match_result.gd` at `Main.tscn::HUDLayer/MatchResult`: winner headline + Bo5 pip grid (role-coloured, **Q-4**) + Rematch (host-only) + Main Menu, world frozen behind it in Local Match (**Q-4**), B-51/B-53 fixed. |
 | Pause | [~] | Esc → Resume / Return to Menu (B-20), **now actually freezes Local Match** (B-64, **Q-3** fixed) and shows a non-freezing "still running" overlay when networked. No Settings-from-pause; restyle not done. |
 | Settings | [x] | Duplicate-binding detection added (B-22). Restyle, mouse sensitivity + invert-Y (§3.2) still not done. |
 
@@ -650,7 +650,7 @@ than sitting inside one of them, because it came from review of a running build.
 | **Q-1** | Host quits → clients hang forever (**B-62**) — **[x] fixed, verified headless** | 0 |
 | **Q-2** | Mid-round disconnect leaves a freed Can tracked (**B-63**) — **[x] fixed, verified headless** | 0 |
 | **Q-3** | Pause overlay does not freeze the game (**B-64**) — **[x] fixed, verified headless** | 3 |
-| **Q-4** | Match-result screen: verify, freeze behind it, then the Bo5 grid | 3 |
+| **Q-4** | Match-result screen: verify, freeze behind it, then the Bo5 grid — **[x] fixed, verified headless** | 3 |
 | **Q-5** | HUD "YOU" card — which unit am I? | 3 |
 | **Q-6** | Surface the existing Guard/Dash on the HUD | 3 |
 | **Q-7** | Give `HazardZone` a visible footprint and place one | 4 |
@@ -761,7 +761,7 @@ yet, see B-10/B-37 above) and the Option A/B decision itself, which nobody has m
       pass plus the Quit button is Q-9)*
 - [ ] HUD rebuild (§4.4) — the "YOU" card half is **Q-5**, the Guard/Dash meter is **Q-6**
 - [ ] Intermission + role-swap card (§4.6) — functional beat exists (B-37), animated card does not
-- [x] Match result screen *(v1.7/v1.9 — functional; moodboard Bo5 grid is **Q-4**)*
+- [x] Match result screen *(v1.7/v1.9 functional; moodboard Bo5 grid + world freeze landed in **Q-4**, v2.7/v2.8)*
 - [x] Pause menu — now actually freezes the game in Local Match, overlay-only when networked (**B-64**, **Q-3**)
 - [ ] Character select + lobby with ready-up
 

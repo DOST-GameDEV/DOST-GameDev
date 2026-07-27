@@ -18,16 +18,17 @@ anchor_bottom = 1.0
 color = Color(0.015686, 0.031373, 0.219608, 0.72)
 
 [node name="Card" type="PanelContainer" parent="."]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -260.0
-offset_top = -120.0
-offset_right = 260.0
-offset_bottom = 120.0
+offset_left = -300.0
+offset_top = -170.0
+offset_right = 300.0
+offset_bottom = 170.0
 
 [node name="Panel" type="VBoxContainer" parent="Card"]
 layout_mode = 2
@@ -36,14 +37,82 @@ alignment = 1
 [node name="MessageLabel" type="Label" parent="Card/Panel"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_type_variation = &"Heading"
+theme_type_variation = &"Display"
 horizontal_alignment = 1
 autowrap_mode = 2
 text = "TEAM A WINS THE MATCH!"
 
+[node name="ScoreSpacer" type="Control" parent="Card/Panel"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 16)
+
+[node name="ScoreRow" type="HBoxContainer" parent="Card/Panel"]
+layout_mode = 2
+alignment = 1
+
+[node name="TeamABlock" type="VBoxContainer" parent="Card/Panel/ScoreRow"]
+layout_mode = 2
+alignment = 1
+
+[node name="TeamALabel" type="Label" parent="Card/Panel/ScoreRow/TeamABlock"]
+layout_mode = 2
+theme_type_variation = &"Heading"
+horizontal_alignment = 1
+text = "A"
+
+[node name="TeamAPips" type="HBoxContainer" parent="Card/Panel/ScoreRow/TeamABlock"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="Pip0" type="Panel" parent="Card/Panel/ScoreRow/TeamABlock/TeamAPips"]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+
+[node name="Pip1" type="Panel" parent="Card/Panel/ScoreRow/TeamABlock/TeamAPips"]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+
+[node name="Pip2" type="Panel" parent="Card/Panel/ScoreRow/TeamABlock/TeamAPips"]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+
+[node name="VsSpacer" type="Control" parent="Card/Panel/ScoreRow"]
+custom_minimum_size = Vector2(48, 0)
+layout_mode = 2
+
+[node name="TeamBBlock" type="VBoxContainer" parent="Card/Panel/ScoreRow"]
+layout_mode = 2
+alignment = 1
+
+[node name="TeamBLabel" type="Label" parent="Card/Panel/ScoreRow/TeamBBlock"]
+layout_mode = 2
+theme_type_variation = &"Heading"
+horizontal_alignment = 1
+text = "B"
+
+[node name="TeamBPips" type="HBoxContainer" parent="Card/Panel/ScoreRow/TeamBBlock"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="Pip0" type="Panel" parent="Card/Panel/ScoreRow/TeamBBlock/TeamBPips"]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+
+[node name="Pip1" type="Panel" parent="Card/Panel/ScoreRow/TeamBBlock/TeamBPips"]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+
+[node name="Pip2" type="Panel" parent="Card/Panel/ScoreRow/TeamBBlock/TeamBPips"]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+
 [node name="Spacer" type="Control" parent="Card/Panel"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 12)
+custom_minimum_size = Vector2(0, 16)
 
 [node name="RematchButton" type="Button" parent="Card/Panel"]
 unique_name_in_owner = true
@@ -54,4 +123,4 @@ text = "REMATCH"
 [node name="MenuButton" type="Button" parent="Card/Panel"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "MENU"
+text = "MAIN MENU"

@@ -764,6 +764,21 @@ active. Networked — both host and client show the result screen (confirming th
 `_sync_match_won` RPC reaches the client fine) with `tree_paused` staying `false` on both the whole
 time.
 
+**Q-4 restyle to the moodboard Bo5 grid, done.** `MatchResult.tscn`/`match_result.gd` replace the
+plain message-only card with: a winner headline at `UiTheme.FONT_SIZE_DISPLAY`; a two-team pip row
+(three squares each, filled for rounds won, from `MatchManager.team_a_wins`/`team_b_wins`); and a
+card accent bar. Per §4.2's hard rule, colour tracks **role**, never team — the accent bar and both
+teams' pip fill colours are `UiTheme.OFFENSE`/`DEFENSE` keyed off `MatchManager.team_a_is_can` as
+it stood in the just-concluded final round (read before anything resets it), not by which team A/B
+letter the pips sit under. Verified live, headless, by reading the actual computed `StyleBoxFlat`s
+back off the nodes after driving to a real 3-0: winner headline text correct, card's accent
+`border_width_left` = `ACCENT_BAR_WIDTH + BORDER_WIDTH` (9, confirming the accent path actually
+ran, not the plain no-accent branch), accent `border_color` matched `UiTheme.DEFENSE` exactly
+(Team A won this run holding the Can/Defense side in the final round), all three Team A pips
+filled with that same `DEFENSE` color, and all three Team B pips at `UiTheme.CARD` (empty/unfilled,
+matching its 0 wins). Buttons unchanged (`Rematch`, relabelled `MAIN MENU` per `Dev_Plan.md` §4.3)
+through the existing theme; non-host Rematch hide untouched.
+
 **B-64 · The pause menu never actually paused anything. (NEW, Q-3)** `main.gd::_unhandled_input`
 toggled `pause_root.visible` and the cursor, never `get_tree().paused` — `RoundManager`'s round
 timer, `MatchManager`'s intermission countdown, and every `CharacterBase._physics_process` (input,
@@ -1006,7 +1021,7 @@ so, and the other peer is unaffected.
 
 ---
 
-#### Q-4 · Match end — verify what exists, then rebuild it to the moodboard `[ ]`
+#### Q-4 · Match end — verify what exists, then rebuild it to the moodboard `[x]`
 
 **Review item 3. Read this whole item before touching anything.**
 
