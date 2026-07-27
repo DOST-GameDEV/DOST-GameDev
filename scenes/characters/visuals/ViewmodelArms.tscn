@@ -1,4 +1,4 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Mesh" path="res://assets/models/viewmodel_arm.obj" id="1"]
 [ext_resource type="Shader" path="res://assets/models/materials/toon.gdshader" id="2"]
@@ -8,6 +8,54 @@
 shader = ExtResource("2")
 shader_parameter/albedo_color = Color(0.784, 0.529, 0.353, 1)
 next_pass = ExtResource("3")
+
+[sub_resource type="Animation" id="Anim_idle"]
+resource_name = "idle"
+length = 2.4
+loop_mode = 1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("RightArm:position")
+tracks/0/interp = 2
+tracks/0/loop_wrap = true
+tracks/0/keys = {"times": PackedFloat32Array(0, 1.2, 2.4), "transitions": PackedFloat32Array(1, 1, 1), "update": 0, "values": [Vector3(0.2800, -0.4600, -0.3000), Vector3(0.2800, -0.4420, -0.2880), Vector3(0.2800, -0.4600, -0.3000)]}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("LeftArm:position")
+tracks/1/interp = 2
+tracks/1/loop_wrap = true
+tracks/1/keys = {"times": PackedFloat32Array(0, 1.2, 2.4), "transitions": PackedFloat32Array(1, 1, 1), "update": 0, "values": [Vector3(-0.3000, -0.4800, -0.2800), Vector3(-0.3000, -0.4640, -0.2700), Vector3(-0.3000, -0.4800, -0.2800)]}
+
+[sub_resource type="Animation" id="Anim_throw"]
+resource_name = "throw"
+length = 0.42
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("RightArm:position")
+tracks/0/interp = 2
+tracks/0/loop_wrap = false
+tracks/0/keys = {"times": PackedFloat32Array(0, 0.12, 0.22, 0.42), "transitions": PackedFloat32Array(1, 1, 1, 1), "update": 0, "values": [Vector3(0.2800, -0.4600, -0.3000), Vector3(0.2800, -0.5200, -0.1400), Vector3(0.2800, -0.3600, -0.6000), Vector3(0.2800, -0.4600, -0.3000)]}
+
+[sub_resource type="Animation" id="Anim_grab"]
+resource_name = "grab"
+length = 0.36
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("RightArm:position")
+tracks/0/interp = 2
+tracks/0/loop_wrap = false
+tracks/0/keys = {"times": PackedFloat32Array(0, 0.16, 0.36), "transitions": PackedFloat32Array(1, 1, 1), "update": 0, "values": [Vector3(0.2800, -0.4600, -0.3000), Vector3(0.2800, -0.6600, -0.4400), Vector3(0.2800, -0.4600, -0.3000)]}
+
+[sub_resource type="AnimationLibrary" id="Lib_arms"]
+_data = {
+"grab": SubResource("Anim_grab"),
+"idle": SubResource("Anim_idle"),
+"throw": SubResource("Anim_throw")
+}
 
 [node name="ViewmodelArms" type="Node3D"]
 
@@ -24,3 +72,9 @@ mesh = ExtResource("1")
 surface_material_override/0 = SubResource("Mat_arm")
 surface_material_override/1 = SubResource("Mat_arm")
 cast_shadow = 0
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
+libraries = {
+"": SubResource("Lib_arms")
+}
+autoplay = "idle"
