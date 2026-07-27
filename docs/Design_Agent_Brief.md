@@ -150,7 +150,7 @@ should have their `Kd` values derived from these same constants (`Handoff.md` M-
 | `PANEL` | `#E1E5E8` | Neutral light surfaces |
 | `CARD` | `#F5F7FA` | Lighter neutral |
 | `OFFENSE` | `#F87020` | Attacking side — role colour |
-| `DEFENSE` | `#0080E8` | Defending side — role colour. **Can body.** ⚠️ **NOT the tsinelas sole — see below** |
+| `DEFENSE` | `#0080E8` | Defending side — role colour. **Can body only.** ⚠️ **NOT the tsinelas sole — see below** |
 | `IMPACT` | `#F468A8` | Impact bursts, tsinelas strap, hazard decals |
 | `HIGHLIGHT` | `#F8D028` | Can label band, base-circle decal, ready glows |
 | `DANGER` | `#F80000` | Downed / out-of-bounds |
@@ -160,7 +160,9 @@ should have their `Kd` values derived from these same constants (`Handoff.md` M-
 > Prop is a Tsinelas precisely when its team is on **offence**, so the attacking team's prop is
 > painted the defending colour — which breaks rule 1 immediately below. The moodboard disagrees
 > independently: **THE SLIPPER's card accent is magenta**, as is THE CAN's. The rule is right and
-> the table was wrong. Fix is B-81 (sole → `IMPACT`, straps → `HIGHLIGHT`); the Can is not in scope.
+> the table was wrong. **Fixed 2026-07-28 (B-81):** sole → `IMPACT`, straps → `HIGHLIGHT`, toe post
+> → `INK`, and the materials renamed after the PART rather than the token. Verified by render. The
+> Can is deliberately not in scope — a blue can on the defending side is consistent and renders well.
 >
 > **Environment art may use neither hue at all** — see
 > [`Environment_Kit_Spec.md`](Environment_Kit_Spec.md) §3 for the `ENV_*` band that exists so it

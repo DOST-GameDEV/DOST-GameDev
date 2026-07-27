@@ -571,7 +571,13 @@ folded into an unrelated commit, because changing a hero prop's colour deserves 
 its own render.
 
 **B-81 · The tsinelas sole is painted `DEFENSE` blue, on a unit that only ever exists on
-offence. (NEW)** `tools/models/generate_all.gd::_build_tsinelas()` sets the sole material to
+offence. [FIXED 2026-07-28]** Sole → `IMPACT`, straps → `HIGHLIGHT`, toe post → `INK`, and the
+materials renamed from palette tokens (`defense`/`impact`/`highlight`) to parts
+(`sole`/`strap`/`post`) — a material literally named `defense` is a bug that reads as correct in
+every diff, and renaming also changes the `.obj`, which is what forces the reimport the `.mtl`
+alone would not. **Verified by render:** no role hue anywhere on the slipper, and the Y-strap reads
+*better* than it did — yellow on magenta separates at FPP distance where pink on blue did not.
+Original report follows. `tools/models/generate_all.gd::_build_tsinelas()` sets the sole material to
 `UiTheme.DEFENSE` (`#0080e8`). A Prop is a Tsinelas exactly when its team is **attacking**, so the
 attacking team's prop wears the defending colour — a direct breach of `Dev_Plan.md` §4.2 ("never
 reuse either hue for anything else"). The moodboard disagrees independently: **THE SLIPPER's card
