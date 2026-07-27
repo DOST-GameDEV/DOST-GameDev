@@ -18,6 +18,11 @@ const SPEED: float = 6.0
 ## actually covering distance.
 const FRICTION: float = 30.0
 const GRAVITY: float = 20.0
+## Playtest 0.4 — jump. Apex = JUMP_VELOCITY^2 / (2 * GRAVITY) = 0.841 units.
+## See the block in _physics_process for why that ceiling is a MAP constraint
+## rather than a feel one: the interior clutter height law caps what a jump may
+## clear at 1.0, or every crate in the alley becomes a platform.
+const JUMP_VELOCITY: float = 5.8
 const BUMP_STAGGER_TIME: float = 0.25
 ## GDD Section 3, Option B: ~2s window to self-right before a Tsinelas can seal a
 ## Downed Can. Kept here (not in RoundManager) because it's shared by both Option A
@@ -240,6 +245,25 @@ func _physics_process(delta: float) -> void:
 
 	if ability:
 		ability.tick(delta)
+
+	# Playtest 0.4: jump. EVERY unit jumps, Person and Prop alike — a hopping
+	# lata and a hopping tsinelas are funnier than a realistic one, and this
+	# project is a party game for friends first.
+	#
+	# Deliberately placed here, after the round-active gate above, so nobody can
+	# hop around during the intermission, and before the ability block so a jump
+	# and a throw on the same frame both resolve.
+	#
+	# ⚠️ JUMP_VELOCITY IS CONSTRAINED BY THE MAP, NOT BY FEEL. Every loose piece
+	# of interior clutter is <= 1.0 tall on purpose, because an FPP Person's eye
+	# is at 1.25 and has to see over all of it (Environment_Kit_Spec.md's height
+	# law). 5.8 against GRAVITY 20.0 apexes at 5.8^2 / (2*20) = 0.841, which
+	# clears a kerb (0.15) and a tyre (0.22) but NOT a crate stack or an oil drum
+	# (0.90). Raise this above ~1.0 and every crate in the alley silently becomes
+	# a platform, which breaks the height law and puts players on top of the
+	# dressing where there is no boundary to stop them.
+	if state == State.NORMAL and is_on_floor() 			and Input.is_action_just_pressed(_action("jump")):
+		velocity.y = JUMP_VELOCITY
 
 	# Task 0/1: grab and charge-throw. Runs before the rest of the input block so
 	# a throw released this frame is not also read as an ability press below.

@@ -8,6 +8,30 @@ themselves, so they are the sizes the engine actually loads.
 
 ---
 
+---
+
+## 0. Design pillar — this is a *friendslop*
+
+**Stated by the human, 2026-07-28, and it outranks realism everywhere below.**
+
+Tumbang Preso is a chaotic, physical party game you play with friends in the same room or on the
+same wifi. It is not a simulation and it is not trying to be tasteful. When a decision is between
+*correct* and *funny*, **take funny** — a hopping tin can is the right answer, a physically
+accurate one is not.
+
+What that actually changes, concretely:
+
+- **Permissive over strict.** Every unit gets every verb it plausibly could. Jump went on the
+  Prop as well as the Person for exactly this reason: nobody needed to justify why a lata can
+  jump, somebody would have had to justify why it cannot.
+- **Readable over subtle.** Chunky silhouettes, loud impacts, saturated colour. This is why the
+  render pass pushed saturation up rather than going for a tasteful filmic grade.
+- **Recoverable over punishing.** A player who is confused should still be laughing. Downed
+  states, retrieval scrambles and role swaps all exist to keep everyone in the round.
+- **Where it does NOT apply:** the colour rule (orange = offense, blue = defence) and the
+  proportion audit in §1. Those are legibility, not taste — a game can be silly and still has to
+  be readable at arena distance.
+
 ## 1. The proportion audit — this is the headline
 
 **The environment is built correctly at 1 unit = 1 metre. The two hero props are not.**
