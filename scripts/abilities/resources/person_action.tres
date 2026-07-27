@@ -4,5 +4,5 @@
 
 [resource]
 script = ExtResource("1")
-ability_name = "Tag / Throw"
+ability_name = "Tag"
 cooldown = 1.5

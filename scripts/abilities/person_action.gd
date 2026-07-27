@@ -1,46 +1,50 @@
 extends AbilityBase
 class_name PersonAction
 
-## Person — Tag / Throw: the mechanic GDD Section 3 describes but Session 7 flagged
-## as not real yet ("mechanically both are just the existing Bump/hit interaction
-## today — that's a real gap"). Session 8: gives every Person this ability on the
-## existing `special_ability` input, which was previously unused for Person since
-## `ability` was always null there (see character_base.gd _physics_process — the
-## input action already existed and just had nothing plugged into it).
+## Person — Tag. The defensive half of the old "Tag / Throw" pair; the offensive
+## half is gone as of T-4 (v4.4).
 ##
-## One button, two behaviors, chosen automatically from `team_is_can_side`
-## (character_base.gd) rather than a separate input — per the GDD, a Person
-## doesn't choose Tag vs Throw, its team's current side decides which half of
-## "tag on defense / throw on offense" applies this round:
-## - team_is_can_side true  (defense) → Tag: short range, guard-range flavor.
-## - team_is_can_side false (offense) → Throw: longer range, closing distance on
-##   a fleeing Slipper/Can per the GDD's "throws the Slipper at the Can".
+## WHAT CHANGED AND WHY. Until Task 0 this script was both halves, switched on
+## `team_is_can_side`: Tag on defence, and on offence a "Throw" that was a 0.75m
+## pulse hitbox blinking on 4 metres ahead for 0.2s. That was the fake throw —
+## nothing ever left anyone's hands, which is the single reason the build did not
+## read as tumbang preso (§0.7). The real throw now lives in `carrier.gd`: hold
+## `special_ability` to charge, release and the slipper physically leaves the
+## hand on an arc.
 ##
-## Both are modeled as a spawned pulse hitbox (AbilityUtils, same helper every
-## other special uses) placed ahead of the Person, with requires_bump_window
-## left at its default false via spawn_pulse_hitbox — unlike the shared melee
-## Hitbox, this doesn't need the press-to-bump active window, so it reads as a
-## distinct ranged action rather than a reskinned Bump. Hit resolution itself
-## (stagger/downed/seal/dent) is untouched — this is generic to any hitbox per
-## hitbox.gd, same as Bump or any roster special.
+## T-4 asked whether the orphaned offence branch was a feature or dead code, and
+## the answer is BOTH, split apart:
 ##
-## Exact range/radius numbers are a Session 8 judgment call, not confirmed by the
-## team — GDD doesn't specify. Throw reaching further than Tag is the only part
-## that's load-bearing; revisit both once someone has this in-editor.
+##   * As a THROW it is dead code, and worse than dead — an invisible sphere
+##     appearing 4m in front of an attacker is exactly the thing Task 0 removed.
+##     Deleted.
+##   * As a Person's empty-handed action it is a real need. An attacker whose
+##     slipper is on the ground is mid-retrieval-scramble, which is the tensest
+##     moment in the game, and leaving them with literally no action while the
+##     taya chases them down is worse than the fake throw was.
+##
+## So there is now ONE behaviour for every Person regardless of side: a short
+## Tag. `character_base.gd` gates this button behind `not _carrier_is_holding()`,
+## so a Person with a slipper in hand gets the charge-throw and never reaches
+## here; a Person with empty hands tags, whichever side they are on.
+##
+## BALANCE NOTE, flagged deliberately: an attacking Person's reach drops from
+## `throw_range` 4.0 to `tag_range` 1.5. That is a real change and it is the
+## intended one — 4m was the reach of a ranged attack that no longer exists.
+## Reverse it by giving the offence side its own range export again if play
+## disagrees; nothing else depends on the distinction.
+##
+## Tagging is stun-only either way. A hit on a Person never has a round-win
+## effect (see hitbox.gd) — only the tracked Cans decide rounds.
+##
+## Range/radius remain a judgment call the team has never confirmed; the GDD does
+## not specify. Revisit once someone has played it.
 
 @export var tag_range: float = 1.5
 @export var tag_radius: float = 1.0
 @export var tag_duration: float = 0.2
-@export var throw_range: float = 4.0
-@export var throw_radius: float = 0.75
-@export var throw_duration: float = 0.2
 
 func _do_activate(character: CharacterBody3D) -> bool:
 	var c := character as CharacterBase
-	if c.team_is_can_side:
-		# Defense: tagging an attacker — short range, guard-range flavor.
-		AbilityUtils.spawn_pulse_hitbox(c, tag_radius, tag_duration, false, Vector3(0, 0, -tag_range))
-	else:
-		# Offense: throwing the Slipper at the Can — reaches further.
-		AbilityUtils.spawn_pulse_hitbox(c, throw_radius, throw_duration, false, Vector3(0, 0, -throw_range))
+	AbilityUtils.spawn_pulse_hitbox(c, tag_radius, tag_duration, false, Vector3(0, 0, -tag_range))
 	return true

@@ -537,14 +537,33 @@ lata in motion. `RESET_CHANNEL_TIME` is a guess.
 consumes it — exactly like `charge_changed` and `held_changed`, which the HUD
 also still ignores. All three are U-1's job.
 
-#### T-4 · Retire the old fake throw `[ ]`
+#### T-4 · Retire the old fake throw `[x]`
 
-`person_action.gd` is now **Tag-only in effect** — `character_base.gd` gates the
-ability press behind `not _carrier_is_holding()`, so an attacker with a slipper
-gets the charge-throw instead. **But its offence branch is still in the file and
-still reachable** for an attacking Person with no slipper in hand. Decide whether
-that is a feature (a desperation lunge) or dead code, then either document it or
-delete it. Its header was not updated — do that at the same time.
+Done v4.4. The question was whether the orphaned offence branch was a feature or
+dead code; **the answer taken was both, split apart.**
+
+- **As a throw it is dead code** and actively harmful — a 0.75m pulse blinking on
+  4m ahead of an attacker is the exact thing Task 0 removed. **Deleted**, along
+  with the `throw_range` / `throw_radius` / `throw_duration` exports (none were
+  serialised in `person_action.tres`, so no resource churn).
+- **As a Person's empty-handed action it is a real need.** An attacker whose
+  slipper is on the ground is mid-scramble with the taya closing, and leaving
+  them no action at all is worse than the fake throw was.
+
+So `person_action.gd` is now one behaviour for every Person regardless of side: a
+short Tag. `character_base.gd`'s existing `not _carrier_is_holding()` gate
+already means a Person holding a slipper never reaches it. Header rewritten;
+`ability_name` in the `.tres` corrected from `"Tag / Throw"` to `"Tag"`.
+
+⚠️ **Balance change, called out deliberately because a playtest may want it
+back:** an attacking Person's reach drops from 4.0 to 1.5, since 4.0 was the
+reach of a ranged attack that no longer exists. Reversing it means giving the
+offence side its own range export again; nothing else depends on the
+distinction.
+
+`[x]` rather than `[~]`: this item was "decide, then document or delete", and
+both halves are done and verified by grep + a clean load. The Tag behaviour it
+leaves behind is old code that predates this queue, unchanged.
 
 ### F — Foundation (do these first; everything else assumes them)
 
