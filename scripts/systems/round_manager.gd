@@ -49,6 +49,13 @@ var _sync_accum: float = 0.0
 ## reassignment, not a placeholder for it.
 var _tracked_cans: Array[CharacterBase] = []
 
+## 3.4: read-only so the off-screen indicator (or anything else that needs
+## "which unit is currently the Can") reads the one place that already tracks
+## it correctly across a role swap, rather than re-scanning the scene tree for
+## `is_can` and risking a second copy of that logic drifting from this one.
+func get_tracked_cans() -> Array[CharacterBase]:
+	return _tracked_cans.duplicate()
+
 func register_can(can: CharacterBase) -> void:
 	if can in _tracked_cans:
 		return
