@@ -158,17 +158,30 @@ func _assign(slot: int, unit_name: String) -> void:
 	_slot_units[slot] = unit_name
 	_apply_slots()
 
+## ⚠️ SWAPS with the other slot; it must NOT skip. This is the actual reason the
+## 0.4 playtest said "I can't Tab to the can", and it was a real bug rather than
+## the mode confusion it first looked like.
+##
+## The old loop skipped any candidate the other slot already held. P2 holds
+## `DEFAULT_P2_UNIT` = "TeamAProp" and never moves on its own, so "TeamAProp" was
+## permanently excluded from P1's cycle — and in round 1 Team A defends, which
+## means **TeamAProp IS the Can**. P1 could reach TeamBProp and TeamBPerson and
+## then wrap straight back past the one unit the player was trying to look at.
+## Measured, not guessed: pressing Tab twice from a fresh Local Match walked
+## TeamAPerson -> TeamBProp -> TeamBPerson, never touching TeamAProp.
+##
+## Swapping keeps the invariant that mattered — the two slots can never hold the
+## same unit and move together on one keypress — while making every unit
+## reachable in one lap. The other slot simply inherits whatever this one was
+## driving.
 func _cycle(slot: int) -> void:
+	var other := SLOT_P1 if slot == SLOT_P2 else SLOT_P2
 	var start := UNIT_NAMES.find(_slot_units[slot])
-	# UNIT_NAMES.size() steps at most, so a full lap with every other candidate
-	# held by the other slot terminates instead of looping forever.
-	for step in range(1, UNIT_NAMES.size() + 1):
-		var candidate := UNIT_NAMES[(start + step) % UNIT_NAMES.size()]
-		var other := SLOT_P1 if slot == SLOT_P2 else SLOT_P2
-		if candidate != _slot_units[other]:
-			_slot_units[slot] = candidate
-			_apply_slots()
-			return
+	var candidate := UNIT_NAMES[(start + 1) % UNIT_NAMES.size()]
+	if _slot_units[other] == candidate:
+		_slot_units[other] = _slot_units[slot]
+	_slot_units[slot] = candidate
+	_apply_slots()
 
 ## The whole mechanism (§3.5.2): reassign the public `player_id` export from the
 ## outside. `character_base.gd` needs no changes at all — it already resolves

@@ -1,0 +1,26 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Mesh" path="res://assets/models/viewmodel_arm.obj" id="1"]
+[ext_resource type="Shader" path="res://assets/models/materials/toon.gdshader" id="2"]
+[ext_resource type="Material" path="res://assets/characters/persons/materials/person_outline.tres" id="3"]
+
+[sub_resource type="ShaderMaterial" id="Mat_arm"]
+shader = ExtResource("2")
+shader_parameter/albedo_color = Color(0.784, 0.529, 0.353, 1)
+next_pass = ExtResource("3")
+
+[node name="ViewmodelArms" type="Node3D"]
+
+[node name="RightArm" type="MeshInstance3D" parent="."]
+transform = Transform3D(-0.55810, -0.27005, -0.00000, -0.18667, 0.38579, -0.44802, 0.19514, -0.40329, -0.42858, 0.28000, -0.46000, -0.30000)
+mesh = ExtResource("1")
+surface_material_override/0 = SubResource("Mat_arm")
+surface_material_override/1 = SubResource("Mat_arm")
+cast_shadow = 0
+
+[node name="LeftArm" type="MeshInstance3D" parent="."]
+transform = Transform3D(-0.55810, 0.27005, 0.00000, 0.18667, 0.38579, -0.44802, -0.19514, -0.40329, -0.42858, -0.30000, -0.48000, -0.28000)
+mesh = ExtResource("1")
+surface_material_override/0 = SubResource("Mat_arm")
+surface_material_override/1 = SubResource("Mat_arm")
+cast_shadow = 0
