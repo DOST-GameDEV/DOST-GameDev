@@ -454,17 +454,11 @@ func _reset_world(team_a_is_can: bool) -> void:
 ## the moment a round ends without finishing the match — the gap that never
 ## used to exist between report_round_win and the next round's timer
 ## starting. Resets the world early (so players see themselves back at spawn
-## during the banner, not just when the fight starts) and shows who won.
-## Item 19 (moodboard role-swap card) replaces this banner with the full
-## animated card; this is the functional beat it slots into.
-func _on_round_intermission_started(_next_round_number: int, next_team_a_is_can: bool, can_team_won: bool) -> void:
+## during the card animation, not just when the fight starts).
+## U-3: RoleSwapCard connects to round_intermission_started directly and
+## handles all display — this function retains only the world reset.
+func _on_round_intermission_started(_next_round_number: int, next_team_a_is_can: bool, _can_team_won: bool) -> void:
 	_reset_world(next_team_a_is_can)
-	# can_team_won tells us which SIDE held the round; recover which TEAM that
-	# was from this round's team_a_is_can — always the opposite of
-	# next_team_a_is_can, since role swaps every round.
-	var this_round_team_a_is_can := not next_team_a_is_can
-	var team_a_won := can_team_won == this_round_team_a_is_can
-	hud.show_round_banner("%s wins the round!" % ("Team A" if team_a_won else "Team B"))
 
 ## Host → one late-joining peer (B-29, B-48). Sets every field directly rather
 ## than replaying _on_match_round_started's reset cascade: that function calls

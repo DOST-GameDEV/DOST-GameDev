@@ -1286,7 +1286,7 @@ first. Esc works from every panel.
 
 ---
 
-#### U-3 · The role-swap intermission card `[ ]`
+#### U-3 · The role-swap intermission card `[~]`
 
 `Dev_Plan.md` §4.6 specifies the beat and the timings. **The functional half already exists** —
 `MatchManager.round_intermission_started`, a 3s gap, an early `_reset_world()`, and
@@ -1311,7 +1311,20 @@ Steps:
 happen on §4.6's timings, the panels visibly move and recolour, and the round starts with both
 teams on their new sides. Networked: both peers see it and stay in step.
 
-**Commit:** `Add the moodboard role-swap intermission card (v5.9)`
+**Commit:** `Add the moodboard role-swap intermission card (v4.18)`
+
+**[DONE @ v4.18]** `scenes/ui/RoleSwapCard.tscn` + `scripts/ui/role_swap_card.gd` created.
+`RoleSwapCard` connects to `MatchManager.round_intermission_started` and `round_started`
+directly. Timeline: 0.0s result banner, 1.2s panels slide in (BACK/EASE_OUT tween, 0.5s),
+3.5s FIGHT wipe label, hidden on `round_started`. Panels start off-screen (±700px from
+centre) and animate to ±250/30px; `_on_round_started` resets offsets for the next
+intermission. `HUD.tscn`: `RoundBannerLabel` removed, `RoleSwapCard` instanced as last
+child, `load_steps` bumped 5→6. `hud.gd`: `show_round_banner()`, the `round_banner_label`
+`@onready`, and its two `visible = false` calls all removed. `main.gd::
+_on_round_intermission_started`: `hud.show_round_banner(...)` call and its local variables
+removed; parameter `can_team_won` prefixed with `_` since it is now unused here (consumed
+by RoleSwapCard instead). `[~]` not `[x]`: no human has won a round to see the animation
+play.
 
 ---
 
