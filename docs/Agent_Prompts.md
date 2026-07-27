@@ -75,6 +75,7 @@ YOUR JOB — networking, in this order.
    and record the truth in docs/Handoff.md §3.
 
 NON-NEGOTIABLES
+- DOCS ARE PART OF THE WORK, AND ALL OF THEM, NOT JUST ONE. Tick your Checklist.md box in the SAME commit as the change. Then grep docs/ scripts/ tools/ for whatever you just made wrong and fix every stale claim - if a doc says a thing is missing and you just built it, that doc is now a bug. DELETE stale content rather than labelling it outdated. Never write 'verified by render' for something you did not render. See Concurrency_Protocol.md §12.
 - Every commit authored solely as M4tyu633 <matthewtlabrador@gmail.com>. No Co-authored-by. No
   mention of Claude, an AI, or any tool anywhere in a commit. Verify with
   git log -1 --format='%an <%ae>'
@@ -139,7 +140,8 @@ being visible. So:
 
 DO NOT start step 2 before step 1 is merged.
 
-NON-NEGOTIABLES: identical to the BUILD-NET prompt — sole authorship as
+- DOCS ARE PART OF THE WORK, AND ALL OF THEM, NOT JUST ONE. Tick your Checklist.md box in the SAME commit as the change. Then grep docs/ scripts/ tools/ for whatever you just made wrong and fix every stale claim - if a doc says a thing is missing and you just built it, that doc is now a bug. DELETE stale content rather than labelling it outdated. Never write 'verified by render' for something you did not render. See Concurrency_Protocol.md §12.
+- Also: identical to the BUILD-NET prompt — sole authorship as
 M4tyu633 <matthewtlabrador@gmail.com>, no AI mentions in commits, integration only, take the
 lock for shared files, run all six smoke-gate commands (3 and 4 WITHOUT --headless), [~] not
 [x] for anything you could not run.
@@ -188,7 +190,8 @@ YOUR JOB
    role_swap_card.gd run the full Dev_Plan §4.6 timeline, and %DownedFlash carries a real
    radial vignette shader. Do not "fix" them.
 
-NON-NEGOTIABLES: sole authorship as M4tyu633 <matthewtlabrador@gmail.com>, no AI mentions in
+- DOCS ARE PART OF THE WORK, AND ALL OF THEM, NOT JUST ONE. Tick your Checklist.md box in the SAME commit as the change. Then grep docs/ scripts/ tools/ for whatever you just made wrong and fix every stale claim - if a doc says a thing is missing and you just built it, that doc is now a bug. DELETE stale content rather than labelling it outdated. Never write 'verified by render' for something you did not render. See Concurrency_Protocol.md §12.
+- Also: sole authorship as M4tyu633 <matthewtlabrador@gmail.com>, no AI mentions in
 commits, integration only, take the docs/SHARED_LOCKS.md lock before typing in scenes/ui/*.tscn,
 run the six smoke-gate commands (3 and 4 WITHOUT --headless), [~] not [x] for the unverified.
 ```
@@ -224,7 +227,8 @@ RULES
   on the same frame the hitstop starts.
 - Add a master/SFX/music bus layout and wire volume to SettingsManager, which already exists.
 
-NON-NEGOTIABLES: sole authorship as M4tyu633 <matthewtlabrador@gmail.com>, no AI mentions in
+- DOCS ARE PART OF THE WORK, AND ALL OF THEM, NOT JUST ONE. Tick your Checklist.md box in the SAME commit as the change. Then grep docs/ scripts/ tools/ for whatever you just made wrong and fix every stale claim - if a doc says a thing is missing and you just built it, that doc is now a bug. DELETE stale content rather than labelling it outdated. Never write 'verified by render' for something you did not render. See Concurrency_Protocol.md §12.
+- Also: sole authorship as M4tyu633 <matthewtlabrador@gmail.com>, no AI mentions in
 commits, integration only, run the six smoke-gate commands in docs/Concurrency_Protocol.md §8
 before merging (3 and 4 WITHOUT --headless).
 ```
@@ -287,6 +291,7 @@ HOW THIS REPO EXPECTS YOU TO WORK
   blank. Screenshot everything visual.
 
 NON-NEGOTIABLES
+- DOCS ARE PART OF THE WORK, AND ALL OF THEM, NOT JUST ONE. Tick your Checklist.md box in the SAME commit as the change. Then grep docs/ scripts/ tools/ for whatever you just made wrong and fix every stale claim - if a doc says a thing is missing and you just built it, that doc is now a bug. DELETE stale content rather than labelling it outdated. Never write 'verified by render' for something you did not render. See Concurrency_Protocol.md §12.
 - Sole authorship as M4tyu633 <matthewtlabrador@gmail.com>. No Co-authored-by, no mention of
   Claude/AI/tooling anywhere in a commit.
 - Orange #F87020 = OFFENSE and blue #0080E8 = DEFENCE, tracking ROLE not team. Environment art
@@ -325,7 +330,8 @@ Known-open, start here: B-86 (FPP crosshair absent), B-87 (carried slipper reads
 FPP — known limitation, confirm the framing note), and jump (added v4.35, never felt by a human;
 JUMP_VELOCITY 5.8 apexes at 0.841 and must not clear the 1.0 clutter ceiling).
 
-NON-NEGOTIABLES: sole authorship as M4tyu633 <matthewtlabrador@gmail.com>, no AI mentions in
+- DOCS ARE PART OF THE WORK, AND ALL OF THEM, NOT JUST ONE. Tick your Checklist.md box in the SAME commit as the change. Then grep docs/ scripts/ tools/ for whatever you just made wrong and fix every stale claim - if a doc says a thing is missing and you just built it, that doc is now a bug. DELETE stale content rather than labelling it outdated. Never write 'verified by render' for something you did not render. See Concurrency_Protocol.md §12.
+- Also: sole authorship as M4tyu633 <matthewtlabrador@gmail.com>, no AI mentions in
 commits, integration only, never main.
 ```
 
@@ -358,7 +364,8 @@ STATE OF PLAY YOU MUST NOT MISREPRESENT: no .exe has ever been produced (5.1, ex
 never installed, human-gated). No real multi-device LAN test has happened (6.1, human-gated).
 Audio does not exist yet. Say so plainly in any status you write.
 
-NON-NEGOTIABLES: sole authorship as M4tyu633 <matthewtlabrador@gmail.com>, no AI mentions in
+- DOCS ARE PART OF THE WORK, AND ALL OF THEM, NOT JUST ONE. Tick your Checklist.md box in the SAME commit as the change. Then grep docs/ scripts/ tools/ for whatever you just made wrong and fix every stale claim - if a doc says a thing is missing and you just built it, that doc is now a bug. DELETE stale content rather than labelling it outdated. Never write 'verified by render' for something you did not render. See Concurrency_Protocol.md §12.
+- Also: sole authorship as M4tyu633 <matthewtlabrador@gmail.com>, no AI mentions in
 commits, integration only, never main.
 ```
 

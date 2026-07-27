@@ -81,6 +81,16 @@ judgement call you are allowed to make — record it and move on.
 
 ---
 
+## Keeping it this way — read before you finish an item
+
+**`Concurrency_Protocol.md` §12 is the rule and it applies to every lane.** In short: tick the
+checklist box in the same commit as the work; grep `docs/`, `scripts/` and `tools/` for whatever
+your change just made untrue and fix *all* of it, not the nearest one; delete stale content
+rather than labelling it outdated; never claim a verification you did not perform; and if you
+find two documents disagreeing, fix the lower-ranked one and add a row below in the same commit.
+
+Eight files is the budget. Do not add a ninth without a reason you can defend.
+
 ## Known contradictions, and how they were resolved
 
 Kept visible rather than quietly patched, because each one cost real time to find.
