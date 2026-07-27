@@ -39,8 +39,19 @@ func activate(character: CharacterBody3D) -> void:
 		_used_this_round = true
 
 ## Called by CharacterBase.reset_for_new_round() at the start of every round.
+##
+## B-52: this used to clear `_used_this_round` only, leaving `_time_since_use`
+## untouched — so a cooldown-based ability carried its remaining cooldown across
+## the round boundary. The gap is not absorbed by the intermission either:
+## `character_base.gd::_physics_process` returns before `ability.tick(delta)`
+## whenever `RoundManager.round_active` is false, so the cooldown does not decay
+## during the 3s intermission at all. Bakya Bash (18s) used up near the end of a
+## round would have started the next one with most of that still to run — a
+## fifth of a 90s round with no special. Every round now starts every ability
+## ready, which is what "reset for a new round" is supposed to mean.
 func reset_round_charge() -> void:
 	_used_this_round = false
+	_time_since_use = 999.0
 
 ## Actual per-ability behavior — override this, not activate(). Return true if
 ## the ability actually did something; return false for a no-op activation

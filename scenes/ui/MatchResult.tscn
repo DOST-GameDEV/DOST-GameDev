@@ -15,34 +15,43 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0, 0, 0, 0.6)
+color = Color(0.015686, 0.031373, 0.219608, 0.72)
 
-[node name="Panel" type="VBoxContainer" parent="."]
+[node name="Card" type="PanelContainer" parent="."]
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -160.0
-offset_top = -70.0
-offset_right = 160.0
-offset_bottom = 70.0
+offset_left = -260.0
+offset_top = -120.0
+offset_right = 260.0
+offset_bottom = 120.0
+
+[node name="Panel" type="VBoxContainer" parent="Card"]
+layout_mode = 2
 alignment = 1
 
-[node name="MessageLabel" type="Label" parent="Panel"]
+[node name="MessageLabel" type="Label" parent="Card/Panel"]
 unique_name_in_owner = true
 layout_mode = 2
+theme_type_variation = &"Heading"
 horizontal_alignment = 1
-theme_override_font_sizes/font_size = 32
-text = "Team A wins the match!"
+autowrap_mode = 2
+text = "TEAM A WINS THE MATCH!"
 
-[node name="RematchButton" type="Button" parent="Panel"]
+[node name="Spacer" type="Control" parent="Card/Panel"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 12)
+
+[node name="RematchButton" type="Button" parent="Card/Panel"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Rematch"
+theme_type_variation = &"PrimaryButton"
+text = "REMATCH"
 
-[node name="MenuButton" type="Button" parent="Panel"]
+[node name="MenuButton" type="Button" parent="Card/Panel"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Menu"
+text = "MENU"

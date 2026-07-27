@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3 uid="uid://c3f7h9j1k2l4m"]
+[gd_scene load_steps=17 format=3 uid="uid://c3f7h9j1k2l4m"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="0"]
 [ext_resource type="PackedScene" path="res://scenes/characters/CharacterBase.tscn" id="1"]
@@ -7,11 +7,17 @@
 [ext_resource type="Script" path="res://scripts/systems/arena_camera.gd" id="4"]
 [ext_resource type="Script" path="res://scripts/systems/kill_plane.gd" id="5"]
 [ext_resource type="PackedScene" path="res://scenes/ui/MatchResult.tscn" id="6"]
+[ext_resource type="PackedScene" path="res://scenes/ui/DebugBar.tscn" id="7"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
 size = Vector3(40, 1, 40)
 
+[sub_resource type="StandardMaterial3D" id="Mat_floor"]
+albedo_color = Color(0.827451, 0.815686, 0.784314, 1)
+roughness = 0.9
+
 [sub_resource type="BoxMesh" id="BoxMesh_floor"]
+material = SubResource("Mat_floor")
 size = Vector3(40, 1, 40)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_wall_ns"]
@@ -106,6 +112,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 1, 2)
 is_can = false
 is_person = false
 team_is_can_side = false
+team = 1
 player_id = 3
 
 [node name="TeamBPerson" parent="." instance=ExtResource("1")]
@@ -113,6 +120,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 1, 2)
 is_can = false
 is_person = true
 team_is_can_side = false
+team = 1
 player_id = 4
 
 [node name="Players" type="Node3D" parent="."]
@@ -125,6 +133,8 @@ spawn_path = NodePath("../Players")
 [node name="HUD" parent="HUDLayer" instance=ExtResource("2")]
 
 [node name="MatchResult" parent="HUDLayer" instance=ExtResource("6")]
+
+[node name="DebugBar" parent="HUDLayer" instance=ExtResource("7")]
 
 [node name="PauseLayer" type="CanvasLayer" parent="."]
 layer = 10
@@ -142,37 +152,41 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0, 0, 0, 0.6)
+color = Color(0.015686, 0.031373, 0.219608, 0.72)
 
-[node name="VBoxContainer" type="VBoxContainer" parent="PauseLayer/PauseRoot"]
+[node name="Card" type="PanelContainer" parent="PauseLayer/PauseRoot"]
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -100.0
-offset_top = -70.0
-offset_right = 100.0
-offset_bottom = 70.0
+offset_left = -180.0
+offset_top = -110.0
+offset_right = 180.0
+offset_bottom = 110.0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="PauseLayer/PauseRoot/Card"]
+layout_mode = 2
 alignment = 1
 
-[node name="PausedLabel" type="Label" parent="PauseLayer/PauseRoot/VBoxContainer"]
+[node name="PausedLabel" type="Label" parent="PauseLayer/PauseRoot/Card/VBoxContainer"]
 layout_mode = 2
+theme_type_variation = &"Heading"
 horizontal_alignment = 1
-theme_override_font_sizes/font_size = 28
-text = "Paused"
+text = "PAUSED"
 
-[node name="Spacer" type="Control" parent="PauseLayer/PauseRoot/VBoxContainer"]
+[node name="Spacer" type="Control" parent="PauseLayer/PauseRoot/Card/VBoxContainer"]
 layout_mode = 2
 custom_minimum_size = Vector2(0, 16)
 
-[node name="ResumeButton" type="Button" parent="PauseLayer/PauseRoot/VBoxContainer"]
+[node name="ResumeButton" type="Button" parent="PauseLayer/PauseRoot/Card/VBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Resume"
+theme_type_variation = &"PrimaryButton"
+text = "RESUME"
 
-[node name="MenuButton" type="Button" parent="PauseLayer/PauseRoot/VBoxContainer"]
+[node name="MenuButton" type="Button" parent="PauseLayer/PauseRoot/Card/VBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Return to Menu"
+text = "RETURN TO MENU"

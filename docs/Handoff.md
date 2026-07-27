@@ -2,12 +2,115 @@
 
 The one handoff doc. Design is in [`Tumbang_Preso_2v2_GDD.md`](Tumbang_Preso_2v2_GDD.md); the
 plan, architecture, and build status are in [`Dev_Plan.md`](Dev_Plan.md). **This file is the
-work queue.** Read §1 and §2, then start at the top of §4.
+work queue.** Read §0 for where things stand right now, then §1 and §2, then start at the top
+of §4.
 
 > **Note for the humans:** the previous version of this file had no "System Context" or "AI
 > Execution Protocol" sections. They were requested as sections to preserve verbatim, so they
 > have been **written fresh** below (§1, §2) rather than carried over. Review them once —
 > after that they are frozen and every future handoff must reproduce them unchanged.
+
+---
+
+## 0. Session log — where the project stands right now
+
+**Pass date:** 2026-07-27 · **Branch:** `claude/project-recovery-setup-2e9571` · **PR:** [#6](https://github.com/DOST-GameDEV/DOST-GameDev/pull/6)
+**Versions:** v1.1 → v1.9, nine commits, one task per commit.
+**Working copy:** `.claude/worktrees/project-recovery-setup-2e9571/` — a git worktree, **not** the
+main checkout. Opening the repo root in Godot shows `main` and none of this work. The tell is the
+build stamp: **no `vX.Y` in the bottom-right corner means you are on the old code.**
+
+### 0.1 The headline
+
+**The build was not actually broken at the parse/load level when this pass started.** That had
+already been fixed on `main` by `ec17859` (duplicate `spawn_position`) and `6f97e76` (hit-flash
+mesh path). `main` imported, booted, and loaded every scene cleanly.
+
+What was broken is what you *saw*: launching a Local Match gave you a blue sky, a sliver of ground,
+and no players. That is one bug — the third-person camera pointed away from its own character —
+not a load failure. **No rollback was needed and none was performed.** No backup branch was
+required, because nothing destructive was done.
+
+### 0.2 What shipped
+
+| Version | Commit | What |
+|---|---|---|
+| v1.1 | `1188f71` | Single build version string + on-screen stamp |
+| v1.2 | `e5a7b65` | **Fix: TPP camera aimed away from its own character** |
+| v1.3 | `ce4046b` | Moodboard design system; **fixes the invisible Back button** |
+| v1.4 | `ae97510` | Debug player switcher — local character switching (B-42) |
+| v1.5 | `2e4649a` | Per-class models — Person, Can, Tsinelas |
+| v1.6 | `8d9a242` | **B-50** P1's Guard/Dash bound to a Godot 3 keycode |
+| v1.7 | `9af8b44` | **B-51** match-result screen unclickable (cursor captured) |
+| v1.8 | `de0d4aa` | **B-52** ability cooldowns carried across rounds |
+| v1.9 | `dc9919f` | **B-53** Esc buried the result screen + Phase 6 triage |
+
+### 0.3 Root causes worth remembering
+
+**Camera (v1.2).** `SpringArm3D` pushes its children along its own **local +Z**, not −Z.
+`CameraRig.tscn` was baked at arm `(-15, 180, 0)` on the opposite assumption, which placed the
+camera 4.35 units *in front of* the character; the compensating `(0, 180, 0)` on the camera then
+aimed it further forward and 15° **up**. Measured `forward · (character − camera) = −0.972`, where
+≈ +1 is correct; now **+0.972**. Not a merge regression — it dates from `914077c`, and queue item
+13 had explicitly flagged those transforms as never eyeballed because that environment had no
+display. The warning now lives in `camera_rig.gd`'s header, because Godot strips `.tscn` comments
+on save.
+
+**"Go back" button (v1.3).** Not anchors, not z-index, not draw order — the button was correctly
+laid out and on screen the entire time. It was the stock Godot theme drawing a `#1B1B1F` button on
+a `#141419` background: roughly **1.1:1 contrast**. Start, Host Game and Local Match were equally
+invisible; Back is just where it got noticed. Fixed by adopting the design system (item 15) rather
+than recolouring one control, since a one-off would have left the same trap everywhere else.
+
+**Guard/Dash (v1.6).** `guard_dash_p1` held `physical_keycode = 16777237` — that is **Godot 3's**
+`KEY_SHIFT`, and not a valid Godot 4 keycode at all. The whole B-16 mechanic was dead for player 1:
+the Can could not block and the Tsinelas could not dash, which made the guard checks in
+`apply_stagger()`/`apply_dent()` unreachable. No code was wrong; only the binding.
+
+### 0.4 How this was verified
+
+Everything above was verified **by running the game**, not by reading code: real Metal renders at
+1152×648, synthetic `InputEventKey`s fed into handlers, and a scripted local Bo5 driven to a real
+3-0. That mattered — the camera bake, the theme contrast, the dead keybinding, the broken FPP
+self-hide and the unclickable result screen are all invisible to code review and only appear when
+something actually renders or a key is actually pressed. The throwaway harness scripts were
+deleted before the final commit.
+
+### 0.5 Blocker — needs a human
+
+🚧 **The moodboard display typeface is Harry's and was not supplied with the brief.** The theme
+ships on Godot's default font. Palette, chrome, layout logic and type scale are all
+moodboard-accurate; **only the typeface is standing in.** No substitute was downloaded — an
+unvetted font binary is both a licence and a supply-chain question, and Form 03 needs a recorded
+licence either way. Swapping it in is one line (`theme.default_font` in `ui_theme.gd`, then
+regenerate) plus adding `*.ttf`/`*.otf` to `.gitattributes` LFS. See item 15.
+
+### 0.6 Branch/PR consolidation — nothing to do
+
+Audited before touching anything, per instruction. **All five PRs are merged.** Every branch except
+this one is fully contained in `main`. The one branch reporting 11 commits "ahead" —
+`claude/godot-brawler-queue-f75049` — is a **squash-merge remnant of PR #1**; its B-02…B-12 content
+was verified already present in `main`. Therefore **no integration branch was created, nothing was
+merged, and no branch was deleted.** There is no consolidation work outstanding.
+
+### 0.7 Not done — read this before planning the next pass
+
+- **Queue items 16, 17, 19, 20** — menu logo swap, HUD pip rebuild, role-swap card, Bo5 result
+  grid. The design system they all depend on is in and applied project-wide, but those screens are
+  unchanged beyond being restyled.
+- **Item 18's team/player identification** — ground rings, `A1`/`A2`/`B1`/`B2` billboard tags, own-unit
+  chevron, off-screen edge arrows. **Class** differentiation is done (you can tell a Can from a
+  Tsinelas from a Person instantly); **team** differentiation is not.
+- **Animation.** Kenney's rig ships 32 clips. Only `idle` is wired — units slide around in their
+  idle pose. Nothing is driven by gameplay state.
+- **Six bugs found and deliberately left** — B-54 through B-59 in §3, each with the reason it was
+  not touched. B-57 is a balance question, not a defect. **B-59 is unreproduced and open**: a
+  completed match reset itself to round 1 / 0-0 twice early in testing and did not recur in six
+  later runs, including instrumented ones. The obvious suspect was tested and ruled out. If a match
+  ever restarts itself in a real playtest, start there.
+- **The design decisions in §4 "Decisions the team owes"** are all still owed. None of them can be
+  resolved by a coding agent, and Option A vs Option B in particular keeps doubling the cost of
+  every combat change.
 
 ---
 
@@ -510,6 +613,144 @@ finished **TUMBANG PRESO** logo. Adopt the logo's name everywhere (`Dev_Plan.md`
 **[FIXED]** `project.godot`, README, and GDD title all now say **Tumbang Preso**, matching the
 main menu and the moodboard logo.
 
+**B-50 · P1's Guard/Dash was bound to a Godot 3 keycode, so it never fired. (NEW)**
+`project.godot`'s `guard_dash_p1` held `physical_keycode = 16777237` — that is Godot **3**'s
+`KEY_SHIFT`. Godot 4's is `4194325`, and `16777237` is not a valid Godot 4 keycode at all, so the
+action could never be triggered by any key. The whole B-16 Guard/Dash mechanic was dead for
+player 1: the Can could not block (so `apply_stagger`/`apply_dent`'s guard checks were
+unreachable) and the Tsinelas could not dash. The settings panel rendered it as the nonsense
+string "Command+", which is what surfaced it. Nothing in the code was wrong — only the binding.
+**[FIXED]** `guard_dash_p1` is now `KEY_SHIFT`. That collided with `special_ability_p2`, which was
+also on Shift, so both were split by `location` (LEFT for P1's guard, RIGHT for P2's special) —
+otherwise one physical keypress fires two different players' actions on a shared keyboard.
+`guard_dash_p2` moved from Ctrl to **End**, matching the scheme `Dev_Plan.md` §3.5.1 already
+documented. Verified by matching synthetic `InputEventKey`s against the InputMap: left Shift
+resolves to `guard_dash_p1` only, right Shift to `special_ability_p2` only, and all 14 bound
+actions now have 14 distinct key+location pairs (no conflicts).
+
+**B-51 · The match-result screen appeared with the cursor still captured, so neither of its
+buttons could be clicked. (NEW)** `main.gd::_ready()` sets `Input.mouse_mode = MOUSE_MODE_CAPTURED`
+for the whole match, and nothing released it when the match ended — `match_result.gd` only released
+it inside `_on_menu_pressed`, i.e. *after* a click that could not happen. Winning a Bo5 therefore
+left you on a result screen with an invisible, captured cursor and no way to press **Rematch** or
+**Menu**. Recoverable only via Esc, which opens the pause overlay *over* the result screen.
+**[FIXED]** released in `_on_match_won`, re-captured in `_on_rematch_pressed` (a rematch goes
+straight back into gameplay, and `camera_rig.gd` only mouse-aims while the cursor is captured).
+Verified by driving a real local Bo5 to 3-0 in a live instance: the result screen shows with
+`mouse_mode = VISIBLE`, and pressing Rematch returns round 1 / 0-0 with `mouse_mode = CAPTURED`.
+
+**B-52 · Ability cooldowns carried across the round boundary. (NEW)**
+`AbilityBase.reset_round_charge()` — called from `CharacterBase.reset_for_new_round()` — cleared
+`_used_this_round` but not `_time_since_use`, so a cooldown-based ability kept its remaining
+cooldown into the next round. The intermission does not absorb it either:
+`character_base.gd::_physics_process` returns before `ability.tick(delta)` whenever
+`RoundManager.round_active` is false, so the cooldown does not decay during the 3s gap at all.
+Worst case is Bakya Bash at **18s** — used near the end of a round, the next round started with
+most of that still to run, a fifth of a 90s round with no special. Not cosmetic: the whole point
+of a per-round reset is that both teams start a round on equal footing.
+**[FIXED]** `reset_round_charge()` now also resets `_time_since_use`. Verified: activate an
+ability, call `reset_round_charge()`, `is_ready()` goes back to `true` (it stayed `false` before).
+
+**B-53 · Esc could bury the match-result screen under the pause overlay. (NEW)**
+`PauseLayer` is `layer = 10`; `MatchResult` lives in `HUDLayer` at layer 0. Pressing Esc after a
+match ended therefore drew the pause overlay *over* the result screen, and Resume re-captured the
+cursor and handed back a result screen that could not be clicked — re-creating B-51 by another
+route. **[FIXED]** `main.gd::_unhandled_input` ignores `ui_cancel` entirely while the result
+screen is visible; there is nothing to pause once the match is decided. Verified live.
+
+**B-54 · Local spawn points ignore team membership. (OPEN — needs a design call, not a code fix)**
+`main.gd`'s `SPAWN_POINTS` are assigned in `_local_roster` order — `TeamAProp`, `TeamAPerson`,
+`TeamBProp`, `TeamBPerson` — against the fixed list `(0,1,-2) (0,1,2) (-3,1,0) (3,1,0)`. So Team A's
+two units start at opposite ends of the arena while Team B's start on the left/right flanks:
+teammates are not together and opponents are not separated. Worse for the camera, `TeamAPerson`
+spawns at `(0,1,2)` and `TeamAProp`'s third-person camera sits at `(0,3.66,2.35)` — your own
+teammate spawns essentially *inside* your camera, filling the frame at round start. Not fixed
+here because the right answer is per-map base placement (the GDD's Eskinita / Bayan Plaza bases),
+which is queue item 10's deferred "move `SPAWN_POINTS` into a `SpawnPoints` node on the map scene"
+— guessing at coordinates now would just be re-guessed when real maps land.
+
+**B-55 · `RoundManager`'s end-of-round state change rides an unreliable RPC. (OPEN — low)**
+`_sync_state` is `@rpc("unreliable_ordered")`, which is right for the 4Hz timer it was written for,
+but `report_round_win()` uses that same channel to broadcast the one-shot `round_active = false`.
+If that packet drops, the client keeps believing the round is live — and `_process` won't resend,
+because it returns early once `round_active` is false. Self-heals when the next round's
+`_sync_round_started` (reliable) arrives ~3s later, so the blast radius is a stale client HUD for
+one intermission. Left alone: the fix is to split the one-shot state change onto a reliable RPC,
+which is a networking change worth making deliberately rather than in passing.
+
+**B-56 · `KillPlane` respawns on every peer, not just the character's authority. (OPEN — low)**
+`_on_body_entered` calls `character.respawn()` wherever the Area3D overlap is detected, which is
+every peer. For a non-authoritative copy the position is immediately overwritten by
+`MultiplayerSynchronizer`, so the visible effect is at most a one-frame snap, and the
+"OUT OF BOUNDS" toast is already correctly gated on `is_multiplayer_authority()` in `main.gd`.
+Flagged rather than fixed because it is cosmetic and the correct guard placement depends on
+whether respawn should stay client-authoritative at all (see B-49's note on the movement model).
+
+**B-57 · Under Option A, `forces_downed` is silently ignored on a Can. (OPEN — question, not a bug)**
+`hitbox.gd` resolves any hit on a Can under Option A as `"dent"` before it ever consults
+`forces_downed`, so Bakya Bash's advertised "instant-down on direct hit" does nothing distinct in
+that mode. That may well be intended — Option A has no Downed/Seal state machine at all — but it
+means a heavy special and a light bump are worth exactly the same against a Can. **Someone needs
+to decide** whether Option A wants weighted hits (e.g. a heavy special costing 2 dents) or whether
+every hit really is one dent. Not changed: it is a balance decision, not a defect.
+
+**B-58 · `ArenaCamera._process` still does full follow-cam work every frame while retired.
+(OPEN — trivial)** `_ready()` sets `current = false` (§3.4, it lost the viewport to the per-character
+rigs), but `_process` still runs every frame computing the target midpoint, the pairwise spread and
+a lerped position for a camera nothing renders through. Harmless, just wasted work; worth
+`set_process(false)` whenever it isn't current, once someone decides whether the spectator/broadcast
+use-case it was kept for is real.
+
+**B-59 · Unreproduced: a completed match reset itself to round 1 / 0-0. (OPEN — question)**
+Twice, early in testing B-51, a scripted local Bo5 that had just reached 3-0 came back on the next
+sample reading `round_number = 1`, `wins = 0-0`, `round_active = true` and the result screen hidden
+— which is precisely the post-`_on_rematch_pressed()` state, with no input sent. It has not
+reproduced in six subsequent runs (including one with `print_stack()` instrumentation on both
+`_on_rematch_pressed` and `MatchManager.reset`, which showed `reset` called exactly once, from
+`main.gd::_ready`). The obvious suspect — `ui_accept` sharing Space/Enter with `bump_p1`/`bump_p2`,
+so a player still mashing bump when the match ends would trigger a focused Rematch button — was
+tested and does **not** hold: neither key matches `ui_accept`, and the button holds no focus.
+Recorded rather than closed, because "I could not reproduce it" is not "it does not happen". If a
+match ever restarts itself in a real playtest, start here.
+
+**B-60 · Pressing WASD rotated the camera of the unit you were driving. (NEW)**
+`character_base.gd` called `look_at(global_position + direction, ...)` on *every* movement input,
+including for the unit whose `CameraRig` is mouse-aimed. Because the rig is a **child** of the
+body, snapping the body's yaw to the WASD direction dragged the camera round with it: aim 90° left,
+hold `D`, and the camera flipped a full **180°**. `camera_rig.gd`'s own header already described the
+intended contract — `look_at()` applies "when this rig's aim_source is MOVEMENT" — but
+`character_base.gd` never knew about `aim_source` and so never honoured it.
+Compounding it, movement was read in **world space** (B-05), which was right when the only camera
+was the fixed-angle `ArenaCamera` and became wrong the moment the per-character FPP/TPP rigs made
+the camera turn with the player: in first person, `W` has to go where you are looking.
+**[FIXED]** the two halves are coupled and both landed together. A mouse-aimed unit now reads WASD
+in the **body's** frame (so `W` is "where I'm looking") and does **not** call `look_at()` — the rig
+owns yaw. Every other unit (remote peers, local-test dummies, `aim_source = MOVEMENT`) keeps the
+original world-space scheme *and* its `look_at()`, which is correct for a unit nobody is aiming.
+Attacks now fire where you are looking, which is what B-05 actually wanted.
+Verified by driving a live instance: after a 90° mouse-look, holding each of W/A/S/D leaves body
+yaw and camera forward **completely unchanged** (0.0° drift, was up to 180°), while movement
+resolves to along-facing `+1.00` for W, `-1.00` for S, and right-of-facing `±1.00` for D/A. A
+MOVEMENT-aimed unit was regression-checked in the same run: still moves world −Z on `W` from a 90°
+yaw, and still turns to face its own movement.
+
+**B-61 · The FPP self-hide made every Person invisible to everyone. (NEW)**
+`camera_rig.gd::_apply_fpp_self_hide()` set every Person's meshes to
+`SHADOW_CASTING_SETTING_SHADOWS_ONLY` **unconditionally**, never consulting `_active`. The rule it
+was supposed to implement was already written in its own doc comment — *"other peers still need to
+see the mesh"* — but the code hid the body of every Person in the match, not just the one being
+looked through. Result: Persons rendered as walking shadows with no body, teammates and opponents
+alike, from every camera. Props were unaffected (TPP never self-hides).
+This was latent, not new: the self-hide had silently been a **no-op** because it ran in `_ready()`,
+which fires before `character_visual.gd` instances any meshes for it to find. Making it actually
+work (v1.5) is what exposed the underlying logic error.
+**[FIXED]** the hide is now gated on `_active and _mode == FPP`, restores
+`SHADOW_CASTING_SETTING_ON` otherwise, and is re-applied from `set_active()` so it tracks the
+camera being handed between units by the debug switcher. Verified: with a Prop active, all four
+units read `cast_shadow = 1`; switching the camera onto a Person drops **only that Person** to `3`
+and leaves everyone else at `1`. Confirmed in a rendered frame — both Persons visible, and the
+one you look through still casts its own shadow.
+
 **B-28 · No export presets, no build, no CI.** `export_presets.cfg` is gitignored and none
 exists. The game has never been run outside the editor, and the submission needs a real build.
 
@@ -522,7 +763,7 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
 
 ### P0 — Make LAN work
 
-- [ ] **1. Debug player switcher — manual control of any unit in local mode (do this first; it
+- [x] **1. Debug player switcher — manual control of any unit in local mode (do this first; it
       unblocks all testing).** Full spec: `Dev_Plan.md` §3.5.
       Two control slots. `F1`–`F4` assign a unit to the **P1** set (WASD/Space/Q),
       `Shift`+`F1`–`F4` assign to the **P2** set (arrows/Enter/RShift), `Tab` / `Shift`+`Tab`
@@ -548,6 +789,25 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       controllable, which it is not today; (d) run the verification grep from `Dev_Plan.md`
       §3.5.5 — every hit is inside the three debug files and the two registration lines, and
       none is in a gameplay script.
+      **Done, runtime-verified by driving the key handler directly** (`InputEventKey` fed into
+      `_unhandled_key_input`, reading back every unit's `player_id` and which camera is `current`
+      after each press). Confirmed in order: defaults `TeamAProp`→P1 / `TeamAPerson`→P2 with the
+      other two parked on the unbound `4`; `F3` moves P1 and the camera to `TeamBProp`;
+      `Shift+F4` moves P2; `Tab` cycles and **skips the unit the other slot holds** rather than
+      colliding on one `player_id`; `F5` empties P2; `Shift+F1` steals a unit from the other slot;
+      `F6` restores defaults. FPP/TPP derivation survives every handoff — cycling onto a Person
+      makes its FPP camera current, onto a Prop its TPP camera (§0.1 intact). Zero edits to
+      `character_base.gd`, per §3.5.2.
+      Two deviations from the spec, both documented at §3.5.5:
+      - The verification `grep` as written could never pass, because four gameplay files carry
+        comments naming Godot's **Debug > Run Multiple Instances** editor menu. The checklist now
+        filters that phrase; the two comments that genuinely named the switcher were reworded.
+      - Footprint is 3 files and **3** lines, not 2: a `.tscn` instance needs an `[ext_resource]`
+        line as well as its `[node]` line. Inherent to the scene format.
+      Unit lookup deliberately walks up from the `DebugBar` rather than using
+      `get_tree().current_scene`, which is only correct when the match was reached through
+      `change_scene_to_file` — anything instancing `Main.tscn` as a sub-scene made every lookup
+      return null and the bar read "(missing)" with no error anywhere. Caught by rendering it.
 
 - [x] **2. Fix the LAN freeze (B-03).**
       Disable or delete the `Camera3D` node in `Main.tscn` (`Main.tscn:40-43`). It caches four
@@ -712,12 +972,20 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       Node3D (the sibling the rig hides in FPP) rather than sitting directly under the root.
       `ArenaCamera` explicitly sets `current = false` in `_ready()` so it can never contend with a
       rig's camera for the viewport (§3.4).
-      ⚠️ **What headless testing can and can't confirm.** No display exists in this environment, so
-      nothing about how the camera actually *looks* — framing, the TPP wall pull-in, whether the
-      `SpringArm3D`'s baked `rotation_degrees = (-15, 180, 0)` really produces "behind and above
-      the character, tilted down" rather than something backwards — has been eyeballed. That needs
-      a human in the editor. What **was** verified with real running instances, not just reading
-      the code:
+      ⚠️➡️✅ **The doubt flagged here was justified — the TPP bake WAS backwards, and is now fixed.**
+      The original `SpringArm3D rotation_degrees = (-15, 180, 0)` + `TppCamera (0, 180, 0)` did not
+      produce "behind and above, tilted down": `SpringArm3D` pushes children along its local **+Z**,
+      so the 180 yaw placed the camera 4.35 units *in front of* the character and the compensating
+      180 on the camera aimed it further forward and 15° **up**. Every Prop's third-person view was
+      a shot of empty sky with its own character behind the camera — which is exactly what the game
+      shipped looking like. Measured `forward · (character − camera) = −0.972`, where ≈ +1 is
+      correct. Fixed to arm `(-15, 0, 0)` with no rotation on the camera; the same measurement now
+      reads **+0.972**, and a real Metal-rendered frame shows the character framed from behind and
+      above with the arena visible. FPP re-checked in the same pass: eye height, own body correctly
+      shadow-only, other units visible. See `camera_rig.gd`'s header for why the transforms must
+      stay as they are. Remaining genuinely un-eyeballed: the TPP **wall pull-in** (needs a wall to
+      actually back into) and mouse-look feel.
+      What **was** verified earlier with real running instances, not just reading the code:
       - Mode derivation: a Prop's rig reports `mode=TPP` (`tpp_camera.current` true when active,
         `fpp_camera.current` false) and a Person's reports `mode=FPP`, on both a local-test run and
         both peers of a two-instance networked run.
@@ -770,8 +1038,8 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
 
 ### P3 — UI overhaul (moodboard)
 
-- [ ] **15. Design system (`Dev_Plan.md` §4.2).**
-      `assets/ui/tumbang_preso.theme` + a `UiTheme` autoload of the same constants.
+- [x] **15. Design system (`Dev_Plan.md` §4.2).**
+      `assets/ui/tumbang_preso.tres` + a `UiTheme` autoload of the same constants.
       `INK #040838`, `PANEL #E1E5E8`, `OFFENSE #F87020`, `DEFENSE #0080E8`, `IMPACT #F468A8`,
       `HIGHLIGHT #F8D028`, `DANGER #F80000`. `StyleBoxFlat` card chrome: 3px `INK` border,
       6px radius, 16px margins, 6px full-height accent bar. Theme type variations for buttons and
@@ -781,6 +1049,32 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       `.gitattributes` LFS. **Record the licence for submission Form 03.**
       *Acceptance:* setting the theme on a scene root restyles its whole subtree with no per-node
       overrides.
+      **Done, with one deliberate deviation and one blocker.**
+      *Deviation:* `UiTheme` (`scripts/ui/ui_theme.gd`) is a static-only `class_name`, not an
+      autoload, and the `.theme` is **generated from it** by `tools/regenerate_ui_theme.gd` rather
+      than hand-authored beside it. The brief's "theme file + autoload of the same constants" is
+      two copies of the same palette that can drift; generating one from the other removes that
+      class of bug entirely. Regenerate and commit both after any constant change:
+      `godot --headless -s tools/regenerate_ui_theme.gd`.
+      Applied project-wide via `gui/theme/custom` in `project.godot`, so the acceptance test is
+      satisfied one level up from what was asked — no scene needs the theme assigned at all, and
+      screens nobody has written yet inherit it too. All five existing screens (MainMenu, PlayMenu,
+      SettingsPanel, MatchResult, Main's pause overlay) and the HUD were converted; the only
+      remaining `theme_override_*` in the project is the version stamp's, which is now a type
+      variation too. HUD text over the 3D scene uses the `Hud*` variations (CARD fill + INK
+      outline) — one variation per size, so no node needs a font-size override.
+      Also fixed in passing: `SettingsPanel`'s `Layout` was a fixed 600px-tall centred box in a
+      648px viewport, so its Back/Reset row sat 39px from the bottom edge and would be pushed
+      off-screen entirely at any smaller window size. It is now a full-height centred column with
+      the bindings `ScrollContainer` absorbing the slack, so the button row is reachable at any
+      window size.
+      🚧 **BLOCKER — display font.** The moodboard's heavy hand-drawn unicase marker face is
+      Harry's and was not supplied with this brief, and no substitute was downloaded (an unvetted
+      font binary is both a licence and a supply-chain question, and Form 03 needs a recorded
+      licence either way). The theme therefore ships on Godot's default font: **palette, chrome,
+      layout logic and type scale are all moodboard-accurate, only the typeface is standing in.**
+      Dropping the real face in is one line — `theme.default_font` in `ui_theme.gd`, then
+      regenerate — plus adding `*.ttf`/`*.otf` to `.gitattributes` LFS and recording the licence.
 
 - [ ] **16. Menu fixes and restyle (B-33, B-34, B-27).**
       Add a **Back** button to `PlayMenu` plus an `ui_cancel` handler. Resolve the Option A
@@ -805,6 +1099,33 @@ Tick items here and mirror them into `Dev_Plan.md` §5.
       `A2 · ARROWS`). Off-screen edge arrows for your teammate and the Can — mandatory for FPP.
       *Acceptance:* from any camera in either mode, you can name every unit's team and role
       within a second, and find your own body after a respawn.
+      **Partially done — the CLASS half is built, the TEAM/PLAYER half is not.**
+      Every unit now has a distinct model instead of four identical white capsules, driven by
+      `scripts/characters/character_visual.gd` on `CharacterBase.tscn`'s `Visual` node:
+      - **Person** — Kenney "Mini Characters" (CC0, `assets/characters/persons/`, licence committed
+        alongside as `KENNEY_LICENSE.txt`). **All 12 are in the repo**, so `PERSON_MODELS` doubles as
+        the character-select roster (B-24). Order is deliberate: `[0] male-f` is the character from
+        the art-direction reference (dark blocky hair, heavy brow, green top over a tan body) and
+        `[1] female-f` is Team B's default, picked to contrast it on the two things readable at
+        gameplay distance — ginger hair against dark, black/yellow outfit against green. Indexed by
+        team, so those two are the Persons actually seen in a match. Their `idle` clip plays, so
+        they don't stand in bind pose.
+      - **Can (Lata)** and **Tsinelas** — authored low-poly primitives in
+        `scenes/characters/visuals/`, in the moodboard's own colours (Can: `DEFENSE` blue body,
+        `OFFENSE` orange rims, `HIGHLIGHT` yellow face disc; Tsinelas: `DEFENSE` blue sole,
+        `IMPACT` pink straps). No Can/Slipper art shipped with the brief, so these are built, not
+        imported.
+      The model is chosen at runtime, not baked into the scene, because **`is_can` flips every
+      round** — a Prop is a Can one round and a Tsinelas the next, so `reset_for_new_round()`
+      reapplies it.
+      **Still open on this item:** the ground ring decal in the team's current role colour, the
+      `A1`/`A2`/`B1`/`B2` billboard tags, the own-unit chevron, the local-test input-set suffix,
+      and the off-screen edge arrows. None of the team/player identification is built — right now
+      you can tell a Can from a Tsinelas from a Person at a glance, but not Team A's Person from
+      Team B's beyond which model they happen to be using.
+      **Also still open:** only `idle` is wired. Kenney's rig ships 32 clips (walk, sprint, jump,
+      die, attack-melee, …) and none of the others are driven by gameplay state, so units slide
+      around in their idle pose.
 
 - [ ] **19. Role-swap intermission card (item 9; needs item 10's intermission state).**
       Sequence per `Dev_Plan.md` §4.6: round-result banner → role-swap card with both team panels
@@ -863,3 +1184,13 @@ These are blocking someone's work and cannot be resolved by a coding agent.
   Fine for a LAN demo, out of scope to harden.
 - Set the base resolution (1920×1080) and stretch mode **before** building the UI theme, or every
   size gets retuned later.
+- **Build version.** Single source of truth is `application/config/version` in `project.godot`;
+  `scripts/systems/game_version.gd` (`GameVersion`, a static-only `class_name`, not an autoload)
+  reads it. Bump the minor number in the same commit as any gameplay/UI/model/scene change —
+  docs-only commits don't need it. `GameVersion.attach_to(control)` puts a dim `vX.Y` stamp in the
+  bottom-right; it's on the main menu and the in-match HUD, so which build is running is
+  confirmable on screen instead of by diffing files.
+- Adding a new `class_name` script requires a `godot --headless --import` pass before anything can
+  reference it — the global class cache is only rebuilt on import, and until then every referencing
+  script fails to parse with "Identifier not declared in the current scope". The same pass writes
+  the `.gd.uid` sidecar, which this repo tracks.
