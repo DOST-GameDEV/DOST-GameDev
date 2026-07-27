@@ -256,7 +256,7 @@ func _physics_process(delta: float) -> void:
 	#
 	# ⚠️ JUMP_VELOCITY IS CONSTRAINED BY THE MAP, NOT BY FEEL. Every loose piece
 	# of interior clutter is <= 1.0 tall on purpose, because an FPP Person's eye
-	# is at 1.25 and has to see over all of it (Environment_Kit_Spec.md's height
+	# is at 1.25 and has to see over all of it (Art_Direction.md's height
 	# law). 5.8 against GRAVITY 20.0 apexes at 5.8^2 / (2*20) = 0.841, which
 	# clears a kerb (0.15) and a tyre (0.22) but NOT a crate stack or an oil drum
 	# (0.90). Raise this above ~1.0 and every crate in the alley silently becomes

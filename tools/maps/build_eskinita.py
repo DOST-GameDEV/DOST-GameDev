@@ -16,7 +16,7 @@ But ~90 dressing instances is too many to hand-place without a typo, so this
 script is the author and its output is committed. Re-run it to change the
 layout; do not hand-edit the scene.
 
-Layout reasoning lives in docs/Environment_Kit_Spec.md §4:
+Layout reasoning lives in docs/Art_Direction.md §4:
   * Floor stays 40x40 (arena scale is NOT changed in the same commit as arena
     art) with its top surface at y=0.
   * The alley reads narrow anyway, because Layer 1 walls come in to x=+/-8.

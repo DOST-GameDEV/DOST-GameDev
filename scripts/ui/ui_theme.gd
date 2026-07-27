@@ -38,7 +38,7 @@ const DANGER: Color = Color("f80000")     ## red: destructive / out-of-bounds
 ## off-palette the moment the background colour changes.
 const INK_MUTED: Color = Color(INK.r, INK.g, INK.b, 0.62)
 
-# --- Environment palette (docs/Environment_Kit_Spec.md, checklist 2.1a) --------
+# --- Environment palette (docs/Art_Direction.md, checklist 2.1a) --------
 #
 # WHY THESE EXIST AT ALL. The eight tokens above are a UI palette. Six of them
 # are unusable on a street (INK, PANEL and CARD are near-black and near-white;

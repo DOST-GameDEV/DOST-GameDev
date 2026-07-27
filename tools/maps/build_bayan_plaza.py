@@ -16,7 +16,7 @@ is 16 wide by 34 long with walls you fight along; this is a 24x24 open square
 with a tree ring you fight across. Same kit, same rules, opposite silhouette —
 if both maps played the same there would be no reason to ship two.
 
-It also reconciles the board with the GDD, per Environment_Kit_Spec.md §1: the
+It also reconciles the board with the GDD, per Art_Direction.md §1: the
 board's "Province" (grass, dirt apron, trees ringing the map) is what you see
 PAST the GDD's "Bayan Plaza". Three concentric materials — concrete slab, dirt
 apron, tree line — satisfy both descriptions at once.

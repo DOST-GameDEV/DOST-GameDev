@@ -102,7 +102,7 @@ SETUP
   git switch -c code/proportions
 Godot: C:\Users\matth\Downloads\Godot_v4.7.1-stable_win64_console.exe (NOT on PATH)
 
-READ FIRST: docs/Art_Plan_Next_Stage.md §1 — the whole proportion audit with measured numbers.
+READ FIRST: docs/Art_Direction.md §1 — the whole proportion audit with measured numbers.
 Then docs/Concurrency_Protocol.md §2, §3, §8.
 
 YOUR JOB — the single biggest credibility problem in the build.
@@ -245,15 +245,15 @@ SETUP
   git switch -c art/environment-stage-2
 Godot: C:\Users\matth\Downloads\Godot_v4.7.1-stable_win64_console.exe (NOT on PATH)
 
-READ FIRST: docs/Art_Plan_Next_Stage.md — especially §0 (the "friendslop" design pillar) and
-§3 (items B, C, D, G, which are your queue). Then docs/Environment_Kit_Spec.md and
+READ FIRST: docs/Art_Direction.md — especially §0 (the "friendslop" design pillar) and
+§3 (items B, C, D, G, which are your queue). Then docs/Art_Direction.md and
 docs/Concurrency_Protocol.md §2/§3/§8.
 
 YOUR QUEUE, in priority order.
 
 B. NARROW THE ALLEY. Eskinita's playable width is x = +/-8 — a 16 m road, which is a boulevard,
    not an eskinita. A real side street is 3-5 m. tools/maps/build_eskinita.py has W = 8.0 as one
-   constant. DO NOT change it blind: this is arena SCALE, and Environment_Kit_Spec.md §4 warns
+   constant. DO NOT change it blind: this is arena SCALE, and Art_Direction.md §4 warns
    against changing arena scale in the same commit as arena art, because a movement-feel
    regression then becomes unattributable. Its own commit, and only after a human has played the
    current one.
@@ -432,7 +432,7 @@ READ FIRST, in this order:
      §3 (open bugs), §4 (task detail + routing).
   4. docs/Dev_Plan.md §0 (standing directives — these override the GDD), §4 (UI/moodboard
      spec, especially §4.1 the moodboard card inventory and §4.2 the design tokens).
-  5. docs/Environment_Art_Agent_Brief.md and docs/Design_Agent_Brief.md — your workstream
+  5. docs/Art_Direction.md and docs/Art_Direction.md — your workstream
      briefs. They carry the moodboard record and the code traps.
   6. Then READ THE ACTUAL CODE AND SCENES, not just the docs about them. This repo has a
      documented, repeated history of docs claiming things the code contradicts in BOTH
