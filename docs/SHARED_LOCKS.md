@@ -19,7 +19,7 @@ to type.
 | `scenes/characters/CharacterBase.tscn` | — free — | | |
 | `scenes/characters/CameraRig.tscn` | — free — | | |
 | `scenes/ui/*.tscn` | — free — | | |
-| `project.godot` | — free — | | |
+| `project.godot` | 🎨 Design | `fix/playtest-p0` | 2026-07-28 |
 | `tools/models/generate_all.gd` | — free — | | |
 | `docs/Checklist.md` | *no lock needed* | | append-only-ish; conflicts resolved by taking both sides |
 
