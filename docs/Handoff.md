@@ -611,6 +611,23 @@ than §0.10's "the walls are invisible".
 `±20`, and `Main.tscn`'s `Bounds` node dies with the grey box. Specified in
 `Environment_Kit_Spec.md` §4.
 
+**B-84 · The generator's determinism test cannot pass on a Windows checkout, and the generator is
+not at fault. (NEW)** `.gitattributes` declares `*.obj text` and `*.mtl text`, and `core.autocrlf`
+is `true` on this machine, so git checks those files out **CRLF** while `FileAccess.store_line()`
+writes them **LF**. Running `generate_all.gd` therefore leaves `assets/models/*.obj` and `*.mtl`
+showing as modified in `git status` even when the bytes are semantically identical.
+*Measured this pass:* two consecutive runs, then `git diff --numstat` on the rewritten files —
+**empty, with and without `--ignore-cr-at-eol`.** Zero lines added or removed. **The generator is
+deterministic.** What is broken is the test.
+*Why it matters:* "run the generator twice and `git status` must be clean" is the **only objective
+acceptance criterion the entire `M-` block has**, and 2.1b is about to add ~26 more generated
+meshes to it. An acceptance test that fails for a reason unrelated to what it measures is one
+nobody will keep running — and this is the same class of problem as B-71, which
+`Concurrency_Protocol.md` §7 already promoted to a prerequisite for two-lane working.
+*Fix:* pin the generated formats: `*.obj text eol=lf` and `*.mtl text eol=lf` in `.gitattributes`,
+then re-normalise once (`git add --renormalize .`). **`.gitattributes` is a 🔧 BUILD-lane file** —
+filed, not fixed. Fold into **5.4**, which is already the item for "stop the acceptance test lying".
+
 ### P1 — real, found this pass
 
 **B-67 · In a release build, Local Match drives a different unit than the one you are looking

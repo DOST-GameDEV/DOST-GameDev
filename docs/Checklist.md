@@ -223,17 +223,32 @@ most internal ordering. **2.1 gates 2.2 gates everything else in the phase** —
 you cannot lay out a map from a kit that does not exist, and you cannot tune
 HUD contrast or hazard placement against a grey box.
 
-- [ ] **2.1 · The environment kit (M-6).** ⛔ 1.2
+- [ ] **2.1 · The environment kit (M-6).** ~~⛔ 1.2~~ **unblocked — 1.2 decided 2026-07-28**
       Split deliberately into two briefs, because it needs two different hats:
-  - [ ] **2.1a · Kit art direction and piece list.** 🤖 Opus, high
-        Which pieces, what silhouette, what proportion, what reads as an
-        eskinita rather than as generic low-poly. Corrugated GI-sheet fence,
-        sari-sari store front, electric post with drooping wire, laundry line,
-        tricycle, bollards, crates, tires; plaza set with a basketball ring,
-        which is the actual Philippine plaza. ≤400 tris each, 2-unit grid.
-  - [ ] **2.1b · Generate the kit through `tools/models/generate_all.gd`.** 🤖 Sonnet, medium
-        Determinism rules unchanged (`Handoff.md` M-1): two runs byte-identical,
-        `git status` clean after the second. Convex collision per piece.
+  - [x] **2.1a · Kit art direction and piece list.** 🤖 Opus, high
+        **Delivered as [`Environment_Kit_Spec.md`](Environment_Kit_Spec.md).** 26 pieces across a
+        core set, an Eskinita set and a Bayan Plaza set, each with footprint on the 2-unit grid,
+        height, triangle budget, materials by `UiTheme` token and what it contributes. Also: the
+        Metro/Eskinita and Province/Bayan-Plaza naming reconciled explicitly, the argument for
+        folding **Barong Barong into Eskinita's boundary rather than building a third map**, a
+        twelve-token `ENV_*` environment palette added to `ui_theme.gd`, the three-layer boundary
+        technique, and the height law derived from the measured **1.25-unit FPP eye height**.
+        Ticked as a **specification** — no geometry exists yet; that is 2.1b.
+  - [ ] **2.1b-0 · `transform` parameter on `add_revolve` / `add_extrude`.** 🤖 Sonnet, medium
+        **Prerequisite for 2.1b.** `obj_writer.gd`'s revolve is locked to the Y axis at the
+        object's origin and its extrude only ever extrudes vertically, so an upright wheel or a
+        leaning sheet is not expressible. Add an optional trailing
+        `transform: Transform3D = Transform3D.IDENTITY` applied to every emitted vertex — ~6 lines.
+        It cannot break shading (`recalculate_normals()` rebuilds from geometry and the spec
+        already mandates it per piece) and cannot break determinism (`_fmt` snaps after the
+        transform, and the weld key is the printed form). Rationale and the no-change fallback are
+        in `Environment_Kit_Spec.md` §5.
+  - [ ] **2.1b · Generate the kit through `tools/models/generate_all.gd`.** 🤖 Sonnet, medium ⛔ 2.1b-0
+        **Build it from [`Environment_Kit_Spec.md`](Environment_Kit_Spec.md); §11 is the build
+        order and §12 is the acceptance.** Determinism rules unchanged (`Handoff.md` M-1): two runs
+        byte-identical, `git status` clean after the second. Convex collision per piece. Report the
+        actual triangle count per piece in the commit body, and grep the emitted `.mtl` files for
+        the two forbidden role colours.
 - [ ] **2.2 · Eskinita — the first real map (M-7).** 🤖 Opus, high ⛔ 2.1
       Opus rather than Sonnet: the hard question is "does this read as a
       Philippine side street", not "does this scene load". Includes, in one
@@ -322,6 +337,16 @@ touch map scenes.
 - [ ] **4.4 · Balance pass — Guard/Dash, cooldowns, ranges, both game modes.** 🤖 Sonnet, medium ⛔ 0.4
       Never done. Write the numbers down. **Balance both Option A and Option B
       to shippable quality** — per 1.5, neither is deprioritised.
+- [ ] **4.4a · `throw_bakya`'s maximum range is 4.81 units — less than half of every other
+      profile.** 🤖 Sonnet, medium
+      Computed from the committed `.tres` files with `GRAVITY = 20.0` and the measured 1.248
+      release height: `throw_default` **10.13**, `throw_bagsak` **9.89**, `throw_flick` **12.90**,
+      `throw_bakya` **4.81**. `gravity_scale 1.6` with `arc_angle_deg 8.0` is heavy *and* flat, so
+      it drops out of the air almost immediately — Bakya Bash cannot reach any throwing line the
+      other three can use. Almost certainly a tuning bug rather than an identity, and it has never
+      been felt because B-76 means no Prop can select it. Retune, then re-check
+      `Environment_Kit_Spec.md` §9's table. Filed separately from 4.4 because the map's throwing
+      line is placed against these numbers.
 - [ ] **4.5 · Hitstop.** 🤖 Sonnet, medium
       The one piece of the Q-8 hit-feedback set that never landed. Cheap, and it
       is what makes a landed hit feel like contact rather than a colour change.
@@ -344,10 +369,18 @@ touch map scenes.
       `Main.tscn` and `main.gd`'s spawn paths. **Do it late** — it is the only
       way to playtest without four laptops, so it dies after the last playtest,
       not before.
-- [ ] **5.4 · Decide the `.import` UID churn (B-71).** 🤖 Sonnet, medium
+- [ ] **5.4 · Decide the `.import` UID churn (B-71) — and the EOL churn (B-84).** 🤖 Sonnet, medium
       Either accept it or stop tracking `.import` UIDs. Low stakes, but it makes
       every "regenerate and check `git status`" acceptance test unreliable, and
       those are load-bearing for the whole M-block.
+      **B-84, found 2026-07-28, is the second half of the same problem and is cheaper to fix.**
+      `.gitattributes` marks `*.obj`/`*.mtl` as `text` while `core.autocrlf = true`, so git checks
+      them out CRLF and `FileAccess.store_line()` rewrites them LF — the files show as modified
+      after every generator run with **zero** lines changed (measured: `git diff --numstat` empty
+      both with and without `--ignore-cr-at-eol`). **The generator is deterministic; the test is
+      broken.** Fix: `*.obj text eol=lf`, `*.mtl text eol=lf`, then `git add --renormalize .`.
+      **Do this before 2.1b**, which adds ~26 more generated meshes to an acceptance test that
+      currently cries wolf on every run.
 
 ---
 

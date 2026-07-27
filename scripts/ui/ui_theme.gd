@@ -38,6 +38,48 @@ const DANGER: Color = Color("f80000")     ## red: destructive / out-of-bounds
 ## off-palette the moment the background colour changes.
 const INK_MUTED: Color = Color(INK.r, INK.g, INK.b, 0.62)
 
+# --- Environment palette (docs/Environment_Kit_Spec.md, checklist 2.1a) --------
+#
+# WHY THESE EXIST AT ALL. The eight tokens above are a UI palette. Six of them
+# are unusable on a street (INK, PANEL and CARD are near-black and near-white;
+# DANGER is reserved for downed/out-of-bounds) and two of them are FORBIDDEN on
+# environment geometry outright:
+#
+#   ⛔ OFFENSE (#f87020) and DEFENSE (#0080e8) may NEVER appear on a map.
+#
+# That is `Dev_Plan.md` §4.2's hard rule read to its conclusion: if a wall can be
+# orange, then orange no longer means "this team is attacking". A player has to
+# be able to learn one colour pair and read every screen, and the world is the
+# largest surface in the frame. So the environment gets its own band of the
+# palette and never borrows from the role band.
+#
+# THE DISCIPLINE THAT KEEPS THEM APART. Every colour below is held under ~70%
+# saturation and, where its hue approaches a role hue, under ~75% value. That is
+# what stops ENV_RUST reading as OFFENSE at arena distance — it is the same
+# family of hue and deliberately two steps down in both saturation and
+# brightness. Add nothing here that does not clear that bar, and add nothing in
+# the cyan-blue band at all.
+#
+# These are consumed by `tools/models/generate_all.gd`'s `_build_*` functions as
+# `.mtl` diffuse values, exactly as the prop colours already are — never a
+# retyped hex, so the world and the UI cannot drift apart.
+#
+# NOT part of the generated `Theme`. `build()` does not read them and must not:
+# `assets/ui/tumbang_preso.tres` is a Control theme, and adding 3D surface
+# colours to it would put map paint into every button's inheritance chain.
+const ENV_ASPHALT: Color = Color("4a4e57")        ## road surface, gutter channel
+const ENV_CONCRETE: Color = Color("b7b2a6")       ## walls, kerbs, plaza slab, bollards
+const ENV_CONCRETE_DARK: Color = Color("8c877c")  ## damp-course skirts, shadow bands, wall bases
+const ENV_GI_SHEET: Color = Color("9aa3a2")       ## galvanised-iron corrugated sheet
+const ENV_RUST: Color = Color("a65a3a")           ## rust streaks, drums, tricycle frame
+const ENV_WOOD: Color = Color("a8763f")           ## crates, counters, bench slats, backboards
+const ENV_WOOD_DARK: Color = Color("6b4a28")      ## posts, framing, tree trunks
+const ENV_FOLIAGE: Color = Color("4f8c3b")        ## canopies, planters — front layer
+const ENV_FOLIAGE_DARK: Color = Color("35652a")   ## canopies — the layer behind, for depth
+const ENV_DIRT: Color = Color("c2a878")           ## dirt apron, mud, unpaved shoulder
+const ENV_TARP: Color = Color("dcd5c4")           ## awning canvas, sacks, hung laundry
+const ENV_RUBBER: Color = Color("2b2b30")         ## tires, wheels
+
 # --- Chrome -------------------------------------------------------------------
 const BORDER_WIDTH: int = 3
 const CORNER_RADIUS: int = 6
