@@ -883,11 +883,49 @@ document to ask.
 
 1. Install **Godot 4.7**, Standard build (not .NET — this project is GDScript), from
    godotengine.org/download. Single executable; unzip and run.
-2. Clone the repo, open `project.godot` in Godot.
-3. `git lfs install` before touching any art, font, or audio.
-4. Press **F5**. That runs `scenes/ui/MainMenu.tscn` → **Start** → **Local Match** for the
+2. **`git lfs install` FIRST, before you clone.** See §7.1 — this is the one step that silently
+   ruins a fresh checkout.
+3. Clone the repo, open `project.godot` in Godot.
+4. Set your git identity for this repo (§7.1 step 4).
+5. Press **F5**. That runs `scenes/ui/MainMenu.tscn` → **Start** → **Local Match** for the
    single-PC 4-unit flow. Or open `scenes/main/Main.tscn` and press **F6** to jump straight
    into a match.
+
+### 7.1 Moving to another machine
+
+**Nothing machine-specific is committed.** Audited 2026-07-27: no absolute path appears in any
+tracked file. The only one that exists (`executable_path` pointing at a local Godot binary) lives
+in `.godot/editor/project_metadata.cfg`, which is gitignored and regenerated on first open. So the
+move is a clone, not a migration — but four things have to be done in order.
+
+1. **`git lfs install` before cloning.** Thirteen binaries (twelve `.glb` character models plus
+   `colormap.png`) are LFS-tracked. Clone without LFS and every one arrives as a ~130-byte text
+   pointer; Godot then fails to import all twelve models and every character in the game is
+   invisible. It does not present as an LFS problem — it presents as broken art. If it has already
+   happened, `git lfs install && git lfs pull` fixes it in place.
+2. **Install Godot 4.7** — the same minor version. `project.godot` declares
+   `config/features=PackedStringArray("4.7", "Forward Plus")`; an older build refuses the project
+   and a newer one may silently re-save resources in a format 4.7 cannot read.
+3. **Expect a slow first open.** Godot rebuilds `.godot/` (the import cache and the global
+   `class_name` registry) from scratch. Nothing is wrong. Do not commit `.godot/` — it is
+   gitignored for this reason.
+4. **Re-set the git identity.** It is configured `--local`, so it lives in `.git/config` and does
+   **not** travel with a fresh clone:
+   ```bash
+   git config user.name "M4tyu633"
+   git config user.email "matthewtlabrador@gmail.com"
+   ```
+   Verify after the first commit with `git log -1 --format='%an <%ae> | %cn <%ce>'`. Both sides
+   must read `M4tyu633 <matthewtlabrador@gmail.com>`, with no `Co-authored-by:` trailer in the
+   body.
+5. **Authenticate to GitHub.** The remote is HTTPS
+   (`https://github.com/DOST-GameDEV/DOST-GameDev.git`), so the new machine needs either Git
+   Credential Manager or a PAT. Nothing in the repo carries credentials.
+6. **`export_presets.cfg` will not be there.** It is gitignored — that is `Handoff.md` **F-3**,
+   which un-ignores it precisely so the build stops being machine-local.
+
+**Verify the move worked:** `git lfs ls-files` lists thirteen files, `ls -l` on any `.glb` shows
+~250 KB rather than ~130 bytes, and a Local Match shows characters rather than floating shadows.
 
 **Local controls** (rebindable in Settings): P1 = WASD, Space bump, Shift guard/dash, Q special.
 P2 = arrows, Enter bump, End guard/dash, Right Shift special. P3/P4 are registered but
