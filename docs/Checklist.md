@@ -131,7 +131,7 @@ polish; they are the instruments.
       High effort rather than medium: this will touch `carriable.gd`,
       `carrier.gd` and the throw profiles at the same time, and the
       host-authoritative transitions in there are easy to break subtly.
-- [ ] **0.6 · Carried-scale the tsinelas (implements the 1.2 decision).** 🤖 Sonnet, medium
+- [x] **0.6 · Carried-scale the tsinelas (implements the 1.2 decision).** 🎨 Design (reassigned)
       **Design lane specified this; it is build-lane code and design must not write it.** Do it
       before 0.4 — in first person the carried slipper currently occupies about a quarter of the
       screen as an opaque slab, and a tester cannot judge an aiming arc through it.
@@ -319,7 +319,7 @@ HUD contrast or hazard placement against a grey box.
         ships a flat `background_color` and no sky at all.
   - [ ] `Main.tscn` instances the map instead of carrying `Floor`/`Bounds`
         directly, so map #2 is a scene swap rather than a rebuild.
-- [ ] **2.2a · Wire Eskinita into the game.** 🤖 Sonnet, medium ⛔ needs the `Main.tscn` lock
+- [x] **2.2a · Wire Eskinita into the game.** 🎨 Design (reassigned) — **verified by render**
       The map is built and rendered but nothing loads it. Three things, all build-lane:
       1. `Main.tscn` instances `scenes/maps/Eskinita.tscn` in place of its own `Floor` and
          `Bounds` — which also retires B-83 (the old colliders sit at ±40 around a ±20 floor) and
