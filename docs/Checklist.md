@@ -329,12 +329,15 @@ HUD contrast or hazard placement against a grey box.
          already placed as two team pairs at opposite ends of the alley.
       3. Delete the temporary decals from 0.3; the map carries real ones now.
       *Then* 0.4 can be played in a real map rather than a grey box.
-- [ ] **2.3 · Persons — moodboard restyle (M-5).** 🤖 Sonnet, medium ⛔ 2.1a
-      Palette retint toward the moodboard's character render plus two or three
-      silhouette-defining accessories. **Steps 1–3 only — step 4 (walk/run
-      locomotion) is already done** and the docs claiming "only `idle` of 32 is
-      wired" are stale: `character_visual.gd::_play_locomotion` selects
-      idle/walk/sprint from horizontal speed.
+- [~] **2.3 · Persons — moodboard restyle (M-5).** 🎨 Design — **steps 1+3 done and
+      render-verified; step 2 (accessories) NOT done, step 4 was already done.**
+      Palette retint landed as a UV-cell palette-remap shader
+      (`assets/characters/persons/materials/`), wired through each `.glb.import`'s
+      `use_external` material. Verified by render at 1.5u, 3.6u and the 20u the
+      acceptance criterion names. **Step 2 (accessory meshes on bones) is blocked
+      on lane ownership, not on art** — attaching a mesh to a bone is
+      `scripts/characters/character_visual.gd`, which is 🔧 Build's. See
+      `Handoff.md` M-5 for the exact 20 lines needed. Stays `[~]` until 0.4 plays it.
 - [~] **2.4 · Bayan Plaza — the second map.** 🎨 Design — **built and rendered, never played**
       A scene swap once 2.2 has proven the pattern. **First candidate to cut**
       under time pressure — see "If time runs short" at the bottom.
@@ -480,10 +483,17 @@ Budget this like a feature.
       forces the shared-screen fallback (GDD §7), you need to know **weeks**
       before the deadline, and the FPP/TPP split makes that pivot cost one to
       two days, not half a day. **Book four laptops now.** No model can run this.
-- [ ] **6.2 · Live-demo script and trailer beat sheet.** 🤖 **Opus, high** ⛔ 2.2
-      What gets shown, in what order, in how many minutes, and what the fallback
-      is if a peer drops. Demo-day reliability is a feature — arguably the most
-      important one. A crash in front of judges costs more than a missing map.
+- [x] **6.2 · Live-demo script and trailer beat sheet.** 🎨 Design (Opus) — **delivered as
+      [`Demo_Script_and_Trailer.md`](Demo_Script_and_Trailer.md).** Six-minute live running
+      order, a printed controls card, a four-rung failure ladder, the 75-second
+      loopable trailer beat sheet for 6.3 and the four-minute outline for 6.4.
+      Written against what the build actually does — §0 is a verified/not-verified
+      inventory. **Three findings a human must act on:** a full Bo5 at 90s/first-to-3
+      is longer than any booth demo, so the demo needs a shorter preset; **5.3's
+      "strip the local harness" directly contradicts the only network-free demo
+      fallback**; and nobody has ever tested what happens when a peer drops.
+      §7 lists all five open questions. `[x]` for the document, which is the
+      deliverable — 6.3 and 6.4 remain the capture work.
 - [ ] **6.3 · Trailer, 1–2 min, loopable — capture and edit.** 🤖 Sonnet, medium ⛔ 6.2, 4.1
       Needs the real map and audio to exist. `tools/arena_camera.gd` was
       deliberately preserved for exactly this — it is 100 lines of working
