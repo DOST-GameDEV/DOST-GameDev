@@ -310,12 +310,19 @@ func _post_electric() -> void:
 	w.set_material("timber", UiTheme.ENV_WOOD_DARK)
 	w.set_material("wire", UiTheme.INK)
 
-	_box(w, 0, 0, 0.22, 0.22, 0.0, 4.50, "timber")
-	_box(w, 0, 0, 1.60, 0.14, 3.72, 3.86, "timber")
+	# Plan item E, scale fix. Was 4.50 tall against a 1.6 Person - barely three
+	# times head height, where a real Philippine post is 8-9 m. The whole kit is
+	# authored at 1 unit = 1 m and the posts were the loudest survivor: they set
+	# the vertical rhythm of the alley, and short ones made the street read as a
+	# model village. 7.2 keeps the wires readable overhead without pushing them
+	# out of frame for an FPP eye at 1.25. Every internal height below moved with
+	# it rather than being re-guessed.
+	_box(w, 0, 0, 0.24, 0.24, 0.0, 7.20, "timber")
+	_box(w, 0, 0, 1.60, 0.14, 6.10, 6.24, "timber")
 	for i in range(3):
 		var x := -0.6 + 0.6 * float(i)
-		_box(w, x, 0, 0.09, 0.09, 3.86, 4.00, "wire")
-		_wire(w, Vector3(x, 3.97, 0.0), Vector3(x + 6.0, 3.97, 0.0), 0.55, 0.025, 8, "wire")
+		_box(w, x, 0, 0.09, 0.09, 6.24, 6.38, "wire")
+		_wire(w, Vector3(x, 6.35, 0.0), Vector3(x + 6.0, 6.35, 0.0), 0.55, 0.025, 8, "wire")
 	_finish(w, "env_post_electric")
 
 ## Sampay. This is the Barong Barong reference folded into Eskinita rather than
