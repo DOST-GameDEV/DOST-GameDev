@@ -18,21 +18,58 @@ Two agents, started at the same time, working `main` @ `a19cb6f` (PR #9 merged, 
 Sonnet takes both shared-scene locks; Opus needs none. The only shared file they both write is
 `Checklist.md`, whose conflicts are always resolved by **taking both sides**.
 
-**One-time setup, run once by whoever starts first:**
+### Setup — pick the row that matches how you are actually running
+
+| | |
+|---|---|
+| **Two people, two machines** (the common case) | **No worktrees.** Each person works in their own clone. Skip straight to §A below. |
+| **One machine, two agents** | **Worktrees are mandatory** — two Godot processes on one directory silently corrupt each other's `.godot/` import cache. §B below. |
+
+**§A · Two machines.** One person creates the shared branch, once:
 
 ```bash
 git switch main && git pull --ff-only
 git switch -c integration && git push -u origin integration
+```
 
+Then **each person, in their own clone:**
+
+```bash
+git fetch origin && git switch integration && git pull --ff-only
+git switch -c code/phase-0-instruments      # or art/prop-scale-and-kit
+
+# Identity does NOT travel with a clone — set it per machine or commits land wrong.
+git config user.name  "M4tyu633"
+git config user.email "matthewtlabrador@gmail.com"
+
+godot --headless --path . --import          # slow first time; expected
+```
+
+**§B · One machine.** Create `integration` as above, then:
+
+```bash
 git worktree add .worktrees/build  -b code/phase-0-instruments integration
 git worktree add .worktrees/design -b art/prop-scale-and-kit    integration
-
 for w in .worktrees/build .worktrees/design; do
   git -C "$w" config user.name  "M4tyu633"
   git -C "$w" config user.email "matthewtlabrador@gmail.com"
-  (cd "$w" && godot --headless --path . --import)   # each worktree needs its OWN import cache
+  (cd "$w" && godot --headless --path . --import)
 done
 ```
+
+> ### ⚠️ Two machines makes the `.import` UID churn WORSE, not better
+>
+> B-71's original reproduction was *literally* "opening the project on a second machine rebuilt
+> `.godot/` and reassigned a tracked `uid://`". Two people on two machines will hand each other
+> phantom `.import` diffs continuously. **Both lanes must check before every commit that touches
+> `assets/`:**
+>
+> ```bash
+> git diff --cached -- '*.import'      # if the ONLY change is a uid:// line:
+> git restore --staged <file>.import
+> ```
+>
+> This is checklist 5.4 and it should be resolved properly, early.
 
 ---
 
@@ -49,25 +86,27 @@ answer is "does this do the right thing", not "does this look right". If you hit
 docs/Handoff.md §5 and move on. It queues for the design lane.
 
 === ANOTHER AGENT IS WORKING THIS REPO RIGHT NOW ===
-An Opus 5 DESIGN agent is running concurrently in .worktrees/design on branch
+An Opus 5 DESIGN agent, driven by a different person, is running concurrently on branch
 art/prop-scale-and-kit. It is deciding prop scale (checklist 1.2) and writing the
 environment kit's art direction (2.1a). It owns assets/**, scenes/maps/**,
 scenes/characters/visuals/** and scripts/ui/ui_theme.gd. DO NOT WRITE TO THOSE. It needs no
 shared-scene lock, so both of the locks below are yours to take.
 
 READ docs/Concurrency_Protocol.md BEFORE TOUCHING ANYTHING. The parts that bite first:
-  - Work ONLY in .worktrees/build on branch code/phase-0-instruments, off `integration`.
-    Never the main checkout — two Godot editors on one directory silently corrupt each
-    other's .godot/ import cache.
+  - Work on branch code/phase-0-instruments, off `integration`. If you and the other agent
+    share one machine you MUST use separate git worktrees — two Godot processes on one
+    directory silently corrupt each other's .godot/ import cache. On separate machines,
+    an ordinary clone is fine.
   - scenes/ui/HUD.tscn and scenes/main/Main.tscn are SHARED files. Claim them in
     docs/SHARED_LOCKS.md first: commit ONLY that file to `integration` and push. If the
     push is rejected you did not get the lock — pull and check. Release in the same push
     that merges your work.
   - Do NOT bump application/config/version in a feature commit while two lanes run. The
     merge into `integration` bumps it. Documented amendment, not an oversight.
-  - If a staged .import file's ONLY change is its uid:// line, unstage it:
-    `git restore --staged <file>.import`. Two worktrees = two import caches = phantom UID
-    churn. This is B-71 / checklist 5.4.
+  - If a staged .import file's ONLY change is its uid:// line, UNSTAGE IT:
+    `git restore --staged <file>.import`. Two machines (or two worktrees) = two import
+    caches = continuous phantom UID churn. B-71's original repro was literally "opened the
+    project on a second machine and a tracked uid:// was reassigned". Checklist 5.4.
 
 READ FIRST, in this order:
   1. docs/Checklist.md — Phase 0 in full. It is the single source of truth for state/order.
@@ -196,23 +235,26 @@ two of them are yours now. If you find yourself doing something a specification 
 told you, you are in the wrong lane: hand it to the build lane.
 
 === ANOTHER AGENT IS WORKING THIS REPO RIGHT NOW ===
-A Sonnet 5 BUILD agent is running concurrently in .worktrees/build on branch
+A Sonnet 5 BUILD agent, driven by a different person, is running concurrently on branch
 code/phase-0-instruments. It is doing checklist 0.1, 0.2 and 0.3 — the HUD charge/channel
 meters, the per-side default Prop ability, and temporary base-circle/throwing-line decals.
 IT HOLDS THE LOCKS ON scenes/ui/HUD.tscn AND scenes/main/Main.tscn. Do not touch either.
 You need no shared lock for this task.
 
 READ docs/Concurrency_Protocol.md BEFORE TOUCHING ANYTHING. The parts that bite first:
-  - Work ONLY in .worktrees/design on branch art/prop-scale-and-kit, off `integration`.
-    Never the main checkout — two Godot editors on one directory silently corrupt each
-    other's .godot/ import cache.
+  - Work on branch art/prop-scale-and-kit, off `integration`. If you and the other agent
+    share one machine you MUST use separate git worktrees — two Godot processes on one
+    directory silently corrupt each other's .godot/ import cache. On separate machines,
+    an ordinary clone is fine.
   - You own assets/**, scenes/maps/**, scenes/characters/visuals/**,
     scripts/ui/ui_theme.gd, and the _build_*() shape functions in
     tools/models/generate_all.gd. You may READ anything; you may not WRITE outside that
     list. In particular scripts/** (except ui_theme.gd) belongs to the build lane.
   - Do NOT bump application/config/version in a feature commit while two lanes run.
-  - If a staged .import file's ONLY change is its uid:// line, unstage it. Two worktrees =
-    two import caches = phantom UID churn (B-71).
+  - If a staged .import file's ONLY change is its uid:// line, UNSTAGE IT:
+    `git restore --staged <file>.import`. Two machines (or two worktrees) = two import
+    caches = continuous phantom UID churn. B-71's original repro was literally "opened the
+    project on a second machine and a tracked uid:// was reassigned". Checklist 5.4.
 
 === THE MOODBOARD IS THE SPEC AND IT IS NOT IN THE REPO ===
 It is Harry's Canva board. IF IT HAS NOT BEEN ATTACHED TO THIS CHAT, STOP AND ASK FOR IT
