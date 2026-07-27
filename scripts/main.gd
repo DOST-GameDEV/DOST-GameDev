@@ -37,7 +37,11 @@ extends Node3D
 ## match-result screen. Read-only from here — MatchResult wires itself to
 ## MatchManager and needs nothing from main.gd.
 @onready var match_result: MatchResult = $HUDLayer/MatchResult
-@onready var kill_plane: KillPlane = $KillPlane
+@onready var map_root: Node3D = $Map
+## Checklist 2.2a: the KillPlane belongs to the MAP now, not to Main.tscn, so it
+## cannot be an @onready NodePath any more — the map is not instanced until
+## _load_map() runs. Resolved from the loaded map instead.
+var kill_plane: KillPlane = null
 ## B-20: no way out of a match existed except Alt+F4.
 @onready var pause_root: Control = %PauseRoot
 @onready var resume_button: Button = %ResumeButton
@@ -94,11 +98,87 @@ const TSINELAS_ABILITY_TEAM_B: AbilityBase = preload("res://scripts/abilities/re
 ## networked flow, rather than hand-writing 4 near-identical blocks.
 ## Populated once in _ready(); order is [TeamAProp, TeamAPerson, TeamBProp, TeamBPerson].
 var _local_roster: Array[CharacterBase] = []
-## Cycled through as players connect; only the first two matter until real
-## map spawn points exist (GDD's Eskinita/Bayan Plaza bases).
+## FALLBACK ONLY, since checklist 2.2a. The real spawn points are four Marker3Ds
+## under the loaded map's `SpawnPoints` node; this array is used only if a map
+## has none — or if something loads Main.tscn with no map at all, which is what
+## the render harness does.
 const SPAWN_POINTS: Array[Vector3] = [
 	Vector3(0, 1, -2), Vector3(0, 1, 2), Vector3(-3, 1, 0), Vector3(3, 1, 0)
 ]
+
+## Resolved once per match from the loaded map, then reused. Rebuilt on every
+## _load_map(), never cached across maps.
+var _map_spawns: Array[Transform3D] = []
+
+## Checklist 3.5 — instances the map the player picked, into $Map.
+##
+## The map owns the floor, the boundary, the kill plane, the field markings, the
+## hazard, the WorldEnvironment and its own sky. Main.tscn deliberately carries
+## NONE of those any more: a second WorldEnvironment in this scene would fight
+## the map's, and a hardcoded floor is what made every map look the same.
+##
+## ⚠️ NO CAMERA IS ADDED HERE OR IN A MAP. Person -> FPP, Prop -> TPP, derived
+## from is_person. That is the standing directive; a scene-level Camera3D is the
+## violation A-2 deleted and it caused B-03.
+func _load_map() -> void:
+	_map_spawns.clear()
+	for child in map_root.get_children():
+		map_root.remove_child(child)
+		child.queue_free()
+
+	var path := GameLaunch.selected_map_scene()
+	var packed := load(path) as PackedScene
+	if packed == null:
+		# Deliberately not fatal. A missing map must not cost the player their
+		# match — they get the fallback spawn ring and a warning in the log.
+		push_warning("main.gd: could not load map '%s'; running with no map." % path)
+		return
+	var instance := packed.instantiate() as Node3D
+	map_root.add_child(instance)
+
+	kill_plane = instance.find_child("KillPlane", true, false) as KillPlane
+
+	var points := instance.get_node_or_null("SpawnPoints")
+	if points == null:
+		push_warning("main.gd: map '%s' has no SpawnPoints; using the fallback ring." % path)
+		return
+	# Sorted by node name, NOT by get_children() order. B-68 is the same class of
+	# bug on the round-reset path: an order that depends on how the scene happens
+	# to be authored silently reassigns teams. Spawn0..Spawn3 is the contract.
+	var markers: Array[Node] = points.find_children("*", "Marker3D", false, false)
+	markers.sort_custom(func(a: Node, b: Node) -> bool: return a.name < b.name)
+	for marker in markers:
+		# The whole TRANSFORM, not just the origin. A spawn point has to say
+		# which way you are FACING as well as where you stand — the first render
+		# of this had all four units spawn at the ends of the alley looking at
+		# the wall behind them, because a Marker3D with no rotation means the
+		# default -Z facing and half the spawns are at the far end.
+		_map_spawns.append((marker as Marker3D).transform)
+
+## Where slot `index` spawns. Prefers the map's markers and falls back to
+## SPAWN_POINTS, so a map with no SpawnPoints still plays.
+##
+## Slot order is [TeamAProp, TeamAPerson, TeamBProp, TeamBPerson], so Spawn0/1
+## are one team and Spawn2/3 are the other. THIS IS WHERE B-54 GETS ANSWERED:
+## the markers in Eskinita are placed as two pairs at opposite ends of the alley,
+## so team-mates start together and opponents start apart, which the old
+## hardcoded ring never did.
+func _spawn_point(index: int) -> Vector3:
+	return _spawn_transform(index).origin
+
+## The full spawn transform. Yaw is taken from the marker so a map can face
+## players into the arena; the fallback ring has no opinion and returns none.
+func _spawn_transform(index: int) -> Transform3D:
+	if not _map_spawns.is_empty():
+		return _map_spawns[index % _map_spawns.size()]
+	return Transform3D(Basis.IDENTITY, SPAWN_POINTS[index % SPAWN_POINTS.size()])
+
+## Places a character at its slot, facing the way the map says. Kept separate
+## from _spawn_point() so the two call sites cannot drift apart on the rotation.
+func _place_at_spawn(character: CharacterBase, slot: int) -> void:
+	var t := _spawn_transform(slot)
+	character.position = t.origin
+	character.rotation.y = t.basis.get_euler().y
 
 var _spawned_peer_ids: Dictionary = {}
 ## B-21: peer_id -> permanently-assigned join index (0..3), separate from
@@ -136,10 +216,14 @@ func _ready() -> void:
 	# to visible; there's no pause menu yet (B-20, still open) to hang a real
 	# resume flow off of, so pressing Esc again re-captures for now.
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	# BEFORE anything that touches the world. Spawn points, the kill plane and
+	# the WorldEnvironment all live in the map now, not in this scene.
+	_load_map()
 	spawner.spawn_function = _build_networked_character
 	MatchManager.round_started.connect(_on_match_round_started)
 	MatchManager.round_intermission_started.connect(_on_round_intermission_started)
-	kill_plane.character_respawned.connect(_on_character_respawned)
+	if kill_plane != null:
+		kill_plane.character_respawned.connect(_on_character_respawned)
 	pause_root.visible = false
 	resume_button.pressed.connect(_on_resume_pressed)
 	menu_button.pressed.connect(_on_return_to_menu_pressed)
@@ -370,7 +454,7 @@ func _spawn_player(peer_id: int) -> void:
 	var index: int = _peer_join_index[peer_id]
 	var team := index / 2 # 0, 0, 1, 1 for up to MAX_PLAYERS = 4
 	var is_person := index % 2 == 0 # first peer of each team pair is the Person
-	var spawn_pos: Vector3 = SPAWN_POINTS[index % SPAWN_POINTS.size()]
+	var spawn_pos: Vector3 = _spawn_point(index)
 	var team_is_can_side := (team == 0) == MatchManager.team_a_is_can
 	var is_can := team_is_can_side and not is_person
 	# B-30: CharacterBase.player_id was never set on a networked spawn, so every
@@ -500,7 +584,7 @@ func _reset_world(team_a_is_can: bool) -> void:
 		# were carrying downed/sealed state, dents, and speed multipliers into
 		# the next round before this.
 		character.reset_for_new_round()
-		character.position = SPAWN_POINTS[entry["slot"] % SPAWN_POINTS.size()]
+		_place_at_spawn(character, entry["slot"])
 		character.spawn_position = character.position # B-15/B-35
 		if character.is_can:
 			RoundManager.register_can(character)
