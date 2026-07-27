@@ -73,9 +73,9 @@ while z <= Z_END:
 
 # --- Layer 2: masses standing behind the wall line, off-grid on purpose ------
 for n, (x, zz, kind) in enumerate([
-        (-13.5, -12.0, "a"), (-14.5, -4.0, "b"), (-13.0, 5.0, "a"),
+        (-13.5, -12.0, "a"), (-14.5, -4.0, "c"), (-13.0, 5.0, "d"),
         (-15.0, 13.0, "b"), (13.5, -13.0, "b"), (14.0, -3.0, "a"),
-        (13.0, 6.5, "b"), (15.0, 14.0, "a")]):
+        (13.0, 6.5, "c"), (15.0, 14.0, "d")]):
     add("Dressing/Layer2", f"L2_{n}", f"building_block_{kind}",
         x, 0.0, zz, 0.35 if n % 2 else -0.22)
 
@@ -161,11 +161,11 @@ size = Vector3(90, 4, 90)
 size = Vector3(3.6, 3, 11)
 
 [sub_resource type="ProceduralSkyMaterial" id="Sky_mat"]
-sky_top_color = Color(0.56078, 0.65882, 0.74118, 1)
-sky_horizon_color = Color(0.78431, 0.81569, 0.84706, 1)
-sky_curve = 0.09
-ground_bottom_color = Color(0.71765, 0.69804, 0.65098, 1)
-ground_horizon_color = Color(0.78431, 0.81569, 0.84706, 1)
+sky_top_color = Color(0.286, 0.565, 0.851, 1)
+sky_horizon_color = Color(0.91, 0.784, 0.604, 1)
+sky_curve = 0.18
+ground_bottom_color = Color(0.227, 0.243, 0.278, 1)
+ground_horizon_color = Color(0.91, 0.784, 0.604, 1)
 
 [sub_resource type="Sky" id="Sky_res"]
 sky_material = SubResource("Sky_mat")
@@ -173,9 +173,27 @@ sky_material = SubResource("Sky_mat")
 [sub_resource type="Environment" id="Env_eskinita"]
 background_mode = 2
 sky = SubResource("Sky_res")
-ambient_light_source = 3
-ambient_light_energy = 0.85
-tonemap_mode = 2
+ambient_light_source = 2
+ambient_light_color = Color(0.416, 0.514, 0.671, 1)
+ambient_light_energy = 0.55
+tonemap_mode = 0
+tonemap_white = 1.2
+ssao_enabled = true
+ssao_radius = 1.1
+ssao_intensity = 2.6
+ssao_power = 1.6
+ssao_detail = 0.4
+fog_enabled = true
+fog_light_color = Color(0.855, 0.784, 0.667, 1)
+fog_light_energy = 1.0
+fog_sun_scatter = 0.15
+fog_density = 0.0048
+fog_sky_affect = 0.55
+fog_aerial_perspective = 0.35
+adjustment_enabled = true
+adjustment_brightness = 1.0
+adjustment_contrast = 1.08
+adjustment_saturation = 1.2
 '''
 
 # ⚠️ NO `#` COMMENTS INSIDE THE EMITTED .tscn. Godot's scene format does not use
@@ -195,7 +213,13 @@ environment = SubResource("Env_eskinita")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
 transform = Transform3D(0.8, -0.4, 0.45, 0, 0.75, 0.66, -0.6, -0.53, 0.6, 0, 8, 0)
+light_color = Color(1, 0.941, 0.847, 1)
+light_energy = 1.25
+light_angular_distance = 1.2
 shadow_enabled = true
+shadow_bias = 0.03
+shadow_normal_bias = 1.5
+directional_shadow_max_distance = 60.0
 
 [node name="Floor" type="StaticBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)

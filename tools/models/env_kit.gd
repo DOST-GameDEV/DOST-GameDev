@@ -65,8 +65,14 @@ func build_all(output_dir: String) -> void:
 	_post_electric()
 	_laundry_line()
 	_sari_sari_store()
-	_building_block("env_building_block_a", 6.0, UiTheme.ENV_CONCRETE)
-	_building_block("env_building_block_b", 8.0, UiTheme.ENV_CONCRETE_DARK)
+	# Four masses, not two, and painted rather than concrete-grey. Heights are
+	# whole storeys at 1 unit = 1 m: 9.0 is three storeys plus parapet, 12.0 is
+	# four. The old 6.0/8.0 read as two-storey sheds and let far too much sky in
+	# at the top of the alley, which is what stopped Eskinita feeling enclosed.
+	_building_block("env_building_block_a", 9.0, UiTheme.ENV_PAINT_CREAM)
+	_building_block("env_building_block_b", 12.0, UiTheme.ENV_PAINT_TERRA)
+	_building_block("env_building_block_c", 9.0, UiTheme.ENV_PAINT_MINT)
+	_building_block("env_building_block_d", 12.0, UiTheme.ENV_PAINT_OCHRE)
 
 	# --- interior clutter (all <= 1.0 tall, so an FPP Person aims over it) ---
 	_bollard()
@@ -372,20 +378,76 @@ func _sari_sari_store() -> void:
 ## edge has depth rather than a single row. Windows are PAINTED, not modelled: at
 ## this distance a hole and a dark rectangle are the same image for a tenth of
 ## the cost.
+## A background mass standing behind the wall line. Never entered, never
+## collided with at close range — its entire job is to close the sky off the
+## top of the alley and give the eye something with STOREYS in it, so the street
+## reads as a street rather than as a floor with props on it.
+##
+## ⚠️ WINDOWS GO ON ALL FOUR FACES. They used to be emitted only on the -Z face,
+## so three sides of every building in the map were blank slabs — and because
+## `build_eskinita.py` yaws every Layer-2 mass by ±0.22-0.35 rad and stands them
+## on BOTH sides of the road, the blank sides were what the player actually saw
+## most of the time. That single omission is most of why the set read as
+## untextured greybox.
+##
+## ⚠️ HEIGHTS ARE IN METRES AND MUST STAY THAT WAY. The whole environment kit is
+## authored at 1 unit = 1 m — the monobloc chair is 0.89, the oil drum 0.90, the
+## basketball ring 3.85, all within centimetres of the real objects. A storey is
+## ~3 m, so `height` should always be a whole number of storeys plus a parapet.
+## Do not tune these by eye against the props: the props are the things that are
+## wrong (see the proportion audit), not the set.
 func _building_block(file_name: String, height: float, body: Color) -> void:
 	var w := ObjWriter.new("BuildingBlock")
 	w.set_material("body", body)
 	w.set_material("band", UiTheme.ENV_CONCRETE_DARK)
+	w.set_material("plinth", UiTheme.ENV_PAINT_PLINTH)
 	w.set_material("window", UiTheme.INK)
 
 	_box(w, 0, 0, 4.0, 3.0, 0.0, height, "body")
+	# Ground-floor shopfront: darker, and proud of the body so it casts its own
+	# shadow line. Real streets always have this break; without it a building is
+	# one flat colour from pavement to roof.
+	_box(w, 0, 0, 4.08, 3.08, 0.0, 2.4, "plinth")
+	# Roof parapet, same trick at the top so the silhouette is not a bare cut.
 	_box(w, 0, 0, 4.06, 3.06, height - 0.45, height - 0.25, "band")
-	var rows := int(height / 2.0)
+
+	var rows := int((height - 3.2) / 2.6)
+	var hw := 0.31
+	var hh := 0.45
 	for row in range(rows):
+		var y := 3.55 + 2.6 * float(row)
+		# Long faces (+/-Z): three windows each.
 		for col in range(3):
-			_flat_rect_vertical(w, -1.2 + 1.2 * float(col), -1.51,
-				0.62, 0.80, 0.9 + 1.85 * float(row), "window")
+			var cx := -1.2 + 1.2 * float(col)
+			_window(w, Vector3(cx, y, -1.51), Vector3(hw, 0, 0), Vector3(0, hh, 0))
+			_window(w, Vector3(cx, y, 1.51), Vector3(hw, 0, 0), Vector3(0, hh, 0))
+		# Short faces (+/-X): two windows each.
+		for col in range(2):
+			var cz := -0.7 + 1.4 * float(col)
+			_window(w, Vector3(-2.01, y, cz), Vector3(0, 0, hw), Vector3(0, hh, 0))
+			_window(w, Vector3(2.01, y, cz), Vector3(0, 0, hw), Vector3(0, hh, 0))
 	_finish(w, file_name)
+
+## A window pane, emitted with BOTH windings.
+##
+## ⚠️ Deliberately double-wound rather than carefully single-wound. A window has
+## to appear on four differently-facing walls, and `add_revolve`/`add_quad`
+## normal direction follows vertex order — the same rule that made every
+## overhead wire invisible once already, because a single-sided quad is culled
+## from the side you happen to be looking from. Four faces means four chances to
+## get it backwards and no error when you do.
+##
+## The cost of being sure is two extra triangles per pane. A building carries at
+## most 40 panes, so ~80 triangles on a piece that is never closer than the far
+## side of a wall. The back-facing copy is culled whenever the front one is
+## visible, so nothing ever z-fights.
+func _window(w: ObjWriter, centre: Vector3, right: Vector3, up: Vector3) -> void:
+	var a := centre - right - up
+	var b := centre - right + up
+	var c := centre + right + up
+	var d := centre + right - up
+	w.add_quad(a, b, c, d, "window")
+	w.add_quad(d, c, b, a, "window")
 
 ## A painted rectangle on a wall facing -Z. Same winding care as _flat_rect, one
 ## axis over.

@@ -198,9 +198,68 @@ func _apply_dents(radius: float, y: float, angle: float, dents: Array) -> float:
 ## CCW from above means the right side runs toe->heel (+Z), and the left
 ## side runs heel->toe (-Z), completing the loop at the toe tip.
 ## Width profile: ±0.26 at ball, ±0.18 waisted at arch, ±0.22 at heel.
+## One arm of the Y-strap: a rectangular cross-section swept along a quadratic
+## Bezier from `start` (anchored on the footbed edge) through `control` (the
+## apex, above where the top of a foot would be) to `finish` (the top of the toe
+## post). Both arms meet at `finish`, which is what makes the Y.
+##
+## Swept rather than extruded because the arch is the point. `add_extrude` only
+## walks a 2D outline up the Y axis, so it cannot produce a band that leaves the
+## sole, rises, and comes back down to a single shared point.
+##
+## Winding: each ring's four corners are emitted in a fixed order around the
+## tangent, and consecutive rings are stitched with that same order, so every
+## side face inherits the outward direction from the first ring. Getting this
+## backwards makes the whole strap render inside-out, which is loud and obvious
+## in any render rather than silent — deliberately preferred over the
+## double-winding trick used for the building windows, because this band is
+## chunky enough that a hidden inverted face would also break the M-4 outline
+## pass (an inverted hull on inverted geometry produces no outline at all).
+func _strap_band(writer: ObjWriter, start: Vector3, control: Vector3,
+		finish: Vector3) -> void:
+	const SEGMENTS: int = 7
+	const HALF_WIDTH: float = 0.032
+	const HALF_THICK: float = 0.017
+
+	var rings: Array[Array] = []
+	for i in range(SEGMENTS + 1):
+		var t := float(i) / float(SEGMENTS)
+		var inv := 1.0 - t
+		# Quadratic Bezier and its analytic derivative — the derivative gives the
+		# tangent directly, which is cheaper and steadier than differencing
+		# neighbouring samples (that degenerates at the endpoints).
+		var point: Vector3 = inv * inv * start + 2.0 * inv * t * control + t * t * finish
+		var tangent: Vector3 = (2.0 * inv * (control - start) + 2.0 * t * (finish - control)).normalized()
+		# The band should stay flat-side-up along its whole run, so the frame is
+		# built from world up rather than from a rotation-minimising frame. The
+		# arc never approaches vertical, so `up` and `tangent` never align and
+		# the cross product is always well conditioned.
+		var right := tangent.cross(Vector3.UP).normalized()
+		var up := right.cross(tangent).normalized()
+		rings.append([
+			point + right * HALF_WIDTH + up * HALF_THICK,
+			point - right * HALF_WIDTH + up * HALF_THICK,
+			point - right * HALF_WIDTH - up * HALF_THICK,
+			point + right * HALF_WIDTH - up * HALF_THICK,
+		])
+
+	for i in range(SEGMENTS):
+		var a: Array = rings[i]
+		var b: Array = rings[i + 1]
+		for corner in range(4):
+			var nxt := (corner + 1) % 4
+			writer.add_quad(a[corner], b[corner], b[nxt], a[nxt], "strap")
+
+	# Cap only the footbed end. The toe-post end is buried inside the post knob,
+	# so a cap there would z-fight with it for no visible gain.
+	var first: Array = rings[0]
+	writer.add_quad(first[3], first[2], first[1], first[0], "strap")
+
+
 func _build_tsinelas() -> void:
 	var writer := ObjWriter.new("Tsinelas")
 	writer.set_material("sole", UiTheme.IMPACT)
+	writer.set_material("midsole", UiTheme.IMPACT.darkened(0.34))
 	writer.set_material("strap", UiTheme.HIGHLIGHT)
 	writer.set_material("post", UiTheme.INK)
 
@@ -220,7 +279,16 @@ func _build_tsinelas() -> void:
 		Vector2(-0.10, -0.620),  # 11  toe-left
 		Vector2( 0.00, -0.675),  # 12  toe-tip center
 	])
-	writer.add_extrude(sole_outline, 0.0, 0.10, "sole")
+	# Two layers, not one slab. A real tsinelas has a darker rubber midsole under
+	# a lighter footbed, and the step between them catches a shadow line that
+	# makes the whole thing read as an object rather than as a flat lozenge. The
+	# footbed is inset 7% so that step is visible from any angle, including from
+	# directly above, which is the angle a Prop is usually seen from.
+	var footbed_outline := PackedVector2Array()
+	for p in sole_outline:
+		footbed_outline.append(p * 0.93)
+	writer.add_extrude(sole_outline, 0.0, 0.045, "midsole")
+	writer.add_extrude(footbed_outline, 0.045, 0.10, "sole")
 
 	# --- Toe post ---
 	# Small cylindrical knob between the toes, sitting on top of the sole.
@@ -238,34 +306,24 @@ func _build_tsinelas() -> void:
 	writer.add_extrude(post_outline, 0.10, 0.165, "post")
 
 	# --- Y-straps ---
-	# Two diagonal ribbon quads from the toe post to the arch sides.
-	# Top face only — thin enough to read at TPP distance without side faces.
-	# Perpendicular vector = 90-deg CCW rotation of the strap direction in XZ,
-	# which makes add_quad(a, b, c, d) emit a face whose normal is +Y.
-	var strap_y: float = 0.10
-	var W: float = 0.03  # strap half-width
-
-	# Right strap: post (0, -0.55) -> arch-right (0.22, -0.05) in XZ.
-	var rpost := Vector2(0.0, -0.55)
-	var rside := Vector2(0.22, -0.05)
-	var rdir := (rside - rpost).normalized()
-	var rperp := Vector2(-rdir.y, rdir.x)  # 90 deg CCW keeps normal pointing +Y
-	var ra0 := Vector3(rpost.x + rperp.x * W, strap_y, rpost.y + rperp.y * W)
-	var rb0 := Vector3(rpost.x - rperp.x * W, strap_y, rpost.y - rperp.y * W)
-	var ra1 := Vector3(rside.x + rperp.x * W, strap_y, rside.y + rperp.y * W)
-	var rb1 := Vector3(rside.x - rperp.x * W, strap_y, rside.y - rperp.y * W)
-	writer.add_quad(ra0, ra1, rb1, rb0, "strap")
-
-	# Left strap: mirror of right.
-	var lpost := Vector2(0.0, -0.55)
-	var lside := Vector2(-0.22, -0.05)
-	var ldir := (lside - lpost).normalized()
-	var lperp := Vector2(-ldir.y, ldir.x)
-	var la0 := Vector3(lpost.x + lperp.x * W, strap_y, lpost.y + lperp.y * W)
-	var lb0 := Vector3(lpost.x - lperp.x * W, strap_y, lpost.y - lperp.y * W)
-	var la1 := Vector3(lside.x + lperp.x * W, strap_y, lside.y + lperp.y * W)
-	var lb1 := Vector3(lside.x - lperp.x * W, strap_y, lside.y - lperp.y * W)
-	writer.add_quad(la0, la1, lb1, lb0, "strap")
+	# ⚠️ THESE USED TO BE FLAT QUADS AT strap_y = 0.10 — which is EXACTLY the top
+	# face of the sole. A strap lying in the same plane as the footbed is not a
+	# strap, it is a decal painted on the footbed, and that is precisely how it
+	# rendered: a yellow chevron drawn on a pink lozenge, with no silhouette of
+	# its own from any angle. It was the single thing making the hero prop read
+	# as unfinished.
+	#
+	# They are now swept bands that ARCH over where a foot would be, so the
+	# slipper has a hole through it — which is the whole visual signature of a
+	# tsinelas and the thing that makes it readable in flight.
+	# ⚠️ The footbed anchors must sit INSIDE the sole outline at that z, not on
+	# the nominal half-width. The waist of the sole is only +/-0.18 at z=0, and
+	# the footbed is inset a further 7%, so anchoring at +/-0.235 hung both straps
+	# off the edge in mid-air. +/-0.163 lands them on the footbed.
+	_strap_band(writer, Vector3(0.163, 0.09, 0.01),
+		Vector3(0.132, 0.245, -0.26), Vector3(0.0, 0.170, -0.505))
+	_strap_band(writer, Vector3(-0.163, 0.09, 0.01),
+		Vector3(-0.132, 0.245, -0.26), Vector3(0.0, 0.170, -0.505))
 
 	writer.recalculate_normals(40.0)
 	writer.write(OUTPUT_DIR + "tsinelas")
