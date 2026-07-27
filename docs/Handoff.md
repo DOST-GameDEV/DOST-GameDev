@@ -1427,7 +1427,8 @@ every ring recolours. The FPP self-hide still hides your body and still keeps yo
 
 ---
 
-#### U-7 · Settings and match-result polish `[ ]`
+#### U-7 · Settings and match-result polish `[~]`
+<!-- [DONE @ v4.20] Settings panel + keybind viewer, Settings button in pause menu, MatchResult FoldCorner, Esc everywhere. lobby.gd Esc added inline at cherry-pick. -->
 
 The tail. Both screens work; both are the last two on bare-ish styling.
 

@@ -67,25 +67,32 @@ func _on_rebind_button_pressed(action: String) -> void:
 	_action_buttons[action].text = "…"
 
 func _unhandled_input(event: InputEvent) -> void:
-	if _listening_action == "":
+	if not (event is InputEventKey and event.pressed and not event.echo):
 		return
-	if event is InputEventKey and event.pressed and not event.echo:
-		var key_event := event as InputEventKey
+	var key_event := event as InputEventKey
+	if _listening_action == "":
+		# U-7: Esc exits the panel (back to pause menu or main menu, whoever
+		# wired back_pressed). Handled even when not rebinding so every panel
+		# in the game has a working Esc path (Dev_Plan.md §4.7 / Handoff.md U-7).
 		if key_event.physical_keycode == KEY_ESCAPE:
+			get_viewport().set_input_as_handled()
+			_on_back_pressed()
+		return
+	if key_event.physical_keycode == KEY_ESCAPE:
+		_action_buttons[_listening_action].text = SettingsManager.get_binding_display_name(_listening_action)
+		status_label.text = "Rebind cancelled."
+		_listening_action = ""
+	else:
+		# B-22: rebind_action() now refuses (and reports) a key already used
+		# by another action instead of silently double-binding it.
+		var conflict_with := SettingsManager.rebind_action(_listening_action, key_event.physical_keycode)
+		if conflict_with != "":
 			_action_buttons[_listening_action].text = SettingsManager.get_binding_display_name(_listening_action)
-			status_label.text = "Rebind cancelled."
-			_listening_action = ""
+			status_label.text = "That key is already \"%s\". Choose a different key." % conflict_with
 		else:
-			# B-22: rebind_action() now refuses (and reports) a key already used
-			# by another action instead of silently double-binding it.
-			var conflict_with := SettingsManager.rebind_action(_listening_action, key_event.physical_keycode)
-			if conflict_with != "":
-				_action_buttons[_listening_action].text = SettingsManager.get_binding_display_name(_listening_action)
-				status_label.text = "That key is already \"%s\". Choose a different key." % conflict_with
-			else:
-				status_label.text = "\"%s\" rebound." % SettingsManager.ACTION_LABELS.get(_listening_action, _listening_action)
-				_listening_action = ""
-		get_viewport().set_input_as_handled()
+			status_label.text = "\"%s\" rebound." % SettingsManager.ACTION_LABELS.get(_listening_action, _listening_action)
+			_listening_action = ""
+	get_viewport().set_input_as_handled()
 
 ## Refreshes whichever row's button just changed — covers both rebinds made
 ## through this panel and ones applied elsewhere (e.g. reset_all_to_default()).

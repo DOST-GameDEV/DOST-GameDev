@@ -1,6 +1,11 @@
-[gd_scene load_steps=2 format=3 uid="uid://dqx7h4k9m2n8p"]
+[gd_scene load_steps=4 format=3 uid="uid://dqx7h4k9m2n8p"]
 
 [ext_resource type="Script" path="res://scripts/ui/match_result.gd" id="1"]
+[ext_resource type="Shader" path="res://assets/ui/card_fold.gdshader" id="2"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_fold"]
+shader = ExtResource("2")
+shader_parameter/fold_color = Color(0.016, 0.031, 0.22, 1)
 
 [node name="MatchResult" type="Control"]
 layout_mode = 3
@@ -124,3 +129,15 @@ text = "REMATCH"
 unique_name_in_owner = true
 layout_mode = 2
 text = "MAIN MENU"
+
+[node name="FoldCorner" type="Control" parent="Card"]
+layout_mode = 1
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -16.0
+offset_top = -16.0
+custom_minimum_size = Vector2(16, 16)
+mouse_filter = 2
+material = SubResource("ShaderMaterial_fold")

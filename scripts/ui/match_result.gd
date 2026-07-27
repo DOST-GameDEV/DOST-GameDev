@@ -24,6 +24,15 @@ func _ready() -> void:
 	rematch_button.pressed.connect(_on_rematch_pressed)
 	menu_button.pressed.connect(_on_menu_pressed)
 
+## U-7: Esc exits to the main menu from the match-result screen — same path as
+## the Menu button, so the same teardown applies.
+func _unhandled_input(event: InputEvent) -> void:
+	if not visible:
+		return
+	if event.is_action_pressed("ui_cancel"):
+		get_viewport().set_input_as_handled()
+		_on_menu_pressed()
+
 func _on_match_won(winning_team: int) -> void:
 	message_label.text = "%s WINS THE MATCH!" % ("TEAM A" if winning_team == 0 else "TEAM B")
 	# Q-4/§4.2 hard rule: the accent bar tracks ROLE, not team — colour the
