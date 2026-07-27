@@ -171,6 +171,16 @@ ambient_light_energy = 0.85
 tonemap_mode = 2
 '''
 
+# ⚠️ NO `#` COMMENTS INSIDE THE EMITTED .tscn. Godot's scene format does not use
+# `#` for comments, so a stray one silently breaks the NEXT node's declaration —
+# it cost a debugging round when four `#` lines above [node name="SpawnPoints"]
+# made every Spawn marker fail to instantiate with "parent path has vanished".
+# Explain things HERE, in the generator, where they also survive an editor save.
+#
+# Spawn0/1 are the north pair and are yawed 180 degrees so they face down the
+# alley; Spawn2/3 are the south pair and keep the default -Z facing. main.gd
+# reads the whole transform, not just the origin, so this is what stops every
+# unit at the far end spawning with its nose against the wall behind it.
 HEAD = '''[node name="Eskinita" type="Node3D"]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
@@ -238,10 +248,10 @@ shape = SubResource("Shape_hazard")
 [node name="SpawnPoints" type="Node3D" parent="."]
 
 [node name="Spawn0" type="Marker3D" parent="SpawnPoints"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.5, 0.8, -14.0)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -2.5, 0.8, -14.0)
 
 [node name="Spawn1" type="Marker3D" parent="SpawnPoints"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.5, 0.8, -14.0)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 2.5, 0.8, -14.0)
 
 [node name="Spawn2" type="Marker3D" parent="SpawnPoints"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.5, 0.8, 14.0)
