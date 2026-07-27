@@ -59,7 +59,7 @@ func _initialize() -> void:
 	])
 	_build_tsinelas()
 	_build_viewmodel_arm()
-	# Checklist 2.1b — the environment kit, built to docs/Environment_Kit_Spec.md.
+	# Checklist 2.1b — the environment kit, built to docs/Art_Direction.md.
 	# In its own file because it is ~25 pieces and this one is where a reader goes
 	# to understand the five PROP meshes; burying those under the scenery would be
 	# a net loss. Same rules apply to it — determinism, UiTheme constants, and no
@@ -171,7 +171,7 @@ func _apply_dents(radius: float, y: float, angle: float, dents: Array) -> float:
 #
 # ⚠️ B-81 — WHY THE SOLE IS NOT BLUE, so nobody "restores" it.
 #
-# The sole used to be UiTheme.DEFENSE, and Design_Agent_Brief.md §2's palette
+# The sole used to be UiTheme.DEFENSE, and Art_Direction.md §2's palette
 # table told it to be. Both were wrong. A Prop is a Tsinelas exactly when its
 # team is on OFFENCE (carriable.gd::is_throwable — not a Person, not a Can), so
 # a blue sole painted the ATTACKING team's prop in the DEFENDING colour. That
@@ -233,21 +233,26 @@ func _build_viewmodel_arm() -> void:
 	# a viewmodel authored at human proportions read as two thin sticks against
 	# it. Width is now ~0.21 against a 0.42 total length - about 1:2 - which is
 	# what matches the body the player sees in third person.
+	# ⚠️ LONG ON PURPOSE. The elbow has to sit BELOW the frame so the arm reads as
+	# running off-screen into the player's own body. Two earlier versions were
+	# short enough that both ends were visible, and a limb with two visible ends
+	# floating in the lower frame reads as a box, not an arm - which is exactly
+	# what the playtest reported ("MY ARMS ARE FLOATING").
 	writer.add_extrude(PackedVector2Array([
-		Vector2( 0.105, -0.098),
-		Vector2( 0.105,  0.098),
-		Vector2(-0.105,  0.098),
-		Vector2(-0.105, -0.098),
-	]), 0.0, 0.26, "skin_shade")
+		Vector2( 0.130, -0.122),
+		Vector2( 0.130,  0.122),
+		Vector2(-0.130,  0.122),
+		Vector2(-0.130, -0.122),
+	]), 0.0, 0.62, "skin_shade")
 
 	# Fist: wider than the forearm so the silhouette has a knuckle break in it.
 	# Without the step the arm reads as a plank.
 	writer.add_extrude(PackedVector2Array([
-		Vector2( 0.132, -0.126),
-		Vector2( 0.132,  0.126),
-		Vector2(-0.132,  0.126),
-		Vector2(-0.132, -0.126),
-	]), 0.26, 0.44, "skin")
+		Vector2( 0.158, -0.150),
+		Vector2( 0.158,  0.150),
+		Vector2(-0.158,  0.150),
+		Vector2(-0.158, -0.150),
+	]), 0.62, 0.84, "skin")
 
 	writer.recalculate_normals(40.0)
 	writer.write(OUTPUT_DIR + "viewmodel_arm")

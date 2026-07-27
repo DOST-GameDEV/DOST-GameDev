@@ -549,6 +549,28 @@ func _process(delta: float) -> void:
 	_play_locomotion()
 	_spin_while_airborne(delta)
 	_scale_while_carried(delta)
+	_drive_viewmodel_charge()
+
+## Feeds live charge power to the first-person viewmodel so the throwing arm
+## visibly cocks back the longer the player holds. In first person the wind-up is
+## the only readout of throw strength that is actually in the player's eyeline —
+## the HUD's charge meter lives on the YOU card in a bottom corner, which nobody
+## watches while aiming at a can.
+##
+## Polled, not signal-driven, for the reasons _spin_while_airborne and
+## _scale_while_carried already document: charge is a continuously-varying value
+## rather than an event, and a poll is self-healing across the model rebuild that
+## every round swap performs.
+func _drive_viewmodel_charge() -> void:
+	if _character == null or not _character.is_person:
+		return
+	var rig := _character.get_node_or_null("CameraRig") as CameraRig
+	if rig == null:
+		return
+	var carrier := _character.get_node_or_null("Carrier") as Carrier
+	if carrier == null:
+		return
+	rig.set_viewmodel_charge(carrier.charge_power() if carrier.is_charging() else -1.0)
 
 ## Checklist 0.6 — shrink the tsinelas to hand size while, and only while, it is
 ## being carried.

@@ -160,7 +160,7 @@ polish; they are the instruments.
       which is the convention every doc already assumed. **B-83 is retired the same way** — the
       boundary colliders that sat at `±40` around a `±20` floor went with it. Closed as obsolete
       rather than as fixed, deliberately: nobody edited the numbers, the thing holding them was
-      removed. `Environment_Art_Agent_Brief.md` §4.1 was corrected separately.
+      removed. `Art_Direction.md` §4.1 was corrected separately.
 
 ---
 
@@ -243,7 +243,7 @@ HUD contrast or hazard placement against a grey box.
 - [ ] **2.1 · The environment kit (M-6).** ~~⛔ 1.2~~ **unblocked — 1.2 decided 2026-07-28**
       Split deliberately into two briefs, because it needs two different hats:
   - [x] **2.1a · Kit art direction and piece list.** 🤖 Opus, high
-        **Delivered as [`Environment_Kit_Spec.md`](Environment_Kit_Spec.md).** 26 pieces across a
+        **Delivered as [`Art_Direction.md`](Art_Direction.md).** 26 pieces across a
         core set, an Eskinita set and a Bayan Plaza set, each with footprint on the 2-unit grid,
         height, triangle budget, materials by `UiTheme` token and what it contributes. Also: the
         Metro/Eskinita and Province/Bayan-Plaza naming reconciled explicitly, the argument for
@@ -259,7 +259,7 @@ HUD contrast or hazard placement against a grey box.
         It cannot break shading (`recalculate_normals()` rebuilds from geometry and the spec
         already mandates it per piece) and cannot break determinism (`_fmt` snaps after the
         transform, and the weld key is the printed form). Rationale and the no-change fallback are
-        in `Environment_Kit_Spec.md` §5.
+        in `Art_Direction.md` §5.
         **Done, verified by running:** a 90°-about-X transform on a flat revolve profile produced
         vertices spread across 5 distinct Y values (confirmed upright, not still flat); an
         identity-transform call produced byte-identical vertices to the old no-arg call (zero
@@ -279,7 +279,7 @@ HUD contrast or hazard placement against a grey box.
         Tricycle 192 tris, leaning sheet 144. Both placed in Eskinita and rendered.
         *Deferred, do not lose:* **convex collision per piece was NOT generated** — Eskinita
         collides on one invisible box ring behind the wall line instead, which
-        `Environment_Kit_Spec.md` §4 permits for a continuous wall. A `GridMap` map would need the
+        `Art_Direction.md` §4 permits for a continuous wall. A `GridMap` map would need the
         per-piece shapes.
 - [~] **2.2 · Eskinita — the first real map (M-7).** 🎨 Design — **built, wired and rendered; never played**
       Opus rather than Sonnet: the hard question is "does this read as a
@@ -442,7 +442,7 @@ touch map scenes.
       it drops out of the air almost immediately — Bakya Bash cannot reach any throwing line the
       other three can use. Almost certainly a tuning bug rather than an identity, and it has never
       been felt because B-76 means no Prop can select it. Retune, then re-check
-      `Environment_Kit_Spec.md` §9's table. Filed separately from 4.4 because the map's throwing
+      `Art_Direction.md` §9's table. Filed separately from 4.4 because the map's throwing
       line is placed against these numbers.
 - [x] **4.5 · Hitstop.** 🤖 Sonnet, medium
       The one piece of the Q-8 hit-feedback set that never landed. Cheap, and it
