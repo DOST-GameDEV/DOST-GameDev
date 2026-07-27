@@ -79,9 +79,16 @@ Opus work, and it was blocked on 2.2 — which now exists. What gets shown, in w
 many minutes, and the fallback if a peer drops. **Write it before the trailer is captured.**
 `tools/arena_camera.gd` was deliberately preserved for exactly this.
 
-### ⑤ 4.5 · Hitstop
-The one piece of the Q-8 hit-feedback set that never landed. Cheap, and it is what makes a landed
-hit feel like contact rather than a colour change.
+### ⑤ Dress the round beats — intermission card, downed vignette, impact read
+**4.5 hitstop was landed by the Build lane at v4.30, so it is off this list.** What is still
+placeholder-grade in the *feel* layer is design work:
+- The role-swap intermission card (U-3) exists as a functional beat, not as the moodboard's
+  animated card — `Dev_Plan.md` §4.6.
+- `DownedFlash` is still a flat 25% red rectangle over the whole screen; §4.4 says it becomes a
+  **vignette**.
+- The Q-8 impact burst fires, but the moodboard's **THE CAN · impact effect (particle burst)** and
+  **THE SLIPPER · thrown trajectory (spin + motion blur)** are drawn richer than what ships.
+Pick these up only after ①–④; they are polish, and ① is the one a judge will notice.
 
 ## 3. Traps found the hard way — every one of these cost real time
 
