@@ -511,7 +511,7 @@ Settle it before the deadline, not during it.
 | HUD | [~] | Full rebuild, §4.4. The "YOU" card is **Q-5** and its Guard/Dash meter is **Q-6**. |
 | Round intermission / role swap | [~] | Functional beat exists (B-37: gap, early world reset, placeholder banner). The animated card in §4.6 does not. |
 | Match result | [x] | **Built and wired** — `MatchResult.tscn` + `match_result.gd` at `Main.tscn::HUDLayer/MatchResult`, winner text + Rematch (host-only) + Menu, B-51/B-53 fixed. The moodboard **Bo5 grid** restyle and freezing the world behind it are **Q-4**. |
-| Pause | [~] | Esc → Resume / Return to Menu (B-20), **but it does not freeze the game** (B-64, **Q-3**). No Settings-from-pause; restyle not done. |
+| Pause | [~] | Esc → Resume / Return to Menu (B-20), **now actually freezes Local Match** (B-64, **Q-3** fixed) and shows a non-freezing "still running" overlay when networked. No Settings-from-pause; restyle not done. |
 | Settings | [x] | Duplicate-binding detection added (B-22). Restyle, mouse sensitivity + invert-Y (§3.2) still not done. |
 
 ### 4.4 HUD layout
@@ -649,7 +649,7 @@ than sitting inside one of them, because it came from review of a running build.
 |---|---|---|
 | **Q-1** | Host quits → clients hang forever (**B-62**) — **[x] fixed, verified headless** | 0 |
 | **Q-2** | Mid-round disconnect leaves a freed Can tracked (**B-63**) — **[x] fixed, verified headless** | 0 |
-| **Q-3** | Pause overlay does not freeze the game (**B-64**) | 3 |
+| **Q-3** | Pause overlay does not freeze the game (**B-64**) — **[x] fixed, verified headless** | 3 |
 | **Q-4** | Match-result screen: verify, freeze behind it, then the Bo5 grid | 3 |
 | **Q-5** | HUD "YOU" card — which unit am I? | 3 |
 | **Q-6** | Surface the existing Guard/Dash on the HUD | 3 |
@@ -762,7 +762,7 @@ yet, see B-10/B-37 above) and the Option A/B decision itself, which nobody has m
 - [ ] HUD rebuild (§4.4) — the "YOU" card half is **Q-5**, the Guard/Dash meter is **Q-6**
 - [ ] Intermission + role-swap card (§4.6) — functional beat exists (B-37), animated card does not
 - [x] Match result screen *(v1.7/v1.9 — functional; moodboard Bo5 grid is **Q-4**)*
-- [~] Pause menu — exists but does not freeze the game (**B-64**, **Q-3**)
+- [x] Pause menu — now actually freezes the game in Local Match, overlay-only when networked (**B-64**, **Q-3**)
 - [ ] Character select + lobby with ready-up
 
 ### Phase 4 — Content

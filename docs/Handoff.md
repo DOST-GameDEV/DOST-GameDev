@@ -731,6 +731,35 @@ one you look through still casts its own shadow.
 **B-28 · No export presets, no build, no CI.** `export_presets.cfg` is gitignored and none
 exists. The game has never been run outside the editor, and the submission needs a real build.
 
+**B-64 · The pause menu never actually paused anything. (NEW, Q-3)** `main.gd::_unhandled_input`
+toggled `pause_root.visible` and the cursor, never `get_tree().paused` — `RoundManager`'s round
+timer, `MatchManager`'s intermission countdown, and every `CharacterBase._physics_process` (input,
+gravity) kept running behind the overlay.
+**[FIXED]** Local Match now gets a real `get_tree().paused` freeze; networked play stays a
+non-freezing overlay whose label says "PAUSED — the match is still running" (a naive freeze would
+stop the host's authoritative timer for everyone, or stop a client's own movement while the host
+keeps simulating it — Handoff.md §0.3). Caught a second, undocumented bug while implementing the
+first: Godot gates `_unhandled_input` by `process_mode` exactly like `_process`, and `Main`'s own
+script (running the Esc-toggle) sits at the default `PROCESS_MODE_INHERIT` — so the instant Local
+Match actually paused, `Main` would stop receiving input entirely, including the Esc press meant
+to resume it, permanently soft-locking the game. Confirmed with a standalone headless
+`SceneTree`-script test before touching the real scene: an `INHERIT`-mode node's
+`_unhandled_input` never fires while `paused` is true, only an `ALWAYS`-mode node's does. Fixed by
+moving the Esc listener onto a new `scripts/ui/pause_layer.gd` (`class_name PauseLayer`) attached
+to `PauseLayer` itself, which is already `PROCESS_MODE_ALWAYS`; it emits `toggle_requested`, which
+`main.gd` connects to. `HUDLayer/MatchResult` is also now `PROCESS_MODE_ALWAYS` (Q-4 needs it to
+stay clickable if a match ends the same frame pause fires). `_on_return_to_menu_pressed()` clears
+`get_tree().paused` as its first line, before `change_scene_to_file` — a scene change with the
+tree still paused would otherwise load `MainMenu.tscn` paused and kill every button on it.
+Verified live, headless, with real key-event injection (`Input.parse_input_event`, not calling the
+handler function directly) exercising the exact input path: Local Match — timer frozen bit-for-bit
+during a 3s pause, Esc correctly resumes it (confirming the `PauseLayer` fix), timer decreasing
+again after, Return to Menu leaves `tree_paused=false`, and a second Local Match started
+immediately after is fully interactive (`round_active=true`, timer counting from a fresh 90.0).
+Networked — client's overlay shows the "still running" label, `get_tree().paused` stays `false`
+throughout, the client's own timer read kept decreasing across the pause, and the host's timer
+ticked continuously and identically the whole time, unaffected by the client's local overlay.
+
 **B-63 · A mid-round client disconnect left `RoundManager` tracking a freed Can. (NEW, Q-2)**
 `main.gd::_on_player_disconnected()` freed the leaver's node and erased its dictionary entries,
 but never told `RoundManager` — if the leaver was the tracked Can, `_tracked_cans` kept a freed
@@ -891,7 +920,7 @@ units rather than running out the full 90s.
 
 ### P1 — Match flow the player can actually escape
 
-#### Q-3 · Pause must actually freeze the game `[ ]`
+#### Q-3 · Pause must actually freeze the game `[x]`
 
 **Review item 4. Log as B-64.** Confirmed: `main.gd::_unhandled_input` toggles `pause_root.visible`
 and `Input.mouse_mode` and **never sets `get_tree().paused`**. `RoundManager._process` keeps

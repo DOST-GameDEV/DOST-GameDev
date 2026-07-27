@@ -43,6 +43,13 @@ extends Node3D
 @onready var pause_root: Control = %PauseRoot
 @onready var resume_button: Button = %ResumeButton
 @onready var menu_button: Button = %MenuButton
+## Q-3/B-64: text swaps to a non-freezing warning in networked play — see
+## _on_pause_toggle_requested.
+@onready var paused_label: Label = %PausedLabel
+## Q-3/B-64: owns the Esc _unhandled_input listener itself, at
+## PROCESS_MODE_ALWAYS — see pause_layer.gd's doc for why that can't live on
+## Main (this node's own script) once the tree is actually paused.
+@onready var pause_layer: PauseLayer = $PauseLayer
 
 const CHARACTER_SCENE: PackedScene = preload("res://scenes/characters/CharacterBase.tscn")
 ## Every Person — networked or local — gets its own Tag/Throw ability
@@ -117,6 +124,7 @@ func _ready() -> void:
 	pause_root.visible = false
 	resume_button.pressed.connect(_on_resume_pressed)
 	menu_button.pressed.connect(_on_return_to_menu_pressed)
+	pause_layer.toggle_requested.connect(_on_pause_toggle_requested)
 
 	var join_target := ""
 	var should_host := false
@@ -530,26 +538,46 @@ func _wire_downed_flash(character: CharacterBase) -> void:
 ## the cursor has to be released for the overlay's buttons to be clickable at
 ## all, and re-captured on Resume so gameplay input isn't stuck showing the
 ## OS cursor.
-func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("ui_cancel"):
-		# B-51 (residual): the match is over and the result screen owns the
-		# screen — PauseLayer is layer 10 and MatchResult sits in HUDLayer, so
-		# pausing here draws the overlay ON TOP of the result, and Resume then
-		# re-captures the cursor and hands back a result screen you cannot click,
-		# which is exactly the softlock B-51 fixed. There is nothing to pause
-		# once the match has been decided, so ignore Esc entirely.
-		if match_result.visible:
-			get_viewport().set_input_as_handled()
-			return
-		pause_root.visible = not pause_root.visible
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if pause_root.visible else Input.MOUSE_MODE_CAPTURED
-		get_viewport().set_input_as_handled()
+##
+## Q-3/B-64: fired from pause_layer.gd's _unhandled_input, NOT one of Main's
+## own — Main sits at the default PROCESS_MODE_INHERIT, and once the tree is
+## actually paused it stops receiving input entirely, including the Esc press
+## meant to resume it. See pause_layer.gd's doc for how that was confirmed.
+func _on_pause_toggle_requested() -> void:
+	# B-51 (residual): the match is over and the result screen owns the
+	# screen — PauseLayer is layer 10 and MatchResult sits in HUDLayer, so
+	# pausing here draws the overlay ON TOP of the result, and Resume then
+	# re-captures the cursor and hands back a result screen you cannot click,
+	# which is exactly the softlock B-51 fixed. There is nothing to pause
+	# once the match has been decided, so ignore Esc entirely.
+	if match_result.visible:
+		return
+	pause_root.visible = not pause_root.visible
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if pause_root.visible else Input.MOUSE_MODE_CAPTURED
+	# Q-3/B-64: a naive get_tree().paused = true breaks networked play in
+	# both directions (Handoff.md §0.3) — the host can't stop the
+	# authoritative round timer for everyone because one player pressed
+	# Esc, and a client that pauses its own tree stops sending its own
+	# movement while the host keeps simulating it regardless. Only Local
+	# Match gets a real freeze; networked stays a non-freezing overlay and
+	# says so, so the player isn't misled into thinking they've stopped
+	# anything.
+	if NetworkManager.is_networked():
+		paused_label.text = "PAUSED — the match is still running"
+	else:
+		get_tree().paused = pause_root.visible
+		paused_label.text = "PAUSED"
 
 func _on_resume_pressed() -> void:
 	pause_root.visible = false
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	get_tree().paused = false
 
 func _on_return_to_menu_pressed() -> void:
+	# Q-3/B-64: must run before change_scene_to_file — a scene change with the
+	# tree still paused loads MainMenu.tscn paused and every button on it dies
+	# (Godot doesn't auto-unpause across change_scene_to_file).
+	get_tree().paused = false
 	if NetworkManager.is_networked():
 		NetworkManager.disconnect_network()
 	# B-14: leaving a match should reset the same as starting a fresh one does
