@@ -36,6 +36,12 @@ const CHARGE_FULL_TIME: float = 0.9
 ## Power floor, so a tap still throws rather than dropping the slipper at your
 ## feet. Fraction of ThrowProfile.launch_speed.
 const CHARGE_MIN_POWER: float = 0.35
+## T-3: seconds of uninterrupted hold to stand a knocked-down lata back up. Long
+## enough that the attacking side gets a real window to punish a taya who commits
+## to it, short enough that defending is not hopeless once the can goes over.
+## Pure guess until someone plays it — this is the tuning knob for the whole
+## defensive half of the round.
+const RESET_CHANNEL_TIME: float = 1.5
 
 ## Emitted on the local peer while charging, 0..1, for the HUD's charge meter.
 ## -1 means "not charging", which is a distinct state from "charging at zero".
@@ -43,6 +49,10 @@ signal charge_changed(power: float)
 ## Emitted when this Person picks something up or loses it, so the HUD can show
 ## SLIPPER READY vs GO GET IT without polling every frame.
 signal held_changed(held: Carriable)
+## T-3, 0..1 while the reset channel is running, -1 when it is not — same
+## "-1 means not active" convention as charge_changed. Nothing consumes this yet;
+## the progress bar it exists for is U-1's job, exactly as charge_changed is.
+signal reset_channel_changed(progress: float)
 
 var _character: CharacterBase = null
 ## What this Person is holding, or null. Mirrors `Carriable.carrier` and is set
@@ -50,11 +60,25 @@ var _character: CharacterBase = null
 var _held: Carriable = null
 var _charge_time: float = 0.0
 var _is_charging: bool = false
+## T-3. The lata currently being channelled, and how far in we are.
+var _channel_target: Carriable = null
+var _channel_time: float = 0.0
 
 @onready var _grab_area: Area3D = get_parent().get_node_or_null("GrabArea")
 
 func _ready() -> void:
 	_character = get_parent() as CharacterBase
+	# T-3: getting tagged mid-channel has to cancel it — that is the entire
+	# counterplay to a taya standing their can back up. input_step() stops being
+	# called the moment this Person leaves NORMAL (see character_base.gd's
+	# _physics_process gate), so without this the timer would simply freeze and
+	# resume where it left off rather than resetting.
+	if _character != null:
+		_character.state_changed.connect(_on_own_state_changed)
+
+func _on_own_state_changed(new_state: CharacterBase.State) -> void:
+	if new_state != CharacterBase.State.NORMAL:
+		_cancel_channel()
 
 ## True when this unit has hands at all. A Can or a tsinelas never grabs.
 func has_hands() -> bool:
@@ -92,6 +116,7 @@ func input_step(delta: float) -> void:
 	if not has_hands():
 		return
 	_step_grab()
+	_step_reset_channel(delta)
 	_step_throw(delta)
 
 ## ---------------------------------------------------------------------------
@@ -132,6 +157,82 @@ func _step_throw(delta: float) -> void:
 		_cancel_charge()
 		_character.play_visual_action("throw")
 		_request_throw(power)
+
+## T-3 / B-46 — the lata reset channel, driver side. Hold `grab` next to your own
+## knocked-down lata and it stands back up when the bar fills; anything that
+## interrupts you cancels it outright, with no partial credit.
+##
+## Shares the `grab` button with _step_grab() without conflicting: that reads
+## just_pressed and bails on anything a Person cannot pick up, and
+## Carriable.can_be_grabbed_by() already refuses a Can. So a tap near a lata does
+## nothing and a hold channels it.
+##
+## The timer runs LOCALLY, then asks the host to apply the result — deliberately
+## the same split the charge-throw uses. Aim and hold duration are the player's
+## own business; whether the thing may actually happen is the host's.
+func _step_reset_channel(delta: float) -> void:
+	if _held != null:
+		# Hands full. You cannot right the can while carrying a slipper — put it
+		# down, or throw it, first.
+		_cancel_channel()
+		return
+	if not Input.is_action_pressed(_character.action_name("grab")):
+		_cancel_channel()
+		return
+
+	var target := _find_resettable()
+	if target == null:
+		# Walked out of range, or the can stopped being resettable underneath us
+		# (someone sealed it, or a teammate's channel got there first).
+		_cancel_channel()
+		return
+	if target != _channel_target:
+		# Switched cans mid-hold: start the new one from zero rather than
+		# inheriting progress banked against a different target.
+		_channel_target = target
+		_channel_time = 0.0
+
+	_channel_time += delta
+	reset_channel_changed.emit(clampf(_channel_time / RESET_CHANNEL_TIME, 0.0, 1.0))
+	if _channel_time < RESET_CHANNEL_TIME:
+		return
+
+	# Filled. Clear local state BEFORE requesting so a slow host reply cannot let
+	# the same channel fire twice.
+	var completed := _channel_target
+	_cancel_channel()
+	_character.play_visual_action("grab")
+	_request_reset(completed)
+
+func _cancel_channel() -> void:
+	if _channel_target == null and _channel_time == 0.0:
+		return
+	_channel_target = null
+	_channel_time = 0.0
+	reset_channel_changed.emit(-1.0)
+
+## The nearest lata in reach that this Person is actually allowed to stand up.
+## The rule itself lives in carriable.gd — this only asks, same as
+## _find_grabbable() does for pick-ups.
+func _find_resettable() -> Carriable:
+	if _grab_area == null:
+		return null
+	var best: Carriable = null
+	var best_distance := INF
+	for area in _grab_area.get_overlapping_areas():
+		if not (area is Hurtbox):
+			continue
+		var other := (area as Hurtbox).owner_character
+		if other == null or other == _character:
+			continue
+		var carriable := other.get_node_or_null("Carriable") as Carriable
+		if carriable == null or not carriable.can_be_reset_by(_character):
+			continue
+		var distance := _character.global_position.distance_to(other.global_position)
+		if distance < best_distance:
+			best_distance = distance
+			best = carriable
+	return best
 
 func _cancel_charge() -> void:
 	if not _is_charging:
@@ -191,6 +292,18 @@ func _request_throw(power: float) -> void:
 	else:
 		_rpc_request_throw.rpc_id(1, direction, power)
 
+## T-3. Same shape as _request_grab: on the host, straight through; on a client,
+## a request to peer 1. The host re-checks can_be_reset_by() from scratch — a
+## client having run a timer locally proves nothing about whether the can was
+## still down when the bar filled.
+func _request_reset(target: Carriable) -> void:
+	if target == null or not is_instance_valid(target):
+		return
+	if _is_host():
+		target.host_reset_upright(_character)
+	else:
+		_rpc_request_reset.rpc_id(1, target.get_parent().get_path())
+
 ## Client → host. The host re-resolves the target from the path and re-checks
 ## can_be_grabbed_by() inside host_grab(); a client asserting it may grab
 ## something is not sufficient and is never trusted.
@@ -215,6 +328,21 @@ func _rpc_request_throw(direction: Vector3, power: float) -> void:
 	if not _is_host() or _held == null:
 		return
 	_held.host_throw(direction, clampf(power, 0.0, 1.0))
+
+## Client → host, T-3. Mirrors _rpc_request_grab exactly, including re-resolving
+## the target node from its path rather than trusting anything the client sent
+## about it beyond which can it meant.
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_request_reset(target_character_path: NodePath) -> void:
+	if not _is_host():
+		return
+	var target := get_node_or_null(target_character_path) as CharacterBase
+	if target == null:
+		return
+	var carriable := target.get_node_or_null("Carriable") as Carriable
+	if carriable == null:
+		return
+	carriable.host_reset_upright(_character)
 
 func _is_host() -> bool:
 	return not NetworkManager.is_networked() or NetworkManager.is_host()

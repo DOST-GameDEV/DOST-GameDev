@@ -144,7 +144,8 @@ profiles, the `CharacterBase.tscn` nodes, and the new input actions.
 
 **NOT started — the whole rest of the brief:**
 
-- **T-3 · B-46 lata reset channel.** Agreed in scope, zero lines written.
+- ~~**T-3 · B-46 lata reset channel.** Agreed in scope, zero lines written.~~
+  **Built in the following pass, v4.3.** See T-3 in §4.
 - **Task 2 · the FPP viewmodel.** Still broken. `FppPivot` is still at `y = 1.55`
   in `CameraRig.tscn` (confirmed) while the scaled body tops out ~0.88, so the
   arms still hang low and behind the view. **The one thing the human called
@@ -401,7 +402,9 @@ surfacing through it. *Fix:* character select, or an interim per-side default.
   that launches the slipper itself. No longer a design decision; it was the spec (§0.7).
   Untested by a human.
 - **B-46 · The "Lata Reset Channel" is on the moodboard and in neither the code nor the GDD.**
-  **Decision made — it is IN.** Agreed with the human this pass. **Not built.** See **T-3**.
+  **[FIXED]** v4.3 — the decision was made in §0.7 (it is IN) and it is now **built**, as
+  **T-3**: the taya holds `grab` by their own downed lata to stand it back up. Still absent
+  from the GDD; fold it into Section 3's round flow, which §0.8 already flags as owed.
 - **B-65 · No reconnect path** — a rejoining player can come back as a different team and role.
 
 ### Doc corrections found this pass
@@ -496,16 +499,43 @@ never touched on account of who owns what: an opponent's slipper is still solid,
 still kickable, still an obstacle, still staggerable by your bump. Only pick-up
 is gated. Same `[~]` caveat as T-1.
 
-#### T-3 · B-46 lata reset channel `[ ]`
+#### T-3 · B-46 lata reset channel `[~]`
 
-**Agreed in scope with the human and NOT STARTED.** The defending Person (taya)
-holds `grab` near a knocked-down lata to channel it back upright, on a progress
-bar; interrupting the channel cancels it. `carrier.gd` is the right home — it
-already owns "what this Person's hands are doing" and already reads the `grab`
-action, and `Carriable.can_be_grabbed_by()` already returns false for a Can with
-a comment pointing here. **Round-win logic stays out of `character_base.gd` and
-`hitbox.gd`** — the channel calls `self_right()` (Option B) or clears a dent
-(Option A) and nothing more.
+Landed v4.3, built where the plan said: `carrier.gd` runs the channel
+(`_step_reset_channel`, `RESET_CHANNEL_TIME = 1.5s`), `carriable.gd` owns the
+rule (`can_be_reset_by`) and the host-side apply (`host_reset_upright`), and the
+apply calls `self_right()` (Option B) or the new `clear_dent()` (Option A) and
+nothing more. No round-win logic moved: `RoundManager` already re-evaluates off
+`dents_changed` / `state_changed`, so dropping back below the threshold needs no
+cooperation from the channel.
+
+Decisions taken while building, each of which could reasonably have gone the
+other way — revisit if play disagrees:
+
+- **DOWNED is resettable, SEALED is not.** There is one tracked Can per round and
+  sealing it ends the round (`round_manager.gd::_on_tracked_can_state_changed`),
+  so a channel that un-sealed would be reversing a decided round from the wrong
+  file. Under Option A the same logic makes `dents == MAX_DENTS` non-resettable.
+- **Own team only**, mirroring `can_be_grabbed_by()` and built on the same
+  `CharacterBase.team`. No second team system.
+- **Hands must be empty.** You cannot right the lata while holding a slipper.
+- **The apply is `rpc_id`'d to the Can's own authority**, not broadcast — the
+  idiom `hitbox.gd`/`_apply_hit_result` already uses. Broadcasting would have
+  every peer write state it does not own and the `MultiplayerSynchronizer` would
+  overwrite it immediately.
+- **Cancel-on-interrupt needed its own signal hookup.** `input_step()` stops
+  being called the moment the Person leaves NORMAL, so without watching
+  `state_changed` the timer would freeze and resume rather than reset.
+
+`[~]` not `[x]`: the rules and the apply are verified (a throwaway headless
+harness exercised both game modes, the ownership refusal and the host-side
+rejection — 16/16), but **the input half is not**. Nobody has held the button for
+1.5s, been tagged out of a channel, or seen the `GrabArea` overlap search find a
+lata in motion. `RESET_CHANNEL_TIME` is a guess.
+
+**No progress bar exists.** `reset_channel_changed` is emitted 0..1 and nothing
+consumes it — exactly like `charge_changed` and `held_changed`, which the HUD
+also still ignores. All three are U-1's job.
 
 #### T-4 · Retire the old fake throw `[ ]`
 
@@ -1330,8 +1360,8 @@ passes — none have been answered.**
 - [ ] **Option A or Option B.** Both alive doubles the cost of every combat change (B-25).
 - [ ] **B-45 — charged/aimed throw** (per the moodboard) **or the current instant pulse?** FPP +
       mouse-look makes the moodboard version achievable and it is the better mechanic.
-- [ ] **B-46 — is the "Lata Reset Channel" a real mechanic?** On the moodboard, in neither the
-      code nor the GDD. Adopt it or cut it from the art.
+- [x] **B-46 — is the "Lata Reset Channel" a real mechanic?** **Yes** (§0.7), and it is built
+      as of v4.3 (**T-3**). Still owed: fold it into the GDD's round flow.
 - [ ] **Does the Person get its own ability roster,** or does every Person share one Tag/Throw?
       **Blocks U-5.**
 - [ ] **Maps** — Eskinita + Bayan Plaza locked, Palengke as stretch. **M-7 assumes Eskinita is a

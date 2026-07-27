@@ -100,7 +100,7 @@ func can_be_grabbed_by(who: CharacterBase) -> bool:
 	if who == null or _character == null:
 		return false
 	if not is_throwable():
-		return false # a Can is not a pick-up; see reset_channel handling in carrier.gd
+		return false # a Can is not a pick-up — it is a RESET, see can_be_reset_by()
 	if state != CarryState.LOOSE:
 		return false # already in a hand, or still in the air
 	if who.team != _character.team:
@@ -108,6 +108,64 @@ func can_be_grabbed_by(who: CharacterBase) -> bool:
 	if not who.is_person:
 		return false # a Prop has no hands — only the team's Person retrieves
 	return true
+
+## T-3 / B-46 — THE LATA RESET CHANNEL, target side. The taya (the defending
+## Person) holds `grab` next to their own knocked-down lata to stand it back up.
+## This is the half that says whether that is allowed; carrier.gd runs the
+## channel itself and calls host_reset_upright() when it completes.
+##
+## On the moodboard the whole time, in neither the code nor the GDD until now —
+## it is the beat that makes defending an active job rather than standing around
+## waiting to be hit.
+##
+## Mirrors can_be_grabbed_by() deliberately, including the same team rule: you
+## right YOUR OWN team's lata, never the opponents'. Note what is NOT checked
+## here — whether the round is still live. RoundManager owns that, and by the
+## time a Can is SEALED the round is already over (one tracked Can per round, and
+## sealing it ends it), which is exactly why SEALED is not resettable below.
+func can_be_reset_by(who: CharacterBase) -> bool:
+	if who == null or _character == null:
+		return false
+	if not _character.is_can:
+		return false # only a lata is ever stood back up
+	if not who.is_person or who.team != _character.team:
+		return false # the taya rights their own can; nobody else touches it
+	if GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A:
+		# Option A: no Downed/Seal machinery at all, the can just carries dents.
+		# Beat one back out. At MAX_DENTS the round has already been reported, so
+		# only a partially dented can is worth channelling.
+		return _character.dents > 0 and _character.dents < CharacterBase.MAX_DENTS
+	# Option B: DOWNED only. Not SEALED — a sealed can means the round is already
+	# lost, and un-sealing it here would be round-win logic living in the wrong
+	# file. Not NORMAL either; there is nothing to stand up.
+	return _character.state == CharacterBase.State.DOWNED
+
+## Host-side completion of the channel. Same shape as host_grab/host_throw: the
+## client asked, the host re-validates from scratch, and only then does it apply.
+##
+## The apply is routed to the CAN'S OWN AUTHORITY, not broadcast — this is the
+## idiom hitbox.gd/_apply_hit_result already established for state changes: the
+## owning peer mutates its own state and CharacterBase.tscn's
+## MultiplayerSynchronizer distributes it outward from there. Broadcasting to
+## every peer instead would have each one write state it does not own, and the
+## synchronizer would immediately overwrite it.
+func host_reset_upright(by: CharacterBase) -> void:
+	if not _is_host() or not can_be_reset_by(by):
+		return
+	if NetworkManager.is_networked():
+		_rpc_apply_reset.rpc_id(_character.get_multiplayer_authority())
+	else:
+		_rpc_apply_reset()
+
+## "any_peer" for the reason documented on the broadcasts below: this is sent BY
+## the host to a peer that is not this node's authority in the usual case, and an
+## "authority" RPC would be silently dropped.
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_apply_reset() -> void:
+	if GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A:
+		_character.clear_dent()
+	else:
+		_character.self_right()
 
 ## Whether this node is currently driving the character's movement itself, in
 ## which case character_base.gd hands the physics frame over (see its
