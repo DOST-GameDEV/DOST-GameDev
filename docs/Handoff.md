@@ -959,7 +959,7 @@ Steps:
 
 ---
 
-#### M-2 · The Lata (can) — three states `[ ]`
+#### M-2 · The Lata (can) — three states `[x]`
 
 The moodboard's THE CAN card specifies exactly three: **standing (stable)**, **knocked down
 (tilted, dented)**, **impact effect (particle burst)**. The third is already built
@@ -998,6 +998,14 @@ self-rights on Quick Stand. Play into round 2 so the Prop swaps to Tsinelas and 
 follows and the dents reset.
 
 **Commit:** `Model the lata — revolved body, three dent states, knocked-down tilt (v4.8)`
+
+**[DONE @ v3.7]** Landed in commit 50ec425. `generate_all.gd` has the full profile-and-revolve
+body (five stacked revolves: ink base crimp, defense lower wall, highlight label band,
+defense upper wall, ink shoulder+rolled rim+recessed lid). Three dent states generated
+via `_apply_dents` deform callable. `CanVisual.tscn` updated to use `lata.obj`. Dent mesh
+swap wired in `character_visual.gd::_on_dents_changed` / `_refresh_can_damage`. Downed tilt
+(78° on 0.28s Back/Out tween) in `_refresh_downed_tilt`. Walk/run locomotion also added
+in the same session. Acceptance test pending human play session.
 
 ---
 
