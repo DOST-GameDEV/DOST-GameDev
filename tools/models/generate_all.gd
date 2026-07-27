@@ -56,6 +56,7 @@ func _initialize() -> void:
 		{"angle": 2.4, "y": 0.38, "depth": 0.115},
 		{"angle": 4.4, "y": 0.68, "depth": 0.105},
 	])
+	_build_tsinelas()
 	print("Model generation complete.")
 	quit(0)
 
@@ -154,3 +155,86 @@ func _apply_dents(radius: float, y: float, angle: float, dents: Array) -> float:
 		var falloff_height := pow(0.5 * (1.0 + cos(PI * y_delta)), DENT_SHARPNESS)
 		result -= float(dent["depth"]) * falloff_angle * falloff_height
 	return result
+
+# --- Tsinelas (the slipper) ---------------------------------------------------
+#
+# Orientation: character faces -Z; toe is at Z = -0.675, heel at Z = +0.675.
+# Length: 1.35 units (centered, Z in [-0.675, +0.675]). X is width.
+# Materials: defense (sole), impact (straps), highlight (toe post).
+
+## Sole outline is 12 points, CCW in the XZ plane viewed from above (+Y).
+## CCW from above means the right side runs toe->heel (+Z), and the left
+## side runs heel->toe (-Z), completing the loop at the toe tip.
+## Width profile: ±0.26 at ball, ±0.18 waisted at arch, ±0.22 at heel.
+func _build_tsinelas() -> void:
+	var writer := ObjWriter.new("Tsinelas")
+	writer.set_material("defense", UiTheme.DEFENSE)
+	writer.set_material("impact", UiTheme.IMPACT)
+	writer.set_material("highlight", UiTheme.HIGHLIGHT)
+
+	# --- Sole ---
+	# 12-point CCW outline in (x, z) — side walls face outward, caps correct.
+	var sole_outline := PackedVector2Array([
+		Vector2( 0.10, -0.620),  #  1  toe-right
+		Vector2( 0.26, -0.300),  #  2  ball-right (widest, ±0.26)
+		Vector2( 0.18,  0.050),  #  3  arch-right (waisted, ±0.18)
+		Vector2( 0.22,  0.500),  #  4  heel-right (±0.22)
+		Vector2( 0.10,  0.650),  #  5  heel-tip-right (rounds the heel)
+		Vector2( 0.00,  0.675),  #  6  heel-tip center
+		Vector2(-0.10,  0.650),  #  7  heel-tip-left (rounds the heel)
+		Vector2(-0.22,  0.500),  #  8  heel-left
+		Vector2(-0.18,  0.050),  #  9  arch-left
+		Vector2(-0.26, -0.300),  # 10  ball-left
+		Vector2(-0.10, -0.620),  # 11  toe-left
+		Vector2( 0.00, -0.675),  # 12  toe-tip center
+	])
+	writer.add_extrude(sole_outline, 0.0, 0.10, "defense")
+
+	# --- Toe post ---
+	# Small cylindrical knob between the toes, sitting on top of the sole.
+	# 8-point circle at (x=0, z=-0.55), extruded y=0.10 to y=0.165.
+	# CCW from above (angle increases CCW in XZ) keeps side walls facing out.
+	var post_cx: float = 0.0
+	var post_cz: float = -0.55
+	var post_r: float = 0.045
+	var post_segs: int = 8
+	var post_outline := PackedVector2Array()
+	for i in range(post_segs):
+		var angle: float = TAU * float(i) / float(post_segs)
+		post_outline.append(Vector2(post_cx + post_r * cos(angle),
+		                            post_cz + post_r * sin(angle)))
+	writer.add_extrude(post_outline, 0.10, 0.165, "highlight")
+
+	# --- Y-straps ---
+	# Two diagonal ribbon quads from the toe post to the arch sides.
+	# Top face only — thin enough to read at TPP distance without side faces.
+	# Perpendicular vector = 90-deg CCW rotation of the strap direction in XZ,
+	# which makes add_quad(a, b, c, d) emit a face whose normal is +Y.
+	var strap_y: float = 0.10
+	var W: float = 0.03  # strap half-width
+
+	# Right strap: post (0, -0.55) -> arch-right (0.22, -0.05) in XZ.
+	var rpost := Vector2(0.0, -0.55)
+	var rside := Vector2(0.22, -0.05)
+	var rdir := (rside - rpost).normalized()
+	var rperp := Vector2(-rdir.y, rdir.x)  # 90 deg CCW keeps normal pointing +Y
+	var ra0 := Vector3(rpost.x + rperp.x * W, strap_y, rpost.y + rperp.y * W)
+	var rb0 := Vector3(rpost.x - rperp.x * W, strap_y, rpost.y - rperp.y * W)
+	var ra1 := Vector3(rside.x + rperp.x * W, strap_y, rside.y + rperp.y * W)
+	var rb1 := Vector3(rside.x - rperp.x * W, strap_y, rside.y - rperp.y * W)
+	writer.add_quad(ra0, ra1, rb1, rb0, "impact")
+
+	# Left strap: mirror of right.
+	var lpost := Vector2(0.0, -0.55)
+	var lside := Vector2(-0.22, -0.05)
+	var ldir := (lside - lpost).normalized()
+	var lperp := Vector2(-ldir.y, ldir.x)
+	var la0 := Vector3(lpost.x + lperp.x * W, strap_y, lpost.y + lperp.y * W)
+	var lb0 := Vector3(lpost.x - lperp.x * W, strap_y, lpost.y - lperp.y * W)
+	var la1 := Vector3(lside.x + lperp.x * W, strap_y, lside.y + lperp.y * W)
+	var lb1 := Vector3(lside.x - lperp.x * W, strap_y, lside.y - lperp.y * W)
+	writer.add_quad(la0, la1, lb1, lb0, "impact")
+
+	writer.recalculate_normals(40.0)
+	writer.write(OUTPUT_DIR + "tsinelas")
+	print("  tsinelas")

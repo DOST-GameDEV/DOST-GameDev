@@ -1009,7 +1009,7 @@ in the same session. Acceptance test pending human play session.
 
 ---
 
-#### M-3 · The Tsinelas (slipper) `[ ]`
+#### M-3 · The Tsinelas (slipper) `[~]`
 
 Current state: `TsinelasVisual.tscn` is a flat `BoxMesh` sole with two rotated box straps. It
 reads as a blue brick.
@@ -1037,6 +1037,9 @@ Steps:
 Tsinelas) and it leads with the toe. Round-swap to Can and back and the mesh follows.
 
 **Commit:** `Model the tsinelas — extruded sole, real Y-strap (v4.9)`
+[DONE @ v4.12] Generated tsinelas.obj via `_build_tsinelas()` in `generate_all.gd`: 12-point
+extruded sole, 8-segment toe-post knob, two Y-strap quads. TsinelasVisual.tscn replaced with a
+single MeshInstance3D referencing the .obj. Geometry is deterministic (second headless run clean).
 
 ---
 
