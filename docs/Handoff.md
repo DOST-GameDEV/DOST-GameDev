@@ -731,6 +731,39 @@ one you look through still casts its own shadow.
 **B-28 · No export presets, no build, no CI.** `export_presets.cfg` is gitignored and none
 exists. The game has never been run outside the editor, and the submission needs a real build.
 
+**Q-4 verification note (2026-07-27).** Confirmed the match-result screen already works exactly as
+Handoff.md §0.2 said: driven a Local Match to a real 3-0 via direct `MatchManager.report_round_result()`
+calls spaced past `INTERMISSION_DURATION` (so `begin_next_round()` fires between them the same way
+it would in real play, rather than compressing three rounds into under a second) — the result
+screen appeared with the correct `TEAM A WINS THE MATCH!` text and score, and Rematch correctly
+returned to a fresh 0-0 round 1. **B-59 did not reproduce** across this run (round_number and both
+win counts stayed stable while the result screen sat idle for 3+ seconds). One thing worth
+recording for whoever chases B-59 next: an EARLIER, unrealistically-fast version of this same test
+(three `report_round_result()` calls 0.2s apart, bypassing the normal round-duration timing
+entirely) DID produce a spurious `round_number` increment after the match had already ended — but
+root-caused to `MatchManager._intermission_time_left` staying set from a non-finishing round's
+call when the very next call finishes the match before that timer naturally elapses.
+`_finish_match()` doesn't clear it. Confirmed this can't happen via the real `RoundManager.report_round_win()`
+→ `MatchManager.report_round_result()` path, because `begin_next_round()` (which would need to
+start a new round for `report_round_result()` to be called again) can only fire once
+`_intermission_time_left` has already reached zero — so a second call can never find it still
+positive under real gameplay timing, only under a synthetic test that skips actual round durations
+entirely. Not fixed here (unreachable through any real code path today), but flagged in case a
+future change (e.g. an admin "force-end round" debug command) ever calls `report_round_result()`
+outside the normal `RoundManager` chain.
+
+**The one real functional gap in Q-4 — the world kept running behind the result screen — is now
+fixed.** `match_result.gd::_on_match_won` sets `get_tree().paused = true` when not networked
+(reusing Q-3/B-64's `PROCESS_MODE_ALWAYS` on this node so its own buttons stay clickable);
+`_on_rematch_pressed()` and `_on_menu_pressed()` both clear it before doing anything else, for the
+same reason Q-3's `_on_return_to_menu_pressed()` does. Networked play is untouched — freezing one
+peer's tree while the host's authoritative match state keeps running for everyone else would
+desync it, same split as Q-3. Verified live, headless: Local Match — `tree_paused` reads `true`
+the instant `match_won` fires, `false` again immediately after Rematch, and the new round starts
+active. Networked — both host and client show the result screen (confirming the existing
+`_sync_match_won` RPC reaches the client fine) with `tree_paused` staying `false` on both the whole
+time.
+
 **B-64 · The pause menu never actually paused anything. (NEW, Q-3)** `main.gd::_unhandled_input`
 toggled `pause_root.visible` and the cursor, never `get_tree().paused` — `RoundManager`'s round
 timer, `MatchManager`'s intermission countdown, and every `CharacterBase._physics_process` (input,
