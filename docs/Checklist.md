@@ -154,13 +154,13 @@ polish; they are the instruments.
       *Explicitly NOT in this item:* the mesh, any collision shape, any `hit_radius`, any speed,
       the camera. `_align_to_capsule_floor()` needs no change — it computes from `model.scale` in
       this node's local space, not from this node's scale.
-- [ ] **0.7 · B-82 — units spawn 0.3 units inside the floor slab.** 🤖 Sonnet, medium
-      `Main.tscn`'s `Floor` has no transform and its shape is a `(40,1,40)` box on the origin, so
-      the top surface is **`y = +0.5`, not `y = 0` as two docs claim.** All four units are placed
-      at `y = 1.0`, giving a capsule floor of `0.2`. Either move `Floor` to `y = -0.5` or drop the
-      spawn `y` to `0.8` — and correct `Environment_Art_Agent_Brief.md` §4.1 and this file's own
-      2.2 bullet in the same commit. `Main.tscn` is shared and currently locked; take the lock.
-      See `Handoff.md` §0.11 and B-82.
+- [x] **0.7 · B-82 — units spawn 0.3 units inside the floor slab. OBSOLETE, not fixed.** 🎨 Design
+**The offending floor no longer exists.** 2.2a deleted `Main.tscn`'s whole world
+      half, and both maps put their floor top at exactly `y = 0` with spawn markers at `y = 0.8`,
+      which is the convention every doc already assumed. **B-83 is retired the same way** — the
+      boundary colliders that sat at `±40` around a `±20` floor went with it. Closed as obsolete
+      rather than as fixed, deliberately: nobody edited the numbers, the thing holding them was
+      removed. `Environment_Art_Agent_Brief.md` §4.1 was corrected separately.
 
 ---
 
@@ -281,7 +281,7 @@ HUD contrast or hazard placement against a grey box.
         collides on one invisible box ring behind the wall line instead, which
         `Environment_Kit_Spec.md` §4 permits for a continuous wall. A `GridMap` map would need the
         per-piece shapes.
-- [~] **2.2 · Eskinita — the first real map (M-7).** 🤖 Opus, high — **map built and rendered; NOT wired in**
+- [~] **2.2 · Eskinita — the first real map (M-7).** 🎨 Design — **built, wired and rendered; never played**
       Opus rather than Sonnet: the hard question is "does this read as a
       Philippine side street", not "does this scene load".
       **`scenes/maps/Eskinita.tscn` exists, loads, and renders as a street** — asphalt, kerbs,
@@ -289,11 +289,10 @@ HUD contrast or hazard placement against a grey box.
       overhead, building masses behind, seeded clutter, lane markings, base circle, throwing lines
       and a chevroned jeepney lane. Authored by `tools/maps/build_eskinita.py` (123 instances is
       too many to hand-place); edit the script, not the scene. Screenshots in the PR.
-      **⛔ WHAT IS NOT DONE, and why it is not the design lane's to finish:**
-      `main.gd` still loads the grey box — instancing the map means editing **`Main.tscn`, which
-      the build lane holds the lock on**, and `main.gd` is build-lane code outright. So the map is
-      committed but **unreachable from the running game**, and nobody has played it. The remaining
-      bullets below are build-lane work; see 2.2a.
+      **Wired in at 2.2a (v4.28).** `Main.tscn` no longer carries a world at all; `main.gd`
+      instances the picked map into `$Map` and reads its `SpawnPoints`. A 1200-frame soak of the
+      match scene runs silent — no errors, no kill-plane respawns. **What is still missing is a
+      human:** nobody has played it, so this stays `[~]`. That is 0.4.
       Includes, in one coherent pass rather than scattered:
   - [ ] `scenes/maps/Eskinita.tscn`, playable area kept at roughly the current
         40×40 — **do not change arena scale in the same commit as arena art**,
