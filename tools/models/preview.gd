@@ -40,17 +40,29 @@ func _ready() -> void:
 			# finished — nobody plays with their face against the Prop.
 			distance = arg.substr(len("--dist=")).to_float()
 
-	var mesh := load(model_path) as Mesh
-	if mesh == null:
+	# Takes either a bare mesh (.obj) or a scene (.tscn). The scene path matters:
+	# it is what the game actually instances, so previewing CanVisual.tscn proves
+	# the whole asset chain the Prop uses, not just that a file parses.
+	var resource := load(model_path)
+	var bounds := AABB()
+	if resource is Mesh:
+		var instance := MeshInstance3D.new()
+		instance.mesh = resource
+		add_child(instance)
+		bounds = (resource as Mesh).get_aabb()
+	elif resource is PackedScene:
+		var model := (resource as PackedScene).instantiate() as Node3D
+		if model == null:
+			push_error("preview: '%s' is not a 3D scene" % model_path)
+			get_tree().quit(1)
+			return
+		add_child(model)
+		bounds = _merged_bounds(model)
+	else:
 		push_error("preview: could not load " + model_path)
 		get_tree().quit(1)
 		return
 
-	var instance := MeshInstance3D.new()
-	instance.mesh = mesh
-	add_child(instance)
-
-	var bounds := mesh.get_aabb()
 	var focus := bounds.get_center()
 
 	var env := WorldEnvironment.new()
@@ -88,6 +100,21 @@ func _ready() -> void:
 	print("preview: %s  aabb=%s" % [model_path, bounds])
 	if _screenshot_path != "":
 		_capture_and_quit()
+
+## Union of every visual's bounds in the scene, so the camera frames a multi-mesh
+## model the same way it frames a single one.
+func _merged_bounds(model: Node3D) -> AABB:
+	var bounds := AABB()
+	var first := true
+	for node in model.find_children("*", "VisualInstance3D", true, false):
+		var box: AABB = (node as VisualInstance3D).get_aabb()
+		box = (node as Node3D).transform * box
+		if first:
+			bounds = box
+			first = false
+		else:
+			bounds = bounds.merge(box)
+	return bounds
 
 func _capture_and_quit() -> void:
 	for _i in range(CAPTURE_FRAME_DELAY):
