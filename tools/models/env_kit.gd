@@ -167,15 +167,20 @@ func _wire(w: ObjWriter, from: Vector3, to: Vector3, sag: float,
 		var p1 := from.lerp(to, t1)
 		p0.y -= sag * sin(PI * t0)
 		p1.y -= sag * sin(PI * t1)
-		w.add_quad(
-			Vector3(p0.x + perp.x, p0.y, p0.z + perp.y),
-			Vector3(p1.x + perp.x, p1.y, p1.z + perp.y),
-			Vector3(p1.x - perp.x, p1.y, p1.z - perp.y),
-			Vector3(p0.x - perp.x, p0.y, p0.z - perp.y),
-			material)
+		var a0 := Vector3(p0.x + perp.x, p0.y, p0.z + perp.y)
+		var a1 := Vector3(p1.x + perp.x, p1.y, p1.z + perp.y)
+		var b1 := Vector3(p1.x - perp.x, p1.y, p1.z - perp.y)
+		var b0 := Vector3(p0.x - perp.x, p0.y, p0.z - perp.y)
+		w.add_quad(a0, a1, b1, b0, material)
+		# ⚠️ AND AGAIN, REVERSED. Found by rendering: a single ribbon faces +Y and
+		# is backface-culled from underneath — and an overhead wire is ALWAYS seen
+		# from underneath, so every wire in the map was invisible while the .obj
+		# looked perfectly correct. Sixteen triangles to fix; nothing else in the
+		# kit is single-sided.
+		w.add_quad(b0, b1, a1, a0, material)
 
-func _finish(w: ObjWriter, file_name: String) -> void:
-	w.recalculate_normals(40.0)
+func _finish(w: ObjWriter, file_name: String, smooth_deg: float = 40.0) -> void:
+	w.recalculate_normals(smooth_deg)
 	w.write(_dir + file_name)
 	print("  ", file_name)
 
@@ -259,19 +264,23 @@ func _wall_corrugated() -> void:
 	w.set_material("sheet", UiTheme.ENV_GI_SHEET)
 	w.set_material("rust", UiTheme.ENV_RUST)
 
-	const RIDGES := 13 ## 6 full corrugations across 2 units. 12 is too coarse to
-	                   ## read as a sheet, 25 is spent on something nobody sees.
+	const RIDGES := 17 ## 8 full corrugations across 2 units.
+	const AMPLITUDE := 0.11 ## Was 0.05 and rendered as a blank panel — see below.
 	var outline := PackedVector2Array()
 	for i in range(RIDGES):
 		var x := -1.0 + 2.0 * float(i) / float(RIDGES - 1)
-		outline.append(Vector2(x, -0.05 if i % 2 == 0 else 0.0))
+		outline.append(Vector2(x, -AMPLITUDE if i % 2 == 0 else 0.0))
 	outline.append(Vector2(1.0, 0.10))
 	outline.append(Vector2(-1.0, 0.10))
 
 	w.add_extrude(outline, 0.30, 2.40, "sheet")
 	# Rust at the base, where a real sheet rots first because it stands in water.
 	w.add_extrude(outline, 0.00, 0.30, "rust")
-	_finish(w, "env_wall_corrugated")
+	# ⚠️ 22 degrees, not the usual 40. The whole read of this piece is that
+	# adjacent corrugation facets catch the light DIFFERENTLY. At 40 the
+	# smoothing pass averaged them into one flat surface and the sheet rendered
+	# as a blank panel — verified by render, twice, before and after.
+	_finish(w, "env_wall_corrugated", 22.0)
 
 ## Post, cross-arm, insulators and a drooping service wire. The wire is the point:
 ## the overhead layer converts an open box into a roofed street for about sixty
@@ -302,19 +311,22 @@ func _laundry_line() -> void:
 	w.set_material("cloth_warm", UiTheme.HIGHLIGHT)
 	w.set_material("cloth_rust", UiTheme.ENV_RUST)
 
-	_box(w, -2.0, 0, 0.12, 0.12, 0.0, 2.40, "timber")
-	_box(w, 2.0, 0, 0.12, 0.12, 0.0, 2.40, "timber")
-	_wire(w, Vector3(-2.0, 2.30, 0.0), Vector3(2.0, 2.30, 0.0), 0.28, 0.02, 8, "cloth")
+	# ⚠️ NO POSTS OF ITS OWN, and it spans 16 units rather than sitting on the
+	# 2-unit grid. Both deliberate, both found by rendering: this piece is strung
+	# BETWEEN the two wall lines, so posts of its own stood in the middle of the
+	# road holding up a line nobody could see. A sampay hangs off the buildings.
+	_wire(w, Vector3(-8.0, 2.62, 0.0), Vector3(8.0, 2.62, 0.0), 0.42, 0.025, 12, "cloth")
 
 	# Five garments, alternating material and yaw out of the seeded table. Flat
 	# quads, hung from the sag — a shirt at this distance is a rectangle.
-	const CLOTHS: Array[String] = ["cloth", "cloth_warm", "cloth_rust", "cloth", "cloth_warm"]
-	for i in range(5):
-		var t := (float(i) + 0.5) / 5.0
-		var x := lerpf(-2.0, 2.0, t)
-		var y := 2.30 - 0.28 * sin(PI * t)
+	const CLOTHS: Array[String] = ["cloth", "cloth_warm", "cloth_rust", "cloth",
+		"cloth_warm", "cloth_rust", "cloth"]
+	for i in range(7):
+		var t := (float(i) + 0.5) / 7.0
+		var x := lerpf(-8.0, 8.0, t)
+		var y := 2.62 - 0.42 * sin(PI * t)
 		var yaw: float = JITTER_YAW[i % JITTER_YAW.size()]
-		w.add_extrude(_rect_yaw(x, 0.0, 0.36, 0.03, yaw), y - 0.52, y, CLOTHS[i])
+		w.add_extrude(_rect_yaw(x, 0.0, 0.44, 0.03, yaw), y - 0.62, y, CLOTHS[i])
 	_finish(w, "env_laundry_line")
 
 ## The narrative centre of Eskinita. A wall with a counter in it is a street; a
@@ -584,10 +596,23 @@ func _basketball_ring() -> void:
 func _base_circle_decal() -> void:
 	var w := ObjWriter.new("BaseCircleDecal")
 	w.set_material("mark", UiTheme.HIGHLIGHT)
+	# ⚠️ PROFILE ORDER IS OUTER-FIRST, and reversing it breaks the piece. Found by
+	# rendering: add_revolve derives its normal from the profile edge as
+	# (edge.y, -edge.x), so a top annulus written inner->outer faces DOWN and the
+	# whole ring is backface-culled from above — it rendered as two stray yellow
+	# arcs where the far side showed through the near side. Written outer->inner
+	# the top faces up, the outer wall faces out, and the inner wall faces in.
+	# A CLOSED section — bottom, outer wall, top, inner wall — so no face can be
+	# hidden by a winding mistake, and 0.18 wide rather than 0.06. Both changes
+	# came from rendering it: at 0.06 the ring foreshortened to sub-pixel at the
+	# front and back of the ellipse and read as two stray yellow arcs. The game is
+	# named after this circle; it has to be legible from a throwing line 6 units
+	# away, not merely present in the .obj.
 	w.add_revolve(PackedVector2Array([
-		Vector2(1.44, 0.00), Vector2(1.44, 0.02),
-		Vector2(1.50, 0.02), Vector2(1.50, 0.00),
-	]), 24, "mark")
+		Vector2(1.32, 0.00), Vector2(1.50, 0.00),
+		Vector2(1.50, 0.03), Vector2(1.32, 0.03),
+		Vector2(1.32, 0.00),
+	]), 28, "mark")
 	_finish(w, "env_base_circle_decal")
 
 ## 6.0 units from the base circle is where this goes — see
@@ -615,5 +640,12 @@ func _team_side_decal() -> void:
 func _jeepney_lane_decal() -> void:
 	var w := ObjWriter.new("JeepneyLaneDecal")
 	w.set_material("hazard", UiTheme.IMPACT)
-	_box(w, 0, 0, 4.0, 12.0, 0.0, 0.01, "hazard")
+	# ⚠️ EDGE STRIPES, not a filled rectangle. Rendered as a fill it was a solid
+	# pink carpet that shouted over the Props — and IMPACT belongs to them and to
+	# hit feedback, not to the floor. Two stripes plus rungs read as a marked lane
+	# and stay quiet.
+	for side in SIDES:
+		_box(w, side * 1.8, 0.0, 0.16, 12.0, 0.0, 0.01, "hazard")
+	for i in range(7):
+		_box(w, 0.0, -5.0 + 1.7 * float(i), 3.6, 0.10, 0.0, 0.01, "hazard")
 	_finish(w, "env_jeepney_lane_decal")
