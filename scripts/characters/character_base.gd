@@ -102,6 +102,11 @@ signal state_changed(new_state: State)
 ## Option A only (see MAX_DENTS above). Fires whenever `dents` changes so
 ## RoundManager can watch for a tracked Can reaching MAX_DENTS without polling.
 signal dents_changed(new_dents: int)
+## Q-6: fires whenever a Guard blocks an incoming stagger/dent — the mechanic
+## had no feedback of any kind, on the player being hit OR the one landing a
+## now-nullified hit. CharacterVisual answers with a distinct (DEFENSE-tinted,
+## never IMPACT-tinted) flash — see _flash_blocked below.
+signal hit_blocked
 
 ## B-15/B-35: where this character respawns after falling into the KillPlane
 ## (scripts/systems/kill_plane.gd). Captured from wherever this character
@@ -329,6 +334,8 @@ func apply_stagger(duration: float = BUMP_STAGGER_TIME) -> void:
 	# B-16: a Can actively Guarding blocks the incoming hit outright — no
 	# stagger, same as apply_dent() below no-ops the dent for the same reason.
 	if _is_guarding:
+		hit_blocked.emit()
+		_flash_blocked()
 		return
 	_staggered_time_left = max(_staggered_time_left, duration)
 	_set_state(State.STAGGERED)
@@ -386,6 +393,8 @@ func apply_dent(stagger_duration: float = BUMP_STAGGER_TIME) -> void:
 	# B-16: Guard blocks dents too — the whole point of a Can blocking is to
 	# protect its own health bar, not just avoid the cosmetic stagger.
 	if _is_guarding:
+		hit_blocked.emit()
+		_flash_blocked()
 		return
 	dents = min(dents + 1, MAX_DENTS)
 	dents_changed.emit(dents)
@@ -443,6 +452,23 @@ func _process_dash(delta: float) -> void:
 ## generic to any hit, same as the team check (B-09).
 func is_guarding() -> bool:
 	return _is_guarding
+
+## Q-6: read-only HUD accessors — the mechanic itself (B-16) was fully
+## implemented with no UI at all, which is almost certainly why it was
+## reported missing. Exposed rather than making _guard_stamina/_dash_cooldown_left
+## public outright, so nothing outside this file can write them.
+func get_guard_stamina_ratio() -> float:
+	return _guard_stamina / GUARD_MAX_STAMINA
+
+## 1.0 once the cooldown has fully elapsed (ready to dash again), 0.0 the
+## instant it was just used.
+func get_dash_cooldown_ratio() -> float:
+	return 1.0 - clamp(_dash_cooldown_left / DASH_COOLDOWN, 0.0, 1.0)
+
+## Q-6: distinct from _flash_hit() (B-44's white "landed" flash) — DEFENSE-
+## tinted, so a blocked hit never reads as a landed one.
+func _flash_blocked() -> void:
+	_visual.flash_blocked()
 
 ## Whether this character's press-to-bump window is currently live. The melee
 ## Hitbox (requires_bump_window = true) checks this before landing a stagger;
