@@ -13,6 +13,7 @@ class_name Hud
 @onready var dent_label: Label = %DentLabel
 @onready var toast_label: Label = %ToastLabel
 @onready var round_banner_label: Label = %RoundBannerLabel
+@onready var you_card: YouCard = %YouCard
 
 var _toast_time_left: float = 0.0
 
@@ -67,6 +68,14 @@ func set_round_display(round_number: int, team_a_is_can: bool) -> void:
 		"Defense" if team_a_is_can else "Offense",
 		"Offense" if team_a_is_can else "Defense",
 	]
+
+## Q-5: a joining peer never sees round_started for the round already in
+## progress (B-29) — main.gd::_sync_state_to_late_joiner calls this next to
+## set_round_display() so the YOU card isn't blank until the next round.
+## Would self-heal within REFRESH_INTERVAL anyway (you_card.gd polls), but
+## there's no reason to make a rejoining player wait even that long.
+func refresh_you_card() -> void:
+	you_card.refresh()
 
 func _on_match_won(winning_team: int) -> void:
 	round_label.text = "Team %s wins the match!" % ("A" if winning_team == 0 else "B")
