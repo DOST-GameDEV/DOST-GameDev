@@ -62,10 +62,38 @@ Filipino locations — kalye, probinsya, palengke. Built to look good live on de
 - **Round timer:** 90 seconds.
 - **Match winner:** first team to 3 round wins (Bo5).
 
-### Round-win mechanic — deliberately still open, keeping 2 options alive
+### The beat-by-beat loop ⚠️ ADDED — this was owed and missing
 
-Not locking this until we've felt the movement/combat in-engine — could go either way and
-both are good. Keeping both on the table for now:
+Section 3 described the round's *bookends* and never its middle, which is why the doc could stay
+technically correct while the game did not read as tumbang preso. The loop, as built:
+
+1. **The attacking Person carries the tsinelas.** Walk up, hold the ability button to **charge**,
+   release to throw it on a real ballistic arc, aimed with the camera. Arc, gravity, steer and
+   spin all come from that slipper's `ThrowProfile` — this is where the three Tsinelas identities
+   live now (see Section 4).
+2. **The slipper lands loose.** It is now an object on the ground, not a fighter.
+3. **The retrieval scramble — the tension of the street game.** Either the attacking Person runs
+   out and grabs it, **or** the slipper's own player crawls it home slowly and exposed
+   (`CRAWL_SPEED_SCALE`). Both routes are taggable by the defending Person.
+4. **The taya defends actively.** Tag the attacker to make them drop a carried slipper, body-block
+   the throw — and, when the lata does go down, **hold `grab` beside it to run the Lata Reset
+   Channel** and stand it back up (~1.5s, cancelled if you are tagged out of it, own team only,
+   hands must be empty). ⚠️ **This is B-46, agreed as in-scope in `Handoff.md` §0.7 and built at
+   v4.3.** It was on the moodboard's THE DEFENDER card the whole time and in neither this document
+   nor the code until then. It is what makes defending a job rather than standing still.
+5. **The round ends** on the win condition for whichever mode is running, or on the 90s timer.
+
+### Round-win mechanic — both built, both maintained ⚠️ AMENDED (2026-07-27)
+
+**Both options are now fully implemented and both stay in active, equal development.** They live
+behind `GameLaunch.game_mode` and are selectable from the main menu. This is no longer "keeping
+options open until we decide" — it is a deliberate choice to carry both to shippable quality,
+playtest both, and balance both. Neither is a prototype of the other.
+
+The **ship** decision — which one the submitted demo leads with — is still open and belongs to the
+team, on their own timeline. It is tracked as item 1.5 in [`Checklist.md`](Checklist.md) and it
+blocks nothing. Any older line in this or any other doc saying "pick one and delete the loser" is
+superseded by this paragraph.
 
 **Option A — Stock/Life (dents):** Cans have a health bar. Slippers win the round by fully
 denting a Can. Cans win by the timer running out, or by knocking Slippers out of bounds a
@@ -80,10 +108,12 @@ Both options keep our **stun-only, no permanent elimination** rule for Tsinelas 
 whether they're bounced off a Can or knocked out of bounds, they're straight back in the
 fight either way, not out for the round.
 
-**Build note so this doesn't block anyone:** let's keep the round-win check as its own
-separate system/function, decoupled from movement, combat, and hit registration. That way
-whichever one we feel out first, swapping to the other later is a small change, not a
-rewrite.
+**Build note — this held up, and it is why both modes are affordable.** The round-win check is its
+own system (`RoundManager`, watching `state_changed` / `dents_changed` on a registered list of
+Cans), decoupled from movement, combat and hit registration. Because of that, running both modes
+costs one `GameLaunch.game_mode` branch in `hitbox.gd` and one in `carriable.gd::can_be_reset_by`,
+not two parallel implementations. Keep it that way: no round-win logic in `character_base.gd` or
+`hitbox.gd` beyond that single branch.
 
 ---
 
@@ -162,17 +192,12 @@ whatever — speak up now, otherwise this is what we're building toward.
 
 ## 8. Who's Owning What
 
-| Workstream | Owner | Notes |
-|---|---|---|
-| Gameplay programming (movement, combat, states) | | Core loop first, always playable |
-| Networking (LAN) | | Build early, test on real devices ASAP |
-| 3D art — characters (6 total) | | Can share rigs/animations within a class |
-| 3D art — maps (2-3) | | Environment + hazard props |
-| UI/UX — HUD, menus, scoreboard | | |
-| Sound/Music | | Bump, specials, downed/seal moment, ambient per map |
-| Producer / Docs & Submission | | Forms 01-03, waiver, synopsis, trailer edit, demo recording |
+⚠️ **The ownership table lives in [`Dev_Plan.md`](Dev_Plan.md) §6 and nowhere else.** It used to be
+duplicated here and in `Handoff.md`, three blank copies of the same unanswered question, which made
+the gap look like a formatting quirk instead of a real one. One canonical copy — fill that one in.
 
-Tag your name next to what you've got.
+It is not optional paperwork: **submission Form 01 (Game Development Team Roles) is literally this
+table.**
 
 ---
 
@@ -188,10 +213,18 @@ Tag your name next to what you've got.
 
 ---
 
-## 10. Still Open — Team Discussion
+## 10. Settled since this doc was written
 
-- **Maps:** locking Eskinita + Bayan Plaza, Palengke as stretch — good with everyone, or
-  does someone have a location they'd rather push for?
-- **Theme stretch:** we're already covering Philippine Games/Sports. Worth also leaning into
-  Circular Economy since the can/slipper premise is literally about reused everyday objects?
-  Could be a small scoring bump for basically free if we mention it right in our synopsis.
+- **Maps: locked.** **Eskinita + Bayan Plaza**, Palengke as a stretch only. Nobody pushed for an
+  alternative across four passes, so this is the answer. Bayan Plaza is explicitly the first thing
+  to cut if time runs short — see the cut list at the bottom of [`Checklist.md`](Checklist.md).
+- **Theme stretch: yes, take it.** We lead on **Philippine Games and Sports** and add
+  **Circular Economy** as the secondary angle in the synopsis. The premise is literally about
+  reusing everyday objects — a tin can and a rubber slipper — as sports equipment, so it costs two
+  sentences and no build work. Written into the synopsis plan (`Checklist.md` 6.5).
+- **Title: TUMBANG PRESO**, the moodboard's lockup. B-27 closed; the old "Tumbang Laro: Isang
+  Laban" is gone from every tracked file.
+
+**What is still genuinely open** is now kept in one place — `Handoff.md` §5. Today that is: the
+display typeface, whether the Person gets its own ability roster, prop scale, the ownership table,
+and which round-win mode the demo leads with.
