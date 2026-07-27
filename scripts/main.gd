@@ -205,14 +205,20 @@ func _register_local_can() -> void:
 
 func _start_hosting() -> void:
 	_clear_local_test_characters()
-	if NetworkManager.host_game() != OK:
-		return
+	# U-4: when arriving from the lobby, ENet is already started — skip the
+	# second host_game() call (it would fail with "port in use"). Fall through
+	# to signal wiring and spawning, which still need to happen here.
+	if not NetworkManager.is_networked():
+		if NetworkManager.host_game() != OK:
+			return
 	NetworkManager.player_connected.connect(_on_player_connected)
 	NetworkManager.player_disconnected.connect(_on_player_disconnected)
-	_spawn_player(multiplayer.get_unique_id()) # host is player 1
-	# Rough pass: the match begins as soon as the host starts hosting, rather
-	# than waiting for a full 2v2 lobby to fill — matches the "no lobby UI"
-	# state of networking so far. Revisit once MainMenu has a real ready-up.
+	# U-4: after the lobby all connected peers are already known; iterate over
+	# connected_peer_ids so everyone gets a spawner entry. In a fresh (non-
+	# lobby) host flow, connected_peer_ids = [host_id] so behaviour is the same
+	# as the old single _spawn_player(multiplayer.get_unique_id()) call.
+	for id in NetworkManager.connected_peer_ids:
+		_spawn_player(id)
 	MatchManager.begin_next_round()
 
 func _start_joining(address: String) -> void:
@@ -224,7 +230,9 @@ func _start_joining(address: String) -> void:
 	# all, so these are wired here rather than _ready().
 	NetworkManager.server_disconnected.connect(_on_server_disconnected)
 	NetworkManager.connection_failed.connect(_on_connection_failed)
-	NetworkManager.join_game(address)
+	# U-4: when arriving from the lobby, join_game() already ran — skip it.
+	if not NetworkManager.is_networked():
+		NetworkManager.join_game(address)
 
 func _clear_local_test_characters() -> void:
 	RoundManager.clear_tracked_cans()
