@@ -310,8 +310,8 @@ Two control slots, matching the two bound input sets in `project.godot`:
 
 | Slot | Keys | Default holder |
 |---|---|---|
-| **P1** | WASD · Space bump · Shift guard/dash · Q special | `TeamAProp` |
-| **P2** | Arrows · Enter bump · End guard/dash · RShift special | `TeamAPerson` |
+| **P1** | WASD · Space bump · Shift guard/dash · Q special | `TeamAPerson` |
+| **P2** | Arrows · Enter bump · End guard/dash · RShift special | `TeamAProp` |
 
 | Key | Action |
 |---|---|
@@ -323,6 +323,12 @@ Two control slots, matching the two bound input sets in `project.godot`:
 | `F6` | Reset both slots to their defaults |
 
 Cycle order is the `Main.tscn` order: `TeamAProp` → `TeamAPerson` → `TeamBProp` → `TeamBPerson`.
+**The default holders were swapped** (P1 was `TeamAProp`, P2 was `TeamAPerson`): starting a Local
+Match on the Prop meant the first thing anyone saw was a third-person shot of a tin can. P1 now
+holds the Person. Note the consequence of §0.1 — a Person is *always* first-person, so the default
+view has no visible body, only the arena and your own shadow. `main.gd::_start_local_test()` picks
+the same unit for the camera and must be kept in step with `DEFAULT_P1_UNIT`, since
+`debug_register_bar()` re-applies these defaults and would otherwise override it.
 A slot skips a unit already held by the other slot, so the two can never collide.
 
 #### 3.5.2 How control actually moves — no gameplay edits
@@ -391,12 +397,28 @@ Total footprint: **3 files, 2 lines.**
 - [ ] Verify nothing is left behind:
 
 ```bash
-grep -rin "debug" --include="*.gd" --include="*.tscn" --include="*.tres" --include="project.godot" . | grep -iv "is_debug_build"
+grep -rin "debug" --include="*.gd" --include="*.tscn" --include="*.tres" --include="project.godot" . \
+  | grep -iv "is_debug_build" \
+  | grep -v "Debug > Run Multiple Instances"
 ```
 
 That grep returning nothing is the acceptance test for removal, and it only works because of the
 `debug_`/`Debug` prefix rule (§0.3.1). A hit inside a gameplay script means rule 0.3.2 was broken
 somewhere and the removal is not finished.
+
+⚠️ **The third `grep -v` is load-bearing and was missing from the original spec.** Four gameplay
+files (`main.gd` ×2, `game_launch.gd`, `network_manager.gd`) carry comments pointing at Godot's
+own editor menu, **Debug > Run Multiple Instances** — the documented two-instance LAN test
+workflow. Those have nothing to do with this feature, will still be there after it is deleted, and
+made the acceptance test impossible to ever pass. Without that filter the checklist looks failed
+when it has actually succeeded, which is worse than no checklist. Two other comments that did name
+the switcher (`main.gd`'s local-flow default and `camera_rig.gd`'s `set_active` doc) were reworded
+to describe it as "queue item 1's unit switcher" instead, so they stay accurate without tripping
+the grep.
+
+Note also that a `.tscn` instance costs **two** lines, not one: the `[node ...]` line and the
+`[ext_resource ...]` it needs. That is inherent to the scene format, not a contract violation, so
+the real footprint is 3 files and 3 lines.
 
 - [ ] Open the project, press F5, play a Local Match round — confirm P1/P2 still work on their
       `Main.tscn` defaults with the switcher gone.
