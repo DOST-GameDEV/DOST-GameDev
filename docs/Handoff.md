@@ -777,12 +777,42 @@ landing/reset — otherwise tagging the thrower mid-flight would have landed the
 slipper in mid-air. **Still `[~]`-grade: no human has been tagged mid-carry.**
 
 **B-76 · The local-test flow gives every Prop `quick_stand.tres`, so no slipper
-has a real throw profile. (NEW)** `main.gd`'s `PROP_ABILITY` is Quick Stand for
+has a real throw profile.** `main.gd`'s `PROP_ABILITY` is Quick Stand for
 every networked Prop (B-04's stopgap), and `Main.tscn` hardcodes the same for
 `TeamAProp`. Quick Stand has no `get_throw_profile()`, so every throw falls back
 to `throw_default.tres` and **the three Tsinelas identities are unreachable in
 game.** Not a defect in the new code — it is B-24's missing character-select
 surfacing through it. *Fix:* character select, or an interim per-side default.
+**[FIXED]** checklist 0.2, this pass. Turned out worse than stated: `is_can`
+flips every round (`_reset_world`) and nothing ever re-picked a Prop's ability
+on that flip, so even a correct spawn-time assignment would have gone stale one
+round later — same trap as B-42/B-80(c). `_prop_ability_for(is_can, team)` now
+runs at every spawn path AND every round reset. Team A's Tsinelas is Bakya Bash,
+Team B's is Flick Dash — two of the three identities, chosen for contrast; a
+single 2v2 sitting cannot reach all three without 3.3 (character select).
+Verified by running a headless probe through three consecutive
+`MatchManager.begin_next_round()` calls and dumping each Prop's ability class —
+correct at every transition, and `.duplicate()`d (not shared) confirmed too.
+
+**B-85 · Headless-only: a role-swap round transition throws three
+`material_get_instance_shader_parameters` / "Parameter material is null"
+errors. (NEW, unconfirmed in real rendering)** Found while writing a headless
+verification probe for checklist 0.2: instantiate `Main.tscn` and call
+`MatchManager.begin_next_round()` — the errors appear right after the first
+call that actually flips a role (round 1→2), not on the initial round-1 setup.
+Almost certainly `character_visual.gd`'s Can↔Tsinelas model swap touching a
+shader-based material that Godot's **dummy** (headless, no GPU) rendering
+driver can't resolve — possibly the same material B-81 (this file, above)
+just touched fixing the tsinelas's role-colour paint, though this pass didn't
+chase that far. `tools/render_probe.gd`'s real-device 400-frame runs through
+round 1 show nothing, and B-77/78/79/80's own lesson (`--headless` never
+renders a pixel) cuts the other way here too: this may be a dummy-driver
+artifact with no real-render equivalent, not a shipped-build defect. *Not
+fixed, not chased further* — outside checklist 0.1/0.2/0.3's scope
+(`character_visual.gd` is Design lane's file besides), and I could not
+reproduce it with a real rendering device in the time I had. Flagging with an
+exact repro rather than either silently fixing something in someone else's
+file or silently dropping it.
 
 ### P2 — open, carried over from the archive
 
