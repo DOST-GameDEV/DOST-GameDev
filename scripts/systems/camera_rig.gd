@@ -245,8 +245,23 @@ func _ready() -> void:
 	# activate itself here — no main.gd wiring needed, same pattern as Hud
 	# reading autoloads directly. Local test has no authority concept; the
 	# switcher (or main.gd, until it exists) calls set_active() explicitly.
+	#
+	# AI takeover: is_multiplayer_authority() alone is no longer sufficient on
+	# the HOST machine specifically — an AI-driven character's authority is
+	# also the host's own peer_id (see main.gd::_build_networked_character),
+	# so on a host that is itself a real player, every AI-driven character's
+	# rig would ALSO see is_mine = true and activate here, stealing the
+	# camera (and, via _apply_fpp_self_hide below, hiding that AI character's
+	# own body/head as if it were being viewed through its own eyes) —
+	# reported as "my POV is another AI-controlled character" and "other
+	# characters have an FPP model with a TPP view." `ai_controller` is only
+	# ever non-null on the one process that attached it (the host, and only
+	# for the character it's actually driving — see main.gd's _attach_ai
+	# call sites), so excluding it is enough to tell "mine" from "the host's
+	# machine happens to also simulate this one." Same fix as
+	# main.gd::get_local_character().
 	if NetworkManager.is_networked():
-		var is_mine := _character.is_multiplayer_authority()
+		var is_mine := _character.is_multiplayer_authority() and _character.ai_controller == null
 		set_active(is_mine)
 		set_aim_source(AimSource.MOUSE if is_mine else AimSource.MOVEMENT)
 
