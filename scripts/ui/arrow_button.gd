@@ -13,9 +13,9 @@ class_name ArrowButton
 ## Two children (see ArrowButton.tscn): `Artwork`, a TextureRect with
 ## `show_behind_parent` so it sits under everything, and `Caption`, a Label on
 ## top. Button's own `text` stays empty — the caption is a real Label so it can
-## be scaled non-uniformly and tracked out, which the artboard does to SETTINGS
-## and which no font size reproduces on Button's built-in text. Because `scale`
-## applies to children, the caption still stretches with the pennant.
+## be rotated to follow the pennant's slant, which Button's built-in text cannot
+## do. Because `scale` applies to children, the caption still stretches with the
+## pennant during the entrance and hover animations.
 
 const HOVER_SCALE: float = 1.04
 const HOVER_BRIGHTNESS: float = 1.12
@@ -27,16 +27,18 @@ const PRESS_SCALE: float = 0.96
 ## one shared value.
 @export var text_color: Color = Color("221a10"): set = _set_text_color
 @export var label_size: int = 72: set = _set_label_size
-## Non-uniform scale on the caption. The artboard sets SETTINGS at a small size
-## stretched tall rather than condensed narrow: its mid-height strokes measure
-## 16px against QUIT's 22px, while its top bar measures 29px — a 1.8x ratio that
-## only a vertical stretch produces. Cap height and stroke weight are otherwise
-## impossible to satisfy at once.
+## Non-uniform scale on the caption, for artwork that stretches its lettering.
+## Unused by the current pennants — they are all set naturally.
 @export var label_stretch_x: float = 1.0: set = _set_label_stretch_x
 @export var label_stretch_y: float = 1.0: set = _set_label_stretch_y
-## Extra tracking, in pixels per gap. The same stretched caption is spaced out to
-## span its pennant; without it the letters crowd together.
+## Extra tracking, in pixels per gap.
 @export var label_spacing: int = 0: set = _set_label_spacing
+## Degrees clockwise. The pennants are drawn on a slant and their captions follow
+## it, so a horizontal caption reads as crooked against the artwork. This also
+## inflates a caption's measured bounding box — a rotated string's box is wider
+## and taller than the string — which is what makes a slanted caption look like
+## it needs condensing or stretching when it does not.
+@export var label_rotation: float = 0.0: set = _set_label_rotation
 ## Distance from this button's left edge out to the off-screen flagpole the
 ## entrance animation pivots around.
 @export var pole_distance: float = 420.0
@@ -151,6 +153,10 @@ func _set_label_spacing(value: int) -> void:
 	_apply_label_spacing()
 	_apply_layout()
 
+func _set_label_rotation(value: float) -> void:
+	label_rotation = value
+	_apply_layout()
+
 ## Clears the override before reading the theme font, so repeated calls wrap the
 ## base face rather than stacking FontVariations on top of each other.
 func _apply_label_spacing() -> void:
@@ -183,9 +189,10 @@ func _apply_layout() -> void:
 	_caption.offset_right = -tip_padding
 	_caption.offset_top = maxf(0.0, text_offset_y * 2.0)
 	_caption.offset_bottom = minf(0.0, text_offset_y * 2.0)
-	# Scale about the caption's own centre so condensing squeezes inward rather
-	# than dragging the word toward one edge.
+	# Rotate and scale about the caption's own centre, so the word pivots in
+	# place rather than swinging toward one edge.
 	_caption.pivot_offset = _caption.size * 0.5
+	_caption.rotation = deg_to_rad(label_rotation)
 
 # --- Entrance -----------------------------------------------------------------
 
