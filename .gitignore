@@ -19,3 +19,6 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude Code agent worktrees and session state
+.claude/

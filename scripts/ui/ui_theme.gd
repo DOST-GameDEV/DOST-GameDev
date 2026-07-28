@@ -17,12 +17,11 @@ class_name UiTheme
 ## individual nodes — that is what this replaces. Reach for a type variation
 ## (see `_register_variations`) when a node needs to look different.
 ##
-## ⚠️ Display font: the moodboard's heavy hand-drawn unicase marker face is
-## Harry's and was not supplied with the brief, so this ships on Godot's default
-## font. The palette, chrome and layout logic are all moodboard-accurate; only
-## the typeface is standing in. Dropping the real face in is a one-line change
-## (`theme.default_font`) plus the licence record for submission Form 03 — see
-## the blocker note in docs/Handoff.md item 15.
+## Display font: Darumadrop One (SIL Open Font License 1.1, licence text kept
+## beside the face at assets/ui/fonts/OFL.txt for submission Form 03). This
+## resolves the F-2 placeholder-typeface blocker.
+
+const DISPLAY_FONT_PATH: String = "res://assets/ui/fonts/DarumadropOne-Regular.ttf"
 
 # --- Palette (docs/Handoff.md item 15) ----------------------------------------
 const INK: Color = Color("040838")        ## near-black navy: text, borders, pressed fills
@@ -57,6 +56,7 @@ const FONT_SIZE_TIMER: int = 44
 static func build() -> Theme:
 	var theme := Theme.new()
 	theme.default_font_size = FONT_SIZE_BODY
+	theme.default_font = load(DISPLAY_FONT_PATH)
 
 	_style_button(theme)
 	_style_inputs(theme)

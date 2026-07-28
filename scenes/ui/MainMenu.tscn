@@ -1,19 +1,72 @@
-[gd_scene load_steps=7 format=3 uid="uid://bqk3n7x9m1p2s"]
+[gd_scene load_steps=19 format=3 uid="uid://bqk3n7x9m1p2s"]
 
 [ext_resource type="Script" path="res://scripts/ui/main_menu.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/ui/SettingsPanel.tscn" id="2"]
 [ext_resource type="Shader" path="res://assets/ui/blueprint_grid.gdshader" id="3"]
-[ext_resource type="Shader" path="res://assets/ui/card_fold.gdshader" id="4"]
+[ext_resource type="PackedScene" path="res://scenes/ui/ArrowButton.tscn" id="4"]
+[ext_resource type="Texture2D" path="res://assets/ui/main-menu/PLAY BUTTON.png" id="5"]
+[ext_resource type="Texture2D" path="res://assets/ui/main-menu/SETTINGS BUTTON.png" id="6"]
+[ext_resource type="Texture2D" path="res://assets/ui/main-menu/QUIT BUTTON.png" id="7"]
+[ext_resource type="Texture2D" path="res://assets/ui/main-menu/TUMP.png" id="8"]
+[ext_resource type="Texture2D" path="res://assets/ui/host-game/GAME BANNER.png" id="9"]
+[ext_resource type="Texture2D" path="res://assets/ui/host-game/SETTINGS CONFIG PANEL.png" id="10"]
+[ext_resource type="Texture2D" path="res://assets/ui/host-game/BUTTON LONG.png" id="11"]
+[ext_resource type="Texture2D" path="res://assets/ui/host-game/TEXT FIELD.png" id="12"]
+[ext_resource type="Texture2D" path="res://assets/ui/host-game/JOIN BUTTON.png" id="13"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_bg"]
 shader = ExtResource("3")
-shader_parameter/grid_size = 24.0
-shader_parameter/bg_color = Color(0.882353, 0.898039, 0.909804, 1)
-shader_parameter/line_color = Color(0, 0.502, 0.914, 0.09)
+shader_parameter/grid_size = 32.0
+shader_parameter/bg_color = Color(0.016, 0.031, 0.22, 1)
+shader_parameter/line_color = Color(1, 1, 1, 0.05)
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_fold"]
-shader = ExtResource("4")
-shader_parameter/fold_color = Color(0.016, 0.031, 0.22, 1)
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_wood_normal"]
+bg_color = Color(0.192, 0.098, 0.043, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.545, 0.322, 0.153, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_wood_hover"]
+bg_color = Color(0.353, 0.184, 0.078, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.973, 0.816, 0.157, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_wood_pressed"]
+bg_color = Color(0.114, 0.055, 0.024, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.973, 0.816, 0.157, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_wood_disabled"]
+bg_color = Color(0.192, 0.098, 0.043, 0.4)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.545, 0.322, 0.153, 0.35)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
 
 [node name="MainMenu" type="Control"]
 layout_mode = 3
@@ -28,173 +81,335 @@ anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 material = SubResource("ShaderMaterial_bg")
-color = Color(0.882353, 0.898039, 0.909804, 1)
+color = Color(0.016, 0.031, 0.22, 1)
 mouse_filter = 2
 
-[node name="TitleScreen" type="VBoxContainer" parent="."]
+[node name="TitleScreen" type="Control" parent="."]
 unique_name_in_owner = true
 layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -320.0
-offset_top = -160.0
-offset_right = 320.0
-offset_bottom = 160.0
-alignment = 1
-
-[node name="TitleCard" type="PanelContainer" parent="TitleScreen"]
-unique_name_in_owner = true
-layout_mode = 2
-
-[node name="TitleCardContent" type="VBoxContainer" parent="TitleScreen/TitleCard"]
-layout_mode = 2
-alignment = 1
-
-[node name="TitleLabel" type="Label" parent="TitleScreen/TitleCard/TitleCardContent"]
-layout_mode = 2
-theme_type_variation = &"Display"
-horizontal_alignment = 1
-text = "TUMBANG PRESO"
-
-[node name="SubtitleLabel" type="Label" parent="TitleScreen/TitleCard/TitleCardContent"]
-layout_mode = 2
-theme_type_variation = &"Caption"
-horizontal_alignment = 1
-text = "2v2 ARENA BRAWLER — CANS VS TSINELAS"
-
-[node name="Spacer" type="Control" parent="TitleScreen/TitleCard/TitleCardContent"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 28)
-
-[node name="StartButton" type="Button" parent="TitleScreen/TitleCard/TitleCardContent"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_type_variation = &"PrimaryButton"
-text = "PLAY"
-
-[node name="SettingsButton" type="Button" parent="TitleScreen/TitleCard/TitleCardContent"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "SETTINGS"
-
-[node name="QuitButton" type="Button" parent="TitleScreen/TitleCard/TitleCardContent"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "QUIT"
-
-[node name="KeywordSpacer" type="Control" parent="TitleScreen/TitleCard/TitleCardContent"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 8)
-
-[node name="KeywordStrip" type="Label" parent="TitleScreen/TitleCard/TitleCardContent"]
-layout_mode = 2
-theme_type_variation = &"Caption"
-horizontal_alignment = 1
-text = "ESPORTS · GAME DEV CHALLENGE · NCR 2026"
-
-[node name="FoldCorner" type="Control" parent="TitleScreen/TitleCard"]
-layout_mode = 1
-anchors_preset = 4
-anchor_left = 1.0
-anchor_top = 1.0
+anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -16.0
-offset_top = -16.0
-mouse_filter = 2
-material = SubResource("ShaderMaterial_fold")
+mouse_filter = 1
 
-[node name="PlayMenu" type="VBoxContainer" parent="."]
+[node name="TumpLogo" type="TextureRect" parent="TitleScreen"]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 140.0
+offset_top = 90.0
+offset_right = 1354.0
+offset_bottom = 391.0
+mouse_filter = 2
+texture = ExtResource("8")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="TaglineLabel" type="Label" parent="TitleScreen"]
+layout_mode = 0
+offset_left = 150.0
+offset_top = 396.0
+offset_right = 1354.0
+offset_bottom = 434.0
+theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 0.75)
+theme_override_font_sizes/font_size = 28
+text = "2v2 ARENA BRAWLER — CANS VS TSINELAS"
+
+[node name="StartButton" parent="TitleScreen" instance=ExtResource("4")]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = -60.0
+offset_top = 452.0
+offset_right = 734.0
+offset_bottom = 711.0
+texture = ExtResource("5")
+text = "PLAY"
+text_color = Color(0.078, 0.2, 0.051, 1)
+label_size = 88
+text_indent = 150.0
+tip_padding = 120.0
+
+[node name="SettingsButton" parent="TitleScreen" instance=ExtResource("4")]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = -60.0
+offset_top = 676.0
+offset_right = 740.0
+offset_bottom = 896.0
+texture = ExtResource("6")
+text = "SETTINGS"
+text_color = Color(0.239, 0.149, 0.024, 1)
+label_size = 74
+text_indent = 150.0
+tip_padding = 120.0
+
+[node name="QuitButton" parent="TitleScreen" instance=ExtResource("4")]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = -60.0
+offset_top = 862.0
+offset_right = 699.0
+offset_bottom = 1055.0
+texture = ExtResource("7")
+text = "QUIT"
+text_color = Color(0.239, 0.051, 0.051, 1)
+label_size = 70
+text_indent = 150.0
+tip_padding = 120.0
+
+[node name="PlayMenu" type="Control" parent="."]
 unique_name_in_owner = true
 layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -220.0
-offset_top = -210.0
-offset_right = 220.0
-offset_bottom = 210.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 1
+
+[node name="GameBanner" type="TextureRect" parent="PlayMenu"]
+layout_mode = 0
+offset_left = -60.0
+offset_top = 80.0
+offset_right = 804.0
+offset_bottom = 272.0
+mouse_filter = 2
+texture = ExtResource("9")
+expand_mode = 1
+stretch_mode = 0
+
+[node name="GameBannerLabel" type="Label" parent="PlayMenu/GameBanner"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 150.0
+offset_right = -120.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.239, 0.149, 0.024, 1)
+theme_override_font_sizes/font_size = 76
+vertical_alignment = 1
+text = "GAME"
+
+[node name="ConfigPanel" type="TextureRect" parent="PlayMenu"]
+layout_mode = 0
+offset_left = 140.0
+offset_top = 330.0
+offset_right = 985.0
+offset_bottom = 709.0
+mouse_filter = 1
+texture = ExtResource("10")
+expand_mode = 1
+stretch_mode = 0
+
+[node name="Rows" type="VBoxContainer" parent="PlayMenu/ConfigPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 56.0
+offset_top = 48.0
+offset_right = -56.0
+offset_bottom = -48.0
+theme_override_constants/separation = 28
 alignment = 1
 
-[node name="PlayCard" type="PanelContainer" parent="PlayMenu"]
+[node name="MapRow" type="HBoxContainer" parent="PlayMenu/ConfigPanel/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="MapCaption" type="Label" parent="PlayMenu/ConfigPanel/Rows/MapRow"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 1)
+theme_override_font_sizes/font_size = 34
+vertical_alignment = 1
+text = "MAP"
+
+[node name="MapPrevButton" type="Button" parent="PlayMenu/ConfigPanel/Rows/MapRow"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(64, 64)
 layout_mode = 2
+theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 1)
+theme_override_colors/font_disabled_color = Color(0.961, 0.902, 0.784, 0.3)
+theme_override_font_sizes/font_size = 30
+theme_override_styles/normal = SubResource("StyleBoxFlat_wood_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_wood_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_wood_pressed")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_wood_disabled")
+theme_override_styles/focus = SubResource("StyleBoxFlat_wood_hover")
+disabled = true
+text = "◀"
 
-[node name="PlayCardContent" type="VBoxContainer" parent="PlayMenu/PlayCard"]
-layout_mode = 2
-alignment = 1
-
-[node name="ModeLabel" type="Label" parent="PlayMenu/PlayCard/PlayCardContent"]
-layout_mode = 2
-theme_type_variation = &"Heading"
-horizontal_alignment = 1
-text = "GAME MODE"
-
-[node name="GameModeOption" type="OptionButton" parent="PlayMenu/PlayCard/PlayCardContent"]
-unique_name_in_owner = true
-layout_mode = 2
-
-[node name="Spacer1" type="Control" parent="PlayMenu/PlayCard/PlayCardContent"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 12)
-
-[node name="LocalButton" type="Button" parent="PlayMenu/PlayCard/PlayCardContent"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_type_variation = &"PrimaryButton"
-text = "LOCAL MATCH (SINGLE PC)"
-
-[node name="HostButton" type="Button" parent="PlayMenu/PlayCard/PlayCardContent"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "HOST GAME (LAN)"
-
-[node name="JoinRow" type="HBoxContainer" parent="PlayMenu/PlayCard/PlayCardContent"]
-layout_mode = 2
-
-[node name="JoinAddressEdit" type="LineEdit" parent="PlayMenu/PlayCard/PlayCardContent/JoinRow"]
+[node name="MapValueLabel" type="Label" parent="PlayMenu/ConfigPanel/Rows/MapRow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-placeholder_text = "Host address, e.g. 127.0.0.1"
-
-[node name="JoinButton" type="Button" parent="PlayMenu/PlayCard/PlayCardContent/JoinRow"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "JOIN"
-
-[node name="StatusLabel" type="Label" parent="PlayMenu/PlayCard/PlayCardContent"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_type_variation = &"Caption"
+theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 1)
+theme_override_font_sizes/font_size = 30
 horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="MapNextButton" type="Button" parent="PlayMenu/ConfigPanel/Rows/MapRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 1)
+theme_override_colors/font_disabled_color = Color(0.961, 0.902, 0.784, 0.3)
+theme_override_font_sizes/font_size = 30
+theme_override_styles/normal = SubResource("StyleBoxFlat_wood_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_wood_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_wood_pressed")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_wood_disabled")
+theme_override_styles/focus = SubResource("StyleBoxFlat_wood_hover")
+disabled = true
+text = "▶"
+
+[node name="ModeRow" type="HBoxContainer" parent="PlayMenu/ConfigPanel/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="ModeCaption" type="Label" parent="PlayMenu/ConfigPanel/Rows/ModeRow"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 1)
+theme_override_font_sizes/font_size = 34
+vertical_alignment = 1
+text = "MODE"
+
+[node name="ModePrevButton" type="Button" parent="PlayMenu/ConfigPanel/Rows/ModeRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 1)
+theme_override_colors/font_hover_color = Color(0.973, 0.816, 0.157, 1)
+theme_override_colors/font_pressed_color = Color(0.973, 0.816, 0.157, 1)
+theme_override_colors/font_focus_color = Color(0.961, 0.902, 0.784, 1)
+theme_override_font_sizes/font_size = 30
+theme_override_styles/normal = SubResource("StyleBoxFlat_wood_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_wood_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_wood_pressed")
+theme_override_styles/focus = SubResource("StyleBoxFlat_wood_hover")
+text = "◀"
+
+[node name="ModeValueLabel" type="Label" parent="PlayMenu/ConfigPanel/Rows/ModeRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 1)
+theme_override_font_sizes/font_size = 30
+horizontal_alignment = 1
+vertical_alignment = 1
 autowrap_mode = 2
 
-[node name="Spacer2" type="Control" parent="PlayMenu/PlayCard/PlayCardContent"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 12)
-
-[node name="BackButton" type="Button" parent="PlayMenu/PlayCard/PlayCardContent"]
+[node name="ModeNextButton" type="Button" parent="PlayMenu/ConfigPanel/Rows/ModeRow"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(64, 64)
 layout_mode = 2
-text = "◀  BACK"
+theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 1)
+theme_override_colors/font_hover_color = Color(0.973, 0.816, 0.157, 1)
+theme_override_colors/font_pressed_color = Color(0.973, 0.816, 0.157, 1)
+theme_override_colors/font_focus_color = Color(0.961, 0.902, 0.784, 1)
+theme_override_font_sizes/font_size = 30
+theme_override_styles/normal = SubResource("StyleBoxFlat_wood_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_wood_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_wood_pressed")
+theme_override_styles/focus = SubResource("StyleBoxFlat_wood_hover")
+text = "▶"
 
-[node name="FoldCorner" type="Control" parent="PlayMenu/PlayCard"]
+[node name="LocalButton" parent="PlayMenu" instance=ExtResource("4")]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 1020.0
+offset_top = 330.0
+offset_right = 1838.0
+offset_bottom = 465.0
+texture = ExtResource("11")
+text = "PLAY OFFLINE"
+text_color = Color(0.961, 0.902, 0.784, 1)
+label_size = 46
+pole_distance = 300.0
+text_indent = 48.0
+tip_padding = 48.0
+
+[node name="HostButton" parent="PlayMenu" instance=ExtResource("4")]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 1020.0
+offset_top = 485.0
+offset_right = 1838.0
+offset_bottom = 620.0
+texture = ExtResource("11")
+text = "HOST GAME (LAN)"
+text_color = Color(0.961, 0.902, 0.784, 1)
+label_size = 46
+pole_distance = 300.0
+text_indent = 48.0
+tip_padding = 48.0
+
+[node name="JoinField" type="TextureRect" parent="PlayMenu"]
+layout_mode = 0
+offset_left = 1020.0
+offset_top = 660.0
+offset_right = 1838.0
+offset_bottom = 795.0
+mouse_filter = 1
+texture = ExtResource("12")
+expand_mode = 1
+stretch_mode = 0
+
+[node name="JoinAddressEdit" type="LineEdit" parent="PlayMenu/JoinField"]
+unique_name_in_owner = true
 layout_mode = 1
-anchors_preset = 4
-anchor_left = 1.0
-anchor_top = 1.0
+anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -16.0
-offset_top = -16.0
-mouse_filter = 2
-material = SubResource("ShaderMaterial_fold")
+offset_left = 48.0
+offset_top = 24.0
+offset_right = -48.0
+offset_bottom = -24.0
+placeholder_text = "HOST IP — e.g. 127.0.0.1"
+
+[node name="JoinButton" parent="PlayMenu" instance=ExtResource("4")]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 1020.0
+offset_top = 820.0
+offset_right = 1341.0
+offset_bottom = 955.0
+texture = ExtResource("13")
+text = "JOIN"
+text_color = Color(0.961, 0.902, 0.784, 1)
+label_size = 46
+pole_distance = 200.0
+text_indent = 36.0
+tip_padding = 36.0
+
+[node name="StatusLabel" type="Label" parent="PlayMenu"]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 1020.0
+offset_top = 965.0
+offset_right = 1838.0
+offset_bottom = 1045.0
+theme_override_colors/font_color = Color(0.957, 0.408, 0.659, 1)
+theme_override_font_sizes/font_size = 24
+autowrap_mode = 2
+
+[node name="BackButton" type="Button" parent="PlayMenu"]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 140.0
+offset_top = 800.0
+offset_right = 460.0
+offset_bottom = 880.0
+theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 1)
+theme_override_colors/font_hover_color = Color(0.973, 0.816, 0.157, 1)
+theme_override_colors/font_pressed_color = Color(0.973, 0.816, 0.157, 1)
+theme_override_colors/font_focus_color = Color(0.961, 0.902, 0.784, 1)
+theme_override_font_sizes/font_size = 32
+theme_override_styles/normal = SubResource("StyleBoxFlat_wood_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_wood_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_wood_pressed")
+theme_override_styles/focus = SubResource("StyleBoxFlat_wood_hover")
+text = "◀  BACK"
 
 [node name="SettingsPanel" parent="." instance=ExtResource("2")]
 unique_name_in_owner = true

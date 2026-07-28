@@ -1,65 +1,68 @@
 extends Control
 class_name MainMenu
 
-## Session 6: the game's actual entry point now (see project.godot
-## run/main_scene). Two panels in one Control, swapped via visibility:
-## - TitleScreen: name of the game + a single "Start" button.
-## - PlayMenu: Local / Host / Join (with an address field) + a game-mode
-##   picker (see game_launch.gd). Picking Host or Join now lands in the
-##   pre-match Lobby (U-4 / B-13); Local still goes straight to Main.tscn.
+## The game's entry point (see project.godot run/main_scene). Two screens in one
+## Control, swapped via visibility:
+## - TitleScreen: the TUMP logo and the three pennant buttons.
+## - PlayMenu: the GAME screen — map/mode selectors, Local / Host / Join.
+##
+## Picking Host or Join lands in the pre-match Lobby (U-4 / B-13); Local goes
+## straight to Main.tscn.
+##
+## Both screens replay their pennant entrance every time they are shown, so
+## bouncing between them never leaves a button stuck mid-unfurl.
 
 const MAIN_SCENE_PATH:  String = "res://scenes/main/Main.tscn"
 const LOBBY_SCENE_PATH: String = "res://scenes/ui/Lobby.tscn"
 
+## Stagger between consecutive pennants unfurling.
+const STAGGER: float = 0.09
+
+## Order matches the old OptionButton: Option B is the default selection.
+## Via the class_name rather than the GameLaunch autoload: an autoload lookup is
+## not a constant expression, so it cannot initialise a const.
+const MODES: Array[Dictionary] = [
+	{"id": GameLaunchScript.GameMode.OPTION_B, "label": "OPTION B — CAPTURE & SEAL"},
+	{"id": GameLaunchScript.GameMode.OPTION_A, "label": "OPTION A — HEALTH / DENTS"},
+]
+
+## There is exactly one arena, and which maps ship is still an open design
+## decision (docs/Handoff.md). The row is present so the screen matches the
+## layout, with its arrows disabled in the scene until there is something to
+## cycle through.
+const MAP_NAME: String = "DEFAULT ARENA"
+
 @onready var title_screen: Control = %TitleScreen
 @onready var play_menu: Control = %PlayMenu
 @onready var settings_panel: SettingsPanel = %SettingsPanel
-@onready var start_button: Button = %StartButton
-@onready var settings_button: Button = %SettingsButton
-@onready var quit_button: Button = %QuitButton
-@onready var local_button: Button = %LocalButton
-@onready var host_button: Button = %HostButton
-@onready var join_button: Button = %JoinButton
+
+@onready var start_button: ArrowButton = %StartButton
+@onready var settings_button: ArrowButton = %SettingsButton
+@onready var quit_button: ArrowButton = %QuitButton
+
+@onready var local_button: ArrowButton = %LocalButton
+@onready var host_button: ArrowButton = %HostButton
+@onready var join_button: ArrowButton = %JoinButton
 @onready var join_address_edit: LineEdit = %JoinAddressEdit
-@onready var game_mode_option: OptionButton = %GameModeOption
-@onready var status_label: Label = %StatusLabel
 @onready var back_button: Button = %BackButton
-## Q-9: moodboard card chrome (Dev_Plan.md §4.2/§4.3) — PANEL fill, INK
-## border, an IMPACT accent bar. Applied in code, same pattern as the Q-4/Q-5
-## cards, rather than a one-off StyleBoxFlat baked into the .tscn.
-@onready var title_card: PanelContainer = %TitleCard
-@onready var play_card: PanelContainer = %PlayCard
+@onready var status_label: Label = %StatusLabel
+
+@onready var map_value_label: Label = %MapValueLabel
+@onready var mode_value_label: Label = %ModeValueLabel
+@onready var mode_prev_button: Button = %ModePrevButton
+@onready var mode_next_button: Button = %ModeNextButton
+
+var _mode_index: int = 0
 
 func _ready() -> void:
-	title_screen.visible = true
-	play_menu.visible = false
 	settings_panel.visible = false
 	status_label.text = ""
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE # item 14: defensive — Main.tscn captures it for a match
-	GameVersion.attach_to(self) # build stamp, bottom-right — see game_version.gd
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE # Main.tscn captures it for a match
+	GameVersion.attach_to(self)
 
-	var card_style := UiTheme.card_style(UiTheme.PANEL, UiTheme.INK, UiTheme.IMPACT)
-	title_card.add_theme_stylebox_override("panel", card_style)
-	play_card.add_theme_stylebox_override("panel", card_style)
-
-	# Q-1/B-62: a bounce back here from main.gd after the host quit or a join
-	# failed — land on the Play menu (not the title screen) since the player
-	# was mid-match and most likely wants to rejoin or re-host immediately.
-	if GameLaunch.pending_status_message != "":
-		title_screen.visible = false
-		play_menu.visible = true
-		status_label.text = GameLaunch.pending_status_message
-		GameLaunch.pending_status_message = ""
-
-	game_mode_option.clear()
-	# B-33: Option A has been fully implemented since Session 7 (hitbox.gd's
-	# dent branch, round_manager.gd's dent-based win check) — the "(coming
-	# soon)" label was stale and both items were always selectable/playable
-	# either way, so there was no actual gate to fix, just a wrong label.
-	game_mode_option.add_item("Option B — Capture & Seal", GameLaunch.GameMode.OPTION_B)
-	game_mode_option.add_item("Option A — Health / Dents", GameLaunch.GameMode.OPTION_A)
-	game_mode_option.select(0)
-	game_mode_option.item_selected.connect(_on_game_mode_selected)
+	_style_address_field()
+	map_value_label.text = MAP_NAME
+	_apply_mode()
 
 	start_button.pressed.connect(_on_start_pressed)
 	settings_button.pressed.connect(_on_settings_pressed)
@@ -69,27 +72,66 @@ func _ready() -> void:
 	local_button.pressed.connect(_on_local_pressed)
 	host_button.pressed.connect(_on_host_pressed)
 	join_button.pressed.connect(_on_join_pressed)
+	mode_prev_button.pressed.connect(_on_mode_prev_pressed)
+	mode_next_button.pressed.connect(_on_mode_next_pressed)
 
-## B-34: Settings was reachable from TitleScreen but PlayMenu had no way back
-## to it (or to TitleScreen at all) without restarting the game.
+	# Q-1/B-62: a bounce back here from main.gd after the host quit or a join
+	# failed — land on the GAME screen (not the title) since the player was
+	# mid-match and most likely wants to rejoin or re-host immediately.
+	if GameLaunch.pending_status_message != "":
+		_show_play_menu()
+		status_label.text = GameLaunch.pending_status_message
+		GameLaunch.pending_status_message = ""
+	else:
+		_show_title_screen()
+
+## The LineEdit sits on top of the wooden TEXT FIELD artwork, so it has to drop
+## the theme's own card chrome and switch to the light-on-dark ink the rest of
+## the panel uses.
+func _style_address_field() -> void:
+	for state in ["normal", "focus", "read_only"]:
+		join_address_edit.add_theme_stylebox_override(state, StyleBoxEmpty.new())
+	join_address_edit.add_theme_color_override("font_color", Color("f5e6c8"))
+	join_address_edit.add_theme_color_override("font_placeholder_color", Color(0.961, 0.902, 0.784, 0.45))
+	join_address_edit.add_theme_color_override("caret_color", Color("f5e6c8"))
+	join_address_edit.add_theme_font_size_override("font_size", 38)
+
+# --- Screen switching ---------------------------------------------------------
+
+func _show_title_screen() -> void:
+	title_screen.visible = true
+	play_menu.visible = false
+	settings_panel.visible = false
+	_unfurl([start_button, settings_button, quit_button])
+
+func _show_play_menu() -> void:
+	title_screen.visible = false
+	play_menu.visible = true
+	settings_panel.visible = false
+	_unfurl([local_button, host_button, join_button])
+
+func _unfurl(buttons: Array) -> void:
+	for i in buttons.size():
+		var button: ArrowButton = buttons[i]
+		button.animate_in(i * STAGGER)
+
+# --- Input --------------------------------------------------------------------
+
+## B-34: the GAME screen needs a way back to the title without restarting.
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel") and play_menu.visible:
 		_on_back_pressed()
 		get_viewport().set_input_as_handled()
 
-func _on_back_pressed() -> void:
-	play_menu.visible = false
-	title_screen.visible = true
-	status_label.text = ""
+# --- Title screen -------------------------------------------------------------
 
 func _on_start_pressed() -> void:
-	title_screen.visible = false
-	play_menu.visible = true
+	_show_play_menu()
 
-## Q-9: title-screen-only, deliberately. A mid-match quit that skips
-## NetworkManager.disconnect_network() would strand the other peers — the
-## same soft-lock Q-1 fixed, just from the other end. Return to Menu → Quit
-## is two clear steps instead.
+## Title-screen-only, deliberately. A mid-match quit that skips
+## NetworkManager.disconnect_network() would strand the other peers — the same
+## soft-lock Q-1 fixed, just from the other end. Return to Menu → Quit is two
+## clear steps instead.
 func _on_quit_pressed() -> void:
 	get_tree().quit()
 
@@ -99,23 +141,36 @@ func _on_settings_pressed() -> void:
 	settings_panel.visible = true
 
 func _on_settings_back_pressed() -> void:
-	settings_panel.visible = false
-	title_screen.visible = true
+	_show_title_screen()
 
-func _on_game_mode_selected(_index: int) -> void:
-	GameLaunch.game_mode = game_mode_option.get_selected_id() as GameLaunch.GameMode
+# --- GAME screen --------------------------------------------------------------
+
+func _on_back_pressed() -> void:
+	status_label.text = ""
+	_show_title_screen()
+
+func _on_mode_prev_pressed() -> void:
+	_mode_index = (_mode_index - 1 + MODES.size()) % MODES.size()
+	_apply_mode()
+
+func _on_mode_next_pressed() -> void:
+	_mode_index = (_mode_index + 1) % MODES.size()
+	_apply_mode()
+
+func _apply_mode() -> void:
+	var mode: Dictionary = MODES[_mode_index]
+	mode_value_label.text = str(mode["label"])
+	GameLaunch.game_mode = int(mode["id"]) as GameLaunchScript.GameMode
 
 func _on_local_pressed() -> void:
 	GameLaunch.pending_action = "local"
-	_go_to_match()
+	_reset_match_state()
+	get_tree().change_scene_to_file(MAIN_SCENE_PATH)
 
 ## U-4: Host goes to the lobby so peers can ready-up before the match starts.
-## B-14 reset moved here (from the old shared _go_to_match()) so the lobby
-## lands on clean state the same way the old direct-to-Main path did.
 func _on_host_pressed() -> void:
 	GameLaunch.pending_action = "host"
-	MatchManager.reset()
-	RoundManager.reset()
+	_reset_match_state()
 	get_tree().change_scene_to_file(LOBBY_SCENE_PATH)
 
 ## U-4: Join also goes through the lobby for the same ready-up gate.
@@ -126,15 +181,12 @@ func _on_join_pressed() -> void:
 		return
 	GameLaunch.pending_action = "join"
 	GameLaunch.pending_join_address = address
-	MatchManager.reset()
-	RoundManager.reset()
+	_reset_match_state()
 	get_tree().change_scene_to_file(LOBBY_SCENE_PATH)
 
-## Local match skips the lobby — no ready-up needed for single-PC split-keyboard.
-func _go_to_match() -> void:
-	# B-14: MatchManager/RoundManager are autoloads and survive scene changes —
-	# without this, a second match (Rematch, or Menu then Play again) would
-	# resume the first one's score/round number instead of starting at 0-0.
+## B-14: MatchManager/RoundManager are autoloads and survive scene changes —
+## without this, a second match (Rematch, or Menu then Play again) would resume
+## the first one's score/round number instead of starting at 0-0.
+func _reset_match_state() -> void:
 	MatchManager.reset()
 	RoundManager.reset()
-	get_tree().change_scene_to_file(MAIN_SCENE_PATH)

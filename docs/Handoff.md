@@ -73,24 +73,18 @@ caused B-03, and B-58 (it still does full follow-cam maths every frame while ret
 because of it. **A-2 in §4 deletes it.** Until then the rule holds only because
 `arena_camera.gd::_ready()` politely sets `current = false`.
 
-### 0.5 Blocker — needs a human (carried over, still open, now costed)
+### 0.5 Display typeface — resolved (2026-07-28, v4.21)
 
-🚧 **The moodboard display typeface is Harry's and was not supplied with the brief.** The theme
-ships on Godot's default font. Palette, chrome, layout logic and type scale are all
-moodboard-accurate; **only the typeface is standing in.** No substitute has been downloaded — an
-unvetted font binary is both a licence and a supply-chain question, and Form 03 needs a recorded
-licence either way.
+✅ **Darumadrop One** (SIL OFL 1.1) shipped on an explicit human yes; the author supplied the
+binary directly rather than it being fetched blind. Licence verbatim at
+`assets/ui/fonts/DarumadropOne_LICENSE.txt`, tracked in LFS, ready to cite on **Form 03**.
+It is now `theme.default_font`, so every Control inherits it.
 
-This now blocks **F-2, U-1, U-2, U-3 and M-8** from being finishable, not just imperfect: the logo
-lockup, the round banner, the match-result headline and the letter sheet on the moodboard are all
-that one face. Two ways to unblock, in order of preference:
-
-1. **Get the file from Harry's Canva project** (Canva → Brand Kit / the design's font list). One
-   `.ttf`, one licence line on Form 03. Preferred — it is the actual brand.
-2. **Ship an SIL OFL substitute** — **Luckiest Guy** is the closest to the moodboard's letter
-   sheet; **Chewy** and **Titan One** are the alternates. OFL permits redistribution inside a
-   game, so Form 03 is satisfiable. **Needs an explicit human yes before any font binary enters
-   this repo.**
+**One piece of F-2 is still open:** the queue called for a *second*, clean-grotesque body face
+(Inter / Work Sans) on the grounds that a display face is illegible at `FONT_SIZE_CAPTION` 13.
+Darumadrop One is currently doing both jobs. Display sizes read well (see the main menu); the
+13px `Caption` variation is the one to check on a real screen before submission. Picking a body
+face needs another explicit yes, so it is deliberately not pre-empted here.
 
 ### 0.7 TASK 0 — the Slipper is now a thrown, retrieved object (2026-07-27, v4.0)
 
@@ -613,14 +607,13 @@ and resized the window.
 
 ---
 
-#### F-2 · Land the display typeface `[ ]` ⚠️ BLOCKED ON A HUMAN
+#### F-2 · Land the display typeface `[~]` [DONE for the display face @ v4.21]
 
-**Read §0.5 first. Do not download a font binary without an explicit yes in writing.** This is
-the single highest-leverage change in the whole queue — it is the difference between "a Godot
-project" and "the game on the moodboard" — and it is one line of code behind a licensing
-question nobody has answered in three passes.
+**Read §0.5 first.** Darumadrop One landed at v4.21 with an explicit human yes and its OFL
+licence. Steps 1, 2, 4, 5 and 7 are done; **step 3 (a separate body/caption face) is still
+open** and still needs a yes before any second binary enters the repo.
 
-Steps, once a face is chosen:
+Original steps, for the body face that is still outstanding:
 
 1. `git lfs install`, then add to `.gitattributes` next to the existing binary rules:
    ```
