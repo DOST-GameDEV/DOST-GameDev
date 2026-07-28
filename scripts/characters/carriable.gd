@@ -190,8 +190,14 @@ func drives_movement() -> bool:
 
 ## Multiplier applied to normal movement speed. Only ever != 1.0 while LOOSE and
 ## throwable — the crawl home.
+## ⚠️ Gated on RoundManager.round_active, 2026-07-28, same reason and same
+## day as CharacterBase._is_confined_to_base()'s gate: before the round
+## actually starts (the new pre-round free-roam window) a Tsinelas Prop is
+## always LOOSE and throwable by definition, and without this gate its
+## player would be stuck crawling at CRAWL_SPEED_SCALE the whole time they're
+## supposed to be moving "with no restrictions."
 func movement_speed_scale() -> float:
-	if state == CarryState.LOOSE and is_throwable():
+	if RoundManager.round_active and state == CarryState.LOOSE and is_throwable():
 		return CRAWL_SPEED_SCALE
 	return 1.0
 

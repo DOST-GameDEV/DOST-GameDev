@@ -216,6 +216,23 @@ horizontal_alignment = 1
 text = "OUT OF BOUNDS"
 visible = false
 
+[node name="ReadyPrompt" type="Label" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -260.0
+offset_top = -110.0
+offset_right = 260.0
+offset_bottom = -70.0
+theme_type_variation = &"HudToast"
+horizontal_alignment = 1
+text = "Walk around freely. Press [R] when you're ready to start the round."
+visible = false
+
 [node name="Crosshair" type="Control" parent="."]
 unique_name_in_owner = true
 layout_mode = 1

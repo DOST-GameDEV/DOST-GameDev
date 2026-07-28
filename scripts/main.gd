@@ -98,6 +98,13 @@ const TSINELAS_ABILITY_TEAM_B: AbilityBase = preload("res://scripts/abilities/re
 ## networked flow, rather than hand-writing 4 near-identical blocks.
 ## Populated once in _ready(); order is [TeamAProp, TeamAPerson, TeamBProp, TeamBPerson].
 var _local_roster: Array[CharacterBase] = []
+## 2026-07-28 — Local Match only (see _on_local_pressed's doc in
+## main_menu.gd). True from the moment _start_local_test() spawns everyone
+## until the player presses "ready_up": during that window
+## MatchManager.begin_next_round() has deliberately NOT been called yet, so
+## RoundManager.round_active is false and CharacterBase._is_confined_to_base()
+## lets the Can/Taya walk anywhere — free roam while waiting to start.
+var _awaiting_local_ready: bool = false
 ## FALLBACK ONLY, since checklist 2.2a. The real spawn points are four Marker3Ds
 ## under the loaded map's `SpawnPoints` node; this array is used only if a map
 ## has none — or if something loads Main.tscn with no map at all, which is what
@@ -337,7 +344,28 @@ func _start_local_test() -> void:
 	var default_rig := team_a_person.get_node("CameraRig") as CameraRig
 	default_rig.set_active(true)
 	default_rig.set_aim_source(CameraRig.AimSource.MOUSE)
-	MatchManager.begin_next_round()
+	# 2026-07-28: begin_next_round() is deliberately NOT called here any more —
+	# see _awaiting_local_ready's own doc. Everyone is already spawned at their
+	# role position, but the round (and confinement, which is gated on
+	# RoundManager.round_active) doesn't start until the player readies up.
+	_awaiting_local_ready = true
+	hud.show_ready_prompt(true)
+
+## 2026-07-28 — the other half of the pre-round free-roam window. Pressing
+## ready_up while waiting simply calls begin_next_round(); MatchManager's own
+## round_started signal (already connected in _ready()) fires
+## _on_match_round_started(), which both repositions everyone to their role
+## spawn via _reset_world() AND calls RoundManager.start_round() — that is
+## what re-engages confinement (see _is_confined_to_base()'s round_active
+## gate). Nothing else needed here: whoever wandered off gets teleported back
+## the instant the round actually begins, same as an ordinary intermission
+## already does between rounds.
+func _unhandled_input(event: InputEvent) -> void:
+	if _awaiting_local_ready and event.is_action_pressed("ready_up"):
+		get_viewport().set_input_as_handled()
+		_awaiting_local_ready = false
+		hud.show_ready_prompt(false)
+		MatchManager.begin_next_round()
 
 ## (Re)tells RoundManager which local Prop is currently the Can — whichever
 ## of TeamAProp/TeamBProp has is_can true this round. Called once up front in

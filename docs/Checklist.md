@@ -495,14 +495,33 @@ HUD contrast or hazard placement against a grey box.
       **Second playtest round, same day:** confinement radius reported too small — "the box that
       defend can move in is so small, he can barely move, theres no room for outplays."
       `CharacterBase.CONFINEMENT_RADIUS` raised 3.0 → 5.0 (still a full unit short of the 6.0
-      throwing line, so the Taya still can't reach the attacker's line). Every map now draws the
-      actual confinement boundary as a chalk-style ring (`CONFINEMENT_RING_RADIUS` in each
-      `build_*.py`, tiling `team_side_decal` — see `Handoff.md`'s session log), which did not
-      exist before; only the tiny base circle and the distant throwing line were visible on the
-      ground, with nothing marking the edge of the box itself. Re-tune both together if either
-      moves again — they're coupled, see `Dev_Plan.md`'s Option B section. Auto-seal timing
-      itself: still not separately confirmed by feel. **Verified by render only, not yet by
-      play.**
+      throwing line, so the Taya still can't reach the attacker's line). `build_eskinita.py` now
+      draws the actual confinement boundary as a chalk-style ring (`CONFINEMENT_RING_RADIUS`,
+      tiling `team_side_decal` — see `Handoff.md`'s session log), which did not exist before; only
+      the tiny base circle and the distant throwing line were visible on the ground, with nothing
+      marking the edge of the box itself. **`build_bayan_plaza.py` does not have this ring yet.**
+      Re-tune both together if either moves again — they're coupled, see `Dev_Plan.md`'s Option B
+      section. Auto-seal timing itself: still not separately confirmed by feel. **Verified by
+      render only, not yet by play.**
+- [~] **2.8 · Pre-round free-roam + in-world ready-up, Local Match only.** 🔧 Build — **verified by
+      render, not yet by play**
+      User feedback, 2026-07-28: "i wanted the ready button to be in the game itself not in home
+      screen, i want ppl to be able to move around with no restrictions whiile waiting for ready
+      THEN everyone gets teleported in the right restricted area." Local now skips `Lobby.tscn`
+      entirely (`main_menu.gd::_on_local_pressed()`) and goes straight into `Main.tscn`.
+      Characters spawn as before, but `MatchManager.begin_next_round()` is deliberately **not**
+      called yet — `CharacterBase._is_confined_to_base()` and `Carriable.movement_speed_scale()`
+      are both now gated on `RoundManager.round_active`, so with the round not yet active nobody
+      is confined and the Tsinelas Prop isn't stuck at crawl speed either. A new HUD prompt
+      (`%ReadyPrompt`) reads "Walk around freely. Press [R] when you're ready to start the round."
+      Pressing the new `ready_up` input action calls `begin_next_round()`, whose existing
+      `round_started` → `_on_match_round_started()` chain already repositions everyone to their
+      role spawn and starts the round — no new teleport code needed, that infrastructure already
+      existed.
+      **Explicitly NOT done:** Host/Join are unchanged and still gate behind `Lobby.tscn`'s
+      ready-up screen. Extending this same free-roam pattern to networked play needs per-peer
+      ready state replicated live inside the match scene rather than in the lobby, which is a
+      separate, real pass — see `Handoff.md` §5.
 
 ---
 

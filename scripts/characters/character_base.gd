@@ -272,8 +272,18 @@ func _apply_role_collision() -> void:
 ## Team can = the Can Prop itself, and its team's defending Person (the Taya).
 ## Re-derived every call rather than cached, same as is_can/team_is_can_side
 ## themselves — both flip every round.
+##
+## ⚠️ Gated on RoundManager.round_active, added 2026-07-28: user feedback
+## ("i want ppl to be able to move around with no restrictions whiile waiting
+## for ready") wants a free-roam window before the round actually starts.
+## round_active is false there, same as it briefly is between rounds during
+## an ordinary intermission — that window is harmless because
+## reset_for_new_round()/_reset_world() already re-teleports everyone to
+## their role spawn the instant the next round's setup runs, before a player
+## has time to wander. Do not remove this gate to "simplify" back to the old
+## always-on version; that is what made the pre-round waiting area impossible.
 func _is_confined_to_base() -> bool:
-	return is_can or (is_person and team_is_can_side)
+	return RoundManager.round_active and (is_can or (is_person and team_is_can_side))
 
 ## Wraps move_and_slide() with the confinement clamp so every call site in this
 ## file gets it automatically rather than relying on each one to remember —
