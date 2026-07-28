@@ -42,9 +42,11 @@ const DOWNED_SELF_RIGHT_WINDOW: float = 2.0
 ## defend can move in is so small. he can barely move, theres no room for
 ## outplays." Still a full unit short of the 6.0 throwing line, so the Taya
 ## still cannot reach the attacker's line — same design constraint as before,
-## just more room inside it. Mirrored by `CONFINEMENT_RING_RADIUS` in every
-## map's build_*.py, which draws the actual boundary as a chalk-style ring —
-## keep both in sync if this is retuned again. Still a first guess, not a
+## just more room inside it. Mirrored by `CONFINEMENT_BOX_RADIUS` in
+## build_eskinita.py, which draws the actual boundary as a chalk-style square
+## (a ring was tried first, then replaced same day — "the circle you made
+## was ugly ... can we just use a square") — keep both in sync if this is
+## retuned again. Still a first guess, not a
 ## measurement; needs a human to actually play it.
 const CONFINEMENT_RADIUS: float = 5.0
 ## Bump is "no cooldown" per the GDD but still needs an active window so standing
@@ -351,10 +353,18 @@ func _physics_process(delta: float) -> void:
 	# Item 10 / B-37: freeze input during the round intermission (the gap
 	# between a round ending and the next one's timer starting — see
 	# MatchManager.round_intermission_started / main.gd::_reset_world) and
-	# before the very first round begins. round_active is already false in
-	# both cases; still apply gravity/friction above/below so nobody floats
-	# or skids, just can't act.
-	if not RoundManager.round_active:
+	# while waiting for a rematch after a match ends. round_active is false
+	# in both cases; still apply gravity/friction above/below so nobody
+	# floats or skids, just can't act.
+	# ⚠️ EXCLUDES the pre-match free-roam window added 2026-07-28
+	# (main.gd::_start_local_test/_awaiting_local_ready) — round_active is
+	# ALSO false there, but MatchManager.round_number is still 0 (no round
+	# has ever begun yet), which is what distinguishes "waiting to ready up,
+	# should be able to walk around" from "between rounds/matches, should
+	# not." Do not simplify this back to a bare `not round_active` check;
+	# that is exactly what froze movement during the free-roam window the
+	# first time this shipped.
+	if not RoundManager.round_active and MatchManager.round_number > 0:
 		velocity.x = move_toward(velocity.x, 0, FRICTION * delta)
 		velocity.z = move_toward(velocity.z, 0, FRICTION * delta)
 		_move_and_confine()
