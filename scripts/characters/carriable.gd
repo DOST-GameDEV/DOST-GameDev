@@ -54,6 +54,19 @@ const MAX_FLIGHT_TIME: float = 6.0
 ## The thrower is ignored for collisions for this long after release, so the
 ## slipper cannot immediately "land" on the hand that just threw it.
 const THROWER_IGNORE_TIME: float = 0.25
+## User feedback, 2026-07-28: a thrown slipper should bounce a bit instead of
+## stopping dead on first contact — a rubber bakya/tsinelas skidding to a halt
+## in one frame reads as a physics bug, not a landing. Reflects _flight_velocity
+## off the collision normal (Vector3.bounce()) and keeps this fraction of its
+## speed each time. Purely a physical/cosmetic change: hit resolution against a
+## lata goes through _spawn_flight_hitbox()'s own Area3D overlap, entirely
+## independent of move_and_collide's collision result below, so a slipper that
+## bounces off a Can still scores the hit on first contact same as before.
+const BOUNCE_DAMPING: float = 0.45
+## After this many bounces, the next collision lands it (goes LOOSE) regardless
+## of remaining speed, so a shallow-angle skip along the floor can't bounce
+## forever. MAX_FLIGHT_TIME (6s) is the backstop under that.
+const MAX_BOUNCES: int = 2
 ## Fallback used when a slipper's ability carries no ThrowProfile of its own
 ## (e.g. the networked Prop default, which is currently quick_stand.tres for
 ## every Prop — see main.gd PROP_ABILITY).
@@ -73,6 +86,7 @@ var _flight_velocity: Vector3 = Vector3.ZERO
 var _flight_time: float = 0.0
 var _flight_hitbox: Area3D = null
 var _thrower_ignore_left: float = 0.0
+var _bounces_left: int = 0
 
 func _ready() -> void:
 	_character = get_parent() as CharacterBase
@@ -280,6 +294,10 @@ func _step_flying(delta: float) -> void:
 				_flight_velocity += right * input_dir.x * profile.steer_strength * delta
 
 	var collision := _character.move_and_collide(_flight_velocity * delta)
+	if collision != null and _thrower_ignore_left <= 0.0 and _bounces_left > 0:
+		_flight_velocity = _flight_velocity.bounce(collision.get_normal()) * BOUNCE_DAMPING
+		_bounces_left -= 1
+		collision = null # consumed by the bounce, not a landing this frame
 	_character.velocity = _flight_velocity
 
 	if not _is_host():
@@ -388,6 +406,7 @@ func _rpc_set_flying(origin: Vector3, velocity: Vector3) -> void:
 	_flight_velocity = velocity
 	_flight_time = 0.0
 	_thrower_ignore_left = THROWER_IGNORE_TIME
+	_bounces_left = MAX_BOUNCES
 	# Solid again the instant it leaves the hand — it has to be able to bounce
 	# off walls and, above all, hit the lata.
 	_set_physics_enabled(true)
