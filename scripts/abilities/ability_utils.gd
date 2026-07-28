@@ -56,9 +56,30 @@ static func spawn_pulse_hitbox(
 		character.get_tree().current_scene.add_child(area)
 		area.global_position = character.global_position + character.transform.basis * local_offset
 
+	# ⚠️⚠️ CAPTURE THE INSTANCE ID, NOT THE NODE. THE GUARD BELOW IS NOT ENOUGH
+	# ON ITS OWN — it never gets to run.
+	#
+	# This used to be `func(): if is_instance_valid(area): area.queue_free()`,
+	# capturing `area` by reference. Every one of these areas joins the
+	# `transient_hitbox` group (see above), and `main.gd::_reset_world` frees that
+	# whole group on every round reset — so an ability cast shortly before a round
+	# ends routinely has its area freed while this timer is still pending.
+	#
+	# Godot resolves a lambda's captures when the lambda is CALLED, before any of
+	# its body executes, and errors on a freed capture right there:
+	#   "Lambda capture at index 0 was freed. Passed null instead."
+	# The `is_instance_valid()` check inside was therefore dead code for exactly
+	# the case it was written for. Confirmed in a real two-instance --host/--join
+	# session: the host logged this on round transitions, the client never did
+	# (only the host runs ability resolution).
+	#
+	# An int cannot dangle, so capturing the id and resolving it at call time is
+	# both correct and keeps the whole thing local to this function.
+	var area_id := area.get_instance_id()
 	var timer := character.get_tree().create_timer(duration)
 	timer.timeout.connect(func() -> void:
-		if is_instance_valid(area):
-			area.queue_free()
+		var live := instance_from_id(area_id)
+		if live != null and is_instance_valid(live):
+			(live as Node).queue_free()
 	)
 	return area
