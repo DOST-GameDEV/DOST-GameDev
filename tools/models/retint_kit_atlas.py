@@ -90,6 +90,8 @@ ATLASES = {
     "assets/models/kits/food/Textures/colormap.png": "prop_blue",
     "assets/models/kits/city/Textures/colormap.png": "env_damp",
     "assets/models/kits/car/Textures/colormap.png": "env_damp",
+    "assets/models/kits/town/Textures/colormap.png": "env_damp",
+    "assets/models/kits/forest/Textures/colormap.png": "env_damp",
 }
 
 
