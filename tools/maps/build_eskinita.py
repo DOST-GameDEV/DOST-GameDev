@@ -123,10 +123,10 @@ for n, (x, zz, yaw) in enumerate([
 # and far thirds missing. Every floor marking now sits above the tile layer.
 MARK_Y = 0.07
 add("Markings", "BaseCircle", "base_circle_decal", 0.0, MARK_Y, 0.0)
-add("Markings", "ThrowingLineNorth", "throwing_line_decal", MARK_Y, 0.0, -6.0)
-add("Markings", "ThrowingLineSouth", "throwing_line_decal", MARK_Y, 0.0, 6.0)
-add("Markings", "TeamSideNorth", "team_side_decal", MARK_Y, 0.0, -13.0)
-add("Markings", "TeamSideSouth", "team_side_decal", MARK_Y, 0.0, 13.0)
+add("Markings", "ThrowingLineNorth", "throwing_line_decal", 0.0, MARK_Y, -6.0)
+add("Markings", "ThrowingLineSouth", "throwing_line_decal", 0.0, MARK_Y, 6.0)
+add("Markings", "TeamSideNorth", "team_side_decal", 0.0, MARK_Y, -13.0)
+add("Markings", "TeamSideSouth", "team_side_decal", 0.0, MARK_Y, 13.0)
 add("Markings", "JeepneyLane", "jeepney_lane_decal", 5.4, MARK_Y, 0.0)
 
 # =============================================================================
