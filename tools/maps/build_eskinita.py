@@ -121,41 +121,61 @@ for n, (x, zz, yaw) in enumerate([
     add("Dressing/Clutter", f"Tricycle_{n}", "tricycle", x, 0.0, zz, yaw)
 
 # --- Field markings. These serve BOTH round-win modes. ----------------------
-# y = MARK_Y, not 0. Found by rendering: `road_tile_line` is a whole 2x2 asphalt
-# tile 0.06 tall WITH a painted dash on top, and a strip of them runs down the
-# centre of this road. At y=0 the base circle's 0.03-tall ring was buried inside
-# those tiles for |x| < 1, so it rendered as two stray yellow arcs with its near
-# and far thirds missing. Every floor marking now sits above the tile layer.
-MARK_Y = 0.07
+# ⚠️⚠️⚠️ EVERY MARKING BELOW MUST SIT FLUSH ON THE FLOOR -- VERIFY BY RENDER,
+# NOT BY READING THIS COMMENT. `_box()`'s y0/y1 in env_kit.gd are LOCAL mesh
+# coordinates starting at the mesh's own origin (y0 is usually 0.0), so
+# whatever world-space Y you place a decal at becomes its LITERAL BOTTOM, not
+# its centre -- a marking placed at y=0.07 has its underside 7cm above the
+# floor, which reads as visibly floating with a shadow gap once lit, not as
+# "flush." This bit multiple sessions (2026-07-28: "all assets like lines are
+# floating off the floor", reported after MARK_Y was applied uniformly to
+# every marking including several that never needed it). The only markings
+# that actually need lift are the ones that spatially overlap a
+# `road_tile_line` piece (x=0, z a multiple of 2, see the Lane_* loop above)
+# -- everything else wants MARK_Y_LOW, effectively flush. Before adding a new
+# marking, work out whether it overlaps a lane tile; don't default to the
+# taller constant out of caution. RENDER AND LOOK — a screenshot with no
+# visible gap under every line is the only real check.
+MARK_Y = 0.07       # tile-overlap clearance -- BaseCircle, ThrowingLine only
+MARK_Y_LOW = 0.015  # everything else -- flush, no tile beneath it to clear
 add("Markings", "BaseCircle", "base_circle_decal", 0.0, MARK_Y, 0.0)
 add("Markings", "ThrowingLineNorth", "throwing_line_decal", 0.0, MARK_Y, -6.0)
 add("Markings", "ThrowingLineSouth", "throwing_line_decal", 0.0, MARK_Y, 6.0)
-add("Markings", "TeamSideNorth", "team_side_decal", 0.0, MARK_Y, -13.0)
-add("Markings", "TeamSideSouth", "team_side_decal", 0.0, MARK_Y, 13.0)
-add("Markings", "JeepneyLane", "jeepney_lane_decal", 5.4, MARK_Y, 0.0)
+add("Markings", "TeamSideNorth", "team_side_decal", 0.0, MARK_Y_LOW, -13.0)
+add("Markings", "TeamSideSouth", "team_side_decal", 0.0, MARK_Y_LOW, 13.0)
+add("Markings", "JeepneyLane", "jeepney_lane_decal", 5.4, MARK_Y_LOW, 0.0)
 
-# --- Confinement-radius ring. 2026-07-28: the Can/Taya's actual restricted
+# --- Confinement-radius SQUARE. 2026-07-28: the Can/Taya's actual restricted
 # --- play area (CharacterBase.CONFINEMENT_RADIUS) was invisible on the
 # --- ground -- the only markers were the tiny base circle and the distant
 # --- throwing line, with nothing showing where the confinement edge itself
 # --- sits. This is the mark that matters for "outplays" (juking a defender
 # --- along the actual edge of their box), not a boundary around the whole
-# --- map. Built the same way the (reverted) map-perimeter border was: tiling
-# --- team_side_decal's straight line, scaled per-segment via xform()'s new
-# --- sx to approximate a circle rather than authoring a new ring mesh in
-# --- env_kit.gd, which stays Design-owned.
-# --- CONFINEMENT_RING_RADIUS mirrors CharacterBase.CONFINEMENT_RADIUS --
-# --- keep the two in sync if either is retuned again.
-CONFINEMENT_RING_RADIUS = 5.0
-N_RING = 12
-_ring_chord = 2 * CONFINEMENT_RING_RADIUS * math.sin(math.pi / N_RING)
-_ring_scale = _ring_chord / 6.0  # team_side_decal's native length
-for i in range(N_RING):
-    theta = i * (2 * math.pi / N_RING)
-    rx = CONFINEMENT_RING_RADIUS * math.cos(theta)
-    rz = CONFINEMENT_RING_RADIUS * math.sin(theta)
-    add("Markings", f"ConfinementRing_{i}", "team_side_decal", rx, MARK_Y, rz,
-        theta + math.pi / 2.0, _ring_scale)
+# --- map. A SQUARE, not a circle/ring (tried first, user feedback: "the
+# --- circle you made was ugly ... can we just use a square" -- a real
+# --- tumbang preso chalk box is a straight-edged rectangle, not a drawn
+# --- circle). Built by tiling team_side_decal's straight line along all
+# --- four sides, scaled per-segment via xform()'s sx, rather than authoring
+# --- a new mesh in env_kit.gd, which stays Design-owned.
+# --- CONFINEMENT_BOX_RADIUS mirrors CharacterBase.CONFINEMENT_RADIUS -- keep
+# --- the two in sync if either is retuned again. Spawn layout inside this
+# --- box is unchanged: Taya (Spawn1) is inside it, the Can (Spawn0) sits on
+# --- BaseCircle at its centre, and the Attacker (Spawn2) spawns OUTSIDE it
+# --- at ThrowingLineSouth's 6-unit line -- see main.gd's _role_slot doc.
+CONFINEMENT_BOX_RADIUS = 5.0
+BOX_SEG = 6.0  # team_side_decal's native length
+_box_segs_per_side = math.ceil((2 * CONFINEMENT_BOX_RADIUS) / BOX_SEG)
+_box_scale = ((2 * CONFINEMENT_BOX_RADIUS) / _box_segs_per_side) / BOX_SEG
+for i in range(_box_segs_per_side):
+    along = -CONFINEMENT_BOX_RADIUS + BOX_SEG * _box_scale * (i + 0.5)
+    add("Markings", f"ConfinementBoxNorth_{i}", "team_side_decal",
+        along, MARK_Y_LOW, -CONFINEMENT_BOX_RADIUS, 0.0, _box_scale)
+    add("Markings", f"ConfinementBoxSouth_{i}", "team_side_decal",
+        along, MARK_Y_LOW, CONFINEMENT_BOX_RADIUS, 0.0, _box_scale)
+    add("Markings", f"ConfinementBoxEast_{i}", "team_side_decal",
+        CONFINEMENT_BOX_RADIUS, MARK_Y_LOW, along, math.pi * 0.5, _box_scale)
+    add("Markings", f"ConfinementBoxWest_{i}", "team_side_decal",
+        -CONFINEMENT_BOX_RADIUS, MARK_Y_LOW, along, math.pi * 0.5, _box_scale)
 
 # =============================================================================
 

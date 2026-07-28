@@ -263,6 +263,7 @@ func _ready() -> void:
 	spawner.spawn_function = _build_networked_character
 	MatchManager.round_started.connect(_on_match_round_started)
 	MatchManager.round_intermission_started.connect(_on_round_intermission_started)
+	MatchManager.match_won.connect(_on_match_won_freeze_physics)
 	if kill_plane != null:
 		kill_plane.character_respawned.connect(_on_character_respawned)
 	pause_root.visible = false
@@ -687,6 +688,39 @@ func _reset_world(team_a_is_can: bool) -> void:
 ## handles all display — this function retains only the world reset.
 func _on_round_intermission_started(_next_round_number: int, next_team_a_is_can: bool, _can_team_won: bool) -> void:
 	_reset_world(next_team_a_is_can)
+
+## 2026-07-28 — user report: "when round ends the can falls thru the world."
+## Root cause: unlike every OTHER round transition, the match's FINAL round
+## never gets a _reset_world() call afterward (match_won fires instead of
+## round_intermission_started, see match_manager.gd::report_round_result),
+## so nothing ever clears velocity again. RoundManager.round_active is false
+## from here on and character_base.gd's own freeze gate stops it from
+## MOVING, but gravity is still applied every physics frame regardless
+## (deliberately, so a unit mid-jump still settles) — with no reset ever
+## coming, a unit that was airborne right as the match ended just keeps
+## falling under gravity for as long as the result screen is up, long
+## enough to tunnel through the floor's thin collision shape. This is the
+## same root cause as B-93, just on a code path B-93 didn't cover because it
+## isn't a round reset at all. Zeroing velocity once, here, is enough —
+## nothing moves it again once round_active is permanently false.
+func _on_match_won_freeze_physics(_winning_team: int) -> void:
+	for character in _all_characters():
+		character.velocity = Vector3.ZERO
+
+## Every character currently in play, local-test or networked — the same
+## roster _reset_world() already builds, minus the team/role bookkeeping
+## nothing here needs.
+func _all_characters() -> Array[CharacterBase]:
+	var result: Array[CharacterBase] = []
+	if NetworkManager.is_networked():
+		for character in _spawned_characters.values():
+			if is_instance_valid(character):
+				result.append(character)
+	else:
+		for character in _local_roster:
+			if is_instance_valid(character):
+				result.append(character)
+	return result
 
 ## Host → one late-joining peer (B-29, B-48). Sets every field directly rather
 ## than replaying _on_match_round_started's reset cascade: that function calls

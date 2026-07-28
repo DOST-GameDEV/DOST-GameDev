@@ -743,20 +743,38 @@ DESIGN-ART item B and `Checklist.md`'s 2.2 bullet restored to their original tex
 recorded so it isn't repeated:** "make the playing area bigger" in this project means the
 confinement box, not the map — see the fix below.
 
-**Confinement radius raised 3.0 → 5.0, plus a new chalk-style boundary ring marking it.**
+**Confinement radius raised 3.0 → 5.0, plus a chalk-style boundary marking it — ring tried first,
+replaced with a square same day, plus a real floating-geometry bug fixed along the way.**
 `CharacterBase.CONFINEMENT_RADIUS` is now 5.0 — still a full unit short of the 6.0 throwing line,
 so the Taya still cannot reach the attacker's line, same design constraint as before, just more
-room inside it. `build_eskinita.py` now also draws the confinement boundary itself as a ring of
-tiled `team_side_decal` segments (`CONFINEMENT_RING_RADIUS`, a 12-gon approximation — no new mesh
-added to `env_kit.gd`, which stays Design-owned), added via a new `sx` parameter on
-`xform()`/`add()` that scales a decal along its own authored length axis. Before this there was
-nothing on the ground marking the edge of the box itself — only the tiny base circle and the
-distant throwing line — so a Taya had no way to see how much room they actually had.
-**`build_bayan_plaza.py` does NOT have this ring yet** — same treatment needed there before that
-map is played under Option B. Keep `CONFINEMENT_RING_RADIUS` and `CONFINEMENT_RADIUS` in sync if
-either is retuned again. **Verified by render** (`tools/render_probe.gd`, real device) — geometry
-lands where computed, no parse errors, no console warnings, original map footprint confirmed back
-to its pre-resize look. **NOT verified by play.**
+room inside it. `build_eskinita.py` first drew the boundary as a ring of tiled `team_side_decal`
+segments (`CONFINEMENT_RING_RADIUS`, a 12-gon approximation), added via a new `sx` parameter on
+`xform()`/`add()` that scales a decal along its own authored length axis (no new mesh added to
+`env_kit.gd`, which stays Design-owned). User feedback, same day: "the circle you made was ugly,
+can we just use a square" — a real tumbang preso boundary is a straight-edged chalk box, not a
+drawn circle. Replaced with `CONFINEMENT_BOX_RADIUS`, four tiled sides using the same `sx`
+technique.
+
+**While looking at this, a real bug: several markings were floating above the floor with a
+visible gap, reported as "all assets like lines are floating off the floor."** Root cause:
+`env_kit.gd`'s `_box()` authors most flat decals starting at local Y=0, so a marking's world-space
+Y position becomes its literal *underside*, not its centre — placing one at `MARK_Y` (0.07, chosen
+to clear the 0.06-tall `road_tile_line` tiles) puts its bottom 7cm above the floor **even where it
+never overlapped a tile in the first place**. Only `BaseCircle` and `ThrowingLine*` genuinely
+overlap tile geometry (`x=0`, `z` a multiple of `CELL`) and need that clearance; `TeamSide*`,
+`JeepneyLane`, and the new confinement square never did. Introduced `MARK_Y_LOW` (0.015) for
+everything that doesn't need tile clearance. **A standing warning about this exact class of bug is
+now in `Art_Direction.md` Part 4 (a callout at the top, before the Environment Art Agent Brief) and
+directly in the DESIGN-ART paste-ready prompt in `Agent_Prompts.md`** — this had already cost more
+than one session before being run down properly.
+
+Before this there was nothing on the ground marking the edge of the confinement box at all — only
+the tiny base circle and the distant throwing line — so a Taya had no way to see how much room
+they actually had. **`build_bayan_plaza.py` does NOT have the confinement square yet** — same
+treatment needed there before that map is played under Option B. Keep `CONFINEMENT_BOX_RADIUS` and
+`CONFINEMENT_RADIUS` in sync if either is retuned again. **Verified by render**
+(`tools/render_probe.gd`, real device) — geometry lands where computed, no visible gap under any
+marking, no parse errors, no console warnings. **NOT verified by play.**
 
 **Pre-round free-roam + in-world ready-up, Local Match only — see `Checklist.md` 2.8.** User
 feedback, same session: "i wanted the ready button to be in the game itself not in home screen, i
@@ -778,6 +796,41 @@ separate follow-up work — per-peer ready state would need to replicate live in
 scene (extending lobby.gd's existing `_rpc_set_ready` pattern into `main.gd`/a HUD component)
 rather than gating scene transition from the lobby, and touches the stable peer-identity
 machinery (B-21) that the current Lobby flow is built on. Not attempted blind in this pass.
+
+**B-94 · Free-roam shipped broken — "walk around freely doesn't work, cant walk around just stuck
+in place." [FIXED same session.]** A SEPARATE, pre-existing gate in
+`character_base.gd::_physics_process` (Item 10 / B-37, "freeze input during the round
+intermission... and before the very first round begins") froze ALL movement input whenever
+`RoundManager.round_active` was false — which the free-roam window above deliberately also is.
+The confinement fix alone was not enough; this gate blocked movement entirely, independent of
+confinement. Fixed by additionally gating the freeze on `MatchManager.round_number > 0` (already
+correctly synced to clients for networked play, no new RPC needed) — 0 only during the genuine
+pre-match window (nobody has pressed ready yet), 1+ for every other `round_active == false` state
+(ordinary intermission, waiting for a rematch after a match ends), which should still freeze
+exactly as before. Do not simplify this back to a bare `not round_active` check.
+
+**B-95 · The Can can fall through the floor when the LAST round of a match ends. [FIXED same
+session, distinct from B-93.]** Every OTHER round transition calls `_reset_world()`
+(`MatchManager.round_intermission_started`), which clears velocity per B-93 — but the match's
+final round fires `match_won` instead, and nothing ever resets characters afterward.
+`RoundManager.round_active` stays permanently false, the movement-freeze gate stops input, but
+gravity is still applied every physics frame (deliberately, so a unit mid-jump still settles) —
+with no reset ever coming again, a unit airborne right as the match ended just keeps falling under
+gravity for as long as the result screen is up, long enough to tunnel through the floor's thin
+collision shape. Fixed with a new `main.gd::_on_match_won_freeze_physics()` handler that zeroes
+velocity on every character once, the moment `MatchManager.match_won` fires — nothing moves them
+again after that since `round_active` never becomes true again for that match.
+
+**Still open, not root-caused this session: the Tsinelas Prop's TPP camera reportedly breaks when
+a round ends** — reported as an extreme close-up on overhead-wire geometry, "not sure if its
+completely broken." Read `camera_rig.gd::_update_tpp_carry_follow()` (the B-91 carried-camera
+logic) and its exclusion-list bookkeeping closely; the self-correction path looks sound on paper
+(state change to LOOSE on reset clears `carrier`, the next `_process()` tick removes the stale
+`SpringArm3D` exclusion), but Carriable's `_process()` and CameraRig's `_process()` are siblings
+under `CharacterBase` with no guaranteed order, so a one-frame window where the camera reads a
+just-reset carrier is plausible without a live repro to confirm. Needs a human to say whether this
+happens every round-end or occasionally, and whether the tsinelas was being carried at the moment
+the round ended — did not want to guess-patch a shared camera path on a hunch.
 
 **Still open, not root-caused this session:** a report of a carried tsinelas reading as
 permanently frozen/slanted, and a Can appearing stuck mid-animation at the same time, with no

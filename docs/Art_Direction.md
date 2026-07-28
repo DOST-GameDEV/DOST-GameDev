@@ -1101,6 +1101,27 @@ boundary and say so** — every phase below leaves a coherent map.
 
 *(was `docs/Art_Direction.md`)*
 
+> ### ⚠️⚠️⚠️ STANDING RULE — FLOATING GEOMETRY, READ BEFORE PLACING ANY DECAL OR MARKING
+>
+> **This has cost multiple sessions already (2026-07-28: "all assets like lines are floating off
+> the floor").** Root cause, every time: a marking's world-space Y position is where its
+> **bottom** ends up, not its centre — `_box()` in `env_kit.gd` authors most flat decals starting
+> at local Y=0, so placing one at `y=0.07` puts its underside 7cm above the floor, which reads as
+> visibly floating with a shadow gap once lit, not as flush. This is NOT specific to one map or one
+> decal — it applies to any flat marking authored the same way.
+>
+> **The fix is not "always add clearance."** Most markings don't overlap anything that needs
+> clearing and want to sit as close to Y=0 as possible (see `build_eskinita.py`'s `MARK_Y` vs
+> `MARK_Y_LOW` split for the worked example). Only lift a marking that spatially overlaps another
+> raised piece of geometry (e.g. a `road_tile_line` tile), and only by enough to clear that piece,
+> not a flat default "safe" number applied everywhere out of caution — that caution is exactly what
+> caused this bug.
+>
+> **RENDER AND LOOK before calling any placement done.** `tools/render_probe.gd`'s `match` mode,
+> WITHOUT `--headless`. A screenshot with no visible gap or shadow under every line/decal is the
+> only real check — reading the code that placed it is not enough, this project has now shipped the
+> same floating-geometry class of bug more than once despite the placement code "looking correct."
+
 ## Environment Art Agent Brief — the maps
 
 **Run this on: Opus 5, high effort — this is a design-judgement task, not a code task.**

@@ -504,10 +504,19 @@ HUD contrast or hazard placement against a grey box.
       defend can move in is so small, he can barely move, theres no room for outplays."
       `CharacterBase.CONFINEMENT_RADIUS` raised 3.0 → 5.0 (still a full unit short of the 6.0
       throwing line, so the Taya still can't reach the attacker's line). `build_eskinita.py` now
-      draws the actual confinement boundary as a chalk-style ring (`CONFINEMENT_RING_RADIUS`,
-      tiling `team_side_decal` — see `Handoff.md`'s session log), which did not exist before; only
-      the tiny base circle and the distant throwing line were visible on the ground, with nothing
-      marking the edge of the box itself. **`build_bayan_plaza.py` does not have this ring yet.**
+      draws the actual confinement boundary on the ground — first as a chalk-style ring
+      (`CONFINEMENT_RING_RADIUS`), then **replaced same day** with a chalk-style SQUARE
+      (`CONFINEMENT_BOX_RADIUS`, tiling `team_side_decal` — see `Handoff.md`'s session log) per
+      user feedback ("the circle you made was ugly ... can we just use a square" — a real tumbang
+      preso boundary is a straight-edged box). Before this there was nothing marking the edge of
+      the box at all — only the tiny base circle and the distant throwing line. Also fixed while
+      touching this: several markings (`TeamSide*`, `JeepneyLane`, and the new square) were sitting
+      with their underside `MARK_Y` (0.07) above the floor regardless of whether they actually
+      overlapped a raised tile — reported as "all assets like lines are floating off the floor."
+      Only `BaseCircle`/`ThrowingLine*` (which do overlap `road_tile_line` tiles) still use
+      `MARK_Y`; everything else uses a new, much smaller `MARK_Y_LOW`. A standing warning about
+      this class of bug is now in `Art_Direction.md` Part 4 and the DESIGN-ART paste-ready prompt.
+      **`build_bayan_plaza.py` does not have the confinement square yet.**
       Re-tune both together if either moves again — they're coupled, see `Dev_Plan.md`'s Option B
       section. Auto-seal timing itself: still not separately confirmed by feel. **Verified by
       render only, not yet by play.**
