@@ -638,14 +638,82 @@ touch map scenes.
       Separately, the switcher no-ops in a **networked** match by design; the
       0.4 session was hosted, not Local Match, which is also why pause did not
       freeze. **Solo-test through Local Match.**
-- [ ] **4.2 · Movement interpolation for remote characters.** 🤖 Sonnet, high
-      Remote units visibly snap. High effort because it sits directly on the
-      replication model. **Do this before 6.1** — testing over real wifi without
-      it measures the wrong thing.
-- [ ] **4.3 · Rejoin identity (B-65).** 🤖 Sonnet, high
-      A rejoining player can come back as a different team and role. Needs a
-      stable player token instead of a peer id. A LAN demo where someone's wifi
-      blips is exactly the failure mode judges will see.
+- [x] **4.2 · Movement interpolation for remote characters.** 🤖 Sonnet, high —
+      **verified by two real `--host`/`--join=127.0.0.1` instances, 600+ frames, no
+      output**
+      Remote units used to visibly snap — the replicated `position`/`rotation`
+      (`CharacterBase.tscn`'s `MultiplayerSynchronizer`) were written straight onto
+      the body every time an update landed. Per `Agent_Prompts.md`'s Netcode
+      brief: the body itself must keep snapping (collision, the Hitbox offset and
+      every directional ability read it directly), so this smooths the **`Visual`
+      node only** — `character_visual.gd` now lags a world-space copy of the
+      body's position/yaw behind at `REMOTE_SMOOTH_RATE` and renders the mesh from
+      that, converting the gap into the body's local frame every frame.
+      Deliberately skipped (zero overhead, not just zero visible effect) for: the
+      locally-driven character (client-authoritative, already smooth), anything
+      not networked (Local Match), and a CARRIED or FLYING slipper
+      (`carriable.gd` already recomputes both identically on every peer at zero
+      bandwidth — smoothing an already-agreed transform would make it visibly lag
+      the hand or the arc). **Teleports snap, not glide**, per the brief's own
+      requirement: `character_base.gd::respawn()` (KillPlane) and
+      `main.gd::_place_at_spawn()` (every round reset, and the initial local-test
+      placement) both call the new `CharacterBase.snap_visual_interpolation()`
+      immediately after repositioning.
+      **Verified by running**, not by a human watching it glide: two real Godot
+      instances (`--host` / `--join=127.0.0.1`, not `--headless` — a rendering
+      device is required for `_process()` to run at all), 600+ frames each,
+      produced no output. Confirmed by reading the code, not felt: whether
+      `REMOTE_SMOOTH_RATE` (18.0) is the right *feel* is unverified and cheap to
+      retune later, same tuning-window caveat as the rest of this phase.
+      **⚠️ Two pre-existing bugs found and fixed while building the two-instance
+      test rig this item needed** (see `Handoff.md`'s session log and its own new
+      `B-` entries): a stale, non-freed-but-tree-detached character reference
+      could crash `you_card.gd::get_local_character()`'s caller
+      (`offscreen_indicators.update()`) the instant a peer joined or disconnected,
+      and `offscreen_indicators.gd::_update_one()` itself crashed reading
+      `global_position` off a target mid-`queue_free()`. Neither is new
+      networking work; both were unreachable without an actual live multi-peer
+      session, which is exactly what this item required building.
+- [x] **4.3 · Rejoin identity (B-65).** 🤖 Sonnet, high — **verified live: two
+      sequential `--join=127.0.0.1` processes presenting the same identity token,
+      host reassigns the same team/role slot to the second one under a brand-new
+      peer id**
+      A rejoining player used to come back as a different team and role, because
+      identity was the ENet peer id and a reconnect assigns a new one.
+      `NetworkManager.local_player_token` is now a random 128-bit token minted
+      once per running instance (see its own doc for why NOT reloaded from the
+      `user://` copy it also writes — two local test instances sharing one
+      `user://`, exactly how this project's own two-instance test works, would
+      otherwise read back the identical token and collide on the same join
+      index) and presented to the host via `_rpc_identify` on every connect.
+      `main.gd`'s `_peer_join_index` (peer_id -> slot) is now `_token_join_index`
+      (token -> slot): a reconnect presents the same token under a new peer id
+      and maps straight back to its original team/role.
+      **The harder half of this item, not in the original brief's own framing:**
+      a rejoining peer had nowhere to go. Host/Join both gate behind
+      `Lobby.tscn`'s ready-up screen, and the host has already left it for
+      `Main.tscn` by the time anyone could realistically disconnect and rejoin —
+      the rejoining peer's own `Lobby.tscn` would connect fine and then wait
+      forever for a Start press the host can never send again.
+      `NetworkManager.match_in_progress` (host-only, set true by
+      `main.gd::_start_hosting()`) plus a new `_rpc_route_to_running_match` RPC
+      (sent to a peer that identifies after the match has already started) now
+      redirects that peer straight into `Main.tscn`; a new
+      `_rpc_client_ready_for_spawn` ping (sent once that peer's own
+      `Main.tscn`/`MultiplayerSpawner` actually exists) tells the host it is safe
+      to replicate a spawn, closing the race where the host could otherwise spawn
+      a peer before its own receiving scene was ready.
+      **Verified live**, not just reasoned about: host + one join process
+      (distinct tokens, sequential slots 0/1, no errors, 600+ frames each);
+      separately, two *sequential* join processes forced to present the identical
+      token (simulating the same human reconnecting under a new peer id) — the
+      host reused the exact same join index (`1`) for both, under two different
+      peer ids, with no errors either side. **Not verified:** a literal
+      mid-process ENet drop-and-manual-rejoin from the SAME running client (the
+      test above simulates the identity/redirect mechanism correctly but kills
+      and restarts the client process rather than reconnecting in place) — that
+      is the real-hardware wifi-blip case 6.1 will exercise. `Handoff.md`'s B-65
+      entry is closed; see it for the full account.
 - [ ] **4.4 · Balance pass — Guard/Dash, cooldowns, ranges, both game modes.** 🤖 Sonnet, medium ⛔ 0.4
       Never done. Write the numbers down. **Balance both Option A and Option B
       to shippable quality** — per 1.5, neither is deprioritised.

@@ -225,14 +225,22 @@ func _place_at_spawn(character: CharacterBase, slot: int) -> void:
 	var t := _spawn_transform(slot)
 	character.position = t.origin
 	character.rotation.y = t.basis.get_euler().y
+	# 4.2: this is a TELEPORT, not a walk — every round reset routes through
+	# here, and without this a remote peer's interpolated visual would glide
+	# across the map from its previous position to the new spawn point
+	# instead of snapping there with everyone else.
+	character.snap_visual_interpolation()
 
 var _spawned_peer_ids: Dictionary = {}
-## B-21: peer_id -> permanently-assigned join index (0..3), separate from
-## _spawned_peer_ids.size(). A disconnect/rejoin used to shift every
-## subsequent peer's index (and therefore team/role) since the index was
-## derived from how many peers happen to be connected right now. Assigned
-## once per peer_id and never reused/reassigned, even after that peer leaves.
-var _peer_join_index: Dictionary = {}
+## B-21, superseded by 4.3/B-65: token -> permanently-assigned join index
+## (0..3), separate from _spawned_peer_ids.size(). B-21 keyed this by peer_id
+## so a disconnect/rejoin couldn't shift every OTHER peer's index — but the
+## rejoining peer itself still came back as a brand-new peer_id with no entry
+## of its own, landing in the next free slot instead of its original team/role
+## (B-65). Keyed by NetworkManager's stable per-install token instead: a
+## reconnect presents the SAME token under a new peer_id, so it maps straight
+## back to the index it already had. See _spawn_player.
+var _token_join_index: Dictionary = {}
 var _next_join_index: int = 0
 ## Session 6: real 2v2 team assignment. peer_id -> 0 (Team A) or 1 (Team B),
 ## fixed for the whole match — replaces the old "alternate Can/Tsinelas by
@@ -422,6 +430,10 @@ func _start_hosting() -> void:
 			return
 	NetworkManager.player_connected.connect(_on_player_connected)
 	NetworkManager.player_disconnected.connect(_on_player_disconnected)
+	# 4.3/B-65: a peer that connects (or reconnects) from here on has missed
+	# the lobby entirely — see NetworkManager.match_in_progress's own doc.
+	NetworkManager.player_identified.connect(_on_player_identified)
+	NetworkManager.match_in_progress = true
 	# U-4: after the lobby all connected peers are already known; iterate over
 	# connected_peer_ids so everyone gets a spawner entry. In a fresh (non-
 	# lobby) host flow, connected_peer_ids = [host_id] so behaviour is the same
@@ -440,8 +452,25 @@ func _start_joining(address: String) -> void:
 	NetworkManager.server_disconnected.connect(_on_server_disconnected)
 	NetworkManager.connection_failed.connect(_on_connection_failed)
 	# U-4: when arriving from the lobby, join_game() already ran — skip it.
-	if not NetworkManager.is_networked():
+	#
+	# 4.3/B-65: also decides how to send _rpc_client_ready_for_spawn (tells
+	# the host our OWN Main.tscn/MultiplayerSpawner actually exists, so it is
+	# safe to replicate a spawn to us — see that RPC's own doc). Already
+	# networked (arrived via Lobby, or NetworkManager just redirected us here
+	# mid-match) means the connection is live RIGHT NOW, so send it
+	# immediately. A fresh join_game() call here is still mid-handshake the
+	# instant it returns — an RPC sent this same frame throws "trying to call
+	# an RPC via a multiplayer peer which is not connected" (measured, not
+	# guessed: the two-instance test threw exactly that before this was
+	# split) — so that case waits for the real connection_succeeded signal.
+	if NetworkManager.is_networked():
+		_rpc_client_ready_for_spawn.rpc_id(1)
+	else:
+		NetworkManager.connection_succeeded.connect(_on_joined_ready_for_spawn, CONNECT_ONE_SHOT)
 		NetworkManager.join_game(address)
+
+func _on_joined_ready_for_spawn() -> void:
+	_rpc_client_ready_for_spawn.rpc_id(1)
 
 func _clear_local_test_characters() -> void:
 	RoundManager.clear_tracked_cans()
@@ -452,21 +481,65 @@ func _clear_local_test_characters() -> void:
 	team_b_person.queue_free()
 	_local_roster.clear()
 
+## 4.3/B-65: this used to be the ONE trigger for spawning + catching up a
+## post-lobby joiner, firing the instant ENet's handshake completed. It is
+## now one of THREE (see _on_player_identified, _rpc_client_ready_for_spawn
+## below) because that instant is no longer late enough to safely act on:
+## the peer's token may not have arrived yet (raced against _rpc_identify,
+## a separate message with no ordering guarantee relative to this signal),
+## and — for a peer redirected here mid-match out of Lobby.tscn — their own
+## Main.tscn may not even be loaded yet. All three call the same idempotent
+## _try_late_join, so whichever condition is satisfied LAST is the one that
+## actually spawns them.
 func _on_player_connected(peer_id: int) -> void:
 	if NetworkManager.is_host():
-		_spawn_player(peer_id)
-		# B-29/B-48: _start_hosting() already called MatchManager.begin_next_round()
-		# before anyone could possibly be connected (see B-13), so every joining
-		# peer — not just a "late" one — missed the one-shot _sync_round_started
-		# broadcast and is stuck at round_number 0. GameLaunch.game_mode is also
-		# never networked at all; each peer reads its own menu selection, so a
-		# client's copy can silently disagree with the host's. Catch this one
-		# peer up on both in a single reliable RPC.
-		_sync_state_to_late_joiner.rpc_id(
-			peer_id, MatchManager.round_number, MatchManager.team_a_is_can,
-			MatchManager.team_a_wins, MatchManager.team_b_wins,
-			RoundManager.time_left, RoundManager.round_active, GameLaunch.game_mode
-		)
+		_try_late_join(peer_id)
+
+## 4.3/B-65: fires once NetworkManager has recorded this peer's token
+## (NetworkManager.player_identified) — see _on_player_connected's doc for
+## why this is needed as a second trigger rather than trusting player_connected
+## alone.
+func _on_player_identified(peer_id: int, _token: String) -> void:
+	if NetworkManager.is_host():
+		_try_late_join(peer_id)
+
+## 4.3/B-65 — client -> host: "my own Main.tscn is loaded and ready to
+## receive a spawn." Sent unconditionally from the end of _start_joining(),
+## for both a normal --join= (Main.tscn already loaded, so this just
+## confirms what was already true) and a peer NetworkManager just redirected
+## out of Lobby.tscn mid-match (where it is NOT already true, and skipping
+## this ping would race the spawn against a scene still loading). No-op via
+## _try_late_join's own guards if the match hasn't started yet — the ordinary
+## Lobby-gated flow spawns everyone from _start_hosting()'s own loop and
+## never needed a ping at all.
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_client_ready_for_spawn() -> void:
+	if NetworkManager.is_host():
+		_try_late_join(multiplayer.get_remote_sender_id())
+
+## Shared by all three triggers above. Idempotent both ways: _spawned_peer_ids
+## guards against spawning twice, and the missing-token return means a trigger
+## that fires before NetworkManager.peer_tokens has this peer's entry simply
+## does nothing rather than spawning them into the wrong slot — whichever
+## trigger fires once BOTH conditions are true is the one that actually acts.
+func _try_late_join(peer_id: int) -> void:
+	if _spawned_peer_ids.has(peer_id):
+		return
+	if not NetworkManager.peer_tokens.has(peer_id):
+		return
+	_spawn_player(peer_id)
+	# B-29/B-48: _start_hosting() already called MatchManager.begin_next_round()
+	# before anyone could possibly be connected (see B-13), so every joining
+	# peer — not just a "late" one — missed the one-shot _sync_round_started
+	# broadcast and is stuck at round_number 0. GameLaunch.game_mode is also
+	# never networked at all; each peer reads its own menu selection, so a
+	# client's copy can silently disagree with the host's. Catch this one
+	# peer up on both in a single reliable RPC.
+	_sync_state_to_late_joiner.rpc_id(
+		peer_id, MatchManager.round_number, MatchManager.team_a_is_can,
+		MatchManager.team_a_wins, MatchManager.team_b_wins,
+		RoundManager.time_left, RoundManager.round_active, GameLaunch.game_mode
+	)
 
 ## B-15/B-35: only show the "OUT OF BOUNDS" toast for a character that's
 ## actually ours — a client's screen shouldn't flash every time some OTHER
@@ -546,15 +619,24 @@ func _on_player_disconnected(peer_id: int) -> void:
 func _spawn_player(peer_id: int) -> void:
 	if _spawned_peer_ids.has(peer_id):
 		return
+	# 4.3/B-65: a peer_id is only good for one connection's lifetime — a
+	# rejoin gets a fresh one from ENet. NetworkManager.peer_tokens is where
+	# _rpc_identify recorded the STABLE token this peer_id currently belongs
+	# to; every caller of _spawn_player (_start_hosting's loop,
+	# _try_late_join) already checked this is populated before getting here.
+	var token: String = NetworkManager.peer_tokens.get(peer_id, "")
+	if token == "":
+		push_warning("main.gd: _spawn_player(%d) called with no registered token; skipping." % peer_id)
+		return
 	_spawned_peer_ids[peer_id] = true
-	# B-21: was `_spawned_peer_ids.size()` — a live count that shifts for every
-	# peer still connected after someone disconnects, scrambling team/role
-	# assignment for everyone whose index moved. Assign once, permanently, per
-	# peer_id instead.
-	if not _peer_join_index.has(peer_id):
-		_peer_join_index[peer_id] = _next_join_index
+	# B-21, superseded by 4.3/B-65: was keyed by peer_id, which meant a
+	# rejoin (new peer_id, same human) landed in the next free slot instead
+	# of the one it already had — see _token_join_index's own doc. Assign
+	# once, permanently, per TOKEN instead.
+	if not _token_join_index.has(token):
+		_token_join_index[token] = _next_join_index
 		_next_join_index += 1
-	var index: int = _peer_join_index[peer_id]
+	var index: int = _token_join_index[token]
 	var team := index / 2 # 0, 0, 1, 1 for up to MAX_PLAYERS = 4
 	var is_person := index % 2 == 0 # first peer of each team pair is the Person
 	var team_is_can_side := (team == 0) == MatchManager.team_a_is_can

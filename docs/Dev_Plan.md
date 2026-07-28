@@ -117,7 +117,7 @@ Legend: **[x]** built and working · **[~]** built but broken or unverified · *
 | `RoundManager` (90s timer, win reporting) | [~] | B-01 fixed and now runtime-verified (two-instance headless test). Late-join sync (B-29/B-48), round-end sync (B-18), and sync throttling (B-19) all fixed this pass. |
 | `MatchManager` (Bo5, role swap) | [x] | Bo5-to-3 early win **already implemented** (`WINS_NEEDED = 3`, `match_manager.gd:43`). `reset()` added (B-14); no dedicated end-of-match result screen yet (B-37 UI half). |
 | `NetworkManager` (ENet host/join) | [x] | Connects fine. Runtime-verified this pass (headless `--host`/`--join`). |
-| Networked spawning + movement replication | [~] | Works; snaps (no interpolation — unchanged). Props' ability and `player_id` both fixed (B-04, B-30). Join index stabilized (B-21). |
+| Networked spawning + movement replication | [~] | Works. Remote visual interpolation added (`Checklist.md` 4.2) — the body still snaps for gameplay, only the mesh is smoothed, per Agent_Prompts.md's Netcode brief. Props' ability and `player_id` both fixed (B-04, B-30). Join index stabilized by peer_id (B-21), then by a stable token across a reconnect (B-65, `Checklist.md` 4.3). |
 | Host-authoritative combat | [x] | B-02 fixed (ability replication). |
 | HUD (timer, Bo5 pips, round, role panels, dent counter, downed vignette, YOU card, crosshair) | [x] | **Rebuilt to §4.4 and verified by render** (U-1, v4.14–v4.16). Role-coloured team panels with three Bo5 pips each, framed timer with HIGHLIGHT under 15s and a scale pulse under 10s, LATA dent card, YOU card, FPP-only crosshair (re-verified by render 2026-07-28, `Checklist.md` HUD row). The charge / hold / reset-channel meters are wired too (`Checklist.md` 0.1) — `carrier.gd`'s three signals are consumed by `you_card.gd`, plain styling only; the moodboard glow treatment on the charge bar is still the design lane's, with the shader-parameter hook now in place for it. |
 | Main menu + mode picker | [x] | Back button added (B-34); Option A label fixed (B-33). |
@@ -838,7 +838,7 @@ yet, see B-10/B-37 above) and the Option A/B decision itself, which nobody has m
       `ArenaCamera`, preserving the FPP/TPP split), gated to only the struck player's own screen;
       particles are a code-built `GPUParticles3D` burst in `UiTheme.IMPACT`, no art asset.
       `landed_on` itself is still unused. Hitstop and audio are still open.
-- [ ] Movement interpolation for remote characters — currently visibly snaps
+- [x] Movement interpolation for remote characters — see `Checklist.md` 4.2
 - [ ] Audio: bump, special, downed/seal, round win, ambience per map
 - [ ] Broadcast/auto-follow cam for recording (GDD Section 6)
 
@@ -912,9 +912,9 @@ Godot's **Debug → Run Multiple Instances → 2+**, with per-instance arguments
 `--join=127.0.0.1`. The menu's Host/Join buttons do the same thing through `GameLaunch`.
 
 ⚠️ **Real-device testing over wifi has never happened and is on the critical path.** Real wifi
-adds latency and packet loss to a movement layer with no interpolation and no reconciliation. If
-that forces the shared-screen fallback, you want to know weeks before the deadline. Book a
-session with four laptops.
+adds latency and packet loss to a movement layer with remote-visual interpolation (`Checklist.md`
+4.2) but still no reconciliation. If that forces the shared-screen fallback, you want to know weeks
+before the deadline. Book a session with four laptops.
 
 ### Ownership — the single canonical table
 
