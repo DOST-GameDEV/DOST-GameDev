@@ -13,6 +13,10 @@ class_name SettingsPanel
 
 signal back_pressed
 
+## Rows are built at runtime, so their colour is set here rather than in the
+## scene. See _build_rows for why it cannot be the theme's INK.
+const ACTION_LABEL_COLOR: Color = Color(1, 1, 1)
+
 @onready var bindings_list: VBoxContainer = %BindingsList
 @onready var status_label: Label = %SettingsStatusLabel
 @onready var reset_all_button: Button = %ResetAllButton
@@ -52,6 +56,10 @@ func _build_rows() -> void:
 		var label := Label.new()
 		label.text = SettingsManager.ACTION_LABELS.get(action, action)
 		label.custom_minimum_size = Vector2(160, 0)
+		# This panel has no card behind it — the rows sit straight on the menu's
+		# dark navy, where the theme's INK body colour is unreadable. The rebind
+		# buttons keep their own light stylebox and INK text.
+		label.add_theme_color_override("font_color", ACTION_LABEL_COLOR)
 		row.add_child(label)
 		var button := Button.new()
 		button.custom_minimum_size = Vector2(140, 0)
