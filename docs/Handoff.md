@@ -836,8 +836,13 @@ never carried across, and the false comment is why nobody caught it: every reade
 the claim instead of the number.
 *Root cause of the class:* two map builders duplicate a spawn block with nothing checking that they
 agree. **Change one map's spawn block and diff it against the other in the same commit.**
-⚠️ **This is NOT the reported offense/defense spawn swap.** Eskinita's spawns were re-verified this
-pass, by data and not by eye, and are correct — see the open entry in §5.
+⚠️ **On the reported offense/defense spawn swap, now that B-104 is known.** Eskinita's spawns were
+re-verified by data (not by eye) across two round transitions and are correct in both. Combined
+with B-104 — the picker could only ever load Eskinita — **the most likely story is that the human
+was on Eskinita believing they were on Bayan Plaza, and B-102's mirrored Taya spawn was never what
+they were looking at.** The remaining candidate is simply that units walk during the pre-round
+free-roam window (and now under the merged Single Player AI), so where they *stand* when you look
+is not where they *spawned*. Nothing further to fix without a fresh report on the current build.
 
 ### P0 — none open
 
