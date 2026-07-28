@@ -22,10 +22,13 @@ const MODES: Array[Dictionary] = [
 	{"id": GameLaunchScript.GameMode.OPTION_A, "label": "DENTS"},
 ]
 
-## There is exactly one arena, and which maps ship is still an open design
-## decision (docs/Handoff.md). The row is present so the screen matches the
-## artboard, with its arrows disabled in the scene until there is something to
-## cycle through.
+## TODO(U-8): make this a real selector — see docs/Handoff.md.
+## One arena exists and it is not swappable: the floor, bounds, kill plane and
+## hazards are authored inline in Main.tscn and spawn positions are a const in
+## main.gd. So the MAP row is present to match the artboard but its arrows are
+## disabled in the scene, and this is a fixed label rather than a list. Wiring
+## them up means extracting the arena into its own scene first; cycling a
+## one-item list would only look interactive.
 const MAP_NAME: String = "CLASSIC"
 
 @onready var local_button: ArrowButton = %LocalButton

@@ -1358,6 +1358,44 @@ B-65 (rejoin identity) is noted but not attempted here — needs a stable player
 
 ---
 
+#### U-8 · Make the map selector real `[ ]`
+
+The GAME screen (`GameSetup.tscn`) has a MAP row matching the artboard, and it is inert:
+`MapPrevButton`/`MapNextButton` are `disabled = true` in the scene with no `pressed.connect` in
+`game_setup.gd`, and `MAP_NAME` is a single `const String = "CLASSIC"` written straight into the
+label. Deliberate — there is nothing to cycle. **One arena exists and it is not a map**: the floor,
+the four `Bounds` walls, `KillPlane` and `Hazards` are authored inline in `Main.tscn`, and spawn
+positions are `const SPAWN_POINTS` in `main.gd`. Nothing is swappable, so wiring the arrows today
+would only animate a one-item list.
+
+Steps:
+
+1. **Extract the arena before anything else.** `scenes/arenas/ClassicArena.tscn` takes `Floor`,
+   `Bounds`, `KillPlane` and `Hazards` out of `Main.tscn` verbatim, plus a `SpawnPoints` node of
+   four `Marker3D`s at the current `SPAWN_POINTS` values, in the same slot order
+   (`[TeamAProp, TeamAPerson, TeamBProp, TeamBPerson]` — see `_spawn_player`). `Main.tscn` keeps an
+   empty `ArenaRoot` to instance into. The arena's sub-resources (`BoxShape3D_floor`, the two wall
+   shapes, `BoxShape3D_killplane`, `SphereShape3D_hazard`, `Mat_floor`, `BoxMesh_floor`) move with
+   it; `Environment_default` and the light stay behind, they are not map-specific.
+2. An `Arena` script on that root exposing `kill_plane()` and `spawn_points()`, so `main.gd` stops
+   depending on `$KillPlane` being a direct child and on a hardcoded position list.
+3. `map_catalog.gd` as the single source of truth — id, display name, scene path — and the arrows
+   enabled from `count() > 1` rather than a hand-set `disabled` flag. Adding a map becomes one
+   catalog entry and nothing else.
+4. `GameLaunch.map_id`, set by `game_setup.gd` the same way `game_mode` already is.
+5. **The host's pick has to reach the clients.** `game_mode` has this bug today — every peer sets
+   it locally, so a client that toggled MODE disagrees with the host about the rules. Carry both
+   through `lobby.gd::_rpc_begin_match()` and set them on every peer before the scene change, which
+   fixes the existing mode bug in the same pass.
+
+**Acceptance:** two maps in the catalog, the arrows cycle between them, the chosen one is the
+geometry that loads, and a client that joins a host gets the host's map and mode rather than its
+own.
+
+**Commit:** `Make the map selector real and sync the host's pick (vX.Y)`
+
+---
+
 #### U-5 · Character select `[ ]`
 
 Six Prop specials have `.tres` resources (B-24) and no way to choose between them. `main.gd`
