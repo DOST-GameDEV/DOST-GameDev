@@ -546,17 +546,26 @@ func _play_locomotion() -> void:
 		return
 	var speed := Vector2(_character.velocity.x, _character.velocity.z).length()
 	var wanted := "idle"
-	if speed > RUN_SPEED_THRESHOLD:
+	# ⚠️ B-90 — CARRY_IDLE_CLIP now wins over walk/sprint OUTRIGHT, checked
+	# before speed at all, not just when standing still. It used to be the
+	# opposite: "the rig has no holding-right-walk, and plain walk with the
+	# slipper tracking the arm bone reads fine" — it does not. `carrier.gd`'s
+	# `_step_carried()` snaps the carried unit to wherever the arm BONE
+	# currently is every physics frame, and `camera_rig.gd`'s FPP viewmodel
+	# arm chases that same live position — so the moment locomotion switches
+	# to `walk`/`sprint`, the arm bone starts swinging through its walk cycle
+	# and drags the held slipper (and the viewmodel arm chasing it) through
+	# that swing. Reported: "my arms float during windup and when i run while
+	# holding". The rig genuinely has no holding-right-walk clip to blend to
+	# instead, so the fix is to stop trying to walk-animate a carrying arm at
+	# all: legs stop swinging while holding something and moving, which is a
+	# far smaller visual cost than the hand and viewmodel swimming every step.
+	if _is_holding():
+		wanted = CARRY_IDLE_CLIP
+	elif speed > RUN_SPEED_THRESHOLD:
 		wanted = "sprint"
 	elif speed > WALK_SPEED_THRESHOLD:
 		wanted = "walk"
-	elif _is_holding():
-		# Standing still WITH something in hand is its own pose. Without this a
-		# Person aiming a throw stands in the empty-handed idle with a slipper
-		# stuck to their arm, which reads as a bug rather than as a wind-up.
-		# Only the standing case: the rig has no holding-right-walk, and plain
-		# `walk` with the slipper tracking the arm bone reads fine.
-		wanted = CARRY_IDLE_CLIP
 	if not _animator.has_animation(wanted):
 		wanted = "idle"
 	if _animator.has_animation(wanted) and _animator.current_animation != wanted:

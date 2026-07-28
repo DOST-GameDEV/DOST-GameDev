@@ -210,6 +210,22 @@ func physics_step(delta: float) -> void:
 				return
 			_step_flying(delta)
 
+## B-90 — the tsinelas is a flat, thin object (0.432 long x 0.166 wide x 0.078
+## tall): its own sole is the ONLY side that reads as "a slipper" at a glance,
+## and the arm bone's fixed rotation (see character_visual.gd's
+## HAND_CARRY_OFFSET comment, "a +60 degree rotation about Y") leaves the
+## object's local up axis close to world-up — i.e. presented flat, roughly
+## LEVEL with the eye, which from a camera at the same height is close to
+## edge-on. Edge-on, a 0.078-tall object is a sliver, not a slipper. This
+## tilts the carried object about its OWN local X axis (applied before the
+## hand's rotation, so it tilts in the object's own frame first) to angle the
+## sole up toward the camera, the way a real held object naturally reads.
+## Cosmetic only, on top of the position work HAND_CARRY_OFFSET already does —
+## does not touch LOOSE or FLYING, which already read fine (a slipper crawling
+## on the ground or spinning in flight is not being viewed edge-on the same
+## way). Tuning window roughly 45-70 degrees; re-render if you change it.
+const CARRY_TILT_DEG: float = 55.0
+
 ## Snap to the carrier's hand. Every peer computes this identically from the
 ## replicated `carrier`, so a carried slipper needs no position replication at
 ## all. The hand itself comes from CharacterVisual, which is the only thing that
@@ -229,8 +245,16 @@ func _step_carried() -> void:
 	# CharacterVisual.PERSON_SCALE (2.38) and every bone under its Skeleton3D
 	# inherits that, so assigning the hand's transform directly would blow the
 	# slipper up to 2.38x — with no error, just a comically large tsinelas.
+	#
+	# B-90: `* tilt`, not `tilt *` — tilt has to apply in the OBJECT'S OWN
+	# local frame (pre-multiplied) so it rotates the sole toward the camera
+	# regardless of which way the hand itself is currently oriented, rather
+	# than tilting relative to the world after the hand's rotation is already
+	# applied.
+	var tilt := Basis(Vector3.RIGHT, deg_to_rad(CARRY_TILT_DEG))
 	var hand_transform := hand.global_transform
-	_character.global_transform = Transform3D(hand_transform.basis.orthonormalized(), hand_transform.origin)
+	_character.global_transform = Transform3D(
+		hand_transform.basis.orthonormalized() * tilt, hand_transform.origin)
 	_character.velocity = Vector3.ZERO
 
 func _step_flying(delta: float) -> void:
