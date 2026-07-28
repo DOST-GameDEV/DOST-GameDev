@@ -20,7 +20,7 @@ to type.
 | `scenes/characters/CameraRig.tscn` | — free — | | |
 | `scenes/ui/*.tscn` | — free — | | |
 | `project.godot` | — free — | | |
-| `tools/models/generate_all.gd` | — free — | | |
+| `tools/models/generate_all.gd` | 🔧 Build | code/proportions | 2026-07-28 |
 | `docs/Checklist.md` | *no lock needed* | | append-only-ish; conflicts resolved by taking both sides |
 
 > ### `generate_all.gd` / 2.1b-0 — resolved, kept for history
