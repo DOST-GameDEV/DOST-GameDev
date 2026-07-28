@@ -49,8 +49,8 @@ const MAP_NAME: String = "CLASSIC"
 
 @onready var map_value_label: Label = %MapValueLabel
 @onready var mode_value_label: Label = %ModeValueLabel
-@onready var mode_prev_button: Button = %ModePrevButton
-@onready var mode_next_button: Button = %ModeNextButton
+@onready var mode_prev_button: TextureButton = %ModePrevButton
+@onready var mode_next_button: TextureButton = %ModeNextButton
 
 var _mode_index: int = 0
 
@@ -60,7 +60,6 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE # Main.tscn captures it for a match
 	GameVersion.attach_to(self)
 
-	_style_address_field()
 	map_value_label.text = MAP_NAME
 	_apply_mode()
 
@@ -84,17 +83,6 @@ func _ready() -> void:
 		GameLaunch.pending_status_message = ""
 	else:
 		_show_title_screen()
-
-## The LineEdit sits on top of the wooden TEXT FIELD artwork, so it has to drop
-## the theme's own card chrome and switch to the light-on-dark ink the rest of
-## the panel uses.
-func _style_address_field() -> void:
-	for state in ["normal", "focus", "read_only"]:
-		join_address_edit.add_theme_stylebox_override(state, StyleBoxEmpty.new())
-	join_address_edit.add_theme_color_override("font_color", Color("f8d028"))
-	join_address_edit.add_theme_color_override("font_placeholder_color", Color(0.973, 0.816, 0.157, 0.5))
-	join_address_edit.add_theme_color_override("caret_color", Color("f8d028"))
-	join_address_edit.add_theme_font_size_override("font_size", 40)
 
 # --- Screen switching ---------------------------------------------------------
 
