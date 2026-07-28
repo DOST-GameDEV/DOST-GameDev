@@ -673,6 +673,32 @@ defending that round, disconnected from the map's own base circle and throwing l
 the new `_role_slot()`) instead of a stored team index, and `_reset_world` auto-hands the tsinelas
 to the attacking Person at round start rather than leaving it loose to be walked over first.
 
+**Option B rewritten — confinement, tag-to-win, auto-seal, 5-fall cap, same session — see
+`Checklist.md` 2.7.** User design pass, closer to real tumbang preso, after playing the
+spawn-redesigned build. Four rules changes plus a UI addition, all in one commit:
+
+- **Confinement.** The Can and its Taya are now confined to a 3-unit radius around the base
+  circle (`CharacterBase.CONFINEMENT_RADIUS`) for the whole round —
+  `_move_and_confine()` wraps every `move_and_slide()` call site so nothing bypasses it.
+- **Tag-to-win.** A defending Person's hit (Bump or the Tag ability) landing on the attacking
+  Person now ends the round for team can outright — previously stun-only, no round effect.
+  Added directly in `hitbox.gd`'s resolution function.
+- **Auto-seal.** The 2s self-right window is unchanged, but `character_base.gd` now calls
+  `seal()` itself the instant it lapses unrecovered, instead of requiring a follow-up hit from an
+  attacker (the old Option B behaviour, retired).
+- **5-fall cap.** `round_manager.gd` tracks every Downed transition on a tracked Can this round
+  (`FALL_LIMIT = 5`), saved or not; reaching it auto-wins for team slipper regardless of whether
+  that fall was individually recoverable.
+- **Local ready-up.** Local matching previously skipped straight to Main.tscn; it now routes
+  through `Lobby.tscn` like Host/Join, with a `"local"` branch in `lobby.gd` that does no
+  networking but keeps the same READY → START rhythm.
+
+Option A is unchanged and stays selectable, but is now explicitly parked (`Checklist.md` 1.5) —
+this is Option B's ruleset changing in place, not a third mode. Verified by parse, two 800-frame
+soaks, and a `render_probe.gd` lobby mode that drives the real Ready button and confirms Start's
+enabled state flips exactly once. **Not verified by play** — confinement radius, tag-to-win and
+the fall-cap number are all brand new and nobody has felt them yet.
+
 ### P1 — found by the design lane while measuring for checklist 1.2 (2026-07-28)
 
 Filed, deliberately not fixed — `Concurrency_Protocol.md` §10. Full reasoning and the screenshot

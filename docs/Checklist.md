@@ -230,14 +230,16 @@ blocking real work.
       **Written into the synopsis plan at 6.5.** The human can veto it there; it
       does not need to stay an open question blocking a document.
 - [ ] **1.5 · 🧑 Option A vs Option B — the ship decision. Deliberately still open.**
-      **Both modes stay in active, equal development.** This is not a "pick one
-      and delete the loser" item and every doc that used to say so has been
-      corrected. Both are wired end to end, both are selectable from the main
-      menu, both get playtested at 0.4, both get balanced at 5.3. The final
-      choice of what ships in the demo is the human's, on their own timeline.
-      Kept as its own visible line so it does not quietly disappear — but it
-      **blocks nothing** and no item below is allowed to slow down on one mode
-      because the other might win.
+      **Both modes stay in active, equal development** as separate, selectable ruleset —
+      **AMENDED 2026-07-28: Option A is now parked, not equal.** User decision after the 2.7
+      rules pass below: Option B is the primary ruleset going forward; Option A stays correct,
+      selectable, and untouched, but is deprioritized and "will build option a another day, not
+      sure if we have time for it." Every doc that used to say "pick one and delete the loser" is
+      still corrected — Option A is not being deleted — but "equal development" no longer holds.
+      Both are wired end to end and both are still selectable from the main menu. The final choice
+      of what ships in the demo is the human's, on their own timeline. Kept as its own visible line
+      so it does not quietly disappear — but it **blocks nothing** and no item below is allowed to
+      slow down on Option A because it might still be chosen.
 
 ---
 
@@ -452,6 +454,41 @@ HUD contrast or hazard placement against a grey box.
       **Not verified:** how this plays with a human — whether the Taya's distance from the Can, or
       the Attacker's distance from the throwing line, feels right. That is 4.4's job once someone has
       actually played it.
+- [x] **2.7 · Option B rewritten — confinement, tag-to-win, auto-seal, 5-fall cap.** 🔧 Build —
+      **verified by parse + two 800-frame soaks + a driven lobby-flow render; NOT verified by play**
+      User design pass, 2026-07-28, after playing the spawn-redesigned build: bring the rules
+      closer to real tumbang preso, with both sides getting a clear, fast win condition instead of
+      a health bar or a manual seal-hit. Rewrites Option B in place — same `GameLaunch.GameMode`
+      enum value, Option A untouched (see 1.5's amendment: Option A is now parked, not equal).
+  - [x] **Team-can confinement.** The Can and its Taya are confined to a `CONFINEMENT_RADIUS`
+        (3 units, first guess) circle around the base circle (world origin) for the whole round.
+        `character_base.gd::_move_and_confine()` wraps every `move_and_slide()` call site in the
+        file so no code path can bypass it. Gives the Taya room to body-block without being able
+        to chase the attacker back to the 6-unit throwing line — the load-bearing assumption
+        behind the next item being fair rather than a guaranteed instant loss for team slipper.
+  - [x] **Tag-to-win.** Any hit from the Taya landing on the attacking Person — Bump or the Tag
+        ability, both resolve through `hitbox.gd`'s one function — ends the round for team can,
+        after the normal stagger/VFX still plays. Previously a Person hit was stun-only with no
+        round effect.
+  - [x] **Auto-seal.** The existing 2s self-right window is unchanged, but `character_base.gd` now
+        calls `seal()` itself the instant the window lapses unrecovered, instead of waiting for an
+        attacker to walk up and physically seal it (the old Option B behaviour, retired). Falling
+        and staying down is sufficient on its own for team slipper to win.
+  - [x] **5-fall cap.** `round_manager.gd` counts every Downed transition on a tracked Can this
+        round, saved or not; reaching `FALL_LIMIT` (5, first guess) auto-wins for team slipper
+        regardless of whether that particular fall was recoverable. Independent of and in addition
+        to auto-seal — stops a Taya who can save everything from making a round unloseable.
+  - [x] **Ready-up gate for local matching.** Local previously skipped straight to the match; it
+        now routes through `Lobby.tscn` like Host/Join always did. `lobby.gd` gained a `"local"`
+        branch that does no networking (nothing to actually wait for on one PC) but keeps the same
+        READY → START rhythm. `main_menu.gd`'s old direct-to-Main `_go_to_match()` is deleted.
+      **Verified:** parse clean; two 800-frame soaks of the real match scene, silent; a new `lobby`
+      mode in `tools/render_probe.gd` drives the actual Ready button (`pressed.emit()`, not a
+      hand-set flag) and confirms Start goes disabled → enabled exactly once, with screenshots of
+      both states.
+      **NOT verified:** confinement, tag-to-win, auto-seal and the fall cap are all new rules
+      nobody has played yet — the 3-unit radius and the 5-fall number are guesses, same as every
+      other first-guess balance constant in this project. That is 4.4's job.
 
 ---
 
