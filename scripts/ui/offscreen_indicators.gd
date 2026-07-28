@@ -56,7 +56,16 @@ func update(local_character: CharacterBase) -> void:
 ## flag), then clamp the centre-to-target ray to the inset screen rect and
 ## point the arrow along it.
 func _update_one(arrow: Control, camera: Camera3D, target: CharacterBase) -> void:
-	if target == null or not is_instance_valid(target):
+	# `is_inside_tree()`, not just `is_instance_valid()` — measured live during
+	# 4.3's peer-drop testing: a character mid-`queue_free()` (main.gd's
+	# `_on_player_disconnected`, fired on every peer, not just the host —
+	# every surviving peer frees its own copy of a departed one) is a real,
+	# non-freed Object for one or more frames after leaving the tree, so
+	# `is_instance_valid()` alone still passes it through. `global_position`
+	# below needs a live parent chain to resolve and throws
+	# `Condition "!is_inside_tree()" is true` otherwise — this was reachable
+	# on any frame a tracked teammate or Can disconnects, not a hypothetical.
+	if target == null or not is_instance_valid(target) or not target.is_inside_tree():
 		arrow.visible = false
 		return
 	var world_pos := target.global_position + TARGET_HEIGHT_OFFSET

@@ -230,7 +230,31 @@ func _update_row_visibility() -> void:
 ## Returns the locally-controlled character resolved by the last refresh cycle.
 ## Use this from sibling HUD nodes rather than duplicating the scan logic —
 ## the you_card already polls every REFRESH_INTERVAL and caches the result.
+##
+## Validated here, not just left to the next poll: `_character` can be freed
+## in the gap between two refresh cycles (up to REFRESH_INTERVAL, ~9 frames at
+## 60fps) — measured live during 4.2/4.3's two-instance testing, where a
+## fresh --join= still has the local-test dummy units in the tree for the
+## first few frames (main.gd's own _ready() hasn't run _clear_local_test_characters()
+## yet — children ready before parents) and this card's very first refresh()
+## can cache one of them. A caller with a raw, unchecked freed reference is
+## worse than returning null: passing it into a TYPED parameter (e.g.
+## offscreen_indicators.update()) fails Godot's own argument type-check
+## before that function's body — and its is_instance_valid() guard — ever run.
+##
+## ⚠️ `is_instance_valid(_character)` alone, NOT `_character != null and
+## not is_instance_valid(_character)`. Measured live: for a FREED (not null)
+## Object reference, GDScript's own `!=` already treats it as equal to null
+## in a plain comparison — so the `_character != null` half of that guard is
+## false for exactly the freed case it exists to catch, short-circuits the
+## `and`, and falls through to `return _character`, handing the caller the
+## same poisoned reference back. It merely COMPARES as null from then on;
+## it is not reassigned to an actual null literal, so it still fails the
+## same argument type-check downstream. `is_instance_valid()` alone handles
+## both a real null and a freed reference correctly, with no error either way.
 func get_local_character() -> CharacterBase:
+	if not is_instance_valid(_character):
+		return null
 	return _character
 
 func _find_local_character() -> CharacterBase:
