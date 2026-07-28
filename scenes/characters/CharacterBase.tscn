@@ -24,17 +24,21 @@ properties/3/spawn = true
 properties/3/replication_mode = 2
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_1"]
+resource_local_to_scene = true
 radius = 0.4
 height = 1.6
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_hurtbox"]
+resource_local_to_scene = true
 radius = 0.45
 height = 1.7
 
 [sub_resource type="SphereShape3D" id="SphereShape3D_hitbox"]
+resource_local_to_scene = true
 radius = 0.5
 
 [sub_resource type="SphereShape3D" id="SphereShape3D_grab"]
+resource_local_to_scene = true
 radius = 1.7
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_ring"]
