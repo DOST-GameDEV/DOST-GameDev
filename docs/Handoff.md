@@ -745,6 +745,27 @@ For any coding agent picking up this queue.
 **Only open items live here.** B-01 … B-66 are in [`Handoff.md`](Handoff.md); everything
 marked `[FIXED]` there is done and settled. New bugs take the next free number **in this file**.
 
+**B-110 · `floorcheck` ignored SCALE, so it measured against the wrong heights. [FIXED
+2026-07-28]** Two halves, both the same mistake, found a day apart.
+ - **Ground pieces.** `record()` computed a piece's top as `y + hi[1]`, with no scale at all. Every
+   kit ground piece therefore reported its UNSCALED height — a road tile placed at 4× reported
+   0.025 instead of 0.1 — and every marking resting on one was checked against a surface that was
+   not there. **The guard found this itself**, by failing the arena re-paving (7.4b) with errors
+   that were arithmetically impossible if its own numbers had been right.
+ - **Markings.** The same hole on the other side: `_markings` did not store whether the placement
+   was uniformly scaled, `_samples()` scaled only X, and `verify()` read `lo[1]`/`hi[1]` raw.
+   Latent today, because nothing places a marking through `add_kit()` — and it would have bitten
+   silently the first time anyone did.
+*Root cause of the class:* two different scale conventions share one parameter. `xform()` stretches
+ONLY the mesh's length axis (right for a lengthenable line decal, leaves Y and Z alone);
+`xform_uniform()` scales all three (right for a building). `sx` meant both. Every caller now says
+which via an explicit `uniform` flag, and `embed_y()` takes the scale it is embedding at.
+*Proven by negative test, not by inspection:* a 3×-scaled marking embedded at its real scale is
+accepted, and the same marking placed with the old scale-blind arithmetic is rejected with
+`STICKS OUT ... 62.0mm`. Before the fix that second case passed silently.
+⚠️ **A guard that is wrong is worse than no guard**, because it is trusted. If you add a third
+placement convention here, give it its own flag rather than overloading `sx` again.
+
 **B-109 · Field markings STUCK OUT of the floor — the other half of the floating bug.
 [FIXED 2026-07-28]** Reported after B-103 shipped: *"the decals of floor still stick out."* Both
 reports are the same object and opposite failures. A marking is a **2cm-thick box**, so B-103's

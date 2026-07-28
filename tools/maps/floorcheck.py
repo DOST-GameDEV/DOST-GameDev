@@ -154,7 +154,7 @@ def mesh_bounds(mesh_name, models_dir="assets/models"):
     return _bounds_cache[mesh_name]
 
 
-def embed_y(surface, mesh_name, models_dir="assets/models"):
+def embed_y(surface, mesh_name, models_dir="assets/models", scale=1.0):
     """The placement Y that embeds `mesh_name` in a surface at `surface`.
 
     The single source of truth for the sandwich rule above — both map builders
@@ -162,7 +162,7 @@ def embed_y(surface, mesh_name, models_dir="assets/models"):
     number somebody worked out by hand. That is the whole lesson of this file.
     """
     _lo, hi = mesh_bounds(mesh_name, models_dir)
-    return surface + MARK_PROUD - hi[1]
+    return surface + MARK_PROUD - hi[1] * scale
 
 
 def _to_world(lx, lz, x, z, yaw, sx, sz=1.0):
@@ -215,7 +215,7 @@ class Surfaces:
             # Markings are excluded from the surface set on purpose: a marking
             # is not something another marking may rest on, and letting them
             # stack would make two floaters validate each other.
-            self._markings.append((name, mesh_name, x, y, z, yaw, sx))
+            self._markings.append((name, mesh_name, x, y, z, yaw, sx, uniform))
         elif mesh_name in GROUND_MESHES:
             self._pieces.append((name, min(xs), max(xs), min(zs), max(zs),
                                  y + hi[1] * sy))
@@ -234,7 +234,7 @@ class Surfaces:
                 best = top
         return best
 
-    def _samples(self, mesh_name, x, z, yaw, sx):
+    def _samples(self, mesh_name, x, z, yaw, sx, sz=1.0):
         """Points across the piece's footprint, INSET from its own edges.
 
         ⚠️ The inset is load-bearing, not a rounding fudge. Two markings that
@@ -251,9 +251,9 @@ class Surfaces:
         """
         lo, hi = mesh_bounds(mesh_name, self._models_dir)
         span_x = (hi[0] - lo[0]) * sx
-        span_z = hi[2] - lo[2]
+        span_z = (hi[2] - lo[2]) * sz
         inset_x = min(EDGE_INSET, span_x * 0.25) / max(sx, 1e-9)
-        inset_z = min(EDGE_INSET, span_z * 0.25)
+        inset_z = min(EDGE_INSET, span_z * 0.25) / max(sz, 1e-9)
         x0, x1 = lo[0] + inset_x, hi[0] - inset_x
         z0, z1 = lo[2] + inset_z, hi[2] - inset_z
         nx = max(2, int(span_x / SAMPLE_STEP) + 1)
@@ -262,7 +262,7 @@ class Surfaces:
             lx = x0 + (x1 - x0) * i / (nx - 1)
             for j in range(nz):
                 lz = z0 + (z1 - z0) * j / (nz - 1)
-                yield _to_world(lx, lz, x, z, yaw, sx)
+                yield _to_world(lx, lz, x, z, yaw, sx, sz)
 
     def verify(self):
         """Raises on the first marking that floats or spans a step.
@@ -276,11 +276,19 @@ class Surfaces:
                      is the one that kept coming back.
         """
         problems = []
-        for name, mesh_name, x, y, z, yaw, sx in self._markings:
+        for name, mesh_name, x, y, z, yaw, sx, uniform in self._markings:
             lo, _hi = mesh_bounds(mesh_name, self._models_dir)
-            bottom = y + lo[1]
+            # ⚠️ SCALE THE HEIGHTS. This used to read `lo[1]`/`hi[1]` raw, which
+            # is right for `xform()`'s length-only stretch (Y is untouched there)
+            # and WRONG the moment a marking is placed through `add_kit()`, whose
+            # scale is uniform. The ground-piece side of exactly this bug shipped
+            # a whole re-paving measured against unscaled tile heights; this is
+            # the same hole on the marking side, closed before it could bite.
+            sy = sx if uniform else 1.0
+            sz = sx if uniform else 1.0
+            bottom = y + lo[1] * sy
             heights = {round(self.height_at(wx, wz), 6)
-                       for wx, wz in self._samples(mesh_name, x, z, yaw, sx)}
+                       for wx, wz in self._samples(mesh_name, x, z, yaw, sx, sz)}
             if len(heights) > 1:
                 problems.append(
                     "%s SPANS %d surface heights (%s) — no single Y is flush "
@@ -290,21 +298,21 @@ class Surfaces:
                        ", ".join("%.3f" % h for h in sorted(heights))))
                 continue
             surface = heights.pop()
-            top = y + _hi[1]
+            top = y + _hi[1] * sy
             proud = top - surface
             if proud < -TOLERANCE:
                 problems.append(
                     "%s is BURIED — its top face is %.1fmm BELOW the surface at "
                     "%.4f, so it will not be visible at all. Place it at y=%.4f."
                     % (name, -proud * 1000.0, surface,
-                       embed_y(surface, mesh_name, self._models_dir)))
+                       embed_y(surface, mesh_name, self._models_dir, sy)))
             elif proud > MARK_PROUD_MAX:
                 problems.append(
                     "%s STICKS OUT — its top face stands %.1fmm above the "
                     "surface at %.4f, so its side walls show as a kerb at a "
                     "grazing angle. Place it at y=%.4f."
                     % (name, proud * 1000.0, surface,
-                       embed_y(surface, mesh_name, self._models_dir)))
+                       embed_y(surface, mesh_name, self._models_dir, sy)))
             elif bottom >= surface - TOLERANCE:
                 problems.append(
                     "%s RESTS ON the ground instead of being embedded in it — "
@@ -312,7 +320,7 @@ class Surfaces:
                     "of side wall is exposed all the way round. Place it at "
                     "y=%.4f."
                     % (name, bottom, surface, (top - bottom) * 1000.0,
-                       embed_y(surface, mesh_name, self._models_dir)))
+                       embed_y(surface, mesh_name, self._models_dir, sy)))
         if problems:
             raise SystemExit(
                 "\nFLOATING GEOMETRY — build aborted, scene NOT written.\n"
