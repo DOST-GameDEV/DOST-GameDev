@@ -653,6 +653,18 @@ simplification worth recording:
   Building real physics-based circle-exit detection is a materially bigger feature than a bug-fix
   pass and was not attempted; flagging for the team to decide whether it is worth doing.
 
+**B-91 · Carried Tsinelas's own TPP camera was blocked by the carrier's body. [FIXED same
+session.]** `carriable.gd::_step_carried()` teleports the whole CharacterBase into the carrier's
+hand every physics frame; the TPP spring arm (a child) inherited that transform and had nowhere
+sensible to cast toward, with the carrier's own body never excluded from its shapecast. **Fixed:**
+`camera_rig.gd::_update_tpp_carry_follow()` bases the TPP camera on the CARRIER while held (same
+mount height/pitch a normal rig uses, carrier's body excluded from the cast) instead of this unit's
+own nonsensical transform. A first attempt also scaled a Prop's own STANDALONE mount height down
+for its shorter capsule, on the B-88/B-89 theory — reverted after rendering it: the spring arm
+collapsed into solid geometry (the cast origin ended up too close to the ground/the prop's own
+mesh). Only the carried case was reported broken; the standalone case was untouched. Verified by
+rendering through each unit's own CameraRig directly.
+
 **Spawn layout redesigned as role-based, same session — see `Checklist.md` 2.6.** User feedback:
 "two teams spawn on completely different ends and i dont think thats how it should go." Correct: the
 old scheme spawned each team's pair at a fixed end of the alley regardless of which side was
