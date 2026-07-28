@@ -194,9 +194,11 @@ func _find_unit(unit_name: String) -> CharacterBase:
 ## `MultiplayerSpawner.spawn_path` in Main.tscn), keyed by peer_id rather than
 ## by the fixed local-test names, so this walks up to that ancestor instead
 ## of `_match_root()`. Returns the ONE character whose authority is this
-## machine's own peer — solo means there is only ever one spawned character
-## at all, so "the one I own" and "the only one that exists" are the same
-## unit; this just avoids assuming that rather than re-deriving it.
+## machine's own peer and who isn't AI-driven — solo no longer means there is
+## only one spawned character at all (a solo host's unfilled slots are now
+## AI-driven, see main.gd's own AI-takeover doc), so the `ai_controller` check
+## is what actually narrows this down to "the one I own," same fix as
+## main.gd::get_local_character() / camera_rig.gd's own is_mine check.
 func _solo_networked_unit() -> CharacterBase:
 	var node: Node = _bar
 	var players: Node = null
@@ -209,7 +211,7 @@ func _solo_networked_unit() -> CharacterBase:
 		return null
 	for child in players.get_children():
 		var character := child as CharacterBase
-		if character != null and character.is_multiplayer_authority():
+		if character != null and character.is_multiplayer_authority() and character.ai_controller == null:
 			return character
 	return null
 
