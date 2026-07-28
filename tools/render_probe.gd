@@ -54,6 +54,8 @@ func _ready() -> void:
 		_build_match()
 	elif _mode == "round2":
 		_build_match()
+	elif _mode == "canwatch":
+		_build_match()
 	elif _mode == "lobby":
 		_build_lobby()
 	else:
@@ -149,6 +151,9 @@ func _unit(scene: PackedScene, id: String, is_person: bool, is_can: bool,
 
 func _process(_delta: float) -> void:
 	_frames += 1
+	if _mode == "canwatch":
+		_canwatch()
+		return
 	if _mode == "match":
 		# Let main.gd spawn, let RoundManager start, let the HUD populate.
 		if _frames == 120:
@@ -232,6 +237,48 @@ func _process(_delta: float) -> void:
 		_side_cam.current = true
 	if _frames == 125:
 		_shot("viewmodel_tpp")
+		get_tree().quit()
+
+## canwatch — "the can keeps teleporting", reported repeatedly and never pinned
+## to a frame. Drives a real match and prints the Can's position EVERY frame it
+## MOVES more than a step, so a teleport shows up as one line with the frame
+## number on it instead of as a screenshot of somewhere odd.
+##
+## Deliberately reports the jump SIZE: a can that walked has a small delta every
+## frame, a can that was teleported has one enormous delta and nothing either
+## side of it. That distinction is the whole point and is invisible in a
+## position dump sampled at fixed intervals, which is what round2 does and why
+## it kept describing the symptom without locating it.
+var _canwatch_last: Vector3 = Vector3.INF
+var _canwatch_started: bool = false
+
+func _canwatch() -> void:
+	if _frames == 5 and not _canwatch_started:
+		_canwatch_started = true
+		MatchManager.begin_next_round()
+	# Force round transitions so a whole match is exercised inside 400 frames.
+	if _frames == 120 or _frames == 240 or _frames == 360:
+		RoundManager.report_round_win(_frames == 240)
+	# No group to query — CharacterBase does not register in one — so this walks
+	# the tree. Cheap enough for a diagnostic and immune to a group name changing.
+	var can: CharacterBase = null
+	for node in get_tree().get_root().find_children("*", "CharacterBase", true, false):
+		var unit := node as CharacterBase
+		if unit != null and unit.is_can:
+			can = unit
+			break
+	if can == null:
+		return
+	var pos := can.global_position
+	if _canwatch_last != Vector3.INF:
+		var jump := pos.distance_to(_canwatch_last)
+		if jump > 0.75:
+			print("[canwatch] frame %d  JUMP %.2f  %s -> %s  round=%d active=%s" % [
+				_frames, jump, _canwatch_last, pos,
+				MatchManager.round_number, RoundManager.round_active])
+	_canwatch_last = pos
+	if _frames >= 395:
+		print("[canwatch] final ", pos)
 		get_tree().quit()
 
 ## round2 mode's own report — every local unit's role and position, so a spawn-

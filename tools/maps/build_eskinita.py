@@ -29,7 +29,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from floorcheck import Surfaces, mesh_bounds  # noqa: E402
+from floorcheck import Surfaces, embed_y, mesh_bounds  # noqa: E402
 
 surfaces = Surfaces()
 
@@ -306,8 +306,10 @@ def add_line(name, mesh_name, x, z, yaw=0.0, sx=1.0):
         if run_len <= 0.0:
             continue
         suffix = "" if len(runs) == 1 else "_%d" % n
+        # embed_y, never `h` — a marking sits INSIDE the ground, not on it.
         add("Markings", name + suffix, mesh_name,
-            x + mid * length * c, h, z - mid * length * s, yaw, run_len / span)
+            x + mid * length * c, embed_y(h, mesh_name), z - mid * length * s,
+            yaw, run_len / span)
 
 
 # The base circle sits entirely on the raised strip (it is 1.4 across, the strip
@@ -315,7 +317,7 @@ def add_line(name, mesh_name, x, z, yaw=0.0, sx=1.0):
 # against a 0.062 top — 8mm of float, the "still a couple of thinsg floating"
 # report. Taken from the measured mesh now, not from a round number.
 add("Markings", "BaseCircle", "base_circle_decal", 0.0,
-    surfaces.height_at(0.0, 0.0), 0.0)
+    embed_y(surfaces.height_at(0.0, 0.0), "base_circle_decal"), 0.0)
 
 add_line("ThrowingLineNorth", "throwing_line_decal", 0.0, -6.0)
 add_line("ThrowingLineSouth", "throwing_line_decal", 0.0, 6.0)
@@ -325,7 +327,8 @@ add_line("TeamSideSouth", "team_side_decal", 0.0, 13.0)
 # rather than running underneath it — the same class of fault as the floaters
 # (a decal resting on something it was never meant to touch), caught by the
 # same check.
-add("Markings", "JeepneyLane", "jeepney_lane_decal", 5.2, ROAD_Y, 0.0, 0.0, 0.6)
+add("Markings", "JeepneyLane", "jeepney_lane_decal", 5.2,
+    embed_y(ROAD_Y, "jeepney_lane_decal"), 0.0, 0.0, 0.6)
 
 # --- Confinement-radius SQUARE. 2026-07-28: the Can/Taya's actual restricted
 # --- play area (CharacterBase.CONFINEMENT_RADIUS) was invisible on the
@@ -586,7 +589,7 @@ with open("scenes/maps/Eskinita.tscn", "w", encoding="utf-8", newline="\n") as f
     f.write(out)
 
 print(f"wrote scenes/maps/Eskinita.tscn")
-print(f"  markings      : {n_marks} verified flush")
+print(f"  markings      : {n_marks} verified embedded")
 print(f"  ext_resources : {len(ext_lines)}")
 print(f"  sub_resources : {n_sub}")
 print(f"  load_steps    : {load_steps}")

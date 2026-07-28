@@ -171,6 +171,11 @@ var _tpp_base_spring_length: float = 4.5
 ## The scene's own baked `TppArm` pitch, captured for the same reason as the
 ## length above — so re-framing scales from the authored value every round.
 var _tpp_base_pitch_deg: float = -15.0
+## The framing pitch _apply_upright_pose() rebuilds the arm from each frame.
+var _tpp_pitch_deg: float = -15.0
+## The scene's own baked mount heights, captured before anything overrides them.
+var _tpp_mount_height: float = 1.2
+var _fpp_eye_height: float = 0.45
 ## The carried unit's Visual this rig currently has hidden from its own player,
 ## so it can be un-hidden even after the unit stops being held. See
 ## _apply_carried_self_hide.
@@ -221,6 +226,9 @@ func _ready() -> void:
 	# behaviour correct if a Visual ever ships with meshes baked in.
 	_tpp_base_spring_length = tpp_arm.spring_length
 	_tpp_base_pitch_deg = tpp_arm.rotation_degrees.x
+	_tpp_pitch_deg = _tpp_base_pitch_deg
+	_tpp_mount_height = tpp_arm.position.y
+	_fpp_eye_height = fpp_pivot.position.y
 	var visual := _character.get_node_or_null("Visual") as CharacterVisual
 	if visual != null:
 		visual.model_changed.connect(_apply_fpp_self_hide)
@@ -253,11 +261,61 @@ func _ready() -> void:
 ## No-ops on a Person in every respect: a 1.6 capsule gives a ratio of 1.0 and
 ## the arm keeps the scene's own baked 4.5, so nothing about the FPP/TPP
 ## directive or a Person's framing changes.
+## ⚠️ THE CAMERA NEVER INHERITS THE BODY'S ROLL OR PITCH. THIS IS THE INVARIANT.
+##
+## Playtest 2026-07-28, with screenshots: "camera for both can and slippers
+## randomly break" — the whole 3D view rolled 40 degrees while the HUD stayed
+## level, which is a camera roll and nothing else.
+##
+## Both pivots are CHILDREN of the CharacterBase, so they inherit its full basis.
+## Almost everything writes only `rotation.y` and is harmless, but a Prop's body
+## does get a full basis written to it: `carriable.gd::_step_carried()` snaps a
+## carried unit to the carrier's HAND every physics frame, tilt included, and
+## anything that leaves a non-yaw component behind — a mid-transition frame, a
+## release path that has not zeroed it yet, a future ability that tilts a
+## body — lands directly in the player's eye.
+##
+## Patching each writer has been tried in pieces and this is the third report.
+## So the rig stops trusting its parent instead: every frame, both pivots are
+## given an ABSOLUTE transform built from the body's YAW ONLY plus their own
+## pitch. Whatever the body is doing on the other two axes cannot reach the
+## camera, from any code path, including ones nobody has written yet.
+##
+## ⚠️ Yaw is recovered from the body's FORWARD VECTOR, not from
+## `global_rotation.y`. Euler decomposition of a basis that has roll in it does
+## not give back the yaw you want — which is exactly the situation this function
+## exists to survive.
+func _body_yaw() -> float:
+	var forward := -_character.global_transform.basis.z
+	if absf(forward.x) < 0.00001 and absf(forward.z) < 0.00001:
+		return _character.global_rotation.y # looking straight up/down; degenerate
+	return atan2(-forward.x, -forward.z)
+
+func _apply_upright_pose() -> void:
+	if _character == null:
+		return
+	var yaw := Basis(Vector3.UP, _body_yaw())
+	if _mode == Mode.FPP:
+		fpp_pivot.global_transform = Transform3D(
+			yaw * Basis(Vector3.RIGHT, deg_to_rad(_pitch_deg)),
+			_character.global_position + Vector3.UP * _fpp_eye_height)
+		return
+	# The carried case already writes an absolute transform of its own, anchored
+	# to the CARRIER rather than to this body — see _update_tpp_carry_follow().
+	# Overwriting it here would undo the anchoring and snap the view back onto a
+	# slipper that is being swung around by someone else's arm.
+	if _carriable != null and _carriable.state == Carriable.CarryState.CARRIED:
+		return
+	tpp_arm.global_transform = Transform3D(
+		yaw * Basis(Vector3.RIGHT, deg_to_rad(_tpp_pitch_deg)),
+		_character.global_position + Vector3.UP * _tpp_mount_height)
+
 func _apply_tpp_framing() -> void:
 	if _mode != Mode.TPP or _character == null:
 		return
 	var ratio := clampf(_character.capsule_height() / PERSON_CAPSULE_HEIGHT, 0.0, 1.0)
 	tpp_arm.spring_length = lerpf(TPP_MIN_SPRING_LENGTH, _tpp_base_spring_length, ratio)
+	_tpp_pitch_deg = lerpf(TPP_MIN_PITCH_DEG, _tpp_base_pitch_deg, ratio)
 	# Pitch, for the same reason and with the same safety property: the mount is
 	# 1.2 up and a Can's top is at 0.34, so a rig still aimed 15 degrees down
 	# looks straight over it and leaves the subject sitting on the bottom edge of
@@ -265,8 +323,7 @@ func _apply_tpp_framing() -> void:
 	# Tilting further down re-centres it, and like the length it only changes
 	# where the cast POINTS, never where it starts, so it cannot reintroduce the
 	# collapse that killed the mount-scaling attempt.
-	tpp_arm.rotation_degrees.x = lerpf(
-		TPP_MIN_PITCH_DEG, _tpp_base_pitch_deg, ratio)
+	tpp_arm.rotation_degrees.x = _tpp_pitch_deg
 
 func _mount_height_for(capsule_height: float) -> float:
 	var clearance := TPP_MOUNT_CLEARANCE_AT_PERSON_SCALE * (capsule_height / PERSON_CAPSULE_HEIGHT)
@@ -480,6 +537,7 @@ func _update_tpp_carry_follow() -> void:
 func _process(delta: float) -> void:
 	_update_viewmodel_carry(delta)
 	_update_tpp_carry_follow()
+	_apply_upright_pose()
 	if _shake_time_left > 0.0:
 		_shake_time_left = max(0.0, _shake_time_left - delta)
 		var ratio := _shake_time_left / _shake_duration
