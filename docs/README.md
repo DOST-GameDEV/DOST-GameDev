@@ -9,49 +9,6 @@ When two documents disagree, **the one higher in this list wins.** Fix the lower
 commit rather than leaving both standing.
 
 | # | Document | Authoritative for |
-|---|---|---|
-| 1 | **The running build** | Anything about what the code *does*. A doc claim beaten by a render or a run is wrong — the build is not. |
-| 2 | [`Checklist.md`](Checklist.md) | **What is done and what is next.** Every `[x]` / `[~]` / `[ ]` state. |
-| 3 | [`Concurrency_Protocol.md`](Concurrency_Protocol.md) | Lane ownership, the shared-file lock, the smoke gate, merge rules. |
-| 4 | [`Art_Direction.md`](Art_Direction.md) | Palette, proportion, moodboard record, environment kit, art queue — **and the demo/trailer direction** (Part 5). |
-| 5 | [`Dev_Plan.md`](Dev_Plan.md) | Standing directives, phase plan — **and the GDD** (appendix), which owns game-design intent. |
-| 6 | [`Handoff.md`](Handoff.md) | Task-block history (`M-`, `U-`), **open bugs in §3**, and the fixed-bug archive (appendix). |
-
-## The other two
-
-| Document | What it is |
-|---|---|
-| [`Agent_Prompts.md`](Agent_Prompts.md) | Paste-ready lane openers — **current set at the top**, historical prompts and five merged lane briefs below. |
-| [`SHARED_LOCKS.md`](SHARED_LOCKS.md) | The mutex. Six files, one line each. **Deliberately its own file** — a lock claim must be a commit that touches nothing else, or the push-rejection mutex stops working. |
-
-> ### What was merged, 2026-07-28
->
-> Nineteen files became eight. `Art_Plan_Next_Stage`, `Design_Agent_Brief`, `Environment_Kit_Spec`
-> and `Environment_Art_Agent_Brief` → **`Art_Direction.md`**; `Demo_Script_and_Trailer` → its
-> Part 5. Five `*_Agent_Brief` files → **`Agent_Prompts.md`**'s appendix.
-> `Tumbang_Preso_2v2_GDD` → **`Dev_Plan.md`**. `Bug_Ledger` → **`Handoff.md`**.
-> `Handoff_Prompt_Design_Next` deleted outright. Every reference in `docs/`, `scripts/` and
-> `tools/` was rewritten; nothing points at a file that no longer exists.
-
----|---|---|
-| 1 | **The running build** | Anything about what the code *does*. A doc claim beaten by a render or a run is wrong, not the build. |
-| 2 | [`Checklist.md`](Checklist.md) | **What is done and what is next.** Every `[x]`/`[~]`/`[ ]` state. |
-| 3 | [`Concurrency_Protocol.md`](Concurrency_Protocol.md) | Lane ownership, the shared-file lock, the smoke gate, merge rules. |
-| 4 | [`Art_Direction.md`](Art_Direction.md) | Palette, proportion, moodboard record, environment kit, art queue. |
-| 5 | [`Dev_Plan.md`](Dev_Plan.md) | Game design intent — the rules of the game itself. |
-| 6 | [`Dev_Plan.md`](Dev_Plan.md) | Standing directives and phase plan. Older; defer to 2–4. |
-| 7 | [`Handoff.md`](Handoff.md) | Task-block history (`M-`, `U-`, `B-`) and the open bug ledger §3. |
-
-## The rest
-
-| Document | What it is |
-|---|---|
-| [`Agent_Prompts.md`](Agent_Prompts.md) | Paste-ready lane openers. **Current set at the top**, historical prompts and the five merged lane briefs below. |
-| [`Art_Direction.md`](Art_Direction.md) | Checklist 6.2 — live-demo running order, failure ladder, trailer beats. |
-| [`Handoff.md`](Handoff.md) | Archive of B-01…B-66, all fixed. Open bugs live in `Handoff.md` §3. |
-| [`SHARED_LOCKS.md`](SHARED_LOCKS.md) | The mutex. Six files, one line each. |
-
----
 
 ## The moodboard is a reference, not a contract
 
