@@ -148,13 +148,29 @@ func _process(_delta: float) -> void:
 	if _frames == 70:
 		_report()
 		_shot("viewmodel_fpp")
-	if _frames == 85:
-		var person := get_node("P") as CharacterBase
+	if _frames == 75:
+		# B-91 — the slipper's OWN TPP camera, while carried. This is the shot
+		# that was actually broken: not the carrying Person's view (above), the
+		# carried unit's own controlling player's view. set_active on S's rig
+		# exercises exactly the carry-follow path _update_tpp_carry_follow() adds.
 		(get_node("P/CameraRig") as CameraRig).set_active(false)
+		(get_node("S/CameraRig") as CameraRig).set_active(true)
+	if _frames == 90:
+		_shot("viewmodel_slipper_tpp")
+		(get_node("S/CameraRig") as CameraRig).set_active(false)
+	if _frames == 95:
+		# B-91 — the Can's own (never-carried) TPP camera, to confirm the mount
+		# height fix generally, not just the carry-follow path above.
+		(get_node("C/CameraRig") as CameraRig).set_active(true)
+	if _frames == 105:
+		_shot("viewmodel_can_tpp")
+		(get_node("C/CameraRig") as CameraRig).set_active(false)
+	if _frames == 110:
+		var person := get_node("P") as CharacterBase
 		_side_cam.global_position = person.global_position + Vector3(2.6, 0.55, 2.0)
 		_side_cam.look_at(person.global_position + Vector3(0, -0.15, 0))
 		_side_cam.current = true
-	if _frames == 100:
+	if _frames == 125:
 		_shot("viewmodel_tpp")
 		get_tree().quit()
 
