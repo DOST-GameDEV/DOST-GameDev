@@ -91,6 +91,14 @@ polish; they are the instruments.
       and read the live bar/label values back — all three signals wired
       correctly. Screenshots at 1280x720 and 1920x1080, idle and mid-fill.
       Plain styling only; the design lane restyles on top once merged.
+      **2026-07-28 addendum, 🔧 build-ux:** the charge-glow HOOK now exists —
+      `you_card.gd::_on_charge_changed` drives a `charge_ratio` (0..1) shader
+      uniform on `charge_bar.material` whenever the design lane assigns a
+      `ShaderMaterial` there; a no-op until one is assigned. Verified by a
+      scripted run (`ShaderMaterial` attached, charge driven to 0.6 then to
+      "stopped", uniform read back both times) — not by render, since there is
+      no shader to render yet. The moodboard treatment itself is still the
+      design lane's, per the comment this replaces nothing of.
 - [x] **0.2 · Give each side a real default Prop ability (B-76).** 🤖 Sonnet, medium
       `main.gd`'s `PROP_ABILITY` is `quick_stand.tres` for **every** Prop, and
       `Main.tscn` hardcodes the same. Quick Stand has no `get_throw_profile()`,
@@ -748,7 +756,7 @@ simply carried forward from the previous pass's checkboxes.
 | `[x]` | Bo5, role swap, 90s round, win reporting, match reset | |
 | `[x]` | FPP/TPP camera directive, enforced by `assert` + grep | A-1, A-2 |
 | `[x]` | Theme, main menu, play menu, settings, pause, match result | |
-| `[x]` | **HUD to `Dev_Plan.md` §4.4** | Bo5 pips, role-coloured panels, framed timer with urgency states, LATA card, YOU card. Verified by render. ⚠️ **The "FPP-only crosshair, verified by render" part of this row was false** — it does not appear on a Person in a real match. See **B-86**. Corrected 2026-07-28 by the design lane. |
+| `[x]` | **HUD to `Dev_Plan.md` §4.4** | Bo5 pips, role-coloured panels, framed timer with urgency states, LATA card, YOU card, FPP-only crosshair. Verified by render — including the crosshair, re-rendered 2026-07-28 (six runs, `match_fpp.png`, zoomed crop of screen centre) by 🔧 build-ux after **B-86** filed it absent. Could not reproduce the absence; see `Handoff.md` B-86 for the full account. |
 | `[x]` | **Round beats — verified present, 2026-07-28** | The design-lane brief listed the role-swap card, the downed vignette, the impact burst and the slipper spin as "still placeholder". **All four already exist.** `RoleSwapCard.tscn` + `role_swap_card.gd` run the full §4.6 timeline (result banner → panels slide in on a BACK/EASE_OUT overshoot and recolour to the *incoming* roles → "ROUND N — FIGHT!" wipe → reset); `%DownedFlash` carries `assets/ui/downed_vignette.gdshader`, a real radial vignette, not a flat rect. Confirmed by rendering the card mid-timeline. Nothing to do here. |
 | `[x]` | Lobby with ready-up (B-13) | U-4 |
 | `[x]` | Role-swap intermission card | U-3 |
