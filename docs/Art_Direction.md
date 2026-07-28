@@ -63,6 +63,174 @@ What that actually changes, concretely:
   proportion audit in §1. Those are legibility, not taste — a game can be silly and still has to
   be readable at arena distance.
 
+### 0b. THE KIT OVERHAUL — 2026-07-28. This supersedes most of Parts 3 and 4.
+
+**Stated by the human, with the kits attached:** *"ill be honest, assets suck so bad right now and
+its so buggy."* The project stops hand-generating its world and switches to real asset kits. This
+section is the spec. **Everything in Part 3 (the environment kit piece list) and Part 4 (the
+original map brief) that describes a procedurally-generated `env_*` dressing piece is superseded by
+it** — those parts stay only for the laws that still apply (height tiers, the boundary technique,
+the palette discipline) and for history.
+
+#### What this is NOT
+
+**It is not a mechanics change, and no mechanics work belongs in it.** Explicit instruction: *"in
+the planning make sure all mechanics stay ok, focus on implementing the new assets and designs tho,
+let another agent do the mechanics."* The camera directive, `is_person`/`is_can`, carry/throw,
+confinement, the spawn slots, the round loop and the dent-count health model all keep working
+exactly as they do now. Every item below is an ASSET swap behind an unchanged interface. Where an
+asset swap genuinely forces a code decision (there are three, listed under *Integration risks*),
+the decision is recorded here and the code change is minimal and named — it is not licence to
+redesign a system.
+
+#### The kits, and what each one is for
+
+All six Kenney kits are **CC0** (verified in each `License.txt`) — usable commercially, attribution
+appreciated but not required. Recorded in `README.md`.
+
+| Kit | Role | Replaces |
+|---|---|---|
+| **Mini Characters** | The two Persons | Nothing — already in use, this is confirmation not a change |
+| **City Kit (Suburban)** | Eskinita, the city map | `env_building_block_*`, `env_wall_*`, `env_tree*`, fences |
+| **Fantasy Town Kit** | The probinsya map (currently "Bayan Plaza") | The whole plaza dressing set |
+| **Mini Forest** | Probinsya greenery | `env_tree`, `env_tree_far`, `env_planter` |
+| **Food Kit** | **The lata**, sari-sari stock | `lata.obj` + its three dent variants |
+| **Furniture Kit** | Sari-sari store interior, street furniture | `env_bench`, `env_monobloc_chair`, `env_crate_stack` |
+| **Car Kit** | Street vehicles | `env_tricycle` |
+
+⚠️ **The human first named "City Kit (Commercial)" and then corrected it to City Kit
+*Suburban*** — *"here is city kit, replace commercial with this i forgot to attach."* Suburban is
+what is attached and what this plan is measured against. If Commercial ever arrives it is a
+separate decision, not a silent substitution.
+
+#### The measured scale table — READ THIS BEFORE PLACING ANY KIT PIECE
+
+Measured from the `.glb` accessor bounds, not estimated. **Every kit is authored at a different
+native scale, and none of them matches this project's 1 unit = 1 metre world.** This is the single
+biggest source of work in the overhaul and the thing most likely to be got wrong, because a kit
+piece dropped in at native scale looks *deliberate* rather than broken.
+
+The reference is the **Person at 1.598 units** (`PERSON_SCALE` 2.38), which is ~165 cm.
+
+| Asset | Native size | Should be | Factor | Note |
+|---|---|---|---|---|
+| `soda-can.glb` | **0.351** tall | 0.335 (current lata) | **≈1.0 — drop in as-is** | The one free win. The proportion audit's hero-scaled can and Kenney's can are the same size by coincidence. |
+| `soda-can-crushed.glb` | 0.181 tall | — | 1.0 | The damaged state, free. |
+| Flip-flop `.glb` (one shoe) | 0.36 diagonal | 0.432 (current tsinelas) | **≈1.2×** | Closer than expected; the pair must be split first, see below. |
+| City Kit building | **0.74–1.24** tall | 5–7 (2–3 storeys) | **≈5×** | These are diorama-scale. A house is currently shorter than a Person. |
+| City Kit `tree-large` | 0.77 | ~7.0 (item E's target) | ≈9× | |
+| Fantasy Town `wall` | 1.00 tall | ~2.5 per storey | ≈2.5× | Roughly character-scale already; stacks by module. |
+| Fantasy Town `tree` | 2.41 | ~7.0 | ≈2.9× | |
+| Mini Forest `tree` | 1.68 | ~7.0 | ≈4× | |
+| Car Kit `van` | 2.75 long, 1.45 tall | ~4.8 long | ≈1.75× | Roof currently below a Person's head. |
+| Fantasy Town `stall` | 0.65 × 0.37 × 1.0 | sari-sari store, ~2.5 tall | ≈2.5× | The best sari-sari base in any of the kits. |
+
+**The rule this table exists to enforce:** pick the scale factor per KIT, once, recorded as a named
+constant in the map builder — never per piece by eye. Two pieces from the same kit at different
+scales is the "assets suck" failure in its purest form.
+
+#### What survives the overhaul, and why
+
+**The procedural pipeline does not die, and this is a real boundary, not sentiment.**
+
+- ✅ **`obj_writer.gd`, `env_kit.gd`, `generate_all.gd` keep authoring the FIELD MARKINGS** — base
+  circle, throwing lines, team-side lines, the confinement square. No kit ships tumbang preso
+  markings and none ever will; they are gameplay geometry sized to `CONFINEMENT_RADIUS` and the
+  6.0 throwing distance, and they must stay parametric because those numbers get tuned.
+- ✅ **`tools/maps/floorcheck.py` keeps working and gets MORE important**, not less. It measures a
+  marking's underside against real ground heights; kit pieces get recorded as ground the same way
+  road tiles are. Kit road/path pieces must be added to its `GROUND_MESHES` allowlist.
+- ❌ **The `env_*` dressing meshes are retired** — buildings, walls, trees, tricycle, bench, chair,
+  crates, drum, tire, bollard. Those are what the kits are for.
+- ❌ **`lata*.obj` and `tsinelas.obj` are retired**, replaced by the kit/GLB assets.
+
+So: **kits for objects, generator for markings.** That line is the whole architecture of the
+overhaul and it is what keeps `floorcheck` and the parametric arena intact.
+
+#### The two hero props
+
+**The lata → `soda-can.glb`.** Drops in at native scale. The dent-count health model keeps its
+interface: the food kit ships two states (`soda-can`, `soda-can-crushed`) against the four the
+system uses, so **dent 0 → `soda-can`, dents 1–2 → `soda-can` progressively squashed on the Y axis,
+dent 3 → `soda-can-crushed`**. Intermediate crush meshes are a later polish item, not a blocker.
+
+⚠️ **The Sarsi livery is PARKED, not abandoned.** Checklist 2.9 shipped a Sarsi-liveried procedural
+can hours before this overhaul; the Kenney can replaces it and the livery does not survive the
+swap. The human's own instruction: *"theres can assets in food kit, js add to plan that we will
+make that better later and make it sarsi or something."* So Sarsi returns as a **retexture** of
+`soda-can.glb` once the kit swap has landed and settled — see checklist 7.6. The trademark note and
+credit in `README.md` stay valid and stay put.
+
+**The tsinelas → the supplied `.glb`.** Three things must happen to it and none is optional:
+
+1. **It is a PAIR, not one slipper.** Two separate meshes (`mesh1977808981`, `mesh1162052169`). The
+   Prop is one slipper. Split it and keep one.
+2. **It is PURPLE** (`baseColorFactor` `0.34, 0.02, 0.44` and `0.5, 0.14, 0.58`). That contradicts
+   the asset moodboard landed the same day (§1b: worn brown foam, tan webbing strap). Recolour to
+   `PROP_FOAM` / `PROP_WEBBING`. The moodboard wins — it is the newer, more specific instruction.
+3. ⚠️ **ITS LICENCE IS NOT ESTABLISHED.** "flip flops by Tiff Eidmann" with an 11-character id is
+   the Poly Pizza naming convention, and Poly Pizza models are typically **CC-BY, which REQUIRES
+   attribution** — unlike the CC0 Kenney kits. **A human must confirm the licence and the exact
+   attribution string before this ships.** Flagged in `Handoff.md` §5. If it cannot be confirmed,
+   the fallback is cheap: the current procedural tsinelas already matches the moodboard and can
+   simply stay.
+
+#### The kits ship animation, and most of it is unused
+
+**The human, mid-plan:** *"the assets i sent has animation built in, pls use."* Verified, and the
+answer is more specific than the ask:
+
+- **Mini Characters ships 32 baked clips per character `.glb`** (2 skins). Confirmed by reading
+  `character-male-a.glb`'s `animations` array.
+- **Every other kit ships ZERO animations and zero skins** — `stall.glb`, `van.glb` and the rest
+  are static meshes. So "use the animation" is a **character** item; nothing to wire on the props
+  or the world.
+
+Of the 32, **eight are already wired**: `idle`, `walk`, `sprint`, `holding-right`,
+`holding-right-shoot`, `attack-melee-right`, `attack-kick-right`, `pick-up`. The rest are sitting
+unused, and several map onto states the game **already has and already tracks** — which is what
+makes wiring them art work rather than mechanics work:
+
+| Clip | Existing state it should read | Why it matters |
+|---|---|---|
+| `jump` / `fall` | Jump exists on every unit (§0's pillar) | `_play_locomotion()` picks from horizontal speed only, so a Person in mid-air currently plays `walk`. A visible airborne pose is the single biggest cheap win here. |
+| `die` | `State.DOWNED`, already drives the HUD flash and vignette | Downed currently reads only in the UI, not on the body. |
+| `emote-yes` | The `ready_up` press in pre-round free-roam | Everyone else can see who has readied, in the world, with no new state. |
+| `holding-right-shoot` | `Carrier.charge_power()` | **This is a candidate answer to the third-person windup tell** (*"I WANT EVERYONE ELSE IN THE WORLD TO SEE THAT THE WIND UP IS HAPPENING"*) — hold a pose from this clip scaled by charge instead of inventing new geometry. ⚠️ Still subject to the same caveat as before: if reading charge from another peer's `Carrier` needs a new synced field, that half is a Build-lane wall (`Handoff.md` §5), and only the visual half is ours. |
+| `interact-right` | The lata reset channel (B-46) | Not built as a mechanic — do NOT build it. Listed only so nobody wires a clip to a mechanic that does not exist. |
+
+⚠️ **The boundary that keeps this in the design lane:** every row above **reads state that already
+exists and plays a clip**. No new state, no new input, no new networking. The moment an item needs a
+new replicated field it stops being ours and gets filed, not built.
+
+#### Integration risks — the three places an asset swap does touch code
+
+Named so they are not discovered mid-implementation. All three are small and none is a redesign.
+
+1. **The toon/outline pass will destroy kit textures.** `character_visual.gd::_apply_toon_pass()`
+   replaces every surface material on a Prop with a flat `albedo_color` toon material. Kenney kits
+   are textured (a shared palette atlas). Applied unchanged, every kit prop turns into a single
+   flat colour. **Decision: the toon pass must sample the kit texture rather than replace it, or be
+   skipped for kit-sourced props.** This is the one item that genuinely blocks the prop swap.
+2. **The ink outline width is already wrong for props** (`outline.gdshader`'s 0.025 in MODEL space,
+   against a 0.204-wide can — see `Handoff.md` §0.12) and kit pieces have wildly different scales,
+   which makes a single constant worse still. Per-surface width derived from the mesh's own scale.
+3. **`floorcheck.GROUND_MESHES` is an allowlist of procedural mesh names.** Kit road/path pieces
+   must be added or every marking on them reports as floating. Cheap, but it fails loudly if missed
+   — which is the intended behaviour.
+
+#### Sequencing — why it is in this order
+
+**One kit per commit, each verified by render, and props before maps.** The props are two objects
+with a known interface and they prove the import + toon + outline path end to end; doing a whole
+map first would mean debugging the material pipeline across 200 instances instead of 2. Arena scale
+is NOT touched in any of these commits (Part 4's standing rule), so a movement-feel regression
+stays attributable.
+
+Full item breakdown: **`Checklist.md` phase 7.**
+
+---
+
 ### 1. The proportion audit — this is the headline
 
 > ### ✅ FIXED 2026-07-28 — checklist 2.5, verified by render
