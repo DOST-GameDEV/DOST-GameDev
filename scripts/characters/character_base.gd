@@ -834,6 +834,15 @@ func get_hand_attachment() -> Node3D:
 func play_visual_action(kind: String) -> void:
 	_visual.play_action(kind)
 
+## 4.2 — tells this unit's Visual its body position/yaw was just TELEPORTED
+## (a round reset, a KillPlane respawn) rather than walked, so remote-peer
+## interpolation snaps to the new spot instead of gliding across the map from
+## wherever it was before. No-op for every unit that isn't currently being
+## smoothed (the locally-driven character, Local Match, everyone once the
+## match isn't networked) — see character_visual.gd::snap_remote_transform.
+func snap_visual_interpolation() -> void:
+	_visual.snap_remote_transform()
+
 ## Art_Direction.md §1 / B-88 — this unit's OWN, currently-applied collision
 ## capsule height, read from the shape `_apply_role_collision()` just sized
 ## rather than assumed. Every child node that positions itself relative to
@@ -875,6 +884,7 @@ func _set_state(new_state: State) -> void:
 func respawn() -> void:
 	global_position = spawn_position
 	velocity = Vector3.ZERO
+	snap_visual_interpolation()
 
 ## Called by RoundManager at the start of a new round to clear Downed/Sealed/Staggered
 ## carryover from the previous round. Does NOT touch position — whatever resets a

@@ -680,17 +680,88 @@ touch map scenes.
 - [x] **4.1c · Tab could not reach the Can.** 🎨 Design. Two independent causes.
       Godot binds Tab to `ui_focus_next` and the GUI layer eats it before
       `_unhandled_key_input`, so the switcher never saw it — moved to `_input`.
-      Separately, the switcher no-ops in a **networked** match by design; the
-      0.4 session was hosted, not Local Match, which is also why pause did not
-      freeze. **Solo-test through Local Match.**
-- [ ] **4.2 · Movement interpolation for remote characters.** 🤖 Sonnet, high
-      Remote units visibly snap. High effort because it sits directly on the
-      replication model. **Do this before 6.1** — testing over real wifi without
-      it measures the wrong thing.
-- [ ] **4.3 · Rejoin identity (B-65).** 🤖 Sonnet, high
-      A rejoining player can come back as a different team and role. Needs a
-      stable player token instead of a peer id. A LAN demo where someone's wifi
-      blips is exactly the failure mode judges will see.
+      Separately, the switcher no-ops in a **real (2+ peer) networked** match by
+      design; the 0.4 session was hosted, not Local Match, which is also why pause
+      did not freeze. **Solo-test a real 2v2 through Local Match.** ⚠️ **Narrowed by
+      4.6, 2026-07-28** — a **solo** networked session (hosting, nobody else has
+      joined) now gets a real pause and a correct (not "(missing)") debug readout;
+      see 4.6. The "real 2v2" case above is unchanged.
+- [x] **4.2 · Movement interpolation for remote characters.** 🤖 Sonnet, high —
+      **verified by two real `--host`/`--join=127.0.0.1` instances, 600+ frames, no
+      output**
+      Remote units used to visibly snap — the replicated `position`/`rotation`
+      (`CharacterBase.tscn`'s `MultiplayerSynchronizer`) were written straight onto
+      the body every time an update landed. Per `Agent_Prompts.md`'s Netcode
+      brief: the body itself must keep snapping (collision, the Hitbox offset and
+      every directional ability read it directly), so this smooths the **`Visual`
+      node only** — `character_visual.gd` now lags a world-space copy of the
+      body's position/yaw behind at `REMOTE_SMOOTH_RATE` and renders the mesh from
+      that, converting the gap into the body's local frame every frame.
+      Deliberately skipped (zero overhead, not just zero visible effect) for: the
+      locally-driven character (client-authoritative, already smooth), anything
+      not networked (Local Match), and a CARRIED or FLYING slipper
+      (`carriable.gd` already recomputes both identically on every peer at zero
+      bandwidth — smoothing an already-agreed transform would make it visibly lag
+      the hand or the arc). **Teleports snap, not glide**, per the brief's own
+      requirement: `character_base.gd::respawn()` (KillPlane) and
+      `main.gd::_place_at_spawn()` (every round reset, and the initial local-test
+      placement) both call the new `CharacterBase.snap_visual_interpolation()`
+      immediately after repositioning.
+      **Verified by running**, not by a human watching it glide: two real Godot
+      instances (`--host` / `--join=127.0.0.1`, not `--headless` — a rendering
+      device is required for `_process()` to run at all), 600+ frames each,
+      produced no output. Confirmed by reading the code, not felt: whether
+      `REMOTE_SMOOTH_RATE` (18.0) is the right *feel* is unverified and cheap to
+      retune later, same tuning-window caveat as the rest of this phase.
+      **⚠️ Two pre-existing bugs found and fixed while building the two-instance
+      test rig this item needed** (see `Handoff.md`'s session log and its own new
+      `B-` entries): a stale, non-freed-but-tree-detached character reference
+      could crash `you_card.gd::get_local_character()`'s caller
+      (`offscreen_indicators.update()`) the instant a peer joined or disconnected,
+      and `offscreen_indicators.gd::_update_one()` itself crashed reading
+      `global_position` off a target mid-`queue_free()`. Neither is new
+      networking work; both were unreachable without an actual live multi-peer
+      session, which is exactly what this item required building.
+- [x] **4.3 · Rejoin identity (B-65).** 🤖 Sonnet, high — **verified live: two
+      sequential `--join=127.0.0.1` processes presenting the same identity token,
+      host reassigns the same team/role slot to the second one under a brand-new
+      peer id**
+      A rejoining player used to come back as a different team and role, because
+      identity was the ENet peer id and a reconnect assigns a new one.
+      `NetworkManager.local_player_token` is now a random 128-bit token minted
+      once per running instance (see its own doc for why NOT reloaded from the
+      `user://` copy it also writes — two local test instances sharing one
+      `user://`, exactly how this project's own two-instance test works, would
+      otherwise read back the identical token and collide on the same join
+      index) and presented to the host via `_rpc_identify` on every connect.
+      `main.gd`'s `_peer_join_index` (peer_id -> slot) is now `_token_join_index`
+      (token -> slot): a reconnect presents the same token under a new peer id
+      and maps straight back to its original team/role.
+      **The harder half of this item, not in the original brief's own framing:**
+      a rejoining peer had nowhere to go. Host/Join both gate behind
+      `Lobby.tscn`'s ready-up screen, and the host has already left it for
+      `Main.tscn` by the time anyone could realistically disconnect and rejoin —
+      the rejoining peer's own `Lobby.tscn` would connect fine and then wait
+      forever for a Start press the host can never send again.
+      `NetworkManager.match_in_progress` (host-only, set true by
+      `main.gd::_start_hosting()`) plus a new `_rpc_route_to_running_match` RPC
+      (sent to a peer that identifies after the match has already started) now
+      redirects that peer straight into `Main.tscn`; a new
+      `_rpc_client_ready_for_spawn` ping (sent once that peer's own
+      `Main.tscn`/`MultiplayerSpawner` actually exists) tells the host it is safe
+      to replicate a spawn, closing the race where the host could otherwise spawn
+      a peer before its own receiving scene was ready.
+      **Verified live**, not just reasoned about: host + one join process
+      (distinct tokens, sequential slots 0/1, no errors, 600+ frames each);
+      separately, two *sequential* join processes forced to present the identical
+      token (simulating the same human reconnecting under a new peer id) — the
+      host reused the exact same join index (`1`) for both, under two different
+      peer ids, with no errors either side. **Not verified:** a literal
+      mid-process ENet drop-and-manual-rejoin from the SAME running client (the
+      test above simulates the identity/redirect mechanism correctly but kills
+      and restarts the client process rather than reconnecting in place) — that
+      is the real-hardware wifi-blip case 6.1 will exercise. `Handoff.md`'s B-65
+      entry is closed; see it for the full account.
 - [ ] **4.4 · Balance pass — Guard/Dash, cooldowns, ranges, both game modes.** 🤖 Sonnet, medium ⛔ 0.4
       Never done. Write the numbers down. **Balance both Option A and Option B
       to shippable quality** — per 1.5, neither is deprioritised.
@@ -726,6 +797,85 @@ touch map scenes.
       confirmed `time_scale` dropped to 0.05 immediately and returned to exactly 1.0 shortly after.
       Not verified: how 60ms/0.05 actually feels — a tuning number like every other one in the
       T-block, cheap to adjust after 0.4.
+- [x] **4.6 · Solo-host quality of life — pause and the debug switcher work with exactly one
+      human peer.** 🔧 Build — **`NetworkManager` semantics change, its own commit, verified by two
+      real multi-instance sessions with no output**
+      The first playtest was run by HOSTING, not Local Match, and two things silently no-op'd in a
+      networked match on purpose: `get_tree().paused` (Q-3/B-64 — a client pausing its own tree
+      stops sending movement while the host keeps simulating it, and the host can't stop an
+      authoritative timer for everyone over one player's Esc) and the whole debug player switcher
+      (each peer owns exactly one character; reassigning `player_id` grants no control). Both
+      restrictions are real for an actual 2+ peer match and pointless when there is nobody else in
+      the session to protect — which is exactly what testing alone by hosting is.
+      New `NetworkManager.is_solo_session()`: `is_networked() and connected_peer_ids.size() <= 1`.
+      `main.gd::_on_pause_toggle_requested()` now takes the real-freeze branch (same code path
+      Local Match already used) whenever `not is_networked() or is_solo_session()`, instead of
+      only when `not is_networked()`.
+      `debug_player_switcher.gd::_is_active()` now also returns true for a solo networked session —
+      but **not** by making unit-switching work: a solo Hosted session only ever spawns ONE real
+      character (`main.gd::_spawn_player` runs once per actually-connected peer, and there is no
+      bot/placeholder system to fill the other three roles — see 4.7), so there is nothing to Tab
+      to regardless of this gate. What was actually broken and is now fixed: the on-screen
+      `DebugBar` used to show `TeamAPerson (missing) / TeamAProp (missing)` the instant you hosted
+      alone, because it was still looking for the four LOCAL-TEST node names
+      (`_clear_local_test_characters()` had already freed them) instead of the real networked
+      spawn. New `_solo_networked_unit()` walks the actual `Players` node
+      (`MultiplayerSpawner.spawn_path`) for the character whose authority is this machine's own
+      peer, and the readout now correctly describes it. `player_id`/camera reassignment is
+      deliberately left untouched for this unit — `main.gd`'s spawn already assigned the right
+      `player_id` and `camera_rig.gd`'s own `_ready()` already activates the right rig from
+      `is_multiplayer_authority()`; re-driving either here would be redundant at best.
+      **Verified by running:** two real `--host`/`--join=127.0.0.1` sessions (one while solo, one
+      once a second peer joined), 600+ frames each, no output — the `DebugBar`/switcher code paths
+      run every frame regardless of whether anyone is looking at them, so a clean multi-hundred-frame
+      run is real evidence they don't error, in both the solo and non-solo states. **Not verified:**
+      a human actually pressing Esc and confirming the overlay visibly freezes, or reading the
+      `DebugBar` text off a running window — this project's norm is that an unverified interactive
+      claim is not written up as felt, only as run.
+- [~] **4.7 · Peer-drop-mid-round — what actually happens, recorded rather than assumed.** 🔧 Build
+      — **verified live: a real ENet peer killed mid-round, both host and a third surviving peer
+      observed**
+      No demonstrated disconnect handling existed and there is no bot to cover an abandoned unit.
+      Pulled the cable for real rather than reading the code and guessing: a 4-peer LAN session
+      (host + 3 `--join=127.0.0.1`), one join process hard-killed (`kill -9`, no graceful
+      disconnect packet) mid-round.
+      **What happens, measured:**
+      1. ENet detects the drop via its own peer timeout, **not instantly** — roughly 10-11 seconds
+         after the process died in this environment (`kill -9` sends no FIN; there is nothing
+         faster to detect here without lowering ENet's own timeout, which was not attempted).
+      2. `main.gd::_on_player_disconnected` fires on **every remaining peer**, not just the host —
+         each one frees its own local copy of the departed character and, host-side only, shows "A
+         player left the match" and re-registers tracked Cans.
+      3. **The disconnected unit does not become a frozen obstacle. It is deleted outright** —
+         `queue_free()`'d and erased from every peer's own tracking dictionaries. Nothing stands in
+         for it; there is no AI, no ragdoll left lying around, nothing a remaining player can walk
+         up to and interact with.
+      4. **If the disconnected peer was the tracked Can:** `RoundManager._tracked_cans` becomes
+         EMPTY. `_on_tracked_can_state_changed`/`_on_tracked_can_dents_changed` both early-return on
+         an empty list, so tag-to-win, the 5-fall cap, and Option A's dent count all go **completely
+         inert** for the remainder of that round — there is no can left to tag, cap, or dent. The
+         round can only end one way from that point on: the 90-second timer, which **always resolves
+         to a Cans-side win** (`RoundManager._on_time_up()` → `report_round_win(true)` — "Cans win on
+         timer expiry," true under both Option A and Option B) **regardless of whether a Can is even
+         still present.** A Can-side disconnect mid-round silently guarantees the round for the
+         defending team once the clock runs out, with no way for the offense to contest it.
+      5. **If the disconnected peer was the attacking Person or the Tsinelas Prop** (the thrown
+         object itself — the SAME CharacterBase the attacking side's slipper actually is), offense
+         loses its only means of winning that round too: nobody left to throw, or — if the Tsinelas
+         player specifically drops — the slipper object itself is deleted from the match entirely,
+         mid-flight or mid-carry, whatever it was doing. Same resolution: timer expires, Cans win.
+      6. **If the disconnected peer was the defending Taya**, tag-to-win becomes unreachable for
+         that team (nobody left to land the tag), but the Can itself is still tracked — Option A's
+         dents and Option B's fall-cap/auto-seal still apply from throws the offense lands, so this
+         is the one drop that does NOT automatically hand the round to one side.
+      7. **No crash, in any of the above** — but building this test surfaced and fixed two real,
+         previously-unreachable UI crashes along the way (`you_card.gd`, `offscreen_indicators.gd` —
+         see 4.2's own entry and `Handoff.md`'s new `B-` numbers for both).
+      **Not done, explicitly out of scope for this pass:** any actual FIX for the above (a bot
+      taking over an abandoned role, a grace window before the round auto-resolves, ENet timeout
+      tuning). This item is the truth on record, not a mitigation — `[~]` rather than `[x]` because
+      the *fix* the human asked for ("what happens") is answered, but the underlying UX gap is not
+      closed and nobody should read this box as saying it is.
 
 ---
 
