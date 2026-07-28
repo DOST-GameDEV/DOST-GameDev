@@ -4,8 +4,8 @@ class_name LobbyScene
 ## Pre-match lobby with ready-up gate. Fixes B-13.
 ##
 ## Flow:
-##   Host:  main_menu.gd → Lobby (starts ENet server here) → Main.tscn
-##   Join:  main_menu.gd → Lobby (starts ENet client here) → Main.tscn
+##   Host:  game_setup.gd → Lobby (starts ENet server here) → Main.tscn
+##   Join:  game_setup.gd → Lobby (starts ENet client here) → Main.tscn
 ##
 ## The lobby gates the scene transition to Main.tscn behind the host's Start
 ## button, which is only enabled when every connected peer is ready AND at
@@ -23,13 +23,18 @@ const MAIN_SCENE_PATH := "res://scenes/main/Main.tscn"
 ## was entered from, and it is what displays GameLaunch.pending_status_message.
 const MAIN_MENU_PATH  := "res://scenes/ui/GameSetup.tscn"
 
+## Peer rows are built at runtime, so their look is set here rather than in the
+## scene — cream on the wooden panel, matching the GAME screen's selector text.
+const ROW_COLOR: Color = Color(0.961, 0.902, 0.784)
+const ROW_READY_COLOR: Color = Color(1, 0.729, 0)
+const ROW_FONT_SIZE: int = 30
+
 @onready var host_address_label:   Label          = %HostAddressLabel
 @onready var peer_list_container:  VBoxContainer  = %PeerListContainer
-@onready var ready_button:         Button         = %ReadyButton
-@onready var start_button:         Button         = %StartButton
+@onready var ready_button:         ArrowButton    = %ReadyButton
+@onready var start_button:         ArrowButton    = %StartButton
 @onready var status_label:         Label          = %StatusLabel
 @onready var back_button:          Button         = %BackButton
-@onready var lobby_card:           PanelContainer = %LobbyCard
 
 ## Host-authoritative ordered list of peer_ids. Index position is each peer's
 ## join index, which determines team (index/2) and role (index%2==0 → Person).
@@ -43,9 +48,6 @@ var _peer_ready: Dictionary = {}  # peer_id -> bool
 var _is_ready: bool = false
 
 func _ready() -> void:
-	var card_style := UiTheme.card_style(UiTheme.PANEL, UiTheme.INK, UiTheme.IMPACT)
-	lobby_card.add_theme_stylebox_override("panel", card_style)
-
 	ready_button.pressed.connect(_on_ready_pressed)
 	start_button.pressed.connect(_on_start_pressed)
 	back_button.pressed.connect(_on_back_pressed)
@@ -58,7 +60,7 @@ func _ready() -> void:
 		if NetworkManager.host_game() != OK:
 			status_label.text = "Failed to start server — port may be in use."
 			return
-		host_address_label.text = "Host: %s" % _get_lan_address()
+		host_address_label.text = "HOST: %s" % _get_lan_address()
 		start_button.visible = true
 		start_button.disabled = true
 		# Host is peer 1; peer_connected never fires for self on the server.
@@ -74,11 +76,15 @@ func _ready() -> void:
 		NetworkManager.connection_succeeded.connect(_on_connected_to_host)
 		NetworkManager.server_disconnected.connect(_on_server_disconnected)
 		NetworkManager.connection_failed.connect(_on_connection_failed)
-		host_address_label.text = "Host: %s" % address
+		host_address_label.text = "HOST: %s" % address
 		start_button.visible = false
 		status_label.text = "Connecting…"
 
 	_refresh_peer_list()
+
+	ready_button.animate_in()
+	if start_button.visible:
+		start_button.animate_in(0.09)
 
 # ---------------------------------------------------------------------------
 # Networking helpers
@@ -175,11 +181,13 @@ func _refresh_peer_list() -> void:
 		var team_letter := "A" if team == 0 else "B"
 		var role_str    := "PERSON" if is_person else "PROP"
 		var is_ready_val: bool = _peer_ready.get(peer_id, false)
-		var ready_str := " ✓" if is_ready_val else " (waiting…)"
+		var ready_str := " ✓" if is_ready_val else " …"
 		var you_tag   := " (YOU)" if peer_id == multiplayer.get_unique_id() else ""
 
 		var row := Label.new()
-		row.text = "Team %s · %s%s%s" % [team_letter, role_str, you_tag, ready_str]
+		row.text = "TEAM %s · %s%s%s" % [team_letter, role_str, you_tag, ready_str]
+		row.add_theme_color_override("font_color", ROW_READY_COLOR if is_ready_val else ROW_COLOR)
+		row.add_theme_font_size_override("font_size", ROW_FONT_SIZE)
 		peer_list_container.add_child(row)
 
 func _refresh_start_button() -> void:
