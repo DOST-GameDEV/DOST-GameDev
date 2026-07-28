@@ -234,9 +234,9 @@ const VIEWMODEL_REACH_SPEED: float = 14.0
 ## frame and keeps the forearm running off-screen the way it should.
 ##
 ## ⚠️ DELIBERATELY READS THE SLIPPER'S LIVE POSITION rather than baking a pose
-## from `HAND_CARRY_OFFSET`. That constant is being re-measured by the
-## proportions work, and `TSINELAS_CARRY_SCALE` is being removed with it — a
-## baked pose would silently drift the moment either lands. Tracking the actual
+## from `HAND_CARRY_OFFSET`. Art_Direction.md §1's proportions work re-measured
+## that constant and deleted `TSINELAS_CARRY_SCALE` outright — a baked pose here
+## would have silently drifted the moment either landed. Tracking the actual
 ## unit is correct for whatever those settle at.
 func _update_viewmodel_carry(delta: float) -> void:
 	var arms := _viewmodel_arms()
