@@ -304,13 +304,12 @@ HUD contrast or hazard placement against a grey box.
       match scene runs silent — no errors, no kill-plane respawns. **What is still missing is a
       human:** nobody has played it, so this stays `[~]`. That is 0.4.
       Includes, in one coherent pass rather than scattered:
-  - [x] `scenes/maps/Eskinita.tscn` playable area — **SUPERSEDED 2026-07-28.** This used to say
-        "kept at roughly the current 40×40." User played the narrow layout and asked for the
-        opposite: a bigger, SQUARE arena with a chalk boundary. 🔧 Build shipped it as its own
-        commit on `code/option-b-tuning`, per the do-not-change-arena-scale-with-arena-art rule
-        this line used to state — see `Handoff.md`'s B-92/B-93 session entry and
-        `Agent_Prompts.md`'s DESIGN-ART item B for the full detail. Verified by render, not yet by
-        play.
+  - [ ] `scenes/maps/Eskinita.tscn`, playable area kept at roughly the current
+        40×40 — **do not change arena scale in the same commit as arena art**,
+        or a movement-feel regression is unattributable.
+        ⚠️ A same-day resize to a bigger square (W/Z_END 24.0) was tried and fully reverted
+        2026-07-28 — the actual complaint was the confinement radius, not map footprint. See
+        2.7's entry below and `Handoff.md`'s session log.
   - [ ] **A `SpawnPoints` node with four `Marker3D`s**, read by `main.gd` in
         preference to its hardcoded `SPAWN_POINTS`. This is where **B-54** (spawn
         points ignore team membership) finally gets answered — two team pairs,
@@ -491,10 +490,19 @@ HUD contrast or hazard placement against a grey box.
       hand-set flag) and confirms Start goes disabled → enabled exactly once, with screenshots of
       both states.
       **First human playtest, 2026-07-28:** 5-fall cap and the new spawn distances (2.6) confirmed
-      good, no change needed. Confinement radius and tag-to-win are fine for now, but the human
-      explicitly wants both **re-checked again** once more changes land — treat as still open, not
-      closed, and re-tune both together if either moves (they're coupled, see `Dev_Plan.md`'s
-      Option B section). Auto-seal timing itself: still not separately confirmed by feel.
+      good, no change needed. Tag-to-win is fine for now, but the human wants it **re-checked
+      again** once more changes land — treat as still open, not closed.
+      **Second playtest round, same day:** confinement radius reported too small — "the box that
+      defend can move in is so small, he can barely move, theres no room for outplays."
+      `CharacterBase.CONFINEMENT_RADIUS` raised 3.0 → 5.0 (still a full unit short of the 6.0
+      throwing line, so the Taya still can't reach the attacker's line). Every map now draws the
+      actual confinement boundary as a chalk-style ring (`CONFINEMENT_RING_RADIUS` in each
+      `build_*.py`, tiling `team_side_decal` — see `Handoff.md`'s session log), which did not
+      exist before; only the tiny base circle and the distant throwing line were visible on the
+      ground, with nothing marking the edge of the box itself. Re-tune both together if either
+      moves again — they're coupled, see `Dev_Plan.md`'s Option B section. Auto-seal timing
+      itself: still not separately confirmed by feel. **Verified by render only, not yet by
+      play.**
 
 ---
 
