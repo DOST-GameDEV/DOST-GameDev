@@ -49,6 +49,16 @@ var _sync_accum: float = 0.0
 ## reassignment, not a placeholder for it.
 var _tracked_cans: Array[CharacterBase] = []
 
+## User feedback, 2026-07-28: "if can falls 5 times they lose" — a backup win
+## path for team slipper, independent of whether the Taya recovered each
+## individual fall. Counts every Downed transition on a tracked Can this
+## round, saved or not; reaching the limit ends the round immediately even if
+## THIS particular fall would otherwise have been recoverable. Round-scoped,
+## reset alongside time_left in both start_round() and reset(). First guess,
+## not a measurement — needs a human to actually play it.
+const FALL_LIMIT: int = 5
+var _fall_count: int = 0
+
 ## 3.4: read-only so the off-screen indicator (or anything else that needs
 ## "which unit is currently the Can") reads the one place that already tracks
 ## it correctly across a role swap, rather than re-scanning the scene tree for
@@ -74,9 +84,18 @@ func clear_tracked_cans() -> void:
 				can.dents_changed.disconnect(_on_tracked_can_dents_changed)
 	_tracked_cans.clear()
 
-func _on_tracked_can_state_changed(_new_state: int) -> void:
+func _on_tracked_can_state_changed(new_state: int) -> void:
 	if not round_active or _tracked_cans.is_empty():
 		return
+	# User feedback: "if can falls 5 times they lose" — counts the transition
+	# INTO Downed, not Sealed, so a Taya who saves every single fall still
+	# loses the round on the 5th one. Checked before the Sealed loop below so
+	# it can win the round even on a fall that would otherwise be recoverable.
+	if new_state == CharacterBase.State.DOWNED:
+		_fall_count += 1
+		if _fall_count >= FALL_LIMIT:
+			report_round_win(false) # Slippers win regardless of this fall's own outcome
+			return
 	for can in _tracked_cans:
 		if not is_instance_valid(can) or can.state != CharacterBase.State.SEALED:
 			return
@@ -98,6 +117,45 @@ func _on_tracked_can_dents_changed(_new_dents: int) -> void:
 	report_round_win(false) # every tracked Can fully dented -> Slippers win the round
 ## ----------------------------------------------------------------------------------
 
+## Dev_Plan.md §3: "Cans win by the timer running out, OR by knocking Slippers
+## out of bounds a set number of times" — Option A only; Option B's Can-win
+## condition is survival to the timer, no ring-out clause. This second win path
+## was never wired up: KillPlane.character_respawned fired a HUD toast
+## ("OUT OF BOUNDS") and nothing else, so the round could only ever end by
+## denting or by the timer. Found auditing the code against the GDD.
+##
+## Round-scoped, not match-scoped — reset alongside `time_left` in
+## start_round()/reset() below, same lifetime as the timer it's an alternate
+## win path for.
+const RING_OUT_LIMIT: int = 3
+var _ring_out_count: int = 0
+
+## Called from main.gd's KillPlane.character_respawned handler, for the
+## character that just respawned. Filters down to "was this THIS round's
+## Tsinelas" itself (not the Can, not a Person) rather than trusting the
+## caller, for the same reason register_can() re-derives is_can rather than
+## trusting a bare bool: this file owns the round-win rule, nothing calling in
+## should have to know its exact shape.
+##
+## Host-only when networked, matching report_round_win()'s own gate — KillPlane
+## fires `body_entered` on every peer's local physics world (a replicated
+## body's position is present there even when that peer doesn't own it), so
+## every peer's own RoundManager would otherwise count the same fall once per
+## peer. Only the host's count is ever acted on; a client's local increment is
+## harmless (never read) but skipped anyway for clarity.
+func register_ring_out(character: CharacterBase) -> void:
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		return
+	if not round_active or character == null or not is_instance_valid(character):
+		return
+	if GameLaunch.game_mode != GameLaunch.GameMode.OPTION_A:
+		return # Option B has no ring-out clause
+	if character.is_person or character.is_can:
+		return # only the attacking Prop (this round's Tsinelas) counts
+	_ring_out_count += 1
+	if _ring_out_count >= RING_OUT_LIMIT:
+		report_round_win(true) # Cans win the round
+
 ## Session 6: networked, this whole autoload becomes host-authoritative — same
 ## pattern as combat (see hitbox.gd/character_base.gd). The host runs the real
 ## timer and makes the real win call; clients just receive `_sync_state` RPCs
@@ -111,6 +169,8 @@ func start_round() -> void:
 	time_left = ROUND_TIME
 	round_active = true
 	_sync_accum = 0.0
+	_ring_out_count = 0
+	_fall_count = 0
 	for can in _tracked_cans:
 		if is_instance_valid(can):
 			can.reset_for_new_round()
@@ -157,7 +217,8 @@ func report_round_win(can_team_won: bool) -> void:
 
 ## B-14: nothing reset this autoload between matches, so a second match
 ## resumed the first one's timer/tracked-Can state. Call before a fresh match
-## starts (see main_menu.gd _go_to_match()). Counterpart to
+## starts (see main_menu.gd's _on_local_pressed()/_on_host_pressed()/
+## _on_join_pressed()). Counterpart to
 ## MatchManager.reset() — see its doc for when this is called. round_active
 ## stays false until the next begin_next_round() actually starts a round,
 ## which also freezes input (character_base.gd) in the meantime —
@@ -167,6 +228,8 @@ func reset() -> void:
 	time_left = ROUND_TIME
 	round_active = false
 	_sync_accum = 0.0
+	_ring_out_count = 0
+	_fall_count = 0
 
 ## Client-side mirror of the host's timer/round-active state. Unreliable is
 ## fine here — it's called every physics frame while a round is live and one

@@ -92,9 +92,17 @@ const ACTION_CLIPS: Dictionary = {
 ## this brings it up to the ~1.6 units of CharacterBase's CapsuleShape3D.
 ## Measured from the imported model's AABB, not guessed.
 const PERSON_SCALE: float = 2.38
-## The capsule is 1.6 tall and centred on the character's origin, so its floor
-## sits here in local space. Every model is dropped to it — see
-## `_align_to_capsule_floor`.
+## FALLBACK ONLY — used when `_character` or its `CollisionShape3D` can't be
+## read (e.g. a preview scene with no CharacterBase parent). Every real unit in
+## a match reads its OWN capsule height instead; see `_align_to_capsule_floor`.
+## ⚠️ Was the ONLY value, unconditionally, before Art_Direction.md §1 gave
+## Can/Tsinelas their own much shorter capsules — B-88: with this left hardcoded,
+## `_align_to_capsule_floor` kept dropping every model a full 0.8 units below its
+## OWN origin regardless of its actual (now much smaller) capsule, which for a
+## can (half-height 0.17) put the visible mesh 0.63 units under the floor. The
+## can and tsinelas render fine on their own preview turntable and disappear
+## the moment they're an actual in-game unit — that split is the signature of
+## reading the wrong capsule rather than a bad mesh.
 const CAPSULE_HALF_HEIGHT_DOWN: float = -0.8
 
 ## Task 0 / Task 1 — where a carried tsinelas rides. The Kenney rig has SEVEN
@@ -127,15 +135,30 @@ const HAND_BONE_CANDIDATES: Array[String] = ["arm-right", "arm-left"]
 ## a metre out to the character's left and above the top of its own head, which
 ## is where "the held slipper isn't in their hand" came from. Verified in-engine
 ## by rendering it, not by reading it.
-## ⚠️ RETUNED for TSINELAS_CARRY_SCALE. Was (0.65, 0.21, -0.25) when a carried
-## slipper was full size. Scaling the Visual node happens about ITS OWN ORIGIN,
-## and the slipper's sole sits at local y = -0.8 (dropped there by
-## _align_to_capsule_floor), so shrinking to 0.32 lifts the sole by
-## 0.8 * (1 - 0.32) = 0.544 units and the slipper floats above the hand. The y
-## here absorbs that. Confirmed by render, not calculated and left alone.
+## ⚠️ RE-MEASURED for Art_Direction.md §1 — the tsinelas mesh is now natively
+## 0.32x scale (generate_all.gd's TSINELAS_SCALE) instead of being shrunk at
+## runtime by the since-deleted TSINELAS_CARRY_SCALE. That runtime scale used to
+## apply to the `Visual` node itself, about ITS OWN ORIGIN — so while carried,
+## the slipper's sole (dropped to local y = -0.8 by _align_to_capsule_floor) was
+## effectively lifted to -0.8 * 0.32 = -0.256. With no runtime scaling left,
+## Visual.scale is always Vector3.ONE, so the sole sits at the FULL -0.8 in
+## every carry state unless the target absorbs it.
+##
+## Re-measured by rendering, not by keeping the old apparent position: the first
+## attempt held the mesh's apparent height constant (target.y 0.470 -> 1.014,
+## same -0.8 drop applied), which put the slipper at the same HEIGHT as before —
+## but forward distance (Z) was unchanged, and unlike the old dynamically-shrunk
+## mesh, this one is elongated along its own local axis and the arm bone's fixed
+## rotation turns that axis nearly broadside to the FPP camera. Broadside and
+## close together is worse than either alone: `tools/render_probe.gd`'s
+## viewmodel mode showed it filling most of the frame. Pushing it further out
+## (larger |Z|) and back down closer to the old un-compensated height (Y well
+## below the +0.45 eye, rather than above it) reads correctly in both the FPP
+## screenshot and the third-person one — small, forward, off to the side of
+## the crosshair, and visibly attached to the hand rather than floating loose.
 ## ⚠️ MEASURED BY CALIBRATION, NOT GUESSED — and it is only valid for the
-## `holding-right` pose and TSINELAS_CARRY_SCALE below. Change either and this
-## is wrong again; re-measure rather than nudging it by eye.
+## `holding-right` pose. Change that pose and this is wrong again; re-measure
+## rather than nudging it by eye.
 ##
 ## The offset is applied in the ARM BONE's rotated frame, so it is not readable
 ## by inspection. Calibrated by sampling the HandPoint that render_probe reports
@@ -152,42 +175,23 @@ const HAND_BONE_CANDIDATES: Array[String] = ["arm-right", "arm-left"]
 ##
 ## THE TARGET WAS CHOSEN FOR FIRST PERSON, because a Person is always FPP and
 ## the carried slipper is the thing they aim with. Its origin lands at
-## (0.260, 0.470, -0.480): forward of the eye (which sits at +0.45), to the
-## right so it never covers the crosshair, and far enough out that the small
-## carried slipper reads without filling the frame the way the full-size one did.
+## (0.260, 0.600, -0.750): the ORIGIN sits a little above the eye (+0.45), but
+## the visible mesh drops 0.8 below that once instanced, landing it comfortably
+## below the eyeline. Forward and to the right so it never covers the
+## crosshair, and far enough out that the mesh's long axis (turned nearly
+## broadside to the camera by the arm bone's own fixed rotation) doesn't fill
+## the frame the way a closer placement did.
 ##
-## Two earlier attempts are worth recording so nobody repeats them. Targeting
+## Three earlier attempts are worth recording so nobody repeats them. Targeting
 ## "chest height" put it beside the head — this rig is chibi and its head spans
 ## +0.017 to +0.798, so ordinary human landmarks do not transfer. Targeting the
 ## palm itself buried it inside the arm mesh and dropped it ~60 degrees below the
 ## camera, i.e. outside a 75-degree FOV entirely: correct in the hand, invisible
-## to the player.
-const HAND_CARRY_OFFSET: Vector3 = Vector3(0.629, 0.585, 0.212)
-
-## Checklist 0.6 / 1.2 — HOW BIG A CARRIED SLIPPER IS.
-##
-## The decision and its rejected alternatives are in docs/Handoff.md §0.11. In
-## one line: the tsinelas is 1.35 long against a 1.598-unit Person — 84% of the
-## character's own height — so carrying it read as carrying a surfboard, and in
-## first person it covered about a quarter of the screen.
-##
-## It is NOT fixed by shrinking the mesh. The tsinelas is a player-controlled
-## unit: LOOSE it crawls, FLYING it is the projectile that has to be readable
-## across the arena and has to visibly hit a lata. Only the HAND is wrong. So
-## only the hand is scaled.
-##
-## 0.32 gives 0.432 units — 27% of the Person, against a true-life ratio of 17%
-## and a hero scale of 84%. Deliberately at the stylised end, because the
-## moodboard's whole language is chibi exaggeration. Tuning window 0.28 - 0.40.
-##
-## ⚠️ COSMETIC ONLY. This touches no collision shape, no hurtbox, no hit_radius,
-## no grab radius and no speed. That containment is the entire reason this
-## option was chosen over rescaling the props for real.
-const TSINELAS_CARRY_SCALE: float = 0.32
-## Units per second of scale change. Fast enough to feel instant on pick-up,
-## slow enough that the slipper visibly GROWS as it leaves the hand, which turns
-## out to be a free throw tell.
-const CARRY_SCALE_LERP: float = 12.0
+## to the player. Targeting the SAME apparent height the old dynamically-shrunk
+## mesh read at (character-local Y 0.214, i.e. target.y 1.014) put the object
+## close to the eye's own height, which put it close to the CAMERA in total 3D
+## distance too — broadside and close together filled most of the frame.
+const HAND_CARRY_OFFSET: Vector3 = Vector3(0.863, 0.715, 0.077)
 
 ## The persistent carry pose. Verified against the actual .glb rather than a
 ## doc: the Kenney rig ships `holding-right` and `holding-right-shoot`, and
@@ -446,7 +450,20 @@ func _align_to_capsule_floor(model: Node3D) -> void:
 	# offset every call and sank the model further each time. Harmless while this
 	# only ever ran once per instantiate; M-2's dent swap calls it again on the
 	# same model, which is what exposed it.
-	model.position.y = CAPSULE_HALF_HEIGHT_DOWN - bounds.position.y * model.scale.y
+	model.position.y = _capsule_half_height_down() - bounds.position.y * model.scale.y
+
+## B-88 — reads THIS unit's own, currently-applied capsule height (via
+## CharacterBase.capsule_height(), the shared accessor every per-role-size
+## reader now uses) rather than assuming the single shared 1.6 every unit used
+## to have. Per-unit collision (Art_Direction.md §1,
+## character_base.gd::_apply_role_collision()) means a Can and a Tsinelas now
+## carry a much shorter capsule than a Person, and the capsule floor a model
+## drops to has to track whichever one THIS character actually has — not a
+## constant tuned for the Person alone.
+func _capsule_half_height_down() -> float:
+	if _character != null:
+		return -_character.capsule_height() / 2.0
+	return CAPSULE_HALF_HEIGHT_DOWN
 
 func _model_path(is_person: bool, is_can: bool, team: int) -> String:
 	if is_person:
@@ -529,17 +546,26 @@ func _play_locomotion() -> void:
 		return
 	var speed := Vector2(_character.velocity.x, _character.velocity.z).length()
 	var wanted := "idle"
-	if speed > RUN_SPEED_THRESHOLD:
+	# ⚠️ B-90 — CARRY_IDLE_CLIP now wins over walk/sprint OUTRIGHT, checked
+	# before speed at all, not just when standing still. It used to be the
+	# opposite: "the rig has no holding-right-walk, and plain walk with the
+	# slipper tracking the arm bone reads fine" — it does not. `carrier.gd`'s
+	# `_step_carried()` snaps the carried unit to wherever the arm BONE
+	# currently is every physics frame, and `camera_rig.gd`'s FPP viewmodel
+	# arm chases that same live position — so the moment locomotion switches
+	# to `walk`/`sprint`, the arm bone starts swinging through its walk cycle
+	# and drags the held slipper (and the viewmodel arm chasing it) through
+	# that swing. Reported: "my arms float during windup and when i run while
+	# holding". The rig genuinely has no holding-right-walk clip to blend to
+	# instead, so the fix is to stop trying to walk-animate a carrying arm at
+	# all: legs stop swinging while holding something and moving, which is a
+	# far smaller visual cost than the hand and viewmodel swimming every step.
+	if _is_holding():
+		wanted = CARRY_IDLE_CLIP
+	elif speed > RUN_SPEED_THRESHOLD:
 		wanted = "sprint"
 	elif speed > WALK_SPEED_THRESHOLD:
 		wanted = "walk"
-	elif _is_holding():
-		# Standing still WITH something in hand is its own pose. Without this a
-		# Person aiming a throw stands in the empty-handed idle with a slipper
-		# stuck to their arm, which reads as a bug rather than as a wind-up.
-		# Only the standing case: the rig has no holding-right-walk, and plain
-		# `walk` with the slipper tracking the arm bone reads fine.
-		wanted = CARRY_IDLE_CLIP
 	if not _animator.has_animation(wanted):
 		wanted = "idle"
 	if _animator.has_animation(wanted) and _animator.current_animation != wanted:
@@ -548,7 +574,6 @@ func _play_locomotion() -> void:
 func _process(delta: float) -> void:
 	_play_locomotion()
 	_spin_while_airborne(delta)
-	_scale_while_carried(delta)
 	_drive_viewmodel_charge()
 
 ## Feeds live charge power to the first-person viewmodel so the throwing arm
@@ -557,10 +582,9 @@ func _process(delta: float) -> void:
 ## the HUD's charge meter lives on the YOU card in a bottom corner, which nobody
 ## watches while aiming at a can.
 ##
-## Polled, not signal-driven, for the reasons _spin_while_airborne and
-## _scale_while_carried already document: charge is a continuously-varying value
-## rather than an event, and a poll is self-healing across the model rebuild that
-## every round swap performs.
+## Polled, not signal-driven, for the reason _spin_while_airborne already
+## documents: charge is a continuously-varying value, not an event, and a poll
+## is self-healing across the model rebuild that every round swap performs.
 func _drive_viewmodel_charge() -> void:
 	if _character == null or not _character.is_person:
 		return
@@ -571,30 +595,6 @@ func _drive_viewmodel_charge() -> void:
 	if carrier == null:
 		return
 	rig.set_viewmodel_charge(carrier.charge_power() if carrier.is_charging() else -1.0)
-
-## Checklist 0.6 — shrink the tsinelas to hand size while, and only while, it is
-## being carried.
-##
-## POLLED, not driven off Carriable's carry_state_changed signal, for the same
-## two reasons _spin_while_airborne documents right above: Carriable and this
-## node are siblings with no guaranteed _ready() order, and — the one that
-## actually matters here — a poll is SELF-HEALING across a model rebuild.
-## apply() runs on every role swap and resets this node; a signal-driven scale
-## would need a third re-assert beside _refresh_can_damage and
-## _refresh_downed_tilt, and the day someone forgets it a slipper comes back
-## from an intermission full size in someone's hand.
-func _scale_while_carried(delta: float) -> void:
-	if _character == null:
-		return
-	var carriable: Carriable = _character.get_node_or_null("Carriable") as Carriable
-	# A Can is never carried and a Person never becomes one. Guarding on
-	# is_throwable() rather than on state keeps this off every other unit.
-	var wants_small := carriable != null and carriable.is_throwable() 		and carriable.state == Carriable.CarryState.CARRIED
-	var target := TSINELAS_CARRY_SCALE if wants_small else 1.0
-	if is_equal_approx(scale.x, target):
-		return
-	var next := move_toward(scale.x, target, CARRY_SCALE_LERP * delta)
-	scale = Vector3.ONE * next
 
 ## Task 0 — the moodboard's THE SLIPPER card asks for "thrown trajectory (spin +
 ## motion blur)", and a slipper that flies without tumbling reads as a floating

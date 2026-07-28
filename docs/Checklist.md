@@ -154,6 +154,10 @@ polish; they are the instruments.
       *Explicitly NOT in this item:* the mesh, any collision shape, any `hit_radius`, any speed,
       the camera. `_align_to_capsule_floor()` needs no change — it computes from `model.scale` in
       this node's local space, not from this node's scale.
+      ⚠️ **Superseded 2026-07-28 by 2.5.** `TSINELAS_CARRY_SCALE`, `CARRY_SCALE_LERP` and the lerp
+      in `_process` described above are deleted — the mesh is built at 0.32× natively now
+      (`Art_Direction.md` §1), so there is nothing left to scale at runtime. Kept here as the
+      record of the original, now-superseded mechanism; see 2.5 for what replaced it.
 - [x] **0.7 · B-82 — units spawn 0.3 units inside the floor slab. OBSOLETE, not fixed.** 🎨 Design
 **The offending floor no longer exists.** 2.2a deleted `Main.tscn`'s whole world
       half, and both maps put their floor top at exactly `y = 0` with spawn markers at `y = 0.8`,
@@ -183,11 +187,15 @@ blocking real work.
       between "a Godot project" and "the game on the moodboard", and it is one
       line of code behind a question nobody has answered.
 - [x] **1.2 · Prop scale — how big is a lata, and how big is a tsinelas? DECIDED 2026-07-28.**
-      **Option (a): props stay hero-scaled as units; the tsinelas scales to `0.32` ONLY while
-      `CARRIED`** (0.432 units long = 27% of a Person, against 84% today). Reasoning, the measured
-      numbers, the three rejected alternatives and the two follow-up items are in `Handoff.md`
-      §0.11. Ticked as a **decision** — the implementation is 0.6 below and is unbuilt. The kit's
-      2-unit grid in 2.1a is sized against this and 2.1 is unblocked.
+      **Option (a): props stay hero-scaled as units; the tsinelas scales to `0.32`** (0.432 units
+      long = 27% of a Person, against 84% at the time). Reasoning, the measured numbers, the three
+      rejected alternatives and the two follow-up items are in `Handoff.md` §0.11. Ticked as a
+      **decision** — the implementation was 0.6 below. The kit's 2-unit grid in 2.1a is sized
+      against this and 2.1 is unblocked.
+      ⚠️ **Superseded mechanism, same-day, same decision:** 0.6 originally implemented "0.32 ONLY
+      while CARRIED" via a runtime scale on the whole mesh. 2.5 (`Art_Direction.md` §1) replaced
+      that with the mesh built at 0.32× natively, always — the *decision* (hero-scaled props, 0.32
+      tsinelas) is unchanged; only the *mechanism* moved from a runtime hack to the mesh itself.
       *Original statement of the fork, kept so the history reads honestly:* 🤖 Opus, high
       Measured on 2026-07-27: the tsinelas mesh is **1.35 units long against a
       1.598-unit Person — 84% of the character's own height**, and the lata is
@@ -222,14 +230,16 @@ blocking real work.
       **Written into the synopsis plan at 6.5.** The human can veto it there; it
       does not need to stay an open question blocking a document.
 - [ ] **1.5 · 🧑 Option A vs Option B — the ship decision. Deliberately still open.**
-      **Both modes stay in active, equal development.** This is not a "pick one
-      and delete the loser" item and every doc that used to say so has been
-      corrected. Both are wired end to end, both are selectable from the main
-      menu, both get playtested at 0.4, both get balanced at 5.3. The final
-      choice of what ships in the demo is the human's, on their own timeline.
-      Kept as its own visible line so it does not quietly disappear — but it
-      **blocks nothing** and no item below is allowed to slow down on one mode
-      because the other might win.
+      **Both modes stay in active, equal development** as separate, selectable ruleset —
+      **AMENDED 2026-07-28: Option A is now parked, not equal.** User decision after the 2.7
+      rules pass below: Option B is the primary ruleset going forward; Option A stays correct,
+      selectable, and untouched, but is deprioritized and "will build option a another day, not
+      sure if we have time for it." Every doc that used to say "pick one and delete the loser" is
+      still corrected — Option A is not being deleted — but "equal development" no longer holds.
+      Both are wired end to end and both are still selectable from the main menu. The final choice
+      of what ships in the demo is the human's, on their own timeline. Kept as its own visible line
+      so it does not quietly disappear — but it **blocks nothing** and no item below is allowed to
+      slow down on Option A because it might still be chosen.
 
 ---
 
@@ -325,8 +335,14 @@ HUD contrast or hazard placement against a grey box.
          `Bounds` — which also retires B-83 (the old colliders sit at ±40 around a ±20 floor) and
          B-82 (its floor top is y=+0.5; Eskinita's is y=0, as every doc assumes).
       2. `main.gd` prefers the map's `SpawnPoints/Spawn0..3` `Marker3D`s over its hardcoded
-         `SPAWN_POINTS`. **This is where B-54 finally gets answered** — the four markers are
-         already placed as two team pairs at opposite ends of the alley.
+         `SPAWN_POINTS`. **This is where B-54 finally gets answered** — the four markers were
+         placed as two team pairs at opposite ends of the alley.
+         ⚠️ **Superseded 2026-07-28, same day, after 0.4-adjacent playtest feedback** ("two teams
+         spawn on completely different ends and i dont think thats how it should go"). The four
+         slots are now ROLE-based (Can / Taya / Attacker / Tsinelas), not team-based, centred on
+         the map's own base circle and 6-unit throwing line — see the new checklist item below.
+         B-54's underlying complaint (team membership was being ignored) is still answered, just by
+         a different, more accurate layout.
       3. Delete the temporary decals from 0.3; the map carries real ones now.
       *Then* 0.4 can be played in a real map rather than a grey box.
 - [~] **2.3 · Persons — moodboard restyle (M-5).** 🎨 Design — **steps 1+3 done and
@@ -341,6 +357,138 @@ HUD contrast or hazard placement against a grey box.
 - [~] **2.4 · Bayan Plaza — the second map.** 🎨 Design — **built and rendered, never played**
       A scene swap once 2.2 has proven the pattern. **First candidate to cut**
       under time pressure — see "If time runs short" at the bottom.
+- [x] **2.5 · Proportion fix — Item A, `Art_Direction.md` §1.** 🔧 Build — **verified by render**
+      The two hero props (lata 1.12, tsinelas 1.35) were the single biggest credibility problem in
+      the build — the can was taller than the monobloc chair beside it. Fixed in dependency order:
+  - [x] **Per-unit collision.** `CharacterBase.tscn`'s `CollisionShape3D`/`Hurtbox`/`Hitbox`/
+        `GrabArea` are now `resource_local_to_scene = true`; `character_base.gd`'s new
+        `_apply_role_collision()` sizes each from `is_person`/`is_can`, called from `_ready()` and
+        `reset_for_new_round()` (a Prop's `is_can` flips every round). Person unchanged
+        (0.4/1.6); Can and Tsinelas each get their own capsule and a proportionally-scaled melee
+        reach. Took the `CharacterBase.tscn` lock in `SHARED_LOCKS.md` first, per protocol.
+  - [x] **Both prop meshes rescaled.** `generate_all.gd`'s `LATA_SCALE` (0.30) and
+        `TSINELAS_SCALE` (0.32) applied as a post-deform `Transform3D.scaled()` on every
+        `add_revolve`/`add_extrude` call (the 2.1b-0 `transform` param) — no dent depth or strap
+        control point needed touching. Shipped: lata 0.3375 tall (target 0.34), tsinelas 0.432
+        long (target 0.43). Took the `generate_all.gd` lock first.
+  - [x] **`HAND_CARRY_OFFSET` re-measured, `TSINELAS_CARRY_SCALE` deleted.** Along with
+        `_scale_while_carried()` and `CARRY_SCALE_LERP` — a feature removed, not reimplemented, per
+        the audit's own prediction (`TSINELAS_CARRY_SCALE` 0.32 × 1.35 = 0.432, so the carried
+        slipper was already the right size). Re-measuring was not a trivial reapplication of the
+        old target: deleting the runtime scale meant the model's capsule-floor drop was no longer
+        compensated, dropping the mesh 0.544 units lower than before. Confirmed by rendering
+        `tools/render_probe.gd`'s viewmodel mode (screenshots, not calculation alone) — the first
+        analytically-derived value put the slipper broadside-close to the FPP camera and filled
+        most of the frame; iterated to the shipped value, which reads attached to the hand in both
+        the FPP viewmodel shot and the third-person debug camera, without covering the crosshair.
+  - [x] **`base_circle_decal` resized.** 3.0 m outer diameter (drawn around the old 1.12 m can)
+        down to 1.4 m (radius 0.70), inside the audit's own 1.2–1.5 m window. Ring width kept at
+        0.15 rather than shrinking 1:1, for the same foreshortening-at-distance reason it was
+        widened from 0.06 originally.
+  - [x] **4.4a fixed as part of the same pass.** `throw_bakya`'s range (4.81 units, less than half
+        of every other profile) was a tuning bug, not an identity — `gravity_scale` 1.6 → 1.0,
+        `arc_angle_deg` 8° → 12°, `launch_speed` unchanged at 14.0. New max range 7.23, still
+        shortest of the four by design (heavy, close-range) rather than by being broken.
+        `ThrowProfile.hit_radius` halved across all four `.tres` files — several were larger than
+        the entire rescaled tsinelas mesh. Exact combat-feel numbers stay 4.4's job.
+  - [x] **Jump left untouched, deliberately.** `JUMP_VELOCITY` is a MAP constraint (interior
+        clutter capped at 1.0 for the 1.25 FPP eye height to see over), not a feel one, and
+        rescaling the props doesn't move that ceiling.
+      **What is NOT verified:** combat feel (does a can's shrunk melee reach feel fair, does
+      `throw_bakya` at 87% charge feel right) — that needs a human on the keyboard and is 4.4's
+      job, not this item's.
+  - [x] **B-88, found and fixed same session.** The render checks above screenshotted a carried
+        slipper and a standalone preview turntable — neither actually spawns a unit and lets it
+        settle onto a floor. In a real match, both props rendered UNDER the floor:
+        `_align_to_capsule_floor()` dropped every model a hardcoded 0.8 below the character's own
+        origin, correct only while every unit shared one 1.6-tall capsule. Found by the human
+        immediately after this item merged. Fixed same session — see `Handoff.md` B-88. Re-verified
+        by render.
+  - [x] **B-89, found and fixed same session.** Same bug class as B-88, different node:
+        `character_nameplate.gd`'s ring (`y = -0.78`, radius 0.55) and label (`y = +1.05`) were also
+        hardcoded for the old shared 1.6-tall capsule. On a Can the ring drew nearly a metre below
+        the model's actual feet; on a carried Tsinelas the whole nameplate rides along with it, so
+        the disconnected ring appeared to float around the held object — "the slippers still have a
+        circle around it when holding". Fixed by adding `CharacterBase.capsule_height()`/
+        `capsule_radius()` as a shared accessor and having the ring/label read it, applied explicitly
+        from `character_base.gd` right after `_apply_role_collision()` (not from the nameplate's own
+        `_ready()`, which runs before the capsule is resized — see the code comment). Re-verified by
+        render: the can's ring now sits tight at its base, the carried slipper's ring is a small band
+        at the object.
+  - [x] **B-90, found and fixed same session.** Two related reports: "the slippers look weird af when
+        holding it" and "my arms float during windup and when i run while holding". (a)
+        `character_visual.gd::_play_locomotion()` fell back to `walk`/`sprint` the instant a carrying
+        Person moved — the rig has no `holding-right-walk` clip — and `carrier.gd`'s
+        `_step_carried()` snaps the carried object to the arm BONE's live position every physics
+        frame, so the walk cycle dragged the held slipper (and the FPP viewmodel arm chasing that
+        same position) through its swing. Fixed by checking `_is_holding()` before speed, not after:
+        the carry pose now wins outright, legs stop swinging while holding+moving instead of the hand
+        swimming. (b) The tsinelas is a flat, thin object and the arm bone's fixed rotation presented
+        it close to edge-on from the camera — a sliver, not a slipper. Fixed with a 55° tilt applied
+        in the object's own local frame before the hand's rotation, in `carriable.gd::_step_carried()`.
+        Re-verified by render: the carried slipper reads as a recognisable shape in both FPP and
+        third person. (a) is verified by code-path elimination — a single frame cannot capture
+        "stops swinging while running".
+- [x] **2.6 · Spawn layout redesigned as role-based, not team-based.** 🔧 Build — **verified by
+      render and a 400-frame soak**
+      User feedback after playing the proportion-fixed build: "two teams spawn on completely
+      different ends and i dont think thats how it should go." Correct, and it was more than
+      distance: the old scheme spawned `TeamAProp`/`TeamAPerson` at one fixed end of the alley and
+      `TeamBProp`/`TeamBPerson` at the other, unconditionally, while the map's own
+      `base_circle_decal` and `throwing_line_decal` (`Art_Direction.md` §9) sit at the centre
+      regardless of who is spawning where — position tracked TEAM (fixed all match) instead of ROLE
+      (flips every round via `team_is_can_side`), so the Can/Taya pair sometimes spawned at the
+      north end and sometimes the south, never actually AT the base the mechanic is built around.
+  - [x] `main.gd`'s four spawn slots are now roles — `SLOT_CAN`/`SLOT_TAYA`/`SLOT_ATTACKER`/
+        `SLOT_TSINELAS` via the new `_role_slot()` — instead of a stored team-fixed index. Both
+        `_spawn_player` (initial spawn) and `_reset_world` (every round reset) compute the slot from
+        the character's current role.
+  - [x] `build_eskinita.py` / `build_bayan_plaza.py`: Spawn0 sits on the base circle
+        `(0, 0.17, 0)`, Spawn1 (Taya) a couple of units off it, Spawn2 (Attacker) at the 6-unit
+        throwing line, Spawn3 (Tsinelas) beside the Attacker. Both `.tscn` files regenerated; diff is
+        exactly the four spawn transforms in each.
+  - [x] **Auto-grab at round start.** `_reset_world` now hands the tsinelas to the attacking Person
+        directly (`Carriable.host_grab()`, already host-gated internally) instead of leaving it loose
+        for them to walk over and pick up first — matches `Dev_Plan.md` §3's beat-by-beat loop, which
+        opens with "the attacking Person carries the tsinelas," not a pre-round chore.
+      **Not verified:** how this plays with a human — whether the Taya's distance from the Can, or
+      the Attacker's distance from the throwing line, feels right. That is 4.4's job once someone has
+      actually played it.
+- [x] **2.7 · Option B rewritten — confinement, tag-to-win, auto-seal, 5-fall cap.** 🔧 Build —
+      **verified by parse + two 800-frame soaks + a driven lobby-flow render; NOT verified by play**
+      User design pass, 2026-07-28, after playing the spawn-redesigned build: bring the rules
+      closer to real tumbang preso, with both sides getting a clear, fast win condition instead of
+      a health bar or a manual seal-hit. Rewrites Option B in place — same `GameLaunch.GameMode`
+      enum value, Option A untouched (see 1.5's amendment: Option A is now parked, not equal).
+  - [x] **Team-can confinement.** The Can and its Taya are confined to a `CONFINEMENT_RADIUS`
+        (3 units, first guess) circle around the base circle (world origin) for the whole round.
+        `character_base.gd::_move_and_confine()` wraps every `move_and_slide()` call site in the
+        file so no code path can bypass it. Gives the Taya room to body-block without being able
+        to chase the attacker back to the 6-unit throwing line — the load-bearing assumption
+        behind the next item being fair rather than a guaranteed instant loss for team slipper.
+  - [x] **Tag-to-win.** Any hit from the Taya landing on the attacking Person — Bump or the Tag
+        ability, both resolve through `hitbox.gd`'s one function — ends the round for team can,
+        after the normal stagger/VFX still plays. Previously a Person hit was stun-only with no
+        round effect.
+  - [x] **Auto-seal.** The existing 2s self-right window is unchanged, but `character_base.gd` now
+        calls `seal()` itself the instant the window lapses unrecovered, instead of waiting for an
+        attacker to walk up and physically seal it (the old Option B behaviour, retired). Falling
+        and staying down is sufficient on its own for team slipper to win.
+  - [x] **5-fall cap.** `round_manager.gd` counts every Downed transition on a tracked Can this
+        round, saved or not; reaching `FALL_LIMIT` (5, first guess) auto-wins for team slipper
+        regardless of whether that particular fall was recoverable. Independent of and in addition
+        to auto-seal — stops a Taya who can save everything from making a round unloseable.
+  - [x] **Ready-up gate for local matching.** Local previously skipped straight to the match; it
+        now routes through `Lobby.tscn` like Host/Join always did. `lobby.gd` gained a `"local"`
+        branch that does no networking (nothing to actually wait for on one PC) but keeps the same
+        READY → START rhythm. `main_menu.gd`'s old direct-to-Main `_go_to_match()` is deleted.
+      **Verified:** parse clean; two 800-frame soaks of the real match scene, silent; a new `lobby`
+      mode in `tools/render_probe.gd` drives the actual Ready button (`pressed.emit()`, not a
+      hand-set flag) and confirms Start goes disabled → enabled exactly once, with screenshots of
+      both states.
+      **NOT verified:** confinement, tag-to-win, auto-seal and the fall cap are all new rules
+      nobody has played yet — the 3-unit radius and the 5-fall number are guesses, same as every
+      other first-guess balance constant in this project. That is 4.4's job.
 
 ---
 
@@ -434,16 +582,27 @@ touch map scenes.
 - [ ] **4.4 · Balance pass — Guard/Dash, cooldowns, ranges, both game modes.** 🤖 Sonnet, medium ⛔ 0.4
       Never done. Write the numbers down. **Balance both Option A and Option B
       to shippable quality** — per 1.5, neither is deprioritised.
-- [ ] **4.4a · `throw_bakya`'s maximum range is 4.81 units — less than half of every other
-      profile.** 🤖 Sonnet, medium
-      Computed from the committed `.tres` files with `GRAVITY = 20.0` and the measured 1.248
-      release height: `throw_default` **10.13**, `throw_bagsak` **9.89**, `throw_flick` **12.90**,
-      `throw_bakya` **4.81**. `gravity_scale 1.6` with `arc_angle_deg 8.0` is heavy *and* flat, so
-      it drops out of the air almost immediately — Bakya Bash cannot reach any throwing line the
-      other three can use. Almost certainly a tuning bug rather than an identity, and it has never
-      been felt because B-76 means no Prop can select it. Retune, then re-check
-      `Art_Direction.md` §9's table. Filed separately from 4.4 because the map's throwing
-      line is placed against these numbers.
+- [x] **4.4a · `throw_bakya`'s maximum range was 4.81 units — less than half of every other
+      profile.** 🔧 Build — **fixed 2026-07-28 as part of 2.5, verified by the same maths
+      `Art_Direction.md` §9 uses**
+      `gravity_scale 1.6` with `arc_angle_deg 8.0` was heavy *and* flat, so it dropped out of the
+      air almost immediately — Bakya Bash could not reach any throwing line the other three could.
+      Retuned to `arc_angle_deg 12.0` / `gravity_scale 1.0` (launch_speed unchanged at 14.0): new
+      max range **7.23**, needing ~87% charge for the 6.0 throwing line. Still the shortest-range
+      profile of the four, now by identity (heavy, close-range) rather than by being broken. Not
+      yet felt in play — nothing has selected it since B-76 (`PROP_ABILITY` is `quick_stand.tres`
+      for every Prop); that unlock is 3.3's job, and whether 87% charge feels right is 4.4's.
+- [x] **4.4b · Option A's ring-out win condition was missing entirely.** 🔧 Build — **fixed
+      2026-07-28, verified by parse + a 400-frame soak**
+      `Dev_Plan.md` §3: "Cans win by the timer running out, OR by knocking Slippers out of bounds a
+      set number of times." Only the timer half existed —
+      `KillPlane.character_respawned` fired an "OUT OF BOUNDS" toast and nothing else, so a Can-side
+      round win could only ever come from the 90s clock. Found auditing the round-win system against
+      the GDD. `RoundManager.register_ring_out(character)` is the new entry point (host-gated like
+      `report_round_win()`, filtered to this round's Tsinelas specifically, Option A only —
+      `RING_OUT_LIMIT = 3`), called from `main.gd`'s existing KillPlane handler. **Not verified by
+      play:** whether 3 is the right number. Same tuning-window caveat as everything else in this
+      phase.
 - [x] **4.5 · Hitstop.** 🤖 Sonnet, medium
       The one piece of the Q-8 hit-feedback set that never landed. Cheap, and it
       is what makes a landed hit feel like contact rather than a colour change.

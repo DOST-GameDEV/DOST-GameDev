@@ -5,10 +5,12 @@ class_name MainMenu
 ## run/main_scene). Two panels in one Control, swapped via visibility:
 ## - TitleScreen: name of the game + a single "Start" button.
 ## - PlayMenu: Local / Host / Join (with an address field) + a game-mode
-##   picker (see game_launch.gd). Picking Host or Join now lands in the
-##   pre-match Lobby (U-4 / B-13); Local still goes straight to Main.tscn.
+##   picker (see game_launch.gd). Host, Join AND (2026-07-28) Local all land in
+##   the pre-match Lobby (U-4 / B-13) — user feedback: "add the same [ready]
+##   button to local matching." Local's ready gate is cosmetic (nothing to
+##   actually wait for on a single PC) but keeps the same READY -> START
+##   rhythm the networked path already has; see lobby.gd's own local branch.
 
-const MAIN_SCENE_PATH:  String = "res://scenes/main/Main.tscn"
 const LOBBY_SCENE_PATH: String = "res://scenes/ui/Lobby.tscn"
 
 @onready var title_screen: Control = %TitleScreen
@@ -143,13 +145,18 @@ func _on_map_selected(_index: int) -> void:
 func _on_game_mode_selected(_index: int) -> void:
 	GameLaunch.game_mode = game_mode_option.get_selected_id() as GameLaunch.GameMode
 
+## 2026-07-28: Local now goes through the lobby too, same as Host/Join — see
+## the class doc above. B-14's reset-before-transition still applies here,
+## same as it always did; lobby.gd's local branch resets AGAIN immediately
+## before the actual scene change to Main.tscn, mirroring exactly how the
+## networked _rpc_begin_match handler already double-resets for Host/Join.
 func _on_local_pressed() -> void:
 	GameLaunch.pending_action = "local"
-	_go_to_match()
+	MatchManager.reset()
+	RoundManager.reset()
+	get_tree().change_scene_to_file(LOBBY_SCENE_PATH)
 
 ## U-4: Host goes to the lobby so peers can ready-up before the match starts.
-## B-14 reset moved here (from the old shared _go_to_match()) so the lobby
-## lands on clean state the same way the old direct-to-Main path did.
 func _on_host_pressed() -> void:
 	GameLaunch.pending_action = "host"
 	MatchManager.reset()
@@ -167,12 +174,3 @@ func _on_join_pressed() -> void:
 	MatchManager.reset()
 	RoundManager.reset()
 	get_tree().change_scene_to_file(LOBBY_SCENE_PATH)
-
-## Local match skips the lobby — no ready-up needed for single-PC split-keyboard.
-func _go_to_match() -> void:
-	# B-14: MatchManager/RoundManager are autoloads and survive scene changes —
-	# without this, a second match (Rematch, or Menu then Play again) would
-	# resume the first one's score/round number instead of starting at 0-0.
-	MatchManager.reset()
-	RoundManager.reset()
-	get_tree().change_scene_to_file(MAIN_SCENE_PATH)

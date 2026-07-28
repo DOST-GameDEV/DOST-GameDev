@@ -64,8 +64,9 @@ func _on_area_entered(area: Area3D) -> void:
 	# Person-vs-Prop, or Prop-vs-Prop all resolve through the same stagger/
 	# downed/seal machinery below. Only round_manager.gd's tracked-Cans list
 	# (which only ever contains Props, never Persons — see is_can doc on
-	# CharacterBase) decides whether a given hit actually matters for round
-	# win; hitting a Person is stun-only flavor (tagging) with no win effect.
+	# CharacterBase) decides whether a MOST hits actually matter for round
+	# win; hitting a Person is ordinarily stun-only flavor (tagging), with one
+	# deliberate exception below (2026-07-28).
 	#
 	# An offense-side hitbox touching an already-Downed (past self-right
 	# window) Can seals it, regardless of forces_downed — GDD's "reach it and
@@ -95,3 +96,18 @@ func _on_area_entered(area: Area3D) -> void:
 		target._apply_hit_result(kind, stagger_duration)
 		target._rpc_play_hit_vfx()
 	landed_on.emit(target)
+
+	# User feedback, 2026-07-28: "the person on team can may tag the human on
+	# team slipper and they win that round." ANY hitbox from the defending
+	# Person landing on the attacking Person — the always-on Bump as much as
+	# the Tag ability's own transient hitbox, both resolve through this same
+	# function — ends the round for team can outright. Deliberately after the
+	# normal stagger/VFX dispatch above, not instead of it: a round-winning
+	# tag should still read as contact landing, not as a rules screen
+	# appearing out of nowhere. report_round_win() no-ops if the round already
+	# ended, so this is safe to call unconditionally; this whole function is
+	# already host-only past the NetworkManager guard above, so no further
+	# authority check is needed here.
+	if owner_character and owner_character.is_person and owner_character.team_is_can_side \
+			and target.is_person and not target.team_is_can_side:
+		RoundManager.report_round_win(true) # Cans win the round
