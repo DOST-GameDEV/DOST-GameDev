@@ -136,8 +136,12 @@ for n, (x, zz, yaw) in enumerate([
 # marking, work out whether it overlaps a lane tile; don't default to the
 # taller constant out of caution. RENDER AND LOOK — a screenshot with no
 # visible gap under every line is the only real check.
-MARK_Y = 0.07       # tile-overlap clearance -- BaseCircle, ThrowingLine only
-MARK_Y_LOW = 0.015  # everything else -- flush, no tile beneath it to clear
+MARK_Y = 0.07        # tile-overlap clearance -- BaseCircle, ThrowingLine only
+# 2026-07-28, second pass: 0.015 was STILL visibly floating with a shadow
+# gap once actually looked at closely ("still a couple of thinsg floating").
+# Down to a near-zero epsilon -- just enough to avoid actual z-fighting with
+# the bare floor mesh, not a "safe-looking" round number.
+MARK_Y_LOW = 0.001   # everything else -- flush, no tile beneath it to clear
 add("Markings", "BaseCircle", "base_circle_decal", 0.0, MARK_Y, 0.0)
 add("Markings", "ThrowingLineNorth", "throwing_line_decal", 0.0, MARK_Y, -6.0)
 add("Markings", "ThrowingLineSouth", "throwing_line_decal", 0.0, MARK_Y, 6.0)

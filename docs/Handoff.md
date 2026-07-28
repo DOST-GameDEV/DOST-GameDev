@@ -898,6 +898,55 @@ ticks; `_counting_down` guards against a second `ready_up` press restarting it m
 All of the above verified by render (`tools/render_probe.gd` now shows the Can correctly inside
 the base circle) and the full six-command smoke gate. NOT yet verified by play.
 
+**B-100/B-101 · The Can (or any unit) could fall through the floor, or be flung far off its real
+spawn point, specifically on a ROUND TRANSITION. [ROOT-CAUSED AND FIXED — this is the real
+explanation for "cann fell off map again," which B-93/B-95 did not fully cover.]** Found by
+writing an actual diagnostic (`tools/render_probe.gd`'s new `round2` mode — see below) rather than
+continuing to guess from screenshots, after two earlier attempts to explain the report from
+code-reading alone both turned out to be incomplete. Two distinct bugs, confirmed by the probe's
+console output before and after each fix:
+1. **B-100.** `main.gd::_reset_world()` teleports four characters to new ROLE-based spawn points one at a
+   time via a plain `position =` write. Roles swap every round, so two characters routinely trade
+   spots with each other — this round's Attacker often lands exactly where last round's Attacker
+   was standing. A plain position write does not itself resolve collisions, but the very next
+   `move_and_slide()` does, the instant it finds two capsules deeply overlapping because the
+   second character in the loop hadn't been moved out of the way yet when the first one arrived.
+   Godot's own depenetration response is a genuine physics impulse, not a gentle nudge — the probe
+   showed characters ending up many units off their real spawn markers, airborne, sometimes far
+   enough to clear the confinement box or the floor's collision entirely.
+   **Fix, and what didn't work first:** toggling each character's `CollisionShape3D.disabled`
+   around the reposition was tried first and did NOT reliably fix it — disable, reposition and
+   re-enable all happen within the same script frame, before any physics step, and Godot's physics
+   server appears to sync only the FINAL state (enabled, new position) rather than replaying the
+   toggle, so the depenetration still fired. Replaced with something purely geometric instead:
+   every character is parked at a widely-separated, per-index holding spot (`y = 500 + i*20`)
+   BEFORE any of them move to a real spot, so nobody can ever overlap anyone else's target or
+   holding position regardless of loop order or physics-sync timing.
+2. **B-101.** `Carriable.reset_for_new_round()` cleared the carry relationship (`carrier = null`, state →
+   `LOOSE`) but never re-enabled the collision that gets disabled the instant a unit is grabbed
+   (`_rpc_set_carried()`'s `_set_physics_enabled(false)`). A Prop that was CARRIED when the round
+   ended — the common case, since the attacker is usually still holding it — came out of
+   `reset_for_new_round()` marked LOOSE but with its body collision STILL disabled, free to sink
+   straight through the floor with nothing to stop it. This Prop can become next round's Can.
+   Fixed with an unconditional (idempotent) `_set_physics_enabled(true)` in `reset_for_new_round()`.
+**New test infrastructure kept, not thrown away:** `tools/render_probe.gd` gained a `round2` mode
+that drives two real round transitions (`MatchManager.begin_next_round()`,
+`RoundManager.report_round_win()`, `begin_next_round()` again) without waiting out real timers or
+simulating a ready-up keypress, and prints every local unit's role and position at each step —
+turning "is the spawn layout right after a role swap" into a console diff instead of a screenshot
+guessing game. Use it: `godot --path . tools/render_probe.tscn --quit-after 100 -- round2 <dir>`.
+**Still open:** even with both fixes, the probe still shows transient chaotic positions for two of
+the four units *during* the frozen intermission window itself (between `report_round_win()` and
+the next `begin_next_round()`) — by the time the round actually starts (`round_active` becomes
+true again) everyone is back at the correct spot, confirmed by the probe, but a player watching
+the intermission may still see it happen. Not root-caused further this session; flagged rather
+than guessed at again.
+
+**Floating decals, second pass — `MARK_Y_LOW` (0.015) was STILL visibly floating once actually
+looked at closely.** Lowered to `0.001`, a near-zero epsilon rather than a "safe-looking" round
+number — see `build_eskinita.py`'s own updated warning comment. Verified by a fresh render; no
+visible gap under the confinement square or team-side lines this time.
+
 **Local Match → Single Player, planned (docs only, no code) — see `Checklist.md` 5.5 and the new
 🔧 BUILD-AI brief in `Agent_Prompts.md`.** User decision: Local Match stops being a dev-only
 testing harness / network-outage fallback (the old plan, `Checklist.md` 5.3) and becomes a real,
