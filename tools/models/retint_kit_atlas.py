@@ -53,16 +53,47 @@ HUE_MIN, HUE_MAX = 5.0, 30.0
 SAT_MIN = 0.65
 VAL_MIN = 0.88
 
+## The DEFENSE band, dampened in env atlases for exactly the same reason as the
+## orange one — the rule forbids BOTH role hues on environment art, not just the
+## orange one. Measured: the city atlas has none of this at all, the car atlas
+## has 1312 px of it (one blue vehicle). Small, and still a rule break.
+## ⚠️ NOT applied in `prop_blue` mode: the can is legitimately DEFENSE-blue
+## (`Art_Direction.md` §2, "Can body only"), so damping blue there would undo
+## the recolour this script had just done.
+BLUE_HUE_MIN, BLUE_HUE_MAX = 190.0, 225.0
+BLUE_SAT_MIN = 0.55
+BLUE_VAL_MIN = 0.75
+
 ## Sarsi blue — the livery the can is headed for anyway (checklist 7.6), so the
 ## interim colour is a step toward it rather than a throwaway.
-TARGET_HUE = 205.0
+PROP_TARGET_HUE = 205.0
 
-ATLASES = [
-    "assets/models/kits/food/Textures/colormap.png",
-]
+## ⚠️ TWO MODES, AND USING THE WRONG ONE IS ITSELF A RULE BREAK.
+##
+## The first version of this script rotated orange to blue everywhere. That is
+## correct for the CAN — `Art_Direction.md` §2 lists `DEFENSE` as legal on the
+## "Can body only" — and WRONG for everything else, because **environment art may
+## use NEITHER role hue** (`ui_theme.gd`'s `ENV_*` header). Recolouring the city
+## and car kits blue would have traded an OFFENSE violation for a DEFENSE one and
+## turned the whole street into the defending team's colour.
+##
+## So env atlases are DAMPENED instead of rotated: the hue is kept, and
+## saturation and value are pulled down into the band `ENV_*` already occupies.
+## Bright orange becomes terracotta/rust — which is not a workaround, it is
+## exactly what `ENV_RUST` (#A65A3A) and `ENV_PAINT_TERRA` (#B5664C) already are,
+## and what a Philippine street is actually full of.
+ENV_MAX_SAT = 0.60
+ENV_MAX_VAL = 0.72
+
+## path -> mode. "prop_blue" rotates hue; "env_damp" keeps hue and dampens.
+ATLASES = {
+    "assets/models/kits/food/Textures/colormap.png": "prop_blue",
+    "assets/models/kits/city/Textures/colormap.png": "env_damp",
+    "assets/models/kits/car/Textures/colormap.png": "env_damp",
+}
 
 
-def retint(path: pathlib.Path) -> int:
+def retint(path: pathlib.Path, mode: str) -> int:
     image = Image.open(path).convert("RGBA")
     pixels = image.load()
     width, height = image.size
@@ -71,11 +102,17 @@ def retint(path: pathlib.Path) -> int:
         for x in range(width):
             r, g, b, a = pixels[x, y]
             h, s, v = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
-            if not (HUE_MIN / 360.0 <= h <= HUE_MAX / 360.0):
+            in_orange = (HUE_MIN / 360.0 <= h <= HUE_MAX / 360.0
+                         and s >= SAT_MIN and v >= VAL_MIN)
+            in_blue = (mode == "env_damp"
+                       and BLUE_HUE_MIN / 360.0 <= h <= BLUE_HUE_MAX / 360.0
+                       and s >= BLUE_SAT_MIN and v >= BLUE_VAL_MIN)
+            if not (in_orange or in_blue):
                 continue
-            if s < SAT_MIN or v < VAL_MIN:
-                continue
-            nr, ng, nb = colorsys.hsv_to_rgb(TARGET_HUE / 360.0, s, v)
+            if mode == "prop_blue" and in_orange:
+                nr, ng, nb = colorsys.hsv_to_rgb(PROP_TARGET_HUE / 360.0, s, v)
+            else:
+                nr, ng, nb = colorsys.hsv_to_rgb(h, min(s, ENV_MAX_SAT), min(v, ENV_MAX_VAL))
             pixels[x, y] = (round(nr * 255), round(ng * 255), round(nb * 255), a)
             changed += 1
     if changed:
@@ -85,16 +122,18 @@ def retint(path: pathlib.Path) -> int:
 
 if __name__ == "__main__":
     total = 0
-    for rel in ATLASES:
+    for rel, mode in ATLASES.items():
         path = pathlib.Path(rel)
         if not path.exists():
             print("skip (not imported yet): %s" % rel)
             continue
-        n = retint(path)
+        n = retint(path, mode)
         total += n
-        print("%s: %d px moved out of the OFFENSE band" % (rel, n))
-    # Idempotent by construction: the remapped pixels land at hue 205, far
-    # outside [HUE_MIN, HUE_MAX], so a second run finds nothing and changes
-    # nothing. That is what makes it safe to re-run after re-extracting a kit.
+        print("%s [%s]: %d px moved out of the OFFENSE band" % (rel, mode, n))
+    # Idempotent by construction, both modes. "prop_blue" lands pixels at hue
+    # 205, far outside [HUE_MIN, HUE_MAX]. "env_damp" keeps the hue but drops
+    # value to ENV_MAX_VAL (0.72), below the VAL_MIN (0.88) floor that selects a
+    # pixel in the first place — so neither mode can re-trigger on itself. That
+    # is what makes it safe to re-run after re-extracting a kit.
     print("done — re-run is a no-op (%d px total)" % total)
     sys.exit(0)

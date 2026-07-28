@@ -40,10 +40,27 @@ CELL = 2.0
 meshes, ext, order = {}, [], []
 
 
+def is_kit(name):
+    """Kit pieces are given as 'kits/<kit>/<piece>' and are .glb SCENES.
+
+    ⚠️ The distinction is load-bearing all the way through this file. A
+    generated `env_*` piece imports as a Mesh and is emitted as a MeshInstance3D
+    with `mesh = ExtResource(...)`; a `.glb` imports as a PackedScene and has to
+    be emitted as an `instance=ExtResource(...)` node instead. Get it the wrong
+    way round and Godot loads the scene with that node simply missing.
+    """
+    return name.startswith("kits/")
+
+
+def mesh_path(name):
+    return (f"res://assets/models/{name}.glb" if is_kit(name)
+            else f"res://assets/models/env_{name}.obj")
+
+
 def mesh(name):
     if name not in meshes:
         meshes[name] = str(len(meshes) + 1)
-        ext.append((meshes[name], f"res://assets/models/env_{name}.obj"))
+        ext.append((meshes[name], mesh_path(name), is_kit(name)))
     return meshes[name]
 
 
@@ -68,34 +85,116 @@ def add(parent, name, mesh_name, x, y, z, yaw=0.0, sx=1.0):
                     is_marking=parent.startswith("Markings"))
 
 
+# --- Kit placement -----------------------------------------------------------
+#
+# ⚠️ KIT PIECES DO NOT SHARE THE GENERATED KIT'S "ORIGIN AT THE BASE" HABIT.
+# `env_*` meshes are authored from local y=0 up, so placing one at y=0 puts it on
+# the floor. Kenney's are not consistent about it — measured, `kits/car/van`
+# spans local y -0.300..1.150, so the same y=0 placement buries 30cm of it in the
+# road. That is the floating-geometry bug with the sign flipped, and it would be
+# just as invisible in a diff.
+#
+# So kit pieces are never placed by raw Y. `add_kit()` takes the height its BASE
+# should sit at and works the rest out from the mesh's own bounds, the same way
+# floorcheck.py does — one source of truth for "where is the bottom of this
+# thing", read from the file rather than assumed.
+#
+# ⚠️ ONE SCALE PER KIT, NAMED. Art_Direction.md §0b's measured table: every kit
+# is authored at a different native scale and none matches this project's
+# 1 unit = 1 metre. Two pieces from one kit at different scales is the "assets
+# suck" failure in its purest form, so the factor lives here, once, per kit.
+CITY_SCALE = 5.0   # a City Kit house is 0.74-1.24 tall natively -- SHORTER than
+                   # a Person. 5x puts it at 2-3 believable storeys.
+CAR_SCALE = 1.75   # a van is 2.75 long / 1.45 tall natively; 1.75x reaches the
+                   # ~4.8 length a real one has against a 1.6-unit Person.
+
+
+def add_kit(parent, name, mesh_name, x, z, yaw=0.0, scale=1.0, base_y=0.0):
+    """Places a kit piece with its BASE at `base_y`, scaled uniformly."""
+    lo, hi = mesh_bounds(mesh_name)
+    order.append((parent, name, mesh(mesh_name),
+                  xform_uniform(x, base_y - lo[1] * scale, z, yaw, scale)))
+    surfaces.record(name, mesh_name, x, base_y - lo[1] * scale, z, yaw, scale,
+                    is_marking=False)
+
+
+def xform_uniform(x, y, z, yaw, s):
+    """A uniformly-scaled yaw transform.
+
+    Distinct from `xform()` on purpose: that one scales ONLY the mesh's local X
+    row, which is what a stretchable line decal needs and what a building must
+    never get — a non-uniform scale on a house shears its roof.
+    """
+    c, sn = math.cos(yaw), math.sin(yaw)
+    return (f"Transform3D({c * s:.5f}, 0, {-sn * s:.5f}, 0, {s:.5f}, 0, "
+            f"{sn * s:.5f}, 0, {c * s:.5f}, {x:.4f}, {y:.4f}, {z:.4f})")
+
+
 # --- Layer 1: the wall line the player actually touches, at x = +/-8 ---------
-# Seeded, never random: the pattern repeats on a 5-bay cycle and every third bay
-# steps back one cell. A flush wall of identical panels reads as a corridor in a
-# level editor, which is the failure this ring exists to avoid.
-PATTERN = ["wall_corrugated", "wall_corrugated_leaning", "wall_plain",
-           "wall_corrugated", "sari_sari_store", "wall_corrugated",
-           "wall_plain", "wall_corrugated_leaning"]
+#
+# 2026-07-28, checklist 7.4 — City Kit (Suburban) houses replace the generated
+# corrugated panels. An eskinita is the gap BETWEEN people's houses, so the
+# houses themselves are the wall.
+#
+# ⚠️ THE PLAYABLE WIDTH IS UNCHANGED AT x = +/-8, AND SO IS THE COLLISION.
+# Arena scale is not touched in the same commit as arena art (Part 4's standing
+# rule), and dressing still carries NO collision of its own — the one invisible
+# Bounds box ring behind the wall line is still the only thing a player can hit.
+# Every piece below is a visual instance and nothing more.
+#
+# Buildings are rotated a quarter turn so their long axis runs down the alley,
+# and pushed out by half their depth so the FACE lands on the wall line rather
+# than the centre. Seeded variety, never random: the type cycle is prime-ish
+# against the bay count so the same house does not land opposite itself.
+BUILDING_TYPES = ["a", "c", "e", "j", "b", "o", "d", "s", "i", "n", "l"]
+## Depth of a rotated building, so its face lands on x = +/-W.
+_bt_lo, _bt_hi = mesh_bounds("kits/city/building-type-a")
+BUILDING_DEPTH = (_bt_hi[2] - _bt_lo[2]) * CITY_SCALE
+BUILDING_BAY = 6.6          # spacing down the alley, ~ a building's own width
+## Every Nth bay is left empty and gets a parked vehicle instead — a driveway.
+## It is also what stops the wall line reading as one extruded ribbon.
+DRIVEWAY_EVERY = 4
+
 i = 0
 z = -Z_END
 while z <= Z_END:
     for side in (-1.0, 1.0):
-        piece = PATTERN[i % len(PATTERN)]
-        step_back = 0.5 if (i % 3 == 0) else 0.0  # a jog, not a hole
-        # +X wall faces -X (yaw pi), -X wall faces +X (yaw 0). Pieces are
-        # authored facing +Z, so add a quarter turn to stand them along Z.
-        yaw = (math.pi * 0.5) if side > 0 else (-math.pi * 0.5)
-        add("Dressing/Layer1", f"L1_{i}_{'E' if side > 0 else 'W'}",
-            piece, side * (W + step_back), 0.0, z, yaw)
+        tag = "E" if side > 0 else "W"
+        if (i + (0 if side > 0 else 2)) % DRIVEWAY_EVERY == 0:
+            # A gap in the house line. The vehicle sits OUTSIDE the playable
+            # width, so it never blocks an FPP Person's aim no matter how tall
+            # it is -- see the height law on the clutter block below.
+            car = ["kits/car/van", "kits/car/sedan", "kits/car/delivery",
+                   "kits/car/taxi", "kits/car/truck"][i % 5]
+            add_kit("Dressing/Layer1", f"Car_{i}_{tag}", car,
+                    side * (W + 1.9), z, math.pi * 0.5 * side, CAR_SCALE)
+        else:
+            kind = BUILDING_TYPES[i % len(BUILDING_TYPES)]
+            # +X row faces -X and vice versa, so front doors look into the alley.
+            yaw = (math.pi * 0.5) if side > 0 else (-math.pi * 0.5)
+            add_kit("Dressing/Layer1", f"L1_{i}_{tag}",
+                    f"kits/city/building-type-{kind}",
+                    side * (W + BUILDING_DEPTH * 0.5), z, yaw, CITY_SCALE)
     i += 1
-    z += CELL
+    z += BUILDING_BAY
 
-# --- Layer 2: masses standing behind the wall line, off-grid on purpose ------
+# --- Layer 2: a second row further out, for skyline depth --------------------
+# Off-grid on purpose and deliberately NOT the same types as Layer 1 -- a second
+# identical row reads as a mirror rather than as a neighbourhood.
 for n, (x, zz, kind) in enumerate([
-        (-13.5, -12.0, "a"), (-14.5, -4.0, "c"), (-13.0, 5.0, "d"),
-        (-15.0, 13.0, "b"), (13.5, -13.0, "b"), (14.0, -3.0, "a"),
-        (13.0, 6.5, "c"), (15.0, 14.0, "d")]):
-    add("Dressing/Layer2", f"L2_{n}", f"building_block_{kind}",
-        x, 0.0, zz, 0.35 if n % 2 else -0.22)
+        (-19.0, -14.0, "t"), (-20.0, -3.0, "q"), (-18.5, 8.0, "u"),
+        (-20.5, 17.0, "f"), (19.0, -15.0, "p"), (20.0, -4.0, "r"),
+        (18.5, 7.0, "k"), (20.5, 16.0, "m")]):
+    add_kit("Dressing/Layer2", f"L2_{n}", f"kits/city/building-type-{kind}",
+            x, zz, 0.35 if n % 2 else -0.22, CITY_SCALE)
+
+# --- Street trees and fences, between the houses and the kerb ----------------
+for n, zz in enumerate([-15.5, -9.0, -2.5, 4.0, 10.5, 16.0]):
+    for side in (-1.0, 1.0):
+        piece = "kits/city/tree-large" if (n + (0 if side > 0 else 1)) % 2 else "kits/city/tree-small"
+        add_kit("Dressing/Layer2", f"Tree_{n}_{'E' if side > 0 else 'W'}",
+                piece, side * (W - 0.6), zz + (0.7 if side > 0 else -0.7),
+                (n % 3) * 0.8, CITY_SCALE)
 
 # --- Layer 3: overhead. Highest read-per-triangle in the kit. ---------------
 for n, zz in enumerate([-14.0, -8.0, -2.0, 4.0, 10.0, 16.0]):
@@ -262,7 +361,11 @@ for i in range(_box_segs_per_side):
 
 # =============================================================================
 
-ext_lines = [f'[ext_resource type="Mesh" path="{p}" id="{i}"]' for i, p in ext]
+ext_lines = [
+    '[ext_resource type="%s" path="%s" id="%s"]'
+    % ("PackedScene" if kit else "Mesh", p, i)
+    for i, p, kit in ext
+]
 ext_lines.append('[ext_resource type="Script" '
                  'path="res://scripts/systems/hazard_zone.gd" id="H"]')
 ext_lines.append('[ext_resource type="Script" '
@@ -448,11 +551,22 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.3, 0.16, 6.3)
 [node name="Markings" type="Node3D" parent="."]
 '''
 
+kit_ids = {i for i, _p, kit in ext if kit}
 body = []
 for parent, name, mid, tf in order:
-    body.append(f'\n[node name="{name}" type="MeshInstance3D" parent="{parent}"]')
-    body.append(f'transform = {tf}')
-    body.append(f'mesh = ExtResource("{mid}")')
+    if mid in kit_ids:
+        # ⚠️ A .glb is a PackedScene, so it is INSTANCED, not assigned to a
+        # `mesh` property. Emitting a kit piece as a MeshInstance3D with
+        # `mesh = ExtResource(...)` does NOT error — Godot loads the scene with
+        # that node simply blank. That is exactly how an entire street of houses
+        # rendered as empty road on the first run of checklist 7.4: the nodes
+        # were all present, the transforms were all correct, and nothing drew.
+        body.append(f'\n[node name="{name}" parent="{parent}" instance=ExtResource("{mid}")]')
+        body.append(f'transform = {tf}')
+    else:
+        body.append(f'\n[node name="{name}" type="MeshInstance3D" parent="{parent}"]')
+        body.append(f'transform = {tf}')
+        body.append(f'mesh = ExtResource("{mid}")')
 
 # load_steps counts ext_resource + sub_resource entries, plus one. A wrong value
 # does not error — it silently truncates resource loading (Concurrency_Protocol

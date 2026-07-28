@@ -37,8 +37,10 @@ pieces, which is what every road tile and decal in this kit is. It is a tripwire
 for the one failure that keeps recurring, not a general collision system — a
 render is still the acceptance test (Concurrency_Protocol.md §8 step 4).
 """
+import json
 import math
 import os
+import struct
 
 ## Anything below this counts as contact. 0.5mm — far tighter than the ~8mm gap
 ## that was still visibly floating in the 2026-07-28 playtest, and far looser
@@ -71,8 +73,34 @@ GROUND_MESHES = frozenset([
 _bounds_cache = {}
 
 
+def _glb_bounds(path):
+    """(min, max) per axis of a .glb, straight from its accessor bounds.
+
+    glTF stores per-accessor `min`/`max` for POSITION, so this needs no mesh
+    decoding at all — it reads the JSON chunk and stops. Kit pieces have to go
+    through the same flush check as generated ones or the guard has a hole in it
+    exactly where the new assets are.
+    """
+    with open(path, "rb") as handle:
+        struct.unpack("<III", handle.read(12))
+        chunk_len, _chunk_type = struct.unpack("<II", handle.read(8))
+        document = json.loads(handle.read(chunk_len).decode("utf-8"))
+    lo = [math.inf] * 3
+    hi = [-math.inf] * 3
+    for mesh in document.get("meshes", []):
+        for primitive in mesh["primitives"]:
+            accessor = document["accessors"][primitive["attributes"]["POSITION"]]
+            for axis in range(3):
+                lo[axis] = min(lo[axis], accessor["min"][axis])
+                hi[axis] = max(hi[axis], accessor["max"][axis])
+    return lo, hi
+
+
 def mesh_bounds(mesh_name, models_dir="assets/models"):
-    """Local-space (min, max) per axis of `env_<mesh_name>.obj`, from the file.
+    """Local-space (min, max) per axis of a mesh, read from the file.
+
+    Takes either a generated `env_<name>.obj` or a kit piece given as
+    `kits/<kit>/<piece>` (a `.glb`).
 
     ⚠️ READ FROM THE .obj, NEVER ASSUMED. "Decals start at local y=0" is true
     today and is written down in two places, and it is exactly the kind of
@@ -80,6 +108,10 @@ def mesh_bounds(mesh_name, models_dir="assets/models"):
     whole point of this module is to not take that on faith.
     """
     if mesh_name in _bounds_cache:
+        return _bounds_cache[mesh_name]
+    if mesh_name.startswith("kits/"):
+        path = os.path.join(models_dir, "%s.glb" % mesh_name)
+        _bounds_cache[mesh_name] = _glb_bounds(path)
         return _bounds_cache[mesh_name]
     path = os.path.join(models_dir, "env_%s.obj" % mesh_name)
     lo = [math.inf] * 3
