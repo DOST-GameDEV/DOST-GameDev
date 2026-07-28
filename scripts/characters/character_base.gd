@@ -243,6 +243,13 @@ func _apply_role_collision() -> void:
 	var grab_shape := ($GrabArea/CollisionShape3D as CollisionShape3D).shape as SphereShape3D
 	if grab_shape:
 		grab_shape.radius = cfg["grab_r"]
+	# B-89: the nameplate ring/label read this same capsule, so they resize in
+	# the same call, right after the shapes above actually changed — never
+	# before. See CharacterNameplate.apply_sizing()'s own warning for why this
+	# cannot just run from the nameplate's own _ready().
+	var nameplate := get_node_or_null("Nameplate") as CharacterNameplate
+	if nameplate != null:
+		nameplate.apply_sizing()
 
 func _ready() -> void:
 	spawn_position = global_position
@@ -750,6 +757,28 @@ func get_hand_attachment() -> Node3D:
 ## a clip the model actually has.
 func play_visual_action(kind: String) -> void:
 	_visual.play_action(kind)
+
+## Art_Direction.md §1 / B-88 — this unit's OWN, currently-applied collision
+## capsule height, read from the shape `_apply_role_collision()` just sized
+## rather than assumed. Every child node that positions itself relative to
+## "the capsule floor" or "the capsule top" — CharacterVisual's model-drop and
+## CharacterNameplate's ring/label — must read this instead of hardcoding the
+## old shared 1.6, which is exactly the bug B-88 was for the model and is the
+## same bug again for the nameplate ring if left alone.
+func capsule_height() -> float:
+	var shape_node := get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if shape_node != null and shape_node.shape is CapsuleShape3D:
+		return (shape_node.shape as CapsuleShape3D).height
+	return 1.6
+
+## Companion to capsule_height() — this unit's own current capsule radius, for
+## anything sized off the unit's girth rather than its height (the nameplate
+## ring's own radius, so it doesn't read as a dinner plate around a can).
+func capsule_radius() -> float:
+	var shape_node := get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if shape_node != null and shape_node.shape is CapsuleShape3D:
+		return (shape_node.shape as CapsuleShape3D).radius
+	return 0.4
 
 ## Task 0 — true while this unit is a Person with something in its hands, in
 ## which case `special_ability` is the charge-throw and must NOT also fire the
