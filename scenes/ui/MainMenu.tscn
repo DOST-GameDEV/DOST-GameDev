@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3 uid="uid://bqk3n7yam1p2s"]
+[gd_scene load_steps=12 format=3 uid="uid://bqk3n7yam1p2s"]
 
 [ext_resource type="Script" uid="uid://im4mafpy4ukp" path="res://scripts/ui/main_menu.gd" id="1"]
 [ext_resource type="PackedScene" uid="uid://dx1n5r7uav2w4" path="res://scenes/ui/SettingsPanel.tscn" id="2"]
@@ -9,6 +9,7 @@
 [ext_resource type="Texture2D" uid="uid://c1l4v2dtima6g" path="res://assets/ui/main-menu/QUIT BUTTON.png" id="7"]
 [ext_resource type="Texture2D" uid="uid://c6uqx4yepl38h" path="res://assets/ui/main-menu/TUMP.png" id="8"]
 [ext_resource type="Texture2D" path="res://assets/ui/main-menu/MENU BACKDROP.png" id="9"]
+[ext_resource type="Texture2D" path="res://assets/ui/main-menu/TUTORIAL BUTTON.png" id="10"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_bg"]
 shader = ExtResource("3")
@@ -103,13 +104,13 @@ tip_padding = 116.0
 unique_name_in_owner = true
 layout_mode = 0
 offset_left = -158.0
-offset_top = 735.0
+offset_top = 681.0
 offset_right = 585.0
-offset_bottom = 905.0
-texture = ExtResource("6")
+offset_bottom = 945.0
+texture = ExtResource("10")
 caption = "TUTORIAL"
 text_offset_y = -6.0
-text_color = Color(0.263, 0.176, 0.106, 1)
+text_color = Color(0.106, 0.204, 0.263, 1)
 label_size = 99
 label_rotation = 3.75
 pole_distance = 315.0
@@ -120,9 +121,9 @@ tip_padding = 116.0
 unique_name_in_owner = true
 layout_mode = 0
 offset_left = -173.0
-offset_top = 912.0
+offset_top = 845.0
 offset_right = 569.0
-offset_bottom = 1057.0
+offset_bottom = 990.0
 texture = ExtResource("7")
 caption = "QUIT"
 text_offset_y = 7.0
