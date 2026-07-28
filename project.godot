@@ -12,7 +12,7 @@ config_version=5
 
 config/name="Tumbang Preso"
 config/description="2v2 arena brawler ??? Cans vs Tsinelas. Built for Gear Up NCR ??? Esports Game Dev Challenge."
-config/version="4.51"
+config/version="4.52"
 run/main_scene="res://scenes/ui/MainMenu.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
