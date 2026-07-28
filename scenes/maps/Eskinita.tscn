@@ -26,7 +26,7 @@
 [ext_resource type="Script" path="res://scripts/systems/kill_plane.gd" id="K"]
 
 [sub_resource type="BoxShape3D" id="Shape_floor"]
-size = Vector3(40, 1, 40)
+size = Vector3(72.0, 1, 72.0)
 
 [sub_resource type="StandardMaterial3D" id="Mat_floor"]
 albedo_color = Color(0.29020, 0.30588, 0.34118, 1)
@@ -34,13 +34,13 @@ roughness = 1.0
 
 [sub_resource type="BoxMesh" id="Mesh_floor"]
 material = SubResource("Mat_floor")
-size = Vector3(40, 1, 40)
+size = Vector3(72.0, 1, 72.0)
 
 [sub_resource type="BoxShape3D" id="Shape_wall_z"]
-size = Vector3(1, 12, 40)
+size = Vector3(1, 12, 72.0)
 
 [sub_resource type="BoxShape3D" id="Shape_wall_x"]
-size = Vector3(20, 12, 1)
+size = Vector3(72.0, 12, 1)
 
 [sub_resource type="BoxShape3D" id="Shape_killplane"]
 size = Vector3(90, 4, 90)
@@ -110,25 +110,25 @@ mesh = SubResource("Mesh_floor")
 [node name="Bounds" type="Node3D" parent="."]
 
 [node name="WallEast" type="StaticBody3D" parent="Bounds"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.6, 6, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25.0, 6, 0)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Bounds/WallEast"]
 shape = SubResource("Shape_wall_z")
 
 [node name="WallWest" type="StaticBody3D" parent="Bounds"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8.6, 6, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -25.0, 6, 0)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Bounds/WallWest"]
 shape = SubResource("Shape_wall_z")
 
 [node name="WallNorth" type="StaticBody3D" parent="Bounds"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6, -18.0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6, -25.0)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Bounds/WallNorth"]
 shape = SubResource("Shape_wall_x")
 
 [node name="WallSouth" type="StaticBody3D" parent="Bounds"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6, 18.0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6, 25.0)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Bounds/WallSouth"]
 shape = SubResource("Shape_wall_x")
@@ -182,203 +182,259 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.3, 0.16, 6.3)
 [node name="Markings" type="Node3D" parent="."]
 
 [node name="L1_0_W" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -8.5000, 0.0000, -17.0000)
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.5000, 0.0000, -24.0000)
 mesh = ExtResource("1")
 
 [node name="L1_0_E" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 8.5000, 0.0000, -17.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.5000, 0.0000, -24.0000)
 mesh = ExtResource("1")
 
 [node name="L1_1_W" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -8.0000, 0.0000, -15.0000)
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.0000, 0.0000, -22.0000)
 mesh = ExtResource("2")
 
 [node name="L1_1_E" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 8.0000, 0.0000, -15.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.0000, 0.0000, -22.0000)
 mesh = ExtResource("2")
 
 [node name="L1_2_W" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -8.0000, 0.0000, -13.0000)
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.0000, 0.0000, -20.0000)
 mesh = ExtResource("3")
 
 [node name="L1_2_E" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 8.0000, 0.0000, -13.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.0000, 0.0000, -20.0000)
 mesh = ExtResource("3")
 
 [node name="L1_3_W" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -8.5000, 0.0000, -11.0000)
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.5000, 0.0000, -18.0000)
 mesh = ExtResource("1")
 
 [node name="L1_3_E" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 8.5000, 0.0000, -11.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.5000, 0.0000, -18.0000)
 mesh = ExtResource("1")
 
 [node name="L1_4_W" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -8.0000, 0.0000, -9.0000)
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.0000, 0.0000, -16.0000)
 mesh = ExtResource("4")
 
 [node name="L1_4_E" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 8.0000, 0.0000, -9.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.0000, 0.0000, -16.0000)
 mesh = ExtResource("4")
 
 [node name="L1_5_W" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -8.0000, 0.0000, -7.0000)
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.0000, 0.0000, -14.0000)
 mesh = ExtResource("1")
 
 [node name="L1_5_E" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 8.0000, 0.0000, -7.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.0000, 0.0000, -14.0000)
 mesh = ExtResource("1")
 
 [node name="L1_6_W" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -8.5000, 0.0000, -5.0000)
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.5000, 0.0000, -12.0000)
 mesh = ExtResource("3")
 
 [node name="L1_6_E" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 8.5000, 0.0000, -5.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.5000, 0.0000, -12.0000)
 mesh = ExtResource("3")
 
 [node name="L1_7_W" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -8.0000, 0.0000, -3.0000)
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.0000, 0.0000, -10.0000)
 mesh = ExtResource("2")
 
 [node name="L1_7_E" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 8.0000, 0.0000, -3.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.0000, 0.0000, -10.0000)
 mesh = ExtResource("2")
 
 [node name="L1_8_W" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -8.0000, 0.0000, -1.0000)
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.0000, 0.0000, -8.0000)
 mesh = ExtResource("1")
 
 [node name="L1_8_E" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 8.0000, 0.0000, -1.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.0000, 0.0000, -8.0000)
 mesh = ExtResource("1")
 
 [node name="L1_9_W" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -8.5000, 0.0000, 1.0000)
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.5000, 0.0000, -6.0000)
 mesh = ExtResource("2")
 
 [node name="L1_9_E" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 8.5000, 0.0000, 1.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.5000, 0.0000, -6.0000)
 mesh = ExtResource("2")
 
 [node name="L1_10_W" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -8.0000, 0.0000, 3.0000)
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.0000, 0.0000, -4.0000)
 mesh = ExtResource("3")
 
 [node name="L1_10_E" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 8.0000, 0.0000, 3.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.0000, 0.0000, -4.0000)
 mesh = ExtResource("3")
 
 [node name="L1_11_W" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -8.0000, 0.0000, 5.0000)
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.0000, 0.0000, -2.0000)
 mesh = ExtResource("1")
 
 [node name="L1_11_E" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 8.0000, 0.0000, 5.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.0000, 0.0000, -2.0000)
 mesh = ExtResource("1")
 
 [node name="L1_12_W" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -8.5000, 0.0000, 7.0000)
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.5000, 0.0000, 0.0000)
 mesh = ExtResource("4")
 
 [node name="L1_12_E" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 8.5000, 0.0000, 7.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.5000, 0.0000, 0.0000)
 mesh = ExtResource("4")
 
 [node name="L1_13_W" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -8.0000, 0.0000, 9.0000)
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.0000, 0.0000, 2.0000)
 mesh = ExtResource("1")
 
 [node name="L1_13_E" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 8.0000, 0.0000, 9.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.0000, 0.0000, 2.0000)
 mesh = ExtResource("1")
 
 [node name="L1_14_W" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -8.0000, 0.0000, 11.0000)
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.0000, 0.0000, 4.0000)
 mesh = ExtResource("3")
 
 [node name="L1_14_E" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 8.0000, 0.0000, 11.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.0000, 0.0000, 4.0000)
 mesh = ExtResource("3")
 
 [node name="L1_15_W" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -8.5000, 0.0000, 13.0000)
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.5000, 0.0000, 6.0000)
 mesh = ExtResource("2")
 
 [node name="L1_15_E" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 8.5000, 0.0000, 13.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.5000, 0.0000, 6.0000)
 mesh = ExtResource("2")
 
 [node name="L1_16_W" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -8.0000, 0.0000, 15.0000)
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.0000, 0.0000, 8.0000)
 mesh = ExtResource("1")
 
 [node name="L1_16_E" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 8.0000, 0.0000, 15.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.0000, 0.0000, 8.0000)
 mesh = ExtResource("1")
 
 [node name="L1_17_W" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -8.0000, 0.0000, 17.0000)
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.0000, 0.0000, 10.0000)
 mesh = ExtResource("2")
 
 [node name="L1_17_E" type="MeshInstance3D" parent="Dressing/Layer1"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 8.0000, 0.0000, 17.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.0000, 0.0000, 10.0000)
 mesh = ExtResource("2")
 
+[node name="L1_18_W" type="MeshInstance3D" parent="Dressing/Layer1"]
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.5000, 0.0000, 12.0000)
+mesh = ExtResource("3")
+
+[node name="L1_18_E" type="MeshInstance3D" parent="Dressing/Layer1"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.5000, 0.0000, 12.0000)
+mesh = ExtResource("3")
+
+[node name="L1_19_W" type="MeshInstance3D" parent="Dressing/Layer1"]
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.0000, 0.0000, 14.0000)
+mesh = ExtResource("1")
+
+[node name="L1_19_E" type="MeshInstance3D" parent="Dressing/Layer1"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.0000, 0.0000, 14.0000)
+mesh = ExtResource("1")
+
+[node name="L1_20_W" type="MeshInstance3D" parent="Dressing/Layer1"]
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.0000, 0.0000, 16.0000)
+mesh = ExtResource("4")
+
+[node name="L1_20_E" type="MeshInstance3D" parent="Dressing/Layer1"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.0000, 0.0000, 16.0000)
+mesh = ExtResource("4")
+
+[node name="L1_21_W" type="MeshInstance3D" parent="Dressing/Layer1"]
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.5000, 0.0000, 18.0000)
+mesh = ExtResource("1")
+
+[node name="L1_21_E" type="MeshInstance3D" parent="Dressing/Layer1"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.5000, 0.0000, 18.0000)
+mesh = ExtResource("1")
+
+[node name="L1_22_W" type="MeshInstance3D" parent="Dressing/Layer1"]
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.0000, 0.0000, 20.0000)
+mesh = ExtResource("3")
+
+[node name="L1_22_E" type="MeshInstance3D" parent="Dressing/Layer1"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.0000, 0.0000, 20.0000)
+mesh = ExtResource("3")
+
+[node name="L1_23_W" type="MeshInstance3D" parent="Dressing/Layer1"]
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.0000, 0.0000, 22.0000)
+mesh = ExtResource("2")
+
+[node name="L1_23_E" type="MeshInstance3D" parent="Dressing/Layer1"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.0000, 0.0000, 22.0000)
+mesh = ExtResource("2")
+
+[node name="L1_24_W" type="MeshInstance3D" parent="Dressing/Layer1"]
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -24.5000, 0.0000, 24.0000)
+mesh = ExtResource("1")
+
+[node name="L1_24_E" type="MeshInstance3D" parent="Dressing/Layer1"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.5000, 0.0000, 24.0000)
+mesh = ExtResource("1")
+
 [node name="L2_0" type="MeshInstance3D" parent="Dressing/Layer2"]
-transform = Transform3D(0.97590, 0, 0.21823, 0, 1, 0, -0.21823, 0, 0.97590, -13.5000, 0.0000, -12.0000)
+transform = Transform3D(0.97590, 0, 0.21823, 0, 1, 0, -0.21823, 0, 0.97590, -40.5000, 0.0000, -16.9412)
 mesh = ExtResource("5")
 
 [node name="L2_1" type="MeshInstance3D" parent="Dressing/Layer2"]
-transform = Transform3D(0.93937, 0, -0.34290, 0, 1, 0, 0.34290, 0, 0.93937, -14.5000, 0.0000, -4.0000)
+transform = Transform3D(0.93937, 0, -0.34290, 0, 1, 0, 0.34290, 0, 0.93937, -43.5000, 0.0000, -5.6471)
 mesh = ExtResource("6")
 
 [node name="L2_2" type="MeshInstance3D" parent="Dressing/Layer2"]
-transform = Transform3D(0.97590, 0, 0.21823, 0, 1, 0, -0.21823, 0, 0.97590, -13.0000, 0.0000, 5.0000)
+transform = Transform3D(0.97590, 0, 0.21823, 0, 1, 0, -0.21823, 0, 0.97590, -39.0000, 0.0000, 7.0588)
 mesh = ExtResource("7")
 
 [node name="L2_3" type="MeshInstance3D" parent="Dressing/Layer2"]
-transform = Transform3D(0.93937, 0, -0.34290, 0, 1, 0, 0.34290, 0, 0.93937, -15.0000, 0.0000, 13.0000)
+transform = Transform3D(0.93937, 0, -0.34290, 0, 1, 0, 0.34290, 0, 0.93937, -45.0000, 0.0000, 18.3529)
 mesh = ExtResource("8")
 
 [node name="L2_4" type="MeshInstance3D" parent="Dressing/Layer2"]
-transform = Transform3D(0.97590, 0, 0.21823, 0, 1, 0, -0.21823, 0, 0.97590, 13.5000, 0.0000, -13.0000)
+transform = Transform3D(0.97590, 0, 0.21823, 0, 1, 0, -0.21823, 0, 0.97590, 40.5000, 0.0000, -18.3529)
 mesh = ExtResource("8")
 
 [node name="L2_5" type="MeshInstance3D" parent="Dressing/Layer2"]
-transform = Transform3D(0.93937, 0, -0.34290, 0, 1, 0, 0.34290, 0, 0.93937, 14.0000, 0.0000, -3.0000)
+transform = Transform3D(0.93937, 0, -0.34290, 0, 1, 0, 0.34290, 0, 0.93937, 42.0000, 0.0000, -4.2353)
 mesh = ExtResource("5")
 
 [node name="L2_6" type="MeshInstance3D" parent="Dressing/Layer2"]
-transform = Transform3D(0.97590, 0, 0.21823, 0, 1, 0, -0.21823, 0, 0.97590, 13.0000, 0.0000, 6.5000)
+transform = Transform3D(0.97590, 0, 0.21823, 0, 1, 0, -0.21823, 0, 0.97590, 39.0000, 0.0000, 9.1765)
 mesh = ExtResource("6")
 
 [node name="L2_7" type="MeshInstance3D" parent="Dressing/Layer2"]
-transform = Transform3D(0.93937, 0, -0.34290, 0, 1, 0, 0.34290, 0, 0.93937, 15.0000, 0.0000, 14.0000)
+transform = Transform3D(0.93937, 0, -0.34290, 0, 1, 0, 0.34290, 0, 0.93937, 45.0000, 0.0000, 19.7647)
 mesh = ExtResource("7")
 
 [node name="Post_0" type="MeshInstance3D" parent="Dressing/Layer3"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -7.6000, 0.0000, -14.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -23.6000, 0.0000, -14.0000)
 mesh = ExtResource("9")
 
 [node name="Post_1" type="MeshInstance3D" parent="Dressing/Layer3"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -7.6000, 0.0000, -8.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -23.6000, 0.0000, -8.0000)
 mesh = ExtResource("9")
 
 [node name="Post_2" type="MeshInstance3D" parent="Dressing/Layer3"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -7.6000, 0.0000, -2.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -23.6000, 0.0000, -2.0000)
 mesh = ExtResource("9")
 
 [node name="Post_3" type="MeshInstance3D" parent="Dressing/Layer3"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -7.6000, 0.0000, 4.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -23.6000, 0.0000, 4.0000)
 mesh = ExtResource("9")
 
 [node name="Post_4" type="MeshInstance3D" parent="Dressing/Layer3"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -7.6000, 0.0000, 10.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -23.6000, 0.0000, 10.0000)
 mesh = ExtResource("9")
 
 [node name="Post_5" type="MeshInstance3D" parent="Dressing/Layer3"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -7.6000, 0.0000, 16.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -23.6000, 0.0000, 16.0000)
 mesh = ExtResource("9")
 
 [node name="Sampay_0" type="MeshInstance3D" parent="Dressing/Layer3"]
@@ -402,263 +458,359 @@ transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.00
 mesh = ExtResource("10")
 
 [node name="Lane_0" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, -16.0000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, -24.0000)
 mesh = ExtResource("11")
 
 [node name="Lane_1" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, -14.0000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, -22.0000)
 mesh = ExtResource("11")
 
 [node name="Lane_2" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, -12.0000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, -20.0000)
 mesh = ExtResource("11")
 
 [node name="Lane_3" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, -10.0000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, -18.0000)
 mesh = ExtResource("11")
 
 [node name="Lane_4" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, -8.0000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, -16.0000)
 mesh = ExtResource("11")
 
 [node name="Lane_5" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, -6.0000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, -14.0000)
 mesh = ExtResource("11")
 
 [node name="Lane_6" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, -4.0000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, -12.0000)
 mesh = ExtResource("11")
 
 [node name="Lane_7" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, -2.0000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, -10.0000)
 mesh = ExtResource("11")
 
 [node name="Lane_8" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, 0.0000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, -8.0000)
 mesh = ExtResource("11")
 
 [node name="Lane_9" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, 2.0000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, -6.0000)
 mesh = ExtResource("11")
 
 [node name="Lane_10" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, 4.0000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, -4.0000)
 mesh = ExtResource("11")
 
 [node name="Lane_11" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, 6.0000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, -2.0000)
 mesh = ExtResource("11")
 
 [node name="Lane_12" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, 8.0000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, 0.0000)
 mesh = ExtResource("11")
 
 [node name="Lane_13" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, 10.0000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, 2.0000)
 mesh = ExtResource("11")
 
 [node name="Lane_14" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, 12.0000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, 4.0000)
 mesh = ExtResource("11")
 
 [node name="Lane_15" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, 14.0000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, 6.0000)
 mesh = ExtResource("11")
 
 [node name="Lane_16" type="MeshInstance3D" parent="Dressing/Road"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, 8.0000)
+mesh = ExtResource("11")
+
+[node name="Lane_17" type="MeshInstance3D" parent="Dressing/Road"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, 10.0000)
+mesh = ExtResource("11")
+
+[node name="Lane_18" type="MeshInstance3D" parent="Dressing/Road"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, 12.0000)
+mesh = ExtResource("11")
+
+[node name="Lane_19" type="MeshInstance3D" parent="Dressing/Road"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, 14.0000)
+mesh = ExtResource("11")
+
+[node name="Lane_20" type="MeshInstance3D" parent="Dressing/Road"]
 transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, 16.0000)
 mesh = ExtResource("11")
 
+[node name="Lane_21" type="MeshInstance3D" parent="Dressing/Road"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, 18.0000)
+mesh = ExtResource("11")
+
+[node name="Lane_22" type="MeshInstance3D" parent="Dressing/Road"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, 20.0000)
+mesh = ExtResource("11")
+
+[node name="Lane_23" type="MeshInstance3D" parent="Dressing/Road"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, 22.0000)
+mesh = ExtResource("11")
+
+[node name="Lane_24" type="MeshInstance3D" parent="Dressing/Road"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, 24.0000)
+mesh = ExtResource("11")
+
 [node name="Kerb_0_W" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -6.8000, 0.0000, -16.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, -24.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_0_E" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 6.8000, 0.0000, -16.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, -24.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_1_W" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -6.8000, 0.0000, -14.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, -22.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_1_E" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 6.8000, 0.0000, -14.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, -22.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_2_W" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -6.8000, 0.0000, -12.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, -20.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_2_E" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 6.8000, 0.0000, -12.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, -20.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_3_W" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -6.8000, 0.0000, -10.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, -18.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_3_E" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 6.8000, 0.0000, -10.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, -18.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_4_W" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -6.8000, 0.0000, -8.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, -16.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_4_E" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 6.8000, 0.0000, -8.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, -16.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_5_W" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -6.8000, 0.0000, -6.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, -14.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_5_E" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 6.8000, 0.0000, -6.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, -14.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_6_W" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -6.8000, 0.0000, -4.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, -12.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_6_E" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 6.8000, 0.0000, -4.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, -12.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_7_W" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -6.8000, 0.0000, -2.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, -10.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_7_E" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 6.8000, 0.0000, -2.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, -10.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_8_W" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -6.8000, 0.0000, 0.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, -8.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_8_E" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 6.8000, 0.0000, 0.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, -8.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_9_W" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -6.8000, 0.0000, 2.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, -6.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_9_E" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 6.8000, 0.0000, 2.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, -6.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_10_W" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -6.8000, 0.0000, 4.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, -4.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_10_E" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 6.8000, 0.0000, 4.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, -4.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_11_W" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -6.8000, 0.0000, 6.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, -2.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_11_E" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 6.8000, 0.0000, 6.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, -2.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_12_W" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -6.8000, 0.0000, 8.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, 0.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_12_E" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 6.8000, 0.0000, 8.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, 0.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_13_W" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -6.8000, 0.0000, 10.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, 2.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_13_E" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 6.8000, 0.0000, 10.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, 2.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_14_W" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -6.8000, 0.0000, 12.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, 4.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_14_E" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 6.8000, 0.0000, 12.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, 4.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_15_W" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -6.8000, 0.0000, 14.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, 6.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_15_E" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 6.8000, 0.0000, 14.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, 6.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_16_W" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -6.8000, 0.0000, 16.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, 8.0000)
 mesh = ExtResource("12")
 
 [node name="Kerb_16_E" type="MeshInstance3D" parent="Dressing/Road"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 6.8000, 0.0000, 16.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, 8.0000)
+mesh = ExtResource("12")
+
+[node name="Kerb_17_W" type="MeshInstance3D" parent="Dressing/Road"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, 10.0000)
+mesh = ExtResource("12")
+
+[node name="Kerb_17_E" type="MeshInstance3D" parent="Dressing/Road"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, 10.0000)
+mesh = ExtResource("12")
+
+[node name="Kerb_18_W" type="MeshInstance3D" parent="Dressing/Road"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, 12.0000)
+mesh = ExtResource("12")
+
+[node name="Kerb_18_E" type="MeshInstance3D" parent="Dressing/Road"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, 12.0000)
+mesh = ExtResource("12")
+
+[node name="Kerb_19_W" type="MeshInstance3D" parent="Dressing/Road"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, 14.0000)
+mesh = ExtResource("12")
+
+[node name="Kerb_19_E" type="MeshInstance3D" parent="Dressing/Road"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, 14.0000)
+mesh = ExtResource("12")
+
+[node name="Kerb_20_W" type="MeshInstance3D" parent="Dressing/Road"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, 16.0000)
+mesh = ExtResource("12")
+
+[node name="Kerb_20_E" type="MeshInstance3D" parent="Dressing/Road"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, 16.0000)
+mesh = ExtResource("12")
+
+[node name="Kerb_21_W" type="MeshInstance3D" parent="Dressing/Road"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, 18.0000)
+mesh = ExtResource("12")
+
+[node name="Kerb_21_E" type="MeshInstance3D" parent="Dressing/Road"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, 18.0000)
+mesh = ExtResource("12")
+
+[node name="Kerb_22_W" type="MeshInstance3D" parent="Dressing/Road"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, 20.0000)
+mesh = ExtResource("12")
+
+[node name="Kerb_22_E" type="MeshInstance3D" parent="Dressing/Road"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, 20.0000)
+mesh = ExtResource("12")
+
+[node name="Kerb_23_W" type="MeshInstance3D" parent="Dressing/Road"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, 22.0000)
+mesh = ExtResource("12")
+
+[node name="Kerb_23_E" type="MeshInstance3D" parent="Dressing/Road"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, 22.0000)
+mesh = ExtResource("12")
+
+[node name="Kerb_24_W" type="MeshInstance3D" parent="Dressing/Road"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -22.8000, 0.0000, 24.0000)
+mesh = ExtResource("12")
+
+[node name="Kerb_24_E" type="MeshInstance3D" parent="Dressing/Road"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 22.8000, 0.0000, 24.0000)
 mesh = ExtResource("12")
 
 [node name="Clutter_0" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(0.92106, 0, -0.38942, 0, 1, 0, 0.38942, 0, 0.92106, -5.5000, 0.0000, -9.0000)
+transform = Transform3D(0.92106, 0, -0.38942, 0, 1, 0, 0.38942, 0, 0.92106, -16.5000, 0.0000, -12.7059)
 mesh = ExtResource("13")
 
 [node name="Clutter_1" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(0.62161, 0, 0.78333, 0, 1, 0, -0.78333, 0, 0.62161, 5.0000, 0.0000, 8.5000)
+transform = Transform3D(0.62161, 0, 0.78333, 0, 1, 0, -0.78333, 0, 0.62161, 15.0000, 0.0000, 12.0000)
 mesh = ExtResource("13")
 
 [node name="Clutter_2" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(-0.12884, 0, -0.99166, 0, 1, 0, 0.99166, 0, -0.12884, -6.2000, 0.0000, 3.0000)
+transform = Transform3D(-0.12884, 0, -0.99166, 0, 1, 0, 0.99166, 0, -0.12884, -18.6000, 0.0000, 4.2353)
 mesh = ExtResource("14")
 
 [node name="Clutter_3" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(-0.85689, 0, -0.51550, 0, 1, 0, 0.51550, 0, -0.85689, 6.4000, 0.0000, -6.0000)
+transform = Transform3D(-0.85689, 0, -0.51550, 0, 1, 0, 0.51550, 0, -0.85689, 19.2000, 0.0000, -8.4706)
 mesh = ExtResource("14")
 
 [node name="Clutter_4" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(-0.50485, 0, 0.86321, 0, 1, 0, -0.86321, 0, -0.50485, -6.0000, 0.0000, 12.0000)
+transform = Transform3D(-0.50485, 0, 0.86321, 0, 1, 0, -0.86321, 0, -0.50485, -18.0000, 0.0000, 16.9412)
 mesh = ExtResource("14")
 
 [node name="Clutter_5" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(0.92106, 0, -0.38942, 0, 1, 0, 0.38942, 0, 0.92106, 6.0000, 0.0000, 11.0000)
+transform = Transform3D(0.92106, 0, -0.38942, 0, 1, 0, 0.38942, 0, 0.92106, 18.0000, 0.0000, 15.5294)
 mesh = ExtResource("15")
 
 [node name="Clutter_6" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(0.62161, 0, 0.78333, 0, 1, 0, -0.78333, 0, 0.62161, -6.4000, 0.0000, -14.0000)
+transform = Transform3D(0.62161, 0, 0.78333, 0, 1, 0, -0.78333, 0, 0.62161, -19.2000, 0.0000, -19.7647)
 mesh = ExtResource("15")
 
 [node name="Clutter_7" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(-0.12884, 0, -0.99166, 0, 1, 0, 0.99166, 0, -0.12884, 5.6000, 0.0000, -11.5000)
+transform = Transform3D(-0.12884, 0, -0.99166, 0, 1, 0, 0.99166, 0, -0.12884, 16.8000, 0.0000, -16.2353)
 mesh = ExtResource("16")
 
 [node name="Clutter_8" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(-0.85689, 0, -0.51550, 0, 1, 0, 0.51550, 0, -0.85689, -5.2000, 0.0000, 6.0000)
+transform = Transform3D(-0.85689, 0, -0.51550, 0, 1, 0, 0.51550, 0, -0.85689, -15.6000, 0.0000, 8.4706)
 mesh = ExtResource("16")
 
 [node name="Clutter_9" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(-0.50485, 0, 0.86321, 0, 1, 0, -0.86321, 0, -0.50485, -6.8000, 0.0000, -2.0000)
+transform = Transform3D(-0.50485, 0, 0.86321, 0, 1, 0, -0.86321, 0, -0.50485, -20.4000, 0.0000, -2.8235)
 mesh = ExtResource("17")
 
 [node name="Clutter_10" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(0.92106, 0, -0.38942, 0, 1, 0, 0.38942, 0, 0.92106, 6.8000, 0.0000, 2.0000)
+transform = Transform3D(0.92106, 0, -0.38942, 0, 1, 0, 0.38942, 0, 0.92106, 20.4000, 0.0000, 2.8235)
 mesh = ExtResource("17")
 
 [node name="Tricycle_0" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(0.98877, 0, -0.14944, 0, 1, 0, 0.14944, 0, 0.98877, -6.6000, 0.0000, -6.0000)
+transform = Transform3D(0.98877, 0, -0.14944, 0, 1, 0, 0.14944, 0, 0.98877, -19.8000, 0.0000, -8.4706)
 mesh = ExtResource("18")
 
 [node name="Tricycle_1" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(-0.98007, 0, 0.19867, 0, 1, 0, -0.19867, 0, -0.98007, 6.6000, 0.0000, 9.5000)
+transform = Transform3D(-0.98007, 0, 0.19867, 0, 1, 0, -0.19867, 0, -0.98007, 19.8000, 0.0000, 13.4118)
 mesh = ExtResource("18")
 
 [node name="Tricycle_2" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(0.99500, 0, 0.09983, 0, 1, 0, -0.09983, 0, 0.99500, -6.5000, 0.0000, 15.0000)
+transform = Transform3D(0.99500, 0, 0.09983, 0, 1, 0, -0.09983, 0, 0.99500, -19.5000, 0.0000, 21.1765)
 mesh = ExtResource("18")
 
 [node name="BaseCircle" type="MeshInstance3D" parent="Markings"]
@@ -684,3 +836,131 @@ mesh = ExtResource("21")
 [node name="JeepneyLane" type="MeshInstance3D" parent="Markings"]
 transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 5.4000, 0.0700, 0.0000)
 mesh = ExtResource("22")
+
+[node name="BorderNorth_0" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, -21.0000, 0.0700, -24.0000)
+mesh = ExtResource("21")
+
+[node name="BorderSouth_0" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, -21.0000, 0.0700, 24.0000)
+mesh = ExtResource("21")
+
+[node name="BorderNorth_1" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, -15.0000, 0.0700, -24.0000)
+mesh = ExtResource("21")
+
+[node name="BorderSouth_1" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, -15.0000, 0.0700, 24.0000)
+mesh = ExtResource("21")
+
+[node name="BorderNorth_2" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, -9.0000, 0.0700, -24.0000)
+mesh = ExtResource("21")
+
+[node name="BorderSouth_2" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, -9.0000, 0.0700, 24.0000)
+mesh = ExtResource("21")
+
+[node name="BorderNorth_3" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, -3.0000, 0.0700, -24.0000)
+mesh = ExtResource("21")
+
+[node name="BorderSouth_3" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, -3.0000, 0.0700, 24.0000)
+mesh = ExtResource("21")
+
+[node name="BorderNorth_4" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 3.0000, 0.0700, -24.0000)
+mesh = ExtResource("21")
+
+[node name="BorderSouth_4" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 3.0000, 0.0700, 24.0000)
+mesh = ExtResource("21")
+
+[node name="BorderNorth_5" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 9.0000, 0.0700, -24.0000)
+mesh = ExtResource("21")
+
+[node name="BorderSouth_5" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 9.0000, 0.0700, 24.0000)
+mesh = ExtResource("21")
+
+[node name="BorderNorth_6" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 15.0000, 0.0700, -24.0000)
+mesh = ExtResource("21")
+
+[node name="BorderSouth_6" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 15.0000, 0.0700, 24.0000)
+mesh = ExtResource("21")
+
+[node name="BorderNorth_7" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 21.0000, 0.0700, -24.0000)
+mesh = ExtResource("21")
+
+[node name="BorderSouth_7" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 21.0000, 0.0700, 24.0000)
+mesh = ExtResource("21")
+
+[node name="BorderEast_0" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.0000, 0.0700, -21.0000)
+mesh = ExtResource("21")
+
+[node name="BorderWest_0" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -24.0000, 0.0700, -21.0000)
+mesh = ExtResource("21")
+
+[node name="BorderEast_1" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.0000, 0.0700, -15.0000)
+mesh = ExtResource("21")
+
+[node name="BorderWest_1" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -24.0000, 0.0700, -15.0000)
+mesh = ExtResource("21")
+
+[node name="BorderEast_2" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.0000, 0.0700, -9.0000)
+mesh = ExtResource("21")
+
+[node name="BorderWest_2" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -24.0000, 0.0700, -9.0000)
+mesh = ExtResource("21")
+
+[node name="BorderEast_3" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.0000, 0.0700, -3.0000)
+mesh = ExtResource("21")
+
+[node name="BorderWest_3" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -24.0000, 0.0700, -3.0000)
+mesh = ExtResource("21")
+
+[node name="BorderEast_4" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.0000, 0.0700, 3.0000)
+mesh = ExtResource("21")
+
+[node name="BorderWest_4" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -24.0000, 0.0700, 3.0000)
+mesh = ExtResource("21")
+
+[node name="BorderEast_5" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.0000, 0.0700, 9.0000)
+mesh = ExtResource("21")
+
+[node name="BorderWest_5" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -24.0000, 0.0700, 9.0000)
+mesh = ExtResource("21")
+
+[node name="BorderEast_6" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.0000, 0.0700, 15.0000)
+mesh = ExtResource("21")
+
+[node name="BorderWest_6" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -24.0000, 0.0700, 15.0000)
+mesh = ExtResource("21")
+
+[node name="BorderEast_7" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 24.0000, 0.0700, 21.0000)
+mesh = ExtResource("21")
+
+[node name="BorderWest_7" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -24.0000, 0.0700, 21.0000)
+mesh = ExtResource("21")

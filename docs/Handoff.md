@@ -699,6 +699,50 @@ soaks, and a `render_probe.gd` lobby mode that drives the real Ready button and 
 enabled state flips exactly once. **Not verified by play** — confinement radius, tag-to-win and
 the fall-cap number are all brand new and nobody has felt them yet.
 
+**First human playtest of 2.6/2.7, same day — confinement/tag-to-win provisionally fine (human
+wants a recheck after further changes), 5-fall cap and spawn distances confirmed good.** Also
+surfaced two real bugs and a request, all 🔧 Build, on `code/option-b-tuning`:
+
+**B-92 · `build_eskinita.py`'s throwing-line and team-side decals sat flush on the road instead
+of raised. [FIXED same session.]** `add(parent, name, mesh, x, y, z)` calls for
+`ThrowingLineNorth/South` and both `TeamSide` decals put `MARK_Y` (the offset that lifts a
+marking above the `road_tile_line` tile layer — see 2.5/2.2a's own note on why `BaseCircle` needs
+it) in the **x** argument slot instead of **y**. `BaseCircle` had it right, which is why the base
+circle rendered fine and the throwing/team-side lines didn't. Reported as "the pink lines are
+floating" / "a big line in the middle." Fixed; `Eskinita.tscn` regenerated.
+
+**B-93 · A unit airborne when a round resets could fall through the floor. [FIXED same
+session.]** `character_base.gd::reset_for_new_round()` repositions every unit (via
+`main.gd::_place_at_spawn()`) but never zeroed `velocity`, unlike the sibling teleport path
+`respawn()` (used by `KillPlane`) which already does. Spawn markers sit with zero vertical
+clearance against the floor by design (same as every role); a unit still carrying downward
+velocity from a jump or knockback at the instant a round ends can tunnel through that gap before
+the next `move_and_slide()` re-establishes floor contact. Reported as "when round resets the can
+randomly falls thru the void." Fixed by zeroing velocity in the same place `respawn()` already
+does.
+
+**Arena resized to a bigger square with a chalk boundary, at the user's explicit request —
+supersedes DESIGN-ART's queued "narrow the alley" item.** See the note in `docs/Agent_Prompts.md`'s
+DESIGN-ART block (item B) for the full detail: `W`/`Z_END` are now 24.0/24.0 (was 8.0/17.0),
+existing dressing was rescaled to match via a new `sc()` helper, floor/wall/kill-plane sizing is
+now computed from `W`/`Z_END` instead of hardcoded, and a chalk boundary line was added around the
+perimeter reusing `team_side_decal` (no new mesh added to `env_kit.gd`, which stays Design-owned).
+Spawn markers, the base circle and the throwing line were deliberately left untouched — the human
+already confirmed those distances feel right, independent of overall arena size. **Verified by
+render** (`tools/render_probe.gd`, real device) that the geometry is sound — floor/walls/border
+lines land where computed, no parse errors, no console warnings. **NOT verified by play** — nobody
+has actually moved around the bigger arena yet.
+
+**Still open, not root-caused this session:** a report of a carried tsinelas reading as
+permanently frozen/slanted, and a Can appearing stuck mid-animation at the same time, with no
+locomotion or spin animation visibly playing. Read `carriable.gd` (carry tilt, `_step_flying`) and
+`character_visual.gd` (`_spin_while_airborne`, `_play_locomotion`, the hitstop `Engine.time_scale`
+dip in `character_base.gd`) closely; nothing is obviously broken in isolation, and the leading
+hypothesis (the hitstop timer's restore callback isn't `is_instance_valid`-guarded, so a freed
+character could leave `time_scale` stuck low) is weakened by this being a Local Match session,
+where characters aren't normally freed mid-match. Needs a human to describe what immediately
+preceded the freeze next time it happens, or a longer live capture than one static frame.
+
 ### P1 — found by the design lane while measuring for checklist 1.2 (2026-07-28)
 
 Filed, deliberately not fixed — `Concurrency_Protocol.md` §10. Full reasoning and the screenshot

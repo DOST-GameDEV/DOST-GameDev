@@ -304,12 +304,22 @@ docs/Concurrency_Protocol.md §2/§3/§8.
 
 YOUR QUEUE, in priority order.
 
-B. NARROW THE ALLEY. Eskinita's playable width is x = +/-8 — a 16 m road, which is a boulevard,
-   not an eskinita. A real side street is 3-5 m. tools/maps/build_eskinita.py has W = 8.0 as one
-   constant. DO NOT change it blind: this is arena SCALE, and Art_Direction.md §4 warns
-   against changing arena scale in the same commit as arena art, because a movement-feel
-   regression then becomes unattributable. Its own commit, and only after a human has played the
-   current one.
+B. ⚠️ SUPERSEDED 2026-07-28 — READ BEFORE TOUCHING W OR Z_END. This item said narrow the alley
+   to 3-5m. The user played the narrow layout and asked for the OPPOSITE instead: a much bigger,
+   SQUARE arena with a visible chalk boundary, "just like normal tumbang preso". That shipped from
+   the 🔧 Build lane (not here) as its own commit on `code/option-b-tuning` — W and Z_END are now
+   both 24.0 (was W=8.0, Z_END=17.0), Layer1/Layer2/CLUTTER/Tricycle dressing was rescaled to match
+   via a new `sc()` helper, the floor/walls/kill-plane sizing is now computed from W/Z_END instead
+   of hardcoded, and a chalk boundary line was added around the new square (reusing
+   `team_side_decal`, tiled — no new mesh added to `env_kit.gd`). Spawn markers, the base circle
+   and the throwing line were deliberately left untouched.
+   **Do not narrow it back per the original brief below — that is now stale.** If you still think
+   the arena should be smaller after seeing the resized version, that is a fresh design call to
+   raise with the human, not a continuation of this item.
+   Original brief, kept for context only: "Eskinita's playable width is x = +/-8 — a 16 m road,
+   which is a boulevard, not an eskinita. A real side street is 3-5 m." The DO-NOT-change-arena-
+   -scale-blind warning below still applies to whatever you do next with W/Z_END — own commit,
+   separate from art passes, same as always.
 
 C. GIVE THE ENVIRONMENT THE SAME INK OUTLINE THE CHARACTERS HAVE. M-6 step 3 says env pieces get
    no outline. That predates the Persons getting one, and the result is two art styles in one
