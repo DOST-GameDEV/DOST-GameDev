@@ -18,11 +18,16 @@ const SPEED: float = 6.0
 ## actually covering distance.
 const FRICTION: float = 30.0
 const GRAVITY: float = 20.0
+## Playtest 0.4 — jump. Apex = JUMP_VELOCITY^2 / (2 * GRAVITY) = 0.841 units.
+## See the block in _physics_process for why that ceiling is a MAP constraint
+## rather than a feel one: the interior clutter height law caps what a jump may
+## clear at 1.0, or every crate in the alley becomes a platform.
+const JUMP_VELOCITY: float = 5.8
 const BUMP_STAGGER_TIME: float = 0.25
 ## GDD Section 3, Option B: ~2s window to self-right before a Tsinelas can seal a
 ## Downed Can. Kept here (not in RoundManager) because it's shared by both Option A
 ## and Option B, and by abilities like Quick Stand / Shatter Trap that reference
-## "Downed" directly — see docs/Tumbang_Preso_2v2_GDD.md Section 4.
+## "Downed" directly — see docs/Dev_Plan.md Section 4.
 const DOWNED_SELF_RIGHT_WINDOW: float = 2.0
 ## Bump is "no cooldown" per the GDD but still needs an active window so standing
 ## next to an opponent doesn't stagger them every physics tick — press-to-bump,
@@ -48,6 +53,23 @@ const GUARD_REGEN_RATE: float = 0.6
 const DASH_SPEED: float = 14.0
 const DASH_DURATION: float = 0.15
 const DASH_COOLDOWN: float = 2.5
+
+## 4.5: hitstop — the one piece of the Q-8 hit-feedback set (flash, particles,
+## camera shake) that never landed. A brief, near-total slowdown is what turns
+## a landed hit into something that reads as CONTACT rather than a colour
+## change. Global `Engine.time_scale`, not a per-node effect, and broadcast the
+## same way _rpc_play_hit_vfx already is — every peer sees the same beat at
+## the same trigger, consistent with flash/particles already being shared
+## rather than per-viewer. Deliberately small and short: this is a LAN
+## prototype with no reconciliation already (Handoff.md §1), and a ~60ms
+## global dip is well inside the slack a real-hardware LAN test tolerates —
+## nothing here is authoritative for anything RoundManager decides.
+const HITSTOP_DURATION: float = 0.06
+const HITSTOP_TIME_SCALE: float = 0.05
+## Static: the guard is about "is a dip already in flight", which is true or
+## false for the WHOLE game, not per character — two hits landing the same
+## frame must not fight over restoring time_scale out from under each other.
+static var _hitstop_active: bool = false
 
 ## NORMAL — moving/acting freely.
 ## STAGGERED — brief no-control flinch from a bump (BUMP_STAGGER_TIME), auto-recovers.
@@ -223,6 +245,25 @@ func _physics_process(delta: float) -> void:
 
 	if ability:
 		ability.tick(delta)
+
+	# Playtest 0.4: jump. EVERY unit jumps, Person and Prop alike — a hopping
+	# lata and a hopping tsinelas are funnier than a realistic one, and this
+	# project is a party game for friends first.
+	#
+	# Deliberately placed here, after the round-active gate above, so nobody can
+	# hop around during the intermission, and before the ability block so a jump
+	# and a throw on the same frame both resolve.
+	#
+	# ⚠️ JUMP_VELOCITY IS CONSTRAINED BY THE MAP, NOT BY FEEL. Every loose piece
+	# of interior clutter is <= 1.0 tall on purpose, because an FPP Person's eye
+	# is at 1.25 and has to see over all of it (Art_Direction.md's height
+	# law). 5.8 against GRAVITY 20.0 apexes at 5.8^2 / (2*20) = 0.841, which
+	# clears a kerb (0.15) and a tyre (0.22) but NOT a crate stack or an oil drum
+	# (0.90). Raise this above ~1.0 and every crate in the alley silently becomes
+	# a platform, which breaks the height law and puts players on top of the
+	# dressing where there is no boundary to stop them.
+	if state == State.NORMAL and is_on_floor() 			and Input.is_action_just_pressed(_action("jump")):
+		velocity.y = JUMP_VELOCITY
 
 	# Task 0/1: grab and charge-throw. Runs before the rest of the input block so
 	# a throw released this frame is not also read as an ability press below.
@@ -599,11 +640,28 @@ func _rpc_play_hit_vfx() -> void:
 ## the map gets bumped is noise, not feedback.
 func _flash_hit() -> void:
 	_visual.flash_hit()
+	_hitstop()
 	var is_mine := is_multiplayer_authority() if NetworkManager.is_networked() else player_id == 1
 	if is_mine:
 		var rig := get_node_or_null("CameraRig") as CameraRig
 		if rig:
 			rig.shake()
+
+## 4.5. Dips Engine.time_scale for HITSTOP_DURATION real seconds, restored by a
+## SceneTreeTimer that itself ignores the dip (the 4th `create_timer` arg) —
+## without that, the restore would take 20x longer than intended, since its
+## own countdown would run at HITSTOP_TIME_SCALE too. Guarded against a second
+## hit landing mid-dip stomping the first one's restore.
+func _hitstop() -> void:
+	if _hitstop_active:
+		return
+	_hitstop_active = true
+	Engine.time_scale = HITSTOP_TIME_SCALE
+	get_tree().create_timer(HITSTOP_DURATION, true, false, true).timeout.connect(_end_hitstop)
+
+func _end_hitstop() -> void:
+	Engine.time_scale = 1.0
+	_hitstop_active = false
 
 ## Maps a base action name (e.g. "move_left") to this character's own input
 ## action (e.g. "move_left_p1" / "move_left_p2"), per `player_id`.

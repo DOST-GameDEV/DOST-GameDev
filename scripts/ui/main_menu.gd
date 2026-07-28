@@ -22,6 +22,8 @@ const LOBBY_SCENE_PATH: String = "res://scenes/ui/Lobby.tscn"
 @onready var join_button: Button = %JoinButton
 @onready var join_address_edit: LineEdit = %JoinAddressEdit
 @onready var game_mode_option: OptionButton = %GameModeOption
+@onready var map_option: OptionButton = %MapOption
+@onready var map_tagline: Label = %MapTagline
 @onready var status_label: Label = %StatusLabel
 @onready var back_button: Button = %BackButton
 ## Q-9: moodboard card chrome (Dev_Plan.md §4.2/§4.3) — PANEL fill, INK
@@ -50,6 +52,25 @@ func _ready() -> void:
 		play_menu.visible = true
 		status_label.text = GameLaunch.pending_status_message
 		GameLaunch.pending_status_message = ""
+
+	# Checklist 3.5 — the map picker. Built from GameLaunch.MAPS rather than
+	# hardcoded here, so adding a map is one entry in the autoload plus a scene:
+	# the picker, the launch path and the fallback all read the same list and
+	# cannot disagree about what exists.
+	#
+	# The ITEM ID IS THE INDEX INTO MAPS, not an arbitrary enum, which is what
+	# lets _on_map_selected go straight back to the entry for the id.
+	map_option.clear()
+	for i in range(GameLaunch.MAPS.size()):
+		map_option.add_item(String(GameLaunch.MAPS[i]["name"]), i)
+	# Reflect what is ALREADY chosen rather than resetting to the first map.
+	# GameLaunch.selected_map deliberately survives returning to the menu (it is
+	# a preference, not a one-shot handoff like pending_action), so a player who
+	# picks Bayan Plaza and plays three matches should not have to re-pick it
+	# every time they come back here.
+	map_option.select(GameLaunch.map_index())
+	_refresh_map_tagline()
+	map_option.item_selected.connect(_on_map_selected)
 
 	game_mode_option.clear()
 	# B-33: Option A has been fully implemented since Session 7 (hitbox.gd's
@@ -101,6 +122,23 @@ func _on_settings_pressed() -> void:
 func _on_settings_back_pressed() -> void:
 	settings_panel.visible = false
 	title_screen.visible = true
+
+## The tagline is the whole reason this is an OptionButton plus a Label rather
+## than a bare dropdown: "ESKINITA" means nothing to a judge who has never played
+## it, and one line of what the map actually is costs nothing.
+func _refresh_map_tagline() -> void:
+	var i := map_option.get_selected_id()
+	if i < 0 or i >= GameLaunch.MAPS.size():
+		map_tagline.text = ""
+		return
+	map_tagline.text = String(GameLaunch.MAPS[i]["tagline"])
+
+func _on_map_selected(_index: int) -> void:
+	var i := map_option.get_selected_id()
+	if i < 0 or i >= GameLaunch.MAPS.size():
+		return
+	GameLaunch.selected_map = GameLaunch.MAPS[i]["id"]
+	_refresh_map_tagline()
 
 func _on_game_mode_selected(_index: int) -> void:
 	GameLaunch.game_mode = game_mode_option.get_selected_id() as GameLaunch.GameMode

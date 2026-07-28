@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://7pe57dm0r2bx"
+path="res://.godot/imported/env_post_electric.obj-3ea700ac19350a8488c505eb372c89af.mesh"
+
+[deps]
+
+files=["res://.godot/imported/env_post_electric.obj-3ea700ac19350a8488c505eb372c89af.mesh"]
+
+source_file="res://assets/models/env_post_electric.obj"
+dest_files=["res://.godot/imported/env_post_electric.obj-3ea700ac19350a8488c505eb372c89af.mesh", "res://.godot/imported/env_post_electric.obj-3ea700ac19350a8488c505eb372c89af.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false
