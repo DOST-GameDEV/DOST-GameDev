@@ -52,8 +52,25 @@ func _ready() -> void:
 		_out = args[1]
 	if _mode == "match":
 		_build_match()
+	elif _mode == "lobby":
+		_build_lobby()
 	else:
 		_build_viewmodel()
+
+## ---------------------------------------------------------------------------
+## lobby — drives Lobby.tscn's local branch (2026-07-28 ready-up gate) without
+## actually completing the scene transition, which would free this probe
+## script along with everything else (change_scene_to_file replaces the
+## WHOLE current scene, and render_probe.tscn is that scene here). Verifies
+## the button states and takes screenshots of both; the transition itself
+## (get_tree().change_scene_to_file) is simple enough to trust from reading it.
+## ---------------------------------------------------------------------------
+var _lobby: Control = null
+
+func _build_lobby() -> void:
+	GameLaunch.pending_action = "local"
+	_lobby = (load("res://scenes/ui/Lobby.tscn") as PackedScene).instantiate()
+	add_child(_lobby)
 
 func _shot(name: String) -> void:
 	var img := get_viewport().get_texture().get_image()
@@ -134,6 +151,23 @@ func _process(_delta: float) -> void:
 		# Let main.gd spawn, let RoundManager start, let the HUD populate.
 		if _frames == 120:
 			_shot("match_fpp")
+			get_tree().quit()
+		return
+
+	if _mode == "lobby":
+		if _frames == 10:
+			var start_button := _lobby.get_node("%StartButton") as Button
+			print("[render_probe] lobby: Start button disabled before ready = ",
+				start_button.disabled) # must be true
+			_shot("lobby_before_ready")
+		if _frames == 20:
+			var ready_button := _lobby.get_node("%ReadyButton") as Button
+			ready_button.pressed.emit() # simulates the actual click, not a hand-set flag
+		if _frames == 30:
+			var start_button := _lobby.get_node("%StartButton") as Button
+			print("[render_probe] lobby: Start button disabled after ready = ",
+				start_button.disabled) # must be false
+			_shot("lobby_after_ready")
 			get_tree().quit()
 		return
 

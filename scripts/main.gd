@@ -784,8 +784,9 @@ func _on_return_to_menu_pressed() -> void:
 	if NetworkManager.is_networked():
 		NetworkManager.disconnect_network()
 	# B-14: leaving a match should reset the same as starting a fresh one does
-	# (see main_menu.gd _go_to_match()) — otherwise a Rematch/new match after
-	# using this button would resume this match's score.
+	# (see main_menu.gd's _on_local_pressed()/_on_host_pressed()/_on_join_pressed(),
+	# all of which reset before handing off to the lobby) — otherwise a
+	# Rematch/new match after using this button would resume this match's score.
 	MatchManager.reset()
 	RoundManager.reset()
 	get_tree().change_scene_to_file("res://scenes/ui/MainMenu.tscn")

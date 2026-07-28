@@ -24,11 +24,22 @@ const GRAVITY: float = 20.0
 ## clear at 1.0, or every crate in the alley becomes a platform.
 const JUMP_VELOCITY: float = 5.8
 const BUMP_STAGGER_TIME: float = 0.25
-## GDD Section 3, Option B: ~2s window to self-right before a Tsinelas can seal a
-## Downed Can. Kept here (not in RoundManager) because it's shared by both Option A
-## and Option B, and by abilities like Quick Stand / Shatter Trap that reference
-## "Downed" directly — see docs/Dev_Plan.md Section 4.
+## GDD Section 3, Option B: ~2s window to self-right before a Downed Can auto-seals
+## (see the DOWNED case in _physics_process). Kept here (not in RoundManager)
+## because it's shared by both Option A and Option B, and by abilities like Quick
+## Stand / Shatter Trap that reference "Downed" directly — see docs/Dev_Plan.md
+## Section 4.
 const DOWNED_SELF_RIGHT_WINDOW: float = 2.0
+## User feedback, 2026-07-28: "team can shouldnt be allowed to go outside of a
+## box/line when game starts." Confines the Can and its Taya (defending
+## Person) to this radius around the map's base circle (world origin — every
+## map's base_circle_decal sits at its own local (0,0,0), and $Map carries no
+## transform, so world origin IS the base circle centre) for the whole round.
+## Sized to give the Taya room to body-block an incoming throw without being
+## able to chase the attacker back to the throwing line — see Art_Direction.md
+## §9 for why the line sits 6 units out. First guess, not a measurement; needs
+## a human to actually play it.
+const CONFINEMENT_RADIUS: float = 3.0
 ## Bump is "no cooldown" per the GDD but still needs an active window so standing
 ## next to an opponent doesn't stagger them every physics tick — press-to-bump,
 ## briefly live, matches "light melee" better than always-on contact damage.
@@ -251,6 +262,28 @@ func _apply_role_collision() -> void:
 	if nameplate != null:
 		nameplate.apply_sizing()
 
+## Team can = the Can Prop itself, and its team's defending Person (the Taya).
+## Re-derived every call rather than cached, same as is_can/team_is_can_side
+## themselves — both flip every round.
+func _is_confined_to_base() -> bool:
+	return is_can or (is_person and team_is_can_side)
+
+## Wraps move_and_slide() with the confinement clamp so every call site in this
+## file gets it automatically rather than relying on each one to remember —
+## see CONFINEMENT_RADIUS's own doc for what this is and why. A soft radial
+## clamp on the flat (X/Z) position, not a wall: crossing the edge just stops
+## making further progress outward, rather than colliding with anything, so it
+## costs no extra collision shape and cannot itself desync a hit.
+func _move_and_confine() -> void:
+	move_and_slide()
+	if not _is_confined_to_base():
+		return
+	var flat := Vector2(global_position.x, global_position.z)
+	if flat.length() > CONFINEMENT_RADIUS:
+		flat = flat.normalized() * CONFINEMENT_RADIUS
+		global_position.x = flat.x
+		global_position.z = flat.y
+
 func _ready() -> void:
 	spawn_position = global_position
 	for child in find_children("*", "Hurtbox", true, false):
@@ -307,7 +340,7 @@ func _physics_process(delta: float) -> void:
 	if not RoundManager.round_active:
 		velocity.x = move_toward(velocity.x, 0, FRICTION * delta)
 		velocity.z = move_toward(velocity.z, 0, FRICTION * delta)
-		move_and_slide()
+		_move_and_confine()
 		return
 
 	if ability:
@@ -361,7 +394,18 @@ func _physics_process(delta: float) -> void:
 			if _downed_self_rightable:
 				_downed_time_left -= delta
 				if _downed_time_left <= 0.0:
-					_downed_self_rightable = false # window expired, now sealable
+					_downed_self_rightable = false
+					# User feedback, 2026-07-28: "if team slipper make the can
+					# fall... they win" — no mention of an attacker having to
+					# walk up and physically seal it afterward. Auto-seal the
+					# instant the self-right window lapses unrecovered, rather
+					# than waiting for a follow-up hit (the old Option B
+					# behaviour, now retired). state is still DOWNED and
+					# _downed_self_rightable was just cleared above, so
+					# seal()'s own guard passes. RoundManager's existing
+					# "every tracked Can Sealed" win check (unchanged) fires
+					# from this exactly as it used to fire from a manual seal.
+					seal()
 			if Input.is_action_just_pressed(_action("bump")) and _downed_self_rightable:
 				self_right()
 			# B-06: special_ability is normally only read further down, past the
@@ -379,7 +423,7 @@ func _physics_process(delta: float) -> void:
 	if state in [State.STAGGERED, State.DOWNED, State.SEALED]:
 		velocity.x = move_toward(velocity.x, 0, FRICTION * delta)
 		velocity.z = move_toward(velocity.z, 0, FRICTION * delta)
-		move_and_slide()
+		_move_and_confine()
 		return
 
 	if _dash_active_time_left > 0.0:
@@ -387,7 +431,7 @@ func _physics_process(delta: float) -> void:
 		# committed action, not just a velocity nudge — without this guard,
 		# holding a movement key during the dash would overwrite the burst
 		# with normal walk speed on the very same physics frame it fired.
-		move_and_slide()
+		_move_and_confine()
 		return
 
 	var input_dir := Input.get_vector(_action("move_left"), _action("move_right"), _action("move_up"), _action("move_down"))
@@ -460,7 +504,7 @@ func _physics_process(delta: float) -> void:
 		if NetworkManager.is_networked() and not NetworkManager.is_host():
 			_rpc_notify_ability_activate.rpc_id(1)
 
-	move_and_slide()
+	_move_and_confine()
 
 ## Called on this character when it's hit by an opponent's Hitbox (see hitbox.gd).
 func apply_stagger(duration: float = BUMP_STAGGER_TIME) -> void:
@@ -556,8 +600,13 @@ func clear_dent() -> void:
 	dents -= 1
 	dents_changed.emit(dents)
 
-## Called by an opponent's Hitbox once this character is Downed and past its
-## self-right window (see hitbox.gd forces_downed / seal handling).
+## Transitions Downed -> Sealed once the self-right window has passed.
+## Previously only ever called by an opponent's follow-up Hitbox landing on an
+## already-past-the-window Can (see hitbox.gd); now also called by this file's
+## own _physics_process the instant the window itself expires (2026-07-28 —
+## "if team slipper make the can fall, they win," no manual follow-up hit
+## required). Both call sites hit the same guard below, so neither can
+## double-seal or race the other.
 func seal() -> bool:
 	if state != State.DOWNED or _downed_self_rightable:
 		return false # still in the self-right window, can't be sealed yet

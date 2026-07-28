@@ -49,6 +49,16 @@ var _sync_accum: float = 0.0
 ## reassignment, not a placeholder for it.
 var _tracked_cans: Array[CharacterBase] = []
 
+## User feedback, 2026-07-28: "if can falls 5 times they lose" — a backup win
+## path for team slipper, independent of whether the Taya recovered each
+## individual fall. Counts every Downed transition on a tracked Can this
+## round, saved or not; reaching the limit ends the round immediately even if
+## THIS particular fall would otherwise have been recoverable. Round-scoped,
+## reset alongside time_left in both start_round() and reset(). First guess,
+## not a measurement — needs a human to actually play it.
+const FALL_LIMIT: int = 5
+var _fall_count: int = 0
+
 ## 3.4: read-only so the off-screen indicator (or anything else that needs
 ## "which unit is currently the Can") reads the one place that already tracks
 ## it correctly across a role swap, rather than re-scanning the scene tree for
@@ -74,9 +84,18 @@ func clear_tracked_cans() -> void:
 				can.dents_changed.disconnect(_on_tracked_can_dents_changed)
 	_tracked_cans.clear()
 
-func _on_tracked_can_state_changed(_new_state: int) -> void:
+func _on_tracked_can_state_changed(new_state: int) -> void:
 	if not round_active or _tracked_cans.is_empty():
 		return
+	# User feedback: "if can falls 5 times they lose" — counts the transition
+	# INTO Downed, not Sealed, so a Taya who saves every single fall still
+	# loses the round on the 5th one. Checked before the Sealed loop below so
+	# it can win the round even on a fall that would otherwise be recoverable.
+	if new_state == CharacterBase.State.DOWNED:
+		_fall_count += 1
+		if _fall_count >= FALL_LIMIT:
+			report_round_win(false) # Slippers win regardless of this fall's own outcome
+			return
 	for can in _tracked_cans:
 		if not is_instance_valid(can) or can.state != CharacterBase.State.SEALED:
 			return
@@ -151,6 +170,7 @@ func start_round() -> void:
 	round_active = true
 	_sync_accum = 0.0
 	_ring_out_count = 0
+	_fall_count = 0
 	for can in _tracked_cans:
 		if is_instance_valid(can):
 			can.reset_for_new_round()
@@ -197,7 +217,8 @@ func report_round_win(can_team_won: bool) -> void:
 
 ## B-14: nothing reset this autoload between matches, so a second match
 ## resumed the first one's timer/tracked-Can state. Call before a fresh match
-## starts (see main_menu.gd _go_to_match()). Counterpart to
+## starts (see main_menu.gd's _on_local_pressed()/_on_host_pressed()/
+## _on_join_pressed()). Counterpart to
 ## MatchManager.reset() — see its doc for when this is called. round_active
 ## stays false until the next begin_next_round() actually starts a round,
 ## which also freezes input (character_base.gd) in the meantime —
@@ -208,6 +229,7 @@ func reset() -> void:
 	round_active = false
 	_sync_accum = 0.0
 	_ring_out_count = 0
+	_fall_count = 0
 
 ## Client-side mirror of the host's timer/round-active state. Unreliable is
 ## fine here — it's called every physics frame while a round is live and one
