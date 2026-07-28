@@ -379,6 +379,13 @@ func _on_player_connected(peer_id: int) -> void:
 func _on_character_respawned(character: CharacterBase) -> void:
 	if not NetworkManager.is_networked() or character.is_multiplayer_authority():
 		hud.show_toast("OUT OF BOUNDS")
+	# Dev_Plan.md §3's second Option A win path for the Can side — see
+	# RoundManager.register_ring_out()'s own doc for why this was missing and
+	# what it filters down to. Called unconditionally (not gated on this being
+	# "our" character, unlike the toast above): it's a round-win decision, not
+	# a per-viewer cosmetic, and register_ring_out() already gates itself to
+	# the host.
+	RoundManager.register_ring_out(character)
 
 ## Focus loss always releases the mouse outright: alt-tabbing away with the
 ## cursor still captured is a bad experience regardless of what's on screen.
