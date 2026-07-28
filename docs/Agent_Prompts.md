@@ -88,7 +88,7 @@ SETUP
   git fetch origin && git switch integration && git pull --ff-only
   git config user.name "M4tyu633" && git config user.email "matthewtlabrador@gmail.com"
   git switch -c code/networking
-Godot is NOT on PATH: C:\Users\matth\Downloads\Godot_v4.7.1-stable_win64_console.exe
+Godot is NOT on PATH: <path to your Godot 4.7.x executable — set per machine, do not paste a teammate's path>
 Import once first: <godot> --headless --path . --import
 
 READ FIRST: docs/Checklist.md, docs/Concurrency_Protocol.md (§2 ownership, §3 the lock,
@@ -150,7 +150,7 @@ SETUP
   git fetch origin && git switch integration && git pull --ff-only
   git config user.name "M4tyu633" && git config user.email "matthewtlabrador@gmail.com"
   git switch -c code/proportions
-Godot: C:\Users\matth\Downloads\Godot_v4.7.1-stable_win64_console.exe (NOT on PATH)
+Godot: <path to your Godot 4.7.x executable> (NOT on PATH — set per machine, do not paste a teammate's path)
 
 READ FIRST: docs/Art_Direction.md §1 — the whole proportion audit with measured numbers.
 Then docs/Concurrency_Protocol.md §2, §3, §8.
@@ -207,7 +207,7 @@ SETUP
   git fetch origin && git switch integration && git pull --ff-only
   git config user.name "M4tyu633" && git config user.email "matthewtlabrador@gmail.com"
   git switch -c code/ux-gaps
-Godot: C:\Users\matth\Downloads\Godot_v4.7.1-stable_win64_console.exe (NOT on PATH)
+Godot: <path to your Godot 4.7.x executable> (NOT on PATH — set per machine, do not paste a teammate's path)
 
 READ FIRST: docs/Checklist.md, docs/Concurrency_Protocol.md §2/§3/§8, docs/Handoff.md §3.
 
@@ -256,7 +256,7 @@ SETUP
   git fetch origin && git switch integration && git pull --ff-only
   git config user.name "M4tyu633" && git config user.email "matthewtlabrador@gmail.com"
   git switch -c code/audio
-Godot: C:\Users\matth\Downloads\Godot_v4.7.1-stable_win64_console.exe (NOT on PATH)
+Godot: <path to your Godot 4.7.x executable> (NOT on PATH — set per machine, do not paste a teammate's path)
 
 YOUR JOB — checklist 4.1, the entire audio workstream. NOTHING EXISTS: there is not one
 AudioStreamPlayer anywhere in the repo. A can taking a direct hit in silence reads as a bug to
@@ -296,7 +296,7 @@ SETUP
   git fetch origin && git switch integration && git pull --ff-only
   git config user.name "M4tyu633" && git config user.email "matthewtlabrador@gmail.com"
   git switch -c art/environment-stage-2
-Godot: C:\Users\matth\Downloads\Godot_v4.7.1-stable_win64_console.exe (NOT on PATH)
+Godot: <path to your Godot 4.7.x executable> (NOT on PATH — set per machine, do not paste a teammate's path)
 
 READ FIRST: docs/Art_Direction.md — especially §0 (the "friendslop" design pillar) and
 §3 (items B, C, D, G, which are your queue). Then docs/Art_Direction.md and
@@ -362,7 +362,7 @@ SETUP
   git fetch origin && git switch integration && git pull --ff-only
   git config user.name "M4tyu633" && git config user.email "matthewtlabrador@gmail.com"
   git switch -c qa/verification
-Godot: C:\Users\matth\Downloads\Godot_v4.7.1-stable_win64_console.exe (NOT on PATH)
+Godot: <path to your Godot 4.7.x executable> (NOT on PATH — set per machine, do not paste a teammate's path)
 
 YOUR JOB
 1. Run the six-command smoke gate in docs/Concurrency_Protocol.md §8 against integration after
