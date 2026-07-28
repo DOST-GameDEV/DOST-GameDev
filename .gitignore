@@ -22,3 +22,6 @@ Thumbs.db
 
 # Git worktrees for concurrent agent lanes (docs/Concurrency_Protocol.md)
 .worktrees/
+
+# Python bytecode from the dev-time map builders
+__pycache__/

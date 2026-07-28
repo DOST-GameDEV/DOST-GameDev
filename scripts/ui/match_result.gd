@@ -64,7 +64,7 @@ func _on_match_won(winning_team: int) -> void:
 	# networked match can't be paused by one player deciding to look at the
 	# result screen — the host's authoritative state has to keep running for
 	# whichever peer hasn't seen match_won yet, and there is no client-only
-	# freeze that wouldn't just desync harmlessly-idle characters. Local Match
+	# freeze that wouldn't just desync harmlessly-idle characters. Single Player
 	# only. Relies on Q-3's PROCESS_MODE_ALWAYS on this node (set in
 	# Main.tscn) to stay clickable while the tree is paused.
 	if not NetworkManager.is_networked():

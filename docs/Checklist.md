@@ -91,6 +91,14 @@ polish; they are the instruments.
       and read the live bar/label values back — all three signals wired
       correctly. Screenshots at 1280x720 and 1920x1080, idle and mid-fill.
       Plain styling only; the design lane restyles on top once merged.
+      **2026-07-28 addendum, 🔧 build-ux:** the charge-glow HOOK now exists —
+      `you_card.gd::_on_charge_changed` drives a `charge_ratio` (0..1) shader
+      uniform on `charge_bar.material` whenever the design lane assigns a
+      `ShaderMaterial` there; a no-op until one is assigned. Verified by a
+      scripted run (`ShaderMaterial` attached, charge driven to 0.6 then to
+      "stopped", uniform read back both times) — not by render, since there is
+      no shader to render yet. The moodboard treatment itself is still the
+      design lane's, per the comment this replaces nothing of.
 - [x] **0.2 · Give each side a real default Prop ability (B-76).** 🤖 Sonnet, medium
       `main.gd`'s `PROP_ABILITY` is `quick_stand.tres` for **every** Prop, and
       `Main.tscn` hardcodes the same. Quick Stand has no `get_throw_profile()`,
@@ -131,6 +139,14 @@ polish; they are the instruments.
       High effort rather than medium: this will touch `carriable.gd`,
       `carrier.gd` and the throw profiles at the same time, and the
       host-authoritative transitions in there are easy to break subtly.
+      **Early progress, 2026-07-28, from informal playtesting ahead of a full 0.4 pass:** B-97
+      (carried Tsinelas TPP camera could mount above the carrier's head and gave its player no
+      look control at all — both fixed), B-98 (carried unit's nameplate ring stayed visible, now
+      hidden while carried), B-99 (a thrown slipper's carry-tilt rotation was never reset on
+      release, so it could land tilted and tunnel through the floor — fixed), and
+      `BOUNCE_DAMPING`/`MAX_BOUNCES` tuned down after "ragdolls while flying" feedback. See
+      `Handoff.md`'s session log. **Still blocked on an actual full 0.4 pass** — this is real bugs
+      found and fixed along the way, not the systematic retune 0.5 itself calls for.
 - [x] **0.6 · Carried-scale the tsinelas (implements the 1.2 decision).** 🎨 Design (reassigned)
       **Design lane specified this; it is build-lane code and design must not write it.** Do it
       before 0.4 — in first person the carried slipper currently occupies about a quarter of the
@@ -304,13 +320,12 @@ HUD contrast or hazard placement against a grey box.
       match scene runs silent — no errors, no kill-plane respawns. **What is still missing is a
       human:** nobody has played it, so this stays `[~]`. That is 0.4.
       Includes, in one coherent pass rather than scattered:
-  - [x] `scenes/maps/Eskinita.tscn` playable area — **SUPERSEDED 2026-07-28.** This used to say
-        "kept at roughly the current 40×40." User played the narrow layout and asked for the
-        opposite: a bigger, SQUARE arena with a chalk boundary. 🔧 Build shipped it as its own
-        commit on `code/option-b-tuning`, per the do-not-change-arena-scale-with-arena-art rule
-        this line used to state — see `Handoff.md`'s B-92/B-93 session entry and
-        `Agent_Prompts.md`'s DESIGN-ART item B for the full detail. Verified by render, not yet by
-        play.
+  - [ ] `scenes/maps/Eskinita.tscn`, playable area kept at roughly the current
+        40×40 — **do not change arena scale in the same commit as arena art**,
+        or a movement-feel regression is unattributable.
+        ⚠️ A same-day resize to a bigger square (W/Z_END 24.0) was tried and fully reverted
+        2026-07-28 — the actual complaint was the confinement radius, not map footprint. See
+        2.7's entry below and `Handoff.md`'s session log.
   - [ ] **A `SpawnPoints` node with four `Marker3D`s**, read by `main.gd` in
         preference to its hardcoded `SPAWN_POINTS`. This is where **B-54** (spawn
         points ignore team membership) finally gets answered — two team pairs,
@@ -491,14 +506,127 @@ HUD contrast or hazard placement against a grey box.
       hand-set flag) and confirms Start goes disabled → enabled exactly once, with screenshots of
       both states.
       **First human playtest, 2026-07-28:** 5-fall cap and the new spawn distances (2.6) confirmed
-      good, no change needed. Confinement radius and tag-to-win are fine for now, but the human
-      explicitly wants both **re-checked again** once more changes land — treat as still open, not
-      closed, and re-tune both together if either moves (they're coupled, see `Dev_Plan.md`'s
-      Option B section). Auto-seal timing itself: still not separately confirmed by feel.
+      good, no change needed. Tag-to-win is fine for now, but the human wants it **re-checked
+      again** once more changes land — treat as still open, not closed.
+      **Second playtest round, same day:** confinement radius reported too small — "the box that
+      defend can move in is so small, he can barely move, theres no room for outplays."
+      `CharacterBase.CONFINEMENT_RADIUS` raised 3.0 → 5.0 (still a full unit short of the 6.0
+      throwing line, so the Taya still can't reach the attacker's line). `build_eskinita.py` now
+      draws the actual confinement boundary on the ground — first as a chalk-style ring
+      (`CONFINEMENT_RING_RADIUS`), then **replaced same day** with a chalk-style SQUARE
+      (`CONFINEMENT_BOX_RADIUS`, tiling `team_side_decal` — see `Handoff.md`'s session log) per
+      user feedback ("the circle you made was ugly ... can we just use a square" — a real tumbang
+      preso boundary is a straight-edged box). Before this there was nothing marking the edge of
+      the box at all — only the tiny base circle and the distant throwing line. Also fixed while
+      touching this: several markings (`TeamSide*`, `JeepneyLane`, and the new square) were sitting
+      with their underside `MARK_Y` (0.07) above the floor regardless of whether they actually
+      overlapped a raised tile — reported as "all assets like lines are floating off the floor."
+      Only `BaseCircle`/`ThrowingLine*` (which do overlap `road_tile_line` tiles) still use
+      `MARK_Y`; everything else uses a new, much smaller `MARK_Y_LOW`. A standing warning about
+      this class of bug is now in `Art_Direction.md` Part 4 and the DESIGN-ART paste-ready prompt.
+      **`build_bayan_plaza.py` does not have the confinement square yet.**
+      Re-tune both together if either moves again — they're coupled, see `Dev_Plan.md`'s Option B
+      section. Auto-seal timing itself: still not separately confirmed by feel. **Verified by
+      render only, not yet by play.**
+- [~] **2.8 · Pre-round free-roam + in-world ready-up, Single Player only.** 🔧 Build — **verified by
+      render, not yet by play**
+      User feedback, 2026-07-28: "i wanted the ready button to be in the game itself not in home
+      screen, i want ppl to be able to move around with no restrictions whiile waiting for ready
+      THEN everyone gets teleported in the right restricted area." Local now skips `Lobby.tscn`
+      entirely (`main_menu.gd::_on_local_pressed()`) and goes straight into `Main.tscn`.
+      Characters spawn as before, but `MatchManager.begin_next_round()` is deliberately **not**
+      called yet — `CharacterBase._is_confined_to_base()` and `Carriable.movement_speed_scale()`
+      are both now gated on `RoundManager.round_active`, so with the round not yet active nobody
+      is confined and the Tsinelas Prop isn't stuck at crawl speed either. A new HUD prompt
+      (`%ReadyPrompt`) reads "Walk around freely. Press [R] when you're ready to start the round."
+      Pressing the new `ready_up` input action calls `begin_next_round()`, whose existing
+      `round_started` → `_on_match_round_started()` chain already repositions everyone to their
+      role spawn and starts the round — no new teleport code needed, that infrastructure already
+      existed.
+      **Explicitly NOT done:** Host/Join are unchanged and still gate behind `Lobby.tscn`'s
+      ready-up screen. Extending this same free-roam pattern to networked play needs per-peer
+      ready state replicated live inside the match scene rather than in the lobby, which is a
+      separate, real pass — see `Handoff.md` §5.
+      **Second pass, same day, first real playtest of this item:** B-94 (free-roam was completely
+      frozen — a separate, pre-existing input gate also fired whenever `round_active` was false)
+      and B-95 (Can fell through the floor when the match's LAST round ended, since no reset ever
+      runs after `match_won`) both found and fixed — see `Handoff.md`. Also: B-96 (spawn layout was
+      never actually role-based for Single Player, the free-roam window just exposed it — fixed), the
+      Taya's spawn moved behind the Can instead of beside it, a 3-2-1-GO countdown added between
+      the ready press and the round actually starting, and the confinement marker rebuilt as a
+      square (see 2.7). **Verified by render, including a corrected spawn-layout screenshot with
+      the Can now inside the base circle. Still not verified by play.**
+      **Third pass, same day — the real root cause of "cann fell off map again":** B-100 (role
+      swaps routinely teleport two characters through each other's old spot, one at a time, and
+      the physics engine depenetrates the resulting overlap with a real impulse — fixed by parking
+      everyone at a separated holding spot before any of them move to a real one) and B-101 (a
+      unit that was CARRIED when the round ended came out of reset with its own collision still
+      disabled, free to sink through the floor — fixed). Found via a new permanent diagnostic,
+      `tools/render_probe.gd`'s `round2` mode, which drives two real round transitions and prints
+      every unit's role/position at each step — see `Handoff.md` for the exact numbers before and
+      after each fix. **Confirmed by the probe: round 2's actual gameplay-start positions are now
+      exactly correct. Still open: the probe shows transient bad positions for two units *during*
+      the frozen intermission window itself, before settling correctly — not root-caused further
+      this pass.**
 
----
+- [~] **2.9 · The two hero props, rebuilt to their own asset moodboards.** 🎨 Design —
+      **verified by render at 0.85, at 1.1 and at match distance; NOT verified by play**
+      User request, 2026-07-28, with two asset moodboards attached: a worn brown
+      flip-flop with a tan webbing Y-strap, and a low-poly **Sarsi** can. Recorded in
+      `Art_Direction.md` §1b, which is now the written spec for both props — the images
+      themselves are not in the repo, so attach them to any task that touches either.
+  - [x] **A `PROP_*` palette band.** `PROP_FOAM`, `PROP_FOAM_DARK`, `PROP_WEBBING`,
+        `PROP_SARSI_RED` in `ui_theme.gd`. The props were wearing UI tokens because B-81 had no
+        others to hand; the human confirmed that magenta was a placeholder, not a decision.
+        Neither role hue appears on either prop, so **B-81's rule survives intact** — see the
+        superseded-colours note on it in `Handoff.md`.
+  - [x] **Tsinelas.** Three-layer foam sole (inset outsole → full-width foam → inset footbed) so
+        the widest point sits at mid-height and the edge reads as a moulded bevel; total thickness
+        0.10 → 0.120. Strap section widened and flattened to real webbing proportions. Strap
+        anchors were **overhanging the footbed edge by 0.019 in mid-air** — the old comment checked
+        the band's centreline against the sole outline instead of its outer edge against the
+        *inset* footbed. Fixed by winning the margin back from the band width rather than by
+        shortening the strap span, which a first attempt tried and which rendered as one band
+        across the toe instead of a Y.
+  - [x] **Lata — Sarsi livery.** Aluminium lid, rolled rim and base crimp; banded blue body
+        standing in for the moodboard's gradient; wavy white band; red sail and ball. Lid
+        flattened from its slight dome and given a **pull tab** — the same shape the game's own
+        logo uses for the O of PRESO (3.2).
+  - [x] **`_lata_wall()` — the printed wall is no longer a revolve.** `add_revolve` paints one
+        material per full ring, so it cannot express a sail. The wall is emitted strip by strip as
+        stacked layers sharing boundary functions. ⚠️ **Deliberately not decals on a plain wall:**
+        this wall gets dented, and an offset decal shell would shear off the crease and hang in
+        mid-air — `Art_Direction.md` Part 4's floating-geometry rule arriving through a side door,
+        on the one prop whose job is to get hit. The sail *is* the wall, in a different colour, and
+        runs through the same `deform`. Dent depth re-measured after the rebuild: **0.027 world
+        units against 0.029 before.**
+  - [ ] **No printed type on the can.** The `sarsi` wordmark, `330 mL` and the barcode are not
+        buildable: `obj_writer.gd` emits no UVs and the `.mtl` carries one flat `Kd`. Needs a UV +
+        texture pipeline that does not exist — filed in `Handoff.md` §5 with the reason it may not
+        be worth building (the wordmark lands ≈13 px tall at the distance the can is actually
+        read). **Everything else on both boards is in.**
 
-## Phase 3 — Finish the presentation layer
+- [x] **2.10 · Floating markings made a build failure instead of a playtest report (B-103).**
+      🎨 Design — **verified by render + both builders' own gate; the gate itself is the
+      regression test**
+      Fourth report of the same bug: *"i keep flaggging this still broken, thoroughly think about
+      how to make sure this problem doesnt show up again."* So this item is deliberately not
+      another Y tweak.
+  - [x] **Root cause, measured.** `throwing_line_decal` is 8m wide; the `road_tile_line` strip it
+        crosses is 2m wide and 6.2cm tall. Lifted to 0.070 to clear the strip, it hung **7cm in
+        the air across ~75% of its length**. The base circle floated 8mm. **No single Y can be
+        flush for a marking that spans a step** — which is why retuning the constant three times
+        (0.07 → 0.015 → 0.001) never worked and never could.
+  - [x] **`tools/maps/floorcheck.py` — the gate.** Samples every marking's real footprint against
+        the real ground height beneath it and **aborts the build before the `.tscn` is written**,
+        naming the node and the gap in millimetres. Reports "spans n surface heights" as a
+        separate error from "floats", because that one needs the shape split, not the number
+        changed. Reads mesh bounds from the `.obj` rather than trusting the "decals start at
+        local y=0" claim written in two other places.
+  - [x] **`add_line()` splits line markings at every step automatically.** Eleven faulty markings
+        became 26 verified-flush pieces. `MARK_Y`/`MARK_Y_LOW` deleted from both builders — a
+        human deciding what is underneath a marking was the root cause, not the value chosen.
+  - [x] **Both maps.** Eskinita (26 markings) and Bayan Plaza (5). Determinism re-checked.
 
 - [ ] **3.1 · Land the display typeface (F-2).** 🤖 Sonnet, medium ⛔ 1.1
       Mechanical once the decision exists: `.gitattributes` LFS rules committed
@@ -574,17 +702,92 @@ touch map scenes.
 - [x] **4.1c · Tab could not reach the Can.** 🎨 Design. Two independent causes.
       Godot binds Tab to `ui_focus_next` and the GUI layer eats it before
       `_unhandled_key_input`, so the switcher never saw it — moved to `_input`.
-      Separately, the switcher no-ops in a **networked** match by design; the
-      0.4 session was hosted, not Local Match, which is also why pause did not
-      freeze. **Solo-test through Local Match.**
-- [ ] **4.2 · Movement interpolation for remote characters.** 🤖 Sonnet, high
-      Remote units visibly snap. High effort because it sits directly on the
-      replication model. **Do this before 6.1** — testing over real wifi without
-      it measures the wrong thing.
-- [ ] **4.3 · Rejoin identity (B-65).** 🤖 Sonnet, high
-      A rejoining player can come back as a different team and role. Needs a
-      stable player token instead of a peer id. A LAN demo where someone's wifi
-      blips is exactly the failure mode judges will see.
+      Separately, the switcher no-ops in a **real (2+ peer) networked** match by
+      design; the 0.4 session was hosted, not Single Player, which is also why
+      pause did not freeze. **Solo-test a real 2v2 through Single Player.** ⚠️
+      **Narrowed by 4.6, 2026-07-28** — a **solo** networked session (hosting,
+      nobody else has joined) now gets a real pause and a correct (not
+      "(missing)") debug readout; see 4.6. The "real 2v2" case above is
+      unchanged. ⚠️ **Narrowed by 5.5, 2026-07-28** — Single Player now drives its
+      other three units with real AI (`Checklist.md` 5.5), and the debug
+      switcher's interaction with that is its own item; see 5.5 for the current
+      behaviour.
+- [x] **4.2 · Movement interpolation for remote characters.** 🤖 Sonnet, high —
+      **verified by two real `--host`/`--join=127.0.0.1` instances, 600+ frames, no
+      output**
+      Remote units used to visibly snap — the replicated `position`/`rotation`
+      (`CharacterBase.tscn`'s `MultiplayerSynchronizer`) were written straight onto
+      the body every time an update landed. Per `Agent_Prompts.md`'s Netcode
+      brief: the body itself must keep snapping (collision, the Hitbox offset and
+      every directional ability read it directly), so this smooths the **`Visual`
+      node only** — `character_visual.gd` now lags a world-space copy of the
+      body's position/yaw behind at `REMOTE_SMOOTH_RATE` and renders the mesh from
+      that, converting the gap into the body's local frame every frame.
+      Deliberately skipped (zero overhead, not just zero visible effect) for: the
+      locally-driven character (client-authoritative, already smooth), anything
+      not networked (Single Player), and a CARRIED or FLYING slipper
+      (`carriable.gd` already recomputes both identically on every peer at zero
+      bandwidth — smoothing an already-agreed transform would make it visibly lag
+      the hand or the arc). **Teleports snap, not glide**, per the brief's own
+      requirement: `character_base.gd::respawn()` (KillPlane) and
+      `main.gd::_place_at_spawn()` (every round reset, and the initial local-test
+      placement) both call the new `CharacterBase.snap_visual_interpolation()`
+      immediately after repositioning.
+      **Verified by running**, not by a human watching it glide: two real Godot
+      instances (`--host` / `--join=127.0.0.1`, not `--headless` — a rendering
+      device is required for `_process()` to run at all), 600+ frames each,
+      produced no output. Confirmed by reading the code, not felt: whether
+      `REMOTE_SMOOTH_RATE` (18.0) is the right *feel* is unverified and cheap to
+      retune later, same tuning-window caveat as the rest of this phase.
+      **⚠️ Two pre-existing bugs found and fixed while building the two-instance
+      test rig this item needed** (see `Handoff.md`'s session log and its own new
+      `B-` entries): a stale, non-freed-but-tree-detached character reference
+      could crash `you_card.gd::get_local_character()`'s caller
+      (`offscreen_indicators.update()`) the instant a peer joined or disconnected,
+      and `offscreen_indicators.gd::_update_one()` itself crashed reading
+      `global_position` off a target mid-`queue_free()`. Neither is new
+      networking work; both were unreachable without an actual live multi-peer
+      session, which is exactly what this item required building.
+- [x] **4.3 · Rejoin identity (B-65).** 🤖 Sonnet, high — **verified live: two
+      sequential `--join=127.0.0.1` processes presenting the same identity token,
+      host reassigns the same team/role slot to the second one under a brand-new
+      peer id**
+      A rejoining player used to come back as a different team and role, because
+      identity was the ENet peer id and a reconnect assigns a new one.
+      `NetworkManager.local_player_token` is now a random 128-bit token minted
+      once per running instance (see its own doc for why NOT reloaded from the
+      `user://` copy it also writes — two local test instances sharing one
+      `user://`, exactly how this project's own two-instance test works, would
+      otherwise read back the identical token and collide on the same join
+      index) and presented to the host via `_rpc_identify` on every connect.
+      `main.gd`'s `_peer_join_index` (peer_id -> slot) is now `_token_join_index`
+      (token -> slot): a reconnect presents the same token under a new peer id
+      and maps straight back to its original team/role.
+      **The harder half of this item, not in the original brief's own framing:**
+      a rejoining peer had nowhere to go. Host/Join both gate behind
+      `Lobby.tscn`'s ready-up screen, and the host has already left it for
+      `Main.tscn` by the time anyone could realistically disconnect and rejoin —
+      the rejoining peer's own `Lobby.tscn` would connect fine and then wait
+      forever for a Start press the host can never send again.
+      `NetworkManager.match_in_progress` (host-only, set true by
+      `main.gd::_start_hosting()`) plus a new `_rpc_route_to_running_match` RPC
+      (sent to a peer that identifies after the match has already started) now
+      redirects that peer straight into `Main.tscn`; a new
+      `_rpc_client_ready_for_spawn` ping (sent once that peer's own
+      `Main.tscn`/`MultiplayerSpawner` actually exists) tells the host it is safe
+      to replicate a spawn, closing the race where the host could otherwise spawn
+      a peer before its own receiving scene was ready.
+      **Verified live**, not just reasoned about: host + one join process
+      (distinct tokens, sequential slots 0/1, no errors, 600+ frames each);
+      separately, two *sequential* join processes forced to present the identical
+      token (simulating the same human reconnecting under a new peer id) — the
+      host reused the exact same join index (`1`) for both, under two different
+      peer ids, with no errors either side. **Not verified:** a literal
+      mid-process ENet drop-and-manual-rejoin from the SAME running client (the
+      test above simulates the identity/redirect mechanism correctly but kills
+      and restarts the client process rather than reconnecting in place) — that
+      is the real-hardware wifi-blip case 6.1 will exercise. `Handoff.md`'s B-65
+      entry is closed; see it for the full account.
 - [ ] **4.4 · Balance pass — Guard/Dash, cooldowns, ranges, both game modes.** 🤖 Sonnet, medium ⛔ 0.4
       Never done. Write the numbers down. **Balance both Option A and Option B
       to shippable quality** — per 1.5, neither is deprioritised.
@@ -620,6 +823,85 @@ touch map scenes.
       confirmed `time_scale` dropped to 0.05 immediately and returned to exactly 1.0 shortly after.
       Not verified: how 60ms/0.05 actually feels — a tuning number like every other one in the
       T-block, cheap to adjust after 0.4.
+- [x] **4.6 · Solo-host quality of life — pause and the debug switcher work with exactly one
+      human peer.** 🔧 Build — **`NetworkManager` semantics change, its own commit, verified by two
+      real multi-instance sessions with no output**
+      The first playtest was run by HOSTING, not Single Player, and two things silently no-op'd in a
+      networked match on purpose: `get_tree().paused` (Q-3/B-64 — a client pausing its own tree
+      stops sending movement while the host keeps simulating it, and the host can't stop an
+      authoritative timer for everyone over one player's Esc) and the whole debug player switcher
+      (each peer owns exactly one character; reassigning `player_id` grants no control). Both
+      restrictions are real for an actual 2+ peer match and pointless when there is nobody else in
+      the session to protect — which is exactly what testing alone by hosting is.
+      New `NetworkManager.is_solo_session()`: `is_networked() and connected_peer_ids.size() <= 1`.
+      `main.gd::_on_pause_toggle_requested()` now takes the real-freeze branch (same code path
+      Single Player already used) whenever `not is_networked() or is_solo_session()`, instead of
+      only when `not is_networked()`.
+      `debug_player_switcher.gd::_is_active()` now also returns true for a solo networked session —
+      but **not** by making unit-switching work: a solo Hosted session only ever spawns ONE real
+      character (`main.gd::_spawn_player` runs once per actually-connected peer, and there is no
+      bot/placeholder system to fill the other three roles — see 4.7), so there is nothing to Tab
+      to regardless of this gate. What was actually broken and is now fixed: the on-screen
+      `DebugBar` used to show `TeamAPerson (missing) / TeamAProp (missing)` the instant you hosted
+      alone, because it was still looking for the four LOCAL-TEST node names
+      (`_clear_local_test_characters()` had already freed them) instead of the real networked
+      spawn. New `_solo_networked_unit()` walks the actual `Players` node
+      (`MultiplayerSpawner.spawn_path`) for the character whose authority is this machine's own
+      peer, and the readout now correctly describes it. `player_id`/camera reassignment is
+      deliberately left untouched for this unit — `main.gd`'s spawn already assigned the right
+      `player_id` and `camera_rig.gd`'s own `_ready()` already activates the right rig from
+      `is_multiplayer_authority()`; re-driving either here would be redundant at best.
+      **Verified by running:** two real `--host`/`--join=127.0.0.1` sessions (one while solo, one
+      once a second peer joined), 600+ frames each, no output — the `DebugBar`/switcher code paths
+      run every frame regardless of whether anyone is looking at them, so a clean multi-hundred-frame
+      run is real evidence they don't error, in both the solo and non-solo states. **Not verified:**
+      a human actually pressing Esc and confirming the overlay visibly freezes, or reading the
+      `DebugBar` text off a running window — this project's norm is that an unverified interactive
+      claim is not written up as felt, only as run.
+- [~] **4.7 · Peer-drop-mid-round — what actually happens, recorded rather than assumed.** 🔧 Build
+      — **verified live: a real ENet peer killed mid-round, both host and a third surviving peer
+      observed**
+      No demonstrated disconnect handling existed and there is no bot to cover an abandoned unit.
+      Pulled the cable for real rather than reading the code and guessing: a 4-peer LAN session
+      (host + 3 `--join=127.0.0.1`), one join process hard-killed (`kill -9`, no graceful
+      disconnect packet) mid-round.
+      **What happens, measured:**
+      1. ENet detects the drop via its own peer timeout, **not instantly** — roughly 10-11 seconds
+         after the process died in this environment (`kill -9` sends no FIN; there is nothing
+         faster to detect here without lowering ENet's own timeout, which was not attempted).
+      2. `main.gd::_on_player_disconnected` fires on **every remaining peer**, not just the host —
+         each one frees its own local copy of the departed character and, host-side only, shows "A
+         player left the match" and re-registers tracked Cans.
+      3. **The disconnected unit does not become a frozen obstacle. It is deleted outright** —
+         `queue_free()`'d and erased from every peer's own tracking dictionaries. Nothing stands in
+         for it; there is no AI, no ragdoll left lying around, nothing a remaining player can walk
+         up to and interact with.
+      4. **If the disconnected peer was the tracked Can:** `RoundManager._tracked_cans` becomes
+         EMPTY. `_on_tracked_can_state_changed`/`_on_tracked_can_dents_changed` both early-return on
+         an empty list, so tag-to-win, the 5-fall cap, and Option A's dent count all go **completely
+         inert** for the remainder of that round — there is no can left to tag, cap, or dent. The
+         round can only end one way from that point on: the 90-second timer, which **always resolves
+         to a Cans-side win** (`RoundManager._on_time_up()` → `report_round_win(true)` — "Cans win on
+         timer expiry," true under both Option A and Option B) **regardless of whether a Can is even
+         still present.** A Can-side disconnect mid-round silently guarantees the round for the
+         defending team once the clock runs out, with no way for the offense to contest it.
+      5. **If the disconnected peer was the attacking Person or the Tsinelas Prop** (the thrown
+         object itself — the SAME CharacterBase the attacking side's slipper actually is), offense
+         loses its only means of winning that round too: nobody left to throw, or — if the Tsinelas
+         player specifically drops — the slipper object itself is deleted from the match entirely,
+         mid-flight or mid-carry, whatever it was doing. Same resolution: timer expires, Cans win.
+      6. **If the disconnected peer was the defending Taya**, tag-to-win becomes unreachable for
+         that team (nobody left to land the tag), but the Can itself is still tracked — Option A's
+         dents and Option B's fall-cap/auto-seal still apply from throws the offense lands, so this
+         is the one drop that does NOT automatically hand the round to one side.
+      7. **No crash, in any of the above** — but building this test surfaced and fixed two real,
+         previously-unreachable UI crashes along the way (`you_card.gd`, `offscreen_indicators.gd` —
+         see 4.2's own entry and `Handoff.md`'s new `B-` numbers for both).
+      **Not done, explicitly out of scope for this pass:** any actual FIX for the above (a bot
+      taking over an abandoned role, a grace window before the round auto-resolves, ENet timeout
+      tuning). This item is the truth on record, not a mitigation — `[~]` rather than `[x]` because
+      the *fix* the human asked for ("what happens") is answered, but the underlying UX gap is not
+      closed and nobody should read this box as saying it is.
 
 ---
 
@@ -633,17 +915,23 @@ touch map scenes.
       F-3's acceptance test and B-67's acceptance test are both unrunnable —
       neither can be honestly ticked.**
 - [ ] **5.2 · Produce a release build and confirm it launches to the menu.** 🤖 Sonnet, medium ⛔ 5.1
-- [ ] **5.3 · Strip Local Match and the debug switcher.** 🤖 Sonnet, high ⛔ 0.4, 4.4
-      ⚠️ **RESOLVED CONFLICT — do NOT simply delete the harness.** `Art_Direction.md` Part 5 §3
-      makes the local 4-unit harness the demo failure-ladder's rung 3 — the only fallback that
-      needs no network. **Keep the harness, gate it behind a launch argument, and strip only the
-      on-screen debug overlay.** That satisfies this item's real intent (the build must not *look*
-      like a prototype) without removing the only network-free way to demo it.
-      Run the removal checklist in `Dev_Plan.md` §3.5.5 and confirm the
-      verification grep comes back empty. High effort because it touches
-      `Main.tscn` and `main.gd`'s spawn paths. **Do it late** — it is the only
-      way to playtest without four laptops, so it dies after the last playtest,
-      not before.
+- [x] **5.3 · ⚠️ REDIRECTED 2026-07-28 — no longer "strip Local Match," see 5.5.** 🧑 human decision,
+      recorded here so nobody reads the old text below and starts deleting things
+      This item used to say "strip Local Match and the debug switcher, keep the harness only as a
+      network-free demo fallback." **User decision, same day: Local Match is being promoted to a
+      real, permanent SINGLE PLAYER mode that ships in the final build — not stripped, not just a
+      fallback.** The three units the human isn't personally controlling get real AI instead of
+      sitting unbound. See **5.5** for the actual scope and the new agent brief in
+      `Agent_Prompts.md`. Original text, kept for history only, superseded in full:
+      *"Strip Local Match and the debug switcher. RESOLVED CONFLICT — do NOT simply delete the
+      harness. Art_Direction.md Part 5 §3 makes the local 4-unit harness the demo failure-ladder's
+      rung 3 — the only fallback that needs no network. Keep the harness, gate it behind a launch
+      argument, and strip only the on-screen debug overlay."* That framing (harness = fallback,
+      not a real mode) is what 5.5 replaces.
+      **Reconciled by 5.5, 2026-07-28:** `Art_Direction.md` Part 5 §3's failure-ladder table,
+      `Dev_Plan.md`'s harness/removal-contract sections, `Handoff.md`'s frozen §1, and
+      `README.md`'s contradiction register all corrected to the new framing in the same commit
+      that built the AI — see 5.5's own entry for the full list.
 - [x] **5.4 · Decide the `.import` UID churn (B-71) — and the EOL churn (B-84).** 🤖 Sonnet, medium
       Either accept it or stop tracking `.import` UIDs. Low stakes, but it makes
       every "regenerate and check `git status`" acceptance test unreliable, and
@@ -659,6 +947,100 @@ touch map scenes.
       **Done.** B-84 fixed (`eol=lf` pinned, renormalized, determinism test run twice clean).
       B-71 decided: accept the churn, formalized as a standing pre-commit check rather than a
       two-lane-period workaround. See `Handoff.md` B-71/B-84.
+- [x] **5.5 · Rename Local Match to Single Player; give the AI-controlled units real AI.** 🤖 Sonnet,
+      high — **built 2026-07-28, verified live (real Godot runs, not headless)**
+      User decision: Local Match stops being a dev-only testing harness / network-outage fallback
+      and becomes a real, permanent SINGLE PLAYER mode in the final submission.
+
+      **Rename.** `MainMenu.tscn`'s `LocalButton` text → "SINGLE PLAYER" (was "LOCAL MATCH (SINGLE
+      PC)"); every player-visible/standing-description "Local Match" across `docs/` and `scripts/`
+      comments renamed to "Single Player," with dated historical entries (specific playtest
+      sessions, verbatim quotes, commit-message subjects) deliberately left alone — renaming those
+      would misrepresent what a past test was actually run against. Internal identifiers
+      (`GameLaunch.pending_action == "local"`, `_on_local_pressed`, node names) kept as-is, per the
+      brief's own instruction — this was a UI/doc rename, not a launch-flow restructure.
+
+      **AI architecture — the actual decision, stated up front as asked.** A new
+      `scripts/systems/ai_controller.gd` (`class_name AIController`) is a plain `Node`,
+      `add_child()`'d onto each AI-driven `CharacterBase` at runtime by
+      `main.gd::_start_local_test()` (never baked into `CharacterBase.tscn`, which is shared with
+      the networked spawn path and has no use for this). It writes into the SAME input surface a
+      human would — `Input.action_press()`/`action_release()` on the character's own
+      `action_name()`-suffixed actions — rather than a parallel "intent" struct. `character_base.gd`
+      gets exactly one hook, the first line of `_physics_process()`
+      (`if ai_controller != null: ai_controller.decide(delta)`), and nothing else changes: movement,
+      abilities, `carrier.gd`, confinement, the Staggered/Downed/Sealed state machine and
+      round-active gating all read Input exactly as before, unaware whether a press came from
+      hardware or from here. `_physics_process()` was never forked.
+      **Two real timing bugs found and fixed while getting a throw to actually complete, worth
+      recording since they are not obvious and apply to any future scripted-input work in this
+      codebase:** `Input.is_action_just_pressed()`/`is_action_just_released()` lag ONE physics frame
+      behind the `action_press()`/`action_release()` call that causes them — confirmed with a direct
+      print inside `carrier.gd::_step_throw()`, not inferred. A same-frame (or same-decide-call)
+      release-then-repress silently drops the edge before any reader ever witnesses it, which is
+      exactly what made the AI Attacker charge forever and never release. Fixed with
+      `AIController.RELEASE_SETTLE_FRAMES` (6 physics frames): both the release side (a cooldown
+      before re-entering "start charging") and the tap side (`_tap()`'s hold-then-release window for
+      bump/grab) now give the edge time to be seen before the button can be pressed again.
+      `carrier.gd` itself was not touched — it works correctly for real input; the fix lives
+      entirely in how the AI drives it.
+
+      **Role-based behaviour**, re-derived every `decide()` call from `is_can`/`is_person`/
+      `team_is_can_side` (never cached — a Prop's job flips every round, same rule B-76 already
+      established for ability re-picking):
+      - **Can AI:** wanders to a random point inside `CONFINEMENT_RADIUS` on a slow cadence;
+        `_move_and_confine()` already hard-clamps regardless, this just keeps it from looking pinned
+        to the centre. Presses `bump` continuously the instant it is Downed and self-rightable —
+        reacts the same physics frame, not on the slow decision cadence.
+      - **Taya AI:** patrols the confinement box; on spotting the opposing Attacker within
+        `TAYA_DETECT_RANGE`, closes in and taps `bump` on a cooldown once in melee range.
+      - **Attacker AI:** retrieves its own team's loose Tsinelas (moves to it, taps `grab`) if not
+        already holding it; once holding, closes to `ATTACKER_THROW_RANGE` of the tracked Can, holds
+        `special_ability` for `ATTACKER_CHARGE_TIME`, releases, then holds a retreat spot behind the
+        throwing line rather than walking back toward the Can empty-handed.
+      - **Loose Tsinelas AI:** only acts while `Carriable.state == LOOSE` (CARRIED/FLYING already
+        bypass `character_base.gd`'s normal input path entirely); crawls toward its own team's
+        Attacker so the two meet partway rather than the Attacker crossing the whole gap alone.
+      Difficulty is explicitly out of scope, per the brief — nothing here is tuned against a human
+      or has any notion of a mistake. "Moves with intent and does not stand still" was the bar and
+      is what was built; anything more is a follow-up item, not a silent extension of this one.
+
+      **Removed/repurposed, decided rather than assumed:**
+      - `project.godot`'s P2/P3/P4 input action bindings are **unchanged**. `Input.action_press()`/
+        `action_release()` need the action registered in the InputMap, not bound to a real key — P3/
+        P4 were already unbound and stay that way; deleting the action *definitions* (not just the
+        bindings) would break `action_name()` lookups for AI-driven units using those player_ids.
+        P2 stays bound too: it is still a genuine debug affordance (see next point).
+      - `debug_player_switcher.gd` is **kept as a debug-only manual override**, not deleted: taking
+        a slot now disables that unit's `AIController` (`_apply_slots()`) for as long as the slot
+        holds it, and hands control straight back — including F5's "solo drive," which now correctly
+        returns the parked unit to AI control instead of leaving it inert. This was an explicit
+        choice, not an assumption: the switcher remains genuinely useful for driving a specific unit
+        during testing without fighting its own AI over the same buttons.
+      - The Settings panel's P2 rebind column is **removed** —
+        `SettingsManager.REBINDABLE_ACTIONS`/`ACTION_LABELS` are now P1-only. The underlying P2
+        bindings still exist in `project.godot` for the debug switcher above; there is just no
+        player-facing UI to rebind keys a shipped Single Player session never uses. Verified by
+        reading the code path (`settings_panel.gd::_build_rows()` iterates `REBINDABLE_ACTIONS`
+        directly, no hardcoded P1/P2 column structure in the scene) rather than by render — no
+        `render_probe.gd` mode exists for the Settings panel.
+
+      **Doc hygiene**, same commit: `Dev_Plan.md` §0.2/§0.3/§3.5/§3.5.5 (the mode is no longer part
+      of the debug removal contract; the switcher's purpose and removal timing are rewritten
+      accordingly), `Art_Direction.md`'s failure-ladder table and its own §7 open-question #2 (now
+      answered), `Handoff.md`'s frozen §1 System Context and §2 rule 10 (both previously said the
+      mode "is stripped before submission"), and `README.md`'s contradiction register — all
+      corrected rather than left to contradict the new reality. `Agent_Prompts.md`'s BUILD-AI brief
+      marked done, same pattern as the other completed lane briefs in that file.
+
+      **Verified by running**, not by reasoning alone: real (non-headless) Godot runs of the local
+      test flow, 500-1400 frames, silent both before and after every fix. Directly confirmed a full
+      grab → approach → charge → release → fly cycle completes (`carrier.held()` observed
+      transitioning non-null → null after a charge, via a temporary diagnostic since removed) and
+      that AI-driven units visibly leave their spawn points (render-probe screenshot, `B1·OFF` and
+      `A2·DEF` both well off their starting marks). **Not verified:** a human actually playing a full
+      Single Player Bo5 against the AI and judging whether it reads as a credible opponent — that is
+      feel, and this item's own acceptance bar is explicitly narrower than that.
 
 ---
 
@@ -709,6 +1091,194 @@ Budget this like a feature.
 
 ---
 
+## Phase 7 — The kit overhaul. Real asset kits replace the generated world.
+
+**Spec: [`Art_Direction.md`](Art_Direction.md) §0b.** Read it before starting any item here — it
+carries the measured scale table, and scale is where this goes wrong.
+
+**Opened 2026-07-28 on the human's call:** *"ill be honest, assets suck so bad right now and its so
+buggy."* Six Kenney kits (all CC0, verified) plus a supplied flip-flop `.glb`.
+
+> ⚠️ **THIS PHASE CHANGES NO MECHANICS.** Explicit instruction: *"make sure all mechanics stay ok,
+> focus on implementing the new assets and designs tho, let another agent do the mechanics."* Every
+> item is an asset swap behind an unchanged interface. The camera directive, `is_person`/`is_can`,
+> carry/throw, confinement, spawn slots, the round loop and the dent-count health model are all
+> untouched. **7.1 is the only item that edits gameplay-adjacent code**, it is scoped to the
+> material pipeline, and it exists because the swap cannot land without it.
+
+> ⚠️ **ARENA SCALE IS NOT TOUCHED IN THIS PHASE** (Part 4's standing rule). Re-dressing a map and
+> resizing it in the same commit makes a movement-feel regression unattributable. Item B (narrow
+> the alley) stays open and stays separate.
+
+- [~] **7.1 · The toon/outline pass must stop destroying kit textures. ⛔ BLOCKS 7.2–7.5.**
+      🎨 Design (material pipeline only — not a mechanics item)
+      **Shipped 2026-07-28, and honestly `[~]` not `[x]`:** the texture path is written but
+      **cannot be proven until a kit mesh is in the project (7.2)** — there is nothing textured to
+      point it at yet. What IS verified: parse clean, 400 real frames silent, and the existing
+      procedural props render **pixel-identically** to before, which is the regression half.
+  - [x] **`toon.gdshader` takes a texture.** `albedo_texture` + `use_texture`, multiplied by
+        `albedo_color` as a tint. `hint_default_white` so an unset sampler multiplies to a no-op
+        instead of sampling black and rendering every kit prop invisible. `use_texture` stays
+        false for generated `.obj` props, so their maths is bit-for-bit unchanged.
+  - [x] **`_apply_toon_pass()` carries the source texture across** instead of dropping it.
+  - [x] **The hit flash is its own uniform now (`flash_amount` / `flash_color`).** It had to be:
+        the flash tweened `albedo_color` white → base, and a textured mesh's resting tint IS white,
+        so "flash to white" would have been a silent no-op and a hit on a kit prop would show
+        nothing. `albedo_color` and "am I being hit" were two meanings sharing one uniform, which
+        is why a texture broke both at once. Both flavours still differ (WHITE for a landed hit,
+        `DEFENSE` for a block, Q-6). `_shader_base_albedos` is deleted — with the flash tweening
+        1 → 0 there is no base colour left to restore.
+  - [x] **Outline width per mesh, derived from its own scale.** Done once kit meshes existed to
+        tune against. `outline.gdshader` inflates along the normal in MODEL space, so one shared
+        `outline_width` meant the ink border's real thickness was whatever that mesh happened to be
+        scaled by — the 0.34-unit Can wore a 0.025 border, ~12% of its own width per side, and
+        rendered as dark slabs down both sides. Kit pieces differ by 10× in scale, so no single
+        constant could ever have been right for more than one of them. Now `OUTLINE_WORLD_WIDTH`
+        (0.012 world units) divided by the node's actual scale, one material per mesh. Persons are
+        untouched — they take the early-out and keep `person_outline.tres`.
+      `character_visual.gd::_apply_toon_pass()` replaces every surface material on a Prop with a
+      flat `albedo_color` toon material. Kenney kits are textured off a shared palette atlas, so
+      applied unchanged **every kit prop becomes one flat colour** — the swap cannot be evaluated,
+      let alone shipped, until this is settled. Either sample the kit texture in the toon shader or
+      skip the toon pass for kit-sourced meshes. Decide by rendering both.
+      Fold in the outline width at the same time: `outline.gdshader`'s 0.025 is in MODEL space
+      against meshes that now differ by 10× in scale (`Handoff.md` §0.12).
+- [~] **7.2 · The lata → `soda-can.glb`.** 🎨 Design — **verified by render, not by play**
+      Landed 2026-07-28. `CanVisual.tscn` instances the kit `.glb`; `CAN_MESHES` points at it and
+      at `soda-can-crushed`, with `CAN_DENT_SQUASH` covering the two states the kit does not ship.
+      **This is what proved 7.1** — the kit texture survives the toon pass, confirmed by render.
+  - [x] **`_mesh_from()` — a `.glb` imports as a PackedScene, not a Mesh.** `load(path) as Mesh`
+        silently returned `null`, which would have meant a can that never changed on damage: no
+        error, no missing mesh, just a dent count that never showed.
+  - [x] **⚠️ THE KIT CAN WAS OFFENSE-ORANGE, and that is a hard-rule break.** `Dev_Plan.md` §4.2
+        rule 1 — orange is ALWAYS offense — and this put a vividly orange can on the DEFENDING
+        team's most important object. Same class as B-81, from the opposite direction. Caught by
+        rendering it, not by reading the kit. Fixed **at the asset level** by
+        `tools/models/retint_kit_atlas.py`, which moves the bright orange band of our copy of
+        Kenney's shared `colormap.png` to Sarsi blue: 11,390 px, idempotent, and it protects every
+        kit prop 7.4 imports later rather than just this one. Browns and tans are deliberately
+        untouched — they are legal and remapping them would turn every crate blue.
+  - [ ] **Residual:** a thin orange rim survives at the can's base (a swatch outside the remapped
+        band) and the outline width is still the flat 0.025. Both fold into 7.6's retexture.
+      Dropped in at **native scale** — 0.351 against the old 0.335, the one free win in the whole
+      overhaul; no rescale was needed anywhere.
+      **Acceptance, still owed by a human:** knock it over, take three dents, win a round and see
+      it reset. Behaviour is unchanged by construction but has not been played.
+
+- [x] **7.2a · The Can's own camera — "BROKEN LATA CAMERA".** 🎨 Design — **verified by render**
+      Playtest report with a screenshot of an empty road. `TppArm`'s baked 4.5-unit spring length
+      was tuned for a 1.6-unit Person; the Can is **0.34**, so playing as the Can framed it as a
+      speck. The arm length and pitch now scale to the unit's own capsule, re-applied on every
+      model change so a role swap re-frames.
+      ⚠️ **The mount height deliberately does NOT scale.** That was tried in an earlier pass and
+      reverted — it dropped the shapecast's origin low enough to collapse the camera into solid
+      geometry. Length and pitch change only where the cast *points*, never where it *starts*, so
+      the fix cannot reintroduce that failure. Renders before and after confirm: subject centred,
+      no collapse, arena still readable.
+- [ ] **7.3 · The tsinelas stays OURS.** 🎨 Design — **not blocked by anything**
+      Human call, 2026-07-28: *"nahh js remove the flipflop in the plan, lets make our own."* The
+      supplied `.glb` is dropped and **the procedural tsinelas is the shipping slipper.** It
+      already matches the §1b asset moodboard — brown `PROP_FOAM` foam, tan `PROP_WEBBING` Y-strap,
+      three-layer bevelled sole — and it is the one prop nobody has complained about the look of.
+      **This item is therefore refinement, not replacement**, and it is the exception to phase 7's
+      "kits replace generated geometry" rule: authored beats sourced here because the moodboard is
+      specific and the mesh is already on it.
+      *Deleting the `.glb` also deleted the phase's only licence blocker* — every remaining asset is
+      either CC0 (Kenney) or ours.
+  - [x] **The carried slipper no longer floats beside the carrier's head (B-105).** Fixed
+        2026-07-28 by splitting the two views instead of re-tuning a number — see the ledger.
+  - [ ] **Readability follow-up:** brown slipper against a tan chibi body is low-contrast at
+        arena distance, and the rig's hand sits close to a wide torso. It is in the hand and no
+        longer floating; making it *read* from across the arena is a separate pass.
+- [~] **7.4 · Eskinita re-dressed from City Kit (Suburban) + Car Kit.** 🎨 Design —
+      **verified by render + the full smoke gate; not verified by play**
+      Landed 2026-07-28. The generated corrugated wall panels and building blocks are gone; an
+      eskinita is the gap BETWEEN people's houses, so City Kit houses now ARE the wall line, with
+      street trees on the verge and a vehicle parked in every fourth bay where a house is left out
+      for a driveway. `CITY_SCALE = 5.0` and `CAR_SCALE = 1.75`, one constant per kit as §0b requires.
+  - [x] **Mechanics untouched, and checked rather than asserted.** Playable width still `x = ±8`;
+        `SpawnPoints` transforms byte-identical; `Bounds`/`WallEast..South`, `KillPlane`,
+        `HazardZone` and `Floor` all present; and **the dressing still carries zero collision** —
+        grepped, 0 `CollisionShape3D` under `Dressing/`. The single invisible Bounds ring behind
+        the wall line is still the only thing a player can touch.
+  - [x] **The height law survives.** Vehicles are 2.5 tall, which would break the ≤1.25 rule for
+        anything inside the alley — so they are parked at `x = ±9.9`, OUTSIDE the playable width,
+        seen through the driveway gaps. Interior clutter is unchanged and still ≤1.0.
+  - [x] **⚠️ A `.glb` is a PackedScene, not a Mesh, and getting that wrong is SILENT.** The first
+        build emitted kit pieces as `MeshInstance3D` with `mesh = ExtResource(...)`. No error, no
+        warning, correct transforms, 134 nodes present — **and an entirely empty street**, because
+        Godot loads a mesh property pointed at a scene as blank. Caught only by rendering it. The
+        builder now branches on kit vs generated and the trap is written down at the emit site.
+  - [x] **⚠️ Kit meshes do NOT put their origin at their base.** `kits/car/van` spans local
+        `y = -0.300..1.150`, so a naive `y = 0` placement buries 30cm of it in the road — the
+        floating-geometry bug with the sign flipped. `add_kit()` takes the height the BASE should
+        sit at and reads the offset from the mesh's own bounds, same source of truth as floorcheck.
+  - [x] **`floorcheck` reads `.glb` bounds now**, so kit pieces go through the same flush gate as
+        generated ones instead of leaving a hole in the guard exactly where the new assets are.
+  - [ ] **Deferred:** Furniture Kit dressing (sari-sari interior, street furniture) and the
+        procedural clutter/tricycle swap. Both are detail passes on a map that now reads correctly;
+        neither blocks 7.5.
+
+- [~] **7.5 · The probinsya map from Fantasy Town Kit + Mini Forest.** 🎨 Design —
+      **verified by render + full smoke gate; not verified by play**
+      Landed 2026-07-28. The generated cone trees, bench, planter, chair and tire are gone. Two
+      tree rings of DIFFERENT species (Fantasy Town near at `TOWN_SCALE` 2.6, Mini Forest behind at
+      `FOREST_SCALE` 3.9) so the far layer reads as another species rather than the same tree moved
+      back; market stalls, stall benches and stools; lantern posts on the slab corners; rocks and
+      plants across the dirt apron. Church, flagpole and both basketball rings kept — they are the
+      map's landmarks and its Filipino read.
+  - [x] **Mechanics untouched and checked:** `SpawnPoints` transforms byte-identical, `Bounds`,
+        `KillPlane`, `HazardZone`, `Floor` all present, and **0 collision shapes under
+        `Dressing/`** — the `BOUND = 12.5` ring is still the only thing a player can touch.
+  - [x] **Height law honoured through the swap.** Everything inside the playable square is
+        interior-tier: stall 0.96, stall-bench 0.60, stool lower. `cart` measures 1.40 scaled and is
+        therefore deliberately NOT used. The full-height trees are all outside `BOUND`, which is
+        what earns them the exemption.
+  - [x] **⚠️ B-104 — Bayan Plaza was UNREACHABLE and had been all along.** Both `GameLaunch.MAPS`
+        entries carried `"id": &"eskinita"`, so `selected_map_scene()`'s first-match lookup
+        resolved the plaza to Eskinita: the picker, the launch path and the render harness could
+        every one of them only ever load map 1. Silent — you pick the second map and the first
+        loads, which reads as an unresponsive picker rather than a duplicate key. **Found only
+        because the re-dressed plaza kept rendering as Eskinita three times running.**
+  - [x] **A new `Dressing/*` group must be declared in the scene template.** Adding `Ground`
+        placements without the node emitted `Parent path './Dressing/Ground' has vanished` for
+        every piece — a warning, not an error, so the pieces just silently do not exist.
+- [ ] **7.6 · Sarsi livery, as a retexture of `soda-can.glb`.** 🎨 Design ⛔ 7.2
+      **Deliberately deferred, on the human's own instruction:** *"js add to plan that we will make
+      that better later and make it sarsi or something."* Checklist 2.9 shipped a Sarsi-liveried
+      *procedural* can hours before this overhaul and 7.2 replaces it — the livery does not survive
+      the swap and is rebuilt here as a texture instead. The trademark note and the credit in
+      `README.md` stay valid throughout and do not need revisiting.
+- [~] **7.7 · Wire the animation clips the kit already ships.** 🎨 Design —
+      **verified by parse + two 400-frame soaks incl. a driven double round transition;
+      not verified by play**
+      Human instruction: *"the assets i sent has animation built in, pls use."* Verified: **Mini
+      Characters ships 32 baked clips per `.glb`; every other kit ships zero.** So this is a
+      character item only — there is nothing to wire on props or the world.
+      Eight clips are already wired (`idle`, `walk`, `sprint`, `holding-right`,
+      `holding-right-shoot`, `attack-melee-right`, `attack-kick-right`, `pick-up`). Wire these,
+      each of which reads state the game **already tracks**:
+  - [x] **`jump` / `fall`.** Split by VERTICAL velocity so a rising jump and a falling one are not
+        the same pose. `_play_locomotion()` selected on horizontal speed alone, so a Person at the
+        apex of a jump — horizontal speed near zero — played `idle`, and one drifting sideways
+        through the air played `walk`. Every unit can jump (§0's pillar put it on the Prop too),
+        which made this the most-seen missing pose in the build.
+  - [x] **`die` on `State.DOWNED`**, checked before everything else. Being knocked down read only
+        in the HUD flash and the `Visual` tilt; a downed unit and a standing one played the same
+        idle clip.
+  - [x] **`emote-yes` on the `ready_up` press.** Goes through the existing `play_visual_action()`
+        path, so the two views cannot disagree about whether a ready happened. Guarded on the local
+        roster, which is empty on every non-local path.
+  - [ ] **`holding-right-shoot` held and scaled by `Carrier.charge_power()`** — a candidate answer
+        to the long-open third-person windup tell, using a clip that already exists instead of new
+        geometry. ⚠️ If reading charge from another peer's `Carrier` needs a **new synced field**,
+        that half is a Build-lane wall — file it in `Handoff.md` §5 and hand it back; the visual
+        half stays ours.
+  - [ ] **Do NOT wire `interact-right`.** It maps to the lata reset channel (B-46), which is not
+        built. Listed only so nobody wires a clip to a mechanic that does not exist.
+      ⚠️ **Scope boundary:** every sub-item reads existing state and plays a clip — no new state,
+      no new input, no new networking. That is what keeps this in the design lane.
+
 ## Already done — the ledger this list replaces
 
 Kept short on purpose; the detail is in `Handoff.md` §4 and `Handoff.md`.
@@ -721,7 +1291,7 @@ simply carried forward from the previous pass's checkboxes.
 | `[x]` | Bo5, role swap, 90s round, win reporting, match reset | |
 | `[x]` | FPP/TPP camera directive, enforced by `assert` + grep | A-1, A-2 |
 | `[x]` | Theme, main menu, play menu, settings, pause, match result | |
-| `[x]` | **HUD to `Dev_Plan.md` §4.4** | Bo5 pips, role-coloured panels, framed timer with urgency states, LATA card, YOU card. Verified by render. ⚠️ **The "FPP-only crosshair, verified by render" part of this row was false** — it does not appear on a Person in a real match. See **B-86**. Corrected 2026-07-28 by the design lane. |
+| `[x]` | **HUD to `Dev_Plan.md` §4.4** | Bo5 pips, role-coloured panels, framed timer with urgency states, LATA card, YOU card, FPP-only crosshair. Verified by render — including the crosshair, re-rendered 2026-07-28 (six runs, `match_fpp.png`, zoomed crop of screen centre) by 🔧 build-ux after **B-86** filed it absent. Could not reproduce the absence; see `Handoff.md` B-86 for the full account. |
 | `[x]` | **Round beats — verified present, 2026-07-28** | The design-lane brief listed the role-swap card, the downed vignette, the impact burst and the slipper spin as "still placeholder". **All four already exist.** `RoleSwapCard.tscn` + `role_swap_card.gd` run the full §4.6 timeline (result banner → panels slide in on a BACK/EASE_OUT overshoot and recolour to the *incoming* roles → "ROUND N — FIGHT!" wipe → reset); `%DownedFlash` carries `assets/ui/downed_vignette.gdshader`, a real radial vignette, not a flat rect. Confirmed by rendering the card mid-timeline. Nothing to do here. |
 | `[x]` | Lobby with ready-up (B-13) | U-4 |
 | `[x]` | Role-swap intermission card | U-3 |

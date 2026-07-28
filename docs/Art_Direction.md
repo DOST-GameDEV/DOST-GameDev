@@ -63,6 +63,208 @@ What that actually changes, concretely:
   proportion audit in §1. Those are legibility, not taste — a game can be silly and still has to
   be readable at arena distance.
 
+### 0b. THE KIT OVERHAUL — 2026-07-28. This supersedes most of Parts 3 and 4.
+
+**Stated by the human, with the kits attached:** *"ill be honest, assets suck so bad right now and
+its so buggy."* The project stops hand-generating its world and switches to real asset kits. This
+section is the spec. **Everything in Part 3 (the environment kit piece list) and Part 4 (the
+original map brief) that describes a procedurally-generated `env_*` dressing piece is superseded by
+it** — those parts stay only for the laws that still apply (height tiers, the boundary technique,
+the palette discipline) and for history.
+
+#### What this is NOT
+
+**It is not a mechanics change, and no mechanics work belongs in it.** Explicit instruction: *"in
+the planning make sure all mechanics stay ok, focus on implementing the new assets and designs tho,
+let another agent do the mechanics."* The camera directive, `is_person`/`is_can`, carry/throw,
+confinement, the spawn slots, the round loop and the dent-count health model all keep working
+exactly as they do now. Every item below is an ASSET swap behind an unchanged interface. Where an
+asset swap genuinely forces a code decision (there are three, listed under *Integration risks*),
+the decision is recorded here and the code change is minimal and named — it is not licence to
+redesign a system.
+
+#### The kits, and what each one is for
+
+All six Kenney kits are **CC0** (verified in each `License.txt`) — usable commercially, attribution
+appreciated but not required. Recorded in `README.md`.
+
+| Kit | Role | Replaces |
+|---|---|---|
+| **Mini Characters** | The two Persons | Nothing — already in use, this is confirmation not a change |
+| **City Kit (Suburban)** | Eskinita, the city map | `env_building_block_*`, `env_wall_*`, `env_tree*`, fences |
+| **Fantasy Town Kit** | The probinsya map (currently "Bayan Plaza") | The whole plaza dressing set |
+| **Mini Forest** | Probinsya greenery | `env_tree`, `env_tree_far`, `env_planter` |
+| **Food Kit** | **The lata**, sari-sari stock | `lata.obj` + its three dent variants |
+| **Furniture Kit** | Sari-sari store interior, street furniture | `env_bench`, `env_monobloc_chair`, `env_crate_stack` |
+| **Car Kit** | Street vehicles | `env_tricycle` |
+
+⚠️ **The human first named "City Kit (Commercial)" and then corrected it to City Kit
+*Suburban*** — *"here is city kit, replace commercial with this i forgot to attach."* Suburban is
+what is attached and what this plan is measured against. If Commercial ever arrives it is a
+separate decision, not a silent substitution.
+
+#### The measured scale table — READ THIS BEFORE PLACING ANY KIT PIECE
+
+Measured from the `.glb` accessor bounds, not estimated. **Every kit is authored at a different
+native scale, and none of them matches this project's 1 unit = 1 metre world.** This is the single
+biggest source of work in the overhaul and the thing most likely to be got wrong, because a kit
+piece dropped in at native scale looks *deliberate* rather than broken.
+
+The reference is the **Person at 1.598 units** (`PERSON_SCALE` 2.38), which is ~165 cm.
+
+| Asset | Native size | Should be | Factor | Note |
+|---|---|---|---|---|
+| `soda-can.glb` | **0.351** tall | 0.335 (current lata) | **≈1.0 — drop in as-is** | The one free win. The proportion audit's hero-scaled can and Kenney's can are the same size by coincidence. |
+| `soda-can-crushed.glb` | 0.181 tall | — | 1.0 | The damaged state, free. |
+| Flip-flop `.glb` (one shoe) | 0.36 diagonal | 0.432 (current tsinelas) | **≈1.2×** | Closer than expected; the pair must be split first, see below. |
+| City Kit building | **0.74–1.24** tall | 5–7 (2–3 storeys) | **≈5×** | These are diorama-scale. A house is currently shorter than a Person. |
+| City Kit `tree-large` | 0.77 | ~7.0 (item E's target) | ≈9× | |
+| Fantasy Town `wall` | 1.00 tall | ~2.5 per storey | ≈2.5× | Roughly character-scale already; stacks by module. |
+| Fantasy Town `tree` | 2.41 | ~7.0 | ≈2.9× | |
+| Mini Forest `tree` | 1.68 | ~7.0 | ≈4× | |
+| Car Kit `van` | 2.75 long, 1.45 tall | ~4.8 long | ≈1.75× | Roof currently below a Person's head. |
+| Fantasy Town `stall` | 0.65 × 0.37 × 1.0 | sari-sari store, ~2.5 tall | ≈2.5× | The best sari-sari base in any of the kits. |
+
+**The rule this table exists to enforce:** pick the scale factor per KIT, once, recorded as a named
+constant in the map builder — never per piece by eye. Two pieces from the same kit at different
+scales is the "assets suck" failure in its purest form.
+
+#### What survives the overhaul, and why
+
+**The procedural pipeline does not die, and this is a real boundary, not sentiment.**
+
+- ✅ **`obj_writer.gd`, `env_kit.gd`, `generate_all.gd` keep authoring the FIELD MARKINGS** — base
+  circle, throwing lines, team-side lines, the confinement square. No kit ships tumbang preso
+  markings and none ever will; they are gameplay geometry sized to `CONFINEMENT_RADIUS` and the
+  6.0 throwing distance, and they must stay parametric because those numbers get tuned.
+- ✅ **`tools/maps/floorcheck.py` keeps working and gets MORE important**, not less. It measures a
+  marking's underside against real ground heights; kit pieces get recorded as ground the same way
+  road tiles are. Kit road/path pieces must be added to its `GROUND_MESHES` allowlist.
+- ❌ **The `env_*` dressing meshes are retired** — buildings, walls, trees, tricycle, bench, chair,
+  crates, drum, tire, bollard. Those are what the kits are for.
+- ❌ **`lata*.obj` and `tsinelas.obj` are retired**, replaced by the kit/GLB assets.
+
+So: **kits for objects, generator for markings.** That line is the whole architecture of the
+overhaul and it is what keeps `floorcheck` and the parametric arena intact.
+
+#### The two hero props
+
+**The lata → `soda-can.glb`.** Drops in at native scale. The dent-count health model keeps its
+interface: the food kit ships two states (`soda-can`, `soda-can-crushed`) against the four the
+system uses, so **dent 0 → `soda-can`, dents 1–2 → `soda-can` progressively squashed on the Y axis,
+dent 3 → `soda-can-crushed`**. Intermediate crush meshes are a later polish item, not a blocker.
+
+⚠️ **The Sarsi livery is PARKED, not abandoned.** Checklist 2.9 shipped a Sarsi-liveried procedural
+can hours before this overhaul; the Kenney can replaces it and the livery does not survive the
+swap. The human's own instruction: *"theres can assets in food kit, js add to plan that we will
+make that better later and make it sarsi or something."* So Sarsi returns as a **retexture** of
+`soda-can.glb` once the kit swap has landed and settled — see checklist 7.6. The trademark note and
+credit in `README.md` stay valid and stay put.
+
+**The tsinelas stays OURS — the sourced `.glb` is dropped.** Human call, 2026-07-28: *"nahh js
+remove the flipflop in the plan, lets make our own."*
+
+**This is the deliberate exception to the whole phase.** Everywhere else a kit beats generated
+geometry, because the generated dressing was greybox filler nobody had specified. The slipper is
+the opposite case: it has a specific asset moodboard (§1b), the procedural mesh already matches it —
+brown `PROP_FOAM` foam, tan `PROP_WEBBING` Y-strap, three-layer bevelled sole — and it is the one
+prop nobody has complained about the look of. Sourcing over that would have traded a mesh built to
+spec for a purple one that needed splitting, recolouring and rescaling to get back to where we
+already were.
+
+*Two things fell out of that decision for free:* the phase now has **no licence blocker at all** —
+every remaining asset is CC0 (Kenney) or authored here — and `obj_writer.gd` keeps a second real
+consumer besides the markings, so the generator stays exercised rather than becoming
+markings-only code nobody reads.
+
+**Still open on the slipper, and neither is a mesh problem:** the carried slipper reads as detached
+in third person (`HAND_CARRY_OFFSET` is composed for the FPP frame — `Handoff.md` §0.12), and it
+wants whatever texture/outline treatment 7.1 settles. Checklist **7.3**.
+
+#### The kits ship animation, and most of it is unused
+
+**The human, mid-plan:** *"the assets i sent has animation built in, pls use."* Verified, and the
+answer is more specific than the ask:
+
+- **Mini Characters ships 32 baked clips per character `.glb`** (2 skins). Confirmed by reading
+  `character-male-a.glb`'s `animations` array.
+- **Every other kit ships ZERO animations and zero skins** — `stall.glb`, `van.glb` and the rest
+  are static meshes. So "use the animation" is a **character** item; nothing to wire on the props
+  or the world.
+
+Of the 32, **eight are already wired**: `idle`, `walk`, `sprint`, `holding-right`,
+`holding-right-shoot`, `attack-melee-right`, `attack-kick-right`, `pick-up`. The rest are sitting
+unused, and several map onto states the game **already has and already tracks** — which is what
+makes wiring them art work rather than mechanics work:
+
+| Clip | Existing state it should read | Why it matters |
+|---|---|---|
+| `jump` / `fall` | Jump exists on every unit (§0's pillar) | `_play_locomotion()` picks from horizontal speed only, so a Person in mid-air currently plays `walk`. A visible airborne pose is the single biggest cheap win here. |
+| `die` | `State.DOWNED`, already drives the HUD flash and vignette | Downed currently reads only in the UI, not on the body. |
+| `emote-yes` | The `ready_up` press in pre-round free-roam | Everyone else can see who has readied, in the world, with no new state. |
+| `holding-right-shoot` | `Carrier.charge_power()` | **This is a candidate answer to the third-person windup tell** (*"I WANT EVERYONE ELSE IN THE WORLD TO SEE THAT THE WIND UP IS HAPPENING"*) — hold a pose from this clip scaled by charge instead of inventing new geometry. ⚠️ Still subject to the same caveat as before: if reading charge from another peer's `Carrier` needs a new synced field, that half is a Build-lane wall (`Handoff.md` §5), and only the visual half is ours. |
+| `interact-right` | The lata reset channel (B-46) | Not built as a mechanic — do NOT build it. Listed only so nobody wires a clip to a mechanic that does not exist. |
+
+⚠️ **The boundary that keeps this in the design lane:** every row above **reads state that already
+exists and plays a clip**. No new state, no new input, no new networking. The moment an item needs a
+new replicated field it stops being ours and gets filed, not built.
+
+#### Three traps the first kit swap actually hit — read before importing a kit
+
+All three were found by rendering, and **none of them errors**. That is what makes them worth
+writing down: every one produces a scene that loads clean and looks wrong.
+
+1. **A `.glb` is a PackedScene, not a Mesh, in BOTH directions.**
+   - In a map builder: emitting a kit piece as `[node type="MeshInstance3D"] mesh = ExtResource(…)`
+     loads with that node **blank**. An entire street of houses rendered as empty road with all 134
+     nodes present and every transform correct. Kit pieces must be `instance=ExtResource(…)`.
+   - In code: `load(path) as Mesh` silently returns `null`. That would have shipped a Can whose
+     mesh never changed on damage. See `character_visual.gd::_mesh_from()`.
+2. **Kit meshes do not put their origin at their base.** `env_*` meshes are authored from local
+   y = 0 up; Kenney's are not consistent — `kits/car/van` spans `y = -0.300..1.150`, so a `y = 0`
+   placement buries 30cm of it. Use `add_kit()`, which reads the offset from the mesh's own bounds.
+   This is the floating-geometry rule with the sign flipped and it deserves the same suspicion.
+3. **⚠️ THE KITS BREAK THE ROLE-COLOUR RULE, AND BOTH HUES ARE IN THEM.** The Food Kit's can
+   samples a vivid OFFENSE-orange; the Car Kit contains a DEFENSE-blue vehicle. Kenney's palettes
+   know nothing about `Dev_Plan.md` §4.2. **`tools/models/retint_kit_atlas.py` enforces the rule in
+   the asset**, on our copy of each atlas, so every piece imported later is safe by construction:
+   - `prop_blue` — the can's orange rotates to Sarsi blue. Legal because §2 lists `DEFENSE` as
+     allowed on the "Can body only".
+   - `env_damp` — city and car atlases keep their hue and have saturation/value pulled into the
+     `ENV_*` band, turning bright orange into terracotta and rust. ⚠️ **Rotating env orange to blue
+     instead — which the first version did — just trades an OFFENSE violation for a DEFENSE one and
+     paints the whole street the defending team's colour.** Both role bands are damped for env.
+
+   Both modes are idempotent: remapped pixels land outside the bands that select them.
+
+#### Integration risks — the three places an asset swap does touch code
+
+Named so they are not discovered mid-implementation. All three are small and none is a redesign.
+
+1. **The toon/outline pass will destroy kit textures.** `character_visual.gd::_apply_toon_pass()`
+   replaces every surface material on a Prop with a flat `albedo_color` toon material. Kenney kits
+   are textured (a shared palette atlas). Applied unchanged, every kit prop turns into a single
+   flat colour. **Decision: the toon pass must sample the kit texture rather than replace it, or be
+   skipped for kit-sourced props.** This is the one item that genuinely blocks the prop swap.
+2. **The ink outline width is already wrong for props** (`outline.gdshader`'s 0.025 in MODEL space,
+   against a 0.204-wide can — see `Handoff.md` §0.12) and kit pieces have wildly different scales,
+   which makes a single constant worse still. Per-surface width derived from the mesh's own scale.
+3. **`floorcheck.GROUND_MESHES` is an allowlist of procedural mesh names.** Kit road/path pieces
+   must be added or every marking on them reports as floating. Cheap, but it fails loudly if missed
+   — which is the intended behaviour.
+
+#### Sequencing — why it is in this order
+
+**One kit per commit, each verified by render, and props before maps.** The props are two objects
+with a known interface and they prove the import + toon + outline path end to end; doing a whole
+map first would mean debugging the material pipeline across 200 instances instead of 2. Arena scale
+is NOT touched in any of these commits (Part 4's standing rule), so a movement-feel regression
+stays attributable.
+
+Full item breakdown: **`Checklist.md` phase 7.**
+
+---
+
 ### 1. The proportion audit — this is the headline
 
 > ### ✅ FIXED 2026-07-28 — checklist 2.5, verified by render
@@ -223,7 +425,10 @@ is what made the arms float earlier; do not reintroduce it.
 
 **Still open (needs the design treatment, not more mechanism):** the moodboard's THE ATTACKER card
 draws *"charged throw (glow)"*. The wind-up covers strength; the glow does not exist yet. That is
-checklist 0.1's remaining half.
+checklist 0.1's remaining half. **2026-07-28:** the hook it needs now exists —
+`you_card.gd::_on_charge_changed` keeps a `charge_ratio` (0..1) shader uniform live on
+`charge_bar.material` whenever a `ShaderMaterial` is assigned there. Assign one and pick the
+uniform's use; nothing here dictates colour, falloff or where else the glow shows.
 
 ## 2. What landed this pass
 
@@ -322,9 +527,11 @@ So both reports are the same underlying condition: **the playtest was run as a h
 Match.** Tab works in Local Match and is meaningless when hosting.
 
 This is defensible design that is nonetheless a bad experience for the one thing anybody actually
-does — solo-testing by hosting. **Recommendation:** when a networked match has exactly one human
-peer, treat it as local for pause and unit-switching purposes. Flagged rather than done: it is a
-`NetworkManager` semantics change.
+does — solo-testing by hosting. **Done 2026-07-28 — `Checklist.md` 4.6.** `NetworkManager.
+is_solo_session()` now treats a networked match with exactly one human peer as local for pause;
+the debug switcher's on-screen readout is also fixed for that case, though unit-*switching* stays
+correctly inert even solo — see 4.6's own entry for why (a solo host only ever spawns one real
+character; there is nothing to switch to).
 
 #### P1 · Nothing can jump
 
@@ -531,6 +738,34 @@ a card.
 **The CAN row is your spec for M-2.** Standing, knocked-down-and-dented, and impact burst are
 exactly the three states that task builds. The impact burst is already done (Q-8).
 
+### 1b. The prop asset moodboards — 2026-07-28
+
+**A second, separate pair of moodboards, supplied by the human as images in chat.** Like Harry's
+Canva board they are not in the repo, so this is the written record; attach the images to the
+first message of any task that touches either prop.
+
+**They govern the two hero props only.** Everything else — the characters, the maps, the UI, the
+`PEAK` reference — is still Harry's board, and where the two disagree on anything outside the
+tsinelas and the lata, Harry's board wins.
+
+| Board | What it shows | What was taken from it |
+|---|---|---|
+| **URBAN FLIP-FLOPS** | Orthographic top / side / front of a pair of worn brown foam flip-flops with tan fabric Y-straps, on a concrete slab | Colourway (`PROP_FOAM`, `PROP_WEBBING`), the chunky three-step foam sole, the wide flat webbing section, the strap span from mid-sole to toe post |
+| **SARSI CAN** | A low-poly 330 mL Sarsi can — blue body graduating cyan→navy, big red sail, red ball, white wave band low on the body, aluminium lid with a pull tab | The whole livery, the flat aluminium lid, the pull tab, and the banded stand-in for the gradient |
+
+⚠️ **Both boards are labelled "1024×1024 PBR" and neither is buildable as drawn.** `obj_writer.gd`
+emits no UVs at all and the `.mtl` carries one flat `Kd` per material — deliberately, because
+Harry's board's stated reference is `PEAK`: *flat high-saturation colour, not photoreal and not
+PBR*. So these two boards were read for **silhouette, proportion and colour blocking**, and their
+texture maps were not. That is a real gap, not an oversight, and it has one visible consequence:
+**no printed type.** The `sarsi` wordmark, the `330 mL` and the barcode need a UV pipeline that
+does not exist. See `Handoff.md` §5 before building one — at the size the can is actually read
+(≈0.34 units, seen from 4.5) the wordmark lands around 13 px tall, so it is not obviously worth it.
+
+**Sarsi is a registered trademark of its owner.** It is reproduced here as homage — the human's
+call, on the record: *"u can reproduce sarsi logo, we have to showcase PH in this project, js give
+credits."* Credit is carried in `README.md`. No endorsement is claimed or implied.
+
 ---
 
 ### 2. Palette — the single source of truth
@@ -541,23 +776,42 @@ should have their `Kd` values derived from these same constants (`Handoff.md` M-
 
 | Token | Hex | Use in 3D |
 |---|---|---|
-| `INK` | `#040838` | Outlines (inverted hull), can rim and lid, dark accents |
-| `PANEL` | `#E1E5E8` | Neutral light surfaces |
-| `CARD` | `#F5F7FA` | Lighter neutral |
+| `INK` | `#040838` | Outlines (inverted hull), dark accents |
+| `PANEL` | `#E1E5E8` | Neutral light surfaces. In 3D: the lata's aluminium lid, rolled rim and base crimp |
+| `CARD` | `#F5F7FA` | Lighter neutral. In 3D: the lata's white wave band |
 | `OFFENSE` | `#F87020` | Attacking side — role colour |
-| `DEFENSE` | `#0080E8` | Defending side — role colour. **Can body only.** ⚠️ **NOT the tsinelas sole — see below** |
-| `IMPACT` | `#F468A8` | Impact bursts, tsinelas strap, hazard decals |
-| `HIGHLIGHT` | `#F8D028` | Can label band, base-circle decal, ready glows |
-| `DANGER` | `#F80000` | Downed / out-of-bounds |
+| `DEFENSE` | `#0080E8` | Defending side — role colour. **Can body only**, banded light / mid / deep to stand in for the moodboard's gradient. ⚠️ **NOT the tsinelas — see below** |
+| `IMPACT` | `#F468A8` | Impact bursts, hazard decals |
+| `HIGHLIGHT` | `#F8D028` | Base-circle decal, ready glows |
+| `DANGER` | `#F80000` | Downed / out-of-bounds. ⚠️ **Not the lata's sail** — livery is `PROP_SARSI_RED`, because `DANGER` is a state signal and a healthy can must not wear it |
+
+**The `PROP_*` band.** The two hero props are neither UI nor environment and have their own tokens,
+added 2026-07-28 with the asset moodboards below. `ENV_*` is deliberately held under ~70%
+saturation so a wall never competes with a character; a hero prop has the opposite job, so these
+are allowed to be louder than any `ENV_*` token and are still forbidden either role hue.
+
+| Token | Hex | Use in 3D |
+|---|---|---|
+| `PROP_FOAM` | `#7A5741` | Tsinelas footbed — worn brown foam |
+| `PROP_FOAM_DARK` | `#54382A` | Tsinelas outsole, the dirty underside |
+| `PROP_WEBBING` | `#C69A6B` | Tsinelas Y-strap and toe post — tan fabric webbing |
+| `PROP_SARSI_RED` | `#D8221C` | The lata's sail and ball |
 
 > ⚠️ **CORRECTION, 2026-07-28 — this table was the source of B-81.** It used to assign `DEFENSE` to
 > "Can body, **tsinelas sole**", and `_build_tsinelas()` implements exactly that. **It is wrong.** A
 > Prop is a Tsinelas precisely when its team is on **offence**, so the attacking team's prop is
 > painted the defending colour — which breaks rule 1 immediately below. The moodboard disagrees
 > independently: **THE SLIPPER's card accent is magenta**, as is THE CAN's. The rule is right and
-> the table was wrong. **Fixed 2026-07-28 (B-81):** sole → `IMPACT`, straps → `HIGHLIGHT`, toe post
-> → `INK`, and the materials renamed after the PART rather than the token. Verified by render. The
-> Can is deliberately not in scope — a blue can on the defending side is consistent and renders well.
+> the table was wrong. **Fixed 2026-07-28 (B-81):** the materials were renamed after the PART
+> rather than the token, and the sole was repainted off the role hue. Verified by render.
+>
+> **The colours B-81 chose were a placeholder, and are gone — 2026-07-28, later the same day.**
+> B-81 reached for `IMPACT` magenta and `HIGHLIGHT` yellow because those were the only non-role
+> tokens to hand. The human then supplied asset moodboards for both props (see §1) and settled it:
+> *"the magenta shit is just placeholder, we can update it with the new ones."* The tsinelas is now
+> `PROP_FOAM` / `PROP_WEBBING` brown-and-tan and the lata wears Sarsi livery. **B-81's rule is
+> untouched by that** — brown, tan, red and white are none of them a role hue. Only the stand-in
+> colours it was demonstrated with have changed.
 >
 > **Environment art may use neither hue at all** — see
 > [`Art_Direction.md`](Art_Direction.md) §3 for the `ENV_*` band that exists so it
@@ -1098,6 +1352,41 @@ boundary and say so** — every phase below leaves a coherent map.
 
 *(was `docs/Art_Direction.md`)*
 
+> ### ⚠️⚠️⚠️ STANDING RULE — FLOATING GEOMETRY, READ BEFORE PLACING ANY DECAL OR MARKING
+>
+> **This has cost multiple sessions already (2026-07-28: "all assets like lines are floating off
+> the floor").** Root cause, every time: a marking's world-space Y position is where its
+> **bottom** ends up, not its centre — `_box()` in `env_kit.gd` authors most flat decals starting
+> at local Y=0, so placing one at `y=0.07` puts its underside 7cm above the floor, which reads as
+> visibly floating with a shadow gap once lit, not as flush. This is NOT specific to one map or one
+> decal — it applies to any flat marking authored the same way.
+>
+> **The fix is not "always add clearance."** Clearance with nothing underneath it *is* the bug.
+>
+> ### ✅ 2026-07-28 — YOU NO LONGER HAVE TO GET THIS RIGHT BY HAND. IT IS A BUILD GATE.
+>
+> `tools/maps/floorcheck.py` samples every marking's real footprint against the real height of the
+> ground under it and **aborts the map build**, before the `.tscn` is written, if any marking floats
+> or is sunk. You get the node name and the gap in millimetres instead of a scene that looks fine
+> until someone plays it. Both map builders run it. **Do not hand-pick a marking's Y** — use
+> `build_eskinita.py`'s `add_line()` for line markings, or ask `surfaces.height_at(x, z)`.
+>
+> **Why the earlier fixes kept failing, which is the part worth remembering.** The constant was
+> never the problem. It was retuned three times (`0.07 → 0.015 → 0.001`) and the lines kept
+> floating, because `throwing_line_decal` is **8m wide and crosses a 2m raised lane strip** — the
+> ground under one line is 0.062 in the middle and 0.0 either side, so **no single Y could ever be
+> flush for it**, at any value. The shape had to be split, not the number nudged. Eleven markings
+> turned out to have that same fault the moment anything actually checked. `floorcheck` reports it
+> as its own error — `SPANS n surface heights` — precisely because the fix is different.
+>
+> The old `MARK_Y` / `MARK_Y_LOW` split is gone from both builders. It was a human deciding what was
+> underneath a marking, and that judgement is what rotted every time anything moved.
+>
+> **RENDER AND LOOK before calling any placement done.** `tools/render_probe.gd`'s `match` mode,
+> WITHOUT `--headless`. A screenshot with no visible gap or shadow under every line/decal is the
+> only real check — reading the code that placed it is not enough, this project has now shipped the
+> same floating-geometry class of bug more than once despite the placement code "looking correct."
+
 ## Environment Art Agent Brief — the maps
 
 **Run this on: Opus 5, high effort — this is a design-judgement task, not a code task.**
@@ -1494,7 +1783,7 @@ Read out of `project.godot`. Every player index has its own action set (`_p1` �
 
 | Action | Input | Notes |
 |---|---|---|
-| Move | `move_left/right/up/down` per player | P1 WASD, P2 arrows in the local harness |
+| Move | `move_left/right/up/down` per player | P1 WASD; P2 arrows still work too, for the debug switcher's dual-control testing in Single Player |
 | **Grab / pick up** | `grab` | Picks up a loose tsinelas |
 | **Throw** | `special_ability` | Charged — hold and release |
 | **Bump / shove** | `bump` | The melee shove |
@@ -1516,20 +1805,23 @@ reachable in under 20 seconds.
 |---|---|---|---|
 | **0** | Everything works | Full 2v2 on four devices | — |
 | **1** | One peer drops mid-match | **Finish the round.** Do not stop to explain. Narrate over it. | 0 s |
-| **2** | A peer cannot rejoin | Quit to menu, restart the match with the operator covering the empty slot | ~15 s |
-| **3** | LAN is unusable (venue wifi, AP isolation) | **Single machine, local 4-unit harness**, operator cycles units with `Tab` | ~20 s |
+| **2** | A peer cannot rejoin | `Checklist.md` 4.3 (B-65) now implements this — loopback-verified, **not yet confirmed on real hardware (6.1)**. If it fails live: quit to menu, restart with the operator covering the empty slot | ~15 s |
+| **3** | LAN is unusable (venue wifi, AP isolation) | **Single machine, Single Player** — the operator plays one unit, real AI drives the other three; `Tab`/F1-F4 stay available as a debug override if the operator wants to step into a specific unit | ~20 s |
 | **4** | The build will not run at all | **Play the trailer on loop.** Have it on the machine, not on a URL. | ~10 s |
 
-#### ⚠️ Two things this ladder needs, neither of which exists yet
+#### ⚠️ One thing this ladder needed, now resolved
 
-1. **Rung 3 depends on the local harness, which checklist 5.3 wants stripped before submission.**
-   These two requirements are in direct conflict and nobody has noticed. **Recommendation: keep
-   the local harness, gate it behind a launch argument rather than deleting it, and strip only
-   the on-screen debug overlay.** That satisfies 5.3's real intent (the build must not *look*
-   like a prototype) without removing the only fallback that does not need a network.
-   **Flagged, not done — `scripts/` is 🔧 Build's lane and 5.3 is blocked on 0.4 anyway.**
-2. **Rung 4 depends on the trailer existing (6.3), which depends on this document.** So the
-   trailer is not just a submission asset; it is the demo's own safety net. Cut it early.
+**Rung 3 used to depend on a debug-only harness that checklist 5.3 planned to strip before
+submission — a direct conflict nobody had noticed.** Resolved 2026-07-28 by the user's own
+decision, `Checklist.md` 5.5: **Single Player (formerly "Local Match") is promoted to a real,
+permanent mode that ships in the final build**, with AI driving the three units the operator
+is not personally controlling. Rung 3 no longer depends on anything scheduled for removal, and
+is arguably a BETTER fallback than before it — the operator does not need to manually `Tab`
+through units to keep the match moving; only the debug switcher (still present, still debug-only)
+needs stripping before submission, which is unrelated to whether the mode itself survives.
+
+**Rung 4 depends on the trailer existing (6.3), which depends on this document.** So the
+trailer is not just a submission asset; it is the demo's own safety net. Cut it early.
 
 #### What happens today when a peer drops
 
@@ -1619,7 +1911,7 @@ Flagged for a human, per the brief's rule that a design lane files questions rat
 | # | Question | Why it is not mine to take |
 |---|---|---|
 | 1 | Demo preset at `ROUND_TIME 45` / `WINS_NEEDED 2` | Touches `scripts/systems/` (🔧 Build) and changes what a judge experiences as "the game" |
-| 2 | Keep the local harness as fallback rung 3 vs. 5.3's strip | Directly contradicts a checklist item; needs the human to pick |
+| 2 | ~~Keep the local harness as fallback rung 3 vs. 5.3's strip~~ **DECIDED 2026-07-28** | User decision: Single Player (formerly "Local Match") is promoted to a real, permanent mode that ships in the final build — not stripped. See `Checklist.md` 5.5. |
 | 3 | What actually happens when a peer drops | Needs 🔬 QA with two machines and a pulled cable. **Nobody has ever tested this.** |
 | 4 | Audio — whether there is any, and who owns it | No owner assigned anywhere in the plan |
 | 5 | Whether Bayan Plaza is shown at all | Depends entirely on whether 0.4 ever plays it |

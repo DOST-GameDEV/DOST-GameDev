@@ -37,9 +37,18 @@ const DOWNED_SELF_RIGHT_WINDOW: float = 2.0
 ## transform, so world origin IS the base circle centre) for the whole round.
 ## Sized to give the Taya room to body-block an incoming throw without being
 ## able to chase the attacker back to the throwing line — see Art_Direction.md
-## §9 for why the line sits 6 units out. First guess, not a measurement; needs
-## a human to actually play it.
-const CONFINEMENT_RADIUS: float = 3.0
+## §9 for why the line sits 6 units out.
+## ⚠️ RAISED 3.0 -> 5.0, same day, after the first playtest: "the box that
+## defend can move in is so small. he can barely move, theres no room for
+## outplays." Still a full unit short of the 6.0 throwing line, so the Taya
+## still cannot reach the attacker's line — same design constraint as before,
+## just more room inside it. Mirrored by `CONFINEMENT_BOX_RADIUS` in
+## build_eskinita.py, which draws the actual boundary as a chalk-style square
+## (a ring was tried first, then replaced same day — "the circle you made
+## was ugly ... can we just use a square") — keep both in sync if this is
+## retuned again. Still a first guess, not a
+## measurement; needs a human to actually play it.
+const CONFINEMENT_RADIUS: float = 5.0
 ## Bump is "no cooldown" per the GDD but still needs an active window so standing
 ## next to an opponent doesn't stagger them every physics tick — press-to-bump,
 ## briefly live, matches "light melee" better than always-on contact damage.
@@ -191,6 +200,14 @@ var _melee_hitbox: Hitbox = null
 ## Task 0/1 — this unit's hands, when it is a Person. See carrier.gd.
 @onready var _carrier: Carrier = get_node_or_null("Carrier")
 
+## Checklist 5.5 — Single Player. Null for every unit except the three
+## AI-driven ones in single-player, which main.gd attaches this to at
+## runtime (never baked into CharacterBase.tscn — see ai_controller.gd's own
+## class doc for why). A plain public var rather than an @onready
+## get_node_or_null(), because the node this would resolve does not exist
+## yet when THIS character's own _ready() runs — main.gd adds it afterward.
+var ai_controller: AIController = null
+
 ## Art_Direction.md §1 proportion audit: CharacterBase.tscn's CollisionShape3D,
 ## Hurtbox, Hitbox and GrabArea used to be baked once at Person scale (radius
 ## 0.4, height 1.6) for every unit — Person, Can and Tsinelas alike. Against a
@@ -265,8 +282,18 @@ func _apply_role_collision() -> void:
 ## Team can = the Can Prop itself, and its team's defending Person (the Taya).
 ## Re-derived every call rather than cached, same as is_can/team_is_can_side
 ## themselves — both flip every round.
+##
+## ⚠️ Gated on RoundManager.round_active, added 2026-07-28: user feedback
+## ("i want ppl to be able to move around with no restrictions whiile waiting
+## for ready") wants a free-roam window before the round actually starts.
+## round_active is false there, same as it briefly is between rounds during
+## an ordinary intermission — that window is harmless because
+## reset_for_new_round()/_reset_world() already re-teleports everyone to
+## their role spawn the instant the next round's setup runs, before a player
+## has time to wander. Do not remove this gate to "simplify" back to the old
+## always-on version; that is what made the pre-round waiting area impossible.
 func _is_confined_to_base() -> bool:
-	return is_can or (is_person and team_is_can_side)
+	return RoundManager.round_active and (is_can or (is_person and team_is_can_side))
 
 ## Wraps move_and_slide() with the confinement clamp so every call site in this
 ## file gets it automatically rather than relying on each one to remember —
@@ -299,6 +326,20 @@ func _ready() -> void:
 	_visual.apply(is_person, is_can, team)
 
 func _physics_process(delta: float) -> void:
+	# Checklist 5.5 — Single Player AI. Deliberately the FIRST line of this
+	# function, before anything below reads Input: ai_controller writes into
+	# this character's own action_name()-suffixed Input state exactly the way
+	# a human would, and Godot does not guarantee _physics_process order
+	# between a parent and its children — leaving this implicit (e.g. relying
+	# on AIController being a child that "happens" to run first) would make
+	# the AI's presses land a frame late roughly as often as not. This is the
+	# ONLY hook: everything after this line — movement, abilities, carrier,
+	# confinement, the state machine, round-active gating — is completely
+	# unmodified and unaware whether the Input it reads came from hardware or
+	# from here. See ai_controller.gd's own class doc for the full reasoning.
+	if ai_controller != null:
+		ai_controller.decide(delta)
+
 	# Session 6: the bump-active window has to decay on every peer, not just
 	# the owning one — the host needs its own copy of this timer to resolve
 	# hits authoritatively (see hitbox.gd), and it never runs the input half
@@ -334,10 +375,18 @@ func _physics_process(delta: float) -> void:
 	# Item 10 / B-37: freeze input during the round intermission (the gap
 	# between a round ending and the next one's timer starting — see
 	# MatchManager.round_intermission_started / main.gd::_reset_world) and
-	# before the very first round begins. round_active is already false in
-	# both cases; still apply gravity/friction above/below so nobody floats
-	# or skids, just can't act.
-	if not RoundManager.round_active:
+	# while waiting for a rematch after a match ends. round_active is false
+	# in both cases; still apply gravity/friction above/below so nobody
+	# floats or skids, just can't act.
+	# ⚠️ EXCLUDES the pre-match free-roam window added 2026-07-28
+	# (main.gd::_start_local_test/_awaiting_local_ready) — round_active is
+	# ALSO false there, but MatchManager.round_number is still 0 (no round
+	# has ever begun yet), which is what distinguishes "waiting to ready up,
+	# should be able to walk around" from "between rounds/matches, should
+	# not." Do not simplify this back to a bare `not round_active` check;
+	# that is exactly what froze movement during the free-roam window the
+	# first time this shipped.
+	if not RoundManager.round_active and MatchManager.round_number > 0:
 		velocity.x = move_toward(velocity.x, 0, FRICTION * delta)
 		velocity.z = move_toward(velocity.z, 0, FRICTION * delta)
 		_move_and_confine()
@@ -807,6 +856,15 @@ func get_hand_attachment() -> Node3D:
 func play_visual_action(kind: String) -> void:
 	_visual.play_action(kind)
 
+## 4.2 — tells this unit's Visual its body position/yaw was just TELEPORTED
+## (a round reset, a KillPlane respawn) rather than walked, so remote-peer
+## interpolation snaps to the new spot instead of gliding across the map from
+## wherever it was before. No-op for every unit that isn't currently being
+## smoothed (the locally-driven character, Local Match, everyone once the
+## match isn't networked) — see character_visual.gd::snap_remote_transform.
+func snap_visual_interpolation() -> void:
+	_visual.snap_remote_transform()
+
 ## Art_Direction.md §1 / B-88 — this unit's OWN, currently-applied collision
 ## capsule height, read from the shape `_apply_role_collision()` just sized
 ## rather than assumed. Every child node that positions itself relative to
@@ -848,6 +906,7 @@ func _set_state(new_state: State) -> void:
 func respawn() -> void:
 	global_position = spawn_position
 	velocity = Vector3.ZERO
+	snap_visual_interpolation()
 
 ## Called by RoundManager at the start of a new round to clear Downed/Sealed/Staggered
 ## carryover from the previous round. Does NOT touch position — whatever resets a

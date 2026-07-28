@@ -43,10 +43,14 @@ static func attach_to(parent: Control, over_3d: bool = false) -> Label:
 	label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	label.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	label.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	label.offset_left = -140.0
-	label.offset_top = -30.0
-	label.offset_right = -12.0
-	label.offset_bottom = -8.0
+	# 2026-07-29, user feedback: on a PC build the label sat close enough to
+	# the true corner (12px/8px) to get clipped by the window border/taskbar
+	# depending on resolution and windowed vs. fullscreen. Pulled further in
+	# rather than assuming a specific resolution to fix around.
+	label.offset_left = -156.0
+	label.offset_top = -42.0
+	label.offset_right = -24.0
+	label.offset_bottom = -20.0
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	parent.add_child(label)
 	return label

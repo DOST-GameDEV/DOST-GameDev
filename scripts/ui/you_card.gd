@@ -6,7 +6,7 @@ class_name YouCard
 ## which SIDE each team holds, never which unit is yours.
 ##
 ## Resolution differs by mode (see _find_local_character): networked reads
-## main.gd's own is_multiplayer_authority() scan; Local Match scans for
+## main.gd's own is_multiplayer_authority() scan; Single Player scans for
 ## whichever unit currently holds player_id == 1. The debug switcher
 ## (scripts/systems/debug_player_switcher.gd) reassigns player_id at runtime
 ## when driving Tab/F1-F4 — this card polls on a plain timer rather than
@@ -21,6 +21,14 @@ const REFRESH_INTERVAL: float = 0.15
 ## landing on a 3D mesh, this one is a 2D meter filling back up; no reason
 ## the two have to move in lockstep just because they're both "a flash".
 const READY_FLASH_DURATION: float = 0.2
+## Checklist 0.1's remaining half — the moodboard's "charged throw (glow)" on
+## THE ATTACKER card. This is the HOOK, not the treatment: if the design lane
+## assigns a `ShaderMaterial` to `charge_bar` (its `CanvasItem.material`, set in
+## the editor or from code — nothing here creates one), this uniform is kept
+## live at 0..1 for as long as charging is active and snapped to 0 the instant
+## it stops. No material means no-op; `set_shader_parameter` on a plain
+## `StyleBoxFlat` fill is a silent no-op path, this is the actual node-level one.
+const CHARGE_SHADER_PARAM: StringName = &"charge_ratio"
 
 @onready var card: PanelContainer = %Card
 @onready var class_label: Label = %ClassLabel
@@ -190,7 +198,14 @@ func _on_charge_changed(power: float) -> void:
 	_charging = power >= 0.0
 	if _charging:
 		charge_bar.value = power * charge_bar.max_value
+	_set_charge_shader_param(power if _charging else 0.0)
 	_update_row_visibility()
+
+## The hook itself — see CHARGE_SHADER_PARAM's doc above.
+func _set_charge_shader_param(ratio: float) -> void:
+	var mat := charge_bar.material
+	if mat is ShaderMaterial:
+		(mat as ShaderMaterial).set_shader_parameter(CHARGE_SHADER_PARAM, ratio)
 
 func _on_held_changed(held: Carriable) -> void:
 	hold_label.text = "SLIPPER READY" if held != null else "GO GET IT"
@@ -215,7 +230,31 @@ func _update_row_visibility() -> void:
 ## Returns the locally-controlled character resolved by the last refresh cycle.
 ## Use this from sibling HUD nodes rather than duplicating the scan logic —
 ## the you_card already polls every REFRESH_INTERVAL and caches the result.
+##
+## Validated here, not just left to the next poll: `_character` can be freed
+## in the gap between two refresh cycles (up to REFRESH_INTERVAL, ~9 frames at
+## 60fps) — measured live during 4.2/4.3's two-instance testing, where a
+## fresh --join= still has the local-test dummy units in the tree for the
+## first few frames (main.gd's own _ready() hasn't run _clear_local_test_characters()
+## yet — children ready before parents) and this card's very first refresh()
+## can cache one of them. A caller with a raw, unchecked freed reference is
+## worse than returning null: passing it into a TYPED parameter (e.g.
+## offscreen_indicators.update()) fails Godot's own argument type-check
+## before that function's body — and its is_instance_valid() guard — ever run.
+##
+## ⚠️ `is_instance_valid(_character)` alone, NOT `_character != null and
+## not is_instance_valid(_character)`. Measured live: for a FREED (not null)
+## Object reference, GDScript's own `!=` already treats it as equal to null
+## in a plain comparison — so the `_character != null` half of that guard is
+## false for exactly the freed case it exists to catch, short-circuits the
+## `and`, and falls through to `return _character`, handing the caller the
+## same poisoned reference back. It merely COMPARES as null from then on;
+## it is not reassigned to an actual null literal, so it still fails the
+## same argument type-check downstream. `is_instance_valid()` alone handles
+## both a real null and a freed reference correctly, with no error either way.
 func get_local_character() -> CharacterBase:
+	if not is_instance_valid(_character):
+		return null
 	return _character
 
 func _find_local_character() -> CharacterBase:
