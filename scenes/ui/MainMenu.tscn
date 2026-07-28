@@ -56,47 +56,51 @@ text = "2v2 ARENA BRAWLER — CANS VS TSINELAS"
 [node name="StartButton" parent="." instance=ExtResource("4")]
 unique_name_in_owner = true
 layout_mode = 0
+offset_left = -123.0
 offset_top = 374.0
 offset_right = 596.0
 offset_bottom = 568.0
 texture = ExtResource("5")
 caption = "PLAY"
 text_offset_y = 4.0
-text_color = Color(0.078, 0.2, 0.051, 1)
+text_color = Color(0.153, 0.263, 0.106, 1)
 label_size = 141
 pole_distance = 315.0
-text_indent = 190.0
+text_indent = 309.0
 tip_padding = 90.0
 
 [node name="SettingsButton" parent="." instance=ExtResource("4")]
 unique_name_in_owner = true
 layout_mode = 0
-offset_top = 564.0
+offset_left = -143.0
+offset_top = 559.0
 offset_right = 600.0
 offset_bottom = 729.0
 texture = ExtResource("6")
 caption = "SETTINGS"
-text_offset_y = -12.0
-text_color = Color(0.239, 0.149, 0.024, 1)
-label_size = 139
-label_stretch_x = 0.711
+text_offset_y = -24.0
+text_color = Color(0.263, 0.176, 0.106, 1)
+label_size = 85
+label_stretch_y = 1.63
+label_spacing = 8
 pole_distance = 315.0
-text_indent = 81.0
+text_indent = 226.0
 tip_padding = 116.0
 
 [node name="QuitButton" parent="." instance=ExtResource("4")]
 unique_name_in_owner = true
 layout_mode = 0
+offset_left = -173.0
 offset_top = 912.0
 offset_right = 569.0
 offset_bottom = 1057.0
 texture = ExtResource("7")
 caption = "QUIT"
 text_offset_y = 7.0
-text_color = Color(0.239, 0.051, 0.051, 1)
+text_color = Color(0.322, 0.09, 0.129, 1)
 label_size = 99
 pole_distance = 315.0
-text_indent = 143.0
+text_indent = 318.0
 tip_padding = 209.0
 
 [node name="SettingsPanel" parent="." instance=ExtResource("2")]

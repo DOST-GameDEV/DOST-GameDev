@@ -13,9 +13,9 @@ class_name ArrowButton
 ## Two children (see ArrowButton.tscn): `Artwork`, a TextureRect with
 ## `show_behind_parent` so it sits under everything, and `Caption`, a Label on
 ## top. Button's own `text` stays empty — the caption is a real Label so it can
-## be condensed horizontally, which the artboard does and which no font size can
-## reproduce on Button's built-in text. Because `scale` applies to children, the
-## caption still stretches with the pennant.
+## be scaled non-uniformly and tracked out, which the artboard does to SETTINGS
+## and which no font size reproduces on Button's built-in text. Because `scale`
+## applies to children, the caption still stretches with the pennant.
 
 const HOVER_SCALE: float = 1.04
 const HOVER_BRIGHTNESS: float = 1.12
@@ -27,10 +27,16 @@ const PRESS_SCALE: float = 0.96
 ## one shared value.
 @export var text_color: Color = Color("221a10"): set = _set_text_color
 @export var label_size: int = 72: set = _set_label_size
-## Horizontal condense on the caption. The artboard squeezes a long word to fit
-## its pennant while keeping cap height — SETTINGS is drawn at ~0.76 the natural
-## width of PLAY's letterforms.
+## Non-uniform scale on the caption. The artboard sets SETTINGS at a small size
+## stretched tall rather than condensed narrow: its mid-height strokes measure
+## 16px against QUIT's 22px, while its top bar measures 29px — a 1.8x ratio that
+## only a vertical stretch produces. Cap height and stroke weight are otherwise
+## impossible to satisfy at once.
 @export var label_stretch_x: float = 1.0: set = _set_label_stretch_x
+@export var label_stretch_y: float = 1.0: set = _set_label_stretch_y
+## Extra tracking, in pixels per gap. The same stretched caption is spaced out to
+## span its pennant; without it the letters crowd together.
+@export var label_spacing: int = 0: set = _set_label_spacing
 ## Distance from this button's left edge out to the off-screen flagpole the
 ## entrance animation pivots around.
 @export var pole_distance: float = 420.0
@@ -54,6 +60,7 @@ func _ready() -> void:
 	_apply_text_color()
 	_apply_label_size()
 	_apply_label_stretch()
+	_apply_label_spacing()
 	_apply_layout()
 	_update_pivot()
 	resized.connect(_on_resized)
@@ -79,11 +86,12 @@ func _on_resized() -> void:
 	_update_pivot()
 	_apply_layout()
 
-## Resting pivot: the button's own left edge. These sit flush against the
-## viewport border, and scaling about a pivot further left would walk the left
-## edge inward on hover and open a gap at the screen edge.
+## Resting pivot: wherever the button crosses the left screen edge — its own
+## left edge for a button fully on screen, or the x=0 line for a pennant that
+## bleeds past it. Scaling about any other point walks that crossing sideways
+## and opens a sliver of background at the border on hover.
 func _update_pivot() -> void:
-	pivot_offset = Vector2(0.0, size.y * 0.5)
+	pivot_offset = Vector2(maxf(0.0, -position.x), size.y * 0.5)
 
 # --- Property plumbing --------------------------------------------------------
 # Exported setters fire while the scene loads, before _ready has resolved the
@@ -126,12 +134,35 @@ func _set_label_stretch_x(value: float) -> void:
 	_apply_label_stretch()
 	_apply_layout()
 
-## Condensing via the Label's own scale rather than a FontVariation transform:
+func _set_label_stretch_y(value: float) -> void:
+	label_stretch_y = value
+	_apply_label_stretch()
+	_apply_layout()
+
+## Scaling via the Label's own transform rather than a FontVariation transform:
 ## that transform reshapes glyph outlines but leaves their advances alone, so a
 ## word keeps almost all its width.
 func _apply_label_stretch() -> void:
 	if _caption != null:
-		_caption.scale = Vector2(label_stretch_x, 1.0)
+		_caption.scale = Vector2(label_stretch_x, label_stretch_y)
+
+func _set_label_spacing(value: int) -> void:
+	label_spacing = value
+	_apply_label_spacing()
+	_apply_layout()
+
+## Clears the override before reading the theme font, so repeated calls wrap the
+## base face rather than stacking FontVariations on top of each other.
+func _apply_label_spacing() -> void:
+	if _caption == null:
+		return
+	_caption.remove_theme_font_override("font")
+	if label_spacing == 0:
+		return
+	var tracked := FontVariation.new()
+	tracked.base_font = _caption.get_theme_font("font")
+	tracked.spacing_glyph = label_spacing
+	_caption.add_theme_font_override("font", tracked)
 
 func _set_text_indent(value: float) -> void:
 	text_indent = value
