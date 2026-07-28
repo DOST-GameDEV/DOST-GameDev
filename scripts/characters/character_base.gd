@@ -180,10 +180,69 @@ var _melee_hitbox: Hitbox = null
 ## Task 0/1 — this unit's hands, when it is a Person. See carrier.gd.
 @onready var _carrier: Carrier = get_node_or_null("Carrier")
 
+## Art_Direction.md §1 proportion audit: CharacterBase.tscn's CollisionShape3D,
+## Hurtbox, Hitbox and GrabArea used to be baked once at Person scale (radius
+## 0.4, height 1.6) for every unit — Person, Can and Tsinelas alike. Against a
+## correctly-scaled 0.34-tall can that is a person-sized invisible capsule
+## around a knee-high object: it blocks doorways the can visibly fits through
+## and gets hit by throws that visibly miss. Each shape in CharacterBase.tscn
+## is `resource_local_to_scene = true`, so mutating one here only ever touches
+## THIS character's own copy, never another instance's.
+##
+## Hurtbox carries the same ~12% margin over its body shape that the Person
+## row always has (0.45/1.7 vs 0.4/1.6) — a hair more forgiving than the
+## visible silhouette, same idea `flick`/`bagsak`/etc. hitboxes already use.
+## Hitbox (the always-on melee/bump reach) and GrabArea are scaled down for
+## Props too, proportional to their own body size, so a can's bump doesn't
+## reach out nearly a full unit from a 0.17-unit-tall body. GrabArea is inert
+## on a Prop (`Carrier.has_hands()` only ever queries a Person's own), so its
+## exact number there doesn't affect gameplay; sized anyway for consistency.
+## Fine combat-feel tuning (does a can's bump reach far ENOUGH) is checklist
+## 4.4's job once a human has played it, not this one's.
+const _COLLISION_BY_ROLE: Dictionary = {
+	"person": {
+		"body_r": 0.40, "body_h": 1.60, "hurt_r": 0.45, "hurt_h": 1.70,
+		"hit_r": 0.50, "hit_off": Vector3(0, 0.80, -0.60), "grab_r": 1.70,
+	},
+	"can": {
+		"body_r": 0.14, "body_h": 0.34, "hurt_r": 0.17, "hurt_h": 0.40,
+		"hit_r": 0.16, "hit_off": Vector3(0, 0.10, -0.18), "grab_r": 0.60,
+	},
+	"tsinelas": {
+		"body_r": 0.16, "body_h": 0.32, "hurt_r": 0.19, "hurt_h": 0.38,
+		"hit_r": 0.14, "hit_off": Vector3(0, 0.08, -0.16), "grab_r": 0.60,
+	},
+}
+
 ## True when the local player is aiming this unit with the mouse, i.e. the rig
 ## is writing `rotation.y` and this script must not fight it.
 func _is_mouse_aimed() -> bool:
 	return _camera_rig != null and _camera_rig.aim_source == CameraRig.AimSource.MOUSE
+
+## Resizes this character's own collision shapes to match its current role.
+## Called from _ready() and again from reset_for_new_round(), because a Prop's
+## `is_can` flips every round (Can this round, Tsinelas the next) while
+## `is_person` never does — re-running for a Person is a harmless no-op of
+## identical numbers.
+func _apply_role_collision() -> void:
+	var key := "person" if is_person else ("can" if is_can else "tsinelas")
+	var cfg: Dictionary = _COLLISION_BY_ROLE[key]
+	var body_shape := ($CollisionShape3D as CollisionShape3D).shape as CapsuleShape3D
+	if body_shape:
+		body_shape.radius = cfg["body_r"]
+		body_shape.height = cfg["body_h"]
+	var hurt_shape := ($Hurtbox/CollisionShape3D as CollisionShape3D).shape as CapsuleShape3D
+	if hurt_shape:
+		hurt_shape.radius = cfg["hurt_r"]
+		hurt_shape.height = cfg["hurt_h"]
+	var hit_area := $Hitbox as Area3D
+	var hit_shape := (hit_area.get_node("CollisionShape3D") as CollisionShape3D).shape as SphereShape3D
+	if hit_shape:
+		hit_shape.radius = cfg["hit_r"]
+	hit_area.position = cfg["hit_off"]
+	var grab_shape := ($GrabArea/CollisionShape3D as CollisionShape3D).shape as SphereShape3D
+	if grab_shape:
+		grab_shape.radius = cfg["grab_r"]
 
 func _ready() -> void:
 	spawn_position = global_position
@@ -194,6 +253,7 @@ func _ready() -> void:
 		hitbox.owner_character = self
 		if hitbox.requires_bump_window:
 			_melee_hitbox = hitbox
+	_apply_role_collision()
 	# Person / Can / Tsinelas each get their own model. Reapplied every round in
 	# reset_for_new_round(), because `is_can` flips with the role swap.
 	_visual.apply(is_person, is_can, team)
@@ -744,5 +804,8 @@ func reset_for_new_round() -> void:
 	if _carriable != null:
 		_carriable.reset_for_new_round()
 	# Roles swap between rounds, so a Prop that was the Can is the Tsinelas now
-	# (and vice versa) and needs the other model. No-op when nothing changed.
+	# (and vice versa) and needs the other model AND the other collision sizing
+	# (Art_Direction.md §1) — a can-sized capsule left over on a tsinelas-shaped
+	# Prop is exactly the bug this whole pass exists to remove.
+	_apply_role_collision()
 	_visual.apply(is_person, is_can, team)
