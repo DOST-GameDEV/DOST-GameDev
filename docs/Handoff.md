@@ -821,16 +821,82 @@ collision shape. Fixed with a new `main.gd::_on_match_won_freeze_physics()` hand
 velocity on every character once, the moment `MatchManager.match_won` fires — nothing moves them
 again after that since `round_active` never becomes true again for that match.
 
-**Still open, not root-caused this session: the Tsinelas Prop's TPP camera reportedly breaks when
-a round ends** — reported as an extreme close-up on overhead-wire geometry, "not sure if its
-completely broken." Read `camera_rig.gd::_update_tpp_carry_follow()` (the B-91 carried-camera
-logic) and its exclusion-list bookkeeping closely; the self-correction path looks sound on paper
-(state change to LOOSE on reset clears `carrier`, the next `_process()` tick removes the stale
-`SpringArm3D` exclusion), but Carriable's `_process()` and CameraRig's `_process()` are siblings
-under `CharacterBase` with no guaranteed order, so a one-frame window where the camera reads a
-just-reset carrier is plausible without a live repro to confirm. Needs a human to say whether this
-happens every round-end or occasionally, and whether the tsinelas was being carried at the moment
-the round ended — did not want to guess-patch a shared camera path on a hunch.
+**B-96 · The Can/Taya/Attacker spawn layout was never actually role-based for Local Match — the
+new free-roam window just exposed it. [FIXED same session.]** `_start_local_test()` left every
+local unit at Main.tscn's own hand-authored default transforms, which predate the 2.6 role-based
+`SpawnPoints` redesign entirely — before this session, `begin_next_round()` fired immediately and
+`_reset_world()` (which DOES use role-based spawns) repositioned everyone before the first frame
+was ever shown, so nobody had actually seen the stale defaults. With a real pre-round wait now,
+they were visible and wrong: the Can nowhere near the base circle, the Attacker not facing the
+Can/Taya. Fixed by calling `_place_at_spawn()`/`_role_slot()` — the exact call `_reset_world()`
+already makes every round — once up front in `_start_local_test()`, for every local unit.
+
+**Taya spawn moved to the opposite side of the Can from the Attacker.** User feedback: "the
+person in same team is behind that can." `Spawn1` was at `z=+1.5` (Attacker side), now `z=-1.5`
+(same yaw, so the Taya still faces back through the Can toward the attack line) — see
+`build_eskinita.py`'s `Spawn0-3` doc comment.
+
+**B-97 · The carried Tsinelas's TPP camera could end up "inside the head," and gave its player no
+look control at all. [FIXED same session — B-91 only fixed HALF of this.]** Two real bugs, found
+by tracing `camera_rig.gd::_update_tpp_carry_follow()` all the way through rather than guessing:
+1. Its mount-height formula (`_mount_height_for(carrier.capsule_height())`) was written for a
+   STANDALONE Prop mounting 1.2 units above ITS OWN short capsule; B-91 reused it against the
+   CARRIER's 1.6-tall capsule instead, which resolves to the same number (1.2) but a different
+   meaning — 0.4 units ABOVE the carrier's own head (head-top sits at local `+0.8` from a Person's
+   origin). A spring-arm cast starting already above someone's head collapses into the first thing
+   it touches, which is exactly the reported "extreme close-up on wire geometry" / "it's just
+   inside the head." Replaced with a dedicated `TPP_CARRY_MOUNT_HEIGHT` (0.6, just below head
+   height) instead of reusing a formula meant for something else.
+2. The carried player never had ANY camera control, B-91 or not — `apply_mouse_delta()`'s TPP path
+   writes `_character.rotation.y`, but `carriable.gd::_step_carried()` overwrites that same field
+   every physics frame to match the carrier's hand, so the write had zero visible effect. Reported
+   as "so awkward for them to be watching the gameplay happen like this" and "should be movable but
+   anchored to person." Fixed with a separate look-offset (`_tpp_carry_yaw_deg`/`_tpp_carry_pitch_deg`)
+   added on top of the carrier's own facing in `_update_tpp_carry_follow()` — the view starts
+   anchored behind the carrier and the carried player can still swivel it from there. Resets to
+   zero on drop/throw so the next pick-up starts anchored again, not wherever this player last
+   looked.
+
+**B-98 · A carried unit's ground-ring nameplate still showed, riding along near the carrier's
+hand.** B-89 (earlier this project) fixed the ring's SIZE/position but never addressed the
+complaint it quotes — a carried object doesn't stand on the ground, so a ground ring makes no
+sense for it regardless of how correctly it's sized. Reported again this session: "the circle is
+still attached to slipper even when it's held." Fixed by hiding `character_nameplate.gd`'s ring
+and label outright while `Carriable.state == CARRIED`, rather than sizing them to something that
+still shouldn't be there.
+
+**B-99 · A thrown slipper could land tilted instead of flat, and tunnel through the floor when it
+did.** `carriable.gd::_step_carried()` overwrites a carried unit's entire transform — BASIS
+included — to the carrier's hand orientation (`CARRY_TILT_DEG`, 55°) every physics frame. Nothing
+ever reset that basis on release: `_rpc_set_flying()`/`_rpc_set_loose()` only ever wrote
+`global_position`, so the 55° tilt rode straight through the whole flight and into landing.
+`character_visual.gd::_spin_while_airborne()`'s own rotation reset (already correct) is on the
+VISUAL node, a CHILD of this transform, and could never fix a tilt baked into the parent. A capsule
+resting on the floor at an angle instead of upright is exactly the kind of resolved-collision edge
+case that can clip through thin geometry — matches the floor-tunnelling half of the report. Fixed
+by resetting `_character.rotation = Vector3.ZERO` in both RPC handlers.
+
+**Bounce physics tuned down — "ragdolls while flying," connected to "barely has power even during
+full windup."** `BOUNCE_DAMPING` 0.45 → 0.3, `MAX_BOUNCES` 2 → 1. An early clip on nearby interior
+clutter (crates, tires — up to 1.0 tall, and a throw launches around hand height) previously cost
+a two-bounce sequence each keeping a still-substantial 45% of speed, which reads as chaotic and as
+the whole throw losing its power, not as "bounces a bit." Checked the throw profiles'
+`launch_speed` values themselves (14-23, comfortably faster than `DASH_SPEED` 14.0) and
+`charge_power()`'s math (correctly reaches 1.0 at full charge) — neither looks like a numeric bug
+on paper, so this is the fix that's actually justified by evidence; if throws still feel weak after
+this, that needs a fresh report of exactly when (every throw, or only ones that clip something
+early).
+
+**3-2-1-GO countdown added before a (Local Match) round starts.** User request: "add a 3 2 1 timer
+before each match starts too, think about how to make it look good." Sits between the ready press
+and `MatchManager.begin_next_round()` actually firing — `hud.gd::show_countdown_tick()` pops each
+digit in oversize and settles to normal scale (`TRANS_BACK`/`EASE_OUT`) rather than just swapping
+text, in the existing `HIGHLIGHT` colour the round timer itself uses under 15s. `main.gd`'s
+`_run_ready_countdown()` sequences it with `await get_tree().create_timer(...).timeout` between
+ticks; `_counting_down` guards against a second `ready_up` press restarting it mid-count.
+
+All of the above verified by render (`tools/render_probe.gd` now shows the Can correctly inside
+the base circle) and the full six-command smoke gate. NOT yet verified by play.
 
 **Still open, not root-caused this session:** a report of a carried tsinelas reading as
 permanently frozen/slanted, and a Can appearing stuck mid-animation at the same time, with no

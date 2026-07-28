@@ -257,10 +257,15 @@ adjustment_saturation = 1.2
 # instead of the old scheme that put both of one team's units at one end of
 # the alley and both of the other team's at the far end regardless of which
 # side was actually defending. Spawn0 (Can) sits ON the circle; Spawn1 (Taya)
-# stands a couple of units off it, facing the attack line; Spawn2 (Attacker)
-# is AT the throwing line Art_Direction.md §9 derived the 6.0 distance for;
-# Spawn3 (Tsinelas) starts beside the Attacker — main.gd auto-hands it to them
-# at round start, so it is rarely loose there for more than an instant.
+# stands a couple of units BEHIND it at negative Z (2026-07-28, user
+# feedback: "the person in same team is behind that can") -- the opposite
+# side from Spawn2, so the Taya is watching past the Can toward the
+# attacker rather than standing off to the attacker's own side; Spawn2
+# (Attacker) is AT the throwing line Art_Direction.md §9 derived the 6.0
+# distance for, facing back toward the Can/Taya (-Z, "the person with
+# tsinelas should be staring at them"); Spawn3 (Tsinelas) starts beside the
+# Attacker -- main.gd auto-hands it to them at round start, so it is rarely
+# loose there for more than an instant.
 HEAD = '''[node name="Eskinita" type="Node3D"]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
@@ -337,7 +342,7 @@ shape = SubResource("Shape_hazard")
 transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.0, 0.17, 0.0)
 
 [node name="Spawn1" type="Marker3D" parent="SpawnPoints"]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 2.2, 0.8, 1.5)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 2.2, 0.8, -1.5)
 
 [node name="Spawn2" type="Marker3D" parent="SpawnPoints"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0, 0.8, 6.0)

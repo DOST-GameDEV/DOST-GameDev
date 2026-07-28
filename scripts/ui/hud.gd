@@ -20,12 +20,14 @@ class_name Hud
 @onready var downed_flash: ColorRect = %DownedFlash
 @onready var toast_label: Label = %ToastLabel
 @onready var ready_prompt: Label = %ReadyPrompt
+@onready var countdown_label: Label = %CountdownLabel
 @onready var you_card: YouCard = %YouCard
 @onready var crosshair: Control = %Crosshair
 @onready var offscreen_indicators: OffscreenIndicators = %OffscreenIndicators
 
 var _toast_time_left: float = 0.0
 var _pulse_tween: Tween = null
+var _countdown_tween: Tween = null
 
 func _ready() -> void:
 	MatchManager.round_started.connect(_on_round_started)
@@ -111,6 +113,30 @@ func show_toast(text: String, duration: float = 1.5) -> void:
 ## moment the player readies up and the round begins.
 func show_ready_prompt(active: bool) -> void:
 	ready_prompt.visible = active
+
+## 2026-07-28 — "add a 3 2 1 timer before each match starts too, think about
+## how to make it look good." One call per tick ("3", "2", "1", "GO!"); the
+## caller (main.gd) times the calls a second apart. Each tick pops in oversize
+## and settles to normal scale rather than just appearing, which reads far
+## more like a countdown than a static label swap would — the punch is the
+## whole effect at this size. HIGHLIGHT colour matches the same urgency tint
+## the round timer itself uses under 15s, so it reads as "the same game
+## system," not a one-off UI element.
+func show_countdown_tick(text: String) -> void:
+	countdown_label.text = text
+	countdown_label.visible = true
+	countdown_label.modulate = UiTheme.HIGHLIGHT
+	if _countdown_tween != null and _countdown_tween.is_valid():
+		_countdown_tween.kill()
+	countdown_label.pivot_offset = countdown_label.size / 2.0
+	countdown_label.scale = Vector2(1.8, 1.8)
+	_countdown_tween = create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_countdown_tween.tween_property(countdown_label, "scale", Vector2.ONE, 0.35)
+
+func hide_countdown() -> void:
+	if _countdown_tween != null and _countdown_tween.is_valid():
+		_countdown_tween.kill()
+	countdown_label.visible = false
 
 func _on_round_started(round_number: int, team_a_is_can: bool) -> void:
 	set_round_display(round_number, team_a_is_can)
