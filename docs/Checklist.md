@@ -154,6 +154,10 @@ polish; they are the instruments.
       *Explicitly NOT in this item:* the mesh, any collision shape, any `hit_radius`, any speed,
       the camera. `_align_to_capsule_floor()` needs no change — it computes from `model.scale` in
       this node's local space, not from this node's scale.
+      ⚠️ **Superseded 2026-07-28 by 2.5.** `TSINELAS_CARRY_SCALE`, `CARRY_SCALE_LERP` and the lerp
+      in `_process` described above are deleted — the mesh is built at 0.32× natively now
+      (`Art_Direction.md` §1), so there is nothing left to scale at runtime. Kept here as the
+      record of the original, now-superseded mechanism; see 2.5 for what replaced it.
 - [x] **0.7 · B-82 — units spawn 0.3 units inside the floor slab. OBSOLETE, not fixed.** 🎨 Design
 **The offending floor no longer exists.** 2.2a deleted `Main.tscn`'s whole world
       half, and both maps put their floor top at exactly `y = 0` with spawn markers at `y = 0.8`,
@@ -183,11 +187,15 @@ blocking real work.
       between "a Godot project" and "the game on the moodboard", and it is one
       line of code behind a question nobody has answered.
 - [x] **1.2 · Prop scale — how big is a lata, and how big is a tsinelas? DECIDED 2026-07-28.**
-      **Option (a): props stay hero-scaled as units; the tsinelas scales to `0.32` ONLY while
-      `CARRIED`** (0.432 units long = 27% of a Person, against 84% today). Reasoning, the measured
-      numbers, the three rejected alternatives and the two follow-up items are in `Handoff.md`
-      §0.11. Ticked as a **decision** — the implementation is 0.6 below and is unbuilt. The kit's
-      2-unit grid in 2.1a is sized against this and 2.1 is unblocked.
+      **Option (a): props stay hero-scaled as units; the tsinelas scales to `0.32`** (0.432 units
+      long = 27% of a Person, against 84% at the time). Reasoning, the measured numbers, the three
+      rejected alternatives and the two follow-up items are in `Handoff.md` §0.11. Ticked as a
+      **decision** — the implementation was 0.6 below. The kit's 2-unit grid in 2.1a is sized
+      against this and 2.1 is unblocked.
+      ⚠️ **Superseded mechanism, same-day, same decision:** 0.6 originally implemented "0.32 ONLY
+      while CARRIED" via a runtime scale on the whole mesh. 2.5 (`Art_Direction.md` §1) replaced
+      that with the mesh built at 0.32× natively, always — the *decision* (hero-scaled props, 0.32
+      tsinelas) is unchanged; only the *mechanism* moved from a runtime hack to the mesh itself.
       *Original statement of the fork, kept so the history reads honestly:* 🤖 Opus, high
       Measured on 2026-07-27: the tsinelas mesh is **1.35 units long against a
       1.598-unit Person — 84% of the character's own height**, and the lata is
@@ -341,6 +349,46 @@ HUD contrast or hazard placement against a grey box.
 - [~] **2.4 · Bayan Plaza — the second map.** 🎨 Design — **built and rendered, never played**
       A scene swap once 2.2 has proven the pattern. **First candidate to cut**
       under time pressure — see "If time runs short" at the bottom.
+- [x] **2.5 · Proportion fix — Item A, `Art_Direction.md` §1.** 🔧 Build — **verified by render**
+      The two hero props (lata 1.12, tsinelas 1.35) were the single biggest credibility problem in
+      the build — the can was taller than the monobloc chair beside it. Fixed in dependency order:
+  - [x] **Per-unit collision.** `CharacterBase.tscn`'s `CollisionShape3D`/`Hurtbox`/`Hitbox`/
+        `GrabArea` are now `resource_local_to_scene = true`; `character_base.gd`'s new
+        `_apply_role_collision()` sizes each from `is_person`/`is_can`, called from `_ready()` and
+        `reset_for_new_round()` (a Prop's `is_can` flips every round). Person unchanged
+        (0.4/1.6); Can and Tsinelas each get their own capsule and a proportionally-scaled melee
+        reach. Took the `CharacterBase.tscn` lock in `SHARED_LOCKS.md` first, per protocol.
+  - [x] **Both prop meshes rescaled.** `generate_all.gd`'s `LATA_SCALE` (0.30) and
+        `TSINELAS_SCALE` (0.32) applied as a post-deform `Transform3D.scaled()` on every
+        `add_revolve`/`add_extrude` call (the 2.1b-0 `transform` param) — no dent depth or strap
+        control point needed touching. Shipped: lata 0.3375 tall (target 0.34), tsinelas 0.432
+        long (target 0.43). Took the `generate_all.gd` lock first.
+  - [x] **`HAND_CARRY_OFFSET` re-measured, `TSINELAS_CARRY_SCALE` deleted.** Along with
+        `_scale_while_carried()` and `CARRY_SCALE_LERP` — a feature removed, not reimplemented, per
+        the audit's own prediction (`TSINELAS_CARRY_SCALE` 0.32 × 1.35 = 0.432, so the carried
+        slipper was already the right size). Re-measuring was not a trivial reapplication of the
+        old target: deleting the runtime scale meant the model's capsule-floor drop was no longer
+        compensated, dropping the mesh 0.544 units lower than before. Confirmed by rendering
+        `tools/render_probe.gd`'s viewmodel mode (screenshots, not calculation alone) — the first
+        analytically-derived value put the slipper broadside-close to the FPP camera and filled
+        most of the frame; iterated to the shipped value, which reads attached to the hand in both
+        the FPP viewmodel shot and the third-person debug camera, without covering the crosshair.
+  - [x] **`base_circle_decal` resized.** 3.0 m outer diameter (drawn around the old 1.12 m can)
+        down to 1.4 m (radius 0.70), inside the audit's own 1.2–1.5 m window. Ring width kept at
+        0.15 rather than shrinking 1:1, for the same foreshortening-at-distance reason it was
+        widened from 0.06 originally.
+  - [x] **4.4a fixed as part of the same pass.** `throw_bakya`'s range (4.81 units, less than half
+        of every other profile) was a tuning bug, not an identity — `gravity_scale` 1.6 → 1.0,
+        `arc_angle_deg` 8° → 12°, `launch_speed` unchanged at 14.0. New max range 7.23, still
+        shortest of the four by design (heavy, close-range) rather than by being broken.
+        `ThrowProfile.hit_radius` halved across all four `.tres` files — several were larger than
+        the entire rescaled tsinelas mesh. Exact combat-feel numbers stay 4.4's job.
+  - [x] **Jump left untouched, deliberately.** `JUMP_VELOCITY` is a MAP constraint (interior
+        clutter capped at 1.0 for the 1.25 FPP eye height to see over), not a feel one, and
+        rescaling the props doesn't move that ceiling.
+      **What is NOT verified:** combat feel (does a can's shrunk melee reach feel fair, does
+      `throw_bakya` at 87% charge feel right) — that needs a human on the keyboard and is 4.4's
+      job, not this item's.
 
 ---
 
@@ -434,16 +482,16 @@ touch map scenes.
 - [ ] **4.4 · Balance pass — Guard/Dash, cooldowns, ranges, both game modes.** 🤖 Sonnet, medium ⛔ 0.4
       Never done. Write the numbers down. **Balance both Option A and Option B
       to shippable quality** — per 1.5, neither is deprioritised.
-- [ ] **4.4a · `throw_bakya`'s maximum range is 4.81 units — less than half of every other
-      profile.** 🤖 Sonnet, medium
-      Computed from the committed `.tres` files with `GRAVITY = 20.0` and the measured 1.248
-      release height: `throw_default` **10.13**, `throw_bagsak` **9.89**, `throw_flick` **12.90**,
-      `throw_bakya` **4.81**. `gravity_scale 1.6` with `arc_angle_deg 8.0` is heavy *and* flat, so
-      it drops out of the air almost immediately — Bakya Bash cannot reach any throwing line the
-      other three can use. Almost certainly a tuning bug rather than an identity, and it has never
-      been felt because B-76 means no Prop can select it. Retune, then re-check
-      `Art_Direction.md` §9's table. Filed separately from 4.4 because the map's throwing
-      line is placed against these numbers.
+- [x] **4.4a · `throw_bakya`'s maximum range was 4.81 units — less than half of every other
+      profile.** 🔧 Build — **fixed 2026-07-28 as part of 2.5, verified by the same maths
+      `Art_Direction.md` §9 uses**
+      `gravity_scale 1.6` with `arc_angle_deg 8.0` was heavy *and* flat, so it dropped out of the
+      air almost immediately — Bakya Bash could not reach any throwing line the other three could.
+      Retuned to `arc_angle_deg 12.0` / `gravity_scale 1.0` (launch_speed unchanged at 14.0): new
+      max range **7.23**, needing ~87% charge for the 6.0 throwing line. Still the shortest-range
+      profile of the four, now by identity (heavy, close-range) rather than by being broken. Not
+      yet felt in play — nothing has selected it since B-76 (`PROP_ABILITY` is `quick_stand.tres`
+      for every Prop); that unlock is 3.3's job, and whether 87% charge feels right is 4.4's.
 - [x] **4.5 · Hitstop.** 🤖 Sonnet, medium
       The one piece of the Q-8 hit-feedback set that never landed. Cheap, and it
       is what makes a landed hit feel like contact rather than a colour change.
