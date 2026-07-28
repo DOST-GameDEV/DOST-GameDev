@@ -373,6 +373,17 @@ func reset_for_new_round() -> void:
 		_character.remove_collision_exception_with(carrier)
 		_watch_carrier_state(carrier, false)
 	carrier = null
+	# 2026-07-28 — B-101. This was missing entirely. _rpc_set_carried() disables this
+	# unit's own collision the instant it's grabbed (_set_physics_enabled(false)
+	# — CARRIED must not shove a teammate or be independently hittable); nothing
+	# here ever turned it back on. A Prop that was CARRIED when the round ended
+	# (the common case — the attacker is usually still holding it) came out of
+	# reset_for_new_round() as LOOSE but with its body collision STILL disabled,
+	# free to fall straight through the floor with nothing to stop it — this unit
+	# might become the Can next round, which is exactly "the can fell off the
+	# map." _set_physics_enabled(true) is idempotent (harmless if collision was
+	# already on), so this is safe to call unconditionally every round.
+	_set_physics_enabled(true)
 	_set_state(CarryState.LOOSE)
 
 ## ---------------------------------------------------------------------------

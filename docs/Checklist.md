@@ -556,10 +556,18 @@ HUD contrast or hazard placement against a grey box.
       the ready press and the round actually starting, and the confinement marker rebuilt as a
       square (see 2.7). **Verified by render, including a corrected spawn-layout screenshot with
       the Can now inside the base circle. Still not verified by play.**
-
----
-
-## Phase 3 — Finish the presentation layer
+      **Third pass, same day — the real root cause of "cann fell off map again":** B-100 (role
+      swaps routinely teleport two characters through each other's old spot, one at a time, and
+      the physics engine depenetrates the resulting overlap with a real impulse — fixed by parking
+      everyone at a separated holding spot before any of them move to a real one) and B-101 (a
+      unit that was CARRIED when the round ended came out of reset with its own collision still
+      disabled, free to sink through the floor — fixed). Found via a new permanent diagnostic,
+      `tools/render_probe.gd`'s `round2` mode, which drives two real round transitions and prints
+      every unit's role/position at each step — see `Handoff.md` for the exact numbers before and
+      after each fix. **Confirmed by the probe: round 2's actual gameplay-start positions are now
+      exactly correct. Still open: the probe shows transient bad positions for two units *during*
+      the frozen intermission window itself, before settling correctly — not root-caused further
+      this pass.**
 
 - [ ] **3.1 · Land the display typeface (F-2).** 🤖 Sonnet, medium ⛔ 1.1
       Mechanical once the decision exists: `.gitattributes` LFS rules committed

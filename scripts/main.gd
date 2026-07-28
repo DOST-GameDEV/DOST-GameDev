@@ -670,6 +670,29 @@ func _reset_world(team_a_is_can: bool) -> void:
 			})
 
 	RoundManager.clear_tracked_cans()
+	# B-100 — park every character somewhere nobody could possibly overlap
+	# BEFORE any of them move to a real spot. Roles swap every round, so two
+	# characters routinely trade positions with each other; repositioning
+	# them one at a time straight to their new spots otherwise leaves a real
+	# window where the second character hasn't vacated a spot the first one
+	# just arrived at, and the physics engine depenetrates that overlap with
+	# a genuine impulse — confirmed via tools/render_probe.gd's round2 mode,
+	# characters ended up flung many units off their real spawn markers,
+	# sometimes airborne, sometimes far enough to clear the confinement box
+	# or the floor collision entirely. Reported as "cann fell off map again"
+	# and the spawn layout looking "completely different" from what the code
+	# says it should be.
+	# ⚠️ Toggling CollisionShape3D.disabled around the reposition was tried
+	# first and did NOT reliably fix it — disable, reposition and re-enable
+	# all happen within the same script frame, before any physics step, and
+	# Godot's physics server appears to sync only the FINAL state (enabled,
+	# new position) rather than replaying the toggle, so the depenetration
+	# still fired. This works instead because it is purely geometric: widely
+	# separated, per-character-index parking spots can never overlap ANY
+	# other character's parking spot or real spawn point, so there is
+	# nothing for the physics engine to resolve regardless of when it syncs.
+	for i in range(roster.size()):
+		(roster[i]["character"] as CharacterBase).position = Vector3(0.0, 500.0 + i * 20.0, 0.0)
 	var attacker: CharacterBase = null
 	var tsinelas: CharacterBase = null
 	for entry in roster:
