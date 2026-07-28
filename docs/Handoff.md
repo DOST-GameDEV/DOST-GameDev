@@ -750,6 +750,27 @@ either is retuned again. **Verified by render** (`tools/render_probe.gd`, real d
 lands where computed, no parse errors, no console warnings, original map footprint confirmed back
 to its pre-resize look. **NOT verified by play.**
 
+**Pre-round free-roam + in-world ready-up, Local Match only — see `Checklist.md` 2.8.** User
+feedback, same session: "i wanted the ready button to be in the game itself not in home screen, i
+want ppl to be able to move around with no restrictions whiile waiting for ready THEN everyone
+gets teleported in the right restricted area." `main_menu.gd`'s Local button now skips
+`Lobby.tscn` and loads `Main.tscn` directly; characters spawn as before but
+`MatchManager.begin_next_round()` is deliberately deferred until the player presses the new
+`ready_up` action (bound to R), read off a new HUD prompt. `CharacterBase._is_confined_to_base()`
+and `Carriable.movement_speed_scale()` are both now gated on `RoundManager.round_active` — false
+until `begin_next_round()` fires — so nobody is confined and the Tsinelas Prop isn't stuck at
+crawl speed during the wait. No new teleport-to-role-spawn code was needed: `begin_next_round()`
+already fires `MatchManager.round_started`, which `main.gd` was already listening on to call
+`_reset_world()` (repositions everyone) and `RoundManager.start_round()` (re-engages confinement)
+— the exact same chain an ordinary between-round intermission already runs.
+
+**⚠️ Host/Join deliberately NOT touched.** Both still gate behind `Lobby.tscn`'s ready-up screen
+exactly as before. Extending this same free-roam-then-teleport pattern to networked play is real,
+separate follow-up work — per-peer ready state would need to replicate live inside the match
+scene (extending lobby.gd's existing `_rpc_set_ready` pattern into `main.gd`/a HUD component)
+rather than gating scene transition from the lobby, and touches the stable peer-identity
+machinery (B-21) that the current Lobby flow is built on. Not attempted blind in this pass.
+
 **Still open, not root-caused this session:** a report of a carried tsinelas reading as
 permanently frozen/slanted, and a Can appearing stuck mid-animation at the same time, with no
 locomotion or spin animation visibly playing. Read `carriable.gd` (carry tilt, `_step_flying`) and

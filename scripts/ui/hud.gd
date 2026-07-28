@@ -19,6 +19,7 @@ class_name Hud
 @onready var dent_text_label: Label = %DentTextLabel
 @onready var downed_flash: ColorRect = %DownedFlash
 @onready var toast_label: Label = %ToastLabel
+@onready var ready_prompt: Label = %ReadyPrompt
 @onready var you_card: YouCard = %YouCard
 @onready var crosshair: Control = %Crosshair
 @onready var offscreen_indicators: OffscreenIndicators = %OffscreenIndicators
@@ -103,6 +104,13 @@ func show_toast(text: String, duration: float = 1.5) -> void:
 	toast_label.text = text
 	toast_label.visible = true
 	_toast_time_left = duration
+
+## 2026-07-28 — the pre-round free-roam window (main.gd::_start_local_test,
+## _is_confined_to_base()'s round_active gate). Shown the instant Main.tscn
+## spawns everyone but before the round has actually started; hidden the
+## moment the player readies up and the round begins.
+func show_ready_prompt(active: bool) -> void:
+	ready_prompt.visible = active
 
 func _on_round_started(round_number: int, team_a_is_can: bool) -> void:
 	set_round_display(round_number, team_a_is_can)
