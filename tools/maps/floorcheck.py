@@ -64,6 +64,19 @@ MARK_PROUD_MAX = 0.004
 ## than float noise in a %.4f transform.
 TOLERANCE = 0.0005
 
+## The same idea for DRESSING, deliberately looser than the marking sandwich.
+## A decal is paint and must be embedded to sub-millimetre; a monobloc chair is
+## an object resting on a road and 5mm either way is both invisible and often
+## physically right (kit meshes are not modelled to a shared floor plane). Tight
+## enough to catch the two failures that actually happened — the 100mm sink and
+## the 525mm van hover — by two orders of magnitude.
+DRESS_TOLERANCE = 0.005
+
+## How much two footprints may intersect before `overlaps()` mentions them.
+## 0.15m: eaves, kerbs and canopies legitimately graze each other at this scale;
+## the interpenetration this exists to catch was 2.5 METRES.
+OVERLAP_SLACK = 0.15
+
 ## How finely a marking's footprint is sampled, in metres. 0.1 is well under the
 ## 2m width of the narrowest raised piece in the kit (`road_tile_line`), so a
 ## marking cannot step onto or off a tile between two samples and go unnoticed.
@@ -96,26 +109,122 @@ GROUND_MESHES = frozenset([
 _bounds_cache = {}
 
 
+def _mat_identity():
+    return [1.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 0.0, 1.0]
+
+
+def _mat_mul(a, b):
+    """Column-major 4x4 multiply, glTF's own convention. Returns a*b."""
+    out = [0.0] * 16
+    for col in range(4):
+        for row in range(4):
+            out[col * 4 + row] = sum(a[k * 4 + row] * b[col * 4 + k]
+                                     for k in range(4))
+    return out
+
+
+def _mat_from_node(node):
+    """A glTF node's local transform, from either `matrix` or its T/R/S trio."""
+    if "matrix" in node:
+        return list(node["matrix"])
+    out = _mat_identity()
+    if "rotation" in node:
+        x, y, z, w = node["rotation"]
+        out = [
+            1 - 2 * (y * y + z * z), 2 * (x * y + z * w), 2 * (x * z - y * w), 0.0,
+            2 * (x * y - z * w), 1 - 2 * (x * x + z * z), 2 * (y * z + x * w), 0.0,
+            2 * (x * z + y * w), 2 * (y * z - x * w), 1 - 2 * (x * x + y * y), 0.0,
+            0.0, 0.0, 0.0, 1.0,
+        ]
+    if "scale" in node:
+        sx, sy, sz = node["scale"]
+        for row in range(4):
+            out[0 + row] *= sx
+            out[4 + row] *= sy
+            out[8 + row] *= sz
+    if "translation" in node:
+        out[12], out[13], out[14] = node["translation"]
+    return out
+
+
+def _mat_apply(m, p):
+    return (m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12],
+            m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13],
+            m[2] * p[0] + m[6] * p[1] + m[10] * p[2] + m[14])
+
+
 def _glb_bounds(path):
-    """(min, max) per axis of a .glb, straight from its accessor bounds.
+    """(min, max) per axis of a .glb, in the SCENE's space, not the mesh's.
 
     glTF stores per-accessor `min`/`max` for POSITION, so this needs no mesh
-    decoding at all — it reads the JSON chunk and stops. Kit pieces have to go
-    through the same flush check as generated ones or the guard has a hole in it
-    exactly where the new assets are.
+    decoding at all — it reads the JSON chunk and stops.
+
+    ⚠️ IT MUST STILL WALK THE NODE HIERARCHY, AND NOT DOING SO IS WHAT PUT A VAN
+    IN THE AIR. This function used to union raw accessor bounds and ignore the
+    scene graph entirely. That is correct for a single-node kit piece — every
+    `building-type-*`, every `road` tile — and silently wrong for any piece
+    assembled from several nodes, because glTF puts the assembly offsets on the
+    NODES, not in the vertex data.
+
+    Kenney's Car Kit is exactly that: `kits/car/van` is five nodes, and every
+    wheel carries `translation: [±0.3, 0.30, ±0.76]` while its wheel MESH is
+    modelled centred on its own origin (-0.3 .. +0.3). So the raw accessor
+    minimum read -0.300 when the van's real base is 0.000, and `add_kit()`'s
+    `base_y - lo[1] * scale` dutifully lifted every vehicle by 0.3 * 1.75 =
+    **exactly 0.525 units of hover**. Reported from a playtest as "the blue van
+    is hovering", and invisible to every check in this file, because the file
+    itself was the thing that was wrong.
+
+    So: compose each node's local transform down from the scene roots, push each
+    primitive's accessor AABB through the composed matrix, and union the eight
+    transformed corners. A rotated node makes that AABB conservative rather than
+    exact, which is the safe direction — it can only ever report a piece as
+    slightly larger than it is.
     """
     with open(path, "rb") as handle:
         struct.unpack("<III", handle.read(12))
         chunk_len, _chunk_type = struct.unpack("<II", handle.read(8))
         document = json.loads(handle.read(chunk_len).decode("utf-8"))
+    nodes = document.get("nodes", [])
+    accessors = document.get("accessors", [])
+    meshes = document.get("meshes", [])
     lo = [math.inf] * 3
     hi = [-math.inf] * 3
-    for mesh in document.get("meshes", []):
-        for primitive in mesh["primitives"]:
-            accessor = document["accessors"][primitive["attributes"]["POSITION"]]
-            for axis in range(3):
-                lo[axis] = min(lo[axis], accessor["min"][axis])
-                hi[axis] = max(hi[axis], accessor["max"][axis])
+
+    def visit(index, parent):
+        node = nodes[index]
+        world = _mat_mul(parent, _mat_from_node(node))
+        if "mesh" in node:
+            for primitive in meshes[node["mesh"]]["primitives"]:
+                accessor = accessors[primitive["attributes"]["POSITION"]]
+                amin, amax = accessor["min"], accessor["max"]
+                for cx in (amin[0], amax[0]):
+                    for cy in (amin[1], amax[1]):
+                        for cz in (amin[2], amax[2]):
+                            wx, wy, wz = _mat_apply(world, (cx, cy, cz))
+                            for axis, value in enumerate((wx, wy, wz)):
+                                lo[axis] = min(lo[axis], value)
+                                hi[axis] = max(hi[axis], value)
+        for child in node.get("children", []):
+            visit(child, world)
+
+    roots = []
+    if document.get("scenes"):
+        scene = document["scenes"][document.get("scene", 0)]
+        roots = scene.get("nodes", [])
+    if not roots:
+        # No scene declaration: treat every node that is nobody's child as a
+        # root. Falling back to "union the accessors" here would reintroduce the
+        # hovering-van bug in exactly the files least likely to be looked at.
+        children = {c for n in nodes for c in n.get("children", [])}
+        roots = [i for i in range(len(nodes)) if i not in children]
+    for root in roots:
+        visit(root, _mat_identity())
+    if lo[0] is math.inf:
+        raise ValueError("floorcheck: %s has no positioned mesh nodes" % path)
     return lo, hi
 
 
@@ -190,19 +299,43 @@ def _to_world(lx, lz, x, z, yaw, sx, sz=1.0):
 class Surfaces:
     """Every placed piece, so the height under any point can be asked for."""
 
-    def __init__(self, models_dir="assets/models"):
+    def __init__(self, models_dir="assets/models", base_height=0.0,
+                 check_dressing=True):
+        """`base_height` is the top of the map's own Floor box — bare ground.
+
+        ⚠️ IT IS NO LONGER SAFE TO ASSUME 0.0, AND ASSUMING IT HID A REAL BUG.
+        Eskinita's floor collision top was at 0.0 while its paving rendered to
+        0.100, so a character standing on the floor had its feet 100 mm INSIDE
+        the visible road — the same class of fault as the sunk props, on the one
+        surface every player touches every frame. Eskinita now sets its floor top
+        to the paving height and passes it here, so "bare ground" and "paved
+        ground" are the same number and there is no step anywhere on the map.
+
+        `check_dressing=False` opts a map out of the prop-grounding check. Only
+        Bayan Plaza uses it, deliberately and temporarily — see its own header.
+        """
         self._models_dir = models_dir
-        self._pieces = []   # (name, x0, x1, z0, z1, top)
+        self._base_height = base_height
+        self._check_dressing = check_dressing
+        self._pieces = []   # (name, x0, x1, z0, z1, top)  — GROUND only
         self._markings = []  # (name, mesh, x, y, z, yaw, sx)
+        ## Every non-marking, non-ground piece: the dressing. Recorded so
+        ## `verify()` can check it is standing ON something instead of hovering
+        ## over it or sunk into it. See DRESS_TOLERANCE.
+        self._dressing = []  # (name, mesh, bottom, x0, x1, z0, z1, group)
 
     def record(self, name, mesh_name, x, y, z, yaw=0.0, sx=1.0,
-               is_marking=False, uniform=False):
+               is_marking=False, uniform=False, group="", suspended=False):
         """Called for every `add()` the builder makes, markings included.
 
         `uniform` says the placement scaled all three axes (a kit piece via
         `add_kit`) rather than only the mesh's length (a stretched line decal).
         It is what makes the recorded TOP HEIGHT correct, which is what every
         marking on top of that piece is then measured against.
+
+        `group` is the dressing layer a piece belongs to ("Layer1", "Clutter",
+        ...). Only used by the overlap check, which is per-group: two houses in
+        the same row sharing a volume is a bug, a tyre leaning on a fence is not.
         """
         lo, hi = mesh_bounds(mesh_name, self._models_dir)
         sz = sx if uniform else 1.0
@@ -219,16 +352,24 @@ class Surfaces:
         elif mesh_name in GROUND_MESHES:
             self._pieces.append((name, min(xs), max(xs), min(zs), max(zs),
                                  y + hi[1] * sy))
+        elif not suspended:
+            self._dressing.append((name, mesh_name, y + lo[1] * sy,
+                                   min(xs), max(xs), min(zs), max(zs), group))
+        # `suspended` is the ONE legitimate way to be off the ground, and it is
+        # an explicit named opt-out rather than a hole: a sampay line is strung
+        # between two houses and is SUPPOSED to hang 1.5m up. Without this the
+        # grounding check reports five true-positive-shaped false positives and
+        # the next person to see them switches the whole check off.
 
     def height_at(self, wx, wz):
-        """Top of the tallest recorded piece covering (wx, wz); 0.0 = bare floor.
+        """Top of the tallest recorded piece covering (wx, wz), else bare floor.
 
-        0.0 is the floor's own top surface in both maps (their `Floor` box is
-        offset -0.5 with a 1-unit height). If that ever stops being true this
-        returns the wrong answer confidently, so it is asserted by the caller
-        rather than assumed here.
+        Bare floor is `base_height`, passed in by the map rather than assumed —
+        see `__init__`. A map whose Floor box top is not that number gets wrong
+        answers confidently, which is why it is a constructor argument and the
+        builder derives it from the same constant it writes into the scene.
         """
-        best = 0.0
+        best = self._base_height
         for _name, x0, x1, z0, z1, top in self._pieces:
             if x0 <= wx <= x1 and z0 <= wz <= z1 and top > best:
                 best = top
@@ -321,6 +462,7 @@ class Surfaces:
                     "y=%.4f."
                     % (name, bottom, surface, (top - bottom) * 1000.0,
                        embed_y(surface, mesh_name, self._models_dir, sy)))
+        problems.extend(self._verify_dressing())
         if problems:
             raise SystemExit(
                 "\nFLOATING GEOMETRY — build aborted, scene NOT written.\n"
@@ -329,3 +471,60 @@ class Surfaces:
                 + "\n\nA marking's placement Y is its UNDERSIDE, not its centre "
                   "(env_kit.gd::_box authors from local y=0).\n")
         return len(self._markings)
+
+    def _verify_dressing(self):
+        """Every prop must stand on whatever is actually beneath it.
+
+        ⚠️ THIS IS THE HALF OF THE GUARD THAT WAS MISSING, AND IT COST A WHOLE
+        MAP. `verify()` iterated `self._markings` and nothing else, so all 111
+        dressing instances were recorded and then never compared against
+        anything. When checklist 7.4b re-paved the alley and moved the walkable
+        surface from 0.000 to 0.100, every marking followed it (they ask
+        `height_at()`) and **every prop did not** — crates, tyres, drums, chairs,
+        bollards, tricycles and the electric posts were all left sunk exactly
+        100 mm into the new road, and nothing in this file noticed.
+
+        The failure is symmetric with the marking one and so is the check: a
+        prop's bottom must equal the ground under its own centre. Sunk reads as
+        clipping, proud reads as hovering, and the 2026-07-29 "the blue van is
+        hovering" report was the proud direction (see `_glb_bounds`).
+        """
+        if not self._check_dressing:
+            return []
+        problems = []
+        for name, _mesh, bottom, x0, x1, z0, z1, _group in self._dressing:
+            surface = self.height_at((x0 + x1) * 0.5, (z0 + z1) * 0.5)
+            gap = bottom - surface
+            if gap > DRESS_TOLERANCE:
+                problems.append(
+                    "%s HOVERS %.0fmm above the surface at %.4f — its base is at "
+                    "%.4f. Place it with base_y=%.4f."
+                    % (name, gap * 1000.0, surface, bottom, surface))
+            elif gap < -DRESS_TOLERANCE:
+                problems.append(
+                    "%s is SUNK %.0fmm into the surface at %.4f — its base is at "
+                    "%.4f. Place it with base_y=%.4f."
+                    % (name, -gap * 1000.0, surface, bottom, surface))
+        return problems
+
+    def overlaps(self, group):
+        """Pieces in `group` whose footprints intersect. A WARNING, not a failure.
+
+        Deliberately not fatal. An axis-aligned footprint test cannot tell a
+        legitimate overlap (a tyre leaning on a fence, a tree canopy over a
+        kerb) from two houses occupying the same volume, and a guard that cries
+        wolf gets switched off. It is here because §8.0's building-interpenetration
+        bug — five of eleven `building-type-*` wider than their own 6.6 bay —
+        would have been caught the day it landed, by exactly this test.
+        """
+        found = []
+        items = [d for d in self._dressing if d[7] == group]
+        for i in range(len(items)):
+            an, _am, _ab, ax0, ax1, az0, az1, _ag = items[i]
+            for j in range(i + 1, len(items)):
+                bn, _bm, _bb, bx0, bx1, bz0, bz1, _bg = items[j]
+                ox = min(ax1, bx1) - max(ax0, bx0)
+                oz = min(az1, bz1) - max(az0, bz0)
+                if ox > OVERLAP_SLACK and oz > OVERLAP_SLACK:
+                    found.append((an, bn, ox, oz))
+        return found
