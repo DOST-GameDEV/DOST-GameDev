@@ -92,9 +92,17 @@ const ACTION_CLIPS: Dictionary = {
 ## this brings it up to the ~1.6 units of CharacterBase's CapsuleShape3D.
 ## Measured from the imported model's AABB, not guessed.
 const PERSON_SCALE: float = 2.38
-## The capsule is 1.6 tall and centred on the character's origin, so its floor
-## sits here in local space. Every model is dropped to it — see
-## `_align_to_capsule_floor`.
+## FALLBACK ONLY — used when `_character` or its `CollisionShape3D` can't be
+## read (e.g. a preview scene with no CharacterBase parent). Every real unit in
+## a match reads its OWN capsule height instead; see `_align_to_capsule_floor`.
+## ⚠️ Was the ONLY value, unconditionally, before Art_Direction.md §1 gave
+## Can/Tsinelas their own much shorter capsules — B-88: with this left hardcoded,
+## `_align_to_capsule_floor` kept dropping every model a full 0.8 units below its
+## OWN origin regardless of its actual (now much smaller) capsule, which for a
+## can (half-height 0.17) put the visible mesh 0.63 units under the floor. The
+## can and tsinelas render fine on their own preview turntable and disappear
+## the moment they're an actual in-game unit — that split is the signature of
+## reading the wrong capsule rather than a bad mesh.
 const CAPSULE_HALF_HEIGHT_DOWN: float = -0.8
 
 ## Task 0 / Task 1 — where a carried tsinelas rides. The Kenney rig has SEVEN
@@ -442,7 +450,20 @@ func _align_to_capsule_floor(model: Node3D) -> void:
 	# offset every call and sank the model further each time. Harmless while this
 	# only ever ran once per instantiate; M-2's dent swap calls it again on the
 	# same model, which is what exposed it.
-	model.position.y = CAPSULE_HALF_HEIGHT_DOWN - bounds.position.y * model.scale.y
+	model.position.y = _capsule_half_height_down() - bounds.position.y * model.scale.y
+
+## B-88 — reads THIS unit's own, currently-applied capsule height rather than
+## assuming the single shared 1.6 every unit used to have. Per-unit collision
+## (Art_Direction.md §1, character_base.gd::_apply_role_collision()) means a Can
+## and a Tsinelas now carry a much shorter capsule than a Person, and the
+## capsule floor a model drops to has to track whichever one THIS character
+## actually has — not a constant tuned for the Person alone.
+func _capsule_half_height_down() -> float:
+	if _character != null:
+		var shape_node := _character.get_node_or_null("CollisionShape3D") as CollisionShape3D
+		if shape_node != null and shape_node.shape is CapsuleShape3D:
+			return -(shape_node.shape as CapsuleShape3D).height / 2.0
+	return CAPSULE_HALF_HEIGHT_DOWN
 
 func _model_path(is_person: bool, is_can: bool, team: int) -> String:
 	if is_person:
