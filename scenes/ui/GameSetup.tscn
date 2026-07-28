@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=3 uid="uid://dq2mv7k4xn8pe"]
+[gd_scene format=3 uid="uid://dq2mv7k4xn8pe"]
 
 [ext_resource type="Script" path="res://scripts/ui/game_setup.gd" id="1"]
 [ext_resource type="Shader" path="res://assets/ui/blueprint_grid.gdshader" id="2"]
