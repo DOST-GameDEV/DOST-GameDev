@@ -186,6 +186,16 @@ adjustment_saturation = 1.18
 # same coordinates as build_eskinita.py — see that file's comment above its
 # own SpawnPoints block for the full reasoning. Centred on this map's own
 # base_circle_decal (0,0,0) and south throwing_line_decal (0,0,6) below.
+#
+# ⚠️ Spawn1's Z IS NEGATIVE, and this comment used to be a lie about it.
+# It read "same coordinates as build_eskinita.py" while Spawn1 sat at z = +1.5
+# against Eskinita's -1.5 — mirrored. The Attacker is at z = +6, so +1.5 put the
+# Taya BETWEEN the Can and the attacker, on the attacker's own side, instead of
+# guarding from behind. That is the exact layout the human rejected in the
+# 2026-07-28 playtest ("the person in same team is behind that can"), fixed once
+# in Eskinita and never carried across. If you change one map's spawn block,
+# diff it against the other in the same commit — the claim that they match is
+# load-bearing and nothing was checking it.
 HEAD = '''[node name="BayanPlaza" type="Node3D"]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
@@ -262,7 +272,7 @@ shape = SubResource("Shape_hazard")
 transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.0, 0.17, 0.0)
 
 [node name="Spawn1" type="Marker3D" parent="SpawnPoints"]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 2.2, 0.8, 1.5)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 2.2, 0.8, -1.5)
 
 [node name="Spawn2" type="Marker3D" parent="SpawnPoints"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0, 0.8, 6.0)
