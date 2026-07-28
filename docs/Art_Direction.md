@@ -223,7 +223,10 @@ is what made the arms float earlier; do not reintroduce it.
 
 **Still open (needs the design treatment, not more mechanism):** the moodboard's THE ATTACKER card
 draws *"charged throw (glow)"*. The wind-up covers strength; the glow does not exist yet. That is
-checklist 0.1's remaining half.
+checklist 0.1's remaining half. **2026-07-28:** the hook it needs now exists —
+`you_card.gd::_on_charge_changed` keeps a `charge_ratio` (0..1) shader uniform live on
+`charge_bar.material` whenever a `ShaderMaterial` is assigned there. Assign one and pick the
+uniform's use; nothing here dictates colour, falloff or where else the glow shows.
 
 ## 2. What landed this pass
 
