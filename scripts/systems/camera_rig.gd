@@ -544,10 +544,24 @@ func _update_tpp_carry_follow() -> void:
 	# before — but now with the carried player's own look offset added on top,
 	# so the view starts behind the carrier and can still be swivelled from
 	# there. See apply_mouse_delta() and TPP_CARRY_MOUNT_HEIGHT's own docs.
-	var yaw_basis := Basis(Vector3.UP, carrier.rotation.y + deg_to_rad(_tpp_carry_yaw_deg))
+	#
+	# ⚠️ 8.5a — READ THE CARRIER'S *INTERPOLATED* TRANSFORM, NOT ITS RAW ONE.
+	# This function runs in _process (every render frame) and the carrier is a
+	# CharacterBody3D whose transform only changes in _physics_process (60 Hz).
+	# Reading `carrier.global_position` from here samples a staircase: at any
+	# refresh rate that is not an exact multiple of the tick rate the camera
+	# holds still for a frame, then jumps two ticks' worth — which is the judder,
+	# and it is worst exactly while being carried. `get_global_transform_
+	# interpolated()` is the engine's own accessor for "what does this physics
+	# body look like right now, between ticks", and it only returns something
+	# different from the raw transform because project.godot now enables
+	# physics_interpolation (it had no [physics] section at all before Phase 8).
+	var carrier_xform := carrier.get_global_transform_interpolated()
+	var carrier_yaw := carrier_xform.basis.get_euler().y
+	var yaw_basis := Basis(Vector3.UP, carrier_yaw + deg_to_rad(_tpp_carry_yaw_deg))
 	var pitch_basis := Basis(Vector3.RIGHT, deg_to_rad(-15.0 + _tpp_carry_pitch_deg))
 	tpp_arm.global_transform = Transform3D(
-		yaw_basis * pitch_basis, carrier.global_position + Vector3.UP * TPP_CARRY_MOUNT_HEIGHT)
+		yaw_basis * pitch_basis, carrier_xform.origin + Vector3.UP * TPP_CARRY_MOUNT_HEIGHT)
 
 func _process(delta: float) -> void:
 	_update_viewmodel_carry(delta)

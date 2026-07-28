@@ -1,14 +1,14 @@
-[gd_scene load_steps=45 format=3]
+[gd_scene load_steps=65 format=3]
 
-[ext_resource type="PackedScene" path="res://assets/models/kits/city/building-type-a.glb" id="1"]
-[ext_resource type="PackedScene" path="res://assets/models/kits/car/van.glb" id="2"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/town/road.glb" id="1"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/city/building-type-a.glb" id="2"]
 [ext_resource type="PackedScene" path="res://assets/models/kits/city/building-type-c.glb" id="3"]
 [ext_resource type="PackedScene" path="res://assets/models/kits/car/delivery.glb" id="4"]
-[ext_resource type="PackedScene" path="res://assets/models/kits/city/building-type-e.glb" id="5"]
-[ext_resource type="PackedScene" path="res://assets/models/kits/city/building-type-j.glb" id="6"]
-[ext_resource type="PackedScene" path="res://assets/models/kits/city/building-type-b.glb" id="7"]
-[ext_resource type="PackedScene" path="res://assets/models/kits/car/truck.glb" id="8"]
-[ext_resource type="PackedScene" path="res://assets/models/kits/city/building-type-o.glb" id="9"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/city/building-type-j.glb" id="5"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/city/building-type-b.glb" id="6"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/car/van.glb" id="7"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/city/building-type-e.glb" id="8"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/car/truck.glb" id="9"]
 [ext_resource type="PackedScene" path="res://assets/models/kits/city/building-type-t.glb" id="10"]
 [ext_resource type="PackedScene" path="res://assets/models/kits/city/building-type-q.glb" id="11"]
 [ext_resource type="PackedScene" path="res://assets/models/kits/city/building-type-u.glb" id="12"]
@@ -17,34 +17,54 @@
 [ext_resource type="PackedScene" path="res://assets/models/kits/city/building-type-r.glb" id="15"]
 [ext_resource type="PackedScene" path="res://assets/models/kits/city/building-type-k.glb" id="16"]
 [ext_resource type="PackedScene" path="res://assets/models/kits/city/building-type-m.glb" id="17"]
-[ext_resource type="PackedScene" path="res://assets/models/kits/city/tree-large.glb" id="18"]
-[ext_resource type="PackedScene" path="res://assets/models/kits/city/tree-small.glb" id="19"]
-[ext_resource type="Mesh" path="res://assets/models/env_post_electric.obj" id="20"]
-[ext_resource type="Mesh" path="res://assets/models/env_laundry_line.obj" id="21"]
-[ext_resource type="PackedScene" path="res://assets/models/kits/town/road.glb" id="22"]
-[ext_resource type="Mesh" path="res://assets/models/env_crate_stack.obj" id="23"]
-[ext_resource type="Mesh" path="res://assets/models/env_tire.obj" id="24"]
-[ext_resource type="Mesh" path="res://assets/models/env_oil_drum.obj" id="25"]
-[ext_resource type="Mesh" path="res://assets/models/env_monobloc_chair.obj" id="26"]
-[ext_resource type="Mesh" path="res://assets/models/env_bollard.obj" id="27"]
-[ext_resource type="Mesh" path="res://assets/models/env_tricycle.obj" id="28"]
-[ext_resource type="Mesh" path="res://assets/models/env_base_circle_decal.obj" id="29"]
-[ext_resource type="Mesh" path="res://assets/models/env_throwing_line_decal.obj" id="30"]
-[ext_resource type="Mesh" path="res://assets/models/env_team_side_decal.obj" id="31"]
-[ext_resource type="Mesh" path="res://assets/models/env_jeepney_lane_decal.obj" id="32"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/city/building-type-d.glb" id="18"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/city/building-type-n.glb" id="19"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/city/building-type-s.glb" id="20"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/city/tree-large.glb" id="21"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/city/tree-small.glb" id="22"]
+[ext_resource type="Mesh" path="res://assets/models/env_post_electric.obj" id="23"]
+[ext_resource type="Mesh" path="res://assets/models/env_laundry_line.obj" id="24"]
+[ext_resource type="Mesh" path="res://assets/models/env_crate_stack.obj" id="25"]
+[ext_resource type="Mesh" path="res://assets/models/env_tire.obj" id="26"]
+[ext_resource type="Mesh" path="res://assets/models/env_oil_drum.obj" id="27"]
+[ext_resource type="Mesh" path="res://assets/models/env_monobloc_chair.obj" id="28"]
+[ext_resource type="Mesh" path="res://assets/models/env_bollard.obj" id="29"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/town/rock-small.glb" id="30"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/town/rock-wide.glb" id="31"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/town/planks.glb" id="32"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/town/stall-stool.glb" id="33"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/town/stall-bench.glb" id="34"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/town/cart.glb" id="35"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/town/cart-high.glb" id="36"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/town/stall.glb" id="37"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/town/stall-red.glb" id="38"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/town/stall-green.glb" id="39"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/town/hedge.glb" id="40"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/town/fence-broken.glb" id="41"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/town/fence.glb" id="42"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/town/lantern.glb" id="43"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/town/pillar-wood.glb" id="44"]
+[ext_resource type="PackedScene" path="res://assets/models/kits/town/rock-large.glb" id="45"]
+[ext_resource type="Mesh" path="res://assets/models/env_tricycle.obj" id="46"]
+[ext_resource type="Mesh" path="res://assets/models/env_sari_sari_store.obj" id="47"]
+[ext_resource type="Mesh" path="res://assets/models/env_gutter_tile.obj" id="48"]
+[ext_resource type="Mesh" path="res://assets/models/env_base_circle_decal.obj" id="49"]
+[ext_resource type="Mesh" path="res://assets/models/env_team_side_decal.obj" id="50"]
+[ext_resource type="Mesh" path="res://assets/models/env_throwing_line_decal.obj" id="51"]
 [ext_resource type="Script" path="res://scripts/systems/hazard_zone.gd" id="H"]
 [ext_resource type="Script" path="res://scripts/systems/kill_plane.gd" id="K"]
+[ext_resource type="Script" path="res://scripts/systems/env_toon_pass.gd" id="T"]
 
 [sub_resource type="BoxShape3D" id="Shape_floor"]
-size = Vector3(40, 1, 40)
+size = Vector3(120, 1, 120)
 
 [sub_resource type="StandardMaterial3D" id="Mat_floor"]
-albedo_color = Color(0.29020, 0.30588, 0.34118, 1)
+albedo_color = Color(0.32941, 0.31765, 0.29412, 1)
 roughness = 1.0
 
 [sub_resource type="BoxMesh" id="Mesh_floor"]
 material = SubResource("Mat_floor")
-size = Vector3(40, 1, 40)
+size = Vector3(120, 1, 120)
 
 [sub_resource type="BoxShape3D" id="Shape_wall_z"]
 size = Vector3(1, 12, 40)
@@ -53,17 +73,19 @@ size = Vector3(1, 12, 40)
 size = Vector3(20, 12, 1)
 
 [sub_resource type="BoxShape3D" id="Shape_killplane"]
-size = Vector3(90, 4, 90)
+size = Vector3(260, 4, 260)
 
 [sub_resource type="BoxShape3D" id="Shape_hazard"]
 size = Vector3(3.6, 3, 11)
 
 [sub_resource type="ProceduralSkyMaterial" id="Sky_mat"]
-sky_top_color = Color(0.286, 0.565, 0.851, 1)
-sky_horizon_color = Color(0.91, 0.784, 0.604, 1)
-sky_curve = 0.18
-ground_bottom_color = Color(0.227, 0.243, 0.278, 1)
-ground_horizon_color = Color(0.91, 0.784, 0.604, 1)
+sky_top_color = Color(0.2627, 0.4941, 0.7686, 1)
+sky_horizon_color = Color(0.8863, 0.7686, 0.5961, 1)
+sky_curve = 0.42
+sky_energy_multiplier = 0.85
+ground_bottom_color = Color(0.6784, 0.6118, 0.5216, 1)
+ground_horizon_color = Color(0.8863, 0.7686, 0.5961, 1)
+ground_curve = 0.06
 
 [sub_resource type="Sky" id="Sky_res"]
 sky_material = SubResource("Sky_mat")
@@ -71,27 +93,54 @@ sky_material = SubResource("Sky_mat")
 [sub_resource type="Environment" id="Env_eskinita"]
 background_mode = 2
 sky = SubResource("Sky_res")
-ambient_light_source = 2
-ambient_light_color = Color(0.416, 0.514, 0.671, 1)
-ambient_light_energy = 0.55
-tonemap_mode = 0
-tonemap_white = 1.2
+ambient_light_source = 3
+ambient_light_energy = 0.95
+ambient_light_sky_contribution = 0.7
+reflected_light_source = 2
+tonemap_mode = 3
+tonemap_exposure = 0.92
+tonemap_white = 1.9
 ssao_enabled = true
-ssao_radius = 1.1
-ssao_intensity = 2.6
-ssao_power = 1.6
-ssao_detail = 0.4
+ssao_radius = 0.7
+ssao_intensity = 1.8
+ssao_power = 1.1
+ssao_detail = 0.6
+ssao_horizon = 0.05
+ssil_enabled = true
+ssil_radius = 3.5
+ssil_intensity = 0.75
+ssil_sharpness = 0.98
+ssil_normal_rejection = 1.0
+sdfgi_enabled = true
+sdfgi_use_occlusion = true
+sdfgi_bounce_feedback = 0.4
+sdfgi_cascades = 4
+sdfgi_min_cell_size = 0.15
+sdfgi_cascade0_distance = 19.2
+sdfgi_max_distance = 153.6
+sdfgi_y_scale = 1
+sdfgi_energy = 0.8
+glow_enabled = true
+glow_intensity = 0.4
+glow_strength = 0.9
+glow_bloom = 0.06
+glow_blend_mode = 1
+glow_hdr_threshold = 1.35
+glow_hdr_scale = 2.0
 fog_enabled = true
-fog_light_color = Color(0.855, 0.784, 0.667, 1)
-fog_light_energy = 1.0
-fog_sun_scatter = 0.15
-fog_density = 0.0048
-fog_sky_affect = 0.55
-fog_aerial_perspective = 0.35
+fog_mode = 1
+fog_light_color = Color(0.8784, 0.8118, 0.6941, 1)
+fog_light_energy = 0.9
+fog_sun_scatter = 0.28
+fog_density = 0.0
+fog_sky_affect = 0.75
+fog_depth_curve = 1.1
+fog_depth_begin = 18.0
+fog_depth_end = 72.0
 adjustment_enabled = true
 adjustment_brightness = 1.0
-adjustment_contrast = 1.08
-adjustment_saturation = 1.2
+adjustment_contrast = 1.03
+adjustment_saturation = 1.18
 
 [node name="Eskinita" type="Node3D"]
 
@@ -99,22 +148,33 @@ adjustment_saturation = 1.2
 environment = SubResource("Env_eskinita")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
-transform = Transform3D(0.8, -0.4, 0.45, 0, 0.75, 0.66, -0.6, -0.53, 0.6, 0, 8, 0)
-light_color = Color(1, 0.941, 0.847, 1)
-light_energy = 1.25
-light_angular_distance = 1.2
+transform = Transform3D(0.86603, -0.31889, 0.38549, 0, 0.77088, 0.63698, -0.5, -0.55164, 0.66692, 0, 12, 0)
+light_color = Color(1, 0.90196, 0.75294, 1)
+light_energy = 1.35
+light_indirect_energy = 1.3
+light_angular_distance = 0.5
+light_specular = 0.35
 shadow_enabled = true
-shadow_bias = 0.03
-shadow_normal_bias = 1.5
-directional_shadow_max_distance = 60.0
+shadow_bias = 0.06
+shadow_normal_bias = 3.0
+shadow_blur = 1.1
+shadow_opacity = 0.62
+directional_shadow_mode = 2
+directional_shadow_split_1 = 0.08
+directional_shadow_split_2 = 0.22
+directional_shadow_split_3 = 0.52
+directional_shadow_blend_splits = true
+directional_shadow_fade_start = 0.9
+directional_shadow_max_distance = 58.0
 
 [node name="Floor" type="StaticBody3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.4, 0)
 shape = SubResource("Shape_floor")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Floor"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.415, 0)
 mesh = SubResource("Mesh_floor")
 
 [node name="Bounds" type="Node3D" parent="."]
@@ -163,6 +223,8 @@ lifetime = 0.0
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Hazards/HazardZone"]
 shape = SubResource("Shape_hazard")
 
+[node name="KanalVisual" type="Node3D" parent="Hazards"]
+
 [node name="SpawnPoints" type="Node3D" parent="."]
 
 [node name="Spawn0" type="Marker3D" parent="SpawnPoints"]
@@ -178,6 +240,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0, 0.8, 6.0)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.3, 0.16, 6.3)
 
 [node name="Dressing" type="Node3D" parent="."]
+script = ExtResource("T")
 
 [node name="Layer1" type="Node3D" parent="Dressing"]
 
@@ -185,380 +248,1601 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.3, 0.16, 6.3)
 
 [node name="Layer3" type="Node3D" parent="Dressing"]
 
+[node name="Belt" type="Node3D" parent="Dressing"]
+
 [node name="Road" type="Node3D" parent="Dressing"]
 
 [node name="Clutter" type="Node3D" parent="Dressing"]
 
 [node name="Markings" type="Node3D" parent="."]
 
-[node name="L1_0_W" parent="Dressing/Layer1" instance=ExtResource("1")]
-transform = Transform3D(0.00000, 0, 5.00000, 0, 5.00000, 0, -5.00000, 0, 0.00000, -10.5703, 0.0000, -17.0000)
+[node name="Road_0" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -24.0000, 0.0000, -24.0000)
 
-[node name="Car_0_E" parent="Dressing/Layer1" instance=ExtResource("2")]
-transform = Transform3D(0.00000, 0, -1.75000, 0, 1.75000, 0, 1.75000, 0, 0.00000, 9.9000, 0.5250, -17.0000)
+[node name="Road_1" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, -24.0000, 0.0000, -20.0000)
+
+[node name="Road_2" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, -24.0000, 0.0000, -16.0000)
+
+[node name="Road_3" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, -24.0000, 0.0000, -12.0000)
+
+[node name="Road_4" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -24.0000, 0.0000, -8.0000)
+
+[node name="Road_5" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, -24.0000, 0.0000, -4.0000)
+
+[node name="Road_6" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, -24.0000, 0.0000, 0.0000)
+
+[node name="Road_7" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, -24.0000, 0.0000, 4.0000)
+
+[node name="Road_8" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, -24.0000, 0.0000, 8.0000)
+
+[node name="Road_9" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -24.0000, 0.0000, 12.0000)
+
+[node name="Road_10" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, -24.0000, 0.0000, 16.0000)
+
+[node name="Road_11" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, -24.0000, 0.0000, 20.0000)
+
+[node name="Road_12" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, -24.0000, 0.0000, 24.0000)
+
+[node name="Road_13" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, -20.0000, 0.0000, -24.0000)
+
+[node name="Road_14" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -20.0000, 0.0000, -20.0000)
+
+[node name="Road_15" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, -20.0000, 0.0000, -16.0000)
+
+[node name="Road_16" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -20.0000, 0.0000, -12.0000)
+
+[node name="Road_17" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, -20.0000, 0.0000, -8.0000)
+
+[node name="Road_18" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, -20.0000, 0.0000, -4.0000)
+
+[node name="Road_19" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, -20.0000, 0.0000, 0.0000)
+
+[node name="Road_20" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -20.0000, 0.0000, 4.0000)
+
+[node name="Road_21" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, -20.0000, 0.0000, 8.0000)
+
+[node name="Road_22" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, -20.0000, 0.0000, 12.0000)
+
+[node name="Road_23" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, -20.0000, 0.0000, 16.0000)
+
+[node name="Road_24" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, -20.0000, 0.0000, 20.0000)
+
+[node name="Road_25" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -20.0000, 0.0000, 24.0000)
+
+[node name="Road_26" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, -16.0000, 0.0000, -24.0000)
+
+[node name="Road_27" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, -16.0000, 0.0000, -20.0000)
+
+[node name="Road_28" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, -16.0000, 0.0000, -16.0000)
+
+[node name="Road_29" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, -16.0000, 0.0000, -12.0000)
+
+[node name="Road_30" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -16.0000, 0.0000, -8.0000)
+
+[node name="Road_31" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, -16.0000, 0.0000, -4.0000)
+
+[node name="Road_32" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -16.0000, 0.0000, 0.0000)
+
+[node name="Road_33" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, -16.0000, 0.0000, 4.0000)
+
+[node name="Road_34" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, -16.0000, 0.0000, 8.0000)
+
+[node name="Road_35" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, -16.0000, 0.0000, 12.0000)
+
+[node name="Road_36" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -16.0000, 0.0000, 16.0000)
+
+[node name="Road_37" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, -16.0000, 0.0000, 20.0000)
+
+[node name="Road_38" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, -16.0000, 0.0000, 24.0000)
+
+[node name="Road_39" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, -12.0000, 0.0000, -24.0000)
+
+[node name="Road_40" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, -12.0000, 0.0000, -20.0000)
+
+[node name="Road_41" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -12.0000, 0.0000, -16.0000)
+
+[node name="Road_42" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, -12.0000, 0.0000, -12.0000)
+
+[node name="Road_43" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, -12.0000, 0.0000, -8.0000)
+
+[node name="Road_44" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, -12.0000, 0.0000, -4.0000)
+
+[node name="Road_45" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, -12.0000, 0.0000, 0.0000)
+
+[node name="Road_46" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -12.0000, 0.0000, 4.0000)
+
+[node name="Road_47" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, -12.0000, 0.0000, 8.0000)
+
+[node name="Road_48" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -12.0000, 0.0000, 12.0000)
+
+[node name="Road_49" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, -12.0000, 0.0000, 16.0000)
+
+[node name="Road_50" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, -12.0000, 0.0000, 20.0000)
+
+[node name="Road_51" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, -12.0000, 0.0000, 24.0000)
+
+[node name="Road_52" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -8.0000, 0.0000, -24.0000)
+
+[node name="Road_53" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, -8.0000, 0.0000, -20.0000)
+
+[node name="Road_54" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, -8.0000, 0.0000, -16.0000)
+
+[node name="Road_55" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, -8.0000, 0.0000, -12.0000)
+
+[node name="Road_56" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, -8.0000, 0.0000, -8.0000)
+
+[node name="Road_57" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -8.0000, 0.0000, -4.0000)
+
+[node name="Road_58" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, -8.0000, 0.0000, 0.0000)
+
+[node name="Road_59" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, -8.0000, 0.0000, 4.0000)
+
+[node name="Road_60" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, -8.0000, 0.0000, 8.0000)
+
+[node name="Road_61" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, -8.0000, 0.0000, 12.0000)
+
+[node name="Road_62" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -8.0000, 0.0000, 16.0000)
+
+[node name="Road_63" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, -8.0000, 0.0000, 20.0000)
+
+[node name="Road_64" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -8.0000, 0.0000, 24.0000)
+
+[node name="Road_65" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, -4.0000, 0.0000, -24.0000)
+
+[node name="Road_66" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, -4.0000, 0.0000, -20.0000)
+
+[node name="Road_67" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, -4.0000, 0.0000, -16.0000)
+
+[node name="Road_68" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -4.0000, 0.0000, -12.0000)
+
+[node name="Road_69" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, -4.0000, 0.0000, -8.0000)
+
+[node name="Road_70" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, -4.0000, 0.0000, -4.0000)
+
+[node name="Road_71" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, -4.0000, 0.0000, 0.0000)
+
+[node name="Road_72" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, -4.0000, 0.0000, 4.0000)
+
+[node name="Road_73" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -4.0000, 0.0000, 8.0000)
+
+[node name="Road_74" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, -4.0000, 0.0000, 12.0000)
+
+[node name="Road_75" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, -4.0000, 0.0000, 16.0000)
+
+[node name="Road_76" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, -4.0000, 0.0000, 20.0000)
+
+[node name="Road_77" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, -4.0000, 0.0000, 24.0000)
+
+[node name="Road_78" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 0.0000, 0.0000, -24.0000)
+
+[node name="Road_79" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, 0.0000, 0.0000, -20.0000)
+
+[node name="Road_80" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 0.0000, 0.0000, -16.0000)
+
+[node name="Road_81" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, 0.0000, 0.0000, -12.0000)
+
+[node name="Road_82" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, 0.0000, 0.0000, -8.0000)
+
+[node name="Road_83" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, 0.0000, 0.0000, -4.0000)
+
+[node name="Road_84" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 0.0000, 0.0000, 0.0000)
+
+[node name="Road_85" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, 0.0000, 0.0000, 4.0000)
+
+[node name="Road_86" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, 0.0000, 0.0000, 8.0000)
+
+[node name="Road_87" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, 0.0000, 0.0000, 12.0000)
+
+[node name="Road_88" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, 0.0000, 0.0000, 16.0000)
+
+[node name="Road_89" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 0.0000, 0.0000, 20.0000)
+
+[node name="Road_90" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, 0.0000, 0.0000, 24.0000)
+
+[node name="Road_91" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, 4.0000, 0.0000, -24.0000)
+
+[node name="Road_92" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, 4.0000, 0.0000, -20.0000)
+
+[node name="Road_93" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, 4.0000, 0.0000, -16.0000)
+
+[node name="Road_94" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 4.0000, 0.0000, -12.0000)
+
+[node name="Road_95" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, 4.0000, 0.0000, -8.0000)
+
+[node name="Road_96" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 4.0000, 0.0000, -4.0000)
+
+[node name="Road_97" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, 4.0000, 0.0000, 0.0000)
+
+[node name="Road_98" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, 4.0000, 0.0000, 4.0000)
+
+[node name="Road_99" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, 4.0000, 0.0000, 8.0000)
+
+[node name="Road_100" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 4.0000, 0.0000, 12.0000)
+
+[node name="Road_101" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, 4.0000, 0.0000, 16.0000)
+
+[node name="Road_102" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, 4.0000, 0.0000, 20.0000)
+
+[node name="Road_103" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, 4.0000, 0.0000, 24.0000)
+
+[node name="Road_104" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, 8.0000, 0.0000, -24.0000)
+
+[node name="Road_105" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 8.0000, 0.0000, -20.0000)
+
+[node name="Road_106" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, 8.0000, 0.0000, -16.0000)
+
+[node name="Road_107" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, 8.0000, 0.0000, -12.0000)
+
+[node name="Road_108" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, 8.0000, 0.0000, -8.0000)
+
+[node name="Road_109" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, 8.0000, 0.0000, -4.0000)
+
+[node name="Road_110" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 8.0000, 0.0000, 0.0000)
+
+[node name="Road_111" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, 8.0000, 0.0000, 4.0000)
+
+[node name="Road_112" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 8.0000, 0.0000, 8.0000)
+
+[node name="Road_113" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, 8.0000, 0.0000, 12.0000)
+
+[node name="Road_114" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, 8.0000, 0.0000, 16.0000)
+
+[node name="Road_115" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, 8.0000, 0.0000, 20.0000)
+
+[node name="Road_116" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 8.0000, 0.0000, 24.0000)
+
+[node name="Road_117" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, 12.0000, 0.0000, -24.0000)
+
+[node name="Road_118" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, 12.0000, 0.0000, -20.0000)
+
+[node name="Road_119" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, 12.0000, 0.0000, -16.0000)
+
+[node name="Road_120" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, 12.0000, 0.0000, -12.0000)
+
+[node name="Road_121" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 12.0000, 0.0000, -8.0000)
+
+[node name="Road_122" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, 12.0000, 0.0000, -4.0000)
+
+[node name="Road_123" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, 12.0000, 0.0000, 0.0000)
+
+[node name="Road_124" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, 12.0000, 0.0000, 4.0000)
+
+[node name="Road_125" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, 12.0000, 0.0000, 8.0000)
+
+[node name="Road_126" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 12.0000, 0.0000, 12.0000)
+
+[node name="Road_127" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, 12.0000, 0.0000, 16.0000)
+
+[node name="Road_128" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 12.0000, 0.0000, 20.0000)
+
+[node name="Road_129" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, 12.0000, 0.0000, 24.0000)
+
+[node name="Road_130" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, 16.0000, 0.0000, -24.0000)
+
+[node name="Road_131" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, 16.0000, 0.0000, -20.0000)
+
+[node name="Road_132" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 16.0000, 0.0000, -16.0000)
+
+[node name="Road_133" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, 16.0000, 0.0000, -12.0000)
+
+[node name="Road_134" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, 16.0000, 0.0000, -8.0000)
+
+[node name="Road_135" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, 16.0000, 0.0000, -4.0000)
+
+[node name="Road_136" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, 16.0000, 0.0000, 0.0000)
+
+[node name="Road_137" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 16.0000, 0.0000, 4.0000)
+
+[node name="Road_138" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, 16.0000, 0.0000, 8.0000)
+
+[node name="Road_139" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, 16.0000, 0.0000, 12.0000)
+
+[node name="Road_140" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, 16.0000, 0.0000, 16.0000)
+
+[node name="Road_141" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, 16.0000, 0.0000, 20.0000)
+
+[node name="Road_142" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 16.0000, 0.0000, 24.0000)
+
+[node name="Road_143" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, 20.0000, 0.0000, -24.0000)
+
+[node name="Road_144" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 20.0000, 0.0000, -20.0000)
+
+[node name="Road_145" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, 20.0000, 0.0000, -16.0000)
+
+[node name="Road_146" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, 20.0000, 0.0000, -12.0000)
+
+[node name="Road_147" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, 20.0000, 0.0000, -8.0000)
+
+[node name="Road_148" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 20.0000, 0.0000, -4.0000)
+
+[node name="Road_149" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, 20.0000, 0.0000, 0.0000)
+
+[node name="Road_150" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, 20.0000, 0.0000, 4.0000)
+
+[node name="Road_151" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, 20.0000, 0.0000, 8.0000)
+
+[node name="Road_152" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, 20.0000, 0.0000, 12.0000)
+
+[node name="Road_153" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 20.0000, 0.0000, 16.0000)
+
+[node name="Road_154" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, 20.0000, 0.0000, 20.0000)
+
+[node name="Road_155" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, 20.0000, 0.0000, 24.0000)
+
+[node name="Road_156" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, 24.0000, 0.0000, -24.0000)
+
+[node name="Road_157" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, 24.0000, 0.0000, -20.0000)
+
+[node name="Road_158" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 24.0000, 0.0000, -16.0000)
+
+[node name="Road_159" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, 24.0000, 0.0000, -12.0000)
+
+[node name="Road_160" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 24.0000, 0.0000, -8.0000)
+
+[node name="Road_161" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, 24.0000, 0.0000, -4.0000)
+
+[node name="Road_162" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, 24.0000, 0.0000, 0.0000)
+
+[node name="Road_163" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, 24.0000, 0.0000, 4.0000)
+
+[node name="Road_164" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 24.0000, 0.0000, 8.0000)
+
+[node name="Road_165" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, 24.0000, 0.0000, 12.0000)
+
+[node name="Road_166" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(0.00000, 0, -4.00000, 0, 4.00000, 0, 4.00000, 0, 0.00000, 24.0000, 0.0000, 16.0000)
+
+[node name="Road_167" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, -4.00000, 24.0000, 0.0000, 20.0000)
+
+[node name="Road_168" parent="Dressing/Road" instance=ExtResource("1")]
+transform = Transform3D(-0.00000, 0, 4.00000, 0, 4.00000, 0, -4.00000, 0, -0.00000, 24.0000, 0.0000, 24.0000)
+
+[node name="L1_0_W" parent="Dressing/Layer1" instance=ExtResource("2")]
+transform = Transform3D(0.00000, 0, 5.00000, 0, 5.00000, 0, -5.00000, 0, 0.00000, -11.1703, 0.1000, -13.7500)
 
 [node name="L1_1_W" parent="Dressing/Layer1" instance=ExtResource("3")]
-transform = Transform3D(0.00000, 0, 5.00000, 0, 5.00000, 0, -5.00000, 0, 0.00000, -10.5703, 0.0000, -10.4000)
-
-[node name="L1_1_E" parent="Dressing/Layer1" instance=ExtResource("3")]
-transform = Transform3D(0.00000, 0, -5.00000, 0, 5.00000, 0, 5.00000, 0, 0.00000, 10.5703, 0.0000, -10.4000)
+transform = Transform3D(0.00000, 0, 5.00000, 0, 5.00000, 0, -5.00000, 0, 0.00000, -11.1703, 0.1000, -6.1840)
 
 [node name="Car_2_W" parent="Dressing/Layer1" instance=ExtResource("4")]
-transform = Transform3D(0.00000, 0, 1.75000, 0, 1.75000, 0, -1.75000, 0, 0.00000, -9.9000, 1.7500, -3.8000)
+transform = Transform3D(-1.75000, 0, -0.00000, 0, 1.75000, 0, 0.00000, 0, -1.75000, -9.9125, 0.1000, 0.9319)
 
-[node name="L1_2_E" parent="Dressing/Layer1" instance=ExtResource("5")]
-transform = Transform3D(0.00000, 0, -5.00000, 0, 5.00000, 0, 5.00000, 0, 0.00000, 10.5703, -0.0000, -3.8000)
+[node name="L1_3_W" parent="Dressing/Layer1" instance=ExtResource("5")]
+transform = Transform3D(0.00000, 0, 5.00000, 0, 5.00000, 0, -5.00000, 0, 0.00000, -10.8900, 0.1000, 8.3444)
 
-[node name="L1_3_W" parent="Dressing/Layer1" instance=ExtResource("6")]
-transform = Transform3D(0.00000, 0, 5.00000, 0, 5.00000, 0, -5.00000, 0, 0.00000, -10.5703, 0.0000, 2.8000)
+[node name="L1_4_W" parent="Dressing/Layer1" instance=ExtResource("6")]
+transform = Transform3D(0.00000, 0, 5.00000, 0, 5.00000, 0, -5.00000, 0, 0.00000, -11.4500, 0.1000, 17.4394)
 
-[node name="L1_3_E" parent="Dressing/Layer1" instance=ExtResource("6")]
-transform = Transform3D(0.00000, 0, -5.00000, 0, 5.00000, 0, 5.00000, 0, 0.00000, 10.5703, 0.0000, 2.8000)
+[node name="Car_0_E" parent="Dressing/Layer1" instance=ExtResource("7")]
+transform = Transform3D(-1.75000, 0, -0.00000, 0, 1.75000, 0, 0.00000, 0, -1.75000, 9.9125, 0.1000, -14.6375)
 
-[node name="L1_4_W" parent="Dressing/Layer1" instance=ExtResource("7")]
-transform = Transform3D(0.00000, 0, 5.00000, 0, 5.00000, 0, -5.00000, 0, 0.00000, -10.5703, 0.0000, 9.4000)
+[node name="L1_1_E" parent="Dressing/Layer1" instance=ExtResource("3")]
+transform = Transform3D(0.00000, 0, -5.00000, 0, 5.00000, 0, 5.00000, 0, 0.00000, 11.1703, 0.1000, -7.8715)
 
-[node name="Car_4_E" parent="Dressing/Layer1" instance=ExtResource("8")]
-transform = Transform3D(0.00000, 0, -1.75000, 0, 1.75000, 0, 1.75000, 0, 0.00000, 9.9000, 0.5250, 9.4000)
+[node name="L1_2_E" parent="Dressing/Layer1" instance=ExtResource("8")]
+transform = Transform3D(0.00000, 0, -5.00000, 0, 5.00000, 0, 5.00000, 0, 0.00000, 11.1700, 0.1000, -0.3056)
 
-[node name="L1_5_W" parent="Dressing/Layer1" instance=ExtResource("9")]
-transform = Transform3D(0.00000, 0, 5.00000, 0, 5.00000, 0, -5.00000, 0, 0.00000, -10.5703, 0.0000, 16.0000)
+[node name="L1_3_E" parent="Dressing/Layer1" instance=ExtResource("5")]
+transform = Transform3D(0.00000, 0, -5.00000, 0, 5.00000, 0, 5.00000, 0, 0.00000, 10.8900, 0.1000, 7.4694)
 
-[node name="L1_5_E" parent="Dressing/Layer1" instance=ExtResource("9")]
-transform = Transform3D(0.00000, 0, -5.00000, 0, 5.00000, 0, 5.00000, 0, 0.00000, 10.5703, 0.0000, 16.0000)
+[node name="Car_4_E" parent="Dressing/Layer1" instance=ExtResource("9")]
+transform = Transform3D(-1.75000, 0, -0.00000, 0, 1.75000, 0, 0.00000, 0, -1.75000, 9.9125, 0.1000, 14.5319)
 
 [node name="L2_0" parent="Dressing/Layer2" instance=ExtResource("10")]
-transform = Transform3D(4.87949, 0, 1.09115, 0, 5.00000, 0, -1.09115, 0, 4.87949, -19.0000, 0.0000, -14.0000)
+transform = Transform3D(4.87949, 0, 1.09115, 0, 5.00000, 0, -1.09115, 0, 4.87949, -19.5000, 0.1000, -14.0000)
 
 [node name="L2_1" parent="Dressing/Layer2" instance=ExtResource("11")]
-transform = Transform3D(4.69686, 0, -1.71449, 0, 5.00000, 0, 1.71449, 0, 4.69686, -20.0000, 0.0000, -3.0000)
+transform = Transform3D(4.69686, 0, -1.71449, 0, 5.00000, 0, 1.71449, 0, 4.69686, -21.0000, 0.1000, -3.0000)
 
 [node name="L2_2" parent="Dressing/Layer2" instance=ExtResource("12")]
-transform = Transform3D(4.87949, 0, 1.09115, 0, 5.00000, 0, -1.09115, 0, 4.87949, -18.5000, 0.0000, 8.0000)
+transform = Transform3D(4.87949, 0, 1.09115, 0, 5.00000, 0, -1.09115, 0, 4.87949, -19.0000, 0.1000, 8.0000)
 
 [node name="L2_3" parent="Dressing/Layer2" instance=ExtResource("13")]
-transform = Transform3D(4.69686, 0, -1.71449, 0, 5.00000, 0, 1.71449, 0, 4.69686, -20.5000, 0.0000, 17.0000)
+transform = Transform3D(4.69686, 0, -1.71449, 0, 5.00000, 0, 1.71449, 0, 4.69686, -21.5000, 0.1000, 17.0000)
 
 [node name="L2_4" parent="Dressing/Layer2" instance=ExtResource("14")]
-transform = Transform3D(4.87949, 0, 1.09115, 0, 5.00000, 0, -1.09115, 0, 4.87949, 19.0000, 0.0000, -15.0000)
+transform = Transform3D(4.87949, 0, 1.09115, 0, 5.00000, 0, -1.09115, 0, 4.87949, 19.5000, 0.1000, -15.0000)
 
 [node name="L2_5" parent="Dressing/Layer2" instance=ExtResource("15")]
-transform = Transform3D(4.69686, 0, -1.71449, 0, 5.00000, 0, 1.71449, 0, 4.69686, 20.0000, 0.0000, -4.0000)
+transform = Transform3D(4.69686, 0, -1.71449, 0, 5.00000, 0, 1.71449, 0, 4.69686, 21.0000, 0.1000, -4.0000)
 
 [node name="L2_6" parent="Dressing/Layer2" instance=ExtResource("16")]
-transform = Transform3D(4.87949, 0, 1.09115, 0, 5.00000, 0, -1.09115, 0, 4.87949, 18.5000, 0.0000, 7.0000)
+transform = Transform3D(4.87949, 0, 1.09115, 0, 5.00000, 0, -1.09115, 0, 4.87949, 19.0000, 0.1000, 7.0000)
 
 [node name="L2_7" parent="Dressing/Layer2" instance=ExtResource("17")]
-transform = Transform3D(4.69686, 0, -1.71449, 0, 5.00000, 0, 1.71449, 0, 4.69686, 20.5000, 0.0000, 16.0000)
+transform = Transform3D(4.69686, 0, -1.71449, 0, 5.00000, 0, 1.71449, 0, 4.69686, 21.5000, 0.1000, 16.0000)
 
-[node name="Tree_0_W" parent="Dressing/Layer2" instance=ExtResource("18")]
-transform = Transform3D(5.00000, 0, -0.00000, 0, 5.00000, 0, 0.00000, 0, 5.00000, -7.4000, 0.0000, -16.2000)
+[node name="L2_8" parent="Dressing/Layer2" instance=ExtResource("6")]
+transform = Transform3D(4.87949, 0, 1.09115, 0, 5.00000, 0, -1.09115, 0, 4.87949, -20.0000, 0.1000, -22.0000)
 
-[node name="Tree_0_E" parent="Dressing/Layer2" instance=ExtResource("19")]
-transform = Transform3D(5.00000, 0, -0.00000, 0, 5.00000, 0, 0.00000, 0, 5.00000, 7.4000, 0.0000, -14.8000)
+[node name="L2_9" parent="Dressing/Layer2" instance=ExtResource("18")]
+transform = Transform3D(4.69686, 0, -1.71449, 0, 5.00000, 0, 1.71449, 0, 4.69686, 20.0000, 0.1000, -21.0000)
 
-[node name="Tree_1_W" parent="Dressing/Layer2" instance=ExtResource("19")]
-transform = Transform3D(3.48353, 0, -3.58678, 0, 5.00000, 0, 3.58678, 0, 3.48353, -7.4000, 0.0000, -9.7000)
+[node name="L2_10" parent="Dressing/Layer2" instance=ExtResource("19")]
+transform = Transform3D(4.87949, 0, 1.09115, 0, 5.00000, 0, -1.09115, 0, 4.87949, -20.5000, 0.1000, 24.0000)
 
-[node name="Tree_1_E" parent="Dressing/Layer2" instance=ExtResource("18")]
-transform = Transform3D(3.48353, 0, -3.58678, 0, 5.00000, 0, 3.58678, 0, 3.48353, 7.4000, 0.0000, -8.3000)
+[node name="L2_11" parent="Dressing/Layer2" instance=ExtResource("20")]
+transform = Transform3D(4.69686, 0, -1.71449, 0, 5.00000, 0, 1.71449, 0, 4.69686, 20.5000, 0.1000, 23.0000)
 
-[node name="Tree_2_W" parent="Dressing/Layer2" instance=ExtResource("18")]
-transform = Transform3D(-0.14600, 0, -4.99787, 0, 5.00000, 0, 4.99787, 0, -0.14600, -7.4000, 0.0000, -3.2000)
+[node name="BeltX_0" parent="Dressing/Belt" instance=ExtResource("6")]
+transform = Transform3D(-5.75000, 0, -0.00000, 0, 5.75000, 0, 0.00000, 0, -5.75000, -30.0000, 0.1000, -46.0000)
 
-[node name="Tree_2_E" parent="Dressing/Layer2" instance=ExtResource("19")]
-transform = Transform3D(-0.14600, 0, -4.99787, 0, 5.00000, 0, 4.99787, 0, -0.14600, 7.4000, 0.0000, -1.8000)
+[node name="BeltX_1" parent="Dressing/Belt" instance=ExtResource("18")]
+transform = Transform3D(-5.49826, 0, 1.68275, 0, 5.75000, 0, -1.68275, 0, -5.49826, -30.9450, 0.1000, -34.3000)
 
-[node name="Tree_3_W" parent="Dressing/Layer2" instance=ExtResource("19")]
-transform = Transform3D(5.00000, 0, -0.00000, 0, 5.00000, 0, 0.00000, 0, 5.00000, -7.4000, 0.0000, 3.3000)
+[node name="BeltX_2" parent="Dressing/Belt" instance=ExtResource("19")]
+transform = Transform3D(-5.62487, 0, -1.19302, 0, 5.75000, 0, 1.19302, 0, -5.62487, -29.3350, 0.1000, -29.9000)
 
-[node name="Tree_3_E" parent="Dressing/Layer2" instance=ExtResource("18")]
-transform = Transform3D(5.00000, 0, -0.00000, 0, 5.00000, 0, 0.00000, 0, 5.00000, 7.4000, 0.0000, 4.7000)
+[node name="BeltX_3" parent="Dressing/Belt" instance=ExtResource("11")]
+transform = Transform3D(-5.17507, 0, 2.50623, 0, 5.75000, 0, -2.50623, 0, -5.17507, -31.4350, 0.1000, -14.9000)
 
-[node name="Tree_4_W" parent="Dressing/Layer2" instance=ExtResource("18")]
-transform = Transform3D(3.48353, 0, -3.58678, 0, 5.00000, 0, 3.58678, 0, 3.48353, -7.4000, 0.0000, 9.8000)
+[node name="BeltX_4" parent="Dressing/Belt" instance=ExtResource("10")]
+transform = Transform3D(-5.37531, 0, -2.04171, 0, 5.75000, 0, 2.04171, 0, -5.37531, -28.8450, 0.1000, -13.3000)
 
-[node name="Tree_4_E" parent="Dressing/Layer2" instance=ExtResource("19")]
-transform = Transform3D(3.48353, 0, -3.58678, 0, 5.00000, 0, 3.58678, 0, 3.48353, 7.4000, 0.0000, 11.2000)
+[node name="BeltX_5" parent="Dressing/Belt" instance=ExtResource("12")]
+transform = Transform3D(-5.68195, 0, 0.88200, 0, 5.75000, 0, -0.88200, 0, -5.68195, -30.4900, 0.1000, 0.4000)
 
-[node name="Tree_5_W" parent="Dressing/Layer2" instance=ExtResource("19")]
-transform = Transform3D(-0.14600, 0, -4.99787, 0, 5.00000, 0, 4.99787, 0, -0.14600, -7.4000, 0.0000, 15.3000)
+[node name="BeltX_6" parent="Dressing/Belt" instance=ExtResource("13")]
+transform = Transform3D(-5.58245, 0, -1.37796, 0, 5.75000, 0, 1.37796, 0, -5.58245, -29.2300, 0.1000, 5.8000)
 
-[node name="Tree_5_E" parent="Dressing/Layer2" instance=ExtResource("18")]
-transform = Transform3D(-0.14600, 0, -4.99787, 0, 5.00000, 0, 4.99787, 0, -0.14600, 7.4000, 0.0000, 16.7000)
+[node name="BeltX_7" parent="Dressing/Belt" instance=ExtResource("14")]
+transform = Transform3D(-5.30501, 0, 2.21795, 0, 5.75000, 0, -2.21795, 0, -5.30501, -31.2600, 0.1000, 20.6000)
+
+[node name="BeltX_8" parent="Dressing/Belt" instance=ExtResource("15")]
+transform = Transform3D(-5.72775, 0, -0.50535, 0, 5.75000, 0, 0.50535, 0, -5.72775, -29.7200, 0.1000, 25.2000)
+
+[node name="BeltX_9" parent="Dressing/Belt" instance=ExtResource("16")]
+transform = Transform3D(-5.59727, 0, 1.31647, 0, 5.75000, 0, -1.31647, 0, -5.59727, -30.7350, 0.1000, 37.1000)
+
+[node name="BeltX_10" parent="Dressing/Belt" instance=ExtResource("17")]
+transform = Transform3D(-5.20232, 0, -2.44915, 0, 5.75000, 0, 2.44915, 0, -5.20232, -28.6000, 0.1000, 40.0000)
+
+[node name="BeltZ_11" parent="Dressing/Belt" instance=ExtResource("20")]
+transform = Transform3D(0.44805, 0, 5.73252, 0, 5.75000, 0, -5.73252, 0, 0.44805, -45.4000, 0.1000, -30.2100)
+
+[node name="BeltZ_12" parent="Dressing/Belt" instance=ExtResource("2")]
+transform = Transform3D(0.00000, 0, 5.75000, 0, 5.75000, 0, -5.75000, 0, 0.00000, -37.0000, 0.1000, -30.0000)
+
+[node name="BeltZ_13" parent="Dressing/Belt" instance=ExtResource("6")]
+transform = Transform3D(1.97706, 0, 5.39942, 0, 5.75000, 0, -5.39942, 0, 1.97706, -25.3000, 0.1000, -30.9450)
+
+[node name="BeltZ_14" parent="Dressing/Belt" instance=ExtResource("18")]
+transform = Transform3D(-1.40585, 0, 5.57549, 0, 5.75000, 0, -5.57549, 0, -1.40585, -20.9000, 0.1000, -29.3350)
+
+[node name="BeltZ_15" parent="Dressing/Belt" instance=ExtResource("19")]
+transform = Transform3D(2.92169, 0, 4.95240, 0, 5.75000, 0, -4.95240, 0, 2.92169, -5.9000, 0.1000, -31.4350)
+
+[node name="BeltZ_16" parent="Dressing/Belt" instance=ExtResource("11")]
+transform = Transform3D(-2.39178, 0, 5.22895, 0, 5.75000, 0, -5.22895, 0, -2.39178, -4.3000, 0.1000, -28.8450)
+
+[node name="BeltZ_17" parent="Dressing/Belt" instance=ExtResource("10")]
+transform = Transform3D(1.04073, 0, 5.65503, 0, 5.75000, 0, -5.65503, 0, 1.04073, 9.4000, 0.1000, -30.4900)
+
+[node name="BeltZ_18" parent="Dressing/Belt" instance=ExtResource("12")]
+transform = Transform3D(-1.62217, 0, 5.51644, 0, 5.75000, 0, -5.51644, 0, -1.62217, 14.8000, 0.1000, -29.2300)
+
+[node name="BeltZ_19" parent="Dressing/Belt" instance=ExtResource("13")]
+transform = Transform3D(2.59384, 0, 5.13172, 0, 5.75000, 0, -5.13172, 0, 2.59384, 29.6000, 0.1000, -31.2600)
+
+[node name="BeltZ_20" parent="Dressing/Belt" instance=ExtResource("14")]
+transform = Transform3D(-0.59692, 0, 5.71893, 0, 5.75000, 0, -5.71893, 0, -0.59692, 34.2000, 0.1000, -29.7200)
+
+[node name="BeltZ_21" parent="Dressing/Belt" instance=ExtResource("15")]
+transform = Transform3D(1.55032, 0, 5.53706, 0, 5.75000, 0, -5.53706, 0, 1.55032, 46.1000, 0.1000, -30.7350)
+
+[node name="BeltX_22" parent="Dressing/Belt" instance=ExtResource("16")]
+transform = Transform3D(5.20232, 0, 2.44915, 0, 5.75000, 0, -2.44915, 0, 5.20232, 28.6000, 0.1000, -50.0000)
+
+[node name="BeltX_23" parent="Dressing/Belt" instance=ExtResource("17")]
+transform = Transform3D(5.73748, 0, -0.37922, 0, 5.75000, 0, 0.37922, 0, 5.73748, 30.2100, 0.1000, -36.4000)
+
+[node name="BeltX_24" parent="Dressing/Belt" instance=ExtResource("20")]
+transform = Transform3D(5.75000, 0, -0.00000, 0, 5.75000, 0, 0.00000, 0, 5.75000, 30.0000, 0.1000, -28.0000)
+
+[node name="BeltX_25" parent="Dressing/Belt" instance=ExtResource("2")]
+transform = Transform3D(5.49826, 0, -1.68275, 0, 5.75000, 0, 1.68275, 0, 5.49826, 30.9450, 0.1000, -16.3000)
+
+[node name="BeltX_26" parent="Dressing/Belt" instance=ExtResource("6")]
+transform = Transform3D(5.62487, 0, 1.19302, 0, 5.75000, 0, -1.19302, 0, 5.62487, 29.3350, 0.1000, -11.9000)
+
+[node name="BeltX_27" parent="Dressing/Belt" instance=ExtResource("18")]
+transform = Transform3D(5.17507, 0, -2.50623, 0, 5.75000, 0, 2.50623, 0, 5.17507, 31.4350, 0.1000, 3.1000)
+
+[node name="BeltX_28" parent="Dressing/Belt" instance=ExtResource("19")]
+transform = Transform3D(5.37531, 0, 2.04171, 0, 5.75000, 0, -2.04171, 0, 5.37531, 28.8450, 0.1000, 4.7000)
+
+[node name="BeltX_29" parent="Dressing/Belt" instance=ExtResource("11")]
+transform = Transform3D(5.68195, 0, -0.88200, 0, 5.75000, 0, 0.88200, 0, 5.68195, 30.4900, 0.1000, 18.4000)
+
+[node name="BeltX_30" parent="Dressing/Belt" instance=ExtResource("10")]
+transform = Transform3D(5.58245, 0, 1.37796, 0, 5.75000, 0, -1.37796, 0, 5.58245, 29.2300, 0.1000, 23.8000)
+
+[node name="BeltX_31" parent="Dressing/Belt" instance=ExtResource("12")]
+transform = Transform3D(5.30501, 0, -2.21795, 0, 5.75000, 0, 2.21795, 0, 5.30501, 31.2600, 0.1000, 38.6000)
+
+[node name="BeltX_32" parent="Dressing/Belt" instance=ExtResource("13")]
+transform = Transform3D(5.72775, 0, 0.50535, 0, 5.75000, 0, -0.50535, 0, 5.72775, 29.7200, 0.1000, 43.2000)
+
+[node name="BeltZ_33" parent="Dressing/Belt" instance=ExtResource("14")]
+transform = Transform3D(-1.55032, 0, -5.53706, 0, 5.75000, 0, 5.53706, 0, -1.55032, -43.9000, 0.1000, 30.7350)
+
+[node name="BeltZ_34" parent="Dressing/Belt" instance=ExtResource("15")]
+transform = Transform3D(2.85706, 0, -4.98996, 0, 5.75000, 0, 4.98996, 0, 2.85706, -41.0000, 0.1000, 28.6000)
+
+[node name="BeltZ_35" parent="Dressing/Belt" instance=ExtResource("16")]
+transform = Transform3D(-0.44805, 0, -5.73252, 0, 5.75000, 0, 5.73252, 0, -0.44805, -27.4000, 0.1000, 30.2100)
+
+[node name="BeltZ_36" parent="Dressing/Belt" instance=ExtResource("17")]
+transform = Transform3D(0.00000, 0, -5.75000, 0, 5.75000, 0, 5.75000, 0, 0.00000, -19.0000, 0.1000, 30.0000)
+
+[node name="BeltZ_37" parent="Dressing/Belt" instance=ExtResource("20")]
+transform = Transform3D(-1.97706, 0, -5.39942, 0, 5.75000, 0, 5.39942, 0, -1.97706, -7.3000, 0.1000, 30.9450)
+
+[node name="BeltZ_38" parent="Dressing/Belt" instance=ExtResource("2")]
+transform = Transform3D(1.40585, 0, -5.57549, 0, 5.75000, 0, 5.57549, 0, 1.40585, -2.9000, 0.1000, 29.3350)
+
+[node name="BeltZ_39" parent="Dressing/Belt" instance=ExtResource("6")]
+transform = Transform3D(-2.92169, 0, -4.95240, 0, 5.75000, 0, 4.95240, 0, -2.92169, 12.1000, 0.1000, 31.4350)
+
+[node name="BeltZ_40" parent="Dressing/Belt" instance=ExtResource("18")]
+transform = Transform3D(2.39178, 0, -5.22895, 0, 5.75000, 0, 5.22895, 0, 2.39178, 13.7000, 0.1000, 28.8450)
+
+[node name="BeltZ_41" parent="Dressing/Belt" instance=ExtResource("19")]
+transform = Transform3D(-1.04073, 0, -5.65503, 0, 5.75000, 0, 5.65503, 0, -1.04073, 27.4000, 0.1000, 30.4900)
+
+[node name="BeltZ_42" parent="Dressing/Belt" instance=ExtResource("11")]
+transform = Transform3D(1.62217, 0, -5.51644, 0, 5.75000, 0, 5.51644, 0, 1.62217, 32.8000, 0.1000, 29.2300)
+
+[node name="BeltZ_43" parent="Dressing/Belt" instance=ExtResource("10")]
+transform = Transform3D(-2.59384, 0, -5.13172, 0, 5.75000, 0, 5.13172, 0, -2.59384, 47.6000, 0.1000, 31.2600)
+
+[node name="BeltX_44" parent="Dressing/Belt" instance=ExtResource("12")]
+transform = Transform3D(-6.72388, 0, -0.59323, 0, 6.75000, 0, 0.59323, 0, -6.72388, -36.7200, 0.1000, -46.8000)
+
+[node name="BeltX_45" parent="Dressing/Belt" instance=ExtResource("13")]
+transform = Transform3D(-6.57071, 0, 1.54542, 0, 6.75000, 0, -1.54542, 0, -6.57071, -37.7350, 0.1000, -33.2000)
+
+[node name="BeltX_46" parent="Dressing/Belt" instance=ExtResource("14")]
+transform = Transform3D(-6.10707, 0, -2.87509, 0, 6.75000, 0, 2.87509, 0, -6.10707, -35.6000, 0.1000, -28.6000)
+
+[node name="BeltX_47" parent="Dressing/Belt" instance=ExtResource("15")]
+transform = Transform3D(-6.73530, 0, 0.44518, 0, 6.75000, 0, -0.44518, 0, -6.73530, -37.2100, 0.1000, -13.3000)
+
+[node name="BeltX_48" parent="Dressing/Belt" instance=ExtResource("16")]
+transform = Transform3D(-6.75000, 0, -0.00000, 0, 6.75000, 0, 0.00000, 0, -6.75000, -37.0000, 0.1000, -3.2000)
+
+[node name="BeltX_49" parent="Dressing/Belt" instance=ExtResource("17")]
+transform = Transform3D(-6.45448, 0, 1.97541, 0, 6.75000, 0, -1.97541, 0, -6.45448, -37.9450, 0.1000, 10.2000)
+
+[node name="BeltX_50" parent="Dressing/Belt" instance=ExtResource("20")]
+transform = Transform3D(-6.60311, 0, -1.40050, 0, 6.75000, 0, 1.40050, 0, -6.60311, -36.3350, 0.1000, 16.3000)
+
+[node name="BeltX_51" parent="Dressing/Belt" instance=ExtResource("2")]
+transform = Transform3D(-6.07508, 0, 2.94209, 0, 6.75000, 0, -2.94209, 0, -6.07508, -38.4350, 0.1000, 33.0000)
+
+[node name="BeltX_52" parent="Dressing/Belt" instance=ExtResource("6")]
+transform = Transform3D(-6.31014, 0, -2.39679, 0, 6.75000, 0, 2.39679, 0, -6.31014, -35.8450, 0.1000, 36.3000)
+
+[node name="BeltZ_53" parent="Dressing/Belt" instance=ExtResource("18")]
+transform = Transform3D(1.22173, 0, 6.63851, 0, 6.75000, 0, -6.63851, 0, 1.22173, -44.6000, 0.1000, -37.4900)
+
+[node name="BeltZ_54" parent="Dressing/Belt" instance=ExtResource("19")]
+transform = Transform3D(-1.90429, 0, 6.47582, 0, 6.75000, 0, -6.47582, 0, -1.90429, -37.5000, 0.1000, -36.2300)
+
+[node name="BeltZ_55" parent="Dressing/Belt" instance=ExtResource("11")]
+transform = Transform3D(3.04494, 0, 6.02419, 0, 6.75000, 0, -6.02419, 0, 3.04494, -21.0000, 0.1000, -38.2600)
+
+[node name="BeltZ_56" parent="Dressing/Belt" instance=ExtResource("10")]
+transform = Transform3D(-0.70074, 0, 6.71353, 0, 6.75000, 0, -6.71353, 0, -0.70074, -14.7000, 0.1000, -36.7200)
+
+[node name="BeltZ_57" parent="Dressing/Belt" instance=ExtResource("12")]
+transform = Transform3D(1.81995, 0, 6.50002, 0, 6.75000, 0, -6.50002, 0, 1.81995, -1.1000, 0.1000, -37.7350)
+
+[node name="BeltZ_58" parent="Dressing/Belt" instance=ExtResource("13")]
+transform = Transform3D(-3.35394, 0, 5.85778, 0, 6.75000, 0, -5.85778, 0, -3.35394, 3.5000, 0.1000, -35.6000)
+
+[node name="BeltZ_59" parent="Dressing/Belt" instance=ExtResource("14")]
+transform = Transform3D(0.52597, 0, 6.72948, 0, 6.75000, 0, -6.72948, 0, 0.52597, 18.8000, 0.1000, -37.2100)
+
+[node name="BeltZ_60" parent="Dressing/Belt" instance=ExtResource("15")]
+transform = Transform3D(0.00000, 0, 6.75000, 0, 6.75000, 0, -6.75000, 0, 0.00000, 28.9000, 0.1000, -37.0000)
+
+[node name="BeltZ_61" parent="Dressing/Belt" instance=ExtResource("16")]
+transform = Transform3D(2.32090, 0, 6.33845, 0, 6.75000, 0, -6.33845, 0, 2.32090, 42.3000, 0.1000, -37.9450)
+
+[node name="BeltX_62" parent="Dressing/Belt" instance=ExtResource("17")]
+transform = Transform3D(6.60311, 0, 1.40050, 0, 6.75000, 0, -1.40050, 0, 6.60311, 36.3350, 0.1000, -47.9000)
+
+[node name="BeltX_63" parent="Dressing/Belt" instance=ExtResource("20")]
+transform = Transform3D(6.07508, 0, -2.94209, 0, 6.75000, 0, 2.94209, 0, 6.07508, 38.4350, 0.1000, -31.2000)
+
+[node name="BeltX_64" parent="Dressing/Belt" instance=ExtResource("2")]
+transform = Transform3D(6.31014, 0, 2.39679, 0, 6.75000, 0, -2.39679, 0, 6.31014, 35.8450, 0.1000, -27.9000)
+
+[node name="BeltX_65" parent="Dressing/Belt" instance=ExtResource("6")]
+transform = Transform3D(6.67012, 0, -1.03540, 0, 6.75000, 0, 1.03540, 0, 6.67012, 37.4900, 0.1000, -12.5000)
+
+[node name="BeltX_66" parent="Dressing/Belt" instance=ExtResource("18")]
+transform = Transform3D(6.55331, 0, 1.61760, 0, 6.75000, 0, -1.61760, 0, 6.55331, 36.2300, 0.1000, -5.4000)
+
+[node name="BeltX_67" parent="Dressing/Belt" instance=ExtResource("19")]
+transform = Transform3D(6.22763, 0, -2.60368, 0, 6.75000, 0, 2.60368, 0, 6.22763, 38.2600, 0.1000, 11.1000)
+
+[node name="BeltX_68" parent="Dressing/Belt" instance=ExtResource("11")]
+transform = Transform3D(6.72388, 0, 0.59323, 0, 6.75000, 0, -0.59323, 0, 6.72388, 36.7200, 0.1000, 17.4000)
+
+[node name="BeltX_69" parent="Dressing/Belt" instance=ExtResource("10")]
+transform = Transform3D(6.57071, 0, -1.54542, 0, 6.75000, 0, 1.54542, 0, 6.57071, 37.7350, 0.1000, 31.0000)
+
+[node name="BeltX_70" parent="Dressing/Belt" instance=ExtResource("12")]
+transform = Transform3D(6.10707, 0, 2.87509, 0, 6.75000, 0, -2.87509, 0, 6.10707, 35.6000, 0.1000, 35.6000)
+
+[node name="BeltZ_71" parent="Dressing/Belt" instance=ExtResource("13")]
+transform = Transform3D(-0.52597, 0, -6.72948, 0, 6.75000, 0, 6.72948, 0, -0.52597, -45.4000, 0.1000, 37.2100)
+
+[node name="BeltZ_72" parent="Dressing/Belt" instance=ExtResource("14")]
+transform = Transform3D(0.00000, 0, -6.75000, 0, 6.75000, 0, 6.75000, 0, 0.00000, -35.3000, 0.1000, 37.0000)
+
+[node name="BeltZ_73" parent="Dressing/Belt" instance=ExtResource("15")]
+transform = Transform3D(-2.32090, 0, -6.33845, 0, 6.75000, 0, 6.33845, 0, -2.32090, -21.9000, 0.1000, 37.9450)
+
+[node name="BeltZ_74" parent="Dressing/Belt" instance=ExtResource("16")]
+transform = Transform3D(1.65035, 0, -6.54514, 0, 6.75000, 0, 6.54514, 0, 1.65035, -15.8000, 0.1000, 36.3350)
+
+[node name="BeltZ_75" parent="Dressing/Belt" instance=ExtResource("17")]
+transform = Transform3D(-3.42981, 0, -5.81368, 0, 6.75000, 0, 5.81368, 0, -3.42981, 0.9000, 0.1000, 38.4350)
+
+[node name="BeltZ_76" parent="Dressing/Belt" instance=ExtResource("20")]
+transform = Transform3D(2.80774, 0, -6.13833, 0, 6.75000, 0, 6.13833, 0, 2.80774, 4.2000, 0.1000, 35.8450)
+
+[node name="BeltZ_77" parent="Dressing/Belt" instance=ExtResource("2")]
+transform = Transform3D(-1.22173, 0, -6.63851, 0, 6.75000, 0, 6.63851, 0, -1.22173, 19.6000, 0.1000, 37.4900)
+
+[node name="BeltZ_78" parent="Dressing/Belt" instance=ExtResource("6")]
+transform = Transform3D(1.90429, 0, -6.47582, 0, 6.75000, 0, 6.47582, 0, 1.90429, 26.7000, 0.1000, 36.2300)
+
+[node name="BeltZ_79" parent="Dressing/Belt" instance=ExtResource("18")]
+transform = Transform3D(-3.04494, 0, -6.02419, 0, 6.75000, 0, 6.02419, 0, -3.04494, 43.2000, 0.1000, 38.2600)
+
+[node name="BeltX_80" parent="Dressing/Belt" instance=ExtResource("19")]
+transform = Transform3D(-7.72001, 0, -0.68112, 0, 7.75000, 0, 0.68112, 0, -7.72001, -43.7200, 0.1000, -46.8000)
+
+[node name="BeltX_81" parent="Dressing/Belt" instance=ExtResource("11")]
+transform = Transform3D(-7.54414, 0, 1.77437, 0, 7.75000, 0, -1.77437, 0, -7.54414, -44.7350, 0.1000, -31.5000)
+
+[node name="BeltX_82" parent="Dressing/Belt" instance=ExtResource("10")]
+transform = Transform3D(-7.01183, 0, -3.30103, 0, 7.75000, 0, 3.30103, 0, -7.01183, -42.6000, 0.1000, -25.2000)
+
+[node name="BeltX_83" parent="Dressing/Belt" instance=ExtResource("12")]
+transform = Transform3D(-7.73313, 0, 0.51113, 0, 7.75000, 0, -0.51113, 0, -7.73313, -44.2100, 0.1000, -8.2000)
+
+[node name="BeltX_84" parent="Dressing/Belt" instance=ExtResource("13")]
+transform = Transform3D(-7.75000, 0, -0.00000, 0, 7.75000, 0, 0.00000, 0, -7.75000, -44.0000, 0.1000, 3.6000)
+
+[node name="BeltX_85" parent="Dressing/Belt" instance=ExtResource("14")]
+transform = Transform3D(-7.41070, 0, 2.26806, 0, 7.75000, 0, -2.26806, 0, -7.41070, -44.9450, 0.1000, 18.7000)
+
+[node name="BeltX_86" parent="Dressing/Belt" instance=ExtResource("15")]
+transform = Transform3D(-7.58135, 0, -1.60798, 0, 7.75000, 0, 1.60798, 0, -7.58135, -43.3350, 0.1000, 26.5000)
+
+[node name="BeltX_87" parent="Dressing/Belt" instance=ExtResource("16")]
+transform = Transform3D(-6.97509, 0, 3.37796, 0, 7.75000, 0, -3.37796, 0, -6.97509, -45.4350, 0.1000, 44.9000)
+
+[node name="BeltZ_88" parent="Dressing/Belt" instance=ExtResource("17")]
+transform = Transform3D(-3.22370, 0, 7.04771, 0, 7.75000, 0, -7.04771, 0, -3.22370, -49.3000, 0.1000, -42.8450)
+
+[node name="BeltZ_89" parent="Dressing/Belt" instance=ExtResource("20")]
+transform = Transform3D(1.40273, 0, 7.62200, 0, 7.75000, 0, -7.62200, 0, 1.40273, -32.2000, 0.1000, -44.4900)
+
+[node name="BeltZ_90" parent="Dressing/Belt" instance=ExtResource("2")]
+transform = Transform3D(-2.18641, 0, 7.43520, 0, 7.75000, 0, -7.43520, 0, -2.18641, -23.4000, 0.1000, -43.2300)
+
+[node name="BeltZ_91" parent="Dressing/Belt" instance=ExtResource("6")]
+transform = Transform3D(3.49604, 0, 6.91666, 0, 7.75000, 0, -6.91666, 0, 3.49604, -5.2000, 0.1000, -45.2600)
+
+[node name="BeltZ_92" parent="Dressing/Belt" instance=ExtResource("18")]
+transform = Transform3D(-0.80455, 0, 7.70813, 0, 7.75000, 0, -7.70813, 0, -0.80455, 2.8000, 0.1000, -43.7200)
+
+[node name="BeltZ_93" parent="Dressing/Belt" instance=ExtResource("19")]
+transform = Transform3D(2.08957, 0, 7.46299, 0, 7.75000, 0, -7.46299, 0, 2.08957, 18.1000, 0.1000, -44.7350)
+
+[node name="BeltZ_94" parent="Dressing/Belt" instance=ExtResource("11")]
+transform = Transform3D(-3.85082, 0, 6.72560, 0, 7.75000, 0, -6.72560, 0, -3.85082, 24.4000, 0.1000, -42.6000)
+
+[node name="BeltZ_95" parent="Dressing/Belt" instance=ExtResource("10")]
+transform = Transform3D(0.60389, 0, 7.72644, 0, 7.75000, 0, -7.72644, 0, 0.60389, 41.4000, 0.1000, -44.2100)
+
+[node name="BeltX_96" parent="Dressing/Belt" instance=ExtResource("12")]
+transform = Transform3D(7.75000, 0, -0.00000, 0, 7.75000, 0, 0.00000, 0, 7.75000, 44.0000, 0.1000, -46.0000)
+
+[node name="BeltX_97" parent="Dressing/Belt" instance=ExtResource("13")]
+transform = Transform3D(7.41070, 0, -2.26806, 0, 7.75000, 0, 2.26806, 0, 7.41070, 44.9450, 0.1000, -30.9000)
+
+[node name="BeltX_98" parent="Dressing/Belt" instance=ExtResource("14")]
+transform = Transform3D(7.58135, 0, 1.60798, 0, 7.75000, 0, -1.60798, 0, 7.58135, 43.3350, 0.1000, -23.1000)
+
+[node name="BeltX_99" parent="Dressing/Belt" instance=ExtResource("15")]
+transform = Transform3D(6.97509, 0, -3.37796, 0, 7.75000, 0, 3.37796, 0, 6.97509, 45.4350, 0.1000, -4.7000)
+
+[node name="BeltX_100" parent="Dressing/Belt" instance=ExtResource("16")]
+transform = Transform3D(7.24498, 0, 2.75187, 0, 7.75000, 0, -2.75187, 0, 7.24498, 42.8450, 0.1000, 0.3000)
+
+[node name="BeltX_101" parent="Dressing/Belt" instance=ExtResource("17")]
+transform = Transform3D(7.65828, 0, -1.18879, 0, 7.75000, 0, 1.18879, 0, 7.65828, 44.4900, 0.1000, 17.4000)
+
+[node name="BeltX_102" parent="Dressing/Belt" instance=ExtResource("20")]
+transform = Transform3D(7.52417, 0, 1.85725, 0, 7.75000, 0, -1.85725, 0, 7.52417, 43.2300, 0.1000, 26.2000)
+
+[node name="BeltX_103" parent="Dressing/Belt" instance=ExtResource("2")]
+transform = Transform3D(7.15024, 0, -2.98942, 0, 7.75000, 0, 2.98942, 0, 7.15024, 45.2600, 0.1000, 44.4000)
+
+[node name="BeltZ_104" parent="Dressing/Belt" instance=ExtResource("6")]
+transform = Transform3D(0.80455, 0, -7.70813, 0, 7.75000, 0, 7.70813, 0, 0.80455, -46.8000, 0.1000, 43.7200)
+
+[node name="BeltZ_105" parent="Dressing/Belt" instance=ExtResource("18")]
+transform = Transform3D(-2.08957, 0, -7.46299, 0, 7.75000, 0, 7.46299, 0, -2.08957, -31.5000, 0.1000, 44.7350)
+
+[node name="BeltZ_106" parent="Dressing/Belt" instance=ExtResource("19")]
+transform = Transform3D(3.85082, 0, -6.72560, 0, 7.75000, 0, 6.72560, 0, 3.85082, -25.2000, 0.1000, 42.6000)
+
+[node name="BeltZ_107" parent="Dressing/Belt" instance=ExtResource("11")]
+transform = Transform3D(-0.60389, 0, -7.72644, 0, 7.75000, 0, 7.72644, 0, -0.60389, -8.2000, 0.1000, 44.2100)
+
+[node name="BeltZ_108" parent="Dressing/Belt" instance=ExtResource("10")]
+transform = Transform3D(0.00000, 0, -7.75000, 0, 7.75000, 0, 7.75000, 0, 0.00000, 3.6000, 0.1000, 44.0000)
+
+[node name="BeltZ_109" parent="Dressing/Belt" instance=ExtResource("12")]
+transform = Transform3D(-2.66474, 0, -7.27748, 0, 7.75000, 0, 7.27748, 0, -2.66474, 18.7000, 0.1000, 44.9450)
+
+[node name="BeltZ_110" parent="Dressing/Belt" instance=ExtResource("13")]
+transform = Transform3D(1.89484, 0, -7.51479, 0, 7.75000, 0, 7.51479, 0, 1.89484, 26.5000, 0.1000, 43.3350)
+
+[node name="BeltZ_111" parent="Dressing/Belt" instance=ExtResource("14")]
+transform = Transform3D(-3.93793, 0, -6.67497, 0, 7.75000, 0, 6.67497, 0, -3.93793, 44.9000, 0.1000, 45.4350)
+
+[node name="BeltTreeX_0" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(7.00000, 0, -0.00000, 0, 7.00000, 0, 0.00000, 0, 7.00000, -27.5000, 0.1000, -44.0000)
+
+[node name="BeltTreeZ_1" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(7.00000, 0, 0.00000, 0, 7.00000, 0, -0.00000, 0, 7.00000, -44.0000, 0.1000, -27.5000)
+
+[node name="BeltTreeX_2" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.50065, 0, 2.59644, 0, 7.00000, 0, -2.59644, 0, 6.50065, -26.9300, 0.1000, -35.4700)
+
+[node name="BeltTreeZ_3" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.50065, 0, -2.59644, 0, 7.00000, 0, 2.59644, 0, 6.50065, -35.0900, 0.1000, -26.9300)
+
+[node name="BeltTreeX_4" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(5.52995, 0, 4.29182, 0, 7.00000, 0, -4.29182, 0, 5.52995, -26.5100, 0.1000, -26.2900)
+
+[node name="BeltTreeZ_5" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(5.52995, 0, -4.29182, 0, 7.00000, 0, 4.29182, 0, 5.52995, -25.6300, 0.1000, -26.5100)
+
+[node name="BeltTreeX_6" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.33326, 0, 2.98158, 0, 7.00000, 0, -2.98158, 0, 6.33326, -26.8400, 0.1000, -13.8600)
+
+[node name="BeltTreeZ_7" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.33326, 0, -2.98158, 0, 7.00000, 0, 2.98158, 0, 6.33326, -13.4200, 0.1000, -26.8400)
+
+[node name="BeltTreeX_8" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.91059, 0, 1.11523, 0, 7.00000, 0, -1.11523, 0, 6.91059, -27.2600, 0.1000, -1.0400)
+
+[node name="BeltTreeZ_9" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.91059, 0, -1.11523, 0, 7.00000, 0, 1.11523, 0, 6.91059, -0.8800, 0.1000, -27.2600)
+
+[node name="BeltTreeX_10" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(4.87695, 0, 5.02149, 0, 7.00000, 0, -5.02149, 0, 4.87695, -26.3000, 0.1000, 5.8000)
+
+[node name="BeltTreeZ_11" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(4.87695, 0, -5.02149, 0, 7.00000, 0, 5.02149, 0, 4.87695, 6.6000, 0.1000, -26.3000)
+
+[node name="BeltTreeX_12" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(7.00000, 0, -0.00000, 0, 7.00000, 0, 0.00000, 0, 7.00000, -27.5000, 0.1000, 22.0000)
+
+[node name="BeltTreeZ_13" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(7.00000, 0, 0.00000, 0, 7.00000, 0, -0.00000, 0, 7.00000, 22.0000, 0.1000, -27.5000)
+
+[node name="BeltTreeX_14" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.50065, 0, 2.59644, 0, 7.00000, 0, -2.59644, 0, 6.50065, -26.9300, 0.1000, 30.5300)
+
+[node name="BeltTreeZ_15" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.50065, 0, -2.59644, 0, 7.00000, 0, 2.59644, 0, 6.50065, 30.9100, 0.1000, -26.9300)
+
+[node name="BeltTreeX_16" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(5.52995, 0, 4.29182, 0, 7.00000, 0, -4.29182, 0, 5.52995, -26.5100, 0.1000, 39.7100)
+
+[node name="BeltTreeZ_17" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(5.52995, 0, -4.29182, 0, 7.00000, 0, 4.29182, 0, 5.52995, 40.3700, 0.1000, -26.5100)
+
+[node name="BeltTreeX_18" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.33326, 0, 2.98158, 0, 7.00000, 0, -2.98158, 0, 6.33326, 26.8400, 0.1000, -46.8600)
+
+[node name="BeltTreeZ_19" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.33326, 0, -2.98158, 0, 7.00000, 0, 2.98158, 0, 6.33326, -46.4200, 0.1000, 26.8400)
+
+[node name="BeltTreeX_20" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.91059, 0, 1.11523, 0, 7.00000, 0, -1.11523, 0, 6.91059, 27.2600, 0.1000, -34.0400)
+
+[node name="BeltTreeZ_21" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.91059, 0, -1.11523, 0, 7.00000, 0, 1.11523, 0, 6.91059, -33.8800, 0.1000, 27.2600)
+
+[node name="BeltTreeX_22" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(4.87695, 0, 5.02149, 0, 7.00000, 0, -5.02149, 0, 4.87695, 26.3000, 0.1000, -27.2000)
+
+[node name="BeltTreeZ_23" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(4.87695, 0, -5.02149, 0, 7.00000, 0, 5.02149, 0, 4.87695, -26.4000, 0.1000, 26.3000)
+
+[node name="BeltTreeX_24" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(7.00000, 0, -0.00000, 0, 7.00000, 0, 0.00000, 0, 7.00000, 27.5000, 0.1000, -11.0000)
+
+[node name="BeltTreeZ_25" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(7.00000, 0, 0.00000, 0, 7.00000, 0, -0.00000, 0, 7.00000, -11.0000, 0.1000, 27.5000)
+
+[node name="BeltTreeX_26" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.50065, 0, 2.59644, 0, 7.00000, 0, -2.59644, 0, 6.50065, 26.9300, 0.1000, -2.4700)
+
+[node name="BeltTreeZ_27" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.50065, 0, -2.59644, 0, 7.00000, 0, 2.59644, 0, 6.50065, -2.0900, 0.1000, 26.9300)
+
+[node name="BeltTreeX_28" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(5.52995, 0, 4.29182, 0, 7.00000, 0, -4.29182, 0, 5.52995, 26.5100, 0.1000, 6.7100)
+
+[node name="BeltTreeZ_29" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(5.52995, 0, -4.29182, 0, 7.00000, 0, 4.29182, 0, 5.52995, 7.3700, 0.1000, 26.5100)
+
+[node name="BeltTreeX_30" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.33326, 0, 2.98158, 0, 7.00000, 0, -2.98158, 0, 6.33326, 26.8400, 0.1000, 19.1400)
+
+[node name="BeltTreeZ_31" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.33326, 0, -2.98158, 0, 7.00000, 0, 2.98158, 0, 6.33326, 19.5800, 0.1000, 26.8400)
+
+[node name="BeltTreeX_32" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.91059, 0, 1.11523, 0, 7.00000, 0, -1.11523, 0, 6.91059, 27.2600, 0.1000, 31.9600)
+
+[node name="BeltTreeZ_33" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.91059, 0, -1.11523, 0, 7.00000, 0, 1.11523, 0, 6.91059, 32.1200, 0.1000, 27.2600)
+
+[node name="BeltTreeX_34" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(4.87695, 0, 5.02149, 0, 7.00000, 0, -5.02149, 0, 4.87695, 26.3000, 0.1000, 38.8000)
+
+[node name="BeltTreeZ_35" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(4.87695, 0, -5.02149, 0, 7.00000, 0, 5.02149, 0, 4.87695, 39.6000, 0.1000, 26.3000)
+
+[node name="BeltTreeX_36" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(7.00000, 0, -0.00000, 0, 7.00000, 0, 0.00000, 0, 7.00000, -33.5000, 0.1000, -44.0000)
+
+[node name="BeltTreeZ_37" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(7.00000, 0, 0.00000, 0, 7.00000, 0, -0.00000, 0, 7.00000, -44.0000, 0.1000, -33.5000)
+
+[node name="BeltTreeX_38" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.50065, 0, 2.59644, 0, 7.00000, 0, -2.59644, 0, 6.50065, -32.9300, 0.1000, -35.4700)
+
+[node name="BeltTreeZ_39" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.50065, 0, -2.59644, 0, 7.00000, 0, 2.59644, 0, 6.50065, -35.0900, 0.1000, -32.9300)
+
+[node name="BeltTreeX_40" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(5.52995, 0, 4.29182, 0, 7.00000, 0, -4.29182, 0, 5.52995, -32.5100, 0.1000, -26.2900)
+
+[node name="BeltTreeZ_41" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(5.52995, 0, -4.29182, 0, 7.00000, 0, 4.29182, 0, 5.52995, -25.6300, 0.1000, -32.5100)
+
+[node name="BeltTreeX_42" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.33326, 0, 2.98158, 0, 7.00000, 0, -2.98158, 0, 6.33326, -32.8400, 0.1000, -13.8600)
+
+[node name="BeltTreeZ_43" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.33326, 0, -2.98158, 0, 7.00000, 0, 2.98158, 0, 6.33326, -13.4200, 0.1000, -32.8400)
+
+[node name="BeltTreeX_44" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.91059, 0, 1.11523, 0, 7.00000, 0, -1.11523, 0, 6.91059, -33.2600, 0.1000, -1.0400)
+
+[node name="BeltTreeZ_45" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.91059, 0, -1.11523, 0, 7.00000, 0, 1.11523, 0, 6.91059, -0.8800, 0.1000, -33.2600)
+
+[node name="BeltTreeX_46" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(4.87695, 0, 5.02149, 0, 7.00000, 0, -5.02149, 0, 4.87695, -32.3000, 0.1000, 5.8000)
+
+[node name="BeltTreeZ_47" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(4.87695, 0, -5.02149, 0, 7.00000, 0, 5.02149, 0, 4.87695, 6.6000, 0.1000, -32.3000)
+
+[node name="BeltTreeX_48" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(7.00000, 0, -0.00000, 0, 7.00000, 0, 0.00000, 0, 7.00000, -33.5000, 0.1000, 22.0000)
+
+[node name="BeltTreeZ_49" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(7.00000, 0, 0.00000, 0, 7.00000, 0, -0.00000, 0, 7.00000, 22.0000, 0.1000, -33.5000)
+
+[node name="BeltTreeX_50" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.50065, 0, 2.59644, 0, 7.00000, 0, -2.59644, 0, 6.50065, -32.9300, 0.1000, 30.5300)
+
+[node name="BeltTreeZ_51" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.50065, 0, -2.59644, 0, 7.00000, 0, 2.59644, 0, 6.50065, 30.9100, 0.1000, -32.9300)
+
+[node name="BeltTreeX_52" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(5.52995, 0, 4.29182, 0, 7.00000, 0, -4.29182, 0, 5.52995, -32.5100, 0.1000, 39.7100)
+
+[node name="BeltTreeZ_53" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(5.52995, 0, -4.29182, 0, 7.00000, 0, 4.29182, 0, 5.52995, 40.3700, 0.1000, -32.5100)
+
+[node name="BeltTreeX_54" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.33326, 0, 2.98158, 0, 7.00000, 0, -2.98158, 0, 6.33326, 32.8400, 0.1000, -46.8600)
+
+[node name="BeltTreeZ_55" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.33326, 0, -2.98158, 0, 7.00000, 0, 2.98158, 0, 6.33326, -46.4200, 0.1000, 32.8400)
+
+[node name="BeltTreeX_56" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.91059, 0, 1.11523, 0, 7.00000, 0, -1.11523, 0, 6.91059, 33.2600, 0.1000, -34.0400)
+
+[node name="BeltTreeZ_57" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.91059, 0, -1.11523, 0, 7.00000, 0, 1.11523, 0, 6.91059, -33.8800, 0.1000, 33.2600)
+
+[node name="BeltTreeX_58" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(4.87695, 0, 5.02149, 0, 7.00000, 0, -5.02149, 0, 4.87695, 32.3000, 0.1000, -27.2000)
+
+[node name="BeltTreeZ_59" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(4.87695, 0, -5.02149, 0, 7.00000, 0, 5.02149, 0, 4.87695, -26.4000, 0.1000, 32.3000)
+
+[node name="BeltTreeX_60" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(7.00000, 0, -0.00000, 0, 7.00000, 0, 0.00000, 0, 7.00000, 33.5000, 0.1000, -11.0000)
+
+[node name="BeltTreeZ_61" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(7.00000, 0, 0.00000, 0, 7.00000, 0, -0.00000, 0, 7.00000, -11.0000, 0.1000, 33.5000)
+
+[node name="BeltTreeX_62" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.50065, 0, 2.59644, 0, 7.00000, 0, -2.59644, 0, 6.50065, 32.9300, 0.1000, -2.4700)
+
+[node name="BeltTreeZ_63" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.50065, 0, -2.59644, 0, 7.00000, 0, 2.59644, 0, 6.50065, -2.0900, 0.1000, 32.9300)
+
+[node name="BeltTreeX_64" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(5.52995, 0, 4.29182, 0, 7.00000, 0, -4.29182, 0, 5.52995, 32.5100, 0.1000, 6.7100)
+
+[node name="BeltTreeZ_65" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(5.52995, 0, -4.29182, 0, 7.00000, 0, 4.29182, 0, 5.52995, 7.3700, 0.1000, 32.5100)
+
+[node name="BeltTreeX_66" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.33326, 0, 2.98158, 0, 7.00000, 0, -2.98158, 0, 6.33326, 32.8400, 0.1000, 19.1400)
+
+[node name="BeltTreeZ_67" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.33326, 0, -2.98158, 0, 7.00000, 0, 2.98158, 0, 6.33326, 19.5800, 0.1000, 32.8400)
+
+[node name="BeltTreeX_68" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.91059, 0, 1.11523, 0, 7.00000, 0, -1.11523, 0, 6.91059, 33.2600, 0.1000, 31.9600)
+
+[node name="BeltTreeZ_69" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.91059, 0, -1.11523, 0, 7.00000, 0, 1.11523, 0, 6.91059, 32.1200, 0.1000, 33.2600)
+
+[node name="BeltTreeX_70" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(4.87695, 0, 5.02149, 0, 7.00000, 0, -5.02149, 0, 4.87695, 32.3000, 0.1000, 38.8000)
+
+[node name="BeltTreeZ_71" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(4.87695, 0, -5.02149, 0, 7.00000, 0, 5.02149, 0, 4.87695, 39.6000, 0.1000, 32.3000)
+
+[node name="BeltTreeX_72" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(7.00000, 0, -0.00000, 0, 7.00000, 0, 0.00000, 0, 7.00000, -40.5000, 0.1000, -44.0000)
+
+[node name="BeltTreeZ_73" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(7.00000, 0, 0.00000, 0, 7.00000, 0, -0.00000, 0, 7.00000, -44.0000, 0.1000, -40.5000)
+
+[node name="BeltTreeX_74" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.50065, 0, 2.59644, 0, 7.00000, 0, -2.59644, 0, 6.50065, -39.9300, 0.1000, -35.4700)
+
+[node name="BeltTreeZ_75" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.50065, 0, -2.59644, 0, 7.00000, 0, 2.59644, 0, 6.50065, -35.0900, 0.1000, -39.9300)
+
+[node name="BeltTreeX_76" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(5.52995, 0, 4.29182, 0, 7.00000, 0, -4.29182, 0, 5.52995, -39.5100, 0.1000, -26.2900)
+
+[node name="BeltTreeZ_77" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(5.52995, 0, -4.29182, 0, 7.00000, 0, 4.29182, 0, 5.52995, -25.6300, 0.1000, -39.5100)
+
+[node name="BeltTreeX_78" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.33326, 0, 2.98158, 0, 7.00000, 0, -2.98158, 0, 6.33326, -39.8400, 0.1000, -13.8600)
+
+[node name="BeltTreeZ_79" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.33326, 0, -2.98158, 0, 7.00000, 0, 2.98158, 0, 6.33326, -13.4200, 0.1000, -39.8400)
+
+[node name="BeltTreeX_80" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.91059, 0, 1.11523, 0, 7.00000, 0, -1.11523, 0, 6.91059, -40.2600, 0.1000, -1.0400)
+
+[node name="BeltTreeZ_81" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.91059, 0, -1.11523, 0, 7.00000, 0, 1.11523, 0, 6.91059, -0.8800, 0.1000, -40.2600)
+
+[node name="BeltTreeX_82" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(4.87695, 0, 5.02149, 0, 7.00000, 0, -5.02149, 0, 4.87695, -39.3000, 0.1000, 5.8000)
+
+[node name="BeltTreeZ_83" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(4.87695, 0, -5.02149, 0, 7.00000, 0, 5.02149, 0, 4.87695, 6.6000, 0.1000, -39.3000)
+
+[node name="BeltTreeX_84" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(7.00000, 0, -0.00000, 0, 7.00000, 0, 0.00000, 0, 7.00000, -40.5000, 0.1000, 22.0000)
+
+[node name="BeltTreeZ_85" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(7.00000, 0, 0.00000, 0, 7.00000, 0, -0.00000, 0, 7.00000, 22.0000, 0.1000, -40.5000)
+
+[node name="BeltTreeX_86" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.50065, 0, 2.59644, 0, 7.00000, 0, -2.59644, 0, 6.50065, -39.9300, 0.1000, 30.5300)
+
+[node name="BeltTreeZ_87" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.50065, 0, -2.59644, 0, 7.00000, 0, 2.59644, 0, 6.50065, 30.9100, 0.1000, -39.9300)
+
+[node name="BeltTreeX_88" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(5.52995, 0, 4.29182, 0, 7.00000, 0, -4.29182, 0, 5.52995, -39.5100, 0.1000, 39.7100)
+
+[node name="BeltTreeZ_89" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(5.52995, 0, -4.29182, 0, 7.00000, 0, 4.29182, 0, 5.52995, 40.3700, 0.1000, -39.5100)
+
+[node name="BeltTreeX_90" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.33326, 0, 2.98158, 0, 7.00000, 0, -2.98158, 0, 6.33326, 39.8400, 0.1000, -46.8600)
+
+[node name="BeltTreeZ_91" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.33326, 0, -2.98158, 0, 7.00000, 0, 2.98158, 0, 6.33326, -46.4200, 0.1000, 39.8400)
+
+[node name="BeltTreeX_92" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.91059, 0, 1.11523, 0, 7.00000, 0, -1.11523, 0, 6.91059, 40.2600, 0.1000, -34.0400)
+
+[node name="BeltTreeZ_93" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.91059, 0, -1.11523, 0, 7.00000, 0, 1.11523, 0, 6.91059, -33.8800, 0.1000, 40.2600)
+
+[node name="BeltTreeX_94" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(4.87695, 0, 5.02149, 0, 7.00000, 0, -5.02149, 0, 4.87695, 39.3000, 0.1000, -27.2000)
+
+[node name="BeltTreeZ_95" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(4.87695, 0, -5.02149, 0, 7.00000, 0, 5.02149, 0, 4.87695, -26.4000, 0.1000, 39.3000)
+
+[node name="BeltTreeX_96" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(7.00000, 0, -0.00000, 0, 7.00000, 0, 0.00000, 0, 7.00000, 40.5000, 0.1000, -11.0000)
+
+[node name="BeltTreeZ_97" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(7.00000, 0, 0.00000, 0, 7.00000, 0, -0.00000, 0, 7.00000, -11.0000, 0.1000, 40.5000)
+
+[node name="BeltTreeX_98" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.50065, 0, 2.59644, 0, 7.00000, 0, -2.59644, 0, 6.50065, 39.9300, 0.1000, -2.4700)
+
+[node name="BeltTreeZ_99" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.50065, 0, -2.59644, 0, 7.00000, 0, 2.59644, 0, 6.50065, -2.0900, 0.1000, 39.9300)
+
+[node name="BeltTreeX_100" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(5.52995, 0, 4.29182, 0, 7.00000, 0, -4.29182, 0, 5.52995, 39.5100, 0.1000, 6.7100)
+
+[node name="BeltTreeZ_101" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(5.52995, 0, -4.29182, 0, 7.00000, 0, 4.29182, 0, 5.52995, 7.3700, 0.1000, 39.5100)
+
+[node name="BeltTreeX_102" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.33326, 0, 2.98158, 0, 7.00000, 0, -2.98158, 0, 6.33326, 39.8400, 0.1000, 19.1400)
+
+[node name="BeltTreeZ_103" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.33326, 0, -2.98158, 0, 7.00000, 0, 2.98158, 0, 6.33326, 19.5800, 0.1000, 39.8400)
+
+[node name="BeltTreeX_104" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.91059, 0, 1.11523, 0, 7.00000, 0, -1.11523, 0, 6.91059, 40.2600, 0.1000, 31.9600)
+
+[node name="BeltTreeZ_105" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(6.91059, 0, -1.11523, 0, 7.00000, 0, 1.11523, 0, 6.91059, 32.1200, 0.1000, 40.2600)
+
+[node name="BeltTreeX_106" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(4.87695, 0, 5.02149, 0, 7.00000, 0, -5.02149, 0, 4.87695, 39.3000, 0.1000, 38.8000)
+
+[node name="BeltTreeZ_107" parent="Dressing/Belt" instance=ExtResource("21")]
+transform = Transform3D(4.87695, 0, -5.02149, 0, 7.00000, 0, 5.02149, 0, 4.87695, 39.6000, 0.1000, 39.3000)
+
+[node name="Tree_0_W" parent="Dressing/Layer2" instance=ExtResource("21")]
+transform = Transform3D(5.00000, 0, -0.00000, 0, 5.00000, 0, 0.00000, 0, 5.00000, -7.8500, 0.1000, -16.2000)
+
+[node name="Tree_0_E" parent="Dressing/Layer2" instance=ExtResource("22")]
+transform = Transform3D(5.00000, 0, -0.00000, 0, 5.00000, 0, 0.00000, 0, 5.00000, 7.8500, 0.1000, -14.8000)
+
+[node name="Tree_1_W" parent="Dressing/Layer2" instance=ExtResource("22")]
+transform = Transform3D(3.48353, 0, -3.58678, 0, 5.00000, 0, 3.58678, 0, 3.48353, -7.8500, 0.1000, -9.7000)
+
+[node name="Tree_1_E" parent="Dressing/Layer2" instance=ExtResource("21")]
+transform = Transform3D(3.48353, 0, -3.58678, 0, 5.00000, 0, 3.58678, 0, 3.48353, 7.8500, 0.1000, -8.3000)
+
+[node name="Tree_2_W" parent="Dressing/Layer2" instance=ExtResource("21")]
+transform = Transform3D(-0.14600, 0, -4.99787, 0, 5.00000, 0, 4.99787, 0, -0.14600, -7.8500, 0.1000, -3.2000)
+
+[node name="Tree_2_E" parent="Dressing/Layer2" instance=ExtResource("22")]
+transform = Transform3D(-0.14600, 0, -4.99787, 0, 5.00000, 0, 4.99787, 0, -0.14600, 7.8500, 0.1000, -1.8000)
+
+[node name="Tree_3_W" parent="Dressing/Layer2" instance=ExtResource("22")]
+transform = Transform3D(5.00000, 0, -0.00000, 0, 5.00000, 0, 0.00000, 0, 5.00000, -7.8500, 0.1000, 3.3000)
+
+[node name="Tree_3_E" parent="Dressing/Layer2" instance=ExtResource("21")]
+transform = Transform3D(5.00000, 0, -0.00000, 0, 5.00000, 0, 0.00000, 0, 5.00000, 7.8500, 0.1000, 4.7000)
+
+[node name="Tree_4_W" parent="Dressing/Layer2" instance=ExtResource("21")]
+transform = Transform3D(3.48353, 0, -3.58678, 0, 5.00000, 0, 3.58678, 0, 3.48353, -7.8500, 0.1000, 9.8000)
+
+[node name="Tree_4_E" parent="Dressing/Layer2" instance=ExtResource("22")]
+transform = Transform3D(3.48353, 0, -3.58678, 0, 5.00000, 0, 3.58678, 0, 3.48353, 7.8500, 0.1000, 11.2000)
+
+[node name="Tree_5_W" parent="Dressing/Layer2" instance=ExtResource("22")]
+transform = Transform3D(-0.14600, 0, -4.99787, 0, 5.00000, 0, 4.99787, 0, -0.14600, -7.8500, 0.1000, 15.3000)
+
+[node name="Tree_5_E" parent="Dressing/Layer2" instance=ExtResource("21")]
+transform = Transform3D(-0.14600, 0, -4.99787, 0, 5.00000, 0, 4.99787, 0, -0.14600, 7.8500, 0.1000, 16.7000)
 
 [node name="Post_0" type="MeshInstance3D" parent="Dressing/Layer3"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -7.6000, 0.0000, -14.0000)
-mesh = ExtResource("20")
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 7.7500, 0.1000, -15.0000)
+mesh = ExtResource("23")
 
 [node name="Post_1" type="MeshInstance3D" parent="Dressing/Layer3"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -7.6000, 0.0000, -8.0000)
-mesh = ExtResource("20")
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -7.7500, 0.1000, -11.0000)
+mesh = ExtResource("23")
 
 [node name="Post_2" type="MeshInstance3D" parent="Dressing/Layer3"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -7.6000, 0.0000, -2.0000)
-mesh = ExtResource("20")
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 7.7500, 0.1000, -7.0000)
+mesh = ExtResource("23")
 
 [node name="Post_3" type="MeshInstance3D" parent="Dressing/Layer3"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -7.6000, 0.0000, 4.0000)
-mesh = ExtResource("20")
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -7.7500, 0.1000, -3.0000)
+mesh = ExtResource("23")
 
 [node name="Post_4" type="MeshInstance3D" parent="Dressing/Layer3"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -7.6000, 0.0000, 10.0000)
-mesh = ExtResource("20")
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 7.7500, 0.1000, 1.0000)
+mesh = ExtResource("23")
 
 [node name="Post_5" type="MeshInstance3D" parent="Dressing/Layer3"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -7.6000, 0.0000, 16.0000)
-mesh = ExtResource("20")
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -7.7500, 0.1000, 5.0000)
+mesh = ExtResource("23")
+
+[node name="Post_6" type="MeshInstance3D" parent="Dressing/Layer3"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 7.7500, 0.1000, 9.0000)
+mesh = ExtResource("23")
+
+[node name="Post_7" type="MeshInstance3D" parent="Dressing/Layer3"]
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -7.7500, 0.1000, 13.0000)
+mesh = ExtResource("23")
+
+[node name="Post_8" type="MeshInstance3D" parent="Dressing/Layer3"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 7.7500, 0.1000, 16.5000)
+mesh = ExtResource("23")
 
 [node name="Sampay_0" type="MeshInstance3D" parent="Dressing/Layer3"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, -11.0000)
-mesh = ExtResource("21")
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0784, -13.5000)
+mesh = ExtResource("24")
 
 [node name="Sampay_1" type="MeshInstance3D" parent="Dressing/Layer3"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, -5.0000)
-mesh = ExtResource("21")
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, -0.1416, -8.5000)
+mesh = ExtResource("24")
 
 [node name="Sampay_2" type="MeshInstance3D" parent="Dressing/Layer3"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, 1.0000)
-mesh = ExtResource("21")
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, -0.1416, -3.0000)
+mesh = ExtResource("24")
 
 [node name="Sampay_3" type="MeshInstance3D" parent="Dressing/Layer3"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, 7.0000)
-mesh = ExtResource("21")
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0784, 3.0000)
+mesh = ExtResource("24")
 
 [node name="Sampay_4" type="MeshInstance3D" parent="Dressing/Layer3"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0000, 13.0000)
-mesh = ExtResource("21")
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, -0.1416, 8.5000)
+mesh = ExtResource("24")
 
-[node name="Road_0" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -6.0000, 0.0000, -18.0000)
-
-[node name="Road_1" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -6.0000, 0.0000, -14.0000)
-
-[node name="Road_2" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -6.0000, 0.0000, -10.0000)
-
-[node name="Road_3" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -6.0000, 0.0000, -6.0000)
-
-[node name="Road_4" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -6.0000, 0.0000, -2.0000)
-
-[node name="Road_5" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -6.0000, 0.0000, 2.0000)
-
-[node name="Road_6" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -6.0000, 0.0000, 6.0000)
-
-[node name="Road_7" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -6.0000, 0.0000, 10.0000)
-
-[node name="Road_8" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -6.0000, 0.0000, 14.0000)
-
-[node name="Road_9" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -6.0000, 0.0000, 18.0000)
-
-[node name="Road_10" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -2.0000, 0.0000, -18.0000)
-
-[node name="Road_11" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -2.0000, 0.0000, -14.0000)
-
-[node name="Road_12" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -2.0000, 0.0000, -10.0000)
-
-[node name="Road_13" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -2.0000, 0.0000, -6.0000)
-
-[node name="Road_14" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -2.0000, 0.0000, -2.0000)
-
-[node name="Road_15" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -2.0000, 0.0000, 2.0000)
-
-[node name="Road_16" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -2.0000, 0.0000, 6.0000)
-
-[node name="Road_17" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -2.0000, 0.0000, 10.0000)
-
-[node name="Road_18" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -2.0000, 0.0000, 14.0000)
-
-[node name="Road_19" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, -2.0000, 0.0000, 18.0000)
-
-[node name="Road_20" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 2.0000, 0.0000, -18.0000)
-
-[node name="Road_21" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 2.0000, 0.0000, -14.0000)
-
-[node name="Road_22" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 2.0000, 0.0000, -10.0000)
-
-[node name="Road_23" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 2.0000, 0.0000, -6.0000)
-
-[node name="Road_24" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 2.0000, 0.0000, -2.0000)
-
-[node name="Road_25" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 2.0000, 0.0000, 2.0000)
-
-[node name="Road_26" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 2.0000, 0.0000, 6.0000)
-
-[node name="Road_27" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 2.0000, 0.0000, 10.0000)
-
-[node name="Road_28" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 2.0000, 0.0000, 14.0000)
-
-[node name="Road_29" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 2.0000, 0.0000, 18.0000)
-
-[node name="Road_30" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 6.0000, 0.0000, -18.0000)
-
-[node name="Road_31" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 6.0000, 0.0000, -14.0000)
-
-[node name="Road_32" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 6.0000, 0.0000, -10.0000)
-
-[node name="Road_33" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 6.0000, 0.0000, -6.0000)
-
-[node name="Road_34" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 6.0000, 0.0000, -2.0000)
-
-[node name="Road_35" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 6.0000, 0.0000, 2.0000)
-
-[node name="Road_36" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 6.0000, 0.0000, 6.0000)
-
-[node name="Road_37" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 6.0000, 0.0000, 10.0000)
-
-[node name="Road_38" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 6.0000, 0.0000, 14.0000)
-
-[node name="Road_39" parent="Dressing/Road" instance=ExtResource("22")]
-transform = Transform3D(4.00000, 0, -0.00000, 0, 4.00000, 0, 0.00000, 0, 4.00000, 6.0000, 0.0000, 18.0000)
+[node name="Sampay_5" type="MeshInstance3D" parent="Dressing/Layer3"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, -0.1416, 14.5000)
+mesh = ExtResource("24")
 
 [node name="Clutter_0" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(0.92106, 0, -0.38942, 0, 1, 0, 0.38942, 0, 0.92106, -5.5000, 0.0000, -9.0000)
-mesh = ExtResource("23")
+transform = Transform3D(0.92106, 0, -0.38942, 0, 1, 0, 0.38942, 0, 0.92106, -5.5000, 0.1000, -9.0000)
+mesh = ExtResource("25")
 
 [node name="Clutter_1" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(0.62161, 0, 0.78333, 0, 1, 0, -0.78333, 0, 0.62161, 5.0000, 0.0000, 8.5000)
-mesh = ExtResource("23")
+transform = Transform3D(0.62161, 0, 0.78333, 0, 1, 0, -0.78333, 0, 0.62161, 5.0000, 0.1000, 8.5000)
+mesh = ExtResource("25")
 
 [node name="Clutter_2" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(-0.12884, 0, -0.99166, 0, 1, 0, 0.99166, 0, -0.12884, -6.2000, 0.0000, 3.0000)
-mesh = ExtResource("24")
+transform = Transform3D(-0.12884, 0, -0.99166, 0, 1, 0, 0.99166, 0, -0.12884, -4.6000, 0.1000, 13.5000)
+mesh = ExtResource("25")
 
 [node name="Clutter_3" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(-0.85689, 0, -0.51550, 0, 1, 0, 0.51550, 0, -0.85689, 6.4000, 0.0000, -6.0000)
-mesh = ExtResource("24")
+transform = Transform3D(-0.85689, 0, -0.51550, 0, 1, 0, 0.51550, 0, -0.85689, 5.9000, 0.1000, -14.5000)
+mesh = ExtResource("25")
 
 [node name="Clutter_4" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(-0.50485, 0, 0.86321, 0, 1, 0, -0.86321, 0, -0.50485, -6.0000, 0.0000, 12.0000)
-mesh = ExtResource("24")
+transform = Transform3D(-0.50485, 0, 0.86321, 0, 1, 0, -0.86321, 0, -0.50485, -6.2000, 0.1000, 3.0000)
+mesh = ExtResource("26")
 
 [node name="Clutter_5" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(0.92106, 0, -0.38942, 0, 1, 0, 0.38942, 0, 0.92106, 6.0000, 0.0000, 11.0000)
-mesh = ExtResource("25")
+transform = Transform3D(0.92106, 0, -0.38942, 0, 1, 0, 0.38942, 0, 0.92106, 6.4000, 0.1000, -6.0000)
+mesh = ExtResource("26")
 
 [node name="Clutter_6" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(0.62161, 0, 0.78333, 0, 1, 0, -0.78333, 0, 0.62161, -6.4000, 0.0000, -14.0000)
-mesh = ExtResource("25")
+transform = Transform3D(0.62161, 0, 0.78333, 0, 1, 0, -0.78333, 0, 0.62161, -6.0000, 0.1000, 12.0000)
+mesh = ExtResource("26")
 
 [node name="Clutter_7" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(-0.12884, 0, -0.99166, 0, 1, 0, 0.99166, 0, -0.12884, 5.6000, 0.0000, -11.5000)
+transform = Transform3D(-0.12884, 0, -0.99166, 0, 1, 0, 0.99166, 0, -0.12884, 4.3000, 0.1000, 15.5000)
 mesh = ExtResource("26")
 
 [node name="Clutter_8" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(-0.85689, 0, -0.51550, 0, 1, 0, 0.51550, 0, -0.85689, -5.2000, 0.0000, 6.0000)
+transform = Transform3D(-0.85689, 0, -0.51550, 0, 1, 0, 0.51550, 0, -0.85689, -3.9000, 0.1000, -15.5000)
 mesh = ExtResource("26")
 
 [node name="Clutter_9" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(-0.50485, 0, 0.86321, 0, 1, 0, -0.86321, 0, -0.50485, -6.8000, 0.0000, -2.0000)
-mesh = ExtResource("27")
+transform = Transform3D(-0.50485, 0, 0.86321, 0, 1, 0, -0.86321, 0, -0.50485, 6.1000, 0.1000, 4.4000)
+mesh = ExtResource("26")
 
 [node name="Clutter_10" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(0.92106, 0, -0.38942, 0, 1, 0, 0.38942, 0, 0.92106, 6.8000, 0.0000, 2.0000)
+transform = Transform3D(0.92106, 0, -0.38942, 0, 1, 0, 0.38942, 0, 0.92106, 6.0000, 0.1000, 11.0000)
 mesh = ExtResource("27")
 
-[node name="Tricycle_0" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(0.98877, 0, -0.14944, 0, 1, 0, 0.14944, 0, 0.98877, -6.6000, 0.0000, -6.0000)
+[node name="Clutter_11" type="MeshInstance3D" parent="Dressing/Clutter"]
+transform = Transform3D(0.62161, 0, 0.78333, 0, 1, 0, -0.78333, 0, 0.62161, -6.4000, 0.1000, -14.0000)
+mesh = ExtResource("27")
+
+[node name="Clutter_12" type="MeshInstance3D" parent="Dressing/Clutter"]
+transform = Transform3D(-0.12884, 0, -0.99166, 0, 1, 0, 0.99166, 0, -0.12884, 5.4000, 0.1000, -2.6000)
+mesh = ExtResource("27")
+
+[node name="Clutter_13" type="MeshInstance3D" parent="Dressing/Clutter"]
+transform = Transform3D(-0.85689, 0, -0.51550, 0, 1, 0, 0.51550, 0, -0.85689, -5.1000, 0.1000, 8.0000)
+mesh = ExtResource("27")
+
+[node name="Clutter_14" type="MeshInstance3D" parent="Dressing/Clutter"]
+transform = Transform3D(-0.50485, 0, 0.86321, 0, 1, 0, -0.86321, 0, -0.50485, 5.6000, 0.1000, -11.5000)
 mesh = ExtResource("28")
+
+[node name="Clutter_15" type="MeshInstance3D" parent="Dressing/Clutter"]
+transform = Transform3D(0.92106, 0, -0.38942, 0, 1, 0, 0.38942, 0, 0.92106, -5.2000, 0.1000, 6.0000)
+mesh = ExtResource("28")
+
+[node name="Clutter_16" type="MeshInstance3D" parent="Dressing/Clutter"]
+transform = Transform3D(0.62161, 0, 0.78333, 0, 1, 0, -0.78333, 0, 0.62161, -6.1000, 0.1000, -4.4000)
+mesh = ExtResource("28")
+
+[node name="Clutter_17" type="MeshInstance3D" parent="Dressing/Clutter"]
+transform = Transform3D(-0.12884, 0, -0.99166, 0, 1, 0, 0.99166, 0, -0.12884, 6.3000, 0.1000, 14.0000)
+mesh = ExtResource("28")
+
+[node name="Clutter_18" type="MeshInstance3D" parent="Dressing/Clutter"]
+transform = Transform3D(-0.85689, 0, -0.51550, 0, 1, 0, 0.51550, 0, -0.85689, 4.4000, 0.1000, -16.2000)
+mesh = ExtResource("28")
+
+[node name="Clutter_19" type="MeshInstance3D" parent="Dressing/Clutter"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, -6.8000, 0.1000, -2.0000)
+mesh = ExtResource("29")
+
+[node name="Clutter_20" type="MeshInstance3D" parent="Dressing/Clutter"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 6.8000, 0.1000, 2.0000)
+mesh = ExtResource("29")
+
+[node name="Clutter_21" type="MeshInstance3D" parent="Dressing/Clutter"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, -6.9000, 0.1000, 10.5000)
+mesh = ExtResource("29")
+
+[node name="Clutter_22" type="MeshInstance3D" parent="Dressing/Clutter"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 6.9000, 0.1000, -9.5000)
+mesh = ExtResource("29")
+
+[node name="Clutter_23" type="MeshInstance3D" parent="Dressing/Clutter"]
+transform = Transform3D(0.62161, 0, -0.78333, 0, 1, 0, 0.78333, 0, 0.62161, -6.6000, 0.1000, -11.8000)
+mesh = ExtResource("26")
+
+[node name="Clutter_24" type="MeshInstance3D" parent="Dressing/Clutter"]
+transform = Transform3D(0.16997, 0, 0.98545, 0, 1, 0, -0.98545, 0, 0.16997, 6.6000, 0.1000, 17.0000)
+mesh = ExtResource("26")
+
+[node name="Clutter_25" parent="Dressing/Clutter" instance=ExtResource("30")]
+transform = Transform3D(1.40413, 0, -0.76708, 0, 1.60000, 0, 0.76708, 0, 1.40413, -6.3000, 0.1000, -6.8000)
+
+[node name="Clutter_26" parent="Dressing/Clutter" instance=ExtResource("30")]
+transform = Transform3D(0.72575, 0, 1.42593, 0, 1.60000, 0, -1.42593, 0, 0.72575, 6.2000, 0.1000, 6.2000)
+
+[node name="Clutter_27" parent="Dressing/Clutter" instance=ExtResource("31")]
+transform = Transform3D(-0.94160, 0, -1.29359, 0, 1.60000, 0, 1.29359, 0, -0.94160, -5.8000, 0.1000, 16.5000)
+
+[node name="Clutter_28" parent="Dressing/Clutter" instance=ExtResource("31")]
+transform = Transform3D(1.47370, 0, 0.62307, 0, 1.60000, 0, -0.62307, 0, 1.47370, 5.7000, 0.1000, -17.0000)
+
+[node name="Clutter_29" parent="Dressing/Clutter" instance=ExtResource("32")]
+transform = Transform3D(0.11318, 0, -1.59599, 0, 1.60000, 0, 1.59599, 0, 0.11318, -6.5000, 0.1000, 0.5000)
+
+[node name="Clutter_30" parent="Dressing/Clutter" instance=ExtResource("32")]
+transform = Transform3D(-0.04672, 0, 1.59932, 0, 1.60000, 0, -1.59932, 0, -0.04672, 6.5000, 0.1000, -12.5000)
+
+[node name="Clutter_31" parent="Dressing/Clutter" instance=ExtResource("32")]
+transform = Transform3D(1.56811, 0, -0.31787, 0, 1.60000, 0, 0.31787, 0, 1.56811, -4.8000, 0.1000, -1.9000)
+
+[node name="Clutter_32" parent="Dressing/Clutter" instance=ExtResource("33")]
+transform = Transform3D(1.11473, 0, -1.14777, 0, 1.60000, 0, 1.14777, 0, 1.11473, 5.2000, 0.1000, 12.2000)
+
+[node name="Clutter_33" parent="Dressing/Clutter" instance=ExtResource("33")]
+transform = Transform3D(1.32054, 0, 0.90343, 0, 1.60000, 0, -0.90343, 0, 1.32054, -5.4000, 0.1000, -12.6000)
+
+[node name="Clutter_34" parent="Dressing/Clutter" instance=ExtResource("33")]
+transform = Transform3D(-1.17983, 0, -1.08074, 0, 1.60000, 0, 1.08074, 0, -1.17983, 4.7000, 0.1000, -5.1000)
+
+[node name="Clutter_35" parent="Dressing/Clutter" instance=ExtResource("34")]
+transform = Transform3D(0.03327, 0, -1.59965, 0, 1.60000, 0, 1.59965, 0, 0.03327, -6.0000, 0.1000, 4.6000)
+
+[node name="Clutter_36" parent="Dressing/Clutter" instance=ExtResource("34")]
+transform = Transform3D(0.03327, 0, 1.59965, 0, 1.60000, 0, -1.59965, 0, 0.03327, 6.1000, 0.1000, -0.8000)
+
+[node name="Tall_0" parent="Dressing/Clutter" instance=ExtResource("35")]
+transform = Transform3D(1.58203, 0, -0.23910, 0, 1.60000, 0, 0.23910, 0, 1.58203, -7.2000, 0.1000, -7.5000)
+
+[node name="Tall_1" parent="Dressing/Clutter" instance=ExtResource("35")]
+transform = Transform3D(-1.56811, 0, 0.31787, 0, 1.60000, 0, -0.31787, 0, -1.56811, 7.3000, 0.1000, 10.5000)
+
+[node name="Tall_2" parent="Dressing/Clutter" instance=ExtResource("36")]
+transform = Transform3D(1.59201, 0, 0.15973, 0, 1.60000, 0, -0.15973, 0, 1.59201, -7.1000, 0.1000, 5.5000)
+
+[node name="Tall_3" parent="Dressing/Clutter" instance=ExtResource("37")]
+transform = Transform3D(0.00000, 0, 1.60000, 0, 1.60000, 0, -1.60000, 0, 0.00000, 7.4000, 0.1000, -3.5000)
+
+[node name="Tall_4" parent="Dressing/Clutter" instance=ExtResource("38")]
+transform = Transform3D(0.00000, 0, -1.60000, 0, 1.60000, 0, 1.60000, 0, 0.00000, -7.4000, 0.1000, 11.5000)
+
+[node name="Tall_5" parent="Dressing/Clutter" instance=ExtResource("39")]
+transform = Transform3D(0.00000, 0, 1.60000, 0, 1.60000, 0, -1.60000, 0, 0.00000, 7.4000, 0.1000, 16.0000)
+
+[node name="Tall_6" parent="Dressing/Clutter" instance=ExtResource("40")]
+transform = Transform3D(1.60000, 0, -0.00000, 0, 1.60000, 0, 0.00000, 0, 1.60000, -7.5000, 0.1000, -16.5000)
+
+[node name="Tall_7" parent="Dressing/Clutter" instance=ExtResource("40")]
+transform = Transform3D(1.60000, 0, -0.00000, 0, 1.60000, 0, 0.00000, 0, 1.60000, 7.5000, 0.1000, -15.5000)
+
+[node name="Tall_8" parent="Dressing/Clutter" instance=ExtResource("41")]
+transform = Transform3D(0.00000, 0, -1.60000, 0, 1.60000, 0, 1.60000, 0, 0.00000, -7.6000, 0.1000, 1.5000)
+
+[node name="Tall_9" parent="Dressing/Clutter" instance=ExtResource("42")]
+transform = Transform3D(0.00000, 0, -1.60000, 0, 1.60000, 0, 1.60000, 0, 0.00000, 7.6000, 0.1000, 6.5000)
+
+[node name="Tall_10" parent="Dressing/Clutter" instance=ExtResource("43")]
+transform = Transform3D(1.60000, 0, -0.00000, 0, 1.60000, 0, 0.00000, 0, 1.60000, -7.3000, 0.1000, -3.0000)
+
+[node name="Tall_11" parent="Dressing/Clutter" instance=ExtResource("43")]
+transform = Transform3D(1.60000, 0, -0.00000, 0, 1.60000, 0, 0.00000, 0, 1.60000, 7.3000, 0.1000, 13.0000)
+
+[node name="Tall_12" parent="Dressing/Clutter" instance=ExtResource("44")]
+transform = Transform3D(1.60000, 0, -0.00000, 0, 1.60000, 0, 0.00000, 0, 1.60000, -7.5000, 0.1000, 8.5000)
+
+[node name="Tall_13" parent="Dressing/Clutter" instance=ExtResource("45")]
+transform = Transform3D(1.22375, 0, -1.03075, 0, 1.60000, 0, 1.03075, 0, 1.22375, 7.5000, 0.1000, -10.5000)
+
+[node name="Tricycle_0" type="MeshInstance3D" parent="Dressing/Clutter"]
+transform = Transform3D(0.98877, 0, -0.14944, 0, 1, 0, 0.14944, 0, 0.98877, -7.0000, 0.1100, -6.0000)
+mesh = ExtResource("46")
 
 [node name="Tricycle_1" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(-0.98007, 0, 0.19867, 0, 1, 0, -0.19867, 0, -0.98007, 6.6000, 0.0000, 9.5000)
-mesh = ExtResource("28")
+transform = Transform3D(-0.98007, 0, 0.19867, 0, 1, 0, -0.19867, 0, -0.98007, 7.0000, 0.1100, 9.5000)
+mesh = ExtResource("46")
 
 [node name="Tricycle_2" type="MeshInstance3D" parent="Dressing/Clutter"]
-transform = Transform3D(0.99500, 0, 0.09983, 0, 1, 0, -0.09983, 0, 0.99500, -6.5000, 0.0000, 15.0000)
-mesh = ExtResource("28")
+transform = Transform3D(0.99500, 0, 0.09983, 0, 1, 0, -0.09983, 0, 0.99500, -6.9000, 0.1100, 15.0000)
+mesh = ExtResource("46")
+
+[node name="Tricycle_3" type="MeshInstance3D" parent="Dressing/Clutter"]
+transform = Transform3D(-0.95534, 0, -0.29552, 0, 1, 0, 0.29552, 0, -0.95534, 7.1000, 0.1100, -13.0000)
+mesh = ExtResource("46")
+
+[node name="SariSari_E" type="MeshInstance3D" parent="Dressing/Clutter"]
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, 7.1500, 0.1000, -1.0000)
+mesh = ExtResource("47")
+
+[node name="SariSari_W" type="MeshInstance3D" parent="Dressing/Clutter"]
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, -7.1500, 0.1000, 12.0000)
+mesh = ExtResource("47")
+
+[node name="Kanal_0" type="MeshInstance3D" parent="Hazards/KanalVisual"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 5.4000, -0.0500, -4.5000)
+mesh = ExtResource("48")
+
+[node name="Kanal_1" type="MeshInstance3D" parent="Hazards/KanalVisual"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 5.4000, -0.0500, -2.5000)
+mesh = ExtResource("48")
+
+[node name="Kanal_2" type="MeshInstance3D" parent="Hazards/KanalVisual"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 5.4000, -0.0500, -0.5000)
+mesh = ExtResource("48")
+
+[node name="Kanal_3" type="MeshInstance3D" parent="Hazards/KanalVisual"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 5.4000, -0.0500, 1.5000)
+mesh = ExtResource("48")
+
+[node name="Kanal_4" type="MeshInstance3D" parent="Hazards/KanalVisual"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 5.4000, -0.0500, 3.5000)
+mesh = ExtResource("48")
+
+[node name="Kanal_5" type="MeshInstance3D" parent="Hazards/KanalVisual"]
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 5.4000, -0.0500, 5.5000)
+mesh = ExtResource("48")
 
 [node name="BaseCircle" type="MeshInstance3D" parent="Markings"]
 transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0720, 0.0000)
-mesh = ExtResource("29")
+mesh = ExtResource("49")
+
+[node name="ConfinementNorth" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(1.68000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, -5.0000)
+mesh = ExtResource("50")
+
+[node name="ConfinementSouth" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(1.68000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, 5.0000)
+mesh = ExtResource("50")
+
+[node name="ConfinementEast" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(0.00000, 0, -1.68000, 0, 1, 0, 1.00000, 0, 0.00000, 5.0000, 0.0820, 0.0000)
+mesh = ExtResource("50")
+
+[node name="ConfinementWest" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(0.00000, 0, -1.68000, 0, 1, 0, 1.00000, 0, 0.00000, -5.0000, 0.0820, 0.0000)
+mesh = ExtResource("50")
 
 [node name="ThrowingLineNorth" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, -6.0000)
-mesh = ExtResource("30")
+transform = Transform3D(1.26500, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, -6.0000)
+mesh = ExtResource("51")
 
 [node name="ThrowingLineSouth" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, 6.0000)
-mesh = ExtResource("30")
+transform = Transform3D(1.26500, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, 6.0000)
+mesh = ExtResource("51")
 
 [node name="TeamSideNorth" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, -13.0000)
-mesh = ExtResource("31")
+transform = Transform3D(1.68000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, -13.0000)
+mesh = ExtResource("50")
 
 [node name="TeamSideSouth" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, 13.0000)
-mesh = ExtResource("31")
-
-[node name="JeepneyLane" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(0.60000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 5.2000, 0.0920, 0.0000)
-mesh = ExtResource("32")
-
-[node name="ConfinementBoxNorth_0" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(0.83333, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, -2.5000, 0.0820, -5.0000)
-mesh = ExtResource("31")
-
-[node name="ConfinementBoxSouth_0" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(0.83333, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, -2.5000, 0.0820, 5.0000)
-mesh = ExtResource("31")
-
-[node name="ConfinementBoxEast_0" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(0.00000, 0, -0.83333, 0, 1, 0, 1.00000, 0, 0.00000, 5.0000, 0.0820, -2.5000)
-mesh = ExtResource("31")
-
-[node name="ConfinementBoxWest_0" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(0.00000, 0, -0.83333, 0, 1, 0, 1.00000, 0, 0.00000, -5.0000, 0.0820, -2.5000)
-mesh = ExtResource("31")
-
-[node name="ConfinementBoxNorth_1" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(0.83333, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 2.5000, 0.0820, -5.0000)
-mesh = ExtResource("31")
-
-[node name="ConfinementBoxSouth_1" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(0.83333, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 2.5000, 0.0820, 5.0000)
-mesh = ExtResource("31")
-
-[node name="ConfinementBoxEast_1" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(0.00000, 0, -0.83333, 0, 1, 0, 1.00000, 0, 0.00000, 5.0000, 0.0820, 2.5000)
-mesh = ExtResource("31")
-
-[node name="ConfinementBoxWest_1" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(0.00000, 0, -0.83333, 0, 1, 0, 1.00000, 0, 0.00000, -5.0000, 0.0820, 2.5000)
-mesh = ExtResource("31")
+transform = Transform3D(1.68000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, 13.0000)
+mesh = ExtResource("50")
