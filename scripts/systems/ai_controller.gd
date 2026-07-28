@@ -81,6 +81,12 @@ const TSINELAS_ARRIVE_DISTANCE: float = 1.0
 const RELEASE_SETTLE_FRAMES: int = 6
 
 var character: CharacterBase = null
+## ⚠️ PER-INSTANCE RNG, deliberately not the global `randf()`. Every bot drawing
+## from one shared global stream is a subtler version of the same "they behave
+## as one" bug: the sequence is shared, so which bot gets which value depends on
+## call order, and identical roles called in the same order get correlated
+## picks. Seeded from the instance id in _ready().
+var _rng := RandomNumberGenerator.new()
 var _enabled: bool = true
 var _decision_timer: float = 0.0
 ## World-space point the character is currently walking toward. Meaning
@@ -104,6 +110,12 @@ var _taya_tap_cooldown: float = 0.0
 
 func _ready() -> void:
 	character = get_parent() as CharacterBase
+	# Stagger the very first decision so four bots spawned on the same frame do
+	# not all think on the same frame for the rest of the match. Seeded from the
+	# instance id rather than left to a shared global RNG stream, so two
+	# controllers created in the same frame cannot draw the same phase.
+	_rng.seed = hash(get_instance_id())
+	_decision_timer = _rng.randf_range(0.0, DECISION_INTERVAL)
 
 ## Called from character_base.gd's own _physics_process, as its first line —
 ## see this file's class doc for why the order matters. A no-op once
@@ -132,7 +144,14 @@ func decide(delta: float) -> void:
 	_decision_timer -= delta
 	var repick := _decision_timer <= 0.0
 	if repick:
-		_decision_timer = DECISION_INTERVAL
+		# ⚠️ JITTERED, NOT A FLAT INTERVAL — this is the other half of "they all
+		# move together at the exact same time". Every controller started its
+		# timer at 0.0 and decremented by the same delta, so all of them
+		# re-picked on the SAME physics frame forever, in perfect lockstep. Even
+		# with the shared-Input bug fixed that still reads as one hive mind
+		# rather than four players. The initial phase is staggered in _ready()
+		# and each interval is jittered here, so they drift apart and stay apart.
+		_decision_timer = DECISION_INTERVAL * _rng.randf_range(0.75, 1.3)
 
 	if character.is_can:
 		_update_can(repick)
@@ -154,6 +173,17 @@ func set_enabled(enabled: bool) -> void:
 	_enabled = enabled
 	if not enabled:
 		_release_all()
+		# Wipe the intent too, or CharacterBase keeps answering input_pressed()
+		# from a stale dictionary while a human is trying to drive — the unit
+		# would walk into a wall on its own. See character_base.gd::_ai_driven.
+		if character != null:
+			character.ai_clear_intent()
+
+## CharacterBase asks this before deciding whether to read intent or hardware.
+## A disabled controller (a human took manual control via the debug switcher)
+## must hand the character straight back to the keyboard.
+func is_enabled() -> bool:
+	return _enabled
 
 func _release_all() -> void:
 	_release_move()
@@ -196,8 +226,8 @@ const CAN_HOLD_RADIUS: float = 0.45
 
 func _update_can(repick: bool) -> void:
 	if repick or not _has_move_target:
-		var angle := randf() * TAU
-		var radius := randf() * CAN_HOLD_RADIUS
+		var angle := _rng.randf() * TAU
+		var radius := _rng.randf() * CAN_HOLD_RADIUS
 		_move_target = Vector3(cos(angle) * radius, character.global_position.y,
 			sin(angle) * radius)
 		_has_move_target = true
@@ -413,10 +443,10 @@ func _find_tracked_can() -> CharacterBase:
 ## ---------------------------------------------------------------------------
 
 func _random_point_in_confinement(inner_fraction: float) -> Vector3:
-	var angle := randf() * TAU
+	var angle := _rng.randf() * TAU
 	var min_r := CharacterBase.CONFINEMENT_RADIUS * inner_fraction * 0.3
 	var max_r := CharacterBase.CONFINEMENT_RADIUS * maxf(inner_fraction, 0.35)
-	var radius := randf_range(min_r, max_r)
+	var radius := _rng.randf_range(min_r, max_r)
 	return Vector3(cos(angle) * radius, character.global_position.y, sin(angle) * radius)
 
 ## World-space direction, matching character_base.gd's own non-mouse-aimed
@@ -454,15 +484,24 @@ func _release_move() -> void:
 ## here and only calling into Input on a real transition sidesteps needing to
 ## know or rely on Godot's own internal idempotency for that call.
 func _set_held(base: String, want_pressed: bool) -> void:
-	var was_pressed: bool = _held_actions.get(base, false)
-	if want_pressed == was_pressed:
-		return
+	# ⚠️ PER-CHARACTER INTENT, NOT THE GLOBAL `Input` SINGLETON.
+	#
+	# This used to call `Input.action_press(character.action_name(base))`, which
+	# is process-global state keyed only by player_id — and main.gd hands AI
+	# slots player_id (index % 2) + 3, so index 0 and index 2 both got p3. Two
+	# bots then shared one action set, which is BOTH reported symptoms at once:
+	# they moved in lockstep because they were reading each other, and they
+	# froze because this function is edge-triggered against its own belief, so
+	# one bot's release cancelled the other's press and neither re-pressed.
+	# character_base.gd::input_pressed carries the full write-up.
+	#
+	# No transition guard any more, and none is needed: writing an unchanged
+	# value into a dictionary is idempotent, and the edge helpers on
+	# CharacterBase derive just_pressed/just_released from frame-to-frame
+	# difference rather than from anything this function remembers.
 	_held_actions[base] = want_pressed
-	var action := character.action_name(base)
-	if want_pressed:
-		Input.action_press(action)
-	else:
-		Input.action_release(action)
+	if character != null:
+		character.ai_set_intent(base, want_pressed)
 
 ## A short press for an edge-triggered action (bump, Tag/special_ability on
 ## the defence side, grab) — pressed now, queued to release a few frames into

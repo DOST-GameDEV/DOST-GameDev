@@ -254,6 +254,28 @@ func _place_at_spawn(character: CharacterBase, slot: int) -> void:
 	var t := _spawn_transform(slot)
 	character.position = t.origin
 	character.rotation.y = t.basis.get_euler().y
+	# ⚠️⚠️ PUSH THE NEW TRANSFORM TO THE PHYSICS SERVER *NOW*. DO NOT REMOVE.
+	#
+	# Writing `position` on a PhysicsBody3D updates the SCENE TREE immediately and
+	# the physics broadphase only at the next flush. Within one frame, every
+	# other body's `move_and_slide()` therefore still collides with this
+	# character's PREVIOUS collider position.
+	#
+	# That is what B-100's "park everyone at y=500 first" was really fighting,
+	# and why it could not work: the parking write is invisible to the server for
+	# the same reason the placement write is. Roles swap every round, so the two
+	# Persons trade marks — measured with tools/jump_probe.gd, the incoming Taya
+	# was placed correctly at (2.2, 0.9, -1.5), then on the very next physics step
+	# `move_and_slide()` reported three contacts with the OUTGOING Person (normal
+	# 0,1,0 — stacked on its head), shoved it 1.60 up to y=2.50, and the frame
+	# after that slid it 9.84 units into WallWest. Reported as characters "flung
+	# many units off their real spawn markers, sometimes airborne" (B-100) and as
+	# weird physics bounces.
+	#
+	# force_update_transform() flushes this body's transform to the server
+	# synchronously, so by the time the next character is placed — and by the time
+	# anyone's move_and_slide() runs — the space is genuinely vacated.
+	character.begin_spawn_settle()
 	# 4.2: this is a TELEPORT, not a walk — every round reset routes through
 	# here, and without this a remote peer's interpolated visual would glide
 	# across the map from its previous position to the new spawn point
