@@ -966,6 +966,24 @@ touch map scenes.
       item and is not a networking regression) — a Single Player AI tuning question, not this item's
       scope. Real multi-device/Hamachi testing of AI takeover specifically is still unverified, same
       standing caveat as every other networking item.
+      **Follow-up bug, found and fixed the same day by human playtest:** giving an AI-driven
+      character the host's own multiplayer authority (above) meant every OTHER place in the codebase
+      that used `is_multiplayer_authority()` to mean "this is MY OWN played character" broke on the
+      host's machine specifically, the instant the host was also a real player — `camera_rig.gd`'s
+      own rig-activation check is the one that actually surfaced, live: **every** AI-driven
+      character's `CameraRig` also saw itself as "mine" and activated, so whichever rig activated
+      LAST silently became the host's actual view (reported as "I'm not controlling the POV of the
+      character I have — it's an FPP of another character controlled by AI"), and each of those
+      AI-driven rigs also ran its own FPP self-hide, hiding that character's head/body as if the
+      host were looking through ITS eyes (reported as "other characters have an FPP model with a
+      TPP view"). Same root cause, same fix as `get_local_character()` above — exclude
+      `ai_controller != null` — applied at the one place that actually renders
+      (`camera_rig.gd::_ready()`), plus two more `is_multiplayer_authority()`-as-"mine" call sites
+      the same bug class was latent in: `character_base.gd::_flash_hit()`'s camera-shake gate and
+      `debug_player_switcher.gd::_solo_networked_unit()`'s solo-host readout. Verified live: a
+      temporary print in `camera_rig.gd` confirmed exactly one rig (the host's own real character,
+      no `ai_controller`) reports `is_mine = true` on a solo host with three AI-driven slots, where
+      before the fix every one of the four reported `true`.
 
 ---
 

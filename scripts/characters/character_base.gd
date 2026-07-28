@@ -813,7 +813,11 @@ func _rpc_play_hit_vfx() -> void:
 func _flash_hit() -> void:
 	_visual.flash_hit()
 	_hitstop()
-	var is_mine := is_multiplayer_authority() if NetworkManager.is_networked() else player_id == 1
+	# AI takeover: is_multiplayer_authority() alone can also be true for an
+	# AI-driven character on the host (see camera_rig.gd's own is_mine doc for
+	# why) — exclude ai_controller so a hit on an AI-driven unit never shakes
+	# the host's own screen for a character nobody there is looking through.
+	var is_mine := (is_multiplayer_authority() and ai_controller == null) if NetworkManager.is_networked() else player_id == 1
 	if is_mine:
 		var rig := get_node_or_null("CameraRig") as CameraRig
 		if rig:
