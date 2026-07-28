@@ -304,9 +304,13 @@ HUD contrast or hazard placement against a grey box.
       match scene runs silent — no errors, no kill-plane respawns. **What is still missing is a
       human:** nobody has played it, so this stays `[~]`. That is 0.4.
       Includes, in one coherent pass rather than scattered:
-  - [ ] `scenes/maps/Eskinita.tscn`, playable area kept at roughly the current
-        40×40 — **do not change arena scale in the same commit as arena art**,
-        or a movement-feel regression is unattributable.
+  - [x] `scenes/maps/Eskinita.tscn` playable area — **SUPERSEDED 2026-07-28.** This used to say
+        "kept at roughly the current 40×40." User played the narrow layout and asked for the
+        opposite: a bigger, SQUARE arena with a chalk boundary. 🔧 Build shipped it as its own
+        commit on `code/option-b-tuning`, per the do-not-change-arena-scale-with-arena-art rule
+        this line used to state — see `Handoff.md`'s B-92/B-93 session entry and
+        `Agent_Prompts.md`'s DESIGN-ART item B for the full detail. Verified by render, not yet by
+        play.
   - [ ] **A `SpawnPoints` node with four `Marker3D`s**, read by `main.gd` in
         preference to its hardcoded `SPAWN_POINTS`. This is where **B-54** (spawn
         points ignore team membership) finally gets answered — two team pairs,
@@ -486,9 +490,11 @@ HUD contrast or hazard placement against a grey box.
       mode in `tools/render_probe.gd` drives the actual Ready button (`pressed.emit()`, not a
       hand-set flag) and confirms Start goes disabled → enabled exactly once, with screenshots of
       both states.
-      **NOT verified:** confinement, tag-to-win, auto-seal and the fall cap are all new rules
-      nobody has played yet — the 3-unit radius and the 5-fall number are guesses, same as every
-      other first-guess balance constant in this project. That is 4.4's job.
+      **First human playtest, 2026-07-28:** 5-fall cap and the new spawn distances (2.6) confirmed
+      good, no change needed. Confinement radius and tag-to-win are fine for now, but the human
+      explicitly wants both **re-checked again** once more changes land — treat as still open, not
+      closed, and re-tune both together if either moves (they're coupled, see `Dev_Plan.md`'s
+      Option B section). Auto-seal timing itself: still not separately confirmed by feel.
 
 ---
 
