@@ -389,6 +389,13 @@ HUD contrast or hazard placement against a grey box.
       **What is NOT verified:** combat feel (does a can's shrunk melee reach feel fair, does
       `throw_bakya` at 87% charge feel right) — that needs a human on the keyboard and is 4.4's
       job, not this item's.
+  - [x] **B-88, found and fixed same session.** The render checks above screenshotted a carried
+        slipper and a standalone preview turntable — neither actually spawns a unit and lets it
+        settle onto a floor. In a real match, both props rendered UNDER the floor:
+        `_align_to_capsule_floor()` dropped every model a hardcoded 0.8 below the character's own
+        origin, correct only while every unit shared one 1.6-tall capsule. Found by the human
+        immediately after this item merged. Fixed same session — see `Handoff.md` B-88. Re-verified
+        by render.
 
 ---
 

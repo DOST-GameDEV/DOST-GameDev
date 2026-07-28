@@ -593,6 +593,19 @@ it, or add a dedicated viewmodel arm, which is new geometry and a new task. **Fr
 6.3:** the trailer's beat 5 is the FPP charge-and-throw, so shoot it tight enough that the slipper
 fills frame and the missing arm never becomes the question.
 
+**B-88 · Can/Tsinelas rendered under the floor after the proportion fix (2.5). [FIXED same
+session.]** `character_visual.gd::_align_to_capsule_floor()` dropped every model a hardcoded
+`CAPSULE_HALF_HEIGHT_DOWN` (0.8) below the character's own origin — correct while every unit
+shared the same 1.6-tall capsule, wrong the instant 2.5 gave Can and Tsinelas their own much
+shorter one (0.34/0.32 tall). The physics body sat correctly on the floor; the visible mesh kept
+dropping the old fixed 0.8 regardless, landing 0.63 units under it. Found by the human immediately
+after 2.5 merged ("i dont see can and tsinelas anymore" / "theyre under the map"), not caught by
+this session's own render checks because those checks screenshotted a carried slipper and a
+standalone preview turntable, never a fresh in-match spawn actually settling onto the floor.
+**Fixed:** reads this unit's own, currently-applied `CollisionShape3D` height instead of the
+shared constant. Verified by rendering `tools/render_probe.gd`'s viewmodel mode again — the can
+that was sunk into the ground now stands on it.
+
 ### P1 — found by the design lane while measuring for checklist 1.2 (2026-07-28)
 
 Filed, deliberately not fixed — `Concurrency_Protocol.md` §10. Full reasoning and the screenshot
