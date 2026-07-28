@@ -60,6 +60,14 @@ scramble to retrieve it — that **no human has ever pressed a button on.** The
 two biggest risks are, in order: *the central mechanic has never been felt*, and
 *the game has no world*.
 
+> **Updated 2026-07-29 — the paragraph above is now history, and the risk has moved.** Phase 7 put a
+> real kit-built world in (houses, paving, trees, cars, overhead lines), Phase 2 put the field
+> markings in, and the mechanic has been played. What a judge would see today is **a well-built
+> street standing on a 40×40 island in an empty void**, with every interior prop 100 mm underground
+> and five of eleven house fronts standing in front of their own collision wall. The biggest risk is
+> no longer "there is no world" — it is that **the world that exists reads as a broken prototype**.
+> That is what **Phase 8** below exists to fix; its measured audit is `Art_Direction.md` §8.0.
+
 ---
 
 ## Phase 0 — Unblock the playtest
@@ -1278,6 +1286,115 @@ buggy."* Six Kenney kits (all CC0, verified) plus a supplied flip-flop `.glb`.
         built. Listed only so nobody wires a clip to a mechanic that does not exist.
       ⚠️ **Scope boundary:** every sub-item reads existing state and plays a clip — no new state,
       no new input, no new networking. That is what keeps this in the design lane.
+
+## Phase 8 — The environment pass. Kill the void, ground the props, light the street.
+
+**Spec: [`Art_Direction.md`](Art_Direction.md) Part 6.** ⚠️ **Read §8.8 first** — it is the
+execution record, and six of the real defects were not in the original audit at all.
+
+**Opened and executed 2026-07-29.** Human call: *"the visuals are atrocious, sterile, and look like a
+broken prototype test grid ... WORST OF ALL: the map is a literal floating island."*
+
+> ⚠️ **NO MECHANICS CHANGED.** `Bounds/Wall*` are still at ±8.6 / ±18.0 in the built scene (verified
+> by reading it back after instantiation), and `CONFINEMENT_RADIUS`, spawn slots, the round loop,
+> carry/throw and the dent-count model are untouched. The Floor box went 40 → 120 as a **backdrop**;
+> not one collider moved. `env_toon_pass.gd` adds no state, signal, group or RPC.
+
+> ⚠️ **EVERYTHING BELOW IS `[~]`, NOT `[x]`.** All of it is render- and parse-verified and none of it
+> has been played by a human, which is this project's own standing bar. See 8.7.
+
+### 8.1 · Grounding and footprints `[~]`
+
+- [~] **8.1a · `floorcheck.py` checks DRESSING, not just markings.** All 510 instances now gated;
+      `suspended=True` is the one explicit opt-out (sampay is *meant* to hang).
+- [~] **8.1b · The 100 mm sink is gone.** `add()` takes `base_y` defaulting to
+      `surfaces.height_at()`. ⚠️ **Ground is now emitted FIRST** — the road block sits at the top of
+      the builder, because `height_at()` can only see what is already recorded. The old file placed
+      buildings before the road, which is *why* everything grounded against bare floor.
+- [~] **8.1c/d · Per-piece face alignment and width-aware bays** via `piece_extent()`. Facades land
+      on x = ±8.6, the collision plane, so you can no longer walk into a visible house front.
+      `surfaces.overlaps("Layer1")` reports **none**.
+- [~] **8.1e · Footprint-overlap warning** added.
+- [~] **8.1f · ⚠️ THE HOVERING VAN — not in the audit.** `_glb_bounds()` ignored glTF node
+      transforms, so every Car Kit vehicle floated **exactly 525 mm**. See Part 6 §8.8 item 1.
+- [~] **8.1g · ⚠️ Characters' feet were 100 mm inside the road — not in the audit.** Floor collision
+      top now equals paving top. See §8.8 item 2.
+- [ ] **8.1h · Bayan Plaza — DEFERRED by explicit human call.** Opted out with
+      `Surfaces(check_dressing=False)`. **Delete that argument to start; the failures are the list.**
+
+### 8.2 · The void is dead `[~]`
+
+- [~] **Ring 0** Floor 40 → 120. **Ring 1** paved apron to ±26, one tile scale, seeded quarter-turns
+      for variation (the city driveway/path pieces are a different footprint and would have holed
+      the grid). **Ring 2** three silhouette rings at 30/37/44 plus distant tree mass. **Ring 3**
+      depth fog 18 → 72 matched to the sky horizon colour. **Ring 4** ground colour pulled to fog.
+- [~] **Acceptance met: five renders** via `tools/void_probe.gd` — y=25 down the alley plus all four
+      collision-wall corners looking outward. No ground edge, no sky seam.
+
+### 8.3 · Lighting and renderer `[~]`
+
+- [~] **8.3a · `[rendering]` section created** — the project had none, so AA was off entirely.
+      MSAA 2x + FXAA + debanding, 4096 directional shadows, soft-shadow quality 3, occlusion culling.
+- [~] **8.3b · ACES** (`tonemap_mode` 0 → 3). Retuned after the first render came back badly
+      overexposed: white 6.0 → 1.9, exposure 0.92, ambient pulled back, contrast into the sun.
+- [~] **8.3c · SSIL on. SDFGI on** (human call).
+- [~] **8.3d · ⚠️ Shadow bias swept, not guessed.** Lowering it per plan produced acne — the
+      reported "lines". Landed at 0.06 / 3.0, angular 0.5, blur 0.9. See §8.8 item 4.
+- [ ] **8.3f · ⛔ FRAME TIME NOT MEASURED. This is the one skipped acceptance item.** SDFGI, SSIL,
+      glow, 4096 shadows and ~510 instances all landed together on unprofiled hardware.
+
+### 8.4 · Shaders and the world's shading model `[~]`
+
+- [~] **8.4a · The banners were cardboard because they WERE cardboard** — extruded solid prisms with
+      two vertex rings. Rebuilt as segmented double-sided sheets that can actually bend.
+- [~] **8.4b · Wind.** ⚠️ Lives *inside* `toon.gdshader`, not a separate material: `env_toon_pass.gd`
+      replaces every map material, so a standalone cloth shader would be overwritten on load.
+      `outline.gdshader` carries an identical copy, or the cloth swims inside a still ink border.
+- [~] **8.4c · Rim light added, uniform-gated, DEFAULT 0.0** — it is on the Can, whose colour is
+      load-bearing for the OFFENSE/DEFENSE rule.
+- [~] **8.4d · Toon pass extended to the whole map** (human call). 514/530 meshes; kit textures
+      preserved (468 surfaces). Belt and road skip the outline pass — an ink line on 300 distant
+      roofs reads as a sticker sheet.
+- [~] **8.4e · ⚠️ Colour variety — new requirement mid-run.** Seeded facade tints + five recoloured
+      roof atlases + foliage tints. ⚠️ The roof tool's first version did nothing and said it worked;
+      read §8.8 item 5 before touching it.
+
+### 8.5 · Camera `[~]`
+
+- [~] **8.5a · Physics interpolation enabled** (there was no `[physics]` section) and
+      `_update_tpp_carry_follow()` now reads `get_global_transform_interpolated()` instead of
+      sampling a 60 Hz transform from a render-rate `_process`.
+- [~] **8.5b · Spring-arm margin 0.15 vs camera near 0.05,** both explicit. A default 0.01 margin
+      under a 0.05 near plane guarantees wall clip-through when the arm bottoms out.
+- [x] **8.5c · Camera already ignores clutter — no change needed, and this was checked.** Map
+      dressing carries **no collision at all** (the built scene has 12 collision nodes: floor, four
+      bounds walls, kill plane, hazard). `TppArm.collision_mask = 1` can only ever hit those. The
+      same fact answers "slippers bouncing off invisible walls": there is nothing invisible in the
+      dressing to bounce off.
+- [ ] **8.5d · Viewmodel arm clipping — still needs a playtest repro.** Unchanged deliberately;
+      `camera_rig.gd:718–726` records a previous attempt making it worse.
+
+### 8.6 · Density and the lane law `[~]`
+
+- [~] **8.6a · The lane law is enforced by code, not comment.** `assert_clear_of_lane()` fails the
+      build on the piece's real footprint. ⚠️ It caught the author on its first run — the parked cars
+      were nose-in and reached 3.2 m from the alley centre.
+- [~] **8.6b–d · Heavy side clutter** (human call): market carts, stalls, benches, stools, rocks,
+      planks, crates, tyres, drums, chairs, hedges, fences, lanterns, two sari-sari stores and four
+      tricycles; nine posts and six sampay lines overhead. Lanes stay empty.
+- [~] **8.6e · ⚠️ Pink chalk DELETED, generator and asset included.** It was also the cause of BOTH
+      reported line faults. Replaced with a `gutter_tile` kanal so the live `HazardZone` keeps a
+      visual tell — deleting it alone would have left an invisible slow-field. See §8.8.
+- [~] **8.6f · White court lines close.** Corners were notched by exactly the crossing line's
+      half-width; every edge now overruns by that much and all lines share one `COURT_X`.
+
+### 8.7 · ⛔ What is owed before Phase 8 is finished
+
+- [ ] **A human plays it.** Nothing here is `[x]` until then — the standing rule.
+- [ ] **8.3f frame-time capture.** The one skipped acceptance item, and the riskiest.
+- [ ] **Two-instance networked test.** Nothing touches the network layer and `env_toon_pass.gd` is
+      inert, but that is reasoning, not evidence.
+- [ ] **Bayan Plaza** (8.1h), deferred by explicit human decision.
 
 ## Already done — the ledger this list replaces
 

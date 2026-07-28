@@ -28,7 +28,22 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from floorcheck import Surfaces, embed_y, mesh_bounds  # noqa: E402
 
-surfaces = Surfaces()
+# ⚠️ BAYAN PLAZA IS EXPLICITLY DEFERRED OUT OF THE PHASE 8 ENVIRONMENT PASS.
+# Human call, 2026-07-29: "Bayan Plaza: explicitly DEFERRED. Focus 100% of this
+# overhaul on Eskinita."
+#
+# `check_dressing=False` opts this map out of the prop-grounding guard that Phase
+# 8 added to floorcheck.py. That guard is NOT disabled because it is wrong here —
+# it is disabled because it is RIGHT here and nobody is scheduled to fix what it
+# finds. This map is very likely carrying the same 100mm sink Eskinita had, plus
+# the 525mm vehicle hover from `_glb_bounds` ignoring glTF node transforms, and
+# it is still missing the confinement square from Phase 7.
+#
+# ⚠️ DELETE THIS ARGUMENT AS THE FIRST STEP OF ANY BAYAN PLAZA WORK. It will fail
+# the build immediately and the failures ARE the to-do list — that is the whole
+# design of the checker. Do not "fix" it by leaving the flag in place.
+# Its markings are still fully verified; only dressing is exempt.
+surfaces = Surfaces(check_dressing=False)
 
 SLAB = 10.0      # half-width of the hard plaza slab
 BOUND = 12.5     # half-width of the playable square (collision sits here)

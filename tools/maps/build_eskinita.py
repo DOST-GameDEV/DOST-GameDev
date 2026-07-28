@@ -1,28 +1,51 @@
-"""Emits scenes/maps/Eskinita.tscn.  (checklist 2.2 — layout author)
+"""Emits scenes/maps/Eskinita.tscn.  (checklist 2.2 / Phase 8 — layout author)
 
     python tools/maps/build_eskinita.py        # run from the repo root
 
 ⚠️ THIS IS A DEV-TIME TOOL, NOT PART OF THE GAME. Godot never runs it, it ships
 in no export, and it adds no runtime dependency — the project stays GDScript
-only. It is committed for the same reason the mesh generator is: 123 dressing
-instances placed by hand are unmaintainable and unreviewable, and a layout you
-cannot re-derive is a layout nobody will ever adjust.
+only. It is committed for the same reason the mesh generator is: several hundred
+dressing instances placed by hand are unmaintainable and unreviewable, and a
+layout you cannot re-derive is a layout nobody will ever adjust.
 
 EDIT THIS FILE, NOT THE SCENE. Re-running overwrites Eskinita.tscn wholesale.
 
 A .tscn is hand-written text by policy (Concurrency_Protocol §6: an editor
 re-save reorders properties and turns a two-line change into a 200-line diff).
-But ~90 dressing instances is too many to hand-place without a typo, so this
-script is the author and its output is committed. Re-run it to change the
-layout; do not hand-edit the scene.
 
-Layout reasoning lives in docs/Art_Direction.md §4:
-  * Floor stays 40x40 (arena scale is NOT changed in the same commit as arena
-    art) with its top surface at y=0.
-  * The alley reads narrow anyway, because Layer 1 walls come in to x=+/-8.
-  * Collision is ONE invisible box ring just behind the wall line, not a shape
-    per prop. The spec explicitly permits this where the dressing is continuous,
-    and it is both cheaper and impossible to get stuck on.
+Layout reasoning lives in docs/Art_Direction.md Part 6 (the environment pass).
+
+===============================================================================
+PHASE 8 — WHAT CHANGED, AND THE FOUR RULES THAT CAME OUT OF IT
+===============================================================================
+
+1.  ⚠️ **GROUND IS PLACED FIRST, AND NOTHING MAY BE EMITTED BEFORE IT.**
+    Every prop asks `surfaces.height_at()` for its own base height. That query
+    can only see what has already been recorded, so the road and the apron are
+    built at the TOP of this file and everything else follows. The previous
+    version placed the buildings, trees and posts BEFORE the road, so they all
+    grounded against bare floor at 0.000 while the road they stood on rendered
+    at 0.100 — 111 instances sunk 100 mm, invisible to a diff. Moving a block of
+    placement code above the road block is now a real bug, not a formatting
+    choice. `floorcheck` fails the build if it happens again.
+
+2.  ⚠️ **NOTHING IS PLACED BY A HARDCODED Y. EVER.** `add()` and `add_kit()`
+    both take a `base_y` that DEFAULTS TO THE GROUND UNDER THE PIECE. There is
+    no call in this file that passes a literal height except the sampay lines,
+    which are `suspended=True` and say so.
+
+3.  ⚠️ **NO DIMENSION OF A KIT PIECE IS ASSUMED — ALL THREE ARE MEASURED.**
+    The old code measured `building-type-a`'s depth once and placed all eleven
+    types as if they shared it. Five of them did not: three stood up to 0.87 m
+    IN FRONT of the collision wall (you walked into a house and were stopped by
+    nothing), one left a 0.28 m gap showing bare floor, and five were wider than
+    their own 6.6 m bay so they grew through their neighbours by up to 2.5 m.
+    `piece_extent()` below returns a piece's real world-space footprint for the
+    yaw and scale it is actually being placed at, and the building row uses it
+    for BOTH face alignment and bay advance.
+
+4.  ⚠️ **THE LANE LAW.** `assert_clear_of_lane()` rejects, at build time, any
+    dressing inside the throwing corridor. See its docstring.
 """
 import math
 import os
@@ -31,11 +54,30 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from floorcheck import Surfaces, embed_y, mesh_bounds  # noqa: E402
 
-surfaces = Surfaces()
+# --- The one height every surface on this map shares --------------------------
+#
+# ⚠️ THE FLOOR'S COLLISION TOP AND THE PAVING TOP ARE THE SAME NUMBER NOW, AND
+# THEY WERE NOT BEFORE. The Floor box's top was 0.000 while the kit road tiles on
+# top of it rendered to 0.100, which means every character on this map stood with
+# its feet 100 mm INSIDE the visible road. That is the sunk-prop bug on the one
+# surface a player touches every single frame, and it also put a 100 mm lip
+# wherever the paving stopped. Both go away by paving and floor agreeing.
+ROAD_SCALE = 4.0                     # kit road is 1x1x0.025; 4x gives 4-unit slabs
+ROAD_TOP = 0.025 * ROAD_SCALE        # = 0.100
+GROUND_Y = ROAD_TOP                  # bare floor top == paved top. One surface.
 
-W = 8.0          # half-width of the playable alley
+surfaces = Surfaces(base_height=GROUND_Y)
+
+W = 8.0          # half-width of the playable alley, and of the paved core
 Z_END = 17.0     # half-length
-CELL = 2.0
+
+# ⚠️ THE HOUSE FRONTS LAND ON THE COLLISION PLANE, NOT 0.6 m BEHIND IT.
+# `Bounds/WallEast|West` sit at x = ±8.6 and are the only thing a player can
+# actually hit. The old code aligned facades to ±8.0, so there was a 600 mm shell
+# of walkable space INSIDE every visible wall — you pressed into the house and
+# stopped in mid-air short of it. The colliders are untouched; the ART moved out
+# to meet them.
+WALL_FACE_X = 8.6
 
 meshes, ext, order = {}, [], []
 
@@ -68,54 +110,10 @@ def xform(x, y, z, yaw=0.0, sx=1.0):
     # sx scales only the mesh's own local-X row (its authored length axis for
     # every line-shaped decal in this file — see _box() calls in env_kit.gd),
     # leaving Y/Z untouched. Lets a straight decal be shortened/lengthened
-    # without a new mesh asset — used to tile team_side_decal into a polygonal
-    # ring for the confinement-radius marker below.
+    # without a new mesh asset.
     c, s = math.cos(yaw), math.sin(yaw)
     return (f"Transform3D({c * sx:.5f}, 0, {-s * sx:.5f}, 0, 1, 0, {s:.5f}, 0, {c:.5f}, "
             f"{x:.4f}, {y:.4f}, {z:.4f})")
-
-
-def add(parent, name, mesh_name, x, y, z, yaw=0.0, sx=1.0):
-    order.append((parent, name, mesh(mesh_name), xform(x, y, z, yaw, sx)))
-    # Every piece is recorded, so `surfaces.verify()` below can work out what is
-    # actually under each marking instead of a human deciding. Anything under
-    # "Markings" is the thing being CHECKED; everything else is what it may rest
-    # on. See tools/maps/floorcheck.py for why this is a build gate.
-    surfaces.record(name, mesh_name, x, y, z, yaw, sx,
-                    is_marking=parent.startswith("Markings"))
-
-
-# --- Kit placement -----------------------------------------------------------
-#
-# ⚠️ KIT PIECES DO NOT SHARE THE GENERATED KIT'S "ORIGIN AT THE BASE" HABIT.
-# `env_*` meshes are authored from local y=0 up, so placing one at y=0 puts it on
-# the floor. Kenney's are not consistent about it — measured, `kits/car/van`
-# spans local y -0.300..1.150, so the same y=0 placement buries 30cm of it in the
-# road. That is the floating-geometry bug with the sign flipped, and it would be
-# just as invisible in a diff.
-#
-# So kit pieces are never placed by raw Y. `add_kit()` takes the height its BASE
-# should sit at and works the rest out from the mesh's own bounds, the same way
-# floorcheck.py does — one source of truth for "where is the bottom of this
-# thing", read from the file rather than assumed.
-#
-# ⚠️ ONE SCALE PER KIT, NAMED. Art_Direction.md §0b's measured table: every kit
-# is authored at a different native scale and none matches this project's
-# 1 unit = 1 metre. Two pieces from one kit at different scales is the "assets
-# suck" failure in its purest form, so the factor lives here, once, per kit.
-CITY_SCALE = 5.0   # a City Kit house is 0.74-1.24 tall natively -- SHORTER than
-                   # a Person. 5x puts it at 2-3 believable storeys.
-CAR_SCALE = 1.75   # a van is 2.75 long / 1.45 tall natively; 1.75x reaches the
-                   # ~4.8 length a real one has against a 1.6-unit Person.
-
-
-def add_kit(parent, name, mesh_name, x, z, yaw=0.0, scale=1.0, base_y=0.0):
-    """Places a kit piece with its BASE at `base_y`, scaled uniformly."""
-    lo, hi = mesh_bounds(mesh_name)
-    order.append((parent, name, mesh(mesh_name),
-                  xform_uniform(x, base_y - lo[1] * scale, z, yaw, scale)))
-    surfaces.record(name, mesh_name, x, base_y - lo[1] * scale, z, yaw, scale,
-                    is_marking=False, uniform=True)
 
 
 def xform_uniform(x, y, z, yaw, s):
@@ -130,199 +128,485 @@ def xform_uniform(x, y, z, yaw, s):
             f"{sn * s:.5f}, 0, {c * s:.5f}, {x:.4f}, {y:.4f}, {z:.4f})")
 
 
-# --- Layer 1: the wall line the player actually touches, at x = +/-8 ---------
+# --- Measurement, not assumption ---------------------------------------------
+
+def piece_extent(mesh_name, yaw=0.0, scale=1.0):
+    """World-space footprint offsets of a piece, relative to its placement origin.
+
+    Returns (dx_lo, dx_hi, dz_lo, dz_hi, dy_lo, dy_hi). Placing the piece at
+    (x, z) puts its footprint at x+dx_lo .. x+dx_hi and z+dz_lo .. z+dz_hi.
+
+    ⚠️ THIS EXISTS BECAUSE THE OLD CODE MEASURED ONE BUILDING AND PLACED ELEVEN.
+    Every "how wide/deep is this thing" question in this file goes through here,
+    at the yaw and scale the piece is ACTUALLY being placed at, because a kit
+    building rotated a quarter turn swaps the two axes and half the bugs in
+    Art_Direction §8.0 came from a depth being measured on the wrong one.
+
+    Kept in step with `xform_uniform()`/`_to_world()` by construction: the X
+    basis is (cos*s, 0, -sin*s) and the Z basis is (sin*s, 0, cos*s).
+    """
+    lo, hi = mesh_bounds(mesh_name)
+    c, sn = math.cos(yaw), math.sin(yaw)
+    xs, zs = [], []
+    for lx in (lo[0], hi[0]):
+        for lz in (lo[2], hi[2]):
+            xs.append((lx * c + lz * sn) * scale)
+            zs.append((-lx * sn + lz * c) * scale)
+    return (min(xs), max(xs), min(zs), max(zs), lo[1] * scale, hi[1] * scale)
+
+
+# --- The lane law -------------------------------------------------------------
 #
-# 2026-07-28, checklist 7.4 — City Kit (Suburban) houses replace the generated
-# corrugated panels. An eskinita is the gap BETWEEN people's houses, so the
-# houses themselves are the wall.
+# Art_Direction.md Part 6 §8.2. The two throwing lanes are the corridor an
+# attacker actually throws down and the corridor a defender scrambles back up.
+# Anything standing in them — at ANY height, because a slipper arcs — turns a
+# skill shot into a coin flip.
+LANE_HALF_X = 2.5     # the protected corridor, |x| <= this ...
+LANE_Z = 7.0          # ... for |z| <= this (both throwing lines are at z = ±6)
+LANE_MARGIN = 1.0     # new dressing keeps this much clear of the corridor edge
+
+
+def assert_clear_of_lane(name, x, z, extent):
+    """Build failure if a piece of dressing intrudes on a throwing lane.
+
+    ⚠️ A COMMENT SAYING "KEEP THE LANES CLEAR" IS NOT A RULE, IT IS A HOPE.
+    Phase 8 adds several hundred props to a map that had fourteen, so the odds
+    of one landing in the corridor by arithmetic rather than by intent went from
+    negligible to near-certain. This is checked against the piece's real
+    footprint, not its origin, because a 2 m wide cart placed at x=3.6 is inside
+    the lane even though its centre is not.
+    """
+    x0, x1, z0, z1 = x + extent[0], x + extent[1], z + extent[2], z + extent[3]
+    if z1 < -LANE_Z or z0 > LANE_Z:
+        return
+    if x1 < -(LANE_HALF_X + LANE_MARGIN) or x0 > (LANE_HALF_X + LANE_MARGIN):
+        return
+    raise SystemExit(
+        "\nLANE LAW VIOLATION — build aborted, scene NOT written.\n"
+        "Art_Direction.md Part 6 §8.2.\n\n"
+        "  %s occupies x %.2f..%.2f, z %.2f..%.2f, which enters the protected\n"
+        "  throwing corridor (|x| <= %.1f + %.1f margin, |z| <= %.1f).\n\n"
+        "Move it to |x| > %.1f. Dressing never enters a throwing lane, at any\n"
+        "height — a slipper arcs, so 'it is short enough to throw over' is not a\n"
+        "defence.\n" % (name, x0, x1, z0, z1, LANE_HALF_X, LANE_MARGIN, LANE_Z,
+                        LANE_HALF_X + LANE_MARGIN))
+
+
+# --- Placement ----------------------------------------------------------------
+
+def add(parent, name, mesh_name, x, z, yaw=0.0, sx=1.0, base_y=None,
+        suspended=False, lane_exempt=False):
+    """Places a generated `env_*` piece, GROUNDED on whatever is under it.
+
+    ⚠️ `base_y` DEFAULTS TO THE GROUND, and that default is the whole point.
+    This used to take a raw `y` and every caller passed 0.0, so when checklist
+    7.4b raised the walkable surface to 0.100 the entire dressing set stayed
+    behind, buried. A prop's vertical position is now a derived value; passing
+    one by hand is possible but has to be deliberate and is worth a comment.
+    """
+    if base_y is None:
+        base_y = surfaces.height_at(x, z)
+    lo, _hi = mesh_bounds(mesh_name)
+    y = base_y - lo[1]
+    extent = piece_extent(mesh_name, yaw, 1.0)
+    if not lane_exempt:
+        assert_clear_of_lane(name, x, z, extent)
+    order.append((parent, name, mesh(mesh_name), xform(x, y, z, yaw, sx)))
+    surfaces.record(name, mesh_name, x, y, z, yaw, sx, is_marking=False,
+                    group=parent.split("/")[-1], suspended=suspended)
+
+
+def add_kit(parent, name, mesh_name, x, z, yaw=0.0, scale=1.0, base_y=None,
+            lane_exempt=False):
+    """Places a kit piece with its BASE on the ground, scaled uniformly.
+
+    ⚠️ KIT PIECES DO NOT SHARE THE GENERATED KIT'S "ORIGIN AT THE BASE" HABIT,
+    and the fix for that had its own bug. `env_*` meshes are authored from local
+    y=0 up. Kenney's are not consistent about it, so this derives the offset from
+    the mesh's own measured bounds — but until 2026-07-29 `floorcheck` measured
+    those bounds from raw glTF ACCESSORS and ignored the node hierarchy. Every
+    Car Kit vehicle is five nodes with the wheels translated +0.30 up, so the
+    measured base read -0.300 when the real base was 0.000 and this function
+    dutifully lifted every van, taxi and truck by 0.3 * 1.75 = 525 mm of hover.
+    Fixed in `_glb_bounds`; recorded here because THIS is where it showed up.
+    """
+    if base_y is None:
+        base_y = surfaces.height_at(x, z)
+    extent = piece_extent(mesh_name, yaw, scale)
+    if not lane_exempt:
+        assert_clear_of_lane(name, x, z, extent)
+    y = base_y - extent[4]
+    order.append((parent, name, mesh(mesh_name),
+                  xform_uniform(x, y, z, yaw, scale)))
+    surfaces.record(name, mesh_name, x, y, z, yaw, scale, is_marking=False,
+                    uniform=True, group=parent.split("/")[-1])
+
+
+def add_mark(name, mesh_name, x, z, yaw=0.0, sx=1.0):
+    """A field marking, embedded in whatever surface is under it.
+
+    Separate from `add()` on purpose: a marking is paint and lives INSIDE the
+    ground (floorcheck's sandwich rule), while a prop is an object and sits ON
+    it. Two different vertical rules, so two different functions.
+    """
+    y = embed_y(surfaces.height_at(x, z), mesh_name)
+    order.append((parent_mark, name, mesh(mesh_name), xform(x, y, z, yaw, sx)))
+    surfaces.record(name, mesh_name, x, y, z, yaw, sx, is_marking=True)
+
+
+parent_mark = "Markings"
+
+# ⚠️ ONE SCALE PER KIT, NAMED. Art_Direction.md §0b's measured table: every kit
+# is authored at a different native scale and none matches this project's
+# 1 unit = 1 metre. Two pieces from one kit at different scales is the "assets
+# suck" failure in its purest form, so the factor lives here, once, per kit.
+CITY_SCALE = 5.0   # a City Kit house is 0.74-1.24 tall natively -- SHORTER than
+                   # a Person. 5x puts it at 2-3 believable storeys.
+CAR_SCALE = 1.75   # a van is 2.75 long / 1.45 tall natively; 1.75x reaches the
+                   # ~4.8 length a real one has against a 1.6-unit Person.
+TOWN_SCALE = 1.6   # Fantasy Town props (carts, stalls, rocks, planks) are the
+                   # nearest kit to 1u=1m already; 1.6 matches a 1.6-unit Person.
+
+# =============================================================================
+# GROUND FIRST. Nothing above this line places anything that stands on the road.
+# =============================================================================
+
+# --- Ring 0 / Ring 1: the paved world ----------------------------------------
 #
-# ⚠️ THE PLAYABLE WIDTH IS UNCHANGED AT x = +/-8, AND SO IS THE COLLISION.
-# Arena scale is not touched in the same commit as arena art (Part 4's standing
-# rule), and dressing still carries NO collision of its own — the one invisible
-# Bounds box ring behind the wall line is still the only thing a player can hit.
-# Every piece below is a visual instance and nothing more.
+# Ring 0 is the Floor box itself, widened 40 -> 120 in the scene header below.
+# Ring 1 is this: real kit paving, tiled at ONE scale so the texture density is
+# identical everywhere (explicit human call, 2026-07-29 — "use tiled road
+# instances so the texture resolution matches perfectly"). It runs well past the
+# collision walls, because the void the player could see started right behind
+# them.
 #
-# Buildings are rotated a quarter turn so their long axis runs down the alley,
-# and pushed out by half their depth so the FACE lands on the wall line rather
-# than the centre. Seeded variety, never random: the type cycle is prime-ish
-# against the bay count so the same house does not land opposite itself.
+# ⚠️ EVERY TILE IS THE SAME SCALE AND THEREFORE THE SAME HEIGHT. A coarser tile
+# further out would halve the instance count and put a 100 mm step across the
+# map at the seam, which is the exact fault Phase 8 exists to remove.
+APRON_X = 26.0
+APRON_Z = 26.0
+## ⚠️ THE PAVING'S TOP MUST LAND ON GROUND_Y, SO ITS BASE GOES A THICKNESS BELOW.
+## Passing `base_y=GROUND_Y` here instead — which is the obvious-looking thing to
+## write — stands every tile 100 mm proud of the floor it is paving, and the very
+## first run of this file did exactly that. `add_kit` places a BASE; the height
+## everything else on the map cares about is the TOP.
+ROAD_BASE_Y = GROUND_Y - ROAD_TOP
+## Seeded quarter-turns. A 1x1 square tile rotated 90° re-uses the same texels at
+## the same density, so this breaks up the "one huge tiled plane" read without
+## introducing a second tile size — which is what the city kit's driveway/path
+## pieces would have done (they are 0.36x0.40 against road's 1.0x1.0 and would
+## have left holes in the grid). Human call, 2026-07-29: "use tiled road
+## instances so the texture resolution matches perfectly."
+_ROAD_YAW = [0, 1, 3, 2, 0, 3, 1, 2, 3, 0, 2, 1, 1, 3, 0, 2]
+_road_n = 0
+_gx = -APRON_X + ROAD_SCALE * 0.5
+while _gx <= APRON_X:
+    _gz = -APRON_Z + ROAD_SCALE * 0.5
+    while _gz <= APRON_Z:
+        add_kit("Dressing/Road", f"Road_{_road_n}", "kits/town/road", _gx, _gz,
+                _ROAD_YAW[_road_n % len(_ROAD_YAW)] * math.pi * 0.5,
+                ROAD_SCALE, base_y=ROAD_BASE_Y, lane_exempt=True)
+        _road_n += 1
+        _gz += ROAD_SCALE
+    _gx += ROAD_SCALE
+
+# --- Layer 1: the wall line the player actually touches ----------------------
+#
+# An eskinita is the gap BETWEEN people's houses, so the houses are the wall.
+# Buildings are rotated a quarter turn so their long axis runs down the alley.
+#
+# ⚠️ FACE ALIGNMENT AND BAY ADVANCE ARE BOTH MEASURED PER PIECE. See rule 3 in
+# the module header for what happened when they were not. `yaw` is ±90°, so a
+# piece's local Z becomes world X (its depth) and its local X becomes world Z
+# (its width) — `piece_extent()` does that arithmetic rather than this loop.
+#
+# ⚠️ DRESSING CARRIES NO COLLISION, HERE OR ANYWHERE. The one invisible Bounds
+# box ring is still the only thing a player can hit. Every piece below is a
+# visual instance and nothing more — which is also why the camera's spring arm
+# (mask 1) cannot catch on any of it.
 BUILDING_TYPES = ["a", "c", "e", "j", "b", "o", "d", "s", "i", "n", "l"]
-## Depth of a rotated building, so its face lands on x = +/-W.
-_bt_lo, _bt_hi = mesh_bounds("kits/city/building-type-a")
-BUILDING_DEPTH = (_bt_hi[2] - _bt_lo[2]) * CITY_SCALE
-BUILDING_BAY = 6.6          # spacing down the alley, ~ a building's own width
+BAY_GAP = 1.1               # alley-side alcove between neighbours, in metres
 ## Every Nth bay is left empty and gets a parked vehicle instead — a driveway.
 ## It is also what stops the wall line reading as one extruded ribbon.
 DRIVEWAY_EVERY = 4
 
-i = 0
-z = -Z_END
-while z <= Z_END:
-    for side in (-1.0, 1.0):
-        tag = "E" if side > 0 else "W"
+CARS = ["kits/car/van", "kits/car/sedan", "kits/car/delivery",
+        "kits/car/taxi", "kits/car/truck"]
+
+_bay = {-1.0: -Z_END, 1.0: -Z_END}   # each side advances independently now
+_i = {-1.0: 0, 1.0: 0}
+for side in (-1.0, 1.0):
+    tag = "E" if side > 0 else "W"
+    # +X row faces -X and vice versa, so front doors look into the alley.
+    yaw = (math.pi * 0.5) if side > 0 else (-math.pi * 0.5)
+    while _bay[side] <= Z_END:
+        i = _i[side]
         if (i + (0 if side > 0 else 2)) % DRIVEWAY_EVERY == 0:
-            # A gap in the house line. The vehicle sits OUTSIDE the playable
-            # width, so it never blocks an FPP Person's aim no matter how tall
-            # it is -- see the height law on the clutter block below.
-            car = ["kits/car/van", "kits/car/sedan", "kits/car/delivery",
-                   "kits/car/taxi", "kits/car/truck"][i % 5]
-            add_kit("Dressing/Layer1", f"Car_{i}_{tag}", car,
-                    side * (W + 1.9), z, math.pi * 0.5 * side, CAR_SCALE)
+            car = CARS[i % len(CARS)]
+            # ⚠️ PARALLEL-PARKED, NOT NOSE-IN, AND THE LANE LAW IS WHY.
+            # Nose-in (yaw ±90°) turns the car's 4.8 m LENGTH into its world-X
+            # footprint, which reaches 3.2 m from the alley centre — straight
+            # through the throwing corridor. `assert_clear_of_lane()` failed the
+            # build on the first run and named the car. At yaw 0 the length runs
+            # down Z against the kerb, which is how a car is parked on a street
+            # this narrow anyway, and its 2.6 m width stays outside the wall.
+            cyaw = 0.0 if i % 2 else math.pi
+            cext = piece_extent(car, cyaw, CAR_SCALE)
+            cx = ((WALL_FACE_X - cext[0]) if side > 0
+                  else (-WALL_FACE_X - cext[1]))
+            add_kit("Dressing/Layer1", f"Car_{i}_{tag}", car, cx,
+                    _bay[side] - cext[2], cyaw, CAR_SCALE)
+            _bay[side] += (cext[3] - cext[2]) + BAY_GAP
         else:
             kind = BUILDING_TYPES[i % len(BUILDING_TYPES)]
-            # +X row faces -X and vice versa, so front doors look into the alley.
-            yaw = (math.pi * 0.5) if side > 0 else (-math.pi * 0.5)
-            add_kit("Dressing/Layer1", f"L1_{i}_{tag}",
-                    f"kits/city/building-type-{kind}",
-                    side * (W + BUILDING_DEPTH * 0.5), z, yaw, CITY_SCALE)
-    i += 1
-    z += BUILDING_BAY
+            piece = f"kits/city/building-type-{kind}"
+            ext_b = piece_extent(piece, yaw, CITY_SCALE)
+            width = ext_b[3] - ext_b[2]
+            # Solve for the centre X that lands THIS piece's own face exactly on
+            # the collision plane. For the +X row the face is its minimum X, for
+            # the -X row its maximum.
+            cx = (WALL_FACE_X - ext_b[0]) if side > 0 else (-WALL_FACE_X - ext_b[1])
+            add_kit("Dressing/Layer1", f"L1_{i}_{tag}", piece, cx,
+                    _bay[side] - ext_b[2] , yaw, CITY_SCALE)
+            _bay[side] += width + BAY_GAP
+        _i[side] += 1
 
 # --- Layer 2: a second row further out, for skyline depth --------------------
 # Off-grid on purpose and deliberately NOT the same types as Layer 1 -- a second
 # identical row reads as a mirror rather than as a neighbourhood.
 for n, (x, zz, kind) in enumerate([
-        (-19.0, -14.0, "t"), (-20.0, -3.0, "q"), (-18.5, 8.0, "u"),
-        (-20.5, 17.0, "f"), (19.0, -15.0, "p"), (20.0, -4.0, "r"),
-        (18.5, 7.0, "k"), (20.5, 16.0, "m")]):
+        (-19.5, -14.0, "t"), (-21.0, -3.0, "q"), (-19.0, 8.0, "u"),
+        (-21.5, 17.0, "f"), (19.5, -15.0, "p"), (21.0, -4.0, "r"),
+        (19.0, 7.0, "k"), (21.5, 16.0, "m"),
+        (-20.0, -22.0, "b"), (20.0, -21.0, "d"), (-20.5, 24.0, "n"),
+        (20.5, 23.0, "s")]):
     add_kit("Dressing/Layer2", f"L2_{n}", f"kits/city/building-type-{kind}",
             x, zz, 0.35 if n % 2 else -0.22, CITY_SCALE)
 
-# --- Street trees and fences, between the houses and the kerb ----------------
+# --- Ring 2: the silhouette belt. Read at distance through fog, never reached.
+#
+# ⚠️ SEEDED, NEVER RANDOM. A layout that differs between two runs of this file
+# cannot be reviewed in a diff and cannot be bisected when something floats.
+# The jitter below is a fixed table, not an RNG.
+BELT_TYPES = ["b", "d", "n", "q", "t", "u", "f", "p", "r", "k", "m", "s", "a"]
+_belt_jit = [0.0, 2.7, -1.9, 4.1, -3.3, 1.4, -2.2, 3.6, -0.8, 2.1, -4.0, 0.6]
+_belt = 0
+for ring_i, ring in enumerate((30.0, 37.0, 44.0)):
+    step = 9.0 + ring_i * 1.7
+    for side in (-1.0, 1.0):
+        # Belt rows on the X sides run down Z, and vice versa, so the corners
+        # are covered by both and never show a diagonal gap to the horizon.
+        zz = -46.0
+        while zz <= 46.0:
+            j = _belt_jit[_belt % len(_belt_jit)]
+            add_kit("Dressing/Belt", f"BeltX_{_belt}",
+                    f"kits/city/building-type-{BELT_TYPES[_belt % len(BELT_TYPES)]}",
+                    side * (ring + j * 0.35), zz + j,
+                    (j * 0.11) + (0.0 if side > 0 else math.pi),
+                    CITY_SCALE * (1.15 + ring_i * 0.2))
+            _belt += 1
+            zz += step
+        xx = -46.0
+        while xx <= 46.0:
+            j = _belt_jit[_belt % len(_belt_jit)]
+            add_kit("Dressing/Belt", f"BeltZ_{_belt}",
+                    f"kits/city/building-type-{BELT_TYPES[_belt % len(BELT_TYPES)]}",
+                    xx + j, side * (ring + j * 0.35),
+                    (j * 0.13) + (math.pi * 0.5 if side > 0 else -math.pi * 0.5),
+                    CITY_SCALE * (1.15 + ring_i * 0.2))
+            _belt += 1
+            xx += step
+
+# Distant tree mass, filling the seams between belt rows.
+_tree_n = 0
+for ring in (27.5, 33.5, 40.5):
+    for side in (-1.0, 1.0):
+        t = -44.0
+        while t <= 44.0:
+            j = _belt_jit[_tree_n % len(_belt_jit)]
+            add_kit("Dressing/Belt", f"BeltTreeX_{_tree_n}", "kits/city/tree-large",
+                    side * (ring + j * 0.3), t + j * 1.3, j * 0.2, CITY_SCALE * 1.4)
+            _tree_n += 1
+            add_kit("Dressing/Belt", f"BeltTreeZ_{_tree_n}", "kits/city/tree-large",
+                    t + j * 1.1, side * (ring + j * 0.3), -j * 0.2, CITY_SCALE * 1.4)
+            _tree_n += 1
+            t += 11.0
+
+# --- Street trees, between the houses and the kerb ---------------------------
+# Pushed OUT to sit against the wall line rather than at x=±7.4, where they were
+# standing inside the playable width. Still tall, so they must not be loose.
 for n, zz in enumerate([-15.5, -9.0, -2.5, 4.0, 10.5, 16.0]):
     for side in (-1.0, 1.0):
         piece = "kits/city/tree-large" if (n + (0 if side > 0 else 1)) % 2 else "kits/city/tree-small"
         add_kit("Dressing/Layer2", f"Tree_{n}_{'E' if side > 0 else 'W'}",
-                piece, side * (W - 0.6), zz + (0.7 if side > 0 else -0.7),
+                piece, side * (W - 0.15), zz + (0.7 if side > 0 else -0.7),
                 (n % 3) * 0.8, CITY_SCALE)
 
 # --- Layer 3: overhead. Highest read-per-triangle in the kit. ---------------
-for n, zz in enumerate([-14.0, -8.0, -2.0, 4.0, 10.0, 16.0]):
-    add("Dressing/Layer3", f"Post_{n}", "post_electric", -W + 0.4, 0.0, zz,
-        math.pi * 0.5)
-for n, zz in enumerate([-11.0, -5.0, 1.0, 7.0, 13.0]):
-    add("Dressing/Layer3", f"Sampay_{n}", "laundry_line", 0.0, 0.0, zz)
+for n, zz in enumerate([-15.0, -11.0, -7.0, -3.0, 1.0, 5.0, 9.0, 13.0, 16.5]):
+    side = -1.0 if n % 2 else 1.0
+    add("Dressing/Layer3", f"Post_{n}", "post_electric", side * (W - 0.25), zz,
+        math.pi * 0.5 * (1.0 if side > 0 else -1.0))
+# Sampay: strung ACROSS the alley, hanging from the houses. The ONE thing on
+# this map that is legitimately not on the ground — hence `suspended`, which is
+# an explicit opt-out of the grounding check rather than a hole in it.
+for n, zz in enumerate([-13.5, -8.5, -3.0, 3.0, 8.5, 14.5]):
+    add("Dressing/Layer3", f"Sampay_{n}", "laundry_line", 0.0, zz,
+        base_y=GROUND_Y + 1.48 + (0.22 if n % 3 == 0 else 0.0),
+        suspended=True, lane_exempt=True)
 
-# --- The road surface itself, checklist 7.4b -------------------------------
+# --- Interior clutter. HEAVY on the sides, ZERO in the lanes. ----------------
 #
-# 2026-07-28 — "completely remake the floor arena of all maps with the assets."
-# The generated `road_tile_line` strip and `kerb_tile` rows are gone; the alley
-# is paved with Fantasy Town road tiles and kerbed with its road-curb pieces.
+# Explicit human call, 2026-07-29: "go heavy on the clutter on the sides, but
+# STRICTLY enforce your new lane law". Both halves of that are enforced by code
+# rather than by care: every entry below goes through `assert_clear_of_lane()`,
+# which measures the piece's real footprint and fails the build on contact.
 #
-# ⚠️ THE LANE DASHES WENT WITH THEM, DELIBERATELY. `road_tile_line` was a road
-# tile with a painted centre line, and a painted centre line is what made this
-# read as a boulevard rather than an eskinita — the exact complaint behind the
-# still-open "narrow the alley" item. A side street has no lane markings.
+# ⚠️ THE HEIGHT LAW STILL APPLIES INSIDE THE SAFE BAND (Part 3 §2). An FPP
+# Person's eye is at y=1.25 above the ground. Anything in the 3.5..6.5 band is
+# <= 1.0 tall so it can be aimed over; the taller stuff lives at |x| > 6.5,
+# against the wall line, where a throwing arc has already left the ground.
 #
-# ⚠️ This RAISES the ground under every field marking from 0.0 to ROAD_TOP. That
-# is why nothing below hardcodes a marking height: they all ask
-# `surfaces.height_at()` and go through `embed_y()`, so re-paving the road
-# cannot silently leave a line hanging in the air. floorcheck fails the build if
-# it does.
-ROAD_SCALE = 4.0            # kit road is 1x1x0.025; 4x gives 4-unit slabs
-ROAD_TOP = 0.025 * ROAD_SCALE
-_road_span = int(W / (ROAD_SCALE * 0.5))          # 4 tiles across a 16m alley
-_road_rows = int((Z_END + 1.0) / (ROAD_SCALE * 0.5))
-n = 0
-for gx in range(-_road_span // 2, _road_span // 2):
-    for gz in range(-_road_rows // 2, _road_rows // 2 + 1):
-        add_kit("Dressing/Road", f"Road_{n}", "kits/town/road",
-                gx * ROAD_SCALE + ROAD_SCALE * 0.5,
-                gz * ROAD_SCALE + ROAD_SCALE * 0.5, 0.0, ROAD_SCALE)
-        n += 1
-
-# --- No kerb, and that is deliberate ----------------------------------------
-#
-# The kit's `road-curb` is a road tile WITH a raised lip, not a kerb strip, so
-# using it along the edge put a 0.2-high lip under the ends of every field
-# marking — floorcheck caught it immediately as "STICKS OUT" and "BURIED" on the
-# throwing lines and the jeepney lane, because their outer ends landed on the
-# lip while their middles sat on the road.
-#
-# Rather than work around that, the kerb is gone: a real eskinita is paved
-# wall-to-wall and the road simply meets the house. That also serves the
-# still-open "narrow the alley" item, which is about this map reading as a
-# boulevard — kerbs and lane dashes were both part of why.
-
-# --- Interior clutter. Every piece here is <= 1.0 tall so an FPP Person, whose
-# --- eye sits at y=1.25, can aim over all of it. That is the height law.
-CLUTTER = [
-    ("crate_stack", -5.5, -9.0), ("crate_stack", 5.0, 8.5),
-    ("tire", -6.2, 3.0), ("tire", 6.4, -6.0), ("tire", -6.0, 12.0),
-    ("oil_drum", 6.0, 11.0), ("oil_drum", -6.4, -14.0),
-    ("monobloc_chair", 5.6, -11.5), ("monobloc_chair", -5.2, 6.0),
-    ("bollard", -6.8, -2.0), ("bollard", 6.8, 2.0),
+# Format: (piece, x, z, yaw, kit_scale or None for a generated env_* piece)
+CLUTTER_LOW = [
+    # --- generated env_* pieces, the ones that carry the project's own palette
+    ("crate_stack", -5.5, -9.0, 0.4, None), ("crate_stack", 5.0, 8.5, -0.9, None),
+    ("crate_stack", -4.6, 13.5, 1.7, None), ("crate_stack", 5.9, -14.5, 2.6, None),
+    ("tire", -6.2, 3.0, -2.1, None), ("tire", 6.4, -6.0, 0.4, None),
+    ("tire", -6.0, 12.0, -0.9, None), ("tire", 4.3, 15.5, 1.7, None),
+    ("tire", -3.9, -15.5, 2.6, None), ("tire", 6.1, 4.4, -2.1, None),
+    ("oil_drum", 6.0, 11.0, 0.4, None), ("oil_drum", -6.4, -14.0, -0.9, None),
+    ("oil_drum", 5.4, -2.6, 1.7, None), ("oil_drum", -5.1, 8.0, 2.6, None),
+    ("monobloc_chair", 5.6, -11.5, -2.1, None), ("monobloc_chair", -5.2, 6.0, 0.4, None),
+    ("monobloc_chair", -6.1, -4.4, -0.9, None), ("monobloc_chair", 6.3, 14.0, 1.7, None),
+    ("monobloc_chair", 4.4, -16.2, 2.6, None),
+    ("bollard", -6.8, -2.0, 0.0, None), ("bollard", 6.8, 2.0, 0.0, None),
+    ("bollard", -6.9, 10.5, 0.0, None), ("bollard", 6.9, -9.5, 0.0, None),
+    ("tire", -6.6, -11.8, 0.9, None), ("tire", 6.6, 17.0, -1.4, None),
+    # --- Fantasy Town kit: the market-street vocabulary
+    ("kits/town/rock-small", -6.3, -6.8, 0.5, TOWN_SCALE),
+    ("kits/town/rock-small", 6.2, 6.2, -1.1, TOWN_SCALE),
+    ("kits/town/rock-wide", -5.8, 16.5, 2.2, TOWN_SCALE),
+    ("kits/town/rock-wide", 5.7, -17.0, -0.4, TOWN_SCALE),
+    ("kits/town/planks", -6.5, 0.5, 1.5, TOWN_SCALE),
+    ("kits/town/planks", 6.5, -12.5, -1.6, TOWN_SCALE),
+    ("kits/town/planks", -4.8, -1.9, 0.2, TOWN_SCALE),
+    ("kits/town/stall-stool", 5.2, 12.2, 0.8, TOWN_SCALE),
+    ("kits/town/stall-stool", -5.4, -12.6, -0.6, TOWN_SCALE),
+    ("kits/town/stall-stool", 4.7, -5.1, 2.4, TOWN_SCALE),
+    ("kits/town/stall-bench", -6.0, 4.6, 1.55, TOWN_SCALE),
+    ("kits/town/stall-bench", 6.1, -0.8, -1.55, TOWN_SCALE),
 ]
-for n, (piece, x, zz) in enumerate(CLUTTER):
-    add("Dressing/Clutter", f"Clutter_{n}", piece, x, 0.0, zz,
-        [0.4, -0.9, 1.7, 2.6, -2.1][n % 5])
+for n, (piece, x, zz, yaw, scale) in enumerate(CLUTTER_LOW):
+    if scale is None:
+        add("Dressing/Clutter", f"Clutter_{n}", piece, x, zz, yaw)
+    else:
+        add_kit("Dressing/Clutter", f"Clutter_{n}", piece, x, zz, yaw, scale)
 
-# --- Tricycles. Waist-cover tier (1.25 tall) so they sit AGAINST the wall line,
-# --- never loose in the alley where they would block an FPP Person's aim.
+# --- Taller clutter: against the wall line only, |x| > 6.5 -------------------
+CLUTTER_TALL = [
+    ("kits/town/cart", -7.2, -7.5, 0.15, TOWN_SCALE),
+    ("kits/town/cart", 7.3, 10.5, math.pi + 0.2, TOWN_SCALE),
+    ("kits/town/cart-high", -7.1, 5.5, -0.1, TOWN_SCALE),
+    ("kits/town/stall", 7.4, -3.5, -math.pi * 0.5, TOWN_SCALE),
+    ("kits/town/stall-red", -7.4, 11.5, math.pi * 0.5, TOWN_SCALE),
+    ("kits/town/stall-green", 7.4, 16.0, -math.pi * 0.5, TOWN_SCALE),
+    ("kits/town/hedge", -7.5, -16.5, 0.0, TOWN_SCALE),
+    ("kits/town/hedge", 7.5, -15.5, 0.0, TOWN_SCALE),
+    ("kits/town/fence-broken", -7.6, 1.5, math.pi * 0.5, TOWN_SCALE),
+    ("kits/town/fence", 7.6, 6.5, math.pi * 0.5, TOWN_SCALE),
+    ("kits/town/lantern", -7.3, -3.0, 0.0, TOWN_SCALE),
+    ("kits/town/lantern", 7.3, 13.0, 0.0, TOWN_SCALE),
+    ("kits/town/pillar-wood", -7.5, 8.5, 0.0, TOWN_SCALE),
+    ("kits/town/rock-large", 7.5, -10.5, 0.7, TOWN_SCALE),
+]
+for n, (piece, x, zz, yaw, scale) in enumerate(CLUTTER_TALL):
+    add_kit("Dressing/Clutter", f"Tall_{n}", piece, x, zz, yaw, scale)
+
+# --- Tricycles. Waist-cover tier, against the wall line, never loose. --------
 for n, (x, zz, yaw) in enumerate([
-        (-6.6, -6.0, 0.15), (6.6, 9.5, math.pi + 0.2), (-6.5, 15.0, -0.1)]):
-    add("Dressing/Clutter", f"Tricycle_{n}", "tricycle", x, 0.0, zz, yaw)
+        (-7.0, -6.0, 0.15), (7.0, 9.5, math.pi + 0.2), (-6.9, 15.0, -0.1),
+        (7.1, -13.0, math.pi - 0.3)]):
+    add("Dressing/Clutter", f"Tricycle_{n}", "tricycle", x, zz, yaw)
 
-# --- Field markings. These serve BOTH round-win modes. ----------------------
-# ⚠️⚠️⚠️ EVERY MARKING BELOW MUST SIT FLUSH ON WHATEVER IS UNDER IT, AND YOU NO
-# LONGER HAVE TO GET THAT RIGHT BY HAND. `surfaces.verify()` at the bottom of
-# this file samples the real footprint of every marking against the real height
-# of every piece beneath it and ABORTS THE BUILD if any of them floats. Place a
-# marking wrong and you get an error naming the node and the gap in millimetres,
-# not a scene that looks fine until someone plays it.
+# --- The narrative centre. A wall with a counter in it is a street. ----------
+add("Dressing/Clutter", "SariSari_E", "sari_sari_store", W - 0.85, -1.0,
+    -math.pi * 0.5)
+add("Dressing/Clutter", "SariSari_W", "sari_sari_store", -(W - 0.85), 12.0,
+    math.pi * 0.5)
+
+# --- The kanal. This REPLACES the pink jeepney-lane chalk. -------------------
 #
-# What you still need to know, because it is what makes the mistake so easy:
-# `_box()`'s y0/y1 in env_kit.gd are LOCAL coordinates starting at the mesh's
-# own origin (y0 is 0.0), so a marking's placement Y is its LITERAL UNDERSIDE,
-# not its centre. Placing one at 0.07 with bare road beneath puts its underside
-# 7cm in the air. Adding clearance "to be safe" is the bug, not the fix.
+# ⚠️ 2026-07-29, EXPLICIT HUMAN INSTRUCTION: "completely remove and delete all
+# pink chalk lines and their generation logic ... do not render them at all."
+# `env_jeepney_lane_decal` was the only piece on this map using the `hazard`
+# material (#F468A8), it ran z=-6..+6 at x=4.07..6.33, and that band crosses the
+# confinement box's whole east edge — which is exactly the reported "the pink
+# lines overshoot and merge with the white lines". It is gone, and so is its
+# `_jeepney_lane_decal()` generator in env_kit.gd.
 #
-# Three sessions were spent retuning a single constant here (0.07 -> 0.015 ->
-# 0.001) and the lines kept floating, because the real failure was never a
-# constant: `throwing_line_decal` is 8m wide and crosses a 2m raised lane strip,
-# so it spans TWO ground heights and no single Y was ever going to be flush for
-# it. floorcheck.py reports that case separately — "SPANS n surface heights" —
-# because the fix is to split the piece, not to nudge the number.
-ROAD_Y = 0.0         # bare asphalt: the Floor box's own top surface
+# ⚠️ BUT THE `HazardZone` AT x=5.4 IS A LIVE GAMEPLAY VOLUME (speed_multiplier
+# 0.5, permanent) AND THE PINK STRIP WAS ITS ONLY TELL. Deleting the marking and
+# stopping there would have left an INVISIBLE slow-field in the play area, which
+# is a worse bug than the one being fixed. So the hazard keeps a visual — as
+# real 3D geometry rather than chalk: a `gutter_tile` kanal, which is what a
+# Philippine side street actually has running along its edge and which explains
+# the slow zone physically instead of decorating it. Same footprint, no pink,
+# no chalk, and it reads at a glance.
+_kanal_lo, _kanal_hi = mesh_bounds("gutter_tile")
+_kanal_len = _kanal_hi[2] - _kanal_lo[2]
+_kn = 0
+_kz = -5.5
+while _kz < 5.5:
+    add("Hazards/KanalVisual", f"Kanal_{_kn}", "gutter_tile", 5.4,
+        _kz + _kanal_len * 0.5, 0.0, base_y=GROUND_Y - 0.15)
+    _kn += 1
+    _kz += _kanal_len
+
+# =============================================================================
+# FIELD MARKINGS. One court, one width, closed corners.
+# =============================================================================
+#
+# ⚠️ EVERY MARKING SITS FLUSH IN WHATEVER IS UNDER IT, AND YOU NO LONGER HAVE TO
+# GET THAT RIGHT BY HAND. `surfaces.verify()` samples the real footprint of every
+# marking against the real height of everything beneath it and ABORTS THE BUILD
+# if any of them floats, sticks out or spans a step.
+#
+# ⚠️ THE COURT HAS ONE WIDTH NOW, AND THAT IS THE FIX FOR "THE LINES SHOOT PAST".
+# The old layout had four different line lengths — the confinement box at ±5.0,
+# the throwing lines at ±4.0, the team-side lines at ±3.0, and the pink lane
+# running past all of them — so nothing lined up with anything and no shape
+# closed. Every white line is now clamped to COURT_X, so the box, the throwing
+# lines and the team lines share one edge and read as a single court.
+CONFINEMENT_BOX_RADIUS = 5.0   # mirrors CharacterBase.CONFINEMENT_RADIUS
+COURT_X = CONFINEMENT_BOX_RADIUS
 
 
 def add_line(name, mesh_name, x, z, yaw=0.0, sx=1.0):
     """A straight line marking, SPLIT AUTOMATICALLY wherever the ground steps.
 
-    ⚠️ USE THIS FOR EVERY LINE MARKING. Placing one with plain `add()` means
-    choosing a Y by hand, and that is the decision that has produced a floating
-    line in three separate playtests.
+    ⚠️ USE THIS FOR EVERY LINE MARKING. Placing one with a hand-picked Y is the
+    decision that produced a floating line in three separate playtests.
 
-    Every line here crosses the 6.2cm raised `road_tile_line` strip running down
-    the middle of the road, so each one genuinely sits on two different heights
-    and no single Y is flush for it. Rather than making eleven judgement calls,
-    this walks the line's own length, asks `surfaces` how high the ground
-    actually is at each step, and emits one sub-piece per run of constant
-    height — each placed at exactly that height. `sx` scales the decal's own
-    length axis, so no new mesh is needed for the shorter runs.
-
-    A line that never crosses a step comes out as a single piece with the same
-    name it would have had, so this costs nothing where it is not needed.
+    Walks the line's own length, asks `surfaces` how high the ground actually is
+    at each step, and emits one sub-piece per run of constant height. A line that
+    never crosses a step comes out as a single piece with the same name it would
+    have had, so this costs nothing where it is not needed — which, now that the
+    floor and the paving are the same height, is everywhere on this map.
     """
     lo, hi = mesh_bounds(mesh_name)
     span = hi[0] - lo[0]
     length = span * sx
-    # Finer than floorcheck's own EDGE_INSET (0.02), so the midpoint boundary
-    # below is always inside the inset and a correctly-split line verifies.
     steps = max(2, int(length / 0.01) + 1)
     c, s = math.cos(yaw), math.sin(yaw)
-    # Sample the ground under the centreline, from one end to the other.
     samples = []
     for i in range(steps):
-        t = -0.5 + i / (steps - 1.0)          # -0.5 .. +0.5 along the line
+        t = -0.5 + i / (steps - 1.0)
         d = t * length
         samples.append((t, round(surfaces.height_at(x + d * c, z - d * s), 6)))
-    # Collapse into contiguous runs of equal height.
-    # ⚠️ The boundary goes at the MIDPOINT between the two differing samples,
-    # not at the first sample of the new height. Ending a run on a sample that
-    # already reads the NEW height pushes that run past the step by one sample,
-    # so the piece overhangs the edge it was split at and floats there — the
-    # original bug, reintroduced by the fix for it. Caught by floorcheck.
+    # ⚠️ The boundary goes at the MIDPOINT between two differing samples, not at
+    # the first sample of the new height — ending a run on a sample that already
+    # reads the NEW height pushes that run past the step and it floats there.
     runs, start, height, prev_t = [], samples[0][0], samples[0][1], samples[0][0]
     for t, h in samples[1:]:
         if h != height:
@@ -337,63 +621,54 @@ def add_line(name, mesh_name, x, z, yaw=0.0, sx=1.0):
         if run_len <= 0.0:
             continue
         suffix = "" if len(runs) == 1 else "_%d" % n
-        # embed_y, never `h` — a marking sits INSIDE the ground, not on it.
-        add("Markings", name + suffix, mesh_name,
-            x + mid * length * c, embed_y(h, mesh_name), z - mid * length * s,
-            yaw, run_len / span)
+        add_mark(name + suffix, mesh_name,
+                 x + mid * length * c, z - mid * length * s, yaw, run_len / span)
 
 
-# The base circle sits entirely on the raised strip (it is 1.4 across, the strip
-# is 2.0), so it is a single piece at the strip's own top. It was at 0.070
-# against a 0.062 top — 8mm of float, the "still a couple of thinsg floating"
-# report. Taken from the measured mesh now, not from a round number.
-add("Markings", "BaseCircle", "base_circle_decal", 0.0,
-    embed_y(surfaces.height_at(0.0, 0.0), "base_circle_decal"), 0.0)
+def court_line(name, axis, at, half_len, mesh_name="team_side_decal"):
+    """One edge of the court, scaled to land its ENDS exactly on `±half_len`.
 
-add_line("ThrowingLineNorth", "throwing_line_decal", 0.0, -6.0)
-add_line("ThrowingLineSouth", "throwing_line_decal", 0.0, 6.0)
-add_line("TeamSideNorth", "team_side_decal", 0.0, -13.0)
-add_line("TeamSideSouth", "team_side_decal", 0.0, 13.0)
-# Narrowed from its native 3.76 width so it stops clear of the kerb at x=6.63
-# rather than running underneath it — the same class of fault as the floaters
-# (a decal resting on something it was never meant to touch), caught by the
-# same check.
-# Asks the surface rather than assuming ROAD_Y, which is what let the road get
-# re-paved 0.1 higher without this line being left buried in it.
-add("Markings", "JeepneyLane", "jeepney_lane_decal", 5.2,
-    embed_y(surfaces.height_at(5.2, 0.0), "jeepney_lane_decal"), 0.0, 0.0, 0.6)
+    ⚠️ THIS IS WHY THE CORNERS USED TO HAVE NOTCHES IN THEM. The old confinement
+    box tiled a fixed-length decal `ceil(2R / seg)` times per side, which put
+    each side's outer end exactly ON the corner point — and since the crossing
+    line is 80 mm wide and centred on that same point, the last 40 mm of every
+    corner was never covered by either. Four little bites out of the box,
+    reported as "the lines fail to intersect cleanly".
+    #
+    # Each side now runs to half_len + the crossing line's own half-width, so the
+    # two edges overlap through the corner and the box closes. Overlapping paint
+    # is invisible; a 40 mm gap is not.
+    """
+    lo, hi = mesh_bounds(mesh_name)
+    half_w = (hi[2] - lo[2]) * 0.5
+    reach = half_len + half_w
+    sx = (reach * 2.0) / (hi[0] - lo[0])
+    if axis == "x":      # runs along X, sits at z = at
+        add_line(name, mesh_name, 0.0, at, 0.0, sx)
+    else:                # runs along Z, sits at x = at
+        add_line(name, mesh_name, at, 0.0, math.pi * 0.5, sx)
 
-# --- Confinement-radius SQUARE. 2026-07-28: the Can/Taya's actual restricted
-# --- play area (CharacterBase.CONFINEMENT_RADIUS) was invisible on the
-# --- ground -- the only markers were the tiny base circle and the distant
-# --- throwing line, with nothing showing where the confinement edge itself
-# --- sits. This is the mark that matters for "outplays" (juking a defender
-# --- along the actual edge of their box), not a boundary around the whole
-# --- map. A SQUARE, not a circle/ring (tried first, user feedback: "the
-# --- circle you made was ugly ... can we just use a square" -- a real
-# --- tumbang preso chalk box is a straight-edged rectangle, not a drawn
-# --- circle). Built by tiling team_side_decal's straight line along all
-# --- four sides, scaled per-segment via xform()'s sx, rather than authoring
-# --- a new mesh in env_kit.gd, which stays Design-owned.
-# --- CONFINEMENT_BOX_RADIUS mirrors CharacterBase.CONFINEMENT_RADIUS -- keep
-# --- the two in sync if either is retuned again. Spawn layout inside this
-# --- box is unchanged: Taya (Spawn1) is inside it, the Can (Spawn0) sits on
-# --- BaseCircle at its centre, and the Attacker (Spawn2) spawns OUTSIDE it
-# --- at ThrowingLineSouth's 6-unit line -- see main.gd's _role_slot doc.
-CONFINEMENT_BOX_RADIUS = 5.0
-BOX_SEG = 6.0  # team_side_decal's native length
-_box_segs_per_side = math.ceil((2 * CONFINEMENT_BOX_RADIUS) / BOX_SEG)
-_box_scale = ((2 * CONFINEMENT_BOX_RADIUS) / _box_segs_per_side) / BOX_SEG
-for i in range(_box_segs_per_side):
-    along = -CONFINEMENT_BOX_RADIUS + BOX_SEG * _box_scale * (i + 0.5)
-    add_line(f"ConfinementBoxNorth_{i}", "team_side_decal",
-             along, -CONFINEMENT_BOX_RADIUS, 0.0, _box_scale)
-    add_line(f"ConfinementBoxSouth_{i}", "team_side_decal",
-             along, CONFINEMENT_BOX_RADIUS, 0.0, _box_scale)
-    add_line(f"ConfinementBoxEast_{i}", "team_side_decal",
-             CONFINEMENT_BOX_RADIUS, along, math.pi * 0.5, _box_scale)
-    add_line(f"ConfinementBoxWest_{i}", "team_side_decal",
-             -CONFINEMENT_BOX_RADIUS, along, math.pi * 0.5, _box_scale)
+
+# The base circle sits at the centre of the court, on flat paving.
+add_mark("BaseCircle", "base_circle_decal", 0.0, 0.0)
+
+# The confinement square — the Can/Taya's actual restricted play area
+# (CharacterBase.CONFINEMENT_RADIUS). A SQUARE, not a circle (user feedback:
+# "the circle you made was ugly ... can we just use a square"). Four closed
+# corners, one width, nothing overhanging.
+court_line("ConfinementNorth", "x", -CONFINEMENT_BOX_RADIUS, COURT_X)
+court_line("ConfinementSouth", "x", CONFINEMENT_BOX_RADIUS, COURT_X)
+court_line("ConfinementEast", "z", CONFINEMENT_BOX_RADIUS, COURT_X)
+court_line("ConfinementWest", "z", -CONFINEMENT_BOX_RADIUS, COURT_X)
+
+# The throwing lines, at the 6.0 distance Art_Direction §9 derived, and the
+# team-side lines. Both clamped to COURT_X so they align exactly with the
+# confinement box's east and west edges instead of ending in mid-air at
+# arbitrary widths.
+court_line("ThrowingLineNorth", "x", -6.0, COURT_X, "throwing_line_decal")
+court_line("ThrowingLineSouth", "x", 6.0, COURT_X, "throwing_line_decal")
+court_line("TeamSideNorth", "x", -13.0, COURT_X)
+court_line("TeamSideSouth", "x", 13.0, COURT_X)
 
 # =============================================================================
 
@@ -406,17 +681,35 @@ ext_lines.append('[ext_resource type="Script" '
                  'path="res://scripts/systems/hazard_zone.gd" id="H"]')
 ext_lines.append('[ext_resource type="Script" '
                  'path="res://scripts/systems/kill_plane.gd" id="K"]')
+ext_lines.append('[ext_resource type="Script" '
+                 'path="res://scripts/systems/env_toon_pass.gd" id="T"]')
 
+# ⚠️ THE FLOOR IS 120x120 AND THAT IS A BACKDROP CHANGE, NOT AN ARENA RESIZE.
+# The colliders that bound play — Bounds/Wall* at ±8.6 and ±18.0 — are byte-for-
+# byte what they were. Part 4's standing rule bans changing arena SCALE in the
+# same commit as arena ART; this changes neither. It stops the world ending in a
+# visible edge 20 m from the player.
+#
+# ⚠️ THE FLOOR'S COLLISION AND ITS MESH ARE AT DIFFERENT HEIGHTS ON PURPOSE, AND
+# IT IS NOT A MISTAKE TO TIDY UP.
+#   * The COLLISION top is at GROUND_Y (0.100) — the paving top. That is what a
+#     character stands on, and it is the fix for feet sinking 100 mm into the
+#     visible road, which is what a 0.0 collision top under 0.1 paving meant.
+#   * The MESH top is 15 mm lower (0.085). It has to be BELOW the paving rather
+#     than level with it: two coplanar surfaces z-fight, and a shimmering plane
+#     under the whole map is a worse artefact than a 15 mm lip 26 m away at the
+#     apron's edge, where the fog is already halfway in.
+# Box height is 1, so a node offset is (wanted top - 0.5).
 SUBS = '''[sub_resource type="BoxShape3D" id="Shape_floor"]
-size = Vector3(40, 1, 40)
+size = Vector3(120, 1, 120)
 
 [sub_resource type="StandardMaterial3D" id="Mat_floor"]
-albedo_color = Color(0.29020, 0.30588, 0.34118, 1)
+albedo_color = Color(0.32941, 0.31765, 0.29412, 1)
 roughness = 1.0
 
 [sub_resource type="BoxMesh" id="Mesh_floor"]
 material = SubResource("Mat_floor")
-size = Vector3(40, 1, 40)
+size = Vector3(120, 1, 120)
 
 [sub_resource type="BoxShape3D" id="Shape_wall_z"]
 size = Vector3(1, 12, 40)
@@ -425,17 +718,19 @@ size = Vector3(1, 12, 40)
 size = Vector3(20, 12, 1)
 
 [sub_resource type="BoxShape3D" id="Shape_killplane"]
-size = Vector3(90, 4, 90)
+size = Vector3(260, 4, 260)
 
 [sub_resource type="BoxShape3D" id="Shape_hazard"]
 size = Vector3(3.6, 3, 11)
 
 [sub_resource type="ProceduralSkyMaterial" id="Sky_mat"]
-sky_top_color = Color(0.286, 0.565, 0.851, 1)
-sky_horizon_color = Color(0.91, 0.784, 0.604, 1)
-sky_curve = 0.18
-ground_bottom_color = Color(0.227, 0.243, 0.278, 1)
-ground_horizon_color = Color(0.91, 0.784, 0.604, 1)
+sky_top_color = Color(0.2627, 0.4941, 0.7686, 1)
+sky_horizon_color = Color(0.8863, 0.7686, 0.5961, 1)
+sky_curve = 0.42
+sky_energy_multiplier = 0.85
+ground_bottom_color = Color(0.6784, 0.6118, 0.5216, 1)
+ground_horizon_color = Color(0.8863, 0.7686, 0.5961, 1)
+ground_curve = 0.06
 
 [sub_resource type="Sky" id="Sky_res"]
 sky_material = SubResource("Sky_mat")
@@ -443,27 +738,54 @@ sky_material = SubResource("Sky_mat")
 [sub_resource type="Environment" id="Env_eskinita"]
 background_mode = 2
 sky = SubResource("Sky_res")
-ambient_light_source = 2
-ambient_light_color = Color(0.416, 0.514, 0.671, 1)
+ambient_light_source = 3
 ambient_light_energy = 0.55
-tonemap_mode = 0
-tonemap_white = 1.2
+ambient_light_sky_contribution = 0.85
+reflected_light_source = 2
+tonemap_mode = 3
+tonemap_exposure = 0.92
+tonemap_white = 1.9
 ssao_enabled = true
-ssao_radius = 1.1
-ssao_intensity = 2.6
-ssao_power = 1.6
-ssao_detail = 0.4
+ssao_radius = 0.7
+ssao_intensity = 3.2
+ssao_power = 1.35
+ssao_detail = 0.6
+ssao_horizon = 0.05
+ssil_enabled = true
+ssil_radius = 3.5
+ssil_intensity = 0.6
+ssil_sharpness = 0.98
+ssil_normal_rejection = 1.0
+sdfgi_enabled = true
+sdfgi_use_occlusion = true
+sdfgi_bounce_feedback = 0.4
+sdfgi_cascades = 4
+sdfgi_min_cell_size = 0.15
+sdfgi_cascade0_distance = 19.2
+sdfgi_max_distance = 153.6
+sdfgi_y_scale = 1
+sdfgi_energy = 0.8
+glow_enabled = true
+glow_intensity = 0.4
+glow_strength = 0.9
+glow_bloom = 0.06
+glow_blend_mode = 1
+glow_hdr_threshold = 1.35
+glow_hdr_scale = 2.0
 fog_enabled = true
-fog_light_color = Color(0.855, 0.784, 0.667, 1)
-fog_light_energy = 1.0
-fog_sun_scatter = 0.15
-fog_density = 0.0048
-fog_sky_affect = 0.55
-fog_aerial_perspective = 0.35
+fog_mode = 1
+fog_light_color = Color(0.8784, 0.8118, 0.6941, 1)
+fog_light_energy = 0.9
+fog_sun_scatter = 0.28
+fog_density = 0.0
+fog_sky_affect = 0.75
+fog_depth_curve = 1.1
+fog_depth_begin = 18.0
+fog_depth_end = 72.0
 adjustment_enabled = true
 adjustment_brightness = 1.0
-adjustment_contrast = 1.08
-adjustment_saturation = 1.2
+adjustment_contrast = 1.09
+adjustment_saturation = 1.18
 '''
 
 # ⚠️ NO `#` COMMENTS INSIDE THE EMITTED .tscn. Godot's scene format does not use
@@ -473,43 +795,42 @@ adjustment_saturation = 1.2
 # Explain things HERE, in the generator, where they also survive an editor save.
 #
 # Spawn0-3 are ROLE slots (Can / Taya / Attacker / Tsinelas), not team slots —
-# main.gd's _role_slot() picks which one each unit occupies THIS round, and it
-# changes every round since team_a_is_can flips. Centred on this map's own
-# base_circle_decal (0,0,0) and its south throwing_line_decal (0,0,6) below,
-# instead of the old scheme that put both of one team's units at one end of
-# the alley and both of the other team's at the far end regardless of which
-# side was actually defending. Spawn0 (Can) sits ON the circle; Spawn1 (Taya)
-# stands a couple of units BEHIND it at negative Z (2026-07-28, user
-# feedback: "the person in same team is behind that can") -- the opposite
-# side from Spawn2, so the Taya is watching past the Can toward the
-# attacker rather than standing off to the attacker's own side; Spawn2
-# (Attacker) is AT the throwing line Art_Direction.md §9 derived the 6.0
-# distance for, facing back toward the Can/Taya (-Z, "the person with
-# tsinelas should be staring at them"); Spawn3 (Tsinelas) starts beside the
-# Attacker -- main.gd auto-hands it to them at round start, so it is rarely
-# loose there for more than an instant.
+# main.gd's _role_slot() picks which one each unit occupies THIS round. Their
+# heights are unchanged: the paving under them was already at 0.100 and still is,
+# so raising the FLOOR to meet it moved nothing they stand on.
 HEAD = '''[node name="Eskinita" type="Node3D"]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Env_eskinita")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
-transform = Transform3D(0.8, -0.4, 0.45, 0, 0.75, 0.66, -0.6, -0.53, 0.6, 0, 8, 0)
-light_color = Color(1, 0.941, 0.847, 1)
-light_energy = 1.25
-light_angular_distance = 1.2
+transform = Transform3D(0.86603, -0.31889, 0.38549, 0, 0.77088, 0.63698, -0.5, -0.55164, 0.66692, 0, 12, 0)
+light_color = Color(1, 0.90196, 0.75294, 1)
+light_energy = 1.75
+light_indirect_energy = 1.3
+light_angular_distance = 0.5
+light_specular = 0.35
 shadow_enabled = true
-shadow_bias = 0.03
-shadow_normal_bias = 1.5
-directional_shadow_max_distance = 60.0
+shadow_bias = 0.06
+shadow_normal_bias = 3.0
+shadow_blur = 0.9
+shadow_opacity = 1.0
+directional_shadow_mode = 2
+directional_shadow_split_1 = 0.08
+directional_shadow_split_2 = 0.22
+directional_shadow_split_3 = 0.52
+directional_shadow_blend_splits = true
+directional_shadow_fade_start = 0.9
+directional_shadow_max_distance = 58.0
 
 [node name="Floor" type="StaticBody3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.4, 0)
 shape = SubResource("Shape_floor")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Floor"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.415, 0)
 mesh = SubResource("Mesh_floor")
 
 [node name="Bounds" type="Node3D" parent="."]
@@ -558,6 +879,8 @@ lifetime = 0.0
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Hazards/HazardZone"]
 shape = SubResource("Shape_hazard")
 
+[node name="KanalVisual" type="Node3D" parent="Hazards"]
+
 [node name="SpawnPoints" type="Node3D" parent="."]
 
 [node name="Spawn0" type="Marker3D" parent="SpawnPoints"]
@@ -573,12 +896,15 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0, 0.8, 6.0)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.3, 0.16, 6.3)
 
 [node name="Dressing" type="Node3D" parent="."]
+script = ExtResource("T")
 
 [node name="Layer1" type="Node3D" parent="Dressing"]
 
 [node name="Layer2" type="Node3D" parent="Dressing"]
 
 [node name="Layer3" type="Node3D" parent="Dressing"]
+
+[node name="Belt" type="Node3D" parent="Dressing"]
 
 [node name="Road" type="Node3D" parent="Dressing"]
 
@@ -595,8 +921,7 @@ for parent, name, mid, tf in order:
         # `mesh` property. Emitting a kit piece as a MeshInstance3D with
         # `mesh = ExtResource(...)` does NOT error — Godot loads the scene with
         # that node simply blank. That is exactly how an entire street of houses
-        # rendered as empty road on the first run of checklist 7.4: the nodes
-        # were all present, the transforms were all correct, and nothing drew.
+        # rendered as empty road on the first run of checklist 7.4.
         body.append(f'\n[node name="{name}" parent="{parent}" instance=ExtResource("{mid}")]')
         body.append(f'transform = {tf}')
     else:
@@ -613,17 +938,25 @@ load_steps = len(ext_lines) + n_sub + 1
 out = (f'[gd_scene load_steps={load_steps} format=3]\n\n'
        + "\n".join(ext_lines) + "\n\n" + SUBS + "\n" + HEAD + "\n".join(body) + "\n")
 
-# ⚠️ BEFORE WRITING, NOT AFTER. A floating marking must not reach the scene file
-# at all — half the cost of this bug every previous time was that a broken scene
-# got committed, imported and played before anyone looked at it.
+# ⚠️ BEFORE WRITING, NOT AFTER. A floating marking or a sunk prop must not reach
+# the scene file at all — half the cost of this bug every previous time was that
+# a broken scene got committed, imported and played before anyone looked at it.
 n_marks = surfaces.verify()
 
+overlaps = surfaces.overlaps("Layer1")
 with open("scenes/maps/Eskinita.tscn", "w", encoding="utf-8", newline="\n") as f:
     f.write(out)
 
-print(f"wrote scenes/maps/Eskinita.tscn")
+print("wrote scenes/maps/Eskinita.tscn")
 print(f"  markings      : {n_marks} verified embedded")
+print(f"  dressing      : verified grounded (floor+paving both at y={GROUND_Y})")
 print(f"  ext_resources : {len(ext_lines)}")
 print(f"  sub_resources : {n_sub}")
 print(f"  load_steps    : {load_steps}")
 print(f"  mesh instances: {len(order)}")
+if overlaps:
+    print(f"  ⚠ Layer1 footprint overlaps: {len(overlaps)}")
+    for a, b, ox, oz in overlaps[:8]:
+        print(f"      {a} <-> {b}  ({ox:.2f} x {oz:.2f} m)")
+else:
+    print("  Layer1 overlap: none")

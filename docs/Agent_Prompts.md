@@ -428,6 +428,19 @@ safe" is what caused the bug, not what fixes it. RENDER AND LOOK (tools/render_p
 mode, NOT --headless) before calling any placement done — reading the placement code is not a
 substitute for a screenshot with no gap or shadow under the line.
 
+⚠️ THE SAME BUG EXISTS WITH THE SIGN FLIPPED, AND IT IS LIVE RIGHT NOW (2026-07-29). floorcheck.py
+only verifies MARKINGS, so DRESSING is unchecked — and every interior prop on Eskinita is currently
+sunk exactly 100 mm INTO the road, because 7.4b raised the walkable surface to y=0.100 and add()
+still places at a raw y=0.0 while add_kit() derives its own. "Not floating" is not the standard;
+"sitting on whatever is actually underneath it, verified by the build" is. See Checklist.md 8.1.
+
+⚠️ READ Art_Direction.md PART 6 (§8.0 THE AUDIT) BEFORE ACTING ON ANY VISUAL COMPLAINT. It is the
+live art standard as of 2026-07-29 and it measures which reported problems are real. Two are NOT
+what they look like: the "z-fighting road lines" are already solved by floorcheck.py's sandwich rule
+(do NOT re-tune it — it is a build gate that took three sessions to get right), and the "grey
+asphalt desert" is the Floor box's own material showing outside the paving, not the road. Fixing a
+complaint's stated cause instead of its measured cause is how this map got here.
+
 SETUP
   git fetch origin && git switch integration && git pull --ff-only
   git config user.name "M4tyu633" && git config user.email "matthewtlabrador@gmail.com"

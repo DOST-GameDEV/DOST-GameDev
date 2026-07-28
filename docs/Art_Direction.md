@@ -6,10 +6,14 @@
 were merged on 2026-07-28 because nobody could tell which one was current. Anything that pointed
 at those now points here.
 
-**Read Part 1 first. It is the only part that is a live plan.** Parts 2-4 are reference and
-history: the moodboard record, the palette, the modelling rules and the kit spec are all still
-authoritative, but their *task lists* are stale — several items in them have shipped. Where a
-task list in Parts 2-4 disagrees with `Checklist.md`, the checklist wins.
+**Read Part 6 first, then Part 1.** Part 6 (added 2026-07-29) is the live environment/lighting
+standard and it supersedes any *visual* guidance elsewhere in this file. **Inside Part 6, read
+§8.8 (“what actually shipped”) before §8.0–§8.7** — those are the plan, §8.8 is the execution
+record, and where they disagree §8.8 is right. Part 1 remains the live
+plan for proportion, props and playtest findings. Parts 2-4 are reference and history: the moodboard
+record, the palette, the modelling rules and the kit spec are all still authoritative, but their
+*task lists* are stale — several items in them have shipped. Where a task list in Parts 2-5
+disagrees with `Checklist.md`, the checklist wins.
 
 ## Contents
 
@@ -19,6 +23,8 @@ task list in Parts 2-4 disagrees with `Checklist.md`, the checklist wins.
 | **2** | Moodboard record, `UiTheme` palette, modelling approach, generator traps | Reference — yes. Task list — no |
 | **3** | Environment kit spec: piece list, height tiers, boundary technique, `ENV_*` band | Reference — yes |
 | **4** | Original map art-direction brief | History only |
+| **5** | Live demo script, trailer beat sheet, demo-video outline (checklist 6.2) | Reference — yes |
+| **6** | **The Environment Pass — void/boundary, lighting, grounding, wind (Phase 8)** | **Yes — this is the art standard** |
 
 ---
 
@@ -1916,3 +1922,538 @@ Flagged for a human, per the brief's rule that a design lane files questions rat
 | 4 | Audio — whether there is any, and who owns it | No owner assigned anywhere in the plan |
 | 5 | Whether Bayan Plaza is shown at all | Depends entirely on whether 0.4 ever plays it |
 
+
+---
+
+<a id="part-6"></a>
+
+# Part 6 — The Environment Pass (checklist Phase 8). THIS IS THE LIVE ART STANDARD.
+
+*Opened 2026-07-29 on the human's call. Verbatim: the map is a **"floating island sitting in an
+endless empty void"**, the street is a **"barren grey asphalt desert"**, the banners are **"stiff,
+lifeless cardboard boxes"**, there are **"vehicles floating in mid-air and parked on top of building
+roofs"**, and the lighting is **"flat with harsh, pitch-black shadows"**.*
+
+**Read this before Part 1's queue.** Where Part 6 and Parts 1–5 disagree about how the world should
+look, Part 6 wins — it is newer and it is the only part written against a measured audit of the
+scene that actually ships.
+
+**This phase changes no mechanics.** Same standing rule as Phase 7, for the same reason: a
+movement-feel regression that lands in the same commit as a re-dress is unattributable. Arena
+footprint, `CONFINEMENT_RADIUS`, spawn slots, collision walls, the round loop and the throw are all
+out of scope. If a fix below appears to need one of them, it is the wrong fix — file it instead.
+
+---
+
+## 8.0 · The audit — what is actually wrong, measured, not assumed
+
+⚠️ **Read this section before proposing any fix.** Three of the six complaints have a cause that is
+NOT the obvious one, and one of them is already solved in the generator and must not be "fixed"
+again. Every number below was read out of the committed assets on 2026-07-29 with
+`tools/maps/floorcheck.py`'s own `mesh_bounds()`, against `integration` at `923f16f`.
+
+**Baseline established first:** `python tools/maps/build_eskinita.py` reproduces the committed
+`scenes/maps/Eskinita.tscn` **byte-for-byte**. The generator is genuinely the source of truth and
+the scene is not stale, so every defect below is a defect *in the generator* and must be fixed
+there. Do not hand-edit the scene.
+
+### The five confirmed defects, in the order they cost the most
+
+#### A. `BUILDING_DEPTH` is measured from ONE building type and applied to ELEVEN
+
+`build_eskinita.py` measures `building-type-a`, gets a rotated depth of **5.14**, and then places
+every one of the eleven types in `BUILDING_TYPES` at that same centre offset (`x = ±10.57`) as
+though they were all that deep. They are not:
+
+| type | depth (X, scaled) | resulting face X | verdict |
+|---|---|---|---|
+| `n` | 6.89 | **7.13** | **0.87 m inside the playable alley** |
+| `b` | 5.70 | **7.72** | inside the alley |
+| `s` | 5.43 | **7.85** | inside the alley |
+| `a` `c` `o` `i` `d` | 5.14 | 8.00 | correct (this is the one that was measured) |
+| `l` | 5.10 | 8.02 | ~ok |
+| `j` | 4.58 | **8.28** | 0.28 m gap — bare floor shows at the wall line |
+
+The collision ring is at `x = ±8.6`. Five of eleven house fronts stand **in front of it**, so a
+player walks *into* the visible facade and is stopped by nothing, then stops dead in open air
+0.6–1.5 m further out. That is the single most "broken prototype" artefact on the map and it is
+also a **gameplay** defect, not only a visual one.
+
+#### B. The same file assumes every building is narrower than the bay. Five are not.
+
+`BUILDING_BAY = 6.6`. Measured widths along Z: `b` **9.14**, `n` **8.92**, `d` **8.78**, `s` 7.03,
+`j` 6.85. Those five **interpenetrate their own neighbours** by up to 2.5 m — two houses sharing the
+same volume, roofs crossing through walls. Combined with A, this is very probably what reads as
+*"vehicles parked on top of building roofs"*: the driveway bays put a car at `x = ±9.9` spanning
+**X 7.5 … 12.3**, which is squarely inside the 8.0 … 13.1 band the houses occupy, and an
+over-wide neighbour spills sideways into that same driveway gap. The car is not on a roof; the car
+and the house are **inside each other**, and from a low camera that is what you see.
+
+> ⚠️ **The fix is not to shrink the cars.** The fix is that neither the depth NOR the width of a
+> kit building may be assumed — both must be read per piece from the mesh, exactly the way
+> `add_kit()` already reads per-piece *height* to ground it. A. and B. are one bug wearing two
+> hats: **`add_kit()` grounds on Y and guesses on X and Z.**
+
+#### C. Dressing is grounded against the OLD floor height. All of it is 100 mm underground.
+
+Phase 7.4b paved the alley with `kits/town/road` at `ROAD_SCALE = 4.0`, which put the walkable
+surface at **y = 0.100**. Every interior prop is still placed with plain `add(..., y=0.0)` — crates,
+tyres, oil drums, monobloc chairs, bollards, tricycles and the electric posts. Measured against the
+real road surface, **every one of them is sunk exactly 100 mm into the asphalt.**
+
+This is the floating-geometry bug with the sign flipped, and it went unnoticed for a specific,
+fixable reason: **`Surfaces.verify()` only iterates `self._markings`.** `floorcheck.py` was built as
+a tripwire for field markings and it is excellent at that — 14 markings verified embedded on every
+run — but dressing is recorded into `_pieces` and then **never checked against anything**. The
+guard has a hole precisely where the new assets are.
+
+#### D. The void is real, and the fog was never dense enough to hide it
+
+- The `Floor` box is 40 × 40, so the world **ends hard at x, z = ±20**.
+- Layer 2's skyline sits at `x = ±18.5 … ±20.5` — the far row is **centred on the floor edge**, so
+  those houses half-overhang nothing. That is the *"floating island"*, literally.
+- `fog_density = 0.0048` reaches roughly **17 % opacity across the entire 40 m map**. It cannot
+  hide an edge it barely tints. Whoever set it tuned it as haze, not as a horizon.
+- There is no `fog_depth_end`, no distant silhouette layer, and nothing at all beyond ±20.5.
+
+#### E. `project.godot` has no `[rendering]` section whatsoever
+
+Every renderer setting in this project is an **engine default**. Most importantly: **MSAA is off and
+there is no screen-space AA.** This game's entire look is hard silhouettes plus an inflated-normal
+ink outline; an unantialiased ink outline crawls and stair-steps on every frame, and that alone
+reads as "prototype" no matter how good the assets are. There is also no physics interpolation
+(see §8.5), and shadow filter quality is at its default rather than chosen.
+
+### Two complaints whose stated cause is WRONG — do not "fix" these
+
+> #### ❌ "The road lines are horribly z-fighting and clipping through the ground."
+>
+> **Already solved, and solved well. Do not touch it.** `floorcheck.py`'s sandwich rule
+> (`MARK_PROUD` 2 mm proud on top, underside *below* the surface) plus `add_line()`'s automatic
+> per-height splitting means a floating or z-fighting marking is a **build failure** — the scene is
+> not written at all. This was fixed across three sessions and the reasoning is preserved in the
+> module header. What the human is actually seeing is far more likely to be **E** (no AA, so the
+> 2 mm-proud paint edge crawls) plus **C** (props punched 100 mm through the road all around those
+> lines). Fix E and C, then re-look before changing one number in `floorcheck.py`.
+>
+> ⚠️ If a Decal-node rewrite is ever proposed for markings, it must first explain why it is better
+> than a guard that makes the failure impossible at build time. Decals bring their own problems
+> (projection over kerbs, decal atlas, `distance_fade`) and would delete a working tripwire.
+
+> #### ⚠️ "The street looks like a barren grey asphalt desert."
+>
+> Half true, and the half that is true is not the road. The road IS textured kit paving. The grey
+> is the `Floor` box's own `Mat_floor` (`0.290, 0.306, 0.341`, roughness 1.0), which is visible in
+> a **12 m band on both sides** between where the paving stops (x = ±8) and where the houses' back
+> faces are — and everywhere beyond them out to ±20. Fixing this is a *coverage* problem (§8.1
+> Ring 1), not a "make the asphalt prettier" problem.
+
+---
+
+## 8.1 · Kill the void — the boundary strategy
+
+**The goal is that no camera angle a player can reach ever shows an edge.** Not "an edge that looks
+nicer" — no edge. Four rings, cheapest first, each one covering the failure of the one before it.
+
+**Ring 0 — extend the ground.** The `Floor` box goes 40 × 40 → **120 × 120**, keeping its top
+surface at y = 0 and keeping the -0.5 offset. This is one `Vector3` in `SUBS` and it is free: it is
+a single box, it carries the map's only floor collision, and 120 m is comfortably past the fog
+wall in Ring 3.
+
+> ⚠️ **This does NOT resize the arena.** The collision ring (`Bounds/Wall*` at ±8.6 / ±18.0), the
+> kill plane, the spawns and `CONFINEMENT_BOX_RADIUS` are all untouched — the player still cannot
+> reach past ±8.6. Part 4's standing rule bans changing arena *scale* alongside arena *art*; this
+> changes neither. It extends the **backdrop**. Say so in the commit message, because a 40 → 120
+> diff on a floor box looks exactly like an arena resize to a reviewer.
+
+**Ring 1 — a paved apron, so the grey band dies.** Extend the `kits/town/road` grid from the current
+±8 out to roughly ±26 in X and past ±22 in Z, breaking it up with `kits/city/driveway-long` and
+`path-long` so it does not read as one tiled plane. This is what actually answers the "grey desert"
+complaint (§8.0). Cost is ~200 more instances of a 2-triangle-thick slab; if that is too many, the
+outer apron becomes a single scaled box with the road's own material instead — decide **by
+rendering both**, not by arguing about it.
+
+**Ring 2 — a silhouette belt at ±26 … ±45.** Two or three staggered rows of `building-type-*` at
+`CITY_SCALE` and above, deliberately mis-aligned in yaw and depth, with `tree-large` filling the
+seams. These exist to be **read at 60 % fog opacity and never approached**, so:
+- they may be placed on a coarse jitter table rather than a bay grid;
+- they get **no collision** (nothing does — dressing has never carried collision on this map);
+- they must still be grounded through `add_kit()` so they cannot float, because the mistake is just
+  as invisible at 40 m as at 4 m.
+
+**Ring 3 — fog that actually reaches.** The current `0.0048` is roughly 17 % over 40 m. Target
+**~95 % opacity at 55–65 m**, which is where Ring 2's back rows sit, so the belt fades into the sky
+instead of ending. In Godot 4 that is either `fog_density ≈ 0.045` with `fog_aerial_perspective`
+raised, or — better and more controllable — **depth fog with an explicit `fog_depth_end` around
+70**, so the horizon distance is a stated number a reviewer can check rather than an exponential
+curve someone tuned by eye. Keep `fog_sky_affect` high enough that the fog colour and the sky's own
+`sky_horizon_color` (`0.910, 0.784, 0.604`) match at the horizon line — **if those two colours
+disagree, the belt reappears as a visible band and the whole ring fails.**
+
+**Ring 4 — the sky does the rest.** `ProceduralSkyMaterial` already carries a warm horizon.
+`ground_bottom_color` should be pulled toward the fog colour so that any downward glance past the
+apron sees haze, not a distinct ground hemisphere.
+
+**Acceptance for §8.1 is one specific shot:** free-cam to `y = 25` looking down the alley, and to
+each of the four collision-wall corners looking outward. **Zero visible ground edge, zero visible
+sky-to-ground seam, in all five.** A render that only proves the eye-level view is not acceptance —
+eye level was never where this bug was visible.
+
+---
+
+## 8.2 · Make it lived-in without breaking the throwing lane
+
+The alley is currently dressed with **11 clutter pieces and 3 tricycles for 34 m of street**. It is
+not that the dressing is bad; there is almost none of it.
+
+**The height law is unchanged and non-negotiable** (Part 3 §2): an FPP Person's eye is at
+**y = 1.25**, so anything loose in the alley is **≤ 1.0 tall**, and anything taller lives **against
+the wall line** where it cannot enter a throwing lane. Phase 8 adds a second, sharper rule because
+Phase 8 is where the density gets high enough to matter:
+
+> ### ⚠️ THE LANE LAW — new in Phase 8
+> Draw the two throwing lanes: **`x ∈ [−2.5, +2.5]` for all z between the throwing lines
+> (`z = ±6`) and the base circle.** **Nothing new is placed inside that corridor, at any height.**
+> Everything Phase 8 adds goes at `|x| > 3.5`, and every piece between 3.5 and the wall line is
+> ≤ 1.0 tall. The existing clutter table already respects this by accident; Phase 8 makes it a rule
+> so the next person adding forty props does not have to rediscover it by playtest.
+
+Where the density goes, in priority order:
+
+1. **The kerb strip, `|x| = 6.5 … 8.0`** — the widest genuinely safe band. Sacks, crates, stacked
+   tyres, buckets, plastic stools, a swept pile. This is where "lived-in" actually comes from.
+2. **The driveway bays** (currently one car each, once A and B are fixed and the bay is a real gap)
+   — a tricycle nosed in, a chair, laundry, a hose.
+3. **Alcoves between houses.** Once B is fixed, per-piece widths against a 6.6 bay leave real gaps.
+   Those gaps are the best set-dressing opportunity on the map and today they are filled with
+   *another building's roof*.
+4. **The overhead layer** — currently 6 posts and 5 sampay lines. Double the sampay density and let
+   lines run at different heights; overhead is the highest read-per-triangle layer in the kit
+   (Part 3) and it is the cheapest possible answer to "sterile".
+
+**Seeded, never random.** Same rule as the existing type cycle: a layout that changes between two
+runs of the generator cannot be reviewed in a diff and cannot be bisected when something floats.
+
+⚠️ **One existing placement already violates the spirit of this and should be re-checked while
+here:** the Layer-2 street trees are placed at `x = ±7.4` at `CITY_SCALE`, i.e. **inside the
+playable width** (`±8`) and **3.8 m tall**. They predate the lane law and they sit outside the
+lanes, so they are not a blocker — but they are the reason to write the rule down now.
+
+---
+
+## 8.3 · Lighting, tonemapping and the shading split
+
+### The settings, with the reason for each
+
+| Setting | Now | Phase 8 | Why |
+|---|---|---|---|
+| `tonemap_mode` | **0 (Linear)** | **3 (ACES)** | Linear is why highlights blow flat and shadows crush to black. ACES is the single highest-value line in this whole phase. |
+| `tonemap_exposure` / `white` | 1.0 / 1.2 | retune **after** ACES | ACES changes the whole curve; retuning white before switching is wasted work. |
+| `ambient_light_source` | 2 (Color) | keep, **or** 3 (Sky) | Sky ambient gets warm bounce for free. Measure the cost first — it is not free on low-end hardware, and this ships to a judging laptop. |
+| `sdfgi_enabled` | absent | **evaluate, do not assume** | Real bounce light, and it is the correct answer to "flat". It is also the most expensive thing in this document. **Gate it behind a settings toggle and a measured frame time, or leave it out.** |
+| `ssao_*` | enabled, radius 1.1, intensity 2.6 | mostly keep; retune radius | SSAO is already on. The complaint about "zero contact occlusion" is **mostly §8.0 C** — props sunk 100 mm into the road have no contact point to occlude. Fix the grounding first, then judge SSAO. |
+| `ssil_enabled` | absent | **yes** | Cheap next to SDFGI and it is what actually fills black shadow interiors with bounced colour. Try this **before** reaching for SDFGI. |
+| `glow_*` | absent | light touch | Golden-hour bloom on the warm end only. Easy to overdo; keep `glow_intensity` low. |
+| `adjustment_contrast` | 1.08 | **lower toward 1.0** | Contrast on top of a Linear tonemap is part of why shadows are pitch black. Under ACES this is fighting the curve. |
+
+### The DirectionalLight3D
+
+`shadow_bias = 0.03` with `shadow_normal_bias = 1.5` is high — high bias is what produces detached,
+peter-panning contact shadows, which is the other half of "no contact occlusion". Lower both once
+the props are actually sitting on the ground (§8.0 C), and add **`shadow_blur`** plus a shorter
+`directional_shadow_max_distance` for the near split. Golden hour means the light angle drops and
+`light_color` warms further; keep `light_angular_distance` ≥ 1.0 so shadow edges stay soft.
+
+### ⚠️ The shading split — the finding nobody has written down before
+
+`character_visual.gd::_apply_toon_pass()` is the **only** thing in the project that applies
+`toon.gdshader`, and it runs on characters and Props. **No map dressing gets it.** So every house,
+tree, car and road tile renders with Kenney's imported `StandardMaterial3D`, while every character
+and hero prop renders `diffuse_toon` with `SPECULAR = 0.0`. **The world and the actors are lit by
+two different shading models.** That is a real contributor to the "sterile / doesn't cohere" read,
+and it is invisible in any screenshot of a character alone.
+
+This is a **decision for a human, not a fix to apply blind** — see §8.7 Q1. Applying the toon pass
+to 111 dressing instances has a real cost and would change the look of the entire map at once.
+
+### Shader enhancements — the two that are worth it
+
+**Rim light in `toon.gdshader`.** A `light()`-stage or fragment-stage `1.0 - dot(NORMAL, VIEW)`
+term, tinted warm, uniform-gated and **defaulting to 0.0**.
+> ⚠️ Gate it and default it off. This shader is on every character and every hero prop, including
+> the Can, whose colour is load-bearing for the OFFENSE/DEFENSE rule (`Dev_Plan.md` §4.2). A rim
+> term that ships on by default recolours a team-critical silhouette. Turn it on per material.
+
+**Colour banding.** `diffuse_toon` already gives a 2-band step. Adding a quantise on top is where
+this look usually goes wrong — it fights the kit atlas, which is a palette texture and already
+banded by construction. **Try rim first, render, and only add banding if it is still needed.**
+
+**Wind displacement, for sampay and banners.** A `vertex()`-stage shader is the right call and it
+does not need the toon shader touched — it is a separate material for the cloth:
+
+```glsl
+// Sway is proportional to how far a vertex hangs BELOW its anchor, so the
+// pinned edge stays pinned and the free hem moves most. Phase-offset by world
+// position, so a row of garments does not swing in lockstep.
+uniform float wind_strength = 0.06;
+uniform float wind_speed    = 1.4;
+uniform float anchor_y      = 2.62;   // the line's own height; hem is at anchor - drop
+
+void vertex() {
+    float drop  = clamp((anchor_y - VERTEX.y) / 0.62, 0.0, 1.0);
+    float phase = (MODEL_MATRIX[3].x + MODEL_MATRIX[3].z) * 0.7;
+    float t     = TIME * wind_speed + phase;
+    VERTEX.x += sin(t)       * drop * drop * wind_strength;
+    VERTEX.z += sin(t * 0.7) * drop * drop * wind_strength * 0.5;
+}
+```
+
+> ⚠️ **The wind shader is the SECOND half of the banner fix, not the first.** The garments are
+> currently `add_extrude(_rect_yaw(...), y - 0.62, y)` in `env_kit.gd::_laundry_line()` — **literal
+> extruded boxes, 3 cm thick**. They read as cardboard because they *are* cardboard: a solid
+> rectangular prism. Swaying a box gives a swaying box. **Fix the mesh first** (a thin double-sided
+> quad with a few vertical segments so it can actually bend, and a hem that is not perfectly
+> straight), *then* animate it. A vertex shader on a 2-vertex-tall box cannot bend at all — it can
+> only translate, which is worse than not moving.
+>
+> ⚠️ Wind-displaced geometry and the outline shader do not agree unless the outline pass applies
+> the **same** displacement. Either give the cloth no outline material, or duplicate the vertex
+> function into the outline. Silently letting them disagree gives a garment that swims inside a
+> stationary ink border.
+
+---
+
+## 8.4 · Grounding — close the hole in floorcheck
+
+**This is the highest-value engineering item in Phase 8**, because it is the one that converts three
+of the five defects from "someone must notice" into "the build fails".
+
+**8.4a — `Surfaces.verify()` must check dressing, not only markings.** Every non-marking piece gets
+a `bottom == height_at(centre)` assertion, reported as `SITS 100mm BELOW/ABOVE the surface at ...`.
+That single change catches all seven sunk prop families in §8.0 C **and** every future one. It needs
+its own tolerance band, looser than the marking sandwich — a chair may legitimately rest a
+millimetre proud, a decal may not.
+
+**8.4b — `add()` must ground the way `add_kit()` does.** Today `add()` takes a raw `y` and
+`add_kit()` takes a `base_y` and derives the rest. That asymmetry *is* the bug: the road moved and
+only one of the two call paths noticed. Give `add()` the same `base_y` semantics and let it query
+`surfaces.height_at()` by default, so **a prop's default vertical position is "on whatever is
+underneath it"** and a raw Y becomes the explicit, commented exception.
+
+**8.4c — per-piece footprints in `add_kit()`, fixing §8.0 A and B.** `add_kit()` already reads
+per-piece bounds for Y. Make it read them for X and Z too, and give the Layer-1 loop:
+- **face alignment** — place a building by the X its *face* should land on, derived from that
+  piece's own depth, instead of a shared `BUILDING_DEPTH` constant taken from `type-a`;
+- **width-aware bays** — advance z by *this* piece's real width plus a gap, instead of a fixed 6.6.
+
+**8.4d — a footprint-overlap check.** With per-piece bounds already in `Surfaces`, an
+axis-aligned overlap test across Layer 1 is nearly free and would have caught §8.0 B on the day it
+landed. Report it as a warning rather than a hard failure — a tree overlapping a fence is fine, two
+houses sharing a volume is not, and the checker cannot tell those apart yet.
+
+> ⚠️ **8.4a will fail the build the moment it is written.** That is the intended outcome, not a
+> problem — it will name all seven sunk prop families at once. Land the checker and the grounding
+> fix (8.4b) **in the same commit**, or `integration` gets a tip that cannot build its own maps.
+
+**And the same treatment goes to `build_bayan_plaza.py`.** It shares `floorcheck.py` and has the
+same `add()`/`add_kit()` asymmetry, and it is still carrying the *older* debt noted in the Phase 7
+handoff (no confinement square). Whatever §8.4 does to Eskinita, Bayan Plaza gets in the same pass
+or it is explicitly deferred in writing.
+
+---
+
+## 8.5 · Camera and viewmodel
+
+`camera_rig.gd` is 770 lines and most of it is scar tissue from real, already-fixed playtest bugs
+(B-91, B-97, B-98, the spring-length and mount-height fixes). **Phase 8 does not rewrite it.** Two
+narrow, checkable items only:
+
+**8.5a — physics interpolation.** `project.godot` has **no `[physics]` section**, so
+`physics/common/physics_interpolation` is off. `camera_rig.gd::_process()` reads
+`carrier.global_position` — a transform written in `_physics_process` — and writes
+`tpp_arm.global_transform` from it every render frame. At any render rate that is not an exact
+multiple of the physics tick, that is textbook judder, and it will be **worst exactly when a player
+is being carried**, which is the case most likely to be blamed on the carry code that was already
+fixed twice. Enable interpolation, or explicitly interpolate the follow; **measure before and
+after with a frame-time capture, because "the camera feels smoother" is not evidence.**
+
+**8.5b — wall clipping and arm clipping are two different bugs. Do not conflate them.**
+- *Wall clipping* is the `SpringArm3D`. The exclusion list is already handled correctly for the
+  carrier and the own body. What is not stated anywhere is the arm's **margin** vs. the camera's
+  **near plane** — if `near` is larger than the margin the arm leaves, the wall clips through at
+  exactly the moment the arm bottoms out.
+- *Viewmodel arm clipping* is a **render-order** problem, not a geometry one, and the code header
+  already records that a previous attempt reintroduced *"arms clip thru body, it feels weird"*.
+  **Read `camera_rig.gd:718–726` before touching this.** The standard fix is a separate viewport /
+  camera layer for the viewmodel with its own near plane. That is a real change with real risk, so
+  it needs a repro from an actual playtest first.
+
+> ⚠️ **Neither 8.5 item ships without a playtest repro.** Every camera fix in this project's history
+> that was made from reasoning rather than from a report either did nothing or caused the next bug.
+> The rig's own comments say so in three places.
+
+---
+
+## 8.6 · Acceptance — what "done" means for Phase 8
+
+Nothing in this phase is `[x]` on a render alone, with two exceptions noted below.
+
+1. `python tools/maps/build_eskinita.py` and `build_bayan_plaza.py` both pass, **with dressing now
+   included in the check** (§8.4a), and the emitted scenes parse clean.
+2. **Five void shots** (§8.1 acceptance) — no visible edge from `y = 25` or from any of the four
+   corners looking outward. *Render is sufficient acceptance for this one; it is a static property
+   of the scene and playing it adds nothing.*
+3. **A grounding sweep** — one low, near-ground shot per dressing family. *Render is sufficient.*
+4. **The lane law holds** — a human throws down both lanes and does not hit new scenery.
+5. **Frame time on the judging laptop**, before and after, with a stated number. SSAO + SSIL +
+   glow + optional SDFGI + ~300 more instances is a real budget. `Checklist.md` Phase 5 already owns
+   "prove it runs outside the editor"; Phase 8 must not quietly spend that budget.
+6. **The human plays it and says the street feels like a street.** This is the actual acceptance
+   criterion for the whole phase, and no amount of the above substitutes for it.
+
+---
+
+## 8.7 · Decisions this phase needs from a human — flagged, not taken
+
+| # | Question | Why it is not mine to take |
+|---|---|---|
+| 1 | **Does the toon pass extend to map dressing?** (§8.3) | It changes the look of the entire world in one commit and has a real per-instance cost. A coherent-but-flatter world and a richer-but-split one are both defensible; this is an art-direction call. |
+| 2 | **Is SDFGI in the budget?** | Highest-cost item here, and it lands on a judging machine nobody has profiled. Needs a target frame time first. |
+| 3 | **Ring 1 apron: tiled kit road, or one scaled box?** | Trade of ~200 instances against a flatter far ground. Decide by rendering both — but somebody has to say which they prefer. |
+| 4 | **Does Bayan Plaza get the same pass, or is it explicitly deferred?** | It is still unresolved whether Bayan Plaza is shown at all (Part 5 §7 open item 5). If it is not shown, §8.4's Bayan work is the only part worth doing there. |
+| 5 | **How much lived-in clutter is too much for a competitive arena?** | §8.2 protects the throwing lanes, but "readable at a glance under pressure" is a feel judgement that only playing settles. |
+
+---
+
+## 8.8 · WHAT ACTUALLY SHIPPED — execution record, 2026-07-29
+
+**Read this before §8.0–8.7.** Those sections are the PLAN, written from a static
+audit. This section is what happened when it was run, and where the two disagree
+this one is right. Six things below were not in the plan at all; two of them were
+bigger than anything the plan had found.
+
+### Decisions taken by the human, applied in full
+
+Toon pass extended to **all** map dressing · SDFGI **on** · apron built from
+**tiled road instances** at one scale · Bayan Plaza **explicitly deferred** ·
+clutter **heavy on the sides**, lane law enforced in code.
+
+### The six things the audit missed
+
+**1. `floorcheck._glb_bounds()` ignored the glTF node hierarchy — the hovering van.**
+It unioned raw accessor `min`/`max` and never composed node transforms. Correct
+for every single-node kit piece (all buildings, all road tiles), and silently
+wrong for the Car Kit, which is five nodes with each wheel translated `+0.30`.
+So a van's measured base read `-0.300` when its real base was `0.000`, and
+`add_kit()`'s `base_y - lo[1] * scale` lifted **every vehicle by 0.3 × 1.75 =
+exactly 525 mm of hover**. This is the reported "the blue van still appears to be
+hovering", and no amount of fixing the *placement* code would have touched it —
+the measurement was the thing that was wrong. Fixed by walking the scene graph
+and pushing each primitive's AABB through the composed matrix.
+
+**2. The floor's collision top was 100 mm below its own paving.**
+`Floor`'s box top sat at `0.000` while the kit road rendered to `0.100`, so
+**every character on this map stood with its feet 100 mm inside the visible
+road** — the sunk-prop bug on the one surface a player touches every frame.
+Eskinita now derives `GROUND_Y` from the paving thickness and uses it for both,
+so bare ground and paved ground are one number and there is no step anywhere.
+The Floor's *mesh* is deliberately 15 mm lower than its *collision* — coplanar
+surfaces z-fight, and a shimmering plane under the whole map is worse than a
+15 mm lip 26 m out.
+
+**3. The road is periwinkle in the asset, not in the lighting.**
+`kits/town/road` has a single UV at `(0.15625, 0.625)`, so the whole tile samples
+one texel, and that texel measures **(160, 168, 201)**. Paved wall-to-wall it
+turned the map lavender. Fixed with a `ROAD_TINT` in `env_toon_pass.gd` rather
+than in the atlas, because that texel is shared with other Fantasy Town pieces.
+
+**4. Shadow bias was over-corrected, and the result was acne.**
+§8.3 said "lower the bias once props are grounded". Lowered to 0.012/0.7 it
+produced regular horizontal striping across trees, rocks and the road — reported
+as *"why are there lines in what u made"*. Diagnosed by **elimination**, not by
+taste: `tools/artifact_probe.gd` renders one view with each effect disabled in
+turn and measures row-to-row difference. Disabling shadows moved the score
+7.14 → 4.48 and nothing else moved it meaningfully. Then swept six bias/angular
+combinations and took the measured best: **0.06 / 3.0, `light_angular_distance`
+0.5, `shadow_blur` 0.9**. ⚠️ Bias is a two-sided failure — too low is acne, too
+high is peter-panning. Neither end is safe to set by eye; sweep it.
+
+**5. One kit atlas means one house, five hundred times.**
+Human call: *"dont use same green house for all."* Every `building-type-*` is one
+mesh, one primitive, one material on one shared `colormap.png`, so cycling eleven
+mesh types varies the SILHOUETTE and cannot vary the COLOUR. Two levers, both
+needed: a seeded per-instance `albedo_color` tint from `UiTheme`'s own
+`ENV_PAINT_*` set (this varies the near-white WALL), and
+`tools/models/make_roof_atlases.py`, which emits five recoloured atlases so the
+ROOF can differ too — a tint cannot fix a roof, because saturated green
+multiplied by anything is still green.
+> ⚠️ **The first version of that tool did nothing and reported success.** It used
+> an exact-colour allowlist of `#61CB8B`, chosen because it was the most common
+> green in the atlas by pixel count. Decoding `building-type-a`'s real
+> `TEXCOORD_0` accessor showed the buildings sample **five** greens — `#42AC7C`,
+> `#5BC588`, `#3DA77A`, `#47B17E`, `#57C286` — and `#61CB8B` is **not one of
+> them**. Measure against the mesh's own UVs, never against atlas pixel counts.
+
+**6. The lane law caught the author, on its first run.**
+The cars were placed nose-in, which turns a 4.8 m vehicle length into its world-X
+footprint and puts it 3.2 m from the alley centre — inside the throwing corridor.
+`assert_clear_of_lane()` failed the build and named `Car_2_W`. They are parallel-
+parked now, which is how a car is parked on a street this narrow anyway.
+
+### The pink lines, and the trap in deleting them
+
+`env_jeepney_lane_decal` is **deleted**, generator included. Measured, it was
+also genuinely broken and it explains both reported line faults at once: placed
+at x=5.2 scaled 0.6 it occupied **x 4.07…6.33, z −6…+6**, while the confinement
+box's east edge is a white line at **x=5.0, z −5…+5**. The pink band lay directly
+on top of that white line for its entire length and ran a further metre past both
+ends — *"they overshoot and merge with white lines"*, exactly.
+
+> ⚠️ **DELETING IT ALONE WOULD HAVE BEEN A WORSE BUG.** The `HazardZone` at x=5.4
+> is a live permanent slow-field (`speed_multiplier` 0.5) and that decal was its
+> only visual tell. The hazard now has a **`gutter_tile` kanal** instead: real 3D
+> geometry that physically explains why you slow down there. No chalk, no pink
+> anywhere on the map, and no invisible trap.
+
+### The white court lines
+
+The corner notches were not a placement error. Each side ran to *exactly* the
+corner point while the crossing line is 80 mm wide and centred on that same
+point, so the outer 40 mm of every corner was covered by neither — four bites out
+of the box. `court_line()` now runs each edge to `half_len + the crossing line's
+half-width`, so the edges overlap through the corner. Overlapping paint is
+invisible; a 40 mm gap is not. All four white lines are also clamped to one
+`COURT_X`, so the box, the throwing lines and the team lines share an edge and
+read as a single court instead of four unrelated stripes.
+
+### Verified, and how
+
+| Claim | Evidence |
+|---|---|
+| No floating or sunk dressing | `floorcheck` now checks all 510 instances; build aborts otherwise |
+| No vehicle hover | every car's measured base reads `0.0000` after the node-transform fix |
+| No building interpenetration | `surfaces.overlaps("Layer1")` reports none |
+| No edge / no void | five renders (`tools/void_probe.gd`) — y=25 plus all four corners |
+| Toon pass on the world | 514 of 530 MeshInstance3D carry it; 468 surfaces kept their kit texture |
+| Kit textures not collapsed | 0 meshes with a null mesh; textures preserved through the pass |
+| Cars keep the CAR atlas | per-instance dump — they were wrongly given the city roof atlas first |
+| Wind on cloth only | 24 surfaces, all `Sampay*`, toon and outline given identical parameters |
+| ACES / SDFGI / SSIL live | read back off the instantiated `Environment` |
+| Colliders untouched | `Bounds/WallEast` still at x = 8.6 in the built scene |
+| Plays | `render_probe match` — characters, HUD, clear lanes, Can on the base circle |
+
+### ⚠️ NOT DONE, and owed before Phase 8 can be called finished
+
+1. **8.3f — no frame-time capture exists, and SDFGI is now on.** This is the one
+   acceptance item in §8.6 that was skipped, and it is the riskiest: SDFGI +
+   SSIL + glow + 4096 shadows + ~510 instances all landed together, on hardware
+   nobody has profiled. Measure before the build goes near a judge.
+2. **No human has played it.** Everything above is render- and parse-verified.
+   Per this project's own standing rule that makes every item `[~]`, never `[x]`.
+3. **Networked play is reasoned about, not tested.** Nothing here touches
+   `network_manager.gd` or `round_manager.gd`, and `env_toon_pass.gd` adds no
+   state, signal, group or RPC — but two instances have not been run.
+4. **Bayan Plaza is opted out** via `Surfaces(check_dressing=False)` and is very
+   likely carrying both the 100 mm sink and the 525 mm vehicle hover. Deleting
+   that one argument is the first step of any work there; the failures it prints
+   are the to-do list.

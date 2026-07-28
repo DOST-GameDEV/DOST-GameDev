@@ -211,3 +211,45 @@ special_ability_p4={
 "deadzone": 0.5,
 "events": []
 }
+
+[physics]
+
+; ⚠️ 2026-07-29, Phase 8.5a. There was no [physics] section at all, so this was
+; off. camera_rig.gd::_process() reads `carrier.global_position` — a transform
+; written in _physics_process — and writes tpp_arm.global_transform from it every
+; RENDER frame. At any refresh rate that is not an exact multiple of the 60 Hz
+; physics tick that is textbook judder, and it is worst precisely while a player
+; is being carried, which is the case most likely to be misdiagnosed as the carry
+; code (already fixed twice: B-91, B-97). Interpolation makes the engine smooth
+; the physics transform between ticks, which is what the camera is then reading.
+physics_interpolation=true
+
+[rendering]
+
+; ⚠️ THIS WHOLE SECTION DID NOT EXIST BEFORE 2026-07-29, so every renderer setting
+; in this project was an engine default — including NO ANTI-ALIASING OF ANY KIND.
+; This game's entire look is hard silhouettes plus an inverted-hull ink outline,
+; and an unantialiased ink outline crawls and stair-steps on every frame. That is
+; a large part of what read as "the road lines are z-fighting": the field markings
+; are correct (floorcheck.py proves it at build time) but their 2mm-proud edges
+; had nothing smoothing them.
+;
+; MSAA 2x, not 4x: the outline is geometry, so MSAA genuinely helps it, and 2x is
+; roughly a third of 4x's bandwidth on the integrated GPUs this has to run on for
+; judging. FXAA on top catches the shader-aliased edges MSAA cannot see. Revisit
+; together if Phase 8.3f's frame-time capture has room.
+anti_aliasing/quality/msaa_3d=1
+anti_aliasing/quality/screen_space_aa=1
+anti_aliasing/quality/use_debanding=true
+
+; Golden-hour SDFGI + SSIL run against a lot of small shadow casters. Soft shadow
+; quality is what keeps contact shadows from reading as hard black stamps under
+; every crate, which was the "harsh, pitch-black shadows" half of the report.
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
+lights_and_shadows/positional_shadow/soft_shadow_filter_quality=3
+lights_and_shadows/directional_shadow/size=4096
+
+; The apron and the silhouette belt add ~400 instances that are ALL visible at
+; once from an elevated angle. Occlusion culling pays for itself the moment the
+; player is at street level, where the house rows hide most of the belt.
+occlusion_culling/use_occlusion_culling=true
