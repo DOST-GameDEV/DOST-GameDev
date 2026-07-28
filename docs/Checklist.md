@@ -694,17 +694,24 @@ touch map scenes.
       F-3's acceptance test and B-67's acceptance test are both unrunnable —
       neither can be honestly ticked.**
 - [ ] **5.2 · Produce a release build and confirm it launches to the menu.** 🤖 Sonnet, medium ⛔ 5.1
-- [ ] **5.3 · Strip Local Match and the debug switcher.** 🤖 Sonnet, high ⛔ 0.4, 4.4
-      ⚠️ **RESOLVED CONFLICT — do NOT simply delete the harness.** `Art_Direction.md` Part 5 §3
-      makes the local 4-unit harness the demo failure-ladder's rung 3 — the only fallback that
-      needs no network. **Keep the harness, gate it behind a launch argument, and strip only the
-      on-screen debug overlay.** That satisfies this item's real intent (the build must not *look*
-      like a prototype) without removing the only network-free way to demo it.
-      Run the removal checklist in `Dev_Plan.md` §3.5.5 and confirm the
-      verification grep comes back empty. High effort because it touches
-      `Main.tscn` and `main.gd`'s spawn paths. **Do it late** — it is the only
-      way to playtest without four laptops, so it dies after the last playtest,
-      not before.
+- [ ] **5.3 · ⚠️ REDIRECTED 2026-07-28 — no longer "strip Local Match," see 5.5.** 🧑 human decision,
+      recorded here so nobody reads the old text below and starts deleting things
+      This item used to say "strip Local Match and the debug switcher, keep the harness only as a
+      network-free demo fallback." **User decision, same day: Local Match is being promoted to a
+      real, permanent SINGLE PLAYER mode that ships in the final build — not stripped, not just a
+      fallback.** The three units the human isn't personally controlling get real AI instead of
+      sitting unbound. See **5.5** for the actual scope and the new agent brief in
+      `Agent_Prompts.md`. Original text, kept for history only, superseded in full:
+      *"Strip Local Match and the debug switcher. RESOLVED CONFLICT — do NOT simply delete the
+      harness. Art_Direction.md Part 5 §3 makes the local 4-unit harness the demo failure-ladder's
+      rung 3 — the only fallback that needs no network. Keep the harness, gate it behind a launch
+      argument, and strip only the on-screen debug overlay."* That framing (harness = fallback,
+      not a real mode) is what 5.5 replaces.
+      ⚠️ **Not yet reconciled:** `Art_Direction.md` Part 5 §3's failure-ladder table and
+      `Dev_Plan.md`'s shared-screen-fallback mentions still describe the OLD framing (harness as
+      network-outage fallback, operator cycling units with Tab). Whoever picks up 5.5 should fix
+      these too, per this project's own doc-hygiene rule — flagged, not done here, since this pass
+      was scoped to planning 5.5's brief, not a full cross-doc sweep.
 - [x] **5.4 · Decide the `.import` UID churn (B-71) — and the EOL churn (B-84).** 🤖 Sonnet, medium
       Either accept it or stop tracking `.import` UIDs. Low stakes, but it makes
       every "regenerate and check `git status`" acceptance test unreliable, and
@@ -720,6 +727,38 @@ touch map scenes.
       **Done.** B-84 fixed (`eol=lf` pinned, renormalized, determinism test run twice clean).
       B-71 decided: accept the churn, formalized as a standing pre-commit check rather than a
       two-lane-period workaround. See `Handoff.md` B-71/B-84.
+- [ ] **5.5 · Rename Local Match to Single Player; give the AI-controlled units real AI.** 🤖 Sonnet,
+      high — **PLANNED 2026-07-28, not started.** New agent brief in `Agent_Prompts.md` → 🔧 BUILD-AI.
+      User decision: Local Match stops being a dev-only testing harness / network-outage fallback
+      and becomes a real, permanent SINGLE PLAYER mode in the final submission. Full scope,
+      acceptance criteria and a role-by-role AI behaviour spec are in the paste-ready prompt; short
+      version:
+      - Rename throughout: menu button, `GameLaunch.pending_action` value(s), doc references. Keep
+        it a plain string swap where possible — do not restructure the launch-flow state machine to
+        do this.
+      - The human controls exactly one unit (their existing default, `TeamAPerson`, unless 3.3's
+        character-select answer says otherwise). The other three — the human's own Prop teammate,
+        and the entire opposing team's Person and Prop — get real AI instead of sitting on unbound
+        input.
+      - AI behaviour is ROLE-based, not unit-based (a Prop's AI has to re-derive its job every round
+        from `is_can`, same as everything else in this project — see `main.gd::_role_slot`): a Can
+        AI stays inside `CONFINEMENT_RADIUS` and reacts to being Downed; a Taya AI patrols/guards
+        within the box and chases the tag; an Attacker AI approaches the throwing line, charges and
+        releases a throw; a loose-Tsinelas AI (when not carried) crawls itself home or waits to be
+        retrieved. Difficulty/skill level is explicitly out of scope for a first pass — "moves with
+        intent and doesn't stand still" is the bar, not "plays well."
+      - Remove or repurpose what AI replaces: the P2/P3/P4 unbound input bindings in
+        `project.godot`, `debug_player_switcher.gd`'s F1-F4/Tab unit-cycling (this becomes either
+        dead code once AI drives those units, or stays as a debug-only override — the brief should
+        decide which, not assume), and the Settings panel's P2 rebind column this project has
+        already flagged as dead weight once nothing binds to P2-4.
+      - `Art_Direction.md` Part 5 §3's failure-ladder table and `Dev_Plan.md`'s shared-screen
+        mentions describe the OLD "harness as network-outage fallback" framing and need
+        reconciling to the new one — flagged in 5.3 above, part of this item's own doc-hygiene
+        pass once implemented.
+      **Explicitly not done in this pass** — this checklist entry and the `Agent_Prompts.md` brief
+      are the plan only, per the user's own request ("on the docs can u plan how to add a new
+      agent"). No code changed.
 
 ---
 

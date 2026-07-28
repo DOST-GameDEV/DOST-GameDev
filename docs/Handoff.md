@@ -898,6 +898,18 @@ ticks; `_counting_down` guards against a second `ready_up` press restarting it m
 All of the above verified by render (`tools/render_probe.gd` now shows the Can correctly inside
 the base circle) and the full six-command smoke gate. NOT yet verified by play.
 
+**Local Match → Single Player, planned (docs only, no code) — see `Checklist.md` 5.5 and the new
+🔧 BUILD-AI brief in `Agent_Prompts.md`.** User decision: Local Match stops being a dev-only
+testing harness / network-outage fallback (the old plan, `Checklist.md` 5.3) and becomes a real,
+permanent single-player mode in the final submission — the human plays one unit, real AI drives
+the other three (their own Prop teammate, and the whole opposing team) instead of sitting on
+unbound input. No prior art for this in the codebase — the brief's main job is choosing an
+architecture that doesn't fork `character_base.gd::_physics_process` into a human path and a
+separate AI path, since the confinement/state-machine/round-active gating all have to keep
+applying identically either way. `Checklist.md` 5.3 marked as redirected rather than deleted, with
+the original text kept for history. This is planning only, explicitly per the user's own request
+("on the docs can u plan how to add a new agent") — nothing here changes runtime behaviour.
+
 **Still open, not root-caused this session:** a report of a carried tsinelas reading as
 permanently frozen/slanted, and a Can appearing stuck mid-animation at the same time, with no
 locomotion or spin animation visibly playing. Read `carriable.gd` (carry tilt, `_step_flying`) and

@@ -64,6 +64,7 @@ self-contained: paste it as the FIRST message of a fresh session, nothing else n
 | 🔧 **BUILD-NET** | **Sonnet** | high | 1 |
 | 🔧 **BUILD-PHYS** | **Sonnet** | high | 1 — **must finish before DESIGN-ART's proportion step** |
 | 🔧 **BUILD-UX** | **Sonnet** | medium | 1 |
+| 🔧 **BUILD-AI** | **Sonnet** | high | 1 — new 2026-07-28, checklist 5.5, not started |
 | 🎵 **BUILD-AUDIO** | **Sonnet** | medium | 1 |
 | 🎨 **DESIGN-ART** | **Opus** | high | 1 |
 | 🔬 **QA** | **Sonnet** | medium | any time, alongside anything |
@@ -251,6 +252,115 @@ filed against. See `Handoff.md` B-86 for the full account; left open as an unexp
 rather than closed. Item 2 shipped as `you_card.gd`'s `CHARGE_SHADER_PARAM` hook. Item 3 was
 deliberately **not** done — still blocked on `Checklist.md` 0.4 and 4.4, and `Art_Direction.md`'s
 own resolution says to do it late, after the last playtest. Item 4 confirmed, untouched.
+
+---
+
+# 🔧 BUILD-AI — Sonnet, high effort
+
+> **PLANNED 2026-07-28, per user request ("plan how to add a new agent... that will program the AI
+> for the other characters in local match"). Not started — this is the brief for whoever picks it
+> up, written before any code changed.** See `Checklist.md` 5.5 and `Handoff.md`'s session log for
+> the full reasoning. Read this whole brief before touching anything; it is longer than most
+> because there is no existing AI system in this codebase to point at — every other lane brief in
+> this file can say "the pattern already exists, copy it," this one cannot.
+
+```
+You are the BUILD-AI lane on Tumbang Preso (Godot 4.7, GDScript). Repo: DOST-GameDEV/DOST-GameDev.
+
+SETUP
+  git fetch origin && git switch integration && git pull --ff-only
+  git config user.name "M4tyu633" && git config user.email "matthewtlabrador@gmail.com"
+  git switch -c code/single-player-ai
+Godot: <path to your Godot 4.7.x executable> (NOT on PATH — set per machine, do not paste a teammate's path)
+
+READ FIRST: docs/Checklist.md 5.5 (this item), docs/Handoff.md's 2026-07-28 session log (search
+"single player" / "BUILD-AI"), docs/Concurrency_Protocol.md §2/§3/§8. Then the actual code:
+scripts/main.gd (_start_local_test, _local_roster, _role_slot), scripts/characters/character_base.gd
+(is_can/is_person/team_is_can_side — the same three flags every other role-based system in this
+project reads), scripts/systems/debug_player_switcher.gd, scripts/characters/carrier.gd (the
+charge-throw input a Person AI has to drive), scripts/characters/carriable.gd (LOOSE/CARRIED/FLYING
+— what an AI Tsinelas has to react to).
+
+THE DECISION THIS IMPLEMENTS. Local Match currently exists as a dev-only testing harness: the
+human controls TeamAPerson (and can Tab/F1-F4 to any of the other three), and TeamBProp/
+TeamBPerson sit on deliberately unbound input as stationary practice dummies (see
+CharacterBase.player_id's own doc for why). Checklist 5.3 used to plan stripping this down to a
+network-outage fallback before submission. **That is superseded.** The user's decision: Local
+Match becomes a real, permanent SINGLE PLAYER mode, shipped in the final build — the human plays
+one unit, and the other three are driven by actual AI, not silence.
+
+YOUR JOB, in dependency order.
+
+1. RENAME, mechanically, not a redesign. "Local Match" → "Single Player" everywhere a player sees
+   it (main_menu.gd's button/label) and everywhere it's discussed in docs. Internal identifiers
+   (GameLaunch.pending_action == "local", scene/node names) can stay as-is unless leaving them
+   creates real confusion — this is a UI/doc rename, not a request to restructure the launch-flow
+   state machine. Grep for "Local Match" across docs/ and scripts/ and fix every stale reference,
+   same as this project's standing doc-hygiene rule.
+
+2. DECIDE THE AI ARCHITECTURE FIRST, before writing behaviour. This project has zero prior art for
+   "a CharacterBase driven by something other than a human or MultiplayerSynchronizer" — you are
+   choosing the shape, not copying one. The constraint that matters most: CharacterBase's
+   movement/ability code reads Input.is_action_pressed(_action(...)) directly (see
+   _physics_process). The cleanest fit is almost certainly a small AI controller node that WRITES
+   into the same input surface a human would (or a parallel "intent" struct character_base.gd
+   reads instead of raw Input when a unit is AI-controlled) — do not fork _physics_process into a
+   human path and a separate AI path; the confinement, staggered/downed/sealed state machine, and
+   round-active gating all have to keep applying identically to an AI unit, and duplicating
+   _physics_process is exactly how those two copies drift apart. State your chosen approach in the
+   commit body before writing behaviour — this is a real design decision, not a detail.
+
+3. AI BEHAVIOUR IS ROLE-BASED, RE-DERIVED EVERY ROUND — same rule as everything else here.
+   is_can/team_is_can_side flip every round (main.gd::_reset_world already re-picks the Prop
+   ability this way for exactly this reason — B-76). An AI that decides "I am the Can's AI" once
+   and never re-checks will be playing the wrong job by round 2. Four jobs, one per role:
+   - **Can AI:** stay inside CharacterBase.CONFINEMENT_RADIUS (already enforced physically by
+     _move_and_confine() regardless of what the AI does — you cannot break this by trying, but a
+     good AI shouldn't be pinned against the edge doing nothing either). React to being Downed —
+     Quick Stand or similar self-right, if available.
+   - **Taya (defending Person) AI:** patrol/guard within the confinement box, move to intercept an
+     incoming thrown slipper or a retrieving attacker, use the Tag/Bump ability when in range.
+   - **Attacker (offending Person, carrying the Tsinelas) AI:** approach the 6-unit throwing line,
+     charge (carrier.gd's charge-throw input step) and release at a reasonable power, retreat/dodge
+     the Taya.
+   - **Loose Tsinelas AI** (only relevant when NOT currently carried/flying — Carriable.state ==
+     LOOSE): crawl itself home (movement_speed_scale() already applies CRAWL_SPEED_SCALE
+     automatically) or hold position waiting for its Attacker to retrieve it.
+   Difficulty is explicitly OUT OF SCOPE for a first pass. "Moves with intent toward its role's
+   job and does not stand still" is the acceptance bar — not "plays well," not "is fun to play
+   against." Say so explicitly if you're tempted to tune it further; that's scope creep for this
+   item, file it as a follow-up instead.
+
+4. REMOVE OR REPURPOSE WHAT THE AI REPLACES — decide, don't assume.
+   - project.godot's P2/P3/P4 input action bindings exist ONLY because those slots used to sit
+     unbound waiting for a human at a second keyboard/controller. Once AI drives them, decide
+     whether to delete the bindings outright or keep them as a debug override path (e.g. a launch
+     flag that disables AI and re-enables human/manual control for testing) — either is
+     defensible, pick one and say why in the commit.
+   - scripts/systems/debug_player_switcher.gd's F1-F4/Tab cycling was built to let ONE human hop
+     between units for testing. If AI now drives three of the four, does switching to an
+     AI-driven unit hand it back to human control, or is switching removed entirely in Single
+     Player? This needs an explicit answer, not a silent behaviour change.
+   - The Settings panel's P2 rebind column (already flagged elsewhere in this project as dead
+     weight once nothing binds to P2-4) — remove it if this item makes that true.
+
+5. DOC HYGIENE — this is part of the work, not a follow-up. `Art_Direction.md` Part 5 §3's demo
+   failure-ladder table and `Dev_Plan.md`'s shared-screen-fallback mentions both still describe
+   the OLD framing (Local Match / the 4-unit harness as a network-outage fallback an operator
+   manually cycles with Tab). Once Single Player is real, that framing is stale — fix it in the
+   same commit, per Concurrency_Protocol.md §12. Grep for "Local Match" and "4-unit harness" and
+   fix every stale claim you find, don't stop at the two called out here.
+
+NON-NEGOTIABLES
+- DOCS ARE PART OF THE WORK, AND ALL OF THEM, NOT JUST ONE. Tick your Checklist.md box in the SAME commit as the change. Then grep docs/ scripts/ tools/ for whatever you just made wrong and fix every stale claim - if a doc says a thing is missing and you just built it, that doc is now a bug. DELETE stale content rather than labelling it outdated. Never write 'verified by render' for something you did not render. See Concurrency_Protocol.md §12.
+- Also: sole authorship as M4tyu633 <matthewtlabrador@gmail.com>, no AI mentions in
+commits, integration only, take the lock for shared files (project.godot for the input-action
+changes, Main.tscn if you touch spawn/debug wiring), run the six smoke-gate commands (3 and 4
+WITHOUT --headless), [~] not [x] for anything you could not run. State your AI architecture
+decision in the first commit's body — the next person to touch this needs to know why it's shaped
+the way it is, the same way every other file in this codebase explains its own load-bearing
+decisions inline.
+```
 
 ---
 
