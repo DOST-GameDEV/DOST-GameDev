@@ -24,20 +24,25 @@ properties/3/spawn = true
 properties/3/replication_mode = 2
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_1"]
+resource_local_to_scene = true
 radius = 0.4
 height = 1.6
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_hurtbox"]
+resource_local_to_scene = true
 radius = 0.45
 height = 1.7
 
 [sub_resource type="SphereShape3D" id="SphereShape3D_hitbox"]
+resource_local_to_scene = true
 radius = 0.5
 
 [sub_resource type="SphereShape3D" id="SphereShape3D_grab"]
+resource_local_to_scene = true
 radius = 1.7
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_ring"]
+resource_local_to_scene = true
 top_radius = 0.55
 bottom_radius = 0.55
 height = 0.03
@@ -95,14 +100,14 @@ shape = SubResource("SphereShape3D_grab")
 script = ExtResource("8")
 
 [node name="NameplateRing" type="MeshInstance3D" parent="Nameplate"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.78, 0)
 mesh = SubResource("CylinderMesh_ring")
 cast_shadow = 0
 
 [node name="NameplateLabel" type="Label3D" parent="Nameplate"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.05, 0)
 billboard = 1
-pixel_size = 0.007
+pixel_size = 0.005
 font_size = 32
 outline_size = 4
 outline_modulate = Color(0.016, 0.031, 0.22, 0.9)

@@ -18,12 +18,28 @@ const SPEED: float = 6.0
 ## actually covering distance.
 const FRICTION: float = 30.0
 const GRAVITY: float = 20.0
+## Playtest 0.4 — jump. Apex = JUMP_VELOCITY^2 / (2 * GRAVITY) = 0.841 units.
+## See the block in _physics_process for why that ceiling is a MAP constraint
+## rather than a feel one: the interior clutter height law caps what a jump may
+## clear at 1.0, or every crate in the alley becomes a platform.
+const JUMP_VELOCITY: float = 5.8
 const BUMP_STAGGER_TIME: float = 0.25
-## GDD Section 3, Option B: ~2s window to self-right before a Tsinelas can seal a
-## Downed Can. Kept here (not in RoundManager) because it's shared by both Option A
-## and Option B, and by abilities like Quick Stand / Shatter Trap that reference
-## "Downed" directly — see docs/Tumbang_Preso_2v2_GDD.md Section 4.
+## GDD Section 3, Option B: ~2s window to self-right before a Downed Can auto-seals
+## (see the DOWNED case in _physics_process). Kept here (not in RoundManager)
+## because it's shared by both Option A and Option B, and by abilities like Quick
+## Stand / Shatter Trap that reference "Downed" directly — see docs/Dev_Plan.md
+## Section 4.
 const DOWNED_SELF_RIGHT_WINDOW: float = 2.0
+## User feedback, 2026-07-28: "team can shouldnt be allowed to go outside of a
+## box/line when game starts." Confines the Can and its Taya (defending
+## Person) to this radius around the map's base circle (world origin — every
+## map's base_circle_decal sits at its own local (0,0,0), and $Map carries no
+## transform, so world origin IS the base circle centre) for the whole round.
+## Sized to give the Taya room to body-block an incoming throw without being
+## able to chase the attacker back to the throwing line — see Art_Direction.md
+## §9 for why the line sits 6 units out. First guess, not a measurement; needs
+## a human to actually play it.
+const CONFINEMENT_RADIUS: float = 3.0
 ## Bump is "no cooldown" per the GDD but still needs an active window so standing
 ## next to an opponent doesn't stagger them every physics tick — press-to-bump,
 ## briefly live, matches "light melee" better than always-on contact damage.
@@ -48,6 +64,23 @@ const GUARD_REGEN_RATE: float = 0.6
 const DASH_SPEED: float = 14.0
 const DASH_DURATION: float = 0.15
 const DASH_COOLDOWN: float = 2.5
+
+## 4.5: hitstop — the one piece of the Q-8 hit-feedback set (flash, particles,
+## camera shake) that never landed. A brief, near-total slowdown is what turns
+## a landed hit into something that reads as CONTACT rather than a colour
+## change. Global `Engine.time_scale`, not a per-node effect, and broadcast the
+## same way _rpc_play_hit_vfx already is — every peer sees the same beat at
+## the same trigger, consistent with flash/particles already being shared
+## rather than per-viewer. Deliberately small and short: this is a LAN
+## prototype with no reconciliation already (Handoff.md §1), and a ~60ms
+## global dip is well inside the slack a real-hardware LAN test tolerates —
+## nothing here is authoritative for anything RoundManager decides.
+const HITSTOP_DURATION: float = 0.06
+const HITSTOP_TIME_SCALE: float = 0.05
+## Static: the guard is about "is a dip already in flight", which is true or
+## false for the WHOLE game, not per character — two hits landing the same
+## frame must not fight over restoring time_scale out from under each other.
+static var _hitstop_active: bool = false
 
 ## NORMAL — moving/acting freely.
 ## STAGGERED — brief no-control flinch from a bump (BUMP_STAGGER_TIME), auto-recovers.
@@ -158,10 +191,98 @@ var _melee_hitbox: Hitbox = null
 ## Task 0/1 — this unit's hands, when it is a Person. See carrier.gd.
 @onready var _carrier: Carrier = get_node_or_null("Carrier")
 
+## Art_Direction.md §1 proportion audit: CharacterBase.tscn's CollisionShape3D,
+## Hurtbox, Hitbox and GrabArea used to be baked once at Person scale (radius
+## 0.4, height 1.6) for every unit — Person, Can and Tsinelas alike. Against a
+## correctly-scaled 0.34-tall can that is a person-sized invisible capsule
+## around a knee-high object: it blocks doorways the can visibly fits through
+## and gets hit by throws that visibly miss. Each shape in CharacterBase.tscn
+## is `resource_local_to_scene = true`, so mutating one here only ever touches
+## THIS character's own copy, never another instance's.
+##
+## Hurtbox carries the same ~12% margin over its body shape that the Person
+## row always has (0.45/1.7 vs 0.4/1.6) — a hair more forgiving than the
+## visible silhouette, same idea `flick`/`bagsak`/etc. hitboxes already use.
+## Hitbox (the always-on melee/bump reach) and GrabArea are scaled down for
+## Props too, proportional to their own body size, so a can's bump doesn't
+## reach out nearly a full unit from a 0.17-unit-tall body. GrabArea is inert
+## on a Prop (`Carrier.has_hands()` only ever queries a Person's own), so its
+## exact number there doesn't affect gameplay; sized anyway for consistency.
+## Fine combat-feel tuning (does a can's bump reach far ENOUGH) is checklist
+## 4.4's job once a human has played it, not this one's.
+const _COLLISION_BY_ROLE: Dictionary = {
+	"person": {
+		"body_r": 0.40, "body_h": 1.60, "hurt_r": 0.45, "hurt_h": 1.70,
+		"hit_r": 0.50, "hit_off": Vector3(0, 0.80, -0.60), "grab_r": 1.70,
+	},
+	"can": {
+		"body_r": 0.14, "body_h": 0.34, "hurt_r": 0.17, "hurt_h": 0.40,
+		"hit_r": 0.16, "hit_off": Vector3(0, 0.10, -0.18), "grab_r": 0.60,
+	},
+	"tsinelas": {
+		"body_r": 0.16, "body_h": 0.32, "hurt_r": 0.19, "hurt_h": 0.38,
+		"hit_r": 0.14, "hit_off": Vector3(0, 0.08, -0.16), "grab_r": 0.60,
+	},
+}
+
 ## True when the local player is aiming this unit with the mouse, i.e. the rig
 ## is writing `rotation.y` and this script must not fight it.
 func _is_mouse_aimed() -> bool:
 	return _camera_rig != null and _camera_rig.aim_source == CameraRig.AimSource.MOUSE
+
+## Resizes this character's own collision shapes to match its current role.
+## Called from _ready() and again from reset_for_new_round(), because a Prop's
+## `is_can` flips every round (Can this round, Tsinelas the next) while
+## `is_person` never does — re-running for a Person is a harmless no-op of
+## identical numbers.
+func _apply_role_collision() -> void:
+	var key := "person" if is_person else ("can" if is_can else "tsinelas")
+	var cfg: Dictionary = _COLLISION_BY_ROLE[key]
+	var body_shape := ($CollisionShape3D as CollisionShape3D).shape as CapsuleShape3D
+	if body_shape:
+		body_shape.radius = cfg["body_r"]
+		body_shape.height = cfg["body_h"]
+	var hurt_shape := ($Hurtbox/CollisionShape3D as CollisionShape3D).shape as CapsuleShape3D
+	if hurt_shape:
+		hurt_shape.radius = cfg["hurt_r"]
+		hurt_shape.height = cfg["hurt_h"]
+	var hit_area := $Hitbox as Area3D
+	var hit_shape := (hit_area.get_node("CollisionShape3D") as CollisionShape3D).shape as SphereShape3D
+	if hit_shape:
+		hit_shape.radius = cfg["hit_r"]
+	hit_area.position = cfg["hit_off"]
+	var grab_shape := ($GrabArea/CollisionShape3D as CollisionShape3D).shape as SphereShape3D
+	if grab_shape:
+		grab_shape.radius = cfg["grab_r"]
+	# B-89: the nameplate ring/label read this same capsule, so they resize in
+	# the same call, right after the shapes above actually changed — never
+	# before. See CharacterNameplate.apply_sizing()'s own warning for why this
+	# cannot just run from the nameplate's own _ready().
+	var nameplate := get_node_or_null("Nameplate") as CharacterNameplate
+	if nameplate != null:
+		nameplate.apply_sizing()
+
+## Team can = the Can Prop itself, and its team's defending Person (the Taya).
+## Re-derived every call rather than cached, same as is_can/team_is_can_side
+## themselves — both flip every round.
+func _is_confined_to_base() -> bool:
+	return is_can or (is_person and team_is_can_side)
+
+## Wraps move_and_slide() with the confinement clamp so every call site in this
+## file gets it automatically rather than relying on each one to remember —
+## see CONFINEMENT_RADIUS's own doc for what this is and why. A soft radial
+## clamp on the flat (X/Z) position, not a wall: crossing the edge just stops
+## making further progress outward, rather than colliding with anything, so it
+## costs no extra collision shape and cannot itself desync a hit.
+func _move_and_confine() -> void:
+	move_and_slide()
+	if not _is_confined_to_base():
+		return
+	var flat := Vector2(global_position.x, global_position.z)
+	if flat.length() > CONFINEMENT_RADIUS:
+		flat = flat.normalized() * CONFINEMENT_RADIUS
+		global_position.x = flat.x
+		global_position.z = flat.y
 
 func _ready() -> void:
 	spawn_position = global_position
@@ -172,6 +293,7 @@ func _ready() -> void:
 		hitbox.owner_character = self
 		if hitbox.requires_bump_window:
 			_melee_hitbox = hitbox
+	_apply_role_collision()
 	# Person / Can / Tsinelas each get their own model. Reapplied every round in
 	# reset_for_new_round(), because `is_can` flips with the role swap.
 	_visual.apply(is_person, is_can, team)
@@ -218,11 +340,30 @@ func _physics_process(delta: float) -> void:
 	if not RoundManager.round_active:
 		velocity.x = move_toward(velocity.x, 0, FRICTION * delta)
 		velocity.z = move_toward(velocity.z, 0, FRICTION * delta)
-		move_and_slide()
+		_move_and_confine()
 		return
 
 	if ability:
 		ability.tick(delta)
+
+	# Playtest 0.4: jump. EVERY unit jumps, Person and Prop alike — a hopping
+	# lata and a hopping tsinelas are funnier than a realistic one, and this
+	# project is a party game for friends first.
+	#
+	# Deliberately placed here, after the round-active gate above, so nobody can
+	# hop around during the intermission, and before the ability block so a jump
+	# and a throw on the same frame both resolve.
+	#
+	# ⚠️ JUMP_VELOCITY IS CONSTRAINED BY THE MAP, NOT BY FEEL. Every loose piece
+	# of interior clutter is <= 1.0 tall on purpose, because an FPP Person's eye
+	# is at 1.25 and has to see over all of it (Art_Direction.md's height
+	# law). 5.8 against GRAVITY 20.0 apexes at 5.8^2 / (2*20) = 0.841, which
+	# clears a kerb (0.15) and a tyre (0.22) but NOT a crate stack or an oil drum
+	# (0.90). Raise this above ~1.0 and every crate in the alley silently becomes
+	# a platform, which breaks the height law and puts players on top of the
+	# dressing where there is no boundary to stop them.
+	if state == State.NORMAL and is_on_floor() 			and Input.is_action_just_pressed(_action("jump")):
+		velocity.y = JUMP_VELOCITY
 
 	# Task 0/1: grab and charge-throw. Runs before the rest of the input block so
 	# a throw released this frame is not also read as an ability press below.
@@ -253,7 +394,18 @@ func _physics_process(delta: float) -> void:
 			if _downed_self_rightable:
 				_downed_time_left -= delta
 				if _downed_time_left <= 0.0:
-					_downed_self_rightable = false # window expired, now sealable
+					_downed_self_rightable = false
+					# User feedback, 2026-07-28: "if team slipper make the can
+					# fall... they win" — no mention of an attacker having to
+					# walk up and physically seal it afterward. Auto-seal the
+					# instant the self-right window lapses unrecovered, rather
+					# than waiting for a follow-up hit (the old Option B
+					# behaviour, now retired). state is still DOWNED and
+					# _downed_self_rightable was just cleared above, so
+					# seal()'s own guard passes. RoundManager's existing
+					# "every tracked Can Sealed" win check (unchanged) fires
+					# from this exactly as it used to fire from a manual seal.
+					seal()
 			if Input.is_action_just_pressed(_action("bump")) and _downed_self_rightable:
 				self_right()
 			# B-06: special_ability is normally only read further down, past the
@@ -271,7 +423,7 @@ func _physics_process(delta: float) -> void:
 	if state in [State.STAGGERED, State.DOWNED, State.SEALED]:
 		velocity.x = move_toward(velocity.x, 0, FRICTION * delta)
 		velocity.z = move_toward(velocity.z, 0, FRICTION * delta)
-		move_and_slide()
+		_move_and_confine()
 		return
 
 	if _dash_active_time_left > 0.0:
@@ -279,7 +431,7 @@ func _physics_process(delta: float) -> void:
 		# committed action, not just a velocity nudge — without this guard,
 		# holding a movement key during the dash would overwrite the burst
 		# with normal walk speed on the very same physics frame it fired.
-		move_and_slide()
+		_move_and_confine()
 		return
 
 	var input_dir := Input.get_vector(_action("move_left"), _action("move_right"), _action("move_up"), _action("move_down"))
@@ -352,7 +504,7 @@ func _physics_process(delta: float) -> void:
 		if NetworkManager.is_networked() and not NetworkManager.is_host():
 			_rpc_notify_ability_activate.rpc_id(1)
 
-	move_and_slide()
+	_move_and_confine()
 
 ## Called on this character when it's hit by an opponent's Hitbox (see hitbox.gd).
 func apply_stagger(duration: float = BUMP_STAGGER_TIME) -> void:
@@ -448,8 +600,13 @@ func clear_dent() -> void:
 	dents -= 1
 	dents_changed.emit(dents)
 
-## Called by an opponent's Hitbox once this character is Downed and past its
-## self-right window (see hitbox.gd forces_downed / seal handling).
+## Transitions Downed -> Sealed once the self-right window has passed.
+## Previously only ever called by an opponent's follow-up Hitbox landing on an
+## already-past-the-window Can (see hitbox.gd); now also called by this file's
+## own _physics_process the instant the window itself expires (2026-07-28 —
+## "if team slipper make the can fall, they win," no manual follow-up hit
+## required). Both call sites hit the same guard below, so neither can
+## double-seal or race the other.
 func seal() -> bool:
 	if state != State.DOWNED or _downed_self_rightable:
 		return false # still in the self-right window, can't be sealed yet
@@ -599,11 +756,28 @@ func _rpc_play_hit_vfx() -> void:
 ## the map gets bumped is noise, not feedback.
 func _flash_hit() -> void:
 	_visual.flash_hit()
+	_hitstop()
 	var is_mine := is_multiplayer_authority() if NetworkManager.is_networked() else player_id == 1
 	if is_mine:
 		var rig := get_node_or_null("CameraRig") as CameraRig
 		if rig:
 			rig.shake()
+
+## 4.5. Dips Engine.time_scale for HITSTOP_DURATION real seconds, restored by a
+## SceneTreeTimer that itself ignores the dip (the 4th `create_timer` arg) —
+## without that, the restore would take 20x longer than intended, since its
+## own countdown would run at HITSTOP_TIME_SCALE too. Guarded against a second
+## hit landing mid-dip stomping the first one's restore.
+func _hitstop() -> void:
+	if _hitstop_active:
+		return
+	_hitstop_active = true
+	Engine.time_scale = HITSTOP_TIME_SCALE
+	get_tree().create_timer(HITSTOP_DURATION, true, false, true).timeout.connect(_end_hitstop)
+
+func _end_hitstop() -> void:
+	Engine.time_scale = 1.0
+	_hitstop_active = false
 
 ## Maps a base action name (e.g. "move_left") to this character's own input
 ## action (e.g. "move_left_p1" / "move_left_p2"), per `player_id`.
@@ -633,6 +807,28 @@ func get_hand_attachment() -> Node3D:
 func play_visual_action(kind: String) -> void:
 	_visual.play_action(kind)
 
+## Art_Direction.md §1 / B-88 — this unit's OWN, currently-applied collision
+## capsule height, read from the shape `_apply_role_collision()` just sized
+## rather than assumed. Every child node that positions itself relative to
+## "the capsule floor" or "the capsule top" — CharacterVisual's model-drop and
+## CharacterNameplate's ring/label — must read this instead of hardcoding the
+## old shared 1.6, which is exactly the bug B-88 was for the model and is the
+## same bug again for the nameplate ring if left alone.
+func capsule_height() -> float:
+	var shape_node := get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if shape_node != null and shape_node.shape is CapsuleShape3D:
+		return (shape_node.shape as CapsuleShape3D).height
+	return 1.6
+
+## Companion to capsule_height() — this unit's own current capsule radius, for
+## anything sized off the unit's girth rather than its height (the nameplate
+## ring's own radius, so it doesn't read as a dinner plate around a can).
+func capsule_radius() -> float:
+	var shape_node := get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if shape_node != null and shape_node.shape is CapsuleShape3D:
+		return (shape_node.shape as CapsuleShape3D).radius
+	return 0.4
+
 ## Task 0 — true while this unit is a Person with something in its hands, in
 ## which case `special_ability` is the charge-throw and must NOT also fire the
 ## ordinary ability (Tag). One button, and holding a slipper is what decides
@@ -657,6 +853,13 @@ func respawn() -> void:
 ## carryover from the previous round. Does NOT touch position — whatever resets a
 ## character to its base spot (map-specific) is a separate concern.
 func reset_for_new_round() -> void:
+	# A unit airborne (jump, knockback) the instant the round ends carries its
+	# velocity straight through _place_at_spawn()'s teleport otherwise — spawn
+	# markers sit flush with the floor (zero clearance, same as respawn()'s
+	# own spot above), so leftover downward velocity can tunnel a Can through
+	# the floor before the next move_and_slide() re-establishes floor contact.
+	# respawn() already clears this on a KillPlane catch; this path did not.
+	velocity = Vector3.ZERO
 	_staggered_time_left = 0.0
 	_downed_time_left = 0.0
 	_downed_self_rightable = false
@@ -686,5 +889,8 @@ func reset_for_new_round() -> void:
 	if _carriable != null:
 		_carriable.reset_for_new_round()
 	# Roles swap between rounds, so a Prop that was the Can is the Tsinelas now
-	# (and vice versa) and needs the other model. No-op when nothing changed.
+	# (and vice versa) and needs the other model AND the other collision sizing
+	# (Art_Direction.md §1) — a can-sized capsule left over on a tsinelas-shaped
+	# Prop is exactly the bug this whole pass exists to remove.
+	_apply_role_collision()
 	_visual.apply(is_person, is_can, team)

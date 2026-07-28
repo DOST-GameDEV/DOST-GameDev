@@ -131,7 +131,16 @@ func add_quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3, material: String, 
 ## same profile, a function that pushes a wedge of the wall inward. A deformed
 ## revolve's analytic normals are no longer correct, so ALWAYS follow a deformed
 ## call with `recalculate_normals()` — see that function's note.
-func add_revolve(profile: PackedVector2Array, segments: int, material: String, smooth: bool = true, deform: Callable = Callable()) -> void:
+## `transform`, if given, is applied to every emitted vertex — 2.1b-0. The
+## built-in revolve is a Y-axis spin at the origin; this is how a piece that
+## needs an upright wheel or a leaning sheet (never expressible as a profile
+## alone) still comes out of the same primitive. Same rule as `deform`: a
+## non-identity transform makes the analytic normals wrong (they still describe
+## the untransformed surface of revolution), so ALWAYS follow with
+## `recalculate_normals()`. Determinism holds regardless — `_fmt` snaps the
+## PRINTED form after the transform, and the weld key is that printed form, so
+## two vertices that transform to the same point still weld identically.
+func add_revolve(profile: PackedVector2Array, segments: int, material: String, smooth: bool = true, deform: Callable = Callable(), transform: Transform3D = Transform3D.IDENTITY) -> void:
 	if profile.size() < 2 or segments < 3:
 		push_error("ObjWriter.add_revolve: need >= 2 profile points and >= 3 segments")
 		return
@@ -159,10 +168,10 @@ func add_revolve(profile: PackedVector2Array, segments: int, material: String, s
 				r01 = deform.call(r1, y1, a0)
 				r11 = deform.call(r1, y1, a1)
 				r10 = deform.call(r0, y0, a1)
-			var v00 := _ring_point(r00, y0, a0)
-			var v01 := _ring_point(r01, y1, a0)
-			var v11 := _ring_point(r11, y1, a1)
-			var v10 := _ring_point(r10, y0, a1)
+			var v00 := transform * _ring_point(r00, y0, a0)
+			var v01 := transform * _ring_point(r01, y1, a0)
+			var v11 := transform * _ring_point(r11, y1, a1)
+			var v10 := transform * _ring_point(r10, y0, a1)
 			var normals: Array = []
 			if smooth:
 				# Perpendicular to the profile edge, swept around Y. For a
@@ -194,7 +203,16 @@ func add_revolve(profile: PackedVector2Array, segments: int, material: String, s
 ## `outline` must be counter-clockwise in (x, z) and must not self-intersect —
 ## that is what makes the side walls face outward. Used for the tsinelas sole,
 ## signage, and corrugated sheet.
-func add_extrude(outline: PackedVector2Array, y_bottom: float, y_top: float, material: String) -> void:
+##
+## `transform`, if given, is applied to every emitted vertex — 2.1b-0, same
+## contract as `add_revolve`'s: the built-in extrude only ever extrudes
+## vertically, so an upright wheel or a leaning sheet needs this to be
+## expressible at all. The cap normals (`Vector3.UP`/`DOWN`) are NOT rotated by
+## `transform` — they, and the side walls' flat per-face normals, are wrong
+## the moment `transform` isn't a pure translation, so ALWAYS follow a
+## non-identity call with `recalculate_normals()`, which rebuilds every normal
+## from the (already-transformed) face geometry and ignores what's passed here.
+func add_extrude(outline: PackedVector2Array, y_bottom: float, y_top: float, material: String, transform: Transform3D = Transform3D.IDENTITY) -> void:
 	if outline.size() < 3:
 		push_error("ObjWriter.add_extrude: outline needs >= 3 points")
 		return
@@ -202,10 +220,10 @@ func add_extrude(outline: PackedVector2Array, y_bottom: float, y_top: float, mat
 		var p0 := outline[i]
 		var p1 := outline[(i + 1) % outline.size()]
 		add_quad(
-			Vector3(p0.x, y_bottom, p0.y),
-			Vector3(p0.x, y_top, p0.y),
-			Vector3(p1.x, y_top, p1.y),
-			Vector3(p1.x, y_bottom, p1.y),
+			transform * Vector3(p0.x, y_bottom, p0.y),
+			transform * Vector3(p0.x, y_top, p0.y),
+			transform * Vector3(p1.x, y_top, p1.y),
+			transform * Vector3(p1.x, y_bottom, p1.y),
 			material
 		)
 	# Geometry2D's ear clipping is deterministic for a given input, so the caps
@@ -218,8 +236,8 @@ func add_extrude(outline: PackedVector2Array, y_bottom: float, y_top: float, mat
 		var a := outline[indices[i]]
 		var b := outline[indices[i + 1]]
 		var c := outline[indices[i + 2]]
-		_add_cap_tri(Vector3(a.x, y_top, a.y), Vector3(b.x, y_top, b.y), Vector3(c.x, y_top, c.y), Vector3.UP, material)
-		_add_cap_tri(Vector3(a.x, y_bottom, a.y), Vector3(b.x, y_bottom, b.y), Vector3(c.x, y_bottom, c.y), Vector3.DOWN, material)
+		_add_cap_tri(transform * Vector3(a.x, y_top, a.y), transform * Vector3(b.x, y_top, b.y), transform * Vector3(c.x, y_top, c.y), Vector3.UP, material)
+		_add_cap_tri(transform * Vector3(a.x, y_bottom, a.y), transform * Vector3(b.x, y_bottom, b.y), transform * Vector3(c.x, y_bottom, c.y), Vector3.DOWN, material)
 
 # --- Shading ------------------------------------------------------------------
 

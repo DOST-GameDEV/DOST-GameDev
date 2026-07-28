@@ -6,7 +6,7 @@
 script = ExtResource("1")
 
 [node name="FppPivot" type="Node3D" parent="."]
-position = Vector3(0, 1.55, 0)
+position = Vector3(0, 0.45, 0)
 
 [node name="FppCamera" type="Camera3D" parent="FppPivot"]
 current = false

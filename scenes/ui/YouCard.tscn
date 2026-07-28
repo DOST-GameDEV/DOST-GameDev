@@ -8,7 +8,7 @@ anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 16.0
-offset_top = -130.0
+offset_top = -172.0
 offset_right = 236.0
 offset_bottom = -16.0
 mouse_filter = 2
@@ -58,6 +58,51 @@ theme_type_variation = &"HudCaption"
 text = "[SHIFT]"
 
 [node name="GuardDashBar" type="ProgressBar" parent="Card/VBoxContainer/GuardDashRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 16)
+layout_mode = 2
+size_flags_horizontal = 3
+show_percentage = false
+
+[node name="HoldLabel" type="Label" parent="Card/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"HudCaption"
+text = "GO GET IT"
+visible = false
+
+[node name="ChargeRow" type="HBoxContainer" parent="Card/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 8
+visible = false
+
+[node name="ChargeKeyLabel" type="Label" parent="Card/VBoxContainer/ChargeRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"HudCaption"
+text = "[?]"
+
+[node name="ChargeBar" type="ProgressBar" parent="Card/VBoxContainer/ChargeRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 16)
+layout_mode = 2
+size_flags_horizontal = 3
+show_percentage = false
+
+[node name="ResetChannelRow" type="HBoxContainer" parent="Card/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 8
+visible = false
+
+[node name="ResetChannelKeyLabel" type="Label" parent="Card/VBoxContainer/ResetChannelRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"HudCaption"
+text = "RIGHTING LATA"
+
+[node name="ResetChannelBar" type="ProgressBar" parent="Card/VBoxContainer/ResetChannelRow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(120, 16)
 layout_mode = 2

@@ -5,10 +5,10 @@ class_name GameSetup
 ## join an address. Its own scene rather than a panel inside MainMenu — the two
 ## screens share no nodes and only ever hand off to each other.
 ##
-## Host and Join both land in the pre-match Lobby (U-4 / B-13) for the ready-up
-## gate; Play Offline goes straight to Main.tscn.
+## All three launches land in the pre-match Lobby (U-4 / B-13). Host and Join
+## need it for the ready-up gate; Play Offline has nothing to wait for but keeps
+## the same READY → START rhythm rather than jumping straight into the match.
 
-const MAIN_SCENE_PATH:  String = "res://scenes/main/Main.tscn"
 const LOBBY_SCENE_PATH: String = "res://scenes/ui/Lobby.tscn"
 const MAIN_MENU_PATH:   String = "res://scenes/ui/MainMenu.tscn"
 
@@ -22,14 +22,8 @@ const MODES: Array[Dictionary] = [
 	{"id": GameLaunchScript.GameMode.OPTION_A, "label": "DENTS"},
 ]
 
-## TODO(U-8): make this a real selector — see docs/Handoff.md.
-## One arena exists and it is not swappable: the floor, bounds, kill plane and
-## hazards are authored inline in Main.tscn and spawn positions are a const in
-## main.gd. So the MAP row is present to match the artboard but its arrows are
-## disabled in the scene, and this is a fixed label rather than a list. Wiring
-## them up means extracting the arena into its own scene first; cycling a
-## one-item list would only look interactive.
-const MAP_NAME: String = "CLASSIC"
+@onready var map_prev_button: TextureButton = %MapPrevButton
+@onready var map_next_button: TextureButton = %MapNextButton
 
 @onready var local_button: ArrowButton = %LocalButton
 @onready var host_button: ArrowButton = %HostButton
@@ -44,19 +38,32 @@ const MAP_NAME: String = "CLASSIC"
 @onready var mode_next_button: TextureButton = %ModeNextButton
 
 var _mode_index: int = 0
+var _map_index: int = 0
 
 func _ready() -> void:
 	status_label.text = ""
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	GameVersion.attach_to(self)
 
-	map_value_label.text = MAP_NAME
+	# Start on whatever is already chosen rather than resetting to the first map.
+	# GameLaunch.selected_map is a preference that survives returning to the menu,
+	# so a player who picked Bayan Plaza should not have to re-pick it every time.
+	_map_index = GameLaunch.map_index()
+	_apply_map()
 	_apply_mode()
+
+	# A one-map build would leave these cycling a list of one, so they follow the
+	# registry rather than a hand-set flag in the scene.
+	var many_maps := GameLaunch.MAPS.size() > 1
+	map_prev_button.disabled = not many_maps
+	map_next_button.disabled = not many_maps
 
 	local_button.pressed.connect(_on_local_pressed)
 	host_button.pressed.connect(_on_host_pressed)
 	join_button.pressed.connect(_on_join_pressed)
 	back_button.pressed.connect(_on_back_pressed)
+	map_prev_button.pressed.connect(_on_map_prev_pressed)
+	map_next_button.pressed.connect(_on_map_next_pressed)
 	mode_prev_button.pressed.connect(_on_mode_prev_pressed)
 	mode_next_button.pressed.connect(_on_mode_next_pressed)
 
@@ -78,6 +85,24 @@ func _unhandled_input(event: InputEvent) -> void:
 func _on_back_pressed() -> void:
 	get_tree().change_scene_to_file(MAIN_MENU_PATH)
 
+# --- Map selector -------------------------------------------------------------
+# Reads GameLaunch.MAPS, the registry that also drives the launch path and the
+# fallback, so the picker cannot disagree with what actually exists. Adding a map
+# is one entry there plus its scene — nothing here changes.
+
+func _on_map_prev_pressed() -> void:
+	_map_index = (_map_index - 1 + GameLaunch.MAPS.size()) % GameLaunch.MAPS.size()
+	_apply_map()
+
+func _on_map_next_pressed() -> void:
+	_map_index = (_map_index + 1) % GameLaunch.MAPS.size()
+	_apply_map()
+
+func _apply_map() -> void:
+	var entry: Dictionary = GameLaunch.MAPS[_map_index]
+	map_value_label.text = String(entry["name"])
+	GameLaunch.selected_map = entry["id"]
+
 # --- Mode selector ------------------------------------------------------------
 
 func _on_mode_prev_pressed() -> void:
@@ -95,10 +120,13 @@ func _apply_mode() -> void:
 
 # --- Launch -------------------------------------------------------------------
 
+## Local goes through the lobby too, so single-PC play gets the same READY →
+## START rhythm as the networked paths. lobby.gd resets again immediately before
+## the scene change, mirroring _rpc_begin_match's own double-reset.
 func _on_local_pressed() -> void:
 	GameLaunch.pending_action = "local"
 	_reset_match_state()
-	get_tree().change_scene_to_file(MAIN_SCENE_PATH)
+	get_tree().change_scene_to_file(LOBBY_SCENE_PATH)
 
 ## U-4: Host goes to the lobby so peers can ready-up before the match starts.
 func _on_host_pressed() -> void:
