@@ -992,6 +992,16 @@ touch map scenes.
       temporary print in `camera_rig.gd` confirmed exactly one rig (the host's own real character,
       no `ai_controller`) reports `is_mine = true` on a solo host with three AI-driven slots, where
       before the fix every one of the four reported `true`.
+      **Second follow-up, user request — a solo host couldn't even reach any of the above.**
+      `scripts/ui/lobby.gd::_refresh_start_button()` hard-required **two or more** connected peers
+      before the host's Start button would enable at all — predates AI takeover, back when an
+      unfilled slot really was just an empty seat. Fixed: the only requirement now is that every
+      peer who HAS joined (host included, always at least themselves) is readied up; a solo host is
+      a complete, startable match on its own, joinable by anyone else on the LAN afterward. Verified
+      live via a temporary test hook driving `Lobby.tscn` directly (`--test-solo-host`, reverted
+      before committing): `start_button.disabled` was `true` before Ready, `false` after, and
+      pressing Start actually transitioned to `Main.tscn` with 4 characters spawned, 3 of them
+      AI-driven.
 
 ---
 
