@@ -1,0 +1,84 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Mesh" path="res://assets/models/viewmodel_arm.obj" id="1"]
+[ext_resource type="Shader" path="res://assets/models/materials/toon.gdshader" id="2"]
+[ext_resource type="Material" path="res://assets/characters/persons/materials/person_outline.tres" id="3"]
+
+[sub_resource type="ShaderMaterial" id="Mat_arm"]
+shader = ExtResource("2")
+shader_parameter/albedo_color = Color(0.784, 0.529, 0.353, 1)
+next_pass = ExtResource("3")
+
+[sub_resource type="Animation" id="Anim_idle"]
+resource_name = "idle"
+length = 2.6
+loop_mode = 1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("RightPivot/Arm:rotation")
+tracks/0/interp = 2
+tracks/0/loop_wrap = true
+tracks/0/keys = {"times": PackedFloat32Array(0, 1.3, 2.6), "transitions": PackedFloat32Array(1, 1, 1), "update": 0, "values": [Vector3(0, 0, 0), Vector3(-0.045, 0, 0.02), Vector3(0, 0, 0)]}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("LeftPivot/Arm:rotation")
+tracks/1/interp = 2
+tracks/1/loop_wrap = true
+tracks/1/keys = {"times": PackedFloat32Array(0, 1.3, 2.6), "transitions": PackedFloat32Array(1, 1, 1), "update": 0, "values": [Vector3(0, 0, 0), Vector3(-0.038, 0, -0.02), Vector3(0, 0, 0)]}
+
+[sub_resource type="Animation" id="Anim_throw"]
+resource_name = "throw"
+length = 0.46
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("RightPivot/Arm:rotation")
+tracks/0/interp = 2
+tracks/0/loop_wrap = false
+tracks/0/keys = {"times": PackedFloat32Array(0, 0.14, 0.24, 0.46), "transitions": PackedFloat32Array(1, 1, 1, 1), "update": 0, "values": [Vector3(0, 0, 0), Vector3(0.52, 0.10, 0), Vector3(-0.68, -0.06, 0), Vector3(0, 0, 0)]}
+
+[sub_resource type="Animation" id="Anim_grab"]
+resource_name = "grab"
+length = 0.40
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("RightPivot/Arm:rotation")
+tracks/0/interp = 2
+tracks/0/loop_wrap = false
+tracks/0/keys = {"times": PackedFloat32Array(0, 0.18, 0.40), "transitions": PackedFloat32Array(1, 1, 1), "update": 0, "values": [Vector3(0, 0, 0), Vector3(0.46, -0.14, 0), Vector3(0, 0, 0)]}
+
+[sub_resource type="AnimationLibrary" id="Lib_arms"]
+_data = {
+"grab": SubResource("Anim_grab"),
+"idle": SubResource("Anim_idle"),
+"throw": SubResource("Anim_throw")
+}
+
+[node name="ViewmodelArms" type="Node3D"]
+
+[node name="RightPivot" type="Node3D" parent="."]
+transform = Transform3D(-0.90016, -0.43556, -0.00000, -0.30109, 0.62224, -0.72261, 0.31474, -0.65046, -0.69126, 0.5800, -1.0200, -0.3400)
+
+[node name="Arm" type="MeshInstance3D" parent="RightPivot"]
+mesh = ExtResource("1")
+surface_material_override/0 = SubResource("Mat_arm")
+surface_material_override/1 = SubResource("Mat_arm")
+cast_shadow = 0
+
+[node name="LeftPivot" type="Node3D" parent="."]
+transform = Transform3D(-0.90016, 0.43556, 0.00000, 0.30109, 0.62224, -0.72261, -0.31474, -0.65046, -0.69126, -0.6000, -1.0400, -0.3200)
+
+[node name="Arm" type="MeshInstance3D" parent="LeftPivot"]
+mesh = ExtResource("1")
+surface_material_override/0 = SubResource("Mat_arm")
+surface_material_override/1 = SubResource("Mat_arm")
+cast_shadow = 0
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
+libraries = {
+"": SubResource("Lib_arms")
+}
+autoplay = "idle"

@@ -16,11 +16,19 @@ to type.
 | Shared file | Held by | Branch | Since |
 |---|---|---|---|
 | `scenes/main/Main.tscn` | — free — | | |
-| `scenes/characters/CharacterBase.tscn` | — free — | | |
+| `scenes/characters/CharacterBase.tscn` | 🔧 Build | code/proportions | 2026-07-28 |
 | `scenes/characters/CameraRig.tscn` | — free — | | |
 | `scenes/ui/*.tscn` | — free — | | |
 | `project.godot` | — free — | | |
+| `tools/models/generate_all.gd` | 🔧 Build | code/proportions | 2026-07-28 |
 | `docs/Checklist.md` | *no lock needed* | | append-only-ish; conflicts resolved by taking both sides |
+
+> ### `generate_all.gd` / 2.1b-0 — resolved, kept for history
+>
+> 2.1b (the 28-piece environment kit) shipped from the Design lane, per the human's reassignment,
+> and 2.1b-0 (the `transform: Transform3D` param on `add_revolve`/`add_extrude`, 🔧 Build) landed
+> first to unblock it. Both are `[x]` in `Checklist.md`. Nothing left to coordinate here — the row
+> above reads **— free —** and stays that way unless `generate_all.gd` needs a lock again.
 
 ## When both lanes need the same scene for one feature
 

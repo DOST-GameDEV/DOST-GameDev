@@ -18,6 +18,7 @@ extends SceneTree
 ##     godot --path . res://tools/models/preview.tscn -- --model=res://assets/models/lata.obj
 
 const ObjWriter = preload("res://tools/models/obj_writer.gd")
+const EnvKit = preload("res://tools/models/env_kit.gd")
 
 const OUTPUT_DIR: String = "res://assets/models/"
 
@@ -57,6 +58,13 @@ func _initialize() -> void:
 		{"angle": 4.4, "y": 0.68, "depth": 0.105},
 	])
 	_build_tsinelas()
+	_build_viewmodel_arm()
+	# Checklist 2.1b — the environment kit, built to docs/Art_Direction.md.
+	# In its own file because it is ~25 pieces and this one is where a reader goes
+	# to understand the five PROP meshes; burying those under the scenery would be
+	# a net loss. Same rules apply to it — determinism, UiTheme constants, and no
+	# OFFENSE or DEFENSE hue anywhere on a map.
+	EnvKit.new().build_all(OUTPUT_DIR)
 	print("Model generation complete.")
 	quit(0)
 
@@ -160,17 +168,161 @@ func _apply_dents(radius: float, y: float, angle: float, dents: Array) -> float:
 #
 # Orientation: character faces -Z; toe is at Z = -0.675, heel at Z = +0.675.
 # Length: 1.35 units (centered, Z in [-0.675, +0.675]). X is width.
-# Materials: defense (sole), impact (straps), highlight (toe post).
+#
+# ⚠️ B-81 — WHY THE SOLE IS NOT BLUE, so nobody "restores" it.
+#
+# The sole used to be UiTheme.DEFENSE, and Art_Direction.md §2's palette
+# table told it to be. Both were wrong. A Prop is a Tsinelas exactly when its
+# team is on OFFENCE (carriable.gd::is_throwable — not a Person, not a Can), so
+# a blue sole painted the ATTACKING team's prop in the DEFENDING colour. That
+# breaks Dev_Plan.md §4.2's hard rule directly: a player has to be able to learn
+# one colour pair and read every screen, and the slipper is the most-looked-at
+# object in the game. The moodboard agrees independently — THE SLIPPER's card
+# accent is magenta, and §4.2's own token table lists IMPACT as the
+# "Slipper/Can accent".
+#
+# So: IMPACT sole, HIGHLIGHT straps, INK toe post. Neither role hue appears.
+#
+# ⚠️ The materials are named for the PART, not for the palette token. That is
+# deliberate and it is the second half of the fix: a material literally called
+# "defense" is a bug that reads as correct in every diff. The lata still names
+# its materials after tokens; it is not renamed here only because its colours
+# are unchanged and renaming would churn four .obj files for nothing.
+#
+# ⚠️ Renaming the materials also changes the .obj, which is what forces Godot to
+# reimport. obj_writer.gd's header warns that the .mtl is NOT in the .obj's
+# [deps], so a colour-only change rewrites the .mtl and the engine keeps serving
+# the OLD colours from its cache — you would measure the previous values and
+# conclude the fix did nothing.
 
 ## Sole outline is 12 points, CCW in the XZ plane viewed from above (+Y).
 ## CCW from above means the right side runs toe->heel (+Z), and the left
 ## side runs heel->toe (-Z), completing the loop at the toe tip.
 ## Width profile: ±0.26 at ball, ±0.18 waisted at arch, ±0.22 at heel.
+## A first-person viewmodel forearm and fist. Playtest 0.4: "don't see arms of ppl".
+##
+## ⚠️ THE RIG'S OWN ARMS CANNOT BE USED FOR THIS, and it is worth knowing why
+## before anyone tries again. `camera_rig.gd` already hides only `head-mesh`
+## (B-73), so the real arms ARE being drawn — they are simply not in frame.
+## Measured on the actual model: `body-mesh` spans CharacterBase-local
+## -0.800..+0.076 while the FPP eye sits at +0.450, so the entire body is 0.37
+## below the camera, and the arm bone at y=-0.115 sits ~48 degrees below the
+## view axis against a 37.5-degree half-FOV. The chibi head is so large that the
+## eye is above the shoulders. No amount of self-hide logic fixes that; the arms
+## are out of the frustum, not hidden.
+##
+## So this is a dedicated viewmodel, mounted to the camera rather than the
+## skeleton, which is how first-person games have always done it.
+##
+## Authored pointing +Y with the elbow at the origin, so it can be built from
+## `add_extrude` (which only extrudes along Y) and then rotated into place in
+## ViewmodelArms.tscn. Keeping the mesh axis-aligned means the numbers here stay
+## readable; the aiming happens in the scene where it can be seen.
+func _build_viewmodel_arm() -> void:
+	var writer := ObjWriter.new("ViewmodelArm")
+	# The two Persons deliberately share one skin, so a single baked colour is
+	# correct here and this mesh never needs a per-Person variant. If that ever
+	# stops being true, this becomes a palette-shader surface like the Persons.
+	writer.set_material("skin", Color("c8875a"))
+	writer.set_material("skin_shade", Color("a66b45"))
+
+	# Forearm, elbow at y=0 running to the wrist. Chunky and near-square in
+	# section, matching Kenney's blocky limbs rather than tapering realistically.
+	# ⚠️ CHUNKY ON PURPOSE, and the first version was not chunky enough. The
+	# Kenney rig is chibi: its real forearm is roughly as wide as it is long, and
+	# a viewmodel authored at human proportions read as two thin sticks against
+	# it. Width is now ~0.21 against a 0.42 total length - about 1:2 - which is
+	# what matches the body the player sees in third person.
+	# ⚠️ LONG ON PURPOSE. The elbow has to sit BELOW the frame so the arm reads as
+	# running off-screen into the player's own body. Two earlier versions were
+	# short enough that both ends were visible, and a limb with two visible ends
+	# floating in the lower frame reads as a box, not an arm - which is exactly
+	# what the playtest reported ("MY ARMS ARE FLOATING").
+	writer.add_extrude(PackedVector2Array([
+		Vector2( 0.130, -0.122),
+		Vector2( 0.130,  0.122),
+		Vector2(-0.130,  0.122),
+		Vector2(-0.130, -0.122),
+	]), 0.0, 0.62, "skin_shade")
+
+	# Fist: wider than the forearm so the silhouette has a knuckle break in it.
+	# Without the step the arm reads as a plank.
+	writer.add_extrude(PackedVector2Array([
+		Vector2( 0.158, -0.150),
+		Vector2( 0.158,  0.150),
+		Vector2(-0.158,  0.150),
+		Vector2(-0.158, -0.150),
+	]), 0.62, 0.84, "skin")
+
+	writer.recalculate_normals(40.0)
+	writer.write(OUTPUT_DIR + "viewmodel_arm")
+	print("  viewmodel_arm")
+
+
+## One arm of the Y-strap: a rectangular cross-section swept along a quadratic
+## Bezier from `start` (anchored on the footbed edge) through `control` (the
+## apex, above where the top of a foot would be) to `finish` (the top of the toe
+## post). Both arms meet at `finish`, which is what makes the Y.
+##
+## Swept rather than extruded because the arch is the point. `add_extrude` only
+## walks a 2D outline up the Y axis, so it cannot produce a band that leaves the
+## sole, rises, and comes back down to a single shared point.
+##
+## Winding: each ring's four corners are emitted in a fixed order around the
+## tangent, and consecutive rings are stitched with that same order, so every
+## side face inherits the outward direction from the first ring. Getting this
+## backwards makes the whole strap render inside-out, which is loud and obvious
+## in any render rather than silent — deliberately preferred over the
+## double-winding trick used for the building windows, because this band is
+## chunky enough that a hidden inverted face would also break the M-4 outline
+## pass (an inverted hull on inverted geometry produces no outline at all).
+func _strap_band(writer: ObjWriter, start: Vector3, control: Vector3,
+		finish: Vector3) -> void:
+	const SEGMENTS: int = 7
+	const HALF_WIDTH: float = 0.032
+	const HALF_THICK: float = 0.017
+
+	var rings: Array[Array] = []
+	for i in range(SEGMENTS + 1):
+		var t := float(i) / float(SEGMENTS)
+		var inv := 1.0 - t
+		# Quadratic Bezier and its analytic derivative — the derivative gives the
+		# tangent directly, which is cheaper and steadier than differencing
+		# neighbouring samples (that degenerates at the endpoints).
+		var point: Vector3 = inv * inv * start + 2.0 * inv * t * control + t * t * finish
+		var tangent: Vector3 = (2.0 * inv * (control - start) + 2.0 * t * (finish - control)).normalized()
+		# The band should stay flat-side-up along its whole run, so the frame is
+		# built from world up rather than from a rotation-minimising frame. The
+		# arc never approaches vertical, so `up` and `tangent` never align and
+		# the cross product is always well conditioned.
+		var right := tangent.cross(Vector3.UP).normalized()
+		var up := right.cross(tangent).normalized()
+		rings.append([
+			point + right * HALF_WIDTH + up * HALF_THICK,
+			point - right * HALF_WIDTH + up * HALF_THICK,
+			point - right * HALF_WIDTH - up * HALF_THICK,
+			point + right * HALF_WIDTH - up * HALF_THICK,
+		])
+
+	for i in range(SEGMENTS):
+		var a: Array = rings[i]
+		var b: Array = rings[i + 1]
+		for corner in range(4):
+			var nxt := (corner + 1) % 4
+			writer.add_quad(a[corner], b[corner], b[nxt], a[nxt], "strap")
+
+	# Cap only the footbed end. The toe-post end is buried inside the post knob,
+	# so a cap there would z-fight with it for no visible gain.
+	var first: Array = rings[0]
+	writer.add_quad(first[3], first[2], first[1], first[0], "strap")
+
+
 func _build_tsinelas() -> void:
 	var writer := ObjWriter.new("Tsinelas")
-	writer.set_material("defense", UiTheme.DEFENSE)
-	writer.set_material("impact", UiTheme.IMPACT)
-	writer.set_material("highlight", UiTheme.HIGHLIGHT)
+	writer.set_material("sole", UiTheme.IMPACT)
+	writer.set_material("midsole", UiTheme.IMPACT.darkened(0.34))
+	writer.set_material("strap", UiTheme.HIGHLIGHT)
+	writer.set_material("post", UiTheme.INK)
 
 	# --- Sole ---
 	# 12-point CCW outline in (x, z) — side walls face outward, caps correct.
@@ -188,7 +340,16 @@ func _build_tsinelas() -> void:
 		Vector2(-0.10, -0.620),  # 11  toe-left
 		Vector2( 0.00, -0.675),  # 12  toe-tip center
 	])
-	writer.add_extrude(sole_outline, 0.0, 0.10, "defense")
+	# Two layers, not one slab. A real tsinelas has a darker rubber midsole under
+	# a lighter footbed, and the step between them catches a shadow line that
+	# makes the whole thing read as an object rather than as a flat lozenge. The
+	# footbed is inset 7% so that step is visible from any angle, including from
+	# directly above, which is the angle a Prop is usually seen from.
+	var footbed_outline := PackedVector2Array()
+	for p in sole_outline:
+		footbed_outline.append(p * 0.93)
+	writer.add_extrude(sole_outline, 0.0, 0.045, "midsole")
+	writer.add_extrude(footbed_outline, 0.045, 0.10, "sole")
 
 	# --- Toe post ---
 	# Small cylindrical knob between the toes, sitting on top of the sole.
@@ -203,37 +364,27 @@ func _build_tsinelas() -> void:
 		var angle: float = TAU * float(i) / float(post_segs)
 		post_outline.append(Vector2(post_cx + post_r * cos(angle),
 		                            post_cz + post_r * sin(angle)))
-	writer.add_extrude(post_outline, 0.10, 0.165, "highlight")
+	writer.add_extrude(post_outline, 0.10, 0.165, "post")
 
 	# --- Y-straps ---
-	# Two diagonal ribbon quads from the toe post to the arch sides.
-	# Top face only — thin enough to read at TPP distance without side faces.
-	# Perpendicular vector = 90-deg CCW rotation of the strap direction in XZ,
-	# which makes add_quad(a, b, c, d) emit a face whose normal is +Y.
-	var strap_y: float = 0.10
-	var W: float = 0.03  # strap half-width
-
-	# Right strap: post (0, -0.55) -> arch-right (0.22, -0.05) in XZ.
-	var rpost := Vector2(0.0, -0.55)
-	var rside := Vector2(0.22, -0.05)
-	var rdir := (rside - rpost).normalized()
-	var rperp := Vector2(-rdir.y, rdir.x)  # 90 deg CCW keeps normal pointing +Y
-	var ra0 := Vector3(rpost.x + rperp.x * W, strap_y, rpost.y + rperp.y * W)
-	var rb0 := Vector3(rpost.x - rperp.x * W, strap_y, rpost.y - rperp.y * W)
-	var ra1 := Vector3(rside.x + rperp.x * W, strap_y, rside.y + rperp.y * W)
-	var rb1 := Vector3(rside.x - rperp.x * W, strap_y, rside.y - rperp.y * W)
-	writer.add_quad(ra0, ra1, rb1, rb0, "impact")
-
-	# Left strap: mirror of right.
-	var lpost := Vector2(0.0, -0.55)
-	var lside := Vector2(-0.22, -0.05)
-	var ldir := (lside - lpost).normalized()
-	var lperp := Vector2(-ldir.y, ldir.x)
-	var la0 := Vector3(lpost.x + lperp.x * W, strap_y, lpost.y + lperp.y * W)
-	var lb0 := Vector3(lpost.x - lperp.x * W, strap_y, lpost.y - lperp.y * W)
-	var la1 := Vector3(lside.x + lperp.x * W, strap_y, lside.y + lperp.y * W)
-	var lb1 := Vector3(lside.x - lperp.x * W, strap_y, lside.y - lperp.y * W)
-	writer.add_quad(la0, la1, lb1, lb0, "impact")
+	# ⚠️ THESE USED TO BE FLAT QUADS AT strap_y = 0.10 — which is EXACTLY the top
+	# face of the sole. A strap lying in the same plane as the footbed is not a
+	# strap, it is a decal painted on the footbed, and that is precisely how it
+	# rendered: a yellow chevron drawn on a pink lozenge, with no silhouette of
+	# its own from any angle. It was the single thing making the hero prop read
+	# as unfinished.
+	#
+	# They are now swept bands that ARCH over where a foot would be, so the
+	# slipper has a hole through it — which is the whole visual signature of a
+	# tsinelas and the thing that makes it readable in flight.
+	# ⚠️ The footbed anchors must sit INSIDE the sole outline at that z, not on
+	# the nominal half-width. The waist of the sole is only +/-0.18 at z=0, and
+	# the footbed is inset a further 7%, so anchoring at +/-0.235 hung both straps
+	# off the edge in mid-air. +/-0.163 lands them on the footbed.
+	_strap_band(writer, Vector3(0.163, 0.09, 0.01),
+		Vector3(0.132, 0.245, -0.26), Vector3(0.0, 0.170, -0.505))
+	_strap_band(writer, Vector3(-0.163, 0.09, 0.01),
+		Vector3(-0.132, 0.245, -0.26), Vector3(0.0, 0.170, -0.505))
 
 	writer.recalculate_normals(40.0)
 	writer.write(OUTPUT_DIR + "tsinelas")

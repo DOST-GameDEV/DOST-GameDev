@@ -2,7 +2,7 @@ extends AbilityBase
 class_name ShatterTrap
 
 ## Palayok — Shatter Trap: downed state leaves a hazard patch that slows nearby
-## attackers (see docs/Tumbang_Preso_2v2_GDD.md, Roster: 🥫 Can Class).
+## attackers (see docs/Dev_Plan.md, Roster: 🥫 Can Class).
 ## Modeled as: activating arms the trap; the *next* time this character goes Downed
 ## while armed, a slow-zone hazard spawns at that spot (uses HazardZone, shared with
 ## future map hazards). First-pass / untested in-editor.

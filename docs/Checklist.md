@@ -75,7 +75,7 @@ first is spending a week on a bet.
 Three things have to land before that playtest is even *possible*. They are not
 polish; they are the instruments.
 
-- [ ] **0.1 · HUD charge meter, hold meter and reset-channel bar.** 🤖 Sonnet, medium
+- [x] **0.1 · HUD charge meter, hold meter and reset-channel bar.** 🤖 Sonnet, medium
       `carrier.gd` emits `charge_changed(0..1)`, `held_changed`, and
       `reset_channel_changed(0..1)`. **All three are emitted and nothing
       consumes them** (`Handoff.md` T-3). You cannot tune a hold-to-charge throw
@@ -86,7 +86,12 @@ polish; they are the instruments.
       illustrates *charged throw (glow)* and THE DEFENDER card illustrates
       *lata reset channel (progress bar)*.
       *Blocks:* 0.4.
-- [ ] **0.2 · Give each side a real default Prop ability (B-76).** 🤖 Sonnet, medium
+      **Done, verified by running** (not by a human): a headless probe drove
+      grab→charge→release and grab→hold→complete/cancel via `Input.action_press`
+      and read the live bar/label values back — all three signals wired
+      correctly. Screenshots at 1280x720 and 1920x1080, idle and mid-fill.
+      Plain styling only; the design lane restyles on top once merged.
+- [x] **0.2 · Give each side a real default Prop ability (B-76).** 🤖 Sonnet, medium
       `main.gd`'s `PROP_ABILITY` is `quick_stand.tres` for **every** Prop, and
       `Main.tscn` hardcodes the same. Quick Stand has no `get_throw_profile()`,
       so every throw falls back to `throw_default.tres` and **all three Tsinelas
@@ -96,13 +101,25 @@ polish; they are the instruments.
       default so a Can gets a Can ability and a Tsinelas gets a throw profile.
       *Blocks:* 0.4 — you cannot playtest three throw identities that cannot be
       selected.
-- [ ] **0.3 · Base circle and throwing line, in the current arena.** 🤖 Sonnet, medium
+      **Done, verified by running.** Also worse than described: `is_can` flips
+      every round and nothing re-picked a Prop's ability on the flip, so a
+      spawn-time-only fix would have gone stale one round later — fixed at
+      every spawn path and every round reset. Only 2 of the 3 Tsinelas
+      identities are reachable in a single 2v2 sitting (Bakya Bash / Flick
+      Dash) — a hard limit of 2 Props per match, not something this item can
+      close; 3.3 does that. See `Handoff.md` B-76.
+- [x] **0.3 · Base circle and throwing line, in the current arena.** 🤖 Sonnet, medium
       The game is named after a can standing in a circle and the circle is
       nowhere in the world. Two floor decals in `Main.tscn`, deliberately
       temporary — 2.2 replaces them properly with map geometry. Do them anyway:
       Option B is unreadable without the base circle, and a tester cannot judge
       throw range with no throwing line.
       *Blocks:* 0.4.
+      **Done, verified by rendering** (`tools/render_probe.gd`, real device, not
+      headless) at 1280x720 and 1920x1080 — both visible from a Person's FPP
+      camera. Centred at world origin as a nominal marker, not the Can's actual
+      spawn point, which isn't fixed (varies by ~3 units by which team holds it
+      — a `SPAWN_POINTS` limitation 2.2 is scoped to fix, not this item).
 - [ ] **0.4 · 🧑 PLAY A FULL BO5 IN LOCAL MATCH. Both game modes.** ⛔ 0.1, 0.2, 0.3
       Carry a slipper. Charge and release it at several arcs. Miss, and go get
       it back. Get tagged mid-carry. Crawl a loose slipper home. Hold the reset
@@ -114,6 +131,36 @@ polish; they are the instruments.
       High effort rather than medium: this will touch `carriable.gd`,
       `carrier.gd` and the throw profiles at the same time, and the
       host-authoritative transitions in there are easy to break subtly.
+- [x] **0.6 · Carried-scale the tsinelas (implements the 1.2 decision).** 🎨 Design (reassigned)
+      **Design lane specified this; it is build-lane code and design must not write it.** Do it
+      before 0.4 — in first person the carried slipper currently occupies about a quarter of the
+      screen as an opaque slab, and a tester cannot judge an aiming arc through it.
+      In `scripts/characters/character_visual.gd` only:
+      1. `const TSINELAS_CARRY_SCALE: float = 0.32` and
+         `const CARRY_SCALE_LERP: float = 12.0`.
+      2. In the existing `_process` poll — **beside `_spin_while_airborne`, not on a signal**;
+         its comment explains why (Carriable and CharacterVisual are siblings with no guaranteed
+         `_ready()` order, and a poll self-heals across the model rebuild that every role swap
+         performs) — lerp `self.scale` toward `Vector3.ONE * TSINELAS_CARRY_SCALE` while the
+         sibling `Carriable.state == CARRIED`, and toward `Vector3.ONE` otherwise. Guard it to
+         `carriable.is_throwable()` so a Can is never touched.
+      3. Retune `HAND_CARRY_OFFSET`. **Predicted, not measured:** the sole sits at
+         CharacterVisual-local `y = -0.8`, so scaling about this node's origin lifts the slipper
+         ≈ `0.544` units; `y` wants to go from `+0.21` toward `≈ -0.33`. **Confirm by render, do
+         not paste the number in.**
+      *Acceptance:* `godot --path . tools/render_probe.tscn --quit-after 400 --resolution 960x540
+      -- viewmodel <dir>` — **without `--headless`** — and both shots show a slipper that reads as
+      held. Attach them. Tuning window `0.28 – 0.40` without consulting the design lane.
+      *Explicitly NOT in this item:* the mesh, any collision shape, any `hit_radius`, any speed,
+      the camera. `_align_to_capsule_floor()` needs no change — it computes from `model.scale` in
+      this node's local space, not from this node's scale.
+- [x] **0.7 · B-82 — units spawn 0.3 units inside the floor slab. OBSOLETE, not fixed.** 🎨 Design
+**The offending floor no longer exists.** 2.2a deleted `Main.tscn`'s whole world
+      half, and both maps put their floor top at exactly `y = 0` with spawn markers at `y = 0.8`,
+      which is the convention every doc already assumed. **B-83 is retired the same way** — the
+      boundary colliders that sat at `±40` around a `±20` floor went with it. Closed as obsolete
+      rather than as fixed, deliberately: nobody edited the numbers, the thing holding them was
+      removed. `Art_Direction.md` §4.1 was corrected separately.
 
 ---
 
@@ -135,7 +182,13 @@ blocking real work.
       relitigated here. What *is* being escalated: this is now the difference
       between "a Godot project" and "the game on the moodboard", and it is one
       line of code behind a question nobody has answered.
-- [ ] **1.2 · Prop scale — how big is a lata, and how big is a tsinelas?** 🤖 Opus, high
+- [x] **1.2 · Prop scale — how big is a lata, and how big is a tsinelas? DECIDED 2026-07-28.**
+      **Option (a): props stay hero-scaled as units; the tsinelas scales to `0.32` ONLY while
+      `CARRIED`** (0.432 units long = 27% of a Person, against 84% today). Reasoning, the measured
+      numbers, the three rejected alternatives and the two follow-up items are in `Handoff.md`
+      §0.11. Ticked as a **decision** — the implementation is 0.6 below and is unbuilt. The kit's
+      2-unit grid in 2.1a is sized against this and 2.1 is unblocked.
+      *Original statement of the fork, kept so the history reads honestly:* 🤖 Opus, high
       Measured on 2026-07-27: the tsinelas mesh is **1.35 units long against a
       1.598-unit Person — 84% of the character's own height**, and the lata is
       **1.125 units, 70% of a Person**. Rendered, a Person carrying the slipper
@@ -148,7 +201,16 @@ blocking real work.
       numbers, and the moodboard's role cards draw the can and slipper as hero
       objects. Decide it before 2.1: the environment kit's 2-unit grid is sized
       against these props.
-      *Blocks:* 2.1, and the final tuning of `HAND_CARRY_OFFSET`.
+      *Blocked:* 2.1, and the final tuning of `HAND_CARRY_OFFSET`. **Both now released.**
+- [ ] **1.2b · Should the Person be literally larger? Deferred to after 0.4, deliberately.** 🧑 ⛔ 0.4
+      The human's steer during the 1.2 pass was *"make humans bigger, objects should fit in hand."*
+      The second half is delivered by 1.2/0.6. The first half is **not rejected — it is costed**:
+      `PERSON_SCALE` is visual-only, so raising it desynchronises the model from the 1.6 capsule and
+      drags in the capsule and hurtbox heights, `FppPivot` (reopening B-78's failure class),
+      `HAND_CARRY_OFFSET`, the TPP spring arm, and the arena's read at unchanged `SPEED`. That is a
+      pass of its own, in shared and build-lane files, and it must never land inside an art commit.
+      **Gate it on a human having actually played 0.4** — the question "is the Person too small"
+      cannot be answered from a screenshot. See `Handoff.md` §0.11.
 - [ ] **1.3 · 🧑 Does the Person get its own ability roster?** ⛔ HUMAN
       Or does every Person share the one Tag? Open since the GDD. **Blocks 3.3
       (character select)** — the Prop half of that screen is buildable without
@@ -178,21 +240,60 @@ most internal ordering. **2.1 gates 2.2 gates everything else in the phase** —
 you cannot lay out a map from a kit that does not exist, and you cannot tune
 HUD contrast or hazard placement against a grey box.
 
-- [ ] **2.1 · The environment kit (M-6).** ⛔ 1.2
+- [ ] **2.1 · The environment kit (M-6).** ~~⛔ 1.2~~ **unblocked — 1.2 decided 2026-07-28**
       Split deliberately into two briefs, because it needs two different hats:
-  - [ ] **2.1a · Kit art direction and piece list.** 🤖 Opus, high
-        Which pieces, what silhouette, what proportion, what reads as an
-        eskinita rather than as generic low-poly. Corrugated GI-sheet fence,
-        sari-sari store front, electric post with drooping wire, laundry line,
-        tricycle, bollards, crates, tires; plaza set with a basketball ring,
-        which is the actual Philippine plaza. ≤400 tris each, 2-unit grid.
-  - [ ] **2.1b · Generate the kit through `tools/models/generate_all.gd`.** 🤖 Sonnet, medium
-        Determinism rules unchanged (`Handoff.md` M-1): two runs byte-identical,
-        `git status` clean after the second. Convex collision per piece.
-- [ ] **2.2 · Eskinita — the first real map (M-7).** 🤖 Opus, high ⛔ 2.1
+  - [x] **2.1a · Kit art direction and piece list.** 🤖 Opus, high
+        **Delivered as [`Art_Direction.md`](Art_Direction.md).** 26 pieces across a
+        core set, an Eskinita set and a Bayan Plaza set, each with footprint on the 2-unit grid,
+        height, triangle budget, materials by `UiTheme` token and what it contributes. Also: the
+        Metro/Eskinita and Province/Bayan-Plaza naming reconciled explicitly, the argument for
+        folding **Barong Barong into Eskinita's boundary rather than building a third map**, a
+        twelve-token `ENV_*` environment palette added to `ui_theme.gd`, the three-layer boundary
+        technique, and the height law derived from the measured **1.25-unit FPP eye height**.
+        Ticked as a **specification** — no geometry exists yet; that is 2.1b.
+  - [x] **2.1b-0 · `transform` parameter on `add_revolve` / `add_extrude`.** 🤖 Sonnet, medium
+        **Prerequisite for 2.1b.** `obj_writer.gd`'s revolve is locked to the Y axis at the
+        object's origin and its extrude only ever extrudes vertically, so an upright wheel or a
+        leaning sheet is not expressible. Add an optional trailing
+        `transform: Transform3D = Transform3D.IDENTITY` applied to every emitted vertex — ~6 lines.
+        It cannot break shading (`recalculate_normals()` rebuilds from geometry and the spec
+        already mandates it per piece) and cannot break determinism (`_fmt` snaps after the
+        transform, and the weld key is the printed form). Rationale and the no-change fallback are
+        in `Art_Direction.md` §5.
+        **Done, verified by running:** a 90°-about-X transform on a flat revolve profile produced
+        vertices spread across 5 distinct Y values (confirmed upright, not still flat); an
+        identity-transform call produced byte-identical vertices to the old no-arg call (zero
+        behaviour change for every existing caller); a translated `add_extrude` moved every
+        vertex. Generator run twice — clean. `wall_corrugated_leaning` and `tricycle` are
+        unblocked for whoever builds 2.1b.
+  - [x] **2.1b · Generate the kit — 28 pieces, in `tools/models/env_kit.gd`.** 🎨 Design (reassigned)
+        Reassigned from Sonnet to Design by the human because the path-ownership table already
+        gives Design `generate_all.gd`'s shape functions; claimed in `SHARED_LOCKS.md` first.
+        **Verified by running:** determinism (three runs, output hashed, byte-identical); every
+        piece under 400 tris (largest `sari_sari_store` at 216); no `#f87020`/`#0080e8` in any
+        `env_*.mtl`; imports clean; and **rendered** — five bugs were found that way and fixed
+        (invisible wires, unreadable corrugation, sampay posts standing in the road, a hazard decal
+        that shouted over the Props, and a base circle buried inside the road tiles).
+        **Complete as of 2026-07-28 — 30 pieces.** `wall_corrugated_leaning` and `tricycle` landed
+        once the Build lane shipped 2.1b-0; they are the only two pieces that pass a `transform`.
+        Tricycle 192 tris, leaning sheet 144. Both placed in Eskinita and rendered.
+        *Deferred, do not lose:* **convex collision per piece was NOT generated** — Eskinita
+        collides on one invisible box ring behind the wall line instead, which
+        `Art_Direction.md` §4 permits for a continuous wall. A `GridMap` map would need the
+        per-piece shapes.
+- [~] **2.2 · Eskinita — the first real map (M-7).** 🎨 Design — **built, wired and rendered; never played**
       Opus rather than Sonnet: the hard question is "does this read as a
-      Philippine side street", not "does this scene load". Includes, in one
-      coherent pass rather than scattered:
+      Philippine side street", not "does this scene load".
+      **`scenes/maps/Eskinita.tscn` exists, loads, and renders as a street** — asphalt, kerbs,
+      GI-sheet wall line with rust skirts, electric posts with sagging service wire, sampay strung
+      overhead, building masses behind, seeded clutter, lane markings, base circle, throwing lines
+      and a chevroned jeepney lane. Authored by `tools/maps/build_eskinita.py` (123 instances is
+      too many to hand-place); edit the script, not the scene. Screenshots in the PR.
+      **Wired in at 2.2a (v4.28).** `Main.tscn` no longer carries a world at all; `main.gd`
+      instances the picked map into `$Map` and reads its `SpawnPoints`. A 1200-frame soak of the
+      match scene runs silent — no errors, no kill-plane respawns. **What is still missing is a
+      human:** nobody has played it, so this stays `[~]`. That is 0.4.
+      Includes, in one coherent pass rather than scattered:
   - [ ] `scenes/maps/Eskinita.tscn`, playable area kept at roughly the current
         40×40 — **do not change arena scale in the same commit as arena art**,
         or a movement-feel regression is unattributable.
@@ -218,13 +319,26 @@ HUD contrast or hazard placement against a grey box.
         ships a flat `background_color` and no sky at all.
   - [ ] `Main.tscn` instances the map instead of carrying `Floor`/`Bounds`
         directly, so map #2 is a scene swap rather than a rebuild.
-- [ ] **2.3 · Persons — moodboard restyle (M-5).** 🤖 Sonnet, medium ⛔ 2.1a
-      Palette retint toward the moodboard's character render plus two or three
-      silhouette-defining accessories. **Steps 1–3 only — step 4 (walk/run
-      locomotion) is already done** and the docs claiming "only `idle` of 32 is
-      wired" are stale: `character_visual.gd::_play_locomotion` selects
-      idle/walk/sprint from horizontal speed.
-- [ ] **2.4 · Bayan Plaza — the second map.** 🤖 Sonnet, medium ⛔ 2.2
+- [x] **2.2a · Wire Eskinita into the game.** 🎨 Design (reassigned) — **verified by render**
+      The map is built and rendered but nothing loads it. Three things, all build-lane:
+      1. `Main.tscn` instances `scenes/maps/Eskinita.tscn` in place of its own `Floor` and
+         `Bounds` — which also retires B-83 (the old colliders sit at ±40 around a ±20 floor) and
+         B-82 (its floor top is y=+0.5; Eskinita's is y=0, as every doc assumes).
+      2. `main.gd` prefers the map's `SpawnPoints/Spawn0..3` `Marker3D`s over its hardcoded
+         `SPAWN_POINTS`. **This is where B-54 finally gets answered** — the four markers are
+         already placed as two team pairs at opposite ends of the alley.
+      3. Delete the temporary decals from 0.3; the map carries real ones now.
+      *Then* 0.4 can be played in a real map rather than a grey box.
+- [~] **2.3 · Persons — moodboard restyle (M-5).** 🎨 Design — **steps 1+3 done and
+      render-verified; step 2 (accessories) NOT done, step 4 was already done.**
+      Palette retint landed as a UV-cell palette-remap shader
+      (`assets/characters/persons/materials/`), wired through each `.glb.import`'s
+      `use_external` material. Verified by render at 1.5u, 3.6u and the 20u the
+      acceptance criterion names. **Step 2 (accessory meshes on bones) is blocked
+      on lane ownership, not on art** — attaching a mesh to a bone is
+      `scripts/characters/character_visual.gd`, which is 🔧 Build's. See
+      `Handoff.md` M-5 for the exact 20 lines needed. Stays `[~]` until 0.4 plays it.
+- [~] **2.4 · Bayan Plaza — the second map.** 🎨 Design — **built and rendered, never played**
       A scene swap once 2.2 has proven the pattern. **First candidate to cut**
       under time pressure — see "If time runs short" at the bottom.
 
@@ -248,10 +362,32 @@ HUD contrast or hazard placement against a grey box.
       replicated with ready-up state, read in `_build_networked_character()` in
       place of the hardcoded `PROP_ABILITY`. `.duplicate()` the chosen `.tres`
       or two characters share one cooldown.
-- [ ] **3.4 · Off-screen indicators (U-6b).** 🤖 Sonnet, medium
+- [x] **3.5 · Map picker in the opening UI.** 🎨 Design (new item) — **verified by render**
+      An `OptionButton` plus a one-line tagline on the Play card, mirroring the existing
+      `GameModeOption` exactly so it inherits the card chrome for free. Built from
+      **`GameLaunch.MAPS`**, not hardcoded in `main_menu.gd`: adding a map is one entry in the
+      autoload plus a scene, and the picker, the launch path and the fallback all read the same
+      list so they cannot disagree about what exists. `GameLaunch.selected_map` is deliberately
+      **not** cleared by `reset()` — it is a preference, not a one-shot handoff like
+      `pending_action`, so a player who picks Bayan Plaza does not re-pick it after every match.
+      The tagline exists because "ESKINITA" means nothing to a judge who has never played it.
+- [x] **3.4 · Off-screen indicators (U-6b).** 🤖 Sonnet, medium
       Screen-edge arrows for your teammate and the Can. `Dev_Plan.md` §3.3 calls
       these **mandatory** for FPP — they are the promised mitigation for the
       Person's narrower awareness cone — and U-6 deferred them.
+      **Done, verified by running.** New `OffscreenIndicators.tscn`/`.gd`, driven from `hud.gd`
+      with the same cached local character `you_card.gd` already resolves for the crosshair — no
+      second scan. Teammate found by team + not-self (a team is 1 Person + 1 Prop, never two of
+      the same, so no `is_person` check needed); the Can via a new `RoundManager.get_tracked_cans()`
+      accessor rather than re-deriving `is_can` a third time. Standard radar-arrow projection:
+      hidden when on-screen, clamped to the inset screen edge and rotated toward the target
+      otherwise, including the behind-camera case (`unproject_position()` mirrors instead of
+      flagging it — corrected for). Found and fixed one real bug while testing: a target sitting
+      exactly perpendicular to the camera's forward axis hits a `p.d == 0` divide inside
+      `unproject_position()` and logs an engine error every such frame — guarded against. Verified
+      by a headless probe forcing on-screen/behind/far-off-to-the-side cases, and visually via
+      `render_probe.gd` at 1280x720 and 1920x1080 (screenshot: an arrow correctly pinned to the
+      right edge, pointing at an off-screen teammate). Plain glyph styling; design lane restyles.
 
 ---
 
@@ -266,6 +402,27 @@ touch map scenes.
       the mesh is. Minimum viable set: bump, slipper release, slipper impact on
       lata, lata knocked down, reset-channel complete, round win, match win, and
       one ambience loop per map. Licences go on Form 03 with everything else.
+- [x] **4.1a · Jump — every unit, Person and Prop.** 🎨 Design — **playtest 0.4 request.**
+      Did not exist: zero occurrences of "jump" in `project.godot` or
+      `character_base.gd`. Added `jump_p1..p4` (P1 Space, P2 Numpad-0, P3 RShift,
+      P4 Numpad-Enter), rebindable for P1/P2, and one impulse in
+      `character_base.gd`. Props jump too — the design pillar is *friendslop*, and
+      a hopping lata needs no justification where refusing one would.
+      ⚠️ `JUMP_VELOCITY = 5.8` apexes at **0.841**, and that ceiling is a MAP
+      constraint: interior clutter is capped at 1.0 so an FPP eye at 1.25 sees
+      over it. Above ~1.0 every crate becomes a platform. Verified to parse and
+      run 300 frames silent; **not yet felt by a human.**
+- [x] **4.1b · P0 from playtest 0.4 — Esc left the mouse captured and never paused.**
+      🎨 Design. Three reported bugs, one cause: `settings_panel.gd` had no
+      visibility guard on `_unhandled_input`, and a hidden Control still receives
+      it in Godot. The hidden panel ate Esc and emitted `back_pressed`, which
+      shows the overlay without setting `mouse_mode` or `get_tree().paused`.
+- [x] **4.1c · Tab could not reach the Can.** 🎨 Design. Two independent causes.
+      Godot binds Tab to `ui_focus_next` and the GUI layer eats it before
+      `_unhandled_key_input`, so the switcher never saw it — moved to `_input`.
+      Separately, the switcher no-ops in a **networked** match by design; the
+      0.4 session was hosted, not Local Match, which is also why pause did not
+      freeze. **Solo-test through Local Match.**
 - [ ] **4.2 · Movement interpolation for remote characters.** 🤖 Sonnet, high
       Remote units visibly snap. High effort because it sits directly on the
       replication model. **Do this before 6.1** — testing over real wifi without
@@ -277,9 +434,27 @@ touch map scenes.
 - [ ] **4.4 · Balance pass — Guard/Dash, cooldowns, ranges, both game modes.** 🤖 Sonnet, medium ⛔ 0.4
       Never done. Write the numbers down. **Balance both Option A and Option B
       to shippable quality** — per 1.5, neither is deprioritised.
-- [ ] **4.5 · Hitstop.** 🤖 Sonnet, medium
+- [ ] **4.4a · `throw_bakya`'s maximum range is 4.81 units — less than half of every other
+      profile.** 🤖 Sonnet, medium
+      Computed from the committed `.tres` files with `GRAVITY = 20.0` and the measured 1.248
+      release height: `throw_default` **10.13**, `throw_bagsak` **9.89**, `throw_flick` **12.90**,
+      `throw_bakya` **4.81**. `gravity_scale 1.6` with `arc_angle_deg 8.0` is heavy *and* flat, so
+      it drops out of the air almost immediately — Bakya Bash cannot reach any throwing line the
+      other three can use. Almost certainly a tuning bug rather than an identity, and it has never
+      been felt because B-76 means no Prop can select it. Retune, then re-check
+      `Art_Direction.md` §9's table. Filed separately from 4.4 because the map's throwing
+      line is placed against these numbers.
+- [x] **4.5 · Hitstop.** 🤖 Sonnet, medium
       The one piece of the Q-8 hit-feedback set that never landed. Cheap, and it
       is what makes a landed hit feel like contact rather than a colour change.
+      **Done, verified by running.** `character_base.gd::_flash_hit()` now dips `Engine.time_scale`
+      to 0.05 for 60ms real time (a `SceneTreeTimer` with `ignore_time_scale` restores it, so the
+      dip's own length doesn't get stretched by the dip). Global, not per-node, and broadcast the
+      same way the existing flash/particles/shake already are — every peer feels the same beat on
+      the same trigger. A headless probe forced a real bump between two opposing units and
+      confirmed `time_scale` dropped to 0.05 immediately and returned to exactly 1.0 shortly after.
+      Not verified: how 60ms/0.05 actually feels — a tuning number like every other one in the
+      T-block, cheap to adjust after 0.4.
 
 ---
 
@@ -294,15 +469,31 @@ touch map scenes.
       neither can be honestly ticked.**
 - [ ] **5.2 · Produce a release build and confirm it launches to the menu.** 🤖 Sonnet, medium ⛔ 5.1
 - [ ] **5.3 · Strip Local Match and the debug switcher.** 🤖 Sonnet, high ⛔ 0.4, 4.4
+      ⚠️ **RESOLVED CONFLICT — do NOT simply delete the harness.** `Art_Direction.md` Part 5 §3
+      makes the local 4-unit harness the demo failure-ladder's rung 3 — the only fallback that
+      needs no network. **Keep the harness, gate it behind a launch argument, and strip only the
+      on-screen debug overlay.** That satisfies this item's real intent (the build must not *look*
+      like a prototype) without removing the only network-free way to demo it.
       Run the removal checklist in `Dev_Plan.md` §3.5.5 and confirm the
       verification grep comes back empty. High effort because it touches
       `Main.tscn` and `main.gd`'s spawn paths. **Do it late** — it is the only
       way to playtest without four laptops, so it dies after the last playtest,
       not before.
-- [ ] **5.4 · Decide the `.import` UID churn (B-71).** 🤖 Sonnet, medium
+- [x] **5.4 · Decide the `.import` UID churn (B-71) — and the EOL churn (B-84).** 🤖 Sonnet, medium
       Either accept it or stop tracking `.import` UIDs. Low stakes, but it makes
       every "regenerate and check `git status`" acceptance test unreliable, and
       those are load-bearing for the whole M-block.
+      **B-84, found 2026-07-28, is the second half of the same problem and is cheaper to fix.**
+      `.gitattributes` marks `*.obj`/`*.mtl` as `text` while `core.autocrlf = true`, so git checks
+      them out CRLF and `FileAccess.store_line()` rewrites them LF — the files show as modified
+      after every generator run with **zero** lines changed (measured: `git diff --numstat` empty
+      both with and without `--ignore-cr-at-eol`). **The generator is deterministic; the test is
+      broken.** Fix: `*.obj text eol=lf`, `*.mtl text eol=lf`, then `git add --renormalize .`.
+      **Do this before 2.1b**, which adds ~26 more generated meshes to an acceptance test that
+      currently cries wolf on every run.
+      **Done.** B-84 fixed (`eol=lf` pinned, renormalized, determinism test run twice clean).
+      B-71 decided: accept the churn, formalized as a standing pre-commit check rather than a
+      two-lane-period workaround. See `Handoff.md` B-71/B-84.
 
 ---
 
@@ -318,10 +509,17 @@ Budget this like a feature.
       forces the shared-screen fallback (GDD §7), you need to know **weeks**
       before the deadline, and the FPP/TPP split makes that pivot cost one to
       two days, not half a day. **Book four laptops now.** No model can run this.
-- [ ] **6.2 · Live-demo script and trailer beat sheet.** 🤖 **Opus, high** ⛔ 2.2
-      What gets shown, in what order, in how many minutes, and what the fallback
-      is if a peer drops. Demo-day reliability is a feature — arguably the most
-      important one. A crash in front of judges costs more than a missing map.
+- [x] **6.2 · Live-demo script and trailer beat sheet.** 🎨 Design (Opus) — **delivered as
+      [`Art_Direction.md`](Art_Direction.md).** Six-minute live running
+      order, a printed controls card, a four-rung failure ladder, the 75-second
+      loopable trailer beat sheet for 6.3 and the four-minute outline for 6.4.
+      Written against what the build actually does — §0 is a verified/not-verified
+      inventory. **Three findings a human must act on:** a full Bo5 at 90s/first-to-3
+      is longer than any booth demo, so the demo needs a shorter preset; **5.3's
+      "strip the local harness" directly contradicts the only network-free demo
+      fallback**; and nobody has ever tested what happens when a peer drops.
+      §7 lists all five open questions. `[x]` for the document, which is the
+      deliverable — 6.3 and 6.4 remain the capture work.
 - [ ] **6.3 · Trailer, 1–2 min, loopable — capture and edit.** 🤖 Sonnet, medium ⛔ 6.2, 4.1
       Needs the real map and audio to exist. `tools/arena_camera.gd` was
       deliberately preserved for exactly this — it is 100 lines of working
@@ -348,7 +546,7 @@ Budget this like a feature.
 
 ## Already done — the ledger this list replaces
 
-Kept short on purpose; the detail is in `Handoff.md` §4 and `Bug_Ledger.md`.
+Kept short on purpose; the detail is in `Handoff.md` §4 and `Handoff.md`.
 Everything here was re-verified against the code on 2026-07-27 and is **not**
 simply carried forward from the previous pass's checkboxes.
 
@@ -358,7 +556,8 @@ simply carried forward from the previous pass's checkboxes.
 | `[x]` | Bo5, role swap, 90s round, win reporting, match reset | |
 | `[x]` | FPP/TPP camera directive, enforced by `assert` + grep | A-1, A-2 |
 | `[x]` | Theme, main menu, play menu, settings, pause, match result | |
-| `[x]` | **HUD to `Dev_Plan.md` §4.4** | Bo5 pips, role-coloured panels, framed timer with urgency states, LATA card, YOU card, FPP-only crosshair. Verified by render. |
+| `[x]` | **HUD to `Dev_Plan.md` §4.4** | Bo5 pips, role-coloured panels, framed timer with urgency states, LATA card, YOU card. Verified by render. ⚠️ **The "FPP-only crosshair, verified by render" part of this row was false** — it does not appear on a Person in a real match. See **B-86**. Corrected 2026-07-28 by the design lane. |
+| `[x]` | **Round beats — verified present, 2026-07-28** | The design-lane brief listed the role-swap card, the downed vignette, the impact burst and the slipper spin as "still placeholder". **All four already exist.** `RoleSwapCard.tscn` + `role_swap_card.gd` run the full §4.6 timeline (result banner → panels slide in on a BACK/EASE_OUT overshoot and recolour to the *incoming* roles → "ROUND N — FIGHT!" wipe → reset); `%DownedFlash` carries `assets/ui/downed_vignette.gdshader`, a real radial vignette, not a flat rect. Confirmed by rendering the card mid-timeline. Nothing to do here. |
 | `[x]` | Lobby with ready-up (B-13) | U-4 |
 | `[x]` | Role-swap intermission card | U-3 |
 | `[x]` | `.obj` generator toolchain, deterministic | M-1 |

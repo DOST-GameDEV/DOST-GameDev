@@ -19,7 +19,7 @@ lanes'. That is deliberate: it buys two extra concurrent workers for free.
 | **Model** | **Opus 5, high** | Sonnet 5, med/high | Sonnet 5, medium | Sonnet 5, medium |
 | **Hard question** | *"Does this match the moodboard?"* | *"Does this code do the right thing?"* | *"Does this actually work when run?"* | *"Is this submittable?"* |
 | **Writes code?** | Yes — assets, scenes | Yes — scripts, scenes | **No** | **No** |
-| **Owns** | Meshes, map layout, environment art direction, proportion, palette | Gameplay systems, networking, physics, state machines, generators, bug fixes, tooling | `Handoff.md` §3, `Bug_Ledger.md`, screenshots | `Checklist.md` phase 6, synopsis drafts, forms prep, licence register |
+| **Owns** | Meshes, map layout, environment art direction, proportion, palette | Gameplay systems, networking, physics, state machines, generators, bug fixes, tooling | `Handoff.md` §3, `Handoff.md`, screenshots | `Checklist.md` phase 6, synopsis drafts, forms prep, licence register |
 | **Branch prefix** | `art/<task>` | `code/<task>` | `qa/<task>` | `prod/<task>` |
 | **Worktree** | `.worktrees/design` | `.worktrees/build` | `.worktrees/qa` | shares `qa` or its own |
 | **Checklist items** | **1.2, 2.1a, 2.2** and the 6.2/6.3 creative direction | 0.1, 0.2, 0.3, 0.5, 2.1b, 2.3, 2.4, 3.1, 3.3, 3.4, 4.1–4.5, 5.2–5.4, 6.3, 6.4 | verification of everything; files `B-` numbers | 6.5–6.9 drafting; 6.6/6.7/6.9 stay 🧑 human |
@@ -105,7 +105,7 @@ collisions are prevented here rather than resolved later.
 | **`scenes/characters/CharacterBase.tscn`**, **`CameraRig.tscn`** | ⚠️ **SHARED** |
 | **`project.godot`** | ⚠️ **SHARED — special rule, §4** |
 | **`docs/Checklist.md`** | ⚠️ **SHARED — append-only-ish, §5** |
-| `docs/Handoff.md` §3 (open bugs), `docs/Bug_Ledger.md` | 🔬 QA |
+| `docs/Handoff.md` §3 (open bugs), `docs/Handoff.md` | 🔬 QA |
 | `docs/Checklist.md` phase 6, synopsis and forms drafts, the licence register | 📦 Producer |
 | `docs/*_Agent_Brief.md` | whichever lane the brief belongs to |
 
@@ -344,3 +344,45 @@ Add to `.gitignore` if it is not already there:
 **Sanity check before starting work:** `git worktree list` shows two entries plus `main`, each
 worktree's `git log -1` shows the same `integration` tip, and `git config user.email` reads
 `matthewtlabrador@gmail.com` in both.
+---
+
+## 12. Documentation hygiene — every lane, every merge, not just your own file
+
+**This section exists because nineteen markdown files had to be merged into eight, and the same
+five claims had to be corrected three times each.** That cleanup was avoidable, and the thing
+that made it necessary was every lane updating only the one doc it happened to be looking at.
+
+**When you finish an item, you are not finished until every document the change touches is
+correct.** Not the nearest one. All of them.
+
+The rule, in full:
+
+1. **Tick the box in `Checklist.md` in the SAME COMMIT as the work.** Never a follow-up commit —
+   the checklist and the code must not be able to drift apart even for one commit.
+2. **Grep for what you just made wrong.** After any behaviour change, search `docs/` for the
+   thing you changed and fix every stale claim you find:
+   ```bash
+   grep -rn "<the thing you changed>" docs/ scripts/ tools/
+   ```
+   If a doc says a feature is missing and you just built it, that doc is now a bug.
+3. **Delete stale content. Do not annotate it.** A paragraph marked "(outdated)" is still read,
+   still believed and still costs somebody a session. If it is wrong, remove it; if it is history
+   worth keeping, move it under a clearly-marked appendix and say what superseded it.
+4. **A claim of verification is a claim.** Never write "verified by render" for something you did
+   not render. `Checklist.md` asserted exactly that about the FPP crosshair, which was never
+   there — see **B-86**. A false verification claim is worse than a missing feature, because it
+   is the thing that stops anyone looking again.
+5. **Two documents disagreeing is a defect with an owner: you.** If you find a contradiction, fix
+   the lower-ranked one per `README.md`'s source-of-truth order and **add a row to that file's
+   contradiction register in the same commit**.
+6. **If you merge or delete a doc, rewrite every reference to it** — across `docs/`, `scripts/`
+   and `tools/` headers, which carry doc links too. Then prove it:
+   ```bash
+   grep -rn "<deleted-doc-name>" docs/ scripts/ tools/     # must return nothing
+   ```
+7. **Do not create a new markdown file if an existing one is the right home.** Eight is the
+   budget. `README.md` says what each is for; adding a ninth needs a reason you can defend.
+
+**Nothing here is optional and none of it is separate from "the work".** A feature whose
+documentation still describes the old behaviour is half-finished.
+

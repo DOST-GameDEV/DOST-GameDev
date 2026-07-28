@@ -63,7 +63,23 @@ func debug_register_bar(bar: DebugBar) -> void:
 func debug_unregister_bar() -> void:
 	_bar = null
 
-func _unhandled_key_input(event: InputEvent) -> void:
+## ⚠️ `_input`, NOT `_unhandled_key_input`. Playtest 0.4 reported "I can't Tab to
+## the can", and there are TWO independent reasons for it — this fixes the one
+## that bites even in Local Match.
+##
+## Godot binds Tab to the built-in `ui_focus_next` action, and the viewport's GUI
+## layer consumes focus-navigation keys BEFORE unhandled input runs. The HUD and
+## the DebugBar are Controls, so as soon as anything on screen is focusable, Tab
+## moves focus instead of reaching here and `_unhandled_key_input` never fires
+## at all. F1-F6 were unaffected, which is why this looked like "Tab
+## specifically is broken" rather than "the handler is not being called".
+##
+## Handling it in `_input` puts this ahead of the GUI layer. Safe because every
+## branch below is gated on `_is_active()` (debug build, match scene, local
+## match) and every recognised key calls `set_input_as_handled()`, so nothing
+## else in the game ever sees these presses, and unrecognised keys fall straight
+## through untouched.
+func _input(event: InputEvent) -> void:
 	if not _is_active():
 		return
 	var key := event as InputEventKey
@@ -95,6 +111,18 @@ func _unhandled_key_input(event: InputEvent) -> void:
 ## Both guards from §0.3: no-op outside a local match, and no-op if the scene
 ## doesn't actually hold the four local-test units (menu, or a networked match
 ## where `_clear_local_test_characters()` freed them).
+##
+## ⚠️ THE SECOND REASON "I can't Tab to the can" HAPPENS, and it is not a bug.
+## A networked match returns false here on purpose: every peer owns exactly one
+## character, `character_base.gd::_physics_process` gates movement behind
+## `is_multiplayer_authority()`, and `main.gd::_clear_local_test_characters()`
+## has already freed the four local units this switcher addresses by name. There
+## is nothing to switch to and reassigning `player_id` would grant no control.
+##
+## So if Tab does nothing and Esc shows "PAUSED — the match is still running",
+## the session is HOSTED, not Local Match. That combination is the tell, and it
+## is exactly what the 0.4 playtest reported. **Solo-test through Local Match**,
+## which is the mode this switcher exists for.
 func _is_active() -> bool:
 	if _bar == null or NetworkManager.is_networked():
 		return false
@@ -130,17 +158,30 @@ func _assign(slot: int, unit_name: String) -> void:
 	_slot_units[slot] = unit_name
 	_apply_slots()
 
+## ⚠️ SWAPS with the other slot; it must NOT skip. This is the actual reason the
+## 0.4 playtest said "I can't Tab to the can", and it was a real bug rather than
+## the mode confusion it first looked like.
+##
+## The old loop skipped any candidate the other slot already held. P2 holds
+## `DEFAULT_P2_UNIT` = "TeamAProp" and never moves on its own, so "TeamAProp" was
+## permanently excluded from P1's cycle — and in round 1 Team A defends, which
+## means **TeamAProp IS the Can**. P1 could reach TeamBProp and TeamBPerson and
+## then wrap straight back past the one unit the player was trying to look at.
+## Measured, not guessed: pressing Tab twice from a fresh Local Match walked
+## TeamAPerson -> TeamBProp -> TeamBPerson, never touching TeamAProp.
+##
+## Swapping keeps the invariant that mattered — the two slots can never hold the
+## same unit and move together on one keypress — while making every unit
+## reachable in one lap. The other slot simply inherits whatever this one was
+## driving.
 func _cycle(slot: int) -> void:
+	var other := SLOT_P1 if slot == SLOT_P2 else SLOT_P2
 	var start := UNIT_NAMES.find(_slot_units[slot])
-	# UNIT_NAMES.size() steps at most, so a full lap with every other candidate
-	# held by the other slot terminates instead of looping forever.
-	for step in range(1, UNIT_NAMES.size() + 1):
-		var candidate := UNIT_NAMES[(start + step) % UNIT_NAMES.size()]
-		var other := SLOT_P1 if slot == SLOT_P2 else SLOT_P2
-		if candidate != _slot_units[other]:
-			_slot_units[slot] = candidate
-			_apply_slots()
-			return
+	var candidate := UNIT_NAMES[(start + 1) % UNIT_NAMES.size()]
+	if _slot_units[other] == candidate:
+		_slot_units[other] = _slot_units[slot]
+	_slot_units[slot] = candidate
+	_apply_slots()
 
 ## The whole mechanism (§3.5.2): reassign the public `player_id` export from the
 ## outside. `character_base.gd` needs no changes at all — it already resolves

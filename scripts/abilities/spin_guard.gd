@@ -2,7 +2,7 @@ extends AbilityBase
 class_name SpinGuard
 
 ## Bilao — Spin Guard: knockback pulse pushes attackers away (see
-## docs/Tumbang_Preso_2v2_GDD.md, Roster: 🥫 Can Class). An AoE stagger pulse centered
+## docs/Dev_Plan.md, Roster: 🥫 Can Class). An AoE stagger pulse centered
 ## on the character, using AbilityUtils' spawned-hitbox helper. First-pass / untested.
 
 @export var pulse_radius: float = 2.5
