@@ -1432,8 +1432,22 @@ broken prototype test grid ... WORST OF ALL: the map is a literal floating islan
 - [~] **8.3c · SSIL on. SDFGI on** (human call).
 - [~] **8.3d · ⚠️ Shadow bias swept, not guessed.** Lowering it per plan produced acne — the
       reported "lines". Landed at 0.06 / 3.0, angular 0.5, blur 0.9. See §8.8 item 4.
-- [ ] **8.3f · ⛔ FRAME TIME NOT MEASURED. This is the one skipped acceptance item.** SDFGI, SSIL,
-      glow, 4096 shadows and ~510 instances all landed together on unprofiled hardware.
+- [~] **8.3f · Frame time MEASURED, 2026-07-29** (`tools/perf_probe.gd`, real match scene,
+      1920x1080, AMD RX 6600):
+
+      | case | fps |
+      |---|---|
+      | everything on (SDFGI + SSIL + SSAO + glow) | **81** |
+      | no SDFGI | 90 |
+      | no SDFGI + no SSIL | 90 |
+      | no GI/SSAO/glow | 90 |
+
+      **SDFGI is the entire cost** — ~9 fps, and it is what pushes the scene below the vsync cap.
+      SSIL, SSAO and glow together are free at this resolution. ⚠️ **This is a DISCRETE GPU.** The
+      submission machine is still unprofiled, and SDFGI is exactly the feature that collapses on
+      integrated graphics. **Re-run `tools/perf_probe.tscn` on the judging laptop before submission**
+      — if it cannot hold 60, turn `sdfgi_enabled` off in `build_eskinita.py`'s Environment block and
+      re-run the builder. Nothing else in Phase 8 needs to change to do that.
 
 ### 8.4 · Shaders and the world's shading model `[~]`
 
@@ -1515,9 +1529,14 @@ First human play of Phase 8, 2026-07-29. All three fixed; none was what it looke
 ### 8.7 · ⛔ What is owed before Phase 8 is finished
 
 - [ ] **A human plays it.** Nothing here is `[x]` until then — the standing rule.
-- [ ] **8.3f frame-time capture.** The one skipped acceptance item, and the riskiest.
+- [x] **8.3f frame-time capture — DONE** (see 8.3, and `tools/perf_probe.gd`). Still owed: the
+      same run **on the actual judging laptop**, which is the number that decides SDFGI.
 - [ ] **Two-instance networked test.** Nothing touches the network layer and `env_toon_pass.gd` is
-      inert, but that is reasoning, not evidence.
+      inert, but that is reasoning, not evidence. Now also covers the **new GameSetup → Lobby →
+      Main routing** from the PR #13 merge, which has never been click-tested.
+- [ ] **The held slipper in THIRD person and while WALKING** (B-112). Verified in an FPP render
+      only, and clip-dependence was the original bug — so the one pose it was checked in is the
+      least informative one.
 - [ ] **Bayan Plaza** (8.1h), deferred by explicit human decision.
 
 ## Already done — the ledger this list replaces
