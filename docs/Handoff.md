@@ -37,6 +37,186 @@ one names the model it should run on, the files to read first, its exact scope, 
 
 ## 0. Session log — where the project stands right now
 
+### 0.15 CHECKLIST 2.9 — both hero props rebuilt to their own asset moodboards (2026-07-28)
+
+**Lane:** 🎨 Design. **Lock:** `tools/models/generate_all.gd`, taken and released in this pass.
+**Supersedes B-81's colour choice, not B-81's rule.**
+
+The human supplied two asset moodboards — a worn brown flip-flop, and a low-poly
+**Sarsi** can — and asked for both props to be built to them. Two steers arrived mid-pass and both
+are on the record and acted on: *"u can reproduce sarsi logo, we have to showcase PH in this
+project, js give credits"* and *"the magenta shit is just placeholder, we can update it with the
+new ones."* The written record of both boards is `Art_Direction.md` §1b; the Sarsi credit is in
+`README.md`. Full item breakdown in `Checklist.md` 2.9.
+
+**The one thing the boards ask for that was not built** is printed type on the can — the wordmark,
+`330 mL` and the barcode. Both boards are labelled "1024×1024 PBR"; the pipeline emits no UVs and
+one flat `Kd` per material, and Harry's board's own reference (`PEAK`) is flat colour, not PBR. So
+they were read for silhouette, proportion and colour blocking, and their texture maps were not.
+Filed in §5 as a decision the team owes, with the argument for *not* building it.
+
+#### Two things found while rendering this, neither of them fixed here
+
+Filed rather than folded in, per `Concurrency_Protocol.md` §10.
+
+1. **[CLOSED — B-105, fixed 2026-07-28.] The carried tsinelas is visibly detached from the hand.** This pass re-rendered the viewmodel probe as
+   that item asked. `HAND_CARRY_OFFSET` is not the suspect it was framed as: the probe's own report
+   prints `HandPoint` and `carried slipper` at **exactly the same coordinate**
+   `(0.260, 0.600, -0.750)`, so the slipper is precisely where the code puts it. The problem is
+   that `HandPoint` itself is nowhere near the Person's visible fist — in `viewmodel_tpp.png` the
+   slipper sits up beside the head while the rendered hand is forward and lower. **So this is not a
+   number to re-tune, it is an attachment pointing at the wrong place**, and the carry-tilt fix in
+   `carriable.gd` was genuinely a different bug. Re-measuring `HAND_CARRY_OFFSET` against the mesh
+   would not have found this; the render did.
+2. **[FIXED 2026-07-28, checklist 7.1.] The prop ink outline is eating the props it outlines.** `outline.gdshader`'s `outline_width`
+   defaults to **0.025** and nothing overrides it for Props (`character_visual.gd::_apply_toon_pass`
+   applies the shader as-is; it returns early for Persons, so they never take this path). It
+   inflates along the normal in **model space**, and the lata's mesh has `LATA_SCALE` **baked in**
+   — so 0.025 is 0.025 *world* units on a can only **0.204 wide**, i.e. ~12% of the can's width per
+   side. Visible in this pass's match render as dark slabs down both sides of the can. This is
+   pre-existing and predates the re-livery, but it matters more now that the can carries livery
+   worth seeing. It is also the exact hazard the environment-outline item (`Art_Direction.md` Part 1
+   §6, item C) warns about, so **whoever takes that item should fix the prop width in the same
+   pass** — a per-surface `outline_width` set from the mesh's own scale, not one constant for
+   meshes that differ by 10× in size.
+
+---
+
+### 0.14 Peer-drop-mid-round — the live account (2026-07-28)
+
+**Branch:** `code/networking`. **Lane:** 🔧 Build. **Checklist item:** 4.7 (new).
+
+Pulled the cable for real rather than reading the code and guessing: a 4-peer LAN session (host + 3
+`--join=127.0.0.1`), one join process hard-killed (`kill -9`, no graceful disconnect packet)
+mid-round. Findings, all measured live, not assumed:
+
+1. ENet detects the drop via its own peer timeout, **not instantly** — roughly 10-11 seconds after
+   the process died in this environment. A hard kill sends no FIN; nothing faster was attempted
+   (that would mean lowering ENet's own timeout).
+2. `main.gd::_on_player_disconnected` fires on **every remaining peer**, not just the host — each
+   one frees its own local copy of the departed character; host-side only, shows "A player left the
+   match" and re-registers tracked Cans.
+3. **The disconnected unit does not become a frozen obstacle. It is deleted outright** —
+   `queue_free()`'d and erased from every peer's own tracking dictionaries. Nothing stands in for
+   it: no AI, no ragdoll left lying around, nothing a remaining player can interact with.
+4. **If the disconnected peer was the tracked Can:** `RoundManager._tracked_cans` goes empty.
+   `_on_tracked_can_state_changed`/`_on_tracked_can_dents_changed` both early-return on an empty
+   list, so tag-to-win, the 5-fall cap, and Option A's dent count all go **completely inert** for
+   the rest of that round. The round can only end one way from there: the 90-second timer, which
+   **always resolves to a Cans-side win** (`RoundManager._on_time_up()` → `report_round_win(true)`
+   — "Cans win on timer expiry," true under both Option A and Option B) **regardless of whether a
+   Can is even still present.** A Can-side disconnect mid-round silently guarantees the round for
+   the defending team once the clock runs out, with no way for the offense to contest it.
+5. **If the disconnected peer was the attacking Person or the Tsinelas Prop** (the thrown object
+   itself — the same CharacterBase the attacking side's slipper actually is), offense loses its
+   only means of winning that round too: nobody left to throw, or — if the Tsinelas player
+   specifically drops — the slipper object itself is deleted mid-flight or mid-carry, whatever it
+   was doing. Same resolution: timer expires, Cans win.
+6. **If the disconnected peer was the defending Taya**, tag-to-win becomes unreachable for that
+   team, but the Can itself is still tracked — Option A's dents and Option B's fall-cap/auto-seal
+   still apply from throws the offense lands, so this is the one drop that does **not**
+   automatically hand the round to one side.
+7. **No crash, in any of the above** — but building this test surfaced and fixed two real,
+   previously-unreachable UI crashes along the way. See **B-100** and **B-101**, and `Checklist.md`
+   4.2's own entry.
+
+**Not done, explicitly out of scope for this pass:** any actual mitigation (a bot taking over an
+abandoned role, a grace window before the round auto-resolves, ENet timeout tuning). This is the
+truth on record, not a fix — `Checklist.md` 4.7 is `[~]`, deliberately, because the question asked
+("what happens") is answered but the underlying UX gap is not closed.
+
+---
+
+### 0.13 Solo-host quality of life — pause and the debug switcher (2026-07-28)
+
+**Branch:** `code/networking`. **Lane:** 🔧 Build. **Checklist item:** 4.6 (new). Own commit, per
+the lane's own instructions — a `NetworkManager` semantics change.
+
+The first playtest was run by HOSTING, not Local Match (see `Art_Direction.md`'s "Playtest
+findings, 2026-07-28" section), and found two things silently no-op in a networked match on purpose: `get_tree().paused` (Q-3/B-64
+— a client pausing its own tree stops sending movement while the host keeps simulating it, and the
+host can't stop an authoritative timer for everyone over one player's Esc) and the whole debug
+player switcher (each peer owns exactly one character; reassigning `player_id` grants no control).
+Both restrictions are real for an actual 2+ peer match and pointless when there is nobody else in
+the session to protect — exactly the case of testing alone by hosting.
+
+New `NetworkManager.is_solo_session()`: `is_networked() and connected_peer_ids.size() <= 1`.
+`main.gd::_on_pause_toggle_requested()` now takes the real-freeze branch (the same code path Local
+Match already used) whenever `not is_networked() or is_solo_session()`, instead of only when
+`not is_networked()`.
+
+`debug_player_switcher.gd::_is_active()` now also returns true for a solo networked session — but
+**not** by making unit-switching work: a solo Hosted session only ever spawns ONE real character
+(`main.gd::_spawn_player` runs once per actually-connected peer, and there is no bot/placeholder
+system to fill the other three roles — see 4.7), so there is nothing to Tab to regardless of this
+gate. What was actually broken and is now fixed: the on-screen `DebugBar` used to show
+`TeamAPerson (missing) / TeamAProp (missing)` the instant you hosted alone, because it was still
+looking for the four LOCAL-TEST node names (`_clear_local_test_characters()` had already freed
+them) instead of the real networked spawn. New `_solo_networked_unit()` walks the actual `Players`
+node (`MultiplayerSpawner.spawn_path`) for the character whose authority is this machine's own
+peer, and the readout now correctly describes it. `player_id`/camera reassignment is deliberately
+left untouched for this unit — `main.gd`'s spawn already assigned the right `player_id` and
+`camera_rig.gd`'s own `_ready()` already activates the right rig from `is_multiplayer_authority()`;
+re-driving either here would be redundant at best.
+
+**Verified by running:** two real `--host`/`--join=127.0.0.1` sessions (one while solo, one once a
+second peer joined), 600+ frames each, no output — the `DebugBar`/switcher code paths run every
+frame regardless of whether anyone is looking at them, so a clean multi-hundred-frame run is real
+evidence they don't error, in both the solo and non-solo states. **Not verified:** a human actually
+pressing Esc and confirming the overlay visibly freezes, or reading the `DebugBar` text off a
+running window — this project's norm is that an unverified interactive claim is not written up as
+felt, only as run.
+
+---
+
+### 0.12 Netcode pass — remote movement interpolation and rejoin identity (2026-07-28)
+
+**Branch:** `code/networking`. **Lane:** 🔧 Build. **Checklist items:** 4.2, 4.3. Two bugs found
+and fixed along the way — see B-100/B-101 below.
+
+**4.2 — remote movement interpolation.** `character_visual.gd` now lags a world-space copy of the
+body's position/yaw behind at `REMOTE_SMOOTH_RATE` and renders the `Visual` node from that, for a
+non-authority networked character only — the body itself keeps snapping exactly as replicated,
+since collision, the Hitbox offset and every directional ability read it directly
+(`Agent_Prompts.md`'s Netcode brief §3). Explicitly skipped (not smoothed toward a no-op, just
+never entered) for the locally-driven character, Local Match, and a CARRIED/FLYING slipper — the
+last of those is already recomputed identically on every peer by `carriable.gd` at zero bandwidth,
+and lagging an already-agreed transform would make it visibly trail the hand or the arc. Teleports
+(a round reset, a KillPlane respawn) snap rather than glide via a new
+`CharacterBase.snap_visual_interpolation()`, called from `respawn()` and `main.gd::_place_at_spawn()`.
+Verified by running two real `--host`/`--join=127.0.0.1` instances (not headless — interpolation
+needs `_process()` to actually run frames) for 600+ frames each, silent both times.
+
+**4.3 — rejoin identity (B-65).** The identity half: `NetworkManager.local_player_token`, a random
+128-bit token minted once per running process, presented to the host via a new `_rpc_identify` RPC
+on every connect; `main.gd`'s join-index map is now keyed by that token instead of the ENet peer
+id, so a reconnect under a new peer id lands back on the same team/role. **Deliberately not
+persisted-and-reloaded from the `user://` copy it also writes** — this project's own two-instance
+test (`Debug > Run Multiple Instances`, or two `godot --path .` processes) shares one `user://`
+between "players," and reading the token back would make both instances present the identical
+token and collide on the same join index. Measured live, not assumed: this was the first version
+tried, and it broke the two-instance test exactly this way before the fix.
+The harder half, not obvious from the checklist's own one-line framing: a rejoining peer had
+**nowhere to go**. Host/Join both gate behind `Lobby.tscn`, and the host has already left it for
+`Main.tscn` by the time a rejoin is even possible — the rejoining peer's own `Lobby.tscn` connects
+fine and then waits forever for a Start press the host can never send again. Fixed with
+`NetworkManager.match_in_progress` (host-only, set by `main.gd::_start_hosting()`) and a new
+`_rpc_route_to_running_match` RPC that redirects a peer identifying after the match has started
+straight into `Main.tscn`, plus a `_rpc_client_ready_for_spawn` ping (sent once that peer's own
+`Main.tscn`/`MultiplayerSpawner` actually exists) so the host never races a spawn against a scene
+that hasn't finished loading on the receiving end. **Verified live:** host + one join (distinct
+tokens, sequential join indices, no errors); separately, two *sequential* join processes forced to
+present an identical token (simulating a reconnect) — the host reassigned the exact same join
+index to both, under two different peer ids. **Not verified:** an actual mid-process ENet
+drop-and-rejoin from one still-running client (the test above kills and restarts the process
+rather than reconnecting in place) — that is 6.1's job, on real hardware.
+
+**Two real bugs found and fixed while building the multi-instance test rig this pass needed, both
+in files this lane owns, neither previously reachable without an actual live multi-peer session —
+see B-100 and B-101 below.**
+
+---
+
 ### 0.11 CHECKLIST 1.2 — prop scale decided: hero-scaled props, carried-scale tsinelas (2026-07-28)
 
 **Branch:** `art/prop-scale-and-kit`. **Lane:** 🎨 Design. **Supersedes nothing** — 1.2 was open,
@@ -456,7 +636,8 @@ someone plays it.
   forensic record — including its several "the docs were stale, this was already fixed" entries —
   would have re-invited exactly the rewrites protocol rule 3 exists to prevent.
 - **No font was downloaded.** See §0.5.
-- **The Local Match harness was left alone.** It still goes in Phase 6 (§1).
+- **The Local Match harness was left alone.** ⚠️ Superseded 2026-07-28 — it is no longer scheduled
+  for removal at all; see `Checklist.md` 5.5.
 
 ---
 
@@ -487,10 +668,15 @@ that decides a round (hit resolution, timer, score). Client-authoritative for a 
 movement, replicated via `MultiplayerSynchronizer`. No reconciliation, no anti-cheat — LAN
 prototype scope, deliberately.
 
-**Local Match is a test harness.** `_start_local_test()`, the `p3`/`p4` input sets, and the four
-hardcoded units in `Main.tscn` exist so one person can exercise the loop on one keyboard. **It
-is stripped before submission.** Do not invest polish in it and do not let it shape the LAN
-architecture.
+**Single Player (formerly "Local Match") is a real, permanent mode, not a test harness — amended
+2026-07-28, `Checklist.md` 5.5.** `_start_local_test()` and the four hardcoded units in
+`Main.tscn` still exist and still make the loop exercisable on one keyboard, but the human now
+plays exactly one of the four (their existing default, `TeamAPerson`) and the other three are
+AI-controlled (`ai_controller.gd`), not unbound. **It ships in the final build.** The `p3`/`p4`
+input action definitions in `project.godot` are unchanged (still unbound to real keys, still
+registered — AI drives them via `Input.action_press()`/`action_release()`, which needs no key
+binding at all) and the debug switcher (`debug_player_switcher.gd`) still exists for testing, but
+neither shapes the LAN architecture any more than it ever did.
 
 **Two undecided design forks that block cleanup.**
 
@@ -541,8 +727,9 @@ For any coding agent picking up this queue.
 9. **Update the ledger.** When a bug is fixed, mark it `**[FIXED]**` in §3 with a one-line
    description of the actual fix, and tick the matching box in `Dev_Plan.md` §5. When you find
    a new one, add it with the next free B-number.
-10. **Do not delete Local Match yet** (§1) — it is the only way to playtest today. It goes in
-    Phase 6.
+10. **Single Player (formerly Local Match) is not scheduled for deletion — amended 2026-07-28,
+    `Checklist.md` 5.5** (§1). It is the only way to playtest without four laptops AND, per the
+    user's decision, ships in the final build as a real mode in its own right.
 11. **Debug-only code follows the removal contract** in `Dev_Plan.md` §0.3, without exception:
     `debug_`/`Debug` prefix on every file, class, node and autoload; debug code calls gameplay
     and **gameplay never calls debug** (no gameplay script may reference a debug class, autoload,
@@ -558,10 +745,213 @@ For any coding agent picking up this queue.
 **Only open items live here.** B-01 … B-66 are in [`Handoff.md`](Handoff.md); everything
 marked `[FIXED]` there is done and settled. New bugs take the next free number **in this file**.
 
+**B-110 · `floorcheck` ignored SCALE, so it measured against the wrong heights. [FIXED
+2026-07-28]** Two halves, both the same mistake, found a day apart.
+ - **Ground pieces.** `record()` computed a piece's top as `y + hi[1]`, with no scale at all. Every
+   kit ground piece therefore reported its UNSCALED height — a road tile placed at 4× reported
+   0.025 instead of 0.1 — and every marking resting on one was checked against a surface that was
+   not there. **The guard found this itself**, by failing the arena re-paving (7.4b) with errors
+   that were arithmetically impossible if its own numbers had been right.
+ - **Markings.** The same hole on the other side: `_markings` did not store whether the placement
+   was uniformly scaled, `_samples()` scaled only X, and `verify()` read `lo[1]`/`hi[1]` raw.
+   Latent today, because nothing places a marking through `add_kit()` — and it would have bitten
+   silently the first time anyone did.
+*Root cause of the class:* two different scale conventions share one parameter. `xform()` stretches
+ONLY the mesh's length axis (right for a lengthenable line decal, leaves Y and Z alone);
+`xform_uniform()` scales all three (right for a building). `sx` meant both. Every caller now says
+which via an explicit `uniform` flag, and `embed_y()` takes the scale it is embedding at.
+*Proven by negative test, not by inspection:* a 3×-scaled marking embedded at its real scale is
+accepted, and the same marking placed with the old scale-blind arithmetic is rejected with
+`STICKS OUT ... 62.0mm`. Before the fix that second case passed silently.
+⚠️ **A guard that is wrong is worse than no guard**, because it is trusted. If you add a third
+placement convention here, give it its own flag rather than overloading `sx` again.
+
+**B-109 · Field markings STUCK OUT of the floor — the other half of the floating bug.
+[FIXED 2026-07-28]** Reported after B-103 shipped: *"the decals of floor still stick out."* Both
+reports are the same object and opposite failures. A marking is a **2cm-thick box**, so B-103's
+"sit it flush on the surface" left 2cm of vertical SIDE WALL standing proud all the way round.
+The camera lives near ground level, so at a grazing angle those walls catch the light and every
+line reads as a low kerb instead of as paint.
+*Fix — the rule is now a SANDWICH, not a resting height.* A marking must have its top face a hair
+above the surface (visible, never z-fighting) **and its bottom BELOW it**, so the side walls are
+inside the ground and cannot be seen from any angle. `floorcheck.embed_y()` is the single source of
+that arithmetic and both builders call it; nothing places a marking by a hand-computed number any
+more. The guard rejects all three wrong states with distinct messages — `STICKS OUT`, `FLOATS`/
+`SPANS`, `BURIED` — and was negative-tested against each before shipping.
+⚠️ **"Flush" was never the goal and is not achievable with thick geometry.** Anyone re-deriving
+this will land back on flush; the invariant is EMBEDDED.
+
+**B-108 · The Can "kept teleporting" — the teleport was the reset correcting an AI drift.
+[FIXED 2026-07-28]** Flagged repeatedly. `ai_controller.gd::_update_can()` picked
+`_random_point_in_confinement(0.6)`, walking the Can up to ~3 units off its base circle; every
+round reset then snapped it back to Spawn0, and that snap is what a player sees.
+*Measured, not guessed:* a new `render_probe.gd` mode, **`canwatch`**, drives a real match and
+prints only frames where the Can MOVES more than a step. It showed constant velocity 6.0 on a
+diagonal followed by 1.4–1.8 unit jumps back to `(0, 0.17, 0)` on each transition. After the fix
+it reports no jumps at all.
+*Why the AI was wrong on its own terms:* tumbang preso is played around a can STANDING on its
+mark — a Can that strolls off has nothing left to defend. It now holds `CAN_HOLD_RADIUS` (0.45)
+inside the 1.4-wide base circle, so it still shifts (the pillar says take funny) but never leaves
+the mark and the reset never has to yank it.
+
+**B-107 · The Can's and Slipper's cameras rolled. [FIXED 2026-07-28]** Third report, screenshots
+showing the 3D view rolled ~40° while the HUD stayed level — which is a camera roll and nothing
+else. Both pivots are CHILDREN of the CharacterBase and inherit its full basis, and a Prop's body
+DOES get a full basis written to it: `carriable.gd::_step_carried()` snaps a carried unit to the
+carrier's hand every physics frame, tilt included.
+*Fix — the rig stops trusting its parent.* `_apply_upright_pose()` gives both pivots an ABSOLUTE
+transform every frame, built from the body's **yaw only** plus their own pitch. Whatever the body
+does on the other two axes cannot reach the camera, **from any code path, including ones nobody has
+written yet** — which is the point, since patching individual writers is what failed twice.
+⚠️ Yaw is recovered from the body's FORWARD VECTOR, not `global_rotation.y`: Euler decomposition of
+a basis that contains roll does not give back the yaw you want, and a rolled basis is precisely the
+case this exists to survive.
+
+**B-106 · "defence hand is on the can" — BOTH mechanical explanations eliminated, no fix made.
+[INVESTIGATED 2026-07-28, NOT REPRODUCED]** Reported with a screenshot: a defending Person appearing
+to hold the Can, plus an older report that "the defender only has one hand".
+
+Two candidate causes were checked in code and **both are ruled out**, which is the useful part of
+this entry — it stops the next person spending the same time:
+ - **It is not a carry bug.** `carriable.gd::host_grab()` gates on `can_be_grabbed_by()`, which
+   returns false for a Can via `is_throwable()`. A defender genuinely cannot pick the Can up, and
+   `_reset_world()`'s auto-grab only ever selects the tsinelas.
+ - **It is not the FPP viewmodel leaking into a third-person view** (the leading hypothesis, since
+   the viewmodel is camera-mounted and would appear to reach at whatever that player looks at).
+   `camera_rig.gd` sets `arms.visible = _active and _mode == Mode.FPP` from `_apply_fpp_self_hide()`,
+   which `set_active()` calls — so a rig nobody is looking through never draws arms.
+
+*Most likely remaining explanation, unverified:* the Taya spawns 2.65 units from the Can and guards
+it, and the chibi rig's short arm against a wide torso reads as contact at some camera angles. The
+outline fix in 7.1 (the Can's border was ~12% of its own width per side and merged with anything
+near it) may well have removed the read on its own.
+**Needs a fresh screenshot on the current build before anyone changes code for it.**
+
+**B-105 · The carried tsinelas floated beside its carrier's head, and re-measuring the offset
+could never have fixed it. [FIXED 2026-07-28]** Reported repeatedly as "slipper floating" and
+chased at least three times as a `HAND_CARRY_OFFSET` calibration problem.
+
+*The offset was never wrong.* Its own note says what it was chosen for: put the slipper "a little
+above the eye", forward and right so it never covers the crosshair. That is a viewmodel pose. It
+was correct for the FIRST-PERSON frame and it was the ONLY thing positioning a real world object,
+so every other player saw a slipper hovering next to a head. **One object was being asked to
+compose two views at once**, which is why every re-measurement moved the problem instead of
+removing it — the probe reported `HandPoint` and the slipper at exactly the same coordinate the
+whole time.
+
+*Fix:* the same inversion the viewmodel arms already exist for. `ViewmodelArms.tscn` gained a
+`HeldSlipper` under the fist, posed for the local player's frame via `VIEWMODEL_CARRY_ANCHOR`;
+`_update_viewmodel_carry()` stopped chasing the world slipper and holds a fixed carry pose; and
+`HAND_CARRY_OFFSET` was re-targeted to mean what its name says — the hand.
+⚠️ Two consequences worth knowing, both found by rendering:
+ - The local player then saw TWO slippers. The carried unit is a separate `CharacterBase`, so the
+   body self-hide never covered it. `_apply_carried_self_hide()` handles it on the same
+   "`_active` is only true for the rig you look through" basis as the body hide.
+ - That hide **must remember what it hid**. Keyed on `carrier.held()` alone, throwing the slipper
+   makes `held()` null, the restore never runs, and the slipper stays invisible to the thrower for
+   the rest of the round.
+
+**B-104 · Bayan Plaza could never be loaded — both map entries shared one id. [FIXED
+2026-07-28]** `GameLaunch.MAPS` declared `"id": &"eskinita"` on BOTH entries, and
+`selected_map_scene()` returns the first match, so **every path that loads a map — the picker, the
+launch handoff and `render_probe` — could only ever reach Eskinita.** Bayan Plaza has been built,
+dressed, spawn-fixed (B-102) and re-dressed (7.5) while being unreachable in play the whole time.
+*Why it survived:* it fails silently and in the most misleading way available — you pick the second
+map and the first one loads, which reads as "the picker is ignoring my click", not as a duplicate
+key. Nothing validates that ids are unique.
+*Found* only because the 7.5 re-dress kept rendering as Eskinita three runs in a row.
+⚠️ **Any map-select bug report predating this is suspect** — the map was never actually switching.
+
+**B-103 · Field markings float, for the fourth time — and the constant was never the bug.
+[FIXED 2026-07-28]** Reported again with a screenshot: *"i keep flaggging this still broken,
+thoroughly think about how to make sure this problem doesnt show up again."*
+
+*What was actually wrong,* measured rather than guessed. `throwing_line_decal` is **8m wide**;
+the `road_tile_line` strip it crosses is **2m wide and 6.2cm tall**. The line was lifted to 0.070
+to clear that strip, so across the ~75% of its length that is over bare road it hung **7cm in the
+air**. `base_circle_decal` sat at 0.070 on a 0.062 top — 8mm of float. Ten other markings had the
+same fault; nothing had ever checked.
+
+*Why three previous fixes failed.* All three retuned one constant (`0.07 → 0.015 → 0.001`). **No
+single Y can be flush for a marking that spans a step**, so every value was wrong somewhere, and
+which part floated just moved. The shape has to be split at the step.
+
+*The fix, and the reason it should not recur:* `tools/maps/floorcheck.py` — every placed piece is
+recorded, every marking's footprint is sampled against the real ground height beneath it, and the
+map build **aborts before writing the scene** with the node name and the gap in millimetres. It
+reports "spans two heights" as a distinct error from "floats", because the two need different
+fixes. `build_eskinita.py::add_line()` then splits a line marking at every step automatically, so
+the eleven faulty markings became 26 verified-flush pieces with no hand-picked heights left.
+`MARK_Y`/`MARK_Y_LOW` are deleted from both builders — a human deciding what is under a marking was
+the root cause, not any particular value they decided.
+**Verified by render** (grazing angle, no gap or shadow under any line) and by both builders
+reporting `markings verified flush`. Determinism re-checked: both scripts run twice with a clean
+tree.
+
+**B-102 · Bayan Plaza's Taya spawns in FRONT of the Can, not behind it, and a comment asserted
+otherwise. [FIXED 2026-07-28]** `build_bayan_plaza.py`'s Spawn1 was `(2.2, 0.8, +1.5)` against
+`build_eskinita.py`'s `(2.2, 0.8, -1.5)`, while its own comment read *"same scheme and same
+coordinates as build_eskinita.py"*. The Attacker is at `z = +6`, so `+1.5` put the defending Taya
+**between** the Can and the attacker, on the attacker's own side — the exact layout the human
+rejected on 2026-07-28 ("the person in same team is behind that can"). It was fixed in Eskinita and
+never carried across, and the false comment is why nobody caught it: every reader who checked took
+the claim instead of the number.
+*Root cause of the class:* two map builders duplicate a spawn block with nothing checking that they
+agree. **Change one map's spawn block and diff it against the other in the same commit.**
+⚠️ **On the reported offense/defense spawn swap, now that B-104 is known.** Eskinita's spawns were
+re-verified by data (not by eye) across two round transitions and are correct in both. Combined
+with B-104 — the picker could only ever load Eskinita — **the most likely story is that the human
+was on Eskinita believing they were on Bayan Plaza, and B-102's mirrored Taya spawn was never what
+they were looking at.** The remaining candidate is simply that units walk during the pre-round
+free-roam window (and now under the merged Single Player AI), so where they *stand* when you look
+is not where they *spawned*. Nothing further to fix without a fresh report on the current build.
+
 ### P0 — none open
 
 The three P0 network soft-locks (B-62, B-63, and the B-01/B-03/B-29 cluster) are all fixed and
 runtime-verified. See the archive.
+
+### P1 — found by 🔧 Build while building the 4.2/4.3 two-instance test rig (2026-07-28) — both FIXED
+
+Neither is new networking work — both were pre-existing and unreachable without an actual live
+multi-peer session, which is exactly what `Checklist.md` 4.2/4.3/4.7 required building. Filed and
+fixed in the same pass rather than left for QA, since they directly blocked verifying this lane's
+own work (a two-instance session could not run silently with either still open) and are squarely in
+files this lane owns (`scripts/ui/*.gd`).
+
+**B-100 · A stale-but-not-yet-freed character reference could crash the HUD the instant a peer
+connected or disconnected. [FIXED same session.]** `you_card.gd::get_local_character()` returned
+its cached `_character` field with a guard of the form `_character != null and not
+is_instance_valid(_character)`. Measured live: for a FREED (not null) Object reference, GDScript's
+own `!=` already compares it as equal to null — so the `_character != null` half of that guard is
+**false** for exactly the freed case it exists to catch, short-circuits the `and`, and falls
+through to `return _character`, handing the caller the same poisoned reference back. It merely
+*compares* as null from then on; the variable is never reassigned to an actual null literal, so it
+still fails Godot's own argument type-check the moment it is passed into a strongly-typed parameter
+— which is what `hud.gd::_process()` does every frame (`offscreen_indicators.update(local_char)`).
+Reproduced with a real `--join=127.0.0.1` process: the very first `you_card.gd::_ready()` runs
+BEFORE `main.gd`'s own `_ready()` (children ready before parents) and, for the brief window before
+`NetworkManager.is_networked()` becomes true, its local-character scan falls through to the
+LOCAL-TEST branch and caches `TeamAPerson` — which `main.gd::_start_joining()` frees moments later
+via `_clear_local_test_characters()`. Every `hud.gd::_process()` in between crashed with `Invalid
+type in function 'update' ... (previously freed) is not a subclass of the expected argument class`.
+**Fixed:** `is_instance_valid(_character)` alone, unconditionally — it correctly handles both a
+real null and a freed reference with no error either way, which the flawed two-part guard did not.
+Verified by running: the exact repro (host + one join, 600+ frames) went from crashing on frame 1
+to silent.
+
+**B-101 · `offscreen_indicators.gd` crashed reading a tracked teammate/Can's transform mid-`queue_free()`. [FIXED same session.]**
+`_update_one()` guarded its `target` parameter with `is_instance_valid()` only, which is not the
+same condition as "safe to call `get_global_transform()` on." A character that just left the tree
+(disconnected, or the local peer's own `_on_player_disconnected` freeing a departed teammate — see
+4.7) can be a real, non-freed Object for one or more frames after `remove_child`/`queue_free` while
+still failing `is_inside_tree()`; `global_position` needs a live parent chain and throws `Condition
+"!is_inside_tree()" is true` otherwise. Reproduced live in a 4-peer session: a surviving peer's own
+`OffscreenIndicators`, still tracking the just-dropped peer as its teammate or the Can, crashed on
+the very next `_process()` after detecting the disconnect. **Fixed:** `_update_one()` now also
+checks `target.is_inside_tree()` before reading `global_position`. Verified by running: the same
+4-peer drop scenario (host + 3 joins, one hard-killed mid-round), re-run after the fix, produced no
+errors on the two surviving peers across 2400+ frames.
 
 ### P1 — found by the design lane while rendering for checklist 2.3 (2026-07-28)
 
@@ -569,17 +959,25 @@ Filed, deliberately not fixed. Both live in 🔧 Build's files and `scenes/ui/*.
 Build's lock for `code/offscreen-indicators` (3.4), so touching either would breach
 `Concurrency_Protocol.md` §2 and §3 at once.
 
-**B-86 · The FPP crosshair never appears, on a Person, in a real match.** `scenes/ui/HUD.tscn`
-has the `Crosshair` node with `visible = false` baked in, and `scripts/ui/hud.gd:74` is supposed to
-turn it on: `crosshair.visible = local_char != null and is_instance_valid(local_char) and
-local_char.is_person`. **Reproduction:** `godot --path . tools/render_probe.tscn --quit-after 400
---resolution 1280x720 -- match <out>/` (NOT headless). In the resulting `match_fpp.png` the YOU
-card reads `PERSON · TEAM A · DEFENSE`, so the local unit *is* a Person, and screen centre is bare
-road — no `+`. Zoom (580,300)-(700,420) to confirm. Most likely `local_char` is still null at the
-moment that line runs and nothing re-runs it, but that is a guess; the render is the fact.
-`Dev_Plan.md` §4.4 lists the FPP-only crosshair as shipped HUD, and `Checklist.md`'s HUD row
-claims it is verified by render — **that claim is wrong**, which is the more useful half of this
-report.
+**B-86 · The FPP crosshair never appears, on a Person, in a real match. [COULD NOT REPRODUCE,
+2026-07-28, 🔧 build-ux.]** Originally filed against `scripts/ui/hud.gd:74`'s
+`crosshair.visible = local_char != null and is_instance_valid(local_char) and
+local_char.is_person`, on the theory that `local_char` was still null the moment that line runs.
+**Re-ran the exact repro** — `godot --path . tools/render_probe.tscn --quit-after 400
+--resolution 1280x720 -- match <out>/` (NOT headless) — six times in a row on this machine.
+Every one of the six `match_fpp.png` outputs shows the YOU card reading `PERSON · TEAM A ·
+DEFENSE` **and** a `+` at screen centre; zoomed crops of (580,300)-(700,420) confirm it is the
+`Crosshair` control, not a background artifact — it sits exactly at the anchor-0.5/0.5 box
+`HUD.tscn` places it in. `hud.gd` and `you_card.gd` are byte-identical to the commit this bug was
+filed against (`git diff` against `2c22f50` is empty for both), and `main.gd`'s local-match spawn
+path has no `await` anywhere the 120-frame probe window could race against, so there is no code
+path left to blame. Left open, unresolved and unexplained: why the original filing saw bare
+road. Whatever it was, it is not reproducible now, on this build, on this machine. Filed as a
+correction rather than closed outright, since "cannot reproduce" is not the same claim as "does
+not happen on every machine" — if it recurs, get a screenshot from the machine that shows it
+before touching `hud.gd` again. `Dev_Plan.md` §4.4 and `Checklist.md`'s HUD row both call the
+FPP-only crosshair verified by render; that claim now has fresh render evidence behind it dated
+2026-07-28, superseding the "wrong" correction this entry used to carry.
 
 **B-87 · A carried tsinelas reads as floating, not held, in first person.** Not a regression and
 arguably not a bug — recorded because it will be noticed during 6.3/6.4 capture and someone will
@@ -721,17 +1119,252 @@ the next `move_and_slide()` re-establishes floor contact. Reported as "when roun
 randomly falls thru the void." Fixed by zeroing velocity in the same place `respawn()` already
 does.
 
-**Arena resized to a bigger square with a chalk boundary, at the user's explicit request —
-supersedes DESIGN-ART's queued "narrow the alley" item.** See the note in `docs/Agent_Prompts.md`'s
-DESIGN-ART block (item B) for the full detail: `W`/`Z_END` are now 24.0/24.0 (was 8.0/17.0),
-existing dressing was rescaled to match via a new `sc()` helper, floor/wall/kill-plane sizing is
-now computed from `W`/`Z_END` instead of hardcoded, and a chalk boundary line was added around the
-perimeter reusing `team_side_decal` (no new mesh added to `env_kit.gd`, which stays Design-owned).
-Spawn markers, the base circle and the throwing line were deliberately left untouched — the human
-already confirmed those distances feel right, independent of overall arena size. **Verified by
-render** (`tools/render_probe.gd`, real device) that the geometry is sound — floor/walls/border
-lines land where computed, no parse errors, no console warnings. **NOT verified by play** — nobody
-has actually moved around the bigger arena yet.
+**Arena resize to a bigger square — TRIED, then FULLY REVERTED same session.** First attempt at
+the "playing area feels too small" complaint below widened the whole map footprint (`W`/`Z_END`
+24.0/24.0, was 8.0/17.0) instead of the actual thing the human meant. Human's correction: "i
+wanted you to expand playing AREA, Not the entire map" — the complaint was
+`CharacterBase.CONFINEMENT_RADIUS` (the box the Can/Taya can actually move in), not the map's
+footprint, and stretching the whole map made that box feel *more* cramped by comparison, not less.
+Also broke Layer3 dressing (posts/sampay wires positioned for the old width, now visibly
+disconnected from the wall line — reported as "floating elements everywhere"). Reverted in full:
+`tools/maps/build_eskinita.py` restored to its post-B-92-fix state (`git show
+088d09a:tools/maps/build_eskinita.py`), `Eskinita.tscn` regenerated, `docs/Agent_Prompts.md`'s
+DESIGN-ART item B and `Checklist.md`'s 2.2 bullet restored to their original text. **Lesson,
+recorded so it isn't repeated:** "make the playing area bigger" in this project means the
+confinement box, not the map — see the fix below.
+
+**Confinement radius raised 3.0 → 5.0, plus a chalk-style boundary marking it — ring tried first,
+replaced with a square same day, plus a real floating-geometry bug fixed along the way.**
+`CharacterBase.CONFINEMENT_RADIUS` is now 5.0 — still a full unit short of the 6.0 throwing line,
+so the Taya still cannot reach the attacker's line, same design constraint as before, just more
+room inside it. `build_eskinita.py` first drew the boundary as a ring of tiled `team_side_decal`
+segments (`CONFINEMENT_RING_RADIUS`, a 12-gon approximation), added via a new `sx` parameter on
+`xform()`/`add()` that scales a decal along its own authored length axis (no new mesh added to
+`env_kit.gd`, which stays Design-owned). User feedback, same day: "the circle you made was ugly,
+can we just use a square" — a real tumbang preso boundary is a straight-edged chalk box, not a
+drawn circle. Replaced with `CONFINEMENT_BOX_RADIUS`, four tiled sides using the same `sx`
+technique.
+
+**While looking at this, a real bug: several markings were floating above the floor with a
+visible gap, reported as "all assets like lines are floating off the floor."** Root cause:
+`env_kit.gd`'s `_box()` authors most flat decals starting at local Y=0, so a marking's world-space
+Y position becomes its literal *underside*, not its centre — placing one at `MARK_Y` (0.07, chosen
+to clear the 0.06-tall `road_tile_line` tiles) puts its bottom 7cm above the floor **even where it
+never overlapped a tile in the first place**. Only `BaseCircle` and `ThrowingLine*` genuinely
+overlap tile geometry (`x=0`, `z` a multiple of `CELL`) and need that clearance; `TeamSide*`,
+`JeepneyLane`, and the new confinement square never did. Introduced `MARK_Y_LOW` (0.015) for
+everything that doesn't need tile clearance. **A standing warning about this exact class of bug is
+now in `Art_Direction.md` Part 4 (a callout at the top, before the Environment Art Agent Brief) and
+directly in the DESIGN-ART paste-ready prompt in `Agent_Prompts.md`** — this had already cost more
+than one session before being run down properly.
+
+Before this there was nothing on the ground marking the edge of the confinement box at all — only
+the tiny base circle and the distant throwing line — so a Taya had no way to see how much room
+they actually had. **`build_bayan_plaza.py` does NOT have the confinement square yet** — same
+treatment needed there before that map is played under Option B. Keep `CONFINEMENT_BOX_RADIUS` and
+`CONFINEMENT_RADIUS` in sync if either is retuned again. **Verified by render**
+(`tools/render_probe.gd`, real device) — geometry lands where computed, no visible gap under any
+marking, no parse errors, no console warnings. **NOT verified by play.**
+
+**Pre-round free-roam + in-world ready-up, Local Match only — see `Checklist.md` 2.8.** User
+feedback, same session: "i wanted the ready button to be in the game itself not in home screen, i
+want ppl to be able to move around with no restrictions whiile waiting for ready THEN everyone
+gets teleported in the right restricted area." `main_menu.gd`'s Local button now skips
+`Lobby.tscn` and loads `Main.tscn` directly; characters spawn as before but
+`MatchManager.begin_next_round()` is deliberately deferred until the player presses the new
+`ready_up` action (bound to R), read off a new HUD prompt. `CharacterBase._is_confined_to_base()`
+and `Carriable.movement_speed_scale()` are both now gated on `RoundManager.round_active` — false
+until `begin_next_round()` fires — so nobody is confined and the Tsinelas Prop isn't stuck at
+crawl speed during the wait. No new teleport-to-role-spawn code was needed: `begin_next_round()`
+already fires `MatchManager.round_started`, which `main.gd` was already listening on to call
+`_reset_world()` (repositions everyone) and `RoundManager.start_round()` (re-engages confinement)
+— the exact same chain an ordinary between-round intermission already runs.
+
+**⚠️ Host/Join deliberately NOT touched.** Both still gate behind `Lobby.tscn`'s ready-up screen
+exactly as before. Extending this same free-roam-then-teleport pattern to networked play is real,
+separate follow-up work — per-peer ready state would need to replicate live inside the match
+scene (extending lobby.gd's existing `_rpc_set_ready` pattern into `main.gd`/a HUD component)
+rather than gating scene transition from the lobby, and touches the stable peer-identity
+machinery (B-21) that the current Lobby flow is built on. Not attempted blind in this pass.
+
+**B-94 · Free-roam shipped broken — "walk around freely doesn't work, cant walk around just stuck
+in place." [FIXED same session.]** A SEPARATE, pre-existing gate in
+`character_base.gd::_physics_process` (Item 10 / B-37, "freeze input during the round
+intermission... and before the very first round begins") froze ALL movement input whenever
+`RoundManager.round_active` was false — which the free-roam window above deliberately also is.
+The confinement fix alone was not enough; this gate blocked movement entirely, independent of
+confinement. Fixed by additionally gating the freeze on `MatchManager.round_number > 0` (already
+correctly synced to clients for networked play, no new RPC needed) — 0 only during the genuine
+pre-match window (nobody has pressed ready yet), 1+ for every other `round_active == false` state
+(ordinary intermission, waiting for a rematch after a match ends), which should still freeze
+exactly as before. Do not simplify this back to a bare `not round_active` check.
+
+**B-95 · The Can can fall through the floor when the LAST round of a match ends. [FIXED same
+session, distinct from B-93.]** Every OTHER round transition calls `_reset_world()`
+(`MatchManager.round_intermission_started`), which clears velocity per B-93 — but the match's
+final round fires `match_won` instead, and nothing ever resets characters afterward.
+`RoundManager.round_active` stays permanently false, the movement-freeze gate stops input, but
+gravity is still applied every physics frame (deliberately, so a unit mid-jump still settles) —
+with no reset ever coming again, a unit airborne right as the match ended just keeps falling under
+gravity for as long as the result screen is up, long enough to tunnel through the floor's thin
+collision shape. Fixed with a new `main.gd::_on_match_won_freeze_physics()` handler that zeroes
+velocity on every character once, the moment `MatchManager.match_won` fires — nothing moves them
+again after that since `round_active` never becomes true again for that match.
+
+**B-96 · The Can/Taya/Attacker spawn layout was never actually role-based for Local Match — the
+new free-roam window just exposed it. [FIXED same session.]** `_start_local_test()` left every
+local unit at Main.tscn's own hand-authored default transforms, which predate the 2.6 role-based
+`SpawnPoints` redesign entirely — before this session, `begin_next_round()` fired immediately and
+`_reset_world()` (which DOES use role-based spawns) repositioned everyone before the first frame
+was ever shown, so nobody had actually seen the stale defaults. With a real pre-round wait now,
+they were visible and wrong: the Can nowhere near the base circle, the Attacker not facing the
+Can/Taya. Fixed by calling `_place_at_spawn()`/`_role_slot()` — the exact call `_reset_world()`
+already makes every round — once up front in `_start_local_test()`, for every local unit.
+
+**Taya spawn moved to the opposite side of the Can from the Attacker.** User feedback: "the
+person in same team is behind that can." `Spawn1` was at `z=+1.5` (Attacker side), now `z=-1.5`
+(same yaw, so the Taya still faces back through the Can toward the attack line) — see
+`build_eskinita.py`'s `Spawn0-3` doc comment.
+
+**B-97 · The carried Tsinelas's TPP camera could end up "inside the head," and gave its player no
+look control at all. [FIXED same session — B-91 only fixed HALF of this.]** Two real bugs, found
+by tracing `camera_rig.gd::_update_tpp_carry_follow()` all the way through rather than guessing:
+1. Its mount-height formula (`_mount_height_for(carrier.capsule_height())`) was written for a
+   STANDALONE Prop mounting 1.2 units above ITS OWN short capsule; B-91 reused it against the
+   CARRIER's 1.6-tall capsule instead, which resolves to the same number (1.2) but a different
+   meaning — 0.4 units ABOVE the carrier's own head (head-top sits at local `+0.8` from a Person's
+   origin). A spring-arm cast starting already above someone's head collapses into the first thing
+   it touches, which is exactly the reported "extreme close-up on wire geometry" / "it's just
+   inside the head." Replaced with a dedicated `TPP_CARRY_MOUNT_HEIGHT` (0.6, just below head
+   height) instead of reusing a formula meant for something else.
+2. The carried player never had ANY camera control, B-91 or not — `apply_mouse_delta()`'s TPP path
+   writes `_character.rotation.y`, but `carriable.gd::_step_carried()` overwrites that same field
+   every physics frame to match the carrier's hand, so the write had zero visible effect. Reported
+   as "so awkward for them to be watching the gameplay happen like this" and "should be movable but
+   anchored to person." Fixed with a separate look-offset (`_tpp_carry_yaw_deg`/`_tpp_carry_pitch_deg`)
+   added on top of the carrier's own facing in `_update_tpp_carry_follow()` — the view starts
+   anchored behind the carrier and the carried player can still swivel it from there. Resets to
+   zero on drop/throw so the next pick-up starts anchored again, not wherever this player last
+   looked.
+
+**B-98 · A carried unit's ground-ring nameplate still showed, riding along near the carrier's
+hand.** B-89 (earlier this project) fixed the ring's SIZE/position but never addressed the
+complaint it quotes — a carried object doesn't stand on the ground, so a ground ring makes no
+sense for it regardless of how correctly it's sized. Reported again this session: "the circle is
+still attached to slipper even when it's held." Fixed by hiding `character_nameplate.gd`'s ring
+and label outright while `Carriable.state == CARRIED`, rather than sizing them to something that
+still shouldn't be there.
+
+**B-99 · A thrown slipper could land tilted instead of flat, and tunnel through the floor when it
+did.** `carriable.gd::_step_carried()` overwrites a carried unit's entire transform — BASIS
+included — to the carrier's hand orientation (`CARRY_TILT_DEG`, 55°) every physics frame. Nothing
+ever reset that basis on release: `_rpc_set_flying()`/`_rpc_set_loose()` only ever wrote
+`global_position`, so the 55° tilt rode straight through the whole flight and into landing.
+`character_visual.gd::_spin_while_airborne()`'s own rotation reset (already correct) is on the
+VISUAL node, a CHILD of this transform, and could never fix a tilt baked into the parent. A capsule
+resting on the floor at an angle instead of upright is exactly the kind of resolved-collision edge
+case that can clip through thin geometry — matches the floor-tunnelling half of the report. Fixed
+by resetting `_character.rotation = Vector3.ZERO` in both RPC handlers.
+
+**Bounce physics tuned down — "ragdolls while flying," connected to "barely has power even during
+full windup."** `BOUNCE_DAMPING` 0.45 → 0.3, `MAX_BOUNCES` 2 → 1. An early clip on nearby interior
+clutter (crates, tires — up to 1.0 tall, and a throw launches around hand height) previously cost
+a two-bounce sequence each keeping a still-substantial 45% of speed, which reads as chaotic and as
+the whole throw losing its power, not as "bounces a bit." Checked the throw profiles'
+`launch_speed` values themselves (14-23, comfortably faster than `DASH_SPEED` 14.0) and
+`charge_power()`'s math (correctly reaches 1.0 at full charge) — neither looks like a numeric bug
+on paper, so this is the fix that's actually justified by evidence; if throws still feel weak after
+this, that needs a fresh report of exactly when (every throw, or only ones that clip something
+early).
+
+**3-2-1-GO countdown added before a (Local Match) round starts.** User request: "add a 3 2 1 timer
+before each match starts too, think about how to make it look good." Sits between the ready press
+and `MatchManager.begin_next_round()` actually firing — `hud.gd::show_countdown_tick()` pops each
+digit in oversize and settles to normal scale (`TRANS_BACK`/`EASE_OUT`) rather than just swapping
+text, in the existing `HIGHLIGHT` colour the round timer itself uses under 15s. `main.gd`'s
+`_run_ready_countdown()` sequences it with `await get_tree().create_timer(...).timeout` between
+ticks; `_counting_down` guards against a second `ready_up` press restarting it mid-count.
+
+All of the above verified by render (`tools/render_probe.gd` now shows the Can correctly inside
+the base circle) and the full six-command smoke gate. NOT yet verified by play.
+
+**B-100/B-101 · The Can (or any unit) could fall through the floor, or be flung far off its real
+spawn point, specifically on a ROUND TRANSITION. [ROOT-CAUSED AND FIXED — this is the real
+explanation for "cann fell off map again," which B-93/B-95 did not fully cover.]** Found by
+writing an actual diagnostic (`tools/render_probe.gd`'s new `round2` mode — see below) rather than
+continuing to guess from screenshots, after two earlier attempts to explain the report from
+code-reading alone both turned out to be incomplete. Two distinct bugs, confirmed by the probe's
+console output before and after each fix:
+1. **B-100.** `main.gd::_reset_world()` teleports four characters to new ROLE-based spawn points one at a
+   time via a plain `position =` write. Roles swap every round, so two characters routinely trade
+   spots with each other — this round's Attacker often lands exactly where last round's Attacker
+   was standing. A plain position write does not itself resolve collisions, but the very next
+   `move_and_slide()` does, the instant it finds two capsules deeply overlapping because the
+   second character in the loop hadn't been moved out of the way yet when the first one arrived.
+   Godot's own depenetration response is a genuine physics impulse, not a gentle nudge — the probe
+   showed characters ending up many units off their real spawn markers, airborne, sometimes far
+   enough to clear the confinement box or the floor's collision entirely.
+   **Fix, and what didn't work first:** toggling each character's `CollisionShape3D.disabled`
+   around the reposition was tried first and did NOT reliably fix it — disable, reposition and
+   re-enable all happen within the same script frame, before any physics step, and Godot's physics
+   server appears to sync only the FINAL state (enabled, new position) rather than replaying the
+   toggle, so the depenetration still fired. Replaced with something purely geometric instead:
+   every character is parked at a widely-separated, per-index holding spot (`y = 500 + i*20`)
+   BEFORE any of them move to a real spot, so nobody can ever overlap anyone else's target or
+   holding position regardless of loop order or physics-sync timing.
+2. **B-101.** `Carriable.reset_for_new_round()` cleared the carry relationship (`carrier = null`, state →
+   `LOOSE`) but never re-enabled the collision that gets disabled the instant a unit is grabbed
+   (`_rpc_set_carried()`'s `_set_physics_enabled(false)`). A Prop that was CARRIED when the round
+   ended — the common case, since the attacker is usually still holding it — came out of
+   `reset_for_new_round()` marked LOOSE but with its body collision STILL disabled, free to sink
+   straight through the floor with nothing to stop it. This Prop can become next round's Can.
+   Fixed with an unconditional (idempotent) `_set_physics_enabled(true)` in `reset_for_new_round()`.
+**New test infrastructure kept, not thrown away:** `tools/render_probe.gd` gained a `round2` mode
+that drives two real round transitions (`MatchManager.begin_next_round()`,
+`RoundManager.report_round_win()`, `begin_next_round()` again) without waiting out real timers or
+simulating a ready-up keypress, and prints every local unit's role and position at each step —
+turning "is the spawn layout right after a role swap" into a console diff instead of a screenshot
+guessing game. Use it: `godot --path . tools/render_probe.tscn --quit-after 100 -- round2 <dir>`.
+**Still open:** even with both fixes, the probe still shows transient chaotic positions for two of
+the four units *during* the frozen intermission window itself (between `report_round_win()` and
+the next `begin_next_round()`) — by the time the round actually starts (`round_active` becomes
+true again) everyone is back at the correct spot, confirmed by the probe, but a player watching
+the intermission may still see it happen. Not root-caused further this session; flagged rather
+than guessed at again.
+
+**Floating decals, second pass — `MARK_Y_LOW` (0.015) was STILL visibly floating once actually
+looked at closely.** Lowered to `0.001`, a near-zero epsilon rather than a "safe-looking" round
+number — see `build_eskinita.py`'s own updated warning comment. Verified by a fresh render; no
+visible gap under the confinement square or team-side lines this time.
+
+**Three items handed to the 🎨 DESIGN-ART lane (docs only, no code) — see `Agent_Prompts.md`'s
+DESIGN-ART prompt, new items 1-3, ahead of its standing B-G environment-art queue.** From the same
+playtest batch, not yet investigated or fixed by Build this session:
+1. Third-person charge/windup tell — a charged throw is currently only visible to the thrower
+   (FPP viewmodel + their own UI charge bar); nobody else watching that character in third person
+   can see it. The moodboard's own THE ATTACKER card already specifies "charged throw (glow)" —
+   this is that spec's world-space half, which `you_card.gd`'s UI-only hook was deliberately built
+   to leave for Design rather than guess at.
+2. "Why does the defender only have one hand" — reported with a screenshot, not root-caused.
+   Genuinely unclear yet whether this is an art/animation issue or a code bug; routed to Design
+   to look at rendered first, with instructions to hand it back to Build if it turns out not to be
+   a "does this look right" question.
+3. "Slipper still floating" re-verification — the carry-TILT rotation bug (55° not resetting on
+   throw/drop) was found and fixed by Build this session, but the report may be about the carried
+   POSITION (`HAND_CARRY_OFFSET`) rather than rotation, which is Design's own previously-calibrated
+   number to re-measure if still wrong.
+
+**Local Match → Single Player, planned (docs only, no code) — see `Checklist.md` 5.5 and the new
+🔧 BUILD-AI brief in `Agent_Prompts.md`.** User decision: Local Match stops being a dev-only
+testing harness / network-outage fallback (the old plan, `Checklist.md` 5.3) and becomes a real,
+permanent single-player mode in the final submission — the human plays one unit, real AI drives
+the other three (their own Prop teammate, and the whole opposing team) instead of sitting on
+unbound input. No prior art for this in the codebase — the brief's main job is choosing an
+architecture that doesn't fork `character_base.gd::_physics_process` into a human path and a
+separate AI path, since the confinement/state-machine/round-active gating all have to keep
+applying identically either way. `Checklist.md` 5.3 marked as redirected rather than deleted, with
+the original text kept for history. This is planning only, explicitly per the user's own request
+("on the docs can u plan how to add a new agent") — nothing here changes runtime behaviour.
 
 **Still open, not root-caused this session:** a report of a carried tsinelas reading as
 permanently frozen/slanted, and a Can appearing stuck mid-animation at the same time, with no
@@ -751,12 +1384,18 @@ folded into an unrelated commit, because changing a hero prop's colour deserves 
 its own render.
 
 **B-81 · The tsinelas sole is painted `DEFENSE` blue, on a unit that only ever exists on
-offence. [FIXED 2026-07-28]** Sole → `IMPACT`, straps → `HIGHLIGHT`, toe post → `INK`, and the
-materials renamed from palette tokens (`defense`/`impact`/`highlight`) to parts
-(`sole`/`strap`/`post`) — a material literally named `defense` is a bug that reads as correct in
-every diff, and renaming also changes the `.obj`, which is what forces the reimport the `.mtl`
-alone would not. **Verified by render:** no role hue anywhere on the slipper, and the Y-strap reads
-*better* than it did — yellow on magenta separates at FPP distance where pink on blue did not.
+offence. [FIXED 2026-07-28]** The materials were renamed from palette tokens
+(`defense`/`impact`/`highlight`) to parts (`sole`/`strap`/`post`) — a material literally named
+`defense` is a bug that reads as correct in every diff, and renaming also changes the `.obj`, which
+is what forces the reimport the `.mtl` alone would not. The sole was repainted off the role hue.
+**Verified by render:** no role hue anywhere on the slipper.
+
+⚠️ **The colours this fix chose are superseded — same day.** B-81 painted the sole `IMPACT` magenta
+and the straps `HIGHLIGHT` yellow because they were the only non-role tokens available. The human
+then supplied an asset moodboard for the prop and ruled: *"the magenta shit is just placeholder, we
+can update it with the new ones."* **The slipper is now `PROP_FOAM` brown with a `PROP_WEBBING` tan
+strap** (`Art_Direction.md` §1b). B-81's *rule* is untouched — brown and tan are neither role hue —
+and its material-naming half stands, extended to the lata in the same pass. Do not restore magenta.
 Original report follows. `tools/models/generate_all.gd::_build_tsinelas()` sets the sole material to
 `UiTheme.DEFENSE` (`#0080e8`). A Prop is a Tsinelas exactly when its team is **attacking**, so the
 attacking team's prop wears the defending colour — a direct breach of `Dev_Plan.md` §4.2 ("never
@@ -767,10 +1406,10 @@ blue slab.
 body, **tsinelas sole**". **That table is wrong and the rule is right.**
 *Severity:* P1 — it teaches the player the wrong colour language on the most-looked-at object in
 the game.
-*Fix:* sole → `UiTheme.IMPACT`, keep the straps readable against it (they are `IMPACT` today, so
-they move to `HIGHLIGHT`); regenerate; render both viewmodel shots. Correct the brief's table in
-the same commit. The lata is **not** in scope — a blue can on the defending side is consistent, and
-it renders well.
+*Fix:* repaint the sole off the role hue, keep the straps readable against it; regenerate; render
+both viewmodel shots. Correct the brief's table in the same commit. The lata was **not** in scope
+here — a blue can on the defending side is consistent, and it renders well. *(It came into scope
+later the same day for a different reason: the Sarsi livery moodboard. It is still blue.)*
 
 **B-82 · `Main.tscn`'s floor top surface is `y = +0.5`, not `y = 0` — and two docs say
 otherwise. (NEW)** `Floor` and its `CollisionShape3D` carry **no transform**, and the shape is a
@@ -1032,6 +1671,11 @@ file or silently dropping it.
   **T-3**: the taya holds `grab` by their own downed lata to stand it back up. Still absent
   from the GDD; fold it into Section 3's round flow, which §0.8 already flags as owed.
 - **B-65 · No reconnect path** — a rejoining player can come back as a different team and role.
+  **[FIXED]** 2026-07-28, `Checklist.md` 4.3 — a stable per-instance token (`NetworkManager.
+  local_player_token`) replaces the peer id as the identity `main.gd` keys team/role off, and a
+  new host redirect (`NetworkManager.match_in_progress` / `_rpc_route_to_running_match`) gets a
+  mid-match rejoin out of `Lobby.tscn` and back into `Main.tscn` at all, which nothing did before.
+  See this file's session log and the full account near this section's end.
 
 ### Doc corrections found this pass
 
@@ -1109,7 +1753,8 @@ specification Opus already wrote.
 | 4.5 | Hitstop | Sonnet | medium | Contained feel work |
 | 5.1 | Install export templates | 🧑 human | — | Environment, not code |
 | 5.2 | Produce and launch a release build | Sonnet | medium | Mechanical once 5.1 is done |
-| 5.3 | Strip Local Match + debug switcher | Sonnet | **high** | `Main.tscn` and `main.gd` spawn paths; the removal grep must come back empty |
+| 5.3 | ⚠️ Redirected — see 5.5 | — | — | No longer "strip Local Match"; superseded by Single Player, `Checklist.md` 5.3/5.5 |
+| 5.5 | Rename to Single Player + AI for the other three units | Sonnet | **high** | No prior art for AI in this codebase — the hard part is the architecture choice, not the behaviour |
 | 5.4 | `.import` UID churn (B-71) | Sonnet | medium | Repo hygiene decision |
 | 6.1 | Real-device LAN test | 🧑 human | — | Four laptops in a room |
 | 6.2 | Live-demo script + trailer beat sheet | **Opus** | **high** | What to show, in what order, in 90s, to people who will never play it — editorial judgement under a hard constraint |
@@ -1675,9 +2320,14 @@ Steps:
    as polygonal at TPP distance; 24 is wasted on a shape this small). Profile, bottom to top:
    base crimp → slight outward taper → straight wall → seam band step → shoulder taper → rolled
    top rim → recessed lid. Target **≈ 260 tris**.
-2. **Materials, three, named for `UiTheme` tokens so `.mtl` and theme cannot drift:** `defense`
-   (body, `#0080E8`), `highlight` (label band, `#F8D028`), `ink` (rim and lid, `#040838`). The
-   moodboard's can is blue-bodied with a yellow label band — match it exactly.
+2. **Materials named for the PART, with their colours taken from `UiTheme` constants so `.mtl` and
+   theme cannot drift:** `aluminium` / `aluminium_shade` (lid, rolled rim, base crimp, pull tab),
+   `body_bright` / `body` / `body_deep` (the banded blue gradient), `wave` (the white band) and
+   `sail` (`PROP_SARSI_RED`). **Sarsi livery, per the 2026-07-28 asset moodboard** — see
+   `Art_Direction.md` §1b. *(This step used to specify a blue body with a yellow `highlight` label
+   band and an `ink` rim, and materials named after tokens. Both are gone: the livery changed with
+   the moodboard, and a material called `defense` on a label is a bug that reads as correct in
+   every diff — the same rename B-81 made on the tsinelas.)*
 3. **The dented variant.** A second `.obj` from the same profile with a radial displacement
    applied to a contiguous arc of the wall verts. Parameterise depth so Option A's three dent
    stages are three generated meshes (`lata_dent1/2/3.obj`), not one mesh scaled.
@@ -1700,12 +2350,20 @@ follows and the dents reset.
 **Commit:** `Model the lata — revolved body, three dent states, knocked-down tilt (v4.8)`
 
 **[DONE @ v3.7]** Landed in commit 50ec425. `generate_all.gd` has the full profile-and-revolve
-body (five stacked revolves: ink base crimp, defense lower wall, highlight label band,
-defense upper wall, ink shoulder+rolled rim+recessed lid). Three dent states generated
-via `_apply_dents` deform callable. `CanVisual.tscn` updated to use `lata.obj`. Dent mesh
-swap wired in `character_visual.gd::_on_dents_changed` / `_refresh_can_damage`. Downed tilt
-(78° on 0.28s Back/Out tween) in `_refresh_downed_tilt`. Walk/run locomotion also added
-in the same session. Acceptance test pending human play session.
+body. Three dent states generated via `_apply_dents` deform callable. `CanVisual.tscn` updated to
+use `lata.obj`. Dent mesh swap wired in `character_visual.gd::_on_dents_changed` /
+`_refresh_can_damage`. Downed tilt (78° on 0.28s Back/Out tween) in `_refresh_downed_tilt`. Walk/run
+locomotion also added in the same session. Acceptance test pending human play session.
+
+**[RE-LIVERIED 2026-07-28]** Same profile, new skin, per the Sarsi asset moodboard. The base,
+shoulder, rolled rim and now-flat lid are still revolves; **the printed wall between them is no
+longer one** — `_lata_wall()` emits it strip by strip as stacked layers sharing boundary functions,
+because a sail is not rotationally symmetric and `add_revolve` can only paint full rings. Read that
+function's header before touching it: the sail is *the wall in a different colour*, not a decal
+shell, specifically so a dent through it deforms it instead of shearing it off into mid-air. A pull
+tab was added to the lid, and the lid was flattened from its slight dome so the tab makes contact
+across its whole length. Dent depth re-measured after the rebuild: 0.027 world units, against 0.029
+before — preserved. Verified by render at 0.85 and at match distance.
 
 ---
 
@@ -1725,9 +2383,11 @@ Steps:
    sole edge. **≈ 180 tris.**
 2. The Y-strap as real geometry: two swept quad strips from the toe post to each side of the
    sole, meeting at a toe knob. Not two rotated boxes floating above the sole.
-3. Materials: `defense` sole, `impact` strap (`#F468A8`), `highlight` toe post. This is what
-   `TsinelasVisual.tscn` already uses and it matches the moodboard card — keep the palette,
-   replace the geometry.
+3. Materials named for the PART: `outsole` / `foam` / `footbed` (`PROP_FOAM_DARK` → `PROP_FOAM`),
+   `strap` and `post` (`PROP_WEBBING`). **Worn brown foam with a tan webbing Y-strap, per the
+   2026-07-28 asset moodboard** — see `Art_Direction.md` §1b. *(This step used to specify a
+   `defense` sole with an `impact` strap. The blue sole was B-81 — a role hue on an offence-only
+   prop — and the magenta that replaced it was explicitly a placeholder.)*
 4. Keep the 1.35-unit length. Same `_align_to_capsule_floor()` re-verification as M-2 step 6.
 5. **Orientation matters here in a way it did not for the can.** The character faces −Z
    (`character_base.gd`'s `look_at()`); model the slipper toe-forward along −Z so a thrown
@@ -2167,6 +2827,24 @@ document that acts on it, so this list shrinks instead of accumulating.
       in this file and in GDD §8 have been removed and replaced with pointers. Still blank, and
       **submission Form 01 is literally this table**, so it is no longer just hygiene.
 
+- [ ] **Is printed type on the lata worth a UV + texture pipeline?** The 2026-07-28 Sarsi asset
+      moodboard carries a `sarsi` wordmark, `330 mL` and a barcode. **None of them are buildable
+      today, and the gap is structural, not an oversight:** `obj_writer.gd` emits no `vt` lines at
+      all and `_write_mtl` writes a single flat `Kd` per material with no `map_Kd`. The rest of
+      that board's can — blue banding, red sail and ball, white wave, aluminium lid, pull tab — is
+      shipped as colour-blocked geometry and reads correctly at match distance (`Checklist.md`
+      2.9).
+      Building it means: UV support in `obj_writer`, a label-texture generator (Godot *can* render
+      a font to an `Image` in a tool script, so the wordmark is reachable without hand-drawing
+      letterforms), UV coordinates for the can wall, and import settings for the PNG.
+      **The argument against is the size the can is actually read at.** It stands 0.34 units tall
+      and is seen from ~4.5 — the label lands ≈13 px, so a wordmark would be a smudge and the
+      barcode nothing at all. It would only pay off in a close-up: a menu render, a key art shot,
+      or the 3.2 logo lockup. **A human should decide whether any of those are planned** before
+      anyone builds a texture pipeline for a 13 px payoff. Flat colour is also what Harry's board
+      asked for in the first place (`PEAK`, "not photoreal and not PBR"), so *not* building it is a
+      defensible final answer, not a deferral.
+
 ### Deliberately open, and blocking nothing
 
 - [ ] **Option A vs Option B — the ship decision.** **Both modes stay in active, equal
@@ -2201,10 +2879,10 @@ document that acts on it, so this list shrinks instead of accumulating.
 ## 6. Two things nobody has scheduled, both on the critical path
 
 - **Real multi-device LAN testing.** Everything so far is loopback on one machine. Real wifi adds
-  latency and packet loss to a movement layer with no interpolation and no reconciliation. If that
-  forces the shared-screen fallback (GDD Section 7), you want to know weeks before the deadline —
-  and the FPP/TPP split raises the cost of that pivot (four viewports, and only one player per
-  machine can mouse-look). **Book four laptops now.**
+  latency and packet loss to a movement layer with remote-visual interpolation (`Checklist.md` 4.2)
+  but still no reconciliation. If that forces the shared-screen fallback (GDD Section 7), you want
+  to know weeks before the deadline — and the FPP/TPP split raises the cost of that pivot (four
+  viewports, and only one player per machine can mouse-look). **Book four laptops now.**
 - **Audio.** Still nothing, and it is deliberately not in this queue. A can hit with no sound
   reads as a bug to a judge no matter how good the mesh is. It is a parallel workstream and it
   needs an owner.
@@ -2842,12 +3520,18 @@ back to a full ratio; switching to a Tsinelas shows the dash cooldown ratio, a p
 Dev_Plan text calls the "ready again" flash colour `UiTheme.PAPER`, which isn't an actual defined
 constant — substituted `UiTheme.CARD` (the theme's actual near-white token) instead.
 
-**B-65 · No reconnect path — a rejoining player can come back as a different team and role. (NEW,
-logged while doing Q-5)** A rejoining player gets a brand-new peer id, so `main.gd::_peer_join_index`
-assigns them the next free slot rather than restoring their previous one. **OPEN — needs a design
-call, not a code fix**: preserving identity across a rejoin needs a stable player token instead of
-a peer id, which is real work. Q-5 makes the *current* role legible (the new YOU card) but
-deliberately does not attempt reconnection — see the decision list in §4.
+**B-65 · No reconnect path — a rejoining player can come back as a different team and role.
+[FIXED 2026-07-28, `Checklist.md` 4.3]** Originally: a rejoining player gets a brand-new peer id, so
+`main.gd::_peer_join_index` assigns them the next free slot rather than restoring their previous
+one. Fixed with a stable per-instance token (`NetworkManager.local_player_token`, minted once per
+running process and presented to the host on every connect via `_rpc_identify`) — `main.gd`'s join
+index is now keyed by token, not peer id, so a reconnect under a new peer id maps straight back to
+the same team/role slot. The token itself is deliberately NOT reloaded from the `user://` copy it
+also writes: two local test instances (this project's own two-instance test — `Debug > Run Multiple
+Instances`, or two `godot --path .` processes) share one `user://`, and reading the token back would
+make both instances present the identical token and collide on the same join index. This closes the
+identity half of the bug, but identity alone does not get a rejoining peer back into the match — see
+the fuller account in this file's session log for the `Lobby.tscn` redirect that was also needed.
 
 **Q-5 verification note.** Added the HUD "YOU" card (`scenes/ui/YouCard.tscn` +
 `scripts/ui/you_card.gd`), instanced into `HUD.tscn`. Shows class (`PERSON`/`CAN (LATA)`/`TSINELAS`),

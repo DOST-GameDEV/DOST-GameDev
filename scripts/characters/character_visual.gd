@@ -56,16 +56,35 @@ const TSINELAS_VISUAL: String = "res://scenes/characters/visuals/TsinelasVisual.
 ## a player can read it in the world rather than off the HUD. `character_base.gd`
 ## must never learn that dents have a mesh — it owns the number, this file owns
 ## what the number looks like.
+## ⚠️ CHECKLIST 7.2 — these are Kenney Food Kit `.glb` files now, not the four
+## generated `lata*.obj` meshes. The kit ships TWO states against the four this
+## system uses, so the middle two are the intact can progressively squashed
+## (`CAN_DENT_SQUASH` below) rather than four distinct meshes. Authoring real
+## intermediate crush meshes is later polish, not a blocker — the read that
+## matters is "it looks worse each time you hit it", and a squash delivers that.
+##
+## The interface is unchanged: `CAN_MESHES[dents]` is still the whole lookup and
+## `character_base.gd` still owns the number without knowing dents have a mesh.
 const CAN_MESHES: Array[String] = [
-	"res://assets/models/lata.obj",
-	"res://assets/models/lata_dent1.obj",
-	"res://assets/models/lata_dent2.obj",
-	"res://assets/models/lata_dent3.obj",
+	"res://assets/models/kits/food/soda-can.glb",
+	"res://assets/models/kits/food/soda-can.glb",
+	"res://assets/models/kits/food/soda-can.glb",
+	"res://assets/models/kits/food/soda-can-crushed.glb",
 ]
+## Vertical squash per dent count, applied to the mesh instance. Index 3 is 1.0
+## because `soda-can-crushed` is already a crushed mesh — squashing it too would
+## read as a puddle rather than a can.
+const CAN_DENT_SQUASH: Array[float] = [1.0, 0.93, 0.85, 1.0]
 
 ## Knocked-down is a ROTATION, not a mesh (Handoff.md §4, M-2 step 5) — the can
 ## falls on its side and gets back up, and baking that into geometry would mean
 ## eight meshes instead of four.
+## How thick a prop's ink outline should be IN WORLD UNITS, whatever the mesh
+## is scaled by. See _apply_toon_pass for why a single model-space width cannot
+## work once meshes differ in scale. Persons are unaffected — they take the
+## early-out in that function and keep `person_outline.tres`.
+const OUTLINE_WORLD_WIDTH: float = 0.012
+
 const DOWNED_TILT_DEGREES: float = 78.0
 const DOWNED_TILT_TIME: float = 0.28
 
@@ -83,6 +102,10 @@ const ACTION_CLIPS: Dictionary = {
 	"throw": ["holding-right-shoot", "pick-up", "interact-right"] as Array[String],
 	# Bump — a shove, so a melee swing rather than a throw.
 	"bump": ["attack-melee-right", "attack-kick-right", "interact-right"] as Array[String],
+	# 7.7 — the ready-up press, so everyone ELSE can see who has readied without
+	# looking at a HUD. `emote-yes` is literally a thumbs-up on this rig; it was
+	# one of the 24 clips shipping unused.
+	"ready": ["emote-yes", "interact-right"] as Array[String],
 	# Task 1 — reaching down for a loose tsinelas. `pick-up` is the literal clip
 	# for this and the reason the brief called it out.
 	"grab": ["pick-up", "interact-right", "interact-left"] as Array[String],
@@ -191,7 +214,26 @@ const HAND_BONE_CANDIDATES: Array[String] = ["arm-right", "arm-left"]
 ## mesh read at (character-local Y 0.214, i.e. target.y 1.014) put the object
 ## close to the eye's own height, which put it close to the CAMERA in total 3D
 ## distance too — broadside and close together filled most of the frame.
-const HAND_CARRY_OFFSET: Vector3 = Vector3(0.863, 0.715, 0.077)
+## ⚠️ 7.3 — RE-TARGETED TO THE ACTUAL HAND, 2026-07-28. Everything above this
+## line describes the FIRST-PERSON composition this constant used to serve, and
+## that is exactly what was wrong with it: the target was chosen so the slipper
+## sat "a little above the eye", forward and right of the crosshair. That is a
+## viewmodel pose, and putting a REAL object there parks it beside the carrier's
+## head in world space — which is what every other player saw, and what was
+## reported over and over as the slipper floating.
+##
+## Re-measuring it could never have fixed that. The offset was doing precisely
+## what it was written to do; the mistake was asking one object to compose two
+## views at once. `camera_rig.gd` now gives the viewmodel its own `HeldSlipper`
+## (see `VIEWMODEL_CARRY_ANCHOR`), which frees this to mean what its name says:
+## put the slipper in the hand. Solved with the same inversion the whole
+## viewmodel already exists for.
+##
+## Target is the arm bone's own neighbourhood — `t` above, nudged forward and up
+## by roughly the tsinelas capsule's half-height so the visible mesh, which
+## `_align_to_capsule_floor` drops below the origin, lands at the palm rather
+## than under it.
+const HAND_CARRY_OFFSET: Vector3 = Vector3(0.237, 0.135, -0.347)
 
 ## The persistent carry pose. Verified against the actual .glb rather than a
 ## doc: the Kenney rig ships `holding-right` and `holding-right-shoot`, and
@@ -202,6 +244,19 @@ const HAND_CARRY_OFFSET: Vector3 = Vector3(0.863, 0.715, 0.077)
 const CARRY_IDLE_CLIP: String = "holding-right"
 
 const FLASH_DURATION: float = 0.15
+
+## 4.2 — remote movement interpolation. A non-authority networked character's
+## `position`/`rotation` (CharacterBase.tscn's MultiplayerSynchronizer) are
+## written straight onto the BODY every time a replicated update lands, and
+## must stay that way — collision, the Hitbox offset and every directional
+## ability read the body transform directly (Agent_Prompts.md's Netcode
+## brief §3). This node exists as the wrapper for exactly this kind of
+## decoupling: it lags a WORLD-space copy of the body's position/yaw behind
+## by this rate and renders the mesh from that instead, so the body can keep
+## snapping for gameplay while what you actually SEE glides. Higher = closes
+## the gap faster (less visible lag, less jitter hidden); tuned to disappear
+## within a couple of physics ticks on a LAN rather than read as "floaty".
+const REMOTE_SMOOTH_RATE: float = 18.0
 
 ## M-4: toon+outline shaders for Prop (Can/Tsinelas) models. Persons are
 ## excluded (M-4 step 4) — their glTF ORMMaterial3D interacts badly with
@@ -238,12 +293,13 @@ var _materials: Array[BaseMaterial3D] = []
 ## Parallel to `_materials`: the albedo each one started at, so a flash always
 ## tweens back to the real colour rather than to whatever it was mid-flash.
 var _base_albedos: Array[Color] = []
-## M-4: ShaderMaterials that have an albedo_color uniform (toon shader surfaces
-## on Prop models). flash_hit() / flash_blocked() set the uniform directly since
-## ShaderMaterial has no albedo_color property. The outline next_pass materials
-## are deliberately NOT tracked — they have no albedo_color and must not flash.
+## M-4: toon-shader surfaces on Prop models. flash_hit() / flash_blocked() drive
+## their uniforms directly, since ShaderMaterial has no albedo_color property.
+## ⚠️ 7.1: tracked by their `flash_amount` uniform, and no base colour is stored
+## alongside them any more — the flash is its own uniform now and tweens 1 -> 0,
+## so there is nothing to restore. The outline next_pass materials carry no
+## `flash_amount` and are deliberately NOT tracked; they must never flash.
 var _shader_materials: Array[ShaderMaterial] = []
-var _shader_base_albedos: Array[Color] = []
 var _flash_tween: Tween = null
 ## The unit this Visual belongs to. Read for `dents` when a model is rebuilt
 ## mid-round — a Prop that swaps Can/Tsinelas/Can has to come back wearing the
@@ -260,6 +316,16 @@ var _action_clip: String = ""
 ## anything and a BoneAttachment3D on a model with no Skeleton3D is just waste.
 ## Invalidated (not freed — it dies with the model tree) on every model swap.
 var _hand_attachment: Node3D = null
+
+## 4.2 — this node's own lagged WORLD-space copy of the body's position/yaw.
+## Only ever advanced for a non-authority networked character with nothing
+## driving its movement (see _should_smooth_remote) — everyone else leaves
+## this untouched and pays nothing for it. `false` until the first frame that
+## actually needs smoothing, so a brand-new unit's first appearance snaps
+## rather than gliding in from the world origin.
+var _smoothed_world_pos: Vector3 = Vector3.ZERO
+var _smoothed_yaw: float = 0.0
+var _smoothing_initialized: bool = false
 
 func _ready() -> void:
 	# Children are ready before parents, so CharacterBase's own _ready() has not
@@ -279,6 +345,34 @@ func _on_dents_changed(new_dents: int) -> void:
 func _on_state_changed(new_state: CharacterBase.State) -> void:
 	_refresh_downed_tilt(new_state == CharacterBase.State.DOWNED)
 
+## 7.2 — a Mesh from either a bare mesh resource or an imported model SCENE.
+##
+## ⚠️ THE KIT SWAP MADE THIS NECESSARY. `load(path) as Mesh` worked while the
+## can was a `.obj`, which Godot imports as a Mesh. A `.glb` imports as a
+## PackedScene, so the same cast silently yields `null` and the can simply
+## stops changing on damage — no error, no missing mesh, just a dent count that
+## never shows. Handles both so a future asset can be either.
+##
+## The instance is freed immediately: only its Mesh resource is kept, and
+## leaving the node alive would leak one throwaway scene per dent taken.
+func _mesh_from(path: String) -> Mesh:
+	var resource := load(path)
+	if resource is Mesh:
+		return resource as Mesh
+	var packed := resource as PackedScene
+	if packed == null:
+		return null
+	var instance := packed.instantiate() as Node3D
+	if instance == null:
+		return null
+	var found: Mesh = null
+	for node in instance.find_children("*", "MeshInstance3D", true, false):
+		found = (node as MeshInstance3D).mesh
+		if found != null:
+			break
+	instance.free()
+	return found
+
 ## Replaces the can's mesh in place rather than rebuilding the model tree — a
 ## rebuild would restart animation and re-run the whole instantiate path for what
 ## is a one-resource change.
@@ -291,12 +385,18 @@ func _refresh_can_damage(dent_count: int) -> void:
 	var meshes := model.find_children("*", "MeshInstance3D", true, false)
 	if meshes.is_empty():
 		return
-	var mesh_path: String = CAN_MESHES[clampi(dent_count, 0, CAN_MESHES.size() - 1)]
-	var mesh := load(mesh_path) as Mesh
+	var index := clampi(dent_count, 0, CAN_MESHES.size() - 1)
+	var mesh_path: String = CAN_MESHES[index]
+	var mesh := _mesh_from(mesh_path)
 	if mesh == null:
-		push_error("CharacterVisual: could not load '%s'" % mesh_path)
+		push_error("CharacterVisual: could not load a mesh from '%s'" % mesh_path)
 		return
-	(meshes[0] as MeshInstance3D).mesh = mesh
+	var target := meshes[0] as MeshInstance3D
+	target.mesh = mesh
+	# 7.2 — the dent read for the two states the kit does not ship. Scale, not a
+	# mesh, so it costs nothing and cannot drift out of sync with CAN_MESHES.
+	var squash: float = CAN_DENT_SQUASH[index]
+	target.scale = Vector3(1.0, squash, 1.0)
 	# The swapped-in mesh arrives with the IMPORTER's shared materials, not this
 	# unit's duplicated ones, so re-collect or the B-44 hit flash silently starts
 	# tinting every can in the match at once. The toon ShaderMaterial overrides set
@@ -305,7 +405,6 @@ func _refresh_can_damage(dent_count: int) -> void:
 	_materials.clear()
 	_base_albedos.clear()
 	_shader_materials.clear()
-	_shader_base_albedos.clear()
 	_collect_meshes(model)
 	_align_to_capsule_floor(model)
 	# camera_rig.gd re-applies the FPP self-hide on this signal; a new mesh that
@@ -344,7 +443,6 @@ func apply(is_person: bool, is_can: bool, team: int) -> void:
 	_materials.clear()
 	_base_albedos.clear()
 	_shader_materials.clear()
-	_shader_base_albedos.clear()
 	# The old AnimationPlayer went with the old model tree; holding a freed
 	# reference here would make the first play_action() after a role swap throw.
 	_animator = null
@@ -473,9 +571,11 @@ func _model_path(is_person: bool, is_can: bool, team: int) -> String:
 ## Each mesh gets its OWN material via a surface override. Without this, every
 ## unit sharing a model would share one material resource, and flashing one of
 ## them white would flash all of them — including the enemy's.
-## M-4: also handles ShaderMaterial (toon shader surfaces on Props). Only tracks
-## ShaderMaterials that expose an albedo_color uniform; the outline next_pass
-## shader deliberately lacks it so it is excluded from the flash system.
+## M-4: also handles ShaderMaterial (toon shader surfaces on Props).
+## ⚠️ 7.1: the test is now `flash_amount`, not `albedo_color`. The outline
+## next_pass shader carries neither, so it is still excluded — but the check now
+## asks the question it actually means ("does this material take part in
+## flashing?") instead of a colour uniform that happened to correlate.
 func _collect_meshes(model: Node3D) -> void:
 	for node in model.find_children("*", "MeshInstance3D", true, false):
 		var mesh_instance := node as MeshInstance3D
@@ -483,12 +583,11 @@ func _collect_meshes(model: Node3D) -> void:
 			var source: Material = mesh_instance.get_active_material(surface)
 			if source is ShaderMaterial:
 				var shader_mat := source as ShaderMaterial
-				if shader_mat.get_shader_parameter("albedo_color") == null:
+				if shader_mat.get_shader_parameter("flash_amount") == null:
 					continue
 				var duped := shader_mat.duplicate() as ShaderMaterial
 				mesh_instance.set_surface_override_material(surface, duped)
 				_shader_materials.append(duped)
-				_shader_base_albedos.append(duped.get_shader_parameter("albedo_color") as Color)
 			elif source is BaseMaterial3D:
 				# Typed as BaseMaterial3D, not StandardMaterial3D: a glTF surface can
 				# import as ORMMaterial3D, and casting to StandardMaterial3D yields
@@ -505,16 +604,47 @@ func _collect_meshes(model: Node3D) -> void:
 func _apply_toon_pass(model: Node3D, is_person: bool) -> void:
 	if is_person:
 		return
-	var outline_mat := ShaderMaterial.new()
-	outline_mat.shader = OUTLINE_SHADER
 	for node in model.find_children("*", "MeshInstance3D", true, false):
 		var mesh_instance := node as MeshInstance3D
+		# ⚠️ 7.1 — ONE OUTLINE MATERIAL PER MESH, WIDTH DERIVED FROM ITS SCALE.
+		#
+		# `outline.gdshader` inflates along the normal in MODEL space, so a single
+		# shared `outline_width` means the ink border's real thickness is whatever
+		# that mesh happens to be scaled by. With one shared 0.025 the Can — 0.34
+		# units tall — wore a 0.025-unit border, about 12% of its own width per
+		# side, rendering as dark slabs down both sides of it (Handoff.md §0.12).
+		# The kit swap makes that far worse: kit pieces differ by 10x in scale,
+		# so no single constant can be right for more than one of them.
+		#
+		# Read from `global_transform` rather than the mesh AABB because it is the
+		# node scale the shader is actually working in — and it is valid here,
+		# since `apply()` adds the model to the tree BEFORE calling this.
+		var outline_mat := ShaderMaterial.new()
+		outline_mat.shader = OUTLINE_SHADER
+		var scale_vector := mesh_instance.global_transform.basis.get_scale()
+		var scale := maxf(maxf(absf(scale_vector.x), absf(scale_vector.y)),
+			absf(scale_vector.z))
+		if scale < 0.0001:
+			scale = 1.0
+		outline_mat.set_shader_parameter("outline_width", OUTLINE_WORLD_WIDTH / scale)
 		for surface in range(mesh_instance.get_surface_override_material_count()):
 			var toon_mat := ShaderMaterial.new()
 			toon_mat.shader = TOON_SHADER
 			var original: Material = mesh_instance.get_active_material(surface)
 			if original is BaseMaterial3D:
-				toon_mat.set_shader_parameter("albedo_color", (original as BaseMaterial3D).albedo_color)
+				var base_mat := original as BaseMaterial3D
+				toon_mat.set_shader_parameter("albedo_color", base_mat.albedo_color)
+				# Checklist 7.1 — CARRY THE TEXTURE ACROSS, do not drop it.
+				# A generated .obj prop has no albedo texture and its colour is a
+				# flat Kd, so this is a no-op for everything that shipped before
+				# the kit overhaul. A Kenney kit mesh is textured off one shared
+				# palette atlas, and without this the toon pass replaced that
+				# atlas with a single flat colour — the whole model rendering as
+				# one shade. See toon.gdshader's own header.
+				var albedo_tex := base_mat.albedo_texture
+				if albedo_tex != null:
+					toon_mat.set_shader_parameter("albedo_texture", albedo_tex)
+					toon_mat.set_shader_parameter("use_texture", true)
 			elif original is ShaderMaterial:
 				var orig_albedo = (original as ShaderMaterial).get_shader_parameter("albedo_color")
 				if orig_albedo != null:
@@ -560,7 +690,29 @@ func _play_locomotion() -> void:
 	# instead, so the fix is to stop trying to walk-animate a carrying arm at
 	# all: legs stop swinging while holding something and moving, which is a
 	# far smaller visual cost than the hand and viewmodel swimming every step.
-	if _is_holding():
+	# ⚠️ 7.7 — DOWNED and AIRBORNE ARE CHECKED BEFORE ANYTHING ELSE, and in that
+	# order, because both are states the game already tracks and neither had any
+	# body language at all. The Kenney rig ships 32 clips and only eight were
+	# wired; these are two of the four that map onto existing state.
+	#
+	# `die` on DOWNED: being knocked down read ONLY in the HUD flash and the
+	# `Visual` tilt. A downed unit and a standing one played the same idle.
+	#
+	# `jump`/`fall` on airborne: `_play_locomotion()` selected on HORIZONTAL
+	# speed alone, so a Person at the top of a jump — horizontal speed near zero —
+	# played `idle`, and one moving sideways through the air played `walk`. Every
+	# unit in this game can jump (§0's pillar put it on the Prop too), so that was
+	# the most-seen missing pose in the build. Split by vertical velocity so a
+	# rising jump and a falling one are not the same pose.
+	#
+	# ⚠️ NO NEW STATE, NO NEW INPUT, NO NEW NETWORKING. Every branch reads
+	# something `character_base.gd` already owns and already replicates. That is
+	# what keeps animation work in the design lane.
+	if _character.state == CharacterBase.State.DOWNED:
+		wanted = "die"
+	elif not _character.is_on_floor():
+		wanted = "jump" if _character.velocity.y > 0.0 else "fall"
+	elif _is_holding():
 		wanted = CARRY_IDLE_CLIP
 	elif speed > RUN_SPEED_THRESHOLD:
 		wanted = "sprint"
@@ -575,6 +727,68 @@ func _process(delta: float) -> void:
 	_play_locomotion()
 	_spin_while_airborne(delta)
 	_drive_viewmodel_charge()
+	_process_remote_smoothing(delta)
+
+## 4.2 — lags this node's position/rotation.y behind the body's own (already
+## snapped) global position/yaw, for a remote character only. Explicitly
+## skipped, and left at zero offset, for:
+##   - the locally-driven character — client-authoritative and already smooth;
+##     smoothing it adds pure input latency for no gain.
+##   - anything not actually networked (Local Match / solo test) — there are
+##     no remote peers to smooth against.
+##   - a CARRIED or FLYING slipper — carriable.gd recomputes both identically
+##     and deterministically on every peer, every physics frame, at zero
+##     bandwidth. Lagging an already-agreed transform on top would make it
+##     visibly trail the hand or the arc instead of matching it.
+## rotation.x (airborne spin) and rotation.z (downed tilt) are untouched —
+## only .y is this function's to write.
+func _process_remote_smoothing(delta: float) -> void:
+	if not _should_smooth_remote():
+		if _smoothing_initialized:
+			position = Vector3.ZERO
+			rotation.y = 0.0
+			_smoothing_initialized = false
+		return
+	if not _smoothing_initialized:
+		snap_remote_transform()
+		return
+
+	var body_pos := _character.global_position
+	var body_yaw := _character.rotation.y
+	var t: float = 1.0 - exp(-REMOTE_SMOOTH_RATE * delta)
+	_smoothed_world_pos = _smoothed_world_pos.lerp(body_pos, t)
+	_smoothed_yaw = lerp_angle(_smoothed_yaw, body_yaw, t)
+
+	# `position`/`rotation` here are always relative to the PARENT (the body),
+	# so the world-space gap has to be rotated into the body's own frame —
+	# otherwise "lagging behind" would read as the wrong direction the moment
+	# the body itself turns.
+	var world_gap := _smoothed_world_pos - body_pos
+	position = _character.global_transform.basis.inverse() * world_gap
+	rotation.y = wrapf(_smoothed_yaw - body_yaw, -PI, PI)
+
+func _should_smooth_remote() -> bool:
+	if _character == null or not NetworkManager.is_networked():
+		return false
+	if _character.is_multiplayer_authority():
+		return false
+	var carriable := _character.get_node_or_null("Carriable") as Carriable
+	return carriable == null or not carriable.drives_movement()
+
+## Resets the smoothing state to "caught up, right now" — called whenever the
+## body's position was just TELEPORTED rather than walked (a round reset, a
+## KillPlane respawn), so the visual snaps to the new spot instead of gliding
+## across the map from wherever the last round/fall left it
+## (Agent_Prompts.md §3). Safe to call even when smoothing is inactive; it
+## just primes the state for whenever it next becomes active.
+func snap_remote_transform() -> void:
+	if _character == null:
+		return
+	_smoothed_world_pos = _character.global_position
+	_smoothed_yaw = _character.rotation.y
+	position = Vector3.ZERO
+	rotation.y = 0.0
+	_smoothing_initialized = true
 
 ## Feeds live charge power to the first-person viewmodel so the throwing arm
 ## visibly cocks back the longer the player holds. In first person the wind-up is
@@ -679,13 +893,17 @@ func flash_hit() -> void:
 	for i in range(_materials.size()):
 		_materials[i].albedo_color = Color.WHITE
 		_flash_tween.tween_property(_materials[i], "albedo_color", _base_albedos[i], FLASH_DURATION)
-	for i in range(_shader_materials.size()):
-		var mat := _shader_materials[i]
-		var base_color := _shader_base_albedos[i]
-		mat.set_shader_parameter("albedo_color", Color.WHITE)
+	# ⚠️ 7.1: this drives `flash_amount`, NOT `albedo_color`. Tweening the colour
+	# uniform cannot work on a textured kit mesh — its resting tint is white, so
+	# "flash to white" is a no-op and a hit on a kit prop showed nothing at all.
+	# The flash is its own uniform now; `albedo_color` means only "what colour am
+	# I", which is what it should always have meant.
+	for mat in _shader_materials:
+		mat.set_shader_parameter("flash_color", Color.WHITE)
+		mat.set_shader_parameter("flash_amount", 1.0)
 		_flash_tween.tween_method(
-			func(c: Color) -> void: mat.set_shader_parameter("albedo_color", c),
-			Color.WHITE, base_color, FLASH_DURATION)
+			func(a: float) -> void: mat.set_shader_parameter("flash_amount", a),
+			1.0, 0.0, FLASH_DURATION)
 
 ## Q-8: one-shot burst, no art asset — a primitive point mesh + unshaded
 ## StandardMaterial3D in UiTheme.IMPACT, matching the moodboard's "IMPACT
@@ -734,10 +952,11 @@ func flash_blocked() -> void:
 	for i in range(_materials.size()):
 		_materials[i].albedo_color = UiTheme.DEFENSE
 		_flash_tween.tween_property(_materials[i], "albedo_color", _base_albedos[i], FLASH_DURATION)
-	for i in range(_shader_materials.size()):
-		var mat := _shader_materials[i]
-		var base_color := _shader_base_albedos[i]
-		mat.set_shader_parameter("albedo_color", UiTheme.DEFENSE)
+	# Same split as flash_hit(); `flash_color` is what keeps a block visually
+	# distinct from a landed hit (Q-6) now that the amount is separate.
+	for mat in _shader_materials:
+		mat.set_shader_parameter("flash_color", UiTheme.DEFENSE)
+		mat.set_shader_parameter("flash_amount", 1.0)
 		_flash_tween.tween_method(
-			func(c: Color) -> void: mat.set_shader_parameter("albedo_color", c),
-			UiTheme.DEFENSE, base_color, FLASH_DURATION)
+			func(a: float) -> void: mat.set_shader_parameter("flash_amount", a),
+			1.0, 0.0, FLASH_DURATION)

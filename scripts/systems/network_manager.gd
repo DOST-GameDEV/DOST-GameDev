@@ -23,11 +23,70 @@ signal connection_failed
 signal player_connected(peer_id: int)
 signal player_disconnected(peer_id: int)
 signal server_disconnected
+## 4.3/B-65: host-only, fired once a peer's `_rpc_identify` lands with a
+## token main.gd can look up in `peer_tokens`. Separate from `player_connected`
+## because that fires the instant ENet completes its handshake, before the
+## token has necessarily arrived over the wire — see `_rpc_identify`'s own
+## doc for the race this exists to close.
+signal player_identified(peer_id: int, token: String)
 
 const DEFAULT_PORT: int = 8910
 const MAX_PLAYERS: int = 4
+const MAIN_SCENE_PATH: String = "res://scenes/main/Main.tscn"
+## Hamachi (or any VPN-tunnelled LAN) carries more jitter than a same-router
+## LAN, and ENet's built-in defaults (timeout_limit 32 / timeout_min 5000ms /
+## timeout_max 30000ms) can flag a live connection as dead during an ordinary
+## latency spike over the tunnel, not just an actual drop — the exact
+## "someone's wifi blips" failure mode B-65 already designed the rejoin
+## identity token around. Widened here so a spike has room to recover before
+## ENet gives up; kept finite (not "increase forever") so a real drop still
+## resolves in a reasonable window rather than stalling a round indefinitely.
+const ENET_TIMEOUT_LIMIT: int = 32
+const ENET_TIMEOUT_MIN: int = 10000
+const ENET_TIMEOUT_MAX: int = 45000
+## 4.3/B-65: where this install's stable player token is persisted. `user://`
+## rather than an in-memory value only, so identity survives a full game
+## relaunch — the failure mode this exists for is "someone's wifi drops",
+## which does not guarantee the game process itself kept running.
+const TOKEN_SAVE_PATH: String = "user://player_identity.cfg"
 
 var connected_peer_ids: Array[int] = []
+## 4.3/B-65 — a stable identity for THIS RUNNING INSTANCE, independent of the
+## ENet peer id ENet hands out fresh on every connection (a reconnect gets a
+## new peer id; this does not). Minted once by `_load_or_create_token()` when
+## this autoload's `_ready()` runs and held for the process's whole lifetime
+## — exactly long enough to cover the actual demo-day failure mode this
+## exists for (B-65: "someone's wifi blips", not "someone's game crashed"),
+## and presented to the host on every connect via `_rpc_identify`.
+##
+## ⚠️ Deliberately NOT re-loaded from a previous run's saved value, even
+## though one is written to disk (see `_load_or_create_token`) — two
+## instances on the SAME machine sharing one `user://` (exactly how this
+## project's own two-instance test works: `Debug > Run Multiple Instances`,
+## or two `godot --path .` processes) would otherwise read back the identical
+## token and collide on the same join index, one silently overwriting the
+## other's team/role. Confirmed by running that exact setup while building
+## this. A token that does not survive a full relaunch is a real, smaller
+## scope than "persisted client-side" first suggests — recorded here rather
+## than silently narrowed.
+var local_player_token: String = ""
+## Host-only: peer_id -> the token that peer identified itself with.
+## Deliberately NOT cleared on a single peer's disconnect (`_on_peer_disconnected`
+## below) — the entire point is remembering which token `peer_id` USED to
+## belong to, so main.gd's `_token_join_index` can hand a reconnecting peer
+## (new peer_id, same token) back its own original team/role instead of the
+## next free slot. Cleared only when a hosting SESSION ends (`host_game()`,
+## `disconnect_network()`), which is also when `main.gd`'s own token map is
+## abandoned along with the rest of the match.
+var peer_tokens: Dictionary = {}
+## Host-only: true once the host has left the pre-match lobby and is
+## actually running Main.tscn — set by `main.gd::_start_hosting()`, cleared
+## on `disconnect_network()`. A peer that connects (or reconnects) while this
+## is true has missed the Lobby's ready-up gate entirely: the host has no
+## Lobby.tscn left to answer a Start press on, so `_rpc_identify` routes that
+## peer straight into the running match instead of leaving it stuck showing
+## "waiting for host to start…" forever. See `_rpc_route_to_running_match`.
+var match_in_progress: bool = false
 ## B-49: Godot 4's `multiplayer.multiplayer_peer` defaults to an
 ## `OfflineMultiplayerPeer` sentinel, NOT null, and `multiplayer.has_multiplayer_peer()`
 ## reports `true` for it — so `is_networked()` used to read `true` even for
@@ -52,6 +111,7 @@ func _ready() -> void:
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
 	multiplayer.connection_failed.connect(_on_connection_failed)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
+	local_player_token = _load_or_create_token()
 
 ## Starts a server on `port` and marks the host itself as the first connected
 ## player (host's own peer id, `1`, never fires `peer_connected`).
@@ -64,6 +124,13 @@ func host_game(port: int = DEFAULT_PORT) -> Error:
 	multiplayer.multiplayer_peer = peer
 	_is_networked = true
 	connected_peer_ids = [multiplayer.get_unique_id()]
+	# 4.3/B-65: the host never sends itself `_rpc_identify` (there is no
+	# connection to send it over), so its own token is seeded directly —
+	# main.gd's `_spawn_player` looks every peer's token up here, host
+	# included, and must not special-case peer_id == 1.
+	peer_tokens.clear()
+	peer_tokens[multiplayer.get_unique_id()] = local_player_token
+	match_in_progress = false
 	server_created.emit()
 	return OK
 
@@ -83,6 +150,8 @@ func disconnect_network() -> void:
 	multiplayer.multiplayer_peer = null
 	connected_peer_ids.clear()
 	_is_networked = false
+	peer_tokens.clear()
+	match_in_progress = false
 
 ## True once host_game()/join_game() actually ran — false for the plain
 ## single-PC/split-keyboard prototype flow. See _is_networked doc (B-49) for
@@ -93,17 +162,50 @@ func is_networked() -> bool:
 func is_host() -> bool:
 	return is_networked() and multiplayer.is_server()
 
+## Solo-host QoL (2026-07-28+): true once actually networked AND at most one
+## peer is connected — i.e., the human at this machine is alone in the
+## session, almost always because they hosted and nobody has joined yet.
+## Distinct from is_networked() alone: a real 2v2 needs pause to stay
+## non-freezing (Q-3/B-64 — a client pausing its own tree stops sending its
+## own movement while the host keeps simulating it regardless) and the debug
+## switcher to stay inert (each peer owns exactly one character, so there is
+## nothing to hand player_id to). Neither restriction protects anyone when
+## there is nobody else in the session for it to protect.
+func is_solo_session() -> bool:
+	return is_networked() and connected_peer_ids.size() <= 1
+
 func _on_peer_connected(id: int) -> void:
 	if not connected_peer_ids.has(id):
 		connected_peer_ids.append(id)
+	# call_deferred: ENet's own internal peer registry isn't always populated
+	# by the instant this signal fires — get_peer(id) inside
+	# _apply_peer_timeout can race it and hit ENetMultiplayerPeer's own
+	# "!peers.has(p_id)" guard (measured live: reproduced on a client the
+	# moment it connects, calling this for peer_id 1 before ENet had
+	# registered it internally). Deferring to end-of-frame gives ENet's own
+	# bookkeeping time to catch up first.
+	_apply_peer_timeout.call_deferred(id)
 	player_connected.emit(id)
 
+## Deliberately does NOT touch `peer_tokens` — see that var's own doc. Losing
+## the peer_id -> token record the instant a peer disconnects would defeat
+## the entire point of it existing (B-65): the next peer to present that same
+## token, under a brand-new peer_id, needs to be recognisable as the SAME
+## player, not a stranger.
 func _on_peer_disconnected(id: int) -> void:
 	connected_peer_ids.erase(id)
 	player_disconnected.emit(id)
 
 func _on_connected_to_server() -> void:
 	connected_peer_ids = [multiplayer.get_unique_id()]
+	# The host is always peer id 1 from a client's own point of view.
+	# call_deferred — see _on_peer_connected's own doc for why.
+	_apply_peer_timeout.call_deferred(1)
+	# 4.3/B-65: present our stable token to the host immediately — before
+	# main.gd exists to ask for it, and regardless of whether we are about to
+	# sit in Lobby.tscn or (a rejoin) get redirected straight back into a
+	# running match. See _rpc_identify for what the host does with it.
+	_rpc_identify.rpc_id(1, local_player_token)
 	connection_succeeded.emit()
 
 func _on_connection_failed() -> void:
@@ -115,4 +217,67 @@ func _on_server_disconnected() -> void:
 	multiplayer.multiplayer_peer = null
 	connected_peer_ids.clear()
 	_is_networked = false
+	peer_tokens.clear()
+	match_in_progress = false
 	server_disconnected.emit()
+
+## 4.3/B-65 — host-only. Records which token this connecting peer presented,
+## then either lets main.gd's own listeners handle spawning it (still in
+## Lobby.tscn, or a normal --host/--join test with Main.tscn already loaded
+## on both ends) or, if the match is already running and this peer has no
+## Lobby left to wait in, tells it to load Main.tscn directly.
+##
+## "any_peer" because this is sent BY the connecting peer TO the host — the
+## host is not this token's authority, the sender is (same reasoning every
+## other any_peer RPC in this codebase documents at its own call site).
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_identify(token: String) -> void:
+	if not is_host():
+		return
+	var peer_id := multiplayer.get_remote_sender_id()
+	peer_tokens[peer_id] = token
+	if match_in_progress:
+		_rpc_route_to_running_match.rpc_id(peer_id)
+	player_identified.emit(peer_id, token)
+
+## Host -> one peer, sent only when that peer connected (or reconnected)
+## after the match already started. Idempotent: a peer that connected
+## directly via --join= (Main.tscn already loaded, no Lobby involved at all)
+## just gets told to "change" to the scene it is already showing, which is a
+## deliberate no-op guarded below, not a special case to detect and skip.
+@rpc("authority", "call_remote", "reliable")
+func _rpc_route_to_running_match() -> void:
+	var current := get_tree().current_scene
+	if current != null and current.scene_file_path == MAIN_SCENE_PATH:
+		return
+	get_tree().change_scene_to_file(MAIN_SCENE_PATH)
+
+## Mints a fresh token for THIS process and writes it to disk — see
+## `local_player_token`'s own doc for why the disk copy is write-only (never
+## read back to decide identity): two local test instances would otherwise
+## share it via one `user://` and collide on the same join index.
+## `RandomNumberGenerator`, not `UUID` — Godot has no built-in UUID type, and
+## 128 bits from four `randi()` calls is more than enough entropy that two
+## real installs colliding is not a risk for a LAN prototype's player count.
+func _load_or_create_token() -> String:
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	var token := "%08x%08x%08x%08x" % [rng.randi(), rng.randi(), rng.randi(), rng.randi()]
+	var cfg := ConfigFile.new()
+	cfg.set_value("identity", "token", token)
+	var err := cfg.save(TOKEN_SAVE_PATH)
+	if err != OK:
+		push_warning("NetworkManager: could not write player token to disk (error %d) — harmless, it is never read back; see local_player_token's own doc." % err)
+	return token
+
+## Widens ENet's per-peer disconnect-timeout window for `peer_id` — see the
+## ENET_TIMEOUT_* constants' own doc for why. Called from both ends of a
+## connection (host, once a remote peer's handshake completes; client, once
+## connected to the host) since ENet tracks timeout state per direction.
+func _apply_peer_timeout(peer_id: int) -> void:
+	var enet_peer := multiplayer.multiplayer_peer as ENetMultiplayerPeer
+	if enet_peer == null:
+		return
+	var packet_peer := enet_peer.get_peer(peer_id)
+	if packet_peer != null:
+		packet_peer.set_timeout(ENET_TIMEOUT_LIMIT, ENET_TIMEOUT_MIN, ENET_TIMEOUT_MAX)

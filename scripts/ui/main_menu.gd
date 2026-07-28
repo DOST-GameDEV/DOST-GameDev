@@ -5,13 +5,14 @@ class_name MainMenu
 ## run/main_scene). Two panels in one Control, swapped via visibility:
 ## - TitleScreen: name of the game + a single "Start" button.
 ## - PlayMenu: Local / Host / Join (with an address field) + a game-mode
-##   picker (see game_launch.gd). Host, Join AND (2026-07-28) Local all land in
-##   the pre-match Lobby (U-4 / B-13) — user feedback: "add the same [ready]
-##   button to local matching." Local's ready gate is cosmetic (nothing to
-##   actually wait for on a single PC) but keeps the same READY -> START
-##   rhythm the networked path already has; see lobby.gd's own local branch.
+##   picker (see game_launch.gd). Host and Join land in the pre-match Lobby
+##   (U-4 / B-13) for its ready-up gate.
+## ⚠️ Local stopped doing that 2026-07-28 — it now goes straight to
+## Main.tscn, whose own pre-round free-roam + in-world ready prompt replaces
+## Lobby's ready screen for this path. See _on_local_pressed()'s own doc.
 
 const LOBBY_SCENE_PATH: String = "res://scenes/ui/Lobby.tscn"
+const MAIN_SCENE_PATH: String = "res://scenes/main/Main.tscn"
 
 @onready var title_screen: Control = %TitleScreen
 @onready var play_menu: Control = %PlayMenu
@@ -150,11 +151,20 @@ func _on_game_mode_selected(_index: int) -> void:
 ## same as it always did; lobby.gd's local branch resets AGAIN immediately
 ## before the actual scene change to Main.tscn, mirroring exactly how the
 ## networked _rpc_begin_match handler already double-resets for Host/Join.
+## ⚠️ Changed 2026-07-28, user feedback: "i wanted the ready button to be in
+## the game itself not in home screen, i want ppl to be able to move around
+## with no restrictions whiile waiting for ready THEN everyone gets
+## teleported in the right restricted area." Local now skips Lobby.tscn
+## entirely -- main.gd's own pre-round free-roam + in-world ready prompt
+## replaces it. Host/Join are UNCHANGED and still go through Lobby.tscn;
+## extending this same pattern to networked play is real follow-up work
+## (per-peer ready state has to replicate live inside the match scene, not
+## just in the lobby), tracked in Handoff.md §5, not attempted here.
 func _on_local_pressed() -> void:
 	GameLaunch.pending_action = "local"
 	MatchManager.reset()
 	RoundManager.reset()
-	get_tree().change_scene_to_file(LOBBY_SCENE_PATH)
+	get_tree().change_scene_to_file(MAIN_SCENE_PATH)
 
 ## U-4: Host goes to the lobby so peers can ready-up before the match starts.
 func _on_host_pressed() -> void:

@@ -3,10 +3,17 @@ class_name SettingsManagerScript
 ## Registered as the "SettingsManager" autoload singleton (Project Settings > Autoload).
 ## Referenced globally as `SettingsManager`, e.g. `SettingsManager.rebind_action(...)`.
 
-## Lets players rebind and persist the local keyboard controls (P1/P2 — see
-## project.godot [input]). p3/p4 are intentionally excluded: those are the
-## unbound local-test dummy slots (see character_base.gd `player_id` doc),
-## not real player controls, so there's nothing sensible to rebind there.
+## Lets players rebind and persist the local keyboard controls — P1 only,
+## since Checklist 5.5: the human plays exactly one unit in Single Player and
+## real AI (ai_controller.gd) drives the other three via
+## Input.action_press()/action_release(), which needs no key bound at all.
+## P2/p3/p4 are intentionally excluded from what a PLAYER can see or rebind —
+## P2 still exists in project.godot [input] and still works as a debug-only
+## dual-control affordance for `debug_player_switcher.gd` (a developer poking
+## at it in the editor), but exposing a rebind UI for a key set no shipped
+## player ever touches is dead weight in the Settings panel. p3/p4 were never
+## real controls (the unbound local-test dummy slots — see character_base.gd
+## `player_id` doc) and were never in this list either.
 ##
 ## Settings persist to user://settings.cfg via ConfigFile, one INI-style
 ## section ("input") with one key per rebindable action holding its physical
@@ -21,23 +28,18 @@ const SETTINGS_PATH: String = "user://settings.cfg"
 const SETTINGS_SECTION: String = "input"
 
 ## Ordered for display purposes — the Settings panel iterates this directly.
+## P1 only — see this file's class doc for why P2 was removed 2026-07-28.
 const REBINDABLE_ACTIONS: Array[String] = [
 	"move_left_p1", "move_right_p1", "move_up_p1", "move_down_p1",
 	"bump_p1", "guard_dash_p1", "special_ability_p1", "jump_p1",
-	"move_left_p2", "move_right_p2", "move_up_p2", "move_down_p2",
-	"bump_p2", "guard_dash_p2", "special_ability_p2", "jump_p2",
 ]
 
 ## Human-readable labels for the panel — action string -> display text.
 const ACTION_LABELS: Dictionary = {
-	"move_left_p1": "P1 Move Left", "move_right_p1": "P1 Move Right",
-	"move_up_p1": "P1 Move Up", "move_down_p1": "P1 Move Down",
-	"bump_p1": "P1 Bump", "guard_dash_p1": "P1 Guard/Dash",
-	"special_ability_p1": "P1 Special Ability", "jump_p1": "P1 Jump",
-	"move_left_p2": "P2 Move Left", "move_right_p2": "P2 Move Right",
-	"move_up_p2": "P2 Move Up", "move_down_p2": "P2 Move Down",
-	"bump_p2": "P2 Bump", "guard_dash_p2": "P2 Guard/Dash",
-	"special_ability_p2": "P2 Special Ability", "jump_p2": "P2 Jump",
+	"move_left_p1": "Move Left", "move_right_p1": "Move Right",
+	"move_up_p1": "Move Up", "move_down_p1": "Move Down",
+	"bump_p1": "Bump", "guard_dash_p1": "Guard/Dash",
+	"special_ability_p1": "Special Ability", "jump_p1": "Jump",
 }
 
 ## action -> physical_keycode captured from the project's InputMap defaults,

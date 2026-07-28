@@ -1,12 +1,21 @@
 extends Node
 
 ## Queue item 1 / Dev_Plan.md §3.5 — drive any of the four local-test units by
-## hand, so a whole Bo5 can be played by one person.
+## hand, for TESTING. Originally this was how a solo tester played a whole Bo5
+## on one keyboard at all; since Checklist 5.5, Single Player does that on its
+## own (the human plays one unit, AI drives the other three — see
+## ai_controller.gd), so this is now specifically a debug OVERRIDE: temporary
+## manual control of a unit AI would otherwise be driving, for inspecting or
+## exercising it directly. `_apply_slots()` disables that unit's
+## `ai_controller` for as long as a slot holds it and hands it straight back
+## the instant the slot is cleared (F5, F6, or reassigning the slot to
+## something else) — see that function's own doc.
 ##
 ## Fixes B-42: from round 2 on, `_on_match_round_started` flips `team_a_is_can`,
-## so the tracked Can becomes `TeamBProp` — `player_id = 3`, permanently
-## unbound. Without this the Can cannot be moved or self-righted and the round
-## can only end on the timer, i.e. a local Bo5 is unplayable past round 1.
+## so the tracked Can becomes `TeamBProp` — `player_id = 3`. Before AI existed
+## that meant the Can could not be moved or self-righted past round 1; today
+## it means nobody has manually overridden it, so its own AI keeps driving it
+## exactly as it should.
 ##
 ## ⚠️ DEBUG-ONLY. Written to the removal contract in Dev_Plan.md §0.3 and torn
 ## out by the checklist in §3.5.5. Three rules that make the removal a delete
@@ -26,12 +35,17 @@ extends Node
 ## Main.tscn order, which is also the Tab cycle order (§3.5.1).
 const UNIT_NAMES: Array[String] = ["TeamAProp", "TeamAPerson", "TeamBProp", "TeamBPerson"]
 ## Registered in project.godot but deliberately never bound, so a unit parked
-## here receives no input at all and stands inert (§3.5.2).
+## here receives no REAL keyboard input at all (§3.5.2). Checklist 5.5: no
+## longer the same as "stands inert" — a parked unit with an `ai_controller`
+## (every local-test unit except `TeamAPerson`) drives itself via
+## `Input.action_press()`/`action_release()` on this same unbound action set,
+## which needs no key bound to it at all. Only `TeamAPerson`, which never gets
+## an `ai_controller`, is actually inert while parked here.
 const PARKED_PLAYER_ID: int = 4
 const SLOT_P1: int = 0
 const SLOT_P2: int = 1
 ## Defaults for F6, and for the slot state established when the DebugBar
-## registers. P1 holds the Person so a fresh Local Match starts you in the human
+## registers. P1 holds the Person so a fresh Single Player starts you in the human
 ## character rather than third-person on a tin can; P2 gets the Prop. Must stay
 ## in step with Main.tscn's baked player_id values (TeamAPerson=1, TeamAProp=2)
 ## AND with `main.gd::_start_local_test()`, which picks the same unit for the
@@ -58,14 +72,21 @@ func _ready() -> void:
 func debug_register_bar(bar: DebugBar) -> void:
 	_bar = bar
 	_slot_units = [DEFAULT_P1_UNIT, DEFAULT_P2_UNIT]
-	_apply_slots()
+	if NetworkManager.is_networked():
+		# Solo-host QoL: the local-test node names below don't exist in a
+		# networked match at all (main.gd's _clear_local_test_characters()
+		# freed them) — _apply_slots() would just describe both slots as
+		# "(missing)". See _refresh_bar()'s own doc.
+		_refresh_bar()
+	else:
+		_apply_slots()
 
 func debug_unregister_bar() -> void:
 	_bar = null
 
 ## ⚠️ `_input`, NOT `_unhandled_key_input`. Playtest 0.4 reported "I can't Tab to
 ## the can", and there are TWO independent reasons for it — this fixes the one
-## that bites even in Local Match.
+## that bites even in Single Player.
 ##
 ## Godot binds Tab to the built-in `ui_focus_next` action, and the viewport's GUI
 ## layer consumes focus-navigation keys BEFORE unhandled input runs. The HUD and
@@ -81,6 +102,15 @@ func debug_unregister_bar() -> void:
 ## through untouched.
 func _input(event: InputEvent) -> void:
 	if not _is_active():
+		return
+	# Solo-host QoL: _is_active() can now be true in a networked match (see
+	# its own doc) but there is still nothing to switch TO — a networked
+	# spawn is exactly one CharacterBase per connected peer, and this only
+	# ever activates when there is exactly one. Fall through unhandled
+	# rather than swallowing the key: none of F1-F6/Tab are bound to a real
+	# game action (§0.3 rule 3), so letting them pass is a no-op, same as an
+	# unrecognised key already falls through below.
+	if NetworkManager.is_networked():
 		return
 	var key := event as InputEventKey
 	if key == null or not key.pressed or key.echo:
@@ -112,20 +142,30 @@ func _input(event: InputEvent) -> void:
 ## doesn't actually hold the four local-test units (menu, or a networked match
 ## where `_clear_local_test_characters()` freed them).
 ##
-## ⚠️ THE SECOND REASON "I can't Tab to the can" HAPPENS, and it is not a bug.
-## A networked match returns false here on purpose: every peer owns exactly one
-## character, `character_base.gd::_physics_process` gates movement behind
+## ⚠️ A REAL (2+ peer) networked match returns false here on purpose, and this
+## is not a bug. Every peer owns exactly one character,
+## `character_base.gd::_physics_process` gates movement behind
 ## `is_multiplayer_authority()`, and `main.gd::_clear_local_test_characters()`
-## has already freed the four local units this switcher addresses by name. There
-## is nothing to switch to and reassigning `player_id` would grant no control.
+## has already freed the four local units this switcher addresses by name.
+## There is nothing to switch to and reassigning `player_id` would grant no
+## control. **Solo-test a real 2v2 through Single Player**, which is the mode
+## this switcher exists for.
 ##
 ## So if Tab does nothing and Esc shows "PAUSED — the match is still running",
-## the session is HOSTED, not Local Match. That combination is the tell, and it
-## is exactly what the 0.4 playtest reported. **Solo-test through Local Match**,
-## which is the mode this switcher exists for.
+## the session is HOSTED, not Single Player. That combination is the tell, and
+## it is exactly what the 0.4 playtest reported.
+##
+## Solo-host QoL (2026-07-28+): a SOLO networked session (NetworkManager.
+## is_solo_session() — hosting, nobody else has joined) is different from the
+## above, not the same case: nothing above stops applying (there is still
+## only ever one spawned character, still nothing to cycle TO), but before
+## this the bar showed "(missing)" for both slots because it was still
+## looking for the four local-test names. See _refresh_bar().
 func _is_active() -> bool:
-	if _bar == null or NetworkManager.is_networked():
+	if _bar == null:
 		return false
+	if NetworkManager.is_networked():
+		return NetworkManager.is_solo_session() and _solo_networked_unit() != null
 	return _find_unit(UNIT_NAMES[0]) != null
 
 ## Units are located by walking up from the DebugBar (which Main.tscn instances
@@ -149,6 +189,30 @@ func _find_unit(unit_name: String) -> CharacterBase:
 		return null
 	return scene.get_node_or_null(unit_name) as CharacterBase
 
+## Solo-host QoL — the networked equivalent of _find_unit(UNIT_NAMES[0]).
+## `main.gd`'s networked spawns live under a `Players` node (see
+## `MultiplayerSpawner.spawn_path` in Main.tscn), keyed by peer_id rather than
+## by the fixed local-test names, so this walks up to that ancestor instead
+## of `_match_root()`. Returns the ONE character whose authority is this
+## machine's own peer — solo means there is only ever one spawned character
+## at all, so "the one I own" and "the only one that exists" are the same
+## unit; this just avoids assuming that rather than re-deriving it.
+func _solo_networked_unit() -> CharacterBase:
+	var node: Node = _bar
+	var players: Node = null
+	while node != null:
+		if node.has_node("Players"):
+			players = node.get_node("Players")
+			break
+		node = node.get_parent()
+	if players == null:
+		return null
+	for child in players.get_children():
+		var character := child as CharacterBase
+		if character != null and character.is_multiplayer_authority():
+			return character
+	return null
+
 func _assign(slot: int, unit_name: String) -> void:
 	# A slot never takes a unit the other slot already holds, so the two can
 	# never both sit on the same `player_id` and move together on one keypress.
@@ -167,7 +231,7 @@ func _assign(slot: int, unit_name: String) -> void:
 ## permanently excluded from P1's cycle — and in round 1 Team A defends, which
 ## means **TeamAProp IS the Can**. P1 could reach TeamBProp and TeamBPerson and
 ## then wrap straight back past the one unit the player was trying to look at.
-## Measured, not guessed: pressing Tab twice from a fresh Local Match walked
+## Measured, not guessed: pressing Tab twice from a fresh Single Player walked
 ## TeamAPerson -> TeamBProp -> TeamBPerson, never touching TeamAProp.
 ##
 ## Swapping keeps the invariant that mattered — the two slots can never hold the
@@ -188,6 +252,16 @@ func _cycle(slot: int) -> void:
 ## input through `_action(name) -> "%s_p%d"`. Only ever called from
 ## `_unhandled_key_input`, never mid-`_physics_process`, or a unit inherits a
 ## half-consumed edge-triggered press on the frame it gains control.
+##
+## Checklist 5.5: three of these four units may now have an `ai_controller`
+## (main.gd::_attach_ai — never `TeamAPerson`, the human's own default unit).
+## A slot claiming a unit is a human taking manual control of it, same as it
+## always was — the AI for that specific unit has to step back rather than
+## fight the human for the same buttons, so it is disabled exactly when a
+## slot holds it and re-enabled the instant it is parked again. This is what
+## makes F5 (solo drive, parks P2) put `TeamAProp` back under AI control
+## instead of leaving it inert, which is what actually happens in Single
+## Player outside the debug switcher entirely.
 func _apply_slots() -> void:
 	for unit_name in UNIT_NAMES:
 		var unit := _find_unit(unit_name)
@@ -195,6 +269,8 @@ func _apply_slots() -> void:
 			continue
 		var slot := _slot_units.find(unit_name)
 		unit.player_id = slot + 1 if slot != -1 else PARKED_PLAYER_ID
+		if unit.ai_controller != null:
+			unit.ai_controller.set_enabled(slot == -1)
 
 		# §3.5.3: the switcher picks WHICH rig is active via the rig's ordinary
 		# public API; it never touches the FPP/TPP mode, which stays derived
@@ -206,8 +282,7 @@ func _apply_slots() -> void:
 			rig.set_active(is_camera_holder)
 			rig.set_aim_source(CameraRig.AimSource.MOUSE if is_camera_holder else CameraRig.AimSource.MOVEMENT)
 
-	if _bar != null:
-		_bar.debug_refresh(_describe(SLOT_P1), _describe(SLOT_P2))
+	_refresh_bar()
 
 ## One-line summary of what a slot is holding. Must carry is_person, is_can,
 ## team and current side (§3.5.4) — that is exactly the state that silently
@@ -216,15 +291,32 @@ func _describe(slot: int) -> String:
 	var unit_name := _slot_units[slot]
 	if unit_name == "":
 		return "—"
-	var unit := _find_unit(unit_name)
+	return _describe_unit(_find_unit(unit_name), unit_name)
+
+func _describe_unit(unit: CharacterBase, label: String) -> String:
 	if unit == null:
-		return "%s (missing)" % unit_name
+		return "%s (missing)" % label
 	var role := "Person" if unit.is_person else ("Can" if unit.is_can else "Tsinelas")
 	var side := "DEFENSE" if unit.team_is_can_side else "OFFENSE"
-	return "%s (%s · Team %s · %s)" % [unit_name, role, "A" if unit.team == 0 else "B", side]
+	return "%s (%s · Team %s · %s)" % [label, role, "A" if unit.team == 0 else "B", side]
 
 ## Re-read and re-describe both slots without changing them. Called by the bar
 ## on MatchManager.round_started, since is_can/team_is_can_side flip there.
 func debug_refresh_readout() -> void:
-	if _bar != null:
+	_refresh_bar()
+
+## Solo-host QoL — the single point that actually writes to the bar. Split
+## out of _apply_slots()/debug_refresh_readout() so both can share the
+## networked branch: a real (2+ peer) match never reaches here at all
+## (_is_active() is false, nothing above calls this), and a SOLO one shows
+## the one unit that actually exists instead of the four local-test names,
+## which don't (see _solo_networked_unit()'s own doc for why there is
+## nothing to put in a P2 slot here — solo means exactly one spawned
+## character, full stop).
+func _refresh_bar() -> void:
+	if _bar == null:
+		return
+	if NetworkManager.is_networked():
+		_bar.debug_refresh(_describe_unit(_solo_networked_unit(), "you"), "—")
+	else:
 		_bar.debug_refresh(_describe(SLOT_P1), _describe(SLOT_P2))

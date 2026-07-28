@@ -22,6 +22,13 @@ PAST the GDD's "Bayan Plaza". Three concentric materials — concrete slab, dirt
 apron, tree line — satisfy both descriptions at once.
 """
 import math
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from floorcheck import Surfaces, embed_y, mesh_bounds  # noqa: E402
+
+surfaces = Surfaces()
 
 SLAB = 10.0      # half-width of the hard plaza slab
 BOUND = 12.5     # half-width of the playable square (collision sits here)
@@ -31,11 +38,46 @@ MARK_Y = 0.07    # above the 0.06-tall tiles — see build_eskinita.py
 meshes, ext, order = {}, [], []
 
 
+def is_kit(name):
+    """Kit pieces are 'kits/<kit>/<piece>' and are .glb SCENES, not Meshes.
+    See build_eskinita.py's own note — emitting one as a MeshInstance3D is
+    silent and renders nothing."""
+    return name.startswith("kits/")
+
+
+def mesh_path(name):
+    return (f"res://assets/models/{name}.glb" if is_kit(name)
+            else f"res://assets/models/env_{name}.obj")
+
+
 def mesh(name):
     if name not in meshes:
         meshes[name] = str(len(meshes) + 1)
-        ext.append((meshes[name], f"res://assets/models/env_{name}.obj"))
+        ext.append((meshes[name], mesh_path(name), is_kit(name)))
     return meshes[name]
+
+
+## One scale per kit, named — Art_Direction.md §0b. Fantasy Town is roughly
+## character-scale already (its tree is 2.41 against a 1.6-unit Person), so it
+## needs far less than the City Kit's 5x.
+TOWN_SCALE = 2.6
+FOREST_SCALE = 3.9
+
+
+def xform_uniform(x, y, z, yaw, s):
+    c, sn = math.cos(yaw), math.sin(yaw)
+    return (f"Transform3D({c * s:.5f}, 0, {-sn * s:.5f}, 0, {s:.5f}, 0, "
+            f"{sn * s:.5f}, 0, {c * s:.5f}, {x:.4f}, {y:.4f}, {z:.4f})")
+
+
+def add_kit(parent, name, mesh_name, x, z, yaw=0.0, scale=1.0, base_y=0.0):
+    """Places a kit piece with its BASE at `base_y`. Kit meshes do not reliably
+    put their origin at their base — see build_eskinita.py's add_kit."""
+    lo, _hi = mesh_bounds(mesh_name)
+    order.append((parent, name, mesh(mesh_name),
+                  xform_uniform(x, base_y - lo[1] * scale, z, yaw, scale)))
+    surfaces.record(name, mesh_name, x, base_y - lo[1] * scale, z, yaw, scale,
+                    is_marking=False, uniform=True)
 
 
 def xform(x, y, z, yaw=0.0):
@@ -46,20 +88,41 @@ def xform(x, y, z, yaw=0.0):
 
 def add(parent, name, mesh_name, x, y, z, yaw=0.0):
     order.append((parent, name, mesh(mesh_name), xform(x, y, z, yaw)))
+    # See build_eskinita.py's add() and tools/maps/floorcheck.py — every piece
+    # is recorded so the markings can be checked against real ground heights
+    # instead of a hand-picked constant.
+    surfaces.record(name, mesh_name, x, y, z, yaw,
+                    is_marking=parent.startswith("Markings"))
 
 
 # --- The slab. A plaza is a hard floor; the dirt apron is the big floor box. --
+#
+# 2026-07-28, checklist 7.4b — "completely remake the floor arena of all maps
+# with the assets." Fantasy Town paving replaces the generated `plaza_tile`, at
+# the same 2-unit grid so the layout below is untouched.
+#
+# ⚠️ This raises the slab surface, and nothing below hardcodes a marking height
+# because of it — `SLAB_TOP` asks `surfaces.height_at()` and every marking goes
+# through `embed_y()`. Re-paving cannot leave a line buried or hanging; the
+# build fails if it would.
+SLAB_SCALE = CELL   # kit paving is 1x1, so the grid cell IS the scale
 n = 0
 i = int(SLAB / CELL)
 for gx in range(-i, i):
     for gz in range(-i, i):
-        add("Dressing/Slab", f"Tile_{n}", "plaza_tile",
-            gx * CELL + CELL / 2, 0.0, gz * CELL + CELL / 2)
+        add_kit("Dressing/Slab", f"Tile_{n}", "kits/town/road",
+                gx * CELL + CELL / 2, gz * CELL + CELL / 2, 0.0, SLAB_SCALE)
         n += 1
 
-# --- The tree ring. TWO layers, and the second is a DIFFERENT VALUE, not just
-# --- a second row — the board rings Province with depth and depth here is
-# --- colour. Seeded spacing, never random.
+# --- The tree ring. TWO layers, and the second is a DIFFERENT SPECIES as well
+# --- as further out — the board rings Province with depth, and depth here is
+# --- silhouette. Seeded spacing, never random.
+#
+# 2026-07-28, checklist 7.5 — Fantasy Town and Mini Forest trees replace the
+# generated cones. Both rings sit OUTSIDE the playable square (collision is at
+# BOUND = 12.5), so nothing here can block a Person's aim no matter how tall it
+# grows; that is what lets these be full-height trees rather than the interior
+# tier the furniture below is held to.
 JITTER = [0.0, 0.9, -0.6, 1.4, -1.1, 0.4, -1.6, 1.1]
 n = 0
 step = 3.2
@@ -72,12 +135,30 @@ for k in range(count):
             x, z = sx * (BOUND + 1.2), t + j
         else:
             x, z = t + j, sz * (BOUND + 1.2)
-        add("Dressing/TreesNear", f"Tree_{n}", "tree", x, 0.0, z, (k % 4) * 0.7)
+        near = ["kits/town/tree-high", "kits/town/tree",
+                "kits/town/tree-crooked", "kits/town/tree-high-round"][k % 4]
+        add_kit("Dressing/TreesNear", f"Tree_{n}", near, x, z,
+                (k % 4) * 0.7, TOWN_SCALE)
         n += 1
-        # The layer behind, further out and one value darker.
-        add("Dressing/TreesFar", f"TreeFar_{n}", "tree_far",
-            x * 1.28 - j * 0.4, 0.0, z * 1.28 + j * 0.4, (k % 3) * 0.9)
+        # The layer behind: a different kit, so it reads as another species
+        # rather than the same tree moved back.
+        add_kit("Dressing/TreesFar", f"TreeFar_{n}",
+                "kits/forest/tree-high" if k % 2 else "kits/forest/tree",
+                x * 1.28 - j * 0.4, z * 1.28 + j * 0.4, (k % 3) * 0.9,
+                FOREST_SCALE)
         n += 1
+
+# --- Ground cover between the slab and the tree line, so the apron is not bare.
+for k, (x, z) in enumerate([
+        (-11.6, -7.0), (11.6, -4.0), (-11.2, 5.5), (11.9, 8.0),
+        (-6.0, -11.6), (4.5, -11.9), (-3.5, 11.7), (7.5, 11.4)]):
+    add_kit("Dressing/Ground", f"Rock_{k}",
+            ["kits/town/rock-small", "kits/forest/rocks-low",
+             "kits/town/rock-wide"][k % 3], x, z, (k % 5) * 0.8, TOWN_SCALE)
+for k, (x, z) in enumerate([
+        (-12.2, 1.5), (12.4, 2.5), (2.0, -12.3), (-1.5, 12.2)]):
+    add_kit("Dressing/Ground", f"Plant_{k}", "kits/forest/plant",
+            x, z, (k % 4) * 1.1, FOREST_SCALE)
 
 # --- The landmark. One church, on the long axis, so a player always knows
 # --- which way they are facing. Worth more than any three clutter pieces.
@@ -88,36 +169,58 @@ add("Dressing/Landmarks", "Flagpole", "flagpole", -4.5, 0.0, -BOUND + 1.5)
 add("Dressing/Landmarks", "RingNorth", "basketball_ring", 0.0, 0.0, -SLAB + 0.6)
 add("Dressing/Landmarks", "RingSouth", "basketball_ring", 0.0, 0.0, SLAB - 0.6,
     math.pi)
+# Lantern posts mark the slab corners. Thin verticals, like Eskinita's electric
+# posts — they read at distance and cost almost nothing to shoot past.
+for k, (x, z) in enumerate([(-SLAB, -SLAB), (SLAB, -SLAB),
+                            (-SLAB, SLAB), (SLAB, SLAB)]):
+    add_kit("Dressing/Landmarks", f"Lantern_{k}", "kits/town/lantern",
+            x, z, k * 1.57, TOWN_SCALE)
 
-# --- Edge furniture. All of it interior-tier (<= 1.1) so an FPP Person, whose
-# --- eye is at 1.25, can aim over every piece of it.
+# --- Edge furniture. ⚠️ EVERY PIECE HERE IS INTERIOR-TIER (<= 1.1 tall) so an
+# --- FPP Person, whose eye is at 1.25, can aim over all of it. That is the
+# --- height law and the kit swap does not get to break it: at TOWN_SCALE the
+# --- market stall is 0.96 and its bench is 0.60, both comfortably under.
+# --- `cart` measures 1.40 scaled and is therefore deliberately NOT used here.
 n = 0
 for k in range(6):
     t = -7.5 + k * 3.0
     for sx in (-1, 1):
-        add("Dressing/Furniture", f"Bench_{n}", "bench",
-            sx * (SLAB + 0.9), 0.0, t, math.pi / 2)
+        add_kit("Dressing/Furniture", f"Bench_{n}", "kits/town/stall-bench",
+                sx * (SLAB + 0.9), t, math.pi / 2, TOWN_SCALE)
         n += 1
-for k, (x, z) in enumerate([(-SLAB - 0.9, -10.5), (SLAB + 0.9, -10.5),
-                            (-SLAB - 0.9, 10.5), (SLAB + 0.9, 10.5)]):
-    add("Dressing/Furniture", f"Planter_{k}", "planter", x, 0.0, z)
+# The sari-sari stalls — the plaza's own reason to have people in it.
+for k, (x, z, yaw) in enumerate([
+        (-SLAB - 1.1, -10.5, 0.0), (SLAB + 1.1, -10.5, math.pi),
+        (-SLAB - 1.1, 10.5, 0.0), (SLAB + 1.1, 10.5, math.pi)]):
+    add_kit("Dressing/Furniture", f"Stall_{k}",
+            ["kits/town/stall", "kits/town/stall-green",
+             "kits/town/stall-red", "kits/town/stall"][k],
+            x, z, yaw, TOWN_SCALE)
 for k, (x, z) in enumerate([(-6.0, -6.0), (6.0, 6.0), (-6.5, 7.0), (7.0, -6.5)]):
-    add("Dressing/Furniture", f"Chair_{k}", "monobloc_chair", x, 0.0, z,
-        [0.5, 2.1, -1.2, 3.0][k])
-for k, (x, z) in enumerate([(-8.5, 2.0), (8.5, -2.0)]):
-    add("Dressing/Furniture", f"Tire_{k}", "tire", x, 0.0, z)
+    add_kit("Dressing/Furniture", f"Stool_{k}", "kits/town/stall-stool",
+            x, z, [0.5, 2.1, -1.2, 3.0][k], TOWN_SCALE)
 
 # --- Field markings. Identical grammar to Eskinita on purpose: a player must
 # --- not have to relearn what a base circle looks like when the map changes.
-add("Markings", "BaseCircle", "base_circle_decal", 0.0, MARK_Y, 0.0)
-add("Markings", "ThrowingLineNorth", "throwing_line_decal", 0.0, MARK_Y, -6.0)
-add("Markings", "ThrowingLineSouth", "throwing_line_decal", 0.0, MARK_Y, 6.0)
-add("Markings", "TeamSideNorth", "team_side_decal", 0.0, MARK_Y, -9.5)
-add("Markings", "TeamSideSouth", "team_side_decal", 0.0, MARK_Y, 9.5)
+# ⚠️ MARK_Y IS GONE — the height comes from the geometry now, not from a
+# constant somebody has to keep true. Unlike Eskinita, this map's markings all
+# sit on the uniform plaza slab, so one height IS correct here; it is asked for
+# rather than assumed so it cannot drift if the slab tile ever changes.
+# floorcheck aborts the build if any of these floats. See build_eskinita.py.
+SLAB_TOP = surfaces.height_at(0.0, 0.0)
+add("Markings", "BaseCircle", "base_circle_decal", 0.0, embed_y(SLAB_TOP, "base_circle_decal"), 0.0)
+add("Markings", "ThrowingLineNorth", "throwing_line_decal", 0.0, embed_y(SLAB_TOP, "throwing_line_decal"), -6.0)
+add("Markings", "ThrowingLineSouth", "throwing_line_decal", 0.0, embed_y(SLAB_TOP, "throwing_line_decal"), 6.0)
+add("Markings", "TeamSideNorth", "team_side_decal", 0.0, embed_y(SLAB_TOP, "team_side_decal"), -9.5)
+add("Markings", "TeamSideSouth", "team_side_decal", 0.0, embed_y(SLAB_TOP, "team_side_decal"), 9.5)
 
 # =============================================================================
 
-ext_lines = [f'[ext_resource type="Mesh" path="{p}" id="{i}"]' for i, p in ext]
+ext_lines = [
+    '[ext_resource type="%s" path="%s" id="%s"]'
+    % ("PackedScene" if kit else "Mesh", p, i)
+    for i, p, kit in ext
+]
 ext_lines.append('[ext_resource type="Script" '
                  'path="res://scripts/systems/hazard_zone.gd" id="H"]')
 ext_lines.append('[ext_resource type="Script" '
@@ -186,6 +289,16 @@ adjustment_saturation = 1.18
 # same coordinates as build_eskinita.py — see that file's comment above its
 # own SpawnPoints block for the full reasoning. Centred on this map's own
 # base_circle_decal (0,0,0) and south throwing_line_decal (0,0,6) below.
+#
+# ⚠️ Spawn1's Z IS NEGATIVE, and this comment used to be a lie about it.
+# It read "same coordinates as build_eskinita.py" while Spawn1 sat at z = +1.5
+# against Eskinita's -1.5 — mirrored. The Attacker is at z = +6, so +1.5 put the
+# Taya BETWEEN the Can and the attacker, on the attacker's own side, instead of
+# guarding from behind. That is the exact layout the human rejected in the
+# 2026-07-28 playtest ("the person in same team is behind that can"), fixed once
+# in Eskinita and never carried across. If you change one map's spawn block,
+# diff it against the other in the same commit — the claim that they match is
+# load-bearing and nothing was checking it.
 HEAD = '''[node name="BayanPlaza" type="Node3D"]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
@@ -262,7 +375,7 @@ shape = SubResource("Shape_hazard")
 transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.0, 0.17, 0.0)
 
 [node name="Spawn1" type="Marker3D" parent="SpawnPoints"]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 2.2, 0.8, 1.5)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 2.2, 0.8, -1.5)
 
 [node name="Spawn2" type="Marker3D" parent="SpawnPoints"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0, 0.8, 6.0)
@@ -278,6 +391,8 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.3, 0.16, 6.3)
 
 [node name="TreesFar" type="Node3D" parent="Dressing"]
 
+[node name="Ground" type="Node3D" parent="Dressing"]
+
 [node name="Landmarks" type="Node3D" parent="Dressing"]
 
 [node name="Furniture" type="Node3D" parent="Dressing"]
@@ -286,10 +401,17 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.3, 0.16, 6.3)
 '''
 
 body = []
+kit_ids = {i for i, _p, kit in ext if kit}
 for parent, name, mid, tf in order:
-    body.append(f'\n[node name="{name}" type="MeshInstance3D" parent="{parent}"]')
-    body.append(f'transform = {tf}')
-    body.append(f'mesh = ExtResource("{mid}")')
+    if mid in kit_ids:
+        # A .glb is a PackedScene and must be INSTANCED. Emitting it as a
+        # MeshInstance3D is silent and draws nothing — see build_eskinita.py.
+        body.append(f'\n[node name="{name}" parent="{parent}" instance=ExtResource("{mid}")]')
+        body.append(f'transform = {tf}')
+    else:
+        body.append(f'\n[node name="{name}" type="MeshInstance3D" parent="{parent}"]')
+        body.append(f'transform = {tf}')
+        body.append(f'mesh = ExtResource("{mid}")')
 
 n_sub = SUBS.count("[sub_resource")
 load_steps = len(ext_lines) + n_sub + 1
@@ -297,10 +419,15 @@ load_steps = len(ext_lines) + n_sub + 1
 out = (f'[gd_scene load_steps={load_steps} format=3]\n\n'
        + "\n".join(ext_lines) + "\n\n" + SUBS + "\n" + HEAD + "\n".join(body) + "\n")
 
+# Before writing, never after — a floating marking must not reach the scene file
+# at all. See build_eskinita.py's own note.
+n_marks = surfaces.verify()
+
 with open("scenes/maps/BayanPlaza.tscn", "w", encoding="utf-8", newline="\n") as f:
     f.write(out)
 
 print("wrote scenes/maps/BayanPlaza.tscn")
+print(f"  markings      : {n_marks} verified embedded")
 print(f"  ext_resources : {len(ext_lines)}")
 print(f"  load_steps    : {load_steps}")
 print(f"  mesh instances: {len(order)}")

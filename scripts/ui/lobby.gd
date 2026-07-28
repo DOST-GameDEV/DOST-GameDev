@@ -95,14 +95,23 @@ func _ready() -> void:
 # Networking helpers
 # ---------------------------------------------------------------------------
 
+## Hamachi's virtual adapter shows up as just another routable IPv4 address,
+## in one of two ranges LogMeIn has used (25.x.x.x historically, 5.x.x.x on
+## newer installs). Prefer one of those over a normal Wi-Fi/Ethernet address
+## when both are present — a host running Hamachi almost always wants peers
+## joining over the tunnel, and the plain LAN IP is unreachable to them.
 static func _get_lan_address() -> String:
+	var fallback := ""
 	for addr in IP.get_local_addresses():
 		if ":" in addr:
 			continue  # skip IPv6
 		if addr.begins_with("127."):
 			continue  # skip loopback
-		return addr
-	return "127.0.0.1"
+		if addr.begins_with("25.") or addr.begins_with("5."):
+			return addr
+		if fallback.is_empty():
+			fallback = addr
+	return fallback if not fallback.is_empty() else "127.0.0.1"
 
 func _on_connected_to_host() -> void:
 	# The host will immediately send _rpc_sync_state via _on_peer_joined, which
@@ -210,7 +219,7 @@ func _refresh_start_button() -> void:
 # ---------------------------------------------------------------------------
 
 func _setup_local() -> void:
-	host_address_label.text = "Local Match"
+	host_address_label.text = "Single Player"
 	start_button.visible = true
 	start_button.disabled = true
 	var row := Label.new()
