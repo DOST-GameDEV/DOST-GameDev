@@ -329,6 +329,11 @@ func _step_flying(delta: float) -> void:
 				var right := travel.normalized().cross(Vector3.UP)
 				_flight_velocity += right * input_dir.x * profile.steer_strength * delta
 
+	# The hitbox is live for the whole flight (character_base.is_hitbox_active),
+	# but area_entered only fires on the ENTER edge — so sweep every frame or a
+	# can already inside the slipper's hitbox on the first flight frame is never
+	# reported. Cheap: one Area3D overlap query on one node.
+	_character.sweep_hitbox()
 	var collision := _character.move_and_collide(_flight_velocity * delta)
 	if collision != null and _thrower_ignore_left <= 0.0 and _bounces_left > 0:
 		_flight_velocity = _flight_velocity.bounce(collision.get_normal()) * BOUNCE_DAMPING

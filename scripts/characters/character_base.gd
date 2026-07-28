@@ -787,7 +787,39 @@ func _flash_blocked() -> void:
 ## Hitbox (requires_bump_window = true) checks this before landing a stagger;
 ## ability-spawned hitboxes (requires_bump_window = false) ignore it.
 func is_hitbox_active() -> bool:
-	return _bump_active_time_left > 0.0
+	# ⚠️⚠️ A THROWN SLIPPER IS LIVE FOR ITS WHOLE FLIGHT. THIS IS THE CORE
+	# MECHANIC AND IT DID NOT WORK.
+	#
+	# `Hitbox.requires_bump_window` is true on CharacterBase.tscn's one Hitbox,
+	# so every hit in the game was gated behind `_bump_active_time_left > 0.0` —
+	# which is written in exactly one place, the BUMP press. A tsinelas in the
+	# air never presses bump, so its hitbox was never active, so it could never
+	# dent the lata. Measured with tools/phys_probe.gd: eleven throws launched
+	# straight at the can from the throwing line produced **0 dents out of 3**.
+	# Tumbang preso is a game about hitting a can with a slipper, and the slipper
+	# passed through it.
+	#
+	# Being FLYING is the slipper's equivalent of the bump window: a deliberate,
+	# time-boxed offensive state that the player committed to. Everything else
+	# about the hit — the no-friendly-fire check, host authority, the
+	# thrower-ignore window, dents vs stagger — is unchanged and still resolves
+	# through the same path.
+	return _bump_active_time_left > 0.0 or _is_carriable_flying()
+
+## True while this unit is a Prop mid-throw. Read from Carriable rather than
+## mirrored into a field here, so there is one source of truth for the state.
+func _is_carriable_flying() -> bool:
+	var c := get_node_or_null("Carriable") as Carriable
+	return c != null and c.state == Carriable.CarryState.FLYING
+
+## Re-runs this character's melee hitbox against everything already inside it.
+## `Area3D.area_entered` only fires on the ENTER edge, so a hitbox that becomes
+## active while it is already overlapping a hurtbox never reports — which is
+## true on the first frame of a throw, and is why `sweep_overlaps()` exists for
+## the bump press. carriable.gd::_step_flying calls this every flight frame.
+func sweep_hitbox() -> void:
+	if _melee_hitbox:
+		_melee_hitbox.sweep_overlaps()
 
 ## Whether this character is still inside its Downed self-right window (i.e.
 ## NOT yet sealable). Hitbox needs this from the outside to decide seal vs.
