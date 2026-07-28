@@ -95,7 +95,7 @@ func build_all(output_dir: String) -> void:
 	_base_circle_decal()
 	_throwing_line_decal()
 	_team_side_decal()
-	_jeepney_lane_decal()
+
 
 # =============================================================================
 # Helpers
@@ -332,8 +332,9 @@ func _laundry_line() -> void:
 	var w := ObjWriter.new("LaundryLine")
 	w.set_material("timber", UiTheme.ENV_WOOD_DARK)
 	w.set_material("cloth", UiTheme.ENV_TARP)
-	w.set_material("cloth_warm", UiTheme.HIGHLIGHT)
-	w.set_material("cloth_rust", UiTheme.ENV_RUST)
+	w.set_material("cloth_pale", UiTheme.ENV_PAINT_CREAM)
+	w.set_material("cloth_mint", UiTheme.ENV_PAINT_MINT)
+	w.set_material("cloth_grey", UiTheme.ENV_CONCRETE)
 
 	# ⚠️ NO POSTS OF ITS OWN, and it spans 16 units rather than sitting on the
 	# 2-unit grid. Both deliberate, both found by rendering: this piece is strung
@@ -341,17 +342,79 @@ func _laundry_line() -> void:
 	# road holding up a line nobody could see. A sampay hangs off the buildings.
 	_wire(w, Vector3(-8.0, 2.62, 0.0), Vector3(8.0, 2.62, 0.0), 0.42, 0.025, 12, "cloth")
 
-	# Five garments, alternating material and yaw out of the seeded table. Flat
-	# quads, hung from the sag — a shirt at this distance is a rectangle.
-	const CLOTHS: Array[String] = ["cloth", "cloth_warm", "cloth_rust", "cloth",
-		"cloth_warm", "cloth_rust", "cloth"]
+	# ⚠️ THE GARMENTS ARE SEGMENTED DOUBLE-SIDED SHEETS NOW, NOT EXTRUDED BOXES,
+	# AND THAT IS THE ACTUAL FIX FOR "STIFF, LIFELESS CARDBOARD BOXES".
+	#
+	# They used to be `add_extrude(_rect_yaw(...), y - 0.62, y)` — a solid
+	# rectangular prism 30 mm thick with exactly two rings of vertices, top and
+	# bottom. It read as cardboard because it WAS cardboard: a closed box with
+	# hard lit edges and no interior geometry at all.
+	#
+	# Two things follow from that, and only doing one of them fixes nothing:
+	#   1. A box has no vertices between its hem and its pin, so the wind shader
+	#      in `assets/models/materials/wind_cloth.gdshader` has nothing to bend.
+	#      It could only translate the whole prism sideways, which looks worse
+	#      than not moving. CLOTH_SEGMENTS gives it something to bend.
+	#   2. Real hung laundry is a SHEET. Cloth is emitted as two-sided quads
+	#      (see `_wire`'s own note about single-sided ribbons rendering invisible
+	#      from below) with a slight bow across the width, so the light breaks
+	#      across it instead of landing flat.
+	#
+	# The hem is deliberately not level: `_hem_drop` is a fixed table, so a row
+	# of garments has different lengths without any randomness — the generator's
+	# determinism rule (obj_writer.gd's header) forbids randf() outright.
+	# ⚠️ THE SATURATED CLOTHS ARE GONE, AND THE FIRST PHASE 8 RENDER IS WHY.
+	# `cloth_warm` was UiTheme.HIGHLIGHT (#f8d028) and `cloth_rust` was ENV_RUST
+	# (#a65a3a). Hung overhead at eye level, seventy of them across the alley,
+	# they came out as rows of vivid yellow and orange flags — the loudest thing
+	# in the frame, and the orange sits at hue ~17 deg against OFFENSE #f87020's
+	# ~20 deg, which is exactly the collision Art_Direction.md Part 2 rule 1
+	# forbids on environment art. Real sampay is faded anyway: bleached whites,
+	# pale mint, washed grey. All four below are already-approved ENV_* facade
+	# constants, so this stays inside the palette rather than inventing one.
+	const CLOTHS: Array[String] = ["cloth", "cloth_pale", "cloth_mint", "cloth",
+		"cloth_grey", "cloth_pale", "cloth_mint"]
+	const CLOTH_SEGMENTS := 5
+	# Smaller than the first pass. At 0.24 half-width and 0.70 drop these read as
+	# banners rather than as laundry — they dominated the street from every angle.
+	const HEM_DROP: Array[float] = [0.46, 0.38, 0.52, 0.42, 0.49, 0.36, 0.44]
+	const CLOTH_HALF_W: Array[float] = [0.16, 0.13, 0.17, 0.14, 0.16, 0.12, 0.15]
 	for i in range(7):
 		var t := (float(i) + 0.5) / 7.0
 		var x := lerpf(-8.0, 8.0, t)
-		var y := 2.62 - 0.42 * sin(PI * t)
+		var y_top := 2.62 - 0.42 * sin(PI * t)
 		var yaw: float = JITTER_YAW[i % JITTER_YAW.size()]
-		w.add_extrude(_rect_yaw(x, 0.0, 0.44, 0.03, yaw), y - 0.62, y, CLOTHS[i])
-	_finish(w, "env_laundry_line")
+		var half_w: float = CLOTH_HALF_W[i]
+		var drop: float = HEM_DROP[i]
+		var material: String = CLOTHS[i]
+		# The garment hangs across the line, so its width runs along the line's
+		# own axis (+X) rotated by `yaw`, and it drops in -Y.
+		var along := Vector3(cos(yaw), 0.0, sin(yaw)) * half_w
+		var bow := Vector3(-sin(yaw), 0.0, cos(yaw)) * (half_w * 0.22)
+		for s in range(CLOTH_SEGMENTS):
+			var f0 := float(s) / float(CLOTH_SEGMENTS)
+			var f1 := float(s + 1) / float(CLOTH_SEGMENTS)
+			var y0 := y_top - drop * f0
+			var y1 := y_top - drop * f1
+			# A hanging sheet is widest at the hem and gathered at the pin.
+			var w0 := lerpf(0.82, 1.0, f0)
+			var w1 := lerpf(0.82, 1.0, f1)
+			# Bow OUT toward the middle of the drop, so the sheet is not a plane.
+			var b0 := sin(PI * f0)
+			var b1 := sin(PI * f1)
+			var p0a := Vector3(x, y0, 0.0) - along * w0 + bow * b0
+			var p0b := Vector3(x, y0, 0.0) + along * w0 + bow * b0
+			var p1a := Vector3(x, y1, 0.0) - along * w1 + bow * b1
+			var p1b := Vector3(x, y1, 0.0) + along * w1 + bow * b1
+			w.add_quad(p0a, p0b, p1b, p1a, material)
+			# ⚠️ AND AGAIN, REVERSED — same reason as `_wire`. A single-sided
+			# sheet is backface-culled from one side, and a sampay strung across
+			# an alley is walked under and looked at from BOTH sides every round.
+			w.add_quad(p1a, p1b, p0b, p0a, material)
+	# 0.0 smoothing: a garment's fold lines are the read. Averaging normals
+	# across them turns the sheet back into a soft blob, which is most of what
+	# made the old version look like a lump rather than cloth.
+	_finish(w, "env_laundry_line", 0.0)
 
 ## The narrative centre of Eskinita. A wall with a counter in it is a street; a
 ## wall without one is a corridor. Barred window, tarp awning, hanging sachets.
@@ -776,22 +839,25 @@ func _team_side_decal() -> void:
 	_box(w, 0, 0, 6.0, 0.08, 0.0, 0.02, "mark")
 	_finish(w, "env_team_side_decal")
 
-## What motivates the HazardZone. The hazard exists in code and currently sits at
-## (5, 0.5, 5) with nothing in the map explaining it; this is the jeepney lane it
-## is supposed to be.
+## ⚠️ `_jeepney_lane_decal()` IS DELETED. DO NOT REBUILD IT. (Phase 8, 2026-07-29)
 ##
-## ⚠️ The DECAL is all that is built here. Placement, the collider and the
-## slow-zone behaviour are not this file's — and HazardZone must NOT join the
-## `hazard_zone` group, which main.gd::_reset_world() empties every round.
-func _jeepney_lane_decal() -> void:
-	var w := ObjWriter.new("JeepneyLaneDecal")
-	w.set_material("hazard", UiTheme.IMPACT)
-	# ⚠️ EDGE STRIPES, not a filled rectangle. Rendered as a fill it was a solid
-	# pink carpet that shouted over the Props — and IMPACT belongs to them and to
-	# hit feedback, not to the floor. Two stripes plus rungs read as a marked lane
-	# and stay quiet.
-	for side in SIDES:
-		_box(w, side * 1.8, 0.0, 0.16, 12.0, 0.0, 0.01, "hazard")
-	for i in range(7):
-		_box(w, 0.0, -5.0 + 1.7 * float(i), 3.6, 0.10, 0.0, 0.01, "hazard")
-	_finish(w, "env_jeepney_lane_decal")
+## It emitted the map's only piece using the `hazard` material (`UiTheme.IMPACT`,
+## #F468A8), as a pink chalk lane 3.76 wide and 12 long. Explicit human
+## instruction after seeing it in play: "completely remove and delete all pink
+## chalk lines and their generation logic from build_eskinita.py and the scene
+## files. Do not render them at all."
+##
+## It was also genuinely broken, and the measurement is worth keeping because it
+## explains BOTH visual complaints at once. Placed at x=5.2 scaled 0.6 it
+## occupied x 4.07..6.33 and z -6..+6, while the confinement box's east edge is a
+## white line at x=5.0 running z -5..+5. So the pink band lay directly ON TOP of
+## the white line for the white line's entire length and then ran a further metre
+## past both of its ends — which is exactly the report, "they overshoot and merge
+## with white lines", and exactly why the court never read as a closed shape.
+##
+## ⚠️ THE `HazardZone` AT x=5.4 IS STILL LIVE, AND IT NEEDS A VISUAL.
+## Deleting the marking without replacing it would leave an invisible permanent
+## slow-field (speed_multiplier 0.5) sitting beside the court — a worse bug than
+## the one being fixed. `build_eskinita.py` now dresses that footprint with a
+## real `gutter_tile` kanal instead: 3D geometry that physically explains why you
+## slow down there, with no chalk and no pink anywhere on the map.

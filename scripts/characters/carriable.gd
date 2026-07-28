@@ -283,8 +283,29 @@ func _step_carried() -> void:
 	# applied.
 	var tilt := Basis(Vector3.RIGHT, deg_to_rad(CARRY_TILT_DEG))
 	var hand_transform := hand.global_transform
+	var basis := hand_transform.basis.orthonormalized() * tilt
+	# ⚠️ PUT THE MESH IN THE HAND, NOT THE ORIGIN.
+	#
+	# 2026-07-29, reported as "floating slipper when held, make it acc be on the
+	# hand". A carried unit's visible model is NOT centred on its CharacterBase
+	# origin: `character_visual.gd::_align_to_capsule_floor` drops it so its
+	# bottom rests on the capsule floor, which for the tsinelas is a measured
+	# **0.160 below the origin**. Snapping the origin to the hand therefore hangs
+	# the visible slipper under the hand, every frame, by construction.
+	#
+	# This used to be compensated by baking a fudge into
+	# CharacterVisual.HAND_CARRY_OFFSET, which was wrong twice over: the value
+	# was 0.441 rather than 0.160, and it lived in the HAND BONE's rotating local
+	# frame, so whatever it meant in one animation clip it meant something else
+	# in the next. Corrected here instead, in world space, from the carried
+	# unit's own measured offset — so it is right for the Can too, and it cannot
+	# drift from the drop it exists to cancel.
+	var centre := Vector3.ZERO
+	var visual := _character.get_node_or_null("Visual") as CharacterVisual
+	if visual != null:
+		centre = visual.visual_centre_offset()
 	_character.global_transform = Transform3D(
-		hand_transform.basis.orthonormalized() * tilt, hand_transform.origin)
+		basis, hand_transform.origin - basis * centre)
 	_character.velocity = Vector3.ZERO
 
 func _step_flying(delta: float) -> void:

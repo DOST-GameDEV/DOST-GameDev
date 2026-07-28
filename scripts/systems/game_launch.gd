@@ -29,7 +29,7 @@ const MAPS: Array[Dictionary] = [
 	{
 		"id": &"eskinita",
 		"name": "ESKINITA",
-		"tagline": "Urban side street. Sari-sari, sampay, jeepney lane.",
+		"tagline": "Urban side street. Sari-sari, sampay, kanal.",
 		"scene": "res://scenes/maps/Eskinita.tscn",
 	},
 	{
