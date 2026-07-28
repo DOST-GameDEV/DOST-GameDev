@@ -37,7 +37,11 @@ extends Node3D
 ## match-result screen. Read-only from here — MatchResult wires itself to
 ## MatchManager and needs nothing from main.gd.
 @onready var match_result: MatchResult = $HUDLayer/MatchResult
-@onready var kill_plane: KillPlane = $KillPlane
+@onready var map_root: Node3D = $Map
+## Checklist 2.2a: the KillPlane belongs to the MAP now, not to Main.tscn, so it
+## cannot be an @onready NodePath any more — the map is not instanced until
+## _load_map() runs. Resolved from the loaded map instead.
+var kill_plane: KillPlane = null
 ## B-20: no way out of a match existed except Alt+F4.
 @onready var pause_root: Control = %PauseRoot
 @onready var resume_button: Button = %ResumeButton
@@ -63,24 +67,152 @@ const CHARACTER_SCENE: PackedScene = preload("res://scenes/characters/CharacterB
 ## TeamAProp has one wired directly in Main.tscn, since it's the only
 ## character using that particular resource instance.
 const PERSON_ACTION_ABILITY: AbilityBase = preload("res://scripts/abilities/resources/person_action.tres")
-## B-04: networked Props previously spawned with `ability = null` — only
-## Persons got one. Only quick_stand.tres exists as a real roster resource so
-## far (the other five specials have no .tres yet — see B-24/Phase 2 for
-## character select), so every networked Prop gets it for now, same as
-## Main.tscn already hardcodes for the local flow's TeamAProp. `.duplicate()`
-## per PERSON_ACTION_ABILITY doc — cooldown/charge state lives on the
-## Resource instance, don't share it across Props.
-const PROP_ABILITY: AbilityBase = preload("res://scripts/abilities/resources/quick_stand.tres")
+## B-76: every networked and local-test Prop used to get Quick Stand
+## regardless of which side of the round it was playing. Quick Stand has no
+## get_throw_profile(), so a Prop on the offence side threw with no identity
+## at all — carriable.gd's _profile() fell back to throw_default.tres and none
+## of the three Tsinelas specials (Bagsak Bomb, Bakya Bash, Flick Dash) were
+## ever reachable in a running game. `.tres` for the other two Can specials
+## (Spin Guard, Shatter Trap) exist too but aren't wired to any roster slot
+## yet — same B-24/Phase 2 gap as the Tsinelas side, character select assigns
+## both eventually.
+##
+## Interim fix, per checklist 0.2: _prop_ability_for() below picks the ability
+## from role (is_can) + team, called at spawn AND every round reset
+## (_reset_world) — is_can flips every round, so a Prop's ability has to be
+## re-picked every round or it goes stale exactly one round after spawn, which
+## is the same "resolved once, wrong from round 2" trap as B-42/B-80(c).
+## `.duplicate()` at every call site per PERSON_ACTION_ABILITY doc.
+const CAN_ABILITY: AbilityBase = preload("res://scripts/abilities/resources/quick_stand.tres")
+## Two of the three Tsinelas identities, picked one per team for the biggest
+## contrast a 2-Prop match can show: Bakya Bash is the heavy knockdown
+## (forces_downed, flattest-but-one arc), Flick Dash is the fast curving poke
+## (steers hardest, never forces downed). A 2v2 match only ever has 2 Props,
+## so a single sitting cannot reach all three roster identities regardless of
+## which two are picked here — that needs 3.3 (character select). Bagsak Bomb
+## (the lob) is reachable today only by swapping one of these two constants.
+const TSINELAS_ABILITY_TEAM_A: AbilityBase = preload("res://scripts/abilities/resources/bakya_bash.tres")
+const TSINELAS_ABILITY_TEAM_B: AbilityBase = preload("res://scripts/abilities/resources/flick_dash.tres")
 ## Local-test roster, in a flat array so round-swap/registration code (below)
 ## can treat all 4 the same way it treats _spawned_characters for the
 ## networked flow, rather than hand-writing 4 near-identical blocks.
 ## Populated once in _ready(); order is [TeamAProp, TeamAPerson, TeamBProp, TeamBPerson].
 var _local_roster: Array[CharacterBase] = []
-## Cycled through as players connect; only the first two matter until real
-## map spawn points exist (GDD's Eskinita/Bayan Plaza bases).
+## FALLBACK ONLY, since checklist 2.2a. The real spawn points are four Marker3Ds
+## under the loaded map's `SpawnPoints` node; this array is used only if a map
+## has none — or if something loads Main.tscn with no map at all, which is what
+## the render harness does. Indexed by ROLE SLOT (see SLOT_* below), matching
+## the real maps' layout: the Can near the middle, the Attacker/Tsinelas pair
+## a few units off.
 const SPAWN_POINTS: Array[Vector3] = [
-	Vector3(0, 1, -2), Vector3(0, 1, 2), Vector3(-3, 1, 0), Vector3(3, 1, 0)
+	Vector3(0, 0.17, 0), Vector3(2, 0.8, 1), Vector3(0, 0.8, 6), Vector3(1, 0.16, 6)
 ]
+
+## Resolved once per match from the loaded map, then reused. Rebuilt on every
+## _load_map(), never cached across maps.
+var _map_spawns: Array[Transform3D] = []
+
+## Checklist 3.5 — instances the map the player picked, into $Map.
+##
+## The map owns the floor, the boundary, the kill plane, the field markings, the
+## hazard, the WorldEnvironment and its own sky. Main.tscn deliberately carries
+## NONE of those any more: a second WorldEnvironment in this scene would fight
+## the map's, and a hardcoded floor is what made every map look the same.
+##
+## ⚠️ NO CAMERA IS ADDED HERE OR IN A MAP. Person -> FPP, Prop -> TPP, derived
+## from is_person. That is the standing directive; a scene-level Camera3D is the
+## violation A-2 deleted and it caused B-03.
+func _load_map() -> void:
+	_map_spawns.clear()
+	for child in map_root.get_children():
+		map_root.remove_child(child)
+		child.queue_free()
+
+	var path := GameLaunch.selected_map_scene()
+	var packed := load(path) as PackedScene
+	if packed == null:
+		# Deliberately not fatal. A missing map must not cost the player their
+		# match — they get the fallback spawn ring and a warning in the log.
+		push_warning("main.gd: could not load map '%s'; running with no map." % path)
+		return
+	var instance := packed.instantiate() as Node3D
+	map_root.add_child(instance)
+
+	kill_plane = instance.find_child("KillPlane", true, false) as KillPlane
+
+	var points := instance.get_node_or_null("SpawnPoints")
+	if points == null:
+		push_warning("main.gd: map '%s' has no SpawnPoints; using the fallback ring." % path)
+		return
+	# Sorted by node name, NOT by get_children() order. B-68 is the same class of
+	# bug on the round-reset path: an order that depends on how the scene happens
+	# to be authored silently reassigns teams. Spawn0..Spawn3 is the contract.
+	var markers: Array[Node] = points.find_children("*", "Marker3D", false, false)
+	markers.sort_custom(func(a: Node, b: Node) -> bool: return a.name < b.name)
+	for marker in markers:
+		# The whole TRANSFORM, not just the origin. A spawn point has to say
+		# which way you are FACING as well as where you stand — the first render
+		# of this had all four units spawn at the ends of the alley looking at
+		# the wall behind them, because a Marker3D with no rotation means the
+		# default -Z facing and half the spawns are at the far end.
+		_map_spawns.append((marker as Marker3D).transform)
+
+## Spawn slots are ROLE-based, not team-based, since the human playtest of the
+## proportion fix (2026-07-28): "two teams spawn on completely different ends
+## and i dont think thats how it should go." They were right — the old scheme
+## put TeamAProp/TeamAPerson at one end of the alley and TeamBProp/TeamBPerson
+## at the other, UNCONDITIONALLY, while the map's own base_circle_decal and
+## throwing_line_decal (Art_Direction.md §9) sit at the CENTRE regardless of
+## who is spawning where. Whichever team happened to be defending that round
+## spawned wherever its fixed team slot was — sometimes the north end, sometimes
+## the south — never actually AT the base circle the mechanic is built around.
+## That is what "two teams spawn on completely different ends" was: not merely
+## "far apart", but structurally disconnected from tumbang preso's actual
+## shape (one guarded base, one throwing line), because position tracked TEAM
+## (fixed all match) instead of ROLE (swaps every round).
+##
+## The four slots below are ROLES, and the physical Marker3D positions never
+## move — only which unit currently occupies which slot does, exactly like
+## is_can/team_is_can_side already do for everything else that flips each
+## round. Spawn0 sits ON the base circle, Spawn1 is the guarding Taya a few
+## units off it, Spawn2 is the Attacker at the 6-unit throwing line
+## (Art_Direction.md §9's own "why 6.0" derivation), Spawn3 is that round's
+## loose Tsinelas beside the Attacker (see _reset_world's auto-grab, below,
+## for why it does not usually stay loose for long).
+const SLOT_CAN: int = 0
+const SLOT_TAYA: int = 1
+const SLOT_ATTACKER: int = 2
+const SLOT_TSINELAS: int = 3
+
+## Maps a unit's CURRENT role to its spawn slot. `is_can` already implies
+## `is_person == false` (CharacterBase's own contract), so checking it first is
+## exhaustive: Can, then Taya-or-Attacker by is_person, then whatever Prop is
+## left over must be this round's Tsinelas.
+func _role_slot(is_can: bool, is_person: bool, team_is_can_side: bool) -> int:
+	if is_can:
+		return SLOT_CAN
+	if is_person:
+		return SLOT_TAYA if team_is_can_side else SLOT_ATTACKER
+	return SLOT_TSINELAS
+
+## Where slot `index` spawns. Prefers the map's markers and falls back to
+## SPAWN_POINTS, so a map with no SpawnPoints still plays.
+func _spawn_point(index: int) -> Vector3:
+	return _spawn_transform(index).origin
+
+## The full spawn transform. Yaw is taken from the marker so a map can face
+## players into the arena; the fallback ring has no opinion and returns none.
+func _spawn_transform(index: int) -> Transform3D:
+	if not _map_spawns.is_empty():
+		return _map_spawns[index % _map_spawns.size()]
+	return Transform3D(Basis.IDENTITY, SPAWN_POINTS[index % SPAWN_POINTS.size()])
+
+## Places a character at its slot, facing the way the map says. Kept separate
+## from _spawn_point() so the two call sites cannot drift apart on the rotation.
+func _place_at_spawn(character: CharacterBase, slot: int) -> void:
+	var t := _spawn_transform(slot)
+	character.position = t.origin
+	character.rotation.y = t.basis.get_euler().y
 
 var _spawned_peer_ids: Dictionary = {}
 ## B-21: peer_id -> permanently-assigned join index (0..3), separate from
@@ -118,10 +250,14 @@ func _ready() -> void:
 	# to visible; there's no pause menu yet (B-20, still open) to hang a real
 	# resume flow off of, so pressing Esc again re-captures for now.
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	# BEFORE anything that touches the world. Spawn points, the kill plane and
+	# the WorldEnvironment all live in the map now, not in this scene.
+	_load_map()
 	spawner.spawn_function = _build_networked_character
 	MatchManager.round_started.connect(_on_match_round_started)
 	MatchManager.round_intermission_started.connect(_on_round_intermission_started)
-	kill_plane.character_respawned.connect(_on_character_respawned)
+	if kill_plane != null:
+		kill_plane.character_respawned.connect(_on_character_respawned)
 	pause_root.visible = false
 	resume_button.pressed.connect(_on_resume_pressed)
 	menu_button.pressed.connect(_on_return_to_menu_pressed)
@@ -174,6 +310,13 @@ func _start_local_test() -> void:
 	team_b_person.team = 1
 	team_a_person.ability = PERSON_ACTION_ABILITY.duplicate()
 	team_b_person.ability = PERSON_ACTION_ABILITY.duplicate()
+	# B-76: Main.tscn no longer hardcodes a Prop ability (see its own node
+	# comment) — assign the role-correct one here, same as the networked spawn
+	# path. _reset_world() re-picks this every round; this is just the round-1
+	# value so there's no null/wrong-ability window before the first
+	# begin_next_round() below runs it.
+	team_a_prop.ability = _prop_ability_for(team_a_prop.is_can, team_a_prop.team).duplicate()
+	team_b_prop.ability = _prop_ability_for(team_b_prop.is_can, team_b_prop.team).duplicate()
 	_wire_downed_flash(team_a_prop)
 	_wire_downed_flash(team_b_prop)
 	_register_local_can()
@@ -270,6 +413,13 @@ func _on_player_connected(peer_id: int) -> void:
 func _on_character_respawned(character: CharacterBase) -> void:
 	if not NetworkManager.is_networked() or character.is_multiplayer_authority():
 		hud.show_toast("OUT OF BOUNDS")
+	# Dev_Plan.md §3's second Option A win path for the Can side — see
+	# RoundManager.register_ring_out()'s own doc for why this was missing and
+	# what it filters down to. Called unconditionally (not gated on this being
+	# "our" character, unlike the toast above): it's a round-win decision, not
+	# a per-viewer cosmetic, and register_ring_out() already gates itself to
+	# the host.
+	RoundManager.register_ring_out(character)
 
 ## Focus loss always releases the mouse outright: alt-tabbing away with the
 ## cursor still captured is a bad experience regardless of what's on screen.
@@ -290,6 +440,17 @@ func _notification(what: int) -> void:
 		# overlay and the match-result screen both deliberately release the
 		# cursor, and stealing it back on focus would undo B-51 and hand back a
 		# result screen with no usable pointer.
+		#
+		# B-77: Godot delivers this notification once at WINDOW CREATION, which
+		# is BEFORE _ready() has run — so every @onready below is still null and
+		# the three-way `.visible` check threw "Invalid access to property
+		# 'visible' on a base object of type 'Nil'" on every single launch of
+		# Main.tscn. Found by actually running the scene for 300 frames rather
+		# than a --quit smoke test. _ready() sets MOUSE_MODE_CAPTURED itself
+		# (main.gd:120), so declining to recapture here is the correct
+		# behaviour, not a workaround for the crash.
+		if not is_node_ready():
+			return
 		if pause_root.visible or match_result.visible or settings_panel.visible:
 			return
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -334,9 +495,13 @@ func _spawn_player(peer_id: int) -> void:
 	var index: int = _peer_join_index[peer_id]
 	var team := index / 2 # 0, 0, 1, 1 for up to MAX_PLAYERS = 4
 	var is_person := index % 2 == 0 # first peer of each team pair is the Person
-	var spawn_pos: Vector3 = SPAWN_POINTS[index % SPAWN_POINTS.size()]
 	var team_is_can_side := (team == 0) == MatchManager.team_a_is_can
 	var is_can := team_is_can_side and not is_person
+	# Spawn POSITION is role-based (_role_slot), not the team-fixed `index` —
+	# see the doc above _role_slot for why. `player_id` below stays index-based
+	# on purpose: it is a fixed-for-the-match input-binding assignment, a
+	# different question from where this round's fight actually starts.
+	var spawn_pos: Vector3 = _spawn_point(_role_slot(is_can, is_person, team_is_can_side))
 	# B-30: CharacterBase.player_id was never set on a networked spawn, so every
 	# networked character kept the scene default of 1 and read *_p1 actions —
 	# harmless by accident (one human per LAN machine binds p1 and controls
@@ -355,6 +520,14 @@ func _spawn_player(peer_id: int) -> void:
 		"player_id": player_id,
 	})
 
+## B-76. Picks the ability class a Prop should carry THIS round, given its
+## role (is_can) and team. Never cached on the caller's side — call this again
+## every time is_can might have changed (spawn, and every _reset_world()).
+func _prop_ability_for(is_can: bool, team: int) -> AbilityBase:
+	if is_can:
+		return CAN_ABILITY
+	return TSINELAS_ABILITY_TEAM_A if team == 0 else TSINELAS_ABILITY_TEAM_B
+
 ## Runs on every peer (host and clients) when the spawner replicates a spawn.
 func _build_networked_character(data: Dictionary) -> Node:
 	var character: CharacterBase = CHARACTER_SCENE.instantiate()
@@ -372,8 +545,9 @@ func _build_networked_character(data: Dictionary) -> Node:
 		# doc above — don't share cooldown state across the two Persons in a match.
 		character.ability = PERSON_ACTION_ABILITY.duplicate()
 	else:
-		# B-04: Props carry the roster's class ability — see PROP_ABILITY doc.
-		character.ability = PROP_ABILITY.duplicate()
+		# B-76: the class ability depends on which side of the round this Prop
+		# is playing — see _prop_ability_for() doc.
+		character.ability = _prop_ability_for(character.is_can, character.team).duplicate()
 	character.set_multiplayer_authority(data["peer_id"])
 	_peer_teams[data["peer_id"]] = data["team"]
 	_peer_is_person[data["peer_id"]] = data["is_person"]
@@ -410,11 +584,10 @@ func _reset_world(team_a_is_can: bool) -> void:
 	for node in get_tree().get_nodes_in_group("transient_hitbox"):
 		if is_instance_valid(node):
 			node.queue_free()
-	# Build a unified roster — {character, team, is_person, slot} — per mode.
-	# Networked: slot comes from _peer_join_index (B-21: stable across disconnect/
-	# rejoin, fixes B-68 which used iteration order instead). Local: _local_roster
-	# order [TeamAProp, TeamAPerson, TeamBProp, TeamBPerson] matches SPAWN_POINTS
-	# 1:1, so the array index is the slot.
+	# Build a unified roster — {character, team, is_person} — per mode. Networked:
+	# _spawned_characters keyed by peer_id. Local: _local_roster, order
+	# [TeamAProp, TeamAPerson, TeamBProp, TeamBPerson] (only used to derive team/
+	# is_person below, not for spawn position any more — see _role_slot).
 	var roster: Array = []
 	if NetworkManager.is_networked():
 		for peer_id in _spawned_characters.keys():
@@ -425,7 +598,6 @@ func _reset_world(team_a_is_can: bool) -> void:
 				"character": character,
 				"team": _peer_teams.get(peer_id, 0),
 				"is_person": _peer_is_person.get(peer_id, false),
-				"slot": _peer_join_index.get(peer_id, 0)
 			})
 	elif not _local_roster.is_empty():
 		for i in range(_local_roster.size()):
@@ -433,10 +605,11 @@ func _reset_world(team_a_is_can: bool) -> void:
 				"character": _local_roster[i],
 				"team": _local_roster[i].team,
 				"is_person": _local_roster[i].is_person,
-				"slot": i
 			})
 
 	RoundManager.clear_tracked_cans()
+	var attacker: CharacterBase = null
+	var tsinelas: CharacterBase = null
 	for entry in roster:
 		var character: CharacterBase = entry["character"]
 		var team_is_can_side: bool = (entry["team"] == 0) == team_a_is_can
@@ -445,14 +618,37 @@ func _reset_world(team_a_is_can: bool) -> void:
 		# a Can (Session 7: 1 Person + 1 Prop per team, not two Props).
 		character.team_is_can_side = team_is_can_side
 		character.is_can = team_is_can_side and not entry["is_person"]
+		# B-76: is_can just flipped (or held) above — a Prop's ability has to be
+		# re-picked every round or a Tsinelas keeps last round's Can ability
+		# (Quick Stand, no throw profile) one round after it stops being one.
+		# Persons never change class ability by role, only Props do.
+		if not entry["is_person"]:
+			character.ability = _prop_ability_for(character.is_can, entry["team"]).duplicate()
 		# B-10: reset + reposition every unit — Persons and the off-side Prop
 		# were carrying downed/sealed state, dents, and speed multipliers into
-		# the next round before this.
+		# the next round before this. Position is now ROLE-based, not the old
+		# team-fixed slot — see _role_slot's doc above _spawn_point.
 		character.reset_for_new_round()
-		character.position = SPAWN_POINTS[entry["slot"] % SPAWN_POINTS.size()]
+		_place_at_spawn(character, _role_slot(character.is_can, entry["is_person"], team_is_can_side))
 		character.spawn_position = character.position # B-15/B-35
 		if character.is_can:
 			RoundManager.register_can(character)
+		elif entry["is_person"] and not team_is_can_side:
+			attacker = character
+		elif not entry["is_person"] and not team_is_can_side:
+			tsinelas = character
+	# User feedback, 2026-07-28: "the attacking Person carries the tsinelas"
+	# (Dev_Plan.md §3's beat-by-beat loop, step 1) reads as the opening state of
+	# a round, not a first chore before it — a real taya at a real tumbang
+	# preso match is not waiting for the attacker to walk over and pick up
+	# their own teammate. host_grab() is already host-gated internally (see its
+	# own doc in carriable.gd), so calling it unconditionally here — this
+	# function runs on every peer identically — is safe: only the host's call
+	# actually does anything.
+	if attacker != null and tsinelas != null:
+		var carriable := tsinelas.get_node_or_null("Carriable") as Carriable
+		if carriable != null:
+			carriable.host_grab(attacker)
 
 ## Item 10 / B-37: fires on every peer (see MatchManager._sync_intermission_started)
 ## the moment a round ends without finishing the match — the gap that never
@@ -588,8 +784,9 @@ func _on_return_to_menu_pressed() -> void:
 	if NetworkManager.is_networked():
 		NetworkManager.disconnect_network()
 	# B-14: leaving a match should reset the same as starting a fresh one does
-	# (see main_menu.gd _go_to_match()) — otherwise a Rematch/new match after
-	# using this button would resume this match's score.
+	# (see main_menu.gd's _on_local_pressed()/_on_host_pressed()/_on_join_pressed(),
+	# all of which reset before handing off to the lobby) — otherwise a
+	# Rematch/new match after using this button would resume this match's score.
 	MatchManager.reset()
 	RoundManager.reset()
 	get_tree().change_scene_to_file("res://scenes/ui/MainMenu.tscn")

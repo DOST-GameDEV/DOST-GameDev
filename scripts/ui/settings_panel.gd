@@ -67,6 +67,24 @@ func _on_rebind_button_pressed(action: String) -> void:
 	_action_buttons[action].text = "…"
 
 func _unhandled_input(event: InputEvent) -> void:
+	# ⚠️ VISIBILITY GUARD — DO NOT REMOVE. A hidden Control still receives
+	# _unhandled_input in Godot; only _gui_input is gated by visibility.
+	#
+	# Without this line the HIDDEN settings panel swallowed every Esc press in
+	# the match, called set_input_as_handled(), and emitted back_pressed —
+	# which main.gd:231 has wired to `settings_panel.hide(); pause_root.show()`.
+	# That shows the pause overlay but never sets Input.mouse_mode and never
+	# sets get_tree().paused, because _on_pause_toggle_requested() was never
+	# reached at all.
+	#
+	# Found by the first real playtest (0.4), reported as three separate bugs
+	# that were all this one: "mouse disappears when I pause", "it doesn't
+	# really pause, the game keeps playing", and "I can't return to menu because
+	# no mouse — I have to alt-tab to get it back". match_result.gd:29 already
+	# had this guard, which is what made the omission obvious once both were
+	# read side by side.
+	if not visible:
+		return
 	if not (event is InputEventKey and event.pressed and not event.echo):
 		return
 	var key_event := event as InputEventKey

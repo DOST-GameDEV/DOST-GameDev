@@ -1,121 +1,27 @@
-[gd_scene load_steps=23 format=3 uid="uid://c3f7h9j1k2l4m"]
+[gd_scene load_steps=10 format=3 uid="uid://c3f7h9j1k2l4m"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="0"]
 [ext_resource type="PackedScene" path="res://scenes/ui/SettingsPanel.tscn" id="11"]
 [ext_resource type="PackedScene" path="res://scenes/characters/CharacterBase.tscn" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/ui/HUD.tscn" id="2"]
-[ext_resource type="Resource" path="res://scripts/abilities/resources/quick_stand.tres" id="3"]
-[ext_resource type="Script" path="res://scripts/systems/kill_plane.gd" id="5"]
 [ext_resource type="PackedScene" path="res://scenes/ui/MatchResult.tscn" id="6"]
 [ext_resource type="PackedScene" path="res://scenes/ui/DebugBar.tscn" id="7"]
 [ext_resource type="Script" path="res://scripts/ui/pause_layer.gd" id="8"]
-[ext_resource type="Script" path="res://scripts/systems/hazard_zone.gd" id="9"]
 [ext_resource type="Shader" path="res://assets/ui/card_fold.gdshader" id="10"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_pause_fold"]
 shader = ExtResource("10")
 shader_parameter/fold_color = Color(0.016, 0.031, 0.22, 1)
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
-size = Vector3(40, 1, 40)
-
-[sub_resource type="StandardMaterial3D" id="Mat_floor"]
-albedo_color = Color(0.827451, 0.815686, 0.784314, 1)
-roughness = 0.9
-
-[sub_resource type="BoxMesh" id="BoxMesh_floor"]
-material = SubResource("Mat_floor")
-size = Vector3(40, 1, 40)
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_wall_ns"]
-size = Vector3(82, 40, 2)
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_wall_ew"]
-size = Vector3(2, 40, 82)
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_killplane"]
-size = Vector3(90, 4, 90)
-
-[sub_resource type="SphereShape3D" id="SphereShape3D_hazard"]
-radius = 3.0
-
-[sub_resource type="Environment" id="Environment_default"]
-background_mode = 1
-background_color = Color(0.53, 0.73, 0.9, 1)
-ambient_light_source = 2
-ambient_light_color = Color(1, 1, 1, 1)
-ambient_light_energy = 0.75
-
 [node name="Main" type="Node3D"]
 script = ExtResource("0")
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
-environment = SubResource("Environment_default")
-
-[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
-transform = Transform3D(0.8, -0.4, 0.45, 0, 0.75, 0.66, -0.6, -0.53, 0.6, 0, 5, 0)
-shadow_enabled = true
-
-[node name="Floor" type="StaticBody3D" parent="."]
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
-shape = SubResource("BoxShape3D_floor")
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor"]
-mesh = SubResource("BoxMesh_floor")
-
-[node name="Bounds" type="Node3D" parent="."]
-
-[node name="WallNorth" type="StaticBody3D" parent="Bounds"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -41)
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Bounds/WallNorth"]
-shape = SubResource("BoxShape3D_wall_ns")
-
-[node name="WallSouth" type="StaticBody3D" parent="Bounds"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 41)
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Bounds/WallSouth"]
-shape = SubResource("BoxShape3D_wall_ns")
-
-[node name="WallEast" type="StaticBody3D" parent="Bounds"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 41, 0, 0)
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Bounds/WallEast"]
-shape = SubResource("BoxShape3D_wall_ew")
-
-[node name="WallWest" type="StaticBody3D" parent="Bounds"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -41, 0, 0)
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Bounds/WallWest"]
-shape = SubResource("BoxShape3D_wall_ew")
-
-[node name="KillPlane" type="Area3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -10, 0)
-script = ExtResource("5")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="KillPlane"]
-shape = SubResource("BoxShape3D_killplane")
-
-[node name="Hazards" type="Node3D" parent="."]
-
-[node name="HazardZone" type="Area3D" parent="Hazards"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 0.5, 5)
-collision_layer = 0
-collision_mask = 2
-script = ExtResource("9")
-speed_multiplier = 0.5
-lifetime = 0.0
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Hazards/HazardZone"]
-shape = SubResource("SphereShape3D_hazard")
+[node name="Map" type="Node3D" parent="."]
 
 [node name="TeamAProp" parent="." instance=ExtResource("1")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 1, -2)
 is_can = true
 is_person = false
 team_is_can_side = true
-ability = ExtResource("3")
 player_id = 2
 
 [node name="TeamAPerson" parent="." instance=ExtResource("1")]

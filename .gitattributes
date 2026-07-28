@@ -7,8 +7,16 @@
 # must stay out of LFS — being diffable and mergeable is the entire reason this
 # project generates meshes as .obj instead of exporting .glb. Do not "tidy" these
 # into the LFS block below.
-*.obj text
-*.mtl text
+#
+# B-84: FileAccess.store_line() always writes LF. Without eol=lf pinned here,
+# a checkout with core.autocrlf=true (the Windows default) converts these to
+# CRLF on checkout, so every regenerate-and-diff run "changes" every line with
+# zero real content difference — exactly the class of noise that makes the
+# M-block's "generate twice, git status must be clean" determinism test
+# unreliable. Force LF both ways regardless of the checking-out machine's
+# autocrlf setting.
+*.obj text eol=lf
+*.mtl text eol=lf
 
 # Binary assets — track via Git LFS (run: git lfs install)
 *.glb filter=lfs diff=lfs merge=lfs -text

@@ -23,9 +23,9 @@ const SETTINGS_SECTION: String = "input"
 ## Ordered for display purposes — the Settings panel iterates this directly.
 const REBINDABLE_ACTIONS: Array[String] = [
 	"move_left_p1", "move_right_p1", "move_up_p1", "move_down_p1",
-	"bump_p1", "guard_dash_p1", "special_ability_p1",
+	"bump_p1", "guard_dash_p1", "special_ability_p1", "jump_p1",
 	"move_left_p2", "move_right_p2", "move_up_p2", "move_down_p2",
-	"bump_p2", "guard_dash_p2", "special_ability_p2",
+	"bump_p2", "guard_dash_p2", "special_ability_p2", "jump_p2",
 ]
 
 ## Human-readable labels for the panel — action string -> display text.
@@ -33,11 +33,11 @@ const ACTION_LABELS: Dictionary = {
 	"move_left_p1": "P1 Move Left", "move_right_p1": "P1 Move Right",
 	"move_up_p1": "P1 Move Up", "move_down_p1": "P1 Move Down",
 	"bump_p1": "P1 Bump", "guard_dash_p1": "P1 Guard/Dash",
-	"special_ability_p1": "P1 Special Ability",
+	"special_ability_p1": "P1 Special Ability", "jump_p1": "P1 Jump",
 	"move_left_p2": "P2 Move Left", "move_right_p2": "P2 Move Right",
 	"move_up_p2": "P2 Move Up", "move_down_p2": "P2 Move Down",
 	"bump_p2": "P2 Bump", "guard_dash_p2": "P2 Guard/Dash",
-	"special_ability_p2": "P2 Special Ability",
+	"special_ability_p2": "P2 Special Ability", "jump_p2": "P2 Jump",
 }
 
 ## action -> physical_keycode captured from the project's InputMap defaults,

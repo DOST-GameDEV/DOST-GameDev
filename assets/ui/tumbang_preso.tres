@@ -1,6 +1,6 @@
-[gd_resource type="Theme" format=3 uid="uid://cx1iw4yoaotg3"]
+[gd_resource type="Theme" format=3]
 
-[ext_resource type="FontFile" uid="uid://d13u6l0gyfmtg" path="res://assets/ui/fonts/DarumadropOne-Regular.ttf" id="1_u1bdx"]
+[ext_resource type="FontFile" path="res://assets/ui/fonts/DarumadropOne-Regular.ttf" id="1_u1bdx"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_u1bdx"]
 content_margin_left = 16.0

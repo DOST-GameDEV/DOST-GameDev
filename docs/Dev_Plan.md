@@ -2,7 +2,7 @@
 
 Integration and development plan for the Godot 4.7 build. Written against the code that is
 actually in this repo, not against intent. Design source of truth is
-[`Tumbang_Preso_2v2_GDD.md`](Tumbang_Preso_2v2_GDD.md); current state, the bug ledger, and the
+[`Dev_Plan.md`](Dev_Plan.md); current state, the bug ledger, and the
 "pick this up next" queue are in [`Handoff.md`](Handoff.md).
 
 **Engine:** Godot 4.7, Forward+, GDScript · **Target:** 4-player LAN (2v2), Bo5 · **Deliverable:** playable demo + 1–2 min trailer + 3–5 min gameplay video
@@ -72,12 +72,30 @@ review:
 
 Removal is scheduled in Phase 6 (§5) and is part of the definition of done for submission.
 
-### 0.4 Title
+### 0.4 Title — settled
 
-The moodboard ships a finished logo reading **TUMBANG PRESO** (with the "O" as a can top).
-That is now the display title. `project.godot` says "Tumbang Laro", the README and GDD say
-"Tumbang Laro: Isang Laban", the menu says "TUMBANG PRESO" — three names for one game. Adopt
-the logo's. See B-27.
+**TUMBANG PRESO**, the moodboard's finished lockup (with the "O" as a can top). B-27 logged three
+names for one game — `project.godot` saying "Tumbang Laro", the README and GDD saying "Tumbang
+Laro: Isang Laban", the menu saying "TUMBANG PRESO". As of the 2026-07-27 audit
+`application/config/name`, the README and the GDD all read **Tumbang Preso** and
+`grep -rn "Tumbang Laro"` over tracked files returns nothing but the historical ledger entries
+that describe the bug. **B-27 closed.**
+
+### 0.5 Both round-win modes stay in development
+
+**Option A (dents) and Option B (Downed → Seal) are both maintained, in parallel, to shippable
+quality.** This supersedes every earlier line in this document, in `Handoff.md` and in the GDD that
+framed it as "pick one and delete the loser" or "the team has to choose".
+
+Both are wired end to end behind `GameLaunch.game_mode`, both are offered on the main menu, both
+get playtested, and both get balanced. Neither may be deprioritised on the assumption that the
+other will win. The cost is real and is accepted with open eyes: every combat change has to be
+reasoned about twice (B-25), and `carriable.gd::can_be_reset_by` already carries a branch per mode.
+That is the price of keeping the option, not an argument against it.
+
+The **ship** decision — which mode the submitted demo actually leads with — is still open and
+belongs to the team, on their own timeline. It is tracked as `Checklist.md` item 1.5 and blocks
+nothing.
 
 ---
 
@@ -101,12 +119,12 @@ Legend: **[x]** built and working · **[~]** built but broken or unverified · *
 | `NetworkManager` (ENet host/join) | [x] | Connects fine. Runtime-verified this pass (headless `--host`/`--join`). |
 | Networked spawning + movement replication | [~] | Works; snaps (no interpolation — unchanged). Props' ability and `player_id` both fixed (B-04, B-30). Join index stabilized (B-21). |
 | Host-authoritative combat | [x] | B-02 fixed (ability replication). |
-| HUD (timer, Bo5, round, role, dent counter, downed flash) | [~] | Functional but placeholder-styled. Client score fixed for late joiners (B-38). Full visual rebuild still in §4. |
+| HUD (timer, Bo5 pips, round, role panels, dent counter, downed vignette, YOU card, crosshair) | [x] | **Rebuilt to §4.4 and verified by render** (U-1, v4.14–v4.16). Role-coloured team panels with three Bo5 pips each, framed timer with HIGHLIGHT under 15s and a scale pulse under 10s, LATA dent card, YOU card, FPP-only crosshair. Still missing the **charge / hold / reset-channel meters** — `carrier.gd` emits all three signals and nothing consumes them (`Checklist.md` 0.1). |
 | Main menu + mode picker | [x] | Back button added (B-34); Option A label fixed (B-33). |
 | Settings — rebindable, persistent controls | [x] | Guard/Dash now reads its action (B-16); duplicate bindings rejected (B-22). |
 | `ArenaCamera` follow/zoom | [x] | **Deleted (A-2, v4.8).** `Camera3D` node removed from `Main.tscn`; script moved to `tools/arena_camera.gd` as the future broadcast/spectator camera (GDD Section 6). B-03 and B-58 both closed. |
 | `HazardZone` slow-zone | [~] | B-17 fixed (null check, zone stacking, expiry cleanup). **The node has no visual at all and no map instances one** — it is invisible in game. Handoff §4 **Q-7**. |
-| Out-of-bounds / kill plane / arena walls | [x] | B-15/B-35 fixed: 4 walls + a `KillPlane` respawning to `CharacterBase.spawn_position`. |
+| Out-of-bounds / kill plane / arena walls | [~] | B-15/B-35 fixed: 4 walls + a `KillPlane` respawning to `CharacterBase.spawn_position`. **But the four `Bounds/Wall*` nodes are `StaticBody3D` + `CollisionShape3D` with no `MeshInstance3D` at all** — they are invisible. The arena edge renders as the floor meeting the sky. Functionally containing, visually absent. `Checklist.md` 2.2 replaces them with the moodboard's dressed boundary. |
 | Per-character camera rigs (FPP/TPP) | [x] | **DONE (v1.2, v2.0, v2.1).** `CameraRig.tscn` + `camera_rig.gd`, FPP for Persons and TPP for Props, derived from `is_person` per §0.1. The SpringArm3D local-+Z bake that aimed TPP away from its own character is fixed and measured (`forward · (character − camera)` now **+0.972**). B-60 (WASD rotating the driven unit's camera) and B-61 (the FPP self-hide making every Person invisible) both fixed. |
 | Round intermission / role-swap beat | [~] | The **functional** beat exists (B-37: `round_intermission_started`, a 3s gap, early world reset, a placeholder banner). The moodboard's animated role-swap card (§4.6) is not built. |
 | Team identity on `CharacterBase` | [x] | `team` (int) fixed before this pass; friendly-fire gated in `hitbox.gd`. Docs were stale saying this didn't exist. |
@@ -128,10 +146,10 @@ Legend: **[x]** built and working · **[~]** built but broken or unverified · *
 | Character model *systems* — swap, rebuild on role-change, FPP head-hide | [x] | **DONE (v1.5, v2.2, v2.3).** `CanVisual.tscn`, `TsinelasVisual.tscn`, 12-model Person roster in `assets/characters/persons/`, `character_visual.gd` owning all swaps and re-applying on every role change. **`[x]` means the plumbing is done, not the art — every model is still placeholder-grade geometry.** |
 | 3D art quality — Lata, Tsinelas, Persons, Eskinita | [ ] | Placeholder-grade today: a 6-cylinder Lata, a 4-box Tsinelas, Kenney CC0 mini-characters with one `idle` clip wired, a 40×40 box floor. The M-block replaces each with moodboard-accurate geometry. **Editing `assets/` and the model scenes is lifted for this queue (the prior "out of scope" note is retired).** |
 | Character scenes (`scenes/characters/visuals/`) | [x] | Built and wired through `CharacterVisual.apply(is_person, is_can, team)`. |
-| Maps — Eskinita, Bayan Plaza | [ ] | Names only. One 40×40 box floor, now with walls + a kill plane (B-15/B-35). |
+| Maps — Eskinita, Bayan Plaza | [ ] | Names only. One 40×40 box floor with **invisible** bounds and a kill plane. No `scenes/maps/*.tscn` exists. No base circle, no throwing line, no team markings, no skybox (`Main.tscn` ships a flat `background_color`). **The single biggest gap between this build and the moodboard.** |
 | Map hazards (jeepney lane, mud, carabao) | [ ] | `HazardZone` is the reusable piece (B-17 fixed) but it renders nothing and no map places one — Handoff §4 **Q-7** does the first visible test zone. |
-| Art, animation, VFX | [~] | Character models are in (row above). **Animation is not:** Kenney's rig ships 32 clips and only `idle` is wired, so units slide around in their idle pose. No VFX — no particle system exists anywhere in the repo yet (Handoff §4 **Q-8**). |
-| Audio | [ ] | Nothing. A first-pass universal hit-feedback flash exists (B-44) — sound, hitstop, particles and screenshake are still open; the last two are Handoff §4 **Q-8**. |
+| Art, animation, VFX | [~] | **Correction, 2026-07-27: locomotion IS wired.** `character_visual.gd::_play_locomotion` selects idle/walk/sprint from horizontal velocity, and `play_action()` fires one-shot throw/bump/grab clips. The repeated claim that "only `idle` of 32 is wired" is stale — that was M-5 step 4 and it shipped. VFX: hit flash (B-44), impact particles and camera shake (Q-8) all exist. **Hitstop and audio are still open.** |
+| Audio | [ ] | **Nothing. Not one `AudioStreamPlayer` anywhere in the repo** — verified by grep, 2026-07-27. Its own workstream and its own brief (`Agent_Prompts.md`); `Checklist.md` 4.1. A lata taking a direct hit in silence reads as a bug to a judge no matter how good the mesh is. |
 | UI theme / design system | [x] | **DONE (v1.3).** `scripts/ui/ui_theme.gd` (`UiTheme` constants) + the generated `Theme` resource, applied project-wide. This is what fixed the invisible-button contrast trap (B-34) at the root rather than one control at a time. Individual **screens** are still placeholder-styled — see §4.3. |
 | Broadcast/spectator cam | [ ] | GDD Section 6 stretch. `ArenaCamera` becomes this (§3.4). |
 | Trailer + demo video | [ ] | |
@@ -219,7 +237,7 @@ CharacterBase (CharacterBody3D)
 ├── Hurtbox / Hitbox
 ├── Nameplate (Node3D)           ← §4.5
 └── CameraRig (Node3D)           ← scripts/systems/camera_rig.gd
-    ├── FppPivot (Node3D)        y ≈ 1.55 (eye height)
+    ├── FppPivot (Node3D)        y = 0.45 (MEASURED eye height — see below)
     │   └── FppCamera (Camera3D) near = 0.05, fov = 95
     └── TppArm (SpringArm3D)     y ≈ 1.2, x-rot −15°, spring_length = 4.5,
         │                        collision_mask = world layer only
@@ -253,6 +271,14 @@ func _ready() -> void:
   (`CharacterBase.tscn:11`) and is already replicated. It has simply never been written to.
 - **Pitch clamp:** −80° … +70°. The low end has to be generous: a Person in FPP has to look
   down at a knee-height Can to throw at it.
+- **Eye height is MEASURED, not assumed — `FppPivot.y = 0.45`.** It sat at `1.55` from the day the
+  rig was written until 2026-07-27, which was a guess at "eye height on a 1.6-unit capsule" made
+  before any Person model existed. `CharacterBase`'s origin is the **centre** of that capsule, so
+  its floor is at `-0.8`; the Kenney Person, scaled `PERSON_SCALE` (2.38) and dropped to that
+  floor, actually occupies `-0.800 .. +0.076` (body) and `+0.017 .. +0.798` (head). `1.55`
+  therefore parked the camera **0.75 units above the top of its own head** and first person
+  rendered nothing but sky — this is the whole of "you can't see your arms in FPP" (B-78).
+  Re-measure with `tools/render_probe.gd` before changing it again; do not adjust it by eye.
 - **FPP self-hide:** set `Visual.cast_shadow = SHADOW_CASTING_SETTING_SHADOWS_ONLY` — do not
   `hide()` it. Losing your own shadow in FPP destroys the ground read, and other peers still
   need to see the mesh.
@@ -646,8 +672,20 @@ Spawn points must come from the **map**, not from `main.gd`'s hardcoded `SPAWN_P
 
 ## 5. Build order
 
-Ordered so each phase de-risks the next. Phase 0 is blocking: nothing else matters until a LAN
-match starts, is playable, can be won, and rolls into the next round.
+> ### ⚠️ This section is HISTORY, not the plan.
+>
+> **The live, ordered, tickable plan is [`Checklist.md`](Checklist.md)** — one flat list from where
+> the project stands right now to a submitted entry, in strict execution order, with the model each
+> item is routed to. Go there to find out what is next.
+>
+> The phases below are kept as the record of how the build was sequenced and which bug closed
+> which exit criterion. They are **not** maintained as a status board any more; three documents
+> each keeping their own copy of "what is done" is exactly how this project kept shipping plans
+> that described work already finished. Where a checkbox here disagrees with `Checklist.md`, the
+> checklist is right.
+
+Ordered so each phase de-risks the next. Phase 0 was blocking: nothing else mattered until a LAN
+match started, was playable, could be won, and rolled into the next round.
 
 ### Current execution phase — PR review feedback (`Handoff.md` §4, Q-1 → Q-10)
 
@@ -878,10 +916,15 @@ adds latency and packet loss to a movement layer with no interpolation and no re
 that forces the shared-screen fallback, you want to know weeks before the deadline. Book a
 session with four laptops.
 
-### Ownership
+### Ownership — the single canonical table
 
-Still blank. GDD Section 8 has the same table and it is also still blank. This is the third
-document to ask.
+**This is the only ownership table in the project.** `Handoff.md` and GDD Section 8 used to carry
+their own blank copies; both now point here instead. Three documents each asking the same unanswered
+question was itself the problem — it made the gap look like a formatting quirk rather than a real
+one.
+
+**It is still blank, and it is no longer just hygiene: submission Form 01 (Game Development Team
+Roles) is literally this table.** `Checklist.md` 6.6.
 
 | Workstream | Owner |
 |---|---|
@@ -965,3 +1008,271 @@ is deleted before submission — see §0.3 and the checklist in §3.5.5.**
 Deeper reading: docs.godotengine.org — "Your first 3D game", "High-level multiplayer"
 (`MultiplayerSpawner` / `MultiplayerSynchronizer`), "GUI skinning and themes" (for §4.7), and
 `SpringArm3D` (for §3.1).
+
+---
+
+# APPENDIX — Game Design Document (2v2)
+
+*(was `docs/Dev_Plan.md`)*
+
+The rules of the game itself, as opposed to the plan for building it. Still authoritative on game design intent; where it describes *state*, `Checklist.md` wins.
+
+## TUMBANG PRESO 🥫🩴
+#### Our 2v2 plan for Gear Up NCR — Esports Game Dev Challenge
+
+> ## ⚠️ SUPERSEDED IN PART — read this first (2026-07-27)
+>
+> **The Tsinelas is no longer a character that walks around. It is a thrown,
+> retrieved object.** Agreed with the human as **Option B** of the Task 0
+> diagnosis; the reasoning, the rejected alternatives and the implementation are
+> in [`Handoff.md`](Handoff.md) §0.7 and §4's **T-block**.
+>
+> Why: this document specified a Slipper that moves under its own power, so
+> nothing was ever thrown, nothing landed, nothing was picked up, and there was
+> no retrieval scramble — the entire tension of the street game was absent, by
+> design rather than by bug. The human's verdict was *"this doesn't feel like
+> tumbang preso yet."* They were right.
+>
+> Note the **moodboard already agreed with them.** Its THE SLIPPER card is the
+> only one of the four with **no input badge**, and the three states it
+> illustrates are *in-hand ready → thrown trajectory → retrieval highlight*
+> (`Dev_Plan.md` §4.1). The art direction has described a thrown slipper the
+> whole time; this document is the one that was out of step.
+>
+> **What changed:** Sections 2 (Player characters row), 3 (round flow) and 4
+> (Tsinelas Class specials). Everything else — 2v2, 1 Person + 1 Prop, Bo5,
+> role swap, 90s rounds, stun-only, the Can class, the maps — stands unchanged.
+> Inline markers below say which is which.
+
+Hey team! Sending this over so we're all building off the same page for the rest of the
+sprint. This covers the core concept, what's locked in, and a couple things I still want your
+take on before we commit. Read through, drop thoughts, let's move fast.
+
+**Engine:** Godot 4.x | **Theme:** Philippine Games and Sports | **Format:** 2v2 LAN
+
+---
+
+### 1. The Pitch
+
+Each team is **one person + one living object** — Team 1 is a **Player + a Can**, Team 2 is
+a **Player + a Tsinelas**, and both units on a team can move and act. A 2v2 arena brawler
+where the classic street game becomes a full-contact sport: the Can side defends its turf
+while the Tsinelas side tries to knock it flat, then we swap sides and do it again. Low-poly
+Filipino locations — kalye, probinsya, palengke. Built to look good live on demo day.
+
+---
+
+### 2. What We've Locked In
+
+| Decision | Answer |
+|---|---|
+| Player characters | Each team = **1 Person + 1 object**. Team 1: Player controls a **Person**, teammate controls the **Can**. Team 2: Player controls a **Person**, teammate controls the **Tsinelas**. Both units per team are player-controlled and can move. ⚠️ **AMENDED — the Tsinelas no longer walks around under its own power.** It is carried and thrown by its team's Person, and while loose on the ground its player can only crawl it slowly home. It is still a player-controlled unit with its own camera (so the 2v2 headcount, the 1 Person + 1 Prop structure and the standing camera directive are all unchanged) — it is simply an object that gets thrown rather than a fighter that charges in. See `Handoff.md` §0.7. |
+| Match structure | **Round-based**, teams swap Attacker/Defender role each round, **Best of 5** |
+| Camera/Genre | **Full 3D, low-poly, third-person** |
+| Multiplayer | **LAN**, same wifi, different devices (Godot ENet, host + join by local IP) |
+| Roster size | **Small roster** — 2-3 character types per class, one unique special each |
+| Can vs. Tsinelas contact | **Knockback/stun only — no permanent elimination.** Keeps rounds fast, keeps every round comeback-able instead of snowballing off one tag. |
+
+---
+
+### 3. How a Match Actually Works
+
+- Each round: **Team A (Person + Can)** defends vs **Team B (Person + Tsinelas)** attacks. Roles swap next round.
+- **Round timer:** 90 seconds.
+- **Match winner:** first team to 3 round wins (Bo5).
+
+#### The beat-by-beat loop ⚠️ ADDED — this was owed and missing
+
+Section 3 described the round's *bookends* and never its middle, which is why the doc could stay
+technically correct while the game did not read as tumbang preso. The loop, as built:
+
+1. **The attacking Person carries the tsinelas.** Walk up, hold the ability button to **charge**,
+   release to throw it on a real ballistic arc, aimed with the camera. Arc, gravity, steer and
+   spin all come from that slipper's `ThrowProfile` — this is where the three Tsinelas identities
+   live now (see Section 4).
+2. **The slipper lands loose.** It is now an object on the ground, not a fighter.
+3. **The retrieval scramble — the tension of the street game.** Either the attacking Person runs
+   out and grabs it, **or** the slipper's own player crawls it home slowly and exposed
+   (`CRAWL_SPEED_SCALE`). Both routes are taggable by the defending Person.
+4. **The taya defends actively, from a fixed post.** The Can and its Taya are confined to a
+   3-unit radius around the base circle for the whole round (`CharacterBase.CONFINEMENT_RADIUS`)
+   — they cannot chase the attacker back to the throwing line. Within that radius: tag the
+   attacker to end the round outright (see below), body-block the throw, and when the lata does
+   go down, **hold `grab` beside it to run the Lata Reset Channel** and stand it back up (~1.5s,
+   cancelled if you are tagged out of it, own team only, hands must be empty). ⚠️ **This is B-46,
+   agreed as in-scope in `Handoff.md` §0.7 and built at v4.3.** It was on the moodboard's THE
+   DEFENDER card the whole time and in neither this document nor the code until then. Reaching the
+   can and channelling under pressure is the whole job now — the confinement radius is what stops
+   that job from also including chasing the attacker down.
+5. **The round ends** on the win condition for whichever mode is running, or on the 90s timer.
+
+#### Round-win mechanic — both built, both maintained ⚠️ AMENDED (2026-07-28)
+
+**Both options are now fully implemented and both stay in active, equal development.** They live
+behind `GameLaunch.game_mode` and are selectable from the main menu. This is no longer "keeping
+options open until we decide" — it is a deliberate choice to carry both to shippable quality,
+playtest both, and balance both. Neither is a prototype of the other. Option A is currently
+**parked** — correct and untouched, but deprioritized behind Option B's rewrite below; see
+`Checklist.md` for the exact status.
+
+The **ship** decision — which one the submitted demo leads with — is still open and belongs to the
+team, on their own timeline. It is tracked as item 1.5 in [`Checklist.md`](Checklist.md) and it
+blocks nothing. Any older line in this or any other doc saying "pick one and delete the loser" is
+superseded by this paragraph.
+
+**Option A — Stock/Life (dents):** Cans have a health bar. Slippers win the round by fully
+denting a Can. Cans win by the timer running out, or by knocking Slippers out of bounds a
+set number of times (the ring-out win path, `RoundManager.register_ring_out()`).
+
+**Option B — Capture the Base, rewritten 2026-07-28 for a faster, more symmetric read closer to
+the street game.** A circle marks the Can's home base, and the Can plus its Taya are confined to
+a radius around it (`CharacterBase.CONFINEMENT_RADIUS`, currently 3 units) for the whole round —
+defense cannot leave its post to chase the attacker down. Three independent win paths, whichever
+comes first:
+
+- **Team can wins by tagging the attacker.** Any hit from the Taya landing on the attacking
+  Person — the always-on Bump or the Tag ability, both resolve through the same code path —
+  ends the round for the Can side immediately. This is new; a Person hit used to be stun-only
+  flavour with no round effect.
+- **Team slipper wins once a fall goes unrecovered.** A solid hit (`forces_downed`) knocks the
+  Can into a **Downed** state with a ~2 second self-right window, same as before — but the round
+  now auto-ends the instant that window lapses without a self-right or a completed Lata Reset
+  Channel. No attacker has to walk up and manually "seal" it any more; falling and staying down
+  is sufficient on its own.
+- **Team slipper wins on a 5-fall cap, independent of the above.** Every time the Can goes Downed
+  this round counts toward a running total, whether or not the Taya recovers it — reaching 5
+  ends the round for team slipper even if that particular fall would have been saved in time.
+  Stops a Taya who can save every individual fall from making a round unloseable.
+- **Team can wins by surviving to the 90s timer**, same as always, if none of the above happens
+  first.
+
+Both options keep our **stun-only, no permanent elimination** rule for Tsinelas intact —
+whether they're bounced off a Can or knocked out of bounds, they're straight back in the
+fight either way, not out for the round.
+
+**Build note — this held up, and it is why both modes are affordable.** The round-win check is its
+own system (`RoundManager`, watching `state_changed` / `dents_changed` on a registered list of
+Cans), decoupled from movement, combat and hit registration. Because of that, running both modes
+costs one `GameLaunch.game_mode` branch in `hitbox.gd` and one in `carriable.gd::can_be_reset_by`,
+plus the tag-to-win branch added directly in `hitbox.gd` for Option B — not two parallel
+implementations. Keep it that way: no round-win DECISION logic in `character_base.gd`, only the
+mechanical state transitions (confinement, auto-seal) it always owned.
+
+**None of Option B's new numbers (3-unit confinement radius, 5-fall cap) have been played yet.**
+First guesses, same as every other tuning constant in this project — see `Checklist.md` for the
+exact item and what's still unverified.
+
+---
+
+### 4. Roster (draft)
+
+Each team pairs one **Person** with one **Can** (Team 1) or **Tsinelas** (Team 2) — both
+units are player-controlled and mobile. Shared basics for everyone: **Move**, **Bump**
+(light melee, small stagger, no cooldown), **Guard/Dash** (Cans block, Tsinelas dash-evade),
+one **Special Ability** per character. Person units use a separate, simpler moveset (TBD —
+likely Move + Bump + an assist/support action to help their Can or Tsinelas teammate) since
+they're the new addition to the roster.
+
+#### 🥫 Can Class (Defense)
+| Character | Vibe | Special |
+|---|---|---|
+| **Sardinas** | Classic tin can, balanced | *Quick Stand* — instantly self-rights from Downed once/round |
+| **Palayok** | Clay pot, provincial, tanky/slow | *Shatter Trap* — downed state leaves a hazard patch that slows nearby attackers |
+| **Bilao** | Festive woven tray, light/fast | *Spin Guard* — knockback pulse pushes attackers away |
+
+#### 🩴 Tsinelas Class (Offense) — ⚠️ AMENDED
+
+**These are no longer buttons the slipper presses. They are how each slipper
+FLIES when its Person throws it** — see `throw_profile.gd` and the three
+`throw_*.tres` resources. The identities survive intact; only the delivery
+changed. A slipper's escape tool while loose is the Prop-side Dash it already
+shares with every Tsinelas, not a second self-propelled attack.
+
+| Character | Vibe | Throw identity |
+|---|---|---|
+| **Dyaryo** | Everyday rubber slipper, balanced | *Bagsak Bomb* — **the lob.** High arc (30°), heavy gravity, wide impact radius. Comes down hard and bursts. |
+| **Bakya** | Wooden clog, provincial, heavy/slow | *Bakya Bash* — **the heavy.** Lowest arc (8°), heaviest gravity, barely steerable. Keeps `forces_downed`: a direct hit knocks the lata flat outright. |
+| **Havaianas** | Beach flip-flop, agile | *Flick Dash* — **the line drive.** Fastest launch, flattest arc, most mid-air steer, and the only profile that does **not** force Downed — a poke that sets up rather than finishes. |
+
+3×3 matchups, regional flavor built in without needing a huge art pipeline.
+
+---
+
+### 5. Maps — team, weigh in here
+
+Leaning toward locking these two:
+
+| Map | Setting | Hazard |
+|---|---|---|
+| **Eskinita** | Urban side-street, sari-sari store backdrop | Jeepney/tricycle passes through a lane every ~20s |
+| **Bayan Plaza** | Barangay plaza, fiesta banners | Mud patches (slow zone), wandering carabao as movable obstacle |
+
+**Palengke** (wet floor patches, pushable vendor carts) as a stretch goal only if we have
+time after the core loop is solid.
+
+If anyone's got a stronger location in mind — Baguio, Boracay, Banaue, a jeepney terminal,
+whatever — speak up now, otherwise this is what we're building toward.
+
+---
+
+### 6. Esports/Spectator Layer
+
+- HUD: current round, Bo5 tracker, timer, who's Attack vs Defense this round
+- Clear visual flash/color on the "Downed" state so it reads instantly on stream/live demo
+- Third-person cam per player, maybe a simple auto-follow "broadcast cam" for recording our
+  3-5 min gameplay video
+
+---
+
+### 7. Tech Plan
+
+- Godot 4.x, high-level multiplayer (`ENetMultiplayerPeer`) — LAN only, host creates server,
+  rest join by local IP. No internet matchmaking needed.
+- **Fallback trigger:** if LAN sync isn't stable and fun by roughly the halfway point of our
+  remaining time, we pivot to single-PC shared-screen/split-input for the same 2v2 loop.
+  Building player input as its own decoupled layer from day one so this swap is cheap if we
+  need it.
+- Core systems: movement/physics per class, Bump + Special ability w/ cooldowns, Downed/
+  self-right state machine, round timer + Bo5 match manager, hazard triggers per map, HUD.
+
+---
+
+### 8. Who's Owning What
+
+⚠️ **The ownership table lives in [`Dev_Plan.md`](Dev_Plan.md) §6 and nowhere else.** It used to be
+duplicated here and in `Handoff.md`, three blank copies of the same unanswered question, which made
+the gap look like a formatting quirk instead of a real one. One canonical copy — fill that one in.
+
+It is not optional paperwork: **submission Form 01 (Game Development Team Roles) is literally this
+table.**
+
+---
+
+### 9. Submission Checklist
+
+- [ ] Form 01 — Game Development Team Roles
+- [ ] Form 02 — Team Waiver and Declaration of Originality (signed, all members)
+- [ ] Form 03 — Asset and AI Usage Disclosure (if we use any AI/external assets — disclose it)
+- [ ] Template 01 — Game Title & Synopsis (500 words max)
+- [ ] Game Trailer (1-2 min, loopable)
+- [ ] Prototype/Demo video (3-5 min gameplay, .mp4, narrated or captioned)
+- [ ] Everything uploaded through the official submission link
+
+---
+
+### 10. Settled since this doc was written
+
+- **Maps: locked.** **Eskinita + Bayan Plaza**, Palengke as a stretch only. Nobody pushed for an
+  alternative across four passes, so this is the answer. Bayan Plaza is explicitly the first thing
+  to cut if time runs short — see the cut list at the bottom of [`Checklist.md`](Checklist.md).
+- **Theme stretch: yes, take it.** We lead on **Philippine Games and Sports** and add
+  **Circular Economy** as the secondary angle in the synopsis. The premise is literally about
+  reusing everyday objects — a tin can and a rubber slipper — as sports equipment, so it costs two
+  sentences and no build work. Written into the synopsis plan (`Checklist.md` 6.5).
+- **Title: TUMBANG PRESO**, the moodboard's lockup. B-27 closed; the old "Tumbang Laro: Isang
+  Laban" is gone from every tracked file.
+
+**What is still genuinely open** is now kept in one place — `Handoff.md` §5. Today that is: the
+display typeface, whether the Person gets its own ability roster, prop scale, the ownership table,
+and which round-win mode the demo leads with.
+
