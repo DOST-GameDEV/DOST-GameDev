@@ -15,6 +15,11 @@ uniform vec4 rim_color : source_color = vec4(1.0, 1.0, 1.0, 1.0);
 uniform float rim_width : hint_range(0.0, 16.0) = 3.0;
 uniform float brightness : hint_range(0.5, 2.0) = 1.0;
 
+// COLOR enters fragment() already holding modulate * texture — it is the final
+// colour, not a spare register. Writing `COLOR = tex * COLOR` here squared the
+// texture and crushed every pennant to near-black. The texture fetch below is
+// only used to sample the alpha neighbourhood for the rim; the base colour is
+// COLOR itself.
 void fragment() {
 	vec4 tex = texture(TEXTURE, UV);
 	vec2 px = TEXTURE_PIXEL_SIZE * rim_width;
@@ -30,7 +35,5 @@ void fragment() {
 	neighbour = min(neighbour, texture(TEXTURE, UV + vec2(-px.x, px.y)).a);
 
 	float rim = clamp(tex.a - neighbour, 0.0, 1.0) * rim_alpha;
-	tex.rgb = mix(tex.rgb * brightness, rim_color.rgb, rim);
-
-	COLOR = tex * COLOR;
+	COLOR.rgb = mix(COLOR.rgb * brightness, rim_color.rgb, rim);
 }

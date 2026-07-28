@@ -23,6 +23,17 @@ class_name UiTheme
 
 const DISPLAY_FONT_PATH: String = "res://assets/ui/fonts/DarumadropOne-Regular.ttf"
 
+## Darumadrop One is a Japanese face: it reserves a deep descent for kana, so its
+## ascent:descent split is roughly 4:1. Godot centres the *line box*, not the
+## ink, which leaves an all-caps Latin string sitting about 13% of the font size
+## below the optical centre of whatever it is centred in — measured at 40/54/88px
+## as -0.125/-0.130/-0.131. Expressed here as a fraction of line height
+## (0.130 / 1.475) and applied once via FontVariation, so every Label, Button and
+## LineEdit in the project is optically centred instead of each one carrying its
+## own nudge. Negative lifts the ink: a positive offset pushes the baseline down,
+## which measured as exactly double the original error.
+const BASELINE_OFFSET: float = -0.088
+
 # --- Palette (docs/Handoff.md item 15) ----------------------------------------
 const INK: Color = Color("040838")        ## near-black navy: text, borders, pressed fills
 const PANEL: Color = Color("e1e5e8")      ## light neutral: screen background
@@ -56,7 +67,7 @@ const FONT_SIZE_TIMER: int = 44
 static func build() -> Theme:
 	var theme := Theme.new()
 	theme.default_font_size = FONT_SIZE_BODY
-	theme.default_font = load(DISPLAY_FONT_PATH)
+	theme.default_font = display_font()
 
 	_style_button(theme)
 	_style_inputs(theme)
@@ -64,6 +75,14 @@ static func build() -> Theme:
 	_style_labels(theme)
 	_register_variations(theme)
 	return theme
+
+## The display face, baseline-corrected. See BASELINE_OFFSET — without this the
+## whole UI's text reads as sitting low in its box.
+static func display_font() -> FontVariation:
+	var face := FontVariation.new()
+	face.base_font = load(DISPLAY_FONT_PATH)
+	face.baseline_offset = BASELINE_OFFSET
+	return face
 
 ## A card/button face: flat fill, INK border, rounded, optionally with a
 ## full-height accent bar down the left edge (the moodboard's role-colour marker).
