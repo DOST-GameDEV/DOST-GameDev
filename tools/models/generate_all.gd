@@ -28,12 +28,17 @@ const REVOLVE_SEGMENTS: int = 16
 
 # --- Lata (the can) -----------------------------------------------------------
 #
-# Dimensions match the CanVisual.tscn primitive stack this replaces (~1.13 tall,
-# 0.34 radius) so CharacterBase's capsule, its CollisionShape3D and
-# CharacterVisual._align_to_capsule_floor() all keep working untouched. Changing
-# the silhouette is this task's job; changing the footprint is not.
-
+# ⚠️ Art_Direction.md §1 — the proportion audit. This profile used to build a can
+# 1.125 units tall against a real 0.12m can (9.3x oversized) — taller than the
+# 0.89-unit monobloc chair standing next to it. LATA_SCALE brings it down to the
+# audit's target of 0.30x, landing at ~0.34 units tall, WITHOUT touching a single
+# profile coordinate below: it is applied as a post-deform `transform` on every
+# add_revolve call (the 2.1b-0 parameter), so the dent maths, which is tuned
+# against the UNSCALED radius/y values, is completely unaffected. CharacterBase's
+# collision no longer assumes a fixed prop footprint at all — see
+# character_base.gd::_apply_role_collision() — so this is safe to change alone.
 const LATA_RADIUS: float = 0.34
+const LATA_SCALE: float = 0.30
 func _initialize() -> void:
 	_build_lata("lata", [])
 	# Option A's three dent stages. Fixed angles and depths, never random — a
@@ -85,6 +90,12 @@ func _build_lata(file_name: String, dents: Array) -> void:
 		deform = func(radius: float, y: float, angle: float) -> float:
 			return _apply_dents(radius, y, angle, dents)
 
+	# LATA_SCALE applied as a post-deform transform (2.1b-0), not by touching the
+	# profile coordinates: `deform` still runs against the UNSCALED radius/y, so
+	# every dent number above stays valid at its originally-tuned depth, and only
+	# the final emitted vertex shrinks. See the header comment above this function.
+	var scale_xf := Transform3D.IDENTITY.scaled(Vector3.ONE * LATA_SCALE)
+
 	# Base: a concave dome lifted off the floor by a crimp ring, which is what
 	# makes a can read as a can rather than as a tube — the contact shadow sits
 	# on a ring, not a disc.
@@ -93,26 +104,26 @@ func _build_lata(file_name: String, dents: Array) -> void:
 		Vector2(0.180, 0.025),
 		Vector2(0.265, 0.000),
 		Vector2(0.315, 0.035),
-	]), REVOLVE_SEGMENTS, "ink", true, deform)
+	]), REVOLVE_SEGMENTS, "ink", true, deform, scale_xf)
 
 	# Lower wall, flaring from the crimp out to full radius.
 	writer.add_revolve(PackedVector2Array([
 		Vector2(0.315, 0.035),
 		Vector2(LATA_RADIUS, 0.075),
 		Vector2(LATA_RADIUS, 0.330),
-	]), REVOLVE_SEGMENTS, "defense", true, deform)
+	]), REVOLVE_SEGMENTS, "defense", true, deform, scale_xf)
 
 	# Label band.
 	writer.add_revolve(PackedVector2Array([
 		Vector2(LATA_RADIUS, 0.330),
 		Vector2(LATA_RADIUS, 0.680),
-	]), REVOLVE_SEGMENTS, "highlight", true, deform)
+	]), REVOLVE_SEGMENTS, "highlight", true, deform, scale_xf)
 
 	# Upper wall.
 	writer.add_revolve(PackedVector2Array([
 		Vector2(LATA_RADIUS, 0.680),
 		Vector2(LATA_RADIUS, 0.950),
-	]), REVOLVE_SEGMENTS, "defense", true, deform)
+	]), REVOLVE_SEGMENTS, "defense", true, deform, scale_xf)
 
 	# Shoulder, rolled rim, and the recessed lid. The rim rolls OVER: y goes up
 	# to 1.125 and then back down to 1.100 as the profile turns inward, which is
@@ -125,7 +136,7 @@ func _build_lata(file_name: String, dents: Array) -> void:
 		Vector2(0.272, 1.125),
 		Vector2(0.255, 1.100),
 		Vector2(0.000, 1.115),
-	]), REVOLVE_SEGMENTS, "ink", true, deform)
+	]), REVOLVE_SEGMENTS, "ink", true, deform, scale_xf)
 
 	# Smooth by angle, always — not only for the dented variants. The analytic
 	# normals are per-sub-profile, so without this the boundary rings between the
@@ -166,9 +177,19 @@ func _apply_dents(radius: float, y: float, angle: float, dents: Array) -> float:
 
 # --- Tsinelas (the slipper) ---------------------------------------------------
 #
-# Orientation: character faces -Z; toe is at Z = -0.675, heel at Z = +0.675.
-# Length: 1.35 units (centered, Z in [-0.675, +0.675]). X is width.
+# Orientation: character faces -Z; toe is at Z = -0.675, heel at Z = +0.675 in
+# the UNSCALED profile below (X is width). Every add_extrude/_strap_band call
+# applies TSINELAS_SCALE, so the emitted mesh is 0.32x that: length 1.35 -> 0.432.
 #
+# ⚠️ Art_Direction.md §1 — the proportion audit. TSINELAS_SCALE is not a fresh
+# number: `character_visual.gd::TSINELAS_CARRY_SCALE` was already 0.32, applied
+# only while the slipper was CARRIED, and arrived at independently by rendering
+# — 0.32 x 1.35 = 0.432 is exactly the audit's target. The carried slipper was
+# ALREADY the right size; only the loose and flying ones (mesh at native scale
+# 1.0) were the outliers. Baking 0.32 in here natively and deleting
+# TSINELAS_CARRY_SCALE / _scale_while_carried() / CARRY_SCALE_LERP from
+# character_visual.gd (done in the same pass) turns a per-frame runtime hack
+# into nothing: the mesh just IS the right size in every carry state.
 # ⚠️ B-81 — WHY THE SOLE IS NOT BLUE, so nobody "restores" it.
 #
 # The sole used to be UiTheme.DEFENSE, and Art_Direction.md §2's palette
@@ -276,11 +297,22 @@ func _build_viewmodel_arm() -> void:
 ## double-winding trick used for the building windows, because this band is
 ## chunky enough that a hidden inverted face would also break the M-4 outline
 ## pass (an inverted hull on inverted geometry produces no outline at all).
+## `scale`, Art_Direction.md §1: `add_extrude` gets a `transform` param for this
+## (2.1b-0), but this function builds its band from raw `add_quad` calls, which
+## has none — so the control points AND the cross-section (HALF_WIDTH/HALF_THICK)
+## are scaled directly here instead. Without scaling the cross-section too, a
+## shrunk strap arc with an unscaled ~0.03 band width would come out relatively
+## fatter than before, not merely smaller.
 func _strap_band(writer: ObjWriter, start: Vector3, control: Vector3,
-		finish: Vector3) -> void:
+		finish: Vector3, scale: float = 1.0) -> void:
 	const SEGMENTS: int = 7
 	const HALF_WIDTH: float = 0.032
 	const HALF_THICK: float = 0.017
+	var half_width := HALF_WIDTH * scale
+	var half_thick := HALF_THICK * scale
+	start *= scale
+	control *= scale
+	finish *= scale
 
 	var rings: Array[Array] = []
 	for i in range(SEGMENTS + 1):
@@ -298,10 +330,10 @@ func _strap_band(writer: ObjWriter, start: Vector3, control: Vector3,
 		var right := tangent.cross(Vector3.UP).normalized()
 		var up := right.cross(tangent).normalized()
 		rings.append([
-			point + right * HALF_WIDTH + up * HALF_THICK,
-			point - right * HALF_WIDTH + up * HALF_THICK,
-			point - right * HALF_WIDTH - up * HALF_THICK,
-			point + right * HALF_WIDTH - up * HALF_THICK,
+			point + right * half_width + up * half_thick,
+			point - right * half_width + up * half_thick,
+			point - right * half_width - up * half_thick,
+			point + right * half_width - up * half_thick,
 		])
 
 	for i in range(SEGMENTS):
@@ -317,12 +349,15 @@ func _strap_band(writer: ObjWriter, start: Vector3, control: Vector3,
 	writer.add_quad(first[3], first[2], first[1], first[0], "strap")
 
 
+const TSINELAS_SCALE: float = 0.32
+
 func _build_tsinelas() -> void:
 	var writer := ObjWriter.new("Tsinelas")
 	writer.set_material("sole", UiTheme.IMPACT)
 	writer.set_material("midsole", UiTheme.IMPACT.darkened(0.34))
 	writer.set_material("strap", UiTheme.HIGHLIGHT)
 	writer.set_material("post", UiTheme.INK)
+	var scale_xf := Transform3D.IDENTITY.scaled(Vector3.ONE * TSINELAS_SCALE)
 
 	# --- Sole ---
 	# 12-point CCW outline in (x, z) — side walls face outward, caps correct.
@@ -348,8 +383,8 @@ func _build_tsinelas() -> void:
 	var footbed_outline := PackedVector2Array()
 	for p in sole_outline:
 		footbed_outline.append(p * 0.93)
-	writer.add_extrude(sole_outline, 0.0, 0.045, "midsole")
-	writer.add_extrude(footbed_outline, 0.045, 0.10, "sole")
+	writer.add_extrude(sole_outline, 0.0, 0.045, "midsole", scale_xf)
+	writer.add_extrude(footbed_outline, 0.045, 0.10, "sole", scale_xf)
 
 	# --- Toe post ---
 	# Small cylindrical knob between the toes, sitting on top of the sole.
@@ -364,7 +399,7 @@ func _build_tsinelas() -> void:
 		var angle: float = TAU * float(i) / float(post_segs)
 		post_outline.append(Vector2(post_cx + post_r * cos(angle),
 		                            post_cz + post_r * sin(angle)))
-	writer.add_extrude(post_outline, 0.10, 0.165, "post")
+	writer.add_extrude(post_outline, 0.10, 0.165, "post", scale_xf)
 
 	# --- Y-straps ---
 	# ⚠️ THESE USED TO BE FLAT QUADS AT strap_y = 0.10 — which is EXACTLY the top
@@ -382,9 +417,9 @@ func _build_tsinelas() -> void:
 	# the footbed is inset a further 7%, so anchoring at +/-0.235 hung both straps
 	# off the edge in mid-air. +/-0.163 lands them on the footbed.
 	_strap_band(writer, Vector3(0.163, 0.09, 0.01),
-		Vector3(0.132, 0.245, -0.26), Vector3(0.0, 0.170, -0.505))
+		Vector3(0.132, 0.245, -0.26), Vector3(0.0, 0.170, -0.505), TSINELAS_SCALE)
 	_strap_band(writer, Vector3(-0.163, 0.09, 0.01),
-		Vector3(-0.132, 0.245, -0.26), Vector3(0.0, 0.170, -0.505))
+		Vector3(-0.132, 0.245, -0.26), Vector3(0.0, 0.170, -0.505), TSINELAS_SCALE)
 
 	writer.recalculate_normals(40.0)
 	writer.write(OUTPUT_DIR + "tsinelas")
