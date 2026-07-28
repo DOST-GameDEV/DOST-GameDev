@@ -21,6 +21,14 @@ const REFRESH_INTERVAL: float = 0.15
 ## landing on a 3D mesh, this one is a 2D meter filling back up; no reason
 ## the two have to move in lockstep just because they're both "a flash".
 const READY_FLASH_DURATION: float = 0.2
+## Checklist 0.1's remaining half — the moodboard's "charged throw (glow)" on
+## THE ATTACKER card. This is the HOOK, not the treatment: if the design lane
+## assigns a `ShaderMaterial` to `charge_bar` (its `CanvasItem.material`, set in
+## the editor or from code — nothing here creates one), this uniform is kept
+## live at 0..1 for as long as charging is active and snapped to 0 the instant
+## it stops. No material means no-op; `set_shader_parameter` on a plain
+## `StyleBoxFlat` fill is a silent no-op path, this is the actual node-level one.
+const CHARGE_SHADER_PARAM: StringName = &"charge_ratio"
 
 @onready var card: PanelContainer = %Card
 @onready var class_label: Label = %ClassLabel
@@ -190,7 +198,14 @@ func _on_charge_changed(power: float) -> void:
 	_charging = power >= 0.0
 	if _charging:
 		charge_bar.value = power * charge_bar.max_value
+	_set_charge_shader_param(power if _charging else 0.0)
 	_update_row_visibility()
+
+## The hook itself — see CHARGE_SHADER_PARAM's doc above.
+func _set_charge_shader_param(ratio: float) -> void:
+	var mat := charge_bar.material
+	if mat is ShaderMaterial:
+		(mat as ShaderMaterial).set_shader_parameter(CHARGE_SHADER_PARAM, ratio)
 
 func _on_held_changed(held: Carriable) -> void:
 	hold_label.text = "SLIPPER READY" if held != null else "GO GET IT"

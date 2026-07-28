@@ -569,17 +569,25 @@ Filed, deliberately not fixed. Both live in 🔧 Build's files and `scenes/ui/*.
 Build's lock for `code/offscreen-indicators` (3.4), so touching either would breach
 `Concurrency_Protocol.md` §2 and §3 at once.
 
-**B-86 · The FPP crosshair never appears, on a Person, in a real match.** `scenes/ui/HUD.tscn`
-has the `Crosshair` node with `visible = false` baked in, and `scripts/ui/hud.gd:74` is supposed to
-turn it on: `crosshair.visible = local_char != null and is_instance_valid(local_char) and
-local_char.is_person`. **Reproduction:** `godot --path . tools/render_probe.tscn --quit-after 400
---resolution 1280x720 -- match <out>/` (NOT headless). In the resulting `match_fpp.png` the YOU
-card reads `PERSON · TEAM A · DEFENSE`, so the local unit *is* a Person, and screen centre is bare
-road — no `+`. Zoom (580,300)-(700,420) to confirm. Most likely `local_char` is still null at the
-moment that line runs and nothing re-runs it, but that is a guess; the render is the fact.
-`Dev_Plan.md` §4.4 lists the FPP-only crosshair as shipped HUD, and `Checklist.md`'s HUD row
-claims it is verified by render — **that claim is wrong**, which is the more useful half of this
-report.
+**B-86 · The FPP crosshair never appears, on a Person, in a real match. [COULD NOT REPRODUCE,
+2026-07-28, 🔧 build-ux.]** Originally filed against `scripts/ui/hud.gd:74`'s
+`crosshair.visible = local_char != null and is_instance_valid(local_char) and
+local_char.is_person`, on the theory that `local_char` was still null the moment that line runs.
+**Re-ran the exact repro** — `godot --path . tools/render_probe.tscn --quit-after 400
+--resolution 1280x720 -- match <out>/` (NOT headless) — six times in a row on this machine.
+Every one of the six `match_fpp.png` outputs shows the YOU card reading `PERSON · TEAM A ·
+DEFENSE` **and** a `+` at screen centre; zoomed crops of (580,300)-(700,420) confirm it is the
+`Crosshair` control, not a background artifact — it sits exactly at the anchor-0.5/0.5 box
+`HUD.tscn` places it in. `hud.gd` and `you_card.gd` are byte-identical to the commit this bug was
+filed against (`git diff` against `2c22f50` is empty for both), and `main.gd`'s local-match spawn
+path has no `await` anywhere the 120-frame probe window could race against, so there is no code
+path left to blame. Left open, unresolved and unexplained: why the original filing saw bare
+road. Whatever it was, it is not reproducible now, on this build, on this machine. Filed as a
+correction rather than closed outright, since "cannot reproduce" is not the same claim as "does
+not happen on every machine" — if it recurs, get a screenshot from the machine that shows it
+before touching `hud.gd` again. `Dev_Plan.md` §4.4 and `Checklist.md`'s HUD row both call the
+FPP-only crosshair verified by render; that claim now has fresh render evidence behind it dated
+2026-07-28, superseding the "wrong" correction this entry used to carry.
 
 **B-87 · A carried tsinelas reads as floating, not held, in first person.** Not a regression and
 arguably not a bug — recorded because it will be noticed during 6.3/6.4 capture and someone will
