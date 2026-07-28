@@ -733,6 +733,15 @@ func _basketball_ring() -> void:
 ## profile makes the inner wall, top and outer wall in one call, all wound
 ## correctly by construction, where a hand-built flat annulus is one winding
 ## mistake away from being invisible from above.
+##
+## ⚠️ Art_Direction.md §1 — 1.50 outer radius (3.0 m across) was sized around a
+## 1.12 m can (LATA_RADIUS 0.34 pre-rescale, at the OLD 1.0 scale). Against the
+## rescaled ~0.10 m-radius can this read as a dinner plate. Outer radius down to
+## 0.70 (1.4 m across, inside the audit's 1.2-1.5 m window); ring width kept at
+## a legible 0.15 rather than scaling it down 1:1 with the diameter — the whole
+## reason it was widened from 0.06 in the first place was that a thin ring
+## foreshortens to sub-pixel at the front/back of the ellipse from a throwing
+## line 6 units away, and that distance hasn't changed.
 func _base_circle_decal() -> void:
 	var w := ObjWriter.new("BaseCircleDecal")
 	w.set_material("mark", UiTheme.HIGHLIGHT)
@@ -743,15 +752,12 @@ func _base_circle_decal() -> void:
 	# arcs where the far side showed through the near side. Written outer->inner
 	# the top faces up, the outer wall faces out, and the inner wall faces in.
 	# A CLOSED section — bottom, outer wall, top, inner wall — so no face can be
-	# hidden by a winding mistake, and 0.18 wide rather than 0.06. Both changes
-	# came from rendering it: at 0.06 the ring foreshortened to sub-pixel at the
-	# front and back of the ellipse and read as two stray yellow arcs. The game is
-	# named after this circle; it has to be legible from a throwing line 6 units
-	# away, not merely present in the .obj.
+	# hidden by a winding mistake. The game is named after this circle; it has to
+	# be legible from a throwing line 6 units away, not merely present in the .obj.
 	w.add_revolve(PackedVector2Array([
-		Vector2(1.32, 0.00), Vector2(1.50, 0.00),
-		Vector2(1.50, 0.03), Vector2(1.32, 0.03),
-		Vector2(1.32, 0.00),
+		Vector2(0.55, 0.00), Vector2(0.70, 0.00),
+		Vector2(0.70, 0.03), Vector2(0.55, 0.03),
+		Vector2(0.55, 0.00),
 	]), 28, "mark")
 	_finish(w, "env_base_circle_decal")
 
