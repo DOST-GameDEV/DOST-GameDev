@@ -1418,10 +1418,10 @@ Verified by running the build on 2026-07-28.
 | Main menu → map picker → match | ✅ works | Two maps selectable |
 | **Eskinita** (dressed alley) | ✅ renders | 30-piece kit, road markings, wires, sari-sari frontage |
 | **Bayan Plaza** | ⚠️ built, rendered, **never played** | Checklist 2.4, `[~]` |
-| Spawns as two team pairs at opposite ends | ✅ verified | From the map's own `SpawnPoints` |
+| Spawns role-based: Can at the base circle, Taya beside it, Attacker+Tsinelas at the throwing line | ✅ verified 2026-07-28 (later same day) | Was "two team pairs at opposite ends" — changed after playtest feedback; see `Checklist.md` for the item |
 | Person = FPP, Prop = TPP | ✅ verified | Self-hide works; camera at 1.25 above feet |
 | Restyled Persons (2.3) | ✅ verified by render | Read apart at 20 units, no orange/blue |
-| Pick up + carry the tsinelas | ✅ verified | Scales to hand size, tracks the arm bone |
+| Pick up + carry the tsinelas | ✅ verified | Native hand-scale mesh, tilted toward camera, tracks the arm bone; the runtime carry-scale hack is gone (§1) |
 | Can: 4 dent states, downed tilt | ✅ in code | Not seen in a live hit |
 | Hit flash, impact burst, hitstop | ✅ in code (hitstop v4.30) | Not seen in a live hit |
 | HUD: Bo5 pips, role panels, timer, LATA + YOU cards | ✅ renders | |

@@ -333,8 +333,14 @@ HUD contrast or hazard placement against a grey box.
          `Bounds` — which also retires B-83 (the old colliders sit at ±40 around a ±20 floor) and
          B-82 (its floor top is y=+0.5; Eskinita's is y=0, as every doc assumes).
       2. `main.gd` prefers the map's `SpawnPoints/Spawn0..3` `Marker3D`s over its hardcoded
-         `SPAWN_POINTS`. **This is where B-54 finally gets answered** — the four markers are
-         already placed as two team pairs at opposite ends of the alley.
+         `SPAWN_POINTS`. **This is where B-54 finally gets answered** — the four markers were
+         placed as two team pairs at opposite ends of the alley.
+         ⚠️ **Superseded 2026-07-28, same day, after 0.4-adjacent playtest feedback** ("two teams
+         spawn on completely different ends and i dont think thats how it should go"). The four
+         slots are now ROLE-based (Can / Taya / Attacker / Tsinelas), not team-based, centred on
+         the map's own base circle and 6-unit throwing line — see the new checklist item below.
+         B-54's underlying complaint (team membership was being ignored) is still answered, just by
+         a different, more accurate layout.
       3. Delete the temporary decals from 0.3; the map carries real ones now.
       *Then* 0.4 can be played in a real map rather than a grey box.
 - [~] **2.3 · Persons — moodboard restyle (M-5).** 🎨 Design — **steps 1+3 done and
@@ -396,6 +402,56 @@ HUD contrast or hazard placement against a grey box.
         origin, correct only while every unit shared one 1.6-tall capsule. Found by the human
         immediately after this item merged. Fixed same session — see `Handoff.md` B-88. Re-verified
         by render.
+  - [x] **B-89, found and fixed same session.** Same bug class as B-88, different node:
+        `character_nameplate.gd`'s ring (`y = -0.78`, radius 0.55) and label (`y = +1.05`) were also
+        hardcoded for the old shared 1.6-tall capsule. On a Can the ring drew nearly a metre below
+        the model's actual feet; on a carried Tsinelas the whole nameplate rides along with it, so
+        the disconnected ring appeared to float around the held object — "the slippers still have a
+        circle around it when holding". Fixed by adding `CharacterBase.capsule_height()`/
+        `capsule_radius()` as a shared accessor and having the ring/label read it, applied explicitly
+        from `character_base.gd` right after `_apply_role_collision()` (not from the nameplate's own
+        `_ready()`, which runs before the capsule is resized — see the code comment). Re-verified by
+        render: the can's ring now sits tight at its base, the carried slipper's ring is a small band
+        at the object.
+  - [x] **B-90, found and fixed same session.** Two related reports: "the slippers look weird af when
+        holding it" and "my arms float during windup and when i run while holding". (a)
+        `character_visual.gd::_play_locomotion()` fell back to `walk`/`sprint` the instant a carrying
+        Person moved — the rig has no `holding-right-walk` clip — and `carrier.gd`'s
+        `_step_carried()` snaps the carried object to the arm BONE's live position every physics
+        frame, so the walk cycle dragged the held slipper (and the FPP viewmodel arm chasing that
+        same position) through its swing. Fixed by checking `_is_holding()` before speed, not after:
+        the carry pose now wins outright, legs stop swinging while holding+moving instead of the hand
+        swimming. (b) The tsinelas is a flat, thin object and the arm bone's fixed rotation presented
+        it close to edge-on from the camera — a sliver, not a slipper. Fixed with a 55° tilt applied
+        in the object's own local frame before the hand's rotation, in `carriable.gd::_step_carried()`.
+        Re-verified by render: the carried slipper reads as a recognisable shape in both FPP and
+        third person. (a) is verified by code-path elimination — a single frame cannot capture
+        "stops swinging while running".
+- [x] **2.6 · Spawn layout redesigned as role-based, not team-based.** 🔧 Build — **verified by
+      render and a 400-frame soak**
+      User feedback after playing the proportion-fixed build: "two teams spawn on completely
+      different ends and i dont think thats how it should go." Correct, and it was more than
+      distance: the old scheme spawned `TeamAProp`/`TeamAPerson` at one fixed end of the alley and
+      `TeamBProp`/`TeamBPerson` at the other, unconditionally, while the map's own
+      `base_circle_decal` and `throwing_line_decal` (`Art_Direction.md` §9) sit at the centre
+      regardless of who is spawning where — position tracked TEAM (fixed all match) instead of ROLE
+      (flips every round via `team_is_can_side`), so the Can/Taya pair sometimes spawned at the
+      north end and sometimes the south, never actually AT the base the mechanic is built around.
+  - [x] `main.gd`'s four spawn slots are now roles — `SLOT_CAN`/`SLOT_TAYA`/`SLOT_ATTACKER`/
+        `SLOT_TSINELAS` via the new `_role_slot()` — instead of a stored team-fixed index. Both
+        `_spawn_player` (initial spawn) and `_reset_world` (every round reset) compute the slot from
+        the character's current role.
+  - [x] `build_eskinita.py` / `build_bayan_plaza.py`: Spawn0 sits on the base circle
+        `(0, 0.17, 0)`, Spawn1 (Taya) a couple of units off it, Spawn2 (Attacker) at the 6-unit
+        throwing line, Spawn3 (Tsinelas) beside the Attacker. Both `.tscn` files regenerated; diff is
+        exactly the four spawn transforms in each.
+  - [x] **Auto-grab at round start.** `_reset_world` now hands the tsinelas to the attacking Person
+        directly (`Carriable.host_grab()`, already host-gated internally) instead of leaving it loose
+        for them to walk over and pick up first — matches `Dev_Plan.md` §3's beat-by-beat loop, which
+        opens with "the attacking Person carries the tsinelas," not a pre-round chore.
+      **Not verified:** how this plays with a human — whether the Taya's distance from the Can, or
+      the Attacker's distance from the throwing line, feels right. That is 4.4's job once someone has
+      actually played it.
 
 ---
 
@@ -499,6 +555,17 @@ touch map scenes.
       profile of the four, now by identity (heavy, close-range) rather than by being broken. Not
       yet felt in play — nothing has selected it since B-76 (`PROP_ABILITY` is `quick_stand.tres`
       for every Prop); that unlock is 3.3's job, and whether 87% charge feels right is 4.4's.
+- [x] **4.4b · Option A's ring-out win condition was missing entirely.** 🔧 Build — **fixed
+      2026-07-28, verified by parse + a 400-frame soak**
+      `Dev_Plan.md` §3: "Cans win by the timer running out, OR by knocking Slippers out of bounds a
+      set number of times." Only the timer half existed —
+      `KillPlane.character_respawned` fired an "OUT OF BOUNDS" toast and nothing else, so a Can-side
+      round win could only ever come from the 90s clock. Found auditing the round-win system against
+      the GDD. `RoundManager.register_ring_out(character)` is the new entry point (host-gated like
+      `report_round_win()`, filtered to this round's Tsinelas specifically, Option A only —
+      `RING_OUT_LIMIT = 3`), called from `main.gd`'s existing KillPlane handler. **Not verified by
+      play:** whether 3 is the right number. Same tuning-window caveat as everything else in this
+      phase.
 - [x] **4.5 · Hitstop.** 🤖 Sonnet, medium
       The one piece of the Q-8 hit-feedback set that never landed. Cheap, and it
       is what makes a landed hit feel like contact rather than a colour change.

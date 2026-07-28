@@ -606,6 +606,61 @@ standalone preview turntable, never a fresh in-match spawn actually settling ont
 shared constant. Verified by rendering `tools/render_probe.gd`'s viewmodel mode again — the can
 that was sunk into the ground now stands on it.
 
+**B-89 · Nameplate ring/label also sized for the old shared capsule. [FIXED same session.]** Same
+bug class as B-88, different node: `character_nameplate.gd`'s ring (`y = -0.78`, radius 0.55) and
+label (`y = +1.05`) were hardcoded for the Person's 1.6-tall capsule. On a Can the ring drew nearly
+a metre below the model's actual feet; on a carried Tsinelas the whole nameplate rides along with
+it, so the disconnected ring appeared to float around the held object. Reported: "the slippers
+still have a circle around it when holding." **Fixed:** added `CharacterBase.capsule_height()`/
+`capsule_radius()` as a shared accessor (`character_visual.gd`'s own copy of this logic simplified
+to call it too), and `CharacterNameplate.apply_sizing()` reads it — called explicitly from
+`character_base.gd` right after `_apply_role_collision()`, deliberately NOT from the nameplate's
+own `_ready()`, which runs before the capsule is resized (children ready before parents). Verified
+by render: the can's ring now sits tight at its base, the carried slipper's ring is a small band at
+the object instead of a large disconnected circle.
+
+**B-90 · Carried slipper read as a broadside sliver, and swam through the walk cycle while moving.
+[FIXED same session.]** Two related reports: "the slippers look weird af when holding it" and "my
+arms float during windup and when i run while holding." Two independent causes:
+(a) `character_visual.gd::_play_locomotion()` fell back to `walk`/`sprint` the instant a carrying
+Person moved (the rig has no `holding-right-walk` clip), and `carriable.gd::_step_carried()` snaps
+the carried object to the arm BONE's live position every physics frame — so the walk cycle dragged
+the held slipper, and the FPP viewmodel arm chasing that same position (`camera_rig.gd`), through
+the animation's swing. **Fixed:** `_is_holding()` now checked before speed, not after — the carry
+pose wins outright while holding, legs stop swinging rather than the hand swimming.
+(b) The tsinelas is a flat, thin object (0.078 tall vs 0.432 long) and the arm bone's fixed
+rotation presented it close to edge-on to a camera at roughly the same height — a sliver, not a
+slipper. **Fixed:** a 55° tilt applied in the object's own local frame, before the hand's rotation,
+in `carriable.gd::_step_carried()`. Verified by render for (b) — the carried slipper reads as a
+recognisable shape in both FPP and third person now. (a) is verified by code-path elimination, not
+a screenshot — a single frame cannot capture "stops swinging while running."
+
+**Mechanics audit against Dev_Plan.md §3-4, same session.** User ask: "make sure the code currently
+follows intended mechanics, scoring and placement." Found one real gap and one deliberate
+simplification worth recording:
+
+- **Missing: Option A's ring-out win condition.** `Dev_Plan.md` §3 names two Can-side win paths —
+  "the timer running out, OR knocking Slippers out of bounds a set number of times" — and only the
+  first existed. `KillPlane.character_respawned` fired a HUD toast and nothing else. **Fixed:**
+  `RoundManager.register_ring_out()`, `RING_OUT_LIMIT = 3`, wired from `main.gd`'s existing KillPlane
+  handler. See `Checklist.md` 4.4b.
+- **Not changed, flagged instead: Option B's "circle" is semantic, not physical.** The GDD says a
+  solid hit "knocks the Can out of the circle" into Downed. The actual trigger is
+  `ThrowProfile.forces_downed` / `Hitbox.forces_downed` — a flag on the hit, not a real
+  knockback-then-distance-from-base-circle check. No positional/circle code exists anywhere in
+  `scripts/`. This reads as a deliberate simplification (the round-win system is explicitly built
+  decoupled from movement/physics — see `Dev_Plan.md` §3's own "Build note") rather than a bug.
+  Building real physics-based circle-exit detection is a materially bigger feature than a bug-fix
+  pass and was not attempted; flagging for the team to decide whether it is worth doing.
+
+**Spawn layout redesigned as role-based, same session — see `Checklist.md` 2.6.** User feedback:
+"two teams spawn on completely different ends and i dont think thats how it should go." Correct: the
+old scheme spawned each team's pair at a fixed end of the alley regardless of which side was
+defending that round, disconnected from the map's own base circle and throwing line
+(`Art_Direction.md` §9). `main.gd`'s four spawn slots are now roles (Can/Taya/Attacker/Tsinelas via
+the new `_role_slot()`) instead of a stored team index, and `_reset_world` auto-hands the tsinelas
+to the attacking Person at round start rather than leaving it loose to be walked over first.
+
 ### P1 — found by the design lane while measuring for checklist 1.2 (2026-07-28)
 
 Filed, deliberately not fixed — `Concurrency_Protocol.md` §10. Full reasoning and the screenshot
