@@ -161,19 +161,25 @@ make that better later and make it sarsi or something."* So Sarsi returns as a *
 `soda-can.glb` once the kit swap has landed and settled — see checklist 7.6. The trademark note and
 credit in `README.md` stay valid and stay put.
 
-**The tsinelas → the supplied `.glb`.** Three things must happen to it and none is optional:
+**The tsinelas stays OURS — the sourced `.glb` is dropped.** Human call, 2026-07-28: *"nahh js
+remove the flipflop in the plan, lets make our own."*
 
-1. **It is a PAIR, not one slipper.** Two separate meshes (`mesh1977808981`, `mesh1162052169`). The
-   Prop is one slipper. Split it and keep one.
-2. **It is PURPLE** (`baseColorFactor` `0.34, 0.02, 0.44` and `0.5, 0.14, 0.58`). That contradicts
-   the asset moodboard landed the same day (§1b: worn brown foam, tan webbing strap). Recolour to
-   `PROP_FOAM` / `PROP_WEBBING`. The moodboard wins — it is the newer, more specific instruction.
-3. ⚠️ **ITS LICENCE IS NOT ESTABLISHED.** "flip flops by Tiff Eidmann" with an 11-character id is
-   the Poly Pizza naming convention, and Poly Pizza models are typically **CC-BY, which REQUIRES
-   attribution** — unlike the CC0 Kenney kits. **A human must confirm the licence and the exact
-   attribution string before this ships.** Flagged in `Handoff.md` §5. If it cannot be confirmed,
-   the fallback is cheap: the current procedural tsinelas already matches the moodboard and can
-   simply stay.
+**This is the deliberate exception to the whole phase.** Everywhere else a kit beats generated
+geometry, because the generated dressing was greybox filler nobody had specified. The slipper is
+the opposite case: it has a specific asset moodboard (§1b), the procedural mesh already matches it —
+brown `PROP_FOAM` foam, tan `PROP_WEBBING` Y-strap, three-layer bevelled sole — and it is the one
+prop nobody has complained about the look of. Sourcing over that would have traded a mesh built to
+spec for a purple one that needed splitting, recolouring and rescaling to get back to where we
+already were.
+
+*Two things fell out of that decision for free:* the phase now has **no licence blocker at all** —
+every remaining asset is CC0 (Kenney) or authored here — and `obj_writer.gd` keeps a second real
+consumer besides the markings, so the generator stays exercised rather than becoming
+markings-only code nobody reads.
+
+**Still open on the slipper, and neither is a mesh problem:** the carried slipper reads as detached
+in third person (`HAND_CARRY_OFFSET` is composed for the FPP frame — `Handoff.md` §0.12), and it
+wants whatever texture/outline treatment 7.1 settles. Checklist **7.3**.
 
 #### The kits ship animation, and most of it is unused
 

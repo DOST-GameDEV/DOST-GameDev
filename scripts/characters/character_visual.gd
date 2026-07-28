@@ -251,12 +251,13 @@ var _materials: Array[BaseMaterial3D] = []
 ## Parallel to `_materials`: the albedo each one started at, so a flash always
 ## tweens back to the real colour rather than to whatever it was mid-flash.
 var _base_albedos: Array[Color] = []
-## M-4: ShaderMaterials that have an albedo_color uniform (toon shader surfaces
-## on Prop models). flash_hit() / flash_blocked() set the uniform directly since
-## ShaderMaterial has no albedo_color property. The outline next_pass materials
-## are deliberately NOT tracked — they have no albedo_color and must not flash.
+## M-4: toon-shader surfaces on Prop models. flash_hit() / flash_blocked() drive
+## their uniforms directly, since ShaderMaterial has no albedo_color property.
+## ⚠️ 7.1: tracked by their `flash_amount` uniform, and no base colour is stored
+## alongside them any more — the flash is its own uniform now and tweens 1 -> 0,
+## so there is nothing to restore. The outline next_pass materials carry no
+## `flash_amount` and are deliberately NOT tracked; they must never flash.
 var _shader_materials: Array[ShaderMaterial] = []
-var _shader_base_albedos: Array[Color] = []
 var _flash_tween: Tween = null
 ## The unit this Visual belongs to. Read for `dents` when a model is rebuilt
 ## mid-round — a Prop that swaps Can/Tsinelas/Can has to come back wearing the
@@ -328,7 +329,6 @@ func _refresh_can_damage(dent_count: int) -> void:
 	_materials.clear()
 	_base_albedos.clear()
 	_shader_materials.clear()
-	_shader_base_albedos.clear()
 	_collect_meshes(model)
 	_align_to_capsule_floor(model)
 	# camera_rig.gd re-applies the FPP self-hide on this signal; a new mesh that
@@ -367,7 +367,6 @@ func apply(is_person: bool, is_can: bool, team: int) -> void:
 	_materials.clear()
 	_base_albedos.clear()
 	_shader_materials.clear()
-	_shader_base_albedos.clear()
 	# The old AnimationPlayer went with the old model tree; holding a freed
 	# reference here would make the first play_action() after a role swap throw.
 	_animator = null
@@ -496,9 +495,11 @@ func _model_path(is_person: bool, is_can: bool, team: int) -> String:
 ## Each mesh gets its OWN material via a surface override. Without this, every
 ## unit sharing a model would share one material resource, and flashing one of
 ## them white would flash all of them — including the enemy's.
-## M-4: also handles ShaderMaterial (toon shader surfaces on Props). Only tracks
-## ShaderMaterials that expose an albedo_color uniform; the outline next_pass
-## shader deliberately lacks it so it is excluded from the flash system.
+## M-4: also handles ShaderMaterial (toon shader surfaces on Props).
+## ⚠️ 7.1: the test is now `flash_amount`, not `albedo_color`. The outline
+## next_pass shader carries neither, so it is still excluded — but the check now
+## asks the question it actually means ("does this material take part in
+## flashing?") instead of a colour uniform that happened to correlate.
 func _collect_meshes(model: Node3D) -> void:
 	for node in model.find_children("*", "MeshInstance3D", true, false):
 		var mesh_instance := node as MeshInstance3D
@@ -506,12 +507,11 @@ func _collect_meshes(model: Node3D) -> void:
 			var source: Material = mesh_instance.get_active_material(surface)
 			if source is ShaderMaterial:
 				var shader_mat := source as ShaderMaterial
-				if shader_mat.get_shader_parameter("albedo_color") == null:
+				if shader_mat.get_shader_parameter("flash_amount") == null:
 					continue
 				var duped := shader_mat.duplicate() as ShaderMaterial
 				mesh_instance.set_surface_override_material(surface, duped)
 				_shader_materials.append(duped)
-				_shader_base_albedos.append(duped.get_shader_parameter("albedo_color") as Color)
 			elif source is BaseMaterial3D:
 				# Typed as BaseMaterial3D, not StandardMaterial3D: a glTF surface can
 				# import as ORMMaterial3D, and casting to StandardMaterial3D yields
@@ -537,7 +537,19 @@ func _apply_toon_pass(model: Node3D, is_person: bool) -> void:
 			toon_mat.shader = TOON_SHADER
 			var original: Material = mesh_instance.get_active_material(surface)
 			if original is BaseMaterial3D:
-				toon_mat.set_shader_parameter("albedo_color", (original as BaseMaterial3D).albedo_color)
+				var base_mat := original as BaseMaterial3D
+				toon_mat.set_shader_parameter("albedo_color", base_mat.albedo_color)
+				# Checklist 7.1 — CARRY THE TEXTURE ACROSS, do not drop it.
+				# A generated .obj prop has no albedo texture and its colour is a
+				# flat Kd, so this is a no-op for everything that shipped before
+				# the kit overhaul. A Kenney kit mesh is textured off one shared
+				# palette atlas, and without this the toon pass replaced that
+				# atlas with a single flat colour — the whole model rendering as
+				# one shade. See toon.gdshader's own header.
+				var albedo_tex := base_mat.albedo_texture
+				if albedo_tex != null:
+					toon_mat.set_shader_parameter("albedo_texture", albedo_tex)
+					toon_mat.set_shader_parameter("use_texture", true)
 			elif original is ShaderMaterial:
 				var orig_albedo = (original as ShaderMaterial).get_shader_parameter("albedo_color")
 				if orig_albedo != null:
@@ -764,13 +776,17 @@ func flash_hit() -> void:
 	for i in range(_materials.size()):
 		_materials[i].albedo_color = Color.WHITE
 		_flash_tween.tween_property(_materials[i], "albedo_color", _base_albedos[i], FLASH_DURATION)
-	for i in range(_shader_materials.size()):
-		var mat := _shader_materials[i]
-		var base_color := _shader_base_albedos[i]
-		mat.set_shader_parameter("albedo_color", Color.WHITE)
+	# ⚠️ 7.1: this drives `flash_amount`, NOT `albedo_color`. Tweening the colour
+	# uniform cannot work on a textured kit mesh — its resting tint is white, so
+	# "flash to white" is a no-op and a hit on a kit prop showed nothing at all.
+	# The flash is its own uniform now; `albedo_color` means only "what colour am
+	# I", which is what it should always have meant.
+	for mat in _shader_materials:
+		mat.set_shader_parameter("flash_color", Color.WHITE)
+		mat.set_shader_parameter("flash_amount", 1.0)
 		_flash_tween.tween_method(
-			func(c: Color) -> void: mat.set_shader_parameter("albedo_color", c),
-			Color.WHITE, base_color, FLASH_DURATION)
+			func(a: float) -> void: mat.set_shader_parameter("flash_amount", a),
+			1.0, 0.0, FLASH_DURATION)
 
 ## Q-8: one-shot burst, no art asset — a primitive point mesh + unshaded
 ## StandardMaterial3D in UiTheme.IMPACT, matching the moodboard's "IMPACT
@@ -819,10 +835,11 @@ func flash_blocked() -> void:
 	for i in range(_materials.size()):
 		_materials[i].albedo_color = UiTheme.DEFENSE
 		_flash_tween.tween_property(_materials[i], "albedo_color", _base_albedos[i], FLASH_DURATION)
-	for i in range(_shader_materials.size()):
-		var mat := _shader_materials[i]
-		var base_color := _shader_base_albedos[i]
-		mat.set_shader_parameter("albedo_color", UiTheme.DEFENSE)
+	# Same split as flash_hit(); `flash_color` is what keeps a block visually
+	# distinct from a landed hit (Q-6) now that the amount is separate.
+	for mat in _shader_materials:
+		mat.set_shader_parameter("flash_color", UiTheme.DEFENSE)
+		mat.set_shader_parameter("flash_amount", 1.0)
 		_flash_tween.tween_method(
-			func(c: Color) -> void: mat.set_shader_parameter("albedo_color", c),
-			UiTheme.DEFENSE, base_color, FLASH_DURATION)
+			func(a: float) -> void: mat.set_shader_parameter("flash_amount", a),
+			1.0, 0.0, FLASH_DURATION)
