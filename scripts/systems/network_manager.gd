@@ -33,6 +33,17 @@ signal player_identified(peer_id: int, token: String)
 const DEFAULT_PORT: int = 8910
 const MAX_PLAYERS: int = 4
 const MAIN_SCENE_PATH: String = "res://scenes/main/Main.tscn"
+## Hamachi (or any VPN-tunnelled LAN) carries more jitter than a same-router
+## LAN, and ENet's built-in defaults (timeout_limit 32 / timeout_min 5000ms /
+## timeout_max 30000ms) can flag a live connection as dead during an ordinary
+## latency spike over the tunnel, not just an actual drop — the exact
+## "someone's wifi blips" failure mode B-65 already designed the rejoin
+## identity token around. Widened here so a spike has room to recover before
+## ENet gives up; kept finite (not "increase forever") so a real drop still
+## resolves in a reasonable window rather than stalling a round indefinitely.
+const ENET_TIMEOUT_LIMIT: int = 32
+const ENET_TIMEOUT_MIN: int = 10000
+const ENET_TIMEOUT_MAX: int = 45000
 ## 4.3/B-65: where this install's stable player token is persisted. `user://`
 ## rather than an in-memory value only, so identity survives a full game
 ## relaunch — the failure mode this exists for is "someone's wifi drops",
@@ -166,6 +177,7 @@ func is_solo_session() -> bool:
 func _on_peer_connected(id: int) -> void:
 	if not connected_peer_ids.has(id):
 		connected_peer_ids.append(id)
+	_apply_peer_timeout(id)
 	player_connected.emit(id)
 
 ## Deliberately does NOT touch `peer_tokens` — see that var's own doc. Losing
@@ -179,6 +191,8 @@ func _on_peer_disconnected(id: int) -> void:
 
 func _on_connected_to_server() -> void:
 	connected_peer_ids = [multiplayer.get_unique_id()]
+	# The host is always peer id 1 from a client's own point of view.
+	_apply_peer_timeout(1)
 	# 4.3/B-65: present our stable token to the host immediately — before
 	# main.gd exists to ask for it, and regardless of whether we are about to
 	# sit in Lobby.tscn or (a rejoin) get redirected straight back into a
@@ -247,3 +261,15 @@ func _load_or_create_token() -> String:
 	if err != OK:
 		push_warning("NetworkManager: could not write player token to disk (error %d) — harmless, it is never read back; see local_player_token's own doc." % err)
 	return token
+
+## Widens ENet's per-peer disconnect-timeout window for `peer_id` — see the
+## ENET_TIMEOUT_* constants' own doc for why. Called from both ends of a
+## connection (host, once a remote peer's handshake completes; client, once
+## connected to the host) since ENet tracks timeout state per direction.
+func _apply_peer_timeout(peer_id: int) -> void:
+	var enet_peer := multiplayer.multiplayer_peer as ENetMultiplayerPeer
+	if enet_peer == null:
+		return
+	var packet_peer := enet_peer.get_peer(peer_id)
+	if packet_peer != null:
+		packet_peer.set_timeout(ENET_TIMEOUT_LIMIT, ENET_TIMEOUT_MIN, ENET_TIMEOUT_MAX)
