@@ -558,7 +558,15 @@ for side in (-1.0, 1.0):
 # Sampay: strung ACROSS the alley, hanging from the houses. The ONE thing on
 # this map that is legitimately not on the ground — hence `suspended`, which is
 # an explicit opt-out of the grounding check rather than a hole in it.
-for n, zz in enumerate([-13.5, -8.5, -3.0, 3.0, 8.5, 14.5]):
+# ⚠️ ONE LINE PER POST PAIR, AT THE POSTS' OWN Z. Playtest 2026-07-29: the
+# anchors still floated. Burying the ends in the facades was only half the
+# answer, because a sampay at an arbitrary z can land on a DRIVEWAY BAY where
+# there is no wall to bury into. Strung between the two posts instead — they are
+# already at matching z on both sides, they are the tallest thing on the street,
+# and a washing line tied to the electric posts is what an eskinita actually
+# looks like. SAMPAY_Z is therefore derived from the post row, never typed.
+SAMPAY_Z = [-15.0, -9.0, -3.0, 3.0, 9.0, 15.0]
+for n, zz in enumerate(SAMPAY_Z):
     add("Dressing/Layer3", f"Sampay_{n}", "laundry_line", 0.0, zz,
         # ⚠️ RAISED. A Person is 1.6 tall standing on ground at 0.1, so the top
         # of the head is ~1.70 — and the lowest garment hem used to sit at

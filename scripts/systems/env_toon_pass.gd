@@ -108,7 +108,14 @@ const BELT_FADE_AMOUNT: float = 0.68
 
 ## Which groups get a seeded facade tint at all. Clutter keeps its own authored
 ## colours — those meshes carry the project's palette already.
-const FACADE_GROUPS: Array[String] = ["Layer1", "Layer2", "Belt"]
+## ⚠️ EVERY GROUP THAT CONTAINS A HOUSE GOES IN HERE. Playtest 2026-07-29:
+## "houses you made are off theme look theyre js green". The cross rows that
+## close the ends of the alley were added to a new `CrossRow` node and this list
+## was not updated, so they fell through both the facade tint AND the roof-atlas
+## swap and rendered the shipped kit atlas raw — mint roof, off-white wall. The
+## houses were not off-theme; they were untouched. Adding a group to the map
+## generator means adding it here in the same commit.
+const FACADE_GROUPS: Array[String] = ["Layer1", "Layer2", "Belt", "CrossRow"]
 
 ## ⚠️ ROOFS NEED A DIFFERENT LEVER FROM WALLS, AND THIS IS IT.
 ##
@@ -132,7 +139,8 @@ const ROOF_ATLASES: Array[Texture2D] = [
 	preload("res://assets/models/kits/city/Textures/colormap_roof_rust.png"),
 	preload("res://assets/models/kits/city/Textures/colormap_roof_slate.png"),
 	preload("res://assets/models/kits/city/Textures/colormap_roof_ochre.png"),
-	preload("res://assets/models/kits/city/Textures/colormap_roof_jade.png"),
+	preload("res://assets/models/kits/city/Textures/colormap_roof_galv.png"),
+	preload("res://assets/models/kits/city/Textures/colormap_roof_teal.png"),
 ]
 
 ## Hung cloth sways; nothing else does. Matched to `env_kit.gd::_laundry_line()`:
@@ -205,6 +213,7 @@ func _is_building(instance_name: String) -> bool:
 		return false
 	return (instance_name.begins_with("L1_")
 		or instance_name.begins_with("L2_")
+		or instance_name.begins_with("Cross_")
 		or instance_name.begins_with("BeltX_")
 		or instance_name.begins_with("BeltZ_"))
 

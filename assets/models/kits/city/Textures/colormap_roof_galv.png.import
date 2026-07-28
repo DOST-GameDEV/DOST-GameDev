@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bpyyc1tjahr3p"
-path="res://.godot/imported/colormap_roof_jade.png-bd8acc48d31d01c8751b40aa1103912d.ctex"
+uid="uid://d4abo375xsr1k"
+path="res://.godot/imported/colormap_roof_galv.png-b1dd15369111bf7f616d1a5af01dda07.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/models/kits/city/Textures/colormap_roof_jade.png"
-dest_files=["res://.godot/imported/colormap_roof_jade.png-bd8acc48d31d01c8751b40aa1103912d.ctex"]
+source_file="res://assets/models/kits/city/Textures/colormap_roof_galv.png"
+dest_files=["res://.godot/imported/colormap_roof_galv.png-b1dd15369111bf7f616d1a5af01dda07.ctex"]
 
 [params]
 
