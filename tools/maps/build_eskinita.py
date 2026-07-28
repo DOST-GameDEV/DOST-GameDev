@@ -794,11 +794,27 @@ adjustment_saturation = 1.18
 # made every Spawn marker fail to instantiate with "parent path has vanished".
 # Explain things HERE, in the generator, where they also survive an editor save.
 #
+# ⚠️⚠️ SPAWN HEIGHTS ARE DERIVED FROM GROUND_Y, NOT TYPED. DO NOT HARDCODE THEM.
+#
+# These are offsets ABOVE THE FLOOR'S COLLISION TOP — a capsule's origin is its
+# centre, so a 1.6-tall Person needs its origin 0.8 above whatever it stands on.
+# Phase 8 raised the floor collision top from 0.000 to GROUND_Y (0.100) so that
+# characters would stop standing 100mm inside the visible road, and left these
+# four numbers alone on the reasoning that "the paving was already at 0.1".
+#
+# That was wrong, and it is the "weird physics bounces" report. The spawn Y is
+# measured against the FLOOR COLLIDER, which moved. Every unit therefore spawned
+# 100mm EMBEDDED in the floor and Godot's depenetration ejected it — measured
+# with tools/jump_probe.gd: a Person placed at y=0.8 was shoved to y=2.50 on the
+# next physics step and then slid 9.84 units sideways in a single
+# move_and_slide() call, at a normal 0.0167 delta and time_scale 1.0. Not a
+# velocity bug and not a lag spike: a body starting inside a collider.
+#
 # Spawn0-3 are ROLE slots (Can / Taya / Attacker / Tsinelas), not team slots —
 # main.gd's _role_slot() picks which one each unit occupies THIS round. Their
 # heights are unchanged: the paving under them was already at 0.100 and still is,
 # so raising the FLOOR to meet it moved nothing they stand on.
-HEAD = '''[node name="Eskinita" type="Node3D"]
+HEAD = f'''[node name="Eskinita" type="Node3D"]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Env_eskinita")
@@ -884,16 +900,16 @@ shape = SubResource("Shape_hazard")
 [node name="SpawnPoints" type="Node3D" parent="."]
 
 [node name="Spawn0" type="Marker3D" parent="SpawnPoints"]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.0, 0.17, 0.0)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.0, {GROUND_Y + 0.17:.3f}, 0.0)
 
 [node name="Spawn1" type="Marker3D" parent="SpawnPoints"]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 2.2, 0.8, -1.5)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 2.2, {GROUND_Y + 0.80:.3f}, -1.5)
 
 [node name="Spawn2" type="Marker3D" parent="SpawnPoints"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0, 0.8, 6.0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0, {GROUND_Y + 0.80:.3f}, 6.0)
 
 [node name="Spawn3" type="Marker3D" parent="SpawnPoints"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.3, 0.16, 6.3)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.3, {GROUND_Y + 0.16:.3f}, 6.3)
 
 [node name="Dressing" type="Node3D" parent="."]
 script = ExtResource("T")

@@ -320,9 +320,8 @@ func _step_flying(delta: float) -> void:
 	# Sideways only, relative to the direction of travel: it can curve a throw
 	# around a defender, never turn it into a guided missile or add range.
 	if profile.steer_strength > 0.0 and _is_locally_driven():
-		var input_dir := Input.get_vector(
-			_character.action_name("move_left"), _character.action_name("move_right"),
-			_character.action_name("move_up"), _character.action_name("move_down"))
+		var input_dir := _character.input_vector(
+			"move_left", "move_right", "move_up", "move_down")
 		if input_dir.length() > 0.0:
 			var travel := _flight_velocity
 			travel.y = 0.0

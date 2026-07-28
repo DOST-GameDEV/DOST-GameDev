@@ -122,7 +122,7 @@ func input_step(delta: float) -> void:
 ## ---------------------------------------------------------------------------
 
 func _step_grab() -> void:
-	if not Input.is_action_just_pressed(_character.action_name("grab")):
+	if not _character.input_just_pressed("grab"):
 		return
 	if _held != null:
 		return # already holding; the grab button is not a drop button
@@ -136,7 +136,8 @@ func _step_grab() -> void:
 	_request_grab(target)
 
 func _step_throw(delta: float) -> void:
-	var action := _character.action_name("special_ability")
+	# Per-character read, not the global Input singleton — see
+	# character_base.gd::input_pressed for why the AI cannot use `Input`.
 	if _held == null:
 		# Nothing in hand: the button falls through to the ordinary ability path
 		# in character_base.gd (Tag, on the defence side). Make sure a charge
@@ -145,14 +146,14 @@ func _step_throw(delta: float) -> void:
 		_cancel_charge()
 		return
 
-	if Input.is_action_just_pressed(action):
+	if _character.input_just_pressed("special_ability"):
 		_is_charging = true
 		_charge_time = 0.0
 		charge_changed.emit(charge_power())
-	elif _is_charging and Input.is_action_pressed(action):
+	elif _is_charging and _character.input_pressed("special_ability"):
 		_charge_time = minf(_charge_time + delta, CHARGE_FULL_TIME)
 		charge_changed.emit(charge_power())
-	elif _is_charging and Input.is_action_just_released(action):
+	elif _is_charging and _character.input_just_released("special_ability"):
 		var power := charge_power()
 		_cancel_charge()
 		_character.play_visual_action("throw")
@@ -176,7 +177,7 @@ func _step_reset_channel(delta: float) -> void:
 		# down, or throw it, first.
 		_cancel_channel()
 		return
-	if not Input.is_action_pressed(_character.action_name("grab")):
+	if not _character.input_pressed("grab"):
 		_cancel_channel()
 		return
 
