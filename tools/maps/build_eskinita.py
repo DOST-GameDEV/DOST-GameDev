@@ -69,7 +69,15 @@ GROUND_Y = ROAD_TOP                  # bare floor top == paved top. One surface.
 surfaces = Surfaces(base_height=GROUND_Y)
 
 W = 8.0          # half-width of the playable alley, and of the paved core
-Z_END = 17.0     # half-length
+Z_END = 23.0     # half-length
+## ⚠️ THE ALLEY'S ENDS ARE CLOSED BY A CROSS ROW, and that is what the "huge
+## empty space" report was. The house rows used to stop at z = +/-17 while the
+## paving and the apron ran on to +/-26, so both ends of the street opened into a
+## bare grey plain with the silhouette belt floating beyond it. A real eskinita
+## does not end; it meets another street. `CROSS_ROW_Z` puts a terrace across
+## each end, facing back down the alley, which closes the view and turns the end
+## of the map into a T-junction instead of a void.
+CROSS_ROW_Z = 26.0
 
 # ⚠️ THE HOUSE FRONTS LAND ON THE COLLISION PLANE, NOT 0.6 m BEHIND IT.
 # `Bounds/WallEast|West` sit at x = ±8.6 and are the only thing a player can
@@ -283,8 +291,8 @@ TOWN_SCALE = 1.6   # Fantasy Town props (carts, stalls, rocks, planks) are the
 # ⚠️ EVERY TILE IS THE SAME SCALE AND THEREFORE THE SAME HEIGHT. A coarser tile
 # further out would halve the instance count and put a 100 mm step across the
 # map at the seam, which is the exact fault Phase 8 exists to remove.
-APRON_X = 26.0
-APRON_Z = 26.0
+APRON_X = 30.0
+APRON_Z = 32.0
 ## ⚠️ THE PAVING'S TOP MUST LAND ON GROUND_Y, SO ITS BASE GOES A THICKNESS BELOW.
 ## Passing `base_y=GROUND_Y` here instead — which is the obvious-looking thing to
 ## write — stands every tile 100 mm proud of the floor it is paving, and the very
@@ -408,6 +416,26 @@ for side in (-1.0, 1.0):
                     _bay[side] - ext_b[2] , yaw, CITY_SCALE)
             _bay[side] += width + BAY_GAP
         _i[side] += 1
+
+# --- The cross rows that close each end of the alley -------------------------
+#
+# Faces back down the street (toward the arena) so a player looking up the alley
+# sees house fronts, not gable ends — same rule Layer 1 follows. Placed by the
+# same measured face-alignment: solve for the centre that lands THIS piece's own
+# face on CROSS_ROW_Z.
+_CROSS_TYPES = ["e", "b", "o", "n", "c", "l", "d", "a", "s"]
+_cx_n = 0
+for _end in (-1.0, 1.0):
+    _yaw = 0.0 if _end < 0 else math.pi   # front toward the arena centre
+    _x = -16.0
+    while _x <= 16.0:
+        _piece = f"kits/city/building-type-{_CROSS_TYPES[_cx_n % len(_CROSS_TYPES)]}"
+        _e = piece_extent(_piece, _yaw, CITY_SCALE)
+        _cz = (CROSS_ROW_Z - _e[3]) if _end > 0 else (-CROSS_ROW_Z - _e[2])
+        add_kit("Dressing/CrossRow", f"Cross_{_cx_n}", _piece, _x, _cz, _yaw,
+                CITY_SCALE, lane_exempt=True)
+        _cx_n += 1
+        _x += (_e[1] - _e[0]) + 0.4
 
 # --- Layer 2: a second row further out, for skyline depth --------------------
 # Off-grid on purpose and deliberately NOT the same types as Layer 1 -- a second
@@ -1042,6 +1070,8 @@ script = ExtResource("T")
 [node name="Layer1" type="Node3D" parent="Dressing"]
 
 [node name="BayFill" type="Node3D" parent="Dressing"]
+
+[node name="CrossRow" type="Node3D" parent="Dressing"]
 
 [node name="Layer2" type="Node3D" parent="Dressing"]
 
