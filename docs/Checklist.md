@@ -1180,10 +1180,11 @@ buggy."* Six Kenney kits (all CC0, verified) plus a supplied flip-flop `.glb`.
       specific and the mesh is already on it.
       *Deleting the `.glb` also deleted the phase's only licence blocker* — every remaining asset is
       either CC0 (Kenney) or ours.
-      **Still open on it** (both pre-date phase 7 and neither is a mesh problem): the carried
-      slipper reads as detached in third person, which is `HAND_CARRY_OFFSET` being composed for
-      the FPP frame — see `Handoff.md` §0.12 — and it wants the same texture/outline treatment 7.1
-      settles.
+  - [x] **The carried slipper no longer floats beside the carrier's head (B-105).** Fixed
+        2026-07-28 by splitting the two views instead of re-tuning a number — see the ledger.
+  - [ ] **Readability follow-up:** brown slipper against a tan chibi body is low-contrast at
+        arena distance, and the rig's hand sits close to a wide torso. It is in the hand and no
+        longer floating; making it *read* from across the arena is a separate pass.
 - [~] **7.4 · Eskinita re-dressed from City Kit (Suburban) + Car Kit.** 🎨 Design —
       **verified by render + the full smoke gate; not verified by play**
       Landed 2026-07-28. The generated corrugated wall panels and building blocks are gone; an

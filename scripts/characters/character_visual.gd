@@ -208,7 +208,26 @@ const HAND_BONE_CANDIDATES: Array[String] = ["arm-right", "arm-left"]
 ## mesh read at (character-local Y 0.214, i.e. target.y 1.014) put the object
 ## close to the eye's own height, which put it close to the CAMERA in total 3D
 ## distance too — broadside and close together filled most of the frame.
-const HAND_CARRY_OFFSET: Vector3 = Vector3(0.863, 0.715, 0.077)
+## ⚠️ 7.3 — RE-TARGETED TO THE ACTUAL HAND, 2026-07-28. Everything above this
+## line describes the FIRST-PERSON composition this constant used to serve, and
+## that is exactly what was wrong with it: the target was chosen so the slipper
+## sat "a little above the eye", forward and right of the crosshair. That is a
+## viewmodel pose, and putting a REAL object there parks it beside the carrier's
+## head in world space — which is what every other player saw, and what was
+## reported over and over as the slipper floating.
+##
+## Re-measuring it could never have fixed that. The offset was doing precisely
+## what it was written to do; the mistake was asking one object to compose two
+## views at once. `camera_rig.gd` now gives the viewmodel its own `HeldSlipper`
+## (see `VIEWMODEL_CARRY_ANCHOR`), which frees this to mean what its name says:
+## put the slipper in the hand. Solved with the same inversion the whole
+## viewmodel already exists for.
+##
+## Target is the arm bone's own neighbourhood — `t` above, nudged forward and up
+## by roughly the tsinelas capsule's half-height so the visible mesh, which
+## `_align_to_capsule_floor` drops below the origin, lands at the palm rather
+## than under it.
+const HAND_CARRY_OFFSET: Vector3 = Vector3(0.237, 0.135, -0.347)
 
 ## The persistent carry pose. Verified against the actual .glb rather than a
 ## doc: the Kenney rig ships `holding-right` and `holding-right-shoot`, and

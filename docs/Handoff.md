@@ -59,8 +59,7 @@ Filed in §5 as a decision the team owes, with the argument for *not* building i
 
 Filed rather than folded in, per `Concurrency_Protocol.md` §10.
 
-1. **The carried tsinelas is still visibly detached from the hand — `Checklist.md` item 3 of the
-   DESIGN-ART queue, re-verified and NOT closed.** This pass re-rendered the viewmodel probe as
+1. **[CLOSED — B-105, fixed 2026-07-28.] The carried tsinelas is visibly detached from the hand.** This pass re-rendered the viewmodel probe as
    that item asked. `HAND_CARRY_OFFSET` is not the suspect it was framed as: the probe's own report
    prints `HandPoint` and `carried slipper` at **exactly the same coordinate**
    `(0.260, 0.600, -0.750)`, so the slipper is precisely where the code puts it. The problem is
@@ -745,6 +744,30 @@ For any coding agent picking up this queue.
 
 **Only open items live here.** B-01 … B-66 are in [`Handoff.md`](Handoff.md); everything
 marked `[FIXED]` there is done and settled. New bugs take the next free number **in this file**.
+
+**B-105 · The carried tsinelas floated beside its carrier's head, and re-measuring the offset
+could never have fixed it. [FIXED 2026-07-28]** Reported repeatedly as "slipper floating" and
+chased at least three times as a `HAND_CARRY_OFFSET` calibration problem.
+
+*The offset was never wrong.* Its own note says what it was chosen for: put the slipper "a little
+above the eye", forward and right so it never covers the crosshair. That is a viewmodel pose. It
+was correct for the FIRST-PERSON frame and it was the ONLY thing positioning a real world object,
+so every other player saw a slipper hovering next to a head. **One object was being asked to
+compose two views at once**, which is why every re-measurement moved the problem instead of
+removing it — the probe reported `HandPoint` and the slipper at exactly the same coordinate the
+whole time.
+
+*Fix:* the same inversion the viewmodel arms already exist for. `ViewmodelArms.tscn` gained a
+`HeldSlipper` under the fist, posed for the local player's frame via `VIEWMODEL_CARRY_ANCHOR`;
+`_update_viewmodel_carry()` stopped chasing the world slipper and holds a fixed carry pose; and
+`HAND_CARRY_OFFSET` was re-targeted to mean what its name says — the hand.
+⚠️ Two consequences worth knowing, both found by rendering:
+ - The local player then saw TWO slippers. The carried unit is a separate `CharacterBase`, so the
+   body self-hide never covered it. `_apply_carried_self_hide()` handles it on the same
+   "`_active` is only true for the rig you look through" basis as the body hide.
+ - That hide **must remember what it hid**. Keyed on `carrier.held()` alone, throwing the slipper
+   makes `held()` null, the restore never runs, and the slipper stays invisible to the thrower for
+   the rest of the round.
 
 **B-104 · Bayan Plaza could never be loaded — both map entries shared one id. [FIXED
 2026-07-28]** `GameLaunch.MAPS` declared `"id": &"eskinita"` on BOTH entries, and
