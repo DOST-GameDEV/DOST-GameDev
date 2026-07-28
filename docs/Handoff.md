@@ -37,6 +37,51 @@ one names the model it should run on, the files to read first, its exact scope, 
 
 ## 0. Session log — where the project stands right now
 
+### 0.14 Peer-drop-mid-round — the live account (2026-07-28)
+
+**Branch:** `code/networking`. **Lane:** 🔧 Build. **Checklist item:** 4.7 (new).
+
+Pulled the cable for real rather than reading the code and guessing: a 4-peer LAN session (host + 3
+`--join=127.0.0.1`), one join process hard-killed (`kill -9`, no graceful disconnect packet)
+mid-round. Findings, all measured live, not assumed:
+
+1. ENet detects the drop via its own peer timeout, **not instantly** — roughly 10-11 seconds after
+   the process died in this environment. A hard kill sends no FIN; nothing faster was attempted
+   (that would mean lowering ENet's own timeout).
+2. `main.gd::_on_player_disconnected` fires on **every remaining peer**, not just the host — each
+   one frees its own local copy of the departed character; host-side only, shows "A player left the
+   match" and re-registers tracked Cans.
+3. **The disconnected unit does not become a frozen obstacle. It is deleted outright** —
+   `queue_free()`'d and erased from every peer's own tracking dictionaries. Nothing stands in for
+   it: no AI, no ragdoll left lying around, nothing a remaining player can interact with.
+4. **If the disconnected peer was the tracked Can:** `RoundManager._tracked_cans` goes empty.
+   `_on_tracked_can_state_changed`/`_on_tracked_can_dents_changed` both early-return on an empty
+   list, so tag-to-win, the 5-fall cap, and Option A's dent count all go **completely inert** for
+   the rest of that round. The round can only end one way from there: the 90-second timer, which
+   **always resolves to a Cans-side win** (`RoundManager._on_time_up()` → `report_round_win(true)`
+   — "Cans win on timer expiry," true under both Option A and Option B) **regardless of whether a
+   Can is even still present.** A Can-side disconnect mid-round silently guarantees the round for
+   the defending team once the clock runs out, with no way for the offense to contest it.
+5. **If the disconnected peer was the attacking Person or the Tsinelas Prop** (the thrown object
+   itself — the same CharacterBase the attacking side's slipper actually is), offense loses its
+   only means of winning that round too: nobody left to throw, or — if the Tsinelas player
+   specifically drops — the slipper object itself is deleted mid-flight or mid-carry, whatever it
+   was doing. Same resolution: timer expires, Cans win.
+6. **If the disconnected peer was the defending Taya**, tag-to-win becomes unreachable for that
+   team, but the Can itself is still tracked — Option A's dents and Option B's fall-cap/auto-seal
+   still apply from throws the offense lands, so this is the one drop that does **not**
+   automatically hand the round to one side.
+7. **No crash, in any of the above** — but building this test surfaced and fixed two real,
+   previously-unreachable UI crashes along the way. See **B-100** and **B-101**, and `Checklist.md`
+   4.2's own entry.
+
+**Not done, explicitly out of scope for this pass:** any actual mitigation (a bot taking over an
+abandoned role, a grace window before the round auto-resolves, ENet timeout tuning). This is the
+truth on record, not a fix — `Checklist.md` 4.7 is `[~]`, deliberately, because the question asked
+("what happens") is answered but the underlying UX gap is not closed.
+
+---
+
 ### 0.13 Solo-host quality of life — pause and the debug switcher (2026-07-28)
 
 **Branch:** `code/networking`. **Lane:** 🔧 Build. **Checklist item:** 4.6 (new). Own commit, per

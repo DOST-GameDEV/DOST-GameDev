@@ -787,6 +787,50 @@ touch map scenes.
       a human actually pressing Esc and confirming the overlay visibly freezes, or reading the
       `DebugBar` text off a running window — this project's norm is that an unverified interactive
       claim is not written up as felt, only as run.
+- [~] **4.7 · Peer-drop-mid-round — what actually happens, recorded rather than assumed.** 🔧 Build
+      — **verified live: a real ENet peer killed mid-round, both host and a third surviving peer
+      observed**
+      No demonstrated disconnect handling existed and there is no bot to cover an abandoned unit.
+      Pulled the cable for real rather than reading the code and guessing: a 4-peer LAN session
+      (host + 3 `--join=127.0.0.1`), one join process hard-killed (`kill -9`, no graceful
+      disconnect packet) mid-round.
+      **What happens, measured:**
+      1. ENet detects the drop via its own peer timeout, **not instantly** — roughly 10-11 seconds
+         after the process died in this environment (`kill -9` sends no FIN; there is nothing
+         faster to detect here without lowering ENet's own timeout, which was not attempted).
+      2. `main.gd::_on_player_disconnected` fires on **every remaining peer**, not just the host —
+         each one frees its own local copy of the departed character and, host-side only, shows "A
+         player left the match" and re-registers tracked Cans.
+      3. **The disconnected unit does not become a frozen obstacle. It is deleted outright** —
+         `queue_free()`'d and erased from every peer's own tracking dictionaries. Nothing stands in
+         for it; there is no AI, no ragdoll left lying around, nothing a remaining player can walk
+         up to and interact with.
+      4. **If the disconnected peer was the tracked Can:** `RoundManager._tracked_cans` becomes
+         EMPTY. `_on_tracked_can_state_changed`/`_on_tracked_can_dents_changed` both early-return on
+         an empty list, so tag-to-win, the 5-fall cap, and Option A's dent count all go **completely
+         inert** for the remainder of that round — there is no can left to tag, cap, or dent. The
+         round can only end one way from that point on: the 90-second timer, which **always resolves
+         to a Cans-side win** (`RoundManager._on_time_up()` → `report_round_win(true)` — "Cans win on
+         timer expiry," true under both Option A and Option B) **regardless of whether a Can is even
+         still present.** A Can-side disconnect mid-round silently guarantees the round for the
+         defending team once the clock runs out, with no way for the offense to contest it.
+      5. **If the disconnected peer was the attacking Person or the Tsinelas Prop** (the thrown
+         object itself — the SAME CharacterBase the attacking side's slipper actually is), offense
+         loses its only means of winning that round too: nobody left to throw, or — if the Tsinelas
+         player specifically drops — the slipper object itself is deleted from the match entirely,
+         mid-flight or mid-carry, whatever it was doing. Same resolution: timer expires, Cans win.
+      6. **If the disconnected peer was the defending Taya**, tag-to-win becomes unreachable for
+         that team (nobody left to land the tag), but the Can itself is still tracked — Option A's
+         dents and Option B's fall-cap/auto-seal still apply from throws the offense lands, so this
+         is the one drop that does NOT automatically hand the round to one side.
+      7. **No crash, in any of the above** — but building this test surfaced and fixed two real,
+         previously-unreachable UI crashes along the way (`you_card.gd`, `offscreen_indicators.gd` —
+         see 4.2's own entry and `Handoff.md`'s new `B-` numbers for both).
+      **Not done, explicitly out of scope for this pass:** any actual FIX for the above (a bot
+      taking over an abandoned role, a grace window before the round auto-resolves, ENet timeout
+      tuning). This item is the truth on record, not a mitigation — `[~]` rather than `[x]` because
+      the *fix* the human asked for ("what happens") is answered, but the underlying UX gap is not
+      closed and nobody should read this box as saying it is.
 
 ---
 

@@ -10,7 +10,7 @@ names them but cannot set them.
 |---|---|---|---|---|---|
 | **1** | ~~🔧 **BUILD-PHYS**~~ | **Sonnet** | high | ✅ **Done 2026-07-28 — `Checklist.md` 2.5.** | Per-unit collision, both props rescaled, `HAND_CARRY_OFFSET` re-measured, `base_circle_decal` resized, 4.4a fixed. Row 4 is unblocked. |
 | **2** | ~~🔧 **BUILD-UX**~~ | **Sonnet** | medium | ✅ **Done 2026-07-28.** | **B-86 could not be reproduced** — re-rendered six times, crosshair present every time; see `Handoff.md` B-86. Charge-glow shader hook built in `you_card.gd` (`CHARGE_SHADER_PARAM`), verified by a scripted run. 5.3 (strip Local Match/debug switcher) deliberately **not** done this pass — it is blocked on 0.4 and 4.4 in `Checklist.md`, and `Art_Direction.md`'s own resolution says do it late, after the last playtest, not before. |
-| **3** | 🔧 **BUILD-NET** | **Sonnet** | high | **4.2/4.3 done 2026-07-28 (`Checklist.md`).** | Remote-visual interpolation and rejoin identity (B-65) are in, live-tested. Solo-host QoL and a peer-drop account are still queued on this lane before real-device LAN testing (6.1). |
+| **3** | ~~🔧 **BUILD-NET**~~ | **Sonnet** | high | ✅ **Done 2026-07-28 — `Checklist.md` 4.2, 4.3, 4.6, 4.7.** | Remote-visual interpolation, rejoin identity (stable token + a mid-match redirect out of the lobby), solo-host pause/debug-switcher QoL, and a live peer-drop account are all in. Real-device testing over wifi (6.1) is still 🧑 human and still unrun — this lane only made the loopback case correct. |
 | **4** | 🎨 **DESIGN-ART** | **Opus** | high | **Unblocked — row 1 is done** | Its first job was rescaling props, which depended on 1; that shipped (`generate_all.gd`'s meshes), so this lane's remaining scope is whatever `Checklist.md` still lists open under 2.x. Opus because its question is *"does this match the moodboard"* — a judgement call, not a testable one. **Attach the moodboard image.** |
 | **5** | 🎵 **BUILD-AUDIO** | **Sonnet** | medium | Any time | Nothing exists — not one `AudioStreamPlayer` in the repo. Fully independent of every other lane. |
 | **6** | 🔬 **QA** | **Sonnet** | medium | **Alongside anything** | Writes only `docs/`, so it can never collide. Good to keep running continuously. |
@@ -80,12 +80,14 @@ Everything below except DESIGN-ART is a known target with a testable answer, whi
 
 # 🔧 BUILD-NET — Sonnet, high effort
 
-> ✅ **Items 1-2 done 2026-07-28 — see `Checklist.md` 4.2, 4.3.** Remote-visual interpolation and
-> rejoin identity (a stable token plus the mid-match Lobby redirect the checklist item's own
-> one-liner didn't mention) both shipped, live-tested over loopback. Two pre-existing UI crashes
-> (`you_card.gd`, `offscreen_indicators.gd` — B-100, B-101) were found and fixed along the way, in
-> this same commit. **Items 3-4 (solo-host QoL, the peer-drop account) still queued** — see the
-> numbered list below.
+> ✅ **DONE 2026-07-28 — see `Checklist.md` 4.2, 4.3, 4.6, 4.7.** All four numbered items below
+> shipped: remote-visual interpolation, rejoin identity (a stable token plus the mid-match Lobby
+> redirect the checklist item's own one-liner didn't mention), solo-host pause/debug-switcher QoL,
+> and a live-tested account of what a mid-round peer drop actually does. Two pre-existing UI
+> crashes (`you_card.gd`, `offscreen_indicators.gd` — B-100, B-101) were found and fixed along the
+> way, in the same commit as the item that surfaced them. Kept below for the standing setup/lock/
+> smoke-gate rules and as the historical record of the brief, same as `BUILD-PHYS` above — not for
+> scope. Real-device LAN testing (6.1) is still 🧑 human and still unrun.
 
 ```
 You are the BUILD-NET lane on Tumbang Preso, a Godot 4.7 (GDScript, Forward+) 2v2 LAN arena
