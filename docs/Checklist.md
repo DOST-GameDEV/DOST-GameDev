@@ -1243,18 +1243,26 @@ buggy."* Six Kenney kits (all CC0, verified) plus a supplied flip-flop `.glb`.
       *procedural* can hours before this overhaul and 7.2 replaces it — the livery does not survive
       the swap and is rebuilt here as a texture instead. The trademark note and the credit in
       `README.md` stay valid throughout and do not need revisiting.
-- [ ] **7.7 · Wire the animation clips the kit already ships.** 🎨 Design — no kit swap needed,
-      **can start immediately, blocks nothing and is blocked by nothing**
+- [~] **7.7 · Wire the animation clips the kit already ships.** 🎨 Design —
+      **verified by parse + two 400-frame soaks incl. a driven double round transition;
+      not verified by play**
       Human instruction: *"the assets i sent has animation built in, pls use."* Verified: **Mini
       Characters ships 32 baked clips per `.glb`; every other kit ships zero.** So this is a
       character item only — there is nothing to wire on props or the world.
       Eight clips are already wired (`idle`, `walk`, `sprint`, `holding-right`,
       `holding-right-shoot`, `attack-melee-right`, `attack-kick-right`, `pick-up`). Wire these,
       each of which reads state the game **already tracks**:
-  - [ ] **`jump` / `fall`.** `_play_locomotion()` selects on horizontal speed only, so a Person in
-        mid-air plays `walk` right now. Biggest cheap win in the item.
-  - [ ] **`die` on `State.DOWNED`.** Downed currently reads in the HUD but not on the body.
-  - [ ] **`emote-yes` on the `ready_up` press.** Everyone else sees who has readied, in the world.
+  - [x] **`jump` / `fall`.** Split by VERTICAL velocity so a rising jump and a falling one are not
+        the same pose. `_play_locomotion()` selected on horizontal speed alone, so a Person at the
+        apex of a jump — horizontal speed near zero — played `idle`, and one drifting sideways
+        through the air played `walk`. Every unit can jump (§0's pillar put it on the Prop too),
+        which made this the most-seen missing pose in the build.
+  - [x] **`die` on `State.DOWNED`**, checked before everything else. Being knocked down read only
+        in the HUD flash and the `Visual` tilt; a downed unit and a standing one played the same
+        idle clip.
+  - [x] **`emote-yes` on the `ready_up` press.** Goes through the existing `play_visual_action()`
+        path, so the two views cannot disagree about whether a ready happened. Guarded on the local
+        roster, which is empty on every non-local path.
   - [ ] **`holding-right-shoot` held and scaled by `Carrier.charge_power()`** — a candidate answer
         to the long-open third-person windup tell, using a clip that already exists instead of new
         geometry. ⚠️ If reading charge from another peer's `Carrier` needs a **new synced field**,

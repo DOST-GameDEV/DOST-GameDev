@@ -397,6 +397,13 @@ func _start_local_test() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if _awaiting_local_ready and not _counting_down and event.is_action_pressed("ready_up"):
 		get_viewport().set_input_as_handled()
+		# 7.7 — a body-language read on the ready press. Purely visual: the
+		# countdown and the round start are unchanged below, this just means the
+		# OTHER players can see it happen in the world instead of only on a HUD.
+		# Guarded because the local roster is empty on any non-local path.
+		for character in _local_roster:
+			if is_instance_valid(character) and character.is_person:
+				character.play_visual_action("ready")
 		_run_ready_countdown()
 
 ## 2026-07-28 — "add a 3 2 1 timer before each match starts too." Runs once,
