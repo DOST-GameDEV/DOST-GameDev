@@ -229,11 +229,32 @@ const HAND_BONE_CANDIDATES: Array[String] = ["arm-right", "arm-left"]
 ## put the slipper in the hand. Solved with the same inversion the whole
 ## viewmodel already exists for.
 ##
-## Target is the arm bone's own neighbourhood — `t` above, nudged forward and up
-## by roughly the tsinelas capsule's half-height so the visible mesh, which
-## `_align_to_capsule_floor` drops below the origin, lands at the palm rather
-## than under it.
-const HAND_CARRY_OFFSET: Vector3 = Vector3(0.237, 0.135, -0.347)
+## ⚠️ THIS IS A PALM NUDGE ONLY. IT IS NOT WHERE THE MESH-DROP IS COMPENSATED.
+##
+## It used to be Vector3(0.237, 0.135, -0.347) — magnitude **0.441 m** measured
+## bone-to-point in world space, on a character 1.6 m tall. That is over a
+## quarter of body height, and it is the reported "floating slipper when held":
+## the tsinelas hung in mid-air roughly half an arm's length away from the hand.
+##
+## The intent behind it was right and the execution was not. `_align_to_capsule_floor`
+## drops a carried unit's MESH below its origin (measured: -0.160 for the
+## tsinelas, exactly its capsule half-height), so putting the origin on the hand
+## bone leaves the visible slipper hanging under the hand. Someone compensated
+## with this constant — but a 0.160 vertical correction was needed and 0.441 was
+## applied, two thirds of it sideways and forward.
+##
+## ⚠️ AND IT COULD NEVER HAVE WORKED AS A CONSTANT ANYWAY. HandPoint is a child
+## of a BoneAttachment3D, so this offset is expressed in the HAND BONE's local
+## frame, and that frame rotates with every animation clip. A vector that means
+## "up out of the palm" in `holding-right` means something else in `walk`, which
+## is why the slipper looked worse while moving.
+##
+## The mesh drop is now compensated in carriable.gd::_step_carried() from the
+## carried unit's OWN measured `visual_centre_offset()`, in world space, so it is
+## correct for the Can as well as the Tsinelas and cannot drift from the drop it
+## is cancelling. What is left here is a small nudge from the wrist bone into the
+## palm, which is genuinely a bone-space quantity.
+const HAND_CARRY_OFFSET: Vector3 = Vector3(0.04, 0.03, -0.06)
 
 ## The persistent carry pose. Verified against the actual .glb rather than a
 ## doc: the Kenney rig ships `holding-right` and `holding-right-shoot`, and
@@ -242,6 +263,21 @@ const HAND_CARRY_OFFSET: Vector3 = Vector3(0.237, 0.135, -0.347)
 ## moving falls back to plain `walk` — the slipper still tracks the arm bone
 ## through the BoneAttachment3D, so it stays in hand either way.
 const CARRY_IDLE_CLIP: String = "holding-right"
+
+## Offset from this unit's CharacterBase origin to the CENTRE of its visible
+## model, in the character's own local space. Written by _align_to_capsule_floor,
+## which is the only place that knows how far the model was dropped.
+##
+## Zero until a model has been instanced and aligned, which callers must treat
+## as "not ready yet" rather than as "no offset" — same contract as
+## get_hand_attachment().
+var _visual_centre_offset: Vector3 = Vector3.ZERO
+
+## See _visual_centre_offset. Used by carriable.gd to put a carried unit's MESH
+## in the carrier's hand instead of its ORIGIN — the two are 0.16 apart for the
+## tsinelas, which is most of what "the slipper floats when held" was.
+func visual_centre_offset() -> Vector3:
+	return _visual_centre_offset
 
 const FLASH_DURATION: float = 0.15
 
@@ -549,6 +585,16 @@ func _align_to_capsule_floor(model: Node3D) -> void:
 	# only ever ran once per instantiate; M-2's dent swap calls it again on the
 	# same model, which is what exposed it.
 	model.position.y = _capsule_half_height_down() - bounds.position.y * model.scale.y
+	# ⚠️ CACHED HERE BECAUSE THIS IS THE ONE PLACE THAT KNOWS THE DROP.
+	# A carried unit has to be positioned by where its MESH is, not by where its
+	# origin is, and the two differ by exactly the offset this function just
+	# applied. Measuring it again anywhere else would be a second source of
+	# truth for the same number — which is how it got hardcoded into
+	# HAND_CARRY_OFFSET and drifted. See carriable.gd::_step_carried.
+	_visual_centre_offset = Vector3(
+		(bounds.position.x + bounds.size.x * 0.5) * model.scale.x + model.position.x,
+		(bounds.position.y + bounds.size.y * 0.5) * model.scale.y + model.position.y,
+		(bounds.position.z + bounds.size.z * 0.5) * model.scale.z + model.position.z)
 
 ## B-88 — reads THIS unit's own, currently-applied capsule height (via
 ## CharacterBase.capsule_height(), the shared accessor every per-role-size

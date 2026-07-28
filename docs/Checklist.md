@@ -1452,6 +1452,38 @@ broken prototype test grid ... WORST OF ALL: the map is a literal floating islan
 - [~] **8.6f · White court lines close.** Corners were notched by exactly the crossing line's
       half-width; every edge now overruns by that much and all lines share one `COURT_X`.
 
+### 8.8 · Playtest round 1 — three bugs, all root-caused by measurement `[~]`
+
+First human play of Phase 8, 2026-07-29. All three fixed; none was what it looked like.
+
+- [~] **8.8a · ⚠️⚠️ THE RECURRING SPAWN BUG, FINALLY ROOT-CAUSED. Read this before touching
+      spawns again.** Report: *"spawn still broken, offense spawned next to circle."*
+      `_role_slot()` was **always correct** — the audit print showed it returning the right slot for
+      all four units. `_spawn_transform(slot)` returned the **wrong marker**, because
+      `main.gd` sorted the markers with `markers.sort_custom(func(a, b): return a.name < b.name)`
+      and **`Node.name` is a `StringName`, whose `<` compares the interned POINTER, not the text.**
+      Measured on this engine build, Spawn0..Spawn3 authored in order came back as
+      **`[Spawn3, Spawn2, Spawn0, Spawn1]`** — so the Attacker stood on the Taya's mark, right
+      beside the base circle it is supposed to be throwing at from outside the line.
+      Everything about it invited trust: the comment said "sorted by node name", the markers were
+      authored correctly, and the wrong order was *stable within a run* so it looked deterministic.
+      It is **not guaranteed stable between runs**, which is why this appeared to move around from
+      session to session. Replaced with an explicit `get_node("Spawn%d")` lookup — there is no
+      ordering left to get wrong, and a missing marker now warns instead of shuffling the roster.
+      ⚠️ **Any `sort_custom` on `.name` anywhere in this project is the same bug.**
+- [~] **8.8b · The floating held slipper.** `CharacterVisual.HAND_CARRY_OFFSET` was
+      `(0.237, 0.135, -0.347)` — **0.441 m measured bone-to-point**, on a 1.6 m character. It
+      existed to cancel the mesh drop `_align_to_capsule_floor` applies to a carried unit, which is
+      a measured **0.160**, and it was expressed in the **hand bone's local frame**, which rotates
+      with every animation clip — so it could never have held across poses. The drop is now
+      cancelled in `carriable.gd::_step_carried()` in world space from the carried unit's own
+      `visual_centre_offset()`, so the **mesh** lands in the hand rather than the origin, and it is
+      correct for the Can too. `HAND_CARRY_OFFSET` is now a 0.078 wrist→palm nudge and nothing else.
+- [~] **8.8c · Shadows overwhelming.** *"cant see person anymore."* Not one slider: `shadow_opacity`
+      had been pushed to fully opaque **and** ambient cut to 0.55 while fighting the earlier
+      overexposure, so anything in shade lost its fill. Opacity 0.62, ambient 0.95, SSAO intensity
+      3.2 → 1.8, sun 1.75 → 1.35. A character in shadow reads again.
+
 ### 8.7 · ⛔ What is owed before Phase 8 is finished
 
 - [ ] **A human plays it.** Nothing here is `[x]` until then — the standing rule.

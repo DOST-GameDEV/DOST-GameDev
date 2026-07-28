@@ -156,18 +156,47 @@ func _load_map() -> void:
 	if points == null:
 		push_warning("main.gd: map '%s' has no SpawnPoints; using the fallback ring." % path)
 		return
-	# Sorted by node name, NOT by get_children() order. B-68 is the same class of
-	# bug on the round-reset path: an order that depends on how the scene happens
-	# to be authored silently reassigns teams. Spawn0..Spawn3 is the contract.
-	var markers: Array[Node] = points.find_children("*", "Marker3D", false, false)
-	markers.sort_custom(func(a: Node, b: Node) -> bool: return a.name < b.name)
-	for marker in markers:
+	# ⚠️⚠️ LOOKED UP BY EXACT NAME. DO NOT GO BACK TO SORTING. ⚠️⚠️
+	#
+	# This is THE recurring spawn bug, found 2026-07-29 after surviving several
+	# sessions of "spawns are still wrong". The previous version was:
+	#
+	#     markers.sort_custom(func(a, b): return a.name < b.name)
+	#
+	# which reads as "sort Spawn0..Spawn3 alphabetically" and is not what it
+	# does. `Node.name` is a **StringName**, and `<` on StringName compares the
+	# interned POINTER, not the text. Measured on this exact engine build, four
+	# nodes authored in order Spawn0..Spawn3 came back as:
+	#
+	#     [Spawn3, Spawn2, Spawn0, Spawn1]
+	#
+	# so slot -> marker was scrambled: the Can spawned on the Tsinelas's mark,
+	# the Taya on the Attacker's, and the ATTACKER ON THE TAYA'S — i.e. offense
+	# standing next to the base circle it is supposed to be throwing at from
+	# outside the line. Reported as exactly that, repeatedly.
+	#
+	# Everything about the old line invited trusting it: `_role_slot()` was
+	# correct, the markers were authored in the right order, the comment said
+	# "sorted by node name", and the resulting order was STABLE within a run so
+	# it looked deterministic. It is not even guaranteed stable BETWEEN runs —
+	# StringName intern order depends on what got interned first — which is why
+	# this appeared to move around from session to session.
+	#
+	# Named lookup removes the failure mode rather than fixing this instance of
+	# it: there is no ordering to get wrong, and a renamed or missing marker is
+	# now a loud warning instead of a silently shuffled roster.
+	for slot in range(4):
+		var marker := points.get_node_or_null("Spawn%d" % slot) as Marker3D
+		if marker == null:
+			push_warning("main.gd: map '%s' has no SpawnPoints/Spawn%d; using the fallback ring." % [path, slot])
+			_map_spawns.clear()
+			return
 		# The whole TRANSFORM, not just the origin. A spawn point has to say
 		# which way you are FACING as well as where you stand — the first render
 		# of this had all four units spawn at the ends of the alley looking at
 		# the wall behind them, because a Marker3D with no rotation means the
 		# default -Z facing and half the spawns are at the far end.
-		_map_spawns.append((marker as Marker3D).transform)
+		_map_spawns.append(marker.transform)
 
 ## Spawn slots are ROLE-based, not team-based, since the human playtest of the
 ## proportion fix (2026-07-28): "two teams spawn on completely different ends
