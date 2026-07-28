@@ -65,7 +65,15 @@ What that actually changes, concretely:
 
 ### 1. The proportion audit — this is the headline
 
-**The environment is built correctly at 1 unit = 1 metre. The two hero props are not.**
+> ### ✅ FIXED 2026-07-28 — checklist 2.5, verified by render
+>
+> Everything this section originally described as broken is shipped: per-unit collision on
+> `CharacterBase`, both hero props rebuilt at the target scale, `HAND_CARRY_OFFSET` re-measured and
+> `TSINELAS_CARRY_SCALE` deleted, `base_circle_decal` resized, and `throw_bakya`'s range bug fixed.
+> The table and the numbers below are kept as the historical measurement record — see checklist
+> **2.5** for what actually shipped and §1a right below for the collision/offset details.
+
+**The environment is built correctly at 1 unit = 1 metre. The two hero props were not.**
 
 | Asset | Height/length | Real object | Ratio | Verdict |
 |---|---|---|---|---|
@@ -74,70 +82,87 @@ What that actually changes, concretely:
 | oil drum | 0.90 | 0.88 m (200 L) | 1.02× | ✅ |
 | basketball ring | 3.85 | 3.95 m to board top | 0.97× | ✅ |
 | bench / bollard / crate / tyre | — | — | ~1× | ✅ |
-| **lata (the can)** | **1.12** | 0.12 m | **9.3×** | ❌ |
-| **tsinelas** | **1.35** | 0.27 m | **5.0×** | ❌ |
+| **lata (the can)** | 1.12 → **0.34** | 0.12 m | 9.3× → **0.7×** | ✅ **fixed 2026-07-28** |
+| **tsinelas** | 1.35 → **0.43** | 0.27 m | 5.0× → **1.6×** | ✅ **fixed 2026-07-28** |
 | building block a / b | 6.0 / 8.0 | ~10 m for 3 storeys | 0.6–0.8× | ⚠️ *fixed this pass → 9.0 / 12.0* |
 | electric post | 4.5 | 8–9 m | 0.5× | ⚠️ open |
 | tricycle | 1.64 long | ~2.8 m | 0.6× | ⚠️ open |
 
-**The single clearest way to see it:** the can is 1.12 m and the monobloc chair beside it is
-0.89 m. *The can is taller than the chair.* Nothing about the set is wrong — the props are wrong,
-and they are wrong by a factor of five to nine.
+**What it looked like before the fix, for the record:** the can was 1.12 m and the monobloc chair
+beside it was 0.89 m — *the can was taller than the chair*. Nothing about the set was wrong — the
+props were wrong, by a factor of five to nine.
 
-#### Why it is like this, and why that reasoning has expired
+#### Why it was like this, and why that reasoning had expired
 
 `Handoff.md` §0.11 / checklist 1.2 decided the props stay "hero-scaled" and explicitly rejected
 rescaling them, because prop size is entangled with `CharacterBase`'s collision capsule, hit
 radii, grab radius, throw ranges and camera distance. That was a sound call **when the set was a
-grey box** — there was nothing in frame to be out of proportion *with*. Now there is a dressed
-street full of correctly-sized objects, and the props read as absurd against it.
+grey box** — there was nothing in frame to be out of proportion *with*. Once there was a dressed
+street full of correctly-sized objects, the props read as absurd against it, which is what
+triggered this fix.
 
-#### The target numbers
+#### The target numbers, hit exactly
 
-| Prop | Now | Target | Scale | vs Person | Real-life ratio |
+| Prop | Was | Target | Shipped | Scale | vs Person |
 |---|---|---|---|---|---|
-| lata | 1.12 | **0.34** | 0.30 | 21% | 7% |
-| tsinelas | 1.35 | **0.43** | 0.32 | 27% | 17% |
+| lata | 1.12 | 0.34 | **0.3375** | 0.30 | 21% |
+| tsinelas | 1.35 | 0.43 | **0.432** | 0.32 | 27% |
 
 Both stay deliberately larger than life, because the moodboard's language is chibi exaggeration —
-but 21–27% is *stylised*, where 70–84% is *broken*.
+21–27% is *stylised*, where 70–84% was *broken*.
 
-> ### The tsinelas number is not a guess, and this is the nicest fact in this document
+> ### The tsinelas number was not a guess, and it is the nicest fact in this document
 >
-> `character_visual.gd` already carries `TSINELAS_CARRY_SCALE = 0.32`, applied only while the
-> slipper is CARRIED, and **0.32 × 1.35 = 0.432**. That number was arrived at independently, by
+> `character_visual.gd` used to carry `TSINELAS_CARRY_SCALE = 0.32`, applied only while the
+> slipper was CARRIED, and **0.32 × 1.35 = 0.432**. That number was arrived at independently, by
 > rendering, because the full-size slipper filled a quarter of the FPP screen.
 >
-> So the carried slipper is **already exactly the right size**. The loose and flying ones are the
-> outliers. Rebuild the mesh at 0.43 natively and `TSINELAS_CARRY_SCALE` becomes 1.0 and can be
-> deleted, along with `_scale_while_carried()` and the `CARRY_SCALE_LERP` tween — a feature
-> *removed* rather than added. `HAND_CARRY_OFFSET` must be re-measured afterwards; its own comment
-> block says so and gives the method.
+> So the carried slipper was **already exactly the right size**. The loose and flying ones were the
+> outliers. The mesh is now built at 0.32× natively (`generate_all.gd`'s `TSINELAS_SCALE`), and
+> `TSINELAS_CARRY_SCALE`, `_scale_while_carried()` and the `CARRY_SCALE_LERP` tween are gone — a
+> feature *removed* rather than added. `HAND_CARRY_OFFSET` was re-measured by rendering afterwards,
+> per its own comment block.
 
-#### Blast radius — why this is not a one-line change
+#### 1a. What actually shipped — the blast radius this fix had to cross
 
-The hard part is that **`CharacterBase.tscn` is shared by Persons and Props**, and its collision
-capsule is `radius 0.4, height 1.6` for all of them. Shrinking the can's mesh to 0.34 leaves a
-1.6 m invisible capsule around a 0.34 m object: it would block doorways it appears to fit through
-and get hit by throws that visibly miss.
+`CharacterBase.tscn` is shared by Persons and Props, and its collision capsule used to be
+`radius 0.4, height 1.6` for all of them — a correctly-sized 0.34 m can inside a 1.6 m invisible
+capsule would have been WORSE than the old oversized mesh, because the mismatch would have stopped
+being visible. So, in order:
 
-So the change is, in order:
+1. **Per-unit collision.** Every shape on `CharacterBase.tscn` (`CollisionShape3D`, `Hurtbox`,
+   `Hitbox`, `GrabArea`) is `resource_local_to_scene = true`, and `character_base.gd`'s new
+   `_apply_role_collision()` sizes each one from `is_person`/`is_can`, called from `_ready()` and
+   again from `reset_for_new_round()` (a Prop's `is_can` flips every round). Person is unchanged
+   (0.4/1.6); Can and Tsinelas each get their own small capsule plus a proportionally-scaled melee
+   `Hitbox` reach. `GrabArea` is inert on a Prop (only a Person's own is ever queried) and was sized
+   anyway for consistency.
+2. **Both prop meshes rebuilt at the target scale.** `generate_all.gd`'s `LATA_SCALE` (0.30) and
+   `TSINELAS_SCALE` (0.32) are applied as a post-deform `Transform3D.scaled()` on every
+   `add_revolve`/`add_extrude` call — the 2.1b-0 `transform` parameter — so not one dent depth or
+   strap control point needed touching; only the final emitted vertex shrinks.
+3. **`HAND_CARRY_OFFSET` re-measured, `TSINELAS_CARRY_SCALE` deleted.** Re-measuring was not a
+   trivial reapplication of the old formula: deleting the runtime scale meant the model's
+   `_align_to_capsule_floor()` drop (-0.8 in the Visual node's local space) was no longer being
+   compensated by the carry-scale, dropping the mesh 0.544 units lower than it used to read while
+   carried. Confirmed by rendering `tools/render_probe.gd`'s viewmodel mode, not by calculation
+   alone — the first analytically-derived value put the slipper broadside-close to the FPP camera
+   (the arm bone's fixed rotation turns the mesh's long axis nearly broadside to view) and filled
+   most of the frame; the shipped value pushes it further out and keeps it below the eyeline.
+4. **`base_circle_decal` resized.** 3.0 m outer diameter (drawn around the old 1.12 m can) down to
+   1.4 m (radius 0.70), inside this section's own 1.2–1.5 m window. Ring width kept at 0.15 rather
+   than shrinking 1:1 with the diameter, for the same foreshortening-at-distance reason it was
+   widened from 0.06 in the first place (§9).
+5. **Throw range, hit radius retuned.** `throw_bakya`'s range bug (4.4a, 4.81 units) fixed — arc
+   12°/gravity_scale 1.0 instead of 8°/1.6, new range ~7.2, still shortest of the four by identity
+   rather than by being broken. Every `ThrowProfile.hit_radius` halved — several were larger than
+   the entire rescaled tsinelas mesh. Exact combat-feel numbers stay checklist 4.4's job once a
+   human has actually played it.
 
-1. **Per-unit collision.** `CollisionShape3D`, `Hurtbox`, `Hitbox` and `GrabArea` sized from the
-   unit's role instead of baked once. 🔧 **Build** — `CharacterBase.tscn` (shared, needs the lock)
-   plus `character_base.gd`.
-2. **Rebuild the two prop meshes at the new scale.** 🎨 Design — `generate_all.gd`, one constant
-   each. Trivial once step 1 exists.
-3. **Re-measure `HAND_CARRY_OFFSET`** by the sampling method its comment documents. Delete
-   `TSINELAS_CARRY_SCALE`. 🔧 Build.
-4. **Resize the floor markings.** `base_circle_decal` is 3.0 m across because it was drawn around
-   a 1.12 m can. Against a 0.34 m can it wants ~1.2–1.5 m. 🎨 Design.
-5. **Retune throw range, hit radius and grab radius**, all of which were tuned by eye against
-   oversized props. Note **4.4a** already flags `throw_bakya`'s max range as 4.81 units — less than
-   half of every other throw — so this retune is owed anyway. 🔧 Build, and it needs 0.4 first.
-
-**Do not start step 2 before step 1.** A correctly-sized can with a person-sized capsule is worse
-than what is there now, because the error becomes invisible instead of obvious.
+**Jump was deliberately left untouched.** `JUMP_VELOCITY = 5.8` (apex 0.841) is a MAP constraint,
+not a feel one — interior clutter is capped at 1.0 so an FPP eye at 1.25 can see over it, and
+raising the apex past ~1.0 turns every crate into a platform. Rescaling the props doesn't change
+that ceiling, so it wasn't touched.
 
 ---
 
@@ -252,9 +277,8 @@ stacks, sampay lines, aspins. Stretch goal; only after A–D.
 
 ### 4. Flagged for a human
 
-1. **Item A is a cross-lane change and needs Build to move first.** Design cannot size a collision
-   shape. If Build has no capacity, the fallback is to shrink only the *meshes* and accept
-   mismatched collision — **I do not recommend it**, for the reason in §1.
+1. ~~Item A is a cross-lane change and needs Build to move first.~~ **Shipped 2026-07-28** — see
+   §1a.
 2. **Item C reverses a documented decision** (M-6 step 3). Worth 30 seconds of your opinion.
 3. **Item B changes arena scale**, which is a feel change, not an art change. It should not happen
    before somebody has played the current one (0.4).
@@ -566,7 +590,7 @@ should have their `Kd` values derived from these same constants (`Handoff.md` M-
 
 1. **`_align_to_capsule_floor()`** (`character_visual.gd:132`) measures the instanced model's AABB
    at runtime and drops it to the bottom of `CharacterBase`'s 1.6-unit capsule. It exists because
-   the can (1.13), the tsinelas (1.35) and the two Kenney Persons (1.60 and 1.85) are all
+   the can (0.34), the tsinelas (0.43) and the two Kenney Persons (1.60 and 1.85) are all
    different heights. **A new mesh with a stray vertex — a wide bounding box from a helper object,
    an outline hull — shifts the measured AABB and the whole model floats or sinks.** Re-verify
    after every model swap.
@@ -951,7 +975,7 @@ means the lata must be lit and unoccluded where it stands. Both are served by th
 
 | Piece | Geometry | Tris | Material | Notes |
 |---|---|---|---|---|
-| `base_circle_decal` | Annulus, **3.0 outer diameter**, ring width 0.12, at `y = 0.02` | 96 | `HIGHLIGHT` | 24-segment flat ring. `HIGHLIGHT`'s documented use is literally "base-circle decal". 3.0 outer against a 0.68-wide lata gives the taya a readable zone to defend without the ring reading as a dinner plate. |
+| `base_circle_decal` | Annulus, **1.4 outer diameter** (resized 2026-07-28 from 3.0, which was drawn around the pre-rescale 1.12 m can), ring width 0.15, at `y = 0.02` | 96 | `HIGHLIGHT` | 24-segment flat ring. `HIGHLIGHT`'s documented use is literally "base-circle decal". 1.4 outer against a 0.20-wide lata gives the taya a readable zone to defend without the ring reading as a dinner plate. |
 | `throwing_line_decal` | Bar, 8.0 × 0.12, at `y = 0.02` | 12 | `PANEL` | One per side, at **6.0 units from the base-circle centre.** |
 | `team_side_decal` | Bar, 6.0 × 0.08, at `y = 0.02` | 12 | `PANEL` at 40% alpha | Marks each team's half. Subordinate to the throwing line — thinner and fainter on purpose. |
 
@@ -967,20 +991,22 @@ release height of **1.248** (the `HandPoint` measured at `+0.448` above a capsul
 | `throw_default` (every Prop today, per B-76) | 17.0 | 14° | 1.0 | **10.13** | ~69% |
 | `throw_bagsak` | 15.0 | 30° | 1.2 | **9.89** | ~73% |
 | `throw_flick` | 23.0 | 5° | 0.75 | **12.90** | ~53% |
-| `throw_bakya` | 14.0 | 8° | 1.6 | **4.81** | ⛔ **impossible** |
+| `throw_bakya` | 14.0 | 12° | 1.0 | **7.23** | ~87% |
 
 **6.0 is chosen so the profile that every Prop actually uses today throws at a comfortable ~69%
 charge** — enough headroom to arc over a defender, short of the ceiling where charge stops
 mattering.
 
-> **⛔ Finding, handed to the tuning lane — filed as checklist 4.4a.** `throw_bakya`'s maximum range
-> is **4.81 units, less than half of every other profile.** `gravity_scale 1.6` combined with
-> `arc_angle_deg 8.0` is heavy *and* flat, so it falls out of the air almost immediately. Bakya Bash
-> cannot reach any throwing line the other three can use. **Do not design the map around this
-> number** — it is far more likely a tuning bug than an intended identity. It has never been felt,
-> because nothing has ever selected it (B-76: `PROP_ABILITY` is `quick_stand.tres` for every Prop,
-> so all three throw identities are unreachable in the running game). Retune it at 0.5 or 4.4, then
-> re-check this table.
+> **✅ FIXED 2026-07-28 (checklist 4.4a).** `throw_bakya`'s maximum range used to be **4.81 units,
+> less than half of every other profile** — `gravity_scale 1.6` combined with `arc_angle_deg 8.0`
+> was heavy *and* flat enough that it fell out of the air almost immediately, and it could not
+> reach any throwing line the other three could. Retuned to `arc_angle_deg 12.0` /
+> `gravity_scale 1.0` (launch_speed unchanged at 14.0, still the slowest of the four): new max
+> range **7.23**, needing ~87% charge for the 6.0 line — reachable, and still the shortest-range
+> profile of the four by identity (heavy, close-range knockdown) rather than by being broken. It
+> had never been felt before this fix because nothing had ever selected it (B-76: `PROP_ABILITY`
+> was `quick_stand.tres` for every Prop, so all three throw identities were unreachable in the
+> running game).
 
 **A second consequence for 2.2, worth stating explicitly:** with every real exchange happening
 inside about 13 units, a 40 × 40 arena is larger than the mechanic needs. §4's inward dressing is
@@ -1058,7 +1084,7 @@ boundary and say so** — every phase below leaves a coherent map.
 | **0.7 / B-82** — floor top is `y = +0.5`; units spawn inside the slab | 🔧 Build (`Main.tscn`, shared, locked) | `Checklist.md` 0.7, B-82 |
 | ~~**B-81**~~ — tsinelas sole was `DEFENSE` blue on an offence-only unit | 🎨 Design | **FIXED 2026-07-28**, verified by render |
 | **B-83** — boundary colliders at `±40` around a `±20` floor | 🎨 Design, inside 2.2 | B-83, §4 above |
-| **4.4a** — `throw_bakya` max range is 4.81 units | 🔧 Build (tuning) | §9 above, `Checklist.md` 4.4a |
+| ~~**4.4a**~~ — `throw_bakya` max range was 4.81 units | 🔧 Build (tuning) | **FIXED 2026-07-28**, §9 above, `Checklist.md` 4.4a |
 | Spawn-point *reading* logic (`main.gd` prefers map markers) | 🔧 Build | `Checklist.md` 2.2 |
 | `HazardZone` slow-zone behaviour | 🔧 Build | 2.2 places it; Build owns what it does |
 
@@ -1392,10 +1418,10 @@ Verified by running the build on 2026-07-28.
 | Main menu → map picker → match | ✅ works | Two maps selectable |
 | **Eskinita** (dressed alley) | ✅ renders | 30-piece kit, road markings, wires, sari-sari frontage |
 | **Bayan Plaza** | ⚠️ built, rendered, **never played** | Checklist 2.4, `[~]` |
-| Spawns as two team pairs at opposite ends | ✅ verified | From the map's own `SpawnPoints` |
+| Spawns role-based: Can at the base circle, Taya beside it, Attacker+Tsinelas at the throwing line | ✅ verified 2026-07-28 (later same day) | Was "two team pairs at opposite ends" — changed after playtest feedback; see `Checklist.md` for the item |
 | Person = FPP, Prop = TPP | ✅ verified | Self-hide works; camera at 1.25 above feet |
 | Restyled Persons (2.3) | ✅ verified by render | Read apart at 20 units, no orange/blue |
-| Pick up + carry the tsinelas | ✅ verified | Scales to hand size, tracks the arm bone |
+| Pick up + carry the tsinelas | ✅ verified | Native hand-scale mesh, tilted toward camera, tracks the arm bone; the runtime carry-scale hack is gone (§1) |
 | Can: 4 dent states, downed tilt | ✅ in code | Not seen in a live hit |
 | Hit flash, impact burst, hitstop | ✅ in code (hitstop v4.30) | Not seen in a live hit |
 | HUD: Bo5 pips, role panels, timer, LATA + YOU cards | ✅ renders | |

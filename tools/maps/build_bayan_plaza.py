@@ -182,6 +182,10 @@ adjustment_contrast = 1.07
 adjustment_saturation = 1.18
 '''
 
+# Spawn0-3 are ROLE slots (Can / Taya / Attacker / Tsinelas), same scheme and
+# same coordinates as build_eskinita.py — see that file's comment above its
+# own SpawnPoints block for the full reasoning. Centred on this map's own
+# base_circle_decal (0,0,0) and south throwing_line_decal (0,0,6) below.
 HEAD = '''[node name="BayanPlaza" type="Node3D"]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
@@ -255,16 +259,16 @@ shape = SubResource("Shape_hazard")
 [node name="SpawnPoints" type="Node3D" parent="."]
 
 [node name="Spawn0" type="Marker3D" parent="SpawnPoints"]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -2.5, 0.8, -9.5)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.0, 0.17, 0.0)
 
 [node name="Spawn1" type="Marker3D" parent="SpawnPoints"]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 2.5, 0.8, -9.5)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 2.2, 0.8, 1.5)
 
 [node name="Spawn2" type="Marker3D" parent="SpawnPoints"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.5, 0.8, 9.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0, 0.8, 6.0)
 
 [node name="Spawn3" type="Marker3D" parent="SpawnPoints"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.5, 0.8, 9.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.3, 0.16, 6.3)
 
 [node name="Dressing" type="Node3D" parent="."]
 

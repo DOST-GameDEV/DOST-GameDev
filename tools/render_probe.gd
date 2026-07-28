@@ -52,8 +52,25 @@ func _ready() -> void:
 		_out = args[1]
 	if _mode == "match":
 		_build_match()
+	elif _mode == "lobby":
+		_build_lobby()
 	else:
 		_build_viewmodel()
+
+## ---------------------------------------------------------------------------
+## lobby — drives Lobby.tscn's local branch (2026-07-28 ready-up gate) without
+## actually completing the scene transition, which would free this probe
+## script along with everything else (change_scene_to_file replaces the
+## WHOLE current scene, and render_probe.tscn is that scene here). Verifies
+## the button states and takes screenshots of both; the transition itself
+## (get_tree().change_scene_to_file) is simple enough to trust from reading it.
+## ---------------------------------------------------------------------------
+var _lobby: Control = null
+
+func _build_lobby() -> void:
+	GameLaunch.pending_action = "local"
+	_lobby = (load("res://scenes/ui/Lobby.tscn") as PackedScene).instantiate()
+	add_child(_lobby)
 
 func _shot(name: String) -> void:
 	var img := get_viewport().get_texture().get_image()
@@ -137,6 +154,23 @@ func _process(_delta: float) -> void:
 			get_tree().quit()
 		return
 
+	if _mode == "lobby":
+		if _frames == 10:
+			var start_button := _lobby.get_node("%StartButton") as Button
+			print("[render_probe] lobby: Start button disabled before ready = ",
+				start_button.disabled) # must be true
+			_shot("lobby_before_ready")
+		if _frames == 20:
+			var ready_button := _lobby.get_node("%ReadyButton") as Button
+			ready_button.pressed.emit() # simulates the actual click, not a hand-set flag
+		if _frames == 30:
+			var start_button := _lobby.get_node("%StartButton") as Button
+			print("[render_probe] lobby: Start button disabled after ready = ",
+				start_button.disabled) # must be false
+			_shot("lobby_after_ready")
+			get_tree().quit()
+		return
+
 	if _frames == 20:
 		# The real host-side transition, not a hand-set state — host_grab() is
 		# what disables the slipper's collision (_set_physics_enabled), and
@@ -148,13 +182,29 @@ func _process(_delta: float) -> void:
 	if _frames == 70:
 		_report()
 		_shot("viewmodel_fpp")
-	if _frames == 85:
-		var person := get_node("P") as CharacterBase
+	if _frames == 75:
+		# B-91 — the slipper's OWN TPP camera, while carried. This is the shot
+		# that was actually broken: not the carrying Person's view (above), the
+		# carried unit's own controlling player's view. set_active on S's rig
+		# exercises exactly the carry-follow path _update_tpp_carry_follow() adds.
 		(get_node("P/CameraRig") as CameraRig).set_active(false)
+		(get_node("S/CameraRig") as CameraRig).set_active(true)
+	if _frames == 90:
+		_shot("viewmodel_slipper_tpp")
+		(get_node("S/CameraRig") as CameraRig).set_active(false)
+	if _frames == 95:
+		# B-91 — the Can's own (never-carried) TPP camera, to confirm the mount
+		# height fix generally, not just the carry-follow path above.
+		(get_node("C/CameraRig") as CameraRig).set_active(true)
+	if _frames == 105:
+		_shot("viewmodel_can_tpp")
+		(get_node("C/CameraRig") as CameraRig).set_active(false)
+	if _frames == 110:
+		var person := get_node("P") as CharacterBase
 		_side_cam.global_position = person.global_position + Vector3(2.6, 0.55, 2.0)
 		_side_cam.look_at(person.global_position + Vector3(0, -0.15, 0))
 		_side_cam.current = true
-	if _frames == 100:
+	if _frames == 125:
 		_shot("viewmodel_tpp")
 		get_tree().quit()
 

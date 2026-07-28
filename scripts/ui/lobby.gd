@@ -6,6 +6,7 @@ class_name LobbyScene
 ## Flow:
 ##   Host:  main_menu.gd → Lobby (starts ENet server here) → Main.tscn
 ##   Join:  main_menu.gd → Lobby (starts ENet client here) → Main.tscn
+##   Local: main_menu.gd → Lobby (no networking at all) → Main.tscn
 ##
 ## The lobby gates the scene transition to Main.tscn behind the host's Start
 ## button, which is only enabled when every connected peer is ready AND at
@@ -17,6 +18,14 @@ class_name LobbyScene
 ##   team = join_index / 2   → 0,0,1,1 for up to four peers
 ##   is_person = join_index % 2 == 0   → first peer of each pair is Person
 ## Read from one place only (here for display, main.gd for gameplay).
+##
+## LOCAL (2026-07-28, user feedback: "add the same button to local matching").
+## Nothing here actually gates anything for Local — a single-PC session has no
+## second peer to wait for — but it gets the same READY -> START rhythm
+## instead of jumping straight to the match. See `_setup_local()` and the
+## `GameLaunch.pending_action == "local"` branches in the button handlers
+## below. Real multi-peer ready gating (the reason this scene exists at all)
+## is completely unchanged for Host/Join.
 
 const MAIN_SCENE_PATH := "res://scenes/main/Main.tscn"
 const MAIN_MENU_PATH  := "res://scenes/ui/MainMenu.tscn"
@@ -52,6 +61,10 @@ func _ready() -> void:
 	NetworkManager.player_disconnected.connect(_on_peer_left)
 
 	var action := GameLaunch.pending_action
+	if action == "local":
+		_setup_local()
+		return
+
 	if action == "host":
 		if NetworkManager.host_game() != OK:
 			status_label.text = "Failed to start server — port may be in use."
@@ -193,15 +206,47 @@ func _refresh_start_button() -> void:
 	start_button.disabled = false
 
 # ---------------------------------------------------------------------------
+# Local (no networking) — see the class doc's LOCAL section
+# ---------------------------------------------------------------------------
+
+func _setup_local() -> void:
+	host_address_label.text = "Local Match"
+	start_button.visible = true
+	start_button.disabled = true
+	var row := Label.new()
+	row.text = "YOU (local)  (waiting…)"
+	peer_list_container.add_child(row)
+	status_label.text = "Press READY to start."
+
+func _refresh_local_row() -> void:
+	if peer_list_container.get_child_count() == 0:
+		return
+	var row := peer_list_container.get_child(0) as Label
+	row.text = "YOU (local) ✓" if _is_ready else "YOU (local)  (waiting…)"
+
+# ---------------------------------------------------------------------------
 # Button handlers
 # ---------------------------------------------------------------------------
 
 func _on_ready_pressed() -> void:
 	_is_ready = not _is_ready
 	ready_button.text = "UNREADY" if _is_ready else "READY"
+	if GameLaunch.pending_action == "local":
+		start_button.disabled = not _is_ready
+		_refresh_local_row()
+		status_label.text = "Ready! Press START MATCH." if _is_ready else "Press READY to start."
+		return
 	_rpc_set_ready.rpc(multiplayer.get_unique_id(), _is_ready)
 
 func _on_start_pressed() -> void:
+	if GameLaunch.pending_action == "local":
+		# No RPC, no networking — B-14's reset already ran once in
+		# main_menu.gd's _on_local_pressed(); this mirrors _rpc_begin_match's
+		# own double-reset for Host/Join rather than skipping it here.
+		MatchManager.reset()
+		RoundManager.reset()
+		get_tree().change_scene_to_file(MAIN_SCENE_PATH)
+		return
 	_rpc_begin_match.rpc()
 
 func _unhandled_input(event: InputEvent) -> void:

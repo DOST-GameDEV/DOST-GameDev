@@ -593,6 +593,112 @@ it, or add a dedicated viewmodel arm, which is new geometry and a new task. **Fr
 6.3:** the trailer's beat 5 is the FPP charge-and-throw, so shoot it tight enough that the slipper
 fills frame and the missing arm never becomes the question.
 
+**B-88 · Can/Tsinelas rendered under the floor after the proportion fix (2.5). [FIXED same
+session.]** `character_visual.gd::_align_to_capsule_floor()` dropped every model a hardcoded
+`CAPSULE_HALF_HEIGHT_DOWN` (0.8) below the character's own origin — correct while every unit
+shared the same 1.6-tall capsule, wrong the instant 2.5 gave Can and Tsinelas their own much
+shorter one (0.34/0.32 tall). The physics body sat correctly on the floor; the visible mesh kept
+dropping the old fixed 0.8 regardless, landing 0.63 units under it. Found by the human immediately
+after 2.5 merged ("i dont see can and tsinelas anymore" / "theyre under the map"), not caught by
+this session's own render checks because those checks screenshotted a carried slipper and a
+standalone preview turntable, never a fresh in-match spawn actually settling onto the floor.
+**Fixed:** reads this unit's own, currently-applied `CollisionShape3D` height instead of the
+shared constant. Verified by rendering `tools/render_probe.gd`'s viewmodel mode again — the can
+that was sunk into the ground now stands on it.
+
+**B-89 · Nameplate ring/label also sized for the old shared capsule. [FIXED same session.]** Same
+bug class as B-88, different node: `character_nameplate.gd`'s ring (`y = -0.78`, radius 0.55) and
+label (`y = +1.05`) were hardcoded for the Person's 1.6-tall capsule. On a Can the ring drew nearly
+a metre below the model's actual feet; on a carried Tsinelas the whole nameplate rides along with
+it, so the disconnected ring appeared to float around the held object. Reported: "the slippers
+still have a circle around it when holding." **Fixed:** added `CharacterBase.capsule_height()`/
+`capsule_radius()` as a shared accessor (`character_visual.gd`'s own copy of this logic simplified
+to call it too), and `CharacterNameplate.apply_sizing()` reads it — called explicitly from
+`character_base.gd` right after `_apply_role_collision()`, deliberately NOT from the nameplate's
+own `_ready()`, which runs before the capsule is resized (children ready before parents). Verified
+by render: the can's ring now sits tight at its base, the carried slipper's ring is a small band at
+the object instead of a large disconnected circle.
+
+**B-90 · Carried slipper read as a broadside sliver, and swam through the walk cycle while moving.
+[FIXED same session.]** Two related reports: "the slippers look weird af when holding it" and "my
+arms float during windup and when i run while holding." Two independent causes:
+(a) `character_visual.gd::_play_locomotion()` fell back to `walk`/`sprint` the instant a carrying
+Person moved (the rig has no `holding-right-walk` clip), and `carriable.gd::_step_carried()` snaps
+the carried object to the arm BONE's live position every physics frame — so the walk cycle dragged
+the held slipper, and the FPP viewmodel arm chasing that same position (`camera_rig.gd`), through
+the animation's swing. **Fixed:** `_is_holding()` now checked before speed, not after — the carry
+pose wins outright while holding, legs stop swinging rather than the hand swimming.
+(b) The tsinelas is a flat, thin object (0.078 tall vs 0.432 long) and the arm bone's fixed
+rotation presented it close to edge-on to a camera at roughly the same height — a sliver, not a
+slipper. **Fixed:** a 55° tilt applied in the object's own local frame, before the hand's rotation,
+in `carriable.gd::_step_carried()`. Verified by render for (b) — the carried slipper reads as a
+recognisable shape in both FPP and third person now. (a) is verified by code-path elimination, not
+a screenshot — a single frame cannot capture "stops swinging while running."
+
+**Mechanics audit against Dev_Plan.md §3-4, same session.** User ask: "make sure the code currently
+follows intended mechanics, scoring and placement." Found one real gap and one deliberate
+simplification worth recording:
+
+- **Missing: Option A's ring-out win condition.** `Dev_Plan.md` §3 names two Can-side win paths —
+  "the timer running out, OR knocking Slippers out of bounds a set number of times" — and only the
+  first existed. `KillPlane.character_respawned` fired a HUD toast and nothing else. **Fixed:**
+  `RoundManager.register_ring_out()`, `RING_OUT_LIMIT = 3`, wired from `main.gd`'s existing KillPlane
+  handler. See `Checklist.md` 4.4b.
+- **Not changed, flagged instead: Option B's "circle" is semantic, not physical.** The GDD says a
+  solid hit "knocks the Can out of the circle" into Downed. The actual trigger is
+  `ThrowProfile.forces_downed` / `Hitbox.forces_downed` — a flag on the hit, not a real
+  knockback-then-distance-from-base-circle check. No positional/circle code exists anywhere in
+  `scripts/`. This reads as a deliberate simplification (the round-win system is explicitly built
+  decoupled from movement/physics — see `Dev_Plan.md` §3's own "Build note") rather than a bug.
+  Building real physics-based circle-exit detection is a materially bigger feature than a bug-fix
+  pass and was not attempted; flagging for the team to decide whether it is worth doing.
+
+**B-91 · Carried Tsinelas's own TPP camera was blocked by the carrier's body. [FIXED same
+session.]** `carriable.gd::_step_carried()` teleports the whole CharacterBase into the carrier's
+hand every physics frame; the TPP spring arm (a child) inherited that transform and had nowhere
+sensible to cast toward, with the carrier's own body never excluded from its shapecast. **Fixed:**
+`camera_rig.gd::_update_tpp_carry_follow()` bases the TPP camera on the CARRIER while held (same
+mount height/pitch a normal rig uses, carrier's body excluded from the cast) instead of this unit's
+own nonsensical transform. A first attempt also scaled a Prop's own STANDALONE mount height down
+for its shorter capsule, on the B-88/B-89 theory — reverted after rendering it: the spring arm
+collapsed into solid geometry (the cast origin ended up too close to the ground/the prop's own
+mesh). Only the carried case was reported broken; the standalone case was untouched. Verified by
+rendering through each unit's own CameraRig directly.
+
+**Spawn layout redesigned as role-based, same session — see `Checklist.md` 2.6.** User feedback:
+"two teams spawn on completely different ends and i dont think thats how it should go." Correct: the
+old scheme spawned each team's pair at a fixed end of the alley regardless of which side was
+defending that round, disconnected from the map's own base circle and throwing line
+(`Art_Direction.md` §9). `main.gd`'s four spawn slots are now roles (Can/Taya/Attacker/Tsinelas via
+the new `_role_slot()`) instead of a stored team index, and `_reset_world` auto-hands the tsinelas
+to the attacking Person at round start rather than leaving it loose to be walked over first.
+
+**Option B rewritten — confinement, tag-to-win, auto-seal, 5-fall cap, same session — see
+`Checklist.md` 2.7.** User design pass, closer to real tumbang preso, after playing the
+spawn-redesigned build. Four rules changes plus a UI addition, all in one commit:
+
+- **Confinement.** The Can and its Taya are now confined to a 3-unit radius around the base
+  circle (`CharacterBase.CONFINEMENT_RADIUS`) for the whole round —
+  `_move_and_confine()` wraps every `move_and_slide()` call site so nothing bypasses it.
+- **Tag-to-win.** A defending Person's hit (Bump or the Tag ability) landing on the attacking
+  Person now ends the round for team can outright — previously stun-only, no round effect.
+  Added directly in `hitbox.gd`'s resolution function.
+- **Auto-seal.** The 2s self-right window is unchanged, but `character_base.gd` now calls
+  `seal()` itself the instant it lapses unrecovered, instead of requiring a follow-up hit from an
+  attacker (the old Option B behaviour, retired).
+- **5-fall cap.** `round_manager.gd` tracks every Downed transition on a tracked Can this round
+  (`FALL_LIMIT = 5`), saved or not; reaching it auto-wins for team slipper regardless of whether
+  that fall was individually recoverable.
+- **Local ready-up.** Local matching previously skipped straight to Main.tscn; it now routes
+  through `Lobby.tscn` like Host/Join, with a `"local"` branch in `lobby.gd` that does no
+  networking but keeps the same READY → START rhythm.
+
+Option A is unchanged and stays selectable, but is now explicitly parked (`Checklist.md` 1.5) —
+this is Option B's ruleset changing in place, not a third mode. Verified by parse, two 800-frame
+soaks, and a `render_probe.gd` lobby mode that drives the real Ready button and confirms Start's
+enabled state flips exactly once. **Not verified by play** — confinement radius, tag-to-win and
+the fall-cap number are all brand new and nobody has felt them yet.
+
 ### P1 — found by the design lane while measuring for checklist 1.2 (2026-07-28)
 
 Filed, deliberately not fixed — `Concurrency_Protocol.md` §10. Full reasoning and the screenshot

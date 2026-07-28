@@ -36,6 +36,13 @@ class_name ThrowProfile
 ## heavy (Bakya), below 1 floats (a beach flip-flop).
 @export var gravity_scale: float = 1.0
 ## Radius of the hitbox that rides along with the slipper in flight.
+## ⚠️ Art_Direction.md §1 — every profile's hit_radius was tuned by eye against
+## the old 1.35-unit tsinelas (this one, 0.7, was itself LARGER than the whole
+## rescaled 0.432-unit mesh). Halved across all four .tres files for the
+## rescaled props, keeping relative ordering (bagsak biggest/lob, flick
+## smallest/line-drive). Still generous over the raw mesh, same margin the
+## Person's own Hurtbox keeps over its body capsule — exact numbers are
+## checklist 4.4's job once a human has actually thrown one.
 @export var hit_radius: float = 0.7
 ## Whether a direct hit knocks the lata flat outright (Option B's Downed state)
 ## rather than just staggering it. True for every slipper by default — knocking

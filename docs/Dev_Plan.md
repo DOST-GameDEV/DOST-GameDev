@@ -1094,20 +1094,26 @@ technically correct while the game did not read as tumbang preso. The loop, as b
 3. **The retrieval scramble — the tension of the street game.** Either the attacking Person runs
    out and grabs it, **or** the slipper's own player crawls it home slowly and exposed
    (`CRAWL_SPEED_SCALE`). Both routes are taggable by the defending Person.
-4. **The taya defends actively.** Tag the attacker to make them drop a carried slipper, body-block
-   the throw — and, when the lata does go down, **hold `grab` beside it to run the Lata Reset
-   Channel** and stand it back up (~1.5s, cancelled if you are tagged out of it, own team only,
-   hands must be empty). ⚠️ **This is B-46, agreed as in-scope in `Handoff.md` §0.7 and built at
-   v4.3.** It was on the moodboard's THE DEFENDER card the whole time and in neither this document
-   nor the code until then. It is what makes defending a job rather than standing still.
+4. **The taya defends actively, from a fixed post.** The Can and its Taya are confined to a
+   3-unit radius around the base circle for the whole round (`CharacterBase.CONFINEMENT_RADIUS`)
+   — they cannot chase the attacker back to the throwing line. Within that radius: tag the
+   attacker to end the round outright (see below), body-block the throw, and when the lata does
+   go down, **hold `grab` beside it to run the Lata Reset Channel** and stand it back up (~1.5s,
+   cancelled if you are tagged out of it, own team only, hands must be empty). ⚠️ **This is B-46,
+   agreed as in-scope in `Handoff.md` §0.7 and built at v4.3.** It was on the moodboard's THE
+   DEFENDER card the whole time and in neither this document nor the code until then. Reaching the
+   can and channelling under pressure is the whole job now — the confinement radius is what stops
+   that job from also including chasing the attacker down.
 5. **The round ends** on the win condition for whichever mode is running, or on the 90s timer.
 
-#### Round-win mechanic — both built, both maintained ⚠️ AMENDED (2026-07-27)
+#### Round-win mechanic — both built, both maintained ⚠️ AMENDED (2026-07-28)
 
 **Both options are now fully implemented and both stay in active, equal development.** They live
 behind `GameLaunch.game_mode` and are selectable from the main menu. This is no longer "keeping
 options open until we decide" — it is a deliberate choice to carry both to shippable quality,
-playtest both, and balance both. Neither is a prototype of the other.
+playtest both, and balance both. Neither is a prototype of the other. Option A is currently
+**parked** — correct and untouched, but deprioritized behind Option B's rewrite below; see
+`Checklist.md` for the exact status.
 
 The **ship** decision — which one the submitted demo leads with — is still open and belongs to the
 team, on their own timeline. It is tracked as item 1.5 in [`Checklist.md`](Checklist.md) and it
@@ -1116,12 +1122,29 @@ superseded by this paragraph.
 
 **Option A — Stock/Life (dents):** Cans have a health bar. Slippers win the round by fully
 denting a Can. Cans win by the timer running out, or by knocking Slippers out of bounds a
-set number of times (new ring-out idea, not previously in the doc).
+set number of times (the ring-out win path, `RoundManager.register_ring_out()`).
 
-**Option B — Capture the Base + Downed/Seal:** A circle marks each Can's home base. A solid
-hit knocks the Can out of the circle, which puts it in a **Downed** state — it gets a short
-window (~2 sec) to self-right before a Tsinelas can reach it and "seal" it for the round.
-Cans win by still being up/in-base when time's up.
+**Option B — Capture the Base, rewritten 2026-07-28 for a faster, more symmetric read closer to
+the street game.** A circle marks the Can's home base, and the Can plus its Taya are confined to
+a radius around it (`CharacterBase.CONFINEMENT_RADIUS`, currently 3 units) for the whole round —
+defense cannot leave its post to chase the attacker down. Three independent win paths, whichever
+comes first:
+
+- **Team can wins by tagging the attacker.** Any hit from the Taya landing on the attacking
+  Person — the always-on Bump or the Tag ability, both resolve through the same code path —
+  ends the round for the Can side immediately. This is new; a Person hit used to be stun-only
+  flavour with no round effect.
+- **Team slipper wins once a fall goes unrecovered.** A solid hit (`forces_downed`) knocks the
+  Can into a **Downed** state with a ~2 second self-right window, same as before — but the round
+  now auto-ends the instant that window lapses without a self-right or a completed Lata Reset
+  Channel. No attacker has to walk up and manually "seal" it any more; falling and staying down
+  is sufficient on its own.
+- **Team slipper wins on a 5-fall cap, independent of the above.** Every time the Can goes Downed
+  this round counts toward a running total, whether or not the Taya recovers it — reaching 5
+  ends the round for team slipper even if that particular fall would have been saved in time.
+  Stops a Taya who can save every individual fall from making a round unloseable.
+- **Team can wins by surviving to the 90s timer**, same as always, if none of the above happens
+  first.
 
 Both options keep our **stun-only, no permanent elimination** rule for Tsinelas intact —
 whether they're bounced off a Can or knocked out of bounds, they're straight back in the
@@ -1131,8 +1154,13 @@ fight either way, not out for the round.
 own system (`RoundManager`, watching `state_changed` / `dents_changed` on a registered list of
 Cans), decoupled from movement, combat and hit registration. Because of that, running both modes
 costs one `GameLaunch.game_mode` branch in `hitbox.gd` and one in `carriable.gd::can_be_reset_by`,
-not two parallel implementations. Keep it that way: no round-win logic in `character_base.gd` or
-`hitbox.gd` beyond that single branch.
+plus the tag-to-win branch added directly in `hitbox.gd` for Option B — not two parallel
+implementations. Keep it that way: no round-win DECISION logic in `character_base.gd`, only the
+mechanical state transitions (confinement, auto-seal) it always owned.
+
+**None of Option B's new numbers (3-unit confinement radius, 5-fall cap) have been played yet.**
+First guesses, same as every other tuning constant in this project — see `Checklist.md` for the
+exact item and what's still unverified.
 
 ---
 
