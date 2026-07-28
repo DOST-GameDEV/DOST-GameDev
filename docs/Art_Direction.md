@@ -1159,12 +1159,26 @@ boundary and say so** — every phase below leaves a coherent map.
 > visibly floating with a shadow gap once lit, not as flush. This is NOT specific to one map or one
 > decal — it applies to any flat marking authored the same way.
 >
-> **The fix is not "always add clearance."** Most markings don't overlap anything that needs
-> clearing and want to sit as close to Y=0 as possible (see `build_eskinita.py`'s `MARK_Y` vs
-> `MARK_Y_LOW` split for the worked example). Only lift a marking that spatially overlaps another
-> raised piece of geometry (e.g. a `road_tile_line` tile), and only by enough to clear that piece,
-> not a flat default "safe" number applied everywhere out of caution — that caution is exactly what
-> caused this bug.
+> **The fix is not "always add clearance."** Clearance with nothing underneath it *is* the bug.
+>
+> ### ✅ 2026-07-28 — YOU NO LONGER HAVE TO GET THIS RIGHT BY HAND. IT IS A BUILD GATE.
+>
+> `tools/maps/floorcheck.py` samples every marking's real footprint against the real height of the
+> ground under it and **aborts the map build**, before the `.tscn` is written, if any marking floats
+> or is sunk. You get the node name and the gap in millimetres instead of a scene that looks fine
+> until someone plays it. Both map builders run it. **Do not hand-pick a marking's Y** — use
+> `build_eskinita.py`'s `add_line()` for line markings, or ask `surfaces.height_at(x, z)`.
+>
+> **Why the earlier fixes kept failing, which is the part worth remembering.** The constant was
+> never the problem. It was retuned three times (`0.07 → 0.015 → 0.001`) and the lines kept
+> floating, because `throwing_line_decal` is **8m wide and crosses a 2m raised lane strip** — the
+> ground under one line is 0.062 in the middle and 0.0 either side, so **no single Y could ever be
+> flush for it**, at any value. The shape had to be split, not the number nudged. Eleven markings
+> turned out to have that same fault the moment anything actually checked. `floorcheck` reports it
+> as its own error — `SPANS n surface heights` — precisely because the fix is different.
+>
+> The old `MARK_Y` / `MARK_Y_LOW` split is gone from both builders. It was a human deciding what was
+> underneath a marking, and that judgement is what rotted every time anything moved.
 >
 > **RENDER AND LOOK before calling any placement done.** `tools/render_probe.gd`'s `match` mode,
 > WITHOUT `--headless`. A screenshot with no visible gap or shadow under every line/decal is the
