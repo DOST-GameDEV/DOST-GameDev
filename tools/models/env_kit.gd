@@ -346,11 +346,19 @@ func _laundry_line() -> void:
 	# both sides, so the line visibly began and ended in mid-air. The facades
 	# now sit on the collision plane at x = +/-8.6 (build_eskinita.WALL_FACE_X),
 	# so reaching exactly that far is what anchors it into the walls.
-	_wire(w, Vector3(-8.6, 2.62, 0.0), Vector3(8.6, 2.62, 0.0), 0.42, 0.025, 12, "cloth")
+	_wire(w, Vector3(-9.3, 2.62, 0.0), Vector3(9.3, 2.62, 0.0), 0.42, 0.025, 12, "cloth")
 	# A visible tie-off block at each end, so the line reads as FASTENED to the
 	# house rather than passing through it.
+	# ⚠️ THE ENDS ARE BURIED IN THE WALL, NOT BUTTED AGAINST IT. Playtest
+	# 2026-07-29: "u made an anchor yes but those anchors float". Ending exactly
+	# on the facade plane (x = +/-8.6) leaves nothing holding the line the moment
+	# the wall is even slightly set back — and in a DRIVEWAY bay there is no wall
+	# at that z at all, so the anchor hung in open air. The wire now runs to
+	# +/-9.3, well past the facade and into the house, and the tie-off block
+	# straddles the plane rather than stopping on it. Geometry inside a wall is
+	# invisible; a 700mm gap is not.
 	for _sx in SIDES:
-		_box(w, _sx * 8.5, 0.0, 0.22, 0.16, 2.50, 2.74, "timber")
+		_box(w, _sx * 8.75, 0.0, 1.30, 0.18, 2.46, 2.78, "timber")
 
 	# ⚠️ THE GARMENTS ARE SEGMENTED DOUBLE-SIDED SHEETS NOW, NOT EXTRUDED BOXES,
 	# AND THAT IS THE ACTUAL FIX FOR "STIFF, LIFELESS CARDBOARD BOXES".
