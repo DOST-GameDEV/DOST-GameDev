@@ -56,12 +56,25 @@ const TSINELAS_VISUAL: String = "res://scenes/characters/visuals/TsinelasVisual.
 ## a player can read it in the world rather than off the HUD. `character_base.gd`
 ## must never learn that dents have a mesh — it owns the number, this file owns
 ## what the number looks like.
+## ⚠️ CHECKLIST 7.2 — these are Kenney Food Kit `.glb` files now, not the four
+## generated `lata*.obj` meshes. The kit ships TWO states against the four this
+## system uses, so the middle two are the intact can progressively squashed
+## (`CAN_DENT_SQUASH` below) rather than four distinct meshes. Authoring real
+## intermediate crush meshes is later polish, not a blocker — the read that
+## matters is "it looks worse each time you hit it", and a squash delivers that.
+##
+## The interface is unchanged: `CAN_MESHES[dents]` is still the whole lookup and
+## `character_base.gd` still owns the number without knowing dents have a mesh.
 const CAN_MESHES: Array[String] = [
-	"res://assets/models/lata.obj",
-	"res://assets/models/lata_dent1.obj",
-	"res://assets/models/lata_dent2.obj",
-	"res://assets/models/lata_dent3.obj",
+	"res://assets/models/kits/food/soda-can.glb",
+	"res://assets/models/kits/food/soda-can.glb",
+	"res://assets/models/kits/food/soda-can.glb",
+	"res://assets/models/kits/food/soda-can-crushed.glb",
 ]
+## Vertical squash per dent count, applied to the mesh instance. Index 3 is 1.0
+## because `soda-can-crushed` is already a crushed mesh — squashing it too would
+## read as a puddle rather than a can.
+const CAN_DENT_SQUASH: Array[float] = [1.0, 0.93, 0.85, 1.0]
 
 ## Knocked-down is a ROTATION, not a mesh (Handoff.md §4, M-2 step 5) — the can
 ## falls on its side and gets back up, and baking that into geometry would mean
@@ -303,6 +316,34 @@ func _on_dents_changed(new_dents: int) -> void:
 func _on_state_changed(new_state: CharacterBase.State) -> void:
 	_refresh_downed_tilt(new_state == CharacterBase.State.DOWNED)
 
+## 7.2 — a Mesh from either a bare mesh resource or an imported model SCENE.
+##
+## ⚠️ THE KIT SWAP MADE THIS NECESSARY. `load(path) as Mesh` worked while the
+## can was a `.obj`, which Godot imports as a Mesh. A `.glb` imports as a
+## PackedScene, so the same cast silently yields `null` and the can simply
+## stops changing on damage — no error, no missing mesh, just a dent count that
+## never shows. Handles both so a future asset can be either.
+##
+## The instance is freed immediately: only its Mesh resource is kept, and
+## leaving the node alive would leak one throwaway scene per dent taken.
+func _mesh_from(path: String) -> Mesh:
+	var resource := load(path)
+	if resource is Mesh:
+		return resource as Mesh
+	var packed := resource as PackedScene
+	if packed == null:
+		return null
+	var instance := packed.instantiate() as Node3D
+	if instance == null:
+		return null
+	var found: Mesh = null
+	for node in instance.find_children("*", "MeshInstance3D", true, false):
+		found = (node as MeshInstance3D).mesh
+		if found != null:
+			break
+	instance.free()
+	return found
+
 ## Replaces the can's mesh in place rather than rebuilding the model tree — a
 ## rebuild would restart animation and re-run the whole instantiate path for what
 ## is a one-resource change.
@@ -315,12 +356,18 @@ func _refresh_can_damage(dent_count: int) -> void:
 	var meshes := model.find_children("*", "MeshInstance3D", true, false)
 	if meshes.is_empty():
 		return
-	var mesh_path: String = CAN_MESHES[clampi(dent_count, 0, CAN_MESHES.size() - 1)]
-	var mesh := load(mesh_path) as Mesh
+	var index := clampi(dent_count, 0, CAN_MESHES.size() - 1)
+	var mesh_path: String = CAN_MESHES[index]
+	var mesh := _mesh_from(mesh_path)
 	if mesh == null:
-		push_error("CharacterVisual: could not load '%s'" % mesh_path)
+		push_error("CharacterVisual: could not load a mesh from '%s'" % mesh_path)
 		return
-	(meshes[0] as MeshInstance3D).mesh = mesh
+	var target := meshes[0] as MeshInstance3D
+	target.mesh = mesh
+	# 7.2 — the dent read for the two states the kit does not ship. Scale, not a
+	# mesh, so it costs nothing and cannot drift out of sync with CAN_MESHES.
+	var squash: float = CAN_DENT_SQUASH[index]
+	target.scale = Vector3(1.0, squash, 1.0)
 	# The swapped-in mesh arrives with the IMPORTER's shared materials, not this
 	# unit's duplicated ones, so re-collect or the B-44 hit flash silently starts
 	# tinting every can in the match at once. The toon ShaderMaterial overrides set

@@ -116,6 +116,30 @@ const TPP_MOUNT_CLEARANCE_AT_PERSON_SCALE: float = 0.4
 const TPP_CARRY_MOUNT_HEIGHT: float = 0.6
 const PERSON_CAPSULE_HEIGHT: float = 1.6
 
+## Checklist 7.2 / playtest 2026-07-28 — "BROKEN LATA CAMERA", with a screenshot
+## of an empty road.
+##
+## `TppArm`'s baked 4.5-unit `spring_length` was tuned for a 1.6-unit Person. The
+## Can is **0.34 units tall**, so playing as the Can framed it as a speck in the
+## middle of an empty street — a third-person camera whose subject is roughly
+## three pixels. Verified by render before and after.
+##
+## ⚠️ ONLY THE ARM LENGTH SCALES. THE MOUNT HEIGHT DELIBERATELY DOES NOT — see
+## the `TPP_MOUNT_CLEARANCE_AT_PERSON_SCALE` note above: scaling the mount down
+## for a short capsule was tried and REVERTED, because it dropped the shapecast's
+## origin close enough to the ground that the camera collapsed into solid
+## geometry. That failure is avoided here by construction: the cast still starts
+## at the same safe height a Person's does, and only the distance it travels
+## shrinks. Shortening the arm cannot put the origin anywhere new.
+##
+## The floor keeps the arena readable. A Can player is the one being thrown at
+## and still needs to see the attacker, so this frames the prop without hugging
+## it — the point is that the subject is visible, not that it fills the screen.
+const TPP_MIN_SPRING_LENGTH: float = 1.8
+## How far down the arm aims for the shortest subjects. The scene bakes -15,
+## which points straight over a 0.34-unit Can from a 1.2 mount.
+const TPP_MIN_PITCH_DEG: float = -34.0
+
 @export var aim_source: AimSource = AimSource.MOVEMENT
 
 @onready var fpp_pivot: Node3D = $FppPivot
@@ -139,6 +163,14 @@ var _active: bool = false
 ## `_update_tpp_carry_follow()`, so the view starts anchored behind the
 ## carrier and the carried player can still swivel it from there.
 var _tpp_carry_yaw_deg: float = 0.0
+## The scene's own baked `TppArm.spring_length`, captured before
+## `_apply_tpp_framing()` ever shortens it — so re-framing on a round swap
+## always scales from the authored value rather than from last round's result,
+## which would ratchet the camera closer every round.
+var _tpp_base_spring_length: float = 4.5
+## The scene's own baked `TppArm` pitch, captured for the same reason as the
+## length above — so re-framing scales from the authored value every round.
+var _tpp_base_pitch_deg: float = -15.0
 var _tpp_carry_pitch_deg: float = 0.0
 ## B-91 — this rig's own Carriable, so it can tell "am I currently being
 ## carried" without character_base.gd having to learn what carrying is (the
@@ -183,10 +215,18 @@ func _ready() -> void:
 	# which also covers the round-swap, where a Prop's Can/Tsinelas model is
 	# rebuilt from scratch. Calling it once here too is harmless and keeps the
 	# behaviour correct if a Visual ever ships with meshes baked in.
+	_tpp_base_spring_length = tpp_arm.spring_length
+	_tpp_base_pitch_deg = tpp_arm.rotation_degrees.x
 	var visual := _character.get_node_or_null("Visual") as CharacterVisual
 	if visual != null:
 		visual.model_changed.connect(_apply_fpp_self_hide)
+		# Re-framed on every model change, not just here: `is_can` flips every
+		# round, and a Can and a Tsinelas have different capsule heights, so a
+		# rig framed once at _ready() would keep the previous role's distance
+		# for the whole of the next round.
+		visual.model_changed.connect(_apply_tpp_framing)
 	_apply_fpp_self_hide()
+	_apply_tpp_framing()
 	set_active(false)
 	set_process_unhandled_input(false)
 	# Networked: authority is already decided at spawn, so a rig can safely
@@ -203,6 +243,27 @@ func _ready() -> void:
 ## (always a Person's 1.6 — see the const doc above for why this is a formula
 ## and not the bare 1.2). Deliberately not used for a Prop's own standalone
 ## mount height — see the same const doc for why that was tried and reverted.
+## Scales the TPP arm to the unit it is actually watching. See
+## TPP_MIN_SPRING_LENGTH for why only the length moves and never the mount.
+##
+## No-ops on a Person in every respect: a 1.6 capsule gives a ratio of 1.0 and
+## the arm keeps the scene's own baked 4.5, so nothing about the FPP/TPP
+## directive or a Person's framing changes.
+func _apply_tpp_framing() -> void:
+	if _mode != Mode.TPP or _character == null:
+		return
+	var ratio := clampf(_character.capsule_height() / PERSON_CAPSULE_HEIGHT, 0.0, 1.0)
+	tpp_arm.spring_length = lerpf(TPP_MIN_SPRING_LENGTH, _tpp_base_spring_length, ratio)
+	# Pitch, for the same reason and with the same safety property: the mount is
+	# 1.2 up and a Can's top is at 0.34, so a rig still aimed 15 degrees down
+	# looks straight over it and leaves the subject sitting on the bottom edge of
+	# frame under a screenful of sky — measured in the first render of this fix.
+	# Tilting further down re-centres it, and like the length it only changes
+	# where the cast POINTS, never where it starts, so it cannot reintroduce the
+	# collapse that killed the mount-scaling attempt.
+	tpp_arm.rotation_degrees.x = lerpf(
+		TPP_MIN_PITCH_DEG, _tpp_base_pitch_deg, ratio)
+
 func _mount_height_for(capsule_height: float) -> float:
 	var clearance := TPP_MOUNT_CLEARANCE_AT_PERSON_SCALE * (capsule_height / PERSON_CAPSULE_HEIGHT)
 	return capsule_height / 2.0 + clearance

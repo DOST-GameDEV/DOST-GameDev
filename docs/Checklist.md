@@ -1138,12 +1138,38 @@ buggy."* Six Kenney kits (all CC0, verified) plus a supplied flip-flop `.glb`.
       skip the toon pass for kit-sourced meshes. Decide by rendering both.
       Fold in the outline width at the same time: `outline.gdshader`'s 0.025 is in MODEL space
       against meshes that now differ by 10× in scale (`Handoff.md` §0.12).
-- [ ] **7.2 · The lata → `soda-can.glb`.** 🎨 Design ⛔ 7.1
-      Drops in at **native scale** — 0.351 tall against the current 0.335, the one free win in the
-      whole overhaul. Dent states keep their interface: 0 → `soda-can`, 1–2 → progressively
-      squashed, 3 → `soda-can-crushed`. Retire `lata.obj` and its three variants.
-      **Acceptance:** knock it over, take three dents, win a round and see it reset — all from the
-      TPP camera, all unchanged in behaviour.
+- [~] **7.2 · The lata → `soda-can.glb`.** 🎨 Design — **verified by render, not by play**
+      Landed 2026-07-28. `CanVisual.tscn` instances the kit `.glb`; `CAN_MESHES` points at it and
+      at `soda-can-crushed`, with `CAN_DENT_SQUASH` covering the two states the kit does not ship.
+      **This is what proved 7.1** — the kit texture survives the toon pass, confirmed by render.
+  - [x] **`_mesh_from()` — a `.glb` imports as a PackedScene, not a Mesh.** `load(path) as Mesh`
+        silently returned `null`, which would have meant a can that never changed on damage: no
+        error, no missing mesh, just a dent count that never showed.
+  - [x] **⚠️ THE KIT CAN WAS OFFENSE-ORANGE, and that is a hard-rule break.** `Dev_Plan.md` §4.2
+        rule 1 — orange is ALWAYS offense — and this put a vividly orange can on the DEFENDING
+        team's most important object. Same class as B-81, from the opposite direction. Caught by
+        rendering it, not by reading the kit. Fixed **at the asset level** by
+        `tools/models/retint_kit_atlas.py`, which moves the bright orange band of our copy of
+        Kenney's shared `colormap.png` to Sarsi blue: 11,390 px, idempotent, and it protects every
+        kit prop 7.4 imports later rather than just this one. Browns and tans are deliberately
+        untouched — they are legal and remapping them would turn every crate blue.
+  - [ ] **Residual:** a thin orange rim survives at the can's base (a swatch outside the remapped
+        band) and the outline width is still the flat 0.025. Both fold into 7.6's retexture.
+      Dropped in at **native scale** — 0.351 against the old 0.335, the one free win in the whole
+      overhaul; no rescale was needed anywhere.
+      **Acceptance, still owed by a human:** knock it over, take three dents, win a round and see
+      it reset. Behaviour is unchanged by construction but has not been played.
+
+- [x] **7.2a · The Can's own camera — "BROKEN LATA CAMERA".** 🎨 Design — **verified by render**
+      Playtest report with a screenshot of an empty road. `TppArm`'s baked 4.5-unit spring length
+      was tuned for a 1.6-unit Person; the Can is **0.34**, so playing as the Can framed it as a
+      speck. The arm length and pitch now scale to the unit's own capsule, re-applied on every
+      model change so a role swap re-frames.
+      ⚠️ **The mount height deliberately does NOT scale.** That was tried in an earlier pass and
+      reverted — it dropped the shapecast's origin low enough to collapse the camera into solid
+      geometry. Length and pitch change only where the cast *points*, never where it *starts*, so
+      the fix cannot reintroduce that failure. Renders before and after confirm: subject centred,
+      no collapse, arena still readable.
 - [ ] **7.3 · The tsinelas stays OURS.** 🎨 Design — **not blocked by anything**
       Human call, 2026-07-28: *"nahh js remove the flipflop in the plan, lets make our own."* The
       supplied `.glb` is dropped and **the procedural tsinelas is the shipping slipper.** It
