@@ -13,6 +13,10 @@ var _outside_bounds := 0
 var _frames := 0
 var _throws := 0
 var _state_hits := 0
+var _can_move_while_flying := 0
+var _flying_frames := 0
+var _can_start := Vector3.ZERO
+var _can_max_disp := 0.0
 var _dents_seen := 0
 var _attacker: CharacterBase
 
@@ -59,6 +63,7 @@ func _ready() -> void:
 	print("  mode                     : %s" % ("OPTION_A (dents)" if GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A else "OPTION_B (downed/seal)"))
 	print("  frames can was NOT NORMAL: %d" % _state_hits)
 	print("  can final state          : %d (0=NORMAL 1=STAGGERED 2=DOWNED 3=SEALED)" % _can.state)
+	print("  CAN evasion: moved on %d of %d in-flight frames (%.0f%%), max %.2f from mark" % [_can_move_while_flying, _flying_frames, 100.0*_can_move_while_flying/maxi(_flying_frames,1), _can_max_disp])
 	print("  RESULT: ", "CONTACT RESOLVES" if (_dents_seen > 0 or _state_hits > 0) else "*** NO CONTACT EVER REGISTERED ***")
 	get_tree().quit(0)
 
@@ -72,3 +77,11 @@ func _physics_process(_d: float) -> void:
 	if absf(p.x) > 9.5 or absf(p.z) > 19.0: _outside_bounds += 1
 	if _can != null and _can.dents > _dents_seen: _dents_seen = _can.dents
 	if _can != null and _can.state != 0: _state_hits += 1
+	if _slipper != null and _can != null:
+		var cr := _slipper.get_node_or_null("Carriable") as Carriable
+		if cr != null and cr.state == Carriable.CarryState.FLYING:
+			_flying_frames += 1
+			if Vector2(_can.velocity.x, _can.velocity.z).length() > 0.4:
+				_can_move_while_flying += 1
+			var d := Vector2(_can.global_position.x, _can.global_position.z).length()
+			_can_max_disp = maxf(_can_max_disp, d)

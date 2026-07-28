@@ -38,7 +38,7 @@ class_name EnvToonPass
 ## than deleted so the call sites keep their shape if outlines ever come back for
 ## a hero prop. The inverted hull was half the map's draw calls for a border
 ## nobody could see past ~10m.
-const NO_OUTLINE_GROUPS: Array[String] = ["Belt", "Road", "Layer1", "Layer2", "Layer3", "Clutter"]
+const NO_OUTLINE_GROUPS: Array[String] = ["Belt", "Road", "Slab", "Apron", "Layer1", "Layer2", "Layer3", "Clutter", "BayFill", "TreesNear", "TreesFar", "Ground", "Landmarks", "Furniture"]
 
 ## ⚠️ PAINT THE STREET. One kit atlas means one house, five hundred times.
 ##
@@ -92,6 +92,12 @@ const FOLIAGE_TINTS: Array[Color] = [
 ## lavender, which is not what "urban side street" looks like anywhere. Tinted to
 ## a warm neutral rather than retinted in the atlas, because that same texel is
 ## shared with other Fantasy Town pieces and moving it would drag them along.
+## ⚠️ EVERY GROUP MADE OF `kits/town/road` GOES IN HERE, not just one called
+## "Road". Bayan Plaza names its paving "Slab" and "Apron", and because this list
+## used to be a single `== "Road"` check its whole plaza floor shipped
+## periwinkle — the exact texel bug this tint exists to correct, missed on a
+## second map purely because the node had a different name.
+const ROAD_GROUPS: Array[String] = ["Road", "Slab", "Apron"]
 const ROAD_TINT: Color = Color(0.66, 0.62, 0.55)
 
 ## The silhouette belt is 30-45 m out and exists to be READ, not looked at.
@@ -158,7 +164,7 @@ func _ready() -> void:
 			var tint := Color.WHITE
 			var roof: Texture2D = null
 			var owner_name := _instance_name(mesh_instance, layer)
-			if layer.name == "Road":
+			if ROAD_GROUPS.has(layer.name):
 				tint = ROAD_TINT
 			elif facaded:
 				# ⚠️ CLASSIFY BY THE GENERATOR'S OWN NAME. "Is this a building?"

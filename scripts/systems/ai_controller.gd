@@ -232,7 +232,47 @@ func _release_all() -> void:
 ## `base_circle_decal` is 1.4 across, so 0.45 keeps it comfortably inside.
 const CAN_HOLD_RADIUS: float = 0.45
 
+## --- Evasion. Playtest 2026-07-29: "the Can (lata) AI doesn't work. It just
+## --- stands completely still ... it needs a functioning evasion state."
+##
+## The Can genuinely had no reactive behaviour at all: `_update_can` only ever
+## shuffled inside a 0.45 circle, which is below the speed threshold any observer
+## would call movement, and nothing in this file ever looked at a slipper.
+##
+## ⚠️ THESE NUMBERS ARE A BALANCE SURFACE, NOT PHYSICS. A Can that dodges
+## perfectly makes the game unwinnable — the whole sport is hitting it. They are
+## tuned so a well-aimed throw still lands and a lazy one gets punished, and they
+## are the first thing to revisit when the fairness log's win-rate numbers exist.
+##
+## ⚠️ MEASURED SWEEP, 2026-07-29 (tools/phys_probe.gd, 12 identical dead-centre
+## throws — a deliberate worst case, since every throw is perfectly aimed from
+## one fixed spot). Contact frames against evasion movement:
+##     lookahead 1.10 -> 18 contact frames, 86% moving   (near-unhittable)
+##     lookahead 0.70 -> 0                               (UNWINNABLE)
+##     lookahead 0.85 -> 57, 72% moving
+##     lookahead 0.55 -> 35, 75% moving
+## Non-monotonic because the throws are identical and the outcome turns on exact
+## sidestep phase — which is itself the reason not to trust a synthetic probe for
+## balance. Shipped values sit on the hittable side on purpose; a Can that cannot
+## be hit is a broken game, not a hard one.
+## How far ahead a throw is tracked, in seconds.
+const CAN_EVADE_LOOKAHEAD: float = 0.6
+## Only dodge throws that would otherwise come this close, in units.
+const CAN_EVADE_MISS_MARGIN: float = 1.0
+## How far to the side one sidestep aims.
+const CAN_EVADE_STEP: float = 1.2
+## Never sidestep further than this from the base circle.
+const CAN_EVADE_RADIUS: float = 1.8
+## Below this time-to-impact, stop dodging and raise Guard instead.
+const CAN_GUARD_ETA: float = 0.22
+
 func _update_can(repick: bool) -> void:
+	# ⚠️ EVASION FIRST. It overrides the hold-the-circle behaviour below.
+	var threat := _incoming_slipper()
+	if threat != null:
+		_evade(threat)
+		return
+	_set_held("guard_dash", false)
 	if repick or not _has_move_target:
 		var angle := _rng.randf() * TAU
 		var radius := _rng.randf() * CAN_HOLD_RADIUS
@@ -240,6 +280,88 @@ func _update_can(repick: bool) -> void:
 			sin(angle) * radius)
 		_has_move_target = true
 	_move_toward(_move_target)
+
+## The tsinelas currently in the air and actually coming at us, or null.
+##
+## ⚠️ "IN THE AIR" IS NOT ENOUGH — it must be CLOSING. A slipper that has already
+## flown past, or one arcing away after a miss, is not a threat, and reacting to
+## it is what would make the Can look like it is dodging ghosts. Closing speed
+## along the line to us has to be positive and the predicted miss distance small.
+func _incoming_slipper() -> Carriable:
+	var best: Carriable = null
+	var best_eta := CAN_EVADE_LOOKAHEAD
+	for other in _roster():
+		if other == null or not is_instance_valid(other):
+			continue
+		if other.is_person or other == character:
+			continue
+		var c := other.get_node_or_null("Carriable") as Carriable
+		if c == null or c.state != Carriable.CarryState.FLYING:
+			continue
+		var to_us := character.global_position - other.global_position
+		to_us.y = 0.0
+		var vel := other.velocity
+		vel.y = 0.0
+		var speed := vel.length()
+		if speed < 0.5:
+			continue
+		var closing := vel.normalized().dot(to_us.normalized())
+		if closing <= 0.2:
+			continue # flying past or away, not at us
+		var eta := to_us.length() / speed
+		if eta > CAN_EVADE_LOOKAHEAD:
+			continue
+		# Perpendicular miss distance: how far off centre this throw currently is.
+		var along := to_us.dot(vel.normalized())
+		var miss := (to_us - vel.normalized() * along).length()
+		if miss > CAN_EVADE_MISS_MARGIN:
+			continue
+		if eta < best_eta:
+			best_eta = eta
+			best = c
+	return best
+
+## Sidestep out of a throw's path, then let the hold-the-circle behaviour pull
+## the Can back once the coast is clear.
+##
+## ⚠️ IT DODGES SIDEWAYS, NOT BACKWARDS. Running directly away from a slipper
+## that is faster than the Can never works — it just gets hit later, further from
+## its mark. Stepping perpendicular to the throw line is the only motion that
+## actually changes the miss distance, and it is what a real lata-guard does.
+##
+## ⚠️ AND IT STAYS NEAR ITS MARK. Bounded by CAN_EVADE_RADIUS around the base
+## circle. A Can free to flee anywhere inside the confinement box would abandon
+## the thing it exists to defend, which is the failure the hold-the-circle rule
+## was written for in the first place — this is a sidestep, not a retreat.
+func _evade(threat: Carriable) -> void:
+	_has_move_target = false
+	var slipper := threat.get_parent() as CharacterBase
+	if slipper == null:
+		return
+	var vel := slipper.velocity
+	vel.y = 0.0
+	if vel.length() < 0.1:
+		return
+	var dir := vel.normalized()
+	# Perpendicular in the ground plane; pick the side we are already off toward
+	# so the Can commits rather than oscillating across the line each tick.
+	var side := Vector3(-dir.z, 0.0, dir.x)
+	var to_us := character.global_position - slipper.global_position
+	to_us.y = 0.0
+	if side.dot(to_us) < 0.0:
+		side = -side
+	var target := character.global_position + side * CAN_EVADE_STEP
+	# Clamp back toward the mark. Base circle is world origin on every map.
+	var from_mark := Vector3(target.x, 0.0, target.z)
+	if from_mark.length() > CAN_EVADE_RADIUS:
+		from_mark = from_mark.normalized() * CAN_EVADE_RADIUS
+	_move_toward(Vector3(from_mark.x, character.global_position.y, from_mark.z))
+	# Guard as well when it is too late to move — the Can's Guard blocks dents
+	# outright (character_base.apply_dent), so a throw that cannot be dodged can
+	# still be eaten. This is the Can genuinely trying to survive rather than
+	# just jittering.
+	var eta := to_us.length() / maxf(vel.length(), 0.01)
+	_set_held("guard_dash", eta <= CAN_GUARD_ETA)
 
 ## Patrols within the confinement box until an opposing Person (the Attacker)
 ## comes within detection range, then closes in and taps bump/Tag once in
