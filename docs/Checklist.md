@@ -1609,6 +1609,72 @@ probe, not played by a human.
 - [ ] **Still not covered:** packet loss / latency simulation, mid-match disconnect and reclaim, and
       a 4-peer session. Two local peers on loopback is the weakest possible network test.
 
+## Phase 10 — Boot sequence, menu, house logic, Can AI, and the second map
+
+**Executed 2026-07-29.** Assets supplied by the human in
+`TITLE SCREEN AND OPENING ANIMATION.zip`. Everything `[~]` — probe/render
+verified, not played.
+
+### 10.1 · Boot and menu `[~]`
+- [~] **Opening animation plays at every launch.** `Opening Animation.mp4`
+      (1920x1080, 60fps, 3s) converted to `assets/video/opening_animation.ogv`
+      — ⚠️ **Godot 4 ships only `VideoStreamTheora`; there is no h.264 or webm
+      support in core.** 1280x720/30fps keeps a boot-path asset at ~180 KB.
+      `SplashScreen.tscn` is `run/main_scene` and hands off to `MainMenu`.
+      ⚠️ Two independent exits — any key skips, and a `MAX_WAIT` watchdog fires
+      if the video never reports finishing. A boot screen that can hang is worse
+      than no boot screen. Verified: `tools/boot_probe.gd` (a **SceneTree**
+      script, because a probe node is freed by `change_scene_to_file`).
+- [~] **Menu backdrop.** The street/can/slipper plate extracted from
+      `Menu Screen Possible Ideas.pdf`, given the PEAK treatment the human asked
+      for — blurred, desaturated, darkened, warm haze, left-side scrim and a
+      vignette — so the UI reads on top of it instead of fighting it.
+- [~] **TUTORIAL button** in the gap between SETTINGS and QUIT, reusing the
+      shipped pennant art with its own caption. Deliberately a `print()` stub;
+      routing it anywhere would be a dead end that looks like a bug.
+
+### 10.2 · Architecture and AI `[~]`
+- [~] **House orientation.** ⚠️ **Measured, not guessed** — `tools/facing_probe.gd`
+      rendered a kit building from all four cardinal directions: the front is its
+      local **+Z**, both ±X sides are blank gable walls. The old `yaw = ±90°` put
+      the front at ±X, i.e. **both rows faced away from the street**. Sign
+      flipped; Layer 2 now faces outward (back-to-back lots, how real blocks are
+      built) and the belt fronts run along their rings.
+- [~] **Can evasion.** The Can had no reactive behaviour at all. It now tracks a
+      FLYING tsinelas, ignores throws that are not closing or would already miss,
+      **sidesteps perpendicular** (running away from a faster object never
+      works), stays inside `CAN_EVADE_RADIUS` of its mark, and raises Guard when
+      it is too late to dodge. Measured: moves on ~89% of in-flight frames.
+      ⚠️ **Tuned toward hittable on purpose** — a sweep showed lookahead 0.70
+      made the Can literally unhittable (0 contact frames). Balance surface; see
+      the fairness log.
+- [~] **Sky.** Replaced `ProceduralSkyMaterial` (a two-colour ramp that the fog
+      washed to the same cream as the ground — the "endless desert") with a
+      generated cloud panorama. ⚠️ **One texture fetch, cheaper than the
+      procedural sky it replaces**, so it costs nothing against the Phase 9
+      performance rollback and adds no shader.
+- [~] **Electric wires and sampay.** `_post_electric()` draws its wire a fixed
+      6.0 units to where the NEXT post should be; posts were alternating sides
+      every 4.0 with the yaw flipping, so **no span ever reached another post**.
+      One evenly-spaced row per side at exactly 6.0 with a shared yaw. The
+      clothesline now spans wall-face to wall-face (±8.6) with visible tie-off
+      blocks, and is raised so its hem clears a Person's head (was 1.58 against a
+      ~1.70 head).
+- [~] **House-row gaps.** `BAY_GAP` 1.1 → 0.35, and every driveway bay gets a
+      fence plus a hedge so a gap is never bare asphalt.
+
+### 10.3 · Bayan Plaza `[~]` — PARTIAL, PAUSED, PLAN IN THE FILE
+- [~] Ported: the GROUND_Y contract, the grounding guard (deferral over),
+      `piece_extent()`, a plaza-shaped lane law (a protected **disc**, since a
+      plaza is fought across not along), the closed court, the four-ring void
+      kill, the panorama sky and the material pass.
+- [ ] ⚠️ **NOT DONE and documented at the top of `build_bayan_plaza.py`:** house
+      orientation not applied to its own tree rings/landmarks, no five-shot void
+      acceptance, clutter still sparse, the HazardZone still has no visual tell,
+      and it has never been played, networked or profiled.
+- [ ] ⚠️ **The two builders share `floorcheck.py` and nothing else.** Every
+      Eskinita lesson has to be ported by hand — that is how those items survived.
+
 ## Phase 9 · AI FAIRNESS LOG — the running record for balance testing
 
 **Human call, 2026-07-29:** *"Make sure the AI's fulfil their roles as well and try to win (attacker
@@ -1671,7 +1737,12 @@ hypotheses to check rather than starting cold:
    Real evasion is a separate behaviour and is not implemented.
 4. **`DECISION_INTERVAL` 0.35 jittered 0.75–1.3×** sets reaction time and is the obvious global
    difficulty knob if the bots turn out to be too sharp or too dull.
-5. **No difficulty tiers exist.** If fairness testing says the AI is too strong for a demo, the fix
+5. **Can evasion (`CAN_EVADE_*`) is now the biggest single balance lever.** A
+   measured sweep showed the difference between "dodges everything, game
+   unwinnable" and "never dodges" is about 0.3s of lookahead. Shipped values sit
+   deliberately on the hittable side. Re-measure the moment real win-rate numbers
+   exist — this is the first thing that will need moving.
+6. **No difficulty tiers exist.** If fairness testing says the AI is too strong for a demo, the fix
    is a tier that scales `DECISION_INTERVAL` and `ATTACKER_LANE_CLEARANCE`, not one-off nerfs.
 
 ## Already done — the ledger this list replaces

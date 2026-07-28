@@ -340,7 +340,17 @@ func _laundry_line() -> void:
 	# 2-unit grid. Both deliberate, both found by rendering: this piece is strung
 	# BETWEEN the two wall lines, so posts of its own stood in the middle of the
 	# road holding up a line nobody could see. A sampay hangs off the buildings.
-	_wire(w, Vector3(-8.0, 2.62, 0.0), Vector3(8.0, 2.62, 0.0), 0.42, 0.025, 12, "cloth")
+	# ⚠️ SPANS THE FULL ALLEY, WALL FACE TO WALL FACE (+/-8.6), NOT +/-8.0.
+	# Playtest 2026-07-29: "sampayan is just floating in the air ... anchor
+	# clothes line to something". It ended 600mm short of the house fronts on
+	# both sides, so the line visibly began and ended in mid-air. The facades
+	# now sit on the collision plane at x = +/-8.6 (build_eskinita.WALL_FACE_X),
+	# so reaching exactly that far is what anchors it into the walls.
+	_wire(w, Vector3(-8.6, 2.62, 0.0), Vector3(8.6, 2.62, 0.0), 0.42, 0.025, 12, "cloth")
+	# A visible tie-off block at each end, so the line reads as FASTENED to the
+	# house rather than passing through it.
+	for _sx in SIDES:
+		_box(w, _sx * 8.5, 0.0, 0.22, 0.16, 2.50, 2.74, "timber")
 
 	# ⚠️ THE GARMENTS ARE SEGMENTED DOUBLE-SIDED SHEETS NOW, NOT EXTRUDED BOXES,
 	# AND THAT IS THE ACTUAL FIX FOR "STIFF, LIFELESS CARDBOARD BOXES".
@@ -381,7 +391,7 @@ func _laundry_line() -> void:
 	const CLOTH_HALF_W: Array[float] = [0.16, 0.13, 0.17, 0.14, 0.16, 0.12, 0.15]
 	for i in range(7):
 		var t := (float(i) + 0.5) / 7.0
-		var x := lerpf(-8.0, 8.0, t)
+		var x := lerpf(-8.2, 8.2, t)
 		var y_top := 2.62 - 0.42 * sin(PI * t)
 		var yaw: float = JITTER_YAW[i % JITTER_YAW.size()]
 		var half_w: float = CLOTH_HALF_W[i]

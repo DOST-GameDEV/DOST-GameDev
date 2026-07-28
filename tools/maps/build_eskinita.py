@@ -325,7 +325,11 @@ while _gx <= APRON_X:
 # visual instance and nothing more — which is also why the camera's spring arm
 # (mask 1) cannot catch on any of it.
 BUILDING_TYPES = ["a", "c", "e", "j", "b", "o", "d", "s", "i", "n", "l"]
-BAY_GAP = 1.1               # alley-side alcove between neighbours, in metres
+# ⚠️ TIGHT. Playtest 2026-07-29 showed wide bare gaps between houses (with a
+# screenshot circling one). A Philippine residential street is built shoulder to
+# shoulder; 1.1m of daylight between every pair of houses read as a film set with
+# missing pieces. 0.35 leaves just enough to see the wall thickness.
+BAY_GAP = 0.35              # alley-side alcove between neighbours, in metres
 ## Every Nth bay is left empty and gets a parked vehicle instead — a driveway.
 ## It is also what stops the wall line reading as one extruded ribbon.
 DRIVEWAY_EVERY = 4
@@ -337,8 +341,30 @@ _bay = {-1.0: -Z_END, 1.0: -Z_END}   # each side advances independently now
 _i = {-1.0: 0, 1.0: 0}
 for side in (-1.0, 1.0):
     tag = "E" if side > 0 else "W"
-    # +X row faces -X and vice versa, so front doors look into the alley.
-    yaw = (math.pi * 0.5) if side > 0 else (-math.pi * 0.5)
+    # ⚠️⚠️ A CITY KIT BUILDING'S FRONT FACES ITS OWN LOCAL +Z. MEASURED, NOT GUESSED.
+    #
+    # Rendered `building-type-a` at yaw 0 from all four cardinal directions
+    # (tools/facing_probe.gd): the +Z side carries the door, the porch planting
+    # and the window detailing; the -Z side is a plainer elevation; and BOTH ±X
+    # sides are blank gable walls with nothing on them at all.
+    #
+    # A yaw of +90 deg maps local +Z onto world +X. The previous code used
+    # `+90 for the east row, -90 for the west`, which pointed the +Z front at +X
+    # on the east side and at -X on the west side — i.e. **both rows had their
+    # front doors facing away from the street**, presenting blank gable ends to
+    # the alley. That is the reported "houses don't generate facing sideways or
+    # away from the street".
+    #
+    # The alley lies toward -X from the east row and toward +X from the west row,
+    # so the sign is simply the other way round: east row yaw -90 (front -> -X),
+    # west row yaw +90 (front -> +X). Both rows now face each other across the
+    # street, which is what a street IS.
+    #
+    # ⚠️ This also keeps `piece_extent()`-based face alignment honest: the surface
+    # being aligned to WALL_FACE_X is now genuinely the facade rather than a
+    # gable end, so "the front door sits on the collision plane" is true in the
+    # literal sense.
+    yaw = (-math.pi * 0.5) if side > 0 else (math.pi * 0.5)
     while _bay[side] <= Z_END:
         i = _i[side]
         if (i + (0 if side > 0 else 2)) % DRIVEWAY_EVERY == 0:
@@ -356,6 +382,18 @@ for side in (-1.0, 1.0):
                   else (-WALL_FACE_X - cext[1]))
             add_kit("Dressing/Layer1", f"Car_{i}_{tag}", car, cx,
                     _bay[side] - cext[2], cyaw, CAR_SCALE)
+            # ⚠️ A DRIVEWAY IS NOT A HOLE. The bay is deliberately empty of
+            # HOUSE, but leaving it empty of everything is what read as the
+            # street missing a tooth. A fence line plus a hedge closes the gap
+            # at eye level while keeping the bay itself legible as a gap.
+            _fz = _bay[side] - cext[2]
+            add_kit("Dressing/BayFill", f"BayFence_{i}_{tag}",
+                    "kits/city/fence" if i % 2 else "kits/city/fence-low",
+                    side * (WALL_FACE_X + 0.15), _fz - 2.6,
+                    0.0 if side > 0 else math.pi, CITY_SCALE * 0.8)
+            add_kit("Dressing/BayFill", f"BayHedge_{i}_{tag}", "kits/town/hedge",
+                    side * (WALL_FACE_X + 0.5), _fz + 2.6,
+                    0.0, TOWN_SCALE)
             _bay[side] += (cext[3] - cext[2]) + BAY_GAP
         else:
             kind = BUILDING_TYPES[i % len(BUILDING_TYPES)]
@@ -374,14 +412,21 @@ for side in (-1.0, 1.0):
 # --- Layer 2: a second row further out, for skyline depth --------------------
 # Off-grid on purpose and deliberately NOT the same types as Layer 1 -- a second
 # identical row reads as a mirror rather than as a neighbourhood.
+# ⚠️ THESE FACE OUTWARD, AWAY FROM OUR ALLEY, AND THAT IS DELIBERATE.
+# Real blocks are built back-to-back: the row behind these houses fronts onto the
+# NEXT street over, not onto ours. Facing them inward would give the alley two
+# competing front rows and read as a film set. A small yaw jitter keeps the row
+# from looking extruded — see the seeded-not-random rule.
+_L2_JIT = [0.09, -0.14, 0.05, -0.07, 0.12, -0.03]
 for n, (x, zz, kind) in enumerate([
         (-19.5, -14.0, "t"), (-21.0, -3.0, "q"), (-19.0, 8.0, "u"),
         (-21.5, 17.0, "f"), (19.5, -15.0, "p"), (21.0, -4.0, "r"),
         (19.0, 7.0, "k"), (21.5, 16.0, "m"),
         (-20.0, -22.0, "b"), (20.0, -21.0, "d"), (-20.5, 24.0, "n"),
         (20.5, 23.0, "s")]):
+    out_yaw = (math.pi * 0.5) if x > 0 else (-math.pi * 0.5)
     add_kit("Dressing/Layer2", f"L2_{n}", f"kits/city/building-type-{kind}",
-            x, zz, 0.35 if n % 2 else -0.22, CITY_SCALE)
+            x, zz, out_yaw + _L2_JIT[n % len(_L2_JIT)], CITY_SCALE)
 
 # --- Ring 2: the silhouette belt. Read at distance through fog, never reached.
 #
@@ -413,7 +458,9 @@ for ring_i, ring in enumerate((32.0, 41.0)):
             add_kit("Dressing/Belt", f"BeltX_{_belt}",
                     f"kits/city/building-type-{BELT_TYPES[_belt % len(BELT_TYPES)]}",
                     side * (ring + j * 0.35), zz + j,
-                    (j * 0.11) + (0.0 if side > 0 else math.pi),
+                    # Fronts turned along the ring so the belt reads as streets
+                    # rather than as a wall of blank gable ends.
+                    (j * 0.11) + ((math.pi * 0.5) if side > 0 else (-math.pi * 0.5)),
                     CITY_SCALE * (1.0 + ring_i * 0.15))
             _belt += 1
             zz += step
@@ -423,7 +470,7 @@ for ring_i, ring in enumerate((32.0, 41.0)):
             add_kit("Dressing/Belt", f"BeltZ_{_belt}",
                     f"kits/city/building-type-{BELT_TYPES[_belt % len(BELT_TYPES)]}",
                     xx + j, side * (ring + j * 0.35),
-                    (j * 0.13) + (math.pi * 0.5 if side > 0 else -math.pi * 0.5),
+                    (j * 0.13) + (0.0 if side > 0 else math.pi),
                     CITY_SCALE * (1.0 + ring_i * 0.15))
             _belt += 1
             xx += step
@@ -453,16 +500,44 @@ for n, zz in enumerate([-15.5, -9.0, -2.5, 4.0, 10.5, 16.0]):
                 (n % 3) * 0.8, CITY_SCALE)
 
 # --- Layer 3: overhead. Highest read-per-triangle in the kit. ---------------
-for n, zz in enumerate([-15.0, -11.0, -7.0, -3.0, 1.0, 5.0, 9.0, 13.0, 16.5]):
-    side = -1.0 if n % 2 else 1.0
-    add("Dressing/Layer3", f"Post_{n}", "post_electric", side * (W - 0.25), zz,
-        math.pi * 0.5 * (1.0 if side > 0 else -1.0))
+# ⚠️⚠️ THE WIRE SPAN IS 6.0 AND THE POST SPACING MUST EQUAL IT, OR THE WIRES
+# HANG IN MID-AIR. Playtest 2026-07-29: "the electric pole wires ... are just
+# floating in the air ... connect the electric pole wires to the poles."
+#
+# `env_kit.gd::_post_electric()` draws its service wire from its own cross-arm to
+# where the NEXT post would be — a fixed 6.0 units along the mesh's local +X —
+# precisely so a row of them strings itself together with no per-instance work.
+# That only holds if consecutive posts on the SAME side are exactly 6.0 apart and
+# share a yaw. The previous layout alternated sides every 4.0 units with the yaw
+# flipping per side, so no post's wire ever reached another post: every span
+# ended in empty air, twice per post.
+#
+# Local +X maps to world (cos y, 0, -sin y), so yaw = -pi/2 sends the wire toward
+# +Z, i.e. straight down the alley. The last post on each side is emitted from
+# the same row but its wire simply overshoots the end of the street, which reads
+# as the line continuing out of the map — correct, and better than stopping dead.
+POST_SPAN = 6.0          # must match _post_electric()'s own wire length
+POST_YAW = -math.pi * 0.5
+_pn = 0
+for side in (-1.0, 1.0):
+    zz = -15.0
+    while zz <= 16.0:
+        add("Dressing/Layer3", f"Post_{_pn}", "post_electric",
+            side * (W - 0.25), zz, POST_YAW)
+        _pn += 1
+        zz += POST_SPAN
+
 # Sampay: strung ACROSS the alley, hanging from the houses. The ONE thing on
 # this map that is legitimately not on the ground — hence `suspended`, which is
 # an explicit opt-out of the grounding check rather than a hole in it.
 for n, zz in enumerate([-13.5, -8.5, -3.0, 3.0, 8.5, 14.5]):
     add("Dressing/Layer3", f"Sampay_{n}", "laundry_line", 0.0, zz,
-        base_y=GROUND_Y + 1.48 + (0.22 if n % 3 == 0 else 0.0),
+        # ⚠️ RAISED. A Person is 1.6 tall standing on ground at 0.1, so the top
+        # of the head is ~1.70 — and the lowest garment hem used to sit at
+        # 1.58, which is why heads phased through the washing. This puts the
+        # hem at ~2.35, clear of a head and still low enough to read as
+        # laundry rather than as bunting.
+        base_y=GROUND_Y + 2.25 + (0.22 if n % 3 == 0 else 0.0),
         suspended=True, lane_exempt=True)
 
 # --- Interior clutter. HEAVY on the sides, ZERO in the lanes. ----------------
@@ -745,6 +820,17 @@ ext_lines.append('[ext_resource type="Script" '
                  'path="res://scripts/systems/kill_plane.gd" id="K"]')
 ext_lines.append('[ext_resource type="Script" '
                  'path="res://scripts/systems/env_toon_pass.gd" id="T"]')
+# ⚠️ A PANORAMA SKY, NOT ProceduralSkyMaterial. Playtest 2026-07-29: "sky feels
+# lacking, feels like an endless desert". The procedural sky is a bare two-colour
+# vertical ramp — no clouds, nothing to read distance against — and with the fog
+# tinting it toward the same warm haze the ground uses, sky and ground converged
+# on one flat cream and the whole frame read as desert.
+# `sky_panorama.png` is generated by a deterministic value-noise pass (see the
+# generator note in docs) and is ONE TEXTURE FETCH — cheaper than the procedural
+# sky it replaces, so this costs nothing against the Phase 9 performance rollback
+# and adds no shader.
+ext_lines.append('[ext_resource type="Texture2D" '
+                 'path="res://assets/models/materials/sky_panorama.png" id="SKY"]')
 
 # ⚠️ THE FLOOR IS 120x120 AND THAT IS A BACKDROP CHANGE, NOT AN ARENA RESIZE.
 # The colliders that bound play — Bounds/Wall* at ±8.6 and ±18.0 — are byte-for-
@@ -785,14 +871,9 @@ size = Vector3(260, 4, 260)
 [sub_resource type="BoxShape3D" id="Shape_hazard"]
 size = Vector3(3.6, 3, 11)
 
-[sub_resource type="ProceduralSkyMaterial" id="Sky_mat"]
-sky_top_color = Color(0.2627, 0.4941, 0.7686, 1)
-sky_horizon_color = Color(0.8863, 0.7686, 0.5961, 1)
-sky_curve = 0.42
-sky_energy_multiplier = 0.85
-ground_bottom_color = Color(0.6784, 0.6118, 0.5216, 1)
-ground_horizon_color = Color(0.8863, 0.7686, 0.5961, 1)
-ground_curve = 0.06
+[sub_resource type="PanoramaSkyMaterial" id="Sky_mat"]
+panorama = ExtResource("SKY")
+energy_multiplier = 1.0
 
 [sub_resource type="Sky" id="Sky_res"]
 sky_material = SubResource("Sky_mat")
@@ -802,7 +883,7 @@ background_mode = 2
 sky = SubResource("Sky_res")
 ambient_light_source = 3
 ambient_light_energy = 1.15
-ambient_light_sky_contribution = 0.7
+ambient_light_sky_contribution = 0.8
 reflected_light_source = 2
 tonemap_mode = 3
 tonemap_exposure = 0.92
@@ -822,7 +903,7 @@ fog_light_color = Color(0.8784, 0.8118, 0.6941, 1)
 fog_light_energy = 0.9
 fog_sun_scatter = 0.28
 fog_density = 0.0
-fog_sky_affect = 0.75
+fog_sky_affect = 0.22
 fog_depth_curve = 1.1
 fog_depth_begin = 14.0
 fog_depth_end = 58.0
@@ -960,6 +1041,8 @@ script = ExtResource("T")
 
 [node name="Layer1" type="Node3D" parent="Dressing"]
 
+[node name="BayFill" type="Node3D" parent="Dressing"]
+
 [node name="Layer2" type="Node3D" parent="Dressing"]
 
 [node name="Layer3" type="Node3D" parent="Dressing"]
@@ -1015,7 +1098,7 @@ print(f"  sub_resources : {n_sub}")
 print(f"  load_steps    : {load_steps}")
 print(f"  mesh instances: {len(order)}")
 if overlaps:
-    print(f"  ⚠ Layer1 footprint overlaps: {len(overlaps)}")
+    print(f"  [!] Layer1 footprint overlaps: {len(overlaps)}")
     for a, b, ox, oz in overlaps[:8]:
         print(f"      {a} <-> {b}  ({ox:.2f} x {oz:.2f} m)")
 else:

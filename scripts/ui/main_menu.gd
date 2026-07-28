@@ -1,8 +1,9 @@
 extends Control
 class_name MainMenu
 
-## The game's entry point (see project.godot run/main_scene). Title screen only:
-## the TUMP logo and the three pennant buttons.
+## The title screen: the TUMP logo, the backdrop plate and the four pennant
+## buttons. No longer the game's literal entry point — `SplashScreen.tscn` is
+## `run/main_scene` now and hands off to this once the opening sting has played.
 ##
 ## PLAY hands off to GameSetup.tscn, which owns map/mode selection and the
 ## offline/host/join launch. The two used to share this scene; they share no
@@ -16,6 +17,7 @@ const STAGGER: float = 0.09
 @onready var settings_panel: SettingsPanel = %SettingsPanel
 @onready var start_button: ArrowButton = %StartButton
 @onready var settings_button: ArrowButton = %SettingsButton
+@onready var tutorial_button: ArrowButton = %TutorialButton
 @onready var quit_button: ArrowButton = %QuitButton
 
 func _ready() -> void:
@@ -25,13 +27,14 @@ func _ready() -> void:
 
 	start_button.pressed.connect(_on_start_pressed)
 	settings_button.pressed.connect(_on_settings_pressed)
+	tutorial_button.pressed.connect(_on_tutorial_pressed)
 	quit_button.pressed.connect(_on_quit_pressed)
 	settings_panel.back_pressed.connect(_on_settings_back_pressed)
 
 	_unfurl()
 
 func _unfurl() -> void:
-	var buttons: Array[ArrowButton] = [start_button, settings_button, quit_button]
+	var buttons: Array[ArrowButton] = [start_button, settings_button, tutorial_button, quit_button]
 	for i in buttons.size():
 		buttons[i].animate_in(i * STAGGER)
 
@@ -44,6 +47,13 @@ func _on_start_pressed() -> void:
 ## clear steps instead.
 func _on_quit_pressed() -> void:
 	get_tree().quit()
+
+## Deliberately a stub. The button exists so the menu reads complete and so the
+## gap between SETTINGS and QUIT is filled, per the 2026-07-29 request — the
+## tutorial itself is not built and routing this anywhere would be a dead end
+## that looks like a bug. Wire it when there is something to wire it to.
+func _on_tutorial_pressed() -> void:
+	print("[MainMenu] TUTORIAL pressed - not implemented yet")
 
 func _on_settings_pressed() -> void:
 	settings_panel.visible = true
