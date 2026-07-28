@@ -1539,6 +1539,76 @@ First human play of Phase 8, 2026-07-29. All three fixed; none was what it looke
       least informative one.
 - [ ] **Bayan Plaza** (8.1h), deferred by explicit human decision.
 
+## Phase 9 — Graphics downgrade, AI rewrite, and a game-wide bug sweep
+
+**Opened and executed 2026-07-29.** Human call: *"we have introduced severe visual regressions, lag,
+and AI breaking bugs ... a game-wide audit, a graphics rollback, and the eradication of all bugs
+across Physics, Networking, AI, and UX/UI."*
+
+Full root-cause writeups: `Handoff.md` **B-114 … B-118**. Everything here is `[~]` — measured by
+probe, not played by a human.
+
+### 9.1 · Graphics downgrade `[~]`
+
+- [~] **Toon shading and the inverted-hull outline removed from the MAP.** Two draw calls and a
+      unique ShaderMaterial per surface across ~510 instances, and `diffuse_toon`'s hard 2-band step
+      landed as a wide horizontal stripe across every flat kit wall — the reported "ugly horizontal
+      banded shadows". `env_toon_pass.gd` now applies a plain `StandardMaterial3D` and keeps only
+      the seeded facade tints, roof-variant atlases, foliage variation and the road correction.
+      ⚠️ **Characters KEEP their toon pass.** The shading split is now deliberate.
+- [~] **SDFGI, SSIL and glow off.** SSAO kept but softened; shadow distance 58 → 42.
+- [~] **Measured: 90 → 203 fps** at 1080p on an RX 6600 (`tools/perf_probe.gd`).
+- [~] **Background quieted.** Three belt rings plus three tree rings → two rings plus one, further
+      out and faded harder into fog. 510 → 382 instances.
+
+### 9.2 · Court lines `[~]`
+
+- [~] **One closed outer rectangle with cross-lines.** The confinement square was already closed;
+      the throwing and team-side lines were free-floating segments with nothing to terminate on,
+      which is what "overshoot / do not close" described. Now `CourtEast/West/North/South` bound
+      everything and every cross-line ends inside the side lines.
+- [~] **A real 20 mm overshoot fixed.** `court_line()` extended each line by ITS OWN half-width,
+      which is only correct when every line shares a mesh — `throwing_line_decal` is 0.12 wide
+      against `team_side_decal`'s 0.08, so throwing lines poked to ±5.060 past a side line ending at
+      5.040. Verified programmatically: zero overshoot.
+
+### 9.3 · AI `[~]` — see also the fairness log below
+
+- [~] **B-114 · independence.** The global `Input` singleton is out of the AI path; per-instance
+      intent + per-instance RNG + jittered decision phase. Co-transition rate 1/846 frames.
+- [~] **Roles now try to win.** The Taya BODY-BLOCKS (stands on the can→attacker line) instead of
+      chasing something the confinement geometry forbids it from reaching; the attacker checks its
+      throwing lane and slides to an open bearing instead of charging the block.
+- [ ] **Fairness itself is NOT measured.** See the fairness log below — that is the next AI task.
+
+### 9.4 · UX / UI `[~]`
+
+- [~] **Scoreboard pips.** Reported as "remain empty and do not update" — they were filling with
+      `UiTheme.CARD` (#f5f7fa) on a near-white card, so contrast was zero. Now the team's ROLE
+      colour, matching `match_result.gd`. Verified by render at 0/1/2/3 wins.
+- [~] **HUD stopped rebuilding six StyleBoxFlat objects every frame** (~360/s) to redraw a value
+      that changes a handful of times per match.
+
+### 9.5 · Physics & interaction `[~]`
+
+- [~] **B-115 · spawn depenetration** — the real root cause of B-100, and three "obvious" fixes that
+      do not work are recorded so nobody retries them.
+- [~] **B-116 · spawns embedded 100 mm in the floor.**
+- [~] **B-117 · a thrown tsinelas had no live hitbox.**
+- [~] **Audited clean:** slipper never below the floor (min Y 0.245 vs floor 0.100), never outside
+      bounds, no snagging — `tools/phys_probe.gd`.
+
+### 9.6 · Networking `[~]`
+
+- [~] **B-118 · freed lambda capture on round reset**, found in a real two-instance session.
+- [~] **A real `--host` / `--join` session now runs clean on both sides** — the first time this has
+      been done in this project. Replication config audited: `position`/`rotation` ALWAYS
+      (unreliable, correct for continuous data), `state`/`dents` ON_CHANGE (reliable). Authority
+      gating confirmed: non-authority peers return before reading input, so the new AI intent path
+      is host-only by construction.
+- [ ] **Still not covered:** packet loss / latency simulation, mid-match disconnect and reclaim, and
+      a 4-peer session. Two local peers on loopback is the weakest possible network test.
+
 ## Phase 9 · AI FAIRNESS LOG — the running record for balance testing
 
 **Human call, 2026-07-29:** *"Make sure the AI's fulfil their roles as well and try to win (attacker

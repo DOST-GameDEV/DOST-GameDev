@@ -739,6 +739,110 @@ For any coding agent picking up this queue.
 **Only open items live here.** B-01 … B-66 are in [`Handoff.md`](Handoff.md); everything
 marked `[FIXED]` there is done and settled. New bugs take the next free number **in this file**.
 
+**B-114 · The AI drove the GLOBAL `Input` singleton, so two bots shared one keyboard. [FIXED
+2026-07-29]** ⚠️ **Both reported AI symptoms were this one bug.**
+
+Report: *"they randomly stop and freeze completely"* and *"they all move together at the exact same
+time in sync ... clearly sharing a global state."* That diagnosis was right, and the shared state was
+`Input` itself.
+
+`AIController._set_held()` called `Input.action_press(character.action_name(base))` — process-global
+state keyed only by `player_id` — and `main.gd::_build_spawn_data` assigns AI slots
+`player_id = (index % 2) + 3`, so **index 0 and index 2 both get p3** and 1 and 3 both get p4. Two
+bots pressed and released the same actions:
+
+ - **Lockstep** — they were literally reading each other's input.
+ - **Freezing** — `_set_held` was edge-triggered against its OWN belief about what it held. Bot A
+   presses `move_left_p3`; bot B, believing that action is not held, calls
+   `Input.action_release("move_left_p3")` and stops BOTH. The two beliefs then disagree with the
+   global forever and neither re-presses.
+
+*Fix.* The global is out of the path entirely rather than the id range being widened — a human and an
+AI on one machine can still collide, and a shared global is the wrong shape for per-unit intent
+regardless. `CharacterBase` gained `input_pressed` / `input_just_pressed` / `input_just_released` /
+`input_vector`, which read a per-instance intent dictionary when an `AIController` is attached and
+the hardware otherwise. Every gameplay read in `character_base.gd`, `carrier.gd` and `carriable.gd`
+goes through those now.
+
+⚠️ **`character_base.gd:493`'s movement read was missed on the first pass** and it is the one that
+matters most — the bots went completely still because intent was being written and the movement
+vector was still being read from `Input.get_vector`. If AI movement ever dies again, check that
+every read goes through `input_*` first.
+
+*Second half: lockstep survives an independence fix.* Every controller started `_decision_timer` at
+0.0 and decremented by the same delta, so all of them re-picked on the same physics frame forever.
+Phase is now staggered in `_ready()` from a per-instance `RandomNumberGenerator` seeded off the
+instance id, and each interval is jittered 0.75–1.3×. `randf()` calls were moved to that stream too:
+one shared global sequence is a subtler version of the same "they behave as one" bug.
+
+*Verified* with `tools/ai_probe.gd`: frames where two or more bots change movement state together
+went to **1 / 846 (0.1%)**, longest still-run **1.1 s**, no freezes.
+
+**B-115 · Two characters trading spawn marks depenetrated off each other's STALE collider. [FIXED
+2026-07-29]** — the real root cause of B-100.
+
+Writing `position` on a `PhysicsBody3D` updates the scene tree immediately and the physics
+**broadphase** only at the next server step. Roles swap every round, so the two Persons trade marks,
+and for one physics frame each of them is standing on the other's previous collider.
+
+Measured with `tools/jump_probe.gd`: the incoming Taya is placed correctly at (2.2, 0.9, −1.5); on
+the next step `move_and_slide()` reports three contacts with the outgoing Person (normal 0,1,0 —
+stacked on its head) and shoves it to y = 2.50; the frame after that it slides **9.89 units** into
+`WallWest`, where the confinement clamp parks it at exactly radius 5.0. Delta was a normal 0.0167 and
+`time_scale` 1.0 throughout — not a lag spike, not a velocity bug.
+
+⚠️ **Three "obvious" fixes do not work, and two had already been tried.** B-100's *park everyone at
+y=500 first*, `force_update_transform()`, and `PhysicsServer3D.body_set_state()` are all writes the
+broadphase does not see until it steps. Toggling `CollisionShape3D.disabled` was tried before that
+and failed for the same reason.
+
+*Fix.* Nobody MOVES until it has stepped. `CharacterBase.begin_spawn_settle()` holds the placed
+transform, keeps zero velocity and skips `_physics_process` entirely — gravity, AI and
+`move_and_slide()` included — for `SPAWN_SETTLE_FRAMES` (3, i.e. 50 ms).
+
+**B-116 · Every character spawned 100 mm inside the floor. [FIXED 2026-07-29]**
+
+Phase 8 raised the floor's collision top from 0.000 to 0.100 so characters would stop standing inside
+the visible road, and left the four spawn marker Y values alone on the reasoning that "the paving was
+already at 0.1". Wrong: a spawn Y is measured against the FLOOR COLLIDER, which moved. Every unit
+therefore started embedded and was ejected by depenetration — the other half of the "weird physics
+bounces" report. Spawn heights are now derived from `GROUND_Y` in `build_eskinita.py` rather than
+typed, so they cannot drift from the floor again.
+
+**B-117 · A thrown tsinelas had no live hitbox. [FIXED 2026-07-29]**
+
+`CharacterBase.tscn`'s single `Hitbox` has `requires_bump_window = true`, and `is_hitbox_active()`
+returned only `_bump_active_time_left > 0.0` — a field written in exactly one place, the **bump**
+press. A slipper in the air never presses bump, so its hitbox was gated off for the entire flight and
+throws landed only on incidental body contact.
+
+*Fix.* Being `FLYING` is now also an active window — it is the slipper's equivalent of the bump
+window, a deliberate time-boxed offensive state the player committed to. `carriable._step_flying`
+also calls `sweep_hitbox()` each frame, because `area_entered` only fires on the ENTER edge and a can
+already inside the hitbox on the first flight frame would otherwise never register.
+
+*Verified* by A/B over 12 identical throws with `tools/phys_probe.gd`: frames with the can not in
+NORMAL state went **180 → 515**.
+
+⚠️ **Note for anyone measuring this:** `GameLaunch.game_mode` defaults to **OPTION_B**, so a hit on
+the can produces downed/seal, **not** dents. A dent counter reading zero is correct in the default
+mode and is not evidence of a missed hit — that mistake cost a debugging round here.
+
+**B-118 · A freed lambda capture errored on every round reset. [FIXED 2026-07-29]**
+
+`ability_utils.gd` created a transient hitbox area, added it to the `transient_hitbox` group, and
+scheduled cleanup as `func(): if is_instance_valid(area): area.queue_free()`. `main.gd::_reset_world`
+frees that entire group on every round reset, so an ability cast shortly before a round ends had its
+area freed while the timer was still pending.
+
+Godot resolves a lambda's captures when the lambda is **called**, before any of its body runs, and
+errors there: *"Lambda capture at index 0 was freed. Passed null instead."* The `is_instance_valid()`
+guard inside was dead code for precisely the case it was written for.
+
+Found in a real two-instance `--host`/`--join` session — the host logged it on round transitions and
+the client never did, because only the host resolves abilities. *Fix:* capture the **instance id**
+(an int cannot dangle) and resolve it with `instance_from_id()` at call time.
+
 **B-111 · Spawn slots were scrambled because `StringName` does not sort alphabetically. [FIXED
 2026-07-29]** ⚠️ **This is the "spawns are still broken" report that survived several sessions.
 Read the whole entry before touching spawn code again.**
