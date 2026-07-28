@@ -853,6 +853,13 @@ func respawn() -> void:
 ## carryover from the previous round. Does NOT touch position — whatever resets a
 ## character to its base spot (map-specific) is a separate concern.
 func reset_for_new_round() -> void:
+	# A unit airborne (jump, knockback) the instant the round ends carries its
+	# velocity straight through _place_at_spawn()'s teleport otherwise — spawn
+	# markers sit flush with the floor (zero clearance, same as respawn()'s
+	# own spot above), so leftover downward velocity can tunnel a Can through
+	# the floor before the next move_and_slide() re-establishes floor contact.
+	# respawn() already clears this on a KillPlane catch; this path did not.
+	velocity = Vector3.ZERO
 	_staggered_time_left = 0.0
 	_downed_time_left = 0.0
 	_downed_self_rightable = false
