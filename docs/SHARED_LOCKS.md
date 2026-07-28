@@ -16,11 +16,11 @@ to type.
 | Shared file | Held by | Branch | Since |
 |---|---|---|---|
 | `scenes/main/Main.tscn` | — free — | | |
-| `scenes/characters/CharacterBase.tscn` | 🔧 Build | code/proportions | 2026-07-28 |
+| `scenes/characters/CharacterBase.tscn` | — free — | | |
 | `scenes/characters/CameraRig.tscn` | — free — | | |
 | `scenes/ui/*.tscn` | — free — | | |
 | `project.godot` | — free — | | |
-| `tools/models/generate_all.gd` | 🔧 Build | code/proportions | 2026-07-28 |
+| `tools/models/generate_all.gd` | — free — | | |
 | `docs/Checklist.md` | *no lock needed* | | append-only-ish; conflicts resolved by taking both sides |
 
 > ### `generate_all.gd` / 2.1b-0 — resolved, kept for history
