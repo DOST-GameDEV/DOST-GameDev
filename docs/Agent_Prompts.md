@@ -135,6 +135,13 @@ NON-NEGOTIABLES
 
 # 🔧 BUILD-PHYS — Sonnet, high effort
 
+> ✅ **DONE 2026-07-28 — see `Checklist.md` 2.5.** All six numbered steps below shipped: per-unit
+> collision on `CharacterBase`, both hero props rescaled, `HAND_CARRY_OFFSET` re-measured with
+> `TSINELAS_CARRY_SCALE` deleted, `base_circle_decal` resized, throw range/hit_radius retuned
+> (4.4a fixed), jump left untouched. Kept below for the standing setup/lock/smoke-gate rules and
+> as the historical record of the brief, same as the older prompts further down this file — not
+> for scope.
+
 ```
 You are the BUILD-PHYS lane on Tumbang Preso (Godot 4.7, GDScript, Forward+), a 2v2 LAN arena
 brawler on the Filipino street game tumbang preso. Repo: DOST-GameDEV/DOST-GameDev.
