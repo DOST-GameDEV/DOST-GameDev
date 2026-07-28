@@ -19,7 +19,9 @@ class_name LobbyScene
 ## Read from one place only (here for display, main.gd for gameplay).
 
 const MAIN_SCENE_PATH := "res://scenes/main/Main.tscn"
-const MAIN_MENU_PATH  := "res://scenes/ui/MainMenu.tscn"
+## Back out to the GAME screen rather than the title: that is where this lobby
+## was entered from, and it is what displays GameLaunch.pending_status_message.
+const MAIN_MENU_PATH  := "res://scenes/ui/GameSetup.tscn"
 
 @onready var host_address_label:   Label          = %HostAddressLabel
 @onready var peer_list_container:  VBoxContainer  = %PeerListContainer
