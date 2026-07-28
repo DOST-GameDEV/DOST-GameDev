@@ -531,24 +531,18 @@ caused B-03, and B-58 (it still does full follow-cam maths every frame while ret
 because of it. **A-2 in §4 deletes it.** Until then the rule holds only because
 `arena_camera.gd::_ready()` politely sets `current = false`.
 
-### 0.5 Blocker — needs a human (carried over, still open, now costed)
+### 0.5 Display typeface — resolved (2026-07-28, v4.21)
 
-🚧 **The moodboard display typeface is Harry's and was not supplied with the brief.** The theme
-ships on Godot's default font. Palette, chrome, layout logic and type scale are all
-moodboard-accurate; **only the typeface is standing in.** No substitute has been downloaded — an
-unvetted font binary is both a licence and a supply-chain question, and Form 03 needs a recorded
-licence either way.
+✅ **Darumadrop One** (SIL OFL 1.1) shipped on an explicit human yes; the author supplied the
+binary directly rather than it being fetched blind. Licence verbatim at
+`assets/ui/fonts/DarumadropOne_LICENSE.txt`, tracked in LFS, ready to cite on **Form 03**.
+It is now `theme.default_font`, so every Control inherits it.
 
-This now blocks **F-2, U-1, U-2, U-3 and M-8** from being finishable, not just imperfect: the logo
-lockup, the round banner, the match-result headline and the letter sheet on the moodboard are all
-that one face. Two ways to unblock, in order of preference:
-
-1. **Get the file from Harry's Canva project** (Canva → Brand Kit / the design's font list). One
-   `.ttf`, one licence line on Form 03. Preferred — it is the actual brand.
-2. **Ship an SIL OFL substitute** — **Luckiest Guy** is the closest to the moodboard's letter
-   sheet; **Chewy** and **Titan One** are the alternates. OFL permits redistribution inside a
-   game, so Form 03 is satisfiable. **Needs an explicit human yes before any font binary enters
-   this repo.**
+**One piece of F-2 is still open:** the queue called for a *second*, clean-grotesque body face
+(Inter / Work Sans) on the grounds that a display face is illegible at `FONT_SIZE_CAPTION` 13.
+Darumadrop One is currently doing both jobs. Display sizes read well (see the main menu); the
+13px `Caption` variation is the one to check on a real screen before submission. Picking a body
+face needs another explicit yes, so it is deliberately not pre-empted here.
 
 ### 0.7 TASK 0 — the Slipper is now a thrown, retrieved object (2026-07-27, v4.0)
 
@@ -2053,14 +2047,13 @@ and resized the window.
 
 ---
 
-#### F-2 · Land the display typeface `[ ]` ⚠️ BLOCKED ON A HUMAN
+#### F-2 · Land the display typeface `[~]` [DONE for the display face @ v4.21]
 
-**Read §0.5 first. Do not download a font binary without an explicit yes in writing.** This is
-the single highest-leverage change in the whole queue — it is the difference between "a Godot
-project" and "the game on the moodboard" — and it is one line of code behind a licensing
-question nobody has answered in three passes.
+**Read §0.5 first.** Darumadrop One landed at v4.21 with an explicit human yes and its OFL
+licence. Steps 1, 2, 4, 5 and 7 are done; **step 3 (a separate body/caption face) is still
+open** and still needs a yes before any second binary enters the repo.
 
-Steps, once a face is chosen:
+Original steps, for the body face that is still outstanding:
 
 1. `git lfs install`, then add to `.gitattributes` next to the existing binary rules:
    ```
@@ -2817,6 +2810,35 @@ all connected peers ready and ≥2 connected). `main.gd` patched with two is_net
 guards so host_game()/join_game() are not double-called when arriving from the lobby,
 and _start_hosting() now iterates connected_peer_ids to spawn all pre-lobby peers.
 B-65 (rejoin identity) is noted but not attempted here — needs a stable player token.
+
+---
+
+#### U-8 · Sync the host's map and mode to joining clients `[ ]`
+
+**Every peer picks its own map and mode, and nothing reconciles them.** `GameLaunch.selected_map`
+and `GameLaunch.game_mode` are set locally by whoever touches the GAME screen. A client that
+toggles MODE to Dents, or picks Bayan Plaza, then joins a host running Capture on Eskinita, keeps
+its own values: `main.gd` reads its local `GameLaunch` on the way into `Main.tscn`, so the two
+peers load different geometry and score by different rules for the whole match.
+
+Not a UI bug — the picker is wired correctly on both sides. The handoff is what is missing:
+`lobby.gd::_rpc_begin_match()` carries no payload, so the host's choice never leaves the host.
+
+Steps:
+
+1. Give `_rpc_begin_match` the host's `selected_map` and `game_mode` as arguments.
+2. Every peer writes both into its own `GameLaunch` **before** `change_scene_to_file`, so
+   `main.gd` reads the host's values rather than its own. It is `call_local`, so the host takes the
+   same path and there is no branch to keep in sync.
+3. Show the host's pick to joiners while they wait — a client currently sees whatever it last
+   selected, which is exactly the disagreement this fixes. Disable the arrows for a joined client
+   and mirror the host's values via the existing `_rpc_sync_state` snapshot.
+
+**Acceptance:** a client picks Bayan Plaza + Dents, joins a host on Eskinita + Capture, and both
+peers load Eskinita and score by Capture. The client's GAME screen shows the host's map and mode
+while it waits in the lobby rather than its own.
+
+**Commit:** `Sync the host's map and mode to joining clients (vX.Y)`
 
 ---
 

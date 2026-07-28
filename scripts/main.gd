@@ -1234,7 +1234,9 @@ func _on_server_disconnected() -> void:
 	RoundManager.reset()
 	GameLaunch.reset()
 	GameLaunch.pending_status_message = "Host ended the match."
-	get_tree().change_scene_to_file("res://scenes/ui/MainMenu.tscn")
+	# GameSetup, not the title screen: it owns the status message and it is where
+	# this player would rejoin or re-host from.
+	get_tree().change_scene_to_file("res://scenes/ui/GameSetup.tscn")
 
 ## Q-1/B-62: a Join to a dead/unreachable address previously left the player on
 ## a black Main.tscn forever — the same soft-lock as a mid-match host quit,
@@ -1245,7 +1247,7 @@ func _on_connection_failed() -> void:
 	RoundManager.reset()
 	GameLaunch.reset()
 	GameLaunch.pending_status_message = "Could not reach that host."
-	get_tree().change_scene_to_file("res://scenes/ui/MainMenu.tscn")
+	get_tree().change_scene_to_file("res://scenes/ui/GameSetup.tscn")
 
 ## Host → all peers: hands `index`'s existing, still-standing character over
 ## to AI control instead of leaving it frozen — see _on_player_disconnected.
