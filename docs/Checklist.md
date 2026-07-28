@@ -1128,9 +1128,14 @@ buggy."* Six Kenney kits (all CC0, verified) plus a supplied flip-flop `.glb`.
         is why a texture broke both at once. Both flavours still differ (WHITE for a landed hit,
         `DEFENSE` for a block, Q-6). `_shader_base_albedos` is deleted — with the flash tweening
         1 → 0 there is no base colour left to restore.
-  - [ ] **Outline width per surface, derived from the mesh's own scale.** Deliberately deferred to
-        7.2: it needs kit meshes of differing scale in the scene to tune against, and folding it in
-        now would mean tuning it twice. `Handoff.md` §0.12 has the measurement.
+  - [x] **Outline width per mesh, derived from its own scale.** Done once kit meshes existed to
+        tune against. `outline.gdshader` inflates along the normal in MODEL space, so one shared
+        `outline_width` meant the ink border's real thickness was whatever that mesh happened to be
+        scaled by — the 0.34-unit Can wore a 0.025 border, ~12% of its own width per side, and
+        rendered as dark slabs down both sides. Kit pieces differ by 10× in scale, so no single
+        constant could ever have been right for more than one of them. Now `OUTLINE_WORLD_WIDTH`
+        (0.012 world units) divided by the node's actual scale, one material per mesh. Persons are
+        untouched — they take the early-out and keep `person_outline.tres`.
       `character_visual.gd::_apply_toon_pass()` replaces every surface material on a Prop with a
       flat `albedo_color` toon material. Kenney kits are textured off a shared palette atlas, so
       applied unchanged **every kit prop becomes one flat colour** — the swap cannot be evaluated,
