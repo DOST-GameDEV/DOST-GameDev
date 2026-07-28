@@ -84,7 +84,13 @@ EDGE_INSET = 0.02
 ## the safe direction: the checker then measures against bare floor and, if the
 ## marking really was resting on it, reports a float rather than staying quiet.
 GROUND_MESHES = frozenset([
+    # Generated.
     "road_tile", "road_tile_line", "kerb_tile", "gutter_tile", "plaza_tile",
+    # Kit paving. ⚠️ A kit ground piece MUST be listed here or every marking
+    # resting on it measures against bare floor instead and the guard reports a
+    # float that is not there — see checklist 7.4's note.
+    "kits/town/road", "kits/town/road-curb", "kits/town/road-edge",
+    "kits/city/driveway-long", "kits/city/path-long",
 ])
 
 _bounds_cache = {}
@@ -159,8 +165,16 @@ def embed_y(surface, mesh_name, models_dir="assets/models"):
     return surface + MARK_PROUD - hi[1]
 
 
-def _to_world(lx, lz, x, z, yaw, sx):
-    """Local XZ -> world XZ under the same basis `xform()` emits.
+def _to_world(lx, lz, x, z, yaw, sx, sz=1.0):
+    """Local XZ -> world XZ under the same basis the builders emit.
+
+    ⚠️ TWO DIFFERENT SCALES SHARE THIS. `xform()` stretches ONLY the mesh's local
+    X row, which is what a lengthenable line decal needs. `xform_uniform()`
+    scales all three axes, which is what a kit building needs. Passing `sz` is
+    how the caller says which one it meant — and getting it wrong is not
+    cosmetic: a kit road tile recorded at X-only scale reports a footprint a
+    quarter of its real size and a TOP HEIGHT that ignores the scale entirely,
+    so every marking on it measures against the wrong ground.
 
     Kept in step with the builders' own `xform()` by construction: X basis is
     (cos*sx, 0, -sin*sx) and Z basis is (sin, 0, cos), so only the mesh's own
@@ -169,8 +183,8 @@ def _to_world(lx, lz, x, z, yaw, sx):
     checker at all.
     """
     c, s = math.cos(yaw), math.sin(yaw)
-    return (x + lx * c * sx + lz * s,
-            z - lx * s * sx + lz * c)
+    return (x + lx * c * sx + lz * s * sz,
+            z - lx * s * sx + lz * c * sz)
 
 
 class Surfaces:
@@ -181,10 +195,19 @@ class Surfaces:
         self._pieces = []   # (name, x0, x1, z0, z1, top)
         self._markings = []  # (name, mesh, x, y, z, yaw, sx)
 
-    def record(self, name, mesh_name, x, y, z, yaw=0.0, sx=1.0, is_marking=False):
-        """Called for every `add()` the builder makes, markings included."""
+    def record(self, name, mesh_name, x, y, z, yaw=0.0, sx=1.0,
+               is_marking=False, uniform=False):
+        """Called for every `add()` the builder makes, markings included.
+
+        `uniform` says the placement scaled all three axes (a kit piece via
+        `add_kit`) rather than only the mesh's length (a stretched line decal).
+        It is what makes the recorded TOP HEIGHT correct, which is what every
+        marking on top of that piece is then measured against.
+        """
         lo, hi = mesh_bounds(mesh_name, self._models_dir)
-        corners = [_to_world(lx, lz, x, z, yaw, sx)
+        sz = sx if uniform else 1.0
+        sy = sx if uniform else 1.0
+        corners = [_to_world(lx, lz, x, z, yaw, sx, sz)
                    for lx in (lo[0], hi[0]) for lz in (lo[2], hi[2])]
         xs = [p[0] for p in corners]
         zs = [p[1] for p in corners]
@@ -194,7 +217,8 @@ class Surfaces:
             # stack would make two floaters validate each other.
             self._markings.append((name, mesh_name, x, y, z, yaw, sx))
         elif mesh_name in GROUND_MESHES:
-            self._pieces.append((name, min(xs), max(xs), min(zs), max(zs), y + hi[1]))
+            self._pieces.append((name, min(xs), max(xs), min(zs), max(zs),
+                                 y + hi[1] * sy))
 
     def height_at(self, wx, wz):
         """Top of the tallest recorded piece covering (wx, wz); 0.0 = bare floor.
