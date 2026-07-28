@@ -325,9 +325,11 @@ So both reports are the same underlying condition: **the playtest was run as a h
 Match.** Tab works in Local Match and is meaningless when hosting.
 
 This is defensible design that is nonetheless a bad experience for the one thing anybody actually
-does — solo-testing by hosting. **Recommendation:** when a networked match has exactly one human
-peer, treat it as local for pause and unit-switching purposes. Flagged rather than done: it is a
-`NetworkManager` semantics change.
+does — solo-testing by hosting. **Done 2026-07-28 — `Checklist.md` 4.6.** `NetworkManager.
+is_solo_session()` now treats a networked match with exactly one human peer as local for pause;
+the debug switcher's on-screen readout is also fixed for that case, though unit-*switching* stays
+correctly inert even solo — see 4.6's own entry for why (a solo host only ever spawns one real
+character; there is nothing to switch to).
 
 #### P1 · Nothing can jump
 
@@ -1587,7 +1589,7 @@ reachable in under 20 seconds.
 |---|---|---|---|
 | **0** | Everything works | Full 2v2 on four devices | — |
 | **1** | One peer drops mid-match | **Finish the round.** Do not stop to explain. Narrate over it. | 0 s |
-| **2** | A peer cannot rejoin | Quit to menu, restart the match with the operator covering the empty slot | ~15 s |
+| **2** | A peer cannot rejoin | `Checklist.md` 4.3 (B-65) now implements this — loopback-verified, **not yet confirmed on real hardware (6.1)**. If it fails live: quit to menu, restart with the operator covering the empty slot | ~15 s |
 | **3** | LAN is unusable (venue wifi, AP isolation) | **Single machine, local 4-unit harness**, operator cycles units with `Tab` | ~20 s |
 | **4** | The build will not run at all | **Play the trailer on loop.** Have it on the machine, not on a URL. | ~10 s |
 

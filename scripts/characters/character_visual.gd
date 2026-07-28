@@ -203,6 +203,19 @@ const CARRY_IDLE_CLIP: String = "holding-right"
 
 const FLASH_DURATION: float = 0.15
 
+## 4.2 — remote movement interpolation. A non-authority networked character's
+## `position`/`rotation` (CharacterBase.tscn's MultiplayerSynchronizer) are
+## written straight onto the BODY every time a replicated update lands, and
+## must stay that way — collision, the Hitbox offset and every directional
+## ability read the body transform directly (Agent_Prompts.md's Netcode
+## brief §3). This node exists as the wrapper for exactly this kind of
+## decoupling: it lags a WORLD-space copy of the body's position/yaw behind
+## by this rate and renders the mesh from that instead, so the body can keep
+## snapping for gameplay while what you actually SEE glides. Higher = closes
+## the gap faster (less visible lag, less jitter hidden); tuned to disappear
+## within a couple of physics ticks on a LAN rather than read as "floaty".
+const REMOTE_SMOOTH_RATE: float = 18.0
+
 ## M-4: toon+outline shaders for Prop (Can/Tsinelas) models. Persons are
 ## excluded (M-4 step 4) — their glTF ORMMaterial3D interacts badly with
 ## ShaderMaterial in _collect_meshes and the interaction is fixed in M-5.
@@ -260,6 +273,16 @@ var _action_clip: String = ""
 ## anything and a BoneAttachment3D on a model with no Skeleton3D is just waste.
 ## Invalidated (not freed — it dies with the model tree) on every model swap.
 var _hand_attachment: Node3D = null
+
+## 4.2 — this node's own lagged WORLD-space copy of the body's position/yaw.
+## Only ever advanced for a non-authority networked character with nothing
+## driving its movement (see _should_smooth_remote) — everyone else leaves
+## this untouched and pays nothing for it. `false` until the first frame that
+## actually needs smoothing, so a brand-new unit's first appearance snaps
+## rather than gliding in from the world origin.
+var _smoothed_world_pos: Vector3 = Vector3.ZERO
+var _smoothed_yaw: float = 0.0
+var _smoothing_initialized: bool = false
 
 func _ready() -> void:
 	# Children are ready before parents, so CharacterBase's own _ready() has not
@@ -575,6 +598,68 @@ func _process(delta: float) -> void:
 	_play_locomotion()
 	_spin_while_airborne(delta)
 	_drive_viewmodel_charge()
+	_process_remote_smoothing(delta)
+
+## 4.2 — lags this node's position/rotation.y behind the body's own (already
+## snapped) global position/yaw, for a remote character only. Explicitly
+## skipped, and left at zero offset, for:
+##   - the locally-driven character — client-authoritative and already smooth;
+##     smoothing it adds pure input latency for no gain.
+##   - anything not actually networked (Local Match / solo test) — there are
+##     no remote peers to smooth against.
+##   - a CARRIED or FLYING slipper — carriable.gd recomputes both identically
+##     and deterministically on every peer, every physics frame, at zero
+##     bandwidth. Lagging an already-agreed transform on top would make it
+##     visibly trail the hand or the arc instead of matching it.
+## rotation.x (airborne spin) and rotation.z (downed tilt) are untouched —
+## only .y is this function's to write.
+func _process_remote_smoothing(delta: float) -> void:
+	if not _should_smooth_remote():
+		if _smoothing_initialized:
+			position = Vector3.ZERO
+			rotation.y = 0.0
+			_smoothing_initialized = false
+		return
+	if not _smoothing_initialized:
+		snap_remote_transform()
+		return
+
+	var body_pos := _character.global_position
+	var body_yaw := _character.rotation.y
+	var t: float = 1.0 - exp(-REMOTE_SMOOTH_RATE * delta)
+	_smoothed_world_pos = _smoothed_world_pos.lerp(body_pos, t)
+	_smoothed_yaw = lerp_angle(_smoothed_yaw, body_yaw, t)
+
+	# `position`/`rotation` here are always relative to the PARENT (the body),
+	# so the world-space gap has to be rotated into the body's own frame —
+	# otherwise "lagging behind" would read as the wrong direction the moment
+	# the body itself turns.
+	var world_gap := _smoothed_world_pos - body_pos
+	position = _character.global_transform.basis.inverse() * world_gap
+	rotation.y = wrapf(_smoothed_yaw - body_yaw, -PI, PI)
+
+func _should_smooth_remote() -> bool:
+	if _character == null or not NetworkManager.is_networked():
+		return false
+	if _character.is_multiplayer_authority():
+		return false
+	var carriable := _character.get_node_or_null("Carriable") as Carriable
+	return carriable == null or not carriable.drives_movement()
+
+## Resets the smoothing state to "caught up, right now" — called whenever the
+## body's position was just TELEPORTED rather than walked (a round reset, a
+## KillPlane respawn), so the visual snaps to the new spot instead of gliding
+## across the map from wherever the last round/fall left it
+## (Agent_Prompts.md §3). Safe to call even when smoothing is inactive; it
+## just primes the state for whenever it next becomes active.
+func snap_remote_transform() -> void:
+	if _character == null:
+		return
+	_smoothed_world_pos = _character.global_position
+	_smoothed_yaw = _character.rotation.y
+	position = Vector3.ZERO
+	rotation.y = 0.0
+	_smoothing_initialized = true
 
 ## Feeds live charge power to the first-person viewmodel so the throwing arm
 ## visibly cocks back the longer the player holds. In first person the wind-up is
