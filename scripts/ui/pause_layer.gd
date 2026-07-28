@@ -2,7 +2,7 @@ extends CanvasLayer
 class_name PauseLayer
 
 ## Q-3/B-64: Main.tscn's own root node (running main.gd) sits at the default
-## PROCESS_MODE_INHERIT, so once Local Match actually pauses the tree
+## PROCESS_MODE_INHERIT, so once Single Player actually pauses the tree
 ## (get_tree().paused = true), Main stops receiving _unhandled_input
 ## entirely — including the very Esc press meant to resume it. Confirmed live
 ## with a standalone headless test: an INHERIT-mode node's _unhandled_input

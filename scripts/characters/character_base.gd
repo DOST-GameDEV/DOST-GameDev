@@ -200,6 +200,14 @@ var _melee_hitbox: Hitbox = null
 ## Task 0/1 — this unit's hands, when it is a Person. See carrier.gd.
 @onready var _carrier: Carrier = get_node_or_null("Carrier")
 
+## Checklist 5.5 — Single Player. Null for every unit except the three
+## AI-driven ones in single-player, which main.gd attaches this to at
+## runtime (never baked into CharacterBase.tscn — see ai_controller.gd's own
+## class doc for why). A plain public var rather than an @onready
+## get_node_or_null(), because the node this would resolve does not exist
+## yet when THIS character's own _ready() runs — main.gd adds it afterward.
+var ai_controller: AIController = null
+
 ## Art_Direction.md §1 proportion audit: CharacterBase.tscn's CollisionShape3D,
 ## Hurtbox, Hitbox and GrabArea used to be baked once at Person scale (radius
 ## 0.4, height 1.6) for every unit — Person, Can and Tsinelas alike. Against a
@@ -318,6 +326,20 @@ func _ready() -> void:
 	_visual.apply(is_person, is_can, team)
 
 func _physics_process(delta: float) -> void:
+	# Checklist 5.5 — Single Player AI. Deliberately the FIRST line of this
+	# function, before anything below reads Input: ai_controller writes into
+	# this character's own action_name()-suffixed Input state exactly the way
+	# a human would, and Godot does not guarantee _physics_process order
+	# between a parent and its children — leaving this implicit (e.g. relying
+	# on AIController being a child that "happens" to run first) would make
+	# the AI's presses land a frame late roughly as often as not. This is the
+	# ONLY hook: everything after this line — movement, abilities, carrier,
+	# confinement, the state machine, round-active gating — is completely
+	# unmodified and unaware whether the Input it reads came from hardware or
+	# from here. See ai_controller.gd's own class doc for the full reasoning.
+	if ai_controller != null:
+		ai_controller.decide(delta)
+
 	# Session 6: the bump-active window has to decay on every peer, not just
 	# the owning one — the host needs its own copy of this timer to resolve
 	# hits authoritatively (see hitbox.gd), and it never runs the input half

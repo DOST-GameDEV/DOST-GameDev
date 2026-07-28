@@ -98,7 +98,7 @@ const TSINELAS_ABILITY_TEAM_B: AbilityBase = preload("res://scripts/abilities/re
 ## networked flow, rather than hand-writing 4 near-identical blocks.
 ## Populated once in _ready(); order is [TeamAProp, TeamAPerson, TeamBProp, TeamBPerson].
 var _local_roster: Array[CharacterBase] = []
-## 2026-07-28 — Local Match only (see _on_local_pressed's doc in
+## 2026-07-28 — Single Player only (see _on_local_pressed's doc in
 ## main_menu.gd). True from the moment _start_local_test() spawns everyone
 ## until the player presses "ready_up": during that window
 ## MatchManager.begin_next_round() has deliberately NOT been called yet, so
@@ -353,11 +353,19 @@ func _start_local_test() -> void:
 	_wire_downed_flash(team_a_prop)
 	_wire_downed_flash(team_b_prop)
 	_register_local_can()
+	# Checklist 5.5 — Single Player. The human plays team_a_person (see the
+	# camera-default doc just below); the other three units on the roster get
+	# real AI instead of sitting on unbound input. Attached once, here, not
+	# re-attached every round: AIController re-derives its role from
+	# is_can/is_person/team_is_can_side on every decide() call, so it stays
+	# correct across every role swap without needing to know one happened.
+	for character in [team_a_prop, team_b_prop, team_b_person]:
+		_attach_ai(character)
 	# Item 13: no authority concept in local test, unlike networked play,
 	# where each rig can activate itself from is_multiplayer_authority(). One
 	# rig has to be picked explicitly.
 	#
-	# Defaults to TeamAPerson, so a fresh Local Match drops you into the human
+	# Defaults to TeamAPerson, so a fresh Single Player drops you into the human
 	# character. This used to be TeamAProp, which meant the first thing anyone
 	# saw on launch was a third-person shot of a tin can — correct per the GDD
 	# (a team is 1 Person + 1 Prop, and the Prop really is the Can) but a poor
@@ -447,7 +455,7 @@ func _start_joining(address: String) -> void:
 	NetworkManager.player_connected.connect(_on_player_connected)
 	NetworkManager.player_disconnected.connect(_on_player_disconnected)
 	# Q-1/B-62: only a client can lose its server or fail to reach one — a host
-	# has no server to lose, and Local Match has no NetworkManager session at
+	# has no server to lose, and Single Player has no NetworkManager session at
 	# all, so these are wired here rather than _ready().
 	NetworkManager.server_disconnected.connect(_on_server_disconnected)
 	NetworkManager.connection_failed.connect(_on_connection_failed)
@@ -897,7 +905,7 @@ func _reregister_tracked_cans() -> void:
 
 ## Q-5: the "YOU" card's networked path (scripts/ui/you_card.gd) — the one
 ## character out of _spawned_characters that this peer actually controls.
-## Local Match never calls this; it resolves by scanning for player_id == 1
+## Single Player never calls this; it resolves by scanning for player_id == 1
 ## instead, since there is no is_multiplayer_authority() concept there.
 func get_local_character() -> CharacterBase:
 	for peer_id in _spawned_characters:
@@ -934,6 +942,17 @@ func _wire_downed_flash(character: CharacterBase) -> void:
 		if character.is_can and GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A:
 			hud.set_dents(new_dents, CharacterBase.MAX_DENTS)
 	)
+
+## Checklist 5.5 — instances an AIController and hands it to `character`
+## (CharacterBase.ai_controller — see that var's own doc for why this can't
+## just be an @onready node reference on the character itself). A plain
+## `Node`, `add_child()`'d rather than baked into CharacterBase.tscn: that
+## scene is shared with the networked spawn path, which never has an
+## unpiloted unit to drive.
+func _attach_ai(character: CharacterBase) -> void:
+	var controller := AIController.new()
+	character.add_child(controller)
+	character.ai_controller = controller
 
 ## B-20: Esc toggles a pause overlay with Resume/Return to Menu — previously
 ## the only way out of a match at all was Alt+F4. Also owns the Item 14 mouse
