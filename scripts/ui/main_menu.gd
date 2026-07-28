@@ -22,15 +22,15 @@ const STAGGER: float = 0.09
 ## Via the class_name rather than the GameLaunch autoload: an autoload lookup is
 ## not a constant expression, so it cannot initialise a const.
 const MODES: Array[Dictionary] = [
-	{"id": GameLaunchScript.GameMode.OPTION_B, "label": "OPTION B — CAPTURE & SEAL"},
-	{"id": GameLaunchScript.GameMode.OPTION_A, "label": "OPTION A — HEALTH / DENTS"},
+	{"id": GameLaunchScript.GameMode.OPTION_B, "label": "CAPTURE"},
+	{"id": GameLaunchScript.GameMode.OPTION_A, "label": "DENTS"},
 ]
 
 ## There is exactly one arena, and which maps ship is still an open design
 ## decision (docs/Handoff.md). The row is present so the screen matches the
 ## layout, with its arrows disabled in the scene until there is something to
 ## cycle through.
-const MAP_NAME: String = "DEFAULT ARENA"
+const MAP_NAME: String = "CLASSIC"
 
 @onready var title_screen: Control = %TitleScreen
 @onready var play_menu: Control = %PlayMenu
@@ -91,10 +91,10 @@ func _ready() -> void:
 func _style_address_field() -> void:
 	for state in ["normal", "focus", "read_only"]:
 		join_address_edit.add_theme_stylebox_override(state, StyleBoxEmpty.new())
-	join_address_edit.add_theme_color_override("font_color", Color("f5e6c8"))
-	join_address_edit.add_theme_color_override("font_placeholder_color", Color(0.961, 0.902, 0.784, 0.45))
-	join_address_edit.add_theme_color_override("caret_color", Color("f5e6c8"))
-	join_address_edit.add_theme_font_size_override("font_size", 38)
+	join_address_edit.add_theme_color_override("font_color", Color("f8d028"))
+	join_address_edit.add_theme_color_override("font_placeholder_color", Color(0.973, 0.816, 0.157, 0.5))
+	join_address_edit.add_theme_color_override("caret_color", Color("f8d028"))
+	join_address_edit.add_theme_font_size_override("font_size", 40)
 
 # --- Screen switching ---------------------------------------------------------
 
