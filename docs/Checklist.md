@@ -635,9 +635,12 @@ touch map scenes.
 - [x] **4.1c · Tab could not reach the Can.** 🎨 Design. Two independent causes.
       Godot binds Tab to `ui_focus_next` and the GUI layer eats it before
       `_unhandled_key_input`, so the switcher never saw it — moved to `_input`.
-      Separately, the switcher no-ops in a **networked** match by design; the
-      0.4 session was hosted, not Local Match, which is also why pause did not
-      freeze. **Solo-test through Local Match.**
+      Separately, the switcher no-ops in a **real (2+ peer) networked** match by
+      design; the 0.4 session was hosted, not Local Match, which is also why pause
+      did not freeze. **Solo-test a real 2v2 through Local Match.** ⚠️ **Narrowed by
+      4.6, 2026-07-28** — a **solo** networked session (hosting, nobody else has
+      joined) now gets a real pause and a correct (not "(missing)") debug readout;
+      see 4.6. The "real 2v2" case above is unchanged.
 - [x] **4.2 · Movement interpolation for remote characters.** 🤖 Sonnet, high —
       **verified by two real `--host`/`--join=127.0.0.1` instances, 600+ frames, no
       output**
@@ -749,6 +752,41 @@ touch map scenes.
       confirmed `time_scale` dropped to 0.05 immediately and returned to exactly 1.0 shortly after.
       Not verified: how 60ms/0.05 actually feels — a tuning number like every other one in the
       T-block, cheap to adjust after 0.4.
+- [x] **4.6 · Solo-host quality of life — pause and the debug switcher work with exactly one
+      human peer.** 🔧 Build — **`NetworkManager` semantics change, its own commit, verified by two
+      real multi-instance sessions with no output**
+      The first playtest was run by HOSTING, not Local Match, and two things silently no-op'd in a
+      networked match on purpose: `get_tree().paused` (Q-3/B-64 — a client pausing its own tree
+      stops sending movement while the host keeps simulating it, and the host can't stop an
+      authoritative timer for everyone over one player's Esc) and the whole debug player switcher
+      (each peer owns exactly one character; reassigning `player_id` grants no control). Both
+      restrictions are real for an actual 2+ peer match and pointless when there is nobody else in
+      the session to protect — which is exactly what testing alone by hosting is.
+      New `NetworkManager.is_solo_session()`: `is_networked() and connected_peer_ids.size() <= 1`.
+      `main.gd::_on_pause_toggle_requested()` now takes the real-freeze branch (same code path
+      Local Match already used) whenever `not is_networked() or is_solo_session()`, instead of
+      only when `not is_networked()`.
+      `debug_player_switcher.gd::_is_active()` now also returns true for a solo networked session —
+      but **not** by making unit-switching work: a solo Hosted session only ever spawns ONE real
+      character (`main.gd::_spawn_player` runs once per actually-connected peer, and there is no
+      bot/placeholder system to fill the other three roles — see 4.7), so there is nothing to Tab
+      to regardless of this gate. What was actually broken and is now fixed: the on-screen
+      `DebugBar` used to show `TeamAPerson (missing) / TeamAProp (missing)` the instant you hosted
+      alone, because it was still looking for the four LOCAL-TEST node names
+      (`_clear_local_test_characters()` had already freed them) instead of the real networked
+      spawn. New `_solo_networked_unit()` walks the actual `Players` node
+      (`MultiplayerSpawner.spawn_path`) for the character whose authority is this machine's own
+      peer, and the readout now correctly describes it. `player_id`/camera reassignment is
+      deliberately left untouched for this unit — `main.gd`'s spawn already assigned the right
+      `player_id` and `camera_rig.gd`'s own `_ready()` already activates the right rig from
+      `is_multiplayer_authority()`; re-driving either here would be redundant at best.
+      **Verified by running:** two real `--host`/`--join=127.0.0.1` sessions (one while solo, one
+      once a second peer joined), 600+ frames each, no output — the `DebugBar`/switcher code paths
+      run every frame regardless of whether anyone is looking at them, so a clean multi-hundred-frame
+      run is real evidence they don't error, in both the solo and non-solo states. **Not verified:**
+      a human actually pressing Esc and confirming the overlay visibly freezes, or reading the
+      `DebugBar` text off a running window — this project's norm is that an unverified interactive
+      claim is not written up as felt, only as run.
 
 ---
 

@@ -37,6 +37,48 @@ one names the model it should run on, the files to read first, its exact scope, 
 
 ## 0. Session log — where the project stands right now
 
+### 0.13 Solo-host quality of life — pause and the debug switcher (2026-07-28)
+
+**Branch:** `code/networking`. **Lane:** 🔧 Build. **Checklist item:** 4.6 (new). Own commit, per
+the lane's own instructions — a `NetworkManager` semantics change.
+
+The first playtest was run by HOSTING, not Local Match (see `Art_Direction.md`'s "Playtest
+findings, 2026-07-28" section), and found two things silently no-op in a networked match on purpose: `get_tree().paused` (Q-3/B-64
+— a client pausing its own tree stops sending movement while the host keeps simulating it, and the
+host can't stop an authoritative timer for everyone over one player's Esc) and the whole debug
+player switcher (each peer owns exactly one character; reassigning `player_id` grants no control).
+Both restrictions are real for an actual 2+ peer match and pointless when there is nobody else in
+the session to protect — exactly the case of testing alone by hosting.
+
+New `NetworkManager.is_solo_session()`: `is_networked() and connected_peer_ids.size() <= 1`.
+`main.gd::_on_pause_toggle_requested()` now takes the real-freeze branch (the same code path Local
+Match already used) whenever `not is_networked() or is_solo_session()`, instead of only when
+`not is_networked()`.
+
+`debug_player_switcher.gd::_is_active()` now also returns true for a solo networked session — but
+**not** by making unit-switching work: a solo Hosted session only ever spawns ONE real character
+(`main.gd::_spawn_player` runs once per actually-connected peer, and there is no bot/placeholder
+system to fill the other three roles — see 4.7), so there is nothing to Tab to regardless of this
+gate. What was actually broken and is now fixed: the on-screen `DebugBar` used to show
+`TeamAPerson (missing) / TeamAProp (missing)` the instant you hosted alone, because it was still
+looking for the four LOCAL-TEST node names (`_clear_local_test_characters()` had already freed
+them) instead of the real networked spawn. New `_solo_networked_unit()` walks the actual `Players`
+node (`MultiplayerSpawner.spawn_path`) for the character whose authority is this machine's own
+peer, and the readout now correctly describes it. `player_id`/camera reassignment is deliberately
+left untouched for this unit — `main.gd`'s spawn already assigned the right `player_id` and
+`camera_rig.gd`'s own `_ready()` already activates the right rig from `is_multiplayer_authority()`;
+re-driving either here would be redundant at best.
+
+**Verified by running:** two real `--host`/`--join=127.0.0.1` sessions (one while solo, one once a
+second peer joined), 600+ frames each, no output — the `DebugBar`/switcher code paths run every
+frame regardless of whether anyone is looking at them, so a clean multi-hundred-frame run is real
+evidence they don't error, in both the solo and non-solo states. **Not verified:** a human actually
+pressing Esc and confirming the overlay visibly freezes, or reading the `DebugBar` text off a
+running window — this project's norm is that an unverified interactive claim is not written up as
+felt, only as run.
+
+---
+
 ### 0.12 Netcode pass — remote movement interpolation and rejoin identity (2026-07-28)
 
 **Branch:** `code/networking`. **Lane:** 🔧 Build. **Checklist items:** 4.2, 4.3. Two bugs found

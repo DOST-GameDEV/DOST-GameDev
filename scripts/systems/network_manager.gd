@@ -151,6 +151,18 @@ func is_networked() -> bool:
 func is_host() -> bool:
 	return is_networked() and multiplayer.is_server()
 
+## Solo-host QoL (2026-07-28+): true once actually networked AND at most one
+## peer is connected — i.e., the human at this machine is alone in the
+## session, almost always because they hosted and nobody has joined yet.
+## Distinct from is_networked() alone: a real 2v2 needs pause to stay
+## non-freezing (Q-3/B-64 — a client pausing its own tree stops sending its
+## own movement while the host keeps simulating it regardless) and the debug
+## switcher to stay inert (each peer owns exactly one character, so there is
+## nothing to hand player_id to). Neither restriction protects anyone when
+## there is nobody else in the session for it to protect.
+func is_solo_session() -> bool:
+	return is_networked() and connected_peer_ids.size() <= 1
+
 func _on_peer_connected(id: int) -> void:
 	if not connected_peer_ids.has(id):
 		connected_peer_ids.append(id)

@@ -942,7 +942,15 @@ func _on_pause_toggle_requested() -> void:
 	# Match gets a real freeze; networked stays a non-freezing overlay and
 	# says so, so the player isn't misled into thinking they've stopped
 	# anything.
-	if NetworkManager.is_networked():
+	#
+	# Solo-host QoL (2026-07-28+): except neither risk exists when there is
+	# nobody else in the session — a lone host pausing cannot desync a round
+	# nobody else is watching, and cannot stop movement anyone else is
+	# depending on. The playtest that surfaced this was run by HOSTING, not
+	# Local Match, specifically to exercise the networked code path alone;
+	# refusing to actually pause for that is a real cost with no one to
+	# protect. See NetworkManager.is_solo_session().
+	if NetworkManager.is_networked() and not NetworkManager.is_solo_session():
 		paused_label.text = "PAUSED — the match is still running"
 	else:
 		get_tree().paused = pause_root.visible

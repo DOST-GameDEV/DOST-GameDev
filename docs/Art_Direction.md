@@ -325,9 +325,11 @@ So both reports are the same underlying condition: **the playtest was run as a h
 Match.** Tab works in Local Match and is meaningless when hosting.
 
 This is defensible design that is nonetheless a bad experience for the one thing anybody actually
-does — solo-testing by hosting. **Recommendation:** when a networked match has exactly one human
-peer, treat it as local for pause and unit-switching purposes. Flagged rather than done: it is a
-`NetworkManager` semantics change.
+does — solo-testing by hosting. **Done 2026-07-28 — `Checklist.md` 4.6.** `NetworkManager.
+is_solo_session()` now treats a networked match with exactly one human peer as local for pause;
+the debug switcher's on-screen readout is also fixed for that case, though unit-*switching* stays
+correctly inert even solo — see 4.6's own entry for why (a solo host only ever spawns one real
+character; there is nothing to switch to).
 
 #### P1 · Nothing can jump
 
