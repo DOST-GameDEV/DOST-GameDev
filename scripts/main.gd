@@ -105,6 +105,11 @@ var _local_roster: Array[CharacterBase] = []
 ## RoundManager.round_active is false and CharacterBase._is_confined_to_base()
 ## lets the Can/Taya walk anywhere — free roam while waiting to start.
 var _awaiting_local_ready: bool = false
+## 2026-07-28 — true for the ~3.5s between pressing ready_up and
+## begin_next_round() actually firing, while the 3-2-1-GO countdown runs.
+## Guards _unhandled_input against a second ready_up press restarting the
+## countdown mid-count.
+var _counting_down: bool = false
 ## FALLBACK ONLY, since checklist 2.2a. The real spawn points are four Marker3Ds
 ## under the loaded map's `SpawnPoints` node; this array is used only if a map
 ## has none — or if something loads Main.tscn with no map at all, which is what
@@ -325,6 +330,18 @@ func _start_local_test() -> void:
 	# begin_next_round() below runs it.
 	team_a_prop.ability = _prop_ability_for(team_a_prop.is_can, team_a_prop.team).duplicate()
 	team_b_prop.ability = _prop_ability_for(team_b_prop.is_can, team_b_prop.team).duplicate()
+	# 2026-07-28: user report — "u didnt fix spawn in logic". Local test units
+	# used to just sit at Main.tscn's own hand-authored default transforms,
+	# which predate the role-based SpawnPoints redesign (2.6) entirely and
+	# were never actually seen before this session — _start_local_test() used
+	# to call begin_next_round() immediately, and _reset_world() (which DOES
+	# use role-based spawns) ran before the first frame was ever shown. Now
+	# that there's a pre-round free-roam window, those stale positions are
+	# visible and wrong: the Can not on the base circle, the Attacker not
+	# facing the Can/Taya, etc. Placing everyone at their real role spawn
+	# up front, the same way _reset_world() does every round, fixes it.
+	for character in _local_roster:
+		_place_at_spawn(character, _role_slot(character.is_can, character.is_person, character.team_is_can_side))
 	_wire_downed_flash(team_a_prop)
 	_wire_downed_flash(team_b_prop)
 	_register_local_can()
@@ -362,11 +379,27 @@ func _start_local_test() -> void:
 ## the instant the round actually begins, same as an ordinary intermission
 ## already does between rounds.
 func _unhandled_input(event: InputEvent) -> void:
-	if _awaiting_local_ready and event.is_action_pressed("ready_up"):
+	if _awaiting_local_ready and not _counting_down and event.is_action_pressed("ready_up"):
 		get_viewport().set_input_as_handled()
-		_awaiting_local_ready = false
-		hud.show_ready_prompt(false)
-		MatchManager.begin_next_round()
+		_run_ready_countdown()
+
+## 2026-07-28 — "add a 3 2 1 timer before each match starts too." Runs once,
+## between the ready press and the round actually starting; begin_next_round()
+## (and the reposition-to-role-spawn + confinement it triggers) only fires
+## once the countdown finishes, not on the ready press itself. _counting_down
+## guards against a second ready_up press restarting it mid-count.
+func _run_ready_countdown() -> void:
+	_counting_down = true
+	hud.show_ready_prompt(false)
+	for tick in ["3", "2", "1"]:
+		hud.show_countdown_tick(tick)
+		await get_tree().create_timer(1.0).timeout
+	hud.show_countdown_tick("GO!")
+	await get_tree().create_timer(0.5).timeout
+	hud.hide_countdown()
+	_awaiting_local_ready = false
+	_counting_down = false
+	MatchManager.begin_next_round()
 
 ## (Re)tells RoundManager which local Prop is currently the Can — whichever
 ## of TeamAProp/TeamBProp has is_can true this round. Called once up front in

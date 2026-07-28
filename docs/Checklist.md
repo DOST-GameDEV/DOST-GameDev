@@ -139,6 +139,14 @@ polish; they are the instruments.
       High effort rather than medium: this will touch `carriable.gd`,
       `carrier.gd` and the throw profiles at the same time, and the
       host-authoritative transitions in there are easy to break subtly.
+      **Early progress, 2026-07-28, from informal playtesting ahead of a full 0.4 pass:** B-97
+      (carried Tsinelas TPP camera could mount above the carrier's head and gave its player no
+      look control at all — both fixed), B-98 (carried unit's nameplate ring stayed visible, now
+      hidden while carried), B-99 (a thrown slipper's carry-tilt rotation was never reset on
+      release, so it could land tilted and tunnel through the floor — fixed), and
+      `BOUNCE_DAMPING`/`MAX_BOUNCES` tuned down after "ragdolls while flying" feedback. See
+      `Handoff.md`'s session log. **Still blocked on an actual full 0.4 pass** — this is real bugs
+      found and fixed along the way, not the systematic retune 0.5 itself calls for.
 - [x] **0.6 · Carried-scale the tsinelas (implements the 1.2 decision).** 🎨 Design (reassigned)
       **Design lane specified this; it is build-lane code and design must not write it.** Do it
       before 0.4 — in first person the carried slipper currently occupies about a quarter of the
@@ -539,6 +547,15 @@ HUD contrast or hazard placement against a grey box.
       ready-up screen. Extending this same free-roam pattern to networked play needs per-peer
       ready state replicated live inside the match scene rather than in the lobby, which is a
       separate, real pass — see `Handoff.md` §5.
+      **Second pass, same day, first real playtest of this item:** B-94 (free-roam was completely
+      frozen — a separate, pre-existing input gate also fired whenever `round_active` was false)
+      and B-95 (Can fell through the floor when the match's LAST round ended, since no reset ever
+      runs after `match_won`) both found and fixed — see `Handoff.md`. Also: B-96 (spawn layout was
+      never actually role-based for Local Match, the free-roam window just exposed it — fixed), the
+      Taya's spawn moved behind the Can instead of beside it, a 3-2-1-GO countdown added between
+      the ready press and the round actually starting, and the confinement marker rebuilt as a
+      square (see 2.7). **Verified by render, including a corrected spawn-layout screenshot with
+      the Can now inside the base circle. Still not verified by play.**
 
 ---
 

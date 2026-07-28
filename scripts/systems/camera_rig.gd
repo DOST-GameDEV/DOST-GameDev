@@ -101,6 +101,19 @@ const VIEWMODEL_ARMS_SCENE: String = "res://scenes/characters/visuals/ViewmodelA
 ## about the proportion fix asked for that; only the carried-slipper case was
 ## reported broken.
 const TPP_MOUNT_CLEARANCE_AT_PERSON_SCALE: float = 0.4
+## 2026-07-28 — REPLACES `_mount_height_for(carrier.capsule_height())` for the
+## carried case (see `_update_tpp_carry_follow()`). That formula gives `1.2`
+## either way, but "1.2" meant two different things depending on WHOSE origin
+## it was measured from: for a standalone Prop it is 1.2 above that Prop's own
+## short capsule's centre, which reads fine; reused against a Person carrier's
+## 1.6-tall capsule it put the mount origin 0.4 units ABOVE the carrier's own
+## head (head-top sits at local `+0.8` from a Person's origin — see the FPP
+## eye-height note above). A spring-arm cast starting already above someone's
+## head collapses into the first thing it touches — reported as an extreme
+## close-up on an overhead wire, and "it's just inside the head" once the cast
+## comes up short. This sits just below head height instead, a believable
+## over-the-shoulder spectator position.
+const TPP_CARRY_MOUNT_HEIGHT: float = 0.6
 const PERSON_CAPSULE_HEIGHT: float = 1.6
 
 @export var aim_source: AimSource = AimSource.MOVEMENT
@@ -115,6 +128,18 @@ var _character: CharacterBase
 var _mode: Mode
 var _pitch_deg: float = 0.0
 var _active: bool = false
+## 2026-07-28 — user feedback: "tsinelas cam should be movable but anchored to
+## person... so awkward for them to be watching gameplay happen like this."
+## While CARRIED, `_character.rotation` is slaved to the carrier's hand every
+## physics frame (`carriable.gd::_step_carried()`), so the normal TPP
+## yaw-steers-the-body mechanism below has no visible effect — the write is
+## overwritten before the next frame renders, and the carried player has
+## never actually had camera control, B-91 or not. These track a LOOK OFFSET
+## instead, applied on top of the carrier's own facing in
+## `_update_tpp_carry_follow()`, so the view starts anchored behind the
+## carrier and the carried player can still swivel it from there.
+var _tpp_carry_yaw_deg: float = 0.0
+var _tpp_carry_pitch_deg: float = 0.0
 ## B-91 — this rig's own Carriable, so it can tell "am I currently being
 ## carried" without character_base.gd having to learn what carrying is (the
 ## same information-hiding rule carriable.gd's own header states). Null for a
@@ -354,16 +379,21 @@ func _update_tpp_carry_follow() -> void:
 			tpp_arm.add_excluded_object(carrier.get_rid())
 		_tpp_excluded_carrier = carrier
 	if carrier == null:
-		return # not carried — ordinary parent-driven transform, nothing to override
-	# Replicates the ordinary (parent-driven) composition — CharacterBase's yaw
-	# (rotation.y is the only axis a body ever rotates on; pitch always lives on
-	# this rig, never the body) times TppArm's own fixed -15 degree tilt — using
-	# the CARRIER's yaw and position instead of this unit's own.
-	var yaw_basis := Basis(Vector3.UP, carrier.rotation.y)
-	var pitch_basis := Basis(Vector3.RIGHT, deg_to_rad(-15.0))
-	var mount := _mount_height_for(carrier.capsule_height())
+		# Not carried any more — reset the look offset so the next pick-up
+		# starts anchored behind the new carrier instead of wherever this
+		# player last looked.
+		_tpp_carry_yaw_deg = 0.0
+		_tpp_carry_pitch_deg = 0.0
+		return # ordinary parent-driven transform, nothing to override
+	# ANCHORED to the carrier's own yaw (rotation.y is the only axis a body
+	# ever rotates on) plus TppArm's fixed -15 degree base tilt, same as
+	# before — but now with the carried player's own look offset added on top,
+	# so the view starts behind the carrier and can still be swivelled from
+	# there. See apply_mouse_delta() and TPP_CARRY_MOUNT_HEIGHT's own docs.
+	var yaw_basis := Basis(Vector3.UP, carrier.rotation.y + deg_to_rad(_tpp_carry_yaw_deg))
+	var pitch_basis := Basis(Vector3.RIGHT, deg_to_rad(-15.0 + _tpp_carry_pitch_deg))
 	tpp_arm.global_transform = Transform3D(
-		yaw_basis * pitch_basis, carrier.global_position + Vector3.UP * mount)
+		yaw_basis * pitch_basis, carrier.global_position + Vector3.UP * TPP_CARRY_MOUNT_HEIGHT)
 
 func _process(delta: float) -> void:
 	_update_viewmodel_carry(delta)
@@ -544,6 +574,17 @@ func apply_mouse_delta(relative: Vector2) -> void:
 	# rig's own flat BASE_SENSITIVITY, so the Settings slider's range means
 	# the same thing regardless of whatever base rate feels right here.
 	var sensitivity := BASE_SENSITIVITY * SettingsManager.mouse_sensitivity
+	# 2026-07-28 — while carried, _character.rotation.y (written below for the
+	# ordinary TPP case) is overwritten every physics frame by
+	# carriable.gd::_step_carried(), so it has no visible effect here. Track a
+	# separate look offset instead — see _tpp_carry_yaw_deg's own doc and
+	# _update_tpp_carry_follow(), which is what actually reads it.
+	if _mode == Mode.TPP and _carriable != null and _carriable.state == Carriable.CarryState.CARRIED:
+		_tpp_carry_yaw_deg -= relative.x * sensitivity
+		var carry_pitch_delta := relative.y * (-1.0 if SettingsManager.invert_y else 1.0)
+		_tpp_carry_pitch_deg = clamp(
+			_tpp_carry_pitch_deg - carry_pitch_delta * sensitivity, PITCH_MIN_DEG, PITCH_MAX_DEG)
+		return
 	_character.rotation.y -= deg_to_rad(relative.x * sensitivity)
 	if _mode == Mode.FPP:
 		var pitch_delta := relative.y * (-1.0 if SettingsManager.invert_y else 1.0)

@@ -60,6 +60,14 @@ const PERSON_CAPSULE_HEIGHT: float = 1.6
 @onready var _ring: MeshInstance3D = $NameplateRing
 @onready var _ring_mesh: CylinderMesh = _ring.mesh as CylinderMesh
 @onready var _label: Label3D = $NameplateLabel
+## 2026-07-28 — B-89's sizing fix (see the class doc above) corrected the
+## ring's SIZE/position relative to whatever capsule it currently has, but
+## never addressed the actual complaint it quotes: a carried unit's ring
+## still shows, now correctly sized but still riding along near the hand —
+## "the circle is still attached to slipper even when it's held". A ground
+## ring makes no sense for an object that is not standing on the ground.
+## Hidden outright below, in _process(), rather than sized to nothing.
+@onready var _carriable: Carriable = get_node_or_null("../Carriable") as Carriable
 
 var _character: CharacterBase = null
 var _ring_material: StandardMaterial3D = null
@@ -140,6 +148,11 @@ func refresh() -> void:
 ## whichever unit this peer is looking through, in either FPP or TPP, with no
 ## reference back to CameraRig.
 func _process(_delta: float) -> void:
+	var carried := _carriable != null and _carriable.state == Carriable.CarryState.CARRIED
+	_ring.visible = not carried
+	_label.visible = not carried
+	if carried:
+		return
 	var camera := get_viewport().get_camera_3d()
 	if camera == null:
 		return
