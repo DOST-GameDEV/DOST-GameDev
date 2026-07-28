@@ -68,7 +68,7 @@ Filed rather than folded in, per `Concurrency_Protocol.md` §10.
    number to re-tune, it is an attachment pointing at the wrong place**, and the carry-tilt fix in
    `carriable.gd` was genuinely a different bug. Re-measuring `HAND_CARRY_OFFSET` against the mesh
    would not have found this; the render did.
-2. **The prop ink outline is eating the props it outlines.** `outline.gdshader`'s `outline_width`
+2. **[FIXED 2026-07-28, checklist 7.1.] The prop ink outline is eating the props it outlines.** `outline.gdshader`'s `outline_width`
    defaults to **0.025** and nothing overrides it for Props (`character_visual.gd::_apply_toon_pass`
    applies the shader as-is; it returns early for Persons, so they never take this path). It
    inflates along the normal in **model space**, and the lata's mesh has `LATA_SCALE` **baked in**
@@ -744,6 +744,26 @@ For any coding agent picking up this queue.
 
 **Only open items live here.** B-01 … B-66 are in [`Handoff.md`](Handoff.md); everything
 marked `[FIXED]` there is done and settled. New bugs take the next free number **in this file**.
+
+**B-106 · "defence hand is on the can" — BOTH mechanical explanations eliminated, no fix made.
+[INVESTIGATED 2026-07-28, NOT REPRODUCED]** Reported with a screenshot: a defending Person appearing
+to hold the Can, plus an older report that "the defender only has one hand".
+
+Two candidate causes were checked in code and **both are ruled out**, which is the useful part of
+this entry — it stops the next person spending the same time:
+ - **It is not a carry bug.** `carriable.gd::host_grab()` gates on `can_be_grabbed_by()`, which
+   returns false for a Can via `is_throwable()`. A defender genuinely cannot pick the Can up, and
+   `_reset_world()`'s auto-grab only ever selects the tsinelas.
+ - **It is not the FPP viewmodel leaking into a third-person view** (the leading hypothesis, since
+   the viewmodel is camera-mounted and would appear to reach at whatever that player looks at).
+   `camera_rig.gd` sets `arms.visible = _active and _mode == Mode.FPP` from `_apply_fpp_self_hide()`,
+   which `set_active()` calls — so a rig nobody is looking through never draws arms.
+
+*Most likely remaining explanation, unverified:* the Taya spawns 2.65 units from the Can and guards
+it, and the chibi rig's short arm against a wide torso reads as contact at some camera angles. The
+outline fix in 7.1 (the Can's border was ~12% of its own width per side and merged with anything
+near it) may well have removed the read on its own.
+**Needs a fresh screenshot on the current build before anyone changes code for it.**
 
 **B-105 · The carried tsinelas floated beside its carrier's head, and re-measuring the offset
 could never have fixed it. [FIXED 2026-07-28]** Reported repeatedly as "slipper floating" and

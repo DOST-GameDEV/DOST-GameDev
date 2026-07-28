@@ -79,6 +79,12 @@ const CAN_DENT_SQUASH: Array[float] = [1.0, 0.93, 0.85, 1.0]
 ## Knocked-down is a ROTATION, not a mesh (Handoff.md §4, M-2 step 5) — the can
 ## falls on its side and gets back up, and baking that into geometry would mean
 ## eight meshes instead of four.
+## How thick a prop's ink outline should be IN WORLD UNITS, whatever the mesh
+## is scaled by. See _apply_toon_pass for why a single model-space width cannot
+## work once meshes differ in scale. Persons are unaffected — they take the
+## early-out in that function and keep `person_outline.tres`.
+const OUTLINE_WORLD_WIDTH: float = 0.012
+
 const DOWNED_TILT_DEGREES: float = 78.0
 const DOWNED_TILT_TIME: float = 0.28
 
@@ -598,10 +604,29 @@ func _collect_meshes(model: Node3D) -> void:
 func _apply_toon_pass(model: Node3D, is_person: bool) -> void:
 	if is_person:
 		return
-	var outline_mat := ShaderMaterial.new()
-	outline_mat.shader = OUTLINE_SHADER
 	for node in model.find_children("*", "MeshInstance3D", true, false):
 		var mesh_instance := node as MeshInstance3D
+		# ⚠️ 7.1 — ONE OUTLINE MATERIAL PER MESH, WIDTH DERIVED FROM ITS SCALE.
+		#
+		# `outline.gdshader` inflates along the normal in MODEL space, so a single
+		# shared `outline_width` means the ink border's real thickness is whatever
+		# that mesh happens to be scaled by. With one shared 0.025 the Can — 0.34
+		# units tall — wore a 0.025-unit border, about 12% of its own width per
+		# side, rendering as dark slabs down both sides of it (Handoff.md §0.12).
+		# The kit swap makes that far worse: kit pieces differ by 10x in scale,
+		# so no single constant can be right for more than one of them.
+		#
+		# Read from `global_transform` rather than the mesh AABB because it is the
+		# node scale the shader is actually working in — and it is valid here,
+		# since `apply()` adds the model to the tree BEFORE calling this.
+		var outline_mat := ShaderMaterial.new()
+		outline_mat.shader = OUTLINE_SHADER
+		var scale_vector := mesh_instance.global_transform.basis.get_scale()
+		var scale := maxf(maxf(absf(scale_vector.x), absf(scale_vector.y)),
+			absf(scale_vector.z))
+		if scale < 0.0001:
+			scale = 1.0
+		outline_mat.set_shader_parameter("outline_width", OUTLINE_WORLD_WIDTH / scale)
 		for surface in range(mesh_instance.get_surface_override_material_count()):
 			var toon_mat := ShaderMaterial.new()
 			toon_mat.shader = TOON_SHADER
