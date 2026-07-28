@@ -9,10 +9,12 @@ class_name LobbyScene
 ##   Local: main_menu.gd → Lobby (no networking at all) → Main.tscn
 ##
 ## The lobby gates the scene transition to Main.tscn behind the host's Start
-## button, which is only enabled when every connected peer is ready AND at
-## least two are connected. This means `_start_hosting()` in main.gd now only
-## runs (and calls MatchManager.begin_next_round()) after the lobby is full and
-## ready — the fix for B-13.
+## button, which is only enabled once every connected peer is ready — the fix
+## for B-13. A solo host (no other peer has joined yet) can also start: since
+## main.gd's networked AI takeover fills every unfilled team/role slot with a
+## real AI instead of an empty seat, a lone host is a fully playable match on
+## its own, joinable by anyone else on the LAN at any point afterward — not an
+## incomplete lobby waiting for a second human.
 ##
 ## Join-index / team-role derivation mirrors main.gd::_spawn_player() exactly:
 ##   team = join_index / 2   → 0,0,1,1 for up to four peers
@@ -205,7 +207,11 @@ func _refresh_peer_list() -> void:
 func _refresh_start_button() -> void:
 	if not multiplayer.is_server():
 		return
-	if _peer_join_order.size() < 2:
+	# Host is appended to _peer_join_order the instant hosting starts (see
+	# _ready()), so this is never actually empty — kept as a guard rather than
+	# assumed. No minimum peer COUNT beyond that: main.gd's AI takeover fills
+	# every unfilled slot, so a lone host is a complete, startable match.
+	if _peer_join_order.is_empty():
 		start_button.disabled = true
 		return
 	for pid in _peer_join_order:
