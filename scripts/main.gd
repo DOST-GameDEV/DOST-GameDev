@@ -255,6 +255,24 @@ var _peer_teams: Dictionary = {}
 ## see _spawn_player for how it's assigned.
 var _peer_is_person: Dictionary = {}
 var _spawned_characters: Dictionary = {} # peer_id -> CharacterBase
+## Abandoned-body placeholder (2026-07-28, user feedback: "instead of
+## disappearing it should transition to an AI... just make it stationary and
+## make a player be able to join back to their character"). join index (see
+## _token_join_index) -> CharacterBase, populated in _build_networked_character
+## and, deliberately like NetworkManager.peer_tokens, NEVER erased on
+## disconnect — the whole point is finding the SAME character again once its
+## owner reconnects under a brand-new peer_id. Keyed by index rather than
+## token directly: MultiplayerSpawner's custom spawn data silently truncates
+## past 7 entries once it crosses the network (measured — see _spawn_player),
+## and index needs no extra entry since every peer already derives it
+## identically from data["team"]/data["is_person"].
+##
+## No actual AI here on purpose (out of scope per the same feedback):
+## _physics_process's existing authority gate (character_base.gd:347) already
+## means a character with no live owning peer just stops being simulated
+## anywhere and freezes in place — "stationary" falls out of the existing
+## networking model for free, nothing new to build.
+var _index_to_character: Dictionary = {}
 
 func _ready() -> void:
 	# B-14: MatchManager/RoundManager are autoloads and previously carried a
@@ -605,22 +623,29 @@ func _notification(what: int) -> void:
 			return
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
+## 2026-07-28, user feedback: "instead of disappearing it should transition to
+## an AI... just make it stationary and make a player be able to join back to
+## their character." Deliberately does NOT free the node or erase
+## _spawned_characters/_peer_teams/_peer_is_person any more (contrast the old
+## behaviour, kept here for history: it used to queue_free() the character and
+## erase all of its bookkeeping) — the character is left in the tree, still
+## owned (in the multiplayer-authority sense) by the peer_id that just left.
+## Nobody's `_physics_process` runs for a peer_id with no live connection
+## (character_base.gd:347's authority gate already returns early for every
+## OTHER peer's view of a character, and the owning peer's own process is the
+## one that's gone) so it simply freezes in place — a placeholder, not a bot.
+## See _spawn_player for the other half: reclaiming this same character when
+## its owner's token reconnects, instead of spawning a fresh one.
 func _on_player_disconnected(peer_id: int) -> void:
-	var node := players_root.get_node_or_null(str(peer_id))
-	if node:
-		node.queue_free()
-	_spawned_peer_ids.erase(peer_id)
-	_peer_teams.erase(peer_id)
-	_peer_is_person.erase(peer_id)
-	_spawned_characters.erase(peer_id)
-	# Q-2/B-63: the leaver's node is freed above, but RoundManager's
-	# _tracked_cans still held a reference if it was the Can — its guard
-	# (`is_instance_valid()`) then silently no-ops forever, so the round could
-	# only ever end on the timer. Only the host drives round-win logic (same
-	# gate RoundManager itself uses throughout).
+	# Q-2/B-63 (still applies, just from a different cause now): RoundManager's
+	# _tracked_cans is a snapshot taken at the last _reregister_tracked_cans()
+	# call, not a live view — rebuild it so a Can whose team assignment this
+	# disconnect might otherwise leave stale is correctly (re)tracked. Only the
+	# host drives round-win logic (same gate RoundManager itself uses
+	# throughout).
 	if NetworkManager.is_host():
 		_reregister_tracked_cans()
-		_rpc_show_toast.rpc("A player left the match")
+		_rpc_show_toast.rpc("A player left the match — their character will hold position until they reconnect")
 
 ## Host-only: tells every peer (via MultiplayerSpawner) to construct a
 ## character for `peer_id`, assigned to a fixed team (2 peers per team, first
@@ -652,6 +677,23 @@ func _spawn_player(peer_id: int) -> void:
 		_token_join_index[token] = _next_join_index
 		_next_join_index += 1
 	var index: int = _token_join_index[token]
+	# 2026-07-28: this index's character may still be standing right where its
+	# previous owner left it — _on_player_disconnected no longer frees it (see
+	# that function's own doc) specifically so a reconnect can pick the same
+	# body back up instead of getting a fresh one at a spawn point.
+	# _index_to_character is never erased on disconnect, for this lookup.
+	#
+	# Keyed by INDEX, not token: MultiplayerSpawner's custom spawn `data`
+	# silently truncates to 7 entries once it crosses the network (measured,
+	# not assumed — a "token": String key added as an 8th entry vanished on
+	# the receiving peer even at 1 character long, ruling out a size limit).
+	# index needs no extra key at all — every peer already derives the exact
+	# same index from data["team"]/data["is_person"], both already sent (see
+	# _build_networked_character).
+	var existing_character: CharacterBase = _index_to_character.get(index)
+	if existing_character != null and is_instance_valid(existing_character):
+		_rpc_reclaim_character.rpc(index, peer_id)
+		return
 	var team := index / 2 # 0, 0, 1, 1 for up to MAX_PLAYERS = 4
 	var is_person := index % 2 == 0 # first peer of each team pair is the Person
 	var team_is_can_side := (team == 0) == MatchManager.team_a_is_can
@@ -711,6 +753,14 @@ func _build_networked_character(data: Dictionary) -> Node:
 	_peer_teams[data["peer_id"]] = data["team"]
 	_peer_is_person[data["peer_id"]] = data["is_person"]
 	_spawned_characters[data["peer_id"]] = character
+	# 2026-07-28: keyed by INDEX (derived here identically to _spawn_player's
+	# own derivation, from data this spawn already carries), not peer_id, and
+	# never erased on disconnect (unlike _spawned_characters above) — see
+	# _spawn_player's reclaim check and _on_player_disconnected's own doc for
+	# why a stale peer_id's body needs to stay findable by something that
+	# survives a reconnect.
+	var index: int = data["team"] * 2 + (0 if data["is_person"] else 1)
+	_index_to_character[index] = character
 	if data["peer_id"] == multiplayer.get_unique_id() and character.is_can:
 		# This is the character we personally control — DownedFlash should
 		# only ever reflect what's happening to OUR Can, never a teammate's
@@ -1050,3 +1100,43 @@ func _on_connection_failed() -> void:
 	GameLaunch.reset()
 	GameLaunch.pending_status_message = "Could not reach that host."
 	get_tree().change_scene_to_file("res://scenes/ui/MainMenu.tscn")
+
+## Host → all peers (2026-07-28): hands `index`'s existing, still-standing
+## character over to `new_peer_id` instead of spawning a second body for the
+## same slot. Runs identically on every peer (call_local, like every other
+## bookkeeping RPC here) since _spawned_characters/_peer_teams/_peer_is_person
+## are all per-peer local state, not replicated automatically.
+##
+## Migrates bookkeeping from whichever peer_id key currently points at this
+## character to new_peer_id — leaving BOTH keys pointing at the same instance
+## would double-count it in _reset_world's roster loop (registers it as a
+## tracked Can twice, resets it twice) the very next round transition.
+##
+## "authority" (host-only sender) because only the host's _spawn_player runs
+## the reclaim check at all — the RPC's job is purely to fan the host's
+## decision out, not to let some other peer make it.
+@rpc("authority", "call_local", "reliable")
+func _rpc_reclaim_character(index: int, new_peer_id: int) -> void:
+	var character: CharacterBase = _index_to_character.get(index)
+	if character == null or not is_instance_valid(character):
+		return
+	for old_peer_id in _spawned_characters.keys():
+		if _spawned_characters[old_peer_id] == character and old_peer_id != new_peer_id:
+			_spawned_characters.erase(old_peer_id)
+			_peer_teams.erase(old_peer_id)
+			_peer_is_person.erase(old_peer_id)
+			_spawned_peer_ids.erase(old_peer_id)
+			break
+	character.name = str(new_peer_id)
+	character.set_multiplayer_authority(new_peer_id)
+	_spawned_characters[new_peer_id] = character
+	_peer_teams[new_peer_id] = character.team
+	_peer_is_person[new_peer_id] = character.is_person
+	_spawned_peer_ids[new_peer_id] = true
+	if new_peer_id == multiplayer.get_unique_id() and character.is_can:
+		# Mirrors _build_networked_character's own DownedFlash wiring — this
+		# process never ran that function for this character (it already
+		# existed before this peer connected), so nothing wired it up yet.
+		_wire_downed_flash.call_deferred(character)
+	if NetworkManager.is_host():
+		_rpc_show_toast.rpc("A player reconnected to their character")

@@ -177,7 +177,14 @@ func is_solo_session() -> bool:
 func _on_peer_connected(id: int) -> void:
 	if not connected_peer_ids.has(id):
 		connected_peer_ids.append(id)
-	_apply_peer_timeout(id)
+	# call_deferred: ENet's own internal peer registry isn't always populated
+	# by the instant this signal fires — get_peer(id) inside
+	# _apply_peer_timeout can race it and hit ENetMultiplayerPeer's own
+	# "!peers.has(p_id)" guard (measured live: reproduced on a client the
+	# moment it connects, calling this for peer_id 1 before ENet had
+	# registered it internally). Deferring to end-of-frame gives ENet's own
+	# bookkeeping time to catch up first.
+	_apply_peer_timeout.call_deferred(id)
 	player_connected.emit(id)
 
 ## Deliberately does NOT touch `peer_tokens` — see that var's own doc. Losing
@@ -192,7 +199,8 @@ func _on_peer_disconnected(id: int) -> void:
 func _on_connected_to_server() -> void:
 	connected_peer_ids = [multiplayer.get_unique_id()]
 	# The host is always peer id 1 from a client's own point of view.
-	_apply_peer_timeout(1)
+	# call_deferred — see _on_peer_connected's own doc for why.
+	_apply_peer_timeout.call_deferred(1)
 	# 4.3/B-65: present our stable token to the host immediately — before
 	# main.gd exists to ask for it, and regardless of whether we are about to
 	# sit in Lobby.tscn or (a rejoin) get redirected straight back into a
