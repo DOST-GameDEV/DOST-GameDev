@@ -6,7 +6,7 @@ class_name YouCard
 ## which SIDE each team holds, never which unit is yours.
 ##
 ## Resolution differs by mode (see _find_local_character): networked reads
-## main.gd's own is_multiplayer_authority() scan; Local Match scans for
+## main.gd's own is_multiplayer_authority() scan; Single Player scans for
 ## whichever unit currently holds player_id == 1. The debug switcher
 ## (scripts/systems/debug_player_switcher.gd) reassigns player_id at runtime
 ## when driving Tab/F1-F4 — this card polls on a plain timer rather than

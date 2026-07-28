@@ -33,19 +33,23 @@ This overrides:
 
 Both GDD lines predate the split and are now wrong. Section 3 below is the implementation.
 
-### 0.2 Local Match is a test harness, not a shipping mode
+### 0.2 Single Player (formerly "Local Match") is a real, permanent mode — amended 2026-07-28
 
-`_start_local_test()` and the `p3`/`p4` input sets exist to let one person exercise four units
-on one keyboard. **It is removed before submission.** Until then it gets one addition — a debug
-switcher for driving any of the four units manually (§3.5) — and nothing else. Do not invest UI
-or polish in it, and do not let it constrain the LAN architecture.
+`_start_local_test()` and the `p3`/`p4` input sets exist to let one person exercise four units on
+one keyboard. **User decision, `Checklist.md` 5.5: this ships in the final build, not stripped
+before submission.** The human plays exactly one unit (their existing default, `TeamAPerson`);
+the other three are driven by real AI (`scripts/systems/ai_controller.gd`) instead of sitting on
+unbound input. The debug switcher (§3.5) still exists and still follows the removal contract in
+§0.3 below — that part of the original plan is unchanged, only the mode itself is no longer
+scheduled for removal. Do not let either constrain the LAN architecture.
 
 ### 0.3 Debug-only code — the removal contract
 
-Everything that exists only to make testing possible (the debug player switcher §3.5, the Local
-Match flow §0.2, any future noclip / state-force / hitbox-visualiser) must be **removable by
-deleting files and one line each, with nothing left behind and no gameplay script edited to put
-it back.** That is a design constraint on how it gets written, not a cleanup task for later.
+Everything that exists only to make testing possible (the debug player switcher §3.5, any future
+noclip / state-force / hitbox-visualiser) must be **removable by deleting files and one line each,
+with nothing left behind and no gameplay script edited to put it back.** That is a design
+constraint on how it gets written, not a cleanup task for later. Single Player itself (§0.2) is
+explicitly NOT part of this contract any more — it ships.
 
 Five rules. A debug feature that breaks any of them is written wrong and should be rejected in
 review:
@@ -330,18 +334,21 @@ If `arena_camera.gd` ever returns to a scene, it must:
 - default to `current = false`, activated only by a spectator/record toggle;
 - ignore any target whose `global_position.y` is below the kill plane (B-35).
 
-### 3.5 Debug player switcher — manual control of any unit in local mode
+### 3.5 Debug player switcher — manual override of any AI-driven unit
 
-**Purpose.** Local Match spawns all four units, but only two of them (`player_id` 1 and 2) have
-bound keys; `p3`/`p4` are deliberately unbound dummies. This lets one tester drive **any** of the
-four on demand, so the whole Bo5 loop, both roles, and every character can be exercised without
-four people in a room.
+**Purpose, amended 2026-07-28 (Checklist 5.5).** Single Player spawns all four units; the human
+plays one (`player_id` 1, `TeamAPerson` by default) and real AI (`ai_controller.gd`) drives the
+other three. This switcher lets a tester **temporarily take manual control** of any unit AI would
+otherwise be driving, for inspecting or exercising it directly — the AI for that specific unit
+steps aside for as long as a slot holds it (`debug_player_switcher.gd::_apply_slots()`) and picks
+back up the instant the slot is cleared.
 
-**This is not a nicety.** From round 2 onward, `_on_match_round_started` flips `team_a_is_can`, so
-the tracked Can becomes `TeamBProp` — `player_id = 3`, unbound. The Can cannot be moved, cannot
-self-right, and the round can only end on the timer. **A local Bo5 is not playable past round 1
-today** (B-42). This switcher is what makes local playtesting possible at all, which is why it is
-first in the execution queue.
+**Historical note, no longer current:** this used to be the *only* way to play a full Bo5 alone at
+all — before AI existed, `_on_match_round_started` flipping `team_a_is_can` each round left the
+tracked Can on `player_id = 3` (unbound, B-42), unmovable and unable to self-right, so a solo Bo5
+could not get past round 1 without this switcher reassigning control to it by hand. Today the
+Can's own AI does that itself; the switcher is a testing convenience, not the only path to a
+playable solo match.
 
 Written to the removal contract in §0.3. §3.5.5 is the checklist that takes it back out.
 
@@ -461,12 +468,18 @@ Note also that a `.tscn` instance costs **two** lines, not one: the `[node ...]`
 `[ext_resource ...]` it needs. That is inherent to the scene format, not a contract violation, so
 the real footprint is 3 files and 3 lines.
 
-- [ ] Open the project, press F5, play a Local Match round — confirm P1/P2 still work on their
-      `Main.tscn` defaults with the switcher gone.
+- [ ] Open the project, press F5, play a Single Player round — confirm P1 still works on its
+      `Main.tscn` default with the switcher gone, and that the other three units are still
+      AI-driven (removing the switcher must not remove or disable `ai_controller.gd`, which is
+      gameplay code, not part of this debug feature).
 
-Removal happens in Phase 6 (§5), in the same pass that strips Local Match itself (§0.2). Since
-Local Match is going too, the switcher's entire reason to exist goes with it — expect to delete
-both together rather than one at a time.
+⚠️ **Amended 2026-07-28 (Checklist 5.5): removal is no longer tied to Single Player's own
+lifetime.** Single Player ships in the final build — see §0.2 — so this switcher can be removed
+on its own schedule in Phase 6 without taking the mode itself with it, unlike the original plan
+below (kept for history, no longer the reasoning that applies).
+*Original text:* "Removal happens in Phase 6 (§5), in the same pass that strips Local Match itself
+(§0.2). Since Local Match is going too, the switcher's entire reason to exist goes with it —
+expect to delete both together rather than one at a time."
 
 ---
 
@@ -546,8 +559,8 @@ Settle it before the deadline, not during it.
 | Lobby | [ ] | Peer list, team assignment, ready-up, host "Start" (B-13). |
 | HUD | [~] | Full rebuild, §4.4. The "YOU" card and its Guard/Dash meter are **done (Q-5/Q-6, v2.9/v3.0)**. |
 | Round intermission / role swap | [~] | Functional beat exists (B-37: gap, early world reset, placeholder banner). The animated card in §4.6 does not. |
-| Match result | [x] | **Built, wired, and restyled** — `MatchResult.tscn` + `match_result.gd` at `Main.tscn::HUDLayer/MatchResult`: winner headline + Bo5 pip grid (role-coloured, **Q-4**) + Rematch (host-only) + Main Menu, world frozen behind it in Local Match (**Q-4**), B-51/B-53 fixed. |
-| Pause | [~] | Esc → Resume / Return to Menu (B-20), **now actually freezes Local Match** (B-64, **Q-3** fixed) and shows a non-freezing "still running" overlay when networked. No Settings-from-pause; restyle not done. |
+| Match result | [x] | **Built, wired, and restyled** — `MatchResult.tscn` + `match_result.gd` at `Main.tscn::HUDLayer/MatchResult`: winner headline + Bo5 pip grid (role-coloured, **Q-4**) + Rematch (host-only) + Main Menu, world frozen behind it in Single Player (**Q-4**), B-51/B-53 fixed. |
+| Pause | [~] | Esc → Resume / Return to Menu (B-20), **now actually freezes Single Player** (B-64, **Q-3** fixed) and shows a non-freezing "still running" overlay when networked. No Settings-from-pause; restyle not done. |
 | Settings | [x] | Duplicate-binding detection added (B-22). Mouse sensitivity + invert-Y done (`SettingsManager.mouse_sensitivity` / `invert_y`, `SensitivitySlider` + `InvertYCheck` in `SettingsPanel.tscn`). Restyle outstanding. |
 
 ### 4.4 HUD layout
@@ -812,7 +825,7 @@ yet, see B-10/B-37 above) and the Option A/B decision itself, which nobody has m
       urgency pulse) is still open
 - [ ] Intermission + role-swap card (§4.6) — functional beat exists (B-37), animated card does not
 - [x] Match result screen *(v1.7/v1.9 functional; moodboard Bo5 grid + world freeze landed in **Q-4**, v2.7/v2.8)*
-- [x] Pause menu — now actually freezes the game in Local Match, overlay-only when networked (**B-64**, **Q-3**)
+- [x] Pause menu — now actually freezes the game in Single Player, overlay-only when networked (**B-64**, **Q-3**)
 - [ ] Character select + lobby with ready-up
 
 ### Phase 4 — Content
@@ -820,7 +833,7 @@ yet, see B-10/B-37 above) and the Option A/B decision itself, which nobody has m
 - [x] `.tres` for Palayok, Bilao, Dyaryo, Bakya, Havaianas *(created; character-select UI to pick
       between them still doesn't exist — see B-24)*
 - [x] **Character models replacing the capsules** *(v1.5 per-class models; v2.2 the full 12-model
-      Person roster with `male-f` as the reference rig; v2.3 Local Match now starts you on the
+      Person roster with `male-f` as the reference rig; v2.3 Single Player now starts you on the
       Person, not the Can.)* `character_visual.gd` re-applies the correct model on every role swap.
       **These assets are finished and off-limits to the current code queue.**
 - [ ] `Eskinita.tscn` and `BayanPlaza.tscn` with geometry, `SpawnPoints`, base circles, bounds
@@ -846,8 +859,8 @@ yet, see B-10/B-37 above) and the Option A/B decision itself, which nobody has m
 
 - [ ] Multi-device LAN test on real hardware over real wifi (never done)
 - [ ] Export presets (none exist) and a build that runs outside the editor
-- [ ] **Strip Local Match mode** (§0.2) and the debug switcher — run the removal checklist in
-      §3.5.5 and confirm the verification `grep` comes back empty
+- [ ] **Strip the debug switcher only** (§3.5.5) — run its removal checklist and confirm the
+      verification `grep` comes back empty. Single Player itself (§0.2) is NOT stripped; it ships.
 - [ ] Trailer (1–2 min, loopable), demo video (3–5 min, narrated or captioned)
 - [ ] Forms 01–03, waiver, synopsis (≤500 words) — GDD Section 9. Form 03 needs the font and
       moodboard-asset licences.
@@ -947,7 +960,7 @@ Roles) is literally this table.** `Checklist.md` 6.6.
    ruins a fresh checkout.
 3. Clone the repo, open `project.godot` in Godot.
 4. Set your git identity for this repo (§7.1 step 4).
-5. Press **F5**. That runs `scenes/ui/MainMenu.tscn` → **Start** → **Local Match** for the
+5. Press **F5**. That runs `scenes/ui/MainMenu.tscn` → **Start** → **Single Player** for the
    single-PC 4-unit flow. Or open `scenes/main/Main.tscn` and press **F6** to jump straight
    into a match.
 
@@ -985,7 +998,7 @@ move is a clone, not a migration — but four things have to be done in order.
    which un-ignores it precisely so the build stops being machine-local.
 
 **Verify the move worked:** `git lfs ls-files` lists thirteen files, `ls -l` on any `.glb` shows
-~250 KB rather than ~130 bytes, and a Local Match shows characters rather than floating shadows.
+~250 KB rather than ~130 bytes, and a Single Player shows characters rather than floating shadows.
 
 **Local controls** (rebindable in Settings): P1 = WASD, Space bump, Shift guard/dash, Q special.
 P2 = arrows, Enter bump, End guard/dash, Right Shift special. P3/P4 are registered but
