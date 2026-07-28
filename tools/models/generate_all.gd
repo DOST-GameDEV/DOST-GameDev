@@ -39,6 +39,19 @@ const REVOLVE_SEGMENTS: int = 16
 # character_base.gd::_apply_role_collision() — so this is safe to change alone.
 const LATA_RADIUS: float = 0.34
 const LATA_SCALE: float = 0.30
+
+## The lid plane, and how far across it the flat part runs.
+##
+## ⚠️ FLAT, NOT DOMED, and that is a placement constraint rather than a styling
+## one. The lid used to rise from 1.100 at the rim to 1.115 at the centre. The
+## pull tab is a flat piece lying ON this plane and reaching out to x = 0.223, so
+## against a domed lid its far end would have hung ~0.015 clear of the surface —
+## Art_Direction.md Part 4's floating-geometry rule, in miniature, on the one
+## surface a knocked-down can shows the camera. A flat lid makes contact true at
+## every radius the tab reaches instead of only at its centre.
+const LATA_LID_Y: float = 1.098
+const LATA_LID_RADIUS: float = 0.250
+
 func _initialize() -> void:
 	_build_lata("lata", [])
 	# Option A's three dent stages. Fixed angles and depths, never random — a
@@ -75,15 +88,36 @@ func _initialize() -> void:
 
 ## One can. `dents` is a list of {angle, depth}; empty builds the pristine one.
 ##
-## Built as five stacked revolves rather than one, purely so the wall can carry
-## three different materials — the moodboard's lata is a blue body with a yellow
-## label band and a dark rim. Adjacent sub-profiles share their boundary ring, and
-## ObjWriter welds on the printed coordinate, so the seams close exactly.
+## ⚠️ SARSI LIVERY — 2026-07-28. This used to be a blue body with a yellow label
+## band and a near-black rim, which was the abstract "a can" the first moodboard
+## record described. The human supplied an asset moodboard of a
+## **Sarsi** can — the Philippine sarsaparilla a real tumbang preso is actually
+## played with — and asked for it by name: *"u can reproduce sarsi logo, we have
+## to showcase PH in this project, js give credits."* Credit is recorded in
+## `docs/Art_Direction.md` Part 2 and `docs/README.md`; Sarsi is a trademark of
+## its owner and is used here as homage, not endorsement.
+##
+## Base, shoulder and lid are stacked revolves, as before. The printed wall
+## between them is `_lata_wall()` and is NOT a revolve — see that function.
+## Adjacent sub-profiles share their boundary ring, and ObjWriter welds on the
+## printed coordinate, so every seam closes exactly.
 func _build_lata(file_name: String, dents: Array) -> void:
 	var writer := ObjWriter.new("Lata")
-	writer.set_material("ink", UiTheme.INK)
-	writer.set_material("defense", UiTheme.DEFENSE)
-	writer.set_material("highlight", UiTheme.HIGHLIGHT)
+	# Named for the PART, not for the palette token — the same rule the tsinelas
+	# adopted in B-81, and the reason its old `defense`/`highlight` names are gone.
+	# A material called "defense" on the can's LABEL is a bug that reads as correct
+	# in every diff.
+	writer.set_material("aluminium", UiTheme.PANEL)
+	writer.set_material("aluminium_shade", UiTheme.PANEL.darkened(0.30))
+	writer.set_material("body_deep", UiTheme.DEFENSE.darkened(0.30))
+	writer.set_material("body", UiTheme.DEFENSE)
+	# The moodboard's can is a vertical cyan-to-blue gradient. Flat-colour .mtl
+	# cannot gradient, so it is BANDED instead — bright low, mid, deep at the
+	# shoulder. At the 4.5-unit TPP distance three bands read as a gradient and
+	# cost nothing, which is the same trade the painted facades already make.
+	writer.set_material("body_bright", UiTheme.DEFENSE.lightened(0.24))
+	writer.set_material("wave", UiTheme.CARD)
+	writer.set_material("sail", UiTheme.PROP_SARSI_RED)
 
 	var deform := Callable()
 	if not dents.is_empty():
@@ -104,39 +138,35 @@ func _build_lata(file_name: String, dents: Array) -> void:
 		Vector2(0.180, 0.025),
 		Vector2(0.265, 0.000),
 		Vector2(0.315, 0.035),
-	]), REVOLVE_SEGMENTS, "ink", true, deform, scale_xf)
+	]), REVOLVE_SEGMENTS, "aluminium_shade", true, deform, scale_xf)
 
-	# Lower wall, flaring from the crimp out to full radius.
+	# Lower wall, flaring from the crimp out to full radius. Deep blue, so the
+	# bright body above it lifts off a shadow line at the base.
 	writer.add_revolve(PackedVector2Array([
 		Vector2(0.315, 0.035),
-		Vector2(LATA_RADIUS, 0.075),
-		Vector2(LATA_RADIUS, 0.330),
-	]), REVOLVE_SEGMENTS, "defense", true, deform, scale_xf)
+		Vector2(LATA_RADIUS, LATA_WALL_BOTTOM),
+	]), REVOLVE_SEGMENTS, "body_deep", true, deform, scale_xf)
 
-	# Label band.
-	writer.add_revolve(PackedVector2Array([
-		Vector2(LATA_RADIUS, 0.330),
-		Vector2(LATA_RADIUS, 0.680),
-	]), REVOLVE_SEGMENTS, "highlight", true, deform, scale_xf)
+	# The printed wall — everything between the base flare and the shoulder.
+	_lata_wall(writer, deform, scale_xf)
 
-	# Upper wall.
+	# Shoulder, rolled rim, and the flat lid. The rim rolls OVER: y goes up to
+	# 1.118 and then back down to the lid plane as the profile turns inward, which
+	# is why the profile is not monotonic in height.
 	writer.add_revolve(PackedVector2Array([
-		Vector2(LATA_RADIUS, 0.680),
-		Vector2(LATA_RADIUS, 0.950),
-	]), REVOLVE_SEGMENTS, "defense", true, deform, scale_xf)
-
-	# Shoulder, rolled rim, and the recessed lid. The rim rolls OVER: y goes up
-	# to 1.125 and then back down to 1.100 as the profile turns inward, which is
-	# why the profile is not monotonic in height.
-	writer.add_revolve(PackedVector2Array([
-		Vector2(LATA_RADIUS, 0.950),
+		Vector2(LATA_RADIUS, LATA_WALL_TOP),
 		Vector2(0.315, 1.020),
-		Vector2(0.285, 1.075),
-		Vector2(0.300, 1.105),
-		Vector2(0.272, 1.125),
-		Vector2(0.255, 1.100),
-		Vector2(0.000, 1.115),
-	]), REVOLVE_SEGMENTS, "ink", true, deform, scale_xf)
+	]), REVOLVE_SEGMENTS, "body_deep", true, deform, scale_xf)
+	writer.add_revolve(PackedVector2Array([
+		Vector2(0.315, 1.020),
+		Vector2(0.290, 1.070),
+		Vector2(0.305, 1.100),
+		Vector2(0.272, 1.118),
+		Vector2(LATA_LID_RADIUS, LATA_LID_Y),
+		Vector2(0.000, LATA_LID_Y),
+	]), REVOLVE_SEGMENTS, "aluminium", true, deform, scale_xf)
+
+	_lata_pull_tab(writer, scale_xf)
 
 	# Smooth by angle, always — not only for the dented variants. The analytic
 	# normals are per-sub-profile, so without this the boundary rings between the
@@ -175,6 +205,203 @@ func _apply_dents(radius: float, y: float, angle: float, dents: Array) -> float:
 		result -= float(dent["depth"]) * falloff_angle * falloff_height
 	return result
 
+# --- The lata's printed wall --------------------------------------------------
+#
+# ⚠️ WHY THIS IS NOT A REVOLVE, so nobody "simplifies" it back into one.
+#
+# `add_revolve` paints ONE material per sub-profile, and a sub-profile is a full
+# 360-degree ring — so it can express a horizontal BAND and nothing else. That was
+# fine for a yellow label band. It cannot express Sarsi's mark, which is a sail:
+# a triangle across about a third of the circumference, a red ball beside it, and
+# a wavy white band beneath. None of those are rotationally symmetric.
+#
+# ⚠️ AND WHY IT IS NOT DECALS ON TOP OF A PLAIN WALL, which is the obvious other
+# answer and is the wrong one HERE for a specific reason: this wall gets DENTED.
+# `_apply_dents` pushes a wedge of it inward, and a decal shell offset a couple of
+# millimetres off the surface does not move with it — the first dent would shear
+# the sail off the can and leave it hanging in the air over the crease. That is
+# the floating-geometry failure of Art_Direction.md Part 4 arriving through a side
+# door, on the one prop in the game whose whole job is to get hit.
+#
+# So the sail IS the wall, in a different colour. The wall is emitted strip by
+# strip as STACKED LAYERS SHARING BOUNDARY FUNCTIONS:
+#
+#   - Nothing is offset off the surface, so nothing can float, z-fight or shear.
+#     Every layer runs through the same `deform` as the geometry around it, so a
+#     dent through the sail dents the sail.
+#   - Two neighbouring layers read their shared edge from the SAME function at the
+#     SAME angle, so they weld on the printed coordinate and no seam can open.
+#   - A layer may be degenerate (bottom == top) at a given angle. That is how the
+#     sail and the ball stop existing outside their arc without the layers above
+#     them needing to know anything about them.
+
+const LATA_WALL_BOTTOM: float = 0.075
+const LATA_WALL_TOP: float = 0.950
+## Where the printed face points, in the revolve's own angle space.
+##
+## The Can has no canonical facing in play — it spends the match being knocked
+## over and reset — so this angle is free, and it is spent on making the livery
+## REVIEWABLE: `preview.gd`'s camera is fixed on the (1, 0.7, 1) diagonal, so
+## pointing the label down that same bearing is what puts the sail and the ball in
+## frame together in a preview shot. Any other value renders half the mark facing
+## away from every screenshot anyone will ever take of it.
+const LATA_LABEL_FACE: float = PI / 4.0
+
+## The bright skirt under the wave.
+const SKIRT_TOP_Y: float = 0.150
+
+## The wavy white band low on the can. `sin` of the angle, so it closes seamlessly
+## around it — a non-integer lobe count would not.
+const WAVE_Y: float = 0.240
+const WAVE_AMPLITUDE: float = 0.034
+const WAVE_LOBES: float = 4.0
+
+## The sail. Half-arc 1.35 rad is ~43% of the circumference, which is roughly what
+## the moodboard's label occupies and, at REVOLVE_SEGMENTS = 16, is a shade under
+## seven strips — enough to read the diagonal as a diagonal rather than a stair.
+##
+## ⚠️ TALL. The first pass ran 0.430 to 0.690 on an 0.875-high wall — 30% of it —
+## and rendered as a red smear low on the body rather than as a sail, with a slab
+## of navy above it taking the space the mark should have had. Sarsi's sail is the
+## dominant feature of that can and has to be sized like it: base just above the
+## wave, apex just under the shoulder, ~57% of the wall.
+const SAIL_HALF_ARC: float = 1.35
+const SAIL_BASE_Y: float = 0.330
+const SAIL_APEX_Y: float = 0.830
+## Where along the arc the apex sits. Positive puts the tall near-vertical edge on
+## the trailing side, which is the way Sarsi's sail leans.
+const SAIL_PEAK_T: float = 0.55
+
+## The red ball, up and to the leading side of the sail — where the sail's own
+## edge is still low, which is what leaves room for it.
+const BALL_FROM_T: float = -0.88
+const BALL_TO_T: float = -0.42
+const BALL_BOTTOM_Y: float = 0.600
+const BALL_TOP_Y: float = 0.760
+const BODY_TOP_Y: float = 0.845
+
+## One entry per layer, bottom to top — so exactly one fewer than the number of
+## boundaries `_lata_wall_stops` returns. Kept beside that function: the two are a
+## matched pair and editing either alone silently repaints the can.
+const LATA_WALL_MATERIALS := [
+	"body_bright",   # skirt, below the wave
+	"wave",          # the wavy white band
+	"body_bright",   # the bright lower body the sail sits on
+	"sail",          # the sail
+	"body",          # body, between sail and ball
+	"sail",          # the ball
+	"body",          # body, above the ball
+	"body_deep",     # the darker band under the shoulder
+]
+
+## Below this a layer counts as degenerate at that corner and collapses.
+const LAYER_EPSILON: float = 0.0005
+
+func _lata_wall(writer: ObjWriter, deform: Callable, scale_xf: Transform3D) -> void:
+	for s in range(REVOLVE_SEGMENTS):
+		var a0 := TAU * float(s) / float(REVOLVE_SEGMENTS)
+		var a1 := TAU * float(s + 1) / float(REVOLVE_SEGMENTS)
+		var stops0 := _lata_wall_stops(a0)
+		var stops1 := _lata_wall_stops(a1)
+		for layer in range(LATA_WALL_MATERIALS.size()):
+			var material: String = LATA_WALL_MATERIALS[layer]
+			var flat0: bool = absf(stops0[layer + 1] - stops0[layer]) < LAYER_EPSILON
+			var flat1: bool = absf(stops1[layer + 1] - stops1[layer]) < LAYER_EPSILON
+			if flat0 and flat1:
+				continue
+			# ⚠️ Corner order is add_revolve's, exactly: bottom@a0, top@a0, top@a1,
+			# bottom@a1. See obj_writer.gd's winding note before touching it — the
+			# familiar counter-clockwise test reports every face here as inverted
+			# and that is the correct result, not a bug.
+			var v00 := scale_xf * _lata_wall_point(stops0[layer], a0, deform)
+			var v01 := scale_xf * _lata_wall_point(stops0[layer + 1], a0, deform)
+			var v11 := scale_xf * _lata_wall_point(stops1[layer + 1], a1, deform)
+			var v10 := scale_xf * _lata_wall_point(stops1[layer], a1, deform)
+			# A layer degenerate at ONE end is a triangle and has to be emitted as
+			# one. Handing it to add_quad prints a zero-area face, and that face's
+			# meaningless normal then pollutes recalculate_normals()' average for
+			# every vertex it touches — a shading bug with no visible geometry to
+			# trace it back to.
+			if flat0:
+				writer.add_tri(v00, v11, v10, material)
+			elif flat1:
+				writer.add_tri(v00, v01, v11, material)
+			else:
+				writer.add_quad(v00, v01, v11, v10, material)
+
+## The nine layer boundaries of the printed wall at one angle, bottom to top.
+##
+## ⚠️ MUST BE NON-DECREASING at every angle, or a layer inverts and renders
+## inside-out. The constants above are chosen so it is: the wave tops out at 0.356
+## below the sail's 0.430 base, and the sail's arc and the ball's do not overlap,
+## so the sail is never higher than 0.527 where the ball starts at 0.560.
+func _lata_wall_stops(angle: float) -> PackedFloat64Array:
+	var t := _lata_label_t(angle)
+	var sail_top := SAIL_BASE_Y
+	if absf(t) <= 1.0:
+		if t <= SAIL_PEAK_T:
+			sail_top = lerpf(SAIL_BASE_Y, SAIL_APEX_Y, (t + 1.0) / (SAIL_PEAK_T + 1.0))
+		else:
+			sail_top = lerpf(SAIL_APEX_Y, SAIL_BASE_Y, (t - SAIL_PEAK_T) / (1.0 - SAIL_PEAK_T))
+	# Collapsed against the body's top boundary where the ball is absent, so the
+	# two body layers either side of it simply meet.
+	var ball_bottom := BODY_TOP_Y
+	var ball_top := BODY_TOP_Y
+	if t >= BALL_FROM_T and t <= BALL_TO_T:
+		ball_bottom = BALL_BOTTOM_Y
+		ball_top = BALL_TOP_Y
+	return PackedFloat64Array([
+		LATA_WALL_BOTTOM,
+		SKIRT_TOP_Y,
+		WAVE_Y + WAVE_AMPLITUDE * sin(WAVE_LOBES * angle),
+		SAIL_BASE_Y,
+		sail_top,
+		ball_bottom,
+		ball_top,
+		BODY_TOP_Y,
+		LATA_WALL_TOP,
+	])
+
+## Signed position across the label's arc: 0 at the centre of the printed face,
+## +/-1 at its edges, beyond +/-1 off the label entirely. Wrapped the same way
+## `_apply_dents` wraps, so a label centred near 0 still resolves at TAU - 0.1.
+func _lata_label_t(angle: float) -> float:
+	var delta := fposmod(angle - LATA_LABEL_FACE + PI, TAU) - PI
+	return delta / SAIL_HALF_ARC
+
+func _lata_wall_point(y: float, angle: float, deform: Callable) -> Vector3:
+	var radius := LATA_RADIUS
+	if deform.is_valid():
+		radius = deform.call(LATA_RADIUS, y, angle)
+	return Vector3(radius * cos(angle), y, radius * sin(angle))
+
+## The lid's pull tab, worth its ~40 triangles: the game's own logo replaces the
+## O of PRESO with a top-down can lid AND ITS TAB (Art_Direction.md Part 2, M-8),
+## so this is a brand shape rather than a detail — and the knocked-down Can shows
+## the camera its lid, which is exactly when it is most visible.
+##
+## Sits flat ON the lid plane; see LATA_LID_Y for why that plane is flat.
+func _lata_pull_tab(writer: ObjWriter, scale_xf: Transform3D) -> void:
+	const CAP_SEGMENTS: int = 5
+	const TAB_RADIUS: float = 0.048
+	const TAB_NEAR_X: float = 0.055
+	const TAB_FAR_X: float = 0.175
+	const TAB_THICKNESS: float = 0.014
+	# A stadium: two half-circle caps, both swept with the angle INCREASING, which
+	# is the same sense the tsinelas' toe post uses and is what add_extrude's
+	# "counter-clockwise in (x, z)" means here.
+	var outline := PackedVector2Array()
+	for i in range(CAP_SEGMENTS + 1):
+		var far_angle := -PI / 2.0 + PI * float(i) / float(CAP_SEGMENTS)
+		outline.append(Vector2(TAB_FAR_X + TAB_RADIUS * cos(far_angle),
+		                       TAB_RADIUS * sin(far_angle)))
+	for i in range(CAP_SEGMENTS + 1):
+		var near_angle := PI / 2.0 + PI * float(i) / float(CAP_SEGMENTS)
+		outline.append(Vector2(TAB_NEAR_X + TAB_RADIUS * cos(near_angle),
+		                       TAB_RADIUS * sin(near_angle)))
+	writer.add_extrude(outline, LATA_LID_Y, LATA_LID_Y + TAB_THICKNESS,
+		"aluminium_shade", scale_xf)
+
 # --- Tsinelas (the slipper) ---------------------------------------------------
 #
 # Orientation: character faces -Z; toe is at Z = -0.675, heel at Z = +0.675 in
@@ -202,13 +429,25 @@ func _apply_dents(radius: float, y: float, angle: float, dents: Array) -> float:
 # accent is magenta, and §4.2's own token table lists IMPACT as the
 # "Slipper/Can accent".
 #
-# So: IMPACT sole, HIGHLIGHT straps, INK toe post. Neither role hue appears.
+# ⚠️ AND WHY IT IS NO LONGER MAGENTA EITHER — 2026-07-28, same day, one step on.
+#
+# B-81's magenta was correct about the RULE and was only ever a placeholder for
+# the COLOUR: "the magenta shit is just placeholder, we can update it with the
+# new ones" (the human, supplying an asset moodboard for this exact
+# prop). The moodboard's tsinelas is a worn brown foam sole with a tan fabric
+# Y-strap — which is what a street tsinelas actually is, and which still satisfies
+# B-81 completely, because brown and tan are neither role hue. The rule survives;
+# only the stand-in colours it was demonstrated with are gone.
+#
+# So: PROP_FOAM footbed over a PROP_FOAM_DARK outsole, PROP_WEBBING straps and
+# toe post. Neither role hue appears. See `UiTheme`'s PROP_* band for why these
+# are their own tokens rather than borrowed UI or ENV_* ones.
 #
 # ⚠️ The materials are named for the PART, not for the palette token. That is
 # deliberate and it is the second half of the fix: a material literally called
-# "defense" is a bug that reads as correct in every diff. The lata still names
-# its materials after tokens; it is not renamed here only because its colours
-# are unchanged and renaming would churn four .obj files for nothing.
+# "defense" is a bug that reads as correct in every diff. The lata now follows
+# the same rule — it was renamed in the moodboard pass, when its colours changed
+# anyway and the .obj churn was going to happen regardless.
 #
 # ⚠️ Renaming the materials also changes the .obj, which is what forces Godot to
 # reimport. obj_writer.gd's header warns that the .mtl is NOT in the .obj's
@@ -306,8 +545,12 @@ func _build_viewmodel_arm() -> void:
 func _strap_band(writer: ObjWriter, start: Vector3, control: Vector3,
 		finish: Vector3, scale: float = 1.0) -> void:
 	const SEGMENTS: int = 7
-	const HALF_WIDTH: float = 0.032
-	const HALF_THICK: float = 0.017
+	# ⚠️ WIDE AND FLAT, from the 2026-07-28 moodboard. The strap on a real
+	# tsinelas is a broad flat webbing band, roughly a fifth of the sole's width;
+	# the previous 0.032/0.017 section was near-square and read as a piece of
+	# cord, which is the one thing a flip-flop strap never looks like.
+	const HALF_WIDTH: float = 0.046
+	const HALF_THICK: float = 0.013
 	var half_width := HALF_WIDTH * scale
 	var half_thick := HALF_THICK * scale
 	start *= scale
@@ -353,10 +596,11 @@ const TSINELAS_SCALE: float = 0.32
 
 func _build_tsinelas() -> void:
 	var writer := ObjWriter.new("Tsinelas")
-	writer.set_material("sole", UiTheme.IMPACT)
-	writer.set_material("midsole", UiTheme.IMPACT.darkened(0.34))
-	writer.set_material("strap", UiTheme.HIGHLIGHT)
-	writer.set_material("post", UiTheme.INK)
+	writer.set_material("outsole", UiTheme.PROP_FOAM_DARK)
+	writer.set_material("foam", UiTheme.PROP_FOAM_DARK.lerp(UiTheme.PROP_FOAM, 0.55))
+	writer.set_material("footbed", UiTheme.PROP_FOAM)
+	writer.set_material("strap", UiTheme.PROP_WEBBING)
+	writer.set_material("post", UiTheme.PROP_WEBBING.darkened(0.24))
 	var scale_xf := Transform3D.IDENTITY.scaled(Vector3.ONE * TSINELAS_SCALE)
 
 	# --- Sole ---
@@ -375,16 +619,30 @@ func _build_tsinelas() -> void:
 		Vector2(-0.10, -0.620),  # 11  toe-left
 		Vector2( 0.00, -0.675),  # 12  toe-tip center
 	])
-	# Two layers, not one slab. A real tsinelas has a darker rubber midsole under
-	# a lighter footbed, and the step between them catches a shadow line that
-	# makes the whole thing read as an object rather than as a flat lozenge. The
-	# footbed is inset 7% so that step is visible from any angle, including from
-	# directly above, which is the angle a Prop is usually seen from.
+	# THREE layers, not one slab and no longer two. A real tsinelas has a darker
+	# rubber outsole under a moulded foam midsole under a lighter footbed, and the
+	# steps between them catch shadow lines that make the whole thing read as an
+	# object rather than as a flat lozenge. The footbed is inset so that step is
+	# visible from directly above, which is the angle a loose Prop is usually seen
+	# from, and the outsole is inset MORE so the widest point of the slab sits at
+	# mid-height — that is what reads as a moulded bevel rather than as a
+	# cake-slice, and it is the silhouette the moodboard's side view shows.
+	#
+	# ⚠️ Bottom stays at y = 0.0. The sole's Y is its UNDERSIDE, not its centre
+	# (Art_Direction.md Part 4, STANDING RULE — FLOATING GEOMETRY): the loose
+	# slipper is placed by this face, so lifting it "for clearance" is exactly how
+	# a prop ends up hovering.
 	var footbed_outline := PackedVector2Array()
+	var outsole_outline := PackedVector2Array()
 	for p in sole_outline:
-		footbed_outline.append(p * 0.93)
-	writer.add_extrude(sole_outline, 0.0, 0.045, "midsole", scale_xf)
-	writer.add_extrude(footbed_outline, 0.045, 0.10, "sole", scale_xf)
+		footbed_outline.append(p * 0.94)
+		outsole_outline.append(p * 0.88)
+	# Total 0.120 against a 1.35 length. The old 0.10 was measured off a thinner
+	# reference; the moodboard's foam is visibly chunkier, and chunky is also what
+	# Art_Direction.md §0's readability pillar wants at throwing distance.
+	writer.add_extrude(outsole_outline, 0.0, 0.022, "outsole", scale_xf)
+	writer.add_extrude(sole_outline, 0.022, 0.085, "foam", scale_xf)
+	writer.add_extrude(footbed_outline, 0.085, 0.120, "footbed", scale_xf)
 
 	# --- Toe post ---
 	# Small cylindrical knob between the toes, sitting on top of the sole.
@@ -392,14 +650,14 @@ func _build_tsinelas() -> void:
 	# CCW from above (angle increases CCW in XZ) keeps side walls facing out.
 	var post_cx: float = 0.0
 	var post_cz: float = -0.55
-	var post_r: float = 0.045
+	var post_r: float = 0.050
 	var post_segs: int = 8
 	var post_outline := PackedVector2Array()
 	for i in range(post_segs):
 		var angle: float = TAU * float(i) / float(post_segs)
 		post_outline.append(Vector2(post_cx + post_r * cos(angle),
 		                            post_cz + post_r * sin(angle)))
-	writer.add_extrude(post_outline, 0.10, 0.165, "post", scale_xf)
+	writer.add_extrude(post_outline, 0.120, 0.195, "post", scale_xf)
 
 	# --- Y-straps ---
 	# ⚠️ THESE USED TO BE FLAT QUADS AT strap_y = 0.10 — which is EXACTLY the top
@@ -412,14 +670,35 @@ func _build_tsinelas() -> void:
 	# They are now swept bands that ARCH over where a foot would be, so the
 	# slipper has a hole through it — which is the whole visual signature of a
 	# tsinelas and the thing that makes it readable in flight.
-	# ⚠️ The footbed anchors must sit INSIDE the sole outline at that z, not on
-	# the nominal half-width. The waist of the sole is only +/-0.18 at z=0, and
-	# the footbed is inset a further 7%, so anchoring at +/-0.235 hung both straps
-	# off the edge in mid-air. +/-0.163 lands them on the footbed.
-	_strap_band(writer, Vector3(0.163, 0.09, 0.01),
-		Vector3(0.132, 0.245, -0.26), Vector3(0.0, 0.170, -0.505), TSINELAS_SCALE)
-	_strap_band(writer, Vector3(-0.163, 0.09, 0.01),
-		Vector3(-0.132, 0.245, -0.26), Vector3(0.0, 0.170, -0.505), TSINELAS_SCALE)
+	# ⚠️ The footbed anchors must sit INSIDE the footbed outline at that z, not on
+	# the nominal half-width — and the check is on the OUTER EDGE of the band,
+	# `x + HALF_WIDTH`, not on its centreline. The waist of the sole is only
+	# +/-0.18 at z=0 and the footbed is inset a further 6%, so the old anchor
+	# (centre 0.163 + half-width 0.032 = 0.195 against a 0.176 footbed edge) hung
+	# 0.019 of every strap off the side in mid-air. Widening the band to 0.052
+	# would have tripled that overhang.
+	#
+	# Fixed by moving the anchors FORWARD rather than inward, to z = -0.04 where
+	# the sole is 0.201 wide (0.189 on the footbed): 0.134 + 0.046 = 0.180, which
+	# lands inside with margin. That is also roughly where a real tsinelas anchors
+	# its strap — ahead of the waist — so the moodboard and the geometry agree.
+	#
+	# ⚠️ NOT further forward than that, which the first attempt tried (z = -0.15,
+	# where the sole is wider and the margin is easier). It rendered wrong: the
+	# whole Y crowded into the front quarter of the slipper and read as one band
+	# across the toe rather than as two arms meeting at a post. The span from
+	# anchor to post is the shape, so it is the thing to protect — win the width
+	# margin back from the band section instead, which is what HALF_WIDTH 0.046 is.
+	#
+	# ⚠️ Anchor y = 0.105 is BELOW the footbed top (0.120) on purpose: the band is
+	# 0.013 half-thick, so its underside sits at 0.092, buried in the foam. An
+	# anchor placed ON the surface at 0.120 would leave the band's lower face
+	# floating 0.013 clear of it — the same class of bug as the decals, on a
+	# surface small enough that nobody would spot it until it was in a screenshot.
+	_strap_band(writer, Vector3(0.134, 0.105, -0.04),
+		Vector3(0.118, 0.285, -0.30), Vector3(0.0, 0.190, -0.505), TSINELAS_SCALE)
+	_strap_band(writer, Vector3(-0.134, 0.105, -0.04),
+		Vector3(-0.118, 0.285, -0.30), Vector3(0.0, 0.190, -0.505), TSINELAS_SCALE)
 
 	writer.recalculate_normals(40.0)
 	writer.write(OUTPUT_DIR + "tsinelas")

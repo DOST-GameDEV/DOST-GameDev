@@ -569,6 +569,43 @@ HUD contrast or hazard placement against a grey box.
       the frozen intermission window itself, before settling correctly — not root-caused further
       this pass.**
 
+- [~] **2.9 · The two hero props, rebuilt to their own asset moodboards.** 🎨 Design —
+      **verified by render at 0.85, at 1.1 and at match distance; NOT verified by play**
+      User request, 2026-07-28, with two asset moodboards attached: a worn brown
+      flip-flop with a tan webbing Y-strap, and a low-poly **Sarsi** can. Recorded in
+      `Art_Direction.md` §1b, which is now the written spec for both props — the images
+      themselves are not in the repo, so attach them to any task that touches either.
+  - [x] **A `PROP_*` palette band.** `PROP_FOAM`, `PROP_FOAM_DARK`, `PROP_WEBBING`,
+        `PROP_SARSI_RED` in `ui_theme.gd`. The props were wearing UI tokens because B-81 had no
+        others to hand; the human confirmed that magenta was a placeholder, not a decision.
+        Neither role hue appears on either prop, so **B-81's rule survives intact** — see the
+        superseded-colours note on it in `Handoff.md`.
+  - [x] **Tsinelas.** Three-layer foam sole (inset outsole → full-width foam → inset footbed) so
+        the widest point sits at mid-height and the edge reads as a moulded bevel; total thickness
+        0.10 → 0.120. Strap section widened and flattened to real webbing proportions. Strap
+        anchors were **overhanging the footbed edge by 0.019 in mid-air** — the old comment checked
+        the band's centreline against the sole outline instead of its outer edge against the
+        *inset* footbed. Fixed by winning the margin back from the band width rather than by
+        shortening the strap span, which a first attempt tried and which rendered as one band
+        across the toe instead of a Y.
+  - [x] **Lata — Sarsi livery.** Aluminium lid, rolled rim and base crimp; banded blue body
+        standing in for the moodboard's gradient; wavy white band; red sail and ball. Lid
+        flattened from its slight dome and given a **pull tab** — the same shape the game's own
+        logo uses for the O of PRESO (3.2).
+  - [x] **`_lata_wall()` — the printed wall is no longer a revolve.** `add_revolve` paints one
+        material per full ring, so it cannot express a sail. The wall is emitted strip by strip as
+        stacked layers sharing boundary functions. ⚠️ **Deliberately not decals on a plain wall:**
+        this wall gets dented, and an offset decal shell would shear off the crease and hang in
+        mid-air — `Art_Direction.md` Part 4's floating-geometry rule arriving through a side door,
+        on the one prop whose job is to get hit. The sail *is* the wall, in a different colour, and
+        runs through the same `deform`. Dent depth re-measured after the rebuild: **0.027 world
+        units against 0.029 before.**
+  - [ ] **No printed type on the can.** The `sarsi` wordmark, `330 mL` and the barcode are not
+        buildable: `obj_writer.gd` emits no UVs and the `.mtl` carries one flat `Kd`. Needs a UV +
+        texture pipeline that does not exist — filed in `Handoff.md` §5 with the reason it may not
+        be worth building (the wordmark lands ≈13 px tall at the distance the can is actually
+        read). **Everything else on both boards is in.**
+
 - [ ] **3.1 · Land the display typeface (F-2).** 🤖 Sonnet, medium ⛔ 1.1
       Mechanical once the decision exists: `.gitattributes` LFS rules committed
       *before* the binary, face + verbatim licence file in `assets/ui/fonts/`, a

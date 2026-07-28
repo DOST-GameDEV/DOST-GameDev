@@ -508,8 +508,8 @@ autoload of constants **and** a Godot `Theme` resource at `assets/ui/tumbang_pre
 | `CARD` | `#F5F7FA` | Inner wells, input fields. |
 | `OFFENSE` / `ATTACKER` | `#F87020` | Team-on-offense accent, WASD keycaps, charged-throw glow. |
 | `DEFENSE` / `DEFENDER` | `#0080E8` | Team-on-defence accent, Can body, arrow keycaps. |
-| `IMPACT` | `#F468A8` | Slipper/Can accent bar, impact bursts, retrieval decal edge. |
-| `HIGHLIGHT` | `#F8D028` | Can label, ready-state glow, timer urgency, progress-bar fill. |
+| `IMPACT` | `#F468A8` | Slipper/Can accent bar **in the UI**, impact bursts, retrieval decal edge. ⚠️ Not the 3D props themselves — those wear the `PROP_*` band, see `Art_Direction.md` §2. |
+| `HIGHLIGHT` | `#F8D028` | Base-circle decal, ready-state glow, timer urgency, progress-bar fill. |
 | `DANGER` | `#F80000` | Downed flash, kill-plane warning. |
 
 Two hard rules:

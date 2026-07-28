@@ -20,7 +20,7 @@ to type.
 | `scenes/characters/CameraRig.tscn` | — free — | | |
 | `scenes/ui/*.tscn` | 🔧 BUILD-AI | `code/single-player-ai` | 2026-07-28 |
 | `project.godot` | — free — | | |
-| `tools/models/generate_all.gd` | 🎨 DESIGN-ART | `integration` | 2026-07-28 |
+| `tools/models/generate_all.gd` | — free — | | |
 | `docs/Checklist.md` | *no lock needed* | | append-only-ish; conflicts resolved by taking both sides |
 
 > ### `generate_all.gd` / 2.1b-0 — resolved, kept for history
