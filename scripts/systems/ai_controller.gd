@@ -22,10 +22,14 @@ class_name AIController
 ## the explicit call is the only thing making "same frame" true.
 ##
 ## Attached as a plain child node of the CharacterBase it drives, added in
-## code by main.gd::_start_local_test() (`add_child`, not baked into
-## CharacterBase.tscn) — Single Player is the only mode with unpiloted units
-## to drive, and CharacterBase.tscn is shared with the networked spawn path,
-## which has no use for this at all.
+## code (`add_child`, never baked into CharacterBase.tscn) by main.gd's
+## _attach_ai() — called from _start_local_test() for Single Player's three
+## unpiloted units, and, since networked AI takeover, from
+## _build_networked_character()/_rpc_convert_to_ai() for a networked slot with
+## no live human behind it (an unfilled team/role slot, or a real peer's
+## character after they disconnect). The networked call sites only ever
+## attach on the HOST's own process — see _build_networked_character's doc
+## for why only the host's presses do anything.
 ##
 ## ROLE IS RE-DERIVED EVERY CALL, never cached, same rule as everything else
 ## in this project that reads is_can/is_person/team_is_can_side
@@ -341,10 +345,14 @@ func _update_tsinelas(repick: bool) -> void:
 	_move_toward(attacker.global_position)
 
 ## ---------------------------------------------------------------------------
-## Roster lookups. Single Player's four units are direct siblings under
-## Main.tscn's root (see Main.tscn / main.gd::_local_roster) — there is no
-## MultiplayerSpawner-owned Players node to worry about, since AI only ever
-## attaches in the non-networked local flow.
+## Roster lookups. get_parent() resolves to whatever this AI's own character's
+## parent actually is, which differs by mode rather than needing a mode check
+## here: Single Player's four units are direct siblings under Main.tscn's root
+## (see Main.tscn / main.gd::_local_roster), while a networked AI-driven
+## character's parent is $Players, the same MultiplayerSpawner.spawn_path
+## every real networked character (and every other AI-driven one) is spawned
+## under — see main.gd's own MultiplayerSpawner setup. Either way every
+## sibling CharacterBase under that same parent is a legitimate roster entry.
 ## ---------------------------------------------------------------------------
 
 func _roster() -> Array[CharacterBase]:

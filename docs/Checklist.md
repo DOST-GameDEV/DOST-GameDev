@@ -909,7 +909,71 @@ touch map scenes.
       taking over an abandoned role, a grace window before the round auto-resolves, ENet timeout
       tuning). This item is the truth on record, not a mitigation — `[~]` rather than `[x]` because
       the *fix* the human asked for ("what happens") is answered, but the underlying UX gap is not
-      closed and nobody should read this box as saying it is.
+      closed and nobody should read this box as saying it is. ⚠️ **Narrowed by 4.8, below** — a
+      disconnected unit is no longer deleted (a later networking-lane pass made it a frozen
+      placeholder instead), and 4.8 gives that placeholder, and every unfilled team/role slot,
+      real AI instead of standing frozen.
+- [x] **4.8 · Networked AI takeover — an unfilled slot or a disconnected player's character gets a
+      real bot instead of standing frozen forever.** 🤖 Sonnet, high — **verified live: real
+      `--host`/`--join=127.0.0.1` processes, an ENet peer killed mid-session and both a brand-new
+      and a same-identity-token reconnect exercised**
+      A prior networking-lane pass (see `Handoff.md`'s session log) turned a disconnected player's
+      character and every never-filled team/role slot into a **frozen placeholder** — nobody's
+      `is_multiplayer_authority()` is ever true for it, so `character_base.gd`'s own authority gate
+      just stops simulating it — explicitly stationary-only per that session's own brief, with the
+      AI half handed off as its own lane (see that lane's own handoff doc). This item is that
+      hand-off: every such placeholder is now `add_child()`'d an `AIController` (Checklist 5.5's
+      class, unmodified) instead of sitting frozen, giving it the same "moves with intent" behaviour
+      Single Player's unpiloted units already have.
+      **The real trap, flagged by the prior lane's own handoff before any of this was wired in:**
+      `AIController` drives its character by calling `Input.action_press()`/`action_release()` on
+      that character's own `_pN`-suffixed actions — global process state, not per-node. Networked
+      placeholders were being assigned `player_id` 1 or 2, the exact values every real human's own
+      character uses, so an AI-driven placeholder would fight the HOST's real keyboard input over
+      the same global action state the instant the host was also a real player. **Fixed** by giving
+      every AI-driven character `player_id` 3 or 4 instead (`main.gd::_build_spawn_data`) — `p3`/`p4`
+      are registered in `project.godot` but deliberately left unbound to any real key (see
+      `CharacterBase.player_id`'s own doc), so no real keystroke can ever land on them.
+      **Authority:** an AI-driven character's multiplayer authority is the **host's own peer_id**
+      (not the negative sentinel used for bookkeeping) — the host already runs round logic, and
+      someone's machine has to actually execute the AI's presses. `main.gd::_build_networked_character`
+      only `add_child()`s the driving `AIController` on the host's own process; every other peer's
+      local copy of that same character has `ai_controller == null` and simply never calls
+      `decide()`, since only the host's presses land anywhere once `_physics_process`'s own
+      authority gate is reached.
+      **Hand-off, both directions**, via two RPCs run identically on every peer (`call_local`, same
+      pattern the existing `_rpc_reclaim_character` already used for a reconnect):
+      - **Human → AI** (`_rpc_convert_to_ai`, called from `_on_player_disconnected`): re-keys the
+        character's bookkeeping to a fresh negative sentinel (same convention
+        `_fill_empty_slots_with_placeholders` already used), sets authority to the host, and bumps
+        `player_id` into the 3/4 range.
+      - **AI → human** (`_rpc_reclaim_character`, extended): detaches and frees the `ai_controller`
+        so the reclaiming human doesn't fight it, restores `player_id` to the human 1/2 scheme, and
+        re-keys bookkeeping to the new real `peer_id` — unchanged from before for the "was already
+        frozen, no AI" case, since detaching a null `ai_controller` is a no-op.
+      A `get_local_character()` edge case (host-only): an AI-driven character's authority is *also*
+      the host's own peer_id, so `is_multiplayer_authority()` alone can no longer tell "the host's
+      own played character" from "an AI-driven one the host's machine happens to simulate" — fixed
+      by excluding any character with a non-null `ai_controller`.
+      **Verified live**, not just reasoned about: real Godot processes (not headless — see the smoke
+      gate's own note on why), `--host` alone confirmed all three unfilled slots correctly got
+      `player_id` 3/4 + host authority + a driving `AIController`, with the AI actually pressing
+      input and running physics (the Taya patrols, the Attacker retrieves and charges its throw).
+      A brand-new peer joining reclaimed a never-filled AI slot correctly (`player_id` back to 2,
+      authority to its own real peer_id, `ai_controller` detached). A joined peer was `kill -9`'d;
+      after ENet's own ~10-11s disconnect timeout (same figure 4.7 measured), the host correctly
+      converted that exact character to AI (`player_id` 4, host authority). A second process
+      presenting the **same** identity token (simulating the same human reconnecting, via a
+      temporary `--force-token=` override reverted before committing — same technique the
+      networking lane's own handoff describes) correctly reclaimed that exact character back to
+      human control. All four transitions logged and confirmed via temporary print instrumentation,
+      reverted before committing. Full six-command smoke gate run clean before and after.
+      **Not done / left alone, on purpose:** an existing `ai_controller.gd`/`carrier.gd` interaction
+      where the Attacker AI's charge-throw sometimes resets before completing (confirmed to
+      reproduce identically in Single Player under the same map spawn distances, so it predates this
+      item and is not a networking regression) — a Single Player AI tuning question, not this item's
+      scope. Real multi-device/Hamachi testing of AI takeover specifically is still unverified, same
+      standing caveat as every other networking item.
 
 ---
 

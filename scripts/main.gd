@@ -267,11 +267,17 @@ var _spawned_characters: Dictionary = {} # peer_id -> CharacterBase
 ## and index needs no extra entry since every peer already derives it
 ## identically from data["team"]/data["is_person"].
 ##
-## No actual AI here on purpose (out of scope per the same feedback):
-## _physics_process's existing authority gate (character_base.gd:347) already
-## means a character with no live owning peer just stops being simulated
-## anywhere and freezes in place — "stationary" falls out of the existing
-## networking model for free, nothing new to build.
+## Real AI now drives every character with no live human behind it — an
+## unfilled team/role slot (_fill_empty_slots_with_placeholders) or a real
+## peer's slot after they disconnect (_rpc_convert_to_ai) — instead of just
+## freezing. Both give the character multiplayer authority 1 (the host, who
+## already runs round logic) and add_child() an AIController the same way
+## Single Player does (see ai_controller.gd's own class doc), with player_id
+## bumped to the unbound 3/4 range so its Input.action_press() calls can never
+## collide with a real human's own p1/p2 keystrokes on the same (host)
+## machine — see _build_spawn_data's own doc for that trap and its fix.
+## Handing a slot BACK to a reconnecting/new human (_rpc_reclaim_character)
+## detaches the AIController and restores the human 1/2 player_id range.
 var _index_to_character: Dictionary = {}
 
 func _ready() -> void:
@@ -473,6 +479,9 @@ func _start_hosting() -> void:
 	# as the old single _spawn_player(multiplayer.get_unique_id()) call.
 	for id in NetworkManager.connected_peer_ids:
 		_spawn_player(id)
+	# 2026-07-28, user feedback: "when playing multiplayer, for example only
+	# 2 people is playing, there's only 2 characters. it should have 4."
+	_fill_empty_slots_with_placeholders()
 	MatchManager.begin_next_round()
 
 func _start_joining(address: String) -> void:
@@ -625,17 +634,18 @@ func _notification(what: int) -> void:
 
 ## 2026-07-28, user feedback: "instead of disappearing it should transition to
 ## an AI... just make it stationary and make a player be able to join back to
-## their character." Deliberately does NOT free the node or erase
-## _spawned_characters/_peer_teams/_peer_is_person any more (contrast the old
-## behaviour, kept here for history: it used to queue_free() the character and
-## erase all of its bookkeeping) — the character is left in the tree, still
-## owned (in the multiplayer-authority sense) by the peer_id that just left.
-## Nobody's `_physics_process` runs for a peer_id with no live connection
-## (character_base.gd:347's authority gate already returns early for every
-## OTHER peer's view of a character, and the owning peer's own process is the
-## one that's gone) so it simply freezes in place — a placeholder, not a bot.
+## their character." First half landed as a stationary placeholder (frozen —
+## nobody's peer_id ever satisfies is_multiplayer_authority() for it, see
+## character_base.gd:347's gate). This function now finishes the ask: the
+## character is handed to AIController instead of staying frozen, via
+## _rpc_convert_to_ai below. Deliberately does NOT free the node or erase
+## _spawned_characters/_peer_teams/_peer_is_person directly here — that
+## bookkeeping migration is _rpc_convert_to_ai's job (same shape as
+## _rpc_reclaim_character's own migration), so every peer updates its local
+## dictionaries identically instead of only the host's.
 ## See _spawn_player for the other half: reclaiming this same character when
-## its owner's token reconnects, instead of spawning a fresh one.
+## its owner's token reconnects, instead of spawning a fresh one — that path
+## now also has to hand control back FROM the AI, see _rpc_reclaim_character.
 func _on_player_disconnected(peer_id: int) -> void:
 	# Q-2/B-63 (still applies, just from a different cause now): RoundManager's
 	# _tracked_cans is a snapshot taken at the last _reregister_tracked_cans()
@@ -643,9 +653,29 @@ func _on_player_disconnected(peer_id: int) -> void:
 	# disconnect might otherwise leave stale is correctly (re)tracked. Only the
 	# host drives round-win logic (same gate RoundManager itself uses
 	# throughout).
-	if NetworkManager.is_host():
-		_reregister_tracked_cans()
+	if not NetworkManager.is_host():
+		return
+	_reregister_tracked_cans()
+	var character: CharacterBase = _spawned_characters.get(peer_id)
+	var index := _index_for_character(character) if character != null else -1
+	if index != -1:
+		_rpc_convert_to_ai.rpc(index)
+		_rpc_show_toast.rpc("A player left the match — an AI has taken over their character")
+	else:
+		# Should not normally happen (every spawned character has an index —
+		# see _build_networked_character) — kept as a fallback so a disconnect
+		# never silently does nothing if that assumption is ever wrong.
 		_rpc_show_toast.rpc("A player left the match — their character will hold position until they reconnect")
+
+## Finds `character`'s join index by reverse lookup through _index_to_character
+## — the only direction that dictionary is normally read (index -> character);
+## this is the one caller that needs the other direction, to know which index
+## a peer_id about to go stale (disconnect) actually belongs to.
+func _index_for_character(character: CharacterBase) -> int:
+	for index in _index_to_character:
+		if _index_to_character[index] == character:
+			return index
+	return -1
 
 ## Host-only: tells every peer (via MultiplayerSpawner) to construct a
 ## character for `peer_id`, assigned to a fixed team (2 peers per team, first
@@ -694,6 +724,14 @@ func _spawn_player(peer_id: int) -> void:
 	if existing_character != null and is_instance_valid(existing_character):
 		_rpc_reclaim_character.rpc(index, peer_id)
 		return
+	spawner.spawn(_build_spawn_data(peer_id, index))
+
+## Shared by _spawn_player (a real peer) and _fill_empty_slots_with_placeholders
+## (an unfilled team/role slot, given a synthetic negative peer_id nothing
+## real can ever match) — the two differ only in WHOSE peer_id ends up
+## controlling the resulting character, not in how team/role/position are
+## derived from `index`.
+func _build_spawn_data(peer_id: int, index: int) -> Dictionary:
 	var team := index / 2 # 0, 0, 1, 1 for up to MAX_PLAYERS = 4
 	var is_person := index % 2 == 0 # first peer of each team pair is the Person
 	var team_is_can_side := (team == 0) == MatchManager.team_a_is_can
@@ -714,12 +752,54 @@ func _spawn_player(peer_id: int) -> void:
 	# WASD-tracks-Attacker/arrows-tracks-Defender scheme, since Attacker/
 	# Defender swaps every round while a peer's is_person/player_id don't;
 	# that would need input rebinding on every role swap, not just this fix.
-	var player_id := (index % 2) + 1
-	spawner.spawn({
+	#
+	# AI takeover: `peer_id < 0` is the existing negative-sentinel convention
+	# (see _fill_empty_slots_with_placeholders / _rpc_convert_to_ai) for a slot
+	# with no real human behind it. Those get player_id 3/4 instead of 1/2 —
+	# p3/p4 are registered in project.godot but deliberately left unbound to
+	# any real key (see CharacterBase.player_id's own doc), so an AIController's
+	# Input.action_press() on that suffix can never collide with a real human's
+	# own p1/p2 keystrokes, even when both are simulated on the same machine
+	# (the host, which is who actually runs an AI-driven character's physics —
+	# see _build_networked_character). Flagged as a real trap by the
+	# networking-lane handoff before any AI was wired into networked play at
+	# all; this is that fix.
+	var player_id := (index % 2) + (3 if peer_id < 0 else 1)
+	return {
 		"peer_id": peer_id, "position": spawn_pos, "is_can": is_can,
 		"is_person": is_person, "team": team, "team_is_can_side": team_is_can_side,
 		"player_id": player_id,
-	})
+	}
+
+## 2026-07-28, user feedback: "when playing multiplayer, for example only 2
+## people is playing, there's only 2 characters. it should have 4... make the
+## other 2 stationary for the meantime as it's only a placeholder." A 2v2
+## match with fewer than 4 real peers connected used to leave the unfilled
+## team's slots with no character at all — _start_hosting only ever spawned
+## _spawn_player for peers that actually connected.
+##
+## Fills every remaining slot (0..MAX_PLAYERS-1) with a negative sentinel
+## peer_id (real ENet peer ids are always positive, so it can never collide
+## with, or ever be reconnected to by, an actual connection) — the bookkeeping
+## key _build_networked_character reads to know "no real human owns this
+## one," which it answers by giving the character to the host's own
+## AIController instead of a real player's Input (see that function's own
+## doc, and _index_to_character's).
+##
+## Deliberately does NOT touch _token_join_index/_next_join_index: a REAL
+## peer connecting later still gets the next free index normally, finds this
+## placeholder already sitting in _index_to_character for that index, and
+## reclaims it via the exact same _rpc_reclaim_character a reconnecting real
+## peer uses (see _spawn_player) — a new player taking an empty slot and a
+## dropped player's own slot coming back are the same event to this code.
+func _fill_empty_slots_with_placeholders() -> void:
+	for index in range(NetworkManager.MAX_PLAYERS):
+		var existing_character: CharacterBase = _index_to_character.get(index)
+		if existing_character != null and is_instance_valid(existing_character):
+			continue
+		var sentinel_peer_id := -1 - index
+		_spawned_peer_ids[sentinel_peer_id] = true
+		spawner.spawn(_build_spawn_data(sentinel_peer_id, index))
 
 ## B-76. Picks the ability class a Prop should carry THIS round, given its
 ## role (is_can) and team. Never cached on the caller's side — call this again
@@ -749,10 +829,23 @@ func _build_networked_character(data: Dictionary) -> Node:
 		# B-76: the class ability depends on which side of the round this Prop
 		# is playing — see _prop_ability_for() doc.
 		character.ability = _prop_ability_for(character.is_can, character.team).duplicate()
-	character.set_multiplayer_authority(data["peer_id"])
-	_peer_teams[data["peer_id"]] = data["team"]
-	_peer_is_person[data["peer_id"]] = data["is_person"]
-	_spawned_characters[data["peer_id"]] = character
+	var peer_id: int = data["peer_id"]
+	# AI takeover: a negative peer_id is the sentinel for "no real human owns
+	# this slot" (see _fill_empty_slots_with_placeholders / _rpc_convert_to_ai)
+	# — no real ENet connection can ever present one, so it used to mean
+	# "frozen forever" (nobody's is_multiplayer_authority() ever true for it).
+	# It now means "the HOST's machine runs this one," same authority the host
+	# already has for round logic — real authority is the host's own peer_id
+	# (always 1), while `peer_id` itself stays the negative sentinel for
+	# bookkeeping (the _spawned_characters/_index_to_character keys below,
+	# and character.name) so multiple AI slots don't collide on the same
+	# dictionary key the way they would if they all shared authority id 1 there
+	# too.
+	var is_ai := peer_id < 0
+	character.set_multiplayer_authority(1 if is_ai else peer_id)
+	_peer_teams[peer_id] = data["team"]
+	_peer_is_person[peer_id] = data["is_person"]
+	_spawned_characters[peer_id] = character
 	# 2026-07-28: keyed by INDEX (derived here identically to _spawn_player's
 	# own derivation, from data this spawn already carries), not peer_id, and
 	# never erased on disconnect (unlike _spawned_characters above) — see
@@ -761,7 +854,20 @@ func _build_networked_character(data: Dictionary) -> Node:
 	# survives a reconnect.
 	var index: int = data["team"] * 2 + (0 if data["is_person"] else 1)
 	_index_to_character[index] = character
-	if data["peer_id"] == multiplayer.get_unique_id() and character.is_can:
+	if is_ai:
+		# Only the host's own local instance of this spawn_function call
+		# attaches a driving AIController (add_child, never baked into
+		# CharacterBase.tscn — see ai_controller.gd's own class doc): the
+		# spawn function runs identically on every peer (that's how
+		# MultiplayerSpawner replicates a spawn at all), but only the host is
+		# ever this character's multiplayer authority, so only the host's
+		# presses through Input.action_press() do anything once
+		# _physics_process's own authority gate is reached. Attaching it
+		# anywhere else would just press dead, unread Input state on that
+		# other peer's machine — harmless, but pointless.
+		if NetworkManager.is_host():
+			_attach_ai(character)
+	elif peer_id == multiplayer.get_unique_id() and character.is_can:
 		# This is the character we personally control — DownedFlash should
 		# only ever reflect what's happening to OUR Can, never a teammate's
 		# Person or an opponent's (GDD Section 6: "clear visual read",
@@ -964,10 +1070,19 @@ func _reregister_tracked_cans() -> void:
 ## character out of _spawned_characters that this peer actually controls.
 ## Single Player never calls this; it resolves by scanning for player_id == 1
 ## instead, since there is no is_multiplayer_authority() concept there.
+##
+## AI takeover: is_multiplayer_authority() alone is no longer sufficient on
+## the HOST machine specifically — an AI-driven character's authority is also
+## the host's own peer_id (see _build_networked_character), so on a host that
+## is itself a real player, both the host's own character AND every AI-driven
+## one would match. `ai_controller` is only ever non-null on the one process
+## that attached it (the host, and only for the character it's actually
+## driving — see _attach_ai's call sites), so excluding it is enough to tell
+## "mine" from "the host's machine happens to also simulate this one."
 func get_local_character() -> CharacterBase:
 	for peer_id in _spawned_characters:
 		var character: CharacterBase = _spawned_characters[peer_id]
-		if is_instance_valid(character) and character.is_multiplayer_authority():
+		if is_instance_valid(character) and character.is_multiplayer_authority() and character.ai_controller == null:
 			return character
 	return null
 
@@ -1000,11 +1115,13 @@ func _wire_downed_flash(character: CharacterBase) -> void:
 			hud.set_dents(new_dents, CharacterBase.MAX_DENTS)
 	)
 
-## Checklist 5.5 — instances an AIController and hands it to `character`
-## (CharacterBase.ai_controller — see that var's own doc for why this can't
-## just be an @onready node reference on the character itself). A plain
-## `Node`, `add_child()`'d rather than baked into CharacterBase.tscn: that
-## scene is shared with the networked spawn path, which never has an
+## Checklist 5.5, later reused for networked AI takeover (see
+## _build_networked_character / _rpc_convert_to_ai) — instances an
+## AIController and hands it to `character` (CharacterBase.ai_controller —
+## see that var's own doc for why this can't just be an @onready node
+## reference on the character itself). A plain `Node`, `add_child()`'d rather
+## than baked into CharacterBase.tscn, since that scene is shared by every
+## spawn path and most characters (every human-controlled one) never have an
 ## unpiloted unit to drive.
 func _attach_ai(character: CharacterBase) -> void:
 	var controller := AIController.new()
@@ -1101,6 +1218,43 @@ func _on_connection_failed() -> void:
 	GameLaunch.pending_status_message = "Could not reach that host."
 	get_tree().change_scene_to_file("res://scenes/ui/MainMenu.tscn")
 
+## Host → all peers: hands `index`'s existing, still-standing character over
+## to AI control instead of leaving it frozen — see _on_player_disconnected.
+## Same shape as _rpc_reclaim_character below (bookkeeping migration to a
+## fresh key, run identically on every peer via call_local), mirrored for the
+## opposite direction: human -> AI instead of AI/nobody -> human.
+##
+## Re-derives a fresh negative-sentinel peer_id (-1 - index) rather than
+## reusing the dead peer's own old id — the old id belonged to a connection
+## that is gone for good (a reconnect always gets a NEW peer_id from ENet, see
+## NetworkManager.local_player_token's doc), so keeping it around as a
+## dictionary key would just be a stale id no future event can ever match.
+## Matches the sentinel _fill_empty_slots_with_placeholders already uses for
+## an unfilled slot — a slot that was never filled and a slot whose owner just
+## left are the same state as far as this bookkeeping is concerned.
+@rpc("authority", "call_local", "reliable")
+func _rpc_convert_to_ai(index: int) -> void:
+	var character: CharacterBase = _index_to_character.get(index)
+	if character == null or not is_instance_valid(character):
+		return
+	for old_peer_id in _spawned_characters.keys():
+		if _spawned_characters[old_peer_id] == character:
+			_spawned_characters.erase(old_peer_id)
+			_peer_teams.erase(old_peer_id)
+			_peer_is_person.erase(old_peer_id)
+			_spawned_peer_ids.erase(old_peer_id)
+			break
+	var sentinel_peer_id := -1 - index
+	character.name = str(sentinel_peer_id)
+	character.set_multiplayer_authority(1) # host runs AI-driven physics — see _build_networked_character
+	character.player_id = (index % 2) + 3 # AI-safe range — see _build_spawn_data's own doc
+	_spawned_characters[sentinel_peer_id] = character
+	_peer_teams[sentinel_peer_id] = character.team
+	_peer_is_person[sentinel_peer_id] = character.is_person
+	_spawned_peer_ids[sentinel_peer_id] = true
+	if NetworkManager.is_host() and character.ai_controller == null:
+		_attach_ai(character)
+
 ## Host → all peers (2026-07-28): hands `index`'s existing, still-standing
 ## character over to `new_peer_id` instead of spawning a second body for the
 ## same slot. Runs identically on every peer (call_local, like every other
@@ -1115,6 +1269,14 @@ func _on_connection_failed() -> void:
 ## "authority" (host-only sender) because only the host's _spawn_player runs
 ## the reclaim check at all — the RPC's job is purely to fan the host's
 ## decision out, not to let some other peer make it.
+##
+## Also the AI-handoff-back path: `index`'s character may currently be
+## AI-driven (see _rpc_convert_to_ai / _fill_empty_slots_with_placeholders) —
+## a real peer reclaiming it needs its own ai_controller detached (or it
+## fights the human for the same character's Input state) and player_id
+## restored to the human 1/2 scheme (or the reclaiming human's real p1/p2
+## keystrokes would land on the unbound p3/p4 actions instead — see
+## _build_spawn_data's own doc on why AI slots use 3/4 to begin with).
 @rpc("authority", "call_local", "reliable")
 func _rpc_reclaim_character(index: int, new_peer_id: int) -> void:
 	var character: CharacterBase = _index_to_character.get(index)
@@ -1127,8 +1289,12 @@ func _rpc_reclaim_character(index: int, new_peer_id: int) -> void:
 			_peer_is_person.erase(old_peer_id)
 			_spawned_peer_ids.erase(old_peer_id)
 			break
+	if character.ai_controller != null:
+		character.ai_controller.queue_free()
+		character.ai_controller = null
 	character.name = str(new_peer_id)
 	character.set_multiplayer_authority(new_peer_id)
+	character.player_id = (index % 2) + 1
 	_spawned_characters[new_peer_id] = character
 	_peer_teams[new_peer_id] = character.team
 	_peer_is_person[new_peer_id] = character.is_person
