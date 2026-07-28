@@ -171,6 +171,10 @@ var _tpp_base_spring_length: float = 4.5
 ## The scene's own baked `TppArm` pitch, captured for the same reason as the
 ## length above — so re-framing scales from the authored value every round.
 var _tpp_base_pitch_deg: float = -15.0
+## The carried unit's Visual this rig currently has hidden from its own player,
+## so it can be un-hidden even after the unit stops being held. See
+## _apply_carried_self_hide.
+var _hidden_carried_visual: Node3D = null
 var _tpp_carry_pitch_deg: float = 0.0
 ## B-91 — this rig's own Carriable, so it can tell "am I currently being
 ## carried" without character_base.gd having to learn what carrying is (the
@@ -340,6 +344,11 @@ const VIEWMODEL_CARRY_SCALE: float = 0.55
 ## How fast the hand converges on the slipper. Instant snapping on pick-up reads
 ## as a teleport; this is quick enough to feel attached, slow enough to see.
 const VIEWMODEL_REACH_SPEED: float = 14.0
+## Where the held slipper sits in the LOCAL player's frame, in FppPivot space.
+## Forward, right and below the crosshair — the composition the old chase-the-
+## world-slipper code was reverse-engineering, now stated directly and applied
+## to the viewmodel where it belongs.
+const VIEWMODEL_CARRY_ANCHOR: Vector3 = Vector3(0.26, -0.16, -0.48)
 
 
 ## Playtest: "the slippers just float when you hold it, its completely
@@ -374,29 +383,41 @@ func _update_viewmodel_carry(delta: float) -> void:
 
 	var carrier := _character.get_node_or_null("Carrier") as Carrier
 	var held: Carriable = carrier.held() if carrier != null else null
+	var holding := held != null and is_instance_valid(held)
+	# ⚠️ 7.3 — THE VIEWMODEL CARRIES ITS OWN SLIPPER NOW, and no longer chases
+	# the world one. That inversion is the whole fix for "slipper floating".
+	#
+	# The old code moved the visible FPP hand ONTO the world slipper, which meant
+	# the world slipper's position had to be chosen to compose the FIRST-PERSON
+	# frame — `HAND_CARRY_OFFSET`'s own note says so outright: a little above the
+	# eye, forward and to the right so it never covers the crosshair. That is a
+	# fine place for a viewmodel and a terrible place for a real object, because
+	# it is nowhere near the character's actual hand. Everyone ELSE therefore saw
+	# a slipper hovering beside its carrier's head. Reported repeatedly as the
+	# slipper floating; re-measuring the offset could never have fixed it,
+	# because the offset was doing exactly what it was written to do.
+	#
+	# So the two views get two objects, which is how first-person games have
+	# always solved this and is the same reasoning that gave the arms a dedicated
+	# viewmodel in the first place. The world slipper sits in the real hand and
+	# is correct in third person; `HeldSlipper` under the fist is what the local
+	# player sees, posed for their frame and nobody else's.
+	var slipper := pivot.get_node_or_null("Arm/HeldSlipper") as Node3D
+	if slipper != null:
+		slipper.visible = holding
+	# Per-frame, because what this character is holding changes DURING a round —
+	# _apply_fpp_self_hide only re-runs on activation and model changes, so a
+	# pick-up mid-round would otherwise show both slippers until the next swap.
+	_apply_carried_self_hide(true)
 	var wanted := _viewmodel_rest
-	if held != null and is_instance_valid(held) and held.get_parent() is Node3D:
-		# ⚠️ THE CARRYING ARM IS SCALED DOWN, and that is not a cheat.
-		#
-		# The slipper rides only ~0.48 units in front of the eye
-		# (HAND_CARRY_OFFSET, chosen so it never covers the crosshair), while the
-		# forearm mesh is 0.84 long. Any full-size arm reaching that point has to
-		# pass within centimetres of the lens, and at a 95-degree FOV that fills
-		# half the frame — measured twice, once with the elbow projected back from
-		# the slipper (elbow ended up BEHIND the camera) and once with the elbow
-		# anchored and the forearm stretched (still a wall of skin on the right).
-		#
-		# So the carrying arm renders at VIEWMODEL_CARRY_SCALE. It reads as a hand
-		# at arm's length rather than a forearm across the lens, and because the
-		# fist is placed exactly ON the carried unit the slipper is unambiguously
-		# held. The empty hand keeps its full size — nothing is close enough to
-		# the eye there for it to matter.
-		var target := fpp_pivot.to_local((held.get_parent() as Node3D).global_position)
+	if holding:
+		# A FIXED carry pose, not a chase. Nothing here reads the world slipper's
+		# position any more, so the two can never drag each other around — which
+		# is what produced "my arms float during windup" (B-90) as well.
 		var dir := VIEWMODEL_CARRY_DIR.normalized()
 		var reach := VIEWMODEL_ARM_LENGTH * VIEWMODEL_CARRY_SCALE
+		var target := VIEWMODEL_CARRY_ANCHOR
 		var elbow := target - dir * reach
-		# Any stable reference works; the arm never approaches vertical here, so
-		# the cross product is always well conditioned.
 		var right_axis := dir.cross(Vector3.FORWARD).normalized()
 		wanted = Transform3D(Basis(right_axis * VIEWMODEL_CARRY_SCALE,
 			dir * VIEWMODEL_CARRY_SCALE,
@@ -564,6 +585,31 @@ func play_viewmodel_action(kind: String) -> void:
 	player.play(kind)
 
 
+## Shows/hides the unit THIS character is carrying, for this peer only.
+##
+## ⚠️ IT REMEMBERS WHAT IT HID, and that is not bookkeeping for its own sake.
+## The obvious version just reads `carrier.held()` and hides it — which works
+## until the slipper is THROWN, at which point `held()` is null, the function
+## returns early having restored nothing, and the slipper stays invisible to the
+## player who threw it for the rest of the round. Restoring is keyed on the node
+## this actually hid, so releasing it is never conditional on still holding it.
+func _apply_carried_self_hide(hide_it: bool) -> void:
+	var wanted: Node3D = null
+	if hide_it:
+		var carrier := _character.get_node_or_null("Carrier") as Carrier
+		var held: Carriable = carrier.held() if carrier != null else null
+		if held != null and is_instance_valid(held):
+			var holder := held.get_parent() as Node3D
+			if holder != null:
+				wanted = holder.get_node_or_null("Visual") as Node3D
+	if wanted == _hidden_carried_visual:
+		return
+	if _hidden_carried_visual != null and is_instance_valid(_hidden_carried_visual):
+		_hidden_carried_visual.visible = true
+	if wanted != null:
+		wanted.visible = false
+	_hidden_carried_visual = wanted
+
 func _apply_fpp_self_hide() -> void:
 	# The viewmodel is the inverse of the self-hide: it is the one thing that
 	# must appear exactly when the rest of the body is being looked past. Driven
@@ -572,6 +618,19 @@ func _apply_fpp_self_hide() -> void:
 	var arms := _viewmodel_arms()
 	if arms != null:
 		arms.visible = _active and _mode == Mode.FPP
+
+	# ⚠️ 7.3 — THE CARRIED SLIPPER IS PART OF THE SELF-HIDE NOW.
+	#
+	# Once the viewmodel got its own `HeldSlipper`, the LOCAL player saw two of
+	# them: the viewmodel's, posed for their frame, and the real one sitting in
+	# their character's hand. The world slipper is a separate CharacterBase, so
+	# it was never covered by the body hide below.
+	#
+	# Same mechanism and same reasoning as the body: `_active` is only ever true
+	# for the rig a peer is actually looking through, so this hides the object on
+	# THAT machine only. Every other peer still sees the slipper in their hand,
+	# which is the whole point of having moved it there.
+	_apply_carried_self_hide(_active and _mode == Mode.FPP)
 
 	var visual_root := _character.get_node_or_null("Visual")
 	if visual_root == null:

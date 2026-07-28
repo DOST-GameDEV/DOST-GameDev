@@ -1,6 +1,7 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="Mesh" path="res://assets/models/viewmodel_arm.obj" id="1"]
+[ext_resource type="Mesh" path="res://assets/models/tsinelas.obj" id="4"]
 [ext_resource type="Shader" path="res://assets/models/materials/toon.gdshader" id="2"]
 [ext_resource type="Material" path="res://assets/characters/persons/materials/person_outline.tres" id="3"]
 
@@ -67,6 +68,12 @@ mesh = ExtResource("1")
 surface_material_override/0 = SubResource("Mat_arm")
 surface_material_override/1 = SubResource("Mat_arm")
 cast_shadow = 0
+
+[node name="HeldSlipper" type="MeshInstance3D" parent="RightPivot/Arm"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.86, 0)
+mesh = ExtResource("4")
+cast_shadow = 0
+visible = false
 
 [node name="LeftPivot" type="Node3D" parent="."]
 transform = Transform3D(-0.90016, 0.43556, 0.00000, 0.30109, 0.62224, -0.72261, -0.31474, -0.65046, -0.69126, -0.6000, -1.0400, -0.3200)
