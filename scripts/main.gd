@@ -101,9 +101,11 @@ var _local_roster: Array[CharacterBase] = []
 ## FALLBACK ONLY, since checklist 2.2a. The real spawn points are four Marker3Ds
 ## under the loaded map's `SpawnPoints` node; this array is used only if a map
 ## has none — or if something loads Main.tscn with no map at all, which is what
-## the render harness does.
+## the render harness does. Indexed by ROLE SLOT (see SLOT_* below), matching
+## the real maps' layout: the Can near the middle, the Attacker/Tsinelas pair
+## a few units off.
 const SPAWN_POINTS: Array[Vector3] = [
-	Vector3(0, 1, -2), Vector3(0, 1, 2), Vector3(-3, 1, 0), Vector3(3, 1, 0)
+	Vector3(0, 0.17, 0), Vector3(2, 0.8, 1), Vector3(0, 0.8, 6), Vector3(1, 0.16, 6)
 ]
 
 ## Resolved once per match from the loaded map, then reused. Rebuilt on every
@@ -155,14 +157,46 @@ func _load_map() -> void:
 		# default -Z facing and half the spawns are at the far end.
 		_map_spawns.append((marker as Marker3D).transform)
 
+## Spawn slots are ROLE-based, not team-based, since the human playtest of the
+## proportion fix (2026-07-28): "two teams spawn on completely different ends
+## and i dont think thats how it should go." They were right — the old scheme
+## put TeamAProp/TeamAPerson at one end of the alley and TeamBProp/TeamBPerson
+## at the other, UNCONDITIONALLY, while the map's own base_circle_decal and
+## throwing_line_decal (Art_Direction.md §9) sit at the CENTRE regardless of
+## who is spawning where. Whichever team happened to be defending that round
+## spawned wherever its fixed team slot was — sometimes the north end, sometimes
+## the south — never actually AT the base circle the mechanic is built around.
+## That is what "two teams spawn on completely different ends" was: not merely
+## "far apart", but structurally disconnected from tumbang preso's actual
+## shape (one guarded base, one throwing line), because position tracked TEAM
+## (fixed all match) instead of ROLE (swaps every round).
+##
+## The four slots below are ROLES, and the physical Marker3D positions never
+## move — only which unit currently occupies which slot does, exactly like
+## is_can/team_is_can_side already do for everything else that flips each
+## round. Spawn0 sits ON the base circle, Spawn1 is the guarding Taya a few
+## units off it, Spawn2 is the Attacker at the 6-unit throwing line
+## (Art_Direction.md §9's own "why 6.0" derivation), Spawn3 is that round's
+## loose Tsinelas beside the Attacker (see _reset_world's auto-grab, below,
+## for why it does not usually stay loose for long).
+const SLOT_CAN: int = 0
+const SLOT_TAYA: int = 1
+const SLOT_ATTACKER: int = 2
+const SLOT_TSINELAS: int = 3
+
+## Maps a unit's CURRENT role to its spawn slot. `is_can` already implies
+## `is_person == false` (CharacterBase's own contract), so checking it first is
+## exhaustive: Can, then Taya-or-Attacker by is_person, then whatever Prop is
+## left over must be this round's Tsinelas.
+func _role_slot(is_can: bool, is_person: bool, team_is_can_side: bool) -> int:
+	if is_can:
+		return SLOT_CAN
+	if is_person:
+		return SLOT_TAYA if team_is_can_side else SLOT_ATTACKER
+	return SLOT_TSINELAS
+
 ## Where slot `index` spawns. Prefers the map's markers and falls back to
 ## SPAWN_POINTS, so a map with no SpawnPoints still plays.
-##
-## Slot order is [TeamAProp, TeamAPerson, TeamBProp, TeamBPerson], so Spawn0/1
-## are one team and Spawn2/3 are the other. THIS IS WHERE B-54 GETS ANSWERED:
-## the markers in Eskinita are placed as two pairs at opposite ends of the alley,
-## so team-mates start together and opponents start apart, which the old
-## hardcoded ring never did.
 func _spawn_point(index: int) -> Vector3:
 	return _spawn_transform(index).origin
 
@@ -461,9 +495,13 @@ func _spawn_player(peer_id: int) -> void:
 	var index: int = _peer_join_index[peer_id]
 	var team := index / 2 # 0, 0, 1, 1 for up to MAX_PLAYERS = 4
 	var is_person := index % 2 == 0 # first peer of each team pair is the Person
-	var spawn_pos: Vector3 = _spawn_point(index)
 	var team_is_can_side := (team == 0) == MatchManager.team_a_is_can
 	var is_can := team_is_can_side and not is_person
+	# Spawn POSITION is role-based (_role_slot), not the team-fixed `index` —
+	# see the doc above _role_slot for why. `player_id` below stays index-based
+	# on purpose: it is a fixed-for-the-match input-binding assignment, a
+	# different question from where this round's fight actually starts.
+	var spawn_pos: Vector3 = _spawn_point(_role_slot(is_can, is_person, team_is_can_side))
 	# B-30: CharacterBase.player_id was never set on a networked spawn, so every
 	# networked character kept the scene default of 1 and read *_p1 actions —
 	# harmless by accident (one human per LAN machine binds p1 and controls
@@ -546,11 +584,10 @@ func _reset_world(team_a_is_can: bool) -> void:
 	for node in get_tree().get_nodes_in_group("transient_hitbox"):
 		if is_instance_valid(node):
 			node.queue_free()
-	# Build a unified roster — {character, team, is_person, slot} — per mode.
-	# Networked: slot comes from _peer_join_index (B-21: stable across disconnect/
-	# rejoin, fixes B-68 which used iteration order instead). Local: _local_roster
-	# order [TeamAProp, TeamAPerson, TeamBProp, TeamBPerson] matches SPAWN_POINTS
-	# 1:1, so the array index is the slot.
+	# Build a unified roster — {character, team, is_person} — per mode. Networked:
+	# _spawned_characters keyed by peer_id. Local: _local_roster, order
+	# [TeamAProp, TeamAPerson, TeamBProp, TeamBPerson] (only used to derive team/
+	# is_person below, not for spawn position any more — see _role_slot).
 	var roster: Array = []
 	if NetworkManager.is_networked():
 		for peer_id in _spawned_characters.keys():
@@ -561,7 +598,6 @@ func _reset_world(team_a_is_can: bool) -> void:
 				"character": character,
 				"team": _peer_teams.get(peer_id, 0),
 				"is_person": _peer_is_person.get(peer_id, false),
-				"slot": _peer_join_index.get(peer_id, 0)
 			})
 	elif not _local_roster.is_empty():
 		for i in range(_local_roster.size()):
@@ -569,10 +605,11 @@ func _reset_world(team_a_is_can: bool) -> void:
 				"character": _local_roster[i],
 				"team": _local_roster[i].team,
 				"is_person": _local_roster[i].is_person,
-				"slot": i
 			})
 
 	RoundManager.clear_tracked_cans()
+	var attacker: CharacterBase = null
+	var tsinelas: CharacterBase = null
 	for entry in roster:
 		var character: CharacterBase = entry["character"]
 		var team_is_can_side: bool = (entry["team"] == 0) == team_a_is_can
@@ -589,12 +626,29 @@ func _reset_world(team_a_is_can: bool) -> void:
 			character.ability = _prop_ability_for(character.is_can, entry["team"]).duplicate()
 		# B-10: reset + reposition every unit — Persons and the off-side Prop
 		# were carrying downed/sealed state, dents, and speed multipliers into
-		# the next round before this.
+		# the next round before this. Position is now ROLE-based, not the old
+		# team-fixed slot — see _role_slot's doc above _spawn_point.
 		character.reset_for_new_round()
-		_place_at_spawn(character, entry["slot"])
+		_place_at_spawn(character, _role_slot(character.is_can, entry["is_person"], team_is_can_side))
 		character.spawn_position = character.position # B-15/B-35
 		if character.is_can:
 			RoundManager.register_can(character)
+		elif entry["is_person"] and not team_is_can_side:
+			attacker = character
+		elif not entry["is_person"] and not team_is_can_side:
+			tsinelas = character
+	# User feedback, 2026-07-28: "the attacking Person carries the tsinelas"
+	# (Dev_Plan.md §3's beat-by-beat loop, step 1) reads as the opening state of
+	# a round, not a first chore before it — a real taya at a real tumbang
+	# preso match is not waiting for the attacker to walk over and pick up
+	# their own teammate. host_grab() is already host-gated internally (see its
+	# own doc in carriable.gd), so calling it unconditionally here — this
+	# function runs on every peer identically — is safe: only the host's call
+	# actually does anything.
+	if attacker != null and tsinelas != null:
+		var carriable := tsinelas.get_node_or_null("Carriable") as Carriable
+		if carriable != null:
+			carriable.host_grab(attacker)
 
 ## Item 10 / B-37: fires on every peer (see MatchManager._sync_intermission_started)
 ## the moment a round ends without finishing the match — the gap that never
