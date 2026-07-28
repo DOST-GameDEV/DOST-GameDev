@@ -452,17 +452,17 @@ func _align_to_capsule_floor(model: Node3D) -> void:
 	# same model, which is what exposed it.
 	model.position.y = _capsule_half_height_down() - bounds.position.y * model.scale.y
 
-## B-88 — reads THIS unit's own, currently-applied capsule height rather than
-## assuming the single shared 1.6 every unit used to have. Per-unit collision
-## (Art_Direction.md §1, character_base.gd::_apply_role_collision()) means a Can
-## and a Tsinelas now carry a much shorter capsule than a Person, and the
-## capsule floor a model drops to has to track whichever one THIS character
-## actually has — not a constant tuned for the Person alone.
+## B-88 — reads THIS unit's own, currently-applied capsule height (via
+## CharacterBase.capsule_height(), the shared accessor every per-role-size
+## reader now uses) rather than assuming the single shared 1.6 every unit used
+## to have. Per-unit collision (Art_Direction.md §1,
+## character_base.gd::_apply_role_collision()) means a Can and a Tsinelas now
+## carry a much shorter capsule than a Person, and the capsule floor a model
+## drops to has to track whichever one THIS character actually has — not a
+## constant tuned for the Person alone.
 func _capsule_half_height_down() -> float:
 	if _character != null:
-		var shape_node := _character.get_node_or_null("CollisionShape3D") as CollisionShape3D
-		if shape_node != null and shape_node.shape is CapsuleShape3D:
-			return -(shape_node.shape as CapsuleShape3D).height / 2.0
+		return -_character.capsule_height() / 2.0
 	return CAPSULE_HALF_HEIGHT_DOWN
 
 func _model_path(is_person: bool, is_can: bool, team: int) -> String:
