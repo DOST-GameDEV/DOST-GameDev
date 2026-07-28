@@ -17,7 +17,6 @@ class_name ArrowButton
 ## for free. Its ShaderMaterial is `resource_local_to_scene`, so each instance
 ## animates its own rim.
 
-const MENU_FONT: Font = preload("res://assets/ui/fonts/DarumadropOne-Regular.ttf")
 
 const HOVER_SCALE: float = 1.04
 const HOVER_BRIGHTNESS: float = 1.12
@@ -34,6 +33,10 @@ const PRESS_SCALE: float = 0.96
 ## Insets the label so it clears the flat left cut and the arrow tip.
 @export var text_indent: float = 70.0: set = _set_text_indent
 @export var tip_padding: float = 96.0: set = _set_tip_padding
+## Nudges the label off the rect's vertical centre. The pennants are drawn on a
+## slant with uneven bleed above and below, so the artwork's optical centre is
+## not the texture's centre — positive moves the label down.
+@export var text_offset_y: float = 0.0: set = _set_text_offset_y
 
 var _artwork: TextureRect
 var _material: ShaderMaterial
@@ -61,7 +64,8 @@ func _build() -> void:
 		return
 	_artwork = $Artwork
 	_material = _artwork.material as ShaderMaterial
-	add_theme_font_override("font", MENU_FONT)
+	# Font comes from the project theme (ui_theme.gd), which applies the
+	# baseline correction the display face needs. No per-node font override.
 
 ## The pivot sits out to the left of the button, off the edge of the screen, so
 ## scaling reads as cloth unfurling from a mast instead of a box zooming in.
@@ -107,6 +111,13 @@ func _set_tip_padding(value: float) -> void:
 	tip_padding = value
 	_apply_padding()
 
+func _set_text_offset_y(value: float) -> void:
+	text_offset_y = value
+	_apply_padding()
+
+## Button centres its label inside the rect minus these margins, so padding one
+## side shifts the label by half that amount. Doubling the offset here makes
+## `text_offset_y` read in real pixels.
 func _apply_padding() -> void:
 	if _artwork == null:
 		return
@@ -114,6 +125,8 @@ func _apply_padding() -> void:
 		var box := StyleBoxEmpty.new()
 		box.content_margin_left = text_indent
 		box.content_margin_right = tip_padding
+		box.content_margin_top = maxf(0.0, text_offset_y * 2.0)
+		box.content_margin_bottom = maxf(0.0, -text_offset_y * 2.0)
 		add_theme_stylebox_override(state, box)
 
 # --- Entrance -----------------------------------------------------------------
