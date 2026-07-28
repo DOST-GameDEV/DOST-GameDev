@@ -34,10 +34,10 @@ mouse_filter = 2
 [node name="TumpLogo" type="TextureRect" parent="."]
 unique_name_in_owner = true
 layout_mode = 0
-offset_left = 104.0
-offset_top = 120.0
-offset_right = 1002.0
-offset_bottom = 343.0
+offset_left = 85.0
+offset_top = 69.0
+offset_right = 996.0
+offset_bottom = 295.0
 mouse_filter = 2
 texture = ExtResource("8")
 expand_mode = 1
@@ -45,61 +45,59 @@ stretch_mode = 5
 
 [node name="TaglineLabel" type="Label" parent="."]
 layout_mode = 0
-offset_left = 111.0
-offset_top = 350.0
-offset_right = 1002.0
-offset_bottom = 380.0
+offset_left = 92.0
+offset_top = 303.0
+offset_right = 996.0
+offset_bottom = 335.0
 theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 0.75)
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 24
 text = "2v2 ARENA BRAWLER — CANS VS TSINELAS"
 
 [node name="StartButton" parent="." instance=ExtResource("4")]
 unique_name_in_owner = true
 layout_mode = 0
-offset_left = -44.0
-offset_top = 560.0
-offset_right = 544.0
-offset_bottom = 752.0
+offset_top = 374.0
+offset_right = 596.0
+offset_bottom = 568.0
 texture = ExtResource("5")
-text = "PLAY"
-text_offset_y = 3.0
+caption = "PLAY"
+text_offset_y = 4.0
 text_color = Color(0.078, 0.2, 0.051, 1)
-label_size = 65
-pole_distance = 310.0
-text_indent = 111.0
-tip_padding = 89.0
+label_size = 141
+pole_distance = 315.0
+text_indent = 190.0
+tip_padding = 90.0
 
 [node name="SettingsButton" parent="." instance=ExtResource("4")]
 unique_name_in_owner = true
 layout_mode = 0
-offset_left = -44.0
-offset_top = 726.0
-offset_right = 548.0
-offset_bottom = 889.0
+offset_top = 564.0
+offset_right = 600.0
+offset_bottom = 729.0
 texture = ExtResource("6")
-text = "SETTINGS"
-text_offset_y = -7.0
+caption = "SETTINGS"
+text_offset_y = -12.0
 text_color = Color(0.239, 0.149, 0.024, 1)
-label_size = 55
-pole_distance = 310.0
-text_indent = 111.0
-tip_padding = 89.0
+label_size = 139
+label_stretch_x = 0.711
+pole_distance = 315.0
+text_indent = 81.0
+tip_padding = 116.0
 
 [node name="QuitButton" parent="." instance=ExtResource("4")]
 unique_name_in_owner = true
 layout_mode = 0
-offset_left = -44.0
-offset_top = 864.0
-offset_right = 518.0
-offset_bottom = 1007.0
+offset_top = 912.0
+offset_right = 569.0
+offset_bottom = 1057.0
 texture = ExtResource("7")
-text = "QUIT"
-text_offset_y = 6.0
+caption = "QUIT"
+text_offset_y = 7.0
 text_color = Color(0.239, 0.051, 0.051, 1)
-label_size = 52
-pole_distance = 310.0
-text_indent = 111.0
-tip_padding = 89.0
+label_size = 99
+pole_distance = 315.0
+text_indent = 143.0
+tip_padding = 209.0
 
 [node name="SettingsPanel" parent="." instance=ExtResource("2")]
 unique_name_in_owner = true

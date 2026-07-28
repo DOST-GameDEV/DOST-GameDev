@@ -208,7 +208,7 @@ func _refresh_start_button() -> void:
 
 func _on_ready_pressed() -> void:
 	_is_ready = not _is_ready
-	ready_button.text = "UNREADY" if _is_ready else "READY"
+	ready_button.caption = "UNREADY" if _is_ready else "READY"
 	_rpc_set_ready.rpc(multiplayer.get_unique_id(), _is_ready)
 
 func _on_start_pressed() -> void:
