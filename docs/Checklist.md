@@ -1091,6 +1091,93 @@ Budget this like a feature.
 
 ---
 
+## Phase 7 — The kit overhaul. Real asset kits replace the generated world.
+
+**Spec: [`Art_Direction.md`](Art_Direction.md) §0b.** Read it before starting any item here — it
+carries the measured scale table, and scale is where this goes wrong.
+
+**Opened 2026-07-28 on the human's call:** *"ill be honest, assets suck so bad right now and its so
+buggy."* Six Kenney kits (all CC0, verified) plus a supplied flip-flop `.glb`.
+
+> ⚠️ **THIS PHASE CHANGES NO MECHANICS.** Explicit instruction: *"make sure all mechanics stay ok,
+> focus on implementing the new assets and designs tho, let another agent do the mechanics."* Every
+> item is an asset swap behind an unchanged interface. The camera directive, `is_person`/`is_can`,
+> carry/throw, confinement, spawn slots, the round loop and the dent-count health model are all
+> untouched. **7.1 is the only item that edits gameplay-adjacent code**, it is scoped to the
+> material pipeline, and it exists because the swap cannot land without it.
+
+> ⚠️ **ARENA SCALE IS NOT TOUCHED IN THIS PHASE** (Part 4's standing rule). Re-dressing a map and
+> resizing it in the same commit makes a movement-feel regression unattributable. Item B (narrow
+> the alley) stays open and stays separate.
+
+- [ ] **7.1 · The toon/outline pass must stop destroying kit textures. ⛔ BLOCKS 7.2–7.5.**
+      🎨 Design (material pipeline only — not a mechanics item)
+      `character_visual.gd::_apply_toon_pass()` replaces every surface material on a Prop with a
+      flat `albedo_color` toon material. Kenney kits are textured off a shared palette atlas, so
+      applied unchanged **every kit prop becomes one flat colour** — the swap cannot be evaluated,
+      let alone shipped, until this is settled. Either sample the kit texture in the toon shader or
+      skip the toon pass for kit-sourced meshes. Decide by rendering both.
+      Fold in the outline width at the same time: `outline.gdshader`'s 0.025 is in MODEL space
+      against meshes that now differ by 10× in scale (`Handoff.md` §0.12).
+- [ ] **7.2 · The lata → `soda-can.glb`.** 🎨 Design ⛔ 7.1
+      Drops in at **native scale** — 0.351 tall against the current 0.335, the one free win in the
+      whole overhaul. Dent states keep their interface: 0 → `soda-can`, 1–2 → progressively
+      squashed, 3 → `soda-can-crushed`. Retire `lata.obj` and its three variants.
+      **Acceptance:** knock it over, take three dents, win a round and see it reset — all from the
+      TPP camera, all unchanged in behaviour.
+- [ ] **7.3 · The tsinelas → the supplied `.glb`.** 🎨 Design ⛔ 7.1, **⛔ licence (see 7.0)**
+      Three required steps: **split the pair** (it is two meshes, the Prop is one slipper),
+      **recolour from purple to `PROP_FOAM`/`PROP_WEBBING`** (the §1b moodboard wins — it is newer
+      and more specific), and scale ≈1.2× to the established 0.432 length.
+      **Acceptance:** carried, thrown, retrieved, and it reads as a slipper in third person.
+- [ ] **7.4 · Eskinita re-dressed from City Kit (Suburban) + Car Kit + Furniture Kit.** 🎨 Design ⛔ 7.1
+      ⚠️ **City Kit buildings are diorama-scale — a house is currently SHORTER than a Person.**
+      ≈5× is the measured starting factor. **One scale constant per kit, named, in the builder** —
+      never per piece by eye.
+      Add kit road/path meshes to `floorcheck.GROUND_MESHES` or every marking on them reports as
+      floating. Markings stay procedural (`Art_Direction.md` §0b, "kits for objects, generator for
+      markings").
+- [ ] **7.5 · The probinsya map from Fantasy Town Kit + Mini Forest.** 🎨 Design ⛔ 7.4
+      Supersedes the Bayan Plaza dressing set. `stall.glb` is the best sari-sari base in any kit.
+      Do this after Eskinita: the second map is where the kit-scale process gets reused, not
+      invented.
+- [ ] **7.6 · Sarsi livery, as a retexture of `soda-can.glb`.** 🎨 Design ⛔ 7.2
+      **Deliberately deferred, on the human's own instruction:** *"js add to plan that we will make
+      that better later and make it sarsi or something."* Checklist 2.9 shipped a Sarsi-liveried
+      *procedural* can hours before this overhaul and 7.2 replaces it — the livery does not survive
+      the swap and is rebuilt here as a texture instead. The trademark note and the credit in
+      `README.md` stay valid throughout and do not need revisiting.
+- [ ] **7.7 · Wire the animation clips the kit already ships.** 🎨 Design — no kit swap needed,
+      **can start immediately, blocks nothing and is blocked by nothing**
+      Human instruction: *"the assets i sent has animation built in, pls use."* Verified: **Mini
+      Characters ships 32 baked clips per `.glb`; every other kit ships zero.** So this is a
+      character item only — there is nothing to wire on props or the world.
+      Eight clips are already wired (`idle`, `walk`, `sprint`, `holding-right`,
+      `holding-right-shoot`, `attack-melee-right`, `attack-kick-right`, `pick-up`). Wire these,
+      each of which reads state the game **already tracks**:
+  - [ ] **`jump` / `fall`.** `_play_locomotion()` selects on horizontal speed only, so a Person in
+        mid-air plays `walk` right now. Biggest cheap win in the item.
+  - [ ] **`die` on `State.DOWNED`.** Downed currently reads in the HUD but not on the body.
+  - [ ] **`emote-yes` on the `ready_up` press.** Everyone else sees who has readied, in the world.
+  - [ ] **`holding-right-shoot` held and scaled by `Carrier.charge_power()`** — a candidate answer
+        to the long-open third-person windup tell, using a clip that already exists instead of new
+        geometry. ⚠️ If reading charge from another peer's `Carrier` needs a **new synced field**,
+        that half is a Build-lane wall — file it in `Handoff.md` §5 and hand it back; the visual
+        half stays ours.
+  - [ ] **Do NOT wire `interact-right`.** It maps to the lata reset channel (B-46), which is not
+        built. Listed only so nobody wires a clip to a mechanic that does not exist.
+      ⚠️ **Scope boundary:** every sub-item reads existing state and plays a clip — no new state,
+      no new input, no new networking. That is what keeps this in the design lane.
+
+- [ ] **7.0 · ⛔ HUMAN DECISION — the flip-flop's licence.** ⛔ BLOCKS 7.3
+      The six Kenney kits are **CC0**, confirmed in each `License.txt` — no obligation. The supplied
+      **"flip flops by Tiff Eidmann - aVbWCpQLno8.glb"** is not: that filename is the Poly Pizza
+      convention and those models are typically **CC-BY, which REQUIRES attribution**. A human must
+      confirm the licence and the exact attribution string before it ships in a graded, publicly
+      submitted entry. **If it cannot be confirmed the fallback costs nothing** — the current
+      procedural tsinelas already matches the §1b moodboard and simply stays. Filed in
+      `Handoff.md` §5.
+
 ## Already done — the ledger this list replaces
 
 Kept short on purpose; the detail is in `Handoff.md` §4 and `Handoff.md`.
