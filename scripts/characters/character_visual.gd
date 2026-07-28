@@ -96,6 +96,10 @@ const ACTION_CLIPS: Dictionary = {
 	"throw": ["holding-right-shoot", "pick-up", "interact-right"] as Array[String],
 	# Bump — a shove, so a melee swing rather than a throw.
 	"bump": ["attack-melee-right", "attack-kick-right", "interact-right"] as Array[String],
+	# 7.7 — the ready-up press, so everyone ELSE can see who has readied without
+	# looking at a HUD. `emote-yes` is literally a thumbs-up on this rig; it was
+	# one of the 24 clips shipping unused.
+	"ready": ["emote-yes", "interact-right"] as Array[String],
 	# Task 1 — reaching down for a loose tsinelas. `pick-up` is the literal clip
 	# for this and the reason the brief called it out.
 	"grab": ["pick-up", "interact-right", "interact-left"] as Array[String],
@@ -642,7 +646,29 @@ func _play_locomotion() -> void:
 	# instead, so the fix is to stop trying to walk-animate a carrying arm at
 	# all: legs stop swinging while holding something and moving, which is a
 	# far smaller visual cost than the hand and viewmodel swimming every step.
-	if _is_holding():
+	# ⚠️ 7.7 — DOWNED and AIRBORNE ARE CHECKED BEFORE ANYTHING ELSE, and in that
+	# order, because both are states the game already tracks and neither had any
+	# body language at all. The Kenney rig ships 32 clips and only eight were
+	# wired; these are two of the four that map onto existing state.
+	#
+	# `die` on DOWNED: being knocked down read ONLY in the HUD flash and the
+	# `Visual` tilt. A downed unit and a standing one played the same idle.
+	#
+	# `jump`/`fall` on airborne: `_play_locomotion()` selected on HORIZONTAL
+	# speed alone, so a Person at the top of a jump — horizontal speed near zero —
+	# played `idle`, and one moving sideways through the air played `walk`. Every
+	# unit in this game can jump (§0's pillar put it on the Prop too), so that was
+	# the most-seen missing pose in the build. Split by vertical velocity so a
+	# rising jump and a falling one are not the same pose.
+	#
+	# ⚠️ NO NEW STATE, NO NEW INPUT, NO NEW NETWORKING. Every branch reads
+	# something `character_base.gd` already owns and already replicates. That is
+	# what keeps animation work in the design lane.
+	if _character.state == CharacterBase.State.DOWNED:
+		wanted = "die"
+	elif not _character.is_on_floor():
+		wanted = "jump" if _character.velocity.y > 0.0 else "fall"
+	elif _is_holding():
 		wanted = CARRY_IDLE_CLIP
 	elif speed > RUN_SPEED_THRESHOLD:
 		wanted = "sprint"
