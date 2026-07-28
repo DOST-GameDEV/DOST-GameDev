@@ -133,11 +133,14 @@ enum State { NORMAL, STAGGERED, DOWNED, SEALED }
 ## characters share one keyboard without both moving on the same WASD press —
 ## see project.godot [input]: every action is suffixed "_p1".."_p4". p1/p2 are
 ## bound to real keys (WASD+Space / Arrows+Enter); p3/p4 are registered but
-## deliberately left unbound (see project.godot [input]) — they exist so the
-## local single-PC test flow can spawn the real 4-unit Person+Prop structure
-## without needing 4 human players, and a character with an unbound player_id
-## simply never receives input, standing in as a local-test dummy. See
-## main.gd's local _ready() branch for how p3/p4 are assigned.
+## deliberately left unbound (see project.godot [input]) — no real hardware
+## keystroke can ever land on them. Two uses fall out of that: a character
+## with an unbound player_id and no AIController simply never receives input,
+## standing in as Single Player's local-test dummy (see main.gd's local
+## _ready() branch); and it's the range main.gd assigns to every AI-driven
+## networked character (see _build_spawn_data), so AIController's
+## Input.action_press() calls can never collide with a real human's own p1/p2
+## keystrokes on the same machine.
 @export_range(1, 4, 1) var player_id: int = 1
 
 signal state_changed(new_state: State)
@@ -200,12 +203,16 @@ var _melee_hitbox: Hitbox = null
 ## Task 0/1 — this unit's hands, when it is a Person. See carrier.gd.
 @onready var _carrier: Carrier = get_node_or_null("Carrier")
 
-## Checklist 5.5 — Single Player. Null for every unit except the three
-## AI-driven ones in single-player, which main.gd attaches this to at
-## runtime (never baked into CharacterBase.tscn — see ai_controller.gd's own
-## class doc for why). A plain public var rather than an @onready
-## get_node_or_null(), because the node this would resolve does not exist
-## yet when THIS character's own _ready() runs — main.gd adds it afterward.
+## Checklist 5.5, later reused for networked AI takeover. Null for every unit
+## with a live human behind it; non-null for Single Player's unpiloted units
+## and for a networked character with no real peer (an unfilled slot, or a
+## real peer's character after they disconnect — see main.gd's
+## _build_networked_character / _rpc_convert_to_ai). main.gd attaches this at
+## runtime in every case (never baked into CharacterBase.tscn — see
+## ai_controller.gd's own class doc for why). A plain public var rather than
+## an @onready get_node_or_null(), because the node this would resolve does
+## not exist yet when THIS character's own _ready() runs — main.gd adds it
+## afterward.
 var ai_controller: AIController = null
 
 ## Art_Direction.md §1 proportion audit: CharacterBase.tscn's CollisionShape3D,
