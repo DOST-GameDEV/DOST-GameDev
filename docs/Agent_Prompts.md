@@ -423,10 +423,50 @@ SETUP
 Godot: <path to your Godot 4.7.x executable> (NOT on PATH — set per machine, do not paste a teammate's path)
 
 READ FIRST: docs/Art_Direction.md — especially §0 (the "friendslop" design pillar) and
-§3 (items B, C, D, G, which are your queue). Then docs/Art_Direction.md and
+§3 (items B, C, D, G, the standing part of your queue below). Then docs/Art_Direction.md and
 docs/Concurrency_Protocol.md §2/§3/§8.
 
-YOUR QUEUE, in priority order.
+YOUR QUEUE, in priority order. Items 1-3 are fresh, 2026-07-28, from the same playtest session
+that found the confinement/spawn/floating-decal bugs above — do these FIRST, they are the
+freshest and most player-visible. Items B-G below are the standing environment-art queue.
+
+1. THIRD-PERSON CHARGE/WINDUP TELL. User feedback: "I WANT EVERYONE ELSE IN THE WORLD TO SEE THAT
+   THE WIND UP IS HAPPENING NOT JUST PERSON THROWING SLIPPER." Right now a charged throw is only
+   visible to the thrower themselves — carrier.gd's charge_changed signal drives the FPP viewmodel
+   arm (camera_rig.gd::set_viewmodel_charge) and, since this session, a UI shader hook on the
+   thrower's OWN charge bar (you_card.gd::CHARGE_SHADER_PARAM) — but nothing anyone ELSE looking
+   at that character in third person can see. This is not a new ask you're inventing the spec
+   for: the moodboard's own THE ATTACKER card already illustrates "charged throw (glow)" — that
+   line is what the UI hook above was built against, and it explicitly said the world-space
+   treatment was being left for you. Read `you_card.gd`'s own comment at the hook site first.
+   Build a WORLD-SPACE visual response driven by `Carrier.charge_power()` — a glow on the held
+   tsinelas, a shader/material response, a pose tell, whatever reads best against the moodboard —
+   visible to every peer watching that character, not just its own controller. If reading charge
+   state from another peer's Carrier turns out to need real networking work (a new synced field,
+   not just a local read), that is a Build-lane wall — file it in Handoff.md §5 and hand back the
+   networking half rather than inventing replication yourself; the visual treatment is still
+   yours to design once the data exists.
+
+2. INVESTIGATE: "why does the defender only have one hand." Reported with a screenshot: a
+   third-person Person model (not the FPP viewmodel — this was someone ELSE watching a defender)
+   showing what reads as a single oddly-shaped hand/arm. Not root-caused this session — could be
+   the Kenney rig's own animation pose (a bump/tag clip genuinely only extends one arm, which
+   might just be correct and not a bug at all), a stale BoneAttachment3D left over from an
+   earlier carry state, or something else. Look at it rendered before deciding what it even is;
+   this is explicitly "does this look right", not a prescribed fix. If it turns out to be a code
+   bug (an animation-clip or attachment-lifecycle issue in character_visual.gd) rather than an
+   art/asset one, say so and hand it back to Build rather than patching gameplay code yourself.
+
+3. RE-VERIFY "slipper still floating." A carried tsinelas's carry-TILT bug (55° rotation not
+   resetting on throw/drop) was found and fixed by Build this session (carriable.gd's
+   `_rpc_set_flying`/`_rpc_set_loose`), but the user's report came in the SAME message as several
+   other items and may describe something separate: the actual carried POSITION, not the
+   rotation. `character_visual.gd::HAND_CARRY_OFFSET` is explicitly documented at its own
+   definition as "MEASURED BY CALIBRATION, NOT GUESSED" and due for re-measurement if the pose or
+   proportions it was calibrated against ever change — re-render the viewmodel probe
+   (`tools/render_probe.gd`, `viewmodel` mode) and confirm by eye whether the held slipper still
+   reads as floating/detached from the hand, independent of the tilt fix above. If it's fine now,
+   say so and close it out rather than re-tuning a number that isn't actually wrong.
 
 B. NARROW THE ALLEY. Eskinita's playable width is x = +/-8 — a 16 m road, which is a boulevard,
    not an eskinita. A real side street is 3-5 m. tools/maps/build_eskinita.py has W = 8.0 as one

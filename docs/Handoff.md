@@ -947,6 +947,23 @@ looked at closely.** Lowered to `0.001`, a near-zero epsilon rather than a "safe
 number — see `build_eskinita.py`'s own updated warning comment. Verified by a fresh render; no
 visible gap under the confinement square or team-side lines this time.
 
+**Three items handed to the 🎨 DESIGN-ART lane (docs only, no code) — see `Agent_Prompts.md`'s
+DESIGN-ART prompt, new items 1-3, ahead of its standing B-G environment-art queue.** From the same
+playtest batch, not yet investigated or fixed by Build this session:
+1. Third-person charge/windup tell — a charged throw is currently only visible to the thrower
+   (FPP viewmodel + their own UI charge bar); nobody else watching that character in third person
+   can see it. The moodboard's own THE ATTACKER card already specifies "charged throw (glow)" —
+   this is that spec's world-space half, which `you_card.gd`'s UI-only hook was deliberately built
+   to leave for Design rather than guess at.
+2. "Why does the defender only have one hand" — reported with a screenshot, not root-caused.
+   Genuinely unclear yet whether this is an art/animation issue or a code bug; routed to Design
+   to look at rendered first, with instructions to hand it back to Build if it turns out not to be
+   a "does this look right" question.
+3. "Slipper still floating" re-verification — the carry-TILT rotation bug (55° not resetting on
+   throw/drop) was found and fixed by Build this session, but the report may be about the carried
+   POSITION (`HAND_CARRY_OFFSET`) rather than rotation, which is Design's own previously-calibrated
+   number to re-measure if still wrong.
+
 **Local Match → Single Player, planned (docs only, no code) — see `Checklist.md` 5.5 and the new
 🔧 BUILD-AI brief in `Agent_Prompts.md`.** User decision: Local Match stops being a dev-only
 testing harness / network-outage fallback (the old plan, `Checklist.md` 5.3) and becomes a real,
