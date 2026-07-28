@@ -37,9 +37,16 @@ const DOWNED_SELF_RIGHT_WINDOW: float = 2.0
 ## transform, so world origin IS the base circle centre) for the whole round.
 ## Sized to give the Taya room to body-block an incoming throw without being
 ## able to chase the attacker back to the throwing line — see Art_Direction.md
-## §9 for why the line sits 6 units out. First guess, not a measurement; needs
-## a human to actually play it.
-const CONFINEMENT_RADIUS: float = 3.0
+## §9 for why the line sits 6 units out.
+## ⚠️ RAISED 3.0 -> 5.0, same day, after the first playtest: "the box that
+## defend can move in is so small. he can barely move, theres no room for
+## outplays." Still a full unit short of the 6.0 throwing line, so the Taya
+## still cannot reach the attacker's line — same design constraint as before,
+## just more room inside it. Mirrored by `CONFINEMENT_RING_RADIUS` in every
+## map's build_*.py, which draws the actual boundary as a chalk-style ring —
+## keep both in sync if this is retuned again. Still a first guess, not a
+## measurement; needs a human to actually play it.
+const CONFINEMENT_RADIUS: float = 5.0
 ## Bump is "no cooldown" per the GDD but still needs an active window so standing
 ## next to an opponent doesn't stagger them every physics tick — press-to-bump,
 ## briefly live, matches "light melee" better than always-on contact damage.

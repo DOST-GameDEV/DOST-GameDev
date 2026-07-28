@@ -721,17 +721,34 @@ the next `move_and_slide()` re-establishes floor contact. Reported as "when roun
 randomly falls thru the void." Fixed by zeroing velocity in the same place `respawn()` already
 does.
 
-**Arena resized to a bigger square with a chalk boundary, at the user's explicit request —
-supersedes DESIGN-ART's queued "narrow the alley" item.** See the note in `docs/Agent_Prompts.md`'s
-DESIGN-ART block (item B) for the full detail: `W`/`Z_END` are now 24.0/24.0 (was 8.0/17.0),
-existing dressing was rescaled to match via a new `sc()` helper, floor/wall/kill-plane sizing is
-now computed from `W`/`Z_END` instead of hardcoded, and a chalk boundary line was added around the
-perimeter reusing `team_side_decal` (no new mesh added to `env_kit.gd`, which stays Design-owned).
-Spawn markers, the base circle and the throwing line were deliberately left untouched — the human
-already confirmed those distances feel right, independent of overall arena size. **Verified by
-render** (`tools/render_probe.gd`, real device) that the geometry is sound — floor/walls/border
-lines land where computed, no parse errors, no console warnings. **NOT verified by play** — nobody
-has actually moved around the bigger arena yet.
+**Arena resize to a bigger square — TRIED, then FULLY REVERTED same session.** First attempt at
+the "playing area feels too small" complaint below widened the whole map footprint (`W`/`Z_END`
+24.0/24.0, was 8.0/17.0) instead of the actual thing the human meant. Human's correction: "i
+wanted you to expand playing AREA, Not the entire map" — the complaint was
+`CharacterBase.CONFINEMENT_RADIUS` (the box the Can/Taya can actually move in), not the map's
+footprint, and stretching the whole map made that box feel *more* cramped by comparison, not less.
+Also broke Layer3 dressing (posts/sampay wires positioned for the old width, now visibly
+disconnected from the wall line — reported as "floating elements everywhere"). Reverted in full:
+`tools/maps/build_eskinita.py` restored to its post-B-92-fix state (`git show
+088d09a:tools/maps/build_eskinita.py`), `Eskinita.tscn` regenerated, `docs/Agent_Prompts.md`'s
+DESIGN-ART item B and `Checklist.md`'s 2.2 bullet restored to their original text. **Lesson,
+recorded so it isn't repeated:** "make the playing area bigger" in this project means the
+confinement box, not the map — see the fix below.
+
+**Confinement radius raised 3.0 → 5.0, plus a new chalk-style boundary ring marking it.**
+`CharacterBase.CONFINEMENT_RADIUS` is now 5.0 — still a full unit short of the 6.0 throwing line,
+so the Taya still cannot reach the attacker's line, same design constraint as before, just more
+room inside it. `build_eskinita.py` now also draws the confinement boundary itself as a ring of
+tiled `team_side_decal` segments (`CONFINEMENT_RING_RADIUS`, a 12-gon approximation — no new mesh
+added to `env_kit.gd`, which stays Design-owned), added via a new `sx` parameter on
+`xform()`/`add()` that scales a decal along its own authored length axis. Before this there was
+nothing on the ground marking the edge of the box itself — only the tiny base circle and the
+distant throwing line — so a Taya had no way to see how much room they actually had.
+**`build_bayan_plaza.py` does NOT have this ring yet** — same treatment needed there before that
+map is played under Option B. Keep `CONFINEMENT_RING_RADIUS` and `CONFINEMENT_RADIUS` in sync if
+either is retuned again. **Verified by render** (`tools/render_probe.gd`, real device) — geometry
+lands where computed, no parse errors, no console warnings, original map footprint confirmed back
+to its pre-resize look. **NOT verified by play.**
 
 **Still open, not root-caused this session:** a report of a carried tsinelas reading as
 permanently frozen/slanted, and a Can appearing stuck mid-animation at the same time, with no

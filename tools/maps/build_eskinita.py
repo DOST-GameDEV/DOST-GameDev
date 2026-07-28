@@ -26,27 +26,9 @@ Layout reasoning lives in docs/Art_Direction.md §4:
 """
 import math
 
-# 2026-07-28: user played the narrow alley and asked for a much bigger, SQUARE
-# arena with a visible chalk boundary, "just like normal tumbang preso". Done
-# here despite this being Design-lane territory (tools/maps/build_*.py, per
-# Concurrency_Protocol.md §2) because the user asked for it explicitly and
-# accepted the conflict — see the note left in docs/Agent_Prompts.md's
-# DESIGN-ART queue and docs/Handoff.md §5. The teammate's queued "narrow the
-# alley to 3-5m" task (checklist 2.2 item B) is now stale against this and
-# needs re-evaluation, not blind execution against an out-of-date brief.
-#
-# Spawn markers, the base circle, the throwing line and the hazard zone are
-# deliberately UNTOUCHED — the user confirmed those distances feel right
-# after actually playing them, independent of overall arena size.
-W = 24.0         # half-width of the playable square (was 8.0)
-Z_END = 24.0     # half-length — equal to W now that it's square (was 17.0)
+W = 8.0          # half-width of the playable alley
+Z_END = 17.0     # half-length
 CELL = 2.0
-# Everything below used to assume the old 16x34 rectangle (building masses,
-# interior clutter, tricycles, all hand-placed absolute coordinates). Scaled
-# by these per-axis ratios via sc() so the whole composition grows with the
-# arena instead of clumping in one corner of the new floor.
-SCALE_X = W / 8.0
-SCALE_Z = Z_END / 17.0
 
 meshes, ext, order = {}, [], []
 
@@ -58,21 +40,19 @@ def mesh(name):
     return meshes[name]
 
 
-def xform(x, y, z, yaw=0.0):
+def xform(x, y, z, yaw=0.0, sx=1.0):
+    # sx scales only the mesh's own local-X row (its authored length axis for
+    # every line-shaped decal in this file — see _box() calls in env_kit.gd),
+    # leaving Y/Z untouched. Lets a straight decal be shortened/lengthened
+    # without a new mesh asset — used to tile team_side_decal into a polygonal
+    # ring for the confinement-radius marker below.
     c, s = math.cos(yaw), math.sin(yaw)
-    return (f"Transform3D({c:.5f}, 0, {-s:.5f}, 0, 1, 0, {s:.5f}, 0, {c:.5f}, "
+    return (f"Transform3D({c * sx:.5f}, 0, {-s * sx:.5f}, 0, 1, 0, {s:.5f}, 0, {c:.5f}, "
             f"{x:.4f}, {y:.4f}, {z:.4f})")
 
 
-def add(parent, name, mesh_name, x, y, z, yaw=0.0):
-    order.append((parent, name, mesh(mesh_name), xform(x, y, z, yaw)))
-
-
-def sc(x, z):
-    """Scales a hand-placed dressing coordinate from the old 16x34 layout
-    onto the new square footprint, preserving where each piece sat relative
-    to the old wall line/road length rather than its raw distance."""
-    return (x * SCALE_X, z * SCALE_Z)
+def add(parent, name, mesh_name, x, y, z, yaw=0.0, sx=1.0):
+    order.append((parent, name, mesh(mesh_name), xform(x, y, z, yaw, sx)))
 
 
 # --- Layer 1: the wall line the player actually touches, at x = +/-8 ---------
@@ -101,9 +81,8 @@ for n, (x, zz, kind) in enumerate([
         (-13.5, -12.0, "a"), (-14.5, -4.0, "c"), (-13.0, 5.0, "d"),
         (-15.0, 13.0, "b"), (13.5, -13.0, "b"), (14.0, -3.0, "a"),
         (13.0, 6.5, "c"), (15.0, 14.0, "d")]):
-    sx, sz = sc(x, zz)
     add("Dressing/Layer2", f"L2_{n}", f"building_block_{kind}",
-        sx, 0.0, sz, 0.35 if n % 2 else -0.22)
+        x, 0.0, zz, 0.35 if n % 2 else -0.22)
 
 # --- Layer 3: overhead. Highest read-per-triangle in the kit. ---------------
 for n, zz in enumerate([-14.0, -8.0, -2.0, 4.0, 10.0, 16.0]):
@@ -113,14 +92,13 @@ for n, zz in enumerate([-11.0, -5.0, 1.0, 7.0, 13.0]):
     add("Dressing/Layer3", f"Sampay_{n}", "laundry_line", 0.0, 0.0, zz)
 
 # --- Lane markings down the middle of the road ------------------------------
-N_TILES = int(Z_END / CELL)
-for n in range(-N_TILES, N_TILES + 1):
-    add("Dressing/Road", f"Lane_{n + N_TILES}", "road_tile_line", 0.0, 0.0, n * 2.0)
+for n in range(-8, 9):
+    add("Dressing/Road", f"Lane_{n + 8}", "road_tile_line", 0.0, 0.0, n * 2.0)
 
 # --- Kerbs, both sides ------------------------------------------------------
-for n in range(-N_TILES, N_TILES + 1):
+for n in range(-8, 9):
     for side in (-1.0, 1.0):
-        add("Dressing/Road", f"Kerb_{n + N_TILES}_{'E' if side > 0 else 'W'}",
+        add("Dressing/Road", f"Kerb_{n + 8}_{'E' if side > 0 else 'W'}",
             "kerb_tile", side * (W - 1.2), 0.0, n * 2.0, math.pi * 0.5)
 
 # --- Interior clutter. Every piece here is <= 1.0 tall so an FPP Person, whose
@@ -133,16 +111,14 @@ CLUTTER = [
     ("bollard", -6.8, -2.0), ("bollard", 6.8, 2.0),
 ]
 for n, (piece, x, zz) in enumerate(CLUTTER):
-    sx, sz = sc(x, zz)
-    add("Dressing/Clutter", f"Clutter_{n}", piece, sx, 0.0, sz,
+    add("Dressing/Clutter", f"Clutter_{n}", piece, x, 0.0, zz,
         [0.4, -0.9, 1.7, 2.6, -2.1][n % 5])
 
 # --- Tricycles. Waist-cover tier (1.25 tall) so they sit AGAINST the wall line,
 # --- never loose in the alley where they would block an FPP Person's aim.
 for n, (x, zz, yaw) in enumerate([
         (-6.6, -6.0, 0.15), (6.6, 9.5, math.pi + 0.2), (-6.5, 15.0, -0.1)]):
-    sx, sz = sc(x, zz)
-    add("Dressing/Clutter", f"Tricycle_{n}", "tricycle", sx, 0.0, sz, yaw)
+    add("Dressing/Clutter", f"Tricycle_{n}", "tricycle", x, 0.0, zz, yaw)
 
 # --- Field markings. These serve BOTH round-win modes. ----------------------
 # y = MARK_Y, not 0. Found by rendering: `road_tile_line` is a whole 2x2 asphalt
@@ -158,23 +134,28 @@ add("Markings", "TeamSideNorth", "team_side_decal", 0.0, MARK_Y, -13.0)
 add("Markings", "TeamSideSouth", "team_side_decal", 0.0, MARK_Y, 13.0)
 add("Markings", "JeepneyLane", "jeepney_lane_decal", 5.4, MARK_Y, 0.0)
 
-# --- Chalk boundary line around the whole square, at the wall line. Real
-# --- tumbang preso is played inside a plain chalk-drawn boundary on open
-# --- ground, so this reuses team_side_decal (a flat 6.0-long painted line,
-# --- the same asset the team-side markings already are) tiled around all
-# --- four edges rather than authoring a new mesh in env_kit.gd, which stays
-# --- Design-lane territory even though the arena resize itself isn't.
-BORDER_SEG = 6.0
-n_border_x = math.ceil((2 * W) / BORDER_SEG)
-for n in range(n_border_x):
-    bx = -W + BORDER_SEG * (n + 0.5)
-    add("Markings", f"BorderNorth_{n}", "team_side_decal", bx, MARK_Y, -Z_END)
-    add("Markings", f"BorderSouth_{n}", "team_side_decal", bx, MARK_Y, Z_END)
-n_border_z = math.ceil((2 * Z_END) / BORDER_SEG)
-for n in range(n_border_z):
-    bz = -Z_END + BORDER_SEG * (n + 0.5)
-    add("Markings", f"BorderEast_{n}", "team_side_decal", W, MARK_Y, bz, math.pi * 0.5)
-    add("Markings", f"BorderWest_{n}", "team_side_decal", -W, MARK_Y, bz, math.pi * 0.5)
+# --- Confinement-radius ring. 2026-07-28: the Can/Taya's actual restricted
+# --- play area (CharacterBase.CONFINEMENT_RADIUS) was invisible on the
+# --- ground -- the only markers were the tiny base circle and the distant
+# --- throwing line, with nothing showing where the confinement edge itself
+# --- sits. This is the mark that matters for "outplays" (juking a defender
+# --- along the actual edge of their box), not a boundary around the whole
+# --- map. Built the same way the (reverted) map-perimeter border was: tiling
+# --- team_side_decal's straight line, scaled per-segment via xform()'s new
+# --- sx to approximate a circle rather than authoring a new ring mesh in
+# --- env_kit.gd, which stays Design-owned.
+# --- CONFINEMENT_RING_RADIUS mirrors CharacterBase.CONFINEMENT_RADIUS --
+# --- keep the two in sync if either is retuned again.
+CONFINEMENT_RING_RADIUS = 5.0
+N_RING = 12
+_ring_chord = 2 * CONFINEMENT_RING_RADIUS * math.sin(math.pi / N_RING)
+_ring_scale = _ring_chord / 6.0  # team_side_decal's native length
+for i in range(N_RING):
+    theta = i * (2 * math.pi / N_RING)
+    rx = CONFINEMENT_RING_RADIUS * math.cos(theta)
+    rz = CONFINEMENT_RING_RADIUS * math.sin(theta)
+    add("Markings", f"ConfinementRing_{i}", "team_side_decal", rx, MARK_Y, rz,
+        theta + math.pi / 2.0, _ring_scale)
 
 # =============================================================================
 
@@ -184,22 +165,8 @@ ext_lines.append('[ext_resource type="Script" '
 ext_lines.append('[ext_resource type="Script" '
                  'path="res://scripts/systems/kill_plane.gd" id="K"]')
 
-# Floor/wall sizing, derived from W/Z_END rather than hardcoded, so a future
-# resize doesn't have to remember to touch these too. FLOOR_SIZE keeps the
-# same margin outside the wall line the old 40x40 floor gave the X sides
-# (half-width 20 vs W 8 = 12 margin) on all four sides now that it's square —
-# an improvement over the old floor, which only had a 3-unit margin on Z.
-# Shape_killplane (90x90) and Shape_hazard are untouched: both already exceed
-# the new floor, and the hazard zone's position is a tuned gameplay feature,
-# not an arena-scale one.
-FLOOR_HALF = W + 12.0
-FLOOR_SIZE = FLOOR_HALF * 2.0
-WALL_MARGIN = 1.0
-WALL_HALF = max(W, Z_END) + WALL_MARGIN
-WALL_SPAN = FLOOR_SIZE  # long enough to cover the full floor length, no corner gaps
-
-SUBS = f'''[sub_resource type="BoxShape3D" id="Shape_floor"]
-size = Vector3({FLOOR_SIZE:.1f}, 1, {FLOOR_SIZE:.1f})
+SUBS = '''[sub_resource type="BoxShape3D" id="Shape_floor"]
+size = Vector3(40, 1, 40)
 
 [sub_resource type="StandardMaterial3D" id="Mat_floor"]
 albedo_color = Color(0.29020, 0.30588, 0.34118, 1)
@@ -207,13 +174,13 @@ roughness = 1.0
 
 [sub_resource type="BoxMesh" id="Mesh_floor"]
 material = SubResource("Mat_floor")
-size = Vector3({FLOOR_SIZE:.1f}, 1, {FLOOR_SIZE:.1f})
+size = Vector3(40, 1, 40)
 
 [sub_resource type="BoxShape3D" id="Shape_wall_z"]
-size = Vector3(1, 12, {WALL_SPAN:.1f})
+size = Vector3(1, 12, 40)
 
 [sub_resource type="BoxShape3D" id="Shape_wall_x"]
-size = Vector3({WALL_SPAN:.1f}, 12, 1)
+size = Vector3(20, 12, 1)
 
 [sub_resource type="BoxShape3D" id="Shape_killplane"]
 size = Vector3(90, 4, 90)
@@ -274,7 +241,7 @@ adjustment_saturation = 1.2
 # is AT the throwing line Art_Direction.md §9 derived the 6.0 distance for;
 # Spawn3 (Tsinelas) starts beside the Attacker — main.gd auto-hands it to them
 # at round start, so it is rarely loose there for more than an instant.
-HEAD = f'''[node name="Eskinita" type="Node3D"]
+HEAD = '''[node name="Eskinita" type="Node3D"]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Env_eskinita")
@@ -301,25 +268,25 @@ mesh = SubResource("Mesh_floor")
 [node name="Bounds" type="Node3D" parent="."]
 
 [node name="WallEast" type="StaticBody3D" parent="Bounds"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, {WALL_HALF:.1f}, 6, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.6, 6, 0)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Bounds/WallEast"]
 shape = SubResource("Shape_wall_z")
 
 [node name="WallWest" type="StaticBody3D" parent="Bounds"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, {-WALL_HALF:.1f}, 6, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8.6, 6, 0)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Bounds/WallWest"]
 shape = SubResource("Shape_wall_z")
 
 [node name="WallNorth" type="StaticBody3D" parent="Bounds"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6, {-WALL_HALF:.1f})
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6, -18.0)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Bounds/WallNorth"]
 shape = SubResource("Shape_wall_x")
 
 [node name="WallSouth" type="StaticBody3D" parent="Bounds"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6, {WALL_HALF:.1f})
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6, 18.0)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Bounds/WallSouth"]
 shape = SubResource("Shape_wall_x")
