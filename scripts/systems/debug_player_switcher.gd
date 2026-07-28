@@ -1,12 +1,21 @@
 extends Node
 
 ## Queue item 1 / Dev_Plan.md §3.5 — drive any of the four local-test units by
-## hand, so a whole Bo5 can be played by one person.
+## hand, for TESTING. Originally this was how a solo tester played a whole Bo5
+## on one keyboard at all; since Checklist 5.5, Single Player does that on its
+## own (the human plays one unit, AI drives the other three — see
+## ai_controller.gd), so this is now specifically a debug OVERRIDE: temporary
+## manual control of a unit AI would otherwise be driving, for inspecting or
+## exercising it directly. `_apply_slots()` disables that unit's
+## `ai_controller` for as long as a slot holds it and hands it straight back
+## the instant the slot is cleared (F5, F6, or reassigning the slot to
+## something else) — see that function's own doc.
 ##
 ## Fixes B-42: from round 2 on, `_on_match_round_started` flips `team_a_is_can`,
-## so the tracked Can becomes `TeamBProp` — `player_id = 3`, permanently
-## unbound. Without this the Can cannot be moved or self-righted and the round
-## can only end on the timer, i.e. a local Bo5 is unplayable past round 1.
+## so the tracked Can becomes `TeamBProp` — `player_id = 3`. Before AI existed
+## that meant the Can could not be moved or self-righted past round 1; today
+## it means nobody has manually overridden it, so its own AI keeps driving it
+## exactly as it should.
 ##
 ## ⚠️ DEBUG-ONLY. Written to the removal contract in Dev_Plan.md §0.3 and torn
 ## out by the checklist in §3.5.5. Three rules that make the removal a delete
@@ -26,12 +35,17 @@ extends Node
 ## Main.tscn order, which is also the Tab cycle order (§3.5.1).
 const UNIT_NAMES: Array[String] = ["TeamAProp", "TeamAPerson", "TeamBProp", "TeamBPerson"]
 ## Registered in project.godot but deliberately never bound, so a unit parked
-## here receives no input at all and stands inert (§3.5.2).
+## here receives no REAL keyboard input at all (§3.5.2). Checklist 5.5: no
+## longer the same as "stands inert" — a parked unit with an `ai_controller`
+## (every local-test unit except `TeamAPerson`) drives itself via
+## `Input.action_press()`/`action_release()` on this same unbound action set,
+## which needs no key bound to it at all. Only `TeamAPerson`, which never gets
+## an `ai_controller`, is actually inert while parked here.
 const PARKED_PLAYER_ID: int = 4
 const SLOT_P1: int = 0
 const SLOT_P2: int = 1
 ## Defaults for F6, and for the slot state established when the DebugBar
-## registers. P1 holds the Person so a fresh Local Match starts you in the human
+## registers. P1 holds the Person so a fresh Single Player starts you in the human
 ## character rather than third-person on a tin can; P2 gets the Prop. Must stay
 ## in step with Main.tscn's baked player_id values (TeamAPerson=1, TeamAProp=2)
 ## AND with `main.gd::_start_local_test()`, which picks the same unit for the
@@ -65,7 +79,7 @@ func debug_unregister_bar() -> void:
 
 ## ⚠️ `_input`, NOT `_unhandled_key_input`. Playtest 0.4 reported "I can't Tab to
 ## the can", and there are TWO independent reasons for it — this fixes the one
-## that bites even in Local Match.
+## that bites even in Single Player.
 ##
 ## Godot binds Tab to the built-in `ui_focus_next` action, and the viewport's GUI
 ## layer consumes focus-navigation keys BEFORE unhandled input runs. The HUD and
@@ -120,8 +134,8 @@ func _input(event: InputEvent) -> void:
 ## is nothing to switch to and reassigning `player_id` would grant no control.
 ##
 ## So if Tab does nothing and Esc shows "PAUSED — the match is still running",
-## the session is HOSTED, not Local Match. That combination is the tell, and it
-## is exactly what the 0.4 playtest reported. **Solo-test through Local Match**,
+## the session is HOSTED, not Single Player. That combination is the tell, and it
+## is exactly what the 0.4 playtest reported. **Solo-test through Single Player**,
 ## which is the mode this switcher exists for.
 func _is_active() -> bool:
 	if _bar == null or NetworkManager.is_networked():
@@ -167,7 +181,7 @@ func _assign(slot: int, unit_name: String) -> void:
 ## permanently excluded from P1's cycle — and in round 1 Team A defends, which
 ## means **TeamAProp IS the Can**. P1 could reach TeamBProp and TeamBPerson and
 ## then wrap straight back past the one unit the player was trying to look at.
-## Measured, not guessed: pressing Tab twice from a fresh Local Match walked
+## Measured, not guessed: pressing Tab twice from a fresh Single Player walked
 ## TeamAPerson -> TeamBProp -> TeamBPerson, never touching TeamAProp.
 ##
 ## Swapping keeps the invariant that mattered — the two slots can never hold the
@@ -188,6 +202,16 @@ func _cycle(slot: int) -> void:
 ## input through `_action(name) -> "%s_p%d"`. Only ever called from
 ## `_unhandled_key_input`, never mid-`_physics_process`, or a unit inherits a
 ## half-consumed edge-triggered press on the frame it gains control.
+##
+## Checklist 5.5: three of these four units may now have an `ai_controller`
+## (main.gd::_attach_ai — never `TeamAPerson`, the human's own default unit).
+## A slot claiming a unit is a human taking manual control of it, same as it
+## always was — the AI for that specific unit has to step back rather than
+## fight the human for the same buttons, so it is disabled exactly when a
+## slot holds it and re-enabled the instant it is parked again. This is what
+## makes F5 (solo drive, parks P2) put `TeamAProp` back under AI control
+## instead of leaving it inert, which is what actually happens in Single
+## Player outside the debug switcher entirely.
 func _apply_slots() -> void:
 	for unit_name in UNIT_NAMES:
 		var unit := _find_unit(unit_name)
@@ -195,6 +219,8 @@ func _apply_slots() -> void:
 			continue
 		var slot := _slot_units.find(unit_name)
 		unit.player_id = slot + 1 if slot != -1 else PARKED_PLAYER_ID
+		if unit.ai_controller != null:
+			unit.ai_controller.set_enabled(slot == -1)
 
 		# §3.5.3: the switcher picks WHICH rig is active via the rig's ordinary
 		# public API; it never touches the FPP/TPP mode, which stays derived

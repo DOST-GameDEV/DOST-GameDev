@@ -210,7 +210,7 @@ func _refresh_start_button() -> void:
 # ---------------------------------------------------------------------------
 
 func _setup_local() -> void:
-	host_address_label.text = "Local Match"
+	host_address_label.text = "Single Player"
 	start_button.visible = true
 	start_button.disabled = true
 	var row := Label.new()
