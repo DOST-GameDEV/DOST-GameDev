@@ -1539,6 +1539,71 @@ First human play of Phase 8, 2026-07-29. All three fixed; none was what it looke
       least informative one.
 - [ ] **Bayan Plaza** (8.1h), deferred by explicit human decision.
 
+## Phase 9 · AI FAIRNESS LOG — the running record for balance testing
+
+**Human call, 2026-07-29:** *"Make sure the AI's fulfil their roles as well and try to win (attacker
+avoid defender, defender try to tag, etc), log somewhere that we will test fairness thru this and
+make changes accordingly."*
+
+**This section is the log.** It is where AI balance findings go, and it is deliberately a *running*
+record rather than a one-off writeup — the whole point is that the numbers move as the AI and the
+mechanics change, and that nobody has to re-derive last week's result.
+
+### How fairness is measured
+
+`tools/ai_probe.gd` is the harness. It already reports independence and freezing; balance runs
+should extend it rather than adding a second tool. The measurements that matter:
+
+| Metric | Why | Fair range |
+|---|---|---|
+| **Round win rate, attacker vs defender**, over ≥20 rounds | The single number that says whether the sides are balanced at all | 40–60% either way |
+| **Time-to-first-throw** | An attacker that dithers is not "hard", it is broken | < 8 s |
+| **Throws blocked by the Taya / throws taken** | Is body-blocking doing anything, or is it decoration? | 25–50% |
+| **Can dents per round** | Rounds that never resolve are a worse failure than an unfair one | ≥ 1 on most rounds |
+| **Longest still-run per bot** | A frozen bot is not a difficulty setting | < 2 s |
+
+⚠️ **A win rate on its own is not a fairness result.** A 50% split where neither side ever scores
+and every round times out is not balanced, it is broken twice. Always read it next to dents-per-round.
+
+### Role intent as implemented (2026-07-29) — what "trying to win" currently means
+
+- **Taya (defending Person): BODY-BLOCKS, does not chase.** It used to walk straight at the
+  attacker, which the geometry forbids it from ever reaching — the Taya is capped at
+  `CONFINEMENT_RADIUS` 5.0 and the attacker throws from the 6.0 line, so chasing parked it against
+  the inside of its own box with the can left unguarded behind it. It now stands on the line between
+  the can and the attacker at `TAYA_BLOCK_STANDOFF` (2.6), and only closes to melee and taps when
+  the threat is genuinely inside the box.
+- **Attacker (offensive Person): AVOIDS THE DEFENDER.** It checks whether a defender is sitting in
+  the throwing lane (perpendicular distance to the attacker→can line under `ATTACKER_LANE_CLEARANCE`
+  1.3) and, if so, slides around the can to the nearest open bearing instead of charging into the
+  block. Bearings are sampled outward from the one it already holds, so it edges around rather than
+  teleporting its intent to the far side each tick.
+- **Can:** holds its circle (`CAN_HOLD_RADIUS` 0.45). Deliberately does not wander — a can that
+  strolls off its mark has nothing left to defend and made round resets look like teleports.
+- **Tsinelas:** crawls toward its own attacker so the two meet, rather than the attacker crossing the
+  whole gap alone.
+
+### ⚠️ Open — not yet measured, and the balance numbers above are therefore UNKNOWN
+
+Nothing in the table has been run yet. The role behaviours above are implemented and verified only
+for *independence and liveness* (`tools/ai_probe.gd`: 1/846 frames with two bots changing state
+together, longest still-run 1.1 s, no freezes). **Whether they are FAIR is untested**, and the first
+balance run is the next AI task.
+
+Known things that will probably need retuning once it is run, recorded now so the first run has
+hypotheses to check rather than starting cold:
+
+1. **`TAYA_BLOCK_STANDOFF` 2.6 is a first guess.** Too small and the Taya hugs the can and blocks
+   nothing; too large and it leaves a gap behind itself.
+2. **`ATTACKER_CHARGE_TIME` 0.65 is fixed**, so every AI throw has identical power. A human varies
+   it. If the AI reads as robotic, this is why.
+3. **The attacker never dodges an incoming tag** — it only avoids *standing in a blocked lane*.
+   Real evasion is a separate behaviour and is not implemented.
+4. **`DECISION_INTERVAL` 0.35 jittered 0.75–1.3×** sets reaction time and is the obvious global
+   difficulty knob if the bots turn out to be too sharp or too dull.
+5. **No difficulty tiers exist.** If fairness testing says the AI is too strong for a demo, the fix
+   is a tier that scales `DECISION_INTERVAL` and `ATTACKER_LANE_CLEARANCE`, not one-off nerfs.
+
 ## Already done — the ledger this list replaces
 
 Kept short on purpose; the detail is in `Handoff.md` §4 and `Handoff.md`.

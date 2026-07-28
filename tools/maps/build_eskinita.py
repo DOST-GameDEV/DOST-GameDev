@@ -388,14 +388,25 @@ for n, (x, zz, kind) in enumerate([
 # ⚠️ SEEDED, NEVER RANDOM. A layout that differs between two runs of this file
 # cannot be reviewed in a diff and cannot be bisected when something floats.
 # The jitter below is a fixed table, not an RNG.
+# ⚠️ DELIBERATELY QUIET, AND SMALLER THAN IT WAS. Human call, 2026-07-29: the
+# background "feels overwhelming and ugly for no reason". Phase 8 had THREE
+# building rings at 30/37/44 scaled up to 1.55x plus THREE tree rings — roughly
+# 300 instances of loud, fully-saturated silhouette stacked directly behind the
+# play space, competing with the characters for attention and costing draw calls
+# for scenery nobody looks at.
+#
+# Two rings now, further out, at closer to native scale, and faded harder toward
+# the fog colour in env_toon_pass.gd. The job of this layer is to make the
+# horizon opaque, not to be looked at.
+#
+# ⚠️ SEEDED, NEVER RANDOM. A layout that differs between two runs of this file
+# cannot be reviewed in a diff and cannot be bisected when something floats.
 BELT_TYPES = ["b", "d", "n", "q", "t", "u", "f", "p", "r", "k", "m", "s", "a"]
 _belt_jit = [0.0, 2.7, -1.9, 4.1, -3.3, 1.4, -2.2, 3.6, -0.8, 2.1, -4.0, 0.6]
 _belt = 0
-for ring_i, ring in enumerate((30.0, 37.0, 44.0)):
-    step = 9.0 + ring_i * 1.7
+for ring_i, ring in enumerate((32.0, 41.0)):
+    step = 11.0 + ring_i * 2.0
     for side in (-1.0, 1.0):
-        # Belt rows on the X sides run down Z, and vice versa, so the corners
-        # are covered by both and never show a diagonal gap to the horizon.
         zz = -46.0
         while zz <= 46.0:
             j = _belt_jit[_belt % len(_belt_jit)]
@@ -403,7 +414,7 @@ for ring_i, ring in enumerate((30.0, 37.0, 44.0)):
                     f"kits/city/building-type-{BELT_TYPES[_belt % len(BELT_TYPES)]}",
                     side * (ring + j * 0.35), zz + j,
                     (j * 0.11) + (0.0 if side > 0 else math.pi),
-                    CITY_SCALE * (1.15 + ring_i * 0.2))
+                    CITY_SCALE * (1.0 + ring_i * 0.15))
             _belt += 1
             zz += step
         xx = -46.0
@@ -413,24 +424,23 @@ for ring_i, ring in enumerate((30.0, 37.0, 44.0)):
                     f"kits/city/building-type-{BELT_TYPES[_belt % len(BELT_TYPES)]}",
                     xx + j, side * (ring + j * 0.35),
                     (j * 0.13) + (math.pi * 0.5 if side > 0 else -math.pi * 0.5),
-                    CITY_SCALE * (1.15 + ring_i * 0.2))
+                    CITY_SCALE * (1.0 + ring_i * 0.15))
             _belt += 1
             xx += step
 
-# Distant tree mass, filling the seams between belt rows.
+# One tree ring, not three, and only in the seam between the two building rings.
 _tree_n = 0
-for ring in (27.5, 33.5, 40.5):
-    for side in (-1.0, 1.0):
-        t = -44.0
-        while t <= 44.0:
-            j = _belt_jit[_tree_n % len(_belt_jit)]
-            add_kit("Dressing/Belt", f"BeltTreeX_{_tree_n}", "kits/city/tree-large",
-                    side * (ring + j * 0.3), t + j * 1.3, j * 0.2, CITY_SCALE * 1.4)
-            _tree_n += 1
-            add_kit("Dressing/Belt", f"BeltTreeZ_{_tree_n}", "kits/city/tree-large",
-                    t + j * 1.1, side * (ring + j * 0.3), -j * 0.2, CITY_SCALE * 1.4)
-            _tree_n += 1
-            t += 11.0
+for side in (-1.0, 1.0):
+    t = -44.0
+    while t <= 44.0:
+        j = _belt_jit[_tree_n % len(_belt_jit)]
+        add_kit("Dressing/Belt", f"BeltTreeX_{_tree_n}", "kits/city/tree-large",
+                side * (36.5 + j * 0.3), t + j * 1.3, j * 0.2, CITY_SCALE * 1.15)
+        _tree_n += 1
+        add_kit("Dressing/Belt", f"BeltTreeZ_{_tree_n}", "kits/city/tree-large",
+                t + j * 1.1, side * (36.5 + j * 0.3), -j * 0.2, CITY_SCALE * 1.15)
+        _tree_n += 1
+        t += 15.0
 
 # --- Street trees, between the houses and the kerb ---------------------------
 # Pushed OUT to sit against the wall line rather than at x=±7.4, where they were
@@ -578,6 +588,9 @@ while _kz < 5.5:
 # running past all of them — so nothing lined up with anything and no shape
 # closed. Every white line is now clamped to COURT_X, so the box, the throwing
 # lines and the team lines share one edge and read as a single court.
+## Every long side of the court is drawn with this mesh, so it is also the
+## width every cross-line must overlap INTO to close a corner. See court_line().
+SIDE_LINE_MESH = "team_side_decal"
 CONFINEMENT_BOX_RADIUS = 5.0   # mirrors CharacterBase.CONFINEMENT_RADIUS
 COURT_X = CONFINEMENT_BOX_RADIUS
 
@@ -640,7 +653,16 @@ def court_line(name, axis, at, half_len, mesh_name="team_side_decal"):
     # is invisible; a 40 mm gap is not.
     """
     lo, hi = mesh_bounds(mesh_name)
-    half_w = (hi[2] - lo[2]) * 0.5
+    # ⚠️ THE OVERLAP IS THE **CROSSING** LINE'S HALF-WIDTH, NOT THIS LINE'S OWN.
+    # This used to use `(hi[2] - lo[2]) * 0.5` — the width of the line being
+    # drawn — which is only correct when every line in the court is the same
+    # mesh. `throwing_line_decal` is 0.12 wide against `team_side_decal`'s 0.08,
+    # so a throwing line reached x = ±5.060 while the side line it terminates on
+    # only spans 4.960..5.040. That is a 20mm overshoot poking out past the
+    # court's own edge, at both ends of both throwing lines — measured, and
+    # exactly the "overshoot the corners" report.
+    side_lo, side_hi = mesh_bounds(SIDE_LINE_MESH)
+    half_w = (side_hi[2] - side_lo[2]) * 0.5
     reach = half_len + half_w
     sx = (reach * 2.0) / (hi[0] - lo[0])
     if axis == "x":      # runs along X, sits at z = at
@@ -649,26 +671,66 @@ def court_line(name, axis, at, half_len, mesh_name="team_side_decal"):
         add_line(name, mesh_name, at, 0.0, math.pi * 0.5, sx)
 
 
+# ⚠️⚠️ EVERY WHITE LINE IS AN EDGE OF A CLOSED RECTANGLE. NOTHING DANGLES.
+#
+# Human call, 2026-07-29, with a screenshot: "the white court lines are still
+# broken. They do not form closed boxes and overshoot the corners. Calculate the
+# offsets properly so the white lines form perfectly closed rectangles with ZERO
+# overshooting."
+#
+# The confinement square itself was already geometrically closed — measured, its
+# four edges met corner-to-corner with the crossing line's own half-width of
+# overlap and no gap. What was actually broken is that the OTHER four lines were
+# free-floating segments: the two throwing lines at z = ±6 and the two team-side
+# lines at z = ±13 ran across the road with nothing at either end. From a low
+# camera that reads exactly as "lines that overshoot and do not close", because
+# there is no perpendicular for them to terminate on.
+#
+# So the court is now ONE closed outer rectangle with cross-lines inside it, the
+# way a real tumbang preso court is chalked:
+#
+#     z=-13  +---------------------------+   CourtNorth
+#            |                           |
+#     z=-6   |---------------------------|   ThrowingLineNorth
+#     z=-5   |---------------------------|   ConfinementNorth
+#            |            (o)            |   BaseCircle at 0,0
+#     z=+5   |---------------------------|   ConfinementSouth
+#     z=+6   |---------------------------|   ThrowingLineSouth
+#            |                           |
+#     z=+13  +---------------------------+   CourtSouth
+#          x=-5                        x=+5
+#
+# CourtEast/West run the full length at x = ±COURT_X, so every cross-line's ends
+# land ON them. `court_line()` extends each edge by the crossing line's own
+# half-width so corners overlap rather than notch — overlapping paint is
+# invisible, a 40mm gap is not.
+#
+# The confinement box's own east/west edges are GONE: they sat at x = ±5.0, which
+# is exactly where CourtEast/West now run, so drawing them again would be two
+# coincident coplanar decals — z-fighting for no visual gain. The court sides do
+# that job.
+COURT_Z = 13.0
+
 # The base circle sits at the centre of the court, on flat paving.
 add_mark("BaseCircle", "base_circle_decal", 0.0, 0.0)
 
-# The confinement square — the Can/Taya's actual restricted play area
-# (CharacterBase.CONFINEMENT_RADIUS). A SQUARE, not a circle (user feedback:
-# "the circle you made was ugly ... can we just use a square"). Four closed
-# corners, one width, nothing overhanging.
+# The two long sides. These are what every other line terminates on.
+court_line("CourtEast", "z", COURT_X, COURT_Z)
+court_line("CourtWest", "z", -COURT_X, COURT_Z)
+# The two ends.
+court_line("CourtNorth", "x", -COURT_Z, COURT_X)
+court_line("CourtSouth", "x", COURT_Z, COURT_X)
+
+# The confinement square's north/south edges — the Can/Taya's actual restricted
+# play area (CharacterBase.CONFINEMENT_RADIUS). Kept as a SQUARE per user
+# feedback ("the circle you made was ugly ... can we just use a square").
 court_line("ConfinementNorth", "x", -CONFINEMENT_BOX_RADIUS, COURT_X)
 court_line("ConfinementSouth", "x", CONFINEMENT_BOX_RADIUS, COURT_X)
-court_line("ConfinementEast", "z", CONFINEMENT_BOX_RADIUS, COURT_X)
-court_line("ConfinementWest", "z", -CONFINEMENT_BOX_RADIUS, COURT_X)
 
-# The throwing lines, at the 6.0 distance Art_Direction §9 derived, and the
-# team-side lines. Both clamped to COURT_X so they align exactly with the
-# confinement box's east and west edges instead of ending in mid-air at
-# arbitrary widths.
+# The throwing lines, at the 6.0 distance Art_Direction §9 derived — the mark an
+# attacker must stay behind.
 court_line("ThrowingLineNorth", "x", -6.0, COURT_X, "throwing_line_decal")
 court_line("ThrowingLineSouth", "x", 6.0, COURT_X, "throwing_line_decal")
-court_line("TeamSideNorth", "x", -13.0, COURT_X)
-court_line("TeamSideSouth", "x", 13.0, COURT_X)
 
 # =============================================================================
 
@@ -739,39 +801,21 @@ sky_material = SubResource("Sky_mat")
 background_mode = 2
 sky = SubResource("Sky_res")
 ambient_light_source = 3
-ambient_light_energy = 0.95
+ambient_light_energy = 1.15
 ambient_light_sky_contribution = 0.7
 reflected_light_source = 2
 tonemap_mode = 3
 tonemap_exposure = 0.92
 tonemap_white = 1.9
 ssao_enabled = true
-ssao_radius = 0.7
-ssao_intensity = 1.8
+ssao_radius = 0.9
+ssao_intensity = 1.1
 ssao_power = 1.1
 ssao_detail = 0.6
 ssao_horizon = 0.05
-ssil_enabled = true
-ssil_radius = 3.5
-ssil_intensity = 0.75
-ssil_sharpness = 0.98
-ssil_normal_rejection = 1.0
-sdfgi_enabled = true
-sdfgi_use_occlusion = true
-sdfgi_bounce_feedback = 0.4
-sdfgi_cascades = 4
-sdfgi_min_cell_size = 0.15
-sdfgi_cascade0_distance = 19.2
-sdfgi_max_distance = 153.6
-sdfgi_y_scale = 1
-sdfgi_energy = 0.8
-glow_enabled = true
-glow_intensity = 0.4
-glow_strength = 0.9
-glow_bloom = 0.06
-glow_blend_mode = 1
-glow_hdr_threshold = 1.35
-glow_hdr_scale = 2.0
+ssil_enabled = false
+sdfgi_enabled = false
+glow_enabled = false
 fog_enabled = true
 fog_mode = 1
 fog_light_color = Color(0.8784, 0.8118, 0.6941, 1)
@@ -780,8 +824,8 @@ fog_sun_scatter = 0.28
 fog_density = 0.0
 fog_sky_affect = 0.75
 fog_depth_curve = 1.1
-fog_depth_begin = 18.0
-fog_depth_end = 72.0
+fog_depth_begin = 14.0
+fog_depth_end = 58.0
 adjustment_enabled = true
 adjustment_brightness = 1.0
 adjustment_contrast = 1.03
@@ -822,7 +866,7 @@ environment = SubResource("Env_eskinita")
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
 transform = Transform3D(0.86603, -0.31889, 0.38549, 0, 0.77088, 0.63698, -0.5, -0.55164, 0.66692, 0, 12, 0)
 light_color = Color(1, 0.90196, 0.75294, 1)
-light_energy = 1.35
+light_energy = 1.15
 light_indirect_energy = 1.3
 light_angular_distance = 0.5
 light_specular = 0.35
@@ -837,7 +881,7 @@ directional_shadow_split_2 = 0.22
 directional_shadow_split_3 = 0.52
 directional_shadow_blend_splits = true
 directional_shadow_fade_start = 0.9
-directional_shadow_max_distance = 58.0
+directional_shadow_max_distance = 42.0
 
 [node name="Floor" type="StaticBody3D" parent="."]
 

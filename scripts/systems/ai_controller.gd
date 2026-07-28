@@ -56,6 +56,10 @@ const ARRIVE_DISTANCE: float = 0.6
 const TAYA_DETECT_RANGE: float = 8.0
 const TAYA_MELEE_RANGE: float = 1.4
 const TAYA_TAP_INTERVAL: float = 0.5
+## How far out from the can the Taya plants itself when body-blocking. Far enough
+## to actually intercept a throw rather than hugging the can, comfortably inside
+## CONFINEMENT_RADIUS so it never presses on its own boundary.
+const TAYA_BLOCK_STANDOFF: float = 2.6
 ## Distance from the can an Attacker tries to hold before charging — mirrors
 ## the map's own throwing line (Art_Direction.md §9's 6-unit derivation).
 ## This file does not import that constant; it just aims for the same number
@@ -64,6 +68,10 @@ const ATTACKER_THROW_RANGE: float = 6.0
 const ATTACKER_GRAB_RANGE: float = 1.5
 const ATTACKER_CHARGE_TIME: float = 0.65
 const ATTACKER_RETREAT_DISTANCE: float = 3.0
+## How close a defender has to be to the attacker->can line to count as blocking
+## it. Roughly a Person's own width plus the slipper's, so a defender genuinely
+## in the way registers and one merely nearby does not.
+const ATTACKER_LANE_CLEARANCE: float = 1.3
 const TSINELAS_ARRIVE_DISTANCE: float = 1.0
 ## Physics frames to wait after releasing the charge-throw button before
 ## considering pressing ANY held/edge-triggered action again. Measured live,
@@ -258,13 +266,40 @@ func _update_taya(repick: bool, delta: float) -> void:
 		return
 
 	_has_move_target = false # threat found; abandon the wander point
-	if distance > TAYA_MELEE_RANGE:
-		_move_toward(threat.global_position)
-	else:
+	if distance <= TAYA_MELEE_RANGE:
 		_release_move()
 		if _taya_tap_cooldown <= 0.0:
 			_taya_tap_cooldown = TAYA_TAP_INTERVAL
 			_tap("bump")
+		return
+
+	# ⚠️ BODY-BLOCK, DO NOT CHASE. This is the Taya's actual job and chasing was
+	# the wrong shape for it.
+	#
+	# The Taya is confined to CONFINEMENT_RADIUS (5.0) and the attacker throws
+	# from the 6.0 line, so a Taya that walks straight at the attacker ALWAYS
+	# ends up pressed against the inside of its own box, out at the edge, having
+	# achieved nothing — and with the can left completely unguarded behind it.
+	# It could never reach the thing it was chasing; the geometry forbids it.
+	#
+	# What a real taya does, and what actually wins the round, is stand ON the
+	# line between the slipper and the can. So: interpose. Take the point
+	# `TAYA_BLOCK_STANDOFF` out from the can along the bearing to the attacker,
+	# which puts the Taya's body in the throw's path, keeps it near enough to
+	# tag anyone who closes, and keeps the can covered.
+	#
+	# Falls back to chasing only when the threat is already INSIDE the box, where
+	# closing to melee is both possible and correct.
+	var can := _find_tracked_can()
+	if can == null or not is_instance_valid(can):
+		_move_toward(threat.global_position)
+		return
+	var bearing := threat.global_position - can.global_position
+	bearing.y = 0.0
+	if bearing.length() < 0.1:
+		bearing = Vector3.FORWARD
+	var standoff: float = minf(TAYA_BLOCK_STANDOFF, CharacterBase.CONFINEMENT_RADIUS - 0.4)
+	_move_toward(can.global_position + bearing.normalized() * standoff)
 
 ## Two jobs depending on whether this Person currently holds the slipper:
 ## retrieve it if not, or approach the throwing range and charge-release it
@@ -331,7 +366,20 @@ func _update_attacker(repick: bool, delta: float) -> void:
 	var range_now := to_can.length()
 
 	if range_now > ATTACKER_THROW_RANGE:
-		_move_toward(can.global_position - to_can.normalized() * ATTACKER_THROW_RANGE * 0.9)
+		_move_toward(_open_throwing_spot(can))
+		return
+
+	# ⚠️ IN RANGE, BUT IS THE LANE OPEN? Human call, 2026-07-29: the AI should
+	# "fulfil their roles and try to win (attacker avoid defender...)". Standing
+	# still and charging into the Taya's chest is not trying to win — it feeds
+	# the block. If the defender is sitting on this bearing, slide around to a
+	# clear one before committing to the charge.
+	var blocker := _blocking_defender(can)
+	if blocker != null:
+		_attacker_charging = false
+		_attacker_charge_time = 0.0
+		_set_held("special_ability", false)
+		_move_toward(_open_throwing_spot(can))
 		return
 
 	# In range. Stand still to charge and release — moving mid-charge is not
@@ -348,6 +396,69 @@ func _update_attacker(repick: bool, delta: float) -> void:
 		_attacker_charging = false
 		_attacker_charge_time = 0.0
 		_release_settle_frames = RELEASE_SETTLE_FRAMES
+
+## The defender standing between this attacker and the can, if any. "Between"
+## is measured as perpendicular distance from the defender to the throw line,
+## so a Taya beside the lane does not count and a Taya in it does.
+func _blocking_defender(can: CharacterBase) -> CharacterBase:
+	for other in _roster():
+		if other == null or not is_instance_valid(other):
+			continue
+		if not other.is_person or other.team == character.team:
+			continue
+		var lane := can.global_position - character.global_position
+		lane.y = 0.0
+		var to_other := other.global_position - character.global_position
+		to_other.y = 0.0
+		if lane.length() < 0.1:
+			continue
+		var along := to_other.dot(lane.normalized())
+		if along <= 0.0 or along >= lane.length():
+			continue # behind us, or past the can
+		var perpendicular := (to_other - lane.normalized() * along).length()
+		if perpendicular < ATTACKER_LANE_CLEARANCE:
+			return other
+	return null
+
+## A spot at throwing range from the can whose lane the defender is NOT sitting
+## in. Samples bearings around the can starting from the one we already hold, so
+## the attacker slides to the nearest open angle rather than teleporting its
+## intent to the far side every decision tick.
+func _open_throwing_spot(can: CharacterBase) -> Vector3:
+	var current := character.global_position - can.global_position
+	current.y = 0.0
+	if current.length() < 0.1:
+		current = Vector3.FORWARD
+	var base_angle := atan2(current.z, current.x)
+	var reach: float = ATTACKER_THROW_RANGE * 0.92
+	# 0 first (hold this bearing if it is already open), then alternate outward.
+	var steps: Array[float] = [0.0, 0.5, -0.5, 1.0, -1.0, 1.6, -1.6, 2.2, -2.2]
+	for step in steps:
+		var a: float = base_angle + step
+		var spot := can.global_position + Vector3(cos(a), 0.0, sin(a)) * reach
+		var clear := true
+		for other in _roster():
+			if other == null or not is_instance_valid(other):
+				continue
+			if not other.is_person or other.team == character.team:
+				continue
+			var lane := can.global_position - spot
+			lane.y = 0.0
+			var to_other := other.global_position - spot
+			to_other.y = 0.0
+			if lane.length() < 0.1:
+				continue
+			var along := to_other.dot(lane.normalized())
+			if along <= 0.0 or along >= lane.length():
+				continue
+			if (to_other - lane.normalized() * along).length() < ATTACKER_LANE_CLEARANCE:
+				clear = false
+				break
+		if clear:
+			return spot
+	# Every bearing covered — take the one furthest from the defender anyway
+	# rather than freezing, which is what "the bots suck" looked like.
+	return can.global_position + Vector3(cos(base_angle + PI), 0.0, sin(base_angle + PI)) * reach
 
 ## Only ever meaningful while LOOSE (Carriable.drives_movement() already
 ## bypasses this entirely for CARRIED/FLYING — see character_base.gd — so
