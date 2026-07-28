@@ -1452,11 +1452,11 @@ transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, 7.75
 mesh = ExtResource("28")
 
 [node name="Sampay_0" type="MeshInstance3D" parent="Dressing/Layer3"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.8484, -13.5000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.8484, -15.0000)
 mesh = ExtResource("29")
 
 [node name="Sampay_1" type="MeshInstance3D" parent="Dressing/Layer3"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.6284, -8.5000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.6284, -9.0000)
 mesh = ExtResource("29")
 
 [node name="Sampay_2" type="MeshInstance3D" parent="Dressing/Layer3"]
@@ -1468,11 +1468,11 @@ transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.00
 mesh = ExtResource("29")
 
 [node name="Sampay_4" type="MeshInstance3D" parent="Dressing/Layer3"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.6284, 8.5000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.6284, 9.0000)
 mesh = ExtResource("29")
 
 [node name="Sampay_5" type="MeshInstance3D" parent="Dressing/Layer3"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.6284, 14.5000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.6284, 15.0000)
 mesh = ExtResource("29")
 
 [node name="Clutter_0" type="MeshInstance3D" parent="Dressing/Clutter"]

@@ -88,16 +88,19 @@ SAT_MIN = 0.25
 MIN_EXPECTED_PX = 2000
 
 ## (suffix, target hue, saturation multiplier, value multiplier).
-## Chosen as a real Philippine roofline: painted galvanised iron is mostly red
-## oxide, rust, faded green and grey-blue, not one colour. Saturation is pulled
-## back on every one of them — a roof is the second largest surface in frame
-## after the road, and a fully saturated one shouts over the Props.
+##
+## ⚠️ NO LEAF GREEN. Playtest 2026-07-29: "houses you made are off theme look
+## theyre js green". Two separate causes and this is one of them — the shipped
+## kit roof is a saturated mint, and the original variant set kept a "jade" entry
+## that stayed in the same family, so a fifth of every street still read green.
+## A Philippine roofline is red oxide, weathered rust, BARE galvanised iron and
+## the odd painted teal or mustard. Green is not on it.
 VARIANTS = [
-    ("terra", 12.0, 0.78, 0.92),   # red oxide, the commonest painted roof
-    ("rust", 26.0, 0.72, 0.80),    # older, browner, more weathered
-    ("slate", 213.0, 0.30, 0.78),  # unpainted galvanised iron gone blue-grey
-    ("ochre", 41.0, 0.68, 0.95),   # mustard
-    ("jade", 158.0, 0.55, 0.86),   # keeps SOME green, shifted and dulled
+    ("terra", 12.0, 0.80, 0.92),   # red oxide - by far the commonest painted roof
+    ("rust", 26.0, 0.70, 0.78),    # older, browner, weathered
+    ("galv", 205.0, 0.10, 0.82),   # BARE galvanised iron: near-neutral silver
+    ("ochre", 41.0, 0.66, 0.95),   # mustard
+    ("teal", 186.0, 0.42, 0.80),   # painted iron, muted - not a leaf green
 ]
 
 
