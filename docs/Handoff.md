@@ -746,6 +746,17 @@ For any coding agent picking up this queue.
 **Only open items live here.** B-01 … B-66 are in [`Handoff.md`](Handoff.md); everything
 marked `[FIXED]` there is done and settled. New bugs take the next free number **in this file**.
 
+**B-104 · Bayan Plaza could never be loaded — both map entries shared one id. [FIXED
+2026-07-28]** `GameLaunch.MAPS` declared `"id": &"eskinita"` on BOTH entries, and
+`selected_map_scene()` returns the first match, so **every path that loads a map — the picker, the
+launch handoff and `render_probe` — could only ever reach Eskinita.** Bayan Plaza has been built,
+dressed, spawn-fixed (B-102) and re-dressed (7.5) while being unreachable in play the whole time.
+*Why it survived:* it fails silently and in the most misleading way available — you pick the second
+map and the first one loads, which reads as "the picker is ignoring my click", not as a duplicate
+key. Nothing validates that ids are unique.
+*Found* only because the 7.5 re-dress kept rendering as Eskinita three runs in a row.
+⚠️ **Any map-select bug report predating this is suspect** — the map was never actually switching.
+
 **B-103 · Field markings float, for the fourth time — and the constant was never the bug.
 [FIXED 2026-07-28]** Reported again with a screenshot: *"i keep flaggging this still broken,
 thoroughly think about how to make sure this problem doesnt show up again."*

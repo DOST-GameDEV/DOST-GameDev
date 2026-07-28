@@ -1213,10 +1213,30 @@ buggy."* Six Kenney kits (all CC0, verified) plus a supplied flip-flop `.glb`.
         procedural clutter/tricycle swap. Both are detail passes on a map that now reads correctly;
         neither blocks 7.5.
 
-- [ ] **7.5 · The probinsya map from Fantasy Town Kit + Mini Forest.** 🎨 Design ⛔ 7.4
-      Supersedes the Bayan Plaza dressing set. `stall.glb` is the best sari-sari base in any kit.
-      Do this after Eskinita: the second map is where the kit-scale process gets reused, not
-      invented.
+- [~] **7.5 · The probinsya map from Fantasy Town Kit + Mini Forest.** 🎨 Design —
+      **verified by render + full smoke gate; not verified by play**
+      Landed 2026-07-28. The generated cone trees, bench, planter, chair and tire are gone. Two
+      tree rings of DIFFERENT species (Fantasy Town near at `TOWN_SCALE` 2.6, Mini Forest behind at
+      `FOREST_SCALE` 3.9) so the far layer reads as another species rather than the same tree moved
+      back; market stalls, stall benches and stools; lantern posts on the slab corners; rocks and
+      plants across the dirt apron. Church, flagpole and both basketball rings kept — they are the
+      map's landmarks and its Filipino read.
+  - [x] **Mechanics untouched and checked:** `SpawnPoints` transforms byte-identical, `Bounds`,
+        `KillPlane`, `HazardZone`, `Floor` all present, and **0 collision shapes under
+        `Dressing/`** — the `BOUND = 12.5` ring is still the only thing a player can touch.
+  - [x] **Height law honoured through the swap.** Everything inside the playable square is
+        interior-tier: stall 0.96, stall-bench 0.60, stool lower. `cart` measures 1.40 scaled and is
+        therefore deliberately NOT used. The full-height trees are all outside `BOUND`, which is
+        what earns them the exemption.
+  - [x] **⚠️ B-104 — Bayan Plaza was UNREACHABLE and had been all along.** Both `GameLaunch.MAPS`
+        entries carried `"id": &"eskinita"`, so `selected_map_scene()`'s first-match lookup
+        resolved the plaza to Eskinita: the picker, the launch path and the render harness could
+        every one of them only ever load map 1. Silent — you pick the second map and the first
+        loads, which reads as an unresponsive picker rather than a duplicate key. **Found only
+        because the re-dressed plaza kept rendering as Eskinita three times running.**
+  - [x] **A new `Dressing/*` group must be declared in the scene template.** Adding `Ground`
+        placements without the node emitted `Parent path './Dressing/Ground' has vanished` for
+        every piece — a warning, not an error, so the pieces just silently do not exist.
 - [ ] **7.6 · Sarsi livery, as a retexture of `soda-can.glb`.** 🎨 Design ⛔ 7.2
       **Deliberately deferred, on the human's own instruction:** *"js add to plan that we will make
       that better later and make it sarsi or something."* Checklist 2.9 shipped a Sarsi-liveried
