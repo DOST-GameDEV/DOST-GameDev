@@ -745,6 +745,101 @@ For any coding agent picking up this queue.
 **Only open items live here.** B-01 … B-66 are in [`Handoff.md`](Handoff.md); everything
 marked `[FIXED]` there is done and settled. New bugs take the next free number **in this file**.
 
+**B-111 · Spawn slots were scrambled because `StringName` does not sort alphabetically. [FIXED
+2026-07-29]** ⚠️ **This is the "spawns are still broken" report that survived several sessions.
+Read the whole entry before touching spawn code again.**
+
+Report, 2026-07-29: *"spawn still broken, offense spawned next to circle... when the goal of the
+entire game is for offense to try to hit CAN in the circle while they're outside."*
+
+*What it was not.* `_role_slot()` was correct, every time. An audit print of every
+`_place_at_spawn()` call showed all four units resolving to the right slot — Can→0, Taya→1,
+Attacker→2, Tsinelas→3 — with the right `is_can` / `is_person` / `team_is_can_side` flags. The
+markers were authored in the right order in the scene, and `Main.tscn`'s role flags were correct
+too. Every previous session looked at these and found nothing, because there is nothing there.
+
+*What it was.* `_spawn_transform(slot)` returned the **wrong marker**. `main.gd` built `_map_spawns`
+with:
+
+```gdscript
+markers.sort_custom(func(a: Node, b: Node) -> bool: return a.name < b.name)
+```
+
+**`Node.name` is a `StringName`, and `<` on `StringName` compares the interned POINTER, not the
+text.** Measured on this engine build with four nodes authored `Spawn0`…`Spawn3`:
+
+| | order |
+|---|---|
+| authored / `get_children()` | `Spawn0, Spawn1, Spawn2, Spawn3` |
+| `sort_custom` on `.name` (what ran) | **`Spawn3, Spawn2, Spawn0, Spawn1`** |
+| `sort_custom` on `String(.name)` | `Spawn0, Spawn1, Spawn2, Spawn3` |
+
+So slot→marker was scrambled: the Can spawned on the Tsinelas's mark, the Taya on the Attacker's,
+and **the Attacker on the Taya's** — offense standing next to the base circle it is supposed to be
+throwing at from outside the throwing line. Exactly the report.
+
+*Why it survived so long.* Every signal pointed away from it. The line reads as "sort by name". The
+comment above it explicitly said *"Sorted by node name, NOT by get_children() order"* and gave a
+sound reason (B-68). The resulting order was **stable within a run**, so it looked deterministic and
+reproducible rather than random. And it is **not guaranteed stable between runs** — `StringName`
+intern order depends on what got interned first — which is why the symptom appeared to change shape
+from session to session and never matched anyone's mental model.
+
+*Fix.* Named lookup, not sorting: `points.get_node_or_null("Spawn%d" % slot)` for slot 0..3. This
+removes the failure mode rather than correcting one instance of it — there is no ordering left to
+get wrong — and a renamed or missing marker is now a loud `push_warning` plus the fallback ring,
+instead of a silently shuffled roster.
+
+⚠️ **STANDING RULE FROM THIS BUG: never order anything by `Node.name` directly.** Any
+`sort_custom`, `<`, `>` or `min`/`max` on a `StringName` in this project is the same bug waiting.
+Cast with `String(...)` if you genuinely need lexicographic order, and prefer an explicit named
+lookup over any ordering at all when the names encode a contract (`Spawn0..Spawn3` is a contract).
+
+**B-112 · The held tsinelas floated ~0.44 m off the hand. [FIXED 2026-07-29]**
+
+Report: *"floating slipper when held, fix it pls, make it acc be on the hand."*
+
+`CharacterVisual.HAND_CARRY_OFFSET` was `Vector3(0.237, 0.135, -0.347)` — magnitude **0.441**,
+measured bone-to-point in world space on a character **1.6 m tall**. Over a quarter of body height.
+
+The intent was right, the execution was wrong twice:
+
+ - **Wrong magnitude.** It existed to cancel the drop `_align_to_capsule_floor` applies to a carried
+   unit's model, so the visible mesh lands at the palm rather than under it. That drop is a measured
+   **0.160** for the tsinelas (its capsule half-height). A 0.160 correction was needed; 0.441 was
+   applied, two thirds of it sideways and forward rather than up.
+ - **Wrong space, and unfixable as a constant.** `HandPoint` is a child of a `BoneAttachment3D`, so
+   the offset is expressed in the **hand bone's local frame** — which rotates with every animation
+   clip. Whatever it meant in `holding-right` it meant something else in `walk`. No single constant
+   could have been correct across poses, which is why re-tuning it never held.
+
+*Fix.* The mesh drop is cancelled in `carriable.gd::_step_carried()`, in **world space**, from the
+carried unit's own `CharacterVisual.visual_centre_offset()` — cached by `_align_to_capsule_floor`,
+which is the one place that knows the drop. The carried unit is positioned so its **mesh centre**
+lands on the hand point, not its origin. Correct for the Can as well, and it cannot drift from the
+number it exists to cancel. `HAND_CARRY_OFFSET` is now `(0.04, 0.03, -0.06)` — 0.078, a genuine
+wrist-to-palm nudge, which IS a bone-space quantity.
+
+⚠️ **Verified in FPP render only.** Not checked in third person, not while walking (a different
+clip — and clip-dependence was the original bug), not mid-throw. The 0.078 nudge is a first guess.
+
+**B-113 · Shadows so dark a character in shade was unreadable. [FIXED 2026-07-29]**
+
+Report: *"shadows are too much, cant see person anymore, lowk feels overwhelming."*
+
+Not one slider — two changes from earlier the same day compounding. Fixing the Phase 8 overexposure
+pulled `ambient_light_energy` down to 0.55, and the shadow-acne fix had pushed `shadow_opacity` to
+1.0 (fully opaque). Together, anything in shadow lost nearly all of its fill light.
+
+*Fix.* `shadow_opacity` 1.0 → 0.62, `ambient_light_energy` 0.55 → 0.95, `ssao_intensity` 3.2 → 1.8,
+`ssao_power` 1.35 → 1.1, `light_energy` 1.75 → 1.35, `adjustment_contrast` 1.09 → 1.03,
+`shadow_blur` 0.9 → 1.1.
+
+⚠️ **One iteration, not human-validated.** These were chosen to fix "too dark" without re-checking
+that the earlier washed-out look has not partly returned. Lighting on this map has now been retuned
+three times in one session in opposite directions; the next pass should change **one** value at a
+time and get a human verdict before moving another.
+
 **B-110 · `floorcheck` ignored SCALE, so it measured against the wrong heights. [FIXED
 2026-07-28]** Two halves, both the same mistake, found a day apart.
  - **Ground pieces.** `record()` computed a piece's top as `y + hi[1]`, with no scale at all. Every

@@ -1248,6 +1248,16 @@ scan** — that is exactly what A-1 step 4 was written to prevent.
 
 ### 3. Traps already found in this code
 
+0. **⚠️ NEVER ORDER ANYTHING BY `Node.name`. IT IS A `StringName` AND `<` COMPARES POINTERS.**
+   This is B-111, and it cost several sessions of "spawns are still broken". `main.gd` sorted the
+   map's spawn markers with `sort_custom(func(a, b): return a.name < b.name)` — which reads as
+   alphabetical, had a comment saying so, and is not. Measured: nodes authored `Spawn0..Spawn3`
+   came back **`[Spawn3, Spawn2, Spawn0, Spawn1]`**, so the Attacker spawned on the Taya's mark,
+   right beside the base circle it is meant to be throwing at from outside the line. The order is
+   stable *within* a run (so it looks deterministic) and **not** guaranteed stable *between* runs
+   (so the symptom appears to move). Cast with `String(...)` if you truly need lexicographic order,
+   and prefer an explicit named lookup (`get_node("Spawn%d" % i)`) whenever the names encode a
+   contract — that removes the failure mode instead of correcting one instance of it.
 1. **`.duplicate()` every ability `.tres` per character.** Cooldown and charge state live on the
    Resource instance — two characters sharing one `.tres` share one cooldown. This is the trap
    `main.gd`'s own comment already warns about and 3.3 walks straight into it.
