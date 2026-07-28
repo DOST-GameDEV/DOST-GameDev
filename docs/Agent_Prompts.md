@@ -8,10 +8,10 @@ names them but cannot set them.
 
 | # | Lane | Model | Effort | Run it when | Why here in the order |
 |---|---|---|---|---|---|
-| **1** | 🔧 **BUILD-PHYS** | **Sonnet** | high | **First. Blocks art.** | Per-unit collision has to exist before any prop can be rescaled — `CharacterBase.tscn` shares one capsule between Persons and Props, so a 0.34 m can would still carry a 1.6 m invisible collider. Nothing about proportion can be fixed until this lands. |
-| **2** | 🔧 **BUILD-UX** | **Sonnet** | medium | Any time after 1 starts | Independent files. Fixes the missing FPP crosshair (**B-86**) and builds the charge-glow hook, which is the half of the throw the design lane cannot finish alone. |
+| **1** | ~~🔧 **BUILD-PHYS**~~ | **Sonnet** | high | ✅ **Done 2026-07-28 — `Checklist.md` 2.5.** | Per-unit collision, both props rescaled, `HAND_CARRY_OFFSET` re-measured, `base_circle_decal` resized, 4.4a fixed. Row 4 is unblocked. |
+| **2** | 🔧 **BUILD-UX** | **Sonnet** | medium | Any time | Independent files. Fixes the missing FPP crosshair (**B-86**) and builds the charge-glow hook, which is the half of the throw the design lane cannot finish alone. |
 | **3** | 🔧 **BUILD-NET** | **Sonnet** | high | Before the real LAN test (6.1) | Remote units visibly snap. Testing over real wifi without interpolation measures the wrong thing, so this must precede 6.1. |
-| **4** | 🎨 **DESIGN-ART** | **Opus** | high | **After 1 merges** | Its first job is rescaling props, which depends on 1. Opus because its question is *"does this match the moodboard"* — a judgement call, not a testable one. **Attach the moodboard image.** |
+| **4** | 🎨 **DESIGN-ART** | **Opus** | high | **Unblocked — row 1 is done** | Its first job was rescaling props, which depended on 1; that shipped (`generate_all.gd`'s meshes), so this lane's remaining scope is whatever `Checklist.md` still lists open under 2.x. Opus because its question is *"does this match the moodboard"* — a judgement call, not a testable one. **Attach the moodboard image.** |
 | **5** | 🎵 **BUILD-AUDIO** | **Sonnet** | medium | Any time | Nothing exists — not one `AudioStreamPlayer` in the repo. Fully independent of every other lane. |
 | **6** | 🔬 **QA** | **Sonnet** | medium | **Alongside anything** | Writes only `docs/`, so it can never collide. Good to keep running continuously. |
 | **7** | 📦 **PRODUCER** | **Sonnet** | medium | **Alongside anything** | Also `docs/`-only. Submission paperwork has a deadline that does not move. |
