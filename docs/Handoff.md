@@ -456,7 +456,8 @@ someone plays it.
   forensic record — including its several "the docs were stale, this was already fixed" entries —
   would have re-invited exactly the rewrites protocol rule 3 exists to prevent.
 - **No font was downloaded.** See §0.5.
-- **The Local Match harness was left alone.** It still goes in Phase 6 (§1).
+- **The Local Match harness was left alone.** ⚠️ Superseded 2026-07-28 — it is no longer scheduled
+  for removal at all; see `Checklist.md` 5.5.
 
 ---
 
@@ -487,10 +488,15 @@ that decides a round (hit resolution, timer, score). Client-authoritative for a 
 movement, replicated via `MultiplayerSynchronizer`. No reconciliation, no anti-cheat — LAN
 prototype scope, deliberately.
 
-**Local Match is a test harness.** `_start_local_test()`, the `p3`/`p4` input sets, and the four
-hardcoded units in `Main.tscn` exist so one person can exercise the loop on one keyboard. **It
-is stripped before submission.** Do not invest polish in it and do not let it shape the LAN
-architecture.
+**Single Player (formerly "Local Match") is a real, permanent mode, not a test harness — amended
+2026-07-28, `Checklist.md` 5.5.** `_start_local_test()` and the four hardcoded units in
+`Main.tscn` still exist and still make the loop exercisable on one keyboard, but the human now
+plays exactly one of the four (their existing default, `TeamAPerson`) and the other three are
+AI-controlled (`ai_controller.gd`), not unbound. **It ships in the final build.** The `p3`/`p4`
+input action definitions in `project.godot` are unchanged (still unbound to real keys, still
+registered — AI drives them via `Input.action_press()`/`action_release()`, which needs no key
+binding at all) and the debug switcher (`debug_player_switcher.gd`) still exists for testing, but
+neither shapes the LAN architecture any more than it ever did.
 
 **Two undecided design forks that block cleanup.**
 
@@ -541,8 +547,9 @@ For any coding agent picking up this queue.
 9. **Update the ledger.** When a bug is fixed, mark it `**[FIXED]**` in §3 with a one-line
    description of the actual fix, and tick the matching box in `Dev_Plan.md` §5. When you find
    a new one, add it with the next free B-number.
-10. **Do not delete Local Match yet** (§1) — it is the only way to playtest today. It goes in
-    Phase 6.
+10. **Single Player (formerly Local Match) is not scheduled for deletion — amended 2026-07-28,
+    `Checklist.md` 5.5** (§1). It is the only way to playtest without four laptops AND, per the
+    user's decision, ships in the final build as a real mode in its own right.
 11. **Debug-only code follows the removal contract** in `Dev_Plan.md` §0.3, without exception:
     `debug_`/`Debug` prefix on every file, class, node and autoload; debug code calls gameplay
     and **gameplay never calls debug** (no gameplay script may reference a debug class, autoload,
@@ -1286,7 +1293,8 @@ specification Opus already wrote.
 | 4.5 | Hitstop | Sonnet | medium | Contained feel work |
 | 5.1 | Install export templates | 🧑 human | — | Environment, not code |
 | 5.2 | Produce and launch a release build | Sonnet | medium | Mechanical once 5.1 is done |
-| 5.3 | Strip Local Match + debug switcher | Sonnet | **high** | `Main.tscn` and `main.gd` spawn paths; the removal grep must come back empty |
+| 5.3 | ⚠️ Redirected — see 5.5 | — | — | No longer "strip Local Match"; superseded by Single Player, `Checklist.md` 5.3/5.5 |
+| 5.5 | Rename to Single Player + AI for the other three units | Sonnet | **high** | No prior art for AI in this codebase — the hard part is the architecture choice, not the behaviour |
 | 5.4 | `.import` UID churn (B-71) | Sonnet | medium | Repo hygiene decision |
 | 6.1 | Real-device LAN test | 🧑 human | — | Four laptops in a room |
 | 6.2 | Live-demo script + trailer beat sheet | **Opus** | **high** | What to show, in what order, in 90s, to people who will never play it — editorial judgement under a hard constraint |

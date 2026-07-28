@@ -528,7 +528,7 @@ HUD contrast or hazard placement against a grey box.
       Re-tune both together if either moves again — they're coupled, see `Dev_Plan.md`'s Option B
       section. Auto-seal timing itself: still not separately confirmed by feel. **Verified by
       render only, not yet by play.**
-- [~] **2.8 · Pre-round free-roam + in-world ready-up, Local Match only.** 🔧 Build — **verified by
+- [~] **2.8 · Pre-round free-roam + in-world ready-up, Single Player only.** 🔧 Build — **verified by
       render, not yet by play**
       User feedback, 2026-07-28: "i wanted the ready button to be in the game itself not in home
       screen, i want ppl to be able to move around with no restrictions whiile waiting for ready
@@ -551,7 +551,7 @@ HUD contrast or hazard placement against a grey box.
       frozen — a separate, pre-existing input gate also fired whenever `round_active` was false)
       and B-95 (Can fell through the floor when the match's LAST round ended, since no reset ever
       runs after `match_won`) both found and fixed — see `Handoff.md`. Also: B-96 (spawn layout was
-      never actually role-based for Local Match, the free-roam window just exposed it — fixed), the
+      never actually role-based for Single Player, the free-roam window just exposed it — fixed), the
       Taya's spawn moved behind the Can instead of beside it, a 3-2-1-GO countdown added between
       the ready press and the round actually starting, and the confinement marker rebuilt as a
       square (see 2.7). **Verified by render, including a corrected spawn-layout screenshot with
@@ -636,8 +636,11 @@ touch map scenes.
       Godot binds Tab to `ui_focus_next` and the GUI layer eats it before
       `_unhandled_key_input`, so the switcher never saw it — moved to `_input`.
       Separately, the switcher no-ops in a **networked** match by design; the
-      0.4 session was hosted, not Local Match, which is also why pause did not
-      freeze. **Solo-test through Local Match.**
+      0.4 session was hosted, not Single Player (Local Match at the time), which
+      is also why pause did not freeze. **Solo-test through Single Player.**
+      ⚠️ **Narrowed by 5.5, 2026-07-28** — Single Player now drives its other
+      three units with real AI (`Checklist.md` 5.5), and the debug switcher's
+      interaction with that is its own item; see 5.5 for the current behaviour.
 - [ ] **4.2 · Movement interpolation for remote characters.** 🤖 Sonnet, high
       Remote units visibly snap. High effort because it sits directly on the
       replication model. **Do this before 6.1** — testing over real wifi without
@@ -694,7 +697,7 @@ touch map scenes.
       F-3's acceptance test and B-67's acceptance test are both unrunnable —
       neither can be honestly ticked.**
 - [ ] **5.2 · Produce a release build and confirm it launches to the menu.** 🤖 Sonnet, medium ⛔ 5.1
-- [ ] **5.3 · ⚠️ REDIRECTED 2026-07-28 — no longer "strip Local Match," see 5.5.** 🧑 human decision,
+- [x] **5.3 · ⚠️ REDIRECTED 2026-07-28 — no longer "strip Local Match," see 5.5.** 🧑 human decision,
       recorded here so nobody reads the old text below and starts deleting things
       This item used to say "strip Local Match and the debug switcher, keep the harness only as a
       network-free demo fallback." **User decision, same day: Local Match is being promoted to a
@@ -707,11 +710,10 @@ touch map scenes.
       rung 3 — the only fallback that needs no network. Keep the harness, gate it behind a launch
       argument, and strip only the on-screen debug overlay."* That framing (harness = fallback,
       not a real mode) is what 5.5 replaces.
-      ⚠️ **Not yet reconciled:** `Art_Direction.md` Part 5 §3's failure-ladder table and
-      `Dev_Plan.md`'s shared-screen-fallback mentions still describe the OLD framing (harness as
-      network-outage fallback, operator cycling units with Tab). Whoever picks up 5.5 should fix
-      these too, per this project's own doc-hygiene rule — flagged, not done here, since this pass
-      was scoped to planning 5.5's brief, not a full cross-doc sweep.
+      **Reconciled by 5.5, 2026-07-28:** `Art_Direction.md` Part 5 §3's failure-ladder table,
+      `Dev_Plan.md`'s harness/removal-contract sections, `Handoff.md`'s frozen §1, and
+      `README.md`'s contradiction register all corrected to the new framing in the same commit
+      that built the AI — see 5.5's own entry for the full list.
 - [x] **5.4 · Decide the `.import` UID churn (B-71) — and the EOL churn (B-84).** 🤖 Sonnet, medium
       Either accept it or stop tracking `.import` UIDs. Low stakes, but it makes
       every "regenerate and check `git status`" acceptance test unreliable, and
@@ -727,38 +729,100 @@ touch map scenes.
       **Done.** B-84 fixed (`eol=lf` pinned, renormalized, determinism test run twice clean).
       B-71 decided: accept the churn, formalized as a standing pre-commit check rather than a
       two-lane-period workaround. See `Handoff.md` B-71/B-84.
-- [ ] **5.5 · Rename Local Match to Single Player; give the AI-controlled units real AI.** 🤖 Sonnet,
-      high — **PLANNED 2026-07-28, not started.** New agent brief in `Agent_Prompts.md` → 🔧 BUILD-AI.
+- [x] **5.5 · Rename Local Match to Single Player; give the AI-controlled units real AI.** 🤖 Sonnet,
+      high — **built 2026-07-28, verified live (real Godot runs, not headless)**
       User decision: Local Match stops being a dev-only testing harness / network-outage fallback
-      and becomes a real, permanent SINGLE PLAYER mode in the final submission. Full scope,
-      acceptance criteria and a role-by-role AI behaviour spec are in the paste-ready prompt; short
-      version:
-      - Rename throughout: menu button, `GameLaunch.pending_action` value(s), doc references. Keep
-        it a plain string swap where possible — do not restructure the launch-flow state machine to
-        do this.
-      - The human controls exactly one unit (their existing default, `TeamAPerson`, unless 3.3's
-        character-select answer says otherwise). The other three — the human's own Prop teammate,
-        and the entire opposing team's Person and Prop — get real AI instead of sitting on unbound
-        input.
-      - AI behaviour is ROLE-based, not unit-based (a Prop's AI has to re-derive its job every round
-        from `is_can`, same as everything else in this project — see `main.gd::_role_slot`): a Can
-        AI stays inside `CONFINEMENT_RADIUS` and reacts to being Downed; a Taya AI patrols/guards
-        within the box and chases the tag; an Attacker AI approaches the throwing line, charges and
-        releases a throw; a loose-Tsinelas AI (when not carried) crawls itself home or waits to be
-        retrieved. Difficulty/skill level is explicitly out of scope for a first pass — "moves with
-        intent and doesn't stand still" is the bar, not "plays well."
-      - Remove or repurpose what AI replaces: the P2/P3/P4 unbound input bindings in
-        `project.godot`, `debug_player_switcher.gd`'s F1-F4/Tab unit-cycling (this becomes either
-        dead code once AI drives those units, or stays as a debug-only override — the brief should
-        decide which, not assume), and the Settings panel's P2 rebind column this project has
-        already flagged as dead weight once nothing binds to P2-4.
-      - `Art_Direction.md` Part 5 §3's failure-ladder table and `Dev_Plan.md`'s shared-screen
-        mentions describe the OLD "harness as network-outage fallback" framing and need
-        reconciling to the new one — flagged in 5.3 above, part of this item's own doc-hygiene
-        pass once implemented.
-      **Explicitly not done in this pass** — this checklist entry and the `Agent_Prompts.md` brief
-      are the plan only, per the user's own request ("on the docs can u plan how to add a new
-      agent"). No code changed.
+      and becomes a real, permanent SINGLE PLAYER mode in the final submission.
+
+      **Rename.** `MainMenu.tscn`'s `LocalButton` text → "SINGLE PLAYER" (was "LOCAL MATCH (SINGLE
+      PC)"); every player-visible/standing-description "Local Match" across `docs/` and `scripts/`
+      comments renamed to "Single Player," with dated historical entries (specific playtest
+      sessions, verbatim quotes, commit-message subjects) deliberately left alone — renaming those
+      would misrepresent what a past test was actually run against. Internal identifiers
+      (`GameLaunch.pending_action == "local"`, `_on_local_pressed`, node names) kept as-is, per the
+      brief's own instruction — this was a UI/doc rename, not a launch-flow restructure.
+
+      **AI architecture — the actual decision, stated up front as asked.** A new
+      `scripts/systems/ai_controller.gd` (`class_name AIController`) is a plain `Node`,
+      `add_child()`'d onto each AI-driven `CharacterBase` at runtime by
+      `main.gd::_start_local_test()` (never baked into `CharacterBase.tscn`, which is shared with
+      the networked spawn path and has no use for this). It writes into the SAME input surface a
+      human would — `Input.action_press()`/`action_release()` on the character's own
+      `action_name()`-suffixed actions — rather than a parallel "intent" struct. `character_base.gd`
+      gets exactly one hook, the first line of `_physics_process()`
+      (`if ai_controller != null: ai_controller.decide(delta)`), and nothing else changes: movement,
+      abilities, `carrier.gd`, confinement, the Staggered/Downed/Sealed state machine and
+      round-active gating all read Input exactly as before, unaware whether a press came from
+      hardware or from here. `_physics_process()` was never forked.
+      **Two real timing bugs found and fixed while getting a throw to actually complete, worth
+      recording since they are not obvious and apply to any future scripted-input work in this
+      codebase:** `Input.is_action_just_pressed()`/`is_action_just_released()` lag ONE physics frame
+      behind the `action_press()`/`action_release()` call that causes them — confirmed with a direct
+      print inside `carrier.gd::_step_throw()`, not inferred. A same-frame (or same-decide-call)
+      release-then-repress silently drops the edge before any reader ever witnesses it, which is
+      exactly what made the AI Attacker charge forever and never release. Fixed with
+      `AIController.RELEASE_SETTLE_FRAMES` (6 physics frames): both the release side (a cooldown
+      before re-entering "start charging") and the tap side (`_tap()`'s hold-then-release window for
+      bump/grab) now give the edge time to be seen before the button can be pressed again.
+      `carrier.gd` itself was not touched — it works correctly for real input; the fix lives
+      entirely in how the AI drives it.
+
+      **Role-based behaviour**, re-derived every `decide()` call from `is_can`/`is_person`/
+      `team_is_can_side` (never cached — a Prop's job flips every round, same rule B-76 already
+      established for ability re-picking):
+      - **Can AI:** wanders to a random point inside `CONFINEMENT_RADIUS` on a slow cadence;
+        `_move_and_confine()` already hard-clamps regardless, this just keeps it from looking pinned
+        to the centre. Presses `bump` continuously the instant it is Downed and self-rightable —
+        reacts the same physics frame, not on the slow decision cadence.
+      - **Taya AI:** patrols the confinement box; on spotting the opposing Attacker within
+        `TAYA_DETECT_RANGE`, closes in and taps `bump` on a cooldown once in melee range.
+      - **Attacker AI:** retrieves its own team's loose Tsinelas (moves to it, taps `grab`) if not
+        already holding it; once holding, closes to `ATTACKER_THROW_RANGE` of the tracked Can, holds
+        `special_ability` for `ATTACKER_CHARGE_TIME`, releases, then holds a retreat spot behind the
+        throwing line rather than walking back toward the Can empty-handed.
+      - **Loose Tsinelas AI:** only acts while `Carriable.state == LOOSE` (CARRIED/FLYING already
+        bypass `character_base.gd`'s normal input path entirely); crawls toward its own team's
+        Attacker so the two meet partway rather than the Attacker crossing the whole gap alone.
+      Difficulty is explicitly out of scope, per the brief — nothing here is tuned against a human
+      or has any notion of a mistake. "Moves with intent and does not stand still" was the bar and
+      is what was built; anything more is a follow-up item, not a silent extension of this one.
+
+      **Removed/repurposed, decided rather than assumed:**
+      - `project.godot`'s P2/P3/P4 input action bindings are **unchanged**. `Input.action_press()`/
+        `action_release()` need the action registered in the InputMap, not bound to a real key — P3/
+        P4 were already unbound and stay that way; deleting the action *definitions* (not just the
+        bindings) would break `action_name()` lookups for AI-driven units using those player_ids.
+        P2 stays bound too: it is still a genuine debug affordance (see next point).
+      - `debug_player_switcher.gd` is **kept as a debug-only manual override**, not deleted: taking
+        a slot now disables that unit's `AIController` (`_apply_slots()`) for as long as the slot
+        holds it, and hands control straight back — including F5's "solo drive," which now correctly
+        returns the parked unit to AI control instead of leaving it inert. This was an explicit
+        choice, not an assumption: the switcher remains genuinely useful for driving a specific unit
+        during testing without fighting its own AI over the same buttons.
+      - The Settings panel's P2 rebind column is **removed** —
+        `SettingsManager.REBINDABLE_ACTIONS`/`ACTION_LABELS` are now P1-only. The underlying P2
+        bindings still exist in `project.godot` for the debug switcher above; there is just no
+        player-facing UI to rebind keys a shipped Single Player session never uses. Verified by
+        reading the code path (`settings_panel.gd::_build_rows()` iterates `REBINDABLE_ACTIONS`
+        directly, no hardcoded P1/P2 column structure in the scene) rather than by render — no
+        `render_probe.gd` mode exists for the Settings panel.
+
+      **Doc hygiene**, same commit: `Dev_Plan.md` §0.2/§0.3/§3.5/§3.5.5 (the mode is no longer part
+      of the debug removal contract; the switcher's purpose and removal timing are rewritten
+      accordingly), `Art_Direction.md`'s failure-ladder table and its own §7 open-question #2 (now
+      answered), `Handoff.md`'s frozen §1 System Context and §2 rule 10 (both previously said the
+      mode "is stripped before submission"), and `README.md`'s contradiction register — all
+      corrected rather than left to contradict the new reality. `Agent_Prompts.md`'s BUILD-AI brief
+      marked done, same pattern as the other completed lane briefs in that file.
+
+      **Verified by running**, not by reasoning alone: real (non-headless) Godot runs of the local
+      test flow, 500-1400 frames, silent both before and after every fix. Directly confirmed a full
+      grab → approach → charge → release → fly cycle completes (`carrier.held()` observed
+      transitioning non-null → null after a charge, via a temporary diagnostic since removed) and
+      that AI-driven units visibly leave their spawn points (render-probe screenshot, `B1·OFF` and
+      `A2·DEF` both well off their starting marks). **Not verified:** a human actually playing a full
+      Single Player Bo5 against the AI and judging whether it reads as a credible opponent — that is
+      feel, and this item's own acceptance bar is explicitly narrower than that.
 
 ---
 

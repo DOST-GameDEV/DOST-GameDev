@@ -15,6 +15,7 @@ names them but cannot set them.
 | **5** | 🎵 **BUILD-AUDIO** | **Sonnet** | medium | Any time | Nothing exists — not one `AudioStreamPlayer` in the repo. Fully independent of every other lane. |
 | **6** | 🔬 **QA** | **Sonnet** | medium | **Alongside anything** | Writes only `docs/`, so it can never collide. Good to keep running continuously. |
 | **7** | 📦 **PRODUCER** | **Sonnet** | medium | **Alongside anything** | Also `docs/`-only. Submission paperwork has a deadline that does not move. |
+| **8** | ~~🔧 **BUILD-AI**~~ | **Sonnet** | high | ✅ **Done 2026-07-28 — `Checklist.md` 5.5.** | Local Match renamed to Single Player; a new `ai_controller.gd` drives the three units the human isn't personally controlling via the same Input surface a human would, one hook in `character_base.gd`, no forked `_physics_process`. Debug switcher kept as a manual override; Settings panel's P2 rebind column removed. |
 
 ### Rules for running more than one at a time
 
@@ -64,7 +65,7 @@ self-contained: paste it as the FIRST message of a fresh session, nothing else n
 | 🔧 **BUILD-NET** | **Sonnet** | high | 1 |
 | 🔧 **BUILD-PHYS** | **Sonnet** | high | 1 — **must finish before DESIGN-ART's proportion step** |
 | 🔧 **BUILD-UX** | **Sonnet** | medium | 1 |
-| 🔧 **BUILD-AI** | **Sonnet** | high | 1 — new 2026-07-28, checklist 5.5, not started |
+| ~~🔧 **BUILD-AI**~~ | **Sonnet** | high | ✅ done 2026-07-28, checklist 5.5 |
 | 🎵 **BUILD-AUDIO** | **Sonnet** | medium | 1 |
 | 🎨 **DESIGN-ART** | **Opus** | high | 1 |
 | 🔬 **QA** | **Sonnet** | medium | any time, alongside anything |
@@ -257,12 +258,14 @@ own resolution says to do it late, after the last playtest. Item 4 confirmed, un
 
 # 🔧 BUILD-AI — Sonnet, high effort
 
-> **PLANNED 2026-07-28, per user request ("plan how to add a new agent... that will program the AI
-> for the other characters in local match"). Not started — this is the brief for whoever picks it
-> up, written before any code changed.** See `Checklist.md` 5.5 and `Handoff.md`'s session log for
-> the full reasoning. Read this whole brief before touching anything; it is longer than most
-> because there is no existing AI system in this codebase to point at — every other lane brief in
-> this file can say "the pattern already exists, copy it," this one cannot.
+> ✅ **DONE 2026-07-28 — see `Checklist.md` 5.5.** Every numbered item below shipped: the rename,
+> a new `ai_controller.gd` writing into the same Input surface a human would (one hook, no forked
+> `_physics_process`), role-based behaviour for all four roles, the P2-4/debug-switcher/Settings-
+> panel decisions, and the doc-hygiene sweep across `Dev_Plan.md`, `Art_Direction.md`,
+> `Handoff.md` and `README.md`. Two real scripted-input timing bugs were found and fixed along the
+> way (see 5.5's own entry). Kept below for the standing setup/lock/smoke-gate rules and as the
+> historical record of the brief, same as `BUILD-PHYS`/`BUILD-UX`/`BUILD-NET` above — not for
+> scope.
 
 ```
 You are the BUILD-AI lane on Tumbang Preso (Godot 4.7, GDScript). Repo: DOST-GameDEV/DOST-GameDev.
@@ -798,7 +801,7 @@ YOUR JOB, on every merge into `integration`:
        godot --path . tools/render_probe.tscn --quit-after 400 --resolution 960x540  -- viewmodel /tmp/
      Run WITHOUT --headless — headless renders nothing. Compare against docs/Dev_Plan.md §4.4's
      HUD layout and against the moodboard if it has been attached to your chat.
-  3. Play what can be played. F5 -> Start -> Local Match. Two instances with --host and
+  3. Play what can be played. F5 -> Start -> Single Player. Two instances with --host and
      --join=127.0.0.1 for the LAN paths.
   4. File every defect as the next free B- number in Handoff.md §3: what you did, what you
      expected, what happened, severity, and the file:line if you found it.
@@ -1717,9 +1720,12 @@ this entry different from every other arena game in the competition.
   the conditions: register targets at **runtime**, never cache `NodePath`s in `_ready()`,
   `is_instance_valid()`-check every frame, default to `current = false`, and ignore any target
   below the kill plane. Ignoring those is what caused **B-03**, the original LAN freeze.
-- **Strip the debug surface first.** Checklist 5.3 removes Local Match and the `DebugBar`. A
-  trailer with a debug readout along the bottom edge reads as unfinished no matter what is above
-  it. If 5.3 has not landed, at minimum shoot from a release build.
+- **Strip the debug surface first.** ⚠️ Checklist 5.3 no longer removes Single Player (formerly
+  Local Match) — it ships in the final build, per the user's own decision, `Checklist.md` 5.5.
+  What still has to go before shooting is only the on-screen `DebugBar`/F1-F4/Tab overlay (already
+  gated to `OS.is_debug_build()` and self-freeing in a release build — see `debug_player_switcher.gd`).
+  A trailer with a debug readout along the bottom edge reads as unfinished no matter what is above
+  it. Shoot from a release build, or at minimum confirm the debug overlay is not on screen.
 
 ---
 

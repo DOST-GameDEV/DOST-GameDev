@@ -1518,7 +1518,7 @@ Read out of `project.godot`. Every player index has its own action set (`_p1` �
 
 | Action | Input | Notes |
 |---|---|---|
-| Move | `move_left/right/up/down` per player | P1 WASD, P2 arrows in the local harness |
+| Move | `move_left/right/up/down` per player | P1 WASD; P2 arrows still work too, for the debug switcher's dual-control testing in Single Player |
 | **Grab / pick up** | `grab` | Picks up a loose tsinelas |
 | **Throw** | `special_ability` | Charged — hold and release |
 | **Bump / shove** | `bump` | The melee shove |
@@ -1541,19 +1541,22 @@ reachable in under 20 seconds.
 | **0** | Everything works | Full 2v2 on four devices | — |
 | **1** | One peer drops mid-match | **Finish the round.** Do not stop to explain. Narrate over it. | 0 s |
 | **2** | A peer cannot rejoin | Quit to menu, restart the match with the operator covering the empty slot | ~15 s |
-| **3** | LAN is unusable (venue wifi, AP isolation) | **Single machine, local 4-unit harness**, operator cycles units with `Tab` | ~20 s |
+| **3** | LAN is unusable (venue wifi, AP isolation) | **Single machine, Single Player** — the operator plays one unit, real AI drives the other three; `Tab`/F1-F4 stay available as a debug override if the operator wants to step into a specific unit | ~20 s |
 | **4** | The build will not run at all | **Play the trailer on loop.** Have it on the machine, not on a URL. | ~10 s |
 
-#### ⚠️ Two things this ladder needs, neither of which exists yet
+#### ⚠️ One thing this ladder needed, now resolved
 
-1. **Rung 3 depends on the local harness, which checklist 5.3 wants stripped before submission.**
-   These two requirements are in direct conflict and nobody has noticed. **Recommendation: keep
-   the local harness, gate it behind a launch argument rather than deleting it, and strip only
-   the on-screen debug overlay.** That satisfies 5.3's real intent (the build must not *look*
-   like a prototype) without removing the only fallback that does not need a network.
-   **Flagged, not done — `scripts/` is 🔧 Build's lane and 5.3 is blocked on 0.4 anyway.**
-2. **Rung 4 depends on the trailer existing (6.3), which depends on this document.** So the
-   trailer is not just a submission asset; it is the demo's own safety net. Cut it early.
+**Rung 3 used to depend on a debug-only harness that checklist 5.3 planned to strip before
+submission — a direct conflict nobody had noticed.** Resolved 2026-07-28 by the user's own
+decision, `Checklist.md` 5.5: **Single Player (formerly "Local Match") is promoted to a real,
+permanent mode that ships in the final build**, with AI driving the three units the operator
+is not personally controlling. Rung 3 no longer depends on anything scheduled for removal, and
+is arguably a BETTER fallback than before it — the operator does not need to manually `Tab`
+through units to keep the match moving; only the debug switcher (still present, still debug-only)
+needs stripping before submission, which is unrelated to whether the mode itself survives.
+
+**Rung 4 depends on the trailer existing (6.3), which depends on this document.** So the
+trailer is not just a submission asset; it is the demo's own safety net. Cut it early.
 
 #### What happens today when a peer drops
 
@@ -1643,7 +1646,7 @@ Flagged for a human, per the brief's rule that a design lane files questions rat
 | # | Question | Why it is not mine to take |
 |---|---|---|
 | 1 | Demo preset at `ROUND_TIME 45` / `WINS_NEEDED 2` | Touches `scripts/systems/` (🔧 Build) and changes what a judge experiences as "the game" |
-| 2 | Keep the local harness as fallback rung 3 vs. 5.3's strip | Directly contradicts a checklist item; needs the human to pick |
+| 2 | ~~Keep the local harness as fallback rung 3 vs. 5.3's strip~~ **DECIDED 2026-07-28** | User decision: Single Player (formerly "Local Match") is promoted to a real, permanent mode that ships in the final build — not stripped. See `Checklist.md` 5.5. |
 | 3 | What actually happens when a peer drops | Needs 🔬 QA with two machines and a pulled cable. **Nobody has ever tested this.** |
 | 4 | Audio — whether there is any, and who owns it | No owner assigned anywhere in the plan |
 | 5 | Whether Bayan Plaza is shown at all | Depends entirely on whether 0.4 ever plays it |
