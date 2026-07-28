@@ -9,7 +9,7 @@ names them but cannot set them.
 | # | Lane | Model | Effort | Run it when | Why here in the order |
 |---|---|---|---|---|---|
 | **1** | ~~🔧 **BUILD-PHYS**~~ | **Sonnet** | high | ✅ **Done 2026-07-28 — `Checklist.md` 2.5.** | Per-unit collision, both props rescaled, `HAND_CARRY_OFFSET` re-measured, `base_circle_decal` resized, 4.4a fixed. Row 4 is unblocked. |
-| **2** | 🔧 **BUILD-UX** | **Sonnet** | medium | Any time | Independent files. Fixes the missing FPP crosshair (**B-86**) and builds the charge-glow hook, which is the half of the throw the design lane cannot finish alone. |
+| **2** | ~~🔧 **BUILD-UX**~~ | **Sonnet** | medium | ✅ **Done 2026-07-28.** | **B-86 could not be reproduced** — re-rendered six times, crosshair present every time; see `Handoff.md` B-86. Charge-glow shader hook built in `you_card.gd` (`CHARGE_SHADER_PARAM`), verified by a scripted run. 5.3 (strip Local Match/debug switcher) deliberately **not** done this pass — it is blocked on 0.4 and 4.4 in `Checklist.md`, and `Art_Direction.md`'s own resolution says do it late, after the last playtest, not before. |
 | **3** | 🔧 **BUILD-NET** | **Sonnet** | high | Before the real LAN test (6.1) | Remote units visibly snap. Testing over real wifi without interpolation measures the wrong thing, so this must precede 6.1. |
 | **4** | 🎨 **DESIGN-ART** | **Opus** | high | **Unblocked — row 1 is done** | Its first job was rescaling props, which depended on 1; that shipped (`generate_all.gd`'s meshes), so this lane's remaining scope is whatever `Checklist.md` still lists open under 2.x. Opus because its question is *"does this match the moodboard"* — a judgement call, not a testable one. **Attach the moodboard image.** |
 | **5** | 🎵 **BUILD-AUDIO** | **Sonnet** | medium | Any time | Nothing exists — not one `AudioStreamPlayer` in the repo. Fully independent of every other lane. |
@@ -245,6 +245,13 @@ commits, integration only, take the docs/SHARED_LOCKS.md lock before typing in s
 run the six smoke-gate commands (3 and 4 WITHOUT --headless), [~] not [x] for the unverified.
 ```
 
+**Outcome, 2026-07-28:** item 1 (B-86) could not be reproduced — six re-renders of the exact repro
+above all show the crosshair present at screen centre, on code byte-identical to what B-86 was
+filed against. See `Handoff.md` B-86 for the full account; left open as an unexplained one-off
+rather than closed. Item 2 shipped as `you_card.gd`'s `CHARGE_SHADER_PARAM` hook. Item 3 was
+deliberately **not** done — still blocked on `Checklist.md` 0.4 and 4.4, and `Art_Direction.md`'s
+own resolution says to do it late, after the last playtest. Item 4 confirmed, untouched.
+
 ---
 
 # 🎵 BUILD-AUDIO — Sonnet, medium effort
@@ -381,9 +388,11 @@ YOUR JOB
    claiming verification is a claim you should try to reproduce.
 4. Capture screenshots with tools/render_probe.gd and reference them in your reports.
 
-Known-open, start here: B-86 (FPP crosshair absent), B-87 (carried slipper reads as floating in
-FPP — known limitation, confirm the framing note), and jump (added v4.35, never felt by a human;
-JUMP_VELOCITY 5.8 apexes at 0.841 and must not clear the 1.0 clutter ceiling).
+Known-open, start here: B-86 (FPP crosshair — filed absent, but 🔧 build-ux could not reproduce it
+on 2026-07-28 after six re-renders; if you can make it disappear again, that is the more useful
+finding — get a screenshot and note exactly what differed), B-87 (carried slipper reads as
+floating in FPP — known limitation, confirm the framing note), and jump (added v4.35, never felt
+by a human; JUMP_VELOCITY 5.8 apexes at 0.841 and must not clear the 1.0 clutter ceiling).
 
 - DOCS ARE PART OF THE WORK, AND ALL OF THEM, NOT JUST ONE. Tick your Checklist.md box in the SAME commit as the change. Then grep docs/ scripts/ tools/ for whatever you just made wrong and fix every stale claim - if a doc says a thing is missing and you just built it, that doc is now a bug. DELETE stale content rather than labelling it outdated. Never write 'verified by render' for something you did not render. See Concurrency_Protocol.md §12.
 - Also: sole authorship as M4tyu633 <matthewtlabrador@gmail.com>, no AI mentions in
@@ -962,6 +971,10 @@ and it is the single most valuable thing this lane can report.
 # Appendix — UI completion
 
 *(was `docs/Agent_Prompts.md`)*
+
+⚠️ **Superseded.** Item 0.1 (the meters) shipped and is `[x]` in `Checklist.md`; the 2026-07-28
+addendum there adds the charge-glow shader hook on top. Kept as the historical brief per
+`Concurrency_Protocol.md` §12 rule 3 — do not follow §1 below as a live task list.
 
 ## UI Completion Agent Brief
 
