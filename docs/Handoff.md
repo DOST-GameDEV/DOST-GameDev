@@ -746,6 +746,19 @@ For any coding agent picking up this queue.
 **Only open items live here.** B-01 … B-66 are in [`Handoff.md`](Handoff.md); everything
 marked `[FIXED]` there is done and settled. New bugs take the next free number **in this file**.
 
+**B-102 · Bayan Plaza's Taya spawns in FRONT of the Can, not behind it, and a comment asserted
+otherwise. [FIXED 2026-07-28]** `build_bayan_plaza.py`'s Spawn1 was `(2.2, 0.8, +1.5)` against
+`build_eskinita.py`'s `(2.2, 0.8, -1.5)`, while its own comment read *"same scheme and same
+coordinates as build_eskinita.py"*. The Attacker is at `z = +6`, so `+1.5` put the defending Taya
+**between** the Can and the attacker, on the attacker's own side — the exact layout the human
+rejected on 2026-07-28 ("the person in same team is behind that can"). It was fixed in Eskinita and
+never carried across, and the false comment is why nobody caught it: every reader who checked took
+the claim instead of the number.
+*Root cause of the class:* two map builders duplicate a spawn block with nothing checking that they
+agree. **Change one map's spawn block and diff it against the other in the same commit.**
+⚠️ **This is NOT the reported offense/defense spawn swap.** Eskinita's spawns were re-verified this
+pass, by data and not by eye, and are correct — see the open entry in §5.
+
 ### P0 — none open
 
 The three P0 network soft-locks (B-62, B-63, and the B-01/B-03/B-29 cluster) are all fixed and
