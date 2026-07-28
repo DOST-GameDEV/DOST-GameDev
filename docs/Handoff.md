@@ -745,6 +745,47 @@ For any coding agent picking up this queue.
 **Only open items live here.** B-01 … B-66 are in [`Handoff.md`](Handoff.md); everything
 marked `[FIXED]` there is done and settled. New bugs take the next free number **in this file**.
 
+**B-109 · Field markings STUCK OUT of the floor — the other half of the floating bug.
+[FIXED 2026-07-28]** Reported after B-103 shipped: *"the decals of floor still stick out."* Both
+reports are the same object and opposite failures. A marking is a **2cm-thick box**, so B-103's
+"sit it flush on the surface" left 2cm of vertical SIDE WALL standing proud all the way round.
+The camera lives near ground level, so at a grazing angle those walls catch the light and every
+line reads as a low kerb instead of as paint.
+*Fix — the rule is now a SANDWICH, not a resting height.* A marking must have its top face a hair
+above the surface (visible, never z-fighting) **and its bottom BELOW it**, so the side walls are
+inside the ground and cannot be seen from any angle. `floorcheck.embed_y()` is the single source of
+that arithmetic and both builders call it; nothing places a marking by a hand-computed number any
+more. The guard rejects all three wrong states with distinct messages — `STICKS OUT`, `FLOATS`/
+`SPANS`, `BURIED` — and was negative-tested against each before shipping.
+⚠️ **"Flush" was never the goal and is not achievable with thick geometry.** Anyone re-deriving
+this will land back on flush; the invariant is EMBEDDED.
+
+**B-108 · The Can "kept teleporting" — the teleport was the reset correcting an AI drift.
+[FIXED 2026-07-28]** Flagged repeatedly. `ai_controller.gd::_update_can()` picked
+`_random_point_in_confinement(0.6)`, walking the Can up to ~3 units off its base circle; every
+round reset then snapped it back to Spawn0, and that snap is what a player sees.
+*Measured, not guessed:* a new `render_probe.gd` mode, **`canwatch`**, drives a real match and
+prints only frames where the Can MOVES more than a step. It showed constant velocity 6.0 on a
+diagonal followed by 1.4–1.8 unit jumps back to `(0, 0.17, 0)` on each transition. After the fix
+it reports no jumps at all.
+*Why the AI was wrong on its own terms:* tumbang preso is played around a can STANDING on its
+mark — a Can that strolls off has nothing left to defend. It now holds `CAN_HOLD_RADIUS` (0.45)
+inside the 1.4-wide base circle, so it still shifts (the pillar says take funny) but never leaves
+the mark and the reset never has to yank it.
+
+**B-107 · The Can's and Slipper's cameras rolled. [FIXED 2026-07-28]** Third report, screenshots
+showing the 3D view rolled ~40° while the HUD stayed level — which is a camera roll and nothing
+else. Both pivots are CHILDREN of the CharacterBase and inherit its full basis, and a Prop's body
+DOES get a full basis written to it: `carriable.gd::_step_carried()` snaps a carried unit to the
+carrier's hand every physics frame, tilt included.
+*Fix — the rig stops trusting its parent.* `_apply_upright_pose()` gives both pivots an ABSOLUTE
+transform every frame, built from the body's **yaw only** plus their own pitch. Whatever the body
+does on the other two axes cannot reach the camera, **from any code path, including ones nobody has
+written yet** — which is the point, since patching individual writers is what failed twice.
+⚠️ Yaw is recovered from the body's FORWARD VECTOR, not `global_rotation.y`: Euler decomposition of
+a basis that contains roll does not give back the yaw you want, and a rolled basis is precisely the
+case this exists to survive.
+
 **B-106 · "defence hand is on the can" — BOTH mechanical explanations eliminated, no fix made.
 [INVESTIGATED 2026-07-28, NOT REPRODUCED]** Reported with a screenshot: a defending Person appearing
 to hold the Can, plus an older report that "the defender only has one hand".

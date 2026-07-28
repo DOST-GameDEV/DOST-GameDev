@@ -42,6 +42,23 @@ import math
 import os
 import struct
 
+## ⚠️ A MARKING MUST BE EMBEDDED IN THE GROUND, NOT RESTING ON IT.
+##
+## The previous rule was "bottom == surface", i.e. flush. That removed the
+## FLOATING half of the problem and left the other half, reported 2026-07-28 as
+## "the decals of floor still stick out": a marking is a 2cm-thick box, so
+## sitting it exactly on the road leaves 2cm of vertical SIDE WALL standing
+## proud all the way round. At a grazing angle — which is most of the time, since
+## the camera is near ground level — those walls catch the light and every line
+## reads as a low kerb rather than as paint.
+##
+## So the rule is now a SANDWICH: the top face must sit a hair above the surface
+## (visible, and never z-fighting with it) and the bottom must be BELOW it (so
+## the side walls are inside the ground and cannot be seen from any angle).
+## A marking that satisfies both cannot float and cannot stick out.
+MARK_PROUD = 0.002
+MARK_PROUD_MAX = 0.004
+
 ## Anything below this counts as contact. 0.5mm — far tighter than the ~8mm gap
 ## that was still visibly floating in the 2026-07-28 playtest, and far looser
 ## than float noise in a %.4f transform.
@@ -129,6 +146,17 @@ def mesh_bounds(mesh_name, models_dir="assets/models"):
         raise ValueError("floorcheck: %s has no vertices" % path)
     _bounds_cache[mesh_name] = (lo, hi)
     return _bounds_cache[mesh_name]
+
+
+def embed_y(surface, mesh_name, models_dir="assets/models"):
+    """The placement Y that embeds `mesh_name` in a surface at `surface`.
+
+    The single source of truth for the sandwich rule above — both map builders
+    call it rather than doing the arithmetic, so a marking cannot be placed by a
+    number somebody worked out by hand. That is the whole lesson of this file.
+    """
+    _lo, hi = mesh_bounds(mesh_name, models_dir)
+    return surface + MARK_PROUD - hi[1]
 
 
 def _to_world(lx, lz, x, z, yaw, sx):
@@ -238,13 +266,29 @@ class Surfaces:
                        ", ".join("%.3f" % h for h in sorted(heights))))
                 continue
             surface = heights.pop()
-            gap = bottom - surface
-            if abs(gap) > TOLERANCE:
+            top = y + _hi[1]
+            proud = top - surface
+            if proud < -TOLERANCE:
                 problems.append(
-                    "%s %s the ground by %.1fmm — its underside is at %.4f, "
-                    "the surface beneath it is at %.4f. Place it at y=%.4f."
-                    % (name, "FLOATS above" if gap > 0 else "is SUNK into",
-                       abs(gap) * 1000.0, bottom, surface, surface - lo[1]))
+                    "%s is BURIED — its top face is %.1fmm BELOW the surface at "
+                    "%.4f, so it will not be visible at all. Place it at y=%.4f."
+                    % (name, -proud * 1000.0, surface,
+                       embed_y(surface, mesh_name, self._models_dir)))
+            elif proud > MARK_PROUD_MAX:
+                problems.append(
+                    "%s STICKS OUT — its top face stands %.1fmm above the "
+                    "surface at %.4f, so its side walls show as a kerb at a "
+                    "grazing angle. Place it at y=%.4f."
+                    % (name, proud * 1000.0, surface,
+                       embed_y(surface, mesh_name, self._models_dir)))
+            elif bottom >= surface - TOLERANCE:
+                problems.append(
+                    "%s RESTS ON the ground instead of being embedded in it — "
+                    "its underside is at %.4f against a surface at %.4f, so %.1fmm "
+                    "of side wall is exposed all the way round. Place it at "
+                    "y=%.4f."
+                    % (name, bottom, surface, (top - bottom) * 1000.0,
+                       embed_y(surface, mesh_name, self._models_dir)))
         if problems:
             raise SystemExit(
                 "\nFLOATING GEOMETRY — build aborted, scene NOT written.\n"

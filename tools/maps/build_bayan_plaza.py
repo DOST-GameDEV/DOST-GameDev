@@ -26,7 +26,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from floorcheck import Surfaces, mesh_bounds  # noqa: E402
+from floorcheck import Surfaces, embed_y, mesh_bounds  # noqa: E402
 
 surfaces = Surfaces()
 
@@ -198,11 +198,11 @@ for k, (x, z) in enumerate([(-6.0, -6.0), (6.0, 6.0), (-6.5, 7.0), (7.0, -6.5)])
 # rather than assumed so it cannot drift if the slab tile ever changes.
 # floorcheck aborts the build if any of these floats. See build_eskinita.py.
 SLAB_TOP = surfaces.height_at(0.0, 0.0)
-add("Markings", "BaseCircle", "base_circle_decal", 0.0, SLAB_TOP, 0.0)
-add("Markings", "ThrowingLineNorth", "throwing_line_decal", 0.0, SLAB_TOP, -6.0)
-add("Markings", "ThrowingLineSouth", "throwing_line_decal", 0.0, SLAB_TOP, 6.0)
-add("Markings", "TeamSideNorth", "team_side_decal", 0.0, SLAB_TOP, -9.5)
-add("Markings", "TeamSideSouth", "team_side_decal", 0.0, SLAB_TOP, 9.5)
+add("Markings", "BaseCircle", "base_circle_decal", 0.0, embed_y(SLAB_TOP, "base_circle_decal"), 0.0)
+add("Markings", "ThrowingLineNorth", "throwing_line_decal", 0.0, embed_y(SLAB_TOP, "throwing_line_decal"), -6.0)
+add("Markings", "ThrowingLineSouth", "throwing_line_decal", 0.0, embed_y(SLAB_TOP, "throwing_line_decal"), 6.0)
+add("Markings", "TeamSideNorth", "team_side_decal", 0.0, embed_y(SLAB_TOP, "team_side_decal"), -9.5)
+add("Markings", "TeamSideSouth", "team_side_decal", 0.0, embed_y(SLAB_TOP, "team_side_decal"), 9.5)
 
 # =============================================================================
 
@@ -417,7 +417,7 @@ with open("scenes/maps/BayanPlaza.tscn", "w", encoding="utf-8", newline="\n") as
     f.write(out)
 
 print("wrote scenes/maps/BayanPlaza.tscn")
-print(f"  markings      : {n_marks} verified flush")
+print(f"  markings      : {n_marks} verified embedded")
 print(f"  ext_resources : {len(ext_lines)}")
 print(f"  load_steps    : {load_steps}")
 print(f"  mesh instances: {len(order)}")

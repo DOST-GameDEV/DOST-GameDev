@@ -167,13 +167,35 @@ func _release_all() -> void:
 ## not up to DECISION_INTERVAL late — run every call.
 ## ---------------------------------------------------------------------------
 
-## Wanders inside the confinement box. _move_and_confine() in
-## character_base.gd already hard-clamps to CONFINEMENT_RADIUS regardless of
-## what this picks, so there is no need to check the boundary here — only to
-## avoid picking a point that reads as "pinned in the centre doing nothing."
+## ⚠️ THE CAN HOLDS ITS CIRCLE. IT DOES NOT WANDER THE BOX.
+##
+## This used to pick `_random_point_in_confinement(0.6)`, which walks the Can up
+## to ~3 units off the base circle. Two things were wrong with that, and the
+## second is what got reported:
+##
+##  1. **It is not the sport.** Tumbang preso is played around a can STANDING on
+##     its mark. The whole defending job is to keep it there; a can that strolls
+##     off on its own has nothing left to defend.
+##  2. **It reads as teleporting.** Every round reset snaps the Can back to
+##     Spawn0, so a Can that had wandered visibly jumped across the arena the
+##     instant the round turned over. Reported repeatedly as "can keeps on
+##     teleporting", and measured with `render_probe.gd`'s `canwatch` mode:
+##     velocity a constant 6.0 on a diagonal, then a 1.4-1.8 unit jump back to
+##     (0, 0.17, 0) on the transition. The teleport was never the bug — it was
+##     the reset correcting a drift that should not have happened.
+##
+## It still shifts, because a completely static Can reads as a prop rather than
+## as a unit and the pillar says take funny — but only within the base circle
+## itself, so it never leaves the mark and the reset never has to yank it.
+## `base_circle_decal` is 1.4 across, so 0.45 keeps it comfortably inside.
+const CAN_HOLD_RADIUS: float = 0.45
+
 func _update_can(repick: bool) -> void:
 	if repick or not _has_move_target:
-		_move_target = _random_point_in_confinement(0.6)
+		var angle := randf() * TAU
+		var radius := randf() * CAN_HOLD_RADIUS
+		_move_target = Vector3(cos(angle) * radius, character.global_position.y,
+			sin(angle) * radius)
 		_has_move_target = true
 	_move_toward(_move_target)
 
