@@ -473,6 +473,9 @@ func _start_hosting() -> void:
 	# as the old single _spawn_player(multiplayer.get_unique_id()) call.
 	for id in NetworkManager.connected_peer_ids:
 		_spawn_player(id)
+	# 2026-07-28, user feedback: "when playing multiplayer, for example only
+	# 2 people is playing, there's only 2 characters. it should have 4."
+	_fill_empty_slots_with_placeholders()
 	MatchManager.begin_next_round()
 
 func _start_joining(address: String) -> void:
@@ -694,6 +697,14 @@ func _spawn_player(peer_id: int) -> void:
 	if existing_character != null and is_instance_valid(existing_character):
 		_rpc_reclaim_character.rpc(index, peer_id)
 		return
+	spawner.spawn(_build_spawn_data(peer_id, index))
+
+## Shared by _spawn_player (a real peer) and _fill_empty_slots_with_placeholders
+## (an unfilled team/role slot, given a synthetic negative peer_id nothing
+## real can ever match) — the two differ only in WHOSE peer_id ends up
+## controlling the resulting character, not in how team/role/position are
+## derived from `index`.
+func _build_spawn_data(peer_id: int, index: int) -> Dictionary:
 	var team := index / 2 # 0, 0, 1, 1 for up to MAX_PLAYERS = 4
 	var is_person := index % 2 == 0 # first peer of each team pair is the Person
 	var team_is_can_side := (team == 0) == MatchManager.team_a_is_can
@@ -715,11 +726,44 @@ func _spawn_player(peer_id: int) -> void:
 	# Defender swaps every round while a peer's is_person/player_id don't;
 	# that would need input rebinding on every role swap, not just this fix.
 	var player_id := (index % 2) + 1
-	spawner.spawn({
+	return {
 		"peer_id": peer_id, "position": spawn_pos, "is_can": is_can,
 		"is_person": is_person, "team": team, "team_is_can_side": team_is_can_side,
 		"player_id": player_id,
-	})
+	}
+
+## 2026-07-28, user feedback: "when playing multiplayer, for example only 2
+## people is playing, there's only 2 characters. it should have 4... make the
+## other 2 stationary for the meantime as it's only a placeholder." A 2v2
+## match with fewer than 4 real peers connected used to leave the unfilled
+## team's slots with no character at all — _start_hosting only ever spawned
+## _spawn_player for peers that actually connected.
+##
+## Fills every remaining slot (0..MAX_PLAYERS-1) with the same trick
+## _on_player_disconnected's placeholder uses: multiplayer authority set to a
+## peer_id no real connection can ever match, so character_base.gd:347's
+## authority gate keeps it frozen in place forever instead of giving it real
+## AI — "for the meantime," per the same feedback, means standing there and
+## nothing more.
+##
+## Negative sentinel peer_ids (-1 - index): real ENet peer ids are always
+## positive, so a negative number can never collide with, or ever satisfy
+## is_multiplayer_authority() for, an actual connection.
+##
+## Deliberately does NOT touch _token_join_index/_next_join_index: a REAL
+## peer connecting later still gets the next free index normally, finds this
+## placeholder already sitting in _index_to_character for that index, and
+## reclaims it via the exact same _rpc_reclaim_character a reconnecting real
+## peer uses (see _spawn_player) — a new player taking an empty slot and a
+## dropped player's own slot coming back are the same event to this code.
+func _fill_empty_slots_with_placeholders() -> void:
+	for index in range(NetworkManager.MAX_PLAYERS):
+		var existing_character: CharacterBase = _index_to_character.get(index)
+		if existing_character != null and is_instance_valid(existing_character):
+			continue
+		var sentinel_peer_id := -1 - index
+		_spawned_peer_ids[sentinel_peer_id] = true
+		spawner.spawn(_build_spawn_data(sentinel_peer_id, index))
 
 ## B-76. Picks the ability class a Prop should carry THIS round, given its
 ## role (is_can) and team. Never cached on the caller's side — call this again
