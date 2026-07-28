@@ -534,6 +534,34 @@ a card.
 **The CAN row is your spec for M-2.** Standing, knocked-down-and-dented, and impact burst are
 exactly the three states that task builds. The impact burst is already done (Q-8).
 
+### 1b. The prop asset moodboards — 2026-07-28
+
+**A second, separate pair of moodboards, supplied by the human as images in chat.** Like Harry's
+Canva board they are not in the repo, so this is the written record; attach the images to the
+first message of any task that touches either prop.
+
+**They govern the two hero props only.** Everything else — the characters, the maps, the UI, the
+`PEAK` reference — is still Harry's board, and where the two disagree on anything outside the
+tsinelas and the lata, Harry's board wins.
+
+| Board | What it shows | What was taken from it |
+|---|---|---|
+| **URBAN FLIP-FLOPS** | Orthographic top / side / front of a pair of worn brown foam flip-flops with tan fabric Y-straps, on a concrete slab | Colourway (`PROP_FOAM`, `PROP_WEBBING`), the chunky three-step foam sole, the wide flat webbing section, the strap span from mid-sole to toe post |
+| **SARSI CAN** | A low-poly 330 mL Sarsi can — blue body graduating cyan→navy, big red sail, red ball, white wave band low on the body, aluminium lid with a pull tab | The whole livery, the flat aluminium lid, the pull tab, and the banded stand-in for the gradient |
+
+⚠️ **Both boards are labelled "1024×1024 PBR" and neither is buildable as drawn.** `obj_writer.gd`
+emits no UVs at all and the `.mtl` carries one flat `Kd` per material — deliberately, because
+Harry's board's stated reference is `PEAK`: *flat high-saturation colour, not photoreal and not
+PBR*. So these two boards were read for **silhouette, proportion and colour blocking**, and their
+texture maps were not. That is a real gap, not an oversight, and it has one visible consequence:
+**no printed type.** The `sarsi` wordmark, the `330 mL` and the barcode need a UV pipeline that
+does not exist. See `Handoff.md` §5 before building one — at the size the can is actually read
+(≈0.34 units, seen from 4.5) the wordmark lands around 13 px tall, so it is not obviously worth it.
+
+**Sarsi is a registered trademark of its owner.** It is reproduced here as homage — the human's
+call, on the record: *"u can reproduce sarsi logo, we have to showcase PH in this project, js give
+credits."* Credit is carried in `README.md`. No endorsement is claimed or implied.
+
 ---
 
 ### 2. Palette — the single source of truth
@@ -544,23 +572,42 @@ should have their `Kd` values derived from these same constants (`Handoff.md` M-
 
 | Token | Hex | Use in 3D |
 |---|---|---|
-| `INK` | `#040838` | Outlines (inverted hull), can rim and lid, dark accents |
-| `PANEL` | `#E1E5E8` | Neutral light surfaces |
-| `CARD` | `#F5F7FA` | Lighter neutral |
+| `INK` | `#040838` | Outlines (inverted hull), dark accents |
+| `PANEL` | `#E1E5E8` | Neutral light surfaces. In 3D: the lata's aluminium lid, rolled rim and base crimp |
+| `CARD` | `#F5F7FA` | Lighter neutral. In 3D: the lata's white wave band |
 | `OFFENSE` | `#F87020` | Attacking side — role colour |
-| `DEFENSE` | `#0080E8` | Defending side — role colour. **Can body only.** ⚠️ **NOT the tsinelas sole — see below** |
-| `IMPACT` | `#F468A8` | Impact bursts, tsinelas strap, hazard decals |
-| `HIGHLIGHT` | `#F8D028` | Can label band, base-circle decal, ready glows |
-| `DANGER` | `#F80000` | Downed / out-of-bounds |
+| `DEFENSE` | `#0080E8` | Defending side — role colour. **Can body only**, banded light / mid / deep to stand in for the moodboard's gradient. ⚠️ **NOT the tsinelas — see below** |
+| `IMPACT` | `#F468A8` | Impact bursts, hazard decals |
+| `HIGHLIGHT` | `#F8D028` | Base-circle decal, ready glows |
+| `DANGER` | `#F80000` | Downed / out-of-bounds. ⚠️ **Not the lata's sail** — livery is `PROP_SARSI_RED`, because `DANGER` is a state signal and a healthy can must not wear it |
+
+**The `PROP_*` band.** The two hero props are neither UI nor environment and have their own tokens,
+added 2026-07-28 with the asset moodboards below. `ENV_*` is deliberately held under ~70%
+saturation so a wall never competes with a character; a hero prop has the opposite job, so these
+are allowed to be louder than any `ENV_*` token and are still forbidden either role hue.
+
+| Token | Hex | Use in 3D |
+|---|---|---|
+| `PROP_FOAM` | `#7A5741` | Tsinelas footbed — worn brown foam |
+| `PROP_FOAM_DARK` | `#54382A` | Tsinelas outsole, the dirty underside |
+| `PROP_WEBBING` | `#C69A6B` | Tsinelas Y-strap and toe post — tan fabric webbing |
+| `PROP_SARSI_RED` | `#D8221C` | The lata's sail and ball |
 
 > ⚠️ **CORRECTION, 2026-07-28 — this table was the source of B-81.** It used to assign `DEFENSE` to
 > "Can body, **tsinelas sole**", and `_build_tsinelas()` implements exactly that. **It is wrong.** A
 > Prop is a Tsinelas precisely when its team is on **offence**, so the attacking team's prop is
 > painted the defending colour — which breaks rule 1 immediately below. The moodboard disagrees
 > independently: **THE SLIPPER's card accent is magenta**, as is THE CAN's. The rule is right and
-> the table was wrong. **Fixed 2026-07-28 (B-81):** sole → `IMPACT`, straps → `HIGHLIGHT`, toe post
-> → `INK`, and the materials renamed after the PART rather than the token. Verified by render. The
-> Can is deliberately not in scope — a blue can on the defending side is consistent and renders well.
+> the table was wrong. **Fixed 2026-07-28 (B-81):** the materials were renamed after the PART
+> rather than the token, and the sole was repainted off the role hue. Verified by render.
+>
+> **The colours B-81 chose were a placeholder, and are gone — 2026-07-28, later the same day.**
+> B-81 reached for `IMPACT` magenta and `HIGHLIGHT` yellow because those were the only non-role
+> tokens to hand. The human then supplied asset moodboards for both props (see §1) and settled it:
+> *"the magenta shit is just placeholder, we can update it with the new ones."* The tsinelas is now
+> `PROP_FOAM` / `PROP_WEBBING` brown-and-tan and the lata wears Sarsi livery. **B-81's rule is
+> untouched by that** — brown, tan, red and white are none of them a role hue. Only the stand-in
+> colours it was demonstrated with have changed.
 >
 > **Environment art may use neither hue at all** — see
 > [`Art_Direction.md`](Art_Direction.md) §3 for the `ENV_*` band that exists so it

@@ -37,6 +37,50 @@ one names the model it should run on, the files to read first, its exact scope, 
 
 ## 0. Session log — where the project stands right now
 
+### 0.12 CHECKLIST 2.9 — both hero props rebuilt to their own asset moodboards (2026-07-28)
+
+**Lane:** 🎨 Design. **Lock:** `tools/models/generate_all.gd`, taken and released in this pass.
+**Supersedes B-81's colour choice, not B-81's rule.**
+
+The human supplied two asset moodboards — a worn brown flip-flop, and a low-poly
+**Sarsi** can — and asked for both props to be built to them. Two steers arrived mid-pass and both
+are on the record and acted on: *"u can reproduce sarsi logo, we have to showcase PH in this
+project, js give credits"* and *"the magenta shit is just placeholder, we can update it with the
+new ones."* The written record of both boards is `Art_Direction.md` §1b; the Sarsi credit is in
+`README.md`. Full item breakdown in `Checklist.md` 2.9.
+
+**The one thing the boards ask for that was not built** is printed type on the can — the wordmark,
+`330 mL` and the barcode. Both boards are labelled "1024×1024 PBR"; the pipeline emits no UVs and
+one flat `Kd` per material, and Harry's board's own reference (`PEAK`) is flat colour, not PBR. So
+they were read for silhouette, proportion and colour blocking, and their texture maps were not.
+Filed in §5 as a decision the team owes, with the argument for *not* building it.
+
+#### Two things found while rendering this, neither of them fixed here
+
+Filed rather than folded in, per `Concurrency_Protocol.md` §10.
+
+1. **The carried tsinelas is still visibly detached from the hand — `Checklist.md` item 3 of the
+   DESIGN-ART queue, re-verified and NOT closed.** This pass re-rendered the viewmodel probe as
+   that item asked. `HAND_CARRY_OFFSET` is not the suspect it was framed as: the probe's own report
+   prints `HandPoint` and `carried slipper` at **exactly the same coordinate**
+   `(0.260, 0.600, -0.750)`, so the slipper is precisely where the code puts it. The problem is
+   that `HandPoint` itself is nowhere near the Person's visible fist — in `viewmodel_tpp.png` the
+   slipper sits up beside the head while the rendered hand is forward and lower. **So this is not a
+   number to re-tune, it is an attachment pointing at the wrong place**, and the carry-tilt fix in
+   `carriable.gd` was genuinely a different bug. Re-measuring `HAND_CARRY_OFFSET` against the mesh
+   would not have found this; the render did.
+2. **The prop ink outline is eating the props it outlines.** `outline.gdshader`'s `outline_width`
+   defaults to **0.025** and nothing overrides it for Props (`character_visual.gd::_apply_toon_pass`
+   applies the shader as-is; it returns early for Persons, so they never take this path). It
+   inflates along the normal in **model space**, and the lata's mesh has `LATA_SCALE` **baked in**
+   — so 0.025 is 0.025 *world* units on a can only **0.204 wide**, i.e. ~12% of the can's width per
+   side. Visible in this pass's match render as dark slabs down both sides of the can. This is
+   pre-existing and predates the re-livery, but it matters more now that the can carries livery
+   worth seeing. It is also the exact hazard the environment-outline item (`Art_Direction.md` Part 1
+   §6, item C) warns about, so **whoever takes that item should fix the prop width in the same
+   pass** — a per-surface `outline_width` set from the mesh's own scale, not one constant for
+   meshes that differ by 10× in size.
+
 ### 0.11 CHECKLIST 1.2 — prop scale decided: hero-scaled props, carried-scale tsinelas (2026-07-28)
 
 **Branch:** `art/prop-scale-and-kit`. **Lane:** 🎨 Design. **Supersedes nothing** — 1.2 was open,
@@ -994,12 +1038,18 @@ folded into an unrelated commit, because changing a hero prop's colour deserves 
 its own render.
 
 **B-81 · The tsinelas sole is painted `DEFENSE` blue, on a unit that only ever exists on
-offence. [FIXED 2026-07-28]** Sole → `IMPACT`, straps → `HIGHLIGHT`, toe post → `INK`, and the
-materials renamed from palette tokens (`defense`/`impact`/`highlight`) to parts
-(`sole`/`strap`/`post`) — a material literally named `defense` is a bug that reads as correct in
-every diff, and renaming also changes the `.obj`, which is what forces the reimport the `.mtl`
-alone would not. **Verified by render:** no role hue anywhere on the slipper, and the Y-strap reads
-*better* than it did — yellow on magenta separates at FPP distance where pink on blue did not.
+offence. [FIXED 2026-07-28]** The materials were renamed from palette tokens
+(`defense`/`impact`/`highlight`) to parts (`sole`/`strap`/`post`) — a material literally named
+`defense` is a bug that reads as correct in every diff, and renaming also changes the `.obj`, which
+is what forces the reimport the `.mtl` alone would not. The sole was repainted off the role hue.
+**Verified by render:** no role hue anywhere on the slipper.
+
+⚠️ **The colours this fix chose are superseded — same day.** B-81 painted the sole `IMPACT` magenta
+and the straps `HIGHLIGHT` yellow because they were the only non-role tokens available. The human
+then supplied an asset moodboard for the prop and ruled: *"the magenta shit is just placeholder, we
+can update it with the new ones."* **The slipper is now `PROP_FOAM` brown with a `PROP_WEBBING` tan
+strap** (`Art_Direction.md` §1b). B-81's *rule* is untouched — brown and tan are neither role hue —
+and its material-naming half stands, extended to the lata in the same pass. Do not restore magenta.
 Original report follows. `tools/models/generate_all.gd::_build_tsinelas()` sets the sole material to
 `UiTheme.DEFENSE` (`#0080e8`). A Prop is a Tsinelas exactly when its team is **attacking**, so the
 attacking team's prop wears the defending colour — a direct breach of `Dev_Plan.md` §4.2 ("never
@@ -1010,10 +1060,10 @@ blue slab.
 body, **tsinelas sole**". **That table is wrong and the rule is right.**
 *Severity:* P1 — it teaches the player the wrong colour language on the most-looked-at object in
 the game.
-*Fix:* sole → `UiTheme.IMPACT`, keep the straps readable against it (they are `IMPACT` today, so
-they move to `HIGHLIGHT`); regenerate; render both viewmodel shots. Correct the brief's table in
-the same commit. The lata is **not** in scope — a blue can on the defending side is consistent, and
-it renders well.
+*Fix:* repaint the sole off the role hue, keep the straps readable against it; regenerate; render
+both viewmodel shots. Correct the brief's table in the same commit. The lata was **not** in scope
+here — a blue can on the defending side is consistent, and it renders well. *(It came into scope
+later the same day for a different reason: the Sarsi livery moodboard. It is still blue.)*
 
 **B-82 · `Main.tscn`'s floor top surface is `y = +0.5`, not `y = 0` — and two docs say
 otherwise. (NEW)** `Floor` and its `CollisionShape3D` carry **no transform**, and the shape is a
@@ -1918,9 +1968,14 @@ Steps:
    as polygonal at TPP distance; 24 is wasted on a shape this small). Profile, bottom to top:
    base crimp → slight outward taper → straight wall → seam band step → shoulder taper → rolled
    top rim → recessed lid. Target **≈ 260 tris**.
-2. **Materials, three, named for `UiTheme` tokens so `.mtl` and theme cannot drift:** `defense`
-   (body, `#0080E8`), `highlight` (label band, `#F8D028`), `ink` (rim and lid, `#040838`). The
-   moodboard's can is blue-bodied with a yellow label band — match it exactly.
+2. **Materials named for the PART, with their colours taken from `UiTheme` constants so `.mtl` and
+   theme cannot drift:** `aluminium` / `aluminium_shade` (lid, rolled rim, base crimp, pull tab),
+   `body_bright` / `body` / `body_deep` (the banded blue gradient), `wave` (the white band) and
+   `sail` (`PROP_SARSI_RED`). **Sarsi livery, per the 2026-07-28 asset moodboard** — see
+   `Art_Direction.md` §1b. *(This step used to specify a blue body with a yellow `highlight` label
+   band and an `ink` rim, and materials named after tokens. Both are gone: the livery changed with
+   the moodboard, and a material called `defense` on a label is a bug that reads as correct in
+   every diff — the same rename B-81 made on the tsinelas.)*
 3. **The dented variant.** A second `.obj` from the same profile with a radial displacement
    applied to a contiguous arc of the wall verts. Parameterise depth so Option A's three dent
    stages are three generated meshes (`lata_dent1/2/3.obj`), not one mesh scaled.
@@ -1943,12 +1998,20 @@ follows and the dents reset.
 **Commit:** `Model the lata — revolved body, three dent states, knocked-down tilt (v4.8)`
 
 **[DONE @ v3.7]** Landed in commit 50ec425. `generate_all.gd` has the full profile-and-revolve
-body (five stacked revolves: ink base crimp, defense lower wall, highlight label band,
-defense upper wall, ink shoulder+rolled rim+recessed lid). Three dent states generated
-via `_apply_dents` deform callable. `CanVisual.tscn` updated to use `lata.obj`. Dent mesh
-swap wired in `character_visual.gd::_on_dents_changed` / `_refresh_can_damage`. Downed tilt
-(78° on 0.28s Back/Out tween) in `_refresh_downed_tilt`. Walk/run locomotion also added
-in the same session. Acceptance test pending human play session.
+body. Three dent states generated via `_apply_dents` deform callable. `CanVisual.tscn` updated to
+use `lata.obj`. Dent mesh swap wired in `character_visual.gd::_on_dents_changed` /
+`_refresh_can_damage`. Downed tilt (78° on 0.28s Back/Out tween) in `_refresh_downed_tilt`. Walk/run
+locomotion also added in the same session. Acceptance test pending human play session.
+
+**[RE-LIVERIED 2026-07-28]** Same profile, new skin, per the Sarsi asset moodboard. The base,
+shoulder, rolled rim and now-flat lid are still revolves; **the printed wall between them is no
+longer one** — `_lata_wall()` emits it strip by strip as stacked layers sharing boundary functions,
+because a sail is not rotationally symmetric and `add_revolve` can only paint full rings. Read that
+function's header before touching it: the sail is *the wall in a different colour*, not a decal
+shell, specifically so a dent through it deforms it instead of shearing it off into mid-air. A pull
+tab was added to the lid, and the lid was flattened from its slight dome so the tab makes contact
+across its whole length. Dent depth re-measured after the rebuild: 0.027 world units, against 0.029
+before — preserved. Verified by render at 0.85 and at match distance.
 
 ---
 
@@ -1968,9 +2031,11 @@ Steps:
    sole edge. **≈ 180 tris.**
 2. The Y-strap as real geometry: two swept quad strips from the toe post to each side of the
    sole, meeting at a toe knob. Not two rotated boxes floating above the sole.
-3. Materials: `defense` sole, `impact` strap (`#F468A8`), `highlight` toe post. This is what
-   `TsinelasVisual.tscn` already uses and it matches the moodboard card — keep the palette,
-   replace the geometry.
+3. Materials named for the PART: `outsole` / `foam` / `footbed` (`PROP_FOAM_DARK` → `PROP_FOAM`),
+   `strap` and `post` (`PROP_WEBBING`). **Worn brown foam with a tan webbing Y-strap, per the
+   2026-07-28 asset moodboard** — see `Art_Direction.md` §1b. *(This step used to specify a
+   `defense` sole with an `impact` strap. The blue sole was B-81 — a role hue on an offence-only
+   prop — and the magenta that replaced it was explicitly a placeholder.)*
 4. Keep the 1.35-unit length. Same `_align_to_capsule_floor()` re-verification as M-2 step 6.
 5. **Orientation matters here in a way it did not for the can.** The character faces −Z
    (`character_base.gd`'s `look_at()`); model the slipper toe-forward along −Z so a thrown
@@ -2409,6 +2474,24 @@ document that acts on it, so this list shrinks instead of accumulating.
 - [ ] **Ownership.** `Dev_Plan.md` §6 is now the **single canonical table** — the duplicate copies
       in this file and in GDD §8 have been removed and replaced with pointers. Still blank, and
       **submission Form 01 is literally this table**, so it is no longer just hygiene.
+
+- [ ] **Is printed type on the lata worth a UV + texture pipeline?** The 2026-07-28 Sarsi asset
+      moodboard carries a `sarsi` wordmark, `330 mL` and a barcode. **None of them are buildable
+      today, and the gap is structural, not an oversight:** `obj_writer.gd` emits no `vt` lines at
+      all and `_write_mtl` writes a single flat `Kd` per material with no `map_Kd`. The rest of
+      that board's can — blue banding, red sail and ball, white wave, aluminium lid, pull tab — is
+      shipped as colour-blocked geometry and reads correctly at match distance (`Checklist.md`
+      2.9).
+      Building it means: UV support in `obj_writer`, a label-texture generator (Godot *can* render
+      a font to an `Image` in a tool script, so the wordmark is reachable without hand-drawing
+      letterforms), UV coordinates for the can wall, and import settings for the PNG.
+      **The argument against is the size the can is actually read at.** It stands 0.34 units tall
+      and is seen from ~4.5 — the label lands ≈13 px, so a wordmark would be a smudge and the
+      barcode nothing at all. It would only pay off in a close-up: a menu render, a key art shot,
+      or the 3.2 logo lockup. **A human should decide whether any of those are planned** before
+      anyone builds a texture pipeline for a 13 px payoff. Flat colour is also what Harry's board
+      asked for in the first place (`PEAK`, "not photoreal and not PBR"), so *not* building it is a
+      defensible final answer, not a deferral.
 
 ### Deliberately open, and blocking nothing
 

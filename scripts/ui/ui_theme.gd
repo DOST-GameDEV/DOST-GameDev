@@ -99,6 +99,30 @@ const ENV_PAINT_OCHRE: Color = Color("c9994a")    ## mustard / ochre
 ## roll-up shutters, tiled skirting, or just forty years of splashback.
 const ENV_PAINT_PLINTH: Color = Color("6d5f52")
 
+# --- Prop palette (docs/Art_Direction.md Part 2) -------------------------------
+#
+# WHY THESE EXIST. The two hero props wore UI tokens — an `IMPACT` magenta sole,
+# a `HIGHLIGHT` yellow strap — because in 2026-07-28's B-81 pass those were the
+# only non-role colours to hand. **The human confirmed that magenta was
+# placeholder** and supplied asset moodboards for both props, so
+# they now get their own band instead of borrowing the UI's.
+#
+# They are NOT in the `ENV_*` band either, and that distinction is load-bearing:
+# `ENV_*` is held under ~70% saturation on purpose so a wall never competes with
+# a character. A hero prop is the opposite problem — the tsinelas is the
+# most-looked-at object in the game and has to read against asphalt at throwing
+# distance. So these are allowed to be more saturated than any `ENV_*` token,
+# and forbidden from going anywhere near `OFFENSE` or `DEFENSE` in hue.
+#
+# ⚠️ `PROP_SARSI_RED` is a brand red, not `DANGER`. `DANGER` (#F80000) means
+# downed / out-of-bounds and is a STATE signal; the sail is permanent livery, and
+# painting livery in the alarm colour would make a healthy can look hurt. Two
+# steps down in value and slightly warm keeps them apart at arena distance.
+const PROP_FOAM: Color = Color("7a5741")          ## tsinelas footbed — worn brown foam
+const PROP_FOAM_DARK: Color = Color("54382a")     ## tsinelas outsole, the dirty underside
+const PROP_WEBBING: Color = Color("c69a6b")       ## tsinelas Y-strap — tan fabric webbing
+const PROP_SARSI_RED: Color = Color("d8221c")     ## the lata's sail and ball
+
 # --- Chrome -------------------------------------------------------------------
 const BORDER_WIDTH: int = 3
 const CORNER_RADIUS: int = 6

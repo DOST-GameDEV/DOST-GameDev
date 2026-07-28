@@ -29,7 +29,9 @@ Deviations already taken, all deliberate:
 | Role cards: navy 3px border **and** a 6px colour bar | Full role-coloured border, no separate bar | `StyleBoxFlat` has one `border_color` for all four sides; Godot has no per-side border colour. The full outline also reads better at HUD scale. See `ui_theme.gd::card_style()`. |
 | THE ATTACKER: aiming arc (mouse pointer trail) | Not built | B-45. Never a build order — an illustrated idea, flagged as a decision. |
 | THE DEFENDER: lata reset channel (progress bar) | Not built | B-46, same. |
-| THE SLIPPER card accent: magenta | Sole is `IMPACT` magenta ✅ | This one the board got right and an internal table got wrong — see B-81. |
+| THE SLIPPER card accent: magenta | Sole is `PROP_FOAM` brown, strap `PROP_WEBBING` tan | Superseded, 2026-07-28, by a second asset moodboard the human supplied for this prop specifically: *"the magenta shit is just placeholder."* The board's magenta settled B-81's *rule* (the sole must not wear a role hue) and was never meant to settle the colour. See `Art_Direction.md` §1b. |
+| THE CAN card accent: magenta | Sarsi livery — blue body, red sail, aluminium lid | Same second moodboard. The can was always blue-bodied; what changed is that it is now a specific, recognisably Filipino can rather than a generic one. |
+| Both prop moodboards: "1024×1024 PBR" | Flat-colour materials, no textures, no UVs | The pipeline emits no UVs and Harry's board's own stated reference (`PEAK`) is flat colour, *not* PBR. Silhouette and colour blocking were taken; the texture maps were not. Consequence: **no printed type on the can** — see `Handoff.md` §5. |
 | Props drawn hero-scale | Being brought toward real scale | The board had no environment to be out of proportion *with*. See `Art_Direction.md` §1. |
 
 **The two things that are not negotiable**, moodboard or not: the role-colour rule (orange =
@@ -63,3 +65,10 @@ Kept visible rather than quietly patched, because each one cost real time to fin
 | **`Concurrency_Protocol.md` §0 assigns 2.3 to Sonnet; it was done by the design lane.** | Ownership follows whoever the human points at the task. The protocol's table is a default, not a claim about history. |
 
 **If you find another, add a row here in the same commit that fixes it.**
+
+## Credits and attribution
+
+| What | Whose | How it is used |
+|---|---|---|
+| **Sarsi** — the livery on the in-game lata (blue body, red sail and ball, white wave) | Registered trademark of its owner | Reproduced as **homage**, at the human's explicit direction, to place the game in the Philippines the way a real tumbang preso can does. Colour-blocked geometry only — no wordmark, no artwork file, no texture is copied. **No affiliation or endorsement is claimed or implied.** If this ever ships commercially, this row is the thing to re-check first. |
+| **Kenney *Mini Characters*** | [kenney.nl](https://kenney.nl), CC0 | The Person rig, restyled in M-5. |
