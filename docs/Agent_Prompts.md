@@ -1,5 +1,47 @@
 # Agent Prompts — paste-ready openers for each lane
 
+## FOR THE HUMAN — what to run, on what, in what order
+
+Each row is a block further down this file. **Copy the block verbatim into a brand-new chat**
+with no other context, and **set the model and effort in the client before pasting** — the prompt
+names them but cannot set them.
+
+| # | Lane | Model | Effort | Run it when | Why here in the order |
+|---|---|---|---|---|---|
+| **1** | 🔧 **BUILD-PHYS** | **Sonnet** | high | **First. Blocks art.** | Per-unit collision has to exist before any prop can be rescaled — `CharacterBase.tscn` shares one capsule between Persons and Props, so a 0.34 m can would still carry a 1.6 m invisible collider. Nothing about proportion can be fixed until this lands. |
+| **2** | 🔧 **BUILD-UX** | **Sonnet** | medium | Any time after 1 starts | Independent files. Fixes the missing FPP crosshair (**B-86**) and builds the charge-glow hook, which is the half of the throw the design lane cannot finish alone. |
+| **3** | 🔧 **BUILD-NET** | **Sonnet** | high | Before the real LAN test (6.1) | Remote units visibly snap. Testing over real wifi without interpolation measures the wrong thing, so this must precede 6.1. |
+| **4** | 🎨 **DESIGN-ART** | **Opus** | high | **After 1 merges** | Its first job is rescaling props, which depends on 1. Opus because its question is *"does this match the moodboard"* — a judgement call, not a testable one. **Attach the moodboard image.** |
+| **5** | 🎵 **BUILD-AUDIO** | **Sonnet** | medium | Any time | Nothing exists — not one `AudioStreamPlayer` in the repo. Fully independent of every other lane. |
+| **6** | 🔬 **QA** | **Sonnet** | medium | **Alongside anything** | Writes only `docs/`, so it can never collide. Good to keep running continuously. |
+| **7** | 📦 **PRODUCER** | **Sonnet** | medium | **Alongside anything** | Also `docs/`-only. Submission paperwork has a deadline that does not move. |
+
+### Rules for running more than one at a time
+
+- **At most TWO code lanes at once** (1, 2, 3, 5 are code lanes), and never two whose file sets
+  overlap — see [`Concurrency_Protocol.md`](Concurrency_Protocol.md) §2 for the ownership table.
+- **QA and PRODUCER are always safe** to add on top; they touch no code.
+- **One person does the setup in `Concurrency_Protocol.md` §11 once** before any lane starts.
+- If a lane needs a shared file it must claim it in [`SHARED_LOCKS.md`](SHARED_LOCKS.md) first.
+  **A rejected push means it did not get the lock** — that rejection *is* the mutex.
+
+### Only Opus for one lane, and why
+
+Opus is for *"I do not know what this should look like."* Every other lane has a known target and
+a testable answer, which is Sonnet work. Paying Opus rates for a task with a right answer is
+waste; running Sonnet on a taste call is how you get something that compiles and looks wrong.
+
+### These four are human-only — no model can do them
+
+| Task | Why it is blocking |
+|---|---|
+| **5.1** Install Godot export templates | **No `.exe` has ever been produced.** Everything downstream of handing a judge a build waits on this. |
+| **6.1** Real multi-device LAN test | Everything so far is loopback on one machine. If it forces the shared-screen fallback you need weeks of warning. |
+| **1.1** Pick the display typeface | Blocks the logo and every screen's finished read. |
+| **0.4** Keep playing it | One session found four bugs, three of which were a single missing line. Highest-value hour available. |
+
+---
+
 > ## ⚠️ START HERE — the current set is [§ CURRENT, v4.36+](#current-set--v436-after-the-first-playtest)
 > 
 > Everything below that heading is the live queue, written after the first real playtest.
