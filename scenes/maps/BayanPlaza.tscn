@@ -933,21 +933,21 @@ transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 8.50
 mesh = ExtResource("10")
 
 [node name="BaseCircle" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0700, 0.0000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0620, 0.0000)
 mesh = ExtResource("11")
 
 [node name="ThrowingLineNorth" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0700, -6.0000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0620, -6.0000)
 mesh = ExtResource("12")
 
 [node name="ThrowingLineSouth" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0700, 6.0000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0620, 6.0000)
 mesh = ExtResource("12")
 
 [node name="TeamSideNorth" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0700, -9.5000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0620, -9.5000)
 mesh = ExtResource("13")
 
 [node name="TeamSideSouth" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0700, 9.5000)
+transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0620, 9.5000)
 mesh = ExtResource("13")

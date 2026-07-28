@@ -746,6 +746,32 @@ For any coding agent picking up this queue.
 **Only open items live here.** B-01 … B-66 are in [`Handoff.md`](Handoff.md); everything
 marked `[FIXED]` there is done and settled. New bugs take the next free number **in this file**.
 
+**B-103 · Field markings float, for the fourth time — and the constant was never the bug.
+[FIXED 2026-07-28]** Reported again with a screenshot: *"i keep flaggging this still broken,
+thoroughly think about how to make sure this problem doesnt show up again."*
+
+*What was actually wrong,* measured rather than guessed. `throwing_line_decal` is **8m wide**;
+the `road_tile_line` strip it crosses is **2m wide and 6.2cm tall**. The line was lifted to 0.070
+to clear that strip, so across the ~75% of its length that is over bare road it hung **7cm in the
+air**. `base_circle_decal` sat at 0.070 on a 0.062 top — 8mm of float. Ten other markings had the
+same fault; nothing had ever checked.
+
+*Why three previous fixes failed.* All three retuned one constant (`0.07 → 0.015 → 0.001`). **No
+single Y can be flush for a marking that spans a step**, so every value was wrong somewhere, and
+which part floated just moved. The shape has to be split at the step.
+
+*The fix, and the reason it should not recur:* `tools/maps/floorcheck.py` — every placed piece is
+recorded, every marking's footprint is sampled against the real ground height beneath it, and the
+map build **aborts before writing the scene** with the node name and the gap in millimetres. It
+reports "spans two heights" as a distinct error from "floats", because the two need different
+fixes. `build_eskinita.py::add_line()` then splits a line marking at every step automatically, so
+the eleven faulty markings became 26 verified-flush pieces with no hand-picked heights left.
+`MARK_Y`/`MARK_Y_LOW` are deleted from both builders — a human deciding what is under a marking was
+the root cause, not any particular value they decided.
+**Verified by render** (grazing angle, no gap or shadow under any line) and by both builders
+reporting `markings verified flush`. Determinism re-checked: both scripts run twice with a clean
+tree.
+
 **B-102 · Bayan Plaza's Taya spawns in FRONT of the Can, not behind it, and a comment asserted
 otherwise. [FIXED 2026-07-28]** `build_bayan_plaza.py`'s Spawn1 was `(2.2, 0.8, +1.5)` against
 `build_eskinita.py`'s `(2.2, 0.8, -1.5)`, while its own comment read *"same scheme and same

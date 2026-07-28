@@ -25,6 +25,13 @@ Layout reasoning lives in docs/Art_Direction.md §4:
     and it is both cheaper and impossible to get stuck on.
 """
 import math
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from floorcheck import Surfaces, mesh_bounds  # noqa: E402
+
+surfaces = Surfaces()
 
 W = 8.0          # half-width of the playable alley
 Z_END = 17.0     # half-length
@@ -53,6 +60,12 @@ def xform(x, y, z, yaw=0.0, sx=1.0):
 
 def add(parent, name, mesh_name, x, y, z, yaw=0.0, sx=1.0):
     order.append((parent, name, mesh(mesh_name), xform(x, y, z, yaw, sx)))
+    # Every piece is recorded, so `surfaces.verify()` below can work out what is
+    # actually under each marking instead of a human deciding. Anything under
+    # "Markings" is the thing being CHECKED; everything else is what it may rest
+    # on. See tools/maps/floorcheck.py for why this is a build gate.
+    surfaces.record(name, mesh_name, x, y, z, yaw, sx,
+                    is_marking=parent.startswith("Markings"))
 
 
 # --- Layer 1: the wall line the player actually touches, at x = +/-8 ---------
@@ -121,33 +134,99 @@ for n, (x, zz, yaw) in enumerate([
     add("Dressing/Clutter", f"Tricycle_{n}", "tricycle", x, 0.0, zz, yaw)
 
 # --- Field markings. These serve BOTH round-win modes. ----------------------
-# ⚠️⚠️⚠️ EVERY MARKING BELOW MUST SIT FLUSH ON THE FLOOR -- VERIFY BY RENDER,
-# NOT BY READING THIS COMMENT. `_box()`'s y0/y1 in env_kit.gd are LOCAL mesh
-# coordinates starting at the mesh's own origin (y0 is usually 0.0), so
-# whatever world-space Y you place a decal at becomes its LITERAL BOTTOM, not
-# its centre -- a marking placed at y=0.07 has its underside 7cm above the
-# floor, which reads as visibly floating with a shadow gap once lit, not as
-# "flush." This bit multiple sessions (2026-07-28: "all assets like lines are
-# floating off the floor", reported after MARK_Y was applied uniformly to
-# every marking including several that never needed it). The only markings
-# that actually need lift are the ones that spatially overlap a
-# `road_tile_line` piece (x=0, z a multiple of 2, see the Lane_* loop above)
-# -- everything else wants MARK_Y_LOW, effectively flush. Before adding a new
-# marking, work out whether it overlaps a lane tile; don't default to the
-# taller constant out of caution. RENDER AND LOOK — a screenshot with no
-# visible gap under every line is the only real check.
-MARK_Y = 0.07        # tile-overlap clearance -- BaseCircle, ThrowingLine only
-# 2026-07-28, second pass: 0.015 was STILL visibly floating with a shadow
-# gap once actually looked at closely ("still a couple of thinsg floating").
-# Down to a near-zero epsilon -- just enough to avoid actual z-fighting with
-# the bare floor mesh, not a "safe-looking" round number.
-MARK_Y_LOW = 0.001   # everything else -- flush, no tile beneath it to clear
-add("Markings", "BaseCircle", "base_circle_decal", 0.0, MARK_Y, 0.0)
-add("Markings", "ThrowingLineNorth", "throwing_line_decal", 0.0, MARK_Y, -6.0)
-add("Markings", "ThrowingLineSouth", "throwing_line_decal", 0.0, MARK_Y, 6.0)
-add("Markings", "TeamSideNorth", "team_side_decal", 0.0, MARK_Y_LOW, -13.0)
-add("Markings", "TeamSideSouth", "team_side_decal", 0.0, MARK_Y_LOW, 13.0)
-add("Markings", "JeepneyLane", "jeepney_lane_decal", 5.4, MARK_Y_LOW, 0.0)
+# ⚠️⚠️⚠️ EVERY MARKING BELOW MUST SIT FLUSH ON WHATEVER IS UNDER IT, AND YOU NO
+# LONGER HAVE TO GET THAT RIGHT BY HAND. `surfaces.verify()` at the bottom of
+# this file samples the real footprint of every marking against the real height
+# of every piece beneath it and ABORTS THE BUILD if any of them floats. Place a
+# marking wrong and you get an error naming the node and the gap in millimetres,
+# not a scene that looks fine until someone plays it.
+#
+# What you still need to know, because it is what makes the mistake so easy:
+# `_box()`'s y0/y1 in env_kit.gd are LOCAL coordinates starting at the mesh's
+# own origin (y0 is 0.0), so a marking's placement Y is its LITERAL UNDERSIDE,
+# not its centre. Placing one at 0.07 with bare road beneath puts its underside
+# 7cm in the air. Adding clearance "to be safe" is the bug, not the fix.
+#
+# Three sessions were spent retuning a single constant here (0.07 -> 0.015 ->
+# 0.001) and the lines kept floating, because the real failure was never a
+# constant: `throwing_line_decal` is 8m wide and crosses a 2m raised lane strip,
+# so it spans TWO ground heights and no single Y was ever going to be flush for
+# it. floorcheck.py reports that case separately — "SPANS n surface heights" —
+# because the fix is to split the piece, not to nudge the number.
+ROAD_Y = 0.0         # bare asphalt: the Floor box's own top surface
+
+
+def add_line(name, mesh_name, x, z, yaw=0.0, sx=1.0):
+    """A straight line marking, SPLIT AUTOMATICALLY wherever the ground steps.
+
+    ⚠️ USE THIS FOR EVERY LINE MARKING. Placing one with plain `add()` means
+    choosing a Y by hand, and that is the decision that has produced a floating
+    line in three separate playtests.
+
+    Every line here crosses the 6.2cm raised `road_tile_line` strip running down
+    the middle of the road, so each one genuinely sits on two different heights
+    and no single Y is flush for it. Rather than making eleven judgement calls,
+    this walks the line's own length, asks `surfaces` how high the ground
+    actually is at each step, and emits one sub-piece per run of constant
+    height — each placed at exactly that height. `sx` scales the decal's own
+    length axis, so no new mesh is needed for the shorter runs.
+
+    A line that never crosses a step comes out as a single piece with the same
+    name it would have had, so this costs nothing where it is not needed.
+    """
+    lo, hi = mesh_bounds(mesh_name)
+    span = hi[0] - lo[0]
+    length = span * sx
+    # Finer than floorcheck's own EDGE_INSET (0.02), so the midpoint boundary
+    # below is always inside the inset and a correctly-split line verifies.
+    steps = max(2, int(length / 0.01) + 1)
+    c, s = math.cos(yaw), math.sin(yaw)
+    # Sample the ground under the centreline, from one end to the other.
+    samples = []
+    for i in range(steps):
+        t = -0.5 + i / (steps - 1.0)          # -0.5 .. +0.5 along the line
+        d = t * length
+        samples.append((t, round(surfaces.height_at(x + d * c, z - d * s), 6)))
+    # Collapse into contiguous runs of equal height.
+    # ⚠️ The boundary goes at the MIDPOINT between the two differing samples,
+    # not at the first sample of the new height. Ending a run on a sample that
+    # already reads the NEW height pushes that run past the step by one sample,
+    # so the piece overhangs the edge it was split at and floats there — the
+    # original bug, reintroduced by the fix for it. Caught by floorcheck.
+    runs, start, height, prev_t = [], samples[0][0], samples[0][1], samples[0][0]
+    for t, h in samples[1:]:
+        if h != height:
+            edge = (prev_t + t) * 0.5
+            runs.append((start, edge, height))
+            start, height = edge, h
+        prev_t = t
+    runs.append((start, samples[-1][0], height))
+    for n, (t0, t1, h) in enumerate(runs):
+        mid = (t0 + t1) * 0.5
+        run_len = (t1 - t0) * length
+        if run_len <= 0.0:
+            continue
+        suffix = "" if len(runs) == 1 else "_%d" % n
+        add("Markings", name + suffix, mesh_name,
+            x + mid * length * c, h, z - mid * length * s, yaw, run_len / span)
+
+
+# The base circle sits entirely on the raised strip (it is 1.4 across, the strip
+# is 2.0), so it is a single piece at the strip's own top. It was at 0.070
+# against a 0.062 top — 8mm of float, the "still a couple of thinsg floating"
+# report. Taken from the measured mesh now, not from a round number.
+add("Markings", "BaseCircle", "base_circle_decal", 0.0,
+    surfaces.height_at(0.0, 0.0), 0.0)
+
+add_line("ThrowingLineNorth", "throwing_line_decal", 0.0, -6.0)
+add_line("ThrowingLineSouth", "throwing_line_decal", 0.0, 6.0)
+add_line("TeamSideNorth", "team_side_decal", 0.0, -13.0)
+add_line("TeamSideSouth", "team_side_decal", 0.0, 13.0)
+# Narrowed from its native 3.76 width so it stops clear of the kerb at x=6.63
+# rather than running underneath it — the same class of fault as the floaters
+# (a decal resting on something it was never meant to touch), caught by the
+# same check.
+add("Markings", "JeepneyLane", "jeepney_lane_decal", 5.2, ROAD_Y, 0.0, 0.0, 0.6)
 
 # --- Confinement-radius SQUARE. 2026-07-28: the Can/Taya's actual restricted
 # --- play area (CharacterBase.CONFINEMENT_RADIUS) was invisible on the
@@ -172,14 +251,14 @@ _box_segs_per_side = math.ceil((2 * CONFINEMENT_BOX_RADIUS) / BOX_SEG)
 _box_scale = ((2 * CONFINEMENT_BOX_RADIUS) / _box_segs_per_side) / BOX_SEG
 for i in range(_box_segs_per_side):
     along = -CONFINEMENT_BOX_RADIUS + BOX_SEG * _box_scale * (i + 0.5)
-    add("Markings", f"ConfinementBoxNorth_{i}", "team_side_decal",
-        along, MARK_Y_LOW, -CONFINEMENT_BOX_RADIUS, 0.0, _box_scale)
-    add("Markings", f"ConfinementBoxSouth_{i}", "team_side_decal",
-        along, MARK_Y_LOW, CONFINEMENT_BOX_RADIUS, 0.0, _box_scale)
-    add("Markings", f"ConfinementBoxEast_{i}", "team_side_decal",
-        CONFINEMENT_BOX_RADIUS, MARK_Y_LOW, along, math.pi * 0.5, _box_scale)
-    add("Markings", f"ConfinementBoxWest_{i}", "team_side_decal",
-        -CONFINEMENT_BOX_RADIUS, MARK_Y_LOW, along, math.pi * 0.5, _box_scale)
+    add_line(f"ConfinementBoxNorth_{i}", "team_side_decal",
+             along, -CONFINEMENT_BOX_RADIUS, 0.0, _box_scale)
+    add_line(f"ConfinementBoxSouth_{i}", "team_side_decal",
+             along, CONFINEMENT_BOX_RADIUS, 0.0, _box_scale)
+    add_line(f"ConfinementBoxEast_{i}", "team_side_decal",
+             CONFINEMENT_BOX_RADIUS, along, math.pi * 0.5, _box_scale)
+    add_line(f"ConfinementBoxWest_{i}", "team_side_decal",
+             -CONFINEMENT_BOX_RADIUS, along, math.pi * 0.5, _box_scale)
 
 # =============================================================================
 
@@ -384,10 +463,16 @@ load_steps = len(ext_lines) + n_sub + 1
 out = (f'[gd_scene load_steps={load_steps} format=3]\n\n'
        + "\n".join(ext_lines) + "\n\n" + SUBS + "\n" + HEAD + "\n".join(body) + "\n")
 
+# ⚠️ BEFORE WRITING, NOT AFTER. A floating marking must not reach the scene file
+# at all — half the cost of this bug every previous time was that a broken scene
+# got committed, imported and played before anyone looked at it.
+n_marks = surfaces.verify()
+
 with open("scenes/maps/Eskinita.tscn", "w", encoding="utf-8", newline="\n") as f:
     f.write(out)
 
 print(f"wrote scenes/maps/Eskinita.tscn")
+print(f"  markings      : {n_marks} verified flush")
 print(f"  ext_resources : {len(ext_lines)}")
 print(f"  sub_resources : {n_sub}")
 print(f"  load_steps    : {load_steps}")

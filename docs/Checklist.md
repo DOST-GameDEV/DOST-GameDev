@@ -606,6 +606,28 @@ HUD contrast or hazard placement against a grey box.
         be worth building (the wordmark lands ≈13 px tall at the distance the can is actually
         read). **Everything else on both boards is in.**
 
+- [x] **2.10 · Floating markings made a build failure instead of a playtest report (B-103).**
+      🎨 Design — **verified by render + both builders' own gate; the gate itself is the
+      regression test**
+      Fourth report of the same bug: *"i keep flaggging this still broken, thoroughly think about
+      how to make sure this problem doesnt show up again."* So this item is deliberately not
+      another Y tweak.
+  - [x] **Root cause, measured.** `throwing_line_decal` is 8m wide; the `road_tile_line` strip it
+        crosses is 2m wide and 6.2cm tall. Lifted to 0.070 to clear the strip, it hung **7cm in
+        the air across ~75% of its length**. The base circle floated 8mm. **No single Y can be
+        flush for a marking that spans a step** — which is why retuning the constant three times
+        (0.07 → 0.015 → 0.001) never worked and never could.
+  - [x] **`tools/maps/floorcheck.py` — the gate.** Samples every marking's real footprint against
+        the real ground height beneath it and **aborts the build before the `.tscn` is written**,
+        naming the node and the gap in millimetres. Reports "spans n surface heights" as a
+        separate error from "floats", because that one needs the shape split, not the number
+        changed. Reads mesh bounds from the `.obj` rather than trusting the "decals start at
+        local y=0" claim written in two other places.
+  - [x] **`add_line()` splits line markings at every step automatically.** Eleven faulty markings
+        became 26 verified-flush pieces. `MARK_Y`/`MARK_Y_LOW` deleted from both builders — a
+        human deciding what is underneath a marking was the root cause, not the value chosen.
+  - [x] **Both maps.** Eskinita (26 markings) and Bayan Plaza (5). Determinism re-checked.
+
 - [ ] **3.1 · Land the display typeface (F-2).** 🤖 Sonnet, medium ⛔ 1.1
       Mechanical once the decision exists: `.gitattributes` LFS rules committed
       *before* the binary, face + verbatim licence file in `assets/ui/fonts/`, a

@@ -22,6 +22,13 @@ PAST the GDD's "Bayan Plaza". Three concentric materials — concrete slab, dirt
 apron, tree line — satisfy both descriptions at once.
 """
 import math
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from floorcheck import Surfaces  # noqa: E402
+
+surfaces = Surfaces()
 
 SLAB = 10.0      # half-width of the hard plaza slab
 BOUND = 12.5     # half-width of the playable square (collision sits here)
@@ -46,6 +53,11 @@ def xform(x, y, z, yaw=0.0):
 
 def add(parent, name, mesh_name, x, y, z, yaw=0.0):
     order.append((parent, name, mesh(mesh_name), xform(x, y, z, yaw)))
+    # See build_eskinita.py's add() and tools/maps/floorcheck.py — every piece
+    # is recorded so the markings can be checked against real ground heights
+    # instead of a hand-picked constant.
+    surfaces.record(name, mesh_name, x, y, z, yaw,
+                    is_marking=parent.startswith("Markings"))
 
 
 # --- The slab. A plaza is a hard floor; the dirt apron is the big floor box. --
@@ -109,11 +121,17 @@ for k, (x, z) in enumerate([(-8.5, 2.0), (8.5, -2.0)]):
 
 # --- Field markings. Identical grammar to Eskinita on purpose: a player must
 # --- not have to relearn what a base circle looks like when the map changes.
-add("Markings", "BaseCircle", "base_circle_decal", 0.0, MARK_Y, 0.0)
-add("Markings", "ThrowingLineNorth", "throwing_line_decal", 0.0, MARK_Y, -6.0)
-add("Markings", "ThrowingLineSouth", "throwing_line_decal", 0.0, MARK_Y, 6.0)
-add("Markings", "TeamSideNorth", "team_side_decal", 0.0, MARK_Y, -9.5)
-add("Markings", "TeamSideSouth", "team_side_decal", 0.0, MARK_Y, 9.5)
+# ⚠️ MARK_Y IS GONE — the height comes from the geometry now, not from a
+# constant somebody has to keep true. Unlike Eskinita, this map's markings all
+# sit on the uniform plaza slab, so one height IS correct here; it is asked for
+# rather than assumed so it cannot drift if the slab tile ever changes.
+# floorcheck aborts the build if any of these floats. See build_eskinita.py.
+SLAB_TOP = surfaces.height_at(0.0, 0.0)
+add("Markings", "BaseCircle", "base_circle_decal", 0.0, SLAB_TOP, 0.0)
+add("Markings", "ThrowingLineNorth", "throwing_line_decal", 0.0, SLAB_TOP, -6.0)
+add("Markings", "ThrowingLineSouth", "throwing_line_decal", 0.0, SLAB_TOP, 6.0)
+add("Markings", "TeamSideNorth", "team_side_decal", 0.0, SLAB_TOP, -9.5)
+add("Markings", "TeamSideSouth", "team_side_decal", 0.0, SLAB_TOP, 9.5)
 
 # =============================================================================
 
@@ -307,10 +325,15 @@ load_steps = len(ext_lines) + n_sub + 1
 out = (f'[gd_scene load_steps={load_steps} format=3]\n\n'
        + "\n".join(ext_lines) + "\n\n" + SUBS + "\n" + HEAD + "\n".join(body) + "\n")
 
+# Before writing, never after — a floating marking must not reach the scene file
+# at all. See build_eskinita.py's own note.
+n_marks = surfaces.verify()
+
 with open("scenes/maps/BayanPlaza.tscn", "w", encoding="utf-8", newline="\n") as f:
     f.write(out)
 
 print("wrote scenes/maps/BayanPlaza.tscn")
+print(f"  markings      : {n_marks} verified flush")
 print(f"  ext_resources : {len(ext_lines)}")
 print(f"  load_steps    : {load_steps}")
 print(f"  mesh instances: {len(order)}")
