@@ -83,6 +83,26 @@ const FPP_HIDDEN_MESH_HINT: String = "head"
 ## no arms, and a remote player's rig is never the one being looked through.
 const VIEWMODEL_ARMS_SCENE: String = "res://scenes/characters/visuals/ViewmodelArms.tscn"
 
+## B-91 — mirrors the .tscn's own baked `TppArm.position = (0, 1.2, 0)`, used
+## by `_update_tpp_carry_follow()` below to mount the carried-slipper's camera
+## at the SAME height a normal TPP rig would use. Written as a formula rather
+## than the bare 1.2, because a carrier is always a Person (capsule 1.6) and
+## this documents WHY 1.2 is correct there, rather than leaving a magic number
+## that looks unrelated to the .tscn's own value.
+##
+## ⚠️ Do not reuse this for a Prop's OWN (never-carried) mount height. That
+## was tried and reverted: scaling TppArm's mount down for a Can/Tsinelas's
+## own much shorter capsule put the spring arm's cast origin close enough to
+## the ground/the prop's own mesh that the shapecast collapsed the camera into
+## solid geometry (measured: a full-frame fill of the can's own INK material).
+## `TppArm`'s height and 4.5-unit `spring_length` give the CONTROLLING PLAYER
+## situational awareness of the arena at a consistent, human-scale vantage
+## point — they are not meant to hug a tiny object's own silhouette, and nothing
+## about the proportion fix asked for that; only the carried-slipper case was
+## reported broken.
+const TPP_MOUNT_CLEARANCE_AT_PERSON_SCALE: float = 0.4
+const PERSON_CAPSULE_HEIGHT: float = 1.6
+
 @export var aim_source: AimSource = AimSource.MOVEMENT
 
 @onready var fpp_pivot: Node3D = $FppPivot
@@ -95,6 +115,15 @@ var _character: CharacterBase
 var _mode: Mode
 var _pitch_deg: float = 0.0
 var _active: bool = false
+## B-91 — this rig's own Carriable, so it can tell "am I currently being
+## carried" without character_base.gd having to learn what carrying is (the
+## same information-hiding rule carriable.gd's own header states). Null for a
+## Can (never carried) and for a Person (never carriable at all).
+@onready var _carriable: Carriable = get_node_or_null("../Carriable") as Carriable
+## Which carrier's body the spring arm currently excludes from its own
+## shapecast, so add/remove_excluded_object is only called on an actual
+## CHANGE of carrier (pick up, drop, round reset) rather than every frame.
+var _tpp_excluded_carrier: CharacterBase = null
 ## Playtest 0.4 first-person viewmodel arms, created on demand by
 ## _viewmodel_arms(). Null on every Prop and on any Person that has never
 ## been looked through.
@@ -143,6 +172,15 @@ func _ready() -> void:
 		var is_mine := _character.is_multiplayer_authority()
 		set_active(is_mine)
 		set_aim_source(AimSource.MOUSE if is_mine else AimSource.MOVEMENT)
+
+## B-91 — TPP mount height for a given capsule height, used ONLY by
+## _update_tpp_carry_follow() below, evaluated against the CARRIER's capsule
+## (always a Person's 1.6 — see the const doc above for why this is a formula
+## and not the bare 1.2). Deliberately not used for a Prop's own standalone
+## mount height — see the same const doc for why that was tried and reverted.
+func _mount_height_for(capsule_height: float) -> float:
+	var clearance := TPP_MOUNT_CLEARANCE_AT_PERSON_SCALE * (capsule_height / PERSON_CAPSULE_HEIGHT)
+	return capsule_height / 2.0 + clearance
 
 ## Exactly one camera should be `current` at a time (per local peer) — the
 ## public API queue item 1's unit switcher hands control between units
@@ -282,8 +320,54 @@ func _update_viewmodel_carry(delta: float) -> void:
 		wanted, clampf(VIEWMODEL_REACH_SPEED * delta, 0.0, 1.0))
 
 
+## B-91 — "slippers camera is completely broken right now", and specifically:
+## while a Tsinelas is CARRIED, `carriable.gd::_step_carried()` teleports its
+## ENTIRE CharacterBase — origin AND basis — into the carrying Person's hand
+## every physics frame. This rig is a child of that CharacterBase, so the TPP
+## spring arm inherits that same transform: mounted inside (or right against)
+## the carrier's own body, with nowhere sensible to cast toward, and the
+## carrier's own capsule was never excluded from the shapecast (only this
+## unit's OWN body was, in _ready() above) — so the view collapses against it.
+## There is also nothing worth framing there: a 0.43-unit object glued to a
+## hand has no independent third-person shot of its own.
+##
+## So while held, this rig's TPP camera is based on the CARRIER instead — same
+## mount height/pitch formula a normal TPP rig uses, evaluated against the
+## carrier's own capsule (always a Person's 1.6, so this resolves to the
+## ordinary 1.2 mount), just following the carrier's transform rather than
+## this unit's own currently-nonsensical one. The slipper's own controlling
+## player rides along behind their teammate, third-person, until it is thrown
+## or dropped and this unit's transform means something again.
+func _update_tpp_carry_follow() -> void:
+	if _mode != Mode.TPP:
+		return
+	var carrier: CharacterBase = null
+	if _carriable != null and _carriable.state == Carriable.CarryState.CARRIED:
+		carrier = _carriable.carrier
+	# Exclusion list only changes on an actual pick-up/drop/carrier swap, not
+	# every frame — SpringArm3D's exclusion list has no "is this already in
+	# there" query, so add/remove is gated on a real transition.
+	if carrier != _tpp_excluded_carrier:
+		if _tpp_excluded_carrier != null and is_instance_valid(_tpp_excluded_carrier):
+			tpp_arm.remove_excluded_object(_tpp_excluded_carrier.get_rid())
+		if carrier != null:
+			tpp_arm.add_excluded_object(carrier.get_rid())
+		_tpp_excluded_carrier = carrier
+	if carrier == null:
+		return # not carried — ordinary parent-driven transform, nothing to override
+	# Replicates the ordinary (parent-driven) composition — CharacterBase's yaw
+	# (rotation.y is the only axis a body ever rotates on; pitch always lives on
+	# this rig, never the body) times TppArm's own fixed -15 degree tilt — using
+	# the CARRIER's yaw and position instead of this unit's own.
+	var yaw_basis := Basis(Vector3.UP, carrier.rotation.y)
+	var pitch_basis := Basis(Vector3.RIGHT, deg_to_rad(-15.0))
+	var mount := _mount_height_for(carrier.capsule_height())
+	tpp_arm.global_transform = Transform3D(
+		yaw_basis * pitch_basis, carrier.global_position + Vector3.UP * mount)
+
 func _process(delta: float) -> void:
 	_update_viewmodel_carry(delta)
+	_update_tpp_carry_follow()
 	if _shake_time_left > 0.0:
 		_shake_time_left = max(0.0, _shake_time_left - delta)
 		var ratio := _shake_time_left / _shake_duration
