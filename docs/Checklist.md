@@ -1184,13 +1184,35 @@ buggy."* Six Kenney kits (all CC0, verified) plus a supplied flip-flop `.glb`.
       slipper reads as detached in third person, which is `HAND_CARRY_OFFSET` being composed for
       the FPP frame — see `Handoff.md` §0.12 — and it wants the same texture/outline treatment 7.1
       settles.
-- [ ] **7.4 · Eskinita re-dressed from City Kit (Suburban) + Car Kit + Furniture Kit.** 🎨 Design ⛔ 7.1
-      ⚠️ **City Kit buildings are diorama-scale — a house is currently SHORTER than a Person.**
-      ≈5× is the measured starting factor. **One scale constant per kit, named, in the builder** —
-      never per piece by eye.
-      Add kit road/path meshes to `floorcheck.GROUND_MESHES` or every marking on them reports as
-      floating. Markings stay procedural (`Art_Direction.md` §0b, "kits for objects, generator for
-      markings").
+- [~] **7.4 · Eskinita re-dressed from City Kit (Suburban) + Car Kit.** 🎨 Design —
+      **verified by render + the full smoke gate; not verified by play**
+      Landed 2026-07-28. The generated corrugated wall panels and building blocks are gone; an
+      eskinita is the gap BETWEEN people's houses, so City Kit houses now ARE the wall line, with
+      street trees on the verge and a vehicle parked in every fourth bay where a house is left out
+      for a driveway. `CITY_SCALE = 5.0` and `CAR_SCALE = 1.75`, one constant per kit as §0b requires.
+  - [x] **Mechanics untouched, and checked rather than asserted.** Playable width still `x = ±8`;
+        `SpawnPoints` transforms byte-identical; `Bounds`/`WallEast..South`, `KillPlane`,
+        `HazardZone` and `Floor` all present; and **the dressing still carries zero collision** —
+        grepped, 0 `CollisionShape3D` under `Dressing/`. The single invisible Bounds ring behind
+        the wall line is still the only thing a player can touch.
+  - [x] **The height law survives.** Vehicles are 2.5 tall, which would break the ≤1.25 rule for
+        anything inside the alley — so they are parked at `x = ±9.9`, OUTSIDE the playable width,
+        seen through the driveway gaps. Interior clutter is unchanged and still ≤1.0.
+  - [x] **⚠️ A `.glb` is a PackedScene, not a Mesh, and getting that wrong is SILENT.** The first
+        build emitted kit pieces as `MeshInstance3D` with `mesh = ExtResource(...)`. No error, no
+        warning, correct transforms, 134 nodes present — **and an entirely empty street**, because
+        Godot loads a mesh property pointed at a scene as blank. Caught only by rendering it. The
+        builder now branches on kit vs generated and the trap is written down at the emit site.
+  - [x] **⚠️ Kit meshes do NOT put their origin at their base.** `kits/car/van` spans local
+        `y = -0.300..1.150`, so a naive `y = 0` placement buries 30cm of it in the road — the
+        floating-geometry bug with the sign flipped. `add_kit()` takes the height the BASE should
+        sit at and reads the offset from the mesh's own bounds, same source of truth as floorcheck.
+  - [x] **`floorcheck` reads `.glb` bounds now**, so kit pieces go through the same flush gate as
+        generated ones instead of leaving a hole in the guard exactly where the new assets are.
+  - [ ] **Deferred:** Furniture Kit dressing (sari-sari interior, street furniture) and the
+        procedural clutter/tricycle swap. Both are detail passes on a map that now reads correctly;
+        neither blocks 7.5.
+
 - [ ] **7.5 · The probinsya map from Fantasy Town Kit + Mini Forest.** 🎨 Design ⛔ 7.4
       Supersedes the Bayan Plaza dressing set. `stall.glb` is the best sari-sari base in any kit.
       Do this after Eskinita: the second map is where the kit-scale process gets reused, not

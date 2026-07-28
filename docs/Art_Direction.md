@@ -209,6 +209,34 @@ makes wiring them art work rather than mechanics work:
 exists and plays a clip**. No new state, no new input, no new networking. The moment an item needs a
 new replicated field it stops being ours and gets filed, not built.
 
+#### Three traps the first kit swap actually hit — read before importing a kit
+
+All three were found by rendering, and **none of them errors**. That is what makes them worth
+writing down: every one produces a scene that loads clean and looks wrong.
+
+1. **A `.glb` is a PackedScene, not a Mesh, in BOTH directions.**
+   - In a map builder: emitting a kit piece as `[node type="MeshInstance3D"] mesh = ExtResource(…)`
+     loads with that node **blank**. An entire street of houses rendered as empty road with all 134
+     nodes present and every transform correct. Kit pieces must be `instance=ExtResource(…)`.
+   - In code: `load(path) as Mesh` silently returns `null`. That would have shipped a Can whose
+     mesh never changed on damage. See `character_visual.gd::_mesh_from()`.
+2. **Kit meshes do not put their origin at their base.** `env_*` meshes are authored from local
+   y = 0 up; Kenney's are not consistent — `kits/car/van` spans `y = -0.300..1.150`, so a `y = 0`
+   placement buries 30cm of it. Use `add_kit()`, which reads the offset from the mesh's own bounds.
+   This is the floating-geometry rule with the sign flipped and it deserves the same suspicion.
+3. **⚠️ THE KITS BREAK THE ROLE-COLOUR RULE, AND BOTH HUES ARE IN THEM.** The Food Kit's can
+   samples a vivid OFFENSE-orange; the Car Kit contains a DEFENSE-blue vehicle. Kenney's palettes
+   know nothing about `Dev_Plan.md` §4.2. **`tools/models/retint_kit_atlas.py` enforces the rule in
+   the asset**, on our copy of each atlas, so every piece imported later is safe by construction:
+   - `prop_blue` — the can's orange rotates to Sarsi blue. Legal because §2 lists `DEFENSE` as
+     allowed on the "Can body only".
+   - `env_damp` — city and car atlases keep their hue and have saturation/value pulled into the
+     `ENV_*` band, turning bright orange into terracotta and rust. ⚠️ **Rotating env orange to blue
+     instead — which the first version did — just trades an OFFENSE violation for a DEFENSE one and
+     paints the whole street the defending team's colour.** Both role bands are damped for env.
+
+   Both modes are idempotent: remapped pixels land outside the bands that select them.
+
 #### Integration risks — the three places an asset swap does touch code
 
 Named so they are not discovered mid-implementation. All three are small and none is a redesign.
