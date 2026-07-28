@@ -77,7 +77,7 @@ def add_kit(parent, name, mesh_name, x, z, yaw=0.0, scale=1.0, base_y=0.0):
     order.append((parent, name, mesh(mesh_name),
                   xform_uniform(x, base_y - lo[1] * scale, z, yaw, scale)))
     surfaces.record(name, mesh_name, x, base_y - lo[1] * scale, z, yaw, scale,
-                    is_marking=False)
+                    is_marking=False, uniform=True)
 
 
 def xform(x, y, z, yaw=0.0):
@@ -96,12 +96,22 @@ def add(parent, name, mesh_name, x, y, z, yaw=0.0):
 
 
 # --- The slab. A plaza is a hard floor; the dirt apron is the big floor box. --
+#
+# 2026-07-28, checklist 7.4b — "completely remake the floor arena of all maps
+# with the assets." Fantasy Town paving replaces the generated `plaza_tile`, at
+# the same 2-unit grid so the layout below is untouched.
+#
+# ⚠️ This raises the slab surface, and nothing below hardcodes a marking height
+# because of it — `SLAB_TOP` asks `surfaces.height_at()` and every marking goes
+# through `embed_y()`. Re-paving cannot leave a line buried or hanging; the
+# build fails if it would.
+SLAB_SCALE = CELL   # kit paving is 1x1, so the grid cell IS the scale
 n = 0
 i = int(SLAB / CELL)
 for gx in range(-i, i):
     for gz in range(-i, i):
-        add("Dressing/Slab", f"Tile_{n}", "plaza_tile",
-            gx * CELL + CELL / 2, 0.0, gz * CELL + CELL / 2)
+        add_kit("Dressing/Slab", f"Tile_{n}", "kits/town/road",
+                gx * CELL + CELL / 2, gz * CELL + CELL / 2, 0.0, SLAB_SCALE)
         n += 1
 
 # --- The tree ring. TWO layers, and the second is a DIFFERENT SPECIES as well

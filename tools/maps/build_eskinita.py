@@ -115,7 +115,7 @@ def add_kit(parent, name, mesh_name, x, z, yaw=0.0, scale=1.0, base_y=0.0):
     order.append((parent, name, mesh(mesh_name),
                   xform_uniform(x, base_y - lo[1] * scale, z, yaw, scale)))
     surfaces.record(name, mesh_name, x, base_y - lo[1] * scale, z, yaw, scale,
-                    is_marking=False)
+                    is_marking=False, uniform=True)
 
 
 def xform_uniform(x, y, z, yaw, s):
@@ -203,15 +203,46 @@ for n, zz in enumerate([-14.0, -8.0, -2.0, 4.0, 10.0, 16.0]):
 for n, zz in enumerate([-11.0, -5.0, 1.0, 7.0, 13.0]):
     add("Dressing/Layer3", f"Sampay_{n}", "laundry_line", 0.0, 0.0, zz)
 
-# --- Lane markings down the middle of the road ------------------------------
-for n in range(-8, 9):
-    add("Dressing/Road", f"Lane_{n + 8}", "road_tile_line", 0.0, 0.0, n * 2.0)
+# --- The road surface itself, checklist 7.4b -------------------------------
+#
+# 2026-07-28 — "completely remake the floor arena of all maps with the assets."
+# The generated `road_tile_line` strip and `kerb_tile` rows are gone; the alley
+# is paved with Fantasy Town road tiles and kerbed with its road-curb pieces.
+#
+# ⚠️ THE LANE DASHES WENT WITH THEM, DELIBERATELY. `road_tile_line` was a road
+# tile with a painted centre line, and a painted centre line is what made this
+# read as a boulevard rather than an eskinita — the exact complaint behind the
+# still-open "narrow the alley" item. A side street has no lane markings.
+#
+# ⚠️ This RAISES the ground under every field marking from 0.0 to ROAD_TOP. That
+# is why nothing below hardcodes a marking height: they all ask
+# `surfaces.height_at()` and go through `embed_y()`, so re-paving the road
+# cannot silently leave a line hanging in the air. floorcheck fails the build if
+# it does.
+ROAD_SCALE = 4.0            # kit road is 1x1x0.025; 4x gives 4-unit slabs
+ROAD_TOP = 0.025 * ROAD_SCALE
+_road_span = int(W / (ROAD_SCALE * 0.5))          # 4 tiles across a 16m alley
+_road_rows = int((Z_END + 1.0) / (ROAD_SCALE * 0.5))
+n = 0
+for gx in range(-_road_span // 2, _road_span // 2):
+    for gz in range(-_road_rows // 2, _road_rows // 2 + 1):
+        add_kit("Dressing/Road", f"Road_{n}", "kits/town/road",
+                gx * ROAD_SCALE + ROAD_SCALE * 0.5,
+                gz * ROAD_SCALE + ROAD_SCALE * 0.5, 0.0, ROAD_SCALE)
+        n += 1
 
-# --- Kerbs, both sides ------------------------------------------------------
-for n in range(-8, 9):
-    for side in (-1.0, 1.0):
-        add("Dressing/Road", f"Kerb_{n + 8}_{'E' if side > 0 else 'W'}",
-            "kerb_tile", side * (W - 1.2), 0.0, n * 2.0, math.pi * 0.5)
+# --- No kerb, and that is deliberate ----------------------------------------
+#
+# The kit's `road-curb` is a road tile WITH a raised lip, not a kerb strip, so
+# using it along the edge put a 0.2-high lip under the ends of every field
+# marking — floorcheck caught it immediately as "STICKS OUT" and "BURIED" on the
+# throwing lines and the jeepney lane, because their outer ends landed on the
+# lip while their middles sat on the road.
+#
+# Rather than work around that, the kerb is gone: a real eskinita is paved
+# wall-to-wall and the road simply meets the house. That also serves the
+# still-open "narrow the alley" item, which is about this map reading as a
+# boulevard — kerbs and lane dashes were both part of why.
 
 # --- Interior clutter. Every piece here is <= 1.0 tall so an FPP Person, whose
 # --- eye sits at y=1.25, can aim over all of it. That is the height law.
@@ -327,8 +358,10 @@ add_line("TeamSideSouth", "team_side_decal", 0.0, 13.0)
 # rather than running underneath it — the same class of fault as the floaters
 # (a decal resting on something it was never meant to touch), caught by the
 # same check.
+# Asks the surface rather than assuming ROAD_Y, which is what let the road get
+# re-paved 0.1 higher without this line being left buried in it.
 add("Markings", "JeepneyLane", "jeepney_lane_decal", 5.2,
-    embed_y(ROAD_Y, "jeepney_lane_decal"), 0.0, 0.0, 0.6)
+    embed_y(surfaces.height_at(5.2, 0.0), "jeepney_lane_decal"), 0.0, 0.0, 0.6)
 
 # --- Confinement-radius SQUARE. 2026-07-28: the Can/Taya's actual restricted
 # --- play area (CharacterBase.CONFINEMENT_RADIUS) was invisible on the
