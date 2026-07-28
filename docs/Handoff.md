@@ -2724,16 +2724,6 @@ document that acts on it, so this list shrinks instead of accumulating.
       asked for in the first place (`PEAK`, "not photoreal and not PBR"), so *not* building it is a
       defensible final answer, not a deferral.
 
-- [ ] ⛔ **What is the flip-flop `.glb`'s licence?** **Blocks `Checklist.md` 7.3.** The six Kenney
-      kits adopted in the phase-7 overhaul are **CC0**, confirmed by reading each kit's own
-      `License.txt` — commercial use fine, attribution appreciated but not required. The supplied
-      **"flip flops by Tiff Eidmann - aVbWCpQLno8.glb"** is a different matter: that filename is the
-      Poly Pizza convention, and Poly Pizza models are typically **CC-BY, which REQUIRES
-      attribution**. This is a graded, publicly submitted entry, so a coding agent must not guess
-      here. **A human confirms the licence and the exact attribution string, or it does not ship.**
-      *The fallback costs nothing,* which is why this blocks one item rather than the phase: the
-      current procedural tsinelas already matches the §1b asset moodboard and can simply stay.
-
 ### Deliberately open, and blocking nothing
 
 - [ ] **Option A vs Option B — the ship decision.** **Both modes stay in active, equal

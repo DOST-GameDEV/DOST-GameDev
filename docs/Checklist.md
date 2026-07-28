@@ -1110,8 +1110,27 @@ buggy."* Six Kenney kits (all CC0, verified) plus a supplied flip-flop `.glb`.
 > resizing it in the same commit makes a movement-feel regression unattributable. Item B (narrow
 > the alley) stays open and stays separate.
 
-- [ ] **7.1 · The toon/outline pass must stop destroying kit textures. ⛔ BLOCKS 7.2–7.5.**
+- [~] **7.1 · The toon/outline pass must stop destroying kit textures. ⛔ BLOCKS 7.2–7.5.**
       🎨 Design (material pipeline only — not a mechanics item)
+      **Shipped 2026-07-28, and honestly `[~]` not `[x]`:** the texture path is written but
+      **cannot be proven until a kit mesh is in the project (7.2)** — there is nothing textured to
+      point it at yet. What IS verified: parse clean, 400 real frames silent, and the existing
+      procedural props render **pixel-identically** to before, which is the regression half.
+  - [x] **`toon.gdshader` takes a texture.** `albedo_texture` + `use_texture`, multiplied by
+        `albedo_color` as a tint. `hint_default_white` so an unset sampler multiplies to a no-op
+        instead of sampling black and rendering every kit prop invisible. `use_texture` stays
+        false for generated `.obj` props, so their maths is bit-for-bit unchanged.
+  - [x] **`_apply_toon_pass()` carries the source texture across** instead of dropping it.
+  - [x] **The hit flash is its own uniform now (`flash_amount` / `flash_color`).** It had to be:
+        the flash tweened `albedo_color` white → base, and a textured mesh's resting tint IS white,
+        so "flash to white" would have been a silent no-op and a hit on a kit prop would show
+        nothing. `albedo_color` and "am I being hit" were two meanings sharing one uniform, which
+        is why a texture broke both at once. Both flavours still differ (WHITE for a landed hit,
+        `DEFENSE` for a block, Q-6). `_shader_base_albedos` is deleted — with the flash tweening
+        1 → 0 there is no base colour left to restore.
+  - [ ] **Outline width per surface, derived from the mesh's own scale.** Deliberately deferred to
+        7.2: it needs kit meshes of differing scale in the scene to tune against, and folding it in
+        now would mean tuning it twice. `Handoff.md` §0.12 has the measurement.
       `character_visual.gd::_apply_toon_pass()` replaces every surface material on a Prop with a
       flat `albedo_color` toon material. Kenney kits are textured off a shared palette atlas, so
       applied unchanged **every kit prop becomes one flat colour** — the swap cannot be evaluated,
@@ -1125,11 +1144,20 @@ buggy."* Six Kenney kits (all CC0, verified) plus a supplied flip-flop `.glb`.
       squashed, 3 → `soda-can-crushed`. Retire `lata.obj` and its three variants.
       **Acceptance:** knock it over, take three dents, win a round and see it reset — all from the
       TPP camera, all unchanged in behaviour.
-- [ ] **7.3 · The tsinelas → the supplied `.glb`.** 🎨 Design ⛔ 7.1, **⛔ licence (see 7.0)**
-      Three required steps: **split the pair** (it is two meshes, the Prop is one slipper),
-      **recolour from purple to `PROP_FOAM`/`PROP_WEBBING`** (the §1b moodboard wins — it is newer
-      and more specific), and scale ≈1.2× to the established 0.432 length.
-      **Acceptance:** carried, thrown, retrieved, and it reads as a slipper in third person.
+- [ ] **7.3 · The tsinelas stays OURS.** 🎨 Design — **not blocked by anything**
+      Human call, 2026-07-28: *"nahh js remove the flipflop in the plan, lets make our own."* The
+      supplied `.glb` is dropped and **the procedural tsinelas is the shipping slipper.** It
+      already matches the §1b asset moodboard — brown `PROP_FOAM` foam, tan `PROP_WEBBING` Y-strap,
+      three-layer bevelled sole — and it is the one prop nobody has complained about the look of.
+      **This item is therefore refinement, not replacement**, and it is the exception to phase 7's
+      "kits replace generated geometry" rule: authored beats sourced here because the moodboard is
+      specific and the mesh is already on it.
+      *Deleting the `.glb` also deleted the phase's only licence blocker* — every remaining asset is
+      either CC0 (Kenney) or ours.
+      **Still open on it** (both pre-date phase 7 and neither is a mesh problem): the carried
+      slipper reads as detached in third person, which is `HAND_CARRY_OFFSET` being composed for
+      the FPP frame — see `Handoff.md` §0.12 — and it wants the same texture/outline treatment 7.1
+      settles.
 - [ ] **7.4 · Eskinita re-dressed from City Kit (Suburban) + Car Kit + Furniture Kit.** 🎨 Design ⛔ 7.1
       ⚠️ **City Kit buildings are diorama-scale — a house is currently SHORTER than a Person.**
       ≈5× is the measured starting factor. **One scale constant per kit, named, in the builder** —
@@ -1168,15 +1196,6 @@ buggy."* Six Kenney kits (all CC0, verified) plus a supplied flip-flop `.glb`.
         built. Listed only so nobody wires a clip to a mechanic that does not exist.
       ⚠️ **Scope boundary:** every sub-item reads existing state and plays a clip — no new state,
       no new input, no new networking. That is what keeps this in the design lane.
-
-- [ ] **7.0 · ⛔ HUMAN DECISION — the flip-flop's licence.** ⛔ BLOCKS 7.3
-      The six Kenney kits are **CC0**, confirmed in each `License.txt` — no obligation. The supplied
-      **"flip flops by Tiff Eidmann - aVbWCpQLno8.glb"** is not: that filename is the Poly Pizza
-      convention and those models are typically **CC-BY, which REQUIRES attribution**. A human must
-      confirm the licence and the exact attribution string before it ships in a graded, publicly
-      submitted entry. **If it cannot be confirmed the fallback costs nothing** — the current
-      procedural tsinelas already matches the §1b moodboard and simply stays. Filed in
-      `Handoff.md` §5.
 
 ## Already done — the ledger this list replaces
 
