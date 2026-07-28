@@ -1,4 +1,4 @@
-[gd_scene load_steps=19 format=3 uid="uid://bqk3n7x9m1p2s"]
+[gd_scene load_steps=21 format=3 uid="uid://bqk3n7x9m1p2s"]
 
 [ext_resource type="Script" path="res://scripts/ui/main_menu.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/ui/SettingsPanel.tscn" id="2"]
@@ -19,6 +19,24 @@ shader = ExtResource("3")
 shader_parameter/grid_size = 32.0
 shader_parameter/bg_color = Color(0.016, 0.031, 0.22, 1)
 shader_parameter/line_color = Color(1, 1, 1, 0.05)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_inset"]
+bg_color = Color(0.278, 0.129, 0.055, 1)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.545, 0.322, 0.153, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+content_margin_left = 10.0
+content_margin_top = 6.0
+content_margin_right = 10.0
+content_margin_bottom = 6.0
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_arrow"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_wood_normal"]
 bg_color = Color(0.192, 0.098, 0.043, 1)
@@ -51,18 +69,6 @@ border_width_top = 3
 border_width_right = 3
 border_width_bottom = 3
 border_color = Color(0.973, 0.816, 0.157, 1)
-corner_radius_top_left = 6
-corner_radius_top_right = 6
-corner_radius_bottom_right = 6
-corner_radius_bottom_left = 6
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_wood_disabled"]
-bg_color = Color(0.192, 0.098, 0.043, 0.4)
-border_width_left = 3
-border_width_top = 3
-border_width_right = 3
-border_width_bottom = 3
-border_color = Color(0.545, 0.322, 0.153, 0.35)
 corner_radius_top_left = 6
 corner_radius_top_right = 6
 corner_radius_bottom_right = 6
@@ -166,10 +172,9 @@ mouse_filter = 1
 
 [node name="GameBanner" type="TextureRect" parent="PlayMenu"]
 layout_mode = 0
-offset_left = -60.0
-offset_top = 80.0
-offset_right = 804.0
-offset_bottom = 272.0
+offset_top = 175.0
+offset_right = 648.0
+offset_bottom = 319.0
 mouse_filter = 2
 texture = ExtResource("9")
 expand_mode = 1
@@ -180,20 +185,20 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 150.0
-offset_right = -120.0
+offset_left = 130.0
+offset_right = -110.0
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.239, 0.149, 0.024, 1)
-theme_override_font_sizes/font_size = 76
+theme_override_font_sizes/font_size = 84
 vertical_alignment = 1
 text = "GAME"
 
 [node name="ConfigPanel" type="TextureRect" parent="PlayMenu"]
 layout_mode = 0
-offset_left = 140.0
-offset_top = 330.0
-offset_right = 985.0
-offset_bottom = 709.0
+offset_left = 83.0
+offset_top = 346.0
+offset_right = 712.0
+offset_bottom = 628.0
 mouse_filter = 1
 texture = ExtResource("10")
 expand_mode = 1
@@ -204,152 +209,175 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 56.0
-offset_top = 48.0
-offset_right = -56.0
-offset_bottom = -48.0
-theme_override_constants/separation = 28
+offset_left = 40.0
+offset_top = 46.0
+offset_right = -34.0
+offset_bottom = -46.0
+theme_override_constants/separation = 22
 alignment = 1
 
 [node name="MapRow" type="HBoxContainer" parent="PlayMenu/ConfigPanel/Rows"]
 layout_mode = 2
-theme_override_constants/separation = 16
+theme_override_constants/separation = 14
 
 [node name="MapCaption" type="Label" parent="PlayMenu/ConfigPanel/Rows/MapRow"]
 custom_minimum_size = Vector2(150, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 1)
-theme_override_font_sizes/font_size = 34
+theme_override_colors/font_color = Color(0.973, 0.816, 0.157, 1)
+theme_override_font_sizes/font_size = 42
 vertical_alignment = 1
-text = "MAP"
+text = "MAP:"
 
-[node name="MapPrevButton" type="Button" parent="PlayMenu/ConfigPanel/Rows/MapRow"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(64, 64)
+[node name="MapSelector" type="PanelContainer" parent="PlayMenu/ConfigPanel/Rows/MapRow"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 1)
-theme_override_colors/font_disabled_color = Color(0.961, 0.902, 0.784, 0.3)
+size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_inset")
+
+[node name="Inner" type="HBoxContainer" parent="PlayMenu/ConfigPanel/Rows/MapRow/MapSelector"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="MapPrevButton" type="Button" parent="PlayMenu/ConfigPanel/Rows/MapRow/MapSelector/Inner"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(44, 44)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_hover_color = Color(0.973, 0.816, 0.157, 1)
+theme_override_colors/font_pressed_color = Color(0.973, 0.816, 0.157, 1)
+theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
+theme_override_colors/font_disabled_color = Color(1, 1, 1, 0.3)
 theme_override_font_sizes/font_size = 30
-theme_override_styles/normal = SubResource("StyleBoxFlat_wood_normal")
-theme_override_styles/hover = SubResource("StyleBoxFlat_wood_hover")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_wood_pressed")
-theme_override_styles/disabled = SubResource("StyleBoxFlat_wood_disabled")
-theme_override_styles/focus = SubResource("StyleBoxFlat_wood_hover")
+theme_override_styles/normal = SubResource("StyleBoxEmpty_arrow")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_arrow")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_arrow")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_arrow")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_arrow")
 disabled = true
 text = "◀"
 
-[node name="MapValueLabel" type="Label" parent="PlayMenu/ConfigPanel/Rows/MapRow"]
+[node name="MapValueLabel" type="Label" parent="PlayMenu/ConfigPanel/Rows/MapRow/MapSelector/Inner"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 1)
-theme_override_font_sizes/font_size = 30
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 36
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="MapNextButton" type="Button" parent="PlayMenu/ConfigPanel/Rows/MapRow"]
+[node name="MapNextButton" type="Button" parent="PlayMenu/ConfigPanel/Rows/MapRow/MapSelector/Inner"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(64, 64)
+custom_minimum_size = Vector2(44, 44)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 1)
-theme_override_colors/font_disabled_color = Color(0.961, 0.902, 0.784, 0.3)
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_hover_color = Color(0.973, 0.816, 0.157, 1)
+theme_override_colors/font_pressed_color = Color(0.973, 0.816, 0.157, 1)
+theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
+theme_override_colors/font_disabled_color = Color(1, 1, 1, 0.3)
 theme_override_font_sizes/font_size = 30
-theme_override_styles/normal = SubResource("StyleBoxFlat_wood_normal")
-theme_override_styles/hover = SubResource("StyleBoxFlat_wood_hover")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_wood_pressed")
-theme_override_styles/disabled = SubResource("StyleBoxFlat_wood_disabled")
-theme_override_styles/focus = SubResource("StyleBoxFlat_wood_hover")
+theme_override_styles/normal = SubResource("StyleBoxEmpty_arrow")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_arrow")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_arrow")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_arrow")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_arrow")
 disabled = true
 text = "▶"
 
 [node name="ModeRow" type="HBoxContainer" parent="PlayMenu/ConfigPanel/Rows"]
 layout_mode = 2
-theme_override_constants/separation = 16
+theme_override_constants/separation = 14
 
 [node name="ModeCaption" type="Label" parent="PlayMenu/ConfigPanel/Rows/ModeRow"]
 custom_minimum_size = Vector2(150, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 1)
-theme_override_font_sizes/font_size = 34
+theme_override_colors/font_color = Color(0.973, 0.816, 0.157, 1)
+theme_override_font_sizes/font_size = 42
 vertical_alignment = 1
-text = "MODE"
+text = "MODE:"
 
-[node name="ModePrevButton" type="Button" parent="PlayMenu/ConfigPanel/Rows/ModeRow"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(64, 64)
+[node name="ModeSelector" type="PanelContainer" parent="PlayMenu/ConfigPanel/Rows/ModeRow"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 1)
+size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_inset")
+
+[node name="Inner" type="HBoxContainer" parent="PlayMenu/ConfigPanel/Rows/ModeRow/ModeSelector"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ModePrevButton" type="Button" parent="PlayMenu/ConfigPanel/Rows/ModeRow/ModeSelector/Inner"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(44, 44)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_colors/font_hover_color = Color(0.973, 0.816, 0.157, 1)
 theme_override_colors/font_pressed_color = Color(0.973, 0.816, 0.157, 1)
-theme_override_colors/font_focus_color = Color(0.961, 0.902, 0.784, 1)
+theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 30
-theme_override_styles/normal = SubResource("StyleBoxFlat_wood_normal")
-theme_override_styles/hover = SubResource("StyleBoxFlat_wood_hover")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_wood_pressed")
-theme_override_styles/focus = SubResource("StyleBoxFlat_wood_hover")
+theme_override_styles/normal = SubResource("StyleBoxEmpty_arrow")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_arrow")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_arrow")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_arrow")
 text = "◀"
 
-[node name="ModeValueLabel" type="Label" parent="PlayMenu/ConfigPanel/Rows/ModeRow"]
+[node name="ModeValueLabel" type="Label" parent="PlayMenu/ConfigPanel/Rows/ModeRow/ModeSelector/Inner"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 1)
-theme_override_font_sizes/font_size = 30
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 36
 horizontal_alignment = 1
 vertical_alignment = 1
-autowrap_mode = 2
 
-[node name="ModeNextButton" type="Button" parent="PlayMenu/ConfigPanel/Rows/ModeRow"]
+[node name="ModeNextButton" type="Button" parent="PlayMenu/ConfigPanel/Rows/ModeRow/ModeSelector/Inner"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(64, 64)
+custom_minimum_size = Vector2(44, 44)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 1)
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_colors/font_hover_color = Color(0.973, 0.816, 0.157, 1)
 theme_override_colors/font_pressed_color = Color(0.973, 0.816, 0.157, 1)
-theme_override_colors/font_focus_color = Color(0.961, 0.902, 0.784, 1)
+theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 30
-theme_override_styles/normal = SubResource("StyleBoxFlat_wood_normal")
-theme_override_styles/hover = SubResource("StyleBoxFlat_wood_hover")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_wood_pressed")
-theme_override_styles/focus = SubResource("StyleBoxFlat_wood_hover")
+theme_override_styles/normal = SubResource("StyleBoxEmpty_arrow")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_arrow")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_arrow")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_arrow")
 text = "▶"
 
 [node name="LocalButton" parent="PlayMenu" instance=ExtResource("4")]
 unique_name_in_owner = true
 layout_mode = 0
-offset_left = 1020.0
-offset_top = 330.0
-offset_right = 1838.0
-offset_bottom = 465.0
+offset_left = 95.0
+offset_top = 655.0
+offset_right = 715.0
+offset_bottom = 757.0
 texture = ExtResource("11")
 text = "PLAY OFFLINE"
-text_color = Color(0.961, 0.902, 0.784, 1)
-label_size = 46
-pole_distance = 300.0
-text_indent = 48.0
-tip_padding = 48.0
+text_color = Color(1, 1, 1, 1)
+label_size = 48
+pole_distance = 280.0
+text_indent = 40.0
+tip_padding = 40.0
 
 [node name="HostButton" parent="PlayMenu" instance=ExtResource("4")]
 unique_name_in_owner = true
 layout_mode = 0
-offset_left = 1020.0
-offset_top = 485.0
-offset_right = 1838.0
-offset_bottom = 620.0
+offset_left = 95.0
+offset_top = 773.0
+offset_right = 715.0
+offset_bottom = 875.0
 texture = ExtResource("11")
 text = "HOST GAME (LAN)"
-text_color = Color(0.961, 0.902, 0.784, 1)
-label_size = 46
-pole_distance = 300.0
-text_indent = 48.0
-tip_padding = 48.0
+text_color = Color(1, 1, 1, 1)
+label_size = 48
+pole_distance = 280.0
+text_indent = 40.0
+tip_padding = 40.0
 
 [node name="JoinField" type="TextureRect" parent="PlayMenu"]
 layout_mode = 0
-offset_left = 1020.0
-offset_top = 660.0
-offset_right = 1838.0
-offset_bottom = 795.0
+offset_left = 95.0
+offset_top = 891.0
+offset_right = 697.0
+offset_bottom = 990.0
 mouse_filter = 1
 texture = ExtResource("12")
 expand_mode = 1
@@ -361,50 +389,51 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 48.0
-offset_top = 24.0
-offset_right = -48.0
-offset_bottom = -24.0
-placeholder_text = "HOST IP — e.g. 127.0.0.1"
+offset_left = 40.0
+offset_top = 16.0
+offset_right = -40.0
+offset_bottom = -16.0
+placeholder_text = "192.168.1.12:7777"
 
 [node name="JoinButton" parent="PlayMenu" instance=ExtResource("4")]
 unique_name_in_owner = true
 layout_mode = 0
-offset_left = 1020.0
-offset_top = 820.0
-offset_right = 1341.0
-offset_bottom = 955.0
+offset_left = 715.0
+offset_top = 891.0
+offset_right = 950.0
+offset_bottom = 990.0
 texture = ExtResource("13")
 text = "JOIN"
-text_color = Color(0.961, 0.902, 0.784, 1)
-label_size = 46
-pole_distance = 200.0
-text_indent = 36.0
-tip_padding = 36.0
+text_color = Color(1, 1, 1, 1)
+label_size = 44
+pole_distance = 150.0
+text_indent = 30.0
+tip_padding = 30.0
 
 [node name="StatusLabel" type="Label" parent="PlayMenu"]
 unique_name_in_owner = true
 layout_mode = 0
-offset_left = 1020.0
-offset_top = 965.0
-offset_right = 1838.0
-offset_bottom = 1045.0
+offset_left = 975.0
+offset_top = 891.0
+offset_right = 1700.0
+offset_bottom = 990.0
 theme_override_colors/font_color = Color(0.957, 0.408, 0.659, 1)
-theme_override_font_sizes/font_size = 24
+theme_override_font_sizes/font_size = 26
+vertical_alignment = 1
 autowrap_mode = 2
 
 [node name="BackButton" type="Button" parent="PlayMenu"]
 unique_name_in_owner = true
 layout_mode = 0
-offset_left = 140.0
-offset_top = 800.0
-offset_right = 460.0
-offset_bottom = 880.0
+offset_left = 95.0
+offset_top = 1006.0
+offset_right = 395.0
+offset_bottom = 1064.0
 theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 1)
 theme_override_colors/font_hover_color = Color(0.973, 0.816, 0.157, 1)
 theme_override_colors/font_pressed_color = Color(0.973, 0.816, 0.157, 1)
 theme_override_colors/font_focus_color = Color(0.961, 0.902, 0.784, 1)
-theme_override_font_sizes/font_size = 32
+theme_override_font_sizes/font_size = 30
 theme_override_styles/normal = SubResource("StyleBoxFlat_wood_normal")
 theme_override_styles/hover = SubResource("StyleBoxFlat_wood_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_wood_pressed")
