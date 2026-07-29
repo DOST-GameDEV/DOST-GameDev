@@ -3908,7 +3908,8 @@ toggled `pause_root.visible` and the cursor, never `get_tree().paused` — `Roun
 timer, `MatchManager`'s intermission countdown, and every `CharacterBase._physics_process` (input,
 gravity) kept running behind the overlay.
 **[FIXED]** Local Match now gets a real `get_tree().paused` freeze; networked play stays a
-non-freezing overlay whose label says "PAUSED — the match is still running" (a naive freeze would
+non-freezing overlay that says so ("The match is still running.", under the title — one line since the
+card was restyled, appended to the title before that) (a naive freeze would
 stop the host's authoritative timer for everyone, or stop a client's own movement while the host
 keeps simulating it — Handoff.md §0.3). Caught a second, undocumented bug while implementing the
 first: Godot gates `_unhandled_input` by `process_mode` exactly like `_process`, and `Main`'s own
