@@ -2424,6 +2424,66 @@ hypotheses to check rather than starting cold:
 6. **No difficulty tiers exist.** If fairness testing says the AI is too strong for a demo, the fix
    is a tier that scales `DECISION_INTERVAL` and `ATTACKER_LANE_CLEARANCE`, not one-off nerfs.
 
+### RUNS 4, 5 and 6 — 2026-07-29. Attacker evasion, and the one negative result worth keeping.
+
+Same harness, 20 rounds, `scale=6`, Option A, `taya_pursue_radius 0.0`. Three runs, because RUN 5 is
+a **measured regression** and deleting it would leave the next person free to make the same change.
+
+| Metric | RUN 3 | RUN 4 | RUN 5 | **RUN 6** | Fair |
+|---|---|---|---|---|---|
+| Round win rate | DEF 90% | DEF 90% | DEF **100%** | **DEF 85% / OFF 15%** | 40–60% |
+| Throws taken | 103 | 66 | 67 | **81** | — |
+| Throws blocked | 53.4% | 56.1% | **67.2%** | **50.6%** | 25–50% |
+| Reached the can | 4 | 4 | **0** | **6** | — |
+| Dents per round | 0.30 | 0.30 | **0.00** | **0.45** | ≥ 1 |
+| Longest still-run | 6.83 s | **1.92 s** | 1.07 s | 3.05 s | < 2 s |
+| Ended by tag | 18/20 | 18/20 | 20/20 | 17/20 | — |
+
+**RUN 4 — B-134, B-135 and B-137 landed; no evasion yet.** The headline is the still-run:
+**6.83 s → 1.92 s, inside the bar for the first time this project has measured it.** That is B-137's
+signature, not a coincidence — the slipper's hurtbox was staying non-monitorable after any round that
+ended in a tag, and `carrier.gd::_find_grabbable()` finds slippers by scanning for Hurtboxes, so the
+attacker was standing next to a slipper it was unable to pick up. An attacker that cannot pick
+anything up is precisely what a long still-run looks like. Everything else was flat, which is
+expected: under Option A a hit on the Can was already a dent whichever hitbox resolved it, so B-134
+does not move these numbers (it transforms Option B, where the can now falls on every clean contact).
+
+**RUN 5 — attacker evasion, at top priority. ⚠️ A REGRESSION. DO NOT REDO IT.** Evasion pre-empted
+*everything*, so an attacker holding a charged slipper ran away from the taya instead of throwing
+it. The offence stopped functioning: win rate 90/10 → **100/0**, blocked 56.1% → **67.2%**, dents
+0.30 → **0.00**, throws that reached the can 4 → **0**. Fleeing is only the right answer when there
+is nothing better to do with the moment, and while holding the slipper there always is.
+
+**RUN 6 — evasion gated on EMPTY-HANDED. The best configuration measured so far, and shipped.**
+One extra condition on the same behaviour tree node, and four of the five metrics improve on RUN 4:
+
+ - win rate **90/10 → 85/15**, the best since RUN 2;
+ - block rate **56.1% → 50.6%**, back to the very edge of the fair range;
+ - throws that reached the can **4 → 6**, dents **0.30 → 0.45**, throws taken **66 → 81**.
+
+The gate is right on the merits as well as on the numbers: **the tag does not come from the throwing
+line.** The taya is capped at `CONFINEMENT_RADIUS` and does not chase; it gets its tag when the
+ATTACKER walks into the confinement box, which it must do to fetch a slipper that landed near the
+can. Retrieval is the whole exposure, so retrieval is where the dodge belongs.
+
+⚠️ **The still-run went the wrong way — 1.92 s → 3.05 s, back out of range.** Not root-caused. The
+dodge itself is the obvious suspect (`_act_attacker_dodge` re-picks a break bearing every tick and
+`_move_toward` releases input inside `ARRIVE_DISTANCE`, so an oscillation is plausible). Worth a
+`bt_trace()` pass — that is how B-124 was found inside an hour.
+
+### ⚠️ Still open after RUN 6
+
+- **Win rate 85/15 and dents 0.45.** Improved, still out. The offence works now; it does not win.
+- **`TAYA_BLOCK_STANDOFF` (2.6) IS STILL UNMEASURED.** RUN 3 flagged it as the obvious nerf for a
+  block rate that had gone above range. It has not been swept — but note that RUN 6 brought the block
+  rate to **50.6%** without touching it, which weakens the case for nerfing it and means any sweep
+  should now start from RUN 6's baseline rather than RUN 3's. Sweeping it needs the constant promoted
+  to a `static var`, the way `taya_pursue_radius` already is, plus a `standoff=` argument on
+  `ai_probe`. Neither exists yet.
+- **Difficulty tiers (fairness item 6) are still the right home** for `CAN_LEAD_FRACTION`,
+  `ATTACKER_PATIENCE`, `DECISION_INTERVAL`, `ATTACKER_LANE_CLEARANCE` and now
+  `ATTACKER_DODGE_RADIUS` / `ATTACKER_DODGE_STEP`. Do not one-off-nerf any of them.
+
 ## Already done — the ledger this list replaces
 
 Kept short on purpose; the detail is in `Handoff.md` §4 and `Handoff.md`.

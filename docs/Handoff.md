@@ -739,6 +739,43 @@ For any coding agent picking up this queue.
 **Only open items live here.** B-01 … B-66 are in [`Handoff.md`](Handoff.md); everything
 marked `[FIXED]` there is done and settled. New bugs take the next free number **in this file**.
 
+**B-137 · THE SLIPPER'S COLLISION AND HURTBOX RE-ENABLE WAS SILENTLY DROPPED ON EVERY PATH THAT
+STARTS WITH A HIT. [FIXED 2026-07-29]**
+
+Found by the round-reset audit, using `tools/ai_probe.tscn -- fairness` as the instrument — a single
+20-round run logged **11 blocked `monitorable` writes and 3 blocked `disabled` writes**. Nothing in
+the game reported anything: the writes simply did not happen.
+
+`Carriable._set_physics_enabled()` wrote `CollisionShape3D.disabled` and `Area3D.monitorable`
+directly. Godot refuses both while the physics server is mid-step — *"Can't change this state while
+flushing queries"* and *"Function blocked during in/out signal"* — and **every important caller
+reaches this function from inside an `area_entered` callback, because that is where hits resolve:**
+
+ 1. **Tagged mid-carry.** `hitbox.gd::_on_area_entered` → `_apply_hit_result` → `apply_stagger` →
+    `_set_state` → `_on_carrier_state_changed` → `host_drop` → `_rpc_set_loose` → here. The
+    re-enable was dropped, so **the slipper knocked out of a tagged carrier's hands came back with
+    its collision shape still disabled**, free to sink through the floor. B-75 calls knocking the
+    slipper loose "most of the point of tagging"; B-101 is this same failure from the other side.
+ 2. **A round won by a tag.** The same callback → `report_round_win` → `report_round_result` →
+    `_reset_world` → `reset_for_new_round` → here. **The hurtbox stayed non-monitorable into the
+    next round**, and `carrier.gd::_find_grabbable()` finds slippers by scanning its GrabArea for
+    Hurtboxes — so the attacker could not pick their own tsinelas up at all. A tag ends 18 of 20
+    rounds, so this is the common path, not an edge case.
+
+*Fix.* `set_deferred()` on both, which is what each engine message asks for. The change lands at idle
+rather than instantly — one frame in which the slipper is still intangible, which is invisible and is
+strictly better than never.
+
+*Verified:* the same 20-round run goes from 14 blocked writes to **0**. And the fairness table moved
+where the bug predicts it should: **longest still-run 6.83 s → 1.92 s, inside the < 2 s bar for the
+first time this project has ever measured it.** That is the causal signature — an attacker standing
+next to a slipper it could not pick up is exactly what a long still-run is.
+
+⚠️ **This is the class B-128 fixed one instance of, and the class is now known to be wider than
+"knockback between rounds".** Any state write reached from a hit callback is suspect. The generic
+rule: **hits resolve inside a physics callback, so anything they touch that changes collision or
+monitoring state must be deferred.**
+
 **B-136 · STEP AND TOUCH ON AN OPPONENT'S TSINELAS. [ADDED 2026-07-29 — both branches verified
 firing; the shove's MAGNITUDE is not]**
 
