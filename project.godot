@@ -17,8 +17,13 @@ run/main_scene="res://scenes/ui/SplashScreen.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
 
+[audio]
+
+buses/default_bus_layout="res://default_bus_layout.tres"
+
 [autoload]
 
+AudioManager="*res://scripts/systems/audio_manager.gd"
 RoundManager="*res://scripts/systems/round_manager.gd"
 MatchManager="*res://scripts/systems/match_manager.gd"
 NetworkManager="*res://scripts/systems/network_manager.gd"

@@ -867,6 +867,16 @@ ext_lines.append('[ext_resource type="Script" '
 # and adds no shader.
 ext_lines.append('[ext_resource type="Texture2D" '
                  'path="res://assets/models/materials/sky_panorama.png" id="SKY"]')
+# Checklist 4.1 - the map's ambience bed. CC0, sourced (not generated): see
+# assets/audio/ambience/OPENGAMEART_CC0_LICENSE.txt for the source URL, author
+# and licence text, which Form 03 needs.
+#
+# THE AMBIENCE BELONGS TO THE MAP, NOT TO AudioManager. Same rule that put the
+# WorldEnvironment, the kill plane and the spawn markers in here rather than in
+# Main.tscn: what a place sounds like is part of that place. An eskinita and a
+# plaza are different rooms and must not share a bed.
+ext_lines.append('[ext_resource type="AudioStream" '
+                 'path="res://assets/audio/ambience/eskinita_street.ogg" id="AMB"]')
 
 # ⚠️ THE FLOOR IS 120x120 AND THAT IS A BACKDROP CHANGE, NOT AN ARENA RESIZE.
 # The colliders that bound play — Bounds/Wall* at ±8.6 and ±18.0 — are byte-for-
@@ -1042,6 +1052,14 @@ script = ExtResource("K")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="KillPlane"]
 shape = SubResource("Shape_killplane")
+
+[node name="Ambience" type="Node3D" parent="."]
+
+[node name="AmbienceLoop" type="AudioStreamPlayer" parent="Ambience"]
+stream = ExtResource("AMB")
+autoplay = true
+bus = &"Music"
+volume_db = -12.0
 
 [node name="Hazards" type="Node3D" parent="."]
 
