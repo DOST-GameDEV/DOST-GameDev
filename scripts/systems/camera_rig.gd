@@ -675,7 +675,28 @@ func set_viewmodel_charge(power: float) -> void:
 		return
 	if player.current_animation == "idle":
 		player.stop()
-	arm.rotation.x = VIEWMODEL_WINDUP_RAD * clampf(power, 0.0, 1.0)
+	# ⚠️ THE SIGN IS NEGATIVE, AND IT WAS WRONG UNTIL 2026-07-29. User report:
+	# "i think the wind up is opposite direction? the arm goes down, not up."
+	#
+	# Correct. Which way a positive rotation about the arm's local X takes the
+	# fist is NOT readable from this line — it depends entirely on RightPivot's
+	# basis in ViewmodelArms.tscn, which is a fully general rotation. Measured
+	# with tools/windup_probe.tscn, tracking RightPivot/Arm/HeldSlipper (the node
+	# the thrown tsinelas rides on, i.e. the fist) in camera space:
+	#
+	#   rest        rotation.x +0.000 -> fist (+0.205, -0.485, -0.899)
+	#   old sign    rotation.x +0.620 -> fist (+0.275, -0.946, -1.141)   dY -0.461
+	#   this sign   rotation.x -0.620 -> fist (+0.275, -0.223, -0.450)   dY +0.261
+	#
+	# +Y is up and -Z is forward, so the old sign drove the fist DOWN and FORWARD
+	# — the arm falling away from the player rather than cocking back. The whole
+	# point of the wind-up is that it is the only readout of throw strength in the
+	# player's eyeline (Art_Direction §1.9), and it was reading backwards.
+	#
+	# The `throw` one-shot in ViewmodelArms.tscn is NOT affected and was checked:
+	# it keys +0.52 first, which under this same measurement is the forward snap,
+	# then recoils. That one was always right, which is part of why this hid.
+	arm.rotation.x = -VIEWMODEL_WINDUP_RAD * clampf(power, 0.0, 1.0)
 
 
 ## Plays a one-shot on the first-person viewmodel — the visible half of "your
