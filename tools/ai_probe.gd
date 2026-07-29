@@ -108,8 +108,11 @@ func _ready() -> void:
 			_transitions[c] = 0
 	print("AI units found: ", _bots.size())
 	if _mode == "fairness":
-		print("FAIRNESS RUN — target rounds: %d, %s, time_scale: %.1f"
-			% [_target_rounds, _mode_name(), _scale])
+		# The map is named because it is now selectable and every number below
+		# depends on it — an unlabelled fairness table is what let Eskinita's
+		# results stand in for the project's.
+		print("FAIRNESS RUN — target rounds: %d, %s, time_scale: %.1f, map: %s"
+			% [_target_rounds, _mode_name(), _scale, GameLaunch.selected_map])
 	set_physics_process(true)
 
 ## `-- fairness rounds=20 scale=4`. Everything is optional and order does not
@@ -130,6 +133,13 @@ func _parse_args() -> void:
 			GameLaunch.game_mode = GameLaunch.GameMode.OPTION_B
 		elif token == "mode=a":
 			GameLaunch.game_mode = GameLaunch.GameMode.OPTION_A
+		# ⚠️ `map=` DID NOT EXIST, so every fairness number this harness has ever
+		# produced describes Eskinita — and Bayan Plaza has never had its AI
+		# tested at all. That map is the one with the project's ONLY piece of
+		# dressing collision (Obstacles/MonumentBody), which is precisely the kind
+		# of geometry a navless "walk toward the target" AI gets stuck on.
+		elif token.begins_with("map="):
+			GameLaunch.selected_map = StringName(token.substr(4))
 		elif token.begins_with("pursue="):
 			# Sweeps AIController.taya_pursue_radius without editing the
 			# controller — see that field's own doc for why it is the lever.
