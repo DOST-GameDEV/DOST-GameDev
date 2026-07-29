@@ -46,6 +46,22 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	video.finished.connect(_leave)
 	video.play()
+	# ⚠️ THE STING IS A SEPARATE STREAM, NOT AUDIO ON THE VIDEO, AND IT HAS TO BE.
+	#
+	# `opening_animation.ogv` is converted with `-an` (see the class doc's ffmpeg
+	# line): Godot 4 ships exactly one core video codec and putting audio through
+	# Theora costs file size on a clip that plays on every single launch, for a
+	# track that then cannot be skipped independently or mixed against the SFX
+	# bus. Starting it here instead means it rides the same limiter and the same
+	# volume slider as everything else, and `_leave()` fades it out with the
+	# picture rather than cutting it dead.
+	#
+	# ⚠️ AND IT IS STARTED AFTER `video.play()`, DELIBERATELY. The first frame of
+	# a cold Theora decode is the slowest thing on this screen; starting the audio
+	# first would put the sting ahead of the picture by however long that took,
+	# which is different on every machine. Started together, they drift by at most
+	# one frame.
+	AudioManager.play("boot_sting")
 	# Start opaque and fade the black out, so a slow first decode reads as a
 	# deliberate fade-in rather than as a frozen black screen.
 	fade.color = Color(0, 0, 0, 1)
@@ -80,6 +96,11 @@ func _leave() -> void:
 	set_process_unhandled_input(false)
 	if video.is_playing():
 		video.stop()
+	# The sting goes with the picture. A skip that blacks the screen and leaves
+	# a chord playing over the title menu is worse than no sting at all, and
+	# AudioManager's pooled voices outlive this scene by design, so stopping it
+	# has to be explicit.
+	AudioManager.stop_all()
 	var tween := create_tween()
 	tween.tween_property(fade, "color:a", 1.0, 0.22)
 	tween.tween_callback(func() -> void:

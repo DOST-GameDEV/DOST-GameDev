@@ -896,7 +896,7 @@ ext_lines.append('[ext_resource type="AudioStream" '
 #     apron's edge, where the fog is already halfway in.
 # Box height is 1, so a node offset is (wanted top - 0.5).
 SUBS = '''[sub_resource type="BoxShape3D" id="Shape_floor"]
-size = Vector3(120, 1, 120)
+size = Vector3(120, 8, 120)
 
 [sub_resource type="StandardMaterial3D" id="Mat_floor"]
 albedo_color = Color(0.32941, 0.31765, 0.29412, 1)
@@ -1014,7 +1014,7 @@ directional_shadow_max_distance = 42.0
 [node name="Floor" type="StaticBody3D" parent="."]
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.4, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -3.9, 0)
 shape = SubResource("Shape_floor")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Floor"]
