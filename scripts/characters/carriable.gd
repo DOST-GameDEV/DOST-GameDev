@@ -409,13 +409,31 @@ func host_throw(direction: Vector3, power: float) -> void:
 		return
 	var profile := _profile()
 	var aim := direction.normalized()
-	# Tilt the aim upward by the profile's arc. Rotating about the horizontal
-	# axis perpendicular to the aim keeps this correct regardless of where the
-	# thrower is looking, including straight up or down.
+	# ⚠️ THE SIGN HERE WAS INVERTED, AND IT IS WHY EVERY THROW FLEW LOW.
+	# 2026-07-29, user report: "the height when you throw it is still too low."
+	#
+	# This block has always been documented as "tilt the aim UPWARD by the
+	# profile's arc" and it did the exact opposite. `horizontal.cross(UP)` for a
+	# forward aim of (0,0,-1) is (+1,0,0), and rotating about +X by a NEGATIVE
+	# angle drives y negative. Measured against the expression as it stood:
+	#     crosshair level  ->  launch y -0.242   (14 deg BELOW the crosshair)
+	#     crosshair +20    ->  launch y +0.105   (still 14 deg below)
+	#     crosshair -20    ->  launch y -0.559
+	# So every throw left the hand a full `arc_angle_deg` under where the player
+	# was pointing — 28 deg low for Bagsak, whose whole identity is the lob.
+	# Nothing caught it because the arc and the drop compound in the same
+	# direction: it just read as "the throw is weak", which is how it was
+	# reported both times.
+	#
+	# ⚠️ AND THE ARC IS NOW 0.0 ON EVERY SHIPPED PROFILE — see the .tres files.
+	# The request was for the launch to be ALIGNED WITH THE CROSSHAIR, and any
+	# non-zero arc, in either direction, is by definition a hidden offset from
+	# it. The field is kept, and now finally works in the direction it claims,
+	# so a profile can dial a lob back in deliberately.
 	var horizontal := Vector3(aim.x, 0.0, aim.z)
-	if horizontal.length() > 0.01:
+	if horizontal.length() > 0.01 and not is_zero_approx(profile.arc_angle_deg):
 		var axis := horizontal.normalized().cross(Vector3.UP)
-		aim = aim.rotated(axis.normalized(), -deg_to_rad(profile.arc_angle_deg))
+		aim = aim.rotated(axis.normalized(), deg_to_rad(profile.arc_angle_deg))
 	var speed: float = profile.launch_speed * clampf(power, 0.0, 1.0)
 	_broadcast_flying(_character.global_position, aim.normalized() * speed)
 
