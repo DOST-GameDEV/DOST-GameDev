@@ -1928,7 +1928,7 @@ pass `mode=b` to measure Option B deliberately.
 ⚠️ **No row here is a balance result and none of them should be used to tune anything.** They are the
 measurement that found two structural bugs, both of which predate the behaviour-tree pass:
 
-1. **B-119 · THE ATTACKER AND THE TAYA LIVELOCK. THE ATTACKER GETS EXACTLY ONE THROW PER ROUND.**
+1. **B-124 · THE ATTACKER AND THE TAYA LIVELOCK. THE ATTACKER GETS EXACTLY ONE THROW PER ROUND.**
    Measured directly off `bt_trace()`: from the moment it re-acquires the slipper (t = 1.4 s) to the
    end of a 40 s observation, the attacker sits in `role/attacker/throw/reposition` — *lane blocked
    → slide to the nearest open bearing* — and never once reaches `charge-release`. It orbits the can
@@ -1941,7 +1941,7 @@ measurement that found two structural bugs, both of which predate the behaviour-
    implemented:** a patience timer that throws into a blocked lane anyway after N seconds; requiring
    the block to persist before believing it; sampling the open bearing relative to the *Taya's* post
    rather than the attacker's own.
-2. **B-120 · THE AI ATTACKER NEVER AIMS AT THE CAN.** `carrier.gd::_aim_direction()` takes the throw
+2. **B-125 · THE AI ATTACKER NEVER AIMS AT THE CAN.** `carrier.gd::_aim_direction()` takes the throw
    direction from the CameraRig, which for a non-mouse-aimed unit follows the body, and the body's
    yaw is written by `character_base.gd`'s `look_at(global_position + direction)` — i.e. **the
    direction it last pressed movement in.** The attacker's charge leaf deliberately stands still
@@ -1958,7 +1958,7 @@ so the Can never moves at all unless it is evading. A/B'd against `origin/integr
 `ai_controller.gd` on the same seed, which scores **worse** (10.50 s vs 6.73 s), so this is not a
 refactor regression either. Independence itself is unchanged and still good: 1/843 frames with two
 bots changing state together (the recorded figure was 1/846). The 20–30 s still-runs in the table
-above are the livelock of B-119, not this.
+above are the livelock of B-124, not this.
 
 **`taya_pursue_radius` ships at 0.0**, which reproduces the pre-behaviour-tree Taya exactly, so the
 refactor is behaviour-neutral by default. The pursuit branch the BT adds is implemented and one
@@ -1967,7 +1967,7 @@ changing *that* it wins, and a refactor should not smuggle in a balance change.
 
 ### ⚠️ Still open
 
-The table's fair ranges remain UNMET, and until B-119 and B-120 are fixed no tuning number is worth
+The table's fair ranges remain UNMET, and until B-124 and B-125 are fixed no tuning number is worth
 measuring — an attacker that cannot throw and cannot aim makes every other lever meaningless.
 
 Known things that will probably need retuning once that is done, recorded now so the next run has
