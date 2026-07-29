@@ -54,9 +54,18 @@ var _tracked_cans: Array[CharacterBase] = []
 ## individual fall. Counts every Downed transition on a tracked Can this
 ## round, saved or not; reaching the limit ends the round immediately even if
 ## THIS particular fall would otherwise have been recoverable. Round-scoped,
-## reset alongside time_left in both start_round() and reset(). First guess,
-## not a measurement — needs a human to actually play it.
-const FALL_LIMIT: int = 5
+## reset alongside time_left in both start_round() and reset().
+##
+## ⚠️ 5 -> 4, last of the four "too easy for the lata to get back up" levers —
+## the full set is documented on `CharacterBase.DOWNED_SELF_RIGHT_WINDOW`. This is
+## the backstop the other three feed into: it is the only path that pays the
+## attacking side for knockdowns the taya keeps saving. Note it interacts with
+## lever 2 — a lucky fall does NOT count here (see the handler below), so cutting
+## `LUCKY_FALL_CHANCE` from 0.25 to 0.12 already made this counter tick faster;
+## 4 is the deliberate step on top of that, not a duplicate of it.
+##
+## First guess, not a measurement — needs a human to actually play it.
+const FALL_LIMIT: int = 4
 var _fall_count: int = 0
 
 ## 3.4: read-only so the off-screen indicator (or anything else that needs

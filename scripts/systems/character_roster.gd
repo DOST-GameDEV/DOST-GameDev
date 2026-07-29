@@ -49,88 +49,158 @@ const MATERIAL_DIR: String = "res://assets/characters/persons/materials/"
 ## a black/yellow outfit against green. They point at the hand-authored
 ## person_a/person_b materials, which `generate_person_palettes.py` deliberately
 ## does NOT emit.
+## ---------------------------------------------------------------------------
+## TRAITS — three numbers per entry, 1 to 5, and 3 is the middle of the road.
+##
+## Human ask: *"give characters unique gameplay traits and stats (faster,
+## stronger) that tie directly into their respective lore descriptions"* and
+## *"find a creative way to visually show them on the character selection
+## screen."* The second half is `character_select.gd`'s three chalk meters; this
+## is the first half, and the rule that keeps it honest is:
+##
+##   ⚠️ THE NUMBER MUST BE READABLE OFF THE SENTENCE. If a description says
+##   somebody is quick, BILIS is high. If it says they hit hard, LAKAS is high.
+##   A stat nobody can predict from the lore is just a random modifier, and a
+##   description nothing backs up is a lie the player finds out about in round 2.
+##   The two are written together here, on the same line, for exactly that reason.
+##
+##   BILIS  · speed      how fast this unit walks.
+##   LAKAS  · power      how hard its throws and body-checks land.
+##   TATAG  · grit       how little it is moved and stunned by being hit.
+##
+## ⚠️ THE SPREAD IS DELIBERATELY NARROW. `CharacterBase.TRAIT_*_PER_POINT` turns
+## a point into single-digit percentages, so the full 1..5 range spans roughly
+## +/-10% on speed and +/-14% on power and grit. This is a party game about
+## hitting a can with a slipper; a pick that is 40% faster than another pick is
+## not a personality, it is the correct answer. Every entry is meant to stay
+## playable and the differences are meant to be felt rather than counted.
+##
+## ⚠️ TOTALS ARE NOT BALANCED TO A FIXED BUDGET, ON PURPOSE. Lola Pacing is slow
+## and tough and Jun-Jun is fast and fragile, but Bebang is genuinely a heavier
+## pick than Jun-Jun overall — because "the small one is strictly equal to the
+## big one once you add the numbers up" is a spreadsheet result, not a cast. The
+## narrow spread above is what makes that affordable.
+##
+## Nothing in the game may read a raw number from here. Ask `CharacterBase`'s
+## `trait_speed_scale()` / `trait_power_scale()` / `trait_grit_scale()` instead,
+## so there is one conversion from points to multipliers.
+const TRAIT_MIN: int = 1
+const TRAIT_MAX: int = 5
+const TRAIT_NEUTRAL: int = 3
+
+## Display metadata for the meters on the CHARACTER screen. Filipino names, since
+## the roles themselves are Filipino everywhere else in the UI, with the English
+## reading underneath so a first-time player is never guessing.
+const TRAIT_LABELS: Array[Dictionary] = [
+	{"key": &"bilis", "name": "BILIS", "gloss": "SPEED"},
+	{"key": &"lakas", "name": "LAKAS", "gloss": "POWER"},
+	{"key": &"tatag", "name": "TATAG", "gloss": "GRIT"},
+]
+
+## ---------------------------------------------------------------------------
+## ⚠️ THE DESCRIPTIONS ARE ENGLISH AND THE NAMES ARE NOT. Human call: *"rewrite
+## all descriptions to be in English, but keep the Filipino names."* The name is
+## the character; the sentence is the joke, and a joke only lands in a language
+## the reader is fluent in. Role words the game teaches on purpose (taya, lata,
+## tsinelas, eskinita, sari-sari) stay Filipino inside the English, which is how
+## the words actually get learned.
+##
+## ⚠️ NO EM-DASHES ANYWHERE IN A DESCRIPTION, also on request. Use a full stop or
+## a comma. This is checked by eye, not by a test, so do not add one.
 const ROSTER: Array[Dictionary] = [
 	{
 		"id": &"berto",
 		"name": "BERTO",
-		"tagline": "Ang orihinal na taya. Matigas ang ulo.",
+		"tagline": "The original taya. Immovable, unhurriable, and still standing exactly where you left him.",
+		"traits": {&"bilis": 2, &"lakas": 4, &"tatag": 5},
 		"model": MODEL_DIR + "character-male-f.glb",
 		"material": MATERIAL_DIR + "person_a.tres",
 	},
 	{
 		"id": &"maring",
 		"name": "MARING",
-		"tagline": "Mabilis ang kamay. Mas mabilis ang bibig.",
+		"tagline": "Quick hands, quicker mouth. She has talked her way out of more tags than she has dodged.",
+		"traits": {&"bilis": 5, &"lakas": 2, &"tatag": 2},
 		"model": MODEL_DIR + "character-female-f.glb",
 		"material": MATERIAL_DIR + "person_b.tres",
 	},
 	{
 		"id": &"totoy",
 		"name": "TOTOY",
-		"tagline": "Palaboy ng eskinita. Mabilis tumakbo.",
+		"tagline": "Raised barefoot in the eskinita. Nobody in this town has caught him twice.",
+		"traits": {&"bilis": 5, &"lakas": 2, &"tatag": 3},
 		"model": MODEL_DIR + "character-male-a.glb",
 		"material": MATERIAL_DIR + "person_totoy.tres",
 	},
 	{
 		"id": &"inday",
 		"name": "INDAY",
-		"tagline": "Tindera sa kanto. Walang takot.",
+		"tagline": "Minds the corner stall and is afraid of absolutely nothing that walks past it.",
+		"traits": {&"bilis": 3, &"lakas": 4, &"tatag": 4},
 		"model": MODEL_DIR + "character-female-a.glb",
 		"material": MATERIAL_DIR + "person_inday.tres",
 	},
 	{
 		"id": &"kuya_boy",
 		"name": "KUYA BOY",
-		"tagline": "Panganay. Siya ang taya, lagi.",
+		"tagline": "Eldest of seven. He has been the taya since before he could count, and his arm knows it.",
+		"traits": {&"bilis": 2, &"lakas": 5, &"tatag": 4},
 		"model": MODEL_DIR + "character-male-b.glb",
 		"material": MATERIAL_DIR + "person_kuya-boy.tres",
 	},
 	{
 		"id": &"ate_girlie",
 		"name": "ATE GIRLIE",
-		"tagline": "Reyna ng patintero. Ngayon, tumbang preso.",
+		"tagline": "Queen of patintero, slumming it at tumbang preso. The footwork came with her.",
+		"traits": {&"bilis": 4, &"lakas": 3, &"tatag": 3},
 		"model": MODEL_DIR + "character-female-b.glb",
 		"material": MATERIAL_DIR + "person_ate-girlie.tres",
 	},
 	{
 		"id": &"tikboy",
 		"name": "TIKBOY",
-		"tagline": "Laging may tsinelas na isa lang.",
+		"tagline": "Always down to one tsinelas. Half the footwear, twice the throwing arm.",
+		"traits": {&"bilis": 4, &"lakas": 4, &"tatag": 2},
 		"model": MODEL_DIR + "character-male-c.glb",
 		"material": MATERIAL_DIR + "person_tikboy.tres",
 	},
 	{
 		"id": &"bebang",
 		"name": "BEBANG",
-		"tagline": "Malakas ang tama. Wag mo lang asarin.",
+		"tagline": "Hits like a jeepney door closing. Do not tease her about it, and do not stand in front of her.",
+		"traits": {&"bilis": 2, &"lakas": 5, &"tatag": 4},
 		"model": MODEL_DIR + "character-female-c.glb",
 		"material": MATERIAL_DIR + "person_bebang.tres",
 	},
 	{
 		"id": &"jun_jun",
 		"name": "JUN-JUN",
-		"tagline": "Bunso. Maliit pero mailap.",
+		"tagline": "The bunso of the street. Small, slippery, and impossible to corner. Also impossible to keep upright.",
+		"traits": {&"bilis": 5, &"lakas": 1, &"tatag": 2},
 		"model": MODEL_DIR + "character-male-d.glb",
 		"material": MATERIAL_DIR + "person_jun-jun.tres",
 	},
 	{
 		"id": &"lola_pacing",
 		"name": "LOLA PACING",
-		"tagline": "Nanonood sa may bintana. Minsan sumasali.",
+		"tagline": "Watches from the window most afternoons. On the good ones she comes down to play, and she does not miss.",
+		"traits": {&"bilis": 1, &"lakas": 3, &"tatag": 5},
 		"model": MODEL_DIR + "character-female-d.glb",
 		"material": MATERIAL_DIR + "person_lola-pacing.tres",
 	},
 	{
 		"id": &"mang_kanor",
 		"name": "MANG KANOR",
-		"tagline": "Tricycle driver. Alam ang bawat kanto.",
+		"tagline": "Tricycle driver. He knows every corner of this town by its potholes, and he takes them at speed.",
+		"traits": {&"bilis": 4, &"lakas": 3, &"tatag": 3},
 		"model": MODEL_DIR + "character-male-e.glb",
 		"material": MATERIAL_DIR + "person_mang-kanor.tres",
 	},
 	{
 		"id": &"aling_nena",
 		"name": "ALING NENA",
-		"tagline": "May-ari ng sari-sari. Siya ang referee.",
+		"tagline": "She owns the sari-sari store, so she owns the rules. Nobody has ever argued a call twice.",
+		"traits": {&"bilis": 2, &"lakas": 3, &"tatag": 5},
 		"model": MODEL_DIR + "character-female-e.glb",
 		"material": MATERIAL_DIR + "person_aling-nena.tres",
 	},
@@ -188,48 +258,63 @@ const ROSTER: Array[Dictionary] = [
 ## paint and gets Shatter Trap's hazard patch. **First pass, and a balance
 ## surface** — see the Phase 9 fairness log before moving any of them.
 
+## ⚠️ A PROP'S TRAITS ARE READ THE SAME WAY A PERSON'S ARE, and they mean the
+## same three things — but on an object rather than a player, which is where the
+## lore has to do more work. A lata's BILIS is how quickly it can shuffle off its
+## own mark; its TATAG is how well it shrugs off a hit that would send a lighter
+## can rolling. A tsinelas' LAKAS rides on top of its ThrowProfile, so a heavy
+## bakya is heavy twice over and that is intended: the profile decides HOW it
+## flies, the trait decides how much it hurts when it arrives.
 const CANS: Array[Dictionary] = [
 	{
 		"id": &"sarsi",
 		"name": "SARSILYA",
-		"tagline": "Ang klasikong lata. Pula, matigas, maingay.",
+		"tagline": "The classic. Red, stubborn, and loud enough that the whole street hears it go over.",
+		"traits": {&"bilis": 3, &"lakas": 3, &"tatag": 3},
 		"ability": "res://scripts/abilities/resources/quick_stand.tres",
 		# The signed-off default — UiTheme.PROP_SARSI_RED, so the stock lata is
-		# entry 0 and an unpicked Prop looks exactly as it always has.
+		# entry 0 and an unpicked Prop looks exactly as it always has. Its traits
+		# are the neutral 3/3/3 for the same reason: a player who never opens the
+		# CHARACTER screen must get the balance everything else was tuned against.
 		"tint": Color("d8221c"),
 	},
 	{
 		"id": &"gatas",
 		"name": "LATA NG GATAS",
-		"tagline": "Kondensada. Maliit pero matigas ang ulo.",
+		"tagline": "Condensed milk, drunk years ago. Small, dense, and far harder to topple than it looks.",
+		"traits": {&"bilis": 2, &"lakas": 3, &"tatag": 5},
 		"ability": "res://scripts/abilities/resources/spin_guard.tres",
 		"tint": Color("2f6ea8"),
 	},
 	{
 		"id": &"sardinas",
 		"name": "LATA NG SARDINAS",
-		"tagline": "Galing sa tindahan ni Aling Nena.",
+		"tagline": "Straight off the shelf at Aling Nena's. Flat, wide, and it always lands on its feet.",
+		"traits": {&"bilis": 3, &"lakas": 2, &"tatag": 4},
 		"ability": "res://scripts/abilities/resources/quick_stand.tres",
 		"tint": Color("c8a02a"),
 	},
 	{
 		"id": &"kape",
 		"name": "LATA NG KAPE",
-		"tagline": "Walang laman. Perpekto para tumbahin.",
+		"tagline": "Completely empty, and it knows it. Skitters away from anything that comes near.",
+		"traits": {&"bilis": 5, &"lakas": 2, &"tatag": 1},
 		"ability": "res://scripts/abilities/resources/spin_guard.tres",
 		"tint": Color("7a4a24"),
 	},
 	{
 		"id": &"pintura",
 		"name": "LATA NG PINTURA",
-		"tagline": "Tirang pintura sa bakuran. Kalawangin na.",
+		"tagline": "Leftover paint from the fence, gone to rust. Heavy, mean, and it leaves a mess where it falls.",
+		"traits": {&"bilis": 1, &"lakas": 5, &"tatag": 4},
 		"ability": "res://scripts/abilities/resources/shatter_trap.tres",
 		"tint": Color("4f8c6a"),
 	},
 	{
 		"id": &"biskwit",
 		"name": "LATA NG BISKWIT",
-		"tagline": "Ang lata ni Lola. Hindi na binalik ang biskwit.",
+		"tagline": "Lola's biscuit tin. The biscuits never came back and neither will your throw.",
+		"traits": {&"bilis": 2, &"lakas": 4, &"tatag": 4},
 		"ability": "res://scripts/abilities/resources/shatter_trap.tres",
 		"tint": Color("b0552a"),
 	},
@@ -239,43 +324,50 @@ const SLIPPERS: Array[Dictionary] = [
 	{
 		"id": &"goma",
 		"name": "TSINELAS NA GOMA",
-		"tagline": "Basic na goma. Ang pambato ng bawat bata.",
+		"tagline": "Plain rubber, one peso of it. Every child on this street has thrown a pair.",
+		"traits": {&"bilis": 3, &"lakas": 3, &"tatag": 3},
 		"ability": "res://scripts/abilities/resources/flick_dash.tres",
-		# UiTheme.PROP_FOAM — the signed-off default, so entry 0 is the stock look.
+		# UiTheme.PROP_FOAM — the signed-off default, so entry 0 is the stock look
+		# and the neutral 3/3/3, same contract as SARSILYA above.
 		"tint": Color("7a5741"),
 	},
 	{
 		"id": &"bakya",
 		"name": "BAKYA",
-		"tagline": "Kahoy. Mabigat tumama, mahirap ihagis.",
+		"tagline": "Solid wood. It lands like a dropped brick and it moves like one too.",
+		"traits": {&"bilis": 1, &"lakas": 5, &"tatag": 5},
 		"ability": "res://scripts/abilities/resources/bakya_bash.tres",
 		"tint": Color("8a5a2a"),
 	},
 	{
 		"id": &"pula",
 		"name": "TSINELAS NA PULA",
-		"tagline": "Pang-simbahan. Ginagamit pa rin panghagis.",
+		"tagline": "Kept for church, borrowed for this. Somebody is going to be in trouble later.",
+		"traits": {&"bilis": 3, &"lakas": 4, &"tatag": 2},
 		"ability": "res://scripts/abilities/resources/bagsak_bomb.tres",
 		"tint": Color("a83a3a"),
 	},
 	{
 		"id": &"asul",
 		"name": "TSINELAS NA ASUL",
-		"tagline": "Kupas na sa araw. Paborito pa rin.",
+		"tagline": "Bleached pale by ten summers on the windowsill. Still nobody else is allowed to touch it.",
+		"traits": {&"bilis": 4, &"lakas": 3, &"tatag": 3},
 		"ability": "res://scripts/abilities/resources/bakya_bash.tres",
 		"tint": Color("3a6a8a"),
 	},
 	{
 		"id": &"dilaw",
 		"name": "TSINELAS NA DILAW",
-		"tagline": "Kita mo agad kahit saan lumapag.",
+		"tagline": "So bright you can find it from across the plaza, which is the entire point of owning it.",
+		"traits": {&"bilis": 4, &"lakas": 2, &"tatag": 3},
 		"ability": "res://scripts/abilities/resources/bagsak_bomb.tres",
 		"tint": Color("c9a52a"),
 	},
 	{
 		"id": &"luma",
 		"name": "TSINELAS NA LUMA",
-		"tagline": "Nipis na ang suelas. Sentimental value.",
+		"tagline": "The sole is worn through to nothing. Weighs almost as little, and flies like it.",
+		"traits": {&"bilis": 5, &"lakas": 1, &"tatag": 2},
 		"ability": "res://scripts/abilities/resources/flick_dash.tres",
 		"tint": Color("5c5248"),
 	},
@@ -359,3 +451,39 @@ static func ability_path_at(can_index: int, slipper_index: int, is_can: bool) ->
 	if index < 0 or index >= list.size():
 		return ""
 	return String(list[index].get("ability", ""))
+
+## ---------------------------------------------------------------------------
+## TRAIT LOOKUP
+##
+## ⚠️ EVERY ONE OF THESE FALLS BACK TO NEUTRAL RATHER THAN FAILING, and that is
+## the same contract `at()` already keeps for the same reason: these are read on
+## the SPAWN PATH from a replicated int. An AI slot has no pick (index -1), a
+## `--host` command-line session never passed a CHARACTER screen, and a peer on
+## an older build can send an index this build's roster does not have. All three
+## must produce a playable unit with the balance everything else was tuned
+## against, not a crash and not a silently super-powered one.
+## ---------------------------------------------------------------------------
+
+## The traits dictionary for one entry of one list, or an empty one.
+static func traits_in(entries: Array, index: int) -> Dictionary:
+	if index < 0 or index >= entries.size():
+		return {}
+	var entry: Dictionary = entries[index]
+	return entry.get("traits", {})
+
+## One trait's points for a Person pick, 1..5, or TRAIT_NEUTRAL.
+static func person_trait(index: int, key: StringName) -> int:
+	return _trait_value(traits_in(ROSTER, index), key)
+
+## One trait's points for a Prop pick. `is_can` chooses which of the player's two
+## Prop skins is being asked about — a Prop is a lata one round and a tsinelas the
+## next, so the answer genuinely changes between rounds and must never be cached.
+static func prop_trait(can_index: int, slipper_index: int, is_can: bool, key: StringName) -> int:
+	var entries: Array[Dictionary] = CANS if is_can else SLIPPERS
+	var index: int = can_index if is_can else slipper_index
+	return _trait_value(traits_in(entries, index), key)
+
+static func _trait_value(traits: Dictionary, key: StringName) -> int:
+	if traits.is_empty() or not traits.has(key):
+		return TRAIT_NEUTRAL
+	return clampi(int(traits[key]), TRAIT_MIN, TRAIT_MAX)

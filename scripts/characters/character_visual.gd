@@ -115,6 +115,39 @@ const ACTION_CLIPS: Dictionary = {
 ## this brings it up to the ~1.6 units of CharacterBase's CapsuleShape3D.
 ## Measured from the imported model's AABB, not guessed.
 const PERSON_SCALE: float = 2.38
+
+## ⚠️⚠️ THE PERSON RIG'S FACE IS ON +Z. GODOT'S FORWARD IS -Z. THIS IS THE FIX.
+##
+## Reported across more than ten sessions as "the attacker spawns facing backward
+## and the AI moves and attacks in reverse", and every previous attempt went
+## looking in the YAW MATHS — `_spawn_yaw()`, the marker rotations, `look_at()`.
+## All of those are correct and always were, which is precisely why re-deriving
+## them never fixed anything. The bug is one layer lower: the imported .glb has
+## its face on the WRONG AXIS, so a character that is facing its target by every
+## number in the codebase still renders with its back to it.
+##
+## ⚠️ MEASURED, NOT INFERRED — `tools/model_facing_probe.tscn` renders the rig at
+## yaw 0 from both sides:
+##     camera at -Z (Godot's "in front")  -> the back of the head
+##     camera at +Z (Godot's "behind")    -> the face
+## Both PNGs are unambiguous. The rig faces +Z.
+##
+## ⚠️ IT IS APPLIED TO THE MODEL NODE, NEVER TO THE BODY. Rotating the
+## CharacterBody3D would "fix" the render and break everything derived from the
+## body basis at once — the melee Hitbox sits at local -Z, `-transform.basis.z`
+## is the aim vector for every ability, the FPP camera looks down -Z, and
+## `_spawn_yaw()`/`camera_rig.gd::_body_yaw()` are inverses of each other about
+## it. This node is a plain Node3D wrapper under the body precisely so the mesh
+## can be re-oriented on its own.
+##
+## The BoneAttachment3D hand rides under the model, so the carried slipper moves
+## to the correct side with it. The first-person viewmodel is mounted to the
+## camera, not the skeleton, so it is untouched.
+##
+## 0.0 would disable the correction. Do not set it there to "test" a yaw change —
+## measure with the probe instead.
+const PERSON_MODEL_YAW_DEG: float = 180.0
+
 ## FALLBACK ONLY — used when `_character` or its `CollisionShape3D` can't be
 ## read (e.g. a preview scene with no CharacterBase parent). Every real unit in
 ## a match reads its OWN capsule height instead; see `_align_to_capsule_floor`.
@@ -506,6 +539,10 @@ func apply(is_person: bool, is_can: bool, team: int) -> void:
 	var model := scene.instantiate() as Node3D
 	if is_person:
 		model.scale = Vector3.ONE * PERSON_SCALE
+		# See PERSON_MODEL_YAW_DEG — the rig's face is on +Z and the body's forward
+		# is -Z. Applied here, on the model, so nothing derived from the BODY basis
+		# moves with it.
+		model.rotation.y = deg_to_rad(PERSON_MODEL_YAW_DEG)
 	add_child(model)
 
 	_apply_toon_pass(model, is_person)
@@ -608,6 +645,8 @@ func _align_to_capsule_floor(model: Node3D) -> void:
 	# offset every call and sank the model further each time. Harmless while this
 	# only ever ran once per instantiate; M-2's dent swap calls it again on the
 	# same model, which is what exposed it.
+	# A yaw-only rotation (PERSON_MODEL_YAW_DEG) cannot change a bound's vertical
+	# extent, so the drop is still a plain scale-and-offset on Y.
 	model.position.y = _capsule_half_height_down() - bounds.position.y * model.scale.y
 	# ⚠️ CACHED HERE BECAUSE THIS IS THE ONE PLACE THAT KNOWS THE DROP.
 	# A carried unit has to be positioned by where its MESH is, not by where its
@@ -615,10 +654,15 @@ func _align_to_capsule_floor(model: Node3D) -> void:
 	# applied. Measuring it again anywhere else would be a second source of
 	# truth for the same number — which is how it got hardcoded into
 	# HAND_CARRY_OFFSET and drifted. See carriable.gd::_step_carried.
-	_visual_centre_offset = Vector3(
-		(bounds.position.x + bounds.size.x * 0.5) * model.scale.x + model.position.x,
-		(bounds.position.y + bounds.size.y * 0.5) * model.scale.y + model.position.y,
-		(bounds.position.z + bounds.size.z * 0.5) * model.scale.z + model.position.z)
+	#
+	# ⚠️ THROUGH `model.transform`, NOT COMPONENT-WISE. This used to multiply each
+	# axis by `model.scale` and add `model.position` by hand, which silently
+	# assumed the model carried no rotation. It carries one now
+	# (PERSON_MODEL_YAW_DEG), and a hand-rolled version would have left the cached
+	# centre mirrored on X and Z — i.e. a carried slipper hanging off the wrong
+	# side of the hand. The full transform is the same maths plus the basis, and
+	# it cannot go stale the next time this node gains a transform.
+	_visual_centre_offset = model.transform * bounds.get_center()
 
 ## B-88 — reads THIS unit's own, currently-applied capsule height (via
 ## CharacterBase.capsule_height(), the shared accessor every per-role-size
@@ -680,9 +724,40 @@ func _person_material_path(is_person: bool) -> String:
 ## No-ops on a Person, on an unpicked Prop, and on any material that is not one
 ## of the toon ones — the outline next_pass carries no albedo and must not be
 ## touched, or the ink border takes the prop's colour and disappears.
+## THE HERO PROPS GET A SURFACE, NOT JUST A COLOUR.
+##
+## The lata and the tsinelas are the two most-looked-at objects in the game — the
+## whole sport is one hitting the other — and until now both rendered as a single
+## flat toon band with an ink outline, which reads as untextured placeholder
+## geometry from any distance. `toon.gdshader` has carried a rim term since 7.1
+## and it has been dialled to 0.0 on every prop, i.e. built and never switched on.
+##
+## ⚠️ A RIM, NOT A SPECULAR HIGHLIGHT, AND NOT A NEW SHADER. Lighting and shaders
+## stay cheap here (a standing decision — heavy shadows previously made the game
+## both ugly and laggy on other machines), and a rim is a single dot product in a
+## shader every prop already runs. It also survives the flat toon ramp, which a
+## Blinn highlight does not: on two-band cel shading a specular lobe either
+## disappears into the lit band or sits on it as a hard white blob.
+##
+## The two materials are deliberately different, because the two objects are:
+##   * LATA — thin painted tinplate. A TIGHT, bright, slightly cool rim (high
+##     power = narrow band) reads as a rolled metal edge catching the sky.
+##   * TSINELAS — moulded rubber. A BROAD, dim, warm sheen (low power = wide
+##     band) reads as a soft matte surface, not as chrome.
+const CAN_RIM_COLOR: Color = Color(0.93, 0.96, 1.0)
+const CAN_RIM_STRENGTH: float = 0.42
+const CAN_RIM_POWER: float = 4.5
+const TSINELAS_RIM_COLOR: Color = Color(1.0, 0.90, 0.76)
+const TSINELAS_RIM_STRENGTH: float = 0.26
+const TSINELAS_RIM_POWER: float = 1.9
+
 func _apply_prop_tint(is_person: bool, is_can: bool) -> void:
 	if is_person or _character == null:
 		return
+	# The surface treatment is a property of WHICH PROP THIS IS, so it applies
+	# whether or not the player ever opened the CHARACTER screen — unlike the tint
+	# below, which is a pick and correctly does nothing without one.
+	_apply_prop_surface(is_can)
 	var index: int = _character.can_index if is_can else _character.slipper_index
 	if index < 0:
 		return
@@ -694,6 +769,24 @@ func _apply_prop_tint(is_person: bool, is_can: bool) -> void:
 		if material.get_shader_parameter("albedo_color") == null:
 			continue
 		material.set_shader_parameter("albedo_color", tint)
+
+## Writes the rim block above onto this unit's OWN duplicated toon materials —
+## `_collect_meshes` has already run by the time `_apply_prop_tint` calls this, so
+## `_shader_materials` are per-unit copies and one lata's finish cannot leak onto
+## another's. Re-applied on every role swap for free, because `apply()` rebuilds
+## the model and walks this whole chain again.
+func _apply_prop_surface(is_can: bool) -> void:
+	for material in _shader_materials:
+		# The outline next_pass carries none of these; `_collect_meshes` already
+		# filters it out on `flash_amount`, and this guard is the cheap belt.
+		if material.get_shader_parameter("flash_amount") == null:
+			continue
+		material.set_shader_parameter("rim_color",
+			CAN_RIM_COLOR if is_can else TSINELAS_RIM_COLOR)
+		material.set_shader_parameter("rim_strength",
+			CAN_RIM_STRENGTH if is_can else TSINELAS_RIM_STRENGTH)
+		material.set_shader_parameter("rim_power",
+			CAN_RIM_POWER if is_can else TSINELAS_RIM_POWER)
 
 ## Puts the roster palette on every surface of the instanced rig.
 ##

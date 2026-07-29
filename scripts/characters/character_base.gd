@@ -18,6 +18,11 @@ const SPEED: float = 6.0
 ## actually covering distance.
 const FRICTION: float = 30.0
 const GRAVITY: float = 20.0
+## Fastest a unit may ever fall. See the block in _physics_process that applies
+## it — this is a collision-correctness bound derived from the map floor's own
+## 1-unit thickness, not a feel number, and lowering it further would start to be
+## visible on a genuine fall off the arena.
+const MAX_FALL_SPEED: float = 26.0
 ## Playtest 0.4 — jump. Apex = JUMP_VELOCITY^2 / (2 * GRAVITY) = 0.841 units.
 ## See the block in _physics_process for why that ceiling is a MAP constraint
 ## rather than a feel one: the interior clutter height law caps what a jump may
@@ -28,12 +33,32 @@ const JUMP_VELOCITY: float = 5.8
 ## test is not enough on a map paved with abutting collision shapes.
 const LAND_SFX_MIN_SPEED: float = 2.0
 const BUMP_STAGGER_TIME: float = 0.25
-## GDD Section 3, Option B: ~2s window to self-right before a Downed Can auto-seals
-## (see the DOWNED case in _physics_process). Kept here (not in RoundManager)
-## because it's shared by both Option A and Option B, and by abilities like Quick
-## Stand / Shatter Trap that reference "Downed" directly — see docs/Dev_Plan.md
-## Section 4.
-const DOWNED_SELF_RIGHT_WINDOW: float = 2.0
+## GDD Section 3, Option B: the window to self-right before a Downed Can
+## auto-seals (see the DOWNED case in _physics_process). Kept here (not in
+## RoundManager) because it's shared by both Option A and Option B, and by
+## abilities like Quick Stand / Shatter Trap that reference "Downed" directly —
+## see docs/Dev_Plan.md Section 4.
+##
+## ⚠️ CUT 2.0 -> 1.25 ON THE HUMAN'S CALL: *"adjust the difficulty to make it
+## fairer; currently it is too easy for the can (lata) to get back up."* This is
+## the FIRST of the four levers that decide that, and they are worth reading
+## together because no one of them is the answer on its own:
+##
+##   1. THIS — how long a knocked-over lata may take to right ITSELF. Two seconds
+##      is longer than the whole retrieval scramble the attacker has to survive to
+##      throw again, so under Option B a fall was very nearly free.
+##   2. `LUCKY_FALL_CHANCE` — how often a knockdown costs the attacker its whole
+##      throw for nothing. 0.25 -> 0.12.
+##   3. `Carrier.RESET_CHANNEL_TIME` — how long the taya must stand still to pick
+##      the lata up. 1.5 -> 2.2, so committing to a reset is a real window the
+##      attacker can punish rather than a formality.
+##   4. `RoundManager.FALL_LIMIT` — the backstop. 5 -> 4.
+##
+## Together these move "the can gets back up" from the default outcome to a play
+## the defence has to earn. ⚠️ NONE OF IT IS MEASURED AGAINST A HUMAN. The Phase 9
+## fairness log measures AI-vs-AI only, and these are the numbers it should be
+## re-run against first.
+const DOWNED_SELF_RIGHT_WINDOW: float = 1.25
 ## THE LUCKY FALL. Human request, 2026-07-29: *"make it easier to fall, but
 ## sometimes make it so that it can land on its head/back and this isnt a point
 ## for the enemy."*
@@ -47,10 +72,17 @@ const DOWNED_SELF_RIGHT_WINDOW: float = 2.0
 ## `_apply_hit_result` itself — that function runs per-peer, so a `randf()` there
 ## would have different peers disagree about whether the round just changed hands.
 ##
-## ⚠️ 0.25 IS A FIRST GUESS, NOT A MEASUREMENT. "Sometimes" is not a number and
-## nobody has played this. It is the difficulty knob for the whole defensive half
-## of Option B and belongs in the fairness tiers (Checklist Phase 9, item 6).
-const LUCKY_FALL_CHANCE: float = 0.25
+## ⚠️ 0.25 -> 0.12, second of the four "too easy for the lata to get back up"
+## levers — see DOWNED_SELF_RIGHT_WINDOW for the full set. A lucky fall costs the
+## attacking side an entire throw AND the retrieval scramble that follows it, so
+## at one in four it was the single most common way a clean hit produced nothing.
+## One in eight keeps the joke (the can wobbling up off its own lid is the point)
+## without it being a routine outcome.
+##
+## ⚠️ STILL NOT A MEASUREMENT. "Sometimes" is not a number and nobody has played
+## it. It is the difficulty knob for the whole defensive half of Option B and
+## belongs in the fairness tiers (Checklist Phase 9, item 6).
+const LUCKY_FALL_CHANCE: float = 0.12
 ## User feedback, 2026-07-28: "team can shouldnt be allowed to go outside of a
 ## box/line when game starts." Confines the Can and its Taya (defending
 ## Person) to this radius around the map's base circle (world origin — every
@@ -97,9 +129,16 @@ const MAX_DENTS: int = 3
 ## `is_can` this round, same as every other Can/Tsinelas-side split.
 ## Guard: hold to block. A stamina meter (not an unlimited hold) so it can't be
 ## held forever — drains while held, regenerates while released.
-const GUARD_MAX_STAMINA: float = 3.0
+## ⚠️ TRIMMED 3.0/0.6 -> 2.0/0.45 alongside the four levers on
+## DOWNED_SELF_RIGHT_WINDOW, and for the same reason: Guard blocks a dent and a
+## stagger OUTRIGHT (see apply_dent/apply_stagger), so three seconds of hold with
+## a fast refill let a lata simply hold the button through the only window an
+## attacker gets per throw. Two seconds is still more than one throw's flight time
+## — a read, not a reflex — and the slower regen means holding it early costs you
+## the next one.
+const GUARD_MAX_STAMINA: float = 2.0
 const GUARD_DRAIN_RATE: float = 1.0
-const GUARD_REGEN_RATE: float = 0.6
+const GUARD_REGEN_RATE: float = 0.45
 ## Dash: a quick evasive burst in the current facing direction, on a short
 ## cooldown rather than a stamina meter — it's one instant action, not a hold.
 const DASH_SPEED: float = 14.0
@@ -331,20 +370,114 @@ var ai_controller: AIController = null
 ## exact number there doesn't affect gameplay; sized anyway for consistency.
 ## Fine combat-feel tuning (does a can's bump reach far ENOUGH) is checklist
 ## 4.4's job once a human has played it, not this one's.
+## ⚠️⚠️ THE PERSON'S MELEE BOX USED TO SIT AT HEAD HEIGHT AND COULD NOT REACH A
+## PROP AT ALL. Worked through with the numbers, because the numbers are the bug:
+##
+##   Person origin (capsule centre) stands at world y 0.90. The old melee sphere
+##   was `hit_off.y = +0.80`, r 0.50 -> it occupied world y 1.20 .. 2.20.
+##   A lata's origin stands at world y 0.27 with a 0.40-tall hurtbox capsule
+##   (r 0.17) -> world y 0.07 .. 0.47.
+##
+##   The gap between the two is 0.73 units. They could never touch, at any
+##   distance, in any frame. A Person's bump could therefore hit ANOTHER PERSON
+##   and nothing else — not the lata it is standing over, not a loose tsinelas.
+##
+## That silently voided three separate things that are all written as if they
+## work: `carriable.gd`'s ownership rule ("an opponent's slipper is still a solid,
+## KICKABLE obstacle - your bump still staggers it"), the Option A dent path for a
+## Person hitting a can, and the whole `_scuff_enemy_slippers` TOUCH branch's
+## sibling behaviour. It also explains why every tuning pass on bump feel found
+## nothing: the box was not weak, it was somewhere else.
+##
+## The melee sphere now hangs at roughly WAIST height and is wider, so a single
+## box covers a 1.6-unit Person and a 0.34-unit lata without a second shape:
+## local y -0.77 .. +0.67 -> world 0.13 .. 1.57 for a Person, which overlaps both.
+## Forward reach is 0.55 + 0.72 = 1.27 from the body centre, i.e. ~0.87 clear of
+## the Person's own 0.40 capsule — an arm's length, not a lunge.
+##
+## The Prop rows keep the same shape-per-role idea (a can's bump must not reach
+## a full unit out of a knee-high body) and are re-derived from the new tsinelas
+## scale below rather than left at the old ones.
+##
+## ⚠️ THE TSINELAS ROW IS SCALED BY `TSINELAS_VISUAL_SCALE` AND THAT IS NOT
+## COSMETIC BOOKKEEPING. `TsinelasVisual.tscn` is 1.25x bigger now ("slightly
+## increase the size of the slipper for dramatic effect"), and a visual that
+## outgrows its capsule is a slipper you can see but cannot step on, kick or land
+## on the ground correctly. Both numbers move together or neither does.
+const TSINELAS_VISUAL_SCALE: float = 1.25
+
 const _COLLISION_BY_ROLE: Dictionary = {
 	"person": {
 		"body_r": 0.40, "body_h": 1.60, "hurt_r": 0.45, "hurt_h": 1.70,
-		"hit_r": 0.50, "hit_off": Vector3(0, 0.80, -0.60), "grab_r": 1.70,
+		"hit_r": 0.72, "hit_off": Vector3(0, -0.05, -0.55), "grab_r": 1.70,
 	},
 	"can": {
 		"body_r": 0.14, "body_h": 0.34, "hurt_r": 0.17, "hurt_h": 0.40,
-		"hit_r": 0.16, "hit_off": Vector3(0, 0.10, -0.18), "grab_r": 0.60,
+		"hit_r": 0.20, "hit_off": Vector3(0, 0.02, -0.16), "grab_r": 0.60,
 	},
 	"tsinelas": {
-		"body_r": 0.16, "body_h": 0.32, "hurt_r": 0.19, "hurt_h": 0.38,
-		"hit_r": 0.14, "hit_off": Vector3(0, 0.08, -0.16), "grab_r": 0.60,
+		"body_r": 0.20, "body_h": 0.40, "hurt_r": 0.24, "hurt_h": 0.48,
+		"hit_r": 0.18, "hit_off": Vector3(0, 0.02, -0.18), "grab_r": 0.75,
 	},
 }
+
+## ---------------------------------------------------------------------------
+## CHARACTER TRAITS — the gameplay half of `character_roster.gd`'s three numbers.
+##
+## Human ask: *"give characters unique gameplay traits and stats (faster,
+## stronger) that tie directly into their respective lore descriptions."*
+##
+## ⚠️ THREE MULTIPLIERS, NOT A NEW SYSTEM, AND THAT IS THE WHOLE DESIGN. Each one
+## is applied at exactly ONE site that already existed:
+##
+##   BILIS -> the `SPEED` term in _physics_process's movement block.
+##   LAKAS -> the impulse `hitbox.gd::_impulse_for()` produces, and the charge
+##            power `carrier.gd` releases a throw at.
+##   TATAG -> divides incoming knockback in apply_knockback(), and shortens the
+##            stagger in apply_stagger().
+##
+## Nothing new is simulated, no second physics path, no per-character branch.
+## That is deliberate and it is the same rule `ai_controller.gd`'s own class doc
+## states from the other direction: a second copy of a rule is a second copy to
+## keep in sync, and this project has paid for that repeatedly.
+##
+## ⚠️ RE-DERIVED EVERY CALL, NEVER CACHED. `is_can` flips every round, so a Prop
+## is answering from the LATA list one round and the TSINELAS list the next; a
+## value resolved once at spawn would be describing the wrong object from round 2.
+## Same rule as `is_can`/`team_is_can_side`/`_prop_ability_for` already follow.
+##
+## ⚠️ THE PER-POINT STEPS ARE SMALL ON PURPOSE. Full range on a 1..5 scale is
+## +/-10% speed and +/-14% power and grit. A party game about hitting a can with a
+## slipper cannot afford a pick that is simply correct, and a difference you feel
+## is worth more here than a difference you can count.
+const TRAIT_SPEED_PER_POINT: float = 0.05
+const TRAIT_POWER_PER_POINT: float = 0.07
+const TRAIT_GRIT_PER_POINT: float = 0.07
+
+## This unit's points, 1..5, for one trait — from the roster entry matching what
+## it currently IS (a Person reads the Person list; a Prop reads the lata or the
+## tsinelas list depending on this round's `is_can`).
+func trait_points(key: StringName) -> int:
+	if is_person:
+		return CharacterRoster.person_trait(character_index, key)
+	return CharacterRoster.prop_trait(can_index, slipper_index, is_can, key)
+
+## Movement multiplier from BILIS. 1.0 at the neutral 3.
+func trait_speed_scale() -> float:
+	return 1.0 + float(trait_points(&"bilis") - CharacterRoster.TRAIT_NEUTRAL) * TRAIT_SPEED_PER_POINT
+
+## Outgoing-force multiplier from LAKAS. Applied to melee impulses and to throw
+## charge power. 1.0 at the neutral 3.
+func trait_power_scale() -> float:
+	return 1.0 + float(trait_points(&"lakas") - CharacterRoster.TRAIT_NEUTRAL) * TRAIT_POWER_PER_POINT
+
+## Incoming-force DIVISOR from TATAG, so a higher number always means "moved and
+## stunned less". Returned as a multiplier greater than 1 for a sturdy unit, which
+## callers divide by — stated this way round so the direction cannot be misread at
+## a call site. 1.0 at the neutral 3, and floored so it can never be zero.
+func trait_grit_scale() -> float:
+	return maxf(0.1,
+		1.0 + float(trait_points(&"tatag") - CharacterRoster.TRAIT_NEUTRAL) * TRAIT_GRIT_PER_POINT)
 
 ## True when the local player is aiming this unit with the mouse, i.e. the rig
 ## is writing `rotation.y` and this script must not fight it.
@@ -643,6 +776,29 @@ func _physics_process(delta: float) -> void:
 	_was_airborne = not grounded
 	if not grounded:
 		velocity.y -= GRAVITY * delta
+		# ⚠️ TERMINAL VELOCITY, AND IT IS AN ANTI-TUNNELLING GUARD, NOT FEEL.
+		#
+		# `CharacterBody3D` does no continuous collision detection: `move_and_slide()`
+		# steps `velocity * delta` and tests the END position. A map floor is a
+		# 1-unit-thick box, so the instant a unit's per-frame displacement exceeds
+		# that thickness it can pass straight through with no contact generated at
+		# all — and once it is under the floor nothing pushes it back, only the
+		# KillPlane at y = -10 catches it.
+		#
+		# Unbounded gravity reaches 60 units/s in three seconds, which is 1.0 units
+		# per frame at 60 Hz and exactly the floor's thickness. It gets there sooner
+		# on a frame spike, which is why this reads as MAP-SPECIFIC: Bayan Plaza
+		# carries ~640 instances against Eskinita's ~500, so its frames right after
+		# a round reset are its longest, and "the can falls through the world" was
+		# reported on that map.
+		#
+		# MAX_FALL_SPEED caps a fall at 0.43 units per frame at 60 Hz and stays
+		# under the floor thickness even at 30 Hz, so tunnelling is impossible by
+		# arithmetic rather than by hoping the frame budget holds. It is far above
+		# anything reachable in play — JUMP_VELOCITY is 5.8, MAX_KNOCKBACK_LIFT is
+		# 7.0 — so nothing in a round can feel it, and a real fall off the map still
+		# looks like a fall.
+		velocity.y = maxf(velocity.y, -MAX_FALL_SPEED)
 	# Sampled AFTER gravity so it is the speed this character will actually
 	# arrive at the floor with, not the speed it had a frame earlier.
 	_fall_speed = -velocity.y
@@ -846,9 +1002,14 @@ func _physics_process(delta: float) -> void:
 	# retrieval scramble is only tense if getting home under your own power is
 	# genuinely slow. 1.0 for every other unit and every other carry state.
 	var carry_scale: float = _carriable.movement_speed_scale() if _carriable != null else 1.0
+	# BILIS. The one place movement speed is decided, so the one place the trait
+	# applies — see the trait block above. Multiplied in alongside the hazard-zone
+	# and crawl scales rather than replacing either: a fast character crawling a
+	# loose tsinelas through mud is still slow, just less slow than Lola Pacing.
+	var trait_scale := trait_speed_scale()
 	if direction:
-		velocity.x = direction.x * SPEED * _speed_multiplier * carry_scale
-		velocity.z = direction.z * SPEED * _speed_multiplier * carry_scale
+		velocity.x = direction.x * SPEED * _speed_multiplier * carry_scale * trait_scale
+		velocity.z = direction.z * SPEED * _speed_multiplier * carry_scale * trait_scale
 		# Face the direction we're moving — nothing wrote `rotation` before this,
 		# so every directional attack (melee Hitbox offset, PersonAction,
 		# BakyaBash, FlickDash, all built on `-transform.basis.z`/local offsets)
@@ -911,7 +1072,11 @@ func apply_stagger(duration: float = BUMP_STAGGER_TIME) -> void:
 		hit_blocked.emit()
 		_flash_blocked()
 		return
-	_staggered_time_left = max(_staggered_time_left, duration)
+	# TATAG shortens the flinch. Applied here rather than at the striking end
+	# because it is a property of the body being hit, exactly like
+	# `hurtbox.gd::absorb_knockback` — the striker decides how hard, the target
+	# decides how much of that it wears.
+	_staggered_time_left = max(_staggered_time_left, duration / trait_grit_scale())
 	_set_state(State.STAGGERED)
 
 ## B-17: HazardZone used to call a single set_speed_multiplier(1.0) on exit,
@@ -1314,6 +1479,9 @@ func apply_knockback(impulse: Vector3) -> void:
 	#   * vertical at just above JUMP_VELOCITY (5.8) — a hit can pop a body
 	#     higher than it can jump, but not into orbit. Apex at 7.0 is
 	#     v^2/(2*GRAVITY) = 1.2 units.
+	# TATAG. Divided BEFORE the clamp, so a sturdy unit is genuinely harder to
+	# shift rather than merely arriving at the same ceiling more slowly.
+	impulse /= trait_grit_scale()
 	var flat := Vector2(impulse.x, impulse.z)
 	if flat.length() > MAX_KNOCKBACK_SPEED:
 		flat = flat.normalized() * MAX_KNOCKBACK_SPEED
