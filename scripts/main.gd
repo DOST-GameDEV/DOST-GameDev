@@ -247,19 +247,77 @@ func _role_slot(is_can: bool, is_person: bool, team_is_can_side: bool) -> int:
 func _spawn_point(index: int) -> Vector3:
 	return _spawn_transform(index).origin
 
-## The full spawn transform. Yaw is taken from the marker so a map can face
-## players into the arena; the fallback ring has no opinion and returns none.
+## The full spawn transform. POSITION comes from the marker; its yaw is used only
+## as a fallback — see _spawn_yaw() for why facing is computed instead.
 func _spawn_transform(index: int) -> Transform3D:
 	if not _map_spawns.is_empty():
 		return _map_spawns[index % _map_spawns.size()]
 	return Transform3D(Basis.IDENTITY, SPAWN_POINTS[index % SPAWN_POINTS.size()])
+
+## Which slot each slot must be LOOKING AT. The attacker and its tsinelas face
+## the can they are throwing at; the taya faces the attacker it is guarding
+## against. The can itself is absent on purpose — it is an object, its facing is
+## cosmetic, and it keeps whatever yaw its marker was authored with.
+const SLOT_FACES: Dictionary = {
+	SLOT_TAYA: SLOT_ATTACKER,
+	SLOT_ATTACKER: SLOT_CAN,
+	SLOT_TSINELAS: SLOT_CAN,
+}
+
+## The yaw a unit in `slot` spawns with — DERIVED from where the thing it cares
+## about actually is, not read off the marker.
+##
+## ⚠️⚠️ THE MARKER'S OWN YAW IS NO LONGER TRUSTED FOR FACING. DO NOT GO BACK. ⚠️⚠️
+##
+## "the attacker spawns facing away from the can" has been reported across more
+## than ten sessions. Every fix so far has re-authored marker rotations, and the
+## reason that keeps failing is structural: a hand-authored yaw is a THIRD copy
+## of a fact already stated twice (this slot's position, and the can's), it is
+## invisible in the editor viewport unless you look down the gizmo, and nothing
+## validates it. Measured on Eskinita with tools/net_spawn_probe.gd: Spawn1's
+## authored 180 degrees puts the taya **55.7 degrees off** the can it is standing
+## next to, and Spawn2's attacker was correct only by the coincidence that the
+## marker sits on the +Z axis with an identity basis, so the default -Z facing
+## happened to point at the origin. Move that marker sideways on any new map —
+## Bayan Plaza is a plaza, not a corridor — and it silently breaks again.
+##
+## Computing it removes the failure mode instead of fixing this instance of it:
+## there is no authored value left to get wrong, on this map or any future one.
+##
+## ⚠️ YAW ONLY, via atan2 — NOT `look_at()`. `look_at` writes a full basis, so a
+## target at a different height tilts the body, and camera_rig.gd's whole
+## _apply_upright_pose()/_body_yaw() machinery exists because a body with pitch
+## or roll in it puts that tilt straight into the player's eye (its own doc calls
+## that "THE INVARIANT", after three separate reports). A Y-rotation can never
+## do that. The sign convention matches camera_rig.gd::_body_yaw()'s inverse:
+## a body's forward is -basis.z, which for yaw t is (-sin t, 0, -cos t).
+func _spawn_yaw(slot: int) -> float:
+	var here := _spawn_transform(slot)
+	if not SLOT_FACES.has(slot):
+		return here.basis.get_euler().y
+	var delta := _spawn_transform(int(SLOT_FACES[slot])).origin - here.origin
+	delta.y = 0.0
+	if delta.length() < 0.01:
+		# Degenerate (two slots stacked): keep whatever the marker said rather
+		# than snapping to an arbitrary axis.
+		return here.basis.get_euler().y
+	return atan2(-delta.x, -delta.z)
 
 ## Places a character at its slot, facing the way the map says. Kept separate
 ## from _spawn_point() so the two call sites cannot drift apart on the rotation.
 func _place_at_spawn(character: CharacterBase, slot: int) -> void:
 	var t := _spawn_transform(slot)
 	character.position = t.origin
-	character.rotation.y = t.basis.get_euler().y
+	# ⚠️ THE WHOLE `rotation`, NOT JUST `.y`. Writing only the yaw component left
+	# whatever pitch and roll the body already carried, and a Prop routinely
+	# carries plenty: carriable.gd::_step_carried() snaps a CARRIED unit to the
+	# hand's full basis every physics frame, CARRY_TILT_DEG (55 degrees) included,
+	# and Carriable.reset_for_new_round() — unlike _rpc_set_loose(), which does
+	# zero it — never cleared that. So the tsinelas the attacker was holding when
+	# the round ended started the next round tilted 55 degrees, which is both
+	# visible and, per camera_rig.gd's _apply_upright_pose() note, the class of
+	# leftover basis that ends up in a player's eye.
+	character.rotation = Vector3(0.0, _spawn_yaw(slot), 0.0)
 	# ⚠️⚠️ PUSH THE NEW TRANSFORM TO THE PHYSICS SERVER *NOW*. DO NOT REMOVE.
 	#
 	# Writing `position` on a PhysicsBody3D updates the SCENE TREE immediately and
@@ -882,6 +940,25 @@ func _build_networked_character(data: Dictionary) -> Node:
 	character.is_can = data["is_can"]
 	character.is_person = data["is_person"]
 	character.team_is_can_side = data["team_is_can_side"]
+	# 2026-07-29 — this function set POSITION and nothing whatsoever about
+	# rotation, so every networked character entered its first round on the
+	# scene default (identity, i.e. facing -Z) no matter what its spawn marker
+	# said. It has looked correct on Eskinita purely because the attacker's
+	# marker sits on the +Z axis, where -Z happens to point at the can; the taya
+	# has been facing 55 degrees wrong since networked play existed, and any map
+	# whose attacker slot is not on that axis would put the attacker's back to
+	# the can on round 1. This is the half of the spawn bug that
+	# tools/spawn_probe.gd could never see: it drives _start_local_test(), which
+	# goes through _place_at_spawn() for all four units and so was always right.
+	#
+	# Derived here rather than carried in `data`: MultiplayerSpawner's custom
+	# spawn data silently truncates past 7 entries once it crosses the network
+	# (measured — see _spawn_player), `data` is already at exactly 7, and an 8th
+	# "yaw" key would vanish on the receiving peer with no error at all. Every
+	# input _spawn_yaw() needs is already present and every peer derives the same
+	# value from it, exactly as `index` is derived rather than sent.
+	character.rotation = Vector3(0.0, _spawn_yaw(
+		_role_slot(data["is_can"], data["is_person"], data["team_is_can_side"])), 0.0)
 	character.team = data["team"] # B-09: no team identity on CharacterBase before this
 	character.player_id = data["player_id"] # B-30: was never assigned, stuck at the scene default of 1
 	if data["is_person"]:
