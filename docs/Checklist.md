@@ -720,6 +720,14 @@ touch map scenes.
         measurement, not taste. Whether the mix is right, whether the impacts are
         punchy enough over four players shouting, and whether the ambience beds
         suit the two maps are all open until a human plays it.
+      - **B-119, 2026-07-29:** the retrigger guard held off the trigger RATE but
+        not the overlap — a 300 ms `lata_impact` retriggering every 60 ms still
+        stacked ~5 ringing copies into a buzz under sustained contact. Fixed by
+        keying the guard window to each sound's own `AudioStream.get_length()`
+        instead of the flat 60 ms constant; see `Handoff.md` B-119. Worked
+        through from the generator's source durations, not re-heard or
+        re-probed (no Godot binary in this session) — the listening pass this
+        item is already waiting on should cover it.
 - [x] **4.1a · Jump — every unit, Person and Prop.** 🎨 Design — **playtest 0.4 request.**
       Did not exist: zero occurrences of "jump" in `project.godot` or
       `character_base.gd`. Added `jump_p1..p4` (P1 Space, P2 Numpad-0, P3 RShift,

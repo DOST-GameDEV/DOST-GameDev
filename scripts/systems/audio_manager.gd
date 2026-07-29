@@ -61,10 +61,17 @@ const WORLD_MAX_DISTANCE: float = 30.0
 ## A slipper resting against a lata therefore resolves a "hit" 60 times a second.
 ## The state machine absorbs that fine — `apply_stagger` no-ops on a DOWNED or
 ## SEALED target — and `_hitstop()` has its own static guard, so nobody noticed.
-## Audio does not absorb it: the same 300 ms clang started 60 times a second is
-## a continuous metallic scream.
+## Audio does not absorb it on its own: a fixed 60 ms floor only throttles the
+## TRIGGER rate, and `lata_impact` itself RINGS for ~300 ms — so sustained
+## contact still stacked up to 5 overlapping, pitch-jittered copies of the same
+## clang, which is what the "continuous metallic scream" actually sounded like
+## in practice even with the floor in place. Fixed below by keying the guard to
+## each sound's own ring time instead of one constant, so at most one voice of
+## a given name is ever ringing at once. See `_retrigger_window()`.
 ##
-## Measured in REAL milliseconds, per sound name. 60 ms is one hitstop.
+## Measured in REAL milliseconds, per sound name. 60 ms is one hitstop, and is
+## kept only as a floor — see `_retrigger_window()` for where the real,
+## per-sound window comes from.
 const RETRIGGER_MS: int = 60
 
 ## Pitch jitter applied to every play, as a fraction. Four players hitting things
@@ -120,6 +127,8 @@ const _TRIM_DB: Dictionary = {
 }
 
 var _streams: Dictionary = {}          ## name -> AudioStream
+## name -> real-ms retrigger window for that sound. See `_retrigger_window()`.
+var _retrigger_ms: Dictionary = {}
 var _ui_voices: Array[AudioStreamPlayer] = []
 var _world_voices: Array[AudioStreamPlayer3D] = []
 var _ui_next: int = 0
@@ -161,6 +170,7 @@ func _load_streams() -> void:
 			push_warning("AudioManager: '%s' did not load as an AudioStream" % path)
 			continue
 		_streams[sound_name] = stream
+		_retrigger_ms[sound_name] = _retrigger_window(stream)
 
 
 func _build_voices() -> void:
@@ -230,11 +240,30 @@ func _take(sound_name: String) -> AudioStream:
 	if stream == null:
 		return null
 	# Real milliseconds, NOT delta — see the class doc's audio-clock note.
+	var window: int = int(_retrigger_ms.get(sound_name, RETRIGGER_MS))
 	var now := Time.get_ticks_msec()
-	if now - int(_last_played_ms.get(sound_name, -RETRIGGER_MS)) < RETRIGGER_MS:
+	if now - int(_last_played_ms.get(sound_name, -window)) < window:
 		return null
 	_last_played_ms[sound_name] = now
 	return stream
+
+
+## The real fix for the buzzsaw case (see the ⚠️ note above RETRIGGER_MS): the
+## guard has to keep the PREVIOUS voice of this same sound from still being
+## audible when a new one starts, not just space out how often a new one is
+## allowed to begin. Using the stream's own length means the window scales with
+## what it's actually guarding — a 300 ms clang gets ~300 ms, a 40 ms UI tick
+## gets ~40 ms — instead of one number that was only ever right for whichever
+## sound it was tuned against.
+##
+## RETRIGGER_MS is kept as a floor, not dropped: `AudioStream.get_length()` can
+## come back at or near 0 for a degenerate/corrupt asset, and this guard's
+## other job — collapsing the two calls `_flash_hit()`/`_rpc_play_hit_vfx` can
+## produce for the same hit inside a single frame (see character_base.gd) — is
+## a same-frame guard that still needs to hold regardless.
+func _retrigger_window(stream: AudioStream) -> int:
+	var length_ms := int(roundf(stream.get_length() * 1000.0))
+	return maxi(RETRIGGER_MS, length_ms)
 
 
 func _trim(sound_name: String) -> float:

@@ -843,6 +843,36 @@ Found in a real two-instance `--host`/`--join` session — the host logged it on
 the client never did, because only the host resolves abilities. *Fix:* capture the **instance id**
 (an int cannot dangle) and resolve it with `instance_from_id()` at call time.
 
+**B-119 · `lata_impact` (and every other SFX) still buzzed under sustained contact despite the
+retrigger guard. [FIXED 2026-07-29]**
+
+`AudioManager.RETRIGGER_MS` (60 ms) throttles how often a sound NAME can start again, which is
+enough to stop `hitbox.gd`'s per-physics-frame re-resolution (see `_on_area_entered`'s note) from
+literally hitting `play_at()` 60 times a second. It does nothing about overlap: `lata_impact` itself
+rings for ~300 ms (`generate_sfx.py::build_lata()`, `can_hit("lata_impact", 0.30, ...)`), so a
+60 ms-spaced retrigger during a sustained hit (slipper resting on a lata, a character standing in a
+hitbox for several frames) still starts a new voice roughly 5× before the previous one finishes
+decaying. Five overlapping, pitch-jittered (±7%, `PITCH_JITTER`) copies of the same clang is a buzz/
+drone, not a series of hits — the exact failure the guard's own doc comment describes, just at 1/5
+the rate instead of the full 60/s.
+
+*Fix.* The guard window is now per-sound instead of one constant: `_load_streams()` computes each
+stream's own length via `AudioStream.get_length()` and stores it in `_retrigger_ms`; `_take()` reads
+that instead of `RETRIGGER_MS` directly. A sound can now only retrigger once its own predecessor has
+finished ringing — at most one voice of a given name plays at a time. `RETRIGGER_MS` (60) is kept as
+a floor (see `_retrigger_window()`), since it is also what collapses `_flash_hit()` and
+`_rpc_play_hit_vfx` firing for the same hit inside one frame, and a corrupt/degenerate stream could
+otherwise report a near-zero length.
+
+⚠️ **Not yet heard, and not re-run through `tools/audio_probe.gd`.** This session has no Godot
+binary and no audio device, so this is worked through from the generator's own source durations and
+the existing probe's assertions (`tools/audio_probe.gd::_check_playback`'s burst-of-8 test still
+holds under the new logic — it only asserts a burst inside one frame collapses to ≤1 extra voice,
+which a per-sound window ≥ the 60 ms floor still guarantees), not confirmed by ear or by a fresh probe
+run. Whoever picks up the audio listening pass (see the Agent_Prompts.md `code/audio-mix` opener)
+should re-run the probe and specifically re-test the sustained-contact case (hold a slipper against a
+lata) before calling this closed.
+
 **B-111 · Spawn slots were scrambled because `StringName` does not sort alphabetically. [FIXED
 2026-07-29]** ⚠️ **This is the "spawns are still broken" report that survived several sessions.
 Read the whole entry before touching spawn code again.**
