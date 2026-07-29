@@ -39,9 +39,17 @@ const CHARGE_MIN_POWER: float = 0.35
 ## T-3: seconds of uninterrupted hold to stand a knocked-down lata back up. Long
 ## enough that the attacking side gets a real window to punish a taya who commits
 ## to it, short enough that defending is not hopeless once the can goes over.
-## Pure guess until someone plays it — this is the tuning knob for the whole
+##
+## ⚠️ 1.5 -> 2.2, third of the four "too easy for the lata to get back up" levers
+## — the full set is documented on `CharacterBase.DOWNED_SELF_RIGHT_WINDOW`. The
+## channel is the taya's ONLY commitment in the whole round: it is the one moment
+## they stand still and can be tagged for it. At 1.5 s that window was shorter
+## than the attacker's own charge-and-throw cycle, so there was nothing to punish
+## and the reset was effectively free. 2.2 s makes going for it a decision.
+##
+## Still a guess until someone plays it — this is the tuning knob for the whole
 ## defensive half of the round.
-const RESET_CHANNEL_TIME: float = 1.5
+const RESET_CHANNEL_TIME: float = 2.2
 
 ## Emitted on the local peer while charging, 0..1, for the HUD's charge meter.
 ## -1 means "not charging", which is a distinct state from "charging at zero".
@@ -115,6 +123,13 @@ func is_charging() -> bool:
 	return _is_charging
 
 ## 0..1 while charging, -1 otherwise.
+##
+## ⚠️ LAKAS IS DELIBERATELY *NOT* APPLIED HERE. This is what the HUD charge meter
+## and the first-person wind-up both read, and a meter that fills past its own
+## bar (or never reaches the end of it) reads as broken rather than as a stat.
+## The trait is applied once, at the moment of release, in `_request_throw()` —
+## so a strong thrower's full bar simply carries further than a weak one's full
+## bar, which is the thing being modelled.
 func charge_power() -> float:
 	if not _is_charging:
 		return -1.0
@@ -382,10 +397,15 @@ func _request_grab(target: Carriable) -> void:
 ## how it flies.
 func _request_throw(power: float) -> void:
 	var target_point := _aim_point()
+	# LAKAS, applied once, at release — see charge_power()'s own note for why it is
+	# not baked into the meter. `host_throw()` clamps to 0..1 on the host, so a
+	# strong thrower cannot exceed the profile's own launch speed; what the trait
+	# buys is reaching full power from a shorter hold, which is exactly "stronger".
+	var thrown_power := clampf(power * _character.trait_power_scale(), 0.0, 1.0)
 	if _is_host():
-		_held.host_throw(target_point, power)
+		_held.host_throw(target_point, thrown_power)
 	else:
-		_rpc_request_throw.rpc_id(1, target_point, power)
+		_rpc_request_throw.rpc_id(1, target_point, thrown_power)
 
 ## T-3. Same shape as _request_grab: on the host, straight through; on a client,
 ## a request to peer 1. The host re-checks can_be_reset_by() from scratch — a

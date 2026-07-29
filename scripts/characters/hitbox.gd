@@ -199,6 +199,11 @@ func _impulse_for(force_downed: bool) -> Vector3:
 	direction.y = 0.0
 	if direction.length() < 0.01:
 		return Vector3.ZERO
-	var strength := MELEE_KNOCKBACK * (MELEE_FACESLOP_MULTIPLIER if force_downed else 1.0)
-	return direction.normalized() * strength + Vector3.UP * (MELEE_KNOCKBACK_LIFT
+	# LAKAS. The striker's own trait scales what it delivers; the target's TATAG
+	# then scales what it accepts (character_base.gd::apply_knockback). Two
+	# separate questions, answered at the two ends, exactly as `sfx` and
+	# `absorb_knockback` already are.
+	var power := owner_character.trait_power_scale()
+	var strength := MELEE_KNOCKBACK * power * (MELEE_FACESLOP_MULTIPLIER if force_downed else 1.0)
+	return direction.normalized() * strength + Vector3.UP * (MELEE_KNOCKBACK_LIFT * power
 		* (MELEE_FACESLOP_MULTIPLIER if force_downed else 1.0))
