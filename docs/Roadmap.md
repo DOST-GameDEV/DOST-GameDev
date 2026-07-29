@@ -28,7 +28,7 @@ This file answers a different question from every other document here:
   - [Stage 1 — Fairness. The single biggest gameplay problem.](#stage-1--fairness)
   - [Stage 2 — The tsinelas. Explicit human priority.](#stage-2--the-tsinelas)
   - [Stage 3 — Feel: contact, reaction, sound.](#stage-3--feel)
-  - [Stage 4 — Maps and flow.](#stage-4--maps-and-flow)
+  - [Stage 4 — Maps, flow, and a street that reads as Filipino.](#stage-4--maps-and-flow)
   - [Stage 5 — The network under real load.](#stage-5--the-network-under-real-load)
   - [Stage 6 — Onboarding and readability under chaos.](#stage-6--onboarding-and-readability-under-chaos)
   - [Stage 7 — Ship.](#stage-7--ship)
@@ -544,7 +544,14 @@ and this project has three passes of evidence for what happens when it is tuned 
 ---
 
 <a id="stage-4--maps-and-flow"></a>
-## Stage 4 — Maps and flow.
+## Stage 4 — Maps, flow, and a street that reads as Filipino.
+
+⚠️ **This stage carries pillar 1.** Filipino culture is not a layer over the environment; for a
+judge who has never heard of tumbang preso, the environment **is** the first and loudest statement of
+it. R-33 is the item that makes that specific rather than decorative, and it is owned by **Opus**
+because "does this read as an eskinita or as generic low-poly" is a judgement call with no lookup-able
+answer — the same reasoning `Concurrency_Protocol.md` already applies to map layout, which it calls
+*the single biggest visual lever on the submission*.
 
 ### R-19 · Close the two known map defects · 🌏 MAPS · **S**
 - **Problem.** 8 pre-existing interior footprint overlaps in Bayan Plaza; the paved apron ends in a
@@ -558,6 +565,42 @@ and this project has three passes of evidence for what happens when it is tuned 
   zero, the build does not abort on the lane law, and a `tools/void_probe.tscn` overhead render at
   y=30 shows a soft apron edge. Both maps still load and `perf_probe` shows no regression.
 - **Depends on.** Nothing.
+
+### R-33 · The eskinita pass — make the street specifically Filipino · 🌏 MAPS · **L**
+- **Problem.** The kit-built world reads as *a well-built street*. It does not yet read as a
+  **particular street in a particular country**. Pillar 1 is the one a judge meets before they read
+  a word, and the environment is where it lives or does not.
+- **Fix.** Four moves, all cheap low-poly geometry with flat colour, **no new shader**:
+  1. **The vocabulary of the place, as geometry** — the sari-sari store with its barred window and
+     strung sachets, the tangle of overhead wires (the single most recognisable silhouette of a
+     Philippine residential street), GI-sheet roofing, a barangay basketball ring on a post, laundry
+     on a line, a tricycle at the alley mouth, plants in cut-open paint tins. ⚠️ Every piece passes
+     the lane law or it is a build abort, not a cultural addition.
+  2. **Name everything in the language of the thing** — `SariSari`, `Bakod`, `Poste`, `Eskinita`,
+     not `Shop_01`, `Fence_A`, `Alley`. Those names surface in the scene tree, in every debug print
+     and in every future grep. **It costs nothing and it is the cheapest cultural win available.**
+     Rename only what this lane owns; grep first.
+  3. **Time of day, chosen deliberately** — late afternoon is the hour kids actually play tumbang
+     preso, and it is a light angle and a colour, not a lighting system.
+  4. **Make the two maps contrast.** Eskinita: close, cluttered, private, roofed by wires, fought
+     *along*. Bayan Plaza: open, civic, paved, fought *across*, with the church and covered court a
+     bayan actually has. **If a screenshot of one could be a screenshot of the other, one map has
+     been built twice.**
+- **The standard.** A Filipino should recognise the street; someone who is not should come away
+  having learned something specific about it. **Both, or it is decoration.** Specific beats
+  decorative: a generic town with a Filipino word painted on a wall is the failure mode.
+- **Pillar.** [1] directly and primarily; [3] every item above is flat-coloured low-poly by
+  construction; [4] a lived-in alley is funnier to fight in than a clean one.
+- **Acceptance.** Lane law does not abort and `Layer1 overlap: none` still holds; `perf_probe` shows
+  no frame-time regression on either map — **add specificity, not density**, the instance count came
+  down 510 → 382 for performance reasons once already; **six renders at player eye height, three per
+  map, each with a written sentence naming what in the frame is specifically Filipino**; and a
+  naming audit listing every generic name left and why. 🧑 **Then a human looks and says whether it
+  reads.** There is no probe for cultural specificity. Where the lane cannot decide, the question is
+  filed with options and costs — a confident wrong guess about somebody's own neighbourhood is worse
+  than a question.
+- **Depends on.** R-19. **Before R-20**, so the plaza inherits the vocabulary rather than needing a
+  second pass.
 
 ### R-20 · Port every Eskinita lesson to Bayan Plaza · 🌏 MAPS · **M**
 - **Problem.** ⚠️ *"The two builders share `floorcheck.py` and nothing else. Every Eskinita lesson
@@ -749,6 +792,9 @@ cut beats a silently unfinished feature.**
 2. **R-10, the fun-to-lose-to AI pass.** Nice, not load-bearing. A correctly balanced NORMAL bot
    that is a bit robotic still demos.
 3. **R-17, music.** The SFX carry the round. Silence between them is survivable; a broken mix is not.
+   ⚠️ **R-33 is not on this list and must not join it.** It is the cheapest pillar-1 work on the
+   project — geometry and names, no new systems — and the environment is where a judge meets the
+   culture before they read a word.
 4. **R-25's host-quit confirmation dialog** (keep the "host left" screen — that is the part that
    stops a hang).
 5. **Bayan Plaza**, if R-21 says it does not flow.
@@ -803,6 +849,8 @@ Recorded so nobody re-opens them, and so a human can overrule them knowingly.
 | **The arena footprint stays the original size**; only `CONFINEMENT_RADIUS` is swept. | Standing human decision. The confinement box is a separate, never-varied number. |
 | **Difficulty tiers ship player-facing.** | The mechanism is already built and unreachable; a judge who can pick BATA and score is worth more than a perfect NORMAL they lose to. |
 | **The tsinelas stays procedural.** | Standing human decision. |
+| **The 🌏 MAPS lane is Opus, and it owns cultural specificity as well as flow.** | 🧑 Human call, 2026-07-30. The environment carries pillar 1 to a judge before any text does, and "specific rather than decorative" is judgement under ambiguity, not execution against a spec. |
+| **Every lane verifies its toolchain before it starts**, and the 🌏 MAPS prompt makes it a numbered Step 0 that blocks all work. | 🧑 Human call, 2026-07-30. This lane's whole loop is regenerate → import → render → look, and a Godot binary that is not on PATH, a `--headless` render device that does not exist, and a builder that is not idempotent have each silently invalidated work here before. |
 | **No new shader.** | Standing constraint. Every visual item above is achievable with the existing `toon` + `outline` pair, flat vertex colours and low-poly geometry. |
 
 ---
