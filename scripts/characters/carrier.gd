@@ -286,6 +286,48 @@ func _aim_direction() -> Vector3:
 		return -rig.get_aim_basis().z
 	return -_character.global_transform.basis.z
 
+## How far along the crosshair to look for something to aim AT, before giving up
+## and treating the aim as a bearing rather than a target.
+const AIM_RAY_LENGTH: float = 40.0
+
+## ⚠️ THE POINT THE CROSSHAIR IS ON, NOT THE DIRECTION IT POINTS. This is the
+## whole of "the throw should be aligned with the crosshair", and the two are
+## not the same thing — which is why aligning the direction did not fix it.
+##
+## Measured, 2026-07-29, standing on the 6.0 throwing line:
+##   * the slipper leaves the HAND at y 0.89 while the camera eye is at y 1.35,
+##     so a throw parallel to the look direction starts 0.46 m below the line
+##     the player is sighting along and only ever diverges from there;
+##   * with the launch merely parallel to the aim, crosshair and landing point
+##     agree at exactly ONE distance — aiming at a point 7.04 m out landed
+##     1.70 m SHORT, aiming at one 3.38 m out landed 1.47 m LONG.
+## No amount of tilting the launch direction fixes that, because the error is a
+## function of range. Solving for the launch angle that actually passes through
+## this point does (see carriable.gd::host_throw).
+##
+## Ray, not a plane intersection, so the aim point is a real surface — the can,
+## the floor, a wall — rather than an arbitrary distance along the look vector.
+## Falls back to a far point along the aim when the ray hits nothing, which
+## host_throw() then treats as out of range and throws as a plain bearing.
+func _aim_point() -> Vector3:
+	var origin := _character.global_position
+	var direction := _aim_direction()
+	var rig := _character.get_node_or_null("CameraRig") as CameraRig
+	if rig != null and rig.fpp_camera != null:
+		# Cast from the CAMERA: the crosshair is a screen-space thing and the
+		# camera is the only node that knows where it is pointing from.
+		origin = rig.fpp_camera.global_position
+	var space := _character.get_world_3d().direct_space_state
+	var query := PhysicsRayQueryParameters3D.create(origin, origin + direction * AIM_RAY_LENGTH)
+	# Never aim at yourself or at the slipper currently in your own hand.
+	query.exclude = [_character.get_rid()]
+	if _held != null and _held.get_parent() is CharacterBase:
+		query.exclude = [_character.get_rid(), (_held.get_parent() as CharacterBase).get_rid()]
+	var hit := space.intersect_ray(query)
+	if hit.is_empty():
+		return origin + direction * AIM_RAY_LENGTH
+	return hit["position"]
+
 ## ---------------------------------------------------------------------------
 ## Requests. On the host these call straight through; on a client they RPC to
 ## peer 1. Either way the decision is made in exactly one place.
@@ -297,12 +339,16 @@ func _request_grab(target: Carriable) -> void:
 	else:
 		_rpc_request_grab.rpc_id(1, target.get_parent().get_path())
 
+## Sends the aim POINT rather than the aim direction — see _aim_point() for why.
+## The raycast has to happen on the peer that owns the camera, so the point is
+## resolved here and travels; the host still owns whether the throw happens and
+## how it flies.
 func _request_throw(power: float) -> void:
-	var direction := _aim_direction()
+	var target_point := _aim_point()
 	if _is_host():
-		_held.host_throw(direction, power)
+		_held.host_throw(target_point, power)
 	else:
-		_rpc_request_throw.rpc_id(1, direction, power)
+		_rpc_request_throw.rpc_id(1, target_point, power)
 
 ## T-3. Same shape as _request_grab: on the host, straight through; on a client,
 ## a request to peer 1. The host re-checks can_be_reset_by() from scratch — a
@@ -336,10 +382,10 @@ func _rpc_request_grab(target_character_path: NodePath) -> void:
 ## movement client-authoritative. WHETHER the throw may happen at all, and what
 ## it then hits, stay with the host.
 @rpc("any_peer", "call_remote", "reliable")
-func _rpc_request_throw(direction: Vector3, power: float) -> void:
+func _rpc_request_throw(target_point: Vector3, power: float) -> void:
 	if not _is_host() or _held == null:
 		return
-	_held.host_throw(direction, clampf(power, 0.0, 1.0))
+	_held.host_throw(target_point, clampf(power, 0.0, 1.0))
 
 ## Client → host, T-3. Mirrors _rpc_request_grab exactly, including re-resolving
 ## the target node from its path rather than trusting anything the client sent

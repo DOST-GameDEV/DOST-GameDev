@@ -1015,6 +1015,45 @@ touch map scenes.
       to act on. Still falls if airborne, preserving the original "nobody floats" intent.
       Measured, same probe, 6 transitions with a `(9,4,4)` impulse fired into each gap:
       **before 10.63 m/s and 5.20 m of drift -> after 0.00 and 0.00.**
+- [x] **4.4g · B-129 · THE THROW STILL DID NOT GO WHERE THE CROSSHAIR POINTED.** 🔧 Build —
+      **fixed 2026-07-29, A/B'd with the new `tools/aim_probe.gd`**
+      The third report of the same symptom ("the height is still too low"), after 4.4e had already
+      corrected the inverted arc and zeroed it. ⚠️ **Aligning the launch DIRECTION with the crosshair
+      is not the same thing as the throw going where you point, and that is the whole lesson here.**
+      Two independent reasons, both measured from the 6.0 throwing line:
+      * the slipper leaves the **hand at y 0.89** while the camera eye is at **y 1.35**, so a
+        launch parallel to the look direction starts 0.46 m below the line the player is sighting
+        along and only diverges from there;
+      * gravity then bends it away from that line by an amount **that grows with range**, so the
+        crosshair and the landing point agree at exactly ONE distance. Measured: a target 7.04 m out
+        landed **1.70 m short**, one 3.38 m out landed **1.47 m long**.
+      Fixed by aiming at a **point** instead of along a bearing. `carrier.gd::_aim_point()`
+      raycasts from the camera to find what the crosshair is actually on, sends that point (a
+      networked signature change: `host_throw` and `_rpc_request_throw` take a target point now, not
+      a direction), and `carriable.gd::_solve_arc()` solves the standard ballistic launch angle that
+      passes through it — taking the **flat root**, so the throw stays direct and the solved angle
+      stays near where the player is already pointing. Out of range falls back to the plain bearing
+      and visibly drops short, deliberately *not* to a 45° max-range lob: aiming at a distant wall
+      firing a mortar straight up would be a far stranger thing to happen.
+      ⚠️ **The metric is closest approach to the aim point, not where it lands** — `MAX_BOUNCES`
+      lets a slipper skip once after first contact, so a perfectly aimed throw can rest a metre or
+      two past the target. A/B, same probe:
+
+      | camera pitch | aim point range | closest approach, before | after |
+      |---|---|---|---|
+      | +0° | 23.45 m | **12.25 m** | 0.18 m |
+      | −10° | 7.04 m | 0.77 m | 0.19 m |
+      | −20° | 3.38 m | 3.90 m | 0.31 m |
+      | −30° | 2.12 m | 2.67 m | 0.30 m |
+      | +10° | 23.45 m | 5.12 m | 0.20 m |
+
+      Every pitch missed before; every pitch now passes within the slipper's own `hit_radius`.
+      Knock-on: `phys_probe -- target=can` went from **2/12 to 9/12** connections against a Can that
+      actively dodges, and `target=taya` to 12/12.
+      Because the solve uses the profile's own effective gravity, a heavy Bakya picks a steeper
+      angle than a floaty Havaianas for the same target — the profiles differentiate the *flight*
+      without fighting the *aim*. `arc_angle_deg` survives as a deliberate offset on top of the
+      solve, 0.0 everywhere, for a profile that wants to lob above the crosshair on purpose.
 - [x] **4.5 · Hitstop.** 🤖 Sonnet, medium
       The one piece of the Q-8 hit-feedback set that never landed. Cheap, and it
       is what makes a landed hit feel like contact rather than a colour change.
