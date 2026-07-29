@@ -79,46 +79,69 @@ theme_override_font_sizes/font_size = 68
 vertical_alignment = 1
 text = "SETUP"
 
-[node name="ConfigPanel" type="PanelContainer" parent="."]
-layout_mode = 0
-offset_left = 83.0
-offset_top = 230.0
-offset_right = 946.0
-offset_bottom = 600.0
+[node name="Body" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+theme_override_constants/margin_left = 83
+theme_override_constants/margin_top = 230
+theme_override_constants/margin_right = 96
+theme_override_constants/margin_bottom = 24
+
+[node name="Columns" type="HBoxContainer" parent="Body"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 54
+
+[node name="LeftColumn" type="VBoxContainer" parent="Body/Columns"]
+custom_minimum_size = Vector2(960, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_constants/separation = 14
+
+[node name="ConfigPanel" type="PanelContainer" parent="Body/Columns/LeftColumn"]
+layout_mode = 2
+size_flags_vertical = 0
 theme_type_variation = &"WoodPanel"
 
-[node name="ConfigMargin" type="MarginContainer" parent="ConfigPanel"]
+[node name="ConfigMargin" type="MarginContainer" parent="Body/Columns/LeftColumn/ConfigPanel"]
 layout_mode = 2
 theme_override_constants/margin_left = 24
 theme_override_constants/margin_top = 12
 theme_override_constants/margin_right = 24
 theme_override_constants/margin_bottom = 12
 
-[node name="Rows" type="VBoxContainer" parent="ConfigPanel/ConfigMargin"]
+[node name="Rows" type="VBoxContainer" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin"]
 layout_mode = 2
 theme_override_constants/separation = 12
 alignment = 1
 
-[node name="MapRow" type="HBoxContainer" parent="ConfigPanel/ConfigMargin/Rows"]
+[node name="MapRow" type="HBoxContainer" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows"]
 layout_mode = 2
 theme_override_constants/separation = 46
 
-[node name="MapCaption" type="Label" parent="ConfigPanel/ConfigMargin/Rows/MapRow"]
+[node name="MapCaption" type="Label" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/MapRow"]
 custom_minimum_size = Vector2(250, 0)
 layout_mode = 2
+size_flags_horizontal = 0
 theme_type_variation = &"MenuDisplay"
 vertical_alignment = 1
 text = "MAP:"
 
-[node name="MapSelector" type="TextureRect" parent="ConfigPanel/ConfigMargin/Rows/MapRow"]
+[node name="MapSelector" type="TextureRect" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/MapRow"]
 custom_minimum_size = Vector2(380, 93)
 layout_mode = 2
+size_flags_horizontal = 0
+size_flags_vertical = 4
 mouse_filter = 1
 texture = ExtResource("5")
 expand_mode = 1
 stretch_mode = 0
 
-[node name="Inner" type="HBoxContainer" parent="ConfigPanel/ConfigMargin/Rows/MapRow/MapSelector"]
+[node name="Inner" type="HBoxContainer" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/MapRow/MapSelector"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -129,7 +152,7 @@ offset_right = -26.0
 offset_bottom = -15.0
 theme_override_constants/separation = 8
 
-[node name="MapPrevButton" type="TextureButton" parent="ConfigPanel/ConfigMargin/Rows/MapRow/MapSelector/Inner"]
+[node name="MapPrevButton" type="TextureButton" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/MapRow/MapSelector/Inner"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(32, 45)
 layout_mode = 2
@@ -138,7 +161,7 @@ texture_normal = ExtResource("6")
 ignore_texture_size = true
 stretch_mode = 5
 
-[node name="MapValueLabel" type="Label" parent="ConfigPanel/ConfigMargin/Rows/MapRow/MapSelector/Inner"]
+[node name="MapValueLabel" type="Label" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/MapRow/MapSelector/Inner"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -146,8 +169,10 @@ theme_type_variation = &"MenuHeading"
 horizontal_alignment = 1
 vertical_alignment = 1
 text = "ESKINITA"
+clip_text = true
+text_overrun_behavior = 3
 
-[node name="MapNextButton" type="TextureButton" parent="ConfigPanel/ConfigMargin/Rows/MapRow/MapSelector/Inner"]
+[node name="MapNextButton" type="TextureButton" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/MapRow/MapSelector/Inner"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(32, 45)
 layout_mode = 2
@@ -156,26 +181,29 @@ texture_normal = ExtResource("7")
 ignore_texture_size = true
 stretch_mode = 5
 
-[node name="ModeRow" type="HBoxContainer" parent="ConfigPanel/ConfigMargin/Rows"]
+[node name="ModeRow" type="HBoxContainer" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows"]
 layout_mode = 2
 theme_override_constants/separation = 46
 
-[node name="ModeCaption" type="Label" parent="ConfigPanel/ConfigMargin/Rows/ModeRow"]
+[node name="ModeCaption" type="Label" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/ModeRow"]
 custom_minimum_size = Vector2(250, 0)
 layout_mode = 2
+size_flags_horizontal = 0
 theme_type_variation = &"MenuDisplay"
 vertical_alignment = 1
 text = "MODE:"
 
-[node name="ModeSelector" type="TextureRect" parent="ConfigPanel/ConfigMargin/Rows/ModeRow"]
+[node name="ModeSelector" type="TextureRect" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/ModeRow"]
 custom_minimum_size = Vector2(380, 93)
 layout_mode = 2
+size_flags_horizontal = 0
+size_flags_vertical = 4
 mouse_filter = 1
 texture = ExtResource("5")
 expand_mode = 1
 stretch_mode = 0
 
-[node name="Inner" type="HBoxContainer" parent="ConfigPanel/ConfigMargin/Rows/ModeRow/ModeSelector"]
+[node name="Inner" type="HBoxContainer" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/ModeRow/ModeSelector"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -186,7 +214,7 @@ offset_right = -26.0
 offset_bottom = -15.0
 theme_override_constants/separation = 8
 
-[node name="ModePrevButton" type="TextureButton" parent="ConfigPanel/ConfigMargin/Rows/ModeRow/ModeSelector/Inner"]
+[node name="ModePrevButton" type="TextureButton" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/ModeRow/ModeSelector/Inner"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(32, 45)
 layout_mode = 2
@@ -195,7 +223,7 @@ texture_normal = ExtResource("6")
 ignore_texture_size = true
 stretch_mode = 5
 
-[node name="ModeValueLabel" type="Label" parent="ConfigPanel/ConfigMargin/Rows/ModeRow/ModeSelector/Inner"]
+[node name="ModeValueLabel" type="Label" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/ModeRow/ModeSelector/Inner"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -203,8 +231,10 @@ theme_type_variation = &"MenuHeading"
 horizontal_alignment = 1
 vertical_alignment = 1
 text = "CAPTURE"
+clip_text = true
+text_overrun_behavior = 3
 
-[node name="ModeNextButton" type="TextureButton" parent="ConfigPanel/ConfigMargin/Rows/ModeRow/ModeSelector/Inner"]
+[node name="ModeNextButton" type="TextureButton" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/ModeRow/ModeSelector/Inner"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(32, 45)
 layout_mode = 2
@@ -213,42 +243,44 @@ texture_normal = ExtResource("7")
 ignore_texture_size = true
 stretch_mode = 5
 
-[node name="FighterRow" type="HBoxContainer" parent="ConfigPanel/ConfigMargin/Rows"]
+[node name="FighterRow" type="HBoxContainer" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows"]
 layout_mode = 2
 theme_override_constants/separation = 46
 
-[node name="FighterCaption" type="Label" parent="ConfigPanel/ConfigMargin/Rows/FighterRow"]
+[node name="FighterCaption" type="Label" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/FighterRow"]
 custom_minimum_size = Vector2(250, 0)
 layout_mode = 2
+size_flags_horizontal = 0
 theme_type_variation = &"MenuDisplay"
 vertical_alignment = 1
 text = "PLAYERS:"
 
-[node name="CharacterButton" type="Button" parent="ConfigPanel/ConfigMargin/Rows/FighterRow"]
+[node name="CharacterButton" type="Button" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/FighterRow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(380, 93)
 layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
 theme_type_variation = &"WoodButton"
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 24
 text = "CHOOSE  ▸"
+clip_text = true
+text_overrun_behavior = 3
 
-[node name="DetailLabel" type="Label" parent="."]
+[node name="DetailLabel" type="Label" parent="Body/Columns/LeftColumn"]
 unique_name_in_owner = true
-layout_mode = 0
-offset_left = 95.0
-offset_top = 610.0
-offset_right = 946.0
-offset_bottom = 716.0
+custom_minimum_size = Vector2(0, 96)
+layout_mode = 2
+size_flags_vertical = 0
 theme_type_variation = &"MenuBody"
 autowrap_mode = 2
 
-[node name="PrimaryButton" parent="." instance=ExtResource("3")]
+[node name="PrimaryButton" parent="Body/Columns/LeftColumn" instance=ExtResource("3")]
 unique_name_in_owner = true
-layout_mode = 0
-offset_left = 95.0
-offset_top = 724.0
-offset_right = 709.0
-offset_bottom = 825.0
+custom_minimum_size = Vector2(614, 101)
+layout_mode = 2
+size_flags_horizontal = 0
+size_flags_vertical = 0
 texture = ExtResource("8")
 caption = "START MATCH"
 text_color = Color(1, 1, 1, 1)
@@ -257,14 +289,13 @@ pole_distance = 300.0
 text_indent = 40.0
 tip_padding = 40.0
 
-[node name="StartButton" parent="." instance=ExtResource("3")]
+[node name="StartButton" parent="Body/Columns/LeftColumn" instance=ExtResource("3")]
 unique_name_in_owner = true
 visible = false
-layout_mode = 0
-offset_left = 95.0
-offset_top = 835.0
-offset_right = 709.0
-offset_bottom = 936.0
+custom_minimum_size = Vector2(614, 101)
+layout_mode = 2
+size_flags_horizontal = 0
+size_flags_vertical = 0
 texture = ExtResource("8")
 caption = "START MATCH"
 text_color = Color(1, 1, 1, 1)
@@ -273,61 +304,68 @@ pole_distance = 300.0
 text_indent = 40.0
 tip_padding = 40.0
 
-[node name="StatusLabel" type="Label" parent="."]
+[node name="StatusLabel" type="Label" parent="Body/Columns/LeftColumn"]
 unique_name_in_owner = true
-layout_mode = 0
-offset_left = 95.0
-offset_top = 944.0
-offset_right = 946.0
-offset_bottom = 994.0
+custom_minimum_size = Vector2(0, 50)
+layout_mode = 2
+size_flags_vertical = 0
 theme_override_colors/font_color = Color(0.957, 0.408, 0.659, 1)
 theme_override_font_sizes/font_size = 28
 vertical_alignment = 1
 autowrap_mode = 2
 
-[node name="BackButton" type="Button" parent="."]
+[node name="Spacer" type="Control" parent="Body/Columns/LeftColumn"]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="BackButton" type="Button" parent="Body/Columns/LeftColumn"]
 unique_name_in_owner = true
-layout_mode = 0
-offset_left = 95.0
-offset_top = 998.0
-offset_right = 395.0
-offset_bottom = 1056.0
+custom_minimum_size = Vector2(300, 58)
+layout_mode = 2
+size_flags_horizontal = 0
+size_flags_vertical = 8
 theme_type_variation = &"WoodButton"
 text = "◀  BACK"
 
-[node name="SeatPanel" type="PanelContainer" parent="."]
-layout_mode = 0
-offset_left = 1000.0
-offset_top = 240.0
-offset_right = 1820.0
-offset_bottom = 690.0
+[node name="RightColumn" type="VBoxContainer" parent="Body/Columns"]
+custom_minimum_size = Vector2(700, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="SeatPanel" type="PanelContainer" parent="Body/Columns/RightColumn"]
+layout_mode = 2
+size_flags_vertical = 0
 theme_type_variation = &"WoodPanel"
 
-[node name="SeatMargin" type="MarginContainer" parent="SeatPanel"]
+[node name="SeatMargin" type="MarginContainer" parent="Body/Columns/RightColumn/SeatPanel"]
 layout_mode = 2
 theme_override_constants/margin_left = 24
 theme_override_constants/margin_top = 12
 theme_override_constants/margin_right = 24
 theme_override_constants/margin_bottom = 12
 
-[node name="Rows" type="VBoxContainer" parent="SeatPanel/SeatMargin"]
+[node name="Rows" type="VBoxContainer" parent="Body/Columns/RightColumn/SeatPanel/SeatMargin"]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="SeatHeading" type="Label" parent="SeatPanel/SeatMargin/Rows"]
+[node name="SeatHeading" type="Label" parent="Body/Columns/RightColumn/SeatPanel/SeatMargin/Rows"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"MenuHeading"
-text = "SEATS"
+text = "YOUR CHARACTER"
+autowrap_mode = 2
 
-[node name="SeatHint" type="Label" parent="SeatPanel/SeatMargin/Rows"]
+[node name="SeatHint" type="Label" parent="Body/Columns/RightColumn/SeatPanel/SeatMargin/Rows"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 theme_type_variation = &"MenuCaption"
 text = "A team is one Person and one Prop."
 autowrap_mode = 2
 
-[node name="SeatButton0" type="Button" parent="SeatPanel/SeatMargin/Rows"]
+[node name="SeatButton0" type="Button" parent="Body/Columns/RightColumn/SeatPanel/SeatMargin/Rows"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 66)
 layout_mode = 2
@@ -335,8 +373,10 @@ theme_type_variation = &"WoodButton"
 theme_override_font_sizes/font_size = 30
 alignment = 0
 text = "TEAM A · PERSON"
+clip_text = true
+text_overrun_behavior = 3
 
-[node name="SeatButton1" type="Button" parent="SeatPanel/SeatMargin/Rows"]
+[node name="SeatButton1" type="Button" parent="Body/Columns/RightColumn/SeatPanel/SeatMargin/Rows"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 66)
 layout_mode = 2
@@ -344,8 +384,10 @@ theme_type_variation = &"WoodButton"
 theme_override_font_sizes/font_size = 30
 alignment = 0
 text = "TEAM A · PROP"
+clip_text = true
+text_overrun_behavior = 3
 
-[node name="SeatButton2" type="Button" parent="SeatPanel/SeatMargin/Rows"]
+[node name="SeatButton2" type="Button" parent="Body/Columns/RightColumn/SeatPanel/SeatMargin/Rows"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 66)
 layout_mode = 2
@@ -353,8 +395,10 @@ theme_type_variation = &"WoodButton"
 theme_override_font_sizes/font_size = 30
 alignment = 0
 text = "TEAM B · PERSON"
+clip_text = true
+text_overrun_behavior = 3
 
-[node name="SeatButton3" type="Button" parent="SeatPanel/SeatMargin/Rows"]
+[node name="SeatButton3" type="Button" parent="Body/Columns/RightColumn/SeatPanel/SeatMargin/Rows"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 66)
 layout_mode = 2
@@ -362,6 +406,8 @@ theme_type_variation = &"WoodButton"
 theme_override_font_sizes/font_size = 30
 alignment = 0
 text = "TEAM B · PROP"
+clip_text = true
+text_overrun_behavior = 3
 
 [node name="CharacterSelectPanel" parent="." instance=ExtResource("9")]
 unique_name_in_owner = true
