@@ -48,6 +48,93 @@ const STAGGER: float = 0.09
 @onready var confirm_button: ArrowButton = %ConfirmButton
 @onready var back_button: Button = %BackButton
 @onready var tab_bar: HBoxContainer = %TabBar
+@onready var trait_rows: VBoxContainer = %TraitRows
+
+## ---------------------------------------------------------------------------
+## THE TRAIT METERS — "find a creative way to visually show the newly added
+## character traits and stats on the character selection screen."
+##
+## ⚠️ CHALK MARKS, NOT PROGRESS BARS. This whole game is played inside a chalk
+## court: `build_eskinita.py` and `build_bayan_plaza.py` draw the base circle, the
+## throwing line and the confinement square as chalk on asphalt, and the moodboard
+## treats that as the game's signature. A stat bar is the most generic UI object
+## there is; five tally marks scratched on the ground is what a kid keeping score
+## in the street actually does, and it is already this project's visual language.
+##
+## So each trait renders as five slots: filled ones are bright chalk, empty ones
+## are a faint scuff of the same colour. Reads at a glance, counts exactly, needs
+## no legend, and costs five ColorRects.
+##
+## ⚠️ BUILT FROM `CharacterRoster.TRAIT_LABELS`, NOT AUTHORED IN THE .tscn, for
+## the same reason the tabs are built from `CATEGORIES`: adding a fourth trait
+## should be one entry in the roster and nothing here or in the scene.
+const TRAIT_SLOTS: int = 5
+const TRAIT_PIP_SIZE: Vector2 = Vector2(46, 14)
+const TRAIT_PIP_GAP: int = 6
+## Chalk. `UiTheme.HIGHLIGHT` is the same yellow the base-circle decal and the
+## round timer's urgency state use, so a full meter reads as "the same game
+## system" rather than as a new colour nobody has seen.
+const TRAIT_PIP_FILLED: Color = Color(0.973, 0.816, 0.157)
+const TRAIT_PIP_EMPTY: Color = Color(0.961, 0.902, 0.784, 0.20)
+
+## One row per trait, rebuilt on every selection change. Rebuilding rather than
+## re-tinting because the row count is roster-driven and a stale row is a wrong
+## number on screen, which is worse than a few dozen ColorRects per keypress.
+func _refresh_traits(entry: Dictionary) -> void:
+	for child in trait_rows.get_children():
+		child.queue_free()
+	var traits: Dictionary = entry.get("traits", {})
+	for label in CharacterRoster.TRAIT_LABELS:
+		trait_rows.add_child(_build_trait_row(label, traits))
+	# The camera controls are discoverable only if somebody says they exist. One
+	# line, inside the panel, rebuilt with the meters so it can never be orphaned
+	# by a roster change.
+	var hint := Label.new()
+	hint.text = "Drag to turn the view  ·  scroll to zoom  ·  right-click to reset"
+	hint.add_theme_font_size_override("font_size", 18)
+	hint.add_theme_color_override("font_color", Color(0.961, 0.902, 0.784, 0.5))
+	trait_rows.add_child(hint)
+
+func _build_trait_row(label: Dictionary, traits: Dictionary) -> HBoxContainer:
+	var key: StringName = label["key"]
+	# Through the roster's own accessor rather than reading the dictionary here,
+	# so a missing trait falls back to the same neutral value the GAME will
+	# actually use. A screen that promises 3 and plays 1 is worse than no screen.
+	var points: int = CharacterRoster._trait_value(traits, key)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 14)
+
+	var name_label := Label.new()
+	name_label.text = String(label["name"])
+	name_label.custom_minimum_size = Vector2(126, 0)
+	name_label.add_theme_font_size_override("font_size", 24)
+	name_label.add_theme_color_override("font_color", TRAIT_PIP_FILLED)
+	name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	row.add_child(name_label)
+
+	var pips := HBoxContainer.new()
+	pips.add_theme_constant_override("separation", TRAIT_PIP_GAP)
+	pips.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	for i in range(TRAIT_SLOTS):
+		var pip := ColorRect.new()
+		pip.custom_minimum_size = TRAIT_PIP_SIZE
+		pip.color = TRAIT_PIP_FILLED if i < points else TRAIT_PIP_EMPTY
+		pips.add_child(pip)
+	row.add_child(pips)
+
+	# The English reading, small and to the right. The Filipino word is the label
+	# and this is the gloss, which is the same order the rest of the front end
+	# uses (a role is named in Filipino and explained in English) and is what
+	# makes the vocabulary learnable rather than decorative.
+	var gloss := Label.new()
+	gloss.text = String(label["gloss"])
+	gloss.add_theme_font_size_override("font_size", 18)
+	gloss.add_theme_color_override("font_color", Color(0.961, 0.902, 0.784, 0.55))
+	gloss.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	gloss.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(gloss)
+	return row
 
 ## Which tab is showing, and the selected index WITHIN each tab. Three separate
 ## indices rather than one: switching tabs must return you to the lata you had
@@ -179,6 +266,10 @@ func _apply() -> void:
 
 	name_label.text = String(entry["name"])
 	tagline_label.text = String(entry["tagline"])
+	# The meters sit directly under the sentence they are supposed to agree with,
+	# which is the point of putting them on this screen at all — see
+	# `character_roster.gd`'s own rule that a stat must be readable off the lore.
+	_refresh_traits(entry)
 
 	# A one-entry category would leave these cycling a list of one.
 	var many := entries.size() > 1
