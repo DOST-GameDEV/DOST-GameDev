@@ -32,6 +32,9 @@ var _countdown_tween: Tween = null
 func _ready() -> void:
 	MatchManager.round_started.connect(_on_round_started)
 	MatchManager.match_won.connect(_on_match_won)
+	# 4.1 — round result. See _on_round_intermission_audio for why this signal
+	# rather than RoundManager.round_won.
+	MatchManager.round_intermission_started.connect(_on_round_intermission_audio)
 	downed_flash.visible = false
 	toast_label.visible = false
 	lata_card.visible = false
@@ -164,6 +167,10 @@ func show_ready_prompt(active: bool) -> void:
 ## the round timer itself uses under 15s, so it reads as "the same game
 ## system," not a one-off UI element.
 func show_countdown_tick(text: String) -> void:
+	# 4.1. Played from here rather than from main.gd's countdown loop so that
+	# every caller of this function gets it for free and the pop animation and
+	# its sound can never drift apart by a frame.
+	AudioManager.play("countdown_go" if text == "GO!" else "countdown_tick")
 	countdown_label.text = text
 	countdown_label.visible = true
 	countdown_label.modulate = UiTheme.HIGHLIGHT
@@ -215,8 +222,47 @@ func set_round_display(round_number: int, team_a_is_can: bool) -> void:
 func refresh_you_card() -> void:
 	you_card.refresh()
 
+## 4.1 — ROUND WIN / ROUND LOSS.
+##
+## ⚠️ HUNG ON MatchManager.round_intermission_started, NOT ON
+## RoundManager.round_won. Two reasons, both load-bearing:
+##
+##  1. `round_won` is emitted by RoundManager on the HOST ONLY — it is the
+##     host's decision, and what actually reaches every peer is MatchManager's
+##     replicated intermission broadcast (see _sync_intermission_started). A
+##     client hung on round_won would never hear a round end.
+##  2. The match-DECIDING round deliberately does not emit this at all —
+##     report_round_result() branches to _finish_match() instead. That is what
+##     stops the last round of a match playing a round fanfare and a match
+##     fanfare on top of each other.
+##
+## `can_team_won` is which SIDE won, and MatchManager.team_a_is_can still holds
+## the JUST-ENDED round's value at this point (it is only flipped later, by
+## _sync_round_started), so the two compose into which TEAM won without needing
+## anything extra sent over the wire.
+func _on_round_intermission_audio(_next_round: int, _next_team_a_is_can: bool, can_team_won: bool) -> void:
+	var team_a_won := can_team_won == MatchManager.team_a_is_can
+	AudioManager.play(_result_sfx(team_a_won))
+
 func _on_match_won(winning_team: int) -> void:
 	round_label.text = "MATCH WON"
+	# 4.1. Non-positional (AudioManager.play, not play_at): a result is a fact
+	# about the match, not an event at a place in the arena.
+	AudioManager.play("match_win" if _local_team_won(winning_team == 0) else "round_lose")
+
+## "did the local player's team win", given whether TEAM A did. Falls back to
+## treating team A as ours when there is no local character to ask — the HUD is
+## only ever instanced inside a match, but a late-joining peer can reach here
+## before its own character has spawned, and a wrong-but-present fanfare is a
+## better failure than a silent round end.
+func _local_team_won(team_a_won: bool) -> bool:
+	var local_char := you_card.get_local_character()
+	if local_char == null or not is_instance_valid(local_char):
+		return team_a_won
+	return (local_char.team == 0) == team_a_won
+
+func _result_sfx(team_a_won: bool) -> String:
+	return "round_win" if _local_team_won(team_a_won) else "round_lose"
 
 ## Call when the locally-viewed Can enters/exits Downed — clear visual read for
 ## stream/demo per GDD Section 6.

@@ -83,6 +83,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_on_back_pressed()
 
 func _on_back_pressed() -> void:
+	AudioManager.play("ui_back") # 4.1
 	get_tree().change_scene_to_file(MAIN_MENU_PATH)
 
 # --- Map selector -------------------------------------------------------------
@@ -91,10 +92,12 @@ func _on_back_pressed() -> void:
 # is one entry there plus its scene — nothing here changes.
 
 func _on_map_prev_pressed() -> void:
+	AudioManager.play("ui_click") # 4.1
 	_map_index = (_map_index - 1 + GameLaunch.MAPS.size()) % GameLaunch.MAPS.size()
 	_apply_map()
 
 func _on_map_next_pressed() -> void:
+	AudioManager.play("ui_click") # 4.1
 	_map_index = (_map_index + 1) % GameLaunch.MAPS.size()
 	_apply_map()
 
@@ -106,10 +109,12 @@ func _apply_map() -> void:
 # --- Mode selector ------------------------------------------------------------
 
 func _on_mode_prev_pressed() -> void:
+	AudioManager.play("ui_click") # 4.1
 	_mode_index = (_mode_index - 1 + MODES.size()) % MODES.size()
 	_apply_mode()
 
 func _on_mode_next_pressed() -> void:
+	AudioManager.play("ui_click") # 4.1
 	_mode_index = (_mode_index + 1) % MODES.size()
 	_apply_mode()
 

@@ -1,4 +1,4 @@
-[gd_scene load_steps=70 format=3]
+[gd_scene load_steps=71 format=3]
 
 [ext_resource type="PackedScene" path="res://assets/models/kits/town/road.glb" id="1"]
 [ext_resource type="PackedScene" path="res://assets/models/kits/city/building-type-a.glb" id="2"]
@@ -59,6 +59,7 @@
 [ext_resource type="Script" path="res://scripts/systems/kill_plane.gd" id="K"]
 [ext_resource type="Script" path="res://scripts/systems/env_toon_pass.gd" id="T"]
 [ext_resource type="Texture2D" path="res://assets/models/materials/sky_panorama.png" id="SKY"]
+[ext_resource type="AudioStream" path="res://assets/audio/ambience/eskinita_street.ogg" id="AMB"]
 
 [sub_resource type="BoxShape3D" id="Shape_floor"]
 size = Vector3(120, 1, 120)
@@ -191,6 +192,14 @@ script = ExtResource("K")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="KillPlane"]
 shape = SubResource("Shape_killplane")
+
+[node name="Ambience" type="Node3D" parent="."]
+
+[node name="AmbienceLoop" type="AudioStreamPlayer" parent="Ambience"]
+stream = ExtResource("AMB")
+autoplay = true
+bus = &"Music"
+volume_db = -12.0
 
 [node name="Hazards" type="Node3D" parent="."]
 
