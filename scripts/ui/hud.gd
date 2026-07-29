@@ -155,7 +155,12 @@ func show_toast(text: String, duration: float = 1.5) -> void:
 ## _is_confined_to_base()'s round_active gate). Shown the instant Main.tscn
 ## spawns everyone but before the round has actually started; hidden the
 ## moment the player readies up and the round begins.
-func show_ready_prompt(active: bool) -> void:
+## 2026-07-30: `text` added for the networked ready phase, which has something
+## the solo one does not — other people to wait for. Defaults to "" so every
+## existing solo call site keeps the scene's own authored line.
+func show_ready_prompt(active: bool, text: String = "") -> void:
+	if text != "":
+		ready_prompt.text = text
 	ready_prompt.visible = active
 
 ## 2026-07-28 — "add a 3 2 1 timer before each match starts too, think about

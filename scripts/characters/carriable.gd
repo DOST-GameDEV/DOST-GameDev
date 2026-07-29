@@ -491,19 +491,45 @@ func _step_carried() -> void:
 	var hand := carrier.get_hand_attachment()
 	if hand == null:
 		return # the Person's model has not been instanced yet; try again next frame
-	# ORTHONORMALISED, not copied wholesale. A Person's model is scaled by
-	# CharacterVisual.PERSON_SCALE (2.38) and every bone under its Skeleton3D
-	# inherits that, so assigning the hand's transform directly would blow the
-	# slipper up to 2.38x — with no error, just a comically large tsinelas.
+	# ⚠️⚠️ THE ORIENTATION COMES FROM THE CARRIER'S BODY, NOT FROM THE HAND BONE.
+	# THIS IS THE FIX FOR "THE SLIPPER JUST SPINS AROUND UNCONTROLLABLY".
+	#
+	# The POSITION still comes from the hand — that is what puts the tsinelas in
+	# the fist rather than floating beside it, and it is correct. The BASIS used
+	# to come from the hand too, and that is where the spin came from: `hand` is a
+	# node under a `BoneAttachment3D` on the Person's arm bone, so its basis is
+	# re-derived from the currently-playing ANIMATION CLIP every single frame. The
+	# arm swings through idle, walk, sprint, the throw one-shot and the grab
+	# one-shot, and the slipper was rigidly welded to all of it — a full,
+	# fast, uncontrollable tumble in the hand of anyone who so much as walked.
+	#
+	# It reads worst exactly where it was reported, before the round starts: a
+	# CARRIED slipper returns true from `drives_movement()`, so
+	# `character_base.gd::_physics_process` gives its whole frame to this function
+	# and returns before reading input. The player cannot move it AND it is
+	# spinning, which is the complaint word for word.
+	#
+	# A body's yaw is a single number that changes when the player turns, so
+	# building the basis from it gives a slipper that is held steady, points where
+	# its carrier points, and still tilts its sole toward the camera. Nothing about
+	# the hand's POSITION is given up — the arm still carries it, it just no longer
+	# spins it.
+	#
+	# ⚠️ ORTHONORMALISED YAW, NOT THE CARRIER'S RAW BASIS. A Person's model is
+	# scaled by CharacterVisual.PERSON_SCALE (2.38) and a body can carry
+	# non-yaw components transiently; both would ride straight into this transform.
+	# `camera_rig.gd::_body_yaw()` exists for the same reason and recovers yaw the
+	# same way, from the forward vector rather than from Euler decomposition.
 	#
 	# B-90: `* tilt`, not `tilt *` — tilt has to apply in the OBJECT'S OWN
 	# local frame (pre-multiplied) so it rotates the sole toward the camera
-	# regardless of which way the hand itself is currently oriented, rather
-	# than tilting relative to the world after the hand's rotation is already
-	# applied.
+	# regardless of which way the carrier is currently facing, rather than
+	# tilting relative to the world after the yaw is already applied.
 	var tilt := Basis(Vector3.RIGHT, deg_to_rad(CARRY_TILT_DEG))
 	var hand_transform := hand.global_transform
-	var basis := hand_transform.basis.orthonormalized() * tilt
+	var forward := -carrier.global_transform.basis.z
+	var carrier_yaw := atan2(-forward.x, -forward.z)
+	var basis := Basis(Vector3.UP, carrier_yaw) * tilt
 	# ⚠️ PUT THE MESH IN THE HAND, NOT THE ORIGIN.
 	#
 	# 2026-07-29, reported as "floating slipper when held, make it acc be on the
