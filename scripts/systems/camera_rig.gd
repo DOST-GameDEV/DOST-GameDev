@@ -237,6 +237,30 @@ func _ready() -> void:
 		# rig framed once at _ready() would keep the previous role's distance
 		# for the whole of the next round.
 		visual.model_changed.connect(_apply_tpp_framing)
+	# 2026-07-29 — THE SELF-HIDE IS EVENT-DRIVEN NOW, not only polled.
+	#
+	# _apply_carried_self_hide() restores whatever it hid, but until this it was
+	# re-evaluated in only two places: `model_changed`/`set_active` (via
+	# _apply_fpp_self_hide) and _update_viewmodel_carry() in _process. That left a
+	# window with teeth. On a round reset the roster is walked one character at a
+	# time, so this Person's `model_changed` can fire while the slipper it was
+	# holding has not been reset yet — the rig correctly hides it, the slipper
+	# then goes LOOSE, and NOTHING re-evaluates until the next _process tick.
+	# Measured with tools/net_spawn_probe.gd: sampled one physics frame after
+	# round_started, the host's own former slipper — by then re-rolled as the CAN
+	# — was still `visible = false`.
+	#
+	# _process did clear it a frame later, so this was a narrow flicker rather
+	# than the ten-session bug (that one is Carriable.reset_for_new_round()'s
+	# stale `_held`, fixed at source). But it is the same failure shape, it is
+	# invisible to every check that is not frame-exact, and _process is not
+	# guaranteed to run at all — `set_process(active)` gates it, and a paused tree
+	# stops it outright. `held_changed` fires on every peer from the same host
+	# broadcast that changes the fact, so hanging the update on it makes hide and
+	# restore deterministic instead of "correct by the next rendered frame".
+	var carrier := _character.get_node_or_null("Carrier") as Carrier
+	if carrier != null:
+		carrier.held_changed.connect(_on_held_changed)
 	_apply_fpp_self_hide()
 	_apply_tpp_framing()
 	set_active(false)
@@ -696,6 +720,16 @@ func _apply_carried_self_hide(hide_it: bool) -> void:
 	if wanted != null:
 		wanted.visible = false
 	_hidden_carried_visual = wanted
+
+## What this Person is holding just changed. Re-evaluate the self-hide on the
+## spot rather than waiting for the next _process tick — see the connect site in
+## _ready() for why that wait was not safe.
+##
+## Takes the same `_active and _mode == Mode.FPP` gate _apply_fpp_self_hide()
+## uses rather than a bare `true`, so a rig nobody is looking through can never
+## hide a slipper on this machine.
+func _on_held_changed(_held: Carriable) -> void:
+	_apply_carried_self_hide(_active and _mode == Mode.FPP)
 
 func _apply_fpp_self_hide() -> void:
 	# The viewmodel is the inverse of the self-hide: it is the one thing that

@@ -507,6 +507,41 @@ func reset_for_new_round() -> void:
 	if carrier != null and is_instance_valid(carrier):
 		_character.remove_collision_exception_with(carrier)
 		_watch_carrier_state(carrier, false)
+		# 2026-07-29 — THE INVISIBLE SLIPPER. Reported across more than ten
+		# sessions as "the slipper is invisible to everyone except the attacker
+		# holding it", and measured on a real two-peer session with
+		# tools/net_spawn_probe.gd before this line was written.
+		#
+		# This function cleared `carrier` (below) but never told the CARRIER, so
+		# the Person's own `Carrier._held` kept pointing at a slipper that no
+		# longer considered itself carried. Every other transition out of CARRIED
+		# — _rpc_set_flying, _rpc_set_loose — calls _notify_carrier(carrier, null)
+		# and is fine; the round reset was the one path that did not, and it is
+		# the path taken by the COMMON case, because the attacker is usually still
+		# holding the tsinelas when the round ends (see _set_physics_enabled's own
+		# B-101 note directly below, which is the same oversight on the other half
+		# of this function's state).
+		#
+		# What a stale `_held` then does, on that player's machine only:
+		#
+		#   * camera_rig.gd::_apply_carried_self_hide() hides the held unit's
+		#     `Visual` for whoever is looking through their own eyes. Keyed on
+		#     `Carrier.held()`, so it keeps hiding a slipper the Person no longer
+		#     holds — FOREVER, including while somebody else is carrying it.
+		#     Roles swap every round, so that player is the DEFENDER next round:
+		#     "the defender cannot see it", exactly as reported.
+		#   * carrier.gd::_step_grab() bails on `_held != null`, so that Person can
+		#     never pick anything up again for the rest of the match.
+		#   * carrier.gd::_step_reset_channel() treats them as hands-full, so they
+		#     can never stand their own lata back up either.
+		#
+		# The last two are why this reads as "the slipper is bugged" rather than
+		# purely as a rendering fault, and why re-checking the rendering code found
+		# nothing for ten sessions.
+		#
+		# Belt and braces: `Carrier.held()` is ALSO self-healing now (see its own
+		# doc), so a future path that forgets this call cannot resurrect the bug.
+		_notify_carrier(carrier, null)
 	carrier = null
 	# 2026-07-28 — B-101. This was missing entirely. _rpc_set_carried() disables this
 	# unit's own collision the instant it's grabbed (_set_physics_enabled(false)
