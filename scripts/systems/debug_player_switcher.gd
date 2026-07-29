@@ -34,28 +34,35 @@ extends Node
 
 ## Main.tscn order, which is also the Tab cycle order (§3.5.1).
 const UNIT_NAMES: Array[String] = ["TeamAProp", "TeamAPerson", "TeamBProp", "TeamBPerson"]
-## Registered in project.godot but deliberately never bound, so a unit parked
-## here receives no REAL keyboard input at all (§3.5.2). Checklist 5.5: no
-## longer the same as "stands inert" — a parked unit with an `ai_controller`
-## (every local-test unit except `TeamAPerson`) drives itself via
-## `Input.action_press()`/`action_release()` on this same unbound action set,
-## which needs no key bound to it at all. Only `TeamAPerson`, which never gets
-## an `ai_controller`, is actually inert while parked here.
-const PARKED_PLAYER_ID: int = 4
-const SLOT_P1: int = 0
-const SLOT_P2: int = 1
-## Defaults for F6, and for the slot state established when the DebugBar
-## registers. P1 holds the Person so a fresh Single Player starts you in the human
-## character rather than third-person on a tin can; P2 gets the Prop. Must stay
-## in step with Main.tscn's baked player_id values (TeamAPerson=1, TeamAProp=2)
-## AND with `main.gd::_start_local_test()`, which picks the same unit for the
-## camera — in a release build the switcher self-frees and the baked values are
-## the only source of truth (B-67), so all three must agree in both directions.
-const DEFAULT_P1_UNIT: String = "TeamAPerson"
-const DEFAULT_P2_UNIT: String = "TeamAProp"
+## ⚠️ ONE SLOT, NOT TWO — rewritten 2026-07-29 with the input overhaul.
+##
+## This used to hold two slots (P1/P2, Shift+F1-F4 driving the second) and park
+## the other two units on `PARKED_PLAYER_ID = 4`, an action suffix registered in
+## project.godot but deliberately bound to no key. That whole mechanism is gone:
+## the user retired split-keyboard play ("u can only play as one guy on one pc
+## now"), so `*_p1..*_p4` collapsed to ONE unsuffixed action set and there is no
+## longer an unbound suffix to park anything on.
+##
+## The consequence is the invariant this file now exists to uphold. With one
+## action set, ANY local character whose AIController is absent-or-disabled reads
+## the same keys — so two of them would walk together on one keypress, which is
+## exactly the bug `PARKED_PLAYER_ID` used to prevent. Control is therefore
+## granted by MOVING AI CONTROL (see _apply_slots): the claimed unit's AI steps
+## back, every other unit's AI is switched back on, and at most one unit is ever
+## AI-free. `character_base.gd::_action()` documents the same invariant from the
+## other side.
+##
+## F5 (solo drive) is gone with the second slot — solo IS the only mode now.
+##
+## Default for F6 and for the state established when the DebugBar registers. The
+## Person, so a fresh Single Player starts you in the human character rather than
+## third-person on a tin can. Must stay in step with `main.gd::_start_local_test()`,
+## which picks the same unit for the camera — in a release build the switcher
+## self-frees and that is the only source of truth left (B-67).
+const DEFAULT_UNIT: String = "TeamAPerson"
 
-## Unit name currently held by each slot, or "" for empty (F5 solo drive).
-var _slot_units: Array[String] = [DEFAULT_P1_UNIT, DEFAULT_P2_UNIT]
+## Unit name currently driven by the human, or "" for none (every unit under AI).
+var _slot_unit: String = DEFAULT_UNIT
 var _bar: DebugBar = null
 
 func _ready() -> void:
@@ -71,7 +78,7 @@ func _ready() -> void:
 ## `player_id` values Main.tscn happens to ship with.
 func debug_register_bar(bar: DebugBar) -> void:
 	_bar = bar
-	_slot_units = [DEFAULT_P1_UNIT, DEFAULT_P2_UNIT]
+	_slot_unit = DEFAULT_UNIT
 	if NetworkManager.is_networked():
 		# Solo-host QoL: the local-test node names below don't exist in a
 		# networked match at all (main.gd's _clear_local_test_characters()
@@ -120,20 +127,17 @@ func _input(event: InputEvent) -> void:
 	# layout-independent one; keycode is the fallback for platforms that only
 	# populate that.
 	var code: int = key.physical_keycode if key.physical_keycode != 0 else key.keycode
-	var slot: int = SLOT_P2 if key.shift_pressed else SLOT_P1
 
+	# Shift is no longer read at all: there is one slot, so Shift+F1-F4 has
+	# nothing to address. F5 (solo drive) is gone for the same reason — parking
+	# the second slot was the whole of what it did, and solo is now the only mode.
 	match code:
 		KEY_F1, KEY_F2, KEY_F3, KEY_F4:
-			_assign(slot, UNIT_NAMES[code - KEY_F1])
+			_assign(UNIT_NAMES[code - KEY_F1])
 		KEY_TAB:
-			_cycle(slot)
-		KEY_F5:
-			# Solo drive: one unit live, three inert. Shift is irrelevant here,
-			# so this is checked as its own case rather than through `slot`.
-			_assign(SLOT_P2, "")
+			_cycle()
 		KEY_F6:
-			_slot_units = [DEFAULT_P1_UNIT, DEFAULT_P2_UNIT]
-			_apply_slots()
+			_assign(DEFAULT_UNIT)
 		_:
 			return
 	get_viewport().set_input_as_handled()
@@ -217,85 +221,94 @@ func _solo_networked_unit() -> CharacterBase:
 			return character
 	return null
 
-func _assign(slot: int, unit_name: String) -> void:
-	# A slot never takes a unit the other slot already holds, so the two can
-	# never both sit on the same `player_id` and move together on one keypress.
-	var other := SLOT_P1 if slot == SLOT_P2 else SLOT_P2
-	if unit_name != "" and _slot_units[other] == unit_name:
-		_slot_units[other] = ""
-	_slot_units[slot] = unit_name
+func _assign(unit_name: String) -> void:
+	_slot_unit = unit_name
 	_apply_slots()
 
-## ⚠️ SWAPS with the other slot; it must NOT skip. This is the actual reason the
-## 0.4 playtest said "I can't Tab to the can", and it was a real bug rather than
-## the mode confusion it first looked like.
+## Every unit is reachable in one lap, which is what the 0.4 playtest's "I can't
+## Tab to the can" was actually about.
 ##
-## The old loop skipped any candidate the other slot already held. P2 holds
-## `DEFAULT_P2_UNIT` = "TeamAProp" and never moves on its own, so "TeamAProp" was
-## permanently excluded from P1's cycle — and in round 1 Team A defends, which
-## means **TeamAProp IS the Can**. P1 could reach TeamBProp and TeamBPerson and
-## then wrap straight back past the one unit the player was trying to look at.
-## Measured, not guessed: pressing Tab twice from a fresh Single Player walked
-## TeamAPerson -> TeamBProp -> TeamBPerson, never touching TeamAProp.
-##
-## Swapping keeps the invariant that mattered — the two slots can never hold the
-## same unit and move together on one keypress — while making every unit
-## reachable in one lap. The other slot simply inherits whatever this one was
-## driving.
-func _cycle(slot: int) -> void:
-	var other := SLOT_P1 if slot == SLOT_P2 else SLOT_P2
-	var start := UNIT_NAMES.find(_slot_units[slot])
-	var candidate := UNIT_NAMES[(start + 1) % UNIT_NAMES.size()]
-	if _slot_units[other] == candidate:
-		_slot_units[other] = _slot_units[slot]
-	_slot_units[slot] = candidate
+## ⚠️ That bug is now structurally impossible rather than merely fixed, and the
+## reason is worth keeping. The old two-slot cycle skipped any candidate the OTHER
+## slot held; P2 defaulted to "TeamAProp" and never moved, so TeamAProp was
+## permanently excluded — and in round 1 Team A defends, which means TeamAProp IS
+## the Can. Measured at the time: Tab twice from a fresh Single Player walked
+## TeamAPerson -> TeamBProp -> TeamBPerson, never touching the one unit the player
+## was trying to look at. With one slot there is no other slot to skip against, so
+## the cycle is a plain walk over UNIT_NAMES.
+func _cycle() -> void:
+	var start := UNIT_NAMES.find(_slot_unit)
+	_slot_unit = UNIT_NAMES[(start + 1) % UNIT_NAMES.size()]
 	_apply_slots()
 
-## The whole mechanism (§3.5.2): reassign the public `player_id` export from the
-## outside. `character_base.gd` needs no changes at all — it already resolves
-## input through `_action(name) -> "%s_p%d"`. Only ever called from
-## `_unhandled_key_input`, never mid-`_physics_process`, or a unit inherits a
-## half-consumed edge-triggered press on the frame it gains control.
+## ⚠️ THE MECHANISM CHANGED 2026-07-29. It used to reassign the public
+## `player_id` export from the outside, because `character_base.gd` resolved
+## input through `_action(name) -> "%s_p%d"` and a unit could therefore be parked
+## by giving it a suffix bound to no key. The input overhaul collapsed all four
+## suffixes into one action set, so `player_id` no longer selects anything and
+## parking that way is impossible.
 ##
-## Checklist 5.5: three of these four units may now have an `ai_controller`
-## (main.gd::_attach_ai — never `TeamAPerson`, the human's own default unit).
-## A slot claiming a unit is a human taking manual control of it, same as it
-## always was — the AI for that specific unit has to step back rather than
-## fight the human for the same buttons, so it is disabled exactly when a
-## slot holds it and re-enabled the instant it is parked again. This is what
-## makes F5 (solo drive, parks P2) put `TeamAProp` back under AI control
-## instead of leaving it inert, which is what actually happens in Single
-## Player outside the debug switcher entirely.
+## Control is now granted by MOVING AI CONTROL, which was already half the old
+## implementation (checklist 5.5 had it disabling the claimed unit's AI so it
+## would not fight the human for the same buttons). That is now the WHOLE of it:
+##
+##   * the claimed unit's AIController is disabled -> `_ai_driven()` false ->
+##     it reads the `Input` singleton, i.e. the human's keys;
+##   * every other unit's AIController is enabled -> it reads `_ai_intent` and
+##     never touches `Input` at all.
+##
+## ⚠️ THE INVARIANT: at most one local unit may be AI-free at a time. With a
+## single action set there is nothing else keeping two units off the same keys —
+## two AI-free units would walk together on one keypress, which is precisely what
+## `PARKED_PLAYER_ID` used to prevent. One slot is what enforces it, which is why
+## the second slot and F5 went away rather than being ported.
+##
+## `TeamAPerson` never gets an `ai_controller` at all (main.gd::_attach_ai), so
+## it is inert rather than AI-driven when something else is claimed. That is the
+## one asymmetry left and it is pre-existing.
+##
+## Only ever called from `_input`, never mid-`_physics_process`, or a unit
+## inherits a half-consumed edge-triggered press on the frame it gains control.
 func _apply_slots() -> void:
 	for unit_name in UNIT_NAMES:
 		var unit := _find_unit(unit_name)
 		if unit == null:
 			continue
-		var slot := _slot_units.find(unit_name)
-		unit.player_id = slot + 1 if slot != -1 else PARKED_PLAYER_ID
+		var is_driven := unit_name == _slot_unit
+		# `player_id` is deliberately NOT written any more — it is the match-slot
+		# identity now, nothing to do with input. Writing it here is what the old
+		# mechanism did and it would be a silent no-op today.
+		#
+		# ⚠️ BOTH LINES ARE LOAD-BEARING AND THEY ARE NOT REDUNDANT.
+		# `input_parked` is what actually makes an unclaimed unit deaf to the
+		# keyboard; re-enabling its AI is what makes it play on rather than stand
+		# inert. Moving AI control ALONE is not enough, and tools/input_probe.gd
+		# is what proved it: `main.gd::_attach_ai` never gives `TeamAPerson` an
+		# AIController, so with only the line below, Tabbing away from it left it
+		# AI-free and still listening — 2 units answering one keypress, and 3
+		# after another Tab.
+		unit.input_parked = not is_driven
 		if unit.ai_controller != null:
-			unit.ai_controller.set_enabled(slot == -1)
+			unit.ai_controller.set_enabled(not is_driven)
 
 		# §3.5.3: the switcher picks WHICH rig is active via the rig's ordinary
 		# public API; it never touches the FPP/TPP mode, which stays derived
-		# from is_person (§0.1). Only the P1 slot drives the camera — the P2
-		# unit is driven blind off the P1 view, which is what F5 exists for.
+		# from is_person (§0.1). The driven unit is the camera holder, since it
+		# is now the only unit a human is driving at all.
 		var rig := unit.get_node_or_null("CameraRig") as CameraRig
 		if rig != null:
-			var is_camera_holder := slot == SLOT_P1
-			rig.set_active(is_camera_holder)
-			rig.set_aim_source(CameraRig.AimSource.MOUSE if is_camera_holder else CameraRig.AimSource.MOVEMENT)
+			rig.set_active(is_driven)
+			rig.set_aim_source(CameraRig.AimSource.MOUSE if is_driven else CameraRig.AimSource.MOVEMENT)
 
 	_refresh_bar()
 
 ## One-line summary of what a slot is holding. Must carry is_person, is_can,
 ## team and current side (§3.5.4) — that is exactly the state that silently
 ## changes under you when roles swap between rounds.
-func _describe(slot: int) -> String:
-	var unit_name := _slot_units[slot]
-	if unit_name == "":
+func _describe() -> String:
+	if _slot_unit == "":
 		return "—"
-	return _describe_unit(_find_unit(unit_name), unit_name)
+	return _describe_unit(_find_unit(_slot_unit), _slot_unit)
 
 func _describe_unit(unit: CharacterBase, label: String) -> String:
 	if unit == null:
@@ -321,6 +334,6 @@ func _refresh_bar() -> void:
 	if _bar == null:
 		return
 	if NetworkManager.is_networked():
-		_bar.debug_refresh(_describe_unit(_solo_networked_unit(), "you"), "—")
+		_bar.debug_refresh(_describe_unit(_solo_networked_unit(), "you"))
 	else:
-		_bar.debug_refresh(_describe(SLOT_P1), _describe(SLOT_P2))
+		_bar.debug_refresh(_describe())

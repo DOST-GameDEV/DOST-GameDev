@@ -151,18 +151,22 @@ enum State { NORMAL, STAGGERED, DOWNED, SEALED }
 ## Fixed for the whole match, same lifetime as `is_person`. Set by main.gd at
 ## spawn (both the networked flow and the local-test flow).
 @export var team: int = 0
-## Which local input set this character reads from (1-4). Lets multiple
-## characters share one keyboard without both moving on the same WASD press —
-## see project.godot [input]: every action is suffixed "_p1".."_p4". p1/p2 are
-## bound to real keys (WASD+Space / Arrows+Enter); p3/p4 are registered but
-## deliberately left unbound (see project.godot [input]) — no real hardware
-## keystroke can ever land on them. Two uses fall out of that: a character
-## with an unbound player_id and no AIController simply never receives input,
-## standing in as Single Player's local-test dummy (see main.gd's local
-## _ready() branch); and it's the range main.gd assigns to every AI-driven
-## networked character (see _build_spawn_data), so AIController's
-## Input.action_press() calls can never collide with a real human's own p1/p2
-## keystrokes on the same machine.
+## Which match slot this character holds (1-4).
+##
+## ⚠️ NO LONGER SELECTS AN INPUT SET. Until 2026-07-29 this picked between four
+## suffixed action sets ("_p1".."_p4") so two humans could share one keyboard,
+## and p3/p4 were registered-but-unbound so an AI or a parked unit could never
+## answer a real keystroke. The user retired split-keyboard play ("u can only
+## play as one guy on one pc now") and all four collapsed into ONE unsuffixed
+## set, so none of that is true any more:
+##
+##   * `_action()` is the identity — every character reads the same actions;
+##   * an AI-driven character reads `_ai_intent` and never touches `Input`;
+##   * `input_parked` is the explicit replacement for the unbound-suffix trick.
+##
+## What survives is the slot identity itself: `main.gd::_build_spawn_data` ships
+## it in the networked spawn payload, and `you_card.gd` uses it to find the local
+## character. Assigning it grants no control and silences nothing.
 @export_range(1, 4, 1) var player_id: int = 1
 
 ## Which `CharacterRoster` entry this Person wears. -1 means "no pick" and is the
@@ -1241,49 +1245,33 @@ func _on_state_changed_audio(new_state: State) -> void:
 			pass # the impact that caused it already sounded — see _flash_hit
 	_audio_prev_state = new_state
 
-## The input slot a NETWORKED human reads, regardless of match slot. See _action.
-const NET_INPUT_SLOT: int = 1
-
-## Maps a base action name (e.g. "move_left") to this character's own input
-## action (e.g. "move_left_p1" / "move_left_p2"), per `player_id`.
+## Maps a base action name to its input action. Since 2026-07-29 that mapping is
+## the identity — the suffix is gone and this exists only so every call site
+## still routes through one place.
 ##
-## ⚠️ NETWORKED PLAY DELIBERATELY IGNORES `player_id` HERE. This is the fix for
-## the 2026-07-29 report: "In lan multiplayer we cant move any character."
+## ⚠️ THERE IS EXACTLY ONE ACTION SET NOW, AND `player_id` NO LONGER SELECTS IT.
+## User decision, 2026-07-29: "remove p1 p2 bindings bcz we overhauled that plan
+## — u can only play as one guy on one pc now." Split-keyboard local 2-player is
+## retired, so `*_p1..*_p4` collapsed to one unsuffixed set carrying the old p1
+## bindings (WASD / E / mouse). This supersedes B-130, which had networked humans
+## force-read p1 while local ones still went by slot; with one set there is
+## nothing left to disambiguate.
 ##
-## `player_id` is a SPLIT-KEYBOARD concept — two humans sharing one keyboard, so
-## one gets WASD (p1) and the other arrows (p2). Over LAN that premise is false:
-## every peer is a separate machine with its own keyboard, and each human should
-## use their own p1 bindings no matter which match slot they were dealt.
+## `player_id` survives as the MATCH-SLOT identity — spawn data ships it and
+## `main.gd::_build_spawn_data` still assigns it — it simply no longer decides
+## which keys anyone reads.
 ##
-## B-30 made `player_id` index-based on the networked path
-## (`main.gd::_build_spawn_data`: `(index % 2) + 1`), so the peer holding an odd
-## index — the Prop of each team — got p2 and had to press ARROW KEYS. Worse,
-## `grab_p2` carries no mouse binding at all, so that player could not grab
-## either. B-30's own comment records that the previous behaviour (every
-## networked character stuck at p1) was "harmless by accident (one human per LAN
-## machine binds p1 and controls whichever single character is theirs)" — that
-## accident was load-bearing, and B-30 traded it for the Settings P2 rebind
-## column without anything on the networked path testing movement.
-##
-## Scoped as tightly as it can be, because the collision this avoids is real:
-##   * `is_multiplayer_authority()` — the only character this machine simulates
-##     at all (see the early return in _physics_process), so no second character
-##     can be reading the same keys.
-##   * `ai_controller == null` — an AI-driven character on the HOST is also
-##     authoritative, and must keep its unbound p3/p4 suffix. Those are
-##     registered but deliberately bound to no key precisely so an AI can never
-##     collide with a human's keystrokes; remapping them to p1 would put every
-##     host-run bot on the host's own WASD.
-##
-## ⚠️ Consequence worth stating: networked play now always reads the P1 column,
-## so the Settings panel's P2 rebind column applies to LOCAL split-keyboard play
-## only. That is the correct meaning for it, but it is a behaviour change and the
-## Settings screen does not currently say so.
+## ⚠️ WHAT NOW KEEPS TWO LOCAL CHARACTERS OFF THE SAME KEYS. It used to be the
+## suffix: a parked or AI unit was handed an unbound p3/p4 so its Input reads
+## could never collide with a human's. That guard is gone, so the ONLY thing
+## separating them is `_ai_driven()` — an AI-controlled character reads
+## `_ai_intent` and never touches the `Input` singleton at all. The invariant is
+## therefore "at most one local character is AIController-free at a time", and
+## `debug_player_switcher.gd` is what upholds it: it takes control by MOVING the
+## AIController, not by reassigning `player_id`. If a second local character ever
+## ends up with `ai_controller == null`, both will walk on one keypress.
 func _action(base_name: String) -> String:
-	var slot := player_id
-	if NetworkManager.is_networked() and is_multiplayer_authority() and ai_controller == null:
-		slot = NET_INPUT_SLOT
-	return "%s_p%d" % [base_name, slot]
+	return base_name
 
 ## ---------------------------------------------------------------------------
 ## PER-CHARACTER INPUT. Read through these, never through `Input` directly.
@@ -1336,20 +1324,49 @@ func ai_clear_intent() -> void:
 	_ai_intent.clear()
 	_ai_intent_prev.clear()
 
+## ⚠️ THE EXPLICIT REPLACEMENT FOR THE UNBOUND p3/p4 SUFFIX. Set true on every
+## local character except the one the human is driving.
+##
+## Parking used to be implicit: `debug_player_switcher.gd` handed an unclaimed
+## unit `player_id = 4`, and p4 was registered in project.godot but bound to no
+## key, so its `Input` reads could never come back true. The 2026-07-29 input
+## overhaul collapsed all four suffixes into one action set and took that guard
+## with it.
+##
+## "Just rely on the AIController" is NOT sufficient, and tools/input_probe.gd
+## caught it: `main.gd::_attach_ai` never attaches one to `TeamAPerson` (it is
+## the human's own default unit), so the moment the switcher moved control
+## elsewhere, TeamAPerson stayed AI-free and BOTH units answered the keyboard —
+## measured at 2 responders on one keypress, and 3 after two Tabs.
+##
+## So the guard is a flag now rather than an emergent property of who happens to
+## own an AIController. Read by every `input_*` accessor below, so a parked unit
+## is deaf to hardware no matter which accessor asks.
+##
+## ⚠️ Does NOT touch `_ai_intent`. Parking is about the KEYBOARD; an AI-driven
+## character still drives itself normally while parked, which is exactly what
+## should happen to the three units the human is not currently holding.
+var input_parked: bool = false
+
+## True when hardware input reaches this character at all: not AI-driven, and not
+## parked. The single place the two guards combine.
+func _reads_hardware() -> bool:
+	return not _ai_driven() and not input_parked
+
 func input_pressed(base_name: String) -> bool:
 	if _ai_driven():
 		return _ai_intent.get(base_name, false)
-	return Input.is_action_pressed(_action(base_name))
+	return _reads_hardware() and Input.is_action_pressed(_action(base_name))
 
 func input_just_pressed(base_name: String) -> bool:
 	if _ai_driven():
 		return _ai_intent.get(base_name, false) and not _ai_intent_prev.get(base_name, false)
-	return Input.is_action_just_pressed(_action(base_name))
+	return _reads_hardware() and Input.is_action_just_pressed(_action(base_name))
 
 func input_just_released(base_name: String) -> bool:
 	if _ai_driven():
 		return _ai_intent_prev.get(base_name, false) and not _ai_intent.get(base_name, false)
-	return Input.is_action_just_released(_action(base_name))
+	return _reads_hardware() and Input.is_action_just_released(_action(base_name))
 
 ## Godot's `Input.get_vector` equivalent for this character's own source.
 func input_vector(neg_x: String, pos_x: String, neg_y: String, pos_y: String) -> Vector2:
@@ -1358,6 +1375,8 @@ func input_vector(neg_x: String, pos_x: String, neg_y: String, pos_y: String) ->
 			(1.0 if _ai_intent.get(pos_x, false) else 0.0) - (1.0 if _ai_intent.get(neg_x, false) else 0.0),
 			(1.0 if _ai_intent.get(pos_y, false) else 0.0) - (1.0 if _ai_intent.get(neg_y, false) else 0.0))
 		return v.normalized() if v.length() > 1.0 else v
+	if not _reads_hardware():
+		return Vector2.ZERO
 	return Input.get_vector(_action(neg_x), _action(pos_x), _action(neg_y), _action(pos_y))
 
 ## Public form of _action(), for the Task 0 carry components (carriable.gd,
