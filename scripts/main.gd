@@ -387,12 +387,17 @@ var _spawned_characters: Dictionary = {} # peer_id -> CharacterBase
 ## peer's slot after they disconnect (_rpc_convert_to_ai) — instead of just
 ## freezing. Both give the character multiplayer authority 1 (the host, who
 ## already runs round logic) and add_child() an AIController the same way
-## Single Player does (see ai_controller.gd's own class doc), with player_id
-## bumped to the unbound 3/4 range so its Input.action_press() calls can never
-## collide with a real human's own p1/p2 keystrokes on the same (host)
-## machine — see _build_spawn_data's own doc for that trap and its fix.
+## Single Player does (see ai_controller.gd's own class doc).
 ## Handing a slot BACK to a reconnecting/new human (_rpc_reclaim_character)
 ## detaches the AIController and restores the human 1/2 player_id range.
+##
+## ⚠️ The player_id 3/4 range is now BOOKKEEPING, not a guard. It used to be the
+## isolation mechanism — p3/p4 were unbound, so an AI's Input.action_press()
+## could not collide with a human's keystrokes on the host machine. Two changes
+## retired that: AIController stopped driving `Input` at all (it writes
+## `_ai_intent`, see ai_controller.gd), and the 2026-07-29 overhaul collapsed the
+## four suffixed action sets into one. Isolation is now `_ai_driven()` plus
+## `CharacterBase.input_parked`.
 var _index_to_character: Dictionary = {}
 
 func _ready() -> void:
@@ -875,29 +880,29 @@ func _build_spawn_data(peer_id: int, index: int) -> Dictionary:
 	# on purpose: it is a fixed-for-the-match input-binding assignment, a
 	# different question from where this round's fight actually starts.
 	var spawn_pos: Vector3 = _spawn_point(_role_slot(is_can, is_person, team_is_can_side))
-	# B-30: CharacterBase.player_id was never set on a networked spawn, so every
-	# networked character kept the scene default of 1 and read *_p1 actions —
-	# harmless by accident (one human per LAN machine binds p1 and controls
-	# whichever single character is theirs) except the Settings panel's entire
-	# P2 rebind column was dead in networked play. Mirror the is_person split
-	# (index % 2) so the Person of each team gets slot 1 (WASD default) and the
-	# Prop gets slot 2 (arrows default) — a fixed-for-the-match assignment,
-	# same lifetime as is_person. Note this does NOT give the moodboard's
-	# WASD-tracks-Attacker/arrows-tracks-Defender scheme, since Attacker/
-	# Defender swaps every round while a peer's is_person/player_id don't;
-	# that would need input rebinding on every role swap, not just this fix.
+	# ⚠️ B-130, AND THE HISTORY IS THE POINT — DO NOT "RESTORE" INPUT MEANING HERE.
 	#
-	# AI takeover: `peer_id < 0` is the existing negative-sentinel convention
-	# (see _fill_empty_slots_with_placeholders / _rpc_convert_to_ai) for a slot
-	# with no real human behind it. Those get player_id 3/4 instead of 1/2 —
-	# p3/p4 are registered in project.godot but deliberately left unbound to
-	# any real key (see CharacterBase.player_id's own doc), so an AIController's
-	# Input.action_press() on that suffix can never collide with a real human's
-	# own p1/p2 keystrokes, even when both are simulated on the same machine
-	# (the host, which is who actually runs an AI-driven character's physics —
-	# see _build_networked_character). Flagged as a real trap by the
-	# networking-lane handoff before any AI was wired into networked play at
-	# all; this is that fix.
+	# B-30 set this because CharacterBase.player_id was never assigned on a
+	# networked spawn: every networked character kept the scene default of 1 and
+	# read *_p1 actions. B-30's own note called that "harmless by accident (one
+	# human per LAN machine binds p1 and controls whichever single character is
+	# theirs)" and changed it to the index-based split below so the Settings
+	# panel's P2 rebind column would work in networked play.
+	#
+	# That accident was load-bearing and the trade was a bad one. Each LAN peer is
+	# a separate machine with its own keyboard, so the peer dealt an odd index got
+	# player_id 2 — arrow keys — and pressing WASD did nothing. `grab_p2` carried
+	# no mouse binding at all, so that player could not grab either. Reported
+	# 2026-07-29 as "In lan multiplayer we cant move any character". The P2 rebind
+	# column it was paying for had itself been removed from the panel on
+	# 2026-07-28, so by then it bought nothing.
+	#
+	# Both ends are settled now: the input overhaul collapsed *_p1..*_p4 into one
+	# unsuffixed action set, so this value no longer selects any input at all. It
+	# is kept as the match-slot identity — shipped in the spawn payload, read by
+	# you_card.gd to find the local character — and the 3/4 range still marks an
+	# AI-held slot for bookkeeping (see _attach_ai's doc for why that is no longer
+	# an isolation mechanism either).
 	var player_id := (index % 2) + (3 if peer_id < 0 else 1)
 	return {
 		"peer_id": peer_id, "position": spawn_pos, "is_can": is_can,

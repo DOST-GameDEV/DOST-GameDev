@@ -263,13 +263,30 @@ func _find_local_character() -> CharacterBase:
 		if main and main.has_method("get_local_character"):
 			return main.get_local_character()
 		return null
-	return _find_by_player_id(get_tree().current_scene, 1)
+	return _find_hardware_character(get_tree().current_scene)
 
-func _find_by_player_id(node: Node, id: int) -> CharacterBase:
-	if node is CharacterBase and node.player_id == id:
-		return node
+## ⚠️ FINDS THE UNIT THE KEYBOARD ACTUALLY DRIVES, not `player_id == 1`.
+##
+## This used to scan for player_id 1, which worked only because the debug
+## switcher granted control BY REASSIGNING player_id — so "slot 1" and "the unit
+## you are driving" were the same thing by construction. The 2026-07-29 input
+## overhaul collapsed the four action sets into one and the switcher now moves
+## AI control and `input_parked` instead, leaving player_id fixed for the match.
+## Scanning for 1 would therefore pin the YOU card to whichever unit was dealt
+## slot 1 and leave it there while you Tab through the other three.
+##
+## Matches `character_base.gd::_reads_hardware()` — not AI-driven, not parked —
+## which is the same predicate tools/input_probe.gd asserts is true for at most
+## one local unit at a time. That uniqueness is what makes "first match wins"
+## correct here rather than arbitrary.
+func _find_hardware_character(node: Node) -> CharacterBase:
+	var ch := node as CharacterBase
+	if ch != null:
+		var ai_driven: bool = ch.ai_controller != null and ch.ai_controller.is_enabled()
+		if not ai_driven and not ch.input_parked:
+			return ch
 	for child in node.get_children():
-		var found := _find_by_player_id(child, id)
+		var found := _find_hardware_character(child)
 		if found:
 			return found
 	return null

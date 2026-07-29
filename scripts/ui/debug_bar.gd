@@ -27,7 +27,10 @@ func _ready() -> void:
 		label.add_theme_font_override("font", ThemeDB.fallback_font)
 		label.add_theme_color_override("font_color", Color.WHITE)
 		label.add_theme_font_size_override("font_size", 13)
-	_keys_label.text = "F1-F4 set P1 · Shift+F1-F4 set P2 · Tab cycle · F5 solo · F6 reset"
+	# One slot since the 2026-07-29 input overhaul — Shift+F1-F4 and F5 (solo)
+	# both addressed the second slot, which no longer exists. See
+	# debug_player_switcher.gd::_apply_slots for why there can only be one.
+	_keys_label.text = "F1-F4 drive · Tab cycle · F6 reset"
 
 	# Debug registers itself with debug; no gameplay script names either one.
 	DebugPlayerSwitcher.debug_register_bar(self)
@@ -40,5 +43,5 @@ func _ready() -> void:
 func _on_round_started(_round_number: int, _team_a_is_can: bool) -> void:
 	DebugPlayerSwitcher.debug_refresh_readout()
 
-func debug_refresh(p1_text: String, p2_text: String) -> void:
-	_slots_label.text = "DEBUG  P1▶ %s   P2▶ %s" % [p1_text, p2_text]
+func debug_refresh(driven_text: String) -> void:
+	_slots_label.text = "DEBUG  ▶ %s" % driven_text

@@ -28,18 +28,27 @@ const SETTINGS_PATH: String = "user://settings.cfg"
 const SETTINGS_SECTION: String = "input"
 
 ## Ordered for display purposes — the Settings panel iterates this directly.
-## P1 only — see this file's class doc for why P2 was removed 2026-07-28.
+##
+## Unsuffixed since the 2026-07-29 input overhaul: `*_p1..*_p4` collapsed to one
+## action set when split-keyboard play was retired. The panel had already dropped
+## its P2 column on 2026-07-28, so this is a rename rather than a scope change.
+##
+## ⚠️ A `user://settings.cfg` written before that overhaul has its overrides keyed
+## by the old `*_p1` names. Nothing here reads them any more, so a player who had
+## rebound keys silently gets the defaults back once. Harmless, and cheaper than
+## a migration for a pre-release build, but it IS a real (one-time) loss of the
+## player's settings rather than a no-op.
 const REBINDABLE_ACTIONS: Array[String] = [
-	"move_left_p1", "move_right_p1", "move_up_p1", "move_down_p1",
-	"bump_p1", "guard_dash_p1", "special_ability_p1", "jump_p1",
+	"move_left", "move_right", "move_up", "move_down",
+	"bump", "guard_dash", "special_ability", "jump",
 ]
 
 ## Human-readable labels for the panel — action string -> display text.
 const ACTION_LABELS: Dictionary = {
-	"move_left_p1": "Move Left", "move_right_p1": "Move Right",
-	"move_up_p1": "Move Up", "move_down_p1": "Move Down",
-	"bump_p1": "Bump", "guard_dash_p1": "Guard/Dash",
-	"special_ability_p1": "Special Ability", "jump_p1": "Jump",
+	"move_left": "Move Left", "move_right": "Move Right",
+	"move_up": "Move Up", "move_down": "Move Down",
+	"bump": "Bump", "guard_dash": "Guard/Dash",
+	"special_ability": "Special Ability", "jump": "Jump",
 }
 
 ## action -> physical_keycode captured from the project's InputMap defaults,
