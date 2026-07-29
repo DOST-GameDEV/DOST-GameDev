@@ -118,7 +118,11 @@ func _ready() -> void:
 		_hit_targets_this_throw.clear()
 		# host_throw takes the POINT to aim at, not a direction — it solves the
 		# launch angle that lands there (carriable.gd::_solve_arc).
-		carriable.host_throw(aim_point, 1.0)
+		# Sight-line origin, matching the production path (carrier.gd::_throw_origin).
+		# The Person's eye is CameraRig's FPP height above its origin.
+		var throw_from := _attacker.global_position + Vector3.UP * 1.35 \
+			+ (aim_point - _attacker.global_position).normalized() * Carrier.MUZZLE_FORWARD
+		carriable.host_throw(throw_from, aim_point, 1.0)
 		# The pulse hitbox is spawned INSIDE host_throw's broadcast, so it does
 		# not exist until after that call — re-arm the watch every throw or the
 		# flight hitbox's own hits go uncounted.
@@ -418,7 +422,13 @@ func _ballistic_throw(origin: Vector3, charge: float) -> Vector3:
 	await get_tree().physics_frame
 	if carriable.state != Carriable.CarryState.CARRIED:
 		return Vector3.INF
-	carriable.host_throw(_can.global_position + Vector3(0, 0.25, 0), charge)
+	# Sight-line origin, matching the production path (carrier.gd::_throw_origin).
+	# The sweep measures where a throw LANDS, so it has to leave from where a real
+	# throw leaves from — the eye, not the slipper's own position.
+	var aim_at := _can.global_position + Vector3(0, 0.25, 0)
+	var eye := _attacker.global_position + Vector3.UP * 1.35
+	carriable.host_throw(eye + (aim_at - eye).normalized() * Carrier.MUZZLE_FORWARD,
+		aim_at, charge)
 	# ⚠️ FIRST GROUND CONTACT, NOT THE RESTING PLACE. Returning the position where
 	# the slipper finally stops measures the throw PLUS the bounce PLUS the roll,
 	# which is why the first run reported a 3.94 m "scatter" on a solved arc: a

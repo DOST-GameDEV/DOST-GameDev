@@ -2082,6 +2082,59 @@ styling was touched.** No second lane was running to hand it to.
 is a push to `integration`, and no second lane was running to lose a race to.
 `project.godot` was not touched at all.
 
+### 10.6 · Slipper throw trajectory `[~]` — probe-verified, not played
+
+**2026-07-29.** User report: *"the height of the trajectory when throwing the
+slippers is too low. make it so that when you throw it, the height trajectory
+would align to the player's crosshair."* The third report of the same feeling,
+and the first one where the cause was not what it looked like.
+
+- [x] **The landing point was already correct.** `_solve_arc()` was putting the
+      slipper through the crosshair point to within 0.18–0.31 m — measured with
+      `tools/aim_probe.gd` before changing anything. Two previous passes had
+      already fixed the aim, which is why a third aim fix would have found
+      nothing.
+- [x] **What was wrong was the shape of the flight in between.** The slipper left
+      the CharacterBase origin at hand height (y 0.89) while the player sights
+      from the eye (y 1.35), so the whole path hung under the line being aimed
+      along and only met it at the target. Measured sag below the eye→crosshair
+      line, in-engine, first 3 m of flight:
+
+      | launch origin | near-field sag |
+      |---|---|
+      | the slipper's own position (before) | **0.317 – 0.386 m** |
+      | the sight line (after)              | **0.000 – 0.006 m** |
+
+      ⚠️ **The peak was within 0.22 m of the player** — i.e. the slipper dropping
+      out of the bottom of the screen the instant it was released. No amount of
+      tuning the launch ANGLE could have fixed that; the path was right and the
+      starting height was not.
+- [x] **Fix:** the throw is solved from, and launched from, the sight line
+      (`carrier.gd::_throw_origin`), 0.15 m ahead of the eye. Landing accuracy is
+      unchanged (0.18–0.31 m either way), so it costs nothing in aim.
+- [x] **`tools/aim_probe.gd` gained a sag metric** so this cannot silently
+      regress. ⚠️ It measures the FIRST 3 m only — the first cut measured the
+      whole flight and duly failed a perfectly good 23 m lob by 4.4 m, because a
+      ballistic arc *must* fall below the straight chord over a long throw. The
+      near field is where the defect lived and the only place the metric means
+      anything.
+- [ ] ⚠️ **A REGRESSION THIS PASS CAUSED AND DID NOT FIX — see `Handoff.md`
+      B-132.** Throws connecting against the *evading AI Can* fell from 9/12 to
+      5/12, because a higher launch arrives on a steeper line and an unchanged
+      sidestep clears it more often. Not retuned here on purpose: Phase 9's own
+      fairness log calls Can evasion "the biggest single balance lever", so
+      moving it wants a win-rate run behind it rather than being a side effect of
+      a throw-feel fix. Affects the AI Can only — a human Can has no auto-dodge.
+- **Not done by this pass:** the wind-up direction. Reported in the same
+      breath and fixed independently by 🔧 build as **B-131** while this was in
+      progress; the change made here was discarded in favour of theirs.
+- ⚠️ **Cosmetic caveat, unaddressed:** to a third-person observer the slipper now
+      leaves from the thrower's head rather than their hand — 0.46 m higher. Not
+      visible to the thrower, who is in first person and is the player this fix
+      is for, but it is a real difference and nobody has looked at it in a
+      running match.
+- ⚠️ **Never played.** Every number above is a probe result.
+
 ## Phase 9 · AI FAIRNESS LOG — the running record for balance testing
 
 **Human call, 2026-07-29:** *"Make sure the AI's fulfil their roles as well and try to win (attacker
