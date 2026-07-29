@@ -52,6 +52,10 @@ func _ready() -> void:
 		_out = args[1]
 	if _mode == "match":
 		_build_match()
+	elif _mode == "round2":
+		_build_match()
+	elif _mode == "canwatch":
+		_build_match()
 	elif _mode == "lobby":
 		_build_lobby()
 	else:
@@ -147,10 +151,37 @@ func _unit(scene: PackedScene, id: String, is_person: bool, is_can: bool,
 
 func _process(_delta: float) -> void:
 	_frames += 1
+	if _mode == "canwatch":
+		_canwatch()
+		return
 	if _mode == "match":
 		# Let main.gd spawn, let RoundManager start, let the HUD populate.
 		if _frames == 120:
 			_shot("match_fpp")
+			get_tree().quit()
+		return
+
+	if _mode == "round2":
+		# 2026-07-28 — main.gd's pre-round free-roam (checklist 2.8) means
+		# begin_next_round() no longer fires on its own; drive it directly here
+		# rather than simulating a "ready_up" key press, then force a round win
+		# to reach round 2 without waiting out a real 90s timer. Prints every
+		# unit's role/position at both round starts so a spawn-layout bug is a
+		# console diff, not a guess from a screenshot angle.
+		if _frames == 5:
+			MatchManager.begin_next_round() # round 1 -- normally gated behind ready_up
+		if _frames == 20:
+			_dump_positions("ROUND 1 (frame 20)")
+		if _frames == 30:
+			RoundManager.report_round_win(true) # the real entry point -- sets round_active=false
+			                                     # AND calls MatchManager.report_round_result()
+		if _frames == 50:
+			_dump_positions("ROUND 2, after report_round_result (frame 50)")
+		if _frames == 70:
+			MatchManager.begin_next_round() # the intermission's own delayed call, forced now
+		if _frames == 90:
+			_dump_positions("ROUND 2, after begin_next_round (frame 90)")
+			_shot("round2_fpp")
 			get_tree().quit()
 		return
 
@@ -207,6 +238,66 @@ func _process(_delta: float) -> void:
 	if _frames == 125:
 		_shot("viewmodel_tpp")
 		get_tree().quit()
+
+## canwatch — "the can keeps teleporting", reported repeatedly and never pinned
+## to a frame. Drives a real match and prints the Can's position EVERY frame it
+## MOVES more than a step, so a teleport shows up as one line with the frame
+## number on it instead of as a screenshot of somewhere odd.
+##
+## Deliberately reports the jump SIZE: a can that walked has a small delta every
+## frame, a can that was teleported has one enormous delta and nothing either
+## side of it. That distinction is the whole point and is invisible in a
+## position dump sampled at fixed intervals, which is what round2 does and why
+## it kept describing the symptom without locating it.
+var _canwatch_last: Vector3 = Vector3.INF
+var _canwatch_started: bool = false
+
+func _canwatch() -> void:
+	if _frames == 5 and not _canwatch_started:
+		_canwatch_started = true
+		MatchManager.begin_next_round()
+	# Force round transitions so a whole match is exercised inside 400 frames.
+	if _frames == 120 or _frames == 240 or _frames == 360:
+		RoundManager.report_round_win(_frames == 240)
+	# No group to query — CharacterBase does not register in one — so this walks
+	# the tree. Cheap enough for a diagnostic and immune to a group name changing.
+	var can: CharacterBase = null
+	for node in get_tree().get_root().find_children("*", "CharacterBase", true, false):
+		var unit := node as CharacterBase
+		if unit != null and unit.is_can:
+			can = unit
+			break
+	if can == null:
+		return
+	var pos := can.global_position
+	if _canwatch_last != Vector3.INF:
+		var jump := pos.distance_to(_canwatch_last)
+		if jump > 0.75:
+			print("[canwatch] frame %d  JUMP %.2f  %s -> %s  round=%d active=%s" % [
+				_frames, jump, _canwatch_last, pos,
+				MatchManager.round_number, RoundManager.round_active])
+	_canwatch_last = pos
+	if _frames >= 395:
+		print("[canwatch] final ", pos)
+		get_tree().quit()
+
+## round2 mode's own report — every local unit's role and position, so a spawn-
+## layout regression across a round transition is a console diff, not a guess
+## read off a screenshot's camera angle.
+func _dump_positions(label: String) -> void:
+	print("[render_probe] === ", label, " === round_number=", MatchManager.round_number,
+		" team_a_is_can=", MatchManager.team_a_is_can)
+	var main := get_node_or_null("Main")
+	if main == null:
+		print("[render_probe] Main not found")
+		return
+	for path in ["TeamAProp", "TeamAPerson", "TeamBProp", "TeamBPerson"]:
+		var c := main.get_node_or_null(path) as CharacterBase
+		if c == null:
+			print("[render_probe] ", path, ": NOT FOUND")
+			continue
+		print("[render_probe] %-12s is_can=%s is_person=%s team_is_can_side=%s pos=%s" % [
+			path, c.is_can, c.is_person, c.team_is_can_side, c.global_position])
 
 ## Every number the FPP viewmodel depends on, in CharacterBase-LOCAL space, so a
 ## regression is a diff rather than an argument.

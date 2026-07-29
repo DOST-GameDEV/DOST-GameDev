@@ -1,19 +1,21 @@
-[gd_scene load_steps=7 format=3 uid="uid://bqk3n7x9m1p2s"]
+[gd_scene load_steps=12 format=3 uid="uid://bqk3n7yam1p2s"]
 
-[ext_resource type="Script" path="res://scripts/ui/main_menu.gd" id="1"]
-[ext_resource type="PackedScene" path="res://scenes/ui/SettingsPanel.tscn" id="2"]
-[ext_resource type="Shader" path="res://assets/ui/blueprint_grid.gdshader" id="3"]
-[ext_resource type="Shader" path="res://assets/ui/card_fold.gdshader" id="4"]
+[ext_resource type="Script" uid="uid://im4mafpy4ukp" path="res://scripts/ui/main_menu.gd" id="1"]
+[ext_resource type="PackedScene" uid="uid://dx1n5r7uav2w4" path="res://scenes/ui/SettingsPanel.tscn" id="2"]
+[ext_resource type="Shader" uid="uid://ds84h17ap8dkm" path="res://assets/ui/blueprint_grid.gdshader" id="3"]
+[ext_resource type="PackedScene" uid="uid://c7pxq2rn4vk8m" path="res://scenes/ui/ArrowButton.tscn" id="4"]
+[ext_resource type="Texture2D" uid="uid://dml0qy5sdysey" path="res://assets/ui/main-menu/PLAY BUTTON.png" id="5"]
+[ext_resource type="Texture2D" uid="uid://yfhui7xxk3a" path="res://assets/ui/main-menu/SETTINGS BUTTON.png" id="6"]
+[ext_resource type="Texture2D" uid="uid://c1l4v2dtima6g" path="res://assets/ui/main-menu/QUIT BUTTON.png" id="7"]
+[ext_resource type="Texture2D" uid="uid://c6uqx4yepl38h" path="res://assets/ui/main-menu/TUMP.png" id="8"]
+[ext_resource type="Texture2D" path="res://assets/ui/main-menu/MENU BACKDROP.png" id="9"]
+[ext_resource type="Texture2D" path="res://assets/ui/main-menu/TUTORIAL BUTTON.png" id="10"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_bg"]
 shader = ExtResource("3")
-shader_parameter/grid_size = 24.0
-shader_parameter/bg_color = Color(0.882353, 0.898039, 0.909804, 1)
-shader_parameter/line_color = Color(0, 0.502, 0.914, 0.09)
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_fold"]
-shader = ExtResource("4")
-shader_parameter/fold_color = Color(0.016, 0.031, 0.22, 1)
+shader_parameter/grid_size = 32.0
+shader_parameter/bg_color = Color(0.016, 0.031, 0.22, 1)
+shader_parameter/line_color = Color(1, 1, 1, 0.05)
 
 [node name="MainMenu" type="Control"]
 layout_mode = 3
@@ -28,194 +30,108 @@ anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 material = SubResource("ShaderMaterial_bg")
-color = Color(0.882353, 0.898039, 0.909804, 1)
+color = Color(0.016, 0.031, 0.22, 1)
 mouse_filter = 2
 
-[node name="TitleScreen" type="VBoxContainer" parent="."]
-unique_name_in_owner = true
+[node name="Backdrop" type="TextureRect" parent="."]
 layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -320.0
-offset_top = -160.0
-offset_right = 320.0
-offset_bottom = 160.0
-alignment = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("9")
+expand_mode = 1
+stretch_mode = 6
 
-[node name="TitleCard" type="PanelContainer" parent="TitleScreen"]
+[node name="TumpLogo" type="TextureRect" parent="."]
 unique_name_in_owner = true
-layout_mode = 2
+layout_mode = 0
+offset_left = 85.0
+offset_top = 69.0
+offset_right = 996.0
+offset_bottom = 295.0
+mouse_filter = 2
+texture = ExtResource("8")
+expand_mode = 1
+stretch_mode = 5
 
-[node name="TitleCardContent" type="VBoxContainer" parent="TitleScreen/TitleCard"]
-layout_mode = 2
-alignment = 1
-
-[node name="TitleLabel" type="Label" parent="TitleScreen/TitleCard/TitleCardContent"]
-layout_mode = 2
-theme_type_variation = &"Display"
-horizontal_alignment = 1
-text = "TUMBANG PRESO"
-
-[node name="SubtitleLabel" type="Label" parent="TitleScreen/TitleCard/TitleCardContent"]
-layout_mode = 2
-theme_type_variation = &"Caption"
-horizontal_alignment = 1
+[node name="TaglineLabel" type="Label" parent="."]
+layout_mode = 0
+offset_left = 92.0
+offset_top = 303.0
+offset_right = 996.0
+offset_bottom = 335.0
+theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 0.75)
+theme_override_font_sizes/font_size = 24
 text = "2v2 ARENA BRAWLER — CANS VS TSINELAS"
 
-[node name="Spacer" type="Control" parent="TitleScreen/TitleCard/TitleCardContent"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 28)
-
-[node name="StartButton" type="Button" parent="TitleScreen/TitleCard/TitleCardContent"]
+[node name="StartButton" parent="." instance=ExtResource("4")]
 unique_name_in_owner = true
-layout_mode = 2
-theme_type_variation = &"PrimaryButton"
-text = "PLAY"
+layout_mode = 0
+offset_left = -123.0
+offset_top = 374.0
+offset_right = 596.0
+offset_bottom = 568.0
+texture = ExtResource("5")
+caption = "PLAY"
+text_offset_y = 4.0
+text_color = Color(0.153, 0.263, 0.106, 1)
+label_size = 141
+pole_distance = 315.0
+text_indent = 309.0
+tip_padding = 90.0
 
-[node name="SettingsButton" type="Button" parent="TitleScreen/TitleCard/TitleCardContent"]
+[node name="SettingsButton" parent="." instance=ExtResource("4")]
 unique_name_in_owner = true
-layout_mode = 2
-text = "SETTINGS"
+layout_mode = 0
+offset_left = -143.0
+offset_top = 559.0
+offset_right = 600.0
+offset_bottom = 729.0
+texture = ExtResource("6")
+caption = "SETTINGS"
+text_offset_y = -6.0
+text_color = Color(0.263, 0.176, 0.106, 1)
+label_size = 99
+label_rotation = 3.75
+pole_distance = 315.0
+text_indent = 226.0
+tip_padding = 116.0
 
-[node name="QuitButton" type="Button" parent="TitleScreen/TitleCard/TitleCardContent"]
+[node name="TutorialButton" parent="." instance=ExtResource("4")]
 unique_name_in_owner = true
-layout_mode = 2
-text = "QUIT"
+layout_mode = 0
+offset_left = -158.0
+offset_top = 681.0
+offset_right = 585.0
+offset_bottom = 945.0
+texture = ExtResource("10")
+caption = "TUTORIAL"
+text_offset_y = -6.0
+text_color = Color(0.106, 0.204, 0.263, 1)
+label_size = 99
+label_rotation = 3.75
+pole_distance = 315.0
+text_indent = 226.0
+tip_padding = 116.0
 
-[node name="KeywordSpacer" type="Control" parent="TitleScreen/TitleCard/TitleCardContent"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 8)
-
-[node name="KeywordStrip" type="Label" parent="TitleScreen/TitleCard/TitleCardContent"]
-layout_mode = 2
-theme_type_variation = &"Caption"
-horizontal_alignment = 1
-text = "ESPORTS · GAME DEV CHALLENGE · NCR 2026"
-
-[node name="FoldCorner" type="Control" parent="TitleScreen/TitleCard"]
-layout_mode = 1
-anchors_preset = 4
-anchor_left = 1.0
-anchor_top = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = -16.0
-offset_top = -16.0
-mouse_filter = 2
-material = SubResource("ShaderMaterial_fold")
-
-[node name="PlayMenu" type="VBoxContainer" parent="."]
+[node name="QuitButton" parent="." instance=ExtResource("4")]
 unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -220.0
-offset_top = -210.0
-offset_right = 220.0
-offset_bottom = 210.0
-alignment = 1
-
-[node name="PlayCard" type="PanelContainer" parent="PlayMenu"]
-unique_name_in_owner = true
-layout_mode = 2
-
-[node name="PlayCardContent" type="VBoxContainer" parent="PlayMenu/PlayCard"]
-layout_mode = 2
-alignment = 1
-
-[node name="MapLabel" type="Label" parent="PlayMenu/PlayCard/PlayCardContent"]
-layout_mode = 2
-theme_type_variation = &"Heading"
-horizontal_alignment = 1
-text = "MAP"
-
-[node name="MapOption" type="OptionButton" parent="PlayMenu/PlayCard/PlayCardContent"]
-unique_name_in_owner = true
-layout_mode = 2
-
-[node name="MapTagline" type="Label" parent="PlayMenu/PlayCard/PlayCardContent"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_type_variation = &"Caption"
-horizontal_alignment = 1
-autowrap_mode = 3
-
-[node name="MapSpacer" type="Control" parent="PlayMenu/PlayCard/PlayCardContent"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 12)
-
-[node name="ModeLabel" type="Label" parent="PlayMenu/PlayCard/PlayCardContent"]
-layout_mode = 2
-theme_type_variation = &"Heading"
-horizontal_alignment = 1
-text = "GAME MODE"
-
-[node name="GameModeOption" type="OptionButton" parent="PlayMenu/PlayCard/PlayCardContent"]
-unique_name_in_owner = true
-layout_mode = 2
-
-[node name="Spacer1" type="Control" parent="PlayMenu/PlayCard/PlayCardContent"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 12)
-
-[node name="LocalButton" type="Button" parent="PlayMenu/PlayCard/PlayCardContent"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_type_variation = &"PrimaryButton"
-text = "LOCAL MATCH (SINGLE PC)"
-
-[node name="HostButton" type="Button" parent="PlayMenu/PlayCard/PlayCardContent"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "HOST GAME (LAN)"
-
-[node name="JoinRow" type="HBoxContainer" parent="PlayMenu/PlayCard/PlayCardContent"]
-layout_mode = 2
-
-[node name="JoinAddressEdit" type="LineEdit" parent="PlayMenu/PlayCard/PlayCardContent/JoinRow"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-placeholder_text = "Host address, e.g. 127.0.0.1"
-
-[node name="JoinButton" type="Button" parent="PlayMenu/PlayCard/PlayCardContent/JoinRow"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "JOIN"
-
-[node name="StatusLabel" type="Label" parent="PlayMenu/PlayCard/PlayCardContent"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_type_variation = &"Caption"
-horizontal_alignment = 1
-autowrap_mode = 2
-
-[node name="Spacer2" type="Control" parent="PlayMenu/PlayCard/PlayCardContent"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 12)
-
-[node name="BackButton" type="Button" parent="PlayMenu/PlayCard/PlayCardContent"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "◀  BACK"
-
-[node name="FoldCorner" type="Control" parent="PlayMenu/PlayCard"]
-layout_mode = 1
-anchors_preset = 4
-anchor_left = 1.0
-anchor_top = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = -16.0
-offset_top = -16.0
-mouse_filter = 2
-material = SubResource("ShaderMaterial_fold")
+layout_mode = 0
+offset_left = -173.0
+offset_top = 845.0
+offset_right = 569.0
+offset_bottom = 990.0
+texture = ExtResource("7")
+caption = "QUIT"
+text_offset_y = 7.0
+text_color = Color(0.322, 0.09, 0.129, 1)
+label_size = 99
+pole_distance = 315.0
+text_indent = 318.0
+tip_padding = 209.0
 
 [node name="SettingsPanel" parent="." instance=ExtResource("2")]
 unique_name_in_owner = true

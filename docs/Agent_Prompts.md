@@ -9,12 +9,13 @@ names them but cannot set them.
 | # | Lane | Model | Effort | Run it when | Why here in the order |
 |---|---|---|---|---|---|
 | **1** | ~~🔧 **BUILD-PHYS**~~ | **Sonnet** | high | ✅ **Done 2026-07-28 — `Checklist.md` 2.5.** | Per-unit collision, both props rescaled, `HAND_CARRY_OFFSET` re-measured, `base_circle_decal` resized, 4.4a fixed. Row 4 is unblocked. |
-| **2** | 🔧 **BUILD-UX** | **Sonnet** | medium | Any time | Independent files. Fixes the missing FPP crosshair (**B-86**) and builds the charge-glow hook, which is the half of the throw the design lane cannot finish alone. |
-| **3** | 🔧 **BUILD-NET** | **Sonnet** | high | Before the real LAN test (6.1) | Remote units visibly snap. Testing over real wifi without interpolation measures the wrong thing, so this must precede 6.1. |
+| **2** | ~~🔧 **BUILD-UX**~~ | **Sonnet** | medium | ✅ **Done 2026-07-28.** | **B-86 could not be reproduced** — re-rendered six times, crosshair present every time; see `Handoff.md` B-86. Charge-glow shader hook built in `you_card.gd` (`CHARGE_SHADER_PARAM`), verified by a scripted run. 5.3 (strip Local Match/debug switcher) deliberately **not** done this pass — it is blocked on 0.4 and 4.4 in `Checklist.md`, and `Art_Direction.md`'s own resolution says do it late, after the last playtest, not before. |
+| **3** | ~~🔧 **BUILD-NET**~~ | **Sonnet** | high | ✅ **Done 2026-07-28 — `Checklist.md` 4.2, 4.3, 4.6, 4.7.** | Remote-visual interpolation, rejoin identity (stable token + a mid-match redirect out of the lobby), solo-host pause/debug-switcher QoL, and a live peer-drop account are all in. Real-device testing over wifi (6.1) is still 🧑 human and still unrun — this lane only made the loopback case correct. |
 | **4** | 🎨 **DESIGN-ART** | **Opus** | high | **Unblocked — row 1 is done** | Its first job was rescaling props, which depended on 1; that shipped (`generate_all.gd`'s meshes), so this lane's remaining scope is whatever `Checklist.md` still lists open under 2.x. Opus because its question is *"does this match the moodboard"* — a judgement call, not a testable one. **Attach the moodboard image.** |
 | **5** | 🎵 **BUILD-AUDIO** | **Sonnet** | medium | Any time | Nothing exists — not one `AudioStreamPlayer` in the repo. Fully independent of every other lane. |
 | **6** | 🔬 **QA** | **Sonnet** | medium | **Alongside anything** | Writes only `docs/`, so it can never collide. Good to keep running continuously. |
 | **7** | 📦 **PRODUCER** | **Sonnet** | medium | **Alongside anything** | Also `docs/`-only. Submission paperwork has a deadline that does not move. |
+| **8** | ~~🔧 **BUILD-AI**~~ | **Sonnet** | high | ✅ **Done 2026-07-28 — `Checklist.md` 5.5.** | Local Match renamed to Single Player; a new `ai_controller.gd` drives the three units the human isn't personally controlling via the same Input surface a human would, one hook in `character_base.gd`, no forked `_physics_process`. Debug switcher kept as a manual override; Settings panel's P2 rebind column removed. |
 
 ### Rules for running more than one at a time
 
@@ -64,6 +65,7 @@ self-contained: paste it as the FIRST message of a fresh session, nothing else n
 | 🔧 **BUILD-NET** | **Sonnet** | high | 1 |
 | 🔧 **BUILD-PHYS** | **Sonnet** | high | 1 — **must finish before DESIGN-ART's proportion step** |
 | 🔧 **BUILD-UX** | **Sonnet** | medium | 1 |
+| ~~🔧 **BUILD-AI**~~ | **Sonnet** | high | ✅ done 2026-07-28, checklist 5.5 |
 | 🎵 **BUILD-AUDIO** | **Sonnet** | medium | 1 |
 | 🎨 **DESIGN-ART** | **Opus** | high | 1 |
 | 🔬 **QA** | **Sonnet** | medium | any time, alongside anything |
@@ -79,6 +81,15 @@ Everything below except DESIGN-ART is a known target with a testable answer, whi
 ---
 
 # 🔧 BUILD-NET — Sonnet, high effort
+
+> ✅ **DONE 2026-07-28 — see `Checklist.md` 4.2, 4.3, 4.6, 4.7.** All four numbered items below
+> shipped: remote-visual interpolation, rejoin identity (a stable token plus the mid-match Lobby
+> redirect the checklist item's own one-liner didn't mention), solo-host pause/debug-switcher QoL,
+> and a live-tested account of what a mid-round peer drop actually does. Two pre-existing UI
+> crashes (`you_card.gd`, `offscreen_indicators.gd` — B-100, B-101) were found and fixed along the
+> way, in the same commit as the item that surfaced them. Kept below for the standing setup/lock/
+> smoke-gate rules and as the historical record of the brief, same as `BUILD-PHYS` above — not for
+> scope. Real-device LAN testing (6.1) is still 🧑 human and still unrun.
 
 ```
 You are the BUILD-NET lane on Tumbang Preso, a Godot 4.7 (GDScript, Forward+) 2v2 LAN arena
@@ -245,6 +256,124 @@ commits, integration only, take the docs/SHARED_LOCKS.md lock before typing in s
 run the six smoke-gate commands (3 and 4 WITHOUT --headless), [~] not [x] for the unverified.
 ```
 
+**Outcome, 2026-07-28:** item 1 (B-86) could not be reproduced — six re-renders of the exact repro
+above all show the crosshair present at screen centre, on code byte-identical to what B-86 was
+filed against. See `Handoff.md` B-86 for the full account; left open as an unexplained one-off
+rather than closed. Item 2 shipped as `you_card.gd`'s `CHARGE_SHADER_PARAM` hook. Item 3 was
+deliberately **not** done — still blocked on `Checklist.md` 0.4 and 4.4, and `Art_Direction.md`'s
+own resolution says to do it late, after the last playtest. Item 4 confirmed, untouched.
+
+---
+
+# 🔧 BUILD-AI — Sonnet, high effort
+
+> ✅ **DONE 2026-07-28 — see `Checklist.md` 5.5.** Every numbered item below shipped: the rename,
+> a new `ai_controller.gd` writing into the same Input surface a human would (one hook, no forked
+> `_physics_process`), role-based behaviour for all four roles, the P2-4/debug-switcher/Settings-
+> panel decisions, and the doc-hygiene sweep across `Dev_Plan.md`, `Art_Direction.md`,
+> `Handoff.md` and `README.md`. Two real scripted-input timing bugs were found and fixed along the
+> way (see 5.5's own entry). Kept below for the standing setup/lock/smoke-gate rules and as the
+> historical record of the brief, same as `BUILD-PHYS`/`BUILD-UX`/`BUILD-NET` above — not for
+> scope.
+
+```
+You are the BUILD-AI lane on Tumbang Preso (Godot 4.7, GDScript). Repo: DOST-GameDEV/DOST-GameDev.
+
+SETUP
+  git fetch origin && git switch integration && git pull --ff-only
+  git config user.name "M4tyu633" && git config user.email "matthewtlabrador@gmail.com"
+  git switch -c code/single-player-ai
+Godot: <path to your Godot 4.7.x executable> (NOT on PATH — set per machine, do not paste a teammate's path)
+
+READ FIRST: docs/Checklist.md 5.5 (this item), docs/Handoff.md's 2026-07-28 session log (search
+"single player" / "BUILD-AI"), docs/Concurrency_Protocol.md §2/§3/§8. Then the actual code:
+scripts/main.gd (_start_local_test, _local_roster, _role_slot), scripts/characters/character_base.gd
+(is_can/is_person/team_is_can_side — the same three flags every other role-based system in this
+project reads), scripts/systems/debug_player_switcher.gd, scripts/characters/carrier.gd (the
+charge-throw input a Person AI has to drive), scripts/characters/carriable.gd (LOOSE/CARRIED/FLYING
+— what an AI Tsinelas has to react to).
+
+THE DECISION THIS IMPLEMENTS. Local Match currently exists as a dev-only testing harness: the
+human controls TeamAPerson (and can Tab/F1-F4 to any of the other three), and TeamBProp/
+TeamBPerson sit on deliberately unbound input as stationary practice dummies (see
+CharacterBase.player_id's own doc for why). Checklist 5.3 used to plan stripping this down to a
+network-outage fallback before submission. **That is superseded.** The user's decision: Local
+Match becomes a real, permanent SINGLE PLAYER mode, shipped in the final build — the human plays
+one unit, and the other three are driven by actual AI, not silence.
+
+YOUR JOB, in dependency order.
+
+1. RENAME, mechanically, not a redesign. "Local Match" → "Single Player" everywhere a player sees
+   it (main_menu.gd's button/label) and everywhere it's discussed in docs. Internal identifiers
+   (GameLaunch.pending_action == "local", scene/node names) can stay as-is unless leaving them
+   creates real confusion — this is a UI/doc rename, not a request to restructure the launch-flow
+   state machine. Grep for "Local Match" across docs/ and scripts/ and fix every stale reference,
+   same as this project's standing doc-hygiene rule.
+
+2. DECIDE THE AI ARCHITECTURE FIRST, before writing behaviour. This project has zero prior art for
+   "a CharacterBase driven by something other than a human or MultiplayerSynchronizer" — you are
+   choosing the shape, not copying one. The constraint that matters most: CharacterBase's
+   movement/ability code reads Input.is_action_pressed(_action(...)) directly (see
+   _physics_process). The cleanest fit is almost certainly a small AI controller node that WRITES
+   into the same input surface a human would (or a parallel "intent" struct character_base.gd
+   reads instead of raw Input when a unit is AI-controlled) — do not fork _physics_process into a
+   human path and a separate AI path; the confinement, staggered/downed/sealed state machine, and
+   round-active gating all have to keep applying identically to an AI unit, and duplicating
+   _physics_process is exactly how those two copies drift apart. State your chosen approach in the
+   commit body before writing behaviour — this is a real design decision, not a detail.
+
+3. AI BEHAVIOUR IS ROLE-BASED, RE-DERIVED EVERY ROUND — same rule as everything else here.
+   is_can/team_is_can_side flip every round (main.gd::_reset_world already re-picks the Prop
+   ability this way for exactly this reason — B-76). An AI that decides "I am the Can's AI" once
+   and never re-checks will be playing the wrong job by round 2. Four jobs, one per role:
+   - **Can AI:** stay inside CharacterBase.CONFINEMENT_RADIUS (already enforced physically by
+     _move_and_confine() regardless of what the AI does — you cannot break this by trying, but a
+     good AI shouldn't be pinned against the edge doing nothing either). React to being Downed —
+     Quick Stand or similar self-right, if available.
+   - **Taya (defending Person) AI:** patrol/guard within the confinement box, move to intercept an
+     incoming thrown slipper or a retrieving attacker, use the Tag/Bump ability when in range.
+   - **Attacker (offending Person, carrying the Tsinelas) AI:** approach the 6-unit throwing line,
+     charge (carrier.gd's charge-throw input step) and release at a reasonable power, retreat/dodge
+     the Taya.
+   - **Loose Tsinelas AI** (only relevant when NOT currently carried/flying — Carriable.state ==
+     LOOSE): crawl itself home (movement_speed_scale() already applies CRAWL_SPEED_SCALE
+     automatically) or hold position waiting for its Attacker to retrieve it.
+   Difficulty is explicitly OUT OF SCOPE for a first pass. "Moves with intent toward its role's
+   job and does not stand still" is the acceptance bar — not "plays well," not "is fun to play
+   against." Say so explicitly if you're tempted to tune it further; that's scope creep for this
+   item, file it as a follow-up instead.
+
+4. REMOVE OR REPURPOSE WHAT THE AI REPLACES — decide, don't assume.
+   - project.godot's P2/P3/P4 input action bindings exist ONLY because those slots used to sit
+     unbound waiting for a human at a second keyboard/controller. Once AI drives them, decide
+     whether to delete the bindings outright or keep them as a debug override path (e.g. a launch
+     flag that disables AI and re-enables human/manual control for testing) — either is
+     defensible, pick one and say why in the commit.
+   - scripts/systems/debug_player_switcher.gd's F1-F4/Tab cycling was built to let ONE human hop
+     between units for testing. If AI now drives three of the four, does switching to an
+     AI-driven unit hand it back to human control, or is switching removed entirely in Single
+     Player? This needs an explicit answer, not a silent behaviour change.
+   - The Settings panel's P2 rebind column (already flagged elsewhere in this project as dead
+     weight once nothing binds to P2-4) — remove it if this item makes that true.
+
+5. DOC HYGIENE — this is part of the work, not a follow-up. `Art_Direction.md` Part 5 §3's demo
+   failure-ladder table and `Dev_Plan.md`'s shared-screen-fallback mentions both still describe
+   the OLD framing (Local Match / the 4-unit harness as a network-outage fallback an operator
+   manually cycles with Tab). Once Single Player is real, that framing is stale — fix it in the
+   same commit, per Concurrency_Protocol.md §12. Grep for "Local Match" and "4-unit harness" and
+   fix every stale claim you find, don't stop at the two called out here.
+
+NON-NEGOTIABLES
+- DOCS ARE PART OF THE WORK, AND ALL OF THEM, NOT JUST ONE. Tick your Checklist.md box in the SAME commit as the change. Then grep docs/ scripts/ tools/ for whatever you just made wrong and fix every stale claim - if a doc says a thing is missing and you just built it, that doc is now a bug. DELETE stale content rather than labelling it outdated. Never write 'verified by render' for something you did not render. See Concurrency_Protocol.md §12.
+- Also: sole authorship as M4tyu633 <matthewtlabrador@gmail.com>, no AI mentions in
+commits, integration only, take the lock for shared files (project.godot for the input-action
+changes, Main.tscn if you touch spawn/debug wiring), run the six smoke-gate commands (3 and 4
+WITHOUT --headless), [~] not [x] for anything you could not run. State your AI architecture
+decision in the first commit's body — the next person to touch this needs to know why it's shaped
+the way it is, the same way every other file in this codebase explains its own load-bearing
+decisions inline.
+```
+
 ---
 
 # 🎵 BUILD-AUDIO — Sonnet, medium effort
@@ -292,6 +421,26 @@ Filipino street game tumbang preso. Repo: DOST-GameDEV/DOST-GameDev. Your hard q
 "does this match the moodboard", not "does this compile". ATTACH THE MOODBOARD IMAGE to your
 first message — it is not in the repo and a description of it is not it.
 
+⚠️ FLOATING GEOMETRY has cost multiple sessions already — read Art_Direction.md Part 4's
+"STANDING RULE — FLOATING GEOMETRY" callout before placing or moving ANY decal/marking. Short
+version: a marking's Y position is usually its BOTTOM, not its centre, so "add clearance to be
+safe" is what caused the bug, not what fixes it. RENDER AND LOOK (tools/render_probe.gd, match
+mode, NOT --headless) before calling any placement done — reading the placement code is not a
+substitute for a screenshot with no gap or shadow under the line.
+
+⚠️ THE SAME BUG EXISTS WITH THE SIGN FLIPPED, AND IT IS LIVE RIGHT NOW (2026-07-29). floorcheck.py
+only verifies MARKINGS, so DRESSING is unchecked — and every interior prop on Eskinita is currently
+sunk exactly 100 mm INTO the road, because 7.4b raised the walkable surface to y=0.100 and add()
+still places at a raw y=0.0 while add_kit() derives its own. "Not floating" is not the standard;
+"sitting on whatever is actually underneath it, verified by the build" is. See Checklist.md 8.1.
+
+⚠️ READ Art_Direction.md PART 6 (§8.0 THE AUDIT) BEFORE ACTING ON ANY VISUAL COMPLAINT. It is the
+live art standard as of 2026-07-29 and it measures which reported problems are real. Two are NOT
+what they look like: the "z-fighting road lines" are already solved by floorcheck.py's sandwich rule
+(do NOT re-tune it — it is a build gate that took three sessions to get right), and the "grey
+asphalt desert" is the Floor box's own material showing outside the paving, not the road. Fixing a
+complaint's stated cause instead of its measured cause is how this map got here.
+
 SETUP
   git fetch origin && git switch integration && git pull --ff-only
   git config user.name "M4tyu633" && git config user.email "matthewtlabrador@gmail.com"
@@ -299,27 +448,66 @@ SETUP
 Godot: <path to your Godot 4.7.x executable> (NOT on PATH — set per machine, do not paste a teammate's path)
 
 READ FIRST: docs/Art_Direction.md — especially §0 (the "friendslop" design pillar) and
-§3 (items B, C, D, G, which are your queue). Then docs/Art_Direction.md and
+§3 (items B, C, D, G, the standing part of your queue below). Then docs/Art_Direction.md and
 docs/Concurrency_Protocol.md §2/§3/§8.
 
-YOUR QUEUE, in priority order.
+YOUR QUEUE, in priority order. Items 1-3 are fresh, 2026-07-28, from the same playtest session
+that found the confinement/spawn/floating-decal bugs above — do these FIRST, they are the
+freshest and most player-visible. Items B-G below are the standing environment-art queue.
 
-B. ⚠️ SUPERSEDED 2026-07-28 — READ BEFORE TOUCHING W OR Z_END. This item said narrow the alley
-   to 3-5m. The user played the narrow layout and asked for the OPPOSITE instead: a much bigger,
-   SQUARE arena with a visible chalk boundary, "just like normal tumbang preso". That shipped from
-   the 🔧 Build lane (not here) as its own commit on `code/option-b-tuning` — W and Z_END are now
-   both 24.0 (was W=8.0, Z_END=17.0), Layer1/Layer2/CLUTTER/Tricycle dressing was rescaled to match
-   via a new `sc()` helper, the floor/walls/kill-plane sizing is now computed from W/Z_END instead
-   of hardcoded, and a chalk boundary line was added around the new square (reusing
-   `team_side_decal`, tiled — no new mesh added to `env_kit.gd`). Spawn markers, the base circle
-   and the throwing line were deliberately left untouched.
-   **Do not narrow it back per the original brief below — that is now stale.** If you still think
-   the arena should be smaller after seeing the resized version, that is a fresh design call to
-   raise with the human, not a continuation of this item.
-   Original brief, kept for context only: "Eskinita's playable width is x = +/-8 — a 16 m road,
-   which is a boulevard, not an eskinita. A real side street is 3-5 m." The DO-NOT-change-arena-
-   -scale-blind warning below still applies to whatever you do next with W/Z_END — own commit,
-   separate from art passes, same as always.
+1. THIRD-PERSON CHARGE/WINDUP TELL. User feedback: "I WANT EVERYONE ELSE IN THE WORLD TO SEE THAT
+   THE WIND UP IS HAPPENING NOT JUST PERSON THROWING SLIPPER." Right now a charged throw is only
+   visible to the thrower themselves — carrier.gd's charge_changed signal drives the FPP viewmodel
+   arm (camera_rig.gd::set_viewmodel_charge) and, since this session, a UI shader hook on the
+   thrower's OWN charge bar (you_card.gd::CHARGE_SHADER_PARAM) — but nothing anyone ELSE looking
+   at that character in third person can see. This is not a new ask you're inventing the spec
+   for: the moodboard's own THE ATTACKER card already illustrates "charged throw (glow)" — that
+   line is what the UI hook above was built against, and it explicitly said the world-space
+   treatment was being left for you. Read `you_card.gd`'s own comment at the hook site first.
+   Build a WORLD-SPACE visual response driven by `Carrier.charge_power()` — a glow on the held
+   tsinelas, a shader/material response, a pose tell, whatever reads best against the moodboard —
+   visible to every peer watching that character, not just its own controller. If reading charge
+   state from another peer's Carrier turns out to need real networking work (a new synced field,
+   not just a local read), that is a Build-lane wall — file it in Handoff.md §5 and hand back the
+   networking half rather than inventing replication yourself; the visual treatment is still
+   yours to design once the data exists.
+
+2. INVESTIGATE: "why does the defender only have one hand." Reported with a screenshot: a
+   third-person Person model (not the FPP viewmodel — this was someone ELSE watching a defender)
+   showing what reads as a single oddly-shaped hand/arm. Not root-caused this session — could be
+   the Kenney rig's own animation pose (a bump/tag clip genuinely only extends one arm, which
+   might just be correct and not a bug at all), a stale BoneAttachment3D left over from an
+   earlier carry state, or something else. Look at it rendered before deciding what it even is;
+   this is explicitly "does this look right", not a prescribed fix. If it turns out to be a code
+   bug (an animation-clip or attachment-lifecycle issue in character_visual.gd) rather than an
+   art/asset one, say so and hand it back to Build rather than patching gameplay code yourself.
+
+3. RE-VERIFY "slipper still floating." A carried tsinelas's carry-TILT bug (55° rotation not
+   resetting on throw/drop) was found and fixed by Build this session (carriable.gd's
+   `_rpc_set_flying`/`_rpc_set_loose`), but the user's report came in the SAME message as several
+   other items and may describe something separate: the actual carried POSITION, not the
+   rotation. `character_visual.gd::HAND_CARRY_OFFSET` is explicitly documented at its own
+   definition as "MEASURED BY CALIBRATION, NOT GUESSED" and due for re-measurement if the pose or
+   proportions it was calibrated against ever change — re-render the viewmodel probe
+   (`tools/render_probe.gd`, `viewmodel` mode) and confirm by eye whether the held slipper still
+   reads as floating/detached from the hand, independent of the tilt fix above. If it's fine now,
+   say so and close it out rather than re-tuning a number that isn't actually wrong.
+
+B. NARROW THE ALLEY. Eskinita's playable width is x = +/-8 — a 16 m road, which is a boulevard,
+   not an eskinita. A real side street is 3-5 m. tools/maps/build_eskinita.py has W = 8.0 as one
+   constant. DO NOT change it blind: this is arena SCALE, and Art_Direction.md §4 warns
+   against changing arena scale in the same commit as arena art, because a movement-feel
+   regression then becomes unattributable. Its own commit, and only after a human has played the
+   current one.
+   ⚠️ **A same-day resize of this exact scale (W/Z_END to 24.0, square, 4x area) was tried and
+   fully reverted 2026-07-28** — the user's actual complaint was `CharacterBase.CONFINEMENT_RADIUS`
+   (the defending box) feeling cramped, not the map footprint. That's now handled separately —
+   `CONFINEMENT_RADIUS` is 5.0 and `build_eskinita.py` draws a chalk-style SQUARE at that radius
+   (a ring was tried first, then replaced same day — "the circle you made was ugly ... can we just
+   use a square", a real tumbang preso boundary is a straight-edged chalk box, not a drawn circle —
+   see `Handoff.md`'s session entry and `Checklist.md` 2.7). `build_bayan_plaza.py` does not have
+   this square yet. This item's actual brief (narrow the alley) is unaffected and still open —
+   nothing here blocks it.
 
 C. GIVE THE ENVIRONMENT THE SAME INK OUTLINE THE CHARACTERS HAVE. M-6 step 3 says env pieces get
    no outline. That predates the Persons getting one, and the result is two art styles in one
@@ -385,9 +573,11 @@ YOUR JOB
    claiming verification is a claim you should try to reproduce.
 4. Capture screenshots with tools/render_probe.gd and reference them in your reports.
 
-Known-open, start here: B-86 (FPP crosshair absent), B-87 (carried slipper reads as floating in
-FPP — known limitation, confirm the framing note), and jump (added v4.35, never felt by a human;
-JUMP_VELOCITY 5.8 apexes at 0.841 and must not clear the 1.0 clutter ceiling).
+Known-open, start here: B-86 (FPP crosshair — filed absent, but 🔧 build-ux could not reproduce it
+on 2026-07-28 after six re-renders; if you can make it disappear again, that is the more useful
+finding — get a screenshot and note exactly what differed), B-87 (carried slipper reads as
+floating in FPP — known limitation, confirm the framing note), and jump (added v4.35, never felt
+by a human; JUMP_VELOCITY 5.8 apexes at 0.841 and must not clear the 1.0 clutter ceiling).
 
 - DOCS ARE PART OF THE WORK, AND ALL OF THEM, NOT JUST ONE. Tick your Checklist.md box in the SAME commit as the change. Then grep docs/ scripts/ tools/ for whatever you just made wrong and fix every stale claim - if a doc says a thing is missing and you just built it, that doc is now a bug. DELETE stale content rather than labelling it outdated. Never write 'verified by render' for something you did not render. See Concurrency_Protocol.md §12.
 - Also: sole authorship as M4tyu633 <matthewtlabrador@gmail.com>, no AI mentions in
@@ -673,7 +863,7 @@ YOUR JOB, on every merge into `integration`:
        godot --path . tools/render_probe.tscn --quit-after 400 --resolution 960x540  -- viewmodel /tmp/
      Run WITHOUT --headless — headless renders nothing. Compare against docs/Dev_Plan.md §4.4's
      HUD layout and against the moodboard if it has been attached to your chat.
-  3. Play what can be played. F5 -> Start -> Local Match. Two instances with --host and
+  3. Play what can be played. F5 -> Start -> Single Player. Two instances with --host and
      --join=127.0.0.1 for the LAN paths.
   4. File every defect as the next free B- number in Handoff.md §3: what you did, what you
      expected, what happened, severity, and the file:line if you found it.
@@ -967,6 +1157,10 @@ and it is the single most valuable thing this lane can report.
 
 *(was `docs/Agent_Prompts.md`)*
 
+⚠️ **Superseded.** Item 0.1 (the meters) shipped and is `[x]` in `Checklist.md`; the 2026-07-28
+addendum there adds the charge-glow shader hook on top. Kept as the historical brief per
+`Concurrency_Protocol.md` §12 rule 3 — do not follow §1 below as a live task list.
+
 ## UI Completion Agent Brief
 
 **Run this on: Sonnet 5, medium effort.** The HUD, the menus and the theme are already built and
@@ -1054,6 +1248,16 @@ scan** — that is exactly what A-1 step 4 was written to prevent.
 
 ### 3. Traps already found in this code
 
+0. **⚠️ NEVER ORDER ANYTHING BY `Node.name`. IT IS A `StringName` AND `<` COMPARES POINTERS.**
+   This is B-111, and it cost several sessions of "spawns are still broken". `main.gd` sorted the
+   map's spawn markers with `sort_custom(func(a, b): return a.name < b.name)` — which reads as
+   alphabetical, had a comment saying so, and is not. Measured: nodes authored `Spawn0..Spawn3`
+   came back **`[Spawn3, Spawn2, Spawn0, Spawn1]`**, so the Attacker spawned on the Taya's mark,
+   right beside the base circle it is meant to be throwing at from outside the line. The order is
+   stable *within* a run (so it looks deterministic) and **not** guaranteed stable *between* runs
+   (so the symptom appears to move). Cast with `String(...)` if you truly need lexicographic order,
+   and prefer an explicit named lookup (`get_node("Spawn%d" % i)`) whenever the names encode a
+   contract — that removes the failure mode instead of correcting one instance of it.
 1. **`.duplicate()` every ability `.tres` per character.** Cooldown and charge state live on the
    Resource instance — two characters sharing one `.tres` share one cooldown. This is the trap
    `main.gd`'s own comment already warns about and 3.3 walks straight into it.
@@ -1588,9 +1792,12 @@ this entry different from every other arena game in the competition.
   the conditions: register targets at **runtime**, never cache `NodePath`s in `_ready()`,
   `is_instance_valid()`-check every frame, default to `current = false`, and ignore any target
   below the kill plane. Ignoring those is what caused **B-03**, the original LAN freeze.
-- **Strip the debug surface first.** Checklist 5.3 removes Local Match and the `DebugBar`. A
-  trailer with a debug readout along the bottom edge reads as unfinished no matter what is above
-  it. If 5.3 has not landed, at minimum shoot from a release build.
+- **Strip the debug surface first.** ⚠️ Checklist 5.3 no longer removes Single Player (formerly
+  Local Match) — it ships in the final build, per the user's own decision, `Checklist.md` 5.5.
+  What still has to go before shooting is only the on-screen `DebugBar`/F1-F4/Tab overlay (already
+  gated to `OS.is_debug_build()` and self-freeing in a release build — see `debug_player_switcher.gd`).
+  A trailer with a debug readout along the bottom edge reads as unfinished no matter what is above
+  it. Shoot from a release build, or at minimum confirm the debug overlay is not on screen.
 
 ---
 

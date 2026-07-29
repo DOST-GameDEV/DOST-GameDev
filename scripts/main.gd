@@ -98,6 +98,18 @@ const TSINELAS_ABILITY_TEAM_B: AbilityBase = preload("res://scripts/abilities/re
 ## networked flow, rather than hand-writing 4 near-identical blocks.
 ## Populated once in _ready(); order is [TeamAProp, TeamAPerson, TeamBProp, TeamBPerson].
 var _local_roster: Array[CharacterBase] = []
+## 2026-07-28 — Single Player only (see _on_local_pressed's doc in
+## main_menu.gd). True from the moment _start_local_test() spawns everyone
+## until the player presses "ready_up": during that window
+## MatchManager.begin_next_round() has deliberately NOT been called yet, so
+## RoundManager.round_active is false and CharacterBase._is_confined_to_base()
+## lets the Can/Taya walk anywhere — free roam while waiting to start.
+var _awaiting_local_ready: bool = false
+## 2026-07-28 — true for the ~3.5s between pressing ready_up and
+## begin_next_round() actually firing, while the 3-2-1-GO countdown runs.
+## Guards _unhandled_input against a second ready_up press restarting the
+## countdown mid-count.
+var _counting_down: bool = false
 ## FALLBACK ONLY, since checklist 2.2a. The real spawn points are four Marker3Ds
 ## under the loaded map's `SpawnPoints` node; this array is used only if a map
 ## has none — or if something loads Main.tscn with no map at all, which is what
@@ -144,18 +156,47 @@ func _load_map() -> void:
 	if points == null:
 		push_warning("main.gd: map '%s' has no SpawnPoints; using the fallback ring." % path)
 		return
-	# Sorted by node name, NOT by get_children() order. B-68 is the same class of
-	# bug on the round-reset path: an order that depends on how the scene happens
-	# to be authored silently reassigns teams. Spawn0..Spawn3 is the contract.
-	var markers: Array[Node] = points.find_children("*", "Marker3D", false, false)
-	markers.sort_custom(func(a: Node, b: Node) -> bool: return a.name < b.name)
-	for marker in markers:
+	# ⚠️⚠️ LOOKED UP BY EXACT NAME. DO NOT GO BACK TO SORTING. ⚠️⚠️
+	#
+	# This is THE recurring spawn bug, found 2026-07-29 after surviving several
+	# sessions of "spawns are still wrong". The previous version was:
+	#
+	#     markers.sort_custom(func(a, b): return a.name < b.name)
+	#
+	# which reads as "sort Spawn0..Spawn3 alphabetically" and is not what it
+	# does. `Node.name` is a **StringName**, and `<` on StringName compares the
+	# interned POINTER, not the text. Measured on this exact engine build, four
+	# nodes authored in order Spawn0..Spawn3 came back as:
+	#
+	#     [Spawn3, Spawn2, Spawn0, Spawn1]
+	#
+	# so slot -> marker was scrambled: the Can spawned on the Tsinelas's mark,
+	# the Taya on the Attacker's, and the ATTACKER ON THE TAYA'S — i.e. offense
+	# standing next to the base circle it is supposed to be throwing at from
+	# outside the line. Reported as exactly that, repeatedly.
+	#
+	# Everything about the old line invited trusting it: `_role_slot()` was
+	# correct, the markers were authored in the right order, the comment said
+	# "sorted by node name", and the resulting order was STABLE within a run so
+	# it looked deterministic. It is not even guaranteed stable BETWEEN runs —
+	# StringName intern order depends on what got interned first — which is why
+	# this appeared to move around from session to session.
+	#
+	# Named lookup removes the failure mode rather than fixing this instance of
+	# it: there is no ordering to get wrong, and a renamed or missing marker is
+	# now a loud warning instead of a silently shuffled roster.
+	for slot in range(4):
+		var marker := points.get_node_or_null("Spawn%d" % slot) as Marker3D
+		if marker == null:
+			push_warning("main.gd: map '%s' has no SpawnPoints/Spawn%d; using the fallback ring." % [path, slot])
+			_map_spawns.clear()
+			return
 		# The whole TRANSFORM, not just the origin. A spawn point has to say
 		# which way you are FACING as well as where you stand — the first render
 		# of this had all four units spawn at the ends of the alley looking at
 		# the wall behind them, because a Marker3D with no rotation means the
 		# default -Z facing and half the spawns are at the far end.
-		_map_spawns.append((marker as Marker3D).transform)
+		_map_spawns.append(marker.transform)
 
 ## Spawn slots are ROLE-based, not team-based, since the human playtest of the
 ## proportion fix (2026-07-28): "two teams spawn on completely different ends
@@ -213,14 +254,44 @@ func _place_at_spawn(character: CharacterBase, slot: int) -> void:
 	var t := _spawn_transform(slot)
 	character.position = t.origin
 	character.rotation.y = t.basis.get_euler().y
+	# ⚠️⚠️ PUSH THE NEW TRANSFORM TO THE PHYSICS SERVER *NOW*. DO NOT REMOVE.
+	#
+	# Writing `position` on a PhysicsBody3D updates the SCENE TREE immediately and
+	# the physics broadphase only at the next flush. Within one frame, every
+	# other body's `move_and_slide()` therefore still collides with this
+	# character's PREVIOUS collider position.
+	#
+	# That is what B-100's "park everyone at y=500 first" was really fighting,
+	# and why it could not work: the parking write is invisible to the server for
+	# the same reason the placement write is. Roles swap every round, so the two
+	# Persons trade marks — measured with tools/jump_probe.gd, the incoming Taya
+	# was placed correctly at (2.2, 0.9, -1.5), then on the very next physics step
+	# `move_and_slide()` reported three contacts with the OUTGOING Person (normal
+	# 0,1,0 — stacked on its head), shoved it 1.60 up to y=2.50, and the frame
+	# after that slid it 9.84 units into WallWest. Reported as characters "flung
+	# many units off their real spawn markers, sometimes airborne" (B-100) and as
+	# weird physics bounces.
+	#
+	# force_update_transform() flushes this body's transform to the server
+	# synchronously, so by the time the next character is placed — and by the time
+	# anyone's move_and_slide() runs — the space is genuinely vacated.
+	character.begin_spawn_settle()
+	# 4.2: this is a TELEPORT, not a walk — every round reset routes through
+	# here, and without this a remote peer's interpolated visual would glide
+	# across the map from its previous position to the new spawn point
+	# instead of snapping there with everyone else.
+	character.snap_visual_interpolation()
 
 var _spawned_peer_ids: Dictionary = {}
-## B-21: peer_id -> permanently-assigned join index (0..3), separate from
-## _spawned_peer_ids.size(). A disconnect/rejoin used to shift every
-## subsequent peer's index (and therefore team/role) since the index was
-## derived from how many peers happen to be connected right now. Assigned
-## once per peer_id and never reused/reassigned, even after that peer leaves.
-var _peer_join_index: Dictionary = {}
+## B-21, superseded by 4.3/B-65: token -> permanently-assigned join index
+## (0..3), separate from _spawned_peer_ids.size(). B-21 keyed this by peer_id
+## so a disconnect/rejoin couldn't shift every OTHER peer's index — but the
+## rejoining peer itself still came back as a brand-new peer_id with no entry
+## of its own, landing in the next free slot instead of its original team/role
+## (B-65). Keyed by NetworkManager's stable per-install token instead: a
+## reconnect presents the SAME token under a new peer_id, so it maps straight
+## back to the index it already had. See _spawn_player.
+var _token_join_index: Dictionary = {}
 var _next_join_index: int = 0
 ## Session 6: real 2v2 team assignment. peer_id -> 0 (Team A) or 1 (Team B),
 ## fixed for the whole match — replaces the old "alternate Can/Tsinelas by
@@ -235,6 +306,30 @@ var _peer_teams: Dictionary = {}
 ## see _spawn_player for how it's assigned.
 var _peer_is_person: Dictionary = {}
 var _spawned_characters: Dictionary = {} # peer_id -> CharacterBase
+## Abandoned-body placeholder (2026-07-28, user feedback: "instead of
+## disappearing it should transition to an AI... just make it stationary and
+## make a player be able to join back to their character"). join index (see
+## _token_join_index) -> CharacterBase, populated in _build_networked_character
+## and, deliberately like NetworkManager.peer_tokens, NEVER erased on
+## disconnect — the whole point is finding the SAME character again once its
+## owner reconnects under a brand-new peer_id. Keyed by index rather than
+## token directly: MultiplayerSpawner's custom spawn data silently truncates
+## past 7 entries once it crosses the network (measured — see _spawn_player),
+## and index needs no extra entry since every peer already derives it
+## identically from data["team"]/data["is_person"].
+##
+## Real AI now drives every character with no live human behind it — an
+## unfilled team/role slot (_fill_empty_slots_with_placeholders) or a real
+## peer's slot after they disconnect (_rpc_convert_to_ai) — instead of just
+## freezing. Both give the character multiplayer authority 1 (the host, who
+## already runs round logic) and add_child() an AIController the same way
+## Single Player does (see ai_controller.gd's own class doc), with player_id
+## bumped to the unbound 3/4 range so its Input.action_press() calls can never
+## collide with a real human's own p1/p2 keystrokes on the same (host)
+## machine — see _build_spawn_data's own doc for that trap and its fix.
+## Handing a slot BACK to a reconnecting/new human (_rpc_reclaim_character)
+## detaches the AIController and restores the human 1/2 player_id range.
+var _index_to_character: Dictionary = {}
 
 func _ready() -> void:
 	# B-14: MatchManager/RoundManager are autoloads and previously carried a
@@ -256,6 +351,7 @@ func _ready() -> void:
 	spawner.spawn_function = _build_networked_character
 	MatchManager.round_started.connect(_on_match_round_started)
 	MatchManager.round_intermission_started.connect(_on_round_intermission_started)
+	MatchManager.match_won.connect(_on_match_won_freeze_physics)
 	if kill_plane != null:
 		kill_plane.character_respawned.connect(_on_character_respawned)
 	pause_root.visible = false
@@ -317,14 +413,34 @@ func _start_local_test() -> void:
 	# begin_next_round() below runs it.
 	team_a_prop.ability = _prop_ability_for(team_a_prop.is_can, team_a_prop.team).duplicate()
 	team_b_prop.ability = _prop_ability_for(team_b_prop.is_can, team_b_prop.team).duplicate()
+	# 2026-07-28: user report — "u didnt fix spawn in logic". Local test units
+	# used to just sit at Main.tscn's own hand-authored default transforms,
+	# which predate the role-based SpawnPoints redesign (2.6) entirely and
+	# were never actually seen before this session — _start_local_test() used
+	# to call begin_next_round() immediately, and _reset_world() (which DOES
+	# use role-based spawns) ran before the first frame was ever shown. Now
+	# that there's a pre-round free-roam window, those stale positions are
+	# visible and wrong: the Can not on the base circle, the Attacker not
+	# facing the Can/Taya, etc. Placing everyone at their real role spawn
+	# up front, the same way _reset_world() does every round, fixes it.
+	for character in _local_roster:
+		_place_at_spawn(character, _role_slot(character.is_can, character.is_person, character.team_is_can_side))
 	_wire_downed_flash(team_a_prop)
 	_wire_downed_flash(team_b_prop)
 	_register_local_can()
+	# Checklist 5.5 — Single Player. The human plays team_a_person (see the
+	# camera-default doc just below); the other three units on the roster get
+	# real AI instead of sitting on unbound input. Attached once, here, not
+	# re-attached every round: AIController re-derives its role from
+	# is_can/is_person/team_is_can_side on every decide() call, so it stays
+	# correct across every role swap without needing to know one happened.
+	for character in [team_a_prop, team_b_prop, team_b_person]:
+		_attach_ai(character)
 	# Item 13: no authority concept in local test, unlike networked play,
 	# where each rig can activate itself from is_multiplayer_authority(). One
 	# rig has to be picked explicitly.
 	#
-	# Defaults to TeamAPerson, so a fresh Local Match drops you into the human
+	# Defaults to TeamAPerson, so a fresh Single Player drops you into the human
 	# character. This used to be TeamAProp, which meant the first thing anyone
 	# saw on launch was a third-person shot of a tin can — correct per the GDD
 	# (a team is 1 Person + 1 Prop, and the Prop really is the Can) but a poor
@@ -337,6 +453,50 @@ func _start_local_test() -> void:
 	var default_rig := team_a_person.get_node("CameraRig") as CameraRig
 	default_rig.set_active(true)
 	default_rig.set_aim_source(CameraRig.AimSource.MOUSE)
+	# 2026-07-28: begin_next_round() is deliberately NOT called here any more —
+	# see _awaiting_local_ready's own doc. Everyone is already spawned at their
+	# role position, but the round (and confinement, which is gated on
+	# RoundManager.round_active) doesn't start until the player readies up.
+	_awaiting_local_ready = true
+	hud.show_ready_prompt(true)
+
+## 2026-07-28 — the other half of the pre-round free-roam window. Pressing
+## ready_up while waiting simply calls begin_next_round(); MatchManager's own
+## round_started signal (already connected in _ready()) fires
+## _on_match_round_started(), which both repositions everyone to their role
+## spawn via _reset_world() AND calls RoundManager.start_round() — that is
+## what re-engages confinement (see _is_confined_to_base()'s round_active
+## gate). Nothing else needed here: whoever wandered off gets teleported back
+## the instant the round actually begins, same as an ordinary intermission
+## already does between rounds.
+func _unhandled_input(event: InputEvent) -> void:
+	if _awaiting_local_ready and not _counting_down and event.is_action_pressed("ready_up"):
+		get_viewport().set_input_as_handled()
+		# 7.7 — a body-language read on the ready press. Purely visual: the
+		# countdown and the round start are unchanged below, this just means the
+		# OTHER players can see it happen in the world instead of only on a HUD.
+		# Guarded because the local roster is empty on any non-local path.
+		for character in _local_roster:
+			if is_instance_valid(character) and character.is_person:
+				character.play_visual_action("ready")
+		_run_ready_countdown()
+
+## 2026-07-28 — "add a 3 2 1 timer before each match starts too." Runs once,
+## between the ready press and the round actually starting; begin_next_round()
+## (and the reposition-to-role-spawn + confinement it triggers) only fires
+## once the countdown finishes, not on the ready press itself. _counting_down
+## guards against a second ready_up press restarting it mid-count.
+func _run_ready_countdown() -> void:
+	_counting_down = true
+	hud.show_ready_prompt(false)
+	for tick in ["3", "2", "1"]:
+		hud.show_countdown_tick(tick)
+		await get_tree().create_timer(1.0).timeout
+	hud.show_countdown_tick("GO!")
+	await get_tree().create_timer(0.5).timeout
+	hud.hide_countdown()
+	_awaiting_local_ready = false
+	_counting_down = false
 	MatchManager.begin_next_round()
 
 ## (Re)tells RoundManager which local Prop is currently the Can — whichever
@@ -360,12 +520,19 @@ func _start_hosting() -> void:
 			return
 	NetworkManager.player_connected.connect(_on_player_connected)
 	NetworkManager.player_disconnected.connect(_on_player_disconnected)
+	# 4.3/B-65: a peer that connects (or reconnects) from here on has missed
+	# the lobby entirely — see NetworkManager.match_in_progress's own doc.
+	NetworkManager.player_identified.connect(_on_player_identified)
+	NetworkManager.match_in_progress = true
 	# U-4: after the lobby all connected peers are already known; iterate over
 	# connected_peer_ids so everyone gets a spawner entry. In a fresh (non-
 	# lobby) host flow, connected_peer_ids = [host_id] so behaviour is the same
 	# as the old single _spawn_player(multiplayer.get_unique_id()) call.
 	for id in NetworkManager.connected_peer_ids:
 		_spawn_player(id)
+	# 2026-07-28, user feedback: "when playing multiplayer, for example only
+	# 2 people is playing, there's only 2 characters. it should have 4."
+	_fill_empty_slots_with_placeholders()
 	MatchManager.begin_next_round()
 
 func _start_joining(address: String) -> void:
@@ -373,13 +540,30 @@ func _start_joining(address: String) -> void:
 	NetworkManager.player_connected.connect(_on_player_connected)
 	NetworkManager.player_disconnected.connect(_on_player_disconnected)
 	# Q-1/B-62: only a client can lose its server or fail to reach one — a host
-	# has no server to lose, and Local Match has no NetworkManager session at
+	# has no server to lose, and Single Player has no NetworkManager session at
 	# all, so these are wired here rather than _ready().
 	NetworkManager.server_disconnected.connect(_on_server_disconnected)
 	NetworkManager.connection_failed.connect(_on_connection_failed)
 	# U-4: when arriving from the lobby, join_game() already ran — skip it.
-	if not NetworkManager.is_networked():
+	#
+	# 4.3/B-65: also decides how to send _rpc_client_ready_for_spawn (tells
+	# the host our OWN Main.tscn/MultiplayerSpawner actually exists, so it is
+	# safe to replicate a spawn to us — see that RPC's own doc). Already
+	# networked (arrived via Lobby, or NetworkManager just redirected us here
+	# mid-match) means the connection is live RIGHT NOW, so send it
+	# immediately. A fresh join_game() call here is still mid-handshake the
+	# instant it returns — an RPC sent this same frame throws "trying to call
+	# an RPC via a multiplayer peer which is not connected" (measured, not
+	# guessed: the two-instance test threw exactly that before this was
+	# split) — so that case waits for the real connection_succeeded signal.
+	if NetworkManager.is_networked():
+		_rpc_client_ready_for_spawn.rpc_id(1)
+	else:
+		NetworkManager.connection_succeeded.connect(_on_joined_ready_for_spawn, CONNECT_ONE_SHOT)
 		NetworkManager.join_game(address)
+
+func _on_joined_ready_for_spawn() -> void:
+	_rpc_client_ready_for_spawn.rpc_id(1)
 
 func _clear_local_test_characters() -> void:
 	RoundManager.clear_tracked_cans()
@@ -390,21 +574,65 @@ func _clear_local_test_characters() -> void:
 	team_b_person.queue_free()
 	_local_roster.clear()
 
+## 4.3/B-65: this used to be the ONE trigger for spawning + catching up a
+## post-lobby joiner, firing the instant ENet's handshake completed. It is
+## now one of THREE (see _on_player_identified, _rpc_client_ready_for_spawn
+## below) because that instant is no longer late enough to safely act on:
+## the peer's token may not have arrived yet (raced against _rpc_identify,
+## a separate message with no ordering guarantee relative to this signal),
+## and — for a peer redirected here mid-match out of Lobby.tscn — their own
+## Main.tscn may not even be loaded yet. All three call the same idempotent
+## _try_late_join, so whichever condition is satisfied LAST is the one that
+## actually spawns them.
 func _on_player_connected(peer_id: int) -> void:
 	if NetworkManager.is_host():
-		_spawn_player(peer_id)
-		# B-29/B-48: _start_hosting() already called MatchManager.begin_next_round()
-		# before anyone could possibly be connected (see B-13), so every joining
-		# peer — not just a "late" one — missed the one-shot _sync_round_started
-		# broadcast and is stuck at round_number 0. GameLaunch.game_mode is also
-		# never networked at all; each peer reads its own menu selection, so a
-		# client's copy can silently disagree with the host's. Catch this one
-		# peer up on both in a single reliable RPC.
-		_sync_state_to_late_joiner.rpc_id(
-			peer_id, MatchManager.round_number, MatchManager.team_a_is_can,
-			MatchManager.team_a_wins, MatchManager.team_b_wins,
-			RoundManager.time_left, RoundManager.round_active, GameLaunch.game_mode
-		)
+		_try_late_join(peer_id)
+
+## 4.3/B-65: fires once NetworkManager has recorded this peer's token
+## (NetworkManager.player_identified) — see _on_player_connected's doc for
+## why this is needed as a second trigger rather than trusting player_connected
+## alone.
+func _on_player_identified(peer_id: int, _token: String) -> void:
+	if NetworkManager.is_host():
+		_try_late_join(peer_id)
+
+## 4.3/B-65 — client -> host: "my own Main.tscn is loaded and ready to
+## receive a spawn." Sent unconditionally from the end of _start_joining(),
+## for both a normal --join= (Main.tscn already loaded, so this just
+## confirms what was already true) and a peer NetworkManager just redirected
+## out of Lobby.tscn mid-match (where it is NOT already true, and skipping
+## this ping would race the spawn against a scene still loading). No-op via
+## _try_late_join's own guards if the match hasn't started yet — the ordinary
+## Lobby-gated flow spawns everyone from _start_hosting()'s own loop and
+## never needed a ping at all.
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_client_ready_for_spawn() -> void:
+	if NetworkManager.is_host():
+		_try_late_join(multiplayer.get_remote_sender_id())
+
+## Shared by all three triggers above. Idempotent both ways: _spawned_peer_ids
+## guards against spawning twice, and the missing-token return means a trigger
+## that fires before NetworkManager.peer_tokens has this peer's entry simply
+## does nothing rather than spawning them into the wrong slot — whichever
+## trigger fires once BOTH conditions are true is the one that actually acts.
+func _try_late_join(peer_id: int) -> void:
+	if _spawned_peer_ids.has(peer_id):
+		return
+	if not NetworkManager.peer_tokens.has(peer_id):
+		return
+	_spawn_player(peer_id)
+	# B-29/B-48: _start_hosting() already called MatchManager.begin_next_round()
+	# before anyone could possibly be connected (see B-13), so every joining
+	# peer — not just a "late" one — missed the one-shot _sync_round_started
+	# broadcast and is stuck at round_number 0. GameLaunch.game_mode is also
+	# never networked at all; each peer reads its own menu selection, so a
+	# client's copy can silently disagree with the host's. Catch this one
+	# peer up on both in a single reliable RPC.
+	_sync_state_to_late_joiner.rpc_id(
+		peer_id, MatchManager.round_number, MatchManager.team_a_is_can,
+		MatchManager.team_a_wins, MatchManager.team_b_wins,
+		RoundManager.time_left, RoundManager.round_active, GameLaunch.game_mode
+	)
 
 ## B-15/B-35: only show the "OUT OF BOUNDS" toast for a character that's
 ## actually ours — a client's screen shouldn't flash every time some OTHER
@@ -455,22 +683,50 @@ func _notification(what: int) -> void:
 			return
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
+## 2026-07-28, user feedback: "instead of disappearing it should transition to
+## an AI... just make it stationary and make a player be able to join back to
+## their character." First half landed as a stationary placeholder (frozen —
+## nobody's peer_id ever satisfies is_multiplayer_authority() for it, see
+## character_base.gd:347's gate). This function now finishes the ask: the
+## character is handed to AIController instead of staying frozen, via
+## _rpc_convert_to_ai below. Deliberately does NOT free the node or erase
+## _spawned_characters/_peer_teams/_peer_is_person directly here — that
+## bookkeeping migration is _rpc_convert_to_ai's job (same shape as
+## _rpc_reclaim_character's own migration), so every peer updates its local
+## dictionaries identically instead of only the host's.
+## See _spawn_player for the other half: reclaiming this same character when
+## its owner's token reconnects, instead of spawning a fresh one — that path
+## now also has to hand control back FROM the AI, see _rpc_reclaim_character.
 func _on_player_disconnected(peer_id: int) -> void:
-	var node := players_root.get_node_or_null(str(peer_id))
-	if node:
-		node.queue_free()
-	_spawned_peer_ids.erase(peer_id)
-	_peer_teams.erase(peer_id)
-	_peer_is_person.erase(peer_id)
-	_spawned_characters.erase(peer_id)
-	# Q-2/B-63: the leaver's node is freed above, but RoundManager's
-	# _tracked_cans still held a reference if it was the Can — its guard
-	# (`is_instance_valid()`) then silently no-ops forever, so the round could
-	# only ever end on the timer. Only the host drives round-win logic (same
-	# gate RoundManager itself uses throughout).
-	if NetworkManager.is_host():
-		_reregister_tracked_cans()
-		_rpc_show_toast.rpc("A player left the match")
+	# Q-2/B-63 (still applies, just from a different cause now): RoundManager's
+	# _tracked_cans is a snapshot taken at the last _reregister_tracked_cans()
+	# call, not a live view — rebuild it so a Can whose team assignment this
+	# disconnect might otherwise leave stale is correctly (re)tracked. Only the
+	# host drives round-win logic (same gate RoundManager itself uses
+	# throughout).
+	if not NetworkManager.is_host():
+		return
+	_reregister_tracked_cans()
+	var character: CharacterBase = _spawned_characters.get(peer_id)
+	var index := _index_for_character(character) if character != null else -1
+	if index != -1:
+		_rpc_convert_to_ai.rpc(index)
+		_rpc_show_toast.rpc("A player left the match — an AI has taken over their character")
+	else:
+		# Should not normally happen (every spawned character has an index —
+		# see _build_networked_character) — kept as a fallback so a disconnect
+		# never silently does nothing if that assumption is ever wrong.
+		_rpc_show_toast.rpc("A player left the match — their character will hold position until they reconnect")
+
+## Finds `character`'s join index by reverse lookup through _index_to_character
+## — the only direction that dictionary is normally read (index -> character);
+## this is the one caller that needs the other direction, to know which index
+## a peer_id about to go stale (disconnect) actually belongs to.
+func _index_for_character(character: CharacterBase) -> int:
+	for index in _index_to_character:
+		if _index_to_character[index] == character:
+			return index
+	return -1
 
 ## Host-only: tells every peer (via MultiplayerSpawner) to construct a
 ## character for `peer_id`, assigned to a fixed team (2 peers per team, first
@@ -484,15 +740,49 @@ func _on_player_disconnected(peer_id: int) -> void:
 func _spawn_player(peer_id: int) -> void:
 	if _spawned_peer_ids.has(peer_id):
 		return
+	# 4.3/B-65: a peer_id is only good for one connection's lifetime — a
+	# rejoin gets a fresh one from ENet. NetworkManager.peer_tokens is where
+	# _rpc_identify recorded the STABLE token this peer_id currently belongs
+	# to; every caller of _spawn_player (_start_hosting's loop,
+	# _try_late_join) already checked this is populated before getting here.
+	var token: String = NetworkManager.peer_tokens.get(peer_id, "")
+	if token == "":
+		push_warning("main.gd: _spawn_player(%d) called with no registered token; skipping." % peer_id)
+		return
 	_spawned_peer_ids[peer_id] = true
-	# B-21: was `_spawned_peer_ids.size()` — a live count that shifts for every
-	# peer still connected after someone disconnects, scrambling team/role
-	# assignment for everyone whose index moved. Assign once, permanently, per
-	# peer_id instead.
-	if not _peer_join_index.has(peer_id):
-		_peer_join_index[peer_id] = _next_join_index
+	# B-21, superseded by 4.3/B-65: was keyed by peer_id, which meant a
+	# rejoin (new peer_id, same human) landed in the next free slot instead
+	# of the one it already had — see _token_join_index's own doc. Assign
+	# once, permanently, per TOKEN instead.
+	if not _token_join_index.has(token):
+		_token_join_index[token] = _next_join_index
 		_next_join_index += 1
-	var index: int = _peer_join_index[peer_id]
+	var index: int = _token_join_index[token]
+	# 2026-07-28: this index's character may still be standing right where its
+	# previous owner left it — _on_player_disconnected no longer frees it (see
+	# that function's own doc) specifically so a reconnect can pick the same
+	# body back up instead of getting a fresh one at a spawn point.
+	# _index_to_character is never erased on disconnect, for this lookup.
+	#
+	# Keyed by INDEX, not token: MultiplayerSpawner's custom spawn `data`
+	# silently truncates to 7 entries once it crosses the network (measured,
+	# not assumed — a "token": String key added as an 8th entry vanished on
+	# the receiving peer even at 1 character long, ruling out a size limit).
+	# index needs no extra key at all — every peer already derives the exact
+	# same index from data["team"]/data["is_person"], both already sent (see
+	# _build_networked_character).
+	var existing_character: CharacterBase = _index_to_character.get(index)
+	if existing_character != null and is_instance_valid(existing_character):
+		_rpc_reclaim_character.rpc(index, peer_id)
+		return
+	spawner.spawn(_build_spawn_data(peer_id, index))
+
+## Shared by _spawn_player (a real peer) and _fill_empty_slots_with_placeholders
+## (an unfilled team/role slot, given a synthetic negative peer_id nothing
+## real can ever match) — the two differ only in WHOSE peer_id ends up
+## controlling the resulting character, not in how team/role/position are
+## derived from `index`.
+func _build_spawn_data(peer_id: int, index: int) -> Dictionary:
 	var team := index / 2 # 0, 0, 1, 1 for up to MAX_PLAYERS = 4
 	var is_person := index % 2 == 0 # first peer of each team pair is the Person
 	var team_is_can_side := (team == 0) == MatchManager.team_a_is_can
@@ -513,12 +803,54 @@ func _spawn_player(peer_id: int) -> void:
 	# WASD-tracks-Attacker/arrows-tracks-Defender scheme, since Attacker/
 	# Defender swaps every round while a peer's is_person/player_id don't;
 	# that would need input rebinding on every role swap, not just this fix.
-	var player_id := (index % 2) + 1
-	spawner.spawn({
+	#
+	# AI takeover: `peer_id < 0` is the existing negative-sentinel convention
+	# (see _fill_empty_slots_with_placeholders / _rpc_convert_to_ai) for a slot
+	# with no real human behind it. Those get player_id 3/4 instead of 1/2 —
+	# p3/p4 are registered in project.godot but deliberately left unbound to
+	# any real key (see CharacterBase.player_id's own doc), so an AIController's
+	# Input.action_press() on that suffix can never collide with a real human's
+	# own p1/p2 keystrokes, even when both are simulated on the same machine
+	# (the host, which is who actually runs an AI-driven character's physics —
+	# see _build_networked_character). Flagged as a real trap by the
+	# networking-lane handoff before any AI was wired into networked play at
+	# all; this is that fix.
+	var player_id := (index % 2) + (3 if peer_id < 0 else 1)
+	return {
 		"peer_id": peer_id, "position": spawn_pos, "is_can": is_can,
 		"is_person": is_person, "team": team, "team_is_can_side": team_is_can_side,
 		"player_id": player_id,
-	})
+	}
+
+## 2026-07-28, user feedback: "when playing multiplayer, for example only 2
+## people is playing, there's only 2 characters. it should have 4... make the
+## other 2 stationary for the meantime as it's only a placeholder." A 2v2
+## match with fewer than 4 real peers connected used to leave the unfilled
+## team's slots with no character at all — _start_hosting only ever spawned
+## _spawn_player for peers that actually connected.
+##
+## Fills every remaining slot (0..MAX_PLAYERS-1) with a negative sentinel
+## peer_id (real ENet peer ids are always positive, so it can never collide
+## with, or ever be reconnected to by, an actual connection) — the bookkeeping
+## key _build_networked_character reads to know "no real human owns this
+## one," which it answers by giving the character to the host's own
+## AIController instead of a real player's Input (see that function's own
+## doc, and _index_to_character's).
+##
+## Deliberately does NOT touch _token_join_index/_next_join_index: a REAL
+## peer connecting later still gets the next free index normally, finds this
+## placeholder already sitting in _index_to_character for that index, and
+## reclaims it via the exact same _rpc_reclaim_character a reconnecting real
+## peer uses (see _spawn_player) — a new player taking an empty slot and a
+## dropped player's own slot coming back are the same event to this code.
+func _fill_empty_slots_with_placeholders() -> void:
+	for index in range(NetworkManager.MAX_PLAYERS):
+		var existing_character: CharacterBase = _index_to_character.get(index)
+		if existing_character != null and is_instance_valid(existing_character):
+			continue
+		var sentinel_peer_id := -1 - index
+		_spawned_peer_ids[sentinel_peer_id] = true
+		spawner.spawn(_build_spawn_data(sentinel_peer_id, index))
 
 ## B-76. Picks the ability class a Prop should carry THIS round, given its
 ## role (is_can) and team. Never cached on the caller's side — call this again
@@ -548,11 +880,45 @@ func _build_networked_character(data: Dictionary) -> Node:
 		# B-76: the class ability depends on which side of the round this Prop
 		# is playing — see _prop_ability_for() doc.
 		character.ability = _prop_ability_for(character.is_can, character.team).duplicate()
-	character.set_multiplayer_authority(data["peer_id"])
-	_peer_teams[data["peer_id"]] = data["team"]
-	_peer_is_person[data["peer_id"]] = data["is_person"]
-	_spawned_characters[data["peer_id"]] = character
-	if data["peer_id"] == multiplayer.get_unique_id() and character.is_can:
+	var peer_id: int = data["peer_id"]
+	# AI takeover: a negative peer_id is the sentinel for "no real human owns
+	# this slot" (see _fill_empty_slots_with_placeholders / _rpc_convert_to_ai)
+	# — no real ENet connection can ever present one, so it used to mean
+	# "frozen forever" (nobody's is_multiplayer_authority() ever true for it).
+	# It now means "the HOST's machine runs this one," same authority the host
+	# already has for round logic — real authority is the host's own peer_id
+	# (always 1), while `peer_id` itself stays the negative sentinel for
+	# bookkeeping (the _spawned_characters/_index_to_character keys below,
+	# and character.name) so multiple AI slots don't collide on the same
+	# dictionary key the way they would if they all shared authority id 1 there
+	# too.
+	var is_ai := peer_id < 0
+	character.set_multiplayer_authority(1 if is_ai else peer_id)
+	_peer_teams[peer_id] = data["team"]
+	_peer_is_person[peer_id] = data["is_person"]
+	_spawned_characters[peer_id] = character
+	# 2026-07-28: keyed by INDEX (derived here identically to _spawn_player's
+	# own derivation, from data this spawn already carries), not peer_id, and
+	# never erased on disconnect (unlike _spawned_characters above) — see
+	# _spawn_player's reclaim check and _on_player_disconnected's own doc for
+	# why a stale peer_id's body needs to stay findable by something that
+	# survives a reconnect.
+	var index: int = data["team"] * 2 + (0 if data["is_person"] else 1)
+	_index_to_character[index] = character
+	if is_ai:
+		# Only the host's own local instance of this spawn_function call
+		# attaches a driving AIController (add_child, never baked into
+		# CharacterBase.tscn — see ai_controller.gd's own class doc): the
+		# spawn function runs identically on every peer (that's how
+		# MultiplayerSpawner replicates a spawn at all), but only the host is
+		# ever this character's multiplayer authority, so only the host's
+		# presses through Input.action_press() do anything once
+		# _physics_process's own authority gate is reached. Attaching it
+		# anywhere else would just press dead, unread Input state on that
+		# other peer's machine — harmless, but pointless.
+		if NetworkManager.is_host():
+			_attach_ai(character)
+	elif peer_id == multiplayer.get_unique_id() and character.is_can:
 		# This is the character we personally control — DownedFlash should
 		# only ever reflect what's happening to OUR Can, never a teammate's
 		# Person or an opponent's (GDD Section 6: "clear visual read",
@@ -608,6 +974,29 @@ func _reset_world(team_a_is_can: bool) -> void:
 			})
 
 	RoundManager.clear_tracked_cans()
+	# B-100 — park every character somewhere nobody could possibly overlap
+	# BEFORE any of them move to a real spot. Roles swap every round, so two
+	# characters routinely trade positions with each other; repositioning
+	# them one at a time straight to their new spots otherwise leaves a real
+	# window where the second character hasn't vacated a spot the first one
+	# just arrived at, and the physics engine depenetrates that overlap with
+	# a genuine impulse — confirmed via tools/render_probe.gd's round2 mode,
+	# characters ended up flung many units off their real spawn markers,
+	# sometimes airborne, sometimes far enough to clear the confinement box
+	# or the floor collision entirely. Reported as "cann fell off map again"
+	# and the spawn layout looking "completely different" from what the code
+	# says it should be.
+	# ⚠️ Toggling CollisionShape3D.disabled around the reposition was tried
+	# first and did NOT reliably fix it — disable, reposition and re-enable
+	# all happen within the same script frame, before any physics step, and
+	# Godot's physics server appears to sync only the FINAL state (enabled,
+	# new position) rather than replaying the toggle, so the depenetration
+	# still fired. This works instead because it is purely geometric: widely
+	# separated, per-character-index parking spots can never overlap ANY
+	# other character's parking spot or real spawn point, so there is
+	# nothing for the physics engine to resolve regardless of when it syncs.
+	for i in range(roster.size()):
+		(roster[i]["character"] as CharacterBase).position = Vector3(0.0, 500.0 + i * 20.0, 0.0)
 	var attacker: CharacterBase = null
 	var tsinelas: CharacterBase = null
 	for entry in roster:
@@ -660,6 +1049,39 @@ func _reset_world(team_a_is_can: bool) -> void:
 func _on_round_intermission_started(_next_round_number: int, next_team_a_is_can: bool, _can_team_won: bool) -> void:
 	_reset_world(next_team_a_is_can)
 
+## 2026-07-28 — user report: "when round ends the can falls thru the world."
+## Root cause: unlike every OTHER round transition, the match's FINAL round
+## never gets a _reset_world() call afterward (match_won fires instead of
+## round_intermission_started, see match_manager.gd::report_round_result),
+## so nothing ever clears velocity again. RoundManager.round_active is false
+## from here on and character_base.gd's own freeze gate stops it from
+## MOVING, but gravity is still applied every physics frame regardless
+## (deliberately, so a unit mid-jump still settles) — with no reset ever
+## coming, a unit that was airborne right as the match ended just keeps
+## falling under gravity for as long as the result screen is up, long
+## enough to tunnel through the floor's thin collision shape. This is the
+## same root cause as B-93, just on a code path B-93 didn't cover because it
+## isn't a round reset at all. Zeroing velocity once, here, is enough —
+## nothing moves it again once round_active is permanently false.
+func _on_match_won_freeze_physics(_winning_team: int) -> void:
+	for character in _all_characters():
+		character.velocity = Vector3.ZERO
+
+## Every character currently in play, local-test or networked — the same
+## roster _reset_world() already builds, minus the team/role bookkeeping
+## nothing here needs.
+func _all_characters() -> Array[CharacterBase]:
+	var result: Array[CharacterBase] = []
+	if NetworkManager.is_networked():
+		for character in _spawned_characters.values():
+			if is_instance_valid(character):
+				result.append(character)
+	else:
+		for character in _local_roster:
+			if is_instance_valid(character):
+				result.append(character)
+	return result
+
 ## Host → one late-joining peer (B-29, B-48). Sets every field directly rather
 ## than replaying _on_match_round_started's reset cascade: that function calls
 ## reset_for_new_round() and rewrites `position` on every character it knows
@@ -697,12 +1119,21 @@ func _reregister_tracked_cans() -> void:
 
 ## Q-5: the "YOU" card's networked path (scripts/ui/you_card.gd) — the one
 ## character out of _spawned_characters that this peer actually controls.
-## Local Match never calls this; it resolves by scanning for player_id == 1
+## Single Player never calls this; it resolves by scanning for player_id == 1
 ## instead, since there is no is_multiplayer_authority() concept there.
+##
+## AI takeover: is_multiplayer_authority() alone is no longer sufficient on
+## the HOST machine specifically — an AI-driven character's authority is also
+## the host's own peer_id (see _build_networked_character), so on a host that
+## is itself a real player, both the host's own character AND every AI-driven
+## one would match. `ai_controller` is only ever non-null on the one process
+## that attached it (the host, and only for the character it's actually
+## driving — see _attach_ai's call sites), so excluding it is enough to tell
+## "mine" from "the host's machine happens to also simulate this one."
 func get_local_character() -> CharacterBase:
 	for peer_id in _spawned_characters:
 		var character: CharacterBase = _spawned_characters[peer_id]
-		if is_instance_valid(character) and character.is_multiplayer_authority():
+		if is_instance_valid(character) and character.is_multiplayer_authority() and character.ai_controller == null:
 			return character
 	return null
 
@@ -735,6 +1166,19 @@ func _wire_downed_flash(character: CharacterBase) -> void:
 			hud.set_dents(new_dents, CharacterBase.MAX_DENTS)
 	)
 
+## Checklist 5.5, later reused for networked AI takeover (see
+## _build_networked_character / _rpc_convert_to_ai) — instances an
+## AIController and hands it to `character` (CharacterBase.ai_controller —
+## see that var's own doc for why this can't just be an @onready node
+## reference on the character itself). A plain `Node`, `add_child()`'d rather
+## than baked into CharacterBase.tscn, since that scene is shared by every
+## spawn path and most characters (every human-controlled one) never have an
+## unpiloted unit to drive.
+func _attach_ai(character: CharacterBase) -> void:
+	var controller := AIController.new()
+	character.add_child(controller)
+	character.ai_controller = controller
+
 ## B-20: Esc toggles a pause overlay with Resume/Return to Menu — previously
 ## the only way out of a match at all was Alt+F4. Also owns the Item 14 mouse
 ## capture toggle (previously a bare Esc-only handler with no pause menu):
@@ -765,7 +1209,15 @@ func _on_pause_toggle_requested() -> void:
 	# Match gets a real freeze; networked stays a non-freezing overlay and
 	# says so, so the player isn't misled into thinking they've stopped
 	# anything.
-	if NetworkManager.is_networked():
+	#
+	# Solo-host QoL (2026-07-28+): except neither risk exists when there is
+	# nobody else in the session — a lone host pausing cannot desync a round
+	# nobody else is watching, and cannot stop movement anyone else is
+	# depending on. The playtest that surfaced this was run by HOSTING, not
+	# Local Match, specifically to exercise the networked code path alone;
+	# refusing to actually pause for that is a real cost with no one to
+	# protect. See NetworkManager.is_solo_session().
+	if NetworkManager.is_networked() and not NetworkManager.is_solo_session():
 		paused_label.text = "PAUSED — the match is still running"
 	else:
 		get_tree().paused = pause_root.visible
@@ -804,7 +1256,9 @@ func _on_server_disconnected() -> void:
 	RoundManager.reset()
 	GameLaunch.reset()
 	GameLaunch.pending_status_message = "Host ended the match."
-	get_tree().change_scene_to_file("res://scenes/ui/MainMenu.tscn")
+	# GameSetup, not the title screen: it owns the status message and it is where
+	# this player would rejoin or re-host from.
+	get_tree().change_scene_to_file("res://scenes/ui/GameSetup.tscn")
 
 ## Q-1/B-62: a Join to a dead/unreachable address previously left the player on
 ## a black Main.tscn forever — the same soft-lock as a mid-match host quit,
@@ -815,4 +1269,93 @@ func _on_connection_failed() -> void:
 	RoundManager.reset()
 	GameLaunch.reset()
 	GameLaunch.pending_status_message = "Could not reach that host."
-	get_tree().change_scene_to_file("res://scenes/ui/MainMenu.tscn")
+	get_tree().change_scene_to_file("res://scenes/ui/GameSetup.tscn")
+
+## Host → all peers: hands `index`'s existing, still-standing character over
+## to AI control instead of leaving it frozen — see _on_player_disconnected.
+## Same shape as _rpc_reclaim_character below (bookkeeping migration to a
+## fresh key, run identically on every peer via call_local), mirrored for the
+## opposite direction: human -> AI instead of AI/nobody -> human.
+##
+## Re-derives a fresh negative-sentinel peer_id (-1 - index) rather than
+## reusing the dead peer's own old id — the old id belonged to a connection
+## that is gone for good (a reconnect always gets a NEW peer_id from ENet, see
+## NetworkManager.local_player_token's doc), so keeping it around as a
+## dictionary key would just be a stale id no future event can ever match.
+## Matches the sentinel _fill_empty_slots_with_placeholders already uses for
+## an unfilled slot — a slot that was never filled and a slot whose owner just
+## left are the same state as far as this bookkeeping is concerned.
+@rpc("authority", "call_local", "reliable")
+func _rpc_convert_to_ai(index: int) -> void:
+	var character: CharacterBase = _index_to_character.get(index)
+	if character == null or not is_instance_valid(character):
+		return
+	for old_peer_id in _spawned_characters.keys():
+		if _spawned_characters[old_peer_id] == character:
+			_spawned_characters.erase(old_peer_id)
+			_peer_teams.erase(old_peer_id)
+			_peer_is_person.erase(old_peer_id)
+			_spawned_peer_ids.erase(old_peer_id)
+			break
+	var sentinel_peer_id := -1 - index
+	character.name = str(sentinel_peer_id)
+	character.set_multiplayer_authority(1) # host runs AI-driven physics — see _build_networked_character
+	character.player_id = (index % 2) + 3 # AI-safe range — see _build_spawn_data's own doc
+	_spawned_characters[sentinel_peer_id] = character
+	_peer_teams[sentinel_peer_id] = character.team
+	_peer_is_person[sentinel_peer_id] = character.is_person
+	_spawned_peer_ids[sentinel_peer_id] = true
+	if NetworkManager.is_host() and character.ai_controller == null:
+		_attach_ai(character)
+
+## Host → all peers (2026-07-28): hands `index`'s existing, still-standing
+## character over to `new_peer_id` instead of spawning a second body for the
+## same slot. Runs identically on every peer (call_local, like every other
+## bookkeeping RPC here) since _spawned_characters/_peer_teams/_peer_is_person
+## are all per-peer local state, not replicated automatically.
+##
+## Migrates bookkeeping from whichever peer_id key currently points at this
+## character to new_peer_id — leaving BOTH keys pointing at the same instance
+## would double-count it in _reset_world's roster loop (registers it as a
+## tracked Can twice, resets it twice) the very next round transition.
+##
+## "authority" (host-only sender) because only the host's _spawn_player runs
+## the reclaim check at all — the RPC's job is purely to fan the host's
+## decision out, not to let some other peer make it.
+##
+## Also the AI-handoff-back path: `index`'s character may currently be
+## AI-driven (see _rpc_convert_to_ai / _fill_empty_slots_with_placeholders) —
+## a real peer reclaiming it needs its own ai_controller detached (or it
+## fights the human for the same character's Input state) and player_id
+## restored to the human 1/2 scheme (or the reclaiming human's real p1/p2
+## keystrokes would land on the unbound p3/p4 actions instead — see
+## _build_spawn_data's own doc on why AI slots use 3/4 to begin with).
+@rpc("authority", "call_local", "reliable")
+func _rpc_reclaim_character(index: int, new_peer_id: int) -> void:
+	var character: CharacterBase = _index_to_character.get(index)
+	if character == null or not is_instance_valid(character):
+		return
+	for old_peer_id in _spawned_characters.keys():
+		if _spawned_characters[old_peer_id] == character and old_peer_id != new_peer_id:
+			_spawned_characters.erase(old_peer_id)
+			_peer_teams.erase(old_peer_id)
+			_peer_is_person.erase(old_peer_id)
+			_spawned_peer_ids.erase(old_peer_id)
+			break
+	if character.ai_controller != null:
+		character.ai_controller.queue_free()
+		character.ai_controller = null
+	character.name = str(new_peer_id)
+	character.set_multiplayer_authority(new_peer_id)
+	character.player_id = (index % 2) + 1
+	_spawned_characters[new_peer_id] = character
+	_peer_teams[new_peer_id] = character.team
+	_peer_is_person[new_peer_id] = character.is_person
+	_spawned_peer_ids[new_peer_id] = true
+	if new_peer_id == multiplayer.get_unique_id() and character.is_can:
+		# Mirrors _build_networked_character's own DownedFlash wiring — this
+		# process never ran that function for this character (it already
+		# existed before this peer connected), so nothing wired it up yet.
+		_wire_downed_flash.call_deferred(character)
+	if NetworkManager.is_host():
+		_rpc_show_toast.rpc("A player reconnected to their character")

@@ -29,10 +29,18 @@ const MAPS: Array[Dictionary] = [
 	{
 		"id": &"eskinita",
 		"name": "ESKINITA",
-		"tagline": "Urban side street. Sari-sari, sampay, jeepney lane.",
+		"tagline": "Urban side street. Sari-sari, sampay, kanal.",
 		"scene": "res://scenes/maps/Eskinita.tscn",
 	},
 	{
+		# ⚠️ B-104 — this said `&"eskinita"` too, so `selected_map_scene()`'s
+		# first-match lookup resolved BOTH entries to Eskinita and **Bayan Plaza
+		# could never be loaded by anything**: not the picker, not the launch
+		# path, not the render harness. It fails completely silently — you pick
+		# the second map and the first one loads, which reads as "the picker is
+		# ignoring me" rather than as a duplicate key.
+		# Found 2026-07-28 while trying to render the re-dressed plaza (7.5) and
+		# getting Eskinita back three times.
 		"id": &"bayan_plaza",
 		"name": "BAYAN PLAZA",
 		"tagline": "Barangay plaza. Church, basketball ring, acacia.",

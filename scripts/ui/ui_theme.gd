@@ -17,12 +17,22 @@ class_name UiTheme
 ## individual nodes — that is what this replaces. Reach for a type variation
 ## (see `_register_variations`) when a node needs to look different.
 ##
-## ⚠️ Display font: the moodboard's heavy hand-drawn unicase marker face is
-## Harry's and was not supplied with the brief, so this ships on Godot's default
-## font. The palette, chrome and layout logic are all moodboard-accurate; only
-## the typeface is standing in. Dropping the real face in is a one-line change
-## (`theme.default_font`) plus the licence record for submission Form 03 — see
-## the blocker note in docs/Handoff.md item 15.
+## Display font: Darumadrop One (SIL Open Font License 1.1, licence text kept
+## beside the face at assets/ui/fonts/OFL.txt for submission Form 03). This
+## resolves the F-2 placeholder-typeface blocker.
+
+const DISPLAY_FONT_PATH: String = "res://assets/ui/fonts/DarumadropOne-Regular.ttf"
+
+## Darumadrop One is a Japanese face: it reserves a deep descent for kana, so its
+## ascent:descent split is roughly 4:1. Godot centres the *line box*, not the
+## ink, which leaves an all-caps Latin string sitting about 13% of the font size
+## below the optical centre of whatever it is centred in — measured at 40/54/88px
+## as -0.125/-0.130/-0.131. Expressed here as a fraction of line height
+## (0.130 / 1.475) and applied once via FontVariation, so every Label, Button and
+## LineEdit in the project is optically centred instead of each one carrying its
+## own nudge. Negative lifts the ink: a positive offset pushes the baseline down,
+## which measured as exactly double the original error.
+const BASELINE_OFFSET: float = -0.088
 
 # --- Palette (docs/Handoff.md item 15) ----------------------------------------
 const INK: Color = Color("040838")        ## near-black navy: text, borders, pressed fills
@@ -99,6 +109,30 @@ const ENV_PAINT_OCHRE: Color = Color("c9994a")    ## mustard / ochre
 ## roll-up shutters, tiled skirting, or just forty years of splashback.
 const ENV_PAINT_PLINTH: Color = Color("6d5f52")
 
+# --- Prop palette (docs/Art_Direction.md Part 2) -------------------------------
+#
+# WHY THESE EXIST. The two hero props wore UI tokens — an `IMPACT` magenta sole,
+# a `HIGHLIGHT` yellow strap — because in 2026-07-28's B-81 pass those were the
+# only non-role colours to hand. **The human confirmed that magenta was
+# placeholder** and supplied asset moodboards for both props, so
+# they now get their own band instead of borrowing the UI's.
+#
+# They are NOT in the `ENV_*` band either, and that distinction is load-bearing:
+# `ENV_*` is held under ~70% saturation on purpose so a wall never competes with
+# a character. A hero prop is the opposite problem — the tsinelas is the
+# most-looked-at object in the game and has to read against asphalt at throwing
+# distance. So these are allowed to be more saturated than any `ENV_*` token,
+# and forbidden from going anywhere near `OFFENSE` or `DEFENSE` in hue.
+#
+# ⚠️ `PROP_SARSI_RED` is a brand red, not `DANGER`. `DANGER` (#F80000) means
+# downed / out-of-bounds and is a STATE signal; the sail is permanent livery, and
+# painting livery in the alarm colour would make a healthy can look hurt. Two
+# steps down in value and slightly warm keeps them apart at arena distance.
+const PROP_FOAM: Color = Color("7a5741")          ## tsinelas footbed — worn brown foam
+const PROP_FOAM_DARK: Color = Color("54382a")     ## tsinelas outsole, the dirty underside
+const PROP_WEBBING: Color = Color("c69a6b")       ## tsinelas Y-strap — tan fabric webbing
+const PROP_SARSI_RED: Color = Color("d8221c")     ## the lata's sail and ball
+
 # --- Chrome -------------------------------------------------------------------
 const BORDER_WIDTH: int = 3
 const CORNER_RADIUS: int = 6
@@ -118,6 +152,7 @@ const FONT_SIZE_TIMER: int = 44
 static func build() -> Theme:
 	var theme := Theme.new()
 	theme.default_font_size = FONT_SIZE_BODY
+	theme.default_font = display_font()
 
 	_style_button(theme)
 	_style_inputs(theme)
@@ -125,6 +160,14 @@ static func build() -> Theme:
 	_style_labels(theme)
 	_register_variations(theme)
 	return theme
+
+## The display face, baseline-corrected. See BASELINE_OFFSET — without this the
+## whole UI's text reads as sitting low in its box.
+static func display_font() -> FontVariation:
+	var face := FontVariation.new()
+	face.base_font = load(DISPLAY_FONT_PATH)
+	face.baseline_offset = BASELINE_OFFSET
+	return face
 
 ## A card/button face: flat fill, rounded, INK border — OR, when `accent` is
 ## given, a full-height role-colour bar down the left edge.
