@@ -13,8 +13,13 @@ mono_crash.*.json
 *.tmp
 .vscode/
 
-# Build output
-build/
+# Build output — the raw export (.exe/.pck) stays out; it's regenerated locally via
+# tools/export.md and the .exe alone (~104MB) exceeds GitHub's 100MB push limit anyway.
+# The packaged .zip and its README ARE tracked (see tools/export.md) so teammates can grab
+# a runnable build straight from the repo without a Godot install.
+build/*
+!build/*.zip
+!build/README.txt
 
 # OS
 .DS_Store
