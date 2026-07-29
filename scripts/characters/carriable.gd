@@ -408,12 +408,18 @@ func host_grab(by: CharacterBase) -> void:
 ## carrier.gd::_aim_point() for the measurements behind that, and _solve_arc()
 ## below for the maths. The parameter used to be a unit direction; anything
 ## calling this with one will now aim at a point 1 metre from the world origin.
-func host_throw(target_point: Vector3, power: float) -> void:
+func host_throw(launch_origin: Vector3, target_point: Vector3, power: float) -> void:
 	if not _is_host() or state != CarryState.CARRIED:
 		return
 	var profile := _profile()
 	var speed_now: float = profile.launch_speed * clampf(power, 0.0, 1.0)
-	var aim := _solve_arc(_character.global_position, target_point, speed_now, profile)
+	# ⚠️ SOLVED FROM, AND LAUNCHED FROM, THE SIGHT LINE — not this unit's own
+	# position. See carrier.gd::_throw_origin() for the measurements: leaving
+	# from the hand hung the whole flight up to 0.43 m under the line the player
+	# was aiming along, worst within a fifth of a metre of their face. Both the
+	# solve and the broadcast below use the same origin, or the arc would be
+	# solved for a flight that never happens.
+	var aim := _solve_arc(launch_origin, target_point, speed_now, profile)
 	# ⚠️ THE SIGN HERE WAS INVERTED, AND IT IS WHY EVERY THROW FLEW LOW.
 	# 2026-07-29, user report: "the height when you throw it is still too low."
 	#
@@ -439,7 +445,7 @@ func host_throw(target_point: Vector3, power: float) -> void:
 	if horizontal.length() > 0.01 and not is_zero_approx(profile.arc_angle_deg):
 		var axis := horizontal.normalized().cross(Vector3.UP)
 		aim = aim.rotated(axis.normalized(), deg_to_rad(profile.arc_angle_deg))
-	_broadcast_flying(_character.global_position, aim.normalized() * speed_now)
+	_broadcast_flying(launch_origin, aim.normalized() * speed_now)
 
 ## THE LAUNCH ANGLE THAT ACTUALLY PASSES THROUGH `target`.
 ##

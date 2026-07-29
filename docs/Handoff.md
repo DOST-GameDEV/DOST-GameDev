@@ -2037,6 +2037,33 @@ file or silently dropping it.
 
 ### P2 — open, carried over from the archive
 
+- **B-132 · The sight-line launch makes the Can's sidestep much more effective.** Found while
+  fixing the throw trajectory (see `carrier.gd::_throw_origin`), and **measured, not suspected**:
+  `tools/phys_probe.gd`, 12 full-charge throws at an evading Can, one variable changed.
+
+  | launch origin | throws connected | Can evading |
+  |---|---|---|
+  | the slipper's own position, hand height (before) | **9 / 12** | 48% of in-flight frames |
+  | the sight line, 0.5 m ahead of the eye | **1 / 12** | 66% |
+  | the sight line, 0.15 m ahead of the eye (shipped) | **5 / 12** | 64% |
+
+  Two separate mechanisms, and only one of them is fixed. Moving the launch FORWARD shortens the
+  horizontal distance `ai_controller.gd::_cond_slipper_incoming()` divides by to get its ETA — it
+  works entirely in the horizontal plane — so the throw enters the Can's `CAN_EVADE_LOOKAHEAD`
+  (0.6 s) window sooner. Cutting the offset to 0.15 recovers most of that. Moving the launch UP
+  does not have a cheap fix: a throw that starts 0.46 m higher arrives at a floor-level can on a
+  steeper line, so it crosses can-height over a shorter horizontal run and an unchanged sidestep
+  clears it more often. That is geometry, not a bug in either system.
+
+  ⚠️ **NOT retuned here, deliberately.** `Checklist.md`'s Phase 9 fairness log already names Can
+  evasion "the biggest single balance lever" and says a 0.3 s change in lookahead spans
+  "unhittable" to "never dodges" — so moving it is a balance decision that wants a win-rate run
+  behind it, not a side effect of a throw-feel fix. The two obvious levers are
+  `CAN_EVADE_LOOKAHEAD` and the profiles' own `launch_speed` (a faster throw is both flatter and
+  gives less warning). **Neither has been tried.** Note also that this only affects the AI Can —
+  a human-controlled Can has no auto-dodge, and aim accuracy against a stationary target is
+  unchanged at 0.18-0.31 m.
+
 - **B-13 · The match starts before anyone joins.** `_start_hosting()` calls `begin_next_round()`
   immediately. The lobby is the real fix — **U-4**.
 - **B-42 · Local Bo5 past round 1 depends on the debug switcher.** Mitigated, not fixed: the
