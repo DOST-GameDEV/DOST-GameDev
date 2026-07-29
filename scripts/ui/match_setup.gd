@@ -95,9 +95,20 @@ const LOCKED_MODULATE: Color = Color(1, 1, 1, 0.28)
 ## Via the class_name rather than the GameLaunch autoload: an autoload lookup is
 ## not a constant expression, so it cannot initialise a const. Unchanged from the
 ## screen this replaces.
+## ⚠️ `detail` IS NOT DECORATION — it is half of "whenever a player selects or
+## moves to a Map, Mode or Character, the explanation text should update to
+## explain the selection." A mode picker that shows two words the player has
+## never seen ("CAPTURE", "DENTS") and explains neither is a coin toss with extra
+## steps, and both of these change how a round is WON.
 const MODES: Array[Dictionary] = [
-	{"id": GameLaunchScript.GameMode.OPTION_B, "label": "CAPTURE"},
-	{"id": GameLaunchScript.GameMode.OPTION_A, "label": "DENTS"},
+	{
+		"id": GameLaunchScript.GameMode.OPTION_B, "label": "CAPTURE",
+		"detail": "Knock the lata over and keep it down. A fall nobody rights in time ends the round, and five falls ends it outright. The taya wins by tagging the thrower, or by surviving the clock.",
+	},
+	{
+		"id": GameLaunchScript.GameMode.OPTION_A, "label": "DENTS",
+		"detail": "The lata carries a health bar instead. Dent it three times to win. The taya can beat a dent back out by standing it up, wins on the clock, or by knocking the tsinelas out of bounds.",
+	},
 ]
 
 @onready var map_preview: MapPreview = %MapPreview
@@ -224,7 +235,12 @@ func _wire_selector(prev: TextureButton, next: TextureButton,
 func _setup_solo() -> void:
 	banner_label.text = "SINGLE PLAYER"
 	seat_heading.text = "YOUR CHARACTER"
-	seat_hint.text = "A team is one Person and one Prop. The other three characters are played by BOTs."
+	# ⚠️ "BOT" IS GONE FROM THE WHOLE FRONT END. Human ask: rename it to something
+	# more immersive. KALARO is the Filipino word for the person you play with, and
+	# it is the right word here for a reason beyond flavour: these are not filler
+	# opponents, they are the other three kids in a 2v2, one of them on YOUR team.
+	# "BOT" said "this seat is empty"; KALARO says "somebody is playing it".
+	seat_hint.text = "A team is one Tao and one Gamit. The other three are kalaro, the kids from the street who fill in."
 	primary_button.caption = "START MATCH"
 	start_button.visible = false
 	_refresh_seats()
@@ -235,13 +251,13 @@ func _setup_host() -> void:
 		# Not fatal to the screen: the player can still back out, and the message
 		# says which of the two things went wrong rather than "failed".
 		AudioManager.play("ui_error")
-		status_label.text = "Could not open the server — port %d may already be in use." % NetworkManagerScript.DEFAULT_PORT
+		status_label.text = "Could not open the server. Port %d may already be in use." % NetworkManagerScript.DEFAULT_PORT
 		primary_button.visible = false
 		start_button.visible = false
 		seat_heading.text = "NOT HOSTING"
 		return
-	seat_heading.text = "LOBBY — HOST %s" % _lan_address()
-	seat_hint.text = "You pick the map and the mode for everyone. Click a character to move."
+	seat_heading.text = "LOBBY  ·  HOST %s" % _lan_address()
+	seat_hint.text = "You pick the map and the mode for everyone. Click a seat to move. Empty seats are played by kalaro."
 	primary_button.caption = "READY"
 	start_button.visible = true
 	start_button.disabled = true
@@ -260,7 +276,7 @@ func _setup_host() -> void:
 
 func _setup_join() -> void:
 	banner_label.text = "LOBBY"
-	seat_hint.text = "The host picks the map and the mode. Click a free character to move."
+	seat_hint.text = "The host picks the map and the mode. Click a free seat to move. Empty seats are played by kalaro."
 	primary_button.caption = "READY"
 	start_button.visible = false
 	# A client may look at the host's map and mode but not change them — this is
@@ -327,7 +343,7 @@ func _can_rpc() -> bool:
 func _on_connected_to_host() -> void:
 	# The host answers with `_rpc_sync_state` from its own `_on_peer_joined`,
 	# which is what fills in the seats, the ready flags, the map and the mode.
-	seat_heading.text = "LOBBY — HOST %s" % GameLaunch.pending_join_address
+	seat_heading.text = "LOBBY  ·  HOST %s" % GameLaunch.pending_join_address
 	status_label.text = "Connected. Pick your character, then press READY."
 
 func _on_connection_failed() -> void:
@@ -420,6 +436,9 @@ func _apply_host_config(map_id: StringName, mode: int) -> void:
 	map_value_label.text = String(GameLaunch.MAPS[_map_index]["name"])
 	mode_value_label.text = String(MODES[_mode_index]["label"])
 	map_preview.show_map(GameLaunch.MAPS[_map_index])
+	# A client cannot change either of these, but the HOST can change them under
+	# it - so the explanation has to follow the broadcast as well as the click.
+	_refresh_detail()
 
 ## Any peer -> host: "I would like seat N." Refereed rather than applied: the
 ## host is the only writer of `_peer_seats`, so two peers clicking the same seat
@@ -497,6 +516,7 @@ func _apply_map() -> void:
 	map_value_label.text = String(entry["name"])
 	GameLaunch.selected_map = entry["id"]
 	map_preview.show_map(entry)
+	_refresh_detail() # the explanation follows the selection - see _refresh_detail
 
 func _on_mode_prev() -> void:
 	_cycle_mode(-1)
@@ -514,6 +534,7 @@ func _apply_mode() -> void:
 	var mode: Dictionary = MODES[_mode_index]
 	mode_value_label.text = String(mode["label"])
 	GameLaunch.game_mode = int(mode["id"]) as GameLaunchScript.GameMode
+	_refresh_detail()
 
 ## Solo changes nothing but its own copy; a host pushes map and mode to every
 ## client. A client never reaches here at all — its arrows are disabled.
@@ -543,7 +564,7 @@ func _on_character_panel_closed() -> void:
 	# this has to do is retract a ready that is no longer about the same match.
 	if bool(_peer_ready.get(peer_id, false)):
 		primary_button.caption = "READY"
-		status_label.text = "Character changed — press READY again."
+		status_label.text = "Character changed. Press READY again."
 		_rpc_set_ready.rpc(peer_id, false)
 
 ## The button doubles as the readout, so the three picks are visible without
@@ -566,12 +587,45 @@ static func _entry_name(list: Array[Dictionary], index: int) -> String:
 ## than letting them believe a kit choice applies to a character it does not.
 ## Checklist 1.3 (does a Person get its own roster?) is 🧑 HUMAN-owned and still
 ## open; until it is answered every Person shares one Tag/Throw.
+## ⚠️ ONE FUNCTION, THREE LINES, CALLED FROM EVERY SELECTOR. Human ask: *"whenever
+## a player selects or moves to a Map, Mode or Character, the explanation text
+## should dynamically update to explain the selection."*
+##
+## Before this, the detail line described the CHARACTER pick and nothing else, so
+## cycling the map or the mode changed a single word in a slot and explained
+## nothing — which for the mode is a real problem, because CAPTURE and DENTS are
+## two different games and the picker gave the player no way to find that out
+## short of playing both.
+##
+## Every caller that can change any of the three routes through here
+## (`_apply_map`, `_apply_mode`, `_on_seat_pressed`, `_refresh_seats`,
+## `_refresh_character_button`, and the host-config RPC), so there is no path that
+## changes a selection and leaves the explanation describing the previous one.
 func _refresh_detail() -> void:
+	var lines: Array[String] = []
+
+	var map_entry: Dictionary = GameLaunch.MAPS[_map_index]
+	lines.append("%s   %s" % [String(map_entry["name"]), String(map_entry["tagline"])])
+	lines.append("%s   %s" % [
+		String(MODES[_mode_index]["label"]), String(MODES[_mode_index]["detail"])])
+	lines.append(_seat_detail())
+
+	detail_label.text = "\n".join(lines)
+
+## What the seat the player is sitting in actually does, and what their picks buy
+## it. Split out so `_refresh_detail` above reads as the three things it is
+## explaining rather than as a branch.
+func _seat_detail() -> String:
 	var seat := _local_seat()
 	if _seat_is_person(seat):
-		detail_label.text = "Your character is a Person: you carry the shared Tag / Throw kit. Your LATA and TSINELAS picks are what your Prop teammate would bring — they apply if you move to a Prop character."
-		return
-	detail_label.text = "As the lata that round: %s.\nAs the tsinelas that round: %s." % [
+		# Checklist 1.3 (does a Person get its own ability roster?) is still
+		# HUMAN-owned and open, so every Tao shares one Tag / Throw kit. Say that
+		# plainly rather than letting the player believe a kit choice applies to a
+		# character it does not.
+		return "TAO   You are the person. On defence you are the taya: body-block, tag, and stand your lata back up. On offence you carry the tsinelas and throw it. Your %s and %s picks belong to your Gamit teammate and only apply if you move to that seat." % [
+			_entry_name(CharacterRoster.CANS, GameLaunch.can_index()),
+			_entry_name(CharacterRoster.SLIPPERS, GameLaunch.slipper_index())]
+	return "GAMIT   You are the object. A lata on defence, holding the mark and guarding, then a tsinelas on offence, thrown and scrambling home. Your kit swaps with the role: %s as the lata, %s as the tsinelas." % [
 		_kit_name(CharacterRoster.CANS, GameLaunch.can_index()),
 		_kit_name(CharacterRoster.SLIPPERS, GameLaunch.slipper_index())]
 
@@ -597,9 +651,15 @@ static func _kit_name(list: Array[Dictionary], index: int) -> String:
 static func _seat_is_person(seat: int) -> bool:
 	return seat % 2 == 0
 
+## ⚠️ FILIPINO ROLE WORDS THROUGHOUT, and they are the SAME words the tutorial,
+## the HUD and the lore use: TAO is the person, GAMIT is the object they field
+## (a lata one round, a tsinelas the next). Human ask: *"update the UI to use
+## Filipino terms for gameplay roles."* The team letter stays A/B because that is
+## an identity, not a role, and `Dev_Plan.md` §4.2 is explicit that team identity
+## is carried by the letter mark rather than by any word or hue.
 static func _seat_name(seat: int) -> String:
 	return "TEAM %s · %s" % ["A" if seat / 2 == 0 else "B",
-		"PERSON" if _seat_is_person(seat) else "PROP"]
+		"TAO" if _seat_is_person(seat) else "GAMIT"]
 
 ## Which seat this peer is in right now. Solo has no peers, so it reads the
 ## GameLaunch value the seat buttons write directly.
@@ -688,7 +748,7 @@ func _seat_row_text(seat: int) -> String:
 	if not _is_networked_lobby():
 		if seat == GameLaunch.solo_seat:
 			return "%s   ◀ YOU" % label
-		return "%s   · BOT" % label
+		return "%s   · KALARO" % label
 
 	var occupant := _occupant_of(seat)
 	if occupant == -1:
@@ -697,7 +757,7 @@ func _seat_row_text(seat: int) -> String:
 		# than a match with two missing players. Saying "BOT" is what makes a
 		# lone host obviously startable — and it is set in the same caps as the
 		# rest of the row so it reads as a roster entry, not as a footnote.
-		return "%s   · BOT" % label
+		return "%s   · KALARO" % label
 	var who := "YOU" if occupant == multiplayer.get_unique_id() else "PLAYER %d" % _player_number(occupant)
 	# ⚠️ Deliberately does NOT show the occupant's character picks.
 	# `NetworkManager.peer_characters` is HOST-ONLY by design (see its own doc) —
