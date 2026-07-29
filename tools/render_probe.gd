@@ -56,25 +56,31 @@ func _ready() -> void:
 		_build_match()
 	elif _mode == "canwatch":
 		_build_match()
-	elif _mode == "lobby":
-		_build_lobby()
+	elif _mode == "setup":
+		_build_setup()
 	else:
 		_build_viewmodel()
 
 ## ---------------------------------------------------------------------------
-## lobby — drives Lobby.tscn's local branch (2026-07-28 ready-up gate) without
-## actually completing the scene transition, which would free this probe
-## script along with everything else (change_scene_to_file replaces the
-## WHOLE current scene, and render_probe.tscn is that scene here). Verifies
-## the button states and takes screenshots of both; the transition itself
-## (get_tree().change_scene_to_file) is simple enough to trust from reading it.
+## setup — drives MatchSetup.tscn's SOLO branch without actually completing the
+## scene transition, which would free this probe script along with everything
+## else (change_scene_to_file replaces the WHOLE current scene, and
+## render_probe.tscn is that scene here).
+##
+## ⚠️ THIS REPLACES THE OLD `lobby` MODE, WHICH TESTED A GATE THAT NO LONGER
+## EXISTS. That mode asserted Single Player's START button was disabled until
+## READY was pressed. Removing that gate is the point of the overhaul — a solo
+## player had nobody to wait for — so the assertion is not stale, it is
+## inverted: START must be live on arrival. What is checked here instead is
+## that, and that clicking a seat actually moves the player, which is the new
+## behaviour with no coverage anywhere else.
 ## ---------------------------------------------------------------------------
-var _lobby: Control = null
+var _setup: Control = null
 
-func _build_lobby() -> void:
+func _build_setup() -> void:
 	GameLaunch.pending_action = "local"
-	_lobby = (load("res://scenes/ui/Lobby.tscn") as PackedScene).instantiate()
-	add_child(_lobby)
+	_setup = (load("res://scenes/ui/MatchSetup.tscn") as PackedScene).instantiate()
+	add_child(_setup)
 
 func _shot(name: String) -> void:
 	var img := get_viewport().get_texture().get_image()
@@ -185,20 +191,21 @@ func _process(_delta: float) -> void:
 			get_tree().quit()
 		return
 
-	if _mode == "lobby":
-		if _frames == 10:
-			var start_button := _lobby.get_node("%StartButton") as Button
-			print("[render_probe] lobby: Start button disabled before ready = ",
-				start_button.disabled) # must be true
-			_shot("lobby_before_ready")
-		if _frames == 20:
-			var ready_button := _lobby.get_node("%ReadyButton") as Button
-			ready_button.pressed.emit() # simulates the actual click, not a hand-set flag
+	if _mode == "setup":
 		if _frames == 30:
-			var start_button := _lobby.get_node("%StartButton") as Button
-			print("[render_probe] lobby: Start button disabled after ready = ",
-				start_button.disabled) # must be false
-			_shot("lobby_after_ready")
+			var primary := _setup.get_node("%PrimaryButton") as Button
+			print("[render_probe] setup: solo START disabled on arrival = ",
+				primary.disabled) # must be false — there is no ready gate in solo
+			print("[render_probe] setup: solo seat on arrival = ", GameLaunch.solo_seat)
+			_shot("setup_solo_seat0")
+		if _frames == 45:
+			# Through the button, so this exercises the same signal path a click
+			# uses rather than setting the seat behind the screen's back.
+			(_setup.get_node("%SeatButton3") as BaseButton).pressed.emit()
+		if _frames == 60:
+			print("[render_probe] setup: solo seat after clicking Team B Prop = ",
+				GameLaunch.solo_seat) # must be 3
+			_shot("setup_solo_seat3")
 			get_tree().quit()
 		return
 

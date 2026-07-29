@@ -1449,7 +1449,7 @@ files pin `loop=true` and `audio_probe.gd` asserts it.
 | Reset-channel **complete** | `carriable.gd::_rpc_apply_reset` | The host-validated result. Needed separately from the state hook because Option A's branch changes no state at all. |
 | Round / match result, countdown | `hud.gd` | Hung on `MatchManager.round_intermission_started`, **not** `RoundManager.round_won` — the latter is host-only, and the former deliberately does not fire on the match-deciding round, which is what stops a round fanfare and a match fanfare stacking. |
 | Abilities | each script in `scripts/abilities/` | Spin Guard and Shatter Trap have real `_do_activate`/`_on_owner_downed`; the three Tsinelas ones have no button, so their sound rides the throw. |
-| Menus | `arrow_button.gd` (`_on_hover_start` / `_on_press_start`) | Every menu pennant is an `ArrowButton`, so one edit covers MainMenu, GameSetup and Lobby. Plain `Button`s are wired individually. |
+| Menus | `arrow_button.gd` (`_on_hover_start` / `_on_press_start`) | Every menu pennant is an `ArrowButton`, so one edit covers MainMenu, ModeSelect, MultiplayerSetup and MatchSetup. Plain `Button`s, the seat rows, the selector arrows and the CHARACTER panel's tabs are wired individually at their own call sites — 10.5 audited all 25 controls across the three setup screens and found the character panel had click but no hover. |
 
 **`character_base.gd` still never learns what anything sounds like** — it plays a *name* handed to
 it from elsewhere, exactly as it plays a visual action it does not choose.

@@ -34,7 +34,7 @@ What is missing is the world and the proof:
 | **Maps** | None. One 40×40 grey box with **invisible** boundary colliders, no skybox, no field markings. The single biggest gap. |
 | **Audio** | **Nothing.** Not one `AudioStreamPlayer` in the repo. |
 | **The core mechanic** | Carry / charge / throw / retrieve / reset-channel is code-complete and **has never been played by a human.** Every tuning number in it is a first guess. |
-| **Character select** | Not built — so the three Tsinelas throw identities are currently unreachable in game. |
+| **Character select** | Built (10.5). 12 Persons, 6 lata and 6 tsinelas skins — and each lata/tsinelas skin now carries the ability that Prop fights with, so all six Prop `.tres` are reachable in play. The **Person** half stays appearance-only: whether a Person gets its own ability roster is checklist 1.3, still 🧑 HUMAN-owned. |
 | **Submission package** | Not started. Trailer, demo video, Forms 01–03, synopsis. |
 
 **👉 [`docs/Checklist.md`](docs/Checklist.md) is the single place progress is tracked.** One

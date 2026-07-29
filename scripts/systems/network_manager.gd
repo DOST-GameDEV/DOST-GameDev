@@ -125,7 +125,7 @@ func _local_picks() -> Dictionary:
 ## actually running Main.tscn — set by `main.gd::_start_hosting()`, cleared
 ## on `disconnect_network()`. A peer that connects (or reconnects) while this
 ## is true has missed the Lobby's ready-up gate entirely: the host has no
-## Lobby.tscn left to answer a Start press on, so `_rpc_identify` routes that
+## MatchSetup.tscn left to answer a Start press on, so `_rpc_identify` routes that
 ## peer straight into the running match instead of leaving it stuck showing
 ## "waiting for host to start…" forever. See `_rpc_route_to_running_match`.
 var match_in_progress: bool = false
@@ -253,7 +253,7 @@ func _on_connected_to_server() -> void:
 	_apply_peer_timeout.call_deferred(1)
 	# 4.3/B-65: present our stable token to the host immediately — before
 	# main.gd exists to ask for it, and regardless of whether we are about to
-	# sit in Lobby.tscn or (a rejoin) get redirected straight back into a
+	# sit in MatchSetup.tscn or (a rejoin) get redirected straight back into a
 	# running match. See _rpc_identify for what the host does with it.
 	# Snapshotted here rather than read live inside the RPC — see
 	# `local_character_index`, so a menu the player wanders back into
@@ -279,7 +279,7 @@ func _on_server_disconnected() -> void:
 
 ## 4.3/B-65 — host-only. Records which token this connecting peer presented,
 ## then either lets main.gd's own listeners handle spawning it (still in
-## Lobby.tscn, or a normal --host/--join test with Main.tscn already loaded
+## MatchSetup.tscn, or a normal --host/--join test with Main.tscn already loaded
 ## on both ends) or, if the match is already running and this peer has no
 ## Lobby left to wait in, tells it to load Main.tscn directly.
 ##
