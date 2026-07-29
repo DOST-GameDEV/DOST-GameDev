@@ -21,7 +21,85 @@ board's "Province" (grass, dirt apron, trees ringing the map) is what you see
 PAST the GDD's "Bayan Plaza". Three concentric materials — concrete slab, dirt
 apron, tree line — satisfy both descriptions at once.
 """
+# =============================================================================
+# ⚠️⚠️ BAYAN PLAZA IS PARTIALLY UPGRADED. READ THIS BEFORE TOUCHING IT.
+# =============================================================================
+#
+# Paused 2026-07-29 at the human's call ("finish up bayan work for now and add
+# comments to fix it ltr and put ur plan there too") to spend the remaining
+# budget on Eskinita. What is DONE and what is NOT is listed here so the next
+# session does not have to re-derive it.
+#
+# DONE — this map now shares Eskinita's architecture:
+#   * GROUND_Y contract: floor collision top == paving top == 0.100, so nothing
+#     stands inside the ground and no spawn is embedded (B-116).
+#   * Grounding guard ON. `Surfaces(base_height=GROUND_Y)` with the default
+#     check_dressing=True — the Phase 8 deferral is over. `add()`/`add_kit()`
+#     default base_y to the ground beneath the piece instead of a literal 0.0.
+#   * `piece_extent()` — no kit dimension assumed, all three measured.
+#   * Lane law, plaza edition: a protected DISC around the can (LANE_RADIUS)
+#     plus the two throwing approaches, because a plaza is fought across rather
+#     than along. Enforced at build time, aborts the build.
+#   * Court markings: one closed rectangle with cross-lines, corner overlap
+#     taken from the SIDE line's half-width (the 20mm overshoot bug).
+#   * Four-ring void kill: floor 60 -> 120, paved apron to ±30, two silhouette
+#     belt rings at 36/45, depth fog 16 -> 64.
+#   * Panorama sky, and the env material pass on Dressing.
+#   * Spawn heights derived from GROUND_Y, never typed.
+#
+# NOT DONE — the plan, in the order it should be picked up:
+#   1. ⚠️ HOUSE ORIENTATION IS NOT APPLIED HERE. Eskinita's Layer 1 now faces its
+#      buildings at the street after measuring that a City Kit building's front
+#      is its local +Z (tools/facing_probe.gd). Bayan's belt rings got the same
+#      treatment but its own TreesNear/TreesFar rings and Landmarks were never
+#      re-checked. The church and the two basketball rings in particular are
+#      placed by eye and have never been verified to face the plaza.
+#   2. ⚠️ NO RENDER-VERIFIED VOID ACCEPTANCE. Eskinita's bar is five shots (y=25
+#      plus all four corners, zero visible edge). Bayan has had ONE overhead and
+#      one eye-level shot, and the overhead still showed the apron ending in a
+#      hard square against bare floor before the fog was added. Re-run
+#      tools/bayan_probe.tscn and widen APRON or pull fog_depth_end in until the
+#      edge is gone from every corner.
+#   3. Clutter density is Eskinita-pre-Phase-8 sparse. The plaza has benches,
+#      four stalls and some rocks for a 24x24 room. It needs the same treatment
+#      §8.6 gave the alley — but note the lane law here is a DISC, so the safe
+#      band is the ring between LANE_RADIUS and the tree line.
+#   4. The HazardZone at (-6.5, -4.0) still has NO visual tell. Eskinita solved
+#      the same problem with a gutter_tile kanal after its pink chalk was
+#      deleted; this one was never given anything.
+#   5. Never played, never networked, never perf-measured on this map.
+#
+# ⚠️ DO NOT assume a fix that landed on Eskinita is live here. The two builders
+# share floorcheck.py and nothing else — every lesson has to be ported by hand,
+# and that is exactly how the first five bugs above survived.
+# =============================================================================
+
 import math
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from floorcheck import Surfaces, embed_y, mesh_bounds  # noqa: E402
+
+# ⚠️ PHASE 10 — THE DEFERRAL IS OVER. This map is now held to Eskinita's standard.
+# Human call, 2026-07-29: "Build and generate the other maps ... Apply the exact
+# same architectural blueprint and lessons you learned during the Eskinita
+# overhaul (the grounding math, the four-ring void boundary, the strict throwing
+# lane laws)."
+#
+# ⚠️ THE GROUNDING GUARD IS ON. `check_dressing=True` (the default) — this map
+# was carrying the same 100mm sink and the same 525mm vehicle hover Eskinita had,
+# and turning the guard on is what surfaced them.
+#
+# ⚠️ ONE HEIGHT FOR EVERY SURFACE, exactly as build_eskinita.py does it. The
+# floor's COLLISION top and the paving top must be the same number or characters
+# stand inside the visible ground and spawn embedded — see B-116.
+ROAD_SCALE = 4.0
+ROAD_TOP = 0.025 * ROAD_SCALE          # = 0.100
+GROUND_Y = ROAD_TOP
+ROAD_BASE_Y = GROUND_Y - ROAD_TOP      # a tile's BASE, so its TOP lands on GROUND_Y
+
+surfaces = Surfaces(base_height=GROUND_Y)
 
 SLAB = 10.0      # half-width of the hard plaza slab
 BOUND = 12.5     # half-width of the playable square (collision sits here)
@@ -31,11 +109,101 @@ MARK_Y = 0.07    # above the 0.06-tall tiles — see build_eskinita.py
 meshes, ext, order = {}, [], []
 
 
+def is_kit(name):
+    """Kit pieces are 'kits/<kit>/<piece>' and are .glb SCENES, not Meshes.
+    See build_eskinita.py's own note — emitting one as a MeshInstance3D is
+    silent and renders nothing."""
+    return name.startswith("kits/")
+
+
+def mesh_path(name):
+    return (f"res://assets/models/{name}.glb" if is_kit(name)
+            else f"res://assets/models/env_{name}.obj")
+
+
 def mesh(name):
     if name not in meshes:
         meshes[name] = str(len(meshes) + 1)
-        ext.append((meshes[name], f"res://assets/models/env_{name}.obj"))
+        ext.append((meshes[name], mesh_path(name), is_kit(name)))
     return meshes[name]
+
+
+## One scale per kit, named — Art_Direction.md §0b. Fantasy Town is roughly
+## character-scale already (its tree is 2.41 against a 1.6-unit Person), so it
+## needs far less than the City Kit's 5x.
+TOWN_SCALE = 2.6
+FOREST_SCALE = 3.9
+
+
+def xform_uniform(x, y, z, yaw, s):
+    c, sn = math.cos(yaw), math.sin(yaw)
+    return (f"Transform3D({c * s:.5f}, 0, {-sn * s:.5f}, 0, {s:.5f}, 0, "
+            f"{sn * s:.5f}, 0, {c * s:.5f}, {x:.4f}, {y:.4f}, {z:.4f})")
+
+
+def piece_extent(mesh_name, yaw=0.0, scale=1.0):
+    """World-space footprint offsets of a piece, relative to its placement origin.
+    Identical contract to build_eskinita.py's — see its docstring for why no
+    dimension of a kit piece may be assumed."""
+    lo, hi = mesh_bounds(mesh_name)
+    c, sn = math.cos(yaw), math.sin(yaw)
+    xs, zs = [], []
+    for lx in (lo[0], hi[0]):
+        for lz in (lo[2], hi[2]):
+            xs.append((lx * c + lz * sn) * scale)
+            zs.append((-lx * sn + lz * c) * scale)
+    return (min(xs), max(xs), min(zs), max(zs), lo[1] * scale, hi[1] * scale)
+
+
+# --- The lane law, plaza edition ---------------------------------------------
+#
+# Same rule as Eskinita (Art_Direction.md Part 6 §8.2) with the geometry a room
+# needs rather than a corridor: a plaza is fought ACROSS, so the protected volume
+# is a disc around the base circle plus the two throwing approaches, not a single
+# north-south slot. Anything inside it turns a skill shot into a coin flip.
+LANE_RADIUS = 3.2          # nothing new within this of the can, at any height
+LANE_HALF_X = 2.5          # ... and nothing in the throwing approaches
+LANE_Z = 7.0
+
+
+def assert_clear_of_lane(name, x, z, extent):
+    x0, x1 = x + extent[0], x + extent[1]
+    z0, z1 = z + extent[2], z + extent[3]
+    # Nearest point of the footprint to the base circle at the origin.
+    nx = 0.0 if x0 <= 0.0 <= x1 else (x0 if x0 > 0.0 else x1)
+    nz = 0.0 if z0 <= 0.0 <= z1 else (z0 if z0 > 0.0 else z1)
+    if math.hypot(nx, nz) < LANE_RADIUS:
+        raise SystemExit(
+            "\nLANE LAW VIOLATION - build aborted, scene NOT written.\n"
+            "  %s occupies x %.2f..%.2f, z %.2f..%.2f, which comes within\n"
+            "  %.1f of the base circle. Nothing stands where the can is\n"
+            "  defended.\n"
+            % (name, x0, x1, z0, z1, LANE_RADIUS))
+    if z1 >= -LANE_Z and z0 <= LANE_Z and x1 >= -LANE_HALF_X and x0 <= LANE_HALF_X:
+        raise SystemExit(
+            "\nLANE LAW VIOLATION - build aborted, scene NOT written.\n"
+            "  %s occupies x %.2f..%.2f, z %.2f..%.2f, which enters a\n"
+            "  throwing approach (|x| <= %.1f, |z| <= %.1f).\n"
+            % (name, x0, x1, z0, z1, LANE_HALF_X, LANE_Z))
+
+
+def add_kit(parent, name, mesh_name, x, z, yaw=0.0, scale=1.0, base_y=None,
+            lane_exempt=False):
+    """Places a kit piece with its BASE on the ground under it.
+
+    ⚠️ `base_y` DEFAULTS TO THE GROUND, same as build_eskinita.py's. This map
+    used to default it to a literal 0.0, which is the B-116 bug — a placement
+    height measured against a floor that has since moved.
+    """
+    if base_y is None:
+        base_y = surfaces.height_at(x, z)
+    extent = piece_extent(mesh_name, yaw, scale)
+    if not lane_exempt:
+        assert_clear_of_lane(name, x, z, extent)
+    y = base_y - extent[4]
+    order.append((parent, name, mesh(mesh_name), xform_uniform(x, y, z, yaw, scale)))
+    surfaces.record(name, mesh_name, x, y, z, yaw, scale, is_marking=False,
+                    uniform=True, group=parent.split("/")[-1])
 
 
 def xform(x, y, z, yaw=0.0):
@@ -44,22 +212,63 @@ def xform(x, y, z, yaw=0.0):
             f"{x:.4f}, {y:.4f}, {z:.4f})")
 
 
-def add(parent, name, mesh_name, x, y, z, yaw=0.0):
+def add(parent, name, mesh_name, x, z, yaw=0.0, base_y=None, lane_exempt=False):
+    """Places a generated `env_*` piece, GROUNDED on whatever is under it."""
+    if base_y is None:
+        base_y = surfaces.height_at(x, z)
+    lo, _hi = mesh_bounds(mesh_name)
+    y = base_y - lo[1]
+    extent = piece_extent(mesh_name, yaw, 1.0)
+    if not lane_exempt:
+        assert_clear_of_lane(name, x, z, extent)
     order.append((parent, name, mesh(mesh_name), xform(x, y, z, yaw)))
+    surfaces.record(name, mesh_name, x, y, z, yaw, is_marking=False,
+                    group=parent.split("/")[-1])
+
+
+def add_mark(name, mesh_name, x, z, yaw=0.0, sx=1.0):
+    """A field marking, embedded in whatever surface is under it."""
+    y = embed_y(surfaces.height_at(x, z), mesh_name)
+    c, sn = math.cos(yaw), math.sin(yaw)
+    tf = (f"Transform3D({c * sx:.5f}, 0, {-sn * sx:.5f}, 0, 1, 0, {sn:.5f}, 0, "
+          f"{c:.5f}, {x:.4f}, {y:.4f}, {z:.4f})")
+    order.append(("Markings", name, mesh(mesh_name), tf))
+    surfaces.record(name, mesh_name, x, y, z, yaw, sx, is_marking=True)
 
 
 # --- The slab. A plaza is a hard floor; the dirt apron is the big floor box. --
+#
+# 2026-07-28, checklist 7.4b — "completely remake the floor arena of all maps
+# with the assets." Fantasy Town paving replaces the generated `plaza_tile`, at
+# the same 2-unit grid so the layout below is untouched.
+#
+# ⚠️ This raises the slab surface, and nothing below hardcodes a marking height
+# because of it — `SLAB_TOP` asks `surfaces.height_at()` and every marking goes
+# through `embed_y()`. Re-paving cannot leave a line buried or hanging; the
+# build fails if it would.
+## Mirrors CharacterBase.CONFINEMENT_RADIUS. Keep the two in sync.
+CONFINEMENT_BOX_RADIUS = 5.0
+SLAB_SCALE = CELL   # kit paving is 1x1, so the grid cell IS the scale
 n = 0
 i = int(SLAB / CELL)
 for gx in range(-i, i):
     for gz in range(-i, i):
-        add("Dressing/Slab", f"Tile_{n}", "plaza_tile",
-            gx * CELL + CELL / 2, 0.0, gz * CELL + CELL / 2)
+        # Ground is placed FIRST and is lane-exempt: the paving IS the lane.
+        # base_y is the tile's BASE, so its TOP lands exactly on GROUND_Y.
+        add_kit("Dressing/Slab", f"Tile_{n}", "kits/town/road",
+                gx * CELL + CELL / 2, gz * CELL + CELL / 2, 0.0, SLAB_SCALE,
+                base_y=GROUND_Y - 0.025 * SLAB_SCALE, lane_exempt=True)
         n += 1
 
-# --- The tree ring. TWO layers, and the second is a DIFFERENT VALUE, not just
-# --- a second row — the board rings Province with depth and depth here is
-# --- colour. Seeded spacing, never random.
+# --- The tree ring. TWO layers, and the second is a DIFFERENT SPECIES as well
+# --- as further out — the board rings Province with depth, and depth here is
+# --- silhouette. Seeded spacing, never random.
+#
+# 2026-07-28, checklist 7.5 — Fantasy Town and Mini Forest trees replace the
+# generated cones. Both rings sit OUTSIDE the playable square (collision is at
+# BOUND = 12.5), so nothing here can block a Person's aim no matter how tall it
+# grows; that is what lets these be full-height trees rather than the interior
+# tier the furniture below is held to.
 JITTER = [0.0, 0.9, -0.6, 1.4, -1.1, 0.4, -1.6, 1.1]
 n = 0
 step = 3.2
@@ -72,67 +281,199 @@ for k in range(count):
             x, z = sx * (BOUND + 1.2), t + j
         else:
             x, z = t + j, sz * (BOUND + 1.2)
-        add("Dressing/TreesNear", f"Tree_{n}", "tree", x, 0.0, z, (k % 4) * 0.7)
+        near = ["kits/town/tree-high", "kits/town/tree",
+                "kits/town/tree-crooked", "kits/town/tree-high-round"][k % 4]
+        add_kit("Dressing/TreesNear", f"Tree_{n}", near, x, z,
+                (k % 4) * 0.7, TOWN_SCALE)
         n += 1
-        # The layer behind, further out and one value darker.
-        add("Dressing/TreesFar", f"TreeFar_{n}", "tree_far",
-            x * 1.28 - j * 0.4, 0.0, z * 1.28 + j * 0.4, (k % 3) * 0.9)
+        # The layer behind: a different kit, so it reads as another species
+        # rather than the same tree moved back.
+        add_kit("Dressing/TreesFar", f"TreeFar_{n}",
+                "kits/forest/tree-high" if k % 2 else "kits/forest/tree",
+                x * 1.28 - j * 0.4, z * 1.28 + j * 0.4, (k % 3) * 0.9,
+                FOREST_SCALE)
         n += 1
+
+# --- Ground cover between the slab and the tree line, so the apron is not bare.
+for k, (x, z) in enumerate([
+        (-11.6, -7.0), (11.6, -4.0), (-11.2, 5.5), (11.9, 8.0),
+        (-6.0, -11.6), (4.5, -11.9), (-3.5, 11.7), (7.5, 11.4)]):
+    add_kit("Dressing/Ground", f"Rock_{k}",
+            ["kits/town/rock-small", "kits/forest/rocks-low",
+             "kits/town/rock-wide"][k % 3], x, z, (k % 5) * 0.8, TOWN_SCALE)
+for k, (x, z) in enumerate([
+        (-12.2, 1.5), (12.4, 2.5), (2.0, -12.3), (-1.5, 12.2)]):
+    add_kit("Dressing/Ground", f"Plant_{k}", "kits/forest/plant",
+            x, z, (k % 4) * 1.1, FOREST_SCALE)
 
 # --- The landmark. One church, on the long axis, so a player always knows
 # --- which way they are facing. Worth more than any three clutter pieces.
-add("Dressing/Landmarks", "Church", "church_facade", 0.0, 0.0, -BOUND - 1.6)
-add("Dressing/Landmarks", "Flagpole", "flagpole", -4.5, 0.0, -BOUND + 1.5)
+add("Dressing/Landmarks", "Church", "church_facade", 0.0, -BOUND - 1.6)
+add("Dressing/Landmarks", "Flagpole", "flagpole", -4.5, -BOUND + 1.5)
 # MANDATORY — it IS the Philippine plaza. Two, facing each other, because a
 # barangay court has a ring at each end and it doubles as the map's long axis.
-add("Dressing/Landmarks", "RingNorth", "basketball_ring", 0.0, 0.0, -SLAB + 0.6)
-add("Dressing/Landmarks", "RingSouth", "basketball_ring", 0.0, 0.0, SLAB - 0.6,
-    math.pi)
+add("Dressing/Landmarks", "RingNorth", "basketball_ring", -5.2, -SLAB + 0.6)
+add("Dressing/Landmarks", "RingSouth", "basketball_ring", 5.2, SLAB - 0.6, math.pi)
+# Lantern posts mark the slab corners. Thin verticals, like Eskinita's electric
+# posts — they read at distance and cost almost nothing to shoot past.
+for k, (x, z) in enumerate([(-SLAB, -SLAB), (SLAB, -SLAB),
+                            (-SLAB, SLAB), (SLAB, SLAB)]):
+    add_kit("Dressing/Landmarks", f"Lantern_{k}", "kits/town/lantern",
+            x, z, k * 1.57, TOWN_SCALE)
 
-# --- Edge furniture. All of it interior-tier (<= 1.1) so an FPP Person, whose
-# --- eye is at 1.25, can aim over every piece of it.
+# --- Edge furniture. ⚠️ EVERY PIECE HERE IS INTERIOR-TIER (<= 1.1 tall) so an
+# --- FPP Person, whose eye is at 1.25, can aim over all of it. That is the
+# --- height law and the kit swap does not get to break it: at TOWN_SCALE the
+# --- market stall is 0.96 and its bench is 0.60, both comfortably under.
+# --- `cart` measures 1.40 scaled and is therefore deliberately NOT used here.
 n = 0
 for k in range(6):
     t = -7.5 + k * 3.0
     for sx in (-1, 1):
-        add("Dressing/Furniture", f"Bench_{n}", "bench",
-            sx * (SLAB + 0.9), 0.0, t, math.pi / 2)
+        add_kit("Dressing/Furniture", f"Bench_{n}", "kits/town/stall-bench",
+                sx * (SLAB + 0.9), t, math.pi / 2, TOWN_SCALE)
         n += 1
-for k, (x, z) in enumerate([(-SLAB - 0.9, -10.5), (SLAB + 0.9, -10.5),
-                            (-SLAB - 0.9, 10.5), (SLAB + 0.9, 10.5)]):
-    add("Dressing/Furniture", f"Planter_{k}", "planter", x, 0.0, z)
+# The sari-sari stalls — the plaza's own reason to have people in it.
+for k, (x, z, yaw) in enumerate([
+        (-SLAB - 1.1, -10.5, 0.0), (SLAB + 1.1, -10.5, math.pi),
+        (-SLAB - 1.1, 10.5, 0.0), (SLAB + 1.1, 10.5, math.pi)]):
+    add_kit("Dressing/Furniture", f"Stall_{k}",
+            ["kits/town/stall", "kits/town/stall-green",
+             "kits/town/stall-red", "kits/town/stall"][k],
+            x, z, yaw, TOWN_SCALE)
 for k, (x, z) in enumerate([(-6.0, -6.0), (6.0, 6.0), (-6.5, 7.0), (7.0, -6.5)]):
-    add("Dressing/Furniture", f"Chair_{k}", "monobloc_chair", x, 0.0, z,
-        [0.5, 2.1, -1.2, 3.0][k])
-for k, (x, z) in enumerate([(-8.5, 2.0), (8.5, -2.0)]):
-    add("Dressing/Furniture", f"Tire_{k}", "tire", x, 0.0, z)
+    add_kit("Dressing/Furniture", f"Stool_{k}", "kits/town/stall-stool",
+            x, z, [0.5, 2.1, -1.2, 3.0][k], TOWN_SCALE)
+
+
+# =============================================================================
+# THE FOUR-RING VOID KILL, ported verbatim in principle from Eskinita.
+# Art_Direction.md Part 6 §8.1. Ring 0 is the Floor box (widened in SUBS below),
+# Ring 1 is the paved apron, Ring 2 the silhouette belt, Ring 3 the fog.
+#
+# ⚠️ A PLAZA NEEDS THIS MORE THAN A CORRIDOR DID, not less. Eskinita's house rows
+# hide the horizon at eye level; an open square shows it in every direction, so
+# the belt has to close all the way round rather than down two sides.
+# =============================================================================
+APRON = 30.0
+_ap = 0
+_gx = -APRON + ROAD_SCALE * 0.5
+_ROAD_YAW = [0, 1, 3, 2, 0, 3, 1, 2, 3, 0, 2, 1]
+while _gx <= APRON:
+    _gz = -APRON + ROAD_SCALE * 0.5
+    while _gz <= APRON:
+        # Skip the core: the slab above already paves it at a finer grid.
+        if abs(_gx) > SLAB + 1.0 or abs(_gz) > SLAB + 1.0:
+            add_kit("Dressing/Apron", f"Apron_{_ap}", "kits/town/road", _gx, _gz,
+                    _ROAD_YAW[_ap % len(_ROAD_YAW)] * math.pi * 0.5,
+                    ROAD_SCALE, base_y=ROAD_BASE_Y, lane_exempt=True)
+            _ap += 1
+        _gz += ROAD_SCALE
+    _gx += ROAD_SCALE
+
+# Ring 2 - the silhouette belt. Two quiet rings, faded into fog by
+# env_toon_pass.gd, same as Eskinita after the Phase 9 downgrade.
+BELT_TYPES = ["b", "d", "n", "q", "t", "u", "f", "p", "r", "k", "m", "s", "a"]
+_belt_jit = [0.0, 2.7, -1.9, 4.1, -3.3, 1.4, -2.2, 3.6, -0.8, 2.1, -4.0, 0.6]
+_belt = 0
+for _ring_i, _ring in enumerate((36.0, 45.0)):
+    _step = 11.0 + _ring_i * 2.0
+    for _side in (-1.0, 1.0):
+        _zz = -48.0
+        while _zz <= 48.0:
+            _j = _belt_jit[_belt % len(_belt_jit)]
+            add_kit("Dressing/Belt", f"BeltX_{_belt}",
+                    f"kits/city/building-type-{BELT_TYPES[_belt % len(BELT_TYPES)]}",
+                    _side * (_ring + _j * 0.35), _zz + _j,
+                    # Fronts along the ring, so the belt reads as streets rather
+                    # than a wall of blank gable ends - see build_eskinita.py.
+                    (_j * 0.11) + ((math.pi * 0.5) if _side > 0 else (-math.pi * 0.5)),
+                    5.0 * (1.0 + _ring_i * 0.15), lane_exempt=True)
+            _belt += 1
+            _zz += _step
+        _xx = -48.0
+        while _xx <= 48.0:
+            _j = _belt_jit[_belt % len(_belt_jit)]
+            add_kit("Dressing/Belt", f"BeltZ_{_belt}",
+                    f"kits/city/building-type-{BELT_TYPES[_belt % len(BELT_TYPES)]}",
+                    _xx + _j, _side * (_ring + _j * 0.35),
+                    (_j * 0.13) + (0.0 if _side > 0 else math.pi),
+                    5.0 * (1.0 + _ring_i * 0.15), lane_exempt=True)
+            _belt += 1
+            _xx += _step
 
 # --- Field markings. Identical grammar to Eskinita on purpose: a player must
 # --- not have to relearn what a base circle looks like when the map changes.
-add("Markings", "BaseCircle", "base_circle_decal", 0.0, MARK_Y, 0.0)
-add("Markings", "ThrowingLineNorth", "throwing_line_decal", 0.0, MARK_Y, -6.0)
-add("Markings", "ThrowingLineSouth", "throwing_line_decal", 0.0, MARK_Y, 6.0)
-add("Markings", "TeamSideNorth", "team_side_decal", 0.0, MARK_Y, -9.5)
-add("Markings", "TeamSideSouth", "team_side_decal", 0.0, MARK_Y, 9.5)
+# ⚠️ MARK_Y IS GONE — the height comes from the geometry now, not from a
+# constant somebody has to keep true. Unlike Eskinita, this map's markings all
+# sit on the uniform plaza slab, so one height IS correct here; it is asked for
+# rather than assumed so it cannot drift if the slab tile ever changes.
+# floorcheck aborts the build if any of these floats. See build_eskinita.py.
+# ⚠️⚠️ ONE CLOSED RECTANGLE WITH CROSS-LINES, exactly as Eskinita does it.
+# Free-floating line segments with nothing to terminate on are what read as
+# "overshooting" and "not closing" there, and the fix transfers verbatim: the
+# court's two long sides bound everything and every cross-line ends INSIDE them.
+#
+# ⚠️ The overlap is the SIDE line's half-width, never the drawn line's own.
+# throwing_line_decal is 0.12 wide against team_side_decal's 0.08, and using a
+# line's own width overshoots the corner by 20mm — measured on Eskinita.
+SIDE_LINE_MESH = "team_side_decal"
+COURT_X = CONFINEMENT_BOX_RADIUS
+COURT_Z = 9.5
+
+
+def court_line(name, axis, at, half_len, mesh_name=SIDE_LINE_MESH):
+    lo, hi = mesh_bounds(mesh_name)
+    side_lo, side_hi = mesh_bounds(SIDE_LINE_MESH)
+    half_w = (side_hi[2] - side_lo[2]) * 0.5
+    sx = ((half_len + half_w) * 2.0) / (hi[0] - lo[0])
+    if axis == "x":
+        add_mark(name, mesh_name, 0.0, at, 0.0, sx)
+    else:
+        add_mark(name, mesh_name, at, 0.0, math.pi * 0.5, sx)
+
+
+add_mark("BaseCircle", "base_circle_decal", 0.0, 0.0)
+court_line("CourtEast", "z", COURT_X, COURT_Z)
+court_line("CourtWest", "z", -COURT_X, COURT_Z)
+court_line("CourtNorth", "x", -COURT_Z, COURT_X)
+court_line("CourtSouth", "x", COURT_Z, COURT_X)
+# The confinement square mirrors CharacterBase.CONFINEMENT_RADIUS, same as
+# Eskinita — its east/west edges ARE the court sides, so they are not redrawn.
+court_line("ConfinementNorth", "x", -CONFINEMENT_BOX_RADIUS, COURT_X)
+court_line("ConfinementSouth", "x", CONFINEMENT_BOX_RADIUS, COURT_X)
+court_line("ThrowingLineNorth", "x", -6.0, COURT_X, "throwing_line_decal")
+court_line("ThrowingLineSouth", "x", 6.0, COURT_X, "throwing_line_decal")
 
 # =============================================================================
 
-ext_lines = [f'[ext_resource type="Mesh" path="{p}" id="{i}"]' for i, p in ext]
+ext_lines = [
+    '[ext_resource type="%s" path="%s" id="%s"]'
+    % ("PackedScene" if kit else "Mesh", p, i)
+    for i, p, kit in ext
+]
 ext_lines.append('[ext_resource type="Script" '
                  'path="res://scripts/systems/hazard_zone.gd" id="H"]')
 ext_lines.append('[ext_resource type="Script" '
                  'path="res://scripts/systems/kill_plane.gd" id="K"]')
+ext_lines.append('[ext_resource type="Script" '
+                 'path="res://scripts/systems/env_toon_pass.gd" id="T"]')
+# The panorama sky - see build_eskinita.py's note. One texture fetch, cheaper
+# than the ProceduralSkyMaterial it replaces, and it is what stops the horizon
+# reading as "an endless desert".
+ext_lines.append('[ext_resource type="Texture2D" '
+                 'path="res://assets/models/materials/sky_panorama.png" id="SKY"]')
 
 SUBS = '''[sub_resource type="BoxShape3D" id="Shape_floor"]
-size = Vector3(60, 1, 60)
+size = Vector3(120, 1, 120)
 
 [sub_resource type="StandardMaterial3D" id="Mat_floor"]
-albedo_color = Color(0.76078, 0.65882, 0.47059, 1)
+albedo_color = Color(0.44706, 0.42353, 0.38431, 1)
 roughness = 1.0
 
 [sub_resource type="BoxMesh" id="Mesh_floor"]
 material = SubResource("Mat_floor")
-size = Vector3(60, 1, 60)
+size = Vector3(120, 1, 120)
 
 [sub_resource type="BoxShape3D" id="Shape_wall_z"]
 size = Vector3(1, 12, 26)
@@ -141,17 +482,14 @@ size = Vector3(1, 12, 26)
 size = Vector3(26, 12, 1)
 
 [sub_resource type="BoxShape3D" id="Shape_killplane"]
-size = Vector3(90, 4, 90)
+size = Vector3(260, 4, 260)
 
 [sub_resource type="BoxShape3D" id="Shape_hazard"]
 size = Vector3(5, 3, 5)
 
-[sub_resource type="ProceduralSkyMaterial" id="Sky_mat"]
-sky_top_color = Color(0.29020, 0.56078, 0.81569, 1)
-sky_horizon_color = Color(0.81176, 0.89412, 0.96078, 1)
-sky_curve = 0.18
-ground_bottom_color = Color(0.76078, 0.65882, 0.47059, 1)
-ground_horizon_color = Color(0.81176, 0.89412, 0.96078, 1)
+[sub_resource type="PanoramaSkyMaterial" id="Sky_mat"]
+panorama = ExtResource("SKY")
+energy_multiplier = 1.0
 
 [sub_resource type="Sky" id="Sky_res"]
 sky_material = SubResource("Sky_mat")
@@ -173,8 +511,12 @@ fog_enabled = true
 fog_light_color = Color(0.878, 0.847, 0.741, 1)
 fog_light_energy = 1.0
 fog_sun_scatter = 0.12
-fog_density = 0.004
-fog_sky_affect = 0.5
+fog_mode = 1
+fog_density = 0.0
+fog_sky_affect = 0.22
+fog_depth_curve = 1.1
+fog_depth_begin = 16.0
+fog_depth_end = 64.0
 fog_aerial_perspective = 0.3
 adjustment_enabled = true
 adjustment_brightness = 1.0
@@ -186,7 +528,17 @@ adjustment_saturation = 1.18
 # same coordinates as build_eskinita.py — see that file's comment above its
 # own SpawnPoints block for the full reasoning. Centred on this map's own
 # base_circle_decal (0,0,0) and south throwing_line_decal (0,0,6) below.
-HEAD = '''[node name="BayanPlaza" type="Node3D"]
+#
+# ⚠️ Spawn1's Z IS NEGATIVE, and this comment used to be a lie about it.
+# It read "same coordinates as build_eskinita.py" while Spawn1 sat at z = +1.5
+# against Eskinita's -1.5 — mirrored. The Attacker is at z = +6, so +1.5 put the
+# Taya BETWEEN the Can and the attacker, on the attacker's own side, instead of
+# guarding from behind. That is the exact layout the human rejected in the
+# 2026-07-28 playtest ("the person in same team is behind that can"), fixed once
+# in Eskinita and never carried across. If you change one map's spawn block,
+# diff it against the other in the same commit — the claim that they match is
+# load-bearing and nothing was checking it.
+HEAD = f'''[node name="BayanPlaza" type="Node3D"]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Env_plaza")
@@ -202,12 +554,13 @@ shadow_normal_bias = 1.5
 directional_shadow_max_distance = 60.0
 
 [node name="Floor" type="StaticBody3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.4, 0)
 shape = SubResource("Shape_floor")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Floor"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.415, 0)
 mesh = SubResource("Mesh_floor")
 
 [node name="Bounds" type="Node3D" parent="."]
@@ -259,24 +612,31 @@ shape = SubResource("Shape_hazard")
 [node name="SpawnPoints" type="Node3D" parent="."]
 
 [node name="Spawn0" type="Marker3D" parent="SpawnPoints"]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.0, 0.17, 0.0)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.0, {GROUND_Y + 0.17:.3f}, 0.0)
 
 [node name="Spawn1" type="Marker3D" parent="SpawnPoints"]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 2.2, 0.8, 1.5)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 2.2, {GROUND_Y + 0.80:.3f}, -1.5)
 
 [node name="Spawn2" type="Marker3D" parent="SpawnPoints"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0, 0.8, 6.0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0, {GROUND_Y + 0.80:.3f}, 6.0)
 
 [node name="Spawn3" type="Marker3D" parent="SpawnPoints"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.3, 0.16, 6.3)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.3, {GROUND_Y + 0.16:.3f}, 6.3)
 
 [node name="Dressing" type="Node3D" parent="."]
+script = ExtResource("T")
+
+[node name="Apron" type="Node3D" parent="Dressing"]
+
+[node name="Belt" type="Node3D" parent="Dressing"]
 
 [node name="Slab" type="Node3D" parent="Dressing"]
 
 [node name="TreesNear" type="Node3D" parent="Dressing"]
 
 [node name="TreesFar" type="Node3D" parent="Dressing"]
+
+[node name="Ground" type="Node3D" parent="Dressing"]
 
 [node name="Landmarks" type="Node3D" parent="Dressing"]
 
@@ -286,10 +646,17 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.3, 0.16, 6.3)
 '''
 
 body = []
+kit_ids = {i for i, _p, kit in ext if kit}
 for parent, name, mid, tf in order:
-    body.append(f'\n[node name="{name}" type="MeshInstance3D" parent="{parent}"]')
-    body.append(f'transform = {tf}')
-    body.append(f'mesh = ExtResource("{mid}")')
+    if mid in kit_ids:
+        # A .glb is a PackedScene and must be INSTANCED. Emitting it as a
+        # MeshInstance3D is silent and draws nothing — see build_eskinita.py.
+        body.append(f'\n[node name="{name}" parent="{parent}" instance=ExtResource("{mid}")]')
+        body.append(f'transform = {tf}')
+    else:
+        body.append(f'\n[node name="{name}" type="MeshInstance3D" parent="{parent}"]')
+        body.append(f'transform = {tf}')
+        body.append(f'mesh = ExtResource("{mid}")')
 
 n_sub = SUBS.count("[sub_resource")
 load_steps = len(ext_lines) + n_sub + 1
@@ -297,10 +664,15 @@ load_steps = len(ext_lines) + n_sub + 1
 out = (f'[gd_scene load_steps={load_steps} format=3]\n\n'
        + "\n".join(ext_lines) + "\n\n" + SUBS + "\n" + HEAD + "\n".join(body) + "\n")
 
+# Before writing, never after — a floating marking must not reach the scene file
+# at all. See build_eskinita.py's own note.
+n_marks = surfaces.verify()
+
 with open("scenes/maps/BayanPlaza.tscn", "w", encoding="utf-8", newline="\n") as f:
     f.write(out)
 
 print("wrote scenes/maps/BayanPlaza.tscn")
+print(f"  markings      : {n_marks} verified embedded")
 print(f"  ext_resources : {len(ext_lines)}")
 print(f"  load_steps    : {load_steps}")
 print(f"  mesh instances: {len(order)}")

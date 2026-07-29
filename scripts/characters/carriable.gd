@@ -62,11 +62,21 @@ const THROWER_IGNORE_TIME: float = 0.25
 ## lata goes through _spawn_flight_hitbox()'s own Area3D overlap, entirely
 ## independent of move_and_collide's collision result below, so a slipper that
 ## bounces off a Can still scores the hit on first contact same as before.
-const BOUNCE_DAMPING: float = 0.45
+## ⚠️ LOWERED same session: 0.45/2 bounces read as "ragdolls while flying" and
+## fed the separate "barely has power even during full windup" report — an
+## early clip on nearby clutter (crates, tires — up to 1.0 tall, and a throw
+## launches around hand height) now only cost a MAX_BOUNCES=2 sequence, each
+## keeping a still-substantial 45% of speed, which looks chaotic and reads as
+## the whole throw losing its power rather than one clean skip. A single,
+## weaker bounce is closer to "bounces a bit" than "physically simulates a
+## rubber object," which was never the ask.
+const BOUNCE_DAMPING: float = 0.3
 ## After this many bounces, the next collision lands it (goes LOOSE) regardless
 ## of remaining speed, so a shallow-angle skip along the floor can't bounce
-## forever. MAX_FLIGHT_TIME (6s) is the backstop under that.
-const MAX_BOUNCES: int = 2
+## forever. MAX_FLIGHT_TIME (6s) is the backstop under that. Lowered from 2 to
+## 1 alongside BOUNCE_DAMPING above — one clean skip, not a multi-bounce
+## ragdoll sequence.
+const MAX_BOUNCES: int = 1
 ## Fallback used when a slipper's ability carries no ThrowProfile of its own
 ## (e.g. the networked Prop default, which is currently quick_stand.tres for
 ## every Prop — see main.gd PROP_ABILITY).
@@ -190,8 +200,14 @@ func drives_movement() -> bool:
 
 ## Multiplier applied to normal movement speed. Only ever != 1.0 while LOOSE and
 ## throwable — the crawl home.
+## ⚠️ Gated on RoundManager.round_active, 2026-07-28, same reason and same
+## day as CharacterBase._is_confined_to_base()'s gate: before the round
+## actually starts (the new pre-round free-roam window) a Tsinelas Prop is
+## always LOOSE and throwable by definition, and without this gate its
+## player would be stuck crawling at CRAWL_SPEED_SCALE the whole time they're
+## supposed to be moving "with no restrictions."
 func movement_speed_scale() -> float:
-	if state == CarryState.LOOSE and is_throwable():
+	if RoundManager.round_active and state == CarryState.LOOSE and is_throwable():
 		return CRAWL_SPEED_SCALE
 	return 1.0
 
@@ -267,8 +283,29 @@ func _step_carried() -> void:
 	# applied.
 	var tilt := Basis(Vector3.RIGHT, deg_to_rad(CARRY_TILT_DEG))
 	var hand_transform := hand.global_transform
+	var basis := hand_transform.basis.orthonormalized() * tilt
+	# ⚠️ PUT THE MESH IN THE HAND, NOT THE ORIGIN.
+	#
+	# 2026-07-29, reported as "floating slipper when held, make it acc be on the
+	# hand". A carried unit's visible model is NOT centred on its CharacterBase
+	# origin: `character_visual.gd::_align_to_capsule_floor` drops it so its
+	# bottom rests on the capsule floor, which for the tsinelas is a measured
+	# **0.160 below the origin**. Snapping the origin to the hand therefore hangs
+	# the visible slipper under the hand, every frame, by construction.
+	#
+	# This used to be compensated by baking a fudge into
+	# CharacterVisual.HAND_CARRY_OFFSET, which was wrong twice over: the value
+	# was 0.441 rather than 0.160, and it lived in the HAND BONE's rotating local
+	# frame, so whatever it meant in one animation clip it meant something else
+	# in the next. Corrected here instead, in world space, from the carried
+	# unit's own measured offset — so it is right for the Can too, and it cannot
+	# drift from the drop it exists to cancel.
+	var centre := Vector3.ZERO
+	var visual := _character.get_node_or_null("Visual") as CharacterVisual
+	if visual != null:
+		centre = visual.visual_centre_offset()
 	_character.global_transform = Transform3D(
-		hand_transform.basis.orthonormalized() * tilt, hand_transform.origin)
+		basis, hand_transform.origin - basis * centre)
 	_character.velocity = Vector3.ZERO
 
 func _step_flying(delta: float) -> void:
@@ -283,9 +320,8 @@ func _step_flying(delta: float) -> void:
 	# Sideways only, relative to the direction of travel: it can curve a throw
 	# around a defender, never turn it into a guided missile or add range.
 	if profile.steer_strength > 0.0 and _is_locally_driven():
-		var input_dir := Input.get_vector(
-			_character.action_name("move_left"), _character.action_name("move_right"),
-			_character.action_name("move_up"), _character.action_name("move_down"))
+		var input_dir := _character.input_vector(
+			"move_left", "move_right", "move_up", "move_down")
 		if input_dir.length() > 0.0:
 			var travel := _flight_velocity
 			travel.y = 0.0
@@ -293,6 +329,11 @@ func _step_flying(delta: float) -> void:
 				var right := travel.normalized().cross(Vector3.UP)
 				_flight_velocity += right * input_dir.x * profile.steer_strength * delta
 
+	# The hitbox is live for the whole flight (character_base.is_hitbox_active),
+	# but area_entered only fires on the ENTER edge — so sweep every frame or a
+	# can already inside the slipper's hitbox on the first flight frame is never
+	# reported. Cheap: one Area3D overlap query on one node.
+	_character.sweep_hitbox()
 	var collision := _character.move_and_collide(_flight_velocity * delta)
 	if collision != null and _thrower_ignore_left <= 0.0 and _bounces_left > 0:
 		_flight_velocity = _flight_velocity.bounce(collision.get_normal()) * BOUNCE_DAMPING
@@ -357,6 +398,17 @@ func reset_for_new_round() -> void:
 		_character.remove_collision_exception_with(carrier)
 		_watch_carrier_state(carrier, false)
 	carrier = null
+	# 2026-07-28 — B-101. This was missing entirely. _rpc_set_carried() disables this
+	# unit's own collision the instant it's grabbed (_set_physics_enabled(false)
+	# — CARRIED must not shove a teammate or be independently hittable); nothing
+	# here ever turned it back on. A Prop that was CARRIED when the round ended
+	# (the common case — the attacker is usually still holding it) came out of
+	# reset_for_new_round() as LOOSE but with its body collision STILL disabled,
+	# free to fall straight through the floor with nothing to stop it — this unit
+	# might become the Can next round, which is exactly "the can fell off the
+	# map." _set_physics_enabled(true) is idempotent (harmless if collision was
+	# already on), so this is safe to call unconditionally every round.
+	_set_physics_enabled(true)
 	_set_state(CarryState.LOOSE)
 
 ## ---------------------------------------------------------------------------
@@ -403,6 +455,21 @@ func _rpc_set_carried(carrier_path: NodePath) -> void:
 @rpc("any_peer", "call_local", "reliable")
 func _rpc_set_flying(origin: Vector3, velocity: Vector3) -> void:
 	_character.global_position = origin
+	# 2026-07-28 — user report: a thrown slipper "doesnt land flat, sometimes
+	# it points up from ground... it also goes thru the floor when this
+	# happens." _step_carried() overwrites _character's entire transform —
+	# BASIS included — to the carrier's tilted hand orientation
+	# (CARRY_TILT_DEG, 55°) every physics frame while held. Nothing ever reset
+	# that basis on release: only `global_position` was written here and in
+	# _rpc_set_loose() below, so the 55° tilt (plus whatever yaw the hand had)
+	# rode straight through the whole flight and into landing. A capsule
+	# resting on the floor at an angle instead of upright is exactly the kind
+	# of resolved-collision edge case that can end up clipping through thin
+	# geometry, which matches the floor-tunnelling half of the report.
+	# _spin_while_airborne()'s own rotation is on the VISUAL node, a CHILD of
+	# this transform, and was never the actual cause — resetting it alone
+	# (already correct) could not fix a tilt baked into the parent.
+	_character.rotation = Vector3.ZERO
 	_flight_velocity = velocity
 	_flight_time = 0.0
 	_thrower_ignore_left = THROWER_IGNORE_TIME
@@ -425,6 +492,10 @@ func _rpc_set_flying(origin: Vector3, velocity: Vector3) -> void:
 @rpc("any_peer", "call_local", "reliable")
 func _rpc_set_loose(where: Vector3) -> void:
 	_character.global_position = where
+	# Defensive, same reasoning as _rpc_set_flying()'s own note — a slipper
+	# dropped (not thrown) straight from CARRIED also carries the 55° hand
+	# tilt through unless this clears it too.
+	_character.rotation = Vector3.ZERO
 	_character.velocity = Vector3.ZERO
 	_flight_velocity = Vector3.ZERO
 	_clear_flight_hitbox()

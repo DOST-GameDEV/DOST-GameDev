@@ -5,6 +5,9 @@
 [node name="CameraRig" type="Node3D"]
 script = ExtResource("1")
 
+[node name="_Notes" type="Node" parent="."]
+editor_description = "Phase 8.5. TppArm.margin (0.15) is deliberately LARGER than TppCamera.near (0.05): the spring arm stops that far short of whatever it hit, and if the margin is under the near plane the wall clips through the camera exactly when the arm bottoms out — a default margin of 0.01 against a 0.05 near plane guarantees it. Both numbers are now explicit so the relationship is reviewable instead of implied. TppArm also sets physics_interpolation_mode=2 (OFF) because camera_rig.gd writes its global_transform every RENDER frame while a unit is carried; letting the engine also interpolate it between physics ticks smooths an already-smooth value and reads as lag. The character body it hangs off IS interpolated, which is the point."
+
 [node name="FppPivot" type="Node3D" parent="."]
 position = Vector3(0, 0.45, 0)
 
@@ -18,7 +21,10 @@ position = Vector3(0, 1.2, 0)
 rotation_degrees = Vector3(-15, 0, 0)
 collision_mask = 1
 spring_length = 4.5
+margin = 0.15
+physics_interpolation_mode = 2
 
 [node name="TppCamera" type="Camera3D" parent="TppArm"]
 current = false
+near = 0.05
 fov = 70.0

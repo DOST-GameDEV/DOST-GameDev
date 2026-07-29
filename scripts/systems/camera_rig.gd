@@ -101,7 +101,44 @@ const VIEWMODEL_ARMS_SCENE: String = "res://scenes/characters/visuals/ViewmodelA
 ## about the proportion fix asked for that; only the carried-slipper case was
 ## reported broken.
 const TPP_MOUNT_CLEARANCE_AT_PERSON_SCALE: float = 0.4
+## 2026-07-28 — REPLACES `_mount_height_for(carrier.capsule_height())` for the
+## carried case (see `_update_tpp_carry_follow()`). That formula gives `1.2`
+## either way, but "1.2" meant two different things depending on WHOSE origin
+## it was measured from: for a standalone Prop it is 1.2 above that Prop's own
+## short capsule's centre, which reads fine; reused against a Person carrier's
+## 1.6-tall capsule it put the mount origin 0.4 units ABOVE the carrier's own
+## head (head-top sits at local `+0.8` from a Person's origin — see the FPP
+## eye-height note above). A spring-arm cast starting already above someone's
+## head collapses into the first thing it touches — reported as an extreme
+## close-up on an overhead wire, and "it's just inside the head" once the cast
+## comes up short. This sits just below head height instead, a believable
+## over-the-shoulder spectator position.
+const TPP_CARRY_MOUNT_HEIGHT: float = 0.6
 const PERSON_CAPSULE_HEIGHT: float = 1.6
+
+## Checklist 7.2 / playtest 2026-07-28 — "BROKEN LATA CAMERA", with a screenshot
+## of an empty road.
+##
+## `TppArm`'s baked 4.5-unit `spring_length` was tuned for a 1.6-unit Person. The
+## Can is **0.34 units tall**, so playing as the Can framed it as a speck in the
+## middle of an empty street — a third-person camera whose subject is roughly
+## three pixels. Verified by render before and after.
+##
+## ⚠️ ONLY THE ARM LENGTH SCALES. THE MOUNT HEIGHT DELIBERATELY DOES NOT — see
+## the `TPP_MOUNT_CLEARANCE_AT_PERSON_SCALE` note above: scaling the mount down
+## for a short capsule was tried and REVERTED, because it dropped the shapecast's
+## origin close enough to the ground that the camera collapsed into solid
+## geometry. That failure is avoided here by construction: the cast still starts
+## at the same safe height a Person's does, and only the distance it travels
+## shrinks. Shortening the arm cannot put the origin anywhere new.
+##
+## The floor keeps the arena readable. A Can player is the one being thrown at
+## and still needs to see the attacker, so this frames the prop without hugging
+## it — the point is that the subject is visible, not that it fills the screen.
+const TPP_MIN_SPRING_LENGTH: float = 1.8
+## How far down the arm aims for the shortest subjects. The scene bakes -15,
+## which points straight over a 0.34-unit Can from a 1.2 mount.
+const TPP_MIN_PITCH_DEG: float = -34.0
 
 @export var aim_source: AimSource = AimSource.MOVEMENT
 
@@ -115,6 +152,35 @@ var _character: CharacterBase
 var _mode: Mode
 var _pitch_deg: float = 0.0
 var _active: bool = false
+## 2026-07-28 — user feedback: "tsinelas cam should be movable but anchored to
+## person... so awkward for them to be watching gameplay happen like this."
+## While CARRIED, `_character.rotation` is slaved to the carrier's hand every
+## physics frame (`carriable.gd::_step_carried()`), so the normal TPP
+## yaw-steers-the-body mechanism below has no visible effect — the write is
+## overwritten before the next frame renders, and the carried player has
+## never actually had camera control, B-91 or not. These track a LOOK OFFSET
+## instead, applied on top of the carrier's own facing in
+## `_update_tpp_carry_follow()`, so the view starts anchored behind the
+## carrier and the carried player can still swivel it from there.
+var _tpp_carry_yaw_deg: float = 0.0
+## The scene's own baked `TppArm.spring_length`, captured before
+## `_apply_tpp_framing()` ever shortens it — so re-framing on a round swap
+## always scales from the authored value rather than from last round's result,
+## which would ratchet the camera closer every round.
+var _tpp_base_spring_length: float = 4.5
+## The scene's own baked `TppArm` pitch, captured for the same reason as the
+## length above — so re-framing scales from the authored value every round.
+var _tpp_base_pitch_deg: float = -15.0
+## The framing pitch _apply_upright_pose() rebuilds the arm from each frame.
+var _tpp_pitch_deg: float = -15.0
+## The scene's own baked mount heights, captured before anything overrides them.
+var _tpp_mount_height: float = 1.2
+var _fpp_eye_height: float = 0.45
+## The carried unit's Visual this rig currently has hidden from its own player,
+## so it can be un-hidden even after the unit stops being held. See
+## _apply_carried_self_hide.
+var _hidden_carried_visual: Node3D = null
+var _tpp_carry_pitch_deg: float = 0.0
 ## B-91 — this rig's own Carriable, so it can tell "am I currently being
 ## carried" without character_base.gd having to learn what carrying is (the
 ## same information-hiding rule carriable.gd's own header states). Null for a
@@ -158,18 +224,44 @@ func _ready() -> void:
 	# which also covers the round-swap, where a Prop's Can/Tsinelas model is
 	# rebuilt from scratch. Calling it once here too is harmless and keeps the
 	# behaviour correct if a Visual ever ships with meshes baked in.
+	_tpp_base_spring_length = tpp_arm.spring_length
+	_tpp_base_pitch_deg = tpp_arm.rotation_degrees.x
+	_tpp_pitch_deg = _tpp_base_pitch_deg
+	_tpp_mount_height = tpp_arm.position.y
+	_fpp_eye_height = fpp_pivot.position.y
 	var visual := _character.get_node_or_null("Visual") as CharacterVisual
 	if visual != null:
 		visual.model_changed.connect(_apply_fpp_self_hide)
+		# Re-framed on every model change, not just here: `is_can` flips every
+		# round, and a Can and a Tsinelas have different capsule heights, so a
+		# rig framed once at _ready() would keep the previous role's distance
+		# for the whole of the next round.
+		visual.model_changed.connect(_apply_tpp_framing)
 	_apply_fpp_self_hide()
+	_apply_tpp_framing()
 	set_active(false)
 	set_process_unhandled_input(false)
 	# Networked: authority is already decided at spawn, so a rig can safely
 	# activate itself here — no main.gd wiring needed, same pattern as Hud
 	# reading autoloads directly. Local test has no authority concept; the
 	# switcher (or main.gd, until it exists) calls set_active() explicitly.
+	#
+	# AI takeover: is_multiplayer_authority() alone is no longer sufficient on
+	# the HOST machine specifically — an AI-driven character's authority is
+	# also the host's own peer_id (see main.gd::_build_networked_character),
+	# so on a host that is itself a real player, every AI-driven character's
+	# rig would ALSO see is_mine = true and activate here, stealing the
+	# camera (and, via _apply_fpp_self_hide below, hiding that AI character's
+	# own body/head as if it were being viewed through its own eyes) —
+	# reported as "my POV is another AI-controlled character" and "other
+	# characters have an FPP model with a TPP view." `ai_controller` is only
+	# ever non-null on the one process that attached it (the host, and only
+	# for the character it's actually driving — see main.gd's _attach_ai
+	# call sites), so excluding it is enough to tell "mine" from "the host's
+	# machine happens to also simulate this one." Same fix as
+	# main.gd::get_local_character().
 	if NetworkManager.is_networked():
-		var is_mine := _character.is_multiplayer_authority()
+		var is_mine := _character.is_multiplayer_authority() and _character.ai_controller == null
 		set_active(is_mine)
 		set_aim_source(AimSource.MOUSE if is_mine else AimSource.MOVEMENT)
 
@@ -178,6 +270,76 @@ func _ready() -> void:
 ## (always a Person's 1.6 — see the const doc above for why this is a formula
 ## and not the bare 1.2). Deliberately not used for a Prop's own standalone
 ## mount height — see the same const doc for why that was tried and reverted.
+## Scales the TPP arm to the unit it is actually watching. See
+## TPP_MIN_SPRING_LENGTH for why only the length moves and never the mount.
+##
+## No-ops on a Person in every respect: a 1.6 capsule gives a ratio of 1.0 and
+## the arm keeps the scene's own baked 4.5, so nothing about the FPP/TPP
+## directive or a Person's framing changes.
+## ⚠️ THE CAMERA NEVER INHERITS THE BODY'S ROLL OR PITCH. THIS IS THE INVARIANT.
+##
+## Playtest 2026-07-28, with screenshots: "camera for both can and slippers
+## randomly break" — the whole 3D view rolled 40 degrees while the HUD stayed
+## level, which is a camera roll and nothing else.
+##
+## Both pivots are CHILDREN of the CharacterBase, so they inherit its full basis.
+## Almost everything writes only `rotation.y` and is harmless, but a Prop's body
+## does get a full basis written to it: `carriable.gd::_step_carried()` snaps a
+## carried unit to the carrier's HAND every physics frame, tilt included, and
+## anything that leaves a non-yaw component behind — a mid-transition frame, a
+## release path that has not zeroed it yet, a future ability that tilts a
+## body — lands directly in the player's eye.
+##
+## Patching each writer has been tried in pieces and this is the third report.
+## So the rig stops trusting its parent instead: every frame, both pivots are
+## given an ABSOLUTE transform built from the body's YAW ONLY plus their own
+## pitch. Whatever the body is doing on the other two axes cannot reach the
+## camera, from any code path, including ones nobody has written yet.
+##
+## ⚠️ Yaw is recovered from the body's FORWARD VECTOR, not from
+## `global_rotation.y`. Euler decomposition of a basis that has roll in it does
+## not give back the yaw you want — which is exactly the situation this function
+## exists to survive.
+func _body_yaw() -> float:
+	var forward := -_character.global_transform.basis.z
+	if absf(forward.x) < 0.00001 and absf(forward.z) < 0.00001:
+		return _character.global_rotation.y # looking straight up/down; degenerate
+	return atan2(-forward.x, -forward.z)
+
+func _apply_upright_pose() -> void:
+	if _character == null:
+		return
+	var yaw := Basis(Vector3.UP, _body_yaw())
+	if _mode == Mode.FPP:
+		fpp_pivot.global_transform = Transform3D(
+			yaw * Basis(Vector3.RIGHT, deg_to_rad(_pitch_deg)),
+			_character.global_position + Vector3.UP * _fpp_eye_height)
+		return
+	# The carried case already writes an absolute transform of its own, anchored
+	# to the CARRIER rather than to this body — see _update_tpp_carry_follow().
+	# Overwriting it here would undo the anchoring and snap the view back onto a
+	# slipper that is being swung around by someone else's arm.
+	if _carriable != null and _carriable.state == Carriable.CarryState.CARRIED:
+		return
+	tpp_arm.global_transform = Transform3D(
+		yaw * Basis(Vector3.RIGHT, deg_to_rad(_tpp_pitch_deg)),
+		_character.global_position + Vector3.UP * _tpp_mount_height)
+
+func _apply_tpp_framing() -> void:
+	if _mode != Mode.TPP or _character == null:
+		return
+	var ratio := clampf(_character.capsule_height() / PERSON_CAPSULE_HEIGHT, 0.0, 1.0)
+	tpp_arm.spring_length = lerpf(TPP_MIN_SPRING_LENGTH, _tpp_base_spring_length, ratio)
+	_tpp_pitch_deg = lerpf(TPP_MIN_PITCH_DEG, _tpp_base_pitch_deg, ratio)
+	# Pitch, for the same reason and with the same safety property: the mount is
+	# 1.2 up and a Can's top is at 0.34, so a rig still aimed 15 degrees down
+	# looks straight over it and leaves the subject sitting on the bottom edge of
+	# frame under a screenful of sky — measured in the first render of this fix.
+	# Tilting further down re-centres it, and like the length it only changes
+	# where the cast POINTS, never where it starts, so it cannot reintroduce the
+	# collapse that killed the mount-scaling attempt.
+	tpp_arm.rotation_degrees.x = _tpp_pitch_deg
+
 func _mount_height_for(capsule_height: float) -> float:
 	var clearance := TPP_MOUNT_CLEARANCE_AT_PERSON_SCALE * (capsule_height / PERSON_CAPSULE_HEIGHT)
 	return capsule_height / 2.0 + clearance
@@ -254,6 +416,11 @@ const VIEWMODEL_CARRY_SCALE: float = 0.55
 ## How fast the hand converges on the slipper. Instant snapping on pick-up reads
 ## as a teleport; this is quick enough to feel attached, slow enough to see.
 const VIEWMODEL_REACH_SPEED: float = 14.0
+## Where the held slipper sits in the LOCAL player's frame, in FppPivot space.
+## Forward, right and below the crosshair — the composition the old chase-the-
+## world-slipper code was reverse-engineering, now stated directly and applied
+## to the viewmodel where it belongs.
+const VIEWMODEL_CARRY_ANCHOR: Vector3 = Vector3(0.26, -0.16, -0.48)
 
 
 ## Playtest: "the slippers just float when you hold it, its completely
@@ -288,29 +455,41 @@ func _update_viewmodel_carry(delta: float) -> void:
 
 	var carrier := _character.get_node_or_null("Carrier") as Carrier
 	var held: Carriable = carrier.held() if carrier != null else null
+	var holding := held != null and is_instance_valid(held)
+	# ⚠️ 7.3 — THE VIEWMODEL CARRIES ITS OWN SLIPPER NOW, and no longer chases
+	# the world one. That inversion is the whole fix for "slipper floating".
+	#
+	# The old code moved the visible FPP hand ONTO the world slipper, which meant
+	# the world slipper's position had to be chosen to compose the FIRST-PERSON
+	# frame — `HAND_CARRY_OFFSET`'s own note says so outright: a little above the
+	# eye, forward and to the right so it never covers the crosshair. That is a
+	# fine place for a viewmodel and a terrible place for a real object, because
+	# it is nowhere near the character's actual hand. Everyone ELSE therefore saw
+	# a slipper hovering beside its carrier's head. Reported repeatedly as the
+	# slipper floating; re-measuring the offset could never have fixed it,
+	# because the offset was doing exactly what it was written to do.
+	#
+	# So the two views get two objects, which is how first-person games have
+	# always solved this and is the same reasoning that gave the arms a dedicated
+	# viewmodel in the first place. The world slipper sits in the real hand and
+	# is correct in third person; `HeldSlipper` under the fist is what the local
+	# player sees, posed for their frame and nobody else's.
+	var slipper := pivot.get_node_or_null("Arm/HeldSlipper") as Node3D
+	if slipper != null:
+		slipper.visible = holding
+	# Per-frame, because what this character is holding changes DURING a round —
+	# _apply_fpp_self_hide only re-runs on activation and model changes, so a
+	# pick-up mid-round would otherwise show both slippers until the next swap.
+	_apply_carried_self_hide(true)
 	var wanted := _viewmodel_rest
-	if held != null and is_instance_valid(held) and held.get_parent() is Node3D:
-		# ⚠️ THE CARRYING ARM IS SCALED DOWN, and that is not a cheat.
-		#
-		# The slipper rides only ~0.48 units in front of the eye
-		# (HAND_CARRY_OFFSET, chosen so it never covers the crosshair), while the
-		# forearm mesh is 0.84 long. Any full-size arm reaching that point has to
-		# pass within centimetres of the lens, and at a 95-degree FOV that fills
-		# half the frame — measured twice, once with the elbow projected back from
-		# the slipper (elbow ended up BEHIND the camera) and once with the elbow
-		# anchored and the forearm stretched (still a wall of skin on the right).
-		#
-		# So the carrying arm renders at VIEWMODEL_CARRY_SCALE. It reads as a hand
-		# at arm's length rather than a forearm across the lens, and because the
-		# fist is placed exactly ON the carried unit the slipper is unambiguously
-		# held. The empty hand keeps its full size — nothing is close enough to
-		# the eye there for it to matter.
-		var target := fpp_pivot.to_local((held.get_parent() as Node3D).global_position)
+	if holding:
+		# A FIXED carry pose, not a chase. Nothing here reads the world slipper's
+		# position any more, so the two can never drag each other around — which
+		# is what produced "my arms float during windup" (B-90) as well.
 		var dir := VIEWMODEL_CARRY_DIR.normalized()
 		var reach := VIEWMODEL_ARM_LENGTH * VIEWMODEL_CARRY_SCALE
+		var target := VIEWMODEL_CARRY_ANCHOR
 		var elbow := target - dir * reach
-		# Any stable reference works; the arm never approaches vertical here, so
-		# the cross product is always well conditioned.
 		var right_axis := dir.cross(Vector3.FORWARD).normalized()
 		wanted = Transform3D(Basis(right_axis * VIEWMODEL_CARRY_SCALE,
 			dir * VIEWMODEL_CARRY_SCALE,
@@ -354,20 +533,40 @@ func _update_tpp_carry_follow() -> void:
 			tpp_arm.add_excluded_object(carrier.get_rid())
 		_tpp_excluded_carrier = carrier
 	if carrier == null:
-		return # not carried — ordinary parent-driven transform, nothing to override
-	# Replicates the ordinary (parent-driven) composition — CharacterBase's yaw
-	# (rotation.y is the only axis a body ever rotates on; pitch always lives on
-	# this rig, never the body) times TppArm's own fixed -15 degree tilt — using
-	# the CARRIER's yaw and position instead of this unit's own.
-	var yaw_basis := Basis(Vector3.UP, carrier.rotation.y)
-	var pitch_basis := Basis(Vector3.RIGHT, deg_to_rad(-15.0))
-	var mount := _mount_height_for(carrier.capsule_height())
+		# Not carried any more — reset the look offset so the next pick-up
+		# starts anchored behind the new carrier instead of wherever this
+		# player last looked.
+		_tpp_carry_yaw_deg = 0.0
+		_tpp_carry_pitch_deg = 0.0
+		return # ordinary parent-driven transform, nothing to override
+	# ANCHORED to the carrier's own yaw (rotation.y is the only axis a body
+	# ever rotates on) plus TppArm's fixed -15 degree base tilt, same as
+	# before — but now with the carried player's own look offset added on top,
+	# so the view starts behind the carrier and can still be swivelled from
+	# there. See apply_mouse_delta() and TPP_CARRY_MOUNT_HEIGHT's own docs.
+	#
+	# ⚠️ 8.5a — READ THE CARRIER'S *INTERPOLATED* TRANSFORM, NOT ITS RAW ONE.
+	# This function runs in _process (every render frame) and the carrier is a
+	# CharacterBody3D whose transform only changes in _physics_process (60 Hz).
+	# Reading `carrier.global_position` from here samples a staircase: at any
+	# refresh rate that is not an exact multiple of the tick rate the camera
+	# holds still for a frame, then jumps two ticks' worth — which is the judder,
+	# and it is worst exactly while being carried. `get_global_transform_
+	# interpolated()` is the engine's own accessor for "what does this physics
+	# body look like right now, between ticks", and it only returns something
+	# different from the raw transform because project.godot now enables
+	# physics_interpolation (it had no [physics] section at all before Phase 8).
+	var carrier_xform := carrier.get_global_transform_interpolated()
+	var carrier_yaw := carrier_xform.basis.get_euler().y
+	var yaw_basis := Basis(Vector3.UP, carrier_yaw + deg_to_rad(_tpp_carry_yaw_deg))
+	var pitch_basis := Basis(Vector3.RIGHT, deg_to_rad(-15.0 + _tpp_carry_pitch_deg))
 	tpp_arm.global_transform = Transform3D(
-		yaw_basis * pitch_basis, carrier.global_position + Vector3.UP * mount)
+		yaw_basis * pitch_basis, carrier_xform.origin + Vector3.UP * TPP_CARRY_MOUNT_HEIGHT)
 
 func _process(delta: float) -> void:
 	_update_viewmodel_carry(delta)
 	_update_tpp_carry_follow()
+	_apply_upright_pose()
 	if _shake_time_left > 0.0:
 		_shake_time_left = max(0.0, _shake_time_left - delta)
 		var ratio := _shake_time_left / _shake_duration
@@ -473,6 +672,31 @@ func play_viewmodel_action(kind: String) -> void:
 	player.play(kind)
 
 
+## Shows/hides the unit THIS character is carrying, for this peer only.
+##
+## ⚠️ IT REMEMBERS WHAT IT HID, and that is not bookkeeping for its own sake.
+## The obvious version just reads `carrier.held()` and hides it — which works
+## until the slipper is THROWN, at which point `held()` is null, the function
+## returns early having restored nothing, and the slipper stays invisible to the
+## player who threw it for the rest of the round. Restoring is keyed on the node
+## this actually hid, so releasing it is never conditional on still holding it.
+func _apply_carried_self_hide(hide_it: bool) -> void:
+	var wanted: Node3D = null
+	if hide_it:
+		var carrier := _character.get_node_or_null("Carrier") as Carrier
+		var held: Carriable = carrier.held() if carrier != null else null
+		if held != null and is_instance_valid(held):
+			var holder := held.get_parent() as Node3D
+			if holder != null:
+				wanted = holder.get_node_or_null("Visual") as Node3D
+	if wanted == _hidden_carried_visual:
+		return
+	if _hidden_carried_visual != null and is_instance_valid(_hidden_carried_visual):
+		_hidden_carried_visual.visible = true
+	if wanted != null:
+		wanted.visible = false
+	_hidden_carried_visual = wanted
+
 func _apply_fpp_self_hide() -> void:
 	# The viewmodel is the inverse of the self-hide: it is the one thing that
 	# must appear exactly when the rest of the body is being looked past. Driven
@@ -481,6 +705,19 @@ func _apply_fpp_self_hide() -> void:
 	var arms := _viewmodel_arms()
 	if arms != null:
 		arms.visible = _active and _mode == Mode.FPP
+
+	# ⚠️ 7.3 — THE CARRIED SLIPPER IS PART OF THE SELF-HIDE NOW.
+	#
+	# Once the viewmodel got its own `HeldSlipper`, the LOCAL player saw two of
+	# them: the viewmodel's, posed for their frame, and the real one sitting in
+	# their character's hand. The world slipper is a separate CharacterBase, so
+	# it was never covered by the body hide below.
+	#
+	# Same mechanism and same reasoning as the body: `_active` is only ever true
+	# for the rig a peer is actually looking through, so this hides the object on
+	# THAT machine only. Every other peer still sees the slipper in their hand,
+	# which is the whole point of having moved it there.
+	_apply_carried_self_hide(_active and _mode == Mode.FPP)
 
 	var visual_root := _character.get_node_or_null("Visual")
 	if visual_root == null:
@@ -544,6 +781,17 @@ func apply_mouse_delta(relative: Vector2) -> void:
 	# rig's own flat BASE_SENSITIVITY, so the Settings slider's range means
 	# the same thing regardless of whatever base rate feels right here.
 	var sensitivity := BASE_SENSITIVITY * SettingsManager.mouse_sensitivity
+	# 2026-07-28 — while carried, _character.rotation.y (written below for the
+	# ordinary TPP case) is overwritten every physics frame by
+	# carriable.gd::_step_carried(), so it has no visible effect here. Track a
+	# separate look offset instead — see _tpp_carry_yaw_deg's own doc and
+	# _update_tpp_carry_follow(), which is what actually reads it.
+	if _mode == Mode.TPP and _carriable != null and _carriable.state == Carriable.CarryState.CARRIED:
+		_tpp_carry_yaw_deg -= relative.x * sensitivity
+		var carry_pitch_delta := relative.y * (-1.0 if SettingsManager.invert_y else 1.0)
+		_tpp_carry_pitch_deg = clamp(
+			_tpp_carry_pitch_deg - carry_pitch_delta * sensitivity, PITCH_MIN_DEG, PITCH_MAX_DEG)
+		return
 	_character.rotation.y -= deg_to_rad(relative.x * sensitivity)
 	if _mode == Mode.FPP:
 		var pitch_delta := relative.y * (-1.0 if SettingsManager.invert_y else 1.0)

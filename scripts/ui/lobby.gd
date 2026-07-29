@@ -4,15 +4,17 @@ class_name LobbyScene
 ## Pre-match lobby with ready-up gate. Fixes B-13.
 ##
 ## Flow:
-##   Host:  main_menu.gd → Lobby (starts ENet server here) → Main.tscn
-##   Join:  main_menu.gd → Lobby (starts ENet client here) → Main.tscn
-##   Local: main_menu.gd → Lobby (no networking at all) → Main.tscn
+##   Host:  game_setup.gd → Lobby (starts ENet server here) → Main.tscn
+##   Join:  game_setup.gd → Lobby (starts ENet client here) → Main.tscn
+##   Local: game_setup.gd → Lobby (no networking at all) → Main.tscn
 ##
 ## The lobby gates the scene transition to Main.tscn behind the host's Start
-## button, which is only enabled when every connected peer is ready AND at
-## least two are connected. This means `_start_hosting()` in main.gd now only
-## runs (and calls MatchManager.begin_next_round()) after the lobby is full and
-## ready — the fix for B-13.
+## button, which is only enabled once every connected peer is ready — the fix
+## for B-13. A solo host (no other peer has joined yet) can also start: since
+## main.gd's networked AI takeover fills every unfilled team/role slot with a
+## real AI instead of an empty seat, a lone host is a fully playable match on
+## its own, joinable by anyone else on the LAN at any point afterward — not an
+## incomplete lobby waiting for a second human.
 ##
 ## Join-index / team-role derivation mirrors main.gd::_spawn_player() exactly:
 ##   team = join_index / 2   → 0,0,1,1 for up to four peers
@@ -28,15 +30,22 @@ class_name LobbyScene
 ## is completely unchanged for Host/Join.
 
 const MAIN_SCENE_PATH := "res://scenes/main/Main.tscn"
-const MAIN_MENU_PATH  := "res://scenes/ui/MainMenu.tscn"
+## Back out to the GAME screen rather than the title: that is where this lobby
+## was entered from, and it is what displays GameLaunch.pending_status_message.
+const MAIN_MENU_PATH  := "res://scenes/ui/GameSetup.tscn"
+
+## Peer rows are built at runtime, so their look is set here rather than in the
+## scene — cream on the wooden panel, matching the GAME screen's selector text.
+const ROW_COLOR: Color = Color(0.961, 0.902, 0.784)
+const ROW_READY_COLOR: Color = Color(1, 0.729, 0)
+const ROW_FONT_SIZE: int = 30
 
 @onready var host_address_label:   Label          = %HostAddressLabel
 @onready var peer_list_container:  VBoxContainer  = %PeerListContainer
-@onready var ready_button:         Button         = %ReadyButton
-@onready var start_button:         Button         = %StartButton
+@onready var ready_button:         ArrowButton    = %ReadyButton
+@onready var start_button:         ArrowButton    = %StartButton
 @onready var status_label:         Label          = %StatusLabel
 @onready var back_button:          Button         = %BackButton
-@onready var lobby_card:           PanelContainer = %LobbyCard
 
 ## Host-authoritative ordered list of peer_ids. Index position is each peer's
 ## join index, which determines team (index/2) and role (index%2==0 → Person).
@@ -50,9 +59,6 @@ var _peer_ready: Dictionary = {}  # peer_id -> bool
 var _is_ready: bool = false
 
 func _ready() -> void:
-	var card_style := UiTheme.card_style(UiTheme.PANEL, UiTheme.INK, UiTheme.IMPACT)
-	lobby_card.add_theme_stylebox_override("panel", card_style)
-
 	ready_button.pressed.connect(_on_ready_pressed)
 	start_button.pressed.connect(_on_start_pressed)
 	back_button.pressed.connect(_on_back_pressed)
@@ -69,7 +75,7 @@ func _ready() -> void:
 		if NetworkManager.host_game() != OK:
 			status_label.text = "Failed to start server — port may be in use."
 			return
-		host_address_label.text = "Host: %s" % _get_lan_address()
+		host_address_label.text = "HOST: %s" % _get_lan_address()
 		start_button.visible = true
 		start_button.disabled = true
 		# Host is peer 1; peer_connected never fires for self on the server.
@@ -85,11 +91,15 @@ func _ready() -> void:
 		NetworkManager.connection_succeeded.connect(_on_connected_to_host)
 		NetworkManager.server_disconnected.connect(_on_server_disconnected)
 		NetworkManager.connection_failed.connect(_on_connection_failed)
-		host_address_label.text = "Host: %s" % address
+		host_address_label.text = "HOST: %s" % address
 		start_button.visible = false
 		status_label.text = "Connecting…"
 
 	_refresh_peer_list()
+
+	ready_button.animate_in()
+	if start_button.visible:
+		start_button.animate_in(0.09)
 
 # ---------------------------------------------------------------------------
 # Networking helpers
@@ -186,17 +196,23 @@ func _refresh_peer_list() -> void:
 		var team_letter := "A" if team == 0 else "B"
 		var role_str    := "PERSON" if is_person else "PROP"
 		var is_ready_val: bool = _peer_ready.get(peer_id, false)
-		var ready_str := " ✓" if is_ready_val else " (waiting…)"
+		var ready_str := " ✓" if is_ready_val else " …"
 		var you_tag   := " (YOU)" if peer_id == multiplayer.get_unique_id() else ""
 
 		var row := Label.new()
-		row.text = "Team %s · %s%s%s" % [team_letter, role_str, you_tag, ready_str]
+		row.text = "TEAM %s · %s%s%s" % [team_letter, role_str, you_tag, ready_str]
+		row.add_theme_color_override("font_color", ROW_READY_COLOR if is_ready_val else ROW_COLOR)
+		row.add_theme_font_size_override("font_size", ROW_FONT_SIZE)
 		peer_list_container.add_child(row)
 
 func _refresh_start_button() -> void:
 	if not multiplayer.is_server():
 		return
-	if _peer_join_order.size() < 2:
+	# Host is appended to _peer_join_order the instant hosting starts (see
+	# _ready()), so this is never actually empty — kept as a guard rather than
+	# assumed. No minimum peer COUNT beyond that: main.gd's AI takeover fills
+	# every unfilled slot, so a lone host is a complete, startable match.
+	if _peer_join_order.is_empty():
 		start_button.disabled = true
 		return
 	for pid in _peer_join_order:
@@ -210,19 +226,24 @@ func _refresh_start_button() -> void:
 # ---------------------------------------------------------------------------
 
 func _setup_local() -> void:
-	host_address_label.text = "Local Match"
+	host_address_label.text = "SINGLE PLAYER"
 	start_button.visible = true
 	start_button.disabled = true
 	var row := Label.new()
-	row.text = "YOU (local)  (waiting…)"
+	row.add_theme_font_size_override("font_size", ROW_FONT_SIZE)
 	peer_list_container.add_child(row)
+	_refresh_local_row()
 	status_label.text = "Press READY to start."
+	# This branch returns before _ready's own unfurl, so it plays its own.
+	ready_button.animate_in()
+	start_button.animate_in(0.09)
 
 func _refresh_local_row() -> void:
 	if peer_list_container.get_child_count() == 0:
 		return
 	var row := peer_list_container.get_child(0) as Label
-	row.text = "YOU (local) ✓" if _is_ready else "YOU (local)  (waiting…)"
+	row.text = "YOU (LOCAL) ✓" if _is_ready else "YOU (LOCAL) …"
+	row.add_theme_color_override("font_color", ROW_READY_COLOR if _is_ready else ROW_COLOR)
 
 # ---------------------------------------------------------------------------
 # Button handlers
@@ -230,7 +251,7 @@ func _refresh_local_row() -> void:
 
 func _on_ready_pressed() -> void:
 	_is_ready = not _is_ready
-	ready_button.text = "UNREADY" if _is_ready else "READY"
+	ready_button.caption = "UNREADY" if _is_ready else "READY"
 	if GameLaunch.pending_action == "local":
 		start_button.disabled = not _is_ready
 		_refresh_local_row()
@@ -241,7 +262,7 @@ func _on_ready_pressed() -> void:
 func _on_start_pressed() -> void:
 	if GameLaunch.pending_action == "local":
 		# No RPC, no networking — B-14's reset already ran once in
-		# main_menu.gd's _on_local_pressed(); this mirrors _rpc_begin_match's
+		# game_setup.gd's _on_local_pressed(); this mirrors _rpc_begin_match's
 		# own double-reset for Host/Join rather than skipping it here.
 		MatchManager.reset()
 		RoundManager.reset()

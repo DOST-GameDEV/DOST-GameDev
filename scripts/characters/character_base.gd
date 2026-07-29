@@ -37,9 +37,18 @@ const DOWNED_SELF_RIGHT_WINDOW: float = 2.0
 ## transform, so world origin IS the base circle centre) for the whole round.
 ## Sized to give the Taya room to body-block an incoming throw without being
 ## able to chase the attacker back to the throwing line — see Art_Direction.md
-## §9 for why the line sits 6 units out. First guess, not a measurement; needs
-## a human to actually play it.
-const CONFINEMENT_RADIUS: float = 3.0
+## §9 for why the line sits 6 units out.
+## ⚠️ RAISED 3.0 -> 5.0, same day, after the first playtest: "the box that
+## defend can move in is so small. he can barely move, theres no room for
+## outplays." Still a full unit short of the 6.0 throwing line, so the Taya
+## still cannot reach the attacker's line — same design constraint as before,
+## just more room inside it. Mirrored by `CONFINEMENT_BOX_RADIUS` in
+## build_eskinita.py, which draws the actual boundary as a chalk-style square
+## (a ring was tried first, then replaced same day — "the circle you made
+## was ugly ... can we just use a square") — keep both in sync if this is
+## retuned again. Still a first guess, not a
+## measurement; needs a human to actually play it.
+const CONFINEMENT_RADIUS: float = 5.0
 ## Bump is "no cooldown" per the GDD but still needs an active window so standing
 ## next to an opponent doesn't stagger them every physics tick — press-to-bump,
 ## briefly live, matches "light melee" better than always-on contact damage.
@@ -124,11 +133,14 @@ enum State { NORMAL, STAGGERED, DOWNED, SEALED }
 ## characters share one keyboard without both moving on the same WASD press —
 ## see project.godot [input]: every action is suffixed "_p1".."_p4". p1/p2 are
 ## bound to real keys (WASD+Space / Arrows+Enter); p3/p4 are registered but
-## deliberately left unbound (see project.godot [input]) — they exist so the
-## local single-PC test flow can spawn the real 4-unit Person+Prop structure
-## without needing 4 human players, and a character with an unbound player_id
-## simply never receives input, standing in as a local-test dummy. See
-## main.gd's local _ready() branch for how p3/p4 are assigned.
+## deliberately left unbound (see project.godot [input]) — no real hardware
+## keystroke can ever land on them. Two uses fall out of that: a character
+## with an unbound player_id and no AIController simply never receives input,
+## standing in as Single Player's local-test dummy (see main.gd's local
+## _ready() branch); and it's the range main.gd assigns to every AI-driven
+## networked character (see _build_spawn_data), so AIController's
+## Input.action_press() calls can never collide with a real human's own p1/p2
+## keystrokes on the same machine.
 @export_range(1, 4, 1) var player_id: int = 1
 
 signal state_changed(new_state: State)
@@ -190,6 +202,18 @@ var _melee_hitbox: Hitbox = null
 @onready var _carriable: Carriable = get_node_or_null("Carriable")
 ## Task 0/1 — this unit's hands, when it is a Person. See carrier.gd.
 @onready var _carrier: Carrier = get_node_or_null("Carrier")
+
+## Checklist 5.5, later reused for networked AI takeover. Null for every unit
+## with a live human behind it; non-null for Single Player's unpiloted units
+## and for a networked character with no real peer (an unfilled slot, or a
+## real peer's character after they disconnect — see main.gd's
+## _build_networked_character / _rpc_convert_to_ai). main.gd attaches this at
+## runtime in every case (never baked into CharacterBase.tscn — see
+## ai_controller.gd's own class doc for why). A plain public var rather than
+## an @onready get_node_or_null(), because the node this would resolve does
+## not exist yet when THIS character's own _ready() runs — main.gd adds it
+## afterward.
+var ai_controller: AIController = null
 
 ## Art_Direction.md §1 proportion audit: CharacterBase.tscn's CollisionShape3D,
 ## Hurtbox, Hitbox and GrabArea used to be baked once at Person scale (radius
@@ -265,8 +289,18 @@ func _apply_role_collision() -> void:
 ## Team can = the Can Prop itself, and its team's defending Person (the Taya).
 ## Re-derived every call rather than cached, same as is_can/team_is_can_side
 ## themselves — both flip every round.
+##
+## ⚠️ Gated on RoundManager.round_active, added 2026-07-28: user feedback
+## ("i want ppl to be able to move around with no restrictions whiile waiting
+## for ready") wants a free-roam window before the round actually starts.
+## round_active is false there, same as it briefly is between rounds during
+## an ordinary intermission — that window is harmless because
+## reset_for_new_round()/_reset_world() already re-teleports everyone to
+## their role spawn the instant the next round's setup runs, before a player
+## has time to wander. Do not remove this gate to "simplify" back to the old
+## always-on version; that is what made the pre-round waiting area impossible.
 func _is_confined_to_base() -> bool:
-	return is_can or (is_person and team_is_can_side)
+	return RoundManager.round_active and (is_can or (is_person and team_is_can_side))
 
 ## Wraps move_and_slide() with the confinement clamp so every call site in this
 ## file gets it automatically rather than relying on each one to remember —
@@ -274,6 +308,39 @@ func _is_confined_to_base() -> bool:
 ## clamp on the flat (X/Z) position, not a wall: crossing the edge just stops
 ## making further progress outward, rather than colliding with anything, so it
 ## costs no extra collision shape and cannot itself desync a hit.
+## ⚠️ SPAWN SETTLE — DO NOT REMOVE. This is the real fix for B-100.
+##
+## Writing `position` on a PhysicsBody3D updates the SCENE TREE at once and the
+## physics BROADPHASE only at the next server step. Roles swap every round, so
+## the two Persons trade marks — and for one physics frame each of them is
+## standing on the OTHER one's stale collider. Measured with tools/jump_probe.gd
+## and tools/spawn_probe.gd: the incoming Taya is placed correctly at
+## (2.2, 0.9, -1.5), then `move_and_slide()` reports three contacts with the
+## outgoing Person (normal 0,1,0 — stacked on its head), shoves it 1.60 up to
+## y=2.50, and the next frame slides it 9.89 units into WallWest, where the
+## confinement clamp parks it on the boundary at exactly radius 5.0.
+##
+## Neither `force_update_transform()` nor `PhysicsServer3D.body_set_state()`
+## fixes it, and B-100's "park everyone at y=500 first" could not either — all
+## three are writes that the broadphase does not see until it steps. Toggling
+## `CollisionShape3D.disabled` was tried before that and also failed, for the
+## same reason.
+##
+## So instead of trying to make the server see the write sooner, nobody MOVES
+## until it has. For SPAWN_SETTLE_FRAMES physics frames after placement this
+## character holds its placed transform, keeps zero velocity, and skips
+## move_and_slide() entirely. Three frames is 50ms — invisible — and by then the
+## broadphase has stepped and every capsule is where the scene tree says it is.
+const SPAWN_SETTLE_FRAMES: int = 3
+var _spawn_settle: int = 0
+var _spawn_settle_at: Transform3D = Transform3D.IDENTITY
+
+## Called by main.gd::_place_at_spawn immediately after it writes the transform.
+func begin_spawn_settle() -> void:
+	_spawn_settle = SPAWN_SETTLE_FRAMES
+	_spawn_settle_at = global_transform
+	velocity = Vector3.ZERO
+
 func _move_and_confine() -> void:
 	move_and_slide()
 	if not _is_confined_to_base():
@@ -299,6 +366,31 @@ func _ready() -> void:
 	_visual.apply(is_person, is_can, team)
 
 func _physics_process(delta: float) -> void:
+	# ⚠️ BEFORE EVERYTHING, INCLUDING THE AI. See begin_spawn_settle().
+	# Holding the placed transform for a few frames is what stops two characters
+	# that just traded spawn marks from depenetrating off each other's stale
+	# collider. Skipping the whole function is deliberate: gravity, the AI and
+	# move_and_slide() must all stay out of it until the broadphase has stepped.
+	if _spawn_settle > 0:
+		_spawn_settle -= 1
+		global_transform = _spawn_settle_at
+		velocity = Vector3.ZERO
+		return
+
+	# Checklist 5.5 — Single Player AI. Deliberately the FIRST line of this
+	# function, before anything below reads Input: ai_controller writes into
+	# this character's own action_name()-suffixed Input state exactly the way
+	# a human would, and Godot does not guarantee _physics_process order
+	# between a parent and its children — leaving this implicit (e.g. relying
+	# on AIController being a child that "happens" to run first) would make
+	# the AI's presses land a frame late roughly as often as not. This is the
+	# ONLY hook: everything after this line — movement, abilities, carrier,
+	# confinement, the state machine, round-active gating — is completely
+	# unmodified and unaware whether the Input it reads came from hardware or
+	# from here. See ai_controller.gd's own class doc for the full reasoning.
+	if ai_controller != null:
+		ai_controller.decide(delta)
+
 	# Session 6: the bump-active window has to decay on every peer, not just
 	# the owning one — the host needs its own copy of this timer to resolve
 	# hits authoritatively (see hitbox.gd), and it never runs the input half
@@ -334,10 +426,18 @@ func _physics_process(delta: float) -> void:
 	# Item 10 / B-37: freeze input during the round intermission (the gap
 	# between a round ending and the next one's timer starting — see
 	# MatchManager.round_intermission_started / main.gd::_reset_world) and
-	# before the very first round begins. round_active is already false in
-	# both cases; still apply gravity/friction above/below so nobody floats
-	# or skids, just can't act.
-	if not RoundManager.round_active:
+	# while waiting for a rematch after a match ends. round_active is false
+	# in both cases; still apply gravity/friction above/below so nobody
+	# floats or skids, just can't act.
+	# ⚠️ EXCLUDES the pre-match free-roam window added 2026-07-28
+	# (main.gd::_start_local_test/_awaiting_local_ready) — round_active is
+	# ALSO false there, but MatchManager.round_number is still 0 (no round
+	# has ever begun yet), which is what distinguishes "waiting to ready up,
+	# should be able to walk around" from "between rounds/matches, should
+	# not." Do not simplify this back to a bare `not round_active` check;
+	# that is exactly what froze movement during the free-roam window the
+	# first time this shipped.
+	if not RoundManager.round_active and MatchManager.round_number > 0:
 		velocity.x = move_toward(velocity.x, 0, FRICTION * delta)
 		velocity.z = move_toward(velocity.z, 0, FRICTION * delta)
 		_move_and_confine()
@@ -362,7 +462,7 @@ func _physics_process(delta: float) -> void:
 	# (0.90). Raise this above ~1.0 and every crate in the alley silently becomes
 	# a platform, which breaks the height law and puts players on top of the
 	# dressing where there is no boundary to stop them.
-	if state == State.NORMAL and is_on_floor() 			and Input.is_action_just_pressed(_action("jump")):
+	if state == State.NORMAL and is_on_floor() 			and input_just_pressed("jump"):
 		velocity.y = JUMP_VELOCITY
 
 	# Task 0/1: grab and charge-throw. Runs before the rest of the input block so
@@ -370,7 +470,7 @@ func _physics_process(delta: float) -> void:
 	if _carrier != null and state == State.NORMAL:
 		_carrier.input_step(delta)
 
-	if state == State.NORMAL and Input.is_action_just_pressed(_action("bump")):
+	if state == State.NORMAL and input_just_pressed("bump"):
 		_open_bump_window()
 		# Cosmetic only. CharacterVisual decides what a bump LOOKS like and picks
 		# a clip the model actually has; this file just says what happened.
@@ -406,14 +506,14 @@ func _physics_process(delta: float) -> void:
 					# "every tracked Can Sealed" win check (unchanged) fires
 					# from this exactly as it used to fire from a manual seal.
 					seal()
-			if Input.is_action_just_pressed(_action("bump")) and _downed_self_rightable:
+			if input_just_pressed("bump") and _downed_self_rightable:
 				self_right()
 			# B-06: special_ability is normally only read further down, past the
 			# STAGGERED/DOWNED/SEALED early return below — unreachable for an
 			# "escape" ability like Quick Stand, whose only effect is self-
 			# righting from exactly this state. is_ready()/once_per_round on the
 			# ability itself already gates whether it actually does anything.
-			if Input.is_action_just_pressed(_action("special_ability")) and ability:
+			if input_just_pressed("special_ability") and ability:
 				ability.activate(self)
 				if NetworkManager.is_networked() and not NetworkManager.is_host():
 					_rpc_notify_ability_activate.rpc_id(1)
@@ -434,7 +534,7 @@ func _physics_process(delta: float) -> void:
 		_move_and_confine()
 		return
 
-	var input_dir := Input.get_vector(_action("move_left"), _action("move_right"), _action("move_up"), _action("move_down"))
+	var input_dir := input_vector("move_left", "move_right", "move_up", "move_down")
 	# B-60: which frame WASD is read in depends on who owns this unit's yaw.
 	#
 	# Mouse-aimed (the unit you are personally driving): the CameraRig owns yaw
@@ -485,7 +585,7 @@ func _physics_process(delta: float) -> void:
 	# Task 0: `and not _carrier_is_holding()` — with a slipper in hand this button
 	# is the charge-throw (carrier.gd owns it, above) and must not ALSO fire the
 	# ordinary ability. person_action.gd is now Tag-only for exactly this reason.
-	if Input.is_action_just_pressed(_action("special_ability")) and ability and not _carrier_is_holding():
+	if input_just_pressed("special_ability") and ability and not _carrier_is_holding():
 		# B-12: this used to run AFTER move_and_slide(), so an ability that sets
 		# velocity directly (Flick Dash's dash burst) applied a full physics
 		# frame late. Moved above move_and_slide() so a velocity change this
@@ -505,6 +605,14 @@ func _physics_process(delta: float) -> void:
 			_rpc_notify_ability_activate.rpc_id(1)
 
 	_move_and_confine()
+
+	# ⚠️ LAST LINE, AFTER EVERY CONSUMER HAS READ THIS FRAME.
+	# Rolls AI intent into "previous" so input_just_pressed()/just_released()
+	# have an edge to detect. Doing it any earlier would consume the edge before
+	# carrier.gd/ability code further down the same frame ever saw it, and a
+	# charged throw would never fire for a bot.
+	if ai_controller != null:
+		ai_commit_intent_frame()
 
 ## Called on this character when it's hit by an opponent's Hitbox (see hitbox.gd).
 func apply_stagger(duration: float = BUMP_STAGGER_TIME) -> void:
@@ -634,7 +742,7 @@ func _process_guard_dash(delta: float) -> void:
 		_process_dash(delta)
 
 func _process_guard(delta: float) -> void:
-	var held := Input.is_action_pressed(_action("guard_dash"))
+	var held := input_pressed("guard_dash")
 	if held and _guard_stamina > 0.0:
 		_is_guarding = true
 		_guard_stamina = max(0.0, _guard_stamina - GUARD_DRAIN_RATE * delta)
@@ -645,7 +753,7 @@ func _process_guard(delta: float) -> void:
 func _process_dash(delta: float) -> void:
 	if _dash_cooldown_left > 0.0:
 		_dash_cooldown_left -= delta
-	if _dash_active_time_left <= 0.0 and _dash_cooldown_left <= 0.0 and Input.is_action_just_pressed(_action("guard_dash")):
+	if _dash_active_time_left <= 0.0 and _dash_cooldown_left <= 0.0 and input_just_pressed("guard_dash"):
 		var forward := -transform.basis.z
 		velocity.x = forward.x * DASH_SPEED
 		velocity.z = forward.z * DASH_SPEED
@@ -679,7 +787,39 @@ func _flash_blocked() -> void:
 ## Hitbox (requires_bump_window = true) checks this before landing a stagger;
 ## ability-spawned hitboxes (requires_bump_window = false) ignore it.
 func is_hitbox_active() -> bool:
-	return _bump_active_time_left > 0.0
+	# ⚠️⚠️ A THROWN SLIPPER IS LIVE FOR ITS WHOLE FLIGHT. THIS IS THE CORE
+	# MECHANIC AND IT DID NOT WORK.
+	#
+	# `Hitbox.requires_bump_window` is true on CharacterBase.tscn's one Hitbox,
+	# so every hit in the game was gated behind `_bump_active_time_left > 0.0` —
+	# which is written in exactly one place, the BUMP press. A tsinelas in the
+	# air never presses bump, so its hitbox was never active, so it could never
+	# dent the lata. Measured with tools/phys_probe.gd: eleven throws launched
+	# straight at the can from the throwing line produced **0 dents out of 3**.
+	# Tumbang preso is a game about hitting a can with a slipper, and the slipper
+	# passed through it.
+	#
+	# Being FLYING is the slipper's equivalent of the bump window: a deliberate,
+	# time-boxed offensive state that the player committed to. Everything else
+	# about the hit — the no-friendly-fire check, host authority, the
+	# thrower-ignore window, dents vs stagger — is unchanged and still resolves
+	# through the same path.
+	return _bump_active_time_left > 0.0 or _is_carriable_flying()
+
+## True while this unit is a Prop mid-throw. Read from Carriable rather than
+## mirrored into a field here, so there is one source of truth for the state.
+func _is_carriable_flying() -> bool:
+	var c := get_node_or_null("Carriable") as Carriable
+	return c != null and c.state == Carriable.CarryState.FLYING
+
+## Re-runs this character's melee hitbox against everything already inside it.
+## `Area3D.area_entered` only fires on the ENTER edge, so a hitbox that becomes
+## active while it is already overlapping a hurtbox never reports — which is
+## true on the first frame of a throw, and is why `sweep_overlaps()` exists for
+## the bump press. carriable.gd::_step_flying calls this every flight frame.
+func sweep_hitbox() -> void:
+	if _melee_hitbox:
+		_melee_hitbox.sweep_overlaps()
 
 ## Whether this character is still inside its Downed self-right window (i.e.
 ## NOT yet sealable). Hitbox needs this from the outside to decide seal vs.
@@ -757,7 +897,11 @@ func _rpc_play_hit_vfx() -> void:
 func _flash_hit() -> void:
 	_visual.flash_hit()
 	_hitstop()
-	var is_mine := is_multiplayer_authority() if NetworkManager.is_networked() else player_id == 1
+	# AI takeover: is_multiplayer_authority() alone can also be true for an
+	# AI-driven character on the host (see camera_rig.gd's own is_mine doc for
+	# why) — exclude ai_controller so a hit on an AI-driven unit never shakes
+	# the host's own screen for a character nobody there is looking through.
+	var is_mine := (is_multiplayer_authority() and ai_controller == null) if NetworkManager.is_networked() else player_id == 1
 	if is_mine:
 		var rig := get_node_or_null("CameraRig") as CameraRig
 		if rig:
@@ -784,6 +928,81 @@ func _end_hitstop() -> void:
 func _action(base_name: String) -> String:
 	return "%s_p%d" % [base_name, player_id]
 
+## ---------------------------------------------------------------------------
+## PER-CHARACTER INPUT. Read through these, never through `Input` directly.
+## ---------------------------------------------------------------------------
+##
+## ⚠️⚠️ THIS EXISTS BECAUSE `Input` IS A GLOBAL SINGLETON AND THE AI WAS DRIVING
+## IT. Read this before routing anything else through `Input`.
+##
+## AIController used to steer its character by calling
+## `Input.action_press("move_left_p%d" % player_id)`. That is process-global
+## state keyed only by `player_id`, and `main.gd::_build_spawn_data` hands AI
+## slots `player_id = (index % 2) + 3` — so **index 0 and index 2 both get p3**,
+## and 1 and 3 both get p4. Two AI characters therefore pressed and released
+## the *same* actions, which produced both halves of the 2026-07-29 report:
+##
+##   * *"they all move together at the exact same time in sync"* — they were
+##     literally reading one another's input.
+##   * *"they randomly stop and freeze completely"* — `_set_held()` is edge
+##     triggered against the controller's OWN belief about what it is holding.
+##     Bot A presses `move_left_p3`; bot B, believing that action is not held,
+##     calls `Input.action_release("move_left_p3")` and stops BOTH of them. The
+##     two beliefs then disagree with the global forever, so neither re-presses.
+##
+## The fix is not a bigger `player_id` range — a human and an AI on one machine
+## can still collide, and a shared global is the wrong shape for per-unit intent
+## regardless. An AI-driven character reads its own intent dictionary instead;
+## a human-driven one reads the hardware. Nothing else in this file had to
+## change: every gameplay read below now goes through `input_*` and neither
+## knows nor cares which source answered.
+var _ai_intent: Dictionary = {}      ## base action -> bool, this frame
+var _ai_intent_prev: Dictionary = {} ## base action -> bool, previous frame
+
+## True when this character is driven by an AIController rather than hardware.
+func _ai_driven() -> bool:
+	# A DISABLED controller hands the character back to hardware input — that is
+	# the debug switcher taking manual control of a bot mid-match.
+	return ai_controller != null and ai_controller.is_enabled()
+
+## Written by AIController each physics frame, before anything reads it.
+func ai_set_intent(base_name: String, pressed: bool) -> void:
+	_ai_intent[base_name] = pressed
+
+## Rolls this frame's intent into "previous" so the edge helpers below have
+## something to compare against. Called at the END of _physics_process, after
+## every consumer has read the frame — see the call site.
+func ai_commit_intent_frame() -> void:
+	_ai_intent_prev = _ai_intent.duplicate()
+
+func ai_clear_intent() -> void:
+	_ai_intent.clear()
+	_ai_intent_prev.clear()
+
+func input_pressed(base_name: String) -> bool:
+	if _ai_driven():
+		return _ai_intent.get(base_name, false)
+	return Input.is_action_pressed(_action(base_name))
+
+func input_just_pressed(base_name: String) -> bool:
+	if _ai_driven():
+		return _ai_intent.get(base_name, false) and not _ai_intent_prev.get(base_name, false)
+	return Input.is_action_just_pressed(_action(base_name))
+
+func input_just_released(base_name: String) -> bool:
+	if _ai_driven():
+		return _ai_intent_prev.get(base_name, false) and not _ai_intent.get(base_name, false)
+	return Input.is_action_just_released(_action(base_name))
+
+## Godot's `Input.get_vector` equivalent for this character's own source.
+func input_vector(neg_x: String, pos_x: String, neg_y: String, pos_y: String) -> Vector2:
+	if _ai_driven():
+		var v := Vector2(
+			(1.0 if _ai_intent.get(pos_x, false) else 0.0) - (1.0 if _ai_intent.get(neg_x, false) else 0.0),
+			(1.0 if _ai_intent.get(pos_y, false) else 0.0) - (1.0 if _ai_intent.get(neg_y, false) else 0.0))
+		return v.normalized() if v.length() > 1.0 else v
+	return Input.get_vector(_action(neg_x), _action(pos_x), _action(neg_y), _action(pos_y))
+
 ## Public form of _action(), for the Task 0 carry components (carriable.gd,
 ## carrier.gd) which read this character's input set from outside this file.
 ## Deliberately an alias rather than a rename: `_action` has ten call sites in
@@ -806,6 +1025,15 @@ func get_hand_attachment() -> Node3D:
 ## a clip the model actually has.
 func play_visual_action(kind: String) -> void:
 	_visual.play_action(kind)
+
+## 4.2 — tells this unit's Visual its body position/yaw was just TELEPORTED
+## (a round reset, a KillPlane respawn) rather than walked, so remote-peer
+## interpolation snaps to the new spot instead of gliding across the map from
+## wherever it was before. No-op for every unit that isn't currently being
+## smoothed (the locally-driven character, Local Match, everyone once the
+## match isn't networked) — see character_visual.gd::snap_remote_transform.
+func snap_visual_interpolation() -> void:
+	_visual.snap_remote_transform()
 
 ## Art_Direction.md §1 / B-88 — this unit's OWN, currently-applied collision
 ## capsule height, read from the shape `_apply_role_collision()` just sized
@@ -848,6 +1076,7 @@ func _set_state(new_state: State) -> void:
 func respawn() -> void:
 	global_position = spawn_position
 	velocity = Vector3.ZERO
+	snap_visual_interpolation()
 
 ## Called by RoundManager at the start of a new round to clear Downed/Sealed/Staggered
 ## carryover from the previous round. Does NOT touch position — whatever resets a
