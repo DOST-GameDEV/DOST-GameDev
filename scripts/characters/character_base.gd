@@ -161,6 +161,37 @@ enum State { NORMAL, STAGGERED, DOWNED, SEALED }
 ## keystrokes on the same machine.
 @export_range(1, 4, 1) var player_id: int = 1
 
+## Which `CharacterRoster` entry this Person wears. -1 means "no pick" and is the
+## honest default: an AI-driven slot and a local-test dummy never went through
+## the CHARACTER screen, and character_visual.gd falls back to the signed-off
+## per-team Person for those rather than putting everyone in the same shirt.
+##
+## ⚠️ REPLICATED, AND IT HAS TO BE. It is in CharacterBase.tscn's
+## SceneReplicationConfig with `spawn = true` so it arrives with the character
+## itself rather than a frame or two later — a Person that pops from one face to
+## another after spawning is exactly the class of glitch the slipper bug was.
+##
+## ⚠️ NOT carried in MultiplayerSpawner's custom spawn `data`, even though that
+## looks like the natural place. That dictionary silently truncates past 7
+## entries once it crosses the network (measured — see main.gd::_spawn_player)
+## and is already at exactly 7, so an 8th key would vanish on the receiving peer
+## with no error whatsoever. The synchronizer has no such limit.
+##
+## Meaningless on a Prop, which is a lata or a tsinelas and wears neither.
+var character_index: int = -1
+
+## The Prop's two skins, same contract as `character_index` above: -1 is "no
+## pick", both are replicated with `spawn = true`, both are meaningless on a
+## Person.
+##
+## ⚠️ TWO, NOT ONE, BECAUSE A PROP IS BOTH THINGS OVER A MATCH. `is_can` flips
+## every round (main.gd::_reset_world), so the same CharacterBase is a lata one
+## round and a tsinelas the next. Storing a single "prop skin" would mean the
+## player's lata choice and their tsinelas choice overwriting each other every
+## time the role swapped.
+var can_index: int = -1
+var slipper_index: int = -1
+
 signal state_changed(new_state: State)
 ## Option A only (see MAX_DENTS above). Fires whenever `dents` changes so
 ## RoundManager can watch for a tracked Can reaching MAX_DENTS without polling.

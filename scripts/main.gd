@@ -477,6 +477,18 @@ func _start_local_test() -> void:
 	team_b_person.team = 1
 	team_a_person.ability = PERSON_ACTION_ABILITY.duplicate()
 	team_b_person.ability = PERSON_ACTION_ABILITY.duplicate()
+	# The human plays team_a_person in Single Player / local test (see the
+	# Checklist 5.5 note below), so that is the one unit that wears the CHARACTER
+	# screen's pick. team_b_person is deliberately left at -1 and keeps the
+	# signed-off Person B: it is the opponent, and the pair at PERSON_MODELS[0]/[1]
+	# was chosen specifically to read apart at arena distance (Art_Direction.md).
+	# Handing the player's own pick to both would let someone play a match against
+	# a character wearing their exact silhouette.
+	team_a_person.character_index = GameLaunch.character_index()
+	# The human's own Prop takes both skins, for the same reason its networked
+	# counterpart does: `is_can` flips every round and it will be each in turn.
+	team_a_prop.can_index = GameLaunch.can_index()
+	team_a_prop.slipper_index = GameLaunch.slipper_index()
 	# B-76: Main.tscn no longer hardcodes a Prop ability (see its own node
 	# comment) — assign the role-correct one here, same as the networked spawn
 	# path. _reset_world() re-picks this every round; this is just the round-1
@@ -961,6 +973,31 @@ func _build_networked_character(data: Dictionary) -> Node:
 		_role_slot(data["is_can"], data["is_person"], data["team_is_can_side"])), 0.0)
 	character.team = data["team"] # B-09: no team identity on CharacterBase before this
 	character.player_id = data["player_id"] # B-30: was never assigned, stuck at the scene default of 1
+	# Which roster character this peer picked on the CHARACTER screen.
+	#
+	# Looked up from NetworkManager rather than carried in `data` for the reason
+	# `character.rotation` above is derived rather than sent: this dictionary is
+	# already at MultiplayerSpawner's silent 7-entry ceiling and an 8th key would
+	# vanish on the receiving peer with no error at all.
+	#
+	# ⚠️ ONLY THE HOST'S ANSWER IS RIGHT, AND ONLY THE HOST NEEDS IT TO BE. This
+	# spawn function runs on every peer, but `peer_characters` is host-only — a
+	# client asking it about somebody else gets -1. That is correct and not a bug
+	# to route around: `character_index` is a REPLICATED property with
+	# `spawn = true` (CharacterBase.tscn), so the host's value arrives with the
+	# character itself and overwrites the client's -1 before it is ever drawn.
+	# Trying to make every peer compute this independently would need every peer
+	# to know every other peer's pick, which is exactly the state the
+	# synchronizer already carries.
+	# Person picks and Prop picks are set on the unit they belong to. A Prop takes
+	# BOTH lata and tsinelas skins because `is_can` flips every round and it will
+	# be each of them in turn — see CharacterBase.can_index.
+	var picks := NetworkManager.picks_for(int(data["peer_id"]))
+	if character.is_person:
+		character.character_index = int(picks.get("character", -1))
+	else:
+		character.can_index = int(picks.get("can", -1))
+		character.slipper_index = int(picks.get("slipper", -1))
 	if data["is_person"]:
 		# Session 8: Person's Tag/Throw, replacing the previously-null `ability`
 		# for Person (see PersonAction doc). .duplicate() per PERSON_ACTION_ABILITY

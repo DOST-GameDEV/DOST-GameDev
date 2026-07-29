@@ -79,6 +79,48 @@ var local_player_token: String = ""
 ## `disconnect_network()`), which is also when `main.gd`'s own token map is
 ## abandoned along with the rest of the match.
 var peer_tokens: Dictionary = {}
+## Host-only: peer_id -> the CharacterRoster index that peer picked on the
+## CHARACTER screen. Populated by `_rpc_identify` alongside the token, from the
+## same packet, because the two are answers to the same question ("who is this
+## peer") and splitting them across two RPCs would create a window where the host
+## knows a peer's identity but not its face — precisely when it is about to spawn
+## it.
+##
+## Cleared on the same schedule as `peer_tokens`, and for the same reason: a
+## reconnecting peer re-identifies, so this is rebuilt rather than stale.
+##
+## Read by `main.gd::_build_networked_character` via `picks_for()`. Absent (an
+## AI-filled slot, or a peer from a build with no roster) means -1 on every slot,
+## which `character_visual.gd` reads as "no pick" and answers with the
+## signed-off default look.
+##
+## ⚠️ ALL THREE PICKS ARE SENT BY EVERY PEER EVEN THOUGH EACH PEER USES ONLY ONE.
+## A peer controls a Person OR a Prop, never both (`_build_spawn_data` derives
+## that from its join index), so a Prop peer's character pick and a Person peer's
+## lata pick are both dead weight — three ints. The alternative is deciding what
+## to send based on a slot assignment the peer does not know yet at connect time,
+## which is a race for no saving worth having.
+var peer_characters: Dictionary = {} # peer_id -> {character, can, slipper}
+## What THIS process picked, published to the host on connect. Snapshotted at
+## connect time rather than read live, so a menu the player wanders back into
+## mid-connection cannot change what the host was already told.
+var local_picks: Dictionary = {"character": -1, "can": -1, "slipper": -1}
+
+## What `peer_id` picked, or all -1 if it never said. Host-side lookup so main.gd
+## does not have to know this dictionary exists, mirroring how it reaches tokens
+## through `peer_tokens` rather than through the wire format.
+func picks_for(peer_id: int) -> Dictionary:
+	return peer_characters.get(peer_id, {"character": -1, "can": -1, "slipper": -1})
+
+## This process's own three picks, read off GameLaunch. Kept here rather than
+## inlined at both call sites so the host's self-seed and the client's RPC cannot
+## drift on which preferences count as "my picks".
+func _local_picks() -> Dictionary:
+	return {
+		"character": GameLaunch.character_index(),
+		"can": GameLaunch.can_index(),
+		"slipper": GameLaunch.slipper_index(),
+	}
 ## Host-only: true once the host has left the pre-match lobby and is
 ## actually running Main.tscn — set by `main.gd::_start_hosting()`, cleared
 ## on `disconnect_network()`. A peer that connects (or reconnects) while this
@@ -130,6 +172,12 @@ func host_game(port: int = DEFAULT_PORT) -> Error:
 	# included, and must not special-case peer_id == 1.
 	peer_tokens.clear()
 	peer_tokens[multiplayer.get_unique_id()] = local_player_token
+	# The host never sends itself `_rpc_identify` either, so its own pick has to
+	# be seeded here too — otherwise the hosting player is the one person in the
+	# match wearing the fallback Person instead of who they actually chose.
+	local_picks = _local_picks()
+	peer_characters.clear()
+	peer_characters[multiplayer.get_unique_id()] = local_picks
 	match_in_progress = false
 	server_created.emit()
 	return OK
@@ -151,6 +199,8 @@ func disconnect_network() -> void:
 	connected_peer_ids.clear()
 	_is_networked = false
 	peer_tokens.clear()
+	# Same lifetime as peer_tokens — a hosting SESSION ending abandons both.
+	peer_characters.clear()
 	match_in_progress = false
 
 ## True once host_game()/join_game() actually ran — false for the plain
@@ -205,7 +255,11 @@ func _on_connected_to_server() -> void:
 	# main.gd exists to ask for it, and regardless of whether we are about to
 	# sit in Lobby.tscn or (a rejoin) get redirected straight back into a
 	# running match. See _rpc_identify for what the host does with it.
-	_rpc_identify.rpc_id(1, local_player_token)
+	# Snapshotted here rather than read live inside the RPC — see
+	# `local_character_index`, so a menu the player wanders back into
+	# mid-connection cannot change what the host was already told.
+	local_picks = _local_picks()
+	_rpc_identify.rpc_id(1, local_player_token, local_picks)
 	connection_succeeded.emit()
 
 func _on_connection_failed() -> void:
@@ -218,6 +272,8 @@ func _on_server_disconnected() -> void:
 	connected_peer_ids.clear()
 	_is_networked = false
 	peer_tokens.clear()
+	# Same lifetime as peer_tokens — a hosting SESSION ending abandons both.
+	peer_characters.clear()
 	match_in_progress = false
 	server_disconnected.emit()
 
@@ -231,14 +287,30 @@ func _on_server_disconnected() -> void:
 ## host is not this token's authority, the sender is (same reasoning every
 ## other any_peer RPC in this codebase documents at its own call site).
 @rpc("any_peer", "call_remote", "reliable")
-func _rpc_identify(token: String) -> void:
+func _rpc_identify(token: String, picks: Dictionary = {}) -> void:
 	if not is_host():
 		return
 	var peer_id := multiplayer.get_remote_sender_id()
 	peer_tokens[peer_id] = token
+	# Range-checked host-side rather than trusted. This value arrives from a
+	# client and is used to index an array on the spawn path, and -1 is itself
+	# meaningful ("no pick") so it has to survive the check rather than be
+	# clamped into 0. Same rule every other client-sent value here follows: the
+	# sender proposes, the host decides.
+	peer_characters[peer_id] = {
+		"character": _validated(picks, "character", CharacterRoster.ROSTER.size()),
+		"can": _validated(picks, "can", CharacterRoster.CANS.size()),
+		"slipper": _validated(picks, "slipper", CharacterRoster.SLIPPERS.size()),
+	}
 	if match_in_progress:
 		_rpc_route_to_running_match.rpc_id(peer_id)
 	player_identified.emit(peer_id, token)
+
+## One client-sent pick, range-checked against the roster it indexes. -1 is
+## itself meaningful ("no pick") so it survives rather than being clamped to 0.
+func _validated(picks: Dictionary, key: String, count: int) -> int:
+	var value := int(picks.get(key, -1))
+	return value if value >= 0 and value < count else -1
 
 ## Host -> one peer, sent only when that peer connected (or reconnected)
 ## after the match already started. Idempotent: a peer that connected
