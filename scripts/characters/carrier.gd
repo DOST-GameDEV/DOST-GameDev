@@ -84,7 +84,31 @@ func _on_own_state_changed(new_state: CharacterBase.State) -> void:
 func has_hands() -> bool:
 	return _character != null and _character.is_person
 
+## What this Person is holding, or null.
+##
+## ⚠️ SELF-HEALING, AND THAT IS THE POINT — do not "simplify" it back to
+## `return _held`.
+##
+## `_held` and `Carriable.carrier` are two halves of one fact, set together from
+## one host broadcast. When they drift, the failure is silent, permanent and
+## invisible in the place you would look for it: `camera_rig.gd::_apply_carried_
+## self_hide()` keeps the held unit's `Visual` hidden for as long as THIS reports
+## something, so a stale value makes the slipper disappear on that player's
+## machine and nothing in the rendering code is wrong. It also locks this Person
+## out of grabbing (`_step_grab`) and out of the lata reset channel
+## (`_step_reset_channel`) for the rest of the match.
+##
+## That exact drift shipped for more than ten sessions via
+## `Carriable.reset_for_new_round()`, which cleared its own `carrier` and never
+## told this node — see that function's note. It is fixed at the source; this
+## check exists so the NEXT path that forgets cannot reintroduce it, because the
+## symptom is far too indirect to be found again cheaply.
+##
+## Cheap enough to sit in a per-frame getter: one validity test and one pointer
+## compare, no allocation, no tree walk.
 func held() -> Carriable:
+	if _held != null and (not is_instance_valid(_held) or _held.carrier != _character):
+		notify_holding(null)
 	return _held
 
 func is_charging() -> bool:
@@ -115,6 +139,11 @@ func notify_holding(what: Carriable) -> void:
 func input_step(delta: float) -> void:
 	if not has_hands():
 		return
+	# Through the getter, not the field, so the drift check in held() runs before
+	# any of the three steps below reads `_held` directly. Without this the
+	# self-heal would only fire for the camera rig, which polls held() — and the
+	# half of the bug that locks a Person out of grabbing forever would survive.
+	held()
 	_step_grab()
 	_step_reset_channel(delta)
 	_step_throw(delta)
