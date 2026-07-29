@@ -101,6 +101,12 @@ static var _hitstop_active: bool = false
 ## would be a silent landing, and the round reset already zeroes `velocity`
 ## which makes _fall_speed harmless on its own.
 var _was_airborne: bool = false
+## B-122. The state this character was in before the current one, maintained
+## purely for _on_state_changed_audio. Deliberately separate from `state`
+## itself: nothing about gameplay needs a previous-state field, and adding one
+## to the real state machine would be a second source of truth for anyone to
+## get out of step with.
+var _audio_prev_state: State = State.NORMAL
 var _fall_speed: float = 0.0
 
 ## NORMAL — moving/acting freely.
@@ -1022,15 +1028,31 @@ func _on_state_changed_audio(new_state: State) -> void:
 			# Only meaningful coming back UP from Downed — which is Quick Stand,
 			# or the taya's reset channel completing. Both are "the can is
 			# standing again", so both get the sound named after the channel.
-			# Guarded on `_downed_time_left` rather than tracking a previous
-			# state: it is nonzero only while a Downed window is or was live,
-			# and reset_for_new_round() zeroes it before emitting NORMAL — which
-			# is exactly what stops every round start firing a recovery chime
-			# for all four units at once.
-			if _downed_time_left > 0.0:
+			#
+			# ⚠️⚠️ B-122 — THIS TRACKS THE PREVIOUS STATE. IT USED TO INFER IT
+			# FROM `_downed_time_left > 0.0`, AND THAT WAS THE SECOND HALF OF THE
+			# "UNNECESSARY NOISE IN GAMEPLAY" REPORT.
+			#
+			# `self_right()` clears `_downed_self_rightable` but deliberately
+			# does NOT clear `_downed_time_left` — recovering early leaves the
+			# remainder of the window sitting there, permanently nonzero. So
+			# after any knockdown that was recovered from, EVERY subsequent
+			# STAGGERED -> NORMAL transition passed that guard and fired a
+			# 450 ms metallic chime. A stagger is a bump; bumps happen
+			# constantly; the chime has no visible cause, which is exactly what
+			# "a noise that seems unnecessary" describes.
+			#
+			# Measured with tools/audio_combat_probe.gd: three staggers on a
+			# clean unit produced ZERO recovery sounds; three IDENTICAL staggers
+			# after one knockdown+self-right produced TWO.
+			#
+			# A timer that outlives the state it describes cannot stand in for
+			# that state. Track the transition itself.
+			if _audio_prev_state == State.DOWNED:
 				AudioManager.play_at("reset_channel_complete", global_position)
 		State.STAGGERED:
 			pass # the impact that caused it already sounded — see _flash_hit
+	_audio_prev_state = new_state
 
 ## Maps a base action name (e.g. "move_left") to this character's own input
 ## action (e.g. "move_left_p1" / "move_left_p2"), per `player_id`.
@@ -1223,6 +1245,9 @@ func reset_for_new_round() -> void:
 	_dash_cooldown_left = 0.0
 	_dash_active_time_left = 0.0
 	state = State.NORMAL
+	# B-122: before the emit, or a unit that ended the round DOWNED fires a
+	# recovery chime at the start of every new round.
+	_audio_prev_state = State.NORMAL
 	state_changed.emit(state)
 	dents = 0
 	dents_changed.emit(dents)

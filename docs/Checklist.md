@@ -720,6 +720,62 @@ touch map scenes.
         measurement, not taste. Whether the mix is right, whether the impacts are
         punchy enough over four players shouting, and whether the ambience beds
         suit the two maps are all open until a human plays it.
+      - **B-119, 2026-07-29:** the retrigger guard held off the trigger RATE but
+        not the overlap — a 300 ms `lata_impact` retriggering every 60 ms still
+        stacked ~5 ringing copies into a buzz under sustained contact. Fixed by
+        keying the guard window to each sound's own `AudioStream.get_length()`
+        instead of the flat 60 ms constant; see `Handoff.md` B-119. Worked
+        through from the generator's source durations, not re-heard or
+        re-probed (no Godot binary in this session) — the listening pass this
+        item is already waiting on should cover it.
+      - **B-120, 2026-07-29:** separately, nothing on the Master bus stopped
+        the summed mix from clipping — a busy 2v2 fight regularly lands
+        several full-scale SFX in the same window, and 0 dB on every bus with
+        no ceiling anywhere means that overs and clips. `AudioManager` now
+        installs an `AudioEffectLimiter` on Master in `_ready()`. See
+        `Handoff.md` B-120. **Unverified against a real build** — no Godot
+        binary in this session; run the smoke gate and play a real 2v2
+        before treating this as closed.
+      - **B-121, 2026-07-29 — the buzz, actually found and actually measured.**
+        B-119 and B-120 were both reasoned out without a Godot binary and
+        **neither was the cause.** Measured with the new `tools/audio_mix_probe.gd`
+        (captures each bus separately during a real match): the **SFX bus was
+        clipping at peak +2.0 dBFS**, over full scale, while Master read a
+        healthy −1.4 — which is why the Master limiter could not help and why
+        watching Master alone missed it. Two causes, both fixed:
+        (a) `_TRIM_DB` ADDED gain to three sounds on top of `generate_sfx.py`'s
+        0.85 normalisation, so `lata_impact` at +1.5 dB was 1.010 — **clipping
+        on its own, on every hit, before any summing**; every trim is now ≤ 0
+        and `_trim()` clamps as a backstop. (b) No headroom for summed voices:
+        new `HEADROOM_DB = −7.0` attenuates every voice, applied in `_trim()`
+        rather than as bus volume because `_apply_bus()` overwrites bus volume
+        from the player's slider. A limiter was also added on **SFX**, since
+        the Master one sits downstream of where the overload happens.
+        **Re-measured after the fix: SFX peak −1.0 dBFS, no bus clipping, and
+        the ambience sits 14 dB under SFX** (it was never the problem — that
+        was checked and ruled out). The probe now fails on any bus going over,
+        so this cannot silently regress. Still `[~]`: measured, not yet heard.
+      - **B-122, 2026-07-29 — a second, separate cause of the same report.**
+        After B-121 measurably removed the clipping, the noise was still there.
+        `_on_state_changed_audio()` decided "did this unit just get back up?"
+        from `_downed_time_left > 0.0`, but `self_right()` never clears that
+        timer — so after ANY knockdown, every later stagger recovery fired a
+        450 ms chime for the rest of the round. Fixed with a real
+        `_audio_prev_state` field. Found by `tools/audio_combat_probe.gd`
+        (new), which drives the stagger/knockdown path directly — the earlier
+        probe missed it because in an AI-only match **nothing ever went
+        DOWNED**. See `Handoff.md` B-122.
+      - **B-123, 2026-07-29 — THE ONE THE USER ACTUALLY HEARD.** *"Constant
+        steady static/wind sound... Ambience to 0 completely removes it."* The
+        two CC0 field recordings passed every check that existed (licence,
+        format, loop flag, 18 dB under SFX) and were still unusable: they are
+        outdoor recordings, the wind noise on the mic IS the asset, and a real
+        recording is broadband — which is what "static" means. **Both replaced
+        by `tools/audio/generate_ambience.py`**, so every sound in the game is
+        now generated and **there is no third-party audio in the build**. The
+        generator asserts <2% of energy above 4 kHz (measured 0.0%), a loop
+        seam under 0.02, and a background-bed level — the checks that would
+        have rejected the recordings. See `Handoff.md` B-123.
 - [x] **4.1a · Jump — every unit, Person and Prop.** 🎨 Design — **playtest 0.4 request.**
       Did not exist: zero occurrences of "jump" in `project.godot` or
       `character_base.gd`. Added `jump_p1..p4` (P1 Space, P2 Numpad-0, P3 RShift,
@@ -1214,12 +1270,12 @@ Budget this like a feature.
       Already needs: Kenney Mini Characters (CC0, `KENNEY_LICENSE.txt`), the
       display and body typefaces from 3.1, and an AI-usage line. Keep a running
       list as assets land rather than archaeologising at the deadline.
-      **Audio (4.1) is already done and is three rows, not thirty:** the 32 SFX
-      are our own (generated by `tools/audio/generate_sfx.py` — no recordings, no
-      samples, no downloads), and the only third-party audio is two CC0 ambience
-      loops whose source URLs, authors and verbatim licence sit in
-      `assets/audio/ambience/OPENGAMEART_CC0_LICENSE.txt`. Copy from there and
-      from `README.md`'s credits table.
+      **Audio (4.1) is already done and is ONE row, not thirty-four:** every
+      sound in the game — all 32 SFX and both map ambience beds — is generated
+      by `tools/audio/generate_sfx.py` and `tools/audio/generate_ambience.py`.
+      No recordings, no samples, no downloads, **no third-party audio in the
+      build at all** (the two CC0 loops that briefly supplied the ambience were
+      removed in B-123). Copy from `README.md`'s credits table.
 - [ ] **6.9 · 🧑 Upload everything through the official submission link.** ⛔ HUMAN
 
 ---

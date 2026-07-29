@@ -470,7 +470,7 @@ ext_lines.append('[ext_resource type="Texture2D" '
 # they have changed venue. CC0 - source, author and licence in
 # assets/audio/ambience/OPENGAMEART_CC0_LICENSE.txt, which is what Form 03 needs.
 ext_lines.append('[ext_resource type="AudioStream" '
-                 'path="res://assets/audio/ambience/bayan_plaza.ogg" id="AMB"]')
+                 'path="res://assets/audio/ambience/bayan_plaza.wav" id="AMB"]')
 
 SUBS = '''[sub_resource type="BoxShape3D" id="Shape_floor"]
 size = Vector3(120, 1, 120)
