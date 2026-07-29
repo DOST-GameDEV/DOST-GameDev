@@ -1,0 +1,138 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/mode_select.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/ui/ArrowButton.tscn" id="2"]
+[ext_resource type="Texture2D" path="res://assets/ui/main-menu/MENU BACKDROP.png" id="3"]
+[ext_resource type="Texture2D" path="res://assets/ui/host-game/GAME BANNER.png" id="4"]
+[ext_resource type="Texture2D" path="res://assets/ui/host-game/BUTTON LONG.png" id="5"]
+
+[sub_resource type="Gradient" id="Gradient_scrim"]
+offsets = PackedFloat32Array(0, 0.4, 0.72, 1)
+colors = PackedColorArray(0.015686, 0.031373, 0.219608, 0.88, 0.015686, 0.031373, 0.219608, 0.72, 0.015686, 0.031373, 0.219608, 0.2, 0.015686, 0.031373, 0.219608, 0.06)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_scrim"]
+gradient = SubResource("Gradient_scrim")
+width = 256
+height = 8
+
+[node name="ModeSelect" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="Backdrop" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+texture = ExtResource("3")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="Scrim" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+texture = SubResource("GradientTexture2D_scrim")
+expand_mode = 1
+stretch_mode = 0
+
+[node name="Banner" type="TextureRect" parent="."]
+layout_mode = 0
+offset_top = 75.0
+offset_right = 648.0
+offset_bottom = 219.0
+mouse_filter = 2
+texture = ExtResource("4")
+expand_mode = 1
+stretch_mode = 0
+
+[node name="BannerLabel" type="Label" parent="Banner"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 128.0
+offset_right = -108.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.239, 0.149, 0.024, 1)
+theme_override_font_sizes/font_size = 95
+vertical_alignment = 1
+text = "PLAY"
+
+[node name="SoloButton" parent="." instance=ExtResource("2")]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 95.0
+offset_top = 320.0
+offset_right = 709.0
+offset_bottom = 421.0
+texture = ExtResource("5")
+caption = "SINGLE PLAYER"
+text_color = Color(1, 1, 1, 1)
+label_size = 53
+pole_distance = 300.0
+text_indent = 40.0
+tip_padding = 40.0
+
+[node name="SoloCaption" type="Label" parent="."]
+layout_mode = 0
+offset_left = 110.0
+offset_top = 428.0
+offset_right = 960.0
+offset_bottom = 462.0
+theme_type_variation = &"MenuBody"
+text = "You against three bots. Pick map, mode and fighter — the match starts on confirm."
+autowrap_mode = 2
+
+[node name="MultiButton" parent="." instance=ExtResource("2")]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 95.0
+offset_top = 500.0
+offset_right = 709.0
+offset_bottom = 601.0
+texture = ExtResource("5")
+caption = "MULTIPLAYER"
+text_color = Color(1, 1, 1, 1)
+label_size = 53
+pole_distance = 300.0
+text_indent = 40.0
+tip_padding = 40.0
+
+[node name="MultiCaption" type="Label" parent="."]
+layout_mode = 0
+offset_left = 110.0
+offset_top = 608.0
+offset_right = 960.0
+offset_bottom = 642.0
+theme_type_variation = &"MenuBody"
+text = "Host or join over the LAN. Up to four players share one lobby; empty seats are filled by bots."
+autowrap_mode = 2
+
+[node name="StatusLabel" type="Label" parent="."]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 95.0
+offset_top = 700.0
+offset_right = 960.0
+offset_bottom = 780.0
+theme_override_colors/font_color = Color(0.957, 0.408, 0.659, 1)
+theme_override_font_sizes/font_size = 28
+vertical_alignment = 0
+autowrap_mode = 2
+
+[node name="BackButton" type="Button" parent="."]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 95.0
+offset_top = 903.0
+offset_right = 395.0
+offset_bottom = 961.0
+theme_type_variation = &"WoodButton"
+text = "◀  BACK"

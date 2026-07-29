@@ -214,9 +214,11 @@ func animate_in(delay: float = 0.0) -> void:
 
 # --- Hover / press ------------------------------------------------------------
 
-## 4.1 — every menu pennant in the game is one of these (MainMenu, GameSetup,
-## Lobby), so hooking hover and press HERE gives the whole front end its UI
-## audio in one place instead of one connection per button per screen.
+## 4.1 — every menu pennant in the game is one of these (MainMenu, ModeSelect,
+## MultiplayerSetup, MatchSetup), so hooking hover and press HERE gives the whole
+## front end its UI audio in one place instead of one connection per button per
+## screen. Controls that are NOT pennants — the wood BACK buttons, the seat rows,
+## the selector arrows — carry their own two connections at their own call site.
 ##
 ## ⚠️ SAFE IN THE EDITOR ONLY BECAUSE _ready() RETURNS BEFORE CONNECTING THESE
 ## WHEN Engine.is_editor_hint(). This is a @tool script: autoloads do not exist

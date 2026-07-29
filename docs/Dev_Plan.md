@@ -888,8 +888,11 @@ assets/            characters, maps, audio, ui — binary, goes through Git LFS
 scenes/
   characters/      CharacterBase.tscn, CameraRig.tscn, per-character scenes (cans/, tsinelas/)
   maps/            Eskinita.tscn, BayanPlaza.tscn
-  ui/              MainMenu.tscn, HUD.tscn, SettingsPanel.tscn, Intermission.tscn,
-                   MatchResult.tscn, PauseMenu.tscn, CharacterSelect.tscn, Lobby.tscn
+  ui/              MainMenu.tscn, ModeSelect.tscn, MultiplayerSetup.tscn, MatchSetup.tscn,
+                   CharacterSelect.tscn, HUD.tscn, SettingsPanel.tscn, Tutorial.tscn,
+                   MatchResult.tscn, RoleSwapCard.tscn, YouCard.tscn
+                   (MatchSetup is map + mode + seating + ready, solo and lobby both;
+                    CharacterSelect is a panel it opens in place, not a step in a chain)
   main/            Main.tscn — the match scene
 scripts/
   characters/      character_base.gd, hitbox.gd, hurtbox.gd

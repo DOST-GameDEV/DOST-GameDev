@@ -4,7 +4,7 @@ extends Node
 ## ⚠️ A SCENE, NOT A `-s` SCRIPT. `godot -s some_script.gd` does not load
 ## autoloads, so every screen in this project fails to compile under it with
 ## "Identifier not found: GameLaunch / AudioManager / NetworkManager". That is
-## not a fault in the screen — GameSetup.tscn fails identically — it is `-s`
+## not a fault in the screen — MatchSetup.tscn fails identically — it is `-s`
 ## being the wrong harness for anything that touches an autoload. Run as a scene
 ## and they are all there.
 ##

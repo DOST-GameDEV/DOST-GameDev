@@ -1,8 +1,8 @@
 extends Node
 ## Screenshots each menu screen after the UI-redesign merge, so the merge is
 ## verified by looking at it rather than by "all scenes load".
-const SCREENS := ["res://scenes/ui/MainMenu.tscn", "res://scenes/ui/GameSetup.tscn",
-	"res://scenes/ui/Lobby.tscn"]
+const SCREENS := ["res://scenes/ui/MainMenu.tscn", "res://scenes/ui/ModeSelect.tscn",
+	"res://scenes/ui/MultiplayerSetup.tscn", "res://scenes/ui/MatchSetup.tscn"]
 var _out := ""
 var _i := 0
 var _settle := 0

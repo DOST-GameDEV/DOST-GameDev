@@ -25,12 +25,13 @@ class_name MapPreview
 ## Re-adding it is instant, which is what makes cycling the picker feel free
 ## after the first visit to each map.
 ##
-## THE SCRIM IS A GRADIENT, NOT A FLAT WASH, and that is deliberate: every
-## control on this screen sits in the left half of the frame, so the scrim in
-## GameSetup.tscn runs dark on the left and nearly clear on the right. A flat
+## THE SCRIM IS A GRADIENT, NOT A FLAT WASH, and that is deliberate. A flat
 ## scrim would have to be dark enough for cream-on-wood lettering to survive
 ## across the whole viewport, and at that strength there is no point rendering
-## the map at all.
+## the map at all. `MatchSetup.tscn` runs dark at BOTH edges and nearly clear
+## through the middle, because that screen puts the map/mode/fighter panel on
+## the left and the seat board on the right — the older single-column layout it
+## replaces only needed the left half darkened.
 ##
 ## ⚠️ AND THEY ARE SILENCED ON THE WAY IN. Every map carries an `Ambience` node
 ## whose AudioStreamPlayer is `autoplay = true` — instancing one here would start

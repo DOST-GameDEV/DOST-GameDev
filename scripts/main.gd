@@ -356,7 +356,6 @@ var _spawned_peer_ids: Dictionary = {}
 ## reconnect presents the SAME token under a new peer_id, so it maps straight
 ## back to the index it already had. See _spawn_player.
 var _token_join_index: Dictionary = {}
-var _next_join_index: int = 0
 ## Session 6: real 2v2 team assignment. peer_id -> 0 (Team A) or 1 (Team B),
 ## fixed for the whole match — replaces the old "alternate Can/Tsinelas by
 ## join order" 1v1 smoke-test placeholder. First two peers to connect are
@@ -482,25 +481,33 @@ func _start_local_test() -> void:
 	team_b_person.team = 1
 	team_a_person.ability = PERSON_ACTION_ABILITY.duplicate()
 	team_b_person.ability = PERSON_ACTION_ABILITY.duplicate()
-	# The human plays team_a_person in Single Player / local test (see the
-	# Checklist 5.5 note below), so that is the one unit that wears the CHARACTER
-	# screen's pick. team_b_person is deliberately left at -1 and keeps the
-	# signed-off Person B: it is the opponent, and the pair at PERSON_MODELS[0]/[1]
-	# was chosen specifically to read apart at arena distance (Art_Direction.md).
-	# Handing the player's own pick to both would let someone play a match against
-	# a character wearing their exact silhouette.
-	team_a_person.character_index = GameLaunch.character_index()
-	# The human's own Prop takes both skins, for the same reason its networked
-	# counterpart does: `is_can` flips every round and it will be each in turn.
-	team_a_prop.can_index = GameLaunch.can_index()
-	team_a_prop.slipper_index = GameLaunch.slipper_index()
+	# The CHARACTER panel's picks go to the unit the human is actually going to
+	# play — the seat they chose (10.5), not always Team A's Person. The other
+	# three are deliberately left at -1 and keep the signed-off defaults: the
+	# pair at PERSON_MODELS[0]/[1] was chosen specifically to read apart at arena
+	# distance (Art_Direction.md), and handing the player's own pick to an
+	# opponent too would let someone play a match against a character wearing
+	# their exact silhouette.
+	#
+	# ⚠️ THE PROP PICKS GO ON A PROP AND THE PERSON PICK ON A PERSON. A Prop seat
+	# takes BOTH skins for the same reason its networked counterpart does —
+	# `is_can` flips every round and it will be each in turn — and since 10.5 a
+	# skin also carries that round's ability (`character_roster.gd`), so putting
+	# them on the wrong unit would silently cost the player their kit, not just
+	# their colour.
+	var picked_unit := _local_unit_for_seat(GameLaunch.solo_seat)
+	if picked_unit.is_person:
+		picked_unit.character_index = GameLaunch.character_index()
+	else:
+		picked_unit.can_index = GameLaunch.can_index()
+		picked_unit.slipper_index = GameLaunch.slipper_index()
 	# B-76: Main.tscn no longer hardcodes a Prop ability (see its own node
 	# comment) — assign the role-correct one here, same as the networked spawn
 	# path. _reset_world() re-picks this every round; this is just the round-1
 	# value so there's no null/wrong-ability window before the first
 	# begin_next_round() below runs it.
-	team_a_prop.ability = _prop_ability_for(team_a_prop.is_can, team_a_prop.team).duplicate()
-	team_b_prop.ability = _prop_ability_for(team_b_prop.is_can, team_b_prop.team).duplicate()
+	team_a_prop.ability = _prop_ability_for(team_a_prop).duplicate()
+	team_b_prop.ability = _prop_ability_for(team_b_prop).duplicate()
 	# 2026-07-28: user report — "u didnt fix spawn in logic". Local test units
 	# used to just sit at Main.tscn's own hand-authored default transforms,
 	# which predate the role-based SpawnPoints redesign (2.6) entirely and
@@ -516,29 +523,35 @@ func _start_local_test() -> void:
 	_wire_downed_flash(team_a_prop)
 	_wire_downed_flash(team_b_prop)
 	_register_local_can()
-	# Checklist 5.5 — Single Player. The human plays team_a_person (see the
-	# camera-default doc just below); the other three units on the roster get
-	# real AI instead of sitting on unbound input. Attached once, here, not
-	# re-attached every round: AIController re-derives its role from
+	# Checklist 5.5 — Single Player. The human plays the seat they picked in the
+	# setup screen (10.5); the other three units on the roster get real AI
+	# instead of sitting on unbound input. Attached once, here, not re-attached
+	# every round: AIController re-derives its role from
 	# is_can/is_person/team_is_can_side on every decide() call, so it stays
 	# correct across every role swap without needing to know one happened.
-	for character in [team_a_prop, team_b_prop, team_b_person]:
-		_attach_ai(character)
+	var human := _local_unit_for_seat(GameLaunch.solo_seat)
+	_give_human_player_one(human)
+	for character in _local_roster:
+		if character != human:
+			_attach_ai(character)
 	# Item 13: no authority concept in local test, unlike networked play,
 	# where each rig can activate itself from is_multiplayer_authority(). One
 	# rig has to be picked explicitly.
 	#
-	# Defaults to TeamAPerson, so a fresh Single Player drops you into the human
-	# character. This used to be TeamAProp, which meant the first thing anyone
-	# saw on launch was a third-person shot of a tin can — correct per the GDD
-	# (a team is 1 Person + 1 Prop, and the Prop really is the Can) but a poor
-	# read as the default. Per the standing directive (§0.1) a Person is ALWAYS
-	# first-person, so this default is an FPP view: you see the arena and your
-	# own shadow, not your body. Press Tab, or F1-F4, to take the Prop instead.
-	# The switcher's own DEFAULT_P1_UNIT is kept in step — it re-applies slot
-	# defaults when the DebugBar registers, and would otherwise immediately
-	# override whatever is chosen here.
-	var default_rig := team_a_person.get_node("CameraRig") as CameraRig
+	# Seat 0 (Team A's Person) is the default, so a fresh Single Player still
+	# drops you into a Person. This used to be TeamAProp, which meant the first
+	# thing anyone saw on launch was a third-person shot of a tin can — correct
+	# per the GDD (a team is 1 Person + 1 Prop, and the Prop really is the Can)
+	# but a poor read as the default. Per the standing directive (§0.1) a Person
+	# is ALWAYS first-person, so a Person seat gives an FPP view: you see the
+	# arena and your own shadow, not your body. A Prop seat gives TPP; the rig
+	# decides that from is_person itself, so nothing here has to.
+	# ⚠️ The debug switcher's DEFAULT_P1_UNIT is still "TeamAPerson" and re-applies
+	# slot defaults when the DebugBar registers, so opening the debug bar in a
+	# session where the player chose another seat snaps p1 back to Team A's
+	# Person. Debug-only path, left alone deliberately: that file is the harness,
+	# not the game, and 5.5 removes the overlay from the shipping build anyway.
+	var default_rig := human.get_node("CameraRig") as CameraRig
 	default_rig.set_active(true)
 	default_rig.set_aim_source(CameraRig.AimSource.MOUSE)
 	# 2026-07-28: begin_next_round() is deliberately NOT called here any more —
@@ -547,6 +560,46 @@ func _start_local_test() -> void:
 	# RoundManager.round_active) doesn't start until the player readies up.
 	_awaiting_local_ready = true
 	hud.show_ready_prompt(true)
+
+## Single Player's seat choice, resolved to one of Main.tscn's four hand-placed
+## units. The seat numbering is the networked one, unchanged — `team = seat / 2`,
+## and the even seat of each pair is the Person — so the two flows cannot mean
+## different things by "Team B's Prop". Falls back to Team A's Person, the
+## historical default, rather than erroring on a seat that cannot exist.
+func _local_unit_for_seat(seat: int) -> CharacterBase:
+	match seat:
+		1: return team_a_prop
+		2: return team_b_person
+		3: return team_b_prop
+		_: return team_a_person
+
+## ⚠️ WITHOUT THIS, CHOOSING ANY SEAT BUT TEAM A'S PERSON GIVES YOU A CHARACTER
+## YOU CANNOT MOVE. Main.tscn assigns player_id 1/2/3/4 to its four units, and
+## only 1 (WASD) and 2 (arrows) are bound to real keys — 3 and 4 are registered
+## in project.godot and deliberately left unbound so an AIController's
+## Input.action_press() can never collide with a human's own keystrokes (see
+## CharacterBase.player_id, and _build_spawn_data's own doc). A human dropped
+## into TeamBPerson would therefore be reading action suffixes nothing presses.
+##
+## Swapped rather than reassigned: whichever unit was holding player_id 1 takes
+## the human's old id, so all four ids stay unique and the two unbound ones stay
+## in AI hands.
+##
+## ⚠️ SINGLE PLAYER ONLY, AND THAT IS WHY B-130 DOES NOT COVER IT. B-130 fixed
+## the same class of bug on the networked path by making `_action()` ignore
+## `player_id` entirely and read p1 — but its guard opens with
+## `NetworkManager.is_networked()`, which is false here. Single Player is the one
+## flow where `player_id` still genuinely selects an input column (it is a
+## split-keyboard concept and this is the split-keyboard harness), so the swap is
+## still required. Do not "simplify" this away by pointing at B-130.
+func _give_human_player_one(human: CharacterBase) -> void:
+	if human.player_id == 1:
+		return
+	for character in _local_roster:
+		if character.player_id == 1:
+			character.player_id = human.player_id
+			break
+	human.player_id = 1
 
 ## 2026-07-28 — the other half of the pre-round free-roam window. Pressing
 ## ready_up while waiting simply calls begin_next_round(); MatchManager's own
@@ -668,7 +721,7 @@ func _clear_local_test_characters() -> void:
 ## below) because that instant is no longer late enough to safely act on:
 ## the peer's token may not have arrived yet (raced against _rpc_identify,
 ## a separate message with no ordering guarantee relative to this signal),
-## and — for a peer redirected here mid-match out of Lobby.tscn — their own
+## and — for a peer redirected here mid-match out of MatchSetup.tscn — their own
 ## Main.tscn may not even be loaded yet. All three call the same idempotent
 ## _try_late_join, so whichever condition is satisfied LAST is the one that
 ## actually spawns them.
@@ -688,7 +741,7 @@ func _on_player_identified(peer_id: int, _token: String) -> void:
 ## receive a spawn." Sent unconditionally from the end of _start_joining(),
 ## for both a normal --join= (Main.tscn already loaded, so this just
 ## confirms what was already true) and a peer NetworkManager just redirected
-## out of Lobby.tscn mid-match (where it is NOT already true, and skipping
+## out of MatchSetup.tscn mid-match (where it is NOT already true, and skipping
 ## this ping would race the spawn against a scene still loading). No-op via
 ## _try_late_join's own guards if the match hasn't started yet — the ordinary
 ## Lobby-gated flow spawns everyone from _start_hosting()'s own loop and
@@ -842,10 +895,7 @@ func _spawn_player(peer_id: int) -> void:
 	# rejoin (new peer_id, same human) landed in the next free slot instead
 	# of the one it already had — see _token_join_index's own doc. Assign
 	# once, permanently, per TOKEN instead.
-	if not _token_join_index.has(token):
-		_token_join_index[token] = _next_join_index
-		_next_join_index += 1
-	var index: int = _token_join_index[token]
+	var index := _claim_join_index(token)
 	# 2026-07-28: this index's character may still be standing right where its
 	# previous owner left it — _on_player_disconnected no longer frees it (see
 	# that function's own doc) specifically so a reconnect can pick the same
@@ -864,6 +914,56 @@ func _spawn_player(peer_id: int) -> void:
 		_rpc_reclaim_character.rpc(index, peer_id)
 		return
 	spawner.spawn(_build_spawn_data(peer_id, index))
+
+## Which seat (join index 0..3, and therefore which team and role) this token
+## plays. Assigned once and permanently per TOKEN — B-21, superseded by
+## 4.3/B-65: keyed by peer_id it used to mean a rejoin (new peer_id, same human)
+## landed in the next free slot instead of the one it already had.
+##
+## THE SEAT NOW COMES FROM THE SETUP SCREEN FIRST (10.5). `GameLaunch.seat_tokens`
+## is what `match_setup.gd` broadcast to every peer with the go signal, keyed by
+## the same stable token — so a player who clicked "TEAM B · PROP" gets Team B's
+## Prop, instead of whatever connection order happened to hand them. It is a
+## LOOKUP, not a rule change: the seat still means exactly what the join index
+## always meant (`team = seat / 2`, `is_person = seat % 2 == 0`), which is why
+## nothing downstream of here needed touching.
+##
+## Connection order survives as the fallback and is not dead code — it is the
+## only thing that seats a peer which never passed through a setup screen at
+## all: a `--host`/`--join=` command-line run (still the fastest way to test,
+## see docs/Handoff.md), and a late joiner arriving mid-match, who by definition
+## was not in the lobby when seats were handed out. A requested seat that is
+## somehow already occupied falls back the same way rather than evicting anyone
+## — the lobby already refereed exclusivity (`match_setup.gd::_claim_seat`), so
+## reaching that branch means the two sources disagree, and the running match
+## wins.
+func _claim_join_index(token: String) -> int:
+	if _token_join_index.has(token):
+		return _token_join_index[token]
+	var seat: int = int(GameLaunch.seat_tokens.get(token, -1))
+	if seat < 0 or seat >= NetworkManager.MAX_PLAYERS or _seat_is_taken(seat):
+		seat = _first_free_seat()
+	_token_join_index[token] = seat
+	return seat
+
+func _seat_is_taken(seat: int) -> bool:
+	return _token_join_index.values().has(seat)
+
+## Lowest seat nobody holds. Falls back to 0 rather than -1 if all four are
+## somehow taken: a fifth peer cannot connect (ENet is created with
+## MAX_PLAYERS = 4), so this is a guard against an impossible state, and
+## doubling up on seat 0 is a far better failure than indexing out of bounds.
+func _first_free_seat() -> int:
+	for seat in range(NetworkManager.MAX_PLAYERS):
+		if not _seat_is_taken(seat):
+			return seat
+	return 0
+
+## The seat a character sits in, from the two facts every code path here already
+## has. Same derivation `_build_spawn_data` and `match_setup.gd` use, written
+## once so the three cannot drift.
+static func _seat_of(team: int, is_person: bool) -> int:
+	return team * 2 + (0 if is_person else 1)
 
 ## Shared by _spawn_player (a real peer) and _fill_empty_slots_with_placeholders
 ## (an unfilled team/role slot, given a synthetic negative peer_id nothing
@@ -925,7 +1025,7 @@ func _build_spawn_data(peer_id: int, index: int) -> Dictionary:
 ## AIController instead of a real player's Input (see that function's own
 ## doc, and _index_to_character's).
 ##
-## Deliberately does NOT touch _token_join_index/_next_join_index: a REAL
+## Deliberately does NOT touch _token_join_index: a REAL
 ## peer connecting later still gets the next free index normally, finds this
 ## placeholder already sitting in _index_to_character for that index, and
 ## reclaims it via the exact same _rpc_reclaim_character a reconnecting real
@@ -943,10 +1043,25 @@ func _fill_empty_slots_with_placeholders() -> void:
 ## B-76. Picks the ability class a Prop should carry THIS round, given its
 ## role (is_can) and team. Never cached on the caller's side — call this again
 ## every time is_can might have changed (spawn, and every _reset_world()).
-func _prop_ability_for(is_can: bool, team: int) -> AbilityBase:
-	if is_can:
+## 3.3: the pick decides it now. `character` already carries both skin indices —
+## they are replicated onto it at spawn (see `_build_networked_character`) — and
+## a skin carries its kit (`character_roster.gd`'s `ability` field), so this
+## needs no extra dictionary and nothing extra on the wire.
+##
+## The constants below stay as the fallback and are still reachable: an AI slot
+## has no picks, and neither does a `--host`/`--join=` command-line session that
+## never passed through the setup screen.
+func _prop_ability_for(character: CharacterBase) -> AbilityBase:
+	var path := CharacterRoster.ability_path_at(
+		character.can_index, character.slipper_index, character.is_can)
+	if path != "":
+		var picked := load(path) as AbilityBase
+		if picked != null:
+			return picked
+		push_warning("main.gd: a roster skin names a missing ability '%s'; using the default." % path)
+	if character.is_can:
 		return CAN_ABILITY
-	return TSINELAS_ABILITY_TEAM_A if team == 0 else TSINELAS_ABILITY_TEAM_B
+	return TSINELAS_ABILITY_TEAM_A if character.team == 0 else TSINELAS_ABILITY_TEAM_B
 
 ## Runs on every peer (host and clients) when the spawner replicates a spawn.
 func _build_networked_character(data: Dictionary) -> Node:
@@ -1011,7 +1126,7 @@ func _build_networked_character(data: Dictionary) -> Node:
 	else:
 		# B-76: the class ability depends on which side of the round this Prop
 		# is playing — see _prop_ability_for() doc.
-		character.ability = _prop_ability_for(character.is_can, character.team).duplicate()
+		character.ability = _prop_ability_for(character).duplicate()
 	var peer_id: int = data["peer_id"]
 	# AI takeover: a negative peer_id is the sentinel for "no real human owns
 	# this slot" (see _fill_empty_slots_with_placeholders / _rpc_convert_to_ai)
@@ -1035,7 +1150,7 @@ func _build_networked_character(data: Dictionary) -> Node:
 	# _spawn_player's reclaim check and _on_player_disconnected's own doc for
 	# why a stale peer_id's body needs to stay findable by something that
 	# survives a reconnect.
-	var index: int = data["team"] * 2 + (0 if data["is_person"] else 1)
+	var index: int = _seat_of(data["team"], data["is_person"])
 	_index_to_character[index] = character
 	if is_ai:
 		# Only the host's own local instance of this spawn_function call
@@ -1144,7 +1259,7 @@ func _reset_world(team_a_is_can: bool) -> void:
 		# (Quick Stand, no throw profile) one round after it stops being one.
 		# Persons never change class ability by role, only Props do.
 		if not entry["is_person"]:
-			character.ability = _prop_ability_for(character.is_can, entry["team"]).duplicate()
+			character.ability = _prop_ability_for(character).duplicate()
 		# B-10: reset + reposition every unit — Persons and the off-side Prop
 		# were carrying downed/sealed state, dents, and speed multipliers into
 		# the next round before this. Position is now ROLE-based, not the old
@@ -1389,9 +1504,9 @@ func _on_server_disconnected() -> void:
 	RoundManager.reset()
 	GameLaunch.reset()
 	GameLaunch.pending_status_message = "Host ended the match."
-	# GameSetup, not the title screen: it owns the status message and it is where
-	# this player would rejoin or re-host from.
-	get_tree().change_scene_to_file("res://scenes/ui/GameSetup.tscn")
+	# MultiplayerSetup, not the title screen: it owns the status message and it
+	# is where this player would rejoin or re-host from.
+	get_tree().change_scene_to_file("res://scenes/ui/MultiplayerSetup.tscn")
 
 ## Q-1/B-62: a Join to a dead/unreachable address previously left the player on
 ## a black Main.tscn forever — the same soft-lock as a mid-match host quit,
@@ -1402,7 +1517,7 @@ func _on_connection_failed() -> void:
 	RoundManager.reset()
 	GameLaunch.reset()
 	GameLaunch.pending_status_message = "Could not reach that host."
-	get_tree().change_scene_to_file("res://scenes/ui/GameSetup.tscn")
+	get_tree().change_scene_to_file("res://scenes/ui/MultiplayerSetup.tscn")
 
 ## Host → all peers: hands `index`'s existing, still-standing character over
 ## to AI control instead of leaving it frozen — see _on_player_disconnected.

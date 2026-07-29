@@ -1,0 +1,180 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/multiplayer_setup.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/ui/ArrowButton.tscn" id="2"]
+[ext_resource type="Texture2D" path="res://assets/ui/main-menu/MENU BACKDROP.png" id="3"]
+[ext_resource type="Texture2D" path="res://assets/ui/host-game/GAME BANNER.png" id="4"]
+[ext_resource type="Texture2D" path="res://assets/ui/host-game/BUTTON LONG.png" id="5"]
+[ext_resource type="Texture2D" path="res://assets/ui/host-game/TEXT FIELD.png" id="6"]
+[ext_resource type="Texture2D" path="res://assets/ui/host-game/JOIN BUTTON.png" id="7"]
+
+[sub_resource type="Gradient" id="Gradient_scrim"]
+offsets = PackedFloat32Array(0, 0.4, 0.72, 1)
+colors = PackedColorArray(0.015686, 0.031373, 0.219608, 0.88, 0.015686, 0.031373, 0.219608, 0.72, 0.015686, 0.031373, 0.219608, 0.2, 0.015686, 0.031373, 0.219608, 0.06)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_scrim"]
+gradient = SubResource("Gradient_scrim")
+width = 256
+height = 8
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_flat"]
+
+[node name="MultiplayerSetup" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="Backdrop" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+texture = ExtResource("3")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="Scrim" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+texture = SubResource("GradientTexture2D_scrim")
+expand_mode = 1
+stretch_mode = 0
+
+[node name="Banner" type="TextureRect" parent="."]
+layout_mode = 0
+offset_top = 75.0
+offset_right = 648.0
+offset_bottom = 219.0
+mouse_filter = 2
+texture = ExtResource("4")
+expand_mode = 1
+stretch_mode = 0
+
+[node name="BannerLabel" type="Label" parent="Banner"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 128.0
+offset_right = -108.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.239, 0.149, 0.024, 1)
+theme_override_font_sizes/font_size = 68
+vertical_alignment = 1
+text = "MULTIPLAYER"
+
+[node name="HostButton" parent="." instance=ExtResource("2")]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 95.0
+offset_top = 320.0
+offset_right = 709.0
+offset_bottom = 421.0
+texture = ExtResource("5")
+caption = "HOST GAME (LAN)"
+text_color = Color(1, 1, 1, 1)
+label_size = 53
+pole_distance = 300.0
+text_indent = 40.0
+tip_padding = 40.0
+
+[node name="HostCaption" type="Label" parent="."]
+layout_mode = 0
+offset_left = 110.0
+offset_top = 428.0
+offset_right = 960.0
+offset_bottom = 462.0
+theme_type_variation = &"MenuBody"
+text = "You open the lobby and you alone pick the map and the mode. Your LAN address is shown there for the others to type in."
+autowrap_mode = 2
+
+[node name="JoinHeading" type="Label" parent="."]
+layout_mode = 0
+offset_left = 95.0
+offset_top = 530.0
+offset_right = 960.0
+offset_bottom = 574.0
+theme_type_variation = &"MenuHeading"
+text = "JOIN A HOST"
+
+[node name="JoinField" type="TextureRect" parent="."]
+layout_mode = 0
+offset_left = 95.0
+offset_top = 584.0
+offset_right = 709.0
+offset_bottom = 685.0
+mouse_filter = 1
+texture = ExtResource("6")
+expand_mode = 1
+stretch_mode = 0
+
+[node name="JoinAddressEdit" type="LineEdit" parent="JoinField"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 40.0
+offset_top = 16.0
+offset_right = -40.0
+offset_bottom = -16.0
+theme_override_colors/font_color = Color(1, 0.729, 0, 1)
+theme_override_colors/font_placeholder_color = Color(1, 0.729, 0, 0.5)
+theme_override_colors/caret_color = Color(1, 0.729, 0, 1)
+theme_override_font_sizes/font_size = 45
+theme_override_styles/normal = SubResource("StyleBoxEmpty_flat")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_flat")
+theme_override_styles/read_only = SubResource("StyleBoxEmpty_flat")
+placeholder_text = "192.168.1.12"
+
+[node name="JoinButton" parent="." instance=ExtResource("2")]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 727.0
+offset_top = 584.0
+offset_right = 968.0
+offset_bottom = 685.0
+texture = ExtResource("7")
+caption = "JOIN"
+text_color = Color(0.153, 0.263, 0.106, 1)
+label_size = 49
+pole_distance = 150.0
+text_indent = 30.0
+tip_padding = 30.0
+
+[node name="JoinCaption" type="Label" parent="."]
+layout_mode = 0
+offset_left = 110.0
+offset_top = 692.0
+offset_right = 960.0
+offset_bottom = 726.0
+theme_type_variation = &"MenuBody"
+text = "The host's address, port optional — 8910 is used if you leave it off. You pick your own seat and fighter; the host picks the map."
+autowrap_mode = 2
+
+[node name="StatusLabel" type="Label" parent="."]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 95.0
+offset_top = 780.0
+offset_right = 960.0
+offset_bottom = 860.0
+theme_override_colors/font_color = Color(0.957, 0.408, 0.659, 1)
+theme_override_font_sizes/font_size = 28
+autowrap_mode = 2
+
+[node name="BackButton" type="Button" parent="."]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 95.0
+offset_top = 903.0
+offset_right = 395.0
+offset_bottom = 961.0
+theme_type_variation = &"WoodButton"
+text = "◀  BACK"

@@ -5,11 +5,11 @@ class_name MainMenu
 ## buttons. No longer the game's literal entry point — `SplashScreen.tscn` is
 ## `run/main_scene` now and hands off to this once the opening sting has played.
 ##
-## PLAY hands off to GameSetup.tscn, which owns map/mode selection and the
+## PLAY hands off to ModeSelect.tscn, which owns map/mode selection and the
 ## offline/host/join launch. The two used to share this scene; they share no
 ## nodes and only ever hand off to each other, so they are separate scenes.
 
-const GAME_SETUP_PATH: String = "res://scenes/ui/GameSetup.tscn"
+const MODE_SELECT_PATH: String = "res://scenes/ui/ModeSelect.tscn"
 
 ## Stagger between consecutive pennants unfurling.
 const STAGGER: float = 0.09
@@ -42,7 +42,7 @@ func _unfurl() -> void:
 		buttons[i].animate_in(i * STAGGER)
 
 func _on_start_pressed() -> void:
-	get_tree().change_scene_to_file(GAME_SETUP_PATH)
+	get_tree().change_scene_to_file(MODE_SELECT_PATH)
 
 ## Title-screen-only, deliberately. A mid-match quit that skips
 ## NetworkManager.disconnect_network() would strand the other peers — the same
