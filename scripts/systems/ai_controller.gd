@@ -316,6 +316,8 @@ var _bb_slipper: Carriable = null             ## incoming throw the Can is dodgi
 var _bb_enemy_attacker: CharacterBase = null  ## the Taya's mark
 var _bb_own_attacker: CharacterBase = null    ## a loose Tsinelas' own retriever
 var _bb_can: CharacterBase = null             ## the tracked Can, for either side
+## Last decide() delta, so an argument-less BTCondition can accumulate time.
+var _last_delta: float = 0.0
 var _bb_loose_tsinelas: Carriable = null      ## the Attacker's slipper, on the floor
 var _bb_carrier: Carrier = null               ## this character's own Carrier node
 
@@ -536,6 +538,11 @@ func decide(delta: float) -> void:
 	_flush_pending_releases()
 	if not _enabled or character == null or _root == null:
 		return
+	# BTCondition leaves take no arguments — the tree calls them by name — so a
+	# condition that needs to accumulate time reads it from here. Only
+	# _cond_lane_blocked uses it (see ATTACKER_PATIENCE); kept as one assignment
+	# rather than threading delta through every predicate signature.
+	_last_delta = delta
 
 	if trace_enabled:
 		_trace_path.clear()
@@ -590,6 +597,12 @@ func _release_all() -> void:
 	_attacker_charging = false
 	_attacker_charge_time = 0.0
 	_release_settle_frames = 0
+	_attacker_lane_blocked_for = 0.0
+	# Hand the camera-based aim back. _release_all() is what runs when a human
+	# takes this unit over or the round resets, and either way an AI's stale
+	# target must not survive into someone else's throw (B-125).
+	if character != null and is_instance_valid(character):
+		character.ai_aim_point = Vector3.INF
 	_clear_blackboard()
 
 func _clear_blackboard() -> void:
@@ -915,6 +928,12 @@ func _cond_attacker_settling() -> bool:
 func _act_attacker_settle(_delta: float) -> int:
 	_release_settle_frames -= 1
 	_release_move(0.0)
+	# The throw has been consumed by now (that is what the settle frames are for),
+	# so the aim override can go. Cleared rather than left stale so that anything
+	# which later reads it — a human taking this unit over mid-round, a different
+	# throw path — falls back to the camera instead of aiming at last round's can.
+	if _release_settle_frames <= 0:
+		character.ai_aim_point = Vector3.INF
 	return BTNode.RUNNING
 
 func _cond_own_tsinelas_loose() -> bool:
@@ -973,8 +992,99 @@ func _act_attacker_approach(_delta: float) -> int:
 	_move_toward(_open_throwing_spot(_bb_can))
 	return BTNode.RUNNING
 
+## How much of the can's current velocity to lead by, 0..1. Deliberately NOT 1.0
+## — a perfect lead against a target that changes direction is both unbeatable
+## and unfair-feeling, and the can's evasion is a reaction rather than a constant
+## drift, so extrapolating it fully overshoots as often as it corrects. 0.6 lands
+## the throw in the can's neighbourhood without the AI reading its mind.
+##
+## ⚠️ THIS IS A DIFFICULTY KNOB. Raise it toward 1.0 for a sharper AI, drop it to
+## 0.0 for the old aim-at-where-it-is behaviour. Fairness-log item 6 wants
+## difficulty TIERS rather than one-off nerfs; when those exist this belongs in
+## them alongside DECISION_INTERVAL and ATTACKER_LANE_CLEARANCE.
+const CAN_LEAD_FRACTION: float = 0.6
+
+## Where to aim so the throw and the can arrive together. Flight time is estimated
+## from the profile's own launch speed rather than assumed, so a slow bakya leads
+## further than a fast flick — which is the behaviour you want and falls out for
+## free instead of needing a per-profile constant.
+func _lead_the_can(can: CharacterBase) -> Vector3:
+	var here := character.global_position
+	var mark := can.global_position + Vector3(0.0, 0.25, 0.0)
+	var speed := _own_launch_speed()
+	if speed <= 0.01:
+		return mark
+	var flight_time := here.distance_to(mark) / speed
+	var drift := Vector3(can.velocity.x, 0.0, can.velocity.z) * flight_time * CAN_LEAD_FRACTION
+	return mark + drift
+
+## The launch speed this unit's slipper will actually use, at the charge this
+## leaf holds. Read off the held Carriable's own profile so it cannot drift out
+## of step with the .tres files (they were retuned twice without this noticing).
+func _own_launch_speed() -> float:
+	var carrier := character.get_node_or_null("Carrier") as Carrier
+	if carrier == null:
+		return 0.0
+	var held := carrier.held()
+	if held == null:
+		return 0.0
+	var prop := held.get_parent() as CharacterBase
+	if prop == null or prop.ability == null or not prop.ability.has_method("get_throw_profile"):
+		# No ability means carriable.gd falls back to DEFAULT_PROFILE; 21.0 is
+		# that resource's launch_speed. Only ever hit by a Prop with no ability.
+		return 21.0 * _charge_fraction()
+	var profile := prop.ability.get_throw_profile() as ThrowProfile
+	if profile == null:
+		return 21.0 * _charge_fraction()
+	return profile.launch_speed * _charge_fraction()
+
+## What fraction of full power this leaf's charge actually reaches.
+##
+## ⚠️ MIRRORS `carrier.gd::charge_power()` EXACTLY, floor included. That curve is
+## not linear in hold time — it starts at CHARGE_MIN_POWER (0.35) so a panicked
+## tap still throws — so a plain `hold / full` ratio underestimates the speed and
+## therefore over-leads. At ATTACKER_CHARGE_TIME 0.65 the real figure is ~0.82,
+## not 0.72. All three constants are read, never restated.
+func _charge_fraction() -> float:
+	return clampf(
+		Carrier.CHARGE_MIN_POWER
+			+ (ATTACKER_CHARGE_TIME / Carrier.CHARGE_FULL_TIME) * (1.0 - Carrier.CHARGE_MIN_POWER),
+		Carrier.CHARGE_MIN_POWER, 1.0)
+
+## ⚠️ PATIENCE — THIS IS THE FIX FOR B-124, THE ATTACKER/TAYA LIVELOCK.
+##
+## Returning a bare "is the lane blocked" here is what gave the attacker EXACTLY
+## ONE THROW PER ROUND, every round, at every pursuit setting. Measured off
+## bt_trace(): from the moment it re-acquired the slipper (~1.4 s) to the end of
+## a 40 s observation the attacker sat in `role/attacker/throw/reposition`, and
+## never once reached `charge-release`. The geometry makes it inescapable — it
+## orbits the can at r ~ 4-5 looking for an open bearing while the Taya
+## body-blocks at r ~ 2.5 and re-derives its post from the attacker's CURRENT
+## bearing every tick, so the lane is blocked again the instant the attacker
+## arrives anywhere. They rotate together forever. The single throw each round
+## actually lands is the opening one at ~0.6 s, before the Taya reaches the lane.
+##
+## So the attacker gives up sliding after ATTACKER_PATIENCE seconds of continuous
+## block and throws into the block anyway. That is also the human behaviour: you
+## do not circle a defender indefinitely, you take the shot and accept it might
+## get blocked — which is what makes `throws blocked` a meaningful fairness
+## number instead of a column that reads 0 because no contested throw is ever
+## attempted.
+##
+## The timer resets the moment the lane genuinely opens, so an attacker that
+## finds a clear bearing still takes the free shot rather than burning patience.
+const ATTACKER_PATIENCE: float = 2.0
+var _attacker_lane_blocked_for: float = 0.0
+
 func _cond_lane_blocked() -> bool:
-	return _blocking_defender(_bb_can) != null
+	if _blocking_defender(_bb_can) == null:
+		_attacker_lane_blocked_for = 0.0
+		return false
+	_attacker_lane_blocked_for += _last_delta
+	# Blocked, but out of patience: report the lane CLEAR so the selector falls
+	# through to charge-release. Deliberately not a separate BT branch — the
+	# decision "stop repositioning" belongs to the same condition that started it.
+	return _attacker_lane_blocked_for < ATTACKER_PATIENCE
 
 func _act_attacker_slide_open(_delta: float) -> int:
 	_attacker_charging = false
@@ -990,6 +1100,27 @@ func _act_attacker_slide_open(_delta: float) -> int:
 ## event tools/ai_probe.gd's fairness run counts.
 func _act_attacker_charge_release(delta: float) -> int:
 	_release_move(0.0)
+	# ⚠️ TELL THE THROW WHERE THE CAN IS (B-125). Without this the throw is aimed
+	# by `carrier.gd::_aim_point()`, which ray-casts from the FPP camera — and
+	# this leaf deliberately stands still, so the camera is still pointing along
+	# whatever bearing the unit last WALKED. Measured over 20 rounds before this
+	# line existed: throws that reached the can, 0. See CharacterBase.ai_aim_point.
+	#
+	# Aimed at the same +0.25 above the can's origin that phys_probe aims at, so
+	# the probe and the AI are asking `_solve_arc` the identical question.
+	#
+	# ⚠️ AND IT LEADS THE TARGET, BECAUSE THE CAN DODGES. Measured in phys_probe:
+	# the can moves on 56% of in-flight frames and gets up to 1.41 m off its mark.
+	# Aiming at where it IS therefore misses a dodging can almost every time, and
+	# that is not a small effect — it is why "throws that reached the can" stayed
+	# at 0 across 80 throws even after the aim itself was fixed (B-125) and the
+	# livelock was broken (B-124). The can's own evasion was eating every shot.
+	#
+	# Leading is the right fix rather than nerfing CAN_EVADE_*: a human-driven can
+	# dodges too, so an AI that cannot lead is simply a worse player, and the
+	# evasion values are documented as deliberately sitting "on the hittable side".
+	if _bb_can != null and is_instance_valid(_bb_can):
+		character.ai_aim_point = _lead_the_can(_bb_can)
 	if not _attacker_charging:
 		_attacker_charging = true
 		_attacker_charge_time = 0.0
@@ -1001,6 +1132,18 @@ func _act_attacker_charge_release(delta: float) -> int:
 	_attacker_charging = false
 	_attacker_charge_time = 0.0
 	_release_settle_frames = RELEASE_SETTLE_FRAMES
+	# ⚠️ SPEND THE PATIENCE ON THE THROW. Without this reset the timer stays over
+	# ATTACKER_PATIENCE for the rest of the round — it only clears when the lane
+	# genuinely opens — so the attacker stops repositioning FOREVER after its
+	# first impatient throw and just charge-releases on a 0.65 s cycle. Measured:
+	# 503 throws over 20 rounds, ~25 per round, with the Taya blocking 1% of them
+	# because the attacker had stopped trying to get around it at all. That trades
+	# one livelock for another and is not what "take the shot" means.
+	_attacker_lane_blocked_for = 0.0
+	# Cleared one frame AFTER the release would have been consumed, not here —
+	# `_set_held` writes intent that carrier.gd reads on its own next step, so
+	# dropping the aim point on this frame would race the throw it was set for.
+	# _act_attacker_settle does it, and so does take_over() for the human case.
 	return BTNode.SUCCESS
 
 ## ---------------------------------------------------------------------------

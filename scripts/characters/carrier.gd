@@ -339,6 +339,14 @@ const AIM_RAY_LENGTH: float = 40.0
 ## Falls back to a far point along the aim when the ray hits nothing, which
 ## host_throw() then treats as out of range and throws as a plain bearing.
 func _aim_point() -> Vector3:
+	# ⚠️ AN AI AIMS AT A POINT IT WAS TOLD, NOT DOWN A CAMERA (B-125). The ray
+	# below is right for a human and wrong for a bot: a non-mouse-aimed unit's
+	# camera follows its body, and its body yaw is the direction it last WALKED,
+	# so the whole cast resolves to "wherever I was heading". Measured over 20
+	# AI-vs-AI rounds, throws that reached the can: 0. See
+	# CharacterBase.ai_aim_point for the full note and who writes it.
+	if _character.is_ai_driven() and _character.ai_aim_point != Vector3.INF:
+		return _character.ai_aim_point
 	var origin := _character.global_position
 	var direction := _aim_direction()
 	var rig := _character.get_node_or_null("CameraRig") as CameraRig

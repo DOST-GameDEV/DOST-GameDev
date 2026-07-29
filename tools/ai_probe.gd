@@ -193,11 +193,29 @@ func _wire_fairness_signals() -> void:
 		var carriable := c.get_node_or_null("Carriable") as Carriable
 		if carriable != null:
 			carriable.carry_state_changed.connect(_on_carry_state_changed.bind(carriable))
-		# The slipper's own melee Hitbox is what is live for the whole flight
-		# (character_base.gd::is_hitbox_active) — it is the only thing that
-		# knows WHAT a throw touched, which is the whole blocked-vs-taken split.
-		for hb in c.find_children("*", "Hitbox", true, false):
-			(hb as Hitbox).landed_on.connect(_on_hitbox_landed.bind(c))
+		_watch_hitboxes(c)
+
+## ⚠️ RE-ARMED PER THROW, NOT ONCE AT SETUP — trap 2 in this repo's own method
+## note: a probe that never LOOKS at the thing you changed passes anyway.
+##
+## Connecting only at setup catches the slipper's always-on melee Hitbox but MISSES
+## the per-profile pulse Hitbox, which `carriable.gd::_spawn_flight_hitbox()`
+## creates INSIDE host_throw's broadcast — a different node on every throw, which
+## does not exist yet when this runs. That is the hitbox most throws actually
+## resolve on, so `throws_on_can` read 0 for every run ever recorded here while
+## `dents` climbed in the same table. Two columns of the same event disagreeing is
+## what exposed it: 0.60 dents per round alongside "throws that reached the can: 0"
+## is impossible, and the metric was wrong rather than the game.
+##
+## phys_probe.gd has re-armed for this exact reason since the multi-hit work; this
+## brings ai_probe in line. Idempotent, so calling it again is free.
+func _watch_hitboxes(c: CharacterBase) -> void:
+	if c == null or not is_instance_valid(c):
+		return
+	for hb in c.find_children("*", "Hitbox", true, false):
+		var box := hb as Hitbox
+		if not box.landed_on.is_connected(_on_hitbox_landed):
+			box.landed_on.connect(_on_hitbox_landed.bind(c))
 
 ## ---------------------------------------------------------------------------
 ## Fairness event handlers.
@@ -292,6 +310,9 @@ func _on_carry_state_changed(new_state: int, carriable: Carriable) -> void:
 		if _round["first_throw_at"] < 0.0:
 			_round["first_throw_at"] = _round_time
 		_flights[carriable] = {"hit_taya": false, "hit_can": false}
+		# The pulse hitbox for THIS throw was spawned during the broadcast that
+		# got us here, so it is only connectable now. See _watch_hitboxes.
+		_watch_hitboxes(carriable.get_parent() as CharacterBase)
 		return
 	if not _flights.has(carriable):
 		return
