@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1")
 launch_speed = 26.0
-arc_angle_deg = 5.0
+arc_angle_deg = 0.0
 gravity_scale = 0.9
 hit_radius = 0.30
 forces_downed = false

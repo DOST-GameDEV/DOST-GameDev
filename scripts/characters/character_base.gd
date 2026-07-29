@@ -481,8 +481,37 @@ func _physics_process(delta: float) -> void:
 	# that is exactly what froze movement during the free-roam window the
 	# first time this shipped.
 	if not RoundManager.round_active and MatchManager.round_number > 0:
-		velocity.x = move_toward(velocity.x, 0, FRICTION * delta)
-		velocity.z = move_toward(velocity.z, 0, FRICTION * delta)
+		# ⚠️ A HARD FREEZE, NOT A FRICTION SLIDE. 2026-07-29, user report:
+		# "whenever a round ends, players get launched to multiple directions."
+		#
+		# This used to decay velocity by FRICTION and still call
+		# _move_and_confine() — i.e. it stopped INPUT but kept integrating
+		# whatever velocity was already there, and kept integrating anything
+		# written DURING the gap. Measured with tools/round_probe.gd: a single
+		# impulse delivered two frames into the intermission slid every
+		# character at 10.63 m/s and up to 5.20 m off the spawn marker it had
+		# just been teleported to.
+		#
+		# Such an impulse is not hypothetical, and there are two routine sources:
+		#   * the round-winning TAG applies knockback in the very frame it ends
+		#     the round (hitbox.gd resolves the hit before it calls
+		#     report_round_win), and
+		#   * networked, `_apply_hit_result` is an rpc_id to the STRUCK peer, so
+		#     it can arrive whole frames after _reset_world() has already put
+		#     everyone home.
+		# apply_knockback() now refuses to write velocity while the round is
+		# inactive, which closes the source; this closes the integration path
+		# regardless of what else ever writes velocity between rounds.
+		velocity.x = 0.0
+		velocity.z = 0.0
+		# Still fall if somehow airborne — the original's "nobody floats"
+		# concern is real, and a match ending mid-jump must not leave a body
+		# hanging in the air. Once grounded, stop moving entirely: no
+		# move_and_slide at all, so no depenetration impulse, no drift, and
+		# nothing for a stray velocity write to act on.
+		if is_on_floor():
+			velocity.y = 0.0
+			return
 		_move_and_confine()
 		return
 
@@ -1002,6 +1031,16 @@ func _apply_hit_result(kind: String, duration: float, knockback: Vector3 = Vecto
 ## class doc already warns about.
 func apply_knockback(impulse: Vector3) -> void:
 	if impulse.is_zero_approx():
+		return
+	# ⚠️ NOT BETWEEN ROUNDS. A hit can resolve in the same frame that ends the
+	# round (the round-winning tag does exactly that), and networked it can
+	# resolve FRAMES LATER still, because _apply_hit_result is an rpc_id to the
+	# struck character's own peer. Either way the target may already have been
+	# teleported back to its spawn marker by _reset_world(), and shoving it from
+	# there is the "players get launched to multiple directions" report. The
+	# freeze in _physics_process would swallow the motion anyway; refusing to
+	# write the velocity at all means nothing has to.
+	if not RoundManager.round_active:
 		return
 	# SEALED is over — a sealed Can is out of the round and being shoved around
 	# afterwards reads as the seal not having stuck.
