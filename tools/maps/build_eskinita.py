@@ -52,7 +52,8 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from floorcheck import Surfaces, embed_y, mesh_bounds  # noqa: E402
+from floorcheck import (Surfaces, embed_y, mesh_bounds,  # noqa: E402
+                        read_confinement_radius)
 
 # --- The one height every surface on this map shares --------------------------
 #
@@ -702,7 +703,7 @@ while _kz < 5.5:
 ## Every long side of the court is drawn with this mesh, so it is also the
 ## width every cross-line must overlap INTO to close a corner. See court_line().
 SIDE_LINE_MESH = "team_side_decal"
-CONFINEMENT_BOX_RADIUS = 5.0   # mirrors CharacterBase.CONFINEMENT_RADIUS
+CONFINEMENT_BOX_RADIUS = read_confinement_radius()
 COURT_X = CONFINEMENT_BOX_RADIUS
 
 

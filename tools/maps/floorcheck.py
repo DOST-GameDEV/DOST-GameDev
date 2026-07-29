@@ -541,3 +541,48 @@ class Surfaces:
                 if ox > OVERLAP_SLACK and oz > OVERLAP_SLACK:
                     found.append((an, bn, ox, oz))
         return found
+
+
+# =============================================================================
+# GAMEPLAY CONSTANTS THE MAPS MUST NOT RESTATE
+# =============================================================================
+
+def read_confinement_radius():
+    """CharacterBase.CONFINEMENT_RADIUS, parsed out of the GDScript that owns it.
+
+    ⚠️ READ, NOT COPIED, AND THAT IS THE ENTIRE POINT. Both map builders used to
+    declare their own `CONFINEMENT_BOX_RADIUS = 5.0` next to a "keep the two in
+    sync" comment — one gameplay number written out longhand in three files and
+    kept aligned by hand. The chalk box on the floor IS the confinement boundary,
+    so the moment those drift the map lies to the player about where they can go.
+
+    That is not hypothetical: the same number already disagreed with itself in a
+    subtler way. The builders drew a SQUARE while `_move_and_confine()` clamped a
+    CIRCLE, so at the corners the chalk promised 7.07 units and the physics stopped
+    the player at 5.0. Fixed 2026-07-29 by making the clamp square; this function
+    is the other half, so the two cannot drift again.
+
+    Raises rather than falling back to a literal. A silent default would restore
+    exactly the failure mode this removes — the build would keep working while
+    quietly drawing the wrong boundary.
+    """
+    import os
+    import re
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    gd = os.path.normpath(os.path.join(here, "..", "..", "scripts", "characters",
+                                       "character_base.gd"))
+    try:
+        with open(gd, encoding="utf-8") as handle:
+            source = handle.read()
+    except OSError as exc:
+        raise SystemExit(
+            "build aborted: cannot read %s to get CONFINEMENT_RADIUS (%s)" % (gd, exc))
+    match = re.search(r"^const\s+CONFINEMENT_RADIUS\s*:\s*float\s*=\s*([0-9.]+)",
+                      source, re.M)
+    if not match:
+        raise SystemExit(
+            "build aborted: no `const CONFINEMENT_RADIUS: float = ...` in %s. "
+            "If it was renamed, update read_confinement_radius() rather than "
+            "hardcoding the number back into the map builders." % gd)
+    return float(match.group(1))

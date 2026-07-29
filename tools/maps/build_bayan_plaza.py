@@ -117,7 +117,8 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from floorcheck import Surfaces, embed_y, mesh_bounds  # noqa: E402
+from floorcheck import (Surfaces, embed_y, mesh_bounds,  # noqa: E402
+                        read_confinement_radius)
 
 # ⚠️ PHASE 10 — THE DEFERRAL IS OVER. This map is now held to Eskinita's standard.
 # Human call, 2026-07-29: "Build and generate the other maps ... Apply the exact
@@ -284,8 +285,7 @@ def add_mark(name, mesh_name, x, z, yaw=0.0, sx=1.0):
 # because of it — `SLAB_TOP` asks `surfaces.height_at()` and every marking goes
 # through `embed_y()`. Re-paving cannot leave a line buried or hanging; the
 # build fails if it would.
-## Mirrors CharacterBase.CONFINEMENT_RADIUS. Keep the two in sync.
-CONFINEMENT_BOX_RADIUS = 5.0
+CONFINEMENT_BOX_RADIUS = read_confinement_radius()
 SLAB_SCALE = CELL   # kit paving is 1x1, so the grid cell IS the scale
 n = 0
 i = int(SLAB / CELL)
