@@ -224,6 +224,39 @@ func movement_speed_scale() -> float:
 func spin_speed_deg() -> float:
 	return _profile().spin_speed_deg
 
+## Read by character_visual.gd alongside spin_speed_deg() — the end-over-end
+## flip, as opposed to the spin about the slipper's own long axis. See
+## ThrowProfile.tumble_speed_deg for why doing only the latter read as flat.
+func tumble_speed_deg() -> float:
+	return _profile().tumble_speed_deg
+
+## THE FACESLOP, STRIKER SIDE. The impulse a hit from this slipper should impart
+## right now, in metres/second, before the struck object's own resistance is
+## applied (that is hurtbox.gd::absorb_knockback's job).
+##
+## Taken from `_flight_velocity` rather than from `_character.velocity`: they
+## agree during flight, but _flight_velocity is the one this file actually
+## integrates, and it is still correct on the exact frame a collision has
+## already zeroed the body's velocity — which is precisely the frame a hit
+## resolves on. Reading the body instead would give a knockback of zero for
+## every square hit, i.e. for every hit that matters most.
+##
+## Zero unless FLYING: a slipper being carried or lying on the floor has no
+## momentum to give, and a hit involving one should fall through to hitbox.gd's
+## ordinary melee shove instead.
+func knockback_impulse(force_downed: bool) -> Vector3:
+	if state != CarryState.FLYING:
+		return Vector3.ZERO
+	var profile := _profile()
+	var flat := Vector3(_flight_velocity.x, 0.0, _flight_velocity.z)
+	if flat.length() < 0.01:
+		return Vector3.ZERO
+	var strength: float = profile.knockback_scale * profile.mass
+	if force_downed:
+		strength *= profile.faceslop_multiplier
+	var lift: float = profile.knockback_lift * (profile.faceslop_multiplier if force_downed else 1.0)
+	return flat.normalized() * flat.length() * strength + Vector3.UP * lift
+
 ## Called from character_base.gd's _physics_process when drives_movement() is
 ## true. Runs on EVERY peer, not just the authority: both branches below are
 ## deterministic given state that is already replicated, so running them locally
@@ -405,6 +438,7 @@ func reset_for_new_round() -> void:
 	_flight_velocity = Vector3.ZERO
 	_flight_time = 0.0
 	_thrower_ignore_left = 0.0
+	_character.clear_hit_memory()
 	if carrier != null and is_instance_valid(carrier):
 		_character.remove_collision_exception_with(carrier)
 		_watch_carrier_state(carrier, false)
@@ -460,6 +494,8 @@ func _rpc_set_carried(carrier_path: NodePath) -> void:
 	# While in a hand the slipper is part of the carrier: it must not shove its
 	# own teammate around, and it must not be independently hittable.
 	_set_physics_enabled(false)
+	# Picked up — whatever the last throw hit is no longer relevant.
+	_character.clear_hit_memory()
 	_notify_carrier(who, self)
 	AudioManager.play_at("grab", _character.global_position) # 4.1
 	_set_state(CarryState.CARRIED)
@@ -486,6 +522,10 @@ func _rpc_set_flying(origin: Vector3, velocity: Vector3) -> void:
 	_flight_time = 0.0
 	_thrower_ignore_left = THROWER_IGNORE_TIME
 	_bounces_left = MAX_BOUNCES
+	# ⚠️ A NEW THROW IS A NEW OFFENSIVE EVENT. Clearing here is what makes the
+	# rule "once per throw" rather than "once, ever" — the same opponent must
+	# be hittable again by the next throw. See CharacterBase._hit_memory.
+	_character.clear_hit_memory()
 	# Solid again the instant it leaves the hand — it has to be able to bounce
 	# off walls and, above all, hit the lata.
 	_set_physics_enabled(true)
@@ -530,6 +570,8 @@ func _rpc_set_loose(where: Vector3) -> void:
 	_character.velocity = Vector3.ZERO
 	_flight_velocity = Vector3.ZERO
 	_clear_flight_hitbox()
+	# Came to rest — see _rpc_set_flying's note; this is the other end of it.
+	_character.clear_hit_memory()
 	if carrier != null and is_instance_valid(carrier):
 		_character.remove_collision_exception_with(carrier)
 		_notify_carrier(carrier, null)

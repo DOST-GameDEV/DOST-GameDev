@@ -893,6 +893,11 @@ touch map scenes.
       profile of the four, now by identity (heavy, close-range) rather than by being broken. Not
       yet felt in play — nothing has selected it since B-76 (`PROP_ABILITY` is `quick_stand.tres`
       for every Prop); that unlock is 3.3's job, and whether 87% charge feels right is 4.4's.
+      **Superseded 2026-07-29 by the game-feel pass (4.4d below), which re-tuned every profile.**
+      Bakya is now `launch_speed 19.0` / `arc 12.0` / `gravity_scale 1.35` — max range **8.05**,
+      ~86% charge for the 6.0 line, i.e. deliberately the same reachability this entry settled on.
+      The first attempt at that pass had it at 6.77 / ~94%, which would have quietly re-broken
+      exactly what this entry fixed; caught by re-deriving the range instead of trusting the edit.
 - [x] **4.4b · Option A's ring-out win condition was missing entirely.** 🔧 Build — **fixed
       2026-07-28, verified by parse + a 400-frame soak**
       `Dev_Plan.md` §3: "Cans win by the timer running out, OR by knocking Slippers out of bounds a
@@ -904,6 +909,65 @@ touch map scenes.
       `RING_OUT_LIMIT = 3`), called from `main.gd`'s existing KillPlane handler. **Not verified by
       play:** whether 3 is the right number. Same tuning-window caveat as everything else in this
       phase.
+- [x] **4.4c · B-126 · A THROWN SLIPPER RE-RESOLVED THE SAME HIT EVERY PHYSICS FRAME.** 🔧 Build —
+      **fixed 2026-07-29, measured before and after with `tools/phys_probe.gd`**
+      Reported as "the hit animation triggers repeatedly and severely lags the game". Measured, 12
+      throws per row:
+
+      | aimed at | worst single throw, before | after |
+      |---|---|---|
+      | `target=can`   | 1 resolution   | 1 |
+      | `target=taya`  | **35** resolutions (344 total) | 1 (11 total) |
+      | `target=graze` | **59** resolutions | 1 |
+
+      Every duplicate re-ran a full state transition, a VFX flash, a **global `Engine.time_scale`
+      hitstop** (4.5) and a positional sound — that is the lag, and the hitstop dip is why it hurt
+      the whole frame and not just the struck unit. Two independent causes, which is why the fix is
+      not where you would first look:
+      **(a)** `carriable.gd::_step_flying()` calls `sweep_hitbox()` every physics frame, and
+      `sweep_overlaps()` re-runs resolution for everything already inside — a hurtbox overlapped for
+      35 frames resolved 35 times. **(b)** a thrown slipper carries **two** live hitboxes at once
+      (`CharacterBase.tscn`'s own melee one, live for the whole flight per `is_hitbox_active()`,
+      plus the per-profile pulse one from `_spawn_flight_hitbox()`), so even one clean frame
+      resolved **twice**.
+      Fixed with a hit memory on `CharacterBase` (`register_hit_once()` / `clear_hit_memory()`),
+      **not** inside `hitbox.gd` — per-Hitbox memory could never have caught (b), since the two
+      areas are different nodes. `carriable.gd` clears it on every carry transition (thrown, caught,
+      come to rest, round reset), which is what makes the rule "once per throw" rather than
+      "once, ever". Connection rate is unchanged (11/12 before and after), so detection is intact.
+      ⚠️ **Aiming at the can is why this survived so long**: a square hit on a body ends the flight
+      via `move_and_collide` the same frame, which hides the window entirely. The bug only shows
+      against a Person, and worst on a graze that never touches a body at all.
+- [x] **4.4d · Throw weight and the faceslop.** 🔧 Build — **2026-07-29, numbers measured with
+      `tools/phys_probe.gd`; how it FEELS is unverified and is still 4.4's job**
+      "The current throw feels weak and floaty." All four profiles re-tuned faster *and* heavier
+      (higher `launch_speed`, higher `gravity_scale`) so the arc is decisive rather than lazy;
+      ranges re-derived to guarantee every profile still reaches the 6.0 throwing line (see 4.4a).
+      `ThrowProfile` gains `mass`, `knockback_scale`, `knockback_lift`, `faceslop_multiplier` and
+      `tumble_speed_deg`.
+      ⚠️ **`mass` is not a RigidBody mass and there is no RigidBody here** — a slipper is a
+      `CharacterBody3D` integrated by hand in `_step_flying()`, so Godot never uses a mass and
+      setting one would do nothing. It is the knockback coefficient, and it is what differentiates
+      the profiles (`knockback_scale` is deliberately the same 0.35 on all four).
+      **Knockback path:** `hitbox.gd` computes the impulse from the striker's own motion →
+      `hurtbox.gd::absorb_knockback()` decides how much this particular body takes (same ownership
+      rule `impact_sfx()` already established: the struck object owns the answer) →
+      `CharacterBase.apply_knockback()` writes `velocity`. Measured on a struck Person, against a
+      control of its own pre-hit speed: **+6.8 m/s** horizontal from the lightest profile, up to a
+      capped 16.0 for a downing hit from the heaviest.
+      ⚠️ **There is no ragdoll and this is not one.** DOWNED is a state on the existing machine;
+      "physically knocked backward" means the impulse goes into `velocity` and the ordinary
+      `move_and_slide`/gravity path carries it. A second physics path would have to re-implement
+      confinement, the floor check and the round freeze.
+      Knockback is clamped (`MAX_KNOCKBACK_SPEED` 16.0, `MAX_KNOCKBACK_LIFT` 7.0) — anchored just
+      above `DASH_SPEED` 14.0 and `JUMP_VELOCITY` 5.8, because the impulse is the product of four
+      independently-tunable fields and it is easy to pick four innocuous numbers that launch a
+      player out of the arena.
+      The in-flight tumble now advances **two** axes (`spin_speed_deg` about the slipper's own long
+      axis, `tumble_speed_deg` end-over-end); one axis alone was what read as "flying perfectly
+      flat" however fast it was cranked. ⚠️ It writes `rotation.x`/`.z` only, never `basis` or `.y`
+      — `_process_remote_smoothing()` writes `.y` *after* it in `_process()` and would silently
+      undo a full-basis write.
 - [x] **4.5 · Hitstop.** 🤖 Sonnet, medium
       The one piece of the Q-8 hit-feedback set that never landed. Cheap, and it
       is what makes a landed hit feel like contact rather than a colour change.
