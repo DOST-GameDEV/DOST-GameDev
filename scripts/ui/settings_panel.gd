@@ -13,9 +13,9 @@ class_name SettingsPanel
 
 signal back_pressed
 
-## Rows are built at runtime, so their colour is set here rather than in the
-## scene. See _build_rows for why it cannot be the theme's INK.
-const ACTION_LABEL_COLOR: Color = Color(1, 1, 1)
+## Width of a rebind row's action name, so every key button lines up in one
+## column regardless of how long "Special Ability" is.
+const ACTION_LABEL_WIDTH: float = 260.0
 
 @onready var bindings_list: VBoxContainer = %BindingsList
 @onready var status_label: Label = %SettingsStatusLabel
@@ -106,14 +106,22 @@ func _build_rows() -> void:
 		var row := HBoxContainer.new()
 		var label := Label.new()
 		label.text = SettingsManager.ACTION_LABELS.get(action, action)
-		label.custom_minimum_size = Vector2(160, 0)
-		# This panel has no card behind it — the rows sit straight on the menu's
-		# dark navy, where the theme's INK body colour is unreadable. The rebind
-		# buttons keep their own light stylebox and INK text.
-		label.add_theme_color_override("font_color", ACTION_LABEL_COLOR)
+		label.custom_minimum_size = Vector2(ACTION_LABEL_WIDTH, 0)
+		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		# `MenuBody`, not a colour override: this panel draws on dark wood, where
+		# the theme's INK body colour is invisible, and the variation is how the
+		# rest of the front end says that. The override this replaces predates
+		# the Menu* set and was the only thing keeping these rows legible — every
+		# label the SCENE owned was still INK on navy, which is what made the
+		# in-game panel unreadable.
+		label.theme_type_variation = &"MenuBody"
 		row.add_child(label)
 		var button := Button.new()
-		button.custom_minimum_size = Vector2(140, 0)
+		button.custom_minimum_size = Vector2(170, 46)
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		# Deliberately the theme's DEFAULT Button — light fill, INK lettering.
+		# It is the one control on this screen that should read as a physical
+		# keycap, and inverting it to wood would lose that.
 		button.text = SettingsManager.get_binding_display_name(action)
 		button.pressed.connect(_on_rebind_button_pressed.bind(action))
 		row.add_child(button)

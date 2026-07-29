@@ -1,11 +1,6 @@
-[gd_scene load_steps=4 format=3 uid="uid://dx1n5r7t9v2w4"]
+[gd_scene load_steps=2 format=3 uid="uid://dx1n5r7t9v2w4"]
 
 [ext_resource type="Script" path="res://scripts/ui/settings_panel.gd" id="1"]
-[ext_resource type="Shader" path="res://assets/ui/card_fold.gdshader" id="2"]
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_fold"]
-shader = ExtResource("2")
-shader_parameter/fold_color = Color(0.016, 0.031, 0.22, 1)
 
 [node name="SettingsPanel" type="Control"]
 layout_mode = 3
@@ -20,56 +15,91 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0.015686, 0.031373, 0.219608, 0.72)
+color = Color(0.015686, 0.031373, 0.219608, 0.78)
 mouse_filter = 2
 
-[node name="Layout" type="VBoxContainer" parent="."]
-unique_name_in_owner = true
+[node name="Card" type="PanelContainer" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_left = 0.5
 anchor_top = 0.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -280.0
-offset_top = 20.0
-offset_right = 280.0
-offset_bottom = -20.0
+offset_left = -400.0
+offset_top = 56.0
+offset_right = 400.0
+offset_bottom = -56.0
 grow_horizontal = 2
+theme_type_variation = &"WoodPanel"
 
-[node name="TitleLabel" type="Label" parent="Layout"]
+[node name="Margin" type="MarginContainer" parent="Card"]
 layout_mode = 2
-theme_type_variation = &"Heading"
+theme_override_constants/margin_left = 22
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 22
+theme_override_constants/margin_bottom = 14
+
+[node name="Layout" type="VBoxContainer" parent="Card/Margin"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="TitleLabel" type="Label" parent="Card/Margin/Layout"]
+layout_mode = 2
+theme_type_variation = &"MenuHeading"
 horizontal_alignment = 1
 text = "SETTINGS"
 
-[node name="HintLabel" type="Label" parent="Layout"]
+[node name="HintLabel" type="Label" parent="Card/Margin/Layout"]
 layout_mode = 2
-theme_type_variation = &"Caption"
+theme_type_variation = &"MenuCaption"
 horizontal_alignment = 1
 autowrap_mode = 2
 text = "Click a key to rebind it, then press any key on your keyboard."
 
-[node name="BindingsScroll" type="ScrollContainer" parent="Layout"]
+[node name="Rule" type="ColorRect" parent="Card/Margin/Layout"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 3)
+color = Color(0.545, 0.322, 0.153, 1)
+
+[node name="Scroll" type="ScrollContainer" parent="Card/Margin/Layout"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
-custom_minimum_size = Vector2(0, 120)
+horizontal_scroll_mode = 0
 
-[node name="BindingsList" type="VBoxContainer" parent="Layout/BindingsScroll"]
+[node name="Content" type="VBoxContainer" parent="Card/Margin/Layout/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="BindingsHeading" type="Label" parent="Card/Margin/Layout/Scroll/Content"]
+layout_mode = 2
+theme_type_variation = &"MenuCaption"
+text = "CONTROLS"
+
+[node name="BindingsList" type="VBoxContainer" parent="Card/Margin/Layout/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
+theme_override_constants/separation = 8
 
-[node name="SensitivityRow" type="HBoxContainer" parent="Layout"]
+[node name="MouseHeading" type="Label" parent="Card/Margin/Layout/Scroll/Content"]
+layout_mode = 2
+theme_type_variation = &"MenuCaption"
+text = "MOUSE"
+
+[node name="SensitivityRow" type="HBoxContainer" parent="Card/Margin/Layout/Scroll/Content"]
 layout_mode = 2
 
-[node name="SensitivityLabel" type="Label" parent="Layout/SensitivityRow"]
+[node name="SensitivityLabel" type="Label" parent="Card/Margin/Layout/Scroll/Content/SensitivityRow"]
+custom_minimum_size = Vector2(260, 0)
 layout_mode = 2
-custom_minimum_size = Vector2(160, 0)
+theme_type_variation = &"MenuBody"
+vertical_alignment = 1
 text = "Mouse Sensitivity"
 
-[node name="SensitivitySlider" type="HSlider" parent="Layout/SensitivityRow"]
+[node name="SensitivitySlider" type="HSlider" parent="Card/Margin/Layout/Scroll/Content/SensitivityRow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -79,32 +109,37 @@ max_value = 3.0
 step = 0.1
 value = 1.0
 
-[node name="SensitivityValueLabel" type="Label" parent="Layout/SensitivityRow"]
+[node name="SensitivityValueLabel" type="Label" parent="Card/Margin/Layout/Scroll/Content/SensitivityRow"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(76, 0)
 layout_mode = 2
-custom_minimum_size = Vector2(48, 0)
+theme_type_variation = &"MenuValue"
 horizontal_alignment = 2
+vertical_alignment = 1
 text = "1.0x"
 
-[node name="InvertYCheck" type="CheckBox" parent="Layout"]
+[node name="InvertYCheck" type="CheckBox" parent="Card/Margin/Layout/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2
+theme_type_variation = &"MenuCheckBox"
 text = "Invert Y (mouse look)"
 
-[node name="AudioHeading" type="Label" parent="Layout"]
+[node name="AudioHeading" type="Label" parent="Card/Margin/Layout/Scroll/Content"]
 layout_mode = 2
-theme_type_variation = &"Caption"
+theme_type_variation = &"MenuCaption"
 text = "AUDIO"
 
-[node name="MasterVolumeRow" type="HBoxContainer" parent="Layout"]
+[node name="MasterVolumeRow" type="HBoxContainer" parent="Card/Margin/Layout/Scroll/Content"]
 layout_mode = 2
 
-[node name="MasterVolumeLabel" type="Label" parent="Layout/MasterVolumeRow"]
+[node name="MasterVolumeLabel" type="Label" parent="Card/Margin/Layout/Scroll/Content/MasterVolumeRow"]
+custom_minimum_size = Vector2(260, 0)
 layout_mode = 2
-custom_minimum_size = Vector2(160, 0)
+theme_type_variation = &"MenuBody"
+vertical_alignment = 1
 text = "Master Volume"
 
-[node name="MasterVolumeSlider" type="HSlider" parent="Layout/MasterVolumeRow"]
+[node name="MasterVolumeSlider" type="HSlider" parent="Card/Margin/Layout/Scroll/Content/MasterVolumeRow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -114,22 +149,26 @@ max_value = 1.0
 step = 0.05
 value = 0.8
 
-[node name="MasterVolumeValueLabel" type="Label" parent="Layout/MasterVolumeRow"]
+[node name="MasterVolumeValueLabel" type="Label" parent="Card/Margin/Layout/Scroll/Content/MasterVolumeRow"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(76, 0)
 layout_mode = 2
-custom_minimum_size = Vector2(48, 0)
+theme_type_variation = &"MenuValue"
 horizontal_alignment = 2
+vertical_alignment = 1
 text = "80%"
 
-[node name="SfxVolumeRow" type="HBoxContainer" parent="Layout"]
+[node name="SfxVolumeRow" type="HBoxContainer" parent="Card/Margin/Layout/Scroll/Content"]
 layout_mode = 2
 
-[node name="SfxVolumeLabel" type="Label" parent="Layout/SfxVolumeRow"]
+[node name="SfxVolumeLabel" type="Label" parent="Card/Margin/Layout/Scroll/Content/SfxVolumeRow"]
+custom_minimum_size = Vector2(260, 0)
 layout_mode = 2
-custom_minimum_size = Vector2(160, 0)
+theme_type_variation = &"MenuBody"
+vertical_alignment = 1
 text = "SFX Volume"
 
-[node name="SfxVolumeSlider" type="HSlider" parent="Layout/SfxVolumeRow"]
+[node name="SfxVolumeSlider" type="HSlider" parent="Card/Margin/Layout/Scroll/Content/SfxVolumeRow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -139,22 +178,26 @@ max_value = 1.0
 step = 0.05
 value = 0.8
 
-[node name="SfxVolumeValueLabel" type="Label" parent="Layout/SfxVolumeRow"]
+[node name="SfxVolumeValueLabel" type="Label" parent="Card/Margin/Layout/Scroll/Content/SfxVolumeRow"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(76, 0)
 layout_mode = 2
-custom_minimum_size = Vector2(48, 0)
+theme_type_variation = &"MenuValue"
 horizontal_alignment = 2
+vertical_alignment = 1
 text = "80%"
 
-[node name="MusicVolumeRow" type="HBoxContainer" parent="Layout"]
+[node name="MusicVolumeRow" type="HBoxContainer" parent="Card/Margin/Layout/Scroll/Content"]
 layout_mode = 2
 
-[node name="MusicVolumeLabel" type="Label" parent="Layout/MusicVolumeRow"]
+[node name="MusicVolumeLabel" type="Label" parent="Card/Margin/Layout/Scroll/Content/MusicVolumeRow"]
+custom_minimum_size = Vector2(260, 0)
 layout_mode = 2
-custom_minimum_size = Vector2(160, 0)
+theme_type_variation = &"MenuBody"
+vertical_alignment = 1
 text = "Ambience Volume"
 
-[node name="MusicVolumeSlider" type="HSlider" parent="Layout/MusicVolumeRow"]
+[node name="MusicVolumeSlider" type="HSlider" parent="Card/Margin/Layout/Scroll/Content/MusicVolumeRow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -164,45 +207,40 @@ max_value = 1.0
 step = 0.05
 value = 0.8
 
-[node name="MusicVolumeValueLabel" type="Label" parent="Layout/MusicVolumeRow"]
+[node name="MusicVolumeValueLabel" type="Label" parent="Card/Margin/Layout/Scroll/Content/MusicVolumeRow"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(76, 0)
 layout_mode = 2
-custom_minimum_size = Vector2(48, 0)
+theme_type_variation = &"MenuValue"
 horizontal_alignment = 2
+vertical_alignment = 1
 text = "80%"
 
-[node name="SettingsStatusLabel" type="Label" parent="Layout"]
+[node name="SettingsStatusLabel" type="Label" parent="Card/Margin/Layout"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_type_variation = &"Caption"
+theme_type_variation = &"MenuCaption"
 horizontal_alignment = 1
 autowrap_mode = 2
 text = ""
 
-[node name="ButtonRow" type="HBoxContainer" parent="Layout"]
+[node name="ButtonRow" type="HBoxContainer" parent="Card/Margin/Layout"]
 layout_mode = 2
 alignment = 1
+theme_override_constants/separation = 16
 
-[node name="ResetAllButton" type="Button" parent="Layout/ButtonRow"]
+[node name="ResetAllButton" type="Button" parent="Card/Margin/Layout/ButtonRow"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
-theme_type_variation = &"DangerButton"
-text = "RESET ALL TO DEFAULT"
+size_flags_horizontal = 3
+theme_type_variation = &"WoodDangerButton"
+text = "RESET ALL"
 
-[node name="BackButton" type="Button" parent="Layout/ButtonRow"]
+[node name="BackButton" type="Button" parent="Card/Margin/Layout/ButtonRow"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
-theme_type_variation = &"PrimaryButton"
+size_flags_horizontal = 3
+theme_type_variation = &"WoodPrimaryButton"
 text = "◀  BACK"
-
-[node name="FoldCorner" type="Control" parent="."]
-layout_mode = 1
-anchor_left = 1.0
-anchor_top = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = -16.0
-offset_top = -16.0
-custom_minimum_size = Vector2(16, 16)
-mouse_filter = 2
-material = SubResource("ShaderMaterial_fold")
