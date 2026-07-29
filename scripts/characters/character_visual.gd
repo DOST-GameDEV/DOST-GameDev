@@ -978,10 +978,32 @@ func _spin_while_airborne(delta: float) -> void:
 	if carriable.state != Carriable.CarryState.FLYING:
 		# Land flat. Not an else-branch on a tween: a slipper that stops spinning
 		# mid-tumble and freezes at 37° looks like a physics bug.
-		if rotation.x != 0.0:
-			rotation.x = 0.0
+		if rotation != Vector3.ZERO:
+			rotation = Vector3.ZERO
 		return
+	# ⚠️ TWO AXES, NOT ONE, AND THAT IS THE WHOLE POINT. This used to advance
+	# `rotation.x` alone, which rotates the slipper about a single axis — from
+	# the side that reads as a sole turning in place, and it is what made the
+	# throw look "perfectly flat" however fast the number was cranked. A real
+	# thrown tsinelas also flips END OVER END, and it is the combination of the
+	# two that the eye reads as tumbling.
+	#
+	# ⚠️ WRITES ONLY .x AND .z. NOT `basis`, AND NOT .y. Two other things own
+	# rotation on this node and both would silently undo a wholesale basis
+	# write: `_process_remote_smoothing()` writes `rotation.y` and runs AFTER
+	# this in _process(), and `_refresh_downed_tilt()` tweens `rotation:z`.
+	# Assigning a full basis here (the tempting way to tumble about an arbitrary
+	# travel-relative axis) survives exactly until either of those touches a
+	# single Euler component, which re-derives the whole rotation and throws the
+	# off-axis part away. Staying inside the two components this function
+	# already owned keeps the existing division of labour intact.
+	#
+	# `_refresh_downed_tilt()` is the one that also writes .z, but it is
+	# signal-driven off a Downed transition and a slipper in mid-air is not
+	# changing Downed state, so the two never write in the same frame. The
+	# landing branch above zeroes all three regardless.
 	rotation.x += deg_to_rad(carriable.spin_speed_deg()) * delta
+	rotation.z += deg_to_rad(carriable.tumble_speed_deg()) * delta
 
 ## Whether this Person currently has something in their hand. Asked of the
 ## Carrier component (the holder's side), not of Carriable (the held thing's

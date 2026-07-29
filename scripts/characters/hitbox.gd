@@ -21,6 +21,13 @@ class_name Hitbox
 ## whatever duration that ability defines instead.
 @export var requires_bump_window: bool = true
 
+## Melee shove, in metres/second, for a hitbox with no ThrowProfile behind it —
+## a body-check or an ability pulse. A thrown slipper never uses these; it
+## answers with its own profile instead (see _impulse_for).
+const MELEE_KNOCKBACK: float = 3.4
+const MELEE_KNOCKBACK_LIFT: float = 1.6
+const MELEE_FACESLOP_MULTIPLIER: float = 1.8
+
 signal landed_on(target: CharacterBase)
 
 func _ready() -> void:
@@ -60,6 +67,18 @@ func _on_area_entered(area: Area3D) -> void:
 	if NetworkManager.is_networked() and not NetworkManager.is_host():
 		return
 
+	# ⚠️ ONE HIT PER OFFENSIVE EVENT, PER TARGET. Deliberately AFTER the host
+	# gate above — the memory is only ever consulted where hits are actually
+	# resolved, so a client never populates one and the two can never disagree.
+	#
+	# Deliberately asked of the OWNER CHARACTER, not kept in this Area3D: a
+	# thrown slipper carries two live hitboxes at once (this scene's melee one
+	# plus Carriable's per-throw pulse one) and they must share one memory, or
+	# a single clean frame of contact still resolves twice. See
+	# CharacterBase._hit_memory for the measured numbers this fixes.
+	if owner_character != null and not owner_character.register_hit_once(target):
+		return
+
 	# Session 7: this is generic to ANY hitbox/hurtbox pair — Person-vs-Person,
 	# Person-vs-Prop, or Prop-vs-Prop all resolve through the same stagger/
 	# downed/seal machinery below. Only round_manager.gd's tracked-Cans list
@@ -93,15 +112,27 @@ func _on_area_entered(area: Area3D) -> void:
 	# CharacterBase._flash_hit).
 	var sfx: String = (area as Hurtbox).impact_sfx(kind, requires_bump_window)
 
+	# THE FACESLOP. Same contract as `sfx` directly above, and deliberately
+	# right next to it: this file computes the impulse from the STRIKER's own
+	# motion, then asks the HURTBOX how much of it this particular body takes
+	# (hurtbox.gd::absorb_knockback). Neither side knows the other's rule.
+	#
+	# `kind` is already resolved above, so a hit that actually knocks the target
+	# down gets the profile's faceslop multiplier and a hit that merely staggers
+	# does not — the difference between a comedy launch and a nudge.
+	var knockback: Vector3 = (area as Hurtbox).absorb_knockback(
+		_impulse_for(kind == "downed" or kind == "seal"))
+
 	if NetworkManager.is_networked():
-		target._apply_hit_result.rpc_id(target.get_multiplayer_authority(), kind, stagger_duration)
+		target._apply_hit_result.rpc_id(
+			target.get_multiplayer_authority(), kind, stagger_duration, knockback)
 		# B-66/Q-8: unlike _apply_hit_result above (targeted at the struck
 		# character's own owning peer only), this broadcasts to every peer —
 		# otherwise nobody except the struck player ever sees the flash/shake/
 		# particles land.
 		target._rpc_play_hit_vfx.rpc(sfx)
 	else:
-		target._apply_hit_result(kind, stagger_duration)
+		target._apply_hit_result(kind, stagger_duration, knockback)
 		target._rpc_play_hit_vfx(sfx)
 	landed_on.emit(target)
 
@@ -119,3 +150,32 @@ func _on_area_entered(area: Area3D) -> void:
 	if owner_character and owner_character.is_person and owner_character.team_is_can_side \
 			and target.is_person and not target.team_is_can_side:
 		RoundManager.report_round_win(true) # Cans win the round
+
+## The raw impulse this hitbox should impart, before the struck object's own
+## resistance. Two sources, in priority order:
+##
+##   1. A slipper in flight answers for itself (carriable.gd::knockback_impulse)
+##      — its ThrowProfile owns how heavy that particular slipper hits.
+##   2. Anything else is a melee contact: a body-check or an ability pulse. The
+##      shove comes from the striker's own travel, so walking into someone barely
+##      moves them and charging into them does not. Falls back to the striker's
+##      facing when they are standing still, since a stationary bump still has to
+##      push somewhere and pushing nowhere reads as the hit not landing.
+func _impulse_for(force_downed: bool) -> Vector3:
+	if owner_character == null or not is_instance_valid(owner_character):
+		return Vector3.ZERO
+	var carriable := owner_character.get_node_or_null("Carriable") as Carriable
+	if carriable != null:
+		var thrown := carriable.knockback_impulse(force_downed)
+		if not thrown.is_zero_approx():
+			return thrown
+	var travel := owner_character.velocity
+	travel.y = 0.0
+	var direction := travel.normalized() if travel.length() > 0.5 \
+		else -owner_character.global_transform.basis.z
+	direction.y = 0.0
+	if direction.length() < 0.01:
+		return Vector3.ZERO
+	var strength := MELEE_KNOCKBACK * (MELEE_FACESLOP_MULTIPLIER if force_downed else 1.0)
+	return direction.normalized() * strength + Vector3.UP * (MELEE_KNOCKBACK_LIFT
+		* (MELEE_FACESLOP_MULTIPLIER if force_downed else 1.0))

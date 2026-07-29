@@ -893,6 +893,11 @@ touch map scenes.
       profile of the four, now by identity (heavy, close-range) rather than by being broken. Not
       yet felt in play — nothing has selected it since B-76 (`PROP_ABILITY` is `quick_stand.tres`
       for every Prop); that unlock is 3.3's job, and whether 87% charge feels right is 4.4's.
+      **Superseded 2026-07-29 by the game-feel pass (4.4d below), which re-tuned every profile.**
+      Bakya is now `launch_speed 19.0` / `arc 12.0` / `gravity_scale 1.35` — max range **8.05**,
+      ~86% charge for the 6.0 line, i.e. deliberately the same reachability this entry settled on.
+      The first attempt at that pass had it at 6.77 / ~94%, which would have quietly re-broken
+      exactly what this entry fixed; caught by re-deriving the range instead of trusting the edit.
 - [x] **4.4b · Option A's ring-out win condition was missing entirely.** 🔧 Build — **fixed
       2026-07-28, verified by parse + a 400-frame soak**
       `Dev_Plan.md` §3: "Cans win by the timer running out, OR by knocking Slippers out of bounds a
@@ -904,6 +909,151 @@ touch map scenes.
       `RING_OUT_LIMIT = 3`), called from `main.gd`'s existing KillPlane handler. **Not verified by
       play:** whether 3 is the right number. Same tuning-window caveat as everything else in this
       phase.
+- [x] **4.4c · B-126 · A THROWN SLIPPER RE-RESOLVED THE SAME HIT EVERY PHYSICS FRAME.** 🔧 Build —
+      **fixed 2026-07-29, measured before and after with `tools/phys_probe.gd`**
+      Reported as "the hit animation triggers repeatedly and severely lags the game". Measured, 12
+      throws per row:
+
+      | aimed at | worst single throw, before | after |
+      |---|---|---|
+      | `target=can`   | 1 resolution   | 1 |
+      | `target=taya`  | **35** resolutions (344 total) | 1 (11 total) |
+      | `target=graze` | **59** resolutions | 1 |
+
+      Every duplicate re-ran a full state transition, a VFX flash, a **global `Engine.time_scale`
+      hitstop** (4.5) and a positional sound — that is the lag, and the hitstop dip is why it hurt
+      the whole frame and not just the struck unit. Two independent causes, which is why the fix is
+      not where you would first look:
+      **(a)** `carriable.gd::_step_flying()` calls `sweep_hitbox()` every physics frame, and
+      `sweep_overlaps()` re-runs resolution for everything already inside — a hurtbox overlapped for
+      35 frames resolved 35 times. **(b)** a thrown slipper carries **two** live hitboxes at once
+      (`CharacterBase.tscn`'s own melee one, live for the whole flight per `is_hitbox_active()`,
+      plus the per-profile pulse one from `_spawn_flight_hitbox()`), so even one clean frame
+      resolved **twice**.
+      Fixed with a hit memory on `CharacterBase` (`register_hit_once()` / `clear_hit_memory()`),
+      **not** inside `hitbox.gd` — per-Hitbox memory could never have caught (b), since the two
+      areas are different nodes. `carriable.gd` clears it on every carry transition (thrown, caught,
+      come to rest, round reset), which is what makes the rule "once per throw" rather than
+      "once, ever". Connection rate is unchanged (11/12 before and after), so detection is intact.
+      ⚠️ **Aiming at the can is why this survived so long**: a square hit on a body ends the flight
+      via `move_and_collide` the same frame, which hides the window entirely. The bug only shows
+      against a Person, and worst on a graze that never touches a body at all.
+- [x] **4.4d · Throw weight and the faceslop.** 🔧 Build — **2026-07-29, numbers measured with
+      `tools/phys_probe.gd`; how it FEELS is unverified and is still 4.4's job**
+      "The current throw feels weak and floaty." All four profiles re-tuned faster *and* heavier
+      (higher `launch_speed`, higher `gravity_scale`) so the arc is decisive rather than lazy;
+      ranges re-derived to guarantee every profile still reaches the 6.0 throwing line (see 4.4a).
+      `ThrowProfile` gains `mass`, `knockback_scale`, `knockback_lift`, `faceslop_multiplier` and
+      `tumble_speed_deg`.
+      ⚠️ **`mass` is not a RigidBody mass and there is no RigidBody here** — a slipper is a
+      `CharacterBody3D` integrated by hand in `_step_flying()`, so Godot never uses a mass and
+      setting one would do nothing. It is the knockback coefficient, and it is what differentiates
+      the profiles (`knockback_scale` is deliberately the same 0.35 on all four).
+      **Knockback path:** `hitbox.gd` computes the impulse from the striker's own motion →
+      `hurtbox.gd::absorb_knockback()` decides how much this particular body takes (same ownership
+      rule `impact_sfx()` already established: the struck object owns the answer) →
+      `CharacterBase.apply_knockback()` writes `velocity`. Measured on a struck Person, against a
+      control of its own pre-hit speed: **+6.8 m/s** horizontal from the lightest profile, up to a
+      capped 16.0 for a downing hit from the heaviest.
+      ⚠️ **There is no ragdoll and this is not one.** DOWNED is a state on the existing machine;
+      "physically knocked backward" means the impulse goes into `velocity` and the ordinary
+      `move_and_slide`/gravity path carries it. A second physics path would have to re-implement
+      confinement, the floor check and the round freeze.
+      Knockback is clamped (`MAX_KNOCKBACK_SPEED` 16.0, `MAX_KNOCKBACK_LIFT` 7.0) — anchored just
+      above `DASH_SPEED` 14.0 and `JUMP_VELOCITY` 5.8, because the impulse is the product of four
+      independently-tunable fields and it is easy to pick four innocuous numbers that launch a
+      player out of the arena.
+      The in-flight tumble now advances **two** axes (`spin_speed_deg` about the slipper's own long
+      axis, `tumble_speed_deg` end-over-end); one axis alone was what read as "flying perfectly
+      flat" however fast it was cranked. ⚠️ It writes `rotation.x`/`.z` only, never `basis` or `.y`
+      — `_process_remote_smoothing()` writes `.y` *after* it in `_process()` and would silently
+      undo a full-basis write.
+- [x] **4.4e · B-127 · THE THROW'S ARC TILT WAS INVERTED — every throw left the hand BELOW the
+      crosshair.** 🔧 Build — **fixed 2026-07-29, measured against the expression as it stood**
+      Reported twice, both times as a feel problem rather than a bug: "barely has power even during
+      full windup", then "the height when you throw it is still too low".
+      `carriable.gd::host_throw()` has always been documented as "tilt the aim **upward** by the
+      profile's arc" and did the exact opposite. For a forward aim of `(0,0,-1)`,
+      `horizontal.cross(UP)` is `(+1,0,0)`, and rotating about `+X` by a **negative** angle drives
+      `y` negative. Measured:
+
+      | crosshair pitch | launch pitch, before |
+      |---|---|
+      | level | **-14°** |
+      | +20° | +6° |
+      | -20° | -34° |
+
+      So every throw left the hand a full `arc_angle_deg` under where the player was pointing — 28°
+      low for Bagsak, whose entire identity is the lob. It went unnoticed because the arc error and
+      the gravity drop compound in the same direction, so it never read as "aiming is wrong", only
+      as "the throw is weak".
+      Sign corrected, **and `arc_angle_deg` is now 0.0 on all four profiles** per the request that
+      the launch be aligned with the crosshair — any non-zero arc, in either direction, is by
+      definition a hidden offset from it. The field is kept and now finally works in the direction
+      it claims, so a lob can be dialled back in deliberately.
+      ⚠️ **Consequence, stated because it changes how the game is aimed:** the player now owns the
+      arc. From the 6.0 throwing line at eye height 1.55, a level crosshair lands at **7.00 m**;
+      hitting the can wants roughly **-3.7°**, i.e. still visibly *above* the can itself, since
+      aiming straight at it (-12.9°) lands at 3.9 m. Bagsak no longer lobs on its own.
+      `tools/phys_probe.gd -- target=taya` went from 11/12 to **12/12** connections on the fix.
+- [x] **4.4f · B-128 · CHARACTERS COULD BE LAUNCHED ACROSS THE ARENA BETWEEN ROUNDS.** 🔧 Build —
+      **fixed 2026-07-29, A/B'd with the new `tools/round_probe.gd`**
+      Reported as "whenever a round ends, players get launched to multiple directions".
+      The between-rounds branch in `character_base.gd::_physics_process` froze *input* but not
+      *motion*: it decayed velocity by `FRICTION` and still called `_move_and_confine()`, so any
+      velocity already present — or written **during** the gap — kept being integrated.
+      ⚠️ **The reset itself was never the problem, and that is why this is easy to look for in the
+      wrong place.** Driving transitions with the AI disabled and no impulse reports a clean pass.
+      What breaks it is an impulse *arriving* in the gap, and there are two routine sources: the
+      round-winning **tag** applies knockback in the same frame it ends the round (hitbox.gd
+      resolves the hit before calling `report_round_win`), and networked, `_apply_hit_result` is an
+      `rpc_id` to the struck peer that can land frames after `_reset_world()` has already teleported
+      everyone home.
+      Fixed at both ends: `apply_knockback()` refuses to write velocity while the round is inactive,
+      and the gap is now a **hard freeze** — zero horizontal velocity and, once grounded, no
+      `move_and_slide()` at all, so there is no depenetration impulse and nothing for a stray write
+      to act on. Still falls if airborne, preserving the original "nobody floats" intent.
+      Measured, same probe, 6 transitions with a `(9,4,4)` impulse fired into each gap:
+      **before 10.63 m/s and 5.20 m of drift -> after 0.00 and 0.00.**
+- [x] **4.4g · B-129 · THE THROW STILL DID NOT GO WHERE THE CROSSHAIR POINTED.** 🔧 Build —
+      **fixed 2026-07-29, A/B'd with the new `tools/aim_probe.gd`**
+      The third report of the same symptom ("the height is still too low"), after 4.4e had already
+      corrected the inverted arc and zeroed it. ⚠️ **Aligning the launch DIRECTION with the crosshair
+      is not the same thing as the throw going where you point, and that is the whole lesson here.**
+      Two independent reasons, both measured from the 6.0 throwing line:
+      * the slipper leaves the **hand at y 0.89** while the camera eye is at **y 1.35**, so a
+        launch parallel to the look direction starts 0.46 m below the line the player is sighting
+        along and only diverges from there;
+      * gravity then bends it away from that line by an amount **that grows with range**, so the
+        crosshair and the landing point agree at exactly ONE distance. Measured: a target 7.04 m out
+        landed **1.70 m short**, one 3.38 m out landed **1.47 m long**.
+      Fixed by aiming at a **point** instead of along a bearing. `carrier.gd::_aim_point()`
+      raycasts from the camera to find what the crosshair is actually on, sends that point (a
+      networked signature change: `host_throw` and `_rpc_request_throw` take a target point now, not
+      a direction), and `carriable.gd::_solve_arc()` solves the standard ballistic launch angle that
+      passes through it — taking the **flat root**, so the throw stays direct and the solved angle
+      stays near where the player is already pointing. Out of range falls back to the plain bearing
+      and visibly drops short, deliberately *not* to a 45° max-range lob: aiming at a distant wall
+      firing a mortar straight up would be a far stranger thing to happen.
+      ⚠️ **The metric is closest approach to the aim point, not where it lands** — `MAX_BOUNCES`
+      lets a slipper skip once after first contact, so a perfectly aimed throw can rest a metre or
+      two past the target. A/B, same probe:
+
+      | camera pitch | aim point range | closest approach, before | after |
+      |---|---|---|---|
+      | +0° | 23.45 m | **12.25 m** | 0.18 m |
+      | −10° | 7.04 m | 0.77 m | 0.19 m |
+      | −20° | 3.38 m | 3.90 m | 0.31 m |
+      | −30° | 2.12 m | 2.67 m | 0.30 m |
+      | +10° | 23.45 m | 5.12 m | 0.20 m |
+
+      Every pitch missed before; every pitch now passes within the slipper's own `hit_radius`.
+      Knock-on: `phys_probe -- target=can` went from **2/12 to 9/12** connections against a Can that
+      actively dodges, and `target=taya` to 12/12.
+      Because the solve uses the profile's own effective gravity, a heavy Bakya picks a steeper
+      angle than a floaty Havaianas for the same target — the profiles differentiate the *flight*
+      without fighting the *aim*. `arc_angle_deg` survives as a deliberate offset on top of the
+      solve, 0.0 everywhere, for a profile that wants to lob above the crosshair on purpose.
 - [x] **4.5 · Hitstop.** 🤖 Sonnet, medium
       The one piece of the Q-8 hit-feedback set that never landed. Cheap, and it
       is what makes a landed hit feel like contact rather than a colour change.
