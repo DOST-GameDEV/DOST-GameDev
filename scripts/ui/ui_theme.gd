@@ -483,6 +483,13 @@ static func _register_menu_variations(theme: Theme) -> void:
 	for variation in ["WoodButton", "WoodPrimaryButton", "WoodDangerButton"]:
 		theme.set_type_variation(variation, "Button")
 
+	# A CheckBox on wood. Only the lettering needs saying — the tick itself is
+	# theme-independent and already reads at any background.
+	theme.set_type_variation("MenuCheckBox", "CheckBox")
+	for state in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
+		theme.set_color(state, "MenuCheckBox", CREAM)
+	theme.set_font_size("font_size", "MenuCheckBox", 21)
+
 	_style_wood_button(theme, "WoodButton", WOOD_DEEP, WOOD_MID, WOOD_DARK, CREAM, AMBER)
 	# The one action a screen wants you to take, in PLAY's green.
 	_style_wood_button(theme, "WoodPrimaryButton", MENU_GREEN, MENU_GREEN_LIT, WOOD_DARK, INK, INK)
