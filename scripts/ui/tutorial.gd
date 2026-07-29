@@ -77,13 +77,13 @@ const PAGES: Array[Dictionary] = [
 		"rows": [
 			["E", "Grab the tsinelas. As the taya, HOLD it beside your knocked-over lata to stand it back up — 1.5 seconds, and being tagged out of it cancels the whole thing with no partial credit."],
 			["Q  /  LEFT CLICK", "Special. With a tsinelas in hand, holding it charges the throw — 0.9 seconds to full power, and a tap still throws. Empty-handed it is your Person's Tag."],
-			["R", "Ready up, in the lobby."],
+			["R", "Ready up. Pressed in the match itself, at the start of a round — Single Player has no ready gate before it, and a multiplayer lobby uses a button."],
 			["ESC", "Pause."],
 		],
 	},
 	{
 		"title": "HOW YOU WIN",
-		"lede": "Two round-win modes. Pick one on the GAME screen before you start.",
+		"lede": "Two round-win modes. Pick one on the setup screen before you start — in multiplayer only the host picks, for everyone.",
 		"rows": [
 			["CAPTURE\nteam can", "Tag the attacking Person — the always-on Bump or the Tag ability, either one — and the round ends in your favour immediately. Or simply survive to the 90-second timer."],
 			["CAPTURE\nteam slipper", "Knock the lata down and stop it getting back up: a fall that goes unrecovered past its self-right window ends the round. Independently, knocking it down 5 times wins outright, whether or not the taya saved every one."],

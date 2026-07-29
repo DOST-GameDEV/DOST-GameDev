@@ -140,9 +140,11 @@ const PROP_SARSI_RED: Color = Color("d8221c")     ## the lata's sail and ball
 # is the opposite: cream and amber lettering on dark stained wood, with the
 # pennant buttons over a photographic backdrop. Those colours were real and
 # consistent long before this block; they were just retyped as raw literals into
-# `GameSetup.tscn`'s BackButton, its MAP:/MODE: captions, `MainMenu.tscn`'s
-# tagline and `Lobby.tscn`'s ready rows — a dozen `theme_override_*` entries that
-# the header of this file explicitly exists to abolish.
+# the old GAME and LOBBY screens' BackButtons, MAP:/MODE: captions and ready
+# rows, plus `MainMenu.tscn`'s tagline — a dozen `theme_override_*` entries that
+# the header of this file explicitly exists to abolish. Those two screens were
+# replaced by `MatchSetup.tscn` in the 10.5 front-end pass, which opts into the
+# variations below instead, so most of that band is gone from the scenes now.
 #
 # So they are named here and registered as type variations below. Nothing about
 # the look changed when they moved; the hexes are the ones already on screen.
