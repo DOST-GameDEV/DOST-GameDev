@@ -7,6 +7,15 @@ const SHOTS := [
 	["bp_corner_ne", Vector3(12.0, 1.6, -12.0), Vector3(60, 6, -60)],
 	["bp_corner_sw", Vector3(-12.0, 1.6, 12.0), Vector3(-60, 6, 60)],
 	["bp_eye", Vector3(0, 1.6, 11.0), Vector3(0, 1.4, -14.0)],
+	# The monument, from the attacker's own spawn (SpawnPoints/Spawn2 is at
+	# 0, y, 6) at FPP eye height. ⚠️ THIS SHOT EXISTS BECAUSE THE OTHER FOUR
+	# CANNOT SEE THE THING THE MAP WAS REDRESSED FOR. The brief was "make it
+	# seen and we're playing near it", and bp_eye looks straight down the long
+	# axis with the monument off-frame to the left — so the map could have
+	# shipped with the centrepiece invisible from every shot in the probe and
+	# every shot would still have looked fine. Aimed from where a player
+	# actually stands, not from a vantage chosen to flatter it.
+	["bp_monument", Vector3(0, 1.25, 6.0), Vector3(-7.6, 2.2, 6.4)],
 ]
 var _out := ""
 var _cam: Camera3D

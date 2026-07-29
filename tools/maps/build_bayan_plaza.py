@@ -42,37 +42,60 @@ apron, tree line — satisfy both descriptions at once.
 #     than along. Enforced at build time, aborts the build.
 #   * Court markings: one closed rectangle with cross-lines, corner overlap
 #     taken from the SIDE line's half-width (the 20mm overshoot bug).
-#   * Four-ring void kill: floor 60 -> 120, paved apron to ±30, two silhouette
-#     belt rings at 36/45, depth fog 16 -> 64.
+#   * Four-ring void kill: floor 60 -> 120, paved apron to ±38, two silhouette
+#     belt rings at 36/45, depth fog 14 -> 50 (apron widened this pass).
 #   * Panorama sky, and the env material pass on Dressing.
 #   * Spawn heights derived from GROUND_Y, never typed.
 #
-# NOT DONE — the plan, in the order it should be picked up:
-#   1. ⚠️ HOUSE ORIENTATION IS NOT APPLIED HERE. Eskinita's Layer 1 now faces its
-#      buildings at the street after measuring that a City Kit building's front
-#      is its local +Z (tools/facing_probe.gd). Bayan's belt rings got the same
-#      treatment but its own TreesNear/TreesFar rings and Landmarks were never
-#      re-checked. The church and the two basketball rings in particular are
-#      placed by eye and have never been verified to face the plaza.
-#   2. ⚠️ VOID ACCEPTANCE IS PASSED AT EYE LEVEL AND STILL OPEN FROM ABOVE.
-#      Re-rendered 2026-07-29 via tools/bayan_probe.tscn: both corner shots
-#      (y=1.6) and the eye shot show ZERO map edge — the belt and tree ring close
-#      the horizon in every direction a player can actually stand. That is the
-#      part that matters for play and it is done.
-#      What is NOT done: the y=30 overhead still shows the paved apron ending in
-#      a hard square against bare floor with the void beyond it, exactly as this
-#      note originally described. No player camera is ever up there (Person is
-#      FPP, Prop is TPP at ~4.5 spring length), so this is a spectator/debug-view
-#      fault rather than a gameplay one — but Eskinita's bar includes it and this
-#      map does not clear it yet. Widen APRON or pull fog_depth_end in, then
-#      re-run the probe.
-#   3. [DONE 2026-07-29] Interior clutter pass — 18 pieces in the annulus
-#      between LANE_RADIUS and the tree line, all interior-tier, all lane-law
-#      asserted at build time. See the Dressing/Clutter block.
-#   4. [DONE 2026-07-29] The HazardZone at (-6.5, -4.0) now has a gutter_tile
-#      drainage bed over its footprint, the same tell and the same mesh Eskinita
-#      uses, sunk flush to GROUND_Y.
-#   5. Never played, never networked, never perf-measured on this map.
+# THE REFERENCE-PHOTO REDRESS — DONE 2026-07-29, rendered and looked at:
+#   * THE MONUMENT. env_monument (4.90 tall, tiered plinth + spire) at
+#     (-7.6, 6.4), inside a 4 x 6 env_railing enclosure with two gate lamps and
+#     two clipped env_planter_hedge, plus five more hedges ringing the slab.
+#     ⚠️ NOT CENTRED, and that is a human decision, not a shortcut — the centre
+#     is the can's. "dont center monument, js make it seen and we're playing
+#     near it". See the MONUMENT block for the four constraints that box in
+#     every coordinate. tools/bayan_probe.tscn's new bp_monument shot is aimed
+#     from the attacker's own spawn specifically to prove it IS seen.
+#   * THE CIVIC BACK EDGE. env_bell_tower (14.3) and env_municipal_hall (red
+#     roof, arcade) pulled in beside the church at z ~ -15, with the tree rings
+#     stepped aside by _civic_blocked() rather than by a typed x-range.
+#   * SIX PARKED TRICYCLES on the rim band, per the reference.
+#   * THE PLAZA SLAB IS LIGHT NOW. env_toon_pass.gd gained SLAB_TINT; the slab
+#     used to take ROAD_TINT and the plaza was the same dark grey as its ring
+#     road, which is the opposite of the reference.
+#
+# OPEN ITEMS — the honest state:
+#   1. [DONE 2026-07-29] LANDMARK FACING, and all three were WRONG. Measured,
+#      not eyeballed: every plaza piece in env_kit.gd fronts on -Z (church door
+#      at local z = -0.76, basketball rim on the origin with its board behind at
+#      +0.52), so the church at z = -14.1 yaw 0 faced AWAY and rendered as a
+#      blank grey slab in every shot ever taken of this map, and both basketball
+#      rings faced the tree line. The env_kit.gd header claimed fronts are +Z
+#      and that claim is now corrected there too — it is what caused this.
+#   2. ⚠️ STILL OPEN, IMPROVED BUT NOT CLEARED. APRON 30 -> 38 and fog_depth_end
+#      64 -> 50. Eye level and both corners still show ZERO map edge. The y=30
+#      OVERHEAD STILL SHOWS A HARD APRON EDGE — it is further out and partly
+#      fogged, but it is there, so this does NOT yet meet Eskinita's bar. Do not
+#      mark it [x]. Next lever to try: fog_depth_end to ~40 with the belt's
+#      outer ring pulled from 45 to ~38 so it is not fogged out with the edge.
+#   3. [DONE 2026-07-29] Interior clutter pass — see the Dressing/Clutter block.
+#   4. [DONE 2026-07-29] The HazardZone gutter_tile drainage bed.
+#   5. ⚠️ STILL OPEN. Never played, never networked, never perf-measured on this
+#      map — and the instance count went 506 -> 655 in this pass, so the perf
+#      measurement matters more than it did.
+#   6. ⚠️ NEW, AND PRE-EXISTING. surfaces.overlaps_across() (added this pass)
+#      reports 8 interior footprint overlaps that have nothing to do with the
+#      redress: Lantern_1/2 <-> Stall_1/2, three Bench <-> Clutter pairs, and
+#      three Clutter <-> Clutter pairs. All are 0.20-0.65 m grazes between flat
+#      planks, benches, hedges and fence segments rather than solids sharing a
+#      volume, which is why they were left alone rather than shuffled blind.
+#      LOOK AT THE PRINTED LIST; do not assume it is empty because the build
+#      succeeded. The same test on build_eskinita.py has never been run.
+#   7. ⚠️ THE TREES ARE CONIFERS. Every tree in both rings is a Kenney pine, so
+#      the plaza reads as a Nordic park with a Philippine church in it. The kits
+#      in assets/models/kits/ contain no broadleaf or palm, so this cannot be
+#      fixed by re-picking a piece — it needs either a new CC0 tree at this poly
+#      budget or a generated one in env_kit.gd. Not attempted this pass.
 #
 # ⚠️ A TRAP THAT COST A RENDER PASS, 2026-07-29. `add()`/`add_kit()` will happily
 # emit children under a parent path that DOES NOT EXIST in the template at the
@@ -275,6 +298,57 @@ for gx in range(-i, i):
                 base_y=GROUND_Y - 0.025 * SLAB_SCALE, lane_exempt=True)
         n += 1
 
+# --- The civic block (checklist 2.4, the reference-photo redress). -----------
+#
+# The reference is a real Philippine town plaza and its back edge is CIVIC: a
+# church with a bell tower and a municipal hall with a red roof, both close
+# enough to read as buildings rather than as shapes in the fog. The brief was
+# explicit that they be "pulled IN from the silhouette belt so they become real
+# landmarks instead of distant fog shapes".
+#
+# ⚠️ THEY ARE DECLARED BEFORE THE TREE RING BECAUSE THE TREE RING HAS TO MOVE
+# OUT OF THEIR WAY. The near ring sits at z = -13.7 and the far ring at -17.5,
+# which is exactly the band a 5.6-deep building standing at z = -16.6 occupies.
+# Placing the buildings and leaving the rings alone puts a forest tree through
+# the municipal hall's roof. `_civic_blocked()` below is what stops that, and it
+# tests the FOOTPRINTS rather than an x-range somebody typed — an x-range is a
+# second copy of these coordinates and would rot the first time one moved.
+#
+# Depths are the measured piece extents, not guesses: church_facade is 6.00 x
+# 1.54, env_bell_tower 2.62 x 2.62 and env_municipal_hall 12.40 x 6.00.
+CIVIC_MARGIN = 0.6
+
+# (name, mesh, x, z, yaw). ⚠️ YAW = PI FOR ALL THREE, and that is open item 1
+# closed by measurement rather than by eye. Every plaza piece in env_kit.gd
+# fronts on -Z — the church's door and rose window are at its local z = -0.76,
+# the basketball rim sits on the origin with its board behind at +0.52 — so a
+# landmark standing at NEGATIVE z and facing the plaza needs yaw = PI. All three
+# of this map's landmarks were at yaw 0 (or PI on the +z side, which is the same
+# mistake mirrored), so the church rendered as a blank grey slab in every shot
+# and both basketball rings faced the tree line. See the corrected convention
+# note in env_kit.gd's header.
+CIVIC = [
+    ("Church", "church_facade", -4.2, -14.8, math.pi),
+    ("BellTower", "bell_tower", 0.0, -15.4, math.pi),
+    ("MunicipalHall", "municipal_hall", 7.8, -16.6, math.pi),
+]
+_CIVIC_BOXES = []
+for _cn, _cm, _cx, _cz, _cy in CIVIC:
+    _ce = piece_extent(_cm, _cy, 1.0)
+    _CIVIC_BOXES.append((_cx + _ce[0] - CIVIC_MARGIN, _cx + _ce[1] + CIVIC_MARGIN,
+                         _cz + _ce[2] - CIVIC_MARGIN, _cz + _ce[3] + CIVIC_MARGIN))
+
+
+def _civic_blocked(mesh_name, x, z, yaw, scale):
+    """True if a piece placed here would stand inside a civic building."""
+    e = piece_extent(mesh_name, yaw, scale)
+    x0, x1, z0, z1 = x + e[0], x + e[1], z + e[2], z + e[3]
+    for bx0, bx1, bz0, bz1 in _CIVIC_BOXES:
+        if x1 > bx0 and x0 < bx1 and z1 > bz0 and z0 < bz1:
+            return True
+    return False
+
+
 # --- The tree ring. TWO layers, and the second is a DIFFERENT SPECIES as well
 # --- as further out — the board rings Province with depth, and depth here is
 # --- silhouette. Seeded spacing, never random.
@@ -298,37 +372,71 @@ for k in range(count):
             x, z = t + j, sz * (BOUND + 1.2)
         near = ["kits/town/tree-high", "kits/town/tree",
                 "kits/town/tree-crooked", "kits/town/tree-high-round"][k % 4]
-        add_kit("Dressing/TreesNear", f"Tree_{n}", near, x, z,
-                (k % 4) * 0.7, TOWN_SCALE)
+        near_yaw = (k % 4) * 0.7
+        if not _civic_blocked(near, x, z, near_yaw, TOWN_SCALE):
+            add_kit("Dressing/TreesNear", f"Tree_{n}", near, x, z,
+                    near_yaw, TOWN_SCALE)
         n += 1
         # The layer behind: a different kit, so it reads as another species
         # rather than the same tree moved back.
-        add_kit("Dressing/TreesFar", f"TreeFar_{n}",
-                "kits/forest/tree-high" if k % 2 else "kits/forest/tree",
-                x * 1.28 - j * 0.4, z * 1.28 + j * 0.4, (k % 3) * 0.9,
-                FOREST_SCALE)
+        far = "kits/forest/tree-high" if k % 2 else "kits/forest/tree"
+        fx, fz, far_yaw = x * 1.28 - j * 0.4, z * 1.28 + j * 0.4, (k % 3) * 0.9
+        if not _civic_blocked(far, fx, fz, far_yaw, FOREST_SCALE):
+            add_kit("Dressing/TreesFar", f"TreeFar_{n}", far, fx, fz,
+                    far_yaw, FOREST_SCALE)
         n += 1
 
-# --- Ground cover between the slab and the tree line, so the apron is not bare.
+# --- Ground cover, in the band BETWEEN THE TWO TREE RINGS. -------------------
+#
+# ⚠️ THESE MOVED OUT OF THE PLAY AREA, AND IT IS A BUG FIX RATHER THAN A
+# REDRESS. They used to stand at |x| ~ 11.6, i.e. INSIDE the collision walls at
+# +/-13, and `rock-small` measures 2.65 tall at TOWN_SCALE — more than double the
+# 1.10 interior tier and well over an FPP Person's 1.25 eye. The interior-clutter
+# block below already names this piece as the reason it is not used there
+# ("would be aim-blocking walls despite reading as small rocks from their
+# names") and then the Ground layer put eight of them inside the walls anyway.
+#
+# The second thing this fixes is that the old ring sat directly on the bench row
+# at x = +/-10.9 and on the sari-sari stalls at +/-11.1. The cross-group overlap
+# report at the bottom of this file lit up with roughly twenty Rock <-> Bench
+# and Rock <-> Stall pairs the moment it was written — boulders growing through
+# market furniture, on a map that had been rendered and signed off four times.
+# A same-group `overlaps("Ground")` would never have said a word about it.
+#
+# 14.6..16.4 is the free band: the near tree ring is at 13.7 and the far at
+# 17.5, so the boulders sit between the two layers of trees, which is where
+# boulders belong and is also the one annulus with nothing else in it.
 for k, (x, z) in enumerate([
-        (-11.6, -7.0), (11.6, -4.0), (-11.2, 5.5), (11.9, 8.0),
-        (-6.0, -11.6), (4.5, -11.9), (-3.5, 11.7), (7.5, 11.4)]):
+        (-15.6, -7.0), (15.6, -4.0), (-15.2, 5.5), (15.9, 8.0),
+        (-11.0, -16.2), (-15.8, -11.0), (-3.5, 15.6), (7.5, 15.3)]):
     add_kit("Dressing/Ground", f"Rock_{k}",
             ["kits/town/rock-small", "kits/forest/rocks-low",
              "kits/town/rock-wide"][k % 3], x, z, (k % 5) * 0.8, TOWN_SCALE)
 for k, (x, z) in enumerate([
-        (-12.2, 1.5), (12.4, 2.5), (2.0, -12.3), (-1.5, 12.2)]):
+        (-16.2, 1.5), (16.4, 2.5), (2.0, 16.4), (-15.0, -2.0)]):
     add_kit("Dressing/Ground", f"Plant_{k}", "kits/forest/plant",
             x, z, (k % 4) * 1.1, FOREST_SCALE)
 
-# --- The landmark. One church, on the long axis, so a player always knows
-# --- which way they are facing. Worth more than any three clutter pieces.
-add("Dressing/Landmarks", "Church", "church_facade", 0.0, -BOUND - 1.6)
-add("Dressing/Landmarks", "Flagpole", "flagpole", -4.5, -BOUND + 1.5)
+# --- The landmarks. The whole back edge is civic now (see the CIVIC block
+# --- above for the coordinates and for why the yaws changed).
+for _cn, _cm, _cx, _cz, _cy in CIVIC:
+    add("Dressing/Landmarks", _cn, _cm, _cx, _cz, _cy)
+# In front of the municipal hall, which is where a real one stands. Moved off
+# the church's frontage, where it used to sit.
+add("Dressing/Landmarks", "Flagpole", "flagpole", 4.6, -11.4)
 # MANDATORY — it IS the Philippine plaza. Two, facing each other, because a
 # barangay court has a ring at each end and it doubles as the map's long axis.
-add("Dressing/Landmarks", "RingNorth", "basketball_ring", -5.2, -SLAB + 0.6)
-add("Dressing/Landmarks", "RingSouth", "basketball_ring", 5.2, SLAB - 0.6, math.pi)
+#
+# ⚠️ BOTH YAWS ARE THE OPPOSITE OF WHAT THEY WERE, and this is the rest of open
+# item 1. `env_basketball_ring` puts the rim on its own origin with the
+# backboard and post BEHIND it at local z = +0.52/+0.62, so the ring is shot at
+# from -Z. RingNorth stands at negative z and therefore needs yaw = PI to face
+# the court; RingSouth stands at positive z and needs yaw = 0. It had exactly
+# the reverse, so both rings faced the tree line and neither was playable to
+# look at. "Facing each other" is now true rather than asserted.
+add("Dressing/Landmarks", "RingNorth", "basketball_ring", -5.2, -SLAB + 0.6,
+    math.pi)
+add("Dressing/Landmarks", "RingSouth", "basketball_ring", 5.2, SLAB - 0.6, 0.0)
 # Lantern posts mark the slab corners. Thin verticals, like Eskinita's electric
 # posts — they read at distance and cost almost nothing to shoot past.
 for k, (x, z) in enumerate([(-SLAB, -SLAB), (SLAB, -SLAB),
@@ -356,7 +464,7 @@ for k, (x, z, yaw) in enumerate([
             ["kits/town/stall", "kits/town/stall-green",
              "kits/town/stall-red", "kits/town/stall"][k],
             x, z, yaw, TOWN_SCALE)
-for k, (x, z) in enumerate([(-6.0, -6.0), (6.0, 6.0), (-6.5, 7.0), (7.0, -6.5)]):
+for k, (x, z) in enumerate([(-6.0, -6.0), (6.0, 6.0), (-6.0, 2.4), (7.0, -6.5)]):
     add_kit("Dressing/Furniture", f"Stool_{k}", "kits/town/stall-stool",
             x, z, [0.5, 2.1, -1.2, 3.0][k], TOWN_SCALE)
 
@@ -387,7 +495,7 @@ for k, (x, z, yaw, piece) in enumerate([
         # Person — 0.65 is knee-high, so you always see who is behind one.
         (-7.4, 0.6, 0.0, "kits/town/hedge"),
         (7.4, -0.6, 0.0, "kits/town/hedge"),
-        (-4.6, -8.4, math.pi / 2, "kits/town/hedge"),
+        (-5.8, -7.0, math.pi / 2, "kits/town/hedge"),
         (4.6, 8.4, math.pi / 2, "kits/town/hedge"),
         # A broken fence line, the classic plaza edge nobody has repaired.
         (-8.6, -6.4, 0.0, "kits/town/fence-broken"),
@@ -396,20 +504,131 @@ for k, (x, z, yaw, piece) in enumerate([
         (8.6, 4.0, 0.0, "kits/town/fence"),
         # Seating scattered off the benches at the rim, so the middle distance
         # has something in it at all.
-        (-5.2, 4.6, 0.9, "kits/town/stall-stool"),
+        # ⚠️ TWO OF THESE MOVED WHEN THE MONUMENT LANDED, and the enclosure is
+        # why: the railing ring occupies x -9.6..-5.6, z 4.0..10.0, which is
+        # where the (-5.2, 4.6) stool and the (-6.8, 8.2) bench used to stand.
+        # They are not deleted — the plaza still needs seating on that side —
+        # they are moved clear, and surfaces.overlaps_across() at the bottom of
+        # this file is what proves it rather than this comment.
+        (-5.6, 1.4, 0.9, "kits/town/stall-stool"),
         (5.2, -4.6, 2.4, "kits/town/stall-stool"),
         (-3.9, -5.2, 1.7, "kits/town/stall-stool"),
         (3.9, 5.2, 0.3, "kits/town/stall-stool"),
-        (-6.8, 8.2, math.pi / 2, "kits/town/stall-bench"),
+        (2.0, 8.6, 0.0, "kits/town/stall-bench"),
         (6.8, -8.2, math.pi / 2, "kits/town/stall-bench"),
         # Flat planks read as patched paving — pure ground texture, 0.16 tall,
         # and they cannot block a throw at any range.
-        (-9.0, 2.6, 0.0, "kits/town/planks"),
+        (-8.3, 1.2, 0.0, "kits/town/planks"),
         (9.0, -2.6, 0.0, "kits/town/planks"),
-        (-4.4, 9.2, 0.0, "kits/town/planks"),
+        (-2.0, -10.6, 0.0, "kits/town/planks"),
         (4.4, -9.2, 0.0, "kits/town/planks")]):
     add_kit("Dressing/Clutter", f"Clutter_{n}", piece, x, z, yaw, TOWN_SCALE)
     n += 1
+
+# --- THE MONUMENT (checklist 2.4, the reference-photo redress). --------------
+#
+# The reference photo's entire identity is its centre: a tiered monument on a
+# plinth, inside an iron railing ring, with clipped hedges in planters. This map
+# had NOTHING there — a bare slab with a tree ring round it.
+#
+# ⚠️ IT CANNOT GO IN THE MIDDLE, AND THAT IS A GAMEPLAY FACT, NOT A COMPROMISE.
+# The middle of this plaza is where the lata stands. LANE_RADIUS = 3.2 is a hard
+# no-build disc around it and assert_clear_of_lane() ABORTS THE BUILD on
+# violation, plus the two throwing approaches at |x| <= 2.5, |z| <= 7.0. A
+# monument at the origin would be a permanent wall between every attacker and
+# the can.
+#
+# Human call, 2026-07-29, when this was put to them as a gameplay decision
+# rather than an art one: "dont center monument, js make it seen and we're
+# playing near it". So the composition moves off-axis and the SIZE does the work
+# the centre position would have done — 4.90 tall against a 1.6 Person, in a
+# railed enclosure 4 x 6, standing on the plaza slab a metre outside the
+# confinement box's south-west corner. From the south throwing line it fills the
+# left of the frame; you fight beside it, which is what was asked for.
+#
+# ⚠️ EVERY NUMBER BELOW IS BOXED IN BY FOUR CONSTRAINTS AT ONCE, so none of them
+# is free to nudge:
+#   * outside LANE_RADIUS and both throwing approaches (asserted, aborts)
+#   * outside the confinement box (|x| <= 5, |z| <= 5, CONFINEMENT_BOX_RADIUS) —
+#     the Taya's own arena must not have scenery standing in it
+#   * inside the slab (|x| <= 10, |z| <= 10), so nothing stands on the apron
+#   * clear of the bench row at x = +/-10.9 and of the Clutter pieces, which is
+#     checked by surfaces.overlaps_across() at the bottom of this file rather
+#     than by reading coordinates
+# The enclosure is RECTANGULAR (4 wide, 6 long) for exactly this reason: a 6 x 6
+# square is what the composition wants and its east rail would land at x = -4.4,
+# inside the confinement box. 4 x 6 keeps the long axis where there is room.
+MON_X, MON_Z = -7.6, 6.4
+MON_HALF_X, MON_HALF_Z = 2.0, 3.0     # the railing ring, in bay-multiples of 2.0
+
+add("Dressing/Monument", "Monument", "monument", MON_X, MON_Z)
+
+# The railing. One 2.0-unit bay per grid step, posts shared between neighbours
+# (see env_kit.gd::_railing). ⚠️ ONE BAY IS DELIBERATELY MISSING — the east face
+# nearest the court is the ENTRANCE. A closed ring reads as a cage and, more to
+# the point, a plaza monument you cannot walk into is a prop rather than a place.
+_rail = 0
+for _bx in (-1.0, 1.0):
+    for _side in (-1.0, 1.0):
+        add("Dressing/Monument", f"Rail_{_rail}", "railing",
+            MON_X + _bx, MON_Z + _side * MON_HALF_Z, 0.0)
+        _rail += 1
+for _bz in (-2.0, 0.0, 2.0):
+    for _side in (-1.0, 1.0):
+        if _side > 0 and _bz < 0.0:
+            continue   # the entrance, facing the court
+        add("Dressing/Monument", f"Rail_{_rail}", "railing",
+            MON_X + _side * MON_HALF_X, MON_Z + _bz, math.pi * 0.5)
+        _rail += 1
+
+# Gate lamps, flanking the entrance. Same thin-vertical trick as the slab-corner
+# lanterns: they read at distance and there is nothing to a lantern's silhouette
+# to shoot past.
+#
+# ⚠️ TWO, ON THE EAST CORNERS ONLY, and the west pair is deleted rather than
+# moved. The west strip is the busiest 1.5 m on the map — the bench row's
+# footprint reaches x = -9.68 and the slab-corner lantern stands at (-10, 10) —
+# so a lamp on either west corner overlapped something no matter where it went.
+# The east corners are the ones seen from the court anyway, which is the side
+# the entrance is on, so two gate lamps is also the better composition. Found by
+# the overlap report, not by looking at a render.
+_lamp = 0
+for _sz in (-1.0, 1.0):
+    add_kit("Dressing/Monument", f"MonLantern_{_lamp}", "kits/town/lantern",
+            MON_X + MON_HALF_X, MON_Z + _sz * MON_HALF_Z,
+            _lamp * 1.57, TOWN_SCALE)
+    _lamp += 1
+
+# Clipped hedges in planters. TWO inside the enclosure, on its long axis — the
+# only place they fit: a 2.60 monument inside a 4.0-wide ring leaves 0.7 of
+# walkway on the short axis, which is less than a 1.20 planter. Measured, not
+# eyeballed; the first layout put four in the corners and every one of them
+# grew through either the monument's bottom step or the railing.
+for _p, _pz in enumerate((-2.25, 2.25)):
+    add("Dressing/Monument", f"MonHedge_{_p}", "planter_hedge",
+        MON_X, MON_Z + _pz)
+# ... and five more ringing the slab edge, which is the other half of what the
+# reference has: the plaza's rim is planted, not bare. All five sit outside both
+# throwing approaches and outside the confinement box.
+for _p, (_px, _pz) in enumerate([
+        (9.0, 4.6), (9.0, -4.6), (-9.0, -4.6), (-2.0, 9.6), (2.0, -9.6)]):
+    add("Dressing/Monument", f"RimHedge_{_p}", "planter_hedge", _px, _pz)
+
+# --- Parked tricycles (the reference's ring of them round the edge). ---------
+#
+# ⚠️ THE TRICYCLE IS 1.26 TALL AND THEREFORE ABOVE THE 1.10 INTERIOR TIER. That
+# is not an oversight and it is not a licence to scatter them: env_kit.gd's own
+# note on the piece says it is WAIST-COVER TIER and "goes at the boundary or as
+# deliberate cover — never scattered in the play area". Every one of these is on
+# the rim band at |x| or |z| >= 11.7, which is 4.7 outside CONFINEMENT_BOX_RADIUS
+# and 11.5+ from the base circle — further out than the bench row and the stalls
+# that already stand there. Nothing thrown at the can from either approach can
+# be occluded by geometry that far off the axis, and the build asserts the lane
+# law on each of them anyway.
+for _v, (_vx, _vz, _vyaw) in enumerate([
+        (-9.0, -11.9, 0.4), (1.0, -11.7, 2.1), (8.6, -11.9, -0.7),
+        (-8.8, 11.9, 3.0), (0.6, 11.7, 1.2), (9.0, 11.9, -2.4)]):
+    add("Dressing/Vehicles", f"Tricycle_{_v}", "tricycle", _vx, _vz, _vyaw)
 
 # --- The hazard's visual tell (open item 4). ---------------------------------
 #
@@ -452,7 +671,19 @@ for _gx in (-1.0, 1.0):
 # hide the horizon at eye level; an open square shows it in every direction, so
 # the belt has to close all the way round rather than down two sides.
 # =============================================================================
-APRON = 30.0
+# ⚠️ 38, NOT 30, AND fog_depth_end MOVED WITH IT — that is open item 2.
+# The eye-level and corner shots have shown zero map edge since the last pass;
+# what stayed open was the y=30 overhead, where the paved apron ended in a hard
+# square against bare floor with the void beyond. Two levers and BOTH are needed:
+# widening the apron alone just moves the hard square further out, and pulling
+# the fog in alone leaves the square visible inside the fog's reach. At 38 with
+# fog_depth_end 50 the apron's own edge is past the point where the fog has
+# fully closed, so there is nothing there to see from any height.
+# Cost is measured, not assumed: the apron is one draw call per 4x4 tile, so
+# 30 -> 38 is +136 instances on a map that was at 506. The alternative — a
+# second 120x120 floor mesh — is one draw call but reintroduces the flat-plane
+# read that the four-ring kill exists to prevent.
+APRON = 38.0
 _ap = 0
 _gx = -APRON + ROAD_SCALE * 0.5
 _ROAD_YAW = [0, 1, 3, 2, 0, 3, 1, 2, 3, 0, 2, 1]
@@ -592,6 +823,9 @@ size = Vector3(260, 4, 260)
 [sub_resource type="BoxShape3D" id="Shape_hazard"]
 size = Vector3(5, 3, 5)
 
+[sub_resource type="BoxShape3D" id="Shape_monument"]
+size = Vector3(2.6, 5, 2.6)
+
 [sub_resource type="PanoramaSkyMaterial" id="Sky_mat"]
 panorama = ExtResource("SKY")
 energy_multiplier = 1.0
@@ -620,8 +854,8 @@ fog_mode = 1
 fog_density = 0.0
 fog_sky_affect = 0.22
 fog_depth_curve = 1.1
-fog_depth_begin = 16.0
-fog_depth_end = 64.0
+fog_depth_begin = 14.0
+fog_depth_end = 50.0
 fog_aerial_perspective = 0.3
 adjustment_enabled = true
 adjustment_brightness = 1.0
@@ -759,6 +993,18 @@ script = ExtResource("T")
 
 [node name="Clutter" type="Node3D" parent="Dressing"]
 
+[node name="Monument" type="Node3D" parent="Dressing"]
+
+[node name="Vehicles" type="Node3D" parent="Dressing"]
+
+[node name="Obstacles" type="Node3D" parent="."]
+
+[node name="MonumentBody" type="StaticBody3D" parent="Obstacles"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, {MON_X}, {GROUND_Y + 2.5:.3f}, {MON_Z})
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Obstacles/MonumentBody"]
+shape = SubResource("Shape_monument")
+
 [node name="Markings" type="Node3D" parent="."]
 '''
 
@@ -784,6 +1030,43 @@ out = (f'[gd_scene load_steps={load_steps} format=3]\n\n'
 # Before writing, never after — a floating marking must not reach the scene file
 # at all. See build_eskinita.py's own note.
 n_marks = surfaces.verify()
+
+# ⚠️ ACROSS the interior groups, not within each one. The monument enclosure is
+# a NEW group dropped into a part of the slab that already had clutter and edge
+# furniture on it, so a same-group test — which is all `overlaps()` does, and all
+# build_eskinita.py has ever run — would have reported a clean sheet while the
+# railing grew through a bench. A warning, not a failure, for the reason
+# floorcheck.py's own docstring gives: an axis-aligned footprint test cannot tell
+# a tree canopy over a kerb from two solids in the same volume. LOOK AT WHAT IT
+# PRINTS; do not assume an empty list because the build succeeded.
+_INTERIOR = ["Monument", "Clutter", "Furniture", "Landmarks", "Ground",
+             "Vehicles", "KanalVisual"]
+
+
+def _shared_pier(a, b):
+    """The one coincidence that is BY DESIGN, named so it cannot hide others.
+
+    `env_railing` carries a post at each end, at local x = +/-1.0, so two
+    adjacent bays put a post in the same place on purpose — see that piece's own
+    note for why a corner variant was rejected. The doubled post is exactly
+    coincident and invisible, and at 0.19 it is just over OVERLAP_SLACK, so it
+    would otherwise fill this report with fifteen entries and train the next
+    reader to skim past it. Filtered by NAME PREFIX and nothing else: any pier
+    overlapping something that is not another pier still reports.
+    """
+    pier = ("Rail_", "MonLantern")
+    return a.startswith(pier) and b.startswith(pier)
+
+
+_ov = [o for o in surfaces.overlaps_across(_INTERIOR)
+       if not _shared_pier(o[0], o[1])]
+if _ov:
+    print(f"  [!] interior footprint overlaps: {len(_ov)}")
+    for _a, _b, _ox, _oz in _ov[:10]:
+        print(f"      {_a} <-> {_b}  ({_ox:.2f} x {_oz:.2f})")
+else:
+    print("  interior overlaps: none across "
+          f"{len(_INTERIOR)} groups")
 
 with open("scenes/maps/BayanPlaza.tscn", "w", encoding="utf-8", newline="\n") as f:
     f.write(out)

@@ -38,7 +38,7 @@ class_name EnvToonPass
 ## than deleted so the call sites keep their shape if outlines ever come back for
 ## a hero prop. The inverted hull was half the map's draw calls for a border
 ## nobody could see past ~10m.
-const NO_OUTLINE_GROUPS: Array[String] = ["Belt", "Road", "Slab", "Apron", "Layer1", "Layer2", "Layer3", "Clutter", "BayFill", "TreesNear", "TreesFar", "Ground", "Landmarks", "Furniture"]
+const NO_OUTLINE_GROUPS: Array[String] = ["Belt", "Road", "Slab", "Apron", "Layer1", "Layer2", "Layer3", "Clutter", "BayFill", "TreesNear", "TreesFar", "Ground", "Landmarks", "Furniture", "Monument", "Vehicles"]
 
 ## ⚠️ PAINT THE STREET. One kit atlas means one house, five hundred times.
 ##
@@ -99,6 +99,24 @@ const FOLIAGE_TINTS: Array[Color] = [
 ## second map purely because the node had a different name.
 const ROAD_GROUPS: Array[String] = ["Road", "Slab", "Apron"]
 const ROAD_TINT: Color = Color(0.66, 0.62, 0.55)
+
+## ⚠️ THE PLAZA SLAB IS PAVING, NOT ROAD, AND IT GETS ITS OWN TINT.
+##
+## `Slab` sat in ROAD_GROUPS and took ROAD_TINT with everything else, so Bayan
+## Plaza's centre and its ring road were the same dark warm grey wall to wall.
+## In the reference photo the plaza is the LIGHT thing — a pale concrete square
+## with darker street around it — and that contrast is most of what makes a
+## plaza read as a plaza from eye level rather than as a car park.
+##
+## Same lever and the same cost as ROAD_TINT (an albedo multiply on a stock
+## material — no new texture, no new material in the .tscn), and deliberately
+## still a desaturated warm neutral: the slab is the single largest surface in
+## the frame and Dev_Plan.md §4.2 rule 1 applies to it more than to anything
+## else on the map. Tested BEFORE ROAD_GROUPS below, so "Slab" wins over its
+## own ROAD_GROUPS membership rather than needing to be removed from it — the
+## periwinkle-texel correction ROAD_TINT exists for still has to apply here.
+const SLAB_GROUPS: Array[String] = ["Slab"]
+const SLAB_TINT: Color = Color(0.88, 0.85, 0.78)
 
 ## The silhouette belt is 30-45 m out and exists to be READ, not looked at.
 ## Pulling it toward the fog colour makes it recede properly instead of sitting
@@ -172,7 +190,9 @@ func _ready() -> void:
 			var tint := Color.WHITE
 			var roof: Texture2D = null
 			var owner_name := _instance_name(mesh_instance, layer)
-			if ROAD_GROUPS.has(layer.name):
+			if SLAB_GROUPS.has(layer.name):
+				tint = SLAB_TINT
+			elif ROAD_GROUPS.has(layer.name):
 				tint = ROAD_TINT
 			elif facaded:
 				# ⚠️ CLASSIFY BY THE GENERATOR'S OWN NAME. "Is this a building?"
