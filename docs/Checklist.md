@@ -2235,10 +2235,63 @@ refactor is behaviour-neutral by default. The pursuit branch the BT adds is impl
 assignment away; it is off because the table above shows it changes *how* the defence wins without
 changing *that* it wins, and a refactor should not smuggle in a balance change.
 
+### RUN 2 — 2026-07-29, after B-124, B-125 and B-132. The first numbers that mean anything.
+
+Same harness, same 20 rounds, `scale=6`, Option A, `taya_pursue_radius 0.0`.
+
+| Metric | RUN 1 | **RUN 2** | Fair range | |
+|---|---|---|---|---|
+| Round win rate | DEFENCE 100% | **DEFENCE 85% / OFFENCE 15%** | 40–60% | still out |
+| Time-to-first-throw | 0.6 s | **0.8 s** | < 8 s | OK |
+| Throws taken | **20** (exactly 1/round) | **91** | — | |
+| Throws blocked | 0 (0%) | **41 / 91 = 45.1%** | 25–50% | **OK — first time ever** |
+| Throws that reached the can | **0** | **7** | — | |
+| Dents per round | 0.00 | **0.50** (4/20 rounds) | ≥ 1 | still out |
+| Rounds timed out | 8/20 | **0/20** | — | |
+| Longest still-run | 23.62 s | **4.18 s** | < 2 s | still out |
+
+**Three bugs closed, and each one was hiding the next.**
+
+1. **B-124 · the livelock is gone.** `_cond_lane_blocked` now runs an `ATTACKER_PATIENCE` (2.0 s)
+   timer and reports the lane clear once it expires, so the attacker takes a contested shot instead
+   of orbiting forever. Throws went 20 → 91 and timeouts 8 → 0.
+   ⚠️ The timer must be **reset on release**, and the first attempt did not: it only cleared when the
+   lane genuinely opened, so after one impatient throw the attacker stopped repositioning for the
+   rest of the round and spammed on a 0.65 s cycle — 503 throws over 20 rounds with a 1% block rate,
+   one livelock traded for another.
+2. **B-125 · the attacker aims at the can now.** `CharacterBase.ai_aim_point`, written by the charge
+   leaf and read by `carrier.gd::_aim_point()`, which otherwise ray-casts from a camera that follows
+   the body — i.e. the direction the unit last *walked*.
+3. **The can dodges, and the AI now leads it.** Measured in phys_probe: the can moves on **56% of
+   in-flight frames**, up to **1.41 m** off its mark. Aiming at where it *is* missed nearly every
+   time, which is why "reached the can" stayed at 0 even after B-125 was fixed. `CAN_LEAD_FRACTION`
+   (0.6) leads by the can's own velocity over the estimated flight time. Leading rather than nerfing
+   `CAN_EVADE_*`, because a human-driven can dodges too.
+
+⚠️ **A metric was lying, and two columns of the same event disagreeing is what caught it.**
+"Reached the can: 0" sat next to "dents 0.60" for three consecutive runs, which is impossible.
+`ai_probe` connected to hitboxes once at setup and so never saw the **per-throw pulse hitbox**
+`_spawn_flight_hitbox()` creates inside `host_throw` — the one most throws actually resolve on.
+Re-armed per flight, as `phys_probe` has been since the multi-hit work. This is trap 2 in this
+document's own method note, found in this document's own harness.
+
 ### ⚠️ Still open
 
-The table's fair ranges remain UNMET, and until B-124 and B-125 are fixed no tuning number is worth
-measuring — an attacker that cannot throw and cannot aim makes every other lever meaningless.
+Three of five ranges are still unmet, and the shape of what is left has changed completely — this is
+now a **tuning** problem rather than a structural one, which it was not before RUN 2.
+
+- **Win rate 85/15.** The defence still wins, but by tagging (17/20) rather than by the offence being
+  incapable. `TAYA_BLOCK_STANDOFF` (2.6, "a first guess") and the attacker's total lack of evasion
+  are the two obvious levers — fairness item 3 notes the attacker never dodges an incoming tag, and
+  85% of rounds now end exactly that way.
+- **Dents 0.50/round.** Throws reach the can now but rarely dent it. See the human's own question,
+  *"can the can even fall?"* — measured, 9/12 clean hits in `phys_probe` produced 0 dents under
+  Option B (which never writes `dents` at all) and staggers rather than knockdowns. The knockdown
+  threshold itself is the next thing to look at, not the aim.
+- **Longest still-run 4.18 s.** Down from 23.62 s, so no longer a livelock, but still above 2 s.
+
+`CAN_LEAD_FRACTION` and `ATTACKER_PATIENCE` are both difficulty knobs and belong in the tiers
+fairness item 6 asks for, alongside `DECISION_INTERVAL` and `ATTACKER_LANE_CLEARANCE`.
 
 Known things that will probably need retuning once that is done, recorded now so the next run has
 hypotheses to check rather than starting cold:

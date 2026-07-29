@@ -1304,11 +1304,37 @@ func _action(base_name: String) -> String:
 var _ai_intent: Dictionary = {}      ## base action -> bool, this frame
 var _ai_intent_prev: Dictionary = {} ## base action -> bool, previous frame
 
+## Where an AI-driven thrower is actually aiming, in world space, or Vector3.INF
+## for "not set — fall back to the camera".
+##
+## ⚠️ THIS EXISTS BECAUSE AN AI HAS NO CROSSHAIR (B-125). `carrier.gd::_aim_point()`
+## derives the throw target by ray-casting from the FPP CAMERA, which is correct
+## for a human — the crosshair is a screen-space thing and the camera is the only
+## node that knows where it points. But a non-mouse-aimed unit's camera follows
+## its BODY, and the body's yaw is written by `look_at(position + direction)`,
+## i.e. THE DIRECTION IT LAST PRESSED MOVEMENT IN. The attacker's charge leaf
+## deliberately stands still, so it threw along whatever bearing it last walked.
+##
+## Measured consequence, over 20 AI-vs-AI rounds: throws that reached the can, 0.
+## Not "few" — zero, at every pursuit setting ever tested. The AI could not score
+## because it was never aiming at the target, and no amount of tuning any other
+## lever could have shown up while that was true.
+##
+## Written by `ai_controller.gd::_act_attacker_charge_release()` while charging
+## and cleared when it stops. Deliberately NOT a permanent override: a human who
+## takes manual control of a bot through the debug switcher gets the camera path
+## back, because `_ai_driven()` goes false the moment the controller is disabled.
+var ai_aim_point: Vector3 = Vector3.INF
+
 ## True when this character is driven by an AIController rather than hardware.
-func _ai_driven() -> bool:
+## Public because carrier.gd has to ask the same question — see `ai_aim_point`.
+func is_ai_driven() -> bool:
 	# A DISABLED controller hands the character back to hardware input — that is
 	# the debug switcher taking manual control of a bot mid-match.
 	return ai_controller != null and ai_controller.is_enabled()
+
+func _ai_driven() -> bool:
+	return is_ai_driven()
 
 ## Written by AIController each physics frame, before anything reads it.
 func ai_set_intent(base_name: String, pressed: bool) -> void:
