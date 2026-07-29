@@ -22,15 +22,28 @@ enum GameMode {
 ## menu and main.gd and what a saved preference would store, so it must stay
 ## stable even if the display name changes.
 ##
-## Adding a map is one entry here plus the scene — the picker, the launch path
-## and the fallback all read this. Nothing else needs editing, which is the whole
-## point of it living in the autoload rather than in main_menu.gd.
+## Adding a map is one entry here plus the scene — the picker, the launch path,
+## the GAME screen's live 3D backdrop and the fallback all read this. Nothing
+## else needs editing, which is the whole point of it living in the autoload
+## rather than in main_menu.gd.
+##
+## `preview` is the beauty shot `scripts/ui/map_preview.gd` frames the map with
+## on the GAME screen. It lives here rather than as a Marker3D in the map scene
+## because `tools/maps/build_*.py` emit those scenes WHOLESALE — a camera added
+## to Eskinita.tscn by hand survives exactly until the next layout run. Omit it
+## and the preview falls back to MapPreview's defaults, so a new map still shows
+## something sensible before anyone tunes its angle.
+##
+##   yaw       degrees around the play area, measured off +Z
+##   distance  metres back from the pivot
+##   height    metres above it
 const MAPS: Array[Dictionary] = [
 	{
 		"id": &"eskinita",
 		"name": "ESKINITA",
 		"tagline": "Urban side street. Sari-sari, sampay, kanal.",
 		"scene": "res://scenes/maps/Eskinita.tscn",
+		"preview": {"yaw": 0.0, "distance": 22.0, "height": 16.0},
 	},
 	{
 		# ⚠️ B-104 — this said `&"eskinita"` too, so `selected_map_scene()`'s
@@ -45,6 +58,7 @@ const MAPS: Array[Dictionary] = [
 		"name": "BAYAN PLAZA",
 		"tagline": "Barangay plaza. Church, basketball ring, acacia.",
 		"scene": "res://scenes/maps/BayanPlaza.tscn",
+		"preview": {"yaw": 0.0, "distance": 22.0, "height": 16.0},
 	},
 ]
 
