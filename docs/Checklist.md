@@ -2115,6 +2115,60 @@ styling was touched.** No second lane was running to hand it to.
 is a push to `integration`, and no second lane was running to lose a race to.
 `project.godot` was not touched at all.
 
+### 10.5.1 · The setup screen's layout, made a constraint instead of a guess `[~]` — render-verified, still not played
+
+**Executed 2026-07-29**, off a screenshot of 10.5's result. Three items, one of
+them a real layout defect and two of them wording.
+
+- [x] **The two panels overlapped in the build.** 10.5 placed both at absolute
+      offsets — config at x 83..946, roster at x 1000..1820 — which is correct
+      right up until a string grows. **A Control's size is clamped UP to its
+      combined minimum size**, so when the PLAYERS button's label reached its
+      real length ("BERTO · SARSILYA · TSINELAS NA GOMA ▸" — three roster names,
+      and the roster is data, not a constant), the button widened, the row
+      widened, and `ConfigPanel` grew straight through its own `offset_right`
+      and under `SeatPanel`. Nothing in that chain could push back: **absolute
+      offsets are a starting guess, not a constraint.**
+      Now `Body` (MarginContainer) → `Columns` (HBoxContainer, separation 54) →
+      two VBox columns, both `EXPAND|FILL` at the same stretch ratio with
+      `custom_minimum_size` floors of 960 and 700. The worst a long string can do
+      is squeeze its own column to its floor; it cannot reach into the other one.
+      The strings that grow unpredictably — the PLAYERS button, the roster rows,
+      the map/mode values — carry `clip_text` + an ellipsis overrun so their
+      preferred width stops driving layout at all, and every descriptive Label
+      (`DetailLabel`, `SeatHint`, `StatusLabel`) is `autowrap_mode = 2` inside a
+      VBox, so it grows *downward* into reserved space rather than sideways into
+      a button. `BackButton` is pinned to the bottom by an expanding Spacer
+      instead of by a y offset.
+      ⚠️ `Banner` and `CharacterSelectPanel` are still hand-placed **on purpose**
+      — one bleeds off the left edge, the other is a full-screen overlay. Neither
+      belongs in the column flow.
+- [x] **"bot" → "BOT"** in the roster rows, both the solo and the unclaimed-seat
+      branch of `_seat_row_text`. It sat in lowercase next to `TEAM A · PROP` and
+      read as a footnote rather than as the roster entry it is.
+- [x] **"SEAT" → "CHARACTER" in everything the player reads.** The heading, the
+      hint under it in all three branches (solo/host/join), the detail line, and
+      the two contention messages. **The code still says `seat` everywhere** —
+      variables, RPCs, `_peer_seats`, the node names — and deliberately so: a
+      seat is exactly `main.gd`'s join index (team = `seat / 2`, even = Person),
+      and renaming the concept to match the label would have desynced the board
+      from the spawner for a word.
+
+**How it was verified.**
+
+- `tools/ui/matchsetup_shot.tscn` at 1920×1080, both maps — the real screen, real
+  roster names, scrim and live 3D backdrop included. The gutter between the
+  panels measures 54 px and the PLAYERS label is no longer trimmed.
+- A throwaway `SceneTree` probe printed the laid-out rects at the design
+  resolution: `LeftColumn` 83..1043, `RightColumn` 1097..1824, `Rect2.intersects`
+  false. Re-run with both pennants visible and the longest lobby strings — the
+  tallest state the screen has — `BackButton` still lands above 1080.
+- ⚠️ **STILL NOBODY HAS CLICKED IT.** Renders and rect arithmetic, same as 10.5.
+  `[~]` for that reason.
+- ⚠️ **Not covered:** any resolution other than 1920×1080. The layout is now
+  container-driven so it should survive one, which is a *should*, not a measured
+  result.
+
 ## Phase 9 · AI FAIRNESS LOG — the running record for balance testing
 
 **Human call, 2026-07-29:** *"Make sure the AI's fulfil their roles as well and try to win (attacker

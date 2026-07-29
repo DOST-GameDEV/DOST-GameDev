@@ -41,6 +41,37 @@ class_name MatchSetupScreen
 ##     that never pass through this screen (`--host`/`--join` from the command
 ##     line, and mid-match late joiners).
 ##
+## THE LAYOUT IS CONTAINER-DRIVEN, NOT HAND-PLACED. Both panels used to be
+## `layout_mode = 0` rectangles at absolute offsets — the config panel at x
+## 83..946, the roster at x 1000..1820 — which looked correct in the editor and
+## overlapped in the build. A Control's size is clamped up to its combined
+## MINIMUM size, so the moment the PLAYERS button's label grew past the width it
+## had been drawn at ("BERTO · SARSILYA · TSINELAS NA GOMA ▸" is three roster
+## names, and the roster is data), the button widened, the row widened, and the
+## panel grew straight through its own offset_right and under the roster panel.
+## Nothing in that chain could push back, because absolute offsets are not a
+## constraint — they are a starting guess.
+##
+##   Body (MarginContainer, screen margins)
+##   └── Columns (HBoxContainer, separation 54)
+##       ├── LeftColumn  (VBox, min 880, EXPAND|FILL) — config, detail, pennants,
+##       │                 a Spacer that eats the slack, then BACK pinned bottom
+##       └── RightColumn (VBox, min 700, EXPAND|FILL) — the roster panel
+##
+## Both columns EXPAND with the same stretch ratio, so the free width is split
+## evenly and neither can reach into the other: the worst a long string can now
+## do is squeeze its own column down to its `custom_minimum_size`. The strings
+## that grow unpredictably (the three-name PLAYERS button, the roster rows, the
+## map/mode values) carry `clip_text` + an ellipsis overrun so their preferred
+## width stops driving the layout at all, and every descriptive Label
+## (`DetailLabel`, `SeatHint`, `StatusLabel`) is `autowrap_mode = 2` inside a
+## VBox, so it grows DOWNWARD into space the container reserves rather than
+## sideways into a button.
+##
+## The two things still hand-placed are deliberate: `Banner` is a pennant that
+## bleeds off the left edge, and `CharacterSelectPanel` is a full-screen overlay.
+## Neither participates in the column flow.
+##
 ## THE CHARACTER PICK IS DELIBERATELY NOT REFEREED. Two players choosing the same
 ## person or the same tsinelas is not a conflict — they are in different seats,
 ## and `main.gd` `.duplicate()`s the ability Resource per character anyway, so
@@ -192,8 +223,8 @@ func _wire_selector(prev: TextureButton, next: TextureButton,
 ## room with nobody to wait for.
 func _setup_solo() -> void:
 	banner_label.text = "SINGLE PLAYER"
-	seat_heading.text = "YOUR SEAT"
-	seat_hint.text = "A team is one Person and one Prop. The other three seats are played by bots."
+	seat_heading.text = "YOUR CHARACTER"
+	seat_hint.text = "A team is one Person and one Prop. The other three characters are played by BOTs."
 	primary_button.caption = "START MATCH"
 	start_button.visible = false
 	_refresh_seats()
@@ -210,7 +241,7 @@ func _setup_host() -> void:
 		seat_heading.text = "NOT HOSTING"
 		return
 	seat_heading.text = "LOBBY — HOST %s" % _lan_address()
-	seat_hint.text = "You pick the map and the mode for everyone. Click a seat to move."
+	seat_hint.text = "You pick the map and the mode for everyone. Click a character to move."
 	primary_button.caption = "READY"
 	start_button.visible = true
 	start_button.disabled = true
@@ -229,7 +260,7 @@ func _setup_host() -> void:
 
 func _setup_join() -> void:
 	banner_label.text = "LOBBY"
-	seat_hint.text = "The host picks the map and the mode. Click a free seat to move."
+	seat_hint.text = "The host picks the map and the mode. Click a free character to move."
 	primary_button.caption = "READY"
 	start_button.visible = false
 	# A client may look at the host's map and mode but not change them — this is
@@ -297,7 +328,7 @@ func _on_connected_to_host() -> void:
 	# The host answers with `_rpc_sync_state` from its own `_on_peer_joined`,
 	# which is what fills in the seats, the ready flags, the map and the mode.
 	seat_heading.text = "LOBBY — HOST %s" % GameLaunch.pending_join_address
-	status_label.text = "Connected. Take a seat, then press READY."
+	status_label.text = "Connected. Pick your character, then press READY."
 
 func _on_connection_failed() -> void:
 	GameLaunch.pending_status_message = "Could not reach that host."
@@ -405,7 +436,7 @@ func _rpc_request_seat(seat: int) -> void:
 @rpc("authority", "call_remote", "reliable")
 func _rpc_seat_denied() -> void:
 	AudioManager.play("ui_error") # 4.1
-	status_label.text = "Somebody took that seat first."
+	status_label.text = "Somebody took that character first."
 
 ## Any peer -> everyone: I readied, or un-readied. `call_local` so the sender's
 ## own board updates on the same frame rather than after a round trip.
@@ -538,7 +569,7 @@ static func _entry_name(list: Array[Dictionary], index: int) -> String:
 func _refresh_detail() -> void:
 	var seat := _local_seat()
 	if _seat_is_person(seat):
-		detail_label.text = "Your seat is a Person: you carry the shared Tag / Throw kit. Your LATA and TSINELAS picks are what your Prop teammate's slot would bring — they apply if you move to a Prop seat."
+		detail_label.text = "Your character is a Person: you carry the shared Tag / Throw kit. Your LATA and TSINELAS picks are what your Prop teammate would bring — they apply if you move to a Prop character."
 		return
 	detail_label.text = "As the lata that round: %s.\nAs the tsinelas that round: %s." % [
 		_kit_name(CharacterRoster.CANS, GameLaunch.can_index()),
@@ -590,7 +621,7 @@ func _on_seat_pressed(seat: int) -> void:
 	if _is_lobby_host():
 		if not _claim_seat(multiplayer.get_unique_id(), seat):
 			AudioManager.play("ui_error")
-			status_label.text = "That seat is taken."
+			status_label.text = "That character is taken."
 		return
 	if not _can_rpc():
 		AudioManager.play("ui_error")
@@ -657,15 +688,16 @@ func _seat_row_text(seat: int) -> String:
 	if not _is_networked_lobby():
 		if seat == GameLaunch.solo_seat:
 			return "%s   ◀ YOU" % label
-		return "%s   · bot" % label
+		return "%s   · BOT" % label
 
 	var occupant := _occupant_of(seat)
 	if occupant == -1:
 		# Not "empty": `main.gd::_fill_empty_slots_with_placeholders` gives every
 		# unclaimed seat a real AI, so a two-human lobby is a complete 2v2 rather
-		# than a match with two missing players. Saying "bot" is what makes a
-		# lone host obviously startable.
-		return "%s   · bot" % label
+		# than a match with two missing players. Saying "BOT" is what makes a
+		# lone host obviously startable — and it is set in the same caps as the
+		# rest of the row so it reads as a roster entry, not as a footnote.
+		return "%s   · BOT" % label
 	var who := "YOU" if occupant == multiplayer.get_unique_id() else "PLAYER %d" % _player_number(occupant)
 	# ⚠️ Deliberately does NOT show the occupant's character picks.
 	# `NetworkManager.peer_characters` is HOST-ONLY by design (see its own doc) —
