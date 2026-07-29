@@ -1662,9 +1662,9 @@ verified, not played.
       `Menu Screen Possible Ideas.pdf`, given the PEAK treatment the human asked
       for — blurred, desaturated, darkened, warm haze, left-side scrim and a
       vignette — so the UI reads on top of it instead of fighting it.
-- [~] **TUTORIAL button** in the gap between SETTINGS and QUIT, reusing the
-      shipped pennant art with its own caption. Deliberately a `print()` stub;
-      routing it anywhere would be a dead end that looks like a bug.
+- [x] **TUTORIAL button** in the gap between SETTINGS and QUIT. Superseded by
+      10.4 below: the pennant art it reused was a one-axis scale of the SETTINGS
+      one and is now cut to fit, and the `print()` stub now opens a real screen.
 
 ### 10.2 · Architecture and AI `[~]`
 - [~] **House orientation.** ⚠️ **Measured, not guessed** — `tools/facing_probe.gd`
@@ -1707,6 +1707,54 @@ verified, not played.
       and it has never been played, networked or profiled.
 - [ ] ⚠️ **The two builders share `floorcheck.py` and nothing else.** Every
       Eskinita lesson has to be ported by hand — that is how those items survived.
+
+### 10.4 · Front-end UI overhaul `[~]` — render-verified, not played
+
+**Executed 2026-07-29** against the four fixes in the human's brief. Everything
+here is verified by looking at renders (`tools/ui_shot.gd`,
+`tools/ui/tutorial_shot.gd`, `tools/ui/gamesetup_shot.gd`,
+`tools/ui/pause_shot.gd`) and by the full smoke gate including the conditional
+audio seventh. **None of it has been clicked by a human.**
+
+- [~] **TUTORIAL pennant cut to fit, not scaled.** The shipped asset was a
+      991x350 canvas beside SETTINGS' 991x226 — same width, every band
+      measurement a clean 1.55x. A one-axis scale fattens an outline's
+      horizontal runs and leaves its vertical ones alone, so the stroke stops
+      being constant width, the slant steepens and the point goes blunt.
+      ⚠️ **Redrawing it un-stretched was still wrong**, and that is the lesson:
+      the hole between SETTINGS and QUIT is a WEDGE, not a band. Those two edges
+      diverge left and converge right (203px of gap at the screen edge, 119px at
+      the point), so any constant thickness gaps at one end and collides at the
+      other — which is exactly what the first attempt did, both at once.
+      `tools/ui/generate_pennant.py` now derives the silhouette from the
+      neighbours' measured alpha and node rects, insetting both by the 12px
+      gutter the PLAY/SETTINGS seam already uses. Re-run it after moving any
+      pennant in `MainMenu.tscn`; it prints the rect and caption values.
+- [~] **`Tutorial.tscn`** — eight pages covering the loop, the two sides, the
+      round beat-by-beat, controls, both win modes and the two rosters. Every
+      number is read out of the code that implements it (`RoundManager`,
+      `MatchManager`, `Carrier`, `project.godot`'s `[input]`), not out of the
+      GDD. ⚠️ **The confinement radius is deliberately given no number** — the
+      GDD says 3 units and `CharacterBase.CONFINEMENT_RADIUS` says 5.0, so the
+      page describes the rule instead. Put a number there once they agree.
+- [~] **Live map behind the GAME and LOBBY screens**, replacing the blueprint
+      grid, swapping the frame the picker cycles. Per-map framing lives in
+      `GameLaunch.MAPS` because `tools/maps/build_*.py` emit the map scenes
+      wholesale. ⚠️ Maps are re-parented, never hidden: `visible` does not
+      propagate to WorldEnvironment or DirectionalLight3D, so a hidden map keeps
+      lighting the world and fighting the other map's environment for it.
+- [~] **Pause card rebuilt** on the new wood theme variations. The networked
+      "match is still running" caveat moved from the title to its own caption
+      line — at display size the old appended string overflowed the card.
+- [ ] ⚠️ **Not addressed, found in passing:** nothing syncs the selected map
+      across peers. `main.gd` reads `GameLaunch.selected_map_scene()` locally on
+      every peer, so a client who picked a different map already loads a
+      different map than the host. Predates this pass; the lobby now makes it
+      visible instead of silent. Recorded in `lobby.gd`.
+- [ ] ⚠️ **Not addressed, found in passing:** `FoldCorner` is a bare `Control`
+      carrying a `canvas_item` shader, and a bare Control draws nothing, so the
+      shader never runs — the fold has never rendered anywhere. Removed from the
+      pause card; `SettingsPanel.tscn` still has its own dead copy.
 
 ## Phase 9 · AI FAIRNESS LOG — the running record for balance testing
 
