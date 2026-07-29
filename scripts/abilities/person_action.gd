@@ -47,4 +47,14 @@ class_name PersonAction
 func _do_activate(character: CharacterBody3D) -> bool:
 	var c := character as CharacterBase
 	AbilityUtils.spawn_pulse_hitbox(c, tag_radius, tag_duration, false, Vector3(0, 0, -tag_range))
+	# Checklist 4.1 — the SWING, not the connection. Landing a tag is voiced by
+	# the struck Person's own hurtbox (hurtbox.gd::impact_sfx returns "tag"), so
+	# this is deliberately the whiff: quiet, and present whether or not anything
+	# was in reach.
+	#
+	# It exists because tag_range is only 1.5 — this script's own balance note
+	# flags that as a real reduction from the deleted 4.0 throw — so missing is
+	# the common case, and a button that does nothing audible at all when you
+	# miss reads as an input that did not register rather than as a miss.
+	AudioManager.play_at("throw_whoosh", c.global_position, -10.0)
 	return true

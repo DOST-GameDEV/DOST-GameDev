@@ -51,6 +51,12 @@ var kill_plane: KillPlane = null
 ## Q-3/B-64: text swaps to a non-freezing warning in networked play — see
 ## _on_pause_toggle_requested.
 @onready var paused_label: Label = %PausedLabel
+## The "this did not actually freeze anything" caveat, on its own line under the
+## title. It used to be appended to `paused_label` itself — fine against a 28px
+## Heading, but the card's title is display-sized now and a 40-character string
+## at that size either overflows the card or drags it half again as wide for a
+## state most sessions never see.
+@onready var paused_note_label: Label = %PausedNoteLabel
 ## Q-3/B-64: owns the Esc _unhandled_input listener itself, at
 ## PROCESS_MODE_ALWAYS — see pause_layer.gd's doc for why that can't live on
 ## Main (this node's own script) once the tree is actually paused.
@@ -357,7 +363,14 @@ func _ready() -> void:
 	pause_root.visible = false
 	resume_button.pressed.connect(_on_resume_pressed)
 	menu_button.pressed.connect(_on_return_to_menu_pressed)
-	settings_button.pressed.connect(func() -> void: pause_root.hide(); settings_panel.show())
+	# 4.1: the pause overlay's three buttons are plain Buttons, not ArrowButtons
+	# (which carry their own click — see arrow_button.gd), so they are wired
+	# individually here. settings_panel.gd plays its own `ui_back` on the way
+	# out, which is why the second lambda below is silent.
+	settings_button.pressed.connect(func() -> void:
+		AudioManager.play("ui_click")
+		pause_root.hide()
+		settings_panel.show())
 	settings_panel.back_pressed.connect(func() -> void: settings_panel.hide(); pause_root.show())
 	pause_layer.toggle_requested.connect(_on_pause_toggle_requested)
 
@@ -1217,18 +1230,19 @@ func _on_pause_toggle_requested() -> void:
 	# Local Match, specifically to exercise the networked code path alone;
 	# refusing to actually pause for that is a real cost with no one to
 	# protect. See NetworkManager.is_solo_session().
-	if NetworkManager.is_networked() and not NetworkManager.is_solo_session():
-		paused_label.text = "PAUSED — the match is still running"
-	else:
+	var overlay_only := NetworkManager.is_networked() and not NetworkManager.is_solo_session()
+	paused_note_label.visible = overlay_only
+	if not overlay_only:
 		get_tree().paused = pause_root.visible
-		paused_label.text = "PAUSED"
 
 func _on_resume_pressed() -> void:
+	AudioManager.play("ui_back") # 4.1
 	pause_root.visible = false
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	get_tree().paused = false
 
 func _on_return_to_menu_pressed() -> void:
+	AudioManager.play("ui_back") # 4.1
 	# Q-3/B-64: must run before change_scene_to_file — a scene change with the
 	# tree still paused loads MainMenu.tscn paused and every button on it dies
 	# (Godot doesn't auto-unpause across change_scene_to_file).

@@ -22,6 +22,17 @@ const PROFILE: ThrowProfile = preload("res://scripts/abilities/resources/throw_f
 func get_throw_profile() -> ThrowProfile:
 	return PROFILE
 
+## Checklist 4.1 — the quick cartoon wind-whoosh. See bagsak_bomb.gd's own
+## play_launch_sfx for the contract.
+##
+## The lightest and shortest of the three launch sounds, because this is the
+## lightest and fastest of the three slippers: a band of noise sweeping hard
+## upward with a whistle riding on top. The whistle is the cartoon — a filtered
+## hiss alone would just be air, and this is the one profile with steer_strength
+## 10.0, so a player is meant to hear the thing curving.
+func play_launch_sfx(character: CharacterBase) -> void:
+	AudioManager.play_at("ability_flick_dash", character.global_position)
+
 ## No-op by design — see bagsak_bomb.gd.
 func _do_activate(_character: CharacterBody3D) -> bool:
 	return false

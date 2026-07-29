@@ -186,6 +186,13 @@ func host_reset_upright(by: CharacterBase) -> void:
 ## "authority" RPC would be silently dropped.
 @rpc("any_peer", "call_local", "reliable")
 func _rpc_apply_reset() -> void:
+	# 4.1 — "reset-channel complete", one of the checklist's named minimum set.
+	# Played here rather than only from CharacterBase's state hook because the
+	# OPTION_A branch below does not change `state` at all (it beats a dent back
+	# out), so under Option A there is no state transition to hang it on and the
+	# channel would finish silently. Under Option B both fire and AudioManager's
+	# retrigger guard collapses them.
+	AudioManager.play_at("reset_channel_complete", _character.global_position)
 	if GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A:
 		_character.clear_dent()
 	else:
@@ -339,6 +346,10 @@ func _step_flying(delta: float) -> void:
 		_flight_velocity = _flight_velocity.bounce(collision.get_normal()) * BOUNCE_DAMPING
 		_bounces_left -= 1
 		collision = null # consumed by the bounce, not a landing this frame
+		# 4.1. Runs on every peer (this whole function does — see physics_step's
+		# own note), so the skip is audible to everyone watching the throw, not
+		# just to whoever threw it.
+		AudioManager.play_at("slipper_bounce", _character.global_position)
 	_character.velocity = _flight_velocity
 
 	if not _is_host():
@@ -450,6 +461,7 @@ func _rpc_set_carried(carrier_path: NodePath) -> void:
 	# own teammate around, and it must not be independently hittable.
 	_set_physics_enabled(false)
 	_notify_carrier(who, self)
+	AudioManager.play_at("grab", _character.global_position) # 4.1
 	_set_state(CarryState.CARRIED)
 
 @rpc("any_peer", "call_local", "reliable")
@@ -487,6 +499,25 @@ func _rpc_set_flying(origin: Vector3, velocity: Vector3) -> void:
 		# mid-air.
 		_watch_carrier_state(carrier, false)
 	_spawn_flight_hitbox()
+	# 4.1 — SLIPPER RELEASE. Two layers, and the split is the point:
+	#
+	#   * `throw_whoosh` is what a THROWN OBJECT sounds like, so every launch
+	#     gets it and it never changes.
+	#   * the ability's own launch sound is what THIS slipper is — the wooden
+	#     crack of a bakya, the light snap of a havaianas. It is asked of the
+	#     ability rather than switched on here, because "what does a Bakya Bash
+	#     sound like" is bakya_bash.gd's business; see that file.
+	#
+	# Duck-typed with has_method(), exactly as _profile() below already asks for
+	# get_throw_profile(), so the three Can abilities need no empty override.
+	#
+	# Broadcast, not host-only: this is inside the _rpc_set_flying handler, so it
+	# is already running on every peer. That is why the throw is audible to the
+	# taya who has to react to it, which is most of the point of it having a
+	# sound at all.
+	AudioManager.play_at("throw_whoosh", _character.global_position)
+	if _character.ability != null and _character.ability.has_method("play_launch_sfx"):
+		_character.ability.play_launch_sfx(_character)
 	_set_state(CarryState.FLYING)
 
 @rpc("any_peer", "call_local", "reliable")
@@ -505,6 +536,11 @@ func _rpc_set_loose(where: Vector3) -> void:
 		_watch_carrier_state(carrier, false)
 	carrier = null
 	_set_physics_enabled(true)
+	# 4.1. Only when it actually ARRIVED from somewhere — this same handler is
+	# how a slipper is dropped, and how one that was never picked up is put back
+	# at round reset. FLYING is the state that means "it just landed".
+	if state == CarryState.FLYING:
+		AudioManager.play_at("slipper_land", where)
 	_set_state(CarryState.LOOSE)
 
 ## ---------------------------------------------------------------------------

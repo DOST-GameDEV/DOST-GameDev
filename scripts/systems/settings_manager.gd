@@ -54,6 +54,26 @@ const SETTINGS_SECTION_CAMERA: String = "camera"
 var mouse_sensitivity: float = 1.0
 var invert_y: bool = false
 
+## Checklist 4.1 — the three audio buses (Master / SFX / Music, see
+## default_bus_layout.tres), 0..1 linear, persisted alongside everything else in
+## the same user://settings.cfg.
+##
+## THE VALUES LIVE HERE; WHAT THEY MEAN TO THE MIXER LIVES IN AudioManager.
+## This file knows how to store and reload a number; it deliberately never
+## touches AudioServer itself. That split is why the volume model (a fourth bus,
+## a limiter on Master) can change without a settings-file migration.
+##
+## Defaults are 0.8 rather than 1.0. A party game is played on laptop speakers
+## with three other people shouting, and shipping at unity leaves a player who
+## finds it too loud with only one direction to go — quieter is recoverable,
+## clipping is not.
+const SETTINGS_SECTION_AUDIO: String = "audio"
+const DEFAULT_VOLUME: float = 0.8
+
+var master_volume: float = DEFAULT_VOLUME
+var sfx_volume: float = DEFAULT_VOLUME
+var music_volume: float = DEFAULT_VOLUME
+
 func _ready() -> void:
 	_capture_defaults()
 	_load_and_apply()
@@ -65,6 +85,34 @@ func set_mouse_sensitivity(value: float) -> void:
 func set_invert_y(value: bool) -> void:
 	invert_y = value
 	_save()
+
+## 4.1. One setter per bus rather than one three-argument call, because the
+## Settings panel's sliders move one at a time and each has to persist on its
+## own. All three funnel into the same _apply_volumes(), so a bus can never be
+## saved at a level it is not actually playing at.
+func set_master_volume(value: float) -> void:
+	master_volume = clampf(value, 0.0, 1.0)
+	_apply_volumes()
+	_save()
+
+func set_sfx_volume(value: float) -> void:
+	sfx_volume = clampf(value, 0.0, 1.0)
+	_apply_volumes()
+	_save()
+
+func set_music_volume(value: float) -> void:
+	music_volume = clampf(value, 0.0, 1.0)
+	_apply_volumes()
+	_save()
+
+## ⚠️ AudioManager IS LISTED BEFORE SettingsManager IN project.godot's [autoload]
+## BLOCK, AND THAT ORDER IS LOAD-BEARING. Autoloads enter the tree in the order
+## they are declared, so AudioManager's own _ready() — which is what creates the
+## voice pool and resolves the bus indices — has already run by the time this
+## file's _ready() reaches _load_and_apply() below. Move SettingsManager above it
+## and the saved volumes are applied to a manager that has not built itself yet.
+func _apply_volumes() -> void:
+	AudioManager.apply_volumes(master_volume, sfx_volume, music_volume)
 
 ## Snapshots each rebindable action's current (project-default) key so
 ## reset_action_to_default() has something to restore without hardcoding a
@@ -145,6 +193,9 @@ func _save() -> void:
 		config.set_value(SETTINGS_SECTION, action, _first_physical_keycode(action))
 	config.set_value(SETTINGS_SECTION_CAMERA, "mouse_sensitivity", mouse_sensitivity)
 	config.set_value(SETTINGS_SECTION_CAMERA, "invert_y", invert_y)
+	config.set_value(SETTINGS_SECTION_AUDIO, "master_volume", master_volume)
+	config.set_value(SETTINGS_SECTION_AUDIO, "sfx_volume", sfx_volume)
+	config.set_value(SETTINGS_SECTION_AUDIO, "music_volume", music_volume)
 	var err := config.save(SETTINGS_PATH)
 	if err != OK:
 		push_warning("SettingsManager: failed to save %s (error %d)" % [SETTINGS_PATH, err])
@@ -152,7 +203,14 @@ func _save() -> void:
 func _load_and_apply() -> void:
 	var config := ConfigFile.new()
 	if config.load(SETTINGS_PATH) != OK:
-		return # no saved settings yet — project.godot/coded defaults stand as-is
+		# No saved settings yet — project.godot/coded defaults stand as-is.
+		# ⚠️ EXCEPT the volumes, which still have to be PUSHED to the buses.
+		# The bus layout ships at 0 dB (unity) and DEFAULT_VOLUME is 0.8, so
+		# returning here without applying would leave a first-time player on a
+		# mix 2 dB louder than every returning player's — the one case where
+		# "no saved file" is not the same as "nothing to do".
+		_apply_volumes()
+		return
 	for action in REBINDABLE_ACTIONS:
 		if config.has_section_key(SETTINGS_SECTION, action):
 			var keycode: int = config.get_value(SETTINGS_SECTION, action)
@@ -165,3 +223,7 @@ func _load_and_apply() -> void:
 		mouse_sensitivity = config.get_value(SETTINGS_SECTION_CAMERA, "mouse_sensitivity")
 	if config.has_section_key(SETTINGS_SECTION_CAMERA, "invert_y"):
 		invert_y = config.get_value(SETTINGS_SECTION_CAMERA, "invert_y")
+	master_volume = config.get_value(SETTINGS_SECTION_AUDIO, "master_volume", DEFAULT_VOLUME)
+	sfx_volume = config.get_value(SETTINGS_SECTION_AUDIO, "sfx_volume", DEFAULT_VOLUME)
+	music_volume = config.get_value(SETTINGS_SECTION_AUDIO, "music_volume", DEFAULT_VOLUME)
+	_apply_volumes()
