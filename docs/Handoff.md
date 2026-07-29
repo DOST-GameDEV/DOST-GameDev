@@ -2391,7 +2391,7 @@ licence file for every binary in it. `git lfs ls-files` lists the fonts.
 
 ---
 
-#### F-3 · A release export, so release-only bugs are testable `[~]`
+#### F-3 · A release export, so release-only bugs are testable `[x]`
 
 **B-28, promoted out of the backlog because B-67 cannot be verified without it.**
 `OS.is_debug_build()` gates real behaviour in this codebase (the whole debug switcher), so "it
@@ -2417,10 +2417,21 @@ acceptance test for the §0.3 removal contract and the reproduction case for B-6
 **[DONE @ v4.10]** `export_presets.cfg` created (Windows Desktop, x86_64, Release-compatible).
 `export_presets.cfg` un-ignored from `.gitignore`; `build/` added to `.gitignore`.
 `tools/export.md` documents the one-liner export command and template install step.
-`[~]` not `[x]`: Godot export templates are not installed on this machine
-(`%APPDATA%\Godot\export_templates\4.7.1.stable\` absent) so the `.exe` could not be
-produced and launch-confirmed. Install templates via `Editor → Manage Export Templates`
-then run the command in `tools/export.md` to complete the acceptance test.
+
+**[DONE 2026-07-29]** Export templates are per-machine and live outside the repo — every
+person who exports installs them once, themselves:
+```
+Windows   %APPDATA%\Godot\export_templates\4.7.1.stable\
+macOS     ~/Library/Application Support/Godot/export_templates/4.7.1.stable/
+Linux     ~/.local/share/godot/export_templates/4.7.1.stable/
+```
+Installed on this Windows machine (`4.7.1.stable`, matching the editor exactly), verified
+`windows_release_x86_64.exe` present. `godot --headless --export-release "Windows Desktop"
+build/TumbangPreso.exe` produced both `TumbangPreso.exe` and `TumbangPreso.pck` with no
+errors. Launch-confirmed live on Windows 10 (10.0.19045): reached the main menu, ran a
+Single Player round against AI, ESC pause and Return to Menu both work, and Multiplayer →
+Host Game (LAN) opened a lobby showing a real LAN address (`192.168.1.7`). Acceptance test
+complete — see Checklist.md 5.1/5.2.
 
 ---
 
@@ -2559,8 +2570,15 @@ identical behaviour, and `Tab` still hands control over correctly.
 **[DONE]** v4.6. Data fix only: `TeamAPerson.player_id = 1`, `TeamAProp.player_id = 2` in
 `Main.tscn`. `main.gd` header comment corrected. `debug_player_switcher.gd` comment at `:33`
 extended to note that all three sources (baked ids, switcher defaults, `_start_local_test()`)
-must stay in step. `[~]` not `[x]`: no release build exists yet (F-3 is still open), so the
-actual acceptance test (run the `.exe`, check YOU card reads PERSON) is unverified.
+must stay in step.
+
+**[VERIFIED 2026-07-29, release .exe, F-3 now closed]** Ran the release build, started
+Single Player: the bottom-left card read `YOU / PERSON / TEAM A · DEFENSE` and the view was
+first-person (hands/boxes visible, no third-person rig). Not separately isolated: whether
+WASD specifically drives the looked-through unit versus some other correlated effect — the
+round played normally and movement tracked the FPP camera, which is the behaviour this bug
+was about, but no dedicated input-isolation check was run. `Tab`-handoff in the editor was
+not re-checked this session.
 
 **Commit:** `Fix B-67: release-build Local Match drove the Can from the Person's camera (v4.6)`
 
