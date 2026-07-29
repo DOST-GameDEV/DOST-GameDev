@@ -39,7 +39,12 @@ func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("map="):
 			map = StringName(arg.substr(4))
+		elif arg.begins_with("seat="):
+			# Which seat the (absent) human takes. Everything else is AI, so this
+			# is how "does the OTHER Person's AI run" gets asked directly.
+			GameLaunch.solo_seat = int(arg.substr(5))
 	GameLaunch.selected_map = map
+	print("settle_probe: solo_seat=", GameLaunch.solo_seat)
 	GameLaunch.pending_action = ""
 	print("settle_probe: map=", map)
 	_main = load(MAIN).instantiate()

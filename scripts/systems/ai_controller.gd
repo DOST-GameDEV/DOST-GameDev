@@ -80,6 +80,9 @@ class_name AIController
 ## How often each role re-picks its current goal (a wander point, a target to
 ## chase). Every physics frame would be both wasteful and read as twitchy
 ## rather than purposeful; this is a first-pass number, not tuned.
+## ⚠️ SUPERSEDED BY `tier_think` AT EVERY CALL SITE — kept as the documented
+## NORMAL value and as the thing the tier table is written against, so a reader
+## can still see what the baseline was without opening DIFFICULTY_TIERS.
 const DECISION_INTERVAL: float = 0.35
 ## Stop pressing a movement direction once this close to the current target —
 ## without a deadzone the AI oscillates across it every frame instead of
@@ -99,6 +102,7 @@ const TAYA_BLOCK_STANDOFF: float = 2.6
 ## so the AI throws from roughly where a human would.
 const ATTACKER_THROW_RANGE: float = 6.0
 const ATTACKER_GRAB_RANGE: float = 1.5
+## ⚠️ SUPERSEDED BY `tier_charge` at both call sites, same as DECISION_INTERVAL.
 const ATTACKER_CHARGE_TIME: float = 0.65
 const ATTACKER_RETREAT_DISTANCE: float = 3.0
 ## How close a defender has to be to the attacker->can line to count as blocking
@@ -126,12 +130,75 @@ const TSINELAS_ARRIVE_DISTANCE: float = 1.0
 ## at all (B-119/B-120 in the same log) — so this knob does not decide fairness
 ## today, it only decides HOW the defence wins.
 ##
-## ⚠️ DEFAULT IS 0.0 ON PURPOSE: it reproduces the Taya this file had BEFORE the
-## behaviour-tree pass, exactly, so the refactor ships behaviour-neutral and
-## nobody has to wonder whether a balance change rode in on it. The pursuit
-## branch is fully implemented and one assignment away — turn it on
-## deliberately, with a measurement, not by inheriting it.
-static var taya_pursue_radius: float = 0.0
+## ⚠️ NO LONGER 0.0. Human call: *"ensure the defender AI actively tries to tag
+## attackers."* At 0.0 the Taya never leaves its blocking post, so
+## `_act_taya_tag` — the only leaf that presses bump — could only ever fire if the
+## attacker walked into it. That is body-blocking, not tagging, and the report is
+## correct that it does not look like a defender playing.
+##
+## ⚠️ 3.6, NOT 5.0, AND THE DIFFERENCE IS THE WHOLE MEASUREMENT ABOVE. 5.0 is
+## CONFINEMENT_RADIUS, i.e. "chase anywhere in my box", and it measured 20/20
+## rounds won by tag. 3.6 sits INSIDE the box: the Taya holds its post while the
+## attacker is out at the 6.0 throwing line, and breaks off to chase only once the
+## attacker crosses into the defended area — which is exactly the moment it has to
+## come in and fetch its own tsinelas. So the Taya tags the thing worth tagging
+## and does not abandon the can to sprint at a thrower it can never reach.
+##
+## ⚠️ THE TABLE ABOVE PREDATES ATTACKER EVASION. Those runs were recorded when the
+## attacker had no dodge at all (`_act_attacker_dodge` did not exist), so 5.0's
+## 100% is an upper bound on a defence that could not be evaded, not a current
+## number. Re-measure with `tools/ai_probe.tscn -- fairness pursue=` before
+## treating any of it as live.
+##
+## Set from `DIFFICULTY_TIERS` in _ready(); still a `static var` so ai_probe can
+## sweep it from the command line without editing this file.
+static var taya_pursue_radius: float = 3.6
+
+## ---------------------------------------------------------------------------
+## DIFFICULTY TIERS
+##
+## The fairness log's item 6 has asked for tiers rather than one-off nerfs since
+## the first pass, and three separate knobs in this file carry a "⚠️ THIS IS A
+## DIFFICULTY KNOB" note pointing at it. This is that, kept deliberately small:
+## four numbers, one dictionary, no new machinery.
+##
+##   pursue   how far from the base circle the Taya will break off to tag.
+##   lead     how much of the can's velocity a throw leads by, 0..1.
+##   think    seconds between goal re-picks; a slower bot reacts later.
+##   charge   seconds the attacker holds a throw, i.e. how hard it throws.
+##
+## ⚠️ NOT PLAYER-FACING YET, and deliberately so — a difficulty selector is a UI
+## and a saved preference, and shipping the mechanism first means the selector is
+## one screen rather than a refactor. NORMAL reproduces this pass's tuning.
+enum Difficulty { BATA, NORMAL, ASTIG }
+
+const DIFFICULTY_TIERS: Dictionary = {
+	# "Bata" — a kid. Holds its post, aims where the can is rather than where it
+	# will be, thinks slowly and never fully winds up.
+	Difficulty.BATA:   {"pursue": 1.8, "lead": 0.25, "think": 0.50, "charge": 0.40},
+	Difficulty.NORMAL: {"pursue": 3.6, "lead": 0.60, "think": 0.35, "charge": 0.65},
+	# "Astig" — the one who wins. Chases to the edge of its own box and leads
+	# almost perfectly.
+	Difficulty.ASTIG:  {"pursue": 4.6, "lead": 0.85, "think": 0.22, "charge": 0.80},
+}
+
+static var difficulty: Difficulty = Difficulty.NORMAL
+## Live tier values, read by the leaves. Separate from the constants they replace
+## so a probe sweeping one knob does not have to know about the others.
+static var tier_lead: float = 0.6
+static var tier_think: float = 0.35
+static var tier_charge: float = 0.65
+
+## Pushes `difficulty` into the four live knobs. Static, so a probe or a future
+## settings screen can call it once and every controller in the match follows —
+## the knobs are static for the same reason.
+static func apply_difficulty(tier: Difficulty) -> void:
+	difficulty = tier
+	var values: Dictionary = DIFFICULTY_TIERS[tier]
+	taya_pursue_radius = float(values["pursue"])
+	tier_lead = float(values["lead"])
+	tier_think = float(values["think"])
+	tier_charge = float(values["charge"])
 ## Physics frames to wait after releasing the charge-throw button before
 ## considering pressing ANY held/edge-triggered action again. Measured live,
 ## not a guess: `input_just_released()` does not become visible until the
@@ -364,7 +431,7 @@ func _ready() -> void:
 	# instance id rather than left to a shared global RNG stream, so two
 	# controllers created in the same frame cannot draw the same phase.
 	_rng.seed = hash(get_instance_id())
-	_decision_timer = _rng.randf_range(0.0, DECISION_INTERVAL)
+	_decision_timer = _rng.randf_range(0.0, tier_think)
 	_root = _build_tree()
 	_validate_tree()
 
@@ -577,7 +644,7 @@ func decide(delta: float) -> void:
 		# with the shared-Input bug fixed that still reads as one hive mind
 		# rather than four players. The initial phase is staggered in _ready()
 		# and each interval is jittered here, so they drift apart and stay apart.
-		_decision_timer = DECISION_INTERVAL * _rng.randf_range(0.75, 1.3)
+		_decision_timer = tier_think * _rng.randf_range(0.75, 1.3)
 
 	# Role-scoped cooldowns tick on wall time, not on "the frame that role's
 	# branch happened to run", so a role swap mid-cooldown cannot leave one
@@ -1042,6 +1109,8 @@ func _act_attacker_approach(_delta: float) -> int:
 ## 0.0 for the old aim-at-where-it-is behaviour. Fairness-log item 6 wants
 ## difficulty TIERS rather than one-off nerfs; when those exist this belongs in
 ## them alongside DECISION_INTERVAL and ATTACKER_LANE_CLEARANCE.
+## ⚠️ SUPERSEDED BY `tier_lead` at its one call site, and this is the knob whose
+## own note asked to be moved into the tiers in the first place.
 const CAN_LEAD_FRACTION: float = 0.6
 
 ## Where to aim so the throw and the can arrive together. Flight time is estimated
@@ -1055,7 +1124,7 @@ func _lead_the_can(can: CharacterBase) -> Vector3:
 	if speed <= 0.01:
 		return mark
 	var flight_time := here.distance_to(mark) / speed
-	var drift := Vector3(can.velocity.x, 0.0, can.velocity.z) * flight_time * CAN_LEAD_FRACTION
+	var drift := Vector3(can.velocity.x, 0.0, can.velocity.z) * flight_time * tier_lead
 	return mark + drift
 
 ## The launch speed this unit's slipper will actually use, at the charge this
@@ -1088,7 +1157,7 @@ func _own_launch_speed() -> float:
 func _charge_fraction() -> float:
 	return clampf(
 		Carrier.CHARGE_MIN_POWER
-			+ (ATTACKER_CHARGE_TIME / Carrier.CHARGE_FULL_TIME) * (1.0 - Carrier.CHARGE_MIN_POWER),
+			+ (tier_charge / Carrier.CHARGE_FULL_TIME) * (1.0 - Carrier.CHARGE_MIN_POWER),
 		Carrier.CHARGE_MIN_POWER, 1.0)
 
 ## ⚠️ PATIENCE — THIS IS THE FIX FOR B-124, THE ATTACKER/TAYA LIVELOCK.
@@ -1166,7 +1235,7 @@ func _act_attacker_charge_release(delta: float) -> int:
 		_attacker_charge_time = 0.0
 		_set_held("special_ability", true)
 	_attacker_charge_time += delta
-	if _attacker_charge_time < ATTACKER_CHARGE_TIME:
+	if _attacker_charge_time < tier_charge:
 		return BTNode.RUNNING
 	_set_held("special_ability", false)
 	_attacker_charging = false
