@@ -1,4 +1,4 @@
-[gd_scene format=3 uid="uid://bq7x3m2v9klt4"]
+[gd_scene format=3 uid="uid://bq7x3m2waklt4"]
 
 [ext_resource type="Script" path="res://scripts/ui/character_select.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/ui/character_preview.gd" id="2"]
