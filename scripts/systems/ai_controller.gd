@@ -460,6 +460,26 @@ func _build_taya_branch() -> BTNode:
 ## retrieve it if not, or hold the throwing line and charge-release it if so.
 func _build_attacker_branch() -> BTNode:
 	return BTSelector.new(&"attacker-do", [
+		# ⚠️ EVASION IS THE HIGHEST-PRIORITY ATTACKER BEHAVIOUR, above both
+		# retrieving and throwing, because being tagged ends the round outright.
+		# Checklist Phase 9 RUN 4: 18 of 20 rounds ended with the attacker being
+		# tagged, and the previous note "the attacker never dodges an incoming tag
+		# — it only avoids STANDING in a blocked lane" was the standing explanation
+		# for the 90/10 split. This is that missing behaviour.
+		# ⚠️ EMPTY-HANDED ONLY, AND THAT CONDITION IS THE WHOLE DIFFERENCE BETWEEN
+		# THIS HELPING AND HURTING. Measured, RUN 5 vs RUN 4 (Checklist Phase 9):
+		# with evasion pre-empting EVERYTHING, the win rate went 90/10 -> 100/0,
+		# blocked 56.1% -> 67.2%, dents 0.30 -> 0.00 and throws that reached the
+		# can 4 -> 0. An attacker holding a charged slipper ran away from the taya
+		# instead of throwing it, so the offence stopped functioning entirely.
+		#
+		# Fleeing is only ever the right answer when there is nothing better to do
+		# with the moment. Holding the slipper, there always is: throw it.
+		BTSequence.new(&"evade", [
+			BTCondition.new(&"empty-handed", &"_cond_attacker_empty_handed"),
+			BTCondition.new(&"tagger-closing", &"_cond_attacker_threatened"),
+			BTAction.new(&"break-away", &"_act_attacker_dodge"),
+		]),
 		BTSequence.new(&"retrieve", [
 			BTCondition.new(&"empty-handed", &"_cond_attacker_empty_handed"),
 			BTSelector.new(&"retrieve-how", [
@@ -1182,6 +1202,92 @@ func _act_tsinelas_crawl(_delta: float) -> int:
 ## The defender standing between this attacker and the can, if any. "Between"
 ## is measured as perpendicular distance from the defender to the throw line,
 ## so a Taya beside the lane does not count and a Taya in it does.
+## ---------------------------------------------------------------------------
+## ATTACKER EVASION. Human call, 2026-07-29: the AI should "fulfil their roles
+## and try to win (attacker avoid defender, defender try to tag, etc)".
+##
+## The attacker already avoided STANDING in a blocked throwing lane
+## (`_cond_lane_blocked`). It did not avoid the taya itself, and being tagged
+## ends the round for its whole team — which is how 18 of 20 rounds ended in
+## RUN 4. Avoiding a lane and avoiding a person are different behaviours and
+## only the first one existed.
+##
+## WHERE THE TAG ACTUALLY COMES FROM, which is what shapes the dodge: the taya
+## does not chase to the throwing line (it is capped at CONFINEMENT_RADIUS and
+## `taya_pursue_radius` ships at 0). It gets its tag when the ATTACKER walks into
+## the confinement box — which the attacker must do to fetch a slipper that
+## landed near the can. So the dodge has to work while retrieving, not only while
+## throwing, and that is why it sits above BOTH in the tree.
+## ---------------------------------------------------------------------------
+
+## How close an opposing Person has to be before the attacker breaks off.
+## Comfortably outside TAYA_MELEE_RANGE (1.4) so the dodge starts before the tag
+## can land, and inside TAYA_DETECT_RANGE (8.0) so the attacker is not permanently
+## fleeing something that is not actually coming for it.
+const ATTACKER_DODGE_RADIUS: float = 2.4
+## Only dodge a threat that is CLOSING. Without this the attacker flees anything
+## standing near it and never retrieves the slipper at all — a livelock of the
+## same family as B-124, arriving from the opposite direction. Metres per second
+## of approach speed, measured along the line between the two.
+const ATTACKER_DODGE_CLOSING_SPEED: float = 0.35
+## How far to the side to break. Perpendicular rather than straight back: running
+## directly away from a defender that is the same speed as you never opens a gap,
+## it just walks you out of the arena.
+const ATTACKER_DODGE_STEP: float = 3.0
+
+## The nearest opposing Person that is close enough AND closing fast enough to be
+## worth breaking away from, or null.
+func _threatening_defender() -> CharacterBase:
+	var best: CharacterBase = null
+	var best_distance := ATTACKER_DODGE_RADIUS
+	for other in _roster():
+		if other == null or not is_instance_valid(other):
+			continue
+		if not other.is_person or other.team == character.team:
+			continue
+		var to_us := character.global_position - other.global_position
+		to_us.y = 0.0
+		var distance := to_us.length()
+		if distance > best_distance or distance < 0.01:
+			continue
+		# Closing speed along the line between us, from the threat's own velocity.
+		# A taya standing still next to the can is not a reason to abandon a fetch.
+		var closing := other.velocity.dot(to_us.normalized())
+		if closing < ATTACKER_DODGE_CLOSING_SPEED:
+			continue
+		best = other
+		best_distance = distance
+	return best
+
+func _cond_attacker_threatened() -> bool:
+	return _threatening_defender() != null
+
+## Break perpendicular to the threat's approach, on whichever side we are already
+## off toward — the same commit-to-a-side rule the Can's own evasion uses
+## (`_act_can_evade`), and for the same reason: alternating sides every tick is
+## not a dodge, it is a stutter that stays exactly where it started.
+func _act_attacker_dodge(_delta: float) -> int:
+	var threat := _threatening_defender()
+	if threat == null:
+		return BTNode.FAILURE
+	var away := character.global_position - threat.global_position
+	away.y = 0.0
+	if away.length() < 0.01:
+		return BTNode.FAILURE
+	away = away.normalized()
+	var side := Vector3(-away.z, 0.0, away.x)
+	# Commit to the side the threat is NOT already covering.
+	var threat_motion := threat.velocity
+	threat_motion.y = 0.0
+	if threat_motion.length() > 0.01 and side.dot(threat_motion.normalized()) > 0.0:
+		side = -side
+	# Mostly sideways with a little backward, so the break opens a gap instead of
+	# merely orbiting at a fixed radius.
+	var target := character.global_position + (side * 0.8 + away * 0.6).normalized() \
+		* ATTACKER_DODGE_STEP
+	_move_toward(target)
+	return BTNode.RUNNING
+
 func _blocking_defender(can: CharacterBase) -> CharacterBase:
 	for other in _roster():
 		if other == null or not is_instance_valid(other):

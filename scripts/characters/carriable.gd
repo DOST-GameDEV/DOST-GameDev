@@ -951,13 +951,45 @@ func _clear_flight_hitbox() -> void:
 ## Disables/enables the body and the hurtbox together. Deliberately NOT used to
 ## express ownership — see can_be_grabbed_by(); an opponent's loose slipper is
 ## fully solid and this is never called on account of whose it is.
+##
+## ⚠️⚠️ B-137 — BOTH WRITES ARE DEFERRED, AND WITHOUT THAT THEY SILENTLY DO
+## NOTHING ON THE PATHS THAT MATTER MOST.
+##
+## Godot refuses both of these while the physics server is mid-step: a
+## `CollisionShape3D.disabled` write raises *"Can't change this state while
+## flushing queries"* and a `monitorable` write raises *"Function blocked during
+## in/out signal"*. Every important caller of this function reaches it from inside
+## an `area_entered` callback, because that is where hits resolve:
+##
+##   * TAGGED MID-CARRY — `hitbox.gd::_on_area_entered` -> `_apply_hit_result` ->
+##     `apply_stagger` -> `_set_state` -> `_on_carrier_state_changed` ->
+##     `host_drop` -> `_rpc_set_loose` -> here. The re-enable was DROPPED, so the
+##     slipper knocked out of a tagged carrier's hands came back with its
+##     collision shape still disabled and nothing to stop it sinking through the
+##     floor. B-75 calls knocking the slipper loose "most of the point of
+##     tagging"; B-101 is the same failure from the other direction.
+##   * A ROUND WON BY A TAG — the same callback -> `report_round_win` ->
+##     `report_round_result` -> `_reset_world` -> `reset_for_new_round` -> here.
+##     The hurtbox stayed non-monitorable into the NEXT round, and
+##     `carrier.gd::_find_grabbable()` finds slippers by scanning its GrabArea for
+##     Hurtboxes — so the attacker could not pick their own tsinelas up at all.
+##     Under Option B a tag ends 18 of 20 rounds (Checklist Phase 9, RUN 3), so
+##     this is the common path, not an edge case.
+##
+## Found by `tools/ai_probe.tscn -- fairness`, which surfaced 11 blocked
+## `monitorable` writes and 3 blocked `disabled` writes in a single 20-round run.
+## Nothing in the game reported anything; the writes just did not happen.
+##
+## Deferring is what both engine messages ask for. The cost is that the change
+## lands at idle rather than instantly — one frame in which the slipper is still
+## intangible, which is invisible and is strictly better than never.
 func _set_physics_enabled(enabled: bool) -> void:
 	var shape := _character.get_node_or_null("CollisionShape3D") as CollisionShape3D
 	if shape != null:
-		shape.disabled = not enabled
+		shape.set_deferred(&"disabled", not enabled)
 	var hurtbox := _character.get_node_or_null("Hurtbox") as Area3D
 	if hurtbox != null:
-		hurtbox.monitorable = enabled
+		hurtbox.set_deferred(&"monitorable", enabled)
 
 ## The slipper's own ability carries its flight identity (see throw_profile.gd).
 ## Duck-typed rather than declared on AbilityBase so the three Can abilities,
