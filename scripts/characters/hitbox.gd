@@ -101,6 +101,21 @@ func _on_area_entered(area: Area3D) -> void:
 		kind = "seal"
 	elif forces_downed:
 		kind = "downed"
+		# THE LUCKY FALL — human request, 2026-07-29: *"sometimes make it so that
+		# it can land on its head/back and this isnt a point for the enemy."*
+		#
+		# ⚠️ ROLLED HERE AND NOWHERE ELSE. This line is already past the host gate
+		# above, so exactly one machine rolls it; the result then travels as its
+		# own `kind` through the SAME broadcast every other outcome uses, and each
+		# peer just applies what it was told. Rolling inside
+		# CharacterBase._apply_hit_result instead would put a randf() on a function
+		# that runs per-peer, and the peers would disagree about whether the round
+		# had just been decided.
+		#
+		# Cans only. A Person knocked over has no "landed on its head" reading and
+		# no fall count to be spared from.
+		if target.is_can and randf() < CharacterBase.LUCKY_FALL_CHANCE:
+			kind = "downed_lucky"
 	else:
 		kind = "stagger"
 
@@ -120,8 +135,10 @@ func _on_area_entered(area: Area3D) -> void:
 	# `kind` is already resolved above, so a hit that actually knocks the target
 	# down gets the profile's faceslop multiplier and a hit that merely staggers
 	# does not — the difference between a comedy launch and a nudge.
+	# `begins_with("downed")` so the lucky fall takes the same faceslop as a
+	# scoring one — it is the same physical knockdown and has to look like it.
 	var knockback: Vector3 = (area as Hurtbox).absorb_knockback(
-		_impulse_for(kind == "downed" or kind == "seal"))
+		_impulse_for(kind.begins_with("downed") or kind == "seal"))
 
 	if NetworkManager.is_networked():
 		target._apply_hit_result.rpc_id(

@@ -89,6 +89,10 @@ const HOST_LINGER: float = 8.0
 var _tag: String = "?"
 var _is_host: bool = false
 var _map_id := &"eskinita"
+## `-- target=taya|can`. The can is the one the human's "can the can even fall?"
+## question is about; the taya is the one "you can't hit an opposing player" is
+## about. Same machinery, and they answer different questions.
+var _target_mode := "taya"
 
 ## Per-throw records, appended in flight order so the host's and a client's logs
 ## line up index for index.
@@ -104,6 +108,22 @@ var _max_step: float = 0.0         # largest single-frame displacement of the sl
 var _last_pos: Vector3 = Vector3.INF
 var _resolved_by: String = ""      # which hitbox resolved, "" if none
 var _target_left_normal: bool = false
+## The FURTHEST the target's state got during the flight. "Left NORMAL" is not
+## the question the human asked — STAGGERED and DOWNED both leave it, and only
+## DOWNED is the can actually falling over.
+var _target_peak_state: int = CharacterBase.State.NORMAL
+## THE LUCKY FALL, observed rather than assumed (CharacterBase.LUCKY_FALL_CHANCE).
+## Recorded on the frame the target ENTERS Downed, because a lucky fall
+## self-rights and would otherwise be indistinguishable afterwards from one that
+## never happened.
+var _fall_lucky: bool = false
+var _was_downed: bool = false
+## RoundManager's fall counter across the knockdown, sampled either side of the
+## frame it happens on. The DELTA is the acceptance test for the lucky fall:
+## exactly 0 for a lucky one and exactly 1 for a scoring one. Reading the counter
+## once at the end proves nothing — start_round() zeroes it every round.
+var _fall_count_before: int = -1
+var _fall_count_after: int = -1
 var _frames: int = 0
 
 func _ready() -> void:
@@ -113,6 +133,8 @@ func _ready() -> void:
 			_is_host = true
 		elif token.begins_with("map="):
 			_map_id = StringName(token.substr(4))
+		elif token.begins_with("target="):
+			_target_mode = token.substr(7)
 	_tag = "HOST" if _is_host else "CLIENT"
 	# ⚠️ BEFORE Main.tscn is instantiated — main.gd reads selected_map_scene() as
 	# it builds the world, so setting it afterwards silently measures Eskinita
@@ -167,11 +189,10 @@ func _report_layers() -> void:
 		# line tells them apart. `sync_auth` is the MultiplayerSynchronizer's own,
 		# which is what actually decides whose packets are accepted.
 		var sync := ch.get_node_or_null("MultiplayerSynchronizer") as Node
-		print("[%s]    %-12s person=%-5s can=%-5s auth=%-6d sync_auth=%-6d pending=%-6d | hurtbox L=%d M=%d monitorable=%-5s | melee L=%d M=%d monitoring=%s" % [
+		print("[%s]    %-12s person=%-5s can=%-5s auth=%-11d sync_auth=%-11d | hurtbox L=%d M=%d monitorable=%-5s | melee L=%d M=%d monitoring=%s" % [
 			_tag, ch.name, str(ch.is_person), str(ch.is_can),
 			ch.get_multiplayer_authority(),
 			sync.get_multiplayer_authority() if sync != null else -1,
-			ch.pending_authority,
 			hurt.collision_layer, hurt.collision_mask, str(hurt.monitorable),
 			melee.collision_layer, melee.collision_mask, str(melee.monitoring)])
 
@@ -205,7 +226,7 @@ func _drive_throws() -> void:
 		var roles := _roles()
 		var attacker: CharacterBase = roles.get("attacker")
 		var slipper: CharacterBase = roles.get("slipper")
-		var taya: CharacterBase = roles.get("taya")
+		var taya: CharacterBase = roles.get(_target_mode)
 		if attacker == null or slipper == null or taya == null:
 			await get_tree().create_timer(0.3).timeout
 			continue
@@ -256,7 +277,7 @@ func _observe_throws() -> void:
 	while _records.size() < THROWS and Time.get_ticks_msec() < deadline:
 		var roles := _roles()
 		var slipper: CharacterBase = roles.get("slipper")
-		var taya: CharacterBase = roles.get("taya")
+		var taya: CharacterBase = roles.get(_target_mode)
 		if slipper == null or taya == null:
 			await get_tree().create_timer(0.1).timeout
 			continue
@@ -279,6 +300,11 @@ func _begin_watch(slipper: CharacterBase, target: CharacterBase) -> void:
 	_last_pos = Vector3.INF
 	_resolved_by = ""
 	_target_left_normal = false
+	_target_peak_state = CharacterBase.State.NORMAL
+	_fall_lucky = false
+	_was_downed = false
+	_fall_count_before = -1
+	_fall_count_after = -1
 	_frames = 0
 	_overlap_band = _capsule_radius(target) + _flight_hit_radius(slipper)
 	_watching = true
@@ -298,6 +324,10 @@ func _end_watch() -> void:
 		"resolved_by": _resolved_by,
 		"resolved": _resolved_by != "",
 		"downed": _target_left_normal,
+		"peak_state": _target_peak_state,
+		"downed_now": _was_downed,
+		"lucky": _fall_lucky,
+		"fall_delta": (_fall_count_after - _fall_count_before) if (_was_downed and _fall_count_before >= 0) else -99,
 		"max_step": _max_step,
 		"frames": _frames,
 	})
@@ -307,7 +337,27 @@ func _physics_process(_delta: float) -> void:
 		return
 	if not is_instance_valid(_slipper) or not is_instance_valid(_target):
 		return
-	# ⚠️ SAMPLE THE FLIGHT ONLY. The first version of this function sampled the
+	# THE TARGET'S STATE IS SAMPLED FOR THE WHOLE WATCH WINDOW, NOT ONLY THE
+	# FLIGHT — and that distinction is not pedantry, it hid the answer once
+	# already. A square hit ENDS the flight on the same frame it resolves
+	# (move_and_collide contacts the body, host_land() runs), so a sampler that
+	# stops when FLYING stops never observes the state the hit produced. The
+	# first version of this probe reported "peak state: normal" for 40 out of 40
+	# throws at the can, including ones that had demonstrably resolved a hit —
+	# two numbers that could not both be true.
+	if _target.state != CharacterBase.State.NORMAL:
+		_target_left_normal = true
+	_target_peak_state = maxi(_target_peak_state, int(_target.state))
+	if _target.state == CharacterBase.State.DOWNED and not _was_downed:
+		_was_downed = true
+		_fall_lucky = not _target.last_fall_scored
+		_fall_count_after = int(RoundManager.get("_fall_count"))
+	elif not _was_downed:
+		# Kept fresh every frame the target is still up, so it is the value from
+		# the frame BEFORE the knockdown no matter which frame that turns out to be.
+		_fall_count_before = int(RoundManager.get("_fall_count"))
+
+	# ⚠️ THE SLIPPER'S GEOMETRY, by contrast, IS FLIGHT-ONLY. The first version of this function sampled the
 	# whole FLIGHT_WATCH window and produced a largest-single-frame step of
 	# 1.62 m — at 60 Hz that is 97 m/s, from a slipper whose fastest profile
 	# launches at 26. Two numbers that cannot both be true, so the metric was the
@@ -324,8 +374,6 @@ func _physics_process(_delta: float) -> void:
 		_max_step = maxf(_max_step, pos.distance_to(_last_pos))
 	_last_pos = pos
 	_min_gap = minf(_min_gap, _closest_approach(pos, _target))
-	if _target.state != CharacterBase.State.NORMAL:
-		_target_left_normal = true
 
 ## Exact distance from a point to a Hurtbox capsule's INNER SEGMENT. A sphere of
 ## radius r centred at `point` overlaps that capsule exactly when this is
@@ -400,6 +448,18 @@ func _on_landed_pulse(target: CharacterBase) -> void:
 
 ## ---------------------------------------------------------------------------
 
+## STAGGERED and DOWNED are both "not NORMAL" and they are not the same event.
+## Only DOWNED is the can actually going over, which is the whole of the human's
+## "can the can even fall?" question, so the report names the state rather than
+## printing a bool that cannot tell them apart.
+func _state_name(s: int) -> String:
+	match s:
+		CharacterBase.State.NORMAL: return "normal"
+		CharacterBase.State.STAGGERED: return "stagger"
+		CharacterBase.State.DOWNED: return "DOWNED"
+		CharacterBase.State.SEALED: return "SEALED"
+	return "?"
+
 func _characters() -> Array[CharacterBase]:
 	var out: Array[CharacterBase] = []
 	for node in get_tree().root.find_children("*", "CharacterBase", true, false):
@@ -456,13 +516,13 @@ func _report() -> void:
 		print("[%s]    NO THROWS RECORDED — the harness never got a slipper into the air." % _tag)
 		return
 	print("[%s]    %-4s %-12s %-6s %-8s %-8s %-6s %-10s %-6s %s" % [
-		_tag, "#", "target", "remote", "min_gap", "band", "ovlap", "resolved", "downed", "max_step"])
+		_tag, "#", "target", "remote", "min_gap", "band", "ovlap", "resolved", "peak", "max_step"])
 	for i in _records.size():
 		var r: Dictionary = _records[i]
 		print("[%s]    %-4d %-12s %-6s %8.3f %8.3f %-6s %-10s %-6s %.3f" % [
 			_tag, i, r["target"], str(r["target_is_remote"]), r["min_gap"], r["band"],
 			str(r["overlapped"]), (r["resolved_by"] if r["resolved"] else "-"),
-			str(r["downed"]), r["max_step"]])
+			_state_name(r["peak_state"]), r["max_step"]])
 
 	# "Landed" means resolved on the host and "the target left NORMAL" on a
 	# client — see _failures() for why those cannot be the same test.
@@ -514,5 +574,35 @@ func _report() -> void:
 		_tag, worst_step, band_width])
 	if worst_step > band_width:
 		print("[%s]    ⚠️ a single frame can step clean over the band — hypothesis C is live." % _tag)
+	# THE LUCKY FALL'S ACCEPTANCE TEST. Two independent counts of the same event:
+	# how many knockdowns the probe watched happen, and what RoundManager actually
+	# charged the defence for. `falls - lucky` and `_fall_count` must agree, or the
+	# flag is not reaching the scoring path.
+	var falls := 0
+	var lucky := 0
+	for r in _records:
+		if r.get("downed_now", false):
+			falls += 1
+			if r.get("lucky", false):
+				lucky += 1
+	if falls > 0:
+		print("\n[%s]    knockdowns watched                  : %d" % [_tag, falls])
+		print("[%s]    ... lucky (head/back, no point)     : %d  (LUCKY_FALL_CHANCE %.2f)" % [
+			_tag, lucky, CharacterBase.LUCKY_FALL_CHANCE])
+		print("[%s]    ... scoring                         : %d" % [_tag, falls - lucky])
+		var bad := 0
+		for r in _records:
+			if not r.get("downed_now", false):
+				continue
+			var d: int = r.get("fall_delta", -99)
+			if d == -99:
+				continue # counter reset by a round boundary inside the window
+			var want: int = 0 if r.get("lucky", false) else 1
+			if d != want:
+				bad += 1
+				print("[%s]    *** fall_count moved by %d, wanted %d (lucky=%s) ***" % [
+					_tag, d, want, str(r.get("lucky", false))])
+		print("[%s]    fall_count delta wrong on           : %d of %d knockdowns" % [
+			_tag, bad, falls])
 	print("\n[%s] === %s ===" % [
 		_tag, "EVERY OVERLAPPING THROW LANDED" if missed == 0 else "%d THROWS PASSED THROUGH THE TARGET" % missed])

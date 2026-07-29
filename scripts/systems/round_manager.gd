@@ -70,28 +70,52 @@ func register_can(can: CharacterBase) -> void:
 	if can in _tracked_cans:
 		return
 	_tracked_cans.append(can)
-	if not can.state_changed.is_connected(_on_tracked_can_state_changed):
-		can.state_changed.connect(_on_tracked_can_state_changed)
+	# ⚠️ THE CAN IS BOUND INTO THE CONNECTION. `state_changed` carries only the new
+	# state, so the handler had no way to ask WHICH can changed — and therefore no
+	# way to tell a scoring fall from a lucky one (CharacterBase.LUCKY_FALL_CHANCE),
+	# which is a property of the can that just fell. Binding is the whole fix; the
+	# alternative was widening a signal that four other places already listen to.
+	#
+	# ⚠️ AND THE GUARD BELOW HAS TO USE THE BOUND CALLABLE TOO. `bind()` produces a
+	# DIFFERENT Callable, so `is_connected(_on_tracked_can_state_changed)` reports
+	# false even when the bound one is connected — and register_can() is called
+	# again on every single round (main.gd::_reregister_tracked_cans), so getting
+	# this wrong would stack one extra connection per round and count every fall
+	# twice by round 2, three times by round 3.
+	var bound := _on_tracked_can_state_changed.bind(can)
+	if not can.state_changed.is_connected(bound):
+		can.state_changed.connect(bound)
 	if not can.dents_changed.is_connected(_on_tracked_can_dents_changed):
 		can.dents_changed.connect(_on_tracked_can_dents_changed)
 
 func clear_tracked_cans() -> void:
 	for can in _tracked_cans:
 		if is_instance_valid(can):
-			if can.state_changed.is_connected(_on_tracked_can_state_changed):
-				can.state_changed.disconnect(_on_tracked_can_state_changed)
+			# Bound, to match register_can() — see its note.
+			var bound := _on_tracked_can_state_changed.bind(can)
+			if can.state_changed.is_connected(bound):
+				can.state_changed.disconnect(bound)
 			if can.dents_changed.is_connected(_on_tracked_can_dents_changed):
 				can.dents_changed.disconnect(_on_tracked_can_dents_changed)
 	_tracked_cans.clear()
 
-func _on_tracked_can_state_changed(new_state: int) -> void:
+func _on_tracked_can_state_changed(new_state: int, fallen: CharacterBase) -> void:
 	if not round_active or _tracked_cans.is_empty():
 		return
 	# User feedback: "if can falls 5 times they lose" — counts the transition
 	# INTO Downed, not Sealed, so a Taya who saves every single fall still
 	# loses the round on the 5th one. Checked before the Sealed loop below so
 	# it can win the round even on a fall that would otherwise be recoverable.
-	if new_state == CharacterBase.State.DOWNED:
+	#
+	# THE LUCKY FALL IS THE EXCEPTION, and it is the reason `can` is bound into
+	# this connection at all: a knockdown that landed the can on its head or its
+	# back is not a point for the attacking side, so it does not count here. The
+	# can still visibly went over, and CharacterBase's DOWNED branch self-rights it
+	# rather than auto-sealing, so it costs the defence nothing either.
+	# See CharacterBase.LUCKY_FALL_CHANCE for where the roll is made and why it has
+	# to be the host that makes it.
+	if new_state == CharacterBase.State.DOWNED and fallen != null \
+			and is_instance_valid(fallen) and fallen.last_fall_scored:
 		_fall_count += 1
 		if _fall_count >= FALL_LIMIT:
 			report_round_win(false) # Slippers win regardless of this fall's own outcome

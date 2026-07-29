@@ -34,6 +34,23 @@ const BUMP_STAGGER_TIME: float = 0.25
 ## Stand / Shatter Trap that reference "Downed" directly — see docs/Dev_Plan.md
 ## Section 4.
 const DOWNED_SELF_RIGHT_WINDOW: float = 2.0
+## THE LUCKY FALL. Human request, 2026-07-29: *"make it easier to fall, but
+## sometimes make it so that it can land on its head/back and this isnt a point
+## for the enemy."*
+##
+## How often a knockdown on a Can lands it on its head or its back instead of
+## properly over — it visibly falls, and it costs the attacking side nothing.
+##
+## ⚠️ ROLLED ON THE HOST ONLY, in `hitbox.gd`, where `kind` is already decided and
+## where the code is already past the host gate. The result rides the existing
+## `_apply_hit_result` RPC as its own kind. It must NEVER be rolled inside
+## `_apply_hit_result` itself — that function runs per-peer, so a `randf()` there
+## would have different peers disagree about whether the round just changed hands.
+##
+## ⚠️ 0.25 IS A FIRST GUESS, NOT A MEASUREMENT. "Sometimes" is not a number and
+## nobody has played this. It is the difficulty knob for the whole defensive half
+## of Option B and belongs in the fairness tiers (Checklist Phase 9, item 6).
+const LUCKY_FALL_CHANCE: float = 0.25
 ## User feedback, 2026-07-28: "team can shouldnt be allowed to go outside of a
 ## box/line when game starts." Confines the Can and its Taya (defending
 ## Person) to this radius around the map's base circle (world origin — every
@@ -238,6 +255,18 @@ var state: State = State.NORMAL
 ## can watch it identically on every peer; only the host's report actually counts
 ## (same pattern as _on_tracked_can_state_changed).
 var dents: int = 0
+## Whether the knockdown this Can is currently in counts for the attacking side.
+## False for a lucky fall — see LUCKY_FALL_CHANCE. Written from the KIND the host
+## sent, in `_apply_hit_result`, so every peer derives it from the same broadcast
+## rather than rolling anything of its own.
+##
+## Read in two places, and both are the point of the feature:
+##   * the DOWNED branch of _physics_process, which self-rights a lucky fall
+##     instead of auto-sealing it — otherwise "no point for the enemy" would be
+##     false, because an unrecovered fall loses the round outright under Option B;
+##   * RoundManager._on_tracked_can_state_changed, which does not count it toward
+##     FALL_LIMIT.
+var last_fall_scored: bool = true
 var _staggered_time_left: float = 0.0
 var _downed_time_left: float = 0.0
 var _downed_self_rightable: bool = false ## true only within the self-right window
@@ -411,6 +440,11 @@ func begin_spawn_settle() -> void:
 
 func _move_and_confine() -> void:
 	move_and_slide()
+	# ⚠️ BEFORE THE CONFINEMENT EARLY-RETURN BELOW. The attacking Person is not
+	# confined, and it is just as entitled to boot the defenders' slipper around
+	# as they are its own — putting this after the return would have made the
+	# mechanic silently one-sided.
+	_scuff_enemy_slippers()
 	if not _is_confined_to_base():
 		return
 	# ⚠️ A SQUARE, NOT A CIRCLE — and it was a circle until 2026-07-29 while the
@@ -434,6 +468,91 @@ func _move_and_confine() -> void:
 	# reach on the diagonals. AI fairness was measured either side of it.
 	global_position.x = clampf(global_position.x, -CONFINEMENT_RADIUS, CONFINEMENT_RADIUS)
 	global_position.z = clampf(global_position.z, -CONFINEMENT_RADIUS, CONFINEMENT_RADIUS)
+
+## STEP AND TOUCH ON AN OPPONENT'S TSINELAS. Human request, 2026-07-29: *"add a
+## mechanic that defender can step or touch the slipper of enemy team and it will
+## slow down or get knocked back (knock back for the touch)."*
+##
+## Read straight off `move_and_slide()`'s own collision results, which is the only
+## place that already knows both WHAT was touched and FROM WHAT ANGLE — and the
+## angle is the whole mechanic. Standing on top of a slipper and walking into its
+## side are the same overlap to an Area3D and completely different events to a
+## player, so a hitbox could not have told them apart; the contact normal can.
+##
+## Runs on this character's own peer only (`_physics_process` has already gated on
+## authority by the time `_move_and_confine` is reached), so it ASKS rather than
+## decides — `Carriable.host_scuff()` re-validates and broadcasts. Same
+## client-asks/host-decides split as every grab and throw.
+##
+## The rules themselves are all in carriable.gd deliberately: this file must never
+## learn what carrying is, which is the same rule that keeps dents and round-win
+## logic out of it.
+func _scuff_enemy_slippers() -> void:
+	for i in get_slide_collision_count():
+		var collision := get_slide_collision(i)
+		var other := collision.get_collider() as CharacterBase
+		if other == null:
+			continue
+		var carriable := other.get_node_or_null("Carriable") as Carriable
+		if carriable == null or not carriable.can_be_scuffed_by(self):
+			continue
+		# STEP or TOUCH, decided two ways because one is not reliable enough.
+		#
+		# `get_normal()` points out of the surface we hit, so coming down squarely
+		# on the slipper gives something close to straight up — but a tsinelas is a
+		# 0.16-radius capsule, and anything short of a dead-centre landing on a cap
+		# that small returns an angled normal. So the contact HEIGHT is the second
+		# and more forgiving test: if we touched it at or below our own feet, it was
+		# under us, whatever the normal says. See Carriable.STEP_CONTACT_MARGIN.
+		var normal := collision.get_normal()
+		# ⚠️ COMPARE THE SLIPPER'S TOP TO OUR FEET — NOT THE CONTACT POINT TO OUR
+		# FEET. The contact-point version was tried and it made TOUCH unreachable:
+		# a tsinelas lies on the ground, so ANY contact with it — including walking
+		# squarely into its side — happens down near the walker's feet, and every
+		# single collision therefore read as a step. Caught by changing
+		# TOUCH_KNOCKBACK_SPEED from 2.6 to 8.5 and watching the measured
+		# displacement not move a millimetre (0.196 m both times): a number that
+		# ignores the constant it should depend on means the branch never ran.
+		#
+		# The right question is whether the slipper is UNDER us, and that is its top
+		# against our feet. Standing on one puts our feet at its top (~0.32); walking
+		# into one leaves our feet on the ground, well below it.
+		var feet_y := global_position.y - capsule_height() * 0.5
+		var other_top := other.global_position.y + other.capsule_height() * 0.5
+		var underfoot := other_top <= feet_y + Carriable.STEP_CONTACT_MARGIN
+		if normal.y >= Carriable.STEP_NORMAL_Y or underfoot:
+			_request_scuff(carriable, "step", Vector3.ZERO)
+			continue
+		# The shove goes along the contact, flattened — a body-check should send
+		# it skidding across the ground, not punt it into the sky. The lift is
+		# added on the receiving side (Carriable.TOUCH_KNOCKBACK_LIFT).
+		var push := Vector3(-normal.x, 0.0, -normal.z)
+		if push.length() < 0.01:
+			continue
+		_request_scuff(carriable, "touch", push.normalized())
+
+func _request_scuff(target: Carriable, kind: String, direction: Vector3) -> void:
+	if not NetworkManager.is_networked() or NetworkManager.is_host():
+		target.host_scuff(self, kind, direction)
+	else:
+		# Routed to the host by PATH and re-resolved there, exactly as
+		# carrier.gd::_rpc_request_grab does — a client asserting that it scuffed
+		# something proves nothing about whether it was allowed to.
+		_rpc_request_scuff.rpc_id(1, target.get_parent().get_path(), kind, direction)
+
+## Client -> host. The host re-resolves the target from its path and re-checks
+## `can_be_scuffed_by()` inside `host_scuff()`.
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_request_scuff(target_path: NodePath, kind: String, direction: Vector3) -> void:
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		return
+	var target := get_node_or_null(target_path) as CharacterBase
+	if target == null:
+		return
+	var carriable := target.get_node_or_null("Carriable") as Carriable
+	if carriable == null:
+		return
+	carriable.host_scuff(self, kind, direction)
 
 func _ready() -> void:
 	spawn_position = global_position
@@ -640,7 +759,18 @@ func _physics_process(delta: float) -> void:
 					# seal()'s own guard passes. RoundManager's existing
 					# "every tracked Can Sealed" win check (unchanged) fires
 					# from this exactly as it used to fire from a manual seal.
-					seal()
+					#
+					# THE LUCKY FALL EXCEPTION. A fall that landed the can on its
+					# head or its back must cost the attacking side nothing, and
+					# not counting it toward FALL_LIMIT is not enough on its own:
+					# under Option B an unrecovered fall auto-seals, and a seal
+					# loses the round outright. So a lucky fall rights itself here
+					# instead — the can went over, wobbled on its lid, and came
+					# back up. See LUCKY_FALL_CHANCE.
+					if last_fall_scored:
+						seal()
+					else:
+						self_right()
 			if input_just_pressed("bump") and _downed_self_rightable:
 				self_right()
 			# B-06: special_ability is normally only read further down, past the
@@ -795,9 +925,13 @@ func _recompute_speed_multiplier() -> void:
 
 ## Knocks this character into the Downed state (out-of-base hit, or a heavy special
 ## like Bakya Bash's instant-down). Starts the self-right window.
-func go_downed() -> void:
+## `scoring` false is the lucky fall — see LUCKY_FALL_CHANCE. Set BEFORE
+## `_set_state`, because that is what emits `state_changed`, and RoundManager's
+## handler reads this flag the moment it fires.
+func go_downed(scoring: bool = true) -> void:
 	if state == State.SEALED:
 		return
+	last_fall_scored = scoring
 	_downed_time_left = DOWNED_SELF_RIGHT_WINDOW
 	_downed_self_rightable = true
 	_set_state(State.DOWNED)
@@ -997,12 +1131,35 @@ func is_hitbox_active() -> bool:
 	# Tumbang preso is a game about hitting a can with a slipper, and the slipper
 	# passed through it.
 	#
-	# Being FLYING is the slipper's equivalent of the bump window: a deliberate,
-	# time-boxed offensive state that the player committed to. Everything else
-	# about the hit — the no-friendly-fire check, host authority, the
-	# thrower-ignore window, dents vs stagger — is unchanged and still resolves
-	# through the same path.
-	return _bump_active_time_left > 0.0 or _is_carriable_flying()
+	# ⚠️⚠️ B-134 — AND THE `or _is_carriable_flying()` THAT USED TO BE HERE IS WHY
+	# THE CAN COULD NOT FALL OVER.
+	#
+	# Human question, 2026-07-29: *"can the can even fall?"* Measured answer, with
+	# tools/hit_probe.tscn aiming dead at the can's own hurtbox centre at full
+	# charge: **0 knockdowns in 40 throws.** Of the 12 that made contact, SIX
+	# resolved through this scene's own melee Hitbox.
+	#
+	# That box is the character's BODY-CHECK reach. It is 0.14 radius at a 0.16
+	# offset, it carries `forces_downed = false`, and it knows nothing about the
+	# ThrowProfile. So whenever it won the race, `hitbox.gd` resolved the throw as
+	# a plain "stagger" no matter what was thrown — the profile's `forces_downed`,
+	# its `hit_radius` and its whole identity were simply bypassed.
+	#
+	# It won the race constantly because the two boxes are nearly the same size in
+	# practice. Against a Person the melee band is 0.14 + 0.45 = 0.59 and the
+	# profile band is 0.30 + 0.45 = 0.75 — a 0.16 m difference, less than HALF of
+	# one frame's travel at 0.433 m/frame. They therefore begin overlapping on the
+	# same physics frame, and `_step_flying()` calls `sweep_hitbox()` at the top of
+	# that frame, before the profile box's own `area_entered` is delivered.
+	# Measured on a four-peer session: 33 of 40 throws resolved on melee.
+	#
+	# A thrown slipper is not body-checking anybody. Its profile hitbox
+	# (`Carriable._spawn_flight_hitbox`) is live for the whole flight, is strictly
+	# larger, and is the one that carries what the throw actually is — so it is now
+	# the only thing that resolves a throw. `sweep_hitbox()` below sweeps it, so
+	# the first-frame case the flying clause was originally added for is still
+	# covered.
+	return _bump_active_time_left > 0.0
 
 ## True while this unit is a Prop mid-throw. Read from Carriable rather than
 ## mirrored into a field here, so there is one source of truth for the state.
@@ -1010,14 +1167,29 @@ func _is_carriable_flying() -> bool:
 	var c := get_node_or_null("Carriable") as Carriable
 	return c != null and c.state == Carriable.CarryState.FLYING
 
-## Re-runs this character's melee hitbox against everything already inside it.
-## `Area3D.area_entered` only fires on the ENTER edge, so a hitbox that becomes
-## active while it is already overlapping a hurtbox never reports — which is
-## true on the first frame of a throw, and is why `sweep_overlaps()` exists for
-## the bump press. carriable.gd::_step_flying calls this every flight frame.
+## Re-runs this character's OFFENSIVE hitboxes against everything already inside
+## them. `Area3D.area_entered` only fires on the ENTER edge, so a hitbox that
+## becomes active while it is already overlapping a hurtbox never reports —
+## which is true on the first frame of a throw, and is why `sweep_overlaps()`
+## exists for the bump press. carriable.gd::_step_flying calls this every flight
+## frame.
+##
+## B-134: this used to sweep ONLY `_melee_hitbox`, which was the wrong box for
+## the one caller that runs it every frame. A thrown slipper resolves on its
+## profile's pulse hitbox now (see is_hitbox_active), and that box is a child
+## added at runtime by `Carriable._spawn_flight_hitbox()`, so it is not
+## `_melee_hitbox` and was never swept. Sweeping both keeps the melee sweep for
+## the bump press and gives the throw the first-frame coverage the flying clause
+## used to provide.
+##
+## Double resolution is not a risk: `register_hit_once()` is keyed on the OWNER
+## character precisely so two live hitboxes share one memory — see `_hit_memory`.
 func sweep_hitbox() -> void:
 	if _melee_hitbox:
 		_melee_hitbox.sweep_overlaps()
+	for child in get_children():
+		if child is Hitbox and child != _melee_hitbox:
+			(child as Hitbox).sweep_overlaps()
 
 ## Whether this character is still inside its Downed self-right window (i.e.
 ## NOT yet sealable). Hitbox needs this from the outside to decide seal vs.
@@ -1064,6 +1236,11 @@ func _apply_hit_result(kind: String, duration: float, knockback: Vector3 = Vecto
 			apply_stagger(duration)
 		"downed":
 			go_downed()
+		# The lucky fall. ⚠️ The roll is NOT made here — `kind` already carries the
+		# host's decision, so every peer running this function reaches the same
+		# answer. Rolling here would give each peer its own.
+		"downed_lucky":
+			go_downed(false)
 		"seal":
 			seal()
 		"dent":
