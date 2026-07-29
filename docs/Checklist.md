@@ -728,6 +728,14 @@ touch map scenes.
         through from the generator's source durations, not re-heard or
         re-probed (no Godot binary in this session) — the listening pass this
         item is already waiting on should cover it.
+      - **B-120, 2026-07-29:** separately, nothing on the Master bus stopped
+        the summed mix from clipping — a busy 2v2 fight regularly lands
+        several full-scale SFX in the same window, and 0 dB on every bus with
+        no ceiling anywhere means that overs and clips. `AudioManager` now
+        installs an `AudioEffectLimiter` on Master in `_ready()`. See
+        `Handoff.md` B-120. **Unverified against a real build** — no Godot
+        binary in this session; run the smoke gate and play a real 2v2
+        before treating this as closed.
 - [x] **4.1a · Jump — every unit, Person and Prop.** 🎨 Design — **playtest 0.4 request.**
       Did not exist: zero occurrences of "jump" in `project.godot` or
       `character_base.gd`. Added `jump_p1..p4` (P1 Space, P2 Numpad-0, P3 RShift,
