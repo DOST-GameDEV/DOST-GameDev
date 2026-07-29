@@ -1405,6 +1405,25 @@ touch map scenes.
       `A2·DEF` both well off their starting marks). **Not verified:** a human actually playing a full
       Single Player Bo5 against the AI and judging whether it reads as a credible opponent — that is
       feel, and this item's own acceptance bar is explicitly narrower than that.
+- [~] **5.6 · Track a packaged build in git; attempt a macOS export.** 🤖 Sonnet, medium — **2026-07-29,
+      user request, not part of the original phase 5 scope**
+      **Distribution change:** `build/TumbangPreso-win64.zip` (exe + pck + a player-facing
+      `build/README.txt`) is now tracked in git — `.gitignore` allows `build/*.zip` and
+      `build/README.txt` specifically while the loose `.exe`/`.pck` stay ignored (the `.exe` alone
+      is ~104MB, over GitHub's 100MB hard push limit). A teammate can now clone or download the repo
+      and get a runnable Windows build with no Godot install. See `tools/export.md` for the re-zip
+      steps; **this needs a manual re-zip-and-commit after every build that should reach it** — there
+      is no automation keeping it fresh.
+      **macOS: attempted, unverified — do not report as supported.** Added an `export_presets.cfg`
+      macOS preset and cross-exported it from this Windows machine to
+      `build/TumbangPreso-macos-UNTESTED.zip` (also tracked). It genuinely completes and produces a
+      real `Tumbang Preso.app` bundle, which required enabling
+      `textures/vram_compression/import_etc2_astc=true` in `project.godot` (additive; Windows still
+      uses its existing `s3tc_bptc` format, one `.import` file's diff shown as the representative
+      sample). **Nobody has opened this on a Mac.** Codesigning/notarization are off, by design — see
+      `tools/export.md` for what that means for Gatekeeper and what to try before concluding it's
+      broken. This is a best-effort attempt per explicit user request, not a completed acceptance
+      test; do not tick 6.-block submission items against it.
 
 ---
 
