@@ -111,19 +111,66 @@ const _NO_JITTER: PackedStringArray = [
 	"countdown_tick", "countdown_go", "round_win", "round_lose", "match_win",
 ]
 
-## Per-sound level trim, applied on top of the bus. Anything not listed plays at
-## 0 dB. This is mix balance, not a volume control — the player's own sliders are
-## the bus volumes below.
+## ⚠️⚠️ B-121 — HEADROOM. EVERY VOICE IS ATTENUATED BY THIS, AND IT IS THE FIX
+## FOR THE "LOUD BUZZ IN GAMEPLAY" REPORT. DO NOT REMOVE IT TO "MAKE THE GAME
+## LOUDER" — that is precisely the change that caused the bug.
+##
+## Measured on the SFX bus during a real match (tools/audio_mix_probe.gd):
+## **peak +2.0 dBFS**, i.e. over full scale, i.e. digital clipping — which is
+## what a buzz IS. Two independent causes, and both are addressed here:
+##
+##   1. generate_sfx.py normalises every sound to peak 0.85, and `_TRIM_DB`
+##      below then ADDED gain to three of them. `lata_impact` at +1.5 dB is
+##      0.85 x 1.189 = **1.010, over full scale on its own**, before any
+##      summing at all — so the most frequently played sound in combat clipped
+##      on every single hit. Every trim below is now <= 0 dB: this table makes
+##      things quieter relative to a reference, never louder.
+##   2. Voices SUM. Four concurrent voices is normal in a fight (measured, and
+##      it is what the pool is sized for), and four sounds each peaking at 0.85
+##      can reach well past 1.0 together no matter how well behaved each is
+##      alone. That needs headroom, and headroom has to be a real gap, not an
+##      intention.
+##
+## ⚠️ WHY THIS IS NOT JUST `volume_db` ON THE SFX BUS. `_apply_bus()` below
+## OVERWRITES the SFX bus volume from the player's slider every time it moves.
+## Static headroom parked there would be silently wiped the first time settings
+## loaded. Mix headroom belongs with the mix; the bus volume belongs to the
+## player. Keeping those separate is what stops one clobbering the other.
+##
+## The Master limiter (B-120) is a genuine backstop but could never have fixed
+## this: it sits DOWNSTREAM of the SFX bus, and no limiter can undo distortion
+## that is already baked into the signal reaching it.
+const HEADROOM_DB: float = -7.0
+
+## Per-sound level trim, applied on top of HEADROOM_DB and the bus. Anything not
+## listed plays at 0 dB, which is the loudest anything gets. This is mix
+## balance, not a volume control — the player's own sliders are the bus volumes
+## below.
+##
+## ⚠️ EVERY VALUE HERE MUST BE <= 0. See HEADROOM_DB. To make one sound stand
+## out, pull the others DOWN; the sources are already normalised to 0.85 peak,
+## so there is no headroom above 0 to boost into. `_trim()` clamps as a backstop.
 const _TRIM_DB: Dictionary = {
-	"lata_impact": 1.5,      # the single most important sound in the game
-	"lata_seal": 1.0,
-	"match_win": 1.0,
+	# lata_impact is the single most important sound in the game, so it is the
+	# 0 dB reference that everything else is quieter THAN. It used to be +1.5,
+	# which is the B-121 clip.
+	"lata_impact": 0.0,
+	"lata_seal": 0.0,
+	"match_win": 0.0,
 	"ui_hover": -8.0,        # fires on every mouse move across a menu
 	"ui_click": -3.0,
 	"slipper_bounce": -4.0,
 	"land": -6.0,            # fires constantly; must sit under everything
 	"jump": -4.0,
 	"throw_charge": -5.0,
+	# Measured as the busiest repeating group in a real match
+	# (tools/audio_load_probe.gd: grab / charge / whoosh / bounce / land / the
+	# ability all cycle ~0.4 times a second while the AI throws). They are
+	# scenery around the impact, not events in their own right.
+	"grab": -6.0,
+	"throw_whoosh": -4.0,
+	"slipper_land": -3.0,
+	"dash": -3.0,
 }
 
 var _streams: Dictionary = {}          ## name -> AudioStream
@@ -191,6 +238,27 @@ func _install_master_limiter() -> void:
 	# untouched and only real pile-ups (the combat case above) get caught.
 	limiter.threshold_db = 0.0
 	AudioServer.add_bus_effect(master_idx, limiter)
+
+	# ⚠️ B-121 — AND ONE ON **SFX**, WHICH IS WHERE THE CLIPPING ACTUALLY WAS.
+	#
+	# The Master limiter above was added for this report and could not have
+	# fixed it: tools/audio_mix_probe.gd measured the SFX bus at peak +2.0 dBFS
+	# while Master sat at -1.4, i.e. the limiter was doing its job and the
+	# signal reaching it had ALREADY clipped one bus upstream. A limiter cannot
+	# undo distortion, only prevent it, so it has to sit on the bus that
+	# generates the overload.
+	#
+	# HEADROOM_DB is the real fix and this is the safety net under it: headroom
+	# is sized for the normal busy case (four concurrent voices, measured), and
+	# a limiter is what covers the tail where six land in the same 50 ms.
+	var sfx_idx := AudioServer.get_bus_index("SFX")
+	if sfx_idx < 0:
+		push_warning("AudioManager: no 'SFX' bus — cannot install its clipping limiter.")
+		return
+	var sfx_limiter := AudioEffectLimiter.new()
+	sfx_limiter.ceiling_db = -1.0
+	sfx_limiter.threshold_db = 0.0
+	AudioServer.add_bus_effect(sfx_idx, sfx_limiter)
 
 
 ## Loads every entry in SFX_NAMES. A missing file warns once and is then simply
@@ -303,8 +371,12 @@ func _retrigger_window(stream: AudioStream) -> int:
 	return maxi(RETRIGGER_MS, length_ms)
 
 
+## B-121: headroom + the per-sound trim, in one place so no call site can apply
+## one and forget the other. The `minf(..., 0.0)` is a backstop, not decoration
+## — a positive trim is exactly the bug this fixed, and clamping it here means
+## re-introducing one costs volume rather than causing clipping.
 func _trim(sound_name: String) -> float:
-	return _TRIM_DB.get(sound_name, 0.0)
+	return HEADROOM_DB + minf(float(_TRIM_DB.get(sound_name, 0.0)), 0.0)
 
 
 func _pitch(sound_name: String) -> float:

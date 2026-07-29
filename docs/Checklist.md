@@ -736,6 +736,25 @@ touch map scenes.
         `Handoff.md` B-120. **Unverified against a real build** — no Godot
         binary in this session; run the smoke gate and play a real 2v2
         before treating this as closed.
+      - **B-121, 2026-07-29 — the buzz, actually found and actually measured.**
+        B-119 and B-120 were both reasoned out without a Godot binary and
+        **neither was the cause.** Measured with the new `tools/audio_mix_probe.gd`
+        (captures each bus separately during a real match): the **SFX bus was
+        clipping at peak +2.0 dBFS**, over full scale, while Master read a
+        healthy −1.4 — which is why the Master limiter could not help and why
+        watching Master alone missed it. Two causes, both fixed:
+        (a) `_TRIM_DB` ADDED gain to three sounds on top of `generate_sfx.py`'s
+        0.85 normalisation, so `lata_impact` at +1.5 dB was 1.010 — **clipping
+        on its own, on every hit, before any summing**; every trim is now ≤ 0
+        and `_trim()` clamps as a backstop. (b) No headroom for summed voices:
+        new `HEADROOM_DB = −7.0` attenuates every voice, applied in `_trim()`
+        rather than as bus volume because `_apply_bus()` overwrites bus volume
+        from the player's slider. A limiter was also added on **SFX**, since
+        the Master one sits downstream of where the overload happens.
+        **Re-measured after the fix: SFX peak −1.0 dBFS, no bus clipping, and
+        the ambience sits 14 dB under SFX** (it was never the problem — that
+        was checked and ruled out). The probe now fails on any bus going over,
+        so this cannot silently regress. Still `[~]`: measured, not yet heard.
 - [x] **4.1a · Jump — every unit, Person and Prop.** 🎨 Design — **playtest 0.4 request.**
       Did not exist: zero occurrences of "jump" in `project.godot` or
       `character_base.gd`. Added `jump_p1..p4` (P1 Space, P2 Numpad-0, P3 RShift,
