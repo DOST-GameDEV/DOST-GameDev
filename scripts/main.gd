@@ -1140,6 +1140,17 @@ func _build_networked_character(data: Dictionary) -> Node:
 	# dictionary key the way they would if they all shared authority id 1 there
 	# too.
 	var is_ai := peer_id < 0
+	# ⚠️ B-133 — THIS LINE IS IMPLICATED IN A MEASURED LATE-JOIN REPLICATION
+	# FAULT. DO NOT "TIDY" IT WITHOUT READING docs/Handoff.md B-133 FIRST.
+	#
+	# Deferring this assignment past the spawn's replication flush takes a real
+	# four-peer session's discarded sync packets from 12,731 / 25,218 (peers 3 and
+	# 4) to 0 / 0 — but it also races `_rpc_reclaim_character`, which is what
+	# actually hands a slot to a joining human, and cost this peer its own
+	# character in tools/net_spawn_probe.tscn. So the fix is NOT applied here yet
+	# and this line is deliberately unchanged. Measurements, the three candidate
+	# fixes tried, and what each one did are in Handoff.md B-133; the harness is
+	# tools/hit_probe.tscn.
 	character.set_multiplayer_authority(1 if is_ai else peer_id)
 	_peer_teams[peer_id] = data["team"]
 	_peer_is_person[peer_id] = data["is_person"]

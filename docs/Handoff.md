@@ -739,6 +739,77 @@ For any coding agent picking up this queue.
 **Only open items live here.** B-01 … B-66 are in [`Handoff.md`](Handoff.md); everything
 marked `[FIXED]` there is done and settled. New bugs take the next free number **in this file**.
 
+**B-133 · A LATE-JOINING PEER SILENTLY DISCARDS EVERY SYNC PACKET FOR CHARACTERS THAT ALREADY
+EXISTED WHEN IT CONNECTED. [OPEN — root-caused and measured, NOT fixed]**
+
+Report: *"there are times you can't hit an opposing player."* Harness: **`tools/hit_probe.tscn`**,
+a real multi-peer ENet session. ⚠️ **Two peers cannot reproduce this.** With two peers `main.gd`
+fills the other two slots with host-owned AI, so every opposing Person is local to the resolving
+host and the failing condition never arises. `net_spawn_probe` passes clean throughout. **Run four.**
+
+*What was ruled OUT, by measurement, so nobody re-checks them:*
+
+ - **Collision layers/masks.** Correct on every peer, every character, every round: Hurtbox
+   `layer 2 / mask 0`, Hitbox `layer 0 / mask 2`, `monitorable` true. `ability_utils.gd`'s
+   "first-pass / untested in-editor: double check the collision layers" comment is stale — they
+   are right. Not the bug.
+ - **Tunnelling.** The fastest profile (`throw_flick`, 26.0) steps **0.433 m** per physics frame
+   against an overlap band **1.50 m** wide for a Person — about 3.5 frames of contact. Not the bug.
+   ⚠️ The first version of the probe reported 1.62 m/frame, which at 60 Hz is 97 m/s from a slipper
+   that launches at 26. Two numbers that could not both be true: it was sampling past the landing,
+   where the AI attacker re-grabs the slipper and `_step_carried()` snaps it to the hand in one
+   frame. The metric was the bug, exactly as the method note warns.
+ - **The host missing hits.** 40/40 throws aimed dead at an opposing Person's hurtbox centre
+   resolved on the host — including **20/20 against a remotely-owned target**. Host-side resolution
+   is not where this fails.
+
+*What it actually is.* On any peer that joins after other clients, the engine rejects the
+MultiplayerSynchronizer of every pre-existing client-owned character:
+
+    The MultiplayerSynchronizer at path "/root/Main/Players/<id>/MultiplayerSynchronizer" is
+    unable to process the pending spawn since it has no network ID.
+
+and then discards its traffic for the rest of the match. Measured, one four-peer run:
+
+| peer | joined | rejected synchronizers | discarded sync packets |
+|---|---|---|---|
+| 1 (host) | — | 0 | 0 |
+| 2 | 1st | 0 | 0 |
+| 3 | 2nd | 1 | 12,760 |
+| 4 | 3rd | 2 | 25,225 |
+
+**The rejected count is exactly (characters already present) − 1** — every pre-existing character
+except the host's own, which is the only one whose authority was never changed from the default.
+That arithmetic is what identifies the cause as the authority assignment rather than anything else.
+
+*What the player sees.* The affected peer's copy of that opponent keeps a stale transform —
+measured up to **1.12 m** from where the host had them, against 0.56 m for a healthy one — and never
+visibly reacts to a hit. The throw is resolved correctly by the host and the struck peer really is
+downed; the peer watching just never learns. From that seat it reads as the slipper passing through
+somebody. That is the report.
+
+*Three fixes tried. Do not repeat these.*
+
+ 1. **Set the authority in `CharacterBase._enter_tree()`** (what the engine's own error message
+    asks for, and the canonical Godot demo pattern). **No effect** — 12,698 / 25,070 discards.
+    `_enter_tree` runs inside `add_child`, which is still inside the spawn window.
+ 2. **`set_multiplayer_authority.call_deferred()` from `_ready()`.** **No effect** — 12,731 /
+    25,218.
+ 3. **Await two `process_frame`s, then assign.** ✅ **Discards 12,731 / 25,218 → 0 / 0.** But it
+    ⚠️ **races `_rpc_reclaim_character` and cost the client its own character** — `net_spawn_probe`
+    failed reproducibly with *"this peer owns no human character at all"*. Not landable as-is.
+    Also tried: skipping the call when the value is already correct, which is safe but does
+    **nothing** (12,760 / 25,225) — so the cure is the delay, not the redundancy.
+
+*Where to look next.* **`_rpc_reclaim_character` is the real suspect, not `_build_networked_character`.**
+The host pre-fills all four slots with AI placeholders at authority 1, so the spawn function's
+assignment is usually a no-op; the assignment that actually hands a slot to a human happens in
+`_rpc_reclaim_character`, on a node that is **already in the tree with a live synchronizer**, and
+that same function **renames the node** (`character.name = str(new_peer_id)`) — which
+MultiplayerSpawner and MultiplayerSynchronizer both address by PATH. A peer that joins afterwards
+never receives that RPC. Either half is sufficient to break replication for that character, and
+neither has been tested in isolation yet.
+
 **B-114 · The AI drove the GLOBAL `Input` singleton, so two bots shared one keyboard. [FIXED
 2026-07-29]** ⚠️ **Both reported AI symptoms were this one bug.**
 
