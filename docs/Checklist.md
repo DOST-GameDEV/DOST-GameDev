@@ -1824,8 +1824,26 @@ mechanics change, and that nobody has to re-derive last week's result.
 
 ### How fairness is measured
 
-`tools/ai_probe.gd` is the harness. It already reports independence and freezing; balance runs
-should extend it rather than adding a second tool. The measurements that matter:
+`tools/ai_probe.gd` is the harness, and as of 2026-07-29 it has the balance mode as well as the
+original independence one — extended, not replaced, per this section's own instruction.
+
+```bash
+# Independence / freeze audit (unchanged; every older number in this doc came from this).
+godot --path . tools/ai_probe.tscn
+
+# Balance. Plays whole AI-vs-AI matches back to back and self-scores against the table below.
+godot --path . tools/ai_probe.tscn -- fairness rounds=20 scale=6
+
+# Same, sweeping the Taya's pursuit radius — the lever, see the findings below.
+godot --path . tools/ai_probe.tscn -- fairness rounds=20 scale=6 pursue=0
+```
+
+⚠️ **Never `--headless`**, same rule as smoke-gate commands 3 and 4. ⚠️ **The fairness mode attaches
+a fourth `AIController` to `TeamAPerson`**, the slot `main.gd::_start_local_test()` leaves for the
+human — without that, whenever Team A is on offence its Attacker is a unit that never moves and the
+defence wins for free. It also flips that unit's `CameraRig` off `MOUSE` aim (B-60).
+
+The measurements that matter:
 
 | Metric | Why | Fair range |
 |---|---|---|
@@ -1838,14 +1856,41 @@ should extend it rather than adding a second tool. The measurements that matter:
 ⚠️ **A win rate on its own is not a fairness result.** A 50% split where neither side ever scores
 and every round times out is not balanced, it is broken twice. Always read it next to dents-per-round.
 
+### The role logic is a behaviour tree now (2026-07-29)
+
+`ai_controller.gd`'s four `_update_<role>(repick, delta)` procedures are gone. The same logic is a
+reactive behaviour tree — `BTSelector` / `BTSequence` / `BTCondition` / `BTAction` as inner classes
+in that same file, ~80 lines, no addon — built once in `_ready()` and ticked once per `decide()`.
+`decide(delta)` is still the entry point and is still called as the first line of
+`CharacterBase._physics_process`; nothing outside `ai_controller.gd` changed.
+
+Three things this bought, in the order they mattered:
+
+1. **The role swap is structural, not remembered.** The role fork is a `Selector` over four
+   conditions re-evaluated every tick, so the per-round `is_can`/`team_is_can_side` flip needs no
+   cooperation from anything.
+2. **`AIController.trace_enabled = true` gives you the branch path per tick** via `bt_trace()` —
+   e.g. `role/attacker/throw/reposition*` (`*` = RUNNING). Both findings below were found with it
+   inside an hour; the equivalent in four nested `if` chains was reading control flow by eye.
+3. **Method names are validated at build time** (`_validate_tree()`), so a leaf dispatching a
+   typo'd name is one `push_error` at startup rather than a per-frame runtime error.
+
+⚠️ The tree is **reactive — no node memory.** Every tick starts at the root. `RUNNING` propagates and
+stops sibling evaluation for that tick, but never pins the tree to a subtree across ticks. That is
+what lets a Can pre-empt its own hold-the-circle behaviour on the exact frame a throw becomes a
+threat.
+
 ### Role intent as implemented (2026-07-29) — what "trying to win" currently means
 
-- **Taya (defending Person): BODY-BLOCKS, does not chase.** It used to walk straight at the
-  attacker, which the geometry forbids it from ever reaching — the Taya is capped at
-  `CONFINEMENT_RADIUS` 5.0 and the attacker throws from the 6.0 line, so chasing parked it against
-  the inside of its own box with the can left unguarded behind it. It now stands on the line between
-  the can and the attacker at `TAYA_BLOCK_STANDOFF` (2.6), and only closes to melee and taps when
-  the threat is genuinely inside the box.
+- **Taya (defending Person): BODY-BLOCKS, and now pursues inside `taya_pursue_radius`.** It used to
+  walk straight at the attacker, which the geometry forbids it from ever reaching — the Taya is
+  capped at `CONFINEMENT_RADIUS` 5.0 and the attacker throws from the 6.0 line, so chasing parked it
+  against the inside of its own box with the can left unguarded behind it. It stands on the line
+  between the can and the attacker at `TAYA_BLOCK_STANDOFF` (2.6) and closes to melee only when the
+  threat is inside `taya_pursue_radius`.
+  ⚠️ **That pursuit condition is new and it is the balance lever — read the findings below before
+  touching it.** The old code's comment claimed it chased "only when the threat is already INSIDE
+  the box", but nothing ever tested that; the condition had never actually run.
 - **Attacker (offensive Person): AVOIDS THE DEFENDER.** It checks whether a defender is sitting in
   the throwing lane (perpendicular distance to the attacker→can line under `ATTACKER_LANE_CLEARANCE`
   1.3) and, if so, slides around the can to the nearest open bearing instead of charging into the
@@ -1856,14 +1901,76 @@ and every round times out is not balanced, it is broken twice. Always read it ne
 - **Tsinelas:** crawls toward its own attacker so the two meet, rather than the attacker crossing the
   whole gap alone.
 
-### ⚠️ Open — not yet measured, and the balance numbers above are therefore UNKNOWN
+### RUN 1 — 2026-07-29, the first balance numbers this project has ever had
 
-Nothing in the table has been run yet. The role behaviours above are implemented and verified only
-for *independence and liveness* (`tools/ai_probe.gd`: 1/846 frames with two bots changing state
-together, longest still-run 1.1 s, no freezes). **Whether they are FAIR is untested**, and the first
-balance run is the next AI task.
+Harness: `tools/ai_probe.gd -- fairness rounds=20 scale=6 pursue=<r>`, 4 AI units, **Option A**,
+default map. 20 rounds per row, all rendering (never `--headless`).
 
-Known things that will probably need retuning once it is run, recorded now so the first run has
+| `pursue=` | Round win rate | 1st throw | Throws taken | Blocked | **Reached the can** | **Dents/round** | Ended by tag | Timed out | Longest still-run |
+|---|---|---|---|---|---|---|---|---|---|
+| **0.0** (pure body-block, = pre-BT behaviour, **the shipping default**) | DEFENCE **100 %** | 0.6 s | 20 | 0 | **0** | **0.00** | 12/20 | 8/20 | 23.62 s |
+| **2.0** | DEFENCE **100 %** | 0.7 s | 20 | 0 | **0** | **0.00** | 10/20 | 10/20 | 30.87 s |
+| **5.0** (the confinement box) | DEFENCE **100 %** | 0.7 s | 20 | 0 | **0** | **0.00** | 20/20 | 0/20 | 2.02 s |
+
+**Read the dents column first, exactly as this section's own warning says.** The win rate is not
+the finding. The finding is that **the offence has never won a round, no throw has ever reached the
+can, and no can has ever been dented by an AI attacker** — and that "20 throws over 20 rounds" is
+not a coincidence, it is **exactly one throw per round, every round, at every setting.** The three
+rows differ only in *how* the defence wins and how long the round drags first.
+
+⚠️ **These are Option A numbers and that is load-bearing.** `GameLaunch.game_mode` defaults to
+OPTION_B, where `dents` is never written at all, so a fairness run on the default reports
+"0.00 dents" no matter how well the attacker plays. The first pass of this run was made on the
+default and its dents column measured nothing — the same trap Handoff.md records under B-118.
+`ai_probe.gd` now forces OPTION_A for a fairness run and prints the mode next to the dents row;
+pass `mode=b` to measure Option B deliberately.
+
+⚠️ **No row here is a balance result and none of them should be used to tune anything.** They are the
+measurement that found two structural bugs, both of which predate the behaviour-tree pass:
+
+1. **B-124 · THE ATTACKER AND THE TAYA LIVELOCK. THE ATTACKER GETS EXACTLY ONE THROW PER ROUND.**
+   Measured directly off `bt_trace()`: from the moment it re-acquires the slipper (t = 1.4 s) to the
+   end of a 40 s observation, the attacker sits in `role/attacker/throw/reposition` — *lane blocked
+   → slide to the nearest open bearing* — and never once reaches `charge-release`. It orbits the can
+   at r ≈ 4–5 holding the slipper; the Taya body-blocks at r ≈ 2.5 and re-derives its post from the
+   attacker's *current* bearing every tick, so the lane is blocked again the instant the attacker
+   arrives anywhere. They rotate together indefinitely. `_blocking_defender()` and
+   `_open_throwing_spot()` are both unchanged from before the BT pass — this is not a refactor
+   regression, it is a bug the refactor's trace made visible. The one throw every round does get is
+   the opening one, at ~0.6 s, before the Taya has reached the lane at all. **Fix candidates, none
+   implemented:** a patience timer that throws into a blocked lane anyway after N seconds; requiring
+   the block to persist before believing it; sampling the open bearing relative to the *Taya's* post
+   rather than the attacker's own.
+2. **B-125 · THE AI ATTACKER NEVER AIMS AT THE CAN.** `carrier.gd::_aim_direction()` takes the throw
+   direction from the CameraRig, which for a non-mouse-aimed unit follows the body, and the body's
+   yaw is written by `character_base.gd`'s `look_at(global_position + direction)` — i.e. **the
+   direction it last pressed movement in.** The attacker's charge leaf deliberately stands still
+   (`_release_move()`), so it throws along whatever bearing it last *walked*, never at the can. This
+   is why "reached the can" is 0 even for the one throw per round that does happen. Not fixed here:
+   aiming is outside the refactor's scope and the obvious fix (press toward the can for a frame to
+   set facing) quantises to the 8 keyboard compass directions, ±22.5°, which at 5.5 units is a
+   ±1 unit miss. Wants a real decision, not a patch.
+
+Also measured, and it corrects a stale claim in this doc and in `Handoff.md`: **the longest
+still-run figure of "1.1 s" is no longer true and has not been for a while.** The Can holds a
+`CAN_HOLD_RADIUS` of 0.45 while `ARRIVE_DISTANCE` is 0.6 — the deadzone is *wider than the circle*,
+so the Can never moves at all unless it is evading. A/B'd against `origin/integration`'s own
+`ai_controller.gd` on the same seed, which scores **worse** (10.50 s vs 6.73 s), so this is not a
+refactor regression either. Independence itself is unchanged and still good: 1/843 frames with two
+bots changing state together (the recorded figure was 1/846). The 20–30 s still-runs in the table
+above are the livelock of B-124, not this.
+
+**`taya_pursue_radius` ships at 0.0**, which reproduces the pre-behaviour-tree Taya exactly, so the
+refactor is behaviour-neutral by default. The pursuit branch the BT adds is implemented and one
+assignment away; it is off because the table above shows it changes *how* the defence wins without
+changing *that* it wins, and a refactor should not smuggle in a balance change.
+
+### ⚠️ Still open
+
+The table's fair ranges remain UNMET, and until B-124 and B-125 are fixed no tuning number is worth
+measuring — an attacker that cannot throw and cannot aim makes every other lever meaningless.
+
+Known things that will probably need retuning once that is done, recorded now so the next run has
 hypotheses to check rather than starting cold:
 
 1. **`TAYA_BLOCK_STANDOFF` 2.6 is a first guess.** Too small and the Taya hugs the can and blocks
