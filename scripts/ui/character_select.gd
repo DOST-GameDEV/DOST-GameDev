@@ -1,43 +1,43 @@
 extends Control
 class_name CharacterSelect
 
-## The CHARACTER screen: pick who you play as, then go on to the lobby.
+
+## The CHARACTER panel: pick who you play as, and what your Prop looks like.
 ##
-## WHERE IT SITS IN THE FLOW, AND WHY THERE.
+## Three tabs — TAO (the Person you play), LATA and TSINELAS (the two things your
+## Prop will be, one round each). All three are picked because a player controls
+## a Person AND a Prop, and the Prop is a lata one round and a tsinelas the next.
 ##
-##     MainMenu -> GameSetup -> **CharacterSelect** -> Lobby -> Main
-##
-## After GameSetup rather than before it, because the two screens ask different
-## kinds of question and the order matters: GameSetup decides what the MATCH is
-## (map, mode, and whether it is offline/host/join) and CharacterSelect decides
-## who YOU are in it. Putting the personal choice last means it is the freshest
-## thing in mind when the lobby's READY gate appears.
-##
-## Before the Lobby rather than inside it, because all three launch paths pass
-## through here on the way (GameSetup's Play Offline, Host and Join all set
-## `GameLaunch.pending_action` and then come here), so the pick is made ONCE, on
-## a screen that owns it, instead of being a widget competing with the ready-up
-## gate for attention. It also means the choice is already settled by the time
-## the peer connects, which is what lets `main.gd` hand it to the spawn without
-## a second round trip — see `NetworkManager.local_character_index`.
-##
-## ⚠️ IT DOES NOT TOUCH `pending_action`. GameSetup set it and the Lobby consumes
-## it; this screen is a pure detour between them. Going BACK from here therefore
-## returns to GameSetup, where it can be set again, rather than silently leaving
-## a stale host/join intent behind.
+## ⚠️ A LATA OR TSINELAS PICK IS NOT ONLY A LOOK — since 10.5 each entry also
+## carries the ability that skin brings (`character_roster.gd`'s `ability`
+## field), which is how checklist 3.3's kit selection is delivered without a
+## fourth and fifth picker. `main.gd::_prop_ability_for()` asks the list matching
+## the side being played this round. The TAO tab stays appearance-only: whether a
+## Person gets its own ability roster is checklist 1.3, still 🧑 HUMAN-owned and
+## unanswered, so every Person shares one Tag/Throw.
 ##
 ## STYLING IS THE FRONT END'S OWN, NOT THE LIGHT UI THEME. Cream and amber on
-## dark stained wood over a live 3D backdrop, matching GameSetup.tscn piece for
-## piece — the same SETTINGS CONFIG PANEL, MAP MODE DISPLAY, arrow and BUTTON
-## LONG artwork, so this reads as the next page of the same book rather than as a
-## screen somebody bolted on. See `ui_theme.gd`'s WOOD_*/Menu* block for why that
+## dark stained wood over a live 3D backdrop, matching the setup screen it opens
+## over piece for piece — the same SETTINGS CONFIG PANEL, MAP MODE DISPLAY, arrow
+## and BUTTON LONG artwork, so this reads as the next page of the same book
+## rather than as a screen somebody bolted on. See `ui_theme.gd`'s WOOD_*/Menu* block for why that
 ## band exists separately from the light `CARD`/`INK` one.
 
-const LOBBY_SCENE_PATH: String = "res://scenes/ui/Lobby.tscn"
-const GAME_SETUP_PATH:  String = "res://scenes/ui/GameSetup.tscn"
+## ⚠️ THIS IS A PANEL SHOWN IN PLACE, NOT A SCENE IN A CHAIN — changed in 10.5.
+## It used to be its own step (`GameSetup -> CharacterSelect -> Lobby`) and it
+## used `change_scene_to_file` to move on. It is now instanced hidden inside
+## `MatchSetup.tscn` and toggled, the same way `MainMenu.tscn` shows Settings and
+## Tutorial: a scene change would tear down and rebuild the setup screen — its
+## live 3D map backdrop, and on a client its ENet connection and the whole lobby
+## board — behind a panel the player is about to close.
+##
+## Nothing else about this screen changed. Both exits emit `closed` and the
+## screen that owns it decides what that means.
+signal closed
+
 
 ## Stagger between consecutive buttons unfurling — same value and same feel as
-## GameSetup's, so the two screens animate in identically.
+## the setup screen's, so the two animate in identically.
 const STAGGER: float = 0.09
 
 @onready var preview: CharacterPreview = %CharacterPreview
@@ -73,6 +73,13 @@ func _ready() -> void:
 	next_button.pressed.connect(_on_next_pressed)
 	confirm_button.pressed.connect(_on_confirm_pressed)
 	back_button.pressed.connect(_on_back_pressed)
+	# 4.1: the five handlers below already play their own `ui_click`/`ui_back`,
+	# but hover was never wired on this screen — ArrowButton carries hover
+	# internally (see arrow_button.gd) and none of these are ArrowButtons. Added
+	# in 10.5 so every control in the front end sounds the same; a scripted audit
+	# of all 25 controls across the setup screens is what found the gap.
+	for button in [prev_button, next_button, confirm_button, back_button]:
+		button.mouse_entered.connect(func() -> void: AudioManager.play("ui_hover"))
 
 	confirm_button.animate_in(STAGGER)
 
@@ -88,6 +95,7 @@ func _build_tabs() -> void:
 		button.focus_mode = Control.FOCUS_NONE
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.pressed.connect(_on_tab_pressed.bind(i))
+		button.mouse_entered.connect(func() -> void: AudioManager.play("ui_hover")) # 4.1
 		tab_bar.add_child(button)
 		_tab_buttons.append(button)
 	_refresh_tab_buttons()
@@ -155,7 +163,7 @@ func _on_next_pressed() -> void:
 ## The one place a selection is applied, so the name in the slot, the tagline,
 ## the thing behind the UI and what actually spawns cannot disagree — the
 ## backdrop IS the selection, not a picture of it. Same contract as
-## GameSetup::_apply_map().
+## match_setup.gd::_apply_map().
 ##
 ## Writes straight into the matching `GameLaunch` preference on every change
 ## rather than only on confirm: the three are preferences, and CONFIRM is a
@@ -190,13 +198,11 @@ func _apply() -> void:
 
 func _on_back_pressed() -> void:
 	AudioManager.play("ui_back") # 4.1
-	get_tree().change_scene_to_file(GAME_SETUP_PATH)
+	closed.emit()
 
-## Straight to the Lobby, with `pending_action` untouched — GameSetup already
-## decided whether this is a local, host or join launch and lobby.gd reads it
-## there. Nothing about the character choice needs saying to anyone yet: it is in
-## `GameLaunch`, which survives the scene change, and NetworkManager publishes it
-## to the host on connect.
+## Closes the panel with `pending_action` untouched. Nothing about the choice
+## needs saying to anyone yet: it is in `GameLaunch`, which survives the scene
+## change, and NetworkManager publishes it to the host on connect.
 func _on_confirm_pressed() -> void:
 	AudioManager.play("ui_click") # 4.1
-	get_tree().change_scene_to_file(LOBBY_SCENE_PATH)
+	closed.emit()

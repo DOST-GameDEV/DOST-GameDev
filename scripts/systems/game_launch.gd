@@ -128,3 +128,38 @@ func reset() -> void:
 	pending_action = ""
 	pending_join_address = ""
 	pending_status_message = ""
+
+# --- SEATING (10.5) -----------------------------------------------------------
+#
+# A SEAT is an index 0..3 with exactly the meaning `main.gd` already gives its
+# join index, unchanged and deliberately so:
+#
+#     team      = seat / 2         → 0, 0, 1, 1
+#     is_person = seat % 2 == 0    → the even seat of each pair is the Person
+#
+# Nothing new is invented here; what changed is only WHO decides the number. It
+# used to be connection order alone (`_next_join_index`), which no player could
+# see, influence or predict. It is now whatever seat that player actually clicked
+# in the setup screen, with connection order kept as the fallback for peers that
+# never went through one (`--host`/`--join` from the command line, and mid-match
+# late joiners).
+
+## Host-authoritative: NetworkManager token -> seat. Populated by the setup
+## screen and broadcast to every peer before the match scene loads, so all four
+## peers agree on who sits where BEFORE `main.gd` spawns anybody. Read by
+## `main.gd::_claim_join_index()`.
+##
+## Keyed by the stable per-install token rather than by peer id, because peer ids
+## do not survive a reconnect and seats must (4.3/B-65).
+var seat_tokens: Dictionary = {}
+
+## Single Player only: which seat the human takes. Networked seating goes through
+## `seat_tokens` above, which has no meaning without a NetworkManager session.
+var solo_seat: int = 0
+
+## Cleared when a NEW session is being set up, not by `reset()` — `main.gd` calls
+## `reset()` inside its own `_ready()`, after reading `pending_action` but BEFORE
+## spawning anyone, so clearing seating there would wipe the assignment the setup
+## screen just made, one frame before it is used.
+func clear_seating() -> void:
+	seat_tokens.clear()

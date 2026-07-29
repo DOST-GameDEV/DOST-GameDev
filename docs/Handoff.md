@@ -3117,7 +3117,7 @@ B-65 (rejoin identity) is noted but not attempted here — needs a stable player
 
 ---
 
-#### U-8 · Sync the host's map and mode to joining clients `[ ]`
+#### U-8 · Sync the host's map and mode to joining clients `[x]`
 
 **Every peer picks its own map and mode, and nothing reconciles them.** `GameLaunch.selected_map`
 and `GameLaunch.game_mode` are set locally by whoever touches the GAME screen. A client that
@@ -3144,9 +3144,26 @@ while it waits in the lobby rather than its own.
 
 **Commit:** `Sync the host's map and mode to joining clients (vX.Y)`
 
+**[DONE @ 10.5]** Built into `match_setup.gd`, the unified setup screen that
+replaced both `GameSetup.tscn` and `Lobby.tscn`. `_rpc_sync_config` pushes the
+host's map and mode on every picker press (not only at Start), the joiner's
+`_rpc_sync_state` snapshot carries both, and `_rpc_begin_match` carries them
+again as the last word before the scene change. A client's map and mode arrows
+are `disabled` and dimmed, so step 3 is enforced on the control rather than by
+the host ignoring a stray RPC.
+
+**Verified by running two real instances**, not by reading: `tools/lobby_probe.gd`
+starts the client on Eskinita/Capture and the host on Bayan Plaza/Dents —
+deliberately opposite — and asserts the client ends up on the host's values,
+cannot change them, and that both peers reach `Main.tscn` on the host's map.
+
+**One deliberate addition beyond the spec:** changing map or mode CLEARS every
+ready flag. Readying is agreement to play a specific match, and carrying the
+ticks across a change would start a match nobody agreed to, silently.
+
 ---
 
-#### U-5 · Character select `[ ]`
+#### U-5 · Character select `[~]`
 
 Six Prop specials have `.tres` resources (B-24) and no way to choose between them. `main.gd`
 hardcodes `PROP_ABILITY = quick_stand.tres` for every Prop, with a comment saying so.
@@ -3168,6 +3185,32 @@ Steps:
 one it picked, on its own cooldown.
 
 **Commit:** `Add character select for the six Prop specials (v6.1)`
+
+**[DONE, kit half @ 10.5 — step 3 is still blocked]** The screen itself shipped
+earlier as an APPEARANCE picker (12 Persons, 6 lata, 6 tsinelas — a rig plus a
+palette), with `main.gd` still choosing a Prop's ability by TEAM. So step 4, the
+part this item is actually about, was outstanding: the six Prop `.tres` were
+still unreachable by choice.
+
+10.5 closed it by attaching an `ability` to each lata and tsinelas roster entry
+rather than adding a fourth and fifth picker (step 2's "six cards" shape, arrived
+at from the other direction). That works because a player already picks a lata
+AND a tsinelas separately, and the reason that split exists is the reason a
+single combined pick could not work: a Prop is a lata one round and a tsinelas
+the next, so `_prop_ability_for()` asks the list matching the side being played
+and stays right across every role swap (B-76). `.duplicate()` at every call site,
+as this spec warns.
+
+⚠️ Six looks share three kits per side — three `.tres` exist per side and six
+entries do not. Entry 0 of each list keeps today's behaviour.
+
+⚠️ **STEP 3 (Person rosters) IS NOT BUILT, per step 5.** Checklist **1.3** —
+*does the Person get its own ability roster?* — is still 🧑 HUMAN-owned and
+unanswered, so the TAO tab stays appearance-only and every Person shares
+`person_action.tres`. Answer 1.3 before building the Person half.
+
+**Not yet verified:** the four-peer acceptance case, and whether the kit-per-skin
+mapping is balanced — that belongs to the Phase 9 fairness log.
 
 ---
 

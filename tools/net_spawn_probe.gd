@@ -106,6 +106,7 @@ func _ready() -> void:
 
 	await get_tree().create_timer(CONNECT_WAIT).timeout
 	_sample("initial spawn")
+	await _check_local_input()
 
 	if _is_host:
 		# Only the host drives rounds; the client observes what it was told.
@@ -139,6 +140,87 @@ func _ready() -> void:
 		_tag, "ALL CHECKS PASSED" if _fails == 0 else "%d FAILURES" % _fails,
 		_samples - _fails, _samples])
 	get_tree().quit(1 if _fails > 0 else 0)
+
+## ---------------------------------------------------------------------------
+## CAN THIS PEER MOVE ITS OWN CHARACTER? — 2026-07-29 user report, verbatim:
+## "In lan multiplayer we cant move any character, weird, pls fix."
+##
+## ⚠️ THIS IS THE CHECK THAT DID NOT EXIST, AND ITS ABSENCE IS THE WHOLE BUG.
+## Every networked probe so far measured spawn POSITION, FACING and CARRY STATE
+## — never whether the human at the keyboard can actually drive the thing. B-30
+## changed `player_id` on the networked path from "always 1" to slot-based
+## (`main.gd::_build_spawn_data`: `(index % 2) + 1`) and nothing anywhere
+## noticed, because `player_id` only decides which INPUT SUFFIX is read and no
+## test ever pressed a key.
+##
+## Two assertions, in order of how much they prove:
+##
+##   1. The action this peer's own character resolves for "move_up" must be
+##      BOUND TO A REAL KEY. p3/p4 are registered-but-unbound on purpose (so an
+##      AI can never collide with a human), and p2 is bound to arrows — so a
+##      human dealt p2 who presses WASD gets silence, with no error anywhere.
+##      This assertion catches that directly and cheaply.
+##   2. Pressing that action must actually MOVE the character. This is the end-
+##      to-end one: it exercises the authority gate, the freeze branch and the
+##      confinement clamp as well as the binding.
+##
+## Sampled at INITIAL SPAWN deliberately: MatchManager.round_number is still 0
+## there, which is the pre-round free-roam window, so `character_base.gd`'s
+## between-rounds hard freeze (`not round_active and round_number > 0`) is not
+## armed and cannot mask a binding failure as a movement failure.
+const MOVE_FRAMES: int = 30
+## Well under a walk's real distance over 30 physics frames, but far enough above
+## depenetration jitter that a frozen character cannot pass by accident.
+const MOVE_MIN_DISPLACEMENT: float = 0.25
+
+func _check_local_input() -> void:
+	# The character this machine actually drives: authoritative AND not a bot.
+	# Exactly the pair character_base.gd::_action() keys the p1 substitution on,
+	# so the probe and the fix agree on what "mine" means.
+	var mine: CharacterBase = null
+	for node in get_tree().root.find_children("*", "CharacterBase", true, false):
+		var ch := node as CharacterBase
+		if ch != null and ch.is_multiplayer_authority() and ch.ai_controller == null:
+			mine = ch
+			break
+
+	print("\n[%s] --- LOCAL INPUT ---" % _tag)
+	_samples += 1
+	if mine == null:
+		print("[%s]    *** FAIL: this peer owns no human character at all ***" % _tag)
+		_fails += 1
+		return
+
+	var action := mine.action_name("move_up")
+	var events: Array = InputMap.action_get_events(action) if InputMap.has_action(action) else []
+	print("[%s]    my character : %s  player_id=%d  is_person=%s  is_can=%s" % [
+		_tag, mine.name, mine.player_id, str(mine.is_person), str(mine.is_can)])
+	print("[%s]    resolves     : \"move_up\" -> %s  (%d bound event(s))" % [
+		_tag, action, events.size()])
+	if events.is_empty():
+		print("[%s]    *** FAIL: %s IS BOUND TO NO KEY — this peer cannot move, and" % [_tag, action])
+		print("[%s]        nothing errors because Input.is_action_pressed() on an" % _tag)
+		print("[%s]        unbound action just returns false forever. ***" % _tag)
+		_fails += 1
+		return
+
+	# End-to-end: press it and see if the body actually goes anywhere.
+	var before := mine.global_position
+	Input.action_press(action)
+	for _i in MOVE_FRAMES:
+		await get_tree().physics_frame
+	Input.action_release(action)
+	var moved := Vector2(mine.global_position.x - before.x, mine.global_position.z - before.z).length()
+	print("[%s]    pressed %-14s for %d frames -> moved %.3f m (need >= %.2f)" % [
+		_tag, action, MOVE_FRAMES, moved, MOVE_MIN_DISPLACEMENT])
+	print("[%s]    gates        : round_active=%s round_number=%d (freeze armed=%s)" % [
+		_tag, str(RoundManager.round_active), MatchManager.round_number,
+		str(not RoundManager.round_active and MatchManager.round_number > 0)])
+	if moved < MOVE_MIN_DISPLACEMENT:
+		print("[%s]    *** FAIL: bound, but the character did not move ***" % _tag)
+		_fails += 1
+	else:
+		print("[%s]    OK — this peer can drive its own character." % _tag)
 
 ## One physics frame of slack so the sample reads the state AFTER main.gd's own
 ## round handler has run its placement, not the frame it was announced on.
