@@ -46,12 +46,23 @@ const DOWNED_SELF_RIGHT_WINDOW: float = 2.0
 ## defend can move in is so small. he can barely move, theres no room for
 ## outplays." Still a full unit short of the 6.0 throwing line, so the Taya
 ## still cannot reach the attacker's line — same design constraint as before,
-## just more room inside it. Mirrored by `CONFINEMENT_BOX_RADIUS` in
-## build_eskinita.py, which draws the actual boundary as a chalk-style square
-## (a ring was tried first, then replaced same day — "the circle you made
-## was ugly ... can we just use a square") — keep both in sync if this is
-## retuned again. Still a first guess, not a
-## measurement; needs a human to actually play it.
+## just more room inside it.
+##
+## ⚠️ THIS IS THE SINGLE SOURCE OF TRUTH, AND THE MAP BUILDERS NOW READ IT.
+## `tools/maps/build_eskinita.py` and `build_bayan_plaza.py` used to each declare
+## their own `CONFINEMENT_BOX_RADIUS = 5.0` with a "keep the two in sync" comment
+## — one number written out in three files, kept aligned by hand. Both now parse
+## this line out of this file (see `read_confinement_radius()` in either builder)
+## and abort the build if they cannot find it, so a retune here cannot silently
+## leave the chalk on the floor describing a boundary that no longer exists.
+##
+## The boundary is a chalk-style SQUARE at |x| = |z| = this value; a ring was
+## tried first and replaced the same day ("the circle you made was ugly ... can
+## we just use a square"). `_move_and_confine()` clamps X and Z independently to
+## match it — see its own note for the 2.07-unit corner lie that came of those
+## two disagreeing about their shape.
+##
+## Still a first guess, not a measurement; needs a human to actually play it.
 const CONFINEMENT_RADIUS: float = 5.0
 ## Bump is "no cooldown" per the GDD but still needs an active window so standing
 ## next to an opponent doesn't stagger them every physics tick — press-to-bump,
@@ -402,11 +413,27 @@ func _move_and_confine() -> void:
 	move_and_slide()
 	if not _is_confined_to_base():
 		return
-	var flat := Vector2(global_position.x, global_position.z)
-	if flat.length() > CONFINEMENT_RADIUS:
-		flat = flat.normalized() * CONFINEMENT_RADIUS
-		global_position.x = flat.x
-		global_position.z = flat.y
+	# ⚠️ A SQUARE, NOT A CIRCLE — and it was a circle until 2026-07-29 while the
+	# floor said otherwise. This used to clamp radially
+	# (`if flat.length() > CONFINEMENT_RADIUS`), but BOTH map builders draw the
+	# confinement marker as four straight court lines at |x| = |z| = 5.0
+	# (`court_line("Confinement*", ...)`), and a square and a circle of the same
+	# "radius" only agree at the four edge midpoints.
+	#
+	# On the diagonals they disagree by a lot: the chalk promises 7.07 units at a
+	# corner and the radial clamp stopped the player dead at 5.0 — a 2.07-unit
+	# invisible wall, exactly where a Taya moves when it is covering a corner of
+	# its own box. Nobody had hit it because nobody had played the box.
+	#
+	# Human call, 2026-07-29: the SQUARE is the real one. The marker stays square
+	# (that decision predates this — a drawn circle was rejected as ugly) and the
+	# physics now matches it, so the Taya gets its corners back.
+	#
+	# ⚠️ THIS IS A BALANCE CHANGE, not just a correctness one: it enlarges the
+	# defended area by 4/pi (~27%) and gives the Taya up to 2.07 more units of
+	# reach on the diagonals. AI fairness was measured either side of it.
+	global_position.x = clampf(global_position.x, -CONFINEMENT_RADIUS, CONFINEMENT_RADIUS)
+	global_position.z = clampf(global_position.z, -CONFINEMENT_RADIUS, CONFINEMENT_RADIUS)
 
 func _ready() -> void:
 	spawn_position = global_position

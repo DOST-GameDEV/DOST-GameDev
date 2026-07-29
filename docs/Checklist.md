@@ -2293,6 +2293,31 @@ now a **tuning** problem rather than a structural one, which it was not before R
 `CAN_LEAD_FRACTION` and `ATTACKER_PATIENCE` are both difficulty knobs and belong in the tiers
 fairness item 6 asks for, alongside `DECISION_INTERVAL` and `ATTACKER_LANE_CLEARANCE`.
 
+### RUN 3 — 2026-07-29, the square confinement. A correctness fix with a balance cost.
+
+`_move_and_confine()` clamped a CIRCLE while both map builders drew a SQUARE, so at the corners the
+chalk promised 7.07 units and the physics stopped the player at 5.0. The square is now the real one
+(human call). Measured either side, same harness, nothing else changed:
+
+| Metric | RUN 2 (circle) | **RUN 3 (square)** | Fair |
+|---|---|---|---|
+| Round win rate | DEF 85% / OFF 15% | **DEF 90% / OFF 10%** | 40–60% |
+| Throws blocked | 41/91 = **45.1%** (in range) | **55/103 = 53.4%** (over) | 25–50% |
+| Reached the can | 7 | **4** | — |
+| Dents per round | 0.50 | **0.30** | ≥ 1 |
+| Longest still-run | 4.18 s | **6.83 s** | < 2 s |
+
+**The defence got stronger, and that is the expected direction, not a surprise.** A square of
+half-width 5.0 has 4/π (~27%) more area than a circle of radius 5.0 and gives the Taya up to 2.07
+extra units of reach on the diagonals — so it body-blocks more, which is exactly what the numbers
+say. Block rate went from inside the fair range to just above it.
+
+⚠️ **Do not "fix" this by reverting the shape.** The circle was a bug: the marker on the floor is
+the boundary the player reads, and it was lying by 2.07 units at every corner. What this run says is
+that the Taya now needs a compensating nerf to land back in range — `TAYA_BLOCK_STANDOFF` (2.6, and
+documented as "a first guess") is the obvious lever, and it is the one that was always going to need
+measuring once somebody actually played the box.
+
 Known things that will probably need retuning once that is done, recorded now so the next run has
 hypotheses to check rather than starting cold:
 
