@@ -4,10 +4,15 @@
 
 [resource]
 script = ExtResource("1")
-launch_speed = 14.0
-arc_angle_deg = 12.0
-gravity_scale = 1.0
+launch_speed = 19.0
+arc_angle_deg = 0.0
+gravity_scale = 1.35
 hit_radius = 0.40
 forces_downed = true
 spin_speed_deg = 420.0
 steer_strength = 2.0
+mass = 1.7
+knockback_scale = 0.35
+knockback_lift = 3.6
+faceslop_multiplier = 1.5
+tumble_speed_deg = 300.0
