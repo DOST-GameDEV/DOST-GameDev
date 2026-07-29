@@ -75,6 +75,10 @@ const GUARD_REGEN_RATE: float = 0.6
 ## Dash: a quick evasive burst in the current facing direction, on a short
 ## cooldown rather than a stamina meter — it's one instant action, not a hold.
 const DASH_SPEED: float = 14.0
+## Ceilings on knockback (see apply_knockback for why these exist at all and why
+## they are anchored to DASH_SPEED and JUMP_VELOCITY rather than picked).
+const MAX_KNOCKBACK_SPEED: float = 16.0
+const MAX_KNOCKBACK_LIFT: float = 7.0
 const DASH_DURATION: float = 0.15
 const DASH_COOLDOWN: float = 2.5
 
@@ -767,8 +771,65 @@ func seal() -> bool:
 ## then pressing bump (the natural order) used to never register a hit.
 func _open_bump_window() -> void:
 	_bump_active_time_left = BUMP_ACTIVE_TIME
+	# A new swing is a new offensive event, so everything this character already
+	# struck becomes fair game again. Without this, bumping the same opponent
+	# twice in a row would silently land only the first one — see
+	# `_hit_memory`'s own doc for the rule this is one half of.
+	clear_hit_memory()
 	if _melee_hitbox:
 		_melee_hitbox.sweep_overlaps()
+
+## ---------------------------------------------------------------------------
+## ONE HIT PER OFFENSIVE EVENT, PER TARGET.
+##
+## ⚠️ MEASURED BEFORE IT WAS FIXED (tools/phys_probe.gd, 12 throws each):
+##     target=can   -> worst throw resolved  1 time   (looked fine — this is
+##                     why it went unnoticed for so long)
+##     target=taya  -> worst throw resolved 35 times, 344 resolutions total
+##     target=graze -> worst throw resolved 59 times
+## Every one of those re-runs a full state transition, a VFX flash, a hitstop
+## (which dips Engine.time_scale globally) and a positional sound. That is the
+## "hit animation triggers repeatedly and severely lags the game" report.
+##
+## Two independent causes, and this is why the memory lives HERE on the
+## character rather than inside hitbox.gd:
+##
+##  1. `_step_flying()` calls `sweep_hitbox()` EVERY physics frame, and
+##     `sweep_overlaps()` re-runs `_on_area_entered` for everything already
+##     inside. A hurtbox that stays overlapped for 35 frames resolves 35 times.
+##  2. A thrown slipper carries TWO live hitboxes at once — this scene's own
+##     melee Hitbox (live for the whole flight, see is_hitbox_active) and the
+##     per-profile pulse Hitbox from Carriable._spawn_flight_hitbox(). Both
+##     overlap the same hurtbox, so even a single clean frame resolved TWICE.
+##     Per-Hitbox memory could never have caught that; a shared one does.
+##
+## The Area3D-versus-body gap is why this cannot be left to physics: the
+## hitbox spheres are deliberately larger than the capsules, so overlap starts
+## a few frames before `move_and_collide` ends the flight — and on a graze the
+## bodies never touch at all, so nothing ends it and the overlap just persists.
+##
+## Keyed by instance id rather than by holding object references: an id cannot
+## dangle, and this dictionary outlives at least one round reset. Same
+## reasoning ability_utils.gd already uses after B-118.
+var _hit_memory: Dictionary = {}
+
+## Records `target` as struck by this character's current offensive event.
+## Returns false if it was already struck — the caller must then skip the hit
+## entirely. Call once, at the point of resolution; it mutates.
+func register_hit_once(target: CharacterBase) -> bool:
+	if target == null or not is_instance_valid(target):
+		return false
+	var id := target.get_instance_id()
+	if _hit_memory.has(id):
+		return false
+	_hit_memory[id] = true
+	return true
+
+## Starts a fresh offensive event. Called when a bump window opens, and by
+## carriable.gd on every carry-state transition — thrown, caught, come to rest,
+## round reset — so "once per throw" resets exactly when a throw does.
+func clear_hit_memory() -> void:
+	_hit_memory.clear()
 
 ## B-16: Guard/Dash. Props only (a Person's assist slot is Tag/Throw instead —
 ## see person_action.gd) — which half a Prop gets depends on `is_can` this
@@ -906,7 +967,7 @@ func _rpc_notify_ability_activate() -> void:
 ## on the authority; the cosmetic half moved to _rpc_play_hit_vfx below,
 ## broadcast to everyone.
 @rpc("any_peer", "call_local", "reliable")
-func _apply_hit_result(kind: String, duration: float) -> void:
+func _apply_hit_result(kind: String, duration: float, knockback: Vector3 = Vector3.ZERO) -> void:
 	match kind:
 		"stagger":
 			apply_stagger(duration)
@@ -916,6 +977,62 @@ func _apply_hit_result(kind: String, duration: float) -> void:
 			seal()
 		"dent":
 			apply_dent(duration)
+	# AFTER the state transition, deliberately. apply_stagger()/apply_dent()
+	# no-op a guarded or already-Downed hit, and a shove that landed anyway
+	# would be the one visible sign of a hit that the rules just said did not
+	# happen. `knockback` is already zero for a guarded hit
+	# (hurtbox.gd::absorb_knockback), and apply_knockback() re-checks the states
+	# that block it — see there.
+	apply_knockback(knockback)
+
+## THE FACESLOP, RECEIVING END. `impulse` is metres/second, already scaled by
+## this character's own Hurtbox (hurtbox.gd::absorb_knockback) — this function
+## only decides whether the body is in a state that can be moved at all, and
+## then moves it.
+##
+## ⚠️ THERE IS NO RAGDOLL IN THIS PROJECT, AND THIS IS NOT ONE. DOWNED is a
+## state on the existing machine (go_downed), and character_visual.gd renders it
+## as a tilt — nothing simulates limbs. What "physically knocked backward" means
+## here is that the CharacterBody3D keeps its own momentum through the knockdown:
+## the impulse goes into `velocity` and the ordinary move_and_slide/gravity path
+## in _physics_process carries it, so the unit slides and falls exactly the way
+## it would from a jump. That is why this is a velocity write and not a new
+## physics path — a second one would have to re-implement the confinement clamp,
+## the floor check and the round freeze, which is the trap ai_controller.gd's
+## class doc already warns about.
+func apply_knockback(impulse: Vector3) -> void:
+	if impulse.is_zero_approx():
+		return
+	# SEALED is over — a sealed Can is out of the round and being shoved around
+	# afterwards reads as the seal not having stuck.
+	if state == State.SEALED:
+		return
+	if _is_guarding:
+		return
+	# ⚠️ CLAMPED, AND THE CEILINGS ARE ANCHORED TO NUMBERS THAT ALREADY EXIST.
+	# Knockback is the product of four independently-tunable ThrowProfile fields
+	# (launch_speed x knockback_scale x mass x faceslop_multiplier), so it is
+	# very easy to pick four innocuous-looking values whose product throws a
+	# player clean out of the arena. Rather than trusting every future profile to
+	# be sane, cap the result:
+	#   * horizontal at just above DASH_SPEED (14.0) — the fastest a unit can
+	#     legitimately travel under its own power, so a faceslop can out-run a
+	#     dash but never by an order of magnitude.
+	#   * vertical at just above JUMP_VELOCITY (5.8) — a hit can pop a body
+	#     higher than it can jump, but not into orbit. Apex at 7.0 is
+	#     v^2/(2*GRAVITY) = 1.2 units.
+	var flat := Vector2(impulse.x, impulse.z)
+	if flat.length() > MAX_KNOCKBACK_SPEED:
+		flat = flat.normalized() * MAX_KNOCKBACK_SPEED
+	velocity.x += flat.x
+	velocity.z += flat.y
+	# ⚠️ MAX, NOT +=, ON THE VERTICAL. Two hitboxes can still legitimately
+	# resolve on one target in one frame (a slipper's melee box and a teammate's
+	# bump, say), and summing lift launches the target into orbit. Taking the
+	# larger keeps the biggest hit's pop without ever compounding — and it also
+	# means a knockback can only ever help a falling body, never drive it
+	# downward into the floor.
+	velocity.y = maxf(velocity.y, minf(impulse.y, MAX_KNOCKBACK_LIFT))
 
 ## B-66: the cosmetic half of a landed hit, broadcast to every peer (unlike
 ## _apply_hit_result above, which only ever reaches the struck character's own
