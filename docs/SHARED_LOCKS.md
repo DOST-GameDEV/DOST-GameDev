@@ -15,10 +15,10 @@ to type.
 
 | Shared file | Held by | Branch | Since |
 |---|---|---|---|
-| `scenes/main/Main.tscn` | — free — | | |
+| `scenes/main/Main.tscn` | 🔧 build-ux | `code/ui-overhaul` | 2026-07-29 |
 | `scenes/characters/CharacterBase.tscn` | — free — | | |
 | `scenes/characters/CameraRig.tscn` | — free — | | |
-| `scenes/ui/*.tscn` | — free — | | |
+| `scenes/ui/*.tscn` | 🔧 build-ux | `code/ui-overhaul` | 2026-07-29 |
 | `project.godot` | — free — | | |
 | `tools/models/generate_all.gd` | — free — | | |
 | `docs/Checklist.md` | *no lock needed* | | append-only-ish; conflicts resolved by taking both sides |
