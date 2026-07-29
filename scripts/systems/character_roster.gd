@@ -164,11 +164,36 @@ const ROSTER: Array[Dictionary] = [
 ## never go near `OFFENSE` #f87020 or `DEFENSE` #0080e8 in hue, because those two
 ## mean "which side is this". Every tint below clears that bar.
 
+## ⚠️ `ability` IS WHAT MAKES A PICK MECHANICAL, NOT JUST COSMETIC (3.3 / B-76).
+## This roster began as appearance only — a rig and a palette — and the kit a Prop
+## carried was still hardcoded per TEAM in `main.gd` (`TSINELAS_ABILITY_TEAM_A` /
+## `_TEAM_B`), so the three Tsinelas throw identities were unreachable by choice
+## and the two spare Can specials were unreachable at all.
+##
+## Attaching the kit to the SKIN, rather than adding a fourth and fifth picker,
+## is deliberate. A player already picks a Can and a Slipper separately here, and
+## the reason that split exists is the reason a paired "fighter" would not work:
+## a Prop is a lata one round and a tsinelas the next, so its kit has to be
+## re-picked on every role swap. These two lists already have exactly the right
+## shape for that — `main.gd::_prop_ability_for()` asks the one that matches the
+## side being played THIS round and gets the right answer without branching.
+##
+## ⚠️ SIX LOOKS, THREE KITS PER SIDE — two skins share each ability, because
+## three `.tres` exist per side and six entries do not. Entry 0 of each list
+## keeps TODAY'S behaviour (`quick_stand` / the light throw), so a player who
+## never opens the screen is where they always were. The pairings follow the
+## taglines that were already written here rather than being imposed on them:
+## `bakya` is "kahoy, mabigat tumama" and gets Bakya Bash; `sardinas` names the
+## ability Quick Stand is already called after; `pintura` is leftover rusting
+## paint and gets Shatter Trap's hazard patch. **First pass, and a balance
+## surface** — see the Phase 9 fairness log before moving any of them.
+
 const CANS: Array[Dictionary] = [
 	{
 		"id": &"sarsi",
 		"name": "SARSILYA",
 		"tagline": "Ang klasikong lata. Pula, matigas, maingay.",
+		"ability": "res://scripts/abilities/resources/quick_stand.tres",
 		# The signed-off default — UiTheme.PROP_SARSI_RED, so the stock lata is
 		# entry 0 and an unpicked Prop looks exactly as it always has.
 		"tint": Color("d8221c"),
@@ -177,30 +202,35 @@ const CANS: Array[Dictionary] = [
 		"id": &"gatas",
 		"name": "LATA NG GATAS",
 		"tagline": "Kondensada. Maliit pero matigas ang ulo.",
+		"ability": "res://scripts/abilities/resources/spin_guard.tres",
 		"tint": Color("2f6ea8"),
 	},
 	{
 		"id": &"sardinas",
 		"name": "LATA NG SARDINAS",
 		"tagline": "Galing sa tindahan ni Aling Nena.",
+		"ability": "res://scripts/abilities/resources/quick_stand.tres",
 		"tint": Color("c8a02a"),
 	},
 	{
 		"id": &"kape",
 		"name": "LATA NG KAPE",
 		"tagline": "Walang laman. Perpekto para tumbahin.",
+		"ability": "res://scripts/abilities/resources/spin_guard.tres",
 		"tint": Color("7a4a24"),
 	},
 	{
 		"id": &"pintura",
 		"name": "LATA NG PINTURA",
 		"tagline": "Tirang pintura sa bakuran. Kalawangin na.",
+		"ability": "res://scripts/abilities/resources/shatter_trap.tres",
 		"tint": Color("4f8c6a"),
 	},
 	{
 		"id": &"biskwit",
 		"name": "LATA NG BISKWIT",
 		"tagline": "Ang lata ni Lola. Hindi na binalik ang biskwit.",
+		"ability": "res://scripts/abilities/resources/shatter_trap.tres",
 		"tint": Color("b0552a"),
 	},
 ]
@@ -210,6 +240,7 @@ const SLIPPERS: Array[Dictionary] = [
 		"id": &"goma",
 		"name": "TSINELAS NA GOMA",
 		"tagline": "Basic na goma. Ang pambato ng bawat bata.",
+		"ability": "res://scripts/abilities/resources/flick_dash.tres",
 		# UiTheme.PROP_FOAM — the signed-off default, so entry 0 is the stock look.
 		"tint": Color("7a5741"),
 	},
@@ -217,30 +248,35 @@ const SLIPPERS: Array[Dictionary] = [
 		"id": &"bakya",
 		"name": "BAKYA",
 		"tagline": "Kahoy. Mabigat tumama, mahirap ihagis.",
+		"ability": "res://scripts/abilities/resources/bakya_bash.tres",
 		"tint": Color("8a5a2a"),
 	},
 	{
 		"id": &"pula",
 		"name": "TSINELAS NA PULA",
 		"tagline": "Pang-simbahan. Ginagamit pa rin panghagis.",
+		"ability": "res://scripts/abilities/resources/bagsak_bomb.tres",
 		"tint": Color("a83a3a"),
 	},
 	{
 		"id": &"asul",
 		"name": "TSINELAS NA ASUL",
 		"tagline": "Kupas na sa araw. Paborito pa rin.",
+		"ability": "res://scripts/abilities/resources/bakya_bash.tres",
 		"tint": Color("3a6a8a"),
 	},
 	{
 		"id": &"dilaw",
 		"name": "TSINELAS NA DILAW",
 		"tagline": "Kita mo agad kahit saan lumapag.",
+		"ability": "res://scripts/abilities/resources/bagsak_bomb.tres",
 		"tint": Color("c9a52a"),
 	},
 	{
 		"id": &"luma",
 		"name": "TSINELAS NA LUMA",
 		"tagline": "Nipis na ang suelas. Sentimental value.",
+		"ability": "res://scripts/abilities/resources/flick_dash.tres",
 		"tint": Color("5c5248"),
 	},
 ]
@@ -305,3 +341,21 @@ static func index_of(id: StringName) -> int:
 static func name_at(index: int) -> String:
 	var entry := at(index)
 	return String(entry["name"]) if entry.has("name") else "?"
+
+
+## The ability `.tres` a Prop carries THIS round, given the two skin indices its
+## player picked and which side the round put it on. Returns "" when the pick is
+## unknown — index -1 is the "no pick" sentinel `character_visual.gd` already
+## uses for an AI slot or a peer on an older build — and `main.gd` falls back to
+## its own defaults for that. Never assume a pick exists.
+##
+## Indices, not ids, because that is what crosses the wire: `CharacterBase`
+## replicates `can_index`/`slipper_index` as ints, so this is answerable on every
+## peer from what the spawn already carried. See the ROSTER header's note on
+## append-only ordering — the same contract applies to both lists below.
+static func ability_path_at(can_index: int, slipper_index: int, is_can: bool) -> String:
+	var list: Array[Dictionary] = CANS if is_can else SLIPPERS
+	var index: int = can_index if is_can else slipper_index
+	if index < 0 or index >= list.size():
+		return ""
+	return String(list[index].get("ability", ""))

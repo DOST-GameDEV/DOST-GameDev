@@ -81,7 +81,7 @@ const IDLE_CLIP: String = "idle"
 ## Pushes the subject to the RIGHT of frame, as a FRACTION OF THE VISIBLE WIDTH
 ## at whatever distance the subject ended up being framed from. Every control on
 ## this screen sits in the left third (the wood panel, the banner, both buttons),
-## exactly as GameSetup's do, so a centred subject would stand behind them.
+## exactly as the setup screen's do, so a centred subject would stand behind them.
 ##
 ## ⚠️ A RATIO, NOT A CONSTANT OFFSET, AND THAT IS NOT A REFINEMENT. `h_offset` is
 ## a frustum shift in WORLD UNITS, so its on-screen effect scales with how far
