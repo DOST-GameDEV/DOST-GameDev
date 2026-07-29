@@ -517,8 +517,21 @@ class Surfaces:
         bug — five of eleven `building-type-*` wider than their own 6.6 bay —
         would have been caught the day it landed, by exactly this test.
         """
+        return self.overlaps_across([group])
+
+    def overlaps_across(self, groups):
+        """The same test, over the UNION of several groups.
+
+        ⚠️ `overlaps()` compares within ONE group, and that is exactly the hole
+        a new group falls through. Bayan Plaza's monument enclosure went into a
+        new `Monument` group and had to be checked against the `Clutter`,
+        `Furniture` and `Hazards` pieces that were already standing where it was
+        going — a same-group test would have reported nothing and the railing
+        would have grown through a bench. Same slack, same warning-not-failure
+        contract, same reason (see `overlaps`).
+        """
         found = []
-        items = [d for d in self._dressing if d[7] == group]
+        items = [d for d in self._dressing if d[7] in groups]
         for i in range(len(items)):
             an, _am, _ab, ax0, ax1, az0, az1, _ag = items[i]
             for j in range(i + 1, len(items)):

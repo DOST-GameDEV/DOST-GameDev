@@ -24,7 +24,19 @@ extends RefCounted
 ##     moved vertically in one edit. (Note Main.tscn's floor top is currently
 ##     y = +0.5, not y = 0 — that is B-82, and Eskinita.tscn puts its own floor
 ##     top at exactly 0 so the documented convention becomes true.)
-##   * Characters face -Z, so a wall panel's "front" faces +Z by default.
+##   * ⚠️ A PIECE'S FRONT FACES -Z. THIS LINE USED TO CLAIM +Z AND IT WAS WRONG,
+##     which cost Bayan Plaza three backwards landmarks (its open item 1).
+##     MEASURED, 2026-07-29, from the geometry in this file rather than from the
+##     convention: `_church_facade` puts its doorway and rose window at z = -0.76,
+##     `_sari_sari_store` puts its counter and awning at z = -0.62..-1.16, and
+##     `_basketball_ring` puts the rim on the origin with the backboard and post
+##     BEHIND it at z = +0.52/+0.62 — so a player shoots at it from -Z. Every
+##     plaza piece here agrees; only this comment disagreed.
+##     The consequence: a piece placed at NEGATIVE z on a map, facing the middle,
+##     needs yaw = PI, and a piece at POSITIVE z needs yaw = 0. Bayan Plaza had
+##     both backwards, so its church rendered as a blank grey slab and both
+##     basketball rings faced the tree line. `build_bayan_plaza.py` now derives
+##     the yaw from this rule instead of placing by eye — see its Landmarks block.
 ##
 ## `wall_corrugated_leaning` and `tricycle` were held back until the Build lane
 ## landed checklist 2.1b-0 — an optional `transform: Transform3D` on add_revolve
@@ -90,6 +102,18 @@ func build_all(output_dir: String) -> void:
 	_tree("env_tree_far", 4.8, UiTheme.ENV_FOLIAGE_DARK)
 	_church_facade()
 	_basketball_ring()
+	# The plaza CENTREPIECE set — checklist 2.4, the reference-photo redress.
+	# A real Philippine town plaza is a tiered monument on a plinth inside an
+	# iron railing ring, with clipped hedges in planters, a church with a BELL
+	# TOWER, and a municipal hall with a red roof behind. Every one of those is
+	# built here out of the same four primitives the rest of the kit uses, so
+	# nothing new is imported and the poly budget and palette are unchanged —
+	# see the asset note in build_bayan_plaza.py's header.
+	_monument()
+	_railing()
+	_planter_hedge()
+	_bell_tower()
+	_municipal_hall()
 
 	# --- field markings (serve BOTH round-win modes) ------------------------
 	_base_circle_decal()
@@ -805,6 +829,249 @@ func _basketball_ring() -> void:
 		Vector2(0.21, 3.05),
 	]), 12, "ring")
 	_finish(w, "env_basketball_ring")
+
+# =============================================================================
+# The plaza centrepiece set (checklist 2.4 — the reference-photo redress)
+#
+# ⚠️ THE ONE CONSTRAINT THAT SHAPES ALL OF THESE: the plaza's centre is where
+# the can stands, and `build_bayan_plaza.py` protects a LANE_RADIUS = 3.2 disc
+# around it that aborts the build on violation. So the monument does NOT go in
+# the middle the way the reference photo has it — human call, 2026-07-29: "dont
+# center monument, js make it seen and we're playing near it". It goes off-axis,
+# large enough and tall enough to be the thing you orient by, close enough to
+# the court that you fight beside it. That is a placement decision and it lives
+# in the map builder; what lives HERE is only the geometry.
+#
+# ⚠️ HEIGHTS ARE IN METRES, same law as `_building_block`. The monument is 4.90,
+# which is three times a Person's 1.6 — a real plaza monument is 4-7 m. The
+# railing is 0.98 and the hedge planter 0.96, both under the 1.1 interior tier
+# so an FPP eye at 1.25 clears them; that is checked by the map builder too, but
+# it is authored true here rather than relied on downstream.
+# =============================================================================
+
+## The tiered monument. Steps, plinth die, cornice, spire — the silhouette in
+## the reference photo, in about 400 triangles.
+##
+## Built entirely from `_box` and `add_revolve`: the stepped tiers are boxes
+## because a real plinth IS stepped (no sloping primitive needed, which is the
+## same reason `_church_facade`'s pediment is stepped), and the spire is one
+## revolve because it is a solid of revolution and nothing else in the kit
+## expresses a taper as cheaply.
+##
+## ⚠️ 2.60 FOOTPRINT, NOT WIDER. It has to fit inside a 4.0 railed enclosure with
+## a walkway left round it, and the enclosure has to fit between the confinement
+## box (|x| <= 5) and the slab edge (|x| <= 10). Widening this means moving the
+## enclosure, and the enclosure has nowhere to go.
+func _monument() -> void:
+	var w := ObjWriter.new("Monument")
+	w.set_material("stone", UiTheme.ENV_CONCRETE)
+	w.set_material("step", UiTheme.ENV_CONCRETE_DARK)
+	w.set_material("plaque", UiTheme.ENV_PAINT_PLINTH)
+
+	# Three steps. Alternating stone/step is what makes them read as separate
+	# courses at 8 m rather than as one tapered lump.
+	_box(w, 0, 0, 2.60, 2.60, 0.00, 0.22, "step")
+	_box(w, 0, 0, 2.16, 2.16, 0.22, 0.44, "stone")
+	_box(w, 0, 0, 1.76, 1.76, 0.44, 0.64, "step")
+
+	# The die — the big block that carries the dedication.
+	_box(w, 0, 0, 1.36, 1.36, 0.64, 2.00, "stone")
+	# A plaque on all FOUR faces, for the same reason `_building_block` puts
+	# windows on all four: this piece is walked around, and three blank sides is
+	# how the belt buildings came to read as greybox.
+	for sx in SIDES:
+		_box(w, sx * 0.69, 0.00, 0.02, 0.86, 0.96, 1.68, "plaque")
+		_box(w, 0.00, sx * 0.69, 0.86, 0.02, 0.96, 1.68, "plaque")
+
+	# Cornice and cap.
+	_box(w, 0, 0, 1.66, 1.66, 2.00, 2.20, "step")
+	_box(w, 0, 0, 1.30, 1.30, 2.20, 2.38, "stone")
+	# Corner urns. Four tiny revolves, and they are most of why the silhouette
+	# reads as ORNATE rather than as a stack of boxes.
+	for sx in SIDES:
+		for sz in SIDES:
+			var urn := Transform3D(Basis(), Vector3(sx * 0.52, 2.38, sz * 0.52))
+			w.add_revolve(PackedVector2Array([
+				Vector2(0.00, 0.00), Vector2(0.13, 0.00),
+				Vector2(0.16, 0.14), Vector2(0.10, 0.30),
+				Vector2(0.14, 0.38), Vector2(0.00, 0.42),
+			]), 8, "step", true, Callable(), urn)
+
+	# The spire: drum, taper, collar, taper, finial. Faceted at 8 segments to
+	# match the kit's flat-shaded look rather than reading as a smooth cone.
+	w.add_revolve(PackedVector2Array([
+		Vector2(0.00, 2.38), Vector2(0.44, 2.38),
+		Vector2(0.44, 2.66), Vector2(0.36, 2.78),
+		Vector2(0.32, 3.52), Vector2(0.42, 3.60),
+		Vector2(0.42, 3.80), Vector2(0.30, 3.92),
+		Vector2(0.17, 4.54),
+	]), 8, "stone")
+	w.add_revolve(PackedVector2Array([
+		Vector2(0.17, 4.54), Vector2(0.21, 4.62),
+		Vector2(0.17, 4.72), Vector2(0.07, 4.84),
+		Vector2(0.00, 4.90),
+	]), 8, "step")
+	_finish(w, "env_monument")
+
+## One 2.0-unit bay of iron railing, so bays tile on the kit's own grid with no
+## per-instance work in the map — the same trick `_post_electric` uses to string
+## its wire to where the next post will be.
+##
+## ⚠️ THE END POSTS ARE AT x = +/-1.0, i.e. ON the bay boundary, so two adjacent
+## bays share a post position and the doubled geometry is exactly coincident and
+## invisible. That is deliberate: the alternative is a corner piece and an
+## end piece and a rule about which to use where, for a saving of twelve
+## triangles on a piece there are eight of.
+##
+## 0.98 tall — under the 1.1 interior tier, so it never blocks an FPP aim. It is
+## a waist-high garden railing, which is what the reference has; a chest-high one
+## would be both wrong and illegal here.
+func _railing() -> void:
+	var w := ObjWriter.new("Railing")
+	w.set_material("rail", UiTheme.PANEL)
+	w.set_material("foot", UiTheme.ENV_CONCRETE_DARK)
+
+	for sx in SIDES:
+		_box(w, sx * 1.0, 0.0, 0.16, 0.16, 0.00, 0.14, "foot")
+		_box(w, sx * 1.0, 0.0, 0.13, 0.13, 0.14, 0.90, "rail")
+		_box(w, sx * 1.0, 0.0, 0.19, 0.19, 0.90, 0.98, "rail")
+	# Bottom, middle and top rails.
+	_box(w, 0, 0, 2.00, 0.06, 0.16, 0.22, "rail")
+	_box(w, 0, 0, 2.00, 0.05, 0.46, 0.51, "rail")
+	_box(w, 0, 0, 2.00, 0.09, 0.78, 0.86, "rail")
+	# Balusters. Nine, which at this span is the density that still reads as
+	# a railing rather than as a fence when it foreshortens across the plaza.
+	for i in range(9):
+		_box(w, -0.80 + 0.20 * float(i), 0.0, 0.045, 0.045, 0.22, 0.78, "rail")
+	_finish(w, "env_railing")
+
+## A concrete planter with a CLIPPED hedge in it — square-cut, not the bulged
+## revolve `_planter` uses. The reference's plaza is ringed with these and the
+## clipped silhouette is the entire difference between "municipal planting" and
+## "a bush".
+##
+## 1.10 footprint on purpose: four of these stand in the corners of a 4.0 railed
+## enclosure around a 2.60 monument, and 1.10 is what fits between the two with
+## the walkway kept clear.
+func _planter_hedge() -> void:
+	var w := ObjWriter.new("PlanterHedge")
+	w.set_material("concrete", UiTheme.ENV_CONCRETE)
+	w.set_material("coping", UiTheme.ENV_CONCRETE_DARK)
+	w.set_material("leaf", UiTheme.ENV_FOLIAGE)
+	w.set_material("leaf_dark", UiTheme.ENV_FOLIAGE_DARK)
+
+	_box(w, 0, 0, 1.10, 1.10, 0.00, 0.38, "concrete")
+	_box(w, 0, 0, 1.20, 1.20, 0.38, 0.46, "coping")
+	# Two stacked boxes rather than one: the inset top course is what gives a
+	# clipped hedge its shoulder, and it is four extra quads.
+	_box(w, 0, 0, 1.04, 1.04, 0.46, 0.82, "leaf")
+	_box(w, 0, 0, 0.88, 0.88, 0.82, 0.96, "leaf_dark")
+	_finish(w, "env_planter_hedge")
+
+## The campanile. `_church_facade` has no tower and the reference's church is
+## READ from its tower — at 14.3 it is the tallest thing on the map and clears
+## the 8.9-unit forest trees in the ring, which is what makes it a landmark from
+## inside the plaza instead of another shape in the tree line.
+##
+## Fronts on -Z with the rest of the plaza set (see the header note), so it takes
+## the same yaw as the church it stands beside.
+func _bell_tower() -> void:
+	var w := ObjWriter.new("BellTower")
+	w.set_material("stone", UiTheme.ENV_CONCRETE)
+	w.set_material("band", UiTheme.ENV_CONCRETE_DARK)
+	w.set_material("roof", UiTheme.ENV_PAINT_TERRA)
+	w.set_material("window", UiTheme.INK)
+
+	# Three tapering storeys with a string course between each. The taper is what
+	# stops it reading as a chimney.
+	_box(w, 0, 0, 2.50, 2.50, 0.00, 3.40, "stone")
+	_box(w, 0, 0, 2.62, 2.62, 3.40, 3.62, "band")
+	_box(w, 0, 0, 2.30, 2.30, 3.62, 6.60, "stone")
+	_box(w, 0, 0, 2.42, 2.42, 6.60, 6.82, "band")
+	_box(w, 0, 0, 2.10, 2.10, 6.82, 9.40, "stone")
+	_box(w, 0, 0, 2.22, 2.22, 9.40, 9.62, "band")
+	# The belfry. Its openings are the read, so they are tall and on all four
+	# faces — same rule as every other window in this file.
+	_box(w, 0, 0, 1.94, 1.94, 9.62, 11.60, "stone")
+	for sx in SIDES:
+		_window(w, Vector3(sx * 0.98, 10.60, 0.0),
+			Vector3(0, 0, 0.46), Vector3(0, 0.74, 0))
+		_window(w, Vector3(0.0, 10.60, sx * 0.98),
+			Vector3(0.46, 0, 0), Vector3(0, 0.74, 0))
+	# Narrow slit windows down the shaft, so the storeys are not blank.
+	for i in range(3):
+		var y := 2.10 + 2.90 * float(i)
+		for sx in SIDES:
+			_window(w, Vector3(sx * 1.27, y, 0.0),
+				Vector3(0, 0, 0.16), Vector3(0, 0.52, 0))
+			_window(w, Vector3(0.0, y, sx * 1.27),
+				Vector3(0.16, 0, 0), Vector3(0, 0.52, 0))
+	_box(w, 0, 0, 2.16, 2.16, 11.60, 11.84, "band")
+	# Red pyramid roof and a cross. The roof colour is the reference's, and it is
+	# ENV_PAINT_TERRA rather than a new red — a fifth environment colour would
+	# have to be argued for in UiTheme first (env_toon_pass.gd's own rule).
+	w.add_revolve(PackedVector2Array([
+		Vector2(1.16, 11.84), Vector2(0.00, 13.60),
+	]), 4, "roof", false)
+	_box(w, 0, 0, 0.10, 0.10, 13.60, 14.30, "band")
+	_box(w, 0, 0, 0.44, 0.09, 13.86, 13.96, "band")
+	_finish(w, "env_bell_tower")
+
+## The municipal hall — the long two-storey block with the red roof behind the
+## plaza in the reference. It is the second half of "pull the landmarks IN from
+## the silhouette belt so they become real landmarks instead of distant fog
+## shapes": at 12 wide and 8.5 tall standing at z = -15.8 it fills the whole
+## back-right of the frame from the south throwing line.
+##
+## ⚠️ NOT a `_building_block` with a roof on it. A building block is a
+## silhouette mass authored to be seen at 30 m; this is seen at 20 m and is one
+## of only three things on the map a player will actually look AT. It gets an
+## arcade, a balcony band and a pitched roof, which is about 200 triangles more
+## and the entire difference between a landmark and a wall.
+func _municipal_hall() -> void:
+	var w := ObjWriter.new("MunicipalHall")
+	w.set_material("body", UiTheme.ENV_PAINT_CREAM)
+	w.set_material("plinth", UiTheme.ENV_CONCRETE)
+	w.set_material("band", UiTheme.ENV_CONCRETE_DARK)
+	w.set_material("roof", UiTheme.ENV_PAINT_TERRA)
+	w.set_material("window", UiTheme.INK)
+
+	const HALL_W := 12.0
+	const HALL_D := 5.60
+
+	_box(w, 0, 0, HALL_W, HALL_D, 0.00, 6.60, "body")
+	# Ground-floor arcade, proud of the body so it throws its own shadow line.
+	_box(w, 0, 0, HALL_W + 0.24, HALL_D + 0.24, 0.00, 3.00, "plinth")
+	_box(w, 0, 0, HALL_W + 0.32, HALL_D + 0.32, 3.00, 3.24, "band")
+	# Seven arched openings along the FRONT (-Z, per the header rule). Stepped
+	# arches, the same six-lintel approximation `_church_facade` uses.
+	var front_z := -(HALL_D + 0.24) * 0.5 - 0.02
+	for bay in range(7):
+		var cx := -4.80 + 1.60 * float(bay)
+		_box(w, cx, front_z, 1.06, 0.06, 0.00, 1.90, "window")
+		for i in range(5):
+			var t := float(i) / 5.0
+			var half := 0.53 * sqrt(maxf(1.0 - t * t, 0.0))
+			_box(w, cx, front_z, half * 2.0, 0.06,
+				1.90 + 0.13 * float(i), 2.03 + 0.13 * float(i), "window")
+	# First-floor windows, front and back, plus two on each end.
+	for bay in range(7):
+		var cx := -4.80 + 1.60 * float(bay)
+		for sz in SIDES:
+			_window(w, Vector3(cx, 4.70, sz * (HALL_D * 0.5 + 0.01)),
+				Vector3(0.34, 0, 0), Vector3(0, 0.62, 0))
+	for sz in SIDES:
+		for sx in SIDES:
+			_window(w, Vector3(sx * (HALL_W * 0.5 + 0.01), 4.70, sz * 1.30),
+				Vector3(0, 0, 0.34), Vector3(0, 0.62, 0))
+	# Parapet, then the pitched red roof. Two stepped courses rather than a true
+	# hip: at this distance the step reads as a pitch and needs no new primitive.
+	_box(w, 0, 0, HALL_W + 0.40, HALL_D + 0.40, 6.60, 6.90, "band")
+	_box(w, 0, 0, HALL_W + 0.30, HALL_D + 0.30, 6.90, 7.70, "roof")
+	_box(w, 0, 0, HALL_W - 1.60, HALL_D - 1.60, 7.70, 8.36, "roof")
+	_box(w, 0, 0, HALL_W - 4.20, HALL_D - 3.00, 8.36, 8.60, "roof")
+	_finish(w, "env_municipal_hall")
+
 
 # =============================================================================
 # Field markings — these serve BOTH round-win modes, which is why they are not
