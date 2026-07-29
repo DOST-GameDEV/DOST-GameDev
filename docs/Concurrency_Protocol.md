@@ -293,6 +293,12 @@ error; they just make the game wrong.
 ```bash
 # 7. Audio integrity. 25 checks; exits non-zero on any failure.
 godot --path . tools/audio_probe.tscn --quit-after 600
+
+# 8. Audio MIX. Captures each bus separately during a real match and fails if
+#    ANY of them exceeds full scale. B-121 was a +2.0 dBFS clip on the SFX bus
+#    while Master read a healthy -1.4 — a check that only watches Master is
+#    exactly the check that missed it.
+godot --path . tools/audio_mix_probe.tscn --quit-after 1800
 ```
 
 Note that **3 and 4 require a real rendering device** — do not pass `--headless` to them. A
