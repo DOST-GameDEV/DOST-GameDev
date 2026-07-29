@@ -93,6 +93,7 @@ collisions are prevented here rather than resolved later.
 |---|---|
 | `assets/models/**`, `assets/ui/**`, `assets/maps/**`, `assets/characters/**` | 🎨 Design |
 | `scenes/maps/**` | 🎨 Design |
+| `tools/maps/build_*.py` — the `Ambience` node and its `AudioStream` ext_resource ONLY | 🔧 Build |
 | `scenes/characters/visuals/**` (`CanVisual.tscn`, `TsinelasVisual.tscn`) | 🎨 Design |
 | `tools/models/generate_all.gd` — the `_build_*()` shape functions | 🎨 Design |
 | `scripts/ui/ui_theme.gd` + the generated `assets/ui/tumbang_preso.tres` | 🎨 Design |
@@ -100,6 +101,7 @@ collisions are prevented here rather than resolved later.
 | `scripts/ui/*.gd` **except** `ui_theme.gd` | 🔧 Build |
 | `tools/models/obj_writer.gd`, `tools/render_probe.gd`, `tools/regenerate_ui_theme.gd` | 🔧 Build |
 | `export_presets.cfg`, `.gitignore`, `.gitattributes` | 🔧 Build |
+| `assets/audio/**`, `tools/audio/**`, `default_bus_layout.tres` | 🔧 Build |
 | **`scenes/ui/*.tscn`** (MainMenu, HUD, Lobby, MatchResult, SettingsPanel, YouCard, RoleSwapCard) | ⚠️ **SHARED** |
 | **`scenes/main/Main.tscn`** | ⚠️ **SHARED** |
 | **`scenes/characters/CharacterBase.tscn`**, **`CameraRig.tscn`** | ⚠️ **SHARED** |
@@ -279,6 +281,18 @@ godot --headless -s tools/models/generate_all.gd && git status --short
 
 # 6. Authorship, per Handoff.md §2 and Dev_Plan.md §7.1.
 git log -1 --format='%an <%ae> | %cn <%ce>'
+```
+
+**If you touched anything under `assets/audio/`, `tools/audio/`, `AudioManager`, the bus layout
+or a map's `Ambience` node, run the seventh as well** (checklist 4.1). It is not one of the six
+because it is not universal, and it is worth having because every failure it catches is SILENT —
+an unregistered bus layout, a missing stream, a lossy re-import that smears the frame-synced lata
+impact, or Godot's ogg importer quietly resetting an ambience bed to `loop=false`. None of those
+error; they just make the game wrong.
+
+```bash
+# 7. Audio integrity. 25 checks; exits non-zero on any failure.
+godot --path . tools/audio_probe.tscn --quit-after 600
 ```
 
 Note that **3 and 4 require a real rendering device** — do not pass `--headless` to them. A

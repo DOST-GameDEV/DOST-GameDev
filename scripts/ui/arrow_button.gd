@@ -214,7 +214,17 @@ func animate_in(delay: float = 0.0) -> void:
 
 # --- Hover / press ------------------------------------------------------------
 
+## 4.1 — every menu pennant in the game is one of these (MainMenu, GameSetup,
+## Lobby), so hooking hover and press HERE gives the whole front end its UI
+## audio in one place instead of one connection per button per screen.
+##
+## ⚠️ SAFE IN THE EDITOR ONLY BECAUSE _ready() RETURNS BEFORE CONNECTING THESE
+## WHEN Engine.is_editor_hint(). This is a @tool script: autoloads do not exist
+## in the editor, so an AudioManager call reached at design time would error on
+## every repaint of the inspector. The existing guard is what makes these two
+## functions runtime-only; do not connect them above that early return.
 func _on_hover_start() -> void:
+	AudioManager.play("ui_hover")
 	_retween()
 	_tween.tween_property(self, "scale", Vector2.ONE * HOVER_SCALE, 0.14) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
@@ -229,6 +239,10 @@ func _on_hover_end() -> void:
 	_tween.tween_property(_material, "shader_parameter/brightness", 1.0, 0.18)
 
 func _on_press_start() -> void:
+	# On button_down, not on `pressed`: the click should land with the squash,
+	# which is the frame the player's finger goes down, not the frame it comes
+	# back up.
+	AudioManager.play("ui_click")
 	_retween()
 	_tween.tween_property(self, "scale", Vector2.ONE * PRESS_SCALE, 0.07) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)

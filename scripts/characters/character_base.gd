@@ -23,6 +23,10 @@ const GRAVITY: float = 20.0
 ## rather than a feel one: the interior clutter height law caps what a jump may
 ## clear at 1.0, or every crate in the alley becomes a platform.
 const JUMP_VELOCITY: float = 5.8
+## 4.1. Minimum downward speed, in units/sec, for a floor contact to be worth a
+## landing sound — see the block in _physics_process for why a bare floor-edge
+## test is not enough on a map paved with abutting collision shapes.
+const LAND_SFX_MIN_SPEED: float = 2.0
 const BUMP_STAGGER_TIME: float = 0.25
 ## GDD Section 3, Option B: ~2s window to self-right before a Downed Can auto-seals
 ## (see the DOWNED case in _physics_process). Kept here (not in RoundManager)
@@ -90,6 +94,14 @@ const HITSTOP_TIME_SCALE: float = 0.05
 ## false for the WHOLE game, not per character — two hits landing the same
 ## frame must not fight over restoring time_scale out from under each other.
 static var _hitstop_active: bool = false
+
+## 4.1 landing detection — see the block in _physics_process. Per-character, and
+## deliberately NOT reset by reset_for_new_round(): a stale "was airborne" at a
+## round boundary costs at most one extra thud, while forgetting to reset it
+## would be a silent landing, and the round reset already zeroes `velocity`
+## which makes _fall_speed harmless on its own.
+var _was_airborne: bool = false
+var _fall_speed: float = 0.0
 
 ## NORMAL — moving/acting freely.
 ## STAGGERED — brief no-control flinch from a bump (BUMP_STAGGER_TIME), auto-recovers.
@@ -364,6 +376,9 @@ func _ready() -> void:
 	# Person / Can / Tsinelas each get their own model. Reapplied every round in
 	# reset_for_new_round(), because `is_can` flips with the role swap.
 	_visual.apply(is_person, is_can, team)
+	# 4.1 — see _on_state_changed_audio for why the state SIGNAL is the hook
+	# rather than the transition functions themselves.
+	state_changed.connect(_on_state_changed_audio)
 
 func _physics_process(delta: float) -> void:
 	# ⚠️ BEFORE EVERYTHING, INCLUDING THE AI. See begin_spawn_settle().
@@ -420,8 +435,26 @@ func _physics_process(delta: float) -> void:
 	if NetworkManager.is_networked() and not is_multiplayer_authority():
 		return
 
-	if not is_on_floor():
+	# 4.1 — the landing thud, and the only piece of audio in this file that has
+	# to be sampled BEFORE gravity and movement run for the frame.
+	#
+	# ⚠️ GATED ON IMPACT SPEED, NOT JUST ON THE FLOOR EDGE. `is_on_floor()`
+	# flickers false for a single frame whenever a character walks over the seam
+	# between two collision shapes — and this arena is paved with them (the road
+	# slabs, the kerbs, the apron). An ungated edge test therefore fires a thud
+	# every few steps on flat ground, which reads as a stutter rather than as
+	# footsteps. JUMP_VELOCITY is 5.8, so anything past ~2 is a real fall and a
+	# seam blip (which carries essentially no downward speed, because the
+	# character never left the ground) is not.
+	var grounded := is_on_floor()
+	if grounded and _was_airborne and _fall_speed > LAND_SFX_MIN_SPEED:
+		AudioManager.play_at("land", global_position)
+	_was_airborne = not grounded
+	if not grounded:
 		velocity.y -= GRAVITY * delta
+	# Sampled AFTER gravity so it is the speed this character will actually
+	# arrive at the floor with, not the speed it had a frame earlier.
+	_fall_speed = -velocity.y
 
 	# Item 10 / B-37: freeze input during the round intermission (the gap
 	# between a round ending and the next one's timer starting — see
@@ -464,6 +497,7 @@ func _physics_process(delta: float) -> void:
 	# dressing where there is no boundary to stop them.
 	if state == State.NORMAL and is_on_floor() 			and input_just_pressed("jump"):
 		velocity.y = JUMP_VELOCITY
+		AudioManager.play_at("jump", global_position)
 
 	# Task 0/1: grab and charge-throw. Runs before the rest of the input block so
 	# a throw released this frame is not also read as an ability press below.
@@ -759,6 +793,7 @@ func _process_dash(delta: float) -> void:
 		velocity.z = forward.z * DASH_SPEED
 		_dash_active_time_left = DASH_DURATION
 		_dash_cooldown_left = DASH_COOLDOWN
+		AudioManager.play_at("dash", global_position)
 
 ## Whether this character is currently blocking (B-16 Guard). Gates incoming
 ## stagger/dents in apply_stagger()/apply_dent() below — hitbox.gd itself stays
@@ -782,6 +817,11 @@ func get_dash_cooldown_ratio() -> float:
 ## tinted, so a blocked hit never reads as a landed one.
 func _flash_blocked() -> void:
 	_visual.flash_blocked()
+	# 4.1: a deflection, not a hit. Q-6's point was that Guard was fully
+	# implemented with no feedback at all; a blocked hit that sounds like a
+	# landed one would put that back, so this is the only impact in the game
+	# with no hitstop behind it and its own metallic tink.
+	AudioManager.play_at("guard_block", global_position)
 
 ## Whether this character's press-to-bump window is currently live. The melee
 ## Hitbox (requires_bump_window = true) checks this before landing a stagger;
@@ -887,15 +927,39 @@ func _apply_hit_result(kind: String, duration: float) -> void:
 ## hit landing on a non-host player. Same reasoning _apply_hit_result already
 ## uses "any_peer" for, just missed here initially.
 @rpc("any_peer", "call_local", "reliable")
-func _rpc_play_hit_vfx() -> void:
-	_flash_hit()
+func _rpc_play_hit_vfx(sfx: String = "") -> void:
+	_flash_hit(sfx)
 
 ## B-44/Q-8: brief white flash + impact particles on a landed hit, any kind,
 ## on every peer (see _rpc_play_hit_vfx). Camera shake is additionally gated
 ## to only the struck player's own screen — a shake when a stranger across
 ## the map gets bumped is noise, not feedback.
-func _flash_hit() -> void:
+##
+## 4.1: and the impact SOUND, which is the other half of the same beat.
+func _flash_hit(sfx: String = "") -> void:
 	_visual.flash_hit()
+	# ⚠️⚠️ THE SOUND GOES ON THE LINE ABOVE _hitstop(), AND THAT IS THE POINT.
+	#
+	# Checklist 4.1 asks for the lata impact "on the EXACT frame hitstop
+	# starts", and this is the only place in the codebase where that is
+	# expressible: `_hitstop()` is called from here and nowhere else, and this
+	# whole function is the broadcast half of a landed hit, so every peer runs
+	# these two statements back to back inside one frame.
+	#
+	# Doing it in hitbox.gd instead — where the sound NAME is chosen, and where
+	# it is tempting to also play it — would have been wrong twice over: that
+	# code is host-only past its NetworkManager guard, so no client would ever
+	# hear a hit; and it runs during physics resolution, a variable number of
+	# frames before the visual feedback it is supposed to be synchronised with.
+	# The name is decided there and played here, which is why _rpc_play_hit_vfx
+	# carries it as an argument.
+	#
+	# Ordering within the frame does not matter to the mixer (audio is not
+	# time-scaled — see audio_manager.gd's class doc), but it matters to anyone
+	# reading this later: sound first, then the freeze it is meant to coincide
+	# with. Do not reorder them "for tidiness".
+	if sfx != "":
+		AudioManager.play_at(sfx, global_position)
 	_hitstop()
 	# AI takeover: is_multiplayer_authority() alone can also be true for an
 	# AI-driven character on the host (see camera_rig.gd's own is_mine doc for
@@ -922,6 +986,51 @@ func _hitstop() -> void:
 func _end_hitstop() -> void:
 	Engine.time_scale = 1.0
 	_hitstop_active = false
+
+## ---------------------------------------------------------------------------
+## 4.1 — STATE-TRANSITION AUDIO
+## ---------------------------------------------------------------------------
+##
+## ⚠️ HOOKED TO THE `state_changed` SIGNAL, NOT TO go_downed()/seal()/
+## self_right(). THAT IS NOT A STYLE CHOICE.
+##
+## Those three functions only ever run on the character's OWN authority — the
+## host tells the owning peer what happened and CharacterBase.tscn's
+## MultiplayerSynchronizer replicates the resulting `state` outward (see
+## _apply_hit_result's own doc). Playing from inside them means the only person
+## who ever hears their can go down is the person who was already looking at it.
+## `state_changed` fires on every peer, because every peer's synchronizer
+## applies the replicated state locally — so this is the one hook that is
+## correct in local play, on the host, and on a client, with no extra RPC.
+##
+## It also catches the transition NOTHING ELSE CAN: `seal()` is called from this
+## file's own _physics_process the instant the self-right window lapses
+## unrecovered ("if team slipper make the can fall, they win" — no follow-up hit
+## required). There is no hitbox behind that one, so the impact path in
+## _flash_hit() never sees it, and a round would end in silence.
+##
+## The overlap with the impact path is deliberate and harmless: a hit-driven
+## seal fires this AND _flash_hit() within the same frame, and AudioManager's
+## real-millisecond retrigger guard collapses the pair into one play.
+func _on_state_changed_audio(new_state: State) -> void:
+	match new_state:
+		State.DOWNED:
+			AudioManager.play_at("lata_knockdown" if is_can else "downed", global_position)
+		State.SEALED:
+			AudioManager.play_at("lata_seal", global_position)
+		State.NORMAL:
+			# Only meaningful coming back UP from Downed — which is Quick Stand,
+			# or the taya's reset channel completing. Both are "the can is
+			# standing again", so both get the sound named after the channel.
+			# Guarded on `_downed_time_left` rather than tracking a previous
+			# state: it is nonzero only while a Downed window is or was live,
+			# and reset_for_new_round() zeroes it before emitting NORMAL — which
+			# is exactly what stops every round start firing a recovery chime
+			# for all four units at once.
+			if _downed_time_left > 0.0:
+				AudioManager.play_at("reset_channel_complete", global_position)
+		State.STAGGERED:
+			pass # the impact that caused it already sounded — see _flash_hit
 
 ## Maps a base action name (e.g. "move_left") to this character's own input
 ## action (e.g. "move_left_p1" / "move_left_p2"), per `player_id`.
@@ -1077,6 +1186,15 @@ func respawn() -> void:
 	global_position = spawn_position
 	velocity = Vector3.ZERO
 	snap_visual_interpolation()
+	# 4.1. After the teleport, so it plays at the mark rather than at the void
+	# the character just fell into — this is the audible half of the
+	# "OUT OF BOUNDS" toast main.gd already shows.
+	AudioManager.play_at("respawn", global_position)
+	# The teleport itself would otherwise register as a huge fall on the next
+	# frame and fire the landing thud on top of this. See the landing block in
+	# _physics_process.
+	_was_airborne = false
+	_fall_speed = 0.0
 
 ## Called by RoundManager at the start of a new round to clear Downed/Sealed/Staggered
 ## carryover from the previous round. Does NOT touch position — whatever resets a

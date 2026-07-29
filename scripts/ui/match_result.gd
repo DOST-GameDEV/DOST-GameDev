@@ -86,6 +86,7 @@ func _fill_pips(container: HBoxContainer, wins: int, fill_color: Color) -> void:
 ## (fired by the begin_next_round() below) repositions everyone via
 ## _reset_world(), same as any other round start.
 func _on_rematch_pressed() -> void:
+	AudioManager.play("ui_click") # 4.1
 	visible = false
 	# Q-4: must clear before begin_next_round() — a paused tree would freeze
 	# the very round it's about to start.
@@ -99,6 +100,7 @@ func _on_rematch_pressed() -> void:
 	MatchManager.begin_next_round()
 
 func _on_menu_pressed() -> void:
+	AudioManager.play("ui_back") # 4.1
 	# Q-4: must clear before change_scene_to_file — same reasoning as Q-3/B-64's
 	# _on_return_to_menu_pressed: a scene change with the tree still paused
 	# loads MainMenu.tscn paused and every button on it dies.

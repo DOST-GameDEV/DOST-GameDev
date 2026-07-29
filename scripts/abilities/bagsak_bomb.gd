@@ -21,6 +21,20 @@ const PROFILE: ThrowProfile = preload("res://scripts/abilities/resources/throw_b
 func get_throw_profile() -> ThrowProfile:
 	return PROFILE
 
+## Checklist 4.1 — this slipper's signature launch sound. Called by
+## carriable.gd::_rpc_set_flying on every peer, on top of the generic
+## `throw_whoosh` every launch gets. Duck-typed by has_method(), exactly like
+## get_throw_profile() above, so the three Can abilities need no empty override.
+##
+## THE SOUND SAYS THE SAME THING throw_bagsak.tres DOES. This is the lob: the
+## highest arc, the heaviest gravity, the widest impact radius. `ability_bagsak_bomb`
+## is accordingly the only bass-heavy sound in the game — a sub drop under a
+## wide burst (see tools/audio/generate_sfx.py's build_abilities). It is also the
+## longest of the three at 550 ms, which is right: this one is meant to be heard
+## leaving the hand and still arriving.
+func play_launch_sfx(character: CharacterBase) -> void:
+	AudioManager.play_at("ability_bagsak_bomb", character.global_position)
+
 ## Returns false, which per AbilityBase.activate()'s B-11 contract means "this
 ## press did nothing, don't burn the cooldown". A thrown slipper has no button of
 ## its own: its offensive power is the throw, and while LOOSE its escape tool is

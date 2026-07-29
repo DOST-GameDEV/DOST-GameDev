@@ -85,16 +85,24 @@ func _on_area_entered(area: Area3D) -> void:
 	else:
 		kind = "stagger"
 
+	# 4.1: which impact sound this hit makes. Asked of the HURTBOX, not decided
+	# here — see hurtbox.gd::impact_sfx for why the struck object owns that
+	# answer. Resolved on the host, where `kind` was just decided, and carried
+	# through the same broadcast the visual feedback already uses so the sound
+	# and the hitstop land on the same frame on every peer (see
+	# CharacterBase._flash_hit).
+	var sfx: String = (area as Hurtbox).impact_sfx(kind, requires_bump_window)
+
 	if NetworkManager.is_networked():
 		target._apply_hit_result.rpc_id(target.get_multiplayer_authority(), kind, stagger_duration)
 		# B-66/Q-8: unlike _apply_hit_result above (targeted at the struck
 		# character's own owning peer only), this broadcasts to every peer —
 		# otherwise nobody except the struck player ever sees the flash/shake/
 		# particles land.
-		target._rpc_play_hit_vfx.rpc()
+		target._rpc_play_hit_vfx.rpc(sfx)
 	else:
 		target._apply_hit_result(kind, stagger_duration)
-		target._rpc_play_hit_vfx()
+		target._rpc_play_hit_vfx(sfx)
 	landed_on.emit(target)
 
 	# User feedback, 2026-07-28: "the person on team can may tag the human on

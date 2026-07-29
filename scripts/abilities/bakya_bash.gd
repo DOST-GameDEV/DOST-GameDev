@@ -23,6 +23,19 @@ const PROFILE: ThrowProfile = preload("res://scripts/abilities/resources/throw_b
 func get_throw_profile() -> ThrowProfile:
 	return PROFILE
 
+## Checklist 4.1 — the wooden clack. See bagsak_bomb.gd::play_launch_sfx for the
+## contract; this is the same hook with the opposite material.
+##
+## `ability_bakya_bash` is built from a WOOD model, not a metal one, and the
+## difference is the whole identity: four partials instead of six, decays around
+## 40 ms instead of 340, and essentially no pitch bend (see the modes() call in
+## tools/audio/generate_sfx.py). That dryness is what stops a bakya connecting
+## from sounding like a second lata — which matters more here than for the other
+## two, because this is the profile that keeps `forces_downed` true and its hit
+## lands on the can more often than anyone else's.
+func play_launch_sfx(character: CharacterBase) -> void:
+	AudioManager.play_at("ability_bakya_bash", character.global_position)
+
 ## No-op by design — see bagsak_bomb.gd.
 func _do_activate(_character: CharacterBody3D) -> bool:
 	return false
