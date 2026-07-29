@@ -134,15 +134,18 @@ const STEP_SLOW_TIME: float = 0.6
 ## Still under `apply_knockback()`'s horizontal clamp (just above DASH_SPEED, 14),
 ## so it cannot launch anything out of the arena.
 ##
-## ⚠️ THE PREDICTION IS NOT WHAT WAS MEASURED, AND THE GAP IS STILL OPEN.
-## `tools/scuff_probe.tscn` sees the touch branch apply (it counts the branch
-## directly now — `scuffs_touched`) and the slipper travel **0.417 m**, not 1.20.
-## Worse, that 0.417 is IDENTICAL at v = 2.6, 8.5 and 14.0 — the distance does not
-## respond to this constant at all, so something downstream is eating the impulse
-## (the one-shot SCUFF_COOLDOWN, the pusher still in contact, or the lift putting
-## it airborne). The branch firing is verified; the magnitude is NOT, and raising
-## this number will not currently change anything. Do not tune it by taste until
-## the reason it does not scale is found.
+## ✅ AND THE PREDICTION HOLDS, once the harness stopped lying. `scuff_probe`
+## measured a shove of **1.272 m** against the 1.20 m predicted here.
+##
+## ⚠️ An earlier note in this spot claimed the opposite — 0.417 m, "and identical
+## at v = 2.6, 8.5 and 14.0, so the distance does not respond to this constant at
+## all." That was true of what was being measured and false about the game: at the
+## time, the touch branch was not firing at all (the STEP/TOUCH discriminator was
+## classifying every ground-level contact as a step) and the 0.417 m was the
+## Person shoving the slipper by ordinary depenetration, which of course does not
+## depend on this constant. Kept as a warning rather than deleted: "the number
+## does not respond to the constant" correctly said *something* was wrong, and
+## pointed at the wrong thing.
 ##
 ## 🧑 THE TARGET DISTANCE IS ALSO A FEEL CALL AND HAS NOT BEEN PLAYED. 1.2 m was
 ## chosen as "clearly shoved, still retrievable". Checklist Phase 9 owns it.

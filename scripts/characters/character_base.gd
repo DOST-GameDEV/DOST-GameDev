@@ -767,7 +767,22 @@ func _physics_process(delta: float) -> void:
 					# loses the round outright. So a lucky fall rights itself here
 					# instead — the can went over, wobbled on its lid, and came
 					# back up. See LUCKY_FALL_CHANCE.
-					if last_fall_scored:
+					#
+					# ⚠️⚠️ CANS ONLY. A PERSON MUST NEVER BE SEALED BY THE CLOCK.
+					#
+					# SEALED has no recovery — `_physics_process`'s SEALED branch
+					# is `pass # awaiting round reset`. For a lata that is the
+					# entire win condition. For a PERSON it means one hit removes
+					# a player from the round permanently, and it went unnoticed
+					# only because a thrown slipper used to resolve on the melee
+					# hitbox and merely stagger (B-134). The moment throws started
+					# actually knocking things down, every Person hit by one was
+					# DOWNED for 2 s and then SEALED for the rest of the round.
+					#
+					# Caught by tools/scuff_probe.tscn, which could not drive its
+					# test Person and printed `state=2` then `state=3` four times
+					# running. A knocked-down Person gets back up.
+					if last_fall_scored and is_can:
 						seal()
 					else:
 						self_right()

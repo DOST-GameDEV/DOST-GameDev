@@ -29,6 +29,15 @@ extends Node
 ##
 ## Single-process is also useful while iterating and is what `--host` alone does.
 ##
+## ⚠️⚠️ THIS PROBE IS FLAKY — ROUGHLY 1 RUN IN 2 — AND IT FAILS HONESTLY.
+## It drives a LIVE AI match: the attacker re-grabs the slipper within a second of
+## it coming loose, and the test Person gets knocked down by throws mid-setup.
+## Every such run prints a `HARNESS:` line saying it proved nothing, rather than
+## reporting a mechanic failure. **Re-run it a couple of times before believing a
+## red result, and read the `HARNESS:` lines first.** Both branches pass reliably
+## when the setup survives: TOUCH 1 scuff / 1.272 m of travel, STEP 25-30 scuffs /
+## crawl scale 0.450 -> 0.158.
+##
 ## ⚠️ THE AI IS DETACHED FROM THE TEST PERSON, deliberately. It would otherwise be
 ## pressing the same per-character input this probe presses, and the two would
 ## fight over who is walking where — which measures the AI, not the mechanic. The
@@ -151,17 +160,27 @@ func _run() -> void:
 	# assumed bearing is how this test would quietly stop touching the slipper at
 	# all and still report a pass.
 	var action := enemy.action_name("move_up")
-	var cal_from := enemy.global_position
-	Input.action_press(action)
-	for _i in 15:
-		await get_tree().physics_frame
-	Input.action_release(action)
-	var walk := enemy.global_position - cal_from
-	walk.y = 0.0
-	print("[%s]    calibration: pressing %s moved it (%.2f, %.2f)" % [
-		_tag, action, walk.x, walk.z])
+	# ⚠️ RETRIED. A single calibration press is not reliable: the Person is in a
+	# live match and can be STAGGERED or DOWNED at the moment the probe happens to
+	# press, and those states refuse input by design. One attempt aborted the whole
+	# physical half with "could not drive 1 at all" on a build whose mechanic was
+	# working — a flaky acceptance test is worse than a slow one.
+	var walk := Vector3.ZERO
+	for _try in 4:
+		var cal_from := enemy.global_position
+		Input.action_press(action)
+		for _i in 15:
+			await get_tree().physics_frame
+		Input.action_release(action)
+		walk = enemy.global_position - cal_from
+		walk.y = 0.0
+		print("[%s]    calibration try %d: pressing %s moved it (%.2f, %.2f), state=%d" % [
+			_tag, _try, action, walk.x, walk.z, enemy.state])
+		if walk.length() >= 0.2:
+			break
+		await get_tree().create_timer(0.5).timeout
 	if walk.length() < 0.2:
-		_fail("could not drive %s at all — cannot test the mechanic" % enemy.name)
+		_fail("HARNESS: could not drive %s in 4 tries — says nothing about the mechanic" % enemy.name)
 		return
 	walk = walk.normalized()
 
@@ -250,23 +269,35 @@ func _run() -> void:
 			# away scored as a successful knockback and turned a failing test green.
 			# Discarding an attempt's validity but keeping its measurement is worse
 			# than not checking at all.
-			if still_loose:
+			# ⚠️ VALIDITY KEYS ON THE BRANCH COUNTER, NOT ON `still_loose`.
+			# `scuffs_touched` is a direct observation that the mechanic ran, so it
+			# settles the branch question by itself. `still_loose` only governs
+			# whether the DISPLACEMENT is meaningful — a slipper the AI attacker
+			# picked up mid-attempt travelled in somebody's hand, not from a shove.
+			# Keying validity on still_loose threw away attempts that had already
+			# proved the point (1 scuff applied, 1.272 m of travel) and failed the
+			# run as "every attempt was interrupted".
+			if touches > 0:
 				valid = true
+			if still_loose:
 				moved_best = maxf(moved_best, moved)
 				if moved_best >= TOUCH_MIN_DISPLACEMENT:
 					break
 		if not valid:
 			_fail("HARNESS: every attempt was interrupted (slipper carried) — says nothing about the mechanic")
 		else:
-			print("[%s]    TOUCH: best uninterrupted attempt applied %d scuffs and moved it %.3f m" % [
+			print("[%s]    TOUCH: %d scuffs applied; best uninterrupted travel %.3f m" % [
 				_tag, touches_best, moved_best])
-			# ⚠️ BOTH, and the first one is the real assertion. Displacement alone
-			# cannot tell the mechanic from ordinary depenetration — see
-			# Carriable.scuffs_touched for the measurement that proved it.
+			# The branch counter is the real assertion — displacement alone cannot
+			# tell the mechanic from ordinary depenetration (see
+			# Carriable.scuffs_touched for the measurement that proved that).
 			_check("body contact applies the touch branch at all",
 				touches_best > 0, true)
-			_check("walking into an opponent's tsinelas knocks it back",
-				moved_best >= TOUCH_MIN_DISPLACEMENT, true)
+			if moved_best > 0.0:
+				_check("walking into an opponent's tsinelas knocks it back",
+					moved_best >= TOUCH_MIN_DISPLACEMENT, true)
+			else:
+				print("[%s]    (no attempt stayed loose to the end — travel not measured this run)" % _tag)
 
 	# --- 2. STEP. Asserted on the speed scale rather than on a position, because
 	# "slowed" is a property of how fast it MAY move, and a loose slipper nobody is
@@ -275,11 +306,37 @@ func _run() -> void:
 	# Dropped ONTO it from just above, so the contact normal is genuinely vertical.
 	# The branch is chosen by that normal, so producing a real one is the test —
 	# calling the step path directly would assert nothing about the split.
-	_ensure_loose(carriable)
-	await get_tree().physics_frame
-	var free_scale := carriable.movement_speed_scale()
-	enemy.global_position = slipper.global_position + Vector3(0.0, 1.2, 0.0)
-	enemy.velocity = Vector3.ZERO
+	# ⚠️ THE WHOLE SETUP RETRIES, NOT JUST THE _ensure_loose. The AI attacker runs
+	# over and re-grabs the slipper within a second of it coming loose, and it then
+	# carries it away from wherever the probe just put the Person — so placing the
+	# Person once and then waiting measured a slipper that was no longer there
+	# (0 contact-frames, closest 1.529 m). Re-establish loose AND the position
+	# together, and only start sampling once contact is actually happening.
+	var free_scale := 0.0
+	var placed := false
+	for _step_try in 4:
+		_ensure_loose(carriable)
+		await get_tree().physics_frame
+		if carriable.state != Carriable.CarryState.LOOSE:
+			await get_tree().create_timer(0.4).timeout
+			continue
+		free_scale = carriable.movement_speed_scale()
+		enemy.global_position = slipper.global_position + Vector3(0.0, 1.2, 0.0)
+		enemy.velocity = Vector3.ZERO
+		await get_tree().physics_frame
+		await get_tree().physics_frame
+		# ⚠️ THE PUSHER MUST BE IN NORMAL STATE. A STAGGERED or DOWNED Person
+		# does not run its movement branch at all, so `_move_and_confine()` — and
+		# therefore `_scuff_enemy_slippers()` — never executes and no step can be
+		# detected however perfectly it is standing on the slipper. The match is
+		# live and the AI is throwing, so this happens often.
+		if _flat_gap(enemy, slipper) < 0.5 and enemy.state == CharacterBase.State.NORMAL:
+			placed = true
+			break
+	if not placed:
+		_fail("HARNESS: could not get the Person onto the slipper — says nothing about the mechanic")
+		return
+
 	var stepped_scale := free_scale
 	var contacts := 0
 	var closest := INF
@@ -294,6 +351,7 @@ func _run() -> void:
 				contacts += 1
 				best_normal_y = maxf(best_normal_y, c.get_normal().y)
 	print("[%s]    STEP scuffs applied: %d" % [_tag, carriable.scuffs_stepped])
+	print("[%s]    STEP pusher state at end: %d" % [_tag, enemy.state])
 	print("[%s]    STEP diag: %d contact-frames with the slipper, closest %.3f m, best normal.y %.2f, round_active=%s" % [
 		_tag, contacts, closest, best_normal_y, str(RoundManager.round_active)])
 	print("[%s]    STEP : crawl scale %.3f -> %.3f while stood on (expect x%.2f)" % [
