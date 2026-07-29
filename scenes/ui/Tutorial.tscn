@@ -1,0 +1,184 @@
+[gd_scene load_steps=8 format=3 uid="uid://c8tw3rn5vk2ph"]
+
+[ext_resource type="Script" path="res://scripts/ui/tutorial.gd" id="1"]
+[ext_resource type="Texture2D" path="res://assets/ui/main-menu/MENU BACKDROP.png" id="2"]
+[ext_resource type="Texture2D" path="res://assets/ui/host-game/GAME BANNER.png" id="3"]
+[ext_resource type="Texture2D" path="res://assets/ui/host-game/Arrow Left 64.png" id="4"]
+[ext_resource type="Texture2D" path="res://assets/ui/host-game/Arrow Right 64.png" id="5"]
+[ext_resource type="Shader" path="res://assets/ui/card_fold.gdshader" id="6"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_fold"]
+shader = ExtResource("6")
+shader_parameter/fold_color = Color(0.016, 0.031, 0.22, 1)
+
+[node name="Tutorial" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 0
+script = ExtResource("1")
+
+[node name="Backdrop" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("2")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="Scrim" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+color = Color(0.015686, 0.031373, 0.219608, 0.74)
+
+[node name="Banner" type="TextureRect" parent="."]
+layout_mode = 0
+offset_left = 60.0
+offset_top = 46.0
+offset_right = 708.0
+offset_bottom = 190.0
+mouse_filter = 2
+texture = ExtResource("3")
+expand_mode = 1
+stretch_mode = 0
+
+[node name="BannerLabel" type="Label" parent="Banner"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 128.0
+offset_right = -108.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.239, 0.149, 0.024, 1)
+theme_override_font_sizes/font_size = 62
+vertical_alignment = 1
+text = "TUTORIAL"
+
+[node name="Panel" type="PanelContainer" parent="."]
+layout_mode = 0
+offset_left = 300.0
+offset_top = 226.0
+offset_right = 1620.0
+offset_bottom = 832.0
+theme_type_variation = &"WoodPanel"
+
+[node name="Margin" type="MarginContainer" parent="Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 26
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 26
+theme_override_constants/margin_bottom = 18
+
+[node name="Layout" type="VBoxContainer" parent="Panel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="PageTitle" type="Label" parent="Panel/Margin/Layout"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"MenuHeading"
+text = "THE GAME"
+
+[node name="PageLede" type="Label" parent="Panel/Margin/Layout"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"MenuBody"
+autowrap_mode = 2
+text = "lede"
+
+[node name="Rule" type="ColorRect" parent="Panel/Margin/Layout"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 3)
+color = Color(0.545, 0.322, 0.153, 1)
+
+[node name="Scroll" type="ScrollContainer" parent="Panel/Margin/Layout"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="Rows" type="VBoxContainer" parent="Panel/Margin/Layout/Scroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 14
+
+[node name="FoldCorner" type="Control" parent="."]
+layout_mode = 0
+offset_left = 1604.0
+offset_top = 816.0
+offset_right = 1620.0
+offset_bottom = 832.0
+mouse_filter = 2
+material = SubResource("ShaderMaterial_fold")
+
+[node name="Pager" type="HBoxContainer" parent="."]
+layout_mode = 0
+offset_left = 810.0
+offset_top = 906.0
+offset_right = 1110.0
+offset_bottom = 976.0
+alignment = 1
+theme_override_constants/separation = 24
+
+[node name="PrevButton" type="TextureButton" parent="Pager"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(44, 62)
+layout_mode = 2
+size_flags_vertical = 4
+texture_normal = ExtResource("4")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="PageSlot" type="PanelContainer" parent="Pager"]
+custom_minimum_size = Vector2(160, 0)
+layout_mode = 2
+theme_type_variation = &"WoodSlot"
+
+[node name="PageLabel" type="Label" parent="Pager/PageSlot"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"MenuValue"
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "1 / 6"
+
+[node name="NextButton" type="TextureButton" parent="Pager"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(44, 62)
+layout_mode = 2
+size_flags_vertical = 4
+texture_normal = ExtResource("5")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="BackButton" type="Button" parent="."]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 300.0
+offset_top = 906.0
+offset_right = 560.0
+offset_bottom = 976.0
+theme_type_variation = &"WoodDangerButton"
+text = "◀  BACK"
+
+[node name="Hint" type="Label" parent="."]
+layout_mode = 0
+offset_left = 1340.0
+offset_top = 906.0
+offset_right = 1620.0
+offset_bottom = 976.0
+mouse_filter = 2
+theme_type_variation = &"MenuCaption"
+horizontal_alignment = 2
+vertical_alignment = 1
+text = "◀ ▶ to page  ·  ESC to go back"

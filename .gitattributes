@@ -1,8 +1,3 @@
-# Godot text scenes/resources diff & merge like code — keep tracked as text
-*.tscn text
-*.tres text
-*.gd text
-
 # Generated geometry (Handoff.md §4, M-1). Wavefront .obj/.mtl are PLAIN TEXT and
 # must stay out of LFS — being diffable and mergeable is the entire reason this
 # project generates meshes as .obj instead of exporting .glb. Do not "tidy" these
@@ -17,6 +12,36 @@
 # autocrlf setting.
 *.obj text eol=lf
 *.mtl text eol=lf
+
+# Same bug, same fix, found the same way — smoke gate step 1 is
+# `--import && git status --short`, and on a machine with core.autocrlf=true
+# (the Windows default) that step could never come back clean. Checkout writes
+# these with CRLF; Godot's importer rewrites every one of them with LF the first
+# time it runs; `git status` then reports all 34 as modified while
+# `git diff` shows nothing and the blob hashes are identical, because the change
+# is purely the line endings git is about to convert back.
+#
+# It is worse than cosmetic: a gate whose "no tracked churn" check always fails
+# is a gate everybody learns to read past, which is how real churn gets waved
+# through. Pin them the way `.obj`/`.mtl` are pinned.
+*.import text eol=lf
+
+# And the text formats Godot itself writes, for the same reason — the editor
+# saves scenes, resources and scripts with LF on every platform, so anything
+# opened and saved in it would churn exactly like the `.import` files did.
+# These carry `text` so they still diff and merge like code, which is the whole
+# reason this project keeps scenes and resources in their text formats.
+*.tscn text eol=lf
+*.tres text eol=lf
+*.gd text eol=lf
+*.gdshader text eol=lf
+
+# Third-party licence texts — never converted, never normalised. These are
+# vendored documents that Form 03 quotes verbatim; `git add --renormalize .`
+# would otherwise rewrite all eight of them the first time anyone runs it, which
+# is a diff nobody wants to have to justify on a submission artifact.
+*LICENSE*.txt -text
+*LICENCE*.txt -text
 
 # Binary assets — track via Git LFS (run: git lfs install)
 *.glb filter=lfs diff=lfs merge=lfs -text
