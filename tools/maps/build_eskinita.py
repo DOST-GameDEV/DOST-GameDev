@@ -54,6 +54,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from floorcheck import (Surfaces, embed_y, mesh_bounds,  # noqa: E402
                         read_confinement_radius)
+## The logic both maps need, in one place — see mapkit.py's own header. This
+## file is the one every lesson was learned on, so it is the one that has to
+## stop being the only place they live.
+from mapkit import Placer, apron_cells, front_yaw  # noqa: E402,F401
 
 # --- The one height every surface on this map shares --------------------------
 #
@@ -292,8 +296,20 @@ TOWN_SCALE = 1.6   # Fantasy Town props (carts, stalls, rocks, planks) are the
 # ⚠️ EVERY TILE IS THE SAME SCALE AND THEREFORE THE SAME HEIGHT. A coarser tile
 # further out would halve the instance count and put a 100 mm step across the
 # map at the seam, which is the exact fault Phase 8 exists to remove.
-APRON_X = 30.0
-APRON_Z = 32.0
+# ⚠️ THE APRON'S EDGE IS FEATHERED, NOT FURTHER OUT. Same fix and same reason as
+# Bayan Plaza's — see mapkit.apron_cells. This map's overhead had the identical
+# hard square (a straight line where the paving stopped against bare floor at
+# x=30 / z=32) and it was never listed as a defect here only because the defect
+# was written up against the OTHER map. It is one bug in one shared shape.
+#
+# Solid to 26 covers everything a player can see the ground of: the collision
+# walls are at |x| 8.6 / |z| 18 and the cross rows close the street at |z| 26,
+# so the dissolve begins exactly at the last row of houses and everything inside
+# it is paved solid. Reach is up from 30/32 to 38 for +17 tiles, because the
+# outer band is mostly holes; 28/40 was tried first and cost +51 for a reach
+# nothing looks at.
+APRON_SOLID = 26.0
+APRON_FADE = 38.0
 ## ⚠️ THE PAVING'S TOP MUST LAND ON GROUND_Y, SO ITS BASE GOES A THICKNESS BELOW.
 ## Passing `base_y=GROUND_Y` here instead — which is the obvious-looking thing to
 ## write — stands every tile 100 mm proud of the floor it is paving, and the very
@@ -308,16 +324,12 @@ ROAD_BASE_Y = GROUND_Y - ROAD_TOP
 ## instances so the texture resolution matches perfectly."
 _ROAD_YAW = [0, 1, 3, 2, 0, 3, 1, 2, 3, 0, 2, 1, 1, 3, 0, 2]
 _road_n = 0
-_gx = -APRON_X + ROAD_SCALE * 0.5
-while _gx <= APRON_X:
-    _gz = -APRON_Z + ROAD_SCALE * 0.5
-    while _gz <= APRON_Z:
-        add_kit("Dressing/Road", f"Road_{_road_n}", "kits/town/road", _gx, _gz,
-                _ROAD_YAW[_road_n % len(_ROAD_YAW)] * math.pi * 0.5,
-                ROAD_SCALE, base_y=ROAD_BASE_Y, lane_exempt=True)
-        _road_n += 1
-        _gz += ROAD_SCALE
-    _gx += ROAD_SCALE
+for _gx, _gz, _ix, _iz in apron_cells(APRON_SOLID, APRON_FADE, ROAD_SCALE,
+                                      half=APRON_FADE):
+    add_kit("Dressing/Road", f"Road_{_road_n}", "kits/town/road", _gx, _gz,
+            _ROAD_YAW[_road_n % len(_ROAD_YAW)] * math.pi * 0.5,
+            ROAD_SCALE, base_y=ROAD_BASE_Y, lane_exempt=True)
+    _road_n += 1
 
 # --- Layer 1: the wall line the player actually touches ----------------------
 #
@@ -879,6 +891,18 @@ ext_lines.append('[ext_resource type="Texture2D" '
 ext_lines.append('[ext_resource type="AudioStream" '
                  'path="res://assets/audio/ambience/eskinita_street.wav" id="AMB"]')
 
+# ⚠️ THE FLOOR **MESH** IS 200x200 WHILE ITS **COLLISION** STAYS 120x120, and the
+# split is deliberate. Feathering the apron removed the paving's own hard edge;
+# what was left behind it was Ring 0's — the floor box ended at |60| while
+# fog_depth_end is 58, so the very last two units of the world stuck out past the
+# fog as a straight diagonal against the sky in the y=25 overhead. Taking the
+# MESH to |100| puts its edge 42 units beyond the fog's end, where it is fully
+# occluded, and it costs EXACTLY NOTHING: the floor is a single BoxMesh, so this
+# is one draw call either way and not one extra instance.
+# The COLLISION box is untouched at 120 — it is what characters stand on and what
+# the kill plane is sized against, and this is a backdrop change, not a play-area
+# change. Same rule as the note below.
+#
 # ⚠️ THE FLOOR IS 120x120 AND THAT IS A BACKDROP CHANGE, NOT AN ARENA RESIZE.
 # The colliders that bound play — Bounds/Wall* at ±8.6 and ±18.0 — are byte-for-
 # byte what they were. Part 4's standing rule bans changing arena SCALE in the
@@ -890,6 +914,16 @@ ext_lines.append('[ext_resource type="AudioStream" '
 #   * The COLLISION top is at GROUND_Y (0.100) — the paving top. That is what a
 #     character stands on, and it is the fix for feet sinking 100 mm into the
 #     visible road, which is what a 0.0 collision top under 0.1 paving meant.
+# ⚠️ THE FLOOR MESH'S COLOUR IS MATCHED TO THE APRON'S, AND THAT IS THE SECOND
+# HALF OF THE SOFT-EDGE FIX. Feathering the apron (see APRON_SOLID) turns the
+# hard line into a ragged one, but a ragged line between two DIFFERENT colours is
+# still a visible boundary — it just has teeth. Sampled off the y=25 overhead
+# render: the apron read (90, 88, 98) against a floor of (109, 101, 93), i.e. the
+# paving was cool grey and the floor under it was warm brown, so every gap the
+# feather opened showed up as a warm speck. The albedo below is that measurement
+# pushed back through the ratio, so the tiles and the floor they thin out over
+# are the same colour and the dissolve has nothing left to reveal. It costs
+# nothing — it is one albedo on a material that already existed.
 #   * The MESH top is 15 mm lower (0.085). It has to be BELOW the paving rather
 #     than level with it: two coplanar surfaces z-fight, and a shimmering plane
 #     under the whole map is a worse artefact than a 15 mm lip 26 m away at the
@@ -899,12 +933,12 @@ SUBS = '''[sub_resource type="BoxShape3D" id="Shape_floor"]
 size = Vector3(120, 8, 120)
 
 [sub_resource type="StandardMaterial3D" id="Mat_floor"]
-albedo_color = Color(0.32941, 0.31765, 0.29412, 1)
+albedo_color = Color(0.37780, 0.36910, 0.39620, 1)
 roughness = 1.0
 
 [sub_resource type="BoxMesh" id="Mesh_floor"]
 material = SubResource("Mat_floor")
-size = Vector3(120, 1, 120)
+size = Vector3(200, 1, 200)
 
 [sub_resource type="BoxShape3D" id="Shape_wall_z"]
 size = Vector3(1, 12, 40)
@@ -1154,6 +1188,8 @@ print(f"  ext_resources : {len(ext_lines)}")
 print(f"  sub_resources : {n_sub}")
 print(f"  load_steps    : {load_steps}")
 print(f"  mesh instances: {len(order)}")
+print(f"  apron         : {_road_n} tiles, solid to {APRON_SOLID:.0f} then "
+      f"feathered to {APRON_FADE:.0f} (no hard edge)")
 if overlaps:
     print(f"  [!] Layer1 footprint overlaps: {len(overlaps)}")
     for a, b, ox, oz in overlaps[:8]:
