@@ -2513,6 +2513,65 @@ until they are.**
    a break bearing every tick, and the much longer rounds simply giving a stall more chances to be
    observed.
 
+### RUN 8 — 2026-07-30. ⚠️ RUNS 1–7 ABOVE MEASURED A 3-v-4, AND RUN 8 IS THE FIRST THAT DID NOT.
+
+**Read this before trusting any number in RUNS 1–7.**
+
+`ai_probe.gd::_take_over_human_slot()` exists so the human's own Single Player seat is driven by a
+bot too — without it the fairness table is measuring three bots and one statue. It found that seat
+by testing `ai_controller == null`, which was correct while `main.gd::_start_local_test()` attached
+controllers only to the three units the human was NOT playing.
+
+On 2026-07-30 every unit started getting a controller, with the human's created **disabled** (see
+`main.gd`'s note on *"only one AI person works at a time"*). The null test then matched nothing, the
+takeover silently did nothing, **and the probe's own `AI units found: 4` line kept saying 4, because
+it counts CONTROLLERS rather than asking whether anything is driving them.**
+
+Measured consequence, before it was caught: every round in which that seat drew the ATTACKER
+reported `0 throws` and was handed to the defence on the clock. That reads as a balance finding. It
+is a broken harness. This is the repo's own trap 2 — *a probe that never LOOKS at the thing you
+changed passes anyway* — and it is the second time that trap has cost this project a run.
+
+Fixed by asking `is_enabled()` rather than `!= null`, clearing `input_parked`, and **printing the
+number of genuinely AI-driven units every run with a `push_error` when it is not 4.** A future
+change to how control is granted can now break this loudly instead of quietly.
+
+**THE HUMAN-SLOT TAKEOVER IS TEST-ONLY. 🧑 Human ask, 2026-07-30: flag it for removal.** It exists
+solely so AI-vs-AI fairness can be measured; nothing in the shipping game may depend on it. It lives
+entirely inside `tools/ai_probe.gd`, is reached only from the `fairness` command-line mode, and
+`tools/` does not ship — so removing it is deleting that one function and its one call site, with no
+gameplay file touched. That is the same one-way-dependency rule `Dev_Plan.md` §0.3 sets for the debug
+switcher, and it already holds here; it is written down now so nobody has to re-derive it.
+
+#### What RUN 8 actually measured, on a real four-bot field
+
+Three runs, 10 rounds each, Option A, scale 4, Eskinita. Only `taya_pursue_radius` differs:
+
+| pursue | Round win rate | Throws blocked | Dents/round | Reached the can | Ended by tag |
+|---|---|---|---|---|---|
+| **0.0** (RUN 7's value) | DEF **100%** | **92.0%** | 0.10 | 1 | 10/10 |
+| **1.8** (shipped) | DEF **100%** | **91.8%** | 0.00 | 0 | 10/10 |
+| **3.6** | DEF **100%** | **90.5%** | 0.00 | 0 | 10/10 |
+
+**Two conclusions, and the first one matters more than the second.**
+
+1. ⚠️ **FAIRNESS IS WORSE THAN RUN 7 RECORDED, AND THIS PASS DID NOT CAUSE IT.** RUN 7 logged DEF 80%
+   and 64.1% blocked; the baseline row above is the *same* pursuit value on today's `integration` and
+   reads DEF 100% / 92.0%. Several commits landed between them (B-134/135/136, B-138, the attacker
+   evasion runs). **RUN 7's table is stale and must not be quoted as current.** The open problem is
+   the BLOCK RATE: the attacker throws into a taya parked in the lane and essentially never scores.
+   `TAYA_BLOCK_STANDOFF` (2.6, still unmeasured, still not a `static var`) is now the single most
+   obvious next lever, exactly as RUN 3 and RUN 7 both said.
+2. Pursuit costs nothing measurable in either direction — the three rows are within noise of each
+   other. That is consistent with `taya_pursue_radius`'s own doc ("this knob does not decide fairness
+   today, it only decides HOW the defence wins"). It ships at **1.8** because the human asked for a
+   defender that *actively tries to tag*, and at 1.8 the taya breaks off to chase only once the
+   attacker crosses into the defended area to fetch its own tsinelas — which is the behaviour that
+   was asked for, bought at no measured cost.
+
+**Nothing in this pass claims to have balanced the AI.** It made the measurement honest and left the
+number where it found it.
+
 ### ⚠️ Still open after RUN 7
 
 - **Win rate 85/15 and dents 0.45.** Improved, still out. The offence works now; it does not win.

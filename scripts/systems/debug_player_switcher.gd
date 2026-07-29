@@ -108,6 +108,28 @@ func _default_unit() -> String:
 
 func debug_register_bar(bar: DebugBar) -> void:
 	_bar = bar
+	# ⚠️⚠️ DEFERRED, AND WITHOUT THAT THE PLAYER CANNOT MOVE AT ALL.
+	#
+	# Godot readies CHILDREN before PARENTS, and the DebugBar is a child of
+	# Main.tscn — so this function runs during the bar's own `_ready()`, which is
+	# BEFORE `main.gd::_ready()` has run `_start_local_test()` and attached a
+	# single AIController. `_default_unit()` asks "which unit has no AI driving
+	# it", and at that moment the honest answer is "all of them", so it returned
+	# the first name in the list and `_apply_slots()` then parked the seat the
+	# player had actually chosen.
+	#
+	# Measured with tools/input_probe.tscn: "units answering the keyboard: 0" on
+	# a fresh Single Player, i.e. nobody could move until they pressed Tab. The
+	# hardcoded DEFAULT_UNIT this replaced happened to be immune, because a
+	# constant needs nothing to exist yet — which is exactly why the discovery
+	# version has to wait for the thing it discovers.
+	#
+	# `call_deferred` lands at idle, after every `_ready()` in the frame.
+	_resolve_default.call_deferred()
+
+func _resolve_default() -> void:
+	if _bar == null:
+		return
 	_slot_unit = _default_unit()
 	if NetworkManager.is_networked():
 		# Solo-host QoL: the local-test node names below don't exist in a

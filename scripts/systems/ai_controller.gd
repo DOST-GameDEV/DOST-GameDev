@@ -152,7 +152,7 @@ const TSINELAS_ARRIVE_DISTANCE: float = 1.0
 ##
 ## Set from `DIFFICULTY_TIERS` in _ready(); still a `static var` so ai_probe can
 ## sweep it from the command line without editing this file.
-static var taya_pursue_radius: float = 3.6
+static var taya_pursue_radius: float = 1.8
 
 ## ---------------------------------------------------------------------------
 ## DIFFICULTY TIERS
@@ -176,7 +176,7 @@ const DIFFICULTY_TIERS: Dictionary = {
 	# "Bata" — a kid. Holds its post, aims where the can is rather than where it
 	# will be, thinks slowly and never fully winds up.
 	Difficulty.BATA:   {"pursue": 1.8, "lead": 0.25, "think": 0.50, "charge": 0.40},
-	Difficulty.NORMAL: {"pursue": 3.6, "lead": 0.60, "think": 0.35, "charge": 0.65},
+	Difficulty.NORMAL: {"pursue": 1.8, "lead": 0.60, "think": 0.35, "charge": 0.65},
 	# "Astig" — the one who wins. Chases to the edge of its own box and leads
 	# almost perfectly.
 	Difficulty.ASTIG:  {"pursue": 4.6, "lead": 0.85, "think": 0.22, "charge": 0.80},
