@@ -180,12 +180,17 @@ func _check_map_ambience(path: String) -> void:
 	_ok(player.bus == &"Music", "%s ambience is on bus '%s', not Music"
 		% [path.get_file(), player.bus])
 	_ok(player.playing, "%s ambience did not start playing" % path.get_file())
-	var ogg := player.stream as AudioStreamOggVorbis
-	_ok(ogg != null, "%s ambience stream is not an AudioStreamOggVorbis" % path.get_file())
-	if ogg != null:
-		# The default is false and it is silently wrong — see the class doc.
-		_ok(ogg.loop, "%s ambience stream does not loop" % path.get_file())
-		print("   stream  : %.2f s, loop=%s, bus=%s, vol=%.1f dB"
-			% [ogg.get_length(), ogg.loop, player.bus, player.volume_db])
+	# B-123: the beds are generated PCM .wav now, not sourced .ogg — see
+	# tools/audio/generate_ambience.py for why. Godot's wav importer defaults
+	# edit/loop_mode to 0 (no loop), the same silent failure the ogg importer
+	# had with loop=false: the bed plays once and the map is quiet for the rest
+	# of the match with nothing reporting it.
+	var wav := player.stream as AudioStreamWAV
+	_ok(wav != null, "%s ambience stream is not an AudioStreamWAV" % path.get_file())
+	if wav != null:
+		_ok(wav.loop_mode != AudioStreamWAV.LOOP_DISABLED,
+			"%s ambience stream does not loop" % path.get_file())
+		print("   stream  : %.2f s, loop_mode=%d, bus=%s, vol=%.1f dB"
+			% [wav.get_length(), wav.loop_mode, player.bus, player.volume_db])
 	map.queue_free()
 	await get_tree().process_frame

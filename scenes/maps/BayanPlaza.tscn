@@ -40,7 +40,7 @@
 [ext_resource type="Script" path="res://scripts/systems/kill_plane.gd" id="K"]
 [ext_resource type="Script" path="res://scripts/systems/env_toon_pass.gd" id="T"]
 [ext_resource type="Texture2D" path="res://assets/models/materials/sky_panorama.png" id="SKY"]
-[ext_resource type="AudioStream" path="res://assets/audio/ambience/bayan_plaza.ogg" id="AMB"]
+[ext_resource type="AudioStream" path="res://assets/audio/ambience/bayan_plaza.wav" id="AMB"]
 
 [sub_resource type="BoxShape3D" id="Shape_floor"]
 size = Vector3(120, 1, 120)
