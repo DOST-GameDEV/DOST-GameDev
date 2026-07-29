@@ -375,7 +375,29 @@ func _step_flying(delta: float) -> void:
 	# reported. Cheap: one Area3D overlap query on one node.
 	_character.sweep_hitbox()
 	var collision := _character.move_and_collide(_flight_velocity * delta)
-	if collision != null and _thrower_ignore_left <= 0.0 and _bounces_left > 0:
+	# ⚠️ IGNORE THE THROWER, NOT THE ENTIRE WORLD (B-132). This used to read
+	# `_thrower_ignore_left <= 0.0`, with no test of WHAT was hit — so for the
+	# first THROWER_IGNORE_TIME (0.25 s) of every flight the slipper passed
+	# through the floor, the walls and the lata alike.
+	#
+	# That is most of a real throw. Measured with tools/phys_probe.tscn's
+	# ballistics mode: a throw_default shot at the 6.0 line has a total flight
+	# time of about 0.29 s, so ~87% of it was intangible. The slipper sank
+	# through the ground, kept travelling, and only became solid again well past
+	# the target — landing 10.14 m out on a 6.0 m throw, a 69% overshoot on an
+	# arc that _solve_arc had solved correctly. Every profile's landing was wrong
+	# by a different amount depending on its flight time, which is exactly the
+	# "weird bounces" and floor-clipping this file's own header records.
+	#
+	# The window was never needed for its stated purpose anyway: _rpc_set_flying
+	# already calls `add_collision_exception_with(carrier)`, and _rpc_set_loose
+	# removes it, so the PHYSICS ENGINE excludes the thrower for the whole flight.
+	# The identity test below keeps the belt-and-braces intent while making the
+	# comment above THROWER_IGNORE_TIME true.
+	var ignoring_thrower := collision != null and _thrower_ignore_left > 0.0 \
+		and carrier != null and is_instance_valid(carrier) \
+		and collision.get_collider() == carrier
+	if collision != null and not ignoring_thrower and _bounces_left > 0:
 		_flight_velocity = _flight_velocity.bounce(collision.get_normal()) * BOUNCE_DAMPING
 		_bounces_left -= 1
 		collision = null # consumed by the bounce, not a landing this frame
@@ -388,7 +410,7 @@ func _step_flying(delta: float) -> void:
 	if not _is_host():
 		return # only the host decides that a flight has ended
 
-	var hit_something := collision != null and _thrower_ignore_left <= 0.0
+	var hit_something := collision != null and not ignoring_thrower
 	if hit_something or _flight_time >= MAX_FLIGHT_TIME:
 		host_land()
 
