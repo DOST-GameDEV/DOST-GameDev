@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3 uid="uid://c3f7h9j1k2l4m"]
+[gd_scene load_steps=8 format=3 uid="uid://c3f7h9j1k2l4m"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="0"]
 [ext_resource type="PackedScene" path="res://scenes/ui/SettingsPanel.tscn" id="11"]
@@ -7,11 +7,7 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/MatchResult.tscn" id="6"]
 [ext_resource type="PackedScene" path="res://scenes/ui/DebugBar.tscn" id="7"]
 [ext_resource type="Script" path="res://scripts/ui/pause_layer.gd" id="8"]
-[ext_resource type="Shader" path="res://assets/ui/card_fold.gdshader" id="10"]
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_pause_fold"]
-shader = ExtResource("10")
-shader_parameter/fold_color = Color(0.016, 0.031, 0.22, 1)
 [node name="Main" type="Node3D"]
 script = ExtResource("0")
 
@@ -88,53 +84,65 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -180.0
-offset_top = -110.0
-offset_right = 180.0
-offset_bottom = 110.0
+offset_left = -250.0
+offset_top = -205.0
+offset_right = 250.0
+offset_bottom = 205.0
+theme_type_variation = &"WoodPanel"
 
-[node name="VBoxContainer" type="VBoxContainer" parent="PauseLayer/PauseRoot/Card"]
+[node name="Margin" type="MarginContainer" parent="PauseLayer/PauseRoot/Card"]
+layout_mode = 2
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 14
+
+[node name="VBoxContainer" type="VBoxContainer" parent="PauseLayer/PauseRoot/Card/Margin"]
 layout_mode = 2
 alignment = 1
+theme_override_constants/separation = 12
 
-[node name="PausedLabel" type="Label" parent="PauseLayer/PauseRoot/Card/VBoxContainer"]
+[node name="PausedLabel" type="Label" parent="PauseLayer/PauseRoot/Card/Margin/VBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_type_variation = &"Heading"
+theme_type_variation = &"MenuDisplay"
 horizontal_alignment = 1
 text = "PAUSED"
 
-[node name="Spacer" type="Control" parent="PauseLayer/PauseRoot/Card/VBoxContainer"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 16)
-
-[node name="ResumeButton" type="Button" parent="PauseLayer/PauseRoot/Card/VBoxContainer"]
+[node name="PausedNoteLabel" type="Label" parent="PauseLayer/PauseRoot/Card/Margin/VBoxContainer"]
 unique_name_in_owner = true
+visible = false
 layout_mode = 2
-theme_type_variation = &"PrimaryButton"
+theme_type_variation = &"MenuCaption"
+horizontal_alignment = 1
+autowrap_mode = 2
+text = "The match is still running."
+
+[node name="Rule" type="ColorRect" parent="PauseLayer/PauseRoot/Card/Margin/VBoxContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 3)
+color = Color(0.545, 0.322, 0.153, 1)
+
+[node name="ResumeButton" type="Button" parent="PauseLayer/PauseRoot/Card/Margin/VBoxContainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 66)
+layout_mode = 2
+theme_type_variation = &"WoodPrimaryButton"
 text = "RESUME"
 
-[node name="SettingsButton" type="Button" parent="PauseLayer/PauseRoot/Card/VBoxContainer"]
+[node name="SettingsButton" type="Button" parent="PauseLayer/PauseRoot/Card/Margin/VBoxContainer"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 66)
 layout_mode = 2
+theme_type_variation = &"WoodButton"
 text = "SETTINGS"
 
-[node name="MenuButton" type="Button" parent="PauseLayer/PauseRoot/Card/VBoxContainer"]
+[node name="MenuButton" type="Button" parent="PauseLayer/PauseRoot/Card/Margin/VBoxContainer"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 66)
 layout_mode = 2
+theme_type_variation = &"WoodDangerButton"
 text = "RETURN TO MENU"
-
-[node name="FoldCorner" type="Control" parent="PauseLayer/PauseRoot/Card"]
-layout_mode = 1
-anchors_preset = 4
-anchor_left = 1.0
-anchor_top = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = -16.0
-offset_top = -16.0
-mouse_filter = 2
-material = SubResource("ShaderMaterial_pause_fold")
 
 [node name="SettingsPanel" parent="PauseLayer" instance=ExtResource("11")]
 unique_name_in_owner = true

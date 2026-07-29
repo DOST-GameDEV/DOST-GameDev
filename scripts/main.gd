@@ -51,6 +51,12 @@ var kill_plane: KillPlane = null
 ## Q-3/B-64: text swaps to a non-freezing warning in networked play — see
 ## _on_pause_toggle_requested.
 @onready var paused_label: Label = %PausedLabel
+## The "this did not actually freeze anything" caveat, on its own line under the
+## title. It used to be appended to `paused_label` itself — fine against a 28px
+## Heading, but the card's title is display-sized now and a 40-character string
+## at that size either overflows the card or drags it half again as wide for a
+## state most sessions never see.
+@onready var paused_note_label: Label = %PausedNoteLabel
 ## Q-3/B-64: owns the Esc _unhandled_input listener itself, at
 ## PROCESS_MODE_ALWAYS — see pause_layer.gd's doc for why that can't live on
 ## Main (this node's own script) once the tree is actually paused.
@@ -1224,11 +1230,10 @@ func _on_pause_toggle_requested() -> void:
 	# Local Match, specifically to exercise the networked code path alone;
 	# refusing to actually pause for that is a real cost with no one to
 	# protect. See NetworkManager.is_solo_session().
-	if NetworkManager.is_networked() and not NetworkManager.is_solo_session():
-		paused_label.text = "PAUSED — the match is still running"
-	else:
+	var overlay_only := NetworkManager.is_networked() and not NetworkManager.is_solo_session()
+	paused_note_label.visible = overlay_only
+	if not overlay_only:
 		get_tree().paused = pause_root.visible
-		paused_label.text = "PAUSED"
 
 func _on_resume_pressed() -> void:
 	AudioManager.play("ui_back") # 4.1

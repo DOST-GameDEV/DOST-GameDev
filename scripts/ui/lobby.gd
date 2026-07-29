@@ -46,6 +46,7 @@ const ROW_FONT_SIZE: int = 30
 @onready var start_button:         ArrowButton    = %StartButton
 @onready var status_label:         Label          = %StatusLabel
 @onready var back_button:          Button         = %BackButton
+@onready var map_preview:          MapPreview     = %MapPreview
 
 ## Host-authoritative ordered list of peer_ids. Index position is each peer's
 ## join index, which determines team (index/2) and role (index%2==0 → Person).
@@ -59,6 +60,17 @@ var _peer_ready: Dictionary = {}  # peer_id -> bool
 var _is_ready: bool = false
 
 func _ready() -> void:
+	# Before the host/join/local branching below, all three of which can return
+	# early — the backdrop is not conditional on the connection working.
+	#
+	# This is THIS PEER'S selection, which for a client is whatever they last
+	# picked on their own GAME screen. Nothing syncs the map across the lobby
+	# today: `main.gd` reads `GameLaunch.selected_map_scene()` locally on every
+	# peer, so a client who picked a different map already loads a different map
+	# than the host. That is a real defect and it predates this screen showing
+	# the map at all — what changed is that it is now visible instead of silent.
+	map_preview.show_map(GameLaunch.MAPS[GameLaunch.map_index()])
+
 	ready_button.pressed.connect(_on_ready_pressed)
 	start_button.pressed.connect(_on_start_pressed)
 	back_button.pressed.connect(_on_back_pressed)
