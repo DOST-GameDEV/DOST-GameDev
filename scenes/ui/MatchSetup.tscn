@@ -269,7 +269,7 @@ text_overrun_behavior = 3
 
 [node name="DetailLabel" type="Label" parent="Body/Columns/LeftColumn"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 80)
+custom_minimum_size = Vector2(0, 64)
 layout_mode = 2
 size_flags_vertical = 0
 theme_type_variation = &"MenuBody"
@@ -306,7 +306,6 @@ tip_padding = 40.0
 
 [node name="StatusLabel" type="Label" parent="Body/Columns/LeftColumn"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
 size_flags_vertical = 0
 theme_override_colors/font_color = Color(0.957, 0.408, 0.659, 1)
@@ -402,9 +401,9 @@ anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 83.0
-offset_top = -83.0
+offset_top = -94.0
 offset_right = 383.0
-offset_bottom = -25.0
+offset_bottom = -36.0
 grow_vertical = 0
 theme_type_variation = &"WoodButton"
 text = "◀  BACK"
