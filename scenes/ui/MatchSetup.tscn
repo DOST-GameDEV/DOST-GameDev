@@ -88,7 +88,7 @@ mouse_filter = 2
 theme_override_constants/margin_left = 83
 theme_override_constants/margin_top = 230
 theme_override_constants/margin_right = 96
-theme_override_constants/margin_bottom = 24
+theme_override_constants/margin_bottom = 100
 
 [node name="Columns" type="HBoxContainer" parent="Body"]
 layout_mode = 2
@@ -100,7 +100,7 @@ custom_minimum_size = Vector2(960, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
-theme_override_constants/separation = 14
+theme_override_constants/separation = 12
 
 [node name="ConfigPanel" type="PanelContainer" parent="Body/Columns/LeftColumn"]
 layout_mode = 2
@@ -269,7 +269,7 @@ text_overrun_behavior = 3
 
 [node name="DetailLabel" type="Label" parent="Body/Columns/LeftColumn"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 96)
+custom_minimum_size = Vector2(0, 80)
 layout_mode = 2
 size_flags_vertical = 0
 theme_type_variation = &"MenuBody"
@@ -313,20 +313,6 @@ theme_override_colors/font_color = Color(0.957, 0.408, 0.659, 1)
 theme_override_font_sizes/font_size = 28
 vertical_alignment = 1
 autowrap_mode = 2
-
-[node name="Spacer" type="Control" parent="Body/Columns/LeftColumn"]
-layout_mode = 2
-size_flags_vertical = 3
-mouse_filter = 2
-
-[node name="BackButton" type="Button" parent="Body/Columns/LeftColumn"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(300, 58)
-layout_mode = 2
-size_flags_horizontal = 0
-size_flags_vertical = 8
-theme_type_variation = &"WoodButton"
-text = "◀  BACK"
 
 [node name="RightColumn" type="VBoxContainer" parent="Body/Columns"]
 custom_minimum_size = Vector2(700, 0)
@@ -408,6 +394,20 @@ alignment = 0
 text = "TEAM B · PROP"
 clip_text = true
 text_overrun_behavior = 3
+
+[node name="BackButton" type="Button" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 83.0
+offset_top = -83.0
+offset_right = 383.0
+offset_bottom = -25.0
+grow_vertical = 0
+theme_type_variation = &"WoodButton"
+text = "◀  BACK"
 
 [node name="CharacterSelectPanel" parent="." instance=ExtResource("9")]
 unique_name_in_owner = true
