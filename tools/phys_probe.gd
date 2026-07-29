@@ -38,6 +38,10 @@ var _hit_targets_this_throw: Dictionary = {}
 var _worst_single_target: int = 0
 ## `-- target=can|taya|graze`. See the aim block in _ready() for what each means.
 var _target_mode := "can"
+## `-- map=eskinita|bayan_plaza`. Ids come from GameLaunch.MAPS, not from a path.
+var _map_id := &"eskinita"
+## `-- ballistics` swaps the hit-counting series for the landing-scatter sweep.
+var _ballistics := false
 var _taya: CharacterBase
 ## How far to the side a `graze` throw aims. Bigger than the target's body
 ## capsule (0.4) so the bodies never touch, smaller than body + hurtbox (0.45)
@@ -52,6 +56,16 @@ func _ready() -> void:
 		var token := String(arg)
 		if token.begins_with("target="):
 			_target_mode = token.substr(7)
+		elif token.begins_with("map="):
+			_map_id = StringName(token.substr(4))
+		elif token == "ballistics":
+			_ballistics = true
+	# ⚠️ MUST happen before Main.tscn is instantiated — main.gd reads
+	# GameLaunch.selected_map_scene() as it builds the world, so setting this
+	# afterwards silently measures Eskinita while claiming to measure the plaza.
+	# That is B-104's failure mode exactly (a map that cannot be loaded reports
+	# the other one's numbers), so it is set here and echoed in every report.
+	GameLaunch.selected_map = _map_id
 	_main = load("res://scenes/main/Main.tscn").instantiate()
 	add_child(_main)
 	await get_tree().create_timer(1.0).timeout
@@ -68,6 +82,10 @@ func _ready() -> void:
 	print("slipper=", _slipper.name, " can=", _can.name)
 	_watch_slipper_hitboxes()
 	set_physics_process(true)
+	if _ballistics:
+		await _run_ballistics()
+		get_tree().quit(0)
+		return
 	# Fire a series of throws straight at the can from the throwing line.
 	for i in 12:
 		var carriable := _slipper.get_node("Carriable") as Carriable
@@ -267,3 +285,228 @@ func _sum_of(values: Array[float]) -> float:
 	for v in values:
 		total += v
 	return total
+
+## ---------------------------------------------------------------------------
+## BALLISTICS — landing scatter per profile, from both throwing lines, per map.
+##
+## ⚠️ WHY THIS EXISTS: Art_Direction.md §9's range table is STALE and every
+## number in it is wrong. It was computed when the four profiles carried
+## non-zero `arc_angle_deg` (14/12/30/5) and lower launch speeds. B-127
+## (86e9139) found the arc tilt was sign-inverted, corrected it, and set
+## `arc_angle_deg = 0.0` on ALL FOUR profiles while retuning launch_speed and
+## gravity_scale. The table therefore describes resources that no longer exist.
+##
+## ⚠️ "Max range at full charge" is ALSO no longer the right question. With arc
+## at 0 and `host_throw()` taking a POINT rather than a bearing (B-129), the
+## launch angle is SOLVED per throw by `carriable.gd::_solve_arc()`. Reach is now
+## "does the solver find an angle at this charge" — when the discriminant goes
+## negative it gives up and throws flat along the aim, which reads in-game as a
+## throw that visibly falls short. So this measures where the slipper ACTUALLY
+## LANDS, and the charge floor at which the can becomes reachable at all.
+##
+## ⚠️⚠️ THE NUMBERS THIS MODE CURRENTLY PRINTS ARE NOT TRUSTWORTHY. DO NOT QUOTE
+## THEM, AND DO NOT TUNE ANYTHING AGAINST THEM. Status 2026-07-29: the harness
+## faults below are fixed (state reset between throws, cast re-resolved as roles
+## swap, can healed so the round cannot end mid-sweep) and it now produces output
+## for all 8 cells — but the output fails its own sanity checks:
+##
+##   * `throw_default` (launch_speed 21.0) reports NEVER REACHES the 6.0 line
+##     while `throw_bakya` (19.0, and HEAVIER at gravity_scale 1.35) reaches it
+##     at 50% charge. A slower, heavier profile cannot out-range a faster one;
+##     one of the two readings is wrong.
+##   * Scatter runs 3-9 m across eight IDENTICAL full-charge throws at a solved
+##     arc. These should be near-deterministic; metres of spread means something
+##     the probe does not control is varying per throw.
+##
+## Two suspects, neither confirmed: (a) `_slipper.is_on_floor()` may never go
+## true for a slipper flown by move_and_collide, so "first ground contact" is
+## silently falling back to wherever the FLYING state happened to end, i.e. after
+## bounce and roll; (b) throws that strike the can end their flight ON it while
+## throws that miss sail past, so the two populations are being averaged together
+## into one meaningless mean.
+##
+## The fix is to record the landing off the flight code's own landing event
+## rather than inferring it, and to separate hits from misses before averaging.
+## Until that is done this mode measures the harness, not the ballistics.
+##
+## Every unit is parked (ai_controller = null) for the sweep. That is deliberate:
+## this measures the BALLISTICS, not a contested throw. A Taya body-blocking the
+## arc is what `target=taya` and the fairness harness are for, and mixing the two
+## would make a shortfall unattributable between "cannot reach" and "was blocked".
+const BALLISTIC_ABILITIES: Array = [
+	["throw_default (every Prop today, per B-76)", ""],
+	["throw_bakya", "res://scripts/abilities/bakya_bash.gd"],
+	["throw_flick", "res://scripts/abilities/flick_dash.gd"],
+	["throw_bagsak", "res://scripts/abilities/bagsak_bomb.gd"],
+]
+## The two throwing lines, as z offsets. Both builders draw these along X at
+## z = ±6.0 (`court_line("ThrowingLine*", "x", ±6.0, ...)`), so they are read
+## from the same constant the chalk uses rather than restated by eye.
+const THROWING_LINES: Array[float] = [-6.0, 6.0]
+const BALLISTIC_THROWS: int = 8
+## Charge steps for the reach floor. CHARGE_MIN_POWER is 0.35, so below that is
+## not a state the game can produce.
+const CHARGE_STEPS: Array[float] = [0.35, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+
+func _park_everyone() -> void:
+	for c in _main.find_children("*", "CharacterBase", true, false):
+		var ch := c as CharacterBase
+		ch.ai_controller = null
+		ch.velocity = Vector3.ZERO
+
+## ⚠️ RE-RESOLVE THE CAST, AND KEEP THE ROUND FROM ENDING. Both halves are here
+## because of the same failure, and it is a good example of trap 1 in reverse —
+## the probe was measuring a state the game had already moved on from.
+##
+## The sweep fires ~16 throws per cell. Those dent the can, the can reaches
+## MAX_DENTS, THE ROUND ENDS, and `_reset_world()` swaps every role. The cached
+## `_attacker` is then on the CAN's team, so `carriable.gd::can_be_grabbed_by()`
+## rejects it on the team check ("an opponent's tsinelas: shove it, never pocket
+## it") and every subsequent throw reports a grab failure. It read as "the probe
+## cannot grab", which is why the first cell always passed and every cell after
+## it failed 8/8 — the first cell is simply the one that runs before the can dies.
+##
+## So the can is healed between throws (this is a ballistics measurement, not a
+## damage one) and the cast is re-derived from the CURRENT role flags rather than
+## trusted from _ready().
+func _refresh_cast() -> void:
+	_can = null
+	_attacker = null
+	_taya = null
+	for c in _main.find_children("*", "CharacterBase", true, false):
+		var ch := c as CharacterBase
+		if ch.is_can: _can = ch
+		elif not ch.is_person and not ch.is_can: _slipper = ch
+		elif ch.is_person and not ch.team_is_can_side: _attacker = ch
+		elif ch.is_person and ch.team_is_can_side: _taya = ch
+	_park_everyone()
+	if _can != null:
+		_can.dents = 0
+		_can.global_position = Vector3(0.0, _can.global_position.y, 0.0)
+		_can.velocity = Vector3.ZERO
+	if _taya != null:
+		_taya.global_position = Vector3(30.0, 0.9, 30.0)
+
+## One throw from `origin` at `charge`, aimed at the can. Returns the slipper's
+## resting position, or Vector3.INF if the grab never took (which is a probe
+## failure, not a physics result, and is reported as such rather than averaged in).
+func _ballistic_throw(origin: Vector3, charge: float) -> Vector3:
+	var carriable := _slipper.get_node("Carriable") as Carriable
+	# ⚠️ RESET TO LOOSE FROM WHATEVER STATE THE LAST THROW LEFT. The first version
+	# of this called only host_land(), which returns early unless the state is
+	# FLYING — so the first cell's throws worked and every cell after it reported
+	# 8/8 grab failures, because the slipper was still CARRIED and host_grab()
+	# refuses a slipper that already has a carrier. Both exits have to be covered.
+	if carriable.state == Carriable.CarryState.CARRIED:
+		carriable.host_drop()
+	elif carriable.state == Carriable.CarryState.FLYING:
+		carriable.host_land()
+	# Heal the can every throw, not just every cell — MAX_DENTS is small enough
+	# that one cell's 16 throws can kill it twice over. See _refresh_cast's doc.
+	if _can != null:
+		_can.dents = 0
+	await get_tree().physics_frame
+	_attacker.global_position = origin
+	_attacker.velocity = Vector3.ZERO
+	await get_tree().physics_frame
+	# Same path the real game takes — loose, grabbed, thrown. Anything that skips
+	# the grab tests a state the game never reaches (see the main series above).
+	_slipper.global_position = origin + Vector3(0.4, 0.3, 0.0)
+	_slipper.velocity = Vector3.ZERO
+	await get_tree().physics_frame
+	carriable.host_grab(_attacker)
+	await get_tree().physics_frame
+	if carriable.state != Carriable.CarryState.CARRIED:
+		return Vector3.INF
+	carriable.host_throw(_can.global_position + Vector3(0, 0.25, 0), charge)
+	# ⚠️ FIRST GROUND CONTACT, NOT THE RESTING PLACE. Returning the position where
+	# the slipper finally stops measures the throw PLUS the bounce PLUS the roll,
+	# which is why the first run reported a 3.94 m "scatter" on a solved arc: a
+	# throw from z=-6.0 aimed at the can showed a landing of z=+2.92, i.e. it had
+	# skittered nearly 3 m PAST the target after touching down. Bounce and roll
+	# are worth measuring, but they are not where the slipper LANDED.
+	var guard := 0
+	var landed := Vector3.INF
+	while carriable.state == Carriable.CarryState.FLYING and guard < 400:
+		await get_tree().physics_frame
+		guard += 1
+		if landed == Vector3.INF and _slipper.is_on_floor():
+			landed = _slipper.global_position
+	if landed == Vector3.INF:
+		landed = _slipper.global_position
+	return landed
+
+func _run_ballistics() -> void:
+	_park_everyone()
+	# ⚠️ GET THE TAYA OUT OF THE ARC. Parking everyone leaves the defender standing
+	# on its spawn mark, which sits between the throwing line and the can — so a
+	# throw that hits it reports as a short landing and reads exactly like a reach
+	# failure. A contested throw is what `target=taya` and the fairness harness
+	# measure; this mode is the ballistics alone, and the two must not be mixed or
+	# a shortfall is unattributable.
+	if _taya != null:
+		_taya.global_position = Vector3(30.0, 0.9, 30.0)
+	await get_tree().physics_frame
+	var can_pos := _can.global_position
+	print("\n=== BALLISTICS SWEEP ===")
+	print("  map            : %s" % _map_id)
+	print("  can at         : (%.2f, %.2f, %.2f)" % [can_pos.x, can_pos.y, can_pos.z])
+	print("  throwing lines : z = %.1f and z = %.1f  (%d throws each, full charge)"
+		% [THROWING_LINES[0], THROWING_LINES[1], BALLISTIC_THROWS])
+	print("  GRAVITY        : %.1f  (CharacterBase.GRAVITY, NOT 9.8)" % CharacterBase.GRAVITY)
+	for entry in BALLISTIC_ABILITIES:
+		var label: String = entry[0]
+		var script_path: String = entry[1]
+		_slipper.ability = null if script_path == "" else load(script_path).new()
+		await get_tree().physics_frame
+		var profile := (_slipper.get_node("Carriable") as Carriable)._profile()
+		print("\n  --- %s  (speed %.1f, arc %.1f deg, gravity_scale %.2f) ---"
+			% [label, profile.launch_speed, profile.arc_angle_deg, profile.gravity_scale])
+		for line_z in THROWING_LINES:
+			_refresh_cast()
+			await get_tree().physics_frame
+			var origin := Vector3(can_pos.x, can_pos.y, can_pos.z + line_z)
+			var misses: Array[float] = []
+			var lands: Array[Vector3] = []
+			var failed := 0
+			for i in BALLISTIC_THROWS:
+				var rest: Vector3 = await _ballistic_throw(origin, 1.0)
+				if rest == Vector3.INF:
+					failed += 1
+					continue
+				lands.append(rest)
+				misses.append(Vector2(rest.x - can_pos.x, rest.z - can_pos.z).length())
+			if lands.is_empty():
+				print("    line z=%+.1f : *** NO THROW LAUNCHED (%d grab failures) ***"
+					% [line_z, failed])
+				continue
+			# Scatter, reported as spread about the MEAN LANDING POINT rather than
+			# about the can — a throw that consistently lands 2 m short is precise
+			# and wrong, and averaging those two together would hide it.
+			var mean := Vector3.ZERO
+			for p in lands:
+				mean += p
+			mean /= float(lands.size())
+			var spread := 0.0
+			for p in lands:
+				spread = maxf(spread, Vector2(p.x - mean.x, p.z - mean.z).length())
+			var mean_miss := _sum_of(misses) / float(misses.size())
+			var reach_charge := await _reach_floor(origin)
+			print("    line z=%+.1f : landed (%.2f, %.2f) | mean miss from can %.2f m | scatter %.2f m | reach floor %s%s"
+				% [line_z, mean.x, mean.z, mean_miss, spread,
+					("%.0f%% charge" % (reach_charge * 100.0)) if reach_charge > 0.0 else "*** NEVER REACHES ***",
+					"" if failed == 0 else "  (%d grab failures)" % failed])
+
+## Lowest charge whose throw lands within REACH_TOLERANCE of the can. This is the
+## measured replacement for §9's computed "charge needed for a 6.0 line" column.
+const REACH_TOLERANCE: float = 1.0
+
+func _reach_floor(origin: Vector3) -> float:
+	for charge in CHARGE_STEPS:
+		var rest: Vector3 = await _ballistic_throw(origin, charge)
+		if rest == Vector3.INF:
+			continue
+		var miss := Vector2(rest.x - _can.global_position.x, rest.z - _can.global_position.z).length()
+		if miss <= REACH_TOLERANCE:
+			return charge
+	return 0.0
