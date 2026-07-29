@@ -21,7 +21,23 @@ var _times: Array[float] = []
 var _results: Array = []
 const CASES := ["everything on", "no SDFGI", "no SDFGI+SSIL", "no GI/SSAO/glow"]
 
+## `-- map=eskinita|bayan_plaza`. Ids come from GameLaunch.MAPS, not from a path.
+##
+## ⚠️ THIS DID NOT EXIST, WHICH IS WHY BAYAN PLAZA HAD NEVER BEEN PERF-MEASURED.
+## The probe always loaded whatever `GameLaunch.selected_map` happened to default
+## to (eskinita), so every frame-time number ever recorded here describes one map
+## while reading as though it described the project. That matters now: the plaza's
+## instance count went 506 -> 655 in the redress pass and it is the denser of the
+## two by some margin.
+var _map_id := &"eskinita"
+
 func _ready() -> void:
+	for arg in OS.get_cmdline_user_args():
+		var token := String(arg)
+		if token.begins_with("map="):
+			_map_id = StringName(token.substr(4))
+	# Must precede the instantiate — main.gd resolves the map scene as it builds.
+	GameLaunch.selected_map = _map_id
 	var main: Node = load("res://scenes/main/Main.tscn").instantiate()
 	add_child(main)
 	await get_tree().create_timer(1.0).timeout
@@ -56,8 +72,13 @@ func _process(_d: float) -> void:
 	_case += 1
 	if _case >= CASES.size():
 		set_process(false)
-		print("\n=== 8.3f FRAME TIME — Eskinita, real match scene ===")
+		# ⚠️ The map is NAMED here rather than hardcoded to "Eskinita" as it used
+		# to be. The old header asserted a map the probe never actually selected,
+		# which is how the plaza went unmeasured while the numbers read as though
+		# they covered the project.
+		print("\n=== 8.3f FRAME TIME — %s, real match scene ===" % _map_id)
 		print("  viewport: ", get_viewport().size)
+		print("  mesh instances in scene: %d" % _count_instances())
 		for r in _results:
 			print(r)
 		print("  NOTE: CPU process time only. GPU cost of SDFGI/SSIL is NOT in")
@@ -65,3 +86,12 @@ func _process(_d: float) -> void:
 		get_tree().quit(0)
 		return
 	_apply()
+
+## Instance count, printed next to the frame times so density and cost can be
+## read together. The plaza's redress took it 506 -> 655 and that is the number
+## the frame time has to be interpreted against.
+func _count_instances() -> int:
+	var n := 0
+	for node in get_tree().root.find_children("*", "MeshInstance3D", true, false):
+		n += 1
+	return n

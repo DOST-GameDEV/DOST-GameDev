@@ -80,9 +80,29 @@ apron, tree line — satisfy both descriptions at once.
 #      outer ring pulled from 45 to ~38 so it is not fogged out with the edge.
 #   3. [DONE 2026-07-29] Interior clutter pass — see the Dressing/Clutter block.
 #   4. [DONE 2026-07-29] The HazardZone gutter_tile drainage bed.
-#   5. ⚠️ STILL OPEN. Never played, never networked, never perf-measured on this
-#      map — and the instance count went 506 -> 655 in this pass, so the perf
-#      measurement matters more than it did.
+#   5. [PARTLY DONE 2026-07-29] PERF AND AI MEASURED; still never played by a
+#      human, still never networked.
+#        * perf_probe gained `map=` (it had none, which is exactly why this map
+#          had never been measured — every frame-time number ever recorded was
+#          Eskinita wearing the project's name). 1920x1080, everything on:
+#            eskinita     517 instances   cpu median  8.41 ms   p95 11.44   171 fps
+#            bayan_plaza  671 instances   cpu median 10.19 ms   p95 10.19   167 fps
+#          ~30% more instances for ~21% more CPU and 2% fewer fps. Comfortable
+#          here, but this is ONE machine (RX 6600) and the standing warning that
+#          heavy shading "made the game both ugly and laggy on other PCs" is
+#          about other people's hardware, which this does not measure.
+#        * ai_probe gained `map=` too and ran 20 rounds here for the first time.
+#          Results track Eskinita closely (DEF 90%, dents 0.30, 0 timeouts) and
+#          the LONGEST STILL-RUN IS 3.75 s versus Eskinita's 6.83 s — i.e. bots
+#          get stuck LESS here, not more. Nothing pathologically snags on the
+#          monument.
+#        * THE TAYA CANNOT BE PINNED AGAINST MonumentBody, and it is geometry
+#          rather than luck: the Can and Taya are clamped to the confinement
+#          square (|x|,|z| <= 5, so 7.07 from centre at the corner) and the
+#          monument's nearest corner sits ~8.1 out. It is unreachable by a
+#          confined unit by ~1.3 units. Note that margin SHRANK when the clamp
+#          became square (the circle kept the Taya 3.3 units clear), so it is
+#          worth re-checking if CONFINEMENT_RADIUS is ever raised.
 #   6. ⚠️ NEW, AND PRE-EXISTING. surfaces.overlaps_across() (added this pass)
 #      reports 8 interior footprint overlaps that have nothing to do with the
 #      redress: Lantern_1/2 <-> Stall_1/2, three Bench <-> Clutter pairs, and
