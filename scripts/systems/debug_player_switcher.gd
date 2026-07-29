@@ -151,9 +151,11 @@ func _input(event: InputEvent) -> void:
 ## control. **Solo-test a real 2v2 through Single Player**, which is the mode
 ## this switcher exists for.
 ##
-## So if Tab does nothing and Esc shows "PAUSED — the match is still running",
-## the session is HOSTED, not Single Player. That combination is the tell, and
-## it is exactly what the 0.4 playtest reported.
+## So if Tab does nothing and the pause card shows its "The match is still
+## running." note under the title, the session is HOSTED, not Single Player.
+## That combination is the tell, and it is exactly what the 0.4 playtest
+## reported. (The note used to be appended to the title itself; it moved to its
+## own line when the card was restyled.)
 ##
 ## Solo-host QoL (2026-07-28+): a SOLO networked session (NetworkManager.
 ## is_solo_session() — hosting, nobody else has joined) is different from the

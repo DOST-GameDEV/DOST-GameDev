@@ -152,8 +152,8 @@ Legend: **[x]** built and working · **[~]** built but broken or unverified · *
 | Character scenes (`scenes/characters/visuals/`) | [x] | Built and wired through `CharacterVisual.apply(is_person, is_can, team)`. |
 | Maps — Eskinita, Bayan Plaza | [ ] | Names only. One 40×40 box floor with **invisible** bounds and a kill plane. No `scenes/maps/*.tscn` exists. No base circle, no throwing line, no team markings, no skybox (`Main.tscn` ships a flat `background_color`). **The single biggest gap between this build and the moodboard.** |
 | Map hazards (jeepney lane, mud, carabao) | [ ] | `HazardZone` is the reusable piece (B-17 fixed) but it renders nothing and no map places one — Handoff §4 **Q-7** does the first visible test zone. |
-| Art, animation, VFX | [~] | **Correction, 2026-07-27: locomotion IS wired.** `character_visual.gd::_play_locomotion` selects idle/walk/sprint from horizontal velocity, and `play_action()` fires one-shot throw/bump/grab clips. The repeated claim that "only `idle` of 32 is wired" is stale — that was M-5 step 4 and it shipped. VFX: hit flash (B-44), impact particles and camera shake (Q-8) all exist. **Hitstop and audio are still open.** |
-| Audio | [ ] | **Nothing. Not one `AudioStreamPlayer` anywhere in the repo** — verified by grep, 2026-07-27. Its own workstream and its own brief (`Agent_Prompts.md`); `Checklist.md` 4.1. A lata taking a direct hit in silence reads as a bug to a judge no matter how good the mesh is. |
+| Art, animation, VFX | [~] | **Correction, 2026-07-27: locomotion IS wired.** `character_visual.gd::_play_locomotion` selects idle/walk/sprint from horizontal velocity, and `play_action()` fires one-shot throw/bump/grab clips. The repeated claim that "only `idle` of 32 is wired" is stale — that was M-5 step 4 and it shipped. VFX: hit flash (B-44), impact particles and camera shake (Q-8) all exist. Hitstop shipped in 4.5; audio shipped in 4.1 (see the Audio row below). |
+| Audio | [~] | **BUILT 2026-07-29, `Checklist.md` 4.1.** Master/SFX/Music buses (`default_bus_layout.tres`), an `AudioManager` autoload with pooled voices, volume sliders in Settings, 32 **procedurally generated** SFX (`tools/audio/generate_sfx.py` — no recordings, no samples, one licence row), two CC0 ambience loops, and hooks across combat, the slipper, all five abilities, match state and the menus. The lata impact is frame-synced to hitstop. `[~]` because it is verified by `tools/audio_probe.gd` (25 checks) and **not yet heard by a human** — the mix is unjudged. |
 | UI theme / design system | [x] | **DONE (v1.3).** `scripts/ui/ui_theme.gd` (`UiTheme` constants) + the generated `Theme` resource, applied project-wide. This is what fixed the invisible-button contrast trap (B-34) at the root rather than one control at a time. Individual **screens** are still placeholder-styled — see §4.3. |
 | Broadcast/spectator cam | [ ] | GDD Section 6 stretch. `ArenaCamera` becomes this (§3.4). |
 | Trailer + demo video | [ ] | |
@@ -850,7 +850,7 @@ yet, see B-10/B-37 above) and the Option A/B decision itself, which nobody has m
       struck character's own owning peer (**Q-8**, v3.2). Shake lives on `CameraRig` (never
       `ArenaCamera`, preserving the FPP/TPP split), gated to only the struck player's own screen;
       particles are a code-built `GPUParticles3D` burst in `UiTheme.IMPACT`, no art asset.
-      `landed_on` itself is still unused. Hitstop and audio are still open.
+      `landed_on` itself is still unused. **Hitstop closed in 4.5, audio in 4.1 (2026-07-29)** — the impact sound fires on the statement before `_hitstop()` in `CharacterBase._flash_hit()`, so the last two halves of B-44 closed together and in sync.
 - [x] Movement interpolation for remote characters — see `Checklist.md` 4.2
 - [ ] Audio: bump, special, downed/seal, round win, ambience per map
 - [ ] Broadcast/auto-follow cam for recording (GDD Section 6)

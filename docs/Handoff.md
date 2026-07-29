@@ -25,7 +25,7 @@ one names the model it should run on, the files to read first, its exact scope, 
 | [`Art_Direction.md`](Art_Direction.md) | The maps, the dressed boundary, field markings, skyboxes | **Opus, high** |
 | [`Agent_Prompts.md`](Agent_Prompts.md) | Carry / throw / grab / reset channel — playtest and retune | **Sonnet, high** |
 | [`Agent_Prompts.md`](Agent_Prompts.md) | Charge meters, character select, off-screen indicators, typeface | **Sonnet, medium** |
-| [`Agent_Prompts.md`](Agent_Prompts.md) | The entire audio workstream — nothing exists today | **Sonnet, medium** |
+| [`Agent_Prompts.md`](Agent_Prompts.md) | The entire audio workstream — **shipped 2026-07-29 (4.1)**, awaiting a listening pass | **Sonnet, medium** |
 | [`Agent_Prompts.md`](Agent_Prompts.md) | Interpolation, rejoin identity, real-device LAN hardening | **Sonnet, high** |
 | [`Agent_Prompts.md`](Agent_Prompts.md) | Trailer, demo video, synopsis, forms, demo-day script | **Opus, high** |
 
@@ -458,7 +458,7 @@ threw on frame one.
   acceptance tests remain unrunnable. Checklist 5.1, marked human-owned.
 - **No real-device LAN test.** Needs hardware. Checklist 6.1.
 - **No font.** The gate held. Checklist 1.1.
-- **No map, no audio, no character select.** Untouched, all queued.
+- **No map, no character select.** Untouched, all queued. (Audio is no longer on this list — 4.1 shipped 2026-07-29.)
 - **`HAND_CARRY_OFFSET` is tuned, not final.** It is deliberately not tuned further until the prop
   **scale** question (checklist 1.2) is answered — measured, the tsinelas is **84% of a Person's
   height** and the lata is **70%**, so a Person carrying one reads closer to carrying a surfboard.
@@ -3104,9 +3104,11 @@ document that acts on it, so this list shrinks instead of accumulating.
   but still no reconciliation. If that forces the shared-screen fallback (GDD Section 7), you want
   to know weeks before the deadline — and the FPP/TPP split raises the cost of that pivot (four
   viewports, and only one player per machine can mouse-look). **Book four laptops now.**
-- **Audio.** Still nothing, and it is deliberately not in this queue. A can hit with no sound
-  reads as a bug to a judge no matter how good the mesh is. It is a parallel workstream and it
-  needs an owner.
+- **Audio — now built, and needing exactly one thing: ears.** 4.1 shipped 2026-07-29 (buses,
+  `AudioManager`, 32 generated SFX, two CC0 ambience loops, hooks throughout, volume sliders). It
+  is verified by `tools/audio_probe.gd`, which proves every sound loads and plays and that the
+  lata impact has no head padding to desync it from hitstop — and proves **nothing whatsoever
+  about whether the mix is any good**. Nobody has heard it. That is the outstanding item.
 
 ## 7. Working notes
 
@@ -3501,8 +3503,11 @@ the hook (B-23) and needs to fire on every peer, not just the host.
 **[FIXED]** (partial) added a brief white mesh flash on any landed hit, triggered from
 `_apply_hit_result()` (runs on the target's own owning peer, any hit kind, either game mode) — no
 new assets needed. **Q-8 added screenshake and impact particles** (see B-66) on top of this, both
-code-built with no new assets. `landed_on` itself is still unused. Sound and hitstop are still
-open — those need real assets/design, not a code fix.
+code-built with no new assets. `landed_on` itself is still unused. **Hitstop closed in 4.5;
+sound closed in 4.1 (2026-07-29)** — and the "needs real assets" assumption behind this note was
+wrong: the whole SFX set is synthesised from maths by `tools/audio/generate_sfx.py`, so it needed
+no assets at all. The impact sound fires on the statement immediately before `_hitstop()` in
+`CharacterBase._flash_hit()`, so B-44's last two gaps close together and in sync.
 
 **B-45 · The moodboard's throw is a charged, aimed action; the code's is an instant fixed-range
 pulse. (NEW)** The Attacker card specifies *AIMING ARC (mouse pointer trail)* and *CHARGED THROW
@@ -3903,7 +3908,8 @@ toggled `pause_root.visible` and the cursor, never `get_tree().paused` — `Roun
 timer, `MatchManager`'s intermission countdown, and every `CharacterBase._physics_process` (input,
 gravity) kept running behind the overlay.
 **[FIXED]** Local Match now gets a real `get_tree().paused` freeze; networked play stays a
-non-freezing overlay whose label says "PAUSED — the match is still running" (a naive freeze would
+non-freezing overlay that says so ("The match is still running.", under the title — one line since the
+card was restyled, appended to the title before that) (a naive freeze would
 stop the host's authoritative timer for everyone, or stop a client's own movement while the host
 keeps simulating it — Handoff.md §0.3). Caught a second, undocumented bug while implementing the
 first: Godot gates `_unhandled_input` by `process_mode` exactly like `_process`, and `Main`'s own

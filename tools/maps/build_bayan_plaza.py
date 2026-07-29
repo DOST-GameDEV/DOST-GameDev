@@ -463,6 +463,14 @@ ext_lines.append('[ext_resource type="Script" '
 # reading as "an endless desert".
 ext_lines.append('[ext_resource type="Texture2D" '
                  'path="res://assets/models/materials/sky_panorama.png" id="SKY"]')
+# Checklist 4.1 - this map's own ambience bed. A DIFFERENT file from Eskinita's
+# on purpose: see build_eskinita.py's note on why the bed belongs to the map.
+# An open barangay plaza is airy and wide where an eskinita is close and
+# enclosed, and one shared loop would flatten the only cue the player has that
+# they have changed venue. CC0 - source, author and licence in
+# assets/audio/ambience/OPENGAMEART_CC0_LICENSE.txt, which is what Form 03 needs.
+ext_lines.append('[ext_resource type="AudioStream" '
+                 'path="res://assets/audio/ambience/bayan_plaza.ogg" id="AMB"]')
 
 SUBS = '''[sub_resource type="BoxShape3D" id="Shape_floor"]
 size = Vector3(120, 1, 120)
@@ -595,6 +603,14 @@ script = ExtResource("K")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="KillPlane"]
 shape = SubResource("Shape_killplane")
+
+[node name="Ambience" type="Node3D" parent="."]
+
+[node name="AmbienceLoop" type="AudioStreamPlayer" parent="Ambience"]
+stream = ExtResource("AMB")
+autoplay = true
+bus = &"Music"
+volume_db = -14.0
 
 [node name="Hazards" type="Node3D" parent="."]
 

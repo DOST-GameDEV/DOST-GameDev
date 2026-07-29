@@ -12,7 +12,7 @@ names them but cannot set them.
 | **2** | ~~🔧 **BUILD-UX**~~ | **Sonnet** | medium | ✅ **Done 2026-07-28.** | **B-86 could not be reproduced** — re-rendered six times, crosshair present every time; see `Handoff.md` B-86. Charge-glow shader hook built in `you_card.gd` (`CHARGE_SHADER_PARAM`), verified by a scripted run. 5.3 (strip Local Match/debug switcher) deliberately **not** done this pass — it is blocked on 0.4 and 4.4 in `Checklist.md`, and `Art_Direction.md`'s own resolution says do it late, after the last playtest, not before. |
 | **3** | ~~🔧 **BUILD-NET**~~ | **Sonnet** | high | ✅ **Done 2026-07-28 — `Checklist.md` 4.2, 4.3, 4.6, 4.7.** | Remote-visual interpolation, rejoin identity (stable token + a mid-match redirect out of the lobby), solo-host pause/debug-switcher QoL, and a live peer-drop account are all in. Real-device testing over wifi (6.1) is still 🧑 human and still unrun — this lane only made the loopback case correct. |
 | **4** | 🎨 **DESIGN-ART** | **Opus** | high | **Unblocked — row 1 is done** | Its first job was rescaling props, which depended on 1; that shipped (`generate_all.gd`'s meshes), so this lane's remaining scope is whatever `Checklist.md` still lists open under 2.x. Opus because its question is *"does this match the moodboard"* — a judgement call, not a testable one. **Attach the moodboard image.** |
-| **5** | 🎵 **BUILD-AUDIO** | **Sonnet** | medium | Any time | Nothing exists — not one `AudioStreamPlayer` in the repo. Fully independent of every other lane. |
+| **5** | ~~🎵 **BUILD-AUDIO**~~ | **Sonnet** | medium | ✅ **Done 2026-07-29 — `Checklist.md` 4.1.** | Master/SFX/Music buses, an `AudioManager` autoload, volume sliders, **32 procedurally generated SFX** (`tools/audio/generate_sfx.py` — no recordings, one licence row), two CC0 ambience beds, and hooks across combat, the slipper, all five abilities, match state and the menus. Lata impact is frame-synced to hitstop. Verified by `tools/audio_probe.gd`; **still unheard by a human** — a listening pass is the follow-up. See the Audio appendix. |
 | **6** | 🔬 **QA** | **Sonnet** | medium | **Alongside anything** | Writes only `docs/`, so it can never collide. Good to keep running continuously. |
 | **7** | 📦 **PRODUCER** | **Sonnet** | medium | **Alongside anything** | Also `docs/`-only. Submission paperwork has a deadline that does not move. |
 | **8** | ~~🔧 **BUILD-AI**~~ | **Sonnet** | high | ✅ **Done 2026-07-28 — `Checklist.md` 5.5.** | Local Match renamed to Single Player; a new `ai_controller.gd` drives the three units the human isn't personally controlling via the same Input surface a human would, one hook in `character_base.gd`, no forked `_physics_process`. Debug switcher kept as a manual override; Settings panel's P2 rebind column removed. |
@@ -376,34 +376,55 @@ decisions inline.
 
 ---
 
-# 🎵 BUILD-AUDIO — Sonnet, medium effort
+# 🎵 BUILD-AUDIO — ✅ DONE 2026-07-29 (`Checklist.md` 4.1)
+
+**This opener is retired — the lane shipped.** What exists now is recorded in the **Audio
+appendix** at the bottom of this file: the bus layout, the `AudioManager` autoload, the 32
+procedurally generated SFX, the two CC0 ambience beds, every hook and why it sits where it does.
+
+**The one thing still outstanding is a listening pass**, and it is a different job from this one
+was. If you are picking that up, use this instead:
 
 ```
-You are the AUDIO lane on Tumbang Preso (Godot 4.7, GDScript). Repo: DOST-GameDEV/DOST-GameDev.
+You are doing the AUDIO LISTENING PASS on Tumbang Preso (Godot 4.7, GDScript).
+Repo: DOST-GameDEV/DOST-GameDev.
 
 SETUP
   git fetch origin && git switch integration && git pull --ff-only
   git config user.name "M4tyu633" && git config user.email "matthewtlabrador@gmail.com"
-  git switch -c code/audio
+  git switch -c code/audio-mix
 Godot: <path to your Godot 4.7.x executable> (NOT on PATH — set per machine, do not paste a teammate's path)
 
-YOUR JOB — checklist 4.1, the entire audio workstream. NOTHING EXISTS: there is not one
-AudioStreamPlayer anywhere in the repo. A can taking a direct hit in silence reads as a bug to
-a judge no matter how good the mesh is.
+READ FIRST: the "Audio — what shipped" appendix at the bottom of docs/Agent_Prompts.md, then
+tools/audio/generate_sfx.py's header. Checklist 4.1 is [~], not [x], and its last bullet says
+exactly why.
 
-Minimum viable set: bump, slipper release, slipper impact on lata, lata knocked down,
-reset-channel complete, round win, match win, and one ambience loop per map (Eskinita is a
-Philippine side street; Bayan Plaza is an open barangay plaza).
+YOUR JOB — 4.1 is built and PROBE-VERIFIED BUT NEVER HEARD. Every claim on the checklist is a
+measurement: buses route, 32 streams load, no stream has leading silence, voices start, the
+ambience loops. None of that says the mix is any good. Judge it by ear and retune.
+
+  1. Play a full match. Judge the MIX, not the wiring. Per-sound trims are all in one place:
+     AudioManager._TRIM_DB.
+  2. Judge whether impacts are punchy enough over four people shouting. The knobs are in
+     generate_sfx.py (soft_clip drive, the `bend` on modes(), body-vs-strike balance).
+     Re-run it — it is deterministic, so re-running changes nothing you did not change.
+  3. Judge the two ambience beds against the built maps. They were picked on a licence check
+     and a spectral read, NOT by ear in the maps.
+  4. Run a two-instance --host/--join session and confirm every cue fires ON THE SECOND PEER.
+     This is the B-66 failure mode and it is the one acceptance test still unrun.
+  5. Only then consider what is deliberately absent: music (the Music bus carries only
+     ambience today) and any announcer layer.
 
 RULES
-- CC0 or CC-BY only. Log EVERY asset in the licence register as you add it — source URL,
-  licence, author. Form 03 needs it and archaeologising it at the deadline is how projects miss
-  submissions. See docs/Checklist.md phase 6.
-- Design pillar: this project is a "friendslop" — a chaotic party game for friends. Audio
-  should be punchy, cartoonish and legible over chaos, not realistic foley.
-- The hit sound is the single most important one. Hitstop already ships (v4.30); land the sound
-  on the same frame the hitstop starts.
-- Add a master/SFX/music bus layout and wire volume to SettingsManager, which already exists.
+- Do NOT re-source SFX. They are generated, which is what makes the licence disclosure one row.
+  If a sound is wrong, change the maths, do not download a replacement.
+- Any new external asset is CC0 or CC-BY ONLY and goes in the licence register the moment it
+  lands — assets/audio/ambience/OPENGAMEART_CC0_LICENSE.txt is the pattern. Form 03 needs it.
+- Design pillar: "friendslop", a chaotic party game for friends. Punchy, cartoonish, legible
+  over chaos. Never realistic foley.
+- Do not break the frame-sync: the lata impact fires on the statement before _hitstop() in
+  character_base.gd::_flash_hit(), and the .wav files must keep zero head padding.
+  tools/audio_probe.gd asserts both — run it.
 
 - DOCS ARE PART OF THE WORK, AND ALL OF THEM, NOT JUST ONE. Tick your Checklist.md box in the SAME commit as the change. Then grep docs/ scripts/ tools/ for whatever you just made wrong and fix every stale claim - if a doc says a thing is missing and you just built it, that doc is now a bug. DELETE stale content rather than labelling it outdated. Never write 'verified by render' for something you did not render. See Concurrency_Protocol.md §12.
 - Also: sole authorship as M4tyu633 <matthewtlabrador@gmail.com>, no AI mentions in
@@ -1342,161 +1363,155 @@ done, say so and move on rather than rewriting working code.
 
 *(was `docs/Agent_Prompts.md`)*
 
-## Audio Agent Brief
+## Audio — what shipped
 
-**Run this on: Sonnet 5, medium effort.** Sourcing, wiring and licence bookkeeping. It touches no
-shared scene and no networking, which makes it the safest workstream to run in parallel with
-anything else.
+**Checklist 4.1 is built.** Landed on `code/audio` 2026-07-29 by the 🔧 Build lane. This appendix
+used to be a paste-ready brief for work that did not exist; it is now the record of what does.
 
-**Lane:** 🔧 Build. **Worktree:** `.worktrees/build`, branch `code/audio-<slice>` off
-`integration`. **Checklist item owned:** **4.1** — the entire audio workstream.
-**Paste-ready opener:** [`Agent_Prompts.md`](Agent_Prompts.md) → 🔧 Build lane.
-
----
-
-### 0. Starting position
-
-**There is nothing.** Verified by grep on 2026-07-27: not one `AudioStreamPlayer`,
-`AudioStreamPlayer3D`, `AudioStream` or `AudioServer` reference anywhere in `scripts/` or
-`scenes/`. `assets/audio/` contains a single `.gitkeep`. There is no bus layout, no volume setting,
-no mixer.
-
-This is a bigger deal than its checklist position suggests. **A lata taking a direct hit in silence
-reads as a bug to a judge no matter how good the mesh is.** `Handoff.md` §6 has flagged audio as an
-unscheduled critical-path item for three passes and it has never had an owner.
+**Still open, and it is the only thing open: nobody has listened to it.** Everything below is
+verified by measurement (`tools/audio_probe.gd`, 25 checks, 0 failures) and by the §8 smoke gate.
+Measurement cannot tell you whether an impact is punchy, whether the mix survives four people
+shouting, or whether an ambience bed suits its map. That is a listening pass, and it is the next
+job — see *§5 What a follow-up pass should do*.
 
 ---
 
-### 1. Read these first
+### 0. The shape of it
 
-1. **[`Checklist.md`](Checklist.md)** — item 4.1, and Phase 6 for why licences matter early.
-2. **[`Concurrency_Protocol.md`](Concurrency_Protocol.md)** — §2 path ownership, §8 smoke gate.
-3. **`Handoff.md`** §1–§2 (**frozen** — follow, do not rewrite), §6 (audio as critical path).
-4. **`Dev_Plan.md`** §0 (standing directives), §5 Phase 5, §6 (`git lfs install` before any binary).
-5. **`Dev_Plan.md`** §6 (the esports/spectator layer — the downed state has to read
-   instantly on stream) and §9 (submission checklist — Form 03).
-6. Then: `scripts/systems/settings_manager.gd` (where a volume setting belongs),
-   `scripts/characters/character_visual.gd` (the existing hit-feedback pattern to mirror),
-   `scripts/systems/round_manager.gd` and `match_manager.gd` (the signals worth hooking).
+```
+default_bus_layout.tres          Master ──┬── SFX     (all gameplay + UI)
+  (project.godot:                         └── Music   (map ambience)
+   audio/buses/default_bus_layout)
 
----
+scripts/systems/audio_manager.gd  AudioManager autoload — FIRST in [autoload]
+  ├─ name → AudioStream table (32 entries, SFX_NAMES)
+  ├─ 8 × AudioStreamPlayer      (UI / non-positional)
+  ├─ 12 × AudioStreamPlayer3D   (positional, pooled + round-robin)
+  ├─ per-sound trim, pitch jitter, real-ms retrigger guard
+  └─ apply_volumes(master, sfx, music) ← SettingsManager
 
-### 2. The minimum viable set
+tools/audio/generate_sfx.py       every .wav in assets/audio/sfx/, from maths
+assets/audio/ambience/            two CC0 .ogg beds + their licence file
+```
 
-Ordered by how much each one adds per unit of work. **Ship them in this order** and merge after
-each — a partial set that lands is worth more than a complete set that does not.
-
-| # | Cue | Fires on | Why it earns its place |
-|---|---|---|---|
-| 1 | **Slipper impact on lata** | `Hitbox` resolution, host-broadcast | The single most important sound in the game. It is the win condition being met. |
-| 2 | **Lata knocked down / sealed** | `CharacterBase.state_changed` → `DOWNED` / `SEALED` | The round turning. Must read on a stream (GDD §6). |
-| 3 | **Slipper release** | `carrier.gd` throw | Confirms the charge released and at what power — pitch or layer it by `charge_power()`. |
-| 4 | **Bump connect / blocked** | `flash_hit()` / `flash_blocked()` | Two distinct sounds. A blocked hit must never be mistaken for a landed one — that is exactly why `flash_blocked` is DEFENSE-tinted rather than white. |
-| 5 | **Reset channel complete** | `carriable.gd::host_reset_upright` | The defender's payoff beat. Consider a rising tick during the channel too. |
-| 6 | **Round win / match win** | `RoundManager.round_won` / `MatchManager.match_won` | |
-| 7 | **Slipper lands loose** | `host_land()` | The cue that starts the retrieval scramble. |
-| 8 | **Ambience, one loop per map** | map scene | Last, and only after checklist 2.2 exists. |
-
-**Do not add hitstop.** That is checklist 4.5 and it belongs with the feel pass.
+**`AudioManager` is listed before `SettingsManager` in `project.godot`, and that order is
+load-bearing** — `SettingsManager._ready()` pushes the saved volumes into a manager that must
+already have built itself. Both files carry the warning.
 
 ---
 
-### 3. How to wire it — follow the existing pattern
+### 1. The SFX are generated, not sourced. That is the headline.
 
-The project already solved "a cosmetic reaction to a gameplay event that must reach every peer",
-twice. Copy it rather than inventing a third shape.
+`tools/audio/generate_sfx.py` synthesises all 32 from numpy + scipy: no microphone, no sample
+library, no download, and **one licence row for the entire set** ("Self / Procedurally
+Generated"). Read that file's header before touching it — it explains the three design rules the
+sounds are built to, and the two things that are load-bearing rather than stylistic:
 
-- **`character_visual.gd` owns what a unit looks like; `character_base.gd` never learns about
-  meshes, dents or clip names.** Audio takes the same rule: **`character_base.gd` must not learn
-  what anything sounds like.** Put per-unit audio next to the visual, driven by the same signals it
-  already listens to (`state_changed`, `dents_changed`).
-- **Q-8/B-66 is the precedent for networked cosmetics.** The hit flash originally fired only on the
-  struck character's own owning peer; `_rpc_play_hit_vfx()` was added to broadcast it to everyone.
-  **Any audio cue attached to a host-resolved event needs the same treatment or three of four
-  players hear nothing.** This is the single most likely bug in this workstream.
-- **Use `AudioStreamPlayer3D` for anything with a position in the world** (impacts, the lata, the
-  slipper) so it pans and attenuates — that is free spatial information for an FPP player with a
-  narrow awareness cone. Use plain `AudioStreamPlayer` only for UI and music.
-- **Add a bus layout** (`Master` → `SFX`, `Music`, `UI`) and put **master / SFX / music volume in
-  `SettingsManager`** along`mouse_sensitivity` and `invert_y`, with the same persistence. A game
-  that gains audio and no volume slider is a regression for anyone testing it.
+- **Zero head padding, enforced by assertion.** The lata impact is triggered on the exact frame
+  hitstop starts. Hitstop is 60 ms. Two milliseconds of leading silence in the `.wav` — which is
+  what naive synthesis code ships by accident — puts the transient after the freeze has begun
+  releasing and the hit stops reading as contact. There is no way to compensate at the call site.
+  `_write()` normalises, then trims, then asserts; `audio_probe.gd` re-checks it on the **imported**
+  resource, because Godot's wav importer can trim and resample independently.
+- **Determinism.** Every noise source is seeded from its own sound's name, so the script is
+  re-runnable and `git status` stays clean — the same rule the model generators follow.
 
----
+The `.import` sidecars pin `compress/mode=0` (PCM, not the default QOA) for the same reason: these
+sounds are all sub-millisecond transient, which is exactly what a lossy codec smears.
 
-### 4. Traps
+### 2. The ambience is sourced, CC0, and logged
 
-1. **`git lfs install` before adding a single audio file.** `.gitattributes` already tracks
-   `.wav/.mp3/.ogg`. A binary committed without LFS has to be rewritten out of history.
-2. **`.ogg` for everything.** Godot imports `.wav` as uncompressed; a handful of ambience loops will
-   bloat the repo and the export.
-3. **Every asset needs a recorded licence, at the moment it lands, not at the deadline.**
-   Submission **Form 03** is an asset and AI usage disclosure. Follow the existing pattern:
-   `assets/characters/persons/KENNEY_LICENSE.txt` sits beside what it covers, verbatim. Prefer CC0
-   (freesound.org CC0, Kenney's own audio packs) so the disclosure is one line and redistribution
-   is unambiguous. **Tell the 📦 Producer lane about every asset you add** — it maintains the
-   running register.
-4. **Do not put audio in `character_base.gd`.** See §3.
-5. **Do not add debug-only sound.** If you want an audible probe, it follows the full removal
-   contract in `Dev_Plan.md` §0.3 — `debug_` prefix, one-way dependency, no `[input]` entries,
-   self-disabling, removal checklist written at the same time. Simpler not to.
-6. **Autoloads persist across scene changes.** If you add an audio manager autoload, give it a
-   `reset()` and call it where `MatchManager.reset()` is called, or a looping cue survives into the
-   menu. That was B-14's whole lesson.
+Two loops, one per map, both **CC0 1.0** from OpenGameArt, both by *Kresiek The Furry*. Source
+URLs, authors, retrieval date and the verbatim legal code are in
+**`assets/audio/ambience/OPENGAMEART_CC0_LICENSE.txt`** — beside what they cover, following the
+`KENNEY_LICENSE.txt` pattern. That file is what Form 03 (6.8) copy-pastes from.
 
----
+They live in the **map scenes**, as `Ambience/AmbienceLoop`, autoplaying on the Music bus — not in
+`AudioManager`. Same rule that put the `WorldEnvironment`, the kill plane and the spawn markers in
+the map: what a place sounds like is part of that place. Both maps are generated, so the nodes are
+authored in `tools/maps/build_eskinita.py` / `build_bayan_plaza.py`, not hand-edited into the
+`.tscn`.
 
-### 5. Scope
+⚠️ **Godot's ogg importer defaults to `loop=false`,** which is silently wrong here — the bed plays
+once and the map is silent for the rest of the match, with nothing reporting it. Both `.import`
+files pin `loop=true` and `audio_probe.gd` asserts it.
 
-**Yours:** `assets/audio/**`, a new audio autoload or per-unit audio nodes,
-`scripts/systems/settings_manager.gd`'s volume settings, and the bus layout.
+### 3. Where the hooks live, and why each is where it is
 
-**Explicitly NOT yours:** the visual half of hit feedback (already done — Q-8); hitstop (4.5);
-anything under `scenes/maps/` (Design lane — hand them the ambience stream and let them place it);
-`ui_theme.gd`; the carry/throw state machine's behaviour. If a cue needs a signal that does not
-exist, **ask for it in `Handoff.md` §5** rather than adding logic to a gameplay script yourself.
+| Cue | Where | Why there |
+|---|---|---|
+| **Lata impact** (+ knockdown, seal, bump, tag) | `character_base.gd::_flash_hit()`, the statement **before** `_hitstop()` | The only place frame-sync is expressible. `_hitstop()` is called from there and nowhere else, and `_flash_hit` is the already-broadcast half of a landed hit, so every peer runs both in one frame. |
+| — which sound | `hurtbox.gd::impact_sfx(kind, from_melee)` | The struck object owns what it sounds like. Hitting the lata must always produce the same lata, whether by bump, throw or Bakya Bash. |
+| — routing | `hitbox.gd` | Where `kind` is decided. Passed through the existing `_rpc_play_hit_vfx` broadcast rather than played there: that code is host-only past its `NetworkManager` guard, so playing there would be silent on every client. |
+| Knockdown / seal / recovery, **with no hit behind them** | `character_base.gd::_on_state_changed_audio`, hooked to `state_changed` | `go_downed()`/`seal()`/`self_right()` run on the authority only. `state_changed` fires on every peer via the synchronizer. It is also the *only* hook that catches the auto-seal when the self-right window lapses — there is no hitbox there, and a round would otherwise end in silence. |
+| Throw whoosh + per-ability launch | `carriable.gd::_rpc_set_flying` | Already inside a broadcast handler. The ability's own sound is asked of the ability (`play_launch_sfx`), duck-typed exactly like `get_throw_profile`. |
+| Charge, reset-channel start | `carrier.gd` | Local and immediate — feedback for the player's own input. |
+| Reset-channel **complete** | `carriable.gd::_rpc_apply_reset` | The host-validated result. Needed separately from the state hook because Option A's branch changes no state at all. |
+| Round / match result, countdown | `hud.gd` | Hung on `MatchManager.round_intermission_started`, **not** `RoundManager.round_won` — the latter is host-only, and the former deliberately does not fire on the match-deciding round, which is what stops a round fanfare and a match fanfare stacking. |
+| Abilities | each script in `scripts/abilities/` | Spin Guard and Shatter Trap have real `_do_activate`/`_on_owner_downed`; the three Tsinelas ones have no button, so their sound rides the throw. |
+| Menus | `arrow_button.gd` (`_on_hover_start` / `_on_press_start`) | Every menu pennant is an `ArrowButton`, so one edit covers MainMenu, GameSetup and Lobby. Plain `Button`s are wired individually. |
 
----
+**`character_base.gd` still never learns what anything sounds like** — it plays a *name* handed to
+it from elsewhere, exactly as it plays a visual action it does not choose.
 
-### 6. Acceptance
+### 4. Traps, corrected by contact with the problem
 
-- All eight cues fire, in a two-instance networked session, **on every peer** — not just on the one
-  whose character was involved. This is the B-66 failure mode and it is the acceptance test that
-  matters most.
-- Volume sliders exist, apply immediately, and persist across a restart.
-- Nothing loops into the main menu after a match ends.
-- Every file in `assets/audio/` has a licence file beside it, and `git lfs ls-files` lists them.
-- `godot --path . scenes/main/Main.tscn --quit-after 400` produces **no output at all**.
-- All six commands in `Concurrency_Protocol.md` §8 before merging.
+1. **`git lfs install` before adding any audio.** `.gitattributes` tracks `.wav/.mp3/.ogg`. Still
+   true, still the first thing to check.
+2. ~~"`.ogg` for everything."~~ **Wrong, and the shipped split is deliberate:** `.ogg` for the two
+   ambience beds (minutes long, lossy is free), **`.wav`/PCM for the SFX** (all 32 together are
+   under a megabyte, and lossy compression smears the transients the whole design depends on).
+3. **Every asset needs its licence recorded the moment it lands.** Done — see §2. Generated SFX
+   need none, which is most of why generating them was the right call.
+4. **Do not put audio decisions in `character_base.gd`.** Held — see the note under §3.
+5. **Autoloads persist across scene changes (B-14's lesson).** Checked and **no `reset()` is
+   needed**: every SFX is a one-shot of at most 1.1 s, and the only looping audio in the game
+   belongs to a map scene and is freed with it. Nothing can survive into the menu. Do not add a
+   `reset()` speculatively — add one if and when a looping cue is introduced.
+6. **The audio clock is not the game clock.** Hitstop dips `Engine.time_scale` to 0.05; the audio
+   server is not time-scaled and does not repitch. That is what makes a frame-synced impact work,
+   and it is why every timing decision in `audio_manager.gd` uses `Time.get_ticks_msec()` and never
+   `delta` or `create_timer` — a guard measured in scaled time would stretch 20× during exactly the
+   moment it is guarding.
+7. **`hitbox.gd::_on_area_entered` re-resolves every physics frame** for the whole of a thrown
+   slipper's flight (`sweep_hitbox()` is called deliberately, because `area_entered` only fires on
+   the enter edge). A slipper resting against a lata therefore "hits" it 60 times a second. The
+   state machine absorbs that; audio does not. `AudioManager.RETRIGGER_MS` is what stops it being a
+   continuous metallic scream, and it is not optional.
 
----
+### 5. What a follow-up pass should do
 
-### 7. Non-negotiables, restated inline
+**Listen to it.** In that order:
+
+1. Play a full match and judge the **mix**, not the wiring. The per-sound trims live in one place
+   (`AudioManager._TRIM_DB`) precisely so this is a one-file tuning job.
+2. Judge whether the **impacts are punchy enough** over four players. If not, the knobs are in
+   `generate_sfx.py` — `soft_clip` drive, the `bend` on `modes()`, and the balance between the
+   ringing body and the noise strike. Re-run the script; it is deterministic.
+3. Judge the **two ambience beds against their maps**. They were chosen from a spectral/duration
+   read and a licence check, not by ear against the built maps.
+4. **A two-instance networked session.** The probe proves the hooks sit inside broadcast handlers;
+   it does not prove a second peer hears them. This is the B-66 failure mode and it is the one
+   acceptance test still unrun.
+5. Only then consider what is deliberately absent: **music** (the Music bus currently carries only
+   ambience), and any voice/announcer layer.
+
+### 6. Non-negotiables, restated inline
 
 - **Authorship.** Every commit authored and committed solely as
   `M4tyu633 <matthewtlabrador@gmail.com>`. No `Co-authored-by:`, no mention of Claude, an AI
   assistant, or any tool anywhere in a commit. Verify with
   `git log -1 --format='%an <%ae> | %cn <%ce>'`.
-- **Camera directive.** Person → FPP always, Prop → TPP always, derived from `is_person`. Audio
-  must not assume a listener position that contradicts it — the `AudioListener3D` follows the
-  active camera, whichever mode that is.
+- **Camera directive.** Person → FPP always, Prop → TPP always, derived from `is_person`. The 3D
+  listener follows the active camera, whichever mode that is.
 - **Architecture.** `character_base.gd` never learns what anything looks or sounds like. Host is
   authoritative for anything that decides a round; cosmetics broadcast to every peer.
-- **Both round-win modes stay in active, equal development.** Option B's seal beat and Option A's
-  third dent both need a sound; do not cover only one.
-- **Verify before claiming `[x]`.** If you could not run it, it is `[~]` and you say what is
-  unverified.
-- **One concern per commit.** Do not bump `application/config/version` in a feature commit while
-  two lanes are running.
-
-### 8. Reporting contract
-
-List every asset added with its source and licence, so Form 03 is a copy-paste and not an
-excavation. Say which cues you confirmed on a second peer versus which you only heard locally. Say
-plainly what you did not get to and why.
-
-
+- **Both round-win modes stay in active, equal development.** Option A's dent and Option B's seal
+  both have sounds; `hurtbox.gd::impact_sfx` covers both branches.
+- **Verify before claiming `[x]`.** 4.1 is `[~]`, not `[x]`, for exactly this reason.
 
 ---
+
 
 # Appendix — Interaction tuning (carries the FPP measuring harness)
 
@@ -1828,7 +1843,9 @@ Known already:
 |---|---|---|---|
 | Kenney *Mini Characters* (12 `.glb`) | Kenney | **CC0** | `assets/characters/persons/KENNEY_LICENSE.txt` |
 | Display + body typefaces | ⛔ checklist 1.1 / 3.1 | **undecided** | must land at `assets/ui/fonts/` with a verbatim licence |
-| All audio | ⛔ checklist 4.1 | not yet sourced | prefer CC0 so disclosure is one line |
+| **Procedural SFX** (32 `.wav`) | **Self — generated by `tools/audio/generate_sfx.py`** | **n/a, own work** | `assets/audio/sfx/`. No third-party input of any kind: synthesised from numpy/scipy maths. Re-runnable and deterministic. |
+| **Ambience** — *AMB Outside 1* (`eskinita_street.ogg`) | Kresiek The Furry, via [OpenGameArt](https://opengameart.org/content/amb-outside-1) | **CC0 1.0** | `assets/audio/ambience/OPENGAMEART_CC0_LICENSE.txt`, verbatim legal code + source URLs. Retrieved 2026-07-29, unmodified but renamed. |
+| **Ambience** — *AMB Morning Sounds* (`bayan_plaza.ogg`) | Kresiek The Furry, via [OpenGameArt](https://opengameart.org/content/amb-morning-sounds-perfect-loop) | **CC0 1.0** | same file as above. Retrieved 2026-07-29, unmodified but renamed. |
 | Moodboard-derived art | Harry's Canva project | needs a stated position | ask |
 | **AI usage** | — | — | **required, and this project used AI agents extensively** |
 

@@ -150,6 +150,11 @@ func _step_throw(delta: float) -> void:
 		_is_charging = true
 		_charge_time = 0.0
 		charge_changed.emit(charge_power())
+		# 4.1. This file's own header calls a committed throw "a real decision
+		# the taya can read and punish" — until now it was readable only if the
+		# taya happened to be looking straight at the attacker's arm. The rising
+		# charge tone is what makes it readable from behind the can.
+		AudioManager.play_at("throw_charge", _character.global_position)
 	elif _is_charging and _character.input_pressed("special_ability"):
 		_charge_time = minf(_charge_time + delta, CHARGE_FULL_TIME)
 		charge_changed.emit(charge_power())
@@ -192,6 +197,12 @@ func _step_reset_channel(delta: float) -> void:
 		# inheriting progress banked against a different target.
 		_channel_target = target
 		_channel_time = 0.0
+		# 4.1. The wind-up, at the START of the channel. Its completion sound
+		# lives in carriable.gd::_rpc_apply_reset, on the host-validated result —
+		# this one is local and speculative on purpose, because it is the
+		# feedback that says "you are holding the right button in the right
+		# place" and it is worth nothing if it is not immediate.
+		AudioManager.play_at("reset_channel_start", _character.global_position)
 
 	_channel_time += delta
 	reset_channel_changed.emit(clampf(_channel_time / RESET_CHANNEL_TIME, 0.0, 1.0))

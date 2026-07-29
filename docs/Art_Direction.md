@@ -1726,7 +1726,7 @@ Verified by running the build on 2026-07-28.
 | 2v2 over ENet LAN | ⚠️ **loopback only** | 6.1, real wifi never tested — 🧑 human |
 | A runnable `.exe` | ❌ **does not exist** | 5.1, export templates never installed — 🧑 human |
 | Anyone having played a full match | ❌ **never** | 0.4 — every tuning number below is a guess |
-| Audio | ❌ none | No owner assigned |
+| Audio | ⚠️ **built, never heard** | 4.1 shipped 2026-07-29 — 32 generated SFX, 2 CC0 ambience loops, full wiring. Probe-verified, human-unjudged. |
 
 **Read that table before promising anything to anyone.** Three of the four rows that a live demo
 depends on most — a real LAN test, an `.exe`, and one human playthrough — are human-gated and
@@ -1905,8 +1905,10 @@ means capturing twice.
    card. Beat 8 currently has no animated card to cut to.
 3. **The debug overlay is gone from the captured build** (see §3's flagged conflict).
 4. **Nameplates read as intended strings**, not `TeamAProp`.
-5. **A decision on audio.** There is none, and it has no owner. A trailer with no audio bed is a
-   different edit from one with a bed — decide before cutting, not after.
+5. **The audio bed.** 4.1 shipped one: each map carries its own looping CC0 ambience on the Music
+   bus, and every beat the trailer cuts to now has a sound. What is still undecided is whether the
+   trailer rides that in-game bed or a separate music track over it — decide before cutting, not
+   after.
 
 ---
 
