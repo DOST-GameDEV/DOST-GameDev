@@ -15,6 +15,7 @@ const GAME_SETUP_PATH: String = "res://scenes/ui/GameSetup.tscn"
 const STAGGER: float = 0.09
 
 @onready var settings_panel: SettingsPanel = %SettingsPanel
+@onready var tutorial_panel: TutorialPanel = %TutorialPanel
 @onready var start_button: ArrowButton = %StartButton
 @onready var settings_button: ArrowButton = %SettingsButton
 @onready var tutorial_button: ArrowButton = %TutorialButton
@@ -22,6 +23,7 @@ const STAGGER: float = 0.09
 
 func _ready() -> void:
 	settings_panel.visible = false
+	tutorial_panel.visible = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE # Main.tscn captures it for a match
 	GameVersion.attach_to(self)
 
@@ -30,6 +32,7 @@ func _ready() -> void:
 	tutorial_button.pressed.connect(_on_tutorial_pressed)
 	quit_button.pressed.connect(_on_quit_pressed)
 	settings_panel.back_pressed.connect(_on_settings_back_pressed)
+	tutorial_panel.back_pressed.connect(_on_tutorial_back_pressed)
 
 	_unfurl()
 
@@ -48,12 +51,16 @@ func _on_start_pressed() -> void:
 func _on_quit_pressed() -> void:
 	get_tree().quit()
 
-## Deliberately a stub. The button exists so the menu reads complete and so the
-## gap between SETTINGS and QUIT is filled, per the 2026-07-29 request — the
-## tutorial itself is not built and routing this anywhere would be a dead end
-## that looks like a bug. Wire it when there is something to wire it to.
+## Shown in place rather than switched to, same as SETTINGS — a scene change
+## would tear down and rebuild the title screen behind a panel the player is
+## about to close.
 func _on_tutorial_pressed() -> void:
-	print("[MainMenu] TUTORIAL pressed - not implemented yet")
+	tutorial_panel.reset_to_first_page()
+	tutorial_panel.visible = true
+
+func _on_tutorial_back_pressed() -> void:
+	tutorial_panel.visible = false
+	_unfurl()
 
 func _on_settings_pressed() -> void:
 	settings_panel.visible = true
