@@ -97,7 +97,13 @@ func _on_area_entered(area: Area3D) -> void:
 		# a Person or Slipper still just fall through to stagger below, same
 		# stun-only rule as Option B.
 		kind = "dent"
-	elif target.state == CharacterBase.State.DOWNED and not target.is_self_rightable():
+	# ⚠️ `target.is_can` ADDED — sealing is a LATA rule and always was. SEALED has
+	# no recovery path, so sealing a Person takes them out of the round for good.
+	# The GDD's "reach it and seal it" is about the can standing in the circle;
+	# nothing in the game ever intended a Person to be sealable, and this only
+	# became reachable when B-134 made thrown slippers actually knock things down.
+	elif target.is_can and target.state == CharacterBase.State.DOWNED \
+			and not target.is_self_rightable():
 		kind = "seal"
 	elif forces_downed:
 		kind = "downed"

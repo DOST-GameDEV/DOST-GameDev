@@ -814,16 +814,42 @@ client-asks/host-decides split as every grab and throw. Harness: **`tools/scuff_
  - STEP: the branch applies (30 scuffs over 30 contact-frames, best normal.y 0.96) and the crawl
    scale drops 0.450 → 0.158, i.e. exactly `CRAWL_SPEED_SCALE × STEP_SLOW_SCALE`.
 
-⚠️ **NOT VERIFIED, and both are honest gaps:**
+**The shove's magnitude checks out too, on the corrected harness: 1.272 m measured against 1.20 m
+predicted from `v² / (2 × FRICTION)`.** ⚠️ An earlier version of this entry said 0.417 m and "does
+not scale with the constant". That was a true measurement of the wrong thing — the touch branch was
+not firing then, and 0.417 m was ordinary depenetration, which naturally ignores the constant.
 
- - **The shove's magnitude.** 0.417 m against 1.20 m predicted from `v² / (2 × FRICTION)`, and it
-   does not scale with `TOUCH_KNOCKBACK_SPEED`. Something downstream is eating the impulse — the
-   one-shot `SCUFF_COOLDOWN`, the pusher still being in contact, or `TOUCH_KNOCKBACK_LIFT` putting it
-   airborne. **Raising the constant will currently change nothing.** Find that before tuning.
+⚠️ **STILL NOT VERIFIED, and honest gaps:**
+
  - **The client→host `_rpc_request_scuff` path.** A two-peer run had the HOST owning the Person doing
    the scuffing, so the client only ran the predicate half and printed *"this peer does not own 1."*
    The RPC is written to the same shape as `carrier.gd::_rpc_request_grab` but has not been executed.
    Re-run with enough peers that a CLIENT owns a Person opposing the slipper.
+ - **`scuff_probe` is FLAKY, roughly 1 run in 2 on the current build, and it fails honestly rather
+   than falsely.** It drives a live AI match, and the AI re-grabs the slipper and knocks the test
+   Person down constantly; each such run prints a `HARNESS:` line saying it proved nothing rather
+   than reporting a mechanic failure. Both branches have passed repeatedly with direct branch
+   counters (TOUCH 1 scuff / 1.272 m; STEP 25–30 scuffs / crawl 0.450 → 0.158). **Re-run it a couple
+   of times before believing a red result**, and read the `HARNESS:` lines first.
+
+**B-138 · A PERSON COULD BE SEALED — PERMANENTLY OUT OF THE ROUND — BY ONE THROWN SLIPPER.
+[FIXED 2026-07-29, regression from B-134]**
+
+SEALED has no recovery: `_physics_process`'s SEALED branch is literally `pass # awaiting round
+reset`. For a lata that is the entire Option B win condition. For a **Person** it means one hit
+removes a player from the round for good, and both routes to it applied to Persons:
+
+ - `character_base.gd`'s DOWNED branch auto-sealed anything whose self-right window lapsed;
+ - `hitbox.gd` resolved `kind = "seal"` against any DOWNED, non-self-rightable target.
+
+Neither was ever intended — the GDD's "reach it and seal it" is about the can standing in its circle.
+It went unnoticed because a thrown slipper used to resolve on the melee hitbox and merely stagger
+(B-134). **The moment throws started actually knocking things down, every Person hit by one was
+DOWNED for 2 s and then SEALED for the rest of the round.**
+
+Caught by `tools/scuff_probe.tscn`, which could not drive its test Person and printed `state=2` then
+`state=3` on four consecutive calibration attempts. Both paths are now gated on `is_can`; a
+knocked-down Person gets back up.
 
 **B-134 · A THROWN SLIPPER RESOLVED ON THE CHARACTER'S BODY-CHECK HITBOX, SO THE THROW PROFILE WAS
 BYPASSED AND THE CAN COULD NOT FALL OVER. [FIXED 2026-07-29]**
