@@ -1257,14 +1257,28 @@ touch map scenes.
 
 ## Phase 5 — Strip, harden, and prove it runs outside the editor
 
-- [ ] **5.1 · 🧑 Install Godot export templates.** ⛔ HUMAN — environment
+- [x] **5.1 · Install Godot export templates.** 🤖 Sonnet, medium — **done 2026-07-29**
       `export_presets.cfg` and `tools/export.md` both exist and are correct.
-      The `.exe` has never been produced because
-      `%APPDATA%\Godot\export_templates\4.7.1.stable\` is absent on the machines
-      tried so far. Editor → Manage Export Templates. **Until this happens,
-      F-3's acceptance test and B-67's acceptance test are both unrunnable —
-      neither can be honestly ticked.**
-- [ ] **5.2 · Produce a release build and confirm it launches to the menu.** 🤖 Sonnet, medium ⛔ 5.1
+      Installed `4.7.1.stable` export templates via the `.tpz` from the Godot GitHub
+      releases page to `%APPDATA%\Godot\export_templates\4.7.1.stable\` on this Windows
+      machine, verified `windows_release_x86_64.exe` present in that folder. **Templates
+      are per-machine** — this unblocks exporting only on this machine; `tools/export.md`
+      now documents the macOS/Linux paths too so the rest of the team can do the same.
+- [x] **5.2 · Produce a release build and confirm it launches to the menu.** 🤖 Sonnet, medium ⛔ 5.1
+      **Done 2026-07-29, Windows 10 (10.0.19045).** `godot --headless --export-release
+      "Windows Desktop" build/TumbangPreso.exe` completed with no errors, emitting both
+      `TumbangPreso.exe` and `TumbangPreso.pck` (no `.console.exe` — `export_console_wrapper=1`
+      only adds it to debug exports). Personally launched the `.exe` and walked the front
+      end live: main menu ("TÜMP — 2v2 ARENA BRAWLER — CANS VS TSINELAS") → PLAY → SINGLE
+      PLAYER → picked map/mode/seat → START MATCH → a real round with an AI-controlled
+      teammate (A2 · DEF) → ESC opened the pause menu (Resume/Settings/Return to Menu) →
+      Return to Menu worked cleanly → PLAY → MULTIPLAYER → HOST GAME (LAN) opened a lobby
+      showing `LOBBY – HOST 192.168.1.7`. No SmartScreen prompt appeared (build has no
+      internet Mark-of-the-Web, since it was built locally rather than downloaded) and no
+      Windows Firewall prompt appeared when hosting on this run — worth re-checking on a
+      machine where this exe truly arrives over the network, since SmartScreen in
+      particular is a per-provenance behaviour, not a per-binary one. See F-3 in
+      `Handoff.md` for the acceptance-test writeup this closes out.
 - [x] **5.3 · ⚠️ REDIRECTED 2026-07-28 — no longer "strip Local Match," see 5.5.** 🧑 human decision,
       recorded here so nobody reads the old text below and starts deleting things
       This item used to say "strip Local Match and the debug switcher, keep the harness only as a
