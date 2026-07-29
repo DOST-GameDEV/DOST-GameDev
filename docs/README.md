@@ -9,6 +9,15 @@ When two documents disagree, **the one higher in this list wins.** Fix the lower
 commit rather than leaving both standing.
 
 | # | Document | Authoritative for |
+|---|---|---|
+| 1 | `Concurrency_Protocol.md` | How lanes coordinate: branching, the shared-file mutex, the smoke gate, commit authorship. Wins over everything on *process*. |
+| 2 | `Roadmap.md` | **What is next.** The R- queue. The only place a "do this now" lives. |
+| 3 | `Checklist.md` | **Per-phase status and acceptance criteria.** The only place a box is ticked. |
+| 4 | `Dev_Plan.md` | Architecture rules and the project-wide colour/role laws. |
+| 5 | `Art_Direction.md` | Visual and environment spec: the kit, the maps, the shading split. |
+| 6 | `Handoff.md` | Standing decisions, the open bug ledger (§3), and the questions the team owes (§5). |
+| 7 | `Agent_Prompts.md` | Paste-ready lane openers and the per-subsystem reference appendices. |
+| 8 | `SHARED_LOCKS.md` | Live mutex state for the six unpartitionable files. |
 
 ## The moodboard is a reference, not a contract
 
@@ -50,26 +59,18 @@ find two documents disagreeing, fix the lower-ranked one and add a row below in 
 
 Eight files is the budget. Do not add a ninth without a reason you can defend.
 
-## Known contradictions, and how they were resolved
+## Known contradictions — the ones that still bind
 
-Kept visible rather than quietly patched, because each one cost real time to find.
+Fifteen resolved-contradiction rows were deleted on 2026-07-30: they recorded doc-vs-doc conflicts
+that are now settled in the files themselves, which is where they actually stop someone undoing
+them. These four are kept because each is still a *live* rule someone can trip over.
 
-| Contradiction | Resolution |
+| Rule | Why it exists |
 |---|---|
-| **5.3 said strip Local Match and the debug switcher. `Art_Direction.md` §3 makes the local harness demo-failure-ladder rung 3** — the only fallback that needs no network. | **Superseded 2026-07-28, not just resolved: Single Player (formerly "Local Match") is promoted to a real, permanent mode that ships in the final build.** The original resolution ("keep the harness, gate it behind a launch argument, strip only the on-screen debug overlay") is no longer needed — there is nothing left to gate, since the mode itself is not being removed. Only the debug switcher/overlay still follows the removal contract. `Checklist.md` 5.5 now carries this. |
-| **M-6 step 3 says environment pieces get no outline.** The Persons got one in 2.3, leaving two art styles in one frame. | Deliberately reversed for **large silhouette pieces only**. Attempted via `material_overlay` and reverted — that cannot draw an inverted hull. See `Art_Direction.md` Part 1 §6 for the two viable routes. |
-| **Docs repeatedly claimed "only `idle` of 32 clips is wired".** | Stale since M-5 step 4. `_play_locomotion()` selects idle/walk/sprint from horizontal velocity. Corrected in `Checklist.md`, `Dev_Plan.md` and `Art_Direction.md`. |
-| **`Checklist.md` claimed the FPP crosshair was "verified by render"; filed as B-86 (not there).** | Re-rendered 2026-07-28 by 🔧 build-ux, six times, with zoomed crops of screen centre — the crosshair is present every time, on unchanged code. Could not reproduce B-86's absence. `Checklist.md` and `Handoff.md` B-86 both carry the fresh evidence; B-86 stays open as an unexplained one-off rather than closed, since "cannot reproduce" isn't proof it never happens elsewhere. |
-| **Round-swap card, downed vignette, impact burst and slipper spin were described as placeholder.** | All four already shipped. Confirmed by driving the card through its timeline. Corrected 2026-07-28. |
-| **`Dev_Plan.md` §6 bumps `config/version` every gameplay commit; two lanes make that conflict forever.** | Documented amendment in `Concurrency_Protocol.md` §4: feature commits do not bump, **the merge does**. |
-| **`Concurrency_Protocol.md` §0 assigns 2.3 to Sonnet; it was done by the design lane.** | Ownership follows whoever the human points at the task. The protocol's table is a default, not a claim about history. |
-| **CC0 ambience was sourced, then removed.** The register briefly listed two OpenGameArt field recordings. | Replaced by generated beds in B-123: they were correctly licensed and correctly levelled, and still read as "constant steady static/wind" in play, because a real outdoor recording is broadband and broadband is what static means to a listener. `README.md` credits, `Agent_Prompts.md`'s register and `Checklist.md` 6.8 all updated; there is now no third-party audio in the build. |
-| **The audio brief's trap 2 said "`.ogg` for everything"; 4.1 shipped `.wav` for all 32 SFX.** | The trap's reasoning was about ambience — minutes-long loops, where lossy is free — and it over-generalised. The SFX are all sub-millisecond transient, which is exactly what a lossy codec smears, and all 32 together are under a megabyte. Ambience is `.ogg`, SFX are PCM `.wav` with `compress/mode=0` pinned in their `.import`. Corrected in the Audio appendix of `Agent_Prompts.md` 2026-07-29. |
-| **Three docs said audio was "nothing" / "no owner" / "still nothing".** | Stale as of 2026-07-29 — `Checklist.md` 4.1 shipped. Corrected in `Checklist.md`, `Dev_Plan.md`, `Art_Direction.md`, `Handoff.md` and `Agent_Prompts.md` in the same commit. Note 4.1 is `[~]`, not `[x]`: it is probe-verified and has never been listened to. |
-
-| **`Handoff.md` U-5 specifies six Prop cards; the build ships six SKINS that each carry a kit.** | Same destination, different shape, and the shape is forced. A Prop is not a Tsinelas *or* a Can for a match — the role swaps every round, which is why B-76 re-picks a Prop's ability on every swap. A standalone six-card kit picker would let a player choose an identity they lose one round later. Attaching the kit to the lata/tsinelas skins the select screen ALREADY picks separately solves it with no new UI. `Checklist.md` 3.3 and `Handoff.md` U-5 both carry it. Recorded 2026-07-29 (10.5). |
-| **Docs described the single-player pre-match lobby's READY → START rhythm as intended.** | Superseded 2026-07-29 (10.5) on the human's call: a solo player has nobody to wait for. Single Player now starts on confirm. ⚠️ **The in-MATCH ready prompt is a different thing and still exists** — `main.gd`'s `_awaiting_local_ready` / "3 · 2 · 1 · GO". |
-| **A front-end pass was branched from `main`, which was 24 commits behind `integration`, and rebuilt a feature `integration` already had.** | `Concurrency_Protocol.md` §1 already says to branch from `integration`; it was not followed and cost a full rebuild. The rebuild kept every line of the existing character-select work. Left visible here rather than quietly fixed, because "branch from integration" reads as bookkeeping until it costs a day. Recorded 2026-07-29 (10.5). |
+| **Branch from `integration`, never `main`.** | A front-end pass branched from a `main` that was 24 commits behind and rebuilt a feature `integration` already had. Reads as bookkeeping until it costs a day. |
+| **A feature commit does not bump `config/version`; the MERGE does.** | `Dev_Plan.md` §6 as written made two lanes conflict forever. Amendment in `Concurrency_Protocol.md` §4. |
+| **The map gets no outline; characters keep the toon pass.** | The inverted hull across ~510 map instances was half the map's draw calls and read as horizontal banding on flat walls. Rollback measured 90 → 203 fps. |
+| **Ambience is `.ogg`, SFX are PCM `.wav` (`compress/mode=0` pinned).** | The audio brief said ".ogg for everything"; that reasoning was about minutes-long loops and over-generalised. All 32 SFX are sub-millisecond transients, which is what a lossy codec smears, and together they are under a megabyte. |
 
 **If you find another, add a row here in the same commit that fixes it.**
 
