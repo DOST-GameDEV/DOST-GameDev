@@ -404,11 +404,16 @@ func host_grab(by: CharacterBase) -> void:
 
 ## Launch. `direction` is the thrower's aim (already normalised, world space);
 ## `power` is 0..1 from the charge meter.
-func host_throw(direction: Vector3, power: float) -> void:
+## ⚠️ TAKES THE POINT THE CROSSHAIR IS ON, NOT A DIRECTION. See
+## carrier.gd::_aim_point() for the measurements behind that, and _solve_arc()
+## below for the maths. The parameter used to be a unit direction; anything
+## calling this with one will now aim at a point 1 metre from the world origin.
+func host_throw(target_point: Vector3, power: float) -> void:
 	if not _is_host() or state != CarryState.CARRIED:
 		return
 	var profile := _profile()
-	var aim := direction.normalized()
+	var speed_now: float = profile.launch_speed * clampf(power, 0.0, 1.0)
+	var aim := _solve_arc(_character.global_position, target_point, speed_now, profile)
 	# ⚠️ THE SIGN HERE WAS INVERTED, AND IT IS WHY EVERY THROW FLEW LOW.
 	# 2026-07-29, user report: "the height when you throw it is still too low."
 	#
@@ -434,8 +439,50 @@ func host_throw(direction: Vector3, power: float) -> void:
 	if horizontal.length() > 0.01 and not is_zero_approx(profile.arc_angle_deg):
 		var axis := horizontal.normalized().cross(Vector3.UP)
 		aim = aim.rotated(axis.normalized(), deg_to_rad(profile.arc_angle_deg))
-	var speed: float = profile.launch_speed * clampf(power, 0.0, 1.0)
-	_broadcast_flying(_character.global_position, aim.normalized() * speed)
+	_broadcast_flying(_character.global_position, aim.normalized() * speed_now)
+
+## THE LAUNCH ANGLE THAT ACTUALLY PASSES THROUGH `target`.
+##
+## ⚠️ THIS, NOT THE LAUNCH DIRECTION, IS WHAT "ALIGNED WITH THE CROSSHAIR"
+## MEANS. Pointing the initial velocity at the crosshair is not the same thing
+## and does not look like it: the slipper leaves the HAND (y 0.89) rather than
+## the eye (y 1.35), and gravity then bends it away from the sight line by an
+## amount that grows with range. Measured with the launch merely parallel to the
+## aim, from the 6.0 throwing line: a target 7.04 m out landed 1.70 m SHORT and
+## one 3.38 m out landed 1.47 m LONG — the two only ever agreed at a single
+## distance, which is exactly what "the height is too low" describes.
+##
+## Standard ballistic solution for a fixed speed. With horizontal range d,
+## height difference h and gravity g:
+##     tan(theta) = (v^2 +/- sqrt(v^4 - g*(g*d^2 + 2*h*v^2))) / (g*d)
+## The MINUS root is the flat, direct throw and the plus root is the lob over
+## the top; a slipper wants the flat one, and taking it also means the solved
+## angle stays close to where the player is already pointing.
+##
+## `g` is the profile's own effective gravity, so a heavy Bakya solves a steeper
+## angle than a floaty Havaianas for the same target — which is the profiles
+## doing their job rather than fighting the aim.
+func _solve_arc(origin: Vector3, target: Vector3, speed: float, profile: ThrowProfile) -> Vector3:
+	var to_target := target - origin
+	var flat := Vector3(to_target.x, 0.0, to_target.z)
+	var distance := flat.length()
+	# Straight up, straight down, or on top of us: no arc to solve, just throw
+	# along the line. Also guards the division below.
+	if distance < 0.05 or speed < 0.01:
+		return to_target.normalized() if to_target.length() > 0.01 else Vector3.FORWARD
+	var gravity: float = CharacterBase.GRAVITY * profile.gravity_scale
+	var v2 := speed * speed
+	var discriminant := v2 * v2 - gravity * (gravity * distance * distance + 2.0 * to_target.y * v2)
+	if discriminant < 0.0:
+		# ⚠️ OUT OF RANGE — no launch angle at this speed reaches that point, so
+		# there is nothing to solve and the honest thing is to throw along the
+		# player's own line and let it fall short. Deliberately NOT the
+		# maximum-range 45 degrees: aiming at a distant wall would then fire a
+		# lob straight up, which is a far stranger thing to have happen than a
+		# throw that visibly does not get there.
+		return to_target.normalized()
+	var tangent := (v2 - sqrt(discriminant)) / (gravity * distance)
+	return (flat.normalized() + Vector3.UP * tangent).normalized()
 
 func host_land() -> void:
 	if not _is_host() or state != CarryState.FLYING:

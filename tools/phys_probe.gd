@@ -96,10 +96,11 @@ func _ready() -> void:
 		if _target_mode == "graze":
 			var side := (aim_at.global_position - _slipper.global_position).normalized().cross(Vector3.UP)
 			aim_point += side * GRAZE_OFFSET
-		var dir := aim_point - _slipper.global_position
 		_hits_this_throw = 0
 		_hit_targets_this_throw.clear()
-		carriable.host_throw(dir.normalized(), 1.0)
+		# host_throw takes the POINT to aim at, not a direction — it solves the
+		# launch angle that lands there (carriable.gd::_solve_arc).
+		carriable.host_throw(aim_point, 1.0)
 		# The pulse hitbox is spawned INSIDE host_throw's broadcast, so it does
 		# not exist until after that call — re-arm the watch every throw or the
 		# flight hitbox's own hits go uncounted.
