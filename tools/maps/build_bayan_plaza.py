@@ -54,20 +54,35 @@ apron, tree line — satisfy both descriptions at once.
 #      treatment but its own TreesNear/TreesFar rings and Landmarks were never
 #      re-checked. The church and the two basketball rings in particular are
 #      placed by eye and have never been verified to face the plaza.
-#   2. ⚠️ NO RENDER-VERIFIED VOID ACCEPTANCE. Eskinita's bar is five shots (y=25
-#      plus all four corners, zero visible edge). Bayan has had ONE overhead and
-#      one eye-level shot, and the overhead still showed the apron ending in a
-#      hard square against bare floor before the fog was added. Re-run
-#      tools/bayan_probe.tscn and widen APRON or pull fog_depth_end in until the
-#      edge is gone from every corner.
-#   3. Clutter density is Eskinita-pre-Phase-8 sparse. The plaza has benches,
-#      four stalls and some rocks for a 24x24 room. It needs the same treatment
-#      §8.6 gave the alley — but note the lane law here is a DISC, so the safe
-#      band is the ring between LANE_RADIUS and the tree line.
-#   4. The HazardZone at (-6.5, -4.0) still has NO visual tell. Eskinita solved
-#      the same problem with a gutter_tile kanal after its pink chalk was
-#      deleted; this one was never given anything.
+#   2. ⚠️ VOID ACCEPTANCE IS PASSED AT EYE LEVEL AND STILL OPEN FROM ABOVE.
+#      Re-rendered 2026-07-29 via tools/bayan_probe.tscn: both corner shots
+#      (y=1.6) and the eye shot show ZERO map edge — the belt and tree ring close
+#      the horizon in every direction a player can actually stand. That is the
+#      part that matters for play and it is done.
+#      What is NOT done: the y=30 overhead still shows the paved apron ending in
+#      a hard square against bare floor with the void beyond it, exactly as this
+#      note originally described. No player camera is ever up there (Person is
+#      FPP, Prop is TPP at ~4.5 spring length), so this is a spectator/debug-view
+#      fault rather than a gameplay one — but Eskinita's bar includes it and this
+#      map does not clear it yet. Widen APRON or pull fog_depth_end in, then
+#      re-run the probe.
+#   3. [DONE 2026-07-29] Interior clutter pass — 18 pieces in the annulus
+#      between LANE_RADIUS and the tree line, all interior-tier, all lane-law
+#      asserted at build time. See the Dressing/Clutter block.
+#   4. [DONE 2026-07-29] The HazardZone at (-6.5, -4.0) now has a gutter_tile
+#      drainage bed over its footprint, the same tell and the same mesh Eskinita
+#      uses, sunk flush to GROUND_Y.
 #   5. Never played, never networked, never perf-measured on this map.
+#
+# ⚠️ A TRAP THAT COST A RENDER PASS, 2026-07-29. `add()`/`add_kit()` will happily
+# emit children under a parent path that DOES NOT EXIST in the template at the
+# bottom of this file. Nothing warns at build time — the builder prints a clean
+# instance count and writes the scene — and it fails only when GODOT instantiates
+# it, as "Parent path './Dressing/Clutter' has vanished", once per node, with the
+# geometry silently absent. Both new groups above needed their own
+# `[node name=...]` line added to the template. If you add a new Dressing or
+# Hazards subgroup, ADD IT THERE TOO, and re-run tools/bayan_probe.tscn — a build
+# that succeeds proves nothing about whether the scene loads.
 #
 # ⚠️ DO NOT assume a fix that landed on Eskinita is live here. The two builders
 # share floorcheck.py and nothing else — every lesson has to be ported by hand,
@@ -344,6 +359,88 @@ for k, (x, z, yaw) in enumerate([
 for k, (x, z) in enumerate([(-6.0, -6.0), (6.0, 6.0), (-6.5, 7.0), (7.0, -6.5)]):
     add_kit("Dressing/Furniture", f"Stool_{k}", "kits/town/stall-stool",
             x, z, [0.5, 2.1, -1.2, 3.0][k], TOWN_SCALE)
+
+# --- Interior clutter (open item 3). -----------------------------------------
+#
+# The plaza was Eskinita-pre-Phase-8 sparse: four stalls, twelve benches and
+# eight rocks for a 24x24 room, which reads as a car park with furniture round
+# the edge rather than as a barangay plaza.
+#
+# ⚠️ THE SAFE BAND HERE IS A RING, NOT TWO SIDE STRIPS. Eskinita's law is "keep
+# out of the middle slot" and its clutter hugs the walls; this map's law is a
+# DISC around the can plus two approach corridors, so the band that is legal to
+# fill is the annulus between LANE_RADIUS and the tree line MINUS the |x| <=
+# LANE_HALF_X corridor. Every coordinate below sits in it and the build asserts
+# that rather than trusting this comment — assert_clear_of_lane() aborts and
+# writes no scene if any footprint strays.
+#
+# ⚠️ EVERY PIECE IS INTERIOR-TIER (<= 1.1 tall), same law as the edge furniture
+# above, and the heights are MEASURED not assumed. At TOWN_SCALE: stool 0.59,
+# bench 0.59, hedge 0.65, fence 0.99, planks 0.16. Note what is NOT here —
+# `rock-small` and `rock-wide` measure 2.65 scaled, well over a Person's 1.25
+# eye, and would be aim-blocking walls despite reading as "small rocks" from
+# their names. They stay out at the edge where the existing Ground layer puts
+# them.
+n = 0
+for k, (x, z, yaw, piece) in enumerate([
+        # Hedges break the open floor into readable pockets without hiding a
+        # Person — 0.65 is knee-high, so you always see who is behind one.
+        (-7.4, 0.6, 0.0, "kits/town/hedge"),
+        (7.4, -0.6, 0.0, "kits/town/hedge"),
+        (-4.6, -8.4, math.pi / 2, "kits/town/hedge"),
+        (4.6, 8.4, math.pi / 2, "kits/town/hedge"),
+        # A broken fence line, the classic plaza edge nobody has repaired.
+        (-8.6, -6.4, 0.0, "kits/town/fence-broken"),
+        (-8.6, -4.0, 0.0, "kits/town/fence"),
+        (8.6, 6.4, 0.0, "kits/town/fence-broken"),
+        (8.6, 4.0, 0.0, "kits/town/fence"),
+        # Seating scattered off the benches at the rim, so the middle distance
+        # has something in it at all.
+        (-5.2, 4.6, 0.9, "kits/town/stall-stool"),
+        (5.2, -4.6, 2.4, "kits/town/stall-stool"),
+        (-3.9, -5.2, 1.7, "kits/town/stall-stool"),
+        (3.9, 5.2, 0.3, "kits/town/stall-stool"),
+        (-6.8, 8.2, math.pi / 2, "kits/town/stall-bench"),
+        (6.8, -8.2, math.pi / 2, "kits/town/stall-bench"),
+        # Flat planks read as patched paving — pure ground texture, 0.16 tall,
+        # and they cannot block a throw at any range.
+        (-9.0, 2.6, 0.0, "kits/town/planks"),
+        (9.0, -2.6, 0.0, "kits/town/planks"),
+        (-4.4, 9.2, 0.0, "kits/town/planks"),
+        (4.4, -9.2, 0.0, "kits/town/planks")]):
+    add_kit("Dressing/Clutter", f"Clutter_{n}", piece, x, z, yaw, TOWN_SCALE)
+    n += 1
+
+# --- The hazard's visual tell (open item 4). ---------------------------------
+#
+# ⚠️ THE `HazardZone` BELOW IS A LIVE GAMEPLAY VOLUME — speed_multiplier 0.5,
+# permanent, a 5x5 box centred on (-6.5, -4.0) — AND IT HAD NO VISUAL AT ALL.
+# An invisible slow field in the play area is not a missing decoration, it is a
+# player being punished by something they cannot see or learn.
+#
+# Solved the way Eskinita solved exactly this problem after its pink chalk was
+# deleted: with REAL 3D GEOMETRY that explains the slowdown physically rather
+# than with a decal that decorates it. `gutter_tile` again, and deliberately the
+# same mesh rather than a new one — the markings section below states the rule
+# that a player must not have to relearn what a thing means when the map
+# changes, and that applies at least as much to "this ground is slow" as it does
+# to a base circle.
+#
+# On a plaza it reads as the drainage bed every real Philippine plaza has along
+# its low corner, rather than as Eskinita's roadside kanal, but it is the same
+# object and the same lesson.
+#
+# Sunk so its TOP lands on GROUND_Y (the mesh is 0.15 tall, measured, not
+# assumed), so it is flush with the paving and nothing stands on a lip.
+_HAZ_X, _HAZ_Z = -6.5, -4.0
+_gut_lo, _gut_hi = mesh_bounds("gutter_tile")
+_gut_top = _gut_hi[1] - _gut_lo[1]
+_hn = 0
+for _gx in (-1.0, 1.0):
+    for _gz in (-2.0, 0.0, 2.0):
+        add("Hazards/KanalVisual", f"Kanal_{_hn}", "gutter_tile",
+            _HAZ_X + _gx, _HAZ_Z + _gz, 0.0, base_y=GROUND_Y - _gut_top)
+        _hn += 1
 
 
 # =============================================================================
@@ -625,6 +722,8 @@ lifetime = 0.0
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Hazards/HazardZone"]
 shape = SubResource("Shape_hazard")
 
+[node name="KanalVisual" type="Node3D" parent="Hazards"]
+
 [node name="SpawnPoints" type="Node3D" parent="."]
 
 [node name="Spawn0" type="Marker3D" parent="SpawnPoints"]
@@ -657,6 +756,8 @@ script = ExtResource("T")
 [node name="Landmarks" type="Node3D" parent="Dressing"]
 
 [node name="Furniture" type="Node3D" parent="Dressing"]
+
+[node name="Clutter" type="Node3D" parent="Dressing"]
 
 [node name="Markings" type="Node3D" parent="."]
 '''

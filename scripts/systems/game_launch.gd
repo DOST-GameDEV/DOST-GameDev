@@ -83,6 +83,37 @@ func map_index() -> int:
 			return i
 	return 0
 
+## Which character this player picked on the CHARACTER screen. A PREFERENCE, not
+## a one-shot handoff — same lifetime and same reasoning as `selected_map` above,
+## so a player who picked Aling Nena does not have to re-pick her every match.
+## Deliberately NOT cleared by reset().
+##
+## Stored as the roster's stable `id` rather than its index: an index is a wire
+## format (see character_roster.gd's note on append-only ordering) and would
+## silently point at a different person if the roster were ever reordered.
+var selected_character: StringName = &"berto"
+
+## Roster index for `selected_character`, or 0 if the id is unknown — which is
+## what a preference saved by a newer build looks like to an older one. Falls
+## back to the signed-off Person rather than to nothing.
+func character_index() -> int:
+	var index := CharacterRoster.index_of(selected_character)
+	return index if index >= 0 else 0
+
+## The other two tabs of the CHARACTER screen. A player controls a Person AND a
+## Prop, and the Prop is a lata one round and a tsinelas the next, so all three
+## are picked and all three are preferences with the same lifetime as the map.
+var selected_can: StringName = &"sarsi"
+var selected_slipper: StringName = &"goma"
+
+func can_index() -> int:
+	var index := CharacterRoster.index_in(CharacterRoster.CANS, selected_can)
+	return index if index >= 0 else 0
+
+func slipper_index() -> int:
+	var index := CharacterRoster.index_in(CharacterRoster.SLIPPERS, selected_slipper)
+	return index if index >= 0 else 0
+
 var pending_action: String = "" ## "", "host", "join", or "local"
 var pending_join_address: String = ""
 var game_mode: GameMode = GameMode.OPTION_B

@@ -9,7 +9,12 @@ class_name GameSetup
 ## need it for the ready-up gate; Play Offline has nothing to wait for but keeps
 ## the same READY → START rhythm rather than jumping straight into the match.
 
-const LOBBY_SCENE_PATH: String = "res://scenes/ui/Lobby.tscn"
+## ⚠️ ALL THREE LAUNCHES NOW GO TO THE CHARACTER SCREEN, NOT STRAIGHT TO THE
+## LOBBY. This screen still decides what the MATCH is — map, mode, and whether it
+## is offline/host/join — and still sets `pending_action`; CharacterSelect is a
+## pure detour that adds who YOU are and then hands on to the Lobby unchanged.
+## Nothing about the ready-up gate or the launch paths moved.
+const CHARACTER_SELECT_PATH: String = "res://scenes/ui/CharacterSelect.tscn"
 const MAIN_MENU_PATH:   String = "res://scenes/ui/MainMenu.tscn"
 
 ## Stagger between consecutive buttons unfurling.
@@ -130,19 +135,20 @@ func _apply_mode() -> void:
 
 # --- Launch -------------------------------------------------------------------
 
-## Local goes through the lobby too, so single-PC play gets the same READY →
-## START rhythm as the networked paths. lobby.gd resets again immediately before
-## the scene change, mirroring _rpc_begin_match's own double-reset.
+## Local goes through the character screen and then the lobby too, so single-PC
+## play gets the same PICK → READY → START rhythm as the networked paths.
+## lobby.gd resets again immediately before the scene change, mirroring
+## _rpc_begin_match's own double-reset.
 func _on_local_pressed() -> void:
 	GameLaunch.pending_action = "local"
 	_reset_match_state()
-	get_tree().change_scene_to_file(LOBBY_SCENE_PATH)
+	get_tree().change_scene_to_file(CHARACTER_SELECT_PATH)
 
 ## U-4: Host goes to the lobby so peers can ready-up before the match starts.
 func _on_host_pressed() -> void:
 	GameLaunch.pending_action = "host"
 	_reset_match_state()
-	get_tree().change_scene_to_file(LOBBY_SCENE_PATH)
+	get_tree().change_scene_to_file(CHARACTER_SELECT_PATH)
 
 ## U-4: Join also goes through the lobby for the same ready-up gate.
 func _on_join_pressed() -> void:
@@ -153,7 +159,7 @@ func _on_join_pressed() -> void:
 	GameLaunch.pending_action = "join"
 	GameLaunch.pending_join_address = address
 	_reset_match_state()
-	get_tree().change_scene_to_file(LOBBY_SCENE_PATH)
+	get_tree().change_scene_to_file(CHARACTER_SELECT_PATH)
 
 ## B-14: MatchManager/RoundManager are autoloads and survive scene changes —
 ## without this, a second match would resume the first one's score.
