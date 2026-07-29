@@ -843,6 +843,206 @@ Found in a real two-instance `--host`/`--join` session — the host logged it on
 the client never did, because only the host resolves abilities. *Fix:* capture the **instance id**
 (an int cannot dangle) and resolve it with `instance_from_id()` at call time.
 
+**B-119 · `lata_impact` (and every other SFX) still buzzed under sustained contact despite the
+
+> ⚠️ **Superseded by B-121.** This change is correct hygiene and is kept, but measurement afterwards showed the stacking it describes **does not occur in play** (peak concurrency is 4 voices on 0.1% of frames). It was not the cause of the buzz.
+retrigger guard. [FIXED 2026-07-29]**
+
+`AudioManager.RETRIGGER_MS` (60 ms) throttles how often a sound NAME can start again, which is
+enough to stop `hitbox.gd`'s per-physics-frame re-resolution (see `_on_area_entered`'s note) from
+literally hitting `play_at()` 60 times a second. It does nothing about overlap: `lata_impact` itself
+rings for ~300 ms (`generate_sfx.py::build_lata()`, `can_hit("lata_impact", 0.30, ...)`), so a
+60 ms-spaced retrigger during a sustained hit (slipper resting on a lata, a character standing in a
+hitbox for several frames) still starts a new voice roughly 5× before the previous one finishes
+decaying. Five overlapping, pitch-jittered (±7%, `PITCH_JITTER`) copies of the same clang is a buzz/
+drone, not a series of hits — the exact failure the guard's own doc comment describes, just at 1/5
+the rate instead of the full 60/s.
+
+*Fix.* The guard window is now per-sound instead of one constant: `_load_streams()` computes each
+stream's own length via `AudioStream.get_length()` and stores it in `_retrigger_ms`; `_take()` reads
+that instead of `RETRIGGER_MS` directly. A sound can now only retrigger once its own predecessor has
+finished ringing — at most one voice of a given name plays at a time. `RETRIGGER_MS` (60) is kept as
+a floor (see `_retrigger_window()`), since it is also what collapses `_flash_hit()` and
+`_rpc_play_hit_vfx` firing for the same hit inside one frame, and a corrupt/degenerate stream could
+otherwise report a near-zero length.
+
+⚠️ **Not yet heard, and not re-run through `tools/audio_probe.gd`.** This session has no Godot
+binary and no audio device, so this is worked through from the generator's own source durations and
+the existing probe's assertions (`tools/audio_probe.gd::_check_playback`'s burst-of-8 test still
+holds under the new logic — it only asserts a burst inside one frame collapses to ≤1 extra voice,
+which a per-sound window ≥ the 60 ms floor still guarantees), not confirmed by ear or by a fresh probe
+run. Whoever picks up the audio listening pass (see the Agent_Prompts.md `code/audio-mix` opener)
+should re-run the probe and specifically re-test the sustained-contact case (hold a slipper against a
+lata) before calling this closed.
+
+**B-120 · A follow-up report ("still very loud during actual play") after B-119 pointed at a second,
+
+> ⚠️ **Superseded by B-121.** The Master limiter is kept as a backstop, but it could not have fixed the report: the clipping was on the **SFX bus, upstream of Master**, and a limiter cannot undo distortion already in the signal reaching it.
+unrelated cause: nothing on the Master bus stops the mix from clipping. [FIXED 2026-07-29, UNTESTED
+AGAINST A REAL BUILD]**
+
+`default_bus_layout.tres` has three buses, all at 0 dB, no effects on any of them. `AudioManager`
+gives itself 20 voices (`UI_VOICES` 8 + `WORLD_VOICES` 12) specifically so a busy 2v2 fight can have
+several things ringing at once — the class doc's own sizing note says "four units, two of them being
+hit, an ability firing and a slipper landing." Several individual SFX are already mixed close to full
+scale (`generate_sfx.py`'s `soft_clip` drive runs as high as 1.9–2.2 for `ability_bagsak_bomb`). None
+of that is wrong on its own — it's the summed total at Master with nothing capping it that clips.
+B-119's fix stops one sound from stacking copies of *itself*; it does nothing about six *different*
+sounds landing in the same window, which is the normal shape of actual combat rather than an edge
+case.
+
+Considered and rejected: turning down `_TRIM_DB` further, or capping `WORLD_VOICES` lower. Both
+reduce how loud things can THEORETICALLY get, but neither stops a mix that happens to land several
+full-scale sounds at once from clipping — they only make it rarer, and rarer-but-still-possible is
+the wrong target for something a limiter solves outright.
+
+*Fix.* `AudioManager._install_master_limiter()`, called from `_ready()` after the voice pools exist,
+adds an `AudioEffectLimiter` to the Master bus in code (`ceiling_db = -0.3`, `threshold_db = 0.0`) —
+Godot's own audio-effects docs call this "always recommended" on Master for exactly this reason. Done
+in script rather than by hand-editing `default_bus_layout.tres`'s effect block: this session cannot
+load the project in Godot to confirm a hand-authored resource entry parses, and a script-level
+`AudioServer.add_bus_effect()` call is something a `--quit`-only parse check (smoke gate step 2)
+would at least catch if the class name were wrong. `AudioEffectLimiter` (not the newer
+`AudioEffectHardLimiter`) was used because its properties are documented and stable back to 3.0;
+nobody here could check the replacement class's property names against a running 4.7 to be sure they
+still applied.
+
+⚠️ **This is genuinely unverified.** No Godot binary, no audio device, no way to confirm the limiter
+engages, sounds different, or doesn't itself introduce an artifact under real playback. It is a
+standard, low-risk fix (a limiter that never triggers is inaudible; it only acts when the mix would
+otherwise clip), but "standard and low-risk" is not the same claim as "verified," and this entry
+does not claim the latter. Run the smoke gate (`Concurrency_Protocol.md` §8, all six, plus the
+seventh since this touches `AudioManager`) and play an actual 2v2 before marking this closed.
+
+
+**B-121 · The gameplay buzz was digital clipping on the SFX bus. B-119 and B-120 were both wrong. (NEW, FIXED)**
+
+User report after B-120 shipped: *"when game is happening, not in menu, there is a loud buzz or noise
+that seems unnecessary."* B-119 and B-120 were each reasoned out from source without a Godot binary,
+and **neither addressed the actual cause**. This entry supersedes both as the explanation; their
+changes are kept because both are independently correct hygiene, but neither fixed the report.
+
+*Measured, not reasoned.* Three new probes, all runnable:
+
+| Probe | Question it answered | Result |
+|---|---|---|
+| `tools/audio_load_probe.gd` | Is any sound retriggering into a buzzsaw? | **No.** Peak concurrency **4 voices on 2 frames of 1800** (0.1%); nothing retriggers faster than 0.4/sec. B-119's stacking theory does not occur in play. |
+| `tools/audio_mix_probe.gd` | Which bus is actually too loud? | **SFX bus peak +2.0 dBFS — over full scale.** Master read −1.4 dBFS at the same moment. |
+| (same, Music bus) | Is the ambience the buzz? | **No.** Ambience sits **18 dB under SFX**. Ruled out. |
+
+*Root cause, two parts.*
+
+1. **`_TRIM_DB` boosted three sounds above full scale.** `generate_sfx.py` normalises every sound to
+   peak 0.85; `_TRIM_DB` then added gain on top. `lata_impact` at **+1.5 dB is 0.85 × 1.189 = 1.010**
+   — over full scale **on its own, before any summing**. It is also the most frequently played sound
+   in combat, so the loudest, most important sound in the game clipped on every single hit. The
+   comment next to it ("the single most important sound in the game") is exactly what motivated the
+   boost, and boosting an already-normalised sample is what broke it.
+2. **No headroom for summed voices.** Voices sum. Four concurrent is normal in a fight (measured
+   above, and it is what the pool is sized for), and four sounds each peaking at 0.85 exceed 1.0
+   together no matter how well-behaved each is alone.
+
+*Why the Master limiter could not have fixed it.* It sits **downstream** of the SFX bus. By the time
+the signal reaches Master it has already clipped, and no limiter can undo distortion — only prevent
+it. That is also why a check watching Master alone reported a healthy mix throughout.
+
+*Fix.* (a) Every `_TRIM_DB` value is now ≤ 0 — the table makes things quieter relative to a 0 dB
+reference, never louder — and `_trim()` clamps positives as a backstop. (b) New `HEADROOM_DB = −7.0`,
+applied to every voice inside `_trim()`. **Deliberately not bus volume:** `_apply_bus()` overwrites
+the SFX bus volume from the player's slider every time it moves, so static headroom parked there
+would be silently wiped the first time settings loaded. Mix headroom belongs with the mix; bus volume
+belongs to the player. (c) An `AudioEffectLimiter` on **SFX** (ceiling −1.0 dB) as the safety net
+under the headroom, on the bus that actually generates the overload.
+
+*Verified by re-running the same probe on the same match.* **SFX peak +2.0 → −1.0 dBFS, Master
+−1.4 → −3.2 dBFS, no bus clipping.** `tools/audio_probe.gd` still passes 25/25; smoke gate steps 2
+and 3 clean. `audio_mix_probe.gd` now **fails on any bus exceeding full scale**, so this cannot
+silently regress — and it watches every bus, not just Master, which is the specific blind spot that
+let this through.
+
+*Still open:* nobody has heard the result. Clipping is gone as a measurement; whether the mix is
+now too quiet is a listening judgement. `HEADROOM_DB` is the one number to turn.
+
+**B-122 · A recovery chime fired on every stagger for the rest of the round, after any knockdown. (NEW, FIXED)**
+
+Second half of the same "unnecessary noise during gameplay" report as B-121, and a genuinely
+separate bug — B-121 was clipping (a mix fault), this is a wrong trigger (a logic fault). Found
+because B-121's fix measurably removed the clipping and the report persisted.
+
+*Why the first probe missed it.* `audio_load_probe.gd` measured a real AI-driven match and reported
+nothing wrong — but in that run **no unit ever entered DOWNED** (`lata_impact` fired once in 1800
+frames). It measured the throw loop and never touched the stagger/knockdown/self-right path, which
+is most of what a human generates in a fight. A probe that exercises only what the AI happens to do
+is not a probe of the game.
+
+*Cause.* `CharacterBase._on_state_changed_audio()`'s NORMAL branch decided "did this unit just get
+back UP?" by testing `_downed_time_left > 0.0`. But `self_right()` clears `_downed_self_rightable`
+and deliberately does **not** clear `_downed_time_left` — recovering early leaves the remainder of
+the 2 s window sitting there, permanently nonzero for the rest of the round. So after any knockdown
+that was recovered from, every subsequent `STAGGERED -> NORMAL` transition passed that guard and
+fired a 450 ms metallic chime. Staggers are bumps, bumps happen constantly, and the chime has no
+visible cause — which is what "a noise that seems unnecessary" describes.
+
+*Measured, with `tools/audio_combat_probe.gd` (new).* It drives the transitions directly rather than
+waiting for the AI to produce them:
+
+| Phase | Before | After |
+|---|---|---|
+| three staggers, clean unit | no recovery sound | no recovery sound |
+| knockdown + early self-right | `reset_channel_complete` x1 | `reset_channel_complete` x1 |
+| three IDENTICAL staggers, after the knockdown | **`reset_channel_complete` x2** | **none** |
+
+*Fix.* A dedicated `_audio_prev_state` field, recorded at the end of the audio handler, so the NORMAL
+branch tests the actual transition (`DOWNED -> NORMAL`) instead of inferring it. Kept separate from
+`state` itself: nothing in gameplay needs a previous-state field, and adding one to the real state
+machine would be a second source of truth to get out of step with. `reset_for_new_round()` resets it
+before its own `state_changed.emit()`, or a unit that ended a round DOWNED would chime at the start
+of every following round.
+
+*The general lesson, and it is the one worth keeping:* **a timer that outlives the state it describes
+cannot stand in for that state.** The guard was written to avoid adding a field, and the field was
+the correct answer.
+
+**B-123 · The ambience beds were the buzz. Both CC0 field recordings replaced with generated ones. (NEW, FIXED)**
+
+Third and final cause of the "unnecessary noise in gameplay" report, and the one the user isolated
+exactly: *"constant steady static/wind sound, same sound the entire time. Ambience to 0 completely
+removes it."* That single observation was worth more than every measurement taken before it.
+
+*Why nothing caught this.* The two CC0 loops passed **every check that existed** — licence verified
+on the source page, correct duration and format, `loop=true` pinned, and measured sitting a healthy
+18 dB under the SFX bus. They were still unusable, because none of those checks measure what a sound
+is LIKE. They are outdoor field recordings; the wind noise on the microphone IS the asset. There is
+nothing underneath it to recover, and a real recording of a real street is broadband by nature —
+which is exactly what "static" means to a listener.
+
+*Fix.* `tools/audio/generate_ambience.py` (new) generates both beds, the same way `generate_sfx.py`
+already generated every sound effect. The two `.ogg` files and their licence file are deleted.
+**There is now no third-party audio in the build at all**, which collapses the Form 03 audio
+disclosure to a single "own work" row.
+
+Three rules encoded in the generator, each with an assertion behind it so this cannot recur quietly:
+
+1. **No broadband noise.** Every noise source is hard low-passed and slowly modulated, so it reads as
+   distance rather than hiss. The generator **fails the build** if more than 2% of a bed's energy
+   lands above 4 kHz. Measured result: **0.0%** on both. This is the check that would have rejected
+   the field recordings.
+2. **Ambience is mostly silence plus events.** The beds sit very low; the character comes from sparse
+   quiet events — tricycles and a distant dog for the eskinita, birds and space for the plaza.
+3. **It must loop invisibly.** Every periodic component has a period dividing the loop length, plus an
+   equal-power head/tail crossfade. Seam discontinuity asserted under 0.02; measured 0.0026 and 0.0020.
+
+Levels: eskinita −30.8 dBFS, plaza −36.0 dBFS as files (the old eskinita was ~−18 dBFS before its
+−12 dB node trim, i.e. **the new bed is about 12 dB quieter**).
+
+*One trap worth recording.* Godot's WAV importer enum for `edit/loop_mode` is
+**"Detect From WAV, Disabled, Forward, Ping-Pong, Backward"** — so **1 is DISABLED, and Forward is 2**.
+Setting 1 looks exactly like enabling a loop and silently disables it. Caught by `audio_probe.gd`,
+which reads `loop_mode` back off the imported resource; it would otherwise have shipped as "the
+ambience stops after 30 seconds and never comes back".
+
+*Still open:* not yet heard. The generator is the tuning surface — bed levels and event counts are
+one constant each, and it is deterministic, so re-running changes only what you changed.
 **B-111 · Spawn slots were scrambled because `StringName` does not sort alphabetically. [FIXED
 2026-07-29]** ⚠️ **This is the "spawns are still broken" report that survived several sessions.
 Read the whole entry before touching spawn code again.**
