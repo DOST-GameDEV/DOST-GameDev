@@ -304,30 +304,32 @@ func _sum_of(values: Array[float]) -> float:
 ## throw that visibly falls short. So this measures where the slipper ACTUALLY
 ## LANDS, and the charge floor at which the can becomes reachable at all.
 ##
-## ⚠️⚠️ THE NUMBERS THIS MODE CURRENTLY PRINTS ARE NOT TRUSTWORTHY. DO NOT QUOTE
-## THEM, AND DO NOT TUNE ANYTHING AGAINST THEM. Status 2026-07-29: the harness
-## faults below are fixed (state reset between throws, cast re-resolved as roles
-## swap, can healed so the round cannot end mid-sweep) and it now produces output
-## for all 8 cells — but the output fails its own sanity checks:
+## ✅ TRUSTWORTHY AS OF 2026-07-29. Scatter across identical full-charge throws is
+## 0.00-0.33 m (it was 3-9 m before the four faults below were fixed), the two
+## throwing lines mirror each other, the reach floors order correctly by speed and
+## gravity, and Eskinita and Bayan Plaza agree to within 0.1 m — which is the
+## cross-check that matters, since ballistics is map-independent and any real
+## divergence between the two would mean the probe was measuring the map.
 ##
-##   * `throw_default` (launch_speed 21.0) reports NEVER REACHES the 6.0 line
-##     while `throw_bakya` (19.0, and HEAVIER at gravity_scale 1.35) reaches it
-##     at 50% charge. A slower, heavier profile cannot out-range a faster one;
-##     one of the two readings is wrong.
-##   * Scatter runs 3-9 m across eight IDENTICAL full-charge throws at a solved
-##     arc. These should be near-deterministic; metres of spread means something
-##     the probe does not control is varying per throw.
+## Four faults had to go first, and they are recorded because each one produced
+## plausible-looking numbers rather than an obvious failure:
 ##
-## Two suspects, neither confirmed: (a) `_slipper.is_on_floor()` may never go
-## true for a slipper flown by move_and_collide, so "first ground contact" is
-## silently falling back to wherever the FLYING state happened to end, i.e. after
-## bounce and roll; (b) throws that strike the can end their flight ON it while
-## throws that miss sail past, so the two populations are being averaged together
-## into one meaningless mean.
+##   1. The state reset covered only FLYING, so every cell after the first
+##      reported 8/8 grab failures — the slipper was still CARRIED.
+##   2. Accumulated dents ENDED THE ROUND mid-sweep and roles swapped, so the
+##      cached attacker failed can_be_grabbed_by()'s team check. Now the round is
+##      frozen (_freeze_round) instead of survived.
+##   3. The landing was read after the flight ENDED, i.e. after a bounce and a
+##      skid; `is_on_floor()` could not fix it because a flying slipper moves by
+##      move_and_collide and Godot never computes floor contact for it. Now first
+##      contact is read off the flight code's own bounce counter.
+##   4. The can and the taya stood in the arena, so throws that hit a BODY ended
+##      at the body while throws that missed flew on to the floor — two
+##      populations averaged into one meaningless mean. Now the arena is cleared
+##      and every throw ends on the floor (see _clear_the_arena).
 ##
-## The fix is to record the landing off the flight code's own landing event
-## rather than inferring it, and to separate hits from misses before averaging.
-## Until that is done this mode measures the harness, not the ballistics.
+## It also found a real game bug on the way: B-132, the thrower-ignore window
+## ignoring the whole world rather than the thrower. See _step_flying.
 ##
 ## Every unit is parked (ai_controller = null) for the sweep. That is deliberate:
 ## this measures the BALLISTICS, not a contested throw. A Taya body-blocking the
@@ -343,10 +345,18 @@ const BALLISTIC_ABILITIES: Array = [
 ## z = ±6.0 (`court_line("ThrowingLine*", "x", ±6.0, ...)`), so they are read
 ## from the same constant the chalk uses rather than restated by eye.
 const THROWING_LINES: Array[float] = [-6.0, 6.0]
-const BALLISTIC_THROWS: int = 8
+## ⚠️ KEPT SMALL ON PURPOSE. A throw that MISSES everything flies until
+## MAX_FLIGHT_TIME (6.0 s), and the sweep is 8 cells — so every extra sample
+## costs up to 6 seconds of wall clock per cell. At 8 throws plus 8 charge steps
+## the run exceeded 500 s and was killed. These throws are near-deterministic
+## (identical solved arc, everything else parked), so the sample is for
+## confirming that determinism, not for averaging out noise.
+const BALLISTIC_THROWS: int = 5
 ## Charge steps for the reach floor. CHARGE_MIN_POWER is 0.35, so below that is
-## not a state the game can produce.
-const CHARGE_STEPS: Array[float] = [0.35, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+## not a state the game can produce. Coarse for the same wall-clock reason —
+## this locates the floor to within ~15%, which is enough to say whether a
+## profile can reach the line at a sane charge.
+const CHARGE_STEPS: Array[float] = [0.35, 0.5, 0.65, 0.8, 1.0]
 
 func _park_everyone() -> void:
 	for c in _main.find_children("*", "CharacterBase", true, false):
@@ -354,22 +364,66 @@ func _park_everyone() -> void:
 		ch.ai_controller = null
 		ch.velocity = Vector3.ZERO
 
-## ⚠️ RE-RESOLVE THE CAST, AND KEEP THE ROUND FROM ENDING. Both halves are here
-## because of the same failure, and it is a good example of trap 1 in reverse —
-## the probe was measuring a state the game had already moved on from.
+## ⚠️ THE ROUND MUST NOT END, AND THIS IS WHY THE MEASUREMENT KEPT LYING.
 ##
-## The sweep fires ~16 throws per cell. Those dent the can, the can reaches
-## MAX_DENTS, THE ROUND ENDS, and `_reset_world()` swaps every role. The cached
-## `_attacker` is then on the CAN's team, so `carriable.gd::can_be_grabbed_by()`
-## rejects it on the team check ("an opponent's tsinelas: shove it, never pocket
-## it") and every subsequent throw reports a grab failure. It read as "the probe
-## cannot grab", which is why the first cell always passed and every cell after
-## it failed 8/8 — the first cell is simply the one that runs before the can dies.
+## Every earlier version of this sweep fought the live match and lost. The chain:
+## throws dent the can -> the can reaches MAX_DENTS -> THE ROUND ENDS ->
+## `_reset_world()` swaps every role -> the cached `_attacker` is now on the CAN's
+## team, so `can_be_grabbed_by()` rejects it on the team check ("an opponent's
+## tsinelas: shove it, never pocket it") and every throw after that reports a grab
+## failure. Re-deriving the cast fixed the grab failures but introduced a worse
+## fault: the two teams own two DIFFERENT Prop nodes, so a refresh could hand back
+## the other team's slipper carrying its own ability, and cells silently measured
+## the wrong profile (throw_default and throw_bagsak reported near-identical
+## landings, -2.75 vs -2.73, because both were measuring whatever Prop they got).
 ##
-## So the can is healed between throws (this is a ballistics measurement, not a
-## damage one) and the cast is re-derived from the CURRENT role flags rather than
-## trusted from _ready().
-func _refresh_cast() -> void:
+## So the round is FROZEN instead of survived: `round_active` is held true and
+## the can is kept healthy and NORMAL, so no round ever ends, no role ever swaps,
+## and the cast resolved at startup stays valid for the whole sweep.
+func _freeze_round() -> void:
+	RoundManager.round_active = true
+	RoundManager.time_left = 999.0
+	if _can != null and is_instance_valid(_can):
+		_can.dents = 0
+		if _can.state != CharacterBase.State.NORMAL:
+			_can.state = CharacterBase.State.NORMAL
+
+## Puts the profile under test on EVERY Prop in the match, not just the one
+## currently selected as `_slipper` — cheap insurance against the wrong-Prop
+## failure described above, and it costs nothing since only one is ever thrown.
+func _apply_profile(script_path: String) -> void:
+	for c in _main.find_children("*", "CharacterBase", true, false):
+		var ch := c as CharacterBase
+		if ch == null or ch.is_person or ch.is_can:
+			continue
+		ch.ability = null if script_path == "" else load(script_path).new()
+
+## Where every throw in the sweep is aimed. Captured from the can's spawn mark
+## ONCE, before the can is moved out of the arena — see _clear_the_arena().
+var _aim_point := Vector3.ZERO
+
+## ⚠️ EMPTY THE ARENA, AND AIM AT A POINT ON THE GROUND RATHER THAN AT A BODY.
+##
+## This mode measures BALLISTICS — where a given profile puts the slipper at a
+## given charge. A body standing at the target answers a different question and
+## corrupts this one, in both directions:
+##
+##   * the TAYA spawns between the throwing line and the can, so a throw that
+##     hits it registers a short landing that is indistinguishable from a profile
+##     that cannot reach;
+##   * the CAN itself ends the flight ON CONTACT, so a throw that reaches lands
+##     at the can's collision surface (~1 m out) while a throw that misses flies
+##     on to the ground. Averaging those two populations produced the nonsense
+##     that made every earlier run untrustworthy — metres of "scatter" on eight
+##     identical solved arcs, because the mean sat between two clusters.
+##
+## Both are moved far away and the aim point is kept as a bare Vector3. Every
+## throw then ends the same way — on the floor — so the landing distribution is
+## single-population and the scatter number means what it says.
+##
+## Whether a throw would have HIT the can is then a question about the landing
+## point versus the can's mark, which is exactly what `mean miss` reports.
+func _clear_the_arena() -> void:
 	_can = null
 	_attacker = null
 	_taya = null
@@ -380,9 +434,11 @@ func _refresh_cast() -> void:
 		elif ch.is_person and not ch.team_is_can_side: _attacker = ch
 		elif ch.is_person and ch.team_is_can_side: _taya = ch
 	_park_everyone()
+	# Captured BEFORE the can is moved — this is the mark the chalk is drawn
+	# around and the point the 6.0 lines are measured from.
 	if _can != null:
-		_can.dents = 0
-		_can.global_position = Vector3(0.0, _can.global_position.y, 0.0)
+		_aim_point = Vector3(0.0, _can.global_position.y + 0.25, 0.0)
+		_can.global_position = Vector3(40.0, 0.9, 40.0)
 		_can.velocity = Vector3.ZERO
 	if _taya != null:
 		_taya.global_position = Vector3(30.0, 0.9, 30.0)
@@ -401,10 +457,9 @@ func _ballistic_throw(origin: Vector3, charge: float) -> Vector3:
 		carriable.host_drop()
 	elif carriable.state == Carriable.CarryState.FLYING:
 		carriable.host_land()
-	# Heal the can every throw, not just every cell — MAX_DENTS is small enough
-	# that one cell's 16 throws can kill it twice over. See _refresh_cast's doc.
-	if _can != null:
-		_can.dents = 0
+	# Hold the round open every throw, so no round ever ends and no role ever
+	# swaps mid-sweep. See _freeze_round's doc for what that was costing.
+	_freeze_round()
 	await get_tree().physics_frame
 	_attacker.global_position = origin
 	_attacker.velocity = Vector3.ZERO
@@ -418,54 +473,62 @@ func _ballistic_throw(origin: Vector3, charge: float) -> Vector3:
 	await get_tree().physics_frame
 	if carriable.state != Carriable.CarryState.CARRIED:
 		return Vector3.INF
-	carriable.host_throw(_can.global_position + Vector3(0, 0.25, 0), charge)
-	# ⚠️ FIRST GROUND CONTACT, NOT THE RESTING PLACE. Returning the position where
-	# the slipper finally stops measures the throw PLUS the bounce PLUS the roll,
-	# which is why the first run reported a 3.94 m "scatter" on a solved arc: a
-	# throw from z=-6.0 aimed at the can showed a landing of z=+2.92, i.e. it had
-	# skittered nearly 3 m PAST the target after touching down. Bounce and roll
-	# are worth measuring, but they are not where the slipper LANDED.
+	carriable.host_throw(_aim_point, charge)
+	# ⚠️ FIRST CONTACT, NOT THE RESTING PLACE — AND `is_on_floor()` CANNOT FIND IT.
+	#
+	# The first version waited for the FLYING state to end and took the position
+	# there, which measures the throw PLUS a skip PLUS the roll: a throw from
+	# z=-6.0 aimed at the can reported a landing of z=+2.92, nearly 3 m PAST the
+	# target, and cells showed 3-9 m of "scatter" on eight identical solved-arc
+	# throws. `_step_flying` bounces up to MAX_BOUNCES (1) at BOUNCE_DAMPING (0.3)
+	# before it calls host_land(), so the end of the flight is the end of the SKID.
+	#
+	# The second version watched `is_on_floor()`, which never goes true: a flying
+	# slipper is moved by `move_and_collide`, not `move_and_slide`, so Godot never
+	# computes floor contact for it and the check silently fell through to the same
+	# resting position as before.
+	#
+	# So first contact is read off the flight code's own bounce counter — the frame
+	# `_bounces_left` drops is the frame it first touched something. If it never
+	# drops, the flight ended on its first collision (or timed out) and the end
+	# position IS first contact.
 	var guard := 0
+	var bounces_before: int = carriable._bounces_left
 	var landed := Vector3.INF
 	while carriable.state == Carriable.CarryState.FLYING and guard < 400:
 		await get_tree().physics_frame
 		guard += 1
-		if landed == Vector3.INF and _slipper.is_on_floor():
+		if landed == Vector3.INF and carriable._bounces_left < bounces_before:
 			landed = _slipper.global_position
 	if landed == Vector3.INF:
 		landed = _slipper.global_position
 	return landed
 
 func _run_ballistics() -> void:
-	_park_everyone()
-	# ⚠️ GET THE TAYA OUT OF THE ARC. Parking everyone leaves the defender standing
-	# on its spawn mark, which sits between the throwing line and the can — so a
-	# throw that hits it reports as a short landing and reads exactly like a reach
-	# failure. A contested throw is what `target=taya` and the fairness harness
-	# measure; this mode is the ballistics alone, and the two must not be mixed or
-	# a shortfall is unattributable.
-	if _taya != null:
-		_taya.global_position = Vector3(30.0, 0.9, 30.0)
+	# Cast resolved ONCE — the round is frozen below, so no role ever swaps and
+	# nothing here can go stale mid-sweep.
+	_clear_the_arena()
+	_freeze_round()
 	await get_tree().physics_frame
-	var can_pos := _can.global_position
 	print("\n=== BALLISTICS SWEEP ===")
 	print("  map            : %s" % _map_id)
-	print("  can at         : (%.2f, %.2f, %.2f)" % [can_pos.x, can_pos.y, can_pos.z])
+	print("  aim point      : (%.2f, %.2f, %.2f)  (the can's mark; the can itself is moved away)"
+		% [_aim_point.x, _aim_point.y, _aim_point.z])
 	print("  throwing lines : z = %.1f and z = %.1f  (%d throws each, full charge)"
 		% [THROWING_LINES[0], THROWING_LINES[1], BALLISTIC_THROWS])
 	print("  GRAVITY        : %.1f  (CharacterBase.GRAVITY, NOT 9.8)" % CharacterBase.GRAVITY)
+	print("  arena          : can and taya moved out; every throw ends on the FLOOR,")
+	print("                   so the landing distribution is single-population.")
 	for entry in BALLISTIC_ABILITIES:
 		var label: String = entry[0]
 		var script_path: String = entry[1]
-		_slipper.ability = null if script_path == "" else load(script_path).new()
+		_apply_profile(script_path)
 		await get_tree().physics_frame
 		var profile := (_slipper.get_node("Carriable") as Carriable)._profile()
 		print("\n  --- %s  (speed %.1f, arc %.1f deg, gravity_scale %.2f) ---"
 			% [label, profile.launch_speed, profile.arc_angle_deg, profile.gravity_scale])
 		for line_z in THROWING_LINES:
-			_refresh_cast()
-			await get_tree().physics_frame
-			var origin := Vector3(can_pos.x, can_pos.y, can_pos.z + line_z)
+			var origin := Vector3(_aim_point.x, 0.9, _aim_point.z + line_z)
 			var misses: Array[float] = []
 			var lands: Array[Vector3] = []
 			var failed := 0
@@ -475,7 +538,7 @@ func _run_ballistics() -> void:
 					failed += 1
 					continue
 				lands.append(rest)
-				misses.append(Vector2(rest.x - can_pos.x, rest.z - can_pos.z).length())
+				misses.append(Vector2(rest.x - _aim_point.x, rest.z - _aim_point.z).length())
 			if lands.is_empty():
 				print("    line z=%+.1f : *** NO THROW LAUNCHED (%d grab failures) ***"
 					% [line_z, failed])
@@ -506,7 +569,7 @@ func _reach_floor(origin: Vector3) -> float:
 		var rest: Vector3 = await _ballistic_throw(origin, charge)
 		if rest == Vector3.INF:
 			continue
-		var miss := Vector2(rest.x - _can.global_position.x, rest.z - _can.global_position.z).length()
+		var miss := Vector2(rest.x - _aim_point.x, rest.z - _aim_point.z).length()
 		if miss <= REACH_TOLERANCE:
 			return charge
 	return 0.0

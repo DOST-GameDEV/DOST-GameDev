@@ -1239,34 +1239,48 @@ means the lata must be lit and unoccluded where it stands. Both are served by th
 | `throwing_line_decal` | Bar, 8.0 × 0.12, at `y = 0.02` | 12 | `PANEL` | One per side, at **6.0 units from the base-circle centre.** |
 | `team_side_decal` | Bar, 6.0 × 0.08, at `y = 0.02` | 12 | `PANEL` at 40% alpha | Marks each team's half. Subordinate to the throwing line — thinner and fainter on purpose. |
 
-#### Why 6.0, and a tuning defect it exposes
+#### Why 6.0 — MEASURED 2026-07-29, superseding two rounds of stale arithmetic
 
-Computed from the committed throw profiles, with `CharacterBase.GRAVITY = 20.0` (**not 9.8** — this
-matters, and every earlier estimate that assumed otherwise is wrong by a factor of two) and a
-release height of **1.248** (the `HandPoint` measured at `+0.448` above a capsule centre that is
-`0.8` above the feet):
+⚠️ **Everything this section used to say was computed, and all of it was wrong by the time anyone
+read it.** The table below is now *measured*, with `tools/phys_probe.tscn -- ballistics
+map=eskinita|bayan_plaza`, and the two maps agree to within 0.1 m.
 
-| Profile | `launch_speed` | `arc` | `gravity_scale` | **Max range at full charge** | Charge needed for a 6.0 line |
+`CharacterBase.GRAVITY = 20.0` (**not 9.8** — this matters, and every estimate that assumed
+otherwise is wrong by a factor of two).
+
+| Profile | `launch_speed` | `arc` | `gravity_scale` | **Charge needed for the 6.0 line** | Landing scatter |
 |---|---|---|---|---|---|
-| `throw_default` (every Prop today, per B-76) | 17.0 | 14° | 1.0 | **10.13** | ~69% |
-| `throw_bagsak` | 15.0 | 30° | 1.2 | **9.89** | ~73% |
-| `throw_flick` | 23.0 | 5° | 0.75 | **12.90** | ~53% |
-| `throw_bakya` | 14.0 | 12° | 1.0 | **7.23** | ~87% |
+| `throw_flick` | 26.0 | 0° | 0.90 | **50%** | 0.00–0.33 m |
+| `throw_default` (every Prop today, per B-76) | 21.0 | 0° | 1.25 | **65%** | 0.01–0.18 m |
+| `throw_bakya` | 19.0 | 0° | 1.35 | **65–80%** | 0.00–0.05 m |
+| `throw_bagsak` | 18.0 | 0° | 1.45 | **80%** | 0.01–0.02 m |
 
-**6.0 is chosen so the profile that every Prop actually uses today throws at a comfortable ~69%
-charge** — enough headroom to arc over a defender, short of the ceiling where charge stops
-mattering.
+**Every profile reaches the 6.0 line, and the ordering is the identity you would want**: the line
+drive is cheapest, the heavy knockdown and the lob are dearest. `throw_default` sits at 65%, which
+is still the "comfortable, with headroom" number 6.0 was chosen for.
 
-> **✅ FIXED 2026-07-28 (checklist 4.4a).** `throw_bakya`'s maximum range used to be **4.81 units,
-> less than half of every other profile** — `gravity_scale 1.6` combined with `arc_angle_deg 8.0`
-> was heavy *and* flat enough that it fell out of the air almost immediately, and it could not
-> reach any throwing line the other three could. Retuned to `arc_angle_deg 12.0` /
-> `gravity_scale 1.0` (launch_speed unchanged at 14.0, still the slowest of the four): new max
-> range **7.23**, needing ~87% charge for the 6.0 line — reachable, and still the shortest-range
-> profile of the four by identity (heavy, close-range knockdown) rather than by being broken. It
-> had never been felt before this fix because nothing had ever selected it (B-76: `PROP_ABILITY`
-> was `quick_stand.tres` for every Prop, so all three throw identities were unreachable in the
-> running game).
+**Scatter is essentially zero.** These throws are deterministic — same profile, same charge, same
+landing to within a few centimetres. There is no randomness in the throw and none should be read
+into "feel" complaints: if a throw misses, it is aim or charge, not spread.
+
+> **✅ THE `throw_bakya` REACH PROBLEM IS GONE, and this section recorded it as open long after it
+> was fixed — twice over.** It was first fixed 2026-07-28 (checklist 4.4a), when a max range of
+> 4.81 units was retuned to 7.23. Then **B-127 (`86e9139`) superseded that fix entirely**: it found
+> the arc tilt was sign-inverted, corrected it, and **set `arc_angle_deg = 0.0` on all four
+> profiles** while retuning every `launch_speed` and `gravity_scale`. Every number in the old table
+> — 17.0/14°, 14.0/12°, 15.0/30°, 23.0/5° — described resources that no longer existed.
+>
+> **"Max range at full charge" is also no longer the right question.** With arc at 0 and
+> `host_throw()` taking a POINT rather than a bearing (B-129), the launch angle is *solved* per
+> throw by `carriable.gd::_solve_arc()`. Reach is now "does the solver find an angle at this
+> charge", which is why the table above measures a charge floor instead of restating a formula.
+
+> **⚠️ B-132, found while taking these measurements.** `_step_flying` ignored **every** collision
+> for `THROWER_IGNORE_TIME` (0.25 s) after release, not just the thrower's — while a 6.0-line throw
+> has a total flight time of about 0.29 s. So ~87% of a real throw was intangible: the slipper sank
+> through the floor, kept travelling, and re-solidified well past the target, landing 10.14 m out on
+> a 6.0 m throw. Fixed to test the collider's identity. Anyone re-reading old notes about "weird
+> bounces" or floor-clipping should assume this was the cause.
 
 **A second consequence for 2.2, worth stating explicitly:** with every real exchange happening
 inside about 13 units, a 40 × 40 arena is larger than the mechanic needs. §4's inward dressing is
