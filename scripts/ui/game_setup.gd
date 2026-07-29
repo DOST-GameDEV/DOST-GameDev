@@ -24,6 +24,7 @@ const MODES: Array[Dictionary] = [
 
 @onready var map_prev_button: TextureButton = %MapPrevButton
 @onready var map_next_button: TextureButton = %MapNextButton
+@onready var map_preview: MapPreview = %MapPreview
 
 @onready var local_button: ArrowButton = %LocalButton
 @onready var host_button: ArrowButton = %HostButton
@@ -101,10 +102,14 @@ func _on_map_next_pressed() -> void:
 	_map_index = (_map_index + 1) % GameLaunch.MAPS.size()
 	_apply_map()
 
+## The one place the selection is applied, so the name in the slot, the map the
+## match will load and the map behind the UI cannot disagree — the background IS
+## the selection, not a picture of it.
 func _apply_map() -> void:
 	var entry: Dictionary = GameLaunch.MAPS[_map_index]
 	map_value_label.text = String(entry["name"])
 	GameLaunch.selected_map = entry["id"]
+	map_preview.show_map(entry)
 
 # --- Mode selector ------------------------------------------------------------
 
