@@ -876,7 +876,7 @@ ext_lines.append('[ext_resource type="Texture2D" '
 # Main.tscn: what a place sounds like is part of that place. An eskinita and a
 # plaza are different rooms and must not share a bed.
 ext_lines.append('[ext_resource type="AudioStream" '
-                 'path="res://assets/audio/ambience/eskinita_street.ogg" id="AMB"]')
+                 'path="res://assets/audio/ambience/eskinita_street.wav" id="AMB"]')
 
 # ⚠️ THE FLOOR IS 120x120 AND THAT IS A BACKDROP CHANGE, NOT AN ARENA RESIZE.
 # The colliders that bound play — Bounds/Wall* at ±8.6 and ±18.0 — are byte-for-

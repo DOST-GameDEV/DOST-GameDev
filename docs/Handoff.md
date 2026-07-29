@@ -1002,6 +1002,47 @@ of every following round.
 *The general lesson, and it is the one worth keeping:* **a timer that outlives the state it describes
 cannot stand in for that state.** The guard was written to avoid adding a field, and the field was
 the correct answer.
+
+**B-123 · The ambience beds were the buzz. Both CC0 field recordings replaced with generated ones. (NEW, FIXED)**
+
+Third and final cause of the "unnecessary noise in gameplay" report, and the one the user isolated
+exactly: *"constant steady static/wind sound, same sound the entire time. Ambience to 0 completely
+removes it."* That single observation was worth more than every measurement taken before it.
+
+*Why nothing caught this.* The two CC0 loops passed **every check that existed** — licence verified
+on the source page, correct duration and format, `loop=true` pinned, and measured sitting a healthy
+18 dB under the SFX bus. They were still unusable, because none of those checks measure what a sound
+is LIKE. They are outdoor field recordings; the wind noise on the microphone IS the asset. There is
+nothing underneath it to recover, and a real recording of a real street is broadband by nature —
+which is exactly what "static" means to a listener.
+
+*Fix.* `tools/audio/generate_ambience.py` (new) generates both beds, the same way `generate_sfx.py`
+already generated every sound effect. The two `.ogg` files and their licence file are deleted.
+**There is now no third-party audio in the build at all**, which collapses the Form 03 audio
+disclosure to a single "own work" row.
+
+Three rules encoded in the generator, each with an assertion behind it so this cannot recur quietly:
+
+1. **No broadband noise.** Every noise source is hard low-passed and slowly modulated, so it reads as
+   distance rather than hiss. The generator **fails the build** if more than 2% of a bed's energy
+   lands above 4 kHz. Measured result: **0.0%** on both. This is the check that would have rejected
+   the field recordings.
+2. **Ambience is mostly silence plus events.** The beds sit very low; the character comes from sparse
+   quiet events — tricycles and a distant dog for the eskinita, birds and space for the plaza.
+3. **It must loop invisibly.** Every periodic component has a period dividing the loop length, plus an
+   equal-power head/tail crossfade. Seam discontinuity asserted under 0.02; measured 0.0026 and 0.0020.
+
+Levels: eskinita −30.8 dBFS, plaza −36.0 dBFS as files (the old eskinita was ~−18 dBFS before its
+−12 dB node trim, i.e. **the new bed is about 12 dB quieter**).
+
+*One trap worth recording.* Godot's WAV importer enum for `edit/loop_mode` is
+**"Detect From WAV, Disabled, Forward, Ping-Pong, Backward"** — so **1 is DISABLED, and Forward is 2**.
+Setting 1 looks exactly like enabling a loop and silently disables it. Caught by `audio_probe.gd`,
+which reads `loop_mode` back off the imported resource; it would otherwise have shipped as "the
+ambience stops after 30 seconds and never comes back".
+
+*Still open:* not yet heard. The generator is the tuning surface — bed levels and event counts are
+one constant each, and it is deterministic, so re-running changes only what you changed.
 **B-111 · Spawn slots were scrambled because `StringName` does not sort alphabetically. [FIXED
 2026-07-29]** ⚠️ **This is the "spawns are still broken" report that survived several sessions.
 Read the whole entry before touching spawn code again.**
