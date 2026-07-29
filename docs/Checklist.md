@@ -647,11 +647,27 @@ HUD contrast or hazard placement against a grey box.
       lid**. No font substitution reproduces that. Export from Canva at 2048px
       PNG if possible; otherwise build the lockup from 3.1's face plus a
       generated can-lid glyph and log it as a known deviation.
-- [ ] **3.3 · Character select (U-5).** 🤖 Sonnet, medium ⛔ 1.3, 0.2
-      Six Prop cards on U-2's card chrome, selection into `GameLaunch`,
-      replicated with ready-up state, read in `_build_networked_character()` in
-      place of the hardcoded `PROP_ABILITY`. `.duplicate()` the chosen `.tres`
-      or two characters share one cooldown.
+- [~] **3.3 · Character select (U-5).** 🤖 — **appearance shipped earlier; the KIT half shipped in 10.5. Person abilities still ⛔ 1.3**
+      The select screen (12 Persons, 6 lata, 6 tsinelas) landed as an appearance
+      picker: a rig plus a palette, with `main.gd` still choosing a Prop's
+      ability by TEAM (`TSINELAS_ABILITY_TEAM_A`/`_TEAM_B`). So the screen was
+      real but the six Prop `.tres` were still unreachable by choice, which is
+      what this item actually asks for.
+      **10.5 closed that by attaching an `ability` to each lata and tsinelas
+      entry** in `character_roster.gd`, rather than adding a fourth and fifth
+      picker. That works because the player already picks a lata AND a tsinelas
+      separately — and the reason that split exists is the reason a single
+      "fighter" pick could not work: a Prop is a lata one round and a tsinelas
+      the next, so `_prop_ability_for()` asks the list matching the side being
+      played and gets the right answer across every role swap (B-76).
+      ⚠️ **Six looks, three kits per side** — two skins share each ability,
+      because three `.tres` exist per side and six entries do not. Entry 0 of
+      each list keeps today's behaviour. Pairings follow the taglines already
+      written in the roster and are a **balance surface**; see the Phase 9
+      fairness log before moving any.
+      ⚠️ **Persons remain appearance-only.** 1.3 is 🧑 HUMAN and unanswered, so
+      every Person shares one Tag/Throw and the screen says so.
+      `[~]` not `[x]`: probe-verified across two real instances, never played.
 - [x] **3.5 · Map picker in the opening UI.** 🎨 Design (new item) — **verified by render**
       An `OptionButton` plus a one-line tagline on the Play card, mirroring the existing
       `GameModeOption` exactly so it inherits the card chrome for free. Built from
@@ -1952,15 +1968,119 @@ audio seventh. **None of it has been clicked by a human.**
 - [~] **Pause card rebuilt** on the new wood theme variations. The networked
       "match is still running" caveat moved from the title to its own caption
       line — at display size the old appended string overflowed the card.
-- [ ] ⚠️ **Not addressed, found in passing:** nothing syncs the selected map
-      across peers. `main.gd` reads `GameLaunch.selected_map_scene()` locally on
-      every peer, so a client who picked a different map already loads a
-      different map than the host. Predates this pass; the lobby now makes it
-      visible instead of silent. Recorded in `lobby.gd`.
+- [x] ⚠️ **Was: nothing syncs the selected map across peers.** `main.gd` read
+      `GameLaunch.selected_map_scene()` locally on every peer, so a client who
+      picked a different map loaded a different map than the host. **Fixed in
+      10.5 (U-8), along with the same hole in `game_mode` that nobody had
+      written down** — mode was only ever sent to a peer joining MID-match, so a
+      lobby joiner kept its own ruleset while `hitbox.gd`/`carriable.gd` branch
+      on it per-peer. Both are host-owned and broadcast now, and a client's
+      arrows are disabled. Verified with two real instances started on
+      deliberately opposite maps and modes — see 10.5.
 - [ ] ⚠️ **Not addressed, found in passing:** `FoldCorner` is a bare `Control`
       carrying a `canvas_item` shader, and a bare Control draws nothing, so the
       shader never runs — the fold has never rendered anywhere. Removed from the
       pause card; `SettingsPanel.tscn` still has its own dead copy.
+
+### 10.5 · Front-end flow overhaul `[~]` — probe-verified across two real instances, not played
+
+**Executed 2026-07-29**, against the human's brief: ask Single Player vs
+Multiplayer first, then Host vs Join; make the solo and multiplayer setup
+screens the same screen; give the host sole control of map and mode; and take
+the pointless ready gate off Single Player.
+
+⚠️ **THIS PASS WAS FIRST BUILT ON A STALE BASE AND HAD TO BE REDONE.** It was
+cut from `main`, which was 24 commits behind `integration`, so it did not know
+`CharacterSelect.tscn` existed and built a competing ability picker of its own.
+Recorded because the lesson is cheap here and expensive later: **branch from
+`integration`, not from `main`** (`Concurrency_Protocol.md` §1 says so and it was
+not followed). The rebuild kept every line of the character-select work and threw
+away the competing picker.
+
+**Two live defects closed, one never previously written down.** Both the same
+shape — a per-peer value nobody reconciled:
+
+- [x] **The map (U-8, recorded open in 10.4).** `main.gd::_load_map()` read
+      `GameLaunch.selected_map_scene()` locally on every peer and nothing synced
+      it. Not a crash — worse: everyone played a *different arena*, spawn points
+      came from their own local map, and movement being client-authoritative,
+      players walked through walls that only existed on someone else's screen.
+- [x] **The mode — the same hole, undocumented.** `GameLaunch.game_mode` was
+      only ever transmitted to a peer joining **mid-match**. A lobby joiner kept
+      its own pick while `hitbox.gd` and `carriable.gd` branch on it per-peer, so
+      a client on DENTS dented a can the host on CAPTURE did not.
+
+- [x] **The flow.** `MainMenu → ModeSelect → (MultiplayerSetup) → MatchSetup`.
+      The Single-Player-vs-Multiplayer question used to be the *last* of three
+      sibling buttons on the GAME screen and looked identical to the other two.
+- [x] **One setup screen for both.** `MatchSetup.tscn` replaces **both**
+      `GameSetup.tscn` and `Lobby.tscn`, which are deleted. Same layout and same
+      positions in solo and multiplayer; what differs is which controls are live.
+- [x] **`CharacterSelect` became a panel, not a step.** It is instanced hidden
+      inside `MatchSetup.tscn` and toggled, the way `MainMenu.tscn` already shows
+      Settings and Tutorial. ⚠️ A scene change would have torn down the live 3D
+      backdrop and, on a client, the ENet connection and the whole lobby board,
+      behind a panel about to be closed. **Its content is untouched** — only the
+      two exits changed, from `change_scene_to_file` to a `closed` signal.
+- [x] **3.3's kit half** — see that item. The picker was appearance-only; lata
+      and tsinelas entries now carry the ability that skin brings.
+- [x] **Single Player starts on confirm.** ⚠️ **The in-MATCH ready prompt is
+      untouched** — `main.gd`'s `_awaiting_local_ready` / "3 · 2 · 1 · GO" beat
+      still runs. What went is the *second*, redundant ready in a waiting room
+      with nobody to wait for.
+- [x] **Seats are chosen, exclusive and refereed.** Team and role used to come
+      from connection order alone (`_next_join_index`), which no player could see
+      or influence. A seat is still exactly the old join index, so nothing
+      downstream needed touching; only who decides the number changed. The host
+      is the sole writer, so two peers clicking one seat cannot both get it.
+      Connection order survives as the fallback for `--host`/`--join` runs and
+      mid-match late joiners.
+- [x] **Solo seat selection**, which is what makes the character pick mean
+      something in Single Player. ⚠️ Needed a real fix: only player_id 1 and 2
+      are bound to keys, so a human dropped into Team B would have had a
+      character they could not move. `_give_human_player_one()` swaps ids rather
+      than reassigning, keeping all four unique and both unbound ones in AI
+      hands. The solo picks also follow the chosen seat now — Prop skins onto a
+      Prop, the Person pick onto a Person, which matters more than it did before
+      because a skin now carries a kit.
+- [x] **A real bug fixed in passing:** the old address placeholder read
+      `192.168.1.12:7777`, but the string went straight to `create_client()`,
+      which takes host and port separately and does not parse a colon. **Anyone
+      who typed the format the placeholder demonstrated got a silent failure.**
+
+**How it was verified — and what was NOT.**
+
+- **`tools/lobby_probe.gd` is new**: two real instances over loopback, 21
+  assertions, both exiting 0. It covers the client taking the host's map and mode
+  (started on deliberately *opposite* values, so a pass cannot be both sides
+  defaulting to the same thing), the client's arrows being locked, a seat request
+  refused when occupied and granted when free, the START gate holding, and — after
+  the scene change, which is why it is a `SceneTree` script — both peers reaching
+  `Main.tscn` on the host's map with the seat each chose.
+- **`tools/render_probe.gd`'s `lobby` mode is now `setup`.** It asserted Single
+  Player's START was disabled until READY. That assertion is not stale, it is
+  *inverted* — removing that gate is the point.
+- **Audio: all 25 controls across the three setup screens** were checked to carry
+  both a press and a hover path. The audit found a real gap it was not looking
+  for: the character panel had click on every control and hover on none. Fixed.
+- **Smoke gate green**, including the conditional audio seventh (25 checks, 0
+  failures). Step 3 produced no output.
+- ⚠️ **NOBODY HAS CLICKED ANY OF IT.** Every claim above is a probe result or a
+  render. `[~]`, not `[x]`, for that reason and no other.
+- ⚠️ **Not covered:** a four-peer lobby, a mid-lobby disconnect, and the new
+  kit-per-skin mapping's effect on balance — that last one belongs to the Phase 9
+  fairness log and has not been measured.
+
+**One deliberate cross-lane edit, recorded rather than hidden.**
+`scripts/ui/ui_theme.gd` is 🎨 Design's file and §10 says to file a defect rather
+than fix it. Its header named `GameSetup.tscn` and `Lobby.tscn`, which this pass
+deleted, and §12.6 requires references to deleted things be rewritten. The names
+in that one historical sentence were corrected — **no colour, no variation and no
+styling was touched.** No second lane was running to hand it to.
+
+**No `SHARED_LOCKS.md` claim was taken for `scenes/ui/*.tscn`.** The lock's mutex
+is a push to `integration`, and no second lane was running to lose a race to.
+`project.godot` was not touched at all.
 
 ## Phase 9 · AI FAIRNESS LOG — the running record for balance testing
 
