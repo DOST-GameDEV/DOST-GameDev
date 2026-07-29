@@ -739,6 +739,138 @@ For any coding agent picking up this queue.
 **Only open items live here.** B-01 … B-66 are in [`Handoff.md`](Handoff.md); everything
 marked `[FIXED]` there is done and settled. New bugs take the next free number **in this file**.
 
+**B-136 · STEP AND TOUCH ON AN OPPONENT'S TSINELAS. [ADDED 2026-07-29 — both branches verified
+firing; the shove's MAGNITUDE is not]**
+
+Human request: *"add a mechanic that defender can step or touch the slipper of enemy team and it will
+slow down or get knocked back (knock back for the touch)."*
+
+This is the missing half of the ownership rule `carriable.gd` already stated: an opponent's slipper
+"is still a solid, kickable obstacle — you can body-check it." The rule said kickable and the code
+only meant collidable.
+
+Detection sits in `character_base.gd::_scuff_enemy_slippers()`, read off `move_and_slide()`'s own
+collision results — the only place that knows both WHAT was touched and FROM WHAT ANGLE, and the
+angle is the mechanic. It only ASKS; `Carriable.host_scuff()` re-validates and broadcasts, same
+client-asks/host-decides split as every grab and throw. Harness: **`tools/scuff_probe.tscn`**.
+
+*Two traps hit while building it, both worth more than the feature:*
+
+ 1. **STEP vs TOUCH cannot be told apart by the contact point.** The first version asked whether the
+    contact happened near the walker's feet — but a tsinelas lies on the ground, so *every* contact
+    with it does, including walking squarely into its side. TOUCH became unreachable. It now compares
+    the slipper's TOP against the walker's feet, which is the actual question. (Nor can it be told
+    apart by the normal alone: a 0.16-radius capsule returns an angled normal unless you land dead
+    centre — the step branch fired 0 times in 40 frames of a Person dropped straight onto one.)
+ 2. **DISPLACEMENT IS NOT EVIDENCE THAT THE MECHANIC RAN.** A Person walking through a loose slipper
+    displaces it by ordinary depenetration whether or not any of this code executes. The probe
+    "passed" on 0.417 m while the touch branch was never firing at all. What caught it: setting
+    `TOUCH_KNOCKBACK_SPEED` to 2.6, 8.5 and 14.0 and getting **0.417 m every time** — a number that
+    does not respond to the constant it depends on is not measuring that constant. `Carriable` now
+    carries `scuffs_stepped` / `scuffs_touched` counters so the test observes the branch itself.
+
+*Verified* — `tools/scuff_probe.tscn`, 7/7:
+
+ - an opponent may scuff a loose enemy tsinelas; its own team's Person may not; it may not scuff
+   itself; a **lata** may not be scuffed at all (it is hit or reset, never kicked);
+ - TOUCH: the branch applies (1 scuff) and the slipper travels 0.417 m;
+ - STEP: the branch applies (30 scuffs over 30 contact-frames, best normal.y 0.96) and the crawl
+   scale drops 0.450 → 0.158, i.e. exactly `CRAWL_SPEED_SCALE × STEP_SLOW_SCALE`.
+
+⚠️ **NOT VERIFIED, and both are honest gaps:**
+
+ - **The shove's magnitude.** 0.417 m against 1.20 m predicted from `v² / (2 × FRICTION)`, and it
+   does not scale with `TOUCH_KNOCKBACK_SPEED`. Something downstream is eating the impulse — the
+   one-shot `SCUFF_COOLDOWN`, the pusher still being in contact, or `TOUCH_KNOCKBACK_LIFT` putting it
+   airborne. **Raising the constant will currently change nothing.** Find that before tuning.
+ - **The client→host `_rpc_request_scuff` path.** A two-peer run had the HOST owning the Person doing
+   the scuffing, so the client only ran the predicate half and printed *"this peer does not own 1."*
+   The RPC is written to the same shape as `carrier.gd::_rpc_request_grab` but has not been executed.
+   Re-run with enough peers that a CLIENT owns a Person opposing the slipper.
+
+**B-134 · A THROWN SLIPPER RESOLVED ON THE CHARACTER'S BODY-CHECK HITBOX, SO THE THROW PROFILE WAS
+BYPASSED AND THE CAN COULD NOT FALL OVER. [FIXED 2026-07-29]**
+
+Human question: *"can the can even fall?"* Measured answer, with `tools/hit_probe.tscn -- --host
+target=can` aiming dead at the can's own hurtbox centre at full charge: **0 knockdowns in 40 throws.**
+
+A flying tsinelas carries two live hitboxes. One is its ThrowProfile's pulse box
+(`Carriable._spawn_flight_hitbox`), which knows what was thrown. The other is `CharacterBase.tscn`'s
+own melee Hitbox — the unit's **body-check reach**, radius 0.14 at a 0.16 offset, carrying
+`forces_downed = false` and no knowledge of the profile at all. `is_hitbox_active()` deliberately
+returned true for it during flight (added when the profile box could not be relied on), so whenever
+it won the race `hitbox.gd` resolved the throw as a plain `"stagger"` no matter what was thrown.
+
+**It won constantly, and the reason is arithmetic rather than luck.** Against a Person the melee band
+is `0.14 + 0.45 = 0.59` and the profile band is `0.30 + 0.45 = 0.75` — a 0.16 m difference, against
+0.433 m of travel per physics frame. The two therefore start overlapping on the *same* frame, and
+`_step_flying()` calls `sweep_hitbox()` at the top of that frame, before the profile box's own
+`area_entered` is delivered. Measured on a four-peer session: **33 of 40 throws resolved on melee.**
+
+*Fix.* `is_hitbox_active()` no longer reports the melee box live during flight, so the profile's box
+is the only thing that resolves a throw; and `sweep_hitbox()` now sweeps the transient hitboxes too,
+which is what the flying clause was originally added to provide. `register_hit_once()` is already
+keyed on the owner, so the two boxes cannot double-resolve.
+
+Also fixed alongside, same symptom: **`throw_flick.forces_downed` was `false`**, so the flick slipper
+could never knock the can over at all and could not win an Option B round by any route. Now `true`,
+making all four profiles uniform — which is what `Checklist.md` already claimed was the case.
+
+Measured either side, 40 dead-centre full-charge throws at the can:
+
+| | before | after |
+|---|---|---|
+| contacts | 12 | 14 |
+| resolved on the melee box | 6 | **0** |
+| reached DOWNED | **0** | **14** |
+
+⚠️ **Still unexplained and NOT this bug: only 12–14 of 40 dead-centre throws make contact at all.**
+The can evades (`CAN_EVADE_*`) and its hurtbox radius is 0.17. That is the balance lever
+`Checklist.md` Phase 9 already names as the biggest one, and it wants a human, not a guess.
+
+**B-135 · THE LUCKY FALL — a knockdown that costs the attacking side nothing. [ADDED 2026-07-29]**
+
+Human request: *"make it easier to fall, but sometimes make it so that it can land on its head/back
+and this isnt a point for the enemy."*
+
+`CharacterBase.LUCKY_FALL_CHANCE` (0.25, **a first guess — nobody has played it**). Rolled in
+`hitbox.gd` where `kind` is decided, which is already past the host gate, and shipped as its own kind
+`"downed_lucky"` through the `_apply_hit_result` broadcast every other outcome already uses. ⚠️ It is
+never rolled inside `_apply_hit_result` — that runs per-peer, and peers would disagree about whether
+the round had just been decided.
+
+Two things had to change for "no point for the enemy" to actually be true:
+
+ 1. `RoundManager._on_tracked_can_state_changed` does not count it toward `FALL_LIMIT`. That handler
+    received only the new state and so could not tell WHICH can fell; `register_can()` now **binds
+    the can into the connection**. ⚠️ `bind()` returns a different Callable, so the `is_connected`
+    guard and the `disconnect` had to be bound too — `register_can()` runs every round, and getting
+    that wrong would stack a connection per round and count every fall twice by round 2.
+ 2. It **self-rights instead of auto-sealing**. Skipping the fall count alone would not have been
+    enough: under Option B an unrecovered fall auto-seals and a seal loses the round outright, so a
+    "free" fall would still have cost the defence the round.
+
+The sound and the faceslop are deliberately identical to a scoring knockdown — the can really did go
+over, and telling the attacker their hit was worthless before it lands is the opposite of the beat.
+
+*Verified* by `tools/hit_probe.tscn -- target=can`, which samples `RoundManager._fall_count` either
+side of each knockdown and asserts the delta — 0 for a lucky fall, 1 for a scoring one. Reading the
+counter once at the end proves nothing: `start_round()` zeroes it every round.
+
+ - **Local, 1 peer:** 12 knockdowns, 3 lucky, 9 scoring — **0 deltas wrong of 12.**
+ - **Networked, 3 peers:** 26 knockdowns, 14 lucky, 12 scoring — **0 deltas wrong of 26.** This
+   exercises the real path, where `kind` crosses the wire as an RPC argument.
+
+⚠️ **THE OBSERVED LUCKY SHARE IS NOT `LUCKY_FALL_CHANCE`, AND IT IS NOT SUPPOSED TO BE.** 14 of 26 is
+54% against a 0.25 roll — more than three standard deviations out, so it looks like a bug and is not
+one. It is a **selection effect the feature creates**: a scoring fall that goes unrecovered
+auto-seals and ENDS the round, so a round contains at most one of them, while a lucky fall self-rights
+and puts the can straight back in play to be knocked over again. Lucky falls are therefore
+over-represented among the falls anyone can observe. Do not "correct" the constant against this
+number — the roll itself is fair, and the per-fall delta assertion above is the thing that actually
+validates the feature. The real balance consequence to watch is the other one: **lucky falls make
+rounds longer.**
+
 **B-133 · A LATE-JOINING PEER SILENTLY DISCARDS EVERY SYNC PACKET FOR CHARACTERS THAT ALREADY
 EXISTED WHEN IT CONNECTED. [OPEN — root-caused and measured, NOT fixed]**
 

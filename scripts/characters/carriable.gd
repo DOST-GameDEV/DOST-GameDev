@@ -82,6 +82,95 @@ const MAX_BOUNCES: int = 1
 ## every Prop — see main.gd PROP_ABILITY).
 const DEFAULT_PROFILE: ThrowProfile = preload("res://scripts/abilities/resources/throw_default.tres")
 
+## ---------------------------------------------------------------------------
+## SCUFFING AN OPPONENT'S TSINELAS — human request, 2026-07-29: *"add a mechanic
+## that defender can step or touch the slipper of enemy team and it will slow
+## down or get knocked back (knock back for the touch)."*
+##
+## Two different interactions on the SAME object, told apart by the contact
+## normal rather than by a button:
+##
+##   STEP  — you came down on top of it. The normal points up. It gets slowed.
+##   TOUCH — you walked into its side. The normal is horizontal. It gets shoved.
+##
+## This is the missing half of the ownership rule this file already states in
+## `can_be_grabbed_by()`: an opponent's slipper "is still a solid, kickable
+## obstacle — you can body-check it, your bump still staggers it," but until now
+## nothing actually happened when you did anything short of pressing bump. The
+## rule said kickable and the code only meant collidable.
+##
+## ⚠️ HOST-AUTHORITATIVE, like every other transition in this file. The stepping
+## character's own peer is the only one that runs its `move_and_slide()` (see
+## `character_base.gd::_physics_process`'s authority gate), so detection has to
+## happen there — but it only ASKS. `host_scuff()` re-validates from scratch and
+## broadcasts, so two peers shoving the same slipper cannot each decide where it
+## goes.
+## ---------------------------------------------------------------------------
+
+## How much of its already-slow crawl a stepped-on slipper keeps. Multiplies
+## CRAWL_SPEED_SCALE rather than replacing it, so being stood on is strictly
+## worse than crawling freely no matter how CRAWL_SPEED_SCALE is retuned.
+const STEP_SLOW_SCALE: float = 0.35
+## How long the slow lasts after the foot comes off. Non-zero on purpose: with a
+## pure while-touching test the effect flickers off every frame the capsules
+## separate by a millimetre, which reads as nothing happening at all.
+const STEP_SLOW_TIME: float = 0.6
+## The shove a body-check gives a loose slipper, in metres/second, and the lift
+## that goes with it.
+##
+## ⚠️ SIZED FROM THE STOPPING DISTANCE, NOT PICKED BY EAR — and the first guess
+## was wrong by an order of magnitude for exactly that reason. `FRICTION` is 30.0
+## and a loose slipper with no input on it decays at that rate, so a shove of `v`
+## travels `v^2 / (2 * 30)` metres and then stops:
+##
+##     v = 2.6  ->  0.11 m predicted   (the first guess)
+##     v = 3.4  ->  0.19 m predicted   (hitbox.gd's MELEE_KNOCKBACK, for scale)
+##     v = 8.5  ->  1.20 m predicted   (shipped)
+##
+## 2.6 was chosen to sit "below MELEE_KNOCKBACK so a deliberate bump always beats
+## walking into it", which was reasoning about the wrong quantity: at these speeds
+## the whole scale is under a fifth of a metre and nothing in it is visible.
+##
+## Still under `apply_knockback()`'s horizontal clamp (just above DASH_SPEED, 14),
+## so it cannot launch anything out of the arena.
+##
+## ⚠️ THE PREDICTION IS NOT WHAT WAS MEASURED, AND THE GAP IS STILL OPEN.
+## `tools/scuff_probe.tscn` sees the touch branch apply (it counts the branch
+## directly now — `scuffs_touched`) and the slipper travel **0.417 m**, not 1.20.
+## Worse, that 0.417 is IDENTICAL at v = 2.6, 8.5 and 14.0 — the distance does not
+## respond to this constant at all, so something downstream is eating the impulse
+## (the one-shot SCUFF_COOLDOWN, the pusher still in contact, or the lift putting
+## it airborne). The branch firing is verified; the magnitude is NOT, and raising
+## this number will not currently change anything. Do not tune it by taste until
+## the reason it does not scale is found.
+##
+## 🧑 THE TARGET DISTANCE IS ALSO A FEEL CALL AND HAS NOT BEEN PLAYED. 1.2 m was
+## chosen as "clearly shoved, still retrievable". Checklist Phase 9 owns it.
+const TOUCH_KNOCKBACK_SPEED: float = 8.5
+const TOUCH_KNOCKBACK_LIFT: float = 1.1
+## Minimum gap between two shoves of the same slipper. Without it, a defender
+## standing against it re-shoves every physics frame and it rockets away — 60
+## impulses a second is not a body-check, it is a jet engine.
+const SCUFF_COOLDOWN: float = 0.35
+## How vertical a contact normal has to be to count as standing ON the slipper
+## rather than walking INTO it.
+const STEP_NORMAL_Y: float = 0.6
+## How far above the stepper's own feet a contact may still count as standing ON
+## the slipper.
+##
+## ⚠️ THE NORMAL ALONE IS NOT ENOUGH, and the first version of this that shipped
+## used only the normal and never once registered a step. A tsinelas is a capsule
+## of radius 0.16 — a Person coming down on it is landing on a rounded cap barely
+## wider than a fist, so unless the contact is almost exactly dead centre the
+## normal comes back angled and the test falls through to TOUCH. Measured: the
+## step branch fired 0 times in 40 physics frames of a Person dropped straight
+## onto one.
+##
+## Height is the honest question anyway. "Did I stand on it" is really "was it
+## under my feet", and that is what this measures — the normal test is kept as
+## the cheap early answer for the clean case.
+const STEP_CONTACT_MARGIN: float = 0.12
+
 ## Fired on every peer whenever the state changes, so UI and visuals can react
 ## without polling. CharacterVisual listens for the spin/landing read; hud.gd
 ## listens so the attacker can be told SLIPPER READY vs GO GET IT.
@@ -97,6 +186,25 @@ var _flight_time: float = 0.0
 var _flight_hitbox: Area3D = null
 var _thrower_ignore_left: float = 0.0
 var _bounces_left: int = 0
+## Scuffing (see the STEP/TOUCH block above). Both are plain local timers driven
+## from the broadcast, not replicated state — every peer starts them from the
+## same `_rpc_apply_scuff` and counts down at the same rate, which is the same
+## reason a carried slipper's transform is recomputed rather than streamed.
+var _step_slow_left: float = 0.0
+var _scuff_cooldown_left: float = 0.0
+## How many times each branch has actually applied, ever, on this peer.
+##
+## ⚠️ INSTRUMENTATION, AND IT IS LOAD-BEARING — do not delete it as debug cruft.
+## The acceptance test for this mechanic originally inferred "the shove happened"
+## from how far the slipper ended up moving, which is not the same fact: a Person
+## walking through a loose slipper displaces it by ordinary depenetration whether
+## or not any of this code runs. Measured, with the probe reporting 0.417 m at
+## TOUCH_KNOCKBACK_SPEED 2.6, 8.5 AND 14.0 — a number that does not respond to the
+## constant it is supposed to depend on is not measuring that constant.
+## These counters observe the branch itself, so the test cannot pass for the wrong
+## reason again.
+var scuffs_stepped: int = 0
+var scuffs_touched: int = 0
 
 func _ready() -> void:
 	_character = get_parent() as CharacterBase
@@ -215,8 +323,77 @@ func drives_movement() -> bool:
 ## supposed to be moving "with no restrictions."
 func movement_speed_scale() -> float:
 	if RoundManager.round_active and state == CarryState.LOOSE and is_throwable():
+		# Being stood on MULTIPLIES the crawl rather than replacing it — see
+		# STEP_SLOW_SCALE. A defender with a foot on your tsinelas should make an
+		# already-bad situation worse, not define a new speed out of nowhere.
+		if _step_slow_left > 0.0:
+			return CRAWL_SPEED_SCALE * STEP_SLOW_SCALE
 		return CRAWL_SPEED_SCALE
 	return 1.0
+
+## Runs on every peer. The two scuff timers are the only things this node needs
+## ticked while the slipper is LOOSE — `physics_step()` above is called by
+## character_base only while `drives_movement()` is true (CARRIED or FLYING), and
+## a loose slipper is neither.
+func _physics_process(delta: float) -> void:
+	if _step_slow_left > 0.0:
+		_step_slow_left = maxf(0.0, _step_slow_left - delta)
+	if _scuff_cooldown_left > 0.0:
+		_scuff_cooldown_left = maxf(0.0, _scuff_cooldown_left - delta)
+
+## Whether `who` is allowed to scuff this slipper at all. Mirrors
+## can_be_grabbed_by() and inverts its team test on purpose: you may PICK UP only
+## your own team's tsinelas, and you may STEP ON or SHOVE only the opponents'.
+## The two are the same ownership rule read from its two ends.
+func can_be_scuffed_by(who: CharacterBase) -> bool:
+	if who == null or _character == null or who == _character:
+		return false
+	if not is_throwable():
+		return false # a lata is not kicked around; it is hit, or it is reset
+	if state != CarryState.LOOSE:
+		return false # in a hand or in the air is somebody else's rule
+	if who.team == _character.team:
+		return false # your own team's slipper — go and pick it up instead
+	if not RoundManager.round_active:
+		return false
+	return true
+
+## Host side of a scuff. `kind` is "step" or "touch"; `direction` is the shove
+## bearing for a touch, already flat and normalised, and ignored for a step.
+##
+## Same shape as host_grab/host_throw: the client asked, the host re-validates
+## from scratch, and only then does it broadcast. The cooldown is checked HERE,
+## on the one machine, so two defenders arriving on the same frame cannot each
+## spend it.
+func host_scuff(by: CharacterBase, kind: String, direction: Vector3) -> void:
+	if not _is_host() or not can_be_scuffed_by(by):
+		return
+	if kind == "touch" and _scuff_cooldown_left > 0.0:
+		return
+	if NetworkManager.is_networked():
+		_rpc_apply_scuff.rpc(kind, direction)
+	else:
+		_rpc_apply_scuff(kind, direction)
+
+## "any_peer" for the same reason every other broadcast in this file is — the
+## host sends it, and the host is not this node's multiplayer authority in the
+## usual case, so an "authority" RPC would be silently dropped.
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_apply_scuff(kind: String, direction: Vector3) -> void:
+	if kind == "step":
+		scuffs_stepped += 1
+		# Refreshed, not accumulated — standing on it longer keeps it slow, it
+		# does not make it slower and slower.
+		_step_slow_left = STEP_SLOW_TIME
+		return
+	scuffs_touched += 1
+	_scuff_cooldown_left = SCUFF_COOLDOWN
+	# apply_knockback() already refuses between rounds, clamps the result, and
+	# respects Guard — reusing it means a body-check on a slipper obeys exactly
+	# the same ceilings a thrown Bagsak Bomb does. See its own doc.
+	_character.apply_knockback(
+		direction * TOUCH_KNOCKBACK_SPEED + Vector3.UP * TOUCH_KNOCKBACK_LIFT)
+	AudioManager.play_at("slipper_land", _character.global_position)
 
 ## Read by character_visual.gd for the in-flight tumble. Exposed rather than
 ## making callers reach through to `ability` themselves — how a slipper flies is
