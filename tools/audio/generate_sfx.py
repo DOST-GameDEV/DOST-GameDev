@@ -529,6 +529,82 @@ def build_match():
 # UI
 # =============================================================================
 
+def build_boot():
+    """
+    THE BOOT STING - the BH Studios entrance screen, which plays on every single
+    launch (splash_screen.gd's own header: "every time is literal") and which
+    until now played in complete silence.
+
+    ⚠️ THE VIDEO CARRIES NO AUDIO AND CANNOT. `Opening Animation.mp4` is
+    converted with `-an`, deliberately: Godot 4 ships exactly one video codec in
+    core and Theora's audio path is not worth the file size on a three-second
+    clip that plays a thousand times. So the sting is a separate stream the
+    splash scene starts alongside the video, which also means it can be skipped
+    cleanly with the video rather than being welded to a frame count.
+
+    ⚠️ IT IS 2.4 s AGAINST A 3.0 s CLIP, ON PURPOSE. A sting that is still going
+    when the fade starts gets cut off mid-note, which is the one thing a logo
+    sting must never do - it is the last thing the player hears before the menu
+    and a truncated one reads as a crash. Ending early leaves the last half
+    second to the fade, which is where a sting is supposed to end anyway.
+
+    The shape, and why: a rising perfect-fifth swell into a bright major chord,
+    then a single hard SLAP on the beat the chord lands. The slap is the
+    tsinelas - the same `click` + short mid-band body every impact in this game
+    is built from - because the one sound this project owns is a rubber slipper
+    hitting something, and a studio sting that opens a game about throwing them
+    should be that sound rather than a generic orchestral hit.
+    """
+    total = 2.4
+    land = 1.05                       # the beat everything is aimed at
+
+    # The swell in. A filtered noise riser plus a fifth held underneath, both
+    # arriving exactly at `land` rather than a moment before it.
+    riser = np.zeros(int(SR * total))
+    swell_dur = land
+    up = noise("boot_riser", swell_dur)
+    up = sweep_bp(up, 420.0, 3600.0, q=1.1)
+    up *= np.linspace(0.0, 1.0, len(up)) ** 2.2 * 0.30
+    riser[:len(up)] += up
+
+    drone = np.zeros(int(SR * total))
+    fifth = mix(square(swell_dur, 131.0, 196.0, 0.5) * 0.16,
+                square(swell_dur, 196.0, 294.0, 0.25) * 0.09)
+    fifth *= np.linspace(0.0, 1.0, len(fifth)) ** 1.6
+    fifth = biquad(fifth, "lp", 2600.0)
+    drone[:len(fifth)] += fifth
+
+    # The chord it lands on. A major triad plus its octave, the same cartoon
+    # square voice the match fanfares use so the boot and the game sound like one
+    # instrument set rather than two.
+    chord = mix(
+        note(392.0, 1.10, land, total, duty=0.5),
+        note(494.0, 1.10, land, total, amp=0.72, duty=0.5),
+        note(587.0, 1.10, land, total, amp=0.72, duty=0.35),
+        note(784.0, 1.10, land, total, amp=0.45, duty=0.25),
+    )
+
+    # The slipper. `click` is the transient every impact in this file times
+    # itself by; the body under it is a short mid-band thwack rather than a
+    # metallic ring, because rubber has no note in it.
+    slap = np.zeros(int(SR * total))
+    hit = mix(click("boot_slap", 0.006, 5200.0) * 0.9,
+              biquad(noise("boot_body", 0.16), "bp", 1150.0, 0.9)
+              * env(0.16, 0.001, power=2.6) * 0.75)
+    at = int(SR * land)
+    slap[at:at + len(hit)] += hit[:len(slap) - at]
+
+    # A shimmer tail so the chord decays into something instead of stopping
+    # dead - lifted verbatim in principle from `match_win`, for the same reason.
+    shimmer = np.zeros(int(SR * total))
+    tail = sweep(0.9, 1568.0, 2637.0, curve=0.45) * env(0.9, 0.03, power=2.2) * 0.14
+    st = int(SR * (land + 0.05))
+    shimmer[st:st + len(tail)] += tail[:len(shimmer) - st]
+
+    _write("boot_sting", soft_clip(mix(riser, drone, chord, slap, shimmer), 1.15),
+           peak=0.72)
+
+
 def build_ui():
     _write("ui_click", soft_clip(note(1046.0, 0.055, 0.0, 0.06, duty=0.3), 1.2), peak=0.55)
     _write("ui_hover", soft_clip(note(1568.0, 0.035, 0.0, 0.04, duty=0.2), 1.1), peak=0.32)
@@ -554,6 +630,7 @@ def main():
     build_slipper()
     build_abilities()
     build_match()
+    build_boot()
     build_ui()
 
     print("wrote %d sfx to %s/" % (len(_written), OUT_DIR.replace(os.sep, "/")))

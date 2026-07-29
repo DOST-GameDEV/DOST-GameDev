@@ -54,7 +54,7 @@
 [ext_resource type="AudioStream" path="res://assets/audio/ambience/bayan_plaza.wav" id="AMB"]
 
 [sub_resource type="BoxShape3D" id="Shape_floor"]
-size = Vector3(120, 1, 120)
+size = Vector3(120, 8, 120)
 
 [sub_resource type="StandardMaterial3D" id="Mat_floor"]
 albedo_color = Color(0.44706, 0.42353, 0.38431, 1)
@@ -133,7 +133,7 @@ directional_shadow_max_distance = 60.0
 [node name="Floor" type="StaticBody3D" parent="."]
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.4, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -3.9, 0)
 shape = SubResource("Shape_floor")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Floor"]
@@ -2250,3 +2250,43 @@ mesh = ExtResource("47")
 [node name="ThrowingLineSouth" type="MeshInstance3D" parent="Markings"]
 transform = Transform3D(1.26000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, 6.0000)
 mesh = ExtResource("47")
+
+[node name="BoundaryNorth" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(4.18000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, -12.5000)
+mesh = ExtResource("46")
+
+[node name="BoundarySouth" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(4.18000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, 12.5000)
+mesh = ExtResource("46")
+
+[node name="BoundaryEast" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(0.00000, 0, -4.18000, 0, 1, 0, 1.00000, 0, 0.00000, 12.5000, 0.0820, 0.0000)
+mesh = ExtResource("46")
+
+[node name="BoundaryWest" type="MeshInstance3D" parent="Markings"]
+transform = Transform3D(0.00000, 0, -4.18000, 0, 1, 0, 1.00000, 0, 0.00000, -12.5000, 0.0820, 0.0000)
+mesh = ExtResource("46")
+
+[node name="EdgeHedge_0" parent="Dressing/Ground" instance=ExtResource("23")]
+transform = Transform3D(0.00000, 0, -2.60000, 0, 2.60000, 0, 2.60000, 0, 0.00000, -8.4000, 0.1000, 11.6000)
+
+[node name="EdgeHedge_1" parent="Dressing/Ground" instance=ExtResource("23")]
+transform = Transform3D(0.00000, 0, -2.60000, 0, 2.60000, 0, 2.60000, 0, 0.00000, -5.2000, 0.1000, -11.6000)
+
+[node name="EdgeHedge_2" parent="Dressing/Ground" instance=ExtResource("23")]
+transform = Transform3D(0.00000, 0, -2.60000, 0, 2.60000, 0, 2.60000, 0, 0.00000, -5.2000, 0.1000, 11.6000)
+
+[node name="EdgeHedge_3" parent="Dressing/Ground" instance=ExtResource("23")]
+transform = Transform3D(0.00000, 0, -2.60000, 0, 2.60000, 0, 2.60000, 0, 0.00000, -2.0000, 0.1000, -11.6000)
+
+[node name="EdgeHedge_4" parent="Dressing/Ground" instance=ExtResource("23")]
+transform = Transform3D(0.00000, 0, -2.60000, 0, 2.60000, 0, 2.60000, 0, 0.00000, -2.0000, 0.1000, 11.6000)
+
+[node name="EdgeHedge_5" parent="Dressing/Ground" instance=ExtResource("23")]
+transform = Transform3D(0.00000, 0, -2.60000, 0, 2.60000, 0, 2.60000, 0, 0.00000, 4.4000, 0.1000, -11.6000)
+
+[node name="EdgeHedge_6" parent="Dressing/Ground" instance=ExtResource("23")]
+transform = Transform3D(0.00000, 0, -2.60000, 0, 2.60000, 0, 2.60000, 0, 0.00000, 4.4000, 0.1000, 11.6000)
+
+[node name="EdgeHedge_7" parent="Dressing/Ground" instance=ExtResource("23")]
+transform = Transform3D(0.00000, 0, -2.60000, 0, 2.60000, 0, 2.60000, 0, 0.00000, 7.6000, 0.1000, 11.6000)

@@ -794,6 +794,113 @@ court_line("ThrowingLineNorth", "x", -6.0, COURT_X, "throwing_line_decal")
 court_line("ThrowingLineSouth", "x", 6.0, COURT_X, "throwing_line_decal")
 
 # =============================================================================
+# THE PLAY-AREA BOUNDARY, MADE VISIBLE.
+#
+# Human ask: *"add or fix the play-area bounding box in the Bayan Plaza map."*
+#
+# ⚠️ THE COLLISION WAS NEVER MISSING. `Bounds/Wall*` are four StaticBody3D at
+# |x| = |z| = 13.0 with 26-unit spans, so they close a square exactly at BOUND
+# = 12.5 with the corners overlapping. Walking into them works. What does not
+# exist is any REASON for them: they carry no MeshInstance3D at all, and this
+# map's apron paves out to 38 units, so a player sees open plaza in every
+# direction and then stops dead in the middle of it against nothing. That is the
+# same defect `Dev_Plan.md` §1 records against the original arena ("the four
+# Bounds/Wall* nodes are StaticBody3D + CollisionShape3D with no MeshInstance3D
+# at all - functionally containing, visually absent"), never fixed here.
+#
+# So the boundary gets a read, in two layers, and both are things a real town
+# plaza already has:
+#
+#   1. A chalk kerb line ON the wall plane. Four quads, the same `court_line`
+#      mechanism the confinement square and the throwing line already use, so it
+#      costs four marking instances and reads from any height including the
+#      overhead shot. This is the layer that says WHERE the edge is.
+#   2. A hedge row just inside it. This is the layer that says there IS an edge
+#      at eye level, where a floor decal cannot be seen.
+#
+# ⚠️ THE HEDGES SIT INSIDE THE WALL, NOT ON IT. A piece straddling the collision
+# plane is half in a place the player can never reach, which is both wasted and
+# wrong: you would be able to see through your own boundary. HEDGE_INSET pulls
+# them clear, and it is measured against the piece's own footprint rather than
+# guessed - `piece_extent` is what every other placement in this file uses.
+#
+# ⚠️ AND THE COUNT IS DELIBERATELY SPARSE. A continuous wall of hedge is both a
+# draw-call bill on a map already carrying ~640 instances and, per this file's
+# own height law, an aim-blocking solid; a broken row reads as a boundary while
+# staying a boundary you can throw over. `Art_Direction.md`'s lighting-and-perf
+# decision ("lighting and shaders stay cheap") is the same constraint.
+BOUNDARY_HEDGE_STEP = 3.2
+BOUNDARY_HEDGE_INSET = 0.9
+## Which groups a boundary hedge must not land on. Everything a player can walk
+## into, and nothing a player walks ON. See try_edge_hedge for what happens when
+## this includes the paving.
+BOUNDARY_AVOID_GROUPS = ["Clutter", "Furniture", "Landmarks", "Ground",
+                         "Vehicles", "Monument", "KanalVisual", "TreesNear"]
+
+court_line("BoundaryNorth", "x", -BOUND, BOUND)
+court_line("BoundarySouth", "x", BOUND, BOUND)
+court_line("BoundaryEast", "z", BOUND, BOUND)
+court_line("BoundaryWest", "z", -BOUND, BOUND)
+
+def try_edge_hedge(name, x, z, yaw):
+    """Places one boundary hedge, or skips it if something is already there.
+
+    ⚠️ ASKS FIRST. The perimeter walk lands on stalls, benches and the flagpole
+    that were placed before it, and a fixed-step loop has no way to know that.
+    Placing anyway produced 19 reported footprint overlaps in the first build of
+    this row. See `Surfaces.footprint_is_clear`.
+    """
+    # ⚠️ AGAINST THE SOLID GROUPS ONLY, NOT EVERYTHING. `_dressing` also holds
+    # the Apron and Slab paving, which by definition covers every square metre
+    # of the map — so an unfiltered clearance test refuses EVERY placement and
+    # the row silently comes out as four hedges out of twenty-eight. Measured
+    # exactly that on the first run of this. The paving is a surface to stand a
+    # hedge ON, not an obstacle to avoid.
+    extent = piece_extent("kits/town/hedge", yaw, TOWN_SCALE)
+    if not surfaces.footprint_is_clear(x + extent[0], x + extent[1],
+                                       z + extent[2], z + extent[3],
+                                       BOUNDARY_AVOID_GROUPS):
+        return False
+    # NOT lane-exempt. The row sits at |11.6| and LANE_RADIUS is 3.2, so it can
+    # never trip the lane law - which is exactly why it should stay subject to
+    # it. An exemption that is never needed is an exemption that silently covers
+    # the next person who moves this row inward.
+    add_kit("Dressing/Ground", name, "kits/town/hedge", x, z, yaw, TOWN_SCALE)
+    return True
+
+
+_edge = 0
+_skipped = 0
+_inner = BOUND - BOUNDARY_HEDGE_INSET
+_step = -_inner
+while _step <= _inner + 0.001:
+    # The corners are skipped outright: two rows meeting at a right angle put two
+    # pieces in the same volume, which is exactly what `overlaps_across` reports
+    # and what `_shared_pier` had to be written to excuse for the railing.
+    # Leaving the corner open avoids needing a second exception, and a plaza's
+    # planting does not usually turn a hard corner either.
+    if abs(_step) < _inner - 0.5:
+        for _side in (-1.0, 1.0):
+            # ⚠️ THE YAWS ARE NOT INTERCHANGEABLE AND THEY WERE SWAPPED FIRST
+            # TIME. `kits/town/hedge` measures 0.65 x 0.65 x 2.6 at TOWN_SCALE,
+            # i.e. it is LONG IN ITS OWN Z. So a row running along Z (the east
+            # and west edges) wants yaw 0, and a row running along X (north and
+            # south) wants a quarter turn. With the two the other way round every
+            # piece lay ACROSS its own row: 2.6 units of it stuck into the arena,
+            # consecutive pieces overlapped each other by 1.8, and the clearance
+            # test then correctly refused 24 of the 28 placements. The symptom
+            # was "the boundary is four hedges"; the cause was the rotation.
+            for _x, _z, _yaw in ((_side * _inner, _step, 0.0),
+                                 (_step, _side * _inner, math.pi * 0.5)):
+                if try_edge_hedge(f"EdgeHedge_{_edge}", _x, _z, _yaw):
+                    _edge += 1
+                else:
+                    _skipped += 1
+    _step += BOUNDARY_HEDGE_STEP
+print(f"  boundary      : 4 chalk kerbs + {_edge} hedges at |x|=|z|={_inner:.1f}"
+      f" ({_skipped} skipped, already occupied)")
+
+# =============================================================================
 
 ext_lines = [
     '[ext_resource type="%s" path="%s" id="%s"]'
@@ -821,7 +928,7 @@ ext_lines.append('[ext_resource type="AudioStream" '
                  'path="res://assets/audio/ambience/bayan_plaza.wav" id="AMB"]')
 
 SUBS = '''[sub_resource type="BoxShape3D" id="Shape_floor"]
-size = Vector3(120, 1, 120)
+size = Vector3(120, 8, 120)
 
 [sub_resource type="StandardMaterial3D" id="Mat_floor"]
 albedo_color = Color(0.44706, 0.42353, 0.38431, 1)
@@ -915,7 +1022,7 @@ directional_shadow_max_distance = 60.0
 [node name="Floor" type="StaticBody3D" parent="."]
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.4, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -3.9, 0)
 shape = SubResource("Shape_floor")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Floor"]
