@@ -722,7 +722,27 @@ const CAN_HOLD_RADIUS: float = 0.45
 ## How far ahead a throw is tracked, in seconds.
 const CAN_EVADE_LOOKAHEAD: float = 0.6
 ## Only dodge throws that would otherwise come this close, in units.
-const CAN_EVADE_MISS_MARGIN: float = 1.0
+##
+## ⚠️ LOWERED 1.0 -> 0.55, 2026-07-29, on a human call after this was measured
+## with `tools/hit_probe.tscn -- --host target=can`: **aiming dead at the can's
+## own hurtbox centre at full charge, only 12 of 40 throws made contact at all.**
+## That made the can's dodge, not aim and not spread and not the hitbox, the
+## single biggest reason a throw misses.
+##
+## The nerf is deliberately to the MARGIN and not to the lookahead. At 1.0 the can
+## dodged anything that would pass within a metre — i.e. it spent most of its
+## evasion budget dodging throws that were going to miss anyway, and its own
+## sidestep is what then carried it INTO some of them. 0.55 is just above the real
+## overlap band for the tightest profile (hurtbox 0.17 + `throw_flick`'s
+## hit_radius 0.30 = 0.47), so the can now dodges throws that would genuinely have
+## hit it and ignores the rest.
+##
+## ⚠️ DO NOT "TUNE" THIS BY MOVING CAN_EVADE_LOOKAHEAD INSTEAD. The sweep recorded
+## above is non-monotonic — 1.10 gives 18 contact frames, 0.85 gives 57, 0.70
+## gives 0 — because those throws are identical and the outcome turns on exact
+## sidestep phase. A lever whose response is not monotonic cannot be tuned; the
+## margin's is.
+const CAN_EVADE_MISS_MARGIN: float = 0.55
 ## How far to the side one sidestep aims.
 const CAN_EVADE_STEP: float = 1.2
 ## Never sidestep further than this from the base circle.
