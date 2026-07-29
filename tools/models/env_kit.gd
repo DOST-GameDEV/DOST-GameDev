@@ -100,6 +100,39 @@ func build_all(output_dir: String) -> void:
 	_flagpole()
 	_tree("env_tree", 4.2, UiTheme.ENV_FOLIAGE)
 	_tree("env_tree_far", 4.8, UiTheme.ENV_FOLIAGE_DARK)
+
+	# --- PUNO. The trees that decide what country this is. -------------------
+	#
+	# ⚠️ THE KIT'S ONLY TREES WERE CONIFERS, AND THAT IS THE SINGLE LOUDEST
+	# WRONG THING IN EITHER MAP. build_bayan_plaza.py's open item 7 states it
+	# plainly — "every tree in both rings is a Kenney pine, so the plaza reads as
+	# a Nordic park with a Philippine church in it" — and Eskinita has the same
+	# pines lining the alley. There is no pine on a Philippine residential
+	# street. A player sees a hundred conifers before they see the sari-sari
+	# store, so the store never gets a chance to say where this is.
+	#
+	# That item was closed as "cannot be fixed by re-picking a piece — it needs
+	# either a new CC0 tree at this poly budget or a generated one". This is the
+	# generated one, three times, because one tree repeated is its own problem:
+	#
+	#   SAGING  — a banana clump. Nothing else in the world looks like it, it is
+	#             the cheapest of the three, and it is what actually grows in the
+	#             gap between two houses.
+	#   NIYOG   — a coconut palm. The tall silhouette, for reading against sky.
+	#   MANGGA  — a broadleaf mango. The WIDE, lumpy, low canopy that a conifer
+	#             is the exact opposite of, and the one that shades a street.
+	#
+	# All three are the same four primitives as everything else here, at a
+	# comparable triangle count to the cone they replace, so this is a swap and
+	# not an addition — see the instance counts in the map builders.
+	_puno_saging()
+	_puno_niyog()
+	_puno_mangga()
+	# Plants in cut-open paint tins, which is what a Philippine doorstep has
+	# instead of a garden. Interior tier at 0.62, so it can never block an aim.
+	_halaman_lata()
+	# The GI lean-to every house extends itself with. Roofs the alley edge.
+	_atip_yero()
 	_church_facade()
 	_basketball_ring()
 	# The plaza CENTREPIECE set — checklist 2.4, the reference-photo redress.
@@ -341,12 +374,79 @@ func _post_electric() -> void:
 	# model village. 7.2 keeps the wires readable overhead without pushing them
 	# out of frame for an FPP eye at 1.25. Every internal height below moved with
 	# it rather than being re-guessed.
+	w.set_material("drum", UiTheme.ENV_CONCRETE_DARK)
+	w.set_material("rust", UiTheme.ENV_RUST)
+
 	_box(w, 0, 0, 0.24, 0.24, 0.0, 7.20, "timber")
 	_box(w, 0, 0, 1.60, 0.14, 6.10, 6.24, "timber")
 	for i in range(3):
 		var x := -0.6 + 0.6 * float(i)
 		_box(w, x, 0, 0.09, 0.09, 6.24, 6.38, "wire")
 		_wire(w, Vector3(x, 6.35, 0.0), Vector3(x + 6.0, 6.35, 0.0), 0.55, 0.025, 8, "wire")
+
+	# =====================================================================
+	# ⚠️ THE TANGLE. THIS IS THE MOST RECOGNISABLE SILHOUETTE A PHILIPPINE
+	# STREET HAS, and three tidy parallel lines is not it.
+	# =====================================================================
+	#
+	# The three wires above are a correctly-built utility line for anywhere in
+	# the world. What makes the overhead read as Manila rather than as a suburb
+	# is that it is obviously ACCRETED: a second and third cross-arm added below
+	# the first as more services were hung, a transformer drum bolted to the
+	# post, communications cable at a different sag from the power above it, and
+	# a coil of slack left hanging where somebody will come back for it.
+	#
+	# ⚠️ ALL OF IT IS INSIDE THE EXISTING PIECE — no new instance, no new mesh,
+	# no new draw call anywhere on either map. The map places exactly the same
+	# twelve posts it placed before; each one just carries more silhouette. That
+	# is the whole reason this went here rather than into a new `Kable` prop:
+	# R-33's budget line is "ADD SPECIFICITY, NOT DENSITY", and geometry inside a
+	# piece that is already drawn is free of density by definition.
+	#
+	# The span stays 6.0 for every added line, because `build_eskinita.py` spaces
+	# the posts at exactly POST_SPAN = 6.0 so a row strings itself together. A
+	# wire here that ran any other distance would end in mid-air, which is the
+	# 2026-07-29 playtest bug ("the electric pole wires are just floating").
+
+	# The transformer. One drum, off to one side, at the height they actually
+	# hang. Nothing else in the kit reads as "utility" this fast.
+	w.add_extrude(_ngon(0.30, 0.0, 0.26, 8), 4.85, 5.62, "drum")
+	_box(w, 0.30, 0, 0.14, 0.14, 5.62, 5.78, "rust")
+	_box(w, 0.08, 0, 0.44, 0.10, 5.10, 5.22, "timber")
+
+	# A second cross-arm, shorter and lower — the one added years later.
+	_box(w, -0.10, 0, 1.10, 0.12, 5.52, 5.64, "timber")
+	for i in range(2):
+		var x2 := -0.48 + 0.72 * float(i)
+		_box(w, x2, 0, 0.08, 0.08, 5.64, 5.74, "wire")
+		# ⚠️ A DIFFERENT SAG FROM THE POWER LINES ABOVE, and that is the detail
+		# that sells it. Parallel wires at one sag read as a drawn grid; real
+		# comms cable is hung slacker than power and crosses it visually
+		# somewhere in the middle of every span.
+		_wire(w, Vector3(x2, 5.70, 0.0), Vector3(x2 + 6.0, 5.70, 0.0),
+			0.92, 0.022, 8, "wire")
+
+	# The messy tier: three low service drops, each at its own height and sag, so
+	# no two spans in the frame are the same curve.
+	var drops := [[5.05, 1.25], [4.78, 0.78], [5.30, 1.55]]
+	for i in range(drops.size()):
+		var y: float = drops[i][0]
+		var sag: float = drops[i][1]
+		var off := -0.22 + 0.20 * float(i)
+		_wire(w, Vector3(off, y, 0.0), Vector3(off + 6.0, y, 0.0),
+			sag, 0.018, 8, "wire")
+
+	# The coil of slack. Four loops of leftover cable lashed to the post — the
+	# single most "somebody will come back for this" object on a Philippine
+	# street, and it is four flat rings.
+	for i in range(4):
+		var ry := 4.05 + 0.11 * float(i)
+		var rr := 0.30 - 0.03 * float(i)
+		w.add_revolve(PackedVector2Array([
+			Vector2(rr, ry), Vector2(rr + 0.022, ry + 0.02),
+			Vector2(rr, ry + 0.05),
+		]), 9, "wire", true, Callable(),
+			Transform3D(Basis.IDENTITY, Vector3(-0.16, 0.0, 0.0)))
 	_finish(w, "env_post_electric")
 
 ## Sampay. This is the Barong Barong reference folded into Eskinita rather than
@@ -774,6 +874,296 @@ func _tree(file_name: String, height: float, canopy: Color) -> void:
 		Vector2(0.55, height - 0.20), Vector2(0.00, height),
 	]), 12, "canopy")
 	_finish(w, file_name)
+
+## A leaf blade, as two triangles-worth of quad with a droop in the middle.
+##
+## ⚠️ DOUBLE-WOUND, for the reason `_wire` records: a single-sided quad is culled
+## from whichever side you happen to be looking from, and foliage is looked at
+## from underneath as often as from above. Every leaf in this file is seen from
+## an FPP eye at 1.25 standing under it.
+##
+## `dir` is the horizontal direction the blade runs, `rise` its tip height
+## relative to its root, and `droop` how far the midpoint sags below the straight
+## line between them — which is the whole difference between a banana leaf and a
+## plank.
+func _blade(w: ObjWriter, root: Vector3, dir: Vector2, length: float,
+		half_width: float, rise: float, droop: float, material: String) -> void:
+	var d := dir.normalized()
+	var perp := Vector2(-d.y, d.x) * half_width
+	var mid := root + Vector3(d.x * length * 0.5, rise * 0.5 - droop,
+		d.y * length * 0.5)
+	var tip := root + Vector3(d.x * length, rise, d.y * length)
+	# Root -> mid, at full width; mid -> tip, tapering to a point.
+	var r0 := Vector3(root.x + perp.x, root.y, root.z + perp.y)
+	var r1 := Vector3(root.x - perp.x, root.y, root.z - perp.y)
+	var m0 := Vector3(mid.x + perp.x * 1.15, mid.y, mid.z + perp.y * 1.15)
+	var m1 := Vector3(mid.x - perp.x * 1.15, mid.y, mid.z - perp.y * 1.15)
+	# ⚠️ THE TIP IS A NARROW QUAD, NOT A POINT. Collapsing both far corners onto
+	# one vertex looks like the obvious way to taper a blade and emits a
+	# DEGENERATE triangle — zero area, so its face normal is undefined, and
+	# `recalculate_normals()` then averages that undefined normal into the two
+	# real vertices next to it. The leaf renders with a black wedge at the end.
+	# 6% of the width costs two triangles and is invisible.
+	var t0 := Vector3(tip.x + perp.x * 0.06, tip.y, tip.z + perp.y * 0.06)
+	var t1 := Vector3(tip.x - perp.x * 0.06, tip.y, tip.z - perp.y * 0.06)
+	w.add_quad(r0, m0, m1, r1, material)
+	w.add_quad(r1, m1, m0, r0, material)
+	w.add_quad(m0, t0, t1, m1, material)
+	w.add_quad(m1, t1, t0, m0, material)
+
+
+## SAGING. A banana clump — the cheapest unmistakable tropical silhouette there
+## is, and the one that actually grows in the gap between two houses.
+##
+## Not a trunk with a canopy on top: a banana has no branches, so it is a fat
+## pseudostem with every leaf springing from one point at the top. Getting that
+## wrong (leaves scattered up the stem) is what makes a generated banana read as
+## a palm, so the roots are all within 0.2 of each other.
+func _puno_saging() -> void:
+	var w := ObjWriter.new("PunoSaging")
+	w.set_material("stem", UiTheme.ENV_FOLIAGE_DARK)
+	w.set_material("leaf", UiTheme.ENV_FOLIAGE)
+	w.set_material("leaf_old", UiTheme.ENV_FOLIAGE_DARK)
+
+	# Two stems, because a banana is never alone — it suckers into a clump. The
+	# second is shorter and offset, which is also what stops one instance from
+	# reading as a repeated stamp when four of them stand in a row.
+	# ⚠️ THE TIPS HANG BELOW THEIR OWN ROOTS. `rise` IS NEGATIVE AND THAT IS THE
+	# WHOLE PIECE. The first version gave every blade a POSITIVE rise (+0.30) with
+	# a mid-sag, so each leaf went up, dipped, and came out above where it
+	# started — rendered, and it read as an agave or a spiky green star, not a
+	# banana. A banana leaf is heavy: it leaves the crown roughly level and the
+	# outer half FALLS, so the plant's silhouette is a fountain, not a starburst.
+	# Long, wide and downward is the entire recognition cue and all three were
+	# wrong.
+	for k in range(2):
+		var ox := 0.0 if k == 0 else 0.46
+		var oz := 0.0 if k == 0 else 0.30
+		var top := 2.40 if k == 0 else 1.55
+		w.add_revolve(PackedVector2Array([
+			Vector2(0.00, 0.00), Vector2(0.22, 0.00),
+			Vector2(0.19, top * 0.55), Vector2(0.13, top),
+			Vector2(0.00, top),
+		]), 7, "stem")
+		# Six broad blades on the main stem, five on the sucker. FEWER and BIGGER
+		# than the first attempt's eight — a banana has half a dozen leaves that
+		# each read individually, and eight narrow ones average into a blob.
+		var blades := 6 if k == 0 else 5
+		for i in range(blades):
+			var a := TAU * float(i) / float(blades) + (0.5 if k else 0.0)
+			var dir := Vector2(cos(a), sin(a))
+			var long := (k == 0)
+			_blade(w, Vector3(ox + dir.x * 0.1, top - 0.10, oz + dir.y * 0.1),
+				dir,
+				2.35 if long else 1.70,          # long
+				0.36 if long else 0.28,          # and wide
+				-1.05 if long else -0.75,        # tip well below the crown
+				0.30 if i % 2 else 0.16,         # a little sag on the way down
+				"leaf" if i % 2 else "leaf_old")
+	_finish(w, "env_puno_saging", 0.0)
+
+
+## NIYOG. The coconut palm — the tall silhouette, for reading against sky at the
+## end of the alley and over the plaza's tree line.
+##
+## The trunk LEANS, and that is the piece's whole character: a coconut grown in a
+## yard is never plumb. It is built as a stack of short revolved segments each
+## nudged along +X, because `add_revolve` spins about Y at the origin and cannot
+## produce a curve on its own — the same limitation `_tricycle` needed a
+## transform for, solved here without one.
+func _puno_niyog() -> void:
+	var w := ObjWriter.new("PunoNiyog")
+	w.set_material("trunk", UiTheme.ENV_WOOD_DARK)
+	w.set_material("frond", UiTheme.ENV_FOLIAGE)
+	w.set_material("frond_dark", UiTheme.ENV_FOLIAGE_DARK)
+	w.set_material("nut", UiTheme.ENV_WOOD)
+
+	const SEGMENTS := 7
+	const TRUNK_TOP := 6.10
+	var lean := 0.0
+	var lean_step := 0.085
+	for i in range(SEGMENTS):
+		var y0 := TRUNK_TOP * float(i) / float(SEGMENTS)
+		var y1 := TRUNK_TOP * float(i + 1) / float(SEGMENTS)
+		var r0 := lerpf(0.27, 0.15, float(i) / float(SEGMENTS))
+		var r1 := lerpf(0.27, 0.15, float(i + 1) / float(SEGMENTS))
+		# Each segment is its own little ngon column, offset in X. The overlap at
+		# the joins is deliberate — it hides the step between two radii.
+		w.add_extrude(_ngon(lean, 0.0, r0, 7), y0, y1 + 0.02, "trunk")
+		lean += lean_step * (1.0 + float(i) * 0.18)
+	# The crown. Nine fronds, drooping hard — a frond that does not droop reads
+	# as a starfish on a stick.
+	for i in range(9):
+		var a := TAU * float(i) / 9.0
+		var dir := Vector2(cos(a), sin(a))
+		_blade(w, Vector3(lean + dir.x * 0.12, TRUNK_TOP - 0.05, dir.y * 0.12),
+			dir, 2.05, 0.22, 0.45 if i % 2 else 0.15, 1.15,
+			"frond" if i % 2 else "frond_dark")
+	# Three coconuts under the crown. Small, but they are the read that says
+	# palm rather than fern.
+	for i in range(3):
+		var a := TAU * float(i) / 3.0 + 0.6
+		w.add_revolve(PackedVector2Array([
+			Vector2(0.00, TRUNK_TOP - 0.42), Vector2(0.15, TRUNK_TOP - 0.30),
+			Vector2(0.00, TRUNK_TOP - 0.14),
+		# ⚠️ `transform` IS add_revolve's SIXTH ARGUMENT, not its fourth — the
+		# fourth is `smooth` and the fifth a deform Callable. Passing a
+		# Transform3D in slot four is a PARSE error, not a silent misplacement,
+		# so this is cheap to get wrong and impossible to ship wrong.
+		]), 6, "nut", true, Callable(), Transform3D(Basis.IDENTITY,
+			Vector3(lean + cos(a) * 0.26, 0.0, sin(a) * 0.26)))
+	_finish(w, "env_puno_niyog")
+
+
+## MANGGA. The broadleaf — WIDE, lumpy and low, which is the exact opposite of
+## the cone it replaces and the reason all three of these exist rather than one.
+##
+## A mango over a wall is the shade a street is actually played in. The canopy is
+## three overlapping revolved blobs at different heights and radii rather than
+## one dome: a single revolve is a perfect solid of rotation and reads as a
+## lollipop from every angle, which is the thing that made the old cone look
+## generated.
+func _puno_mangga() -> void:
+	var w := ObjWriter.new("PunoMangga")
+	w.set_material("trunk", UiTheme.ENV_WOOD_DARK)
+	w.set_material("canopy", UiTheme.ENV_FOLIAGE)
+	w.set_material("canopy_dark", UiTheme.ENV_FOLIAGE_DARK)
+
+	w.add_revolve(PackedVector2Array([
+		Vector2(0.00, 0.00), Vector2(0.46, 0.00),
+		Vector2(0.30, 0.90), Vector2(0.26, 1.55),
+	]), 8, "trunk")
+	# Two low limbs, so the trunk forks the way a mango does instead of running
+	# straight into the canopy like a lamp post.
+	for k in range(2):
+		var a := 0.9 + PI * float(k)
+		w.add_extrude(_ngon(cos(a) * 0.55, sin(a) * 0.55, 0.14, 5),
+			1.20, 2.35, "trunk")
+	# (offset x, offset z, base y, radius, top y, material)
+	var blobs := [
+		[0.00, 0.00, 1.95, 1.95, 4.30, "canopy"],
+		[-0.95, 0.55, 1.70, 1.35, 3.55, "canopy_dark"],
+		[0.85, -0.60, 1.80, 1.45, 3.80, "canopy"],
+	]
+	for b in blobs:
+		var ox: float = b[0]
+		var oz: float = b[1]
+		var y0: float = b[2]
+		var r: float = b[3]
+		var y1: float = b[4]
+		var mid := (y0 + y1) * 0.5
+		w.add_revolve(PackedVector2Array([
+			Vector2(0.00, y0 + 0.10), Vector2(r * 0.62, y0),
+			Vector2(r, mid), Vector2(r * 0.72, y1 - 0.35),
+			Vector2(0.00, y1),
+		]), 10, String(b[5]), true, Callable(),
+			Transform3D(Basis.IDENTITY, Vector3(ox, 0.0, oz)))
+	_finish(w, "env_puno_mangga")
+
+
+## HALAMAN SA LATA. A plant in a cut-open paint tin.
+##
+## This is the smallest piece in the kit and one of the most specific. A
+## Philippine doorstep does not have a garden or a planter; it has whatever tin
+## the paint came in, cut down, with something growing out of it — and there are
+## five of them on every step. It costs a revolve and five blades.
+##
+## INTERIOR TIER at 0.62 — well under the 1.10 the map builders hold interior
+## clutter to, so it can stand anywhere legal without ever blocking an aim.
+func _halaman_lata() -> void:
+	var w := ObjWriter.new("HalamanLata")
+	w.set_material("tin", UiTheme.ENV_PAINT_TERRA)
+	w.set_material("rim", UiTheme.ENV_CONCRETE_DARK)
+	w.set_material("soil", UiTheme.ENV_WOOD_DARK)
+	w.set_material("leaf", UiTheme.ENV_FOLIAGE)
+
+	w.add_extrude(_ngon(0.0, 0.0, 0.16, 9), 0.00, 0.24, "tin")
+	# The cut rim, a shade darker. A tin without one reads as a solid cylinder.
+	w.add_extrude(_ngon(0.0, 0.0, 0.17, 9), 0.24, 0.27, "rim")
+	w.add_extrude(_ngon(0.0, 0.0, 0.145, 9), 0.27, 0.29, "soil")
+	for i in range(5):
+		var a := TAU * float(i) / 5.0 + 0.3
+		var dir := Vector2(cos(a), sin(a))
+		_blade(w, Vector3(dir.x * 0.04, 0.29, dir.y * 0.04),
+			dir, 0.30, 0.075, 0.30, 0.10, "leaf")
+	_finish(w, "env_halaman_lata", 0.0)
+
+
+## ATIP NA YERO. The corrugated lean-to a house extends itself with.
+##
+## ⚠️ THIS IS THE PIECE THAT ROOFS THE ALLEY, and roofing the alley is the whole
+## contrast between this map and the plaza — Eskinita is fought ALONG a corridor
+## with something overhead, Bayan Plaza is fought ACROSS an open room. Wires do
+## part of that job; a GI awning over the doorway does the rest, at eye level
+## where the wires are not.
+##
+## ⚠️ THE CORRUGATION IS AUTHORED AS RIDGES, NOT AS A ROTATED WALL SHEET, AND THE
+## FIRST VERSION IS WHY. It reused `_corrugated_outline()` — a vertical wall's
+## CROSS-SECTION — extruded it along the slope and tipped it 68 degrees about X.
+## Rendered, that came out as a thin sliver floating clear of two disconnected
+## posts, with the rust band across the top face and the corrugation reading as a
+## sawtooth SILHOUETTE seen edge-on. The outline's own 0.21 of amplitude had
+## become the panel's visible depth and the 1.55 of extrusion had gone into the
+## screen. A rotation that has to be right in two axes at once is not worth it for
+## a piece this small.
+##
+## So the ridges are boxes: nine of them side by side, alternating height by 5 cm.
+## That IS what corrugation is, it needs no transform, it cannot be oriented
+## wrong, and every ridge runs down the slope (+Z) the way a roof sheet is
+## actually laid. `_sari_sari_store`'s awning and `_church_facade`'s pediment both
+## take the same route for the same reason and say so — when a slope is awkward,
+## step it, because "flat is honest rather than approximated badly".
+func _atip_yero() -> void:
+	var w := ObjWriter.new("AtipYero")
+	w.set_material("sheet", UiTheme.ENV_GI_SHEET)
+	w.set_material("rust", UiTheme.ENV_RUST)
+	w.set_material("timber", UiTheme.ENV_WOOD_DARK)
+
+	const RIDGES := 9
+	const SPAN := 2.00          # the awning's width, along X
+	const DEPTH := 1.45         # how far it reaches out from the wall, along Z
+	const FRONT_Y := 2.02       # the low, outer edge — over the posts
+	const BACK_Y := 2.34        # the high edge, against the wall
+
+	# Two posts carrying the outer edge, and a wall plate at the back. The posts
+	# stop AT the front edge rather than short of it — the first version left a
+	# 7 cm gap and the roof hovered.
+	for sx in SIDES:
+		_box(w, sx * (SPAN * 0.5 - 0.14), DEPTH * 0.5 - 0.10,
+			0.10, 0.10, 0.0, FRONT_Y, "timber")
+	_box(w, 0.0, -DEPTH * 0.5 + 0.06, SPAN + 0.10, 0.12,
+		BACK_Y - 0.12, BACK_Y, "timber")
+
+	# The ridges. Each is one box running the full DEPTH, so the corrugation
+	# lines point down the slope and the sheet drains the way a real one does.
+	var ridge_w := SPAN / float(RIDGES)
+	for i in range(RIDGES):
+		var cx := -SPAN * 0.5 + ridge_w * (float(i) + 0.5)
+		var high := (i % 2 == 0)
+		var y0 := FRONT_Y + (0.00 if high else 0.05)
+		var y1 := y0 + (0.09 if high else 0.05)
+		# Two segments per ridge — front half and back half — which is what gives
+		# the awning its pitch without a rotation: the back half simply sits
+		# higher than the front half.
+		# ⚠️ THE TWO HALVES OVERLAP IN Z BY 0.22, AND THE FIRST VERSION DID NOT.
+		# Abutting them exactly left the step between the low front half and the
+		# raised back half standing open — rendered, and you could see daylight
+		# through the middle of the awning. Overlapping the back half forward over
+		# the front one closes it, which is the same trick `_puno_niyog`'s trunk
+		# segments use on their radius steps and for the same reason.
+		var step := (BACK_Y - FRONT_Y) * 0.55
+		_box(w, cx, DEPTH * 0.25, ridge_w * 0.92, DEPTH * 0.5, y0, y1, "sheet")
+		_box(w, cx, -DEPTH * 0.25 + 0.11, ridge_w * 0.92, DEPTH * 0.5 + 0.22,
+			y0 + step, y1 + step, "sheet")
+		# And a riser closing the step's own face, so the joint reads as a lap
+		# rather than as two separate sheets at two heights.
+		_box(w, cx, 0.0, ridge_w * 0.92, 0.12, y0, y1 + step, "sheet")
+	# The rust run along the low outer lip, where a real sheet rots first because
+	# that is where the water leaves it.
+	_box(w, 0.0, DEPTH * 0.5 - 0.05, SPAN, 0.10, FRONT_Y - 0.04, FRONT_Y + 0.06,
+		"rust")
+	_finish(w, "env_atip_yero", 22.0)
+
 
 ## One instance, on the long axis of the boundary. It is the landmark that tells
 ## a player which way they are facing, and that is worth more than any three

@@ -145,6 +145,18 @@ class Placer:
               (0.9, 0.9), (-0.9, 0.9), (0.9, -0.9), (-0.9, -0.9),
               (1.2, 0.0), (-1.2, 0.0), (0.0, 1.2), (0.0, -1.2)]
 
+    ## ⚠️ A SECOND LADDER, BECAUSE A 1.2 m NUDGE CANNOT CLEAR A 7 m HOUSE.
+    ## The fine ladder above is sized for the 0.2-0.65 m grazes between props that
+    ## it was written for. Eskinita's back row (`Likod`) is City Kit buildings at
+    ## CITY_SCALE, overlapping each other by up to 1.93 m, and offering them
+    ## half-metre steps just walks a 7 m box around inside its neighbour and then
+    ## reports a skip — deleting a building to resolve a graze, which is the worst
+    ## of the three outcomes. Scale the ladder to the piece.
+    COARSE_LADDER = [(0.0, 0.0),
+                     (0.0, 2.6), (0.0, -2.6), (2.6, 0.0), (-2.6, 0.0),
+                     (0.0, 4.4), (0.0, -4.4), (3.4, 3.4), (-3.4, -3.4),
+                     (0.0, 6.2), (0.0, -6.2)]
+
     def __init__(self, surfaces, piece_extent, avoid_groups):
         self._surfaces = surfaces
         self._extent = piece_extent
@@ -163,12 +175,24 @@ class Placer:
                   ladder=True):
         """Places via `place_fn(name, mesh, x, z, yaw, scale)`, or skips.
 
-        Returns True if the piece landed. `ladder=False` pins a piece to its
-        exact coordinates — for anything whose position is load-bearing (a
-        landmark, a spawn-adjacent marker), where moving it 0.55 m to dodge a
-        bench is the wrong trade and skipping is the honest outcome.
+        Returns True if the piece landed.
+
+        `ladder` takes three forms, and choosing is a real decision:
+          True      — the fine ladder. Props, scatter, anything that may drift
+                      half a metre without meaning anything.
+          False     — pinned. For a piece whose position is load-bearing (a
+                      landmark, a fence run, a spawn-adjacent marker), where
+                      moving it to dodge a bench is the wrong trade and a
+                      reported skip is the honest outcome.
+          a list    — your own offsets. `Placer.COARSE_LADDER` is the one for
+                      building-sized pieces; see its note.
         """
-        steps = Placer.LADDER if ladder else [(0.0, 0.0)]
+        if ladder is True:
+            steps = Placer.LADDER
+        elif ladder is False:
+            steps = [(0.0, 0.0)]
+        else:
+            steps = ladder
         for k, (dx, dz) in enumerate(steps):
             if self.clear_at(mesh_name, x + dx, z + dz, yaw, scale):
                 place_fn(name, mesh_name, x + dx, z + dz, yaw, scale)
@@ -213,10 +237,23 @@ def front_yaw(x, z, face_x=0.0, face_z=0.0, snap=True):
     `snap` quantises to quarter turns, which is what a piece standing in a grid
     row wants; pass False for something aimed at an arbitrary point.
     """
-    # Local -Z must end up pointing along (face - pos). Under the builders' own
-    # basis a yaw of 0 sends local -Z to world -Z, so the angle is measured from
-    # -Z round to the target.
-    yaw = math.atan2(face_x - x, -(face_z - z))
+    # ⚠️ DERIVED FROM THE BUILDERS' OWN BASIS AND CHECKED AGAINST TWO KNOWN-GOOD
+    # CASES, because the obvious atan2 is off by a sign and the first version of
+    # this line had it. Both builders emit
+    #     Transform3D(c, 0, -s,   0, 1, 0,   s, 0, c,  ...)
+    # so the X basis is (c, 0, -s) and the Z basis is (s, 0, c). A piece's front
+    # is local -Z, which therefore lands on (-s, 0, -c). Setting that equal to the
+    # unit direction d = (face - pos) gives s = -d.x and c = -d.z, i.e.
+    # atan2(-d.x, -d.z) — NOT atan2(d.x, -d.z).
+    #
+    # Verified against the two cases env_kit.gd's header already establishes as
+    # correct rather than against the algebra alone:
+    #   a landmark at NEGATIVE z facing the plaza centre  -> d = (0, +1) -> PI  ✓
+    #   a landmark at POSITIVE z facing the plaza centre  -> d = (0, -1) -> 0   ✓
+    # The wrong sign passes both of those (atan2 of ±0) and fails only on the X
+    # axis, which is exactly where Eskinita needs it and where the plaza never
+    # exercised it. That is why this is a checked function and not a comment.
+    yaw = math.atan2(-(face_x - x), -(face_z - z))
     if snap:
         yaw = round(yaw / (math.pi * 0.5)) * (math.pi * 0.5)
     return yaw

@@ -326,7 +326,7 @@ _ROAD_YAW = [0, 1, 3, 2, 0, 3, 1, 2, 3, 0, 2, 1, 1, 3, 0, 2]
 _road_n = 0
 for _gx, _gz, _ix, _iz in apron_cells(APRON_SOLID, APRON_FADE, ROAD_SCALE,
                                       half=APRON_FADE):
-    add_kit("Dressing/Road", f"Road_{_road_n}", "kits/town/road", _gx, _gz,
+    add_kit("Dressing/Kalsada", f"Kalsada_{_road_n}", "kits/town/road", _gx, _gz,
             _ROAD_YAW[_road_n % len(_ROAD_YAW)] * math.pi * 0.5,
             ROAD_SCALE, base_y=ROAD_BASE_Y, lane_exempt=True)
     _road_n += 1
@@ -401,18 +401,18 @@ for side in (-1.0, 1.0):
             cext = piece_extent(car, cyaw, CAR_SCALE)
             cx = ((WALL_FACE_X - cext[0]) if side > 0
                   else (-WALL_FACE_X - cext[1]))
-            add_kit("Dressing/Layer1", f"Car_{i}_{tag}", car, cx,
+            add_kit("Dressing/Bahay", f"Sasakyan_{i}_{tag}", car, cx,
                     _bay[side] - cext[2], cyaw, CAR_SCALE)
             # ⚠️ A DRIVEWAY IS NOT A HOLE. The bay is deliberately empty of
             # HOUSE, but leaving it empty of everything is what read as the
             # street missing a tooth. A fence line plus a hedge closes the gap
             # at eye level while keeping the bay itself legible as a gap.
             _fz = _bay[side] - cext[2]
-            add_kit("Dressing/BayFill", f"BayFence_{i}_{tag}",
+            add_kit("Dressing/Bakod", f"BakodPanel_{i}_{tag}",
                     "kits/city/fence" if i % 2 else "kits/city/fence-low",
                     side * (WALL_FACE_X + 0.15), _fz - 2.6,
                     0.0 if side > 0 else math.pi, CITY_SCALE * 0.8)
-            add_kit("Dressing/BayFill", f"BayHedge_{i}_{tag}", "kits/town/hedge",
+            add_kit("Dressing/Bakod", f"BakodHalaman_{i}_{tag}", "kits/town/hedge",
                     side * (WALL_FACE_X + 0.5), _fz + 2.6,
                     0.0, TOWN_SCALE)
             _bay[side] += (cext[3] - cext[2]) + BAY_GAP
@@ -425,7 +425,7 @@ for side in (-1.0, 1.0):
             # the collision plane. For the +X row the face is its minimum X, for
             # the -X row its maximum.
             cx = (WALL_FACE_X - ext_b[0]) if side > 0 else (-WALL_FACE_X - ext_b[1])
-            add_kit("Dressing/Layer1", f"L1_{i}_{tag}", piece, cx,
+            add_kit("Dressing/Bahay", f"Bahay_{i}_{tag}", piece, cx,
                     _bay[side] - ext_b[2] , yaw, CITY_SCALE)
             _bay[side] += width + BAY_GAP
         _i[side] += 1
@@ -436,19 +436,38 @@ for side in (-1.0, 1.0):
 # sees house fronts, not gable ends — same rule Layer 1 follows. Placed by the
 # same measured face-alignment: solve for the centre that lands THIS piece's own
 # face on CROSS_ROW_Z.
+# ⚠️ THE ADVANCE IS THE NEXT PIECE'S OWN EDGE, NOT THE LAST PIECE'S WIDTH, and
+# getting that wrong put FIVE METRES of one cross-row house inside its neighbour.
+#
+# The old loop treated `_x` as the next piece's CENTRE and advanced it by the
+# CURRENT piece's full width plus a gap. Work the gap out: for centred pieces
+# that leaves `w_current/2 + 0.4 - w_next/2` of clearance, so the row is correct
+# only while consecutive houses are the same width — and the eleven
+# `building-type-*` are emphatically not. Every time a narrow house was followed
+# by a wider one they interpenetrated, by up to 5.14 m (Kanto_0 <-> Kanto_1,
+# Kanto_2 <-> Kanto_3, Kanto_5 <-> Kanto_6).
+#
+# This is rule 3 of this file's own header — "NO DIMENSION OF A KIT PIECE IS
+# ASSUMED" — broken on the one row that was added after the rule was written. It
+# survived because `overlaps()` was only ever asked about "Layer1", so the cross
+# row was never compared with itself at all.
+#
+# Fixed the way the main house row already does it: carry a CURSOR along the row
+# and solve for the centre that lands THIS piece's own left edge on it.
 _CROSS_TYPES = ["e", "b", "o", "n", "c", "l", "d", "a", "s"]
 _cx_n = 0
 for _end in (-1.0, 1.0):
     _yaw = 0.0 if _end < 0 else math.pi   # front toward the arena centre
-    _x = -16.0
-    while _x <= 16.0:
+    _cursor = -16.0
+    while _cursor <= 16.0:
         _piece = f"kits/city/building-type-{_CROSS_TYPES[_cx_n % len(_CROSS_TYPES)]}"
         _e = piece_extent(_piece, _yaw, CITY_SCALE)
+        _cx = _cursor - _e[0]
         _cz = (CROSS_ROW_Z - _e[3]) if _end > 0 else (-CROSS_ROW_Z - _e[2])
-        add_kit("Dressing/CrossRow", f"Cross_{_cx_n}", _piece, _x, _cz, _yaw,
+        add_kit("Dressing/Kanto", f"Kanto_{_cx_n}", _piece, _cx, _cz, _yaw,
                 CITY_SCALE, lane_exempt=True)
         _cx_n += 1
-        _x += (_e[1] - _e[0]) + 0.4
+        _cursor = _cx + _e[1] + 0.4
 
 # --- Layer 2: a second row further out, for skyline depth --------------------
 # Off-grid on purpose and deliberately NOT the same types as Layer 1 -- a second
@@ -458,6 +477,29 @@ for _end in (-1.0, 1.0):
 # NEXT street over, not onto ours. Facing them inward would give the alley two
 # competing front rows and read as a film set. A small yaw jitter keeps the row
 # from looking extruded — see the seeded-not-random rule.
+#
+# ⚠️ THIS ROW ASKS BEFORE IT LANDS, and four of its twelve needed it. The
+# coordinates below are hand-authored and four pairs interpenetrated — Likod_3
+# <-> Likod_10 by 1.65 m, Likod_4 <-> Likod_9 by 1.93 m — because the eight ring
+# positions and the four corner fills were written at different times and nothing
+# ever compared them. Same ask-before-placing guard R-19 put on the plaza, with
+# COARSE_LADDER because these are 7-metre buildings and a half-metre step just
+# walks one around inside its neighbour.
+_placer = Placer(surfaces, piece_extent, ["Bahay", "Kanto", "Likod", "Kalat"])
+
+
+def _put(group):
+    def go(name, mesh_name, x, z, yaw, scale):
+        add_kit(f"Dressing/{group}", name, mesh_name, x, z, yaw, scale)
+    return go
+
+
+def _put_gen(group):
+    def go(name, mesh_name, x, z, yaw, _scale):
+        add(f"Dressing/{group}", name, mesh_name, x, z, yaw)
+    return go
+
+
 _L2_JIT = [0.09, -0.14, 0.05, -0.07, 0.12, -0.03]
 for n, (x, zz, kind) in enumerate([
         (-19.5, -14.0, "t"), (-21.0, -3.0, "q"), (-19.0, 8.0, "u"),
@@ -466,8 +508,10 @@ for n, (x, zz, kind) in enumerate([
         (-20.0, -22.0, "b"), (20.0, -21.0, "d"), (-20.5, 24.0, "n"),
         (20.5, 23.0, "s")]):
     out_yaw = (math.pi * 0.5) if x > 0 else (-math.pi * 0.5)
-    add_kit("Dressing/Layer2", f"L2_{n}", f"kits/city/building-type-{kind}",
-            x, zz, out_yaw + _L2_JIT[n % len(_L2_JIT)], CITY_SCALE)
+    _placer.try_place(_put("Likod"), f"Likod_{n}",
+                      f"kits/city/building-type-{kind}", x, zz,
+                      out_yaw + _L2_JIT[n % len(_L2_JIT)], CITY_SCALE,
+                      ladder=Placer.COARSE_LADDER)
 
 # --- Ring 2: the silhouette belt. Read at distance through fog, never reached.
 #
@@ -496,7 +540,7 @@ for ring_i, ring in enumerate((32.0, 41.0)):
         zz = -46.0
         while zz <= 46.0:
             j = _belt_jit[_belt % len(_belt_jit)]
-            add_kit("Dressing/Belt", f"BeltX_{_belt}",
+            add_kit("Dressing/Malayo", f"MalayoX_{_belt}",
                     f"kits/city/building-type-{BELT_TYPES[_belt % len(BELT_TYPES)]}",
                     side * (ring + j * 0.35), zz + j,
                     # Fronts turned along the ring so the belt reads as streets
@@ -508,7 +552,7 @@ for ring_i, ring in enumerate((32.0, 41.0)):
         xx = -46.0
         while xx <= 46.0:
             j = _belt_jit[_belt % len(_belt_jit)]
-            add_kit("Dressing/Belt", f"BeltZ_{_belt}",
+            add_kit("Dressing/Malayo", f"MalayoZ_{_belt}",
                     f"kits/city/building-type-{BELT_TYPES[_belt % len(BELT_TYPES)]}",
                     xx + j, side * (ring + j * 0.35),
                     (j * 0.13) + (0.0 if side > 0 else math.pi),
@@ -517,28 +561,78 @@ for ring_i, ring in enumerate((32.0, 41.0)):
             xx += step
 
 # One tree ring, not three, and only in the seam between the two building rings.
+# ⚠️ PUNO HERE TOO. This ring is the horizon, and a horizon of conifers is what a
+# player sees behind every frame of the match — so it is the single largest
+# surface the wrong tree was wrong on. Alternating niyog and mangga gives the
+# skyline a palm-and-broadleaf profile instead of a sawtooth of pines. Same count
+# as before: a swap, not an addition.
 _tree_n = 0
 for side in (-1.0, 1.0):
     t = -44.0
     while t <= 44.0:
         j = _belt_jit[_tree_n % len(_belt_jit)]
-        add_kit("Dressing/Belt", f"BeltTreeX_{_tree_n}", "kits/city/tree-large",
-                side * (36.5 + j * 0.3), t + j * 1.3, j * 0.2, CITY_SCALE * 1.15)
+        kind = "puno_niyog" if _tree_n % 2 else "puno_mangga"
+        add("Dressing/Malayo", f"PunoMalayoX_{_tree_n}", kind,
+            side * (36.5 + j * 0.3), t + j * 1.3, j * 0.2, lane_exempt=True)
         _tree_n += 1
-        add_kit("Dressing/Belt", f"BeltTreeZ_{_tree_n}", "kits/city/tree-large",
-                t + j * 1.1, side * (36.5 + j * 0.3), -j * 0.2, CITY_SCALE * 1.15)
+        kind = "puno_niyog" if _tree_n % 2 else "puno_mangga"
+        add("Dressing/Malayo", f"PunoMalayoZ_{_tree_n}", kind,
+            t + j * 1.1, side * (36.5 + j * 0.3), -j * 0.2, lane_exempt=True)
         _tree_n += 1
         t += 15.0
 
-# --- Street trees, between the houses and the kerb ---------------------------
-# Pushed OUT to sit against the wall line rather than at x=±7.4, where they were
-# standing inside the playable width. Still tall, so they must not be loose.
+# --- PUNO. The trees, and the single biggest cultural correction on this map. -
+#
+# ⚠️ EVERY TREE ON THIS STREET USED TO BE A KENNEY CONIFER. `kits/city/tree-large`
+# and `tree-small` are pines, and there is no pine on a Philippine residential
+# street — the whole alley read as a Nordic suburb with a sari-sari store parked
+# in it. build_bayan_plaza.py's open item 7 wrote this defect up against the OTHER
+# map ("a Nordic park with a Philippine church in it") and closed it as
+# unfixable-by-re-picking, because the kits genuinely contain no broadleaf and no
+# palm. env_kit.gd now generates three, so this is a SWAP and not an addition:
+# twelve conifer instances become twelve puno instances.
+#
+# ⚠️ AND THEY ARE PLACED BY WHAT THEY ARE, not interchangeably. The three species
+# do different jobs and their measured footprints are what decides where each can
+# stand:
+#
+#   SAGING (3.90 wide, 2.52 tall) — IN the alley, in the alcoves between houses.
+#       Short and broad, so it fills the wall line at eye level without ever
+#       reaching over the throwing corridor. This is the one a player brushes
+#       past.
+#   MANGGA (4.60 wide, 4.30 tall) — BEHIND the wall, canopy overhanging INTO the
+#       alley. Wider than it is tall, which is the exact inverse of the cone it
+#       replaces. "A mango tree over the wall" is a specific thing and this is
+#       geometrically that thing: the trunk is in somebody's yard and the shade
+#       is on the street.
+#   NIYOG (4.21 wide, 6.50 tall) — BEHIND the wall and well back, so only the
+#       crown clears the roofline. It is the piece that reads against SKY at the
+#       top of the alley, which is where a coconut is actually seen from a street
+#       this narrow.
+#
+# All three are generated `env_*` pieces authored at 1 unit = 1 m, so they go
+# through `add()` at native size — NOT `add_kit()` at CITY_SCALE, which is the
+# 5x a Kenney house needs and would put a 32-metre banana in the alley.
 for n, zz in enumerate([-15.5, -9.0, -2.5, 4.0, 10.5, 16.0]):
     for side in (-1.0, 1.0):
-        piece = "kits/city/tree-large" if (n + (0 if side > 0 else 1)) % 2 else "kits/city/tree-small"
-        add_kit("Dressing/Layer2", f"Tree_{n}_{'E' if side > 0 else 'W'}",
-                piece, side * (W - 0.15), zz + (0.7 if side > 0 else -0.7),
-                (n % 3) * 0.8, CITY_SCALE)
+        tag = "E" if side > 0 else "W"
+        # In-alley saging, in the alcove against the wall line.
+        add("Dressing/Puno", f"PunoSaging_{n}_{tag}", "puno_saging",
+            side * (W - 0.55), zz + (0.7 if side > 0 else -0.7),
+            (n % 3) * 0.8)
+
+# Behind the wall: the canopies that overhang the alley and the crowns that read
+# against sky. Off the house grid on purpose — a tree lines up with nothing.
+for n, (side, zz, kind) in enumerate([
+        (-1.0, -12.5, "puno_mangga"), (1.0, -6.0, "puno_niyog"),
+        (-1.0, 0.5, "puno_niyog"), (1.0, 6.5, "puno_mangga"),
+        (-1.0, 13.0, "puno_niyog"), (1.0, 18.5, "puno_mangga")]):
+    # Mangga sits nearer the wall so its canopy reaches over it; niyog stands
+    # further back so only the crown shows. Both are outside WALL_FACE_X, i.e.
+    # in the neighbour's yard, which is where they belong.
+    out = 1.15 if kind == "puno_mangga" else 2.30
+    add("Dressing/Puno", f"{'PunoMangga' if kind == 'puno_mangga' else 'PunoNiyog'}_{n}",
+        kind, side * (WALL_FACE_X + out), zz, (n % 4) * 0.7)
 
 # --- Layer 3: overhead. Highest read-per-triangle in the kit. ---------------
 # ⚠️⚠️ THE WIRE SPAN IS 6.0 AND THE POST SPACING MUST EQUAL IT, OR THE WIRES
@@ -563,7 +657,7 @@ _pn = 0
 for side in (-1.0, 1.0):
     zz = -15.0
     while zz <= 16.0:
-        add("Dressing/Layer3", f"Post_{_pn}", "post_electric",
+        add("Dressing/Kable", f"Poste_{_pn}", "post_electric",
             side * (W - 0.25), zz, POST_YAW)
         _pn += 1
         zz += POST_SPAN
@@ -580,7 +674,7 @@ for side in (-1.0, 1.0):
 # looks like. SAMPAY_Z is therefore derived from the post row, never typed.
 SAMPAY_Z = [-15.0, -9.0, -3.0, 3.0, 9.0, 15.0]
 for n, zz in enumerate(SAMPAY_Z):
-    add("Dressing/Layer3", f"Sampay_{n}", "laundry_line", 0.0, zz,
+    add("Dressing/Kable", f"Sampay_{n}", "laundry_line", 0.0, zz,
         # ⚠️ RAISED. A Person is 1.6 tall standing on ground at 0.1, so the top
         # of the head is ~1.70 — and the lowest garment hem used to sit at
         # 1.58, which is why heads phased through the washing. This puts the
@@ -588,6 +682,49 @@ for n, zz in enumerate(SAMPAY_Z):
         # laundry rather than as bunting.
         base_y=GROUND_Y + 2.25 + (0.22 if n % 3 == 0 else 0.0),
         suspended=True, lane_exempt=True)
+
+# --- THE NARRATIVE CENTRE, PLACED BEFORE THE CLUTTER. -----------------------
+#
+# ⚠️ ORDER IS THE FIX HERE, NOT A LOOSER GUARD, and getting it wrong deleted the
+# most important piece on the map. These were originally placed AFTER the clutter
+# and pinned, so `footprint_is_clear` refused both of them — one blocked by a
+# nudged stall-bench, the other by a TYRE — and the builder cheerfully reported
+# "same-group overlap: none" on an eskinita with no sari-sari store in it at all.
+# A guard that resolves a conflict by dropping the narrative centre is worse than
+# no guard.
+#
+# The store outranks a tyre, so the store goes down first and the clutter asks
+# around IT. That is what ask-before-placing is for: the ORDER encodes what
+# matters, and the loop that runs later is the one that yields.
+# ⚠️ PINNED, NOT LADDERED. The sari-sari store is the narrative centre of this
+# map — "a wall with a counter in it is a street" — and its position against the
+# wall line is the whole point of it. A store nudged 0.55 m to dodge a tyre is a
+# store standing in the road. If one is ever genuinely blocked the honest outcome
+# is a reported skip, and the FRONT YAW comes from mapkit.front_yaw so the counter
+# faces the alley by derivation rather than by a hand-written sign.
+for _sn, (_sx, _sz) in enumerate([(W - 0.85, -1.0), (-(W - 0.85), 12.0)]):
+    _placer.try_place(_put_gen("Kalat"), f"SariSari_{'E' if _sx > 0 else 'W'}",
+                      "sari_sari_store", _sx, _sz,
+                      front_yaw(_sx, _sz, 0.0, _sz), 1.0, ladder=False)
+
+
+# --- THE BARANGAY BASKETBALL RING. There is one of these on every street in the
+# --- country, and this map did not have it while the PLAZA had two.
+#
+# ⚠️ IT IS NAILED TO A POST AT THE ALLEY EDGE, WHICH IS WHERE THE REAL ONE IS.
+# A barangay ring is not a stadium fixture — it is a plywood backboard bolted to
+# whatever vertical thing was already there, usually an electric post, at the end
+# of the street where there is room to shoot. `env_basketball_ring` is 3.85 tall
+# and 0.99 deep, so it sits with the wall-line tier at |x| > 6.5 and its post is
+# outside the playable width entirely.
+#
+# ⚠️ AND IT IS ONE, NOT TWO. The plaza has a ring at each end because a covered
+# court does; an eskinita has one, and putting two here would be building the
+# plaza twice, which is the failure R-33 names explicitly.
+_ring_x, _ring_z = -(W - 0.35), -11.0
+_placer.try_place(_put_gen("Kalat"), "BasketbolRing", "basketball_ring",
+                  _ring_x, _ring_z, front_yaw(_ring_x, _ring_z, 0.0, _ring_z),
+                  1.0, ladder=False)
 
 # --- Interior clutter. HEAVY on the sides, ZERO in the lanes. ----------------
 #
@@ -600,6 +737,37 @@ for n, zz in enumerate(SAMPAY_Z):
 # Person's eye is at y=1.25 above the ground. Anything in the 3.5..6.5 band is
 # <= 1.0 tall so it can be aimed over; the taller stuff lives at |x| > 6.5,
 # against the wall line, where a throwing arc has already left the ground.
+#
+# Format: (piece, x, z, yaw, kit_scale or None for a generated env_* piece)
+# ⚠️ THE FANTASY-MARKET CLUTTER IS GONE, AND THAT IS THE JUDGEMENT CALL IN THIS
+# TASK RATHER THAN THE EXECUTION. This list used to carry Kenney Fantasy Town's
+# `rock-small`, `rock-wide`, `rock-large`, `cart`, `cart-high`, `pillar-wood`,
+# `lantern`, `stall-red` and `stall-green`. Every one of them is a medieval
+# European market prop, and together they were most of the interior read of the
+# street. That is the DECORATIVE failure exactly as briefed: a well-built alley
+# dressed with somebody else's vocabulary. There are no boulders in an eskinita,
+# no handcarts, and no wrought-iron hanging lanterns — the street is lit by the
+# same electric posts that carry the wires.
+#
+# What replaces them is not more stuff, it is the RIGHT stuff, and the swap is
+# roughly instance-neutral by design (R-33's budget line is "ADD SPECIFICITY, NOT
+# DENSITY"):
+#
+#   HALAMAN SA LATA  plants in cut-open paint tins. A Philippine doorstep has
+#                    five of these and no garden. 0.59 tall, interior tier.
+#   ATIP NA YERO     the GI lean-to a house extends itself with. This is what
+#                    ROOFS the alley at eye level, where the wires cannot.
+#   BAKOD NA YERO    `wall_corrugated` used as fence. A corrugated GI sheet
+#                    boundary is the single most common wall on a Philippine
+#                    residential street, and the mesh was already in the kit
+#                    being used for nothing on this map.
+#   TRAYSIKEL        already here, kept, and now the only vehicle-shaped prop in
+#                    the interior instead of competing with a handcart.
+#
+# KEPT, because they are right rather than because they were already there: the
+# monobloc chair (THE Filipino plastic chair), tires, oil drums, crates, plywood
+# planks, low stools and benches. A monobloc chair outside a sari-sari store is
+# as specific as anything generated here.
 #
 # Format: (piece, x, z, yaw, kit_scale or None for a generated env_* piece)
 CLUTTER_LOW = [
@@ -617,11 +785,15 @@ CLUTTER_LOW = [
     ("bollard", -6.8, -2.0, 0.0, None), ("bollard", 6.8, 2.0, 0.0, None),
     ("bollard", -6.9, 10.5, 0.0, None), ("bollard", 6.9, -9.5, 0.0, None),
     ("tire", -6.6, -11.8, 0.9, None), ("tire", 6.6, 17.0, -1.4, None),
-    # --- Fantasy Town kit: the market-street vocabulary
-    ("kits/town/rock-small", -6.3, -6.8, 0.5, TOWN_SCALE),
-    ("kits/town/rock-small", 6.2, 6.2, -1.1, TOWN_SCALE),
-    ("kits/town/rock-wide", -5.8, 16.5, 2.2, TOWN_SCALE),
-    ("kits/town/rock-wide", 5.7, -17.0, -0.4, TOWN_SCALE),
+    # --- HALAMAN SA LATA. On doorsteps, in clusters, never singly - a doorstep
+    # --- with one pot on it is a garden centre; a doorstep with three is a home.
+    ("halaman_lata", -6.05, -0.9, 0.0, None), ("halaman_lata", -5.75, -0.45, 0.9, None),
+    ("halaman_lata", -6.15, -0.05, 1.8, None),
+    ("halaman_lata", 6.05, 5.1, 0.3, None), ("halaman_lata", 5.78, 5.55, 1.2, None),
+    ("halaman_lata", 6.18, 5.95, 2.4, None),
+    ("halaman_lata", -5.95, 16.8, 0.6, None), ("halaman_lata", -5.65, 17.25, 1.5, None),
+    ("halaman_lata", 6.0, -13.2, 0.0, None), ("halaman_lata", 5.7, -12.75, 1.1, None),
+    # --- plywood and seating. Universal, and right for the place.
     ("kits/town/planks", -6.5, 0.5, 1.5, TOWN_SCALE),
     ("kits/town/planks", 6.5, -12.5, -1.6, TOWN_SCALE),
     ("kits/town/planks", -4.8, -1.9, 0.2, TOWN_SCALE),
@@ -633,41 +805,62 @@ CLUTTER_LOW = [
 ]
 for n, (piece, x, zz, yaw, scale) in enumerate(CLUTTER_LOW):
     if scale is None:
-        add("Dressing/Clutter", f"Clutter_{n}", piece, x, zz, yaw)
+        _placer.try_place(_put_gen("Kalat"), f"Kalat_{n}", piece, x, zz, yaw, 1.0)
     else:
-        add_kit("Dressing/Clutter", f"Clutter_{n}", piece, x, zz, yaw, scale)
+        _placer.try_place(_put("Kalat"), f"Kalat_{n}", piece, x, zz, yaw, scale)
 
 # --- Taller clutter: against the wall line only, |x| > 6.5 -------------------
+# --- Taller clutter: against the wall line only, |x| > 6.5 -------------------
+#
+# ⚠️ THIS TIER IS NOW ENTIRELY FILIPINO, and it is the tier that does the most
+# work because it is the one at eye level. The medieval carts, the wood pillar
+# and the hanging lantern are gone (see CLUTTER_LOW's note); what stands against
+# the wall line instead is the GI-sheet vocabulary that makes an alley a
+# Philippine alley: lean-to awnings over the doorways and corrugated fence
+# panels closing the gaps between houses.
+#
+# ⚠️ EVERY PIECE STILL OBEYS THE HEIGHT LAW. `atip_yero` is 2.92 tall and
+# `wall_corrugated` 2.40 — both far over an FPP Person's 1.25 eye — so both live
+# at |x| > 6.5 against the wall line, exactly where this tier was already
+# restricted to, and the lane law is asserted on each of them regardless.
+#
+# Generated pieces pass `None` for scale, same convention as CLUTTER_LOW.
 CLUTTER_TALL = [
-    ("kits/town/cart", -7.2, -7.5, 0.15, TOWN_SCALE),
-    ("kits/town/cart", 7.3, 10.5, math.pi + 0.2, TOWN_SCALE),
-    ("kits/town/cart-high", -7.1, 5.5, -0.1, TOWN_SCALE),
-    ("kits/town/stall", 7.4, -3.5, -math.pi * 0.5, TOWN_SCALE),
-    ("kits/town/stall-red", -7.4, 11.5, math.pi * 0.5, TOWN_SCALE),
-    ("kits/town/stall-green", 7.4, 16.0, -math.pi * 0.5, TOWN_SCALE),
-    ("kits/town/hedge", -7.5, -16.5, 0.0, TOWN_SCALE),
-    ("kits/town/hedge", 7.5, -15.5, 0.0, TOWN_SCALE),
-    ("kits/town/fence-broken", -7.6, 1.5, math.pi * 0.5, TOWN_SCALE),
-    ("kits/town/fence", 7.6, 6.5, math.pi * 0.5, TOWN_SCALE),
-    ("kits/town/lantern", -7.3, -3.0, 0.0, TOWN_SCALE),
-    ("kits/town/lantern", 7.3, 13.0, 0.0, TOWN_SCALE),
-    ("kits/town/pillar-wood", -7.5, 8.5, 0.0, TOWN_SCALE),
-    ("kits/town/rock-large", 7.5, -10.5, 0.7, TOWN_SCALE),
+    # ATIP NA YERO — the lean-to. Roofs the alley edge at eye level, which is
+    # the half of "roofed by wires" that wires physically cannot do.
+    ("atip_yero", -7.05, -7.5, 0.0, None),
+    ("atip_yero", 7.05, 10.5, math.pi, None),
+    ("atip_yero", -7.05, 5.5, 0.0, None),
+    ("atip_yero", 7.05, -3.5, math.pi, None),
+    # BAKOD NA YERO — corrugated GI fence, closing the gaps between houses.
+    # Long in its own X (2.00 wide, 0.21 deep), so a run along Z wants a quarter
+    # turn — measured off the mesh, not guessed.
+    ("wall_corrugated", -7.9, 11.5, math.pi * 0.5, None),
+    ("wall_corrugated", -7.9, 13.6, math.pi * 0.5, None),
+    ("wall_corrugated", 7.9, 16.0, math.pi * 0.5, None),
+    ("wall_corrugated", 7.9, 6.5, math.pi * 0.5, None),
+    ("wall_corrugated", -7.9, -16.5, math.pi * 0.5, None),
+    ("wall_corrugated", 7.9, -15.5, math.pi * 0.5, None),
+    # Planting, kept.
+    ("kits/town/hedge", -7.5, 1.5, 0.0, TOWN_SCALE),
+    ("kits/town/hedge", 7.5, -10.5, 0.0, TOWN_SCALE),
 ]
 for n, (piece, x, zz, yaw, scale) in enumerate(CLUTTER_TALL):
-    add_kit("Dressing/Clutter", f"Tall_{n}", piece, x, zz, yaw, scale)
+    if scale is None:
+        _placer.try_place(_put_gen("Kalat"), f"KalatTaas_{n}", piece, x, zz, yaw, 1.0)
+    else:
+        _placer.try_place(_put("Kalat"), f"KalatTaas_{n}", piece, x, zz, yaw, scale)
 
 # --- Tricycles. Waist-cover tier, against the wall line, never loose. --------
+# ⚠️ THESE ASK TOO, and they were the last unguarded placements on the map — all
+# seven remaining same-group overlaps were a tricycle or a sari-sari store landing
+# on clutter that had been placed before it, because these two blocks run last
+# and nothing was comparing them against anything.
 for n, (x, zz, yaw) in enumerate([
         (-7.0, -6.0, 0.15), (7.0, 9.5, math.pi + 0.2), (-6.9, 15.0, -0.1),
         (7.1, -13.0, math.pi - 0.3)]):
-    add("Dressing/Clutter", f"Tricycle_{n}", "tricycle", x, zz, yaw)
-
-# --- The narrative centre. A wall with a counter in it is a street. ----------
-add("Dressing/Clutter", "SariSari_E", "sari_sari_store", W - 0.85, -1.0,
-    -math.pi * 0.5)
-add("Dressing/Clutter", "SariSari_W", "sari_sari_store", -(W - 0.85), 12.0,
-    math.pi * 0.5)
+    _placer.try_place(_put_gen("Kalat"), f"Traysikel_{n}", "tricycle",
+                      x, zz, yaw, 1.0)
 
 # --- The kanal. This REPLACES the pink jeepney-lane chalk. -------------------
 #
@@ -962,9 +1155,10 @@ sky_material = SubResource("Sky_mat")
 [sub_resource type="Environment" id="Env_eskinita"]
 background_mode = 2
 sky = SubResource("Sky_res")
-ambient_light_source = 3
-ambient_light_energy = 1.15
-ambient_light_sky_contribution = 0.8
+ambient_light_source = 2
+ambient_light_color = Color(0.62745, 0.57647, 0.52157, 1)
+ambient_light_energy = 1.65
+ambient_light_sky_contribution = 0.35
 reflected_light_source = 2
 tonemap_mode = 3
 tonemap_exposure = 0.92
@@ -980,9 +1174,9 @@ sdfgi_enabled = false
 glow_enabled = false
 fog_enabled = true
 fog_mode = 1
-fog_light_color = Color(0.8784, 0.8118, 0.6941, 1)
-fog_light_energy = 0.9
-fog_sun_scatter = 0.28
+fog_light_color = Color(0.92157, 0.78431, 0.60392, 1)
+fog_light_energy = 0.95
+fog_sun_scatter = 0.34
 fog_density = 0.0
 fog_sky_affect = 0.22
 fog_depth_curve = 1.1
@@ -1025,9 +1219,70 @@ HEAD = f'''[node name="Eskinita" type="Node3D"]
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Env_eskinita")
 
+# ⚠️ LATE AFTERNOON, CHOSEN DELIBERATELY — R-33(c). This is the hour children
+# actually play tumbang preso: after school, before dark, when the sun is low
+# enough that the street is in bands of shade and nobody is standing in noon heat.
+# Flat noon is the other option and it is the wrong one for this game — it is also
+# what the map had, a 39-degree sun reading as midday.
+#
+# THE COST IS ZERO AND THAT IS WHY IT IS HERE. This is a light ANGLE and a light
+# COLOUR: the sun drops to 20 degrees of elevation and moves to the WEST (-X), and
+# the colour warms from (1, 0.90, 0.75) to (1, 0.82, 0.60) amber. No lighting
+# system, no new shader, no extra shadow distance, not one more instance. Measured
+# frame time either side is in the commit message.
+#
+# ⚠️⚠️ THE ELEVATION IS CONSTRAINED BY THE CORRIDOR, NOT BY TASTE, AND TWO WRONG
+# ATTEMPTS ARE WHY THIS COMMENT IS LONG.
+#
+# Attempt 1 — sun in the WEST at 20 degrees, to rake the west house row's shadow
+# across the road in bands. Rendered: the entire street went NAVY. The alley is 16
+# wide between houses 10-14 tall, so a 20-degree sun casts a 27-metre shadow and
+# the road never sees it at all; every pixel of paving was lit by blue sky ambient
+# alone. A corridor this narrow needs the sun above roughly 45 degrees to light its
+# FLOOR from the side, and 45 degrees is not late afternoon. The measurement is the
+# useful part: the geometry, not the art direction, sets the floor on elevation.
+#
+# Attempt 2 — sun down the alley's own axis at 28 degrees, so nothing flanking it
+# can occlude it. Also navy, for a different reason: shadows then fall ALONG the
+# corridor, so the cross row at |z| = 26 casts one unbroken 26-metre shadow over
+# the whole southern half of the play area. An axial sun in a closed corridor
+# shadows the corridor.
+#
+# ⚠️ AND BOTH RENDERS WERE ALSO READING A TRANSPOSED MATRIX, which is the bug
+# underneath the bug. A Transform3D in a .tscn is serialised ROW-MAJOR while its
+# basis VECTORS are the COLUMNS, so emitting X, Y and Z as three consecutive
+# triples hands Godot the transpose and the sun ends up pointing somewhere
+# unrelated — in attempt 1, partly upward. Any "the lighting looks wrong" here
+# should check the convention before re-tuning the angle. Verified by decomposing
+# the ORIGINAL, known-good transform and reproducing its 39.6-degree elevation
+# before touching it.
+#
+# Attempt 3 — the same azimuth at 33 degrees, only 6.6 lower than the original.
+# ALSO navy, and this is the one that pinned the mechanism down: at 39.6 degrees a
+# 14-metre house casts 16.9 m and just clears the 16-metre alley; at 33 degrees it
+# casts 21.6 m and does not. The paving then takes its light from AMBIENT, this
+# map's ambient is the sky (ambient_light_source = 3, sky contribution 0.8), the
+# sky is blue, and `adjustment_saturation = 1.18` amplifies what is left. The road
+# did not get darker so much as it got BLUER — measured at (14, 37, 80) against a
+# lit (107, 102, 118). Six degrees is the whole margin this corridor has.
+#
+# ⚠️ SO THE ELEVATION IS EXACTLY THE ORIGINAL 39.6 DEGREES AND THAT IS A MEASURED
+# CONSTRAINT, NOT A FAILURE TO COMMIT. Any pass that wants a lower sun here has to
+# change the alley's width or its building heights first — both of which are
+# standing human decisions (Part 4: arena footprint stays original size), so the
+# angle is not this lane's to spend.
+#
+# WHAT SHIPS: late afternoon carried by COLOUR TEMPERATURE rather than by angle —
+# the sun warms (1, 0.90, 0.75) -> (1, 0.82, 0.60) amber, energy eases 1.15 ->
+# 1.08, and the fog warms with it so haze and sunlight agree about the hour. That
+# is the honest way to say five o'clock in a canyon, and it is free: two colours
+# and a scalar, no lighting system, no shader, no extra instance.
+#
+# The fog warms with it. Fog that stays neutral while the sun goes amber reads as
+# haze from a different time of day than the light hitting the houses.
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
 transform = Transform3D(0.86603, -0.31889, 0.38549, 0, 0.77088, 0.63698, -0.5, -0.55164, 0.66692, 0, 12, 0)
-light_color = Color(1, 0.90196, 0.75294, 1)
+light_color = Color(1, 0.81569, 0.59608, 1)
 light_energy = 1.15
 light_indirect_energy = 1.3
 light_angular_distance = 0.5
@@ -1128,21 +1383,23 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.3, {GROUND_Y + 0.16:.3f}, 6
 [node name="Dressing" type="Node3D" parent="."]
 script = ExtResource("T")
 
-[node name="Layer1" type="Node3D" parent="Dressing"]
+[node name="Bahay" type="Node3D" parent="Dressing"]
 
-[node name="BayFill" type="Node3D" parent="Dressing"]
+[node name="Bakod" type="Node3D" parent="Dressing"]
 
-[node name="CrossRow" type="Node3D" parent="Dressing"]
+[node name="Kanto" type="Node3D" parent="Dressing"]
 
-[node name="Layer2" type="Node3D" parent="Dressing"]
+[node name="Likod" type="Node3D" parent="Dressing"]
 
-[node name="Layer3" type="Node3D" parent="Dressing"]
+[node name="Kable" type="Node3D" parent="Dressing"]
 
-[node name="Belt" type="Node3D" parent="Dressing"]
+[node name="Malayo" type="Node3D" parent="Dressing"]
 
-[node name="Road" type="Node3D" parent="Dressing"]
+[node name="Kalsada" type="Node3D" parent="Dressing"]
 
-[node name="Clutter" type="Node3D" parent="Dressing"]
+[node name="Puno" type="Node3D" parent="Dressing"]
+
+[node name="Kalat" type="Node3D" parent="Dressing"]
 
 [node name="Markings" type="Node3D" parent="."]
 '''
@@ -1177,7 +1434,53 @@ out = (f'[gd_scene load_steps={load_steps} format=3]\n\n'
 # a broken scene got committed, imported and played before anyone looked at it.
 n_marks = surfaces.verify()
 
-overlaps = surfaces.overlaps("Layer1")
+# ⚠️ ACROSS THE INTERIOR GROUPS BY NAME, AND THE RENAME NEARLY MADE THIS LIE.
+# This read `surfaces.overlaps("Layer1")` — and when the groups were renamed to
+# the language of the thing, "Layer1" stopped existing. `overlaps()` filters
+# `_dressing` by group name and returns an EMPTY LIST for a group that is not
+# there, so the builder went on printing "Layer1 overlap: none" while checking
+# absolutely nothing. It passed, and it passed by measuring the wrong thing —
+# Concurrency_Protocol's trap (b) exactly, caught here only because the count of
+# instances moved at the same time.
+#
+# So it is named after the groups that exist AND widened to the union of them,
+# which is the check build_bayan_plaza.py already runs and this file never had.
+# A cross-group test is what caught the plaza's boulders growing through market
+# furniture; two houses in one volume was always the smaller risk.
+#
+# ⚠️ TWO TIERS, AND THE SECOND ONE IS NOT FATAL — because running one flat
+# cross-group test here reported 232 pairs, and floorcheck.py's own docstring
+# predicts exactly why: "an axis-aligned footprint test cannot tell a legitimate
+# overlap (a tyre leaning on a fence, a tree canopy over a kerb) from two houses
+# occupying the same volume, and a guard that cries wolf gets switched off."
+# 232 entries IS crying wolf, and a list nobody reads is the failure mode this
+# whole file exists to avoid. Inspected, the bulk of them are this map's own
+# grammar rather than defects:
+#
+#   Bahay <-> PunoSaging   a banana clump pressed against a house wall. Its 3.90
+#                          span is LEAVES; they touch walls in a real alley.
+#   Bahay <-> PunoMangga   the mango's canopy over the wall — placed to do that
+#                          on purpose, and the point of the piece.
+#   Bahay <-> BakodPanel   a driveway fence abutting the neighbouring house.
+#   Sasakyan <-> BakodPanel  a car parked against its own bay fence.
+#   Bahay <-> Kanto        the side row meeting the cross terrace at the alley
+#                          end, which is a corner of a city block.
+#
+# TIER 1 — WITHIN each structural group. Two houses in one volume is never
+# legitimate at any scale, and it is the actual §8.0 bug (five of eleven
+# `building-type-*` wider than their own 6.6 bay, growing through neighbours by
+# up to 2.5 m). This is the check the old `overlaps("Layer1")` was, restored and
+# extended to the two rows it never covered.
+#
+# TIER 2 — ACROSS everything, printed as a COUNT with a sample, never as a pass.
+# It stays visible so it cannot quietly become zero again, but it does not claim
+# each entry is a bug.
+_STRUCTURAL = ["Bahay", "Kanto", "Likod", "Kalat"]
+overlaps = []
+for _g in _STRUCTURAL:
+    overlaps.extend(surfaces.overlaps(_g))
+_cross = surfaces.overlaps_across(
+    ["Bahay", "Bakod", "Kanto", "Likod", "Kable", "Kalat", "Puno"])
 with open("scenes/maps/Eskinita.tscn", "w", encoding="utf-8", newline="\n") as f:
     f.write(out)
 
@@ -1188,11 +1491,14 @@ print(f"  ext_resources : {len(ext_lines)}")
 print(f"  sub_resources : {n_sub}")
 print(f"  load_steps    : {load_steps}")
 print(f"  mesh instances: {len(order)}")
+print(_placer.report("ask-before"))
 print(f"  apron         : {_road_n} tiles, solid to {APRON_SOLID:.0f} then "
       f"feathered to {APRON_FADE:.0f} (no hard edge)")
 if overlaps:
-    print(f"  [!] Layer1 footprint overlaps: {len(overlaps)}")
+    print(f"  [!] SAME-GROUP footprint overlaps: {len(overlaps)}")
     for a, b, ox, oz in overlaps[:8]:
         print(f"      {a} <-> {b}  ({ox:.2f} x {oz:.2f} m)")
 else:
-    print("  Layer1 overlap: none")
+    print(f"  same-group overlap: none in {len(_STRUCTURAL)} structural groups")
+print(f"  cross-group grazes: {len(_cross)} (adjacency, not a pass/fail — see"
+      " the two-tier note above)")

@@ -38,7 +38,20 @@ class_name EnvToonPass
 ## than deleted so the call sites keep their shape if outlines ever come back for
 ## a hero prop. The inverted hull was half the map's draw calls for a border
 ## nobody could see past ~10m.
-const NO_OUTLINE_GROUPS: Array[String] = ["Belt", "Road", "Slab", "Apron", "Layer1", "Layer2", "Layer3", "Clutter", "BayFill", "TreesNear", "TreesFar", "Ground", "Landmarks", "Furniture", "Monument", "Vehicles"]
+## ⚠️ TWO MAPS' WORTH OF NAMES, AND BOTH SETS ARE LIVE. Eskinita's node groups
+## are now named in the language of the thing — `Bahay`, `Bakod`, `Kanto`, `Likod`,
+## `Kable`, `Malayo`, `Kalat`, `Kalsada`, `Puno` — while Bayan Plaza still uses the
+## English ones until its own pass renames them. This file is read by BOTH maps at
+## load time, so dropping the old names to "tidy up" would silently strip the
+## plaza's entire treatment: a group that is not in this list gets an OUTLINE, and
+## the Phase 9 rollback exists because outlining the map cost 90 -> 203 fps.
+## Remove an English name only in the same commit that renames the plaza group.
+const NO_OUTLINE_GROUPS: Array[String] = [
+	"Bahay", "Bakod", "Kanto", "Likod", "Kable", "Malayo", "Kalat", "Kalsada",
+	"Puno",
+	"Belt", "Road", "Slab", "Apron", "Layer1", "Layer2", "Layer3", "Clutter",
+	"BayFill", "TreesNear", "TreesFar", "Ground", "Landmarks", "Furniture",
+	"Monument", "Vehicles"]
 
 ## ⚠️ PAINT THE STREET. One kit atlas means one house, five hundred times.
 ##
@@ -97,7 +110,7 @@ const FOLIAGE_TINTS: Array[Color] = [
 ## used to be a single `== "Road"` check its whole plaza floor shipped
 ## periwinkle — the exact texel bug this tint exists to correct, missed on a
 ## second map purely because the node had a different name.
-const ROAD_GROUPS: Array[String] = ["Road", "Slab", "Apron"]
+const ROAD_GROUPS: Array[String] = ["Kalsada", "Road", "Slab", "Apron"]
 const ROAD_TINT: Color = Color(0.66, 0.62, 0.55)
 
 ## ⚠️ THE PLAZA SLAB IS PAVING, NOT ROAD, AND IT GETS ITS OWN TINT.
@@ -133,7 +146,9 @@ const BELT_FADE_AMOUNT: float = 0.68
 ## swap and rendered the shipped kit atlas raw — mint roof, off-white wall. The
 ## houses were not off-theme; they were untouched. Adding a group to the map
 ## generator means adding it here in the same commit.
-const FACADE_GROUPS: Array[String] = ["Layer1", "Layer2", "Belt", "CrossRow"]
+const FACADE_GROUPS: Array[String] = [
+	"Bahay", "Likod", "Malayo", "Kanto",
+	"Layer1", "Layer2", "Belt", "CrossRow"]
 
 ## ⚠️ ROOFS NEED A DIFFERENT LEVER FROM WALLS, AND THIS IS IT.
 ##
@@ -208,7 +223,7 @@ func _ready() -> void:
 				if _is_building(owner_name):
 					tint = _facade_tint(owner_name)
 					roof = _roof_atlas(owner_name)
-				elif owner_name.contains("Tree"):
+				elif owner_name.contains("Tree") or owner_name.contains("Puno"):
 					# Foliage varies too — otherwise a hundred identical green
 					# cones is the same repetition complaint as the roofs, and
 					# the trees are what is actually left reading as "all green".
@@ -218,7 +233,7 @@ func _ready() -> void:
 				# colours untouched. A car is small, already varied by model, and
 				# is the one thing on the street that is SUPPOSED to be a bright
 				# manufactured colour.
-				if layer.name == "Belt":
+				if layer.name == "Belt" or layer.name == "Malayo":
 					tint = tint.lerp(BELT_FADE, BELT_FADE_AMOUNT)
 			_apply(mesh_instance, outlined, _wants_wind(mesh_instance, layer),
 				tint, roof)
@@ -229,9 +244,19 @@ func _ready() -> void:
 ## and its trees are `BeltTreeX_<i>` / `BeltTreeZ_<i>` — which is why this checks
 ## the belt prefixes BEFORE falling through, or every belt tree would match.
 func _is_building(instance_name: String) -> bool:
-	if instance_name.begins_with("BeltTree"):
+	## ⚠️ EVERY `Puno*` NAME IS REJECTED BEFORE THE BUILDING TEST, exactly as
+	## `BeltTree` is. Eskinita's distant tree ring is `PunoMalayoX_*`, which begins
+	## with no building prefix and so would fall through harmlessly today — but
+	## matching "Puno" ANYWHERE is the robust direction, and no house is called a
+	## tree. A tree handed a City Kit roof atlas is the bug this guard exists for.
+	if instance_name.begins_with("BeltTree") or instance_name.contains("Puno"):
 		return false
-	return (instance_name.begins_with("L1_")
+	return (instance_name.begins_with("Bahay_")
+		or instance_name.begins_with("Likod_")
+		or instance_name.begins_with("Kanto_")
+		or instance_name.begins_with("MalayoX_")
+		or instance_name.begins_with("MalayoZ_")
+		or instance_name.begins_with("L1_")
 		or instance_name.begins_with("L2_")
 		or instance_name.begins_with("Cross_")
 		or instance_name.begins_with("BeltX_")
