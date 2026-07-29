@@ -322,6 +322,9 @@ signal model_changed
 ## change anything (the idempotent double call from `_reset_world` →
 ## `reset_for_new_round`) doesn't rebuild the mesh tree and restart animation.
 var _current_key: String = ""
+## The roster palette currently applied, so apply() can tell "same rig, different
+## character" from "nothing changed" — see its own note.
+var _current_material_key: String = ""
 ## The per-surface materials this unit owns, not the MeshInstance3Ds — a model
 ## can have several surfaces per mesh, and keying the flash off surface 0 would
 ## silently miss the rest and desync from the albedo list.
@@ -462,9 +465,17 @@ func _refresh_downed_tilt(is_downed: bool) -> void:
 ## Builds (or rebuilds) the model for this unit. Safe to call every round.
 func apply(is_person: bool, is_can: bool, team: int) -> void:
 	var key := _model_path(is_person, is_can, team)
-	if key == _current_key:
+	# ⚠️ THE ROSTER MATERIAL IS PART OF THE CACHE KEY, not just the mesh path.
+	# Two roster characters can share a rig (the twelve rigs carry more than
+	# twelve characters), so keying the rebuild on the model path alone would
+	# make switching between two same-rig characters a no-op — you would pick
+	# Bebang, get Inday's palette, and nothing would look broken enough to
+	# explain why.
+	var material_path := _person_material_path(is_person)
+	if key == _current_key and material_path == _current_material_key:
 		return
 	_current_key = key
+	_current_material_key = material_path
 
 	if _flash_tween != null and _flash_tween.is_valid():
 		_flash_tween.kill()
@@ -498,7 +509,20 @@ func apply(is_person: bool, is_can: bool, team: int) -> void:
 	add_child(model)
 
 	_apply_toon_pass(model, is_person)
+	# BEFORE _collect_meshes, exactly like _apply_toon_pass above and for the same
+	# reason: _collect_meshes duplicates whatever material is on each surface so
+	# this unit can flash without flashing everyone who shares the model. Applying
+	# the roster palette after it would write into the SHARED resource instead of
+	# this unit's copy, and every Person on the same rig would change with it.
+	_apply_person_material(model, material_path)
 	_collect_meshes(model)
+	# AFTER _collect_meshes, and that is the opposite of the Person case above —
+	# deliberately. A Person's palette is a whole MATERIAL, so it has to be in
+	# place before the duplication that makes it per-unit. A Prop's skin is a
+	# single UNIFORM on the toon material _apply_toon_pass just built, so it must
+	# be written into this unit's already-duplicated copy; writing it earlier
+	# would put it in the shared resource and recolour both teams' props at once.
+	_apply_prop_tint(is_person, is_can)
 	_align_to_capsule_floor(model)
 	_play_idle(model)
 	model_changed.emit()
@@ -609,10 +633,89 @@ func _capsule_half_height_down() -> float:
 		return -_character.capsule_height() / 2.0
 	return CAPSULE_HALF_HEIGHT_DOWN
 
+## Which roster entry this unit wears, or an empty Dictionary for "none".
+##
+## Only a Person has one. A Prop is a lata or a tsinelas and `character_index` is
+## meaningless on it, so this refuses to answer rather than letting a stray index
+## put a shirt on a can.
+func _roster_entry(is_person: bool) -> Dictionary:
+	if not is_person or _character == null or _character.character_index < 0:
+		return {}
+	return CharacterRoster.at(_character.character_index)
+
 func _model_path(is_person: bool, is_can: bool, team: int) -> String:
 	if is_person:
+		# The roster pick wins when there is one. The per-team fallback below is
+		# NOT dead code and must stay: an AI-driven slot, a local-test dummy and a
+		# peer that never went through the CHARACTER screen all have
+		# character_index -1, and Art_Direction.md pins PERSON_MODELS[0]/[1] as
+		# the pair chosen to read apart at arena distance. Defaulting those to a
+		# roster entry would quietly undo that.
+		var entry := _roster_entry(true)
+		if entry.has("model"):
+			return String(entry["model"])
 		return PERSON_MODELS[team % PERSON_MODELS.size()]
 	return CAN_VISUAL if is_can else TSINELAS_VISUAL
+
+## The palette material for this unit's roster pick, or "" to keep whatever the
+## .glb imported with (which is person_a/person_b — see the roster's note on why
+## those two are hand-authored rather than generated).
+func _person_material_path(is_person: bool) -> String:
+	var entry := _roster_entry(is_person)
+	return String(entry["material"]) if entry.has("material") else ""
+
+## Recolours this Prop to the lata or tsinelas skin its owner picked.
+##
+## Which of the two it reads depends on the role THIS ROUND, not on a stored
+## "current prop skin": `is_can` flips every round, and the character carries
+## both picks precisely so the swap needs no bookkeeping — see
+## CharacterBase.can_index's own note.
+##
+## ⚠️ WRITES `albedo_color`, WHICH ON THE TOON SHADER IS THE ACTUAL COLOUR — and
+## is NOT what the hit flash uses. Checklist 7.1 moved the flash onto its own
+## `flash_amount` uniform precisely so `albedo_color` could mean only "what
+## colour am I" (see flash_hit's note). So a tinted prop still flashes correctly
+## and still returns to its tint rather than to stock.
+##
+## No-ops on a Person, on an unpicked Prop, and on any material that is not one
+## of the toon ones — the outline next_pass carries no albedo and must not be
+## touched, or the ink border takes the prop's colour and disappears.
+func _apply_prop_tint(is_person: bool, is_can: bool) -> void:
+	if is_person or _character == null:
+		return
+	var index: int = _character.can_index if is_can else _character.slipper_index
+	if index < 0:
+		return
+	var entry := CharacterRoster.can_at(index) if is_can else CharacterRoster.slipper_at(index)
+	if not entry.has("tint"):
+		return
+	var tint: Color = entry["tint"]
+	for material in _shader_materials:
+		if material.get_shader_parameter("albedo_color") == null:
+			continue
+		material.set_shader_parameter("albedo_color", tint)
+
+## Puts the roster palette on every surface of the instanced rig.
+##
+## ⚠️ A SURFACE OVERRIDE, NEVER A WRITE TO THE IMPORTED MATERIAL. The .glb's own
+## material is a shared resource — every Person on that rig, in this match and in
+## the character-select preview at the same time, points at the same object.
+## Assigning into it would recolour all of them at once.
+##
+## Set on the MeshInstance3D rather than swapped into the mesh, so the rig, its
+## skinning and its AnimationPlayer are untouched: this is a recolour and nothing
+## else, which is the whole reason the palette shader exists.
+func _apply_person_material(model: Node3D, material_path: String) -> void:
+	if material_path.is_empty():
+		return
+	var material := load(material_path) as ShaderMaterial
+	if material == null:
+		push_error("CharacterVisual: could not load palette '%s'" % material_path)
+		return
+	for node in model.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := node as MeshInstance3D
+		for surface in range(mesh_instance.get_surface_override_material_count()):
+			mesh_instance.set_surface_override_material(surface, material)
 
 ## Each mesh gets its OWN material via a surface override. Without this, every
 ## unit sharing a model would share one material resource, and flashing one of
