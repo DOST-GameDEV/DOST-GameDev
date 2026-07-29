@@ -861,9 +861,12 @@ Measured either side, 40 dead-centre full-charge throws at the can:
 | resolved on the melee box | 6 | **0** |
 | reached DOWNED | **0** | **14** |
 
-⚠️ **Still unexplained and NOT this bug: only 12–14 of 40 dead-centre throws make contact at all.**
-The can evades (`CAN_EVADE_*`) and its hurtbox radius is 0.17. That is the balance lever
-`Checklist.md` Phase 9 already names as the biggest one, and it wants a human, not a guess.
+⚠️ **A SECOND, SEPARATE PROBLEM SURFACED BY THE SAME MEASUREMENT: only 12–14 of 40 dead-centre
+throws made contact at all.** Not this bug — the can evades (`CAN_EVADE_*`) and its hurtbox radius is
+0.17, which made the dodge (not aim, not spread, not the hitbox) the single biggest reason a throw
+misses. **Human call, 2026-07-29: nerf the dodge.** Done via `CAN_EVADE_MISS_MARGIN` 1.0 → 0.55 —
+see that constant for why the MARGIN and not the lookahead, and why `CAN_EVADE_STEP` was tried and
+reverted. Contacts measured 12–14 → 15–17, and every contact still knocks the can down.
 
 **B-135 · THE LUCKY FALL — a knockdown that costs the attacking side nothing. [ADDED 2026-07-29]**
 

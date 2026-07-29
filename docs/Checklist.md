@@ -2471,7 +2471,49 @@ dodge itself is the obvious suspect (`_act_attacker_dodge` re-picks a break bear
 `_move_toward` releases input inside `ARRIVE_DISTANCE`, so an oscillation is plausible). Worth a
 `bt_trace()` pass — that is how B-124 was found inside an hour.
 
-### ⚠️ Still open after RUN 6
+### RUN 7 — 2026-07-29. The can's dodge nerfed, on a human call. Mixed, and kept.
+
+`tools/hit_probe.tscn -- --host target=can` measured the thing nobody had measured: **aiming dead at
+the can's own hurtbox centre, at full charge, only 12 of 40 throws made contact at all.** That made
+the can's evasion — not aim, not spread, not the hitbox — the single biggest reason a throw misses.
+Put to the human with the numbers; the call was **nerf the dodge.**
+
+Done as `CAN_EVADE_MISS_MARGIN` **1.0 → 0.55**. ⚠️ The MARGIN, not the lookahead: at 1.0 the can
+dodged anything passing within a metre, i.e. it spent most of its evasion budget on throws that were
+going to miss anyway and sometimes sidestepped INTO them. 0.55 sits just above the real overlap band
+for the tightest profile (hurtbox 0.17 + `throw_flick` hit_radius 0.30 = 0.47). **The lookahead is
+not a tunable lever** — the sweep in `ai_controller.gd` is non-monotonic (1.10 → 18 contact frames,
+0.85 → 57, 0.70 → 0). `CAN_EVADE_STEP` 1.2 → 0.85 was also tried, produced no change (15–16 contacts
+against 15–17), and was reverted.
+
+| Metric | RUN 4 | RUN 6 | **RUN 7** | Fair |
+|---|---|---|---|---|
+| Round win rate | DEF 90% | DEF 85% | **DEF 80% / OFF 20%** | 40–60% |
+| Throws taken | 66 | 81 | **198** | — |
+| Throws blocked | 56.1% | **50.6%** | 64.1% | 25–50% |
+| Reached the can | 4 | 6 | **10** | — |
+| Dents per round | 0.30 | 0.45 | **0.65** | ≥ 1 |
+| Longest still-run | **1.92 s** | 3.05 s | 9.00 s | < 2 s |
+| Ended by tag | 18/20 | 17/20 | **16/20** | — |
+
+**Kept, because every metric the change was made to move, moved.** Contacts on a dead-centre throw
+15–17 of 40 (from 12–14), throws that reached the can 4 → 10, dents 0.30 → 0.65, win rate 90/10 →
+80/20 — all the best figures this project has recorded.
+
+⚠️ **Two metrics went the wrong way and neither is root-caused. Do not stack another nerf on top
+until they are.**
+
+ - **Block rate 50.6% → 64.1%.** Partly arithmetic — throws went 81 → 198, so rounds now run long
+   with the attacker throwing repeatedly into a taya parked in the lane. Whether that is the taya
+   being strong or the attacker being repetitive is exactly what `TAYA_BLOCK_STANDOFF` (still
+   unmeasured) would separate.
+ - **Longest still-run 3.05 s → 9.00 s**, the worst since the B-124 livelock. This is the third run
+   in a row where the still-run moved independently of everything else, and it now wants its own
+   `bt_trace()` pass rather than another guess. Suspects, in order: `_act_attacker_dodge` re-picking
+   a break bearing every tick, and the much longer rounds simply giving a stall more chances to be
+   observed.
+
+### ⚠️ Still open after RUN 7
 
 - **Win rate 85/15 and dents 0.45.** Improved, still out. The offence works now; it does not win.
 - **`TAYA_BLOCK_STANDOFF` (2.6) IS STILL UNMEASURED.** RUN 3 flagged it as the obvious nerf for a
