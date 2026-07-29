@@ -1241,10 +1241,49 @@ func _on_state_changed_audio(new_state: State) -> void:
 			pass # the impact that caused it already sounded — see _flash_hit
 	_audio_prev_state = new_state
 
+## The input slot a NETWORKED human reads, regardless of match slot. See _action.
+const NET_INPUT_SLOT: int = 1
+
 ## Maps a base action name (e.g. "move_left") to this character's own input
 ## action (e.g. "move_left_p1" / "move_left_p2"), per `player_id`.
+##
+## ⚠️ NETWORKED PLAY DELIBERATELY IGNORES `player_id` HERE. This is the fix for
+## the 2026-07-29 report: "In lan multiplayer we cant move any character."
+##
+## `player_id` is a SPLIT-KEYBOARD concept — two humans sharing one keyboard, so
+## one gets WASD (p1) and the other arrows (p2). Over LAN that premise is false:
+## every peer is a separate machine with its own keyboard, and each human should
+## use their own p1 bindings no matter which match slot they were dealt.
+##
+## B-30 made `player_id` index-based on the networked path
+## (`main.gd::_build_spawn_data`: `(index % 2) + 1`), so the peer holding an odd
+## index — the Prop of each team — got p2 and had to press ARROW KEYS. Worse,
+## `grab_p2` carries no mouse binding at all, so that player could not grab
+## either. B-30's own comment records that the previous behaviour (every
+## networked character stuck at p1) was "harmless by accident (one human per LAN
+## machine binds p1 and controls whichever single character is theirs)" — that
+## accident was load-bearing, and B-30 traded it for the Settings P2 rebind
+## column without anything on the networked path testing movement.
+##
+## Scoped as tightly as it can be, because the collision this avoids is real:
+##   * `is_multiplayer_authority()` — the only character this machine simulates
+##     at all (see the early return in _physics_process), so no second character
+##     can be reading the same keys.
+##   * `ai_controller == null` — an AI-driven character on the HOST is also
+##     authoritative, and must keep its unbound p3/p4 suffix. Those are
+##     registered but deliberately bound to no key precisely so an AI can never
+##     collide with a human's keystrokes; remapping them to p1 would put every
+##     host-run bot on the host's own WASD.
+##
+## ⚠️ Consequence worth stating: networked play now always reads the P1 column,
+## so the Settings panel's P2 rebind column applies to LOCAL split-keyboard play
+## only. That is the correct meaning for it, but it is a behaviour change and the
+## Settings screen does not currently say so.
 func _action(base_name: String) -> String:
-	return "%s_p%d" % [base_name, player_id]
+	var slot := player_id
+	if NetworkManager.is_networked() and is_multiplayer_authority() and ai_controller == null:
+		slot = NET_INPUT_SLOT
+	return "%s_p%d" % [base_name, slot]
 
 ## ---------------------------------------------------------------------------
 ## PER-CHARACTER INPUT. Read through these, never through `Input` directly.
