@@ -79,14 +79,29 @@ const HOST_LINGER: float = 10.0
 
 var _tag: String = "?"
 var _is_host: bool = false
+## `-- map=eskinita|bayan_plaza`. Ids come from GameLaunch.MAPS, not from a path.
+##
+## Added 2026-07-29 because this probe had no map argument at all, which meant
+## every networked spawn, facing and carry number this project had ever recorded
+## described Eskinita — the same gap Checklist.md records for perf_probe and
+## ai_probe, in the one harness whose whole job is the networked flow.
+var _map_id := &"eskinita"
 var _fails: int = 0
 var _samples: int = 0
 
 func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
-		if arg == "--host":
+		var token := String(arg)
+		if token == "--host":
 			_is_host = true
+		elif token.begins_with("map="):
+			_map_id = StringName(token.substr(4))
 	_tag = "HOST" if _is_host else "CLIENT"
+	# ⚠️ BEFORE Main.tscn is instantiated — main.gd reads selected_map_scene() as
+	# it builds the world, so setting it afterwards silently measures Eskinita
+	# while claiming to measure the plaza. That is B-104's failure mode exactly.
+	GameLaunch.selected_map = _map_id
+	print("[%s] map=%s" % [_tag, _map_id])
 
 	# See the class doc: Main goes in as `/root/Main` and becomes the current
 	# scene; this node stays a sibling so a scene swap cannot free it.
@@ -204,6 +219,26 @@ func _check_local_input() -> void:
 		_fails += 1
 		return
 
+	# ⚠️ A CARRIED OR AIRBORNE PROP CANNOT MOVE ITSELF, BY DESIGN, AND THAT IS NOT
+	# AN INPUT FAILURE. `Carriable.drives_movement()` is true for CARRIED and
+	# FLYING, and `character_base.gd::_physics_process` hands the whole frame to
+	# `Carriable.physics_step()` in that case — a carried slipper is snapped to its
+	# carrier's hand and reads no input at all.
+	#
+	# This matters because `_reset_world()` AUTO-GRABS the tsinelas for the
+	# attacking Person at the start of every round, so a peer that owns the
+	# tsinelas is holding an unmovable object for much of the match. Measured: the
+	# check reported "bound, but the character did not move" (0.010 m) for a
+	# perfectly healthy build, on a slipper the log's own CARRY line showed was in
+	# somebody's hand two lines earlier. Two outputs of the same probe disagreeing
+	# is what caught it.
+	var mine_carriable := mine.get_node_or_null("Carriable") as Carriable
+	if mine_carriable != null and mine_carriable.drives_movement():
+		print("[%s]    SKIPPED — this peer's unit is a %s prop and cannot self-move." % [
+			_tag, "carried" if mine_carriable.state == Carriable.CarryState.CARRIED else "flying"])
+		print("[%s]    (binding was verified above; the movement half needs a free unit.)" % _tag)
+		return
+
 	# End-to-end: press it and see if the body actually goes anywhere.
 	var before := mine.global_position
 	Input.action_press(action)
@@ -216,6 +251,13 @@ func _check_local_input() -> void:
 	print("[%s]    gates        : round_active=%s round_number=%d (freeze armed=%s)" % [
 		_tag, str(RoundManager.round_active), MatchManager.round_number,
 		str(not RoundManager.round_active and MatchManager.round_number > 0)])
+	# ⚠️ STATE IS A GATE TOO, and leaving it out of this line cost a session.
+	# STAGGERED / DOWNED / SEALED all refuse input by design, so a Can that is
+	# being knocked over reports "bound, but the character did not move" — which
+	# reads as an input regression and is the game working. That became a live
+	# false alarm the moment B-134 made throws actually knock the can down.
+	print("[%s]    state        : %d (0 normal, 1 stagger, 2 DOWNED, 3 SEALED)" % [
+		_tag, mine.state])
 	if moved < MOVE_MIN_DISPLACEMENT:
 		print("[%s]    *** FAIL: bound, but the character did not move ***" % _tag)
 		_fails += 1
