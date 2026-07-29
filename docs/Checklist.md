@@ -25,6 +25,25 @@ Legend, unchanged from `Dev_Plan.md` §1:
 reading the code and by rendering the running game — not by reading the previous
 pass's checkboxes. See `Handoff.md` §0.10.
 
+> ### 🧭 Where the project is trying to GO — [`Roadmap.md`](Roadmap.md), written 2026-07-30
+>
+> This file tracks *what is left*. **[`Roadmap.md`](Roadmap.md) argues *what makes it good, in what
+> order, and how we know*** — an ordered, dependency-aware plan from here to a submitted entry,
+> every item carrying the problem, the fix, the pillar it serves, the acceptance test that proves
+> it, the owning lane, and an effort size.
+>
+> It opens with a confidence audit in three tiers — **PLAYED** (a human pressed buttons),
+> **MEASURED** (a probe produced a number someone read), **WRITTEN** (it parses and nobody has
+> looked). **Almost nothing on this project is the first kind**, and two live defects fell out of
+> writing it down: the FPP slipper is 1.00× against the world's 1.25×, and
+> `CharacterBase.TSINELAS_VISUAL_SCALE` is a dead constant that nothing reads.
+>
+> Where the two files disagree about *priority*, the roadmap argues its case. **Where they disagree
+> about STATUS, this file still wins** — that rule is unchanged.
+>
+> The nine lanes that execute it, with path ownership, model and effort, and ready-to-paste system
+> prompts, are in **[`Agent_Prompts.md`](Agent_Prompts.md) § THE ROADMAP PIPELINE**.
+
 > ### 👥 Running more than one agent at once
 >
 > **Read [`Concurrency_Protocol.md`](Concurrency_Protocol.md) before starting.** It defines four
@@ -1867,7 +1886,11 @@ probe, not played by a human.
 - [~] **Roles now try to win.** The Taya BODY-BLOCKS (stands on the can→attacker line) instead of
       chasing something the confinement geometry forbids it from reaching; the attacker checks its
       throwing lane and slides to an open bearing instead of charging the block.
-- [ ] **Fairness itself is NOT measured.** See the fairness log below — that is the next AI task.
+- [~] **Fairness IS measured now** — corrected 2026-07-30; this row used to read "NOT measured".
+      Nine logged runs, of which **only RUN 8 is trustworthy** (RUNS 1–7 measured a 3-v-4). The
+      result is bad and honest: DEFENCE 100%, 92% of throws blocked, 0.00–0.10 dents per round.
+      `[~]` because the measurement exists and **the balance does not**. See the fairness log below
+      and [`Roadmap.md`](Roadmap.md) Stage 1.
 
 ### 9.4 · UX / UI `[~]`
 
@@ -2191,9 +2214,15 @@ godot --path . tools/ai_probe.tscn
 # Balance. Plays whole AI-vs-AI matches back to back and self-scores against the table below.
 godot --path . tools/ai_probe.tscn -- fairness rounds=20 scale=6
 
-# Same, sweeping the Taya's pursuit radius — the lever, see the findings below.
+# Same, sweeping the Taya's pursuit radius. ⚠️ NOT THE LEVER — corrected 2026-07-30. RUN 8 swept it
+# at 0.0 / 1.8 / 3.6 on an honest four-bot field and all three rows are within noise of each other.
+# It decides HOW the defence wins, not THAT it wins. The comment here used to call it "the lever".
 godot --path . tools/ai_probe.tscn -- fairness rounds=20 scale=6 pursue=0
 ```
+
+⚠️ **There is no `standoff=` argument and `TAYA_BLOCK_STANDOFF` is still a `const`.** That is the
+one lever RUN 3, RUN 7 and RUN 8 all point at, and adding it is `Roadmap.md` R-01 — the first task
+of the ⚖️ BALANCE lane.
 
 ⚠️ **Never `--headless`**, same rule as smoke-gate commands 3 and 4. ⚠️ **The fairness mode attaches
 a fourth `AIController` to `TeamAPerson`**, the slot `main.gd::_start_local_test()` leaves for the
@@ -2423,6 +2452,11 @@ hypotheses to check rather than starting cold:
    exist — this is the first thing that will need moving.
 6. **No difficulty tiers exist.** If fairness testing says the AI is too strong for a demo, the fix
    is a tier that scales `DECISION_INTERVAL` and `ATTACKER_LANE_CLEARANCE`, not one-off nerfs.
+   ⚠️ **STALE AS OF 2026-07-30, kept as the record of when it was true.** `DIFFICULTY_TIERS` and
+   `apply_difficulty()` now exist in `ai_controller.gd` and carry `pursue` / `lead` / `think` /
+   `charge`. Nothing outside that class calls them, no screen offers them, and no tier but NORMAL
+   has been measured — so the *mechanism* is built and the *feature* is not. See "Still open after
+   RUN 8" below.
 
 ### RUNS 4, 5 and 6 — 2026-07-29. Attacker evasion, and the one negative result worth keeping.
 
@@ -2572,18 +2606,33 @@ Three runs, 10 rounds each, Option A, scale 4, Eskinita. Only `taya_pursue_radiu
 **Nothing in this pass claims to have balanced the AI.** It made the measurement honest and left the
 number where it found it.
 
-### ⚠️ Still open after RUN 7
+### ⚠️ Still open after RUN 8
 
-- **Win rate 85/15 and dents 0.45.** Improved, still out. The offence works now; it does not win.
-- **`TAYA_BLOCK_STANDOFF` (2.6) IS STILL UNMEASURED.** RUN 3 flagged it as the obvious nerf for a
-  block rate that had gone above range. It has not been swept — but note that RUN 6 brought the block
-  rate to **50.6%** without touching it, which weakens the case for nerfing it and means any sweep
-  should now start from RUN 6's baseline rather than RUN 3's. Sweeping it needs the constant promoted
-  to a `static var`, the way `taya_pursue_radius` already is, plus a `standoff=` argument on
-  `ai_probe`. Neither exists yet.
-- **Difficulty tiers (fairness item 6) are still the right home** for `CAN_LEAD_FRACTION`,
-  `ATTACKER_PATIENCE`, `DECISION_INTERVAL`, `ATTACKER_LANE_CLEARANCE` and now
-  `ATTACKER_DODGE_RADIUS` / `ATTACKER_DODGE_STEP`. Do not one-off-nerf any of them.
+**Corrected 2026-07-30.** This section used to be headed "after RUN 7" and to quote RUN 7's figures.
+**RUN 8 invalidated them** — RUNS 1–7 all measured a 3-v-4 — so the numbers below are RUN 8's.
+
+- **Win rate DEF 100% and dents 0.00–0.10.** Not "improved, still out". **The offence does not
+  score.** 92% of throws are blocked, and 10/10 rounds end by tag.
+- **`TAYA_BLOCK_STANDOFF` (2.6) IS STILL UNMEASURED**, and it is now the single most obvious lever —
+  RUN 3, RUN 7 and RUN 8 have each said so. Sweeping it still needs the constant promoted to a
+  `static var`, the way `taya_pursue_radius` already is, plus a `standoff=` argument on `ai_probe`.
+  **Neither exists yet.** ⚠️ RUN 6's 50.6% block rate is no longer a baseline to start from — it is
+  a 3-v-4 number like every other figure before RUN 8.
+- **Difficulty tiers EXIST IN CODE and are UNREACHABLE.** ⚠️ **This entry used to say tiers did not
+  exist and that entry is now stale.** `ai_controller.gd`'s `DIFFICULTY_TIERS`
+  (BATA / NORMAL / ASTIG) and `apply_difficulty()` are complete and correct, and they already carry
+  `pursue` / `lead` / `think` / `charge`. What is missing is that **nothing outside that class calls
+  `apply_difficulty()`, there is no player-facing selector, and no tier but NORMAL has ever been
+  measured.** `ATTACKER_LANE_CLEARANCE` and `ATTACKER_DODGE_RADIUS` / `ATTACKER_DODGE_STEP` are
+  still outside the table and still belong in it. Do not one-off-nerf any of them.
+- **⚠️ The framing has changed, and the next pass should know it.** RUNS 2–7 treated fairness as a
+  *tuning* problem. A 92% block rate on an honest field is not a knob 15% off its mark — the taya
+  re-derives its post from the attacker's *current* bearing every tick, so the only open lane is one
+  it has not reacted to yet, and the attacker's only reply is to wait `ATTACKER_PATIENCE` and throw
+  into the block. **[`Roadmap.md`](Roadmap.md) Stage 1 treats it as structural** and proposes three
+  measured changes — a lob, a committed taya post, and a test of whether an instant-win tag is
+  itself the imbalance. Sweeping the standoff (RUN 9) still runs first; the plan does not depend on
+  it succeeding.
 
 ## Already done — the ledger this list replaces
 
