@@ -34,7 +34,7 @@ func _process(_d: float) -> void:
 			_show()
 		return
 	await RenderingServer.frame_post_draw
-	var names := ["pause_local", "pause_networked"]
+	var names := ["pause_local", "pause_networked", "pause_settings"]
 	get_viewport().get_texture().get_image().save_png("%s%s.png" % [_out, names[_i]])
 	print("wrote ", names[_i])
 	_i += 1
@@ -45,8 +45,13 @@ func _process(_d: float) -> void:
 	_settle = 20
 
 func _show() -> void:
-	var root := _main.get_node("%PauseRoot") as Control
-	root.visible = true
+	var settings := _i == 2
+	# Third shot is SETTINGS opened from the pause menu — the same swap
+	# main.gd's SettingsButton does. Worth its own frame: that panel draws on a
+	# live arena rather than on the light theme it was authored against, which is
+	# where its labels went unreadable.
+	(_main.get_node("%PauseRoot") as Control).visible = not settings
+	(_main.get_node("%SettingsPanel") as Control).visible = settings
 	# The overlay-only state is reached by a networked non-solo session, which a
 	# screenshot harness cannot stand up. Its ONE visible difference is this
 	# note, so the second shot sets it directly rather than faking a peer.
