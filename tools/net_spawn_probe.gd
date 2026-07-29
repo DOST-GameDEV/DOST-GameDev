@@ -67,8 +67,9 @@ const FACING_TOLERANCE_DEG: float = 30.0
 const ROUNDS: int = 4
 ## Seconds to let ENet connect and the spawner replicate before sampling.
 const CONNECT_WAIT: float = 4.0
-## Seconds between rounds, long enough for the reset to land on both peers.
-const ROUND_WAIT: float = 2.0
+## Seconds between rounds. Must clear MatchManager.INTERMISSION_DURATION (3.0)
+## plus enough slack for the reset to land on both peers.
+const ROUND_WAIT: float = 4.5
 ## Seconds the HOST lingers after its last round before quitting.
 ##
 ## ⚠️ NOT PADDING. When the host drops, the client tears its own match down;
@@ -110,12 +111,29 @@ func _ready() -> void:
 		# Only the host drives rounds; the client observes what it was told.
 		# That asymmetry is the point — a bug that only shows on the peer that
 		# did not run the reset is invisible to any single-process probe.
+		# ⚠️ report_round_result(), NOT begin_next_round(). They are not
+		# interchangeable and the difference invalidated this probe's first
+		# results outright.
+		#
+		# `_reset_world()` — the function that actually places characters — hangs
+		# off `round_intermission_started`, which only `report_round_result()`
+		# fires. Calling `begin_next_round()` directly advances the round counter
+		# and skips placement entirely, so rounds 2+ sampled wherever the AI had
+		# wandered rather than where anyone spawned. It read as a facing failure:
+		# the AI-driven can had walked onto the attacker's own mark, 0.19 units
+		# away, which makes the direction-to-can degenerate and the measured
+		# off-axis angle meaningless (94 degrees, from an attacker whose yaw was
+		# provably correct). `begin_next_round()` then follows on its own after
+		# INTERMISSION_DURATION, from MatchManager._process.
+		#
+		# The winner alternates so neither side reaches WINS_NEEDED (3) and ends
+		# the match before the probe is finished.
 		for i in ROUNDS:
-			MatchManager.begin_next_round()
+			MatchManager.report_round_result(i % 2 == 0)
 			await get_tree().create_timer(ROUND_WAIT).timeout
 		await get_tree().create_timer(HOST_LINGER).timeout
 	else:
-		await get_tree().create_timer(ROUND_WAIT * ROUNDS + 2.0).timeout
+		await get_tree().create_timer(ROUND_WAIT * ROUNDS + 4.0).timeout
 
 	print("\n[%s] === %s (%d/%d checks clean) ===" % [
 		_tag, "ALL CHECKS PASSED" if _fails == 0 else "%d FAILURES" % _fails,
@@ -148,22 +166,45 @@ func _sample(label: String) -> void:
 
 	print("\n[%s] --- %s (team_a_is_can=%s, %d characters) ---" % [
 		_tag, label, str(MatchManager.team_a_is_can), characters.size()])
+	# The can's own position, printed because every facing number below is
+	# measured RELATIVE to it. A can that has been shoved off its base circle
+	# makes a correctly-facing attacker read as wrong, and without this line
+	# that is indistinguishable from the bug.
+	if can != null:
+		print("[%s]    CAN      %-11s pos=(%6.2f,%6.2f)" % [
+			_tag, can.name, can.global_position.x, can.global_position.z])
 	if can == null or attacker == null:
 		print("[%s]    MISSING can=%s attacker=%s" % [_tag, str(can), str(attacker)])
 		_samples += 1
 		_fails += 1
 		return
 
-	_report_facing("ATTACKER", attacker, can)
+	# ⚠️ FACING IS ONLY GATED ON A ROUND SAMPLE, NEVER ON THE INITIAL ONE.
+	#
+	# The initial sample fires off a wall-clock timer that has to be long enough
+	# for ENet to connect and the spawner to replicate (CONNECT_WAIT), by which
+	# point round 1 has been LIVE for several seconds and the AI has been playing
+	# it. Measured: the attacker had already run from (0, 6.00) to (-0.28, 2.63)
+	# and turned to go back for its slipper — 179 degrees off the can, and
+	# completely correct behaviour. Gating that is not a spawn test, it is a test
+	# of whether an AI ever turns around, and it fails on a working build.
+	#
+	# The round samples ARE evidence: they run one physics frame after
+	# `round_started`, i.e. immediately after `_reset_world()` placed everyone and
+	# before anything has had a frame to move.
+	#
+	# The carry and visibility invariants below are NOT time-sensitive — they must
+	# hold at every instant, mid-round included — so they stay gated throughout.
+	_report_facing("ATTACKER", attacker, can, label != "initial spawn")
 	if taya != null:
-		_report_facing("TAYA", taya, can)
+		_report_facing("TAYA", taya, can, false)
 	_report_carry(characters)
 
 ## One unit's facing, measured two independent ways. Both must agree with the
 ## direction to the can, and the disagreement between them is itself diagnostic:
 ## if `rotation.y` is right and the camera is not, the body carries roll or pitch
 ## that the euler write never cleared.
-func _report_facing(label: String, who: CharacterBase, can: CharacterBase) -> void:
+func _report_facing(label: String, who: CharacterBase, can: CharacterBase, gated: bool) -> void:
 	var to_can := can.global_position - who.global_position
 	to_can.y = 0.0
 	if to_can.length() < 0.01:
@@ -181,10 +222,10 @@ func _report_facing(label: String, who: CharacterBase, can: CharacterBase) -> vo
 		eye_forward.y = 0.0
 		cam_deg = _off_axis(eye_forward, to_can)
 
-	# Only the attacker's facing is a pass/fail gate. The taya is printed for
-	# context — "guarding the can" does not imply "nose pointed at it", so
-	# holding it to the same bar would fail on correct behaviour.
-	var gated := label == "ATTACKER"
+	# Only the attacker's facing, and only on a round sample, is a pass/fail gate
+	# (see the call site). The taya is printed for context — "guarding the can"
+	# does not imply "nose pointed at it", so holding it to the same bar would
+	# fail on correct behaviour.
 	var ok := body_deg < FACING_TOLERANCE_DEG and (cam_deg < 0.0 or cam_deg < FACING_TOLERANCE_DEG)
 	if gated:
 		_samples += 1
@@ -207,10 +248,23 @@ func _report_facing(label: String, who: CharacterBase, can: CharacterBase) -> vo
 ## explains it.
 func _report_carry(characters: Array[CharacterBase]) -> void:
 	# Who each slipper thinks is carrying it.
+	#
+	# ⚠️ `state == CARRIED` IS PART OF THE QUESTION, NOT A TIGHTENING OF IT.
+	# `Carriable.carrier` deliberately STAYS SET through the whole flight —
+	# _rpc_set_flying() clears the Person's `_held` but keeps `carrier` so landing
+	# can drop the collision exception against the thrower (its own B-75 note says
+	# so). So a thrown slipper legitimately reads "carrier = X, X.held() = null",
+	# and an invariant that ignored the state flagged every throw as a bug. It did
+	# exactly that on the first run of this check.
+	#
+	# Restricting to CARRIED loses nothing: the bug being guarded against is a
+	# `_held` that outlives the carry, and the slipper is LOOSE by then.
 	var claimed: Dictionary = {} # CharacterBase (person) -> CharacterBase (slipper)
 	for ch in characters:
 		var carriable := ch.get_node_or_null("Carriable") as Carriable
-		if carriable != null and carriable.carrier != null and is_instance_valid(carriable.carrier):
+		if carriable == null or carriable.state != Carriable.CarryState.CARRIED:
+			continue
+		if carriable.carrier != null and is_instance_valid(carriable.carrier):
 			claimed[carriable.carrier] = ch
 
 	for ch in characters:
