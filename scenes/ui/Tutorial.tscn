@@ -1,15 +1,10 @@
-[gd_scene load_steps=8 format=3 uid="uid://c8tw3rn5vk2ph"]
+[gd_scene load_steps=6 format=3 uid="uid://c8tw3rn5vk2ph"]
 
 [ext_resource type="Script" path="res://scripts/ui/tutorial.gd" id="1"]
 [ext_resource type="Texture2D" path="res://assets/ui/main-menu/MENU BACKDROP.png" id="2"]
 [ext_resource type="Texture2D" path="res://assets/ui/host-game/GAME BANNER.png" id="3"]
 [ext_resource type="Texture2D" path="res://assets/ui/host-game/Arrow Left 64.png" id="4"]
 [ext_resource type="Texture2D" path="res://assets/ui/host-game/Arrow Right 64.png" id="5"]
-[ext_resource type="Shader" path="res://assets/ui/card_fold.gdshader" id="6"]
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_fold"]
-shader = ExtResource("6")
-shader_parameter/fold_color = Color(0.016, 0.031, 0.22, 1)
 
 [node name="Tutorial" type="Control"]
 layout_mode = 3
@@ -111,15 +106,6 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 14
-
-[node name="FoldCorner" type="Control" parent="."]
-layout_mode = 0
-offset_left = 1604.0
-offset_top = 816.0
-offset_right = 1620.0
-offset_bottom = 832.0
-mouse_filter = 2
-material = SubResource("ShaderMaterial_fold")
 
 [node name="Pager" type="HBoxContainer" parent="."]
 layout_mode = 0

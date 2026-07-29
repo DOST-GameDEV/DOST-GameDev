@@ -35,6 +35,10 @@
 *.tres text eol=lf
 *.gd text eol=lf
 *.gdshader text eol=lf
+# `*.gd.uid` does NOT match `*.gd` — gitattributes patterns match the whole
+# filename, not a suffix — so the sidecars need their own line or they churn
+# exactly like the `.import` files did.
+*.uid text eol=lf
 
 # Third-party licence texts — never converted, never normalised. These are
 # vendored documents that Form 03 quotes verbatim; `git add --renormalize .`

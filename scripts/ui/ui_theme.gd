@@ -448,18 +448,23 @@ static func _register_menu_variations(theme: Theme) -> void:
 	# carry an INK outline: a tutorial page sits over the street backdrop and a
 	# pause card over the live arena, and unoutlined cream vanishes against a
 	# pale facade exactly the way the Hud* set's would.
+	## size, outline. The outline is scaled to the face rather than shared, unlike
+	## the Hud* set's flat 6: that set is five sizes of the same shout and can get
+	## away with it, but this one spans a 52px title and a 16px caption, and 5px
+	## of ink around 16px lettering closes up the counters and reads as a blob
+	## rather than as an outline.
 	const MENU_SIZES := {
-		"MenuDisplay": 52,
-		"MenuHeading": 34,
-		"MenuBody": 21,
-		"MenuCaption": 16,
-		"MenuValue": 26,
+		"MenuDisplay": [52, 6],
+		"MenuHeading": [34, 5],
+		"MenuBody": [21, 4],
+		"MenuCaption": [16, 3],
+		"MenuValue": [26, 4],
 	}
 	for variation in MENU_SIZES:
 		theme.set_color("font_color", variation, CREAM)
 		theme.set_color("font_outline_color", variation, INK)
-		theme.set_constant("outline_size", variation, 5)
-		theme.set_font_size("font_size", variation, MENU_SIZES[variation])
+		theme.set_font_size("font_size", variation, MENU_SIZES[variation][0])
+		theme.set_constant("outline_size", variation, MENU_SIZES[variation][1])
 	theme.set_color("font_color", "MenuDisplay", AMBER)
 	theme.set_color("font_color", "MenuHeading", AMBER)
 	theme.set_color("font_color", "MenuCaption", CREAM_MUTED)
