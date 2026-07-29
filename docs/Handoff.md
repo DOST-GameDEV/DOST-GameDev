@@ -844,6 +844,8 @@ the client never did, because only the host resolves abilities. *Fix:* capture t
 (an int cannot dangle) and resolve it with `instance_from_id()` at call time.
 
 **B-119 · `lata_impact` (and every other SFX) still buzzed under sustained contact despite the
+
+> ⚠️ **Superseded by B-121.** This change is correct hygiene and is kept, but measurement afterwards showed the stacking it describes **does not occur in play** (peak concurrency is 4 voices on 0.1% of frames). It was not the cause of the buzz.
 retrigger guard. [FIXED 2026-07-29]**
 
 `AudioManager.RETRIGGER_MS` (60 ms) throttles how often a sound NAME can start again, which is
@@ -874,6 +876,8 @@ should re-run the probe and specifically re-test the sustained-contact case (hol
 lata) before calling this closed.
 
 **B-120 · A follow-up report ("still very loud during actual play") after B-119 pointed at a second,
+
+> ⚠️ **Superseded by B-121.** The Master limiter is kept as a backstop, but it could not have fixed the report: the clipping was on the **SFX bus, upstream of Master**, and a limiter cannot undo distortion already in the signal reaching it.
 unrelated cause: nothing on the Master bus stops the mix from clipping. [FIXED 2026-07-29, UNTESTED
 AGAINST A REAL BUILD]**
 
@@ -910,6 +914,54 @@ otherwise clip), but "standard and low-risk" is not the same claim as "verified,
 does not claim the latter. Run the smoke gate (`Concurrency_Protocol.md` §8, all six, plus the
 seventh since this touches `AudioManager`) and play an actual 2v2 before marking this closed.
 
+
+**B-121 · The gameplay buzz was digital clipping on the SFX bus. B-119 and B-120 were both wrong. (NEW, FIXED)**
+
+User report after B-120 shipped: *"when game is happening, not in menu, there is a loud buzz or noise
+that seems unnecessary."* B-119 and B-120 were each reasoned out from source without a Godot binary,
+and **neither addressed the actual cause**. This entry supersedes both as the explanation; their
+changes are kept because both are independently correct hygiene, but neither fixed the report.
+
+*Measured, not reasoned.* Three new probes, all runnable:
+
+| Probe | Question it answered | Result |
+|---|---|---|
+| `tools/audio_load_probe.gd` | Is any sound retriggering into a buzzsaw? | **No.** Peak concurrency **4 voices on 2 frames of 1800** (0.1%); nothing retriggers faster than 0.4/sec. B-119's stacking theory does not occur in play. |
+| `tools/audio_mix_probe.gd` | Which bus is actually too loud? | **SFX bus peak +2.0 dBFS — over full scale.** Master read −1.4 dBFS at the same moment. |
+| (same, Music bus) | Is the ambience the buzz? | **No.** Ambience sits **18 dB under SFX**. Ruled out. |
+
+*Root cause, two parts.*
+
+1. **`_TRIM_DB` boosted three sounds above full scale.** `generate_sfx.py` normalises every sound to
+   peak 0.85; `_TRIM_DB` then added gain on top. `lata_impact` at **+1.5 dB is 0.85 × 1.189 = 1.010**
+   — over full scale **on its own, before any summing**. It is also the most frequently played sound
+   in combat, so the loudest, most important sound in the game clipped on every single hit. The
+   comment next to it ("the single most important sound in the game") is exactly what motivated the
+   boost, and boosting an already-normalised sample is what broke it.
+2. **No headroom for summed voices.** Voices sum. Four concurrent is normal in a fight (measured
+   above, and it is what the pool is sized for), and four sounds each peaking at 0.85 exceed 1.0
+   together no matter how well-behaved each is alone.
+
+*Why the Master limiter could not have fixed it.* It sits **downstream** of the SFX bus. By the time
+the signal reaches Master it has already clipped, and no limiter can undo distortion — only prevent
+it. That is also why a check watching Master alone reported a healthy mix throughout.
+
+*Fix.* (a) Every `_TRIM_DB` value is now ≤ 0 — the table makes things quieter relative to a 0 dB
+reference, never louder — and `_trim()` clamps positives as a backstop. (b) New `HEADROOM_DB = −7.0`,
+applied to every voice inside `_trim()`. **Deliberately not bus volume:** `_apply_bus()` overwrites
+the SFX bus volume from the player's slider every time it moves, so static headroom parked there
+would be silently wiped the first time settings loaded. Mix headroom belongs with the mix; bus volume
+belongs to the player. (c) An `AudioEffectLimiter` on **SFX** (ceiling −1.0 dB) as the safety net
+under the headroom, on the bus that actually generates the overload.
+
+*Verified by re-running the same probe on the same match.* **SFX peak +2.0 → −1.0 dBFS, Master
+−1.4 → −3.2 dBFS, no bus clipping.** `tools/audio_probe.gd` still passes 25/25; smoke gate steps 2
+and 3 clean. `audio_mix_probe.gd` now **fails on any bus exceeding full scale**, so this cannot
+silently regress — and it watches every bus, not just Master, which is the specific blind spot that
+let this through.
+
+*Still open:* nobody has heard the result. Clipping is gone as a measurement; whether the mix is
+now too quiet is a listening judgement. `HEADROOM_DB` is the one number to turn.
 **B-111 · Spawn slots were scrambled because `StringName` does not sort alphabetically. [FIXED
 2026-07-29]** ⚠️ **This is the "spawns are still broken" report that survived several sessions.
 Read the whole entry before touching spawn code again.**
