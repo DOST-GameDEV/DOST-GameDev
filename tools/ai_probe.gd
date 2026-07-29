@@ -27,6 +27,24 @@ extends Node3D
 ## is not optional — flips that unit's CameraRig off MOUSE aim, because
 ## character_base.gd reads WASD in the BODY's frame for a mouse-aimed unit
 ## (B-60) and the AI's _move_toward() emits WORLD-space directions.
+##
+## ⚠️⚠️ THE HUMAN-SLOT TAKEOVER IS TEST-ONLY AND IS FLAGGED FOR REMOVAL.
+## 🧑 Human ask, 2026-07-30, verbatim: *"one is controlled by me so it isn't AI
+## fairness... maybe allow option to switch the user with ai as well js for
+## testing ai fairness? flag this."*
+##
+## It exists for exactly one reason: a fairness table that leaves the human's own
+## Single Player seat unpiloted is measuring three bots and one statue, and the
+## numbers it prints are not about AI at all. Nothing in the shipping game may
+## ever depend on it.
+##
+## REMOVAL IS ONE FUNCTION AND ONE CALL SITE. It lives entirely in this file, is
+## reached only from the `fairness` command-line mode, and `tools/` does not
+## ship — so it is already inside the one-way-dependency rule Dev_Plan.md §0.3
+## sets for debug code (debug may call gameplay; gameplay never names debug).
+## Deleting `_take_over_human_slot()` and its call in _ready() leaves nothing
+## behind. Recorded here and in Checklist.md's RUN 8 so it does not have to be
+## re-derived later.
 
 ## Independence mode: how long to sample.
 const SECONDS := 14.0
@@ -178,10 +196,36 @@ func _reassert_scale() -> void:
 
 ## Attach a fourth AIController to whichever Person main.gd left for the human.
 ## See this file's class doc for why a fairness run is meaningless without it.
+## ⚠️⚠️ "HAS A CONTROLLER" IS NOT THE SAME QUESTION AS "IS BEING DRIVEN", AND
+## CONFUSING THE TWO SILENTLY VOIDED A WHOLE FAIRNESS RUN.
+##
+## This used to skip any unit with `ai_controller != null`. That was correct
+## while `main.gd::_start_local_test()` attached controllers only to the three
+## units the human was NOT playing — the human's own seat was the one with a
+## null controller, so the null test found exactly it.
+##
+## Since 2026-07-30 every unit gets a controller and the human's is created
+## DISABLED (`CharacterBase.is_ai_driven()` requires both). The null test
+## therefore matched nothing, this function printed nothing, and the human's seat
+## stood inert for the entire run — while the probe's own "AI units found: 4"
+## line, which counts CONTROLLERS, went on reporting four.
+##
+## The measured result was a fairness table describing a 3v4: every round in
+## which that seat drew the ATTACKER reported `0 throws` and the round was
+## handed to the defence by timeout, which read as a balance finding rather than
+## as a broken harness. Longest still run 58.48 s was the inert unit, not a bot
+## that froze.
+##
+## This is trap 2 from the repo's own method note, exactly: a probe that does not
+## LOOK at the thing you changed passes anyway. So the test is now "is anything
+## actually DRIVING this unit", and the count is asserted out loud below.
 func _take_over_human_slot() -> void:
+	var taken := 0
 	for c in _main.find_children("*", "CharacterBase", true, false):
-		if c.ai_controller != null or not c.is_person:
+		if not c.is_person:
 			continue
+		if c.ai_controller != null and c.ai_controller.is_enabled():
+			continue # genuinely already driven
 		# ⚠️ MOVEMENT, NOT MOUSE. character_base.gd::_physics_process reads WASD
 		# in the body's own frame when the unit is mouse-aimed (B-60), and the
 		# AI writes world-space directions — leave this on MOUSE and the bot
@@ -189,10 +233,33 @@ func _take_over_human_slot() -> void:
 		var rig := c.get_node_or_null("CameraRig") as CameraRig
 		if rig != null:
 			rig.set_aim_source(CameraRig.AimSource.MOVEMENT)
-		var controller := AIController.new()
-		c.add_child(controller)
-		c.ai_controller = controller
+		# ⚠️ AND THE KEYBOARD GUARD HAS TO GO WITH IT. `input_parked` is what the
+		# debug switcher sets on every unit the human is not holding; a parked
+		# unit is deaf to hardware, which is right for a human's abandoned seat
+		# and irrelevant to a bot — but leaving it set on a unit this function
+		# has just handed to the AI is one more way for a "driven" unit to do
+		# nothing.
+		c.input_parked = false
+		if c.ai_controller != null:
+			c.ai_controller.set_enabled(true)
+		else:
+			var controller := AIController.new()
+			c.add_child(controller)
+			c.ai_controller = controller
+		taken += 1
 		print("fairness: took over human slot -> ", c.name)
+	# ⚠️ SAID OUT LOUD, EVERY RUN. Single Player seats exactly one human, so this
+	# is 1 in the normal case and 0 means the takeover found nothing to take —
+	# which is the failure above, and it must never again be silent.
+	print("fairness: human slots taken over: ", taken)
+	var driven := 0
+	for c in _main.find_children("*", "CharacterBase", true, false):
+		if c.ai_controller != null and c.ai_controller.is_enabled():
+			driven += 1
+	print("fairness: units actually DRIVEN by AI: ", driven, " (must be 4)")
+	if driven < 4:
+		push_error("ai_probe: only %d of 4 units are AI-driven — this run does "
+			% driven + "not measure AI fairness and its numbers are void.")
 
 func _wire_fairness_signals() -> void:
 	MatchManager.round_started.connect(_on_round_started)
