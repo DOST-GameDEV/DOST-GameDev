@@ -133,6 +133,59 @@ const PROP_FOAM_DARK: Color = Color("54382a")     ## tsinelas outsole, the dirty
 const PROP_WEBBING: Color = Color("c69a6b")       ## tsinelas Y-strap — tan fabric webbing
 const PROP_SARSI_RED: Color = Color("d8221c")     ## the lata's sail and ball
 
+# --- Menu chrome palette (the front end's wood-and-pennant look) --------------
+#
+# WHY THIS BAND EXISTS. The eight UI tokens above describe a LIGHT interface —
+# `CARD` fill, `INK` text, `PANEL` background. Every front-end screen in the game
+# is the opposite: cream and amber lettering on dark stained wood, with the
+# pennant buttons over a photographic backdrop. Those colours were real and
+# consistent long before this block; they were just retyped as raw literals into
+# `GameSetup.tscn`'s BackButton, its MAP:/MODE: captions, `MainMenu.tscn`'s
+# tagline and `Lobby.tscn`'s ready rows — a dozen `theme_override_*` entries that
+# the header of this file explicitly exists to abolish.
+#
+# So they are named here and registered as type variations below. Nothing about
+# the look changed when they moved; the hexes are the ones already on screen.
+# `HIGHLIGHT` (#f8d028) is deliberately reused rather than duplicated — the wood
+# buttons' hover border was already exactly that value.
+#
+# ⚠️ NOT an environment band. These are Control colours only. `ENV_WOOD` /
+# `ENV_WOOD_DARK` above are the 3D world's timber and are a different, duller
+# pair on purpose — a crate seen at arena distance and a button under the mouse
+# have opposite jobs.
+const WOOD_DEEP: Color = Color("31190b")    ## panel and button fill
+const WOOD_MID: Color = Color("5a2f14")     ## the lit face, on hover
+const WOOD_DARK: Color = Color("1d0e06")    ## pressed, and inset display slots
+const WOOD_EDGE: Color = Color("8b5227")    ## tan border around every wood face
+const CREAM: Color = Color("f5e6c8")        ## body lettering on wood
+const AMBER: Color = Color("ffba00")        ## headings, values, hover lettering
+
+## Cream at reduced alpha, for secondary text on wood — same reasoning as
+## INK_MUTED, from the other end of the value range.
+const CREAM_MUTED: Color = Color(CREAM.r, CREAM.g, CREAM.b, 0.68)
+
+## Sampled from the pennant artwork so a StyleBox-drawn button and a
+## texture-drawn one can sit in the same column without disagreeing about what
+## "the green one" is. `MENU_GREEN` is PLAY's body, `MENU_RED` is QUIT's.
+const MENU_GREEN: Color = Color("21a131")
+const MENU_GREEN_LIT: Color = Color("69e548")
+const MENU_RED: Color = Color("ed2136")
+const MENU_RED_LIT: Color = Color("fa7653")
+
+## Chunkier than `BORDER_WIDTH`: these are cartoon buttons meant to read across a
+## room, and a 3px edge disappears at that distance.
+const WOOD_BORDER_WIDTH: int = 5
+const WOOD_CORNER_RADIUS: int = 12
+## The cartoon drop shadow that makes a flat fill read as a physical thing
+## sitting above the panel rather than painted onto it.
+##
+## ⚠️ `shadow_size` MUST STAY > 0. StyleBoxFlat gates the whole shadow pass on
+## `shadow_size > 0` and ignores `shadow_offset` entirely when it is zero, so the
+## intuitive "size 0, offset 5" spelling of a hard-edged offset slab silently
+## draws nothing at all. Keep the size and let the offset do the displacing.
+const WOOD_SHADOW_SIZE: int = 6
+const WOOD_SHADOW_OFFSET: Vector2 = Vector2(0, 5)
+
 # --- Chrome -------------------------------------------------------------------
 const BORDER_WIDTH: int = 3
 const CORNER_RADIUS: int = 6
@@ -204,6 +257,32 @@ static func card_style(fill: Color, border: Color = INK, accent: Color = Color(0
 		# survives on any Control that takes a StyleBox, with no extra nodes.
 		sb.border_width_left = ACCENT_BAR_WIDTH + BORDER_WIDTH
 		sb.border_color = accent
+	return sb
+
+## A chunky wood face: thick tan edge, generous radius, and a hard drop shadow
+## offset straight down. The front end's counterpart to `card_style`.
+##
+## `sink` is what a press feels like. Rather than shrinking the button — which
+## reflows every sibling in a container and makes a whole menu twitch — the
+## shadow is dropped and the content margins are re-weighted so the label rides
+## down into the well. Same footprint, so nothing around it moves.
+static func wood_style(fill: Color, border: Color = WOOD_EDGE, sink: bool = false) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = fill
+	sb.set_border_width_all(WOOD_BORDER_WIDTH)
+	sb.border_color = border
+	sb.set_corner_radius_all(WOOD_CORNER_RADIUS)
+	sb.content_margin_left = MARGIN + 8
+	sb.content_margin_right = MARGIN + 8
+	sb.content_margin_top = MARGIN - 4
+	sb.content_margin_bottom = MARGIN - 4
+	if sink:
+		sb.content_margin_top += WOOD_SHADOW_OFFSET.y
+		sb.content_margin_bottom -= WOOD_SHADOW_OFFSET.y
+		return sb
+	sb.shadow_color = Color(INK.r, INK.g, INK.b, 0.55)
+	sb.shadow_size = WOOD_SHADOW_SIZE
+	sb.shadow_offset = WOOD_SHADOW_OFFSET
 	return sb
 
 static func _style_button(theme: Theme) -> void:
@@ -353,3 +432,72 @@ static func _register_variations(theme: Theme) -> void:
 	# Translucent INK slab for HUD blocks that sit over the 3D scene.
 	theme.set_type_variation("HudCard", "PanelContainer")
 	theme.set_stylebox("panel", "HudCard", card_style(Color(INK.r, INK.g, INK.b, 0.55), Color(0, 0, 0, 0)))
+
+	_register_menu_variations(theme)
+
+## The front end's wood set — the pause overlay and the tutorial screen, and any
+## screen that draws over a photo backdrop or a live 3D view rather than over
+## PANEL. See the WOOD_* palette block for why these are separate from the
+## light-interface variations above.
+static func _register_menu_variations(theme: Theme) -> void:
+	# Labels ------------------------------------------------------------------
+	for variation in ["MenuDisplay", "MenuHeading", "MenuBody", "MenuCaption", "MenuValue"]:
+		theme.set_type_variation(variation, "Label")
+
+	# Cream body copy, amber for anything that names or numbers something. Both
+	# carry an INK outline: a tutorial page sits over the street backdrop and a
+	# pause card over the live arena, and unoutlined cream vanishes against a
+	# pale facade exactly the way the Hud* set's would.
+	const MENU_SIZES := {
+		"MenuDisplay": 52,
+		"MenuHeading": 34,
+		"MenuBody": 21,
+		"MenuCaption": 16,
+		"MenuValue": 26,
+	}
+	for variation in MENU_SIZES:
+		theme.set_color("font_color", variation, CREAM)
+		theme.set_color("font_outline_color", variation, INK)
+		theme.set_constant("outline_size", variation, 5)
+		theme.set_font_size("font_size", variation, MENU_SIZES[variation])
+	theme.set_color("font_color", "MenuDisplay", AMBER)
+	theme.set_color("font_color", "MenuHeading", AMBER)
+	theme.set_color("font_color", "MenuCaption", CREAM_MUTED)
+
+	# Panels ------------------------------------------------------------------
+	theme.set_type_variation("WoodPanel", "PanelContainer")
+	theme.set_stylebox("panel", "WoodPanel", wood_style(WOOD_DEEP))
+
+	# The inset display slot — the recessed strip the GAME screen shows a map
+	# name in. Reads as carved into the panel rather than sitting on it, so it
+	# takes the pressed fill and drops the shadow.
+	theme.set_type_variation("WoodSlot", "PanelContainer")
+	theme.set_stylebox("panel", "WoodSlot", wood_style(WOOD_DARK, WOOD_EDGE, true))
+
+	# Buttons -----------------------------------------------------------------
+	for variation in ["WoodButton", "WoodPrimaryButton", "WoodDangerButton"]:
+		theme.set_type_variation(variation, "Button")
+
+	_style_wood_button(theme, "WoodButton", WOOD_DEEP, WOOD_MID, WOOD_DARK, CREAM, AMBER)
+	# The one action a screen wants you to take, in PLAY's green.
+	_style_wood_button(theme, "WoodPrimaryButton", MENU_GREEN, MENU_GREEN_LIT, WOOD_DARK, INK, INK)
+	# Leaving, in QUIT's red. Not `DANGER` — that hue is reserved for the downed
+	# and out-of-bounds STATE signal, and a button is not a state.
+	_style_wood_button(theme, "WoodDangerButton", MENU_RED, MENU_RED_LIT, WOOD_DARK, CREAM, INK)
+
+## One wood button's five states, so the three variations above cannot drift
+## apart in which state got which treatment.
+static func _style_wood_button(theme: Theme, variation: String, fill: Color,
+		lit: Color, sunk: Color, ink: Color, lit_ink: Color) -> void:
+	theme.set_font_size("font_size", variation, FONT_SIZE_BUTTON + 6)
+	theme.set_stylebox("normal", variation, wood_style(fill))
+	theme.set_stylebox("hover", variation, wood_style(lit, HIGHLIGHT))
+	theme.set_stylebox("pressed", variation, wood_style(sunk, HIGHLIGHT, true))
+	theme.set_stylebox("focus", variation, wood_style(lit, IMPACT))
+	theme.set_stylebox("disabled", variation, wood_style(WOOD_DARK, WOOD_EDGE, true))
+
+	theme.set_color("font_color", variation, ink)
+	theme.set_color("font_hover_color", variation, lit_ink)
+	theme.set_color("font_pressed_color", variation, AMBER)
+	theme.set_color("font_focus_color", variation, lit_ink)
+	theme.set_color("font_disabled_color", variation, CREAM_MUTED)
