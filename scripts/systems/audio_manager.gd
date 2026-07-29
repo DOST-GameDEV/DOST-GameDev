@@ -154,6 +154,43 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_load_streams()
 	_build_voices()
+	_install_master_limiter()
+
+
+## B-120 — see Handoff.md. `default_bus_layout.tres` has 20 voices (8 UI + 12
+## world) all summing into Master at 0 dB with no ceiling anywhere in the
+## chain. One or two sounds never clips; a real 2v2 fight regularly has half a
+## dozen world voices ringing at once (bump, land, an ability, a lata impact,
+## two characters' footsteps), and several of those are individually mixed
+## close to full scale already (`generate_sfx.py`'s `soft_clip` drive runs as
+## high as 1.9–2.2). Summed with no ceiling, that overs the Master bus and
+## digitally clips — which is what "very loud" during actual play, as opposed
+## to the menu or ambience, actually was.
+##
+## A limiter on Master is the standard fix for exactly this (see Godot's own
+## audio-effects docs: "adding one in the Master bus is always recommended to
+## reduce the effects of clipping") and only engages when the summed signal
+## would otherwise exceed the ceiling — a single sound playing alone is
+## untouched. `AudioEffectLimiter` is marked deprecated in favor of
+## `AudioEffectHardLimiter` as of 4.3, but its properties (ceiling_db,
+## threshold_db) are stable and documented back to 3.0; used here over the
+## replacement because this session has no Godot binary to confirm the newer
+## class's property names against, and a wrong property name silently doing
+## nothing is worse than a working effect on a deprecated (not removed) class.
+func _install_master_limiter() -> void:
+	var master_idx := AudioServer.get_bus_index("Master")
+	if master_idx < 0:
+		push_warning("AudioManager: no 'Master' bus — cannot install the clipping limiter.")
+		return
+	var limiter := AudioEffectLimiter.new()
+	# Ceiling a hair below 0 dBFS rather than at it — the same headroom reason
+	# _apply_bus() below doesn't trust an exact 0.0 either.
+	limiter.ceiling_db = -0.3
+	# 0 dB: only start reducing gain once the mix would actually exceed the
+	# ceiling, so normal single- and double-sound moments pass through
+	# untouched and only real pile-ups (the combat case above) get caught.
+	limiter.threshold_db = 0.0
+	AudioServer.add_bus_effect(master_idx, limiter)
 
 
 ## Loads every entry in SFX_NAMES. A missing file warns once and is then simply

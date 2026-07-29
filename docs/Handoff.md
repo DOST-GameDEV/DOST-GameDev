@@ -873,6 +873,43 @@ run. Whoever picks up the audio listening pass (see the Agent_Prompts.md `code/a
 should re-run the probe and specifically re-test the sustained-contact case (hold a slipper against a
 lata) before calling this closed.
 
+**B-120 · A follow-up report ("still very loud during actual play") after B-119 pointed at a second,
+unrelated cause: nothing on the Master bus stops the mix from clipping. [FIXED 2026-07-29, UNTESTED
+AGAINST A REAL BUILD]**
+
+`default_bus_layout.tres` has three buses, all at 0 dB, no effects on any of them. `AudioManager`
+gives itself 20 voices (`UI_VOICES` 8 + `WORLD_VOICES` 12) specifically so a busy 2v2 fight can have
+several things ringing at once — the class doc's own sizing note says "four units, two of them being
+hit, an ability firing and a slipper landing." Several individual SFX are already mixed close to full
+scale (`generate_sfx.py`'s `soft_clip` drive runs as high as 1.9–2.2 for `ability_bagsak_bomb`). None
+of that is wrong on its own — it's the summed total at Master with nothing capping it that clips.
+B-119's fix stops one sound from stacking copies of *itself*; it does nothing about six *different*
+sounds landing in the same window, which is the normal shape of actual combat rather than an edge
+case.
+
+Considered and rejected: turning down `_TRIM_DB` further, or capping `WORLD_VOICES` lower. Both
+reduce how loud things can THEORETICALLY get, but neither stops a mix that happens to land several
+full-scale sounds at once from clipping — they only make it rarer, and rarer-but-still-possible is
+the wrong target for something a limiter solves outright.
+
+*Fix.* `AudioManager._install_master_limiter()`, called from `_ready()` after the voice pools exist,
+adds an `AudioEffectLimiter` to the Master bus in code (`ceiling_db = -0.3`, `threshold_db = 0.0`) —
+Godot's own audio-effects docs call this "always recommended" on Master for exactly this reason. Done
+in script rather than by hand-editing `default_bus_layout.tres`'s effect block: this session cannot
+load the project in Godot to confirm a hand-authored resource entry parses, and a script-level
+`AudioServer.add_bus_effect()` call is something a `--quit`-only parse check (smoke gate step 2)
+would at least catch if the class name were wrong. `AudioEffectLimiter` (not the newer
+`AudioEffectHardLimiter`) was used because its properties are documented and stable back to 3.0;
+nobody here could check the replacement class's property names against a running 4.7 to be sure they
+still applied.
+
+⚠️ **This is genuinely unverified.** No Godot binary, no audio device, no way to confirm the limiter
+engages, sounds different, or doesn't itself introduce an artifact under real playback. It is a
+standard, low-risk fix (a limiter that never triggers is inaudible; it only acts when the mix would
+otherwise clip), but "standard and low-risk" is not the same claim as "verified," and this entry
+does not claim the latter. Run the smoke gate (`Concurrency_Protocol.md` §8, all six, plus the
+seventh since this touches `AudioManager`) and play an actual 2v2 before marking this closed.
+
 **B-111 · Spawn slots were scrambled because `StringName` does not sort alphabetically. [FIXED
 2026-07-29]** ⚠️ **This is the "spawns are still broken" report that survived several sessions.
 Read the whole entry before touching spawn code again.**
