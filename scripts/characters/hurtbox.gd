@@ -7,6 +7,37 @@ class_name Hurtbox
 
 @export var owner_character: CharacterBase
 
+## Checklist 4.4 — HOW HARD THIS OBJECT IS TO SHOVE.
+##
+## Lives here for exactly the reason `impact_sfx` below does: it is a property
+## of the thing being HIT, not of the thing doing the hitting. A slipper that
+## sends a Person sprawling should barely move a tin can that is half-buried on
+## its mark, and the striker has no business knowing which is which.
+##
+## 1.0 passes the incoming impulse straight through; 0.0 makes this object
+## immovable. Exported so a scene can override it per unit without a second
+## system — nothing sets it today, which is deliberate: one number, one place,
+## until a real playtest asks for more.
+@export_range(0.0, 2.0, 0.05) var knockback_resistance: float = 1.0
+
+## THE RECEIVING END OF THE FACESLOP. hitbox.gd computes the raw impulse from
+## the striker's own motion and hands it here; this decides how much of it this
+## particular body actually takes, and returns what CharacterBase should apply.
+##
+## Kept as a function rather than letting hitbox.gd read `knockback_resistance`
+## itself so the striker never has to know the rule — same contract
+## `impact_sfx()` already establishes, where the struck object owns the answer.
+func absorb_knockback(impulse: Vector3) -> Vector3:
+	if owner_character == null or impulse.is_zero_approx():
+		return Vector3.ZERO
+	# A Guarding Can eats the shove outright, matching
+	# CharacterBase.apply_dent()/apply_stagger(), which already no-op a guarded
+	# hit. Being knocked flying while successfully blocking would read as the
+	# guard having failed.
+	if owner_character.is_guarding():
+		return Vector3.ZERO
+	return impulse * knockback_resistance
+
 ## Checklist 4.1 — WHAT THIS OBJECT SOUNDS LIKE WHEN IT IS STRUCK.
 ##
 ## Lives here rather than in hitbox.gd because it is a property of the thing

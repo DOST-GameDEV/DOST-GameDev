@@ -224,6 +224,39 @@ func movement_speed_scale() -> float:
 func spin_speed_deg() -> float:
 	return _profile().spin_speed_deg
 
+## Read by character_visual.gd alongside spin_speed_deg() — the end-over-end
+## flip, as opposed to the spin about the slipper's own long axis. See
+## ThrowProfile.tumble_speed_deg for why doing only the latter read as flat.
+func tumble_speed_deg() -> float:
+	return _profile().tumble_speed_deg
+
+## THE FACESLOP, STRIKER SIDE. The impulse a hit from this slipper should impart
+## right now, in metres/second, before the struck object's own resistance is
+## applied (that is hurtbox.gd::absorb_knockback's job).
+##
+## Taken from `_flight_velocity` rather than from `_character.velocity`: they
+## agree during flight, but _flight_velocity is the one this file actually
+## integrates, and it is still correct on the exact frame a collision has
+## already zeroed the body's velocity — which is precisely the frame a hit
+## resolves on. Reading the body instead would give a knockback of zero for
+## every square hit, i.e. for every hit that matters most.
+##
+## Zero unless FLYING: a slipper being carried or lying on the floor has no
+## momentum to give, and a hit involving one should fall through to hitbox.gd's
+## ordinary melee shove instead.
+func knockback_impulse(force_downed: bool) -> Vector3:
+	if state != CarryState.FLYING:
+		return Vector3.ZERO
+	var profile := _profile()
+	var flat := Vector3(_flight_velocity.x, 0.0, _flight_velocity.z)
+	if flat.length() < 0.01:
+		return Vector3.ZERO
+	var strength: float = profile.knockback_scale * profile.mass
+	if force_downed:
+		strength *= profile.faceslop_multiplier
+	var lift: float = profile.knockback_lift * (profile.faceslop_multiplier if force_downed else 1.0)
+	return flat.normalized() * flat.length() * strength + Vector3.UP * lift
+
 ## Called from character_base.gd's _physics_process when drives_movement() is
 ## true. Runs on EVERY peer, not just the authority: both branches below are
 ## deterministic given state that is already replicated, so running them locally
@@ -371,20 +404,85 @@ func host_grab(by: CharacterBase) -> void:
 
 ## Launch. `direction` is the thrower's aim (already normalised, world space);
 ## `power` is 0..1 from the charge meter.
-func host_throw(direction: Vector3, power: float) -> void:
+## ⚠️ TAKES THE POINT THE CROSSHAIR IS ON, NOT A DIRECTION. See
+## carrier.gd::_aim_point() for the measurements behind that, and _solve_arc()
+## below for the maths. The parameter used to be a unit direction; anything
+## calling this with one will now aim at a point 1 metre from the world origin.
+func host_throw(target_point: Vector3, power: float) -> void:
 	if not _is_host() or state != CarryState.CARRIED:
 		return
 	var profile := _profile()
-	var aim := direction.normalized()
-	# Tilt the aim upward by the profile's arc. Rotating about the horizontal
-	# axis perpendicular to the aim keeps this correct regardless of where the
-	# thrower is looking, including straight up or down.
+	var speed_now: float = profile.launch_speed * clampf(power, 0.0, 1.0)
+	var aim := _solve_arc(_character.global_position, target_point, speed_now, profile)
+	# ⚠️ THE SIGN HERE WAS INVERTED, AND IT IS WHY EVERY THROW FLEW LOW.
+	# 2026-07-29, user report: "the height when you throw it is still too low."
+	#
+	# This block has always been documented as "tilt the aim UPWARD by the
+	# profile's arc" and it did the exact opposite. `horizontal.cross(UP)` for a
+	# forward aim of (0,0,-1) is (+1,0,0), and rotating about +X by a NEGATIVE
+	# angle drives y negative. Measured against the expression as it stood:
+	#     crosshair level  ->  launch y -0.242   (14 deg BELOW the crosshair)
+	#     crosshair +20    ->  launch y +0.105   (still 14 deg below)
+	#     crosshair -20    ->  launch y -0.559
+	# So every throw left the hand a full `arc_angle_deg` under where the player
+	# was pointing — 28 deg low for Bagsak, whose whole identity is the lob.
+	# Nothing caught it because the arc and the drop compound in the same
+	# direction: it just read as "the throw is weak", which is how it was
+	# reported both times.
+	#
+	# ⚠️ AND THE ARC IS NOW 0.0 ON EVERY SHIPPED PROFILE — see the .tres files.
+	# The request was for the launch to be ALIGNED WITH THE CROSSHAIR, and any
+	# non-zero arc, in either direction, is by definition a hidden offset from
+	# it. The field is kept, and now finally works in the direction it claims,
+	# so a profile can dial a lob back in deliberately.
 	var horizontal := Vector3(aim.x, 0.0, aim.z)
-	if horizontal.length() > 0.01:
+	if horizontal.length() > 0.01 and not is_zero_approx(profile.arc_angle_deg):
 		var axis := horizontal.normalized().cross(Vector3.UP)
-		aim = aim.rotated(axis.normalized(), -deg_to_rad(profile.arc_angle_deg))
-	var speed: float = profile.launch_speed * clampf(power, 0.0, 1.0)
-	_broadcast_flying(_character.global_position, aim.normalized() * speed)
+		aim = aim.rotated(axis.normalized(), deg_to_rad(profile.arc_angle_deg))
+	_broadcast_flying(_character.global_position, aim.normalized() * speed_now)
+
+## THE LAUNCH ANGLE THAT ACTUALLY PASSES THROUGH `target`.
+##
+## ⚠️ THIS, NOT THE LAUNCH DIRECTION, IS WHAT "ALIGNED WITH THE CROSSHAIR"
+## MEANS. Pointing the initial velocity at the crosshair is not the same thing
+## and does not look like it: the slipper leaves the HAND (y 0.89) rather than
+## the eye (y 1.35), and gravity then bends it away from the sight line by an
+## amount that grows with range. Measured with the launch merely parallel to the
+## aim, from the 6.0 throwing line: a target 7.04 m out landed 1.70 m SHORT and
+## one 3.38 m out landed 1.47 m LONG — the two only ever agreed at a single
+## distance, which is exactly what "the height is too low" describes.
+##
+## Standard ballistic solution for a fixed speed. With horizontal range d,
+## height difference h and gravity g:
+##     tan(theta) = (v^2 +/- sqrt(v^4 - g*(g*d^2 + 2*h*v^2))) / (g*d)
+## The MINUS root is the flat, direct throw and the plus root is the lob over
+## the top; a slipper wants the flat one, and taking it also means the solved
+## angle stays close to where the player is already pointing.
+##
+## `g` is the profile's own effective gravity, so a heavy Bakya solves a steeper
+## angle than a floaty Havaianas for the same target — which is the profiles
+## doing their job rather than fighting the aim.
+func _solve_arc(origin: Vector3, target: Vector3, speed: float, profile: ThrowProfile) -> Vector3:
+	var to_target := target - origin
+	var flat := Vector3(to_target.x, 0.0, to_target.z)
+	var distance := flat.length()
+	# Straight up, straight down, or on top of us: no arc to solve, just throw
+	# along the line. Also guards the division below.
+	if distance < 0.05 or speed < 0.01:
+		return to_target.normalized() if to_target.length() > 0.01 else Vector3.FORWARD
+	var gravity: float = CharacterBase.GRAVITY * profile.gravity_scale
+	var v2 := speed * speed
+	var discriminant := v2 * v2 - gravity * (gravity * distance * distance + 2.0 * to_target.y * v2)
+	if discriminant < 0.0:
+		# ⚠️ OUT OF RANGE — no launch angle at this speed reaches that point, so
+		# there is nothing to solve and the honest thing is to throw along the
+		# player's own line and let it fall short. Deliberately NOT the
+		# maximum-range 45 degrees: aiming at a distant wall would then fire a
+		# lob straight up, which is a far stranger thing to have happen than a
+		# throw that visibly does not get there.
+		return to_target.normalized()
+	var tangent := (v2 - sqrt(discriminant)) / (gravity * distance)
+	return (flat.normalized() + Vector3.UP * tangent).normalized()
 
 func host_land() -> void:
 	if not _is_host() or state != CarryState.FLYING:
@@ -405,6 +503,7 @@ func reset_for_new_round() -> void:
 	_flight_velocity = Vector3.ZERO
 	_flight_time = 0.0
 	_thrower_ignore_left = 0.0
+	_character.clear_hit_memory()
 	if carrier != null and is_instance_valid(carrier):
 		_character.remove_collision_exception_with(carrier)
 		_watch_carrier_state(carrier, false)
@@ -495,6 +594,8 @@ func _rpc_set_carried(carrier_path: NodePath) -> void:
 	# While in a hand the slipper is part of the carrier: it must not shove its
 	# own teammate around, and it must not be independently hittable.
 	_set_physics_enabled(false)
+	# Picked up — whatever the last throw hit is no longer relevant.
+	_character.clear_hit_memory()
 	_notify_carrier(who, self)
 	AudioManager.play_at("grab", _character.global_position) # 4.1
 	_set_state(CarryState.CARRIED)
@@ -521,6 +622,10 @@ func _rpc_set_flying(origin: Vector3, velocity: Vector3) -> void:
 	_flight_time = 0.0
 	_thrower_ignore_left = THROWER_IGNORE_TIME
 	_bounces_left = MAX_BOUNCES
+	# ⚠️ A NEW THROW IS A NEW OFFENSIVE EVENT. Clearing here is what makes the
+	# rule "once per throw" rather than "once, ever" — the same opponent must
+	# be hittable again by the next throw. See CharacterBase._hit_memory.
+	_character.clear_hit_memory()
 	# Solid again the instant it leaves the hand — it has to be able to bounce
 	# off walls and, above all, hit the lata.
 	_set_physics_enabled(true)
@@ -565,6 +670,8 @@ func _rpc_set_loose(where: Vector3) -> void:
 	_character.velocity = Vector3.ZERO
 	_flight_velocity = Vector3.ZERO
 	_clear_flight_hitbox()
+	# Came to rest — see _rpc_set_flying's note; this is the other end of it.
+	_character.clear_hit_memory()
 	if carrier != null and is_instance_valid(carrier):
 		_character.remove_collision_exception_with(carrier)
 		_notify_carrier(carrier, null)
