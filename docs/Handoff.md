@@ -962,6 +962,46 @@ let this through.
 
 *Still open:* nobody has heard the result. Clipping is gone as a measurement; whether the mix is
 now too quiet is a listening judgement. `HEADROOM_DB` is the one number to turn.
+
+**B-122 · A recovery chime fired on every stagger for the rest of the round, after any knockdown. (NEW, FIXED)**
+
+Second half of the same "unnecessary noise during gameplay" report as B-121, and a genuinely
+separate bug — B-121 was clipping (a mix fault), this is a wrong trigger (a logic fault). Found
+because B-121's fix measurably removed the clipping and the report persisted.
+
+*Why the first probe missed it.* `audio_load_probe.gd` measured a real AI-driven match and reported
+nothing wrong — but in that run **no unit ever entered DOWNED** (`lata_impact` fired once in 1800
+frames). It measured the throw loop and never touched the stagger/knockdown/self-right path, which
+is most of what a human generates in a fight. A probe that exercises only what the AI happens to do
+is not a probe of the game.
+
+*Cause.* `CharacterBase._on_state_changed_audio()`'s NORMAL branch decided "did this unit just get
+back UP?" by testing `_downed_time_left > 0.0`. But `self_right()` clears `_downed_self_rightable`
+and deliberately does **not** clear `_downed_time_left` — recovering early leaves the remainder of
+the 2 s window sitting there, permanently nonzero for the rest of the round. So after any knockdown
+that was recovered from, every subsequent `STAGGERED -> NORMAL` transition passed that guard and
+fired a 450 ms metallic chime. Staggers are bumps, bumps happen constantly, and the chime has no
+visible cause — which is what "a noise that seems unnecessary" describes.
+
+*Measured, with `tools/audio_combat_probe.gd` (new).* It drives the transitions directly rather than
+waiting for the AI to produce them:
+
+| Phase | Before | After |
+|---|---|---|
+| three staggers, clean unit | no recovery sound | no recovery sound |
+| knockdown + early self-right | `reset_channel_complete` x1 | `reset_channel_complete` x1 |
+| three IDENTICAL staggers, after the knockdown | **`reset_channel_complete` x2** | **none** |
+
+*Fix.* A dedicated `_audio_prev_state` field, recorded at the end of the audio handler, so the NORMAL
+branch tests the actual transition (`DOWNED -> NORMAL`) instead of inferring it. Kept separate from
+`state` itself: nothing in gameplay needs a previous-state field, and adding one to the real state
+machine would be a second source of truth to get out of step with. `reset_for_new_round()` resets it
+before its own `state_changed.emit()`, or a unit that ended a round DOWNED would chime at the start
+of every following round.
+
+*The general lesson, and it is the one worth keeping:* **a timer that outlives the state it describes
+cannot stand in for that state.** The guard was written to avoid adding a field, and the field was
+the correct answer.
 **B-111 · Spawn slots were scrambled because `StringName` does not sort alphabetically. [FIXED
 2026-07-29]** ⚠️ **This is the "spawns are still broken" report that survived several sessions.
 Read the whole entry before touching spawn code again.**

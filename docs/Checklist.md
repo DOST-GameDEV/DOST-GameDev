@@ -755,6 +755,16 @@ touch map scenes.
         the ambience sits 14 dB under SFX** (it was never the problem — that
         was checked and ruled out). The probe now fails on any bus going over,
         so this cannot silently regress. Still `[~]`: measured, not yet heard.
+      - **B-122, 2026-07-29 — a second, separate cause of the same report.**
+        After B-121 measurably removed the clipping, the noise was still there.
+        `_on_state_changed_audio()` decided "did this unit just get back up?"
+        from `_downed_time_left > 0.0`, but `self_right()` never clears that
+        timer — so after ANY knockdown, every later stagger recovery fired a
+        450 ms chime for the rest of the round. Fixed with a real
+        `_audio_prev_state` field. Found by `tools/audio_combat_probe.gd`
+        (new), which drives the stagger/knockdown path directly — the earlier
+        probe missed it because in an AI-only match **nothing ever went
+        DOWNED**. See `Handoff.md` B-122.
 - [x] **4.1a · Jump — every unit, Person and Prop.** 🎨 Design — **playtest 0.4 request.**
       Did not exist: zero occurrences of "jump" in `project.godot` or
       `character_base.gd`. Added `jump_p1..p4` (P1 Space, P2 Numpad-0, P3 RShift,
