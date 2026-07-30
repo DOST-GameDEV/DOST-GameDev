@@ -3242,15 +3242,16 @@ lookahead. That is the balance clause, and it is a property of the arc, not of t
 - **Leg 1 — the lob beats the taya: PASS.** 100% vs 0%, against a bar of ≥ 40%.
 - **Leg 2 — the dodge beats the lob: PASS.** 50% dodging vs 100% parked.
 - **Leg 3 — the flat throw beats the dodge: FAIL, and the cause is not the lob.**
-  `_act_can_evade` sidesteps LATERALLY with `CAN_EVADE_STEP` 1.2 m against a ~0.52 m
-  overlap band. A lateral step of twice the band is a complete answer to something
-  arriving flat and a poor one to something arriving nearly vertically — you cannot
-  sidestep out from under a drop. So the dodge beats the flat throw *more* thoroughly
-  than it beats the lob, which inverts the intended triangle.
   ⚠️ **DO NOT REVERT THE LOB ON THIS ROW.** Nothing in it is a property of the arc.
-  **Handover to ⚖️ BALANCE:** have the can answer `Carriable.flight_is_lob` (replicated to
-  every peer for exactly this) differently from a flat throw — step under the arc, or
-  spend the extra warning on Guard, which blocks outright.
+  ⚠️⚠️ **THE CAUSE FIRST WRITTEN HERE WAS WRONG, AND THE `-- band` BLOCK BELOW MEASURED
+  IT.** This row used to read: *"`_act_can_evade` sidesteps LATERALLY with
+  `CAN_EVADE_STEP` 1.2 m against a ~0.52 m overlap band. A lateral step of twice the band
+  is … a poor [answer] to something arriving nearly vertically — you cannot sidestep out
+  from under a drop."* The band is **0.45 m** measured, the step aims **2.7× it**, and the
+  can is observed completing a full-size sidestep against a lob. **The step was never too
+  small.** Quoted rather than deleted because it is the reasoned diagnosis the measurement
+  replaced — and because widening `CAN_EVADE_STEP` was the fix it would have bought.
+  The real cause and the corrected handover are two blocks down.
 
 ⚠️ **A STEER CEILING CAME WITH IT AND IS NOT COSMETIC.** `steer_strength` is an
 acceleration, so authority is strength × flight time, and the lob multiplies flight time by
@@ -3286,6 +3287,81 @@ versus 0.29 s of retrieval — **under a second either way, so this is a feel ca
 balance one.** 🧑 Left at the shipped values and asked rather than guessed. If more life is
 wanted, **0.45 / 1 bounce** is the row to try: the complaint was about `MAX_BOUNCES = 2`
 chaining into a ragdoll, not about the damping.
+
+#### R-06 leg 3 · MEASURED, AND THE HANDOVER IS THE OPPOSITE OF THE ONE ABOVE, 2026-07-30 — 🥊 PHYS. `phys_probe -- band`
+
+**The can steps out of the way and then comes back before the lob lands. The sidestep is
+the right size and it is not being HELD.** Leg 3's original diagnosis — a lateral step too
+small for a vertical drop — is refuted on its own numbers.
+
+Why it needed measuring at all: the diagnosis rested on "`CAN_EVADE_STEP` 1.2 m against a
+~0.52 m band", and **the 0.52 was measured nowhere.** It is near `ai_controller.gd`'s
+arithmetic for a different quantity (hurtbox 0.17 + `throw_flick`'s hit_radius 0.30 = 0.47)
+and neither matches the 0.45 capsule radius in `CharacterBase.tscn`. Three numbers, none of
+them the band. And the argument on top of them predicted the opposite of leg 3 twice over:
+a lob's flight is 0.86–1.10 s against a flat throw's 0.32, and `CAN_EVADE_LOOKAHEAD` caps
+the warning at 0.6 s for both — so the can gets **more** dodging time against a lob and
+still gets hit more.
+
+**PHASE 1 — THE BAND.** Can PARKED at a fixed lateral offset; the throw aimed at the
+**MARK**, never at where the can actually is, because that is what a sidestep is — the arc
+is committed before the can moves.
+
+| throw | contact out to | none from | band half-width |
+|---|---|---|---|
+| flat | 0.30 m | 0.45 m | **0.30–0.45 m** |
+| LOB | 0.45 m | 0.60 m | **0.45–0.60 m** |
+
+Geometry **read off the live nodes, not restated**: hurtbox world r = **0.170**, hit_radius
+**0.300**, sum **0.47** — which is exactly where contact stops. So the closest-approach
+column and the contact column are two independent measurements of one band and they agree.
+
+⚠️ **`CAN_EVADE_STEP` AIMS 2.7× THE LOB'S BAND.** The step is not too small. The lob's band
+*is* 0.15 m wider than the flat throw's — a descending slipper sweeps a longer footprint
+through the capsule, a real effect — and 0.15 m against a 1.2 m step is not a cause.
+
+**PHASE 2 — THE DODGE ACTUALLY ACHIEVED.** Can starts ON the mark, controller LIVE, 10
+throws each:
+
+| throw | contact | peak perp | **at the closest frame** | flight |
+|---|---|---|---|---|
+| flat | **0%** | 0.82 m | **0.72 m** | 0.44 s |
+| LOB | **80%** | 0.84 m | **0.31 m** | 1.40 s |
+
+**The can performs the same sidestep against both throws** — 0.82 vs 0.84 m of peak
+displacement — and against the lob it is back within **0.31 m** of the mark by the frame the
+slipper is closest. It steps out and walks home during the lob's long tail. Peak and
+at-closest are sampled **on one frame** for exactly this reason: peak alone reads a dodge
+that happens too EARLY as a dodge that worked.
+
+⚠️ **PHASE 1 PREDICTS PHASE 2 IN BOTH ROWS** — 0.72 m clears a 0.30 m band so the flat
+throw misses; 0.31 m sits inside a 0.45 m band so the lob connects. Two independent
+measurements agreeing is what makes either one usable.
+
+**HANDOVER TO ⚖️ BALANCE — `ai_controller.gd`, not this lane's file:**
+
+1. ⚠️ **DO NOT WIDEN `CAN_EVADE_STEP`.** It is already 2.7× the band. Widening it moves the
+   peak, and the peak is not the problem.
+2. **The sidestep has to be HELD until the threat is gone.** `_act_evade` re-derives its
+   target from the can's *current* position every tick (`character.global_position + side *
+   CAN_EVADE_STEP`), so the step is re-aimed rather than completed, and hold-the-circle
+   reclaims it as soon as the tree stops choosing evade. Against a 0.32 s flat throw there
+   is no time for that to matter; across a 1.10 s lob there is.
+3. **`Carriable.flight_is_lob` is the flag to branch on, and the PHYS side is done** — it is
+   set on every peer from the launch broadcast (`_rpc_set_flying`), so the can can answer a
+   lob without re-deriving it from the trajectory. Verified present, replicated, and
+   meaningful only while FLYING.
+4. Spending the lob's extra warning on **Guard** remains the other option and is untouched
+   by this measurement — Guard blocks dents outright, and the probe counts contact from
+   `landed_on`, which fires regardless.
+5. ⚠️ **The function is `_act_evade`, not `_act_can_evade`.** Both the leg-3 note and
+   `_lane_verdict`'s printed diagnosis named a function that does not exist; corrected in
+   the probe.
+
+**`AIController.ATTACKER_LOB_OVERHOLD` → `Carrier.LOB_OVERHOLD_TIME`: the PHYS half is
+already in place.** `LOB_OVERHOLD_TIME` is public and its own doc says the AI must read it
+rather than restate 0.20. One `const` line in `ai_controller.gd` closes it; the values agree
+today by coincidence and should agree by construction.
 
 #### R-18(b) · THE LUCKY FALL ON TWO REAL PEERS — [x] PASSES. THE FINDING WAS THE INSTRUMENT, 2026-07-30 — 🥊 PHYS
 

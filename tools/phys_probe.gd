@@ -1052,28 +1052,36 @@ func _lane_verdict(r: Dictionary) -> void:
 		# THE ITEM'S OWN REVERT CLAUSE IS CONDITIONED ON THE MECHANIC HAVING FAILED.
 		#
 		# The mechanic passes its two stated bars. What fails is the third leg, and the
-		# cause is not the lob's ballistics — it is the SHAPE of the can's evasion.
-		# `AIController._act_can_evade` sidesteps LATERALLY (its own note: "it dodges
-		# sideways, not backwards"), and CAN_EVADE_STEP is 1.2 m against an overlap band
-		# of ~0.52 m. A lateral step of twice the band is a complete answer to something
-		# arriving flat and a poor answer to something arriving nearly vertically — you
-		# cannot sidestep out from under a drop. So the dodge beats the FLAT throw more
-		# thoroughly than it beats the lob, which inverts the intended triangle.
+		# cause is not the lob's ballistics — it is the can's evasion.
 		#
-		# That is one behaviour in one file, and it is not this lane's: the fix is for the
-		# can to answer a lob differently from a flat throw (step toward the thrower and
-		# under the arc, or spend the extra warning on Guard, which blocks outright).
-		# `Carriable.flight_is_lob` is replicated to every peer precisely so that
-		# decision can be made without re-deriving it from the trajectory.
+		# ⚠️⚠️ AND THIS COMMENT USED TO NAME THE WRONG CAUSE, WHICH IS WHY `-- band` EXISTS.
+		# It said `_act_can_evade` (a function that does not exist — it is `_act_evade`)
+		# "sidesteps LATERALLY … CAN_EVADE_STEP is 1.2 m against an overlap band of ~0.52 m
+		# … you cannot sidestep out from under a drop." The 1.2 is the AI's constant; the
+		# 0.52 was measured NOWHERE, and the sentence is a physics argument, which is the
+		# one kind of diagnosis this project does not accept.
+		#
+		# MEASURED with `-- band`: the lob's band is 0.45 m, so CAN_EVADE_STEP aims 2.7x it
+		# and IS BIG ENOUGH. The can reaches a peak of 0.84 m against a lob — a full-size
+		# sidestep, the same as the 0.82 m it manages against a flat throw — and is back
+		# within 0.31 m of the mark by the frame the slipper is closest. IT STEPS OUT AND
+		# COMES HOME during the lob's 1.40 s tail. The step is the right size and is not
+		# HELD.
+		#
+		# That is one behaviour in one file, and it is not this lane's. `flight_is_lob` is
+		# still the flag to branch on, and it is replicated to every peer precisely so the
+		# decision needs no re-derivation from the trajectory — but the fix is holding the
+		# sidestep, NOT widening it.
 		print("")
 		print("  ⚠️ DIAGNOSIS — this is the CAN'S DODGE, not the lob's ballistics.")
-		print("     The lob passes legs 1 and 2. Leg 3 fails because")
-		print("     AIController._act_can_evade sidesteps LATERALLY (CAN_EVADE_STEP 1.2 m")
-		print("     against a ~0.52 m overlap band), which is a perfect answer to a flat")
-		print("     throw and a poor one to a vertical drop. Handover for the BALANCE lane:")
-		print("     have the can answer `Carriable.flight_is_lob` differently — step under")
-		print("     the arc, or spend the extra warning on Guard. Do NOT revert the lob on")
-		print("     this row alone; nothing here is a property of the arc.")
+		print("     The lob passes legs 1 and 2. Do NOT revert it on this row alone;")
+		print("     nothing here is a property of the arc.")
+		print("     RUN `-- band` FOR THE CAUSE. It is measured there, and it is NOT the")
+		print("     one this line used to state: the band is 0.45 m, CAN_EVADE_STEP aims")
+		print("     2.7x it, and the can completes a full-size sidestep and is back within")
+		print("     0.31 m of the mark by the frame the lob arrives. The step is the right")
+		print("     SIZE and is not HELD. Handover: `Carriable.flight_is_lob` is replicated")
+		print("     for exactly this. Widening CAN_EVADE_STEP is the wrong fix.")
 	print("  (for reference, blocked lane + dodging can: lob %.0f%% — both defences at once)"
 		% [lob_block_dodge * 100.0])
 
