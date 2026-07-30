@@ -86,6 +86,7 @@ func _process(delta: float) -> void:
 		_refresh_accum = 0.0
 		refresh()
 	_update_guard_dash_meter()
+	_update_bump_meter()
 
 ## Public so a late-joining client can force an immediate refresh (see
 ## main.gd::_sync_state_to_late_joiner, B-29) instead of waiting up to
@@ -122,9 +123,11 @@ func refresh() -> void:
 	detail_label.add_theme_color_override("font_color", accent)
 	# Q-6: Persons have no Guard/Dash (their assist slot is Tag/Throw) — an
 	# always-empty bar would read as a bug, not as "not applicable to you".
-	guard_dash_row.visible = not _character.is_person
-	if guard_dash_row.visible:
-		guard_dash_key_label.text = _guard_dash_key_label(_character)
+	# ⚠️ EVERY UNIT NOW, not Props only. The row used to be the Guard/Dash meter, which
+	# only a Prop had; it is the STAMINA bar since 2026-07-30 and stamina is universal.
+	# See `_update_guard_dash_meter`.
+	guard_dash_row.visible = true
+	guard_dash_key_label.text = _guard_dash_key_label(_character)
 	# 0.1: role flips every round (team_is_can_side), so which of the two rows
 	# below applies has to be re-derived here too, same trap as guard_dash_row
 	# above — B-42/B-80(c) both hit "resolved once in _ready()".
@@ -137,14 +140,22 @@ func refresh() -> void:
 	_set_carrier(_character.get_node_or_null("Carrier") as Carrier)
 	_update_row_visibility()
 
-## One bar with two meanings, picked by is_can: GUARD (stamina, drains as
-## held) or DASH (cooldown, refills to ready). Updated every frame — unlike
-## refresh() above, a meter that only moves every REFRESH_INTERVAL would
-## visibly stutter.
+## ⚠️⚠️ THIS BAR IS STAMINA NOW, FOR ALL FOUR UNITS. Guard was removed on 2026-07-30
+## (`CharacterBase.is_guarding()`'s own note) and `get_guard_stamina_ratio()` went with
+## it, so the bar it drove was about to become a bar with nothing behind it.
+##
+## It reads `get_stamina_ratio()` instead, and the change is a strict widening: the row
+## used to be drawn for PROPS ONLY (`is_person` early-returned), because only a Prop had
+## a Guard or a Dash. Every unit sprints, so every unit now has something to show here —
+## which is also the readout that makes the lower base speed legible rather than just
+## slower. See `CharacterBase.SPEED`.
+##
+## Updated every frame rather than every REFRESH_INTERVAL: a meter that moves nine times
+## a second visibly stutters, and this one is watched while running away.
 func _update_guard_dash_meter() -> void:
-	if _character == null or not is_instance_valid(_character) or _character.is_person:
+	if _character == null or not is_instance_valid(_character):
 		return
-	var ratio: float = _character.get_guard_stamina_ratio() if _character.is_can else _character.get_dash_cooldown_ratio()
+	var ratio: float = _character.get_stamina_ratio()
 	guard_dash_bar.value = ratio * guard_dash_bar.max_value
 	var is_ready := ratio >= 1.0
 	if is_ready and not _was_ready:
@@ -167,10 +178,11 @@ func _bar_style(fill: Color) -> StyleBoxFlat:
 	sb.set_corner_radius_all(UiTheme.CORNER_RADIUS)
 	return sb
 
-## Reads the InputMap directly so a Settings rebind of guard_dash_p<N> keeps
-## this label truthful without the card needing to know about Settings at all.
+## Reads the InputMap directly so a Settings rebind keeps this label truthful without
+## the card needing to know about Settings at all. Now labels the SPRINT key, because
+## that is what the bar beside it measures — see `_update_guard_dash_meter`.
 func _guard_dash_key_label(character: CharacterBase) -> String:
-	return _action_key_label(character, "guard_dash")
+	return "SPRINT [%s]" % _action_key_label(character, "sprint")
 
 ## General form of the above — same InputMap read, any base action name.
 ## character.action_name() already applies the per-player _p<N> suffix
@@ -238,9 +250,46 @@ func _on_reset_channel_changed(progress: float) -> void:
 ## redundant and is the difference between the card fitting in the space a
 ## Prop's single Guard/Dash row already uses and needing more of it.
 func _update_row_visibility() -> void:
-	hold_label.visible = _is_attacker_person and not _charging
-	charge_row.visible = _is_attacker_person and _charging
+	hold_label.visible = _is_attacker_person and not _charging and not _bump_charging
+	# ⚠️ THE CHARGE ROW IS SHARED BY THE THROW AND THE BUMP METER, and that is the same
+	# decision the INPUT makes: one button, and what is in your hands decides which half
+	# of it you get (`CharacterBase._step_bump_meter`). Two separate bars for two
+	# mutually-exclusive readings of one key would be two things to learn, and the card
+	# has no room for a second row anyway.
+	charge_row.visible = (_is_attacker_person and _charging) or _bump_charging
 	reset_channel_row.visible = _is_defender_person and _channeling
+
+## ---------------------------------------------------------------------------
+## THE BUMP METER, drawn on the same bar as the throw charge. `Design.md` §4.
+##
+## ⚠️ POLLED, NOT SIGNAL-DRIVEN, unlike the throw charge beside it. The throw lives on
+## `Carrier`, which already had signals this card connects to; the bump meter lives on
+## `CharacterBase` itself, and adding a signal there purely for one HUD row would put a
+## UI concern in the file whose whole discipline is not knowing what carrying or
+## rendering is. A poll is also self-healing across the role swap that re-resolves
+## `_character` every round — the same reasoning `character_visual.gd` records for
+## polling the charge pose rather than listening for it.
+var _bump_charging: bool = false
+
+func _update_bump_meter() -> void:
+	if _character == null or not is_instance_valid(_character) or not _character.is_person:
+		_bump_charging = false
+		return
+	var ratio := _character.bump_charge_ratio()
+	var was := _bump_charging
+	_bump_charging = ratio >= 0.0
+	if _bump_charging:
+		charge_bar.value = ratio * charge_bar.max_value
+		_set_charge_shader_param(ratio)
+		charge_key_label.text = "BUMP [%s]" % _action_key_label(_character, "special_ability")
+	elif was:
+		_set_charge_shader_param(0.0)
+		# Handed back to the throw's own label, so an attacker who puts a slipper down
+		# and picks it up again does not keep reading BUMP over a throw charge.
+		if _is_attacker_person:
+			charge_key_label.text = "[%s]" % _action_key_label(_character, "special_ability")
+	if was != _bump_charging:
+		_update_row_visibility()
 
 ## Returns the locally-controlled character resolved by the last refresh cycle.
 ## Use this from sibling HUD nodes rather than duplicating the scan logic —

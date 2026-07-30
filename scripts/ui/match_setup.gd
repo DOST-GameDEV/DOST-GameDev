@@ -262,6 +262,9 @@ func _ready() -> void:
 		[difficulty_row, difficulty_prev_button, difficulty_next_button])
 	var seat_targets: Array[Control] = [fighter_row, character_button]
 	seat_targets.append_array(seat_buttons)
+	_build_spectate_button()
+	if _spectate_button != null:
+		seat_targets.append(_spectate_button)
 	_wire_detail_focus(DetailTopic.SEAT, seat_targets)
 
 	primary_button.pressed.connect(_on_primary_pressed)
@@ -883,7 +886,60 @@ func _claim_seat(peer_id: int, seat: int) -> bool:
 	_refresh_start_button()
 	return true
 
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE FIFTH SEAT, AND IT IS BUILT IN CODE RATHER THAN ADDED TO `MatchSetup.tscn`.
+## `Design.md` §9.
+##
+## Spectating is seat -1: no team, no role, no character. It belongs beside the four
+## seat rows because it is the same question those rows ask — *which of these am I* —
+## and putting it anywhere else on the screen would make it read as a mode switch that
+## discards the map and difficulty the player just chose.
+##
+## Built here because `MatchSetup.tscn` is a scene file with `%`-unique seat buttons and
+## a hand-tuned layout; a fifth authored row means editing a shared scene for a control
+## whose entire state is one bool. It is styled off the same `wood_style()` the rest of
+## the screen uses, so it cannot drift from the four buttons it sits under.
+##
+## ⚠️ IT DOES NOT CLEAR THE SEAT. A player who spectates keeps whichever seat they had
+## highlighted, so un-spectating puts them straight back rather than into "first free" —
+## and in a networked lobby the host is still refereeing exclusivity for a chair nobody
+## is sitting in, which `_claim_seat` already handles because a spectator simply never
+## claims one.
+var _spectate_button: Button = null
+
+func _build_spectate_button() -> void:
+	if seat_buttons.is_empty():
+		return
+	var parent := seat_buttons[0].get_parent() as Container
+	if parent == null:
+		return
+	_spectate_button = Button.new()
+	_spectate_button.name = "SpectateButton"
+	_spectate_button.toggle_mode = true
+	_spectate_button.button_pressed = GameLaunch.spectator
+	_spectate_button.focus_mode = Control.FOCUS_ALL
+	parent.add_child(_spectate_button)
+	_spectate_button.pressed.connect(_on_spectate_pressed)
+	# 4.1: a plain Button carries no audio of its own — same wiring the four seat rows
+	# get directly above.
+	_spectate_button.mouse_entered.connect(func() -> void: AudioManager.play("ui_hover"))
+	_refresh_spectate_button()
+
+func _on_spectate_pressed() -> void:
+	AudioManager.play("ui_click")
+	GameLaunch.spectator = _spectate_button.button_pressed
+	_refresh_spectate_button()
+	_refresh_seats()
+	_refresh_detail()
+
+func _refresh_spectate_button() -> void:
+	if _spectate_button == null or not is_instance_valid(_spectate_button):
+		return
+	_spectate_button.text = ("SPECTATING  ·  free camera, no character"
+		if GameLaunch.spectator else "SPECTATE INSTEAD")
+
 func _refresh_seats() -> void:
+	_refresh_spectate_button()
 	for seat in range(seat_buttons.size()):
 		var button := seat_buttons[seat]
 		button.text = _seat_row_text(seat)
@@ -893,7 +949,11 @@ func _refresh_seats() -> void:
 		# one row the player most needs to find — their own — was the only one
 		# that read as unavailable. Your seat stays live (pressing it is a no-op,
 		# handled in `_on_seat_pressed`) and is marked in the text instead.
-		button.disabled = _occupant_of(seat) not in [-1, multiplayer.get_unique_id()]
+		# ⚠️ AND A SPECTATOR'S SEAT ROWS ARE ALL DEAD. Leaving them live would let a
+		# player highlight a chair while the button underneath says they are watching —
+		# two controls asserting different things about the same choice, which is the
+		# class of confusion the seat rows' own `disabled` note is already about.
+		button.disabled = GameLaunch.spectator 			or _occupant_of(seat) not in [-1, multiplayer.get_unique_id()]
 	_refresh_detail()
 
 ## A small, human-sized number for a peer — 1 for the host, then 2, 3, 4 in peer

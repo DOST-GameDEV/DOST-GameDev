@@ -14,13 +14,21 @@ class_name AbilityUtils
 ## just want a fixed-duration pulse can keep ignoring the return value; the timer
 ## below still frees it either way.
 
+## ⚠️ `stagger_duration` ARRIVED WITH THE SHOCKWAVES (2026-07-30) AND DEFAULTS TO -1.0,
+## NOT TO `BUMP_STAGGER_TIME`. Every pre-existing caller — Spin Guard, Bagsak Bomb, the
+## slipper's in-flight hitbox — wants whatever `hitbox.gd` already exports (0.25), and
+## -1 means "do not write it, leave the export alone". Defaulting to the number itself
+## would have looked identical today and silently frozen those callers at 0.25 the day
+## `BUMP_STAGGER_TIME` is retuned. Can-Smash asks for 1.6 and Ground Smash for 1.4, and
+## those are the only two that pass anything.
 static func spawn_pulse_hitbox(
 	character: CharacterBase,
 	radius: float,
 	duration: float,
 	forces_downed: bool = false,
 	local_offset: Vector3 = Vector3.ZERO,
-	follow_character: bool = false
+	follow_character: bool = false,
+	stagger_duration: float = -1.0
 ) -> Area3D:
 	if character == null or not is_instance_valid(character):
 		return null
@@ -30,6 +38,8 @@ static func spawn_pulse_hitbox(
 	area.set("owner_character", character)
 	area.set("forces_downed", forces_downed)
 	area.set("requires_bump_window", false) # specials bypass the press-to-bump gate
+	if stagger_duration >= 0.0:
+		area.set("stagger_duration", stagger_duration)
 	area.collision_layer = 0
 	area.collision_mask = 2 # matches Hurtbox layer
 	# B-43: these already self-free via the timer below, but not if a round

@@ -157,6 +157,22 @@ var seat_tokens: Dictionary = {}
 ## `seat_tokens` above, which has no meaning without a NetworkManager session.
 var solo_seat: int = 0
 
+## ⚠️ SEAT -1 IS THE SPECTATOR SEAT, AND IT IS A SEAT RATHER THAN A MODE ON PURPOSE.
+## `Design.md` §9.
+##
+## Everything downstream of seating already handles "this peer holds no seat": an
+## unclaimed slot is filled with a negative-sentinel AI by
+## `main.gd::_fill_empty_slots_with_placeholders`, which has existed since before
+## spectating did. So a spectator is not a new branch through the spawn path — it is the
+## ABSENCE of one, plus a camera. That is why this is one bool and four guards rather
+## than a mode with its own flow.
+##
+## A PREFERENCE, not a one-shot handoff, so it is NOT cleared by `reset()` — same
+## lifetime and same reasoning as `selected_map` and the three character picks. A player
+## who spectated one match and wants to spectate the next should not have to say so
+## again; the setup screen is where they change their mind.
+var spectator: bool = false
+
 ## Cleared when a NEW session is being set up, not by `reset()` — `main.gd` calls
 ## `reset()` inside its own `_ready()`, after reading `pending_action` but BEFORE
 ## spawning anyone, so clearing seating there would wipe the assignment the setup

@@ -63,16 +63,22 @@ var kill_plane: KillPlane = null
 @onready var pause_layer: PauseLayer = $PauseLayer
 
 const CHARACTER_SCENE: PackedScene = preload("res://scenes/characters/CharacterBase.tscn")
-## Every Person — networked or local — gets its own Tag/Throw ability
-## instance, `.duplicate()`d from this one preloaded Resource rather than
-## shared directly, since AbilityBase.tick()/is_ready() carry per-instance
-## cooldown state (_time_since_use, _used_this_round) on the Resource itself;
-## two Persons sharing the same instance would incorrectly share a cooldown.
-## Same trap applies to roster Prop abilities (Quick Stand, etc.) once THEIR
-## networked-spawn assignment gets built — today only the local flow's
-## TeamAProp has one wired directly in Main.tscn, since it's the only
-## character using that particular resource instance.
-const PERSON_ACTION_ABILITY: AbilityBase = preload("res://scripts/abilities/resources/person_action.tres")
+## ⚠️⚠️ A PERSON CARRIES NO `ability` AT ALL SINCE 2026-07-30, AND THAT IS THE TAG BEING
+## GONE RATHER THAN AN OVERSIGHT.
+##
+## `PERSON_ACTION_ABILITY` used to be preloaded here and duplicated onto every Person on
+## both spawn paths. The ability it pointed at was the Tag — the defender's round-winning
+## tap-out — and the whole of it was deleted with `person_action.gd` and its `.tres`
+## (`Design.md` §1, `hitbox.gd`'s round-win branch).
+##
+## What a Person presses `special_ability` for now is decided entirely by what is in
+## their hands, and neither half is an `AbilityBase`:
+##   * holding a tsinelas -> the charged throw, `carrier.gd`
+##   * empty-handed       -> the charged bump meter, `character_base.gd`
+##
+## `character_base.gd` guards every ability call with `if ability:`, so a null slot is
+## already a supported state — it was the Person's own state before Session 8 built the
+## Tag. The duplication rule below still governs every PROP ability and is unchanged.
 ## B-76: every networked and local-test Prop used to get Quick Stand
 ## regardless of which side of the round it was playing. Quick Stand has no
 ## get_throw_profile(), so a Prop on the offence side threw with no identity
@@ -88,7 +94,8 @@ const PERSON_ACTION_ABILITY: AbilityBase = preload("res://scripts/abilities/reso
 ## (_reset_world) — is_can flips every round, so a Prop's ability has to be
 ## re-picked every round or it goes stale exactly one round after spawn, which
 ## is the same "resolved once, wrong from round 2" trap as B-42/B-80(c).
-## `.duplicate()` at every call site per PERSON_ACTION_ABILITY doc.
+## `.duplicate()` at every call site — an AbilityBase carries per-instance cooldown
+## state on the Resource itself, so two Props sharing one instance share a cooldown.
 const CAN_ABILITY: AbilityBase = preload("res://scripts/abilities/resources/quick_stand.tres")
 ## Two of the three Tsinelas identities, picked one per team for the biggest
 ## contrast a 2-Prop match can show: Bakya Bash is the heavy knockdown
@@ -494,7 +501,7 @@ func _ready() -> void:
 ## Session 9: local single-PC/split-keyboard flow, now spawning the real
 ## 4-unit Person+Prop structure instead of the old 1v1 Can/Tsinelas smoke
 ## test. TeamA's Person (P2) needs its own Tag/Throw instance same as any
-## networked Person — see PERSON_ACTION_ABILITY doc. TeamB's Person is a
+## networked Person — see the note where PERSON_ACTION_ABILITY was. TeamB's Person is a
 ## local-test dummy (unbound input, see Main.tscn/project.godot) but still
 ## gets its own duplicated instance too, rather than sharing TeamA Person's:
 ## AbilityBase.tick() runs every physics frame regardless of whether the
@@ -510,8 +517,11 @@ func _start_local_test() -> void:
 	team_a_person.team = 0
 	team_b_prop.team = 1
 	team_b_person.team = 1
-	team_a_person.ability = PERSON_ACTION_ABILITY.duplicate()
-	team_b_person.ability = PERSON_ACTION_ABILITY.duplicate()
+	# No Person ability — see the note where PERSON_ACTION_ABILITY used to be. Cleared
+	# explicitly rather than left alone, because Main.tscn's four units are AUTHORED and
+	# an older scene file may still have a resource sitting in the slot.
+	team_a_person.ability = null
+	team_b_person.ability = null
 	# The CHARACTER panel's picks go to the unit the human is actually going to
 	# play — the seat they chose (10.5), not always Team A's Person. The other
 	# three are deliberately left at -1 and keep the signed-off defaults: the
@@ -550,6 +560,15 @@ func _start_local_test() -> void:
 	# path. _reset_world() re-picks this every round; this is just the round-1
 	# value so there's no null/wrong-ability window before the first
 	# begin_next_round() below runs it.
+	#
+	# ⚠️ THE ROLE LOOP DIRECTLY BELOW MUST RUN BEFORE `_prop_ability_for`, WHICH READS
+	# `is_can`. Both were previously left at the scene's export defaults until
+	# `_reset_world()` ran at the first round start, and that is the waiting-screen
+	# phasing bug — see the note on `_place_at_spawn`'s loop further down.
+	for character in _local_roster:
+		var team_is_can_side: bool = (character.team == 0) == MatchManager.team_a_is_can
+		character.team_is_can_side = team_is_can_side
+		character.is_can = team_is_can_side and not character.is_person
 	team_a_prop.ability = _prop_ability_for(team_a_prop).duplicate()
 	team_b_prop.ability = _prop_ability_for(team_b_prop).duplicate()
 	# ⚠️⚠️ B-145, THE SOLO HALF — 🧑 *"the models we pick in single player dont
@@ -579,6 +598,32 @@ func _start_local_test() -> void:
 	# visible and wrong: the Can not on the base circle, the Attacker not
 	# facing the Can/Taya, etc. Placing everyone at their real role spawn
 	# up front, the same way _reset_world() does every round, fixes it.
+	# ⚠️⚠️ THE WAITING-SCREEN PHASING FIX, AND THE CAUSE IS ROLES, NOT PHYSICS.
+	# Human report, 2026-07-30: *"objects are phasing through each other on the waiting
+	# screen."*
+	#
+	# The obvious reading is a collision or a broadphase-flush problem, and it is not:
+	# `_place_at_spawn` already calls `begin_spawn_settle()` (B-100) and the four bodies
+	# are on layer 1 masking layer 1, so they collide correctly. **They are phasing
+	# because two of them are standing in exactly the same place.**
+	#
+	# `is_can` and `team_is_can_side` are `@export`s on `CharacterBase.tscn`, so BOTH
+	# authored Props load as `is_can = true` and BOTH authored Persons as
+	# `team_is_can_side = true`. `_role_slot()` maps those to SLOT_CAN and SLOT_TAYA — one
+	# spawn point each — so Team A's Prop and Team B's Prop are placed on the SAME marker,
+	# and so are the two Persons. Two capsules born interpenetrating do not "collide",
+	# they depenetrate, and depenetration of a perfectly-coincident pair has no direction
+	# to resolve along: they sit inside one another and slide through each other for the
+	# whole window.
+	#
+	# It went unnoticed for as long as it did because `_reset_world()` assigns the real
+	# roles and re-places everybody the instant the round starts — so the moment anyone
+	# pressed READY it corrected itself, and the only time it is ever visible is the
+	# free-roam window added on 2026-07-28, which is exactly where it was reported.
+	#
+	# Fixed by giving round 1 its real roles up front, from the same
+	# `MatchManager.team_a_is_can` that `_reset_world` reads, rather than trusting the
+	# scene's export defaults. Four distinct roles, four distinct markers.
 	for character in _local_roster:
 		_place_at_spawn(character, _role_slot(character.is_can, character.is_person, character.team_is_can_side))
 	_wire_downed_flash(team_a_prop)
@@ -614,6 +659,11 @@ func _start_local_test() -> void:
 	# consequence (2 units answering one keypress, 3 after two Tabs).
 	for character in _local_roster:
 		_attach_ai(character, character != human)
+		# Follow targets for the spectator's `Tab`. Single Player builds its four units
+		# from the scene rather than through `_build_networked_character`, so the group
+		# has to be joined here as well — one line, in both places, beats a scan that has
+		# to know which units are real.
+		character.add_to_group("spectatable")
 	# Item 13: no authority concept in local test, unlike networked play,
 	# where each rig can activate itself from is_multiplayer_authority(). One
 	# rig has to be picked explicitly.
@@ -631,9 +681,20 @@ func _start_local_test() -> void:
 	# session where the player chose another seat snaps p1 back to Team A's
 	# Person. Debug-only path, left alone deliberately: that file is the harness,
 	# not the game, and 5.5 removes the overlay from the shipping build anyway.
-	var default_rig := human.get_node("CameraRig") as CameraRig
-	default_rig.set_active(true)
-	default_rig.set_aim_source(CameraRig.AimSource.MOUSE)
+	# ⚠️ A SPECTATOR ACTIVATES NO RIG AT ALL. `_attach_ai` above already gave every unit
+	# a controller (the human's is created DISABLED); re-enabling the human's is what
+	# turns a four-unit Single Player match into something worth watching, and skipping
+	# the rig is what stops the camera being welded inside a Person's head. See
+	# `_enter_spectator_mode`.
+	if GameLaunch.spectator:
+		if human.ai_controller != null:
+			human.ai_controller.set_enabled(true)
+		human.input_parked = true
+		_enter_spectator_mode()
+	else:
+		var default_rig := human.get_node("CameraRig") as CameraRig
+		default_rig.set_active(true)
+		default_rig.set_aim_source(CameraRig.AimSource.MOUSE)
 	# 2026-07-28: begin_next_round() is deliberately NOT called here any more —
 	# see _awaiting_local_ready's own doc. Everyone is already spawned at their
 	# role position, but the round (and confinement, which is gated on
@@ -680,6 +741,34 @@ func _give_human_player_one(human: CharacterBase) -> void:
 			character.player_id = human.player_id
 			break
 	human.player_id = 1
+
+## ---------------------------------------------------------------------------
+## ⚠️ SPECTATOR MODE, ENTRY POINT. `Design.md` §9. Called from exactly two places — the
+## Single Player branch above, and `_spawn_player` when the LOCAL peer identified itself
+## as a spectator — and it is deliberately the only thing either of them does
+## differently. There is no spectator flow: there is the ordinary flow with a spawn
+## skipped and a camera added.
+##
+## ⚠️ ADDED TO THIS SCENE, NOT TO `Main.tscn`. The node has no authored content — it is a
+## `Node3D` that builds its own `Camera3D` in `_ready()` — so putting it in the scene
+## file would mean a camera that exists, and is `current`, for every player who is NOT
+## spectating. `Main.tscn` is also a shared-lock file and this needs no lock.
+##
+## Idempotent: a second call while a spectator already exists is a no-op rather than a
+## second camera fighting the first for `current`.
+var _spectator: SpectatorCamera = null
+
+func _enter_spectator_mode() -> void:
+	if _spectator != null and is_instance_valid(_spectator):
+		return
+	_spectator = SpectatorCamera.new()
+	_spectator.name = "Spectator"
+	add_child(_spectator)
+	# The YOU card, the crosshair and the charge meters all describe a character this
+	# player does not have. `you_card.get_local_character()` would return null and most
+	# of the HUD would simply draw nothing, but "mostly blank UI" reads as broken rather
+	# than as deliberate — so the whole gameplay layer goes, and the legend replaces it.
+	hud.enter_spectator_mode(SpectatorCamera.controls_text())
 
 ## 2026-07-28 — the other half of the pre-round free-roam window. Pressing
 ## ready_up while waiting simply calls begin_next_round(); MatchManager's own
@@ -730,8 +819,12 @@ func _enter_net_ready_phase() -> void:
 ##
 ## Floored at 1 so a host whose peer list has not populated yet still needs its
 ## own press rather than starting instantly on an empty count.
+## ⚠️ SPECTATORS ARE NOT COUNTED. They hold no seat and own no character, so they have
+## nothing to ready — counting them would hang the gate forever on a press nobody can
+## make, which is the same deadlock `_on_player_disconnected` already has to unwind for
+## a peer that leaves mid-vote. See `NetworkManager.playing_peer_count()`.
 func _expected_ready_count() -> int:
-	return maxi(1, NetworkManager.connected_peer_ids.size())
+	return NetworkManager.playing_peer_count()
 
 ## Any peer -> host: "I am ready." `call_remote`, because the host's own press
 ## routes here through `rpc_id(1)` on itself... which Godot delivers locally with
@@ -745,6 +838,16 @@ func _rpc_declare_ready() -> void:
 	var sender := multiplayer.get_remote_sender_id()
 	if sender == 0:
 		sender = multiplayer.get_unique_id() # our own press, delivered locally
+	# ⚠️ A SPECTATOR'S PRESS DOES NOT COUNT, and it has to be dropped HERE rather than
+	# simply excluded from `_expected_ready_count()`. With one player and one spectator,
+	# expected is 1 — so a spectator who presses R first would satisfy the gate on their
+	# own and start the match without the person actually playing it. The count and the
+	# quorum have to agree about who is in the electorate.
+	#
+	# The HOST is exempt even when spectating: somebody has to be able to start a match,
+	# and it is the only peer that can. Same carve-out `playing_peer_count()` documents.
+	if NetworkManager.is_spectator(sender) and sender != multiplayer.get_unique_id():
+		return
 	_net_ready_peers[sender] = true
 	var ready_count: int = _net_ready_peers.size()
 	var expected := _expected_ready_count()
@@ -776,6 +879,29 @@ func _rpc_begin_ready_countdown() -> void:
 	if _counting_down:
 		return
 	_awaiting_net_ready = false
+	# ⚠️⚠️ THE LAST CHANCE TO GET EVERY PICK ONTO EVERY UNIT, AND IT IS THE ONE MOMENT
+	# THAT IS GUARANTEED TO BE AFTER ALL OF THEM HAVE ARRIVED.
+	#
+	# Human report, 2026-07-30: *"the character settings (Lata and Slippers) do not
+	# update in actual play — no matter what is picked, the default loads."*
+	#
+	# Every individual link in the chain is correct and has been fixed once already:
+	# `_rpc_identify` carries the picks, `_build_networked_character` reads them,
+	# `_apply_known_picks` re-applies a pick that lands late, `_refresh_ai_prop_picks`
+	# lends a human's picks to their AI teammate's Prop, and `character_visual.gd`'s
+	# cache key includes the skin index so a redraw is not skipped. What none of them
+	# guarantees is ORDER: a character is built when its peer connects, and a pick is
+	# known when that peer's identify packet lands, and those two events race for every
+	# peer except the host — so on any given run some units are drawn from a pick and
+	# some from the -1 sentinel, which is exactly "sometimes it works" reported as
+	# "it never works".
+	#
+	# The ready gate is the fix because it is the only point in the flow where every peer
+	# has connected, every peer has identified, and no round has started. One sweep here
+	# is worth another five conditional re-applications scattered along the join path.
+	if NetworkManager.is_host():
+		_refresh_ai_prop_picks()
+		_rpc_sync_picks.rpc(_picks_table())
 	_run_ready_countdown()
 
 ## 2026-07-28 — "add a 3 2 1 timer before each match starts too." Runs once,
@@ -1217,6 +1343,19 @@ func _spawn_player(peer_id: int) -> void:
 	if token == "":
 		push_warning("main.gd: _spawn_player(%d) called with no registered token; skipping." % peer_id)
 		return
+	# ⚠️ A SPECTATOR IS NOT SEATED AT ALL. Marked as spawned first, deliberately, so a
+	# later `_try_late_join` cannot come back for the same peer and seat it anyway — the
+	# dictionary means "this peer has been dealt with", not "this peer has a body".
+	#
+	# The seat it would have taken is left empty and is filled by
+	# `_fill_empty_slots_with_placeholders`, the path that has always filled an unfilled
+	# slot. That is the whole implementation: a spectator is the ABSENCE of a spawn, not
+	# a second kind of one. See `GameLaunch.spectator`.
+	if NetworkManager.is_spectator(peer_id):
+		_spawned_peer_ids[peer_id] = true
+		if peer_id == multiplayer.get_unique_id():
+			_enter_spectator_mode()
+		return
 	_spawned_peer_ids[peer_id] = true
 	# B-21, superseded by 4.3/B-65: was keyed by peer_id, which meant a
 	# rejoin (new peer_id, same human) landed in the next free slot instead
@@ -1608,10 +1747,9 @@ func _build_networked_character(data: Dictionary) -> Node:
 			if inherited_slipper >= 0:
 				character.slipper_index = inherited_slipper
 	if data["is_person"]:
-		# Session 8: Person's Tag/Throw, replacing the previously-null `ability`
-		# for Person (see PersonAction doc). .duplicate() per PERSON_ACTION_ABILITY
-		# doc above — don't share cooldown state across the two Persons in a match.
-		character.ability = PERSON_ACTION_ABILITY.duplicate()
+		# A Person has no ability resource — the throw and the bump meter are both
+		# built in, not plugged in. See the note where PERSON_ACTION_ABILITY was.
+		character.ability = null
 	else:
 		# B-76: the class ability depends on which side of the round this Prop
 		# is playing — see _prop_ability_for() doc.
@@ -1678,6 +1816,11 @@ func _build_networked_character(data: Dictionary) -> Node:
 		# per-player). Guard on is_can here since the local player might be
 		# controlling their team's Person this match, not its Prop.
 		_wire_downed_flash.call_deferred(character)
+	# The spectator's `Tab` cycles this group. Added here, on the one function every
+	# networked character is built by, rather than scanned for at press time — a scan
+	# would also find the local-test dummies that are still in the tree for the first few
+	# frames of a `--join=` session (`you_card.gd` documents that exact hazard).
+	character.add_to_group("spectatable")
 	return character
 
 ## Fires on every peer identically (host emits locally, clients receive it via
@@ -1995,6 +2138,16 @@ func _on_return_to_menu_pressed() -> void:
 	# (Godot doesn't auto-unpause across change_scene_to_file).
 	get_tree().paused = false
 	if NetworkManager.is_networked():
+		# ⚠️ ANNOUNCE BEFORE CLOSING, AND `await` IT. Human report: quitting politely
+		# stranded every client for ~5 s, because a closed socket and a silent one are
+		# the same thing to ENet and both cost `ENET_TIMEOUT_MIN`. The announcement is
+		# what tells them; the await is what lets the packet actually leave before the
+		# socket goes. See `NetworkManager.announce_host_leaving()`.
+		#
+		# A CLIENT quitting needs none of this — the host learns about it from
+		# `peer_disconnected`, which fires on a clean close immediately.
+		if NetworkManager.is_host():
+			await NetworkManager.announce_host_leaving()
 		NetworkManager.disconnect_network()
 	# B-14: leaving a match should reset the same as starting a fresh one does
 	# (see main_menu.gd's _on_local_pressed()/_on_host_pressed()/_on_join_pressed(),

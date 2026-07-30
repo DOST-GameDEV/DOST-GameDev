@@ -5,11 +5,32 @@ class_name CharacterBase
 ## Prop (see `is_person`/`is_can` below). A team is 2 players: 1 Person + 1 Prop,
 ## not two Props. Each of the 6 roster Props = this scene + a different
 ## AbilityBase resource plugged into `ability`; every Person shares one
-## Tag/Throw ability (see person_action.gd).
+## Prop kit (`character_roster.gd`); a Person carries no `ability` at all since the
+## 2026-07-30 overhaul deleted the Tag — see `main.gd` and `Design.md` §1.
 ## Stock/Downed round-win logic is NOT here on purpose (see Section 3 of the GDD) —
 ## it lives in its own decoupled system so Option A vs Option B can be swapped freely.
 
-const SPEED: float = 6.0
+## ⚠️⚠️ 6.0 -> 4.6, 2026-07-30, AND EVERY OTHER NUMBER IN THIS FILE IS NOW BUILT ON
+## THE LOWER BASE. Human report: *"the base speeds are currently too fast because
+## holding Shift allows infinite running."*
+##
+## The report is half right in a way worth recording: there was no sprint at all —
+## Shift was `guard_dash`. What was actually true is that 6.0 IS the sprint. A Person
+## crossed the whole 12-unit throwing lane in two seconds at a walk, which is why no
+## commitment in the game (the old tag's wind-up, a charge, a reset channel) could be
+## punished: you were always already somewhere else.
+##
+## So the fix is the one the report asks for, arrived at from the other end. 4.6 is the
+## walk. 4.6 * SPRINT_SCALE = 6.67 is the sprint, slightly ABOVE the old base, and it
+## costs stamina — so the old top speed is still reachable, it is just no longer free
+## and no longer permanent. See STAMINA_MAX.
+##
+## ⚠️ THIS IS READ BY EVERY DERIVED NUMBER, NOT JUST BY MOVEMENT. `FRICTION` decides how
+## far a knockback carries (v^2 / 60, see apply_knockback) and the bump meter's 1.00 m
+## target is solved off that; `Carriable.CRAWL_SPEED_SCALE` multiplies this; every AI
+## approach time in `ai_controller.gd` is measured against it. Retuning this is a
+## whole-game change, not a movement tweak.
+const SPEED: float = 4.6
 ## B-12: deceleration when there's no movement input, in units/sec² — separate
 ## from SPEED because the old code reused SPEED itself as a per-tick
 ## move_toward() step with no `delta`, which was an effectively-instant stop
@@ -33,6 +54,27 @@ const JUMP_VELOCITY: float = 5.8
 ## test is not enough on a map paved with abutting collision shapes.
 const LAND_SFX_MIN_SPEED: float = 2.0
 const BUMP_STAGGER_TIME: float = 0.25
+
+## ---------------------------------------------------------------------------
+## STAMINA — the sprint, and the reason the walk got slower. `Design.md` §2.
+##
+## ⚠️ ONE METER, EVERY UNIT, INCLUDING THE OBJECTS. A lata and a tsinelas sprint too.
+## That is deliberate and it is half of "the objects are players, not props": a can
+## that can only ever trundle cannot get itself back to its own circle before the
+## countdown in `round_manager.gd` runs out, and the countdown is the defence's whole
+## job now.
+##
+## ⚠️ THE FLOOR IS WHAT MAKES IT A DECISION. Without STAMINA_SPRINT_FLOOR a player
+## feathers the key — sprint one frame, release one frame — and averages most of the
+## sprint bonus for a fraction of the drain, because the regen delay never elapses and
+## the bar never actually empties. With it, running the bar down costs you the next
+## 0.86 s of sprint outright, so committing to a chase is a real spend.
+const SPRINT_SCALE: float = 1.45
+const STAMINA_MAX: float = 4.0
+const STAMINA_DRAIN_RATE: float = 1.0
+const STAMINA_REGEN_RATE: float = 0.7
+const STAMINA_REGEN_DELAY: float = 0.8
+const STAMINA_SPRINT_FLOOR: float = 0.6
 ## GDD Section 3, Option B: the window to self-right before a Downed Can
 ## auto-seals (see the DOWNED case in _physics_process). Kept here (not in
 ## RoundManager) because it's shared by both Option A and Option B, and by
@@ -59,6 +101,24 @@ const BUMP_STAGGER_TIME: float = 0.25
 ## fairness log measures AI-vs-AI only, and these are the numbers it should be
 ## re-run against first.
 const DOWNED_SELF_RIGHT_WINDOW: float = 1.25
+## ⚠️⚠️ THE HARD CEILING ON BEING DOWN. Human instruction, 2026-07-30: *"the can model
+## should always attempt to stay upright so it legitimately cannot be downed for more
+## than 2 seconds."*
+##
+## Taken literally, and it retires the auto-seal. Until now an unrecovered knockdown
+## SEALED the lata and lost the round outright, so "downed" was a death sentence with a
+## 1.25 s appeal window. Now `DOWNED_SELF_RIGHT_WINDOW` is the window in which the
+## player can press bump to get up EARLY, and this is the point at which the can gets up
+## whether they pressed anything or not.
+##
+## ⚠️ REMOVING THE SEAL IS NOT A NERF TO THE OFFENCE, IT IS A RELOCATION. What used to
+## win a round — knocking the lata over and it staying over — now wins a round by
+## putting the lata OUTSIDE ITS CIRCLE (`RoundManager`'s out-of-circle countdown) and
+## keeping it there. A knockdown is worth exactly the ~1 m of displacement it causes
+## (see CAN_KNOCKBACK_SCALE) plus the two seconds the lata cannot drive itself home.
+## That is a better trade than a coin flip on a self-right window, and it is why the
+## lucky fall matters less than it did.
+const DOWNED_MAX_TIME: float = 2.0
 ## THE LUCKY FALL. Human request, 2026-07-29: *"make it easier to fall, but
 ## sometimes make it so that it can land on its head/back and this isnt a point
 ## for the enemy."*
@@ -152,31 +212,104 @@ const BUMP_ACTIVE_TIME: float = 0.15
 ## Persons and Slippers never accumulate dents. 3 per user decision (Session 7).
 const MAX_DENTS: int = 3
 
-## B-16: GDD Section 4 shared basic — "Guard/Dash (Cans block, Tsinelas
-## dash-evade)" — for Props only; Persons don't get this (their assist/support
-## slot is Tag/Throw, see person_action.gd). Which half a Prop gets depends on
-## `is_can` this round, same as every other Can/Tsinelas-side split.
-## Guard: hold to block. A stamina meter (not an unlimited hold) so it can't be
-## held forever — drains while held, regenerates while released.
-## ⚠️ TRIMMED 3.0/0.6 -> 2.0/0.45 alongside the four levers on
-## DOWNED_SELF_RIGHT_WINDOW, and for the same reason: Guard blocks a dent and a
-## stagger OUTRIGHT (see apply_dent/apply_stagger), so three seconds of hold with
-## a fast refill let a lata simply hold the button through the only window an
-## attacker gets per throw. Two seconds is still more than one throw's flight time
-## — a read, not a reflex — and the slower regen means holding it early costs you
-## the next one.
-const GUARD_MAX_STAMINA: float = 2.0
-const GUARD_DRAIN_RATE: float = 1.0
-const GUARD_REGEN_RATE: float = 0.45
-## Dash: a quick evasive burst in the current facing direction, on a short
-## cooldown rather than a stamina meter — it's one instant action, not a hold.
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ GUARD IS GONE. 2026-07-30, and it is one of the three deletions the whole
+## overhaul rests on (`Design.md` §1).
+##
+## B-16 gave a lata a hold-to-block that nullified a dent and a stagger OUTRIGHT, and
+## `hurtbox.gd::absorb_knockback` zeroed the shove on top of it. An attacker gets one
+## window per throw — the flight — and a button that deletes that window is not a read,
+## it is a veto. It was already trimmed once (3.0/0.6 -> 2.0/0.45) for exactly this and
+## the trim did not change what it WAS.
+##
+## The lata's defensive kit is two commitments now instead of one hold: **Can-Dash**
+## (below, one use per round) to leave where the throw is going, and **Can-Smash**
+## (`can_smash.gd`) to make the attacker not want to be there. Both are spends. Neither
+## can be held.
+##
+## ⚠️ `is_guarding()` SURVIVES AND ALWAYS RETURNS FALSE — see its own note. Three files
+## outside this one ask the question and none of them is this lane's to rewrite.
+##
+## Dash: a quick evasive burst in the current facing direction. A tsinelas keeps the
+## cooldown version (it is the Flick Dash identity and it is fine); a lata gets ONE, and
+## the difference is the point — a defence that can reposition every 2.5 s is a defence
+## the offence cannot ever set up against.
 const DASH_SPEED: float = 14.0
+## The lata's own dash. Faster and shorter than the tsinelas', because it is spent once
+## and has to be worth having spent: 16.0 * 0.18 = 2.88 m of travel, which clears the
+## 0.45 m band a lob lands in (`carriable.gd::_solve_lob`) six times over.
+const CAN_DASH_SPEED: float = 16.0
+const CAN_DASH_DURATION: float = 0.18
 ## Ceilings on knockback (see apply_knockback for why these exist at all and why
 ## they are anchored to DASH_SPEED and JUMP_VELOCITY rather than picked).
 const MAX_KNOCKBACK_SPEED: float = 16.0
 const MAX_KNOCKBACK_LIFT: float = 7.0
 const DASH_DURATION: float = 0.15
 const DASH_COOLDOWN: float = 2.5
+
+## ---------------------------------------------------------------------------
+## THE DEFENDER'S BUMP METER — the tag's replacement. `Design.md` §4.
+##
+## ⚠️ IT IS ON `special_ability` (LEFT-CLICK), THE SAME BUTTON THE ATTACKER CHARGES A
+## THROW WITH, AND THAT SYMMETRY IS THE DESIGN. A Person holding a tsinelas charges a
+## throw (`carrier.gd`); a Person with empty hands charges a bump. One verb — *hold to
+## commit, release to spend* — and which one you get is decided by what is in your
+## hands, exactly as `character_base.gd` already decided between Throw and Tag.
+##
+## ⚠️ AND IT IS NOT DEFENCE-ONLY. The taya is the obvious user, but an ATTACKER whose
+## slipper is on the ground is mid-retrieval-scramble with nothing to do, which is the
+## complaint `person_action.gd`'s header raised about the deleted Tag and answered
+## badly. Both sides get the meter; only the defender usually wants the full charge.
+##
+## 1.35 s is 1.5x `Carrier.CHARGE_FULL_TIME` (0.9), per the human's instruction. It is
+## the longest commitment in the game and it is meant to be visible from across the
+## arena — `_broadcast_bump_charge` puts the wind-up on every peer, which is the thing
+## three separate bugs on this project were about.
+const BUMP_CHARGE_FULL_TIME: float = 1.35
+## Below this a release is a TAP, not a partial charge. Without it there is no light
+## bump at all — every click would be a 0.02-second charge and the meter would read as
+## input lag rather than as two different moves.
+const BUMP_TAP_TIME: float = 0.18
+## ⚠️ THE TWO SPEEDS ARE SOLVED FROM THE STOPPING DISTANCE, NOT PICKED. A body with no
+## input on it decays at `FRICTION` (30.0), so a shove of v travels v^2 / (2*30) metres:
+##
+##     v = 3.00  ->  0.15 m   the light bump. A nudge that breaks a stance.
+##     v = 7.75  ->  1.00 m   the power bump. The human asked for exactly one metre.
+##
+## Same arithmetic `Carriable.TOUCH_KNOCKBACK_SPEED` is sized by, and for the same
+## reason: the first guess at that one was out by an order of magnitude because it was
+## reasoning about the wrong quantity.
+const BUMP_LIGHT_SPEED: float = 3.0
+const BUMP_LIGHT_LIFT: float = 0.6
+const BUMP_POWER_SPEED: float = 7.75
+const BUMP_POWER_LIFT: float = 2.2
+## What a FULL bump does beyond moving you: the stagger, and the slow that follows it.
+## The stagger is what drops the carried tsinelas (`carriable.gd::_on_carrier_state_
+## changed` fires on any state that is not NORMAL), so "drops their slipper" needs no
+## code of its own — it is what a stagger already means.
+const BUMP_POWER_STAGGER: float = 0.9
+const BUMP_POWER_PENALTY_TIME: float = 1.2
+const BUMP_POWER_PENALTY_SPEED: float = 0.55
+## A light bump deliberately applies NO stagger. If it did, the tap would drop the
+## attacker's slipper too, and the whole distinction the human asked for — "a simple
+## click performs a minor bump with minimal knockback" — would collapse into "every
+## click is the good one".
+const BUMP_LIGHT_COOLDOWN: float = 0.45
+const BUMP_POWER_COOLDOWN: float = 0.80
+
+## ---------------------------------------------------------------------------
+## ⚠️ HOW MUCH HARDER THE LATA IS TO SHOVE THAN EVERYTHING ELSE — inverted.
+##
+## Human instruction: *"the can must be highly susceptible to knockback (knocked back
+## ~1 metre instead of falling in place)."*
+##
+## Applied in `apply_knockback()`, to the lata only. A full-charge `throw_default` hit
+## delivers roughly 3.5 m/s of flat impulse after `hurtbox.gd::absorb_knockback`, which
+## on its own is 0.20 m of travel — a hit that visibly did nothing. x2.6 makes it 9.1
+## m/s, i.e. **1.38 m**, which after TATAG on a sturdy lata (grit 5, /1.14) is still a
+## metre. The lata is now the single most mobile object in a collision in the game, and
+## that is the point: a knockdown is worth the displacement, not the knockdown.
+const CAN_KNOCKBACK_SCALE: float = 2.6
 
 ## 4.5: hitstop — the one piece of the Q-8 hit-feedback set (flash, particles,
 ## camera shake) that never landed. A brief, near-total slowdown is what turns
@@ -235,7 +368,7 @@ enum State { NORMAL, STAGGERED, DOWNED, SEALED }
 ## Session 8 (throw/tag mechanic): mirrors the Prop's `is_can` for a Person, who
 ## doesn't have an `is_can` of its own (a Person's `is_can` is always false — see
 ## above) but still needs to know which side its team is on this round to pick
-## Tag (defense) vs Throw (offense) — see person_action.gd. true = team is on the
+## the bump meter (defence) vs the throw (offence). true = team is on the
 ## Can/defense side, false = team is on the Slipper/offense side. Meaningless for
 ## a Prop (which already has `is_can` for this). Kept in sync by main.gd, same
 ## lifetime/pattern as `is_can` — see _spawn_player / _on_match_round_started.
@@ -376,14 +509,34 @@ var dents: int = 0
 var last_fall_scored: bool = true
 var _staggered_time_left: float = 0.0
 var _downed_time_left: float = 0.0
+## How long this body has been DOWNED in total, against DOWNED_MAX_TIME. Distinct from
+## `_downed_time_left`, which only counts the early-recovery WINDOW — see the DOWNED
+## branch of _physics_process for why one cannot stand in for the other.
+var _downed_total: float = 0.0
 var _downed_self_rightable: bool = false ## true only within the self-right window
 var _bump_active_time_left: float = 0.0
 var _speed_multiplier: float = 1.0 ## set by hazard zones (mud, Shatter Trap patch, etc.)
-## B-16: Guard/Dash state — see the constants above for the doc on each.
-var _guard_stamina: float = GUARD_MAX_STAMINA
-var _is_guarding: bool = false
 var _dash_cooldown_left: float = 0.0
 var _dash_active_time_left: float = 0.0
+## The lata's one dash per round. Round-scoped, cleared in reset_for_new_round().
+var _can_dash_spent: bool = false
+## Sprint (see the STAMINA_* block). `_stamina_idle` counts UP since the last sprint
+## frame and gates the regen, so tapping the key repeatedly never refills.
+var _stamina: float = STAMINA_MAX
+var _stamina_idle: float = 0.0
+var _is_sprinting: bool = false
+## The bump meter (see the BUMP_CHARGE_* block). `_bump_charge_time` is authoritative
+## and only ticks on the peer that owns this character; `_observed_bump_charge` ticks on
+## EVERY peer from one broadcast, the same split `carrier.gd` uses for the throw
+## wind-up and for the same reason — a telegraph only the presser can see is not one.
+var _bump_charge_time: float = 0.0
+var _bump_charging: bool = false
+var _bump_cooldown_left: float = 0.0
+var _observed_bump_charge: float = -1.0
+## The hit penalty a power bump leaves behind. A timer rather than a state, because it
+## is a SLOW and not a stun — you can still act, you just cannot leave. Routed through
+## enter_speed_zone()/exit_speed_zone(), which already stack correctly (B-17).
+var _hit_penalty_left: float = 0.0
 ## The character's own always-present melee Hitbox (requires_bump_window = true)
 ## — cached so opening the bump window can sweep already-overlapping targets
 ## (see _open_bump_window, B-08) without a scene-tree lookup every press.
@@ -472,7 +625,16 @@ var ai_controller: AIController = null
 ## increase the size of the slipper for dramatic effect"), and a visual that
 ## outgrows its capsule is a slipper you can see but cannot step on, kick or land
 ## on the ground correctly. Both numbers move together or neither does.
-const TSINELAS_VISUAL_SCALE: float = 1.25
+## ⚠️ 1.25 -> 1.60, 2026-07-30. Human instruction: *"make slippers visibly bigger
+## in-game."* `TsinelasVisual.tscn`'s own root transform carries the same number and the
+## two MUST move together — a visual that outgrows its capsule is a slipper you can see
+## and cannot step on, kick, or land on the ground correctly.
+##
+## ⚠️ AND THE `tsinelas` ROW BELOW WAS RE-DERIVED, NOT LEFT ALONE. Every figure in it is
+## the old one x 1.28 (= 1.60 / 1.25), which keeps the ~12% hurtbox margin over the body
+## capsule that every role row has carried since the proportion audit. Bumping the mesh
+## and leaving the capsule is exactly the class of bug B-88 was.
+const TSINELAS_VISUAL_SCALE: float = 1.60
 
 const _COLLISION_BY_ROLE: Dictionary = {
 	"person": {
@@ -483,9 +645,10 @@ const _COLLISION_BY_ROLE: Dictionary = {
 		"body_r": 0.14, "body_h": 0.34, "hurt_r": 0.17, "hurt_h": 0.40,
 		"hit_r": 0.20, "hit_off": Vector3(0, 0.02, -0.16), "grab_r": 0.60,
 	},
+	# x1.28 against the 1.25-era row — see TSINELAS_VISUAL_SCALE.
 	"tsinelas": {
-		"body_r": 0.20, "body_h": 0.40, "hurt_r": 0.24, "hurt_h": 0.48,
-		"hit_r": 0.18, "hit_off": Vector3(0, 0.02, -0.18), "grab_r": 0.75,
+		"body_r": 0.256, "body_h": 0.512, "hurt_r": 0.307, "hurt_h": 0.614,
+		"hit_r": 0.230, "hit_off": Vector3(0, 0.026, -0.230), "grab_r": 0.96,
 	},
 }
 
@@ -807,6 +970,28 @@ func _physics_process(delta: float) -> void:
 		_bump_active_time_left -= delta
 	if _dash_active_time_left > 0.0:
 		_dash_active_time_left -= delta
+	# ⚠️ EVERY PEER, same reasoning as the bump window directly above. These three drive
+	# what OTHER players see and what the HUD counts down:
+	#   * the observed bump charge is the wind-up telegraph, recomputed locally from one
+	#     broadcast rather than streamed at 60 Hz (`carrier.gd`'s own idiom);
+	#   * the hit penalty has to expire on the peer that owns the slow it applied;
+	#   * the cooldown is read by the HUD, which every peer draws for itself.
+	if _observed_bump_charge >= 0.0:
+		_observed_bump_charge = minf(_observed_bump_charge + delta, BUMP_CHARGE_FULL_TIME)
+	if _bump_cooldown_left > 0.0:
+		_bump_cooldown_left = maxf(0.0, _bump_cooldown_left - delta)
+	if _hit_penalty_left > 0.0:
+		_hit_penalty_left = maxf(0.0, _hit_penalty_left - delta)
+		if _hit_penalty_left == 0.0:
+			exit_speed_zone(BUMP_POWER_PENALTY_SPEED)
+	if _smash_cooldown_left > 0.0:
+		_smash_cooldown_left = maxf(0.0, _smash_cooldown_left - delta)
+	# THE DIVE. A tsinelas that pressed Ground Smash is falling at a fixed rate until it
+	# lands; the landing itself is what spawns the shockwave. Ticked here rather than in
+	# the ability so it runs on the peer that owns the body — the same peer whose
+	# `move_and_slide` produces the `is_on_floor()` this watches for.
+	if _dive_active:
+		PropSmash.step_dive(self, delta)
 
 	# Task 0: a tsinelas that is in someone's hand or in the air is not walking
 	# anywhere under its own power — the carry component owns its transform for
@@ -939,7 +1124,17 @@ func _physics_process(delta: float) -> void:
 	# (0.90). Raise this above ~1.0 and every crate in the alley silently becomes
 	# a platform, which breaks the height law and puts players on top of the
 	# dressing where there is no boundary to stop them.
-	if state == State.NORMAL and is_on_floor() 			and input_just_pressed("jump"):
+	# ⚠️ A LOOSE TSINELAS DOES NOT JUMP — IT CHARGES A LAUNCH. Human instruction,
+	# 2026-07-30: *"allow slippers to charge up a mini-jump, and give them the ability
+	# to launch themselves."*
+	#
+	# Routed to the carry component rather than branched here, for the same reason this
+	# file has never learned what carrying is: `Carriable` already owns every question
+	# about what a slipper is doing with itself. It returns true when it consumed the
+	# frame's jump input, and a Person or a lata never reaches it.
+	var jump_consumed := _carriable != null and _carriable.jump_charge_step(delta)
+	if not jump_consumed and state == State.NORMAL and is_on_floor() \
+			and input_just_pressed("jump"):
 		velocity.y = JUMP_VELOCITY
 		AudioManager.play_at("jump", global_position)
 
@@ -948,22 +1143,37 @@ func _physics_process(delta: float) -> void:
 	if _carrier != null and state == State.NORMAL:
 		_carrier.input_step(delta)
 
+	# ⚠️ `bump` MEANS THREE DIFFERENT THINGS NOW, PICKED BY WHAT THIS UNIT IS. The
+	# action name did not change (a rename invalidates every saved settings.cfg key and
+	# every input_probe assertion for nothing); what it drives did.
+	#
+	#   a lata            -> CAN-SMASH, the ground slam (Design.md §5.3)
+	#   an airborne
+	#   tsinelas          -> GROUND SMASH, the dive (Design.md §6)
+	#   anything else     -> the ordinary body-check window, unchanged
 	if state == State.NORMAL and input_just_pressed("bump"):
-		_open_bump_window()
-		# Cosmetic only. CharacterVisual decides what a bump LOOKS like and picks
-		# a clip the model actually has; this file just says what happened.
-		# ⚠️ BROADCAST, not local — see broadcast_visual_action(). A swing nobody else
-		# can see is not a swing anyone can react to.
-		broadcast_visual_action("bump")
-		# Tell the host our bump window just opened, since the host is the one
-		# resolving Hitbox/Hurtbox overlaps now (see hitbox.gd) and it can't
-		# see this peer's local-only timer any other way. No-op if we ARE the
-		# host, or if we're not networked at all.
-		if NetworkManager.is_networked() and not NetworkManager.is_host():
-			_rpc_notify_bump.rpc_id(1)
+		if not _try_prop_smash():
+			_open_bump_window()
+			# Cosmetic only. CharacterVisual decides what a bump LOOKS like and picks
+			# a clip the model actually has; this file just says what happened.
+			# ⚠️ BROADCAST, not local — see broadcast_visual_action(). A swing nobody else
+			# can see is not a swing anyone can react to.
+			broadcast_visual_action("bump")
+			# Tell the host our bump window just opened, since the host is the one
+			# resolving Hitbox/Hurtbox overlaps now (see hitbox.gd) and it can't
+			# see this peer's local-only timer any other way. No-op if we ARE the
+			# host, or if we're not networked at all.
+			if NetworkManager.is_networked() and not NetworkManager.is_host():
+				_rpc_notify_bump.rpc_id(1)
 
 	if state == State.NORMAL:
-		_process_guard_dash(delta)
+		_process_dash_slot(delta)
+		# ⚠️ AFTER the carrier's own input_step above, which consumes
+		# `special_ability` while something is in hand. A Person mid-throw must not
+		# also be charging a bump with the same button — `_step_bump_meter` checks the
+		# hands itself, but the ordering is what makes that check cheap rather than a
+		# race.
+		_step_bump_meter(delta)
 
 	match state:
 		State.STAGGERED:
@@ -971,47 +1181,42 @@ func _physics_process(delta: float) -> void:
 			if _staggered_time_left <= 0.0:
 				_set_state(State.NORMAL)
 		State.DOWNED:
-			if _downed_self_rightable:
+			# ⚠️⚠️ TWO TIMERS NOW, AND THE SECOND ONE IS A CEILING, NOT A WINDOW.
+			# See DOWNED_MAX_TIME. `_downed_time_left` is the window in which the
+			# player may press bump to get up EARLY; `_downed_total` is how long this
+			# body has been down at all, and past DOWNED_MAX_TIME it gets up whether
+			# anyone pressed anything or not.
+			#
+			# ⚠️ IT APPLIES TO A PERSON TOO, and that is not a side effect. A Person
+			# knocked down by a slipper used to sit through the self-right window and
+			# then be SEALED — permanently out of the round — which went unnoticed only
+			# because thrown slippers did not knock anything down until B-134. The
+			# ceiling closes that class of bug by construction rather than by a
+			# `target.is_can` guard that a future path can forget.
+			_downed_total += delta
+			if _downed_total >= DOWNED_MAX_TIME:
+				self_right()
+			elif _downed_self_rightable:
 				_downed_time_left -= delta
 				if _downed_time_left <= 0.0:
+					# ⚠️⚠️ THE AUTO-SEAL USED TO BE HERE AND IT IS DELETED.
+					#
+					# Until 2026-07-30 an unrecovered knockdown SEALED the lata, and a
+					# sealed lata lost the round outright — so lying still for 1.25 s
+					# was the single biggest event in the game, and the LUCKY FALL had
+					# to exist purely to give it a coin flip's worth of mercy.
+					#
+					# The win it carried has moved somewhere a player can see and play
+					# against: `RoundManager`'s out-of-circle countdown. What lapsing
+					# the window costs now is only the rest of `DOWNED_MAX_TIME` — up
+					# to 0.75 s in which the lata cannot drive itself home while that
+					# countdown runs. That is a real price and it is a legible one.
+					#
+					# `_downed_self_rightable` is still cleared, because it is what
+					# `is_self_rightable()` reports and `hitbox.gd` reads it to decide
+					# whether a follow-up hit may seal — a route no longer taken for a
+					# lata but still the honest answer to the question.
 					_downed_self_rightable = false
-					# User feedback, 2026-07-28: "if team slipper make the can
-					# fall... they win" — no mention of an attacker having to
-					# walk up and physically seal it afterward. Auto-seal the
-					# instant the self-right window lapses unrecovered, rather
-					# than waiting for a follow-up hit (the old Option B
-					# behaviour, now retired). state is still DOWNED and
-					# _downed_self_rightable was just cleared above, so
-					# seal()'s own guard passes. RoundManager's existing
-					# "every tracked Can Sealed" win check (unchanged) fires
-					# from this exactly as it used to fire from a manual seal.
-					#
-					# THE LUCKY FALL EXCEPTION. A fall that landed the can on its
-					# head or its back must cost the attacking side nothing, and
-					# not counting it toward FALL_LIMIT is not enough on its own:
-					# under Option B an unrecovered fall auto-seals, and a seal
-					# loses the round outright. So a lucky fall rights itself here
-					# instead — the can went over, wobbled on its lid, and came
-					# back up. See LUCKY_FALL_CHANCE.
-					#
-					# ⚠️⚠️ CANS ONLY. A PERSON MUST NEVER BE SEALED BY THE CLOCK.
-					#
-					# SEALED has no recovery — `_physics_process`'s SEALED branch
-					# is `pass # awaiting round reset`. For a lata that is the
-					# entire win condition. For a PERSON it means one hit removes
-					# a player from the round permanently, and it went unnoticed
-					# only because a thrown slipper used to resolve on the melee
-					# hitbox and merely stagger (B-134). The moment throws started
-					# actually knocking things down, every Person hit by one was
-					# DOWNED for 2 s and then SEALED for the rest of the round.
-					#
-					# Caught by tools/scuff_probe.tscn, which could not drive its
-					# test Person and printed `state=2` then `state=3` four times
-					# running. A knocked-down Person gets back up.
-					if last_fall_scored and is_can:
-						seal()
-					else:
-						self_right()
 			if input_just_pressed("bump") and _downed_self_rightable:
 				self_right()
 			# B-06: special_ability is normally only read further down, past the
@@ -1077,6 +1282,11 @@ func _physics_process(delta: float) -> void:
 	# and crawl scales rather than replacing either: a fast character crawling a
 	# loose tsinelas through mud is still slow, just less slow than Lola Pacing.
 	var trait_scale := trait_speed_scale()
+	# STAMINA. Ticked here rather than in its own block above so it sees the frame's
+	# real movement intent — `direction` is what decides whether the sprint key is
+	# actually buying anything, and draining the bar while standing still holding Shift
+	# would be a stamina system that punishes idling.
+	var sprint_scale := _step_stamina(delta, direction != Vector3.ZERO)
 	# ⚠️⚠️ FACE WHAT YOU ARE THROWING AT. Human report, 2026-07-30: *"the attacker AI
 	# was facing backwards when shooting towards defender, it should face towards you
 	# when it throws for it to be realistic."*
@@ -1112,8 +1322,9 @@ func _physics_process(delta: float) -> void:
 		if global_position.distance_to(flat_facing) > 0.05:
 			look_at(flat_facing, Vector3.UP)
 	if direction:
-		velocity.x = direction.x * SPEED * _speed_multiplier * carry_scale * trait_scale
-		velocity.z = direction.z * SPEED * _speed_multiplier * carry_scale * trait_scale
+		var speed_now := SPEED * _speed_multiplier * carry_scale * trait_scale * sprint_scale
+		velocity.x = direction.x * speed_now
+		velocity.z = direction.z * speed_now
 		# Face the direction we're moving — nothing wrote `rotation` before this,
 		# so every directional attack (melee Hitbox offset, PersonAction,
 		# BakyaBash, FlickDash, all built on `-transform.basis.z`/local offsets)
@@ -1132,7 +1343,8 @@ func _physics_process(delta: float) -> void:
 
 	# Task 0: `and not _carrier_is_holding()` — with a slipper in hand this button
 	# is the charge-throw (carrier.gd owns it, above) and must not ALSO fire the
-	# ordinary ability. person_action.gd is now Tag-only for exactly this reason.
+	# ordinary ability. Since 2026-07-30 a Person HAS no ordinary ability — empty hands
+	# route this same button to the bump meter instead. See `_step_bump_meter`.
 	if input_just_pressed("special_ability") and ability and not _carrier_is_holding():
 		# B-12: this used to run AFTER move_and_slide(), so an ability that sets
 		# velocity directly (Flick Dash's dash burst) applied a full physics
@@ -1148,9 +1360,10 @@ func _physics_process(delta: float) -> void:
 		# the host at all, so every special/Tag/Throw was a no-op for clients).
 		ability.activate(self)
 		# The grab/throw arm swing. Cosmetic, same contract as the bump above.
-		# ⚠️ BROADCAST. For a Person this press is the TAG, and its wind-up
-		# (person_action.gd::TAG_WINDUP) is the attacker's entire reaction window — a
-		# lunge only the tagger can see gives them nothing to react to.
+		# ⚠️ BROADCAST. The tag is gone, so for a Person this branch is now only ever
+		# reached with a null `ability` and does nothing — but the rule it was written
+		# for is unchanged and is load-bearing for the bump meter that replaced it: a
+		# wind-up only the presser can see is not a telegraph.
 		broadcast_visual_action("throw")
 		if NetworkManager.is_networked() and not NetworkManager.is_host():
 			_rpc_notify_ability_activate.rpc_id(1)
@@ -1198,7 +1411,12 @@ func apply_stagger(duration: float = BUMP_STAGGER_TIME) -> void:
 		return
 	# B-16: a Can actively Guarding blocks the incoming hit outright — no
 	# stagger, same as apply_dent() below no-ops the dent for the same reason.
-	if _is_guarding:
+	# ⚠️ `is_guarding()` IS CONSTANT FALSE SINCE GUARD WAS REMOVED — see its own note.
+	# Kept as a call rather than deleted: the block is the correct SHAPE for "this body
+	# is currently immune", the signal and the flash behind it both still work, and if a
+	# future pass gives some unit a block again this is where it plugs back in. The
+	# optimiser folds a constant `return false` away; a deleted branch is a rewrite.
+	if is_guarding():
 		hit_blocked.emit()
 		_flash_blocked()
 		return
@@ -1243,7 +1461,13 @@ func go_downed(scoring: bool = true) -> void:
 		return
 	last_fall_scored = scoring
 	_downed_time_left = DOWNED_SELF_RIGHT_WINDOW
+	_downed_total = 0.0
 	_downed_self_rightable = true
+	# A wind-up cannot survive being knocked over. `state_changed` already cancels the
+	# throw charge through `carrier.gd::_on_own_state_changed`; the bump meter is this
+	# file's own and needs the same courtesy, or a bumped defender comes back up with a
+	# 1.35 s charge that was banked while they were on the floor.
+	_cancel_bump_charge()
 	_set_state(State.DOWNED)
 	if ability and ability.has_method("_on_owner_downed"):
 		ability._on_owner_downed(self)
@@ -1253,6 +1477,7 @@ func self_right() -> void:
 	if state != State.DOWNED:
 		return
 	_downed_self_rightable = false
+	_downed_total = 0.0
 	_set_state(State.NORMAL)
 
 ## Option A only: a landed hit on this Can adds one dent (capped at MAX_DENTS)
@@ -1265,7 +1490,12 @@ func apply_dent(stagger_duration: float = BUMP_STAGGER_TIME) -> void:
 		return
 	# B-16: Guard blocks dents too — the whole point of a Can blocking is to
 	# protect its own health bar, not just avoid the cosmetic stagger.
-	if _is_guarding:
+	# ⚠️ `is_guarding()` IS CONSTANT FALSE SINCE GUARD WAS REMOVED — see its own note.
+	# Kept as a call rather than deleted: the block is the correct SHAPE for "this body
+	# is currently immune", the signal and the flash behind it both still work, and if a
+	# future pass gives some unit a block again this is where it plugs back in. The
+	# optimiser folds a constant `return false` away; a deleted branch is a rewrite.
+	if is_guarding():
 		hit_blocked.emit()
 		_flash_blocked()
 		return
@@ -1366,27 +1596,22 @@ func register_hit_once(target: CharacterBase) -> bool:
 func clear_hit_memory() -> void:
 	_hit_memory.clear()
 
-## B-16: Guard/Dash. Props only (a Person's assist slot is Tag/Throw instead —
-## see person_action.gd) — which half a Prop gets depends on `is_can` this
-## round, same split as everything else that differs between Can and Tsinelas.
-func _process_guard_dash(delta: float) -> void:
+## ---------------------------------------------------------------------------
+## THE DASH SLOT (`guard_dash`, Left Ctrl since 2026-07-30 — sprint took Shift).
+##
+## Props only; a Person's `guard_dash` does nothing, exactly as before. Which dash a
+## Prop gets depends on `is_can` THIS ROUND, the same split every other Can/Tsinelas
+## difference follows, and it is re-derived per frame rather than cached because
+## `is_can` flips every round.
+##
+##   tsinelas -> the cooldown dash. Unchanged: DASH_SPEED for DASH_DURATION, 2.5 s.
+##   lata     -> CAN-DASH. Faster, shorter, and ONE PER ROUND. See CAN_DASH_SPEED.
+func _process_dash_slot(delta: float) -> void:
 	if is_person:
 		return
 	if is_can:
-		_process_guard(delta)
-	else:
-		_process_dash(delta)
-
-func _process_guard(delta: float) -> void:
-	var held := input_pressed("guard_dash")
-	if held and _guard_stamina > 0.0:
-		_is_guarding = true
-		_guard_stamina = max(0.0, _guard_stamina - GUARD_DRAIN_RATE * delta)
-	else:
-		_is_guarding = false
-		_guard_stamina = min(GUARD_MAX_STAMINA, _guard_stamina + GUARD_REGEN_RATE * delta)
-
-func _process_dash(delta: float) -> void:
+		_process_can_dash()
+		return
 	if _dash_cooldown_left > 0.0:
 		_dash_cooldown_left -= delta
 	if _dash_active_time_left <= 0.0 and _dash_cooldown_left <= 0.0 and input_just_pressed("guard_dash"):
@@ -1397,18 +1622,317 @@ func _process_dash(delta: float) -> void:
 		_dash_cooldown_left = DASH_COOLDOWN
 		AudioManager.play_at("dash", global_position)
 
-## Whether this character is currently blocking (B-16 Guard). Gates incoming
-## stagger/dents in apply_stagger()/apply_dent() below — hitbox.gd itself stays
-## generic to any hit, same as the team check (B-09).
-func is_guarding() -> bool:
-	return _is_guarding
+## ⚠️ ONE USE, AND IT DASHES WHERE YOU ARE HOLDING, NOT WHERE YOU ARE FACING.
+##
+## A lata's facing is written by `look_at(position + direction)` — i.e. the direction it
+## last WALKED — so a can that has stopped to brace for a throw is pointing wherever it
+## happened to be heading. That is the exact defect B-125 and the `ai_aim_point` note
+## document for the thrower, one role over: the tsinelas dash inherits it harmlessly
+## (a dash is an escape in any direction), and a once-per-round escape must go where the
+## player MEANT.
+func _process_can_dash() -> void:
+	if _can_dash_spent or _dash_active_time_left > 0.0:
+		return
+	if not input_just_pressed("guard_dash"):
+		return
+	var input_dir := input_vector("move_left", "move_right", "move_up", "move_down")
+	var aim := Vector3(input_dir.x, 0.0, input_dir.y)
+	if _is_mouse_aimed():
+		aim = transform.basis * aim
+		aim.y = 0.0
+	if aim.length() < 0.05:
+		aim = -transform.basis.z # standing still: the facing is all we have
+		aim.y = 0.0
+	aim = aim.normalized()
+	velocity.x = aim.x * CAN_DASH_SPEED
+	velocity.z = aim.z * CAN_DASH_SPEED
+	_dash_active_time_left = CAN_DASH_DURATION
+	_can_dash_spent = true
+	broadcast_visual_action("dash")
+	AudioManager.play_at("dash", global_position)
 
-## Q-6: read-only HUD accessors — the mechanic itself (B-16) was fully
-## implemented with no UI at all, which is almost certainly why it was
-## reported missing. Exposed rather than making _guard_stamina/_dash_cooldown_left
-## public outright, so nothing outside this file can write them.
-func get_guard_stamina_ratio() -> float:
-	return _guard_stamina / GUARD_MAX_STAMINA
+## ---------------------------------------------------------------------------
+## STAMINA. Returns the multiplier the movement block should apply this frame.
+##
+## `moving` is the frame's real movement intent — holding the sprint key while standing
+## still costs nothing, because a stamina system that drains while you stand in place is
+## a system that punishes looking around.
+##
+## ⚠️ THE FLOOR IS CHECKED ON THE RISING EDGE ONLY (`_is_sprinting or _stamina >=
+## FLOOR`). Once a sprint is running it may spend the bar all the way to zero; what it
+## may not do is START again below the floor. Checking the floor every frame instead
+## would end a sprint the instant the bar dipped under 0.6 and make the last 0.6 s of
+## every bar unspendable.
+func _step_stamina(delta: float, moving: bool) -> float:
+	var wants := moving and input_pressed("sprint")
+	var may_start := _is_sprinting or _stamina >= STAMINA_SPRINT_FLOOR
+	_is_sprinting = wants and may_start and _stamina > 0.0
+	if _is_sprinting:
+		_stamina = maxf(0.0, _stamina - STAMINA_DRAIN_RATE * delta)
+		_stamina_idle = 0.0
+		return SPRINT_SCALE
+	_stamina_idle += delta
+	if _stamina_idle >= STAMINA_REGEN_DELAY:
+		_stamina = minf(STAMINA_MAX, _stamina + STAMINA_REGEN_RATE * delta)
+	return 1.0
+
+## ---------------------------------------------------------------------------
+## THE BUMP METER. `Design.md` §4, and see the BUMP_CHARGE_* constants for the design.
+##
+## Same three-phase shape as `carrier.gd::_step_throw` deliberately — press, hold,
+## release — so the two halves of one button behave identically and a player who learns
+## the throw has already learned this.
+##
+## ⚠️ HANDS FULL MEANS THIS IS NOT YOUR BUTTON. `carrier.gd` owns `special_ability`
+## while something is held, and it is called first (see the call site). A charge already
+## running when a slipper arrives in your hands is cancelled rather than left ticking.
+func _step_bump_meter(delta: float) -> void:
+	if not is_person:
+		return
+	if _carrier_is_holding():
+		_cancel_bump_charge()
+		return
+	if _bump_charging and input_pressed("special_ability") \
+			and not input_just_pressed("special_ability"):
+		_bump_charge_time = minf(_bump_charge_time + delta, BUMP_CHARGE_FULL_TIME)
+		return
+	if _bump_charging and input_just_released("special_ability"):
+		var held := _bump_charge_time
+		_cancel_bump_charge()
+		_release_bump(held)
+		return
+	if not _bump_charging and _bump_cooldown_left <= 0.0 \
+			and input_just_pressed("special_ability"):
+		_bump_charging = true
+		_bump_charge_time = 0.0
+		# ⚠️ BROADCAST, NOT LOCAL. The whole value of a 1.35 s commitment is that the
+		# attacker can see it start and dash, jump or throw through it. This project has
+		# shipped an invisible wind-up three separate times — the tag's lunge, the
+		# charge pose, and the throw follow-through — and each time the code looked
+		# right because it worked perfectly on the presser's own machine.
+		_broadcast_bump_charge(true)
+		AudioManager.play_at("throw_charge", global_position, -4.0)
+
+## Ends a charge by ANY route — released, cancelled, a slipper arriving in our hands, a
+## stagger, a round reset. The "wind-up is over" broadcast belongs here and not at the
+## release site for the same reason `carrier.gd::_cancel_charge` documents: a pose left
+## running on somebody who was interrupted is the mirror image of an invisible one.
+func _cancel_bump_charge() -> void:
+	if not _bump_charging:
+		return
+	_bump_charging = false
+	_bump_charge_time = 0.0
+	_broadcast_bump_charge(false)
+
+## `held` is the raw hold time. Everything about how hard the resulting shove is comes
+## from here and nowhere else.
+##
+## ⚠️ THE HIT IS DELIVERED THROUGH THE ORDINARY BUMP WINDOW, NOT A NEW HIT PATH. The
+## charge decides the NUMBERS; `_open_bump_window()` + `hitbox.gd` still decide who was
+## actually in reach, whose team they are on, and whether the host agrees. A second
+## resolution path would have to re-implement the team check, the once-per-event memory
+## and the host gate — the exact trap `ai_controller.gd`'s class doc warns about.
+func _release_bump(held: float) -> void:
+	var power := 0.0
+	if held > BUMP_TAP_TIME:
+		power = clampf((held - BUMP_TAP_TIME) / maxf(0.01, BUMP_CHARGE_FULL_TIME - BUMP_TAP_TIME),
+			0.0, 1.0)
+	_pending_bump_power = power
+	_bump_cooldown_left = BUMP_LIGHT_COOLDOWN if power <= 0.0 else \
+		lerpf(BUMP_LIGHT_COOLDOWN, BUMP_POWER_COOLDOWN, power)
+	_open_bump_window()
+	broadcast_visual_action("bump")
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		# The host resolves the overlap and therefore needs BOTH the window and the
+		# power — a client asserting how hard it hit is not trusted for anything else,
+		# and this is not an exception: the host re-derives the impulse from this
+		# number through its own `_impulse_for`, clamped like every other one.
+		_rpc_notify_bump_power.rpc_id(1, power)
+
+## 0..1, how much of the last released bump was charged. Read by `hitbox.gd::
+## _impulse_for` on the frame the hit resolves, which is inside the bump window this
+## release just opened — so it is never stale by more than BUMP_ACTIVE_TIME.
+var _pending_bump_power: float = 0.0
+
+func bump_power() -> float:
+	return _pending_bump_power
+
+## The impulse a bump from this character should deliver, before the struck body's own
+## resistance. Interpolated between the two solved speeds — see BUMP_LIGHT_SPEED.
+func bump_impulse(direction: Vector3) -> Vector3:
+	var flat := Vector3(direction.x, 0.0, direction.z)
+	if flat.length() < 0.01:
+		return Vector3.ZERO
+	var power := _pending_bump_power
+	var speed := lerpf(BUMP_LIGHT_SPEED, BUMP_POWER_SPEED, power) * trait_power_scale()
+	var lift := lerpf(BUMP_LIGHT_LIFT, BUMP_POWER_LIFT, power) * trait_power_scale()
+	return flat.normalized() * speed + Vector3.UP * lift
+
+## How long a stagger this character's current bump should apply, or 0.0 for none.
+## A tap deliberately applies NO stagger — see BUMP_LIGHT_COOLDOWN's own note: a stagger
+## drops the target's carried tsinelas, and a tap that did that would make the light
+## bump strictly as good as the heavy one.
+func bump_stagger_duration() -> float:
+	if _pending_bump_power <= 0.0:
+		return 0.0
+	return BUMP_POWER_STAGGER * _pending_bump_power
+
+## Applied by `hitbox.gd` on a charged bump landing. A SLOW, not a stun: you can act,
+## you cannot leave. `enter_speed_zone` already stacks with mud and with anything else
+## (B-17), so no second slow system exists.
+func apply_hit_penalty(scale: float = BUMP_POWER_PENALTY_SPEED,
+		duration: float = BUMP_POWER_PENALTY_TIME) -> void:
+	if _hit_penalty_left > 0.0:
+		# Refresh rather than stack a second zone — two enter_speed_zone() calls with
+		# one exit would leave the slow on for the rest of the match.
+		_hit_penalty_left = maxf(_hit_penalty_left, duration)
+		return
+	_hit_penalty_left = duration
+	enter_speed_zone(scale)
+
+func _broadcast_bump_charge(active: bool) -> void:
+	if NetworkManager.is_networked():
+		_rpc_bump_charge_visual.rpc(active)
+	else:
+		_rpc_bump_charge_visual(active)
+
+## "any_peer" for the reason every broadcast in this codebase documents at its own call
+## site: this is sent by the charging peer, which is not this node's authority as far as
+## an arbitrary receiver is concerned, and an "authority" RPC would be silently dropped.
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_bump_charge_visual(active: bool) -> void:
+	_observed_bump_charge = 0.0 if active else -1.0
+	play_visual_action("charge" if active else "bump")
+
+## Client -> host. Mirrors `_rpc_notify_bump`, plus the power the client charged to.
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_notify_bump_power(power: float) -> void:
+	if NetworkManager.is_networked() and NetworkManager.is_host():
+		_pending_bump_power = clampf(power, 0.0, 1.0)
+		_open_bump_window()
+
+## ---------------------------------------------------------------------------
+## THE PROP SMASHES. Returns true when this press was consumed by one of them, so the
+## ordinary body-check window is not ALSO opened on the same frame.
+##
+## Both live behind the same button for the same reason the bump meter shares
+## `special_ability` with the throw: a party game cannot afford a fifth verb to explain,
+## and what a button does is already decided by what you currently are.
+## ⚠️ THEY ARE ROLE ABILITIES, NOT ROSTER ABILITIES, AND THAT IS A DELIBERATE SPLIT.
+## Every lata has Can-Smash and every tsinelas has Ground Smash — they are what those
+## two OBJECTS can do, in the same way that jumping is what a body can do. The `ability`
+## slot stays what it has always been: the SKIN's kit (Quick Stand / Spin Guard /
+## Shatter Trap, Bakya Bash / Flick Dash / Bagsak Bomb), picked on the CHARACTER screen.
+##
+## Hanging these off the roster ability instead would mean a player who picked LATA NG
+## KAPE for its stats silently lost the smash, and the six skins would each need three
+## near-identical overrides. `prop_smash.gd` owns the shockwave; this file owns the
+## cooldown, because a cooldown is per-CHARACTER state and an AbilityBase resource is
+## shared until it is duplicated.
+func _try_prop_smash() -> bool:
+	if is_person:
+		return false
+	if is_can:
+		if _smash_cooldown_left > 0.0:
+			return true # consumed: the press was a smash attempt, not a body-check
+		_smash_cooldown_left = PropSmash.CAN_SMASH_COOLDOWN
+		_smash_cooldown_total = PropSmash.CAN_SMASH_COOLDOWN
+		PropSmash.begin_can_smash(self)
+		return true
+	# A tsinelas smashes only from the air — that is what makes it a DIVE and not a
+	# second stomp button. Grounded, the press falls through to the ordinary bump.
+	if _carriable == null or not _carriable.can_ground_smash():
+		return false
+	if _smash_cooldown_left > 0.0:
+		return true
+	_smash_cooldown_left = PropSmash.GROUND_SMASH_COOLDOWN
+	_smash_cooldown_total = PropSmash.GROUND_SMASH_COOLDOWN
+	PropSmash.begin_ground_smash(self)
+	return true
+
+## Shared by both smashes — a Prop is only ever one of the two in a given round, so one
+## timer cannot collide with itself. Ticked on every peer alongside the bump window, for
+## the same reason: the HUD draws it and the host resolves against it.
+var _smash_cooldown_left: float = 0.0
+var _smash_cooldown_total: float = 0.0
+## True between a Ground Smash press and the landing that resolves it. Public so
+## `prop_smash.gd` can drive it without this file learning what a dive is.
+var _dive_active: bool = false
+
+func smash_cooldown_left() -> float:
+	return _smash_cooldown_left
+
+func smash_cooldown_total() -> float:
+	return maxf(0.01, _smash_cooldown_total)
+
+## ---------------------------------------------------------------------------
+## ⚠️ GUARD IS REMOVED AND THIS ALWAYS ANSWERS FALSE — see the constants block.
+##
+## Kept rather than deleted because three files outside this one ask the question and
+## every one of them is correct to: `hurtbox.gd::absorb_knockback` zeroes a shove on a
+## guarding body, `apply_stagger`/`apply_dent` no-op a guarded hit, and `you_card.gd`
+## picks which meter to draw. Deleting the function would break all three for a mechanic
+## that may well come back on a different unit; making it constant makes the removal one
+## line and reversible.
+func is_guarding() -> bool:
+	return false
+
+## STAMINA, 0..1, for the HUD. Replaces `get_guard_stamina_ratio()` at the same call
+## site — the bar was already there and was already only ever drawn for one of the two
+## Prop sides; it now means something for all four units.
+func get_stamina_ratio() -> float:
+	return _stamina / STAMINA_MAX
+
+## The bump meter as any peer can see it, 0..1, or -1 when this Person is not charging.
+## Recomputed from one broadcast rather than replicated — same idiom, and same reason,
+## as `Carrier.observed_charge_power()`.
+func observed_bump_charge() -> float:
+	if _observed_bump_charge < 0.0:
+		return -1.0
+	return clampf(_observed_bump_charge / BUMP_CHARGE_FULL_TIME, 0.0, 1.0)
+
+## The LOCAL charge, for this player's own HUD. -1 when not charging.
+func bump_charge_ratio() -> float:
+	if not _bump_charging:
+		return -1.0
+	return clampf(_bump_charge_time / BUMP_CHARGE_FULL_TIME, 0.0, 1.0)
+
+func bump_cooldown_left() -> float:
+	return _bump_cooldown_left
+
+## ---------------------------------------------------------------------------
+## STATUS READOUT — what the HUD counts down. `Design.md` §10.
+##
+## ⚠️ ONE FUNCTION, BECAUSE THE ALTERNATIVE IS SIX ACCESSORS AND A UI THAT DRIFTS FROM
+## THEM. The human's ask was *"add visible UI timers for all stun durations and status
+## effects so players clearly know when they can move or act again"*, and "all" is the
+## load-bearing word: a status this file gains later must appear on screen without
+## anybody remembering to add a row to `hud.gd`. Anything that answers here is drawn.
+##
+## Returns an Array of {label, seconds, total} dictionaries, most urgent first.
+func status_effects() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	match state:
+		State.STAGGERED:
+			out.append({"label": "STUNNED", "seconds": _staggered_time_left,
+				"total": maxf(_staggered_time_left, BUMP_STAGGER_TIME)})
+		State.DOWNED:
+			out.append({"label": "DOWNED", "seconds": maxf(0.0, DOWNED_MAX_TIME - _downed_total),
+				"total": DOWNED_MAX_TIME})
+		State.SEALED:
+			out.append({"label": "OUT", "seconds": 0.0, "total": 0.0})
+	if _hit_penalty_left > 0.0:
+		out.append({"label": "SLOWED", "seconds": _hit_penalty_left,
+			"total": BUMP_POWER_PENALTY_TIME})
+	if _carrier != null and _carrier.throw_lock_left() > 0.0:
+		out.append({"label": "THROW LOCK", "seconds": _carrier.throw_lock_left(),
+			"total": Carrier.THROW_LOCK_TIME})
+	if not is_person and _smash_cooldown_left > 0.0:
+		out.append({"label": "SMASH", "seconds": _smash_cooldown_left,
+			"total": smash_cooldown_total()})
+	if not is_person and not is_can and _dash_cooldown_left > 0.0:
+		out.append({"label": "DASH", "seconds": _dash_cooldown_left, "total": DASH_COOLDOWN})
+	return out
 
 ## 1.0 once the cooldown has fully elapsed (ready to dash again), 0.0 the
 ## instant it was just used.
@@ -1542,6 +2066,13 @@ func _rpc_notify_ability_activate() -> void:
 @rpc("any_peer", "call_local", "reliable")
 func _apply_hit_result(kind: String, duration: float, knockback: Vector3 = Vector3.ZERO) -> void:
 	match kind:
+		# ⚠️ THE LIGHT BUMP. Deliberately falls through to the knockback below with no
+		# state transition at all — see `hitbox.gd`'s own note. A "stagger of zero
+		# seconds" is not the same thing and would still drop the target's tsinelas,
+		# because `carriable.gd` watches for any state that is not NORMAL rather than
+		# for a duration.
+		"nudge":
+			pass
 		"stagger":
 			apply_stagger(duration)
 		"downed":
@@ -1595,7 +2126,7 @@ func apply_knockback(impulse: Vector3) -> void:
 	# afterwards reads as the seal not having stuck.
 	if state == State.SEALED:
 		return
-	if _is_guarding:
+	if is_guarding():
 		return
 	# ⚠️ CLAMPED, AND THE CEILINGS ARE ANCHORED TO NUMBERS THAT ALREADY EXIST.
 	# Knockback is the product of four independently-tunable ThrowProfile fields
@@ -1612,6 +2143,16 @@ func apply_knockback(impulse: Vector3) -> void:
 	# TATAG. Divided BEFORE the clamp, so a sturdy unit is genuinely harder to
 	# shift rather than merely arriving at the same ceiling more slowly.
 	impulse /= trait_grit_scale()
+	# ⚠️ AND THE LATA WEARS ITS OWN MULTIPLIER ON TOP — see CAN_KNOCKBACK_SCALE. This is
+	# the "highly susceptible to knockback" ask, and it is applied HERE rather than in
+	# `hurtbox.gd::absorb_knockback` (the obvious place, and the wrong one) for a
+	# specific reason: absorb_knockback is asked by the STRIKER before the impulse ever
+	# reaches the struck body's own trait maths, so putting it there would have TATAG
+	# divide a number that had already been inflated, and a grit-5 lata would end up
+	# harder to move than a grit-1 one by a different ratio than every other unit.
+	# Here it composes cleanly: role scales, then trait divides, then the clamp bounds.
+	if is_can:
+		impulse *= CAN_KNOCKBACK_SCALE
 	var flat := Vector2(impulse.x, impulse.z)
 	if flat.length() > MAX_KNOCKBACK_SPEED:
 		flat = flat.normalized() * MAX_KNOCKBACK_SPEED
@@ -1643,6 +2184,20 @@ func apply_knockback(impulse: Vector3) -> void:
 @rpc("any_peer", "call_local", "reliable")
 func _rpc_play_hit_vfx(sfx: String = "") -> void:
 	_flash_hit(sfx)
+
+## Host -> the struck character's own peer. The slow a full-charge bump leaves behind.
+##
+## Routed to the OWNING peer rather than broadcast, exactly like `_apply_hit_result`:
+## `enter_speed_zone` mutates `_speed_multiplier`, which is read by that peer's own
+## movement code and by nobody else's, so applying it everywhere would install a zone on
+## three machines that will never take it off.
+##
+## "any_peer" — the sender is the host, which is not this node's authority for any
+## client-owned unit, and an "authority" RPC would be silently dropped. Same reasoning
+## `_apply_hit_result` records at length.
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_apply_hit_penalty() -> void:
+	apply_hit_penalty()
 
 ## B-44/Q-8: brief white flash + impact particles on a landed hit, any kind,
 ## on every peer (see _rpc_play_hit_vfx). Camera shake is additionally gated
@@ -1690,15 +2245,32 @@ func _flash_hit(sfx: String = "") -> void:
 ## without that, the restore would take 20x longer than intended, since its
 ## own countdown would run at HITSTOP_TIME_SCALE too. Guarded against a second
 ## hit landing mid-dip stomping the first one's restore.
+## ⚠️⚠️ THE RESTORE USED TO BE A HARDCODED 1.0, AND THAT SILENTLY INVALIDATED EVERY
+## FAIRNESS NUMBER EVER RECORDED AT AN ACCELERATED TIME SCALE.
+##
+## `tools/ai_probe.gd` takes a `scale=` argument and sets `Engine.time_scale` so a
+## 20-round run finishes in minutes rather than half an hour. The FIRST hit of the first
+## round then dipped the scale, and 60 ms later `_end_hitstop` put it back to **1.0** —
+## not to the 4.0 the probe asked for. So every run reported as `scale=4` was measured
+## at scale 1 from its first dent onward, which is both slower than intended and, worse,
+## a different number than the one printed in the report.
+##
+## Snapshotting the scale we actually interrupted costs one static float and makes the
+## restore true regardless of who set it or why. `_hitstop_active` already guarantees
+## exactly one dip is in flight at a time, so the snapshot can never capture a dipped
+## value and latch it.
+static var _hitstop_restore_scale: float = 1.0
+
 func _hitstop() -> void:
 	if _hitstop_active:
 		return
 	_hitstop_active = true
+	_hitstop_restore_scale = Engine.time_scale
 	Engine.time_scale = HITSTOP_TIME_SCALE
 	get_tree().create_timer(HITSTOP_DURATION, true, false, true).timeout.connect(_end_hitstop)
 
 func _end_hitstop() -> void:
-	Engine.time_scale = 1.0
+	Engine.time_scale = _hitstop_restore_scale
 	_hitstop_active = false
 
 ## ---------------------------------------------------------------------------
@@ -1954,8 +2526,10 @@ func play_visual_action(kind: String) -> void:
 ## machine: the one belonging to the player who already knew they had pressed the button.
 ##
 ## That is fine for a follow-through and fatal for a WIND-UP. The Tag's whole rework
-## (`person_action.gd`) rests on the attacker being able to see the lunge start and react
-## inside `TAG_WINDUP`; a telegraph only the tagger can see is not a telegraph. It is the
+## rested on the attacker being able to see the lunge start and react inside its wind-up;
+## the tag is deleted and the BUMP METER inherited that requirement exactly (1.35 s of
+## visible commitment, `_broadcast_bump_charge`). A telegraph only the presser can see is
+## not a telegraph. It is the
 ## same defect the human reported for the charge wind-up ("everyone else should see its
 ## windup happening") in a second place, and `carrier.gd`'s own broadcast note is the
 ## other half of the same fix.
@@ -2048,19 +2622,33 @@ func reset_for_new_round() -> void:
 	velocity = Vector3.ZERO
 	_staggered_time_left = 0.0
 	_downed_time_left = 0.0
+	_downed_total = 0.0
 	_downed_self_rightable = false
 	# B-17: clear any hazard zones this character was standing in too — a
 	# lingering slow effect (or the reverse: a stale exit dropping speed to 1.0
 	# under a still-live zone) shouldn't survive a round reset either way.
 	_active_speed_multipliers.clear()
 	_speed_multiplier = 1.0
-	# B-16: fresh guard stamina and no leftover dash cooldown each round —
-	# otherwise a Can that emptied its stamina staying alive to round end
-	# would start the next round already unable to block.
-	_guard_stamina = GUARD_MAX_STAMINA
-	_is_guarding = false
+	# B-16's rule, carried over to what replaced Guard: every round starts with every
+	# spend refilled. A lata that burned its one dash staying alive to round end must
+	# not begin the next round already out of escapes, and a unit that ended a round
+	# sprinting must not start the next one winded.
 	_dash_cooldown_left = 0.0
 	_dash_active_time_left = 0.0
+	_can_dash_spent = false
+	_smash_cooldown_left = 0.0
+	_dive_active = false
+	_stamina = STAMINA_MAX
+	_stamina_idle = 0.0
+	_is_sprinting = false
+	_cancel_bump_charge()
+	_bump_cooldown_left = 0.0
+	_pending_bump_power = 0.0
+	# ⚠️ THROUGH exit_speed_zone, NOT by zeroing the timer. `_active_speed_multipliers`
+	# is cleared a few lines above, so the zone is already gone from the list — but a
+	# non-zero `_hit_penalty_left` surviving would have the per-frame decay call
+	# exit_speed_zone() again next round and remove a zone somebody else installed.
+	_hit_penalty_left = 0.0
 	# B-122: before the emit, or a unit that ended the round DOWNED fires a
 	# recovery chime at the start of every new round.
 	#
