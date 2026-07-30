@@ -3398,6 +3398,64 @@ balance one.** 🧑 Left at the shipped values and asked rather than guessed. If
 wanted, **0.45 / 1 bounce** is the row to try: the complaint was about `MAX_BOUNCES = 2`
 chaining into a ragdoll, not about the damping.
 
+#### `hit_probe` IS STALE — THE EXACT ONE LINE, 2026-07-30 — 🥊 PHYS reporting on another lane's file
+
+`hit_probe.tscn` reports **0 throws** on real peers and says *"the harness never got a slipper
+into the air"*. The cause is confirmed: `_drive_throws()` (`tools/hit_probe.gd:223`) waits on
+`RoundManager.round_active` and **presses nothing**, so it spins out its whole attempt budget.
+A networked match has not started on its own since the multiplayer READY phase landed
+(`main.gd::_awaiting_net_ready` — the host counts PEERS, not characters), and nothing begins a
+round until every peer has sent `_rpc_declare_ready`.
+
+**The fix is to press READY before the drive loop, and a working implementation already
+exists** — `aim_probe.gd::_net_ready_up()`, which polls rather than waiting on a signal
+because `_awaiting_net_ready` is only set once the host's own `_rpc_phase` RPC arrives, which
+may be after the probe's first look. Copy that function and `await` it immediately before
+`_drive_throws()`. ⚠️ Not this lane's file, so it is reported rather than changed; R-18(b) was
+measured in `aim_probe` instead, which is why that path is already proven.
+
+#### R-30 REMAINS BLOCKED, AND THE BLOCKER LIST WAS INCOMPLETE, 2026-07-30 — 🥊 PHYS
+
+R-30 stays blocked, deliberately. **The §3.5.5 acceptance grep was actually run, and it turns
+up two blockers that are not on R-30's list:**
+
+⚠️⚠️ **1. THE GREP CANNOT PASS WHILE `.worktrees/windows-deploy` EXISTS, NO MATTER WHAT IS
+REWORDED.** §3.5.5's test is `grep -rin "debug" … .` from the project root. There is a live git
+worktree at `.worktrees/windows-deploy` (branch `code/windows-deploy`, confirmed via
+`git worktree list`), and the grep recurses straight into it and returns **~60 duplicate hits**
+— a second full copy of every file in the footprint, including `debug_player_switcher.gd` and
+`DebugBar.tscn` themselves. It is `.gitignore`d (line 31) so it is invisible to `git status`,
+and `grep` does not read `.gitignore`.
+
+This is the same failure §3.5.5's own note already records once — *"made the acceptance test
+impossible to ever pass … which is worse than no checklist"* — for the
+`Debug > Run Multiple Instances` filter. It needs the same remedy: a
+`--exclude-dir=.worktrees` on the documented command, or the worktree removed before the
+acceptance run. **Whoever owns R-30 must decide which; the grep as written is unpassable.**
+
+⚠️ **2. THE REWORDING TOUCHES 8 GAMEPLAY FILES, NOT 5, AND ONE IS SHARED-LOCK.** The brief's
+list is `main.gd`, `ai_controller.gd`, `you_card.gd`, `settings_manager.gd`,
+`character_nameplate.gd`. The grep also hits:
+
+| file | hits | note |
+|---|---|---|
+| `scripts/characters/character_base.gd` | **5** (401, 1787, 1842, 1850, 1873) | ⚠️ **SHARED-LOCK FILE** — R-30 needs that mutex, which is not in its plan |
+| `scripts/systems/network_manager.gd` | 1 (220) | |
+| `scripts/characters/carriable.gd` | 1 (253) | a false positive on the phrase *"do not delete it as debug cruft"* — the note is about instrumentation and says so |
+
+Plus `tools/` (`input_probe.gd` ×3, `ai_probe.gd`, `audio_load_probe.gd`, `render_probe.gd`,
+`models/preview.gd` ×2), which the documented grep does **not** exclude.
+
+**The blockers already on the list are all still real and all still hold:**
+
+- the last fairness run has not happened;
+- `tools/input_probe.gd:70` calls `DebugPlayerSwitcher._cycle()`, so deleting the autoload
+  makes it fail to **PARSE** — and "input_probe green" is part of R-30's own acceptance;
+- `project.godot:28` and `Main.tscn:8`+`58` are both **shared-lock** files.
+
+Footprint re-verified as stated: `debug_player_switcher.gd`, `debug_bar.gd`, `DebugBar.tscn`,
+`project.godot:28`, `Main.tscn:8`+`58`.
+
 #### THE ROUNDS TIME OUT BECAUSE OF ARITHMETIC, AND `MAX_DENTS` 3 → 2 DOES NOT FIX IT, 2026-07-30 — 🥊 PHYS
 
 The tag fix is correct and the consequence is 10/10 rounds reaching the 90 s clock with the
