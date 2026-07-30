@@ -88,20 +88,34 @@ const TRAIT_MIN: int = 1
 const TRAIT_MAX: int = 5
 const TRAIT_NEUTRAL: int = 3
 
-## Display metadata for the meters on the CHARACTER screen. Filipino names, since
-## the roles themselves are Filipino everywhere else in the UI, with the English
-## reading underneath so a first-time player is never guessing.
+## Display metadata for the meters on the CHARACTER screen.
+##
+## ⚠️ THESE WERE `BILIS` / `LAKAS` / `TATAG` WITH THE ENGLISH AS A GLOSS UNDERNEATH,
+## and are now English outright — 🧑 human call, 2026-07-30: *"character stats
+## should be english too."* The `gloss` field is kept and left EMPTY rather than
+## removed: `character_select.gd` reads it, an empty string is the "no second
+## line" case it already has to handle for a roster entry that never had one, and
+## keeping the field means a future localisation has somewhere to put the
+## Filipino reading back without a schema change.
+##
+## ⚠️ THE `key`s ARE UNCHANGED AND MUST STAY THAT WAY. They are the StringNames
+## every trait lookup in the project indexes by (`trait_points(&"bilis")`, the
+## `traits` dictionaries on all three roster lists, and `prop_trait`/`person_trait`);
+## they are internal identifiers, not display text, and renaming them to match the
+## label would be a silent flat-3 fallback on every entry — `traits_in()` returns
+## the entry's dictionary and `_trait_value()` resolves a missing key to
+## TRAIT_NEUTRAL without erroring. That is precisely the failure NET-1 is chasing.
 const TRAIT_LABELS: Array[Dictionary] = [
-	{"key": &"bilis", "name": "BILIS", "gloss": "SPEED"},
-	{"key": &"lakas", "name": "LAKAS", "gloss": "POWER"},
-	{"key": &"tatag", "name": "TATAG", "gloss": "GRIT"},
+	{"key": &"bilis", "name": "SPEED", "gloss": ""},
+	{"key": &"lakas", "name": "POWER", "gloss": ""},
+	{"key": &"tatag", "name": "GRIT", "gloss": ""},
 ]
 
 ## ---------------------------------------------------------------------------
 ## ⚠️ THE DESCRIPTIONS ARE ENGLISH AND THE NAMES ARE NOT. Human call: *"rewrite
 ## all descriptions to be in English, but keep the Filipino names."* The name is
 ## the character; the sentence is the joke, and a joke only lands in a language
-## the reader is fluent in. Role words the game teaches on purpose (taya, lata,
+## the reader is fluent in. Role words the game teaches on purpose (lata,
 ## tsinelas, eskinita, sari-sari) stay Filipino inside the English, which is how
 ## the words actually get learned.
 ##
@@ -111,7 +125,7 @@ const ROSTER: Array[Dictionary] = [
 	{
 		"id": &"berto",
 		"name": "BERTO",
-		"tagline": "The original taya. Immovable, unhurriable, and still standing exactly where you left him.",
+		"tagline": "The original defender. Immovable, unhurriable, and still standing exactly where you left him.",
 		"traits": {&"bilis": 2, &"lakas": 4, &"tatag": 5},
 		"model": MODEL_DIR + "character-male-f.glb",
 		"material": MATERIAL_DIR + "person_a.tres",
@@ -143,7 +157,7 @@ const ROSTER: Array[Dictionary] = [
 	{
 		"id": &"kuya_boy",
 		"name": "KUYA BOY",
-		"tagline": "Eldest of seven. He has been the taya since before he could count, and his arm knows it.",
+		"tagline": "Eldest of seven. He has been the defender since before he could count, and his arm knows it.",
 		"traits": {&"bilis": 2, &"lakas": 5, &"tatag": 4},
 		"model": MODEL_DIR + "character-male-b.glb",
 		"material": MATERIAL_DIR + "person_kuya-boy.tres",
@@ -380,7 +394,7 @@ const SLIPPERS: Array[Dictionary] = [
 ## `slot` is which `GameLaunch` preference and which `CharacterBase` index this
 ## tab writes — named rather than positional so nothing depends on tab order.
 const CATEGORIES: Array[Dictionary] = [
-	{"id": &"person", "label": "TAO",      "slot": &"character", "entries": ROSTER},
+	{"id": &"person", "label": "PERSON",   "slot": &"character", "entries": ROSTER},
 	{"id": &"can",    "label": "LATA",     "slot": &"can",       "entries": CANS},
 	{"id": &"slipper","label": "TSINELAS", "slot": &"slipper",   "entries": SLIPPERS},
 ]

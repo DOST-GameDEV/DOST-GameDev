@@ -227,7 +227,7 @@ layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.729, 0, 1)
 theme_override_font_sizes/font_size = 46
 vertical_alignment = 1
-text = "SINO:"
+text = "NAME:"
 
 [node name="CharSelector" type="TextureRect" parent="ConfigPanel/Rows/NameRow"]
 custom_minimum_size = Vector2(380, 86)
@@ -285,7 +285,7 @@ theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 1)
 theme_override_font_sizes/font_size = 25
 vertical_alignment = 1
 autowrap_mode = 2
-text = "The original taya. Immovable, unhurriable, and still standing exactly where you left him."
+text = "The original defender. Immovable, unhurriable, and still standing exactly where you left him."
 
 [node name="TraitRows" type="VBoxContainer" parent="ConfigPanel/Rows"]
 unique_name_in_owner = true
@@ -301,7 +301,7 @@ offset_top = 756.0
 offset_right = 709.0
 offset_bottom = 857.0
 texture = ExtResource("9")
-caption = "SIYA NA!"
+caption = "CHOOSE"
 text_color = Color(1, 1, 1, 1)
 label_size = 53
 pole_distance = 300.0

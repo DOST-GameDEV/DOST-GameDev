@@ -1011,7 +1011,7 @@ func _on_player_disconnected(peer_id: int) -> void:
 	var index := _index_for_character(character) if character != null else -1
 	if index != -1:
 		_rpc_convert_to_ai.rpc(index)
-		_rpc_show_toast.rpc("A player left — a kalaro has taken over their character")
+		_rpc_show_toast.rpc("A player left — a bot has taken over their character")
 	else:
 		# Should not normally happen (every spawned character has an index —
 		# see _build_networked_character) — kept as a fallback so a disconnect
