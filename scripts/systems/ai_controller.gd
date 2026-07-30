@@ -154,14 +154,32 @@ static var taya_block_standoff: float = TAYA_BLOCK_STANDOFF
 ## Seconds the post is held before a re-post is even considered, at NORMAL. Scaled
 ## by tier_think / DECISION_INTERVAL at the call site, so it tracks the tier's own
 ## reaction speed rather than needing a fourth column in DIFFICULTY_TIERS.
-const TAYA_POST_HOLD: float = 0.35
+##
+## ⚠️ 1.6, NOT THE ~0.25-0.5 R-07 GUESSED, AND THE DIFFERENCE IS THE WHOLE ITEM.
+## Measured (fairness log RUN 14): at 0.35 the committed post changed almost nothing —
+## 78.1% of throws still blocked and **0 of 73 released while the post was wrong** —
+## because the window has to outlast the thing it is supposed to be beaten by. The
+## attacker's charge is 0.42-0.98 s (`_flat_hold_time`), so a taya that re-posts after
+## 0.35 s simply re-posts DURING the wind-up and the slide can never earn anything.
+## Swept {0.35, 0.70, 1.10, 1.60} x {0.35, 0.50, 0.55, 0.70}: the block rate falls
+## monotonically as the hold crosses the charge time, exactly as that mechanism
+## predicts, and lands at 44.4% here.
+##
+## Scaled by tier, so BATA holds ~2.3 s (slow, very beatable) and ASTIG ~1.0 s.
+const TAYA_POST_HOLD: float = 1.6
 static var taya_post_hold: float = TAYA_POST_HOLD
 ## How far the attacker's bearing (measured AT THE CAN, so it is the angle that
 ## actually decides whether the post still covers the lane) must swing before the
 ## Taya believes the threat has moved. 0.35 rad ~ 20 degrees; at the 6.0 throwing
 ## line that is ~2.1 units of arc, comfortably more than ATTACKER_LANE_CLEARANCE
 ## (1.3) so a re-post only happens when the old post genuinely no longer blocks.
-const TAYA_REPOST_ANGLE: float = 0.35
+## ⚠️ 0.50, measured in the same sweep. Below ~0.5 the taya re-posts on slides small
+## enough that the old post still covered the lane; above it, it stops reacting to real
+## repositioning. Note the counter that judges this item ("throws released while the
+## post was already wrong") uses THIS value as its threshold, so a wider angle both
+## lowers the block rate and raises the bar it is measured against — read the two
+## together, never one alone.
+const TAYA_REPOST_ANGLE: float = 0.50
 static var taya_repost_angle: float = TAYA_REPOST_ANGLE
 ## Distance from the can an Attacker tries to hold before charging — mirrors
 ## the map's own throwing line (Art_Direction.md §9's 6-unit derivation).
