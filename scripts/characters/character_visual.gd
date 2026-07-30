@@ -914,6 +914,11 @@ func _play_idle(model: Node3D) -> void:
 ## continuously-varying value, not an event. `CharacterBase` is not told any of
 ## this: it owns the velocity, this file owns what the velocity looks like.
 func _play_locomotion() -> void:
+	# The wind-up pose outranks locomotion the same way a one-shot does: an `idle`
+	# re-played every frame would key the same arm bone straight back over it. See
+	# _drive_charge_pose().
+	if _charge_posing:
+		return
 	if _animator == null or _character == null or _action_clip != "":
 		return
 	var speed := Vector2(_character.velocity.x, _character.velocity.z).length()
@@ -966,6 +971,8 @@ func _play_locomotion() -> void:
 		_animator.play(wanted)
 
 func _process(delta: float) -> void:
+	# ⚠️ BEFORE _play_locomotion(), which returns early while a charge pose is held.
+	_drive_charge_pose()
 	_play_locomotion()
 	_spin_while_airborne(delta)
 	_drive_viewmodel_charge()
@@ -1041,6 +1048,180 @@ func snap_remote_transform() -> void:
 ## Polled, not signal-driven, for the reason _spin_while_airborne already
 ## documents: charge is a continuously-varying value, not an event, and a poll
 ## is self-healing across the model rebuild that every round swap performs.
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE WIND-UP EVERYONE ELSE CAN SEE. 🧑: *"make sure other sees windup too, not
+## js attacker FPP"*, and before that *"I WANT EVERYONE ELSE IN THE WORLD TO SEE THAT
+## THE WIND UP IS HAPPENING"*.
+##
+## ⚠️ MEASURED FIRST, WITH A CONTROL — `tools/charge_tell_probe.tscn`, one machine,
+## real left click held for 1.4 s on an attacking Person holding a tsinelas:
+##
+##   observed_charge_power   0.398 -> 1.000        the charge itself is fine
+##   FIRST-PERSON fist       0.247 m of travel     the viewmodel wind-up works
+##   THIRD-PERSON hand       0.0000 m              nothing moved, at all
+##   control: same hand, walking, empty-handed   0.2695 m
+##
+## The control matters: the flat 0.0000 came back on the first run WITH a slipper in
+## hand, where the rig plays `holding-right` — a STATIC hold pose — so a dead metric
+## and a dead feature looked identical. Empty-handed the same observable moves 0.27 m,
+## which is what makes the charge sample evidence rather than a broken probe.
+##
+## So the wind-up existed only in the thrower's own eyeline. Everything downstream of
+## R-10 assumed otherwise: this file's own throw comment, `carrier.gd`'s "a real
+## decision the taya can read and punish", and the whole premise that a charged throw
+## is punishable. The only cue any defender got was the rising `throw_charge` tone.
+##
+## ⚠️ IT READS `observed_charge_power()`, NEVER `charge_power()`. That is the entire
+## difference between this working and not: `charge_power()` is written in
+## `carrier.gd::input_step()`, which runs ONLY on the peer that controls the unit, so
+## a pose driven from it is invisible to every other machine BY CONSTRUCTION — the
+## exact shape of the bug being fixed. `observed_charge_power()` ticks on every peer
+## from one "begin" broadcast (`_rpc_charge_visual`) and recomputes the same
+## deterministic curve locally, so no per-frame RPC and no second broadcast path.
+##
+## ⚠️ A HELD, SCRUBBED FRAME — NOT A ONE-SHOT. `carrier.gd` already emits
+## `play_visual_action("charge")`, and the note there says adding a `"charge"` entry
+## to `ACTION_CLIPS` is "the whole remaining job". It is not: `play_action()` plays a
+## clip ONCE and hands back to locomotion when it finishes, so the wind-up would run
+## itself out in half a second and leave the Person standing in `idle` for the rest of
+## a 1.1 s hold — and the clip it would play is the THROW, so every observer would see
+## a slipper released that is still in the hand. A charge is a continuous value, so
+## the pose is a paused frame of that clip, seeked to the charge fraction: it deepens
+## as the hold deepens and it holds while the hold holds. Same reason
+## `set_viewmodel_charge()` is polled and not signal-driven.
+## ---------------------------------------------------------------------------
+
+## ⚠️ THE POSE IS A BONE ROTATION, NOT A CLIP — AND THAT WAS DECIDED BY MEASUREMENT,
+## AGAINST THE FIRST IMPLEMENTATION.
+##
+## `Art_Direction.md` §234 proposes holding a scrubbed frame of `holding-right-shoot`
+## "scaled by charge instead of inventing new geometry", and `carrier.gd`'s note calls
+## adding a `"charge"` row to `ACTION_CLIPS` "the whole remaining job". Both were
+## built first, and `charge_tell_probe.gd::_scan_pose_clip()` scanned all 32 clips on
+## the rig to check them. The tell in that table:
+##
+##     clip                    len   travel  peak dY  peak dZ
+##     holding-right-shoot    0.20   0.0000   +0.000   +0.000
+##     holding-both-shoot     0.20   0.0000   +0.000   +0.000
+##     interact-right         0.67   0.1313   +0.034   -0.122
+##     pick-up                0.33   0.1465   +0.016   -0.144
+##
+## **Both `*-shoot` clips move the hand exactly zero.** They are not throw arcs on
+## this rig — the arm bone is not keyed in them at all — so no scrub of either can
+## ever show a wind-up, and the scrubbed implementation measured 0.0046 m of hand
+## travel across a full 1.4 s hold. Nothing else on the rig is an overhead cock-back
+## either: the best any clip manages is `interact-right`'s 0.12 m of reach-forward,
+## and it is a fixed motion that cannot be scaled by charge.
+##
+## So the arm bone is rotated directly, by `charge * CHARGE_POSE_RAD`. It is
+## continuous (a charge is a value, not an event), it is proportional (deeper hold,
+## deeper cock — the same readout the first-person arm gives the thrower), and it
+## needs no new art. The carried tsinelas follows for free: `carrier.gd::_step_carried`
+## snaps it to the hand bone every physics frame, so the slipper cocks back with the
+## hand.
+const CHARGE_POSE_BONES: Array[String] = ["arm-right", "arm-left"]
+
+## How far the third-person arm cocks back at full charge. Read from `CameraRig`
+## rather than restated: this is the same wind-up the thrower sees on their own
+## viewmodel, and the two views disagreeing about how far back the arm went would be
+## its own bug.
+const CHARGE_POSE_RAD: float = CameraRig.VIEWMODEL_WINDUP_RAD
+
+## ⚠️ THE SIGN AND THE AXIS ARE MEASURED, exactly as `camera_rig.gd`'s are — B-131 was
+## a wind-up that travelled the right distance in the wrong direction and read as
+## "broken", and a bone's local basis is no more readable by eye than that pivot's was.
+## Measured on this rig by `charge_tell_probe.tscn`, hand in CHARACTER space (+Y up,
+## and the model faces +Z so BACK is -Z) — the numbers are in that probe's `axis` block.
+## The first build of this shipped -X and the probe's direction clause failed it
+## immediately: dY -0.0404, the hand dropping instead of cocking, which is B-131 all
+## over again on a different node.
+##
+## Flip this constant, do not flip the caller.
+const CHARGE_POSE_AXIS: Vector3 = Vector3(1.0, 0.0, 0.0)
+
+## True while a wind-up pose is being written to the skeleton — also the flag that
+## keeps `_play_locomotion()` off the animator, since an `idle` re-play every frame
+## would fight the pose.
+var _charge_posing: bool = false
+var _charge_bone: int = -1
+var _charge_bone_rest: Quaternion = Quaternion.IDENTITY
+var _charge_skeleton: Skeleton3D = null
+
+func _drive_charge_pose() -> void:
+	if _animator == null or _character == null or not _character.is_person:
+		return
+	var carrier := _character.get_node_or_null("Carrier") as Carrier
+	if carrier == null:
+		return
+	# ⚠️ THREE CONDITIONS, NOT ONE. `observed_charge_power()` is a clock that is
+	# started and stopped by broadcast, and a held pose driven by a clock alone freezes
+	# the body for good if a stop is ever missed — measured: a bot switched off
+	# mid-charge left the arm cocked and locomotion suppressed for the rest of the
+	# round. A Person can only be winding up if they are on their feet and holding
+	# something, which are both facts every peer already has, so they are cheap
+	# insurance against a stale clock.
+	var power := carrier.observed_charge_power()
+	var winding := power >= 0.0 and carrier.held() != null \
+		and _character.state == CharacterBase.State.NORMAL
+	if not winding:
+		if _charge_posing:
+			_clear_charge_pose()
+			# ⚠️ ONLY IF NOTHING ELSE IS PLAYING. The end of a charge is usually a
+			# THROW, and `carrier.gd::_rpc_charge_visual(false)` fires the throw
+			# one-shot on every peer through `play_action()`. Calling
+			# `_play_locomotion()` unconditionally here would stomp that clip on its
+			# first frame — the release would be the one part nobody ever saw.
+			if _action_clip == "":
+				_play_locomotion()
+		return
+	if not _charge_posing:
+		if not _resolve_charge_bone():
+			return # no skeleton, or no arm bone — leave locomotion alone
+		_charge_posing = true
+		# ⚠️ THE ANIMATOR HAS TO STOP, AND THIS IS THE WHOLE DIFFERENCE BETWEEN A POSE
+		# AND A FLICKER. Every clip on this rig keys `arm-right`, and an AnimationPlayer
+		# re-applies its current frame after this node's `_process` has run — so a bone
+		# write that merely races it lands only on the frames where the clip happens to
+		# have ended. Measured: 0.0250 m of hand travel while racing, against 0.62 rad
+		# of rotation that should move it eight times that. Paused, nothing else writes
+		# the bone, and the pose is exactly what this function says it is.
+		_animator.pause()
+	# Written every frame and AFTER the AnimationPlayer's own pass for this frame,
+	# because whatever clip is playing keys this same bone.
+	_charge_skeleton.set_bone_pose_rotation(_charge_bone, _charge_bone_rest
+		* Quaternion(CHARGE_POSE_AXIS.normalized(), CHARGE_POSE_RAD * clampf(power, 0.0, 1.0)))
+
+func _resolve_charge_bone() -> bool:
+	if get_child_count() == 0:
+		return false
+	var model := get_child(0) as Node3D
+	if model == null:
+		return false
+	var skeletons := model.find_children("*", "Skeleton3D", true, false)
+	if skeletons.is_empty():
+		return false
+	_charge_skeleton = skeletons[0] as Skeleton3D
+	for bone_name in CHARGE_POSE_BONES:
+		var idx := _charge_skeleton.find_bone(bone_name)
+		if idx != -1:
+			_charge_bone = idx
+			# The pose the animation left the bone in, restored on release so a
+			# wind-up cannot accumulate across two of them.
+			_charge_bone_rest = _charge_skeleton.get_bone_pose_rotation(idx)
+			return true
+	return false
+
+func _clear_charge_pose() -> void:
+	_charge_posing = false
+	if _animator != null:
+		# Whatever plays next — the throw one-shot or locomotion — needs a running
+		# player, and `play()` on a paused one resumes rather than restarts.
+		_animator.play(_animator.current_animation)
+	if _charge_skeleton != null and is_instance_valid(_charge_skeleton) and _charge_bone != -1:
+		_charge_skeleton.set_bone_pose_rotation(_charge_bone, _charge_bone_rest)
+	_charge_bone = -1
+	_charge_skeleton = null
+
 func _drive_viewmodel_charge() -> void:
 	if _character == null or not _character.is_person:
 		return

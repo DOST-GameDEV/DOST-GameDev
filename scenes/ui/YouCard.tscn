@@ -2,15 +2,27 @@
 
 [ext_resource type="Script" path="res://scripts/ui/you_card.gd" id="1"]
 
+; ⚠️ 64px OF CLEARANCE UNDER THIS CARD, NOT 16 — 🧑, after seeing the numbers: *"the ui
+; huds midgame still go BELOW the screen, could u js make it smaller or dont force it to
+; be so down there ... we dont have to do some complicated shit to fix that bruh"*. Fair.
+;
+; The window fix (`game_launch.gd::fit_window_to_usable_screen`) makes the whole content
+; rect visible, and this is the belt to that braces: a card whose last row sits 16px off
+; the bottom of the frame is one taskbar, one title bar, one overscan-happy TV or one
+; borderless-window quirk away from being clipped again, on a machine nobody here owns.
+; Everything bottom-anchored in the HUD now keeps out of a 64px band along the bottom
+; edge — asserted for every row set by `ui_layout_probe.gd::_report_you_card()` against
+; BOTTOM_SAFE_BAND. The card is not smaller; it is 48px higher, which is what "dont force
+; it so down there" asks for and costs nothing on screen.
 [node name="YouCard" type="Control"]
 layout_mode = 3
 anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 16.0
-offset_top = -172.0
+offset_top = -220.0
 offset_right = 236.0
-offset_bottom = -16.0
+offset_bottom = -64.0
 mouse_filter = 2
 script = ExtResource("1")
 
