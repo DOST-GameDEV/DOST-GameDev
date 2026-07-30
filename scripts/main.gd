@@ -552,6 +552,23 @@ func _start_local_test() -> void:
 	# begin_next_round() below runs it.
 	team_a_prop.ability = _prop_ability_for(team_a_prop).duplicate()
 	team_b_prop.ability = _prop_ability_for(team_b_prop).duplicate()
+	# ⚠️⚠️ B-145, THE SOLO HALF — 🧑 *"the models we pick in single player dont
+	# show up"*, and this is why. These four units are AUTHORED IN Main.tscn, so
+	# their `_ready()` — which calls `_visual.apply()` — ran when the scene loaded,
+	# several lines BEFORE the picks above were written onto them. The model was
+	# therefore drawn from `character_index`/`can_index` -1 every time, and nothing
+	# asked again until `reset_for_new_round()` at the END of round 1. The pre-round
+	# free-roam window (2026-07-28) is exactly when a player stands around looking
+	# at their character, so "my pick did nothing" is the first thing they see.
+	#
+	# ⚠️ THIS ALONE IS NOT ENOUGH — `character_visual.gd::apply()` early-returns on
+	# an unchanged cache key, and for a Prop all six skins share ONE mesh. The skin
+	# index is part of that key as of B-145; without that half, this call is a
+	# no-op for a lata or a tsinelas.
+	for unit in [team_a_person, team_b_person, team_a_prop, team_b_prop]:
+		var unit_visual: Node = unit.get_node_or_null("Visual")
+		if unit_visual != null and unit_visual.has_method("apply"):
+			unit_visual.apply(unit.is_person, unit.is_can, unit.team)
 	# 2026-07-28: user report — "u didnt fix spawn in logic". Local test units
 	# used to just sit at Main.tscn's own hand-authored default transforms,
 	# which predate the role-based SpawnPoints redesign (2.6) entirely and
@@ -908,6 +925,132 @@ func _rpc_client_ready_for_spawn() -> void:
 ## that fires before NetworkManager.peer_tokens has this peer's entry simply
 ## does nothing rather than spawning them into the wrong slot — whichever
 ## trigger fires once BOTH conditions are true is the one that actually acts.
+## ---------------------------------------------------------------------------
+## B-145 · THE PICKS DO REACH THE UNIT — AND THEN NOT EVERY PEER SEES IT.
+##
+## 🧑 Reported from play: *"the models we pick don't show up"*, *"i pick coffee,
+## if i switch to can, old model stays"*, *"character settings dont update in
+## actual play"*. All three are one thing seen from three angles.
+##
+## ⚠️ MEASURED ON FOUR REAL PEERS FROM A VERIFIED-CLEAN START, and the split is
+## exact. For any one Prop there are three kinds of peer:
+##
+##   the HOST      — `picks_for()` is host-side, so it is right.
+##   the OWNER     — writes its own `GameLaunch` (`_apply_reclaimed_picks`), right.
+##   EVERYBODY ELSE — reads `can_index = -1` and draws the stock skin at 3/3/3.
+##
+## **With two peers there is no everybody-else**, which is why every two-instance
+## run this project has ever done was green and the game was broken in a real
+## four-player match. Host and owner read `can_index=3`; the two third-party
+## clients read `-1` for the same unit in the same round.
+##
+## ⚠️ TWO PLAUSIBLE FIXES WERE TRIED FIRST AND BOTH MEASURED NO CHANGE — recorded
+## so nobody spends the afternoon re-trying them:
+##
+##   1. `_build_networked_character` stamping -1 over a replicated value. Real,
+##      and guarded now (a peer with no answer must leave the value alone — the
+##      rule `_apply_reclaimed_picks` already states), but NOT the cause: the
+##      third-party clients still read -1 afterwards.
+##   2. Flipping the three properties from `replication_mode` ON_CHANGE to ALWAYS
+##      in `CharacterBase.tscn`. Also no change. The state is not arriving at
+##      all, so how often it would be re-sent is beside the point.
+##
+## So the value never crosses to a peer that owns neither the node nor the
+## session, and it is sent HERE instead — on the same trigger, to the same one
+## peer, as the round-state catch-up directly above, which exists because a
+## joiner misses things that happened before it existed. **This is not U-8.**
+## U-8 is a second path for something the host already delivers; nothing
+## delivered this.
+## ---------------------------------------------------------------------------
+
+## HOST-ONLY. Re-asks `_team_prop_picks` for every AI-held Prop that still has no
+## picks, then tells everybody. Idempotent and cheap: a Prop that already has an
+## answer is skipped, and a team whose Person is still a bot legitimately stays
+## at -1 (the neutral 3/3/3 is correct when there is nobody to inherit from).
+func _refresh_ai_prop_picks() -> void:
+	if not NetworkManager.is_host():
+		return
+	var changed := false
+	for index in _index_to_character:
+		var character: CharacterBase = _index_to_character[index]
+		if character == null or not is_instance_valid(character):
+			continue
+		if character.is_person:
+			continue
+		if character.can_index >= 0 or character.slipper_index >= 0:
+			continue
+		if not String(character.name).begins_with("-"):
+			continue # a human's own Prop with no pick is that human's business
+		var inherited := _team_prop_picks(character.team)
+		var can := int(inherited.get("can", -1))
+		var slipper := int(inherited.get("slipper", -1))
+		if can < 0 and slipper < 0:
+			continue
+		if can >= 0:
+			character.can_index = can
+		if slipper >= 0:
+			character.slipper_index = slipper
+		character.ability = _prop_ability_for(character).duplicate()
+		changed = true
+	if changed:
+		# Everyone, not just the arriving peer: this changed a unit the peers
+		# already had, so it is a correction to state they are all holding.
+		_rpc_sync_picks.rpc(_picks_table())
+
+## [[index, character_index, can_index, slipper_index], ...] for every spawned
+## seat. Built on the host, where the answer is known.
+func _picks_table() -> Array:
+	var table: Array = []
+	for index in _index_to_character:
+		var character: CharacterBase = _index_to_character[index]
+		if character == null or not is_instance_valid(character):
+			continue
+		table.append([int(index), character.character_index,
+			character.can_index, character.slipper_index])
+	return table
+
+## Host → ONE peer. Applies to the units that already exist here, and is kept so
+## a unit that has not arrived yet can be answered when it does — the spawn order
+## and this message have no guaranteed relationship, and assuming one is how the
+## first version of this dropped the seat that arrived a frame late.
+var _known_picks: Dictionary = {}
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_sync_picks(table: Array) -> void:
+	for row in table:
+		if typeof(row) != TYPE_ARRAY or (row as Array).size() < 4:
+			continue
+		var index := int(row[0])
+		_known_picks[index] = row
+		var character: CharacterBase = _index_to_character.get(index)
+		if character != null and is_instance_valid(character):
+			_apply_known_picks(character, index)
+
+## ⚠️ NEVER WRITES A -1. Same rule as everywhere else in this file: a peer with
+## no answer leaves the value it was given alone.
+func _apply_known_picks(character: CharacterBase, index: int) -> void:
+	var row: Array = _known_picks.get(index, [])
+	if row.size() < 4:
+		return
+	if int(row[1]) >= 0:
+		character.character_index = int(row[1])
+	if int(row[2]) >= 0:
+		character.can_index = int(row[2])
+	if int(row[3]) >= 0:
+		character.slipper_index = int(row[3])
+	# The skin carries this round's ability and this round's MODEL, so a pick
+	# that only arrives now still has to be applied to both.
+	if not character.is_person:
+		character.ability = _prop_ability_for(character).duplicate()
+	# ⚠️ AND THE MODEL HAS TO BE TOLD. `_visual.apply()` runs at `_ready()` and on
+	# every role swap — neither of which happens when a pick lands mid-round, so
+	# without this the unit keeps wearing whatever it was drawn with. Addressed
+	# through the node rather than through `character_base.gd`, which is
+	# SHARED-LOCK and needs no change for this.
+	var visual: Node = character.get_node_or_null("Visual")
+	if visual != null and visual.has_method("apply"):
+		visual.apply(character.is_person, character.is_can, character.team)
+
 func _try_late_join(peer_id: int) -> void:
 	if _spawned_peer_ids.has(peer_id):
 		return
@@ -926,6 +1069,18 @@ func _try_late_join(peer_id: int) -> void:
 		MatchManager.team_a_wins, MatchManager.team_b_wins,
 		RoundManager.time_left, RoundManager.round_active, GameLaunch.game_mode
 	)
+	# B-145 — see `_rpc_sync_picks`. The same catch-up, for the three indices the
+	# synchronizer does not deliver to a peer that owns neither the node nor the
+	# session. Sent on the SAME trigger as the round state above, to the same one
+	# peer, for the same reason: it missed a thing that happened before it existed.
+	_rpc_sync_picks.rpc_id(peer_id, _picks_table())
+	# B-145, second half. NET-1 gave an AI-held Prop its human teammate's picks —
+	# but `_fill_empty_slots_with_placeholders()` runs in `_start_hosting()`,
+	# BEFORE a single client has connected, so `_team_prop_picks` had nobody to
+	# inherit from and wrote -1. Nothing ever asked again, so a bot Prop sitting
+	# beside a human who joined thirty seconds later wore the stock 3/3/3 for the
+	# whole match. Measured: the last remaining red row on the four-peer run.
+	_refresh_ai_prop_picks()
 	# A peer arriving DURING the ready phase joins the vote rather than watching
 	# it: broadcast rather than rpc_id, because `_expected_ready_count()` just went
 	# up and everybody's "2 / 3 ready" line is now wrong. A peer arriving after the
@@ -1405,19 +1560,53 @@ func _build_networked_character(data: Dictionary) -> Node:
 	# Person picks and Prop picks are set on the unit they belong to. A Prop takes
 	# BOTH lata and tsinelas skins because `is_can` flips every round and it will
 	# be each of them in turn — see CharacterBase.can_index.
+	# ⚠️⚠️ B-145 — NEVER STAMP -1 OVER A VALUE THAT WAS REPLICATED TO US, AND THIS
+	# FUNCTION USED TO. It runs on EVERY peer, but `peer_characters` is HOST-ONLY,
+	# so `picks_for()` returns -1 on a client asking about anybody. The three
+	# indices are `spawn = true` on `CharacterBase.tscn`, so the host's real value
+	# arrives with the node — and then this ran and wrote -1 straight over it.
+	#
+	# ⚠️ IT CANNOT HAPPEN WITH TWO PEERS, WHICH IS WHY IT SURVIVED EVERY RUN THIS
+	# PROJECT HAS EVER DONE. For any given unit there are three kinds of peer: the
+	# HOST (whose `picks_for` is right), the OWNER (whose own `GameLaunch` is
+	# right — `_apply_reclaimed_picks` reads it), and EVERYBODY ELSE. With two
+	# peers there is no everybody-else. Measured on FOUR real peers, from a
+	# verified-clean start: the host and the owning client both read
+	# `can_index=3`, and the two THIRD-PARTY clients read `-1` for the same unit
+	# in the same round, so they drew the stock skin and the neutral 3/3/3.
+	#
+	# The rule is the one `_apply_reclaimed_picks` already states for the same
+	# reason: a peer with no answer of its own LEAVES THE INHERITED VALUE ALONE.
+	# Losing a pick to a peer that never had an opinion is a downgrade, not a
+	# correction.
 	var picks := NetworkManager.picks_for(int(data["peer_id"]))
 	if character.is_person:
-		character.character_index = int(picks.get("character", -1))
+		var person := int(picks.get("character", -1))
+		if person >= 0:
+			character.character_index = person
 	else:
-		character.can_index = int(picks.get("can", -1))
-		character.slipper_index = int(picks.get("slipper", -1))
+		var can := int(picks.get("can", -1))
+		var slipper := int(picks.get("slipper", -1))
+		if can >= 0:
+			character.can_index = can
+		if slipper >= 0:
+			character.slipper_index = slipper
 		# NET-1 — see `_team_prop_picks` for the whole account. A Prop seat nobody
 		# is sitting in inherits its human teammate's lata and tsinelas picks
 		# instead of falling through to the neutral 3/3/3.
-		if character.can_index < 0 and character.slipper_index < 0:
+		#
+		# ⚠️ HOST-ONLY, since B-145. `_team_prop_picks` walks `peer_tokens` and
+		# `picks_for`, both host-side, so on a client it can only ever return
+		# -1/-1 — and before this guard that -1 was then written over a perfectly
+		# good replicated value by the very branch meant to repair one.
+		if NetworkManager.is_host() and character.can_index < 0 and character.slipper_index < 0:
 			var inherited := _team_prop_picks(int(data["team"]))
-			character.can_index = int(inherited.get("can", -1))
-			character.slipper_index = int(inherited.get("slipper", -1))
+			var inherited_can := int(inherited.get("can", -1))
+			var inherited_slipper := int(inherited.get("slipper", -1))
+			if inherited_can >= 0:
+				character.can_index = inherited_can
+			if inherited_slipper >= 0:
+				character.slipper_index = inherited_slipper
 	if data["is_person"]:
 		# Session 8: Person's Tag/Throw, replacing the previously-null `ability`
 		# for Person (see PersonAction doc). .duplicate() per PERSON_ACTION_ABILITY
@@ -1463,6 +1652,12 @@ func _build_networked_character(data: Dictionary) -> Node:
 	# survives a reconnect.
 	var index: int = _seat_of(data["team"], data["is_person"])
 	_index_to_character[index] = character
+	# B-145 — a unit that arrives AFTER `_rpc_sync_picks` did. The message and the
+	# spawn have no guaranteed order, so both directions are covered: the RPC
+	# applies to units already here, and this applies the remembered answer to a
+	# unit that turns up afterwards. Placed after `index` is derived, because the
+	# first attempt referenced it forty lines before it existed.
+	_apply_known_picks(character, index)
 	if is_ai:
 		# Only the host's own local instance of this spawn_function call
 		# attaches a driving AIController (add_child, never baked into

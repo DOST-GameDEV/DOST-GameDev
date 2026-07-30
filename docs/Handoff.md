@@ -177,7 +177,17 @@ marked `[FIXED]` there is done and settled. New bugs take the next free number *
 > that never arrives, a model that does not change — those are bugs, and B-145 below is
 > exactly that class.
 
-**B-145 · THE PICKS DO NOT REACH THE GAME — WRONG MODEL, STALE MODEL, DEAD STATS. [OPEN · 🌐 NET]**
+**B-145 · THE PICKS DO NOT REACH THE GAME — WRONG MODEL, STALE MODEL, DEAD STATS. [FIXED 2026-07-30 · 🌐 NET]**
+
+✅ **FIXED — five separate causes, full account in `Checklist.md` § B-145.** Four real peers
+now read 27/27, 28/28, 28/28, 21/21. In short: a third-party peer never learned anybody
+else's pick (invisible with two peers, which is why every run was green); a bot Prop beside a
+human teammate inherited nothing because the placeholders are built before anyone connects;
+single-player units are authored in `Main.tscn` so their model was drawn before the picks
+were written; the visual cache key ignored the prop skin, so all six latas shared one key;
+and a tsinelas's own LAKAS never reached its thrown impact. ⚠️ **Two of the fixes are in
+other lanes' files** (`character_visual.gd` 🩴 ART, `carriable.gd` 🥊 PHYS), both taken on
+🧑's direct instruction — **flag on merge**. The original report follows.
 
 🧑 **Reported from real play, 2026-07-30**, three symptoms in one breath — and they are almost
 certainly one pipeline:
@@ -210,7 +220,16 @@ the CHARACTER screen with a human at the keyboard, which is the exact path the r
   through the token → `peer_tokens` → `picks_for()` chain.
 - With **four** peers, one client reports `can_index=-1` for a unit the host and another
   client both report as `can_index=3`, **same unit, same round**. Peers disagreeing about a
-  replicated pick is the most serious of the three.
+  replicated pick is the most serious of the three. ✅ **This was the real one, and it is
+  fixed.**
+
+⚠️ **AND TWO OF THE THREE "RELATED" ITEMS ABOVE WERE MY OWN HARNESS, NOT THE GAME** —
+recorded because they were reported as possible bugs and it would be dishonest to let that
+stand. Re-run from a **verified-clean start** (`tasklist | grep -c godot` = 0), a two-peer
+run is **24/24 ALL CHECKS PASSED** on both peers: there is no ghost third seat, and the
+"human-owned Prop resolved -1" rows were that ghost being counted as a human teammate. Stale
+`Godot_..._console.exe` processes from earlier runs were still holding connections — exactly
+the failure mode `CLAUDE.md` warns about. **Kill leftovers between runs and verify the kill.**
 
 **B-144 · `aim_probe` FAILS ITS OWN AIM CLAUSE AFTER THE 10.6 MERGE — 0.41 m AGAINST A 0.40 m MARK. [FIXED 2026-07-30 · 🌐 NET]**
 
