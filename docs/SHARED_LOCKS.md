@@ -18,7 +18,7 @@ to type.
 | `scenes/main/Main.tscn` | — free — | | |
 | `scenes/characters/CharacterBase.tscn` | — free — | | |
 | `scenes/characters/CameraRig.tscn` | — free — | | |
-| `scenes/ui/*.tscn` | — free — | | |
+| `scenes/ui/*.tscn` | 🖥️ UX | `integration` | 2026-07-30 — R-09 picker, R-27 premise card, R-28 crosshair, R-29 round-end reason |
 | `project.godot` | — free — | | |
 | `tools/models/generate_all.gd` | — free — | | |
 | `docs/Checklist.md` | *no lock needed* | | append-only-ish; conflicts resolved by taking both sides |
