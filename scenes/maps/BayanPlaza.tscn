@@ -2047,62 +2047,62 @@ mesh = ExtResource("44")
 surface_material_override/0 = SubResource("Mat_chalk")
 
 [node name="CourtEast" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 3.18167, 0, 0.00000, 5.0000, 0.0820, 0.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 3.18887, 0, 0.00000, 5.0000, 0.0820, 0.0000)
 mesh = ExtResource("45")
 surface_material_override/0 = SubResource("Mat_chalk")
 
 [node name="CourtWest" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 3.18167, 0, 0.00000, -5.0000, 0.0820, 0.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 3.18887, 0, 0.00000, -5.0000, 0.0820, 0.0000)
 mesh = ExtResource("45")
 surface_material_override/0 = SubResource("Mat_chalk")
 
 [node name="CourtNorth" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(1.68167, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, -9.5000)
+transform = Transform3D(1.68887, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, -9.5000)
 mesh = ExtResource("45")
 surface_material_override/0 = SubResource("Mat_chalk")
 
 [node name="CourtSouth" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(1.68167, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, 9.5000)
+transform = Transform3D(1.68887, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, 9.5000)
 mesh = ExtResource("45")
 surface_material_override/0 = SubResource("Mat_chalk")
 
 [node name="ConfinementNorth" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(1.68167, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, -5.0000)
+transform = Transform3D(1.68887, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, -5.0000)
 mesh = ExtResource("45")
 surface_material_override/0 = SubResource("Mat_chalk")
 
 [node name="ConfinementSouth" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(1.68167, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, 5.0000)
+transform = Transform3D(1.68887, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, 5.0000)
 mesh = ExtResource("45")
 surface_material_override/0 = SubResource("Mat_chalk")
 
 [node name="ThrowingLineNorth" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(1.26125, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, -6.0000)
+transform = Transform3D(1.26665, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, -6.0000)
 mesh = ExtResource("46")
 surface_material_override/0 = SubResource("Mat_chalk")
 
 [node name="ThrowingLineSouth" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(1.26125, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, 6.0000)
+transform = Transform3D(1.26665, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, 6.0000)
 mesh = ExtResource("46")
 surface_material_override/0 = SubResource("Mat_chalk")
 
 [node name="BoundaryNorth" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(4.18167, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, -12.5000)
+transform = Transform3D(4.18887, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, -12.5000)
 mesh = ExtResource("45")
 surface_material_override/0 = SubResource("Mat_chalk")
 
 [node name="BoundarySouth" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(4.18167, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, 12.5000)
+transform = Transform3D(4.18887, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.0000, 0.0820, 12.5000)
 mesh = ExtResource("45")
 surface_material_override/0 = SubResource("Mat_chalk")
 
 [node name="BoundaryEast" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 4.18167, 0, 0.00000, 12.5000, 0.0820, 0.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 4.18887, 0, 0.00000, 12.5000, 0.0820, 0.0000)
 mesh = ExtResource("45")
 surface_material_override/0 = SubResource("Mat_chalk")
 
 [node name="BoundaryWest" type="MeshInstance3D" parent="Markings"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 4.18167, 0, 0.00000, -12.5000, 0.0820, 0.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 4.18887, 0, 0.00000, -12.5000, 0.0820, 0.0000)
 mesh = ExtResource("45")
 surface_material_override/0 = SubResource("Mat_chalk")
 

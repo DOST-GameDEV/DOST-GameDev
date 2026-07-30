@@ -1571,11 +1571,58 @@ const CHALK_TINT: Color = Color(0.902, 0.878, 0.816)
 ## standing question about printed type on the lata. A triplanar material needs no
 ## UVs: it projects from world space. So the decals get real chalk grain without a
 ## UV pipeline, and nothing else in the kit has to change.
+## The centreline's WANDER at position `t` along the line, in metres. Two
+## incommensurate sines, so it never repeats over a line's length and never needs a
+## random number — same determinism rule as everything else in this file.
+func _chalk_wander(t: float) -> float:
+	return 0.011 * sin(t * 13.7) + 0.006 * sin(t * 31.3 + 1.1) 		+ 0.003 * sin(t * 67.1 + 0.5)
+
+
+## Half the line's WIDTH at `t`. A stick of chalk held by a kid does not hold a
+## width: it presses, skips, and rolls. 0.55x to 1.35x of nominal.
+func _chalk_halfwidth(t: float, side: float) -> float:
+	var press := 0.95 + 0.28 * sin(t * 17.9 + 0.4) + 0.12 * sin(t * 43.3 + side * 2.1)
+	return CHALK_WIDTH * 0.5 * clampf(press, 0.55, 1.35)
+
+
 func _chalk_line(file_name: String, length: float) -> void:
 	var w := ObjWriter.new("ChalkLine")
 	w.set_material("mark", CHALK_TINT)
-	_box(w, 0.0, 0.0, length, CHALK_WIDTH, 0.0, 0.02, "mark")
-	_finish(w, file_name)
+
+	## ⚠️⚠️ A HAND-DRAWN RIBBON, NOT A BOX. Human, with three reference photos:
+	## "make the lines not straight like idk REAL CHALK? IVE NEVER SEEN STRAIGHT UP
+	## STRAIGHT CHALK WITH STRAIGHT WHITE LINE NO TEXTURE."
+	## Right — and a single `_box()` is exactly a straight white line. In every one
+	## of those references the line WANDERS off true by a centimetre or two, CHANGES
+	## THICKNESS along its length as the stick presses and skips, and has edges that
+	## are ragged rather than parallel. None of that is texture; it is the SHAPE.
+	##
+	## `add_extrude` takes an arbitrary outline, so the line is built as a closed
+	## ribbon: forward along the low-Z edge, back along the high-Z edge, with the
+	## centreline wandering and the half-width varying INDEPENDENTLY on each side.
+	## Same winding as `_corrugated_outline` — that is the handedness add_extrude
+	## wants.
+	##
+	## ⚠️ THE WANDER IS AUTHORED IN Z, WHICH THE BUILDERS DO NOT STRETCH. Both
+	## builders scale these decals on the X basis column only, so a 6 m mesh drawn
+	## out to 26 m keeps its wobble AMPLITUDE in real centimetres and simply gets a
+	## longer wavelength. A 2 cm wobble stays a 2 cm wobble on every line on both
+	## maps, which is what makes one mesh usable at four different lengths.
+	const SEGS := 64
+	var outline := PackedVector2Array()
+	for i in range(SEGS + 1):
+		var t := float(i) / float(SEGS)
+		var x := -length * 0.5 + length * t
+		outline.append(Vector2(x, _chalk_wander(t) - _chalk_halfwidth(t, 0.0)))
+	for i in range(SEGS, -1, -1):
+		var t := float(i) / float(SEGS)
+		var x := -length * 0.5 + length * t
+		outline.append(Vector2(x, _chalk_wander(t) + _chalk_halfwidth(t, 1.0)))
+	# 0.0 smoothing: chalk grain is a hard, faceted edge. Averaging the normals
+	# across the ragged boundary sands it back into the straight line this exists
+	# to get rid of — the same lesson `_laundry_line` records about cloth folds.
+	w.add_extrude(outline, 0.0, 0.02, "mark")
+	_finish(w, file_name, 0.0)
 
 
 func _throwing_line_decal() -> void:
