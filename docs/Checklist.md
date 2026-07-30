@@ -3705,6 +3705,113 @@ the stagger test did not clear `_staggered_time_left`, so `max()` swallowed ever
 value and reported an identical 0.2500 s at every TATAG while the knockback divisor beside
 it was plainly working.
 
+### HANDOFFS INTO THE 🌐 NET LANE — written 2026-07-30 by 🥊 PHYS
+
+🧑 **The human is running the NET lane next and has asked it to take all of these.** Ordered by
+what is genuinely NET's to write. ⚠️ **Items 5–7 are NOT NET's files** — they need either the
+owning lane or an explicit grant from the human; they are listed because the human asked for the
+full set in one place, not because ownership moved.
+
+#### NET-1 · ⚠️ CAN AND SLIPPER STATS READ AS IDENTICAL, AND THE SILENT-NEUTRAL PATH IS WHY
+
+🧑 Human report: *"add stats for cans and slippers bcz i think theyre all the same."*
+
+**The data is NOT missing.** `CharacterRoster.CANS` and `SLIPPERS` both carry six entries with
+genuinely varied traits (`CANS`: 3/3/3, 2/3/5, 3/2/4, 5/2/1, 1/5/4, 2/4/4 · `SLIPPERS`: 3/3/3,
+1/5/5, 3/4/2, 4/3/3, 4/2/3, 5/1/2), and the read path exists —
+`CharacterBase.trait_points()` branches to `CharacterRoster.prop_trait(can_index, slipper_index,
+is_can, key)` for a Prop.
+
+⚠️⚠️ **SO THE SUSPECT IS THE INDEX ARRIVING, AND THERE IS A PATH THAT FAILS SILENTLY INTO
+"ALL THE SAME".** `can_index`/`slipper_index` default to **-1**, and
+`CharacterRoster.traits_in()` returns `{}` for any index `< 0` or out of range, which
+`_trait_value()` resolves to **`TRAIT_NEUTRAL` (3)**. That fallback is deliberate and correct —
+its own doc says an AI slot, a `--host` session that passed no character screen, and an older
+peer's unknown index must all "produce a playable unit … not a crash and not a silently
+super-powered one". **But its failure signature is exactly the human's report: every lata and
+every tsinelas at a flat 3/3/3, with no error anywhere.**
+
+**Why this is NET's.** The picks travel `character_select.gd` → `GameLaunch` →
+`network_manager.gd:121-122` (the pick payload) → `main.gd:533-534` and `main.gd:1278-1279`
+(assignment onto the spawned unit). Three of those four are this lane's files, and
+"a pick that does not cross the wire" is the **U-8 bug class** — the one the difficulty picker's
+own handoff warns has already been fixed twice.
+
+**What to measure, and do NOT stop at "the int is set":**
+1. Two real peers, each picking a **different** lata and a **different** tsinelas. Assert every
+   peer's copy of every Prop carries the same `can_index`/`slipper_index`. Both are in
+   `CharacterBase.tscn`'s replication config, so this is checkable on both sides.
+2. ⚠️ **Assert the index is never -1 on a spawned Prop that a human picked for.** That is the
+   silent-neutral trip, and it is the whole hypothesis.
+3. ⚠️ **Then measure an OBSERVABLE, not `trait_points()`.** A `trait_points() == 5` assertion
+   proves a dictionary lookup works; it does not prove the trait reaches the can. The
+   `CHARACTER TRAITS · VERIFIED END TO END` block above is the template — metres walked for
+   BILIS, m/s of shove for LAKAS, m/s kept of a fixed shove for TATAG. ⚠️ **That block verified
+   the PERSON path (`character_index` → `person_trait`) only. `prop_trait` is a different
+   function against different lists and has never been measured at all.**
+4. ⚠️ **A Prop is a lata one round and a tsinelas the next**, so `is_can` flips and the answer
+   genuinely changes across a role swap and must never be cached. Measure it on **both** sides
+   of one swap.
+
+**If it turns out the indices DO arrive and DO differ:** the report is then a FEEL call, not a
+bug — the per-point steps are deliberately small (`character_base.gd`: *"a party game cannot
+afford a pick that is simply correct"*). Produce the spread as numbers and **ask the human**;
+do not widen the steps unasked.
+
+#### NET-2 · `tools/input_probe.gd:70` BLOCKS R-30, AND IT IS THIS LANE'S FILE
+
+`input_probe.gd:70` calls `DebugPlayerSwitcher._cycle()`. Deleting that autoload therefore makes
+the probe fail to **PARSE**, and "input_probe green" is part of R-30's own acceptance — so R-30
+cannot complete until this is rewritten. `input_probe.gd` **and** `debug_player_switcher.gd` are
+both on this lane's path list, so both halves are yours.
+
+#### NET-3 · `hit_probe` PRESSES NOTHING, AND IT IS THIS LANE'S READY PHASE THAT ADDED THE WAIT
+
+`hit_probe.tscn` reports **0 throws** on real peers. `tools/hit_probe.gd:223` waits on
+`RoundManager.round_active` and presses nothing; nothing starts a networked round until every
+peer sends `_rpc_declare_ready` (`main.gd::_awaiting_net_ready` — the host counts PEERS, not
+characters). **`aim_probe.gd::_net_ready_up()` is a working implementation to copy**, polled
+rather than signal-driven because `_awaiting_net_ready` is only set once the host's own phase RPC
+arrives, which may be after the probe's first look. The READY phase is `main.gd`, this lane's
+file; `hit_probe.gd` itself is unowned.
+
+#### NET-4 · ⚠️ THE §3.5.5 GREP IS UNPASSABLE AS DOCUMENTED — `.worktrees`
+
+R-30's acceptance is `grep -rin "debug" … .` from the project root. There is a live git worktree
+at **`.worktrees/windows-deploy`** (branch `code/windows-deploy`, confirmed by
+`git worktree list`). The grep recurses into it and returns **~60 duplicate hits**, including
+second copies of `debug_player_switcher.gd` and `DebugBar.tscn` themselves. It is `.gitignore`d
+(line 31) so `git status` never shows it, and `grep` does not read `.gitignore`.
+
+**This is the identical failure §3.5.5 already records once** for the
+`Debug > Run Multiple Instances` filter — *"made the acceptance test impossible to ever pass …
+which is worse than no checklist"*. Fix it the same way: add `--exclude-dir=.worktrees` to the
+documented command, **or** remove the worktree before the acceptance run. Also note the rewording
+is **8 gameplay files, not 5**; the extra ones are `network_manager.gd`, `carriable.gd` (a false
+positive on the words *"debug cruft"*) and **`character_base.gd` with 5 hits — a shared-lock
+file, so R-30 needs a mutex its plan does not mention.**
+
+#### NET-5 · ⚠️ NOT THIS LANE'S FILE — `ai_controller.gd`, R-06 leg 3 and the lob constant
+
+Both need `scripts/systems/ai_controller.gd`, which is the ⚖️ **BALANCE** lane's. Specified in
+full two blocks up (`R-06 leg 3 · MEASURED`): **hold the sidestep, do not widen it** —
+`CAN_EVADE_STEP` already aims 2.7× the measured 0.45 m band — and have
+`ATTACKER_LOB_OVERHOLD` **read** `Carrier.LOB_OVERHOLD_TIME` instead of restating 0.20. The PHYS
+side of both is done and verified. **Needs the balance lane or an explicit human grant.**
+
+#### NET-6 · ⚠️ NOT THIS LANE'S FILE — the dents-vs-blocked contradiction (`ai_probe.gd`)
+
+dents/round fell **1.75 → 1.00** while `blocked` *improved* **43.5% → 41.2%**. Fewer throws
+stopped, fewer dents landed; one of those columns is not measuring what it says. This gates the
+`MAX_DENTS` decision recorded above. ⚖️ BALANCE's probe.
+
+#### NET-7 · ⚠️ NOT THIS LANE'S FILE — OPTION_B has never been in a fairness run
+
+`GameLaunch.game_mode` **defaults to OPTION_B**, and `ai_probe` forces OPTION_A for fairness runs
+(correctly — under B the dents column measures nothing). So every fairness figure in this log
+describes A, while B's own offence paths — `FALL_LIMIT` 4 and all-Sealed — have **no measured
+rate at all.** The larger of the two holes. ⚖️ BALANCE's probe.
+
 #### HANDOFF — R-09 (the difficulty picker) to the 🖥️ UX lane
 
 **The mechanism is complete and measured; only the screen is missing.**
