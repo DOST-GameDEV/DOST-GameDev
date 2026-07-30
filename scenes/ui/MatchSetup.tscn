@@ -57,9 +57,9 @@ stretch_mode = 0
 
 [node name="Banner" type="TextureRect" parent="."]
 layout_mode = 0
-offset_top = 75.0
+offset_top = 40.0
 offset_right = 648.0
-offset_bottom = 219.0
+offset_bottom = 184.0
 mouse_filter = 2
 texture = ExtResource("4")
 expand_mode = 1
@@ -86,9 +86,9 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
 theme_override_constants/margin_left = 83
-theme_override_constants/margin_top = 214
+theme_override_constants/margin_top = 179
 theme_override_constants/margin_right = 96
-theme_override_constants/margin_bottom = 40
+theme_override_constants/margin_bottom = 80
 
 [node name="Columns" type="HBoxContainer" parent="Body"]
 layout_mode = 2

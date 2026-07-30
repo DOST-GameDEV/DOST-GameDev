@@ -125,7 +125,27 @@ def xform(x, y, z, yaw=0.0, sx=1.0):
     # leaving Y/Z untouched. Lets a straight decal be shortened/lengthened
     # without a new mesh asset.
     c, s = math.cos(yaw), math.sin(yaw)
-    return (f"Transform3D({c * sx:.5f}, 0, {-s * sx:.5f}, 0, 1, 0, {s:.5f}, 0, {c:.5f}, "
+    # ⚠️⚠️ THE SCALE GOES ON THE X BASIS **COLUMN**, NOT THE X ROW, AND PUTTING IT ON
+    # THE ROW IS THE "one is fat af one is thin" BUG. MEASURED off the emitted scene,
+    # not reasoned: CourtEast came out 6.000 long and 0.392 wide when it was asked for
+    # 26.09 long and 0.09 wide.
+    #
+    # A Transform3D is serialised ROW-MAJOR while its basis VECTORS are the COLUMNS.
+    # Scaling the first ROW multiplies the X COMPONENT of all three basis vectors,
+    # which is not "stretch the mesh along its own length" — it is a stretch of world
+    # X. For a line at yaw 0 the two happen to coincide, so CourtNorth/CourtSouth were
+    # always right. For a line at yaw 90 they are exactly swapped: the LENGTH came out
+    # unscaled (6 m, the raw mesh) and the WIDTH came out scaled by 4.35.
+    #
+    # That is the whole reported defect in one line of arithmetic. The side lines were
+    # both too SHORT to reach the corners (hence "they dont connect") and 4x too WIDE
+    # (hence "one is fat af one is thin" against the correctly-drawn end lines).
+    #
+    # ⚠️ THE YAW HANDEDNESS IS LEFT EXACTLY AS IT WAS. Only the sx moves. Every kit
+    # piece on both maps was placed and visually validated against this convention and
+    # `floorcheck._to_world` mirrors it, so "correcting" the handedness here would
+    # silently re-rotate the entire map. One bug, one fix.
+    return (f"Transform3D({c * sx:.5f}, 0, {-s:.5f}, 0, 1, 0, {s * sx:.5f}, 0, {c:.5f}, "
             f"{x:.4f}, {y:.4f}, {z:.4f})")
 
 
@@ -334,6 +354,10 @@ CAR_SCALE = 1.75   # a van is 2.75 long / 1.45 tall natively; 1.75x reaches the
 ## broken.
 PUNO_MESH = "kits/town/tree-high-round"
 _PUNO_SCALE = [1.0, 1.18, 0.88, 1.09, 0.95, 1.14]
+## What a TREE must dodge: the things you cannot grow through. `Puno` is absent on
+## purpose — two interleaving canopies are what a clump IS, and listing trees here
+## made the guard refuse four of them. See Placer.clear_at.
+_PUNO_AVOID = ["Bahay", "Kanto", "Likod", "Bakod"]
 
 TOWN_SCALE = 1.6   # Fantasy Town props (carts, stalls, rocks, planks) are the
                    # nearest kit to 1u=1m already; 1.6 matches a 1.6-unit Person.
@@ -543,7 +567,17 @@ for _end in (-1.0, 1.0):
 # ever compared them. Same ask-before-placing guard R-19 put on the plaza, with
 # COARSE_LADDER because these are 7-metre buildings and a half-metre step just
 # walks one around inside its neighbour.
-_placer = Placer(surfaces, piece_extent, ["Bahay", "Kanto", "Likod", "Kalat"])
+# ⚠️⚠️ `Bakod` AND `Puno` WERE MISSING FROM THIS LIST AND THAT IS THE WHOLE CAUSE OF
+# THE REPORTED CLIPPING — "reposition this tire so that it doesnt clip thru the
+# fence, move the fence too bcz its clipping thru tree".
+# `Placer` only refuses a placement that overlaps a group it is TOLD to avoid, so
+# with `Bakod` (the driveway fence panels and their hedges) and `Puno` (every tree)
+# absent, nothing on this map ever checked itself against a fence or a tree —
+# INCLUDING the trees against each other. Every guard reported clean because it was
+# asked the wrong question, which is trap (b) again: a probe that never looks at the
+# thing you changed passes anyway.
+_placer = Placer(surfaces, piece_extent,
+                 ["Bahay", "Kanto", "Likod", "Kalat", "Bakod", "Puno"])
 
 
 def _put(group):
@@ -806,7 +840,8 @@ for side, zlist in ((1.0, _PUNO_Z_E), (-1.0, _PUNO_Z_W)):
         # pointing at the wall once the yaw is applied.
         x = _puno_x(mesh_name, 8.2 + _PUNO_XJIT[k] * 0.35, yaw, sc,
                     max(abs(lx), abs(lz)))
-        if _placer.clear_at(mesh_name, side * x, zz, yaw, sc):
+        # Structures only — NOT `Puno`. Interleaving canopies is what a clump is.
+        if _placer.clear_at(mesh_name, side * x, zz, yaw, sc, _PUNO_AVOID):
             add_tree("Dressing/Puno", f"Puno_{n}_{tag}", mesh_name,
                      side * x, zz, yaw, sc, lx, lz)
             _placer.placed += 1
@@ -826,7 +861,8 @@ _PLANT_AT = [(-7.6, -12.8), (-7.9, -11.0), (7.9, -16.4), (7.6, -9.2),
              (-7.6, 19.4), (7.9, 17.1)]
 for n, (px, pz) in enumerate(_PLANT_AT):
     _placer.try_place(_put("Puno"), f"Halaman_{n}", "kits/forest/plant",
-                      px, pz, (n % 4) * 1.5, TOWN_SCALE * 1.5)
+                      px, pz, (n % 4) * 1.5, TOWN_SCALE * 1.5,
+                      avoid=_PUNO_AVOID)
 
 # --- Layer 3: overhead. Highest read-per-triangle in the kit. ---------------
 # ⚠️⚠️ THE WIRE SPAN IS 6.0 AND THE POST SPACING MUST EQUAL IT, OR THE WIRES
@@ -866,7 +902,27 @@ for side in (-1.0, 1.0):
 # already at matching z on both sides, they are the tallest thing on the street,
 # and a washing line tied to the electric posts is what an eskinita actually
 # looks like. SAMPAY_Z is therefore derived from the post row, never typed.
-SAMPAY_Z = [-15.0, -9.0, -3.0, 3.0, 9.0, 15.0]
+# ⚠️ DERIVED TO MISS THE TREES, NOT TYPED. Reported: "clothes line going thru
+# trees". A sampay spans the whole alley at y ~2.35 and the trees now stand ON the
+# wall line with crowns 4-8 m tall, so any line sharing a z with a tree runs
+# straight through two canopies — one on each side. The old list did exactly that at
+# three of its six z values (-9.0 against a tree at -9.2, 3.0 against 2.8 and 3.6,
+# 9.0 against 9.8).
+#
+# So the candidate z values are FILTERED against the tree rows rather than eyeballed
+# against them, which also means a future change to either list cannot silently
+# reintroduce this. The posts still carry the ends (they are the tallest thing on the
+# street and a washing line tied to the electric posts is what an eskinita looks
+# like), so the candidates come from the post row.
+_SAMPAY_CLEAR = 2.4          # how far a line must stay from any trunk, in metres
+_SAMPAY_WANT = [-15.0, -12.0, -7.0, -1.0, 6.0, 15.5, 21.0]
+SAMPAY_Z = []
+for _sz in _SAMPAY_WANT:
+    if all(abs(_sz - _tz) >= _SAMPAY_CLEAR for _tz in (_PUNO_Z_E + _PUNO_Z_W)):
+        SAMPAY_Z.append(_sz)
+if not SAMPAY_Z:
+    raise SystemExit("build aborted: no sampay z clears the tree rows by %.1f m"
+                     % _SAMPAY_CLEAR)
 for n, zz in enumerate(SAMPAY_Z):
     add("Dressing/Kable", f"Sampay_{n}", "laundry_line", 0.0, zz,
         # ⚠️ RAISED. A Person is 1.6 tall standing on ground at 0.1, so the top
@@ -988,9 +1044,15 @@ CLUTTER_LOW = [
     ("halaman_lata", -5.95, 16.8, 0.6, None), ("halaman_lata", -5.65, 17.25, 1.5, None),
     ("halaman_lata", 6.0, -13.2, 0.0, None), ("halaman_lata", 5.7, -12.75, 1.1, None),
     # --- plywood and seating. Universal, and right for the place.
-    ("kits/town/planks", -6.5, 0.5, 1.5, TOWN_SCALE),
-    ("kits/town/planks", 6.5, -12.5, -1.6, TOWN_SCALE),
-    ("kits/town/planks", -4.8, -1.9, 0.2, TOWN_SCALE),
+    # ⚠️ `kits/town/planks` REMOVED — reported as "gray shit thats clipping thru the
+    # ground". They were placed as "patched paving", and floorcheck confirms they
+    # ARE grounded, so this is not a height bug: a 1.6 m flat tan slab lying on grey
+    # asphalt at a jaunty yaw does not read as a repair, it reads as a board half
+    # sunk into the road. Grounded and wrong-looking is still wrong. Replaced with
+    # pieces that are SUPPOSED to sit proud of the ground.
+    ("tire", -6.5, 0.5, 1.5, None),
+    ("crate_stack", 6.5, -12.5, -1.6, None),
+    ("monobloc_chair", -4.8, -1.9, 0.2, None),
     ("kits/town/stall-stool", 5.2, 12.2, 0.8, TOWN_SCALE),
     ("kits/town/stall-stool", -5.4, -12.6, -0.6, TOWN_SCALE),
     ("kits/town/stall-stool", 4.7, -5.1, 2.4, TOWN_SCALE),
@@ -1275,6 +1337,16 @@ ext_lines.append('[ext_resource type="Texture2D" '
 # WorldEnvironment, the kill plane and the spawn markers in here rather than in
 # Main.tscn: what a place sounds like is part of that place. An eskinita and a
 # plaza are different rooms and must not share a bed.
+# ⚠️ THE CHALK GRAIN, AND IT IS TRIPLANAR BECAUSE THERE ARE NO UVs.
+# Playtest: "make it actually look like chalk writings not just lines" and, in the
+# same breath, "make sure that it actually CONNECTS". Those pull opposite ways - real
+# chalk is broken and gappy, and a gappy line cannot close a corner. So the GEOMETRY
+# stays solid (it carries the shape and the corners) and the CHALK comes from this
+# texture. obj_writer.gd emits no `vt` lines, so these meshes have no UVs at all; a
+# triplanar material projects from world space and needs none - which is the whole
+# reason this is possible without building a UV pipeline first.
+ext_lines.append('[ext_resource type="Texture2D" '
+                 'path="res://assets/models/materials/chalk.png" id="CHALK"]')
 ext_lines.append('[ext_resource type="AudioStream" '
                  'path="res://assets/audio/ambience/eskinita_street.wav" id="AMB"]')
 
@@ -1316,7 +1388,15 @@ ext_lines.append('[ext_resource type="AudioStream" '
 #     under the whole map is a worse artefact than a 15 mm lip 26 m away at the
 #     apron's edge, where the fog is already halfway in.
 # Box height is 1, so a node offset is (wanted top - 0.5).
-SUBS = '''[sub_resource type="BoxShape3D" id="Shape_floor"]
+SUBS = '''[sub_resource type="StandardMaterial3D" id="Mat_chalk"]
+albedo_color = Color(1, 1, 1, 1)
+albedo_texture = ExtResource("CHALK")
+roughness = 1.0
+specular_mode = 2
+uv1_triplanar = true
+uv1_scale = Vector3(1.6, 1.6, 1.6)
+
+[sub_resource type="BoxShape3D" id="Shape_floor"]
 size = Vector3(120, 8, 120)
 
 [sub_resource type="StandardMaterial3D" id="Mat_floor"]
@@ -1613,6 +1693,10 @@ for parent, name, mid, tf in order:
         body.append(f'\n[node name="{name}" type="MeshInstance3D" parent="{parent}"]')
         body.append(f'transform = {tf}')
         body.append(f'mesh = ExtResource("{mid}")')
+        # Every chalk marking takes the grain; nothing else does. The road
+        # keeps its kit atlas.
+        if parent == "Markings":
+            body.append('surface_material_override/0 = SubResource("Mat_chalk")')
 
 # load_steps counts ext_resource + sub_resource entries, plus one. A wrong value
 # does not error — it silently truncates resource loading (Concurrency_Protocol

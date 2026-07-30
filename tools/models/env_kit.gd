@@ -1539,17 +1539,52 @@ func _base_circle_decal() -> void:
 ## 6.0 units from the base circle is where this goes — see
 ## Art_Direction.md §9 for the ballistics, and for the finding that
 ## throw_bakya cannot reach it.
+## ⚠️⚠️ ONE WIDTH FOR EVERY CHALK LINE ON EVERY MAP, AND IT USED TO BE TWO.
+## Reported from a playtest: "fix these lines for play area of both maps, they dont
+## connect and they dont look uniform, one is fat af one is thin."
+## Measured: `throwing_line_decal` was 0.12 wide and `team_side_decal` 0.08 — a 50%
+## difference between two lines that meet at a corner, which is why the court read
+## as several unrelated markings rather than one chalked court. `court_line()` in
+## both builders already extends each edge by the SIDE line's half-width so corners
+## overlap, and that arithmetic is only correct when every line shares a width; with
+## two widths the throwing line overshot by 20 mm at each end (measured) and the
+## corner never closed cleanly.
+##
+## So there is one constant and both meshes use it. Changing chalk width is now a
+## one-line change that cannot desynchronise.
+const CHALK_WIDTH: float = 0.09
+## Chalk is a DUSTY OFF-WHITE, not paint. `UiTheme.PANEL` is a UI panel colour and
+## read as crisp white plastic at ground level — part of why these looked like
+## printed lines rather than something a kid drew.
+const CHALK_TINT: Color = Color(0.902, 0.878, 0.816)
+
+## ⚠️⚠️ SOLID, NOT DASHED, BECAUSE IT HAS TO CONNECT. An earlier attempt at "make
+## it look like chalk" authored each line as six strokes with gaps between them.
+## That is what chalk looks like and it is the wrong answer here, because the SAME
+## report also says "make sure that it actually CONNECTS" — and a line with gaps in
+## it cannot close a corner. Geometry carries the SHAPE; the chalk look comes from
+## the TEXTURE instead (see `chalk.png` and the `Mat_chalk` triplanar material both
+## builders attach to every Markings node).
+##
+## ⚠️ TRIPLANAR IS WHY A TEXTURE IS POSSIBLE AT ALL HERE. `obj_writer.gd` emits no
+## `vt` lines — the pipeline has no UVs, which is exactly why `Handoff.md` §5 has a
+## standing question about printed type on the lata. A triplanar material needs no
+## UVs: it projects from world space. So the decals get real chalk grain without a
+## UV pipeline, and nothing else in the kit has to change.
+func _chalk_line(file_name: String, length: float) -> void:
+	var w := ObjWriter.new("ChalkLine")
+	w.set_material("mark", CHALK_TINT)
+	_box(w, 0.0, 0.0, length, CHALK_WIDTH, 0.0, 0.02, "mark")
+	_finish(w, file_name)
+
+
 func _throwing_line_decal() -> void:
-	var w := ObjWriter.new("ThrowingLineDecal")
-	w.set_material("mark", UiTheme.PANEL)
-	_box(w, 0, 0, 8.0, 0.12, 0.0, 0.02, "mark")
-	_finish(w, "env_throwing_line_decal")
+	_chalk_line("env_throwing_line_decal", 8.0)
+
 
 func _team_side_decal() -> void:
-	var w := ObjWriter.new("TeamSideDecal")
-	w.set_material("mark", UiTheme.PANEL)
-	_box(w, 0, 0, 6.0, 0.08, 0.0, 0.02, "mark")
-	_finish(w, "env_team_side_decal")
+	_chalk_line("env_team_side_decal", 6.0)
+
 
 ## ⚠️ `_jeepney_lane_decal()` IS DELETED. DO NOT REBUILD IT. (Phase 8, 2026-07-29)
 ##
