@@ -103,6 +103,48 @@ const PREVIEW_SCALE: float = 2.38
 const TURN_DEGREES: float = 38.0
 const TURN_PERIOD: float = 9.0
 
+## ---------------------------------------------------------------------------
+## PLAYER CAMERA CONTROL — "allow us to control the camera in the character
+## selection screen to fix the weird viewing angle for the slippers."
+##
+## The auto-framing below is measurement-driven and gets a Person right every
+## time, but a tsinelas is 0.432 long by 0.078 tall and there is no single fixed
+## angle that flatters BOTH a standing figure and a flat object lying down.
+## `_frame()` already lerps the pitch on how flat the subject is, which was the
+## previous attempt at this; it improved the slipper and did not settle it,
+## because "the right angle for a slipper" is a taste question and the person
+## holding the taste is the one at the keyboard.
+##
+## So the framing becomes a STARTING POINT rather than the answer, and the player
+## can move from there:
+##
+##   drag with the left mouse button   orbit (yaw freely, pitch clamped)
+##   mouse wheel                       dolly in and out
+##   right-click                       snap back to the auto-framed shot
+##
+## ⚠️ THE ORBIT IS AN OFFSET ON TOP OF THE FRAMING, NOT A REPLACEMENT FOR IT.
+## `_frame()` still computes distance, aim height and the h_offset that keeps the
+## subject clear of the wood panel, and every one of those is derived from the
+## measured bounds of whatever was just instanced. The player's input adds a yaw
+## and a pitch delta and a distance multiplier to that result. Framing a 0.3-unit
+## lata and a 4-unit Person with one hand-typed camera position is exactly the bug
+## this file's own header was written about; handing the whole camera to the mouse
+## would put it straight back.
+##
+## ⚠️ AND THE AUTO-TURN STOPS THE MOMENT THE PLAYER TOUCHES IT. A subject that is
+## being dragged and also rotating on its own is unusable — you cannot aim at a
+## detail that is walking away from you. The idle sweep is a screensaver for a
+## screen nobody is interacting with, so it yields to anyone who is.
+const ORBIT_SENSITIVITY: float = 0.4
+const ORBIT_PITCH_MIN: float = -55.0
+const ORBIT_PITCH_MAX: float = 70.0
+## Multiplier bounds on the auto-framed distance. Tighter than a free-fly camera
+## on purpose: inside 0.55 the near plane starts clipping a slipper, and past 2.2
+## the subject is a speck and the player has lost the thing they came to look at.
+const ZOOM_MIN: float = 0.55
+const ZOOM_MAX: float = 2.2
+const ZOOM_STEP: float = 0.12
+
 @onready var viewport: SubViewport = $SubViewport
 @onready var camera: Camera3D = $SubViewport/Camera3D
 @onready var pivot: Node3D = $SubViewport/Pivot
@@ -112,8 +154,53 @@ var _current: Node3D = null
 var _current_id: StringName = &""
 var _time: float = 0.0
 
+## The auto-framed shot, kept so the player's offsets can be re-applied to it and
+## so right-click can restore it exactly.
+var _frame_aim: Vector3 = Vector3.ZERO
+var _frame_distance: float = 4.0
+var _frame_pitch: float = 16.0
+var _frame_half_fov: float = 0.4
+var _frame_aspect: float = 1.777
+
+## The player's offsets on top of it. All three are deliberately preserved across
+## a subject change: somebody who has found the angle they want to judge slippers
+## from should keep it while cycling slippers, not have to re-find it six times.
+var _user_yaw: float = 0.0
+var _user_pitch: float = 0.0
+var _user_zoom: float = 1.0
+var _dragging: bool = false
+## True once the player has touched the camera at all — see the header for why
+## the idle turn yields rather than fighting them.
+var _user_took_over: bool = false
+## True when this rig is a centred TILE rather than a screen backdrop — see
+## `set_tile_framing()`. Zeroes the off-centre `h_offset` below.
+var _centre_subject: bool = false
+
 func _ready() -> void:
-	pass
+	# A SubViewportContainer defaults to ignoring the mouse. It has to receive
+	# clicks for any of the above to happen, and it is behind every control on
+	# this screen, so the panel and the buttons still get first refusal.
+	mouse_filter = Control.MOUSE_FILTER_PASS
+	# ⚠️⚠️ RE-FRAME ON RESIZE, AND THIS IS A REAL BUG NOT A REFINEMENT.
+	#
+	# `_frame()` divides by the viewport's ASPECT to decide how far back the
+	# camera has to sit, and it is called from `show_character()`/`show_prop()` —
+	# which run during `_ready()`, BEFORE the container has been laid out. At that
+	# point `viewport.size.y` is 0, the aspect falls through to the 1.777 default,
+	# and the distance is computed for a frame that does not exist yet. Whatever
+	# the real window then turns out to be, the subject is framed for something
+	# else: rendered at 1920x1080 it filled the screen with its feet cropped off.
+	#
+	# That is also the honest explanation for the reported "weird viewing angle
+	# for the slippers" — the pitch lerp was doing its job and the DISTANCE was
+	# wrong, which reads as a bad angle because the subject is too close to judge.
+	# The manual camera above is the feature that was asked for; this is the
+	# framing being correct in the first place.
+	resized.connect(_on_resized)
+
+func _on_resized() -> void:
+	if _current != null and is_instance_valid(_current):
+		_frame(_current)
 
 ## Fits the camera to `model`'s real bounds. Called once per character, after it
 ## is in the tree so the transforms are live.
@@ -153,9 +240,28 @@ func _frame(model: Node3D) -> void:
 	var half_fov: float = tan(deg_to_rad(camera.fov) * 0.5)
 	var size := viewport.size
 	var aspect: float = (float(size.x) / float(size.y)) if size.y > 0 else 1.777
-	var distance: float = maxf(
+	# ⚠️ THREE TERMS, AND THE THIRD IS THE ONE THE SLIPPER NEEDED.
+	#
+	# The first two fit the subject's HEIGHT against the frame's height and its
+	# WIDTH against the frame's width, which silently assumes the subject's widest
+	# horizontal axis lands on screen X. For a standing Person that holds. For a
+	# tsinelas it does not, and that is the whole of "the weird viewing angle for
+	# the slippers": the camera looks DOWN at a flat object by ~46 degrees (see the
+	# pitch lerp below), so the slipper's own long axis projects onto screen Y —
+	# where it is being measured against a frame that is 1.78x SHORTER than the one
+	# it was fitted to. Measured at 1920x1080: fitted distance 0.641 for a 0.54-long
+	# slipper, visible frame height 0.492, so 10% of the subject was outside the
+	# frame before it had even started turning.
+	#
+	# The third term fits the widest horizontal extent against the SHORT axis of
+	# the frame, which is true whichever way that axis ends up pointing. It is the
+	# conservative one by construction, so it only ever binds for subjects that are
+	# wider than they are tall — a Person's width and height are within a few
+	# percent of each other, so this changes its framing by nothing.
+	var distance: float = maxf(maxf(
 		(height * FRAME_MARGIN * 0.5) / half_fov,
-		(width * FRAME_MARGIN * 0.5) / (half_fov * aspect))
+		(width * FRAME_MARGIN * 0.5) / (half_fov * aspect)),
+		(width * FRAME_MARGIN * 0.5) / half_fov)
 
 	# Elevated rather than level with the subject, for the same reason: a flat
 	# object seen edge-on from its own height is a sliver. Looking down at it
@@ -169,17 +275,116 @@ func _frame(model: Node3D) -> void:
 	# each subject in its own most legible face without a per-entry tuning value.
 	var flatness: float = clampf(height / width, 0.0, 1.0)
 	var pitch: float = lerpf(CAMERA_PITCH_FLAT_DEGREES, CAMERA_PITCH_DEGREES, flatness)
-	var offset := Basis(Vector3.UP, deg_to_rad(CAMERA_YAW_DEGREES)) \
-		* Basis(Vector3.RIGHT, deg_to_rad(pitch)) * Vector3(0.0, 0.0, distance)
-	camera.position = aim + offset
-	camera.look_at(aim)
 
-	# The off-centre framing, re-derived for THIS subject's distance — see
-	# FRAME_H_OFFSET_RATIO for why it cannot be a constant.
-	camera.h_offset = FRAME_H_OFFSET_RATIO * (2.0 * distance * half_fov) * aspect
+	# Everything above is the MEASURED shot. Stored rather than applied directly,
+	# so the player's own orbit can be layered on it — see the header.
+	_frame_aim = aim
+	_frame_distance = distance
+	_frame_pitch = pitch
+	_frame_half_fov = half_fov
+	_frame_aspect = aspect
+	_apply_camera()
+
+## Puts the camera where the measured framing says, plus whatever the player has
+## dragged. The single place `camera.position`, `look_at` and `h_offset` are
+## written, so the auto and manual paths cannot disagree about any of the three.
+func _apply_camera() -> void:
+	var distance: float = _frame_distance * _user_zoom
+	var yaw: float = CAMERA_YAW_DEGREES + _user_yaw
+	var pitch: float = clampf(_frame_pitch + _user_pitch, ORBIT_PITCH_MIN, ORBIT_PITCH_MAX)
+	var offset := Basis(Vector3.UP, deg_to_rad(yaw)) \
+		* Basis(Vector3.RIGHT, deg_to_rad(pitch)) * Vector3(0.0, 0.0, distance)
+	camera.position = _frame_aim + offset
+	camera.look_at(_frame_aim)
+
+	# The off-centre framing, re-derived for THIS subject's CURRENT distance — see
+	# FRAME_H_OFFSET_RATIO for why it cannot be a constant. It has to follow the
+	# zoom too, or dollying in walks the subject back behind the wood panel.
+	# ⚠️ Skipped entirely for a TILE, which has no panel to clear and is cropped by this
+	# rather than helped by it — see `set_tile_framing()`.
+	camera.h_offset = 0.0 if _centre_subject \
+		else FRAME_H_OFFSET_RATIO * (2.0 * distance * _frame_half_fov) * _frame_aspect
+
+## ⚠️ `_gui_input`, NOT `_unhandled_input`. This is a Control sitting behind the
+## whole screen, and the panel, the tabs and both buttons are in front of it — a
+## drag that starts on a button must belong to the button. `_gui_input` only fires
+## for events that actually landed on THIS control, which is that rule for free.
+func _gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		var button := event as InputEventMouseButton
+		match button.button_index:
+			MOUSE_BUTTON_LEFT:
+				_dragging = button.pressed
+				if button.pressed:
+					_user_took_over = true
+					accept_event()
+			MOUSE_BUTTON_RIGHT:
+				if button.pressed:
+					reset_view()
+					accept_event()
+			MOUSE_BUTTON_WHEEL_UP:
+				_zoom_by(-ZOOM_STEP)
+				accept_event()
+			MOUSE_BUTTON_WHEEL_DOWN:
+				_zoom_by(ZOOM_STEP)
+				accept_event()
+	elif event is InputEventMouseMotion and _dragging:
+		var motion := (event as InputEventMouseMotion).relative
+		_user_yaw -= motion.x * ORBIT_SENSITIVITY
+		_user_pitch -= motion.y * ORBIT_SENSITIVITY
+		_user_pitch = clampf(_user_pitch, ORBIT_PITCH_MIN - _frame_pitch,
+			ORBIT_PITCH_MAX - _frame_pitch)
+		_apply_camera()
+		accept_event()
+
+func _zoom_by(amount: float) -> void:
+	_user_took_over = true
+	_user_zoom = clampf(_user_zoom + amount, ZOOM_MIN, ZOOM_MAX)
+	_apply_camera()
+
+## TILE FRAMING: subject CENTRED in its box and pulled in to fill it. For a caller showing
+## this rig as a small picture rather than as a screen backdrop.
+##
+## ⚠️ TWO CHANGES, AND BOTH ARE NEEDED — the first attempt did only the zoom and the render
+## came back with the lata cropped top and bottom and the running figure cropped through
+## its feet and its right side.
+##
+## 1. `FRAME_MARGIN` is 1.62 — 62% air around the subject. Right on the CHARACTER screen,
+##    where the figure shares the frame with a wood panel and must sit clear of it, and
+##    measured against a T-POSE so it has to be generous. In a 250px tile that same margin
+##    is the *"big negative space"* that was reported.
+## 2. ⚠️ `h_offset` IS WHY IT CROPPED SIDEWAYS. `_apply_camera()` always shoves the subject
+##    off-centre by `FRAME_H_OFFSET_RATIO`, so the character screen's figure clears the
+##    panel on the left. In a centred tile there is no panel to clear — the offset just
+##    walks the subject towards one edge, and any zoom then pushes it out of frame. A tile
+##    has to zero it, which is what `_centre_subject` does.
+##
+## ⚠️ DOES NOT SET `_user_took_over`, unlike `_zoom_by()`. That flag means "a human has
+## taken the camera, stop moving it", and this is the SCREEN choosing its own framing — if
+## it set the flag it would silently kill the idle turn on all four tiles.
+func set_tile_framing(factor: float) -> void:
+	_centre_subject = true
+	_user_zoom = clampf(factor, ZOOM_MIN, ZOOM_MAX)
+	_apply_camera()
+
+## Back to the measured shot, and back to turning on its own. Public because the
+## screen may want to offer it as a button later; bound to right-click today.
+func reset_view() -> void:
+	_user_yaw = 0.0
+	_user_pitch = 0.0
+	_user_zoom = 1.0
+	_user_took_over = false
+	_time = 0.0
+	pivot.rotation.y = 0.0
+	_apply_camera()
 
 func _process(delta: float) -> void:
 	if _current == null:
+		return
+	# The idle sweep yields to the player — see the header. Left running, a
+	# subject the player is trying to inspect rotates out from under the angle
+	# they just chose, which makes the control feel broken rather than free.
+	if _user_took_over:
 		return
 	_time += delta
 	pivot.rotation.y = deg_to_rad(sin(_time * TAU / TURN_PERIOD) * TURN_DEGREES)

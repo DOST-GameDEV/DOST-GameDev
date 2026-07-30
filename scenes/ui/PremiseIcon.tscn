@@ -1,0 +1,49 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/character_preview.gd" id="1"]
+
+; ⚠️ TRANSPARENT, unlike CharacterSelect's copy of this rig. A premise tile sits on
+; the tutorial's wood panel and has to read as a picture ON that panel, so the
+; SubViewport clears to nothing and the wood shows through behind the subject.
+; BG_CLEAR_COLOR rather than BG_COLOR for the same reason — a flat fill would put a
+; grey card behind every one of the four.
+;
+; Ambient is AMBIENT_SOURCE_COLOR: a bare .glb in an own_world_3d viewport brings no
+; environment of its own, so without this the subject renders as a black silhouette.
+[sub_resource type="Environment" id="Environment_icon"]
+background_mode = 0
+ambient_light_source = 2
+ambient_light_color = Color(0.72, 0.78, 0.9, 1)
+ambient_light_energy = 0.95
+tonemap_mode = 2
+
+; Four of these are alive at once, so SHADOWS ARE OFF — at ~250px a cast shadow is
+; a smudge, and four shadow atlases for four smudges is the kind of cost that buys
+; nothing. CharacterSelect's rig keeps its shadow because it is one subject at
+; full-screen size.
+[node name="PremiseIcon" type="SubViewportContainer"]
+custom_minimum_size = Vector2(210, 210)
+stretch = true
+script = ExtResource("1")
+
+[node name="SubViewport" type="SubViewport" parent="."]
+own_world_3d = true
+transparent_bg = true
+handle_input_locally = false
+render_target_update_mode = 3
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="SubViewport"]
+environment = SubResource("Environment_icon")
+
+[node name="KeyLight" type="DirectionalLight3D" parent="SubViewport"]
+transform = Transform3D(0.866025, -0.25, 0.433013, 0, 0.866025, 0.5, -0.5, -0.433013, 0.75, 0, 3, 0)
+light_energy = 1.35
+
+[node name="FillLight" type="DirectionalLight3D" parent="SubViewport"]
+transform = Transform3D(-0.766044, -0.219846, -0.604023, 0, 0.939693, -0.342020, 0.642788, -0.262003, -0.719846, 0, 3, 0)
+light_energy = 0.45
+
+[node name="Camera3D" type="Camera3D" parent="SubViewport"]
+fov = 42.0
+
+[node name="Pivot" type="Node3D" parent="SubViewport"]

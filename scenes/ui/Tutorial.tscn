@@ -101,10 +101,19 @@ layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
 
+; ⚠️ `size_flags_vertical = 3` is for the PREMISE card, and it is deliberately a
+; stretch flag rather than a height. The premise page's four pictures have to fill the
+; panel — a fixed icon height either leaves the card stranded at the top of an empty
+; panel or overflows into a scrollbar, and a card the player has to SCROLL is not a
+; card they can read in one glance. With this, the strip takes whatever height the
+; panel has and keeps a floor.
+; Harmless to the eight reference pages: a VBox hands surplus height only to children
+; that ask to expand, and every text row is SHRINK.
 [node name="Rows" type="VBoxContainer" parent="Panel/Margin/Layout/Scroll"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_vertical = 3
 theme_override_constants/separation = 14
 
 [node name="Pager" type="HBoxContainer" parent="."]

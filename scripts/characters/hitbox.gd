@@ -97,12 +97,46 @@ func _on_area_entered(area: Area3D) -> void:
 		# a Person or Slipper still just fall through to stagger below, same
 		# stun-only rule as Option B.
 		kind = "dent"
-	elif target.state == CharacterBase.State.DOWNED and not target.is_self_rightable():
+	# ⚠️ `target.is_can` ADDED — sealing is a LATA rule and always was. SEALED has
+	# no recovery path, so sealing a Person takes them out of the round for good.
+	# The GDD's "reach it and seal it" is about the can standing in the circle;
+	# nothing in the game ever intended a Person to be sealable, and this only
+	# became reachable when B-134 made thrown slippers actually knock things down.
+	elif target.is_can and target.state == CharacterBase.State.DOWNED \
+			and not target.is_self_rightable():
 		kind = "seal"
 	elif forces_downed:
 		kind = "downed"
+		# THE LUCKY FALL — human request, 2026-07-29: *"sometimes make it so that
+		# it can land on its head/back and this isnt a point for the enemy."*
+		#
+		# ⚠️ ROLLED HERE AND NOWHERE ELSE. This line is already past the host gate
+		# above, so exactly one machine rolls it; the result then travels as its
+		# own `kind` through the SAME broadcast every other outcome uses, and each
+		# peer just applies what it was told. Rolling inside
+		# CharacterBase._apply_hit_result instead would put a randf() on a function
+		# that runs per-peer, and the peers would disagree about whether the round
+		# had just been decided.
+		#
+		# Cans only. A Person knocked over has no "landed on its head" reading and
+		# no fall count to be spared from.
+		if target.is_can and randf() < CharacterBase.lucky_fall_chance:
+			kind = "downed_lucky"
 	else:
 		kind = "stagger"
+
+	# ⚠️ TELL THE HOST'S OWN ROUND MANAGER, HERE, WHERE THE ROLL WAS JUST MADE.
+	#
+	# This line is already past the host gate above, so exactly one machine reaches it,
+	# and `kind` is the decision that machine just took. RoundManager used to infer the
+	# same fact by reading `target.last_fall_scored` from its own `state_changed`
+	# handler — but that flag is written by `_apply_hit_result` on the TARGET'S OWN PEER
+	# and is not replicated, so for a client-owned lata the host was reading a stale
+	# `true` and charging the defence for every lucky fall. Measured on two real peers:
+	# 0 lucky falls counted correctly out of 26 knockdowns of a client-owned can. See
+	# `round_manager.gd::host_note_fall` for the full account.
+	if target.is_can and kind.begins_with("downed"):
+		RoundManager.host_note_fall(target, kind == "downed")
 
 	# 4.1: which impact sound this hit makes. Asked of the HURTBOX, not decided
 	# here — see hurtbox.gd::impact_sfx for why the struck object owns that
@@ -120,8 +154,10 @@ func _on_area_entered(area: Area3D) -> void:
 	# `kind` is already resolved above, so a hit that actually knocks the target
 	# down gets the profile's faceslop multiplier and a hit that merely staggers
 	# does not — the difference between a comedy launch and a nudge.
+	# `begins_with("downed")` so the lucky fall takes the same faceslop as a
+	# scoring one — it is the same physical knockdown and has to look like it.
 	var knockback: Vector3 = (area as Hurtbox).absorb_knockback(
-		_impulse_for(kind == "downed" or kind == "seal"))
+		_impulse_for(kind.begins_with("downed") or kind == "seal"))
 
 	if NetworkManager.is_networked():
 		target._apply_hit_result.rpc_id(
@@ -137,18 +173,44 @@ func _on_area_entered(area: Area3D) -> void:
 	landed_on.emit(target)
 
 	# User feedback, 2026-07-28: "the person on team can may tag the human on
-	# team slipper and they win that round." ANY hitbox from the defending
-	# Person landing on the attacking Person — the always-on Bump as much as
-	# the Tag ability's own transient hitbox, both resolve through this same
-	# function — ends the round for team can outright. Deliberately after the
-	# normal stagger/VFX dispatch above, not instead of it: a round-winning
-	# tag should still read as contact landing, not as a rules screen
-	# appearing out of nowhere. report_round_win() no-ops if the round already
-	# ended, so this is safe to call unconditionally; this whole function is
-	# already host-only past the NetworkManager guard above, so no further
-	# authority check is needed here.
+	# team slipper and they win that round." Deliberately after the normal
+	# stagger/VFX dispatch above, not instead of it: a round-winning tag should
+	# still read as contact landing, not as a rules screen appearing out of
+	# nowhere. report_round_win() no-ops if the round already ended, so this is
+	# safe to call unconditionally; this whole function is already host-only past
+	# the NetworkManager guard above, so no further authority check is needed.
+	#
+	# ⚠️⚠️ `and not requires_bump_window` — A BUMP IS NOT A TAG, AND UNTIL NOW IT WAS.
+	# Human report, 2026-07-30: *"make tag mechanics better, they feel so buns."*
+	#
+	# This condition used to accept ANY hitbox from the defending Person, and its own
+	# note said so out loud: "the always-on Bump as much as the Tag ability's own
+	# transient hitbox, both resolve through this same function". So the single most
+	# decisive event in the game — a tag ends the round outright, and 18 of 20 rounds
+	# end that way (Checklist Phase 9, RUN 3) — could be produced by WALKING INTO
+	# SOMEONE and pressing the shove button. The Tag ability had no mechanical identity
+	# at all: it was a second, slower way to do what body contact already did.
+	#
+	# That is most of what "feels buns" is. A round-ender with no commitment, no
+	# telegraph and no distinct input is a coin flip on proximity, and the defender's
+	# best play is to stand next to the attacker and mash.
+	#
+	# ⚠️ AND THE CODE ALREADY BELIEVED THE DISTINCTION EVERYWHERE ELSE — this line was
+	# the outlier. `hurtbox.gd::impact_sfx()` takes `from_melee` (i.e. exactly this
+	# flag) and returns "bump" or "tag" precisely because, in its own words,
+	# "shoulder-charging the attacker and CATCHING them are different events with
+	# different consequences (hitbox.gd's round-win branch fires on one of them)". It
+	# fired on both. The audio has been telling the truth about a rule the rules did not
+	# enforce.
+	#
+	# `requires_bump_window` is true only on CharacterBase.tscn's always-present melee
+	# box and false on every hitbox an ability spawns (ability_utils.gd sets it), so this
+	# selects the Tag pulse and nothing else. A bump still staggers, still knocks the
+	# slipper out of a carrier's hands (B-75, "most of the point of tagging"), and still
+	# shoves — it simply no longer wins the round by accident.
 	if owner_character and owner_character.is_person and owner_character.team_is_can_side \
-			and target.is_person and not target.team_is_can_side:
+			and target.is_person and not target.team_is_can_side \
+			and not requires_bump_window:
 		RoundManager.report_round_win(true) # Cans win the round
 
 ## The raw impulse this hitbox should impart, before the struck object's own
@@ -176,6 +238,11 @@ func _impulse_for(force_downed: bool) -> Vector3:
 	direction.y = 0.0
 	if direction.length() < 0.01:
 		return Vector3.ZERO
-	var strength := MELEE_KNOCKBACK * (MELEE_FACESLOP_MULTIPLIER if force_downed else 1.0)
-	return direction.normalized() * strength + Vector3.UP * (MELEE_KNOCKBACK_LIFT
+	# LAKAS. The striker's own trait scales what it delivers; the target's TATAG
+	# then scales what it accepts (character_base.gd::apply_knockback). Two
+	# separate questions, answered at the two ends, exactly as `sfx` and
+	# `absorb_knockback` already are.
+	var power := owner_character.trait_power_scale()
+	var strength := MELEE_KNOCKBACK * power * (MELEE_FACESLOP_MULTIPLIER if force_downed else 1.0)
+	return direction.normalized() * strength + Vector3.UP * (MELEE_KNOCKBACK_LIFT * power
 		* (MELEE_FACESLOP_MULTIPLIER if force_downed else 1.0))

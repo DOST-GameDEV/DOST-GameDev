@@ -59,6 +59,9 @@ const UNIT_NAMES: Array[String] = ["TeamAProp", "TeamAPerson", "TeamBProp", "Tea
 ## third-person on a tin can. Must stay in step with `main.gd::_start_local_test()`,
 ## which picks the same unit for the camera — in a release build the switcher
 ## self-frees and that is the only source of truth left (B-67).
+## ⚠️ A FALLBACK NOW, NOT THE ANSWER — see `_default_unit()` directly below.
+## Hardcoding this name meant the bar stole the player's own seat the moment it
+## registered.
 const DEFAULT_UNIT: String = "TeamAPerson"
 
 ## Unit name currently driven by the human, or "" for none (every unit under AI).
@@ -76,9 +79,58 @@ func _ready() -> void:
 ## Called by DebugBar when a match scene comes up (debug → debug, so rule 2
 ## holds). Establishes a known slot state instead of inheriting whatever
 ## `player_id` values Main.tscn happens to ship with.
+## ⚠️ THE DEFAULT IS DISCOVERED, NOT DECLARED, AND THAT IS A REAL BUG FIX.
+##
+## `DEFAULT_UNIT` was the literal "TeamAPerson". Since the setup screen let the
+## player pick a SEAT (10.5), the human's unit is whichever one
+## `main.gd::_start_local_test()` chose — and registering the bar re-applied the
+## hardcoded default over the top of it. A player who picked TEAM B · PERSON
+## got, one frame into the match: their own character parked
+## (`input_parked = true`), the camera snapped to Team A's Person, and the unit
+## they actually chose handed to a bot. `main.gd` documents this as "left alone
+## deliberately", which was the wrong call — every editor run is a debug build,
+## so this is not an edge case, it is what every session does.
+##
+## Discovering it needs no gameplay cooperation and so does not break the §0.3
+## one-way dependency rule: the human's unit is exactly the one whose AIController
+## is not driving it, which this file can read off `CharacterBase` directly.
+## `main.gd` now attaches a DISABLED controller to the human's own seat, so both
+## the "no controller" and "controller present but off" cases mean the same thing
+## here and both are accepted.
+func _default_unit() -> String:
+	for unit_name in UNIT_NAMES:
+		var unit := _find_unit(unit_name)
+		if unit == null:
+			continue
+		if unit.ai_controller == null or not unit.ai_controller.is_enabled():
+			return unit_name
+	return DEFAULT_UNIT
+
 func debug_register_bar(bar: DebugBar) -> void:
 	_bar = bar
-	_slot_unit = DEFAULT_UNIT
+	# ⚠️⚠️ DEFERRED, AND WITHOUT THAT THE PLAYER CANNOT MOVE AT ALL.
+	#
+	# Godot readies CHILDREN before PARENTS, and the DebugBar is a child of
+	# Main.tscn — so this function runs during the bar's own `_ready()`, which is
+	# BEFORE `main.gd::_ready()` has run `_start_local_test()` and attached a
+	# single AIController. `_default_unit()` asks "which unit has no AI driving
+	# it", and at that moment the honest answer is "all of them", so it returned
+	# the first name in the list and `_apply_slots()` then parked the seat the
+	# player had actually chosen.
+	#
+	# Measured with tools/input_probe.tscn: "units answering the keyboard: 0" on
+	# a fresh Single Player, i.e. nobody could move until they pressed Tab. The
+	# hardcoded DEFAULT_UNIT this replaced happened to be immune, because a
+	# constant needs nothing to exist yet — which is exactly why the discovery
+	# version has to wait for the thing it discovers.
+	#
+	# `call_deferred` lands at idle, after every `_ready()` in the frame.
+	_resolve_default.call_deferred()
+
+func _resolve_default() -> void:
+	if _bar == null:
+		return
+	_slot_unit = _default_unit()
 	if NetworkManager.is_networked():
 		# Solo-host QoL: the local-test node names below don't exist in a
 		# networked match at all (main.gd's _clear_local_test_characters()
@@ -137,7 +189,11 @@ func _input(event: InputEvent) -> void:
 		KEY_TAB:
 			_cycle()
 		KEY_F6:
-			_assign(DEFAULT_UNIT)
+			# Back to the seat the PLAYER picked, not to a hardcoded name — see
+			# _default_unit(). Resolved at press time rather than cached at
+			# registration, so F6 still means "give me my own character back"
+			# however far the slot has wandered.
+			_assign(_default_unit())
 		_:
 			return
 	get_viewport().set_input_as_handled()

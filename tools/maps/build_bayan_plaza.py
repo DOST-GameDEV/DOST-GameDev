@@ -139,6 +139,13 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from floorcheck import (Surfaces, embed_y, mesh_bounds,  # noqa: E402
                         read_confinement_radius)
+## ⚠️ THE SHARED MODULE IS THE POINT OF THIS PASS, not a convenience import.
+## This file's own header records why the first five bugs in it survived: "the
+## two builders share floorcheck.py and nothing else. Every Eskinita lesson has
+## to be ported by hand." mapkit.py is where a lesson goes so it is ported zero
+## times — the placement guard, the feathered apron and the -Z front convention
+## now live there and BOTH maps call them.
+from mapkit import Placer, apron_cells, front_yaw  # noqa: E402,F401
 
 # ⚠️ PHASE 10 — THE DEFERRAL IS OVER. This map is now held to Eskinita's standard.
 # Human call, 2026-07-29: "Build and generate the other maps ... Apply the exact
@@ -289,7 +296,8 @@ def add_mark(name, mesh_name, x, z, yaw=0.0, sx=1.0):
     """A field marking, embedded in whatever surface is under it."""
     y = embed_y(surfaces.height_at(x, z), mesh_name)
     c, sn = math.cos(yaw), math.sin(yaw)
-    tf = (f"Transform3D({c * sx:.5f}, 0, {-sn * sx:.5f}, 0, 1, 0, {sn:.5f}, 0, "
+    # See build_eskinita.py::xform for why the sx is on the COLUMN, not the row.
+    tf = (f"Transform3D({c * sx:.5f}, 0, {-sn:.5f}, 0, 1, 0, {sn * sx:.5f}, 0, "
           f"{c:.5f}, {x:.4f}, {y:.4f}, {z:.4f})")
     order.append(("Markings", name, mesh(mesh_name), tf))
     surfaces.record(name, mesh_name, x, y, z, yaw, sx, is_marking=True)
@@ -378,32 +386,92 @@ def _civic_blocked(mesh_name, x, z, yaw, scale):
 # BOUND = 12.5), so nothing here can block a Person's aim no matter how tall it
 # grows; that is what lets these be full-height trees rather than the interior
 # tier the furniture below is held to.
+## ⚠️ 2.6 OUT, NOT 1.2, AND THIS IS A GAMEPLAY FIX RATHER THAN A COMPOSITION ONE.
+## This block's own comment claims both rings "sit OUTSIDE the playable square
+## (collision is at BOUND = 12.5), so nothing here can block a Person's aim no
+## matter how tall it grows". That was true of a Kenney pine, which is 2.4 wide at
+## TOWN_SCALE. A mangga is 4.60 wide — the canopy is the whole point of the piece —
+## so at BOUND + 1.2 its inner edge reached x = 11.4, i.e. 1.1 units INSIDE the
+## collision wall, hanging over the court. A tree ring that overhangs the play area
+## is aim-blocking geometry, and the claim in the comment would have gone on being
+## quoted while being false.
+##
+## Derived, not nudged: the widest piece in the ring is 4.60, so its half-span is
+## 2.30, and the ring must stand at least that far outside BOUND. 2.6 leaves 0.3 of
+## margin. Verified in bp_corner_* — the corner cameras at |12| were rendering from
+## INSIDE the canopy before this.
+## The only broadleaf asset in the repo — see the note in the ring loop below.
+PUNO_MESH = "kits/town/tree-high-round"
+PUNO_SCALE = [1.0, 1.18, 0.88, 1.09, 0.95, 1.14]
+TREE_RING_OUT = 2.6
+# ⚠️⚠️ THE RING WAS A SURVEY LINE AND THE HUMAN CALLED IT: "your tree placement is
+# too uniform ... it doesnt look natural for both maps." It walked all four edges on
+# a CONSTANT 3.2 step at a CONSTANT radius, so the plaza was fringed by an evenly
+# spaced palisade. A real plaza's planting is clumped, gapped and ragged.
+#
+# Four things vary now, all from seeded tables so the layout still diffs clean:
+# an irregular STEP, a per-tree RADIUS push in or out, GAPS where nothing is planted
+# at all, and species/scale/yaw. Same weighting rule as Eskinita — the rounded
+# broadleaf dominates and is always the largest, the coned models come in smaller as
+# scrub, so the ring reads planted rather than coniferous.
 JITTER = [0.0, 0.9, -0.6, 1.4, -1.1, 0.4, -1.6, 1.1]
+## Irregular spacing along each edge, and a radial push so the line is not a line.
+RING_STEP = [3.0, 4.4, 2.6, 3.8, 5.0, 2.8, 4.0, 3.4]
+RING_PUSH = [0.0, 1.5, -0.8, 2.2, 0.6, -1.2, 1.9, 0.3]
+## Which indices are left EMPTY. A ring with no gaps is a fence.
+RING_GAP = [3, 7, 12, 16, 21, 25]
+RING_MIX = [PUNO_MESH, PUNO_MESH, "kits/town/tree-high", PUNO_MESH,
+            "kits/town/tree-crooked", PUNO_MESH, PUNO_MESH, "kits/town/tree"]
 n = 0
-step = 3.2
-count = int((BOUND * 2) / step) + 1
-for k in range(count):
-    t = -BOUND + k * step
+_t = -BOUND
+k = -1
+while _t <= BOUND:
+    k += 1
+    t = _t
+    _t += RING_STEP[k % len(RING_STEP)]
+    if k in RING_GAP:
+        continue
     j = JITTER[k % len(JITTER)]
     for sx, sz, axis in ((1, 0, "x"), (-1, 0, "x"), (0, 1, "z"), (0, -1, "z")):
+        # The radial push is OUTWARD only. Pulling a tree inward would walk its
+        # canopy back over the collision wall, which is the bug TREE_RING_OUT was
+        # raised to fix in the first place.
+        out = BOUND + TREE_RING_OUT + max(0.0, RING_PUSH[k % len(RING_PUSH)])
         if axis == "x":
-            x, z = sx * (BOUND + 1.2), t + j
+            x, z = sx * out, t + j
         else:
-            x, z = t + j, sz * (BOUND + 1.2)
-        near = ["kits/town/tree-high", "kits/town/tree",
-                "kits/town/tree-crooked", "kits/town/tree-high-round"][k % 4]
-        near_yaw = (k % 4) * 0.7
-        if not _civic_blocked(near, x, z, near_yaw, TOWN_SCALE):
-            add_kit("Dressing/TreesNear", f"Tree_{n}", near, x, z,
-                    near_yaw, TOWN_SCALE)
+            x, z = t + j, sz * out
+        # ⚠️ BROADLEAF KIT TREES, NOT CONIFERS AND NOT THE GENERATED PUNO.
+        # Open item 7 was that every tree here was a Kenney PINE, so a plaza with a
+        # Philippine church and a bell tower in it was ringed by a Nordic forest.
+        # The generated puno that replaced them were rejected on the human's call
+        # ("they dont look like trees, js use different assets") — see the long note
+        # in build_eskinita.py's Puno block. The Fantasy Town and Mini Forest trees
+        # are ROUNDED BROADLEAF, so the pine silhouette is still gone, which is the
+        # half of open item 7 that actually mattered.
+        # ⚠️ ONE SPECIES, BECAUSE THERE IS ONLY ONE. Rendering all eight tree
+        # assets in the repo showed `kits/town/tree-high-round` is the only ROUNDED
+        # canopy — `town/tree`, `town/tree-high`, `town/tree-crooked`,
+        # `forest/tree`, `forest/tree-high` and both `city` trees are stepped cones.
+        # Picking "a different kit so it reads as another species" therefore picked
+        # another PINE, which is open item 7 all over again. Repetition is broken
+        # with seeded scale and yaw instead; see build_eskinita.py's note.
+        near_mesh = RING_MIX[(k + int(sx) + int(sz)) % len(RING_MIX)]
+        near_yaw = (k % 7) * 0.91
+        near_s = TOWN_SCALE * PUNO_SCALE[k % len(PUNO_SCALE)]             * (1.0 if near_mesh == PUNO_MESH else 0.7)
+        if not _civic_blocked(near_mesh, x, z, near_yaw, near_s):
+            add_kit("Dressing/TreesNear", f"Puno_{n}", near_mesh, x, z,
+                    near_yaw, near_s)
         n += 1
-        # The layer behind: a different kit, so it reads as another species
-        # rather than the same tree moved back.
-        far = "kits/forest/tree-high" if k % 2 else "kits/forest/tree"
-        fx, fz, far_yaw = x * 1.28 - j * 0.4, z * 1.28 + j * 0.4, (k % 3) * 0.9
-        if not _civic_blocked(far, fx, fz, far_yaw, FOREST_SCALE):
-            add_kit("Dressing/TreesFar", f"TreeFar_{n}", far, fx, fz,
-                    far_yaw, FOREST_SCALE)
+        # The layer behind: the SAME tree, taller and further out, which is what
+        # gives the ring two depths of canopy.
+        fx = x * (1.22 + 0.10 * float(k % 3)) - j * 0.4
+        fz = z * (1.22 + 0.10 * float((k + 1) % 3)) + j * 0.4
+        far_yaw = (k % 5) * 1.13
+        far_s = 3.4 * PUNO_SCALE[(k + 3) % len(PUNO_SCALE)]
+        if not _civic_blocked(PUNO_MESH, fx, fz, far_yaw, far_s):
+            add_kit("Dressing/TreesFar", f"PunoMalayo_{n}", PUNO_MESH, fx, fz,
+                    far_yaw, far_s)
         n += 1
 
 # --- Ground cover, in the band BETWEEN THE TWO TREE RINGS. -------------------
@@ -439,8 +507,16 @@ for k, (x, z) in enumerate([
 
 # --- The landmarks. The whole back edge is civic now (see the CIVIC block
 # --- above for the coordinates and for why the yaws changed).
+# ⚠️ THE FACING IS DERIVED NOW, NOT RESTATED. This block used to carry a
+# nine-line comment doing the -Z-front reasoning in prose and a hand-written
+# `math.pi` per landmark — which is exactly the shape of the thing that was wrong
+# in the first place, since the same prose in env_kit.gd's header said +Z and
+# cost this map three backwards landmarks. `mapkit.front_yaw` is that rule as a
+# FUNCTION: a caller says where the piece should look and never thinks about the
+# sign. It is checked against both known-good plaza cases in its own docstring.
 for _cn, _cm, _cx, _cz, _cy in CIVIC:
-    add("Dressing/Landmarks", _cn, _cm, _cx, _cz, _cy)
+    add("Dressing/Landmarks", _cn, _cm, _cx, _cz,
+        front_yaw(_cx, _cz, 0.0, 0.0))
 # In front of the municipal hall, which is where a real one stands. Moved off
 # the church's frontage, where it used to sit.
 add("Dressing/Landmarks", "Flagpole", "flagpole", 4.6, -11.4)
@@ -454,9 +530,12 @@ add("Dressing/Landmarks", "Flagpole", "flagpole", 4.6, -11.4)
 # the court; RingSouth stands at positive z and needs yaw = 0. It had exactly
 # the reverse, so both rings faced the tree line and neither was playable to
 # look at. "Facing each other" is now true rather than asserted.
-add("Dressing/Landmarks", "RingNorth", "basketball_ring", -5.2, -SLAB + 0.6,
-    math.pi)
-add("Dressing/Landmarks", "RingSouth", "basketball_ring", 5.2, SLAB - 0.6, 0.0)
+# Both rings face the court, derived the same way. The hand-written yaws here
+# were the OTHER half of open item 1 — both were the exact opposite of correct, so
+# both rings faced the tree line and neither was playable to look at.
+for _rn, (_rx, _rz) in enumerate([(-5.2, -SLAB + 0.6), (5.2, SLAB - 0.6)]):
+    add("Dressing/Landmarks", "RingNorth" if _rz < 0 else "RingSouth",
+        "basketball_ring", _rx, _rz, front_yaw(_rx, _rz, _rx, 0.0))
 # Lantern posts mark the slab corners. Thin verticals, like Eskinita's electric
 # posts — they read at distance and cost almost nothing to shoot past.
 for k, (x, z) in enumerate([(-SLAB, -SLAB), (SLAB, -SLAB),
@@ -469,24 +548,70 @@ for k, (x, z) in enumerate([(-SLAB, -SLAB), (SLAB, -SLAB),
 # --- height law and the kit swap does not get to break it: at TOWN_SCALE the
 # --- market stall is 0.96 and its bench is 0.60, both comfortably under.
 # --- `cart` measures 1.40 scaled and is therefore deliberately NOT used here.
+# ⚠️ EVERY PIECE FROM HERE DOWN ASKS BEFORE IT LANDS. That is R-19(a), and it
+# is deliberately NOT "nudge the eight pairs the report happened to name".
+#
+# The eight interior overlaps this map shipped were all reported, read, and
+# written up in this file's own header as "left alone rather than shuffled
+# blind" — and they were still there a session later. A post-mortem list is the
+# thing that let them survive: acting on it means hand-editing coordinates,
+# hand-editing coordinates cannot be verified, and the next piece anyone adds
+# starts the cycle again. Fixing the eight by hand would have left the SEVENTH
+# still latent.
+#
+# So the placement sites themselves refuse. `Placer` (mapkit.py) tries the
+# nominal spot, walks a short seeded ladder of small offsets if it is occupied,
+# and skips-and-reports if none is clear. Its `avoid` list is exactly the set
+# `overlaps_across()` checks at the bottom of this file, so a placement it
+# approves cannot be reported by that one afterwards — the guard and the audit
+# are looking at the same thing by construction rather than by coincidence.
+PLACE_AVOID = ["Monument", "Clutter", "Furniture", "Landmarks", "Ground",
+               "Vehicles", "KanalVisual"]
+placer = Placer(surfaces, piece_extent, PLACE_AVOID)
+
+
+def _put_kit(group):
+    """A `place_fn` for Placer, bound to one node group."""
+    def go(name, mesh_name, x, z, yaw, scale):
+        add_kit(f"Dressing/{group}", name, mesh_name, x, z, yaw, scale)
+    return go
+
+
+def _put_gen(group):
+    """The same, for a generated `env_*` piece — `add()` takes no scale."""
+    def go(name, mesh_name, x, z, yaw, _scale):
+        add(f"Dressing/{group}", name, mesh_name, x, z, yaw)
+    return go
+
+
+_furniture = _put_kit("Furniture")
+
 n = 0
 for k in range(6):
     t = -7.5 + k * 3.0
     for sx in (-1, 1):
-        add_kit("Dressing/Furniture", f"Bench_{n}", "kits/town/stall-bench",
-                sx * (SLAB + 0.9), t, math.pi / 2, TOWN_SCALE)
+        placer.try_place(_furniture, f"Bench_{n}", "kits/town/stall-bench",
+                         sx * (SLAB + 0.9), t, math.pi / 2, TOWN_SCALE)
         n += 1
 # The sari-sari stalls — the plaza's own reason to have people in it.
+#
+# ⚠️ THESE GET THE LADDER RATHER THAN A SKIP, and the distinction is the whole
+# reason Placer has one. Stall_1 and Stall_2 are two of the eight reported
+# overlaps (against the slab-corner lanterns), and "ask before placing" applied
+# naively would resolve that by DELETING two of the four sari-sari stalls — the
+# plaza's only market vocabulary — to save a 0.5 m graze with a lamp post. A
+# stall is content; a boundary hedge is filler. The ladder moves the stall half
+# a metre and keeps both.
 for k, (x, z, yaw) in enumerate([
         (-SLAB - 1.1, -10.5, 0.0), (SLAB + 1.1, -10.5, math.pi),
         (-SLAB - 1.1, 10.5, 0.0), (SLAB + 1.1, 10.5, math.pi)]):
-    add_kit("Dressing/Furniture", f"Stall_{k}",
-            ["kits/town/stall", "kits/town/stall-green",
-             "kits/town/stall-red", "kits/town/stall"][k],
-            x, z, yaw, TOWN_SCALE)
+    placer.try_place(_furniture, f"Stall_{k}",
+                     ["kits/town/stall", "kits/town/stall-green",
+                      "kits/town/stall-red", "kits/town/stall"][k],
+                     x, z, yaw, TOWN_SCALE)
 for k, (x, z) in enumerate([(-6.0, -6.0), (6.0, 6.0), (-6.0, 2.4), (7.0, -6.5)]):
-    add_kit("Dressing/Furniture", f"Stool_{k}", "kits/town/stall-stool",
-            x, z, [0.5, 2.1, -1.2, 3.0][k], TOWN_SCALE)
+    placer.try_place(_furniture, f"Stool_{k}", "kits/town/stall-stool",
+                     x, z, [0.5, 2.1, -1.2, 3.0][k], TOWN_SCALE)
 
 # --- Interior clutter (open item 3). -----------------------------------------
 #
@@ -509,6 +634,35 @@ for k, (x, z) in enumerate([(-6.0, -6.0), (6.0, 6.0), (-6.0, 2.4), (7.0, -6.5)])
 # eye, and would be aim-blocking walls despite reading as "small rocks" from
 # their names. They stay out at the edge where the existing Ground layer puts
 # them.
+# ⚠️ THE FENCE RUN'S PITCH IS MEASURED, AND THAT IS TWO OF THE EIGHT OVERLAPS.
+# Clutter_4 <-> Clutter_5 and Clutter_6 <-> Clutter_7 were both 0.20 x 0.20
+# grazes between CONSECUTIVE SEGMENTS OF THE SAME FENCE — the run was stepped by
+# a typed 2.4 while `kits/town/fence` measures 1.0 in its own Z, i.e. 2.6 at
+# TOWN_SCALE. The segments were simply 200 mm too close.
+#
+# ⚠️ AND THE LADDER MUST NOT TOUCH THESE. A fence is a LINE: nudging one segment
+# 0.55 m clear of its neighbour resolves the overlap by putting a hole in the
+# fence, which is a worse artefact than the 200 mm interpenetration it fixes and
+# one no probe would ever report. This is the case Placer's `ladder=False`
+# exists for — but it does not even get that far, because the pitch is now
+# derived from the piece and the run does not overlap itself at all. A guard is
+# the wrong tool for a number that was simply wrong.
+#
+# ⚠️ AND ITS X IS OFF-ORIGIN BY 1.2 m, WHICH IS THE THIRD OVERLAP. `kits/town/
+# fence` is modelled at local x = 0.425..0.500 — the panel is NOT centred on its
+# own origin, it hangs a metre and a bit to one side of it. So "put the fence
+# line at x = 8.6" actually put the panels at x = 9.7..9.9, hard against the
+# bench row whose footprint starts at 9.68. That is the reported Bench_11 <->
+# Clutter_6 pair, and it is the same class of bug as the hovering van: a piece
+# placed by its origin when its origin is not where its geometry is.
+#
+# FENCE_OFF re-centres the run on the x it was asked for, measured off the piece
+# rather than typed. Rule 3 of build_eskinita.py's header, applied on the axis
+# nobody checked.
+_fence_lo, _fence_hi = mesh_bounds("kits/town/fence")
+FENCE_PITCH = (_fence_hi[2] - _fence_lo[2]) * TOWN_SCALE + 0.05
+FENCE_OFF = (_fence_lo[0] + _fence_hi[0]) * 0.5 * TOWN_SCALE
+
 n = 0
 for k, (x, z, yaw, piece) in enumerate([
         # Hedges break the open floor into readable pockets without hiding a
@@ -518,10 +672,10 @@ for k, (x, z, yaw, piece) in enumerate([
         (-5.8, -7.0, math.pi / 2, "kits/town/hedge"),
         (4.6, 8.4, math.pi / 2, "kits/town/hedge"),
         # A broken fence line, the classic plaza edge nobody has repaired.
-        (-8.6, -6.4, 0.0, "kits/town/fence-broken"),
-        (-8.6, -4.0, 0.0, "kits/town/fence"),
-        (8.6, 6.4, 0.0, "kits/town/fence-broken"),
-        (8.6, 4.0, 0.0, "kits/town/fence"),
+        (-8.6 - FENCE_OFF, -6.4, 0.0, "kits/town/fence-broken"),
+        (-8.6 - FENCE_OFF, -6.4 + FENCE_PITCH, 0.0, "kits/town/fence"),
+        (8.6 - FENCE_OFF, 6.4, 0.0, "kits/town/fence-broken"),
+        (8.6 - FENCE_OFF, 6.4 - FENCE_PITCH, 0.0, "kits/town/fence"),
         # Seating scattered off the benches at the rim, so the middle distance
         # has something in it at all.
         # ⚠️ TWO OF THESE MOVED WHEN THE MONUMENT LANDED, and the enclosure is
@@ -542,7 +696,14 @@ for k, (x, z, yaw, piece) in enumerate([
         (9.0, -2.6, 0.0, "kits/town/planks"),
         (-2.0, -10.6, 0.0, "kits/town/planks"),
         (4.4, -9.2, 0.0, "kits/town/planks")]):
-    add_kit("Dressing/Clutter", f"Clutter_{n}", piece, x, z, yaw, TOWN_SCALE)
+    # ⚠️ THE FENCE SEGMENTS ARE PINNED (`ladder=False`) AND EVERYTHING ELSE IS
+    # NOT. See FENCE_PITCH above: a fence run must stay a run, so if a segment
+    # is ever genuinely blocked the right answer is a reported skip, not a
+    # silently displaced post. The hedges, stools, benches and planks are
+    # scatter and may move half a metre without meaning anything.
+    _is_run = "fence" in piece
+    placer.try_place(_put_kit("Clutter"), f"Clutter_{n}", piece, x, z, yaw,
+                     TOWN_SCALE, ladder=not _is_run)
     n += 1
 
 # --- THE MONUMENT (checklist 2.4, the reference-photo redress). --------------
@@ -630,9 +791,18 @@ for _p, _pz in enumerate((-2.25, 2.25)):
 # ... and five more ringing the slab edge, which is the other half of what the
 # reference has: the plaza's rim is planted, not bare. All five sit outside both
 # throwing approaches and outside the confinement box.
+#
+# ⚠️ THESE ASK TOO. RimHedge_1 landed on a plank patch (Clutter_15) — the last
+# of the eight, and the one that shows why the guard has to be at EVERY site
+# rather than at the sites the report happened to name. The Monument group is
+# built after Clutter, so it is the newcomer here, and a newcomer dropped onto a
+# slab that already has eighteen things on it is exactly the case a post-mortem
+# catches too late.
+_monument_gen = _put_gen("Monument")
 for _p, (_px, _pz) in enumerate([
         (9.0, 4.6), (9.0, -4.6), (-9.0, -4.6), (-2.0, 9.6), (2.0, -9.6)]):
-    add("Dressing/Monument", f"RimHedge_{_p}", "planter_hedge", _px, _pz)
+    placer.try_place(_monument_gen, f"RimHedge_{_p}", "planter_hedge",
+                     _px, _pz, 0.0, 1.0)
 
 # --- Parked tricycles (the reference's ring of them round the edge). ---------
 #
@@ -675,10 +845,53 @@ _HAZ_X, _HAZ_Z = -6.5, -4.0
 _gut_lo, _gut_hi = mesh_bounds("gutter_tile")
 _gut_top = _gut_hi[1] - _gut_lo[1]
 _hn = 0
-for _gx in (-1.0, 1.0):
+# ⚠️ NINE TILES, NOT SIX, AND WIDER. Rendered from where a player actually meets
+# it (bp_hazard), the six-tile bed read as a faint tan smudge two metres across on
+# a five-metre slow field — technically a tell, practically invisible, which is the
+# same defect as having none. The bed now covers the HazardZone's own footprint
+# instead of a strip through the middle of it, so the thing you can see and the
+# thing that slows you are the same size.
+for _gx in (-2.0, 0.0, 2.0):
     for _gz in (-2.0, 0.0, 2.0):
         add("Hazards/KanalVisual", f"Kanal_{_hn}", "gutter_tile",
             _HAZ_X + _gx, _HAZ_Z + _gz, 0.0, base_y=GROUND_Y - _gut_top)
+        _hn += 1
+
+# ⚠️ AND FOUR BOLLARDS AT ITS CORNERS, BECAUSE THE BED ALONE DOES NOT READ — BUT
+# NOT A KERB, AND THE BUILD ITSELF IS WHAT RULED THAT OUT.
+#
+# Rendered from a player's eye at bp_hazard, nine flush gutter tiles are a faint
+# tan discolouration on grey paving and nothing more. That is the cost of the
+# grounding contract: the tiles are sunk so their TOP lands on GROUND_Y and
+# nothing stands on a lip, and a channel with its walls buried is just a
+# differently-coloured floor.
+#
+# The obvious fix was to EDGE it — `kerb_tile` laid round the outside, which is
+# what a real plaza drain has. floorcheck ABORTED THE BUILD: `kerb_tile` is in
+# GROUND_MESHES, so a ring of them 0.15 tall becomes a SURFACE at 0.250, and this
+# hazard sits at (-6.5, -4.0) INSIDE the court — so CourtWest, ConfinementNorth
+# and ThrowingLineNorth all suddenly spanned two surface heights and no single Y
+# was flush for any of them. Exactly the bug that guard exists for, caught before
+# it reached the scene rather than in a playtest. A raised edge cannot go where
+# painted lines already run.
+#
+# So the tell is VERTICAL instead of raised: four bollards, one per corner of the
+# zone. They are dressing (not GROUND_MESHES, so no marking measures against
+# them), they are 0.90 tall — inside this file's 1.10 interior tier, so an FPP
+# Person at 1.25 aims straight over them — and a drain corner marked with a post
+# is what a plaza actually looks like. The lane law is asserted on each.
+#
+# ⚠️ AND THEY ASK, like everything else placed after the clutter. The first run put
+# KanalPost_9 through the broken fence line at (-9.0, -6.5) — a 0.20 graze, the
+# same size as the eight this map shipped. The ladder walks it clear.
+def _put_hazard(name, mesh_name, x, z, yaw, _scale):
+    add("Hazards/KanalVisual", name, mesh_name, x, z, yaw)
+
+
+for _bx in (-1.0, 1.0):
+    for _bz in (-1.0, 1.0):
+        placer.try_place(_put_hazard, f"KanalPost_{_hn}", "bollard",
+                         _HAZ_X + _bx * 2.5, _HAZ_Z + _bz * 2.5, 0.0, 1.0)
         _hn += 1
 
 
@@ -703,21 +916,33 @@ for _gx in (-1.0, 1.0):
 # 30 -> 38 is +136 instances on a map that was at 506. The alternative — a
 # second 120x120 floor mesh — is one draw call but reintroduces the flat-plane
 # read that the four-ring kill exists to prevent.
-APRON = 38.0
+# ⚠️ THE APRON NO LONGER HAS AN EDGE — that is R-19(b), and it is a different
+# KIND of fix from the two that came before it. Open item 2 above records both
+# previous attempts: apron 30 -> 38, then fog_depth_end 64 -> 50. Neither worked
+# and neither ever could, because a filled square of tiles has a straight edge at
+# every radius and fog only lowers its contrast. The y=30 overhead is the one
+# shot that looks along the fog's thinnest axis, so it is precisely the shot fog
+# cannot rescue — which is why it stayed open through two "further out" passes.
+#
+# APRON_SOLID is paved solid; from there to APRON_FADE the tiles thin out on a
+# per-cell hash until there are none. There is no line anywhere for the overhead
+# to find. See mapkit.apron_cells.
+#
+# AND IT IS CHEAPER: the old hard square to 38 was ~325 tiles; this reaches SIX
+# UNITS FURTHER OUT for fewer, because half the outer band is holes. The exact
+# count is printed below, next to the instance total, so the claim is checkable.
+APRON_SOLID = 26.0
+APRON_FADE = 44.0
 _ap = 0
-_gx = -APRON + ROAD_SCALE * 0.5
 _ROAD_YAW = [0, 1, 3, 2, 0, 3, 1, 2, 3, 0, 2, 1]
-while _gx <= APRON:
-    _gz = -APRON + ROAD_SCALE * 0.5
-    while _gz <= APRON:
-        # Skip the core: the slab above already paves it at a finer grid.
-        if abs(_gx) > SLAB + 1.0 or abs(_gz) > SLAB + 1.0:
-            add_kit("Dressing/Apron", f"Apron_{_ap}", "kits/town/road", _gx, _gz,
-                    _ROAD_YAW[_ap % len(_ROAD_YAW)] * math.pi * 0.5,
-                    ROAD_SCALE, base_y=ROAD_BASE_Y, lane_exempt=True)
-            _ap += 1
-        _gz += ROAD_SCALE
-    _gx += ROAD_SCALE
+for _gx, _gz, _ix, _iz in apron_cells(
+        APRON_SOLID, APRON_FADE, ROAD_SCALE, half=APRON_FADE,
+        # The slab above already paves the core at a finer grid.
+        skip_core=lambda x, z: abs(x) <= SLAB + 1.0 and abs(z) <= SLAB + 1.0):
+    add_kit("Dressing/Apron", f"Apron_{_ap}", "kits/town/road", _gx, _gz,
+            _ROAD_YAW[_ap % len(_ROAD_YAW)] * math.pi * 0.5,
+            ROAD_SCALE, base_y=ROAD_BASE_Y, lane_exempt=True)
+    _ap += 1
 
 # Ring 2 - the silhouette belt. Two quiet rings, faded into fog by
 # env_toon_pass.gd, same as Eskinita after the Phase 9 downgrade.
@@ -794,6 +1019,123 @@ court_line("ThrowingLineNorth", "x", -6.0, COURT_X, "throwing_line_decal")
 court_line("ThrowingLineSouth", "x", 6.0, COURT_X, "throwing_line_decal")
 
 # =============================================================================
+# THE PLAY-AREA BOUNDARY, MADE VISIBLE.
+#
+# Human ask: *"add or fix the play-area bounding box in the Bayan Plaza map."*
+#
+# ⚠️ THE COLLISION WAS NEVER MISSING. `Bounds/Wall*` are four StaticBody3D at
+# |x| = |z| = 13.0 with 26-unit spans, so they close a square exactly at BOUND
+# = 12.5 with the corners overlapping. Walking into them works. What does not
+# exist is any REASON for them: they carry no MeshInstance3D at all, and this
+# map's apron paves out to 38 units, so a player sees open plaza in every
+# direction and then stops dead in the middle of it against nothing. That is the
+# same defect `Dev_Plan.md` §1 records against the original arena ("the four
+# Bounds/Wall* nodes are StaticBody3D + CollisionShape3D with no MeshInstance3D
+# at all - functionally containing, visually absent"), never fixed here.
+#
+# So the boundary gets a read, in two layers, and both are things a real town
+# plaza already has:
+#
+#   1. A chalk kerb line ON the wall plane. Four quads, the same `court_line`
+#      mechanism the confinement square and the throwing line already use, so it
+#      costs four marking instances and reads from any height including the
+#      overhead shot. This is the layer that says WHERE the edge is.
+#   2. A hedge row just inside it. This is the layer that says there IS an edge
+#      at eye level, where a floor decal cannot be seen.
+#
+# ⚠️ THE HEDGES SIT INSIDE THE WALL, NOT ON IT. A piece straddling the collision
+# plane is half in a place the player can never reach, which is both wasted and
+# wrong: you would be able to see through your own boundary. HEDGE_INSET pulls
+# them clear, and it is measured against the piece's own footprint rather than
+# guessed - `piece_extent` is what every other placement in this file uses.
+#
+# ⚠️ AND THE COUNT IS DELIBERATELY SPARSE. A continuous wall of hedge is both a
+# draw-call bill on a map already carrying ~640 instances and, per this file's
+# own height law, an aim-blocking solid; a broken row reads as a boundary while
+# staying a boundary you can throw over. `Art_Direction.md`'s lighting-and-perf
+# decision ("lighting and shaders stay cheap") is the same constraint.
+BOUNDARY_HEDGE_STEP = 3.2
+BOUNDARY_HEDGE_INSET = 0.9
+## Which groups a boundary hedge must not land on. Everything a player can walk
+## into, and nothing a player walks ON. See try_edge_hedge for what happens when
+## this includes the paving.
+## ⚠️ `TreesNear` CAME OFF THIS LIST WHEN THE CONIFERS BECAME PUNO, and the
+## reason is the one floorcheck.py's own docstring gives for why an overlap report
+## cannot be fatal: "a tree canopy over a kerb" is not two solids in one volume.
+## A mango measures 4.60 ACROSS THE CANOPY against a Kenney pine's 2.4, so the
+## near ring at 13.7 now reaches back over the hedge row at 11.6 — and the
+## clearance test, which is a plan-view footprint test with no notion of height,
+## refused 25 of 28 hedges. The row came out as THREE, which is the same "the
+## boundary is four hedges" symptom the yaw bug produced, from a different cause.
+## A knee-high hedge standing under a canopy 2 m above it is correct planting and
+## correct composition; the trunk is 0.46 wide and nowhere near it.
+BOUNDARY_AVOID_GROUPS = ["Clutter", "Furniture", "Landmarks", "Ground",
+                         "Vehicles", "Monument", "KanalVisual"]
+
+court_line("BoundaryNorth", "x", -BOUND, BOUND)
+court_line("BoundarySouth", "x", BOUND, BOUND)
+court_line("BoundaryEast", "z", BOUND, BOUND)
+court_line("BoundaryWest", "z", -BOUND, BOUND)
+
+def try_edge_hedge(name, x, z, yaw):
+    """Places one boundary hedge, or skips it if something is already there.
+
+    ⚠️ ASKS FIRST. The perimeter walk lands on stalls, benches and the flagpole
+    that were placed before it, and a fixed-step loop has no way to know that.
+    Placing anyway produced 19 reported footprint overlaps in the first build of
+    this row. See `Surfaces.footprint_is_clear`.
+    """
+    # ⚠️ AGAINST THE SOLID GROUPS ONLY, NOT EVERYTHING. `_dressing` also holds
+    # the Apron and Slab paving, which by definition covers every square metre
+    # of the map — so an unfiltered clearance test refuses EVERY placement and
+    # the row silently comes out as four hedges out of twenty-eight. Measured
+    # exactly that on the first run of this. The paving is a surface to stand a
+    # hedge ON, not an obstacle to avoid.
+    extent = piece_extent("kits/town/hedge", yaw, TOWN_SCALE)
+    if not surfaces.footprint_is_clear(x + extent[0], x + extent[1],
+                                       z + extent[2], z + extent[3],
+                                       BOUNDARY_AVOID_GROUPS):
+        return False
+    # NOT lane-exempt. The row sits at |11.6| and LANE_RADIUS is 3.2, so it can
+    # never trip the lane law - which is exactly why it should stay subject to
+    # it. An exemption that is never needed is an exemption that silently covers
+    # the next person who moves this row inward.
+    add_kit("Dressing/Ground", name, "kits/town/hedge", x, z, yaw, TOWN_SCALE)
+    return True
+
+
+_edge = 0
+_skipped = 0
+_inner = BOUND - BOUNDARY_HEDGE_INSET
+_step = -_inner
+while _step <= _inner + 0.001:
+    # The corners are skipped outright: two rows meeting at a right angle put two
+    # pieces in the same volume, which is exactly what `overlaps_across` reports
+    # and what `_shared_pier` had to be written to excuse for the railing.
+    # Leaving the corner open avoids needing a second exception, and a plaza's
+    # planting does not usually turn a hard corner either.
+    if abs(_step) < _inner - 0.5:
+        for _side in (-1.0, 1.0):
+            # ⚠️ THE YAWS ARE NOT INTERCHANGEABLE AND THEY WERE SWAPPED FIRST
+            # TIME. `kits/town/hedge` measures 0.65 x 0.65 x 2.6 at TOWN_SCALE,
+            # i.e. it is LONG IN ITS OWN Z. So a row running along Z (the east
+            # and west edges) wants yaw 0, and a row running along X (north and
+            # south) wants a quarter turn. With the two the other way round every
+            # piece lay ACROSS its own row: 2.6 units of it stuck into the arena,
+            # consecutive pieces overlapped each other by 1.8, and the clearance
+            # test then correctly refused 24 of the 28 placements. The symptom
+            # was "the boundary is four hedges"; the cause was the rotation.
+            for _x, _z, _yaw in ((_side * _inner, _step, 0.0),
+                                 (_step, _side * _inner, math.pi * 0.5)):
+                if try_edge_hedge(f"EdgeHedge_{_edge}", _x, _z, _yaw):
+                    _edge += 1
+                else:
+                    _skipped += 1
+    _step += BOUNDARY_HEDGE_STEP
+print(f"  boundary      : 4 chalk kerbs + {_edge} hedges at |x|=|z|={_inner:.1f}"
+      f" ({_skipped} skipped, already occupied)")
+
+# =============================================================================
 
 ext_lines = [
     '[ext_resource type="%s" path="%s" id="%s"]'
@@ -817,19 +1159,45 @@ ext_lines.append('[ext_resource type="Texture2D" '
 # enclosed, and one shared loop would flatten the only cue the player has that
 # they have changed venue. CC0 - source, author and licence in
 # assets/audio/ambience/OPENGAMEART_CC0_LICENSE.txt, which is what Form 03 needs.
+# ⚠️ THE CHALK GRAIN, AND IT IS TRIPLANAR BECAUSE THERE ARE NO UVs.
+# Playtest: "make it actually look like chalk writings not just lines" and, in the
+# same breath, "make sure that it actually CONNECTS". Those pull opposite ways - real
+# chalk is broken and gappy, and a gappy line cannot close a corner. So the GEOMETRY
+# stays solid (it carries the shape and the corners) and the CHALK comes from this
+# texture. obj_writer.gd emits no `vt` lines, so these meshes have no UVs at all; a
+# triplanar material projects from world space and needs none - which is the whole
+# reason this is possible without building a UV pipeline first.
+ext_lines.append('[ext_resource type="Texture2D" '
+                 'path="res://assets/models/materials/chalk.png" id="CHALK"]')
 ext_lines.append('[ext_resource type="AudioStream" '
                  'path="res://assets/audio/ambience/bayan_plaza.wav" id="AMB"]')
 
-SUBS = '''[sub_resource type="BoxShape3D" id="Shape_floor"]
-size = Vector3(120, 1, 120)
+# ⚠️ Mat_floor's ALBEDO IS MATCHED TO THE APRON'S RENDERED COLOUR, and it is the
+# second half of R-19(b). Feathering the apron turns its hard edge ragged; a
+# ragged edge between two different colours is still an edge with teeth. Measured
+# off this map's own y=30 overhead: apron (90, 88, 98) against floor (109, 101,
+# 93) — cool paving over warm ground, so every gap the feather opened read as a
+# warm speck. This is that ratio applied back to the albedo, so paving and floor
+# are one colour and there is nothing for the dissolve to expose. One albedo on a
+# material that already existed; no new resource, no shader, no cost.
+SUBS = '''[sub_resource type="StandardMaterial3D" id="Mat_chalk"]
+albedo_color = Color(1, 1, 1, 1)
+albedo_texture = ExtResource("CHALK")
+roughness = 1.0
+specular_mode = 2
+uv1_triplanar = true
+uv1_scale = Vector3(1.6, 1.6, 1.6)
+
+[sub_resource type="BoxShape3D" id="Shape_floor"]
+size = Vector3(120, 8, 120)
 
 [sub_resource type="StandardMaterial3D" id="Mat_floor"]
-albedo_color = Color(0.44706, 0.42353, 0.38431, 1)
+albedo_color = Color(0.36929, 0.36889, 0.40506, 1)
 roughness = 1.0
 
 [sub_resource type="BoxMesh" id="Mesh_floor"]
 material = SubResource("Mat_floor")
-size = Vector3(120, 1, 120)
+size = Vector3(200, 1, 200)
 
 [sub_resource type="BoxShape3D" id="Shape_wall_z"]
 size = Vector3(1, 12, 26)
@@ -857,8 +1225,8 @@ sky_material = SubResource("Sky_mat")
 background_mode = 2
 sky = SubResource("Sky_res")
 ambient_light_source = 2
-ambient_light_color = Color(0.451, 0.545, 0.686, 1)
-ambient_light_energy = 0.6
+ambient_light_color = Color(0.61176, 0.57647, 0.53333, 1)
+ambient_light_energy = 1.15
 tonemap_mode = 0
 tonemap_white = 1.2
 ssao_enabled = true
@@ -915,7 +1283,7 @@ directional_shadow_max_distance = 60.0
 [node name="Floor" type="StaticBody3D" parent="."]
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.4, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -3.9, 0)
 shape = SubResource("Shape_floor")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Floor"]
@@ -1040,6 +1408,10 @@ for parent, name, mid, tf in order:
         body.append(f'\n[node name="{name}" type="MeshInstance3D" parent="{parent}"]')
         body.append(f'transform = {tf}')
         body.append(f'mesh = ExtResource("{mid}")')
+        # Every chalk marking takes the grain; nothing else does. The road
+        # keeps its kit atlas.
+        if parent == "Markings":
+            body.append('surface_material_override/0 = SubResource("Mat_chalk")')
 
 n_sub = SUBS.count("[sub_resource")
 load_steps = len(ext_lines) + n_sub + 1
@@ -1093,6 +1465,9 @@ with open("scenes/maps/BayanPlaza.tscn", "w", encoding="utf-8", newline="\n") as
 
 print("wrote scenes/maps/BayanPlaza.tscn")
 print(f"  markings      : {n_marks} verified embedded")
+print(placer.report("ask-before"))
+print(f"  apron         : {_ap} tiles, solid to {APRON_SOLID:.0f} then feathered "
+      f"to {APRON_FADE:.0f} (no hard edge)")
 print(f"  ext_resources : {len(ext_lines)}")
 print(f"  load_steps    : {load_steps}")
 print(f"  mesh instances: {len(order)}")

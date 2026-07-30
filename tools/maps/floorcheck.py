@@ -507,6 +507,36 @@ class Surfaces:
                     % (name, -gap * 1000.0, surface, bottom, surface))
         return problems
 
+    def footprint_is_clear(self, x0, x1, z0, z1, groups=None):
+        """Would a piece with this footprint land on top of something already placed?
+
+        ⚠️ THE ASK-BEFORE-PLACING COUNTERPART OF `overlaps_across`, and it exists
+        because that one is a POST-MORTEM. `overlaps_across` runs at the end of a
+        build and prints a warning about geometry that is already in the scene
+        file; the reader is then expected to go and move something by hand. That
+        is fine for a handful of hand-placed landmarks and useless for anything
+        placed by a LOOP, where the right answer is simply "skip this one".
+
+        Bayan Plaza's boundary hedge row is exactly that case: it walks the whole
+        perimeter on a fixed step and some of those steps land on stalls, benches
+        and the flagpole that were placed there first. Asking first turns 19
+        reported overlaps into a row with gaps in it, which is also the better
+        LOOK - a solid ring of hedge reads as a fence, and a plaza does not have
+        one.
+
+        Same slack and same footprint maths as `overlaps_across`, so a placement
+        this function approves cannot be reported by that one afterwards.
+        `groups` defaults to every recorded piece.
+        """
+        for name, _mesh, _bottom, ox0, ox1, oz0, oz1, group in self._dressing:
+            if groups is not None and group not in groups:
+                continue
+            ox = min(x1, ox1) - max(x0, ox0)
+            oz = min(z1, oz1) - max(z0, oz0)
+            if ox > OVERLAP_SLACK and oz > OVERLAP_SLACK:
+                return False
+        return True
+
     def overlaps(self, group):
         """Pieces in `group` whose footprints intersect. A WARNING, not a failure.
 

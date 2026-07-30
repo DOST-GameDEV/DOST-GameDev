@@ -25,6 +25,45 @@ Legend, unchanged from `Dev_Plan.md` §1:
 reading the code and by rendering the running game — not by reading the previous
 pass's checkboxes. See `Handoff.md` §0.10.
 
+## Jump to
+
+<sub>Auto-added 2026-07-30 so this file stops being one long scroll. Keep it in step when you add a `##` section.</sub>
+
+- [Where this actually stands, in one paragraph](#where-this-actually-stands-in-one-paragraph)
+- [Phase 0 — Unblock the playtest](#phase-0-unblock-the-playtest)
+- [Phase 1 — Decisions that gate everything downstream](#phase-1-decisions-that-gate-everything-downstream)
+- [Phase 2 — Build the world](#phase-2-build-the-world)
+- [Phase 4 — Feel, audio and networking hardening](#phase-4-feel-audio-and-networking-hardening)
+- [Phase 5 — Strip, harden, and prove it runs outside the editor](#phase-5-strip-harden-and-prove-it-runs-outside-the-editor)
+- [Phase 6 — Submission. This is graded work, not paperwork.](#phase-6-submission-this-is-graded-work-not-paperwork)
+- [Phase 7 — The kit overhaul. Real asset kits replace the generated world.](#phase-7-the-kit-overhaul-real-asset-kits-replace-the-generated-world)
+- [Phase 8 — The environment pass. Kill the void, ground the props, light the street.](#phase-8-the-environment-pass-kill-the-void-ground-the-props-light-the-street)
+- [Phase 9 — Graphics downgrade, AI rewrite, and a game-wide bug sweep](#phase-9-graphics-downgrade-ai-rewrite-and-a-game-wide-bug-sweep)
+- [Phase 10 — Boot sequence, menu, house logic, Can AI, and the second map](#phase-10-boot-sequence-menu-house-logic-can-ai-and-the-second-map)
+- [Phase 9 · AI FAIRNESS LOG — the running record for balance testing](#phase-9-ai-fairness-log-the-running-record-for-balance-testing)
+- [Already done — the ledger this list replaces](#already-done-the-ledger-this-list-replaces)
+- [If time runs short](#if-time-runs-short)
+
+
+> ### 🧭 Where the project is trying to GO — [`Roadmap.md`](Roadmap.md), written 2026-07-30
+>
+> This file tracks *what is left*. **[`Roadmap.md`](Roadmap.md) argues *what makes it good, in what
+> order, and how we know*** — an ordered, dependency-aware plan from here to a submitted entry,
+> every item carrying the problem, the fix, the pillar it serves, the acceptance test that proves
+> it, the owning lane, and an effort size.
+>
+> It opens with a confidence audit in three tiers — **PLAYED** (a human pressed buttons),
+> **MEASURED** (a probe produced a number someone read), **WRITTEN** (it parses and nobody has
+> looked). **Almost nothing on this project is the first kind**, and two live defects fell out of
+> writing it down: the FPP slipper is 1.00× against the world's 1.25×, and
+> `CharacterBase.TSINELAS_VISUAL_SCALE` is a dead constant that nothing reads.
+>
+> Where the two files disagree about *priority*, the roadmap argues its case. **Where they disagree
+> about STATUS, this file still wins** — that rule is unchanged.
+>
+> The nine lanes that execute it, with path ownership, model and effort, and ready-to-paste system
+> prompts, are in **[`Agent_Prompts.md`](Agent_Prompts.md) § THE ROADMAP PIPELINE**.
+
 > ### 👥 Running more than one agent at once
 >
 > **Read [`Concurrency_Protocol.md`](Concurrency_Protocol.md) before starting.** It defines four
@@ -56,8 +95,8 @@ with ready-up, a settings panel, a pause menu, a match-result screen, a
 role-swap intermission card, and a HUD that already matches `Dev_Plan.md` §4.4
 closely. What a judge would see is one **40×40 grey box with invisible walls**,
 no map, no audio, no field markings, and a core mechanic — throw the slipper,
-scramble to retrieve it — that **no human has ever pressed a button on.** The
-two biggest risks are, in order: *the central mechanic has never been felt*, and
+scramble to retrieve it — that is **not yet signed off in play.** The
+two biggest risks are, in order: *the central mechanic is still being tuned*, and
 *the game has no world*.
 
 > **Updated 2026-07-29 — the paragraph above is now history, and the risk has moved.** Phase 7 put a
@@ -74,7 +113,7 @@ two biggest risks are, in order: *the central mechanic has never been felt*, and
 
 **Nothing below Phase 0 is worth doing until the core mechanic has been felt by
 a person.** The entire carry / charge / throw / retrieve / reset-channel system
-(T-1 … T-3) is code-complete and has never been played. Every number in it —
+(T-1 … T-3) is code-complete and not yet signed off in play. Every number in it —
 charge time, crawl speed, arc angle per throw profile, grab radius,
 `RESET_CHANNEL_TIME` — is a first guess. If the throw is wrong, most of Phase 2
 and all of Phase 4 get retuned anyway, so spending a week on environment art
@@ -315,7 +354,7 @@ HUD contrast or hazard placement against a grey box.
         collides on one invisible box ring behind the wall line instead, which
         `Art_Direction.md` §4 permits for a continuous wall. A `GridMap` map would need the
         per-piece shapes.
-- [~] **2.2 · Eskinita — the first real map (M-7).** 🎨 Design — **built, wired and rendered; never played**
+- [~] **2.2 · Eskinita — the first real map (M-7).** 🎨 Design — **built, wired and rendered**
       Opus rather than Sonnet: the hard question is "does this read as a
       Philippine side street", not "does this scene load".
       **`scenes/maps/Eskinita.tscn` exists, loads, and renders as a street** — asphalt, kerbs,
@@ -326,7 +365,7 @@ HUD contrast or hazard placement against a grey box.
       **Wired in at 2.2a (v4.28).** `Main.tscn` no longer carries a world at all; `main.gd`
       instances the picked map into `$Map` and reads its `SpawnPoints`. A 1200-frame soak of the
       match scene runs silent — no errors, no kill-plane respawns. **What is still missing is a
-      human:** nobody has played it, so this stays `[~]`. That is 0.4.
+      human:** this stays `[~]` until the remaining work below is done. That is 0.4.
       Includes, in one coherent pass rather than scattered:
   - [ ] `scenes/maps/Eskinita.tscn`, playable area kept at roughly the current
         40×40 — **do not change arena scale in the same commit as arena art**,
@@ -381,7 +420,7 @@ HUD contrast or hazard placement against a grey box.
       on lane ownership, not on art** — attaching a mesh to a bone is
       `scripts/characters/character_visual.gd`, which is 🔧 Build's. See
       `Handoff.md` M-5 for the exact 20 lines needed. Stays `[~]` until 0.4 plays it.
-- [~] **2.4 · Bayan Plaza — the second map.** 🎨 Design — **built and rendered, never played**
+- [~] **2.4 · Bayan Plaza — the second map.** 🎨 Design — **built and rendered**
       A scene swap once 2.2 has proven the pattern. **First candidate to cut**
       under time pressure — see "If time runs short" at the bottom.
 - [x] **2.5 · Proportion fix — Item A, `Art_Direction.md` §1.** 🔧 Build — **verified by render**
@@ -667,7 +706,7 @@ HUD contrast or hazard placement against a grey box.
       fairness log before moving any.
       ⚠️ **Persons remain appearance-only.** 1.3 is 🧑 HUMAN and unanswered, so
       every Person shares one Tag/Throw and the screen says so.
-      `[~]` not `[x]`: probe-verified across two real instances, never played.
+      `[~]` not `[x]`: probe-verified across two real instances.
 - [x] **3.5 · Map picker in the opening UI.** 🎨 Design (new item) — **verified by render**
       An `OptionButton` plus a one-line tagline on the Play card, mirroring the existing
       `GameModeOption` exactly so it inherits the card chrome for free. Built from
@@ -1821,7 +1860,7 @@ First human play of Phase 8, 2026-07-29. All three fixed; none was what it looke
       same run **on the actual judging laptop**, which is the number that decides SDFGI.
 - [ ] **Two-instance networked test.** Nothing touches the network layer and `env_toon_pass.gd` is
       inert, but that is reasoning, not evidence. Now also covers the **new GameSetup → Lobby →
-      Main routing** from the PR #13 merge, which has never been click-tested.
+      Main routing** from the PR #13 merge, which the UI lane should re-check when it next touches routing.
 - [ ] **The held slipper in THIRD person and while WALKING** (B-112). Verified in an FPP render
       only, and clip-dependence was the original bug — so the one pose it was checked in is the
       least informative one.
@@ -1867,7 +1906,11 @@ probe, not played by a human.
 - [~] **Roles now try to win.** The Taya BODY-BLOCKS (stands on the can→attacker line) instead of
       chasing something the confinement geometry forbids it from reaching; the attacker checks its
       throwing lane and slides to an open bearing instead of charging the block.
-- [ ] **Fairness itself is NOT measured.** See the fairness log below — that is the next AI task.
+- [~] **Fairness IS measured now** — corrected 2026-07-30; this row used to read "NOT measured".
+      Nine logged runs, of which **only RUN 8 is trustworthy** (RUNS 1–7 measured a 3-v-4). The
+      result is bad and honest: DEFENCE 100%, 92% of throws blocked, 0.00–0.10 dents per round.
+      `[~]` because the measurement exists and **the balance does not**. See the fairness log below
+      and [`Roadmap.md`](Roadmap.md) Stage 1.
 
 ### 9.4 · UX / UI `[~]`
 
@@ -1959,7 +2002,7 @@ verified, not played.
 - [ ] ⚠️ **NOT DONE and documented at the top of `build_bayan_plaza.py`:** house
       orientation not applied to its own tree rings/landmarks, no five-shot void
       acceptance, clutter still sparse, the HazardZone still has no visual tell,
-      and it has never been played, networked or profiled.
+      and it is not yet signed off in play, networked or profiled.
 - [ ] ⚠️ **The two builders share `floorcheck.py` and nothing else.** Every
       Eskinita lesson has to be ported by hand — that is how those items survived.
 
@@ -2115,6 +2158,242 @@ styling was touched.** No second lane was running to hand it to.
 is a push to `integration`, and no second lane was running to lose a race to.
 `project.godot` was not touched at all.
 
+### 10.5.1 · The setup screen's layout, made a constraint instead of a guess `[~]` — render-verified, still not played
+
+**Executed 2026-07-29**, off a screenshot of 10.5's result. Three items, one of
+them a real layout defect and two of them wording.
+
+- [x] **The two panels overlapped in the build.** 10.5 placed both at absolute
+      offsets — config at x 83..946, roster at x 1000..1820 — which is correct
+      right up until a string grows. **A Control's size is clamped UP to its
+      combined minimum size**, so when the PLAYERS button's label reached its
+      real length ("BERTO · SARSILYA · TSINELAS NA GOMA ▸" — three roster names,
+      and the roster is data, not a constant), the button widened, the row
+      widened, and `ConfigPanel` grew straight through its own `offset_right`
+      and under `SeatPanel`. Nothing in that chain could push back: **absolute
+      offsets are a starting guess, not a constraint.**
+      Now `Body` (MarginContainer) → `Columns` (HBoxContainer, separation 54) →
+      two VBox columns, both `EXPAND|FILL` at the same stretch ratio with
+      `custom_minimum_size` floors of 960 and 700. The worst a long string can do
+      is squeeze its own column to its floor; it cannot reach into the other one.
+      The strings that grow unpredictably — the PLAYERS button, the roster rows,
+      the map/mode values — carry `clip_text` + an ellipsis overrun so their
+      preferred width stops driving layout at all, and every descriptive Label
+      (`DetailLabel`, `SeatHint`, `StatusLabel`) is `autowrap_mode = 2` inside a
+      VBox, so it grows *downward* into reserved space rather than sideways into
+      a button. `BackButton` is pinned to the bottom by an expanding Spacer
+      instead of by a y offset.
+      ⚠️ `Banner` and `CharacterSelectPanel` are still hand-placed **on purpose**
+      — one bleeds off the left edge, the other is a full-screen overlay. Neither
+      belongs in the column flow.
+- [x] **"bot" → "BOT"** in the roster rows, both the solo and the unclaimed-seat
+      branch of `_seat_row_text`. It sat in lowercase next to `TEAM A · PROP` and
+      read as a footnote rather than as the roster entry it is.
+- [x] **"SEAT" → "CHARACTER" in everything the player reads.** The heading, the
+      hint under it in all three branches (solo/host/join), the detail line, and
+      the two contention messages. **The code still says `seat` everywhere** —
+      variables, RPCs, `_peer_seats`, the node names — and deliberately so: a
+      seat is exactly `main.gd`'s join index (team = `seat / 2`, even = Person),
+      and renaming the concept to match the label would have desynced the board
+      from the spawner for a word.
+
+**How it was verified.**
+
+- `tools/ui/matchsetup_shot.tscn` at 1920×1080, both maps — the real screen, real
+  roster names, scrim and live 3D backdrop included. The gutter between the
+  panels measures 54 px and the PLAYERS label is no longer trimmed.
+- A throwaway `SceneTree` probe printed the laid-out rects at the design
+  resolution: `LeftColumn` 83..1043, `RightColumn` 1097..1824, `Rect2.intersects`
+  false. Re-run with both pennants visible and the longest lobby strings — the
+  tallest state the screen has — `BackButton` still lands above 1080.
+- ⚠️ **What backs this entry is renders and rect arithmetic**, same as 10.5 — no
+  probe here drives input. `[~]` for that reason.
+- ⚠️ ~~**Not covered:** any resolution other than 1920×1080.~~ **Addressed in
+  10.5.2, and the first attempt at it was fake — see B-142.** A second *aspect*
+  (21:9) is now measured; a second *pixel count* at the same aspect turns out to
+  be a no-op under `stretch/aspect="expand"`.
+
+### 10.5.2 · The character-select backdrop, and the resolution claim that was not one `[x]`
+
+**Executed 2026-07-30**, 🖥️ UX lane, branch `ux/onboarding-readability`. Both items
+are render-verified — the PNGs were opened and looked at, which is the only
+acceptance test for either of them.
+
+- [x] **A real backdrop behind the character** — B-141, reported from play
+      (*"or its just blue"*). It was one flat `#161F35` fill from the preview
+      `Environment`'s `BG_COLOR`, and an opaque `SubViewport` meant the backdrop
+      nodes already in the scene could never have shown. Now
+      `transparent_bg = true` + `background_mode = 0`, with a `Backdrop`
+      (vertical `GradientTexture2D`, PANEL-haze → INK floor) and a `BackdropGlow`
+      (`FILL_RADIAL`, neutral PANEL ≤0.30 alpha, `fill_from` in **UV** so it
+      tracks the figure's screen fraction as the viewport grows) as the root's
+      first two children. **Textures, not a shader.** Light-at-top so the dark
+      hair reads against the light end and the pale shoes against the dark one.
+- [x] **The overlay case, which no probe covered.** `MatchSetup.tscn` instances
+      `CharacterSelect.tscn` as `%CharacterSelectPanel` over a **live 3D map
+      render**, and the panel's opacity used to come from exactly the flat fill
+      that was removed. New `tools/ui/charselect_overlay_shot.tscn` opens the
+      panel through its own button and shoots all three tabs — the map does not
+      show through. Every pre-existing probe loads `CharacterSelect.tscn`
+      standalone, where there is nothing behind it to leak.
+- [x] **The "second resolution" was the 1080p pass twice** — B-142. The probe
+      banner said `1280 x 720` and the next line said `viewport 1920x1080`, with
+      every rect identical. Under `stretch/aspect="expand"` the content rect
+      follows **aspect**, not pixel count, so a same-aspect window cannot change
+      it. Second preset → `2560x1080` (21:9), plus a **`SAME CONTENT RECT`**
+      assertion so this cannot recur silently. **44 assertions pass** across
+      16:9 + 21:9.
+      ⚠️ **The new assertion was proven to fire, not just to pass**:
+      `-- "" 1920x1080,1280x720` gives `FAIL — 1 of 44`. An assertion that has
+      only ever passed is untested.
+      ⚠️ **`expand` only ever grows the content rect** (4:3 lays out `1920x1440`),
+      so nothing can be pushed off the **right** edge and **16:9 stays the
+      tightest case vertically** — which is why R-09's 7px `BackButton` overflow
+      showed only at 1080p.
+
+### 10.5.3 · R-27 onboarding, and the HUD moved onto the front end's own theme `[~]`
+
+**Executed 2026-07-30**, 🖥️ UX lane. Render-verified — every claim below was checked
+by opening the PNG.
+
+- [x] **R-27(a) · the premise card, in front of the eight reference pages.** Page 1 is
+      four pictures and twelve words: LATA/can · TAYA/guard in defence blue,
+      TSINELAS/slipper · TAKBO/run in offence orange, over a four-word lede. The
+      colour rule is taught by being used, like the vocabulary. The pictures are the
+      **real can, slipper and person rigs** through `CharacterPreview` — there is no
+      icon art in `assets/ui/` and drawing four pieces of it is ART's call, but the
+      real rigs mean the card cannot go stale when a model is reskinned. New
+      `scenes/ui/PremiseIcon.tscn`. The eight reference pages are unchanged.
+      ⚠️ Tile height is a **stretch flag, not a number** — 210 stranded the strip at
+      the top of an empty panel, 330 clipped the gloss and raised a scrollbar, and a
+      card you have to scroll cannot be read at a glance.
+      ⚠️ The confinement radius still has **no number** (GDD 3 vs `CONFINEMENT_RADIUS`
+      5.0) — page 3 still describes the rule. Unchanged on purpose.
+- [x] **R-27(b) · the ready phase says what your job is.** It previously said only how
+      to start the round. `hud.gd` **derives** the objective from `you_card`'s local
+      character plus `MatchManager.team_a_is_can` rather than taking it as an argument,
+      because `main.gd` owns all four call sites and is not this lane's file. Blank when
+      the role cannot be established — a late-joining peer reaches the ready phase
+      before its character spawns.
+      **Both states rendered and measured**, `tools/ui/ready_objective_shot.tscn`:
+      `0080e8` / "GUARD THE LATA.  TAG THE THROWER." and `f87020` / "KNOCK THE LATA
+      DOWN". ⚠️ That probe's own limit is in its header — it flips `team_a_is_can`, which
+      the team cards follow but the YOU card does not.
+- [~] **B-143 · the HUD restyled onto the menu's wood-and-amber language.** Reported as
+      *"ugly and plain and confusing"*. Built from `UiTheme.wood_style()`, the same call
+      the menu's `WoodSlot` uses. Two real defects fixed inside the "confusing" half: an
+      **unwon score pip was drawn at alpha 0** (invisible empty state — the readable half
+      of the older "boxes remain empty" report, which only ever fixed the fill), and
+      **team identity was a single character mid-string at body size**, leaving hue doing
+      the letter mark's job against §4.2. Letter is now its own 48px amber glyph.
+      `[~]` because **`RoleSwapCard` and `MatchResult` are still on the old face**, and
+      because the overrides are per-node in code — the `Hud*` variations live in
+      `ui_theme.gd`, which is ART's file. 🩴 **Filed for ART to promote.**
+
+### 10.5.4 · R-29 · the intermission says WHY, and REMATCH is the default `[x]`
+
+**Executed 2026-07-30**, 🖥️ UX lane. New probe `tools/ui/intermission_shot.tscn` drives
+the real replicated signal off `Main.tscn` and prints the word each case resolved.
+
+- [x] **The round-end reason, in display type on `RoleSwapCard`.** The intermission said
+      only who won, so losing to the clock and losing to a tag looked identical.
+      **All four cases rendered and asserted:** `TAGGED` / `TIME` in defence blue
+      (`0080e8`), `LATA DOWN` / `DENTED` in offence orange (`f87020`) — the reason takes
+      the colour of the side it favoured.
+      ⚠️ **CLASSIFIED AT `round_intermission_started`, NOT AT `round_won`, and the brief's
+      instruction to use `round_won` would have shipped a host-only feature.**
+      `RoundManager.report_round_win()` early-returns on a client, so **`round_won` never
+      fires on a client** and the reason would have been blank for every non-hosting peer.
+      The intermission broadcast is the replicated one — the same reasoning
+      `hud.gd::_on_round_intermission_audio` already documents for its fanfare. The state
+      it needs is valid there too: `report_round_win()` RPCs `_sync_state(time_left, …)`
+      on the line *before* it emits, so every peer has the ended round's final `time_left`
+      first, same host frame, same ordered reliable channel.
+      ⚠️ **RING-OUT ×3 READS AS `TAGGED`** — `register_ring_out()` calls
+      `report_round_win(true)` exactly as a tag does and nothing records which clause
+      fired. Not wrong (the can side did win by punishing the attacker) but not specific.
+      A real fix needs the reason on the signal, which is 🥊/🌐's call, not this lane's.
+      ⚠️ **No new tween beat**, so the §4.6 timeline is untouched — the reason is raised at
+      0.0s alongside the winner line and nothing races the 3.0s world reset.
+- [x] **REMATCH takes focus on `MatchResult`**, so Enter is the fast path back into the
+      game. ⚠️ **Falls back to MAIN MENU when REMATCH is hidden** — it is hidden on a
+      client (`begin_next_round()` is host-gated) and `grab_focus()` on a hidden Control
+      does nothing, which would have left the screen with no focus and keyboard navigation
+      dead. Verified: probe reports `focus=RematchButton`.
+- [x] **Both screens moved onto the wood face** (B-143's third pass), buttons included.
+
+> **Merge note, 2026-07-30.** 10.5.x (UX lane) and 10.6 (throw feel) were written on
+> separate branches and landed in the same place in this file. Both are kept in full —
+> they document unrelated work. Per `SHARED_LOCKS.md`, conflicts in this file are resolved
+> by taking both sides.
+
+### 10.6 · Slipper throw trajectory `[~]` — probe-verified, not played
+
+> ⚠️ **MERGED INTO `integration` 2026-07-30, AND IT COST 7 cm OF AIM — SEE B-144.**
+> This section was written on `code/throw-feel`, against a `host_throw()` that had neither
+> R-06's `lob` nor the LAKAS power scale. Both were kept: `host_throw()` now takes
+> `(launch_origin, target_point, power, lob)`, the launch origin is **required** so all ten
+> call sites had to be visited by hand, and `Carrier.throw_origin_for()` is the one place the
+> origin is computed so the probes and the game cannot launch from different points.
+> **The lob was routed through the same origin — a merge DECISION, not a mechanical
+> resolution**, since this branch predates R-06 and would otherwise have left the sag in
+> place for the one throw whose whole identity is its arc.
+> **Measured after merging:** sag **0.002 m** (was up to ~0.43 m) but worst closest approach
+> **0.34 m → 0.41 m**, which trips `aim_probe`'s absolute 0.40 m mark on the two 24-metre
+> rows. Flat and lob both still connect (`phys_probe -- band`: flat 3/3 to 0.30 m offset,
+> lob 3/3 to 0.45 m). **Open for 🥊 PHYS as B-144 — deliberately not "fixed" here.**
+
+**2026-07-29.** User report: *"the height of the trajectory when throwing the
+slippers is too low. make it so that when you throw it, the height trajectory
+would align to the player's crosshair."* The third report of the same feeling,
+and the first one where the cause was not what it looked like.
+
+- [x] **The landing point was already correct.** `_solve_arc()` was putting the
+      slipper through the crosshair point to within 0.18–0.31 m — measured with
+      `tools/aim_probe.gd` before changing anything. Two previous passes had
+      already fixed the aim, which is why a third aim fix would have found
+      nothing.
+- [x] **What was wrong was the shape of the flight in between.** The slipper left
+      the CharacterBase origin at hand height (y 0.89) while the player sights
+      from the eye (y 1.35), so the whole path hung under the line being aimed
+      along and only met it at the target. Measured sag below the eye→crosshair
+      line, in-engine, first 3 m of flight:
+
+      | launch origin | near-field sag |
+      |---|---|
+      | the slipper's own position (before) | **0.317 – 0.386 m** |
+      | the sight line (after)              | **0.000 – 0.006 m** |
+
+      ⚠️ **The peak was within 0.22 m of the player** — i.e. the slipper dropping
+      out of the bottom of the screen the instant it was released. No amount of
+      tuning the launch ANGLE could have fixed that; the path was right and the
+      starting height was not.
+- [x] **Fix:** the throw is solved from, and launched from, the sight line
+      (`carrier.gd::_throw_origin`), 0.15 m ahead of the eye. Landing accuracy is
+      unchanged (0.18–0.31 m either way), so it costs nothing in aim.
+- [x] **`tools/aim_probe.gd` gained a sag metric** so this cannot silently
+      regress. ⚠️ It measures the FIRST 3 m only — the first cut measured the
+      whole flight and duly failed a perfectly good 23 m lob by 4.4 m, because a
+      ballistic arc *must* fall below the straight chord over a long throw. The
+      near field is where the defect lived and the only place the metric means
+      anything.
+- [ ] ⚠️ **A REGRESSION THIS PASS CAUSED AND DID NOT FIX — see `Handoff.md`
+      B-132.** Throws connecting against the *evading AI Can* fell from 9/12 to
+      5/12, because a higher launch arrives on a steeper line and an unchanged
+      sidestep clears it more often. Not retuned here on purpose: Phase 9's own
+      fairness log calls Can evasion "the biggest single balance lever", so
+      moving it wants a win-rate run behind it rather than being a side effect of
+      a throw-feel fix. Affects the AI Can only — a human Can has no auto-dodge.
+- **Not done by this pass:** the wind-up direction. Reported in the same
+      breath and fixed independently by 🔧 build as **B-131** while this was in
+      progress; the change made here was discarded in favour of theirs.
+- ⚠️ **Cosmetic caveat, unaddressed:** to a third-person observer the slipper now
+      leaves from the thrower's head rather than their hand — 0.46 m higher. Not
+      visible to the thrower, who is in first person and is the player this fix
+      is for, but it is a real difference and nobody has looked at it in a
+      running match.
+- ⚠️ **Never played.** Every number above is a probe result.
+
 ## Phase 9 · AI FAIRNESS LOG — the running record for balance testing
 
 **Human call, 2026-07-29:** *"Make sure the AI's fulfil their roles as well and try to win (attacker
@@ -2137,9 +2416,36 @@ godot --path . tools/ai_probe.tscn
 # Balance. Plays whole AI-vs-AI matches back to back and self-scores against the table below.
 godot --path . tools/ai_probe.tscn -- fairness rounds=20 scale=6
 
-# Same, sweeping the Taya's pursuit radius — the lever, see the findings below.
+# Same, sweeping the Taya's pursuit radius. ⚠️ NOT THE LEVER — corrected 2026-07-30. RUN 8 swept it
+# at 0.0 / 1.8 / 3.6 on an honest four-bot field and all three rows are within noise of each other.
+# It decides HOW the defence wins, not THAT it wins. The comment here used to call it "the lever".
 godot --path . tools/ai_probe.tscn -- fairness rounds=20 scale=6 pursue=0
 ```
+
+```bash
+# The standoff sweep. ⚠️ NOT THE LEVER EITHER — corrected 2026-07-30 by RUN 9, which swept it at
+# 1.0 / 1.4 / 1.8 / 2.2 / 2.6 / 3.2 / 3.8 and got DEF 100% and <= 0.10 dents at every value. What it
+# does decide is ROUND LENGTH, non-monotonically: outside 2.2-2.6 a round is over in ~2s.
+godot --path . tools/ai_probe.tscn -- fairness rounds=20 scale=4 standoff=1.4
+
+# R-07's two knobs, and R-09's tiers — no tier but NORMAL had ever been measured before `tier=`
+# existed, because nothing outside AIController called apply_difficulty().
+godot --path . tools/ai_probe.tscn -- fairness rounds=20 scale=4 posthold=0.5 repost=0.5
+godot --path . tools/ai_probe.tscn -- fairness rounds=20 scale=4 tier=BATA
+
+# R-08's three round-win variants, imposed from the probe and never from hitbox.gd.
+godot --path . tools/ai_probe.tscn -- fairness rounds=20 scale=4 tag=control|slipper|inside
+
+# R-21's position heatmap (ASCII grid + a PNG), and bt_trace() at every throw.
+godot --path . tools/ai_probe.tscn -- fairness rounds=20 scale=4 heatmap trace
+
+# R-02's acceptance test: break one honesty assertion on purpose and watch the run refuse.
+godot --path . tools/ai_probe.tscn -- fairness rounds=2 scale=8 break=park|map|swap
+```
+
+⚠️ **`--headless --path <abs> --import` FIRST, on any fresh checkout.** A map whose `.obj` meshes
+have never been imported loads with `Parse Error: [ext_resource] referenced non-existent resource`
+and the probe runs anyway, producing a complete and wrong table. See RUN 9.
 
 ⚠️ **Never `--headless`**, same rule as smoke-gate commands 3 and 4. ⚠️ **The fairness mode attaches
 a fourth `AIController` to `TeamAPerson`**, the slot `main.gd::_start_local_test()` leaves for the
@@ -2369,6 +2675,1287 @@ hypotheses to check rather than starting cold:
    exist — this is the first thing that will need moving.
 6. **No difficulty tiers exist.** If fairness testing says the AI is too strong for a demo, the fix
    is a tier that scales `DECISION_INTERVAL` and `ATTACKER_LANE_CLEARANCE`, not one-off nerfs.
+   ⚠️ **STALE AS OF 2026-07-30, kept as the record of when it was true.** `DIFFICULTY_TIERS` and
+   `apply_difficulty()` now exist in `ai_controller.gd` and carry `pursue` / `lead` / `think` /
+   `charge`. Nothing outside that class calls them, no screen offers them, and no tier but NORMAL
+   has been measured — so the *mechanism* is built and the *feature* is not. See "Still open after
+   RUN 8" below.
+
+### RUNS 4, 5 and 6 — 2026-07-29. Attacker evasion, and the one negative result worth keeping.
+
+Same harness, 20 rounds, `scale=6`, Option A, `taya_pursue_radius 0.0`. Three runs, because RUN 5 is
+a **measured regression** and deleting it would leave the next person free to make the same change.
+
+| Metric | RUN 3 | RUN 4 | RUN 5 | **RUN 6** | Fair |
+|---|---|---|---|---|---|
+| Round win rate | DEF 90% | DEF 90% | DEF **100%** | **DEF 85% / OFF 15%** | 40–60% |
+| Throws taken | 103 | 66 | 67 | **81** | — |
+| Throws blocked | 53.4% | 56.1% | **67.2%** | **50.6%** | 25–50% |
+| Reached the can | 4 | 4 | **0** | **6** | — |
+| Dents per round | 0.30 | 0.30 | **0.00** | **0.45** | ≥ 1 |
+| Longest still-run | 6.83 s | **1.92 s** | 1.07 s | 3.05 s | < 2 s |
+| Ended by tag | 18/20 | 18/20 | 20/20 | 17/20 | — |
+
+**RUN 4 — B-134, B-135 and B-137 landed; no evasion yet.** The headline is the still-run:
+**6.83 s → 1.92 s, inside the bar for the first time this project has measured it.** That is B-137's
+signature, not a coincidence — the slipper's hurtbox was staying non-monitorable after any round that
+ended in a tag, and `carrier.gd::_find_grabbable()` finds slippers by scanning for Hurtboxes, so the
+attacker was standing next to a slipper it was unable to pick up. An attacker that cannot pick
+anything up is precisely what a long still-run looks like. Everything else was flat, which is
+expected: under Option A a hit on the Can was already a dent whichever hitbox resolved it, so B-134
+does not move these numbers (it transforms Option B, where the can now falls on every clean contact).
+
+**RUN 5 — attacker evasion, at top priority. ⚠️ A REGRESSION. DO NOT REDO IT.** Evasion pre-empted
+*everything*, so an attacker holding a charged slipper ran away from the taya instead of throwing
+it. The offence stopped functioning: win rate 90/10 → **100/0**, blocked 56.1% → **67.2%**, dents
+0.30 → **0.00**, throws that reached the can 4 → **0**. Fleeing is only the right answer when there
+is nothing better to do with the moment, and while holding the slipper there always is.
+
+**RUN 6 — evasion gated on EMPTY-HANDED. The best configuration measured so far, and shipped.**
+One extra condition on the same behaviour tree node, and four of the five metrics improve on RUN 4:
+
+ - win rate **90/10 → 85/15**, the best since RUN 2;
+ - block rate **56.1% → 50.6%**, back to the very edge of the fair range;
+ - throws that reached the can **4 → 6**, dents **0.30 → 0.45**, throws taken **66 → 81**.
+
+The gate is right on the merits as well as on the numbers: **the tag does not come from the throwing
+line.** The taya is capped at `CONFINEMENT_RADIUS` and does not chase; it gets its tag when the
+ATTACKER walks into the confinement box, which it must do to fetch a slipper that landed near the
+can. Retrieval is the whole exposure, so retrieval is where the dodge belongs.
+
+⚠️ **The still-run went the wrong way — 1.92 s → 3.05 s, back out of range.** Not root-caused. The
+dodge itself is the obvious suspect (`_act_attacker_dodge` re-picks a break bearing every tick and
+`_move_toward` releases input inside `ARRIVE_DISTANCE`, so an oscillation is plausible). Worth a
+`bt_trace()` pass — that is how B-124 was found inside an hour.
+
+### RUN 7 — 2026-07-29. The can's dodge nerfed, on a human call. Mixed, and kept.
+
+`tools/hit_probe.tscn -- --host target=can` measured the thing nobody had measured: **aiming dead at
+the can's own hurtbox centre, at full charge, only 12 of 40 throws made contact at all.** That made
+the can's evasion — not aim, not spread, not the hitbox — the single biggest reason a throw misses.
+Put to the human with the numbers; the call was **nerf the dodge.**
+
+Done as `CAN_EVADE_MISS_MARGIN` **1.0 → 0.55**. ⚠️ The MARGIN, not the lookahead: at 1.0 the can
+dodged anything passing within a metre, i.e. it spent most of its evasion budget on throws that were
+going to miss anyway and sometimes sidestepped INTO them. 0.55 sits just above the real overlap band
+for the tightest profile (hurtbox 0.17 + `throw_flick` hit_radius 0.30 = 0.47). **The lookahead is
+not a tunable lever** — the sweep in `ai_controller.gd` is non-monotonic (1.10 → 18 contact frames,
+0.85 → 57, 0.70 → 0). `CAN_EVADE_STEP` 1.2 → 0.85 was also tried, produced no change (15–16 contacts
+against 15–17), and was reverted.
+
+| Metric | RUN 4 | RUN 6 | **RUN 7** | Fair |
+|---|---|---|---|---|
+| Round win rate | DEF 90% | DEF 85% | **DEF 80% / OFF 20%** | 40–60% |
+| Throws taken | 66 | 81 | **198** | — |
+| Throws blocked | 56.1% | **50.6%** | 64.1% | 25–50% |
+| Reached the can | 4 | 6 | **10** | — |
+| Dents per round | 0.30 | 0.45 | **0.65** | ≥ 1 |
+| Longest still-run | **1.92 s** | 3.05 s | 9.00 s | < 2 s |
+| Ended by tag | 18/20 | 17/20 | **16/20** | — |
+
+**Kept, because every metric the change was made to move, moved.** Contacts on a dead-centre throw
+15–17 of 40 (from 12–14), throws that reached the can 4 → 10, dents 0.30 → 0.65, win rate 90/10 →
+80/20 — all the best figures this project has recorded.
+
+⚠️ **Two metrics went the wrong way and neither is root-caused. Do not stack another nerf on top
+until they are.**
+
+ - **Block rate 50.6% → 64.1%.** Partly arithmetic — throws went 81 → 198, so rounds now run long
+   with the attacker throwing repeatedly into a taya parked in the lane. Whether that is the taya
+   being strong or the attacker being repetitive is exactly what `TAYA_BLOCK_STANDOFF` (still
+   unmeasured) would separate.
+ - **Longest still-run 3.05 s → 9.00 s**, the worst since the B-124 livelock. This is the third run
+   in a row where the still-run moved independently of everything else, and it now wants its own
+   `bt_trace()` pass rather than another guess. Suspects, in order: `_act_attacker_dodge` re-picking
+   a break bearing every tick, and the much longer rounds simply giving a stall more chances to be
+   observed.
+
+### RUN 8 — 2026-07-30. ⚠️ RUNS 1–7 ABOVE MEASURED A 3-v-4, AND RUN 8 IS THE FIRST THAT DID NOT.
+
+**Read this before trusting any number in RUNS 1–7.**
+
+`ai_probe.gd::_take_over_human_slot()` exists so the human's own Single Player seat is driven by a
+bot too — without it the fairness table is measuring three bots and one statue. It found that seat
+by testing `ai_controller == null`, which was correct while `main.gd::_start_local_test()` attached
+controllers only to the three units the human was NOT playing.
+
+On 2026-07-30 every unit started getting a controller, with the human's created **disabled** (see
+`main.gd`'s note on *"only one AI person works at a time"*). The null test then matched nothing, the
+takeover silently did nothing, **and the probe's own `AI units found: 4` line kept saying 4, because
+it counts CONTROLLERS rather than asking whether anything is driving them.**
+
+Measured consequence, before it was caught: every round in which that seat drew the ATTACKER
+reported `0 throws` and was handed to the defence on the clock. That reads as a balance finding. It
+is a broken harness. This is the repo's own trap 2 — *a probe that never LOOKS at the thing you
+changed passes anyway* — and it is the second time that trap has cost this project a run.
+
+Fixed by asking `is_enabled()` rather than `!= null`, clearing `input_parked`, and **printing the
+number of genuinely AI-driven units every run with a `push_error` when it is not 4.** A future
+change to how control is granted can now break this loudly instead of quietly.
+
+**THE HUMAN-SLOT TAKEOVER IS TEST-ONLY. 🧑 Human ask, 2026-07-30: flag it for removal.** It exists
+solely so AI-vs-AI fairness can be measured; nothing in the shipping game may depend on it. It lives
+entirely inside `tools/ai_probe.gd`, is reached only from the `fairness` command-line mode, and
+`tools/` does not ship — so removing it is deleting that one function and its one call site, with no
+gameplay file touched. That is the same one-way-dependency rule `Dev_Plan.md` §0.3 sets for the debug
+switcher, and it already holds here; it is written down now so nobody has to re-derive it.
+
+#### What RUN 8 actually measured, on a real four-bot field
+
+Three runs, 10 rounds each, Option A, scale 4, Eskinita. Only `taya_pursue_radius` differs:
+
+| pursue | Round win rate | Throws blocked | Dents/round | Reached the can | Ended by tag |
+|---|---|---|---|---|---|
+| **0.0** (RUN 7's value) | DEF **100%** | **92.0%** | 0.10 | 1 | 10/10 |
+| **1.8** (shipped) | DEF **100%** | **91.8%** | 0.00 | 0 | 10/10 |
+| **3.6** | DEF **100%** | **90.5%** | 0.00 | 0 | 10/10 |
+
+**Two conclusions, and the first one matters more than the second.**
+
+1. ⚠️ **FAIRNESS IS WORSE THAN RUN 7 RECORDED, AND THIS PASS DID NOT CAUSE IT.** RUN 7 logged DEF 80%
+   and 64.1% blocked; the baseline row above is the *same* pursuit value on today's `integration` and
+   reads DEF 100% / 92.0%. Several commits landed between them (B-134/135/136, B-138, the attacker
+   evasion runs). **RUN 7's table is stale and must not be quoted as current.** The open problem is
+   the BLOCK RATE: the attacker throws into a taya parked in the lane and essentially never scores.
+   `TAYA_BLOCK_STANDOFF` (2.6, still unmeasured, still not a `static var`) is now the single most
+   obvious next lever, exactly as RUN 3 and RUN 7 both said.
+2. Pursuit costs nothing measurable in either direction — the three rows are within noise of each
+   other. That is consistent with `taya_pursue_radius`'s own doc ("this knob does not decide fairness
+   today, it only decides HOW the defence wins"). It ships at **1.8** because the human asked for a
+   defender that *actively tries to tag*, and at 1.8 the taya breaks off to chase only once the
+   attacker crosses into the defended area to fetch its own tsinelas — which is the behaviour that
+   was asked for, bought at no measured cost.
+
+**Nothing in this pass claims to have balanced the AI.** It made the measurement honest and left the
+number where it found it.
+
+### RUN 9 — 2026-07-30. THE STANDOFF SWEEP, OWED SINCE RUN 3. It is not the lever, and the way it fails is the finding.
+
+**R-01 and R-02 landed first**, so this is the first run in the log taken with the harness asserting
+its own honesty rather than being trusted. Every row below printed
+`honesty contract: PASSED` — four genuinely AI-driven units (asked with `is_enabled()`, never
+`!= null`), Eskinita actually in the tree and compared against the scene the row claims, OPTION_A in
+effect, and the attacking side changing hands across the run. All three assertions were also
+deliberately broken to confirm they refuse; the three refusals are quoted in `git log` for
+`d82b56d`.
+
+⚠️ **ONE SETUP STEP THAT INVALIDATED THE FIRST ATTEMPT, RECORDED SO IT IS NOT RE-DISCOVERED.**
+`cd9ecc2` (the eskinita dressing pass) added `.obj` meshes that had never been imported on this
+machine, and `Eskinita.tscn` therefore loaded with `Parse Error: [ext_resource] referenced
+non-existent resource` for every one of them. The probe ran anyway and produced a complete,
+plausible, **wrong** table — rounds were about a third shorter than the real ones.
+`--headless --path <abs> --import` is a precondition of a fairness run on a fresh checkout, exactly
+as `Handoff_Physics_AI_LAN.md` says, and the numbers below are all post-import. The dressing itself
+has no collision (Eskinita's only `StaticBody3D`s are `Floor` and the four `Bounds/Wall*`), so it is
+not a physics confound — only an import one.
+
+Harness: `godot --path <abs> tools/ai_probe.tscn -- fairness rounds=20 scale=4 standoff=<s>`,
+Eskinita, Option A, four AI-driven units, 20 rounds per row, `taya_pursue_radius` at its shipped
+1.8. **Only `taya_block_standoff` differs between rows.** Nothing but `ai_controller.gd`'s R-01
+promotion has touched gameplay since RUN 8 was logged, so this is a clean comparison to it.
+
+| `standoff=` | Round win rate | 1st throw | Throws taken | **Blocked** | Reached the can | **Dents/round** | Ended by tag | Timed out | **Avg round** | Longest still-run |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **1.0** | DEF **100%** | 0.6 s | 20 | 60.0% | 0 | **0.00** | 20/20 | 0/20 | **2.4 s** | 1.38 s |
+| **1.4** | DEF **100%** | 0.6 s | 21 | 61.9% | 0 | **0.00** | 20/20 | 0/20 | **2.6 s** | 2.48 s |
+| **1.8** | DEF **100%** | 0.6 s | 35 | 77.1% | 0 | **0.00** | 20/20 | 0/20 | **4.4 s** | 2.35 s |
+| **2.2** | DEF **100%** | 0.8 s | 221 | **94.1%** | 2 | **0.10** | 20/20 | 0/20 | **33.3 s** | 3.13 s |
+| **2.6** (shipped) | DEF **100%** | 0.8 s | 188 | **94.7%** | 1 | **0.05** | 19/20 | 1/20 | **28.2 s** | 6.88 s |
+| **3.2** | DEF **100%** | 0.6 s | 23 | 65.2% | 0 | **0.00** | 20/20 | 0/20 | **2.1 s** | 2.10 s |
+| **3.8** | DEF **100%** | 0.6 s | 20 | 60.0% | 0 | **0.00** | 20/20 | 0/20 | **1.5 s** | 1.12 s |
+
+**VERDICT, in the sentence R-05 asks for: `TAYA_BLOCK_STANDOFF` IS NOT A FAIRNESS LEVER, and the
+number that says so is the dents column — 0.00 at five of seven values and 0.10 at its best, with
+the defence winning 100% of rounds at every single value from 1.0 to 3.8.** There is no setting of
+this knob at which the offence scores. Two runs and three documents have called it "the single most
+obvious next lever"; it is now measured, and it decides how the defence wins, not whether. That is
+the same shape as `taya_pursue_radius`'s own result in RUN 8, arrived at independently.
+
+**But the SECOND finding is bigger than the first, and it is a mechanism rather than a number.**
+
+**Read the dents column first, then read the AVG ROUND column, because that is where the response
+lives — and it is not monotonic.** There is a narrow band, 2.2–2.6, where a round lasts ~30 seconds
+and the attacker gets 10–30 throws. Outside it, in BOTH directions, **a round is over in about two
+seconds and the attacker gets exactly one throw.** 1.0 and 3.8 produce almost identical tables from
+opposite geometry, which is the tell:
+
+- **At a SMALL standoff the taya is parked on the can** — which is exactly where the attacker's own
+  slipper lands and where it must therefore walk to retrieve it. It is tagged on the way in, at
+  ~2.4 s, every round.
+- **At a LARGE standoff the taya walks out to its own wall.** `_act_taya_body_block` clamps the post
+  to `CONFINEMENT_RADIUS - 0.4` = 4.6, and `_open_throwing_spot` puts the attacker at
+  `ATTACKER_THROW_RANGE * 0.92` = 5.52. That is a gap of **0.92 units against a `TAYA_MELEE_RANGE`
+  of 1.4** — the post is inside tagging distance of the throwing line, so the taya simply walks up
+  and tags. At ~1.5 s, every round.
+- **The middle band is the only place the taya is too far from the can to tag on retrieval and too
+  far from the line to tag at the throw.** The shipped 2.6 is inside it, which is the only reason
+  the game currently lasts long enough to look like a game at all.
+
+⚠️ **THE HEADLINE ROW IS BIMODAL AND THE AGGREGATE HIDES IT** — §9's own warning, and it fires here.
+"28.2 s average" at the shipped standoff is not what any round looked like. The per-round table is
+two populations: **1.6–2.5 s rounds with one throw** (the attacker tagged almost immediately) and
+**20–90 s rounds with 10–30 throws, every one of them blocked**. Nothing in between. A single
+90.2 s round timed out having taken **30 throws, 30 blocked, 0 on the can**.
+
+⚠️ **RUN 7's WARNING, HONOURED RATHER THAN QUOTED: two metrics move in opposite directions here —
+block rate rises with the standoff while round length collapses at both ends — so this pass
+ROOT-CAUSED IT INSTEAD OF STACKING A SECOND NERF.** The root cause is the two geometric collisions
+above (post-on-the-can, and post-inside-melee-range-of-the-line), and it is not a tuning problem:
+both of them end the round with a **tag**, which ends it **outright**. That is
+[`Roadmap.md`](Roadmap.md) R-08's premise, and RUN 9 has now measured its mechanism rather than
+inferring it. **Do not "fix" this by moving the standoff.** Every value away from 2.2–2.6 makes
+rounds two seconds long, which is a worse failure than an unfair one.
+
+**A cross-check, because a dents column that reads 0.00 seven times is exactly when a metric should
+be doubted.** `tools/phys_probe.tscn -- target=can` on the same build: `RESULT: CONTACT RESOLVES`,
+3 of 9 perfectly-aimed throws connected, one resolution per connecting throw. So the hitbox path is
+alive and **33% is the ceiling for a completely unopposed, dead-centre throw** — the can's own
+evasion eats the other two thirds (it moved on 40% of in-flight frames, up to 0.92 units). RUN 9's
+`reached the can` values are consistent with that ceiling applied to the 5–6% of throws the taya
+does not block: 13 unblocked throws at standoff 2.2 produced 2 hits. Two columns of the same event
+agree, so the metric is not the bug this time.
+
+**What this changes for the plan.** RUN 8 said the framing had to move from tuning to structural.
+RUN 9 is the confirmation, from the other direction: the one knob everyone was waiting on has been
+swept end to end and there is no value of it that makes the game fair. R-07 (a post that can be
+wrong-footed) and R-08 (whether an instant-win tag is the imbalance) are now the whole of Stage 1's
+fairness argument, and R-06's lob has a measured target to beat: **94.7% blocked.**
+
+### ⚠️ RUN 9's NUMBERS WERE THE LAST ONES TAKEN ON A HARNESS THAT DISTORTED THE PHYSICS. Read this before comparing anything to them.
+
+**Found 2026-07-30, after RUN 9 and before RUN 10.** `Engine.time_scale` does not make the
+simulation run faster — it makes **each physics step cover more game time.** At the default 60
+ticks/second and `scale=4`, one step is 4/60 = 0.067 s, so a unit at `SPEED` 6.0 **jumps 0.40 units
+per step**; at the `scale=16` an exploratory sweep briefly used, 1.6 units per step — a body-width at
+a time.
+
+**How it was caught, because it looked exactly like an AI bug.** A new probe column reported the AI
+*asking* for an aim point up to **3.1 units** from the can, when the aiming code cannot offset by more
+than 1.65 (lead capped at 1.2, threading at 0.45). An impossible number is not a bad bot, it is a
+broken measurement: the can had moved a step and a half between the aim being written and the slipper
+leaving the hand. `ai_probe` now raises `Engine.physics_ticks_per_second` in proportion to the scale,
+so a step stays 1/60 s of GAME time and a high scale is what it claims to be — the same simulation,
+wall-clock faster, paid for in CPU.
+
+**Validated, not assumed:** scale 1 and scale 4 now agree (aim error 0.28 vs 0.34 units; block rate
+82.6% vs 78.6%). **Scale 8 does not** — aim error goes back to 1.31, because 480 physics ticks a
+second for four units is more than this machine delivers in real time. ⚠️ **Use `scale=4`. Anything
+above it has to prove itself against a `scale=1` run before its numbers are used.**
+
+RUN 9's *conclusion* survives this — the standoff is still not a lever, and the two instant-tag
+geometries are still real, both of which were visible at scale 4 where the distortion is 0.4 units
+rather than 1.6. Its absolute dents and block numbers should be treated as indicative.
+
+### RUN 10 — 2026-07-30. THE AI ITSELF WAS BROKEN IN SEVEN PLACES, AND THAT WAS NOT A BALANCE PROBLEM.
+
+🧑 Human ask, 2026-07-30: *"make sure u actually fix the ai and that theyre all capable of movement"*
+and *"i want the AI's movement to feel natural and not too FAST or mechanical."*
+
+Every one of these was found by **measuring**, most of them with two new probe instruments, and each
+had been invisible behind the aggregate columns for nine runs.
+
+| # | What was wrong | How it was found | Fix |
+|---|---|---|---|
+| 1 | **The attacker threw from INSIDE the defended area.** `_cond_attacker_out_of_range` only asked "am I too far", so an attacker standing 3 units from the can counted as in position and charged from inside the taya's own reach. | RUN 9's per-round table: a fifth of rounds ended by tag at **1.4–1.7 s** with one throw. | A throwing **band**, `[4.6, 6.0]`. 4.6 is derived: pursuit 1.8 + melee 1.4 = 3.2, plus one more melee range of margin. |
+| 2 | **The attacker walked into the taya's lap to fetch its slipper** — and its own tsinelas already crawls out to meet it, which nothing used. | `bt_trace()` at the moment of every tag. | Hold at the band's inner edge and let the slipper come. ⚠️ The first version waited at 9.0 units and measured time-to-first-throw going 0.6 s → 9.6 s with 2 rounds in 4 taking **no throw at all**. Waiting is right; waiting that far away is dead time. |
+| 3 | ⚠️ **The attacker's dodge was blind to the only defender that could ever hit it.** Threat detection required a defender **closing at 0.35 m/s**, and `_act_taya_tag` **releases movement in order to tag**. At the exact instant a tag was coming, the taya's velocity was ~0 and the attacker's own threat test scored it harmless. | `bt_trace()` at contact, 10 rounds: tagged in `approach` ×4, `settle` ×2, `fetch` ×1, `wait-out-the-guard` ×1 — **never once defending itself.** | A defender at arm's length (1.9) is an emergency whatever it is doing, and it out-prioritises everything except a throw already past its commit point. |
+| 4 | ⚠️ **The Can never moved.** `CAN_HOLD_RADIUS` 0.45 against `ARRIVE_DISTANCE` 0.6 — **the deadzone was wider than the circle it was picking points inside.** Recorded in RUN 1's own notes and never fixed. | Independence audit: 7.03 s longest still run on `TeamAProp`, the whole sample minus its dodges. | A 0.12 arrival distance, inside its own circle. The circle stays 0.45 — the Can must not wander off the mark. |
+| 5 | ⚠️ **Fixing 4 made the Can UNHITTABLE, and this is the most instructive bug of the pass.** `character_base.gd` **normalises** an AI movement vector, so a 0.22-unit shuffle is performed at the full 6.0 m/s — nearly two units of travel during every flight, re-rolled every 0.35 s. | The new closest-approach geometry: **median 2.49 units, 0 of 12 unblocked throws inside the 0.50 overlap band.** | A shuffle is performed at **shuffling pace** (0.30 of SPEED). ⚠️ Evasion is exempt and still full speed — the dodge is the Can's skill, the fidget never was. |
+| 6 | **The same normalisation broke the AI's lead.** `_lead_the_can` extrapolated the can's *instantaneous* velocity, which for a shuffling can is 6 m/s of noise. | Same instrument. | Lead a **smoothed** velocity: a shuffle averages to nothing, a real sidestep survives. Capped at 1.2 units. |
+| 7 | ⚠️ **The Guard was a free, perfect third layer of defence.** A hit is not a dent while Guard is up (`apply_dent` refuses outright), and the can raised it in reaction to **every single throw**. | scale-1 run: 23 throws, 19 blocked, **2 that genuinely reached the can, 0 dents.** | A reaction delay (`tier_think`-scaled) and a cooldown, so a fast flat throw arrives before the guard and a **barrage punches through where one throw does not**. Neither `CAN_EVADE_MISS_MARGIN` (a human call) nor `CAN_EVADE_LOOKAHEAD` (untunable) was touched. |
+| 8 | **The grab never re-fired.** `_tap()` was called every tick, which resets its own release countdown, so the key never came back up and `input_just_pressed` fired **exactly once**. A first attempt that did not take left the attacker standing over its own slipper pressing a dead button. | The new stillness trace: **4.05 s** of a loose prop in `tsinelas/stand-down` opposite an attacker parked in `retrieve/fetch`. | A grab interval, same shape as `TAYA_TAP_INTERVAL`. |
+| 9 | **A loose tsinelas that had arrived stopped dead**, and it was the largest single contributor to the stillness figure. | Stillness trace: 12 of 26 episodes over 2 s. | It settles instead of freezing. |
+
+**MOVEMENT NO LONGER READS MECHANICAL** — the other half of the ask, and the cause was not the speed
+number. An AI unit's movement is **four booleans**, normalised: eight compass directions, full speed,
+changing in a single frame. Four fixes, none of them touching gameplay code: a **heading that turns at
+a bounded rate** (8 rad/s, so a reversal is a ~0.4 s turn and not a frame); a **Schmitt trigger** per
+compass key, so a heading sitting on a threshold holds it instead of chattering (that chatter is also
+what inflated the transition counts every independence audit has reported); a **walking gait** per
+tier through the public `enter_speed_zone()` API, dropped the instant a human takes the unit over; and
+an **idle settle** so an arrived unit shifts its weight instead of freezing.
+
+#### The RUN 10 table — 20 rounds, Option A, Eskinita, scale 4, standoff 2.6, on honest physics
+
+| Metric | RUN 9 (2.6 row) | **RUN 10** | Fair |
+|---|---|---|---|
+| Round win rate | DEF 100% | DEF **100%** | 40–60% |
+| Time-to-first-throw | 0.8 s | 0.8 s | < 8 s |
+| Throws taken | 188 | 73 | — |
+| **Throws blocked** | **94.7%** | **78.1%** | 25–50% |
+| Reached the can | 1 | 2 | — |
+| **Dents/round** | 0.05 | **0.10** | ≥ 1 |
+| Ended by tag | 19/20 | **20/20** | — |
+| Avg round duration | 28.2 s | **13.2 s** | — |
+| Aim error at release | *not measured* | **0.39 units mean** | — |
+| Went-nowhere (displacement) | *not measured* | **3.85 s worst** | < 2 s |
+
+**RE-RUN AT `scale=1` BEFORE BEING WRITTEN AS FINAL, per this section's own rule** — and on the map as
+it stood after the chalk/children's-drawings pass, so it is also a re-check against a changed world.
+20 rounds, scale 1: **throws blocked 78.3%** (scale 4 said 78.1%), aim error **0.21 units** mean / 0.40
+worst, dents 0.05, 20/20 by tag, first throw 0.6 s. The headline reproduces; the scale-4 figures above
+are admissible.
+
+**INDEPENDENCE MODE IS GREEN AGAIN, AND IT WAS NOT BEFORE THIS PASS.** `godot --path <abs>
+tools/ai_probe.tscn`: **longest still run 1.70 s (fair < 2 s)**, frames where 2+ bots changed state
+together **0 / 843** (recorded figure: 1/843), 37 transitions across three driven bots, none frozen.
+Before the fixes the same audit read **7.03 s** on `TeamAProp` — the Can that could not move.
+
+**VERDICT, stated plainly: the AI is materially better and the game is still not fair.** Seven real
+defects are gone, the block rate is down 16.6 points, the attacker no longer walks into the tag at the
+opening whistle, and every unit moves. **But the defence still wins 100% of rounds and 20/20 still end
+by tag**, which is now firmly R-08's problem and not the AI's — see RUN 11 immediately below, which
+was measured for exactly this reason.
+
+⚠️ **R-07's OWN ACCEPTANCE BAR IS NOT MET AND IS NOT CLAIMED.** It asked for block rate ≤ 60% and
+dents/round ≥ 0.5. Measured: **78.1% and 0.10.** The committed post is a real improvement (94.7 → 78.1
+across RUN 9 → RUN 10, with the AI fixes in between) but it is not sufficient on its own.
+`throws released while the post was already wrong: 0 / 73` — the attacker's slide is not yet beating
+the post at all, because the post's reaction window (0.35 s) is shorter than the attacker's own charge
+(0.42–0.98 s), so the taya re-posts *during the wind-up*. **`posthold=` and `repost=` exist to sweep
+exactly this and the sweep has not been run.** That is the next concrete piece of work and it is one
+hour.
+
+⚠️ **THE STILLNESS METRIC WAS ITSELF WRONG, AND BOTH VERSIONS ARE NOW PRINTED.** `STILL_SPEED` 0.35 m/s
+was written against Persons walking at 6.0, but every other unit moves through a speed scale — a
+tsinelas crawling home at `CRAWL_SPEED_SCALE` is at 2.7 m/s, a stood-on one at 0.95, a settling unit
+lower again. **A slipper crawling home at 0.33 m/s scored as "frozen" while doing exactly its job**,
+which is a large part of why "the longest still run has moved independently of everything else for
+three consecutive runs". `ai_probe` now reports stillness by **displacement** as well, per unit, with
+the branch named. The residual 3.85 s of went-nowhere is **a charging attacker (a deliberately
+readable wind-up) and a taya on its post** — both nameable now, neither a freeze.
+
+#### R-10's own acceptance, measured — and one half of it is NOT proven
+
+R-10(a) asks for AI throw power varying by **≥ ±25%** (a 50% spread), against a history in which
+`tier_charge` was one fixed number and **every AI throw ever taken had identical power**. Measured off
+the slipper's own peak launch speed, 10 rounds at BATA:
+
+| Configuration | Throws | Launch speed min / mean / max | Spread |
+|---|---|---|---|
+| flavour **on** (`fun=on`, shipped) | 25 | 7.09 / 12.69 / 19.73 m/s | **100% of the mean** |
+| flavour **off** (`fun=off`) | 134 | 7.09 / 11.87 / 23.18 m/s | **136% of the mean** |
+
+⚠️ **THE BAR IS MET AND THE CLAIM IS NOT.** Power varies by well over 50% either way — but it varies
+just as much with the flavour switched OFF, because `_min_hold_to_reach()` scales the hold with the
+distance to the can, so a throw from 6.0 units is legitimately harder than one from 4.6. **That
+range-dependence, not the per-throw jitter, is what this metric is seeing.** Isolating the jitter needs
+power sampled at a fixed release range, which has not been done. So: **AI throws do vary, the jitter is
+implemented and is inert-safe, and "the jitter is what makes them vary" is UNVERIFIED.**
+
+⚠️ **Sampling note, because it cost a run.** `carry_state_changed` fires from `Carriable::_set_state()`
+**before** `_rpc_set_flying` writes the velocity, so reading launch speed at the signal returns 0.00 for
+every throw — which reads as "the jitter does nothing" rather than as "the probe sampled a frame early".
+Peak planar speed over the flight is used instead.
+
+The other two thirds of R-10 — a readable wind-up and a punishable overcommit — are claims about what a
+*human* can react to, so **they close on play, not on a probe.** The overcommit's own bound IS measured
+(RUN 12's `mistake` column, and `_cond_taya_threat_in_confinement`'s note on the first version that spent
+a third of every round sprinting and won more rounds by "mistake" than by blocking). 🧑 **Next session:
+ask whether ASTIG reads as hard or merely fast, and whether the wind-up is long enough to dodge — then
+log the answer as a test result** (a `B-` entry in `Handoff.md` §3, a tick here, and the lane board in
+`Agent_Prompts.md`, same commit).
+
+### RUN 11 — 2026-07-30. R-08: IS THE INSTANT-WIN TAG THE IMBALANCE? Three variants, one harness. 🧑 THE PICK IS THE HUMAN'S.
+
+⚠️ **Imposed from the probe, never from `hitbox.gd`.** That file is another lane's, R-08's deliverable
+is a table to choose from, and shipping a rule in order to measure it would be making the decision.
+The interception is honest because of the order inside `hitbox.gd::_on_area_entered`: `landed_on.emit()`
+runs **before** `RoundManager.report_round_win(true)`, and that function no-ops on `not round_active`.
+Stated cost: the round clock does not advance for the fraction of a frame between suppression and the
+deferred restore — far below the noise on every column here.
+
+20 rounds each, Option A, Eskinita, scale 4, standoff 2.6, identical AI.
+
+| Variant | Round win rate | Throws taken | Blocked | Reached can | **Dents/round** | Ended by | **Avg round duration** | Tags suppressed |
+|---|---|---|---|---|---|---|---|---|
+| **3 · CONTROL** (any tag ends the round) | DEF **100%** | 73 | 78.1% | 2 | **0.10** | 20/20 tag | **13.2 s** | — |
+| **1 · a tag costs the slipper + a respawn** | DEF **100%** | **398** | 83.2% | **11** | **0.55** | **20/20 clock** | **90.0 s** | **162** |
+| **2 · a tag only counts inside the box** | DEF **100%** | 102 | 77.5% | 3 | **0.05** | 20/20 tag | 19.0 s | **0** |
+
+**READ THE DENTS COLUMN FIRST, THEN THE DURATION COLUMN, EXACTLY AS THIS SECTION SAYS.** Three findings,
+and the second is the one nobody predicted:
+
+1. **VARIANT 1 IS THE ONLY ONE THAT CHANGES ANYTHING: 5.5× the dents (0.10 → 0.55), 5.5× the throws
+   (73 → 398), 5.5× the throws reaching the can (2 → 11).** 162 tags happened and cost the attacker its
+   slipper and a walk home instead of the round. That is the retrieval scramble becoming the game,
+   which is what the real street game is. ⚠️ **AND IT COSTS EVERY ROUND THE FULL 90-SECOND CLOCK** —
+   20/20 timed out. It does not fix the win rate; it converts an instant loss into a slow one.
+2. ⚠️ **VARIANT 2 IS A NULL RESULT, AND THAT IS USEFUL: `tags suppressed: 0 / 102`.** **Every single
+   tag in the run already happened while the attacker was inside the confinement square.** "Only count
+   a tag during retrieval" changes nothing because retrieval is *already* the only place tags occur —
+   which independently confirms RUN 6's finding about where the real exposure is, and retires the
+   variant. It cannot be the fix; there is nothing for it to fix.
+3. ⚠️ **THE WIN CONDITION IS OUT BY MORE THAN THE TAG RULE — AND HERE IS THE ARITHMETIC.** Under Option A
+   the offence must land **`MAX_DENTS` = 3 dents on one can inside one round** while the defence needs
+   **one tag**. Variant 1's own numbers say what that costs: at **0.55 dents per round** the offence
+   reaches 3 essentially never, which is why its win rate is 100–0 despite 398 throws. **At a
+   requirement of 1 dent, variant 1's 9-in-20 dented rounds would be ≈45% offence.** The lever with
+   the most fairness per unit of change is therefore `CharacterBase.MAX_DENTS`, **not** the tag rule.
+
+**RECOMMENDATION (the lane produces it; 🧑 the decision is the human's):** **variant 1, paired with a
+lower dent requirement, and not variant 1 alone.** Variant 1 by itself trades an unfair game for a slow
+one and fails the no-dead-time pillar outright. Variant 2 is retired by its own null result. ⚠️
+`MAX_DENTS` lives in `character_base.gd`, a **shared-lock** file the balance lane may not write — it
+needs claiming in `SHARED_LOCKS.md`, and the number above is the argument for the claim.
+
+### RUN 12 — 2026-07-30. R-09: THE DIFFICULTY TIERS, MEASURED FOR THE FIRST TIME.
+
+⚠️ **Nothing outside `AIController` called `apply_difficulty()` until `tools/ai_probe.gd` gained a
+`tier=` argument on 2026-07-30, so no tier but NORMAL had ever been measured.** Two new columns were
+added to `DIFFICULTY_TIERS` in the same pass — `gait` (walking pace) and `mistake` (the overcommit
+chance) — so all three tiers now differ in feel as well as in sharpness.
+
+20 rounds each, Option A, Eskinita, scale 4, standoff 2.6, control tag rule.
+
+| Tier | pursue / lead / think / charge / gait / mistake | Win rate | 1st throw | Throws | Blocked | **Dents/round** | **Avg round** |
+|---|---|---|---|---|---|---|---|
+| **BATA** | 1.8 / 0.25 / 0.50 / 0.40 / 0.80 / 0.22 | DEF 100% | 0.4 s | 68 | **61.8%** | 0.15 | **9.1 s** |
+| **NORMAL** | 1.8 / 0.60 / 0.35 / 0.65 / 0.88 / 0.09 | DEF 100% | 0.8 s | 73 | **78.1%** | 0.10 | **13.2 s** |
+| **ASTIG** | 4.6 / 0.85 / 0.22 / 0.80 / 0.96 / 0.02 | DEF 100% | 0.5 s | 29 | **58.6%** | **0.00** | **3.7 s** |
+
+**THE TIERS DO DIFFER, WHICH HAD NEVER BEEN SHOWN — but ⚠️ NOT MONOTONICALLY, AND THE REASON MATTERS.**
+ASTIG's block rate is the *lowest* of the three, and that is not it defending worse: at `pursue` 4.6
+the taya chases anywhere inside its box, so **rounds end in 3.7 seconds** and there is no time for
+throws to accumulate. Its dents column is the honest one: **0.00, the only tier where the offence never
+scores at all.** BATA is the most beatable (61.8% blocked, 0.15 dents) and gives the longest usable
+round. ⚠️ **Read `pursue` 4.6 against RUN 9's second geometry** — a taya that chases to the box edge is
+inside melee range of the throwing line, which is the same instant-tag mechanism RUN 9 found at high
+standoff. ASTIG being "hard" is largely that, not superior play, and if a human finds it unfun rather
+than difficult, **lowering ASTIG's `pursue` is the first thing to try.**
+
+### RUN 13 — 2026-07-30. R-21's HEATMAP: WHERE THE FOUR UNITS ACTUALLY ARE.
+
+⚠️ **Two implementations now exist and one should go.** The 🌏 MAPS lane built `tools/flow_probe.tscn`
+(heatmap + sightlines) on 2026-07-30, stating in its own header that it built the capture only because
+`ai_probe` had no heatmap hook and that *"if it has one, this file can keep only `_write_heatmap()`"*.
+`ai_probe` now has one — sampling, an ASCII grid and a PNG — so **the hook flow_probe asked for exists
+and the duplicate capture can be collapsed into it.** That is the MAPS lane's call, not this one's.
+
+⚠️ **The artefact in this log is TEXT on purpose.** `docs/` is another lane's directory and a binary
+image there is a merge conflict waiting to happen; the ASCII grid survives a diff. The PNG is written
+to `user://heatmap_<map>_<variant>.png` and its absolute path is printed by the run.
+
+Eskinita, 20 AI rounds, 1408 samples at 1/s of game time, peak cell 267 (`#` ≥ 50% of peak, `+` ≥ 20%,
+`:` ≥ 5%, `.` > 0, `[`/`-` mark the ±5.0 confinement square, `o` the can's mark):
+
+```
+  |                             |
+  |              .              |
+  |            .. ...           |
+  |           .. ....           |
+  |         -.-.....-.-         |
+  |        ............         |
+  |        ... ......... .      |
+  |      ..........+..:.        |
+  |        .:....:.::....       |
+  |       ....:.:#:.:.:..       |
+  |      ........:.:..:.        |
+  |        .....:.....:.        |
+  |      .. ....::.....         |
+  |         ...:......[         |
+  |         --..:....--         |
+  |        .   ..+...           |
+  |            .... .           |
+  |            .. .             |
+  |                ..           |
+  |                             |
+```
+
+**THE FINDING IS DEAD SPACE, AND IT IS LARGE.** Every one of 1408 samples falls inside roughly ±7 units
+of the can, in a rough disc barely wider than the confinement square itself — the peak cell sits
+**on the mark**, and the ±14-unit sampled area is more than half empty in every direction. The play
+happens in a ring one to two units outside the chalk and nowhere else. ⚠️ **This does not license
+shrinking the arena — the FOOTPRINT is a standing decision.** What it says is that map dressing and
+readability spent outside ~8 units of the centre is spent where nobody goes, and that
+`CONFINEMENT_RADIUS` is not obviously too small: the units use the whole box and a margin beyond it.
+🧑 **The size call remains the human's, and the sweep that would inform it is still filed, not run** —
+see the R-21 handoff below for the two reasons why.
+
+### RUN 14 — 2026-07-30. R-07 CLOSED, and the first time the offence has ever won a round.
+
+**R-07's post did nothing at 0.35 s for a measurable reason: the window has to outlast the thing it is
+meant to be beaten by.** The attacker's charge is 0.42–0.98 s, so a taya re-posting after 0.35 s
+re-posts *during* the wind-up — RUN 10 measured it exactly, **0 of 73 throws released while the post was
+wrong.** Swept {0.35, 0.70, 1.10, 1.60} × {0.35, 0.50, 0.55, 0.70}; the block rate falls as the hold
+crosses the charge time, which is the mechanism confirming itself. **Shipped: `taya_post_hold` 1.6 s,
+`taya_repost_angle` 0.50 rad**, both tier-scaled (BATA holds 2.3 s, ASTIG 1.0 s).
+
+| Metric | RUN 10 (post at 0.35) | **RUN 14 (post at 1.6/0.50)** | scale=1 check | Fair |
+|---|---|---|---|---|
+| **Throws blocked** | 78.1% | **38.4%** | 49.3% | 25–50% ✅ |
+| Dents/round | 0.10 | 0.25 | 0.25 | ≥ 1 |
+| Throws the slide **beat** | **0 / 73** | **13 / 86** | 10 / 75 | ≥ 1 ✅ |
+| Reached the can | 2 | 5 | 5 | — |
+| Avg round | 13.2 s | 10.5 s | 9.7 s | — |
+| Win rate | DEF 100% | DEF 100% | DEF 100% | 40–60% |
+
+**R-07's acceptance: block ≤ 60% ✅ (38.4%), the slide beats the post ✅ (13 throws), still-run not
+regressed ✅ (independence 1.70 s). The dents ≥ 0.5 clause is NOT met under the shipping tag rule — and
+it is not the post's to meet.** Same AI, same post, against R-08's variant 1:
+
+| Configuration | Win rate | Throws | Blocked | Reached can | **Dents/round** | Avg round |
+|---|---|---|---|---|---|---|
+| R-07 post + **shipping tag rule** | DEF 100% | 86 | 38.4% | 5 | 0.25 | 10.5 s |
+| R-07 post + **R-08 variant 1** | **DEF 70% / OFF 30%** | **508** | 43.5% | **29** | **1.75** | 82.0 s |
+
+⚠️ **THAT SECOND ROW IS THE LARGEST NUMBER THIS LOG HAS PRODUCED.** From DEF 100/0 across every one of
+RUNS 1–13, to **70/30**, with the block rate inside its fair band and **17 of 20 rounds dented**. The
+offence wins rounds. It is still outside 40–60 and every round still runs long (14/20 on the clock), but
+the two levers that move fairness are now identified and quantified: **the committed post, and the tag
+not ending the round.**
+
+**RECOMMENDATION, updated with numbers rather than intent (🧑 the pick stays the human's):** ship
+**R-07's post (already in) + R-08 variant 1 + `MAX_DENTS` 3 → 2.** At 1.75 dents landing per round, a
+3-dent requirement converts to 30% offence; a 2-dent requirement is what turns those 17 dented rounds
+into wins and shortens the 82 s average at the same time. `MAX_DENTS` is in `character_base.gd`.
+
+### RUN 15 — 2026-07-30. Two things that turned out NOT to be levers, and the noise floor.
+
+**R-10(a), the charge jitter, isolated.** RUN 12 showed throw power varying by >100% of the mean, but
+`_min_hold_to_reach()` already varies power with range, so the jitter's own contribution had to be
+separated: `jitter=0.0` → **123% spread**, `jitter=0.5` → **127%**. **The jitter adds ~4 points on top of
+the range effect, i.e. essentially nothing measurable.** AI throw power genuinely varies — the "every
+throw identical" defect is gone — but it varies because a longer throw needs more charge, not because of
+the jitter. The jitter is implemented, inert-safe, and **not the cause of the variance.**
+
+**R-21's sweep, physics-only.** ⚠️ `confine=` moves the runtime clamp and **not the painted chalk** —
+both map builders draw the square from the `const` and emit their `.tscn` wholesale, and `tools/maps/**`
+and `scenes/maps/**` are the MAPS lane's, explicitly hands-off. So `ai_probe` now asserts the two agree
+and **refuses to call a divergent run a fairness measurement** (the 4.0 and 6.0 rows below print
+`honesty contract: FAILED` by design). What the rows do say is how sensitive fairness is to the box size:
+
+| `confine=` | Blocked | Dents/round | Avg round | Chalk agrees? |
+|---|---|---|---|---|
+| 4.0 | 44.3% | 0.15 | 8.9 s | ✗ sensitivity only |
+| **5.0** (shipped) | 47.0% | 0.30 | 8.9 s | ✅ |
+| 6.0 | 46.3% | 0.10 | 8.1 s | ✗ sensitivity only |
+
+**All three rows are inside the noise. The confinement size is not a fairness lever** — which is the
+third knob in a row to come back that way, after `taya_pursue_radius` (RUN 8) and `taya_block_standoff`
+(RUN 9). 🧑 **The size call is therefore a FEEL call, not a balance one**, and it needs the const changed
+plus both builders re-run to be judged properly.
+
+⚠️ **THE NOISE FLOOR, MEASURED, AND EVERY TABLE ABOVE SHOULD BE READ AGAINST IT.** Two 20-round runs of
+the *identical* configuration returned **dents/round 0.05 and 0.25**, and RUN 9's two 1.60-standoff rows
+returned block rates 40.0% and 42.5%. **So at n=20: ±0.2 on dents/round and ±2.5 points on block rate.**
+Any difference smaller than that is not a finding. Use 40+ rounds before acting on a small one.
+
+### ⚠️ Still open after RUN 15
+
+**Corrected 2026-07-30, twice.** This section used to be headed "after RUN 7" and to quote RUN 7's figures.
+**RUN 8 invalidated them** — RUNS 1–7 all measured a 3-v-4 — so the numbers below are RUN 8's.
+
+- **Win rate DEF 100% and dents 0.10 (RUN 10).** Not "improved, still out". **The offence does not
+  score.** 78.1% of throws are blocked and 20/20 rounds end by tag — down from 94.7% and unchanged
+  respectively. ⚠️ **The AI is no longer the reason.** RUN 10 removed seven measured defects from it;
+  what is left is the win condition, and RUN 11 quantifies it: the offence must land 3 dents in one
+  round while the defence needs one tag, and even with the tag rule removed the offence manages
+  **0.55 dents a round.** The single highest-leverage change on the table is
+  `CharacterBase.MAX_DENTS`, which is a shared-lock file and needs claiming.
+- ~~**sweep `posthold=` and `repost=`**~~ **DONE, RUN 14.** Shipped at 1.6 s / 0.50 rad; block rate
+  78.1% → 38.4%. R-07 is closed on its block-rate and slide-beats-the-post clauses.
+- **THE NEXT DECISION IS THE HUMAN'S, AND IT IS ONE NUMBER:** `CharacterBase.MAX_DENTS` 3 → 2, taken
+  together with R-08 variant 1. RUN 14 measured 1.75 dents landing per round and a 70/30 split under
+  variant 1; the arithmetic says a 2-dent requirement is what converts those 17 dented rounds into wins
+  and shortens the 82 s average at the same time. **Nothing else in the balance lane's reach moves the
+  win rate further** — three knobs in a row (pursuit, standoff, confinement) have each come back inside
+  the noise.
+- **`ATTACKER_LANE_CLEARANCE` and `ATTACKER_DODGE_RADIUS` / `ATTACKER_DODGE_STEP` are still outside
+  `DIFFICULTY_TIERS`** and still belong in it. `gait` and `mistake` were added there in RUN 12; these
+  three are the remainder. Do not one-off-nerf any of them.
+- ~~**`TAYA_BLOCK_STANDOFF` (2.6) IS STILL UNMEASURED**~~ **CLOSED BY RUN 9, 2026-07-30.** It is a
+  `static var`, `ai_probe` takes `standoff=`, and it has been swept end to end over
+  {1.0, 1.4, 1.8, 2.2, 2.6, 3.2, 3.8}. **It is not a fairness lever at any value** — DEF 100% and
+  ≤ 0.10 dents throughout. It IS a round-length lever with a non-monotonic response, and the shipped
+  2.6 sits in the only band where a round lasts more than about two seconds. ⚠️ **Three documents
+  called this the most obvious next lever and all three were wrong**, which is the argument for
+  R-01-style promotion in general: the cost of that belief was three runs.
+  ⚠️ RUN 6's 50.6% block rate is not a baseline to start from — it is a 3-v-4 number like every other
+  figure before RUN 8. The live number to beat is RUN 9's **94.7%**.
+- **THE CAN'S EVASION IS A SECOND CEILING, and it is not in anyone's task list.** `phys_probe
+  target=can` on today's build: a dead-centre, full-charge, completely unopposed throw connects
+  **3 times in 9**. So even a perfectly beaten taya leaves the offence converting at ~33%. Any
+  fairness target that assumes an open lane is a scored dent is off by a factor of three. Do NOT
+  answer this by moving `CAN_EVADE_LOOKAHEAD` — its sweep is non-monotonic and documented as
+  untunable; `CAN_EVADE_MISS_MARGIN` is the knob with a monotonic response.
+- **Difficulty tiers EXIST IN CODE and are UNREACHABLE.** ⚠️ **This entry used to say tiers did not
+  exist and that entry is now stale.** `ai_controller.gd`'s `DIFFICULTY_TIERS`
+  (BATA / NORMAL / ASTIG) and `apply_difficulty()` are complete and correct, and they already carry
+  `pursue` / `lead` / `think` / `charge`. What is missing is that **nothing outside that class calls
+  `apply_difficulty()`, there is no player-facing selector, and no tier but NORMAL has ever been
+  measured.** `ATTACKER_LANE_CLEARANCE` and `ATTACKER_DODGE_RADIUS` / `ATTACKER_DODGE_STEP` are
+  still outside the table and still belong in it. Do not one-off-nerf any of them.
+- **⚠️ The framing has changed, and the next pass should know it.** RUNS 2–7 treated fairness as a
+  *tuning* problem. A 92% block rate on an honest field is not a knob 15% off its mark — the taya
+  re-derives its post from the attacker's *current* bearing every tick, so the only open lane is one
+  it has not reacted to yet, and the attacker's only reply is to wait `ATTACKER_PATIENCE` and throw
+  into the block. **[`Roadmap.md`](Roadmap.md) Stage 1 treats it as structural** and proposes three
+  measured changes — a lob, a committed taya post, and a test of whether an instant-win tag is
+  itself the imbalance. Sweeping the standoff (RUN 9) still runs first; the plan does not depend on
+  it succeeding.
+
+### HANDOFFS OUT OF THE ⚖️ BALANCE LANE — written 2026-07-30
+
+⚠️ **Why they are here and not in `Handoff.md` §5.** The balance lane's write list is
+`ai_controller.gd`, `character_roster.gd`, the three probes it owns, and this section.
+`docs/Handoff.md` belongs to another lane, so a pointer to these three blocks needs adding there by
+whoever owns it — the specifications themselves are complete below and nothing is waiting on that
+pointer.
+
+#### HANDOFF — R-06 (the lob, `bagsak`) to the 🥊 PHYS lane
+
+**The target to beat is measured, not assumed: 94.7% of 188 throws blocked (RUN 9, standoff 2.6).**
+A body-block that cannot be gone over is not a block, it is a wall.
+
+⚠️ **THE HIGH ARC IS ALREADY COMPUTED AND THEN THROWN AWAY.**
+`carriable.gd::_solve_arc()` solves the ballistic quadratic and takes
+`tangent := (v2 - sqrt(discriminant)) / (gravity * distance)`. **That minus sign is the flat root.
+`(v2 + sqrt(discriminant))` is the lob, at the same launch speed, to the same target point.** The
+mechanic is therefore a root selection plus the plumbing to choose it — not new ballistics, and not
+a new `ThrowProfile` field.
+
+Specification, in the order it has to be built:
+
+1. **The input region. DO NOT ADD AN INPUT ACTION.** The charge is already an analogue hold and the
+   lob is a region of it. `carrier.gd::_step_throw` currently clamps
+   `_charge_time = minf(_charge_time + delta, CHARGE_FULL_TIME)` (0.9 s). Let the hold keep
+   accumulating past that into a `LOB_HOLD_TIME` region (the AI lane's belief is
+   `CHARGE_FULL_TIME + 0.20`, `AIController.attacker_lob_overhold` — **make the real constant public
+   and have the AI read it rather than restating it**, the way `_charge_fraction()` already reads
+   `Carrier.CHARGE_MIN_POWER`/`CHARGE_FULL_TIME`). `charge_power()` must still clamp to 1.0, so the
+   HUD meter fills and stops rather than overflowing.
+2. **The flag has to travel with the throw, not be re-derived at the far end.** `_request_throw(power)`
+   → `_rpc_request_throw(target_point, power)` → `host_throw(target_point, power)` → `_solve_arc`.
+   Adding `lob: bool` to that chain keeps the decision on the machine that made it. ⚠️ **Do not infer
+   "it was a lob" from the power value** — power clamps at 1.0, so a full-power flat throw and a lob
+   are indistinguishable by then. That is the whole reason for a separate flag.
+3. **It must arrive slowly enough to be dodged, and that is the balance clause, not a side effect.**
+   `CAN_EVADE_LOOKAHEAD` is 0.6 s and ⚠️ **is documented as untunable — its sweep is non-monotonic
+   (1.10 → 18 contact frames, 0.85 → 57, 0.70 → 0). Do not touch it.** So the lob has to satisfy the
+   existing lookahead: **flight time > 0.6 s over the 6.0-unit throwing line.** The high root gives
+   that for free — verify it with `phys_probe -- ballistics` and log the number.
+4. **It must land short of a body-block.** The high root over-flies a defender standing at
+   `taya_block_standoff` 2.6 from the can while still descending onto the can. Confirm with
+   `hit_probe -- --host target=can standoff=2.6`: **the acceptance bar is ≥ 40% contact for the lob
+   against the ≈ 8% the flat throw manages into a parked taya** (RUN 9's own figure for a blocked
+   lane is 5.3% unblocked, which is the same statement from the other side).
+5. **Animation and audio are NOT in scope for the mechanic**, but the wind-up must be visibly
+   longer, because R-10's whole premise is that a committed throw is readable.
+
+**The AI half is already built and shipped inert.** `AIController._cond_attacker_should_lob` /
+`_act_attacker_charge_lob` add a third option to the `throw-how` selector, beside slide and
+throw-anyway, and it fires on exactly the frame the attacker would otherwise feed the block.
+`AIController.lob_enabled` is **false** and `tools/ai_probe.tscn -- ... lob=on` turns it on, so the
+decision can be measured before and after the mechanic exists. With the mechanic absent, holding
+longer produces the identical throw slightly later — it cannot silently move a fairness number.
+
+⚠️ **ACCEPTANCE IS A REVERT, NOT A RE-TUNE.** Once the mechanic lands, a 20-round `ai_probe` run
+with `lob=on` must bring the block rate **below 70%** (from 94.7%). If it does not, the item has
+failed and comes out.
+
+#### R-06 · BUILT AND MEASURED, 2026-07-30 — 🥊 PHYS. The lob is a FIXED-ANGLE solve.
+
+**The spec above asked for the high root. It was built exactly as written, measured, and
+rejected on the numbers.** The high root at full launch speed is a mortar, and it scales
+the wrong way — the lightest, fastest slipper produces the highest, slowest lob:
+
+| profile | high-root angle | flight | apex above the hand |
+|---|---|---|---|
+| `throw_bagsak` | 74.8° | 1.22 s | 5.06 m |
+| `throw_bakya` | 77.4° | 1.40 s | 6.22 m |
+| `throw_default` | 80.5° | 1.68 s | 8.41 m |
+| `throw_flick` | **85.6°** | **2.90 s** | **18.45 m** |
+
+18 m is above Eskinita's 10–14 m rooflines and outside an FPP player's field of view —
+they would have to look at the sky to watch their own throw — and 2.9 s is a dead beat in
+a 90 s round. The cause is structural: the high root's angle is a function of surplus
+speed over the minimum needed to reach the target, and a full charge at the 6.0 line has
+plenty.
+
+**So the lob fixes the angle at 60° and solves the SPEED** — `v² = g·d² / (2·cos²θ·(d·tanθ
+− h))`. That is the same arc read from the other end of the same equation: it IS the high
+root, at the speed that makes the high root 60°. Every clause of the spec survives — it
+passes exactly through the crosshair point, no new `ThrowProfile` field, no new input
+action, and it uses LESS speed than the charge earned so it is never a power buff.
+
+60° is derived, not chosen: a taya at `taya_block_standoff` 2.6 stands 3.4 m along a 6.0 m
+lane and its Hurtbox tops out at world y 1.75 against a hand at 0.90. At 60° the arc is
+**2.42 m above the hand there — clearing the defender's head by 1.57 m.** 45° is the
+flattest arc that reaches at all and clears by 0.09 m, i.e. inside one frame of travel.
+
+**Ballistics, re-run in full on BOTH maps, row by row against the 2026-07-29 baseline:**
+
+| profile | flat flight | LOB flight | LOB apex | reach floor (flat) | baseline reach floor |
+|---|---|---|---|---|---|
+| `throw_flick` | 0.27 s | 1.10 s | 2.32 m | 50% | 50% ✅ |
+| `throw_default` | 0.32 s | 0.93 s | 2.31 m | 65% | 65% ✅ |
+| `throw_bakya` | 0.33 s | 0.89 s | 2.31 m | 65–80% | 65–80% ✅ |
+| `throw_bagsak` | 0.35 s | 0.86 s | 2.31 m | 80% | 80% ✅ |
+
+**Every flat row reproduces the baseline to the charge step**, which is the regression test
+on the root selection: picking the minus root explicitly did not change the throw the game
+already had. Scatter is still 0.00–0.02 m. Eskinita and Bayan Plaza agree to 0.02 m — the
+cross-check that matters, since ballistics is map-independent.
+
+**Apex is profile-INDEPENDENT (2.31–2.53 m) because `g` cancels out of it.** So every
+slipper lobs to one readable height and the profile identity survives as *timing*: the
+floaty flick hangs longest at 1.10 s, the heavy bagsak arrives soonest at 0.86 s. All four
+exceed `CAN_EVADE_LOOKAHEAD`'s 0.6 s; **no flat throw does.**
+
+⚠️ **`eta` in `_cond_slipper_incoming()` is exactly time-to-impact** (horizontal distance ÷
+horizontal speed, and horizontal speed is constant under gravity), so the can's warning is
+`min(flight_time, 0.6)`. A flat throw gives it 0.32 s; every lob gives it the full
+lookahead. That is the balance clause, and it is a property of the arc, not of the AI.
+
+**The triangle — `phys_probe -- lane`, 10 throws per cell, taya parked at standoff 2.6:**
+
+| throw | lane | can | contact | stopped by taya |
+|---|---|---|---|---|
+| flat | blocked | parked | **0%** | 100% |
+| flat | blocked | dodging | 0% | 100% |
+| **LOB** | **blocked** | **parked** | **100%** | 0% |
+| LOB | blocked | dodging | 40% | 0% |
+| flat | open | parked | 100% | 0% |
+| flat | open | dodging | **0%** | 0% |
+| LOB | open | parked | 100% | 0% |
+| LOB | open | dodging | **50%** | 0% |
+
+- **Leg 1 — the lob beats the taya: PASS.** 100% vs 0%, against a bar of ≥ 40%.
+- **Leg 2 — the dodge beats the lob: PASS.** 50% dodging vs 100% parked.
+- **Leg 3 — the flat throw beats the dodge: FAIL, and the cause is not the lob.**
+  ⚠️ **DO NOT REVERT THE LOB ON THIS ROW.** Nothing in it is a property of the arc.
+  ⚠️⚠️ **THE CAUSE FIRST WRITTEN HERE WAS WRONG, AND THE `-- band` BLOCK BELOW MEASURED
+  IT.** This row used to read: *"`_act_can_evade` sidesteps LATERALLY with
+  `CAN_EVADE_STEP` 1.2 m against a ~0.52 m overlap band. A lateral step of twice the band
+  is … a poor [answer] to something arriving nearly vertically — you cannot sidestep out
+  from under a drop."* The band is **0.45 m** measured, the step aims **2.7× it**, and the
+  can is observed completing a full-size sidestep against a lob. **The step was never too
+  small.** Quoted rather than deleted because it is the reasoned diagnosis the measurement
+  replaced — and because widening `CAN_EVADE_STEP` was the fix it would have bought.
+  The real cause and the corrected handover are two blocks down.
+
+⚠️ **A STEER CEILING CAME WITH IT AND IS NOT COSMETIC.** `steer_strength` is an
+acceleration, so authority is strength × flight time, and the lob multiplies flight time by
+six: `throw_default` would have gone from 1.7 to 10.0 m/s of lateral correction, letting the
+slipper's own pilot steer back onto a dodging can and erasing the lob's counterplay.
+`Carriable.MAX_STEER_DELTA_V` bounds the product at 3.0 — above every profile's existing
+flat-throw authority (flick is the highest at 2.3), so **no flat throw moves at all.**
+
+⚠️ **`AIController.ATTACKER_LOB_OVERHOLD` should now READ `Carrier.LOB_OVERHOLD_TIME`**
+rather than restating 0.20, exactly as `_charge_fraction()` already reads
+`CHARGE_MIN_POWER`/`CHARGE_FULL_TIME`. The values agree today by coincidence; they should
+agree by construction. `ai_controller.gd` is not the PHYS lane's file.
+
+#### R-18(a) · BOUNCE MEASURED, NOT TUNED, 2026-07-30 — 🥊 PHYS
+
+`BOUNCE_DAMPING` and `MAX_BOUNCES` are `static var` now (the `const` kept as the shipped
+baseline), swept with `phys_probe -- bounce`. The gameplay consequence of a bounce setting
+is a DISTANCE — how far past first contact the slipper ends up — because that distance *is*
+the retrieval scramble, and `CRAWL_SPEED_SCALE` is 0.45.
+
+| damping | bounces | skid past first contact | settle |
+|---|---|---|---|
+| 0.00 | 1 | 0.00 m (stops dead — the original complaint) | 0.02 s |
+| 0.15 | 1 | 0.17 m | 0.07 s |
+| **0.30** | **1** | **0.79 m  ← SHIPPED** | **0.13 s** |
+| 0.45 | 1 | 1.86 m | 0.20 s |
+| 0.60 | 1 | 3.37 m | 0.28 s |
+| 0.45 | 2 | 2.20 m (the PRE-NERF setting) | 0.29 s |
+| 0.60 | 2 | 4.47 m | 0.44 s |
+
+The 0.45/2 → 0.30/1 retune cut the skid from 2.20 m to 0.79 m. At crawl speed that is 0.81 s
+versus 0.29 s of retrieval — **under a second either way, so this is a feel call and not a
+balance one.** 🧑 Left at the shipped values and asked rather than guessed. If more life is
+wanted, **0.45 / 1 bounce** is the row to try: the complaint was about `MAX_BOUNCES = 2`
+chaining into a ragdoll, not about the damping.
+
+#### `hit_probe` IS STALE — THE EXACT ONE LINE, 2026-07-30 — 🥊 PHYS reporting on another lane's file
+
+`hit_probe.tscn` reports **0 throws** on real peers and says *"the harness never got a slipper
+into the air"*. The cause is confirmed: `_drive_throws()` (`tools/hit_probe.gd:223`) waits on
+`RoundManager.round_active` and **presses nothing**, so it spins out its whole attempt budget.
+A networked match has not started on its own since the multiplayer READY phase landed
+(`main.gd::_awaiting_net_ready` — the host counts PEERS, not characters), and nothing begins a
+round until every peer has sent `_rpc_declare_ready`.
+
+**The fix is to press READY before the drive loop, and a working implementation already
+exists** — `aim_probe.gd::_net_ready_up()`, which polls rather than waiting on a signal
+because `_awaiting_net_ready` is only set once the host's own `_rpc_phase` RPC arrives, which
+may be after the probe's first look. Copy that function and `await` it immediately before
+`_drive_throws()`. ⚠️ Not this lane's file, so it is reported rather than changed; R-18(b) was
+measured in `aim_probe` instead, which is why that path is already proven.
+
+#### R-30 REMAINS BLOCKED, AND THE BLOCKER LIST WAS INCOMPLETE, 2026-07-30 — 🥊 PHYS
+
+R-30 stays blocked, deliberately. **The §3.5.5 acceptance grep was actually run, and it turns
+up two blockers that are not on R-30's list:**
+
+⚠️⚠️ **1. THE GREP CANNOT PASS WHILE `.worktrees/windows-deploy` EXISTS, NO MATTER WHAT IS
+REWORDED.** §3.5.5's test is `grep -rin "debug" … .` from the project root. There is a live git
+worktree at `.worktrees/windows-deploy` (branch `code/windows-deploy`, confirmed via
+`git worktree list`), and the grep recurses straight into it and returns **~60 duplicate hits**
+— a second full copy of every file in the footprint, including `debug_player_switcher.gd` and
+`DebugBar.tscn` themselves. It is `.gitignore`d (line 31) so it is invisible to `git status`,
+and `grep` does not read `.gitignore`.
+
+This is the same failure §3.5.5's own note already records once — *"made the acceptance test
+impossible to ever pass … which is worse than no checklist"* — for the
+`Debug > Run Multiple Instances` filter. It needs the same remedy: a
+`--exclude-dir=.worktrees` on the documented command, or the worktree removed before the
+acceptance run. **Whoever owns R-30 must decide which; the grep as written is unpassable.**
+
+⚠️ **2. THE REWORDING TOUCHES 8 GAMEPLAY FILES, NOT 5, AND ONE IS SHARED-LOCK.** The brief's
+list is `main.gd`, `ai_controller.gd`, `you_card.gd`, `settings_manager.gd`,
+`character_nameplate.gd`. The grep also hits:
+
+| file | hits | note |
+|---|---|---|
+| `scripts/characters/character_base.gd` | **5** (401, 1787, 1842, 1850, 1873) | ⚠️ **SHARED-LOCK FILE** — R-30 needs that mutex, which is not in its plan |
+| `scripts/systems/network_manager.gd` | 1 (220) | |
+| `scripts/characters/carriable.gd` | 1 (253) | a false positive on the phrase *"do not delete it as debug cruft"* — the note is about instrumentation and says so |
+
+Plus `tools/` (`input_probe.gd` ×3, `ai_probe.gd`, `audio_load_probe.gd`, `render_probe.gd`,
+`models/preview.gd` ×2), which the documented grep does **not** exclude.
+
+**The blockers already on the list are all still real and all still hold:**
+
+- the last fairness run has not happened;
+- `tools/input_probe.gd:70` calls `DebugPlayerSwitcher._cycle()`, so deleting the autoload
+  makes it fail to **PARSE** — and "input_probe green" is part of R-30's own acceptance;
+- `project.godot:28` and `Main.tscn:8`+`58` are both **shared-lock** files.
+
+Footprint re-verified as stated: `debug_player_switcher.gd`, `debug_bar.gd`, `DebugBar.tscn`,
+`project.godot:28`, `Main.tscn:8`+`58`.
+
+#### THE ROUNDS TIME OUT BECAUSE OF ARITHMETIC, AND `MAX_DENTS` 3 → 2 DOES NOT FIX IT, 2026-07-30 — 🥊 PHYS
+
+The tag fix is correct and the consequence is 10/10 rounds reaching the 90 s clock with the
+defence at 100%. **Before treating that as a balance number, the round-win shape was
+measured** — `phys_probe` now prints it at startup, before any sweep calls `_freeze_round()`
+and un-tracks the cans (which is the only window in a run where the live registration is
+observable at all):
+
+```
+round-win shape : 1 tracked can(s) ["TeamAProp"] | MAX_DENTS 3 | FALL_LIMIT 4 | OPTION_B
+-> offence must land 3 dent(s) total to win by denting, 4 knockdown(s) by FALL_LIMIT
+```
+
+- ✅ **Exactly ONE tracked can per round.** This kills a real candidate cause:
+  `_on_tracked_can_dents_changed` and the all-Sealed check both require **every** tracked can
+  to be finished, so a second registration would have silently doubled the offence's whole
+  win requirement. `main.gd::_reregister_tracked_cans` registers every spawned character with
+  `is_can` true, and that it comes to one is a fact about the role swap, not a guarantee.
+  Measured, not assumed.
+- ⚠️ **So the timeout is arithmetic.** The offence needs **3** dents and RUN 14's successor
+  measured **1.00 dents/round**. Three is not reachable in 90 s at that rate, and a round
+  that cannot be won ends on the clock by definition.
+
+⚠️⚠️ **AND THE STANDING RECOMMENDATION IS NOT ENOUGH, ON ITS OWN NUMBERS.** RUN 14 proposed
+`MAX_DENTS` **3 → 2** against **1.75** dents/round, where it converts. The dent rate has since
+fallen to **1.00**, so 2 dents is still twice what a round delivers. **2 will not turn these
+timeouts into offence wins.** Either the dent rate has to come up or the requirement has to
+go to 1 — and a 1-dent round is a different game, not a tuning step.
+
+**DECISION — `MAX_DENTS` STAYS AT 3. Taken by the 🥊 PHYS lane, 2026-07-30, on the human's
+explicit delegation** (*"decide for urself and document it"*), superseding RUN 14's pending
+3 → 2 recommendation until the trigger below is met. This is a decision, not an open question;
+nothing downstream is waiting on a further call.
+
+Three reasons, in the order they carry weight:
+
+1. ⚠️ **The number 3 → 2 would be tuned against is self-contradictory** (see the paragraph
+   directly below: dents/round *fell* while `blocked` *improved*). Changing a win requirement
+   to chase a metric that is probably mismeasuring is precisely the mistake the five logged
+   harness faults were each an instance of. **Fix the instrument, then tune.**
+2. **It would not convert anyway.** At a measured 1.00 dents/round, a 2-dent requirement is
+   still twice what a round delivers, so the change buys few or no offence wins while
+   spending a `character_base.gd` shared-lock claim and putting a second unverified constant
+   into the fairness picture.
+3. **It is the wrong mode to be spending effort on first.** `MAX_DENTS` is an **OPTION_A**
+   lever, and OPTION_B is what `GameLaunch.game_mode` ships as the default and has **never
+   been in a fairness run at all** (see the gap noted below). Tuning A's requirement while B
+   is unmeasured optimises the mode nobody has data for second.
+
+⚠️ **THE RE-OPEN TRIGGER IS STATED SO THIS DOES NOT BECOME A PERMANENT NO.** Once the
+dents-vs-blocked contradiction is resolved and a trustworthy dents/round exists:
+
+- **≥ 2.0** → ship `MAX_DENTS` 3 → 2. That is RUN 14's recommendation on a sound number and it
+  converts; take the `character_base.gd` lock and make the one-line change.
+- **≈ 1.0, confirmed** → the lever is **the dent rate, not the requirement.** Do not drop to 1;
+  a 1-dent round is a different game, not a tuning step. Raise what the offence lands.
+- **Either way, run OPTION_B's own fairness pass first** — `FALL_LIMIT` 4 and all-Sealed are
+  the default mode's offence paths and neither has a measured rate.
+
+⚠️ **Also worth the balance lane's attention: 1.75 → 1.00 dents/round happened while
+`blocked` IMPROVED, 43.5% → 41.2%.** Fewer throws stopped, fewer dents landed. Those two
+pull opposite ways and one of them is probably not measuring what its column says — which is
+the same shape as the four instrument faults already logged in this file. Not this lane's
+probe and not diagnosed here, but it should be resolved before either number is used to pick
+`MAX_DENTS`.
+
+⚠️ **A GAP NOBODY HAS NAMED: the SHIPPED default mode has never been in a fairness run.**
+`GameLaunch.game_mode` defaults to **OPTION_B** (downed/seal). `ai_probe` *forces* OPTION_A
+for fairness runs and `push_error`s if it is not set — correctly, since under OPTION_B
+`hitbox.gd` never takes the dent branch and the dents column would measure nothing. The
+consequence is that **every fairness figure in this log, and both round-win levers argued
+from them, describe OPTION_A** — while OPTION_B's own offence paths (all-Sealed, and
+`FALL_LIMIT` 4 knockdowns) have no measured rate at all. This is what the session brief means
+by needing R-08's variants beside the tag fix, and it is the larger of the two holes.
+
+#### R-06 leg 3 · MEASURED, AND THE HANDOVER IS THE OPPOSITE OF THE ONE ABOVE, 2026-07-30 — 🥊 PHYS. `phys_probe -- band`
+
+**The can steps out of the way and then comes back before the lob lands. The sidestep is
+the right size and it is not being HELD.** Leg 3's original diagnosis — a lateral step too
+small for a vertical drop — is refuted on its own numbers.
+
+Why it needed measuring at all: the diagnosis rested on "`CAN_EVADE_STEP` 1.2 m against a
+~0.52 m band", and **the 0.52 was measured nowhere.** It is near `ai_controller.gd`'s
+arithmetic for a different quantity (hurtbox 0.17 + `throw_flick`'s hit_radius 0.30 = 0.47)
+and neither matches the 0.45 capsule radius in `CharacterBase.tscn`. Three numbers, none of
+them the band. And the argument on top of them predicted the opposite of leg 3 twice over:
+a lob's flight is 0.86–1.10 s against a flat throw's 0.32, and `CAN_EVADE_LOOKAHEAD` caps
+the warning at 0.6 s for both — so the can gets **more** dodging time against a lob and
+still gets hit more.
+
+**PHASE 1 — THE BAND.** Can PARKED at a fixed lateral offset; the throw aimed at the
+**MARK**, never at where the can actually is, because that is what a sidestep is — the arc
+is committed before the can moves.
+
+| throw | contact out to | none from | band half-width |
+|---|---|---|---|
+| flat | 0.30 m | 0.45 m | **0.30–0.45 m** |
+| LOB | 0.45 m | 0.60 m | **0.45–0.60 m** |
+
+Geometry **read off the live nodes, not restated**: hurtbox world r = **0.170**, hit_radius
+**0.300**, sum **0.47** — which is exactly where contact stops. So the closest-approach
+column and the contact column are two independent measurements of one band and they agree.
+
+⚠️ **`CAN_EVADE_STEP` AIMS 2.7× THE LOB'S BAND.** The step is not too small. The lob's band
+*is* 0.15 m wider than the flat throw's — a descending slipper sweeps a longer footprint
+through the capsule, a real effect — and 0.15 m against a 1.2 m step is not a cause.
+
+**PHASE 2 — THE DODGE ACTUALLY ACHIEVED.** Can starts ON the mark, controller LIVE, 10
+throws each:
+
+| throw | contact | peak perp | **at the closest frame** | flight |
+|---|---|---|---|---|
+| flat | **0%** | 0.82 m | **0.72 m** | 0.44 s |
+| LOB | **80%** | 0.84 m | **0.31 m** | 1.40 s |
+
+**The can performs the same sidestep against both throws** — 0.82 vs 0.84 m of peak
+displacement — and against the lob it is back within **0.31 m** of the mark by the frame the
+slipper is closest. It steps out and walks home during the lob's long tail. Peak and
+at-closest are sampled **on one frame** for exactly this reason: peak alone reads a dodge
+that happens too EARLY as a dodge that worked.
+
+⚠️ **PHASE 1 PREDICTS PHASE 2 IN BOTH ROWS** — 0.72 m clears a 0.30 m band so the flat
+throw misses; 0.31 m sits inside a 0.45 m band so the lob connects. Two independent
+measurements agreeing is what makes either one usable.
+
+**HANDOVER TO ⚖️ BALANCE — `ai_controller.gd`, not this lane's file:**
+
+1. ⚠️ **DO NOT WIDEN `CAN_EVADE_STEP`.** It is already 2.7× the band. Widening it moves the
+   peak, and the peak is not the problem.
+2. **The sidestep has to be HELD until the threat is gone.** `_act_evade` re-derives its
+   target from the can's *current* position every tick (`character.global_position + side *
+   CAN_EVADE_STEP`), so the step is re-aimed rather than completed, and hold-the-circle
+   reclaims it as soon as the tree stops choosing evade. Against a 0.32 s flat throw there
+   is no time for that to matter; across a 1.10 s lob there is.
+3. **`Carriable.flight_is_lob` is the flag to branch on, and the PHYS side is done** — it is
+   set on every peer from the launch broadcast (`_rpc_set_flying`), so the can can answer a
+   lob without re-deriving it from the trajectory. Verified present, replicated, and
+   meaningful only while FLYING.
+4. Spending the lob's extra warning on **Guard** remains the other option and is untouched
+   by this measurement — Guard blocks dents outright, and the probe counts contact from
+   `landed_on`, which fires regardless.
+5. ⚠️ **The function is `_act_evade`, not `_act_can_evade`.** Both the leg-3 note and
+   `_lane_verdict`'s printed diagnosis named a function that does not exist; corrected in
+   the probe.
+
+**`AIController.ATTACKER_LOB_OVERHOLD` → `Carrier.LOB_OVERHOLD_TIME`: the PHYS half is
+already in place.** `LOB_OVERHOLD_TIME` is public and its own doc says the AI must read it
+rather than restate 0.20. One `const` line in `ai_controller.gd` closes it; the values agree
+today by coincidence and should agree by construction.
+
+#### R-18(b) · THE LUCKY FALL ON TWO REAL PEERS — [x] PASSES. THE FINDING WAS THE INSTRUMENT, 2026-07-30 — 🥊 PHYS
+
+**`downed_lucky` DOES apply on a remote peer. It always did.** The row above it that said
+otherwise — *"the client that owns that can reports `last_fall_scored == true`, 0 of 28 of
+its own knockdowns"* — was reading a **hardcoded constant**, not the flag:
+
+```gdscript
+# tools/aim_probe.gd, as it stood
+"flag_scored": can.last_fall_scored if _net_host else true,
+```
+
+On a client that `true` is a literal, and the classifier forty lines below turns it straight
+back into a verdict — `mark = "L" if not flag_scored else "S"` — so a client could only ever
+print `S`. **0 lucky in 28 at a pinned chance of 0.5 is p ≈ 3.7 × 10⁻⁹**, which is the
+impossible number that should have condemned the metric the first time rather than the
+mechanic. Fifth harness fault caught by that rule alone; the tally in the session brief was
+four.
+
+⚠️ **`_net_host` was the wrong question.** `_apply_hit_result` is an `rpc_id` to
+`target.get_multiplayer_authority()`, so the peer that is *told* the kind is the peer that
+**OWNS** the can — for a client-owned lata that is the CLIENT. The client was the one machine
+holding first-hand evidence and the harness discarded it. The cause was one sentence in the
+probe's own header, *"no other peer is ever told the flag at all"*, read one step too far: the
+owner is a peer too. Both the sentence and the code are corrected.
+
+**Re-measured, `aim_probe.tscn -- net --host` / `-- net --join=127.0.0.1`, headless, chance
+pinned to 0.50:**
+
+| | knockdowns | lucky | scoring |
+|---|---|---|---|
+| HOST, all rows | 42 | 19 | 23 |
+| HOST, on the CLIENT-owned can | 21 | — | — |
+| CLIENT, on the can it OWNS | 19 | **7** | 12 |
+
+- **The cross-peer test: 19/19 identical.** Host roll vs client applied flag, on the same can,
+  every row. Was 0/28 agreeing before.
+- **The host's within-machine check: 21/21.** New column. On its OWN can the host holds both
+  facts — the roll it made and the flag `call_local` wrote — and they cannot legitimately
+  disagree on one machine. This is the half a cross-peer diff cannot answer, and it separates
+  "the wire is wrong" from "the mechanic is wrong".
+- 7 lucky in 19 at 0.50 is p ≈ 0.18 two-sided. Ordinary.
+
+⚠️ **ALIGN BY SUFFIX, PER CAN — 42 vs 39 IS NOT A DISCREPANCY.** The host starts driving when
+its own ready-up returns; a client's `_net_watch_can` is not assigned until `_net_observe()`
+runs, so it legitimately misses the first knockdown or two. Filter both logs to one can name,
+then slide the shorter sequence along the longer: agreement scored **11, 12, 19** at offsets
+0, 1, 2, so the offset is the unique maximum and not a choice. Documented at the print site.
+
+⚠️ **THE `_apply_hit_result` KIND TRACE THE HANDOFF ASKED FOR WAS NOT NEEDED, and the reason
+is structural rather than a shortcut.** "The RPC did not arrive" is already excluded: `state`
+replicates FROM the can's authority outward, so a DOWNED row observed on *any* peer proves
+`go_downed()` ran on the owning peer, and `go_downed` is reachable only from
+`_apply_hit_result`. And `last_fall_scored` has exactly one writer in the codebase
+(`character_base.gd:1244`), so on the owning peer that flag **is** the kind, one to one.
+Reading it correctly is strictly stronger evidence than a print — it is the applied result
+rather than the received argument — and it costs no edit to `character_base.gd`, which is a
+shared-lock file and an R-30 debug-removal target.
+
+#### CHARACTER TRAITS · VERIFIED END TO END, 2026-07-30 — 🥊 PHYS. `phys_probe -- traits`
+
+Human ask: *"can u make sure the change in stats actually work? in character selection?"*
+**Nothing had ever asked.** All three were built as "one multiplier at one site that already
+existed" — the right design, and also the shape that fails silently, because a scalar folded
+into an expression yields a plausible number whatever the scalar is.
+
+Measured against the OBSERVABLE, not the multiplier — a `trait_speed_scale() == 1.10`
+assertion proves only that arithmetic works — and the roster → character chain is checked
+separately, by setting `character_index` to a real roster entry rather than by writing the
+multiplier:
+
+| trait | roster → `trait_points()` | observable | 1 / low | 3 | 5 |
+|---|---|---|---|---|---|
+| **BILIS** | ok at 1, 3, 5 | metres walked in 60 frames | 4.90 m | 5.50 m | 6.10 m |
+| **LAKAS** | ok | m/s of shove its own Hitbox produces | 2.92 | 3.40 | 3.88 |
+| **TATAG** | ok | m/s kept of a 10.0 shove | 10.75 (at 2) | 10.00 | 8.77 |
+| **TATAG** | ok | stagger worn | 0.2688 s (at 2) | 0.2500 s | 0.2193 s |
+
+**VERDICT: all three reach the character and change an observable.** Full spread is 1.20 m
+of walk, 0.95 m/s of shove and 1.98 m/s of absorbed knockback. 🧑 **Whether that is enough to
+FEEL is a human call** — the per-point steps are deliberately small (`character_base.gd`:
+"a party game cannot afford a pick that is simply correct").
+
+Two things the measurement turned up:
+
+- ⚠️ **The Person roster carries no TATAG 1**, so the sturdiest-to-frailest spread a player
+  can actually pick is 2 → 5, not 1 → 5. Worth knowing before anyone reasons about "full
+  range".
+- ⚠️ **`apply_stagger` uses `max(_staggered_time_left, duration / grit)`, so TATAG is
+  invisible on every hit that lands inside an existing stagger** — a shorter flinch cannot
+  replace a longer one already running. Flagged, not changed: whether a stagger should
+  refresh or extend is a balance call with no play notes behind it.
+
+Two harness faults were fixed on the way, both caught by the impossible-number rule rather
+than by inspection: the walk test did not re-place the unit between runs, so it walked into
+the dressing and reported the SLOWEST pick travelling furthest (4.90 / 2.80 / 0.00 m); and
+the stagger test did not clear `_staggered_time_left`, so `max()` swallowed every shorter
+value and reported an identical 0.2500 s at every TATAG while the knockback divisor beside
+it was plainly working.
+
+### HANDOFFS INTO THE 🌐 NET LANE — written 2026-07-30 by 🥊 PHYS
+
+🧑 **The human is running the NET lane next and has asked it to take all of these.** Ordered by
+what is genuinely NET's to write. ⚠️ **Items 5–7 are NOT NET's files** — they need either the
+owning lane or an explicit grant from the human; they are listed because the human asked for the
+full set in one place, not because ownership moved.
+
+#### NET-1 · ⚠️ CAN AND SLIPPER STATS READ AS IDENTICAL, AND THE SILENT-NEUTRAL PATH IS WHY
+
+🧑 Human report: *"add stats for cans and slippers bcz i think theyre all the same."*
+
+**The data is NOT missing.** `CharacterRoster.CANS` and `SLIPPERS` both carry six entries with
+genuinely varied traits (`CANS`: 3/3/3, 2/3/5, 3/2/4, 5/2/1, 1/5/4, 2/4/4 · `SLIPPERS`: 3/3/3,
+1/5/5, 3/4/2, 4/3/3, 4/2/3, 5/1/2), and the read path exists —
+`CharacterBase.trait_points()` branches to `CharacterRoster.prop_trait(can_index, slipper_index,
+is_can, key)` for a Prop.
+
+⚠️⚠️ **SO THE SUSPECT IS THE INDEX ARRIVING, AND THERE IS A PATH THAT FAILS SILENTLY INTO
+"ALL THE SAME".** `can_index`/`slipper_index` default to **-1**, and
+`CharacterRoster.traits_in()` returns `{}` for any index `< 0` or out of range, which
+`_trait_value()` resolves to **`TRAIT_NEUTRAL` (3)**. That fallback is deliberate and correct —
+its own doc says an AI slot, a `--host` session that passed no character screen, and an older
+peer's unknown index must all "produce a playable unit … not a crash and not a silently
+super-powered one". **But its failure signature is exactly the human's report: every lata and
+every tsinelas at a flat 3/3/3, with no error anywhere.**
+
+**Why this is NET's.** The picks travel `character_select.gd` → `GameLaunch` →
+`network_manager.gd:121-122` (the pick payload) → `main.gd:533-534` and `main.gd:1278-1279`
+(assignment onto the spawned unit). Three of those four are this lane's files, and
+"a pick that does not cross the wire" is the **U-8 bug class** — the one the difficulty picker's
+own handoff warns has already been fixed twice.
+
+**What to measure, and do NOT stop at "the int is set":**
+1. Two real peers, each picking a **different** lata and a **different** tsinelas. Assert every
+   peer's copy of every Prop carries the same `can_index`/`slipper_index`. Both are in
+   `CharacterBase.tscn`'s replication config, so this is checkable on both sides.
+2. ⚠️ **Assert the index is never -1 on a spawned Prop that a human picked for.** That is the
+   silent-neutral trip, and it is the whole hypothesis.
+3. ⚠️ **Then measure an OBSERVABLE, not `trait_points()`.** A `trait_points() == 5` assertion
+   proves a dictionary lookup works; it does not prove the trait reaches the can. The
+   `CHARACTER TRAITS · VERIFIED END TO END` block above is the template — metres walked for
+   BILIS, m/s of shove for LAKAS, m/s kept of a fixed shove for TATAG. ⚠️ **That block verified
+   the PERSON path (`character_index` → `person_trait`) only. `prop_trait` is a different
+   function against different lists and has never been measured at all.**
+4. ⚠️ **A Prop is a lata one round and a tsinelas the next**, so `is_can` flips and the answer
+   genuinely changes across a role swap and must never be cached. Measure it on **both** sides
+   of one swap.
+
+**If it turns out the indices DO arrive and DO differ:** the report is then a FEEL call, not a
+bug — the per-point steps are deliberately small (`character_base.gd`: *"a party game cannot
+afford a pick that is simply correct"*). Produce the spread as numbers and **ask the human**;
+do not widen the steps unasked.
+
+#### NET-2 · `tools/input_probe.gd:70` BLOCKS R-30, AND IT IS THIS LANE'S FILE
+
+`input_probe.gd:70` calls `DebugPlayerSwitcher._cycle()`. Deleting that autoload therefore makes
+the probe fail to **PARSE**, and "input_probe green" is part of R-30's own acceptance — so R-30
+cannot complete until this is rewritten. `input_probe.gd` **and** `debug_player_switcher.gd` are
+both on this lane's path list, so both halves are yours.
+
+#### NET-3 · `hit_probe` PRESSES NOTHING, AND IT IS THIS LANE'S READY PHASE THAT ADDED THE WAIT
+
+`hit_probe.tscn` reports **0 throws** on real peers. `tools/hit_probe.gd:223` waits on
+`RoundManager.round_active` and presses nothing; nothing starts a networked round until every
+peer sends `_rpc_declare_ready` (`main.gd::_awaiting_net_ready` — the host counts PEERS, not
+characters). **`aim_probe.gd::_net_ready_up()` is a working implementation to copy**, polled
+rather than signal-driven because `_awaiting_net_ready` is only set once the host's own phase RPC
+arrives, which may be after the probe's first look. The READY phase is `main.gd`, this lane's
+file; `hit_probe.gd` itself is unowned.
+
+#### NET-4 · ⚠️ THE §3.5.5 GREP IS UNPASSABLE AS DOCUMENTED — `.worktrees`
+
+R-30's acceptance is `grep -rin "debug" … .` from the project root. There is a live git worktree
+at **`.worktrees/windows-deploy`** (branch `code/windows-deploy`, confirmed by
+`git worktree list`). The grep recurses into it and returns **~60 duplicate hits**, including
+second copies of `debug_player_switcher.gd` and `DebugBar.tscn` themselves. It is `.gitignore`d
+(line 31) so `git status` never shows it, and `grep` does not read `.gitignore`.
+
+**This is the identical failure §3.5.5 already records once** for the
+`Debug > Run Multiple Instances` filter — *"made the acceptance test impossible to ever pass …
+which is worse than no checklist"*. Fix it the same way: add `--exclude-dir=.worktrees` to the
+documented command, **or** remove the worktree before the acceptance run. Also note the rewording
+is **8 gameplay files, not 5**; the extra ones are `network_manager.gd`, `carriable.gd` (a false
+positive on the words *"debug cruft"*) and **`character_base.gd` with 5 hits — a shared-lock
+file, so R-30 needs a mutex its plan does not mention.**
+
+#### NET-5 · ⚠️ NOT THIS LANE'S FILE — `ai_controller.gd`, R-06 leg 3 and the lob constant
+
+Both need `scripts/systems/ai_controller.gd`, which is the ⚖️ **BALANCE** lane's. Specified in
+full two blocks up (`R-06 leg 3 · MEASURED`): **hold the sidestep, do not widen it** —
+`CAN_EVADE_STEP` already aims 2.7× the measured 0.45 m band — and have
+`ATTACKER_LOB_OVERHOLD` **read** `Carrier.LOB_OVERHOLD_TIME` instead of restating 0.20. The PHYS
+side of both is done and verified. **Needs the balance lane or an explicit human grant.**
+
+#### NET-6 · ⚠️ NOT THIS LANE'S FILE — the dents-vs-blocked contradiction (`ai_probe.gd`)
+
+dents/round fell **1.75 → 1.00** while `blocked` *improved* **43.5% → 41.2%**. Fewer throws
+stopped, fewer dents landed; one of those columns is not measuring what it says. This gates the
+`MAX_DENTS` decision recorded above. ⚖️ BALANCE's probe.
+
+#### NET-7 · ⚠️ NOT THIS LANE'S FILE — OPTION_B has never been in a fairness run
+
+`GameLaunch.game_mode` **defaults to OPTION_B**, and `ai_probe` forces OPTION_A for fairness runs
+(correctly — under B the dents column measures nothing). So every fairness figure in this log
+describes A, while B's own offence paths — `FALL_LIMIT` 4 and all-Sealed — have **no measured
+rate at all.** The larger of the two holes. ⚖️ BALANCE's probe.
+
+#### HANDOFF — R-09 (the difficulty picker) to the 🖥️ UX lane
+
+**The mechanism is complete and measured; only the screen is missing.**
+`AIController.DIFFICULTY_TIERS` (BATA / NORMAL / ASTIG) and `apply_difficulty()` have been correct
+and unreachable — ⚠️ **nothing outside that class called `apply_difficulty()` until
+`tools/ai_probe.gd`'s `tier=` argument did on 2026-07-30**, which is why no tier but NORMAL had ever
+been measured. See RUN 12 below for the three rows.
+
+- **One three-way picker on `MatchSetup.tscn`, beside map and mode.**
+- ⚠️⚠️ **IT MUST RIDE THE SAME HOST-OWNED BROADCAST PATH MAP AND MODE ALREADY TAKE** (`10.5` U-8).
+  Do not invent a second path. **A per-peer difficulty is exactly the bug U-8 fixed twice already**,
+  and it fails silently: each peer's own bots play at that peer's setting and only the host's
+  actually decide the match.
+- Persist in `SettingsManager` alongside the other preferences; apply **once at match start** by
+  calling the static `AIController.apply_difficulty()`, which every controller in the process then
+  follows because the knobs are `static var`s.
+- **Acceptance:** `lobby_probe` extended — two peers started on deliberately opposite difficulties,
+  the client ends on the host's. Same shape as the map/mode assertion it already makes.
+- Copy note: the tier names are already Filipino and already carry the characterisation — *bata* the
+  kid, *astig* the one who wins. They do not need translating in the UI.
+
+#### HANDOFF — R-09's REMAINING ACCEPTANCE, from 🖥️ UX to the 🌐 NET lane (2026-07-30)
+
+**The picker is built and shipped** (`ux/onboarding-readability` @ `59871e6`, branch not yet merged).
+**One acceptance clause is not run, and the UX lane cannot run it**: `tools/lobby_probe.gd` is the NET
+lane's file and read-only here.
+
+**What to assert:** start two peers on **deliberately opposite** difficulties; **the client must end on
+the host's**. Exactly the shape of the map/mode assertion `lobby_probe` already makes — add a third
+field to it rather than a new probe.
+
+**What to read, so this is not re-derived:**
+- `scripts/ui/match_setup.gd` — `DIFFICULTIES` (~line 114), `_difficulty_index` (~181),
+  `_apply_difficulty()`, `_cycle_difficulty()`. Clients apply with `persist = false`.
+- The value rides the **existing host-owned path, at TWO call sites**, and both matter:
+  `_rpc_sync_config` (host changed something) **and** `_rpc_sync_state` (the welcome packet — the only
+  thing that configures a peer joining a lobby nobody touches afterwards). ⚠️ **If only the first is
+  asserted the probe passes while a silently-joined peer keeps its own tier.**
+- `SettingsManager.ai_difficulty` / `set_ai_difficulty()` (stores **and** applies), `[match]` section.
+- Applied once at match start via the static `AIController.apply_difficulty()`; the knobs are
+  `static var`s, so every controller in the process follows.
+
+⚠️ **WHY THIS IS WORTH A REAL ASSERTION AND NOT A GLANCE:** a per-peer match-affecting value is the bug
+**U-8 fixed twice**, and it fails *silently* — each peer's bots play at that peer's setting and only the
+host's actually decide the match. Nothing on screen looks wrong.
+
+**Also for 🌐 NET — R-26's lobby half is the blocker on the UX half.** The UX lane stopped at the
+boundary deliberately; `tools/lobby_probe.tscn` was not touched.
+
+#### FILED, NOT RUN — R-21's confinement-size sweep
+
+**The heatmap half of R-21 is done (RUN 13 below). The SIZE SWEEP is blocked on file ownership and
+is filed here rather than half-done.**
+
+`CharacterBase.CONFINEMENT_RADIUS` is a `const` (`character_base.gd:115`) and `character_base.gd` is
+a **shared-lock** file that the balance lane may not write. Sweeping it needs exactly two things,
+and both belong to whoever takes that lock:
+
+1. Promote it to a `static var` keeping the `const` as the documented baseline — **the identical
+   shape R-01 just used for `TAYA_BLOCK_STANDOFF`**, which took one edit and closed a question three
+   runs old. Then `tools/ai_probe.gd` gains `confine=` in one line beside `standoff=`.
+2. ⚠️ **The chalk follows the physics automatically but only via a REBUILD.** Both map builders read
+   the constant (`build_eskinita.py`, `build_bayan_plaza.py`), and both emit their `.tscn`
+   **wholesale**, so each row of the sweep needs the builders re-run and the maps re-imported. A row
+   measured without rebuilding is a row where the physics box and the drawn box disagree — which is
+   precisely the RUN 3 defect, re-introduced by a test.
+
+Sweep {4.0, 5.0, 6.0}. ⚠️ **The arena FOOTPRINT stays the original size — standing decision, not
+open.** ⚠️ **The SIZE CALL IS THE HUMAN'S**, and RUN 9 is the reason to be careful with it: the
+defence's two instant-tag geometries are both distance relationships between
+`CONFINEMENT_RADIUS`, `taya_block_standoff` and `ATTACKER_THROW_RANGE`, so changing the box moves
+all three at once.
 
 ## Already done — the ledger this list replaces
 
@@ -2393,7 +3980,7 @@ simply carried forward from the previous pass's checkboxes.
 | `[x]` | Walk/run locomotion from velocity | M-5 step 4 — **docs saying "only idle is wired" are stale** |
 | `[x]` | In-world nameplates: ground rings, tags, role colour, fade | U-6, **repaired v4.22** |
 | `[x]` | FPP viewmodel — eye height, held-object position | **repaired v4.21** |
-| `[~]` | Carry / charge-throw / grab / reset channel | T-1…T-3. Loads, runs, **never played** — Phase 0. |
+| `[~]` | Carry / charge-throw / grab / reset channel | T-1…T-3. Loads, runs — Phase 0. |
 | `[~]` | Both round-win modes | Wired end to end, never human-verified |
 | `[~]` | Release export preset | Correct, unrunnable — 5.1 |
 

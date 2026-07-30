@@ -3,6 +3,7 @@
 [ext_resource type="Mesh" uid="uid://huxf5m15sgb2" path="res://assets/models/tsinelas.obj" id="1"]
 
 [node name="TsinelasVisual" type="Node3D"]
+transform = Transform3D(1.25, 0, 0, 0, 1.25, 0, 0, 0, 1.25, 0, 0, 0)
 
 [node name="Slipper" type="MeshInstance3D" parent="."]
 mesh = ExtResource("1")

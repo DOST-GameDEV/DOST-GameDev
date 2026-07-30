@@ -102,6 +102,12 @@ const SFX_NAMES: PackedStringArray = [
 	"countdown_tick", "countdown_go", "round_win", "round_lose", "match_win",
 	# UI.
 	"ui_click", "ui_hover", "ui_back", "ui_error",
+	# The boot sting — the BH Studios entrance screen, which plays on every
+	# single launch and did so in silence until now. See generate_sfx.py's
+	# build_boot() for why it is a separate stream rather than audio on the
+	# video: Godot 4's only core video codec is Theora and the clip is exported
+	# with `-an`.
+	"boot_sting",
 ]
 
 ## Sounds that must never be pitch-jittered: anything with a tune in it. A
@@ -109,6 +115,10 @@ const SFX_NAMES: PackedStringArray = [
 const _NO_JITTER: PackedStringArray = [
 	"ui_click", "ui_hover", "ui_back", "ui_error",
 	"countdown_tick", "countdown_go", "round_win", "round_lose", "match_win",
+	# A studio sting that is a different pitch every launch is a studio sting
+	# that sounds broken. It is also the most-heard sound in the game by a wide
+	# margin, so any wrongness in it is heard a thousand times.
+	"boot_sting",
 ]
 
 ## ⚠️⚠️ B-121 — HEADROOM. EVERY VOICE IS ATTENUATED BY THIS, AND IT IS THE FIX
@@ -337,6 +347,29 @@ func play_at(sound_name: String, where: Vector3, volume_db: float = 0.0) -> void
 	player.pitch_scale = _pitch(sound_name)
 	player.play()
 
+
+## Silences every pooled voice at once.
+##
+## ⚠️ EXISTS BECAUSE THE POOL OUTLIVES THE SCENE THAT STARTED A SOUND. The voices
+## are children of this autoload, at PROCESS_MODE_ALWAYS, precisely so a sound
+## survives the node that triggered it (a transient hitbox is routinely freed
+## before its clang has finished — see play_at's own note). The cost is that a
+## sound started on one screen keeps playing on the next one unless somebody says
+## otherwise, which is exactly what a skipped boot sting would do: black the
+## screen, load the title menu, and leave a chord ringing over it.
+##
+## Deliberately NOT called on every scene change. Most transitions WANT the tail
+## to carry — a `ui_back` that is cut off the instant the panel closes reads as a
+## click, not a sound. This is for the one case that is genuinely an interruption.
+func stop_all() -> void:
+	for player in _ui_voices:
+		player.stop()
+	for player in _world_voices:
+		player.stop()
+	# Clear the retrigger memory too, or the sound just stopped is barred from
+	# playing again for the rest of its own length — which for the boot sting is
+	# two and a half seconds of the title screen.
+	_last_played_ms.clear()
 
 ## Shared front half of play()/play_at(): resolves the stream and applies the
 ## retrigger guard. Returns null when this call should be dropped.

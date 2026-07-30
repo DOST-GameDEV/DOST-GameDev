@@ -17,6 +17,7 @@ to type.
 |---|---|---|---|
 | `scenes/main/Main.tscn` | — free — | | |
 | `scenes/characters/CharacterBase.tscn` | — free — | | |
+| `scripts/characters/character_base.gd` | — free — | | |
 | `scenes/characters/CameraRig.tscn` | — free — | | |
 | `scenes/ui/*.tscn` | — free — | | |
 | `project.godot` | — free — | | |
