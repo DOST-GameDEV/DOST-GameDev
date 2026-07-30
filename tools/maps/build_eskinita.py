@@ -760,12 +760,24 @@ _PUNO_Z_E = [-16.4, -14.6, -9.2, 1.4, 3.6, 9.8, 17.1, 18.9]
 _PUNO_Z_W = [-12.8, -11.0, -5.4, 2.8, 11.6, 13.4, 19.4]
 
 
-def _puno_x(mesh_name, want, yaw, scale):
-    """Jittered x, clamped into the band the lane law and the facade leave open."""
+def _puno_x(mesh_name, want, yaw, scale, lean=0.0):
+    """Jittered x, clamped into the band the lane law and the facade leave open.
+
+    ⚠️ THE LEAN IS PART OF THE FOOTPRINT AND `piece_extent` DOES NOT KNOW ABOUT IT.
+    Human, explicitly: "pls make sure u dont clip through houses in repositioning."
+    A plan-view extent describes a PLUMB piece, so a tree clamped to
+    `WALL_FACE_X - h` and then tipped nine degrees puts its crown up to
+    sin(lean) * height BEYOND that — into the facade — while every footprint check
+    in this file still reports it clear, because they all compare the same
+    plan-view boxes. The overlap guard cannot catch it either, for the same reason.
+    So the tilt's own reach comes off BOTH ends of the legal band. `e[5]` is the
+    piece's scaled top; the crown is the part that leans furthest.
+    """
     e = piece_extent(mesh_name, yaw, scale)
     h = max(abs(e[0]), abs(e[1]), abs(e[2]), abs(e[3]))
-    lo = LANE_HALF_X + LANE_MARGIN + h + 0.05
-    hi = WALL_FACE_X - h - 0.05
+    tilt = abs(math.sin(lean)) * e[5]
+    lo = LANE_HALF_X + LANE_MARGIN + h + tilt + 0.05
+    hi = WALL_FACE_X - h - tilt - 0.05
     if lo > hi:
         return (lo + hi) * 0.5
     return min(max(want, lo), hi)
@@ -788,10 +800,13 @@ for side, zlist in ((1.0, _PUNO_Z_E), (-1.0, _PUNO_Z_W)):
         # things growing beside it. `_puno_x` clamps to WALL_FACE_X - h, so asking
         # for 8.2 puts each canopy edge within centimetres of the facade and the
         # crown overhangs the road the way a real one does.
-        x = _puno_x(mesh_name, 8.2 + _PUNO_XJIT[k] * 0.35, yaw, sc)
+        lx = _PUNO_LEAN[k]
+        lz = _PUNO_LEAN[(k + 4) % len(_PUNO_LEAN)]
+        # The clamp gets the LARGER of the two tilts, since either can end up
+        # pointing at the wall once the yaw is applied.
+        x = _puno_x(mesh_name, 8.2 + _PUNO_XJIT[k] * 0.35, yaw, sc,
+                    max(abs(lx), abs(lz)))
         if _placer.clear_at(mesh_name, side * x, zz, yaw, sc):
-            lx = _PUNO_LEAN[k]
-            lz = _PUNO_LEAN[(k + 4) % len(_PUNO_LEAN)]
             add_tree("Dressing/Puno", f"Puno_{n}_{tag}", mesh_name,
                      side * x, zz, yaw, sc, lx, lz)
             _placer.placed += 1
