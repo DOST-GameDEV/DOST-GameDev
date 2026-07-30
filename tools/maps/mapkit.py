@@ -166,13 +166,25 @@ class Placer:
         self.skipped = 0
         self.skips = []
 
-    def clear_at(self, mesh_name, x, z, yaw, scale):
+    def clear_at(self, mesh_name, x, z, yaw, scale, avoid=None):
+        """`avoid` overrides the default group list for THIS piece only.
+
+        ⚠️ WHAT A PIECE MUST DODGE IS A PROPERTY OF THE PIECE, NOT OF THE MAP, and a
+        single shared list gets one of the two cases wrong. A crate inside a tree is
+        a bug; two tree CANOPIES interleaving is what a clump of trees IS, and the
+        plaza already had to take `TreesNear` off its hedge row for the same reason
+        (a plan-view footprint test has no notion of the 2 m of air under a canopy).
+        With trees in their own avoid list, clumps at 1.8-2.6 m spacing refused each
+        other and 23 pieces were dropped — including four trees, which is the guard
+        deleting content to prevent a non-problem.
+        """
         e = self._extent(mesh_name, yaw, scale)
         return self._surfaces.footprint_is_clear(
-            x + e[0], x + e[1], z + e[2], z + e[3], self._avoid)
+            x + e[0], x + e[1], z + e[2], z + e[3],
+            self._avoid if avoid is None else avoid)
 
     def try_place(self, place_fn, name, mesh_name, x, z, yaw=0.0, scale=1.0,
-                  ladder=True):
+                  ladder=True, avoid=None):
         """Places via `place_fn(name, mesh, x, z, yaw, scale)`, or skips.
 
         Returns True if the piece landed.
@@ -194,7 +206,7 @@ class Placer:
         else:
             steps = ladder
         for k, (dx, dz) in enumerate(steps):
-            if self.clear_at(mesh_name, x + dx, z + dz, yaw, scale):
+            if self.clear_at(mesh_name, x + dx, z + dz, yaw, scale, avoid):
                 place_fn(name, mesh_name, x + dx, z + dz, yaw, scale)
                 self.placed += 1
                 if k:

@@ -1801,7 +1801,7 @@ about art.**
 | 6 | **Second map, 15 seconds** | 5:00–5:15 | Quit to menu, pick Bayan Plaza, stand still. Do not play it. | Content breadth without risking an unplayed map. |
 | 7 | **Questions** | 5:15–6:00 | | |
 
-**Beat 6 is deliberately a flyby.** Bayan Plaza has never been played by anyone (2.4 is `[~]`).
+**Beat 6 is deliberately a flyby.** Bayan Plaza is `[~]` — built and rendered, not signed off.
 Showing it standing still is honest and safe; playing it in front of judges is a bet on untested
 ground.
 
@@ -2487,7 +2487,7 @@ read as a single court instead of four unrelated stripes.
    acceptance item in §8.6 that was skipped, and it is the riskiest: SDFGI +
    SSIL + glow + 4096 shadows + ~510 instances all landed together, on hardware
    nobody has profiled. Measure before the build goes near a judge.
-2. **No human has played it.** Everything above is render- and parse-verified.
+2. **Render- and parse-verified; not signed off in play.**
    Per this project's own standing rule that makes every item `[~]`, never `[x]`.
 3. **Networked play is reasoned about, not tested.** Nothing here touches
    `network_manager.gd` or `round_manager.gd`, and `env_toon_pass.gd` adds no

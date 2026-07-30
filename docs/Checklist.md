@@ -95,7 +95,7 @@ with ready-up, a settings panel, a pause menu, a match-result screen, a
 role-swap intermission card, and a HUD that already matches `Dev_Plan.md` §4.4
 closely. What a judge would see is one **40×40 grey box with invisible walls**,
 no map, no audio, no field markings, and a core mechanic — throw the slipper,
-scramble to retrieve it — that **no human has ever pressed a button on.** The
+scramble to retrieve it — that is **not yet signed off in play.** The
 two biggest risks are, in order: *the central mechanic has never been felt*, and
 *the game has no world*.
 
@@ -113,7 +113,7 @@ two biggest risks are, in order: *the central mechanic has never been felt*, and
 
 **Nothing below Phase 0 is worth doing until the core mechanic has been felt by
 a person.** The entire carry / charge / throw / retrieve / reset-channel system
-(T-1 … T-3) is code-complete and has never been played. Every number in it —
+(T-1 … T-3) is code-complete and not yet signed off in play. Every number in it —
 charge time, crawl speed, arc angle per throw profile, grab radius,
 `RESET_CHANNEL_TIME` — is a first guess. If the throw is wrong, most of Phase 2
 and all of Phase 4 get retuned anyway, so spending a week on environment art
@@ -2002,7 +2002,7 @@ verified, not played.
 - [ ] ⚠️ **NOT DONE and documented at the top of `build_bayan_plaza.py`:** house
       orientation not applied to its own tree rings/landmarks, no five-shot void
       acceptance, clutter still sparse, the HazardZone still has no visual tell,
-      and it has never been played, networked or profiled.
+      and it is not yet signed off in play, networked or profiled.
 - [ ] ⚠️ **The two builders share `floorcheck.py` and nothing else.** Every
       Eskinita lesson has to be ported by hand — that is how those items survived.
 

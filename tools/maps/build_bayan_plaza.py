@@ -296,7 +296,8 @@ def add_mark(name, mesh_name, x, z, yaw=0.0, sx=1.0):
     """A field marking, embedded in whatever surface is under it."""
     y = embed_y(surfaces.height_at(x, z), mesh_name)
     c, sn = math.cos(yaw), math.sin(yaw)
-    tf = (f"Transform3D({c * sx:.5f}, 0, {-sn * sx:.5f}, 0, 1, 0, {sn:.5f}, 0, "
+    # See build_eskinita.py::xform for why the sx is on the COLUMN, not the row.
+    tf = (f"Transform3D({c * sx:.5f}, 0, {-sn:.5f}, 0, 1, 0, {sn * sx:.5f}, 0, "
           f"{c:.5f}, {x:.4f}, {y:.4f}, {z:.4f})")
     order.append(("Markings", name, mesh(mesh_name), tf))
     surfaces.record(name, mesh_name, x, y, z, yaw, sx, is_marking=True)
@@ -1158,6 +1159,16 @@ ext_lines.append('[ext_resource type="Texture2D" '
 # enclosed, and one shared loop would flatten the only cue the player has that
 # they have changed venue. CC0 - source, author and licence in
 # assets/audio/ambience/OPENGAMEART_CC0_LICENSE.txt, which is what Form 03 needs.
+# ⚠️ THE CHALK GRAIN, AND IT IS TRIPLANAR BECAUSE THERE ARE NO UVs.
+# Playtest: "make it actually look like chalk writings not just lines" and, in the
+# same breath, "make sure that it actually CONNECTS". Those pull opposite ways - real
+# chalk is broken and gappy, and a gappy line cannot close a corner. So the GEOMETRY
+# stays solid (it carries the shape and the corners) and the CHALK comes from this
+# texture. obj_writer.gd emits no `vt` lines, so these meshes have no UVs at all; a
+# triplanar material projects from world space and needs none - which is the whole
+# reason this is possible without building a UV pipeline first.
+ext_lines.append('[ext_resource type="Texture2D" '
+                 'path="res://assets/models/materials/chalk.png" id="CHALK"]')
 ext_lines.append('[ext_resource type="AudioStream" '
                  'path="res://assets/audio/ambience/bayan_plaza.wav" id="AMB"]')
 
@@ -1169,7 +1180,15 @@ ext_lines.append('[ext_resource type="AudioStream" '
 # warm speck. This is that ratio applied back to the albedo, so paving and floor
 # are one colour and there is nothing for the dissolve to expose. One albedo on a
 # material that already existed; no new resource, no shader, no cost.
-SUBS = '''[sub_resource type="BoxShape3D" id="Shape_floor"]
+SUBS = '''[sub_resource type="StandardMaterial3D" id="Mat_chalk"]
+albedo_color = Color(1, 1, 1, 1)
+albedo_texture = ExtResource("CHALK")
+roughness = 1.0
+specular_mode = 2
+uv1_triplanar = true
+uv1_scale = Vector3(1.6, 1.6, 1.6)
+
+[sub_resource type="BoxShape3D" id="Shape_floor"]
 size = Vector3(120, 8, 120)
 
 [sub_resource type="StandardMaterial3D" id="Mat_floor"]
@@ -1389,6 +1408,10 @@ for parent, name, mid, tf in order:
         body.append(f'\n[node name="{name}" type="MeshInstance3D" parent="{parent}"]')
         body.append(f'transform = {tf}')
         body.append(f'mesh = ExtResource("{mid}")')
+        # Every chalk marking takes the grain; nothing else does. The road
+        # keeps its kit atlas.
+        if parent == "Markings":
+            body.append('surface_material_override/0 = SubResource("Mat_chalk")')
 
 n_sub = SUBS.count("[sub_resource")
 load_steps = len(ext_lines) + n_sub + 1
