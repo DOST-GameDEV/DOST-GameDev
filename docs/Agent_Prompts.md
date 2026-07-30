@@ -84,7 +84,7 @@ committed.
 | **1** | 🎮 **`build mech`** | **Opus 5 · high** | the rules of the game | Deletes the defence's only win and replaces the whole win-condition set. Novel rule design under ambiguity, no lookup-able answer, and getting the feel wrong here costs the video. |
 | **2** | 💥 **`build abil`** | **Sonnet 5 · high** | the five object verbs | Exact radii, durations and host-side resolution against a spec that already exists. High, not medium: a shockwave that resolves on the wrong peer looks perfect solo and does nothing on LAN. |
 | **3** | 🖥️ **`build ux`** | **Sonnet 5 · high** | every screen, spectator, the net teardown | Three of its items are races that only reproduce across peers. High because "it works on my machine" is the exact failure mode. |
-| **4** | 🎨 **`build model`** | **Sonnet 5 · medium** | twelve prop skins | Thoroughness across 6 skins × 2 sides against a spec that names every attachment. Not taste, so not Opus. |
+| **4** | 🎨 **`build model`** | **Opus 5 · medium** | the lata and tsinelas classes, their models and their names | Upgraded 2026-07-31: it now authors real geometry, sets the roster size and names it. *"Does this silhouette read as a sardine tin from across a street, and is that name right in Filipino?"* is taste and cultural specificity — the one thing Sonnet was picked for not needing. Medium, not high: the difficulty is judgement per object, not depth on any one. |
 | **5** | 🥊 **`build phys`** | **Sonnet 5 · high** | contact, knockback, ragdoll read | Executing against measured targets with a documented authority trap list. |
 | **6** | ⚖️ **`build fair`** | **Opus 5 · xhigh** | every number, the AI | **LAST. ALWAYS.** The only lane allowed to move a shipped number, and the only one that can judge whether the objects are actually fun. Being wrong here costs the submission. |
 
@@ -108,7 +108,7 @@ Do not rebuild these. Read them, then improve, verify, or overrule.
 | Spectator camera, seat −1 | `scripts/systems/spectator_camera.gd`, `--spectate` flag | boots, single-peer only |
 | Trajectory preview | `scripts/systems/trajectory_preview.gd` | shares the real solve; nobody has looked at the line |
 | Status stack + countdowns | `scripts/ui/hud.gd` | renders, no probe reads a row |
-| Prop attachments + hanger | `character_visual.gd` `PROP_ATTACHMENTS` | **never rendered — no screenshot of any skin exists** |
+| Prop attachments + hanger | `character_visual.gd` `PROP_ATTACHMENTS` | **never rendered — no screenshot of any class exists.** And the base meshes under them are placeholders: one `lata.obj` and one `tsinelas.obj` for every class. See §4 |
 | Tsinelas ×1.60 + capsule ×1.28 | `character_visual.gd`, `_COLLISION_BY_ROLE` | capsule measured by `settle_probe`, look unrendered |
 | MAX POWER row | `character_select.gd` | `ui_layout_probe` 196/196 |
 | AI rewritten for the new verbs | `ai_controller.gd`, +489 lines | parses, runs 70 s clean, **behaviour unmeasured** |
@@ -129,7 +129,7 @@ code ships **8.0 s**. `build abil` decides and records which, in `Design.md` §1
 | 🎮 `build mech` | `characters/character_base.gd` · `carrier.gd` · `carriable.gd` · `hitbox.gd` · `hurtbox.gd` · `throw_profile.gd` · `systems/round_manager.gd` · `match_manager.gd` · `Design.md` |
 | 💥 `build abil` | `scripts/abilities/**` · the ability hook sites in `character_base.gd` · `Design.md` §5.3/§6 |
 | 🖥️ `build ux` | `scripts/ui/**` · `systems/spectator_camera.gd` · `trajectory_preview.gd` · `network_manager.gd` · `game_launch.gd` · `main.gd` · `settings_manager.gd` · `tools/ui/**` |
-| 🎨 `build model` | `character_visual.gd` · `character_nameplate.gd` · `systems/character_roster.gd` skin tables · `scenes/characters/visuals/**` · `assets/**` · `tools/models/**` · `Art_Direction.md` |
+| 🎨 `build model` | `character_visual.gd` · `character_nameplate.gd` · `systems/character_roster.gd` `CANS`/`SLIPPERS` tables · `scenes/characters/visuals/**` · `assets/models/**` · `tools/models/**` · `Art_Direction.md` |
 | 🥊 `build phys` | `character_base.gd` movement/collision block · `carriable.gd` flight · `tools/phys_probe.gd` · `settle_probe.gd` · `aim_probe.gd` |
 | ⚖️ `build fair` | **any number in any file** · `systems/ai_controller.gd` · `tools/ai_probe.gd` · `hit_probe.gd` · `round_probe.gd` |
 
@@ -190,14 +190,36 @@ Lata
 - [ ] 3.8 Max power shown in the custom slipper description
 - [ ] 3.9 **Sweep for orphans.** Every system the other lanes built has a menu entry point a player can find — spectator, hanger, skins, stamina, the smash cooldowns. Anything reachable only by flag or autoload is filed here and fixed
 
-### 4 · 🎨 `build model` — Models and classes *(Sonnet 5 · medium)*
+### 4 · 🎨 `build model` — Models, classes and names *(Opus 5 · medium)*
 
-- [ ] 4.1 Six **lata** classes visually distinct — edit the existing mesh creatively, junk bolted on, not new base models
-- [ ] 4.2 Six **tsinelas** classes visually distinct, rendering **specific Tumbang Preso slipper types**
-- [ ] 4.3 Slippers **visibly bigger** in game
-- [ ] 4.4 A **hanger** in slipper customisation that provably cannot affect physics
-- [ ] 4.5 **Render all twelve and look at them.** No skin is `[x]` without a screenshot
-- [ ] 4.6 Every class reads at gameplay camera distance, not just in the preview
+> ⚠️ **THE "NO NEW BASE MESH" LAW IS LIFTED FOR THIS LANE.** Human directive, 2026-07-31:
+> *"those were just placeholders."* `lata.obj` and `tsinelas.obj` are one mesh each, and
+> every one of the twelve classes is that same mesh tinted with junk bolted on — which is
+> why they read as identical in play. **Author real geometry per class.** Amend
+> `Art_Direction.md` §4 to say so in the same commit; you own that file.
+>
+> **Call them what the game calls them: LATA and TSINELAS.** Not "can", not "slipper" — in
+> every class name, every tagline and every line of UI you touch. The English words are for
+> these docs only.
+>
+> **You set the roster size.** Six of each is what exists, not a requirement. Add classes,
+> cut the ones that never earned their slot — say what you chose and why.
+>
+> ⚠️ **The roster INDEX is the replicated wire format** (`can_index` / `slipper_index` are
+> ints on the wire). Renaming is free. **Adding goes on the END. Removing or reordering
+> shifts every index after it** — if you do it, do it in one commit, check every default and
+> saved pick that names an index, and say so in § LOG.
+
+- [ ] 4.1 **A lata base mesh per class, each recognisably a specific Filipino tin** — the silhouette does the work, not the tint. Sardinas, gatas, biskwit, pintura, kape, softdrink: all different profiles, all readable from across the arena
+- [ ] 4.2 **A tsinelas base mesh per class, with genuinely different shapes** — a bakya is a carved wooden clog, not a tinted rubber flip-flop. Render the tsinelas types real Tumbang Preso is played with
+- [ ] 4.3 **Every class is Filipino-themed and newly named by you**, in Filipino, specific enough that a player from the street recognises it. Rewrite `name` and `tagline` across `CANS` / `SLIPPERS` in `character_roster.gd`
+- [ ] 4.4 **The roster size is your call** — final count of lata and tsinelas classes decided, justified in § LOG, and consistent everywhere an index is assumed
+- [ ] 4.5 Tsinelas **visibly bigger** in game
+- [ ] 4.6 A **hanger** in tsinelas customisation that provably cannot affect physics
+- [ ] 4.7 Junk and wear still bolted on per class where it adds character — the attachment system stays, it just stops carrying the whole job alone
+- [ ] 4.8 **Render every class and look at it.** Nothing here is `[x]` without a screenshot
+- [ ] 4.9 Every class reads at gameplay camera distance, not just in the preview
+- [ ] 4.10 Collision is unchanged by any of it — `_COLLISION_BY_ROLE` still sizes every shape, and the dent meshes still line up with the new lata
 
 ### 5 · 🥊 `build phys` — Contact and readability *(Sonnet 5 · high)*
 
@@ -324,22 +346,47 @@ Each block is paste-ready. Set model and effort first.
 
 </details>
 
-<details><summary>🎨 <b><code>build model</code></b> — Models and classes · Sonnet 5 · medium</summary>
+<details><summary>🎨 <b><code>build model</code></b> — Models, classes and names · Opus 5 · medium</summary>
 
 > Same project, same branch, same reading rules. Your tasks are § CHECKLIST §4; the laws
 > are `Art_Direction.md` §1 (colour), §2 (scale) and §4 (attachments).
 >
-> **Why you exist.** Six lata classes and six tsinelas classes currently look identical in
-> play, which makes the character screen a lie. Differentiate them by attaching procedural
-> junk to the existing meshes — a wire handle, a sardine key, a paint drip, a hanger. Do
-> not author new base models. Be creative: a can should look like it has been kicked down
-> a street.
+> **Why you exist.** `lata.obj` and `tsinelas.obj` are placeholders, and every class is one
+> of those two meshes tinted with junk bolted on — so the character screen promises twelve
+> objects and the arena delivers two. **Author real geometry per class.** The "never a new
+> base mesh" law in `Art_Direction.md` §4 is lifted for you by human directive; update that
+> section yourself in the same commit.
 >
-> The tsinelas must read **visibly bigger**, and the specific slipper types real Tumbang
-> Preso is played with should be recognisable. A **hanger** belongs in the customisation
-> options and must provably not affect physics — attachments are visual-only children of
-> `Visual`; collision is sized by `_apply_role_collision()` from a table that knows nothing
-> about skins. Keep that property; it is the whole reason this is safe.
+> **They are called LATA and TSINELAS.** Never "can" or "slipper" in a class name, a
+> tagline, or any UI string you touch — the English words exist in these docs and nowhere
+> else.
+>
+> The lata should be **specifically Filipino tins** — sardinas, gatas, biskwit, pintura,
+> kape — told apart by silhouette from across the arena, not by colour. The tsinelas need
+> genuinely different shapes: a bakya is a carved wooden clog, a worn-through rubber pair is
+> thin and floppy, a foam pair is thick. **Every class is Filipino-themed and newly named by
+> you** — the current names are a starting point, not a constraint.
+>
+> **You also decide how many there are.** Six of each is what exists, not a requirement.
+> Add classes worth having, cut ones that never earned a slot, and justify the final count.
+>
+> Keep the good parts of what exists: procedural junk and wear still bolt on per class —
+> the attachment system just stops carrying the whole job alone. The tsinelas must read
+> **visibly bigger**, and the **hanger** must provably not affect physics: attachments are
+> visual-only children of `Visual`, and collision is sized by `_apply_role_collision()`
+> from a table that knows nothing about skins. That property is the whole reason this is
+> safe — do not lose it while you are replacing the meshes under it.
+>
+> ⚠️ The roster **index** is the replicated wire format. Rename freely; **add on the end**;
+> and if you remove or reorder, fix every default and saved pick that assumes an index, in
+> the same commit. The three `lata_dent*.obj` meshes must keep lining up with the new lata.
+>
+> ⚠️ **`build mech` may still be running.** Do not touch `character_base.gd`,
+> `round_manager.gd`, `carrier.gd`, `carriable.gd` or `Design.md` — if a model change needs
+> something from one of them, file it in § LOG for that lane instead of editing it.
+>
+> `tools/models/generate_all.gd` and `obj_writer.gd` are how meshes get emitted here —
+> read them before you decide how to author a dozen.
 >
 > ⚠️ **Twelve skins exist in code and not one has ever been rendered.** No box here is
 > `[x]` without a screenshot you looked at, at gameplay camera distance, not only in the
