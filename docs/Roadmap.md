@@ -19,6 +19,30 @@ This file answers a different question from every other document here:
 
 ---
 
+
+## Jump to
+
+<sub>Auto-added 2026-07-30 so this file stops being one long scroll. Keep it in step when you add a `##` section.</sub>
+
+- [Contents](#contents)
+- [0.1 · Fairness](#01-fairness)
+- [0.2 · Maps and flow](#02-maps-and-flow)
+- [0.3 · Models and assets](#03-models-and-assets)
+- [0.4 · Animations](#04-animations)
+- [0.5 · AI](#05-ai)
+- [0.6 · Net](#06-net)
+- [0.7 · UX](#07-ux)
+- [0.8 · Physics](#08-physics)
+- [0.9 · Audio](#09-audio)
+- [Stage 0 — Instruments. Nothing downstream is trustworthy without these.](#stage-0-instruments-nothing-downstream-is-trustworthy-without-these)
+- [Stage 1 — Fairness. The single biggest gameplay problem.](#stage-1-fairness-the-single-biggest-gameplay-problem)
+- [Stage 2 — The tsinelas. Explicit human priority.](#stage-2-the-tsinelas-explicit-human-priority)
+- [Stage 3 — Feel: contact, reaction, sound.](#stage-3-feel-contact-reaction-sound)
+- [Stage 4 — Maps, flow, and a street that reads as Filipino.](#stage-4-maps-flow-and-a-street-that-reads-as-filipino)
+- [Stage 5 — The network under real load.](#stage-5-the-network-under-real-load)
+- [Stage 6 — Onboarding and readability under chaos.](#stage-6-onboarding-and-readability-under-chaos)
+- [Stage 7 — Ship.](#stage-7-ship)
+
 ## Contents
 
 - [Part 0 — The honest audit](#part-0--the-honest-audit)

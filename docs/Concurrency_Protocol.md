@@ -8,6 +8,25 @@ specific, named way this repository breaks when two writers touch it at once.
 
 ---
 
+
+## Jump to
+
+<sub>Auto-added 2026-07-30 so this file stops being one long scroll. Keep it in step when you add a `##` section.</sub>
+
+- [0. The four lanes](#0-the-four-lanes)
+- [1. Topology — separate worktrees, one integration branch](#1-topology-separate-worktrees-one-integration-branch)
+- [2. Path ownership — the primary mechanism](#2-path-ownership-the-primary-mechanism)
+- [3. Shared files — an optimistic lock built on `git push`](#3-shared-files-an-optimistic-lock-built-on-git-push)
+- [4. `project.godot` — the version bump rule changes](#4-projectgodot-the-version-bump-rule-changes)
+- [5. `docs/Checklist.md` — ticking boxes without fighting](#5-docschecklistmd-ticking-boxes-without-fighting)
+- [6. `.tscn` and `.tres` — how Godot text scenes actually conflict](#6-tscn-and-tres-how-godot-text-scenes-actually-conflict)
+- [7. `.import` UIDs — the trap that two lanes turn from annoying into blocking](#7-import-uids-the-trap-that-two-lanes-turn-from-annoying-into-blocking)
+- [8. The smoke gate — one shared definition of "I did not break it"](#8-the-smoke-gate-one-shared-definition-of-i-did-not-break-it)
+- [9. Merge cadence and direction](#9-merge-cadence-and-direction)
+- [10. Reporting across the seam](#10-reporting-across-the-seam)
+- [11. Setup, start to finish](#11-setup-start-to-finish)
+- [12. Documentation hygiene — every lane, every merge, not just your own file](#12-documentation-hygiene-every-lane-every-merge-not-just-your-own-file)
+
 ## 0. The four lanes
 
 Two lanes write code. Two lanes write only documentation, which makes them **collision-free by

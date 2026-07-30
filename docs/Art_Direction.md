@@ -15,6 +15,29 @@ record, the palette, the modelling rules and the kit spec are all still authorit
 *task lists* are stale — several items in them have shipped. Where a task list in Parts 2-5
 disagrees with `Checklist.md`, the checklist wins.
 
+
+## Jump to
+
+<sub>Auto-added 2026-07-30 so this file stops being one long scroll. Keep it in step when you add a `##` section.</sub>
+
+- [Contents](#contents)
+- [Art plan — next stage (proportions, sets, props)](#art-plan-next-stage-proportions-sets-props)
+- [1.9 · The throw — how it works, and what was added 2026-07-28](#19-the-throw-how-it-works-and-what-was-added-2026-07-28)
+- [2. What landed this pass](#2-what-landed-this-pass)
+- [Brief — 3D Modeling & Art Agent](#brief-3d-modeling-art-agent)
+- [Environment Kit Spec — checklist 2.1a](#environment-kit-spec-checklist-21a)
+- [Environment Art Agent Brief — the maps](#environment-art-agent-brief-the-maps)
+- [6.2 · Live-demo script, trailer beat sheet, demo-video outline](#62-live-demo-script-trailer-beat-sheet-demo-video-outline)
+- [8.0 · The audit — what is actually wrong, measured, not assumed](#80-the-audit-what-is-actually-wrong-measured-not-assumed)
+- [8.1 · Kill the void — the boundary strategy](#81-kill-the-void-the-boundary-strategy)
+- [8.2 · Make it lived-in without breaking the throwing lane](#82-make-it-lived-in-without-breaking-the-throwing-lane)
+- [8.3 · Lighting, tonemapping and the shading split](#83-lighting-tonemapping-and-the-shading-split)
+- [8.4 · Grounding — close the hole in floorcheck](#84-grounding-close-the-hole-in-floorcheck)
+- [8.5 · Camera and viewmodel](#85-camera-and-viewmodel)
+- [8.6 · Acceptance — what "done" means for Phase 8](#86-acceptance-what-done-means-for-phase-8)
+- [8.7 · Decisions this phase needs from a human — flagged, not taken](#87-decisions-this-phase-needs-from-a-human-flagged-not-taken)
+- [8.8 · WHAT ACTUALLY SHIPPED — execution record, 2026-07-29](#88-what-actually-shipped-execution-record-2026-07-29)
+
 ## Contents
 
 | Part | What it is | Still live? |

@@ -24,6 +24,20 @@ one names the model it should run on, the files to read first, its exact scope, 
 | [`Art_Direction.md`](Art_Direction.md) | 3D modelling — the `M-` block, meshes and the generator | Opus (design) / Sonnet (toolchain) |
 | [`Art_Direction.md`](Art_Direction.md) | The maps, the dressed boundary, field markings, skyboxes | **Opus, high** |
 | [`Agent_Prompts.md`](Agent_Prompts.md) | Carry / throw / grab / reset channel — playtest and retune | **Sonnet, high** |
+
+## Jump to
+
+<sub>Auto-added 2026-07-30 so this file stops being one long scroll. Keep it in step when you add a `##` section.</sub>
+
+- [0. Session log — condensed 2026-07-30](#0-session-log-condensed-2026-07-30)
+- [1. System Context](#1-system-context)
+- [2. AI Execution Protocol](#2-ai-execution-protocol)
+- [3. Bug & Issue Ledger](#3-bug-issue-ledger)
+- [4. Execution Queue — condensed 2026-07-30](#4-execution-queue-condensed-2026-07-30)
+- [5. Decisions the team owes](#5-decisions-the-team-owes)
+- [6. Two things nobody has scheduled, both on the critical path](#6-two-things-nobody-has-scheduled-both-on-the-critical-path)
+- [7. Working notes](#7-working-notes)
+
 | [`Agent_Prompts.md`](Agent_Prompts.md) | Charge meters, character select, off-screen indicators, typeface | **Sonnet, medium** |
 | [`Agent_Prompts.md`](Agent_Prompts.md) | The entire audio workstream — **shipped 2026-07-29 (4.1)**, awaiting a listening pass | **Sonnet, medium** |
 | [`Agent_Prompts.md`](Agent_Prompts.md) | Interpolation, rejoin identity, real-device LAN hardening | **Sonnet, high** |

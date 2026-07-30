@@ -59,6 +59,31 @@ waste; running Sonnet on a taste call is how you get something that compiles and
 
 <a id="roadmap-pipeline"></a>
 
+
+## LANE STATUS BOARD — edit the Status cell, nothing else
+
+**This is the one place a lane is marked finished.** Set the cell, put the date and the
+commit in Evidence, and do it in the same commit as the work. A lane with no evidence is
+not done however green the cell looks.
+
+`🟢 DONE` · `🟡 IN PROGRESS` · `⚪ NOT STARTED` · `🔴 BLOCKED` (say what on)
+
+| Lane | Model / effort | Status | Evidence — date + commit + what was verified |
+|---|---|---|---|
+| [⚖️ BALANCE](#lane-balance) | Claude Opus 5 · xhigh | ⚪ NOT STARTED |  |
+| [🥊 PHYS](#lane-phys) | Claude Sonnet 5 · high | ⚪ NOT STARTED |  |
+| [🩴 ART-FEEL](#lane-art-feel) | Claude Sonnet 5 · high | ⚪ NOT STARTED |  |
+| [🌏 MAPS](#lane-maps) | Claude Opus 5 · high | 🟢 DONE | 2026-07-30 · `3a34473`, `cd9ecc2`, `698fa0b`, `67122d0`, `760e23a` — R-19/20/33 shipped and rendered; R-21 sightlines done, **heatmap paused pending AI fix** (Handoff §5) |
+| [🌐 NET](#lane-net) | Claude Opus 5 · high | ⚪ NOT STARTED |  |
+| [🖥️ UX](#lane-ux) | Claude Sonnet 5 · medium | ⚪ NOT STARTED |  |
+| [🎵 AUDIO](#lane-audio) | Claude Sonnet 5 · medium | 🟢 DONE | 2026-07-29 · `Checklist.md` 4.1 — 32 SFX + 2 ambience beds, probe-verified, never listened to |
+| [🔬 QA](#lane-qa) | Claude Sonnet 5 · medium | ⚪ NOT STARTED |  |
+| [🧹 CHORE](#lane-chore) | Claude Haiku 4.5 · low | ⚪ NOT STARTED |  |
+| [📦 PRODUCER](#lane-producer) | Claude Sonnet 5 · medium | ⚪ NOT STARTED |  |
+
+> Appendices are reference, not lanes, and are not tracked here:
+> [Netcode](#appendix--netcode) · [UI completion](#appendix--ui-completion) · [Audio](#appendix--audio) · [Interaction tuning](#appendix--interaction-tuning-carries-the-fpp-measuring-harness) · [Submission](#appendix--submission)
+
 # THE ROADMAP PIPELINE — v5, 2026-07-30
 
 Every prompt in this section is self-contained. **Paste it as the FIRST message of a fresh session,
@@ -142,7 +167,13 @@ blocked on it), R-23's real four-machine Wi-Fi run, R-31's export on the judging
 
 ---
 
-# ⚖️ BALANCE — AI / Balance Engineer · **Claude Opus 5, xhigh effort**
+<a id="lane-balance"></a>
+
+# ⚖️ BALANCE
+
+<details>
+<summary><b>BALANCE</b> — AI / Balance Engineer · Claude Opus 5, xhigh effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
+
 
 **Charter.** Owns whether the game is *fair* and whether the AI is *fun*. That means the behaviour
 tree, the fairness harness, the difficulty tiers, the attacker's and defender's decision-making, and
@@ -402,7 +433,16 @@ the work.
 
 ---
 
-# 🥊 PHYS — Physics / Gameplay Engineer · **Claude Sonnet 5, high effort**
+
+</details>
+
+<a id="lane-phys"></a>
+
+# 🥊 PHYS
+
+<details>
+<summary><b>PHYS</b> — Physics / Gameplay Engineer · Claude Sonnet 5, high effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
+
 
 **Charter.** Owns how objects behave on contact: the throw, the arc, the hitbox, the bounce, the
 landing, knockback, guard, the can's fall, the reset channel, and the round/match state machines
@@ -602,7 +642,16 @@ confirm.
 
 ---
 
-# 🩴 ART-FEEL — Art / Model / Animation Lead · **Claude Sonnet 5, high effort**
+
+</details>
+
+<a id="lane-art-feel"></a>
+
+# 🩴 ART-FEEL
+
+<details>
+<summary><b>ART-FEEL</b> — Art / Model / Animation Lead · Claude Sonnet 5, high effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
+
 
 **Charter.** Owns everything the player looks at that is not a map or a menu: the procedural hero
 props, the character visuals and their animations, the FPP viewmodel, the nameplates, the palette,
@@ -854,7 +903,16 @@ of what remains UNVERIFIED — especially anything only a human looking at it co
 
 ---
 
-# 🌏 MAPS — Map / Flow & Cultural Environment Lead · **Claude Opus 5, high effort**
+
+</details>
+
+<a id="lane-maps"></a>
+
+# 🌏 MAPS
+
+<details>
+<summary><b>MAPS</b> — Map / Flow & Cultural Environment Lead · Claude Opus 5, high effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
+
 
 **Charter.** Owns both arenas, how they play, **and whether they read as Filipino**: the two Python
 builders, the environment kit, the lane law, the boundary and void treatment, the cultural dressing,
@@ -1192,7 +1250,16 @@ looked at either map, unless one has.
 
 ---
 
-# 🌐 NET — Netcode Architect · **Claude Opus 5, high effort**
+
+</details>
+
+<a id="lane-net"></a>
+
+# 🌐 NET
+
+<details>
+<summary><b>NET</b> — Netcode Architect · Claude Opus 5, high effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
+
 
 **Charter.** Owns everything between four machines: ENet transport, host authority, spawning,
 replication, seats and tokens, late join, drops, rejoins, the AI fallback for a dropped player, and
@@ -1396,7 +1463,16 @@ until they have, THE FALLBACK DECISION IS STILL OPEN and the schedule needs to k
 
 ---
 
-# 🖥️ UX — UI / UX Designer · **Claude Sonnet 5, medium effort**
+
+</details>
+
+<a id="lane-ux"></a>
+
+# 🖥️ UX
+
+<details>
+<summary><b>UX</b> — UI / UX Designer · Claude Sonnet 5, medium effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
+
 
 **Charter.** Owns everything the player reads: the front-end flow, the tutorial, the HUD, the
 intermission beat, the match result, the settings, and the onboarding that has to teach a stranger
@@ -1612,7 +1688,16 @@ what remains UNVERIFIED — starting with the fact that nobody has clicked it, u
 
 ---
 
-# 🎵 AUDIO — Audio Designer · **Claude Sonnet 5, medium effort**
+
+</details>
+
+<a id="lane-audio"></a>
+
+# 🎵 AUDIO
+
+<details>
+<summary><b>AUDIO</b> — Audio Designer · Claude Sonnet 5, medium effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
+
 
 **Charter.** Owns every sound: the procedural SFX generator, the bus layout, the voice manager, the
 ambience, music, and the question of whether a player can tell what happened with their eyes shut.
@@ -1784,7 +1869,16 @@ explicit list of what remains UNVERIFIED — above all, whether a human has actu
 
 ---
 
-# 🔬 QA — QA / Verification Lead · **Claude Sonnet 5, medium effort** · docs-only, safe alongside anything
+
+</details>
+
+<a id="lane-qa"></a>
+
+# 🔬 QA
+
+<details>
+<summary><b>QA</b> — QA / Verification Lead · Claude Sonnet 5, medium effort · docs-only, safe alongside anything &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
+
 
 **Charter.** Runs every probe, plays what can be played, captures evidence, and files defects as
 `B-` numbers with exact reproductions. **It never fixes anything** — crossing into a code lane's
@@ -1925,7 +2019,16 @@ current honest list of everything verified only by a probe.
 
 ---
 
-# 🧹 CHORE — Registry & Docs Mechanic · **Claude Haiku 4.5, low effort** · safe alongside anything
+
+</details>
+
+<a id="lane-chore"></a>
+
+# 🧹 CHORE
+
+<details>
+<summary><b>CHORE</b> — Registry & Docs Mechanic · Claude Haiku 4.5, low effort · safe alongside anything &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
+
 
 **Charter.** Mechanical sweeps with a right answer: enumerating tracked assets into a register,
 running a documented grep, reconciling counts, fixing stale cross-references and formatting.
@@ -2036,7 +2139,16 @@ decided.
 
 ---
 
-# 📦 PRODUCER — Submission · **Claude Sonnet 5, medium effort** · docs-only, safe alongside anything
+
+</details>
+
+<a id="lane-producer"></a>
+
+# 📦 PRODUCER
+
+<details>
+<summary><b>PRODUCER</b> — Submission · Claude Sonnet 5, medium effort · docs-only, safe alongside anything &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
+
 
 **Charter.** Owns the submission package: the synopsis, the running licence register for Form 03,
 Forms 01–02 prepped for signature, the trailer and demo-video plan, and keeping Phase 6 of the
@@ -2164,6 +2276,9 @@ unverified.
 > above, and every standing rule they carried (setup, the shared-file lock, the smoke
 > gate, authorship) is stated there. Roughly 900 lines of dead paste-text; nothing in
 > them was still true that is not true above.
+
+
+</details>
 
 # APPENDIX — lane reference briefs
 
