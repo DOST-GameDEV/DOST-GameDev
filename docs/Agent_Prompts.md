@@ -26,9 +26,29 @@ it is measured.
 
 **Every lane, no exceptions:**
 
-* Branch from `feature/objects-overhaul-v2`. Commit as
-  `M4tyu633 <matthewtlabrador@gmail.com>`, **no co-author trailer**, no
-  `application/config/version` bump.
+* Branch from `feature/objects-overhaul-v2`. No `application/config/version` bump.
+
+> ### 🚨 COMMIT AUTHORSHIP — THE ONE RULE WITH NO EXCEPTIONS
+>
+> **Every commit is authored by `M4tyu633 <matthewtlabrador@gmail.com>` and nobody else.**
+>
+> * **NO `Co-Authored-By:` trailer. Ever.** Not for Claude, not for an agent, not for a
+>   model name, not "on behalf of".
+> * **No "Generated with", no 🤖 line, no tool attribution** anywhere in the subject or
+>   body.
+> * The message says what changed and why. It does not say who or what wrote it.
+> * The repo's `--local` identity is already set to that name and address. Verify before
+>   your first commit:
+>
+>   ```bash
+>   git config --local user.name && git config --local user.email
+>   ```
+>
+> * Check yourself after committing — `git log -1 --format='%an <%ae>%n%b'` — and fix it
+>   with `git commit --amend --reset-author` before you push if it is wrong.
+>
+> This is a competition entry. It is submitted as one person's work and the history has to
+> read that way in every one of its commits.
 * `docs/Design.md` is the balance source of truth. **Move a number in the code → move it
   in `Design.md`, same commit.** Two numbers disagreeing is a bug with your name on it.
 * Read before you write: `scripts/characters/`, `scripts/abilities/`,

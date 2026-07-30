@@ -91,9 +91,11 @@ godot --path . tools/render_probe.tscn --quit-after 400 --resolution 1280x720 --
 4. Set your git identity for this repo — it is configured `--local` and does **not** travel with a
    fresh clone:
    ```bash
-   git config user.name "M4tyu633"
-   git config user.email "matthewtlabrador@gmail.com"
+   git config user.name "M4tyu633" && git config user.email "matthewtlabrador@gmail.com"
    ```
+   **Every commit is authored by that name and nobody else.** No `Co-Authored-By:` trailer, no
+   "Generated with", no 🤖 line, no model or tool named in the message. This is submitted as one
+   person's work and the history has to read that way.
 5. **Branch from `feature/objects-overhaul-v2`** for overhaul work; `integration` is the stable
    line. Never from `main`. One lane at a time, one writer per file — the ownership table is in
    `docs/Agent_Prompts.md` § PATHS.
