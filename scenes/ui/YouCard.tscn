@@ -14,12 +14,29 @@ offset_bottom = -16.0
 mouse_filter = 2
 script = ExtResource("1")
 
+; ⚠️ GROWS UP AND RIGHT, NEVER DOWN — 🧑 "pls make sure no ui goes below screen bruh".
+;
+; A PanelContainer's size is clamped UP to its content minimum and it neither clips
+; nor shrinks, so the anchored 220x156 box below is a REQUEST. Measured 2026-07-30 by
+; `ui_layout_probe`'s YouCardRows sweep (which switches each role's rows on, because
+; four of them ship hidden): the worst real row set is 146px of content in that 156px
+; box, so it fits today with 10px of headroom — but the default grow direction on a
+; full-rect child is BOTH, and the bottom edge is 16px off the bottom of the screen.
+; One extra row, one bigger caption font, or the `Hud*` size ladder UX still owes,
+; and the surplus leaves the frame.
+;
+; `grow_vertical = 0` (BEGIN) pins the bottom edge and sends any growth upward into
+; empty screen; `grow_horizontal = 1` (END) sends width rightward instead of off the
+; left edge. Neither changes the current layout by a pixel — they change where the
+; next 10px goes. Asserted per row set by `ui_layout_probe.gd::_report_you_card()`.
 [node name="Card" type="PanelContainer" parent="."]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+grow_horizontal = 1
+grow_vertical = 0
 theme_type_variation = &"HudCard"
 
 [node name="VBoxContainer" type="VBoxContainer" parent="Card"]
