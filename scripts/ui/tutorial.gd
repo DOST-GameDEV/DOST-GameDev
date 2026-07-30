@@ -263,6 +263,13 @@ const TILE_WIDTH: float = 250.0
 ## empty panel, and 330 clipped the English gloss and raised a scrollbar, which for a
 ## card whose whole job is to be read at a glance is the worse of the two failures.
 const TILE_ICON_MIN_HEIGHT: float = 190.0
+## Pulls the camera in on `CharacterPreview`'s measured shot — see `set_tile_framing()`,
+## which also centres the subject. `FRAME_MARGIN` leaves 62% air, sized for a T-pose
+## sharing the frame with a wood panel; in a tile that is the "big negative space" that was
+## reported. ⚠️ 0.62 was too tight even centred — it cropped the lata top and bottom and
+## the running figure through the feet — because it cancels the margin exactly. 0.80 fills
+## the tile with a little air left, which is what a picture wants.
+const TILE_ZOOM: float = 0.80
 const TILE_FIL_SIZE: int = 46
 const TILE_ENG_SIZE: int = 24
 
@@ -350,6 +357,10 @@ func _populate_premise(strip: HBoxContainer, tiles: Array) -> void:
 		# pictures; the CHARACTER screen is where inspecting the model belongs.
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_show_subject(icon, tiles[i] as Dictionary)
+		# ⚠️ AFTER the subject, because `set_frame_zoom` multiplies the MEASURED framing and
+		# `show_prop`/`show_character` are what measure it. Called the other way round it
+		# would be overwritten by the frame that follows.
+		icon.set_tile_framing(TILE_ZOOM)
 
 ## Puts the right rig in the tile. Through `CharacterPreview`'s own public calls, so
 ## the framing, the material and the prop tint are all the ones the CHARACTER screen

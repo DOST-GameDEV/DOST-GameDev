@@ -10,19 +10,6 @@
 shader = ExtResource("3")
 shader_parameter/vignette_color = Color(0.97, 0.0, 0.0, 0.6)
 
-; The plate under the ready-phase role objective — INK at 0.78 so the role-coloured
-; text reads over the FPP viewmodel arms. See the ReadyObjectiveRow node for why.
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_ready_objective"]
-content_margin_left = 28.0
-content_margin_top = 10.0
-content_margin_right = 28.0
-content_margin_bottom = 12.0
-bg_color = Color(0.015686, 0.031373, 0.219608, 0.78)
-corner_radius_top_left = 8
-corner_radius_top_right = 8
-corner_radius_bottom_right = 8
-corner_radius_bottom_left = 8
-
 [node name="HUD" type="Control"]
 layout_mode = 3
 anchors_preset = 15
@@ -58,16 +45,29 @@ visible = false
 ; the A/B letter and NEVER hue — but the letter was buried mid-string in "A · OFFENSE"
 ; at body size, so in practice hue was doing all the work and the two cards were
 ; distinguished only by which corner they sat in. The letter is now its own amber glyph
-; at display size, and the ROLE word beside it carries the role colour. Widened 200→250
-; to pay for it; still clear of TopCentre, which the probe's DISJOINT check asserts.
+; at display size, and the ROLE word beside it carries the role colour.
+;
+; ⚠️ ZERO-WIDTH BOX ON PURPOSE — `offset_right == offset_left`. Reported on the first
+; restyle render: *"big negative space in the ingame hud"*. The card was a fixed 250px
+; and its content is a glyph plus a seven-letter word, so the right third was empty wood.
+; A Control's size is clamped UP to its content minimum, which is the one place that rule
+; is useful rather than a trap: a zero-width box hugs whatever is in it. TopRight does the
+; same with `grow_horizontal = 0` so it grows leftward from the right anchor instead of
+; off the screen.
+;
+; ⚠️ AND THAT IS WHY THE ROLE LABEL HAS NO `clip_text`. `clip_text` makes a Label report a
+; zero minimum width — correct inside a fixed card, fatal inside a hugging one, where it
+; would collapse the word to nothing. The two role strings are fixed constants of known
+; length, so they are allowed to size the card. Anything variable-length must not go in
+; here without giving the card a floor back.
 [node name="TopLeft" type="PanelContainer" parent="."]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 0
 offset_left = 16.0
 offset_top = 12.0
-offset_right = 266.0
-offset_bottom = 104.0
+offset_right = 16.0
+offset_bottom = 12.0
 mouse_filter = 2
 
 [node name="Row" type="HBoxContainer" parent="TopLeft"]
@@ -84,7 +84,6 @@ text = "A"
 
 [node name="VBoxContainer" type="VBoxContainer" parent="TopLeft/Row"]
 layout_mode = 2
-size_flags_horizontal = 3
 size_flags_vertical = 4
 theme_override_constants/separation = 4
 mouse_filter = 2
@@ -93,8 +92,6 @@ mouse_filter = 2
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
-clip_text = true
-text_overrun_behavior = 3
 text = "OFFENSE"
 
 [node name="TeamAPipsBox" type="HBoxContainer" parent="TopLeft/Row/VBoxContainer"]
@@ -128,10 +125,11 @@ layout_mode = 1
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -266.0
+offset_left = -16.0
 offset_top = 12.0
 offset_right = -16.0
-offset_bottom = 104.0
+offset_bottom = 12.0
+grow_horizontal = 0
 mouse_filter = 2
 
 [node name="Row" type="HBoxContainer" parent="TopRight"]
@@ -141,7 +139,6 @@ mouse_filter = 2
 
 [node name="VBoxContainer" type="VBoxContainer" parent="TopRight/Row"]
 layout_mode = 2
-size_flags_horizontal = 3
 size_flags_vertical = 4
 theme_override_constants/separation = 4
 mouse_filter = 2
@@ -151,8 +148,6 @@ unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 horizontal_alignment = 2
-clip_text = true
-text_overrun_behavior = 3
 text = "DEFENSE"
 
 [node name="TeamBPipsBox" type="HBoxContainer" parent="TopRight/Row/VBoxContainer"]
@@ -331,16 +326,18 @@ visible = false
 ; DEFENSE from the local unit's actual role, so it cannot disagree with the team cards
 ; along the top.
 ;
-; ⚠️ THE DARK PLATE IS NOT DECORATION, IT IS THE R-28 FIX AND THE FIRST RENDER PROVED
-; IT WAS NEEDED. Bottom-centre of an FPP screen is exactly where the viewmodel arms and
-; the held tsinelas are, and role-blue text sat straight on top of a full-brightness
-; orange arm — the worst contrast pairing available. On a plate the objective reads over
-; the arms, over asphalt and over sky alike.
+; ⚠️ NO PANEL BEHIND IT — TEXT ONLY, AND THAT IS THE SECOND ANSWER TO THIS PROBLEM.
+; The legibility problem is real: bottom-centre of an FPP screen is where the viewmodel
+; arms are, and role-blue on a full-brightness orange arm is the worst pairing on the
+; screen. The first fix was a wood plate, and it was rejected on sight — *"it kinda looks
+; ugly with that hud/ui, can u js do text there but stylized"*. Fair: two stacked boxes at
+; the bottom of the frame fought the 3D instead of sitting on it.
 ;
-; CenterContainer → PanelContainer so the plate HUGS the text. A plate on the
-; full-width label would draw a 1040px bar across the screen for three words.
-; (The plate's StyleBoxFlat is `StyleBoxFlat_ready_objective`, up with the other
-; sub-resources — every `[sub_resource]` has to precede the first `[node]` in a .tscn.)
+; So legibility now comes from a heavy INK OUTLINE on the glyphs instead of a box behind
+; them — set in `hud.gd::_apply_wood_skin()`, the same trick the screen-edge arrows use.
+; It reads over the arms, over asphalt and over sky, and it adds no rectangle.
+;
+; CenterContainer so the label hugs its own text and stays centred at any aspect.
 [node name="ReadyObjectiveRow" type="CenterContainer" parent="."]
 unique_name_in_owner = true
 layout_mode = 1
@@ -356,15 +353,10 @@ offset_bottom = -120.0
 mouse_filter = 2
 visible = false
 
-[node name="Plate" type="PanelContainer" parent="ReadyObjectiveRow"]
-layout_mode = 2
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_ready_objective")
-
-[node name="ReadyObjective" type="Label" parent="ReadyObjectiveRow/Plate"]
+[node name="ReadyObjective" type="Label" parent="ReadyObjectiveRow"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_font_sizes/font_size = 38
+theme_override_font_sizes/font_size = 44
 horizontal_alignment = 1
 vertical_alignment = 1
 text = "KNOCK THE LATA DOWN"
@@ -385,6 +377,7 @@ mouse_filter = 2
 visible = false
 
 [node name="CrosshairLabel" type="Label" parent="Crosshair"]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
