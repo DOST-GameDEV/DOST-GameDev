@@ -158,6 +158,53 @@ For any coding agent picking up this queue.
 **Only open items live here.** B-01 … B-66 are in [`Handoff.md`](Handoff.md); everything
 marked `[FIXED]` there is done and settled. New bugs take the next free number **in this file**.
 
+**B-141 · CHARACTER SELECT PUT THE FIGURE ON ONE FLAT NAVY FILL. [FIXED 2026-07-30]**
+
+Reported from play: *"im not sure if theres a background for chara selection or its just blue."* It was
+just blue. The backdrop node stack (`CharacterPreview` + `Scrim` + `ConfigPanel`) was all present, but
+the preview `Environment` was `background_mode = 1` (**BG_COLOR**) filling `#161F35`, and an opaque
+`SubViewport` means nothing placed behind it could ever have shown.
+
+**Fix:** `SubViewport.transparent_bg = true` + `background_mode = 0`, then a `Backdrop` TextureRect
+(vertical `GradientTexture2D`, PANEL-haze → INK floor) and a `BackdropGlow` (`FILL_RADIAL`, neutral
+PANEL at ≤0.30 alpha) as the first two children of the root. Textures, **no shader**. The gradient runs
+light-at-top so dark hair reads against the light end and pale shoes against the dark one; the tsinelas
+tab benefits most — brown-on-navy was the worst pairing on the screen.
+
+**Verified:** rendered and looked at, at both 16:9 and 21:9 — `ui_character_select{,_lata,_tsinelas}.png`.
+
+⚠️ **AND AS THE OVERLAY, which is how a player actually reaches it.** `MatchSetup.tscn` instances this
+scene as `%CharacterSelectPanel` over a **live 3D map render**, and the panel's opacity used to come from
+that flat `BG_COLOR`. New probe `tools/ui/charselect_overlay_shot.tscn` opens the panel through its own
+button and shoots all three tabs: the map does not show through. No existing probe covered this — they all
+load `CharacterSelect.tscn` standalone, where there is nothing behind it to leak.
+
+**B-142 · THE LAYOUT PROBE'S "SECOND RESOLUTION" RE-MEASURED THE FIRST ONE. [FIXED 2026-07-30]**
+
+`ui_layout_probe.gd` printed a `########## 1280 x 720 ##########` banner and then `viewport 1920x1080`
+with every rect identical to the 1080p pass, digit for digit. So "verified at a second resolution" — the
+claim in `Checklist.md` 10.5.1 — **was not true**, and 42 of the 42 assertions were one resolution twice.
+
+**Cause is not the resize.** `_apply_size()` works; `2560x1080` reports `viewport 2560x1080`. It is
+`project.godot`'s `stretch/mode="canvas_items"` + `stretch/aspect="expand"`: under `expand` the content
+rect follows the window's **aspect**, not its pixel count, and 1280x720 is the same 16:9 as the base — so
+the content rect is *obliged* to stay 1920x1080. 720p was a second window size dressed as a second layout
+case.
+
+**Worth knowing before picking presets:** `expand` only ever **grows** the content rect — 1440x1080 (4:3)
+lays out at `1920x1440`, taller, never narrower. No window can push a control off the **right** edge, and
+**16:9 is permanently the tightest case vertically**, which is why R-09's 7px `BackButton` overflow only
+ever appeared at 1080p.
+
+**Fix:** second preset → `2560x1080` (21:9), where the content rect genuinely widens and anything
+right-anchored or centred moves relative to the left-anchored panels — the drift the overlap assertion
+exists for. Plus a **`SAME CONTENT RECT` assertion**: a pass whose content rect equals an earlier pass's
+now **fails** instead of printing. **44 assertions pass** at 16:9 + 21:9.
+
+**Verified in both directions** — the assertion was proven to fire, not just to pass: the explicit-size
+argument now takes a comma list, and `-- "" 1920x1080,1280x720` reports
+`** SAME CONTENT RECT **` and `FAIL — 1 of 44`.
+
 **B-139 · THE AI HAD EIGHT DEFECTS THAT LOOKED LIKE BALANCE, AND THE HARNESS HAD A NINTH. [FIXED 2026-07-30 — `534fe36`, `d900209`]**
 
 Kept as one entry because they share one cause: nine runs of the fairness log read the aggregate columns

@@ -38,13 +38,18 @@ const SCREENS := [
 ## 2. **A SECOND RESOLUTION.** 1920x1080 is the design size and was the only one
 ##    anything had ever been checked at (`Checklist.md` 10.5.1's own caveat). A
 ##    container-driven layout is a claim until a different viewport agrees with it.
+##    ⚠️ The second preset was 1280x720, which under `stretch/aspect="expand"` lays
+##    out in the SAME content rect as the base and so re-measured the first pass —
+##    corrected to 21:9, and a `SAME CONTENT RECT` assertion now makes that class of
+##    self-deception fail instead of print. See `PRESETS`.
 ##
 ## It caught its first regression immediately: adding R-09's difficulty row pushed
 ## `BackButton` 7px off the bottom of the left column at 1080p.
 ##
-##     godot --path <ABS> tools/ui_layout_probe.tscn                 # 1080p then 720p
+##     godot --path <ABS> tools/ui_layout_probe.tscn                 # 16:9 then 21:9
 ##     godot --path <ABS> tools/ui_layout_probe.tscn -- <out-dir>/   # ...and write PNGs
 ##     godot --path <ABS> tools/ui_layout_probe.tscn -- "" 2560x1080 # one explicit size
+##     godot --path <ABS> tools/ui_layout_probe.tscn -- "" 1920x1080,1280x720  # a list
 
 ## Sibling groups that must never overlap each other, per screen file name. Empty or
 ## missing means "no pair to check on this screen" — the viewport test still runs.
@@ -58,7 +63,28 @@ const DISJOINT: Dictionary = {
 }
 
 ## The design size first, then the one that catches a layout which only works at it.
-const PRESETS: Array[Vector2i] = [Vector2i(1920, 1080), Vector2i(1280, 720)]
+##
+## ⚠️ CORRECTED 2026-07-30. The second preset was `1280x720` and it tested NOTHING:
+## every rect it printed was identical to the 1080p pass, digit for digit, and the
+## header said `viewport 1920x1080` under a `########## 1280 x 720 ##########` banner.
+##
+## The cause is NOT that `_apply_size()` fails — it demonstrably works, `2560x1080`
+## reports `viewport 2560x1080`. It is `project.godot`'s
+## `stretch/mode="canvas_items"` + `stretch/aspect="expand"`. Under `expand` the
+## content rect is derived from the window's ASPECT, not its pixel count, and 1280x720
+## is exactly 16:9 — the same aspect as the 1920x1080 base — so the content rect stays
+## 1920x1080 and every laid-out rect is obliged to be identical. 720p was a second
+## WINDOW SIZE dressed up as a second layout case.
+##
+## Worth knowing before picking a replacement: `expand` only ever GROWS the content
+## rect. 1440x1080 (4:3) reports `1920x1440` — taller, never narrower. So no window
+## can squeeze a control off the RIGHT edge, and 16:9 is permanently the tightest
+## case vertically, which is why R-09's 7px overflow only ever showed at 1080p.
+##
+## `2560x1080` (21:9) is therefore the preset that earns its runtime: the content rect
+## widens to 2560, so anything anchored right or centred MOVES relative to the
+## left-anchored panels, which is exactly the drift the overlap assertion exists for.
+const PRESETS: Array[Vector2i] = [Vector2i(1920, 1080), Vector2i(2560, 1080)]
 
 var _out := ""
 var _i := 0
@@ -68,12 +94,21 @@ var _fails := 0
 var _checks := 0
 var _sizes: Array[Vector2i] = []
 var _size_i := 0
+## The CONTENT rect each pass actually laid out in, one entry per size, so the run can
+## assert the passes differed instead of trusting the banner. See `PRESETS`.
+var _content_sizes: Array[Vector2] = []
 
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	_out = String(args[0]) if args.size() > 0 else ""
+	# Comma-separated, so an explicit run can pass more than one size — which is what
+	# proves the `SAME CONTENT RECT` assertion actually fires:
+	#   -- "" 1920x1080,1280x720   ->  FAIL, the two lay out identically
+	var specs := PackedStringArray()
 	if args.size() > 1:
-		var parts := String(args[1]).split("x")
+		specs = String(args[1]).split(",", false)
+	for spec in specs:
+		var parts := String(spec).strip_edges().split("x")
 		if parts.size() == 2:
 			_sizes.append(Vector2i(int(parts[0]), int(parts[1])))
 	if _sizes.is_empty():
@@ -143,6 +178,21 @@ const WATCHED := ["BackButton", "PrimaryButton", "StartButton", "ConfirmButton",
 func _report(tag: String) -> void:
 	var screen_size := Vector2(get_viewport().get_visible_rect().size)
 	print("[%s] viewport %.0fx%.0f" % [tag, screen_size.x, screen_size.y])
+	# ⚠️ THE ASSERTION THAT WOULD HAVE CAUGHT THE FAKE 720p PASS. A second preset only
+	# counts as a second layout case if the CONTENT rect changed; under
+	# `stretch/aspect="expand"` a same-aspect window leaves it untouched and every rect
+	# below is a copy of the previous pass. Checked once per size, on the first screen.
+	if _i == 0:
+		_checks += 1
+		if _content_sizes.has(screen_size):
+			_fails += 1
+			print("  ** SAME CONTENT RECT ** requested %s but laid out %.0fx%.0f again — "
+				% [str(_sizes[_size_i]), screen_size.x, screen_size.y]
+				+ "this pass re-measures the previous one. Pick a different ASPECT.")
+		else:
+			print("  content rect %.0fx%.0f is new — this pass measures something"
+				% [screen_size.x, screen_size.y])
+		_content_sizes.append(screen_size)
 	# The 3D framing, not just the 2D rects — "the subject is cropped" is a camera
 	# fact and none of the Control rects below can see it.
 	var preview := _screen.find_child("CharacterPreview", true, false) as CharacterPreview
