@@ -31,6 +31,7 @@ const READY_FLASH_DURATION: float = 0.2
 const CHARGE_SHADER_PARAM: StringName = &"charge_ratio"
 
 @onready var card: PanelContainer = %Card
+@onready var header_label: Label = %HeaderLabel
 @onready var class_label: Label = %ClassLabel
 @onready var detail_label: Label = %DetailLabel
 @onready var guard_dash_row: HBoxContainer = %GuardDashRow
@@ -103,8 +104,22 @@ func refresh() -> void:
 	# accent bar and the OFFENSE/DEFENSE word track role colour.
 	detail_label.text = "TEAM %s · %s" % [team_letter, "DEFENSE" if is_defense else "OFFENSE"]
 	var accent := UiTheme.DEFENSE if is_defense else UiTheme.OFFENSE
-	card.add_theme_stylebox_override("panel",
-		UiTheme.card_style(Color(UiTheme.INK.r, UiTheme.INK.g, UiTheme.INK.b, 0.55), Color(0, 0, 0, 0), accent))
+	# ⚠️ WOOD, MATCHING THE TEAM CARDS AND THE MENU — 2026-07-30. This was a navy
+	# translucent `card_style` with a role-coloured left bar, which is the treatment the
+	# whole HUD used before the wood restyle (`hud.gd::_apply_wood_skin`). The report was
+	# that the mid-game UI did not look like the menu and lobby, and this card is the one
+	# the player's eye returns to most, so leaving it on the old face would have kept
+	# exactly the mismatch that was complained about. Role still carries the border and
+	# the OFFENSE/DEFENSE word; team is still the letter, inside `detail_label`.
+	var sb := UiTheme.wood_style(UiTheme.WOOD_DEEP, accent)
+	sb.content_margin_left = 14.0
+	sb.content_margin_right = 14.0
+	sb.content_margin_top = 8.0
+	sb.content_margin_bottom = 8.0
+	card.add_theme_stylebox_override("panel", sb)
+	header_label.add_theme_color_override("font_color", UiTheme.AMBER)
+	class_label.add_theme_color_override("font_color", UiTheme.CREAM)
+	detail_label.add_theme_color_override("font_color", accent)
 	# Q-6: Persons have no Guard/Dash (their assist slot is Tag/Throw) — an
 	# always-empty bar would read as a bug, not as "not applicable to you".
 	guard_dash_row.visible = not _character.is_person

@@ -22,6 +22,9 @@ const EDGE_MARGIN: float = 40.0
 ## whatever happens to be at its feet — same reasoning IMPACT_PARTICLE_HEIGHT
 ## already uses in character_visual.gd.
 const TARGET_HEIGHT_OFFSET: Vector3 = Vector3(0, 0.5, 0)
+## INK outline on the arrow glyphs — see `_ready`. Heavy enough to survive against a
+## bright sky, which is the worst case for a HIGHLIGHT-yellow arrow.
+const GLYPH_OUTLINE: int = 6
 
 @onready var teammate_arrow: Control = %TeammateArrow
 @onready var teammate_label: Label = %TeammateLabel
@@ -33,8 +36,26 @@ func _ready() -> void:
 	can_label.text = "▲"
 	teammate_label.modulate = UiTheme.INK
 	can_label.modulate = UiTheme.HIGHLIGHT
+	# R-28 — AN OUTLINE, because these arrows live on the screen EDGE, which is where
+	# this game's backgrounds are least predictable: sky one frame, asphalt the next, a
+	# lit facade the one after. A flat glyph is legible against roughly half of that. An
+	# INK outline makes it legible against all of it, and costs one theme constant.
+	for label in [teammate_label, can_label]:
+		label.add_theme_constant_override("outline_size", GLYPH_OUTLINE)
+		label.add_theme_color_override("font_outline_color", UiTheme.INK)
 	teammate_arrow.visible = false
 	can_arrow.visible = false
+
+## R-28 — the objective arrow takes the LOCAL PLAYER'S ROLE COLOUR. The can is the thing
+## the whole round is about for both sides, so the arrow pointing at it should read as
+## "this is your job", in the colour the rest of the HUD is already using for that.
+## Called from `hud.gd::_refresh_role_accents()` on the same hooks the team cards use, so
+## it can never disagree with them.
+##
+## ⚠️ The TEAMMATE arrow deliberately does NOT take it. Both arrows in one colour would
+## make them indistinguishable at a glance, which is the opposite of the point.
+func set_can_arrow_colour(colour: Color) -> void:
+	can_label.modulate = colour
 
 ## Called once a frame by hud.gd. `local_character` may be null before it
 ## resolves, or on a peer with no match loaded — both just hide everything.
