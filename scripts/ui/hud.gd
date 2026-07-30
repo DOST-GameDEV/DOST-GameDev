@@ -20,6 +20,10 @@ class_name Hud
 @onready var downed_flash: ColorRect = %DownedFlash
 @onready var toast_label: Label = %ToastLabel
 @onready var ready_prompt: Label = %ReadyPrompt
+@onready var ready_objective: Label = %ReadyObjective
+## The plate the objective sits on — visibility is toggled here, not on the Label, so
+## the backing goes with it. See the node's comment in HUD.tscn for why it exists.
+@onready var ready_objective_row: CenterContainer = %ReadyObjectiveRow
 @onready var countdown_label: Label = %CountdownLabel
 @onready var you_card: YouCard = %YouCard
 @onready var crosshair: Control = %Crosshair
@@ -158,10 +162,44 @@ func show_toast(text: String, duration: float = 1.5) -> void:
 ## 2026-07-30: `text` added for the networked ready phase, which has something
 ## the solo one does not — other people to wait for. Defaults to "" so every
 ## existing solo call site keeps the scene's own authored line.
+## 2026-07-30, R-27(b): ALSO RAISES THE ROLE OBJECTIVE. The ready phase is the last
+## screen before the round and it said only how to start one, never what the player was
+## about to be doing in it — dead air at exactly the moment somebody who has just read
+## the tutorial needs it confirmed.
+##
+## ⚠️ THE OBJECTIVE IS DERIVED HERE, NOT PASSED IN. `main.gd` owns all four call sites
+## and is not this lane's file, so nothing new is threaded through them: the role is
+## already reachable from inside the HUD — the local character via `you_card`, and which
+## side holds the can via `MatchManager` — and that is the same pair
+## `set_round_display()` and `_local_team_won()` already read. Derived rather than
+## remembered also means it cannot drift out of step with the team cards above it.
 func show_ready_prompt(active: bool, text: String = "") -> void:
 	if text != "":
 		ready_prompt.text = text
 	ready_prompt.visible = active
+	_refresh_ready_objective(active)
+
+## Blank when the role cannot be established — a late-joining peer can reach the ready
+## phase before its own character has spawned, and NO objective is a better failure than
+## confidently telling somebody to guard the lata they are about to throw a slipper at.
+## (`_local_team_won()` guesses in the same situation on purpose; it is choosing between
+## two fanfares and has to pick one. This is text, so it can simply say nothing.)
+func _refresh_ready_objective(active: bool) -> void:
+	if not active:
+		ready_objective_row.visible = false
+		return
+	var local_char := you_card.get_local_character()
+	if local_char == null or not is_instance_valid(local_char):
+		ready_objective_row.visible = false
+		return
+	var defending: bool = (local_char.team == 0) == MatchManager.team_a_is_can
+	# Two sentences for defence because it IS two jobs, and players who only hear
+	# "guard the lata" stand on the base and never tag the thrower.
+	ready_objective.text = "GUARD THE LATA.  TAG THE THROWER." if defending \
+		else "KNOCK THE LATA DOWN"
+	ready_objective.add_theme_color_override("font_color",
+		UiTheme.DEFENSE if defending else UiTheme.OFFENSE)
+	ready_objective_row.visible = true
 
 ## 2026-07-28 — "add a 3 2 1 timer before each match starts too, think about
 ## how to make it look good." One call per tick ("3", "2", "1", "GO!"); the
