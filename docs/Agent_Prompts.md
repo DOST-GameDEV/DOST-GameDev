@@ -175,6 +175,18 @@ blocked on it), R-23's real four-machine Wi-Fi run, R-31's export on the judging
 >
 > Write the UNVERIFIED list so it is **actionable for the human** — what to look at
 > and what you expect them to see — not as a list of disclaimers.
+>
+> ### LOG IT. THE HUMAN'S FEEDBACK **IS** A TEST RESULT.
+>
+> When they say "the trees clip into the houses" or "the mix is too loud", **they just
+> played it.** That is a bug report from a real playtest — record it as one.
+>
+> Before you finish, in the SAME commit as the fix:
+> * **`Handoff.md` §3** — add the bug with the next free `B-` number, or mark the
+>   existing one `[FIXED]` with what the fix was.
+> * **`Checklist.md`** — tick the box, or update the item's remaining work.
+> * **`Agent_Prompts.md` LANE STATUS BOARD** — your lane's status + evidence.
+> * Anything you made untrue elsewhere in `docs/` — grep and fix all of it.
 
 
 
@@ -478,6 +490,18 @@ the work.
 >
 > Write the UNVERIFIED list so it is **actionable for the human** — what to look at
 > and what you expect them to see — not as a list of disclaimers.
+>
+> ### LOG IT. THE HUMAN'S FEEDBACK **IS** A TEST RESULT.
+>
+> When they say "the trees clip into the houses" or "the mix is too loud", **they just
+> played it.** That is a bug report from a real playtest — record it as one.
+>
+> Before you finish, in the SAME commit as the fix:
+> * **`Handoff.md` §3** — add the bug with the next free `B-` number, or mark the
+>   existing one `[FIXED]` with what the fix was.
+> * **`Checklist.md`** — tick the box, or update the item's remaining work.
+> * **`Agent_Prompts.md` LANE STATUS BOARD** — your lane's status + evidence.
+> * Anything you made untrue elsewhere in `docs/` — grep and fix all of it.
 
 
 
@@ -721,6 +745,18 @@ confirm.
 >
 > Write the UNVERIFIED list so it is **actionable for the human** — what to look at
 > and what you expect them to see — not as a list of disclaimers.
+>
+> ### LOG IT. THE HUMAN'S FEEDBACK **IS** A TEST RESULT.
+>
+> When they say "the trees clip into the houses" or "the mix is too loud", **they just
+> played it.** That is a bug report from a real playtest — record it as one.
+>
+> Before you finish, in the SAME commit as the fix:
+> * **`Handoff.md` §3** — add the bug with the next free `B-` number, or mark the
+>   existing one `[FIXED]` with what the fix was.
+> * **`Checklist.md`** — tick the box, or update the item's remaining work.
+> * **`Agent_Prompts.md` LANE STATUS BOARD** — your lane's status + evidence.
+> * Anything you made untrue elsewhere in `docs/` — grep and fix all of it.
 
 
 
@@ -1016,6 +1052,18 @@ of what remains UNVERIFIED — especially anything only a human looking at it co
 >
 > Write the UNVERIFIED list so it is **actionable for the human** — what to look at
 > and what you expect them to see — not as a list of disclaimers.
+>
+> ### LOG IT. THE HUMAN'S FEEDBACK **IS** A TEST RESULT.
+>
+> When they say "the trees clip into the houses" or "the mix is too loud", **they just
+> played it.** That is a bug report from a real playtest — record it as one.
+>
+> Before you finish, in the SAME commit as the fix:
+> * **`Handoff.md` §3** — add the bug with the next free `B-` number, or mark the
+>   existing one `[FIXED]` with what the fix was.
+> * **`Checklist.md`** — tick the box, or update the item's remaining work.
+> * **`Agent_Prompts.md` LANE STATUS BOARD** — your lane's status + evidence.
+> * Anything you made untrue elsewhere in `docs/` — grep and fix all of it.
 
 
 ```
@@ -1365,6 +1413,18 @@ remains UNVERIFIED.
 >
 > Write the UNVERIFIED list so it is **actionable for the human** — what to look at
 > and what you expect them to see — not as a list of disclaimers.
+>
+> ### LOG IT. THE HUMAN'S FEEDBACK **IS** A TEST RESULT.
+>
+> When they say "the trees clip into the houses" or "the mix is too loud", **they just
+> played it.** That is a bug report from a real playtest — record it as one.
+>
+> Before you finish, in the SAME commit as the fix:
+> * **`Handoff.md` §3** — add the bug with the next free `B-` number, or mark the
+>   existing one `[FIXED]` with what the fix was.
+> * **`Checklist.md`** — tick the box, or update the item's remaining work.
+> * **`Agent_Prompts.md` LANE STATUS BOARD** — your lane's status + evidence.
+> * Anything you made untrue elsewhere in `docs/` — grep and fix all of it.
 
 
 
@@ -1612,6 +1672,18 @@ until they have, THE FALLBACK DECISION IS STILL OPEN and the schedule needs to k
 >
 > Write the UNVERIFIED list so it is **actionable for the human** — what to look at
 > and what you expect them to see — not as a list of disclaimers.
+>
+> ### LOG IT. THE HUMAN'S FEEDBACK **IS** A TEST RESULT.
+>
+> When they say "the trees clip into the houses" or "the mix is too loud", **they just
+> played it.** That is a bug report from a real playtest — record it as one.
+>
+> Before you finish, in the SAME commit as the fix:
+> * **`Handoff.md` §3** — add the bug with the next free `B-` number, or mark the
+>   existing one `[FIXED]` with what the fix was.
+> * **`Checklist.md`** — tick the box, or update the item's remaining work.
+> * **`Agent_Prompts.md` LANE STATUS BOARD** — your lane's status + evidence.
+> * Anything you made untrue elsewhere in `docs/` — grep and fix all of it.
 
 
 
@@ -1871,6 +1943,18 @@ what remains UNVERIFIED — starting with the fact that nobody has clicked it, u
 >
 > Write the UNVERIFIED list so it is **actionable for the human** — what to look at
 > and what you expect them to see — not as a list of disclaimers.
+>
+> ### LOG IT. THE HUMAN'S FEEDBACK **IS** A TEST RESULT.
+>
+> When they say "the trees clip into the houses" or "the mix is too loud", **they just
+> played it.** That is a bug report from a real playtest — record it as one.
+>
+> Before you finish, in the SAME commit as the fix:
+> * **`Handoff.md` §3** — add the bug with the next free `B-` number, or mark the
+>   existing one `[FIXED]` with what the fix was.
+> * **`Checklist.md`** — tick the box, or update the item's remaining work.
+> * **`Agent_Prompts.md` LANE STATUS BOARD** — your lane's status + evidence.
+> * Anything you made untrue elsewhere in `docs/` — grep and fix all of it.
 
 
 
@@ -2086,6 +2170,18 @@ explicit list of what remains UNVERIFIED — above all, whether a human has actu
 >
 > Write the UNVERIFIED list so it is **actionable for the human** — what to look at
 > and what you expect them to see — not as a list of disclaimers.
+>
+> ### LOG IT. THE HUMAN'S FEEDBACK **IS** A TEST RESULT.
+>
+> When they say "the trees clip into the houses" or "the mix is too loud", **they just
+> played it.** That is a bug report from a real playtest — record it as one.
+>
+> Before you finish, in the SAME commit as the fix:
+> * **`Handoff.md` §3** — add the bug with the next free `B-` number, or mark the
+>   existing one `[FIXED]` with what the fix was.
+> * **`Checklist.md`** — tick the box, or update the item's remaining work.
+> * **`Agent_Prompts.md` LANE STATUS BOARD** — your lane's status + evidence.
+> * Anything you made untrue elsewhere in `docs/` — grep and fix all of it.
 
 
 
@@ -2270,6 +2366,18 @@ current honest list of everything verified only by a probe.
 >
 > Write the UNVERIFIED list so it is **actionable for the human** — what to look at
 > and what you expect them to see — not as a list of disclaimers.
+>
+> ### LOG IT. THE HUMAN'S FEEDBACK **IS** A TEST RESULT.
+>
+> When they say "the trees clip into the houses" or "the mix is too loud", **they just
+> played it.** That is a bug report from a real playtest — record it as one.
+>
+> Before you finish, in the SAME commit as the fix:
+> * **`Handoff.md` §3** — add the bug with the next free `B-` number, or mark the
+>   existing one `[FIXED]` with what the fix was.
+> * **`Checklist.md`** — tick the box, or update the item's remaining work.
+> * **`Agent_Prompts.md` LANE STATUS BOARD** — your lane's status + evidence.
+> * Anything you made untrue elsewhere in `docs/` — grep and fix all of it.
 
 
 
@@ -2424,6 +2532,18 @@ decided.
 >
 > Write the UNVERIFIED list so it is **actionable for the human** — what to look at
 > and what you expect them to see — not as a list of disclaimers.
+>
+> ### LOG IT. THE HUMAN'S FEEDBACK **IS** A TEST RESULT.
+>
+> When they say "the trees clip into the houses" or "the mix is too loud", **they just
+> played it.** That is a bug report from a real playtest — record it as one.
+>
+> Before you finish, in the SAME commit as the fix:
+> * **`Handoff.md` §3** — add the bug with the next free `B-` number, or mark the
+>   existing one `[FIXED]` with what the fix was.
+> * **`Checklist.md`** — tick the box, or update the item's remaining work.
+> * **`Agent_Prompts.md` LANE STATUS BOARD** — your lane's status + evidence.
+> * Anything you made untrue elsewhere in `docs/` — grep and fix all of it.
 
 
 
