@@ -952,7 +952,9 @@ func _physics_process(delta: float) -> void:
 		_open_bump_window()
 		# Cosmetic only. CharacterVisual decides what a bump LOOKS like and picks
 		# a clip the model actually has; this file just says what happened.
-		_visual.play_action("bump")
+		# ⚠️ BROADCAST, not local — see broadcast_visual_action(). A swing nobody else
+		# can see is not a swing anyone can react to.
+		broadcast_visual_action("bump")
 		# Tell the host our bump window just opened, since the host is the one
 		# resolving Hitbox/Hurtbox overlaps now (see hitbox.gd) and it can't
 		# see this peer's local-only timer any other way. No-op if we ARE the
@@ -1146,7 +1148,10 @@ func _physics_process(delta: float) -> void:
 		# the host at all, so every special/Tag/Throw was a no-op for clients).
 		ability.activate(self)
 		# The grab/throw arm swing. Cosmetic, same contract as the bump above.
-		_visual.play_action("throw")
+		# ⚠️ BROADCAST. For a Person this press is the TAG, and its wind-up
+		# (person_action.gd::TAG_WINDUP) is the attacker's entire reaction window — a
+		# lunge only the tagger can see gives them nothing to react to.
+		broadcast_visual_action("throw")
 		if NetworkManager.is_networked() and not NetworkManager.is_host():
 			_rpc_notify_ability_activate.rpc_id(1)
 
@@ -1939,6 +1944,35 @@ func get_hand_attachment() -> Node3D:
 ## a clip the model actually has.
 func play_visual_action(kind: String) -> void:
 	_visual.play_action(kind)
+
+## ⚠️⚠️ THE SAME CLIP, BUT ON EVERY PEER — AND WITHOUT THIS, EVERY TELEGRAPH IN THE GAME
+## IS INVISIBLE TO THE PERSON IT IS A TELEGRAPH FOR.
+##
+## `play_visual_action()` above is called from input handling, and input handling runs
+## only on the peer that controls the character (this file's own authority gate). So a
+## bump swing, an ability lunge and a throw follow-through were all played on exactly one
+## machine: the one belonging to the player who already knew they had pressed the button.
+##
+## That is fine for a follow-through and fatal for a WIND-UP. The Tag's whole rework
+## (`person_action.gd`) rests on the attacker being able to see the lunge start and react
+## inside `TAG_WINDUP`; a telegraph only the tagger can see is not a telegraph. It is the
+## same defect the human reported for the charge wind-up ("everyone else should see its
+## windup happening") in a second place, and `carrier.gd`'s own broadcast note is the
+## other half of the same fix.
+##
+## Modelled on `_rpc_play_hit_vfx`, including "any_peer" for the reason documented there:
+## the sender is whoever owns the character, which is not necessarily this node's
+## authority as far as a given receiver is concerned, and an "authority" RPC would be
+## silently dropped. Cosmetic only — no gameplay state travels on this.
+func broadcast_visual_action(kind: String) -> void:
+	if NetworkManager.is_networked():
+		_rpc_visual_action.rpc(kind)
+	else:
+		play_visual_action(kind)
+
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_visual_action(kind: String) -> void:
+	play_visual_action(kind)
 
 ## 4.2 — tells this unit's Visual its body position/yaw was just TELEPORTED
 ## (a round reset, a KillPlane respawn) rather than walked, so remote-peer
