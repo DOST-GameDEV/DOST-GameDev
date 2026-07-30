@@ -2342,6 +2342,9 @@ the real replicated signal off `Main.tscn` and prints the word each case resolve
 > **0.34 m → 0.41 m**, which trips `aim_probe`'s absolute 0.40 m mark on the two 24-metre
 > rows. Flat and lob both still connect (`phys_probe -- band`: flat 3/3 to 0.30 m offset,
 > lob 3/3 to 0.45 m). **Open for 🥊 PHYS as B-144 — deliberately not "fixed" here.**
+>
+> ✅ **B-144 CLOSED 2026-07-30 by 🌐 NET, and it was the AUDIT'S GEOMETRY, not the solve.
+> `PASS_WITHIN` is untouched and still absolute at 0.40 m.** See the B-144 block below.
 
 **2026-07-29.** User report: *"the height of the trajectory when throwing the
 slippers is too low. make it so that when you throw it, the height trajectory
@@ -3862,6 +3865,67 @@ documented command, **or** remove the worktree before the acceptance run. Also n
 is **8 gameplay files, not 5**; the extra ones are `network_manager.gd`, `carriable.gd` (a false
 positive on the words *"debug cruft"*) and **`character_base.gd` with 5 hits — a shared-lock
 file, so R-30 needs a mutex its plan does not mention.**
+
+#### B-144 · CLOSED, 2026-07-30 — 🌐 NET. `aim_probe -- range`, then the default audit
+
+**The 0.41 m was never aim error. The audit was aiming at points no thrown slipper can
+occupy, at a range no throw in this game travels.** Two independent faults, both in the
+probe's geometry, and the range question was answered first because it decides the rest.
+
+**THE RANGE QUESTION.** `PITCHES` aimed at whatever a **40 m** ray hit, which at +0.0 and
++10.0 is the arena wall ~24 m out — against a throwing line at z = -6.0, i.e. **six
+metres**. Those two rows were not even like-for-like with their own history: the aim point
+MOVED **23.42 → 23.89 m** when the launch origin was raised to the sight line, because a
+higher eye raycasts further before it meets the wall. The 0.34 → 0.41 "regression" compared
+two different distances.
+
+**THE SOLVE, MEASURED IN FREE SPACE** (`-- range`: aim point pinned at a chosen HORIZONTAL
+range along the sight line, pitch held, so range is the only thing that varies down a
+column; underground and wall-occluded cells excluded rather than scored):
+
+| pitch | 3 m | 6 m | 9 m | 12 m | 15 m | 18 m | 21 m |
+|---|---|---|---|---|---|---|---|
+| **+0.0** | 0.183 | 0.205 | 0.200 | 0.156 | 0.089 | 0.212 | 0.146 |
+| **-10.0** | 0.161 | 0.050 | under | under | under | under | under |
+| **-20.0** | 0.090 | under | under | under | under | under | under |
+| **+10.0** | 0.113 | 0.039 | 0.160 | 0.073 | 0.092 | 0.197 | 0.224 |
+
+**Worst at or inside 10 m: 0.205 m. Worst out to 21 m: 0.224 m.** No range dependence
+left, half the pass mark everywhere. ⚠️ **The miss does not reproduce inside ~10 m, so it
+is not a solve bug** — and `character_base.gd` was never touched.
+
+⚠️ **THE OCCLUSION CHECK IS LOAD-BEARING AND THE FIRST CUT OF THAT GRID DID NOT HAVE IT.**
+It put a 24 m target ~0.5 m PAST the wall at pitch 0 and duly reported **0.640 m** of
+"error" for a slipper that had simply stopped where the arena does. That row is the same
+artefact as the bug under investigation, reproduced by accident — which is what identified
+fault 2.
+
+**FAULT 2 — A SLIPPER CANNOT OCCUPY A POINT ON A SURFACE.** The aim point was the raycast
+hit, i.e. a point ON the floor or ON the wall. The thrown tsinelas is a capsule with a real
+body (**radius 0.20, height 0.40**, read off the live shape), and `closest approach`
+measures its ORIGIN — which stops one body radius short of any surface, forever, on a
+perfectly aimed throw. **Every row in the audit carried that offset as fake aim error**,
+which is why the short rows all sat at 0.28–0.38 against a 0.40 mark with no headroom.
+`PASS_WITHIN` is justified by the tightest shipped `hit_radius` — a question about hitting
+a CHARACTER in open space — and was being applied to a number that is not aim error.
+
+**FIX (in `tools/aim_probe.gd` only):** cap the audit ray at `AUDIT_MAX_RANGE` **12.0 m**
+(twice the throwing line, so a genuinely long shot is still covered and a shot into the far
+wall is not), and stand the aim point off any surface it does hit by the thrown body's own
+half-extent along the hit normal, read from the live `CollisionShape3D`.
+
+| | before | after |
+|---|---|---|
+| +0.0 | 23.51 m → 0.21 | **11.85 m → 0.16** |
+| -10.0 | 6.95 m → 0.28 | 6.95 m → **0.05** |
+| -20.0 | 3.30 m → 0.35 | 3.30 m → **0.06** |
+| -30.0 | 2.04 m → 0.34 | 2.04 m → **0.02** |
+| +10.0 | 23.42 m → 0.23 | **11.67 m → 0.20** |
+| **worst** | **0.35** (0.41 on the merge build) | **0.20** |
+
+The three surface rows collapsing from 0.28–0.35 to 0.02–0.06 is the confirmation that the
+residual **was** the slipper's own body: the aim was always this good. Deterministic across
+three runs, **exit 0**, so the exit-code gate is green. Sag unchanged (0.013 m).
 
 #### NET-5 · ⚠️ NOT THIS LANE'S FILE — `ai_controller.gd`, R-06 leg 3 and the lob constant
 

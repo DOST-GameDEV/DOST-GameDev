@@ -24,6 +24,43 @@ const PITCHES: Array[float] = [0.0, -10.0, -20.0, -30.0, 10.0]
 ## Pass mark, in metres. The tightest shipped `hit_radius` is 0.30 (flick), so a
 ## trajectory inside this genuinely hits what was pointed at.
 const PASS_WITHIN: float = 0.40
+
+## ---------------------------------------------------------------------------
+## B-144 · THE TWO GEOMETRY FAULTS THAT WERE BEING SCORED AS AIM ERROR.
+## Measured with `-- range` (below); both fixes are the aim point, never the solve.
+##
+## ⚠️ 1. THE RAY RAN 40 m AND THE ARENA IS NOT THAT BIG. At +0.0 and +10.0 pitch
+## it met a wall ~24 m out, so two of five rows audited a shot nobody in this game
+## takes: the throwing line is z = -6.0, about six metres. Worse, those two rows
+## were not even stable — the aim point MOVED 23.42 -> 23.89 m when the launch
+## origin was raised to the sight line, because a higher eye raycasts further
+## before it meets the wall, so the "before" and "after" of that merge were
+## measured at different ranges and the 0.34 -> 0.41 regression compared two
+## different questions.
+##
+## ⚠️ 2. A SLIPPER CANNOT OCCUPY A POINT ON A SURFACE, AND EVERY ROW AIMED AT ONE.
+## The aim point was the raycast hit, i.e. a point ON the floor or ON the wall.
+## The thrown tsinelas is a capsule with a real body, so its ORIGIN — which is
+## what `closest approach` measures — stops one body radius short of any surface
+## it flies into, forever, on a perfectly aimed throw. That offset is not aim
+## error and `PASS_WITHIN` is not scaled for it: the mark is justified by the
+## tightest shipped `hit_radius`, which is a question about hitting a CHARACTER
+## in open space.
+##
+## What the solve actually does, aim points pinned in free space (`-- range`,
+## 4 pitches x 7 ranges, wall-occluded and underground cells excluded):
+##
+##   worst at or inside 10 m : 0.205 m      worst out to 21 m : 0.224 m
+##
+## i.e. accurate to a fifth of a metre everywhere, with no range dependence left.
+## The failing 0.41 m was the audit measuring the slipper's own body against the
+## arena wall at 24 m. `PASS_WITHIN` is unchanged and stays absolute.
+## ---------------------------------------------------------------------------
+
+## How far out the audit is allowed to look for a target, in metres. Twice the
+## throwing line's own six, so a genuinely long shot is still covered and a shot
+## into the far wall is not.
+const AUDIT_MAX_RANGE: float = 12.0
 ## Pass mark for how far the flight may hang below the eye->crosshair line
 ## WITHIN THE FIRST `SAG_WINDOW` METRES.
 ##
@@ -52,9 +89,26 @@ func _ready() -> void:
 		if String(arg) == "net":
 			await _run_net()
 			return
+		if String(arg) == "range":
+			await _run_range()
+			return
 	await _run_local()
 
-func _run_local() -> void:
+## The closest a thrown tsinelas's ORIGIN can get to a flat surface, in metres —
+## its own body capsule's largest half-extent, read off the live shape rather
+## than restated from `character_base.gd::_COLLISION_BY_ROLE`. Measured 0.20 on
+## the shipped tsinelas (radius 0.20, height 0.40).
+func _slipper_clearance() -> float:
+	var shape := (_slipper.get_node_or_null("CollisionShape3D") as CollisionShape3D)
+	var capsule := shape.shape as CapsuleShape3D if shape != null else null
+	if capsule == null:
+		return 0.0
+	return maxf(capsule.radius, capsule.height * 0.5)
+
+## Brings up a local match and hands back the attacker's rig with both bots
+## silenced. Shared by `_run_local()` and `_run_range()` so the two modes cannot
+## drift into measuring different set-ups.
+func _local_setup() -> CameraRig:
 	_main = load("res://scenes/main/Main.tscn").instantiate()
 	add_child(_main)
 	await get_tree().create_timer(1.0).timeout
@@ -68,8 +122,7 @@ func _run_local() -> void:
 			_slipper = ch
 	if _attacker == null or _slipper == null:
 		print("AIM: could not find attacker/slipper")
-		get_tree().quit(1)
-		return
+		return null
 	# The bot would otherwise fight the probe for the same slipper.
 	if _attacker.ai_controller != null:
 		_attacker.ai_controller.set_enabled(false)
@@ -77,6 +130,13 @@ func _run_local() -> void:
 		_slipper.ai_controller.set_enabled(false)
 	var rig := _attacker.get_node("CameraRig") as CameraRig
 	rig.set_active(true)
+	return rig
+
+func _run_local() -> void:
+	var rig := await _local_setup()
+	if rig == null:
+		get_tree().quit(1)
+		return
 	var camera := rig.fpp_camera as Camera3D
 	var carriable := _slipper.get_node("Carriable") as Carriable
 
@@ -95,11 +155,17 @@ func _run_local() -> void:
 
 		var aim := -rig.get_aim_basis().z
 		var space := _attacker.get_world_3d().direct_space_state
-		var query := PhysicsRayQueryParameters3D.create(
-			camera.global_position, camera.global_position + aim * 40.0)
+		var far := camera.global_position + aim * AUDIT_MAX_RANGE
+		var query := PhysicsRayQueryParameters3D.create(camera.global_position, far)
 		query.exclude = [_attacker.get_rid(), _slipper.get_rid()]
 		var hit := space.intersect_ray(query)
-		var aim_point: Vector3 = hit.get("position", camera.global_position + aim * 40.0)
+		var aim_point: Vector3 = hit.get("position", far)
+		# B-144, fault 2 — see the block at the top. Stand the aim point off the
+		# surface by the thrown body's own radius so it is a point the slipper's
+		# ORIGIN can actually reach. Read off the live shape, never restated.
+		if not hit.is_empty():
+			var normal: Vector3 = hit.get("normal", Vector3.UP)
+			aim_point += normal * _slipper_clearance()
 
 		# The production launch origin: the sight line, not the slipper's own
 		# position — see carrier.gd::_throw_origin(). This probe exists to measure
@@ -123,6 +189,118 @@ func _run_local() -> void:
 			"sag": max_sag,
 		})
 	_report()
+	get_tree().quit(0)
+
+## ---------------------------------------------------------------------------
+## B-144 · IS THE 0.41 m A SOLVE ERROR OR AN ARTEFACT OF THE AUDIT'S GEOMETRY?
+## `godot --path . tools/aim_probe.tscn -- range`
+##
+## ⚠️ THE DEFAULT AUDIT'S ROWS ARE NOT LIKE-FOR-LIKE AND CANNOT ANSWER THIS.
+## It aims at WHATEVER THE RAY HITS, so pitch and range move together and the
+## range is not even stable between builds: +0.0 and +10.0 both land on a wall
+## ~24 m out, and the aim point itself moved 23.42 -> 23.89 m when the launch
+## origin was raised, because a higher eye raycasts further before it meets the
+## wall. Two rows that differ in BOTH variables cannot attribute an error to
+## either. This mode pins the aim point at a CHOSEN horizontal range along the
+## same sight line, so range is the only thing that varies down a column.
+##
+## The band that matters is gameplay range: the throwing line is z = -6.0, i.e.
+## about six metres of stand-off, and `phys_probe -- band` is flat 3/3 on the can
+## out to a 0.30 m offset there.
+const RANGE_PITCHES: Array[float] = [0.0, -10.0, -20.0, 10.0]
+const RANGES: Array[float] = [3.0, 6.0, 9.0, 12.0, 15.0, 18.0, 21.0]
+## Aim points below this world height are not thrown at — the sight line is
+## already under the floor there, so the row would measure nothing.
+const RANGE_MIN_AIM_Y: float = 0.10
+
+func _run_range() -> void:
+	var rig := await _local_setup()
+	if rig == null:
+		get_tree().quit(1)
+		return
+	var camera := rig.fpp_camera as Camera3D
+	var carriable := _slipper.get_node("Carriable") as Carriable
+	var grid: Array[Dictionary] = []
+
+	print("attacker %s   eye height %.2f above body origin"
+		% [_attacker.global_position, camera.global_position.y - _attacker.global_position.y])
+
+	for pitch in RANGE_PITCHES:
+		for want_range in RANGES:
+			carriable.host_land()
+			_slipper.global_position = _attacker.global_position + Vector3(0.4, 0.3, 0)
+			await get_tree().physics_frame
+			carriable.host_grab(_attacker)
+			await get_tree().physics_frame
+			await get_tree().physics_frame
+			rig.set("_pitch_deg", pitch)
+			await get_tree().physics_frame
+
+			var aim := -rig.get_aim_basis().z
+			var eye := camera.global_position
+			# HORIZONTAL range, so a row means the same distance at every pitch.
+			var flat := Vector2(aim.x, aim.z).length()
+			if flat < 0.01:
+				continue
+			var aim_point := eye + aim * (want_range / flat)
+			if aim_point.y < RANGE_MIN_AIM_Y:
+				grid.append({"pitch": pitch, "range": want_range, "closest": -1.0, "y": aim_point.y})
+				continue
+			# ⚠️ AN AIM POINT INSIDE THE WALL SCORES THE WALL, NOT THE SOLVE. The first
+			# cut of this grid did not check, put a 24 m target ~0.5 m past the arena
+			# wall at pitch 0, and duly reported 0.640 m of "error" for a slipper that
+			# had simply stopped where the arena does.
+			var space := _attacker.get_world_3d().direct_space_state
+			var query := PhysicsRayQueryParameters3D.create(eye, aim_point)
+			query.exclude = [_attacker.get_rid(), _slipper.get_rid()]
+			var blocked := space.intersect_ray(query)
+			if not blocked.is_empty():
+				grid.append({"pitch": pitch, "range": want_range, "closest": -2.0, "y": aim_point.y})
+				continue
+			var origin := eye + aim * Carrier.MUZZLE_FORWARD
+			carriable.host_throw(origin, aim_point, 1.0)
+			var closest := 9999.0
+			for _i in 400:
+				await get_tree().physics_frame
+				closest = minf(closest, _slipper.global_position.distance_to(aim_point))
+				if carriable.state != Carriable.CarryState.FLYING:
+					break
+			grid.append({"pitch": pitch, "range": want_range, "closest": closest, "y": aim_point.y})
+			print("  row pitch %+5.1f range %5.1f m  aim y %5.2f  closest %6.3f m"
+				% [pitch, want_range, aim_point.y, closest])
+
+	print("\n=== B-144 · CLOSEST APPROACH vs RANGE, pitch held (pass mark %.2f m) ===" % PASS_WITHIN)
+	var header := "  pitch  "
+	for want_range in RANGES:
+		header += "%8.0f m" % want_range
+	print(header)
+	for pitch in RANGE_PITCHES:
+		var line := "  %+5.1f  " % pitch
+		for want_range in RANGES:
+			var cell := "       -"
+			for r in grid:
+				if is_equal_approx(r["pitch"], pitch) and is_equal_approx(r["range"], want_range):
+					if r["closest"] < -1.5:
+						cell = "   wall "
+					elif r["closest"] < 0.0:
+						cell = "  under "
+					else:
+						cell = "  %6.3f" % r["closest"]
+			line += cell + " "
+		print(line)
+	var worst_short := 0.0
+	var worst_long := 0.0
+	for r in grid:
+		if r["closest"] < 0.0:
+			continue
+		if float(r["range"]) <= 10.0:
+			worst_short = maxf(worst_short, r["closest"])
+		else:
+			worst_long = maxf(worst_long, r["closest"])
+	print("  worst at or inside 10 m : %.3f m   (%s)"
+		% [worst_short, "inside the mark" if worst_short <= PASS_WITHIN else "MISSES"])
+	print("  worst beyond 10 m       : %.3f m   (%s)"
+		% [worst_long, "inside the mark" if worst_long <= PASS_WITHIN else "MISSES"])
 	get_tree().quit(0)
 
 ## ---------------------------------------------------------------------------
