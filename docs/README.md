@@ -16,8 +16,21 @@ commit rather than leaving both standing.
 | 4 | `Dev_Plan.md` | Architecture rules and the project-wide colour/role laws. |
 | 5 | `Art_Direction.md` | Visual and environment spec: the kit, the maps, the shading split. |
 | 6 | `Handoff.md` | Standing decisions, the open bug ledger (§3), and the questions the team owes (§5). |
-| 7 | `Agent_Prompts.md` | Paste-ready lane openers and the per-subsystem reference appendices. |
+| 7 | `Agent_Prompts.md` | Paste-ready lane openers and the per-subsystem reference appendices. **Also carries the LANE STATUS BOARD — the one place a lane is marked finished.** |
 | 8 | `SHARED_LOCKS.md` | Live mutex state for the six unpartitionable files. |
+
+
+## Marking a lane finished
+
+One place, one convention: the **LANE STATUS BOARD** at the top of `Agent_Prompts.md`.
+Set the Status cell to `🟢 DONE` / `🟡 IN PROGRESS` / `⚪ NOT STARTED` / `🔴 BLOCKED`, and put the
+date, the commit hashes and **what was actually verified** in the Evidence cell — in the same
+commit as the work. A green cell with an empty Evidence cell is not a finished lane, it is a
+claim, and this project has been bitten by those before (§ "never claim a verification you did
+not perform").
+
+Every lane prompt below the board is inside a `<details>` block, so the file opens as a
+one-screen index instead of three thousand lines of paste-text.
 
 ## The moodboard is a reference, not a contract
 

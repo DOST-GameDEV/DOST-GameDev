@@ -25,6 +25,26 @@ Legend, unchanged from `Dev_Plan.md` §1:
 reading the code and by rendering the running game — not by reading the previous
 pass's checkboxes. See `Handoff.md` §0.10.
 
+## Jump to
+
+<sub>Auto-added 2026-07-30 so this file stops being one long scroll. Keep it in step when you add a `##` section.</sub>
+
+- [Where this actually stands, in one paragraph](#where-this-actually-stands-in-one-paragraph)
+- [Phase 0 — Unblock the playtest](#phase-0-unblock-the-playtest)
+- [Phase 1 — Decisions that gate everything downstream](#phase-1-decisions-that-gate-everything-downstream)
+- [Phase 2 — Build the world](#phase-2-build-the-world)
+- [Phase 4 — Feel, audio and networking hardening](#phase-4-feel-audio-and-networking-hardening)
+- [Phase 5 — Strip, harden, and prove it runs outside the editor](#phase-5-strip-harden-and-prove-it-runs-outside-the-editor)
+- [Phase 6 — Submission. This is graded work, not paperwork.](#phase-6-submission-this-is-graded-work-not-paperwork)
+- [Phase 7 — The kit overhaul. Real asset kits replace the generated world.](#phase-7-the-kit-overhaul-real-asset-kits-replace-the-generated-world)
+- [Phase 8 — The environment pass. Kill the void, ground the props, light the street.](#phase-8-the-environment-pass-kill-the-void-ground-the-props-light-the-street)
+- [Phase 9 — Graphics downgrade, AI rewrite, and a game-wide bug sweep](#phase-9-graphics-downgrade-ai-rewrite-and-a-game-wide-bug-sweep)
+- [Phase 10 — Boot sequence, menu, house logic, Can AI, and the second map](#phase-10-boot-sequence-menu-house-logic-can-ai-and-the-second-map)
+- [Phase 9 · AI FAIRNESS LOG — the running record for balance testing](#phase-9-ai-fairness-log-the-running-record-for-balance-testing)
+- [Already done — the ledger this list replaces](#already-done-the-ledger-this-list-replaces)
+- [If time runs short](#if-time-runs-short)
+
+
 > ### 🧭 Where the project is trying to GO — [`Roadmap.md`](Roadmap.md), written 2026-07-30
 >
 > This file tracks *what is left*. **[`Roadmap.md`](Roadmap.md) argues *what makes it good, in what
