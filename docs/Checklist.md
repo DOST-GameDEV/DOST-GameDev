@@ -3483,9 +3483,37 @@ round-win shape : 1 tracked can(s) ["TeamAProp"] | MAX_DENTS 3 | FALL_LIMIT 4 | 
 `MAX_DENTS` **3 → 2** against **1.75** dents/round, where it converts. The dent rate has since
 fallen to **1.00**, so 2 dents is still twice what a round delivers. **2 will not turn these
 timeouts into offence wins.** Either the dent rate has to come up or the requirement has to
-go to 1 — and a 1-dent round is a different game, not a tuning step. 🧑 **The pick is the
-human's and `MAX_DENTS` is left alone**, per RUN 14's own note; what is new here is that the
-number it was chosen against has moved.
+go to 1 — and a 1-dent round is a different game, not a tuning step.
+
+**DECISION — `MAX_DENTS` STAYS AT 3. Taken by the 🥊 PHYS lane, 2026-07-30, on the human's
+explicit delegation** (*"decide for urself and document it"*), superseding RUN 14's pending
+3 → 2 recommendation until the trigger below is met. This is a decision, not an open question;
+nothing downstream is waiting on a further call.
+
+Three reasons, in the order they carry weight:
+
+1. ⚠️ **The number 3 → 2 would be tuned against is self-contradictory** (see the paragraph
+   directly below: dents/round *fell* while `blocked` *improved*). Changing a win requirement
+   to chase a metric that is probably mismeasuring is precisely the mistake the five logged
+   harness faults were each an instance of. **Fix the instrument, then tune.**
+2. **It would not convert anyway.** At a measured 1.00 dents/round, a 2-dent requirement is
+   still twice what a round delivers, so the change buys few or no offence wins while
+   spending a `character_base.gd` shared-lock claim and putting a second unverified constant
+   into the fairness picture.
+3. **It is the wrong mode to be spending effort on first.** `MAX_DENTS` is an **OPTION_A**
+   lever, and OPTION_B is what `GameLaunch.game_mode` ships as the default and has **never
+   been in a fairness run at all** (see the gap noted below). Tuning A's requirement while B
+   is unmeasured optimises the mode nobody has data for second.
+
+⚠️ **THE RE-OPEN TRIGGER IS STATED SO THIS DOES NOT BECOME A PERMANENT NO.** Once the
+dents-vs-blocked contradiction is resolved and a trustworthy dents/round exists:
+
+- **≥ 2.0** → ship `MAX_DENTS` 3 → 2. That is RUN 14's recommendation on a sound number and it
+  converts; take the `character_base.gd` lock and make the one-line change.
+- **≈ 1.0, confirmed** → the lever is **the dent rate, not the requirement.** Do not drop to 1;
+  a 1-dent round is a different game, not a tuning step. Raise what the offence lands.
+- **Either way, run OPTION_B's own fairness pass first** — `FALL_LIMIT` 4 and all-Sealed are
+  the default mode's offence paths and neither has a measured rate.
 
 ⚠️ **Also worth the balance lane's attention: 1.75 → 1.00 dents/round happened while
 `blocked` IMPROVED, 43.5% → 41.2%.** Fewer throws stopped, fewer dents landed. Those two
