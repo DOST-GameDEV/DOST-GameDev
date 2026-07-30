@@ -86,9 +86,9 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
 theme_override_constants/margin_left = 83
-theme_override_constants/margin_top = 179
+theme_override_constants/margin_top = 196
 theme_override_constants/margin_right = 96
-theme_override_constants/margin_bottom = 80
+theme_override_constants/margin_bottom = 44
 
 [node name="Columns" type="HBoxContainer" parent="Body"]
 layout_mode = 2
@@ -100,7 +100,7 @@ custom_minimum_size = Vector2(960, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
-theme_override_constants/separation = 12
+theme_override_constants/separation = 8
 
 [node name="ConfigPanel" type="PanelContainer" parent="Body/Columns/LeftColumn"]
 layout_mode = 2
@@ -110,9 +110,9 @@ theme_type_variation = &"WoodPanel"
 [node name="ConfigMargin" type="MarginContainer" parent="Body/Columns/LeftColumn/ConfigPanel"]
 layout_mode = 2
 theme_override_constants/margin_left = 24
-theme_override_constants/margin_top = 12
+theme_override_constants/margin_top = 8
 theme_override_constants/margin_right = 24
-theme_override_constants/margin_bottom = 12
+theme_override_constants/margin_bottom = 8
 
 [node name="Rows" type="VBoxContainer" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin"]
 layout_mode = 2
@@ -121,6 +121,8 @@ alignment = 1
 
 [node name="MapRow" type="HBoxContainer" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows"]
 layout_mode = 2
+unique_name_in_owner = true
+mouse_filter = 1
 theme_override_constants/separation = 46
 
 [node name="MapCaption" type="Label" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/MapRow"]
@@ -183,6 +185,8 @@ stretch_mode = 5
 
 [node name="ModeRow" type="HBoxContainer" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows"]
 layout_mode = 2
+unique_name_in_owner = true
+mouse_filter = 1
 theme_override_constants/separation = 46
 
 [node name="ModeCaption" type="Label" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/ModeRow"]
@@ -245,6 +249,8 @@ stretch_mode = 5
 
 [node name="DifficultyRow" type="HBoxContainer" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows"]
 layout_mode = 2
+unique_name_in_owner = true
+mouse_filter = 1
 theme_override_constants/separation = 46
 
 [node name="DifficultyCaption" type="Label" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/DifficultyRow"]
@@ -253,7 +259,7 @@ layout_mode = 2
 size_flags_horizontal = 0
 theme_type_variation = &"MenuDisplay"
 vertical_alignment = 1
-text = "KALARO:"
+text = "BOTS:"
 
 [node name="DifficultySelector" type="TextureRect" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/DifficultyRow"]
 custom_minimum_size = Vector2(380, 84)
@@ -307,6 +313,8 @@ stretch_mode = 5
 
 [node name="FighterRow" type="HBoxContainer" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows"]
 layout_mode = 2
+unique_name_in_owner = true
+mouse_filter = 1
 theme_override_constants/separation = 46
 
 [node name="FighterCaption" type="Label" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/FighterRow"]
@@ -315,7 +323,7 @@ layout_mode = 2
 size_flags_horizontal = 0
 theme_type_variation = &"MenuDisplay"
 vertical_alignment = 1
-text = "KALARO:"
+text = "CHARACTER:"
 
 [node name="CharacterButton" type="Button" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/FighterRow"]
 unique_name_in_owner = true
@@ -329,17 +337,27 @@ text = "CHOOSE  ▸"
 clip_text = true
 text_overrun_behavior = 3
 
-[node name="DetailLabel" type="Label" parent="Body/Columns/LeftColumn"]
+[node name="DetailBox" type="Control" parent="Body/Columns/LeftColumn"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 64)
+custom_minimum_size = Vector2(0, 112)
 layout_mode = 2
 size_flags_vertical = 0
+mouse_filter = 2
+clip_contents = true
+
+[node name="DetailLabel" type="Label" parent="Body/Columns/LeftColumn/DetailBox"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
 theme_type_variation = &"MenuBody"
 autowrap_mode = 2
 
 [node name="PrimaryButton" parent="Body/Columns/LeftColumn" instance=ExtResource("3")]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(614, 101)
+custom_minimum_size = Vector2(614, 88)
 layout_mode = 2
 size_flags_horizontal = 0
 size_flags_vertical = 0
@@ -354,7 +372,7 @@ tip_padding = 40.0
 [node name="StartButton" parent="Body/Columns/LeftColumn" instance=ExtResource("3")]
 unique_name_in_owner = true
 visible = false
-custom_minimum_size = Vector2(614, 101)
+custom_minimum_size = Vector2(614, 88)
 layout_mode = 2
 size_flags_horizontal = 0
 size_flags_vertical = 0
@@ -423,7 +441,7 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 theme_type_variation = &"MenuCaption"
-text = "A team is one Tao and one Gamit."
+text = "A team is one person and one object."
 autowrap_mode = 2
 
 [node name="SeatButton0" type="Button" parent="Body/Columns/RightColumn/SeatPanel/SeatMargin/Rows"]
@@ -433,7 +451,7 @@ layout_mode = 2
 theme_type_variation = &"WoodButton"
 theme_override_font_sizes/font_size = 30
 alignment = 0
-text = "TEAM A · TAO"
+text = "TEAM A · PERSON"
 clip_text = true
 text_overrun_behavior = 3
 
@@ -444,7 +462,7 @@ layout_mode = 2
 theme_type_variation = &"WoodButton"
 theme_override_font_sizes/font_size = 30
 alignment = 0
-text = "TEAM A · GAMIT"
+text = "TEAM A · OBJECT"
 clip_text = true
 text_overrun_behavior = 3
 
@@ -455,7 +473,7 @@ layout_mode = 2
 theme_type_variation = &"WoodButton"
 theme_override_font_sizes/font_size = 30
 alignment = 0
-text = "TEAM B · TAO"
+text = "TEAM B · PERSON"
 clip_text = true
 text_overrun_behavior = 3
 
@@ -466,7 +484,7 @@ layout_mode = 2
 theme_type_variation = &"WoodButton"
 theme_override_font_sizes/font_size = 30
 alignment = 0
-text = "TEAM B · GAMIT"
+text = "TEAM B · OBJECT"
 clip_text = true
 text_overrun_behavior = 3
 

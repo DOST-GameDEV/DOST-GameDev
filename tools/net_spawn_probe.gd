@@ -86,6 +86,16 @@ var _is_host: bool = false
 ## described Eskinita — the same gap Checklist.md records for perf_probe and
 ## ai_probe, in the one harness whose whole job is the networked flow.
 var _map_id := &"eskinita"
+## `-- can=<id> slipper=<id>`, the two PROP picks this peer takes into the match.
+##
+## NET-1. Added 2026-07-30 because this probe stood the networked spawn up and
+## never once looked at what the Prop was PICKED as — every run so far used the
+## default `sarsi`/`goma`, which are roster entry 0 on both lists and carry the
+## neutral 3/3/3, so a run in which the picks never crossed the wire at all and
+## a run in which they crossed perfectly produce byte-identical trait numbers.
+## The ids are the roster's stable ids, same as GameLaunch stores.
+var _can_id := &""
+var _slipper_id := &""
 var _fails: int = 0
 var _samples: int = 0
 
@@ -96,12 +106,29 @@ func _ready() -> void:
 			_is_host = true
 		elif token.begins_with("map="):
 			_map_id = StringName(token.substr(4))
+		elif token.begins_with("can="):
+			_can_id = StringName(token.substr(4))
+		elif token.begins_with("slipper="):
+			_slipper_id = StringName(token.substr(8))
 	_tag = "HOST" if _is_host else "CLIENT"
 	# ⚠️ BEFORE Main.tscn is instantiated — main.gd reads selected_map_scene() as
 	# it builds the world, so setting it afterwards silently measures Eskinita
 	# while claiming to measure the plaza. That is B-104's failure mode exactly.
 	GameLaunch.selected_map = _map_id
-	print("[%s] map=%s" % [_tag, _map_id])
+	# ⚠️ ALSO BEFORE Main.tscn, and for a second reason on top of the map's.
+	# `network_manager.gd::_local_picks()` SNAPSHOTS GameLaunch at connect time
+	# (its own doc says so), and the connect happens inside Main's _ready — so a
+	# pick written after instantiation is a pick the host is never told about,
+	# and the probe would be measuring the default while claiming to measure a
+	# pick. Same class of error as B-104.
+	if _can_id != &"":
+		GameLaunch.selected_can = _can_id
+	if _slipper_id != &"":
+		GameLaunch.selected_slipper = _slipper_id
+	print("[%s] map=%s can=%s(%d) slipper=%s(%d)" % [
+		_tag, _map_id,
+		GameLaunch.selected_can, GameLaunch.can_index(),
+		GameLaunch.selected_slipper, GameLaunch.slipper_index()])
 
 	# See the class doc: Main goes in as `/root/Main` and becomes the current
 	# scene; this node stays a sibling so a scene swap cannot free it.
@@ -323,6 +350,7 @@ func _sample(label: String) -> void:
 	if taya != null:
 		_report_facing("TAYA", taya, can, false)
 	_report_carry(characters)
+	_report_prop_picks(characters)
 
 ## One unit's facing, measured two independent ways. Both must agree with the
 ## direction to the can, and the disagreement between them is itself diagnostic:
@@ -442,6 +470,85 @@ func _report_carry(characters: Array[CharacterBase]) -> void:
 		print("[%s]    VISUAL   %-11s is_can=%-5s visible=%-5s held_by_local=%-5s %s" % [
 			_tag, ch.name, str(ch.is_can), str(visual.visible), str(held_by_local),
 			"OK" if ok else "*** HIDDEN WITH NO LOCAL CARRIER — THIS IS THE BUG ***"])
+
+## ---------------------------------------------------------------------------
+## NET-1 · DID THE PROP PICK CROSS THE WIRE, AND IS IT NEUTRAL BY ACCIDENT?
+##
+## 🧑 Human report: "add stats for cans and slippers bcz i think theyre all the
+## same." The roster data is NOT missing — `CANS` and `SLIPPERS` each carry six
+## entries with varied traits, and `CharacterBase.trait_points()` does branch to
+## `CharacterRoster.prop_trait()`. So the suspect is the INDEX ARRIVING, and
+## there are TWO ways to land on a flat 3/3/3 with no error printed anywhere:
+##
+##   -1  `picks_for()` returns all -1 for a peer that never published, and
+##       `traits_in()` returns {} for any index < 0, which `_trait_value()`
+##       resolves to TRAIT_NEUTRAL. This is the silent-neutral trip and it is
+##       deliberate — an AI slot, a `--host` session that skipped the CHARACTER
+##       screen, and an older peer's unknown index must all stay playable.
+##    0  `sarsi` and `goma` are roster entry 0 of their lists and their traits
+##       ARE 3/3/3, on purpose ("a player who never opens the CHARACTER screen
+##       must get the balance everything else was tuned against"). ⚠️ THIS ONE
+##       IS NOT A BUG AND PRODUCES THE IDENTICAL SYMPTOM, so a probe that only
+##       asserts "index != -1" would call a stock-default match healthy while
+##       reporting the human's exact complaint. Both are printed, separately.
+##
+## ⚠️ THE INDEX IS NOT THE ANSWER, only the cheap half of it. A resolved
+## `trait_points()` of 5 proves a dictionary lookup, not that the trait reached
+## the object — that is `_measure_prop_observable()` below, and it is the half
+## the PERSON path (`phys_probe -- traits`) has and `prop_trait` never has.
+##
+## ⚠️ RE-READ EVERY SAMPLE, NEVER CACHED. A Prop is a lata one round and a
+## tsinelas the next, so `is_can` flips and the same object answers off a
+## different list; this runs on all four round samples for exactly that reason.
+func _report_prop_picks(characters: Array[CharacterBase]) -> void:
+	for ch in characters:
+		if ch.is_person:
+			continue
+		var index: int = ch.can_index if ch.is_can else ch.slipper_index
+		var list_name: String = "CANS" if ch.is_can else "SLIPPERS"
+		var entries: Array = CharacterRoster.CANS if ch.is_can else CharacterRoster.SLIPPERS
+		var id: String = "?"
+		if index >= 0 and index < entries.size():
+			id = str(entries[index]["id"])
+		# ⚠️ THE LINE THE TWO LOGS ARE DIFFED ON. Everything that must match
+		# across peers is on it, in a fixed order, so "every peer's copy of every
+		# Prop carries the same indices" is a mechanical comparison of the HOST
+		# and CLIENT logs and not a judgement call about two prose paragraphs.
+		print("[%s]    PICKS    %-11s is_can=%-5s can_index=%2d slipper_index=%2d -> %s[%2d]=%-9s bilis=%d lakas=%d tatag=%d" % [
+			_tag, ch.name, str(ch.is_can), ch.can_index, ch.slipper_index,
+			list_name, index, id,
+			ch.trait_points(&"bilis"), ch.trait_points(&"lakas"), ch.trait_points(&"tatag")])
+		# ⚠️ THIS USED TO TEST `ch.ai_controller != null` AND THAT WAS A HARNESS
+		# FAULT, caught by the impossible-number rule on the first run: the HOST
+		# log called unit `-4` an AI slot and the CLIENT log called the same unit
+		# human-owned, in the same second. `ai_controller` is only ever attached
+		# on the host (`_attach_ai`), so on a client every character reads null and
+		# the exemption silently inverted into "gate everything".
+		#
+		# The sentinel peer_id is the fact both peers actually share: real ENet ids
+		# are positive, and `_fill_empty_slots_with_placeholders` names an unheld
+		# seat `-1 - index`. It is in `character.name` on every peer.
+		var is_bot_seat := String(ch.name).begins_with("-")
+		# ⚠️ AND SINCE NET-1 A BOT SEAT IS NO LONGER EXEMPT. An AI-held Prop now
+		# INHERITS its human teammate's picks (`main.gd::_team_prop_picks`), which
+		# is the entire fix — so -1 on a bot Prop is only acceptable when that
+		# team's Person seat is a bot too and there was nobody to inherit from.
+		var team_person_is_bot := true
+		for other in characters:
+			if other.is_person and other.team == ch.team:
+				team_person_is_bot = String(other.name).begins_with("-")
+		if is_bot_seat and team_person_is_bot:
+			print("[%s]             (bot Prop on an all-bot team — -1 is correct, not gated.)" % _tag)
+			continue
+		_samples += 1
+		if index < 0:
+			_fails += 1
+			print("[%s]    *** FAIL: a human-owned Prop resolved index -1 on the %s list." % [_tag, list_name])
+			print("[%s]        Its traits are TRAIT_NEUTRAL 3/3/3 by fallback, not by pick," % _tag)
+			print("[%s]        and nothing anywhere errors. This is the reported symptom. ***" % _tag)
+		elif index == 0:
+			print("[%s]             ⚠️ entry 0 — the stock 3/3/3. Correct if nobody picked," % _tag)
+			print("[%s]                indistinguishable from the fallback if somebody did." % _tag)
 
 func _off_axis(forward: Vector3, target: Vector3) -> float:
 	if forward.length() < 0.001:

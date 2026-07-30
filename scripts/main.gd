@@ -532,6 +532,19 @@ func _start_local_test() -> void:
 	else:
 		picked_unit.can_index = GameLaunch.can_index()
 		picked_unit.slipper_index = GameLaunch.slipper_index()
+	# NET-1, the solo half — and solo is where it bites HARDEST. The networked
+	# path is a 2-of-4 shortfall; here exactly one of the four seats is human, so
+	# three are always AI, and if the player sits in a Person seat then BOTH the
+	# lata they defend and the tsinelas they throw are bots wearing the neutral
+	# 3/3/3. Same rule as `_team_prop_picks`: the Prop seat on the human's own
+	# team wears the human's picks. Written against the two Main.tscn nodes rather
+	# than through `_local_unit_for_seat` because the local flow has no seat
+	# table — the units are authored in the scene.
+	var team_prop: CharacterBase = (
+		team_a_prop if GameLaunch.solo_seat / 2 == 0 else team_b_prop)
+	if team_prop != picked_unit:
+		team_prop.can_index = GameLaunch.can_index()
+		team_prop.slipper_index = GameLaunch.slipper_index()
 	# B-76: Main.tscn no longer hardcodes a Prop ability (see its own node
 	# comment) — assign the role-correct one here, same as the networked spawn
 	# path. _reset_world() re-picks this every round; this is just the round-1
@@ -1011,7 +1024,7 @@ func _on_player_disconnected(peer_id: int) -> void:
 	var index := _index_for_character(character) if character != null else -1
 	if index != -1:
 		_rpc_convert_to_ai.rpc(index)
-		_rpc_show_toast.rpc("A player left — a kalaro has taken over their character")
+		_rpc_show_toast.rpc("A player left — a bot has taken over their character")
 	else:
 		# Should not normally happen (every spawned character has an index —
 		# see _build_networked_character) — kept as a fallback so a disconnect
@@ -1107,6 +1120,127 @@ func _claim_join_index(token: String) -> int:
 
 func _seat_is_taken(seat: int) -> bool:
 	return _token_join_index.values().has(seat)
+
+## ---------------------------------------------------------------------------
+## NET-1 · THE LATA AND TSINELAS PICKS AN AI-HELD PROP SEAT WEARS.
+##
+## 🧑 Human report: *"add stats for cans and slippers bcz i think theyre all the
+## same"* — and MEASURED, on two real peers each picking a different lata and a
+## different tsinelas, every Prop in the match read `can_index = -1` and so
+## resolved to `TRAIT_NEUTRAL` 3/3/3 on both machines.
+##
+## ⚠️ THE PICKS WERE CROSSING THE WIRE PERFECTLY. That was the first hypothesis
+## and it was wrong; instrumenting the spawn path showed the host holding
+## `{"character": 0, "can": 4, "slipper": 1}` for the peer that sent it. The
+## actual cause is SEATING: a 2v2 has four seats and each human occupies exactly
+## one, so with fewer than four humans the leftover seats are filled with
+## negative-sentinel AI (`_fill_empty_slots_with_placeholders`) — and an AI slot
+## has no picks by design. In a two-player match BOTH humans can be sitting in
+## Person seats, which means every lata and every tsinelas actually in play
+## belongs to a bot, and every one of them is neutral. The picker was working;
+## it was decorating a chair nobody sat in.
+##
+## So: an unoccupied Prop seat wears the picks of the human PERSON on its own
+## team. 🧑 approved, 2026-07-30: *"yes let it inherit so that ppl cna choose
+## what ai uses"* — which is the stronger reading of the feature, since the Prop
+## on your team is the thing you are defending and throwing.
+##
+## ⚠️ NOT A SECOND BROADCAST PATH, and deliberately so — that is the U-8 bug
+## class this project has already fixed twice. Nothing new goes on the wire: this
+## resolves HOST-SIDE inside `_build_networked_character`, writing the same
+## `can_index`/`slipper_index` that were already replicated properties with
+## `spawn = true`. A client calling this gets -1 out of `picks_for` and is
+## overwritten by the host's value on arrival, exactly as before.
+##
+## Returns all -1 when the team's Person seat is ALSO an AI (a fully-bot team has
+## no human to inherit from) — the neutral fallback is still correct there, and
+## that is the case its own doc in `character_roster.gd` was written for.
+## ⚠️ A RECLAIMED BODY KEEPS THE PICKS IT WAS SPAWNED WITH UNLESS SOMEBODY SAYS
+## OTHERWISE, AND THAT IS A SECOND NET-1 BUG — an older one, uncovered by fixing
+## the first.
+##
+## `_rpc_reclaim_character` exists so that a peer arriving after
+## `_fill_empty_slots_with_placeholders` steps into the AI's body rather than
+## getting a fifth character. It rewires authority, name, player_id, camera and
+## all the bookkeeping — but it never touched `character_index`/`can_index`/
+## `slipper_index`, because `_build_networked_character` (the only place those
+## were ever written) does not run for a body that already exists.
+##
+## Before NET-1 that was invisible: the placeholder held -1, the arriving human's
+## pick was dropped, and the result was the neutral 3/3/3 — indistinguishable
+## from the fallback working as intended, which is exactly how this survived.
+## After NET-1 the placeholder holds the TEAMMATE's inherited picks, so the
+## symptom became a real human visibly wearing somebody else's lata. Caught by
+## the impossible-number rule on the first run of the fix: the client's own log
+## printed `can=kape(3)` at startup and its unit reported `can_index=4`.
+##
+## ⚠️ HOST-ONLY, AND NO NEW MESSAGE. `peer_characters` is host-side (a client
+## asking about anyone gets -1, and writing that would erase the right answer),
+## and all three fields are replicated properties with `spawn = true` on
+## `CharacterBase.tscn`, so the host writing them here is carried by the
+## synchronizer that already exists. Inventing an RPC to push picks is the U-8
+## bug class and is not needed.
+##
+## A peer with no pick of its own (a `--host`/`--join=` command-line session that
+## never saw the CHARACTER screen) leaves the inherited value alone rather than
+## stamping -1 over it — losing the teammate's pick to a peer that expressed no
+## preference would be a downgrade, not a correction.
+func _apply_reclaimed_picks(character: CharacterBase, new_peer_id: int) -> void:
+	# ⚠️ TWO WRITERS, AND BOTH ARE NEEDED — this is the part that took two runs to
+	# get right, and the first version was measurably wrong.
+	#
+	# The host is the only peer that KNOWS everyone's picks (`peer_characters` is
+	# host-side). But `_rpc_reclaim_character` also hands this node's multiplayer
+	# authority to the arriving peer, and after that hand-over the ARRIVING PEER is
+	# the one whose values the synchronizer pushes. The first attempt wrote the
+	# correct index on the host after the hand-over and measured no change at all:
+	# the host set can_index 4 -> 3, the client — now authority, still holding the
+	# 4 it was spawned with — pushed 4 straight back, on both machines.
+	#
+	# So the write happens BEFORE the hand-over (see the call site), and the peer
+	# taking ownership ALSO writes its own picks from its own GameLaunch. That
+	# second write is not a second broadcast path and not U-8: it is the node's
+	# new authority setting a property it owns, carried by the synchronizer that
+	# was already replicating it. It closes the race rather than racing it.
+	var picks := {}
+	if NetworkManager.is_host():
+		picks = NetworkManager.picks_for(new_peer_id)
+	if new_peer_id == multiplayer.get_unique_id():
+		# This peer's own preferences, straight off GameLaunch — the same source
+		# `NetworkManager._local_picks()` snapshots to tell the host in the first
+		# place, so the two writers cannot disagree.
+		picks = {
+			"character": GameLaunch.character_index(),
+			"can": GameLaunch.can_index(),
+			"slipper": GameLaunch.slipper_index(),
+		}
+	if picks.is_empty():
+		return
+	if character.is_person:
+		var person := int(picks.get("character", -1))
+		if person >= 0:
+			character.character_index = person
+		return
+	var can := int(picks.get("can", -1))
+	var slipper := int(picks.get("slipper", -1))
+	if can < 0 and slipper < 0:
+		return
+	character.can_index = can
+	character.slipper_index = slipper
+	# The skin carries this round's ability (`_prop_ability_for`), so a changed
+	# pick is a changed kit. `_reset_world()` re-picks it every round anyway; this
+	# closes the window between reclaiming and the next round starting.
+	character.ability = _prop_ability_for(character).duplicate()
+
+func _team_prop_picks(team: int) -> Dictionary:
+	var person_seat := team * 2 # seats are [person, prop] per team — _build_spawn_data
+	for token in _token_join_index:
+		if int(_token_join_index[token]) != person_seat:
+			continue
+		for peer_id in NetworkManager.peer_tokens:
+			if String(NetworkManager.peer_tokens[peer_id]) == String(token):
+				return NetworkManager.picks_for(int(peer_id))
+	return {"character": -1, "can": -1, "slipper": -1}
 
 ## Lowest seat nobody holds. Falls back to 0 rather than -1 if all four are
 ## somehow taken: a fifth peer cannot connect (ENet is created with
@@ -1277,6 +1411,13 @@ func _build_networked_character(data: Dictionary) -> Node:
 	else:
 		character.can_index = int(picks.get("can", -1))
 		character.slipper_index = int(picks.get("slipper", -1))
+		# NET-1 — see `_team_prop_picks` for the whole account. A Prop seat nobody
+		# is sitting in inherits its human teammate's lata and tsinelas picks
+		# instead of falling through to the neutral 3/3/3.
+		if character.can_index < 0 and character.slipper_index < 0:
+			var inherited := _team_prop_picks(int(data["team"]))
+			character.can_index = int(inherited.get("can", -1))
+			character.slipper_index = int(inherited.get("slipper", -1))
 	if data["is_person"]:
 		# Session 8: Person's Tag/Throw, replacing the previously-null `ability`
 		# for Person (see PersonAction doc). .duplicate() per PERSON_ACTION_ABILITY
@@ -1775,6 +1916,10 @@ func _rpc_reclaim_character(index: int, new_peer_id: int) -> void:
 		character.ai_controller.queue_free()
 		character.ai_controller = null
 	character.name = str(new_peer_id)
+	# ⚠️ BEFORE set_multiplayer_authority — see _apply_reclaimed_picks. Writing a
+	# replicated property on a node this peer has just STOPPED owning is a write
+	# the new authority immediately overwrites with its own stale copy.
+	_apply_reclaimed_picks(character, new_peer_id)
 	character.set_multiplayer_authority(new_peer_id)
 	character.player_id = (index % 2) + 1
 	_spawned_characters[new_peer_id] = character

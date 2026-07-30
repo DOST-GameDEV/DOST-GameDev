@@ -4,7 +4,7 @@ class_name CharacterSelect
 
 ## The CHARACTER panel: pick who you play as, and what your Prop looks like.
 ##
-## Three tabs — TAO (the Person you play), LATA and TSINELAS (the two things your
+## Three tabs — PERSON (the one you play), LATA and TSINELAS (the two things your
 ## Prop will be, one round each). All three are picked because a player controls
 ## a Person AND a Prop, and the Prop is a lata one round and a tsinelas the next.
 ##
@@ -12,7 +12,7 @@ class_name CharacterSelect
 ## carries the ability that skin brings (`character_roster.gd`'s `ability`
 ## field), which is how checklist 3.3's kit selection is delivered without a
 ## fourth and fifth picker. `main.gd::_prop_ability_for()` asks the list matching
-## the side being played this round. The TAO tab stays appearance-only: whether a
+## the side being played this round. The PERSON tab stays appearance-only: whether a
 ## Person gets its own ability roster is checklist 1.3, still 🧑 HUMAN-owned and
 ## unanswered, so every Person shares one Tag/Throw.
 ##
@@ -123,12 +123,17 @@ func _build_trait_row(label: Dictionary, traits: Dictionary) -> HBoxContainer:
 		pips.add_child(pip)
 	row.add_child(pips)
 
-	# The English reading, small and to the right. The Filipino word is the label
-	# and this is the gloss, which is the same order the rest of the front end
-	# uses (a role is named in Filipino and explained in English) and is what
-	# makes the vocabulary learnable rather than decorative.
+	# The second reading, small and to the right — and SKIPPED ENTIRELY when the
+	# entry has none. Since the stat names went English (🧑 2026-07-30, see
+	# `CharacterRoster.TRAIT_LABELS`) every `gloss` is empty, and adding the Label
+	# anyway would put an invisible 18px control in each row: harmless to look at,
+	# but it still reports a minimum height, and `TraitRows` is one of the rects
+	# `ui_layout_probe.gd` holds to a fixed 124px box.
+	var gloss_text := String(label.get("gloss", ""))
+	if gloss_text == "":
+		return row
 	var gloss := Label.new()
-	gloss.text = String(label["gloss"])
+	gloss.text = gloss_text
 	gloss.add_theme_font_size_override("font_size", 18)
 	gloss.add_theme_color_override("font_color", Color(0.961, 0.902, 0.784, 0.55))
 	gloss.vertical_alignment = VERTICAL_ALIGNMENT_CENTER

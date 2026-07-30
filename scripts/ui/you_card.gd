@@ -40,7 +40,7 @@ const CHARGE_SHADER_PARAM: StringName = &"charge_ratio"
 ## 0.1 — carrier.gd emits charge_changed/held_changed/reset_channel_changed and
 ## nothing consumed any of them (Checklist 0.1). Charge + held apply only to
 ## the attacking Person (the only one who ever holds a slipper); the reset
-## channel applies only to the defending Person (the taya). Mirrors the split
+## channel applies only to the defending Person (the defender). Mirrors the split
 ## the moodboard itself draws: THE ATTACKER card shows the charged-throw glow,
 ## THE DEFENDER card shows the lata reset channel.
 @onready var hold_label: Label = %HoldLabel

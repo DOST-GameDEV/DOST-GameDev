@@ -84,7 +84,7 @@ var sfx_volume: float = DEFAULT_VOLUME
 var music_volume: float = DEFAULT_VOLUME
 
 ## ---------------------------------------------------------------------------
-## R-09 · KALARO DIFFICULTY — the tier the AI plays at.
+## R-09 · BOT DIFFICULTY — the tier the AI plays at.
 ##
 ## `AIController.DIFFICULTY_TIERS` (BATA / NORMAL / ASTIG) and `apply_difficulty()`
 ## have been complete and correct for two passes and reachable from nowhere: until
@@ -223,11 +223,43 @@ func _find_conflicting_action(action: String, physical_keycode: int) -> String:
 			return other_action
 	return ""
 
+## ⚠️⚠️ REPLACES THE KEY EVENT ONLY, AND THAT ONE WORD IS A SHIPPED BUG FIX.
+##
+## 🧑 report, 2026-07-30: *"i cant wind up as attacker?? i cant even throw no
+## more"*, with the correct guess that *"this broke bcz i overhauled controls
+## earlier"*.
+##
+## This used to call `InputMap.action_erase_events(action)` — which erases EVERY
+## event on the action, not just the keyboard one — and then add back a single
+## `InputEventKey`. For the four movement actions that is harmless, because they
+## only ever had a key. `special_ability` is different: `project.godot` binds it
+## to **Q, LEFT CLICK and RIGHT CLICK**, and the game's own tutorial page
+## advertises "Q / LEFT CLICK · Special". The wipe destroyed both mouse bindings
+## and re-added Q alone.
+##
+## ⚠️ AND IT DID NOT NEED A REBIND TO TRIGGER — `_load()` ran the identical
+## erase-and-re-add for every action present in `user://settings.cfg`, so ANY
+## player with a saved settings file lost left-click on every launch, silently,
+## with the correct bindings still sitting in `project.godot`. That is why
+## reading `project.godot` says the mouse is bound and the running game says it
+## is not; the file is right and the runtime was overwriting it. Measured on this
+## machine: `settings.cfg` held `special_ability=81`, and a runtime dump of the
+## InputMap showed `special_ability -> key:Q` with no mouse event at all, while
+## `grab` — which is NOT in REBINDABLE_ACTIONS and so was never touched — still
+## had its `E, MOUSE:1`. Left click therefore grabbed and could never wind up.
+##
+## Erasing only the `InputEventKey`s leaves mouse and pad bindings from
+## `project.godot` intact, which is what a KEY rebind was always supposed to mean.
+func _replace_key_binding(action: String, physical_keycode: int) -> void:
+	for event in InputMap.action_get_events(action):
+		if event is InputEventKey:
+			InputMap.action_erase_event(action, event)
+	var replacement := InputEventKey.new()
+	replacement.physical_keycode = physical_keycode
+	InputMap.action_add_event(action, replacement)
+
 func _set_binding(action: String, physical_keycode: int) -> void:
-	InputMap.action_erase_events(action)
-	var event := InputEventKey.new()
-	event.physical_keycode = physical_keycode
-	InputMap.action_add_event(action, event)
+	_replace_key_binding(action, physical_keycode)
 	binding_changed.emit(action)
 	_save()
 
@@ -261,6 +293,55 @@ func _save() -> void:
 	if err != OK:
 		push_warning("SettingsManager: failed to save %s (error %d)" % [SETTINGS_PATH, err])
 
+## Bump this when a DEFAULT binding moves, and add the migration below. Written into
+## `settings.cfg` so an existing file can be told apart from a fresh one.
+const BINDINGS_VERSION: int = 2
+const SETTINGS_SECTION_META: String = "meta"
+
+## ⚠️⚠️ A SAVED BINDING OUTLIVES A DEFAULT, AND THAT IS HOW THE LAST TWO CONTROL BUGS
+## SHIPPED. Changing `project.godot` fixes the game for a player who has never opened the
+## settings panel and for nobody else: `_load_and_apply()` re-applies every saved keycode at
+## startup, so the old default comes straight back, and reading the project file then tells
+## you one thing while the running game does another. That exact split is what hid the
+## left-click wind-up bug for a month (`_replace_key_binding`'s note).
+##
+## 🧑 decided 2026-07-30 that **Space is jump only** — `input_probe`'s new conflict check
+## found Space driving BOTH `jump` and `bump`, so one press jumped and melee'd at once, and
+## both keycodes were saved as 32. `bump` moves to F. Every settings.cfg on disk still holds
+## `bump=32`, so without this migration the conflict returns on the next launch for everyone
+## who has ever run the game, and `input_probe` would go red again with the project file
+## looking correct.
+##
+## Deliberately drops ONLY the stale rows and only once. A migration that reset every
+## binding would throw away rebinds the player made on purpose.
+const MOVED_BINDINGS: Dictionary = {
+	# action -> the default keycode it used to have. A saved value equal to the old default
+	# is a stale copy of that default, not a choice; anything else is a real rebind and is
+	# left alone.
+	"bump": 32, # Space, now jump's alone
+}
+
+func _migrate_bindings(config: ConfigFile) -> void:
+	var version: int = int(config.get_value(SETTINGS_SECTION_META, "bindings_version", 1))
+	if version >= BINDINGS_VERSION:
+		return
+	var dropped: Array[String] = []
+	for action in MOVED_BINDINGS:
+		var old_default: int = int(MOVED_BINDINGS[action])
+		# Both the bare action and the legacy `_p1` copy — `settings.cfg` files written
+		# before the 2026-07-29 input overhaul carry both, and the suffixed one is dead
+		# weight that would still be re-applied if anything ever read it again.
+		for key in [String(action), "%s_p1" % action]:
+			if config.has_section_key(SETTINGS_SECTION, key) \
+					and int(config.get_value(SETTINGS_SECTION, key)) == old_default:
+				config.erase_section_key(SETTINGS_SECTION, key)
+				dropped.append(key)
+	config.set_value(SETTINGS_SECTION_META, "bindings_version", BINDINGS_VERSION)
+	config.save(SETTINGS_PATH)
+	if not dropped.is_empty():
+		print("[Settings] bindings migrated to v%d — dropped stale %s, project defaults stand"
+			% [BINDINGS_VERSION, ", ".join(dropped)])
+
 func _load_and_apply() -> void:
 	var config := ConfigFile.new()
 	if config.load(SETTINGS_PATH) != OK:
@@ -276,14 +357,17 @@ func _load_and_apply() -> void:
 		# player must get the same tier a returning one does rather than a coincidence.
 		_apply_ai_difficulty()
 		return
+	_migrate_bindings(config)
 	for action in REBINDABLE_ACTIONS:
 		if config.has_section_key(SETTINGS_SECTION, action):
 			var keycode: int = config.get_value(SETTINGS_SECTION, action)
 			if keycode > 0:
-				InputMap.action_erase_events(action)
-				var event := InputEventKey.new()
-				event.physical_keycode = keycode
-				InputMap.action_add_event(action, event)
+				# ⚠️ THE SAME ERASE-EVERYTHING BUG AS `_set_binding`, and THIS is
+				# the copy that actually reached players: it runs at startup for
+				# every saved action, so a settings.cfg written before the mouse
+				# bindings existed silently stripped them on every launch. See
+				# `_replace_key_binding`.
+				_replace_key_binding(action, keycode)
 	if config.has_section_key(SETTINGS_SECTION_CAMERA, "mouse_sensitivity"):
 		mouse_sensitivity = config.get_value(SETTINGS_SECTION_CAMERA, "mouse_sensitivity")
 	if config.has_section_key(SETTINGS_SECTION_CAMERA, "invert_y"):
