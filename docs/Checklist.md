@@ -3866,6 +3866,82 @@ is **8 gameplay files, not 5**; the extra ones are `network_manager.gd`, `carria
 positive on the words *"debug cruft"*) and **`character_base.gd` with 5 hits — a shared-lock
 file, so R-30 needs a mutex its plan does not mention.**
 
+#### NET-1(c) · CLOSED, 2026-07-30 — 🌐 NET. `net_spawn_probe`, two real peers, `PROPOBS`
+
+**A Prop's trait reaches the object, and the answer genuinely changes when the role swaps.**
+`trait_points()` returning 5 proved a dictionary lookup; this is the physical half, on the
+same three observables the Person block used so the two tables are comparable. Measured on
+the AUTHORITY only — every one of these is a physics question, so a peer reading a
+replicated transform would be measuring the synchroniser.
+
+**THE ROLE SWAP, ONE UNIT, BOTH SIDES, on the peer that owns it.** Client picked
+`kape` (BILIS 5 / LAKAS 2 / TATAG 1) and `bakya` (1 / 5 / 5) — deliberately opposite, so a
+build that cached the trait at spawn cannot pass:
+
+| round | `is_can` | list | BILIS m/s | LAKAS m/s of shove | TATAG m/s kept of 10.0 |
+|---|---|---|---|---|---|
+| 2, 4 | **true** | `CANS[3]` kape 5/2/1 | **6.100** | **3.162** | **11.628** |
+| 1, 3 | **false** | `SLIPPERS[1]` bakya 1/5/5 | carried | **3.876** | **8.772** |
+
+Both observables move, in the direction the roster says, on the same object across the
+swap. With a second pair (`pintura` 1/5/4 ↔ `luma` 5/1/2) and the neutral fallback unit,
+the full spreads are:
+
+| trait | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| **BILIS** m/s travelled | 4.900 | — | 6.000 | — | 6.100 |
+| **LAKAS** m/s of shove | 2.924 | 3.162 | 3.400 | — | 3.876 |
+| **TATAG** m/s kept | 11.628 | 10.753 | 10.000 | 9.346 | 8.772 |
+
+TATAG is monotonic across all five points and matches `10.0 / (1 + 0.07(t-3))` exactly;
+LAKAS reproduces the Person path's own 2.92 / 3.40 / 3.88 to three decimals. **VERDICT:
+`prop_trait` reaches the object.** 🧑 The spread is the same deliberately-small one the
+Person block reported and whether it is enough to FEEL is still a human call.
+
+⚠️ **BILIS IS ONLY EVER MEASURABLE ON THE LATA SIDE, BY DESIGN.** `_reset_world()`
+auto-grabs the tsinelas for the attacking Person every round, and a carried Prop hands its
+whole frame to the carry code — so the SLIPPER half of the swap reports `carried/flying`
+rather than a zero. That is the game working, and it is the same trap `_check_local_input()`
+documents.
+
+⚠️ **THE FIRST BILIS METRIC WAS TOTAL DISTANCE AND IT WAS WRONG — caught by the
+impossible-number rule, not by inspection.** It reported a **neutral bilis=3** can
+travelling **1.034 m** beside a **bilis=1** can travelling **3.022 m**: a slower pick
+out-walking a faster one, which cannot be true. Distance over 40 frames is contaminated two
+ways and **both are the game working** — `CONFINEMENT_RADIUS` (5.0) clamps a Can that walks
+off its base circle, and `eskinita` is a narrow alley where 4 m of walk meets the dressing.
+The headline is now the **median per-frame step**, which a wall or a clamp shortens at the
+tail and not in the middle. A second guard came out of the same run: a free tsinelas printed
+**0.006 m/s beside a total of 1.14 m** — pinned for most of the window and shoved along in a
+few frames — so a median below half the commanded speed is refused as `obstructed` rather
+than reported.
+
+⚠️ **A PROP'S LAKAS DOES NOT REACH ITS THROWN IMPACT — 🥊 PHYS, REPORT ONLY.** The numbers
+above are `hitbox.gd::_impulse_for`'s MELEE branch. That function asks the Carriable first,
+and `carriable.gd::knockback_impulse()` (the FLYING branch) builds its impulse out of
+`ThrowProfile.knockback_scale * mass` and the flight velocity with **no trait term at all**,
+while the throw's charge is scaled by the THROWER's `trait_power_scale()`. So a tsinelas's
+own LAKAS is live when it body-checks and absent from the throw that is its whole job.
+Flagged, not touched — `carriable.gd` is 🥊 PHYS's file and whether a slipper's LAKAS
+*should* ride its own throw is a balance call.
+
+#### ⚠️ NEW, OPEN — a bot Prop resolved -1 with a HUMAN teammate, and `net_spawn_probe` is red
+
+Found while measuring the above, on every one of six two-peer runs: **4 FAILURES (24/28
+checks clean) on BOTH peers**, so the probe's exit code is currently 1. The four seats come
+up as `1` (host Person), `1614504016` (Prop, correctly carrying the client's picks),
+`1071637568` (Person) and `-4` (Prop, `can_index=-1 slipper_index=-1`). `-4` is a bot seat
+whose team's Person seat is NOT a bot, so `main.gd::_team_prop_picks` should have handed it
+that Person's picks and did not.
+
+⚠️ **Do not accept the obvious diagnosis without measuring it.** With two peers there should
+be exactly TWO positive peer-id names and there are THREE — `1071637568` belongs to no
+process in the run, and a ghost seat whose peer never published picks would explain the -1
+through `_team_prop_picks`'s token → `peer_tokens` → `picks_for()` chain without anything
+being wrong with the inheritance itself. Which of those two it is decides whether the fix is
+in the seat table or in the inheritance, and neither has been measured. **Not caused by this
+session's edits** — `_report_prop_picks` and the sample counters are untouched.
+
 #### B-144 · CLOSED, 2026-07-30 — 🌐 NET. `aim_probe -- range`, then the default audit
 
 **The 0.41 m was never aim error. The audit was aiming at points no thrown slipper can
