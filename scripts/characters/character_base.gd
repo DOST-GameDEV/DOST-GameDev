@@ -358,8 +358,9 @@ enum State { NORMAL, STAGGERED, DOWNED, SEALED }
 ## Person's `is_can` is always false regardless of which side its team is on this
 ## round (see main.gd `_spawn_player` / `_on_match_round_started`).
 @export var is_can: bool = true
-## true = this unit is the team's human Person (tags opponents on defense, throws
-## the Slipper at the Can on offense — GDD Section 3/4). false = this unit is the
+## true = this unit is the team's human Person (charges a BUMP on defence, throws the
+## Slipper at the Can on offence — the tag it used to do was deleted 2026-07-30, see
+## `Design.md` §1). false = this unit is the
 ## team's Can/Slipper Prop, which carries the roster's class abilities (Quick
 ## Stand, Bakya Bash, etc.) via `ability`. Fixed for the whole match — unlike
 ## Can/Slipper (which flips with the team's Attacker/Defender role each round),

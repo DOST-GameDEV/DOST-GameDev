@@ -356,6 +356,7 @@ func _place_at_spawn(character: CharacterBase, slot: int) -> void:
 	# visible and, per camera_rig.gd's _apply_upright_pose() note, the class of
 	# leftover basis that ends up in a player's eye.
 	character.rotation = Vector3(0.0, _spawn_yaw(slot), 0.0)
+	_seat_on_floor(character)
 	# ⚠️⚠️ PUSH THE NEW TRANSFORM TO THE PHYSICS SERVER *NOW*. DO NOT REMOVE.
 	#
 	# Writing `position` on a PhysicsBody3D updates the SCENE TREE immediately and
@@ -383,6 +384,52 @@ func _place_at_spawn(character: CharacterBase, slot: int) -> void:
 	# across the map from its previous position to the new spawn point
 	# instead of snapping there with everyone else.
 	character.snap_visual_interpolation()
+
+## ⚠️⚠️ PUT THE CAPSULE'S FEET ON THE GROUND, RATHER THAN ITS ORIGIN ON THE MARKER.
+##
+## Found by `tools/settle_probe.tscn`, 2026-07-30: the tsinelas reported
+## `min_bottom=0.004` against a floor top of 0.100 — i.e. it spawned **0.096 into the
+## road** and depenetrated out over the next few frames.
+##
+## The cause is that a spawn marker stores an ORIGIN height, and an origin height is only
+## meaningful for one capsule size. The markers were authored against the old
+## 0.40-tall tsinelas (half-height 0.20); `TSINELAS_VISUAL_SCALE` went 1.25 -> 1.60 on
+## 2026-07-30 and the collision row scaled with it to 0.512 (half 0.256), so every prop
+## marker in both maps is now 0.056 too low for a slipper. It was already marginal before
+## that — 0.06 of clearance against a 0.10 floor — which is why it had never been caught.
+##
+## ⚠️ FIXED BY MEASURING THE FLOOR, NOT BY RETUNING THE MARKERS. Both maps are emitted
+## WHOLESALE by `tools/maps/build_*.py` (`Art_Direction.md` §6), so a marker edited by
+## hand survives exactly until the next layout run — and there are four markers per map
+## per role. A downward ray from above the marker answers the same question for every
+## role, on every map, at every future capsule size, and costs one query per placement.
+##
+## ⚠️ THIS IS NOT COSMETIC. `CharacterBody3D` does no continuous collision detection, so
+## a body that STARTS inside the floor collider is in exactly the state
+## `MAX_FALL_SPEED`'s own note calls unrecoverable — nothing pushes it back up, and the
+## KillPlane at y = -10 is what catches it. `begin_spawn_settle()` then holds it there
+## for three frames on purpose.
+##
+## Silently does nothing when the ray finds no floor (a marker over a gap, a probe scene
+## with no map): the marker's own height is still the best answer available, and refusing
+## to place a character would be worse than placing it slightly wrong.
+const SPAWN_FLOOR_PROBE_HEIGHT: float = 2.0
+const SPAWN_FLOOR_PROBE_DEPTH: float = 6.0
+## A hair of clearance so the capsule rests ON the floor rather than exactly touching it,
+## which `move_and_slide` resolves as a contact on the very first frame.
+const SPAWN_FLOOR_CLEARANCE: float = 0.02
+
+func _seat_on_floor(character: CharacterBase) -> void:
+	var space := character.get_world_3d().direct_space_state
+	var from := character.global_position + Vector3.UP * SPAWN_FLOOR_PROBE_HEIGHT
+	var to := from + Vector3.DOWN * SPAWN_FLOOR_PROBE_DEPTH
+	var query := PhysicsRayQueryParameters3D.create(from, to)
+	# Exclude ourselves, or the ray hits the capsule we are about to move.
+	query.exclude = [character.get_rid()]
+	var hit := space.intersect_ray(query)
+	if hit.is_empty():
+		return
+	character.global_position.y = (hit["position"] as Vector3).y 		+ character.capsule_height() * 0.5 + SPAWN_FLOOR_CLEARANCE
 
 var _spawned_peer_ids: Dictionary = {}
 ## B-21, superseded by 4.3/B-65: token -> permanently-assigned join index
