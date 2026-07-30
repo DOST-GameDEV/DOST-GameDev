@@ -1146,6 +1146,51 @@ while _kz < 5.5:
     _kn += 1
     _kz += _kanal_len
 
+
+# =============================================================================
+# CHILDREN'S CHALK DRAWINGS ON THE ROAD
+# =============================================================================
+#
+# Human ask: "add random child chalk scribbles in eskinita on the floor, make it
+# look like real drawings", then immediately: "make sure ur chalk drawings are not
+# covered by assets or intersect with random shit/clip."
+#
+# The second half is the hard half, and it is why this block sits HERE - after every
+# piece of dressing on the map has been placed. A marking does not go through
+# `Placer` (paint is not an obstacle and has no business dodging the lane law), so
+# each drawing asks `surfaces.footprint_is_clear()` against EVERY dressing group
+# itself. A drawing under a tricycle is worse than no drawing: it is invisible AND
+# it is a clipping artefact.
+#
+# WHERE THEY GO, and it is not arbitrary. Chalk drawings need OPEN, FLAT, VISIBLE
+# floor, and this map has exactly one such band: past the court's end lines at
+# |z| > COURT_Z, where the road runs on to the cross rows and nothing is parked.
+# Inside the court would fight the game's own markings for the same square metres,
+# which is the mistake the deleted pink jeepney lane made.
+CHALK_ART = [
+    ("Piko", "chalk_piko", -2.6, -16.4, 0.10),
+    ("Tao", "chalk_tao", 2.9, -15.2, -0.35),
+    ("Bulaklak", "chalk_bulaklak", -3.4, 15.6, 0.22),
+    ("Gulo", "chalk_gulo", 2.2, 17.4, -0.15),
+    ("Tao2", "chalk_tao", -1.2, 19.8, 1.05),
+    ("Bulaklak2", "chalk_bulaklak", 3.6, -19.6, -0.6),
+]
+## Every group a drawing must not end up underneath. The paving is deliberately
+## absent - a drawing is chalk ON the road, so `Kalsada` is what it is drawn on, not
+## something to dodge. Including it would refuse every candidate, which is the exact
+## trap `try_edge_hedge` documents on the plaza.
+_ART_AVOID = ["Bahay", "Kanto", "Likod", "Kalat", "Bakod", "Puno", "KanalVisual"]
+_art_placed = 0
+_art_skipped = []
+for _an, _am, _ax, _az, _ayaw in CHALK_ART:
+    _ae = piece_extent(_am, _ayaw, 1.0)
+    if surfaces.footprint_is_clear(_ax + _ae[0], _ax + _ae[1],
+                                   _az + _ae[2], _az + _ae[3], _ART_AVOID):
+        add_mark("Chalk" + _an, _am, _ax, _az, _ayaw)
+        _art_placed += 1
+    else:
+        _art_skipped.append(_an)
+
 # =============================================================================
 # FIELD MARKINGS. One court, one width, closed corners.
 # =============================================================================
@@ -1770,6 +1815,10 @@ print(f"  sub_resources : {n_sub}")
 print(f"  load_steps    : {load_steps}")
 print(f"  mesh instances: {len(order)}")
 print(_placer.report("ask-before"))
+print("  chalk art     : %d drawn%s"
+      % (_art_placed,
+         "" if not _art_skipped else ", %d SKIPPED as covered (%s)"
+         % (len(_art_skipped), ", ".join(_art_skipped))))
 print(f"  apron         : {_road_n} tiles, solid to {APRON_SOLID:.0f} then "
       f"feathered to {APRON_FADE:.0f} (no hard edge)")
 if overlaps:

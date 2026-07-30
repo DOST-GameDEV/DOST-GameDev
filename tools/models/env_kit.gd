@@ -160,6 +160,10 @@ func build_all(output_dir: String) -> void:
 	_municipal_hall()
 
 	# --- field markings (serve BOTH round-win modes) ------------------------
+	_chalk_piko()
+	_chalk_tao()
+	_chalk_bulaklak()
+	_chalk_gulo()
 	_base_circle_decal()
 	_throwing_line_decal()
 	_team_side_decal()
@@ -1517,6 +1521,163 @@ func _municipal_hall() -> void:
 ## reason it was widened from 0.06 in the first place was that a thin ring
 ## foreshortens to sub-pixel at the front/back of the ellipse from a throwing
 ## line 6 units away, and that distance hasn't changed.
+## =============================================================================
+## CHILDREN CHALK DRAWINGS - the floor of an eskinita is a sketchpad
+## =============================================================================
+##
+## Human ask, with reference photos of kids drawing on pavement: "add random child
+## chalk scribbles in eskinita on the floor, make it look like real drawings."
+##
+## THIS IS A PILLAR-1 PIECE, NOT DECORATION, and it is the cheapest one left. The
+## map already says "a street somebody lives on"; this says "and CHILDREN PLAY ON
+## IT", which is the entire premise of tumbang preso. The game is about kalaro in an
+## alley, and until now the only thing on the ground was the court the engine needs.
+##
+## PIKO EARNS ITS PLACE TWICE. It is Filipino hopscotch, chalked on streets across
+## the country, and it is a DIFFERENT STREET GAME drawn beside the one being played
+## - the same kids, another afternoon. A non-Filipino reads "hopscotch, so children
+## play here"; a Filipino reads "piko". That is the specific-not-decorative standard:
+## the reference is a real named game, not a generic squiggle.
+##
+## PASTELS, because real pavement chalk comes in a box of pale colours and children
+## use all of them, which is what the references show.
+## These are LOCAL CONSTANTS and that is a documented exception to this file's
+## "colours come from UiTheme" rule. UiTheme is the game's UI and role palette; a
+## child's chalk box is neither, and no ENV_* token is a pale pink. Adding four
+## UI-band colours for a floor doodle would be the worse trade. NONE of them is near
+## OFFENSE orange (#f87020) or DEFENSE blue (#0080e8) - checked, because the world is
+## the largest surface in frame and that rule does not bend.
+const CHALK_PINK: Color = Color(0.902, 0.678, 0.706)
+const CHALK_BLUE: Color = Color(0.678, 0.780, 0.851)
+const CHALK_LEMON: Color = Color(0.910, 0.878, 0.671)
+const CHALK_MINT: Color = Color(0.714, 0.843, 0.745)
+
+
+## One chalk stroke along a polyline, as a wobbly ribbon per segment.
+##
+## Reuses `_chalk_wander`, so a doodle and a court line are drawn by the same
+## unsteady hand - which is what stops the drawings reading as a different asset
+## dropped on the same floor. `t` advances along the WHOLE path rather than resetting
+## per segment, so the wobble carries continuously through corners.
+func _chalk_stroke(w: ObjWriter, pts: PackedVector2Array, width: float,
+		material: String, seed_t: float = 0.0) -> void:
+	if pts.size() < 2:
+		return
+	var t := seed_t
+	for i in range(pts.size() - 1):
+		var a := pts[i]
+		var b := pts[i + 1]
+		var d := b - a
+		var seg := d.length()
+		if seg < 0.0001:
+			continue
+		var dir := d / seg
+		var perp := Vector2(-dir.y, dir.x)
+		var steps := maxi(2, int(seg / 0.09))
+		var outline := PackedVector2Array()
+		for k in range(steps + 1):
+			var f := float(k) / float(steps)
+			var tt := t + f * seg
+			outline.append(a + d * f + perp * (_chalk_wander(tt)
+				+ width * 0.5 * (0.85 + 0.3 * sin(tt * 21.7))))
+		for k in range(steps, -1, -1):
+			var f := float(k) / float(steps)
+			var tt := t + f * seg
+			outline.append(a + d * f + perp * (_chalk_wander(tt)
+				- width * 0.5 * (0.85 + 0.3 * sin(tt * 19.1 + 1.4))))
+		w.add_extrude(outline, 0.0, 0.02, material)
+		t += seg
+
+
+## A closed ring of chalk - a head, a wheel, a flower centre. The radius breathes so
+## it is a child's circle rather than a compass one.
+func _chalk_ring(w: ObjWriter, cx: float, cz: float, r: float, width: float,
+		material: String) -> void:
+	var pts := PackedVector2Array()
+	for i in range(15):
+		var ang := TAU * float(i) / 14.0
+		var rr := r * (1.0 + 0.09 * sin(ang * 3.0 + 0.7))
+		pts.append(Vector2(cx + rr * cos(ang), cz + rr * sin(ang)))
+	_chalk_stroke(w, pts, width, material, cx * 3.1 + cz)
+
+
+## PIKO - Filipino hopscotch. Four single boxes then a wide pair, drawn wonky.
+func _chalk_piko() -> void:
+	var w := ObjWriter.new("ChalkPiko")
+	w.set_material("chalk", CHALK_LEMON)
+	const CELL := 0.62
+	var y := 0.0
+	for row in range(4):
+		var wob := 0.035 * sin(float(row) * 2.3)
+		_chalk_stroke(w, PackedVector2Array([
+			Vector2(-CELL * 0.5 + wob, y), Vector2(CELL * 0.5 + wob, y),
+			Vector2(CELL * 0.5 - wob, y + CELL), Vector2(-CELL * 0.5 - wob, y + CELL),
+			Vector2(-CELL * 0.5 + wob, y),
+		]), 0.045, "chalk", float(row) * 1.7)
+		y += CELL
+	_chalk_stroke(w, PackedVector2Array([
+		Vector2(-CELL, y), Vector2(CELL, y), Vector2(CELL, y + CELL),
+		Vector2(-CELL, y + CELL), Vector2(-CELL, y),
+	]), 0.045, "chalk", 9.3)
+	_chalk_stroke(w, PackedVector2Array([Vector2(0.0, y), Vector2(0.0, y + CELL)]),
+		0.045, "chalk", 4.1)
+	_finish(w, "env_chalk_piko", 0.0)
+
+
+## A stick figure. Every child draws this one and it reads instantly from above.
+func _chalk_tao() -> void:
+	var w := ObjWriter.new("ChalkTao")
+	w.set_material("chalk", CHALK_PINK)
+	_chalk_ring(w, 0.0, 0.62, 0.17, 0.04, "chalk")
+	_chalk_stroke(w, PackedVector2Array([Vector2(0.0, 0.45), Vector2(0.02, -0.12)]),
+		0.04, "chalk", 1.3)
+	_chalk_stroke(w, PackedVector2Array([Vector2(-0.30, 0.14), Vector2(0.01, 0.32),
+		Vector2(0.32, 0.10)]), 0.04, "chalk", 2.6)
+	_chalk_stroke(w, PackedVector2Array([Vector2(-0.24, -0.52), Vector2(0.02, -0.12),
+		Vector2(0.26, -0.50)]), 0.04, "chalk", 5.2)
+	_finish(w, "env_chalk_tao", 0.0)
+
+
+## A flower, straight off the second reference photo.
+func _chalk_bulaklak() -> void:
+	var w := ObjWriter.new("ChalkBulaklak")
+	w.set_material("petal", CHALK_BLUE)
+	w.set_material("stem", CHALK_MINT)
+	for i in range(6):
+		var ang := TAU * float(i) / 6.0
+		_chalk_ring(w, cos(ang) * 0.27, sin(ang) * 0.27 + 0.30, 0.15, 0.035, "petal")
+	_chalk_ring(w, 0.0, 0.30, 0.11, 0.035, "petal")
+	_chalk_stroke(w, PackedVector2Array([Vector2(0.0, 0.16), Vector2(-0.04, -0.42)]),
+		0.038, "stem", 3.4)
+	_chalk_stroke(w, PackedVector2Array([Vector2(-0.03, -0.12), Vector2(0.22, -0.02)]),
+		0.033, "stem", 7.1)
+	_finish(w, "env_chalk_bulaklak", 0.0)
+
+
+## Loops and a sun - the "I was just holding chalk" drawing. There is one in every
+## reference photo, and it is what makes a floor look USED rather than decorated with
+## three tidy motifs.
+func _chalk_gulo() -> void:
+	var w := ObjWriter.new("ChalkGulo")
+	w.set_material("chalk", CHALK_MINT)
+	w.set_material("sun", CHALK_LEMON)
+	var loop := PackedVector2Array()
+	for i in range(34):
+		var f := float(i) / 33.0
+		var ang := f * TAU * 2.4
+		var r := 0.16 + f * 0.42
+		loop.append(Vector2(cos(ang) * r - 0.15, sin(ang) * r * 0.72))
+	_chalk_stroke(w, loop, 0.036, "chalk", 0.9)
+	_chalk_ring(w, 0.74, 0.52, 0.13, 0.034, "sun")
+	for i in range(6):
+		var a2 := TAU * float(i) / 6.0 + 0.3
+		_chalk_stroke(w, PackedVector2Array([
+			Vector2(0.74 + cos(a2) * 0.18, 0.52 + sin(a2) * 0.18),
+			Vector2(0.74 + cos(a2) * 0.30, 0.52 + sin(a2) * 0.30)]),
+			0.03, "sun", float(i) * 3.3)
+	_finish(w, "env_chalk_gulo", 0.0)
+
+
 func _base_circle_decal() -> void:
 	var w := ObjWriter.new("BaseCircleDecal")
 	w.set_material("mark", UiTheme.HIGHLIGHT)
