@@ -199,8 +199,31 @@ and delete the overrides.**
 16:9 and 21:9 — the cards widened 200→250 for the letter mark and `TopLeft`/`TopCentre`/`TopRight` are
 still pairwise disjoint at both aspects.
 
-**Still on this item:** `RoleSwapCard` and `MatchResult` have not been moved to the wood face yet, and the
-`Hud*` font-size ladder (six sizes of the same shout, per `ui_theme.gd`'s own note) is untouched.
+**Second pass, same day — three pieces of play feedback, all correct:**
+
+- *"big negative space in the ingame hud"* — the team cards were a fixed 250px around a glyph and a
+  seven-letter word, so the right third was empty wood. **Zero-width boxes now**
+  (`offset_right == offset_left`): a Control's size is clamped **up** to its content minimum, which is
+  the one place that rule helps rather than bites. `TopRight` grows leftward with `grow_horizontal = 0`.
+  ⚠️ **That forced `clip_text` OFF the role labels** — `clip_text` makes a Label report a **zero**
+  minimum width, correct inside a fixed card and fatal inside a hugging one, where it collapses the word
+  to nothing. The two role strings are fixed constants, so they may size the card; **anything
+  variable-length must give the card a floor back first.**
+- *"in knock the lata down, the 2 and walk around freely, it kinda looks ugly with that hud/ui, can u js
+  do text there but stylized"* — **the plates are gone.** The legibility problem they solved is real, so
+  it is solved with a heavy **INK outline** on the glyphs instead: the same trick the screen-edge arrows
+  use. CREAM for instruction, AMBER for alert, role colour for the objective.
+- *"big negative space in … the tutorial"* — see 10.5.2/10.5.3; new
+  `CharacterPreview.set_tile_framing()`.
+
+**Third pass — the last two mid-game screens, with R-29 (see below):** `RoleSwapCard` and `MatchResult`
+are now on the same wood face, including `MatchResult`'s two **buttons**, which had stayed on the
+theme's default near-white `card_style` and read as dialog buttons pasted onto a wooden sign.
+`MatchResult`'s unfilled pips were `UiTheme.CARD` — the same invisible-empty-state problem, now a dark
+well.
+
+**Still on this item:** the `Hud*` font-size ladder (six sizes of the same shout, per `ui_theme.gd`'s own
+note) is untouched, and the overrides still want promoting into variations by 🩴 ART.
 
 **B-141 · CHARACTER SELECT PUT THE FIGURE ON ONE FLAT NAVY FILL. [FIXED 2026-07-30]**
 

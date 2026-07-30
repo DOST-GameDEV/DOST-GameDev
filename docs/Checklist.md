@@ -2290,6 +2290,38 @@ by opening the PNG.
       because the overrides are per-node in code — the `Hud*` variations live in
       `ui_theme.gd`, which is ART's file. 🩴 **Filed for ART to promote.**
 
+### 10.5.4 · R-29 · the intermission says WHY, and REMATCH is the default `[x]`
+
+**Executed 2026-07-30**, 🖥️ UX lane. New probe `tools/ui/intermission_shot.tscn` drives
+the real replicated signal off `Main.tscn` and prints the word each case resolved.
+
+- [x] **The round-end reason, in display type on `RoleSwapCard`.** The intermission said
+      only who won, so losing to the clock and losing to a tag looked identical.
+      **All four cases rendered and asserted:** `TAGGED` / `TIME` in defence blue
+      (`0080e8`), `LATA DOWN` / `DENTED` in offence orange (`f87020`) — the reason takes
+      the colour of the side it favoured.
+      ⚠️ **CLASSIFIED AT `round_intermission_started`, NOT AT `round_won`, and the brief's
+      instruction to use `round_won` would have shipped a host-only feature.**
+      `RoundManager.report_round_win()` early-returns on a client, so **`round_won` never
+      fires on a client** and the reason would have been blank for every non-hosting peer.
+      The intermission broadcast is the replicated one — the same reasoning
+      `hud.gd::_on_round_intermission_audio` already documents for its fanfare. The state
+      it needs is valid there too: `report_round_win()` RPCs `_sync_state(time_left, …)`
+      on the line *before* it emits, so every peer has the ended round's final `time_left`
+      first, same host frame, same ordered reliable channel.
+      ⚠️ **RING-OUT ×3 READS AS `TAGGED`** — `register_ring_out()` calls
+      `report_round_win(true)` exactly as a tag does and nothing records which clause
+      fired. Not wrong (the can side did win by punishing the attacker) but not specific.
+      A real fix needs the reason on the signal, which is 🥊/🌐's call, not this lane's.
+      ⚠️ **No new tween beat**, so the §4.6 timeline is untouched — the reason is raised at
+      0.0s alongside the winner line and nothing races the 3.0s world reset.
+- [x] **REMATCH takes focus on `MatchResult`**, so Enter is the fast path back into the
+      game. ⚠️ **Falls back to MAIN MENU when REMATCH is hidden** — it is hidden on a
+      client (`begin_next_round()` is host-gated) and `grab_focus()` on a hidden Control
+      does nothing, which would have left the screen with no focus and keyboard navigation
+      dead. Verified: probe reports `focus=RematchButton`.
+- [x] **Both screens moved onto the wood face** (B-143's third pass), buttons included.
+
 ## Phase 9 · AI FAIRNESS LOG — the running record for balance testing
 
 **Human call, 2026-07-29:** *"Make sure the AI's fulfil their roles as well and try to win (attacker

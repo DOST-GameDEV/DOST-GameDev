@@ -36,6 +36,36 @@ horizontal_alignment = 1
 vertical_alignment = 1
 text = "RESULT"
 
+; R-29 — WHAT JUST HAPPENED, in display type above the winner line.
+;
+; The intermission said only who won, never WHY, so a player who lost a round to the
+; clock and a player who lost it to a tag saw the same card. This is the missing word:
+; TAGGED / LATA DOWN / DENTED / TIME.
+;
+; ⚠️ NO SIGNAL CARRIES THE REASON — it is classified in the UI from public state; see
+; `role_swap_card.gd::_classify_reason()` for how, and for what that cannot distinguish.
+; Colour and outline are set there too, not here.
+;
+; Sits ABOVE ResultLabel and larger than it: the reason is the news, "TEAM A WINS THE
+; ROUND" is the consequence. Costs no new tween beat, so the §4.6 timeline is untouched —
+; nothing may race the world reset at 3.0s.
+[node name="ReasonLabel" type="Label" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -460.0
+offset_top = -236.0
+offset_right = 460.0
+offset_bottom = -150.0
+theme_override_font_sizes/font_size = 72
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "TAGGED"
+
 [node name="LeftPanel" type="PanelContainer" parent="."]
 unique_name_in_owner = true
 layout_mode = 1
