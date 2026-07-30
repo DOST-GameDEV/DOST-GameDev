@@ -3866,6 +3866,51 @@ is **8 gameplay files, not 5**; the extra ones are `network_manager.gd`, `carria
 positive on the words *"debug cruft"*) and **`character_base.gd` with 5 hits — a shared-lock
 file, so R-30 needs a mutex its plan does not mention.**
 
+#### R-26 · THE NET HALF DONE, 2026-07-30 — 🌐 NET. `lobby_probe` at FOUR peers
+
+All three uncovered cases are covered, each on four real ENet instances, and **every one of
+the original 21 assertions still runs** — the four-peer run is the same script with
+`peers=`/`seat=`, not a second probe re-asserting a subset. The two-instance invocation is
+unchanged and still green (25 assertions across the pair).
+
+| case | result |
+|---|---|
+| **four-peer lobby** | ✅ all four seated, `RESULT: LOBBY OK` on all four |
+| **seat exclusivity under contention** (new) | ✅ `every seated peer holds a DISTINCT seat (4 peers, 4 seats)` |
+| **mid-lobby disconnect** (new) | ✅ `1 peer(s) left … (peak 4, now 3)` and **`the leaver's seat came back — 1 free chair`** |
+| **join during the ready window** (new) | ✅ `a late joiner is seated (4 peers)` and **`START is SHUT again`** |
+
+**The late-join answer is the game's, and it is the right one.** A peer arriving after the
+others have readied does **not** get swept into the match: the gate closes again, the same
+way `_rpc_sync_config` already clears every tick when the host moves a picker. Readying is
+agreement to play a specific match with a specific set of players, and a new player is a
+bigger change to that than a difficulty tier.
+
+⚠️ **THE DISCONNECT ASSERTIONS WERE WATCHED FAILING, and the negative control is real rather
+than staged.** The run before this one had the leaver quitting at t=13 while the host looked
+at t=12.5 — so no disconnect had happened when the check ran, and both assertions reported
+FAIL (`peak 4, now 4`, `0 free chair(s), expected 1`). That is exactly the no-disconnect
+case, and it fails, so neither assertion is vacuous.
+
+⚠️ **THREE SCHEDULE FAULTS WERE FOUND BEFORE ANY OF THIS COULD BE TRUSTED, AND ONE OF THEM
+LOOKED EXACTLY LIKE A REAL BUG.** With four peers the beats collide with each other:
+
+1. the host asserted "4 peers connected" at t 2.5 while the third client was still launching
+   — reported 2, and nothing was wrong;
+2. sliding every beat then put the host's difficulty change BEFORE the second and third
+   clients' welcome-packet look, so both correctly read the value the host had already
+   changed to — **and the probe called that "the welcome packet only works for the first
+   joiner"**, which is a bug someone would have gone hunting for. The client's FIRST look is
+   now pinned early and only its later beats slide;
+3. inverting that put the clients' `sync_config` check before the host's change instead, and
+   all three failed the other half.
+
+Both orderings were run and both failure modes observed, which is the only reason the
+comment in the file can state which way round it goes.
+
+**Still open on R-26:** the 🖥️ **UX half** — a four-peer lobby, a mid-lobby disconnect and a
+late join all need a screen state, and the probe now exposes all three.
+
 #### NET-6 · ANSWERED, 2026-07-30 — 🌐 NET. `ai_probe -- fairness`, and the answer is BOTH columns
 
 **Two separate faults, and the first one dissolves the question as asked.**
