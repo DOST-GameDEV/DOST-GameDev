@@ -2739,13 +2739,232 @@ swept end to end and there is no value of it that makes the game fair. R-07 (a p
 wrong-footed) and R-08 (whether an instant-win tag is the imbalance) are now the whole of Stage 1's
 fairness argument, and R-06's lob has a measured target to beat: **94.7% blocked.**
 
-### ⚠️ Still open after RUN 9
+### ⚠️ RUN 9's NUMBERS WERE THE LAST ONES TAKEN ON A HARNESS THAT DISTORTED THE PHYSICS. Read this before comparing anything to them.
 
-**Corrected 2026-07-30.** This section used to be headed "after RUN 7" and to quote RUN 7's figures.
+**Found 2026-07-30, after RUN 9 and before RUN 10.** `Engine.time_scale` does not make the
+simulation run faster — it makes **each physics step cover more game time.** At the default 60
+ticks/second and `scale=4`, one step is 4/60 = 0.067 s, so a unit at `SPEED` 6.0 **jumps 0.40 units
+per step**; at the `scale=16` an exploratory sweep briefly used, 1.6 units per step — a body-width at
+a time.
+
+**How it was caught, because it looked exactly like an AI bug.** A new probe column reported the AI
+*asking* for an aim point up to **3.1 units** from the can, when the aiming code cannot offset by more
+than 1.65 (lead capped at 1.2, threading at 0.45). An impossible number is not a bad bot, it is a
+broken measurement: the can had moved a step and a half between the aim being written and the slipper
+leaving the hand. `ai_probe` now raises `Engine.physics_ticks_per_second` in proportion to the scale,
+so a step stays 1/60 s of GAME time and a high scale is what it claims to be — the same simulation,
+wall-clock faster, paid for in CPU.
+
+**Validated, not assumed:** scale 1 and scale 4 now agree (aim error 0.28 vs 0.34 units; block rate
+82.6% vs 78.6%). **Scale 8 does not** — aim error goes back to 1.31, because 480 physics ticks a
+second for four units is more than this machine delivers in real time. ⚠️ **Use `scale=4`. Anything
+above it has to prove itself against a `scale=1` run before its numbers are used.**
+
+RUN 9's *conclusion* survives this — the standoff is still not a lever, and the two instant-tag
+geometries are still real, both of which were visible at scale 4 where the distortion is 0.4 units
+rather than 1.6. Its absolute dents and block numbers should be treated as indicative.
+
+### RUN 10 — 2026-07-30. THE AI ITSELF WAS BROKEN IN SEVEN PLACES, AND THAT WAS NOT A BALANCE PROBLEM.
+
+🧑 Human ask, 2026-07-30: *"make sure u actually fix the ai and that theyre all capable of movement"*
+and *"i want the AI's movement to feel natural and not too FAST or mechanical."*
+
+Every one of these was found by **measuring**, most of them with two new probe instruments, and each
+had been invisible behind the aggregate columns for nine runs.
+
+| # | What was wrong | How it was found | Fix |
+|---|---|---|---|
+| 1 | **The attacker threw from INSIDE the defended area.** `_cond_attacker_out_of_range` only asked "am I too far", so an attacker standing 3 units from the can counted as in position and charged from inside the taya's own reach. | RUN 9's per-round table: a fifth of rounds ended by tag at **1.4–1.7 s** with one throw. | A throwing **band**, `[4.6, 6.0]`. 4.6 is derived: pursuit 1.8 + melee 1.4 = 3.2, plus one more melee range of margin. |
+| 2 | **The attacker walked into the taya's lap to fetch its slipper** — and its own tsinelas already crawls out to meet it, which nothing used. | `bt_trace()` at the moment of every tag. | Hold at the band's inner edge and let the slipper come. ⚠️ The first version waited at 9.0 units and measured time-to-first-throw going 0.6 s → 9.6 s with 2 rounds in 4 taking **no throw at all**. Waiting is right; waiting that far away is dead time. |
+| 3 | ⚠️ **The attacker's dodge was blind to the only defender that could ever hit it.** Threat detection required a defender **closing at 0.35 m/s**, and `_act_taya_tag` **releases movement in order to tag**. At the exact instant a tag was coming, the taya's velocity was ~0 and the attacker's own threat test scored it harmless. | `bt_trace()` at contact, 10 rounds: tagged in `approach` ×4, `settle` ×2, `fetch` ×1, `wait-out-the-guard` ×1 — **never once defending itself.** | A defender at arm's length (1.9) is an emergency whatever it is doing, and it out-prioritises everything except a throw already past its commit point. |
+| 4 | ⚠️ **The Can never moved.** `CAN_HOLD_RADIUS` 0.45 against `ARRIVE_DISTANCE` 0.6 — **the deadzone was wider than the circle it was picking points inside.** Recorded in RUN 1's own notes and never fixed. | Independence audit: 7.03 s longest still run on `TeamAProp`, the whole sample minus its dodges. | A 0.12 arrival distance, inside its own circle. The circle stays 0.45 — the Can must not wander off the mark. |
+| 5 | ⚠️ **Fixing 4 made the Can UNHITTABLE, and this is the most instructive bug of the pass.** `character_base.gd` **normalises** an AI movement vector, so a 0.22-unit shuffle is performed at the full 6.0 m/s — nearly two units of travel during every flight, re-rolled every 0.35 s. | The new closest-approach geometry: **median 2.49 units, 0 of 12 unblocked throws inside the 0.50 overlap band.** | A shuffle is performed at **shuffling pace** (0.30 of SPEED). ⚠️ Evasion is exempt and still full speed — the dodge is the Can's skill, the fidget never was. |
+| 6 | **The same normalisation broke the AI's lead.** `_lead_the_can` extrapolated the can's *instantaneous* velocity, which for a shuffling can is 6 m/s of noise. | Same instrument. | Lead a **smoothed** velocity: a shuffle averages to nothing, a real sidestep survives. Capped at 1.2 units. |
+| 7 | ⚠️ **The Guard was a free, perfect third layer of defence.** A hit is not a dent while Guard is up (`apply_dent` refuses outright), and the can raised it in reaction to **every single throw**. | scale-1 run: 23 throws, 19 blocked, **2 that genuinely reached the can, 0 dents.** | A reaction delay (`tier_think`-scaled) and a cooldown, so a fast flat throw arrives before the guard and a **barrage punches through where one throw does not**. Neither `CAN_EVADE_MISS_MARGIN` (a human call) nor `CAN_EVADE_LOOKAHEAD` (untunable) was touched. |
+| 8 | **The grab never re-fired.** `_tap()` was called every tick, which resets its own release countdown, so the key never came back up and `input_just_pressed` fired **exactly once**. A first attempt that did not take left the attacker standing over its own slipper pressing a dead button. | The new stillness trace: **4.05 s** of a loose prop in `tsinelas/stand-down` opposite an attacker parked in `retrieve/fetch`. | A grab interval, same shape as `TAYA_TAP_INTERVAL`. |
+| 9 | **A loose tsinelas that had arrived stopped dead**, and it was the largest single contributor to the stillness figure. | Stillness trace: 12 of 26 episodes over 2 s. | It settles instead of freezing. |
+
+**MOVEMENT NO LONGER READS MECHANICAL** — the other half of the ask, and the cause was not the speed
+number. An AI unit's movement is **four booleans**, normalised: eight compass directions, full speed,
+changing in a single frame. Four fixes, none of them touching gameplay code: a **heading that turns at
+a bounded rate** (8 rad/s, so a reversal is a ~0.4 s turn and not a frame); a **Schmitt trigger** per
+compass key, so a heading sitting on a threshold holds it instead of chattering (that chatter is also
+what inflated the transition counts every independence audit has reported); a **walking gait** per
+tier through the public `enter_speed_zone()` API, dropped the instant a human takes the unit over; and
+an **idle settle** so an arrived unit shifts its weight instead of freezing.
+
+#### The RUN 10 table — 20 rounds, Option A, Eskinita, scale 4, standoff 2.6, on honest physics
+
+| Metric | RUN 9 (2.6 row) | **RUN 10** | Fair |
+|---|---|---|---|
+| Round win rate | DEF 100% | DEF **100%** | 40–60% |
+| Time-to-first-throw | 0.8 s | 0.8 s | < 8 s |
+| Throws taken | 188 | 73 | — |
+| **Throws blocked** | **94.7%** | **78.1%** | 25–50% |
+| Reached the can | 1 | 2 | — |
+| **Dents/round** | 0.05 | **0.10** | ≥ 1 |
+| Ended by tag | 19/20 | **20/20** | — |
+| Avg round duration | 28.2 s | **13.2 s** | — |
+| Aim error at release | *not measured* | **0.39 units mean** | — |
+| Went-nowhere (displacement) | *not measured* | **3.85 s worst** | < 2 s |
+
+**VERDICT, stated plainly: the AI is materially better and the game is still not fair.** Seven real
+defects are gone, the block rate is down 16.6 points, the attacker no longer walks into the tag at the
+opening whistle, and every unit moves. **But the defence still wins 100% of rounds and 20/20 still end
+by tag**, which is now firmly R-08's problem and not the AI's — see RUN 11 immediately below, which
+was measured for exactly this reason.
+
+⚠️ **R-07's OWN ACCEPTANCE BAR IS NOT MET AND IS NOT CLAIMED.** It asked for block rate ≤ 60% and
+dents/round ≥ 0.5. Measured: **78.1% and 0.10.** The committed post is a real improvement (94.7 → 78.1
+across RUN 9 → RUN 10, with the AI fixes in between) but it is not sufficient on its own.
+`throws released while the post was already wrong: 0 / 73` — the attacker's slide is not yet beating
+the post at all, because the post's reaction window (0.35 s) is shorter than the attacker's own charge
+(0.42–0.98 s), so the taya re-posts *during the wind-up*. **`posthold=` and `repost=` exist to sweep
+exactly this and the sweep has not been run.** That is the next concrete piece of work and it is one
+hour.
+
+⚠️ **THE STILLNESS METRIC WAS ITSELF WRONG, AND BOTH VERSIONS ARE NOW PRINTED.** `STILL_SPEED` 0.35 m/s
+was written against Persons walking at 6.0, but every other unit moves through a speed scale — a
+tsinelas crawling home at `CRAWL_SPEED_SCALE` is at 2.7 m/s, a stood-on one at 0.95, a settling unit
+lower again. **A slipper crawling home at 0.33 m/s scored as "frozen" while doing exactly its job**,
+which is a large part of why "the longest still run has moved independently of everything else for
+three consecutive runs". `ai_probe` now reports stillness by **displacement** as well, per unit, with
+the branch named. The residual 3.85 s of went-nowhere is **a charging attacker (a deliberately
+readable wind-up) and a taya on its post** — both nameable now, neither a freeze.
+
+### RUN 11 — 2026-07-30. R-08: IS THE INSTANT-WIN TAG THE IMBALANCE? Three variants, one harness. 🧑 THE PICK IS THE HUMAN'S.
+
+⚠️ **Imposed from the probe, never from `hitbox.gd`.** That file is another lane's, R-08's deliverable
+is a table to choose from, and shipping a rule in order to measure it would be making the decision.
+The interception is honest because of the order inside `hitbox.gd::_on_area_entered`: `landed_on.emit()`
+runs **before** `RoundManager.report_round_win(true)`, and that function no-ops on `not round_active`.
+Stated cost: the round clock does not advance for the fraction of a frame between suppression and the
+deferred restore — far below the noise on every column here.
+
+20 rounds each, Option A, Eskinita, scale 4, standoff 2.6, identical AI.
+
+| Variant | Round win rate | Throws taken | Blocked | Reached can | **Dents/round** | Ended by | **Avg round duration** | Tags suppressed |
+|---|---|---|---|---|---|---|---|---|
+| **3 · CONTROL** (any tag ends the round) | DEF **100%** | 73 | 78.1% | 2 | **0.10** | 20/20 tag | **13.2 s** | — |
+| **1 · a tag costs the slipper + a respawn** | DEF **100%** | **398** | 83.2% | **11** | **0.55** | **20/20 clock** | **90.0 s** | **162** |
+| **2 · a tag only counts inside the box** | DEF **100%** | 102 | 77.5% | 3 | **0.05** | 20/20 tag | 19.0 s | **0** |
+
+**READ THE DENTS COLUMN FIRST, THEN THE DURATION COLUMN, EXACTLY AS THIS SECTION SAYS.** Three findings,
+and the second is the one nobody predicted:
+
+1. **VARIANT 1 IS THE ONLY ONE THAT CHANGES ANYTHING: 5.5× the dents (0.10 → 0.55), 5.5× the throws
+   (73 → 398), 5.5× the throws reaching the can (2 → 11).** 162 tags happened and cost the attacker its
+   slipper and a walk home instead of the round. That is the retrieval scramble becoming the game,
+   which is what the real street game is. ⚠️ **AND IT COSTS EVERY ROUND THE FULL 90-SECOND CLOCK** —
+   20/20 timed out. It does not fix the win rate; it converts an instant loss into a slow one.
+2. ⚠️ **VARIANT 2 IS A NULL RESULT, AND THAT IS USEFUL: `tags suppressed: 0 / 102`.** **Every single
+   tag in the run already happened while the attacker was inside the confinement square.** "Only count
+   a tag during retrieval" changes nothing because retrieval is *already* the only place tags occur —
+   which independently confirms RUN 6's finding about where the real exposure is, and retires the
+   variant. It cannot be the fix; there is nothing for it to fix.
+3. ⚠️ **THE WIN CONDITION IS OUT BY MORE THAN THE TAG RULE — AND HERE IS THE ARITHMETIC.** Under Option A
+   the offence must land **`MAX_DENTS` = 3 dents on one can inside one round** while the defence needs
+   **one tag**. Variant 1's own numbers say what that costs: at **0.55 dents per round** the offence
+   reaches 3 essentially never, which is why its win rate is 100–0 despite 398 throws. **At a
+   requirement of 1 dent, variant 1's 9-in-20 dented rounds would be ≈45% offence.** The lever with
+   the most fairness per unit of change is therefore `CharacterBase.MAX_DENTS`, **not** the tag rule.
+
+**RECOMMENDATION (the lane produces it; 🧑 the decision is the human's):** **variant 1, paired with a
+lower dent requirement, and not variant 1 alone.** Variant 1 by itself trades an unfair game for a slow
+one and fails the no-dead-time pillar outright. Variant 2 is retired by its own null result. ⚠️
+`MAX_DENTS` lives in `character_base.gd`, a **shared-lock** file the balance lane may not write — it
+needs claiming in `SHARED_LOCKS.md`, and the number above is the argument for the claim.
+
+### RUN 12 — 2026-07-30. R-09: THE DIFFICULTY TIERS, MEASURED FOR THE FIRST TIME.
+
+⚠️ **Nothing outside `AIController` called `apply_difficulty()` until `tools/ai_probe.gd` gained a
+`tier=` argument on 2026-07-30, so no tier but NORMAL had ever been measured.** Two new columns were
+added to `DIFFICULTY_TIERS` in the same pass — `gait` (walking pace) and `mistake` (the overcommit
+chance) — so all three tiers now differ in feel as well as in sharpness.
+
+20 rounds each, Option A, Eskinita, scale 4, standoff 2.6, control tag rule.
+
+| Tier | pursue / lead / think / charge / gait / mistake | Win rate | 1st throw | Throws | Blocked | **Dents/round** | **Avg round** |
+|---|---|---|---|---|---|---|---|
+| **BATA** | 1.8 / 0.25 / 0.50 / 0.40 / 0.80 / 0.22 | DEF 100% | 0.4 s | 68 | **61.8%** | 0.15 | **9.1 s** |
+| **NORMAL** | 1.8 / 0.60 / 0.35 / 0.65 / 0.88 / 0.09 | DEF 100% | 0.8 s | 73 | **78.1%** | 0.10 | **13.2 s** |
+| **ASTIG** | 4.6 / 0.85 / 0.22 / 0.80 / 0.96 / 0.02 | DEF 100% | 0.5 s | 29 | **58.6%** | **0.00** | **3.7 s** |
+
+**THE TIERS DO DIFFER, WHICH HAD NEVER BEEN SHOWN — but ⚠️ NOT MONOTONICALLY, AND THE REASON MATTERS.**
+ASTIG's block rate is the *lowest* of the three, and that is not it defending worse: at `pursue` 4.6
+the taya chases anywhere inside its box, so **rounds end in 3.7 seconds** and there is no time for
+throws to accumulate. Its dents column is the honest one: **0.00, the only tier where the offence never
+scores at all.** BATA is the most beatable (61.8% blocked, 0.15 dents) and gives the longest usable
+round. ⚠️ **Read `pursue` 4.6 against RUN 9's second geometry** — a taya that chases to the box edge is
+inside melee range of the throwing line, which is the same instant-tag mechanism RUN 9 found at high
+standoff. ASTIG being "hard" is largely that, not superior play, and if a human finds it unfun rather
+than difficult, **lowering ASTIG's `pursue` is the first thing to try.**
+
+### RUN 13 — 2026-07-30. R-21's HEATMAP: WHERE THE FOUR UNITS ACTUALLY ARE.
+
+⚠️ **Two implementations now exist and one should go.** The 🌏 MAPS lane built `tools/flow_probe.tscn`
+(heatmap + sightlines) on 2026-07-30, stating in its own header that it built the capture only because
+`ai_probe` had no heatmap hook and that *"if it has one, this file can keep only `_write_heatmap()`"*.
+`ai_probe` now has one — sampling, an ASCII grid and a PNG — so **the hook flow_probe asked for exists
+and the duplicate capture can be collapsed into it.** That is the MAPS lane's call, not this one's.
+
+⚠️ **The artefact in this log is TEXT on purpose.** `docs/` is another lane's directory and a binary
+image there is a merge conflict waiting to happen; the ASCII grid survives a diff. The PNG is written
+to `user://heatmap_<map>_<variant>.png` and its absolute path is printed by the run.
+
+Eskinita, 20 AI rounds, 1408 samples at 1/s of game time, peak cell 267 (`#` ≥ 50% of peak, `+` ≥ 20%,
+`:` ≥ 5%, `.` > 0, `[`/`-` mark the ±5.0 confinement square, `o` the can's mark):
+
+```
+  |                             |
+  |              .              |
+  |            .. ...           |
+  |           .. ....           |
+  |         -.-.....-.-         |
+  |        ............         |
+  |        ... ......... .      |
+  |      ..........+..:.        |
+  |        .:....:.::....       |
+  |       ....:.:#:.:.:..       |
+  |      ........:.:..:.        |
+  |        .....:.....:.        |
+  |      .. ....::.....         |
+  |         ...:......[         |
+  |         --..:....--         |
+  |        .   ..+...           |
+  |            .... .           |
+  |            .. .             |
+  |                ..           |
+  |                             |
+```
+
+**THE FINDING IS DEAD SPACE, AND IT IS LARGE.** Every one of 1408 samples falls inside roughly ±7 units
+of the can, in a rough disc barely wider than the confinement square itself — the peak cell sits
+**on the mark**, and the ±14-unit sampled area is more than half empty in every direction. The play
+happens in a ring one to two units outside the chalk and nowhere else. ⚠️ **This does not license
+shrinking the arena — the FOOTPRINT is a standing decision.** What it says is that map dressing and
+readability spent outside ~8 units of the centre is spent where nobody goes, and that
+`CONFINEMENT_RADIUS` is not obviously too small: the units use the whole box and a margin beyond it.
+🧑 **The size call remains the human's, and the sweep that would inform it is still filed, not run** —
+see the R-21 handoff below for the two reasons why.
+
+### ⚠️ Still open after RUN 13
+
+**Corrected 2026-07-30, twice.** This section used to be headed "after RUN 7" and to quote RUN 7's figures.
 **RUN 8 invalidated them** — RUNS 1–7 all measured a 3-v-4 — so the numbers below are RUN 8's.
 
-- **Win rate DEF 100% and dents 0.00–0.10.** Not "improved, still out". **The offence does not
-  score.** 92% of throws are blocked, and 10/10 rounds end by tag.
+- **Win rate DEF 100% and dents 0.10 (RUN 10).** Not "improved, still out". **The offence does not
+  score.** 78.1% of throws are blocked and 20/20 rounds end by tag — down from 94.7% and unchanged
+  respectively. ⚠️ **The AI is no longer the reason.** RUN 10 removed seven measured defects from it;
+  what is left is the win condition, and RUN 11 quantifies it: the offence must land 3 dents in one
+  round while the defence needs one tag, and even with the tag rule removed the offence manages
+  **0.55 dents a round.** The single highest-leverage change on the table is
+  `CharacterBase.MAX_DENTS`, which is a shared-lock file and needs claiming.
+- **THE NEXT HOUR OF BALANCE WORK, NAMED:** sweep `posthold=` and `repost=` (R-07's own knobs, added
+  RUN 10, never swept). RUN 10 measured **0 of 73 throws released while the taya's post was wrong** —
+  the reaction window (0.35 s) is shorter than the attacker's charge (0.42–0.98 s), so the taya
+  re-posts *during the wind-up* and the slide can never beat it. If a longer hold does not move the
+  block rate, the post is not the answer and the lob is.
 - ~~**`TAYA_BLOCK_STANDOFF` (2.6) IS STILL UNMEASURED**~~ **CLOSED BY RUN 9, 2026-07-30.** It is a
   `static var`, `ai_probe` takes `standoff=`, and it has been swept end to end over
   {1.0, 1.4, 1.8, 2.2, 2.6, 3.2, 3.8}. **It is not a fairness lever at any value** — DEF 100% and
