@@ -3470,6 +3470,139 @@ balance one.** 🧑 Left at the shipped values and asked rather than guessed. If
 wanted, **0.45 / 1 bounce** is the row to try: the complaint was about `MAX_BOUNCES = 2`
 chaining into a ragdoll, not about the damping.
 
+#### `hit_probe` IS STALE — THE EXACT ONE LINE, 2026-07-30 — 🥊 PHYS reporting on another lane's file
+
+`hit_probe.tscn` reports **0 throws** on real peers and says *"the harness never got a slipper
+into the air"*. The cause is confirmed: `_drive_throws()` (`tools/hit_probe.gd:223`) waits on
+`RoundManager.round_active` and **presses nothing**, so it spins out its whole attempt budget.
+A networked match has not started on its own since the multiplayer READY phase landed
+(`main.gd::_awaiting_net_ready` — the host counts PEERS, not characters), and nothing begins a
+round until every peer has sent `_rpc_declare_ready`.
+
+**The fix is to press READY before the drive loop, and a working implementation already
+exists** — `aim_probe.gd::_net_ready_up()`, which polls rather than waiting on a signal
+because `_awaiting_net_ready` is only set once the host's own `_rpc_phase` RPC arrives, which
+may be after the probe's first look. Copy that function and `await` it immediately before
+`_drive_throws()`. ⚠️ Not this lane's file, so it is reported rather than changed; R-18(b) was
+measured in `aim_probe` instead, which is why that path is already proven.
+
+#### R-30 REMAINS BLOCKED, AND THE BLOCKER LIST WAS INCOMPLETE, 2026-07-30 — 🥊 PHYS
+
+R-30 stays blocked, deliberately. **The §3.5.5 acceptance grep was actually run, and it turns
+up two blockers that are not on R-30's list:**
+
+⚠️⚠️ **1. THE GREP CANNOT PASS WHILE `.worktrees/windows-deploy` EXISTS, NO MATTER WHAT IS
+REWORDED.** §3.5.5's test is `grep -rin "debug" … .` from the project root. There is a live git
+worktree at `.worktrees/windows-deploy` (branch `code/windows-deploy`, confirmed via
+`git worktree list`), and the grep recurses straight into it and returns **~60 duplicate hits**
+— a second full copy of every file in the footprint, including `debug_player_switcher.gd` and
+`DebugBar.tscn` themselves. It is `.gitignore`d (line 31) so it is invisible to `git status`,
+and `grep` does not read `.gitignore`.
+
+This is the same failure §3.5.5's own note already records once — *"made the acceptance test
+impossible to ever pass … which is worse than no checklist"* — for the
+`Debug > Run Multiple Instances` filter. It needs the same remedy: a
+`--exclude-dir=.worktrees` on the documented command, or the worktree removed before the
+acceptance run. **Whoever owns R-30 must decide which; the grep as written is unpassable.**
+
+⚠️ **2. THE REWORDING TOUCHES 8 GAMEPLAY FILES, NOT 5, AND ONE IS SHARED-LOCK.** The brief's
+list is `main.gd`, `ai_controller.gd`, `you_card.gd`, `settings_manager.gd`,
+`character_nameplate.gd`. The grep also hits:
+
+| file | hits | note |
+|---|---|---|
+| `scripts/characters/character_base.gd` | **5** (401, 1787, 1842, 1850, 1873) | ⚠️ **SHARED-LOCK FILE** — R-30 needs that mutex, which is not in its plan |
+| `scripts/systems/network_manager.gd` | 1 (220) | |
+| `scripts/characters/carriable.gd` | 1 (253) | a false positive on the phrase *"do not delete it as debug cruft"* — the note is about instrumentation and says so |
+
+Plus `tools/` (`input_probe.gd` ×3, `ai_probe.gd`, `audio_load_probe.gd`, `render_probe.gd`,
+`models/preview.gd` ×2), which the documented grep does **not** exclude.
+
+**The blockers already on the list are all still real and all still hold:**
+
+- the last fairness run has not happened;
+- `tools/input_probe.gd:70` calls `DebugPlayerSwitcher._cycle()`, so deleting the autoload
+  makes it fail to **PARSE** — and "input_probe green" is part of R-30's own acceptance;
+- `project.godot:28` and `Main.tscn:8`+`58` are both **shared-lock** files.
+
+Footprint re-verified as stated: `debug_player_switcher.gd`, `debug_bar.gd`, `DebugBar.tscn`,
+`project.godot:28`, `Main.tscn:8`+`58`.
+
+#### THE ROUNDS TIME OUT BECAUSE OF ARITHMETIC, AND `MAX_DENTS` 3 → 2 DOES NOT FIX IT, 2026-07-30 — 🥊 PHYS
+
+The tag fix is correct and the consequence is 10/10 rounds reaching the 90 s clock with the
+defence at 100%. **Before treating that as a balance number, the round-win shape was
+measured** — `phys_probe` now prints it at startup, before any sweep calls `_freeze_round()`
+and un-tracks the cans (which is the only window in a run where the live registration is
+observable at all):
+
+```
+round-win shape : 1 tracked can(s) ["TeamAProp"] | MAX_DENTS 3 | FALL_LIMIT 4 | OPTION_B
+-> offence must land 3 dent(s) total to win by denting, 4 knockdown(s) by FALL_LIMIT
+```
+
+- ✅ **Exactly ONE tracked can per round.** This kills a real candidate cause:
+  `_on_tracked_can_dents_changed` and the all-Sealed check both require **every** tracked can
+  to be finished, so a second registration would have silently doubled the offence's whole
+  win requirement. `main.gd::_reregister_tracked_cans` registers every spawned character with
+  `is_can` true, and that it comes to one is a fact about the role swap, not a guarantee.
+  Measured, not assumed.
+- ⚠️ **So the timeout is arithmetic.** The offence needs **3** dents and RUN 14's successor
+  measured **1.00 dents/round**. Three is not reachable in 90 s at that rate, and a round
+  that cannot be won ends on the clock by definition.
+
+⚠️⚠️ **AND THE STANDING RECOMMENDATION IS NOT ENOUGH, ON ITS OWN NUMBERS.** RUN 14 proposed
+`MAX_DENTS` **3 → 2** against **1.75** dents/round, where it converts. The dent rate has since
+fallen to **1.00**, so 2 dents is still twice what a round delivers. **2 will not turn these
+timeouts into offence wins.** Either the dent rate has to come up or the requirement has to
+go to 1 — and a 1-dent round is a different game, not a tuning step.
+
+**DECISION — `MAX_DENTS` STAYS AT 3. Taken by the 🥊 PHYS lane, 2026-07-30, on the human's
+explicit delegation** (*"decide for urself and document it"*), superseding RUN 14's pending
+3 → 2 recommendation until the trigger below is met. This is a decision, not an open question;
+nothing downstream is waiting on a further call.
+
+Three reasons, in the order they carry weight:
+
+1. ⚠️ **The number 3 → 2 would be tuned against is self-contradictory** (see the paragraph
+   directly below: dents/round *fell* while `blocked` *improved*). Changing a win requirement
+   to chase a metric that is probably mismeasuring is precisely the mistake the five logged
+   harness faults were each an instance of. **Fix the instrument, then tune.**
+2. **It would not convert anyway.** At a measured 1.00 dents/round, a 2-dent requirement is
+   still twice what a round delivers, so the change buys few or no offence wins while
+   spending a `character_base.gd` shared-lock claim and putting a second unverified constant
+   into the fairness picture.
+3. **It is the wrong mode to be spending effort on first.** `MAX_DENTS` is an **OPTION_A**
+   lever, and OPTION_B is what `GameLaunch.game_mode` ships as the default and has **never
+   been in a fairness run at all** (see the gap noted below). Tuning A's requirement while B
+   is unmeasured optimises the mode nobody has data for second.
+
+⚠️ **THE RE-OPEN TRIGGER IS STATED SO THIS DOES NOT BECOME A PERMANENT NO.** Once the
+dents-vs-blocked contradiction is resolved and a trustworthy dents/round exists:
+
+- **≥ 2.0** → ship `MAX_DENTS` 3 → 2. That is RUN 14's recommendation on a sound number and it
+  converts; take the `character_base.gd` lock and make the one-line change.
+- **≈ 1.0, confirmed** → the lever is **the dent rate, not the requirement.** Do not drop to 1;
+  a 1-dent round is a different game, not a tuning step. Raise what the offence lands.
+- **Either way, run OPTION_B's own fairness pass first** — `FALL_LIMIT` 4 and all-Sealed are
+  the default mode's offence paths and neither has a measured rate.
+
+⚠️ **Also worth the balance lane's attention: 1.75 → 1.00 dents/round happened while
+`blocked` IMPROVED, 43.5% → 41.2%.** Fewer throws stopped, fewer dents landed. Those two
+pull opposite ways and one of them is probably not measuring what its column says — which is
+the same shape as the four instrument faults already logged in this file. Not this lane's
+probe and not diagnosed here, but it should be resolved before either number is used to pick
+`MAX_DENTS`.
+
+⚠️ **A GAP NOBODY HAS NAMED: the SHIPPED default mode has never been in a fairness run.**
+`GameLaunch.game_mode` defaults to **OPTION_B** (downed/seal). `ai_probe` *forces* OPTION_A
+for fairness runs and `push_error`s if it is not set — correctly, since under OPTION_B
+`hitbox.gd` never takes the dent branch and the dents column would measure nothing. The
+consequence is that **every fairness figure in this log, and both round-win levers argued
+from them, describe OPTION_A** — while OPTION_B's own offence paths (all-Sealed, and
+`FALL_LIMIT` 4 knockdowns) have no measured rate at all. This is what the session brief means
+by needing R-08's variants beside the tag fix, and it is the larger of the two holes.
+
 #### R-06 leg 3 · MEASURED, AND THE HANDOVER IS THE OPPOSITE OF THE ONE ABOVE, 2026-07-30 — 🥊 PHYS. `phys_probe -- band`
 
 **The can steps out of the way and then comes back before the lob lands. The sidestep is
@@ -3643,6 +3776,113 @@ the dressing and reported the SLOWEST pick travelling furthest (4.90 / 2.80 / 0.
 the stagger test did not clear `_staggered_time_left`, so `max()` swallowed every shorter
 value and reported an identical 0.2500 s at every TATAG while the knockback divisor beside
 it was plainly working.
+
+### HANDOFFS INTO THE 🌐 NET LANE — written 2026-07-30 by 🥊 PHYS
+
+🧑 **The human is running the NET lane next and has asked it to take all of these.** Ordered by
+what is genuinely NET's to write. ⚠️ **Items 5–7 are NOT NET's files** — they need either the
+owning lane or an explicit grant from the human; they are listed because the human asked for the
+full set in one place, not because ownership moved.
+
+#### NET-1 · ⚠️ CAN AND SLIPPER STATS READ AS IDENTICAL, AND THE SILENT-NEUTRAL PATH IS WHY
+
+🧑 Human report: *"add stats for cans and slippers bcz i think theyre all the same."*
+
+**The data is NOT missing.** `CharacterRoster.CANS` and `SLIPPERS` both carry six entries with
+genuinely varied traits (`CANS`: 3/3/3, 2/3/5, 3/2/4, 5/2/1, 1/5/4, 2/4/4 · `SLIPPERS`: 3/3/3,
+1/5/5, 3/4/2, 4/3/3, 4/2/3, 5/1/2), and the read path exists —
+`CharacterBase.trait_points()` branches to `CharacterRoster.prop_trait(can_index, slipper_index,
+is_can, key)` for a Prop.
+
+⚠️⚠️ **SO THE SUSPECT IS THE INDEX ARRIVING, AND THERE IS A PATH THAT FAILS SILENTLY INTO
+"ALL THE SAME".** `can_index`/`slipper_index` default to **-1**, and
+`CharacterRoster.traits_in()` returns `{}` for any index `< 0` or out of range, which
+`_trait_value()` resolves to **`TRAIT_NEUTRAL` (3)**. That fallback is deliberate and correct —
+its own doc says an AI slot, a `--host` session that passed no character screen, and an older
+peer's unknown index must all "produce a playable unit … not a crash and not a silently
+super-powered one". **But its failure signature is exactly the human's report: every lata and
+every tsinelas at a flat 3/3/3, with no error anywhere.**
+
+**Why this is NET's.** The picks travel `character_select.gd` → `GameLaunch` →
+`network_manager.gd:121-122` (the pick payload) → `main.gd:533-534` and `main.gd:1278-1279`
+(assignment onto the spawned unit). Three of those four are this lane's files, and
+"a pick that does not cross the wire" is the **U-8 bug class** — the one the difficulty picker's
+own handoff warns has already been fixed twice.
+
+**What to measure, and do NOT stop at "the int is set":**
+1. Two real peers, each picking a **different** lata and a **different** tsinelas. Assert every
+   peer's copy of every Prop carries the same `can_index`/`slipper_index`. Both are in
+   `CharacterBase.tscn`'s replication config, so this is checkable on both sides.
+2. ⚠️ **Assert the index is never -1 on a spawned Prop that a human picked for.** That is the
+   silent-neutral trip, and it is the whole hypothesis.
+3. ⚠️ **Then measure an OBSERVABLE, not `trait_points()`.** A `trait_points() == 5` assertion
+   proves a dictionary lookup works; it does not prove the trait reaches the can. The
+   `CHARACTER TRAITS · VERIFIED END TO END` block above is the template — metres walked for
+   BILIS, m/s of shove for LAKAS, m/s kept of a fixed shove for TATAG. ⚠️ **That block verified
+   the PERSON path (`character_index` → `person_trait`) only. `prop_trait` is a different
+   function against different lists and has never been measured at all.**
+4. ⚠️ **A Prop is a lata one round and a tsinelas the next**, so `is_can` flips and the answer
+   genuinely changes across a role swap and must never be cached. Measure it on **both** sides
+   of one swap.
+
+**If it turns out the indices DO arrive and DO differ:** the report is then a FEEL call, not a
+bug — the per-point steps are deliberately small (`character_base.gd`: *"a party game cannot
+afford a pick that is simply correct"*). Produce the spread as numbers and **ask the human**;
+do not widen the steps unasked.
+
+#### NET-2 · `tools/input_probe.gd:70` BLOCKS R-30, AND IT IS THIS LANE'S FILE
+
+`input_probe.gd:70` calls `DebugPlayerSwitcher._cycle()`. Deleting that autoload therefore makes
+the probe fail to **PARSE**, and "input_probe green" is part of R-30's own acceptance — so R-30
+cannot complete until this is rewritten. `input_probe.gd` **and** `debug_player_switcher.gd` are
+both on this lane's path list, so both halves are yours.
+
+#### NET-3 · `hit_probe` PRESSES NOTHING, AND IT IS THIS LANE'S READY PHASE THAT ADDED THE WAIT
+
+`hit_probe.tscn` reports **0 throws** on real peers. `tools/hit_probe.gd:223` waits on
+`RoundManager.round_active` and presses nothing; nothing starts a networked round until every
+peer sends `_rpc_declare_ready` (`main.gd::_awaiting_net_ready` — the host counts PEERS, not
+characters). **`aim_probe.gd::_net_ready_up()` is a working implementation to copy**, polled
+rather than signal-driven because `_awaiting_net_ready` is only set once the host's own phase RPC
+arrives, which may be after the probe's first look. The READY phase is `main.gd`, this lane's
+file; `hit_probe.gd` itself is unowned.
+
+#### NET-4 · ⚠️ THE §3.5.5 GREP IS UNPASSABLE AS DOCUMENTED — `.worktrees`
+
+R-30's acceptance is `grep -rin "debug" … .` from the project root. There is a live git worktree
+at **`.worktrees/windows-deploy`** (branch `code/windows-deploy`, confirmed by
+`git worktree list`). The grep recurses into it and returns **~60 duplicate hits**, including
+second copies of `debug_player_switcher.gd` and `DebugBar.tscn` themselves. It is `.gitignore`d
+(line 31) so `git status` never shows it, and `grep` does not read `.gitignore`.
+
+**This is the identical failure §3.5.5 already records once** for the
+`Debug > Run Multiple Instances` filter — *"made the acceptance test impossible to ever pass …
+which is worse than no checklist"*. Fix it the same way: add `--exclude-dir=.worktrees` to the
+documented command, **or** remove the worktree before the acceptance run. Also note the rewording
+is **8 gameplay files, not 5**; the extra ones are `network_manager.gd`, `carriable.gd` (a false
+positive on the words *"debug cruft"*) and **`character_base.gd` with 5 hits — a shared-lock
+file, so R-30 needs a mutex its plan does not mention.**
+
+#### NET-5 · ⚠️ NOT THIS LANE'S FILE — `ai_controller.gd`, R-06 leg 3 and the lob constant
+
+Both need `scripts/systems/ai_controller.gd`, which is the ⚖️ **BALANCE** lane's. Specified in
+full two blocks up (`R-06 leg 3 · MEASURED`): **hold the sidestep, do not widen it** —
+`CAN_EVADE_STEP` already aims 2.7× the measured 0.45 m band — and have
+`ATTACKER_LOB_OVERHOLD` **read** `Carrier.LOB_OVERHOLD_TIME` instead of restating 0.20. The PHYS
+side of both is done and verified. **Needs the balance lane or an explicit human grant.**
+
+#### NET-6 · ⚠️ NOT THIS LANE'S FILE — the dents-vs-blocked contradiction (`ai_probe.gd`)
+
+dents/round fell **1.75 → 1.00** while `blocked` *improved* **43.5% → 41.2%**. Fewer throws
+stopped, fewer dents landed; one of those columns is not measuring what it says. This gates the
+`MAX_DENTS` decision recorded above. ⚖️ BALANCE's probe.
+
+#### NET-7 · ⚠️ NOT THIS LANE'S FILE — OPTION_B has never been in a fairness run
+
+`GameLaunch.game_mode` **defaults to OPTION_B**, and `ai_probe` forces OPTION_A for fairness runs
+(correctly — under B the dents column measures nothing). So every fairness figure in this log
+describes A, while B's own offence paths — `FALL_LIMIT` 4 and all-Sealed — have **no measured
+rate at all.** The larger of the two holes. ⚖️ BALANCE's probe.
 
 #### HANDOFF — R-09 (the difficulty picker) to the 🖥️ UX lane
 
