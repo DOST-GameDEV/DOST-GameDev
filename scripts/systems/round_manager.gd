@@ -143,6 +143,20 @@ func can_out_stacks() -> int:
 ## correctly if a second one is ever added — a defence with two cans has to keep both
 ## home, not whichever one it prefers.
 func _step_can_out(delta: float) -> void:
+	# ⚠️ OPTION B ONLY, AND THIS GATE WAS MISSING. `Design.md` §7 says Option A "is
+	# maintained in parallel and unchanged", and it was not: the countdown shipped
+	# ungated, so an Option A match — whose whole win condition is the dent count, and
+	# whose lata has no Downed/Seal machinery at all (`hitbox.gd` converts every hit on a
+	# can to a dent) — could still lose the round to a clock nothing in that mode
+	# explains. `register_ring_out()` two functions down already gates itself exactly
+	# this way, for exactly this reason.
+	#
+	# ⚠️ AND `character_base.gd::can_self_right()` READS THIS THROUGH `can_out_left()`,
+	# so gating here is also what keeps §1.9 out of Option A. One gate, both rules.
+	if GameLaunch.game_mode != GameLaunch.GameMode.OPTION_B:
+		_can_out_left = -1.0
+		_can_was_out = false
+		return
 	if _tracked_cans.is_empty():
 		_can_out_left = -1.0
 		_can_was_out = false

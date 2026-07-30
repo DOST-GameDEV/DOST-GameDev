@@ -97,14 +97,32 @@ func _on_area_entered(area: Area3D) -> void:
 		# a Person or Slipper still just fall through to stagger below, same
 		# stun-only rule as Option B.
 		kind = "dent"
-	# ⚠️ `target.is_can` ADDED — sealing is a LATA rule and always was. SEALED has
-	# no recovery path, so sealing a Person takes them out of the round for good.
-	# The GDD's "reach it and seal it" is about the can standing in the circle;
-	# nothing in the game ever intended a Person to be sealable, and this only
-	# became reachable when B-134 made thrown slippers actually knock things down.
-	elif target.is_can and target.state == CharacterBase.State.DOWNED \
-			and not target.is_self_rightable():
-		kind = "seal"
+	# ⚠️⚠️ THE SEAL-ON-HIT USED TO BE HERE AND §1.9 IS WHY IT IS DELETED. It read:
+	#
+	#     elif target.is_can and target.state == DOWNED and not target.is_self_rightable():
+	#         kind = "seal"
+	#
+	# i.e. touch a lata that is past its 1.25 s appeal window and it is SEALED, and one
+	# sealed lata is every tracked can sealed, which ends the round outright
+	# (`round_manager.gd::_on_tracked_can_state_changed`).
+	#
+	# That was survivable while `DOWNED_MAX_TIME` stood the lata up at 2.0 s no matter
+	# where it lay: the seal window was 0.75 s wide and you had to be standing there for
+	# it. §1.9 makes a displaced lata stay down until its taya comes for it — so the same
+	# branch becomes **an unbounded instant win available to anyone who walks over and
+	# presses bump.** One button, next to an object, ends the round with no counterplay
+	# worth the name. That is the tap-out, rebuilt by accident and pointing the other way,
+	# eight commits after this file deleted it.
+	#
+	# ⚠️ NOTHING REPLACES IT, AND THAT IS THE DESIGN. `Design.md` §7 lists the attacking
+	# side's three wins and a seal is not among them: the countdown reaching zero, a direct
+	# Ground Smash, and FALL_LIMIT. What a follow-up hit on a downed lata does now is what
+	# every other hit does — it SHOVES it, further from the circle, so the taya's channel
+	# is a longer run and the save is a worse trade. Continuous, legible, and it stacks
+	# with the clock instead of skipping it.
+	#
+	# `seal()` and the SEALED state survive untouched; Option A and the state machine both
+	# still name them, and nothing about a Person changed.
 	elif forces_downed:
 		kind = "downed"
 		# THE LUCKY FALL — human request, 2026-07-29: *"sometimes make it so that
@@ -214,6 +232,37 @@ func _on_area_entered(area: Area3D) -> void:
 			target._rpc_apply_hit_penalty.rpc_id(target.get_multiplayer_authority())
 		else:
 			target._rpc_apply_hit_penalty()
+
+	# ⚠️⚠️ §1.4 — "DROPS THE ATTACKER'S TSINELAS **FAR AWAY**", AND THE "FAR AWAY" HALF
+	# WAS NOT BUILT. A charged bump already drops the slipper, for free and with no code
+	# of its own: any non-NORMAL state fires `carriable.gd::_on_carrier_state_changed`,
+	# which calls `host_drop()`, which broadcasts the slipper LOOSE **at the carrier's own
+	# feet**. So the whole cost of eating a 1.35 s power bump was to bend down and pick it
+	# up again — and the retrieval scramble, which is the thing the drop is supposed to
+	# buy the defence, never happened.
+	#
+	# Told to the slipper HERE, where the strike is, rather than derived over there where
+	# the drop is, for one reason: the drop's own trigger is a state change, and networked
+	# that state is applied on the CARRIER'S peer and comes back to the host as
+	# replication, whole frames later. By then this hit — its direction, its charge — is
+	# gone. So the host notes the punt at the instant it resolves the bump and
+	# `host_drop()` spends it whenever the drop actually lands. See `host_note_punt`.
+	#
+	# Direction is the shove the target just took, which is already the striker's own
+	# travel falling back to their facing (`_impulse_for`) — so the slipper leaves along
+	# the line the bump sent its carrier, and a taya who body-checks an attacker away from
+	# the circle sends their tsinelas the same way.
+	if requires_bump_window and owner_character != null and owner_character.is_person \
+			and owner_character.bump_power() > 0.0 and kind == "stagger":
+		var carrier := target.get_node_or_null("Carrier") as Carrier
+		var slipper: Carriable = carrier.held() if carrier != null else null
+		if slipper != null:
+			var away := Vector3(knockback.x, 0.0, knockback.z)
+			if away.length() < 0.01:
+				away = target.global_position - owner_character.global_position
+				away.y = 0.0
+			if away.length() >= 0.01:
+				slipper.host_note_punt(away.normalized(), owner_character.bump_power())
 
 	# ⚠️⚠️ THE ROUND-WINNING TAG USED TO BE HERE AND IT IS DELETED. 2026-07-30.
 	#

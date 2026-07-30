@@ -64,6 +64,38 @@ it is measured.
 * **Never claim a verification you did not perform.** `[x]` needs a named probe, a
   screenshot, or a log. Everything else is `[~]`.
 
+> ### 📌 IF YOU FLAG IT, FILE IT — hand every finding to the lane that owns it
+>
+> **A problem you noticed and only wrote about in § LOG is a problem nobody is going to
+> fix.** The log is read once, by a human, after the fact; the checklist is what the next
+> lane actually works from.
+>
+> So whenever you find something outside your own paths — a bug, a stale string, a number
+> your change invalidated, a claim you could not verify, a probe that already fails —
+> **add it as a numbered `- [ ]` item to that lane's own § CHECKLIST section**, at the end,
+> under a bold line saying who filed it and when:
+>
+> ```markdown
+> **Filed by `build mech` 2026-07-31:**
+>
+> - [ ] 4.8 **`STRANDED` is a new status row and 4.1 must draw it.** …why it matters…
+> ```
+>
+> Rules for a filed item:
+>
+> * **It goes to the lane that owns the FILE**, per § PATHS — not to whoever is nearest.
+> * **State what you observed, not what to type.** The owning lane decides HOW; that is
+>   their row and their call. Give them the fact, the file, and why it matters.
+> * **Include the evidence** — the measured number, the probe name, the grep, the line.
+>   "Might be worth checking" is not a filed item.
+> * **Ticking is still theirs alone.** You add the box; you never tick a box outside your
+>   own section.
+> * **File it even if you think it is small**, and file it even if you suspect the owning
+>   lane already knows. A duplicate costs one line; a dropped finding costs a session.
+>
+> This is not optional bookkeeping — it is how a sequential board with one writer per file
+> stays honest. You are the only agent who will ever see what you just saw.
+
 ### ⚠️ THE REACHABILITY RULE — read this before you build any UI
 
 **A feature that a player cannot reach from the menus does not exist, and does not tick a
@@ -129,8 +161,8 @@ Do not rebuild these. Read them, then improve, verify, or overrule.
 | Stamina + sprint, `SPEED` 4.6 | `character_base.gd` `STAMINA_*` | bindings measured, drain unmeasured |
 | Throw lock 1.25 s | `carrier.gd` `THROW_LOCK_TIME` | `input_probe` asserts it |
 | Long-throw bonus + 5 s punish | `carriable.gd::host_throw`, `hitbox.gd` | written |
-| Can knockback ×2.6, `DOWNED_MAX_TIME` 2.0 | `character_base.gd` | written |
-| Out-of-circle countdown + recovery stacks | `round_manager.gd` `CAN_OUT_*` | written, **this is the new primary win condition** |
+| Can knockback ×2.6, `DOWNED_MAX_TIME` 2.0 | `character_base.gd` | ceiling measured (`mech_probe`); ×2.6 still only measured off a *tap* (0.951 m). ⚠️ The ceiling has one exception now — §1.9 |
+| Out-of-circle countdown + recovery stacks | `round_manager.gd` `CAN_OUT_*` | **measured end to end by `mech_probe` 2026-07-31** — clock, 0.75 s stack, and the win at zero. Option B only now. **This is the primary win condition** |
 | Can-Smash / Ground Smash | `scripts/abilities/prop_smash.gd` | written, no probe fires one |
 | Can-Dash, self-launch | `character_base.gd`, `carriable.gd` | written |
 | Spectator camera, seat −1 | `scripts/systems/spectator_camera.gd`, `--spectate` flag | boots, single-peer only |
@@ -141,9 +173,10 @@ Do not rebuild these. Read them, then improve, verify, or overrule.
 | MAX POWER row | `character_select.gd` | `ui_layout_probe` 196/196 |
 | AI rewritten for the new verbs | `ai_controller.gd`, +489 lines | parses, runs 70 s clean, **behaviour unmeasured** |
 
-**Known gap, not built at all:** the lata may currently self-right anywhere. The brief says
-it may only stand up **on the circle** — `character_base.gd::self_right()` has no home
-check. That is `build mech` 1.9.
+~~**Known gap, not built at all:** the lata may currently self-right anywhere.~~ **Built
+2026-07-31 by `build mech`** — `self_right()` refuses off the circle, and three things
+fell out of it (the seal-on-hit deleted, the reset channel's steps reordered, the channel
+re-priced to 1.8 s). `Design.md` §5.1.1, and § LOG.
 
 **Known conflict:** the brief says Can-Smash has a **3.0 s** base cooldown; the salvaged
 code ships **8.0 s**. `build abil` decides and records which, in `Design.md` §11.
@@ -187,25 +220,29 @@ specifically is unverified. Tick only your own section.
 
 ### 1 · 🎮 `build mech` — Mechanics *(Opus 5 · high)*
 
+**The named probe for this section is `tools/mech_probe.tscn` — 16/16 checks, twice.**
+It is a new file; § PATHS gives this lane no `tools/` row and writing to another lane's
+probe would have broken one-writer-per-file.
+
 Defender
-- [ ] 1.1 Tap-out / tag mechanic gone entirely, including its round-win branch
-- [ ] 1.2 Bump power meter on left-click, mirroring the attacker's throw meter, **1.5× the attacker's charge time to fill**
-- [ ] 1.3 Click = minor bump, mini knockback, no stun
-- [ ] 1.4 Full hold = powerful bump: **~1 m** knockback, **drops the attacker's tsinelas far away**, short hit stun + movement penalty
-- [ ] 1.5 Wind-up is visible on **every peer**, so the commitment can be played around
-- [ ] 1.6 Stamina: sprint is a finite resource, base speed cut so the game is not run-forever
+- [x] 1.1 Tap-out / tag mechanic gone entirely, including its round-win branch — grep: no `person_action.gd`, no `report_round_win` in `hitbox.gd`
+- [~] 1.2 Bump power meter on left-click, mirroring the attacker's throw meter, **1.5× the attacker's charge time to fill** — 1.35 s, kept. **Unverified: nobody has watched the meter fill.**
+- [~] 1.3 Click = minor bump, mini knockback, no stun — the `nudge` branch is read and correct; **unverified: no probe releases a tap at a standing target and checks no stagger followed**
+- [x] 1.4 Full hold = powerful bump: **~1 m** knockback, **drops the attacker's tsinelas far away**, short hit stun + movement penalty — the "far away" half was missing and is now the punt. **Measured 3.13 m, twice, from a pinned origin**
+- [~] 1.5 Wind-up is visible on **every peer** — the broadcast is there; **unverified: never observed on a second real peer**
+- [~] 1.6 Stamina: sprint is a finite resource, base speed cut — **unverified: drain and regen never measured**
 
 Attacker
-- [ ] 1.7 Throw cooldown on pickup (1–2 s, you decide) — kills in-circle spam
-- [ ] 1.8 Throws from **behind the throwing line** are stronger; a max-power one that lands on the taya applies a **5 s** hit stun
+- [x] 1.7 Throw cooldown on pickup — 1.25 s. `input_probe` 11/11: a held button charges to 0.627 after the lock rather than dying. ⚠️ The 1.25 s *duration* is a reasoned choice, not a measurement
+- [~] 1.8 Throws from **behind the throwing line** are stronger; max-power on the taya = **5 s** stun — written, and **unverified end to end: no probe has landed one**
 
 Lata
-- [ ] 1.9 **The lata may only stand up while on the circle.** Not built — `self_right()` has no home check
-- [ ] 1.10 High knockback susceptibility: a solid hit displaces it ~1 m rather than dropping it in place
-- [ ] 1.11 Actively fights to stay upright; **cannot be down longer than 2 s**
-- [ ] 1.12 Game over is the countdown, not the knockdown: **5 s outside the circle** loses the round
-- [ ] 1.13 Each recovery back inside permanently shortens the **next** countdown by **0.75 s**, stacking **5×** to a floor of **1.25 s**
-- [ ] 1.14 The defence has a real answer to a displaced lata it cannot itself move
+- [x] 1.9 **The lata may only stand up while on the circle** — built. Measured: held down 3.0 s off the circle against a 2.0 s ceiling, stands within 6 frames of arriving home, a Person at the same spot is unaffected
+- [~] 1.10 High knockback susceptibility: a solid hit displaces it ~1 m — a *tap* bump measured **0.951 m** in passing (`×2.6` is doing what it claims), but a solid hit is not measured and **`build phys` 5.2 owns that**
+- [x] 1.11 Actively fights to stay upright; **cannot be down longer than 2 s** — measured for a lata at home and for a Person. ⚠️ **One exception, by design: §1.9's stranded lata.** `Design.md` §11 states it
+- [x] 1.12 Game over is the countdown, not the knockdown — measured end to end: clock runs while out, round ends at zero, win goes to the tsinelas side
+- [x] 1.13 Each recovery shortens the **next** countdown by **0.75 s**, stacking **5×** to **1.25 s** — measured: a save moved the limit 3.50 → 2.75. ⚠️ The 5-stack floor is only reachable now that the channel is 1.8 s; at 2.2 it was decoration
+- [x] 1.14 The defence has a real answer to a displaced lata it cannot itself move — measured: a completed channel stands a **stranded** lata up and returns it to 0.00 m from centre
 
 ### 2 · 👁️ `build spec` — Spectator *(Sonnet 5 · high)* — **RUN THIS NEXT**
 
@@ -225,6 +262,10 @@ Lata
 - [ ] 2.5 The HUD is sane with no character — no null character lines, no orphaned role colour
 - [ ] 2.6 It is filmable: free look, a follow-target cycle, and a speed control that makes wide shots and close shots both possible
 
+**Filed by `build mech` 2026-07-31:**
+
+- [ ] 2.7 **The round's drama is now a clock, and a spectator has no character to read it off.** Since §1.9 and §5.2 a round is won by the lata being off its circle when the countdown expires — so the two numbers that explain *everything happening on screen* are `RoundManager.can_out_left()` and `can_out_stacks()`, plus the `STRANDED` state on the lata. All three are public and mirrored to every peer, and none of them needs a local character. **2.5's "the HUD is sane with no character" is the floor; this is the ask** — the footage is unreadable without it, and the footage is why this lane was pulled forward. Whether the countdown belongs in the spectator HUD or is left to `build ux` §4.9 is your call, but the two of you must not both build it
+
 ### 3 · 💥 `build abil` — Abilities *(Sonnet 5 · high)*
 
 - [ ] 3.1 **Can-Smash** — ground smash, shockwave in a stated radius, **1–2 s** stun on incoming slippers and players, telegraphed wind-up. Base cooldown: resolve 3.0 s (brief) vs 8.0 s (code) and record why
@@ -234,6 +275,12 @@ Lata
 - [ ] 3.5 **Charged self-launch** — a loose tsinelas charges a mini-jump and flings *itself*
 - [ ] 3.6 Every shockwave resolves **host-side** through `AbilityUtils.spawn_pulse_hitbox`
 - [ ] 3.7 The roster's per-class abilities still work beside the new role verbs
+
+**Filed by `build mech` 2026-07-31 — §1.9 landed and it changes three things here:**
+
+- [ ] 3.8 **Quick Stand now refuses off the circle**, because it goes through `CharacterBase.self_right()` and that refuses. Confirm no roster ability stands a lata up by any other route — grep for anything writing `State.NORMAL` on a downed can. **If you think a skin should beat §1.9, argue it in § LOG; do not route around it.** A skin that stands a lata up anywhere deletes the rule for whoever picks it, which makes that skin the correct answer
+- [ ] 3.9 **3.4's "bounded on more than one side" got weaker and you own it.** A stranded lata is a *stationary* target that cannot dodge, cannot Can-Dash and cannot smash — so Ground Smash's `within 0.75 m = instant win` is now trivially landable on a can that is already lying there. Either bound it (no instant win on an already-downed lata — the countdown is already winning that round) or say why the free win is fine
+- [ ] 3.10 **The lata's kit has to matter *before* it is displaced**, because after it there is nothing: DOWNED blocks Can-Smash and Can-Dash by construction. That is the intended shape of §1.9 — check the radii and cooldowns read as "keep them off the mark" rather than "answer a knockdown"
 
 ### 4 · 🖥️ `build ux` — Screens and teardown *(Sonnet 5 · high)*
 
@@ -247,6 +294,12 @@ do not re-open it.
 - [ ] 4.5 Charge/meter readouts for the bump meter, the stamina bar and the throw lock
 - [ ] 4.6 Max power shown in the custom tsinelas description
 - [ ] 4.7 **Sweep for orphans.** Every system the other lanes built has a menu entry point a player can find — hanger, classes, stamina, the smash cooldowns. Anything reachable only by flag or autoload is filed here and fixed
+
+**Filed by `build mech` 2026-07-31:**
+
+- [ ] 4.8 **`STRANDED` is a new status row and 4.1 must draw it.** `CharacterBase.status_effects()` emits it in place of `DOWNED` for a lata off its circle, counting the §5.2 clock instead of the 2.0 s ceiling — because that lata is not counting down to standing up, it is counting down to losing the round. A `DOWNED` bar that ticks to 0.00 and then sits there is the exact defect 4.1 exists to prevent
+- [ ] 4.9 **The circle countdown and its stack count are the round's main drama and the HUD barely says so.** `RoundManager.can_out_left()` / `can_out_limit()` / `can_out_stacks()` are all public and mirrored to every peer. Both sides need to read it: the defence to panic, the offence to press. The **stack** matters as much as the clock — "this save buys you 2.00 s, the next one 1.25" is the whole escalation
+- [ ] 4.10 **`scripts/ui/tutorial.gd` is yours and it is wrong twice.** It still teaches *"the defender body-blocks the throw, **tags the attacker**, and stands the lata back up"* — the tag was deleted on 2026-07-30 — and it quotes the reset channel at **2.2 s** in two places when it is now 1.8. It also never mentions that a displaced lata cannot stand up by itself, which is now the single most important rule a new player does not know
 
 ### 5 · 🎨 `build model` — Models, classes and names *(Opus 5 · medium)*
 
@@ -289,6 +342,13 @@ do not re-open it.
 - [ ] 6.5 Bump displacement measured for tap and full charge
 - [ ] 6.6 The preview arc and the thrown arc land in the same place
 
+**Filed by `build mech` 2026-07-31:**
+
+- [ ] 6.7 **`round_probe` FAILs today and it is not mine.** `TeamBProp` moves 4.33 m/s and drifts 0.51 m between rounds, against a "fair: 0.00" bar. **Measured identical on a stash with my changes removed**, so it is pre-existing — but nothing on the board owned it and now something does. It is the same family as 6.1
+- [ ] 6.8 **A `STRANDED` lata must not look like a lata that is about to get up.** 6.3 is fixing "hard to tell it fell"; §1.9 adds a second read on top — *this* one is never getting up on its own, and the player's answer is to run to it. If a stranded lata and a two-second knockdown look the same, the defence cannot tell which one needs them
+- [ ] 6.9 **Measure the punt on the networked path.** §1.4's punt rides a new defaulted argument on `carriable.gd::_rpc_set_loose` and applies its impulse on every peer, the same idiom `_rpc_apply_scuff` uses. Measured **3.13 m locally, twice** (`mech_probe`); never once across two real peers, where the drop is triggered by replicated state arriving frames after the hit
+- [ ] 6.10 **6.2's ~1 m target has one real number against it and it came from the wrong end:** a *tap* bump on a lata measured **0.951 m** in `mech_probe`. A tap is `BUMP_LIGHT_SPEED` 3.0 — if the weakest shove in the game already moves the lata a metre, `CAN_KNOCKBACK_SCALE` ×2.6 may be doing more than "~1 m per solid hit" was ever meant to mean
+
 ### 7 · ⚖️ `build fair` — Balance and AI *(Opus 5 · xhigh)* — **RUNS LAST, ALONE**
 
 - [ ] 7.1 A fairness run **on this branch**. No number for these rules exists yet; none may be quoted until it does
@@ -299,6 +359,14 @@ do not re-open it.
 - [ ] 7.6 Named counterplay for every powerful object action
 - [ ] 7.7 The AI uses every new verb — bump meter, smash, dash, dive, self-launch, sprint, and driving the lata home
 - [ ] 7.8 Legacy AI constants derived from the old `SPEED = 6.0` re-derived or explicitly kept
+
+**Filed by `build mech` 2026-07-31:**
+
+- [ ] 7.9 **The bots do not reach the new win conditions at all.** A 6-round `ai_probe fairness` run after §1.9 completes with no script errors, but the probe's own report says *"half or more of these rounds timed out"* — a timeout is a **defender** win, so 7.2's headline claim cannot even be asked yet. Fix the bots before quoting a win rate; that is 7.7's real acceptance
+- [ ] 7.10 **`ai_controller.gd` mashes bump to self-right and that is now a no-op off the circle** (`_set_held("bump", character.is_self_rightable())`). A bot lata lies there pressing a dead button while its round runs out. It needs the other half too: **a bot taya must run to a stranded lata and hold the 1.8 s channel**, which is the defence's only answer and the one behaviour that decides whether §5.2's escalation is playable at all
+- [ ] 7.11 **The power bump got materially stronger and its price did not move.** It was ~1 m + 0.9 s stagger + 1.2 s slow; it now also punts the tsinelas **3.13 m**, i.e. ~2.8 s of retrieval tempo. `BUMP_CHARGE_FULL_TIME` was deliberately left at 1.35 s (the 1.5× symmetry with the throw charge is worth keeping) — **you are the lane that decides whether 1.35 s of visible wind-up still buys all of that.** `PUNT_SPEED` is the cheaper knob if it does not
+- [ ] 7.12 **7.5's stunlock argument has a new exception to re-argue, not to inherit.** `Design.md` §11 item 2 now reads "`DOWNED_MAX_TIME` bounds every unit **except a lata off its circle**". My claim is that this is not a stunlock because the state is bounded by a countdown that *ends the round* (≤5.0 s, 1.25 s at full stacks) and can be cut short by the channel. **Break it or confirm it by naming the chain** — in particular check that re-downing a stranded lata (`go_downed()` has no already-downed guard) cannot be used to stall anything
+- [ ] 7.13 **The §5.2 recovery table is now load-bearing and has never been played.** The whole round is designed to escalate along it — save 4 is a knife-edge, save 5 is unsurvivable-by-channel. If real rounds never reach 3 stacks, the escalation is theatre; if they reach 5 in the first 30 s, the round is over before it starts. `CAN_OUT_RECOVERY_STEP` and `RESET_CHANNEL_TIME` are the two knobs
 
 ---
 
@@ -375,6 +443,12 @@ Each block is paste-ready. Set model and effort first.
 > `multiplayer_setup.gd`, `network_manager.gd` and `hud.gd`: take only the seat, the toggle
 > and the no-character branches, and say in § LOG what you left.
 >
+> **If you flag something outside your own paths — a bug, a stale string, a number your
+> change invalidated, a claim you could not verify — FILE IT as a numbered `- [ ]` item
+> on the owning lane's § CHECKLIST section, under a `**Filed by ‹your lane› ‹date›:**`
+> line. See § HOW TO RUN A LANE. A finding that only appears in § LOG does not get
+> fixed.
+>
 > Prefer building controls in code over editing a `.tscn`. Tick §2, append to § LOG.
 > Do not spawn subagents.
 
@@ -402,6 +476,12 @@ Each block is paste-ready. Set model and effort first.
 > from the can", which is the opposite of this game.
 >
 > Resolve the Can-Smash cooldown conflict in § SALVAGE. You have final say on radii,
+> **If you flag something outside your own paths — a bug, a stale string, a number your
+> change invalidated, a claim you could not verify — FILE IT as a numbered `- [ ]` item
+> on the owning lane's § CHECKLIST section, under a `**Filed by ‹your lane› ‹date›:**`
+> line. See § HOW TO RUN A LANE. A finding that only appears in § LOG does not get
+> fixed.
+>
 > durations and cooldowns — record each decision. Tick §3, append to § LOG.
 > Do not spawn subagents.
 
@@ -437,6 +517,12 @@ Each block is paste-ready. Set model and effort first.
 > * **The trajectory preview and the charge readouts** — the preview must integrate the
 >   same solve `carriable.gd` throws with. A second ballistics path that disagrees with
 >   the first is worse than no preview.
+>
+> **If you flag something outside your own paths — a bug, a stale string, a number your
+> change invalidated, a claim you could not verify — FILE IT as a numbered `- [ ]` item
+> on the owning lane's § CHECKLIST section, under a `**Filed by ‹your lane› ‹date›:**`
+> line. See § HOW TO RUN A LANE. A finding that only appears in § LOG does not get
+> fixed.
 >
 > Prefer building controls in code over editing a `.tscn`. Tick §4, append to § LOG.
 > Do not spawn subagents.
@@ -490,6 +576,12 @@ Each block is paste-ready. Set model and effort first.
 > preview. Godot's `--headless` has no rendering device and returns blank captures — use
 > the plain exe.
 >
+> **If you flag something outside your own paths — a bug, a stale string, a number your
+> change invalidated, a claim you could not verify — FILE IT as a numbered `- [ ]` item
+> on the owning lane's § CHECKLIST section, under a `**Filed by ‹your lane› ‹date›:**`
+> line. See § HOW TO RUN A LANE. A finding that only appears in § LOG does not get
+> fixed.
+>
 > Tick §5, append to § LOG. Do not spawn subagents.
 
 </details>
@@ -514,6 +606,12 @@ Each block is paste-ready. Set model and effort first.
 >
 > Measure with the cheapest probe that actually looks at the thing, and apply the
 > project's impossible-number rule: if two numbers cannot both be true, the metric is the
+> **If you flag something outside your own paths — a bug, a stale string, a number your
+> change invalidated, a claim you could not verify — FILE IT as a numbered `- [ ]` item
+> on the owning lane's § CHECKLIST section, under a `**Filed by ‹your lane› ‹date›:**`
+> line. See § HOW TO RUN A LANE. A finding that only appears in § LOG does not get
+> fixed.
+>
 > bug. It has caught five harness faults here already. Tick §6, append to § LOG.
 > Do not spawn subagents.
 
@@ -543,6 +641,12 @@ Each block is paste-ready. Set model and effort first.
 > the new verbs and its behaviour has never been observed. Legacy constants derived from
 > the old `SPEED = 6.0` are flagged in-file and not re-derived.
 >
+> **If you flag something outside your own paths — a bug, a stale string, a number your
+> change invalidated, a claim you could not verify — FILE IT as a numbered `- [ ]` item
+> on the owning lane's § CHECKLIST section, under a `**Filed by ‹your lane› ‹date›:**`
+> line. See § HOW TO RUN A LANE. A finding that only appears in § LOG does not get
+> fixed.
+>
 > Tick §7, append to § LOG, and say plainly which conclusions are **measured** and which
 > are **argued**.
 
@@ -554,6 +658,82 @@ Each block is paste-ready. Set model and effort first.
 
 Newest first. One entry per lane run: what changed, what was **measured** versus written,
 what decision you made and why, and what you are handing the next lane. Short.
+
+### 2026-07-31 · 🎮 `build mech` · §1 · branch `feature/objects-overhaul-v2`
+
+**§1.9 built, and it turned out to be four changes, not one.** `self_right()` now refuses
+for a lata that is off its circle. The rule is written once, as *"the out-of-circle
+countdown is not running"*, rather than as a second radius test — one line on the floor,
+one source of truth, and it inherits the Option A gate and the round-active gate for
+free. Three things fell out of it that were not optional:
+
+* **`hitbox.gd`'s seal-on-hit had to go.** It sealed any lata past its 1.25 s appeal
+  window, and one sealed lata ends the round. That was survivable while the 2.0 s ceiling
+  always stood the lata up — a 0.75 s window you had to be standing in. Stranded, the
+  window never closes, so the branch became **an unbounded instant win for anyone who
+  walks over and presses bump**: the tap-out, rebuilt by accident, eight commits after
+  this file deleted it. A follow-up hit now just shoves the lata further out, which is
+  continuous and stacks with the clock instead of skipping it.
+* **The reset channel's two steps were in the wrong order.** It stood the lata up and
+  *then* carried it home; with §1.9 the stand-up is refused and the defence's only answer
+  silently did nothing. Carry home, then stand up.
+* **`RESET_CHANNEL_TIME` 2.2 → 1.8.** The channel used to be the lazier of two ways home;
+  it is now the only one, so it has to be priced against the clock it races rather than
+  against the attacker's cycle. At 2.2 the fifth stack and its 1.25 s floor were
+  unreachable decoration — the round was decided a row above them. At 1.8 the cliff lands
+  on the floor: the fourth save is the knife-edge and at max stacks a knockdown outside
+  the circle simply ends the round. It is still longer than the defender's own full bump
+  commitment, so it is still punishable, which is the property the 1.5 → 2.2 rise bought.
+
+**§1.4's "far away" was never built.** A stagger dropped the tsinelas for free — at the
+carrier's own feet — so eating a 1.35 s bump cost the attacker one bend of the knees.
+There is a punt now, noted by `hitbox.gd` at the strike and spent by `host_drop()`
+whenever the drop resolves, because networked those are frames apart and the hit is gone
+by then.
+
+**Also gated `_step_can_out` to Option B.** `Design.md` claimed Option A was "maintained
+in parallel and unchanged" and it was not — the countdown ran there too, so an Option A
+round could be lost to a clock nothing in that mode explains.
+
+**Numbers I moved, all in `Design.md` in this commit:** `RESET_CHANNEL_TIME` 2.2 → 1.8,
+new `PUNT_SPEED` 13.5 / `PUNT_LIFT` 3.8. **1.35 s for the bump charge is kept** — the
+board offered it as changeable and the 1.5× symmetry with the throw is worth more than
+any number I'd have replaced it with, especially now that the punt has made the full bump
+much stronger. That is a `build fair` question and it is flagged as one.
+
+**Measured, `tools/mech_probe.tscn`, 16/16 twice** — a new probe, because § PATHS gives
+this lane no `tools/` row and writing to `phys_probe`/`hit_probe`/`round_probe` would
+have broken one-writer-per-file. §1.9 both ways, the ceiling for a lata at home and for a
+Person, the channel curing a strand, the 0.75 s stack, no-seal-on-hit, the punt, and the
+countdown run to zero awarding the round to the tsinelas side.
+
+**Two impossible numbers, both caught by the rule and both the metric's fault.** The punt
+measured 3.30 m at 9.0 and 2.69 m at 10.5 — a bigger shove going less far — because the
+origin was wherever the previous check had left the attacker; pinned, it is 3.13 m on
+every run. And `round_active` read TRUE right after a countdown that had already fired
+`round_won` correctly: `main.gd` starts the next round ~3.5 s later, inside the probe's
+own wait, so that flag is not samplable from outside the instant it changes.
+
+**What I did NOT verify, and nobody should quote as if I had:** the bump meter filling,
+a tap producing no stagger, the wind-up on a second real peer, the long-throw punish end
+to end, the ~1 m knockback on a *solid* hit (a tap measured 0.951 m in passing; `build
+phys` 5.2 owns the real one), and the punt's networked `_rpc_set_loose` path. `round_probe`
+still FAILs at 4.33 m/s and 0.51 m of between-round drift — **identical before and after
+these changes**, measured on a stash, so it is pre-existing and is `build phys`'s.
+
+**Handed on — filed as checklist items, not left here.** Eleven findings went onto the
+lanes that own the files, per the new § HOW TO RUN A LANE rule this session added:
+**2.7** (the countdown is unreadable to a spectator, and the video is the point),
+**3.8–3.10** (Quick Stand now refuses off the circle; Ground Smash's instant win is
+trivially landable on a stationary stranded lata; the lata's kit only matters before it
+is displaced), **4.8–4.10** (`STRANDED` must be drawn; the clock and its stack deserve
+real HUD presence; `tutorial.gd` still teaches the deleted tag and quotes 2.2 s),
+**6.7–6.10** (`round_probe`'s pre-existing FAIL now has an owner; a stranded lata must
+not look like a recoverable one; the punt is unmeasured across peers; a *tap* already
+moves the lata 0.951 m), **7.9–7.13** (the bots time out instead of reaching the new win
+conditions; a bot lata mashes a dead button while a bot taya ignores the channel; the
+power bump got stronger and its 1.35 s price did not move; §11's stunlock argument has a
+new exception to break or confirm; the §5.2 recovery table is load-bearing and unplayed).
 
 ### 2026-07-31 · pipeline reset · branch `feature/objects-overhaul-v2`
 
