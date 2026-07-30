@@ -171,43 +171,6 @@ For any coding agent picking up this queue.
 **Only open items live here.** B-01 … B-66 are in [`Handoff.md`](Handoff.md); everything
 marked `[FIXED]` there is done and settled. New bugs take the next free number **in this file**.
 
-**B-137 · THE SLIPPER'S COLLISION AND HURTBOX RE-ENABLE WAS SILENTLY DROPPED ON EVERY PATH THAT
-STARTS WITH A HIT. [FIXED 2026-07-29]**
-
-Found by the round-reset audit, using `tools/ai_probe.tscn -- fairness` as the instrument — a single
-20-round run logged **11 blocked `monitorable` writes and 3 blocked `disabled` writes**. Nothing in
-the game reported anything: the writes simply did not happen.
-
-`Carriable._set_physics_enabled()` wrote `CollisionShape3D.disabled` and `Area3D.monitorable`
-directly. Godot refuses both while the physics server is mid-step — *"Can't change this state while
-flushing queries"* and *"Function blocked during in/out signal"* — and **every important caller
-reaches this function from inside an `area_entered` callback, because that is where hits resolve:**
-
- 1. **Tagged mid-carry.** `hitbox.gd::_on_area_entered` → `_apply_hit_result` → `apply_stagger` →
-    `_set_state` → `_on_carrier_state_changed` → `host_drop` → `_rpc_set_loose` → here. The
-    re-enable was dropped, so **the slipper knocked out of a tagged carrier's hands came back with
-    its collision shape still disabled**, free to sink through the floor. B-75 calls knocking the
-    slipper loose "most of the point of tagging"; B-101 is this same failure from the other side.
- 2. **A round won by a tag.** The same callback → `report_round_win` → `report_round_result` →
-    `_reset_world` → `reset_for_new_round` → here. **The hurtbox stayed non-monitorable into the
-    next round**, and `carrier.gd::_find_grabbable()` finds slippers by scanning its GrabArea for
-    Hurtboxes — so the attacker could not pick their own tsinelas up at all. A tag ends 18 of 20
-    rounds, so this is the common path, not an edge case.
-
-*Fix.* `set_deferred()` on both, which is what each engine message asks for. The change lands at idle
-rather than instantly — one frame in which the slipper is still intangible, which is invisible and is
-strictly better than never.
-
-*Verified:* the same 20-round run goes from 14 blocked writes to **0**. And the fairness table moved
-where the bug predicts it should: **longest still-run 6.83 s → 1.92 s, inside the < 2 s bar for the
-first time this project has ever measured it.** That is the causal signature — an attacker standing
-next to a slipper it could not pick up is exactly what a long still-run is.
-
-⚠️ **This is the class B-128 fixed one instance of, and the class is now known to be wider than
-"knockback between rounds".** Any state write reached from a hit callback is suspect. The generic
-rule: **hits resolve inside a physics callback, so anything they touch that changes collision or
-monitoring state must be deferred.**
-
 **B-136 · STEP AND TOUCH ON AN OPPONENT'S TSINELAS. [ADDED 2026-07-29 — both branches verified
 firing; the shove's MAGNITUDE is not]**
 
@@ -263,68 +226,6 @@ not firing then, and 0.417 m was ordinary depenetration, which naturally ignores
    than reporting a mechanic failure. Both branches have passed repeatedly with direct branch
    counters (TOUCH 1 scuff / 1.272 m; STEP 25–30 scuffs / crawl 0.450 → 0.158). **Re-run it a couple
    of times before believing a red result**, and read the `HARNESS:` lines first.
-
-**B-138 · A PERSON COULD BE SEALED — PERMANENTLY OUT OF THE ROUND — BY ONE THROWN SLIPPER.
-[FIXED 2026-07-29, regression from B-134]**
-
-SEALED has no recovery: `_physics_process`'s SEALED branch is literally `pass # awaiting round
-reset`. For a lata that is the entire Option B win condition. For a **Person** it means one hit
-removes a player from the round for good, and both routes to it applied to Persons:
-
- - `character_base.gd`'s DOWNED branch auto-sealed anything whose self-right window lapsed;
- - `hitbox.gd` resolved `kind = "seal"` against any DOWNED, non-self-rightable target.
-
-Neither was ever intended — the GDD's "reach it and seal it" is about the can standing in its circle.
-It went unnoticed because a thrown slipper used to resolve on the melee hitbox and merely stagger
-(B-134). **The moment throws started actually knocking things down, every Person hit by one was
-DOWNED for 2 s and then SEALED for the rest of the round.**
-
-Caught by `tools/scuff_probe.tscn`, which could not drive its test Person and printed `state=2` then
-`state=3` on four consecutive calibration attempts. Both paths are now gated on `is_can`; a
-knocked-down Person gets back up.
-
-**B-134 · A THROWN SLIPPER RESOLVED ON THE CHARACTER'S BODY-CHECK HITBOX, SO THE THROW PROFILE WAS
-BYPASSED AND THE CAN COULD NOT FALL OVER. [FIXED 2026-07-29]**
-
-Human question: *"can the can even fall?"* Measured answer, with `tools/hit_probe.tscn -- --host
-target=can` aiming dead at the can's own hurtbox centre at full charge: **0 knockdowns in 40 throws.**
-
-A flying tsinelas carries two live hitboxes. One is its ThrowProfile's pulse box
-(`Carriable._spawn_flight_hitbox`), which knows what was thrown. The other is `CharacterBase.tscn`'s
-own melee Hitbox — the unit's **body-check reach**, radius 0.14 at a 0.16 offset, carrying
-`forces_downed = false` and no knowledge of the profile at all. `is_hitbox_active()` deliberately
-returned true for it during flight (added when the profile box could not be relied on), so whenever
-it won the race `hitbox.gd` resolved the throw as a plain `"stagger"` no matter what was thrown.
-
-**It won constantly, and the reason is arithmetic rather than luck.** Against a Person the melee band
-is `0.14 + 0.45 = 0.59` and the profile band is `0.30 + 0.45 = 0.75` — a 0.16 m difference, against
-0.433 m of travel per physics frame. The two therefore start overlapping on the *same* frame, and
-`_step_flying()` calls `sweep_hitbox()` at the top of that frame, before the profile box's own
-`area_entered` is delivered. Measured on a four-peer session: **33 of 40 throws resolved on melee.**
-
-*Fix.* `is_hitbox_active()` no longer reports the melee box live during flight, so the profile's box
-is the only thing that resolves a throw; and `sweep_hitbox()` now sweeps the transient hitboxes too,
-which is what the flying clause was originally added to provide. `register_hit_once()` is already
-keyed on the owner, so the two boxes cannot double-resolve.
-
-Also fixed alongside, same symptom: **`throw_flick.forces_downed` was `false`**, so the flick slipper
-could never knock the can over at all and could not win an Option B round by any route. Now `true`,
-making all four profiles uniform — which is what `Checklist.md` already claimed was the case.
-
-Measured either side, 40 dead-centre full-charge throws at the can:
-
-| | before | after |
-|---|---|---|
-| contacts | 12 | 14 |
-| resolved on the melee box | 6 | **0** |
-| reached DOWNED | **0** | **14** |
-
-⚠️ **A SECOND, SEPARATE PROBLEM SURFACED BY THE SAME MEASUREMENT: only 12–14 of 40 dead-centre
-throws made contact at all.** Not this bug — the can evades (`CAN_EVADE_*`) and its hurtbox radius is
-0.17, which made the dodge (not aim, not spread, not the hitbox) the single biggest reason a throw
-misses. **Human call, 2026-07-29: nerf the dodge.** Done via `CAN_EVADE_MISS_MARGIN` 1.0 → 0.55 —
-see that constant for why the MARGIN and not the lookahead, and why `CAN_EVADE_STEP` was tried and
-reverted. Contacts measured 12–14 → 15–17, and every contact still knocks the can down.
 
 **B-135 · THE LUCKY FALL — a knockdown that costs the attacking side nothing. [ADDED 2026-07-29]**
 
@@ -439,110 +340,6 @@ that same function **renames the node** (`character.name = str(new_peer_id)`) �
 MultiplayerSpawner and MultiplayerSynchronizer both address by PATH. A peer that joins afterwards
 never receives that RPC. Either half is sufficient to break replication for that character, and
 neither has been tested in isolation yet.
-
-**B-114 · The AI drove the GLOBAL `Input` singleton, so two bots shared one keyboard. [FIXED
-2026-07-29]** ⚠️ **Both reported AI symptoms were this one bug.**
-
-Report: *"they randomly stop and freeze completely"* and *"they all move together at the exact same
-time in sync ... clearly sharing a global state."* That diagnosis was right, and the shared state was
-`Input` itself.
-
-`AIController._set_held()` called `Input.action_press(character.action_name(base))` — process-global
-state keyed only by `player_id` — and `main.gd::_build_spawn_data` assigns AI slots
-`player_id = (index % 2) + 3`, so **index 0 and index 2 both get p3** and 1 and 3 both get p4. Two
-bots pressed and released the same actions:
-
- - **Lockstep** — they were literally reading each other's input.
- - **Freezing** — `_set_held` was edge-triggered against its OWN belief about what it held. Bot A
-   presses `move_left_p3`; bot B, believing that action is not held, calls
-   `Input.action_release("move_left_p3")` and stops BOTH. The two beliefs then disagree with the
-   global forever and neither re-presses.
-
-*Fix.* The global is out of the path entirely rather than the id range being widened — a human and an
-AI on one machine can still collide, and a shared global is the wrong shape for per-unit intent
-regardless. `CharacterBase` gained `input_pressed` / `input_just_pressed` / `input_just_released` /
-`input_vector`, which read a per-instance intent dictionary when an `AIController` is attached and
-the hardware otherwise. Every gameplay read in `character_base.gd`, `carrier.gd` and `carriable.gd`
-goes through those now.
-
-⚠️ **`character_base.gd:493`'s movement read was missed on the first pass** and it is the one that
-matters most — the bots went completely still because intent was being written and the movement
-vector was still being read from `Input.get_vector`. If AI movement ever dies again, check that
-every read goes through `input_*` first.
-
-*Second half: lockstep survives an independence fix.* Every controller started `_decision_timer` at
-0.0 and decremented by the same delta, so all of them re-picked on the same physics frame forever.
-Phase is now staggered in `_ready()` from a per-instance `RandomNumberGenerator` seeded off the
-instance id, and each interval is jittered 0.75–1.3×. `randf()` calls were moved to that stream too:
-one shared global sequence is a subtler version of the same "they behave as one" bug.
-
-*Verified* with `tools/ai_probe.gd`: frames where two or more bots change movement state together
-went to **1 / 846 (0.1%)**, longest still-run **1.1 s**, no freezes.
-
-**B-115 · Two characters trading spawn marks depenetrated off each other's STALE collider. [FIXED
-2026-07-29]** — the real root cause of B-100.
-
-Writing `position` on a `PhysicsBody3D` updates the scene tree immediately and the physics
-**broadphase** only at the next server step. Roles swap every round, so the two Persons trade marks,
-and for one physics frame each of them is standing on the other's previous collider.
-
-Measured with `tools/jump_probe.gd`: the incoming Taya is placed correctly at (2.2, 0.9, −1.5); on
-the next step `move_and_slide()` reports three contacts with the outgoing Person (normal 0,1,0 —
-stacked on its head) and shoves it to y = 2.50; the frame after that it slides **9.89 units** into
-`WallWest`, where the confinement clamp parks it at exactly radius 5.0. Delta was a normal 0.0167 and
-`time_scale` 1.0 throughout — not a lag spike, not a velocity bug.
-
-⚠️ **Three "obvious" fixes do not work, and two had already been tried.** B-100's *park everyone at
-y=500 first*, `force_update_transform()`, and `PhysicsServer3D.body_set_state()` are all writes the
-broadphase does not see until it steps. Toggling `CollisionShape3D.disabled` was tried before that
-and failed for the same reason.
-
-*Fix.* Nobody MOVES until it has stepped. `CharacterBase.begin_spawn_settle()` holds the placed
-transform, keeps zero velocity and skips `_physics_process` entirely — gravity, AI and
-`move_and_slide()` included — for `SPAWN_SETTLE_FRAMES` (3, i.e. 50 ms).
-
-**B-116 · Every character spawned 100 mm inside the floor. [FIXED 2026-07-29]**
-
-Phase 8 raised the floor's collision top from 0.000 to 0.100 so characters would stop standing inside
-the visible road, and left the four spawn marker Y values alone on the reasoning that "the paving was
-already at 0.1". Wrong: a spawn Y is measured against the FLOOR COLLIDER, which moved. Every unit
-therefore started embedded and was ejected by depenetration — the other half of the "weird physics
-bounces" report. Spawn heights are now derived from `GROUND_Y` in `build_eskinita.py` rather than
-typed, so they cannot drift from the floor again.
-
-**B-117 · A thrown tsinelas had no live hitbox. [FIXED 2026-07-29]**
-
-`CharacterBase.tscn`'s single `Hitbox` has `requires_bump_window = true`, and `is_hitbox_active()`
-returned only `_bump_active_time_left > 0.0` — a field written in exactly one place, the **bump**
-press. A slipper in the air never presses bump, so its hitbox was gated off for the entire flight and
-throws landed only on incidental body contact.
-
-*Fix.* Being `FLYING` is now also an active window — it is the slipper's equivalent of the bump
-window, a deliberate time-boxed offensive state the player committed to. `carriable._step_flying`
-also calls `sweep_hitbox()` each frame, because `area_entered` only fires on the ENTER edge and a can
-already inside the hitbox on the first flight frame would otherwise never register.
-
-*Verified* by A/B over 12 identical throws with `tools/phys_probe.gd`: frames with the can not in
-NORMAL state went **180 → 515**.
-
-⚠️ **Note for anyone measuring this:** `GameLaunch.game_mode` defaults to **OPTION_B**, so a hit on
-the can produces downed/seal, **not** dents. A dent counter reading zero is correct in the default
-mode and is not evidence of a missed hit — that mistake cost a debugging round here.
-
-**B-118 · A freed lambda capture errored on every round reset. [FIXED 2026-07-29]**
-
-`ability_utils.gd` created a transient hitbox area, added it to the `transient_hitbox` group, and
-scheduled cleanup as `func(): if is_instance_valid(area): area.queue_free()`. `main.gd::_reset_world`
-frees that entire group on every round reset, so an ability cast shortly before a round ends had its
-area freed while the timer was still pending.
-
-Godot resolves a lambda's captures when the lambda is **called**, before any of its body runs, and
-errors there: *"Lambda capture at index 0 was freed. Passed null instead."* The `is_instance_valid()`
-guard inside was dead code for precisely the case it was written for.
-
-Found in a real two-instance `--host`/`--join` session — the host logged it on round transitions and
-the client never did, because only the host resolves abilities. *Fix:* capture the **instance id**
-(an int cannot dangle) and resolve it with `instance_from_id()` at call time.
 
 **B-119 · `lata_impact` (and every other SFX) still buzzed under sustained contact despite the
 
@@ -744,163 +541,6 @@ ambience stops after 30 seconds and never comes back".
 
 *Still open:* not yet heard. The generator is the tuning surface — bed levels and event counts are
 one constant each, and it is deterministic, so re-running changes only what you changed.
-**B-111 · Spawn slots were scrambled because `StringName` does not sort alphabetically. [FIXED
-2026-07-29]** ⚠️ **This is the "spawns are still broken" report that survived several sessions.
-Read the whole entry before touching spawn code again.**
-
-Report, 2026-07-29: *"spawn still broken, offense spawned next to circle... when the goal of the
-entire game is for offense to try to hit CAN in the circle while they're outside."*
-
-*What it was not.* `_role_slot()` was correct, every time. An audit print of every
-`_place_at_spawn()` call showed all four units resolving to the right slot — Can→0, Taya→1,
-Attacker→2, Tsinelas→3 — with the right `is_can` / `is_person` / `team_is_can_side` flags. The
-markers were authored in the right order in the scene, and `Main.tscn`'s role flags were correct
-too. Every previous session looked at these and found nothing, because there is nothing there.
-
-*What it was.* `_spawn_transform(slot)` returned the **wrong marker**. `main.gd` built `_map_spawns`
-with:
-
-```gdscript
-markers.sort_custom(func(a: Node, b: Node) -> bool: return a.name < b.name)
-```
-
-**`Node.name` is a `StringName`, and `<` on `StringName` compares the interned POINTER, not the
-text.** Measured on this engine build with four nodes authored `Spawn0`…`Spawn3`:
-
-| | order |
-|---|---|
-| authored / `get_children()` | `Spawn0, Spawn1, Spawn2, Spawn3` |
-| `sort_custom` on `.name` (what ran) | **`Spawn3, Spawn2, Spawn0, Spawn1`** |
-| `sort_custom` on `String(.name)` | `Spawn0, Spawn1, Spawn2, Spawn3` |
-
-So slot→marker was scrambled: the Can spawned on the Tsinelas's mark, the Taya on the Attacker's,
-and **the Attacker on the Taya's** — offense standing next to the base circle it is supposed to be
-throwing at from outside the throwing line. Exactly the report.
-
-*Why it survived so long.* Every signal pointed away from it. The line reads as "sort by name". The
-comment above it explicitly said *"Sorted by node name, NOT by get_children() order"* and gave a
-sound reason (B-68). The resulting order was **stable within a run**, so it looked deterministic and
-reproducible rather than random. And it is **not guaranteed stable between runs** — `StringName`
-intern order depends on what got interned first — which is why the symptom appeared to change shape
-from session to session and never matched anyone's mental model.
-
-*Fix.* Named lookup, not sorting: `points.get_node_or_null("Spawn%d" % slot)` for slot 0..3. This
-removes the failure mode rather than correcting one instance of it — there is no ordering left to
-get wrong — and a renamed or missing marker is now a loud `push_warning` plus the fallback ring,
-instead of a silently shuffled roster.
-
-⚠️ **STANDING RULE FROM THIS BUG: never order anything by `Node.name` directly.** Any
-`sort_custom`, `<`, `>` or `min`/`max` on a `StringName` in this project is the same bug waiting.
-Cast with `String(...)` if you genuinely need lexicographic order, and prefer an explicit named
-lookup over any ordering at all when the names encode a contract (`Spawn0..Spawn3` is a contract).
-
-**B-112 · The held tsinelas floated ~0.44 m off the hand. [FIXED 2026-07-29]**
-
-Report: *"floating slipper when held, fix it pls, make it acc be on the hand."*
-
-`CharacterVisual.HAND_CARRY_OFFSET` was `Vector3(0.237, 0.135, -0.347)` — magnitude **0.441**,
-measured bone-to-point in world space on a character **1.6 m tall**. Over a quarter of body height.
-
-The intent was right, the execution was wrong twice:
-
- - **Wrong magnitude.** It existed to cancel the drop `_align_to_capsule_floor` applies to a carried
-   unit's model, so the visible mesh lands at the palm rather than under it. That drop is a measured
-   **0.160** for the tsinelas (its capsule half-height). A 0.160 correction was needed; 0.441 was
-   applied, two thirds of it sideways and forward rather than up.
- - **Wrong space, and unfixable as a constant.** `HandPoint` is a child of a `BoneAttachment3D`, so
-   the offset is expressed in the **hand bone's local frame** — which rotates with every animation
-   clip. Whatever it meant in `holding-right` it meant something else in `walk`. No single constant
-   could have been correct across poses, which is why re-tuning it never held.
-
-*Fix.* The mesh drop is cancelled in `carriable.gd::_step_carried()`, in **world space**, from the
-carried unit's own `CharacterVisual.visual_centre_offset()` — cached by `_align_to_capsule_floor`,
-which is the one place that knows the drop. The carried unit is positioned so its **mesh centre**
-lands on the hand point, not its origin. Correct for the Can as well, and it cannot drift from the
-number it exists to cancel. `HAND_CARRY_OFFSET` is now `(0.04, 0.03, -0.06)` — 0.078, a genuine
-wrist-to-palm nudge, which IS a bone-space quantity.
-
-⚠️ **Verified in FPP render only.** Not checked in third person, not while walking (a different
-clip — and clip-dependence was the original bug), not mid-throw. The 0.078 nudge is a first guess.
-
-**B-113 · Shadows so dark a character in shade was unreadable. [FIXED 2026-07-29]**
-
-Report: *"shadows are too much, cant see person anymore, lowk feels overwhelming."*
-
-Not one slider — two changes from earlier the same day compounding. Fixing the Phase 8 overexposure
-pulled `ambient_light_energy` down to 0.55, and the shadow-acne fix had pushed `shadow_opacity` to
-1.0 (fully opaque). Together, anything in shadow lost nearly all of its fill light.
-
-*Fix.* `shadow_opacity` 1.0 → 0.62, `ambient_light_energy` 0.55 → 0.95, `ssao_intensity` 3.2 → 1.8,
-`ssao_power` 1.35 → 1.1, `light_energy` 1.75 → 1.35, `adjustment_contrast` 1.09 → 1.03,
-`shadow_blur` 0.9 → 1.1.
-
-⚠️ **One iteration, not human-validated.** These were chosen to fix "too dark" without re-checking
-that the earlier washed-out look has not partly returned. Lighting on this map has now been retuned
-three times in one session in opposite directions; the next pass should change **one** value at a
-time and get a human verdict before moving another.
-
-**B-110 · `floorcheck` ignored SCALE, so it measured against the wrong heights. [FIXED
-2026-07-28]** Two halves, both the same mistake, found a day apart.
- - **Ground pieces.** `record()` computed a piece's top as `y + hi[1]`, with no scale at all. Every
-   kit ground piece therefore reported its UNSCALED height — a road tile placed at 4× reported
-   0.025 instead of 0.1 — and every marking resting on one was checked against a surface that was
-   not there. **The guard found this itself**, by failing the arena re-paving (7.4b) with errors
-   that were arithmetically impossible if its own numbers had been right.
- - **Markings.** The same hole on the other side: `_markings` did not store whether the placement
-   was uniformly scaled, `_samples()` scaled only X, and `verify()` read `lo[1]`/`hi[1]` raw.
-   Latent today, because nothing places a marking through `add_kit()` — and it would have bitten
-   silently the first time anyone did.
-*Root cause of the class:* two different scale conventions share one parameter. `xform()` stretches
-ONLY the mesh's length axis (right for a lengthenable line decal, leaves Y and Z alone);
-`xform_uniform()` scales all three (right for a building). `sx` meant both. Every caller now says
-which via an explicit `uniform` flag, and `embed_y()` takes the scale it is embedding at.
-*Proven by negative test, not by inspection:* a 3×-scaled marking embedded at its real scale is
-accepted, and the same marking placed with the old scale-blind arithmetic is rejected with
-`STICKS OUT ... 62.0mm`. Before the fix that second case passed silently.
-⚠️ **A guard that is wrong is worse than no guard**, because it is trusted. If you add a third
-placement convention here, give it its own flag rather than overloading `sx` again.
-
-**B-109 · Field markings STUCK OUT of the floor — the other half of the floating bug.
-[FIXED 2026-07-28]** Reported after B-103 shipped: *"the decals of floor still stick out."* Both
-reports are the same object and opposite failures. A marking is a **2cm-thick box**, so B-103's
-"sit it flush on the surface" left 2cm of vertical SIDE WALL standing proud all the way round.
-The camera lives near ground level, so at a grazing angle those walls catch the light and every
-line reads as a low kerb instead of as paint.
-*Fix — the rule is now a SANDWICH, not a resting height.* A marking must have its top face a hair
-above the surface (visible, never z-fighting) **and its bottom BELOW it**, so the side walls are
-inside the ground and cannot be seen from any angle. `floorcheck.embed_y()` is the single source of
-that arithmetic and both builders call it; nothing places a marking by a hand-computed number any
-more. The guard rejects all three wrong states with distinct messages — `STICKS OUT`, `FLOATS`/
-`SPANS`, `BURIED` — and was negative-tested against each before shipping.
-⚠️ **"Flush" was never the goal and is not achievable with thick geometry.** Anyone re-deriving
-this will land back on flush; the invariant is EMBEDDED.
-
-**B-108 · The Can "kept teleporting" — the teleport was the reset correcting an AI drift.
-[FIXED 2026-07-28]** Flagged repeatedly. `ai_controller.gd::_update_can()` picked
-`_random_point_in_confinement(0.6)`, walking the Can up to ~3 units off its base circle; every
-round reset then snapped it back to Spawn0, and that snap is what a player sees.
-*Measured, not guessed:* a new `render_probe.gd` mode, **`canwatch`**, drives a real match and
-prints only frames where the Can MOVES more than a step. It showed constant velocity 6.0 on a
-diagonal followed by 1.4–1.8 unit jumps back to `(0, 0.17, 0)` on each transition. After the fix
-it reports no jumps at all.
-*Why the AI was wrong on its own terms:* tumbang preso is played around a can STANDING on its
-mark — a Can that strolls off has nothing left to defend. It now holds `CAN_HOLD_RADIUS` (0.45)
-inside the 1.4-wide base circle, so it still shifts (the pillar says take funny) but never leaves
-the mark and the reset never has to yank it.
-
-**B-107 · The Can's and Slipper's cameras rolled. [FIXED 2026-07-28]** Third report, screenshots
-showing the 3D view rolled ~40° while the HUD stayed level — which is a camera roll and nothing
-else. Both pivots are CHILDREN of the CharacterBase and inherit its full basis, and a Prop's body
-DOES get a full basis written to it: `carriable.gd::_step_carried()` snaps a carried unit to the
-carrier's hand every physics frame, tilt included.
-*Fix — the rig stops trusting its parent.* `_apply_upright_pose()` gives both pivots an ABSOLUTE
-transform every frame, built from the body's **yaw only** plus their own pitch. Whatever the body
-does on the other two axes cannot reach the camera, **from any code path, including ones nobody has
-written yet** — which is the point, since patching individual writers is what failed twice.
-⚠️ Yaw is recovered from the body's FORWARD VECTOR, not `global_rotation.y`: Euler decomposition of
-a basis that contains roll does not give back the yaw you want, and a rolled basis is precisely the
-case this exists to survive.
-
 **B-106 · "defence hand is on the can" — BOTH mechanical explanations eliminated, no fix made.
 [INVESTIGATED 2026-07-28, NOT REPRODUCED]** Reported with a screenshot: a defending Person appearing
 to hold the Can, plus an older report that "the defender only has one hand".
@@ -920,138 +560,6 @@ it, and the chibi rig's short arm against a wide torso reads as contact at some 
 outline fix in 7.1 (the Can's border was ~12% of its own width per side and merged with anything
 near it) may well have removed the read on its own.
 **Needs a fresh screenshot on the current build before anyone changes code for it.**
-
-**B-105 · The carried tsinelas floated beside its carrier's head, and re-measuring the offset
-could never have fixed it. [FIXED 2026-07-28]** Reported repeatedly as "slipper floating" and
-chased at least three times as a `HAND_CARRY_OFFSET` calibration problem.
-
-*The offset was never wrong.* Its own note says what it was chosen for: put the slipper "a little
-above the eye", forward and right so it never covers the crosshair. That is a viewmodel pose. It
-was correct for the FIRST-PERSON frame and it was the ONLY thing positioning a real world object,
-so every other player saw a slipper hovering next to a head. **One object was being asked to
-compose two views at once**, which is why every re-measurement moved the problem instead of
-removing it — the probe reported `HandPoint` and the slipper at exactly the same coordinate the
-whole time.
-
-*Fix:* the same inversion the viewmodel arms already exist for. `ViewmodelArms.tscn` gained a
-`HeldSlipper` under the fist, posed for the local player's frame via `VIEWMODEL_CARRY_ANCHOR`;
-`_update_viewmodel_carry()` stopped chasing the world slipper and holds a fixed carry pose; and
-`HAND_CARRY_OFFSET` was re-targeted to mean what its name says — the hand.
-⚠️ Two consequences worth knowing, both found by rendering:
- - The local player then saw TWO slippers. The carried unit is a separate `CharacterBase`, so the
-   body self-hide never covered it. `_apply_carried_self_hide()` handles it on the same
-   "`_active` is only true for the rig you look through" basis as the body hide.
- - That hide **must remember what it hid**. Keyed on `carrier.held()` alone, throwing the slipper
-   makes `held()` null, the restore never runs, and the slipper stays invisible to the thrower for
-   the rest of the round.
-
-**B-104 · Bayan Plaza could never be loaded — both map entries shared one id. [FIXED
-2026-07-28]** `GameLaunch.MAPS` declared `"id": &"eskinita"` on BOTH entries, and
-`selected_map_scene()` returns the first match, so **every path that loads a map — the picker, the
-launch handoff and `render_probe` — could only ever reach Eskinita.** Bayan Plaza has been built,
-dressed, spawn-fixed (B-102) and re-dressed (7.5) while being unreachable in play the whole time.
-*Why it survived:* it fails silently and in the most misleading way available — you pick the second
-map and the first one loads, which reads as "the picker is ignoring my click", not as a duplicate
-key. Nothing validates that ids are unique.
-*Found* only because the 7.5 re-dress kept rendering as Eskinita three runs in a row.
-⚠️ **Any map-select bug report predating this is suspect** — the map was never actually switching.
-
-**B-103 · Field markings float, for the fourth time — and the constant was never the bug.
-[FIXED 2026-07-28]** Reported again with a screenshot: *"i keep flaggging this still broken,
-thoroughly think about how to make sure this problem doesnt show up again."*
-
-*What was actually wrong,* measured rather than guessed. `throwing_line_decal` is **8m wide**;
-the `road_tile_line` strip it crosses is **2m wide and 6.2cm tall**. The line was lifted to 0.070
-to clear that strip, so across the ~75% of its length that is over bare road it hung **7cm in the
-air**. `base_circle_decal` sat at 0.070 on a 0.062 top — 8mm of float. Ten other markings had the
-same fault; nothing had ever checked.
-
-*Why three previous fixes failed.* All three retuned one constant (`0.07 → 0.015 → 0.001`). **No
-single Y can be flush for a marking that spans a step**, so every value was wrong somewhere, and
-which part floated just moved. The shape has to be split at the step.
-
-*The fix, and the reason it should not recur:* `tools/maps/floorcheck.py` — every placed piece is
-recorded, every marking's footprint is sampled against the real ground height beneath it, and the
-map build **aborts before writing the scene** with the node name and the gap in millimetres. It
-reports "spans two heights" as a distinct error from "floats", because the two need different
-fixes. `build_eskinita.py::add_line()` then splits a line marking at every step automatically, so
-the eleven faulty markings became 26 verified-flush pieces with no hand-picked heights left.
-`MARK_Y`/`MARK_Y_LOW` are deleted from both builders — a human deciding what is under a marking was
-the root cause, not any particular value they decided.
-**Verified by render** (grazing angle, no gap or shadow under any line) and by both builders
-reporting `markings verified flush`. Determinism re-checked: both scripts run twice with a clean
-tree.
-
-**B-102 · Bayan Plaza's Taya spawns in FRONT of the Can, not behind it, and a comment asserted
-otherwise. [FIXED 2026-07-28]** `build_bayan_plaza.py`'s Spawn1 was `(2.2, 0.8, +1.5)` against
-`build_eskinita.py`'s `(2.2, 0.8, -1.5)`, while its own comment read *"same scheme and same
-coordinates as build_eskinita.py"*. The Attacker is at `z = +6`, so `+1.5` put the defending Taya
-**between** the Can and the attacker, on the attacker's own side — the exact layout the human
-rejected on 2026-07-28 ("the person in same team is behind that can"). It was fixed in Eskinita and
-never carried across, and the false comment is why nobody caught it: every reader who checked took
-the claim instead of the number.
-*Root cause of the class:* two map builders duplicate a spawn block with nothing checking that they
-agree. **Change one map's spawn block and diff it against the other in the same commit.**
-⚠️ **On the reported offense/defense spawn swap, now that B-104 is known.** Eskinita's spawns were
-re-verified by data (not by eye) across two round transitions and are correct in both. Combined
-with B-104 — the picker could only ever load Eskinita — **the most likely story is that the human
-was on Eskinita believing they were on Bayan Plaza, and B-102's mirrored Taya spawn was never what
-they were looking at.** The remaining candidate is simply that units walk during the pre-round
-free-roam window (and now under the merged Single Player AI), so where they *stand* when you look
-is not where they *spawned*. Nothing further to fix without a fresh report on the current build.
-
-### P0 — none open
-
-The three P0 network soft-locks (B-62, B-63, and the B-01/B-03/B-29 cluster) are all fixed and
-runtime-verified. See the archive.
-
-### P1 — found by 🔧 Build while building the 4.2/4.3 two-instance test rig (2026-07-28) — both FIXED
-
-Neither is new networking work — both were pre-existing and unreachable without an actual live
-multi-peer session, which is exactly what `Checklist.md` 4.2/4.3/4.7 required building. Filed and
-fixed in the same pass rather than left for QA, since they directly blocked verifying this lane's
-own work (a two-instance session could not run silently with either still open) and are squarely in
-files this lane owns (`scripts/ui/*.gd`).
-
-**B-100 · A stale-but-not-yet-freed character reference could crash the HUD the instant a peer
-connected or disconnected. [FIXED same session.]** `you_card.gd::get_local_character()` returned
-its cached `_character` field with a guard of the form `_character != null and not
-is_instance_valid(_character)`. Measured live: for a FREED (not null) Object reference, GDScript's
-own `!=` already compares it as equal to null — so the `_character != null` half of that guard is
-**false** for exactly the freed case it exists to catch, short-circuits the `and`, and falls
-through to `return _character`, handing the caller the same poisoned reference back. It merely
-*compares* as null from then on; the variable is never reassigned to an actual null literal, so it
-still fails Godot's own argument type-check the moment it is passed into a strongly-typed parameter
-— which is what `hud.gd::_process()` does every frame (`offscreen_indicators.update(local_char)`).
-Reproduced with a real `--join=127.0.0.1` process: the very first `you_card.gd::_ready()` runs
-BEFORE `main.gd`'s own `_ready()` (children ready before parents) and, for the brief window before
-`NetworkManager.is_networked()` becomes true, its local-character scan falls through to the
-LOCAL-TEST branch and caches `TeamAPerson` — which `main.gd::_start_joining()` frees moments later
-via `_clear_local_test_characters()`. Every `hud.gd::_process()` in between crashed with `Invalid
-type in function 'update' ... (previously freed) is not a subclass of the expected argument class`.
-**Fixed:** `is_instance_valid(_character)` alone, unconditionally — it correctly handles both a
-real null and a freed reference with no error either way, which the flawed two-part guard did not.
-Verified by running: the exact repro (host + one join, 600+ frames) went from crashing on frame 1
-to silent.
-
-**B-101 · `offscreen_indicators.gd` crashed reading a tracked teammate/Can's transform mid-`queue_free()`. [FIXED same session.]**
-`_update_one()` guarded its `target` parameter with `is_instance_valid()` only, which is not the
-same condition as "safe to call `get_global_transform()` on." A character that just left the tree
-(disconnected, or the local peer's own `_on_player_disconnected` freeing a departed teammate — see
-4.7) can be a real, non-freed Object for one or more frames after `remove_child`/`queue_free` while
-still failing `is_inside_tree()`; `global_position` needs a live parent chain and throws `Condition
-"!is_inside_tree()" is true` otherwise. Reproduced live in a 4-peer session: a surviving peer's own
-`OffscreenIndicators`, still tracking the just-dropped peer as its teammate or the Can, crashed on
-the very next `_process()` after detecting the disconnect. **Fixed:** `_update_one()` now also
-checks `target.is_inside_tree()` before reading `global_position`. Verified by running: the same
-4-peer drop scenario (host + 3 joins, one hard-killed mid-round), re-run after the fix, produced no
-errors on the two surviving peers across 2400+ frames.
-
-### P1 — found by the design lane while rendering for checklist 2.3 (2026-07-28)
-
-Filed, deliberately not fixed. Both live in 🔧 Build's files and `scenes/ui/*.tscn` is under
-Build's lock for `code/offscreen-indicators` (3.4), so touching either would breach
-`Concurrency_Protocol.md` §2 and §3 at once.
 
 **B-86 · The FPP crosshair never appears, on a Person, in a real match. [COULD NOT REPRODUCE,
 2026-07-28, 🔧 build-ux.]** Originally filed against `scripts/ui/hud.gd:74`'s
@@ -1084,262 +592,6 @@ and legs as one skinned mesh, so the arms cannot be kept while the torso is hidd
 it, or add a dedicated viewmodel arm, which is new geometry and a new task. **Framing note for
 6.3:** the trailer's beat 5 is the FPP charge-and-throw, so shoot it tight enough that the slipper
 fills frame and the missing arm never becomes the question.
-
-**B-88 · Can/Tsinelas rendered under the floor after the proportion fix (2.5). [FIXED same
-session.]** `character_visual.gd::_align_to_capsule_floor()` dropped every model a hardcoded
-`CAPSULE_HALF_HEIGHT_DOWN` (0.8) below the character's own origin — correct while every unit
-shared the same 1.6-tall capsule, wrong the instant 2.5 gave Can and Tsinelas their own much
-shorter one (0.34/0.32 tall). The physics body sat correctly on the floor; the visible mesh kept
-dropping the old fixed 0.8 regardless, landing 0.63 units under it. Found by the human immediately
-after 2.5 merged ("i dont see can and tsinelas anymore" / "theyre under the map"), not caught by
-this session's own render checks because those checks screenshotted a carried slipper and a
-standalone preview turntable, never a fresh in-match spawn actually settling onto the floor.
-**Fixed:** reads this unit's own, currently-applied `CollisionShape3D` height instead of the
-shared constant. Verified by rendering `tools/render_probe.gd`'s viewmodel mode again — the can
-that was sunk into the ground now stands on it.
-
-**B-89 · Nameplate ring/label also sized for the old shared capsule. [FIXED same session.]** Same
-bug class as B-88, different node: `character_nameplate.gd`'s ring (`y = -0.78`, radius 0.55) and
-label (`y = +1.05`) were hardcoded for the Person's 1.6-tall capsule. On a Can the ring drew nearly
-a metre below the model's actual feet; on a carried Tsinelas the whole nameplate rides along with
-it, so the disconnected ring appeared to float around the held object. Reported: "the slippers
-still have a circle around it when holding." **Fixed:** added `CharacterBase.capsule_height()`/
-`capsule_radius()` as a shared accessor (`character_visual.gd`'s own copy of this logic simplified
-to call it too), and `CharacterNameplate.apply_sizing()` reads it — called explicitly from
-`character_base.gd` right after `_apply_role_collision()`, deliberately NOT from the nameplate's
-own `_ready()`, which runs before the capsule is resized (children ready before parents). Verified
-by render: the can's ring now sits tight at its base, the carried slipper's ring is a small band at
-the object instead of a large disconnected circle.
-
-**B-90 · Carried slipper read as a broadside sliver, and swam through the walk cycle while moving.
-[FIXED same session.]** Two related reports: "the slippers look weird af when holding it" and "my
-arms float during windup and when i run while holding." Two independent causes:
-(a) `character_visual.gd::_play_locomotion()` fell back to `walk`/`sprint` the instant a carrying
-Person moved (the rig has no `holding-right-walk` clip), and `carriable.gd::_step_carried()` snaps
-the carried object to the arm BONE's live position every physics frame — so the walk cycle dragged
-the held slipper, and the FPP viewmodel arm chasing that same position (`camera_rig.gd`), through
-the animation's swing. **Fixed:** `_is_holding()` now checked before speed, not after — the carry
-pose wins outright while holding, legs stop swinging rather than the hand swimming.
-(b) The tsinelas is a flat, thin object (0.078 tall vs 0.432 long) and the arm bone's fixed
-rotation presented it close to edge-on to a camera at roughly the same height — a sliver, not a
-slipper. **Fixed:** a 55° tilt applied in the object's own local frame, before the hand's rotation,
-in `carriable.gd::_step_carried()`. Verified by render for (b) — the carried slipper reads as a
-recognisable shape in both FPP and third person now. (a) is verified by code-path elimination, not
-a screenshot — a single frame cannot capture "stops swinging while running."
-
-**Mechanics audit against Dev_Plan.md §3-4, same session.** User ask: "make sure the code currently
-follows intended mechanics, scoring and placement." Found one real gap and one deliberate
-simplification worth recording:
-
-- **Missing: Option A's ring-out win condition.** `Dev_Plan.md` §3 names two Can-side win paths —
-  "the timer running out, OR knocking Slippers out of bounds a set number of times" — and only the
-  first existed. `KillPlane.character_respawned` fired a HUD toast and nothing else. **Fixed:**
-  `RoundManager.register_ring_out()`, `RING_OUT_LIMIT = 3`, wired from `main.gd`'s existing KillPlane
-  handler. See `Checklist.md` 4.4b.
-- **Not changed, flagged instead: Option B's "circle" is semantic, not physical.** The GDD says a
-  solid hit "knocks the Can out of the circle" into Downed. The actual trigger is
-  `ThrowProfile.forces_downed` / `Hitbox.forces_downed` — a flag on the hit, not a real
-  knockback-then-distance-from-base-circle check. No positional/circle code exists anywhere in
-  `scripts/`. This reads as a deliberate simplification (the round-win system is explicitly built
-  decoupled from movement/physics — see `Dev_Plan.md` §3's own "Build note") rather than a bug.
-  Building real physics-based circle-exit detection is a materially bigger feature than a bug-fix
-  pass and was not attempted; flagging for the team to decide whether it is worth doing.
-
-**B-91 · Carried Tsinelas's own TPP camera was blocked by the carrier's body. [FIXED same
-session.]** `carriable.gd::_step_carried()` teleports the whole CharacterBase into the carrier's
-hand every physics frame; the TPP spring arm (a child) inherited that transform and had nowhere
-sensible to cast toward, with the carrier's own body never excluded from its shapecast. **Fixed:**
-`camera_rig.gd::_update_tpp_carry_follow()` bases the TPP camera on the CARRIER while held (same
-mount height/pitch a normal rig uses, carrier's body excluded from the cast) instead of this unit's
-own nonsensical transform. A first attempt also scaled a Prop's own STANDALONE mount height down
-for its shorter capsule, on the B-88/B-89 theory — reverted after rendering it: the spring arm
-collapsed into solid geometry (the cast origin ended up too close to the ground/the prop's own
-mesh). Only the carried case was reported broken; the standalone case was untouched. Verified by
-rendering through each unit's own CameraRig directly.
-
-**Spawn layout redesigned as role-based, same session — see `Checklist.md` 2.6.** User feedback:
-"two teams spawn on completely different ends and i dont think thats how it should go." Correct: the
-old scheme spawned each team's pair at a fixed end of the alley regardless of which side was
-defending that round, disconnected from the map's own base circle and throwing line
-(`Art_Direction.md` §9). `main.gd`'s four spawn slots are now roles (Can/Taya/Attacker/Tsinelas via
-the new `_role_slot()`) instead of a stored team index, and `_reset_world` auto-hands the tsinelas
-to the attacking Person at round start rather than leaving it loose to be walked over first.
-
-**Option B rewritten — confinement, tag-to-win, auto-seal, 5-fall cap, same session — see
-`Checklist.md` 2.7.** User design pass, closer to real tumbang preso, after playing the
-spawn-redesigned build. Four rules changes plus a UI addition, all in one commit:
-
-- **Confinement.** The Can and its Taya are now confined to a 3-unit radius around the base
-  circle (`CharacterBase.CONFINEMENT_RADIUS`) for the whole round —
-  `_move_and_confine()` wraps every `move_and_slide()` call site so nothing bypasses it.
-- **Tag-to-win.** A defending Person's hit (Bump or the Tag ability) landing on the attacking
-  Person now ends the round for team can outright — previously stun-only, no round effect.
-  Added directly in `hitbox.gd`'s resolution function.
-- **Auto-seal.** The 2s self-right window is unchanged, but `character_base.gd` now calls
-  `seal()` itself the instant it lapses unrecovered, instead of requiring a follow-up hit from an
-  attacker (the old Option B behaviour, retired).
-- **5-fall cap.** `round_manager.gd` tracks every Downed transition on a tracked Can this round
-  (`FALL_LIMIT = 5`), saved or not; reaching it auto-wins for team slipper regardless of whether
-  that fall was individually recoverable.
-- **Local ready-up.** Local matching previously skipped straight to Main.tscn; it now routes
-  through `Lobby.tscn` like Host/Join, with a `"local"` branch in `lobby.gd` that does no
-  networking but keeps the same READY → START rhythm.
-
-Option A is unchanged and stays selectable, but is now explicitly parked (`Checklist.md` 1.5) —
-this is Option B's ruleset changing in place, not a third mode. Verified by parse, two 800-frame
-soaks, and a `render_probe.gd` lobby mode that drives the real Ready button and confirms Start's
-enabled state flips exactly once. **Not verified by play** — confinement radius, tag-to-win and
-the fall-cap number are all brand new and nobody has felt them yet.
-
-**First human playtest of 2.6/2.7, same day — confinement/tag-to-win provisionally fine (human
-wants a recheck after further changes), 5-fall cap and spawn distances confirmed good.** Also
-surfaced two real bugs and a request, all 🔧 Build, on `code/option-b-tuning`:
-
-**B-92 · `build_eskinita.py`'s throwing-line and team-side decals sat flush on the road instead
-of raised. [FIXED same session.]** `add(parent, name, mesh, x, y, z)` calls for
-`ThrowingLineNorth/South` and both `TeamSide` decals put `MARK_Y` (the offset that lifts a
-marking above the `road_tile_line` tile layer — see 2.5/2.2a's own note on why `BaseCircle` needs
-it) in the **x** argument slot instead of **y**. `BaseCircle` had it right, which is why the base
-circle rendered fine and the throwing/team-side lines didn't. Reported as "the pink lines are
-floating" / "a big line in the middle." Fixed; `Eskinita.tscn` regenerated.
-
-**B-93 · A unit airborne when a round resets could fall through the floor. [FIXED same
-session.]** `character_base.gd::reset_for_new_round()` repositions every unit (via
-`main.gd::_place_at_spawn()`) but never zeroed `velocity`, unlike the sibling teleport path
-`respawn()` (used by `KillPlane`) which already does. Spawn markers sit with zero vertical
-clearance against the floor by design (same as every role); a unit still carrying downward
-velocity from a jump or knockback at the instant a round ends can tunnel through that gap before
-the next `move_and_slide()` re-establishes floor contact. Reported as "when round resets the can
-randomly falls thru the void." Fixed by zeroing velocity in the same place `respawn()` already
-does.
-
-**Arena resize to a bigger square — TRIED, then FULLY REVERTED same session.** First attempt at
-the "playing area feels too small" complaint below widened the whole map footprint (`W`/`Z_END`
-24.0/24.0, was 8.0/17.0) instead of the actual thing the human meant. Human's correction: "i
-wanted you to expand playing AREA, Not the entire map" — the complaint was
-`CharacterBase.CONFINEMENT_RADIUS` (the box the Can/Taya can actually move in), not the map's
-footprint, and stretching the whole map made that box feel *more* cramped by comparison, not less.
-Also broke Layer3 dressing (posts/sampay wires positioned for the old width, now visibly
-disconnected from the wall line — reported as "floating elements everywhere"). Reverted in full:
-`tools/maps/build_eskinita.py` restored to its post-B-92-fix state (`git show
-088d09a:tools/maps/build_eskinita.py`), `Eskinita.tscn` regenerated, `docs/Agent_Prompts.md`'s
-DESIGN-ART item B and `Checklist.md`'s 2.2 bullet restored to their original text. **Lesson,
-recorded so it isn't repeated:** "make the playing area bigger" in this project means the
-confinement box, not the map — see the fix below.
-
-**Confinement radius raised 3.0 → 5.0, plus a chalk-style boundary marking it — ring tried first,
-replaced with a square same day, plus a real floating-geometry bug fixed along the way.**
-`CharacterBase.CONFINEMENT_RADIUS` is now 5.0 — still a full unit short of the 6.0 throwing line,
-so the Taya still cannot reach the attacker's line, same design constraint as before, just more
-room inside it. `build_eskinita.py` first drew the boundary as a ring of tiled `team_side_decal`
-segments (`CONFINEMENT_RING_RADIUS`, a 12-gon approximation), added via a new `sx` parameter on
-`xform()`/`add()` that scales a decal along its own authored length axis (no new mesh added to
-`env_kit.gd`, which stays Design-owned). User feedback, same day: "the circle you made was ugly,
-can we just use a square" — a real tumbang preso boundary is a straight-edged chalk box, not a
-drawn circle. Replaced with `CONFINEMENT_BOX_RADIUS`, four tiled sides using the same `sx`
-technique.
-
-**While looking at this, a real bug: several markings were floating above the floor with a
-visible gap, reported as "all assets like lines are floating off the floor."** Root cause:
-`env_kit.gd`'s `_box()` authors most flat decals starting at local Y=0, so a marking's world-space
-Y position becomes its literal *underside*, not its centre — placing one at `MARK_Y` (0.07, chosen
-to clear the 0.06-tall `road_tile_line` tiles) puts its bottom 7cm above the floor **even where it
-never overlapped a tile in the first place**. Only `BaseCircle` and `ThrowingLine*` genuinely
-overlap tile geometry (`x=0`, `z` a multiple of `CELL`) and need that clearance; `TeamSide*`,
-`JeepneyLane`, and the new confinement square never did. Introduced `MARK_Y_LOW` (0.015) for
-everything that doesn't need tile clearance. **A standing warning about this exact class of bug is
-now in `Art_Direction.md` Part 4 (a callout at the top, before the Environment Art Agent Brief) and
-directly in the DESIGN-ART paste-ready prompt in `Agent_Prompts.md`** — this had already cost more
-than one session before being run down properly.
-
-Before this there was nothing on the ground marking the edge of the confinement box at all — only
-the tiny base circle and the distant throwing line — so a Taya had no way to see how much room
-they actually had. **`build_bayan_plaza.py` does NOT have the confinement square yet** — same
-treatment needed there before that map is played under Option B. Keep `CONFINEMENT_BOX_RADIUS` and
-`CONFINEMENT_RADIUS` in sync if either is retuned again. **Verified by render**
-(`tools/render_probe.gd`, real device) — geometry lands where computed, no visible gap under any
-marking, no parse errors, no console warnings. **NOT verified by play.**
-
-**Pre-round free-roam + in-world ready-up, Local Match only — see `Checklist.md` 2.8.** User
-feedback, same session: "i wanted the ready button to be in the game itself not in home screen, i
-want ppl to be able to move around with no restrictions whiile waiting for ready THEN everyone
-gets teleported in the right restricted area." `main_menu.gd`'s Local button now skips
-`Lobby.tscn` and loads `Main.tscn` directly; characters spawn as before but
-`MatchManager.begin_next_round()` is deliberately deferred until the player presses the new
-`ready_up` action (bound to R), read off a new HUD prompt. `CharacterBase._is_confined_to_base()`
-and `Carriable.movement_speed_scale()` are both now gated on `RoundManager.round_active` — false
-until `begin_next_round()` fires — so nobody is confined and the Tsinelas Prop isn't stuck at
-crawl speed during the wait. No new teleport-to-role-spawn code was needed: `begin_next_round()`
-already fires `MatchManager.round_started`, which `main.gd` was already listening on to call
-`_reset_world()` (repositions everyone) and `RoundManager.start_round()` (re-engages confinement)
-— the exact same chain an ordinary between-round intermission already runs.
-
-**⚠️ Host/Join deliberately NOT touched.** Both still gate behind `Lobby.tscn`'s ready-up screen
-exactly as before. Extending this same free-roam-then-teleport pattern to networked play is real,
-separate follow-up work — per-peer ready state would need to replicate live inside the match
-scene (extending lobby.gd's existing `_rpc_set_ready` pattern into `main.gd`/a HUD component)
-rather than gating scene transition from the lobby, and touches the stable peer-identity
-machinery (B-21) that the current Lobby flow is built on. Not attempted blind in this pass.
-
-**B-94 · Free-roam shipped broken — "walk around freely doesn't work, cant walk around just stuck
-in place." [FIXED same session.]** A SEPARATE, pre-existing gate in
-`character_base.gd::_physics_process` (Item 10 / B-37, "freeze input during the round
-intermission... and before the very first round begins") froze ALL movement input whenever
-`RoundManager.round_active` was false — which the free-roam window above deliberately also is.
-The confinement fix alone was not enough; this gate blocked movement entirely, independent of
-confinement. Fixed by additionally gating the freeze on `MatchManager.round_number > 0` (already
-correctly synced to clients for networked play, no new RPC needed) — 0 only during the genuine
-pre-match window (nobody has pressed ready yet), 1+ for every other `round_active == false` state
-(ordinary intermission, waiting for a rematch after a match ends), which should still freeze
-exactly as before. Do not simplify this back to a bare `not round_active` check.
-
-**B-95 · The Can can fall through the floor when the LAST round of a match ends. [FIXED same
-session, distinct from B-93.]** Every OTHER round transition calls `_reset_world()`
-(`MatchManager.round_intermission_started`), which clears velocity per B-93 — but the match's
-final round fires `match_won` instead, and nothing ever resets characters afterward.
-`RoundManager.round_active` stays permanently false, the movement-freeze gate stops input, but
-gravity is still applied every physics frame (deliberately, so a unit mid-jump still settles) —
-with no reset ever coming again, a unit airborne right as the match ended just keeps falling under
-gravity for as long as the result screen is up, long enough to tunnel through the floor's thin
-collision shape. Fixed with a new `main.gd::_on_match_won_freeze_physics()` handler that zeroes
-velocity on every character once, the moment `MatchManager.match_won` fires — nothing moves them
-again after that since `round_active` never becomes true again for that match.
-
-**B-96 · The Can/Taya/Attacker spawn layout was never actually role-based for Local Match — the
-new free-roam window just exposed it. [FIXED same session.]** `_start_local_test()` left every
-local unit at Main.tscn's own hand-authored default transforms, which predate the 2.6 role-based
-`SpawnPoints` redesign entirely — before this session, `begin_next_round()` fired immediately and
-`_reset_world()` (which DOES use role-based spawns) repositioned everyone before the first frame
-was ever shown, so nobody had actually seen the stale defaults. With a real pre-round wait now,
-they were visible and wrong: the Can nowhere near the base circle, the Attacker not facing the
-Can/Taya. Fixed by calling `_place_at_spawn()`/`_role_slot()` — the exact call `_reset_world()`
-already makes every round — once up front in `_start_local_test()`, for every local unit.
-
-**Taya spawn moved to the opposite side of the Can from the Attacker.** User feedback: "the
-person in same team is behind that can." `Spawn1` was at `z=+1.5` (Attacker side), now `z=-1.5`
-(same yaw, so the Taya still faces back through the Can toward the attack line) — see
-`build_eskinita.py`'s `Spawn0-3` doc comment.
-
-**B-97 · The carried Tsinelas's TPP camera could end up "inside the head," and gave its player no
-look control at all. [FIXED same session — B-91 only fixed HALF of this.]** Two real bugs, found
-by tracing `camera_rig.gd::_update_tpp_carry_follow()` all the way through rather than guessing:
-1. Its mount-height formula (`_mount_height_for(carrier.capsule_height())`) was written for a
-   STANDALONE Prop mounting 1.2 units above ITS OWN short capsule; B-91 reused it against the
-   CARRIER's 1.6-tall capsule instead, which resolves to the same number (1.2) but a different
-   meaning — 0.4 units ABOVE the carrier's own head (head-top sits at local `+0.8` from a Person's
-   origin). A spring-arm cast starting already above someone's head collapses into the first thing
-   it touches, which is exactly the reported "extreme close-up on wire geometry" / "it's just
-   inside the head." Replaced with a dedicated `TPP_CARRY_MOUNT_HEIGHT` (0.6, just below head
-   height) instead of reusing a formula meant for something else.
-2. The carried player never had ANY camera control, B-91 or not — `apply_mouse_delta()`'s TPP path
-   writes `_character.rotation.y`, but `carriable.gd::_step_carried()` overwrites that same field
-   every physics frame to match the carrier's hand, so the write had zero visible effect. Reported
-   as "so awkward for them to be watching the gameplay happen like this" and "should be movable but
-   anchored to person." Fixed with a separate look-offset (`_tpp_carry_yaw_deg`/`_tpp_carry_pitch_deg`)
-   added on top of the carrier's own facing in `_update_tpp_carry_follow()` — the view starts
-   anchored behind the carrier and the carried player can still swivel it from there. Resets to
-   zero on drop/throw so the next pick-up starts anchored again, not wherever this player last
-   looked.
 
 **B-98 · A carried unit's ground-ring nameplate still showed, riding along near the carrier's
 hand.** B-89 (earlier this project) fixed the ring's SIZE/position but never addressed the
@@ -1476,34 +728,6 @@ Filed, deliberately not fixed — `Concurrency_Protocol.md` §10. Full reasoning
 evidence are in §0.11. B-81 is in the design lane's own territory and is still filed rather than
 folded into an unrelated commit, because changing a hero prop's colour deserves its own commit and
 its own render.
-
-**B-81 · The tsinelas sole is painted `DEFENSE` blue, on a unit that only ever exists on
-offence. [FIXED 2026-07-28]** The materials were renamed from palette tokens
-(`defense`/`impact`/`highlight`) to parts (`sole`/`strap`/`post`) — a material literally named
-`defense` is a bug that reads as correct in every diff, and renaming also changes the `.obj`, which
-is what forces the reimport the `.mtl` alone would not. The sole was repainted off the role hue.
-**Verified by render:** no role hue anywhere on the slipper.
-
-⚠️ **The colours this fix chose are superseded — same day.** B-81 painted the sole `IMPACT` magenta
-and the straps `HIGHLIGHT` yellow because they were the only non-role tokens available. The human
-then supplied an asset moodboard for the prop and ruled: *"the magenta shit is just placeholder, we
-can update it with the new ones."* **The slipper is now `PROP_FOAM` brown with a `PROP_WEBBING` tan
-strap** (`Art_Direction.md` §1b). B-81's *rule* is untouched — brown and tan are neither role hue —
-and its material-naming half stands, extended to the lata in the same pass. Do not restore magenta.
-Original report follows. `tools/models/generate_all.gd::_build_tsinelas()` sets the sole material to
-`UiTheme.DEFENSE` (`#0080e8`). A Prop is a Tsinelas exactly when its team is **attacking**, so the
-attacking team's prop wears the defending colour — a direct breach of `Dev_Plan.md` §4.2 ("never
-reuse either hue for anything else"). The moodboard disagrees independently: **THE SLIPPER's card
-accent is magenta**, as is **THE CAN's**. Visible in this pass's `viewmodel_tpp.png` as a bright
-blue slab.
-*Root cause of the error:* `Art_Direction.md` §2's palette table assigns `DEFENSE` to "Can
-body, **tsinelas sole**". **That table is wrong and the rule is right.**
-*Severity:* P1 — it teaches the player the wrong colour language on the most-looked-at object in
-the game.
-*Fix:* repaint the sole off the role hue, keep the straps readable against it; regenerate; render
-both viewmodel shots. Correct the brief's table in the same commit. The lata was **not** in scope
-here — a blue can on the defending side is consistent, and it renders well. *(It came into scope
-later the same day for a different reason: the Sarsi livery moodboard. It is still blue.)*
 
 **B-82 · `Main.tscn`'s floor top surface is `y = +0.5`, not `y = 0` — and two docs say
 otherwise. (NEW)** `Floor` and its `CollisionShape3D` carry **no transform**, and the shape is a
@@ -1784,6 +1008,52 @@ Not bugs; fix them where they sit rather than logging B-numbers.
   Reconcile the doc to the code in **F-4**.
 
 ---
+
+
+### Closed and settled — condensed 2026-07-30
+
+**32 entries carrying an explicit `[FIXED]` are reduced to one row each.** They are done, and
+the reasoning that still CONSTRAINS code was never safe in a ledger anyway — it belongs as a
+comment in the file it constrains, which is where it actually stops someone undoing it, and
+that is where it already lives. What stays here is enough to RECOGNISE a familiar symptom;
+`git log` has the full account.
+
+⚠️ **Everything else in §3 is still OPEN and is untouched.**
+
+| # | What it was | Opening line of the entry, verbatim |
+|---|---|---|
+| `B-137` | THE SLIPPER'S COLLISION AND HURTBOX RE-ENABLE WAS SILENTLY DROPPED ON EVERY PATH THAT STARTS WITH A HIT | Found by the round-reset audit, using `tools/ai_probe.tscn -- fairness` as the instrument — a single 20-round run logged **11 blocked `monitorable` writes and 3 blocked `disabled` writes**. |
+| `B-138` | A PERSON COULD BE SEALED — PERMANENTLY OUT OF THE ROUND — BY ONE THROWN SLIPPER | SEALED has no recovery: `_physics_process`'s SEALED branch is literally `pass # awaiting round reset`. |
+| `B-134` | A THROWN SLIPPER RESOLVED ON THE CHARACTER'S BODY-CHECK HITBOX, SO THE THROW PROFILE WAS BYPASSED AND THE CAN  | Human question: *"can the can even fall?"* Measured answer, with `tools/hit_probe.tscn -- --host target=can` aiming dead at the can's own hurtbox centre at full charge: **0 knockdowns in 40 throws.** A flying tsinelas carries two live hitbo |
+| `B-114` | The AI drove the GLOBAL `Input` singleton, so two bots shared one keyboard | ⚠️ **Both reported AI symptoms were this one bug.** Report: *"they randomly stop and freeze completely"* and *"they all move together at the exact same time in sync ... |
+| `B-115` | Two characters trading spawn marks depenetrated off each other's STALE collider | — the real root cause of B-100. |
+| `B-116` | Every character spawned 100 mm inside the floor | Phase 8 raised the floor's collision top from 0.000 to 0.100 so characters would stop standing inside the visible road, and left the four spawn marker Y values alone on the reasoning that "the paving was already at 0.1". |
+| `B-117` | A thrown tsinelas had no live hitbox | `CharacterBase.tscn`'s single `Hitbox` has `requires_bump_window = true`, and `is_hitbox_active()` returned only `_bump_active_time_left > 0.0` — a field written in exactly one place, the **bump** press. |
+| `B-118` | A freed lambda capture errored on every round reset | `ability_utils.gd` created a transient hitbox area, added it to the `transient_hitbox` group, and scheduled cleanup as `func(): if is_instance_valid(area): area.queue_free()`. |
+| `B-111` | Spawn slots were scrambled because `StringName` does not sort alphabetically | ⚠️ **This is the "spawns are still broken" report that survived several sessions. |
+| `B-112` | The held tsinelas floated ~0.44 m off the hand | Report: *"floating slipper when held, fix it pls, make it acc be on the hand."* `CharacterVisual.HAND_CARRY_OFFSET` was `Vector3(0.237, 0.135, -0.347)` — magnitude **0.441**, measured bone-to-point in world space on a character **1.6 m tall |
+| `B-113` | Shadows so dark a character in shade was unreadable | Report: *"shadows are too much, cant see person anymore, lowk feels overwhelming."* Not one slider — two changes from earlier the same day compounding. |
+| `B-110` | `floorcheck` ignored SCALE, so it measured against the wrong heights | Two halves, both the same mistake, found a day apart. |
+| `B-109` | Field markings STUCK OUT of the floor — the other half of the floating bug | Reported after B-103 shipped: *"the decals of floor still stick out."* Both reports are the same object and opposite failures. |
+| `B-108` | The Can "kept teleporting" — the teleport was the reset correcting an AI drift |  |
+| `B-107` | The Can's and Slipper's cameras rolled | Third report, screenshots showing the 3D view rolled ~40° while the HUD stayed level — which is a camera roll and nothing else. |
+| `B-105` | The carried tsinelas floated beside its carrier's head, and re-measuring the offset could never have fixed it | Reported repeatedly as "slipper floating" and chased at least three times as a `HAND_CARRY_OFFSET` calibration problem. |
+| `B-104` | Bayan Plaza could never be loaded — both map entries shared one id | `GameLaunch.MAPS` declared `"id": &"eskinita"` on BOTH entries, and `selected_map_scene()` returns the first match, so **every path that loads a map — the picker, the launch handoff and `render_probe` — could only ever reach Eskinita.** Bay |
+| `B-103` | Field markings float, for the fourth time — and the constant was never the bug | Reported again with a screenshot: *"i keep flaggging this still broken, thoroughly think about how to make sure this problem doesnt show up again."* *What was actually wrong,* measured rather than guessed. |
+| `B-102` | Bayan Plaza's Taya spawns in FRONT of the Can, not behind it, and a comment asserted otherwise | `build_bayan_plaza.py`'s Spawn1 was `(2.2, 0.8, +1.5)` against `build_eskinita.py`'s `(2.2, 0.8, -1.5)`, while its own comment read *"same scheme and same coordinates as build_eskinita.py"*. |
+| `B-100` | A stale-but-not-yet-freed character reference could crash the HUD the instant a peer connected or disconnected | same session.]** `you_card.gd::get_local_character()` returned its cached `_character` field with a guard of the form `_character != null and not is_instance_valid(_character)`. |
+| `B-101` | `offscreen_indicators.gd` crashed reading a tracked teammate/Can's transform mid-`queue_free()` | same session.]** `_update_one()` guarded its `target` parameter with `is_instance_valid()` only, which is not the same condition as "safe to call `get_global_transform()` on." A character that just left the tree (disconnected, or the local  |
+| `B-88` | Can/Tsinelas rendered under the floor after the proportion fix (2.5) | same session.]** `character_visual.gd::_align_to_capsule_floor()` dropped every model a hardcoded `CAPSULE_HALF_HEIGHT_DOWN` (0.8) below the character's own origin — correct while every unit shared the same 1.6-tall capsule, wrong the insta |
+| `B-89` | Nameplate ring/label also sized for the old shared capsule | same session.]** Same bug class as B-88, different node: `character_nameplate.gd`'s ring (`y = -0.78`, radius 0.55) and label (`y = +1.05`) were hardcoded for the Person's 1.6-tall capsule. |
+| `B-90` | Carried slipper read as a broadside sliver, and swam through the walk cycle while moving | same session.]** Two related reports: "the slippers look weird af when holding it" and "my arms float during windup and when i run while holding." Two independent causes: (a) `character_visual.gd::_play_locomotion()` fell back to `walk`/`sp |
+| `B-91` | Carried Tsinelas's own TPP camera was blocked by the carrier's body | same session.]** `carriable.gd::_step_carried()` teleports the whole CharacterBase into the carrier's hand every physics frame; the TPP spring arm (a child) inherited that transform and had nowhere sensible to cast toward, with the carrier' |
+| `B-92` | `build_eskinita.py`'s throwing-line and team-side decals sat flush on the road instead of raised | same session.]** `add(parent, name, mesh, x, y, z)` calls for `ThrowingLineNorth/South` and both `TeamSide` decals put `MARK_Y` (the offset that lifts a marking above the `road_tile_line` tile layer — see 2.5/2.2a's own note on why `BaseCir |
+| `B-93` | A unit airborne when a round resets could fall through the floor | same session.]** `character_base.gd::reset_for_new_round()` repositions every unit (via `main.gd::_place_at_spawn()`) but never zeroed `velocity`, unlike the sibling teleport path `respawn()` (used by `KillPlane`) which already does. |
+| `B-94` | Free-roam shipped broken — "walk around freely doesn't work, cant walk around just stuck in place." | same session.]** A SEPARATE, pre-existing gate in `character_base.gd::_physics_process` (Item 10 / B-37, "freeze input during the round intermission... |
+| `B-95` | The Can can fall through the floor when the LAST round of a match ends | same session, distinct from B-93.]** Every OTHER round transition calls `_reset_world()` (`MatchManager.round_intermission_started`), which clears velocity per B-93 — but the match's final round fires `match_won` instead, and nothing ever r |
+| `B-96` | The Can/Taya/Attacker spawn layout was never actually role-based for Local Match — the new free-roam window ju | same session.]** `_start_local_test()` left every local unit at Main.tscn's own hand-authored default transforms, which predate the 2.6 role-based `SpawnPoints` redesign entirely — before this session, `begin_next_round()` fired immediately |
+| `B-97` | The carried Tsinelas's TPP camera could end up "inside the head," and gave its player no look control at all | same session — B-91 only fixed HALF of this.]** Two real bugs, found by tracing `camera_rig.gd::_update_tpp_carry_follow()` all the way through rather than guessing: 1. |
+| `B-81` | The tsinelas sole is painted `DEFENSE` blue, on a unit that only ever exists on offence | The materials were renamed from palette tokens (`defense`/`impact`/`highlight`) to parts (`sole`/`strap`/`post`) — a material literally named `defense` is a bug that reads as correct in every diff, and renaming also changes the `.obj`, whic |
 
 ## 4. Execution Queue — condensed 2026-07-30
 
