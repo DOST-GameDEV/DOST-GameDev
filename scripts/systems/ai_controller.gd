@@ -118,6 +118,51 @@ const TAYA_BLOCK_STANDOFF: float = 2.6
 ## ⚠️ NOT IN DIFFICULTY_TIERS YET, deliberately: RUN 9 has to say whether it is a
 ## lever at all before a tier table is written against it.
 static var taya_block_standoff: float = TAYA_BLOCK_STANDOFF
+
+## ---------------------------------------------------------------------------
+## R-07 · THE TAYA'S POST IS COMMITTED, NOT RE-DERIVED EVERY TICK.
+##
+## ⚠️ MEASURED FIRST, THEN WRITTEN — RUN 9's mechanism, not a guess.
+## `_act_taya_body_block` used to recompute its post from the attacker's CURRENT
+## bearing on every single tick, so the lane was re-closed on the frame the
+## attacker arrived anywhere. That is not a defender reading a threat; it is a lane
+## that cannot be beaten by movement, only by patience — the same shape as B-124's
+## livelock, surviving as a balance problem instead of a hang. RUN 9 measured what
+## it costs: at the shipped standoff, 94.7% of 188 throws blocked and 0.05 dents a
+## round, with the long rounds running 10-30 consecutive blocked throws.
+##
+## So the post is COMMITTED. Two conditions have to hold together before the Taya
+## will re-post, and requiring BOTH is the whole design:
+##
+##   1. the reaction window has elapsed (TAYA_POST_HOLD, scaled by `tier_think` so
+##      a BATA reacts later than an ASTIG — the tier table already means "how fast
+##      does this bot think", and this is exactly that), and
+##   2. the attacker has actually moved off the posted bearing by more than
+##      TAYA_REPOST_ANGLE — a small slide is not new information.
+##
+## What that buys, in the language of the game rather than of the code: a taya that
+## can be WRONG-FOOTED. A feint means nothing against a defender that re-derives
+## its answer every frame, and the attacker's bearing-slide behaviour
+## (`_act_attacker_slide_open`, which has existed since B-124) has never had
+## anything to earn. Now it does.
+##
+## Both knobs are `static var` for the reason R-01 exists: a lever that needs a
+## source edit per row is a lever nobody sweeps. `posthold=` and `repost=` on
+## tools/ai_probe.gd.
+## ---------------------------------------------------------------------------
+
+## Seconds the post is held before a re-post is even considered, at NORMAL. Scaled
+## by tier_think / DECISION_INTERVAL at the call site, so it tracks the tier's own
+## reaction speed rather than needing a fourth column in DIFFICULTY_TIERS.
+const TAYA_POST_HOLD: float = 0.35
+static var taya_post_hold: float = TAYA_POST_HOLD
+## How far the attacker's bearing (measured AT THE CAN, so it is the angle that
+## actually decides whether the post still covers the lane) must swing before the
+## Taya believes the threat has moved. 0.35 rad ~ 20 degrees; at the 6.0 throwing
+## line that is ~2.1 units of arc, comfortably more than ATTACKER_LANE_CLEARANCE
+## (1.3) so a re-post only happens when the old post genuinely no longer blocks.
+const TAYA_REPOST_ANGLE: float = 0.35
+static var taya_repost_angle: float = TAYA_REPOST_ANGLE
 ## Distance from the can an Attacker tries to hold before charging — mirrors
 ## the map's own throwing line (Art_Direction.md §9's 6-unit derivation).
 ## This file does not import that constant; it just aims for the same number
@@ -270,6 +315,17 @@ var _attacker_charging: bool = false
 var _attacker_charge_time: float = 0.0
 var _release_settle_frames: int = 0
 var _taya_tap_cooldown: float = 0.0
+## R-07. The committed post: the bearing FROM THE CAN it was taken on, how much of
+## the reaction window is left, and whether there is one at all. Cleared on a role
+## change, on losing sight of the threat, and by _release_all().
+var _taya_post_valid: bool = false
+var _taya_post_bearing: float = 0.0
+var _taya_post_hold_left: float = 0.0
+## How far the committed post is currently WRONG, in radians — the angle between
+## the bearing the post was taken on and the attacker's bearing right now. Public
+## (see taya_post_error) because it is the number that says whether a throw beat the
+## post or merely met it, and a probe cannot ask that question any other way.
+var _taya_post_error: float = 0.0
 
 ## ---------------------------------------------------------------------------
 ## Behaviour tree — node types.
@@ -539,7 +595,20 @@ func _build_taya_branch() -> BTNode:
 					BTCondition.new(&"threat-in-box", &"_cond_taya_threat_in_confinement"),
 					BTAction.new(&"charge-threat", &"_act_taya_close_gap"),
 				]),
-				BTAction.new(&"body-block", &"_act_taya_body_block"),
+				# R-07. Two ways to be at the post, and the trace tells them apart:
+				# `hold-post` is a Taya standing where it decided to stand, which is
+				# the state an attacker's slide can beat, and `take-post` is it
+				# deciding afresh. Split into a Selector rather than hidden inside one
+				# action precisely so bt_trace() can show which one happened — the
+				# acceptance test for this item is a trace, and a metric you cannot
+				# see is the trap this repo keeps falling into.
+				BTSelector.new(&"block-how", [
+					BTSequence.new(&"hold-post", [
+						BTCondition.new(&"post-still-good", &"_cond_taya_post_committed"),
+						BTAction.new(&"walk-to-post", &"_act_taya_walk_to_post"),
+					]),
+					BTAction.new(&"take-post", &"_act_taya_body_block"),
+				]),
 			]),
 		]),
 		BTAction.new(&"patrol", &"_act_taya_wander"),
@@ -672,6 +741,10 @@ func decide(delta: float) -> void:
 	# branch happened to run", so a role swap mid-cooldown cannot leave one
 	# armed forever.
 	_taya_tap_cooldown -= delta
+	# R-07's reaction window, ticked here with the other role-scoped timers and for
+	# the same reason: on wall time, not on "the frame that role's branch happened to
+	# run", so a role swap mid-window cannot leave one armed forever.
+	_taya_post_hold_left -= delta
 
 	_root.tick(self, delta)
 
@@ -707,6 +780,12 @@ func _release_all() -> void:
 	_attacker_charge_time = 0.0
 	_release_settle_frames = 0
 	_attacker_lane_blocked_for = 0.0
+	# R-07: a post is only ever valid against the attacker it was taken on, and
+	# _release_all() runs on exactly the events that replace it (a role swap, a round
+	# reset, a human taking this unit over).
+	_taya_post_valid = false
+	_taya_post_hold_left = 0.0
+	_taya_post_error = 0.0
 	# Hand the camera-based aim back. _release_all() is what runs when a human
 	# takes this unit over or the round resets, and either way an AI's stale
 	# target must not survive into someone else's throw (B-125).
@@ -1003,27 +1082,92 @@ func _act_taya_close_gap(_delta: float) -> int:
 ## `TAYA_BLOCK_STANDOFF` out from the can along the bearing to the attacker,
 ## which puts the Taya's body in the throw's path, keeps it near enough to
 ## tag anyone who closes, and keeps the can covered.
+## ⚠️ R-07. THIS LEAF NOW *TAKES* A POST RATHER THAN RE-DERIVING ONE. It runs only
+## when `_cond_taya_post_committed` has refused, i.e. when the Taya is genuinely
+## deciding where to stand — on first sight of the threat, or after the reaction
+## window has expired AND the attacker has swung more than `taya_repost_angle` off
+## the posted bearing. See the R-07 block near `taya_post_hold` for why.
 func _act_taya_body_block(_delta: float) -> int:
 	_set_held("bump", false)
 	var can := _find_tracked_can()
 	if can == null or not is_instance_valid(can):
 		# No can to stand in front of (pre-round, or it was just sealed) —
 		# closing on the threat is the only thing left worth doing.
+		_taya_post_valid = false
 		_move_toward(_bb_enemy_attacker.global_position)
 		return BTNode.SUCCESS
 	var bearing := _bb_enemy_attacker.global_position - can.global_position
 	bearing.y = 0.0
 	if bearing.length() < 0.1:
 		bearing = Vector3.FORWARD
-	var standoff: float = minf(taya_block_standoff, CharacterBase.CONFINEMENT_RADIUS - 0.4)
-	_move_toward(can.global_position + bearing.normalized() * standoff)
+	_taya_post_bearing = atan2(bearing.z, bearing.x)
+	# The reaction window scales with how fast this tier thinks, rather than being a
+	# fourth column in DIFFICULTY_TIERS: at NORMAL the ratio is 1.0 and this is
+	# exactly taya_post_hold, at BATA (think 0.50) it is ~1.43x longer, at ASTIG
+	# (think 0.22) ~0.63x. One number, three consistent difficulties.
+	_taya_post_hold_left = taya_post_hold * (tier_think / DECISION_INTERVAL)
+	_taya_post_valid = true
+	_taya_post_error = 0.0
+	_move_toward(_post_position(can))
 	return BTNode.SUCCESS
+
+## Is the post this Taya already took still the one it wants? BOTH conditions have
+## to hold — see the R-07 block for why requiring both is the design and not a
+## belt-and-braces.
+##
+## Fills `_taya_post_error` on every call, including the calls where it returns
+## false, so the number a probe reads is always the CURRENT error rather than the
+## last one that happened to keep the post.
+func _cond_taya_post_committed() -> bool:
+	if not _taya_post_valid:
+		return false
+	var can := _find_tracked_can()
+	if can == null or not is_instance_valid(can):
+		return false
+	var bearing := _bb_enemy_attacker.global_position - can.global_position
+	bearing.y = 0.0
+	if bearing.length() < 0.1:
+		return true # nothing meaningful to re-post against
+	_taya_post_error = absf(angle_difference(atan2(bearing.z, bearing.x), _taya_post_bearing))
+	if _taya_post_hold_left > 0.0:
+		return true # inside the reaction window: the Taya has not noticed yet
+	return _taya_post_error <= taya_repost_angle
+
+## Walk to the post already committed to, wherever the attacker has got to since.
+func _act_taya_walk_to_post(_delta: float) -> int:
+	_set_held("bump", false)
+	var can := _find_tracked_can()
+	if can == null or not is_instance_valid(can):
+		_taya_post_valid = false
+		return BTNode.FAILURE
+	_move_toward(_post_position(can))
+	return BTNode.SUCCESS
+
+## The world point the committed bearing puts the Taya on. Clamped inside the box
+## for the same reason the old code did: the Taya is confined to
+## CONFINEMENT_RADIUS, so a post outside it is a post pressed against a wall.
+func _post_position(can: CharacterBase) -> Vector3:
+	var standoff: float = minf(taya_block_standoff, CharacterBase.CONFINEMENT_RADIUS - 0.4)
+	return can.global_position \
+		+ Vector3(cos(_taya_post_bearing), 0.0, sin(_taya_post_bearing)) * standoff
+
+## How wrong the Taya's committed post currently is, in radians, or -1.0 when it has
+## no post. Read by tools/ai_probe.gd at the moment a throw is released: a throw
+## taken while this is large is a throw the attacker's slide EARNED, and one taken
+## while it is ~0 met a defender that was already in the right place. That
+## distinction is R-07's whole acceptance test and there is no other way to ask it.
+func taya_post_error() -> float:
+	return _taya_post_error if _taya_post_valid else -1.0
 
 ## No threat in range. Patrol within the confinement box — no pathfinding
 ## around obstacles, since a straight-line wander is "moves with intent," not
 ## "plays well," per this item's own acceptance bar.
 func _act_taya_wander(_delta: float) -> int:
 	_set_held("bump", false)
+	# R-07: no threat in range, so the post is stale by definition. Dropped here
+	# rather than left to expire, or the Taya would walk back to a post taken
+	# against an attacker that has since been replaced by the round swap.
+	_taya_post_valid = false
 	if _repick or not _has_move_target:
 		_move_target = _random_point_in_confinement(0.7)
 		_has_move_target = true

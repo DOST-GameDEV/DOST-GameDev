@@ -106,6 +106,22 @@ var _heat_accum := 0.0
 ## {unit_name: [Vector2, ...]} in world XZ, sampled once a second of GAME time.
 var _heat_samples: Dictionary = {}
 
+## --- R-07: did the attacker's slide actually beat the taya's post? -----------
+## `trace` turns on AIController.trace_enabled and prints the branch path of both
+## Persons at the moment of every throw, capped so a 20-round run does not become
+## unreadable.
+var _trace := false
+var _traces_printed := 0
+const MAX_TRACES := 24
+## Throws released while the defending Taya's committed post was wrong by more than
+## `taya_repost_angle` — i.e. throws the attacker's bearing-slide EARNED, as opposed
+## to throws that walked into a defender already standing in the right place.
+## ⚠️ Asked of AIController.taya_post_error(), which is the controller's own live
+## number. The probe deliberately does not re-derive the geometry: a second copy of
+## the angle maths here could agree with itself while disagreeing with the bot, and
+## then the column would be measuring the probe.
+var _post_error_at_throw: Dictionary = {}
+
 ## --- R-02: the probe-honesty contract ---------------------------------------
 ## Deliberate-failure injection, so the three assertions can be SHOWN to refuse
 ## rather than asserted to work. `break=park|map|swap`. ⚠️ TEST-ONLY, and in the
@@ -256,6 +272,31 @@ func _pin_the_role_swap() -> void:
 	if not RoundManager.round_active:
 		MatchManager.team_a_is_can = false
 
+## R-07. The defending Person's own view of how wrong its post is, in radians, or
+## -1.0 when there is no taya or it has no post. Asked of the controller, never
+## re-derived here — see _post_error_at_throw's note.
+func _taya_post_error() -> float:
+	for c in _main.find_children("*", "CharacterBase", true, false):
+		if not c.is_person or not c.team_is_can_side:
+			continue
+		if c.ai_controller == null or not c.ai_controller.has_method("taya_post_error"):
+			continue
+		return float(c.ai_controller.taya_post_error())
+	return -1.0
+
+## Planar distance between the two Persons. The number that says whether a 1.6-second
+## tag is a spawn-layout fact or an impossible one.
+func _person_gap() -> float:
+	var persons: Array = []
+	for c in _main.find_children("*", "CharacterBase", true, false):
+		if c.is_person:
+			persons.append(c)
+	if persons.size() < 2:
+		return -1.0
+	var a: Vector3 = persons[0].global_position
+	var b: Vector3 = persons[1].global_position
+	return Vector2(a.x - b.x, a.z - b.z).length()
+
 func _driven_count() -> int:
 	var driven := 0
 	for c in _main.find_children("*", "CharacterBase", true, false):
@@ -300,6 +341,17 @@ func _parse_args() -> void:
 		# is a sweep nobody runs.
 		elif token.begins_with("standoff="):
 			AIController.taya_block_standoff = maxf(0.0, float(token.substr(9)))
+		# R-07's two knobs, sweepable from the day they were written rather than
+		# three runs later — R-01 is the whole argument for that.
+		elif token.begins_with("posthold="):
+			AIController.taya_post_hold = maxf(0.0, float(token.substr(9)))
+		elif token.begins_with("repost="):
+			AIController.taya_repost_angle = maxf(0.0, float(token.substr(7)))
+		elif token == "trace":
+			# R-07's acceptance asks for bt_trace() output. Off by default because it
+			# allocates a String per composite per tick on every bot.
+			_trace = true
+			AIController.trace_enabled = true
 		elif token.begins_with("tier="):
 			# R-09. apply_difficulty() is complete, correct and — measured, not
 			# assumed — called from nowhere outside its own class, so no tier but
@@ -499,6 +551,19 @@ func _open_round(round_number: int, team_a_is_can: bool) -> void:
 		"defender_won": false,
 		"timed_out": false,
 		"tagged": false,
+		# R-07: throws taken while the taya's committed post was already wrong, and
+		# of those, the ones that were NOT blocked — the slide beating the post.
+		"throws_off_post": 0,
+		"beat_the_post": 0,
+		# R-08 / the 1.6-second round. RUN 9's per-round table is sharply bimodal:
+		# rounds either run 20-90 s with 10-30 blocked throws, or end in ~1.6 s. A
+		# duration column cannot tell those apart from a slow tag, so the tag's own
+		# time and the gap between the two Persons at the opening whistle are
+		# recorded — a tag at 1.6 s from a 3-unit spawn gap is a spawn-layout
+		# finding, and a tag at 1.6 s from a 12-unit gap is impossible and would mean
+		# the metric is the bug.
+		"tag_at": -1.0,
+		"person_gap": -1.0,
 	}
 	_round_time = 0.0
 	_round_open = true
@@ -571,7 +636,23 @@ func _on_carry_state_changed(new_state: int, carriable: Carriable) -> void:
 		_round["throws_taken"] += 1
 		if _round["first_throw_at"] < 0.0:
 			_round["first_throw_at"] = _round_time
-		_flights[carriable] = {"hit_taya": false, "hit_can": false}
+		# R-07. Ask the DEFENDING taya's own controller how wrong its post is right
+		# now, and carry that with the flight so the answer can be paired with
+		# whether the throw was blocked.
+		var post_error := _taya_post_error()
+		_flights[carriable] = {"hit_taya": false, "hit_can": false, "post_error": post_error}
+		if post_error > AIController.taya_repost_angle:
+			_round["throws_off_post"] += 1
+		if _trace and _traces_printed < MAX_TRACES:
+			_traces_printed += 1
+			print("    trace @ throw %d of round %d (taya post error %.2f rad):"
+				% [_round["throws_taken"], _round["number"], post_error])
+			for c in _main.find_children("*", "CharacterBase", true, false):
+				if not c.is_person or c.ai_controller == null:
+					continue
+				print("      %-12s %s %s" % [c.name,
+					"TAYA    " if c.team_is_can_side else "ATTACKER",
+					c.ai_controller.bt_trace()])
 		# The pulse hitbox for THIS throw was spawned during the broadcast that
 		# got us here, so it is only connectable now. See _watch_hitboxes.
 		_watch_hitboxes(carriable.get_parent() as CharacterBase)
@@ -583,6 +664,11 @@ func _on_carry_state_changed(new_state: int, carriable: Carriable) -> void:
 		_round["throws_on_can"] += 1
 	elif flight["hit_taya"]:
 		_round["throws_blocked"] += 1
+	# R-07's acceptance number: released while the post was already wrong AND not
+	# blocked. That is the slide beating the post, resolved on the COMPLETED flight
+	# for the same reason `blocked` is — only the finished flight knows.
+	if not flight["hit_taya"] and float(flight.get("post_error", -1.0)) > AIController.taya_repost_angle:
+		_round["beat_the_post"] += 1
 	_flights.erase(carriable)
 
 ## `who` is the character owning the hitbox that landed — for a throw in flight
@@ -596,6 +682,8 @@ func _on_hitbox_landed(target: CharacterBase, who: CharacterBase) -> void:
 	# match, which a bare win-rate number would have hidden completely.
 	if who.is_person and who.team_is_can_side and target.is_person and not target.team_is_can_side:
 		_round["tagged"] = true
+		if _round["tag_at"] < 0.0:
+			_round["tag_at"] = _round_time
 		_apply_tag_variant(target)
 	var carriable := who.get_node_or_null("Carriable") as Carriable
 	if carriable == null or not _flights.has(carriable):
@@ -687,6 +775,12 @@ func _physics_process(delta: float) -> void:
 		_pin_the_role_swap()
 	if _round_open and RoundManager.round_active:
 		_round_time += delta
+		# Measured on the first frame AFTER round_started rather than inside the
+		# handler: main.gd listens to the same signal to teleport everybody to their
+		# role spawns, and listener order is connection order, so reading positions
+		# inside the handler could read the PREVIOUS round's geometry.
+		if _round["person_gap"] < 0.0:
+			_round["person_gap"] = _person_gap()
 	if _heatmap:
 		_sample_heatmap(delta)
 	var changed := 0
@@ -747,7 +841,7 @@ func _report_fairness() -> void:
 		% [GameLaunch.selected_map, AIController.taya_pursue_radius,
 			AIController.taya_block_standoff, _tier_name()])
 	print("    round-win rule: %s" % _tag_variant_name())
-	print("  round  winner    dur(s)  1st-throw  throws  blocked  on-can  dents  ended-by")
+	print("  round  winner    dur(s)  1st-throw  throws  blocked  on-can  dents  ended-by  tag@  gap  off-post/beat")
 	var defender_wins := 0
 	var throws := 0
 	var blocked := 0
@@ -777,13 +871,16 @@ func _report_fairness() -> void:
 			first_throw_count += 1
 		else:
 			no_throw_rounds += 1
-		print("  %5d  %-8s  %6.1f  %9s  %6d  %7d  %6d  %5d  %s" % [
+		print("  %5d  %-8s  %6.1f  %9s  %6d  %7d  %6d  %5d  %-8s  %4s %4s  %d/%d" % [
 			r["number"],
 			"DEFENCE" if r["defender_won"] else "OFFENCE",
 			r["duration"],
 			("%.1f" % r["first_throw_at"]) if r["first_throw_at"] >= 0.0 else "none",
 			r["throws_taken"], r["throws_blocked"], r["throws_on_can"], r["dents"],
 			_ended_by(r),
+			("%.1f" % r["tag_at"]) if r["tag_at"] >= 0.0 else "-",
+			("%.1f" % r["person_gap"]) if r["person_gap"] >= 0.0 else "-",
+			r["throws_off_post"], r["beat_the_post"],
 		])
 
 	var n: int = maxi(_rounds.size(), 1)
@@ -824,6 +921,47 @@ func _report_fairness() -> void:
 		% [tag_rounds, _rounds.size(), 100.0 * tag_rounds / n])
 	if _tag_variant != "control":
 		print("  tags SUPPRESSED by the round-win variant (attacker respawns): %d" % _respawns)
+
+	# R-07's own two numbers, and the reason the still-run column gets a per-unit
+	# breakdown: that figure "has moved independently of everything else for three
+	# consecutive runs" (Roadmap R-07), and an aggregate max cannot say which unit
+	# it belongs to. A Can standing on its mark is intended behaviour
+	# (CAN_HOLD_RADIUS 0.45 is inside ARRIVE_DISTANCE 0.6, so it genuinely never
+	# moves unless it is evading) and a frozen Person is a bug; one number for both
+	# is a number nobody can act on.
+	var off_post := 0
+	var beat := 0
+	var tag_times := 0.0
+	var tag_count := 0
+	var gap_total := 0.0
+	var gap_count := 0
+	var quick_tags := 0
+	for r in _rounds:
+		off_post += r["throws_off_post"]
+		beat += r["beat_the_post"]
+		if r["tag_at"] >= 0.0:
+			tag_times += r["tag_at"]
+			tag_count += 1
+			if r["tag_at"] <= 3.0:
+				quick_tags += 1
+		if r["person_gap"] >= 0.0:
+			gap_total += r["person_gap"]
+			gap_count += 1
+	print("\n  --- R-07: the taya's post ---")
+	print("  throws released while the post was already wrong (> %.2f rad): %d / %d"
+		% [AIController.taya_repost_angle, off_post, throws])
+	print("  of those, throws the slide actually BEAT (not blocked): %d" % beat)
+	print("  --- the tag ---")
+	print("  mean time of the round-ending tag: %.1fs over %d tagged rounds; "
+		% [tag_times / maxi(tag_count, 1), tag_count]
+		+ "%d of them landed within 3s of the whistle" % quick_tags)
+	print("  mean distance between the two Persons at the opening whistle: %.2f units"
+		% [gap_total / maxf(float(gap_count), 1.0)])
+	print("  per-unit longest still run (a Prop holding its mark is INTENDED — see")
+	print("  CAN_HOLD_RADIUS; a Person standing still is not):")
+	for c in _bots:
+		print("    %-16s %5.2fs   (%d start/stop transitions)"
+			% [c.name, _still_max[c] / 60.0, _transitions[c]])
 	# ⚠️ §9's own warning, printed rather than left to be remembered: a win rate
 	# on its own is not a fairness result.
 	if timeouts * 2 >= _rounds.size():
