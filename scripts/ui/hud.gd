@@ -12,9 +12,14 @@ class_name Hud
 @onready var top_right_panel: PanelContainer = %TopRight
 @onready var team_a_label: Label = %TeamALabel
 @onready var team_b_label: Label = %TeamBLabel
+## The A/B glyphs. Team identity is the LETTER and never the hue, so these are the only
+## thing on a team card that does not move when the roles swap — see `_apply_wood_skin`.
+@onready var team_a_letter: Label = %TeamALetter
+@onready var team_b_letter: Label = %TeamBLetter
 @onready var team_a_pips_box: HBoxContainer = %TeamAPipsBox
 @onready var team_b_pips_box: HBoxContainer = %TeamBPipsBox
 @onready var lata_card: PanelContainer = %LataCard
+@onready var lata_label: Label = %LataLabel
 @onready var dent_pips_box: HBoxContainer = %DentPipsBox
 @onready var dent_text_label: Label = %DentTextLabel
 @onready var downed_flash: ColorRect = %DownedFlash
@@ -45,11 +50,87 @@ func _ready() -> void:
 	# Keep pivot at the TimerCard's centre so the pulse tween scales from the middle.
 	# Connect to resized so this stays correct if the card ever changes size.
 	timer_card.resized.connect(func(): timer_card.pivot_offset = timer_card.size / 2)
+	# BEFORE set_round_display, which paints the role colours on top of this skin.
+	_apply_wood_skin()
 	# Initialise panels from current MatchManager state so pips and colours are
 	# correct on load (e.g. a late-joining peer, or a match already in progress).
 	set_round_display(MatchManager.round_number, MatchManager.team_a_is_can)
 	# Build stamp in-match too — outlined HudCaption reads over the 3D scene.
 	GameVersion.attach_to(self, true)
+
+# --- The wood skin ------------------------------------------------------------
+#
+# Reported from play, 2026-07-30: the mid-game HUD "kinda doesnt look like our theme
+# (menu and lobby), it looks ugly and plain and confusing".
+#
+# All three complaints were fair and they are three different problems:
+#
+#  OFF-THEME. The front end is wood and amber — `WOOD_DEEP` panels, `WOOD_EDGE` borders,
+#    a 12px radius and a hard drop shadow, cream lettering, amber values. The HUD was
+#    near-white `card_style` cards with a navy translucent timer: a different design
+#    language on the same screen, and the one the player spends the match looking at.
+#  PLAIN. Flat fills, no shadow, one text weight, no hierarchy.
+#  CONFUSING. Two specific things, both fixed here. An unwon round pip was drawn
+#    fully TRANSPARENT, so the scoreboard's own empty state was invisible and the card
+#    read as having no score display at all — the same class of bug as B-?? "the boxes
+#    remain empty", which fixed the FILL and left the empty state unreadable. And team
+#    identity was a single character buried mid-string in "A · OFFENSE" at body size,
+#    which left hue doing the work the letter is supposed to do.
+#
+# ⚠️ BUILT FROM `UiTheme.wood_style()`, the same static call the menu's own `WoodSlot`
+# variation uses. Nothing here invents a colour or a radius, so the HUD cannot drift
+# away from the front end again.
+#
+# ⚠️ AND IT IS CODE RATHER THAN A THEME VARIATION ONLY BECAUSE IT HAS TO BE. The Hud*
+# variations live in `ui_theme.gd`, which is ART's file and not writable by this lane.
+# Filed for ART to promote these into variations; until then the overrides are here so
+# the tokens stay in one place even if the application does not.
+
+## Trimmed from the menu's own wood face. `wood_style()`'s margins are sized for a menu
+## button (24px sides) and a 250x92 HUD card cannot afford them.
+func _hud_wood_style(fill: Color, border: Color, sink: bool = false) -> StyleBoxFlat:
+	var sb := UiTheme.wood_style(fill, border, sink)
+	sb.content_margin_left = 14.0
+	sb.content_margin_right = 14.0
+	sb.content_margin_top = 8.0
+	sb.content_margin_bottom = 8.0
+	return sb
+
+func _apply_wood_skin() -> void:
+	# The timer is the single most-read element on the screen, so it gets the menu's
+	# RECESSED slot — the same face the map/mode readouts use on the setup screen, which
+	# is the front end's existing idiom for "a value being displayed to you".
+	timer_card.add_theme_stylebox_override("panel",
+		_hud_wood_style(UiTheme.WOOD_DARK, UiTheme.WOOD_EDGE, true))
+	timer_label.add_theme_color_override("font_color", UiTheme.AMBER)
+	round_label.add_theme_color_override("font_color", UiTheme.CREAM_MUTED)
+
+	# The letter marks: amber, and deliberately NOT role-coloured. This is the one thing
+	# on the card that identifies the team, and it has to stay put when the roles swap.
+	for letter in [team_a_letter, team_b_letter]:
+		letter.add_theme_color_override("font_color", UiTheme.AMBER)
+
+	lata_card.add_theme_stylebox_override("panel",
+		_hud_wood_style(UiTheme.WOOD_DEEP, UiTheme.WOOD_EDGE))
+	lata_label.add_theme_color_override("font_color", UiTheme.AMBER)
+	dent_text_label.add_theme_color_override("font_color", UiTheme.CREAM)
+
+	# Both floating lines used to be bare text over the 3D scene — the ready prompt in
+	# DANGER red, which over the orange viewmodel arms is the worst pairing on the
+	# screen. On a wood plate they read anywhere, and they now look like the same game
+	# the menu belongs to.
+	for label in [ready_prompt, toast_label]:
+		label.add_theme_stylebox_override("normal",
+			_hud_wood_style(UiTheme.WOOD_DEEP, UiTheme.WOOD_EDGE))
+	ready_prompt.add_theme_color_override("font_color", UiTheme.CREAM)
+	toast_label.add_theme_color_override("font_color", UiTheme.AMBER)
+
+## One team card. Wood body, ROLE-coloured border — the role has to be readable across a
+## room, and a thick coloured edge on a dark panel carries further than tinted text does.
+func _style_team_card(panel: PanelContainer, label: Label, role_colour: Color) -> void:
+	panel.add_theme_stylebox_override("panel",
+		_hud_wood_style(UiTheme.WOOD_DEEP, role_colour))
+	label.add_theme_color_override("font_color", role_colour)
 
 func _process(delta: float) -> void:
 	var t := int(ceil(RoundManager.time_left))
@@ -68,7 +149,10 @@ func _process(delta: float) -> void:
 		else:
 			_kill_pulse_tween()
 	else:
-		timer_label.remove_theme_color_override("font_color")
+		# ⚠️ SET BACK TO AMBER, NOT `remove_theme_color_override`. Removing it would fall
+		# through to the HudTimer variation's near-white, which is the pre-wood colour —
+		# so the timer would go white the moment it climbed back over 15s.
+		timer_label.add_theme_color_override("font_color", UiTheme.AMBER)
 		_kill_pulse_tween()
 
 	# Polled each frame, but `_fill_pips` early-outs unless the value actually
@@ -132,10 +216,17 @@ func _fill_pips(container: HBoxContainer, filled: int, fill_color: Color = UiThe
 	for i in container.get_child_count():
 		var pip: Control = container.get_child(i)
 		var sb := StyleBoxFlat.new()
-		sb.set_corner_radius_all(0)
+		sb.set_corner_radius_all(2)
 		sb.set_border_width_all(3)
-		sb.border_color = UiTheme.INK
-		sb.bg_color = fill_color if i < filled else Color(0.0, 0.0, 0.0, 0.0)
+		# ⚠️ WOOD_EDGE, NOT INK, AND THE EMPTY STATE IS NOW A DARK WELL RATHER THAN
+		# NOTHING. A navy border was invisible on the new wood card, and an unwon pip was
+		# drawn at alpha 0 — so on a dark panel it vanished completely and the scoreboard
+		# read as three won rounds or as no scoreboard at all, depending on the score.
+		# "Best of 5, you have won none" has to LOOK like an empty slot, and an empty slot
+		# has to be drawn to be seen. This is the readable half of the same complaint the
+		# fill colour fixed earlier.
+		sb.border_color = UiTheme.WOOD_EDGE
+		sb.bg_color = fill_color if i < filled else UiTheme.WOOD_DARK
 		pip.add_theme_stylebox_override("panel", sb)
 
 ## The colour a team's pips take THIS round — the same role colour its card and
@@ -195,10 +286,17 @@ func _refresh_ready_objective(active: bool) -> void:
 	var defending: bool = (local_char.team == 0) == MatchManager.team_a_is_can
 	# Two sentences for defence because it IS two jobs, and players who only hear
 	# "guard the lata" stand on the base and never tag the thrower.
+	var role_colour := UiTheme.DEFENSE if defending else UiTheme.OFFENSE
 	ready_objective.text = "GUARD THE LATA.  TAG THE THROWER." if defending \
 		else "KNOCK THE LATA DOWN"
-	ready_objective.add_theme_color_override("font_color",
-		UiTheme.DEFENSE if defending else UiTheme.OFFENSE)
+	ready_objective.add_theme_color_override("font_color", role_colour)
+	# ⚠️ THE PLATE IS RE-SKINNED HERE, and the first restyle render is why. HUD.tscn
+	# authors it as a plain INK box — which was right when the rest of the HUD was navy
+	# cards, and became the one navy element on a wood screen the moment the skin landed.
+	# Wood body, role-coloured border: the same face as the two team cards, so the
+	# objective reads as part of the same HUD rather than as a leftover.
+	(ready_objective_row.get_child(0) as PanelContainer).add_theme_stylebox_override(
+		"panel", _hud_wood_style(UiTheme.WOOD_DEEP, role_colour))
 	ready_objective_row.visible = true
 
 ## 2026-07-28 — "add a 3 2 1 timer before each match starts too, think about
@@ -244,18 +342,23 @@ func _on_round_started(round_number: int, team_a_is_can: bool) -> void:
 ## the role; the panel's physical position (left vs right) stays with the team.
 func set_round_display(round_number: int, team_a_is_can: bool) -> void:
 	round_label.text = "Round %d / 5" % round_number
+	# ⚠️ THE LETTER IS NO LONGER IN THIS STRING. It is its own amber glyph on each card
+	# (see `_apply_wood_skin`), so the label carries the ROLE alone and the two channels —
+	# letter for team, colour for role — are finally separate rather than sharing one line
+	# of body text. The panel skin comes from `_style_team_card` instead of a theme
+	# variation for the reason given in that section's header.
 	if team_a_is_can:
 		# Team A holds the can this round → Team A defends, Team B attacks.
-		team_a_label.text = "A · DEFENSE"
-		team_b_label.text = "B · OFFENSE"
-		top_left_panel.theme_type_variation = &"DefenseCard"
-		top_right_panel.theme_type_variation = &"OffenseCard"
+		team_a_label.text = "DEFENSE"
+		team_b_label.text = "OFFENSE"
+		_style_team_card(top_left_panel, team_a_label, UiTheme.DEFENSE)
+		_style_team_card(top_right_panel, team_b_label, UiTheme.OFFENSE)
 	else:
 		# Team A throws the slipper this round → Team A attacks, Team B defends.
-		team_a_label.text = "A · OFFENSE"
-		team_b_label.text = "B · DEFENSE"
-		top_left_panel.theme_type_variation = &"OffenseCard"
-		top_right_panel.theme_type_variation = &"DefenseCard"
+		team_a_label.text = "OFFENSE"
+		team_b_label.text = "DEFENSE"
+		_style_team_card(top_left_panel, team_a_label, UiTheme.OFFENSE)
+		_style_team_card(top_right_panel, team_b_label, UiTheme.DEFENSE)
 	_fill_pips(team_a_pips_box, MatchManager.team_a_wins, _pip_color(true))
 	_fill_pips(team_b_pips_box, MatchManager.team_b_wins, _pip_color(false))
 

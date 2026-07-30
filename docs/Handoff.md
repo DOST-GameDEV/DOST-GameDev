@@ -158,6 +158,50 @@ For any coding agent picking up this queue.
 **Only open items live here.** B-01 … B-66 are in [`Handoff.md`](Handoff.md); everything
 marked `[FIXED]` there is done and settled. New bugs take the next free number **in this file**.
 
+**B-143 · THE MID-GAME HUD WAS A DIFFERENT DESIGN LANGUAGE FROM THE GAME IT IS IN. [FIXED 2026-07-30 — first pass]**
+
+Reported from play: the HUD and mid-game UI *"kinda doesnt look like our theme (menu and lobby), it looks
+ugly and plain and confusing."* Three separate problems, and all three were real.
+
+1. **OFF-THEME.** The front end ships wood and amber — `WOOD_DEEP` bodies, `WOOD_EDGE` edges, a 12px
+   radius, a hard drop shadow, `CREAM` body text, `AMBER` values. The HUD was near-white `card_style`
+   cards with a navy translucent timer. Two design languages on one screen, and the HUD is the one the
+   player looks at for the whole match.
+2. **PLAIN.** Flat fills, no shadow, one text weight, no hierarchy between the timer, the score and the
+   role.
+3. **CONFUSING**, and this half was a genuine defect, not taste:
+   - **An unwon round pip was drawn at alpha 0.** `_fill_pips` painted the *filled* state and left the
+     empty state fully transparent. On the old white card that was survivable; the scoreboard's empty
+     state was invisible either way, so "best of 5, you have won none" looked like *no scoreboard*.
+     ⚠️ **This is the readable half of the older "the indicator boxes remain empty" report** — that fix
+     corrected the FILL colour and never touched the empty state. Now a dark `WOOD_DARK` well with a
+     `WOOD_EDGE` rim: an empty slot has to be drawn to be seen.
+   - **Team identity was one character buried mid-string** in `"A · OFFENSE"` at body size, so in
+     practice **hue was doing the job the letter mark is supposed to do** — against the §4.2 rule that
+     team is the letter and never the colour. The letter is now its own AMBER glyph at 48px on the
+     card's outer edge, and the label beside it carries the role alone.
+
+**Fix:** `hud.gd::_apply_wood_skin()` + `_style_team_card()`, built from **`UiTheme.wood_style()`** — the
+same static call the menu's own `WoodSlot` variation uses, so the HUD cannot drift from the front end
+again. Timer is the menu's *recessed* slot (`WOOD_DARK`, `sink = true`), which is the front end's existing
+idiom for "a value being shown to you". `you_card.gd` moved to the same face. The ready-phase objective
+plate is re-skinned per role in `_refresh_ready_objective` — authored INK in the scene, which was right
+while the HUD was navy and became the one navy element on a wood screen the moment the skin landed.
+
+⚠️ **IT IS PER-NODE OVERRIDES IN CODE, NOT THEME VARIATIONS, AND THAT IS A COMPROMISE.** The `Hud*`
+variations live in `ui_theme.gd`, which is 🩴 **ART's file and not writable by the UX lane**. The tokens
+are all still `UiTheme`'s, but the application is scattered across `hud.gd`/`you_card.gd` instead of being
+one `_register_variations` block. 🩴 **FOR ART: promote these into `HudCard`/`OffenseCard`/`DefenseCard`
+and delete the overrides.**
+
+**Verified:** rendered both role states off the real `Main.tscn`
+(`tools/ui/ready_objective_shot.tscn`) and looked at them; layout probe still **PASS, 44 assertions** at
+16:9 and 21:9 — the cards widened 200→250 for the letter mark and `TopLeft`/`TopCentre`/`TopRight` are
+still pairwise disjoint at both aspects.
+
+**Still on this item:** `RoleSwapCard` and `MatchResult` have not been moved to the wood face yet, and the
+`Hud*` font-size ladder (six sizes of the same shout, per `ui_theme.gd`'s own note) is untouched.
+
 **B-141 · CHARACTER SELECT PUT THE FIGURE ON ONE FLAT NAVY FILL. [FIXED 2026-07-30]**
 
 Reported from play: *"im not sure if theres a background for chara selection or its just blue."* It was
