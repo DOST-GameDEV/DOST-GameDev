@@ -23,6 +23,30 @@ func _ready() -> void:
 	MatchManager.match_won.connect(_on_match_won)
 	rematch_button.pressed.connect(_on_rematch_pressed)
 	menu_button.pressed.connect(_on_menu_pressed)
+	_style_buttons()
+
+## B-143 — the WOOD BUTTON face, the menu's own. Caught by looking at the first restyled
+## render: the card behind these went wood, and the two buttons stayed on the theme's
+## default `card_style(CARD)` — a near-white slab and, under focus, a navy one — which read
+## as two dialog buttons pasted onto a wooden sign.
+##
+## `UiTheme.wood_style()`'s `sink` argument is what a press looks like here: the drop shadow
+## goes and the content margins re-weight so the label rides down into the well, with the
+## footprint unchanged so nothing reflows. Focus is AMBER-edged rather than the theme's
+## IMPACT pink, because REMATCH now takes focus by default (R-29) and a permanent pink ring
+## on the primary button reads as an error state.
+func _style_buttons() -> void:
+	for button in [rematch_button, menu_button]:
+		button.add_theme_stylebox_override("normal", UiTheme.wood_style(UiTheme.WOOD_DEEP))
+		button.add_theme_stylebox_override("hover", UiTheme.wood_style(UiTheme.WOOD_MID))
+		button.add_theme_stylebox_override("pressed",
+			UiTheme.wood_style(UiTheme.WOOD_DARK, UiTheme.WOOD_EDGE, true))
+		button.add_theme_stylebox_override("focus",
+			UiTheme.wood_style(UiTheme.WOOD_MID, UiTheme.AMBER))
+		button.add_theme_color_override("font_color", UiTheme.CREAM)
+		button.add_theme_color_override("font_hover_color", UiTheme.AMBER)
+		button.add_theme_color_override("font_focus_color", UiTheme.AMBER)
+		button.add_theme_color_override("font_pressed_color", UiTheme.AMBER)
 
 ## U-7: Esc exits to the main menu from the match-result screen — same path as
 ## the Menu button, so the same teardown applies.
@@ -42,7 +66,12 @@ func _on_match_won(winning_team: int) -> void:
 	var team_a_is_can := MatchManager.team_a_is_can
 	var winner_is_can_side := team_a_is_can if winning_team == 0 else not team_a_is_can
 	var accent := UiTheme.DEFENSE if winner_is_can_side else UiTheme.OFFENSE
-	card.add_theme_stylebox_override("panel", UiTheme.card_style(UiTheme.PANEL, UiTheme.INK, accent))
+	# B-143 — the wood face, matching the HUD, the intermission card and the menu. This was
+	# `card_style(PANEL, …)`, a near-white panel, and it was the last screen in the whole
+	# mid-game flow still on the old language.
+	var sb := UiTheme.wood_style(UiTheme.WOOD_DEEP, accent)
+	card.add_theme_stylebox_override("panel", sb)
+	message_label.add_theme_color_override("font_color", UiTheme.CREAM)
 	# Same rule applied to both team blocks' pip fill colour, not just the
 	# winner's accent bar — each team's pips read as whichever role it held
 	# this same final round.
@@ -58,6 +87,17 @@ func _on_match_won(winning_team: int) -> void:
 	# rematch — MatchManager.begin_next_round() is host-gated, so a client
 	# pressing this would be a silent no-op. Hide it there instead.
 	rematch_button.visible = not NetworkManager.is_networked() or NetworkManager.is_host()
+	# R-29 — REMATCH TAKES THE FOCUS, so the fastest path off this screen is back into the
+	# game rather than out of it. Enter/Space now does the thing almost everybody wants;
+	# Esc still exits (see `_unhandled_input`), so the way out is unchanged.
+	#
+	# ⚠️ FALLS BACK TO MENU WHEN REMATCH IS HIDDEN. On a client the line above hides it —
+	# `begin_next_round()` is host-gated — and `grab_focus()` on a hidden Control does
+	# nothing, which would leave the screen with NO focus and keyboard navigation dead.
+	if rematch_button.visible:
+		rematch_button.grab_focus()
+	else:
+		menu_button.grab_focus()
 	# Q-4: RoundManager.round_active is false so input is already frozen
 	# (character_base.gd), but gravity, hazards, and the camera keep running
 	# underneath this screen. Same split as Q-3/B-64 (Handoff.md §0.3): a
@@ -79,7 +119,11 @@ func _fill_pips(container: HBoxContainer, wins: int, fill_color: Color) -> void:
 	for i in range(container.get_child_count()):
 		var pip: Panel = container.get_child(i)
 		var filled := i < wins
-		pip.add_theme_stylebox_override("panel", UiTheme.card_style(fill_color if filled else UiTheme.CARD))
+		# B-143: the unfilled state was `UiTheme.CARD`, a near-white square — invisible on
+		# the wood card this now sits on, and the same invisible-empty-state problem the
+		# HUD's own pips had. A dark well reads as "a round you did not win".
+		pip.add_theme_stylebox_override("panel",
+			UiTheme.card_style(fill_color if filled else UiTheme.WOOD_DARK, UiTheme.WOOD_EDGE))
 
 ## Resets in place — no scene reload — so a networked rematch doesn't tear
 ## down the connection or any spawned character. main.gd::_on_match_round_started
