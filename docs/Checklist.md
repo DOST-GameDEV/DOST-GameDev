@@ -3287,6 +3287,64 @@ balance one.** 🧑 Left at the shipped values and asked rather than guessed. If
 wanted, **0.45 / 1 bounce** is the row to try: the complaint was about `MAX_BOUNCES = 2`
 chaining into a ragdoll, not about the damping.
 
+#### R-18(b) · THE LUCKY FALL ON TWO REAL PEERS — [x] PASSES. THE FINDING WAS THE INSTRUMENT, 2026-07-30 — 🥊 PHYS
+
+**`downed_lucky` DOES apply on a remote peer. It always did.** The row above it that said
+otherwise — *"the client that owns that can reports `last_fall_scored == true`, 0 of 28 of
+its own knockdowns"* — was reading a **hardcoded constant**, not the flag:
+
+```gdscript
+# tools/aim_probe.gd, as it stood
+"flag_scored": can.last_fall_scored if _net_host else true,
+```
+
+On a client that `true` is a literal, and the classifier forty lines below turns it straight
+back into a verdict — `mark = "L" if not flag_scored else "S"` — so a client could only ever
+print `S`. **0 lucky in 28 at a pinned chance of 0.5 is p ≈ 3.7 × 10⁻⁹**, which is the
+impossible number that should have condemned the metric the first time rather than the
+mechanic. Fifth harness fault caught by that rule alone; the tally in the session brief was
+four.
+
+⚠️ **`_net_host` was the wrong question.** `_apply_hit_result` is an `rpc_id` to
+`target.get_multiplayer_authority()`, so the peer that is *told* the kind is the peer that
+**OWNS** the can — for a client-owned lata that is the CLIENT. The client was the one machine
+holding first-hand evidence and the harness discarded it. The cause was one sentence in the
+probe's own header, *"no other peer is ever told the flag at all"*, read one step too far: the
+owner is a peer too. Both the sentence and the code are corrected.
+
+**Re-measured, `aim_probe.tscn -- net --host` / `-- net --join=127.0.0.1`, headless, chance
+pinned to 0.50:**
+
+| | knockdowns | lucky | scoring |
+|---|---|---|---|
+| HOST, all rows | 42 | 19 | 23 |
+| HOST, on the CLIENT-owned can | 21 | — | — |
+| CLIENT, on the can it OWNS | 19 | **7** | 12 |
+
+- **The cross-peer test: 19/19 identical.** Host roll vs client applied flag, on the same can,
+  every row. Was 0/28 agreeing before.
+- **The host's within-machine check: 21/21.** New column. On its OWN can the host holds both
+  facts — the roll it made and the flag `call_local` wrote — and they cannot legitimately
+  disagree on one machine. This is the half a cross-peer diff cannot answer, and it separates
+  "the wire is wrong" from "the mechanic is wrong".
+- 7 lucky in 19 at 0.50 is p ≈ 0.18 two-sided. Ordinary.
+
+⚠️ **ALIGN BY SUFFIX, PER CAN — 42 vs 39 IS NOT A DISCREPANCY.** The host starts driving when
+its own ready-up returns; a client's `_net_watch_can` is not assigned until `_net_observe()`
+runs, so it legitimately misses the first knockdown or two. Filter both logs to one can name,
+then slide the shorter sequence along the longer: agreement scored **11, 12, 19** at offsets
+0, 1, 2, so the offset is the unique maximum and not a choice. Documented at the print site.
+
+⚠️ **THE `_apply_hit_result` KIND TRACE THE HANDOFF ASKED FOR WAS NOT NEEDED, and the reason
+is structural rather than a shortcut.** "The RPC did not arrive" is already excluded: `state`
+replicates FROM the can's authority outward, so a DOWNED row observed on *any* peer proves
+`go_downed()` ran on the owning peer, and `go_downed` is reachable only from
+`_apply_hit_result`. And `last_fall_scored` has exactly one writer in the codebase
+(`character_base.gd:1244`), so on the owning peer that flag **is** the kind, one to one.
+Reading it correctly is strictly stronger evidence than a print — it is the applied result
+rather than the received argument — and it costs no edit to `character_base.gd`, which is a
+shared-lock file and an R-30 debug-removal target.
+
 #### CHARACTER TRAITS · VERIFIED END TO END, 2026-07-30 — 🥊 PHYS. `phys_probe -- traits`
 
 Human ask: *"can u make sure the change in stats actually work? in character selection?"*
