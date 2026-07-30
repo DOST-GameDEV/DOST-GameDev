@@ -554,6 +554,12 @@ class BTAction extends BTLeaf:
 ## a branch whose own condition did not just fill it.
 ## ---------------------------------------------------------------------------
 var _bb_slipper: Carriable = null             ## incoming throw the Can is dodging
+## R-06 leg 3. The throw the current sidestep was committed against, and the
+## world-space spot that step is walking to. Latched together and cleared
+## together — a target without its threat is the stale-intent bug B-125 was,
+## one layer down.
+var _evade_slipper: Carriable = null
+var _evade_target: Vector3 = Vector3.ZERO
 var _bb_enemy_attacker: CharacterBase = null  ## the Taya's mark
 var _bb_own_attacker: CharacterBase = null    ## a loose Tsinelas' own retriever
 var _bb_can: CharacterBase = null             ## the tracked Can, for either side
@@ -1027,6 +1033,10 @@ func _release_all() -> void:
 
 func _clear_blackboard() -> void:
 	_bb_slipper = null
+	# R-06 leg 3 — cleared with the blackboard it belongs to. A latched sidestep
+	# surviving a round reset or a human takeover is exactly B-125's stale intent.
+	_evade_slipper = null
+	_evade_target = Vector3.ZERO
 	_bb_enemy_attacker = null
 	_bb_can = null
 	_bb_loose_tsinelas = null
@@ -1222,6 +1232,47 @@ func _cond_slipper_incoming() -> bool:
 		if eta < best_eta:
 			best_eta = eta
 			_bb_slipper = c
+	# R-06 leg 3 · HOLD THE STEP UNTIL A LOB HAS ACTUALLY LANDED.
+	#
+	# ⚠️ THIS IS WHY THE CAN "CAME HOME" MID-LOB, AND IT IS THE LOOP ABOVE, NOT
+	# THE STEP. Every gate up there is computed on the HORIZONTAL velocity: the
+	# `speed < 0.5` reject, the `closing` dot and the perpendicular `miss` all
+	# zero `vel.y` first. A descending lob's horizontal component collapses as it
+	# comes down, and `to_us` shrinks toward zero while the slipper is overhead,
+	# so the geometry degenerates exactly when the throw is most dangerous: the
+	# threat stops registering, the tree falls through to hold-the-circle, and
+	# the Can walks back onto the mark to be hit. Measured (`phys_probe -- band`,
+	# 🥊 PHYS): peak sidestep 0.84 m against a lob, but only **0.31 m** at the
+	# closest frame, inside the lob's own 0.45 m band.
+	#
+	# ⚠️ SO THE FIX IS NOT A WIDER STEP. `CAN_EVADE_STEP` already aims 2.7x the
+	# measured band and widening it moves the peak, which was never the problem.
+	# A lob already seen stays the threat until it is no longer FLYING.
+	#
+	# ⚠️ LOBS ONLY, on `Carriable.flight_is_lob` — set from the launch broadcast
+	# on every peer, so the Can answers a lob without re-deriving it from the
+	# trajectory. A flat throw crosses in 0.32 s and there is no tail to hold
+	# through; holding for one would only make the Can dodge things that have
+	# already missed, which is the behaviour CAN_EVADE_MISS_MARGIN exists to stop.
+	# ⚠️ THE RESTORE HAS TO COME BEFORE THE RE-LATCH, AND THE FIRST CUT OF THIS
+	# HAD IT THE OTHER WAY ROUND AND SILENTLY DID NOTHING. Written as one
+	# "different threat? re-latch" test up front, the null the loop leaves on the
+	# frame the lob stops registering counts as a different threat — so the latch
+	# cleared itself one frame before the branch that was supposed to read it.
+	# Measured, not spotted: `phys_probe -- band` still reported the can peaking
+	# at 0.84 m and coming back to 0.40 m by the closest frame, i.e. exactly the
+	# behaviour the change was meant to remove.
+	if _bb_slipper == null:
+		if _evade_slipper != null and is_instance_valid(_evade_slipper) \
+				and _evade_slipper.flight_is_lob \
+				and _evade_slipper.state == Carriable.CarryState.FLYING:
+			_bb_slipper = _evade_slipper
+		else:
+			_evade_slipper = null
+			_evade_target = Vector3.ZERO
+	elif _bb_slipper != _evade_slipper:
+		_evade_slipper = _bb_slipper
+		_evade_target = Vector3.ZERO
 	# How long this threat has been visible, for the guard's reaction delay. Reset the
 	# moment nothing is incoming, so each throw is reacted to on its own merits rather
 	# than inheriting the previous one's warning.
@@ -1250,22 +1301,37 @@ func _act_evade(_delta: float) -> int:
 		return BTNode.FAILURE
 	var vel := slipper.velocity
 	vel.y = 0.0
-	if vel.length() < 0.1:
-		return BTNode.FAILURE
-	var dir := vel.normalized()
-	# Perpendicular in the ground plane; pick the side we are already off toward
-	# so the Can commits rather than oscillating across the line each tick.
-	var side := Vector3(-dir.z, 0.0, dir.x)
 	var to_us := character.global_position - slipper.global_position
 	to_us.y = 0.0
-	if side.dot(to_us) < 0.0:
-		side = -side
-	var target := character.global_position + side * CAN_EVADE_STEP
-	# Clamp back toward the mark. Base circle is world origin on every map.
-	var from_mark := Vector3(target.x, 0.0, target.z)
-	if from_mark.length() > CAN_EVADE_RADIUS:
-		from_mark = from_mark.normalized() * CAN_EVADE_RADIUS
-	_move_toward(Vector3(from_mark.x, character.global_position.y, from_mark.z))
+	# R-06 leg 3 · THE STEP IS COMMITTED ONCE AND THEN COMPLETED.
+	#
+	# ⚠️ IT USED TO BE RE-AIMED EVERY TICK. The target was
+	# `character.global_position + side * CAN_EVADE_STEP` — measured from where
+	# the Can is NOW — so the destination ran away from it at exactly the pace it
+	# walked, and the step was never finished, only continually restated. Against
+	# a 0.32 s flat throw there is no time for that to show; across a lob's 1.10 s
+	# there is. Latched in world space instead: one spot, walked to, held.
+	#
+	# ⚠️ AND A DEAD SLIPPER IS NOT A REASON TO ABANDON A LATCHED STEP. The old
+	# `vel.length() < 0.1` bail is kept only for the frame that PICKS the spot —
+	# once one exists, a lob whose horizontal speed has collapsed on the way down
+	# is precisely the case this whole change is about.
+	if _evade_target == Vector3.ZERO:
+		if vel.length() < 0.1:
+			return BTNode.FAILURE
+		var dir := vel.normalized()
+		# Perpendicular in the ground plane; pick the side we are already off
+		# toward so the Can commits rather than oscillating across the line.
+		var side := Vector3(-dir.z, 0.0, dir.x)
+		if side.dot(to_us) < 0.0:
+			side = -side
+		var target := character.global_position + side * CAN_EVADE_STEP
+		# Clamp back toward the mark. Base circle is world origin on every map.
+		var from_mark := Vector3(target.x, 0.0, target.z)
+		if from_mark.length() > CAN_EVADE_RADIUS:
+			from_mark = from_mark.normalized() * CAN_EVADE_RADIUS
+		_evade_target = Vector3(from_mark.x, 0.0, from_mark.z)
+	_move_toward(Vector3(_evade_target.x, character.global_position.y, _evade_target.z))
 	# Guard as well when it is too late to move — the Can's Guard blocks dents
 	# outright (character_base.apply_dent), so a throw that cannot be dodged can
 	# still be eaten. This is the Can genuinely trying to survive rather than
@@ -1945,9 +2011,13 @@ static var lob_enabled: bool = false
 ## How far past the full-power point the lob region begins, in seconds of hold.
 ## ⚠️ THE PHYS LANE OWNS THE REAL THRESHOLD — this is the AI's belief about where it
 ## is, and the two have to agree or the AI will hold for a lob and throw a flat.
-## When the mechanic lands, this should read the mechanic's own constant rather than
-## restating it, exactly as _charge_fraction() reads Carrier's three constants.
-const ATTACKER_LOB_OVERHOLD: float = 0.20
+##
+## ✅ THE MECHANIC HAS LANDED, SO THIS NOW READS IT rather than restating 0.20,
+## exactly as `_charge_fraction()` reads Carrier's three constants. The two agreed
+## by coincidence and now agree by construction: a future retune of the commitment
+## window moves the AI's belief with it, instead of leaving the AI holding for a
+## lob and throwing a flat.
+const ATTACKER_LOB_OVERHOLD: float = Carrier.LOB_OVERHOLD_TIME
 static var attacker_lob_overhold: float = ATTACKER_LOB_OVERHOLD
 
 ## Is going OVER the block the right call this frame? Reached only when the lane is
