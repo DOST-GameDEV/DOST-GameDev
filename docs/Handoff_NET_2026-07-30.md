@@ -334,6 +334,46 @@ PEERS, not characters). Two instances sat in the ready phase and one printed 40 
 `aim_probe`'s working implementation (polled, `rpc_id(1)`; this is the third probe to need it) and
 no-ops on the local path. The host now prints `round is live` and drives throws.
 
+## NET-3 · what the probe measured once it could press READY — HAND THIS TO 🥊 PHYS
+
+The fix is a harness fix and it worked: both instances print `round is live`, and the run drove
+**40 throws on two real ENet peers** where it previously drove none. The LOCAL path is unchanged —
+re-measured after the edit, 40 throws, *"EVERY OVERLAPPING THROW LANDED"*.
+
+⚠️ **AND THE NETWORKED NUMBERS ARE NOT CLEAN.** From the OBSERVING peer's own copy of the world:
+
+```
+throws                              : 40
+geometrically overlapped the target : 36
+... of which landed                 : 20
+... of which did NOT (THE BUG)      : 16
+    target owned by THIS peer       : 0 missed of 0 overlaps
+    target owned by ANOTHER peer    : 16 missed of 36 overlaps
+landed WITHOUT overlapping          : 0   (non-zero would mean the metric is wrong)
+largest single-frame slipper step   : 6.316 m  (the overlap band is 1.500 m wide)
+```
+
+Two things to read off that table before anyone re-derives them:
+
+- **The split is by TARGET, not by luck.** Every throw at unit `1` resolved DOWNED; every throw at
+  unit `-3` resolved `normal`, in five-throw blocks, all 40 rows. `-3` is an AI sentinel Person and
+  `1` is the host's own Person — both host-authoritative, both `hurtbox L=2 M=0 monitorable=true`.
+  That is not a network-lag pattern; it is a per-unit one, and it wants explaining before hypothesis
+  C is accepted.
+- **Hypothesis C is live on the probe's own evidence**: 6.316 m in one frame against a 1.5 m band.
+
+⚠️ **The `fall_count moved by 0, wanted 1` rows (4 of 20) are a KNOWN-BAD METRIC ON A CLIENT and
+should not be treated as a finding.** `hitbox.gd` counts the fall BEFORE it sends
+`_apply_hit_result`, so diffing `RoundManager._fall_count` either side of a knockdown on a peer that
+does not own the can measures replication lag, not the roll. `aim_probe` hit this exact trap and
+switched to the host's own `can_fell` signal; `hit_probe` has not.
+
+⚠️ **What did NOT happen in that run: the HOST never printed its own report.** Its stdout ends at
+`round is live`, 11 lines, though the client's table proves the host drove all 40 throws. So the
+authoritative side of the comparison — the side that resolves every hit — is still unmeasured on
+real peers. Anyone continuing here should run the pair again and watch the host to the end before
+concluding anything about the 16.
+
 ## Still open on this lane
 
 - **B-144** — `aim_probe` fails its own aim clause and exits 1. ⚠️ Answer the RANGE question first:
