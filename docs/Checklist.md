@@ -3303,6 +3303,34 @@ been measured. See RUN 12 below for the three rows.
 - Copy note: the tier names are already Filipino and already carry the characterisation — *bata* the
   kid, *astig* the one who wins. They do not need translating in the UI.
 
+#### HANDOFF — R-09's REMAINING ACCEPTANCE, from 🖥️ UX to the 🌐 NET lane (2026-07-30)
+
+**The picker is built and shipped** (`ux/onboarding-readability` @ `59871e6`, branch not yet merged).
+**One acceptance clause is not run, and the UX lane cannot run it**: `tools/lobby_probe.gd` is the NET
+lane's file and read-only here.
+
+**What to assert:** start two peers on **deliberately opposite** difficulties; **the client must end on
+the host's**. Exactly the shape of the map/mode assertion `lobby_probe` already makes — add a third
+field to it rather than a new probe.
+
+**What to read, so this is not re-derived:**
+- `scripts/ui/match_setup.gd` — `DIFFICULTIES` (~line 114), `_difficulty_index` (~181),
+  `_apply_difficulty()`, `_cycle_difficulty()`. Clients apply with `persist = false`.
+- The value rides the **existing host-owned path, at TWO call sites**, and both matter:
+  `_rpc_sync_config` (host changed something) **and** `_rpc_sync_state` (the welcome packet — the only
+  thing that configures a peer joining a lobby nobody touches afterwards). ⚠️ **If only the first is
+  asserted the probe passes while a silently-joined peer keeps its own tier.**
+- `SettingsManager.ai_difficulty` / `set_ai_difficulty()` (stores **and** applies), `[match]` section.
+- Applied once at match start via the static `AIController.apply_difficulty()`; the knobs are
+  `static var`s, so every controller in the process follows.
+
+⚠️ **WHY THIS IS WORTH A REAL ASSERTION AND NOT A GLANCE:** a per-peer match-affecting value is the bug
+**U-8 fixed twice**, and it fails *silently* — each peer's bots play at that peer's setting and only the
+host's actually decide the match. Nothing on screen looks wrong.
+
+**Also for 🌐 NET — R-26's lobby half is the blocker on the UX half.** The UX lane stopped at the
+boundary deliberately; `tools/lobby_probe.tscn` was not touched.
+
 #### FILED, NOT RUN — R-21's confinement-size sweep
 
 **The heatmap half of R-21 is done (RUN 13 below). The SIZE SWEEP is blocked on file ownership and
