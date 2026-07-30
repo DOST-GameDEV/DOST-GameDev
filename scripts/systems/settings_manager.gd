@@ -293,6 +293,55 @@ func _save() -> void:
 	if err != OK:
 		push_warning("SettingsManager: failed to save %s (error %d)" % [SETTINGS_PATH, err])
 
+## Bump this when a DEFAULT binding moves, and add the migration below. Written into
+## `settings.cfg` so an existing file can be told apart from a fresh one.
+const BINDINGS_VERSION: int = 2
+const SETTINGS_SECTION_META: String = "meta"
+
+## ⚠️⚠️ A SAVED BINDING OUTLIVES A DEFAULT, AND THAT IS HOW THE LAST TWO CONTROL BUGS
+## SHIPPED. Changing `project.godot` fixes the game for a player who has never opened the
+## settings panel and for nobody else: `_load_and_apply()` re-applies every saved keycode at
+## startup, so the old default comes straight back, and reading the project file then tells
+## you one thing while the running game does another. That exact split is what hid the
+## left-click wind-up bug for a month (`_replace_key_binding`'s note).
+##
+## 🧑 decided 2026-07-30 that **Space is jump only** — `input_probe`'s new conflict check
+## found Space driving BOTH `jump` and `bump`, so one press jumped and melee'd at once, and
+## both keycodes were saved as 32. `bump` moves to F. Every settings.cfg on disk still holds
+## `bump=32`, so without this migration the conflict returns on the next launch for everyone
+## who has ever run the game, and `input_probe` would go red again with the project file
+## looking correct.
+##
+## Deliberately drops ONLY the stale rows and only once. A migration that reset every
+## binding would throw away rebinds the player made on purpose.
+const MOVED_BINDINGS: Dictionary = {
+	# action -> the default keycode it used to have. A saved value equal to the old default
+	# is a stale copy of that default, not a choice; anything else is a real rebind and is
+	# left alone.
+	"bump": 32, # Space, now jump's alone
+}
+
+func _migrate_bindings(config: ConfigFile) -> void:
+	var version: int = int(config.get_value(SETTINGS_SECTION_META, "bindings_version", 1))
+	if version >= BINDINGS_VERSION:
+		return
+	var dropped: Array[String] = []
+	for action in MOVED_BINDINGS:
+		var old_default: int = int(MOVED_BINDINGS[action])
+		# Both the bare action and the legacy `_p1` copy — `settings.cfg` files written
+		# before the 2026-07-29 input overhaul carry both, and the suffixed one is dead
+		# weight that would still be re-applied if anything ever read it again.
+		for key in [String(action), "%s_p1" % action]:
+			if config.has_section_key(SETTINGS_SECTION, key) \
+					and int(config.get_value(SETTINGS_SECTION, key)) == old_default:
+				config.erase_section_key(SETTINGS_SECTION, key)
+				dropped.append(key)
+	config.set_value(SETTINGS_SECTION_META, "bindings_version", BINDINGS_VERSION)
+	config.save(SETTINGS_PATH)
+	if not dropped.is_empty():
+		print("[Settings] bindings migrated to v%d — dropped stale %s, project defaults stand"
+			% [BINDINGS_VERSION, ", ".join(dropped)])
+
 func _load_and_apply() -> void:
 	var config := ConfigFile.new()
 	if config.load(SETTINGS_PATH) != OK:
@@ -308,6 +357,7 @@ func _load_and_apply() -> void:
 		# player must get the same tier a returning one does rather than a coincidence.
 		_apply_ai_difficulty()
 		return
+	_migrate_bindings(config)
 	for action in REBINDABLE_ACTIONS:
 		if config.has_section_key(SETTINGS_SECTION, action):
 			var keycode: int = config.get_value(SETTINGS_SECTION, action)

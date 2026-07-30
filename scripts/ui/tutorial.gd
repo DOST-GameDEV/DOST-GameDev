@@ -97,7 +97,12 @@ const PAGES: Array[Dictionary] = [
 		"rows": [
 			["W A S D", "Move."],
 			["MOUSE", "Look, and aim your throw. The slipper flies to the point your crosshair is actually on, not just along the line it points down."],
-			["SPACE", "Jump, and Bump: a light melee with a small stagger and no cooldown."],
+			# 🧑 2026-07-30: Space is JUMP only. It used to drive both, so one press jumped
+			# AND melee'd — `input_probe`'s conflict check found it and the human made the
+			# call. Bump moved to F. This page is the only place the game tells a player
+			# what the keys are, so it moves with the binding or it lies.
+			["SPACE", "Jump."],
+			["F", "Bump: a light melee with a small stagger and no cooldown."],
 			["SHIFT", "Guard if you are a Can, dash-evade if you are a Tsinelas."],
 		],
 	},
