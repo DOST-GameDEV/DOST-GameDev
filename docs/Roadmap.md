@@ -577,7 +577,7 @@ because "does this read as an eskinita or as generic low-poly" is a judgement ca
 answer — the same reasoning `Concurrency_Protocol.md` already applies to map layout, which it calls
 *the single biggest visual lever on the submission*.
 
-### R-19 · Close the two known map defects · 🌏 MAPS · **S**
+### R-19 · Close the two known map defects · 🌏 MAPS · **S** — 🟢 DONE 2026-07-30 (`3a34473`)
 - **Problem.** 8 pre-existing interior footprint overlaps in Bayan Plaza; the paved apron ends in a
   hard square visible from the y=30 overhead.
 - **Fix.** Both are builder changes (`build_bayan_plaza.py`) — hand edits to the `.tscn` are
@@ -590,7 +590,7 @@ answer — the same reasoning `Concurrency_Protocol.md` already applies to map l
   y=30 shows a soft apron edge. Both maps still load and `perf_probe` shows no regression.
 - **Depends on.** Nothing.
 
-### R-33 · The eskinita pass — make the street specifically Filipino · 🌏 MAPS · **L**
+### R-33 · The eskinita pass — make the street specifically Filipino · 🌏 MAPS · **L** — 🟢 DONE 2026-07-30 (`cd9ecc2`, `67122d0`, `760e23a`)
 - **Problem.** The kit-built world reads as *a well-built street*. It does not yet read as a
   **particular street in a particular country**. Pillar 1 is the one a judge meets before they read
   a word, and the environment is where it lives or does not.
@@ -626,7 +626,7 @@ answer — the same reasoning `Concurrency_Protocol.md` already applies to map l
 - **Depends on.** R-19. **Before R-20**, so the plaza inherits the vocabulary rather than needing a
   second pass.
 
-### R-20 · Port every Eskinita lesson to Bayan Plaza · 🌏 MAPS · **M**
+### R-20 · Port every Eskinita lesson to Bayan Plaza · 🌏 MAPS · **M** — 🟢 DONE 2026-07-30 (`698fa0b`)
 - **Problem.** ⚠️ *"The two builders share `floorcheck.py` and nothing else. Every Eskinita lesson
   has to be ported by hand — that is how those items survived."* House orientation is not applied to
   the plaza's own tree rings and landmarks, there is no five-shot void acceptance, clutter is sparse,
@@ -639,7 +639,7 @@ answer — the same reasoning `Concurrency_Protocol.md` already applies to map l
   `bayan_probe` green; the HazardZone is visible in a render.
 - **Depends on.** R-19.
 
-### R-21 · Judge both maps for FLOW · 🌏 MAPS + 🧑 · **M**
+### R-21 · Judge both maps for FLOW · 🌏 MAPS + 🧑 · **M** — 🟡 INSTRUMENT DONE, JUDGEMENT BLOCKED (`760e23a`)
 - **Problem.** Neither map has ever been judged for flow. The specific open questions are:
   **sightlines** (can an attacker at the 6.0 line see the can, and can the taya see the attacker
   coming?), **the retrieval route** (is the walk back interesting or is it dead time?), and the
@@ -657,6 +657,19 @@ answer — the same reasoning `Concurrency_Protocol.md` already applies to map l
   original size — standing decision, not open here. The confinement box inside it is what is being
   measured.
 - **Depends on.** R-04, R-19.
+
+> **R-21 status, 2026-07-30.** The instrument is built and working
+> (`tools/flow_probe.tscn`, two modes) and the **six sightline renders are done on both
+> maps**. The **heatmap is paused on the human's call**: it drives real AI-vs-AI rounds and
+> the pictures come out as four or five blobs sitting on the spawns, near-identical between
+> the two maps — the bots barely traverse, which matches the known "only defender has been
+> winning". **Nothing about either map's layout can be read from it until BALANCE fixes the
+> AI**, so the flow JUDGEMENT — including the standing question of whether Bayan Plaza should
+> be cut — is not answerable yet and must not be answered from these images.
+> A bug this found, for BALANCE: `ai_probe.gd`'s `scale=` does not survive the first dent,
+> because `character_base.gd::_hitstop()` restores `Engine.time_scale` to a hardcoded `1.0`.
+> See `Handoff.md` §5.
+
 
 ### R-22 · A third map is **CUT** · decision, not a task
 - **Rationale.** Two maps that nobody has played is already the wrong side of `Checklist.md`'s own
