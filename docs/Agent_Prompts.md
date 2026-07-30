@@ -148,7 +148,7 @@ code ships **8.0 s**. `build abil` decides and records which, in `Design.md` §1
 |---|---|
 | 🎮 `build mech` | `characters/character_base.gd` · `carrier.gd` · `carriable.gd` · `hitbox.gd` · `hurtbox.gd` · `throw_profile.gd` · `systems/round_manager.gd` · `match_manager.gd` · `Design.md` |
 | 💥 `build abil` | `scripts/abilities/**` · the ability hook sites in `character_base.gd` · `Design.md` §5.3/§6 |
-| 🖥️ `build ux` | `scripts/ui/**` · `systems/spectator_camera.gd` · `trajectory_preview.gd` · `network_manager.gd` · `game_launch.gd` · `main.gd` · `settings_manager.gd` · `tools/ui/**` |
+| 🖥️ `build ux` | `scripts/ui/**` · `systems/spectator_camera.gd` · **`systems/camera_rig.gd`** · `trajectory_preview.gd` · `network_manager.gd` · `game_launch.gd` · `main.gd` · `settings_manager.gd` · `tools/ui/**` |
 | 🎨 `build model` | `character_visual.gd` · `character_nameplate.gd` · `systems/character_roster.gd` `CANS`/`SLIPPERS` tables · `scenes/characters/visuals/**` · `assets/models/**` · `tools/models/**` · `Art_Direction.md` |
 | 🥊 `build phys` | `character_base.gd` movement/collision block · `carriable.gd` flight · `tools/phys_probe.gd` · `settle_probe.gd` · `aim_probe.gd` |
 | ⚖️ `build fair` | **any number in any file** · `systems/ai_controller.gd` · `tools/ai_probe.gd` · `hit_probe.gd` · `round_probe.gd` |
@@ -156,6 +156,12 @@ code ships **8.0 s**. `build abil` decides and records which, in `Design.md` §1
 `character_base.gd` is touched by three lanes. Sequential order is the lock: `build mech`
 writes it first and completely, `build phys` takes only the movement and collision block
 after, `build fair` moves numbers last.
+
+**Both cameras are 🖥️ `build ux`'s** — `spectator_camera.gd` (new, §3.1–3.2) and
+`camera_rig.gd` (the gameplay camera). ⚠️ **The camera directive is not negotiable:** Person
+→ first person, Prop → third person, derived from `is_person` at `_ready()`, no toggle, no
+export, no per-map exception. The spectator is not an exception to it either — it is a
+separate camera for a unit that has no body, not a third mode on the rig.
 
 ---
 
