@@ -91,6 +91,35 @@ var _flights: Dictionary = {}
 var _dents_seen: Dictionary = {}
 var _finishing := false
 
+## --- R-08: which round-win rule this run is measuring ------------------------
+## "control" | "slipper" | "inside". See _suppress_tag_win() for how a variant is
+## imposed WITHOUT editing hitbox.gd — that file belongs to another lane, and the
+## point of R-08 is to produce a table a human picks from, not to ship a rule.
+var _tag_variant := "control"
+## R-08's new column: how long a round lasted, aggregated. A variant that fixes
+## the win rate by making rounds twice as long has failed the no-dead-time pillar.
+var _respawns := 0
+
+## --- R-21: position heatmap --------------------------------------------------
+var _heatmap := false
+var _heat_accum := 0.0
+## {unit_name: [Vector2, ...]} in world XZ, sampled once a second of GAME time.
+var _heat_samples: Dictionary = {}
+
+## --- R-02: the probe-honesty contract ---------------------------------------
+## Deliberate-failure injection, so the three assertions can be SHOWN to refuse
+## rather than asserted to work. `break=park|map|swap`. ⚠️ TEST-ONLY, and in the
+## same one-way-dependency bracket as _take_over_human_slot(): it lives entirely
+## in this file, is reached only from the fairness mode, and `tools/` does not ship.
+var _break := ""
+## Every `team_a_is_can` value the run actually observed on round_started. A
+## fairness run in which one team was always the attacker is not a fairness
+## measurement, and nothing before R-02 checked.
+var _can_sides_seen: Dictionary = {}
+## True once every honesty assertion has been evaluated, so the header cannot be
+## printed before the contract has been.
+var _honesty_ok := true
+
 func _ready() -> void:
 	_parse_args()
 	# ⚠️ MEASURED, NOT GUESSED — the first 20-round attempt hung silently after
@@ -117,21 +146,122 @@ func _ready() -> void:
 	MatchManager.begin_next_round()
 	await get_tree().create_timer(1.0).timeout
 	print("round_active=", RoundManager.round_active, " round=", MatchManager.round_number)
+	# ⚠️⚠️ R-02(a). "HAS A CONTROLLER" IS NOT "IS BEING DRIVEN", AND THIS LOOP IS
+	# WHERE THE DISTINCTION WAS LOST. It used to accept any unit with
+	# `ai_controller != null`, which is exactly how the probe printed "AI units
+	# found: 4" through a whole run in which one of the four was a statue with a
+	# DISABLED controller attached (RUN 8). Every per-bot metric below — the
+	# transitions, the co-transition rate, the longest still run — was computed
+	# over that statue too, and 58.48 s of "longest still run" turned out to be it.
+	#
+	# The test is now `is_enabled()`, the same question CharacterBase.is_ai_driven()
+	# asks, and both counts are printed so a future divergence is visible rather
+	# than inferred.
+	var with_controller := 0
 	for c in _main.find_children("*", "CharacterBase", true, false):
-		if c.ai_controller != null:
-			_bots.append(c)
-			_moving[c] = false
-			_still_run[c] = 0
-			_still_max[c] = 0
-			_transitions[c] = 0
-	print("AI units found: ", _bots.size())
+		if c.ai_controller == null:
+			continue
+		with_controller += 1
+		if not c.ai_controller.is_enabled():
+			continue
+		_bots.append(c)
+		_moving[c] = false
+		_still_run[c] = 0
+		_still_max[c] = 0
+		_transitions[c] = 0
+	print("AI units found: %d driven  (%d have a controller attached)"
+		% [_bots.size(), with_controller])
 	if _mode == "fairness":
+		_assert_probe_honesty()
 		# The map is named because it is now selectable and every number below
 		# depends on it — an unlabelled fairness table is what let Eskinita's
 		# results stand in for the project's.
 		print("FAIRNESS RUN — target rounds: %d, %s, time_scale: %.1f, map: %s"
 			% [_target_rounds, _mode_name(), _scale, GameLaunch.selected_map])
+		# ⚠️ R-01. THE LEVER IS IN THE HEADER NOW. Both Taya knobs are printed
+		# together because they are the two halves of the same behaviour — where the
+		# post is, and when it is abandoned — and a table row whose standoff is not
+		# written down beside its pursuit is a row nobody can reproduce.
+		print("           taya_pursue_radius %.2f, taya_block_standoff %.2f, tier %s"
+			% [AIController.taya_pursue_radius, AIController.taya_block_standoff,
+				_tier_name()])
+		print("           round-win rule: %s" % _tag_variant_name())
 	set_physics_process(true)
+
+## R-02 · THE PROBE-HONESTY CONTRACT.
+##
+## Three things every fairness run before this one ASSUMED, printed and asserted.
+## RUN 8's 3-v-4 was caught because a human happened to look; each of these is a
+## `push_error` so the next one breaks the run instead of the log.
+##
+## (c) cannot be answered here — it needs the whole run — so it is asserted in
+## _report_fairness() and stated here so a reader of one function sees all three.
+func _assert_probe_honesty() -> void:
+	print("\n  --- probe honesty contract (R-02) ---")
+
+	# (a) FOUR GENUINELY AI-DRIVEN UNITS. Asked with is_enabled(), never `!= null`.
+	if _break == "park" and not _bots.is_empty():
+		# Deliberate failure for the acceptance test: park one unit exactly the way
+		# RUN 8's harness accidentally did — controller attached, nothing driving it.
+		var victim: CharacterBase = _bots[0]
+		victim.ai_controller.set_enabled(false)
+		_bots.erase(victim)
+		print("  break=park: disabled %s's controller on purpose" % victim.name)
+	var driven := _driven_count()
+	print("  (a) units genuinely AI-driven (is_enabled): %d  (must be 4)" % driven)
+	if driven != 4:
+		_honesty_ok = false
+		push_error("ai_probe: %d of 4 units are AI-driven — this run does not " % driven
+			+ "measure AI fairness and its numbers are VOID.")
+
+	# (b) THE MODE AND THE MAP ACTUALLY IN THE TREE, not the ones that were asked
+	# for. `selected_map` is a preference; what decides every number below is the
+	# scene that is really loaded, so the scene is what gets compared.
+	var want_scene := GameLaunch.selected_map_scene()
+	if _break == "map":
+		GameLaunch.selected_map = &"bayan_plaza"
+		want_scene = GameLaunch.selected_map_scene()
+		print("  break=map: switched the REQUEST to bayan_plaza after the load, on purpose")
+	var loaded := "<none>"
+	for node in _main.find_children("*", "Node3D", true, false):
+		if node.scene_file_path.begins_with("res://scenes/maps/"):
+			loaded = node.scene_file_path
+			break
+	print("  (b) game mode in effect: %s" % _mode_name())
+	print("      map requested: %s   map actually in the tree: %s" % [want_scene, loaded])
+	if loaded != want_scene:
+		_honesty_ok = false
+		push_error("ai_probe: the map in the tree (%s) is not the map this run " % loaded
+			+ "claims to measure (%s) — the numbers are labelled wrong." % want_scene)
+	if GameLaunch.game_mode != GameLaunch.GameMode.OPTION_A \
+			and not "mode=b" in OS.get_cmdline_user_args():
+		_honesty_ok = false
+		push_error("ai_probe: a fairness run must force OPTION_A unless mode=b was "
+			+ "asked for — under OPTION_B the dents column measures literally nothing.")
+
+	# (c) is asserted at report time; announced here so the contract reads as three.
+	print("  (c) attacking side changes hands: checked at report time over all rounds")
+	if _break == "swap":
+		print("  break=swap: pinning team_a_is_can for the whole run, on purpose")
+
+## R-02's (c) breaker, and it pins the GAME STATE rather than the recorded metric —
+## faking the number the assertion reads would test nothing.
+##
+## `MatchManager.begin_next_round()` flips `team_a_is_can` on entry for every round
+## after the first, so holding the field at `false` between rounds means every round
+## STARTS at `true`: Team A is the Can side and Team B is the attacker, all run long.
+## Called from _physics_process while no round is active — i.e. before the flip and
+## before the `round_started` emit that main.gd assigns roles from.
+func _pin_the_role_swap() -> void:
+	if not RoundManager.round_active:
+		MatchManager.team_a_is_can = false
+
+func _driven_count() -> int:
+	var driven := 0
+	for c in _main.find_children("*", "CharacterBase", true, false):
+		if c.ai_controller != null and c.ai_controller.is_enabled():
+			driven += 1
+	return driven
 
 ## `-- fairness rounds=20 scale=4`. Everything is optional and order does not
 ## matter; an unrecognised token is reported rather than silently ignored,
@@ -139,6 +269,7 @@ func _ready() -> void:
 ## measurement reported under the wrong label.
 func _parse_args() -> void:
 	var scale := -1.0
+	var tier := -1
 	for arg in OS.get_cmdline_user_args():
 		var token := String(arg)
 		if token == "fairness" or token == "independence":
@@ -162,8 +293,58 @@ func _parse_args() -> void:
 			# Sweeps AIController.taya_pursue_radius without editing the
 			# controller — see that field's own doc for why it is the lever.
 			AIController.taya_pursue_radius = maxf(0.0, float(token.substr(7)))
+		# ⚠️ R-01. THE ONE LEVER RUN 3, RUN 7 AND RUN 8 ALL POINTED AT AND NONE OF
+		# THEM COULD MEASURE, because AIController.TAYA_BLOCK_STANDOFF was a `const`
+		# and this parser had no argument for it. It is now a `static var` there for
+		# the same reason `pursue=` exists: a sweep that needs a source edit per row
+		# is a sweep nobody runs.
+		elif token.begins_with("standoff="):
+			AIController.taya_block_standoff = maxf(0.0, float(token.substr(9)))
+		elif token.begins_with("tier="):
+			# R-09. apply_difficulty() is complete, correct and — measured, not
+			# assumed — called from nowhere outside its own class, so no tier but
+			# NORMAL has ever been measured. This is the only caller in the repo.
+			# ⚠️ ORDER MATTERS AGAINST `pursue=`/`standoff=`: apply_difficulty()
+			# WRITES taya_pursue_radius, so a `tier=` after a `pursue=` silently
+			# overwrites it. Deferred to the end of this function rather than
+			# applied here, so the two can be combined in either order and the
+			# explicit knob always wins — a run whose header disagrees with its own
+			# arguments is the exact class of bug RUN 8 was.
+			var name := token.substr(5).to_upper()
+			if AIController.Difficulty.has(name):
+				tier = int(AIController.Difficulty[name])
+			else:
+				push_error("ai_probe: unknown tier '%s' — expected BATA, NORMAL or ASTIG" % name)
+		elif token.begins_with("tag="):
+			# R-08. Which round-win rule to MEASURE — see _tag_variant's own doc.
+			var variant := token.substr(4).to_lower()
+			if variant in ["control", "slipper", "inside"]:
+				_tag_variant = variant
+			else:
+				push_error("ai_probe: unknown tag variant '%s' — expected control, slipper or inside" % variant)
+		elif token == "heatmap":
+			# R-21. Position density over a whole run, emitted as a PNG.
+			_heatmap = true
+		elif token.begins_with("break="):
+			# R-02's acceptance test. Breaks one honesty assertion on purpose so the
+			# refusal can be SEEN. See _break's own doc.
+			_break = token.substr(6).to_lower()
 		else:
 			push_warning("ai_probe: ignoring unrecognised argument '%s'" % token)
+	# ⚠️ TIER FIRST, THEN THE EXPLICIT KNOBS — see the `tier=` branch above. The
+	# tier is applied before the two overrides are re-asserted so that
+	# `tier=ASTIG standoff=1.4` measures ASTIG's think/lead/charge at a standoff of
+	# 1.4, rather than ASTIG silently discarding the standoff or the standoff
+	# silently discarding ASTIG's pursuit.
+	if tier >= 0:
+		var keep_pursue := AIController.taya_pursue_radius
+		var keep_standoff := AIController.taya_block_standoff
+		AIController.apply_difficulty(tier)
+		for arg in OS.get_cmdline_user_args():
+			if String(arg).begins_with("pursue="):
+				AIController.taya_pursue_radius = keep_pursue
+			elif String(arg).begins_with("standoff="):
+				AIController.taya_block_standoff = keep_standoff
 	if scale > 0.0:
 		_scale = scale
 	elif _mode == "fairness":
@@ -299,6 +480,10 @@ func _watch_hitboxes(c: CharacterBase) -> void:
 ## ---------------------------------------------------------------------------
 
 func _on_round_started(round_number: int, team_a_is_can: bool) -> void:
+	# R-02(c)'s raw material. Recorded from the signal main.gd itself assigns roles
+	# from, so this is the side that genuinely attacked, not the side that was
+	# supposed to.
+	_can_sides_seen[team_a_is_can] = int(_can_sides_seen.get(team_a_is_can, 0)) + 1
 	_open_round(round_number, team_a_is_can)
 
 func _open_round(round_number: int, team_a_is_can: bool) -> void:
@@ -411,6 +596,7 @@ func _on_hitbox_landed(target: CharacterBase, who: CharacterBase) -> void:
 	# match, which a bare win-rate number would have hidden completely.
 	if who.is_person and who.team_is_can_side and target.is_person and not target.team_is_can_side:
 		_round["tagged"] = true
+		_apply_tag_variant(target)
 	var carriable := who.get_node_or_null("Carriable") as Carriable
 	if carriable == null or not _flights.has(carriable):
 		return # a melee bump, not a throw — not this measurement's business
@@ -421,6 +607,75 @@ func _on_hitbox_landed(target: CharacterBase, who: CharacterBase) -> void:
 		flight["hit_taya"] = true # body-blocked by the defending Person
 
 ## ---------------------------------------------------------------------------
+## R-08 · THE ROUND-WIN CONDITION AS A MEASURABLE VARIANT.
+##
+## A tag by the defending Person ends the round OUTRIGHT (hitbox.gd's own rule at
+## the bottom of _on_area_entered) and RUN 8 measured 10/10 rounds ending that way.
+## So the defence has a ONE-SHOT instant win and the offence has a REPEATED-SUCCESS
+## win, and those are not symmetric objectives. R-08 asks whether that asymmetry —
+## not any knob — is the imbalance.
+##
+## ⚠️ IMPOSED FROM THE PROBE, NOT FROM hitbox.gd, AND THAT IS DELIBERATE.
+## `scripts/characters/hitbox.gd` belongs to another lane, R-08's deliverable is a
+## table a human picks a rule FROM, and shipping a rule change to measure it would
+## be deciding the thing this item explicitly does not decide. The interception is
+## honest because of the ORDER inside hitbox.gd::_on_area_entered: `landed_on.emit()`
+## (which lands us here) runs BEFORE the `RoundManager.report_round_win(true)` at the
+## end of that function, and report_round_win() no-ops on `not round_active`. So
+## clearing round_active for the remainder of this frame is exactly "this tag does
+## not end the round", with no gameplay file touched.
+##
+## ⚠️ THE COST OF THAT MECHANISM, STATED RATHER THAN DISCOVERED LATER: the round
+## clock does not advance for the fraction of a frame between the suppression and
+## the deferred restore, and any OTHER round-win check that fires in that same
+## window is also suppressed. Over 20 rounds that is far below the noise on every
+## column in the table; if a variant is ever picked, it belongs in hitbox.gd as a
+## real rule and not as this.
+##
+##   control  the shipping rule, unchanged.
+##   slipper  a tag costs the attacker its slipper and a respawn, not the round.
+##   inside   a tag ends the round ONLY while the attacker is inside the
+##            confinement box — i.e. only during retrieval, which RUN 6 already
+##            established is where the real exposure is.
+## ---------------------------------------------------------------------------
+
+func _apply_tag_variant(attacker: CharacterBase) -> void:
+	if _tag_variant == "control":
+		return
+	if _tag_variant == "inside" and _inside_confinement(attacker):
+		return # this tag is one the variant KEEPS — let hitbox.gd have it
+	# Suppress the win this tag is about to report.
+	if RoundManager.round_active:
+		RoundManager.round_active = false
+		call_deferred("_restore_round_active")
+	if _tag_variant != "slipper":
+		return
+	# ⚠️ AND IT HAS TO COST SOMETHING, or "a tag no longer ends the round" is just
+	# "the taya cannot win", which is not one of the three variants. The tsinelas
+	# becomes the currency: the attacker drops what it is holding and goes back to
+	# its spawn, so the retrieval scramble is the price of being caught.
+	var carrier := attacker.get_node_or_null("Carrier") as Carrier
+	if carrier != null and carrier.held() != null:
+		carrier.held().host_drop()
+	attacker.respawn()
+	_respawns += 1
+
+## ⚠️ SQUARE, NOT A CIRCLE. `character_base.gd::_move_and_confine()` clamps X and Z
+## INDEPENDENTLY to +/-CONFINEMENT_RADIUS and both map builders draw the chalk as a
+## square to match. A `.length()` test here would call the corners "outside" a box
+## the physics lets a unit stand in, and the shape was a deliberate correctness fix
+## (RUN 3) — do not answer this question with a radius.
+func _inside_confinement(who: CharacterBase) -> bool:
+	if who == null or not is_instance_valid(who):
+		return false
+	var p := who.global_position
+	return maxf(absf(p.x), absf(p.z)) <= CharacterBase.CONFINEMENT_RADIUS
+
+func _restore_round_active() -> void:
+	if not _finishing and _round_open:
+		RoundManager.round_active = true
+
+## ---------------------------------------------------------------------------
 
 func _physics_process(delta: float) -> void:
 	if _bots.is_empty():
@@ -428,8 +683,12 @@ func _physics_process(delta: float) -> void:
 	_t += delta
 	_frames += 1
 	_reassert_scale()
+	if _break == "swap":
+		_pin_the_role_swap()
 	if _round_open and RoundManager.round_active:
 		_round_time += delta
+	if _heatmap:
+		_sample_heatmap(delta)
 	var changed := 0
 	for c in _bots:
 		var v: float = Vector2(c.velocity.x, c.velocity.z).length()
@@ -473,6 +732,8 @@ func _report_independence() -> void:
 		% [_same_frame, _frames, 100.0 * _same_frame / maxi(_frames, 1)])
 	print("  total transitions across all bots: ", total_tr,
 		"  -> ", "FROZEN" if total_tr < 4 else "active")
+	if _heatmap:
+		_report_heatmap()
 
 ## The four numbers Checklist §9's fairness table asks for, each printed next to
 ## that table's own fair range so a run is self-scoring and nobody has to go
@@ -480,8 +741,12 @@ func _report_independence() -> void:
 ## aggregate on purpose: an aggregate hides the bimodal case (half the rounds
 ## resolved in 10s, half timed out) that §9 explicitly warns about.
 func _report_fairness() -> void:
-	print("\n=== AI FAIRNESS RUN (%d rounds, %s, time_scale %.1f, taya_pursue_radius %.1f) ==="
-		% [_rounds.size(), _mode_name(), _scale, AIController.taya_pursue_radius])
+	print("\n=== AI FAIRNESS RUN (%d rounds, %s, time_scale %.1f) ==="
+		% [_rounds.size(), _mode_name(), _scale])
+	print("    map %s | taya_pursue_radius %.2f | taya_block_standoff %.2f | tier %s"
+		% [GameLaunch.selected_map, AIController.taya_pursue_radius,
+			AIController.taya_block_standoff, _tier_name()])
+	print("    round-win rule: %s" % _tag_variant_name())
 	print("  round  winner    dur(s)  1st-throw  throws  blocked  on-can  dents  ended-by")
 	var defender_wins := 0
 	var throws := 0
@@ -526,6 +791,12 @@ func _report_fairness() -> void:
 	var mean_first_throw := first_throw_total / maxi(first_throw_count, 1)
 	var block_rate := 100.0 * blocked / maxi(throws, 1)
 	var dents_per_round := float(dents) / n
+	# R-08's new column. A variant that fixes the win rate by making every round run
+	# to the 90 s clock has not balanced anything — it has removed the game.
+	var duration_total := 0.0
+	for r in _rounds:
+		duration_total += r["duration"]
+	var mean_duration := duration_total / n
 	var still_max := 0
 	for c in _bots:
 		still_max = maxi(still_max, _still_max[c])
@@ -542,18 +813,241 @@ func _report_fairness() -> void:
 			_verdict(rounds_with_dent * 2 >= _rounds.size()), _mode_name()])
 	print("  longest still run    %.2fs                             (fair: < 2s)     %s"
 		% [still_max / 60.0, _verdict(still_max < 120)])
+	# ⚠️ NO FAIR RANGE ON THIS ONE ON PURPOSE — R-08 introduces it and nobody has
+	# played a round, so "the right length" is not a number this project owns yet.
+	# What it is for is catching a variant that buys its win rate with dead time.
+	print("  avg round duration   %.1fs over %d rounds              (no range yet — R-08)"
+		% [mean_duration, _rounds.size()])
 	print("\n  throws that reached the can: %d   rounds with no throw at all: %d   rounds timed out: %d"
 		% [on_can, no_throw_rounds, timeouts])
 	print("  rounds the DEFENCE won by TAGGING the attacker: %d / %d  (%.0f%% of all rounds)"
 		% [tag_rounds, _rounds.size(), 100.0 * tag_rounds / n])
+	if _tag_variant != "control":
+		print("  tags SUPPRESSED by the round-win variant (attacker respawns): %d" % _respawns)
 	# ⚠️ §9's own warning, printed rather than left to be remembered: a win rate
 	# on its own is not a fairness result.
 	if timeouts * 2 >= _rounds.size():
 		print("  ⚠️ HALF OR MORE OF THESE ROUNDS TIMED OUT — the win rate above is NOT a")
 		print("     balance result. Rounds that never resolve are the failure to fix first.")
 
+	# R-02(c) · DID THE ATTACKING SIDE CHANGE HANDS? A run in which one team was
+	# always the attacker is not a fairness measurement — it is one team's numbers
+	# reported as both teams'. Asserted here because it is the one part of the
+	# contract that cannot be known until the run is over.
+	print("\n  --- probe honesty contract, part (c) ---")
+	var a_can: int = int(_can_sides_seen.get(true, 0))
+	var b_can: int = int(_can_sides_seen.get(false, 0))
+	print("  rounds with Team A on the CAN side: %d   Team B on the CAN side: %d" % [a_can, b_can])
+	if a_can == 0 or b_can == 0:
+		_honesty_ok = false
+		push_error("ai_probe: the attacking side NEVER changed hands (%d/%d) — this " % [a_can, b_can]
+			+ "run measures one team, not fairness, and its numbers are VOID.")
+	else:
+		print("  the attacking side changed hands — this run is a fairness measurement.")
+	print("  honesty contract: %s" % ("PASSED — every number above is admissible"
+		if _honesty_ok else "⚠️⚠️ FAILED — DO NOT LOG THESE NUMBERS"))
+	if _heatmap:
+		_report_heatmap()
+
+## ---------------------------------------------------------------------------
+## R-21 · THE HEATMAP. Where the units actually are, as a picture.
+##
+## The half of R-21 that does not need `CharacterBase.CONFINEMENT_RADIUS` promoted
+## to a `static var` — see the fairness log's R-21 note for why the size sweep is
+## filed rather than run. Dead space and the retrieval route are questions about a
+## DISTRIBUTION, and every previous answer to them in this repo has been somebody
+## reasoning about the geometry.
+##
+## ⚠️ IT PRINTS AN ASCII GRID AS WELL AS WRITING A PNG, and the ASCII one is the
+## deliverable. `docs/` is another lane's directory and a binary asset there is a
+## merge conflict waiting to happen, so the artefact that goes INTO the fairness log
+## is text that survives a diff. The PNG is for looking at.
+## ---------------------------------------------------------------------------
+
+## Half-width of the sampled square, in world units. Fixed rather than derived from
+## the data so two maps' heatmaps are directly comparable — a grid that rescales to
+## its own extent makes a tight map and a loose one look identical.
+const HEATMAP_EXTENT: float = 14.0
+const HEATMAP_CELLS: int = 29
+const HEATMAP_PNG_PIXELS: int = 464
+
+## Once a second of GAME time (accumulated scaled delta), matching every other
+## number this probe reports — see DEFAULT_SCALE's own note.
+func _sample_heatmap(delta: float) -> void:
+	_heat_accum += delta
+	if _heat_accum < 1.0:
+		return
+	_heat_accum = 0.0
+	for c in _main.find_children("*", "CharacterBase", true, false):
+		var key := String(c.name)
+		if not _heat_samples.has(key):
+			_heat_samples[key] = PackedVector2Array()
+		var p: Vector3 = c.global_position
+		_heat_samples[key].append(Vector2(p.x, p.z))
+
+## Grid index for a world XZ point, or -1 when it is off the sampled square. +Z is
+## DOWN the printed grid, so the picture reads the way the game's own top-down
+## +X-right/+Z-toward-camera axes do.
+func _heat_cell(p: Vector2) -> Vector2i:
+	var u := (p.x + HEATMAP_EXTENT) / (2.0 * HEATMAP_EXTENT)
+	var v := (p.y + HEATMAP_EXTENT) / (2.0 * HEATMAP_EXTENT)
+	if u < 0.0 or u >= 1.0 or v < 0.0 or v >= 1.0:
+		return Vector2i(-1, -1)
+	return Vector2i(int(u * HEATMAP_CELLS), int(v * HEATMAP_CELLS))
+
+func _report_heatmap() -> void:
+	var total := 0
+	var off_grid := 0
+	var grid: Array = []
+	for _row in range(HEATMAP_CELLS):
+		var row: Array[int] = []
+		row.resize(HEATMAP_CELLS)
+		row.fill(0)
+		grid.append(row)
+	var peak := 0
+	for key in _heat_samples.keys():
+		for p in _heat_samples[key]:
+			total += 1
+			var cell := _heat_cell(p)
+			if cell.x < 0:
+				off_grid += 1
+				continue
+			grid[cell.y][cell.x] += 1
+			peak = maxi(peak, grid[cell.y][cell.x])
+	print("\n=== R-21 POSITION HEATMAP — map: %s, %d samples (1/s of game time), peak cell %d ==="
+		% [GameLaunch.selected_map, total, peak])
+	if total == 0:
+		print("  no samples — nothing to report")
+		return
+	print("  extent +/-%.0f units, %dx%d cells (%.2f units per cell); %d samples off the grid"
+		% [HEATMAP_EXTENT, HEATMAP_CELLS, HEATMAP_CELLS,
+			2.0 * HEATMAP_EXTENT / HEATMAP_CELLS, off_grid])
+	print("  '#' >= 50%% of peak, '+' >= 20%%, ':' >= 5%%, '.' > 0, ' ' never visited.")
+	print("  [] marks the CONFINEMENT SQUARE (+/-%.1f, and it IS a square — see" % CharacterBase.CONFINEMENT_RADIUS)
+	print("     character_base.gd::_move_and_confine); 'o' marks the world origin, i.e. the can's mark.")
+	# The confinement square in cell coordinates, so the picture carries its own
+	# reference frame instead of needing one described in prose.
+	var edge_lo := _heat_cell(Vector2(-CharacterBase.CONFINEMENT_RADIUS, -CharacterBase.CONFINEMENT_RADIUS))
+	var edge_hi := _heat_cell(Vector2(CharacterBase.CONFINEMENT_RADIUS, CharacterBase.CONFINEMENT_RADIUS))
+	var origin := _heat_cell(Vector2.ZERO)
+	for y in range(HEATMAP_CELLS):
+		var line := ""
+		for x in range(HEATMAP_CELLS):
+			var n: int = grid[y][x]
+			var ch := " "
+			if n > 0:
+				var frac := float(n) / maxf(float(peak), 1.0)
+				if frac >= 0.5:
+					ch = "#"
+				elif frac >= 0.2:
+					ch = "+"
+				elif frac >= 0.05:
+					ch = ":"
+				else:
+					ch = "."
+			if n == 0 and x == origin.x and y == origin.y:
+				ch = "o"
+			if n == 0 and (x == edge_lo.x or x == edge_hi.x) \
+					and y >= edge_lo.y and y <= edge_hi.y:
+				ch = "["
+			if n == 0 and (y == edge_lo.y or y == edge_hi.y) \
+					and x >= edge_lo.x and x <= edge_hi.x:
+				ch = "-"
+			line += ch
+		print("  |" + line + "|")
+	print("  per-unit sample counts (a unit with far fewer samples than the others "
+		+ "was not in the tree the whole run):")
+	for key in _heat_samples.keys():
+		var pts: PackedVector2Array = _heat_samples[key]
+		var mean := 0.0
+		for p in pts:
+			mean += p.length()
+		print("    %-16s %4d samples, mean distance from the mark %.2f"
+			% [key, pts.size(), mean / maxf(float(pts.size()), 1.0)])
+	_write_heatmap_png()
+
+## The looking-at-it version. Written to `user://`, which on this machine resolves
+## under the Godot app-data directory — the path is printed rather than assumed.
+func _write_heatmap_png() -> void:
+	var img := Image.create(HEATMAP_PNG_PIXELS, HEATMAP_PNG_PIXELS, false, Image.FORMAT_RGB8)
+	img.fill(Color(0.04, 0.04, 0.06))
+	# Splat each sample with a small radius so a 1-pixel dot does not disappear;
+	# accumulate into a float buffer first, then colour-map, so the ramp is applied
+	# to a density rather than to overdraw order.
+	var density := PackedFloat32Array()
+	density.resize(HEATMAP_PNG_PIXELS * HEATMAP_PNG_PIXELS)
+	var scale := float(HEATMAP_PNG_PIXELS) / (2.0 * HEATMAP_EXTENT)
+	const SPLAT := 5
+	var peak := 0.0
+	for key in _heat_samples.keys():
+		for p in _heat_samples[key]:
+			var px := int((p.x + HEATMAP_EXTENT) * scale)
+			var py := int((p.y + HEATMAP_EXTENT) * scale)
+			for dy in range(-SPLAT, SPLAT + 1):
+				for dx in range(-SPLAT, SPLAT + 1):
+					var x := px + dx
+					var y := py + dy
+					if x < 0 or y < 0 or x >= HEATMAP_PNG_PIXELS or y >= HEATMAP_PNG_PIXELS:
+						continue
+					var r := sqrt(float(dx * dx + dy * dy))
+					if r > float(SPLAT):
+						continue
+					var i := y * HEATMAP_PNG_PIXELS + x
+					density[i] += 1.0 - r / float(SPLAT)
+					peak = maxf(peak, density[i])
+	if peak <= 0.0:
+		return
+	for y in range(HEATMAP_PNG_PIXELS):
+		for x in range(HEATMAP_PNG_PIXELS):
+			var d: float = density[y * HEATMAP_PNG_PIXELS + x] / peak
+			if d <= 0.0:
+				continue
+			# log-ish ramp: the interesting structure is in the low end, and a linear
+			# ramp buries the retrieval route under the two standing posts.
+			var t := pow(d, 0.45)
+			img.set_pixel(x, y, Color(0.05, 0.05, 0.08).lerp(Color(1.0, 0.95, 0.6), t)
+				.lerp(Color(1.0, 0.35, 0.15), clampf(t * t, 0.0, 1.0) * 0.6))
+	# The confinement square, drawn on top in a dim line so the picture carries its
+	# own scale. Same square metric as _inside_confinement().
+	var r_px := int(CharacterBase.CONFINEMENT_RADIUS * scale)
+	var mid := HEATMAP_PNG_PIXELS / 2
+	for i in range(mid - r_px, mid + r_px + 1):
+		if i < 0 or i >= HEATMAP_PNG_PIXELS:
+			continue
+		for edge in [mid - r_px, mid + r_px]:
+			if edge >= 0 and edge < HEATMAP_PNG_PIXELS:
+				img.set_pixel(i, edge, Color(0.35, 0.9, 1.0))
+				img.set_pixel(edge, i, Color(0.35, 0.9, 1.0))
+	var out := "user://heatmap_%s_%s.png" % [GameLaunch.selected_map, _tag_variant]
+	var err := img.save_png(out)
+	if err != OK:
+		push_error("ai_probe: could not write %s (error %d)" % [out, err])
+		return
+	print("  heatmap PNG: %s   -> %s" % [out, ProjectSettings.globalize_path(out)])
+
 func _verdict(ok: bool) -> String:
 	return "OK" if ok else "OUT OF RANGE"
+
+## Which tier this run is measuring. R-09: nothing outside AIController called
+## apply_difficulty() before this probe did, so this label is the only place a run
+## can say which tier its numbers describe.
+func _tier_name() -> String:
+	match AIController.difficulty:
+		AIController.Difficulty.BATA:
+			return "BATA"
+		AIController.Difficulty.ASTIG:
+			return "ASTIG"
+		_:
+			return "NORMAL"
+
+func _tag_variant_name() -> String:
+	match _tag_variant:
+		"slipper":
+			return "VARIANT 1 — a tag costs the attacker its slipper and a respawn, NOT the round"
+		"inside":
+			return "VARIANT 2 — a tag ends the round ONLY inside the confinement square"
+		_:
+			return "CONTROL — the shipping rule: any tag ends the round outright (hitbox.gd)"
 
 ## Printed in the header AND next to the dents row, because "0.00 dents" means
 ## two completely different things in the two modes and a run whose mode is not
