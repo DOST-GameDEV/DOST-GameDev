@@ -669,14 +669,34 @@ func _build_tree() -> BTNode:
 		]),
 	])
 
-## ⚠️ THE CAN HOLDS ITS CIRCLE. IT DOES NOT WANDER THE BOX. Evasion pre-empts
-## the hold, and because the tree is reactive that pre-emption happens on the
-## frame the throw becomes a threat, not at the next decision tick.
+## ⚠️ DRIVE-HOME OUTRANKS EVERYTHING ELSE THE CAN CAN DO, 2026-07-30. `Design.md`
+## §5.2/§1: the auto-seal is deleted, the lata always self-rights within
+## `DOWNED_MAX_TIME`, and it can no longer lose the round by lying still — it loses
+## by being OUTSIDE its own circle when `RoundManager`'s out-of-circle countdown
+## reaches zero. Once that clock is running, nothing else this branch could be
+## doing — the idle shuffle, dodging a hit that no longer ends the round by itself
+## — outweighs closing the distance back to the mark. See `_cond_can_displaced` /
+## `_act_can_drive_home`, which read the SAME `RoundManager.can_out_left()` the
+## HUD's "LATA OUT" row does, never a re-derived distance of its own.
+##
+## Evasion still sits above the mark-holding shuffle, just below drive-home: a
+## throw connecting while the can is already out only adds a stagger/knockdown on
+## top of a clock that is already running, which is not worth abandoning the drive
+## home over — but it is still worth not walking face-first into on the way, or
+## anywhere near the mark before the countdown even starts.
 func _build_can_branch() -> BTNode:
 	return BTSelector.new(&"can-do", [
+		BTSequence.new(&"drive-home", [
+			BTCondition.new(&"is-displaced", &"_cond_can_displaced"),
+			BTAction.new(&"return-to-circle", &"_act_can_drive_home"),
+		]),
 		BTSequence.new(&"evade", [
 			BTCondition.new(&"slipper-incoming", &"_cond_slipper_incoming"),
 			BTAction.new(&"sidestep-guard", &"_act_evade"),
+		]),
+		BTSequence.new(&"smash-opportunity", [
+			BTCondition.new(&"smash-worth-it", &"_cond_can_smash_worth_it"),
+			BTAction.new(&"slam", &"_act_can_smash"),
 		]),
 		BTAction.new(&"hold-mark", &"_act_can_hold_mark"),
 	])
@@ -684,14 +704,25 @@ func _build_can_branch() -> BTNode:
 ## ⚠️ BODY-BLOCK, DO NOT CHASE — see _act_taya_body_block for the geometry
 ## argument. Ordered melee > close-gap > block > wander, so the Taya only ever
 ## leaves its blocking post for a threat it can actually reach.
+##
+## ⚠️⚠️ "tag" IS GONE. The tap that used to fire here was `person_action.gd`'s Tag,
+## deleted along with `hitbox.gd`'s round-win-by-tag branch (`Design.md` §1: "The
+## defence no longer has an instant win at all"). What replaced it is the charged
+## bump meter on `special_ability` (`Design.md` §4) — a hold-to-commit, mirror of the
+## attacker's own charge, not a one-button instant. `_act_taya_manage_bump` runs on
+## EVERY tick a threat is visible (not gated behind a melee check the way the tag
+## was) because charging has to start before the attacker arrives, not on arrival —
+## see its own doc. `melee` below is now only the MOVEMENT half: hold ground while
+## the bump resolves, instead of chasing further in.
 func _build_taya_branch() -> BTNode:
 	return BTSelector.new(&"taya-do", [
 		BTSequence.new(&"engage", [
 			BTCondition.new(&"threat-in-detect-range", &"_cond_taya_threat_visible"),
+			BTAction.new(&"manage-bump", &"_act_taya_manage_bump"),
 			BTSelector.new(&"engage-how", [
-				BTSequence.new(&"tag", [
+				BTSequence.new(&"melee", [
 					BTCondition.new(&"threat-in-melee", &"_cond_taya_threat_in_melee"),
-					BTAction.new(&"tap-bump", &"_act_taya_tag"),
+					BTAction.new(&"hold-ground", &"_act_taya_hold_ground"),
 				]),
 				BTSequence.new(&"close-gap", [
 					BTCondition.new(&"threat-in-box", &"_cond_taya_threat_in_confinement"),
@@ -911,11 +942,22 @@ func decide(delta: float) -> void:
 	# otherwise (the Can's shuffle, anyone's settle). Reset before the tick so the
 	# leaves that run this frame are the only things deciding it.
 	_gait_want = tier_gait if character.is_person else 1.0
+	# SPRINT, same reset-before-tick shape as the gait line directly above — see
+	# `_sprint_want`'s own doc.
+	_sprint_want = false
 
 	_root.tick(self, delta)
 	# After the tree, never before: whichever leaf actually ran this tick is the one
 	# whose pace applies.
 	_apply_gait(_gait_want)
+	# ⚠️ STAMINA IS FINITE (`Design.md` §2: a 4.0 s bar, 0.8 s regen delay, a 0.6 s
+	# floor that forbids feathering it). Writing the held key every tick regardless
+	# of `_sprint_want`'s value — not only on change — is deliberate: character_base.gd
+	# already treats "not moving" as free even while this is held (`_step_stamina`
+	# gates drain on the frame's real movement intent), so there is no idle-holding
+	# cost to guard against here the way `_apply_gait` guards against re-registering
+	# an unchanged multiplier.
+	_set_held("sprint", _sprint_want)
 
 ## The gait multiplier this controller currently has registered on its character, or
 ## 0.0 for none. Tracked so a tier change swaps one for the other rather than
@@ -926,6 +968,17 @@ var _gait_applied: float = 0.0
 ## after the tree has ticked, so a role or branch change cannot leave a stale
 ## multiplier registered — the same reason the role itself is re-derived every tick.
 var _gait_want: float = 1.0
+
+## SPRINT (`Design.md` §2 / §3). Mirrors `_gait_want` exactly and for the same
+## reason: reset in decide() before the tree runs, set true by whichever leaf is
+## closing distance or racing to retrieve something THIS tick, and written to the
+## actual held intent exactly once, after the tree ticks — never scattered across
+## leaves as bare `_set_held("sprint", ...)` calls, which is precisely the kind of
+## stale-multiplier bug `_gait_want` already exists to avoid, one input over.
+## Absent from a leaf means "not sprinting" by default, which reads naturally as an
+## opt-IN per tick — "sprint when closing distance or retrieving, and not when
+## posted" is a much shorter list to opt INTO than to opt every posted leaf OUT of.
+var _sprint_want: bool = false
 
 ## ⚠️⚠️ THIS IS WHY THE CAN BECAME UNHITTABLE, AND IT IS THE MOST INSTRUCTIVE BUG OF
 ## THE PASS: TWO CORRECT FIXES THAT BROKE EACH OTHER.
@@ -1006,7 +1059,7 @@ func is_enabled() -> bool:
 
 func _release_all() -> void:
 	_release_move(0.0)
-	for base in ["bump", "special_ability", "grab", "guard_dash"]:
+	for base in ["bump", "special_ability", "grab", "guard_dash", "sprint"]:
 		_set_held(base, false)
 	_pending_release.clear()
 	_attacker_charging = false
@@ -1157,40 +1210,41 @@ const CAN_EVADE_MISS_MARGIN: float = 0.55
 const CAN_EVADE_STEP: float = 1.2
 ## Never sidestep further than this from the base circle.
 const CAN_EVADE_RADIUS: float = 1.8
-## Below this time-to-impact, stop dodging and raise Guard instead.
+## Below this time-to-impact, stop dodging and spend the Can-Dash instead.
 const CAN_GUARD_ETA: float = 0.22
 ## ---------------------------------------------------------------------------
-## ⚠️ THE GUARD WAS THE LAST REASON THE OFFENCE COULD NOT SCORE, AND IT IS AI POLICY
-## RATHER THAN PHYSICS — WHICH IS WHY IT BELONGS IN THIS FILE AND WHY IT IS FIXABLE
-## HERE.
+## ⚠️⚠️ THIS BLOCK USED TO BE ABOUT GUARD, AND GUARD IS DELETED. `Design.md` §1: "Can
+## Guard (hold to block a hit outright) ... nullified the attacker's one window per
+## throw. Replaced by Can-Dash and Can-Smash, which are commitments rather than a
+## hold." `character_base.gd::is_guarding()` now always returns false and
+## `apply_dent()`/`apply_stagger()` can never be blocked outright by anything this
+## file presses — the paragraph below describing a can that ate 0 dents behind a
+## reactive Guard is describing a mechanic that no longer exists.
 ##
-## Measured at scale 1 (i.e. on honest physics, after the tick-rate fault in
-## `ai_probe` was found): 23 throws, 19 blocked by the taya, **2 that genuinely
-## reached the can, and 0 dents.** A hit that arrives is not a dent if the can is
-## guarding, because `character_base.gd::apply_dent()` refuses outright while Guard is
-## up. So the defence had THREE layers — the taya's body, the can's dodge, and a guard
-## raised on reaction to every single throw — and the third one was free and perfect.
-##
-## Perfect is the problem. A human on the lata does not have frame-accurate reactions
-## and cannot hold the button up for every throw in a barrage. Two human limits, both
-## of which make the guard a skill instead of an immunity:
-##
-##   1. A REACTION DELAY. The throw must have been in the air for `tier_think` before
-##      this can reacts to it at all, so a fast flat throw from close range arrives
-##      before the guard is up. That is the flat throw's whole identity in the
-##      three-way triangle R-06 describes.
-##   2. A COOLDOWN. After a guard, the next one cannot come up immediately, so a
-##      barrage punches through where a single throw would not — which is exactly the
-##      pressure the offence is supposed to be able to apply.
+## What survives, and what this block is actually about now: `guard_dash` still names
+## an input action, but it now fires the Can's own one-per-round CAN-DASH (`Design.md`
+## §5.3 — 16.0 m/s for 0.18 s, ONE use, never a hold). The trigger below — react once
+## a throw's time-to-impact drops under `CAN_GUARD_ETA`, no sooner than
+## `can_guard_reaction` lets the can notice it, no more often than `can_guard_cooldown`
+## — already happens to be the right shape for "spend it to dodge an incoming throw,
+## not casually" (Design.md §5.3's own words for Can-Dash): react late enough that a
+## dash is not wasted on a throw that would already miss, and do not re-trigger every
+## single tick a throw stays in the danger band. The COOLDOWN framing is now cosmetic
+## — `character_base.gd::_can_dash_spent` is what actually stops a second spend inside
+## one round, not this timer — but it is kept because it still does its real job:
+## rate-limiting how often this leaf ATTEMPTS the press, which is worth doing even
+## when the attempt beyond the first is a free no-op in the game itself.
 ##
 ## ⚠️ NOT A NERF TO THE DODGE. `CAN_EVADE_MISS_MARGIN` is a human-called value (RUN 7)
 ## and `CAN_EVADE_LOOKAHEAD` is documented as untunable. Neither is touched.
 ## ---------------------------------------------------------------------------
-## Minimum time a throw must have been visible before the can may react with Guard,
-## scaled by the tier's own thinking speed at the call site.
+## Minimum time a throw must have been visible before the can may react by spending
+## its dash, scaled by the tier's own thinking speed at the call site.
 const CAN_GUARD_REACTION: float = 0.12
 static var can_guard_reaction: float = CAN_GUARD_REACTION
-## Enforced gap between guards, so a barrage beats what one throw does not.
+## Enforced gap between dash ATTEMPTS — see the block comment above for why this is
+## no longer a real cooldown (the dash itself is one-per-round, tracked on
+## `character_base.gd`) and is kept anyway as an input rate-limiter.
 const CAN_GUARD_COOLDOWN: float = 1.4
 static var can_guard_cooldown: float = CAN_GUARD_COOLDOWN
 
@@ -1332,22 +1386,26 @@ func _act_evade(_delta: float) -> int:
 			from_mark = from_mark.normalized() * CAN_EVADE_RADIUS
 		_evade_target = Vector3(from_mark.x, 0.0, from_mark.z)
 	_move_toward(Vector3(_evade_target.x, character.global_position.y, _evade_target.z))
-	# Guard as well when it is too late to move — the Can's Guard blocks dents
-	# outright (character_base.apply_dent), so a throw that cannot be dodged can
-	# still be eaten. This is the Can genuinely trying to survive rather than
-	# just jittering.
+	# Spend the Can-Dash when it is too late to sidestep instead — see the
+	# CAN_GUARD_ETA block comment above for why this button still fires the
+	# one-per-round CAN-DASH (`Design.md` §5.3) even though the names here still say
+	# "guard". This is the Can genuinely trying to survive a throw its own sidestep
+	# cannot beat, rather than just jittering — and the one place in this file that
+	# is allowed to touch `guard_dash` for a Can at all, per `_act_can_drive_home`'s
+	# own note that spending it elsewhere would be exactly the "casually" the human's
+	# instruction rules out.
 	#
-	# ⚠️ BUT NOT INSTANTLY AND NOT EVERY TIME. See CAN_GUARD_REACTION for the
-	# measurement: a guard raised in reaction to every throw is a perfect third layer
-	# of defence and it is the reason 2 throws reached the can and 0 dented it.
+	# ⚠️ BUT NOT INSTANTLY AND NOT EVERY TICK. `can_guard_reaction`/`can_guard_cooldown`
+	# keep this from firing (an attempted press — `_can_dash_spent` already stops a
+	# second real spend) on every single frame a throw sits in the danger band.
 	var eta := to_us.length() / maxf(vel.length(), 0.01)
 	var seen_long_enough: bool = _guard_seen_for \
 		>= can_guard_reaction * (tier_think / DECISION_INTERVAL)
-	var may_guard: bool = eta <= CAN_GUARD_ETA and _guard_cooldown_left <= 0.0 \
+	var may_dash: bool = eta <= CAN_GUARD_ETA and _guard_cooldown_left <= 0.0 \
 		and seen_long_enough
-	if may_guard and not bool(_held_actions.get("guard_dash", false)):
+	if may_dash and not bool(_held_actions.get("guard_dash", false)):
 		_guard_cooldown_left = can_guard_cooldown
-	_set_held("guard_dash", may_guard)
+	_set_held("guard_dash", may_dash)
 	return BTNode.SUCCESS
 
 ## ⚠️ THE CAN GENUINELY NEVER MOVED, AND IT WAS ARITHMETIC, NOT INTENT.
@@ -1386,6 +1444,77 @@ func _act_can_hold_mark(_delta: float) -> int:
 			sin(angle) * radius)
 		_has_move_target = true
 	_move_toward(_move_target, CAN_ARRIVE_DISTANCE)
+	return BTNode.SUCCESS
+
+## ---------------------------------------------------------------------------
+## THE OUT-OF-CIRCLE COUNTDOWN. `Design.md` §5.2. The can's real job now that the
+## tag and the auto-seal are both gone — see `_build_can_branch`'s own note for the
+## priority argument this pair of leaves exists to serve.
+## ---------------------------------------------------------------------------
+
+## Reads the SAME flag the HUD's own "LATA OUT" row reads —
+## `RoundManager.can_out_left()` is -1.0 whenever every tracked can is home and the
+## seconds remaining on the live countdown otherwise. No geometry of its own, so it
+## cannot disagree with the clock that actually decides the round the way a
+## re-derived `CAN_HOME_RADIUS` check here could.
+func _cond_can_displaced() -> bool:
+	return RoundManager.can_out_left() >= 0.0
+
+## Beeline for the mark at full effort. `_sprint_want` is this file's own idiom for
+## "closing distance or retrieving" (see its own doc) and nothing about this leaf is
+## a post to hold, so `CAN_IDLE_GAIT` does not apply the way it does in
+## `_act_can_hold_mark` — this is the one Can movement that is meant to look urgent.
+##
+## ⚠️ `Vector3.ZERO` IS THE MARK, NOT A PLACEHOLDER. Every map's base circle sits at
+## its own local (0,0,0) and `$Map` carries no transform (see `CONFINEMENT_RADIUS`'s
+## own doc), so world origin IS the mark on every map this file drives against.
+##
+## ⚠️ NO CAN-DASH HERE. `Design.md` §5.3 spends the one-per-round dash on dodging an
+## incoming throw ("not casually") — see `_act_evade`, the only other leaf in this
+## file allowed to touch a Can's `guard_dash`. Burning it to shave a fraction of a
+## second off an ordinary walk home is exactly the "casually" that rules out.
+func _act_can_drive_home(_delta: float) -> int:
+	_sprint_want = true
+	_move_toward(Vector3.ZERO, CAN_ARRIVE_DISTANCE)
+	return BTNode.SUCCESS
+
+## ---------------------------------------------------------------------------
+## CAN-SMASH. `Design.md` §5.3: 0.35 s wind-up, a 3.6 m shockwave, 1.6 s stun on a
+## Person / 1.2 s on a tsinelas (dropped LOOSE), 8.0 s cooldown, on `bump` (F).
+## ---------------------------------------------------------------------------
+
+## ⚠️ ~3.0, NOT THE SHOCKWAVE'S OWN 3.6 m RADIUS. WRITTEN, NOT MEASURED — there is no
+## probe run backing this the way `CAN_EVADE_MISS_MARGIN` or `taya_block_standoff`
+## have one. The margin exists for the 0.35 s wind-up: whatever is at the full 3.6 m
+## right now may not still be there once the shockwave actually lands.
+const CAN_SMASH_TRIGGER_RANGE: float = 3.0
+
+## `_try_prop_smash()` (character_base.gd) already refuses a press silently while
+## `smash_cooldown_left() > 0.0` — consumed, no ordinary bump either — so this only
+## has to decide whether anything is close enough to be WORTH spending the cooldown
+## on, never whether the press would even be legal.
+func _cond_can_smash_worth_it() -> bool:
+	if character.smash_cooldown_left() > 0.0:
+		return false
+	for other in _roster():
+		if other == null or not is_instance_valid(other) or other.team == character.team:
+			continue
+		var distance := character.global_position.distance_to(other.global_position)
+		if distance > CAN_SMASH_TRIGGER_RANGE:
+			continue
+		if other.is_person:
+			return true
+		# The opposing tsinelas — only worth it LOOSE (underfoot, or about to be
+		# fetched next to us). One CARRIED or FLYING is not standing in the blast to
+		# begin with, and neither state is this leaf's question to answer.
+		var carriable := other.get_node_or_null("Carriable") as Carriable
+		if carriable != null and carriable.state == Carriable.CarryState.LOOSE:
+			return true
+	return false
+
+func _act_can_smash(_delta: float) -> int:
+	_release_move(0.0)
+	_tap("bump")
 	return BTNode.SUCCESS
 
 ## ---------------------------------------------------------------------------
