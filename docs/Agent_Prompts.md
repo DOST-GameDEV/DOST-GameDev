@@ -218,9 +218,10 @@ Lata
 > why they read as identical in play. **Author real geometry per class.** Amend
 > `Art_Direction.md` §4 to say so in the same commit; you own that file.
 >
-> **Call them what the game calls them: LATA and TSINELAS.** Not "can", not "slipper" — in
-> every class name, every tagline and every line of UI you touch. The English words are for
-> these docs only.
+> **Filipino goes in the class NAMES only. Everything else stays English.** A class is
+> called `LATA NG SARDINAS` or `BAKYA`; its tagline, every UI label, every button, every
+> string a player reads outside that name, and all code and comments stay in English.
+> Do not translate the interface.
 >
 > **You set the roster size.** Six of each is what exists, not a requirement. Add classes,
 > cut the ones that never earned their slot — say what you chose and why.
@@ -232,7 +233,7 @@ Lata
 
 - [ ] 4.1 **A lata base mesh per class, each recognisably a specific Filipino tin** — the silhouette does the work, not the tint. Sardinas, gatas, biskwit, pintura, kape, softdrink: all different profiles, all readable from across the arena
 - [ ] 4.2 **A tsinelas base mesh per class, with genuinely different shapes** — a bakya is a carved wooden clog, not a tinted rubber flip-flop. Render the tsinelas types real Tumbang Preso is played with
-- [ ] 4.3 **Every class is Filipino-themed and newly named by you**, in Filipino, specific enough that a player from the street recognises it. Rewrite `name` and `tagline` across `CANS` / `SLIPPERS` in `character_roster.gd`
+- [ ] 4.3 **Every class is Filipino-themed and newly named by you** — the `name` field in Filipino, specific enough that a player from the street recognises it. **Taglines and everything else stay English.** Rewrite `CANS` / `SLIPPERS` in `character_roster.gd`
 - [ ] 4.4 **The roster size is your call** — final count of lata and tsinelas classes decided, justified in § LOG, and consistent everywhere an index is assumed
 - [ ] 4.5 Tsinelas **visibly bigger** in game
 - [ ] 4.6 A **hanger** in tsinelas customisation that provably cannot affect physics
@@ -377,9 +378,9 @@ Each block is paste-ready. Set model and effort first.
 > base mesh" law in `Art_Direction.md` §4 is lifted for you by human directive; update that
 > section yourself in the same commit.
 >
-> **They are called LATA and TSINELAS.** Never "can" or "slipper" in a class name, a
-> tagline, or any UI string you touch — the English words exist in these docs and nowhere
-> else.
+> **Filipino goes in the class NAMES and nowhere else.** `LATA NG SARDINAS`, `BAKYA` — but
+> the tagline under it, every UI label, every button, and all code and comments stay in
+> **English**. You are naming twelve objects, not translating an interface.
 >
 > The lata should be **specifically Filipino tins** — sardinas, gatas, biskwit, pintura,
 > kape — told apart by silhouette from across the arena, not by colour. The tsinelas need
