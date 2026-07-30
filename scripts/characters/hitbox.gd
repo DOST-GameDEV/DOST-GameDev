@@ -120,10 +120,23 @@ func _on_area_entered(area: Area3D) -> void:
 		#
 		# Cans only. A Person knocked over has no "landed on its head" reading and
 		# no fall count to be spared from.
-		if target.is_can and randf() < CharacterBase.LUCKY_FALL_CHANCE:
+		if target.is_can and randf() < CharacterBase.lucky_fall_chance:
 			kind = "downed_lucky"
 	else:
 		kind = "stagger"
+
+	# ⚠️ TELL THE HOST'S OWN ROUND MANAGER, HERE, WHERE THE ROLL WAS JUST MADE.
+	#
+	# This line is already past the host gate above, so exactly one machine reaches it,
+	# and `kind` is the decision that machine just took. RoundManager used to infer the
+	# same fact by reading `target.last_fall_scored` from its own `state_changed`
+	# handler — but that flag is written by `_apply_hit_result` on the TARGET'S OWN PEER
+	# and is not replicated, so for a client-owned lata the host was reading a stale
+	# `true` and charging the defence for every lucky fall. Measured on two real peers:
+	# 0 lucky falls counted correctly out of 26 knockdowns of a client-owned can. See
+	# `round_manager.gd::host_note_fall` for the full account.
+	if target.is_can and kind.begins_with("downed"):
+		RoundManager.host_note_fall(target, kind == "downed")
 
 	# 4.1: which impact sound this hit makes. Asked of the HURTBOX, not decided
 	# here — see hurtbox.gd::impact_sfx for why the struck object owns that
