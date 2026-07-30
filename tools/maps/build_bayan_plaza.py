@@ -399,6 +399,9 @@ def _civic_blocked(mesh_name, x, z, yaw, scale):
 ## 2.30, and the ring must stand at least that far outside BOUND. 2.6 leaves 0.3 of
 ## margin. Verified in bp_corner_* — the corner cameras at |12| were rendering from
 ## INSIDE the canopy before this.
+## The only broadleaf asset in the repo — see the note in the ring loop below.
+PUNO_MESH = "kits/town/tree-high-round"
+PUNO_SCALE = [1.0, 1.18, 0.88, 1.09, 0.95, 1.14]
 TREE_RING_OUT = 2.6
 JITTER = [0.0, 0.9, -0.6, 1.4, -1.1, 0.4, -1.6, 1.1]
 n = 0
@@ -412,33 +415,34 @@ for k in range(count):
             x, z = sx * (BOUND + TREE_RING_OUT), t + j
         else:
             x, z = t + j, sz * (BOUND + TREE_RING_OUT)
-        # ⚠️ PUNO, NOT PINES — open item 7, and it was the loudest wrong thing on
-        # this map. Every tree in both rings was a Kenney conifer, so a plaza with
-        # a Philippine church, a bell tower and a municipal hall in it was ringed
-        # by a Nordic forest. The item was closed as unfixable by re-picking a
-        # piece, which was true: the kits contain no broadleaf and no palm.
-        # env_kit.gd generates three now (see build_eskinita.py's Puno block for
-        # why each one is shaped the way it is), so this is a straight SWAP — the
-        # same ring, the same count, the same spacing, different species.
-        #
-        # ⚠️ AND THEY GO THROUGH `add()`, NOT `add_kit()`. The puno are generated
-        # `env_*` meshes authored at 1 unit = 1 m; TOWN_SCALE 2.6 and FOREST_SCALE
-        # 3.9 exist to bring Kenney's kit trees up to character scale and would
-        # put a 17-metre banana on the plaza.
-        near = ["puno_mangga", "puno_niyog", "puno_saging", "puno_mangga"][k % 4]
+        # ⚠️ BROADLEAF KIT TREES, NOT CONIFERS AND NOT THE GENERATED PUNO.
+        # Open item 7 was that every tree here was a Kenney PINE, so a plaza with a
+        # Philippine church and a bell tower in it was ringed by a Nordic forest.
+        # The generated puno that replaced them were rejected on the human's call
+        # ("they dont look like trees, js use different assets") — see the long note
+        # in build_eskinita.py's Puno block. The Fantasy Town and Mini Forest trees
+        # are ROUNDED BROADLEAF, so the pine silhouette is still gone, which is the
+        # half of open item 7 that actually mattered.
+        # ⚠️ ONE SPECIES, BECAUSE THERE IS ONLY ONE. Rendering all eight tree
+        # assets in the repo showed `kits/town/tree-high-round` is the only ROUNDED
+        # canopy — `town/tree`, `town/tree-high`, `town/tree-crooked`,
+        # `forest/tree`, `forest/tree-high` and both `city` trees are stepped cones.
+        # Picking "a different kit so it reads as another species" therefore picked
+        # another PINE, which is open item 7 all over again. Repetition is broken
+        # with seeded scale and yaw instead; see build_eskinita.py's note.
         near_yaw = (k % 4) * 0.7
-        if not _civic_blocked(near, x, z, near_yaw, 1.0):
-            add("Dressing/TreesNear", f"Puno_{n}", near, x, z, near_yaw,
-                lane_exempt=True)
+        near_s = TOWN_SCALE * PUNO_SCALE[k % len(PUNO_SCALE)]
+        if not _civic_blocked(PUNO_MESH, x, z, near_yaw, near_s):
+            add_kit("Dressing/TreesNear", f"Puno_{n}", PUNO_MESH, x, z,
+                    near_yaw, near_s)
         n += 1
-        # The layer behind: the TALL species, so the ring reads as two depths of
-        # canopy rather than one hedge. A coconut is the right silhouette for the
-        # layer you only see the top of.
-        far = "puno_niyog" if k % 2 else "puno_mangga"
+        # The layer behind: the SAME tree, taller and further out, which is what
+        # gives the ring two depths of canopy.
         fx, fz, far_yaw = x * 1.28 - j * 0.4, z * 1.28 + j * 0.4, (k % 3) * 0.9
-        if not _civic_blocked(far, fx, fz, far_yaw, 1.0):
-            add("Dressing/TreesFar", f"PunoMalayo_{n}", far, fx, fz, far_yaw,
-                lane_exempt=True)
+        far_s = 3.4 * PUNO_SCALE[(k + 3) % len(PUNO_SCALE)]
+        if not _civic_blocked(PUNO_MESH, fx, fz, far_yaw, far_s):
+            add_kit("Dressing/TreesFar", f"PunoMalayo_{n}", PUNO_MESH, fx, fz,
+                    far_yaw, far_s)
         n += 1
 
 # --- Ground cover, in the band BETWEEN THE TWO TREE RINGS. -------------------
