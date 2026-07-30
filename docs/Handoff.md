@@ -158,6 +158,120 @@ For any coding agent picking up this queue.
 **Only open items live here.** B-01 … B-66 are in [`Handoff.md`](Handoff.md); everything
 marked `[FIXED]` there is done and settled. New bugs take the next free number **in this file**.
 
+**B-143 · THE MID-GAME HUD WAS A DIFFERENT DESIGN LANGUAGE FROM THE GAME IT IS IN. [FIXED 2026-07-30 — first pass]**
+
+Reported from play: the HUD and mid-game UI *"kinda doesnt look like our theme (menu and lobby), it looks
+ugly and plain and confusing."* Three separate problems, and all three were real.
+
+1. **OFF-THEME.** The front end ships wood and amber — `WOOD_DEEP` bodies, `WOOD_EDGE` edges, a 12px
+   radius, a hard drop shadow, `CREAM` body text, `AMBER` values. The HUD was near-white `card_style`
+   cards with a navy translucent timer. Two design languages on one screen, and the HUD is the one the
+   player looks at for the whole match.
+2. **PLAIN.** Flat fills, no shadow, one text weight, no hierarchy between the timer, the score and the
+   role.
+3. **CONFUSING**, and this half was a genuine defect, not taste:
+   - **An unwon round pip was drawn at alpha 0.** `_fill_pips` painted the *filled* state and left the
+     empty state fully transparent. On the old white card that was survivable; the scoreboard's empty
+     state was invisible either way, so "best of 5, you have won none" looked like *no scoreboard*.
+     ⚠️ **This is the readable half of the older "the indicator boxes remain empty" report** — that fix
+     corrected the FILL colour and never touched the empty state. Now a dark `WOOD_DARK` well with a
+     `WOOD_EDGE` rim: an empty slot has to be drawn to be seen.
+   - **Team identity was one character buried mid-string** in `"A · OFFENSE"` at body size, so in
+     practice **hue was doing the job the letter mark is supposed to do** — against the §4.2 rule that
+     team is the letter and never the colour. The letter is now its own AMBER glyph at 48px on the
+     card's outer edge, and the label beside it carries the role alone.
+
+**Fix:** `hud.gd::_apply_wood_skin()` + `_style_team_card()`, built from **`UiTheme.wood_style()`** — the
+same static call the menu's own `WoodSlot` variation uses, so the HUD cannot drift from the front end
+again. Timer is the menu's *recessed* slot (`WOOD_DARK`, `sink = true`), which is the front end's existing
+idiom for "a value being shown to you". `you_card.gd` moved to the same face. The ready-phase objective
+plate is re-skinned per role in `_refresh_ready_objective` — authored INK in the scene, which was right
+while the HUD was navy and became the one navy element on a wood screen the moment the skin landed.
+
+⚠️ **IT IS PER-NODE OVERRIDES IN CODE, NOT THEME VARIATIONS, AND THAT IS A COMPROMISE.** The `Hud*`
+variations live in `ui_theme.gd`, which is 🩴 **ART's file and not writable by the UX lane**. The tokens
+are all still `UiTheme`'s, but the application is scattered across `hud.gd`/`you_card.gd` instead of being
+one `_register_variations` block. 🩴 **FOR ART: promote these into `HudCard`/`OffenseCard`/`DefenseCard`
+and delete the overrides.**
+
+**Verified:** rendered both role states off the real `Main.tscn`
+(`tools/ui/ready_objective_shot.tscn`) and looked at them; layout probe still **PASS, 44 assertions** at
+16:9 and 21:9 — the cards widened 200→250 for the letter mark and `TopLeft`/`TopCentre`/`TopRight` are
+still pairwise disjoint at both aspects.
+
+**Second pass, same day — three pieces of play feedback, all correct:**
+
+- *"big negative space in the ingame hud"* — the team cards were a fixed 250px around a glyph and a
+  seven-letter word, so the right third was empty wood. **Zero-width boxes now**
+  (`offset_right == offset_left`): a Control's size is clamped **up** to its content minimum, which is
+  the one place that rule helps rather than bites. `TopRight` grows leftward with `grow_horizontal = 0`.
+  ⚠️ **That forced `clip_text` OFF the role labels** — `clip_text` makes a Label report a **zero**
+  minimum width, correct inside a fixed card and fatal inside a hugging one, where it collapses the word
+  to nothing. The two role strings are fixed constants, so they may size the card; **anything
+  variable-length must give the card a floor back first.**
+- *"in knock the lata down, the 2 and walk around freely, it kinda looks ugly with that hud/ui, can u js
+  do text there but stylized"* — **the plates are gone.** The legibility problem they solved is real, so
+  it is solved with a heavy **INK outline** on the glyphs instead: the same trick the screen-edge arrows
+  use. CREAM for instruction, AMBER for alert, role colour for the objective.
+- *"big negative space in … the tutorial"* — see 10.5.2/10.5.3; new
+  `CharacterPreview.set_tile_framing()`.
+
+**Third pass — the last two mid-game screens, with R-29 (see below):** `RoleSwapCard` and `MatchResult`
+are now on the same wood face, including `MatchResult`'s two **buttons**, which had stayed on the
+theme's default near-white `card_style` and read as dialog buttons pasted onto a wooden sign.
+`MatchResult`'s unfilled pips were `UiTheme.CARD` — the same invisible-empty-state problem, now a dark
+well.
+
+**Still on this item:** the `Hud*` font-size ladder (six sizes of the same shout, per `ui_theme.gd`'s own
+note) is untouched, and the overrides still want promoting into variations by 🩴 ART.
+
+**B-141 · CHARACTER SELECT PUT THE FIGURE ON ONE FLAT NAVY FILL. [FIXED 2026-07-30]**
+
+Reported from play: *"im not sure if theres a background for chara selection or its just blue."* It was
+just blue. The backdrop node stack (`CharacterPreview` + `Scrim` + `ConfigPanel`) was all present, but
+the preview `Environment` was `background_mode = 1` (**BG_COLOR**) filling `#161F35`, and an opaque
+`SubViewport` means nothing placed behind it could ever have shown.
+
+**Fix:** `SubViewport.transparent_bg = true` + `background_mode = 0`, then a `Backdrop` TextureRect
+(vertical `GradientTexture2D`, PANEL-haze → INK floor) and a `BackdropGlow` (`FILL_RADIAL`, neutral
+PANEL at ≤0.30 alpha) as the first two children of the root. Textures, **no shader**. The gradient runs
+light-at-top so dark hair reads against the light end and pale shoes against the dark one; the tsinelas
+tab benefits most — brown-on-navy was the worst pairing on the screen.
+
+**Verified:** rendered and looked at, at both 16:9 and 21:9 — `ui_character_select{,_lata,_tsinelas}.png`.
+
+⚠️ **AND AS THE OVERLAY, which is how a player actually reaches it.** `MatchSetup.tscn` instances this
+scene as `%CharacterSelectPanel` over a **live 3D map render**, and the panel's opacity used to come from
+that flat `BG_COLOR`. New probe `tools/ui/charselect_overlay_shot.tscn` opens the panel through its own
+button and shoots all three tabs: the map does not show through. No existing probe covered this — they all
+load `CharacterSelect.tscn` standalone, where there is nothing behind it to leak.
+
+**B-142 · THE LAYOUT PROBE'S "SECOND RESOLUTION" RE-MEASURED THE FIRST ONE. [FIXED 2026-07-30]**
+
+`ui_layout_probe.gd` printed a `########## 1280 x 720 ##########` banner and then `viewport 1920x1080`
+with every rect identical to the 1080p pass, digit for digit. So "verified at a second resolution" — the
+claim in `Checklist.md` 10.5.1 — **was not true**, and 42 of the 42 assertions were one resolution twice.
+
+**Cause is not the resize.** `_apply_size()` works; `2560x1080` reports `viewport 2560x1080`. It is
+`project.godot`'s `stretch/mode="canvas_items"` + `stretch/aspect="expand"`: under `expand` the content
+rect follows the window's **aspect**, not its pixel count, and 1280x720 is the same 16:9 as the base — so
+the content rect is *obliged* to stay 1920x1080. 720p was a second window size dressed as a second layout
+case.
+
+**Worth knowing before picking presets:** `expand` only ever **grows** the content rect — 1440x1080 (4:3)
+lays out at `1920x1440`, taller, never narrower. No window can push a control off the **right** edge, and
+**16:9 is permanently the tightest case vertically**, which is why R-09's 7px `BackButton` overflow only
+ever appeared at 1080p.
+
+**Fix:** second preset → `2560x1080` (21:9), where the content rect genuinely widens and anything
+right-anchored or centred moves relative to the left-anchored panels — the drift the overlap assertion
+exists for. Plus a **`SAME CONTENT RECT` assertion**: a pass whose content rect equals an earlier pass's
+now **fails** instead of printing. **44 assertions pass** at 16:9 + 21:9.
+
+**Verified in both directions** — the assertion was proven to fire, not just to pass: the explicit-size
+argument now takes a comma list, and `-- "" 1920x1080,1280x720` reports
+`** SAME CONTENT RECT **` and `FAIL — 1 of 44`.
+
 **B-139 · THE AI HAD EIGHT DEFECTS THAT LOOKED LIKE BALANCE, AND THE HARNESS HAD A NINTH. [FIXED 2026-07-30 — `534fe36`, `d900209`]**
 
 Kept as one entry because they share one cause: nine runs of the fairness log read the aggregate columns

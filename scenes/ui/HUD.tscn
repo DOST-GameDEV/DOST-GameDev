@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3 uid="uid://d5k8m2n4p6q9r"]
+[gd_scene load_steps=8 format=3 uid="uid://d5k8m2n4p6q9r"]
 
 [ext_resource type="Script" path="res://scripts/ui/hud.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/ui/YouCard.tscn" id="2"]
@@ -28,91 +28,156 @@ material = SubResource("ShaderMaterial_1")
 mouse_filter = 2
 visible = false
 
+; ═══ TEAM CARD, LEFT ═══ Restyled 2026-07-30 to the menu's wood-and-amber language.
+;
+; Reported from play: the mid-game HUD "kinda doesnt look like our theme (menu and
+; lobby), it looks ugly and plain and confusing". It was a near-white `card_style`
+; panel — correct per the older §4.1 note, and nothing like the wood the front end
+; actually shipped with.
+;
+; ⚠️ THE STYLEBOX IS NOT SET HERE. `hud.gd::_apply_wood_skin()` builds it from
+; `UiTheme.wood_style()` — the same static call the menu's own `WoodSlot` uses — so the
+; HUD cannot drift from the front end. It is done in code rather than as a theme
+; variation only because the variations live in `ui_theme.gd`, which is ART's file and
+; not writable by this lane; filed for ART to promote.
+;
+; ⚠️ THE LETTER MARK IS WHY THIS IS AN HBOX NOW. The hard rule is that team identity is
+; the A/B letter and NEVER hue — but the letter was buried mid-string in "A · OFFENSE"
+; at body size, so in practice hue was doing all the work and the two cards were
+; distinguished only by which corner they sat in. The letter is now its own amber glyph
+; at display size, and the ROLE word beside it carries the role colour.
+;
+; ⚠️ ZERO-WIDTH BOX ON PURPOSE — `offset_right == offset_left`. Reported on the first
+; restyle render: *"big negative space in the ingame hud"*. The card was a fixed 250px
+; and its content is a glyph plus a seven-letter word, so the right third was empty wood.
+; A Control's size is clamped UP to its content minimum, which is the one place that rule
+; is useful rather than a trap: a zero-width box hugs whatever is in it. TopRight does the
+; same with `grow_horizontal = 0` so it grows leftward from the right anchor instead of
+; off the screen.
+;
+; ⚠️ AND THAT IS WHY THE ROLE LABEL HAS NO `clip_text`. `clip_text` makes a Label report a
+; zero minimum width — correct inside a fixed card, fatal inside a hugging one, where it
+; would collapse the word to nothing. The two role strings are fixed constants of known
+; length, so they are allowed to size the card. Anything variable-length must not go in
+; here without giving the card a floor back.
 [node name="TopLeft" type="PanelContainer" parent="."]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 0
 offset_left = 16.0
 offset_top = 12.0
-offset_right = 216.0
-offset_bottom = 92.0
-theme_type_variation = &"OffenseCard"
+offset_right = 16.0
+offset_bottom = 12.0
 mouse_filter = 2
 
-[node name="VBoxContainer" type="VBoxContainer" parent="TopLeft"]
+[node name="Row" type="HBoxContainer" parent="TopLeft"]
 layout_mode = 2
+theme_override_constants/separation = 12
 mouse_filter = 2
 
-[node name="TeamALabel" type="Label" parent="TopLeft/VBoxContainer"]
+[node name="TeamALetter" type="Label" parent="TopLeft/Row"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_type_variation = &"HudBody"
-text = "A · OFFENSE"
+theme_override_font_sizes/font_size = 48
+vertical_alignment = 1
+text = "A"
 
-[node name="TeamAPipsBox" type="HBoxContainer" parent="TopLeft/VBoxContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="TopLeft/Row"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 4
+mouse_filter = 2
+
+[node name="TeamALabel" type="Label" parent="TopLeft/Row/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "OFFENSE"
+
+[node name="TeamAPipsBox" type="HBoxContainer" parent="TopLeft/Row/VBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 2
 mouse_filter = 2
 
-[node name="TeamAPip0" type="Panel" parent="TopLeft/VBoxContainer/TeamAPipsBox"]
+[node name="TeamAPip0" type="Panel" parent="TopLeft/Row/VBoxContainer/TeamAPipsBox"]
 layout_mode = 2
 custom_minimum_size = Vector2(14, 14)
 mouse_filter = 2
 
-[node name="TeamAPip1" type="Panel" parent="TopLeft/VBoxContainer/TeamAPipsBox"]
+[node name="TeamAPip1" type="Panel" parent="TopLeft/Row/VBoxContainer/TeamAPipsBox"]
 layout_mode = 2
 custom_minimum_size = Vector2(14, 14)
 mouse_filter = 2
 
-[node name="TeamAPip2" type="Panel" parent="TopLeft/VBoxContainer/TeamAPipsBox"]
+[node name="TeamAPip2" type="Panel" parent="TopLeft/Row/VBoxContainer/TeamAPipsBox"]
 layout_mode = 2
 custom_minimum_size = Vector2(14, 14)
 mouse_filter = 2
 
+; ═══ TEAM CARD, RIGHT ═══ Mirrors TopLeft node-for-node; read its comment.
+; The letter mark is the LAST child here and the first one there, so both cards put the
+; glyph on their own outer edge and the two read as a matched pair rather than as one
+; layout and its copy.
 [node name="TopRight" type="PanelContainer" parent="."]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -216.0
+offset_left = -16.0
 offset_top = 12.0
 offset_right = -16.0
-offset_bottom = 92.0
-theme_type_variation = &"DefenseCard"
+offset_bottom = 12.0
+grow_horizontal = 0
 mouse_filter = 2
 
-[node name="VBoxContainer" type="VBoxContainer" parent="TopRight"]
+[node name="Row" type="HBoxContainer" parent="TopRight"]
 layout_mode = 2
+theme_override_constants/separation = 12
 mouse_filter = 2
 
-[node name="TeamBLabel" type="Label" parent="TopRight/VBoxContainer"]
-unique_name_in_owner = true
+[node name="VBoxContainer" type="VBoxContainer" parent="TopRight/Row"]
 layout_mode = 2
-theme_type_variation = &"HudBody"
-text = "B · DEFENSE"
+size_flags_vertical = 4
+theme_override_constants/separation = 4
+mouse_filter = 2
 
-[node name="TeamBPipsBox" type="HBoxContainer" parent="TopRight/VBoxContainer"]
+[node name="TeamBLabel" type="Label" parent="TopRight/Row/VBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2
+theme_override_font_sizes/font_size = 22
+horizontal_alignment = 2
+text = "DEFENSE"
+
+[node name="TeamBPipsBox" type="HBoxContainer" parent="TopRight/Row/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+alignment = 2
 theme_override_constants/separation = 2
 mouse_filter = 2
 
-[node name="TeamBPip0" type="Panel" parent="TopRight/VBoxContainer/TeamBPipsBox"]
+[node name="TeamBPip0" type="Panel" parent="TopRight/Row/VBoxContainer/TeamBPipsBox"]
 layout_mode = 2
 custom_minimum_size = Vector2(14, 14)
 mouse_filter = 2
 
-[node name="TeamBPip1" type="Panel" parent="TopRight/VBoxContainer/TeamBPipsBox"]
+[node name="TeamBPip1" type="Panel" parent="TopRight/Row/VBoxContainer/TeamBPipsBox"]
 layout_mode = 2
 custom_minimum_size = Vector2(14, 14)
 mouse_filter = 2
 
-[node name="TeamBPip2" type="Panel" parent="TopRight/VBoxContainer/TeamBPipsBox"]
+[node name="TeamBPip2" type="Panel" parent="TopRight/Row/VBoxContainer/TeamBPipsBox"]
 layout_mode = 2
 custom_minimum_size = Vector2(14, 14)
 mouse_filter = 2
+
+[node name="TeamBLetter" type="Label" parent="TopRight/Row"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 48
+vertical_alignment = 1
+text = "B"
 
 [node name="TopCentre" type="VBoxContainer" parent="."]
 layout_mode = 1
@@ -252,6 +317,50 @@ horizontal_alignment = 1
 text = "Walk around freely. Press [R] when you're ready to start the round."
 visible = false
 
+; R-27(b) — WHAT YOUR JOB IS THIS ROUND, on the one screen that had nothing to say.
+; The ready phase told the player how to start the round and not what they were about
+; to do in it. Sits ABOVE ReadyPrompt (which keeps the instruction) and is deliberately
+; larger, because this is the headline and "press R" is the footnote.
+;
+; The colour is NOT set here — `hud.gd::show_ready_prompt()` tints the label OFFENSE or
+; DEFENSE from the local unit's actual role, so it cannot disagree with the team cards
+; along the top.
+;
+; ⚠️ NO PANEL BEHIND IT — TEXT ONLY, AND THAT IS THE SECOND ANSWER TO THIS PROBLEM.
+; The legibility problem is real: bottom-centre of an FPP screen is where the viewmodel
+; arms are, and role-blue on a full-brightness orange arm is the worst pairing on the
+; screen. The first fix was a wood plate, and it was rejected on sight — *"it kinda looks
+; ugly with that hud/ui, can u js do text there but stylized"*. Fair: two stacked boxes at
+; the bottom of the frame fought the 3D instead of sitting on it.
+;
+; So legibility now comes from a heavy INK OUTLINE on the glyphs instead of a box behind
+; them — set in `hud.gd::_apply_wood_skin()`, the same trick the screen-edge arrows use.
+; It reads over the arms, over asphalt and over sky, and it adds no rectangle.
+;
+; CenterContainer so the label hugs its own text and stays centred at any aspect.
+[node name="ReadyObjectiveRow" type="CenterContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -560.0
+offset_top = -184.0
+offset_right = 560.0
+offset_bottom = -120.0
+mouse_filter = 2
+visible = false
+
+[node name="ReadyObjective" type="Label" parent="ReadyObjectiveRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 44
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "KNOCK THE LATA DOWN"
+
 [node name="Crosshair" type="Control" parent="."]
 unique_name_in_owner = true
 layout_mode = 1
@@ -268,6 +377,7 @@ mouse_filter = 2
 visible = false
 
 [node name="CrosshairLabel" type="Label" parent="Crosshair"]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
