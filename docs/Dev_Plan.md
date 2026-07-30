@@ -9,6 +9,21 @@ actually in this repo, not against intent. Design source of truth is
 
 ---
 
+
+## Jump to
+
+<sub>Auto-added 2026-07-30 so this file stops being one long scroll. Keep it in step when you add a `##` section.</sub>
+
+- [0. Standing directives](#0-standing-directives)
+- [1. Where the build actually stands](#1-where-the-build-actually-stands)
+- [2. Architecture — how the pieces fit](#2-architecture-how-the-pieces-fit)
+- [3. Camera architecture — FPP / TPP split](#3-camera-architecture-fpp-tpp-split)
+- [4. UI architecture — moodboard implementation](#4-ui-architecture-moodboard-implementation)
+- [5. Build order](#5-build-order)
+- [6. Working agreements](#6-working-agreements)
+- [7. Godot setup (for anyone new to the project)](#7-godot-setup-for-anyone-new-to-the-project)
+- [TUMBANG PRESO 🥫🩴](#tumbang-preso)
+
 ## 0. Standing directives
 
 These override anything older in this document, in the GDD, or in previous handoffs. If you

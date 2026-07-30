@@ -36,15 +36,61 @@ const CHARGE_FULL_TIME: float = 0.9
 ## Power floor, so a tap still throws rather than dropping the slipper at your
 ## feet. Fraction of ThrowProfile.launch_speed.
 const CHARGE_MIN_POWER: float = 0.35
+
+## ---------------------------------------------------------------------------
+## R-06 · THE LOB (`bagsak`) — seconds of hold PAST full power at which the throw
+## stops being a flat rifle shot and becomes a dropping lob.
+##
+## ⚠️ NOT A NEW INPUT ACTION, AND THAT IS THE DESIGN, NOT A SHORTCUT. The charge
+## is already an analogue hold; the lob is a REGION of it. A fourth verb on a
+## four-player party game is a fifth thing to explain in the tutorial (R-06's own
+## note), and the existing hold already carries a number nobody was reading:
+## `_charge_time` used to be clamped flat at CHARGE_FULL_TIME, so every millisecond
+## of hold past 0.9 s produced the identical throw. That surplus is the input.
+##
+## ⚠️ PUBLIC, AND `AIController.attacker_lob_overhold` MUST READ IT RATHER THAN
+## RESTATE IT. That file shipped its half of R-06 ahead of this one and had to
+## guess the threshold (`ATTACKER_LOB_OVERHOLD = 0.20`, with a note saying "the
+## PHYS lane owns the real threshold ... the two have to agree or the AI will hold
+## for a lob and throw a flat"). 0.20 is deliberately kept, so the two agree TODAY
+## by coincidence of value; they should agree BY CONSTRUCTION, exactly as
+## `_charge_fraction()` already reads CHARGE_MIN_POWER and CHARGE_FULL_TIME out of
+## this file. Flagged for the balance lane — `ai_controller.gd` is not this lane's
+## to write.
+##
+## Sized as a COMMITMENT WINDOW, not a ramp: the whole 0.20 s is the price of the
+## lob, and releasing anywhere inside it still throws the ordinary full-power flat
+## shot. So a player who simply holds too long is not punished with a mystery
+## trajectory — they get the shot they were charging — and a player who wants the
+## lob has to hold visibly, deliberately longer, which is the readability R-10
+## asks of every committed throw.
+const LOB_OVERHOLD_TIME: float = 0.20
+## Where the hold stops accumulating at all. Past this the lob is armed and more
+## hold changes nothing, so there is no hidden third region.
+const CHARGE_MAX_TIME: float = CHARGE_FULL_TIME + LOB_OVERHOLD_TIME
+## What `charge_changed` reports at the instant the lob arms. See charge_meter().
+const LOB_METER_ARMED: float = 2.0
 ## T-3: seconds of uninterrupted hold to stand a knocked-down lata back up. Long
 ## enough that the attacking side gets a real window to punish a taya who commits
 ## to it, short enough that defending is not hopeless once the can goes over.
-## Pure guess until someone plays it — this is the tuning knob for the whole
+##
+## ⚠️ 1.5 -> 2.2, third of the four "too easy for the lata to get back up" levers
+## — the full set is documented on `CharacterBase.DOWNED_SELF_RIGHT_WINDOW`. The
+## channel is the taya's ONLY commitment in the whole round: it is the one moment
+## they stand still and can be tagged for it. At 1.5 s that window was shorter
+## than the attacker's own charge-and-throw cycle, so there was nothing to punish
+## and the reset was effectively free. 2.2 s makes going for it a decision.
+##
+## Still a guess until someone plays it — this is the tuning knob for the whole
 ## defensive half of the round.
-const RESET_CHANNEL_TIME: float = 1.5
+const RESET_CHANNEL_TIME: float = 2.2
 
-## Emitted on the local peer while charging, 0..1, for the HUD's charge meter.
+## Emitted on the local peer while charging, for the HUD's charge meter.
 ## -1 means "not charging", which is a distinct state from "charging at zero".
+##
+## ⚠️ THE RANGE IS 0..2 NOW, NOT 0..1, AND THE TOP HALF IS THE LOB (R-06). The
+## signal signature is deliberately UNCHANGED — see charge_meter() for the encoding
+## and for why the two existing consumers keep working untouched.
 signal charge_changed(power: float)
 ## Emitted when this Person picks something up or loses it, so the HUD can show
 ## SLIPPER READY vs GO GET IT without polling every frame.
@@ -63,6 +109,86 @@ var _is_charging: bool = false
 ## T-3. The lata currently being channelled, and how far in we are.
 var _channel_target: Carriable = null
 var _channel_time: float = 0.0
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE WIND-UP EVERY OTHER PEER CAN SEE. Human report, 2026-07-30: *"everyone
+## else should see its windup happening."*
+##
+## They could not, and not by oversight — there was no path for it to travel. The
+## charge lived entirely on the charging peer:
+##
+##   * `_charge_time` is written in `input_step()`, which `character_base.gd` calls
+##     only for the character THAT PEER controls (its authority gate);
+##   * `charge_changed` is a local signal consumed by `you_card.gd`, i.e. the charging
+##     player's own HUD;
+##   * `character_visual.gd` polls `charge_power()` to drive the FIRST-PERSON viewmodel
+##     arm — which by construction only the charging player can see.
+##
+## So a taya had nothing to read. This file's own header calls a committed throw "a
+## real decision the taya can read and punish", and R-10's whole premise is that a
+## wind-up is readable; both were true only of the thrower's own screen. The rising
+## charge tone (`throw_charge`, played positionally on every peer) was the ONLY cue
+## anyone else got, which is why the fix was worth having and why the sound alone was
+## not enough.
+##
+## ⚠️ BROADCAST ONCE, THEN RECOMPUTED LOCALLY — NOT STREAMED. An RPC per frame at 60 Hz
+## for a cosmetic ramp is exactly what B-19 throttled `_sync_state` for. The charge
+## curve is deterministic in elapsed time, so every peer starts its own clock from one
+## "begin" message and arrives at the same number, which is the same idiom
+## `carriable.gd::_step_carried` uses for a carried slipper ("once every peer knows WHO
+## is carrying, each recomputes the transform locally") and the same one
+## `_rpc_apply_scuff` uses for its timers.
+##
+## What is NOT built here, deliberately: the third-person POSE. `play_visual_action`
+## is emitted on every peer with the kind `"charge"`, and `character_visual.gd`'s
+## `ACTION_CLIPS` has no entry for it yet — that file is the visual lane's and adding
+## one line to that dictionary is the whole remaining job. Until it does, this is a
+## silent no-op on the body (both `play_action` and `play_viewmodel_action` skip an
+## unknown clip) and the observable value below is available for it.
+## ---------------------------------------------------------------------------
+
+## Ticks on EVERY peer while this Person is observed to be charging, -1 when not.
+var _observed_charge_time: float = -1.0
+
+## The charge fraction as any peer can see it, 0..1, or -1 when this Person is not
+## charging. Same curve as `charge_power()`, recomputed rather than replicated.
+func observed_charge_power() -> float:
+	if _observed_charge_time < 0.0:
+		return -1.0
+	return clampf(
+		CHARGE_MIN_POWER + (_observed_charge_time / CHARGE_FULL_TIME) * (1.0 - CHARGE_MIN_POWER),
+		CHARGE_MIN_POWER, 1.0)
+
+## Whether the throw this Person is currently winding up would be a lob — visible to
+## every peer, so a defender can read "that one is going over you" and move.
+func observed_lob_armed() -> bool:
+	return _observed_charge_time >= CHARGE_MAX_TIME
+
+## Runs on every peer, unlike input_step(). Only the observed clock is ticked here;
+## the authoritative `_charge_time` stays where the input is read.
+func _physics_process(delta: float) -> void:
+	if _observed_charge_time >= 0.0:
+		_observed_charge_time = minf(_observed_charge_time + delta, CHARGE_MAX_TIME)
+
+## Told to every peer at the START of a charge and again when it ends, by any route —
+## released, cancelled, tagged out of our hands, round reset.
+func _broadcast_charge(active: bool) -> void:
+	if NetworkManager.is_networked():
+		_rpc_charge_visual.rpc(active)
+	else:
+		_rpc_charge_visual(active)
+
+## "any_peer" / "call_local" for the reason every broadcast in carriable.gd documents:
+## this is sent by the charging peer, which is not necessarily this node's authority as
+## far as any given receiver is concerned, and an "authority" RPC would be dropped.
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_charge_visual(active: bool) -> void:
+	_observed_charge_time = 0.0 if active else -1.0
+	if _character == null:
+		return
+	# Cosmetic only, and the same contract bump/throw/grab already use: this says WHAT
+	# happened and CharacterVisual decides what it looks like.
+	_character.play_visual_action("charge" if active else "throw")
 
 @onready var _grab_area: Area3D = get_parent().get_node_or_null("GrabArea")
 
@@ -115,11 +241,69 @@ func is_charging() -> bool:
 	return _is_charging
 
 ## 0..1 while charging, -1 otherwise.
+##
+## ⚠️ LAKAS IS DELIBERATELY *NOT* APPLIED HERE. This is what the HUD charge meter
+## and the first-person wind-up both read, and a meter that fills past its own
+## bar (or never reaches the end of it) reads as broken rather than as a stat.
+## The trait is applied once, at the moment of release, in `_request_throw()` —
+## so a strong thrower's full bar simply carries further than a weak one's full
+## bar, which is the thing being modelled.
+## ⚠️ STILL CLAMPED TO 1.0 WITH THE LOB REGION IN PLAY, and that is required, not
+## incidental: this is what the throw's SPEED is scaled by (`host_throw` clamps it
+## again) and what the viewmodel wind-up reads. A lob is not a harder throw — it is
+## the same speed on the other root of the same arc — so letting this exceed 1.0
+## would silently make the lob a power buff as well as a trajectory, which is
+## exactly the "strictly better shot" R-06 forbids.
 func charge_power() -> float:
 	if not _is_charging:
 		return -1.0
 	return clampf(CHARGE_MIN_POWER + (_charge_time / CHARGE_FULL_TIME) * (1.0 - CHARGE_MIN_POWER),
 		CHARGE_MIN_POWER, 1.0)
+
+## R-06. How far into the lob commitment window this hold has got, 0..1. 0 for the
+## whole of the ordinary charge, 1 when the lob is armed. -1 when not charging, the
+## same convention every other read in this file uses.
+func lob_progress() -> float:
+	if not _is_charging:
+		return -1.0
+	if LOB_OVERHOLD_TIME <= 0.0:
+		return 1.0 if _charge_time >= CHARGE_FULL_TIME else 0.0
+	return clampf((_charge_time - CHARGE_FULL_TIME) / LOB_OVERHOLD_TIME, 0.0, 1.0)
+
+## R-06. True when releasing RIGHT NOW throws a `bagsak` lob rather than a flat
+## shot. This is the one question the throw itself asks — read it before
+## `_cancel_charge()`, which zeroes the timer it depends on.
+func is_lob_armed() -> bool:
+	return _is_charging and _charge_time >= CHARGE_MAX_TIME
+
+## ⚠️ WHAT `charge_changed` CARRIES, AND WHY IT IS ONE FLOAT AND NOT TWO ARGUMENTS.
+##
+## R-06 asks for the lob region to be surfaced "in the existing charge signal" so
+## the HUD and the viewmodel can show it. Widening the signal to
+## `charge_changed(power, lob)` is the obvious way and it is the wrong one: the only
+## consumer, `you_card.gd::_on_charge_changed(power: float)`, takes one argument, and
+## a Godot signal emitted with more arguments than its callable accepts throws
+## *"Method expected 1 arguments, but called with 2"* on every single emit. That file
+## belongs to the UX lane, so widening here would break a file this lane may not fix.
+##
+## So the region rides the value instead, monotonically, in one number:
+##
+##     -1.0            not charging
+##     0.35 .. 1.0     the ordinary charge, exactly as before
+##     1.0  .. 2.0     inside the lob commitment window, filling
+##     2.0             the lob is ARMED — release now and it lobs
+##
+## ⚠️ AND IT IS BACKWARD COMPATIBLE ON BOTH CONSUMERS, CHECKED RATHER THAN ASSUMED.
+## `you_card.gd` does `charge_bar.value = power * charge_bar.max_value`, and a
+## `ProgressBar` clamps its own value — so the meter "fills and stops rather than
+## overflowing", which is what R-06's written spec asks for in those words.
+## `camera_rig.gd::set_viewmodel_charge` already does `clampf(power, 0.0, 1.0)`, so
+## the arm reaches full cock and holds. Neither file needs a line changed, and a HUD
+## lane that WANTS to draw the lob segment now has the number to draw it from.
+func charge_meter() -> float:
+	if not _is_charging:
+		return -1.0
+	return charge_power() + lob_progress() * (LOB_METER_ARMED - 1.0)
 
 ## Called from carriable.gd's host broadcast on EVERY peer, so `_held` and
 ## `Carriable.carrier` are always set and cleared together. Never call this to
@@ -178,20 +362,29 @@ func _step_throw(delta: float) -> void:
 	if _character.input_just_pressed("special_ability"):
 		_is_charging = true
 		_charge_time = 0.0
-		charge_changed.emit(charge_power())
+		charge_changed.emit(charge_meter())
+		# Tell every other peer a wind-up has started — see _broadcast_charge.
+		_broadcast_charge(true)
 		# 4.1. This file's own header calls a committed throw "a real decision
 		# the taya can read and punish" — until now it was readable only if the
 		# taya happened to be looking straight at the attacker's arm. The rising
 		# charge tone is what makes it readable from behind the can.
 		AudioManager.play_at("throw_charge", _character.global_position)
 	elif _is_charging and _character.input_pressed("special_ability"):
-		_charge_time = minf(_charge_time + delta, CHARGE_FULL_TIME)
-		charge_changed.emit(charge_power())
+		# R-06: CHARGE_MAX_TIME, not CHARGE_FULL_TIME. The extra LOB_OVERHOLD_TIME
+		# past full power is the lob's entire input surface — this one word is what
+		# makes the surplus hold mean something instead of being discarded.
+		_charge_time = minf(_charge_time + delta, CHARGE_MAX_TIME)
+		charge_changed.emit(charge_meter())
 	elif _is_charging and _character.input_just_released("special_ability"):
 		var power := charge_power()
+		# ⚠️ BEFORE _cancel_charge(), which zeroes `_charge_time` — the whole basis
+		# of the answer.
+		var lob := is_lob_armed()
 		_cancel_charge()
-		_character.play_visual_action("throw")
-		_request_throw(power)
+		# `_broadcast_charge(false)` inside _cancel_charge() already plays the throw
+		# follow-through on every peer, so this is not repeated here.
+		_request_throw(power, lob)
 
 ## T-3 / B-46 — the lata reset channel, driver side. Hold `grab` next to your own
 ## knocked-down lata and it stands back up when the bar fills; anything that
@@ -275,12 +468,18 @@ func _find_resettable() -> Carriable:
 			best = carriable
 	return best
 
+## ⚠️ EVERY exit from a charge comes through here — released, cancelled, the slipper
+## knocked out of our hands mid-hold, a round reset — which is exactly why the "the
+## wind-up is over" broadcast belongs here and not at the release site. A pose left
+## running on a Person who was tagged mid-charge is the mirror image of the invisible
+## wind-up: wrong on every screen except the one that knows.
 func _cancel_charge() -> void:
 	if not _is_charging:
 		return
 	_is_charging = false
 	_charge_time = 0.0
 	charge_changed.emit(-1.0)
+	_broadcast_charge(false)
 
 ## Nearest thing in the grab area this Person is actually allowed to pick up.
 ## The ownership rule itself lives in carriable.gd — this only asks.
@@ -365,6 +564,79 @@ func _aim_point() -> Vector3:
 		return origin + direction * AIM_RAY_LENGTH
 	return hit["position"]
 
+## How far ahead of the eye the slipper actually leaves from. Far enough that it
+## is not born inside the camera's near plane, close enough that it is still
+## "out of your hand" rather than lobbed from a metre in front of your face.
+##
+## ⚠️ 0.15, NOT 0.5, AND THE DIFFERENCE IS MEASURABLE IN HIT RATE. Moving the
+## launch forward shortens the horizontal distance the Can's evasion AI uses to
+## compute its ETA (`ai_controller.gd::_cond_slipper_incoming` works entirely in
+## the horizontal plane), so it enters the Can's 0.6 s lookahead window sooner
+## and the Can sidesteps earlier. Measured with `tools/phys_probe.gd`, 12 throws
+## at an evading Can: 0.5 m forward connected 1/12, 0.15 m connected 5/12.
+## Both fix the sag identically (0.006 m), so there is nothing to trade away by
+## keeping it short. See B-132 for the part of that drop this does NOT fix.
+const MUZZLE_FORWARD: float = 0.15
+
+## ⚠️ THE THROW LEAVES FROM THE SIGHT LINE, NOT FROM THE HAND, AND THAT IS THE
+## FIX FOR "THE HEIGHT OF THE TRAJECTORY IS TOO LOW".
+##
+## The ballistic solve was already landing the slipper on the crosshair point to
+## within a few centimetres — that was measured, and it is not what the report
+## was about. The problem was the shape of the flight in between. The slipper
+## used to leave the CharacterBase origin at hand height (y 0.89) while the
+## player sights from the eye (y 1.35), so the whole path hung under the line
+## being aimed along and only met it at the target.
+##
+## Measured, full charge, target on the floor at 4-10 m, across all four
+## profiles — maximum distance the flight falls below the eye->crosshair line:
+##
+##     leaving from the hand        0.38 - 0.43 m, worst at 0.13-0.22 m out
+##     leaving from the sight line  0.001 - 0.043 m
+##
+## Note WHERE the old sag peaked: within a fifth of a metre of the player. In
+## first person that is the slipper dropping out of the bottom of the screen the
+## instant it is released, which is exactly what "too low" describes, and no
+## amount of tuning the launch ANGLE could have fixed it — the path was right,
+## the starting height was not. Landing points are unchanged (0.25-0.29 m either
+## way), so this costs no accuracy.
+##
+## Falls back to the carried unit's own position when there is no rig or no
+## camera — an AI Person still throws, and its rig exists but nothing has ever
+## made its camera current. `get_aim_basis()` is valid either way, so the AI gets
+## the same sight-line launch a human does rather than a special case.
+func _throw_origin() -> Vector3:
+	var rig := _character.get_node_or_null("CameraRig") as CameraRig
+	if rig == null or rig.fpp_camera == null:
+		if _held != null and _held.get_parent() is CharacterBase:
+			return (_held.get_parent() as CharacterBase).global_position
+		return _character.global_position
+	return rig.fpp_camera.global_position + _aim_direction() * MUZZLE_FORWARD
+
+## The same origin, for a caller that has an aim POINT rather than a live aim direction —
+## i.e. every probe that drives `host_throw()` directly.
+##
+## ⚠️ THIS EXISTS SO THE PROBES AND THE GAME CANNOT LAUNCH FROM DIFFERENT PLACES, which is
+## the whole content of 10.6. When `code/throw-feel` was merged on 2026-07-30 three probes
+## were each about to grow their own copy of this, one of them with the eye height typed in
+## as a literal `1.35` — and the eye is `camera_rig.gd::_fpp_eye_height`, read off the pivot
+## at runtime, so that literal would have silently drifted the day the rig moved and every
+## number those tables print would have described a flight nobody performs.
+##
+## Geometrically identical to `_throw_origin()` above: the direction to the aim point IS the
+## aim direction, since the point was raycast along it.
+static func throw_origin_for(thrower: CharacterBase, aim_point: Vector3) -> Vector3:
+	if thrower == null:
+		return aim_point
+	var rig := thrower.get_node_or_null("CameraRig") as CameraRig
+	if rig == null or rig.fpp_camera == null:
+		return thrower.global_position
+	var eye := rig.fpp_camera.global_position
+	var to_aim := aim_point - eye
+	if to_aim.length() < 0.01:
+		return eye
+	return eye + to_aim.normalized() * MUZZLE_FORWARD
+
 ## ---------------------------------------------------------------------------
 ## Requests. On the host these call straight through; on a client they RPC to
 ## peer 1. Either way the decision is made in exactly one place.
@@ -376,16 +648,29 @@ func _request_grab(target: Carriable) -> void:
 	else:
 		_rpc_request_grab.rpc_id(1, target.get_parent().get_path())
 
-## Sends the aim POINT rather than the aim direction — see _aim_point() for why.
-## The raycast has to happen on the peer that owns the camera, so the point is
-## resolved here and travels; the host still owns whether the throw happens and
-## how it flies.
-func _request_throw(power: float) -> void:
+## Sends the aim POINT and the launch ORIGIN rather than the aim direction — see
+## _aim_point() and _throw_origin() for why each. Both are camera-derived, so both have to
+## be resolved on the peer that owns the camera and travel from there; the host still owns
+## whether the throw happens and how it flies.
+##
+## ⚠️ `lob` TRAVELS WITH THE THROW AND IS NEVER RE-DERIVED AT THE FAR END (R-06).
+## `power` clamps at 1.0, so a full-power flat throw and a lob are INDISTINGUISHABLE
+## by the time the host sees them — inferring "it was a lob" from the power value is
+## not merely fragile, it is impossible. The bool is the only carrier of a decision
+## that was made on the aiming peer, which is the same split aim itself already
+## uses: the client owns what it meant, the host owns whether it may happen.
+func _request_throw(power: float, lob: bool) -> void:
 	var target_point := _aim_point()
+	var origin := _throw_origin()
+	# LAKAS, applied once, at release — see charge_power()'s own note for why it is
+	# not baked into the meter. `host_throw()` clamps to 0..1 on the host, so a
+	# strong thrower cannot exceed the profile's own launch speed; what the trait
+	# buys is reaching full power from a shorter hold, which is exactly "stronger".
+	var thrown_power := clampf(power * _character.trait_power_scale(), 0.0, 1.0)
 	if _is_host():
-		_held.host_throw(target_point, power)
+		_held.host_throw(origin, target_point, thrown_power, lob)
 	else:
-		_rpc_request_throw.rpc_id(1, target_point, power)
+		_rpc_request_throw.rpc_id(1, origin, target_point, thrown_power, lob)
 
 ## T-3. Same shape as _request_grab: on the host, straight through; on a client,
 ## a request to peer 1. The host re-checks can_be_reset_by() from scratch — a
@@ -418,11 +703,20 @@ func _rpc_request_grab(target_character_path: NodePath) -> void:
 ## aim, which is client-authoritative by the same rule that makes a peer's own
 ## movement client-authoritative. WHETHER the throw may happen at all, and what
 ## it then hits, stay with the host.
+## `lob` defaults false so an older peer's two-argument call still resolves to the
+## flat throw that peer meant, rather than failing the RPC outright.
+##
+## ⚠️ THE WIRE FORMAT CARRIES BOTH `origin` AND `lob` AFTER THE 2026-07-30 MERGE.
+## `code/throw-feel` added the first and R-06 added the second, independently, and each
+## branch's version of this RPC dropped the other's argument. Sending only one would not
+## fail loudly — it would land a throw with the wrong shape or the wrong start height,
+## which is precisely the class of bug both changes were written to fix.
 @rpc("any_peer", "call_remote", "reliable")
-func _rpc_request_throw(target_point: Vector3, power: float) -> void:
+func _rpc_request_throw(origin: Vector3, target_point: Vector3, power: float,
+		lob: bool = false) -> void:
 	if not _is_host() or _held == null:
 		return
-	_held.host_throw(target_point, clampf(power, 0.0, 1.0))
+	_held.host_throw(origin, target_point, clampf(power, 0.0, 1.0), lob)
 
 ## Client → host, T-3. Mirrors _rpc_request_grab exactly, including re-resolving
 ## the target node from its path rather than trusting anything the client sent

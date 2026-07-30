@@ -15,6 +15,29 @@ record, the palette, the modelling rules and the kit spec are all still authorit
 *task lists* are stale — several items in them have shipped. Where a task list in Parts 2-5
 disagrees with `Checklist.md`, the checklist wins.
 
+
+## Jump to
+
+<sub>Auto-added 2026-07-30 so this file stops being one long scroll. Keep it in step when you add a `##` section.</sub>
+
+- [Contents](#contents)
+- [Art plan — next stage (proportions, sets, props)](#art-plan-next-stage-proportions-sets-props)
+- [1.9 · The throw — how it works, and what was added 2026-07-28](#19-the-throw-how-it-works-and-what-was-added-2026-07-28)
+- [2. What landed this pass](#2-what-landed-this-pass)
+- [Brief — 3D Modeling & Art Agent](#brief-3d-modeling-art-agent)
+- [Environment Kit Spec — checklist 2.1a](#environment-kit-spec-checklist-21a)
+- [Environment Art Agent Brief — the maps](#environment-art-agent-brief-the-maps)
+- [6.2 · Live-demo script, trailer beat sheet, demo-video outline](#62-live-demo-script-trailer-beat-sheet-demo-video-outline)
+- [8.0 · The audit — what is actually wrong, measured, not assumed](#80-the-audit-what-is-actually-wrong-measured-not-assumed)
+- [8.1 · Kill the void — the boundary strategy](#81-kill-the-void-the-boundary-strategy)
+- [8.2 · Make it lived-in without breaking the throwing lane](#82-make-it-lived-in-without-breaking-the-throwing-lane)
+- [8.3 · Lighting, tonemapping and the shading split](#83-lighting-tonemapping-and-the-shading-split)
+- [8.4 · Grounding — close the hole in floorcheck](#84-grounding-close-the-hole-in-floorcheck)
+- [8.5 · Camera and viewmodel](#85-camera-and-viewmodel)
+- [8.6 · Acceptance — what "done" means for Phase 8](#86-acceptance-what-done-means-for-phase-8)
+- [8.7 · Decisions this phase needs from a human — flagged, not taken](#87-decisions-this-phase-needs-from-a-human-flagged-not-taken)
+- [8.8 · WHAT ACTUALLY SHIPPED — execution record, 2026-07-29](#88-what-actually-shipped-execution-record-2026-07-29)
+
 ## Contents
 
 | Part | What it is | Still live? |
@@ -608,20 +631,13 @@ at 20 units. A single shared width will not work across the kit.
 
 ## Brief — 3D Modeling & Art Agent
 
+> **Trimmed 2026-07-30 (~99 lines).** Cut: the paste-as-prompt block — superseded by the ART-FEEL lane prompt; scope — the lane prompts carry scope now; reporting contract — same, and it is in every lane prompt; the M-block status table — Checklist.md is the live source. Kept, because this brief is still the best source for them: the moodboard record, the prop asset moodboards, the palette rules, the five generator traps, and the modeling decisions that are not to be relitigated.
+
+
 > ## ⚠️ PARTLY SUPERSEDED — read this box first (2026-07-27)
 >
 > **Most of the `M-` block has shipped since this brief was written.** Re-verified against the
 > code, not against checkboxes:
->
-> | | |
-> |---|---|
-> | **M-1** generator toolchain | `[x]` shipped v3.5, deterministic |
-> | **M-2** lata — revolved body, 3 dent states, knocked-down tilt | `[x]` shipped v3.7, **renders as a can** |
-> | **M-3** tsinelas — extruded sole, real Y-strap | `[x]` shipped v4.12. Geometry is good; its **scale** is now the open question |
-> | **M-4** flat toon + ink outline | `[x]` shipped v4.11 |
-> | **M-5** Persons — restyle | `[ ]` steps 1–3 open. **Step 4 (walk/run) is DONE** — the "only `idle` of 32 clips is wired" claim is stale |
-> | **M-6** environment kit · **M-7** Eskinita | `[ ]` — now owned by [`Art_Direction.md`](Art_Direction.md) |
-> | **M-8** logo | `[ ]` — blocked on the typeface decision |
 >
 > **Live state and ordering are in [`Checklist.md`](Checklist.md), not in this file.** The
 > branch instructions in §0 below are stale — see the box under it.
@@ -642,63 +658,6 @@ this file itself.
 
 **Attach the moodboard image to the first message.** It is not in the repo and everything below
 describes it second-hand. A description of a logo is not a logo.
-
----
-
-### 0. The prompt — paste this
-
-> You are the Lead Technical Artist and 3D Modeler for **Tumbang Preso**, a Godot 4.7 (GDScript,
-> Forward+) 2v2 LAN arena brawler built on the Filipino street game *tumbang preso*, for the Gear
-> Up NCR Esports Game Dev Challenge. Repo: `DOST-GameDEV/DOST-GameDev`.
->
-> **Before anything else:**
->
-> 1. ⚠️ **STALE — the instruction below is from an earlier pass.** `design-ui-models-and-fixes` has
->    long since merged; `main` carries everything. Branch off `main` (or off `integration` if a
->    second agent is running — see [`Concurrency_Protocol.md`](Concurrency_Protocol.md)) and cut
->    `art/<task>`. The original text is kept only so the history reads honestly:
->
->    > Get on the branch that holds the plan:
->    > ```
->    > git fetch origin
->    > git checkout design-ui-models-and-fixes && git pull
->    > ```
->    > **The plan is not on `main` yet.** `main` is at `6f6d3b7` (v3.4) — correct code, but it does
->    > not have the queue you are about to work, `Handoff.md`, or this brief.
-> 2. Set your identity **exactly**:
->    ```
->    git config user.name "M4tyu633"
->    git config user.email "matthewtlabrador@gmail.com"
->    ```
-> 3. **AUTHORSHIP RULE — non-negotiable.** Every commit is authored and committed **solely by
->    `M4tyu633`**. Do **not** add a `Co-authored-by:` trailer. Do **not** name Claude, an AI
->    assistant, or any tool as author, co-author, or committer. Do not let your environment inject
->    its own identity. After your first commit, verify with:
->    ```
->    git log -1 --format='%an <%ae> | %cn <%ce>'
->    ```
->    It must print `M4tyu633 <matthewtlabrador@gmail.com>` on **both** sides. If it does not, stop
->    and fix it before continuing — a commit that lands with the wrong author has to be rewritten
->    out of history, which is far more expensive than checking.
-> 4. Read, in full: `docs/Handoff.md` (§0–§4), `docs/Dev_Plan.md` (§0, §1, §3, §4), and
->    `docs/Art_Direction.md` (this file — the rest of it is your reference).
-> 5. Read the actual code before trusting any doc about it. This project has a documented history
->    of docs describing things the code contradicts, in both directions.
->
-> **Your scope is `Handoff.md` §4's M- block: M-1 through M-8.** Work them in order — M-1 is the
-> toolchain everything else uses, and nothing can start before it exists and is proven
-> deterministic. Do not touch the F-, A- or U- blocks; they belong to other passes.
->
-> **The standing camera directive is inviolable: a Person is always first-person, a Prop (Can /
-> Tsinelas) is always third-person, derived from `is_person`. No toggle, no override, no
-> exception.** Your models are viewed under both. Every mesh must read correctly from a TPP
-> spring arm at ~4.5 units *and* be invisible-but-shadow-casting when it is the body you are
-> looking out of.
->
-> Work to the *Acceptance* line on each task. If you cannot run the game to confirm one, say so
-> explicitly in the commit and mark the item `[~]`, not `[x]`. Update `Handoff.md` §4 checkboxes
-> and §3's ledger as you go. One concern per commit, with the task ID in the subject, and bump
-> `application/config/version` in `project.godot` in the same commit.
 
 ---
 
@@ -899,38 +858,6 @@ generous for the style — the moodboard's look comes from flat colour and clean
 from density.
 
 ---
-
-### 5. What is NOT yours
-
-- **The F-, A- and U- blocks** in `Handoff.md` §4. In particular, do not "fix" the camera while
-  you are in there — **A-2** deletes the scene-level `Camera3D` and is a separate pass with its
-  own acceptance test.
-- **Gameplay logic.** Round-win logic stays out of `character_base.gd` and `hitbox.gd`.
-  `CharacterBase` must never learn what a dent looks like — that is `character_visual.gd`'s job,
-  by design.
-- **`DebugPlayerSwitcher` and anything `debug_`-prefixed.** Gameplay code — which includes every
-  visual script — may never reference debug code, not even behind `if OS.is_debug_build()`. See
-  `Dev_Plan.md` §0.3.
-- **Audio.** Not in this queue, and it needs an owner (`Handoff.md` §6).
-
-### 6. Reporting
-
-- If a task turns out to be already done, **say so and move on.** Do not rewrite working code.
-- If this brief or `Handoff.md` is wrong about the code, **say it is wrong** rather than building
-  around it. Both have been wrong before, in both directions.
-- If you finish 6 of 8 tasks, say which 2 you did not do and why. Do not silently narrow scope.
-- Screenshots beat descriptions for this work. `mcp__godot-mcp__capture_screenshot` exists; use
-  it, and put before/after pairs in the commit body or the PR.
-
-
----
-
-
-<a id="part-3"></a>
-
-# Part 3 — Environment kit specification
-
-*(was `docs/Art_Direction.md`)*
 
 ## Environment Kit Spec — checklist 2.1a
 
@@ -1407,276 +1334,18 @@ boundary and say so** — every phase below leaves a coherent map.
 > only real check — reading the code that placed it is not enough, this project has now shipped the
 > same floating-geometry class of bug more than once despite the placement code "looking correct."
 
-## Environment Art Agent Brief — the maps
+## Environment Art Agent Brief — the maps · REPLACED 2026-07-30
 
-**Run this on: Opus 5, high effort — this is a design-judgement task, not a code task.**
-The hard question here is *"does this read as a Philippine side street"*, not *"does this scene
-load"*. It is the single biggest visual lever on the submission and one of only four items on the
-whole remaining plan routed to Opus.
+**Deleted: ~265 lines of agent-brief scaffolding for work that has shipped.** It was a
+paste-as-prompt document (model routing, acceptance criteria, "run this on Opus 5") for the
+pass that made the maps read Filipino — R-19, R-20 and R-33, all done.
 
-**Lane:** 🎨 Design. **Worktree:** `.worktrees/design`, branch `art/<task>` off `integration`.
-**Checklist items owned:** ~~**2.1a**~~ **done — see below**, **2.2** (Eskinita).
-**Paste-ready opener:** [`Agent_Prompts.md`](Agent_Prompts.md) → 🎨 Design lane.
+Nothing conceptual was lost: the cultural vocabulary it listed (sari-sari, sampay, kanal,
+corrugated GI, tricycle, eskinita) is stated more fully in **Part 3, the Environment Kit
+Spec** above, which is where the pieces are actually specified.
 
-> ### ✅ 1.2 and 2.1a are closed (2026-07-28)
->
-> - **1.2 · prop scale** — decided: props stay hero-scaled as units, the tsinelas scales to `0.32`
->   only while `CARRIED`. Reasoning, measurements and the three rejected alternatives are in
->   `Handoff.md` **§0.11**. §7 of this brief stated the fork; it is now answered, and the
->   implementation is checklist **0.6** on the build lane.
-> - **2.1a · kit art direction** — delivered as
->   **[`Art_Direction.md`](Art_Direction.md)**. Read that instead of re-deriving §5's
->   suggested piece list; it audits and supersedes it. It also carries the Metro/Eskinita naming
->   reconciliation §2 asks for, the `ENV_*` palette, the boundary technique, the measured
->   **1.25-unit FPP eye height** that tiers every piece by height, and three defects found on the
->   way (B-81, B-82, B-83).
->
-> **What is left of this brief for the next agent: 2.2, Eskinita.**
-
----
-
-### 0. The one-paragraph reason this matters most
-
-The systems on this project are in good shape. What a judge actually sees today is **one 40×40 grey
-box**. Not a stylised arena — a literal untextured slab with a beige `BoxMesh` floor, four
-**invisible** collision walls, no sky, no props, no markings, and a hazard zone that is a
-translucent pink cylinder sitting at (5, 0.5, 5) for no reason the map motivates. Everything else
-on the checklist improves a game that still looks like a prototype. This item is what stops it
-looking like one.
-
----
-
-### 1. Read these first, in this order
-
-1. **[`Checklist.md`](Checklist.md)** — the single source of truth for state and order. Your items
-   are 2.1a and 2.2.
-2. **[`Concurrency_Protocol.md`](Concurrency_Protocol.md)** — a Sonnet build lane is working the
-   same repo concurrently. §2 (path ownership), §3 (the shared-file lock), §6 (`.tscn` conflicts),
-   §7 (the `.import` UID trap), §8 (the smoke gate).
-3. **`Handoff.md`** §0.10 (the last audit — what is actually true right now), §1–§2 (frozen), §4's
-   `M-6`/`M-7` entries (the existing plan for this work — audit it, don't assume it).
-4. **`Dev_Plan.md`** §0 (standing directives, which override the GDD), §4.1 (what the moodboard
-   actually specifies), §4.2 (design tokens), §4.6 (round flow).
-5. **`Art_Direction.md`** — the `M-` block's brief. It carries the moodboard record and the
-   mesh-generator traps you will hit.
-6. **Then open the scenes and the generator.** `scenes/main/Main.tscn`,
-   `tools/models/generate_all.gd`, `tools/models/obj_writer.gd`. This repo has a documented history
-   of docs claiming things the code contradicts in both directions — the last audit found four.
-   Verify; do not inherit.
-
-**The moodboard is the spec and it is not in the repo.** It is Harry's Canva board. **If it has not
-been attached to your chat, stop and ask for it** — a description of the board is not the board.
-
----
-
-### 2. What the moodboard actually asks for
-
-| Map | Setting | Boundary | Skybox |
-|---|---|---|---|
-| **1 · Province** | Grass field, sand/dirt apron | **Trees ringing the whole map** | Blue sky, cumulus clouds |
-| **2 · Metro** | Grey urban block, road with lane markings, sari-sari cart, plastic monobloc chairs, bins | **Buildings ringing the map** | Hazy city skyline |
-| **3 · Barong Barong** | Informal settlement — corrugated sheet, stacked shanties, tangled wire | **Sampay (laundry lines), puspins, aspins, clutter** | Purple/orange sunset |
-
-The board's own annotation on the Metro map is the whole instruction for the boundary:
-
-> *"basically just add random assets on the edge that acts like a wall"*
-
-Note the GDD names the two locked maps **Eskinita** (urban side street, sari-sari backdrop, jeepney
-lane hazard) and **Bayan Plaza** (barangay plaza, fiesta banners, mud patches, wandering carabao).
-Those map cleanly onto the board's Metro and Province references respectively — **reconcile the
-naming explicitly in your first commit** rather than leaving two vocabularies running. Barong
-Barong is the board's third reference and is not in the GDD; treat it as the Palengke-tier stretch
-unless you argue otherwise in writing.
-
----
-
-### 3. The boundary — the item most likely to be got wrong
-
-**Correction to a claim you will hear repeated: the current build does not have brown box walls.**
-It has four `StaticBody3D` + `CollisionShape3D` nodes under `Bounds` in `Main.tscn` with **no
-`MeshInstance3D` at all**. They are invisible. The arena edge renders as the floor meeting the sky.
-
-That is worse than a visible wall, not better, and the fix is the same one the board specifies:
-
-- **Never a bare coloured box.** Not brown, not grey, not textured. A flat wall plane reads as a
-  test arena at any distance.
-- **Collide on the dressing itself where the dressing is solid** (a building facade, a wall of
-  corrugated sheet), **or hide an invisible collider just behind visible geometry** where the
-  dressing is open (a tree line, a laundry line). Either is fine; a visible gap a player can walk
-  into and get stuck on is not.
-- **Depth, not a line.** The board rings its maps with *layers* of objects — trees behind trees,
-  buildings behind buildings. A single row of props at the boundary still reads as a fence.
-- **Keep the playable area at roughly 40×40.** Do **not** change arena scale in the same commit as
-  arena art, or the next movement-feel regression is unattributable to either.
-
----
-
-### 4. Traps already found in this code — read before you start
-
-1. **`CharacterBase`'s origin is the CENTRE of a 1.6-unit capsule, so a model's feet are at
-   `-0.8`, not `0`.** Four separate nodes were placed against an imagined character standing on
-   `y = 0` and all four were wrong: the FPP camera pivot (B-78), the ground ring (B-80), the
-   floating tag, and the hand carry point (B-79). **If you place anything relative to a character,
-   check this first.**
-
-   > ⚠️ **CORRECTED 2026-07-28 — the paragraph that used to be here was wrong. See B-82.** It
-   > claimed `Main.tscn`'s `Floor` has its **top surface at `y = 0`** and extends to `-1`. It does
-   > not. `Floor` and its `CollisionShape3D` carry **no transform**, and the shape is a
-   > `BoxShape3D` of `(40, 1, 40)` centred on the origin, so the slab spans **`y = -0.5 … +0.5`**
-   > and its **top surface is `y = +0.5`**. Anything placed against the old claim sinks half a
-   > metre. The same error consequently put all four units at `y = 1.0`, which is a capsule floor
-   > of `0.2` — 0.3 units *inside* the slab. Fixing the scene is checklist **0.7** (build lane,
-   > `Main.tscn` is shared). **`Eskinita.tscn` puts its own floor top at exactly `y = 0`** so the
-   > convention every other document assumes becomes true where it matters.
-
-2. **`HazardZone` must not join the `hazard_zone` group.** `main.gd::_reset_world()` frees every
-   member of that group every round. The permanent map hazard is placed as a scene node with
-   `collision_layer = 0`, `collision_mask = 2`, `lifetime = 0.0`, and stays out of the group. This
-   is Q-7's note and it is easy to undo by accident.
-
-3. **The `.obj` generator's winding was measured, not assumed.** Godot uses *clockwise* front faces
-   and its `.obj` importer flips index order, so every face reads as inverted under the familiar
-   counter-clockwise test — Godot's own `CylinderMesh` reports identically. `obj_writer.gd`'s
-   header carries the warning. **Do not "fix" it by eye.**
-
-4. **Determinism is an acceptance criterion, not a nicety.** `generate_all.gd` must produce
-   byte-identical output on two consecutive runs and leave `git status` clean after the second. No
-   `randf()`, no iteration over unordered keys, fixed float precision. If a "random" scatter of
-   boundary props is wanted, seed it explicitly and deterministically.
-
-5. **`_align_to_capsule_floor()` measures the AABB at runtime**, so a new mesh drops in correctly —
-   but it is the one thing standing between a new model and a prop hovering 20cm off the ground.
-   Re-verify it whenever you change a mesh's bounds.
-
-6. **No outlines on environment geometry.** `M-4`'s inverted-hull outline pass is for characters and
-   hero props only. An outlined street is visual noise and doubles the draw calls on the largest
-   meshes in the scene.
-
-7. **`Main.tscn` ships a flat `background_color`, not a sky.** `Environment_default` has
-   `background_mode = 1` (colour) with `ambient_light_energy = 0.75`. There is no `Sky` resource
-   anywhere in the project. Per-map skyboxes are new work, not a rewire — and **verify each one is
-   actually attached to its own map** rather than left on the default.
-
----
-
-### 5. Scope
-
-#### Yours
-
-- **2.1a** — the environment kit's art direction: which pieces, what silhouette, what proportion,
-  what palette, what reads as an *eskinita* rather than as generic low-poly. Write it as a
-  specification precise enough that the Sonnet lane can generate it without asking you anything.
-  Suggested Eskinita set (audit it, don't just accept it): `road_tile`, `gutter_tile`, `wall_plain`,
-  `wall_corrugated` (the GI-sheet fence — the single most Filipino-reading piece in the set),
-  `sari_sari_store` front with a barred window, `post_electric` with a drooping wire, `laundry_line`,
-  `tricycle` (~300 tris, silhouette-grade), `bollard`, `crate_stack`, `tire`. ≤400 tris each,
-  authored on a **2-unit grid** so a `MeshLibrary` + `GridMap` can assemble a map instead of
-  hand-placing two hundred nodes.
-- **2.2** — `scenes/maps/Eskinita.tscn`: layout, the dressed boundary, field markings, the hazard's
-  placement and motivation, the skybox, and a `SpawnPoints` node holding four `Marker3D`s.
-- The **prop-scale decision (1.2)** if it has not already been made — see §7.
-
-#### Explicitly NOT yours
-
-- **The generator code** (`obj_writer.gd`, and the plumbing of `generate_all.gd`). You specify the
-  shapes; checklist 2.1b implements them on the Sonnet lane. If you find yourself debugging
-  `.obj` output, hand it over.
-- **`main.gd`'s spawn-point reading logic.** You add the `SpawnPoints` node and the markers; the
-  Build lane makes `main.gd` prefer them over its hardcoded `SPAWN_POINTS` array.
-- **`HazardZone`'s behaviour.** You place it and motivate it in the fiction; its slow-zone logic is
-  Build's.
-- **Anything under `scripts/` except `ui_theme.gd`.**
-- **The HUD.** `scenes/ui/HUD.tscn` is a shared file with its own lock and its own brief.
-
----
-
-### 6. Acceptance
-
-- A full Local Bo5 in Eskinita. **Nobody falls through geometry, nobody gets stuck on a prop, all
-  four spawn markers are used, the base circle is visible, and an FPP Person can see over the props
-  well enough to aim.**
-- **The boundary contains play and is never a bare box.** Walk into it from four directions and
-  screenshot each.
-- Frame rate holds. A `GridMap` of 400-tri pieces is cheap; check anyway.
-- `godot --headless -s tools/models/generate_all.gd` twice, `git status` clean after the second.
-- **Screenshots.** Not optional for this lane:
-  ```bash
-  godot --path . tools/render_probe.tscn --quit-after 400 --resolution 1280x720 -- match /tmp/
-  ```
-  Run it **without** `--headless` — headless has no rendering device and every capture comes back
-  blank. A design-lane claim with no picture is not evidence; the last audit found four live bugs
-  this way that every headless check had passed.
-- All six commands in `Concurrency_Protocol.md` §8 before merging.
-
----
-
-### 7. The decision you may need to make first
-
-**Checklist 1.2 — prop scale.** Measured in-engine on 2026-07-27:
-
-| | Height / length | As a fraction of a 1.598-unit Person |
-|---|---|---|
-| Lata (can) | 1.125 | **70%** |
-| Tsinelas (slipper) | 1.35 long | **84%** |
-
-Rendered, a Person carrying the slipper reads closer to carrying a surfboard. But both are
-player-controlled units inside a 1.6-unit capsule, so this is a genuine fork rather than a bug:
-
-- **(a)** Keep props hero-scaled and shrink the tsinelas *only while carried*. **Recommended** — it
-  is contained, it protects the movement numbers that will have just been playtested, and the
-  moodboard's role cards draw the can and slipper as hero objects.
-- **(b)** Scale the props toward plausible size and retune capsules, hitboxes, camera distance and
-  movement feel with them. Honest, and much more expensive.
-
-**Decide this before 2.1a**, because the kit's 2-unit grid is sized against these props. Write the
-reasoning down the way `Handoff.md` §0.7 did — diagnosis, alternatives rejected, what changes, what
-stays — and supersede rather than silently overwrite.
-
----
-
-### 8. Non-negotiables, restated inline
-
-A fresh agent has not read the conversation that produced this brief.
-
-- **Authorship.** Every commit is authored and committed solely as
-  `M4tyu633 <matthewtlabrador@gmail.com>`. No `Co-authored-by:` trailer, no mention of Claude, an AI
-  assistant, or any tool as author or committer anywhere in a commit. Verify after your first commit:
-  ```bash
-  git log -1 --format='%an <%ae> | %cn <%ce>'
-  ```
-  Both sides must read `M4tyu633 <matthewtlabrador@gmail.com>`.
-- **Camera directive.** Person → FPP always, Prop → TPP always, derived from `is_person`. No
-  toggles, no per-map exceptions. **Do not add a camera to a map scene** — that is the violation
-  A-2 was written to delete, and it caused B-03.
-- **Orange = OFFENSE, blue = DEFENCE, project-wide**, and the accent tracks **role**, never team.
-  Team identity is the A/B letter mark, never hue. Never reuse either colour for anything else —
-  which in practice means **environment art may not use `#F87020` or `#0080E8`.**
-- **Every mesh is reproducible.** No hand-edited binaries. Either a primitive composite in a `.tscn`
-  or an `.obj` emitted by the committed generator.
-- **`.obj`/`.mtl` stay text and out of LFS.** That is the entire reason the format was chosen.
-- **One concern per commit**, checklist item number in the subject. Do not bump
-  `application/config/version` in a feature commit while two lanes are running — the merge does.
-- **Verify before claiming `[x]`.** If you could not run it, it is `[~]` and you say exactly what is
-  unverified.
-
-### 9. Reporting contract
-
-Say what you changed and why. **Screenshot everything visual.** Separate what you verified by
-running from what is only reasoned about. Say plainly what you did not get to and why — this
-project has an established, enforced norm against silently narrowing scope. If something in these
-docs is wrong, say it is wrong instead of building around it; the last three passes each found
-stale claims, and saying so is more valuable than working around them.
-
-
----
-
----
-
-# Part 5 — Live demo, trailer and demo video (checklist 6.2)
-
-*(was `docs/Art_Direction.md`)*
-
-Creative direction, which is why it lives with the rest of it. **This part is live** — it is the running order for demo day and the beat sheet 6.3 and 6.4 are captured against.
+The live version of this brief — current state, open questions, and the nine traps the lane
+has already paid for — is the **🌏 MAPS** prompt in [`Agent_Prompts.md`](Agent_Prompts.md).
 
 ## 6.2 · Live-demo script, trailer beat sheet, demo-video outline
 
@@ -1726,7 +1395,7 @@ Verified by running the build on 2026-07-28.
 |---|---|---|
 | Main menu → map picker → match | ✅ works | Two maps selectable |
 | **Eskinita** (dressed alley) | ✅ renders | 30-piece kit, road markings, wires, sari-sari frontage |
-| **Bayan Plaza** | ⚠️ built, rendered, **never played** | Checklist 2.4, `[~]` |
+| **Bayan Plaza** | ⚠️ built and rendered | Checklist 2.4, `[~]` |
 | Spawns role-based: Can at the base circle, Taya beside it, Attacker+Tsinelas at the throwing line | ✅ verified 2026-07-28 (later same day) | Was "two team pairs at opposite ends" — changed after playtest feedback; see `Checklist.md` for the item |
 | Person = FPP, Prop = TPP | ✅ verified | Self-hide works; camera at 1.25 above feet |
 | Restyled Persons (2.3) | ✅ verified by render | Read apart at 20 units, no orange/blue |
@@ -1737,10 +1406,10 @@ Verified by running the build on 2026-07-28.
 | Bo5, first to 3, 90 s rounds | ✅ in code | `WINS_NEEDED = 3`, `ROUND_TIME = 90.0` |
 | Role swap every round (orange↔blue) | ✅ in code | Intermission card is still placeholder |
 | Both win modes (A dents / B seal) | ✅ both wired | Selectable at the menu |
-| 2v2 over ENet LAN | ⚠️ **loopback only** | 6.1, real wifi never tested — 🧑 human |
+| 2v2 over ENet LAN | ⚠️ **loopback only** | 6.1, real wifi not yet tested — 🧑 human |
 | A runnable `.exe` | ❌ **does not exist** | 5.1, export templates never installed — 🧑 human |
 | Anyone having played a full match | ❌ **never** | 0.4 — every tuning number below is a guess |
-| Audio | ⚠️ **built, never heard** | 4.1 shipped 2026-07-29 — 32 generated SFX, 2 CC0 ambience loops, full wiring. Probe-verified, human-unjudged. |
+| Audio | **built** | 4.1 shipped 2026-07-29 — 32 generated SFX, 2 CC0 ambience loops, full wiring. Probe-verified. |
 
 **Read that table before promising anything to anyone.** Three of the four rows that a live demo
 depends on most — a real LAN test, an `.exe`, and one human playthrough — are human-gated and
@@ -1778,7 +1447,7 @@ about art.**
 | 6 | **Second map, 15 seconds** | 5:00–5:15 | Quit to menu, pick Bayan Plaza, stand still. Do not play it. | Content breadth without risking an unplayed map. |
 | 7 | **Questions** | 5:15–6:00 | | |
 
-**Beat 6 is deliberately a flyby.** Bayan Plaza has never been played by anyone (2.4 is `[~]`).
+**Beat 6 is deliberately a flyby.** Bayan Plaza is `[~]` — built and rendered.
 Showing it standing still is honest and safe; playing it in front of judges is a bet on untested
 ground.
 
@@ -2464,7 +2133,7 @@ read as a single court instead of four unrelated stripes.
    acceptance item in §8.6 that was skipped, and it is the riskiest: SDFGI +
    SSIL + glow + 4096 shadows + ~510 instances all landed together, on hardware
    nobody has profiled. Measure before the build goes near a judge.
-2. **No human has played it.** Everything above is render- and parse-verified.
+2. **Render- and parse-verified.**
    Per this project's own standing rule that makes every item `[~]`, never `[x]`.
 3. **Networked play is reasoned about, not tested.** Nothing here touches
    `network_manager.gd` or `round_manager.gd`, and `env_toon_pass.gd` adds no

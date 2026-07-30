@@ -100,6 +100,50 @@ func build_all(output_dir: String) -> void:
 	_flagpole()
 	_tree("env_tree", 4.2, UiTheme.ENV_FOLIAGE)
 	_tree("env_tree_far", 4.8, UiTheme.ENV_FOLIAGE_DARK)
+
+	# --- PUNO. The trees that decide what country this is. -------------------
+	#
+	# ⚠️ THE KIT'S ONLY TREES WERE CONIFERS, AND THAT IS THE SINGLE LOUDEST
+	# WRONG THING IN EITHER MAP. build_bayan_plaza.py's open item 7 states it
+	# plainly — "every tree in both rings is a Kenney pine, so the plaza reads as
+	# a Nordic park with a Philippine church in it" — and Eskinita has the same
+	# pines lining the alley. There is no pine on a Philippine residential
+	# street. A player sees a hundred conifers before they see the sari-sari
+	# store, so the store never gets a chance to say where this is.
+	#
+	# That item was closed as "cannot be fixed by re-picking a piece — it needs
+	# either a new CC0 tree at this poly budget or a generated one". This is the
+	# generated one, three times, because one tree repeated is its own problem:
+	#
+	#   SAGING  — a banana clump. Nothing else in the world looks like it, it is
+	#             the cheapest of the three, and it is what actually grows in the
+	#             gap between two houses.
+	#   NIYOG   — a coconut palm. The tall silhouette, for reading against sky.
+	#   MANGGA  — a broadleaf mango. The WIDE, lumpy, low canopy that a conifer
+	#             is the exact opposite of, and the one that shades a street.
+	#
+	# All three are the same four primitives as everything else here, at a
+	# comparable triangle count to the cone they replace, so this is a swap and
+	# not an addition — see the instance counts in the map builders.
+	# ⚠️ NOT CALLED — REJECTED ON THE HUMAN'S CALL, KEPT FOR THE REASONING.
+	# _puno_saging(), _puno_niyog() and _puno_mangga() are complete and correct
+	# below, and both maps used them for one pass. The human rejected them twice on
+	# sight ("they dont look like trees, js use different assets"), so both maps now
+	# use the Fantasy Town kit's rounded broadleaf trees instead — which still keeps
+	# the conifers out, and that was the actual cultural defect (open item 7).
+	#
+	# The FUNCTIONS stay because what they encode is expensive to re-derive and is
+	# not about these three meshes: `_blade` (a leaf that attaches to its stem —
+	# see its own note on the detached-corner bug), the stacked-segment lean that
+	# `add_revolve` cannot do on its own, and the overlapping-blob canopy that
+	# stops a revolve reading as a lollipop. Anyone revisiting palm-and-banana
+	# specificity starts from working geometry rather than from scratch.
+	# The .obj files are NOT emitted, so nothing unused ships.
+	# Plants in cut-open paint tins, which is what a Philippine doorstep has
+	# instead of a garden. Interior tier at 0.62, so it can never block an aim.
+	_halaman_lata()
+	# The GI lean-to every house extends itself with. Roofs the alley edge.
+	_atip_yero()
 	_church_facade()
 	_basketball_ring()
 	# The plaza CENTREPIECE set — checklist 2.4, the reference-photo redress.
@@ -116,6 +160,10 @@ func build_all(output_dir: String) -> void:
 	_municipal_hall()
 
 	# --- field markings (serve BOTH round-win modes) ------------------------
+	_chalk_piko()
+	_chalk_tao()
+	_chalk_bulaklak()
+	_chalk_gulo()
 	_base_circle_decal()
 	_throwing_line_decal()
 	_team_side_decal()
@@ -341,12 +389,79 @@ func _post_electric() -> void:
 	# model village. 7.2 keeps the wires readable overhead without pushing them
 	# out of frame for an FPP eye at 1.25. Every internal height below moved with
 	# it rather than being re-guessed.
+	w.set_material("drum", UiTheme.ENV_CONCRETE_DARK)
+	w.set_material("rust", UiTheme.ENV_RUST)
+
 	_box(w, 0, 0, 0.24, 0.24, 0.0, 7.20, "timber")
 	_box(w, 0, 0, 1.60, 0.14, 6.10, 6.24, "timber")
 	for i in range(3):
 		var x := -0.6 + 0.6 * float(i)
 		_box(w, x, 0, 0.09, 0.09, 6.24, 6.38, "wire")
 		_wire(w, Vector3(x, 6.35, 0.0), Vector3(x + 6.0, 6.35, 0.0), 0.55, 0.025, 8, "wire")
+
+	# =====================================================================
+	# ⚠️ THE TANGLE. THIS IS THE MOST RECOGNISABLE SILHOUETTE A PHILIPPINE
+	# STREET HAS, and three tidy parallel lines is not it.
+	# =====================================================================
+	#
+	# The three wires above are a correctly-built utility line for anywhere in
+	# the world. What makes the overhead read as Manila rather than as a suburb
+	# is that it is obviously ACCRETED: a second and third cross-arm added below
+	# the first as more services were hung, a transformer drum bolted to the
+	# post, communications cable at a different sag from the power above it, and
+	# a coil of slack left hanging where somebody will come back for it.
+	#
+	# ⚠️ ALL OF IT IS INSIDE THE EXISTING PIECE — no new instance, no new mesh,
+	# no new draw call anywhere on either map. The map places exactly the same
+	# twelve posts it placed before; each one just carries more silhouette. That
+	# is the whole reason this went here rather than into a new `Kable` prop:
+	# R-33's budget line is "ADD SPECIFICITY, NOT DENSITY", and geometry inside a
+	# piece that is already drawn is free of density by definition.
+	#
+	# The span stays 6.0 for every added line, because `build_eskinita.py` spaces
+	# the posts at exactly POST_SPAN = 6.0 so a row strings itself together. A
+	# wire here that ran any other distance would end in mid-air, which is the
+	# 2026-07-29 playtest bug ("the electric pole wires are just floating").
+
+	# The transformer. One drum, off to one side, at the height they actually
+	# hang. Nothing else in the kit reads as "utility" this fast.
+	w.add_extrude(_ngon(0.30, 0.0, 0.26, 8), 4.85, 5.62, "drum")
+	_box(w, 0.30, 0, 0.14, 0.14, 5.62, 5.78, "rust")
+	_box(w, 0.08, 0, 0.44, 0.10, 5.10, 5.22, "timber")
+
+	# A second cross-arm, shorter and lower — the one added years later.
+	_box(w, -0.10, 0, 1.10, 0.12, 5.52, 5.64, "timber")
+	for i in range(2):
+		var x2 := -0.48 + 0.72 * float(i)
+		_box(w, x2, 0, 0.08, 0.08, 5.64, 5.74, "wire")
+		# ⚠️ A DIFFERENT SAG FROM THE POWER LINES ABOVE, and that is the detail
+		# that sells it. Parallel wires at one sag read as a drawn grid; real
+		# comms cable is hung slacker than power and crosses it visually
+		# somewhere in the middle of every span.
+		_wire(w, Vector3(x2, 5.70, 0.0), Vector3(x2 + 6.0, 5.70, 0.0),
+			0.92, 0.022, 8, "wire")
+
+	# The messy tier: three low service drops, each at its own height and sag, so
+	# no two spans in the frame are the same curve.
+	var drops := [[5.05, 1.25], [4.78, 0.78], [5.30, 1.55]]
+	for i in range(drops.size()):
+		var y: float = drops[i][0]
+		var sag: float = drops[i][1]
+		var off := -0.22 + 0.20 * float(i)
+		_wire(w, Vector3(off, y, 0.0), Vector3(off + 6.0, y, 0.0),
+			sag, 0.018, 8, "wire")
+
+	# The coil of slack. Four loops of leftover cable lashed to the post — the
+	# single most "somebody will come back for this" object on a Philippine
+	# street, and it is four flat rings.
+	for i in range(4):
+		var ry := 4.05 + 0.11 * float(i)
+		var rr := 0.30 - 0.03 * float(i)
+		w.add_revolve(PackedVector2Array([
+			Vector2(rr, ry), Vector2(rr + 0.022, ry + 0.02),
+			Vector2(rr, ry + 0.05),
+		]), 9, "wire", true, Callable(),
+			Transform3D(Basis.IDENTITY, Vector3(-0.16, 0.0, 0.0)))
 	_finish(w, "env_post_electric")
 
 ## Sampay. This is the Barong Barong reference folded into Eskinita rather than
@@ -775,6 +890,318 @@ func _tree(file_name: String, height: float, canopy: Color) -> void:
 	]), 12, "canopy")
 	_finish(w, file_name)
 
+## A leaf blade, as two triangles-worth of quad with a droop in the middle.
+##
+## ⚠️ DOUBLE-WOUND, for the reason `_wire` records: a single-sided quad is culled
+## from whichever side you happen to be looking from, and foliage is looked at
+## from underneath as often as from above. Every leaf in this file is seen from
+## an FPP eye at 1.25 standing under it.
+##
+## `dir` is the horizontal direction the blade runs, `rise` its tip height
+## relative to its root, and `droop` how far the midpoint sags below the straight
+## line between them — which is the whole difference between a banana leaf and a
+## plank.
+func _blade(w: ObjWriter, root: Vector3, dir: Vector2, length: float,
+		half_width: float, rise: float, droop: float, material: String) -> void:
+	var d := dir.normalized()
+	var perp := Vector2(-d.y, d.x) * half_width
+	var mid := root + Vector3(d.x * length * 0.5, rise * 0.5 - droop,
+		d.y * length * 0.5)
+	var tip := root + Vector3(d.x * length, rise, d.y * length)
+	# Root -> mid, at full width; mid -> tip, tapering to a point.
+	# ⚠️ THE ROOT END IS NARROW, NOT FULL WIDTH, AND THAT IS WHAT MAKES A LEAF
+	# ATTACH. Reported from a render: "some of your trees leaves were floating, not
+	# even connected to the trunk." The blade used to start at its FULL half-width,
+	# so a 0.36-wide banana leaf began as a 0.72-long straight edge centred on a
+	# stem only 0.26 across — the middle of that edge met the stem and both corners
+	# hung in clear air to either side of it. Every leaf was genuinely detached at
+	# two points; it only read as attached from angles where the stem happened to
+	# be behind the gap.
+	#
+	# A real leaf leaves the stem as a stalk and widens further out, which fixes
+	# the geometry and the silhouette in the same move: 22% at the root, full width
+	# at the midpoint. Callers also seat their roots ON the stem surface rather
+	# than inboard of it — see _puno_saging and _puno_niyog.
+	var root_perp := perp * 0.22
+	var r0 := Vector3(root.x + root_perp.x, root.y, root.z + root_perp.y)
+	var r1 := Vector3(root.x - root_perp.x, root.y, root.z - root_perp.y)
+	var m0 := Vector3(mid.x + perp.x * 1.15, mid.y, mid.z + perp.y * 1.15)
+	var m1 := Vector3(mid.x - perp.x * 1.15, mid.y, mid.z - perp.y * 1.15)
+	# ⚠️ THE TIP IS A NARROW QUAD, NOT A POINT. Collapsing both far corners onto
+	# one vertex looks like the obvious way to taper a blade and emits a
+	# DEGENERATE triangle — zero area, so its face normal is undefined, and
+	# `recalculate_normals()` then averages that undefined normal into the two
+	# real vertices next to it. The leaf renders with a black wedge at the end.
+	# 6% of the width costs two triangles and is invisible.
+	var t0 := Vector3(tip.x + perp.x * 0.06, tip.y, tip.z + perp.y * 0.06)
+	var t1 := Vector3(tip.x - perp.x * 0.06, tip.y, tip.z - perp.y * 0.06)
+	w.add_quad(r0, m0, m1, r1, material)
+	w.add_quad(r1, m1, m0, r0, material)
+	w.add_quad(m0, t0, t1, m1, material)
+	w.add_quad(m1, t1, t0, m0, material)
+
+
+## SAGING. A banana clump — the cheapest unmistakable tropical silhouette there
+## is, and the one that actually grows in the gap between two houses.
+##
+## Not a trunk with a canopy on top: a banana has no branches, so it is a fat
+## pseudostem with every leaf springing from one point at the top. Getting that
+## wrong (leaves scattered up the stem) is what makes a generated banana read as
+## a palm, so the roots are all within 0.2 of each other.
+func _puno_saging() -> void:
+	var w := ObjWriter.new("PunoSaging")
+	w.set_material("stem", UiTheme.ENV_FOLIAGE_DARK)
+	w.set_material("leaf", UiTheme.ENV_FOLIAGE)
+	w.set_material("leaf_old", UiTheme.ENV_FOLIAGE_DARK)
+
+	# Two stems, because a banana is never alone — it suckers into a clump. The
+	# second is shorter and offset, which is also what stops one instance from
+	# reading as a repeated stamp when four of them stand in a row.
+	# ⚠️ THE TIPS HANG BELOW THEIR OWN ROOTS. `rise` IS NEGATIVE AND THAT IS THE
+	# WHOLE PIECE. The first version gave every blade a POSITIVE rise (+0.30) with
+	# a mid-sag, so each leaf went up, dipped, and came out above where it
+	# started — rendered, and it read as an agave or a spiky green star, not a
+	# banana. A banana leaf is heavy: it leaves the crown roughly level and the
+	# outer half FALLS, so the plant's silhouette is a fountain, not a starburst.
+	# Long, wide and downward is the entire recognition cue and all three were
+	# wrong.
+	for k in range(2):
+		var ox := 0.0 if k == 0 else 0.46
+		var oz := 0.0 if k == 0 else 0.30
+		var top := 2.40 if k == 0 else 1.55
+		w.add_revolve(PackedVector2Array([
+			Vector2(0.00, 0.00), Vector2(0.22, 0.00),
+			Vector2(0.19, top * 0.55), Vector2(0.13, top),
+			Vector2(0.00, top),
+		]), 7, "stem")
+		# Six broad blades on the main stem, five on the sucker. FEWER and BIGGER
+		# than the first attempt's eight — a banana has half a dozen leaves that
+		# each read individually, and eight narrow ones average into a blob.
+		var blades := 6 if k == 0 else 5
+		for i in range(blades):
+			var a := TAU * float(i) / float(blades) + (0.5 if k else 0.0)
+			var dir := Vector2(cos(a), sin(a))
+			var long := (k == 0)
+			# Root ON the stem surface: the top radius is 0.13, and starting at
+			# 0.10 left a hairline gap that the narrow root now cannot hide.
+			_blade(w, Vector3(ox + dir.x * 0.11, top - 0.14, oz + dir.y * 0.11),
+				dir,
+				2.35 if long else 1.70,          # long
+				0.36 if long else 0.28,          # and wide
+				-1.05 if long else -0.75,        # tip well below the crown
+				0.30 if i % 2 else 0.16,         # a little sag on the way down
+				"leaf" if i % 2 else "leaf_old")
+	_finish(w, "env_puno_saging", 0.0)
+
+
+## NIYOG. The coconut palm — the tall silhouette, for reading against sky at the
+## end of the alley and over the plaza's tree line.
+##
+## The trunk LEANS, and that is the piece's whole character: a coconut grown in a
+## yard is never plumb. It is built as a stack of short revolved segments each
+## nudged along +X, because `add_revolve` spins about Y at the origin and cannot
+## produce a curve on its own — the same limitation `_tricycle` needed a
+## transform for, solved here without one.
+func _puno_niyog() -> void:
+	var w := ObjWriter.new("PunoNiyog")
+	w.set_material("trunk", UiTheme.ENV_WOOD_DARK)
+	w.set_material("frond", UiTheme.ENV_FOLIAGE)
+	w.set_material("frond_dark", UiTheme.ENV_FOLIAGE_DARK)
+	w.set_material("nut", UiTheme.ENV_WOOD)
+
+	const SEGMENTS := 7
+	const TRUNK_TOP := 6.10
+	var lean := 0.0
+	var lean_step := 0.085
+	for i in range(SEGMENTS):
+		var y0 := TRUNK_TOP * float(i) / float(SEGMENTS)
+		var y1 := TRUNK_TOP * float(i + 1) / float(SEGMENTS)
+		var r0 := lerpf(0.27, 0.15, float(i) / float(SEGMENTS))
+		var r1 := lerpf(0.27, 0.15, float(i + 1) / float(SEGMENTS))
+		# Each segment is its own little ngon column, offset in X. The overlap at
+		# the joins is deliberate — it hides the step between two radii.
+		w.add_extrude(_ngon(lean, 0.0, r0, 7), y0, y1 + 0.02, "trunk")
+		lean += lean_step * (1.0 + float(i) * 0.18)
+	# The crown. Nine fronds, drooping hard — a frond that does not droop reads
+	# as a starfish on a stick.
+	for i in range(9):
+		var a := TAU * float(i) / 9.0
+		var dir := Vector2(cos(a), sin(a))
+		# Trunk top radius is 0.15, so seat the frond just inside it.
+		_blade(w, Vector3(lean + dir.x * 0.13, TRUNK_TOP - 0.12, dir.y * 0.13),
+			dir, 2.05, 0.22, 0.45 if i % 2 else 0.15, 1.15,
+			"frond" if i % 2 else "frond_dark")
+	# Three coconuts under the crown. Small, but they are the read that says
+	# palm rather than fern.
+	for i in range(3):
+		var a := TAU * float(i) / 3.0 + 0.6
+		w.add_revolve(PackedVector2Array([
+			Vector2(0.00, TRUNK_TOP - 0.42), Vector2(0.15, TRUNK_TOP - 0.30),
+			Vector2(0.00, TRUNK_TOP - 0.14),
+		# ⚠️ `transform` IS add_revolve's SIXTH ARGUMENT, not its fourth — the
+		# fourth is `smooth` and the fifth a deform Callable. Passing a
+		# Transform3D in slot four is a PARSE error, not a silent misplacement,
+		# so this is cheap to get wrong and impossible to ship wrong.
+		]), 6, "nut", true, Callable(), Transform3D(Basis.IDENTITY,
+			Vector3(lean + cos(a) * 0.26, 0.0, sin(a) * 0.26)))
+	_finish(w, "env_puno_niyog")
+
+
+## MANGGA. The broadleaf — WIDE, lumpy and low, which is the exact opposite of
+## the cone it replaces and the reason all three of these exist rather than one.
+##
+## A mango over a wall is the shade a street is actually played in. The canopy is
+## three overlapping revolved blobs at different heights and radii rather than
+## one dome: a single revolve is a perfect solid of rotation and reads as a
+## lollipop from every angle, which is the thing that made the old cone look
+## generated.
+func _puno_mangga() -> void:
+	var w := ObjWriter.new("PunoMangga")
+	w.set_material("trunk", UiTheme.ENV_WOOD_DARK)
+	w.set_material("canopy", UiTheme.ENV_FOLIAGE)
+	w.set_material("canopy_dark", UiTheme.ENV_FOLIAGE_DARK)
+
+	w.add_revolve(PackedVector2Array([
+		Vector2(0.00, 0.00), Vector2(0.46, 0.00),
+		Vector2(0.30, 0.90), Vector2(0.26, 1.55),
+	]), 8, "trunk")
+	# Two low limbs, so the trunk forks the way a mango does instead of running
+	# straight into the canopy like a lamp post.
+	# ⚠️ THE LIMBS START INSIDE THE TRUNK. These were columns offset 0.55 from the
+	# axis running 1.20..2.35 — the trunk is 0.26 wide up there, so neither limb
+	# touched it and both read as free-standing posts under the canopy, the same
+	# floating-part complaint as the leaves. Starting them at 0.9 (inside the
+	# trunk, which runs to 1.55) means each one is rooted in solid geometry.
+	for k in range(2):
+		var a := 0.9 + PI * float(k)
+		w.add_extrude(_ngon(cos(a) * 0.30, sin(a) * 0.30, 0.15, 5),
+			0.90, 2.35, "trunk")
+	# (offset x, offset z, base y, radius, top y, material)
+	var blobs := [
+		[0.00, 0.00, 1.95, 1.95, 4.30, "canopy"],
+		[-0.95, 0.55, 1.70, 1.35, 3.55, "canopy_dark"],
+		[0.85, -0.60, 1.80, 1.45, 3.80, "canopy"],
+	]
+	for b in blobs:
+		var ox: float = b[0]
+		var oz: float = b[1]
+		var y0: float = b[2]
+		var r: float = b[3]
+		var y1: float = b[4]
+		var mid := (y0 + y1) * 0.5
+		w.add_revolve(PackedVector2Array([
+			Vector2(0.00, y0 + 0.10), Vector2(r * 0.62, y0),
+			Vector2(r, mid), Vector2(r * 0.72, y1 - 0.35),
+			Vector2(0.00, y1),
+		]), 10, String(b[5]), true, Callable(),
+			Transform3D(Basis.IDENTITY, Vector3(ox, 0.0, oz)))
+	_finish(w, "env_puno_mangga")
+
+
+## HALAMAN SA LATA. A plant in a cut-open paint tin.
+##
+## This is the smallest piece in the kit and one of the most specific. A
+## Philippine doorstep does not have a garden or a planter; it has whatever tin
+## the paint came in, cut down, with something growing out of it — and there are
+## five of them on every step. It costs a revolve and five blades.
+##
+## INTERIOR TIER at 0.62 — well under the 1.10 the map builders hold interior
+## clutter to, so it can stand anywhere legal without ever blocking an aim.
+func _halaman_lata() -> void:
+	var w := ObjWriter.new("HalamanLata")
+	w.set_material("tin", UiTheme.ENV_PAINT_TERRA)
+	w.set_material("rim", UiTheme.ENV_CONCRETE_DARK)
+	w.set_material("soil", UiTheme.ENV_WOOD_DARK)
+	w.set_material("leaf", UiTheme.ENV_FOLIAGE)
+
+	w.add_extrude(_ngon(0.0, 0.0, 0.16, 9), 0.00, 0.24, "tin")
+	# The cut rim, a shade darker. A tin without one reads as a solid cylinder.
+	w.add_extrude(_ngon(0.0, 0.0, 0.17, 9), 0.24, 0.27, "rim")
+	w.add_extrude(_ngon(0.0, 0.0, 0.145, 9), 0.27, 0.29, "soil")
+	for i in range(5):
+		var a := TAU * float(i) / 5.0 + 0.3
+		var dir := Vector2(cos(a), sin(a))
+		_blade(w, Vector3(dir.x * 0.04, 0.29, dir.y * 0.04),
+			dir, 0.30, 0.075, 0.30, 0.10, "leaf")
+	_finish(w, "env_halaman_lata", 0.0)
+
+
+## ATIP NA YERO. The corrugated lean-to a house extends itself with.
+##
+## ⚠️ THIS IS THE PIECE THAT ROOFS THE ALLEY, and roofing the alley is the whole
+## contrast between this map and the plaza — Eskinita is fought ALONG a corridor
+## with something overhead, Bayan Plaza is fought ACROSS an open room. Wires do
+## part of that job; a GI awning over the doorway does the rest, at eye level
+## where the wires are not.
+##
+## ⚠️ THE CORRUGATION IS AUTHORED AS RIDGES, NOT AS A ROTATED WALL SHEET, AND THE
+## FIRST VERSION IS WHY. It reused `_corrugated_outline()` — a vertical wall's
+## CROSS-SECTION — extruded it along the slope and tipped it 68 degrees about X.
+## Rendered, that came out as a thin sliver floating clear of two disconnected
+## posts, with the rust band across the top face and the corrugation reading as a
+## sawtooth SILHOUETTE seen edge-on. The outline's own 0.21 of amplitude had
+## become the panel's visible depth and the 1.55 of extrusion had gone into the
+## screen. A rotation that has to be right in two axes at once is not worth it for
+## a piece this small.
+##
+## So the ridges are boxes: nine of them side by side, alternating height by 5 cm.
+## That IS what corrugation is, it needs no transform, it cannot be oriented
+## wrong, and every ridge runs down the slope (+Z) the way a roof sheet is
+## actually laid. `_sari_sari_store`'s awning and `_church_facade`'s pediment both
+## take the same route for the same reason and say so — when a slope is awkward,
+## step it, because "flat is honest rather than approximated badly".
+func _atip_yero() -> void:
+	var w := ObjWriter.new("AtipYero")
+	w.set_material("sheet", UiTheme.ENV_GI_SHEET)
+	w.set_material("rust", UiTheme.ENV_RUST)
+	w.set_material("timber", UiTheme.ENV_WOOD_DARK)
+
+	const RIDGES := 9
+	const SPAN := 2.00          # the awning's width, along X
+	const DEPTH := 1.45         # how far it reaches out from the wall, along Z
+	const FRONT_Y := 2.02       # the low, outer edge — over the posts
+	const BACK_Y := 2.34        # the high edge, against the wall
+
+	# Two posts carrying the outer edge, and a wall plate at the back. The posts
+	# stop AT the front edge rather than short of it — the first version left a
+	# 7 cm gap and the roof hovered.
+	for sx in SIDES:
+		_box(w, sx * (SPAN * 0.5 - 0.14), DEPTH * 0.5 - 0.10,
+			0.10, 0.10, 0.0, FRONT_Y, "timber")
+	_box(w, 0.0, -DEPTH * 0.5 + 0.06, SPAN + 0.10, 0.12,
+		BACK_Y - 0.12, BACK_Y, "timber")
+
+	# The ridges. Each is one box running the full DEPTH, so the corrugation
+	# lines point down the slope and the sheet drains the way a real one does.
+	var ridge_w := SPAN / float(RIDGES)
+	for i in range(RIDGES):
+		var cx := -SPAN * 0.5 + ridge_w * (float(i) + 0.5)
+		var high := (i % 2 == 0)
+		var y0 := FRONT_Y + (0.00 if high else 0.05)
+		var y1 := y0 + (0.09 if high else 0.05)
+		# Two segments per ridge — front half and back half — which is what gives
+		# the awning its pitch without a rotation: the back half simply sits
+		# higher than the front half.
+		# ⚠️ THE TWO HALVES OVERLAP IN Z BY 0.22, AND THE FIRST VERSION DID NOT.
+		# Abutting them exactly left the step between the low front half and the
+		# raised back half standing open — rendered, and you could see daylight
+		# through the middle of the awning. Overlapping the back half forward over
+		# the front one closes it, which is the same trick `_puno_niyog`'s trunk
+		# segments use on their radius steps and for the same reason.
+		var step := (BACK_Y - FRONT_Y) * 0.55
+		_box(w, cx, DEPTH * 0.25, ridge_w * 0.92, DEPTH * 0.5, y0, y1, "sheet")
+		_box(w, cx, -DEPTH * 0.25 + 0.11, ridge_w * 0.92, DEPTH * 0.5 + 0.22,
+			y0 + step, y1 + step, "sheet")
+		# And a riser closing the step's own face, so the joint reads as a lap
+		# rather than as two separate sheets at two heights.
+		_box(w, cx, 0.0, ridge_w * 0.92, 0.12, y0, y1 + step, "sheet")
+	# The rust run along the low outer lip, where a real sheet rots first because
+	# that is where the water leaves it.
+	_box(w, 0.0, DEPTH * 0.5 - 0.05, SPAN, 0.10, FRONT_Y - 0.04, FRONT_Y + 0.06,
+		"rust")
+	_finish(w, "env_atip_yero", 22.0)
+
+
 ## One instance, on the long axis of the boundary. It is the landmark that tells
 ## a player which way they are facing, and that is worth more than any three
 ## clutter pieces.
@@ -1094,6 +1521,163 @@ func _municipal_hall() -> void:
 ## reason it was widened from 0.06 in the first place was that a thin ring
 ## foreshortens to sub-pixel at the front/back of the ellipse from a throwing
 ## line 6 units away, and that distance hasn't changed.
+## =============================================================================
+## CHILDREN CHALK DRAWINGS - the floor of an eskinita is a sketchpad
+## =============================================================================
+##
+## Human ask, with reference photos of kids drawing on pavement: "add random child
+## chalk scribbles in eskinita on the floor, make it look like real drawings."
+##
+## THIS IS A PILLAR-1 PIECE, NOT DECORATION, and it is the cheapest one left. The
+## map already says "a street somebody lives on"; this says "and CHILDREN PLAY ON
+## IT", which is the entire premise of tumbang preso. The game is about kalaro in an
+## alley, and until now the only thing on the ground was the court the engine needs.
+##
+## PIKO EARNS ITS PLACE TWICE. It is Filipino hopscotch, chalked on streets across
+## the country, and it is a DIFFERENT STREET GAME drawn beside the one being played
+## - the same kids, another afternoon. A non-Filipino reads "hopscotch, so children
+## play here"; a Filipino reads "piko". That is the specific-not-decorative standard:
+## the reference is a real named game, not a generic squiggle.
+##
+## PASTELS, because real pavement chalk comes in a box of pale colours and children
+## use all of them, which is what the references show.
+## These are LOCAL CONSTANTS and that is a documented exception to this file's
+## "colours come from UiTheme" rule. UiTheme is the game's UI and role palette; a
+## child's chalk box is neither, and no ENV_* token is a pale pink. Adding four
+## UI-band colours for a floor doodle would be the worse trade. NONE of them is near
+## OFFENSE orange (#f87020) or DEFENSE blue (#0080e8) - checked, because the world is
+## the largest surface in frame and that rule does not bend.
+const CHALK_PINK: Color = Color(0.902, 0.678, 0.706)
+const CHALK_BLUE: Color = Color(0.678, 0.780, 0.851)
+const CHALK_LEMON: Color = Color(0.910, 0.878, 0.671)
+const CHALK_MINT: Color = Color(0.714, 0.843, 0.745)
+
+
+## One chalk stroke along a polyline, as a wobbly ribbon per segment.
+##
+## Reuses `_chalk_wander`, so a doodle and a court line are drawn by the same
+## unsteady hand - which is what stops the drawings reading as a different asset
+## dropped on the same floor. `t` advances along the WHOLE path rather than resetting
+## per segment, so the wobble carries continuously through corners.
+func _chalk_stroke(w: ObjWriter, pts: PackedVector2Array, width: float,
+		material: String, seed_t: float = 0.0) -> void:
+	if pts.size() < 2:
+		return
+	var t := seed_t
+	for i in range(pts.size() - 1):
+		var a := pts[i]
+		var b := pts[i + 1]
+		var d := b - a
+		var seg := d.length()
+		if seg < 0.0001:
+			continue
+		var dir := d / seg
+		var perp := Vector2(-dir.y, dir.x)
+		var steps := maxi(2, int(seg / 0.09))
+		var outline := PackedVector2Array()
+		for k in range(steps + 1):
+			var f := float(k) / float(steps)
+			var tt := t + f * seg
+			outline.append(a + d * f + perp * (_chalk_wander(tt)
+				+ width * 0.5 * (0.85 + 0.3 * sin(tt * 21.7))))
+		for k in range(steps, -1, -1):
+			var f := float(k) / float(steps)
+			var tt := t + f * seg
+			outline.append(a + d * f + perp * (_chalk_wander(tt)
+				- width * 0.5 * (0.85 + 0.3 * sin(tt * 19.1 + 1.4))))
+		w.add_extrude(outline, 0.0, 0.02, material)
+		t += seg
+
+
+## A closed ring of chalk - a head, a wheel, a flower centre. The radius breathes so
+## it is a child's circle rather than a compass one.
+func _chalk_ring(w: ObjWriter, cx: float, cz: float, r: float, width: float,
+		material: String) -> void:
+	var pts := PackedVector2Array()
+	for i in range(15):
+		var ang := TAU * float(i) / 14.0
+		var rr := r * (1.0 + 0.09 * sin(ang * 3.0 + 0.7))
+		pts.append(Vector2(cx + rr * cos(ang), cz + rr * sin(ang)))
+	_chalk_stroke(w, pts, width, material, cx * 3.1 + cz)
+
+
+## PIKO - Filipino hopscotch. Four single boxes then a wide pair, drawn wonky.
+func _chalk_piko() -> void:
+	var w := ObjWriter.new("ChalkPiko")
+	w.set_material("chalk", CHALK_LEMON)
+	const CELL := 0.62
+	var y := 0.0
+	for row in range(4):
+		var wob := 0.035 * sin(float(row) * 2.3)
+		_chalk_stroke(w, PackedVector2Array([
+			Vector2(-CELL * 0.5 + wob, y), Vector2(CELL * 0.5 + wob, y),
+			Vector2(CELL * 0.5 - wob, y + CELL), Vector2(-CELL * 0.5 - wob, y + CELL),
+			Vector2(-CELL * 0.5 + wob, y),
+		]), 0.045, "chalk", float(row) * 1.7)
+		y += CELL
+	_chalk_stroke(w, PackedVector2Array([
+		Vector2(-CELL, y), Vector2(CELL, y), Vector2(CELL, y + CELL),
+		Vector2(-CELL, y + CELL), Vector2(-CELL, y),
+	]), 0.045, "chalk", 9.3)
+	_chalk_stroke(w, PackedVector2Array([Vector2(0.0, y), Vector2(0.0, y + CELL)]),
+		0.045, "chalk", 4.1)
+	_finish(w, "env_chalk_piko", 0.0)
+
+
+## A stick figure. Every child draws this one and it reads instantly from above.
+func _chalk_tao() -> void:
+	var w := ObjWriter.new("ChalkTao")
+	w.set_material("chalk", CHALK_PINK)
+	_chalk_ring(w, 0.0, 0.62, 0.17, 0.04, "chalk")
+	_chalk_stroke(w, PackedVector2Array([Vector2(0.0, 0.45), Vector2(0.02, -0.12)]),
+		0.04, "chalk", 1.3)
+	_chalk_stroke(w, PackedVector2Array([Vector2(-0.30, 0.14), Vector2(0.01, 0.32),
+		Vector2(0.32, 0.10)]), 0.04, "chalk", 2.6)
+	_chalk_stroke(w, PackedVector2Array([Vector2(-0.24, -0.52), Vector2(0.02, -0.12),
+		Vector2(0.26, -0.50)]), 0.04, "chalk", 5.2)
+	_finish(w, "env_chalk_tao", 0.0)
+
+
+## A flower, straight off the second reference photo.
+func _chalk_bulaklak() -> void:
+	var w := ObjWriter.new("ChalkBulaklak")
+	w.set_material("petal", CHALK_BLUE)
+	w.set_material("stem", CHALK_MINT)
+	for i in range(6):
+		var ang := TAU * float(i) / 6.0
+		_chalk_ring(w, cos(ang) * 0.27, sin(ang) * 0.27 + 0.30, 0.15, 0.035, "petal")
+	_chalk_ring(w, 0.0, 0.30, 0.11, 0.035, "petal")
+	_chalk_stroke(w, PackedVector2Array([Vector2(0.0, 0.16), Vector2(-0.04, -0.42)]),
+		0.038, "stem", 3.4)
+	_chalk_stroke(w, PackedVector2Array([Vector2(-0.03, -0.12), Vector2(0.22, -0.02)]),
+		0.033, "stem", 7.1)
+	_finish(w, "env_chalk_bulaklak", 0.0)
+
+
+## Loops and a sun - the "I was just holding chalk" drawing. There is one in every
+## reference photo, and it is what makes a floor look USED rather than decorated with
+## three tidy motifs.
+func _chalk_gulo() -> void:
+	var w := ObjWriter.new("ChalkGulo")
+	w.set_material("chalk", CHALK_MINT)
+	w.set_material("sun", CHALK_LEMON)
+	var loop := PackedVector2Array()
+	for i in range(34):
+		var f := float(i) / 33.0
+		var ang := f * TAU * 2.4
+		var r := 0.16 + f * 0.42
+		loop.append(Vector2(cos(ang) * r - 0.15, sin(ang) * r * 0.72))
+	_chalk_stroke(w, loop, 0.036, "chalk", 0.9)
+	_chalk_ring(w, 0.74, 0.52, 0.13, 0.034, "sun")
+	for i in range(6):
+		var a2 := TAU * float(i) / 6.0 + 0.3
+		_chalk_stroke(w, PackedVector2Array([
+			Vector2(0.74 + cos(a2) * 0.18, 0.52 + sin(a2) * 0.18),
+			Vector2(0.74 + cos(a2) * 0.30, 0.52 + sin(a2) * 0.30)]),
+			0.03, "sun", float(i) * 3.3)
+	_finish(w, "env_chalk_gulo", 0.0)
+
+
 func _base_circle_decal() -> void:
 	var w := ObjWriter.new("BaseCircleDecal")
 	w.set_material("mark", UiTheme.HIGHLIGHT)
@@ -1116,17 +1700,99 @@ func _base_circle_decal() -> void:
 ## 6.0 units from the base circle is where this goes — see
 ## Art_Direction.md §9 for the ballistics, and for the finding that
 ## throw_bakya cannot reach it.
+## ⚠️⚠️ ONE WIDTH FOR EVERY CHALK LINE ON EVERY MAP, AND IT USED TO BE TWO.
+## Reported from a playtest: "fix these lines for play area of both maps, they dont
+## connect and they dont look uniform, one is fat af one is thin."
+## Measured: `throwing_line_decal` was 0.12 wide and `team_side_decal` 0.08 — a 50%
+## difference between two lines that meet at a corner, which is why the court read
+## as several unrelated markings rather than one chalked court. `court_line()` in
+## both builders already extends each edge by the SIDE line's half-width so corners
+## overlap, and that arithmetic is only correct when every line shares a width; with
+## two widths the throwing line overshot by 20 mm at each end (measured) and the
+## corner never closed cleanly.
+##
+## So there is one constant and both meshes use it. Changing chalk width is now a
+## one-line change that cannot desynchronise.
+const CHALK_WIDTH: float = 0.09
+## Chalk is a DUSTY OFF-WHITE, not paint. `UiTheme.PANEL` is a UI panel colour and
+## read as crisp white plastic at ground level — part of why these looked like
+## printed lines rather than something a kid drew.
+const CHALK_TINT: Color = Color(0.902, 0.878, 0.816)
+
+## ⚠️⚠️ SOLID, NOT DASHED, BECAUSE IT HAS TO CONNECT. An earlier attempt at "make
+## it look like chalk" authored each line as six strokes with gaps between them.
+## That is what chalk looks like and it is the wrong answer here, because the SAME
+## report also says "make sure that it actually CONNECTS" — and a line with gaps in
+## it cannot close a corner. Geometry carries the SHAPE; the chalk look comes from
+## the TEXTURE instead (see `chalk.png` and the `Mat_chalk` triplanar material both
+## builders attach to every Markings node).
+##
+## ⚠️ TRIPLANAR IS WHY A TEXTURE IS POSSIBLE AT ALL HERE. `obj_writer.gd` emits no
+## `vt` lines — the pipeline has no UVs, which is exactly why `Handoff.md` §5 has a
+## standing question about printed type on the lata. A triplanar material needs no
+## UVs: it projects from world space. So the decals get real chalk grain without a
+## UV pipeline, and nothing else in the kit has to change.
+## The centreline's WANDER at position `t` along the line, in metres. Two
+## incommensurate sines, so it never repeats over a line's length and never needs a
+## random number — same determinism rule as everything else in this file.
+func _chalk_wander(t: float) -> float:
+	return 0.011 * sin(t * 13.7) + 0.006 * sin(t * 31.3 + 1.1) 		+ 0.003 * sin(t * 67.1 + 0.5)
+
+
+## Half the line's WIDTH at `t`. A stick of chalk held by a kid does not hold a
+## width: it presses, skips, and rolls. 0.55x to 1.35x of nominal.
+func _chalk_halfwidth(t: float, side: float) -> float:
+	var press := 0.95 + 0.28 * sin(t * 17.9 + 0.4) + 0.12 * sin(t * 43.3 + side * 2.1)
+	return CHALK_WIDTH * 0.5 * clampf(press, 0.55, 1.35)
+
+
+func _chalk_line(file_name: String, length: float) -> void:
+	var w := ObjWriter.new("ChalkLine")
+	w.set_material("mark", CHALK_TINT)
+
+	## ⚠️⚠️ A HAND-DRAWN RIBBON, NOT A BOX. Human, with three reference photos:
+	## "make the lines not straight like idk REAL CHALK? IVE NEVER SEEN STRAIGHT UP
+	## STRAIGHT CHALK WITH STRAIGHT WHITE LINE NO TEXTURE."
+	## Right — and a single `_box()` is exactly a straight white line. In every one
+	## of those references the line WANDERS off true by a centimetre or two, CHANGES
+	## THICKNESS along its length as the stick presses and skips, and has edges that
+	## are ragged rather than parallel. None of that is texture; it is the SHAPE.
+	##
+	## `add_extrude` takes an arbitrary outline, so the line is built as a closed
+	## ribbon: forward along the low-Z edge, back along the high-Z edge, with the
+	## centreline wandering and the half-width varying INDEPENDENTLY on each side.
+	## Same winding as `_corrugated_outline` — that is the handedness add_extrude
+	## wants.
+	##
+	## ⚠️ THE WANDER IS AUTHORED IN Z, WHICH THE BUILDERS DO NOT STRETCH. Both
+	## builders scale these decals on the X basis column only, so a 6 m mesh drawn
+	## out to 26 m keeps its wobble AMPLITUDE in real centimetres and simply gets a
+	## longer wavelength. A 2 cm wobble stays a 2 cm wobble on every line on both
+	## maps, which is what makes one mesh usable at four different lengths.
+	const SEGS := 64
+	var outline := PackedVector2Array()
+	for i in range(SEGS + 1):
+		var t := float(i) / float(SEGS)
+		var x := -length * 0.5 + length * t
+		outline.append(Vector2(x, _chalk_wander(t) - _chalk_halfwidth(t, 0.0)))
+	for i in range(SEGS, -1, -1):
+		var t := float(i) / float(SEGS)
+		var x := -length * 0.5 + length * t
+		outline.append(Vector2(x, _chalk_wander(t) + _chalk_halfwidth(t, 1.0)))
+	# 0.0 smoothing: chalk grain is a hard, faceted edge. Averaging the normals
+	# across the ragged boundary sands it back into the straight line this exists
+	# to get rid of — the same lesson `_laundry_line` records about cloth folds.
+	w.add_extrude(outline, 0.0, 0.02, "mark")
+	_finish(w, file_name, 0.0)
+
+
 func _throwing_line_decal() -> void:
-	var w := ObjWriter.new("ThrowingLineDecal")
-	w.set_material("mark", UiTheme.PANEL)
-	_box(w, 0, 0, 8.0, 0.12, 0.0, 0.02, "mark")
-	_finish(w, "env_throwing_line_decal")
+	_chalk_line("env_throwing_line_decal", 8.0)
+
 
 func _team_side_decal() -> void:
-	var w := ObjWriter.new("TeamSideDecal")
-	w.set_material("mark", UiTheme.PANEL)
-	_box(w, 0, 0, 6.0, 0.08, 0.0, 0.02, "mark")
-	_finish(w, "env_team_side_decal")
+	_chalk_line("env_team_side_decal", 6.0)
+
 
 ## ⚠️ `_jeepney_lane_decal()` IS DELETED. DO NOT REBUILD IT. (Phase 8, 2026-07-29)
 ##

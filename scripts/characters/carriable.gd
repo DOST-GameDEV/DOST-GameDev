@@ -71,16 +71,152 @@ const THROWER_IGNORE_TIME: float = 0.25
 ## weaker bounce is closer to "bounces a bit" than "physically simulates a
 ## rubber object," which was never the ask.
 const BOUNCE_DAMPING: float = 0.3
+## ⚠️ R-18(a) — SWEEPABLE, AND THE `const` ABOVE STAYS AS THE DOCUMENTED BASELINE.
+## Identical shape to `AIController.taya_block_standoff`, which turned a
+## three-runs-old question into one measurement for the cost of one line. Both of
+## these numbers were tuned DOWN in one pass off a single feedback sentence and have
+## never been judged since; sweeping them needs them writable from
+## `tools/phys_probe.gd` (`bounce=` / `bounces=`) and nothing else.
+## ⚠️ `static`, so it is process-wide and every slipper in the match answers to one
+## value — which is correct (this is a property of the physics, not of a slipper) and
+## is also why a probe must not leave it changed.
+static var bounce_damping: float = BOUNCE_DAMPING
 ## After this many bounces, the next collision lands it (goes LOOSE) regardless
 ## of remaining speed, so a shallow-angle skip along the floor can't bounce
 ## forever. MAX_FLIGHT_TIME (6s) is the backstop under that. Lowered from 2 to
 ## 1 alongside BOUNCE_DAMPING above — one clean skip, not a multi-bounce
 ## ragdoll sequence.
 const MAX_BOUNCES: int = 1
+## R-18(a). See `bounce_damping` directly above for why both of these are sweepable
+## and why the `const` is kept.
+static var max_bounces: int = MAX_BOUNCES
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ R-06 FALLOUT · A CEILING ON THE MID-FLIGHT STEER, AND IT IS NOT COSMETIC.
+##
+## `ThrowProfile.steer_strength` is an ACCELERATION (m/s² sideways), so the total
+## lateral authority a throw has is `steer_strength * flight_time` — and the lob
+## multiplies flight time by roughly six. Worked from the measured numbers rather
+## than guessed:
+##
+##     throw_default flat  6.0 m/s^2 x 0.29 s  =  1.7 m/s of lateral authority
+##     throw_flick   flat 10.0 m/s^2 x 0.23 s  =  2.3 m/s
+##     throw_default LOB   6.0 m/s^2 x 1.67 s  = 10.0 m/s   <-- six times the flat
+##
+## That would have quietly broken the exact triangle R-06 is built on. The lob's
+## counterplay is the can's dodge (`CAN_EVADE_LOOKAHEAD` sees it because it arrives
+## slowly), and 10 m/s of lateral authority lets the slipper's own pilot simply steer
+## back onto a dodging can — the longer flight would hand the attacking team MORE
+## correction, not less, and the dodge would stop beating the lob. A lob that is
+## also a guided missile is the "strictly better shot" the item forbids.
+##
+## So the cap bounds the PRODUCT, which is the class of bug, rather than special-
+## casing the lob. Sized at the largest authority the game already grants a flat
+## throw (2.3 m/s for flick), rounded up: every existing profile's flat throw is
+## unchanged to the millimetre — none of them can currently reach 3.0 — and a lob
+## gets the same correction budget a line drive does, spent over a longer flight.
+## Committing to the lob therefore costs steering, which is the right trade to have
+## to make and reads as weight rather than as a rule.
+##
+## ⚠️ Reset in `_rpc_set_flying`, i.e. per THROW, on every peer — same lifetime and
+## same reasoning as `clear_hit_memory()` on the line beside it.
+const MAX_STEER_DELTA_V: float = 3.0
 ## Fallback used when a slipper's ability carries no ThrowProfile of its own
 ## (e.g. the networked Prop default, which is currently quick_stand.tres for
 ## every Prop — see main.gd PROP_ABILITY).
 const DEFAULT_PROFILE: ThrowProfile = preload("res://scripts/abilities/resources/throw_default.tres")
+
+## ---------------------------------------------------------------------------
+## SCUFFING AN OPPONENT'S TSINELAS — human request, 2026-07-29: *"add a mechanic
+## that defender can step or touch the slipper of enemy team and it will slow
+## down or get knocked back (knock back for the touch)."*
+##
+## Two different interactions on the SAME object, told apart by the contact
+## normal rather than by a button:
+##
+##   STEP  — you came down on top of it. The normal points up. It gets slowed.
+##   TOUCH — you walked into its side. The normal is horizontal. It gets shoved.
+##
+## This is the missing half of the ownership rule this file already states in
+## `can_be_grabbed_by()`: an opponent's slipper "is still a solid, kickable
+## obstacle — you can body-check it, your bump still staggers it," but until now
+## nothing actually happened when you did anything short of pressing bump. The
+## rule said kickable and the code only meant collidable.
+##
+## ⚠️ HOST-AUTHORITATIVE, like every other transition in this file. The stepping
+## character's own peer is the only one that runs its `move_and_slide()` (see
+## `character_base.gd::_physics_process`'s authority gate), so detection has to
+## happen there — but it only ASKS. `host_scuff()` re-validates from scratch and
+## broadcasts, so two peers shoving the same slipper cannot each decide where it
+## goes.
+## ---------------------------------------------------------------------------
+
+## How much of its already-slow crawl a stepped-on slipper keeps. Multiplies
+## CRAWL_SPEED_SCALE rather than replacing it, so being stood on is strictly
+## worse than crawling freely no matter how CRAWL_SPEED_SCALE is retuned.
+const STEP_SLOW_SCALE: float = 0.35
+## How long the slow lasts after the foot comes off. Non-zero on purpose: with a
+## pure while-touching test the effect flickers off every frame the capsules
+## separate by a millimetre, which reads as nothing happening at all.
+const STEP_SLOW_TIME: float = 0.6
+## The shove a body-check gives a loose slipper, in metres/second, and the lift
+## that goes with it.
+##
+## ⚠️ SIZED FROM THE STOPPING DISTANCE, NOT PICKED BY EAR — and the first guess
+## was wrong by an order of magnitude for exactly that reason. `FRICTION` is 30.0
+## and a loose slipper with no input on it decays at that rate, so a shove of `v`
+## travels `v^2 / (2 * 30)` metres and then stops:
+##
+##     v = 2.6  ->  0.11 m predicted   (the first guess)
+##     v = 3.4  ->  0.19 m predicted   (hitbox.gd's MELEE_KNOCKBACK, for scale)
+##     v = 8.5  ->  1.20 m predicted   (shipped)
+##
+## 2.6 was chosen to sit "below MELEE_KNOCKBACK so a deliberate bump always beats
+## walking into it", which was reasoning about the wrong quantity: at these speeds
+## the whole scale is under a fifth of a metre and nothing in it is visible.
+##
+## Still under `apply_knockback()`'s horizontal clamp (just above DASH_SPEED, 14),
+## so it cannot launch anything out of the arena.
+##
+## ✅ AND THE PREDICTION HOLDS, once the harness stopped lying. `scuff_probe`
+## measured a shove of **1.272 m** against the 1.20 m predicted here.
+##
+## ⚠️ An earlier note in this spot claimed the opposite — 0.417 m, "and identical
+## at v = 2.6, 8.5 and 14.0, so the distance does not respond to this constant at
+## all." That was true of what was being measured and false about the game: at the
+## time, the touch branch was not firing at all (the STEP/TOUCH discriminator was
+## classifying every ground-level contact as a step) and the 0.417 m was the
+## Person shoving the slipper by ordinary depenetration, which of course does not
+## depend on this constant. Kept as a warning rather than deleted: "the number
+## does not respond to the constant" correctly said *something* was wrong, and
+## pointed at the wrong thing.
+##
+## 🧑 THE TARGET DISTANCE IS ALSO A FEEL CALL AND HAS NOT BEEN PLAYED. 1.2 m was
+## chosen as "clearly shoved, still retrievable". Checklist Phase 9 owns it.
+const TOUCH_KNOCKBACK_SPEED: float = 8.5
+const TOUCH_KNOCKBACK_LIFT: float = 1.1
+## Minimum gap between two shoves of the same slipper. Without it, a defender
+## standing against it re-shoves every physics frame and it rockets away — 60
+## impulses a second is not a body-check, it is a jet engine.
+const SCUFF_COOLDOWN: float = 0.35
+## How vertical a contact normal has to be to count as standing ON the slipper
+## rather than walking INTO it.
+const STEP_NORMAL_Y: float = 0.6
+## How far above the stepper's own feet a contact may still count as standing ON
+## the slipper.
+##
+## ⚠️ THE NORMAL ALONE IS NOT ENOUGH, and the first version of this that shipped
+## used only the normal and never once registered a step. A tsinelas is a capsule
+## of radius 0.16 — a Person coming down on it is landing on a rounded cap barely
+## wider than a fist, so unless the contact is almost exactly dead centre the
+## normal comes back angled and the test falls through to TOUCH. Measured: the
+## step branch fired 0 times in 40 physics frames of a Person dropped straight
+## onto one.
+##
+## Height is the honest question anyway. "Did I stand on it" is really "was it
+## under my feet", and that is what this measures — the normal test is kept as
+## the cheap early answer for the clean case.
+const STEP_CONTACT_MARGIN: float = 0.12
 
 ## Fired on every peer whenever the state changes, so UI and visuals can react
 ## without polling. CharacterVisual listens for the spin/landing read; hud.gd
@@ -91,12 +227,40 @@ var state: CarryState = CarryState.LOOSE
 ## The Person currently holding this, or null. Set only by a host broadcast.
 var carrier: CharacterBase = null
 
+## R-06. Whether the throw currently in the air is a `bagsak` lob. Set on every peer
+## from the launch broadcast (`_rpc_set_flying`), so a visual or audio lane can react
+## to a lob without asking who threw it or re-deriving it from the arc. Meaningless
+## unless FLYING.
+var flight_is_lob: bool = false
+
 var _character: CharacterBase = null
 var _flight_velocity: Vector3 = Vector3.ZERO
 var _flight_time: float = 0.0
+## How much lateral velocity the mid-flight steer has already spent on THIS throw.
+## See MAX_STEER_DELTA_V.
+var _steer_spent: float = 0.0
 var _flight_hitbox: Area3D = null
 var _thrower_ignore_left: float = 0.0
 var _bounces_left: int = 0
+## Scuffing (see the STEP/TOUCH block above). Both are plain local timers driven
+## from the broadcast, not replicated state — every peer starts them from the
+## same `_rpc_apply_scuff` and counts down at the same rate, which is the same
+## reason a carried slipper's transform is recomputed rather than streamed.
+var _step_slow_left: float = 0.0
+var _scuff_cooldown_left: float = 0.0
+## How many times each branch has actually applied, ever, on this peer.
+##
+## ⚠️ INSTRUMENTATION, AND IT IS LOAD-BEARING — do not delete it as debug cruft.
+## The acceptance test for this mechanic originally inferred "the shove happened"
+## from how far the slipper ended up moving, which is not the same fact: a Person
+## walking through a loose slipper displaces it by ordinary depenetration whether
+## or not any of this code runs. Measured, with the probe reporting 0.417 m at
+## TOUCH_KNOCKBACK_SPEED 2.6, 8.5 AND 14.0 — a number that does not respond to the
+## constant it is supposed to depend on is not measuring that constant.
+## These counters observe the branch itself, so the test cannot pass for the wrong
+## reason again.
+var scuffs_stepped: int = 0
+var scuffs_touched: int = 0
 
 func _ready() -> void:
 	_character = get_parent() as CharacterBase
@@ -215,8 +379,77 @@ func drives_movement() -> bool:
 ## supposed to be moving "with no restrictions."
 func movement_speed_scale() -> float:
 	if RoundManager.round_active and state == CarryState.LOOSE and is_throwable():
+		# Being stood on MULTIPLIES the crawl rather than replacing it — see
+		# STEP_SLOW_SCALE. A defender with a foot on your tsinelas should make an
+		# already-bad situation worse, not define a new speed out of nowhere.
+		if _step_slow_left > 0.0:
+			return CRAWL_SPEED_SCALE * STEP_SLOW_SCALE
 		return CRAWL_SPEED_SCALE
 	return 1.0
+
+## Runs on every peer. The two scuff timers are the only things this node needs
+## ticked while the slipper is LOOSE — `physics_step()` above is called by
+## character_base only while `drives_movement()` is true (CARRIED or FLYING), and
+## a loose slipper is neither.
+func _physics_process(delta: float) -> void:
+	if _step_slow_left > 0.0:
+		_step_slow_left = maxf(0.0, _step_slow_left - delta)
+	if _scuff_cooldown_left > 0.0:
+		_scuff_cooldown_left = maxf(0.0, _scuff_cooldown_left - delta)
+
+## Whether `who` is allowed to scuff this slipper at all. Mirrors
+## can_be_grabbed_by() and inverts its team test on purpose: you may PICK UP only
+## your own team's tsinelas, and you may STEP ON or SHOVE only the opponents'.
+## The two are the same ownership rule read from its two ends.
+func can_be_scuffed_by(who: CharacterBase) -> bool:
+	if who == null or _character == null or who == _character:
+		return false
+	if not is_throwable():
+		return false # a lata is not kicked around; it is hit, or it is reset
+	if state != CarryState.LOOSE:
+		return false # in a hand or in the air is somebody else's rule
+	if who.team == _character.team:
+		return false # your own team's slipper — go and pick it up instead
+	if not RoundManager.round_active:
+		return false
+	return true
+
+## Host side of a scuff. `kind` is "step" or "touch"; `direction` is the shove
+## bearing for a touch, already flat and normalised, and ignored for a step.
+##
+## Same shape as host_grab/host_throw: the client asked, the host re-validates
+## from scratch, and only then does it broadcast. The cooldown is checked HERE,
+## on the one machine, so two defenders arriving on the same frame cannot each
+## spend it.
+func host_scuff(by: CharacterBase, kind: String, direction: Vector3) -> void:
+	if not _is_host() or not can_be_scuffed_by(by):
+		return
+	if kind == "touch" and _scuff_cooldown_left > 0.0:
+		return
+	if NetworkManager.is_networked():
+		_rpc_apply_scuff.rpc(kind, direction)
+	else:
+		_rpc_apply_scuff(kind, direction)
+
+## "any_peer" for the same reason every other broadcast in this file is — the
+## host sends it, and the host is not this node's multiplayer authority in the
+## usual case, so an "authority" RPC would be silently dropped.
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_apply_scuff(kind: String, direction: Vector3) -> void:
+	if kind == "step":
+		scuffs_stepped += 1
+		# Refreshed, not accumulated — standing on it longer keeps it slow, it
+		# does not make it slower and slower.
+		_step_slow_left = STEP_SLOW_TIME
+		return
+	scuffs_touched += 1
+	_scuff_cooldown_left = SCUFF_COOLDOWN
+	# apply_knockback() already refuses between rounds, clamps the result, and
+	# respects Guard — reusing it means a body-check on a slipper obeys exactly
+	# the same ceilings a thrown Bagsak Bomb does. See its own doc.
+	_character.apply_knockback(
+		direction * TOUCH_KNOCKBACK_SPEED + Vector3.UP * TOUCH_KNOCKBACK_LIFT)
+	AudioManager.play_at("slipper_land", _character.global_position)
 
 ## Read by character_visual.gd for the in-flight tumble. Exposed rather than
 ## making callers reach through to `ability` themselves — how a slipper flies is
@@ -311,19 +544,45 @@ func _step_carried() -> void:
 	var hand := carrier.get_hand_attachment()
 	if hand == null:
 		return # the Person's model has not been instanced yet; try again next frame
-	# ORTHONORMALISED, not copied wholesale. A Person's model is scaled by
-	# CharacterVisual.PERSON_SCALE (2.38) and every bone under its Skeleton3D
-	# inherits that, so assigning the hand's transform directly would blow the
-	# slipper up to 2.38x — with no error, just a comically large tsinelas.
+	# ⚠️⚠️ THE ORIENTATION COMES FROM THE CARRIER'S BODY, NOT FROM THE HAND BONE.
+	# THIS IS THE FIX FOR "THE SLIPPER JUST SPINS AROUND UNCONTROLLABLY".
+	#
+	# The POSITION still comes from the hand — that is what puts the tsinelas in
+	# the fist rather than floating beside it, and it is correct. The BASIS used
+	# to come from the hand too, and that is where the spin came from: `hand` is a
+	# node under a `BoneAttachment3D` on the Person's arm bone, so its basis is
+	# re-derived from the currently-playing ANIMATION CLIP every single frame. The
+	# arm swings through idle, walk, sprint, the throw one-shot and the grab
+	# one-shot, and the slipper was rigidly welded to all of it — a full,
+	# fast, uncontrollable tumble in the hand of anyone who so much as walked.
+	#
+	# It reads worst exactly where it was reported, before the round starts: a
+	# CARRIED slipper returns true from `drives_movement()`, so
+	# `character_base.gd::_physics_process` gives its whole frame to this function
+	# and returns before reading input. The player cannot move it AND it is
+	# spinning, which is the complaint word for word.
+	#
+	# A body's yaw is a single number that changes when the player turns, so
+	# building the basis from it gives a slipper that is held steady, points where
+	# its carrier points, and still tilts its sole toward the camera. Nothing about
+	# the hand's POSITION is given up — the arm still carries it, it just no longer
+	# spins it.
+	#
+	# ⚠️ ORTHONORMALISED YAW, NOT THE CARRIER'S RAW BASIS. A Person's model is
+	# scaled by CharacterVisual.PERSON_SCALE (2.38) and a body can carry
+	# non-yaw components transiently; both would ride straight into this transform.
+	# `camera_rig.gd::_body_yaw()` exists for the same reason and recovers yaw the
+	# same way, from the forward vector rather than from Euler decomposition.
 	#
 	# B-90: `* tilt`, not `tilt *` — tilt has to apply in the OBJECT'S OWN
 	# local frame (pre-multiplied) so it rotates the sole toward the camera
-	# regardless of which way the hand itself is currently oriented, rather
-	# than tilting relative to the world after the hand's rotation is already
-	# applied.
+	# regardless of which way the carrier is currently facing, rather than
+	# tilting relative to the world after the yaw is already applied.
 	var tilt := Basis(Vector3.RIGHT, deg_to_rad(CARRY_TILT_DEG))
 	var hand_transform := hand.global_transform
-	var basis := hand_transform.basis.orthonormalized() * tilt
+	var forward := -carrier.global_transform.basis.z
+	var carrier_yaw := atan2(-forward.x, -forward.z)
+	var basis := Basis(Vector3.UP, carrier_yaw) * tilt
 	# ⚠️ PUT THE MESH IN THE HAND, NOT THE ORIGIN.
 	#
 	# 2026-07-29, reported as "floating slipper when held, make it acc be on the
@@ -359,7 +618,8 @@ func _step_flying(delta: float) -> void:
 	# Mid-flight steer — the Prop player is a pilot, not cargo (Task 0 agreement).
 	# Sideways only, relative to the direction of travel: it can curve a throw
 	# around a defender, never turn it into a guided missile or add range.
-	if profile.steer_strength > 0.0 and _is_locally_driven():
+	if profile.steer_strength > 0.0 and _is_locally_driven() \
+			and _steer_spent < MAX_STEER_DELTA_V:
 		var input_dir := _character.input_vector(
 			"move_left", "move_right", "move_up", "move_down")
 		if input_dir.length() > 0.0:
@@ -367,7 +627,16 @@ func _step_flying(delta: float) -> void:
 			travel.y = 0.0
 			if travel.length() > 0.01:
 				var right := travel.normalized().cross(Vector3.UP)
-				_flight_velocity += right * input_dir.x * profile.steer_strength * delta
+				# ⚠️ THE BUDGET IS SPENT ON MAGNITUDE, NOT ON SIGN. Counting only the
+				# net displacement would let a pilot wiggle left-right forever and
+				# accumulate unlimited authority a frame at a time, which is the same
+				# 60-impulses-a-second failure SCUFF_COOLDOWN exists for. See
+				# MAX_STEER_DELTA_V.
+				var step: float = minf(
+					absf(input_dir.x) * profile.steer_strength * delta,
+					MAX_STEER_DELTA_V - _steer_spent)
+				_steer_spent += step
+				_flight_velocity += right * signf(input_dir.x) * step
 
 	# The hitbox is live for the whole flight (character_base.is_hitbox_active),
 	# but area_entered only fires on the ENTER edge — so sweep every frame or a
@@ -398,7 +667,7 @@ func _step_flying(delta: float) -> void:
 		and carrier != null and is_instance_valid(carrier) \
 		and collision.get_collider() == carrier
 	if collision != null and not ignoring_thrower and _bounces_left > 0:
-		_flight_velocity = _flight_velocity.bounce(collision.get_normal()) * BOUNCE_DAMPING
+		_flight_velocity = _flight_velocity.bounce(collision.get_normal()) * bounce_damping
 		_bounces_left -= 1
 		collision = null # consumed by the bounce, not a landing this frame
 		# 4.1. Runs on every peer (this whole function does — see physics_step's
@@ -430,12 +699,43 @@ func host_grab(by: CharacterBase) -> void:
 ## carrier.gd::_aim_point() for the measurements behind that, and _solve_arc()
 ## below for the maths. The parameter used to be a unit direction; anything
 ## calling this with one will now aim at a point 1 metre from the world origin.
-func host_throw(target_point: Vector3, power: float) -> void:
+## ⚠️ `lob` IS R-06, AND IT IS THE ONLY NEW PARAMETER *THAT MECHANIC* NEEDED. Default
+## false so every existing caller — the probes, and any ability that ever throws —
+## keeps the flat throw it already asked for.
+##
+## ⚠️ `launch_origin` IS 10.6, AND IT HAS NO DEFAULT ON PURPOSE. Merged 2026-07-30 from
+## `code/throw-feel`, which was written against a `host_throw` that had neither `lob` nor
+## the LAKAS power scale — the two changes are complementary (one is WHERE the throw
+## leaves from, the other is WHAT SHAPE it flies) and both are kept in full.
+##
+## It is the FIRST parameter and it is required, so that every one of the ten call sites
+## across four probes had to be visited by hand rather than silently inheriting a default
+## that would have quietly restored the sag this fixes. See `carrier.gd::_throw_origin()`.
+func host_throw(launch_origin: Vector3, target_point: Vector3, power: float,
+		lob: bool = false) -> void:
 	if not _is_host() or state != CarryState.CARRIED:
 		return
 	var profile := _profile()
 	var speed_now: float = profile.launch_speed * clampf(power, 0.0, 1.0)
-	var aim := _solve_arc(_character.global_position, target_point, speed_now, profile)
+	# ⚠️ SOLVED FROM, AND LAUNCHED FROM, THE SIGHT LINE — not this unit's own
+	# position. See carrier.gd::_throw_origin() for the measurements: leaving
+	# from the hand hung the whole flight up to 0.43 m under the line the player
+	# was aiming along, worst within a fifth of a metre of their face. Both the
+	# solve and the broadcast below use the same origin, or the arc would be
+	# solved for a flight that never happens.
+	#
+	# ⚠️ AND THE LOB TAKES IT TOO — that is a merge DECISION, not a mechanical
+	# resolution. `code/throw-feel` predates R-06 and so only ever fixed the flat
+	# throw. Leaving the lob on `_character.global_position` would have kept the
+	# exact sag this fixes for the one throw whose whole identity is its arc, and
+	# split the two paths over which origin they launch from for no reason.
+	if lob:
+		# The lob solves the SPEED for a fixed angle instead of the angle for a fixed
+		# speed — the mirror image of the flat throw, and the same arc. See _solve_lob.
+		_broadcast_flying(launch_origin,
+			_solve_lob(launch_origin, target_point, profile, speed_now), true)
+		return
+	var aim := _solve_arc(launch_origin, target_point, speed_now, profile, lob)
 	# ⚠️ THE SIGN HERE WAS INVERTED, AND IT IS WHY EVERY THROW FLEW LOW.
 	# 2026-07-29, user report: "the height when you throw it is still too low."
 	#
@@ -461,15 +761,18 @@ func host_throw(target_point: Vector3, power: float) -> void:
 	if horizontal.length() > 0.01 and not is_zero_approx(profile.arc_angle_deg):
 		var axis := horizontal.normalized().cross(Vector3.UP)
 		aim = aim.rotated(axis.normalized(), deg_to_rad(profile.arc_angle_deg))
-	_broadcast_flying(_character.global_position, aim.normalized() * speed_now)
+	_broadcast_flying(launch_origin, aim.normalized() * speed_now, lob)
 
 ## THE LAUNCH ANGLE THAT ACTUALLY PASSES THROUGH `target`.
 ##
 ## ⚠️ THIS, NOT THE LAUNCH DIRECTION, IS WHAT "ALIGNED WITH THE CROSSHAIR"
 ## MEANS. Pointing the initial velocity at the crosshair is not the same thing
-## and does not look like it: the slipper leaves the HAND (y 0.89) rather than
-## the eye (y 1.35), and gravity then bends it away from the sight line by an
-## amount that grows with range. Measured with the launch merely parallel to the
+## and does not look like it: gravity bends the flight away from the sight line by an
+## amount that grows with range.
+## ⚠️ THIS PARAGRAPH USED TO SAY "the slipper leaves the HAND (y 0.89) rather than the
+## eye (y 1.35)". It no longer does — 10.6 moved the launch onto the sight line, and
+## `host_throw` now takes that origin. The solve below is still what makes the flight pass
+## THROUGH the point; the origin is what stops it sagging under the line on the way. Measured with the launch merely parallel to the
 ## aim, from the 6.0 throwing line: a target 7.04 m out landed 1.70 m SHORT and
 ## one 3.38 m out landed 1.47 m LONG — the two only ever agreed at a single
 ## distance, which is exactly what "the height is too low" describes.
@@ -484,7 +787,30 @@ func host_throw(target_point: Vector3, power: float) -> void:
 ## `g` is the profile's own effective gravity, so a heavy Bakya solves a steeper
 ## angle than a floaty Havaianas for the same target — which is the profiles
 ## doing their job rather than fighting the aim.
-func _solve_arc(origin: Vector3, target: Vector3, speed: float, profile: ThrowProfile) -> Vector3:
+##
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ R-06 · `lob` PICKS THE OTHER ROOT, AND THAT IS THE WHOLE MECHANIC.
+##
+## This function has computed both solutions of the ballistic quadratic since B-129
+## and thrown one of them away on the line below. `(v2 - root)` is the flat shot;
+## `(v2 + root)` is the same slipper, at the same speed, to the same target point,
+## over the top of whatever is in between. No new ballistics, no new ThrowProfile
+## field, no second physics path — the lob was already solved and simply had no way
+## to be chosen.
+##
+## Both roots pass through `target` exactly. So the lob does NOT trade accuracy for
+## height: it lands where the crosshair is, which is what makes it an answer to a
+## body-block rather than a hail mary. What it trades is TIME — the high root's
+## flight is several times longer, which is the balance clause R-06 is built on
+## ("arrives slowly enough that the can's evasion can actually see it"). The
+## measured numbers are in Art_Direction.md §9.
+##
+## Out of range is unchanged and shared: when the discriminant goes negative there
+## is no arc of either kind, so a lob falls back to the same honest short throw a
+## flat one does rather than firing straight up.
+## ---------------------------------------------------------------------------
+func _solve_arc(origin: Vector3, target: Vector3, speed: float, profile: ThrowProfile,
+		lob: bool = false) -> Vector3:
 	var to_target := target - origin
 	var flat := Vector3(to_target.x, 0.0, to_target.z)
 	var distance := flat.length()
@@ -503,8 +829,95 @@ func _solve_arc(origin: Vector3, target: Vector3, speed: float, profile: ThrowPr
 		# lob straight up, which is a far stranger thing to have happen than a
 		# throw that visibly does not get there.
 		return to_target.normalized()
-	var tangent := (v2 - sqrt(discriminant)) / (gravity * distance)
+	var root := sqrt(discriminant)
+	var tangent := ((v2 + root) if lob else (v2 - root)) / (gravity * distance)
 	return (flat.normalized() + Vector3.UP * tangent).normalized()
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ R-06 · THE LOB SOLVES THE SPEED FOR A FIXED ANGLE, NOT THE ANGLE FOR A FIXED
+## SPEED. THE WRITTEN SPEC ASKED FOR THE RAW HIGH ROOT AND THE MEASUREMENT SAID NO.
+##
+## R-06's handoff (Checklist.md §Phase 9) specifies "root selection": take
+## `(v2 + sqrt(disc))` in `_solve_arc` instead of `(v2 - sqrt(disc))`. That was built
+## first, exactly as written, and then measured with `phys_probe -- ballistics`. The
+## flat rows reproduced the 2026-07-29 baseline to the charge step, so the selection
+## itself was correct — and the lob rows were unusable:
+##
+##     profile         launch angle   flight time   apex above the hand
+##     throw_bagsak      74.8 deg        1.22 s          5.06 m
+##     throw_bakya       77.4 deg        1.40 s          6.22 m
+##     throw_default     80.5 deg        1.68 s          8.41 m
+##     throw_flick       85.6 deg        2.90 s        18.45 m      <-- 18 metres
+##
+## The high root at FULL LAUNCH SPEED is a mortar, not a lob. `throw_flick` throws the
+## tsinelas 18 m straight up for nearly three seconds: above Eskinita's 10–14 m
+## rooflines, out of an FPP player's field of view entirely (they would have to look
+## at the sky to watch their own throw), and a three-second dead beat in a party game
+## whose whole round is 90 s. It also scales the WRONG WAY — the fastest, lightest
+## slipper produces the highest, slowest lob, so the profile identities invert.
+##
+## The cause is structural, not a tuning miss: the high root's angle is a function of
+## how much surplus speed there is over the minimum needed to reach the target, and a
+## full-charge throw at the 6.0 line has a great deal of surplus. Any fix that keeps
+## full speed is picking between "too steep" and "misses the target".
+##
+## So the lob fixes the ANGLE and solves the SPEED, which is the same quadratic read
+## from its other end:
+##
+##     v^2 = g * d^2 / (2 * cos^2(theta) * (d * tan(theta) - h))
+##
+## This is not a different arc from the high root — it IS the high root, at the speed
+## that makes the high root equal LOB_LAUNCH_ANGLE_DEG. Everything the spec required
+## survives: it passes exactly through the crosshair point (so the lob is an ANSWER to
+## a block, not a hail mary), it needs no new ThrowProfile field, it adds no input
+## action, and it is not a power buff — it uses LESS speed than the charge earned,
+## which is also why its knockback lands as a drop rather than a blast.
+##
+## ⚠️ AND IT MAKES THE LOB'S SHAPE PROFILE-INDEPENDENT, WHICH IS A PROPERTY, NOT A
+## COINCIDENCE. Apex depends only on the angle and the target geometry; `g` cancels
+## out of it entirely. So every slipper lobs to the same readable height and the
+## profile identity survives as TIMING instead — measured at the 6.0 line: flick
+## 1.10 s, default 0.93 s, bakya 0.89 s, bagsak 0.86 s. The floaty one hangs longest,
+## the heavy one arrives soonest, and all four clear CAN_EVADE_LOOKAHEAD's 0.6 s.
+##
+## ⚠️ 60 DEGREES IS DERIVED FROM THE BLOCK IT HAS TO CLEAR, NOT PICKED BY EYE. A taya
+## posted at `AIController.taya_block_standoff` (2.6) from the can stands 3.4 m along
+## a 6.0 m lane, and its Hurtbox tops out at world y 1.75 against a hand that releases
+## at 0.9. At 60 deg the arc is 2.42 m above the hand at that point — it clears the
+## defender's head by 1.57 m, which is a lob a player can SEE going over rather than
+## one that grazes and gets stopped. 45 deg is the flattest arc that reaches at all
+## (the minimum-speed solution) and clears by only 0.09 m, i.e. inside one frame of
+## travel; the margin is the whole reason this is not 45.
+## ---------------------------------------------------------------------------
+
+## The angle a `bagsak` lob leaves the hand at, above horizontal.
+const LOB_LAUNCH_ANGLE_DEG: float = 60.0
+
+## The launch VELOCITY for a lob — direction and speed together, unlike _solve_arc,
+## which answers only the direction because the flat throw's speed is the charge's.
+##
+## `max_speed` is what the charge actually earned. A lob never exceeds it: past about
+## 16 m the 60-degree solution needs more speed than the profile has, and rather than
+## quietly becoming a stronger throw it keeps the angle, takes what it has and falls
+## short — the same honest behaviour `_solve_arc` documents for its own out-of-range
+## case, and visible to the player as a throw that plainly did not get there.
+func _solve_lob(origin: Vector3, target: Vector3, profile: ThrowProfile,
+		max_speed: float) -> Vector3:
+	var to_target := target - origin
+	var flat := Vector3(to_target.x, 0.0, to_target.z)
+	var distance := flat.length()
+	var theta := deg_to_rad(LOB_LAUNCH_ANGLE_DEG)
+	# How far the 60-degree sight line rises above the target over this range. Zero or
+	# negative means the target is at or above that line — you cannot lob onto
+	# something already steeper than the lob, so there is nothing to solve.
+	var rise := distance * tan(theta) - to_target.y
+	if distance < 0.05 or rise <= 0.01 or max_speed < 0.01:
+		return _solve_arc(origin, target, max_speed, profile) * max_speed
+	var gravity: float = CharacterBase.GRAVITY * profile.gravity_scale
+	var cos_theta := cos(theta)
+	var needed: float = sqrt(gravity * distance * distance / (2.0 * cos_theta * cos_theta * rise))
+	var direction := (flat.normalized() + Vector3.UP * tan(theta)).normalized()
+	return direction * minf(needed, max_speed)
 
 func host_land() -> void:
 	if not _is_host() or state != CarryState.FLYING:
@@ -525,6 +938,8 @@ func reset_for_new_round() -> void:
 	_flight_velocity = Vector3.ZERO
 	_flight_time = 0.0
 	_thrower_ignore_left = 0.0
+	flight_is_lob = false
+	_steer_spent = 0.0
 	_character.clear_hit_memory()
 	if carrier != null and is_instance_valid(carrier):
 		_character.remove_collision_exception_with(carrier)
@@ -589,11 +1004,11 @@ func _broadcast_carried(carrier_path: NodePath) -> void:
 	else:
 		_rpc_set_carried(carrier_path)
 
-func _broadcast_flying(origin: Vector3, velocity: Vector3) -> void:
+func _broadcast_flying(origin: Vector3, velocity: Vector3, lob: bool = false) -> void:
 	if NetworkManager.is_networked():
-		_rpc_set_flying.rpc(origin, velocity)
+		_rpc_set_flying.rpc(origin, velocity, lob)
 	else:
-		_rpc_set_flying(origin, velocity)
+		_rpc_set_flying(origin, velocity, lob)
 
 func _broadcast_loose(where: Vector3) -> void:
 	if NetworkManager.is_networked():
@@ -622,8 +1037,15 @@ func _rpc_set_carried(carrier_path: NodePath) -> void:
 	AudioManager.play_at("grab", _character.global_position) # 4.1
 	_set_state(CarryState.CARRIED)
 
+## `lob` rides the SAME broadcast the launch already takes rather than being derived
+## per-peer from the velocity — the trajectory alone cannot answer it (a steep flat
+## throw at short range and a shallow lob at long range look the same), and every
+## peer has to agree, because the steer ceiling below is applied locally on the
+## slipper's own pilot. Defaulted so nothing that calls the two-argument form breaks.
 @rpc("any_peer", "call_local", "reliable")
-func _rpc_set_flying(origin: Vector3, velocity: Vector3) -> void:
+func _rpc_set_flying(origin: Vector3, velocity: Vector3, lob: bool = false) -> void:
+	flight_is_lob = lob
+	_steer_spent = 0.0
 	_character.global_position = origin
 	# 2026-07-28 — user report: a thrown slipper "doesnt land flat, sometimes
 	# it points up from ground... it also goes thru the floor when this
@@ -643,7 +1065,7 @@ func _rpc_set_flying(origin: Vector3, velocity: Vector3) -> void:
 	_flight_velocity = velocity
 	_flight_time = 0.0
 	_thrower_ignore_left = THROWER_IGNORE_TIME
-	_bounces_left = MAX_BOUNCES
+	_bounces_left = max_bounces
 	# ⚠️ A NEW THROW IS A NEW OFFENSIVE EVENT. Clearing here is what makes the
 	# rule "once per throw" rather than "once, ever" — the same opponent must
 	# be hittable again by the next throw. See CharacterBase._hit_memory.
@@ -774,13 +1196,45 @@ func _clear_flight_hitbox() -> void:
 ## Disables/enables the body and the hurtbox together. Deliberately NOT used to
 ## express ownership — see can_be_grabbed_by(); an opponent's loose slipper is
 ## fully solid and this is never called on account of whose it is.
+##
+## ⚠️⚠️ B-137 — BOTH WRITES ARE DEFERRED, AND WITHOUT THAT THEY SILENTLY DO
+## NOTHING ON THE PATHS THAT MATTER MOST.
+##
+## Godot refuses both of these while the physics server is mid-step: a
+## `CollisionShape3D.disabled` write raises *"Can't change this state while
+## flushing queries"* and a `monitorable` write raises *"Function blocked during
+## in/out signal"*. Every important caller of this function reaches it from inside
+## an `area_entered` callback, because that is where hits resolve:
+##
+##   * TAGGED MID-CARRY — `hitbox.gd::_on_area_entered` -> `_apply_hit_result` ->
+##     `apply_stagger` -> `_set_state` -> `_on_carrier_state_changed` ->
+##     `host_drop` -> `_rpc_set_loose` -> here. The re-enable was DROPPED, so the
+##     slipper knocked out of a tagged carrier's hands came back with its
+##     collision shape still disabled and nothing to stop it sinking through the
+##     floor. B-75 calls knocking the slipper loose "most of the point of
+##     tagging"; B-101 is the same failure from the other direction.
+##   * A ROUND WON BY A TAG — the same callback -> `report_round_win` ->
+##     `report_round_result` -> `_reset_world` -> `reset_for_new_round` -> here.
+##     The hurtbox stayed non-monitorable into the NEXT round, and
+##     `carrier.gd::_find_grabbable()` finds slippers by scanning its GrabArea for
+##     Hurtboxes — so the attacker could not pick their own tsinelas up at all.
+##     Under Option B a tag ends 18 of 20 rounds (Checklist Phase 9, RUN 3), so
+##     this is the common path, not an edge case.
+##
+## Found by `tools/ai_probe.tscn -- fairness`, which surfaced 11 blocked
+## `monitorable` writes and 3 blocked `disabled` writes in a single 20-round run.
+## Nothing in the game reported anything; the writes just did not happen.
+##
+## Deferring is what both engine messages ask for. The cost is that the change
+## lands at idle rather than instantly — one frame in which the slipper is still
+## intangible, which is invisible and is strictly better than never.
 func _set_physics_enabled(enabled: bool) -> void:
 	var shape := _character.get_node_or_null("CollisionShape3D") as CollisionShape3D
 	if shape != null:
-		shape.disabled = not enabled
+		shape.set_deferred(&"disabled", not enabled)
 	var hurtbox := _character.get_node_or_null("Hurtbox") as Area3D
 	if hurtbox != null:
-		hurtbox.monitorable = enabled
+		hurtbox.set_deferred(&"monitorable", enabled)
 
 ## The slipper's own ability carries its flight identity (see throw_profile.gd).
 ## Duck-typed rather than declared on AbilityBase so the three Can abilities,

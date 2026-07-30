@@ -116,6 +116,37 @@ var _awaiting_local_ready: bool = false
 ## Guards _unhandled_input against a second ready_up press restarting the
 ## countdown mid-count.
 var _counting_down: bool = false
+## ---------------------------------------------------------------------------
+## THE MULTIPLAYER READY PHASE. Human ask: *"implement a pre-match waiting and
+## ready-up system in multiplayer mode, similar to the Press R to Ready feature
+## in single player."*
+##
+## Single Player has had this since 2026-07-28 (`_awaiting_local_ready` above);
+## multiplayer went straight from `_start_hosting()` to `begin_next_round()` in
+## the same frame, so the first thing every LAN player ever saw was a live round
+## they had not agreed to start, spawned wherever the map put them and already
+## confined.
+##
+## ⚠️ IT IS ALSO THE FIX FOR THE PRE-ROUND SLIPPER, AND THAT IS NOT A COINCIDENCE.
+## Reported as *"slippers cannot move or be controlled by human players during the
+## pre-round phase, they are just spinning around uncontrollably."* Chain:
+## `begin_next_round()` -> `_reset_world()` -> `host_grab(attacker)` gives the
+## tsinelas to the attacking Person before anyone has touched a key. A CARRIED
+## slipper returns true from `Carriable.drives_movement()`, so
+## `character_base.gd::_physics_process` hands its whole frame to
+## `_step_carried()` and RETURNS before any input is read — the slipper's player
+## genuinely cannot move it, by design, and `_step_carried()` was snapping it to
+## the animated hand bone's full basis every physics frame, which is the spin.
+## With a ready phase the round has not started, `_reset_world()` has not run,
+## nothing has been grabbed, and the slipper is LOOSE and drivable exactly like
+## every other unit. (The spin itself is fixed independently in `carriable.gd`, so
+## a slipper genuinely in hand mid-round does not whirl either.)
+##
+## HOST-AUTHORITATIVE, like everything else that decides when a round happens.
+## Peers declare; the host counts and calls it.
+var _awaiting_net_ready: bool = false
+## peer_id -> true, host-side only. Cleared when the countdown starts.
+var _net_ready_peers: Dictionary = {}
 ## FALLBACK ONLY, since checklist 2.2a. The real spawn points are four Marker3Ds
 ## under the loaded map's `SpawnPoints` node; this array is used only if a map
 ## has none — or if something loads Main.tscn with no map at all, which is what
@@ -531,9 +562,28 @@ func _start_local_test() -> void:
 	# correct across every role swap without needing to know one happened.
 	var human := _local_unit_for_seat(GameLaunch.solo_seat)
 	_give_human_player_one(human)
+	# ⚠️ EVERY UNIT GETS A CONTROLLER, INCLUDING THE HUMAN'S — the human's is
+	# created DISABLED, which is a no-op for control and closes the one asymmetry
+	# this file used to carry.
+	#
+	# Reported as *"only one AI person works at a time."* Both AI Persons do in
+	# fact run (measured with tools/settle_probe.tscn: 35.8 m and 21.8 m of ground
+	# covered over a 30 s run), so the report is not about the bots that exist. It
+	# is about the unit that has NO bot: the seat the human took. The moment the
+	# player looks away from it, or hands the camera to another unit with the debug
+	# switcher, that Person simply stands still for the rest of the round while the
+	# other one plays on. From the outside that is exactly "only one of them works",
+	# and it was true.
+	#
+	# A disabled AIController changes nothing while the human is driving —
+	# `is_ai_driven()` is `ai_controller != null AND is_enabled()`, so input still
+	# comes from the keyboard — and it means control handoff is now symmetric in
+	# both directions. `debug_player_switcher.gd::_apply_slots()` already re-enables
+	# every unclaimed unit's controller; its own doc calls this out as "the one
+	# asymmetry left and it is pre-existing", and tools/input_probe.gd measured the
+	# consequence (2 units answering one keypress, 3 after two Tabs).
 	for character in _local_roster:
-		if character != human:
-			_attach_ai(character)
+		_attach_ai(character, character != human)
 	# Item 13: no authority concept in local test, unlike networked play,
 	# where each rig can activate itself from is_multiplayer_authority(). One
 	# rig has to be picked explicitly.
@@ -611,7 +661,9 @@ func _give_human_player_one(human: CharacterBase) -> void:
 ## the instant the round actually begins, same as an ordinary intermission
 ## already does between rounds.
 func _unhandled_input(event: InputEvent) -> void:
-	if _awaiting_local_ready and not _counting_down and event.is_action_pressed("ready_up"):
+	if _counting_down or not event.is_action_pressed("ready_up"):
+		return
+	if _awaiting_local_ready:
 		get_viewport().set_input_as_handled()
 		# 7.7 — a body-language read on the ready press. Purely visual: the
 		# countdown and the round start are unchanged below, this just means the
@@ -621,6 +673,80 @@ func _unhandled_input(event: InputEvent) -> void:
 			if is_instance_valid(character) and character.is_person:
 				character.play_visual_action("ready")
 		_run_ready_countdown()
+	elif _awaiting_net_ready:
+		get_viewport().set_input_as_handled()
+		# Idempotent on the host's side (a Dictionary key written twice is one
+		# key), so mashing R cannot ready you twice or start the countdown early.
+		_rpc_declare_ready.rpc_id(1)
+
+## ---------------------------------------------------------------------------
+## Networked ready phase. Every function below is a no-op outside it.
+## ---------------------------------------------------------------------------
+
+## HOST ONLY. Opens the phase and tells every peer, itself included.
+func _enter_net_ready_phase() -> void:
+	if not NetworkManager.is_host():
+		return
+	_net_ready_peers.clear()
+	_rpc_ready_phase.rpc(true, 0, _expected_ready_count())
+
+## How many READY presses the host is waiting for: one per connected human peer.
+##
+## ⚠️ COUNTS PEERS, NOT CHARACTERS, and that is the whole reason a lone host can
+## start at all. A 2v2 always has four characters — `_fill_empty_slots_with_
+## placeholders()` guarantees it — but the unfilled ones are AI and an AI cannot
+## press R. Counting characters would leave a solo host waiting forever for three
+## bots to agree.
+##
+## Floored at 1 so a host whose peer list has not populated yet still needs its
+## own press rather than starting instantly on an empty count.
+func _expected_ready_count() -> int:
+	return maxi(1, NetworkManager.connected_peer_ids.size())
+
+## Any peer -> host: "I am ready." `call_remote`, because the host's own press
+## routes here through `rpc_id(1)` on itself... which Godot delivers locally with
+## a sender id of 0. Resolved below rather than by adding a second code path.
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_declare_ready() -> void:
+	if not NetworkManager.is_host():
+		return
+	if not _awaiting_net_ready:
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	if sender == 0:
+		sender = multiplayer.get_unique_id() # our own press, delivered locally
+	_net_ready_peers[sender] = true
+	var ready_count: int = _net_ready_peers.size()
+	var expected := _expected_ready_count()
+	_rpc_ready_phase.rpc(true, ready_count, expected)
+	if ready_count >= expected:
+		_rpc_begin_ready_countdown.rpc()
+
+## Host -> everyone. `active` false closes the phase without starting anything,
+## which is what a late joiner arriving mid-MATCH is told.
+@rpc("authority", "call_local", "reliable")
+func _rpc_ready_phase(active: bool, ready_count: int, expected: int) -> void:
+	_awaiting_net_ready = active
+	if not active:
+		hud.show_ready_prompt(false)
+		return
+	# 7.7's body-language read, mirrored to the networked path: everyone can see
+	# who has readied in the world, not only on their own HUD.
+	if ready_count > 0:
+		for character in _all_characters():
+			if character.is_person:
+				character.play_visual_action("ready")
+	hud.show_ready_prompt(true,
+		"Walk around freely.  %d / %d ready  ·  press [R]" % [ready_count, expected])
+
+## Host -> everyone: everybody is in, run the 3 · 2 · 1 · GO. Shared with Single
+## Player deliberately — one countdown, one place it can be restyled or retimed.
+@rpc("authority", "call_local", "reliable")
+func _rpc_begin_ready_countdown() -> void:
+	if _counting_down:
+		return
+	_awaiting_net_ready = false
+	_run_ready_countdown()
 
 ## 2026-07-28 — "add a 3 2 1 timer before each match starts too." Runs once,
 ## between the ready press and the round actually starting; begin_next_round()
@@ -637,7 +763,14 @@ func _run_ready_countdown() -> void:
 	await get_tree().create_timer(0.5).timeout
 	hud.hide_countdown()
 	_awaiting_local_ready = false
+	_awaiting_net_ready = false
 	_counting_down = false
+	# `begin_next_round()` is host-gated inside MatchManager, so every peer runs
+	# this same countdown for the visuals and only the host's call actually starts
+	# the round — which then reaches everyone through `_sync_round_started`. That
+	# is why the countdown is broadcast rather than run on the host and synced at
+	# the end: a client that only learns about the round when it begins gets no
+	# 3 · 2 · 1 at all.
 	MatchManager.begin_next_round()
 
 ## (Re)tells RoundManager which local Prop is currently the Can — whichever
@@ -674,7 +807,13 @@ func _start_hosting() -> void:
 	# 2026-07-28, user feedback: "when playing multiplayer, for example only
 	# 2 people is playing, there's only 2 characters. it should have 4."
 	_fill_empty_slots_with_placeholders()
-	MatchManager.begin_next_round()
+	# ⚠️ NOT begin_next_round() ANY MORE — see _awaiting_net_ready's own doc.
+	# The round starts when the players say so, not when the scene finishes
+	# loading. Until then RoundManager.round_active is false and
+	# MatchManager.round_number is still 0, which is precisely the pair
+	# `character_base.gd`'s freeze gate reads as "waiting to ready up, should be
+	# able to walk around" rather than "between rounds, should not."
+	_enter_net_ready_phase()
 
 func _start_joining(address: String) -> void:
 	_clear_local_test_characters()
@@ -774,6 +913,15 @@ func _try_late_join(peer_id: int) -> void:
 		MatchManager.team_a_wins, MatchManager.team_b_wins,
 		RoundManager.time_left, RoundManager.round_active, GameLaunch.game_mode
 	)
+	# A peer arriving DURING the ready phase joins the vote rather than watching
+	# it: broadcast rather than rpc_id, because `_expected_ready_count()` just went
+	# up and everybody's "2 / 3 ready" line is now wrong. A peer arriving after the
+	# match is under way is told the phase is closed, so its R press does nothing
+	# instead of silently asking the host to start a round already in progress.
+	if _awaiting_net_ready:
+		_rpc_ready_phase.rpc(true, _net_ready_peers.size(), _expected_ready_count())
+	else:
+		_rpc_ready_phase.rpc_id(peer_id, false, 0, 0)
 
 ## B-15/B-35: only show the "OUT OF BOUNDS" toast for a character that's
 ## actually ours — a client's screen shouldn't flash every time some OTHER
@@ -848,11 +996,22 @@ func _on_player_disconnected(peer_id: int) -> void:
 	if not NetworkManager.is_host():
 		return
 	_reregister_tracked_cans()
+	# ⚠️ A PEER THAT LEAVES MID-VOTE MUST NOT DEADLOCK THE READY PHASE. Without
+	# this, `_expected_ready_count()` drops by one while `_net_ready_peers` keeps
+	# the departed peer's tick, so the counter reads "3 / 2 ready" and the equality
+	# check that starts the countdown has already been passed and will not be
+	# re-evaluated. Everyone waits forever for somebody who has gone home.
+	if _awaiting_net_ready:
+		_net_ready_peers.erase(peer_id)
+		var expected := _expected_ready_count()
+		_rpc_ready_phase.rpc(true, _net_ready_peers.size(), expected)
+		if _net_ready_peers.size() >= expected:
+			_rpc_begin_ready_countdown.rpc()
 	var character: CharacterBase = _spawned_characters.get(peer_id)
 	var index := _index_for_character(character) if character != null else -1
 	if index != -1:
 		_rpc_convert_to_ai.rpc(index)
-		_rpc_show_toast.rpc("A player left the match — an AI has taken over their character")
+		_rpc_show_toast.rpc("A player left — a kalaro has taken over their character")
 	else:
 		# Should not normally happen (every spawned character has an index —
 		# see _build_networked_character) — kept as a fallback so a disconnect
@@ -1140,6 +1299,17 @@ func _build_networked_character(data: Dictionary) -> Node:
 	# dictionary key the way they would if they all shared authority id 1 there
 	# too.
 	var is_ai := peer_id < 0
+	# ⚠️ B-133 — THIS LINE IS IMPLICATED IN A MEASURED LATE-JOIN REPLICATION
+	# FAULT. DO NOT "TIDY" IT WITHOUT READING docs/Handoff.md B-133 FIRST.
+	#
+	# Deferring this assignment past the spawn's replication flush takes a real
+	# four-peer session's discarded sync packets from 12,731 / 25,218 (peers 3 and
+	# 4) to 0 / 0 — but it also races `_rpc_reclaim_character`, which is what
+	# actually hands a slot to a joining human, and cost this peer its own
+	# character in tools/net_spawn_probe.tscn. So the fix is NOT applied here yet
+	# and this line is deliberately unchanged. Measurements, the three candidate
+	# fixes tried, and what each one did are in Handoff.md B-133; the harness is
+	# tools/hit_probe.tscn.
 	character.set_multiplayer_authority(1 if is_ai else peer_id)
 	_peer_teams[peer_id] = data["team"]
 	_peer_is_person[peer_id] = data["is_person"]
@@ -1421,10 +1591,17 @@ func _wire_downed_flash(character: CharacterBase) -> void:
 ## than baked into CharacterBase.tscn, since that scene is shared by every
 ## spawn path and most characters (every human-controlled one) never have an
 ## unpiloted unit to drive.
-func _attach_ai(character: CharacterBase) -> void:
+## `enabled` false attaches a controller that is present but silent — the unit
+## still reads the keyboard (`CharacterBase.is_ai_driven()` requires BOTH a
+## controller and an enabled one), and anything that later wants the AI to take
+## over just calls `set_enabled(true)` instead of having to construct one. Used
+## for the human's own Single Player seat; see _start_local_test's own note.
+func _attach_ai(character: CharacterBase, enabled: bool = true) -> void:
 	var controller := AIController.new()
 	character.add_child(controller)
 	character.ai_controller = controller
+	if not enabled:
+		controller.set_enabled(false)
 
 ## B-20: Esc toggles a pause overlay with Resume/Return to Menu — previously
 ## the only way out of a match at all was Alt+F4. Also owns the Item 14 mouse
@@ -1555,6 +1732,10 @@ func _rpc_convert_to_ai(index: int) -> void:
 	_spawned_peer_ids[sentinel_peer_id] = true
 	if NetworkManager.is_host() and character.ai_controller == null:
 		_attach_ai(character)
+	# The departing peer's own machine is gone, so this is really about the OTHER
+	# peers: a character that just became AI must stop being anybody's camera.
+	# See _refresh_rig_ownership.
+	_refresh_rig_ownership(character)
 
 ## Host → all peers (2026-07-28): hands `index`'s existing, still-standing
 ## character over to `new_peer_id` instead of spawning a second body for the
@@ -1600,6 +1781,22 @@ func _rpc_reclaim_character(index: int, new_peer_id: int) -> void:
 	_peer_teams[new_peer_id] = character.team
 	_peer_is_person[new_peer_id] = character.is_person
 	_spawned_peer_ids[new_peer_id] = true
+	# ⚠️⚠️ WITHOUT THIS A RECONNECTING PLAYER GETS NO CAMERA AT ALL.
+	#
+	# `camera_rig.gd` decides whether it is the one being looked through in its
+	# OWN `_ready()`, from `is_multiplayer_authority()` — which is evaluated once,
+	# at spawn, and is the only place that ever calls `set_active()` on the
+	# networked path. This function is the one place authority CHANGES after
+	# spawn, and it was changing it silently: the rejoining peer took ownership of
+	# a character whose rig had been told, minutes earlier, that it belonged to
+	# somebody else. No camera became current, no mouse aim was armed, and the
+	# player was left looking at whatever the engine fell back to while their
+	# character walked around off screen.
+	#
+	# The half of the human's ask this completes is "ensure players can seamlessly
+	# rejoin the match later" — the bookkeeping half has worked since 2026-07-28;
+	# it was the view that never came back.
+	_refresh_rig_ownership(character)
 	if new_peer_id == multiplayer.get_unique_id() and character.is_can:
 		# Mirrors _build_networked_character's own DownedFlash wiring — this
 		# process never ran that function for this character (it already
@@ -1607,3 +1804,32 @@ func _rpc_reclaim_character(index: int, new_peer_id: int) -> void:
 		_wire_downed_flash.call_deferred(character)
 	if NetworkManager.is_host():
 		_rpc_show_toast.rpc("A player reconnected to their character")
+
+## Re-asks "is this character mine?" and points its camera rig accordingly.
+##
+## Runs on EVERY peer, because the answer differs per peer and every one of them
+## has to reach its own. The test is character-for-character identical to
+## `camera_rig.gd::_ready()`'s — deliberately, since the two must never disagree
+## about who is looking through what:
+##
+##   authority is this machine's peer   AND   no AIController is driving it
+##
+## The second clause is what keeps a HOST that is also a player from claiming
+## every AI-driven character as well: an AI slot's authority is the host's own
+## peer id (see _build_networked_character), so the first clause alone is true for
+## all of them. `ai_controller` is only ever non-null on the process that attached
+## it, which is only ever the host, and only for the ones it actually drives.
+func _refresh_rig_ownership(character: CharacterBase) -> void:
+	var rig := character.get_node_or_null("CameraRig") as CameraRig
+	if rig == null:
+		return
+	var is_mine := character.is_multiplayer_authority() and character.ai_controller == null
+	rig.set_active(is_mine)
+	rig.set_aim_source(CameraRig.AimSource.MOUSE if is_mine else CameraRig.AimSource.MOVEMENT)
+	if is_mine:
+		# The pause overlay and the result screen deliberately release the cursor;
+		# arriving back into a live match with a visible cursor and no mouse-look
+		# is the same "you can walk but you cannot look" symptom B-72 fixed for
+		# alt-tab, just reached by a different route.
+		if not pause_root.visible and not match_result.visible and not settings_panel.visible:
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED

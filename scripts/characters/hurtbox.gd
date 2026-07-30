@@ -72,7 +72,12 @@ func impact_sfx(kind: String, from_melee: bool) -> String:
 		# `from_melee`: bumping the lata, throwing a slipper at it and landing a
 		# Bakya Bash all have to produce the same object. See the CAN_PARTIALS
 		# note in tools/audio/generate_sfx.py.
-		return "lata_knockdown" if kind == "downed" else "lata_impact"
+		# "downed_lucky" is the lucky fall (CharacterBase.LUCKY_FALL_CHANCE) and it
+		# gets the SAME knockdown sound as a scoring one, deliberately: the can
+		# really did go over, and only the scoring differs. Making it sound
+		# different would tell the attacker their hit was worthless before the can
+		# has even landed, which is the opposite of the beat.
+		return "lata_knockdown" if kind.begins_with("downed") else "lata_impact"
 	if owner_character.is_person:
 		return "bump" if from_melee else "tag"
 	# A Prop that is not the Can this round — i.e. the tsinelas being kicked
