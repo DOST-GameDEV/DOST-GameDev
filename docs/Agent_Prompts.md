@@ -54,60 +54,80 @@ Read this whole file before you start. It is short on purpose.
 
 ## MASTER CHECKLIST
 
-Tick your own boxes. `[x]` = built **and** verified, `[~]` = built, unverified — say
-what specifically is unverified. Nothing else ticks these.
+Tick your own boxes. `[x]` = built **and verified**, `[~]` = built, unverified — say what
+specifically is unverified. Nothing else ticks these.
 
-### 1 · 📚 DOCS
-- [x] 1.1 Prune `docs/` — nine files to four, ~14 000 lines to ~600
+> ### ⚠️ WHY ALMOST EVERYTHING BELOW IS `[~]` AND NOT `[x]`
+>
+> **All nine agents' work is BUILT and pushed.** It parses, it boots, and six probes are
+> green against it. That is not the same as verified, and this board was briefly all-`[x]`
+> until the human asked whether the agents still needed running — which is exactly the
+> question a green board with no evidence invites.
+>
+> `[x]` on this project means *someone or something confirmed it actually works*. A probe
+> that measures the thing is that. "It compiles and the scene loads" is not.
+> **Nobody has played any of this.** So the rule is applied strictly: a box is `[x]` only
+> where a named probe asserts that specific behaviour, and `[~]` everywhere else with the
+> gap stated. See the WORK LOG for what was measured.
+
+### 1 · DOCS
+- [x] 1.1 Prune `docs/` — nine files to four, ~14 000 lines to ~1 100
 - [x] 1.2 `Agent_Prompts.md` carries the execution order, the model/effort call per agent, and the reasoning for each
 - [x] 1.3 The master checklist lives here, and every agent prompt points at it
-- [x] 1.4 ⚖️ FAIRNESS AND AI is defined as the absolute last agent
+- [x] 1.4 FAIRNESS AND AI is defined as the absolute last agent
 
-### 2 · 🐞 FIXER
-- [x] 2.1 Waiting-screen phasing — objects no longer interpenetrate before the round starts
-- [x] 2.2 Character-select desync — lata/tsinelas picks reach the match on every path (solo, host, client, AI-held teammate seat)
-- [x] 2.3 Host quit announces itself to clients before closing the socket; wired to the quit dialog
+### 2 · FIXER
+- [~] 2.1 Waiting-screen phasing — **cause found in code and fixed** (both Props loaded `is_can`, so each pair shared one spawn marker). Round 1 now gets its real roles up front. **Not observed in play**; no probe covers the free-roam window.
+- [~] 2.2 Character-select desync — picks swept onto every unit at the ready gate. **Not observed on real peers**; the race it closes needs four machines to reproduce.
+- [~] 2.3 Host quit announces itself before closing the socket. **Never tested on two peers** — the 5.2 s vs 5.4 s measurement that motivated it predates this branch.
 
-### 3 · 👁️ SPECTATOR
-- [x] 3.1 Free-fly spectator camera, no model, clips through all geometry
-- [x] 3.2 Selectable in Single Player **and** Multiplayer; a spectator claims no seat and is excluded from the ready gate
+### 3 · SPECTATOR
+- [~] 3.1 Free-fly camera, no model, clips by construction (no body, no collision shape). Boots clean via `--spectate`; **that the camera is the current one is written, not seen.**
+- [~] 3.2 Claims no seat, excluded from the ready gate, slot AI-filled. **Single-peer only** — the seat exclusion has never run with a real second peer.
 
-### 4 · 🛡️ DEFENDER
-- [x] 4.1 Tap-out / tag removed entirely
-- [x] 4.2 Charged bump meter — tap = light, hold 1.35 s = power (1.00 m displacement, slipper drop, stagger, hit penalty)
-- [x] 4.3 Visible countdown for every stun and status effect
-- [x] 4.4 Stamina — base speed cut to 4.6, sprint on Shift off a 4 s bar
-- [x] 4.5 Long-throw vulnerability — behind the 6.0 line throws are stronger; max power on the taya = 5 s stun
+### 4 · DEFENDER
+- [x] 4.1 Tap-out / tag removed entirely — `person_action.gd`, its `.tres` and `hitbox.gd`'s round-win branch are all gone; grep-verified, and `input_probe` drives the surviving path.
+- [~] 4.2 Charged bump meter, 1.35 s to full. Arithmetic solved from `FRICTION` (1.00 m at 7.75 m/s). **The displacement has never been measured** — no probe drives a bump.
+- [~] 4.3 Status countdowns for every stun. Built and rendering (`hud_probe` screenshots include the stack); **no probe asserts a row's contents.**
+- [~] 4.4 Stamina, `SPEED` 6.0 -> 4.6, sprint on Shift. `input_probe` confirms the binding and zero conflicts; **the meter's drain/regen is unmeasured.**
+- [~] 4.5 Long-throw bonus and the 5 s punish. **Unmeasured** — `phys_probe -- ballistics` covers the arc, not the punish.
 
-### 5 · 🥿 ATTACKER & TSINELAS
-- [x] 5.1 `THROW_LOCK_TIME` 1.25 s after pickup
-- [x] 5.2 Trajectory preview for every throw and charge
-- [x] 5.3 Charged self-launch — a LOOSE tsinelas flings itself
+### 5 · ATTACKER & TSINELAS
+- [x] 5.1 `THROW_LOCK_TIME` 1.25 s — `input_probe` asserts the charge starts on a held button after the lock and not before it.
+- [~] 5.2 Trajectory preview. Shares `Carriable.launch_velocity()` with the real throw by construction, and `phys_probe -- ballistics` proves that function still lands the arc — **but nobody has looked at the line.**
+- [~] 5.3 Charged self-launch. **Unmeasured.**
 
-### 6 · 🥫 LATA
-- [x] 6.1 Knockback susceptibility ×2.6 — roughly a metre per solid hit
-- [x] 6.2 Always self-rights; `DOWNED_MAX_TIME` 2.0 s is a hard ceiling
-- [x] 6.3 Out-of-circle countdown, 5.0 s, **−0.75 s per recovery, five stacks, floor 1.25 s**
-- [x] 6.4 Downed reads as a physical roll, not a static tilt
+### 6 · LATA
+- [~] 6.1 Knockback x2.6. Predicted ~1.38 m from `v^2 / 60`; **not measured.**
+- [~] 6.2 `DOWNED_MAX_TIME` 2.0 s ceiling, auto-seal deleted. **Unmeasured.**
+- [~] 6.3 Out-of-circle countdown with the stacking recovery. **Unmeasured**, and it is the new primary win condition — this is the single most important row on the board to verify.
+- [~] 6.4 Downed rolls rather than tilting. **Nobody has watched a can fall over.**
 
-### 7 · 🎨 MODELS & CLASSES
-- [x] 7.1 Six lata skins visually differentiated by procedural attachments
-- [x] 7.2 Six tsinelas skins differentiated, and the slipper is 1.6× bigger in game
-- [x] 7.3 A **hanger** attachment exists and provably cannot affect physics
-- [x] 7.4 Max power shown in the tsinelas description on the CHARACTER screen
+### 7 · MODELS & CLASSES
+- [~] 7.1 Six lata skins differentiated by procedural attachments. **Never rendered** — no screenshot exists of any of them.
+- [~] 7.2 Six tsinelas skins; slipper 1.6x with the capsule scaled x1.28 to match. The capsule half is **measured** — `settle_probe` shows every unit resting 0.093-0.099 against a 0.100 floor — but **the look is unrendered.**
+- [x] 7.3 A hanger exists and provably cannot affect physics — structural, not incidental: every attachment is a `MeshInstance3D` under `Visual`, and collision is sized only by `_apply_role_collision()` from a table that knows nothing about skins.
+- [x] 7.4 Max power in the tsinelas description — `ui_layout_probe` 196/196 with the row present.
 
-### 8 · 💥 ABILITIES
-- [x] 8.1 **Can-Smash** — ground slam, 3.6 m shockwave, 1.6 s / 1.2 s stun, 8 s cooldown
-- [x] 8.2 **Can-Dash** — one use per round
-- [x] 8.3 **Ground Smash** — dive, 3.2 m shockwave, 1.4 s stun; a direct hit on the lata wins the round outright
+### 8 · ABILITIES
+- [~] 8.1 Can-Smash — radii and durations written; **no probe fires one.**
+- [~] 8.2 Can-Dash, one use per round. **Unmeasured.**
+- [~] 8.3 Ground Smash and its instant win. **Unmeasured**, and it is the strongest single action in the game.
 
-### 9 · ⚖️ FAIRNESS AND AI  *(runs last, alone)*
-- [x] 9.1 Every cooldown, stun, meter and penalty reviewed against §11 of `Design.md`
-- [x] 9.2 No infinite stunlock exists — proven by the chain argument, not by assertion
-- [~] 9.3 AI understands the new verbs (bump meter, smash, dash, self-launch, the circle countdown) — **built and running, behaviour unmeasured.** The tree is rewritten and 70 s of four bots produced no errors; nobody has watched whether a bot actually lands a power bump or gets its lata home. Legacy constants assuming `SPEED = 6.0` are flagged in-file and not re-derived.
-- [x] 9.4 Counterplay named for every powerful object action
+### 9 · FAIRNESS AND AI  *(runs last, alone)*
+- [x] 9.1 Every cooldown, stun, meter and penalty reviewed against `Design.md` §11 — done by reading both sides.
+- [x] 9.2 No infinite stunlock — **ARGUED, not measured**, and the argument is named in `Design.md` §11 rather than asserted. Marked `[x]` because "prove it by naming the chain" is what the item asked for.
+- [~] 9.3 AI understands the new verbs — **built and running, behaviour unmeasured.** The tree is rewritten and 70 s of four bots produced no errors; nobody has watched whether a bot lands a power bump or gets its lata home. Legacy constants assuming `SPEED = 6.0` are flagged in-file and not re-derived.
+- [x] 9.4 Counterplay named for every powerful object action — `Design.md` §11's table.
 
----
+### WHAT IS LEFT, AND WHO OWNS IT
+
+| # | Item | Owner |
+|---|---|---|
+| **A** | **A fairness run on the new rules.** `ai_probe -- fairness`. No number for this branch exists and none should be quoted until it does. | agent 9, fresh session |
+| **B** | **A human plays it.** Every feel number above — the bump's metre, the 5 s punish, the circle countdown, whether the objects are actually fun — is a first guess. | human only |
+| **C** | **A real two-peer session.** 2.2, 2.3 and 3.2 all close races that cannot reproduce on one machine. | human + NET |
+| **D** | **Render the twelve prop skins.** 7.1/7.2 have never been looked at. | agent 7, re-run |
 
 ## WORK LOG
 
