@@ -678,6 +678,17 @@ func _build_attacker_branch() -> BTNode:
 					BTCondition.new(&"lane-blocked", &"_cond_lane_blocked"),
 					BTAction.new(&"slide-open", &"_act_attacker_slide_open"),
 				]),
+				# ⚠️ R-06, THE AI HALF. The third option beside "slide" and "throw
+				# into it anyway": go OVER. Reached exactly when the lane is still
+				# blocked and patience has been spent — i.e. on the frame the
+				# attacker would otherwise feed the block, which RUN 9 measured at
+				# 94.7% of 188 throws. Inert until the PHYSICS half lands
+				# (`lob_enabled` is false and holding longer currently just throws
+				# late at the same power) — see `attacker_lob_overhold`.
+				BTSequence.new(&"lob", [
+					BTCondition.new(&"lob-worth-it", &"_cond_attacker_should_lob"),
+					BTAction.new(&"charge-lob", &"_act_attacker_charge_lob"),
+				]),
 				BTAction.new(&"charge-release", &"_act_attacker_charge_release"),
 			]),
 		]),
@@ -1283,10 +1294,10 @@ const CAN_LEAD_FRACTION: float = 0.6
 ## from the profile's own launch speed rather than assumed, so a slow bakya leads
 ## further than a fast flick — which is the behaviour you want and falls out for
 ## free instead of needing a per-profile constant.
-func _lead_the_can(can: CharacterBase) -> Vector3:
+func _lead_the_can(can: CharacterBase, hold_time: float = -1.0) -> Vector3:
 	var here := character.global_position
 	var mark := can.global_position + Vector3(0.0, 0.25, 0.0)
-	var speed := _own_launch_speed()
+	var speed := _own_launch_speed(hold_time)
 	if speed <= 0.01:
 		return mark
 	var flight_time := here.distance_to(mark) / speed
@@ -1296,22 +1307,23 @@ func _lead_the_can(can: CharacterBase) -> Vector3:
 ## The launch speed this unit's slipper will actually use, at the charge this
 ## leaf holds. Read off the held Carriable's own profile so it cannot drift out
 ## of step with the .tres files (they were retuned twice without this noticing).
-func _own_launch_speed() -> float:
+func _own_launch_speed(hold_time: float = -1.0) -> float:
 	var carrier := character.get_node_or_null("Carrier") as Carrier
 	if carrier == null:
 		return 0.0
 	var held := carrier.held()
 	if held == null:
 		return 0.0
+	var fraction := _charge_fraction(hold_time)
 	var prop := held.get_parent() as CharacterBase
 	if prop == null or prop.ability == null or not prop.ability.has_method("get_throw_profile"):
 		# No ability means carriable.gd falls back to DEFAULT_PROFILE; 21.0 is
 		# that resource's launch_speed. Only ever hit by a Prop with no ability.
-		return 21.0 * _charge_fraction()
+		return 21.0 * fraction
 	var profile := prop.ability.get_throw_profile() as ThrowProfile
 	if profile == null:
-		return 21.0 * _charge_fraction()
-	return profile.launch_speed * _charge_fraction()
+		return 21.0 * fraction
+	return profile.launch_speed * fraction
 
 ## What fraction of full power this leaf's charge actually reaches.
 ##
@@ -1320,10 +1332,15 @@ func _own_launch_speed() -> float:
 ## tap still throws — so a plain `hold / full` ratio underestimates the speed and
 ## therefore over-leads. At ATTACKER_CHARGE_TIME 0.65 the real figure is ~0.82,
 ## not 0.72. All three constants are read, never restated.
-func _charge_fraction() -> float:
+## `hold_time` < 0 means "whatever this tier's ordinary flat throw holds for" — the
+## default, so every existing caller reads unchanged. A lob passes its own longer
+## hold; the clamp then correctly reports 1.0 rather than something above full
+## power, which is exactly what carrier.gd will do with it.
+func _charge_fraction(hold_time: float = -1.0) -> float:
+	var hold: float = tier_charge if hold_time < 0.0 else hold_time
 	return clampf(
 		Carrier.CHARGE_MIN_POWER
-			+ (tier_charge / Carrier.CHARGE_FULL_TIME) * (1.0 - Carrier.CHARGE_MIN_POWER),
+			+ (hold / Carrier.CHARGE_FULL_TIME) * (1.0 - Carrier.CHARGE_MIN_POWER),
 		Carrier.CHARGE_MIN_POWER, 1.0)
 
 ## ⚠️ PATIENCE — THIS IS THE FIX FOR B-124, THE ATTACKER/TAYA LIVELOCK.
@@ -1368,12 +1385,69 @@ func _act_attacker_slide_open(_delta: float) -> int:
 	_move_toward(_open_throwing_spot(_bb_can))
 	return BTNode.RUNNING
 
+## ---------------------------------------------------------------------------
+## R-06 · THE LOB (`bagsak`) — THE AI'S DECISION TO USE IT.
+##
+## ⚠️ THE MECHANIC IS THE PHYSICS LANE'S AND IT DOES NOT EXIST YET. This file owns
+## only the DECISION; the handoff with the full specification is in
+## `docs/Checklist.md` §Phase 9 under "HANDOFF — R-06 (the lob) to the PHYS lane".
+## The one-line version, because it shapes what is written here: `carriable.gd::
+## _solve_arc()` already computes both solutions of the ballistic quadratic and
+## throws away the high one (`(v2 - sqrt(disc))` is the flat root). The lob IS that
+## discarded root. Nothing new has to be invented, and no new input action may be
+## added — the charge is already an analogue hold and the lob is a region of it.
+##
+## ⚠️ WHY THIS IS SAFE TO SHIP AHEAD OF THE MECHANIC. `carrier.gd::_step_throw`
+## clamps `_charge_time` to `CHARGE_FULL_TIME`, so holding past full power today
+## produces the identical throw a fraction of a second later. With `lob_enabled`
+## false the branch never runs at all; with it true and the mechanic absent, the
+## measured cost is a slightly later throw. Either way this cannot silently change
+## a fairness number, and RUN 9's baseline stays comparable.
+##
+## THE TRIANGLE THIS IS FOR, restated so the next reader does not have to find the
+## roadmap: the lob beats the taya (it goes over a body-block), the can's dodge
+## beats the lob (it arrives slowly enough that CAN_EVADE_LOOKAHEAD sees it), and
+## the flat throw beats the dodge. Not a strictly better shot — a third corner.
+## ---------------------------------------------------------------------------
+
+## Off until the physics half lands. `lob=on` on tools/ai_probe.gd flips it, so the
+## AI's half can be measured on its own before the mechanic exists and again after.
+static var lob_enabled: bool = false
+## How far past the full-power point the lob region begins, in seconds of hold.
+## ⚠️ THE PHYS LANE OWNS THE REAL THRESHOLD — this is the AI's belief about where it
+## is, and the two have to agree or the AI will hold for a lob and throw a flat.
+## When the mechanic lands, this should read the mechanic's own constant rather than
+## restating it, exactly as _charge_fraction() reads Carrier's three constants.
+const ATTACKER_LOB_OVERHOLD: float = 0.20
+static var attacker_lob_overhold: float = ATTACKER_LOB_OVERHOLD
+
+## Is going OVER the block the right call this frame? Reached only when the lane is
+## blocked and ATTACKER_PATIENCE has already been spent (see the tree), so the
+## alternative on offer is the throw RUN 9 measured dying 94.7% of the time.
+func _cond_attacker_should_lob() -> bool:
+	if not lob_enabled:
+		return false
+	# Ask the same question _cond_lane_blocked asks, without its patience timer: is
+	# there a defender in the lane RIGHT NOW. Re-checked rather than remembered
+	# because the taya may have moved since, and lobbing a lane that has just opened
+	# throws away a free flat shot.
+	return _blocking_defender(_bb_can) != null
+
+## Hold the charge into the lob region and release. Deliberately the same leaf shape
+## as the flat throw, sharing one implementation — two copies of the charge/release
+## frame dance is how RELEASE_SETTLE_FRAMES' bug would come back.
+func _act_attacker_charge_lob(delta: float) -> int:
+	return _charge_and_release(delta, Carrier.CHARGE_FULL_TIME + attacker_lob_overhold)
+
 ## In range with a clear lane. Stand still to charge and release — moving
 ## mid-charge is not modelled (carrier.gd allows it; a human sometimes does
 ## too), keeping this pass simple. Returns RUNNING for the whole charge and
 ## SUCCESS on the frame the button is released, which is exactly the throw
 ## event tools/ai_probe.gd's fairness run counts.
 func _act_attacker_charge_release(delta: float) -> int:
+	return _charge_and_release(delta, tier_charge)
+
+func _charge_and_release(delta: float, hold_time: float) -> int:
 	_release_move(0.0)
 	# ⚠️ TELL THE THROW WHERE THE CAN IS (B-125). Without this the throw is aimed
 	# by `carrier.gd::_aim_point()`, which ray-casts from the FPP camera — and
@@ -1395,13 +1469,13 @@ func _act_attacker_charge_release(delta: float) -> int:
 	# dodges too, so an AI that cannot lead is simply a worse player, and the
 	# evasion values are documented as deliberately sitting "on the hittable side".
 	if _bb_can != null and is_instance_valid(_bb_can):
-		character.ai_aim_point = _lead_the_can(_bb_can)
+		character.ai_aim_point = _lead_the_can(_bb_can, hold_time)
 	if not _attacker_charging:
 		_attacker_charging = true
 		_attacker_charge_time = 0.0
 		_set_held("special_ability", true)
 	_attacker_charge_time += delta
-	if _attacker_charge_time < tier_charge:
+	if _attacker_charge_time < hold_time:
 		return BTNode.RUNNING
 	_set_held("special_ability", false)
 	_attacker_charging = false

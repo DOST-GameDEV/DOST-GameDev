@@ -2757,6 +2757,110 @@ fairness argument, and R-06's lob has a measured target to beat: **94.7% blocked
   itself the imbalance. Sweeping the standoff (RUN 9) still runs first; the plan does not depend on
   it succeeding.
 
+### HANDOFFS OUT OF THE ⚖️ BALANCE LANE — written 2026-07-30
+
+⚠️ **Why they are here and not in `Handoff.md` §5.** The balance lane's write list is
+`ai_controller.gd`, `character_roster.gd`, the three probes it owns, and this section.
+`docs/Handoff.md` belongs to another lane, so a pointer to these three blocks needs adding there by
+whoever owns it — the specifications themselves are complete below and nothing is waiting on that
+pointer.
+
+#### HANDOFF — R-06 (the lob, `bagsak`) to the 🥊 PHYS lane
+
+**The target to beat is measured, not assumed: 94.7% of 188 throws blocked (RUN 9, standoff 2.6).**
+A body-block that cannot be gone over is not a block, it is a wall.
+
+⚠️ **THE HIGH ARC IS ALREADY COMPUTED AND THEN THROWN AWAY.**
+`carriable.gd::_solve_arc()` solves the ballistic quadratic and takes
+`tangent := (v2 - sqrt(discriminant)) / (gravity * distance)`. **That minus sign is the flat root.
+`(v2 + sqrt(discriminant))` is the lob, at the same launch speed, to the same target point.** The
+mechanic is therefore a root selection plus the plumbing to choose it — not new ballistics, and not
+a new `ThrowProfile` field.
+
+Specification, in the order it has to be built:
+
+1. **The input region. DO NOT ADD AN INPUT ACTION.** The charge is already an analogue hold and the
+   lob is a region of it. `carrier.gd::_step_throw` currently clamps
+   `_charge_time = minf(_charge_time + delta, CHARGE_FULL_TIME)` (0.9 s). Let the hold keep
+   accumulating past that into a `LOB_HOLD_TIME` region (the AI lane's belief is
+   `CHARGE_FULL_TIME + 0.20`, `AIController.attacker_lob_overhold` — **make the real constant public
+   and have the AI read it rather than restating it**, the way `_charge_fraction()` already reads
+   `Carrier.CHARGE_MIN_POWER`/`CHARGE_FULL_TIME`). `charge_power()` must still clamp to 1.0, so the
+   HUD meter fills and stops rather than overflowing.
+2. **The flag has to travel with the throw, not be re-derived at the far end.** `_request_throw(power)`
+   → `_rpc_request_throw(target_point, power)` → `host_throw(target_point, power)` → `_solve_arc`.
+   Adding `lob: bool` to that chain keeps the decision on the machine that made it. ⚠️ **Do not infer
+   "it was a lob" from the power value** — power clamps at 1.0, so a full-power flat throw and a lob
+   are indistinguishable by then. That is the whole reason for a separate flag.
+3. **It must arrive slowly enough to be dodged, and that is the balance clause, not a side effect.**
+   `CAN_EVADE_LOOKAHEAD` is 0.6 s and ⚠️ **is documented as untunable — its sweep is non-monotonic
+   (1.10 → 18 contact frames, 0.85 → 57, 0.70 → 0). Do not touch it.** So the lob has to satisfy the
+   existing lookahead: **flight time > 0.6 s over the 6.0-unit throwing line.** The high root gives
+   that for free — verify it with `phys_probe -- ballistics` and log the number.
+4. **It must land short of a body-block.** The high root over-flies a defender standing at
+   `taya_block_standoff` 2.6 from the can while still descending onto the can. Confirm with
+   `hit_probe -- --host target=can standoff=2.6`: **the acceptance bar is ≥ 40% contact for the lob
+   against the ≈ 8% the flat throw manages into a parked taya** (RUN 9's own figure for a blocked
+   lane is 5.3% unblocked, which is the same statement from the other side).
+5. **Animation and audio are NOT in scope for the mechanic**, but the wind-up must be visibly
+   longer, because R-10's whole premise is that a committed throw is readable.
+
+**The AI half is already built and shipped inert.** `AIController._cond_attacker_should_lob` /
+`_act_attacker_charge_lob` add a third option to the `throw-how` selector, beside slide and
+throw-anyway, and it fires on exactly the frame the attacker would otherwise feed the block.
+`AIController.lob_enabled` is **false** and `tools/ai_probe.tscn -- ... lob=on` turns it on, so the
+decision can be measured before and after the mechanic exists. With the mechanic absent, holding
+longer produces the identical throw slightly later — it cannot silently move a fairness number.
+
+⚠️ **ACCEPTANCE IS A REVERT, NOT A RE-TUNE.** Once the mechanic lands, a 20-round `ai_probe` run
+with `lob=on` must bring the block rate **below 70%** (from 94.7%). If it does not, the item has
+failed and comes out.
+
+#### HANDOFF — R-09 (the difficulty picker) to the 🖥️ UX lane
+
+**The mechanism is complete and measured; only the screen is missing.**
+`AIController.DIFFICULTY_TIERS` (BATA / NORMAL / ASTIG) and `apply_difficulty()` have been correct
+and unreachable — ⚠️ **nothing outside that class called `apply_difficulty()` until
+`tools/ai_probe.gd`'s `tier=` argument did on 2026-07-30**, which is why no tier but NORMAL had ever
+been measured. See RUN 12 below for the three rows.
+
+- **One three-way picker on `MatchSetup.tscn`, beside map and mode.**
+- ⚠️⚠️ **IT MUST RIDE THE SAME HOST-OWNED BROADCAST PATH MAP AND MODE ALREADY TAKE** (`10.5` U-8).
+  Do not invent a second path. **A per-peer difficulty is exactly the bug U-8 fixed twice already**,
+  and it fails silently: each peer's own bots play at that peer's setting and only the host's
+  actually decide the match.
+- Persist in `SettingsManager` alongside the other preferences; apply **once at match start** by
+  calling the static `AIController.apply_difficulty()`, which every controller in the process then
+  follows because the knobs are `static var`s.
+- **Acceptance:** `lobby_probe` extended — two peers started on deliberately opposite difficulties,
+  the client ends on the host's. Same shape as the map/mode assertion it already makes.
+- Copy note: the tier names are already Filipino and already carry the characterisation — *bata* the
+  kid, *astig* the one who wins. They do not need translating in the UI.
+
+#### FILED, NOT RUN — R-21's confinement-size sweep
+
+**The heatmap half of R-21 is done (RUN 13 below). The SIZE SWEEP is blocked on file ownership and
+is filed here rather than half-done.**
+
+`CharacterBase.CONFINEMENT_RADIUS` is a `const` (`character_base.gd:115`) and `character_base.gd` is
+a **shared-lock** file that the balance lane may not write. Sweeping it needs exactly two things,
+and both belong to whoever takes that lock:
+
+1. Promote it to a `static var` keeping the `const` as the documented baseline — **the identical
+   shape R-01 just used for `TAYA_BLOCK_STANDOFF`**, which took one edit and closed a question three
+   runs old. Then `tools/ai_probe.gd` gains `confine=` in one line beside `standoff=`.
+2. ⚠️ **The chalk follows the physics automatically but only via a REBUILD.** Both map builders read
+   the constant (`build_eskinita.py`, `build_bayan_plaza.py`), and both emit their `.tscn`
+   **wholesale**, so each row of the sweep needs the builders re-run and the maps re-imported. A row
+   measured without rebuilding is a row where the physics box and the drawn box disagree — which is
+   precisely the RUN 3 defect, re-introduced by a test.
+
+Sweep {4.0, 5.0, 6.0}. ⚠️ **The arena FOOTPRINT stays the original size — standing decision, not
+open.** ⚠️ **The SIZE CALL IS THE HUMAN'S**, and RUN 9 is the reason to be careful with it: the
+defence's two instant-tag geometries are both distance relationships between
+`CONFINEMENT_RADIUS`, `taya_block_standoff` and `ATTACKER_THROW_RANGE`, so changing the box moves
+all three at once.
+
 ## Already done — the ledger this list replaces
 
 Kept short on purpose; the detail is in `Handoff.md` §4 and `Handoff.md`.

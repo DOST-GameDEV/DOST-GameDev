@@ -202,6 +202,9 @@ func _ready() -> void:
 			% [AIController.taya_pursue_radius, AIController.taya_block_standoff,
 				_tier_name()])
 		print("           round-win rule: %s" % _tag_variant_name())
+		print("           taya post: hold %.2fs, re-post past %.2f rad | lob: %s"
+			% [AIController.taya_post_hold, AIController.taya_repost_angle,
+				"ALLOWED (physics half may not exist yet)" if AIController.lob_enabled else "off"])
 	set_physics_process(true)
 
 ## R-02 · THE PROBE-HONESTY CONTRACT.
@@ -347,6 +350,13 @@ func _parse_args() -> void:
 			AIController.taya_post_hold = maxf(0.0, float(token.substr(9)))
 		elif token.begins_with("repost="):
 			AIController.taya_repost_angle = maxf(0.0, float(token.substr(7)))
+		# R-06's AI half. `lob=on` lets the attacker choose to go OVER a block
+		# instead of feeding it. ⚠️ Until the PHYSICS half lands this only makes the
+		# throw later, not higher — see AIController.lob_enabled.
+		elif token.begins_with("lob="):
+			AIController.lob_enabled = token.substr(4).to_lower() in ["on", "true", "1"]
+		elif token.begins_with("lobhold="):
+			AIController.attacker_lob_overhold = maxf(0.0, float(token.substr(8)))
 		elif token == "trace":
 			# R-07's acceptance asks for bt_trace() output. Off by default because it
 			# allocates a String per composite per tick on every bot.
