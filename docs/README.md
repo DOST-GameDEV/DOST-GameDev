@@ -1,6 +1,6 @@
 # The docs, what each is for, and which one wins
 
-There are **eight**. This file exists so nobody has to guess which is current, and so two
+There are **nine**. This file exists so nobody has to guess which is current, and so two
 documents disagreeing is a bug with an owner rather than a thing you work around.
 
 ## Source of truth — in order
@@ -15,7 +15,8 @@ commit rather than leaving both standing.
 | 3 | `Checklist.md` | **Per-phase status and acceptance criteria.** The only place a box is ticked. |
 | 4 | `Dev_Plan.md` | Architecture rules and the project-wide colour/role laws. |
 | 5 | `Art_Direction.md` | Visual and environment spec: the kit, the maps, the shading split. |
-| 6 | `Handoff.md` | Standing decisions, the open bug ledger (§3), and the questions the team owes (§5). |
+| 6 | `Handoff.md` | Standing decisions, the **open** bug ledger (§3), and the questions the team owes (§5). ~21k tokens. |
+| 6b | `Handoff_Archive.md` | Cold storage: closed bugs, dated session narratives, old task prose. **Grep only — never read it.** |
 | 7 | `Agent_Prompts.md` | Paste-ready lane openers and the per-subsystem reference appendices. **Also carries the LANE STATUS BOARD — the one place a lane is marked finished.** |
 | 8 | `SHARED_LOCKS.md` | Live mutex state for the six unpartitionable files. |
 
