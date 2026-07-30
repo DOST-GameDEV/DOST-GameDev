@@ -93,7 +93,9 @@ const STAMINA_SPRINT_FLOOR: float = 0.6
 ##      throw for nothing. 0.25 -> 0.12.
 ##   3. `Carrier.RESET_CHANNEL_TIME` — how long the taya must stand still to pick
 ##      the lata up. 1.5 -> 2.2, so committing to a reset is a real window the
-##      attacker can punish rather than a formality.
+##      attacker can punish rather than a formality. ⚠️ Re-priced to 1.8 with §1.9,
+##      which made the channel the only cure for a displaced lata rather than the
+##      faster of two — see that constant's own note.
 ##   4. `RoundManager.FALL_LIMIT` — the backstop. 5 -> 4.
 ##
 ## Together these move "the can gets back up" from the default outcome to a play
@@ -118,6 +120,16 @@ const DOWNED_SELF_RIGHT_WINDOW: float = 1.25
 ## (see CAN_KNOCKBACK_SCALE) plus the two seconds the lata cannot drive itself home.
 ## That is a better trade than a coin flip on a self-right window, and it is why the
 ## lucky fall matters less than it did.
+##
+## ⚠️⚠️ ONE EXCEPTION, ADDED WITH §1.9, AND IT IS THE ONLY ONE: A LATA OFF ITS CIRCLE
+## DOES NOT GET UP HERE. See `can_self_right()`. The ceiling still holds absolutely for
+## every Person and every tsinelas — which is what closes the seal-a-Person bug, and what
+## the no-stunlock argument in `Design.md` §11 rests on — and it still holds for a lata
+## standing on its mark. A lata that has been knocked OUT of its circle is bounded
+## instead by `RoundManager`'s out-of-circle countdown: at most `CAN_OUT_LIMIT_BASE`
+## (5.0 s, less 0.75 per save), at the end of which the round is over. That is a bound by
+## the round ending rather than by the body recovering, and it is deliberate — being
+## displaced is now the thing that loses the round, so it must be the thing that costs.
 const DOWNED_MAX_TIME: float = 2.0
 ## THE LUCKY FALL. Human request, 2026-07-29: *"make it easier to fall, but
 ## sometimes make it so that it can land on its head/back and this isnt a point
@@ -1195,6 +1207,15 @@ func _physics_process(delta: float) -> void:
 			# ceiling closes that class of bug by construction rather than by a
 			# `target.is_can` guard that a future path can forget.
 			_downed_total += delta
+			# ⚠️ §1.9 — `self_right()` REFUSES FOR A LATA THAT IS OFF ITS CIRCLE, so this
+			# ceiling is a ceiling on being down AT HOME. Retried every frame rather than
+			# latched: the lata cannot move itself, but the taya's reset channel can put
+			# it back on the mark underneath this test, and the frame after that lands it
+			# stands up on its own.
+			#
+			# `_downed_total` keeps accumulating past the ceiling on purpose — it is the
+			# honest "how long has this body been on the floor", and what bounds a
+			# STRANDED lata is `RoundManager`'s countdown, which ends the round.
 			if _downed_total >= DOWNED_MAX_TIME:
 				self_right()
 			elif _downed_self_rightable:
@@ -1214,9 +1235,14 @@ func _physics_process(delta: float) -> void:
 					# countdown runs. That is a real price and it is a legible one.
 					#
 					# `_downed_self_rightable` is still cleared, because it is what
-					# `is_self_rightable()` reports and `hitbox.gd` reads it to decide
-					# whether a follow-up hit may seal — a route no longer taken for a
-					# lata but still the honest answer to the question.
+					# `is_self_rightable()` reports and two things outside this file read
+					# it: `ai_controller.gd`, to know whether mashing bump is worth
+					# anything, and `hurtbox`/hit resolution's own reading of "is this
+					# body still in its appeal window".
+					#
+					# ⚠️ IT NO LONGER GATES A SEAL. `hitbox.gd`'s seal-on-hit branch for a
+					# lata was deleted with §1.9 — see there. Left as the honest answer to
+					# the question it names.
 					_downed_self_rightable = false
 			if input_just_pressed("bump") and _downed_self_rightable:
 				self_right()
@@ -1473,13 +1499,81 @@ func go_downed(scoring: bool = true) -> void:
 	if ability and ability.has_method("_on_owner_downed"):
 		ability._on_owner_downed(self)
 
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ §1.9 — THE LATA MAY ONLY STAND UP ON ITS CIRCLE. Human instruction, and the one
+## item of the mechanics board that was never implemented at all: `self_right()` had no
+## home check, so a lata knocked clean out of its circle simply got back up where it lay
+## and strolled home. `DOWNED_MAX_TIME`'s own note says as much — *"a knockdown is worth
+## the ~1 m of displacement plus the two seconds the lata cannot drive itself home"* —
+## and two seconds of not driving yourself home is not a price when the trip is one metre.
+##
+## ⚠️ THE RULE IS EXPRESSED AS "THE OUT-OF-CIRCLE CLOCK IS NOT RUNNING", NOT AS A SECOND
+## RADIUS TEST, AND THAT IS DELIBERATE. `RoundManager`'s countdown already owns the
+## question "is the lata on its mark", down to the 0.9 m the ring is drawn at. A private
+## copy of that test here would be a second source of truth for one line on the floor,
+## and this project has paid for that twice (the confinement square vs. the radial clamp,
+## and the throwing line vs. the Chebyshev test). So: **the lata may stand up exactly
+## when the clock that would end the round is not counting.** The two cannot disagree.
+##
+## `is_home()` is OR-ed in front of it for staleness only, not as a second rule: the
+## countdown is host-authoritative and mirrored to clients at 4 Hz (`_sync_state`), while
+## `self_right()` runs on the body's OWN peer, so a client-owned lata that has just been
+## carried back inside would otherwise stay on the floor for up to a quarter second
+## waiting to be told something it can see for itself.
+##
+## ⚠️ EVERYTHING THIS DOES NOT APPLY TO, AND WHY EACH ONE MATTERS:
+##   * **A Person.** `DOWNED_MAX_TIME` is what closes the old seal-a-Person bug by
+##     construction (see its note) and it stays a hard 2.0 s wall-clock ceiling for every
+##     body in the game except a stranded lata.
+##   * **Between rounds and during the pre-round free-roam window.** `round_active` is
+##     false, no countdown runs, and nothing may leave a body on the floor into a round
+##     it cannot act in.
+##   * **Option A.** The countdown is Option B's rule (see `_step_can_out`'s own gate),
+##     so `can_out_left()` is always -1.0 there and this is always true.
+##
+## ⚠️ WHAT THE LATA IS LEFT WITH IS ITS TEAM, AND THAT IS THE POINT. Stranded, it has no
+## verb of its own: DOWNED already blocks movement, the smash and the dash. Its answers
+## are all upstream — Can-Dash out of the throw, Can-Smash to keep bodies off the circle,
+## and walking home under its own power when it was merely shoved rather than knocked
+## over — and its last one is the taya's reset channel, which is the one moment in the
+## round the two defenders must actually cooperate. A crawl-while-downed was tried on
+## paper and thrown out: at any speed that feels like agency (0.6 m/s) it covers a
+## typical 1 m displacement inside two seconds and deletes the mechanic.
+func can_self_right() -> bool:
+	if not is_can:
+		return true
+	if not RoundManager.round_active:
+		return true
+	return is_home() or RoundManager.can_out_left() < 0.0
+
+## Whether this lata is standing on its circle. Always true for anything that is not a
+## lata — a Person and a tsinelas have no mark to be off.
+##
+## Flat (X/Z), matching `RoundManager._step_can_out` exactly, and for its stated reason:
+## a lata popped into the air by a faceslop is still over its own circle.
+func is_home() -> bool:
+	if not is_can:
+		return true
+	return Vector2(global_position.x, global_position.z).length() \
+		<= RoundManagerScript.CAN_HOME_RADIUS
+
 ## Player (or an ability, e.g. Sardinas' Quick Stand) recovers from Downed early.
-func self_right() -> void:
+##
+## ⚠️ RETURNS FALSE WHEN IT REFUSED, and the two callers that care both read it: the
+## `DOWNED` branch of `_physics_process`, which must not treat a refused ceiling as a
+## recovery, and `carriable.gd::_rpc_apply_reset`, which puts the lata back on its mark
+## BEFORE calling this precisely so that it cannot be refused. Quick Stand ignores the
+## answer, which is correct — a skin ability that could stand a lata up off its circle
+## would delete §1.9 for whoever picked that skin.
+func self_right() -> bool:
 	if state != State.DOWNED:
-		return
+		return false
+	if not can_self_right():
+		return false
 	_downed_self_rightable = false
 	_downed_total = 0.0
 	_set_state(State.NORMAL)
+	return true
 
 ## Option A only: a landed hit on this Can adds one dent (capped at MAX_DENTS)
 ## and applies a brief stagger for hit feedback — deliberately does NOT use the
@@ -1918,8 +2012,23 @@ func status_effects() -> Array[Dictionary]:
 			out.append({"label": "STUNNED", "seconds": _staggered_time_left,
 				"total": maxf(_staggered_time_left, BUMP_STAGGER_TIME)})
 		State.DOWNED:
-			out.append({"label": "DOWNED", "seconds": maxf(0.0, DOWNED_MAX_TIME - _downed_total),
-				"total": DOWNED_MAX_TIME})
+			# ⚠️ TWO DIFFERENT ROWS, BECAUSE THEY ARE TWO DIFFERENT FACTS AND A PLAYER
+			# CANNOT PLAY AROUND THE SECOND ONE IF IT IS DRESSED AS THE FIRST. §1.9.
+			#
+			# `DOWNED` counts down to getting up. A lata that is off its circle is NOT
+			# counting down to anything of its own — it cannot stand up at all (see
+			# can_self_right()), and the only clock that means anything to it is the one
+			# that ends the round. A `DOWNED` row ticking to 0.00 and then sitting there
+			# while nothing happens is the exact defect `Design.md` §10 exists to stop:
+			# "a stun the player cannot time is a stun they cannot play around."
+			if is_can and not can_self_right():
+				out.append({"label": "STRANDED",
+					"seconds": maxf(0.0, RoundManager.can_out_left()),
+					"total": RoundManager.can_out_limit()})
+			else:
+				out.append({"label": "DOWNED",
+					"seconds": maxf(0.0, DOWNED_MAX_TIME - _downed_total),
+					"total": DOWNED_MAX_TIME})
 		State.SEALED:
 			out.append({"label": "OUT", "seconds": 0.0, "total": 0.0})
 	if _hit_penalty_left > 0.0:

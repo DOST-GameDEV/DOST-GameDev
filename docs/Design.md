@@ -22,6 +22,7 @@ their own charge meters, movement verbs and win conditions.
 | **The tag / tap-out** | One button near the attacker ended the round outright, with no counterplay worth the name. **The defence no longer has an instant win at all.** |
 | **Can Guard** (hold to block a hit) | It nullified the attacker's one window per throw. Replaced by Can-Dash and Can-Smash — commitments, not a hold. |
 | **Auto-seal on an unrecovered knockdown** | Replaced by the out-of-circle countdown (§5.2). A lata no longer loses by lying still; it loses by being *displaced*. |
+| **Seal-on-hit** (touch a lata that is past its self-right window → round over) | The last piece of the auto-seal, and §5.1's stand-up rule turned it into a second tap-out: a stranded lata never leaves that window, so any attacker could walk over, press bump and end the round. **A follow-up hit on a downed lata now just shoves it further from the circle**, which is continuous, legible, and stacks with the clock instead of skipping it. |
 
 ## 2 · Movement and stamina — every unit
 
@@ -78,9 +79,19 @@ throw and deliberately slower than it.
 | `BUMP_TAP_TIME` | 0.18 s | below this it is a tap |
 | **Tap — light bump** | 3.0 m/s flat, 0.6 lift | ≈ 0.15 m. No stagger, no drop. A nudge to break a stance. |
 | **Full — power bump** | **7.75 m/s flat, 2.2 lift** | = **1.00 m** by v²/60 |
-| Power bump extras | drops the carried tsinelas · **0.9 s** stagger · **1.2 s** penalty at 0.55× speed | |
+| Power bump extras | **punts** the carried tsinelas · **0.9 s** stagger · **1.2 s** penalty at 0.55× speed | |
+| `PUNT_SPEED` / `PUNT_LIFT` | **13.5** / 3.8 → **3.13 m** | scaled by the charge; a tap punts nothing |
 | `BUMP_LIGHT_COOLDOWN` | 0.45 s | |
 | `BUMP_POWER_COOLDOWN` | 0.80 s | |
+
+**The punt is the "far away" half of the drop, and it was missing.** A stagger already
+dropped the slipper for free — any non-NORMAL state does — but it dropped it *at the
+carrier's own feet*, so eating a 1.35 s bump cost the attacker one bend of the knees.
+It now leaves along the line the bump sent its carrier. **3.13 m measured**
+(`tools/mech_probe.tscn`, full charge, default skin, two runs) is ~1.5 s of crawling
+back at `CRAWL_SPEED_SCALE` plus the 1.25 s throw lock: about 2.8 s of tempo. The lift
+is cosmetic — a loose slipper is bled by `FRICTION` in the air too, so distance is
+`v²/60` and airtime adds nothing.
 
 Partial charges interpolate linearly. The whole 1.35 s is visible on **every peer** (the
 wind-up broadcast), so the attacker can dash, jump or throw through the commitment.
@@ -93,9 +104,33 @@ wind-up broadcast), so the attacker can dash, jump or throw through the commitme
 |---|---|---|
 | `CAN_KNOCKBACK_SCALE` | **×2.6** | on every incoming impulse. A clean hit moves it ~1 m instead of dropping it in place. |
 | `DOWNED_SELF_RIGHT_WINDOW` | 1.25 s | press bump to get up early |
-| `DOWNED_MAX_TIME` | **2.0 s** | **no body can be down longer than this** — it applies to Persons too, which is what closes the old seal-a-Person bug by construction |
+| `DOWNED_MAX_TIME` | **2.0 s** | the ceiling on being down. Applies to every Person and every tsinelas wherever they lie, and to a lata **on its circle** — see below |
 
 The lata is lost by being displaced, not by lying down. That is what makes ×2.6 safe.
+
+### 5.1.1 · The lata may only stand up on its circle
+
+**A lata knocked out of its circle does not get up.** Not at `DOWNED_SELF_RIGHT_WINDOW`,
+not at the 2.0 s ceiling, not by mashing bump, not by Quick Stand. It is `STRANDED`, and
+the only clock that means anything to it is the one in §5.2 that ends the round.
+
+The rule is written once, as **"the out-of-circle countdown is not running"**, rather
+than as a second radius test — one line on the floor, one source of truth. It therefore
+does not apply during the intermission or the pre-round free-roam window, and it does not
+apply under Option A, both because no countdown runs there.
+
+What bounds it is the round, not the body: at most `CAN_OUT_LIMIT_BASE` seconds, less
+0.75 per save, at the end of which the attackers have won. That is deliberate — being
+displaced is the thing that loses the round, so it has to be the thing that costs.
+
+Its price is that the lata has no verb while stranded; its answers are all upstream
+(Can-Dash out of the throw, Can-Smash to keep bodies off the mark, walking home when it
+was merely shoved) and its last one is its teammate. **This is the one moment in a round
+the two defenders must actually cooperate**, which is worth having in a 2v2.
+
+*Measured*, `tools/mech_probe.tscn`: held down 3.0 s off the circle against a 2.0 s
+ceiling; stands within 6 frames of arriving home with no fresh input; a Person downed at
+the same spot still gets up by 2.0 s.
 
 ### 5.2 · The circle countdown — the defence's real job
 
@@ -111,13 +146,36 @@ zero the **attackers win the round**. Getting back inside stops and resets it �
 permanently shortens the next one by 0.75 s, five times over. The fifth save buys 1.25
 seconds, so the defence's ability to keep saving is itself the clock.
 
+**Option B only.** Option A keeps dents, ring-outs and the timer, exactly as §7 claims it
+does; the countdown used to run there too, which meant an Option A round could be lost to
+a clock nothing in that mode explains.
+
+**The channel time is set against this table, not against feel.** With `RESET_CHANNEL_TIME`
+at 2.2 s the fifth stack was unreachable decoration — the round was already decided a row
+above it. At 1.8 s the cliff lands on the floor:
+
+| saves | 0 | 1 | 2 | 3 | 4 | 5+ |
+|---|---|---|---|---|---|---|
+| limit | 5.00 | 4.25 | 3.50 | 2.75 | 2.00 | **1.25** |
+| save by channel (1.8 s + travel) | easy | easy | easy | ok | knife-edge | **impossible** |
+
+So at maximum stacks a knockdown outside the circle simply ends the round, and the lata's
+only survival is not to be knocked over. That escalation is the beat the round is built
+around.
+
 **The taya's counterplay: the reset channel carries it home.** A lata is displaced by being
 *hit*, and being hit is exactly the state in which it cannot drive itself — so if its own
 player were the only one who could move it, the correct attacking play would be to knock it
 out and keep it stunned while the taya watched (`hitbox.gd`'s same-team rule forbids even
-shoving it). Holding `grab` beside your own lata for `RESET_CHANNEL_TIME` (2.2 s) stands it
-up **and** puts it back on the mark. The price is 2.2 s of standing still inside the arena
-— the one moment the attacker gets to punish.
+shoving it). Holding `grab` beside your own lata for `RESET_CHANNEL_TIME` (**1.8 s**) puts
+it back on the mark **and then** stands it up — in that order, because §5.1.1 refuses the
+stand-up anywhere else. The price is 1.8 s of standing still inside the arena, longer than
+the defender's own full bump commitment and twice a full throw charge — the one moment the
+attacker gets to punish.
+
+*Measured*, `tools/mech_probe.tscn`: a completed channel on a stranded lata stands it up
+and returns it to 0.00 m from centre, and the save shortens the next countdown by exactly
+0.75 s.
 
 ### 5.3 · Lata abilities
 
@@ -158,7 +216,12 @@ Smash on the lata (§6) · `FALL_LIMIT` = 4 scoring knockdowns in one round.
 **Defenders win by:** the 90 s `ROUND_TIME` running out. That is the only way. There is no
 tag.
 
-Option A (dents, `MAX_DENTS` 3) is maintained in parallel and unchanged.
+**There is no seal.** Sealing a lata by touching it is gone (§1); `seal()` and the SEALED
+state survive for Option A and for the state machine's own shape, and under Option B
+nothing reaches them.
+
+Option A (dents, `MAX_DENTS` 3, `RING_OUT_LIMIT` 3) is maintained in parallel and
+unchanged — and is now actually unchanged: the §5.2 countdown is gated to Option B.
 
 ## 8 · Traits
 
@@ -180,9 +243,14 @@ speed · `Tab` cycles a follow target · `F` frees the camera.
 ## 10 · Status readability
 
 The HUD carries a status stack (top-centre, under the timer), one row per live effect with
-its own countdown: `STUNNED`, `DOWNED`, `PENALTY`, `THROW LOCK`, `SMASH`, `DASH`,
-`LATA OUT`. **A stun the player cannot time is a stun they cannot play around**, which is
-most of what "the defender feels overpowered" was.
+its own countdown: `STUNNED`, `DOWNED`, `STRANDED`, `SLOWED`, `THROW LOCK`, `SMASH`,
+`DASH`, `LATA OUT`. **A stun the player cannot time is a stun they cannot play around**,
+which is most of what "the defender feels overpowered" was.
+
+`STRANDED` replaces `DOWNED` on a lata that is off its circle, and the swap is the whole
+point: that lata is not counting down to standing up, it is counting down to losing the
+round, so it reads the §5.2 clock instead. A `DOWNED` bar ticking to 0.00 and then sitting
+there while nothing happens is exactly the defect this section exists to prevent.
 
 ## 11 · Cooldown table — the whole game on one screen
 
@@ -205,8 +273,15 @@ properties are claimed to bound every chain at 2.5 s:
 1. **Stuns overlap, they do not stack.** Every stun arrives through
    `CharacterBase.apply_stagger()`, which takes `max(_staggered_time_left, duration/grit)`.
    Two 1.6 s smashes 0.2 s apart are 1.8 s, not 3.2 s. There is no additive path.
-2. **DOWNED has a hard ceiling.** `DOWNED_MAX_TIME` 2.0 s applies to every unit and is a
-   wall-clock total, not a refreshable window.
+2. **DOWNED has a hard ceiling.** `DOWNED_MAX_TIME` 2.0 s is a wall-clock total, not a
+   refreshable window. ⚠️ **It has exactly one exception and it is §5.1.1**: a lata off
+   its circle stays down. That is not a stunlock, and the distinction is worth stating
+   rather than waving at — a stunlock is a state you cannot act out of *and cannot lose
+   out of*, so it stalls the game. A stranded lata is bounded by a countdown that ends
+   the round in at most 5.0 s (1.25 s at full stacks), it can be ended early by the
+   taya's channel, and nothing about it touches a Person. *Measured*, not argued:
+   `tools/mech_probe.tscn` holds a lata down 3.0 s off the circle and a Person 2.4 s at
+   the same spot, and only the lata is still there.
 3. **The longest producible chain is 2.5 s** — power bump (0.9) into Can-Smash (1.6). It
    needs two units committing in sequence, one of which then owes 8.0 s of cooldown, and
    the bump's 1.35 s wind-up is visible on every peer first.
@@ -220,6 +295,8 @@ Nothing here is answered only by "do not be there".
 | Action | Answer |
 |---|---|
 | Power bump | 1.35 s of visible wind-up — dash, jump, throw, or leave 1.27 m of reach |
+| The punt (losing your tsinelas 3 m away) | it only lands off a *charged* bump, so the same 1.35 s tell answers it; and a loose tsinelas self-launches home far faster than it crawls |
+| A stranded lata (§5.1.1) | do not be displaced: Can-Dash out of the throw, Can-Smash to keep bodies off the mark — and failing both, the taya's 1.8 s channel |
 | Can-Smash | 0.35 s wind-up, and 3.6 m never reaches the 6.0 throwing line |
 | Can-Dash | one per round; bait it, then commit |
 | Ground Smash | needs height, so it is telegraphed on the ground first; Can-Dash beats it, a miss costs 12 s |

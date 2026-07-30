@@ -402,8 +402,10 @@ func can_be_reset_by(who: CharacterBase) -> bool:
 	# So the reset channel, which already exists and already has the right shape (stand
 	# still, hold, be punishable for it), does double duty: it stands a downed lata up,
 	# AND it walks a displaced one home. Holding `grab` beside your own lata is now the
-	# defence's real verb, and the price is unchanged — `RESET_CHANNEL_TIME` is 2.2 s of
-	# standing still inside the arena, which is the one moment the attacker can punish.
+	# defence's real verb, and the price is `RESET_CHANNEL_TIME` — 1.8 s of standing still
+	# inside the arena, which is the one moment the attacker can punish. §1.9 made this
+	# the ONLY cure for a downed displaced lata rather than the quicker of two, which is
+	# what re-priced it from 2.2; see that constant's own note for the arithmetic.
 	#
 	# Not SEALED — a sealed can means the round is already lost, and un-sealing it here
 	# would be round-win logic living in the wrong file.
@@ -445,10 +447,14 @@ func _rpc_apply_reset() -> void:
 	if GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A:
 		_character.clear_dent()
 		return
-	_character.self_right()
-	# ⚠️ THE CARRY HOME. A completed channel on a lata that is OUTSIDE its circle puts it
-	# back on the mark, because that — not standing it up — is what the countdown is
-	# actually asking for. See `can_be_reset_by()` for why the defence needs this at all.
+	# ⚠️⚠️ THE CARRY HOME RUNS **BEFORE** THE STAND-UP, AND SINCE §1.9 THAT ORDER IS THE
+	# WHOLE FUNCTION RATHER THAN A TIDINESS PREFERENCE. `CharacterBase.self_right()` now
+	# REFUSES for a lata that is off its circle — so calling it first, as this did, would
+	# have the defence's one answer to a displaced lata quietly do nothing at all: the
+	# stand-up is rejected, the teleport then puts a still-DOWNED can on the mark, and the
+	# taya has spent `RESET_CHANNEL_TIME` standing still for a can that is exactly as
+	# knocked over as it was. Put it on its mark, THEN stand it up, and the refusal
+	# condition is false by the time it is asked.
 	#
 	# ⚠️ A TELEPORT, NOT AN IMPULSE, AND THAT IS THE SAFER OF THE TWO. An impulse toward
 	# the origin would have to be sized against `FRICTION`, against `CAN_KNOCKBACK_SCALE`
@@ -468,6 +474,8 @@ func _rpc_apply_reset() -> void:
 		_character.velocity = Vector3.ZERO
 		_character.begin_spawn_settle()
 		_character.snap_visual_interpolation()
+	# On the mark, so §1.9's home test is satisfied and this cannot be refused.
+	_character.self_right()
 
 ## Whether this node is currently driving the character's movement itself, in
 ## which case character_base.gd hands the physics frame over (see its
@@ -1201,11 +1209,70 @@ func host_land() -> void:
 		return
 	_broadcast_loose(_character.global_position)
 
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE PUNT — §1.4's "drops the attacker's tsinelas FAR AWAY". `Design.md` §4.
+##
+## Set by `hitbox.gd` on the host at the instant a CHARGED bump lands on whoever is
+## holding this slipper; spent by `host_drop()` when the drop actually resolves. The two
+## are separate events and can be frames apart: the stagger that causes the drop is
+## applied on the carrier's OWN peer and reaches the host as replicated state, so by the
+## time this node hears about it the hit that caused it is unrecoverable. Noting it at
+## the strike is the only place both facts are in hand at once.
+##
+## ⚠️⚠️ THE LIFT IS PURELY VISUAL AND THE DISTANCE IS `v² / 60`, FULL STOP. This is not
+## the ballistics it looks like, and the arithmetic that assumes it is overshoots by
+## nearly 2x — the first sizing pass here did exactly that and had to be re-measured.
+##
+## A LOOSE tsinelas with no movement input runs the `move_toward(velocity, 0, FRICTION *
+## delta)` branch of `character_base.gd` on EVERY frame, **airborne included**. So the
+## flat component is bled off at 30 units/s² from the instant of the punt and stops after
+## `v / 30` seconds whether the slipper is in the air or on the ground: airtime adds no
+## distance at all. `PUNT_LIFT` buys the arc that makes a punt read as a punt rather than
+## as a shove, and nothing else — retuning it moves no number in `Design.md`.
+##
+## Which leaves the same stopping-distance rule every other impulse in this game is
+## solved by: 13.5² / 60 = **3.04 m**. `CharacterBase.MAX_KNOCKBACK_SPEED` (16.0) caps
+## any punt at 4.27 m, and 13.5 leaves room for TATAG to swing it either way (±14% on the
+## impulse, i.e. 2.3 m .. 3.9 m across the roster) without a sturdy skin silently
+## clipping that clamp and hiding its own stat.
+##
+## MEASURED, `tools/mech_probe.tscn`, full charge, default skin, from a pinned origin
+## over open floor, identical on two runs: **3.13 m**, at rest 30 physics frames after
+## the drop. That is the number `Design.md` quotes.
+##
+## Sized against the crawl rather than against the arena: a LOOSE slipper walks home at
+## `CRAWL_SPEED_SCALE` (0.45 x 4.6 = 2.07 m/s), so 3.13 m is ~1.5 s of retrieval, and
+## then `Carrier.THROW_LOCK_TIME` (1.25 s) before the pick-up may be charged. Call it
+## 2.8 seconds of tempo for a read the defender had to commit 1.35 visible seconds to.
+## The slipper's own answer is the verb it was given for exactly this — a charged
+## self-launch covers that ground in a fraction of the time, and it is the tsinelas
+## player's decision to make rather than the Person's.
+##
+## ⚠️ SCALED BY THE CHARGE, so a partial bump punts proportionally. A TAP punts nothing,
+## because a tap applies no stagger at all and never reaches a drop.
+const PUNT_SPEED: float = 13.5
+const PUNT_LIFT: float = 3.8
+
+## Set on the host only, cleared the moment it is spent or the slipper changes hands.
+var _pending_punt: Vector3 = Vector3.ZERO
+
+## `direction` is flat and normalised; `power` is the bump's 0..1 charge.
+func host_note_punt(direction: Vector3, power: float) -> void:
+	if not _is_host() or state != CarryState.CARRIED:
+		return
+	_pending_punt = direction * (PUNT_SPEED * power) + Vector3.UP * (PUNT_LIFT * power)
+
 ## The carrier died, disconnected, or the round ended while holding.
 func host_drop() -> void:
 	if not _is_host() or state == CarryState.LOOSE:
 		return
-	_broadcast_loose(_character.global_position)
+	# ⚠️ READ AND CLEARED TOGETHER, so a punt noted for a bump that never produced a drop
+	# cannot be spent by the next unrelated one — a round ending while held, say. In
+	# practice it is always spent by the drop it was noted for, because `hitbox.gd` only
+	# notes it on a hit whose `kind` is a stagger, and a stagger always drops.
+	var punt := _pending_punt
+	_pending_punt = Vector3.ZERO
+	_broadcast_loose(_character.global_position, punt)
 
 ## Round reset. Called from CharacterBase.reset_for_new_round() on every peer —
 ## no RPC, because every peer runs the reset itself from already-synced state,
@@ -1220,6 +1287,9 @@ func reset_for_new_round() -> void:
 	flight_power = 0.0
 	_launch_charge = -1.0
 	_steer_spent = 0.0
+	# §1.4. A punt noted against a bump the round ended on top of must not be spent on
+	# next round's first drop — see host_note_punt.
+	_pending_punt = Vector3.ZERO
 	_character.clear_hit_memory()
 	if carrier != null and is_instance_valid(carrier):
 		_character.remove_collision_exception_with(carrier)
@@ -1291,11 +1361,13 @@ func _broadcast_flying(origin: Vector3, velocity: Vector3, lob: bool = false,
 	else:
 		_rpc_set_flying(origin, velocity, lob, long_range, power)
 
-func _broadcast_loose(where: Vector3) -> void:
+## `punt` defaults for the same forward-compatibility reason `_rpc_set_flying`'s `lob`
+## does — a peer on an older build calling the one-argument form still resolves.
+func _broadcast_loose(where: Vector3, punt: Vector3 = Vector3.ZERO) -> void:
 	if NetworkManager.is_networked():
-		_rpc_set_loose.rpc(where)
+		_rpc_set_loose.rpc(where, punt)
 	else:
-		_rpc_set_loose(where)
+		_rpc_set_loose(where, punt)
 
 ## "any_peer", not "authority", for the same reason CharacterBase._apply_hit_result
 ## documents: resolution runs on the HOST, but this node's multiplayer authority
@@ -1396,7 +1468,7 @@ func _rpc_set_flying(origin: Vector3, velocity: Vector3, lob: bool = false,
 	_set_state(CarryState.FLYING)
 
 @rpc("any_peer", "call_local", "reliable")
-func _rpc_set_loose(where: Vector3) -> void:
+func _rpc_set_loose(where: Vector3, punt: Vector3 = Vector3.ZERO) -> void:
 	_character.global_position = where
 	# Defensive, same reasoning as _rpc_set_flying()'s own note — a slipper
 	# dropped (not thrown) straight from CARRIED also carries the 55° hand
@@ -1424,6 +1496,21 @@ func _rpc_set_loose(where: Vector3) -> void:
 	flight_long_range = false
 	flight_power = 0.0
 	_set_state(CarryState.LOOSE)
+	# ⚠️ §1.4 — THE PUNT, AND IT GOES **LAST**, after `_set_physics_enabled(true)` and
+	# after the state is actually LOOSE. Written earlier it would be a velocity on a body
+	# whose collision is still disabled (B-101's shape), and on one that
+	# `drives_movement()` still answers true for — i.e. `character_base.gd` would hand the
+	# frame to `physics_step()` and the ordinary gravity/move_and_slide path that has to
+	# carry this would never run.
+	#
+	# Through `apply_knockback()` rather than a raw `velocity` write, so a punted slipper
+	# obeys exactly the same ceilings, the same round-freeze refusal and the same TATAG
+	# division as every other impulse in the game. Runs on every peer, which is the same
+	# thing `_rpc_apply_scuff` does with the same reasoning: the non-authority copies are
+	# overwritten by the synchronizer a frame later, and the authority's is the one that
+	# matters.
+	if not punt.is_zero_approx():
+		_character.apply_knockback(punt)
 
 ## ---------------------------------------------------------------------------
 

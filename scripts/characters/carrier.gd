@@ -81,9 +81,39 @@ const LOB_METER_ARMED: float = 2.0
 ## than the attacker's own charge-and-throw cycle, so there was nothing to punish
 ## and the reset was effectively free. 2.2 s makes going for it a decision.
 ##
+## ⚠️⚠️ 2.2 -> 1.8, 2026-07-31, AND THE REASON IS §1.9 RATHER THAN FEEL. The channel
+## used to be one of two ways a displaced lata got back on its mark, and the lazy one:
+## the can stood itself up at `DOWNED_MAX_TIME` and walked home by itself, so a taya who
+## never channelled at all lost very little. Pricing an optional convenience at more than
+## the attacker's whole charge-and-throw cycle was right.
+##
+## §1.9 makes it the **only** cure for a lata that has been knocked out of its circle,
+## and it has to be measured against the clock it is racing rather than against the
+## attacker's cycle. `RoundManager.can_out_limit()` is 5.00 s at the start of a round and
+## drops 0.75 s per save, so what the channel costs decides which saves are even
+## reachable — travel included, and the taya is at most ~7 m away inside its own box:
+##
+##     saves      0     1     2     3     4     5+
+##     limit   5.00  4.25  3.50  2.75  2.00  1.25
+##     2.2 s   easy  easy   ok   knife  IMPOSSIBLE
+##     1.8 s   easy  easy  easy    ok   knife  IMPOSSIBLE
+##
+## At 2.2 the fifth stack and its 1.25 s floor were unreachable decoration — the round
+## was already decided one row above them, so the table `Design.md` §5.2 prints was a
+## table of numbers half of which could never happen. At 1.8 the cliff lands exactly on
+## the floor: the fourth save is the knife-edge, and at maximum stacks a knockdown
+## outside the circle simply ends the round. That is the beat this whole lane is for.
+##
+## ⚠️ IT IS STILL PUNISHABLE, WHICH IS THE PROPERTY 1.5 -> 2.2 WAS BOUGHT FOR AND NONE OF
+## THIS GIVES BACK. 1.8 s of standing still is longer than the defender's own full bump
+## commitment (`BUMP_CHARGE_FULL_TIME`, 1.35) and twice `CHARGE_FULL_TIME` (0.9), so an
+## attacker who is already holding the tsinelas can see the channel start and land a
+## full-power throw inside it. What 1.8 removes is only the region where the taya loses
+## the round for doing their job correctly and quickly.
+##
 ## Still a guess until someone plays it — this is the tuning knob for the whole
 ## defensive half of the round.
-const RESET_CHANNEL_TIME: float = 2.2
+const RESET_CHANNEL_TIME: float = 1.8
 
 ## ---------------------------------------------------------------------------
 ## ⚠️⚠️ THE ANTI-CHEESE LOCK. Human instruction, 2026-07-30: *"implement a throw cooldown
