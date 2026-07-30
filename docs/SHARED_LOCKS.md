@@ -20,7 +20,7 @@ to type.
 | `scripts/characters/character_base.gd` | — free — | | |
 | `scenes/characters/CameraRig.tscn` | — free — | | |
 | `scenes/ui/*.tscn` | — free — | | |
-| `project.godot` | — free — | | |
+| `project.godot` | 🌐 NET — Space is jump only, bump moves to F | `integration` | 2026-07-30 |
 | `tools/models/generate_all.gd` | — free — | | |
 | `docs/Checklist.md` | *no lock needed* | | append-only-ish; conflicts resolved by taking both sides |
 
