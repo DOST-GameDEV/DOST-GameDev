@@ -158,7 +158,70 @@ For any coding agent picking up this queue.
 **Only open items live here.** B-01 … B-66 are in [`Handoff.md`](Handoff.md); everything
 marked `[FIXED]` there is done and settled. New bugs take the next free number **in this file**.
 
-**B-144 · `aim_probe` FAILS ITS OWN AIM CLAUSE AFTER THE 10.6 MERGE — 0.41 m AGAINST A 0.40 m MARK. [OPEN · 🥊 PHYS]**
+> ## 🧑 BALANCE IS FROZEN, 2026-07-30 — THE MECHANICS ARE BEING OVERHAULED
+>
+> Human instruction, verbatim: *"dont worry abt balance shit for now bcz we will overhaul
+> mechanics ltr with new stuff and ideas."*
+>
+> **So no lane retunes a balance number until the overhaul lands.** Win rates, block rates,
+> dents per round, `MAX_DENTS`, the OPTION_A/OPTION_B split, `CAN_EVADE_*`, tier values and
+> the fairness table are all **measure-and-report only**. Keep taking the numbers — they are
+> the before-picture the overhaul will be judged against — but do not act on them, and do not
+> open a balance question as if it were a decision waiting on the human.
+>
+> Two live items are parked by this and are **not** awaiting an answer: the R-06 leg 3 swing
+> (lob contact 80% → 0%) and OPTION_B's DEF 40/60 against OPTION_A's 80/20. Both are written
+> up in `Checklist.md` with their numbers; neither is a question any more.
+>
+> ⚠️ **CORRECTNESS IS NOT BALANCE AND IS NOT FROZEN.** A stat that reaches nothing, a pick
+> that never arrives, a model that does not change — those are bugs, and B-145 below is
+> exactly that class.
+
+**B-145 · THE PICKS DO NOT REACH THE GAME — WRONG MODEL, STALE MODEL, DEAD STATS. [OPEN · 🌐 NET]**
+
+🧑 **Reported from real play, 2026-07-30**, three symptoms in one breath — and they are almost
+certainly one pipeline:
+
+1. *"charcter settings dont update in actual play"* — the stats chosen on the CHARACTER screen
+   do not change how the unit plays.
+2. *"the models we pick in single player dont show up"* — **SINGLE PLAYER**, which matters:
+   this is `main.gd::_start_local_test()`'s pick path, not the networked spawn path.
+3. *"i log in as player and pick coffee, if i switch to can, old model stays"* — the VISUAL
+   does not follow a role swap, while the trait lookup demonstrably does.
+
+⚠️ **DO NOT ASSUME THIS IS THE SAME BUG AS THE TRAIT WORK JUST CLOSED — the measurements say
+it is a different layer.** `prop_trait` was verified end-to-end on two peers on 2026-07-30
+(`Checklist.md` § NET-1(c)): the same Prop reads `CANS[3]` one round and `SLIPPERS[1]` the
+next and its shove and knockback change accordingly. So the INDEX arrives and the TRAIT
+LOOKUP flips on `is_can`. Symptom 3 says the MESH does not. `character_base.gd` re-derives
+`is_can` every call and never caches; whatever draws the model may not.
+
+⚠️ **AND SYMPTOM 1 IS NOT REFUTED BY THAT VERIFICATION EITHER.** Both trait verifications —
+Person and Prop — ran on **probe-spawned units in probe conditions**. Neither went through
+the CHARACTER screen with a human at the keyboard, which is the exact path the report names.
+
+**Related and possibly the same root, both measured 2026-07-30 and both open:**
+
+- A **bot Prop resolved index -1 beside a HUMAN teammate**, so it wore the neutral 3/3/3 —
+  `main.gd::_team_prop_picks` should have handed it that human's picks. Red on both peers,
+  every run, `net_spawn_probe` 24/28.
+- With **two** peers connected there are **three** positive peer-id seats — one belongs to no
+  process in the run. A ghost seat whose peer never published picks would explain the -1
+  through the token → `peer_tokens` → `picks_for()` chain.
+- With **four** peers, one client reports `can_index=-1` for a unit the host and another
+  client both report as `can_index=3`, **same unit, same round**. Peers disagreeing about a
+  replicated pick is the most serious of the three.
+
+**B-144 · `aim_probe` FAILS ITS OWN AIM CLAUSE AFTER THE 10.6 MERGE — 0.41 m AGAINST A 0.40 m MARK. [FIXED 2026-07-30 · 🌐 NET]**
+
+✅ **CLOSED — and it was the AUDIT'S GEOMETRY, not the solve.** Full account in `Checklist.md`
+§ B-144. The range question decided it: with the aim point pinned in FREE SPACE the solve is
+0.205 m worst inside 10 m and 0.224 m out to 21 m, so the miss does not reproduce anywhere a
+throw in this game actually travels. Two faults, both in the probe — a 40 m ray hitting the
+arena wall 24 m out against a six-metre throwing line, and every row scoring the thrown
+slipper's own capsule (r 0.20) against surfaces its ORIGIN can never reach. Worst 0.35 →
+**0.20 m** against an **unchanged** absolute 0.40 mark. Exit 0. The original report follows,
+kept because the trade it describes is still the right one:
 
 ⚠️ **REPORTED AGAINST MY OWN MERGE, MEASURED BOTH SIDES, AND NOT PAPERED OVER.** `code/throw-feel`
 (10.6, the sight-line launch origin) was merged into `integration` on 2026-07-30. It does what it says,
