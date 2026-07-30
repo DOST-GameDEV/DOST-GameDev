@@ -3866,6 +3866,52 @@ is **8 gameplay files, not 5**; the extra ones are `network_manager.gd`, `carria
 positive on the words *"debug cruft"*) and **`character_base.gd` with 5 hits — a shared-lock
 file, so R-30 needs a mutex its plan does not mention.**
 
+#### R-06 leg 3 · THE AI SIDE, DONE, 2026-07-30 — 🌐 NET by human grant. `phys_probe -- band`
+
+Both handover items taken exactly as specified: **the sidestep is HELD, not widened**
+(`CAN_EVADE_STEP` is untouched at 1.20 m) and `ATTACKER_LOB_OVERHOLD` now **reads**
+`Carrier.LOB_OVERHOLD_TIME` instead of restating 0.20 — the two agreed by coincidence and
+now agree by construction.
+
+**What was actually wrong, and it was the TRIGGER as much as the step.** Every gate in
+`_cond_slipper_incoming` is computed on the HORIZONTAL velocity — the `speed < 0.5` reject,
+the `closing` dot and the perpendicular `miss` all zero `vel.y` first. A descending lob's
+horizontal component collapses on the way down while `to_us` shrinks toward zero overhead,
+so the threat stops registering at the moment it is most dangerous, the tree falls through
+to hold-the-circle, and the can **walks back onto the mark to be hit**. Two changes, both
+narrow: a lob already seen stays the threat until it is no longer FLYING (branching on
+`Carriable.flight_is_lob`, lobs only — a 0.32 s flat throw has no tail to hold through),
+and `_act_evade` latches its destination in world space instead of re-deriving it from the
+can's CURRENT position every tick, which made the target run away at exactly the pace the
+can walked.
+
+| `phys_probe -- band`, PHASE 2, controller live, 10 throws each | contact | peak perp | **at closest** |
+|---|---|---|---|
+| lob, before | **80%** | 0.84 m | **0.31 m** |
+| lob, after | **0%** | 1.61 m | **1.29 m** |
+| flat, before | 0% | 0.80 m | 0.67 m |
+| flat, after | 0% | 0.77 m | 0.63 m |
+
+The flat throw is unmoved, which is the check that the hold is really lob-only.
+
+⚠️ **THE FIRST CUT OF THIS SILENTLY DID NOTHING AND ONLY THE MEASUREMENT SAID SO.** Written
+as one "different threat? re-latch" test up front, the `null` the detection loop leaves on
+the frame the lob stops registering counts as a different threat — so the latch cleared
+itself one frame before the branch that was supposed to read it. It re-measured at 60%
+contact and 0.40 m, i.e. still coming home, and it would have read as a partial success to
+anyone who did not have the before-numbers beside it. The restore now runs BEFORE the
+re-latch.
+
+🧑 **THIS IS A BALANCE SWING AND IT IS THE HUMAN'S CALL, NOT THIS LANE'S.** 80% → 0% is the
+lob going from the shot that beats the dodge to a shot the dodge always beats. R-06's
+triangle wants exactly that corner (*the can's dodge beats the lob*), and 10 throws per row
+is a small sample — but `CAN_EVADE_LOOKAHEAD`'s own doc says **"a Can that cannot be hit is
+a broken game, not a hard one"**, and both rows now read 0%. The dodge also holds the can
+**1.29 m off its mark** for the lob's full 1.5 s, which is far inside `CAN_EVADE_RADIUS`
+(1.8) but is a longer abandonment of the post than anything measured before. Nothing was
+tuned to soften it: `CAN_EVADE_STEP`, `CAN_EVADE_MISS_MARGIN` and `CAN_EVADE_LOOKAHEAD` are
+all human-called or documented untunable, and the spec said hold the step.
+
 #### NET-1(c) · CLOSED, 2026-07-30 — 🌐 NET. `net_spawn_probe`, two real peers, `PROPOBS`
 
 **A Prop's trait reaches the object, and the answer genuinely changes when the role swaps.**
