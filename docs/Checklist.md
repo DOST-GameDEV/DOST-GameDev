@@ -3866,6 +3866,60 @@ is **8 gameplay files, not 5**; the extra ones are `network_manager.gd`, `carria
 positive on the words *"debug cruft"*) and **`character_base.gd` with 5 hits — a shared-lock
 file, so R-30 needs a mutex its plan does not mention.**
 
+#### R-24 · THE AI FALLBACK SURVIVES REAL DROPS, 2026-07-30 — 🌐 NET. `net_spawn_probe dropat=`
+
+All four named cases driven on three real ENet peers, with the drop landing **mid-round**
+(the round state is printed at the moment of the kill, not assumed). A drop is the PROCESS
+dying, not a tidy in-process disconnect — that is what alt-F4, a flat battery and a dead
+router all look like from the other end.
+
+| case | result |
+|---|---|
+| **(a)** one peer dies mid-round | ✅ unit kept playing: `ai=true enabled=true trace="role/can/hold-mark"`, peak 1.800 m/s |
+| **(a2)** the round still resolves | ✅ round 1 → 2 |
+| **(b)** it reconnects | ✅ **`token alpha came back to ITS OWN seat 1`** |
+| **(b2)** it gets its CAMERA back | ✅ `authority=1553524960 with the AI removed` |
+| **(c)** two peers drop at once | ✅ both converted: `hold-mark` and `role/taya/engage/block-how/hold-post` |
+| **(d)** drops while HOLDING the tsinelas, and again MID-CHARGE | ✅ `holding=Carriable:<…> charge=0.627` at the kill, and the carry invariant is clean afterwards |
+
+**The rejoin needed a harness-only identity override to be testable at all.**
+`_load_or_create_token()` mints a FRESH token per process on purpose — two instances sharing
+one `user://` would collide on the same join index — so a "reconnecting" process on this
+machine is a stranger and gets the next free seat. `token=alpha` on both processes is what
+makes them the same PLAYER, and only then does `_rpc_reclaim_character` have anything to do.
+
+⚠️ **FOUR HARNESS FAULTS, AND THREE OF THEM WOULD HAVE BEEN FILED AS BUGS.**
+
+1. **`GameLaunch.seat_tokens` is empty on this path.** Every snapshot came back `{ }` for
+   three connected peers, because that dictionary is filled by the **lobby** and this probe
+   goes straight into `Main.tscn`. The seat table the spawn path actually uses is
+   `main.gd::_token_join_index`.
+2. **The host cannot know a peer is gone before ENet tells it.** At a 6 s settle the host
+   reported *"nobody dropped"* for a peer that had provably exited — R-25 measured ~5 s of
+   detection on this same machine, by design. A probe that looks before the game can
+   possibly know is measuring `ENET_TIMEOUT_MIN`.
+3. **"Kept playing" was measured as DISTANCE, and that failed a healthy AI Can at 0.199 m.**
+   Seat 1 is a Prop, and a Can holding its circle is *intended* (`CAN_HOLD_RADIUS` — it
+   shuffles on the mark like a keeper). Switched to peak speed, which then read **1.800 m/s
+   — exactly the Can's shuffle gait**, and that agreement is what confirms the metric.
+4. **Peak speed alone then failed a Person at 0.000 m/s** — a Taya standing at a post it has
+   already reached, which is also intended, and which this project's own fairness table
+   already reports as 3–6 s still runs. The gate is now DIRECT evidence that the tree is
+   running: `enabled` **and** (a live `bt_trace()` **or** motion). ⚠️ `bt_trace()` is empty
+   unless `trace_enabled` was true for that tick, which the probe now sets for the window —
+   before that it printed `trace=""` for two units moving at 6.0 and 5.0 m/s.
+
+⚠️ **CASE (d) PASSED ONCE WHILE TESTING NOTHING, AND ITS OWN INSTRUMENTATION SAID SO.** The
+first run printed `holding=<null>` and `charge=-1.000` beside a green result: the dropping
+client had been dealt the **Prop** seat, and a lata cannot hold a tsinelas or charge a
+throw. Re-run with the launch order swapped so the dropper is the attacking **Person**, and
+it reports `holding=Carriable:<…>` and `charge=0.627` at the moment of the kill. **A green
+row whose own diagnostics are impossible is not a pass** — that is the fifth instance of
+this rule paying for itself on this lane.
+
+⚠️ **The 2 remaining failures in every run are the PICK bug (B-145), not R-24** — `a
+human-owned Prop resolved index -1`.
+
 #### R-25 · THE TEARDOWN IS CLEAN; THE ANNOUNCEMENT IS NOT, 2026-07-30 — 🌐 NET
 
 `net_spawn_probe -- --host hostquit=8 [graceful]`, three peers, the host quitting with a
