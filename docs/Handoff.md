@@ -1820,6 +1820,29 @@ document that acts on it, so this list shrinks instead of accumulating.
 
 #### From the MAPS lane, 2026-07-30 (R-19 … R-33, R-20, R-21)
 
+- [ ] ⚠️ **THE FLOW HEATMAP IS BUILT AND WORKING, AND WHAT IT MEASURES RIGHT NOW IS
+      THE AI, NOT THE MAP. PAUSED ON THE HUMAN'S CALL 2026-07-30.**
+      `tools/flow_probe.tscn heatmap map=<id> rounds=N scale=30` drives real
+      AI-vs-AI rounds, samples every unit's XZ once per second of GAME time, blurs
+      the counts into a density field and writes three images per map (combined,
+      attackers, defence) with the confinement square and both throwing lines drawn
+      over them for reference. 40 rounds is ~2 minutes per map.
+      **The pictures come out as four or five tight blobs sitting on the spawn
+      points, and the two maps are near-identical** — i.e. the bots are barely
+      traversing at all, which matches the human's own note that "only defender has
+      been winning". Neither map can be judged for flow until the AI moves, so the
+      question is not "is the instrument right", it is "re-run it after BALANCE
+      fixes the AI". **Nothing about map layout should be inferred from the current
+      images.**
+      ⚠️ **AND A BUG FOR BALANCE, FOUND BY THIS:** `Engine.time_scale` set once in
+      `_ready()` does not survive the first dent, because
+      `character_base.gd::_hitstop()` restores it to a HARDCODED `1.0` rather than
+      to its previous value. `tools/ai_probe.gd`'s `scale=` argument has exactly
+      this shape, so **every fairness number recorded with `scale=4` was actually
+      measured at scale 1 after the first hit landed.** flow_probe reasserts the
+      scale every physics frame; ai_probe is another lane's file and was not
+      touched.
+
 - [ ] **Eskinita's HOUSES are still American suburban, and that is the largest remaining
       cultural gap on either map.** The dressing is now specifically Filipino — GI-sheet lean-tos
       and fences, a wire tangle, banana/coconut/mango, sampay, a sari-sari store, a barangay

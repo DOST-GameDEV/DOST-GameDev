@@ -658,31 +658,79 @@ for side in (-1.0, 1.0):
 #     LANE_HALF_X + LANE_MARGIN + h  <  |cx|  <  WALL_FACE_X - h
 # `kits/town/tree*` measures 1.02 wide, i.e. h = 0.82 at TOWN_SCALE, so the band is
 # 4.32 .. 7.78 and 6.6 sits comfortably inside it with room on both sides.
-PUNO_X = 6.6
+# ⚠️⚠️ UNIFORMITY WAS THE THIRD COMPLAINT AND IT IS A PLACEMENT BUG, NOT A MODEL
+# ONE. Human, on the previous version: "your tree placement is too uniform, pls add
+# some variation to trees and tree placement, it doesnt look natural."
+# Correct, and the render showed exactly why: every tree stood at |x| = 6.6 EXACTLY,
+# on a z list with a near-constant 5-unit gap, mirrored on both sides. That is an
+# avenue, not a street — nothing in a barangay eskinita is planted on a survey line.
 #
-# ⚠️⚠️ `tree-high-round` IS THE ONLY BROADLEAF TREE IN THE REPO. MEASURED BY
-# RENDERING ALL EIGHT. The first swap used four Town-kit trees on the assumption
-# that "Fantasy Town" meant deciduous; rendered side by side, `town/tree`,
-# `town/tree-high` and `town/tree-crooked` are all STEPPED CONES — pines — and so
-# are `forest/tree`, `forest/tree-high`, `city/tree-large` and `city/tree-small`.
-# Exactly one asset in the project is a rounded canopy. Half the alley came out
-# coniferous again, which is the defect this whole pass exists to remove, and it
-# would have shipped on the strength of the word "Town".
+# THREE THINGS VARY NOW, and all three are seeded tables rather than an RNG so two
+# runs still diff clean:
+#   1. X, per tree, so no two trunks share a line and the row has depth.
+#   2. Z, with IRREGULAR GAPS — 2.5 to 7.5 units, and the two sides use different
+#      tables, so they do not pair up across the road.
+#   3. SPECIES, SCALE and YAW, and there are gaps with no tree at all.
 #
-# So one species, repeated — and the repetition is broken with SEEDED SCALE AND
-# YAW rather than with a second model, because there is no second model to use.
-# ⚠️ That bends "ONE SCALE PER KIT, NAMED" in letter but not in spirit: that rule
-# exists so two pieces from one kit are never at inconsistent scales against each
-# other. Trees of one species differ in size in every real street, and 0.88..1.18
-# of a common base is variation, not inconsistency.
-for n, zz in enumerate([-15.5, -11.0, -6.5, 3.5, 9.0, 14.5, 19.0]):
-    for side in (-1.0, 1.0):
-        tag = "E" if side > 0 else "W"
-        k = (n * 2 + (0 if side > 0 else 1)) % len(_PUNO_SCALE)
-        _placer.try_place(_put("Puno"), f"Puno_{n}_{tag}", PUNO_MESH,
-                          side * PUNO_X, zz + (0.7 if side > 0 else -0.7),
-                          (n % 3) * 0.8 + (0.0 if side > 0 else 1.3),
-                          TOWN_SCALE * _PUNO_SCALE[k])
+# ⚠️ THE OTHER MODELS ARE BACK IN, AT MINORITY WEIGHT, and that is a deliberate
+# trade against the cultural rule rather than a lapse. `tree-high-round` is the only
+# rounded canopy in the repo, so an all-round row is one silhouette repeated — which
+# is what read as uniform. Mixing the coned models back in buys real variety, and
+# the guard against "this looks Nordic" is now WEIGHT: the rounded broadleaf is
+# two-thirds of the row and always the biggest, so the street reads broadleaf with
+# some scrub in it rather than as a pine avenue. Human's explicit ask: "js use more
+# of the tree models."
+#
+# ⚠️ AND THE X BAND IS COMPUTED PER PIECE, because the pieces differ in width and
+# the lane law is absolute: a footprint of half-width h must satisfy
+#     LANE_HALF_X + LANE_MARGIN + h  <  |cx|  <  WALL_FACE_X - h
+# `_puno_x()` clamps the jittered x into that band using the piece's own measured
+# extent, so a wider tree or a bigger scale jitter cannot silently push one into the
+# throwing corridor and abort the build.
+_PUNO_MIX = [PUNO_MESH, PUNO_MESH, "kits/town/tree-high", PUNO_MESH,
+             PUNO_MESH, "kits/town/tree-crooked", PUNO_MESH, "kits/town/tree",
+             PUNO_MESH, PUNO_MESH]
+_PUNO_SCALE_V = [1.05, 1.28, 0.86, 1.14, 0.94, 1.34, 0.82, 1.19, 1.0, 0.9]
+_PUNO_XJIT = [0.0, 0.85, -0.7, 0.45, -1.05, 0.65, -0.35, 1.0, -0.85, 0.25]
+## Irregular, and DIFFERENT PER SIDE so the two rows never line up across the road.
+_PUNO_Z_E = [-16.2, -12.9, -7.4, -2.1, 3.8, 8.4, 13.9, 18.6]
+_PUNO_Z_W = [-14.6, -9.8, -4.3, 1.2, 6.9, 11.7, 17.2]
+
+
+def _puno_x(mesh_name, want, yaw, scale):
+    """Jittered x, clamped into the band the lane law and the facade leave open."""
+    e = piece_extent(mesh_name, yaw, scale)
+    h = max(abs(e[0]), abs(e[1]), abs(e[2]), abs(e[3]))
+    lo = LANE_HALF_X + LANE_MARGIN + h + 0.05
+    hi = WALL_FACE_X - h - 0.05
+    if lo > hi:
+        return (lo + hi) * 0.5
+    return min(max(want, lo), hi)
+
+
+_pn_t = 0
+for side, zlist in ((1.0, _PUNO_Z_E), (-1.0, _PUNO_Z_W)):
+    tag = "E" if side > 0 else "W"
+    for n, zz in enumerate(zlist):
+        k = _pn_t % len(_PUNO_MIX)
+        mesh_name = _PUNO_MIX[k]
+        # The rounded broadleaf is always the biggest thing in the row; the coned
+        # models come in smaller, so they read as scrub between the real trees
+        # rather than as an avenue of pines.
+        sc = TOWN_SCALE * _PUNO_SCALE_V[k] * (1.0 if mesh_name == PUNO_MESH else 0.72)
+        yaw = (_pn_t % 5) * 1.27
+        x = _puno_x(mesh_name, 6.35 + _PUNO_XJIT[k], yaw, sc)
+        _placer.try_place(_put("Puno"), f"Puno_{n}_{tag}", mesh_name,
+                          side * x, zz, yaw, sc)
+        _pn_t += 1
+
+# Understory, so a trunk is not standing alone on bare paving. Cheap, low, and it
+# is the layer that stops the row reading as posts in a car park.
+_PLANT_AT = [(-6.9, -13.4), (7.2, -7.9), (-7.3, 1.7), (6.8, 9.1),
+             (-6.6, 17.6), (7.4, -16.8)]
+for n, (px, pz) in enumerate(_PLANT_AT):
+    _placer.try_place(_put("Puno"), f"Halaman_{n}", "kits/forest/plant",
+                      px, pz, (n % 4) * 1.5, TOWN_SCALE * 1.4)
 
 # --- Layer 3: overhead. Highest read-per-triangle in the kit. ---------------
 # ⚠️⚠️ THE WIRE SPAN IS 6.0 AND THE POST SPACING MUST EQUAL IT, OR THE WIRES
