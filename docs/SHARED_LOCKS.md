@@ -16,7 +16,7 @@ to type.
 | Shared file | Held by | Branch | Since |
 |---|---|---|---|
 | `scenes/main/Main.tscn` | — free — | | |
-| `scenes/characters/CharacterBase.tscn` | — free — | | |
+| `scenes/characters/CharacterBase.tscn` | 🌐 NET | `integration` | 2026-07-30 — B-145, the three pick indices replicate ON_CHANGE so a late joiner never learns them |
 | `scripts/characters/character_base.gd` | — free — | | |
 | `scenes/characters/CameraRig.tscn` | — free — | | |
 | `scenes/ui/*.tscn` | — free — | | |
