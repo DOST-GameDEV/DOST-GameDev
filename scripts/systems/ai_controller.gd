@@ -904,8 +904,39 @@ func _build_attacker_branch() -> BTNode:
 ## bypasses this entirely for CARRIED/FLYING — see character_base.gd — so this
 ## branch is never even reached in either of those states in practice, but the
 ## check stays explicit rather than assumed).
+##
+## ⚠️⚠️ THE SLIPPER IS A PLAYER NOW, NOT JUST CARGO. `Design.md` §6: a LOOSE
+## tsinelas can charge a self-launch (hold `jump`, 0.75 s to full, 6-13 m/s at
+## 0.62 vertical) and Ground Smash off the top of it (`bump` while airborne — a
+## 3.2 m shockwave, and a DIRECT hit within 0.75 m of the lata wins the round
+## OUTRIGHT). The human's own instruction: "a loose tsinelas AI should prefer
+## launching itself toward the can over crawling home when it has line of sight."
+## So the priority is diving (if a dive is already committed, nothing may steer
+## it — see `_cond_tsinelas_diving`) > smashing (the payoff, the instant the
+## height/state window is open) > launching at the can (the preference the human
+## asked for) > crawling home (the old, and now second-choice, retrieval) > settle.
 func _build_tsinelas_branch() -> BTNode:
 	return BTSelector.new(&"tsinelas-do", [
+		# ⚠️ MUST OUTRANK EVERYTHING ELSE. `PropSmash.begin_ground_smash` zeroes
+		# horizontal velocity on purpose ("a dive that kept its forward speed would
+		# be a very fast, very flat throw the slipper aimed itself — a different,
+		# much stronger move" — prop_smash.gd's own doc) and this file's own
+		# movement leaves would silently reintroduce it: `is-loose` stays true for
+		# the whole dive (carry state never changes), so without this guard
+		# `launch-at-can`/`crawl-home` would keep pressing compass keys mid-dive.
+		BTSequence.new(&"diving", [
+			BTCondition.new(&"is-diving", &"_cond_tsinelas_diving"),
+			BTAction.new(&"ride-it-down", &"_act_release_move"),
+		]),
+		BTSequence.new(&"ground-smash", [
+			BTCondition.new(&"smash-ready", &"_cond_tsinelas_can_smash"),
+			BTAction.new(&"dive", &"_act_tsinelas_smash"),
+		]),
+		BTSequence.new(&"launch-at-can", [
+			BTCondition.new(&"is-loose", &"_cond_tsinelas_loose"),
+			BTCondition.new(&"can-sighted", &"_cond_tsinelas_can_launch"),
+			BTAction.new(&"self-launch", &"_act_tsinelas_launch"),
+		]),
 		BTSequence.new(&"crawl-home", [
 			BTCondition.new(&"is-loose", &"_cond_tsinelas_loose"),
 			BTCondition.new(&"own-attacker-exists", &"_cond_own_attacker_exists"),
@@ -1950,6 +1981,11 @@ func _act_attacker_retrieve(_delta: float) -> int:
 		return BTNode.FAILURE
 	var distance := character.global_position.distance_to(target_char.global_position)
 	if distance > ATTACKER_GRAB_RANGE:
+		# SPRINT. `Design.md` §2/§3: "the AI should sprint when closing distance or
+		# retrieving" — this is the retrieving half, literally. Dropped once inside
+		# grab range below: standing over the slipper tapping `grab` is not a race
+		# any more, and there is nothing left to close the distance on.
+		_sprint_want = true
 		_move_toward(target_char.global_position)
 		return BTNode.RUNNING
 	# ⚠️ A TAP EVERY TICK IS NOT A TAP, IT IS A HOLD — AND A HOLD GIVES ONE EDGE.
@@ -2006,6 +2042,10 @@ func _cond_attacker_out_of_range() -> bool:
 	return distance > ATTACKER_THROW_RANGE or distance < attacker_min_throw_range
 
 func _act_attacker_approach(_delta: float) -> int:
+	# SPRINT. `Design.md` §2/§3: "the AI should sprint when closing distance or
+	# retrieving" — this is the closing-distance half, moving toward the throwing
+	# line rather than away from it.
+	_sprint_want = true
 	_move_toward(_open_throwing_spot(_bb_can))
 	return BTNode.RUNNING
 
@@ -2424,6 +2464,21 @@ func _charge_and_release(delta: float, hold_time: float) -> int:
 	if _bb_can != null and is_instance_valid(_bb_can):
 		character.ai_aim_point = _thread_past_defender(_lead_the_can(_bb_can, hold_time))
 	if not _attacker_charging:
+		# ⚠️⚠️ THE THROW LOCK (`Carrier.THROW_LOCK_TIME`, 1.25 s after picking a
+		# tsinelas up). `carrier.gd::_step_throw` already refuses the press silently
+		# while locked — it never sets `_is_charging` at all — but it does so quietly,
+		# and this file has no way to see that refusal unless it asks first. Without
+		# this gate, an AI that reached this leaf during the lock would set ITS OWN
+		# `_attacker_charging` belief to true, count a fake charge nobody in the real
+		# game ever sees, and "release" into a throw that never actually started —
+		# the attacker holding the button down and firing nothing, over and over,
+		# which is exactly "mashes throw during the lock and looks broken."
+		# RUNNING, not FAILURE: this leaf still owns the tick (the aim point above is
+		# already set and the attacker should stand ready, not fall through to a
+		# different throw-how sibling and flicker between them every frame).
+		if _bb_carrier != null and _bb_carrier.throw_lock_left() > 0.0:
+			_release_move(0.0)
+			return BTNode.RUNNING
 		_attacker_charging = true
 		_attacker_charge_time = 0.0
 		_set_held("special_ability", true)
@@ -2628,6 +2683,9 @@ func _act_attacker_dodge(_delta: float) -> int:
 	var threat := _threatening_defender()
 	if threat == null:
 		return BTNode.FAILURE
+	# SPRINT. Breaking away is a closing-distance move in reverse — every bit of
+	# extra speed here is the gap that decides whether the bump lands.
+	_sprint_want = true
 	var away := character.global_position - threat.global_position
 	away.y = 0.0
 	if away.length() < 0.01:
@@ -2670,41 +2728,78 @@ func _blocking_defender(can: CharacterBase) -> CharacterBase:
 ## in. Samples bearings around the can starting from the one we already hold, so
 ## the attacker slides to the nearest open angle rather than teleporting its
 ## intent to the far side every decision tick.
+##
+## ⚠️ PREFERS A SPOT BEHIND THE LONG-THROW LINE, WHEN THE SCAN FINDS ONE, PER
+## `Design.md` §3.1 — the human's own instruction is that the attacker AI "should
+## prefer to release from behind that line." `LONG_THROW_LINE` (6.0) happens to
+## equal `ATTACKER_THROW_RANGE` (6.0), the outer edge of the band this leaf is even
+## allowed to stand in, but the two are different METRICS: the line is a CHEBYSHEV
+## test against the world origin (`Carriable.is_behind_throwing_line`, `max(|x|,
+## |z|) >= 6.0`) and this scan is a EUCLIDEAN radius around the can, so standing at
+## the very edge of the band only actually crosses the line on a near-axis-aligned
+## bearing — the same square-vs-circle gap `CONFINEMENT_RADIUS`'s own doc explains
+## for the confinement box. Reaching almost the whole band (0.98, not the old 0.92)
+## is what gives an axis-ish bearing room to cross it at all; the scan below then
+## asks the game's own predicate directly rather than reasoning about angles, and
+## only settles for a nearer, non-bonus spot when nothing open clears the line.
+##
+## WRITTEN, NOT MEASURED — this cannot guarantee a long-throw spot exists for every
+## defender position (most open bearings at 6.0 EUCLIDEAN units do not satisfy the
+## CHEBYSHEV test at all), only that the AI takes one when the scan turns one up.
 func _open_throwing_spot(can: CharacterBase) -> Vector3:
 	var current := character.global_position - can.global_position
 	current.y = 0.0
 	if current.length() < 0.1:
 		current = Vector3.FORWARD
 	var base_angle := atan2(current.z, current.x)
-	var reach: float = ATTACKER_THROW_RANGE * 0.92
+	var reach: float = ATTACKER_THROW_RANGE * 0.98
 	# 0 first (hold this bearing if it is already open), then alternate outward.
 	var steps: Array[float] = [0.0, 0.5, -0.5, 1.0, -1.0, 1.6, -1.6, 2.2, -2.2]
+	var fallback := Vector3.ZERO
+	var have_fallback := false
 	for step in steps:
 		var a: float = base_angle + step
 		var spot := can.global_position + Vector3(cos(a), 0.0, sin(a)) * reach
-		var clear := true
-		for other in _roster():
-			if other == null or not is_instance_valid(other):
-				continue
-			if not other.is_person or other.team == character.team:
-				continue
-			var lane := can.global_position - spot
-			lane.y = 0.0
-			var to_other := other.global_position - spot
-			to_other.y = 0.0
-			if lane.length() < 0.1:
-				continue
-			var along := to_other.dot(lane.normalized())
-			if along <= 0.0 or along >= lane.length():
-				continue
-			if (to_other - lane.normalized() * along).length() < ATTACKER_LANE_CLEARANCE:
-				clear = false
-				break
-		if clear:
+		if not _throwing_spot_is_clear(can, spot):
+			continue
+		if not have_fallback:
+			fallback = spot
+			have_fallback = true
+		# Preferred, not required: the long-throw bonus (1.20x speed, 1.25x
+		# knockback, a 5 s stun on a max-charge hit — Design.md §3.1) is worth
+		# taking the second-open bearing over the nearest one, but never worth
+		# abandoning an open lane entirely to chase, which is why this can only
+		# ever pick among bearings the scan already found clear.
+		if Carriable.is_behind_throwing_line(spot):
 			return spot
+	if have_fallback:
+		return fallback
 	# Every bearing covered — take the one furthest from the defender anyway
 	# rather than freezing, which is what "the bots suck" looked like.
 	return can.global_position + Vector3(cos(base_angle + PI), 0.0, sin(base_angle + PI)) * reach
+
+## Whether `spot` (a candidate throwing position) has a clear lane to `can` — no
+## opposing Person standing within `ATTACKER_LANE_CLEARANCE` of the line between
+## them. Factored out of `_open_throwing_spot` so the long-throw preference above
+## can ask "is this bearing open" without duplicating the geometry.
+func _throwing_spot_is_clear(can: CharacterBase, spot: Vector3) -> bool:
+	for other in _roster():
+		if other == null or not is_instance_valid(other):
+			continue
+		if not other.is_person or other.team == character.team:
+			continue
+		var lane := can.global_position - spot
+		lane.y = 0.0
+		var to_other := other.global_position - spot
+		to_other.y = 0.0
+		if lane.length() < 0.1:
+			continue
+		var along := to_other.dot(lane.normalized())
+		if along <= 0.0 or along >= lane.length():
+			continue
+		if (to_other - lane.normalized() * along).length() < ATTACKER_LANE_CLEARANCE:
+			return false
+	return true
 
 ## ---------------------------------------------------------------------------
 ## Roster lookups. get_parent() resolves to whatever this AI's own character's

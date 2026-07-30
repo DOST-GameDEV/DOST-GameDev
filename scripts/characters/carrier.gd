@@ -411,11 +411,42 @@ func _step_throw(delta: float) -> void:
 		_cancel_charge()
 		return
 
-	if _character.input_just_pressed("special_ability"):
-		# THE PICK-UP LOCK. See THROW_LOCK_TIME — the CHARGE is what is forbidden, not
-		# the release, or a player would simply bank a full charge inside the lock.
+	# ⚠️⚠️ `input_pressed`, NOT `input_just_pressed`, AND `input_probe` IS WHY.
+	#
+	# THE PICK-UP LOCK. See THROW_LOCK_TIME — the CHARGE is what is forbidden, not the
+	# release, or a player would simply bank a full charge inside the lock and fire the
+	# instant it lapsed.
+	#
+	# But gating a JUST-PRESSED edge behind a 1.25 s timer produced a dead button, and
+	# `tools/input_probe.tscn` measured it: *"slipper in hand after 0 frames, peak charge
+	# while holding 0.000"* on a button that was held down for the whole test. Two facts
+	# combine to cause it, and only one of them is new:
+	#
+	#   * `grab` and `special_ability` SHARE LEFT CLICK (project.godot, and deliberately
+	#     — one button picks the tsinelas up and throws it), so the press that grabs is
+	#     the same press that would start the charge; and
+	#   * the lock refuses that frame, after which `just_pressed` never comes back
+	#     without letting go and clicking again.
+	#
+	# So the correct start condition is HELD, not newly-pressed: the charge begins the
+	# moment the lock clears under a finger that is already down. That is also the better
+	# feel — the lock reads as a wind-up you are waiting through rather than as a button
+	# that stopped working — and it banks nothing, because the charge genuinely starts at
+	# zero when the lock expires rather than accruing behind it.
+	#
+	# It cannot auto-repeat: after a release `_held` is null and this function returns at
+	# the top, and `_step_grab` needs its own just-pressed edge, so holding the button
+	# through a whole retrieval never re-grabs or re-charges anything.
+	# ⚠️ `not _is_charging and` IS LOAD-BEARING, not defensive. Without it this branch is
+	# true on every frame the button is held and re-zeroes `_charge_time` each time — a
+	# charge meter pinned at its floor forever, and the `elif` that actually accumulates
+	# it would never be reached.
+	if not _is_charging and _character.input_pressed("special_ability"):
 		if _throw_lock_left > 0.0:
-			AudioManager.play_at("ui_back", _character.global_position, -12.0)
+			# The refusal is audible, quietly, and only on the actual press — a tick
+			# every frame for 1.25 s would be a machine gun.
+			if _character.input_just_pressed("special_ability"):
+				AudioManager.play_at("ui_back", _character.global_position, -12.0)
 			return
 		_is_charging = true
 		_charge_time = 0.0
