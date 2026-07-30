@@ -148,8 +148,11 @@ blocked on it), R-23's real four-machine Wi-Fi run, R-31's export on the judging
 > **All of `docs/` is ~281k tokens.** Reading it would spend your whole session before
 > you changed anything. `Handoff.md` alone is 82k and `Checklist.md` 62k.
 >
-> * **GREP, don't open.** `Handoff.md` and `Checklist.md` are reference — search them
->   for your item, your `B-` number, your phase. Never read either end to end.
+> * **GREP, don't open.** `Checklist.md` (62k) is reference — search it for your phase,
+>   never read it end to end. `Handoff.md` is now 21k and holds ONLY open bugs,
+>   standing decisions and questions owed; reading it whole is affordable if you need it.
+> * ⚠️ **NEVER read `Handoff_Archive.md` (61k).** Closed bugs, dated session narratives
+>   and old task prose. Grep it by `B-` number if you are chasing a specific closed bug.
 > * **Open in full only:** `SHARED_LOCKS.md` (1k) and `README.md` (3k) if you need the
 >   source-of-truth order.
 > * **Read only the sections your own lane block names below.** If it does not name a
@@ -449,8 +452,11 @@ the work.
 > **All of `docs/` is ~281k tokens.** Reading it would spend your whole session before
 > you changed anything. `Handoff.md` alone is 82k and `Checklist.md` 62k.
 >
-> * **GREP, don't open.** `Handoff.md` and `Checklist.md` are reference — search them
->   for your item, your `B-` number, your phase. Never read either end to end.
+> * **GREP, don't open.** `Checklist.md` (62k) is reference — search it for your phase,
+>   never read it end to end. `Handoff.md` is now 21k and holds ONLY open bugs,
+>   standing decisions and questions owed; reading it whole is affordable if you need it.
+> * ⚠️ **NEVER read `Handoff_Archive.md` (61k).** Closed bugs, dated session narratives
+>   and old task prose. Grep it by `B-` number if you are chasing a specific closed bug.
 > * **Open in full only:** `SHARED_LOCKS.md` (1k) and `README.md` (3k) if you need the
 >   source-of-truth order.
 > * **Read only the sections your own lane block names below.** If it does not name a
@@ -690,8 +696,11 @@ confirm.
 > **All of `docs/` is ~281k tokens.** Reading it would spend your whole session before
 > you changed anything. `Handoff.md` alone is 82k and `Checklist.md` 62k.
 >
-> * **GREP, don't open.** `Handoff.md` and `Checklist.md` are reference — search them
->   for your item, your `B-` number, your phase. Never read either end to end.
+> * **GREP, don't open.** `Checklist.md` (62k) is reference — search it for your phase,
+>   never read it end to end. `Handoff.md` is now 21k and holds ONLY open bugs,
+>   standing decisions and questions owed; reading it whole is affordable if you need it.
+> * ⚠️ **NEVER read `Handoff_Archive.md` (61k).** Closed bugs, dated session narratives
+>   and old task prose. Grep it by `B-` number if you are chasing a specific closed bug.
 > * **Open in full only:** `SHARED_LOCKS.md` (1k) and `README.md` (3k) if you need the
 >   source-of-truth order.
 > * **Read only the sections your own lane block names below.** If it does not name a
@@ -983,8 +992,11 @@ of what remains UNVERIFIED — especially anything only a human looking at it co
 > **All of `docs/` is ~281k tokens.** Reading it would spend your whole session before
 > you changed anything. `Handoff.md` alone is 82k and `Checklist.md` 62k.
 >
-> * **GREP, don't open.** `Handoff.md` and `Checklist.md` are reference — search them
->   for your item, your `B-` number, your phase. Never read either end to end.
+> * **GREP, don't open.** `Checklist.md` (62k) is reference — search it for your phase,
+>   never read it end to end. `Handoff.md` is now 21k and holds ONLY open bugs,
+>   standing decisions and questions owed; reading it whole is affordable if you need it.
+> * ⚠️ **NEVER read `Handoff_Archive.md` (61k).** Closed bugs, dated session narratives
+>   and old task prose. Grep it by `B-` number if you are chasing a specific closed bug.
 > * **Open in full only:** `SHARED_LOCKS.md` (1k) and `README.md` (3k) if you need the
 >   source-of-truth order.
 > * **Read only the sections your own lane block names below.** If it does not name a
@@ -1330,8 +1342,11 @@ remains UNVERIFIED.
 > **All of `docs/` is ~281k tokens.** Reading it would spend your whole session before
 > you changed anything. `Handoff.md` alone is 82k and `Checklist.md` 62k.
 >
-> * **GREP, don't open.** `Handoff.md` and `Checklist.md` are reference — search them
->   for your item, your `B-` number, your phase. Never read either end to end.
+> * **GREP, don't open.** `Checklist.md` (62k) is reference — search it for your phase,
+>   never read it end to end. `Handoff.md` is now 21k and holds ONLY open bugs,
+>   standing decisions and questions owed; reading it whole is affordable if you need it.
+> * ⚠️ **NEVER read `Handoff_Archive.md` (61k).** Closed bugs, dated session narratives
+>   and old task prose. Grep it by `B-` number if you are chasing a specific closed bug.
 > * **Open in full only:** `SHARED_LOCKS.md` (1k) and `README.md` (3k) if you need the
 >   source-of-truth order.
 > * **Read only the sections your own lane block names below.** If it does not name a
@@ -1575,8 +1590,11 @@ until they have, THE FALLBACK DECISION IS STILL OPEN and the schedule needs to k
 > **All of `docs/` is ~281k tokens.** Reading it would spend your whole session before
 > you changed anything. `Handoff.md` alone is 82k and `Checklist.md` 62k.
 >
-> * **GREP, don't open.** `Handoff.md` and `Checklist.md` are reference — search them
->   for your item, your `B-` number, your phase. Never read either end to end.
+> * **GREP, don't open.** `Checklist.md` (62k) is reference — search it for your phase,
+>   never read it end to end. `Handoff.md` is now 21k and holds ONLY open bugs,
+>   standing decisions and questions owed; reading it whole is affordable if you need it.
+> * ⚠️ **NEVER read `Handoff_Archive.md` (61k).** Closed bugs, dated session narratives
+>   and old task prose. Grep it by `B-` number if you are chasing a specific closed bug.
 > * **Open in full only:** `SHARED_LOCKS.md` (1k) and `README.md` (3k) if you need the
 >   source-of-truth order.
 > * **Read only the sections your own lane block names below.** If it does not name a
@@ -1832,8 +1850,11 @@ what remains UNVERIFIED — starting with the fact that nobody has clicked it, u
 > **All of `docs/` is ~281k tokens.** Reading it would spend your whole session before
 > you changed anything. `Handoff.md` alone is 82k and `Checklist.md` 62k.
 >
-> * **GREP, don't open.** `Handoff.md` and `Checklist.md` are reference — search them
->   for your item, your `B-` number, your phase. Never read either end to end.
+> * **GREP, don't open.** `Checklist.md` (62k) is reference — search it for your phase,
+>   never read it end to end. `Handoff.md` is now 21k and holds ONLY open bugs,
+>   standing decisions and questions owed; reading it whole is affordable if you need it.
+> * ⚠️ **NEVER read `Handoff_Archive.md` (61k).** Closed bugs, dated session narratives
+>   and old task prose. Grep it by `B-` number if you are chasing a specific closed bug.
 > * **Open in full only:** `SHARED_LOCKS.md` (1k) and `README.md` (3k) if you need the
 >   source-of-truth order.
 > * **Read only the sections your own lane block names below.** If it does not name a
@@ -2045,8 +2066,11 @@ explicit list of what remains UNVERIFIED — above all, whether a human has actu
 > **All of `docs/` is ~281k tokens.** Reading it would spend your whole session before
 > you changed anything. `Handoff.md` alone is 82k and `Checklist.md` 62k.
 >
-> * **GREP, don't open.** `Handoff.md` and `Checklist.md` are reference — search them
->   for your item, your `B-` number, your phase. Never read either end to end.
+> * **GREP, don't open.** `Checklist.md` (62k) is reference — search it for your phase,
+>   never read it end to end. `Handoff.md` is now 21k and holds ONLY open bugs,
+>   standing decisions and questions owed; reading it whole is affordable if you need it.
+> * ⚠️ **NEVER read `Handoff_Archive.md` (61k).** Closed bugs, dated session narratives
+>   and old task prose. Grep it by `B-` number if you are chasing a specific closed bug.
 > * **Open in full only:** `SHARED_LOCKS.md` (1k) and `README.md` (3k) if you need the
 >   source-of-truth order.
 > * **Read only the sections your own lane block names below.** If it does not name a
@@ -2227,8 +2251,11 @@ current honest list of everything verified only by a probe.
 > **All of `docs/` is ~281k tokens.** Reading it would spend your whole session before
 > you changed anything. `Handoff.md` alone is 82k and `Checklist.md` 62k.
 >
-> * **GREP, don't open.** `Handoff.md` and `Checklist.md` are reference — search them
->   for your item, your `B-` number, your phase. Never read either end to end.
+> * **GREP, don't open.** `Checklist.md` (62k) is reference — search it for your phase,
+>   never read it end to end. `Handoff.md` is now 21k and holds ONLY open bugs,
+>   standing decisions and questions owed; reading it whole is affordable if you need it.
+> * ⚠️ **NEVER read `Handoff_Archive.md` (61k).** Closed bugs, dated session narratives
+>   and old task prose. Grep it by `B-` number if you are chasing a specific closed bug.
 > * **Open in full only:** `SHARED_LOCKS.md` (1k) and `README.md` (3k) if you need the
 >   source-of-truth order.
 > * **Read only the sections your own lane block names below.** If it does not name a
@@ -2379,8 +2406,11 @@ decided.
 > **All of `docs/` is ~281k tokens.** Reading it would spend your whole session before
 > you changed anything. `Handoff.md` alone is 82k and `Checklist.md` 62k.
 >
-> * **GREP, don't open.** `Handoff.md` and `Checklist.md` are reference — search them
->   for your item, your `B-` number, your phase. Never read either end to end.
+> * **GREP, don't open.** `Checklist.md` (62k) is reference — search it for your phase,
+>   never read it end to end. `Handoff.md` is now 21k and holds ONLY open bugs,
+>   standing decisions and questions owed; reading it whole is affordable if you need it.
+> * ⚠️ **NEVER read `Handoff_Archive.md` (61k).** Closed bugs, dated session narratives
+>   and old task prose. Grep it by `B-` number if you are chasing a specific closed bug.
 > * **Open in full only:** `SHARED_LOCKS.md` (1k) and `README.md` (3k) if you need the
 >   source-of-truth order.
 > * **Read only the sections your own lane block names below.** If it does not name a
