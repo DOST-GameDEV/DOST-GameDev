@@ -385,6 +385,21 @@ def _civic_blocked(mesh_name, x, z, yaw, scale):
 # BOUND = 12.5), so nothing here can block a Person's aim no matter how tall it
 # grows; that is what lets these be full-height trees rather than the interior
 # tier the furniture below is held to.
+## ⚠️ 2.6 OUT, NOT 1.2, AND THIS IS A GAMEPLAY FIX RATHER THAN A COMPOSITION ONE.
+## This block's own comment claims both rings "sit OUTSIDE the playable square
+## (collision is at BOUND = 12.5), so nothing here can block a Person's aim no
+## matter how tall it grows". That was true of a Kenney pine, which is 2.4 wide at
+## TOWN_SCALE. A mangga is 4.60 wide — the canopy is the whole point of the piece —
+## so at BOUND + 1.2 its inner edge reached x = 11.4, i.e. 1.1 units INSIDE the
+## collision wall, hanging over the court. A tree ring that overhangs the play area
+## is aim-blocking geometry, and the claim in the comment would have gone on being
+## quoted while being false.
+##
+## Derived, not nudged: the widest piece in the ring is 4.60, so its half-span is
+## 2.30, and the ring must stand at least that far outside BOUND. 2.6 leaves 0.3 of
+## margin. Verified in bp_corner_* — the corner cameras at |12| were rendering from
+## INSIDE the canopy before this.
+TREE_RING_OUT = 2.6
 JITTER = [0.0, 0.9, -0.6, 1.4, -1.1, 0.4, -1.6, 1.1]
 n = 0
 step = 3.2
@@ -394,23 +409,36 @@ for k in range(count):
     j = JITTER[k % len(JITTER)]
     for sx, sz, axis in ((1, 0, "x"), (-1, 0, "x"), (0, 1, "z"), (0, -1, "z")):
         if axis == "x":
-            x, z = sx * (BOUND + 1.2), t + j
+            x, z = sx * (BOUND + TREE_RING_OUT), t + j
         else:
-            x, z = t + j, sz * (BOUND + 1.2)
-        near = ["kits/town/tree-high", "kits/town/tree",
-                "kits/town/tree-crooked", "kits/town/tree-high-round"][k % 4]
+            x, z = t + j, sz * (BOUND + TREE_RING_OUT)
+        # ⚠️ PUNO, NOT PINES — open item 7, and it was the loudest wrong thing on
+        # this map. Every tree in both rings was a Kenney conifer, so a plaza with
+        # a Philippine church, a bell tower and a municipal hall in it was ringed
+        # by a Nordic forest. The item was closed as unfixable by re-picking a
+        # piece, which was true: the kits contain no broadleaf and no palm.
+        # env_kit.gd generates three now (see build_eskinita.py's Puno block for
+        # why each one is shaped the way it is), so this is a straight SWAP — the
+        # same ring, the same count, the same spacing, different species.
+        #
+        # ⚠️ AND THEY GO THROUGH `add()`, NOT `add_kit()`. The puno are generated
+        # `env_*` meshes authored at 1 unit = 1 m; TOWN_SCALE 2.6 and FOREST_SCALE
+        # 3.9 exist to bring Kenney's kit trees up to character scale and would
+        # put a 17-metre banana on the plaza.
+        near = ["puno_mangga", "puno_niyog", "puno_saging", "puno_mangga"][k % 4]
         near_yaw = (k % 4) * 0.7
-        if not _civic_blocked(near, x, z, near_yaw, TOWN_SCALE):
-            add_kit("Dressing/TreesNear", f"Tree_{n}", near, x, z,
-                    near_yaw, TOWN_SCALE)
+        if not _civic_blocked(near, x, z, near_yaw, 1.0):
+            add("Dressing/TreesNear", f"Puno_{n}", near, x, z, near_yaw,
+                lane_exempt=True)
         n += 1
-        # The layer behind: a different kit, so it reads as another species
-        # rather than the same tree moved back.
-        far = "kits/forest/tree-high" if k % 2 else "kits/forest/tree"
+        # The layer behind: the TALL species, so the ring reads as two depths of
+        # canopy rather than one hedge. A coconut is the right silhouette for the
+        # layer you only see the top of.
+        far = "puno_niyog" if k % 2 else "puno_mangga"
         fx, fz, far_yaw = x * 1.28 - j * 0.4, z * 1.28 + j * 0.4, (k % 3) * 0.9
-        if not _civic_blocked(far, fx, fz, far_yaw, FOREST_SCALE):
-            add_kit("Dressing/TreesFar", f"TreeFar_{n}", far, fx, fz,
-                    far_yaw, FOREST_SCALE)
+        if not _civic_blocked(far, fx, fz, far_yaw, 1.0):
+            add("Dressing/TreesFar", f"PunoMalayo_{n}", far, fx, fz, far_yaw,
+                lane_exempt=True)
         n += 1
 
 # --- Ground cover, in the band BETWEEN THE TWO TREE RINGS. -------------------
@@ -446,8 +474,16 @@ for k, (x, z) in enumerate([
 
 # --- The landmarks. The whole back edge is civic now (see the CIVIC block
 # --- above for the coordinates and for why the yaws changed).
+# ⚠️ THE FACING IS DERIVED NOW, NOT RESTATED. This block used to carry a
+# nine-line comment doing the -Z-front reasoning in prose and a hand-written
+# `math.pi` per landmark — which is exactly the shape of the thing that was wrong
+# in the first place, since the same prose in env_kit.gd's header said +Z and
+# cost this map three backwards landmarks. `mapkit.front_yaw` is that rule as a
+# FUNCTION: a caller says where the piece should look and never thinks about the
+# sign. It is checked against both known-good plaza cases in its own docstring.
 for _cn, _cm, _cx, _cz, _cy in CIVIC:
-    add("Dressing/Landmarks", _cn, _cm, _cx, _cz, _cy)
+    add("Dressing/Landmarks", _cn, _cm, _cx, _cz,
+        front_yaw(_cx, _cz, 0.0, 0.0))
 # In front of the municipal hall, which is where a real one stands. Moved off
 # the church's frontage, where it used to sit.
 add("Dressing/Landmarks", "Flagpole", "flagpole", 4.6, -11.4)
@@ -461,9 +497,12 @@ add("Dressing/Landmarks", "Flagpole", "flagpole", 4.6, -11.4)
 # the court; RingSouth stands at positive z and needs yaw = 0. It had exactly
 # the reverse, so both rings faced the tree line and neither was playable to
 # look at. "Facing each other" is now true rather than asserted.
-add("Dressing/Landmarks", "RingNorth", "basketball_ring", -5.2, -SLAB + 0.6,
-    math.pi)
-add("Dressing/Landmarks", "RingSouth", "basketball_ring", 5.2, SLAB - 0.6, 0.0)
+# Both rings face the court, derived the same way. The hand-written yaws here
+# were the OTHER half of open item 1 — both were the exact opposite of correct, so
+# both rings faced the tree line and neither was playable to look at.
+for _rn, (_rx, _rz) in enumerate([(-5.2, -SLAB + 0.6), (5.2, SLAB - 0.6)]):
+    add("Dressing/Landmarks", "RingNorth" if _rz < 0 else "RingSouth",
+        "basketball_ring", _rx, _rz, front_yaw(_rx, _rz, _rx, 0.0))
 # Lantern posts mark the slab corners. Thin verticals, like Eskinita's electric
 # posts — they read at distance and cost almost nothing to shoot past.
 for k, (x, z) in enumerate([(-SLAB, -SLAB), (SLAB, -SLAB),
@@ -773,10 +812,53 @@ _HAZ_X, _HAZ_Z = -6.5, -4.0
 _gut_lo, _gut_hi = mesh_bounds("gutter_tile")
 _gut_top = _gut_hi[1] - _gut_lo[1]
 _hn = 0
-for _gx in (-1.0, 1.0):
+# ⚠️ NINE TILES, NOT SIX, AND WIDER. Rendered from where a player actually meets
+# it (bp_hazard), the six-tile bed read as a faint tan smudge two metres across on
+# a five-metre slow field — technically a tell, practically invisible, which is the
+# same defect as having none. The bed now covers the HazardZone's own footprint
+# instead of a strip through the middle of it, so the thing you can see and the
+# thing that slows you are the same size.
+for _gx in (-2.0, 0.0, 2.0):
     for _gz in (-2.0, 0.0, 2.0):
         add("Hazards/KanalVisual", f"Kanal_{_hn}", "gutter_tile",
             _HAZ_X + _gx, _HAZ_Z + _gz, 0.0, base_y=GROUND_Y - _gut_top)
+        _hn += 1
+
+# ⚠️ AND FOUR BOLLARDS AT ITS CORNERS, BECAUSE THE BED ALONE DOES NOT READ — BUT
+# NOT A KERB, AND THE BUILD ITSELF IS WHAT RULED THAT OUT.
+#
+# Rendered from a player's eye at bp_hazard, nine flush gutter tiles are a faint
+# tan discolouration on grey paving and nothing more. That is the cost of the
+# grounding contract: the tiles are sunk so their TOP lands on GROUND_Y and
+# nothing stands on a lip, and a channel with its walls buried is just a
+# differently-coloured floor.
+#
+# The obvious fix was to EDGE it — `kerb_tile` laid round the outside, which is
+# what a real plaza drain has. floorcheck ABORTED THE BUILD: `kerb_tile` is in
+# GROUND_MESHES, so a ring of them 0.15 tall becomes a SURFACE at 0.250, and this
+# hazard sits at (-6.5, -4.0) INSIDE the court — so CourtWest, ConfinementNorth
+# and ThrowingLineNorth all suddenly spanned two surface heights and no single Y
+# was flush for any of them. Exactly the bug that guard exists for, caught before
+# it reached the scene rather than in a playtest. A raised edge cannot go where
+# painted lines already run.
+#
+# So the tell is VERTICAL instead of raised: four bollards, one per corner of the
+# zone. They are dressing (not GROUND_MESHES, so no marking measures against
+# them), they are 0.90 tall — inside this file's 1.10 interior tier, so an FPP
+# Person at 1.25 aims straight over them — and a drain corner marked with a post
+# is what a plaza actually looks like. The lane law is asserted on each.
+#
+# ⚠️ AND THEY ASK, like everything else placed after the clutter. The first run put
+# KanalPost_9 through the broken fence line at (-9.0, -6.5) — a 0.20 graze, the
+# same size as the eight this map shipped. The ladder walks it clear.
+def _put_hazard(name, mesh_name, x, z, yaw, _scale):
+    add("Hazards/KanalVisual", name, mesh_name, x, z, yaw)
+
+
+for _bx in (-1.0, 1.0):
+    for _bz in (-1.0, 1.0):
+        placer.try_place(_put_hazard, f"KanalPost_{_hn}", "bollard",
+                         _HAZ_X + _bx * 2.5, _HAZ_Z + _bz * 2.5, 0.0, 1.0)
         _hn += 1
 
 
@@ -944,8 +1026,18 @@ BOUNDARY_HEDGE_INSET = 0.9
 ## Which groups a boundary hedge must not land on. Everything a player can walk
 ## into, and nothing a player walks ON. See try_edge_hedge for what happens when
 ## this includes the paving.
+## ⚠️ `TreesNear` CAME OFF THIS LIST WHEN THE CONIFERS BECAME PUNO, and the
+## reason is the one floorcheck.py's own docstring gives for why an overlap report
+## cannot be fatal: "a tree canopy over a kerb" is not two solids in one volume.
+## A mango measures 4.60 ACROSS THE CANOPY against a Kenney pine's 2.4, so the
+## near ring at 13.7 now reaches back over the hedge row at 11.6 — and the
+## clearance test, which is a plan-view footprint test with no notion of height,
+## refused 25 of 28 hedges. The row came out as THREE, which is the same "the
+## boundary is four hedges" symptom the yaw bug produced, from a different cause.
+## A knee-high hedge standing under a canopy 2 m above it is correct planting and
+## correct composition; the trunk is 0.46 wide and nowhere near it.
 BOUNDARY_AVOID_GROUPS = ["Clutter", "Furniture", "Landmarks", "Ground",
-                         "Vehicles", "Monument", "KanalVisual", "TreesNear"]
+                         "Vehicles", "Monument", "KanalVisual"]
 
 court_line("BoundaryNorth", "x", -BOUND, BOUND)
 court_line("BoundarySouth", "x", BOUND, BOUND)
@@ -1082,8 +1174,8 @@ sky_material = SubResource("Sky_mat")
 background_mode = 2
 sky = SubResource("Sky_res")
 ambient_light_source = 2
-ambient_light_color = Color(0.451, 0.545, 0.686, 1)
-ambient_light_energy = 0.6
+ambient_light_color = Color(0.61176, 0.57647, 0.53333, 1)
+ambient_light_energy = 1.15
 tonemap_mode = 0
 tonemap_white = 1.2
 ssao_enabled = true

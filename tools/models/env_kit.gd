@@ -894,8 +894,22 @@ func _blade(w: ObjWriter, root: Vector3, dir: Vector2, length: float,
 		d.y * length * 0.5)
 	var tip := root + Vector3(d.x * length, rise, d.y * length)
 	# Root -> mid, at full width; mid -> tip, tapering to a point.
-	var r0 := Vector3(root.x + perp.x, root.y, root.z + perp.y)
-	var r1 := Vector3(root.x - perp.x, root.y, root.z - perp.y)
+	# ⚠️ THE ROOT END IS NARROW, NOT FULL WIDTH, AND THAT IS WHAT MAKES A LEAF
+	# ATTACH. Reported from a render: "some of your trees leaves were floating, not
+	# even connected to the trunk." The blade used to start at its FULL half-width,
+	# so a 0.36-wide banana leaf began as a 0.72-long straight edge centred on a
+	# stem only 0.26 across — the middle of that edge met the stem and both corners
+	# hung in clear air to either side of it. Every leaf was genuinely detached at
+	# two points; it only read as attached from angles where the stem happened to
+	# be behind the gap.
+	#
+	# A real leaf leaves the stem as a stalk and widens further out, which fixes
+	# the geometry and the silhouette in the same move: 22% at the root, full width
+	# at the midpoint. Callers also seat their roots ON the stem surface rather
+	# than inboard of it — see _puno_saging and _puno_niyog.
+	var root_perp := perp * 0.22
+	var r0 := Vector3(root.x + root_perp.x, root.y, root.z + root_perp.y)
+	var r1 := Vector3(root.x - root_perp.x, root.y, root.z - root_perp.y)
 	var m0 := Vector3(mid.x + perp.x * 1.15, mid.y, mid.z + perp.y * 1.15)
 	var m1 := Vector3(mid.x - perp.x * 1.15, mid.y, mid.z - perp.y * 1.15)
 	# ⚠️ THE TIP IS A NARROW QUAD, NOT A POINT. Collapsing both far corners onto
@@ -953,7 +967,9 @@ func _puno_saging() -> void:
 			var a := TAU * float(i) / float(blades) + (0.5 if k else 0.0)
 			var dir := Vector2(cos(a), sin(a))
 			var long := (k == 0)
-			_blade(w, Vector3(ox + dir.x * 0.1, top - 0.10, oz + dir.y * 0.1),
+			# Root ON the stem surface: the top radius is 0.13, and starting at
+			# 0.10 left a hairline gap that the narrow root now cannot hide.
+			_blade(w, Vector3(ox + dir.x * 0.11, top - 0.14, oz + dir.y * 0.11),
 				dir,
 				2.35 if long else 1.70,          # long
 				0.36 if long else 0.28,          # and wide
@@ -996,7 +1012,8 @@ func _puno_niyog() -> void:
 	for i in range(9):
 		var a := TAU * float(i) / 9.0
 		var dir := Vector2(cos(a), sin(a))
-		_blade(w, Vector3(lean + dir.x * 0.12, TRUNK_TOP - 0.05, dir.y * 0.12),
+		# Trunk top radius is 0.15, so seat the frond just inside it.
+		_blade(w, Vector3(lean + dir.x * 0.13, TRUNK_TOP - 0.12, dir.y * 0.13),
 			dir, 2.05, 0.22, 0.45 if i % 2 else 0.15, 1.15,
 			"frond" if i % 2 else "frond_dark")
 	# Three coconuts under the crown. Small, but they are the read that says
@@ -1035,10 +1052,15 @@ func _puno_mangga() -> void:
 	]), 8, "trunk")
 	# Two low limbs, so the trunk forks the way a mango does instead of running
 	# straight into the canopy like a lamp post.
+	# ⚠️ THE LIMBS START INSIDE THE TRUNK. These were columns offset 0.55 from the
+	# axis running 1.20..2.35 — the trunk is 0.26 wide up there, so neither limb
+	# touched it and both read as free-standing posts under the canopy, the same
+	# floating-part complaint as the leaves. Starting them at 0.9 (inside the
+	# trunk, which runs to 1.55) means each one is rooted in solid geometry.
 	for k in range(2):
 		var a := 0.9 + PI * float(k)
-		w.add_extrude(_ngon(cos(a) * 0.55, sin(a) * 0.55, 0.14, 5),
-			1.20, 2.35, "trunk")
+		w.add_extrude(_ngon(cos(a) * 0.30, sin(a) * 0.30, 0.15, 5),
+			0.90, 2.35, "trunk")
 	# (offset x, offset z, base y, radius, top y, material)
 	var blobs := [
 		[0.00, 0.00, 1.95, 1.95, 4.30, "canopy"],
