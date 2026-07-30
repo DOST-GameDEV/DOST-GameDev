@@ -68,7 +68,7 @@ func _ready() -> void:
 			_map_id = StringName(token.substr(4))
 		elif token == "ballistics":
 			_ballistics = true
-		elif token == "lane" or token == "bounce" or token == "traits":
+		elif token == "lane" or token == "bounce" or token == "traits" or token == "band":
 			_mode = token
 		elif token.begins_with("standoff="):
 			_standoff = float(token.substr(9))
@@ -108,6 +108,10 @@ func _ready() -> void:
 		return
 	if _mode == "lane":
 		await _run_lane()
+		get_tree().quit(0)
+		return
+	if _mode == "band":
+		await _run_band()
 		get_tree().quit(0)
 		return
 	if _mode == "bounce":
@@ -330,6 +334,29 @@ func _physics_process(_d: float) -> void:
 		_knock_lift[-1] = maxf(_knock_lift[-1], _knock_watch.velocity.y)
 		_knock_disp[-1] = maxf(_knock_disp[-1], _knock_start.distance_to(_knock_watch.global_position))
 	var p := _slipper.global_position
+	# `-- band` only. Closest approach to the can's hurtbox CENTRE, so the contact column
+	# can be checked against a distance instead of trusted on its own. Sampled here rather
+	# than in the sweep's own await loop because a physics frame is the finest resolution
+	# there is, and a lob's descent covers real ground between two of them.
+	if _band_watch != null and is_instance_valid(_band_watch):
+		var hb := _band_watch.get_node_or_null("Hurtbox") as Node3D
+		var centre: Vector3 = hb.global_position if hb != null \
+			else _band_watch.global_position
+		var d3 := p.distance_to(centre)
+		# ⚠️ THE PERP DISPLACEMENT IS SAMPLED ON THE CLOSEST-APPROACH FRAME, INSIDE THIS
+		# COMPARISON. Recording the peak and the closest approach independently would let
+		# a can that stepped 1.2 m out and drifted back report 1.2 m against a hit — the
+		# two numbers have to be read on the same frame to mean anything together.
+		if d3 < _band_min_3d:
+			_band_min_3d = d3
+			var from_mark := _band_watch.global_position - _band_mark
+			from_mark.y = 0.0
+			_band_perp_at_closest = absf(from_mark.dot(_band_side))
+		var perp_now := _band_watch.global_position - _band_mark
+		perp_now.y = 0.0
+		_band_peak_perp = maxf(_band_peak_perp, absf(perp_now.dot(_band_side)))
+		_band_min_flat = minf(_band_min_flat,
+			Vector2(p.x - centre.x, p.z - centre.z).length())
 	_min_y = minf(_min_y, p.y)
 	_max_speed = maxf(_max_speed, _slipper.velocity.length())
 	if p.y < 0.0: _below_floor += 1
@@ -1049,6 +1076,469 @@ func _lane_verdict(r: Dictionary) -> void:
 		print("     this row alone; nothing here is a property of the arc.")
 	print("  (for reference, blocked lane + dodging can: lob %.0f%% — both defences at once)"
 		% [lob_block_dodge * 100.0])
+
+## ---------------------------------------------------------------------------
+## R-06 leg 3 · THE OVERLAP BAND — `-- band`. THE ONE NUMBER THE HANDOVER ASSERTED
+## AND NEVER MEASURED.
+##
+## `_lane_verdict()` above diagnoses leg 3's failure as "CAN_EVADE_STEP 1.2 m against a
+## ~0.52 m overlap band — you cannot sidestep out from under a drop." The 1.2 is read
+## from the AI's own constant. **The 0.52 was not measured anywhere.** It is close to
+## `ai_controller.gd`'s arithmetic for a different quantity (hurtbox 0.17 +
+## `throw_flick`'s hit_radius 0.30 = 0.47), and that in turn does not match the shipped
+## Hurtbox capsule, whose radius in `CharacterBase.tscn` is 0.45 before any scaling.
+## Three numbers that cannot all be the band.
+##
+## ⚠️ AND THE DIAGNOSIS IS A PHYSICS ARGUMENT, WHICH IS THE ONE KIND THIS PROJECT DOES
+## NOT ACCEPT. "You cannot sidestep out from under a drop" sounds obviously true and
+## predicts the opposite of what leg 3 measured on two counts: the lob's flight is
+## 0.86–1.10 s against the flat throw's 0.32, and `CAN_EVADE_LOOKAHEAD` caps the warning
+## at 0.6 s for both — so the can gets MORE dodging time against a lob, not less, and it
+## still gets hit more. A handover built on the reasoning rather than the number could
+## send the balance lane to widen a step that is already wide enough.
+##
+## SO MEASURE THE BAND DIRECTLY, and the design is the whole point:
+##
+##   * the throw is aimed at the can's MARK, never at where the can actually is. That is
+##     what a sidestep IS — the arc is committed before the can moves, and a probe that
+##     re-aimed at the displaced can would measure nothing at all.
+##   * the can is PARKED at a fixed lateral offset instead of dodging. This deliberately
+##     removes the AI: the question here is geometric ("how far must a body be from the
+##     mark to be missed"), and mixing it with the AI's timing is what made leg 3
+##     ambiguous in the first place. Timing is the NEXT question, and it is only
+##     answerable once this one has a number.
+##   * offsets sweep past CAN_EVADE_STEP on purpose. If the band's half-width is under
+##     1.2 m then a 1.2 m sidestep is geometrically sufficient and leg 3's failure is
+##     TIMING, not shape — a completely different fix in a different function.
+##
+## Sanity, both from the impossible-number rule:
+##   1. offset 0.00 must be 100% for BOTH throws. A dead-centre throw at a parked can
+##      that misses is a broken harness, and every earlier fault in this file presented
+##      exactly that way.
+##   2. contact must be MONOTONIC in offset. Once a column reaches zero it must stay
+##      there; contact that resumes further out is a bounce or a second body, not a
+##      band, and the report says so rather than averaging it in.
+## ---------------------------------------------------------------------------
+
+## Swept past CAN_EVADE_STEP (1.2) on both sides so the comparison is readable rather
+## than a bound. 0.15 steps resolve the band to about a third of a hurtbox radius.
+const BAND_OFFSETS: Array[float] = [0.0, 0.15, 0.30, 0.45, 0.60, 0.75, 0.90,
+	1.05, 1.20, 1.35, 1.50]
+## Per cell. The can is parked and the arc is solved, so these throws are near
+## deterministic — the sample confirms that determinism rather than averaging noise,
+## the same contract BALLISTIC_THROWS documents.
+const BAND_THROWS: int = 3
+
+## Closest the slipper got to the can's hurtbox centre on the throw in flight, tracked
+## per throw so the contact column can be cross-checked against a distance. Horizontal
+## and full 3D are both kept: for a flat throw they are nearly the same number and for a
+## lob they are not, which is itself the arc's signature.
+var _band_min_flat := 9999.0
+var _band_min_3d := 9999.0
+var _band_watch: CharacterBase = null
+## Phase 2 (the dodge ACHIEVED, see _band_dodge). The mark and the perpendicular axis
+## the sidestep is measured along, plus the peak displacement reached and the
+## displacement at the frame of closest approach — which is the only one that decides
+## anything. Peak alone would flatter a can that stepped out and drifted back.
+var _band_mark := Vector3.ZERO
+var _band_side := Vector3.RIGHT
+var _band_peak_perp := 0.0
+var _band_perp_at_closest := 0.0
+
+func _run_band() -> void:
+	var can_ai: AIController = null
+	for c in _main.find_children("*", "CharacterBase", true, false):
+		var ch := c as CharacterBase
+		if ch.is_can:
+			can_ai = ch.ai_controller
+	_park_everyone()
+	_freeze_round()
+	await get_tree().physics_frame
+	if _can == null or _taya == null or _attacker == null or _slipper == null:
+		print("BAND: incomplete cast (can/taya/attacker/slipper) — nothing to measure")
+		return
+	_lane_target = _can
+	_lane_blocker = _taya
+	var can_mark := Vector3(0.0, _can.global_position.y, 0.0)
+	var line := Vector3(0.0, 0.9, THROWING_LINES[0])
+	print("\n=== THE OVERLAP BAND (R-06 leg 3) ===")
+	print("  map            : %s" % _map_id)
+	print("  throwing line  : z = %.1f   (%d throws per offset, full charge)"
+		% [line.z, BAND_THROWS])
+	print("  can mark       : (%.2f, %.2f, %.2f)   lane is OPEN (taya off it)"
+		% [can_mark.x, can_mark.y, can_mark.z])
+	print("  aim point      : the MARK, every throw — never the can's actual position")
+	# ⚠️ THE GEOMETRY IS READ OFF THE LIVE NODES, NOT RESTATED. Both numbers below are
+	# what the three conflicting figures in the header are guesses at, so a guess is
+	# exactly what must not appear here.
+	print("  can hurtbox    : %s" % _describe_hurtbox(_can))
+	print("  slipper        : %s" % _describe_slipper(_slipper))
+	print("  CAN_EVADE_STEP : %.2f m   (what one sidestep aims for — the number to beat)"
+		% AIController.CAN_EVADE_STEP)
+	print("")
+	print("  %-6s %8s %8s %10s %10s   %s"
+		% ["throw", "offset", "contact", "min flat", "min 3D", "detail"])
+	var bands: Dictionary = {}
+	for lob in [false, true]:
+		bands["lob" if lob else "flat"] = await _band_sweep(can_mark, line, lob, can_ai)
+	print("")
+	var band_half := _band_verdict(bands)
+	# ⚠️ PHASE 2 EXISTS BECAUSE PHASE 1 CANNOT CONDEMN ANYTHING ON ITS OWN. A band
+	# narrower than CAN_EVADE_STEP says the sidestep is BIG ENOUGH; it does not say the
+	# can ever performs it. Those are two different failures with two different fixes, and
+	# only the pair of tables distinguishes them.
+	var achieved := await _band_dodge(can_mark, line, can_ai)
+	_band_handover(band_half, achieved)
+	_report_the_sky()
+
+## ---------------------------------------------------------------------------
+## `-- band` PHASE 2 · THE DODGE ACTUALLY ACHIEVED. The can starts ON the mark with its
+## controller LIVE, and what is recorded is how far off the mark it got by the frame the
+## slipper was closest — measured along the same perpendicular axis phase 1 swept, so the
+## two tables are in the same units and can be compared directly.
+##
+## ⚠️ PEAK AND AT-CLOSEST ARE BOTH REPORTED AND THEY ARE NOT THE SAME CLAIM. A can that
+## sidesteps 1.2 m and is pulled back to the circle before the slipper arrives has a peak
+## of 1.2 and an at-closest of nearly 0, and it gets hit. Reporting the peak alone is how
+## a dodge that happens too EARLY reads as a dodge that worked.
+## ---------------------------------------------------------------------------
+
+const BAND_DODGE_THROWS: int = 10
+
+func _band_dodge(can_mark: Vector3, line: Vector3, can_ai: AIController) -> Dictionary:
+	print("")
+	print("  --- PHASE 2: THE DODGE THE CAN ACTUALLY ACHIEVES (controller LIVE) ---")
+	if can_ai == null:
+		print("  ⚠️ THE CAN HAS NO AIController — phase 2 measured nothing. The handover")
+		print("     below rests on phase 1 alone and cannot separate shape from timing.")
+		return {}
+	print("  %-6s %8s %10s %12s %10s   %s"
+		% ["throw", "contact", "peak perp", "at closest", "flight", "detail"])
+	var carriable := _slipper.get_node("Carriable") as Carriable
+	var bearing := (line - can_mark)
+	bearing.y = 0.0
+	bearing = bearing.normalized()
+	_band_mark = can_mark
+	_band_side = bearing.cross(Vector3.UP).normalized()
+	var out: Dictionary = {}
+	for lob in [false, true]:
+		var hits := 0
+		var peaks: Array[float] = []
+		var closes: Array[float] = []
+		var flights: Array[float] = []
+		for i in BAND_DODGE_THROWS:
+			if carriable.state == Carriable.CarryState.CARRIED:
+				carriable.host_drop()
+			elif carriable.state == Carriable.CarryState.FLYING:
+				carriable.host_land()
+			_freeze_round()
+			_can.state = CharacterBase.State.NORMAL
+			_place(_can, can_mark)
+			_can.ai_controller = can_ai
+			_taya.ai_controller = null
+			_taya.input_parked = true
+			_taya.state = CharacterBase.State.NORMAL
+			_place(_taya, can_mark + _band_side * (CharacterBase.CONFINEMENT_RADIUS - 0.2)
+				+ Vector3(0.0, 0.9 - can_mark.y, 0.0))
+			_place(_attacker, line)
+			for settle in CharacterBase.SPAWN_SETTLE_FRAMES + 1:
+				await get_tree().physics_frame
+			# Release phase jittered per throw, for the reason `_lane_cell` documents at
+			# length: every throw here is otherwise identical, so the can's dodge timer
+			# sits at one phase and ten throws report one coin flip.
+			for phase in i * 3:
+				await get_tree().physics_frame
+			_slipper.global_position = line + Vector3(0.4, 0.3, 0.0)
+			_slipper.velocity = Vector3.ZERO
+			carriable.host_grab(_attacker)
+			await get_tree().physics_frame
+			if carriable.state != Carriable.CarryState.CARRIED:
+				continue
+			_lane_hits = 0
+			_lane_blocked = 0
+			_band_min_flat = 9999.0
+			_band_min_3d = 9999.0
+			_band_peak_perp = 0.0
+			_band_perp_at_closest = 0.0
+			_band_watch = _can
+			var t0 := Time.get_ticks_msec()
+			carriable.host_throw(can_mark + Vector3(0.0, 0.25, 0.0), 1.0, lob)
+			_watch_lane_hitboxes()
+			var guard := 0
+			while carriable.state == Carriable.CarryState.FLYING and guard < 240:
+				await get_tree().physics_frame
+				guard += 1
+			flights.append(float(Time.get_ticks_msec() - t0) / 1000.0)
+			_band_watch = null
+			peaks.append(_band_peak_perp)
+			closes.append(_band_perp_at_closest)
+			await get_tree().create_timer(0.2).timeout
+			if _lane_hits > 0:
+				hits += 1
+		var n := maxf(float(peaks.size()), 1.0)
+		var mean_peak := _sum_of(peaks) / n
+		var mean_close := _sum_of(closes) / n
+		out["lob" if lob else "flat"] = {
+			"contact": float(hits) / float(BAND_DODGE_THROWS),
+			"peak": mean_peak,
+			"closest": mean_close,
+		}
+		print("  %-6s %7.0f%% %9.2fm %11.2fm %9.2fs   %d/%d on the can"
+			% ["LOB" if lob else "flat", 100.0 * hits / BAND_DODGE_THROWS,
+				mean_peak, mean_close, _sum_of(flights) / n, hits, BAND_DODGE_THROWS])
+	# The can is left parked, matching every other sweep's exit state.
+	_can.ai_controller = null
+	return out
+
+## The whole point of the mode: put phase 1 and phase 2 side by side and say which
+## function the balance lane should open. Nothing here is inferred from one table.
+func _band_handover(band_half: Dictionary, achieved: Dictionary) -> void:
+	print("")
+	print("  === HANDOVER, FROM BOTH TABLES ===")
+	if band_half.is_empty() or achieved.is_empty():
+		print("  Incomplete — a phase failed its sanity check. No handover.")
+		return
+	var step := AIController.CAN_EVADE_STEP
+	for key in ["flat", "lob"]:
+		var band: Dictionary = band_half.get(key, {})
+		var got: Dictionary = achieved.get(key, {})
+		if band.is_empty() or got.is_empty():
+			continue
+		var at_closest: float = got["closest"]
+		print("  %-4s: needs > %.2f m off the mark to be missed; achieved %.2f m at the"
+			% [key, float(band["hit_out_to"]), at_closest])
+		print("        closest frame (peak %.2f m), contact %.0f%%."
+			% [got["peak"], float(got["contact"]) * 100.0])
+	var lob_band: Dictionary = band_half.get("lob", {})
+	var lob_got: Dictionary = achieved.get("lob", {})
+	if lob_band.is_empty() or lob_got.is_empty():
+		return
+	var lob_need: float = float(lob_band["hit_out_to"])
+	var lob_clears: float = float(lob_band["miss_from"])
+	print("")
+	# ⚠️ THE STRADDLE IS REPORTED, NOT ROUNDED AWAY. Phase 1 resolves the threshold only
+	# to the interval (hit_out_to, miss_from]; a displacement landing inside that interval
+	# is genuinely undecided by this run and saying so is the honest reading. Claiming
+	# either side of it would be BAND_OFFSETS' step masquerading as a result.
+	if lob_clears >= 0.0 and float(lob_got["closest"]) > lob_need \
+			and float(lob_got["closest"]) < lob_clears:
+		print("  -> UNDECIDED FOR THE LOB. The can reaches %.2f m, inside this sweep's own"
+			% float(lob_got["closest"]))
+		print("     unresolved interval (%.2f, %.2f] m. Re-run with a finer BAND_OFFSETS"
+			% [lob_need, lob_clears])
+		print("     before handing anything over — do not round it to either side.")
+		return
+	if float(lob_got["closest"]) <= lob_need:
+		print("  -> AGAINST A LOB THE CAN DOES NOT GET FAR ENOUGH OFF THE MARK, and")
+		print("     CAN_EVADE_STEP (%.2f m) is not why — it aims %.1fx the %.2f m band."
+			% [step, step / maxf(lob_need, 0.01), lob_need])
+		print("     The sidestep is the right SIZE and it is not being COMPLETED. That is")
+		print("     _act_evade's commitment and _cond_slipper_incoming's trigger, not")
+		print("     CAN_EVADE_STEP, and not the lob's ballistics.")
+	else:
+		print("  -> THE CAN DOES CLEAR THE BAND AGAINST A LOB (%.2f m vs %.2f m needed)."
+			% [float(lob_got["closest"]), lob_need])
+		print("     Whatever leg 3 is measuring is neither the band nor the sidestep's")
+		print("     size or completion. Re-open it before changing any AI constant.")
+
+## One throw type, every offset. Returns the per-offset contact rates in sweep order.
+func _band_sweep(can_mark: Vector3, line: Vector3, lob: bool,
+		can_ai: AIController) -> Array[float]:
+	var carriable := _slipper.get_node("Carriable") as Carriable
+	var rates: Array[float] = []
+	# Perpendicular to the lane, in the ground plane — the same `side` axis
+	# `AIController._act_evade` steps along, so the offsets are directly comparable to
+	# CAN_EVADE_STEP rather than merely similar in magnitude.
+	var bearing := (line - can_mark)
+	bearing.y = 0.0
+	bearing = bearing.normalized()
+	var side := bearing.cross(Vector3.UP).normalized()
+	for offset in BAND_OFFSETS:
+		var hits := 0
+		var stopped := 0
+		var neither := 0
+		var best_flat := 9999.0
+		var best_3d := 9999.0
+		for i in BAND_THROWS:
+			if carriable.state == Carriable.CarryState.CARRIED:
+				carriable.host_drop()
+			elif carriable.state == Carriable.CarryState.FLYING:
+				carriable.host_land()
+			_freeze_round()
+			_can.state = CharacterBase.State.NORMAL
+			# ⚠️ PARKED, AND THE CONTROLLER IS NULLED EVERY THROW. `can_ai` is captured
+			# only so this cannot be mistaken for the lane sweep's dodging cells — the
+			# can never gets it back here, because the offset IS the dodge in this test.
+			_can.ai_controller = null
+			_place(_can, can_mark + side * offset)
+			_taya.ai_controller = null
+			_taya.input_parked = true
+			_taya.state = CharacterBase.State.NORMAL
+			# Lane OPEN: the taya is moved off it, not deleted, exactly as the lane
+			# sweep's open cells do — so the only body the throw can meet is the can.
+			_place(_taya, can_mark + side * (CharacterBase.CONFINEMENT_RADIUS - 0.2)
+				+ Vector3(0.0, 0.9 - can_mark.y, 0.0))
+			_place(_attacker, line)
+			for settle in CharacterBase.SPAWN_SETTLE_FRAMES + 1:
+				await get_tree().physics_frame
+			_slipper.global_position = line + Vector3(0.4, 0.3, 0.0)
+			_slipper.velocity = Vector3.ZERO
+			carriable.host_grab(_attacker)
+			await get_tree().physics_frame
+			if carriable.state != Carriable.CarryState.CARRIED:
+				neither += 1
+				continue
+			_lane_hits = 0
+			_lane_blocked = 0
+			_band_min_flat = 9999.0
+			_band_min_3d = 9999.0
+			_band_watch = _can
+			carriable.host_throw(can_mark + Vector3(0.0, 0.25, 0.0), 1.0, lob)
+			_watch_lane_hitboxes()
+			var guard := 0
+			while carriable.state == Carriable.CarryState.FLYING and guard < 240:
+				await get_tree().physics_frame
+				guard += 1
+			_band_watch = null
+			await get_tree().create_timer(0.2).timeout
+			best_flat = minf(best_flat, _band_min_flat)
+			best_3d = minf(best_3d, _band_min_3d)
+			if _lane_hits > 0:
+				hits += 1
+			elif _lane_blocked > 0:
+				stopped += 1
+			else:
+				neither += 1
+		var rate := float(hits) / float(BAND_THROWS)
+		rates.append(rate)
+		print("  %-6s %7.2fm %7.0f%% %9.2fm %9.2fm   %d/%d on the can%s"
+			% ["LOB" if lob else "flat", offset, rate * 100.0, best_flat, best_3d,
+				hits, BAND_THROWS,
+				"" if stopped == 0 else ", %d stopped by the taya (SHOULD BE 0)" % stopped])
+	return rates
+
+## Half-width of the band: the largest offset that still made contact, plus the first
+## offset that made none. ⚠️ RETURNED AS THE PAIR, NEVER COLLAPSED TO ONE NUMBER — the
+## true threshold lies between them and BAND_OFFSETS' step is the resolution, so a single
+## figure would be a precision this sweep does not have. The handover below reads both and
+## says "ambiguous" where they straddle.
+func _band_verdict(bands: Dictionary) -> Dictionary:
+	print("  --- THE BAND, AND WHETHER A 1.2 m SIDESTEP CLEARS IT ---")
+	var summary: Dictionary = {}
+	for key in ["flat", "lob"]:
+		var rates: Array = bands.get(key, [])
+		if rates.is_empty():
+			continue
+		var last_hit := -1.0
+		var first_miss := -1.0
+		var resumed := false
+		for i in rates.size():
+			var r: float = rates[i]
+			if r > 0.0:
+				last_hit = BAND_OFFSETS[i]
+				if first_miss >= 0.0:
+					resumed = true
+			elif first_miss < 0.0:
+				first_miss = BAND_OFFSETS[i]
+		# Sanity 1. A dead-centre throw at a parked can MUST connect.
+		if float(rates[0]) < 1.0:
+			print("  ⚠️ %s AT OFFSET 0.00 IS %.0f%%, NOT 100%% — THE HARNESS IS WRONG,"
+				% [key, float(rates[0]) * 100.0])
+			print("     not the arc. A dead-centre throw at a parked can cannot miss.")
+			continue
+		# Sanity 2. Monotonic, or the columns are not a band.
+		if resumed:
+			print("  ⚠️ %s CONTACT RESUMES PAST A ZERO — these columns are not a band."
+				% key)
+			print("     Something other than the hurtbox is being struck (a bounce, or")
+			print("     the taya). Do not read a half-width off this row.")
+			continue
+		# Recorded only past both sanity gates, so a column that failed one contributes
+		# nothing to the handover rather than contributing a wrong number.
+		summary[key] = {
+			"hit_out_to": last_hit,
+			"miss_from": first_miss if first_miss >= 0.0 else -1.0,
+		}
+		print("  %-4s: contact out to %.2f m, none from %.2f m%s"
+			% [key, last_hit,
+				first_miss if first_miss >= 0.0 else BAND_OFFSETS[-1],
+				"" if first_miss >= 0.0 else " (NEVER STOPPED — sweep too short)"])
+	var flat_band: float = float(summary.get("flat", {}).get("hit_out_to", -1.0))
+	var lob_band: float = float(summary.get("lob", {}).get("hit_out_to", -1.0))
+	if flat_band < 0.0 or lob_band < 0.0:
+		print("  (no verdict — a column failed its sanity check above)")
+		return {}
+	var step := AIController.CAN_EVADE_STEP
+	print("")
+	print("  CAN_EVADE_STEP is %.2f m. Band half-width: flat %.2f m, LOB %.2f m."
+		% [step, flat_band, lob_band])
+	# ⚠️ THE TWO READINGS ARE DIFFERENT HANDOVERS TO DIFFERENT FUNCTIONS, and printing
+	# which one the numbers support is the entire deliverable of this mode.
+	if lob_band >= step:
+		print("  -> THE STEP IS TOO SMALL. A %.2f m sidestep cannot clear a %.2f m band,"
+			% [step, lob_band])
+		print("     so leg 3's shape diagnosis HOLDS and the fix is in _act_evade's")
+		print("     GEOMETRY: step further, or step under the arc instead of across it.")
+	else:
+		print("  -> THE STEP IS ALREADY BIG ENOUGH (%.2f m clears a %.2f m band), so"
+			% [step, lob_band])
+		print("     LEG 3'S \"you cannot sidestep out from under a drop\" IS REFUTED as")
+		print("     stated. The geometry is sufficient and the failure is TIMING — when")
+		print("     the can commits and whether it stays committed, not how far it goes.")
+		print("     Hand this to _cond_slipper_incoming / CAN_EVADE_LOOKAHEAD's reaction")
+		print("     window, NOT to CAN_EVADE_STEP.")
+	if lob_band > flat_band + 0.01:
+		print("  (the lob's band is %.2f m WIDER than the flat throw's — a descending"
+			% (lob_band - flat_band))
+		print("   slipper sweeps a longer footprint through the capsule.)")
+	elif flat_band > lob_band + 0.01:
+		print("  (the FLAT throw's band is the wider of the two, by %.2f m.)"
+			% (flat_band - lob_band))
+	return summary
+
+## The hurtbox as it actually is in the world, scale included — the header's three
+## conflicting radii are what happens when this is restated instead of read.
+func _describe_hurtbox(who: CharacterBase) -> String:
+	if who == null or not is_instance_valid(who):
+		return "no character"
+	var hb := who.get_node_or_null("Hurtbox") as Area3D
+	if hb == null:
+		return "no Hurtbox node"
+	for child in hb.get_children():
+		var cs := child as CollisionShape3D
+		if cs == null or cs.shape == null:
+			continue
+		var scale_xz: float = maxf(hb.global_transform.basis.get_scale().x,
+			hb.global_transform.basis.get_scale().z)
+		if cs.shape is CapsuleShape3D:
+			var cap := cs.shape as CapsuleShape3D
+			return "capsule r=%.3f h=%.3f, world scale %.3f -> world r=%.3f" \
+				% [cap.radius, cap.height, scale_xz, cap.radius * scale_xz]
+		if cs.shape is SphereShape3D:
+			var sp := cs.shape as SphereShape3D
+			return "sphere r=%.3f, world scale %.3f -> world r=%.3f" \
+				% [sp.radius, scale_xz, sp.radius * scale_xz]
+		return "shape %s (unhandled here)" % cs.shape.get_class()
+	return "Hurtbox has no CollisionShape3D"
+
+func _describe_slipper(who: CharacterBase) -> String:
+	if who == null or not is_instance_valid(who):
+		return "no character"
+	var c := who.get_node_or_null("Carriable") as Carriable
+	if c == null:
+		return "no Carriable"
+	# `._profile()` is the same accessor the ballistics sweep already reads (see its call
+	# site) — the leading underscore is Carriable's own convention, not a barrier.
+	var profile := c._profile()
+	if profile == null:
+		return "profile unresolved"
+	# A profile built in code has no resource_path, so fall back to its script rather
+	# than printing an empty string where the identity belongs.
+	var id := profile.resource_path.get_file()
+	if id.is_empty():
+		var scr: Script = profile.get_script() as Script
+		id = String(scr.resource_path).get_file() if scr != null else "<unnamed>"
+	return "%s, hit_radius %.3f" % [id, profile.hit_radius]
 
 ## Lowest charge whose throw lands within REACH_TOLERANCE of the can. This is the
 ## measured replacement for §9's computed "charge needed for a 6.0 line" column.
