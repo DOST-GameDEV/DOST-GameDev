@@ -131,8 +131,67 @@ func _ready() -> void:
 		_sizes.assign(PRESETS)
 	# Solo, so MatchSetup takes the branch that needs no ENet session at all.
 	GameLaunch.pending_action = "local"
+	_report_window_fit()
 	_apply_size()
 	_load()
+
+## ⚠️ THE ONE CHECK IN THIS FILE THAT LOOKS AT THE WINDOW AND NOT AT THE CONTENT
+## RECT — and the only shape of check that could ever have caught 🧑's *"ui goes
+## below screen"*.
+##
+## Every other assertion here compares a laid-out rect to the VIEWPORT, and the
+## viewport was innocent: the reported screenshot is 1920x1037 while the content
+## rect is 1920x1080, so 43 rows of a perfectly-laid-out frame were simply not on
+## the panel. `project.godot` asks for a 1920x1080 windowed window; with a title bar
+## and a border that does not fit a 1920x1080 display, and `stretch/aspect="expand"`
+## keeps the content rect at exactly the design size regardless — so nothing inside
+## the scene tree looks wrong. See `game_launch.gd::fit_window_to_usable_screen()`.
+##
+## Drives the SHIPPING function rather than re-deriving the fit, so this fails if
+## that path stops running or stops working. Then it hands the window back to
+## `_apply_size()`, whose job is the content rect and which deliberately requests
+## sizes a screen may not have.
+func _report_window_fit() -> void:
+	if DisplayServer.get_name() == "headless":
+		print("  window fit: headless, no window manager — skipped")
+		return
+	var win := get_window()
+	var usable := DisplayServer.screen_get_usable_rect(win.current_screen)
+	# ⚠️ THE BOOT RECT, BEFORE THIS PROBE TOUCHES ANYTHING. Calling the fit function
+	# here proves the function; only this rect proves that the GAME calls it. Asserted
+	# only when no `--resolution` was passed, because that flag makes
+	# `GameLaunch._ready()` stand aside on purpose — run this probe with no arguments
+	# to exercise the real boot path.
+	var boot := Rect2i(win.get_position_with_decorations(), win.get_size_with_decorations())
+	var explicit_size := "--resolution" in OS.get_cmdline_args()
+	if not explicit_size:
+		_checks += 1
+		if not usable.encloses(boot):
+			_fails += 1
+	print("\n########## WINDOW FIT ##########")
+	print("  at boot                   %s  %s" % [str(boot),
+		"(--resolution given, GameLaunch stood aside as designed)" if explicit_size
+		else ("ok — GameLaunch fitted it at startup" if usable.encloses(boot)
+			else "** THE GAME BOOTS WITH ITS WINDOW OFF THE SCREEN **")])
+	# Reproduce the boot condition first: the project's own requested size, which is
+	# the size that does not fit.
+	win.size = Vector2i(ProjectSettings.get_setting("display/window/size/viewport_width", 1920),
+		ProjectSettings.get_setting("display/window/size/viewport_height", 1080))
+	var before := Rect2i(win.get_position_with_decorations(), win.get_size_with_decorations())
+	GameLaunch.fit_window_to_usable_screen()
+	var after := Rect2i(win.get_position_with_decorations(), win.get_size_with_decorations())
+	_checks += 1
+	var fits := usable.encloses(after)
+	if not fits:
+		_fails += 1
+	print("  usable screen rect        %s" % str(usable))
+	print("  requested (project.godot) %s  %s" % [str(before),
+		"fits" if usable.encloses(before) else "DOES NOT FIT — %d px past the bottom"
+			% (before.end.y - usable.end.y)])
+	print("  after fit_window_...      %s  %s" % [str(after),
+		"ok" if fits else "** WINDOW STILL HANGS OFF THE SCREEN **"])
+	print("  content rect             %s (the aspect is what the layout follows)"
+		% str(get_viewport().get_visible_rect().size))
 
 ## The WINDOW drives the viewport and the viewport drives every laid-out rect, so
 ## resizing the viewport alone would leave the window's stretch transform stale and
@@ -166,7 +225,7 @@ func _process(_delta: float) -> void:
 		_settle -= 1
 		return
 	set_process(false)
-	_report(String(SCREENS[_i][0]))
+	await _report(String(SCREENS[_i][0]))
 	await RenderingServer.frame_post_draw
 	if _out != "":
 		get_viewport().get_texture().get_image().save_png(
@@ -194,8 +253,21 @@ func _process(_delta: float) -> void:
 ## this pass moved. Checked against the VIEWPORT rect rather than against a
 ## parent, because "off the bottom of the screen" is what was reported and a
 ## control can be perfectly placed inside a container that is itself too tall.
+##
+## ⚠️ EXTENDED 2026-07-30 WITH THE HUD'S OWN BOTTOM EDGE. 🧑 report, with a
+## screenshot: *"ui goes below screen, pls make sure no ui goes below screen
+## bruh."* — the YOU card at bottom-left, "SLIPPER READY" cut in half by the
+## screen edge. This probe rendered `HUD.tscn` on every single run and could not
+## see it, because the only HUD name in this list was `DetailLabel`, which the HUD
+## does not even have. Every bottom-anchored HUD control is now named, and
+## `_report_you_card()` below is what makes the YOU card entries mean anything.
 const WATCHED := ["BackButton", "PrimaryButton", "StartButton", "ConfirmButton",
-	"DetailLabel", "TraitRows", "StatusLabel", "Banner", "ConfigPanel", "DetailBox"]
+	"DetailLabel", "TraitRows", "StatusLabel", "Banner", "ConfigPanel", "DetailBox",
+	# HUD, top row and bottom row. `Card` is the YOU card's own wood panel — it is
+	# the node that OVERFLOWS, not the `YouCard` Control, whose rect is pinned by
+	# anchors and stays on screen while its content hangs out of the bottom of it.
+	"TopLeft", "TopCentre", "TopRight", "YouCard", "Card", "LataCard",
+	"ReadyPrompt", "ReadyObjectiveRow", "ToastLabel", "RoleSwapCard"]
 
 func _report(tag: String) -> void:
 	var screen_size := Vector2(get_viewport().get_visible_rect().size)
@@ -241,6 +313,7 @@ func _report(tag: String) -> void:
 	_report_detail_fit()
 	_report_detail_topics()
 	_report_containment()
+	await _report_you_card(screen_size)
 
 ## ⚠️ THE ASSERTION THAT CATCHES THE CLASS OF BUG THAT ALREADY SHIPPED ONCE.
 ## Every PAIR in the group, not just adjacent ones — a three-panel row can have the
@@ -424,6 +497,128 @@ const CONTAINED: Dictionary = {
 		["TaglineLabel", "ConfigPanel"], ["TraitRows", "ConfigPanel"],
 	],
 }
+
+## ⚠️ THE YOU CARD, AT EVERY ROW SET THE GAME CAN ACTUALLY PRODUCE — AND THE
+## REASON EVERY EARLIER RUN OF THIS PROBE MISSED THE REPORTED BUG.
+##
+## `HUD.tscn` has been in `SCREENS` for as long as this file has existed and the
+## YOU card was invisible in every one of those renders: `you_card.gd::refresh()`
+## sets `visible = false` when it cannot find a local character, and a bare
+## `HUD.tscn` with no match under it never has one. Worse, four of the card's rows
+## ship `visible = false` and are turned on by ROLE at runtime — so even a visible
+## card would have been measured with the shortest possible content.
+##
+## ⚠️ THE HEIGHT IS THE WHOLE POINT AND IT IS ROLE-DEPENDENT. `Card` is a
+## PanelContainer whose size is clamped UP to its content minimum, sitting in a
+## `YouCard` rect that is 156px tall by anchors. Nothing forces the content to fit:
+## when the rows total more than 156px the panel simply grows, the anchors do not
+## move, and the surplus leaves the bottom of the screen. That is exactly the
+## screenshot 🧑 sent — "SLIPPER READY" sheared in half — and it is invisible to
+## the viewport check unless the row that causes it is switched on.
+##
+## The four cases below are the complete set `you_card.gd` can reach, read off
+## `refresh()` (`guard_dash_row.visible = not is_person`) and
+## `_update_row_visibility()` (hold XOR charge for the attacking Person, the reset
+## channel for the defending one). Polling is stopped first, or the card's own
+## timer re-hides it between the write and the read.
+##
+## ⚠️ NOT A THIRD VACUOUS CHECK. It does not compare a Label to its own rect and it
+## does not measure only the default state — the two mistakes this file's other
+## notes record. It drives the state and asserts against the VIEWPORT, which is the
+## edge the report is about, and it fails today.
+const YOU_CARD_CASES := [
+	["person_attacker_holding", ["HoldLabel"]],
+	["person_attacker_charging", ["ChargeRow"]],
+	["person_defender_channel", ["ResetChannelRow"]],
+	["prop_guard_dash", ["GuardDashRow"]],
+	# ⚠️ A CONTROL CASE, NOT A GAME STATE. The four real row sets came out at
+	# BYTE-IDENTICAL content heights on the first run, which is exactly the shape of
+	# a metric that is not reading what it claims to. This case switches every
+	# optional row OFF: if the number does not DROP here, the sweep is not driving
+	# anything and the four rows above are measuring the card's fixed header alone.
+	# Never a state `you_card.gd` can reach — it is here to make the metric falsifiable.
+	["_control_all_rows_off", []],
+]
+
+## Rows whose visibility this sweep owns. Anything not in the case's own list is
+## forced OFF, so one case cannot inherit the previous one's height.
+const YOU_CARD_ROWS := ["GuardDashRow", "HoldLabel", "ChargeRow", "ResetChannelRow"]
+
+## The content margins `you_card.gd::refresh()` puts on the card's wood stylebox at
+## runtime — 14 left/right, 8 top/bottom. Restated rather than read because they are
+## inline literals in that file, which is the UX lane's; if that padding changes,
+## these have to follow it.
+##
+## ⚠️ THE PROBE HAS TO APPLY THEM ITSELF OR IT MEASURES A CARD NOBODY SEES. A bare
+## `HUD.tscn` has no local character, so `refresh()` returns before it ever builds
+## that stylebox and the card lays out with a default PanelContainer's padding —
+## 16px less than the real one, vertically, which is more than the entire margin of
+## error this check is about.
+const RUNTIME_MARGIN_H: float = 14.0
+const RUNTIME_MARGIN_V: float = 8.0
+
+func _report_you_card(screen_size: Vector2) -> void:
+	if String(SCREENS[_i][1]).get_file() != "HUD.tscn":
+		return
+	var you := _screen.find_child("YouCard", true, false) as Control
+	if you == null:
+		_checks += 1
+		_fails += 1
+		print("  %-14s MISSING — cannot assert" % "YouCard")
+		return
+	you.set_process(false)
+	you.visible = true
+	var card := you.find_child("Card", true, false) as Control
+	if card != null:
+		var pad := StyleBoxFlat.new()
+		pad.content_margin_left = RUNTIME_MARGIN_H
+		pad.content_margin_right = RUNTIME_MARGIN_H
+		pad.content_margin_top = RUNTIME_MARGIN_V
+		pad.content_margin_bottom = RUNTIME_MARGIN_V
+		card.add_theme_stylebox_override("panel", pad)
+	for case in YOU_CARD_CASES:
+		var wanted: Array = case[1]
+		for row_name in YOU_CARD_ROWS:
+			var row := you.find_child(String(row_name), true, false) as Control
+			if row != null:
+				row.visible = wanted.has(row_name)
+		# Two frames: one for the container to re-sort against the new minimum
+		# size, one for the laid-out rect to be readable.
+		await get_tree().process_frame
+		await get_tree().process_frame
+		var rect := card.get_global_rect() if card != null else you.get_global_rect()
+		var anchored := you.get_global_rect()
+		_checks += 1
+		# ⚠️ TWO EDGES, AND THE SECOND ONE IS THE ONE THAT MOVES. The viewport test is
+		# the reported symptom; the anchor-box test is the mechanism. A PanelContainer
+		# whose content exceeds its anchored rect does not clip and does not shrink —
+		# it grows, in whichever direction `grow_vertical` says, and the default on a
+		# full-rect child is to grow DOWN past the bottom of the box. Sixteen pixels of
+		# screen margin hid that at 1080p; on a window whose bottom rows are off the
+		# panel there is nothing to hide it with. So: the card's bottom edge may never
+		# leave the box it is anchored in, whatever its content does.
+		var inside := rect.end.y <= screen_size.y + 1.0 and rect.position.y >= -1.0 \
+			and rect.position.x >= -1.0 and rect.end.x <= screen_size.x + 1.0
+		var in_box := rect.end.y <= anchored.end.y + 1.0
+		if not inside or not in_box:
+			_fails += 1
+		# ⚠️ THE CONTENT MINIMUM, NOT JUST THE LAID-OUT RECT. `Card` is stretched to
+		# the anchor box whenever its content is smaller, so the rect alone reports
+		# 156px for every row set and can never tell you how much headroom is left.
+		# `RUNTIME_MARGINS` is the 8px top + 8px bottom `you_card.gd::refresh()` puts
+		# on the wood stylebox at runtime, which a bare `HUD.tscn` never gets because
+		# `refresh()` returns early with no local character to skin the card for.
+		var content := card.get_combined_minimum_size().y if card != null else 0.0
+		var verdict := "ok"
+		if not inside:
+			verdict = "** RUNS OFF THE SCREEN, %.0f px BELOW THE BOTTOM **" \
+				% (rect.end.y - screen_size.y)
+		elif not in_box:
+			verdict = "** %.0f px BELOW ITS OWN ANCHOR BOX — grow_vertical must be BEGIN **" \
+				% (rect.end.y - anchored.end.y)
+		print("  %-14s %-24s card y %6.1f..%-7.1f (content %.0f px in a %.0f px anchor box)  %s" % [
+			"YouCardRows", String(case[0]), rect.position.y, rect.end.y,
+			content, anchored.size.y, verdict])
 
 func _report_containment() -> void:
 	var file_name := String(SCREENS[_i][1]).get_file()

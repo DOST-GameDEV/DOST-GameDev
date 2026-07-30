@@ -19,7 +19,7 @@ to type.
 | `scenes/characters/CharacterBase.tscn` | — free — | | |
 | `scripts/characters/character_base.gd` | — free — | | |
 | `scenes/characters/CameraRig.tscn` | — free — | | |
-| `scenes/ui/*.tscn` | 🌐 NET — HUD bottom-edge overflow (YouCard) | `integration` | 2026-07-30 |
+| `scenes/ui/*.tscn` | — free — | | |
 | `project.godot` | — free — | | |
 | `tools/models/generate_all.gd` | — free — | | |
 | `docs/Checklist.md` | *no lock needed* | | append-only-ish; conflicts resolved by taking both sides |

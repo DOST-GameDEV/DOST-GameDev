@@ -209,6 +209,10 @@ theme_type_variation = &"HudBody"
 horizontal_alignment = 1
 text = "Round 1 / 5"
 
+; ⚠️ SAME BOTTOM-EDGE RULE AS `YouCard/Card` — read that node's comment. This one is
+; a 200x84 box holding a caption, a pip row and a dent line that can be turned on, so
+; it has less headroom than the YOU card does. Growth goes UP (`grow_vertical = 0`)
+; and LEFT (`grow_horizontal = 0`, since this card is anchored to the RIGHT edge).
 [node name="LataCard" type="PanelContainer" parent="."]
 unique_name_in_owner = true
 layout_mode = 1
@@ -221,6 +225,8 @@ offset_left = -216.0
 offset_top = -100.0
 offset_right = -16.0
 offset_bottom = -16.0
+grow_horizontal = 0
+grow_vertical = 0
 theme_type_variation = &"HudCard"
 mouse_filter = 2
 visible = false
