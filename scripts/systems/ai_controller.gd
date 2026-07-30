@@ -168,7 +168,33 @@ static var taya_repost_angle: float = TAYA_REPOST_ANGLE
 ## This file does not import that constant; it just aims for the same number
 ## so the AI throws from roughly where a human would.
 const ATTACKER_THROW_RANGE: float = 6.0
+## ⚠️ THE INNER EDGE OF THE THROWING BAND, AND IT IS A MEASURED BUG FIX, NOT A
+## PREFERENCE. `_cond_attacker_out_of_range` used to ask only "am I further than
+## ATTACKER_THROW_RANGE", so an attacker standing THREE units from the can was "in
+## range" and charged from there — inside `taya_pursue_radius`, inside the defended
+## box, a step away from `TAYA_MELEE_RANGE`.
+##
+## Measured, RUN 10's per-round table: the two Persons open a round 7.8 units apart,
+## and a fifth of all rounds still ended in a TAG AT 1.4-1.7 SECONDS with exactly
+## one throw taken — every one of them a round in which the attacker's opening
+## position was already inside the box, so the taya's `close-gap` branch simply
+## sprinted at it and tagged it before the round had begun. A tag 1.4 s after the
+## whistle is not a defender outplaying anyone; it is the offence standing in the
+## wrong place.
+##
+## 4.6 is derived, not picked: `taya_pursue_radius` ships at 1.8 and
+## `TAYA_MELEE_RANGE` is 1.4, so the taya can reach 3.2 from the can before it has
+## to break off its own post. 4.6 keeps the attacker a clear 1.4 outside that, which
+## is one more melee range of margin. The band [4.6, 6.0] is 1.4 wide — wider than
+## ARRIVE_DISTANCE (0.6), so an attacker settling inside it does not immediately
+## read as out of it and start walking again.
+const ATTACKER_MIN_THROW_RANGE: float = 4.6
+static var attacker_min_throw_range: float = ATTACKER_MIN_THROW_RANGE
 const ATTACKER_GRAB_RANGE: float = 1.5
+## Minimum gap between grab presses. Long enough that `_tap()`'s own
+## RELEASE_SETTLE_FRAMES window closes and the key genuinely comes back up, so the
+## next press is a new `input_just_pressed` edge — see _act_attacker_retrieve.
+const ATTACKER_GRAB_INTERVAL: float = 0.22
 ## ⚠️ SUPERSEDED BY `tier_charge` at both call sites, same as DECISION_INTERVAL.
 const ATTACKER_CHARGE_TIME: float = 0.65
 const ATTACKER_RETREAT_DISTANCE: float = 3.0
@@ -239,14 +265,20 @@ static var taya_pursue_radius: float = 1.8
 ## one screen rather than a refactor. NORMAL reproduces this pass's tuning.
 enum Difficulty { BATA, NORMAL, ASTIG }
 
+##   gait     fraction of SPEED a Person walks at. See `tier_gait`.
+##   mistake  chance per goal re-pick that a Taya overcommits. See R-10.
 const DIFFICULTY_TIERS: Dictionary = {
 	# "Bata" — a kid. Holds its post, aims where the can is rather than where it
-	# will be, thinks slowly and never fully winds up.
-	Difficulty.BATA:   {"pursue": 1.8, "lead": 0.25, "think": 0.50, "charge": 0.40},
-	Difficulty.NORMAL: {"pursue": 1.8, "lead": 0.60, "think": 0.35, "charge": 0.65},
+	# will be, thinks slowly and never fully winds up. Walks like a kid, too, and
+	# overcommits often enough that a human can learn to bait it.
+	Difficulty.BATA:   {"pursue": 1.8, "lead": 0.25, "think": 0.50, "charge": 0.40,
+		"gait": 0.80, "mistake": 0.22},
+	Difficulty.NORMAL: {"pursue": 1.8, "lead": 0.60, "think": 0.35, "charge": 0.65,
+		"gait": 0.88, "mistake": 0.09},
 	# "Astig" — the one who wins. Chases to the edge of its own box and leads
 	# almost perfectly.
-	Difficulty.ASTIG:  {"pursue": 4.6, "lead": 0.85, "think": 0.22, "charge": 0.80},
+	Difficulty.ASTIG:  {"pursue": 4.6, "lead": 0.85, "think": 0.22, "charge": 0.80,
+		"gait": 0.96, "mistake": 0.02},
 }
 
 static var difficulty: Difficulty = Difficulty.NORMAL
@@ -256,7 +288,46 @@ static var tier_lead: float = 0.6
 static var tier_think: float = 0.35
 static var tier_charge: float = 0.65
 
-## Pushes `difficulty` into the four live knobs. Static, so a probe or a future
+## ---------------------------------------------------------------------------
+## GAIT. 🧑 Human ask, 2026-07-30: the AI must not feel *"too FAST or mechanical"*.
+##
+## `character_base.gd` normalises an AI unit's movement vector, so a bot has exactly
+## two speeds available through the intent dictionary — `SPEED` and zero. The only
+## honest way to give it a walking pace instead of a sprint is the public speed API
+## gameplay already owns: `enter_speed_zone()` / `exit_speed_zone()`, which
+## `_recompute_speed_multiplier()` combines by taking the LOWEST active multiplier.
+## That composes correctly with everything else — a bot in mud is still mud-slow, and
+## the trait scale (BILIS) still applies on top — and it is a one-way dependency
+## (debug/AI calls gameplay, never the reverse).
+##
+## ⚠️ PERSONS ONLY, DELIBERATELY. The two Props already carry speed scales that exist
+## for gameplay reasons — `CRAWL_SPEED_SCALE` on a loose tsinelas is the whole reason
+## the retrieval scramble is tense — and stacking a third multiplier on the crawl
+## would lengthen every round for no readability gain.
+##
+## ⚠️ REMOVED WHEN THIS CONTROLLER STOPS DRIVING. `set_enabled(false)` is what runs
+## when a human takes the unit over, and a human must not inherit the bot's walk.
+const AI_GAIT_NORMAL: float = 0.88
+static var tier_gait: float = AI_GAIT_NORMAL
+## R-10(c). Chance, per goal re-pick, that a Taya overcommits — see
+## `_cond_taya_threat_in_confinement`.
+static var tier_mistake: float = 0.09
+
+## ---------------------------------------------------------------------------
+## R-10's master switch. ON by default, because "an AI that is fun to lose to" is the
+## goal state and not an experiment — but switchable (`fun=off` on tools/ai_probe.gd)
+## so the three flavour changes can be measured AGAINST their own absence. R-10's
+## acceptance is that they do not move the fairness metrics outside the range Stage 1
+## lands on, and that is a claim about a difference, so the difference has to be
+## measurable.
+##
+## ⚠️ IT DOES NOT GATE THE GAIT OR THE TURN RATE. Those two answer a separate human
+## ask (movement that does not feel mechanical) and are not balance flavour; gating
+## them here would make `fun=off` mean two different things at once.
+## ---------------------------------------------------------------------------
+static var flavour_enabled: bool = true
+
+## Pushes `difficulty` into the live knobs. Static, so a probe or a future
 ## settings screen can call it once and every controller in the match follows —
 ## the knobs are static for the same reason.
 static func apply_difficulty(tier: Difficulty) -> void:
@@ -266,6 +337,8 @@ static func apply_difficulty(tier: Difficulty) -> void:
 	tier_lead = float(values["lead"])
 	tier_think = float(values["think"])
 	tier_charge = float(values["charge"])
+	tier_gait = float(values["gait"])
+	tier_mistake = float(values["mistake"])
 ## Physics frames to wait after releasing the charge-throw button before
 ## considering pressing ANY held/edge-triggered action again. Measured live,
 ## not a guess: `input_just_released()` does not become visible until the
@@ -315,6 +388,11 @@ var _attacker_charging: bool = false
 var _attacker_charge_time: float = 0.0
 var _release_settle_frames: int = 0
 var _taya_tap_cooldown: float = 0.0
+var _attacker_grab_cooldown: float = 0.0
+## R-10 / fairness: how long the Can has had THIS threat in view, and how long until
+## it may raise Guard again. See CAN_GUARD_REACTION.
+var _guard_seen_for: float = 0.0
+var _guard_cooldown_left: float = 0.0
 ## R-07. The committed post: the bearing FROM THE CAN it was taken on, how much of
 ## the reaction window is left, and whether there is one at all. Cleared on a role
 ## change, on losing sight of the threat, and by _release_all().
@@ -633,6 +711,33 @@ func _build_attacker_branch() -> BTNode:
 		#
 		# Fleeing is only ever the right answer when there is nothing better to do
 		# with the moment. Holding the slipper, there always is: throw it.
+		# ⚠️⚠️ THE PANIC DODGE, AND IT IS THE FIX FOR THE THING THAT ACTUALLY ENDS
+		# EVERY ROUND. Measured directly off bt_trace() at the moment of the tag, over
+		# 10 rounds: the attacker was tagged in `throw/approach` (4), `retrieve/settle`
+		# (2), `retrieve/fetch` (1) and `retrieve/wait-out-the-guard` (1) — i.e. **it
+		# was walking, or standing, and in NO case defending itself.** Two reasons, and
+		# both are bugs rather than balance:
+		#
+		#  1. The `evade` sequence below is gated on EMPTY-HANDED (RUN 5's lesson: an
+		#     attacker that flees while holding never throws). So for the whole
+		#     approach — slipper in hand, walking to the line — the attacker had no
+		#     self-preservation at all.
+		#  2. `_threatening_defender()` only counted a defender that was CLOSING at
+		#     0.35 m/s or more, and `_act_taya_tag` **releases movement to tag**. So at
+		#     the exact instant a tag is coming, the taya's velocity is ~0 and the
+		#     attacker's own threat test filtered it out. The dodge was blind to the
+		#     only defender that could ever hit it.
+		#
+		# So: a defender at arm's length is an emergency regardless of role state or
+		# closing speed, and it out-prioritises everything. It is deliberately NOT the
+		# general flee-from-defenders behaviour RUN 5 measured as a disaster — the
+		# radius is one melee range plus a margin, and a throw already past its commit
+		# point still goes out (see _cond_attacker_panic), so a committed shot is still
+		# committed and still readable.
+		BTSequence.new(&"panic", [
+			BTCondition.new(&"tagger-at-arms-length", &"_cond_attacker_panic"),
+			BTAction.new(&"break-away", &"_act_attacker_dodge"),
+		]),
 		BTSequence.new(&"evade", [
 			BTCondition.new(&"empty-handed", &"_cond_attacker_empty_handed"),
 			BTCondition.new(&"tagger-closing", &"_cond_attacker_threatened"),
@@ -651,6 +756,18 @@ func _build_attacker_branch() -> BTNode:
 				BTSequence.new(&"settle", [
 					BTCondition.new(&"post-release-settle", &"_cond_attacker_settling"),
 					BTAction.new(&"wait-out-settle", &"_act_attacker_settle"),
+				]),
+				# ⚠️ DO NOT WALK INTO THE TAYA'S LAP. Measured: 20/20 rounds in RUN 9
+				# and RUN 10 ended with the attacker tagged, and the tag comes during
+				# RETRIEVAL — the slipper lands near the can, the taya is standing on
+				# it, and `go-grab` below used to march straight at it. The slipper
+				# already crawls toward its own attacker (`_act_tsinelas_crawl`), so
+				# the patient answer exists and nothing was using it: hold outside the
+				# defended area and let the tsinelas come out to you.
+				BTSequence.new(&"wait-out-the-guard", [
+					BTCondition.new(&"own-tsinelas-loose", &"_cond_own_tsinelas_loose"),
+					BTCondition.new(&"tsinelas-is-guarded", &"_cond_own_tsinelas_guarded"),
+					BTAction.new(&"let-it-crawl", &"_act_attacker_wait_for_crawl"),
 				]),
 				BTSequence.new(&"fetch", [
 					BTCondition.new(&"own-tsinelas-loose", &"_cond_own_tsinelas_loose"),
@@ -709,7 +826,12 @@ func _build_tsinelas_branch() -> BTNode:
 			BTCondition.new(&"not-yet-arrived", &"_cond_tsinelas_arrived", true),
 			BTAction.new(&"crawl", &"_act_tsinelas_crawl"),
 		]),
-		BTAction.new(&"stand-down", &"_act_release_move"),
+		# ⚠️ A LOOSE SLIPPER THAT HAS ARRIVED USED TO STOP DEAD, and it was the single
+		# biggest contributor to the stillness figure — 12 of 26 episodes over 2 s long,
+		# measured with the branch-naming trace. 🧑 "make sure theyre all capable of
+		# movement": this is the unit that most visibly was not. It settles now, which
+		# for a tsinelas on the ground reads as it shifting where it lies.
+		BTAction.new(&"settle", &"_act_tsinelas_settle"),
 	])
 
 ## Fail fast on a mistyped method name. Leaves dispatch by name (see the class
@@ -752,12 +874,82 @@ func decide(delta: float) -> void:
 	# branch happened to run", so a role swap mid-cooldown cannot leave one
 	# armed forever.
 	_taya_tap_cooldown -= delta
+	_attacker_grab_cooldown -= delta
+	_guard_cooldown_left -= delta
 	# R-07's reaction window, ticked here with the other role-scoped timers and for
 	# the same reason: on wall time, not on "the frame that role's branch happened to
 	# run", so a role swap mid-window cannot leave one armed forever.
 	_taya_post_hold_left -= delta
+	_taya_overcommit_left -= delta
+	_taya_overcommit_cooldown -= delta
+	_track_can_velocity(delta)
+	# A Person walks at its tier's pace; a Prop is full speed unless a leaf says
+	# otherwise (the Can's shuffle, anyone's settle). Reset before the tick so the
+	# leaves that run this frame are the only things deciding it.
+	_gait_want = tier_gait if character.is_person else 1.0
 
 	_root.tick(self, delta)
+	# After the tree, never before: whichever leaf actually ran this tick is the one
+	# whose pace applies.
+	_apply_gait(_gait_want)
+
+## The gait multiplier this controller currently has registered on its character, or
+## 0.0 for none. Tracked so a tier change swaps one for the other rather than
+## stacking, since `_active_speed_multipliers` is a list and `exit_speed_zone()`
+## removes by VALUE.
+var _gait_applied: float = 0.0
+## What this tick's behaviour WANTS the gait to be. Set by leaves and applied once,
+## after the tree has ticked, so a role or branch change cannot leave a stale
+## multiplier registered — the same reason the role itself is re-derived every tick.
+var _gait_want: float = 1.0
+
+## ⚠️⚠️ THIS IS WHY THE CAN BECAME UNHITTABLE, AND IT IS THE MOST INSTRUCTIVE BUG OF
+## THE PASS: TWO CORRECT FIXES THAT BROKE EACH OTHER.
+##
+## Fixing the Can so that it actually moves (see `_act_can_hold_mark`) gave it a
+## 0.22-unit shuffle — but `character_base.gd` NORMALISES an AI movement vector, so
+## that shuffle is performed at the full `SPEED` of 6.0 m/s. A throw crosses the 5.5-
+## unit gap in about a third of a second, in which 6 m/s covers nearly two units. So
+## the Can was darting far enough during every flight to be missed by more than the
+## width of the arena's own centre circle, in a direction re-rolled every 0.35 s.
+##
+## Measured with the new closest-approach geometry, which is the only reason this was
+## visible at all: **17 flights, median closest approach 2.49 units, and 0 of 12
+## unblocked throws within the 0.50 overlap band.** The hitbox was not lying and the
+## aim was not broken — the target was leaving.
+##
+## The fix is not to freeze the Can again. It is that a shuffle should be performed at
+## SHUFFLING PACE. 0.30 makes the Can's weight-shift 1.8 m/s, which reads as a keeper
+## rocking on the spot instead of a bluebottle, and puts it back inside the band a
+## thrown slipper can find. ⚠️ EVASION IS DELIBERATELY EXEMPT — `_act_evade` never asks
+## for a slow gait, so a real dodge is still full speed and the can can still save
+## itself. The dodge is supposed to be the Can's skill; the fidget never was.
+const CAN_IDLE_GAIT: float = 0.30
+## Any unit merely settling on a spot it has already reached moves at this fraction of
+## SPEED. Same argument as CAN_IDLE_GAIT, applied to the general case: a taya adjusting
+## its stance on its post should not do it at a sprint.
+const IDLE_GAIT: float = 0.35
+
+func _apply_gait(want: float) -> void:
+	if character == null or not is_instance_valid(character):
+		return
+	if is_equal_approx(_gait_applied, want):
+		return
+	_drop_gait()
+	if is_equal_approx(want, 1.0):
+		return # nothing to register; full speed is the absence of a multiplier
+	_gait_applied = want
+	character.enter_speed_zone(_gait_applied)
+
+func _drop_gait() -> void:
+	if _gait_applied <= 0.0:
+		return
+	if character != null and is_instance_valid(character):
+		character.exit_speed_zone(_gait_applied)
+	_gait_applied = 0.0
+
+func _exit_tree() -> void:
+	_drop_gait()
 
 ## Debug-switcher hand-off (Checklist 5.5 item 4): a human taking manual
 ## control of an AI-driven unit via F1-F4/Tab must not fight the AI for the
@@ -769,6 +961,12 @@ func set_enabled(enabled: bool) -> void:
 		return
 	_enabled = enabled
 	if not enabled:
+		# ⚠️ THE BOT'S WALKING PACE MUST NOT SURVIVE ONTO A HUMAN. This is the exact
+		# function a human take-over runs through (debug_player_switcher, and
+		# ai_probe's own takeover in reverse), and a leftover 0.88 multiplier would
+		# make the player mysteriously slower than everyone else for the rest of the
+		# match with nothing on screen to explain it.
+		_drop_gait()
 		_release_all()
 		# Wipe the intent too, or CharacterBase keeps answering input_pressed()
 		# from a stale dictionary while a human is trying to drive — the unit
@@ -789,8 +987,13 @@ func _release_all() -> void:
 	_pending_release.clear()
 	_attacker_charging = false
 	_attacker_charge_time = 0.0
+	_attacker_hold_target = -1.0
 	_release_settle_frames = 0
 	_attacker_lane_blocked_for = 0.0
+	_taya_overcommit_left = 0.0
+	_heading = Vector3.ZERO
+	_guard_seen_for = 0.0
+	_guard_cooldown_left = 0.0
 	# R-07: a post is only ever valid against the attacker it was taken on, and
 	# _release_all() runs on exactly the events that replace it (a role swap, a round
 	# reset, a human taking this unit over).
@@ -928,6 +1131,40 @@ const CAN_EVADE_STEP: float = 1.2
 const CAN_EVADE_RADIUS: float = 1.8
 ## Below this time-to-impact, stop dodging and raise Guard instead.
 const CAN_GUARD_ETA: float = 0.22
+## ---------------------------------------------------------------------------
+## ⚠️ THE GUARD WAS THE LAST REASON THE OFFENCE COULD NOT SCORE, AND IT IS AI POLICY
+## RATHER THAN PHYSICS — WHICH IS WHY IT BELONGS IN THIS FILE AND WHY IT IS FIXABLE
+## HERE.
+##
+## Measured at scale 1 (i.e. on honest physics, after the tick-rate fault in
+## `ai_probe` was found): 23 throws, 19 blocked by the taya, **2 that genuinely
+## reached the can, and 0 dents.** A hit that arrives is not a dent if the can is
+## guarding, because `character_base.gd::apply_dent()` refuses outright while Guard is
+## up. So the defence had THREE layers — the taya's body, the can's dodge, and a guard
+## raised on reaction to every single throw — and the third one was free and perfect.
+##
+## Perfect is the problem. A human on the lata does not have frame-accurate reactions
+## and cannot hold the button up for every throw in a barrage. Two human limits, both
+## of which make the guard a skill instead of an immunity:
+##
+##   1. A REACTION DELAY. The throw must have been in the air for `tier_think` before
+##      this can reacts to it at all, so a fast flat throw from close range arrives
+##      before the guard is up. That is the flat throw's whole identity in the
+##      three-way triangle R-06 describes.
+##   2. A COOLDOWN. After a guard, the next one cannot come up immediately, so a
+##      barrage punches through where a single throw would not — which is exactly the
+##      pressure the offence is supposed to be able to apply.
+##
+## ⚠️ NOT A NERF TO THE DODGE. `CAN_EVADE_MISS_MARGIN` is a human-called value (RUN 7)
+## and `CAN_EVADE_LOOKAHEAD` is documented as untunable. Neither is touched.
+## ---------------------------------------------------------------------------
+## Minimum time a throw must have been visible before the can may react with Guard,
+## scaled by the tier's own thinking speed at the call site.
+const CAN_GUARD_REACTION: float = 0.12
+static var can_guard_reaction: float = CAN_GUARD_REACTION
+## Enforced gap between guards, so a barrage beats what one throw does not.
+const CAN_GUARD_COOLDOWN: float = 1.4
+static var can_guard_cooldown: float = CAN_GUARD_COOLDOWN
 
 ## Is there a tsinelas currently in the air and actually coming at us?
 ##
@@ -967,6 +1204,13 @@ func _cond_slipper_incoming() -> bool:
 		if eta < best_eta:
 			best_eta = eta
 			_bb_slipper = c
+	# How long this threat has been visible, for the guard's reaction delay. Reset the
+	# moment nothing is incoming, so each throw is reacted to on its own merits rather
+	# than inheriting the previous one's warning.
+	if _bb_slipper != null:
+		_guard_seen_for += _last_delta
+	else:
+		_guard_seen_for = 0.0
 	return _bb_slipper != null
 
 ## Sidestep out of a throw's path, then let the hold-the-circle behaviour pull
@@ -1008,19 +1252,56 @@ func _act_evade(_delta: float) -> int:
 	# outright (character_base.apply_dent), so a throw that cannot be dodged can
 	# still be eaten. This is the Can genuinely trying to survive rather than
 	# just jittering.
+	#
+	# ⚠️ BUT NOT INSTANTLY AND NOT EVERY TIME. See CAN_GUARD_REACTION for the
+	# measurement: a guard raised in reaction to every throw is a perfect third layer
+	# of defence and it is the reason 2 throws reached the can and 0 dented it.
 	var eta := to_us.length() / maxf(vel.length(), 0.01)
-	_set_held("guard_dash", eta <= CAN_GUARD_ETA)
+	var seen_long_enough: bool = _guard_seen_for \
+		>= can_guard_reaction * (tier_think / DECISION_INTERVAL)
+	var may_guard: bool = eta <= CAN_GUARD_ETA and _guard_cooldown_left <= 0.0 \
+		and seen_long_enough
+	if may_guard and not bool(_held_actions.get("guard_dash", false)):
+		_guard_cooldown_left = can_guard_cooldown
+	_set_held("guard_dash", may_guard)
 	return BTNode.SUCCESS
+
+## ⚠️ THE CAN GENUINELY NEVER MOVED, AND IT WAS ARITHMETIC, NOT INTENT.
+##
+## Recorded in RUN 1's own notes and never fixed: `CAN_HOLD_RADIUS` is 0.45 while
+## `ARRIVE_DISTANCE` is 0.6, so **the deadzone was wider than the entire circle the
+## Can was picking points inside.** `_move_toward` therefore released the movement
+## keys on the first frame, every time, and the Can only ever moved when it was
+## evading a throw. Measured on the independence audit: longest still run 7.03 s on
+## `TeamAProp` — the whole sample, minus its dodges.
+##
+## 🧑 Human ask, 2026-07-30: *"make sure ... theyre all capable of movement."* The Can
+## is the unit that was not.
+##
+## The fix is an arrival distance small enough to be inside its own circle, not a
+## bigger circle: the Can must NOT wander off its mark (that is what made round
+## resets look like teleports — see this function's history above), so the circle
+## stays 0.45 and the deadzone shrinks to 0.12. It now shuffles on the mark the way a
+## keeper shifts their weight, which is what "holds its circle" was always supposed
+## to look like.
+const CAN_ARRIVE_DISTANCE: float = 0.12
 
 func _act_can_hold_mark(_delta: float) -> int:
 	_set_held("guard_dash", false)
+	# ⚠️ SHUFFLING PACE. Without this the Can's own fidget makes it unhittable — see
+	# CAN_IDLE_GAIT for the numbers. Deliberately NOT set in _act_evade: a dodge is
+	# still full speed.
+	_gait_want = minf(_gait_want, CAN_IDLE_GAIT)
 	if _repick or not _has_move_target:
 		var angle := _rng.randf() * TAU
-		var radius := _rng.randf() * CAN_HOLD_RADIUS
+		# ⚠️ AT LEAST CAN_ARRIVE_DISTANCE * 2 OUT, or a point drawn near the centre is
+		# already "arrived" and the Can stands still until the next re-pick — the same
+		# bug in a smaller form.
+		var radius := _rng.randf_range(CAN_ARRIVE_DISTANCE * 2.0, CAN_HOLD_RADIUS)
 		_move_target = Vector3(cos(angle) * radius, character.global_position.y,
 			sin(angle) * radius)
 		_has_move_target = true
-	_move_toward(_move_target)
+	_move_toward(_move_target, CAN_ARRIVE_DISTANCE)
 	return BTNode.SUCCESS
 
 ## ---------------------------------------------------------------------------
@@ -1061,7 +1342,58 @@ func _cond_taya_threat_in_melee() -> bool:
 ## `taya_pursue_radius`. The Taya is clamped to CONFINEMENT_RADIUS around the
 ## world origin (character_base.gd::_move_and_confine), so pursuit beyond that
 ## is geometrically pointless regardless of what this returns.
+## ---------------------------------------------------------------------------
+## R-10(c) · THE HONEST MISTAKE. 🧑 The friendslop pillar, directly.
+##
+## Competence and fun are different targets, and a defender that is never once
+## caught out is not a defender a human tells a story about afterwards. So with
+## probability `tier_mistake`, taken on a goal re-pick, the Taya OVERCOMMITS: it
+## abandons its post and charges the attacker even though the attacker is outside
+## `taya_pursue_radius` and it cannot reach it. For that second and a bit the lane is
+## open and the can is unguarded, which is exactly the window a human can learn to
+## bait and punish.
+##
+## ⚠️ IT IS A REAL MISTAKE, NOT A TELL. The Taya really does leave, and really does
+## lose the block. Scaled by tier so BATA does it often enough to be learnable and
+## ASTIG almost never does it (0.22 / 0.09 / 0.02 per re-pick).
+## ---------------------------------------------------------------------------
+## ⚠️ MEASURED AND RETUNED IMMEDIATELY, AND THE FIRST VERSION IS WORTH RECORDING
+## BECAUSE IT IS THE WHOLE TRAP: at 1.3 s with no cooldown and no reach limit, a
+## `tier_mistake` of 0.09 rolled on every 0.35 s re-pick fires about once every four
+## seconds and lasts a third of that, so the "occasional mistake" was a taya that
+## spent 30% of the round sprinting across the arena — and because ANY tag ends the
+## round outright, **the mistake won more rounds than the blocking did.** Measured:
+## rounds ending by tag at 1.9 s and 3.2 s with ZERO throws taken.
+##
+## A mistake has to cost the bot something. Three bounds make it one:
+##   • 0.9 s, which is less than the ~1.2 s it takes to cross from the post to the
+##     throwing line, so an overcommit BREAKS OFF before it arrives;
+##   • a cooldown, so it is an event and not a state;
+##   • a reach limit, so it is a misjudgement about a threat that is genuinely
+##     nearby rather than a decision to cross the whole arena.
+const TAYA_OVERCOMMIT_TIME: float = 0.9
+const TAYA_OVERCOMMIT_COOLDOWN: float = 6.0
+## Only misjudge an attacker this close to us. Beyond it, charging is not a mistake a
+## person would make — it is a different bot.
+const TAYA_OVERCOMMIT_REACH: float = 4.0
+var _taya_overcommit_left: float = 0.0
+var _taya_overcommit_cooldown: float = 0.0
+
 func _cond_taya_threat_in_confinement() -> bool:
+	# Roll the mistake before the geometry, so an overcommit can start from a
+	# perfectly sound blocking position — that is what makes it a mistake.
+	if flavour_enabled and _repick and _taya_overcommit_left <= 0.0 \
+			and _taya_overcommit_cooldown <= 0.0 \
+			and character.global_position.distance_to(_bb_enemy_attacker.global_position) \
+				<= TAYA_OVERCOMMIT_REACH \
+			and _rng.randf() < tier_mistake:
+		_taya_overcommit_left = TAYA_OVERCOMMIT_TIME
+		_taya_overcommit_cooldown = TAYA_OVERCOMMIT_COOLDOWN
+	if _taya_overcommit_left > 0.0:
+		# Committed to the chase. Drop the post: coming back to a stale one after the
+		# mistake is over would hide half of what the mistake cost.
+		_taya_post_valid = false
+		return true
 	if taya_pursue_radius <= 0.0:
 		return false
 	var flat := Vector2(_bb_enemy_attacker.global_position.x, _bb_enemy_attacker.global_position.z)
@@ -1227,6 +1559,58 @@ func _cond_own_tsinelas_loose() -> bool:
 		return false
 	return true
 
+## How close an opposing Person has to be to our loose tsinelas before fetching it
+## is a losing trade. A tag ends the round outright, so "the defender gets there
+## first" is not a race worth entering — it is the round. Slightly outside
+## TAYA_MELEE_RANGE (1.4) plus a Person's own width, so a taya merely passing by does
+## not freeze the attacker out of its own slipper.
+const ATTACKER_FETCH_DANGER: float = 2.4
+static var attacker_fetch_danger: float = ATTACKER_FETCH_DANGER
+
+## Is a defender sitting on our loose tsinelas? BOTH halves matter: close to it AND
+## closer to it than we are. A taya standing on the slipper 5 units from us owns it;
+## the same taya standing on it while we are already a step away does not, and
+## backing off there would hand over a slipper we had won.
+##
+## ⚠️ Reads `_bb_loose_tsinelas`, which `_cond_own_tsinelas_loose` fills immediately
+## before this in the same Sequence — the blackboard rule.
+## ⚠️ WAIT AT THE INNER EDGE OF THE THROWING BAND, NOT AT ARM'S LENGTH FROM THE MAP.
+## The first version of this reused `_act_attacker_hold_standoff`, which retreats to
+## `ATTACKER_THROW_RANGE + ATTACKER_RETREAT_DISTANCE` = 9.0 units — and measured
+## exactly what that predicts: time-to-first-throw went from 0.6 s to 4.8-9.6 s and
+## two rounds in four saw NO THROW AT ALL, because the slipper crawls at
+## CRAWL_SPEED_SCALE and had nearly nine units to cover. Waiting is right; waiting
+## that far away is dead time, which is pillar 4's own failure mode.
+##
+## `attacker_min_throw_range` (4.6) is the correct place to stand: outside the taya's
+## reach (pursuit 1.8 + melee 1.4 = 3.2) and already inside the band this unit wants
+## to throw from, so the moment the slipper arrives it is in position.
+func _act_attacker_wait_for_crawl(_delta: float) -> int:
+	var can := _find_tracked_can()
+	if can == null or not is_instance_valid(can):
+		return _act_attacker_hold_standoff(_delta)
+	var away := character.global_position - can.global_position
+	away.y = 0.0
+	if away.length() < 0.1:
+		away = Vector3.FORWARD
+	_move_toward(can.global_position + away.normalized() * attacker_min_throw_range)
+	return BTNode.RUNNING
+
+func _cond_own_tsinelas_guarded() -> bool:
+	var prop := _bb_loose_tsinelas.get_parent() as CharacterBase
+	if prop == null or not is_instance_valid(prop):
+		return false
+	var ours := character.global_position.distance_to(prop.global_position)
+	for other in _roster():
+		if other == null or not is_instance_valid(other):
+			continue
+		if not other.is_person or other.team == character.team:
+			continue
+		var theirs := other.global_position.distance_to(prop.global_position)
+		if theirs <= attacker_fetch_danger and theirs < ours:
+			return true
+	return false
+
 func _act_attacker_retrieve(_delta: float) -> int:
 	_has_move_target = false
 	var target_char := _bb_loose_tsinelas.get_parent() as CharacterBase
@@ -1236,8 +1620,21 @@ func _act_attacker_retrieve(_delta: float) -> int:
 	if distance > ATTACKER_GRAB_RANGE:
 		_move_toward(target_char.global_position)
 		return BTNode.RUNNING
+	# ⚠️ A TAP EVERY TICK IS NOT A TAP, IT IS A HOLD — AND A HOLD GIVES ONE EDGE.
+	# `_tap()` writes the key pressed and queues its release RELEASE_SETTLE_FRAMES in
+	# the future; calling it again next tick RESETS that countdown, so the key never
+	# came back up, `input_just_pressed("grab")` fired exactly once, and if that first
+	# attempt did not take (the slipper still settling out of FLYING, a scuff, a frame
+	# of stagger) the attacker stood over its own tsinelas pressing a button that
+	# produced no further edges. Measured with the new stillness trace: 4.05 s of a
+	# loose TeamBProp in `tsinelas/stand-down` — arrived, waiting to be picked up —
+	# opposite an attacker parked in `retrieve/fetch`.
+	#
+	# Same shape as the Taya's own TAYA_TAP_INTERVAL, and for the same reason.
 	_release_move(0.0)
-	_tap("grab")
+	if _attacker_grab_cooldown <= 0.0:
+		_attacker_grab_cooldown = ATTACKER_GRAB_INTERVAL
+		_tap("grab")
 	return BTNode.SUCCESS
 
 ## Falls back to standing still (no can currently tracked at all) rather than
@@ -1267,10 +1664,14 @@ func _cond_can_tracked() -> bool:
 		return false
 	return true
 
+## ⚠️ A BAND, NOT A CEILING — see ATTACKER_MIN_THROW_RANGE for the measurement that
+## made this two-sided. Too close is as wrong as too far, and it was the more
+## expensive of the two: too far only delays a throw, too close loses the round.
 func _cond_attacker_out_of_range() -> bool:
 	var to_can := _bb_can.global_position - character.global_position
 	to_can.y = 0.0
-	return to_can.length() > ATTACKER_THROW_RANGE
+	var distance := to_can.length()
+	return distance > ATTACKER_THROW_RANGE or distance < attacker_min_throw_range
 
 func _act_attacker_approach(_delta: float) -> int:
 	_move_toward(_open_throwing_spot(_bb_can))
@@ -1294,6 +1695,49 @@ const CAN_LEAD_FRACTION: float = 0.6
 ## from the profile's own launch speed rather than assumed, so a slow bakya leads
 ## further than a fast flick — which is the behaviour you want and falls out for
 ## free instead of needing a per-profile constant.
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ LEAD THE CAN'S DRIFT, NOT ITS JITTER. THIS IS THE SECOND HALF OF THE BUG THE
+## "CAN THAT NEVER MOVED" FIX EXPOSED, AND IT IS WORTH THE PARAGRAPH.
+##
+## `character_base.gd` NORMALISES an AI unit's movement vector, so a Can shuffling
+## 0.2 units on its mark still has an INSTANTANEOUS velocity of the full `SPEED`
+## (6.0) — in a direction that changes every re-pick. Reading that velocity raw, as
+## this function used to, and extrapolating it over a ~0.5 s flight at `tier_lead`
+## 0.6 aims the throw **1.8 units wide of a target that is not going anywhere.**
+##
+## Measured, and it is the pair of numbers that gave it away: 30 unblocked throws with
+## exactly 1 reaching the can, against `phys_probe`'s 3-in-9 for a clean throw. The
+## throws were not being blocked and were not arriving — they were being aimed at a
+## place the can had no intention of being. Before the Can moved at all this was
+## invisible, because a stationary can has a velocity of zero and the lead term
+## vanished. One fix uncovered the other.
+##
+## So the lead reads a SMOOTHED velocity. A shuffle averages to nearly nothing because
+## its directions cancel; a real evasion sidestep is sustained and survives the
+## average, which is the only motion worth leading in the first place.
+## ---------------------------------------------------------------------------
+
+## Seconds of history the smoothing keeps, roughly. Shorter than a sidestep (which
+## runs for as long as the throw is in the air) and much longer than a shuffle re-pick.
+const CAN_VELOCITY_SMOOTHING: float = 0.35
+## Hard ceiling on the lead, in units. Even a correctly-observed drift should not aim
+## the throw off the can entirely — past this the honest move is to wait for a better
+## moment, and a capped lead degrades to "aim at it", which is never catastrophic.
+const CAN_LEAD_MAX: float = 1.2
+var _can_velocity_ema: Vector3 = Vector3.ZERO
+
+## Ticked from decide() for every controller, whatever its role, so the estimate is
+## already warm on the frame an attacker decides to throw rather than starting from
+## zero at the charge.
+func _track_can_velocity(delta: float) -> void:
+	var can := _find_tracked_can()
+	if can == null or not is_instance_valid(can):
+		_can_velocity_ema = Vector3.ZERO
+		return
+	var alpha: float = clampf(delta / maxf(CAN_VELOCITY_SMOOTHING, 0.001), 0.0, 1.0)
+	var flat := Vector3(can.velocity.x, 0.0, can.velocity.z)
+	_can_velocity_ema = _can_velocity_ema.lerp(flat, alpha)
+
 func _lead_the_can(can: CharacterBase, hold_time: float = -1.0) -> Vector3:
 	var here := character.global_position
 	var mark := can.global_position + Vector3(0.0, 0.25, 0.0)
@@ -1301,8 +1745,75 @@ func _lead_the_can(can: CharacterBase, hold_time: float = -1.0) -> Vector3:
 	if speed <= 0.01:
 		return mark
 	var flight_time := here.distance_to(mark) / speed
-	var drift := Vector3(can.velocity.x, 0.0, can.velocity.z) * flight_time * tier_lead
+	var drift := _can_velocity_ema * flight_time * tier_lead
+	if drift.length() > CAN_LEAD_MAX:
+		drift = drift.normalized() * CAN_LEAD_MAX
 	return mark + drift
+
+## ⚠️ THREAD THE NEEDLE. This is the direct answer to the biggest number in the log:
+## RUN 9 measured 94.7% of 188 throws blocked, RUN 10's committed post brought that
+## to 81.3%, and the remainder is the attacker aiming at the CENTRE of a can that
+## has a defender's body in front of it. `ATTACKER_PATIENCE` exists precisely so the
+## attacker eventually takes the shot anyway — but taking it dead down the middle of
+## an occupied lane is throwing the slipper at the taya, not at the can.
+##
+## So slide the aim point sideways by just enough to clear the body that is in the
+## way: the perpendicular offset needed for the flight line to pass the defender at
+## more than `ATTACKER_LANE_CLEARANCE`, in whichever direction the defender is NOT.
+## Nothing here fakes a hit — the throw still has to reach a can that dodges, and a
+## can whose hurtbox is 0.17 wide is still a small target once you are aiming past
+## its guard. What it stops is the AI feeding a wall on purpose.
+##
+## ⚠️ CAPPED, AND THE CAP IS THE WHOLE THING — MEASURED, THEN CORRECTED FROM 1.1.
+## At 1.1 this "fix" worked exactly as designed and made the game worse: the block
+## rate fell 94.7% -> 23.1% and **`throws that reached the can` stayed at 0 across 20
+## unblocked throws**, because a metre of sideways aim clears the defender and misses
+## the can as well. Two columns that cannot both be good is the tell, same as always.
+##
+## So the cap is the width of a hit, not the width of a body: the can's hurtbox is
+## 0.17 and `throw_flick`'s `hit_radius` is 0.30, so 0.45 is about the last offset
+## that can still connect (the same 0.47 overlap band `CAN_EVADE_MISS_MARGIN`'s own
+## doc derives). Past that, threading is not a shot — it is a miss with extra steps,
+## and the honest answers are the lob (R-06) or another slide. `thread=0` on the probe
+## turns it off entirely so its contribution stays measurable.
+const ATTACKER_THREAD_MAX: float = 0.45
+static var attacker_thread_max: float = ATTACKER_THREAD_MAX
+
+func _thread_past_defender(aim: Vector3) -> Vector3:
+	if _bb_can == null or not is_instance_valid(_bb_can):
+		return aim
+	var blocker := _blocking_defender(_bb_can)
+	if blocker == null:
+		return aim
+	var lane := aim - character.global_position
+	lane.y = 0.0
+	if lane.length() < 0.1:
+		return aim
+	var lane_dir := lane.normalized()
+	var to_blocker := blocker.global_position - character.global_position
+	to_blocker.y = 0.0
+	var along := to_blocker.dot(lane_dir)
+	var side_vec := to_blocker - lane_dir * along
+	var side_distance := side_vec.length()
+	# Which way to go round. If the defender is dead centre the sign is arbitrary, so
+	# take the side the can's own motion is heading for — it is going that way anyway.
+	var perpendicular := Vector3(-lane_dir.z, 0.0, lane_dir.x)
+	if side_distance > 0.01:
+		if perpendicular.dot(side_vec) > 0.0:
+			perpendicular = -perpendicular # away from the body, not through it
+	elif perpendicular.dot(Vector3(_bb_can.velocity.x, 0.0, _bb_can.velocity.z)) < 0.0:
+		perpendicular = -perpendicular
+	var needed: float = ATTACKER_LANE_CLEARANCE - side_distance
+	if needed <= 0.0:
+		return aim
+	# ⚠️ IF THREADING CANNOT CLEAR THE BODY WITHIN THE CAP, DO NOT HALF-THREAD.
+	# A shot offset by the cap when it needed twice that misses the defender AND the
+	# can — strictly worse than feeding the block, because a blocked slipper at least
+	# drops next to the can where it can be fetched again. Aim true and take the block;
+	# the real answer to a lane this well covered is the lob.
+	if needed > attacker_thread_max:
+		return aim
+	return aim + perpendicular * needed
 
 ## The launch speed this unit's slipper will actually use, at the charge this
 ## leaf holds. Read off the held Carriable's own profile so it cannot drift out
@@ -1445,7 +1956,113 @@ func _act_attacker_charge_lob(delta: float) -> int:
 ## SUCCESS on the frame the button is released, which is exactly the throw
 ## event tools/ai_probe.gd's fairness run counts.
 func _act_attacker_charge_release(delta: float) -> int:
-	return _charge_and_release(delta, tier_charge)
+	return _charge_and_release(delta, _flat_hold_time())
+
+## ---------------------------------------------------------------------------
+## R-10(a) and R-10(b) · A THROW THAT VARIES, AND A WIND-UP YOU CAN READ.
+##
+## (a) `ATTACKER_CHARGE_TIME`/`tier_charge` is a single fixed number, so **every AI
+## throw in the history of this project has had identical power.** A human's throws
+## do not. Jittered per throw, drawn once at the start of the charge and held for the
+## whole of it (redrawing per frame would average out to the fixed value and change
+## nothing — which is the kind of no-op that looks implemented and is not).
+##
+## `carrier.gd::charge_power()` is `CHARGE_MIN_POWER + hold/CHARGE_FULL_TIME * (1 -
+## CHARGE_MIN_POWER)`, i.e. 0.35 + hold/0.9 * 0.65. At NORMAL's 0.65 s hold that is
+## power 0.82. A jitter of +/-50% ON THE HOLD gives holds of 0.325..0.975 s, i.e.
+## powers of 0.585..1.0 — **+/-26% around the mean, which clears R-10's own +/-25%
+## acceptance bar** and is not a coincidence: the bar is why the jitter is 0.5 and
+## not the 0.25 that would read as a fixed throw with noise on it.
+##
+## (b) The wind-up is already animated, so the readability problem is only that a
+## 0.325 s hold is over before a human can respond to it. A floor of
+## `ATTACKER_MIN_WINDUP`, scaled by how slowly the tier thinks, keeps every throw on
+## screen long enough to be seen and dodged — and makes BATA the most readable tier,
+## which is the right way round.
+## ---------------------------------------------------------------------------
+
+## Fraction of the tier's hold time the jitter spans, either side.
+const ATTACKER_CHARGE_JITTER: float = 0.5
+static var attacker_charge_jitter: float = ATTACKER_CHARGE_JITTER
+## No throw winds up faster than this, before the tier scaling below. A human needs
+## roughly a third of a second to see a wind-up and start moving.
+const ATTACKER_MIN_WINDUP: float = 0.42
+static var attacker_min_windup: float = ATTACKER_MIN_WINDUP
+## Set once per throw at the start of the charge; -1.0 when not charging.
+var _attacker_hold_target: float = -1.0
+
+func _flat_hold_time() -> float:
+	if _attacker_hold_target > 0.0:
+		return _attacker_hold_target
+	var jitter: float = 1.0
+	if flavour_enabled:
+		jitter = _rng.randf_range(1.0 - attacker_charge_jitter, 1.0 + attacker_charge_jitter)
+	# The readable floor scales with the tier's own thinking speed: BATA (think 0.50)
+	# holds ~1.43x this, ASTIG (0.22) ~0.63x. One number, three difficulties, same
+	# trick R-07's reaction window uses.
+	var floor_time: float = attacker_min_windup * (tier_think / DECISION_INTERVAL) \
+		if flavour_enabled else 0.0
+	_attacker_hold_target = maxf(maxf(tier_charge * jitter, floor_time), _min_hold_to_reach())
+	return _attacker_hold_target
+
+## ⚠️⚠️ THE FLOOR THAT MAKES THE JITTER LEGAL, AND IT COST A WHOLE ITERATION TO FIND.
+##
+## R-10(a)'s charge variance, shipped without this, produced the exact impossible pair
+## of numbers this repo's method note warns about: **the block rate fell to 23.8% and
+## `throws that reached the can` stayed at 0 over 32 unblocked throws**, while
+## `phys_probe target=can` says a clean throw connects 3 times in 9. Both cannot be
+## true. The cause was not the metric this time — it was the change: jittering the
+## hold DOWNWARD produces launch speeds that cannot cover the throwing line at all.
+## `carriable.gd::_solve_arc()` is explicit about what it then does — "no launch angle
+## at this speed reaches that point ... throw along the player's own line and let it
+## fall short". So half the throws were physically incapable of arriving, which reads
+## in the table as an attacker who is not being blocked and is also not scoring.
+##
+## A human learns in two throws that they have to pull it back far enough. So the AI
+## computes the minimum: the shallowest ballistic arc over a flat distance `d` needs
+## `v = sqrt(g * d)` (the 45-degree case), which inverts through `charge_power()` into
+## a hold. The jitter then varies ABOVE that floor, which is what a person's throws
+## actually look like — nobody deliberately throws too short.
+##
+## +8% of margin on the speed, because the can is 0.25 up rather than on the floor and
+## because the arc solver's discriminant goes negative at exactly the boundary.
+const ATTACKER_REACH_MARGIN: float = 1.08
+
+func _min_hold_to_reach() -> float:
+	var can := _bb_can if _bb_can != null and is_instance_valid(_bb_can) else _find_tracked_can()
+	if can == null or not is_instance_valid(can):
+		return 0.0
+	var flat := can.global_position - character.global_position
+	flat.y = 0.0
+	var distance := flat.length()
+	if distance < 0.5:
+		return 0.0
+	var full_speed := _own_launch_speed(Carrier.CHARGE_FULL_TIME) / maxf(_charge_fraction(Carrier.CHARGE_FULL_TIME), 0.01)
+	if full_speed <= 0.01:
+		return 0.0
+	var gravity: float = CharacterBase.GRAVITY * _own_gravity_scale()
+	var needed_speed: float = sqrt(gravity * distance) * ATTACKER_REACH_MARGIN
+	var needed_fraction: float = clampf(needed_speed / full_speed, 0.0, 1.0)
+	if needed_fraction <= Carrier.CHARGE_MIN_POWER:
+		return 0.0
+	# Invert charge_power(): fraction = MIN + hold/FULL * (1 - MIN).
+	return (needed_fraction - Carrier.CHARGE_MIN_POWER) / (1.0 - Carrier.CHARGE_MIN_POWER) \
+		* Carrier.CHARGE_FULL_TIME
+
+## Read off the held slipper's own profile rather than assumed, same contract
+## _own_launch_speed() uses — the .tres files have been retuned twice.
+func _own_gravity_scale() -> float:
+	var carrier := character.get_node_or_null("Carrier") as Carrier
+	if carrier == null:
+		return 1.0
+	var held := carrier.held()
+	if held == null:
+		return 1.0
+	var prop := held.get_parent() as CharacterBase
+	if prop == null or prop.ability == null or not prop.ability.has_method("get_throw_profile"):
+		return 1.0
+	var profile := prop.ability.get_throw_profile() as ThrowProfile
+	return profile.gravity_scale if profile != null else 1.0
 
 func _charge_and_release(delta: float, hold_time: float) -> int:
 	_release_move(0.0)
@@ -1469,7 +2086,7 @@ func _charge_and_release(delta: float, hold_time: float) -> int:
 	# dodges too, so an AI that cannot lead is simply a worse player, and the
 	# evasion values are documented as deliberately sitting "on the hittable side".
 	if _bb_can != null and is_instance_valid(_bb_can):
-		character.ai_aim_point = _lead_the_can(_bb_can, hold_time)
+		character.ai_aim_point = _thread_past_defender(_lead_the_can(_bb_can, hold_time))
 	if not _attacker_charging:
 		_attacker_charging = true
 		_attacker_charge_time = 0.0
@@ -1480,6 +2097,11 @@ func _charge_and_release(delta: float, hold_time: float) -> int:
 	_set_held("special_ability", false)
 	_attacker_charging = false
 	_attacker_charge_time = 0.0
+	# R-10(a): the next throw draws its own power. Cleared here rather than at the
+	# start of the next charge so a charge interrupted by anything at all (a tag, a
+	# round reset, the slipper being knocked loose) does not carry its hold target
+	# into a throw taken half a round later.
+	_attacker_hold_target = -1.0
 	_release_settle_frames = RELEASE_SETTLE_FRAMES
 	# ⚠️ SPEND THE PATIENCE ON THE THROW. Without this reset the timer stays over
 	# ATTACKER_PATIENCE for the rest of the round — it only clears when the lane
@@ -1521,7 +2143,17 @@ func _cond_tsinelas_arrived() -> bool:
 		<= TSINELAS_ARRIVE_DISTANCE
 
 func _act_tsinelas_crawl(_delta: float) -> int:
-	_move_toward(_bb_own_attacker.global_position)
+	_move_toward(_bb_own_attacker.global_position, TSINELAS_ARRIVE_DISTANCE)
+	return BTNode.SUCCESS
+
+## Settle in place rather than freeze — see the `settle` node's own note. Only ever
+## reached while this Prop is not being carried or flown (Carriable.drives_movement()
+## takes over entirely in those states), so it cannot fight the carry.
+func _act_tsinelas_settle(_delta: float) -> int:
+	if _cond_tsinelas_loose():
+		_move_toward(character.global_position, 0.0)
+		return BTNode.SUCCESS
+	_release_move(0.0)
 	return BTNode.SUCCESS
 
 ## ---------------------------------------------------------------------------
@@ -1564,11 +2196,28 @@ const ATTACKER_DODGE_CLOSING_SPEED: float = 0.35
 ## it just walks you out of the arena.
 const ATTACKER_DODGE_STEP: float = 3.0
 
-## The nearest opposing Person that is close enough AND closing fast enough to be
-## worth breaking away from, or null.
+## ⚠️ ARM'S LENGTH. Inside this, a defender is a threat whatever it is doing —
+## including standing perfectly still, which is precisely what `_act_taya_tag` does
+## (it releases movement to tap bump). One `TAYA_MELEE_RANGE` (1.4) plus half a
+## Person's width of margin.
+const ATTACKER_PANIC_RADIUS: float = 1.9
+static var attacker_panic_radius: float = ATTACKER_PANIC_RADIUS
+## How far into its charge a throw counts as committed and will not be aborted even
+## to save the round. Keeps R-10(b)'s readable wind-up honest: a throw a human has
+## already reacted to must still come out.
+const ATTACKER_COMMIT_FRACTION: float = 0.6
+
+## The nearest opposing Person worth breaking away from, or null. TWO bands, and the
+## inner one is the bug fix — see ATTACKER_PANIC_RADIUS:
+##   • inside `attacker_panic_radius`: a threat regardless of closing speed, because a
+##     taya that has stopped moving in order to tag you is the most dangerous state
+##     it has, and the closing-speed test scored it as harmless;
+##   • out to ATTACKER_DODGE_RADIUS: only if genuinely closing, so the attacker does
+##     not flee everything standing near it and never retrieve anything (that failure
+##     is B-124's family, arriving from the opposite direction).
 func _threatening_defender() -> CharacterBase:
 	var best: CharacterBase = null
-	var best_distance := ATTACKER_DODGE_RADIUS
+	var best_distance := maxf(ATTACKER_DODGE_RADIUS, attacker_panic_radius)
 	for other in _roster():
 		if other == null or not is_instance_valid(other):
 			continue
@@ -1579,17 +2228,30 @@ func _threatening_defender() -> CharacterBase:
 		var distance := to_us.length()
 		if distance > best_distance or distance < 0.01:
 			continue
-		# Closing speed along the line between us, from the threat's own velocity.
-		# A taya standing still next to the can is not a reason to abandon a fetch.
-		var closing := other.velocity.dot(to_us.normalized())
-		if closing < ATTACKER_DODGE_CLOSING_SPEED:
-			continue
+		if distance > attacker_panic_radius:
+			# Closing speed along the line between us, from the threat's own velocity.
+			# A taya standing still next to the can is not a reason to abandon a fetch.
+			var closing := other.velocity.dot(to_us.normalized())
+			if closing < ATTACKER_DODGE_CLOSING_SPEED:
+				continue
 		best = other
 		best_distance = distance
 	return best
 
 func _cond_attacker_threatened() -> bool:
 	return _threatening_defender() != null
+
+## A defender within arm's length, and this throw is not already committed. Runs
+## above everything else in the attacker's tree — see the `panic` node's own comment
+## for the measurement that put it there.
+func _cond_attacker_panic() -> bool:
+	if _attacker_charging and _attacker_hold_target > 0.0 \
+			and _attacker_charge_time >= _attacker_hold_target * ATTACKER_COMMIT_FRACTION:
+		return false # the shot is away; taking the tag with it is a fair trade
+	var threat := _threatening_defender()
+	if threat == null:
+		return false
+	return character.global_position.distance_to(threat.global_position) <= attacker_panic_radius
 
 ## Break perpendicular to the threat's approach, on whichever side we are already
 ## off toward — the same commit-to-a-side rule the Can's own evasion uses
@@ -1761,18 +2423,124 @@ func _random_point_in_confinement(inner_fraction: float) -> Vector3:
 ## drives. ⚠️ tools/ai_probe.gd's fairness mode attaches an AIController to the
 ## human's own unit, and has to flip that rig to MOVEMENT for exactly this
 ## reason — see its _take_over_human_slot().
-func _move_toward(target: Vector3) -> void:
+## ---------------------------------------------------------------------------
+## NATURAL MOTION. 🧑 Human ask, 2026-07-30: *"i want the AI's movement to feel
+## natural and not too FAST or mechanical."*
+##
+## ⚠️ WHY IT LOOKED MECHANICAL, stated exactly, because the cause is not "the speed
+## number is too high". `character_base.gd::input_vector()` builds an AI unit's
+## movement from FOUR BOOLEANS and then `_physics_process` NORMALISES the result —
+## so every AI unit moves at exactly `SPEED`, in exactly one of EIGHT compass
+## directions, and changes between them in a single frame. Three separate artefacts
+## fall out of that, and this function is where all three lived:
+##
+##   1. **Instant reversals.** The old code wrote the compass keys straight from the
+##      direction to the target, so a re-picked goal 170 degrees away snapped the
+##      unit's velocity in one frame. Nothing alive turns like that.
+##   2. **Buzzing on the diagonals.** A single hard threshold (`DEAD = 0.15`) means a
+##      heading hovering near it flips a key on and off every few frames. That is
+##      what read as twitchy, and it is also what inflated the start/stop transition
+##      count the independence audit reports (RUN 10: 598-756 transitions per bot).
+##   3. **Always flat out.** Every unit either walks at 6.0 or stands still.
+##
+## The fixes, in the same order, and none of them touches gameplay code:
+##
+##   1. A HEADING that turns at a limited rate (`ai_turn_rate`) toward the direction
+##      wanted, with the compass keys derived from the heading instead of from the
+##      goal. Paths curve; a reversal becomes a turn that takes ~0.4 s.
+##   2. A SCHMITT TRIGGER on each key: it takes `AI_PRESS_ON` to start pressing a
+##      direction and it keeps pressing until the component falls under
+##      `AI_PRESS_OFF`. A heading sitting on a threshold now holds its key instead of
+##      chattering.
+##   3. A GAIT — see `tier_gait` — so a bot walks with purpose rather than sliding at
+##      the engine's maximum.
+## ---------------------------------------------------------------------------
+
+## Radians per second the heading may swing. 8.0 turns a full reversal in ~0.39 s,
+## which reads as a person changing their mind rather than a turret slewing.
+## ⚠️ IT IS A REAL COST, NOT FREE POLISH: for that fraction of a second the unit is
+## still moving the OLD way, so a taya can be beaten by a change of direction it has
+## not finished answering. That is the same thing R-07 does deliberately, arriving
+## from a different direction, and it is why this is a `static var` — if a sweep ever
+## shows the defence losing its post because of it, this is the knob.
+const AI_TURN_RATE: float = 8.0
+static var ai_turn_rate: float = AI_TURN_RATE
+## Schmitt trigger thresholds on each compass key. ON is deliberately well above OFF.
+const AI_PRESS_ON: float = 0.34
+const AI_PRESS_OFF: float = 0.12
+
+## Unit heading this controller is currently walking along, in world space. Persists
+## across a release so resuming a walk continues the turn instead of snapping.
+var _heading: Vector3 = Vector3.ZERO
+
+## ⚠️ NOBODY STANDS PERFECTLY STILL, AND THE OLD CODE MADE EVERYONE DO IT.
+##
+## Arriving used to mean releasing every key, so a taya on its post or an attacker
+## waiting for its slipper to crawl out froze solid — measured at **5.3 s of dead
+## stillness on three of four units**, which is both the thing the independence
+## audit's "< 2 s" bar exists to catch and the thing that makes a bot read as a
+## cardboard cut-out rather than a player. (The bar was catching something real; the
+## per-unit breakdown is what made it obvious that the culprits were units doing
+## exactly what they were told.)
+##
+## So an arrived unit SETTLES instead of freezing: it drifts around its target inside
+## a radius small enough to change nothing tactically. 0.22 units is a quarter of a
+## Person's own width — it shifts weight, it does not reposition.
+const IDLE_SHUFFLE_RADIUS: float = 0.22
+const IDLE_SHUFFLE_ARRIVE: float = 0.08
+var _idle_offset: Vector3 = Vector3.ZERO
+
+func _move_toward(target: Vector3, arrive: float = ARRIVE_DISTANCE) -> void:
 	var offset := target - character.global_position
 	offset.y = 0.0
-	if offset.length() <= ARRIVE_DISTANCE:
-		_release_move(0.0)
+	if offset.length() <= arrive:
+		# Settle rather than freeze. Re-picked on the same slow cadence as every other
+		# goal, so it is a shift of weight every third of a second and not a vibration.
+		var settle := target + _idle_offset - character.global_position
+		settle.y = 0.0
+		# ⚠️ RE-PICK ON ARRIVAL, NOT ONLY ON THE DECISION TICK. Measured with the
+		# stillness trace: waiting for the next re-pick left units motionless for
+		# whole seconds at a time in `hold-post` and `stand-down`, which is the
+		# freeze this whole mechanism exists to remove. Choosing the next spot the
+		# instant the last one is reached keeps the drift continuous.
+		if _repick or _idle_offset.is_zero_approx() or settle.length() <= IDLE_SHUFFLE_ARRIVE:
+			var a := _rng.randf() * TAU
+			var r := _rng.randf_range(IDLE_SHUFFLE_RADIUS * 0.6, IDLE_SHUFFLE_RADIUS)
+			_idle_offset = Vector3(cos(a) * r, 0.0, sin(a) * r)
+			settle = target + _idle_offset - character.global_position
+			settle.y = 0.0
+		if settle.length() < 0.01:
+			_release_move(0.0)
+			return
+		# Settling is a shift of weight, not a dart. See CAN_IDLE_GAIT for the
+		# measurement that made this necessary rather than decorative.
+		_gait_want = minf(_gait_want, IDLE_GAIT)
+		_press_compass(settle.normalized())
 		return
-	var dir := offset.normalized()
-	const DEAD := 0.15
-	_set_held("move_right", dir.x > DEAD)
-	_set_held("move_left", dir.x < -DEAD)
-	_set_held("move_down", dir.z > DEAD)
-	_set_held("move_up", dir.z < -DEAD)
+	_idle_offset = Vector3.ZERO
+	var want := offset.normalized()
+	if _heading.length() < 0.01:
+		_heading = want
+	else:
+		# Turn toward the goal at a bounded rate. signed_angle_to gives the short way
+		# round, so a 179-degree change turns the near way rather than spinning.
+		var step: float = ai_turn_rate * maxf(_last_delta, 1.0 / 60.0)
+		var angle: float = _heading.signed_angle_to(want, Vector3.UP)
+		_heading = _heading.rotated(Vector3.UP, clampf(angle, -step, step)).normalized()
+	_press_compass(_heading)
+
+## Write the four compass keys from a heading, with hysteresis per key.
+func _press_compass(dir: Vector3) -> void:
+	_set_held("move_right", _compass_hold("move_right", dir.x))
+	_set_held("move_left", _compass_hold("move_left", -dir.x))
+	_set_held("move_down", _compass_hold("move_down", dir.z))
+	_set_held("move_up", _compass_hold("move_up", -dir.z))
+
+## One key's Schmitt trigger. Reads the belief `_set_held` already maintains rather
+## than keeping a second copy of it.
+func _compass_hold(base: String, component: float) -> bool:
+	var pressed: bool = bool(_held_actions.get(base, false))
+	return component > (AI_PRESS_OFF if pressed else AI_PRESS_ON)
 
 ## Takes an ignored `delta` so it can double as a BTAction leaf (see
 ## `stand-down` in three branches of the tree) without a one-line wrapper.
