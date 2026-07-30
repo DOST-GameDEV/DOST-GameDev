@@ -42,6 +42,14 @@ var _target_mode := "can"
 var _map_id := &"eskinita"
 ## `-- ballistics` swaps the hit-counting series for the landing-scatter sweep.
 var _ballistics := false
+## `-- lane` (R-06) and `-- bounce` (R-18a). See _run_lane() / _run_bounce().
+var _mode := ""
+## `standoff=` for `-- lane`. Defaults to the AI's own live value rather than
+## restating 2.6, so a swept standoff and a lane measurement cannot disagree.
+var _standoff := AIController.taya_block_standoff
+## `bounce=` / `bounces=` for `-- bounce`. -1 means "sweep, do not pin".
+var _bounce_pin := -1.0
+var _bounces_pin := -1
 var _taya: CharacterBase
 ## How far to the side a `graze` throw aims. Bigger than the target's body
 ## capsule (0.4) so the bodies never touch, smaller than body + hurtbox (0.45)
@@ -60,6 +68,18 @@ func _ready() -> void:
 			_map_id = StringName(token.substr(4))
 		elif token == "ballistics":
 			_ballistics = true
+		elif token == "lane" or token == "bounce":
+			_mode = token
+		elif token.begins_with("standoff="):
+			_standoff = float(token.substr(9))
+		elif token.begins_with("bounces="):
+			_bounces_pin = int(token.substr(8))
+		elif token.begins_with("bounce="):
+			_bounce_pin = float(token.substr(7))
+	if _bounce_pin >= 0.0:
+		Carriable.bounce_damping = _bounce_pin
+	if _bounces_pin >= 0:
+		Carriable.max_bounces = _bounces_pin
 	# ⚠️ MUST happen before Main.tscn is instantiated — main.gd reads
 	# GameLaunch.selected_map_scene() as it builds the world, so setting this
 	# afterwards silently measures Eskinita while claiming to measure the plaza.
@@ -84,6 +104,14 @@ func _ready() -> void:
 	set_physics_process(true)
 	if _ballistics:
 		await _run_ballistics()
+		get_tree().quit(0)
+		return
+	if _mode == "lane":
+		await _run_lane()
+		get_tree().quit(0)
+		return
+	if _mode == "bounce":
+		await _run_bounce()
 		get_tree().quit(0)
 		return
 	# Fire a series of throws straight at the can from the throwing line.
@@ -139,6 +167,7 @@ func _ready() -> void:
 	print("  CAN evasion: moved on %d of %d in-flight frames (%.0f%%), max %.2f from mark" % [_can_move_while_flying, _flying_frames, 100.0*_can_move_while_flying/maxi(_flying_frames,1), _can_max_disp])
 	print("  RESULT: ", "CONTACT RESOLVES" if (_dents_seen > 0 or _state_hits > 0) else "*** NO CONTACT EVER REGISTERED ***")
 	_report_hits_per_throw()
+	_report_the_sky()
 	get_tree().quit(0)
 
 ## Connects to every Hitbox currently under the slipper. Idempotent — both the
@@ -222,7 +251,69 @@ func _report_hits_per_throw() -> void:
 		else "*** FAIL — one throw resolved %d times on a single target (multi-hit bug) ***"
 			% _worst_single_target))
 
+## ⚠️⚠️ THE SKY WATCHDOG — ADDED 2026-07-30 BECAUSE A HUMAN WATCHING A PROBE RUN SAW
+## SOMETHING THIS PROBE COULD NOT REPORT: *"the person and the can started flying to
+## the sky."*
+##
+## Every number this probe printed was about the SLIPPER (`_min_y`, `_max_speed`,
+## `_below_floor`). Nothing in it ever looked at where the other three characters
+## were, so a Person launched 10 m into the air was invisible to a green run — which
+## is trap (b) in this repo's method note, word for word: a probe that never looks at
+## the thing you changed passes anyway.
+##
+## The mechanism is documented and it is B-100's, from the other direction. Writing
+## `global_position` on a PhysicsBody3D updates the scene tree at once and the physics
+## BROADPHASE only at the next server step, so for one frame a teleported body is
+## standing inside another body's stale collider — and Godot's depenetration resolves
+## that by shoving one of them out along the contact normal, which for a stacked pair
+## is straight up. `character_base.gd::begin_spawn_settle()` exists precisely for this
+## and is why the game itself no longer does it; this probe was teleporting four
+## characters per throw without ever calling it.
+##
+## Reported as a MAX and a NAME, not a bool: "someone went up" is not actionable and
+## "TeamAPerson reached y 4.86" is.
+var _sky_watch: Dictionary = {}
+
+func _watch_the_sky() -> void:
+	for c in _main.find_children("*", "CharacterBase", true, false):
+		var ch := c as CharacterBase
+		if ch == null or not is_instance_valid(ch):
+			continue
+		# Anything the probe has deliberately parked off the map (the ballistics sweep
+		# moves the can and the taya to x/z 30-40) is not a launch and is skipped.
+		if absf(ch.global_position.x) > 20.0 or absf(ch.global_position.z) > 25.0:
+			continue
+		# ⚠️ A THROWN SLIPPER IS *SUPPOSED* TO BE IN THE AIR, AND THE FIRST VERSION OF
+		# THIS FLAGGED EVERY LOB AS A LAUNCH (peak y 3.24 = a 2.31 m apex over a 0.90 m
+		# hand, i.e. the mechanic working exactly as measured). A watchdog that fires on
+		# the feature it was added alongside is noise, and noise is how a real launch
+		# gets ignored later.
+		var carriable := ch.get_node_or_null("Carriable") as Carriable
+		if carriable != null and carriable.state == Carriable.CarryState.FLYING:
+			continue
+		var key := String(ch.name)
+		if ch.global_position.y > float(_sky_watch.get(key, -99.0)):
+			_sky_watch[key] = ch.global_position.y
+
+## A Person stands at y 0.90 and apexes at 0.84 on a jump, so 1.80 is comfortably
+## above anything legitimate and well under a real launch.
+const SKY_LIMIT: float = 1.8
+
+func _report_the_sky() -> void:
+	print("\n  --- PEAK HEIGHT PER CHARACTER (the sky watchdog) ---")
+	var bad := 0
+	for key in _sky_watch:
+		var y: float = _sky_watch[key]
+		var flag := ""
+		if y > SKY_LIMIT:
+			flag = "   *** LAUNCHED — nothing in a round should reach this ***"
+			bad += 1
+		print("  %-14s peak y %.2f%s" % [key, y, flag])
+	print("  VERDICT: %s" % ("nobody left the ground unreasonably" if bad == 0
+		else "*** %d character(s) were launched ***" % bad))
+
 func _physics_process(_d: float) -> void:
+	_watch_the_sky()
 	if _slipper == null: return
 	_frames += 1
 	for c in _main.find_children("*", "CharacterBase", true, false):
@@ -358,6 +449,16 @@ const BALLISTIC_THROWS: int = 5
 ## profile can reach the line at a sane charge.
 const CHARGE_STEPS: Array[float] = [0.35, 0.5, 0.65, 0.8, 1.0]
 
+## Teleport a character the way the GAME teleports one. See _watch_the_sky() for what
+## a bare `global_position` write costs and why every placement in this file goes
+## through here now.
+func _place(who: CharacterBase, where: Vector3) -> void:
+	if who == null or not is_instance_valid(who):
+		return
+	who.global_position = where
+	who.velocity = Vector3.ZERO
+	who.begin_spawn_settle()
+
 func _park_everyone() -> void:
 	for c in _main.find_children("*", "CharacterBase", true, false):
 		var ch := c as CharacterBase
@@ -380,9 +481,26 @@ func _park_everyone() -> void:
 ## So the round is FROZEN instead of survived: `round_active` is held true and
 ## the can is kept healthy and NORMAL, so no round ever ends, no role ever swaps,
 ## and the cast resolved at startup stays valid for the whole sweep.
+## ⚠️ AND THE KNOCKDOWN PATH HAD TO BE CLOSED TOO, WHICH THE `-- ballistics` SWEEP
+## NEVER NOTICED BECAUSE IT MOVES THE CAN OUT OF THE ARENA AND NEVER HITS IT.
+## `-- lane` (R-06) deliberately aims AT the can, so it walks straight into three
+## round-win paths the note above does not cover: FALL_LIMIT (4 Downed transitions
+## end the round), the auto-seal when a Downed can's self-right window lapses, and
+## Option A's dent count. Un-tracking the cans closes all three at once —
+## `RoundManager._on_tracked_can_state_changed` and `_on_tracked_can_dents_changed`
+## both return early on an empty list — and it is the ONLY one of the three that is a
+## single call rather than a per-path patch. `main.gd` re-registers on every
+## `round_started`, and no round starts during a sweep, so it stays closed.
+##
+## It changes nothing this probe measures: hit RESOLUTION (hitbox.gd) never consults
+## the tracked list, and the resolved `kind`, the state transition and the knockback
+## all happen exactly as they do in a match.
 func _freeze_round() -> void:
 	RoundManager.round_active = true
 	RoundManager.time_left = 999.0
+	RoundManager.clear_tracked_cans()
+	MatchManager.team_a_wins = 0
+	MatchManager.team_b_wins = 0
 	if _can != null and is_instance_valid(_can):
 		_can.dents = 0
 		if _can.state != CharacterBase.State.NORMAL:
@@ -443,10 +561,35 @@ func _clear_the_arena() -> void:
 	if _taya != null:
 		_taya.global_position = Vector3(30.0, 0.9, 30.0)
 
-## One throw from `origin` at `charge`, aimed at the can. Returns the slipper's
-## resting position, or Vector3.INF if the grab never took (which is a probe
-## failure, not a physics result, and is reported as such rather than averaged in).
-func _ballistic_throw(origin: Vector3, charge: float) -> Vector3:
+## R-06 · WHAT THE BALLISTICS SWEEP HAS TO REPORT NOW, AND WHY IT IS NOT JUST A ROW.
+##
+## The lob's acceptance is a TIME, not a distance: `CAN_EVADE_LOOKAHEAD` is 0.6 s and
+## the arc has to last longer than that or the dodge never gets a chance. The old
+## sweep measured only WHERE a throw lands, so it could not have answered it.
+##
+## ⚠️ AND `eta` IN `AIController._cond_slipper_incoming()` IS FLIGHT TIME, WHICH IS
+## WHY FLIGHT TIME IS THE RIGHT NUMBER TO MEASURE RATHER THAN A PROXY FOR ONE. That
+## function computes `eta := horizontal_distance / horizontal_speed` and ignores the
+## throw entirely when `eta > CAN_EVADE_LOOKAHEAD`. Horizontal speed is constant under
+## gravity, so that expression is EXACTLY time-to-impact for any arc, flat or lobbed —
+## the can's warning is therefore `min(flight_time, 0.6)`. A 0.29 s flat throw gives it
+## 0.29 s; a lob that lasts longer than 0.6 s gives it the full lookahead budget. That
+## is the whole balance clause, and it is a property of the arc, not of the AI.
+##
+## `apex` is here for a different reason: it is the only number that says whether the
+## lob CLEARS a body-block rather than being stopped by it, and it is also the number
+## that would catch a lob fouling map dressing (a sampay line, a wire tangle) — which
+## would show up as a short landing with a bounce, not as an error.
+##
+## One throw from `origin` at `charge`. Returns a Dictionary, not a position, because
+## four numbers now come off one throw and returning Vector3.INF for "the grab never
+## took" was already overloading the one value it did return.
+##   ok           false = probe failure (grab never took), not a physics result
+##   landed       first CONTACT position, not the resting place — see below
+##   flight_time  launch to first contact, in seconds
+##   apex         highest y reached, minus the launch y
+##   angle_deg    the solved launch angle above horizontal
+func _ballistic_throw(origin: Vector3, charge: float, lob: bool = false) -> Dictionary:
 	var carriable := _slipper.get_node("Carriable") as Carriable
 	# ⚠️ RESET TO LOOSE FROM WHATEVER STATE THE LAST THROW LEFT. The first version
 	# of this called only host_land(), which returns early unless the state is
@@ -461,19 +604,37 @@ func _ballistic_throw(origin: Vector3, charge: float) -> Vector3:
 	# swaps mid-sweep. See _freeze_round's doc for what that was costing.
 	_freeze_round()
 	await get_tree().physics_frame
-	_attacker.global_position = origin
-	_attacker.velocity = Vector3.ZERO
-	await get_tree().physics_frame
+	# ⚠️ `begin_spawn_settle()`, NOT A BARE TELEPORT. See _watch_the_sky() — a
+	# teleported body spends one frame inside whatever was already there and gets
+	# depenetrated straight up. This is the same call `main.gd::_place_at_spawn` makes
+	# for exactly this reason, and the probe was the last place still teleporting
+	# without it.
+	_place(_attacker, origin)
+	for settle in CharacterBase.SPAWN_SETTLE_FRAMES + 1:
+		await get_tree().physics_frame
 	# Same path the real game takes — loose, grabbed, thrown. Anything that skips
 	# the grab tests a state the game never reaches (see the main series above).
+	#
+	# ⚠️ PLACED AND GRABBED IN ONE FRAME GAP, DELIBERATELY. The slipper lands 0.4 m
+	# from the attacker and their capsules are 0.20 + 0.40 = 0.60 wide, so they
+	# INTERPENETRATE on placement by design (the slipper has to be in reach). Letting a
+	# physics step run in between is what shoves the attacker; `host_grab` disables the
+	# slipper's own collision (`_set_physics_enabled(false)`), so grabbing first means
+	# there is never an overlapping pair for the broadphase to resolve.
 	_slipper.global_position = origin + Vector3(0.4, 0.3, 0.0)
 	_slipper.velocity = Vector3.ZERO
-	await get_tree().physics_frame
 	carriable.host_grab(_attacker)
 	await get_tree().physics_frame
 	if carriable.state != Carriable.CarryState.CARRIED:
-		return Vector3.INF
-	carriable.host_throw(_aim_point, charge)
+		return {"ok": false}
+	var launch_y := _slipper.global_position.y
+	carriable.host_throw(_aim_point, charge, lob)
+	# Read the SOLVED angle off the launch velocity the throw actually produced,
+	# rather than re-deriving it from the quadratic here. A probe that recomputes the
+	# thing under test cannot catch the thing under test being wrong.
+	var launch_v: Vector3 = carriable._flight_velocity
+	var launch_flat := Vector2(launch_v.x, launch_v.z).length()
+	var angle_deg: float = rad_to_deg(atan2(launch_v.y, maxf(launch_flat, 0.0001)))
 	# ⚠️ FIRST CONTACT, NOT THE RESTING PLACE — AND `is_on_floor()` CANNOT FIND IT.
 	#
 	# The first version waited for the FLYING state to end and took the position
@@ -495,14 +656,31 @@ func _ballistic_throw(origin: Vector3, charge: float) -> Vector3:
 	var guard := 0
 	var bounces_before: int = carriable._bounces_left
 	var landed := Vector3.INF
-	while carriable.state == Carriable.CarryState.FLYING and guard < 400:
+	var apex := launch_y
+	var flight_time := 0.0
+	# ⚠️ FLIGHT TIME IS TAKEN FROM THE FLIGHT CODE'S OWN CLOCK, NOT FROM A FRAME
+	# COUNT HERE. `_flight_time` is what `_step_flying` integrates and what
+	# MAX_FLIGHT_TIME is checked against, so it cannot drift from the thing being
+	# measured — and a frame count would silently be wrong under any time scale,
+	# which is the exact shape of the `Engine.time_scale` fault that made every
+	# fairness number recorded at `scale=4` actually a scale-1 number.
+	while carriable.state == Carriable.CarryState.FLYING and guard < 800:
 		await get_tree().physics_frame
 		guard += 1
+		apex = maxf(apex, _slipper.global_position.y)
 		if landed == Vector3.INF and carriable._bounces_left < bounces_before:
 			landed = _slipper.global_position
+			flight_time = carriable._flight_time
 	if landed == Vector3.INF:
 		landed = _slipper.global_position
-	return landed
+		flight_time = carriable._flight_time
+	return {
+		"ok": true,
+		"landed": landed,
+		"flight_time": flight_time,
+		"apex": apex - launch_y,
+		"angle_deg": angle_deg,
+	}
 
 func _run_ballistics() -> void:
 	# Cast resolved ONCE — the round is frozen below, so no role ever swaps and
@@ -529,46 +707,434 @@ func _run_ballistics() -> void:
 			% [label, profile.launch_speed, profile.arc_angle_deg, profile.gravity_scale])
 		for line_z in THROWING_LINES:
 			var origin := Vector3(_aim_point.x, 0.9, _aim_point.z + line_z)
-			var misses: Array[float] = []
-			var lands: Array[Vector3] = []
-			var failed := 0
-			for i in BALLISTIC_THROWS:
-				var rest: Vector3 = await _ballistic_throw(origin, 1.0)
-				if rest == Vector3.INF:
-					failed += 1
-					continue
-				lands.append(rest)
-				misses.append(Vector2(rest.x - _aim_point.x, rest.z - _aim_point.z).length())
-			if lands.is_empty():
-				print("    line z=%+.1f : *** NO THROW LAUNCHED (%d grab failures) ***"
-					% [line_z, failed])
-				continue
-			# Scatter, reported as spread about the MEAN LANDING POINT rather than
-			# about the can — a throw that consistently lands 2 m short is precise
-			# and wrong, and averaging those two together would hide it.
-			var mean := Vector3.ZERO
-			for p in lands:
-				mean += p
-			mean /= float(lands.size())
-			var spread := 0.0
-			for p in lands:
-				spread = maxf(spread, Vector2(p.x - mean.x, p.z - mean.z).length())
-			var mean_miss := _sum_of(misses) / float(misses.size())
+			# R-06: the same cell measured twice, FLAT then LOB. Deliberately side by
+			# side on adjacent lines of output rather than in two separate tables —
+			# the whole claim is a comparison ("steeper arc, longer flight, same
+			# landing point"), and a comparison split across two runs is one nobody
+			# checks. The flat row is also the row that must still match the
+			# 2026-07-29 baseline, which is the regression test on the root
+			# selection: if picking the minus root explicitly changed the flat
+			# throw at all, the mechanic broke the game it was added to.
+			for lob in [false, true]:
+				await _ballistic_cell(origin, line_z, lob)
 			var reach_charge := await _reach_floor(origin)
-			print("    line z=%+.1f : landed (%.2f, %.2f) | mean miss from can %.2f m | scatter %.2f m | reach floor %s%s"
-				% [line_z, mean.x, mean.z, mean_miss, spread,
-					("%.0f%% charge" % (reach_charge * 100.0)) if reach_charge > 0.0 else "*** NEVER REACHES ***",
-					"" if failed == 0 else "  (%d grab failures)" % failed])
+			print("        reach floor (flat) : %s"
+				% [("%.0f%% charge" % (reach_charge * 100.0)) if reach_charge > 0.0
+					else "*** NEVER REACHES ***"])
+
+## One cell of the sweep: BALLISTIC_THROWS identical throws, reported as a mean
+## landing plus the spread about it. Scatter is measured about the MEAN LANDING POINT
+## rather than about the can — a throw that consistently lands 2 m short is precise
+## and wrong, and averaging those two together would hide it.
+func _ballistic_cell(origin: Vector3, line_z: float, lob: bool) -> void:
+	var misses: Array[float] = []
+	var lands: Array[Vector3] = []
+	var times: Array[float] = []
+	var apexes: Array[float] = []
+	var angles: Array[float] = []
+	var failed := 0
+	for i in BALLISTIC_THROWS:
+		var shot: Dictionary = await _ballistic_throw(origin, 1.0, lob)
+		if not shot.get("ok", false):
+			failed += 1
+			continue
+		var rest: Vector3 = shot["landed"]
+		lands.append(rest)
+		times.append(shot["flight_time"])
+		apexes.append(shot["apex"])
+		angles.append(shot["angle_deg"])
+		misses.append(Vector2(rest.x - _aim_point.x, rest.z - _aim_point.z).length())
+	var label := "LOB " if lob else "flat"
+	if lands.is_empty():
+		print("    line z=%+.1f %s: *** NO THROW LAUNCHED (%d grab failures) ***"
+			% [line_z, label, failed])
+		return
+	var mean := Vector3.ZERO
+	for p in lands:
+		mean += p
+	mean /= float(lands.size())
+	var spread := 0.0
+	for p in lands:
+		spread = maxf(spread, Vector2(p.x - mean.x, p.z - mean.z).length())
+	var n := float(lands.size())
+	var mean_time := _sum_of(times) / n
+	# ⚠️ THE ACCEPTANCE TEST, EVALUATED IN THE PROBE RATHER THAN BY EYE. The bar is
+	# `flight_time > CAN_EVADE_LOOKAHEAD`, and a verdict printed beside the number is
+	# what stops a later reader inferring the wrong one from a table.
+	var evade := "dodge gets %s" % [
+		"THE FULL 0.60 s LOOKAHEAD" if mean_time > AIController.CAN_EVADE_LOOKAHEAD
+		else "only %.2f s" % mean_time]
+	print("    line z=%+.1f %s: landed (%.2f, %.2f) | miss %.2f m | scatter %.2f m | angle %.1f deg | flight %.3f s | apex %.2f m | %s%s"
+		% [line_z, label, mean.x, mean.z, _sum_of(misses) / n, spread,
+			_sum_of(angles) / n, mean_time, _sum_of(apexes) / n, evade,
+			"" if failed == 0 else "  (%d grab failures)" % failed])
+
+## ---------------------------------------------------------------------------
+## R-06 · THE CONTESTED LANE — `-- lane`. THE TRIANGLE, MEASURED AS A 2x2.
+##
+## The item's acceptance bar is a contact rate against a taya parked in the lane, and
+## R-06 is explicit that the lob must NOT be a strictly better shot: "the lob beats
+## the taya, the dodge beats the lob, the flat throw beats the dodge." That is three
+## claims, and a single contact number for the lob answers only the first of them —
+## it would pass identically for a lob that is simply better at everything, which is
+## the outcome the item says to revert rather than ship.
+##
+## So all four cells are measured in one run, from one harness, and the triangle
+## either appears in the table or it does not:
+##
+##                    | taya blocks, can PARKED | taya blocks, can DODGING
+##     flat throw     |  (a) the 92% wall       |  (c)
+##     LOB            |  (b) >= 40% is the bar  |  (d) must fall well below (b)
+##
+##   (b) > (a)  — the lob beats the body-block.        R-06's stated acceptance.
+##   (d) < (b)  — the can's dodge beats the lob.       The balance clause.
+##   (c) vs (d) — the flat throw's own dodge exposure, i.e. whether the flat throw
+##                is the better answer once the can is the thing in the way. This is
+##                the corner nobody would have measured, and it is the one that says
+##                the two throws are genuinely different tools rather than ranked.
+##
+## ⚠️ WHY THE CAN IS PARKED IN (a)/(b) AND NOT IN (c)/(d). A parked can isolates the
+## BLOCK; a live one measures block-and-dodge together, and the ballistics sweep's
+## own fault #4 is the standing example of two populations averaged into one
+## meaningless mean. Parking is `ai_controller = null`, i.e. the same mechanism
+## `_park_everyone()` already uses.
+##
+## ⚠️ THE TAYA IS RE-PLACED BEFORE EVERY THROW, AND THAT IS NOT TIDINESS. A flat throw
+## that hits it delivers real knockback (`apply_knockback` writes velocity and the
+## ordinary move_and_slide carries it), so an unmoved taya walks itself out of the
+## lane over a dozen throws and the later throws in a cell are measuring a lane that
+## is no longer blocked — a cell that drifts from (a) toward an unblocked lane while
+## still being labelled (a).
+## ---------------------------------------------------------------------------
+
+## Throws per cell. Four cells, and a lob is ~1.7 s of flight against a flat throw's
+## ~0.29, so this is the wall-clock knob — see BALLISTIC_THROWS' own note.
+const LANE_THROWS: int = 10
+## Where the parked taya stands, as a fraction of the way from the can to the
+## attacker. Overridden by `standoff=`; the default comes off the AI's live value.
+var _lane_hits := 0
+var _lane_blocked := 0
+var _lane_target: CharacterBase = null
+var _lane_blocker: CharacterBase = null
+
+## Counts, per throw, whether the CAN was struck and whether the TAYA was struck.
+## ⚠️ Attributed by WHICH CHARACTER the hitbox resolved on, not inferred from the
+## flight ending — a throw stopped by the taya and a throw that fell short both end
+## the flight, and calling both "blocked" would flatter the lob for free.
+func _on_lane_landed_on(target: CharacterBase) -> void:
+	if target == null:
+		return
+	if target == _lane_target:
+		_lane_hits += 1
+	elif target == _lane_blocker:
+		_lane_blocked += 1
+
+func _run_lane() -> void:
+	# ⚠️ THE CAN'S CONTROLLER IS CAPTURED FROM THE FIELD, BEFORE PARKING NULLS IT.
+	# The first version looked it up as `get_node_or_null("AIController")` and got null
+	# every time — `main.gd::_attach_ai` does `AIController.new()` + `add_child()` with
+	# no explicit name, so Godot auto-names the node and the path is not the class name.
+	# It failed SILENTLY into "the can does not dodge", which would have made the two
+	# cells that test R-06's balance clause quietly measure nothing. The probe now says
+	# so out loud instead (see the warning below the table).
+	var can_ai: AIController = null
+	for c in _main.find_children("*", "CharacterBase", true, false):
+		var ch := c as CharacterBase
+		if ch.is_can:
+			can_ai = ch.ai_controller
+	# Cast resolved once, then the round held open — same contract the ballistics
+	# sweep documents at length in _freeze_round().
+	_park_everyone()
+	_freeze_round()
+	await get_tree().physics_frame
+	if _can == null or _taya == null or _attacker == null or _slipper == null:
+		print("LANE: incomplete cast (can/taya/attacker/slipper) — nothing to measure")
+		return
+	_lane_target = _can
+	_lane_blocker = _taya
+	var can_mark := Vector3(0.0, _can.global_position.y, 0.0)
+	var line := Vector3(0.0, 0.9, THROWING_LINES[0])
+	print("\n=== CONTESTED LANE (R-06) ===")
+	print("  map            : %s" % _map_id)
+	print("  throwing line  : z = %.1f   (%d throws per cell, full charge)"
+		% [line.z, LANE_THROWS])
+	print("  taya standoff  : %.2f from the can, parked ON the lane" % _standoff)
+	print("  can mark       : (%.2f, %.2f, %.2f)" % [can_mark.x, can_mark.y, can_mark.z])
+	print("  mode           : %s" % ("OPTION_A (dents)" if GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A else "OPTION_B (downed/seal)"))
+	print("")
+	print("  %-6s %-8s %-8s %8s %8s %8s   %s" % [
+		"throw", "lane", "can", "contact", "blocked", "neither", "detail"])
+	var results: Dictionary = {}
+	# ⚠️ EIGHT CELLS, AND THE THIRD AXIS IS WHY. The first version of this ran only the
+	# four cells with the lane BLOCKED, and leg 3 of the triangle came out unmeasurable:
+	# with a taya on the lane the flat throw scores 0% whether the can dodges or not
+	# (the block stops it before the can is even relevant), so "the flat throw beats the
+	# dodge" had nothing to compare against — 0% vs 0% is a tie at zero, not a
+	# domination, and reading it as one would have condemned the mechanic for the
+	# harness's fault. The OPEN-lane pair is the only place that claim lives.
+	for blocked in [true, false]:
+		for lob in [false, true]:
+			for dodging in [false, true]:
+				var rate := await _lane_cell(can_mark, line, lob, dodging, blocked, can_ai)
+				results["%s/%s/%s" % [
+					"lob" if lob else "flat",
+					"blocked" if blocked else "open",
+					"dodge" if dodging else "park"]] = rate
+	print("")
+	if can_ai == null:
+		print("  ⚠️ THE CAN HAS NO AIController — the two 'dodging' cells measured a")
+		print("     PARKED can and the balance clause is therefore UNMEASURED here.")
+	_lane_verdict(results)
+	_report_the_sky()
+
+## One cell. Returns the contact rate on the can, 0..1.
+func _lane_cell(can_mark: Vector3, line: Vector3, lob: bool, dodging: bool,
+		blocked: bool, can_ai: AIController) -> float:
+	var carriable := _slipper.get_node("Carriable") as Carriable
+	var hits := 0
+	# Named `stopped`, not `blocked` — `blocked` is this cell's own axis (is there a body
+	# on the lane at all) and shadowing it with the outcome counter is how a table ends
+	# up labelling its rows from its results.
+	var stopped := 0
+	var neither := 0
+	for i in LANE_THROWS:
+		# Reset the world to the identical starting geometry every throw. Everything
+		# here is a re-placement, not a state change, so no code path under test is
+		# skipped: the slipper still goes LOOSE -> CARRIED -> FLYING through the real
+		# host transitions below.
+		if carriable.state == Carriable.CarryState.CARRIED:
+			carriable.host_drop()
+		elif carriable.state == Carriable.CarryState.FLYING:
+			carriable.host_land()
+		_freeze_round()
+		_can.state = CharacterBase.State.NORMAL
+		_place(_can, can_mark)
+		# The can dodges only in the (c)/(d) cells. Detaching and re-attaching the
+		# controller is the same lever _park_everyone() pulls.
+		_can.ai_controller = can_ai if dodging else null
+		# The blocker, on the lane, standoff out from the can toward the thrower.
+		var bearing := (line - can_mark)
+		bearing.y = 0.0
+		bearing = bearing.normalized()
+		_taya.ai_controller = null
+		_taya.input_parked = true
+		_taya.state = CharacterBase.State.NORMAL
+		# BLOCKED: on the lane, standoff out from the can. OPEN: still on the field and
+		# still inside its own confinement square (CONFINEMENT_RADIUS 5.0), just off the
+		# lane — moved sideways rather than deleted, so the two cells differ ONLY in
+		# whether the body is in the way.
+		var post := can_mark + bearing * _standoff if blocked \
+			else can_mark + bearing.cross(Vector3.UP) * (CharacterBase.CONFINEMENT_RADIUS - 0.2)
+		_place(_taya, post + Vector3(0.0, 0.9 - can_mark.y, 0.0))
+		_place(_attacker, line)
+		# ⚠️ SETTLE BEFORE MEASURING. Four bodies were just teleported; without this the
+		# broadphase resolves the overlaps by launching them, which is the very thing a
+		# human spotted watching a run of this probe. See _watch_the_sky().
+		for settle in CharacterBase.SPAWN_SETTLE_FRAMES + 1:
+			await get_tree().physics_frame
+		# ⚠️⚠️ RELEASE PHASE IS JITTERED PER THROW, AND WITHOUT IT A CELL IS ONE COIN
+		# FLIP REPORTED AS TEN.
+		#
+		# `AIController`'s own note on CAN_EVADE_LOOKAHEAD says the sweep is
+		# non-monotonic "because those throws are identical and the outcome turns on
+		# exact sidestep phase". Every throw in a cell here IS identical — same
+		# geometry, same charge, same frame offsets — so the can's dodge timer sits at
+		# the same phase every time and all ten throws resolve the same way. The first
+		# run of this table duly returned 0/10 and 10/10 and nothing in between, which
+		# is not a contact rate, it is one sample with a misleading denominator.
+		#
+		# 3 frames per throw spans 450 ms over ten throws, comfortably more than one
+		# sidestep cycle. The wait happens with the can's controller LIVE, so it is the
+		# AI's own state that advances rather than a number being perturbed.
+		for phase in i * 3:
+			await get_tree().physics_frame
+		# Placed and grabbed in one frame gap — see _ballistic_throw's own note.
+		_slipper.global_position = line + Vector3(0.4, 0.3, 0.0)
+		_slipper.velocity = Vector3.ZERO
+		carriable.host_grab(_attacker)
+		await get_tree().physics_frame
+		if carriable.state != Carriable.CarryState.CARRIED:
+			neither += 1
+			continue
+		_lane_hits = 0
+		_lane_blocked = 0
+		# ⚠️ ARMED AFTER THE THROW, NOT BEFORE — the pulse hitbox does not exist until
+		# _rpc_set_flying runs inside host_throw. Arming before is precisely the bug
+		# that made ai_probe report zero hits for every run it ever recorded.
+		carriable.host_throw(can_mark + Vector3(0.0, 0.25, 0.0), 1.0, lob)
+		_watch_lane_hitboxes()
+		# Long enough for a lob (measured ~1.7 s) plus its bounce and settle.
+		var guard := 0
+		while carriable.state == Carriable.CarryState.FLYING and guard < 240:
+			await get_tree().physics_frame
+			guard += 1
+		await get_tree().create_timer(0.2).timeout
+		if _lane_hits > 0:
+			hits += 1
+		elif _lane_blocked > 0:
+			stopped += 1
+		else:
+			neither += 1
+	var rate := float(hits) / float(LANE_THROWS)
+	print("  %-6s %-8s %-8s %7.0f%% %7.0f%% %7.0f%%   %s" % [
+		"LOB" if lob else "flat", "blocked" if blocked else "open",
+		"dodging" if dodging else "parked",
+		rate * 100.0, 100.0 * stopped / LANE_THROWS, 100.0 * neither / LANE_THROWS,
+		"%d/%d on the can, %d stopped by the taya" % [hits, LANE_THROWS, stopped]])
+	return rate
+
+func _watch_lane_hitboxes() -> void:
+	if _slipper == null or not is_instance_valid(_slipper):
+		return
+	for hb in _slipper.find_children("*", "Hitbox", true, false):
+		var box := hb as Hitbox
+		if not box.landed_on.is_connected(_on_lane_landed_on):
+			box.landed_on.connect(_on_lane_landed_on)
+
+## ⚠️ THREE PASS/FAIL LINES, NOT ONE. R-06's own acceptance is only the first; the
+## other two are the difference between shipping a third corner and shipping a
+## strictly better shot, and the item says the second outcome is a REVERT.
+func _lane_verdict(r: Dictionary) -> void:
+	var flat_block: float = r.get("flat/blocked/park", 0.0)
+	var lob_block: float = r.get("lob/blocked/park", 0.0)
+	var lob_block_dodge: float = r.get("lob/blocked/dodge", 0.0)
+	var flat_open_dodge: float = r.get("flat/open/dodge", 0.0)
+	var lob_open_dodge: float = r.get("lob/open/dodge", 0.0)
+	var lob_open_park: float = r.get("lob/open/park", 0.0)
+	print("  --- THE TRIANGLE, LEG BY LEG ---")
+	print("  1. THE LOB BEATS THE TAYA   : lane blocked, can parked — lob %.0f%% vs flat %.0f%%"
+		% [lob_block * 100.0, flat_block * 100.0])
+	print("       -> %s" % ["PASS (R-06's bar is >= 40%)" if lob_block >= 0.40
+		else "*** FAIL — the lob does not get over the block ***"])
+	print("  2. THE DODGE BEATS THE LOB  : lob %.0f%% against a dodging can vs %.0f%% parked"
+		% [lob_open_dodge * 100.0, lob_open_park * 100.0])
+	print("       -> %s" % ["PASS (the dodge costs the lob its contact)"
+		if lob_open_dodge < lob_open_park
+		else "*** FAIL — the can's evasion does not touch the lob ***"])
+	print("  3. THE FLAT THROW BEATS THE DODGE : open lane, dodging can — flat %.0f%% vs lob %.0f%%"
+		% [flat_open_dodge * 100.0, lob_open_dodge * 100.0])
+	print("       -> %s" % ["PASS (the flat throw owns a corner the lob does not)"
+		if flat_open_dodge > lob_open_dodge
+		else "*** FAIL — the flat throw does not own its corner. SEE THE NOTE BELOW ***"])
+	if flat_open_dodge <= lob_open_dodge:
+		# ⚠️ WHERE THIS FAILURE LIVES, BECAUSE "REVERT" IS THE WRONG READING OF IT AND
+		# THE ITEM'S OWN REVERT CLAUSE IS CONDITIONED ON THE MECHANIC HAVING FAILED.
+		#
+		# The mechanic passes its two stated bars. What fails is the third leg, and the
+		# cause is not the lob's ballistics — it is the SHAPE of the can's evasion.
+		# `AIController._act_can_evade` sidesteps LATERALLY (its own note: "it dodges
+		# sideways, not backwards"), and CAN_EVADE_STEP is 1.2 m against an overlap band
+		# of ~0.52 m. A lateral step of twice the band is a complete answer to something
+		# arriving flat and a poor answer to something arriving nearly vertically — you
+		# cannot sidestep out from under a drop. So the dodge beats the FLAT throw more
+		# thoroughly than it beats the lob, which inverts the intended triangle.
+		#
+		# That is one behaviour in one file, and it is not this lane's: the fix is for the
+		# can to answer a lob differently from a flat throw (step toward the thrower and
+		# under the arc, or spend the extra warning on Guard, which blocks outright).
+		# `Carriable.flight_is_lob` is replicated to every peer precisely so that
+		# decision can be made without re-deriving it from the trajectory.
+		print("")
+		print("  ⚠️ DIAGNOSIS — this is the CAN'S DODGE, not the lob's ballistics.")
+		print("     The lob passes legs 1 and 2. Leg 3 fails because")
+		print("     AIController._act_can_evade sidesteps LATERALLY (CAN_EVADE_STEP 1.2 m")
+		print("     against a ~0.52 m overlap band), which is a perfect answer to a flat")
+		print("     throw and a poor one to a vertical drop. Handover for the BALANCE lane:")
+		print("     have the can answer `Carriable.flight_is_lob` differently — step under")
+		print("     the arc, or spend the extra warning on Guard. Do NOT revert the lob on")
+		print("     this row alone; nothing here is a property of the arc.")
+	print("  (for reference, blocked lane + dodging can: lob %.0f%% — both defences at once)"
+		% [lob_block_dodge * 100.0])
 
 ## Lowest charge whose throw lands within REACH_TOLERANCE of the can. This is the
 ## measured replacement for §9's computed "charge needed for a 6.0 line" column.
 const REACH_TOLERANCE: float = 1.0
 
+## ---------------------------------------------------------------------------
+## R-18(a) · BOUNCE AND LANDING — `-- bounce`. WHAT WAS NEVER MEASURED.
+##
+## `BOUNCE_DAMPING` went 0.45 -> 0.30 and `MAX_BOUNCES` 2 -> 1 in a single pass, off
+## one feedback sentence ("ragdolls while flying"), and neither has been judged since.
+## Both are now `static var` so they can be swept from here; the `const` beside each
+## stays as the documented baseline.
+##
+## ⚠️ THE QUESTION IS NOT "HOW BOUNCY DOES IT LOOK", WHICH IS A FEEL CALL THIS PROBE
+## CANNOT ANSWER AND MUST NOT PRETEND TO. What it CAN answer is the gameplay
+## consequence, which is a distance: how far past its first contact the slipper ends
+## up. That distance IS the retrieval scramble — `carriable.gd`'s own header calls the
+## scramble "the whole tension of the game", and CRAWL_SPEED_SCALE is 0.45, so every
+## extra metre of skid is more than two metres' worth of crawl for the Prop player and
+## a longer exposed run for the Person. A bounce setting is therefore a balance number
+## wearing a cosmetic hat, and the table below is the part of it that is measurable.
+##
+## Reported per setting: first-contact-to-rest distance, and the settle time. The
+## human's call is which row reads as "bounces a bit" rather than as a physics bug —
+## that is the half nobody but a person can supply, and it is asked, not guessed.
+## ---------------------------------------------------------------------------
+
+const BOUNCE_DAMPINGS: Array[float] = [0.0, 0.15, 0.30, 0.45, 0.60]
+const BOUNCE_COUNTS: Array[int] = [1, 2]
+const BOUNCE_THROWS: int = 4
+
+func _run_bounce() -> void:
+	_clear_the_arena()
+	_freeze_round()
+	await get_tree().physics_frame
+	var origin := Vector3(_aim_point.x, 0.9, _aim_point.z + THROWING_LINES[0])
+	print("\n=== BOUNCE AND LANDING (R-18a) ===")
+	print("  map            : %s" % _map_id)
+	print("  profile        : throw_default (every Prop today, per B-76)")
+	print("  throw          : full charge from z=%+.1f at the can's mark, %d per cell"
+		% [THROWING_LINES[0], BOUNCE_THROWS])
+	print("  BASELINE IS damping 0.30 / bounces 1 — the shipped values.")
+	print("")
+	print("  %-8s %-8s %10s %10s %10s" % [
+		"damping", "bounces", "skid (m)", "settle (s)", "worst (m)"])
+	_apply_profile("")
+	await get_tree().physics_frame
+	for bounces in BOUNCE_COUNTS:
+		for damping in BOUNCE_DAMPINGS:
+			Carriable.bounce_damping = damping
+			Carriable.max_bounces = bounces
+			var skids: Array[float] = []
+			var settles: Array[float] = []
+			for i in BOUNCE_THROWS:
+				var shot: Dictionary = await _ballistic_throw(origin, 1.0)
+				if not shot.get("ok", false):
+					continue
+				var first: Vector3 = shot["landed"]
+				var t0: float = shot["flight_time"]
+				# The flight is already over by the time _ballistic_throw returns (it
+				# waits out FLYING), so the resting place is where the slipper is now.
+				var rest := _slipper.global_position
+				skids.append(Vector2(rest.x - first.x, rest.z - first.z).length())
+				var carriable := _slipper.get_node("Carriable") as Carriable
+				settles.append(maxf(0.0, carriable._flight_time - t0))
+			if skids.is_empty():
+				print("  %-8.2f %-8d %10s" % [damping, bounces, "no throws"])
+				continue
+			var worst := 0.0
+			for s in skids:
+				worst = maxf(worst, s)
+			print("  %-8.2f %-8d %10.3f %10.3f %10.3f%s" % [
+				damping, bounces, _sum_of(skids) / float(skids.size()),
+				_sum_of(settles) / float(settles.size()), worst,
+				"   <-- SHIPPED" if is_equal_approx(damping, Carriable.BOUNCE_DAMPING)
+					and bounces == Carriable.MAX_BOUNCES else ""])
+	# ⚠️ PUT THEM BACK. These are `static`, i.e. process-wide, and a probe that leaves
+	# a swept value behind is a probe that has silently retuned the game.
+	Carriable.bounce_damping = Carriable.BOUNCE_DAMPING
+	Carriable.max_bounces = Carriable.MAX_BOUNCES
+	print("\n  restored to shipped: damping %.2f / bounces %d"
+		% [Carriable.bounce_damping, Carriable.max_bounces])
+	print("  🧑 WHICH ROW READS AS 'BOUNCES A BIT' IS A FEEL CALL AND IS ASKED, NOT GUESSED.")
+
 func _reach_floor(origin: Vector3) -> float:
 	for charge in CHARGE_STEPS:
-		var rest: Vector3 = await _ballistic_throw(origin, charge)
-		if rest == Vector3.INF:
+		var shot: Dictionary = await _ballistic_throw(origin, charge)
+		if not shot.get("ok", false):
 			continue
+		var rest: Vector3 = shot["landed"]
 		var miss := Vector2(rest.x - _aim_point.x, rest.z - _aim_point.z).length()
 		if miss <= REACH_TOLERANCE:
 			return charge
