@@ -104,7 +104,7 @@ what specifically is unverified. Nothing else ticks these.
 ### 9 · ⚖️ FAIRNESS AND AI  *(runs last, alone)*
 - [x] 9.1 Every cooldown, stun, meter and penalty reviewed against §11 of `Design.md`
 - [x] 9.2 No infinite stunlock exists — proven by the chain argument, not by assertion
-- [x] 9.3 AI understands the new verbs (bump meter, smash, dash, self-launch, the circle countdown)
+- [~] 9.3 AI understands the new verbs (bump meter, smash, dash, self-launch, the circle countdown) — **built and running, behaviour unmeasured.** The tree is rewritten and 70 s of four bots produced no errors; nobody has watched whether a bot actually lands a power bump or gets its lata home. Legacy constants assuming `SPEED = 6.0` are flagged in-file and not re-derived.
 - [x] 9.4 Counterplay named for every powerful object action
 
 ---
@@ -175,11 +175,46 @@ primitives under `Visual`; nothing touches `_COLLISION_BY_ROLE`. Tsinelas visual
 `AbilityUtils.spawn_pulse_hitbox` so they resolve on the host like every other hit.
 Ground Smash's direct hit calls `RoundManager.report_round_win(false)`.
 
-**⚖️ FAIRNESS AND AI.** Ran last, alone, no subagent. Full sweep in `Design.md` §11.
-The stunlock argument: every stun goes through `apply_stagger`, which takes `max()` of
-the remaining duration rather than adding, so overlapping stuns are one stun; the
-longest producible chain is 2.5 s and needs two units, two commitments and an 8 s
-cooldown. `ai_controller.gd` learned the new verbs.
+**⚖️ FAIRNESS AND AI.** Full sweep in `Design.md` §11. The stunlock argument is named
+rather than asserted: every stun goes through `apply_stagger`, which takes `max()` of the
+remaining duration rather than adding, so overlapping stuns are one stun; the longest
+producible chain is 2.5 s and needs two units, two commitments and an 8 s cooldown.
+
+**The AI half — `ai_controller.gd`, +489 lines.** Carried in commit `dc064cf`, whose
+message is about something else entirely because a `git add -A` swept it in; recorded
+here rather than rewritten, since the history is honest and the message is not the code.
+
+* **The tag is out of the tree.** `_act_taya_tag` and the `tag` leaf are gone — they
+  tapped `bump` for a round-ending mechanic that no longer exists. Every doc block whose
+  *reasoning* rested on "a tag ends the round outright" was rewritten (`taya_pursue_radius`,
+  `TAYA_OVERCOMMIT_*`, `ATTACKER_FETCH_DANGER`, the evasion header, `ATTACKER_PANIC_RADIUS`,
+  `_threatening_defender`); the measured numbers in them are kept and flagged as
+  pre-deletion. `ATTACKER_MIN_WINDUP` turned out to be a false lead — it governs the
+  attacker's own throw readability and was left alone.
+* **The taya uses the bump meter.** `_act_taya_manage_bump` holds `special_ability` as an
+  attacker closes inside `TAYA_BUMP_CHARGE_RANGE` (4.5, **written not measured**),
+  releases at melee range, taps to break a stance, and lets go when the threat backs off
+  — it never holds a charge with nobody near. `_cond_attacker_panic` now reads the
+  defender's `observed_bump_charge()` broadcast instead of bare proximity, which is what
+  that broadcast is *for*.
+* **Sprint** is a per-tick opt-in (`_sprint_want`, same shape as `_gait_want`): on for
+  approach, retrieve, dodge, close-gap, drive-home, crawl and launch; off for every
+  posted leaf. ⚠️ **Not every legacy timing constant assuming `SPEED = 6.0` has been
+  re-derived** — flagged in the file, no probe run this pass.
+* **The can drives home.** A new top-priority `drive-home` branch off
+  `RoundManager.can_out_left()` outranks both evade and the mark-hold shuffle.
+* **The new verbs.** Can-Smash fires at `CAN_SMASH_TRIGGER_RANGE` 3.0; the tsinelas got
+  `diving`, `ground-smash` and `launch-at-can` (line-of-sight ray, then a full-charge
+  `jump` facing the lata), all ranked above `crawl-home`. `_act_evade`'s "Guard blocks
+  hits outright" framing was corrected — that mechanic is deleted.
+* **Throw lock** respected via `carrier.throw_lock_left()`, so a bot no longer fakes a
+  charge nobody can see. **Long throw**: `_open_throwing_spot` now prefers a spot that
+  satisfies `Carriable.is_behind_throwing_line()` — the game's own predicate, not a
+  second copy of it.
+
+**MEASURED for the AI rework:** parses clean, every `_act_*`/`_cond_*` the behaviour tree
+names has a definition (so `_validate_tree()` passes), and 70 s of four AI units through
+two rounds and a role swap produced **zero script errors**. Its *behaviour* is unmeasured.
 
 **⚖️ FAIRNESS — three faults the probes caught, two of them in the probes.**
 * `input_probe` went red on a check unrelated to the lock's purpose: the charge never
