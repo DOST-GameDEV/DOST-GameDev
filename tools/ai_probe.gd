@@ -62,6 +62,17 @@ const DEFAULT_SCALE := 4.0
 ## Below this planar speed a bot counts as standing still (independence mode's
 ## own threshold, reused so the two modes' still-run numbers are comparable).
 const STILL_SPEED := 0.35
+## Frames of continuous stillness after which a `trace` run names the branch
+## responsible. 2 s is the fairness table's own "a frozen bot is not a difficulty
+## setting" threshold, so this fires exactly when the metric starts failing.
+const STILL_REPORT_FRAMES := 120
+## How far a unit must get from its last recorded spot to count as having gone
+## anywhere. ⚠️ IT HAS TO BE SMALLER THAN THE AI'S IDLE SHUFFLE RADIUS (0.22) OR THE
+## METRIC MEASURES ITS OWN THRESHOLD: at 0.25 every unit idling on its mark scored as
+## having gone nowhere for seconds at a time, which is true and useless — an idling
+## unit is not a frozen one, and the point of this number is to catch the frozen kind.
+## 0.12 is half a shuffle, so a settling unit registers and a stuck one does not.
+const STILL_DISPLACEMENT := 0.12
 
 var _mode := "independence"
 var _target_rounds := DEFAULT_ROUNDS
@@ -74,6 +85,10 @@ var _moving: Dictionary = {}
 var _still_run: Dictionary = {}
 var _still_max: Dictionary = {}
 var _transitions: Dictionary = {}
+## Displacement-based stillness — see the note in _physics_process.
+var _last_pos: Dictionary = {}
+var _frozen_run: Dictionary = {}
+var _frozen_max: Dictionary = {}
 var _same_frame := 0
 var _frames := 0
 var _t := 0.0
@@ -121,6 +136,12 @@ const MAX_TRACES := 24
 ## the angle maths here could agree with itself while disagreeing with the bot, and
 ## then the column would be measuring the probe.
 var _post_error_at_throw: Dictionary = {}
+## Closest approach of every completed flight to the can, in units — the independent
+## check on the hitbox metric. See _track_flight_geometry().
+var _closest_approaches: Array[float] = []
+var _closest_unblocked: Array[float] = []
+var _aim_errors: Array[float] = []
+var _throw_ranges: Array[float] = []
 
 ## --- R-02: the probe-honesty contract ---------------------------------------
 ## Deliberate-failure injection, so the three assertions can be SHOWN to refuse
@@ -205,6 +226,15 @@ func _ready() -> void:
 		print("           taya post: hold %.2fs, re-post past %.2f rad | lob: %s"
 			% [AIController.taya_post_hold, AIController.taya_repost_angle,
 				"ALLOWED (physics half may not exist yet)" if AIController.lob_enabled else "off"])
+		print("           attacker band [%.2f, %.2f] | fetch-danger %.2f | thread %.2f"
+			% [AIController.attacker_min_throw_range, AIController.ATTACKER_THROW_RANGE,
+				AIController.attacker_fetch_danger, AIController.attacker_thread_max])
+		print("           motion: gait %.2f, turn %.1f rad/s | flavour(R-10): %s "
+			% [AIController.tier_gait, AIController.ai_turn_rate,
+				"on" if AIController.flavour_enabled else "OFF"]
+			+ "(jitter %.2f, windup %.2f, mistake %.2f)"
+			% [AIController.attacker_charge_jitter, AIController.attacker_min_windup,
+				AIController.tier_mistake])
 	set_physics_process(true)
 
 ## R-02 · THE PROBE-HONESTY CONTRACT.
@@ -275,6 +305,88 @@ func _pin_the_role_swap() -> void:
 	if not RoundManager.round_active:
 		MatchManager.team_a_is_can = false
 
+## ⚠️ SPLIT THE MISS IN TWO: WAS THE AIM WRONG, OR DID THE FLIGHT NOT GO WHERE IT WAS
+## AIMED? A closest-approach of 2.45 units says a throw missed; it does not say which
+## half of the throw is at fault, and those are different bugs in different files. So
+## the point the AI actually asked for (`CharacterBase.ai_aim_point`, which is what
+## `carrier.gd::_aim_point()` returns for a bot) is compared against where the can was
+## at that instant. Aim error ~0 with a large closest approach means the ballistics
+## are not delivering; aim error ~2.5 means the AI is aiming at the wrong place.
+func _aim_error(carriable: Carriable) -> float:
+	var thrower := _thrower_of(carriable)
+	if thrower == null or thrower.ai_aim_point == Vector3.INF:
+		return -1.0
+	var can: CharacterBase = null
+	for c in RoundManager.get_tracked_cans():
+		if is_instance_valid(c):
+			can = c
+			break
+	if can == null:
+		return -1.0
+	var a := thrower.ai_aim_point
+	var b := can.global_position
+	return Vector2(a.x - b.x, a.z - b.z).length()
+
+## Planar distance from the thrower to the can at the moment of release — so a throw
+## that fell short can be told from one that was aimed badly.
+func _throw_range(carriable: Carriable) -> float:
+	var thrower := _thrower_of(carriable)
+	if thrower == null:
+		return -1.0
+	for c in RoundManager.get_tracked_cans():
+		if is_instance_valid(c):
+			var a := thrower.global_position
+			var b := c.global_position
+			return Vector2(a.x - b.x, a.z - b.z).length()
+	return -1.0
+
+## Whoever just threw this: the attacking Person on the same team as the slipper.
+func _thrower_of(carriable: Carriable) -> CharacterBase:
+	var prop := carriable.get_parent() as CharacterBase
+	if prop == null:
+		return null
+	for c in _main.find_children("*", "CharacterBase", true, false):
+		if c.is_person and c.team == prop.team:
+			return c
+	return null
+
+## ⚠️⚠️ AN INDEPENDENT GEOMETRIC MEASUREMENT OF EVERY THROW, SHARING NO CODE WITH THE
+## HITBOX METRIC. `hit_probe.gd` has done this since the multi-hit work and it is the
+## only reason the flight-hitbox blindness was ever caught: a resolution count and a
+## closest-approach distance cannot both be wrong in the same direction, so when they
+## disagree you know which one to doubt.
+##
+## It exists here because a run reported **27 throws that the taya did not block and 0
+## that reached the can**, against `phys_probe`'s measured 3-in-9 for a clean throw.
+## One of those is wrong and no amount of re-tuning the AI would say which: a throw
+## missing by 0.2 units is bad luck, a throw missing by 3 is a broken aim, and a throw
+## that never gets within 5 is falling short. The number distinguishes them; reasoning
+## about the code does not.
+##
+## Closest approach is tracked per in-flight slipper, per physics frame, in 3D — the
+## flight hitbox is a sphere about the slipper's own origin, so a planar distance would
+## call a slipper sailing overhead a near miss.
+func _track_flight_geometry() -> void:
+	if _flights.is_empty():
+		return
+	var can: CharacterBase = null
+	for c in RoundManager.get_tracked_cans():
+		if is_instance_valid(c):
+			can = c
+			break
+	if can == null:
+		return
+	for carriable in _flights:
+		if not is_instance_valid(carriable):
+			continue
+		var prop := carriable.get_parent() as CharacterBase
+		if prop == null or not is_instance_valid(prop):
+			continue
+		var flight: Dictionary = _flights[carriable]
+		var d: float = prop.global_position.distance_to(can.global_position)
+		if d < float(flight.get("closest", 1e9)):
+			flight["closest"] = d
+
 ## R-07. The defending Person's own view of how wrong its post is, in radians, or
 ## -1.0 when there is no taya or it has no post. Asked of the controller, never
 ## re-derived here — see _post_error_at_throw's note.
@@ -320,6 +432,22 @@ func _parse_args() -> void:
 			_mode = token
 		elif token.begins_with("rounds="):
 			_target_rounds = maxi(1, int(token.substr(7)))
+		# ⚠️ CEILING RAISED 8 -> 24, 2026-07-30, on a human ask for faster tests. The
+		# ceiling was never a correctness bound — every number this probe reports is
+		# accumulated physics delta (game time), so the scale does not distort a
+		# value; it changes how many physics steps have to fit in one rendered frame.
+		# `Engine.max_physics_steps_per_frame` is what actually limits that, and it
+		# defaults to 8 — so a `scale=16` run WITHOUT raising it silently ran at 8 and
+		# reported 16 in its own header. Raised alongside, below.
+		# ⚠️ AND THEN PUT BACK TO 8, MEASURED. With the tick rate raised in proportion
+		# (below), scale 1 and scale 4 agree — aim error 0.28 vs 0.34 units, block rate
+		# 82.6% vs 78.6%. Scale 8 does NOT: aim error goes back up to 1.31, because
+		# 480 physics ticks a second for four units is more than this machine delivers
+		# in real time and the steps get long again. **Use scale 4. Anything above it
+		# has to prove itself against a scale=1 run before its numbers are used.**
+		# ⚠️ A HIGH SCALE IS FOR EXPLORING, NOT FOR THE LOG. Re-run a headline number
+		# at scale=1 before writing it down as final; that rule predates this and is
+		# not softened by it.
 		elif token.begins_with("scale="):
 			scale = clampf(float(token.substr(6)), 0.25, 8.0)
 		elif token == "mode=b":
@@ -350,6 +478,28 @@ func _parse_args() -> void:
 			AIController.taya_post_hold = maxf(0.0, float(token.substr(9)))
 		elif token.begins_with("repost="):
 			AIController.taya_repost_angle = maxf(0.0, float(token.substr(7)))
+		# The rest of the levers this pass added, all sweepable for the same reason
+		# R-01 exists: a knob without a probe argument is a knob nobody measures.
+		elif token.begins_with("minrange="):
+			AIController.attacker_min_throw_range = maxf(0.0, float(token.substr(9)))
+		elif token.begins_with("fetchdanger="):
+			AIController.attacker_fetch_danger = maxf(0.0, float(token.substr(12)))
+		elif token.begins_with("thread="):
+			AIController.attacker_thread_max = maxf(0.0, float(token.substr(7)))
+		elif token.begins_with("turn="):
+			AIController.ai_turn_rate = maxf(0.5, float(token.substr(5)))
+		elif token.begins_with("gait="):
+			AIController.tier_gait = clampf(float(token.substr(5)), 0.2, 1.0)
+		elif token.begins_with("mistake="):
+			AIController.tier_mistake = clampf(float(token.substr(8)), 0.0, 1.0)
+		elif token.begins_with("jitter="):
+			AIController.attacker_charge_jitter = clampf(float(token.substr(7)), 0.0, 1.0)
+		elif token.begins_with("windup="):
+			AIController.attacker_min_windup = maxf(0.0, float(token.substr(7)))
+		# R-10's master switch, so the flavour changes can be measured against their
+		# own absence rather than asserted to be harmless.
+		elif token.begins_with("fun="):
+			AIController.flavour_enabled = token.substr(4).to_lower() in ["on", "true", "1"]
 		# R-06's AI half. `lob=on` lets the attacker choose to go OVER a block
 		# instead of feeding it. ⚠️ Until the PHYSICS half lands this only makes the
 		# throw later, not higher — see AIController.lob_enabled.
@@ -412,6 +562,29 @@ func _parse_args() -> void:
 	elif _mode == "fairness":
 		_scale = DEFAULT_SCALE
 	Engine.time_scale = _scale
+	# ⚠️⚠️ THE PHYSICS TICK RATE HAS TO RISE WITH THE TIME SCALE, AND NOT DOING SO
+	# CORRUPTED AN ENTIRE AFTERNOON OF MEASUREMENTS. READ THIS BEFORE RAISING `scale=`.
+	#
+	# `Engine.time_scale` does not make the simulation run faster — it makes each
+	# physics step cover more GAME TIME. At the default 60 ticks/second and scale 16,
+	# one step is 16/60 = 0.267 s of game time, so a unit at SPEED 6.0 teleports
+	# **1.6 units per step**. Every distance-based decision in the game is then being
+	# made on a world that jumps a body-width at a time.
+	#
+	# How it was caught, because it looked exactly like an AI bug: throws were missing
+	# the can by a median of 3.3 units, and the aim-error breakdown said the AI had
+	# ASKED for a point up to 3.1 units from the can — a value larger than the sum of
+	# every offset the aiming code can possibly apply (lead capped at 1.2, threading at
+	# 0.45). An impossible number is not a bad AI, it is a broken measurement: the can
+	# had simply moved a step and a half between the aim being written and the throw
+	# leaving the hand.
+	#
+	# Raising the tick rate in proportion keeps the step at 1/60 s of GAME time, so a
+	# high scale becomes what it claims to be — the same simulation, wall-clock faster,
+	# paid for in CPU. `max_physics_steps_per_frame` has to come up with it or the
+	# extra ticks are dropped instead of run.
+	Engine.physics_ticks_per_second = maxi(60, int(round(60.0 * _scale)))
+	Engine.max_physics_steps_per_frame = maxi(8, int(ceil(_scale)) * 8)
 	# ⚠️⚠️ OPTION A BY DEFAULT FOR A FAIRNESS RUN, AND THIS IS NOT A PREFERENCE.
 	#
 	# `GameLaunch.game_mode` defaults to OPTION_B, where `dents` is never written
@@ -650,9 +823,22 @@ func _on_carry_state_changed(new_state: int, carriable: Carriable) -> void:
 		# now, and carry that with the flight so the answer can be paired with
 		# whether the throw was blocked.
 		var post_error := _taya_post_error()
-		_flights[carriable] = {"hit_taya": false, "hit_can": false, "post_error": post_error}
+		_flights[carriable] = {"hit_taya": false, "hit_can": false, "post_error": post_error,
+			"closest": 1e9, "aim_error": _aim_error(carriable), "range": _throw_range(carriable)}
 		if post_error > AIController.taya_repost_angle:
 			_round["throws_off_post"] += 1
+		if _trace and _traces_printed < MAX_TRACES:
+			# Raw geometry of the throw, because two aggregate columns disagreeing is
+			# where this pass keeps ending up and an aggregate cannot be inspected.
+			var thrower := _thrower_of(carriable)
+			var cans := RoundManager.get_tracked_cans()
+			print("      geom: cans tracked %d | thrower %s at %.2f,%.2f | aim %s | can %s"
+				% [cans.size(),
+					thrower.name if thrower != null else "?",
+					thrower.global_position.x if thrower != null else 0.0,
+					thrower.global_position.z if thrower != null else 0.0,
+					str(thrower.ai_aim_point) if thrower != null else "?",
+					str(cans[0].global_position) if not cans.is_empty() else "none"])
 		if _trace and _traces_printed < MAX_TRACES:
 			_traces_printed += 1
 			print("    trace @ throw %d of round %d (taya post error %.2f rad):"
@@ -679,6 +865,13 @@ func _on_carry_state_changed(new_state: int, carriable: Carriable) -> void:
 	# for the same reason `blocked` is — only the finished flight knows.
 	if not flight["hit_taya"] and float(flight.get("post_error", -1.0)) > AIController.taya_repost_angle:
 		_round["beat_the_post"] += 1
+	var closest: float = float(flight.get("closest", 1e9))
+	if closest < 1e8:
+		_closest_approaches.append(closest)
+		if not flight["hit_taya"]:
+			_closest_unblocked.append(closest)
+			_aim_errors.append(float(flight.get("aim_error", -1.0)))
+			_throw_ranges.append(float(flight.get("range", -1.0)))
 	_flights.erase(carriable)
 
 ## `who` is the character owning the hitbox that landed — for a throw in flight
@@ -694,6 +887,18 @@ func _on_hitbox_landed(target: CharacterBase, who: CharacterBase) -> void:
 		_round["tagged"] = true
 		if _round["tag_at"] < 0.0:
 			_round["tag_at"] = _round_time
+			# ⚠️ MEASURE THE TAG, DO NOT REASON ABOUT IT. 100% of rounds end this way,
+			# so which branch each Person was in at the moment of contact is the single
+			# most informative line this probe can print — and it is the question that
+			# was being answered by inspection of the geometry instead.
+			if _trace:
+				print("    TAG at %.1fs, %.2f units apart: " % [_round_time,
+					who.global_position.distance_to(target.global_position)])
+				for c in [who, target]:
+					if c.ai_controller != null:
+						print("      %-12s %s %s" % [c.name,
+							"TAYA    " if c.team_is_can_side else "ATTACKER",
+							c.ai_controller.bt_trace()])
 		_apply_tag_variant(target)
 	var carriable := who.get_node_or_null("Carriable") as Carriable
 	if carriable == null or not _flights.has(carriable):
@@ -793,8 +998,29 @@ func _physics_process(delta: float) -> void:
 			_round["person_gap"] = _person_gap()
 	if _heatmap:
 		_sample_heatmap(delta)
+	_track_flight_geometry()
 	var changed := 0
 	for c in _bots:
+		# ⚠️ TWO STILLNESS METRICS, AND THE DISPLACEMENT ONE IS THE HONEST ONE.
+		# `STILL_SPEED` (0.35 m/s) was written against Persons walking at SPEED 6.0,
+		# and every OTHER unit in this game moves through a speed scale: a crawling
+		# tsinelas is at CRAWL_SPEED_SCALE 0.45, a stood-on one at another 0.35 of
+		# that, a settling unit at IDLE_GAIT. A slipper crawling home at 0.33 m/s is
+		# doing exactly its job and scores as "frozen" on a velocity test — which is
+		# how "the longest still run has moved independently of everything else for
+		# three runs" happened. What nobody wants is a unit that does not GO anywhere,
+		# so that is what is measured: displacement over a real window.
+		var here := Vector2(c.global_position.x, c.global_position.z)
+		if not _last_pos.has(c):
+			_last_pos[c] = here
+			_frozen_run[c] = 0
+			_frozen_max[c] = 0
+		if here.distance_to(_last_pos[c]) >= STILL_DISPLACEMENT:
+			_last_pos[c] = here
+			_frozen_run[c] = 0
+		else:
+			_frozen_run[c] += 1
+			_frozen_max[c] = maxi(_frozen_max[c], _frozen_run[c])
 		var v: float = Vector2(c.velocity.x, c.velocity.z).length()
 		var now_moving: bool = v > STILL_SPEED
 		if now_moving != _moving[c]:
@@ -806,6 +1032,15 @@ func _physics_process(delta: float) -> void:
 		else:
 			_still_run[c] += 1
 			_still_max[c] = maxi(_still_max[c], _still_run[c])
+			# ⚠️ WHICH BRANCH IS IT STANDING IN? The still-run figure "has moved
+			# independently of everything else for three consecutive runs" and every
+			# previous attempt to explain it reasoned about the code. A unit that has
+			# been motionless for STILL_REPORT_FRAMES says what it is doing, once per
+			# episode, and the answer is either "a leaf that deliberately stands still"
+			# (fine, and now nameable) or a freeze (a bug, and now locatable).
+			if _trace and _still_run[c] == STILL_REPORT_FRAMES and c.ai_controller != null:
+				print("    STILL %.1fs: %-12s %s" % [STILL_REPORT_FRAMES / 60.0, c.name,
+					c.ai_controller.bt_trace()])
 	if changed >= 2:
 		_same_frame += 1
 
@@ -957,6 +1192,50 @@ func _report_fairness() -> void:
 		if r["person_gap"] >= 0.0:
 			gap_total += r["person_gap"]
 			gap_count += 1
+	# ⚠️ THE INDEPENDENT CHECK ON THE TWO COLUMNS ABOVE. If `throws that reached the
+	# can` is 0 while these distances cluster under half a unit, the HITBOX metric is
+	# lying; if they cluster at 2+ units the AIM is wrong; if they cluster above the
+	# throwing distance the throws are falling short. Three different bugs that the
+	# hitbox column alone reports identically.
+	if not _closest_approaches.is_empty():
+		var sorted := _closest_approaches.duplicate()
+		sorted.sort()
+		var sum := 0.0
+		for d in sorted:
+			sum += d
+		var within := 0
+		for d in _closest_unblocked:
+			if d <= 0.5:
+				within += 1
+		print("\n  --- every throw's CLOSEST APPROACH to the can (geometry, not the hitbox) ---")
+		print("  %d flights: min %.2f, median %.2f, mean %.2f, max %.2f units"
+			% [sorted.size(), sorted[0], sorted[sorted.size() / 2], sum / sorted.size(),
+				sorted[sorted.size() - 1]])
+		print("  unblocked flights that came within 0.50 (the overlap band): %d / %d"
+			% [within, _closest_unblocked.size()])
+		# Which half of the throw is at fault — see _aim_error().
+		var aim_sum := 0.0
+		var aim_n := 0
+		var aim_worst := 0.0
+		for e in _aim_errors:
+			if e >= 0.0:
+				aim_sum += e
+				aim_n += 1
+				aim_worst = maxf(aim_worst, e)
+		var range_sum := 0.0
+		var range_n := 0
+		for r in _throw_ranges:
+			if r >= 0.0:
+				range_sum += r
+				range_n += 1
+		if aim_n > 0:
+			print("  where the AI ASKED for the slipper to go, vs where the can was: "
+				+ "%.2f mean, %.2f worst (over %d unblocked throws)"
+				% [aim_sum / aim_n, aim_worst, aim_n])
+			print("  release range: %.2f mean" % (range_sum / maxi(range_n, 1)))
+			print("  -> aim error small + closest approach large = the BALLISTICS are not "
+				+ "delivering; both large = the AI is aiming at the wrong place.")
+
 	print("\n  --- R-07: the taya's post ---")
 	print("  throws released while the post was already wrong (> %.2f rad): %d / %d"
 		% [AIController.taya_repost_angle, off_post, throws])
@@ -970,8 +1249,14 @@ func _report_fairness() -> void:
 	print("  per-unit longest still run (a Prop holding its mark is INTENDED — see")
 	print("  CAN_HOLD_RADIUS; a Person standing still is not):")
 	for c in _bots:
-		print("    %-16s %5.2fs   (%d start/stop transitions)"
-			% [c.name, _still_max[c] / 60.0, _transitions[c]])
+		print("    %-16s velocity-still %5.2fs | WENT NOWHERE %5.2fs   (%d transitions)"
+			% [c.name, _still_max[c] / 60.0, float(_frozen_max.get(c, 0)) / 60.0,
+				_transitions[c]])
+	var frozen_worst := 0
+	for c in _bots:
+		frozen_worst = maxi(frozen_worst, int(_frozen_max.get(c, 0)))
+	print("  worst WENT-NOWHERE run across all units: %.2fs   (fair: < 2s)   %s"
+		% [frozen_worst / 60.0, _verdict(frozen_worst < 120)])
 	# ⚠️ §9's own warning, printed rather than left to be remembered: a win rate
 	# on its own is not a fairness result.
 	if timeouts * 2 >= _rounds.size():
