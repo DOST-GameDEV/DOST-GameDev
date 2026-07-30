@@ -1579,8 +1579,12 @@ func _cond_taya_threat_in_melee() -> bool:
 ## never actually run, and implementing it as written turned out to break the
 ## game: measured over 20 AI-vs-AI rounds, a Taya that pursues anywhere inside
 ## CONFINEMENT_RADIUS (5.0) wins essentially 100% of rounds, because the
-## attacker MUST cross that radius to retrieve its own slipper and a defender's
-## tag ends the round outright (hitbox.gd).
+## attacker MUST cross that radius to retrieve its own slipper and — AT THE TIME —
+## a defender's tag ended the round outright (hitbox.gd). The tag and its
+## round-win branch are both deleted as of 2026-07-30 (`Design.md` §1), but the
+## GEOMETRY this measured (a Taya that can reach anywhere in the box wins the
+## engagement it is measuring) still holds for the bump meter that replaced it —
+## see `_act_taya_manage_bump`. The radius stays a knob for the same reason.
 ##
 ## So the radius is a knob, not the confinement wall — see
 ## `taya_pursue_radius`. The Taya is clamped to CONFINEMENT_RADIUS around the
@@ -1605,9 +1609,14 @@ func _cond_taya_threat_in_melee() -> bool:
 ## BECAUSE IT IS THE WHOLE TRAP: at 1.3 s with no cooldown and no reach limit, a
 ## `tier_mistake` of 0.09 rolled on every 0.35 s re-pick fires about once every four
 ## seconds and lasts a third of that, so the "occasional mistake" was a taya that
-## spent 30% of the round sprinting across the arena — and because ANY tag ends the
-## round outright, **the mistake won more rounds than the blocking did.** Measured:
-## rounds ending by tag at 1.9 s and 3.2 s with ZERO throws taken.
+## spent 30% of the round sprinting across the arena — and because ANY tag ended the
+## round outright AT THE TIME (the tag is deleted as of 2026-07-30, `Design.md` §1),
+## **the mistake won more rounds than the blocking did.** Measured: rounds ending by
+## tag at 1.9 s and 3.2 s with ZERO throws taken. The bump meter that replaced the tag
+## no longer ends a round by itself, so the specific "won more than the blocking"
+## outcome no longer applies — but the mistake still abandons the post and opens the
+## lane for its own length regardless of what a chase can land at the end of it,
+## which is why the same three bounds below are kept unchanged.
 ##
 ## A mistake has to cost the bot something. Three bounds make it one:
 ##   • 0.9 s, which is less than the ~1.2 s it takes to cross from the post to the
@@ -1737,8 +1746,8 @@ func _act_taya_close_gap(_delta: float) -> int:
 ## What a real taya does, and what actually wins the round, is stand ON the
 ## line between the slipper and the can. So: interpose. Take the point
 ## `TAYA_BLOCK_STANDOFF` out from the can along the bearing to the attacker,
-## which puts the Taya's body in the throw's path, keeps it near enough to
-## tag anyone who closes, and keeps the can covered.
+## which puts the Taya's body in the throw's path, keeps it near enough to bump
+## anyone who closes (see `_act_taya_manage_bump`), and keeps the can covered.
 ## ⚠️ R-07. THIS LEAF NOW *TAKES* A POST RATHER THAN RE-DERIVING ONE. It runs only
 ## when `_cond_taya_post_committed` has refused, i.e. when the Taya is genuinely
 ## deciding where to stand — on first sight of the threat, or after the reaction
@@ -1881,10 +1890,12 @@ func _cond_own_tsinelas_loose() -> bool:
 	return true
 
 ## How close an opposing Person has to be to our loose tsinelas before fetching it
-## is a losing trade. A tag ends the round outright, so "the defender gets there
-## first" is not a race worth entering — it is the round. Slightly outside
-## TAYA_MELEE_RANGE (1.4) plus a Person's own width, so a taya merely passing by does
-## not freeze the attacker out of its own slipper.
+## is a losing trade. Walking up to a defender standing on our own tsinelas means
+## walking into their bump range with nothing to show for it — a power bump there
+## staggers us AND drops the slipper we just crossed the arena for, which resets
+## the exact scramble we were trying to end. Slightly outside TAYA_MELEE_RANGE (1.4)
+## plus a Person's own width, so a taya merely passing by does not freeze the
+## attacker out of its own slipper.
 const ATTACKER_FETCH_DANGER: float = 2.4
 static var attacker_fetch_danger: float = ATTACKER_FETCH_DANGER
 
@@ -2493,21 +2504,34 @@ func _act_tsinelas_settle(_delta: float) -> int:
 ## and try to win (attacker avoid defender, defender try to tag, etc)".
 ##
 ## The attacker already avoided STANDING in a blocked throwing lane
-## (`_cond_lane_blocked`). It did not avoid the taya itself, and being tagged
-## ends the round for its whole team — which is how 18 of 20 rounds ended in
-## RUN 4. Avoiding a lane and avoiding a person are different behaviours and
-## only the first one existed.
+## (`_cond_lane_blocked`). It did not avoid the taya itself, and — AT THE TIME —
+## being tagged ended the round for its whole team, which is how 18 of 20 rounds
+## ended in RUN 4. Avoiding a lane and avoiding a person are different behaviours
+## and only the first one existed.
 ##
-## WHERE THE TAG ACTUALLY COMES FROM, which is what shapes the dodge: the taya
+## ⚠️⚠️ THE TAG THIS SECTION WAS WRITTEN AGAINST IS GONE, 2026-07-30 (`Design.md`
+## §1). What a defender can land on a nearby attacker now is the charged bump meter
+## on `special_ability` (Design.md §4) — a full charge drops the slipper, staggers
+## for 0.9 s and slows for 1.2 s; a bare tap does neither. So "avoid the defender" no
+## longer means "avoid being near one"; it means "avoid one who is actually winding
+## up", which is exactly what the wind-up broadcast (`CharacterBase.
+## observed_bump_charge()`) is FOR — Design.md §4 states it outright: the whole
+## 1.35 s charge is visible on every peer "so the attacker can see the commitment
+## and dash, jump or throw through it." `_cond_attacker_panic` below reads that
+## broadcast; `_threatening_defender`'s two-band shape (arm's length regardless of
+## motion, further out only if closing) is otherwise unchanged, because a defender
+## can still start a charge from a dead stop.
+##
+## WHERE THE THREAT ACTUALLY COMES FROM, which is what shapes the dodge: the taya
 ## does not chase to the throwing line (it is capped at CONFINEMENT_RADIUS and
-## `taya_pursue_radius` ships at 0). It gets its tag when the ATTACKER walks into
-## the confinement box — which the attacker must do to fetch a slipper that
-## landed near the can. So the dodge has to work while retrieving, not only while
-## throwing, and that is why it sits above BOTH in the tree.
+## `taya_pursue_radius` ships small). It gets a shot at a bump when the ATTACKER
+## walks into the confinement box — which the attacker must do to fetch a slipper
+## that landed near the can. So the dodge has to work while retrieving, not only
+## while throwing, and that is why it sits above BOTH in the tree.
 ## ---------------------------------------------------------------------------
 
 ## How close an opposing Person has to be before the attacker breaks off.
-## Comfortably outside TAYA_MELEE_RANGE (1.4) so the dodge starts before the tag
+## Comfortably outside TAYA_MELEE_RANGE (1.4) so the dodge starts before a bump
 ## can land, and inside TAYA_DETECT_RANGE (8.0) so the attacker is not permanently
 ## fleeing something that is not actually coming for it.
 const ATTACKER_DODGE_RADIUS: float = 2.4
@@ -2521,10 +2545,12 @@ const ATTACKER_DODGE_CLOSING_SPEED: float = 0.35
 ## it just walks you out of the arena.
 const ATTACKER_DODGE_STEP: float = 3.0
 
-## ⚠️ ARM'S LENGTH. Inside this, a defender is a threat whatever it is doing —
-## including standing perfectly still, which is precisely what `_act_taya_tag` does
-## (it releases movement to tap bump). One `TAYA_MELEE_RANGE` (1.4) plus half a
-## Person's width of margin.
+## ⚠️ ARM'S LENGTH. Inside this, a defender is worth WATCHING regardless of what it
+## is doing — including standing perfectly still, which is exactly how a bump charge
+## starts (`_act_taya_manage_bump` charges from a stop as often as not). Whether it
+## is actually PANIC-worthy is a second question, answered by `_cond_attacker_panic`
+## reading the defender's own bump-charge broadcast, not by this radius alone. One
+## `TAYA_MELEE_RANGE` (1.4) plus half a Person's width of margin.
 const ATTACKER_PANIC_RADIUS: float = 1.9
 static var attacker_panic_radius: float = ATTACKER_PANIC_RADIUS
 ## How far into its charge a throw counts as committed and will not be aborted even
@@ -2535,8 +2561,9 @@ const ATTACKER_COMMIT_FRACTION: float = 0.6
 ## The nearest opposing Person worth breaking away from, or null. TWO bands, and the
 ## inner one is the bug fix — see ATTACKER_PANIC_RADIUS:
 ##   • inside `attacker_panic_radius`: a threat regardless of closing speed, because a
-##     taya that has stopped moving in order to tag you is the most dangerous state
-##     it has, and the closing-speed test scored it as harmless;
+##     taya that has stopped moving in order to charge a bump at you is exactly as
+##     dangerous standing still as it is walking, and the closing-speed test alone
+##     would score it as harmless;
 ##   • out to ATTACKER_DODGE_RADIUS: only if genuinely closing, so the attacker does
 ##     not flee everything standing near it and never retrieve anything (that failure
 ##     is B-124's family, arriving from the opposite direction).
@@ -2566,17 +2593,32 @@ func _threatening_defender() -> CharacterBase:
 func _cond_attacker_threatened() -> bool:
 	return _threatening_defender() != null
 
-## A defender within arm's length, and this throw is not already committed. Runs
-## above everything else in the attacker's tree — see the `panic` node's own comment
-## for the measurement that put it there.
+## A defender within arm's length who is ALSO winding up a bump, and this throw is
+## not already committed. Runs above everything else in the attacker's tree — see
+## the `panic` node's own comment for the (now-historical, tag-era) measurement
+## that put it there, and the addendum right after it for what changed.
+##
+## ⚠️ THE BUMP-CHARGE GATE IS THE WHOLE FIX FOR "RAN AWAY INSTEAD OF THROWING",
+## ONE LAYER LATER THAN RUN 5 FOUND IT. RUN 5 already learned that fleeing a mere
+## defender while HOLDING the slipper breaks the offence outright (see the `evade`
+## sequence's own doc) — this is the same lesson applied to the panic band: without
+## the charge check, an attacker mid-throw-approach would flinch at every taya that
+## merely stood nearby, not only ones actually about to hit it, which is exactly
+## the "ran away instead of throwing" failure one radius closer in.
 func _cond_attacker_panic() -> bool:
 	if _attacker_charging and _attacker_hold_target > 0.0 \
 			and _attacker_charge_time >= _attacker_hold_target * ATTACKER_COMMIT_FRACTION:
-		return false # the shot is away; taking the tag with it is a fair trade
+		return false # the shot is away; taking the bump with it is a fair trade
 	var threat := _threatening_defender()
 	if threat == null:
 		return false
-	return character.global_position.distance_to(threat.global_position) <= attacker_panic_radius
+	if character.global_position.distance_to(threat.global_position) > attacker_panic_radius:
+		return false
+	# A defender not currently charging can only land a TAP — no stagger, no drop
+	# (Design.md §4's own table) — which is not worth fleeing over. `-1.0` means "not
+	# charging at all"; anything else, including a fresh 0.0, is a real commitment in
+	# progress and worth reacting to before it resolves.
+	return threat.observed_bump_charge() >= 0.0
 
 ## Break perpendicular to the threat's approach, on whichever side we are already
 ## off toward — the same commit-to-a-side rule the Can's own evasion uses
