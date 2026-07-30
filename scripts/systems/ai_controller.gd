@@ -54,6 +54,19 @@ class_name AIController
 ## extension of this one.
 ##
 ## ---------------------------------------------------------------------------
+## ⚠️⚠️ SPEED CHANGED, 2026-07-30, AND NOT EVERY TIMING NUMBER BELOW HAS BEEN
+## RE-MEASURED AGAINST IT. `CharacterBase.SPEED` moved 6.0 -> 4.6 and sprint
+## (`SPRINT_SCALE` 1.45x off a 4.0 s bar) is new — see `Design.md` §2. This file
+## now presses `sprint` where a leaf is closing distance or retrieving (see
+## `_sprint_want`), which is the concrete, testable half of "every AI approach/
+## pursuit timing derived from 6.0 is now wrong." What is NOT done, because it
+## cannot honestly be done without a probe run this pass had no way to perform:
+## re-deriving constants whose ORIGINAL VALUE assumed the old 6.0 (`CAN_IDLE_GAIT`'s
+## own doc walks through one such derivation in full). Those are flagged at their
+## own definitions rather than silently reworked — a written, untested guess at a
+## new number would be worse than an honestly-stale old one with its assumption on
+## the record.
+## ---------------------------------------------------------------------------
 ## BEHAVIOUR TREE (2026-07-29 refactor)
 ## ---------------------------------------------------------------------------
 ## The four `_update_<role>(repick, delta)` procedures this file used to have
@@ -1121,7 +1134,7 @@ func is_enabled() -> bool:
 
 func _release_all() -> void:
 	_release_move(0.0)
-	for base in ["bump", "special_ability", "grab", "guard_dash", "sprint"]:
+	for base in ["bump", "special_ability", "grab", "guard_dash", "sprint", "jump"]:
 		_set_held(base, false)
 	_pending_release.clear()
 	_attacker_charging = false
@@ -1139,6 +1152,9 @@ func _release_all() -> void:
 	_taya_post_valid = false
 	_taya_post_hold_left = 0.0
 	_taya_post_error = 0.0
+	# The self-launch charge is exactly as round/role-scoped as the attacker's own
+	# throw charge above, and for the same reason.
+	_tsinelas_launch_time = 0.0
 	# Hand the camera-based aim back. _release_all() is what runs when a human
 	# takes this unit over or the round resets, and either way an AI's stale
 	# target must not survive into someone else's throw (B-125).
@@ -2585,18 +2601,36 @@ func _act_tsinelas_smash(_delta: float) -> int:
 ## a piece of clutter between here and the can refuses the launch rather than
 ## sending it in blind. Same idiom `Carriable.can_ground_smash()` and
 ## `Carrier._aim_point()` already use for their own raycasts.
+##
+## ⚠️ RELEASES A MID-CHARGE `jump` ON ITS OWN WAY OUT. `_act_tsinelas_launch` is the
+## only leaf that ever holds `jump`, and this condition is its ONE gate — if sight
+## of the can is lost mid-charge (a wall, the can being sealed/untracked, the round
+## ending), the `launch-at-can` sequence fails right here and `_act_tsinelas_launch`
+## never runs again to let go of what it started. Same shape
+## `_cond_attacker_empty_handed` uses to cancel a stale attacker charge the instant
+## its own condition stops holding, one role over.
 func _cond_tsinelas_can_launch() -> bool:
 	_bb_can = _find_tracked_can()
 	if _bb_can == null or not is_instance_valid(_bb_can):
+		_cancel_tsinelas_launch()
 		return false
 	if not RoundManager.round_active:
+		_cancel_tsinelas_launch()
 		return false
 	var space := character.get_world_3d().direct_space_state
 	var from := character.global_position + Vector3.UP * 0.15
 	var to := _bb_can.global_position + Vector3.UP * 0.15
 	var query := PhysicsRayQueryParameters3D.create(from, to)
 	query.exclude = [character.get_rid()]
-	return space.intersect_ray(query).is_empty()
+	if not space.intersect_ray(query).is_empty():
+		_cancel_tsinelas_launch()
+		return false
+	return true
+
+func _cancel_tsinelas_launch() -> void:
+	if bool(_held_actions.get("jump", false)):
+		_set_held("jump", false)
+	_tsinelas_launch_time = 0.0
 
 ## Face and close on the can, holding `jump` for `Carriable.SELF_LAUNCH_CHARGE_TIME`
 ## (0.75 s) before releasing — same charge/release shape `_charge_and_release` uses
