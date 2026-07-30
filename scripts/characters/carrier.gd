@@ -564,6 +564,79 @@ func _aim_point() -> Vector3:
 		return origin + direction * AIM_RAY_LENGTH
 	return hit["position"]
 
+## How far ahead of the eye the slipper actually leaves from. Far enough that it
+## is not born inside the camera's near plane, close enough that it is still
+## "out of your hand" rather than lobbed from a metre in front of your face.
+##
+## ⚠️ 0.15, NOT 0.5, AND THE DIFFERENCE IS MEASURABLE IN HIT RATE. Moving the
+## launch forward shortens the horizontal distance the Can's evasion AI uses to
+## compute its ETA (`ai_controller.gd::_cond_slipper_incoming` works entirely in
+## the horizontal plane), so it enters the Can's 0.6 s lookahead window sooner
+## and the Can sidesteps earlier. Measured with `tools/phys_probe.gd`, 12 throws
+## at an evading Can: 0.5 m forward connected 1/12, 0.15 m connected 5/12.
+## Both fix the sag identically (0.006 m), so there is nothing to trade away by
+## keeping it short. See B-132 for the part of that drop this does NOT fix.
+const MUZZLE_FORWARD: float = 0.15
+
+## ⚠️ THE THROW LEAVES FROM THE SIGHT LINE, NOT FROM THE HAND, AND THAT IS THE
+## FIX FOR "THE HEIGHT OF THE TRAJECTORY IS TOO LOW".
+##
+## The ballistic solve was already landing the slipper on the crosshair point to
+## within a few centimetres — that was measured, and it is not what the report
+## was about. The problem was the shape of the flight in between. The slipper
+## used to leave the CharacterBase origin at hand height (y 0.89) while the
+## player sights from the eye (y 1.35), so the whole path hung under the line
+## being aimed along and only met it at the target.
+##
+## Measured, full charge, target on the floor at 4-10 m, across all four
+## profiles — maximum distance the flight falls below the eye->crosshair line:
+##
+##     leaving from the hand        0.38 - 0.43 m, worst at 0.13-0.22 m out
+##     leaving from the sight line  0.001 - 0.043 m
+##
+## Note WHERE the old sag peaked: within a fifth of a metre of the player. In
+## first person that is the slipper dropping out of the bottom of the screen the
+## instant it is released, which is exactly what "too low" describes, and no
+## amount of tuning the launch ANGLE could have fixed it — the path was right,
+## the starting height was not. Landing points are unchanged (0.25-0.29 m either
+## way), so this costs no accuracy.
+##
+## Falls back to the carried unit's own position when there is no rig or no
+## camera — an AI Person still throws, and its rig exists but nothing has ever
+## made its camera current. `get_aim_basis()` is valid either way, so the AI gets
+## the same sight-line launch a human does rather than a special case.
+func _throw_origin() -> Vector3:
+	var rig := _character.get_node_or_null("CameraRig") as CameraRig
+	if rig == null or rig.fpp_camera == null:
+		if _held != null and _held.get_parent() is CharacterBase:
+			return (_held.get_parent() as CharacterBase).global_position
+		return _character.global_position
+	return rig.fpp_camera.global_position + _aim_direction() * MUZZLE_FORWARD
+
+## The same origin, for a caller that has an aim POINT rather than a live aim direction —
+## i.e. every probe that drives `host_throw()` directly.
+##
+## ⚠️ THIS EXISTS SO THE PROBES AND THE GAME CANNOT LAUNCH FROM DIFFERENT PLACES, which is
+## the whole content of 10.6. When `code/throw-feel` was merged on 2026-07-30 three probes
+## were each about to grow their own copy of this, one of them with the eye height typed in
+## as a literal `1.35` — and the eye is `camera_rig.gd::_fpp_eye_height`, read off the pivot
+## at runtime, so that literal would have silently drifted the day the rig moved and every
+## number those tables print would have described a flight nobody performs.
+##
+## Geometrically identical to `_throw_origin()` above: the direction to the aim point IS the
+## aim direction, since the point was raycast along it.
+static func throw_origin_for(thrower: CharacterBase, aim_point: Vector3) -> Vector3:
+	if thrower == null:
+		return aim_point
+	var rig := thrower.get_node_or_null("CameraRig") as CameraRig
+	if rig == null or rig.fpp_camera == null:
+		return thrower.global_position
+	var eye := rig.fpp_camera.global_position
+	var to_aim := aim_point - eye
+	if to_aim.length() < 0.01:
+		return eye
+	return eye + to_aim.normalized() * MUZZLE_FORWARD
+
 ## ---------------------------------------------------------------------------
 ## Requests. On the host these call straight through; on a client they RPC to
 ## peer 1. Either way the decision is made in exactly one place.
@@ -575,10 +648,10 @@ func _request_grab(target: Carriable) -> void:
 	else:
 		_rpc_request_grab.rpc_id(1, target.get_parent().get_path())
 
-## Sends the aim POINT rather than the aim direction — see _aim_point() for why.
-## The raycast has to happen on the peer that owns the camera, so the point is
-## resolved here and travels; the host still owns whether the throw happens and
-## how it flies.
+## Sends the aim POINT and the launch ORIGIN rather than the aim direction — see
+## _aim_point() and _throw_origin() for why each. Both are camera-derived, so both have to
+## be resolved on the peer that owns the camera and travel from there; the host still owns
+## whether the throw happens and how it flies.
 ##
 ## ⚠️ `lob` TRAVELS WITH THE THROW AND IS NEVER RE-DERIVED AT THE FAR END (R-06).
 ## `power` clamps at 1.0, so a full-power flat throw and a lob are INDISTINGUISHABLE
@@ -588,15 +661,16 @@ func _request_grab(target: Carriable) -> void:
 ## uses: the client owns what it meant, the host owns whether it may happen.
 func _request_throw(power: float, lob: bool) -> void:
 	var target_point := _aim_point()
+	var origin := _throw_origin()
 	# LAKAS, applied once, at release — see charge_power()'s own note for why it is
 	# not baked into the meter. `host_throw()` clamps to 0..1 on the host, so a
 	# strong thrower cannot exceed the profile's own launch speed; what the trait
 	# buys is reaching full power from a shorter hold, which is exactly "stronger".
 	var thrown_power := clampf(power * _character.trait_power_scale(), 0.0, 1.0)
 	if _is_host():
-		_held.host_throw(target_point, thrown_power, lob)
+		_held.host_throw(origin, target_point, thrown_power, lob)
 	else:
-		_rpc_request_throw.rpc_id(1, target_point, thrown_power, lob)
+		_rpc_request_throw.rpc_id(1, origin, target_point, thrown_power, lob)
 
 ## T-3. Same shape as _request_grab: on the host, straight through; on a client,
 ## a request to peer 1. The host re-checks can_be_reset_by() from scratch — a
@@ -631,11 +705,18 @@ func _rpc_request_grab(target_character_path: NodePath) -> void:
 ## it then hits, stay with the host.
 ## `lob` defaults false so an older peer's two-argument call still resolves to the
 ## flat throw that peer meant, rather than failing the RPC outright.
+##
+## ⚠️ THE WIRE FORMAT CARRIES BOTH `origin` AND `lob` AFTER THE 2026-07-30 MERGE.
+## `code/throw-feel` added the first and R-06 added the second, independently, and each
+## branch's version of this RPC dropped the other's argument. Sending only one would not
+## fail loudly — it would land a throw with the wrong shape or the wrong start height,
+## which is precisely the class of bug both changes were written to fix.
 @rpc("any_peer", "call_remote", "reliable")
-func _rpc_request_throw(target_point: Vector3, power: float, lob: bool = false) -> void:
+func _rpc_request_throw(origin: Vector3, target_point: Vector3, power: float,
+		lob: bool = false) -> void:
 	if not _is_host() or _held == null:
 		return
-	_held.host_throw(target_point, clampf(power, 0.0, 1.0), lob)
+	_held.host_throw(origin, target_point, clampf(power, 0.0, 1.0), lob)
 
 ## Client → host, T-3. Mirrors _rpc_request_grab exactly, including re-resolving
 ## the target node from its path rather than trusting anything the client sent

@@ -248,7 +248,12 @@ func _drive_throws() -> void:
 			continue
 
 		_begin_watch(slipper, taya)
-		carriable.host_throw(taya.global_position, POWER)
+		# ⚠️ SIGHT-LINE ORIGIN (10.6), via the same `Carrier.throw_origin_for()` the real
+		# throw uses. Merged 2026-07-30 — `host_throw` gained a required launch origin, and
+		# it is required precisely so this call site had to be visited rather than
+		# inheriting a default that would have quietly thrown from the hand again.
+		carriable.host_throw(Carrier.throw_origin_for(attacker, taya.global_position),
+			taya.global_position, POWER)
 		# ⚠️ RE-ARM AFTER THE THROW, NOT BEFORE. The pulse hitbox does not exist
 		# until _rpc_set_flying runs inside host_throw. Arming before this line is
 		# precisely the bug that made ai_probe report zero hits for every run it
