@@ -1818,6 +1818,34 @@ document that acts on it, so this list shrinks instead of accumulating.
 
 ### Still open — a coding agent cannot resolve these
 
+#### From the MAPS lane, 2026-07-30 (R-19 … R-33, R-20, R-21)
+
+- [ ] **Eskinita's HOUSES are still American suburban, and that is the largest remaining
+      cultural gap on either map.** The dressing is now specifically Filipino — GI-sheet lean-tos
+      and fences, a wire tangle, banana/coconut/mango, sampay, a sari-sari store, a barangay
+      basketball ring — but the *walls* are Kenney City Kit: clapboard siding and shingle gables.
+      Three routes, and this is a human call because the cheap one may be good enough:
+      **(a)** accept it — the dressing carries the read at match distance, cost zero;
+      **(b)** re-skin the roofs to corrugated GI through the roof-atlas mechanism
+      `env_toon_pass.gd` already uses for facade variety — about half a day, no instance cost,
+      fixes the loudest half; **(c)** generate hollow-block houses in `env_kit.gd` — the only
+      fully-correct answer and much the most expensive.
+- [ ] **Late afternoon cannot be had by sun ANGLE in Eskinita, only by colour.** Measured, three
+      times: the alley is 16 wide between houses 10–14 tall, so at 20° a house casts 27 m and the
+      road never sees the sun; an axial sun shadows the corridor down its own length; and at 33° —
+      6.6° below what ships — a 14 m house casts 21.6 m and no longer clears the street. **Six
+      degrees is the entire margin.** A genuinely raking late-afternoon light needs a narrower
+      alley or shorter houses, and the arena footprint is a standing human decision. Ship the
+      amber-colour version, or change the footprint — not a lane call.
+- [ ] **Is `puno_saging` (the banana clump) good enough?** It reads as broad tropical foliage at
+      match distance; close up a Filipino may still find it agave-ish. Cheap to add leaves.
+- [ ] **The confinement square's SIZE and SHAPE — see the two flow heatmaps.** R-21 produced the
+      picture; the call is the human's. The recommendation, and what the picture is evidence for,
+      is in the MAPS lane's report: the square is drawn from `CharacterBase.CONFINEMENT_RADIUS` by
+      both builders, so changing the value costs the maps nothing. The **value sweep belongs to
+      BALANCE**, not here.
+
+
 - [ ] **The display typeface.** See §0.5 for the two routes and the licence reasoning. Now blocks
       the logo, the round banner, the match-result headline and the finished look of every screen.
       **Most urgent decision on the project.** `Checklist.md` 1.1.

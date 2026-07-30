@@ -277,6 +277,14 @@ CITY_SCALE = 5.0   # a City Kit house is 0.74-1.24 tall natively -- SHORTER than
                    # a Person. 5x puts it at 2-3 believable storeys.
 CAR_SCALE = 1.75   # a van is 2.75 long / 1.45 tall natively; 1.75x reaches the
                    # ~4.8 length a real one has against a 1.6-unit Person.
+## ⚠️ THE ONLY BROADLEAF TREE IN THE REPO, AND IT IS DECLARED HERE BECAUSE THE
+## HORIZON RING USES IT BEFORE THE STREET ROW DOES. Measured by rendering all eight
+## tree assets: every other one is a stepped cone. See the long note at the street
+## row for why one species repeated is the right answer and how the repetition is
+## broken.
+PUNO_MESH = "kits/town/tree-high-round"
+_PUNO_SCALE = [1.0, 1.18, 0.88, 1.09, 0.95, 1.14]
+
 TOWN_SCALE = 1.6   # Fantasy Town props (carts, stalls, rocks, planks) are the
                    # nearest kit to 1u=1m already; 1.6 matches a 1.6-unit Person.
 
@@ -571,13 +579,20 @@ for side in (-1.0, 1.0):
     t = -44.0
     while t <= 44.0:
         j = _belt_jit[_tree_n % len(_belt_jit)]
-        kind = "puno_niyog" if _tree_n % 2 else "puno_mangga"
-        add("Dressing/Malayo", f"PunoMalayoX_{_tree_n}", kind,
-            side * (36.5 + j * 0.3), t + j * 1.3, j * 0.2, lane_exempt=True)
+        # ⚠️ BROADLEAF ON THE HORIZON TOO. This ring is the skyline behind every
+        # frame of the match, so it is the single largest surface the conifers were
+        # wrong on. Town-kit trees at 3.0 stand 8.9 tall, which reads against the
+        # belt's houses at CITY_SCALE without competing with them.
+        # Same one broadleaf on the horizon, at 3.0 so it stands ~8.3 and reads
+        # against the belt's houses. This ring is the skyline behind every frame of
+        # the match, so it is the largest surface the conifers were wrong on.
+        add_kit("Dressing/Malayo", f"PunoMalayoX_{_tree_n}", PUNO_MESH,
+                side * (36.5 + j * 0.3), t + j * 1.3, j * 0.2,
+                3.0 * _PUNO_SCALE[_tree_n % len(_PUNO_SCALE)], lane_exempt=True)
         _tree_n += 1
-        kind = "puno_niyog" if _tree_n % 2 else "puno_mangga"
-        add("Dressing/Malayo", f"PunoMalayoZ_{_tree_n}", kind,
-            t + j * 1.1, side * (36.5 + j * 0.3), -j * 0.2, lane_exempt=True)
+        add_kit("Dressing/Malayo", f"PunoMalayoZ_{_tree_n}", PUNO_MESH,
+                t + j * 1.1, side * (36.5 + j * 0.3), -j * 0.2,
+                3.0 * _PUNO_SCALE[_tree_n % len(_PUNO_SCALE)], lane_exempt=True)
         _tree_n += 1
         t += 15.0
 
@@ -613,26 +628,61 @@ for side in (-1.0, 1.0):
 # All three are generated `env_*` pieces authored at 1 unit = 1 m, so they go
 # through `add()` at native size — NOT `add_kit()` at CITY_SCALE, which is the
 # 5x a Kenney house needs and would put a 32-metre banana in the alley.
-for n, zz in enumerate([-15.5, -9.0, -2.5, 4.0, 10.5, 16.0]):
+# ⚠️⚠️ THE TREES ARE KIT PIECES, NOT GENERATED ONES, ON THE HUMAN'S EXPLICIT CALL.
+#
+# I generated three Philippine species in env_kit.gd — saging, niyog, mangga — to
+# replace the Kenney conifers, because a pine on a Philippine residential street is
+# the loudest wrong thing either map had. The human rejected them twice on sight:
+# "holy shit theyre so ugly and they clip into the houses" and then "still, the
+# trees are so ugly, they dont look like trees so pls js use different assets."
+# That is a look call and the look call is theirs, so the generated puno are OUT of
+# both maps.
+#
+# ⚠️ THE FANTASY TOWN TREES ARE THE RIGHT COMPROMISE AND NOT A SURRENDER.
+# `kits/city/tree-*` are conifers and are what the cultural problem WAS. The Town
+# kit's are rounded BROADLEAF — no pine silhouette anywhere — so this keeps the
+# thing that actually mattered (a Philippine street is not lined with pines) while
+# using art that reads as trees. Palm and banana specificity is the part that is
+# genuinely lost; it is filed in Handoff §5 as the human's call to revisit.
+#
+# ⚠️ AND THEY ASK BEFORE LANDING. The clipping half of that complaint was a real
+# bug of mine: I put the big species at WALL_FACE_X + 1.15 and + 2.30, reasoning
+# they were "behind the wall in the neighbour's yard". There is no yard — a
+# `building-type-*` is 1.03 deep natively, which is 5.14 AT CITY_SCALE, so the house
+# row occupies x = 8.6 .. 13.7 SOLID and both offsets landed inside a building.
+# Rule 3 of this file's header says no dimension of a kit piece may be assumed, and
+# I assumed a gap. Trees now go through the placement guard against the house
+# groups like everything else, so this cannot recur.
+#
+# The legal band is arithmetic, not taste: a tree of half-width h needs
+#     LANE_HALF_X + LANE_MARGIN + h  <  |cx|  <  WALL_FACE_X - h
+# `kits/town/tree*` measures 1.02 wide, i.e. h = 0.82 at TOWN_SCALE, so the band is
+# 4.32 .. 7.78 and 6.6 sits comfortably inside it with room on both sides.
+PUNO_X = 6.6
+#
+# ⚠️⚠️ `tree-high-round` IS THE ONLY BROADLEAF TREE IN THE REPO. MEASURED BY
+# RENDERING ALL EIGHT. The first swap used four Town-kit trees on the assumption
+# that "Fantasy Town" meant deciduous; rendered side by side, `town/tree`,
+# `town/tree-high` and `town/tree-crooked` are all STEPPED CONES — pines — and so
+# are `forest/tree`, `forest/tree-high`, `city/tree-large` and `city/tree-small`.
+# Exactly one asset in the project is a rounded canopy. Half the alley came out
+# coniferous again, which is the defect this whole pass exists to remove, and it
+# would have shipped on the strength of the word "Town".
+#
+# So one species, repeated — and the repetition is broken with SEEDED SCALE AND
+# YAW rather than with a second model, because there is no second model to use.
+# ⚠️ That bends "ONE SCALE PER KIT, NAMED" in letter but not in spirit: that rule
+# exists so two pieces from one kit are never at inconsistent scales against each
+# other. Trees of one species differ in size in every real street, and 0.88..1.18
+# of a common base is variation, not inconsistency.
+for n, zz in enumerate([-15.5, -11.0, -6.5, 3.5, 9.0, 14.5, 19.0]):
     for side in (-1.0, 1.0):
         tag = "E" if side > 0 else "W"
-        # In-alley saging, in the alcove against the wall line.
-        add("Dressing/Puno", f"PunoSaging_{n}_{tag}", "puno_saging",
-            side * (W - 0.55), zz + (0.7 if side > 0 else -0.7),
-            (n % 3) * 0.8)
-
-# Behind the wall: the canopies that overhang the alley and the crowns that read
-# against sky. Off the house grid on purpose — a tree lines up with nothing.
-for n, (side, zz, kind) in enumerate([
-        (-1.0, -12.5, "puno_mangga"), (1.0, -6.0, "puno_niyog"),
-        (-1.0, 0.5, "puno_niyog"), (1.0, 6.5, "puno_mangga"),
-        (-1.0, 13.0, "puno_niyog"), (1.0, 18.5, "puno_mangga")]):
-    # Mangga sits nearer the wall so its canopy reaches over it; niyog stands
-    # further back so only the crown shows. Both are outside WALL_FACE_X, i.e.
-    # in the neighbour's yard, which is where they belong.
-    out = 1.15 if kind == "puno_mangga" else 2.30
-    add("Dressing/Puno", f"{'PunoMangga' if kind == 'puno_mangga' else 'PunoNiyog'}_{n}",
-        kind, side * (WALL_FACE_X + out), zz, (n % 4) * 0.7)
+        k = (n * 2 + (0 if side > 0 else 1)) % len(_PUNO_SCALE)
+        _placer.try_place(_put("Puno"), f"Puno_{n}_{tag}", PUNO_MESH,
+                          side * PUNO_X, zz + (0.7 if side > 0 else -0.7),
+                          (n % 3) * 0.8 + (0.0 if side > 0 else 1.3),
+                          TOWN_SCALE * _PUNO_SCALE[k])
 
 # --- Layer 3: overhead. Highest read-per-triangle in the kit. ---------------
 # ⚠️⚠️ THE WIRE SPAN IS 6.0 AND THE POST SPACING MUST EQUAL IT, OR THE WIRES

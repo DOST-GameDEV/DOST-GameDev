@@ -125,9 +125,20 @@ func build_all(output_dir: String) -> void:
 	# All three are the same four primitives as everything else here, at a
 	# comparable triangle count to the cone they replace, so this is a swap and
 	# not an addition — see the instance counts in the map builders.
-	_puno_saging()
-	_puno_niyog()
-	_puno_mangga()
+	# ⚠️ NOT CALLED — REJECTED ON THE HUMAN'S CALL, KEPT FOR THE REASONING.
+	# _puno_saging(), _puno_niyog() and _puno_mangga() are complete and correct
+	# below, and both maps used them for one pass. The human rejected them twice on
+	# sight ("they dont look like trees, js use different assets"), so both maps now
+	# use the Fantasy Town kit's rounded broadleaf trees instead — which still keeps
+	# the conifers out, and that was the actual cultural defect (open item 7).
+	#
+	# The FUNCTIONS stay because what they encode is expensive to re-derive and is
+	# not about these three meshes: `_blade` (a leaf that attaches to its stem —
+	# see its own note on the detached-corner bug), the stacked-segment lean that
+	# `add_revolve` cannot do on its own, and the overlapping-blob canopy that
+	# stops a revolve reading as a lollipop. Anyone revisiting palm-and-banana
+	# specificity starts from working geometry rather than from scratch.
+	# The .obj files are NOT emitted, so nothing unused ships.
 	# Plants in cut-open paint tins, which is what a Philippine doorstep has
 	# instead of a garden. Interior tier at 0.62, so it can never block an aim.
 	_halaman_lata()
