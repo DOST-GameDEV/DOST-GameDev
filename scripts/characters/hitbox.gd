@@ -173,18 +173,44 @@ func _on_area_entered(area: Area3D) -> void:
 	landed_on.emit(target)
 
 	# User feedback, 2026-07-28: "the person on team can may tag the human on
-	# team slipper and they win that round." ANY hitbox from the defending
-	# Person landing on the attacking Person — the always-on Bump as much as
-	# the Tag ability's own transient hitbox, both resolve through this same
-	# function — ends the round for team can outright. Deliberately after the
-	# normal stagger/VFX dispatch above, not instead of it: a round-winning
-	# tag should still read as contact landing, not as a rules screen
-	# appearing out of nowhere. report_round_win() no-ops if the round already
-	# ended, so this is safe to call unconditionally; this whole function is
-	# already host-only past the NetworkManager guard above, so no further
-	# authority check is needed here.
+	# team slipper and they win that round." Deliberately after the normal
+	# stagger/VFX dispatch above, not instead of it: a round-winning tag should
+	# still read as contact landing, not as a rules screen appearing out of
+	# nowhere. report_round_win() no-ops if the round already ended, so this is
+	# safe to call unconditionally; this whole function is already host-only past
+	# the NetworkManager guard above, so no further authority check is needed.
+	#
+	# ⚠️⚠️ `and not requires_bump_window` — A BUMP IS NOT A TAG, AND UNTIL NOW IT WAS.
+	# Human report, 2026-07-30: *"make tag mechanics better, they feel so buns."*
+	#
+	# This condition used to accept ANY hitbox from the defending Person, and its own
+	# note said so out loud: "the always-on Bump as much as the Tag ability's own
+	# transient hitbox, both resolve through this same function". So the single most
+	# decisive event in the game — a tag ends the round outright, and 18 of 20 rounds
+	# end that way (Checklist Phase 9, RUN 3) — could be produced by WALKING INTO
+	# SOMEONE and pressing the shove button. The Tag ability had no mechanical identity
+	# at all: it was a second, slower way to do what body contact already did.
+	#
+	# That is most of what "feels buns" is. A round-ender with no commitment, no
+	# telegraph and no distinct input is a coin flip on proximity, and the defender's
+	# best play is to stand next to the attacker and mash.
+	#
+	# ⚠️ AND THE CODE ALREADY BELIEVED THE DISTINCTION EVERYWHERE ELSE — this line was
+	# the outlier. `hurtbox.gd::impact_sfx()` takes `from_melee` (i.e. exactly this
+	# flag) and returns "bump" or "tag" precisely because, in its own words,
+	# "shoulder-charging the attacker and CATCHING them are different events with
+	# different consequences (hitbox.gd's round-win branch fires on one of them)". It
+	# fired on both. The audio has been telling the truth about a rule the rules did not
+	# enforce.
+	#
+	# `requires_bump_window` is true only on CharacterBase.tscn's always-present melee
+	# box and false on every hitbox an ability spawns (ability_utils.gd sets it), so this
+	# selects the Tag pulse and nothing else. A bump still staggers, still knocks the
+	# slipper out of a carrier's hands (B-75, "most of the point of tagging"), and still
+	# shoves — it simply no longer wins the round by accident.
 	if owner_character and owner_character.is_person and owner_character.team_is_can_side \
-			and target.is_person and not target.team_is_can_side:
+			and target.is_person and not target.team_is_can_side \
+			and not requires_bump_window:
 		RoundManager.report_round_win(true) # Cans win the round
 
 ## The raw impulse this hitbox should impart, before the struck object's own
