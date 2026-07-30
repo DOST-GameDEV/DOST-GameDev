@@ -66,8 +66,9 @@ same commit:
 
 **Worked example — spectator, which is `build ux`'s first item.** The camera exists and
 today only `--spectate` starts it. It needs a **SPECTATE toggle button in the lobby**:
-visible on the multiplayer lobby *and* on the pre-match setup screen, on by default off,
-reflecting state when toggled, releasing the seat, and carrying that choice into the match.
+visible on the multiplayer lobby *and* on the pre-match setup screen, off by default,
+showing its own state when toggled, releasing the seat, and carrying that choice into the
+match.
 `match_setup.gd` already builds one in code and it has never been rendered — start there,
 finish it, and put one in `multiplayer_setup.gd` too.
 
