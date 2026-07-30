@@ -1415,7 +1415,7 @@ func _cond_taya_threat_in_confinement() -> bool:
 	if taya_pursue_radius <= 0.0:
 		return false
 	var flat := Vector2(_bb_enemy_attacker.global_position.x, _bb_enemy_attacker.global_position.z)
-	return flat.length() <= minf(taya_pursue_radius, CharacterBase.CONFINEMENT_RADIUS)
+	return flat.length() <= minf(taya_pursue_radius, CharacterBase.confinement_radius)
 
 func _act_taya_tag(_delta: float) -> int:
 	_release_move(0.0)
@@ -1508,7 +1508,7 @@ func _act_taya_walk_to_post(_delta: float) -> int:
 ## for the same reason the old code did: the Taya is confined to
 ## CONFINEMENT_RADIUS, so a post outside it is a post pressed against a wall.
 func _post_position(can: CharacterBase) -> Vector3:
-	var standoff: float = minf(taya_block_standoff, CharacterBase.CONFINEMENT_RADIUS - 0.4)
+	var standoff: float = minf(taya_block_standoff, CharacterBase.confinement_radius - 0.4)
 	return can.global_position \
 		+ Vector3(cos(_taya_post_bearing), 0.0, sin(_taya_post_bearing)) * standoff
 
@@ -2427,8 +2427,8 @@ func _find_tracked_can() -> CharacterBase:
 
 func _random_point_in_confinement(inner_fraction: float) -> Vector3:
 	var angle := _rng.randf() * TAU
-	var min_r := CharacterBase.CONFINEMENT_RADIUS * inner_fraction * 0.3
-	var max_r := CharacterBase.CONFINEMENT_RADIUS * maxf(inner_fraction, 0.35)
+	var min_r := CharacterBase.confinement_radius * inner_fraction * 0.3
+	var max_r := CharacterBase.confinement_radius * maxf(inner_fraction, 0.35)
 	var radius := _rng.randf_range(min_r, max_r)
 	return Vector3(cos(angle) * radius, character.global_position.y, sin(angle) * radius)
 

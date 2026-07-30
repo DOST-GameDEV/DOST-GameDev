@@ -39,7 +39,7 @@ not done however green the cell looks.
 
 | Lane | Model / effort | Status | Evidence — date + commit + what was verified |
 |---|---|---|---|
-| [⚖️ BALANCE](#lane-balance) | Claude Opus 5 · xhigh | ⚪ NOT STARTED |  |
+| [⚖️ BALANCE](#lane-balance) | Claude Opus 5 · xhigh | 🟢 DONE | 2026-07-30 · `d82b56d`, `64039ee`, `534fe36`, `d900209` — R-01/02/05/07/08/09(logic)/06(design) closed, probe-verified over RUNS 9–15 (`Checklist.md` §Phase 9). Block rate **94.7% → 38.4%**; with R-08 variant 1, **DEF 70 / OFF 30** from 100/0. 8 AI defects + 1 harness fault fixed (B-139, B-140). **Two things are the human's:** `MAX_DENTS` 3→2 + variant 1 (the last lever that moves the win rate), and whether ASTIG reads as hard or merely fast. R-21's size sweep is filed — it needs `tools/maps/**`. |
 | [🥊 PHYS](#lane-phys) | Claude Sonnet 5 · high | ⚪ NOT STARTED |  |
 | [🩴 ART-FEEL](#lane-art-feel) | Claude Sonnet 5 · high | ⚪ NOT STARTED |  |
 | [🌏 MAPS](#lane-maps) | Claude Opus 5 · high | 🟢 DONE | 2026-07-30 · `3a34473`, `cd9ecc2`, `698fa0b`, `67122d0`, `760e23a` — R-19/20/33 shipped and rendered; R-21 sightlines done, **heatmap paused pending AI fix** (Handoff §5) |
@@ -515,6 +515,30 @@ guard, the can's fall, the taya's reset channel, and the round and match state m
 Your headline job this session is to build THE LOB — the attacker's missing answer to a blocked
 throwing lane — to a specification the BALANCE lane wrote, and then to make contact feel
 consistent against a human's play notes.
+
+THE SPEC IS WRITTEN AND WAITING: docs/Checklist.md, Phase 9, "HANDOFF — R-06 (the lob) to the PHYS
+lane". Five numbered steps. Read that block, not the roadmap's summary of it.
+
+⚠️ ITS ONE-LINE VERSION, BECAUSE IT CHANGES HOW BIG THE JOB IS: carriable.gd::_solve_arc() already
+solves the ballistic quadratic and THROWS THE HIGH ROOT AWAY. `(v2 - sqrt(disc))` is the flat
+throw; `(v2 + sqrt(disc))` IS the lob, same speed, same target point. The mechanic is a root
+selection plus carrying a `lob: bool` down the throw chain. Do not infer "was a lob" from the power
+value — it clamps at 1.0, so a full-power flat throw and a lob are indistinguishable by then.
+
+⚠️ AND ITS ACCEPTANCE BAR HAS MOVED, SO DO NOT USE THE OLD ONE. R-06 was written when 94.7% of
+throws were blocked and said "get it below 70%". BALANCE's RUN 14 already got it to 38.4% without
+the lob, so that bar is retired and meaningless. Judge the lob on what only the lob can do:
+`hit_probe -- --host target=can standoff=2.6` (a taya parked in the lane) must report >= 40%
+contact for the lob against ~8% for the flat throw, and phys_probe must show its flight time
+exceeds CAN_EVADE_LOOKAHEAD 0.6s so the can's dodge can still beat it. That triangle — lob beats
+taya, dodge beats lob, flat throw beats dodge — is the whole point; a lob that is simply better is
+a failure.
+
+THE AI HALF IS ALREADY SHIPPED AND INERT. AIController._cond_attacker_should_lob /
+_act_attacker_charge_lob fire on exactly the frame the attacker would otherwise feed the block.
+`AIController.lob_enabled` is false; `ai_probe ... lob=on` turns it on. Make LOB_HOLD_TIME public
+when you build it and have the AI read it — `AIController.attacker_lob_overhold` is currently the
+AI's own BELIEF about where the region starts, and the two must not drift.
 </system_directive>
 
 <hard_constraints>
@@ -588,18 +612,32 @@ consistent against a human's play notes.
   plausible-but-wrong answers in a row before a real one. Sanity-check every result against
   something that must hold: a slower, heavier profile cannot out-range a faster one; eight
   identical solved arcs cannot scatter by 9m; two maps cannot disagree about gravity.
+  ⚠️ THE LIVE EXAMPLE, AND IT WILL BITE YOU BECAUSE YOUR PROBES TAKE `scale=` TOO (B-140):
+  `Engine.time_scale` does not run the game faster, it makes each PHYSICS STEP cover more game
+  time. At 60 ticks/second and scale=16 a unit at SPEED 6.0 teleports 1.6 units per step, and every
+  contact test is then resolved on a world that jumps a body-width at a time. Raise
+  `Engine.physics_ticks_per_second` in proportion (ai_probe.gd does) or stay at scale <= 4.
 - HONEST STATUS. `[x]` means built AND verified; `[~]` means built but unverified with an explicit
-  statement of what is unverified; `[ ]` means not started. NEVER claim a human has played
-  something.
+  statement of what is unverified; `[ ]` means not started. Report what YOU verified and how; say
+  nothing about what the human did or did not play — you cannot see it, and they test constantly.
+  Their feedback IS a test result: log it in Handoff.md §3 with a `B-` number, tick Checklist.md and
+  update the LANE STATUS BOARD in the same commit as the fix.
 - Where a question is about FEEL rather than correctness, instrument it, produce a number or a
   clip, and ASK.
+- ⚠️ KNOW THE NOISE FLOOR BEFORE YOU ACT ON A DIFFERENCE. Measured over identical 20-round fairness
+  runs: +/-0.2 on dents-per-round and +/-2.5 points on block rate. Anything smaller is not a
+  finding. Use 40+ rounds before you believe a small one.
 </behavioral_guidelines>
 
 <execution_workflow>
 1. READ FIRST, batching the reads: docs/Roadmap.md (Part 0 section 0.8, and items R-06, R-18, R-30),
-   docs/Checklist.md (Phase 9 sections 9.5 and the fairness log's RUN 8), docs/Dev_Plan.md sections
-   0, 0.3 and 0.5, docs/Handoff_Physics_AI_LAN.md IN FULL (it is your lane's trap list),
-   docs/Handoff.md section 3 (the bug ledger), docs/Concurrency_Protocol.md.
+   docs/Checklist.md — grep Phase 9 for the "HANDOFF — R-06" block (your spec) and read the fairness
+   log's RUNS 14 and 15 (the current baseline; ⚠️ RUN 8's "92% blocked" is quoted all over the older
+   prose and is four runs stale), docs/Dev_Plan.md sections 0, 0.3 and 0.5,
+   docs/Handoff_Physics_AI_LAN.md IN FULL (it is your lane's trap list, but ⚠️ its "AI fairness is a
+   TUNING problem" section predates RUNS 9-15 and is wrong — three knobs have since come back inside
+   the noise), docs/Handoff.md section 3 (the bug ledger; B-139 and B-140 are the two newest and both
+   affect you), docs/Concurrency_Protocol.md.
    THEN the code: scripts/characters/carrier.gd, carriable.gd, hitbox.gd, throw_profile.gd,
    scripts/characters/character_base.gd, scripts/systems/round_manager.gd, tools/phys_probe.gd.
 2. Per task: a <thinking> block naming the exact files, constants and SIGNALS affected -> immediate
@@ -608,8 +646,19 @@ consistent against a human's play notes.
 </execution_workflow>
 
 <task_list>
+⚠️ BEFORE R-06: THERE MAY BE A ONE-NUMBER JOB WAITING FOR YOU IN YOUR OWN PATH. BALANCE's RUN 14
+measured the last lever that moves the win rate and it is `CharacterBase.MAX_DENTS` (3 -> 2) taken
+together with R-08's variant 1 — a tag costing the attacker its slipper and a respawn instead of the
+round (the rule lives at the bottom of hitbox.gd::_on_area_entered). Measured: variant 1 alone takes
+the split from DEF 100/0 to 70/30 with 1.75 dents landing per round, so a 2-dent requirement is what
+converts those rounds into wins AND shortens the 82s average. 🧑 THE PICK IS THE HUMAN'S — ask before
+building it, and if they say go, that is both files under the SHARED_LOCKS lock.
+
 R-06 · THE LOB. The attacker's only answer to a blocked lane is to wait ATTACKER_PATIENCE (2.0s) and
-throw into it, and 92% of throws die there. Build the lob: charge held PAST the full-power point
+throw into it. (⚠️ "92% of throws die there" below is RUN 8's figure and is stale — it is 38.4% as of
+RUN 14. The lob is still wanted, for the reason in the system directive: it is the only shot that can
+go OVER a parked defender, and the triangle is the design. Its bar is hit_probe contact, not the
+block rate.) Build the lob: charge held PAST the full-power point
 rolls into a `bagsak` lob — steeper arc, longer flight, lands short of a body-block, and arrives
 slowly enough that the can's evasion (CAN_EVADE_LOOKAHEAD 0.6s) can actually see it and beat it.
 The design intent is a TRIANGLE, not a strictly better shot: the lob beats the taya, the dodge beats
