@@ -385,10 +385,33 @@ func can_be_reset_by(who: CharacterBase) -> bool:
 		# Beat one back out. At MAX_DENTS the round has already been reported, so
 		# only a partially dented can is worth channelling.
 		return _character.dents > 0 and _character.dents < CharacterBase.MAX_DENTS
-	# Option B: DOWNED only. Not SEALED — a sealed can means the round is already
-	# lost, and un-sealing it here would be round-win logic living in the wrong
-	# file. Not NORMAL either; there is nothing to stand up.
-	return _character.state == CharacterBase.State.DOWNED
+	# Option B: DOWNED, or — since 2026-07-30 — OUT OF THE CIRCLE.
+	#
+	# ⚠️⚠️ THIS IS THE COUNTERPLAY THE OUT-OF-CIRCLE COUNTDOWN WOULD OTHERWISE NOT HAVE,
+	# AND IT WAS FOUND BY ASKING WHO CAN ACTUALLY ANSWER IT.
+	#
+	# The countdown (`RoundManager._step_can_out`) ends the round when a displaced lata
+	# fails to get home. But a lata is displaced by being HIT, and being hit is precisely
+	# the state in which it cannot drive itself: `DOWNED_MAX_TIME` is 2.0 s of no control,
+	# a Can-Smash or a bump adds more, and the attacking side gets to choose when. If the
+	# lata's own player is the only one who can move it, the correct attacking play is to
+	# knock it out and then keep it stunned, and the taya — the player whose entire job
+	# is that circle — can only watch. `hitbox.gd`'s same-team rule (B-09) means they
+	# cannot even shove it.
+	#
+	# So the reset channel, which already exists and already has the right shape (stand
+	# still, hold, be punishable for it), does double duty: it stands a downed lata up,
+	# AND it walks a displaced one home. Holding `grab` beside your own lata is now the
+	# defence's real verb, and the price is unchanged — `RESET_CHANNEL_TIME` is 2.2 s of
+	# standing still inside the arena, which is the one moment the attacker can punish.
+	#
+	# Not SEALED — a sealed can means the round is already lost, and un-sealing it here
+	# would be round-win logic living in the wrong file.
+	if _character.state == CharacterBase.State.DOWNED:
+		return true
+	if _character.state != CharacterBase.State.NORMAL:
+		return false
+	return RoundManager.round_active and RoundManager.can_out_left() >= 0.0
 
 ## Host-side completion of the channel. Same shape as host_grab/host_throw: the
 ## client asked, the host re-validates from scratch, and only then does it apply.
@@ -421,8 +444,30 @@ func _rpc_apply_reset() -> void:
 	AudioManager.play_at("reset_channel_complete", _character.global_position)
 	if GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A:
 		_character.clear_dent()
-	else:
-		_character.self_right()
+		return
+	_character.self_right()
+	# ⚠️ THE CARRY HOME. A completed channel on a lata that is OUTSIDE its circle puts it
+	# back on the mark, because that — not standing it up — is what the countdown is
+	# actually asking for. See `can_be_reset_by()` for why the defence needs this at all.
+	#
+	# ⚠️ A TELEPORT, NOT AN IMPULSE, AND THAT IS THE SAFER OF THE TWO. An impulse toward
+	# the origin would have to be sized against `FRICTION`, against `CAN_KNOCKBACK_SCALE`
+	# and against however far out the can happens to be, and it would overshoot the 0.9 m
+	# circle at any distance it did not exactly solve for — which is a defence that
+	# performs its one verb correctly and still loses the round. The lata was picked up
+	# and put back; that is what the animation of a taya righting a can already reads as.
+	#
+	# `begin_spawn_settle()` for the reason B-100 documents at length: writing `position`
+	# on a PhysicsBody3D updates the scene tree at once and the broadphase only at the
+	# next server step, so anything standing near the circle would depenetrate off the
+	# lata's stale collider and fling it straight back out.
+	var flat := Vector2(_character.global_position.x, _character.global_position.z)
+	if flat.length() > RoundManagerScript.CAN_HOME_RADIUS:
+		_character.global_position = Vector3(
+			0.0, _character.global_position.y, 0.0)
+		_character.velocity = Vector3.ZERO
+		_character.begin_spawn_settle()
+		_character.snap_visual_interpolation()
 
 ## Whether this node is currently driving the character's movement itself, in
 ## which case character_base.gd hands the physics frame over (see its

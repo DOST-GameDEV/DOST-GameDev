@@ -116,6 +116,15 @@ and resets it — and **permanently shortens the next one by 0.75 s**, up to fiv
 So the fifth save buys you 1.25 seconds, and the defence's ability to keep saving is
 itself the clock.
 
+**The taya's counterplay: the reset channel carries it home.** A lata is displaced by
+being *hit*, and being hit is exactly the state in which it cannot drive itself — so if
+its own player were the only one who could move it, the correct attacking play would be
+to knock it out and then keep it stunned, with the taya unable to help (`hitbox.gd`'s
+same-team rule forbids even shoving it). Holding `grab` beside your own lata for
+`RESET_CHANNEL_TIME` (2.2 s) now stands it up **and**, if it is outside the circle, puts
+it back on the mark. The price is unchanged: 2.2 s of standing still inside the arena,
+which is the one moment the attacker gets to punish.
+
 ### 5.3 · Lata abilities
 
 | Ability | Input | Numbers |
@@ -194,9 +203,38 @@ around**, which is most of what "the defender feels overpowered" was.
 | Throw (after pickup) | 1.25 s | — |
 | Max-power long throw on the taya | — | 5.0 s |
 
-**The stunlock check.** The longest chain the defence can produce is a power bump
-(0.9 s) into a Can-Smash (1.6 s) — 2.5 s, and it needs two units and two commitments
-with 0.80 s and 8.0 s of cooldown behind them. No effect refreshes itself: every stun
-goes through `apply_stagger`, which takes `max()` of the remaining time rather than
-adding, so two overlapping stuns are one stun. The 5 s long-throw punish is the single
-longest effect in the game and it costs the attacker their tsinelas to land.
+### The stunlock argument — named, not asserted
+
+**No chain in this game locks a player out for longer than 2.5 seconds, and every one
+of them costs more than it buys.** Four properties hold it, and each is a line of code
+rather than a convention:
+
+1. **Stuns do not stack — they overlap.** Every stun in the game, without exception,
+   arrives through `CharacterBase.apply_stagger()`, which does
+   `max(_staggered_time_left, duration / grit)`. Two 1.6 s smashes landing 0.2 s apart
+   are 1.8 s of stun, not 3.2 s. There is no additive path.
+2. **DOWNED has a hard ceiling.** `DOWNED_MAX_TIME` 2.0 s applies to *every unit*, not
+   just the lata, and it is a wall-clock total rather than a refreshable window — so
+   repeated knockdowns cannot hold a body on the floor.
+3. **The longest producible chain is 2.5 s** — a power bump (0.9 s) into a Can-Smash
+   (1.6 s). It needs *two different units* to commit in sequence, one of which then owes
+   8.0 s of cooldown, and the bump's own 1.35 s wind-up is visible on every peer before
+   it lands. During those 2.5 s the defence is standing next to the attacker instead of
+   guarding a circle whose countdown is running.
+4. **The one longer effect is the 5 s long-throw punish, and it is not repeatable.**
+   Landing it costs the attacker their tsinelas, the whole retrieval scramble, and a
+   1.25 s throw lock before they could ever set it up again — at minimum eight seconds
+   of round for five seconds of stun, from a position where the taya can simply not be
+   standing in a straight line.
+
+**Counterplay, per powerful action.** Nothing here is answered only by "do not be there":
+
+| Action | Answer |
+|---|---|
+| Power bump | 1.35 s of visible wind-up — dash, jump, throw, or walk out of 1.27 m of reach |
+| Can-Smash | 0.35 s wind-up, and 3.6 m never reaches the 6.0 throwing line |
+| Can-Dash | one per round; bait it, then commit |
+| Ground Smash | needs height, so it is telegraphed on the ground first; Can-Dash beats it, and a miss costs 12 s |
+| Long-throw punish | do not stand in the lane at max range |
+| Circle countdown | the reset channel carries the lata home (§5.2) |
+| Self-launch | it is a committed arc with no steering; a lata that moves is not under it |
