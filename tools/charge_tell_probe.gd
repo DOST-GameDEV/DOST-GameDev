@@ -184,7 +184,8 @@ func _run_local() -> void:
 	print("\n=== LOCAL · one machine, the charging peer's own view ===")
 	var already := (attacker.get_node("Carrier") as Carrier).held()
 	if already != null:
-		already.host_land()
+		# host_drop, not host_land — see the networked leg's note.
+		already.host_drop()
 		await get_tree().physics_frame
 	await _baseline(attacker)
 	await _measure_axis(attacker)
@@ -195,7 +196,8 @@ func _run_local() -> void:
 		await _scan_pose_clip(attacker)
 
 	var carriable := slipper.get_node("Carriable") as Carriable
-	carriable.host_land()
+	carriable.host_drop()
+	await get_tree().physics_frame
 	slipper.global_position = attacker.global_position + Vector3(0.4, 0.3, 0.0)
 	await get_tree().physics_frame
 	carriable.host_grab(attacker)
@@ -489,55 +491,40 @@ func _run_net(mode: String, address: String) -> void:
 	await _net_ready_up()
 	await get_tree().create_timer(1.0).timeout
 
-	# ⚠️ THE SUBJECT IS PICKED BY AUTHORITY, NOT BY ROLE. The host drives a Person it
-	# OWNS — `input_step()` runs for nobody else, so a button pressed at a unit this peer
-	# does not own measures nothing — and the client watches a Person it does NOT own,
-	# which is the entire point of the leg. Role is deliberately not part of it: a
-	# defending Person with a slipper in hand charges by exactly the same code path
-	# (`carrier.gd::_step_throw` gates on `_held`, never on the side), so requiring the
-	# offense side here would just make the run depend on a coin flip at round start.
+	# ⚠️ THE SUBJECT IS THE ATTACKING PERSON, AND WHICH PEER DRIVES IT FOLLOWS FROM THAT
+	# RATHER THAN THE OTHER WAY ROUND.
+	#
+	# The first version picked "a Person the host owns" and the leg could not run at all:
+	# `slipper NONE on the subject's team`. Only the ATTACKING team has a tsinelas — the
+	# defending team's Prop is the lata — and `can_be_grabbed_by()` refuses an opponent's
+	# slipper outright, so a Person on the can side has nothing to wind up with. Which team
+	# is attacking in round 1 is a coin flip, and with two humans both seats are on team A,
+	# so half of all runs had no valid subject and said so only as `held=<null>`.
+	#
+	# So: the subject is the attacking Person, whoever owns it. The peer that OWNS it drives
+	# the button (`input_step()` runs nowhere else) and the other peer OBSERVES. The claim is
+	# symmetric — "a peer that does not own the charging Person can see the wind-up" — so it
+	# does not matter which of the two ends up watching, only that one of them does.
 	var subject: CharacterBase = null
 	for c in _main.find_children("*", "CharacterBase", true, false):
 		var ch := c as CharacterBase
-		if not ch.is_person:
-			continue
-		var mine := ch.get_multiplayer_authority() == multiplayer.get_unique_id()
-		if mine == (mode == "host") and subject == null:
+		if ch.is_person and not ch.team_is_can_side and subject == null:
 			subject = ch
 	if subject == null:
-		print("CHARGE: %s found no Person it %s own — cannot run this leg"
-			% [mode, "does" if mode == "host" else "does not"])
+		print("CHARGE: no attacking Person in the networked match")
 		_fails += 1
 		_checks += 1
 		return
-	print("\n=== NET · %s · subject %s (authority %d, local peer %d) ===" % [
-		mode, subject.name, subject.get_multiplayer_authority(),
-		multiplayer.get_unique_id()])
+	var mine := subject.get_multiplayer_authority() == multiplayer.get_unique_id()
+	print("
+=== NET · %s · subject %s (authority %d, local peer %d) — this peer %s ===" % [
+		mode, subject.name, subject.get_multiplayer_authority(), multiplayer.get_unique_id(),
+		"DRIVES" if mine else "OBSERVES"])
 
-	# ⚠️ WAIT FOR A LIVE ROUND, AND ASSERT IT. Measured: `round_active=false
-	# held=false` with the button held for a full 1.4 s and `local -1.000` throughout — a
-	# Person in a match that has not started yet is FROZEN (`character_base.gd`'s freeze
-	# gate reads round_active + round_number), so `input_step()` never runs and nothing can
-	# charge. The ready phase clearing is not the same event as the round going live: there
-	# is a countdown between them, and the first version of this leg measured inside it.
-	for _i in int(NET_CONNECT_WAIT * 10.0):
-		if RoundManager.round_active:
-			break
-		await get_tree().create_timer(0.1).timeout
-	_assert("%s · the round is live" % mode, RoundManager.round_active,
-		"round_active=%s round=%d" % [str(RoundManager.round_active), MatchManager.round_number])
-	if not RoundManager.round_active:
-		print("CHARGE: no live round — refusing to report a wind-up measured in a frozen match")
-		return
-	# Both peers line up here, so the client's 1.4 s of sampling overlaps the host's hold.
-	await get_tree().create_timer(1.5).timeout
-
+	# ⚠️ THE HOST PUTS THE SLIPPER IN THE HAND EVEN WHEN THE CLIENT IS THE ONE THROWING.
+	# `carriable.gd::host_grab()` no-ops off the host by design, and carry state is a host
+	# broadcast, so this is the only peer that can set it up — for either Person.
 	if mode == "host":
-		# ⚠️ THE SUBJECT'S OWN TEAM'S TSINELAS, not the first one in the tree.
-		# `carriable.gd::can_be_grabbed_by()` refuses an opponent's slipper outright ("shove
-		# it, kick it, never pocket it"), so `host_grab` on the wrong one is a silent no-op —
-		# measured as `held=<null>` with the button held for a full 1.4 s and no charge at
-		# all. The local leg picked the right one by luck; this one has two teams in play.
 		var slipper: CharacterBase = null
 		for c in _main.find_children("*", "CharacterBase", true, false):
 			var ch := c as CharacterBase
@@ -546,21 +533,36 @@ func _run_net(mode: String, address: String) -> void:
 				break
 		if slipper != null:
 			var carriable := slipper.get_node("Carriable") as Carriable
-			carriable.host_land()
+			# ⚠️ `host_drop()`, NOT `host_land()`. `host_land` only fires from FLYING, so on a
+			# slipper a bot had already picked up it is a no-op — measured as
+			# `grabbable=false` with the slipper CARRIED, after which the re-grab was skipped
+			# and the OBSERVING peer never received a carry broadcast at all (`held=<null>`
+			# on the client beside `held=Carriable:<...>` on the host, for the same unit —
+			# two numbers that cannot both be true). Dropping and re-grabbing forces the
+			# broadcast both peers need.
+			carriable.host_drop()
+			await get_tree().physics_frame
 			slipper.global_position = subject.global_position + Vector3(0.4, 0.3, 0.0)
 			await get_tree().physics_frame
 			carriable.host_grab(subject)
-			for _f in 20:
-				await get_tree().physics_frame
-				if (subject.get_node("Carrier") as Carrier).held() != null:
-					break
-		# ⚠️ NOTHING IN HAND MEANS NO WIND-UP, BY DESIGN — `carrier.gd::_step_throw`
-		# returns immediately when `_held` is null, and cancels any charge on the way out.
-		# So this is a precondition of the entire leg, not a detail: assert it here rather
-		# than discover it as a flat pose twenty lines later.
-		_assert("%s · the slipper is in hand" % mode,
-			(subject.get_node("Carrier") as Carrier).held() != null,
-			"held=%s" % str((subject.get_node("Carrier") as Carrier).held()))
+			print("  slipper  %s team=%d (subject team=%d) grabbable=%s" % [
+				slipper.name, slipper.team, subject.team,
+				str(carriable.can_be_grabbed_by(subject))])
+		else:
+			print("  slipper  NONE on the attacking team — that should be impossible")
+
+	# Both peers wait for the carry to land: the driver needs it because
+	# `carrier.gd::_step_throw` returns immediately with nothing in hand, and the observer
+	# needs it because it is the replicated fact everything downstream hangs off.
+	var carrier := subject.get_node("Carrier") as Carrier
+	for _f in 120:
+		if carrier.held() != null:
+			break
+		await get_tree().physics_frame
+	_assert("%s · the slipper is in hand" % mode, carrier.held() != null,
+		"held=%s (replicated from the host either way)" % str(carrier.held()))
+
+	if mine:
 		for c in _main.find_children("*", "CharacterBase", true, false):
 			var ch := c as CharacterBase
 			if ch.ai_controller != null:
@@ -568,27 +570,19 @@ func _run_net(mode: String, address: String) -> void:
 			ch.input_parked = ch != subject
 		var rig := subject.get_node("CameraRig") as CameraRig
 		rig.set_active(true)
-		# ⚠️ THE PRECONDITIONS, PRINTED. The first networked runs came back `local -1.000`
-		# for the whole hold — no charge at all, on the peer pressing the button — and none
-		# of the four things that can cause that were visible in the log. `input_step()` is
-		# only called for a unit that reads hardware, in NORMAL state, in a LIVE round, and
-		# it returns immediately with nothing in hand.
 		print("  preconditions  round_active=%s state=%d held=%s parked=%s ai=%s" % [
-			str(RoundManager.round_active), subject.state,
-			str((subject.get_node("Carrier") as Carrier).held() != null),
+			str(RoundManager.round_active), subject.state, str(carrier.held() != null),
 			str(subject.input_parked),
 			str(subject.ai_controller != null and subject.ai_controller.is_enabled())])
-		await _hold_and_sample(subject, rig, "host")
-		await get_tree().create_timer(NET_LINGER).timeout
+		await _hold_and_sample(subject, rig, mode)
 	else:
-		# ⚠️ PRESSES NOTHING. A client that drives its own button would measure its
-		# own local charge and call it an observation.
+		# ⚠️ PRESSES NOTHING. A peer that drives its own button would measure its own local
+		# charge and call it an observation.
 		await _observe_only(subject)
+	if mode == "host":
+		# The host must outlive the client — the session dies with it.
+		await get_tree().create_timer(NET_LINGER).timeout
 
-## Sends READY to the host until the phase clears. Polled, and `rpc_id(1)` rather than a
-## local call — the host counts PEERS, not characters (`main.gd::_awaiting_net_ready`),
-## and that flag is only set once the host's own phase RPC has landed here, which can be
-## after this probe's first look. Same shape as `aim_probe.gd::_net_ready_up()`.
 func _net_ready_up() -> void:
 	for _i in 60:
 		if not bool(_main.get("_awaiting_net_ready")):
@@ -675,13 +669,23 @@ func _dump_bindings(special: String, grab: String) -> void:
 				names.append(event.as_text())
 		print("  bindings  %-16s %s" % [action, ", ".join(names)])
 
+## The watching peer. Named "observer" rather than "client" because which of the two peers
+## watches depends on who owns the attacking Person, not on who hosts — see `_run_net`.
 func _observe_only(subject: CharacterBase) -> void:
-	var rows := await _sample(subject, null, "client", "")
-	_report(rows, "client", false)
+	# ⚠️ WATCHES FOR THREE TIMES AS LONG AS THE DRIVER HOLDS, and then only the charging
+	# part of that is judged. The two processes are started by hand seconds apart and each
+	# waits on its own clock, so the observer's window cannot be assumed to bracket the
+	# hold: measured once as `first 0.663 last -1.000` — the client had genuinely SEEN the
+	# wind-up (0.663 is not -1) and the run failed on the fact that its window caught the
+	# tail. Widening the window and trimming to the charging segment measures the wind-up
+	# instead of the alignment of two stopwatches.
+	var rows := await _sample(subject, null, "observer", "", 3)
+	_report(rows, "observer", false)
 
 ## `hold_action` is renewed on every tick when non-empty — see `_hold_and_sample`'s note
 ## about focus loss between two windows on one machine.
-func _sample(subject: CharacterBase, rig: CameraRig, tag: String, hold_action: String) -> Array:
+func _sample(subject: CharacterBase, rig: CameraRig, tag: String, hold_action: String,
+		spans: int = 1) -> Array:
 	var carrier := subject.get_node_or_null("Carrier") as Carrier
 	var visual := subject.get_node_or_null("Visual") as CharacterVisual
 	var hand: Node3D = visual.get_hand_attachment() if visual != null else null
@@ -699,7 +703,7 @@ func _sample(subject: CharacterBase, rig: CameraRig, tag: String, hold_action: S
 				if bone != -1:
 					break
 	var rows: Array = []
-	for i in SAMPLES:
+	for i in SAMPLES * spans:
 		if hold_action != "":
 			Input.action_press(hold_action)
 		await get_tree().create_timer(HOLD_TIME / float(SAMPLES)).timeout
@@ -750,7 +754,29 @@ func _sample(subject: CharacterBase, rig: CameraRig, tag: String, hold_action: S
 		rows.append(row)
 	return rows
 
+## ⚠️ TRIMS TO THE CHARGING SEGMENT FIRST. `rows` may be three times longer than the hold
+## (see `_observe_only`), and judging a wind-up over a window that also contains the
+## idle-before and the throw-after would measure the harness's timing, not the feature. The
+## LONGEST contiguous run of `observed_power >= 0` is the wind-up; everything else is noise
+## around it. A driver's own window is already tight, so this is usually a no-op there.
 func _report(rows: Array, tag: String, expect_fpp: bool) -> void:
+	var best_from := 0
+	var best_len := 0
+	var from := -1
+	for i in range(rows.size()):
+		var charging: bool = float(rows[i]["observed_power"]) >= 0.0
+		if charging and from < 0:
+			from = i
+		if (not charging or i == rows.size() - 1) and from >= 0:
+			var to: int = i if not charging else i + 1
+			if to - from > best_len:
+				best_len = to - from
+				best_from = from
+			from = -1
+	if best_len >= 4 and best_len < rows.size():
+		print("  (trimmed to the charging segment: samples %d..%d of %d)"
+			% [best_from, best_from + best_len - 1, rows.size()])
+		rows = rows.slice(best_from, best_from + best_len)
 	print("  %4s %8s %8s   %-24s %-24s %8s  %s"
 		% ["t", "local", "observed", "fist (camera space)", "hand (character space)",
 			"arm.x", "animator"])
