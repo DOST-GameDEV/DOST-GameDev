@@ -29,8 +29,36 @@ class_name TutorialPanel
 signal back_pressed
 
 ## One entry per page. `rows` are rendered as a fixed-width amber chip beside a
-## wrapping body line — see `_build_row`.
+## wrapping body line — see `_build_row`. `tiles` is the PREMISE card's own shape and
+## only page 1 has it — see `_build_premise_tile`.
+##
+## ⚠️ PAGE 1 IS FOUR PICTURES AND TWELVE WORDS, and the eight reference pages behind
+## it are unchanged. The reference pages answer "what does SHIFT do"; they cannot
+## answer "what am I looking at", because a player who does not yet know what a lata
+## is has no hook to hang `["90 SECONDS", ...]` on. So the premise goes IN FRONT and
+## stays wordless enough to be read in one glance:
+##
+##   LATA / can · TAYA / guard   are the DEFENCE pair, and their words are blue
+##   TSINELAS / slipper · TAKBO / run   are the OFFENCE pair, and their words are orange
+##
+## which teaches the colour rule by using it rather than by stating it — the same way
+## the vocabulary itself is taught. Word count is the whole budget, lede included:
+## four glosses, four Filipino words, and a four-word lede is twelve.
 const PAGES: Array[Dictionary] = [
+	{
+		"title": "TUMBANG PRESO",
+		"lede": "One can. Two sides.",
+		"tiles": [
+			# ⚠️ Two DIFFERENT roster entries for the two tao tiles. Both concepts are
+			# "a person", and rendering the same rig twice would read as a duplicated
+			# picture rather than as two jobs — the role colour alone cannot carry that
+			# when the silhouette is identical.
+			{"kind": "can", "fil": "LATA", "eng": "can", "role": "defense"},
+			{"kind": "person", "index": 0, "fil": "TAYA", "eng": "guard", "role": "defense"},
+			{"kind": "slipper", "fil": "TSINELAS", "eng": "slipper", "role": "offense"},
+			{"kind": "person", "index": 1, "fil": "TAKBO", "eng": "run", "role": "offense"},
+		],
+	},
 	{
 		"title": "THE GAME",
 		"lede": "Tumbang preso, played as a sport. One side guards the lata. The other side throws a tsinelas at it.",
@@ -173,7 +201,17 @@ func _apply_page() -> void:
 
 	for child in rows.get_children():
 		child.queue_free()
-	for row in page["rows"]:
+	if page.has("tiles"):
+		# ⚠️ TWO STEPS, AND THE ORDER IS LOAD-BEARING. `CharacterPreview` reaches its
+		# SubViewport and Pivot through `@onready`, which do not resolve until the node
+		# enters the tree — and `_ready()` is also where it sets its own mouse_filter.
+		# Populating a tile before the strip is added gives "Cannot call method
+		# 'add_child' on a null value" from `show_prop`, and an mouse_filter set there
+		# is overwritten a moment later. So: build, ADD, then populate.
+		var strip := _build_premise_strip(page["tiles"])
+		rows.add_child(strip)
+		_populate_premise(strip, page["tiles"])
+	for row in page.get("rows", []):
 		rows.add_child(_build_row(String(row[0]), String(row[1])))
 
 	# A page the player has already scrolled, then paged away from and back to,
@@ -212,6 +250,118 @@ func _build_row(chip_text: String, body_text: String) -> HBoxContainer:
 	row.add_child(slot)
 	row.add_child(body)
 	return row
+
+# --- The premise card ---------------------------------------------------------
+
+const PREMISE_ICON: String = "res://scenes/ui/PremiseIcon.tscn"
+## Floor under one tile. Four of these plus separation has to fit the panel width,
+## and the picture has to stay big enough to recognise a slipper in.
+const TILE_WIDTH: float = 250.0
+## ⚠️ A FLOOR, NOT A HEIGHT. The icon expands to whatever the panel has left after the
+## two words — see the `Rows` comment in `Tutorial.tscn`. Both fixed heights that were
+## tried are visible in the renders: 210 stranded the strip at the top of a mostly
+## empty panel, and 330 clipped the English gloss and raised a scrollbar, which for a
+## card whose whole job is to be read at a glance is the worse of the two failures.
+const TILE_ICON_MIN_HEIGHT: float = 190.0
+const TILE_FIL_SIZE: int = 46
+const TILE_ENG_SIZE: int = 24
+
+## The four tiles across one row. `EXPAND_FILL` at equal ratio rather than four
+## absolute x positions, for the reason the whole front end is now container-driven:
+## a Control's size is clamped UP to its minimum, so an absolute offset is a guess.
+## The worst a long word can do here is push its own tile to the shared floor.
+func _build_premise_strip(tiles: Array) -> HBoxContainer:
+	var strip := HBoxContainer.new()
+	strip.add_theme_constant_override("separation", 18)
+	strip.alignment = BoxContainer.ALIGNMENT_CENTER
+	strip.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	for tile in tiles:
+		strip.add_child(_build_premise_tile(tile as Dictionary))
+	return strip
+
+## One tile: the real game object in 3D, the Filipino word under it in the ROLE
+## colour, the English gloss under that.
+##
+## ⚠️ THE PICTURE IS THE ACTUAL ASSET, not an icon drawn for this screen. There is no
+## icon art in `assets/ui/` and inventing four pieces of it is the ART lane's call,
+## not this one's — but `CharacterPreview` already loads the real can, slipper and
+## person rigs and frames them from their MEASURED bounds, so the premise card can
+## show the player exactly the object they will see in the match. That also means it
+## cannot go stale: reskin the lata and this page reskins with it.
+##
+## ⚠️ ONLY THE WORDS TAKE THE ROLE COLOUR, never the model. `show_character()` applies
+## the roster's own material (skin, clothes) and flat-tinting a person orange would
+## both fight ART's palette and stop the tao reading as a tao. The colour rule is
+## about what the UI says, and the words are the UI.
+func _build_premise_tile(tile: Dictionary) -> VBoxContainer:
+	var is_offense := String(tile.get("role", "defense")) == "offense"
+	var role_colour := UiTheme.OFFENSE if is_offense else UiTheme.DEFENSE
+
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 4)
+	column.custom_minimum_size = Vector2(TILE_WIDTH, 0)
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	column.size_flags_vertical = Control.SIZE_EXPAND_FILL
+
+	var icon := (load(PREMISE_ICON) as PackedScene).instantiate() as CharacterPreview
+	icon.custom_minimum_size = Vector2(TILE_WIDTH, TILE_ICON_MIN_HEIGHT)
+	icon.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# The picture absorbs the slack; the two words keep their line height. `_frame()`
+	# re-fits the camera on every resize, so growing the box reframes the subject
+	# rather than cropping it.
+	icon.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	column.add_child(icon)
+	# The subject is NOT set here — see `_apply_page`. Nothing on `icon` that
+	# `_ready()` owns can be touched until the strip is in the tree.
+
+	var fil := Label.new()
+	fil.text = String(tile["fil"])
+	fil.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	fil.add_theme_font_size_override("font_size", TILE_FIL_SIZE)
+	fil.add_theme_color_override("font_color", role_colour)
+	# The Filipino word is the one thing on this card that must never be cut in half
+	# to fit — it is what the page is teaching. Shrink to the floor, ellipsise rather
+	# than reflow, and let the tile keep its shape.
+	fil.clip_text = true
+	fil.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	column.add_child(fil)
+
+	var eng := Label.new()
+	eng.text = String(tile["eng"])
+	eng.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	eng.add_theme_font_size_override("font_size", TILE_ENG_SIZE)
+	eng.add_theme_color_override("font_color", UiTheme.CREAM_MUTED)
+	eng.clip_text = true
+	eng.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	column.add_child(eng)
+
+	return column
+
+## Second half of building the card, run only once the strip is IN THE TREE — see the
+## call site. Walks the columns in the order `_build_premise_strip` made them.
+func _populate_premise(strip: HBoxContainer, tiles: Array) -> void:
+	for i in range(min(strip.get_child_count(), tiles.size())):
+		var icon := strip.get_child(i).get_child(0) as CharacterPreview
+		if icon == null:
+			continue
+		# These four sit INSIDE the page's ScrollContainer, and `CharacterPreview`
+		# takes the mouse for drag-to-turn and wheel-to-zoom. Left alone, the wheel
+		# over a tile would zoom a slipper instead of scrolling the page. The tiles are
+		# pictures; the CHARACTER screen is where inspecting the model belongs.
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_show_subject(icon, tiles[i] as Dictionary)
+
+## Puts the right rig in the tile. Through `CharacterPreview`'s own public calls, so
+## the framing, the material and the prop tint are all the ones the CHARACTER screen
+## would give the same subject.
+func _show_subject(icon: CharacterPreview, tile: Dictionary) -> void:
+	match String(tile["kind"]):
+		"can":
+			icon.show_prop(CharacterRoster.can_at(0), true)
+		"slipper":
+			icon.show_prop(CharacterRoster.slipper_at(0), false)
+		_:
+			icon.show_character(CharacterRoster.at(int(tile.get("index", 0))))
 
 func _on_back_pressed() -> void:
 	AudioManager.play("ui_back")

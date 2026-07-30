@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3 uid="uid://d5k8m2n4p6q9r"]
+[gd_scene load_steps=8 format=3 uid="uid://d5k8m2n4p6q9r"]
 
 [ext_resource type="Script" path="res://scripts/ui/hud.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/ui/YouCard.tscn" id="2"]
@@ -9,6 +9,19 @@
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_1"]
 shader = ExtResource("3")
 shader_parameter/vignette_color = Color(0.97, 0.0, 0.0, 0.6)
+
+; The plate under the ready-phase role objective — INK at 0.78 so the role-coloured
+; text reads over the FPP viewmodel arms. See the ReadyObjectiveRow node for why.
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_ready_objective"]
+content_margin_left = 28.0
+content_margin_top = 10.0
+content_margin_right = 28.0
+content_margin_bottom = 12.0
+bg_color = Color(0.015686, 0.031373, 0.219608, 0.78)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
 
 [node name="HUD" type="Control"]
 layout_mode = 3
@@ -251,6 +264,53 @@ theme_type_variation = &"HudToast"
 horizontal_alignment = 1
 text = "Walk around freely. Press [R] when you're ready to start the round."
 visible = false
+
+; R-27(b) — WHAT YOUR JOB IS THIS ROUND, on the one screen that had nothing to say.
+; The ready phase told the player how to start the round and not what they were about
+; to do in it. Sits ABOVE ReadyPrompt (which keeps the instruction) and is deliberately
+; larger, because this is the headline and "press R" is the footnote.
+;
+; The colour is NOT set here — `hud.gd::show_ready_prompt()` tints the label OFFENSE or
+; DEFENSE from the local unit's actual role, so it cannot disagree with the team cards
+; along the top.
+;
+; ⚠️ THE DARK PLATE IS NOT DECORATION, IT IS THE R-28 FIX AND THE FIRST RENDER PROVED
+; IT WAS NEEDED. Bottom-centre of an FPP screen is exactly where the viewmodel arms and
+; the held tsinelas are, and role-blue text sat straight on top of a full-brightness
+; orange arm — the worst contrast pairing available. On a plate the objective reads over
+; the arms, over asphalt and over sky alike.
+;
+; CenterContainer → PanelContainer so the plate HUGS the text. A plate on the
+; full-width label would draw a 1040px bar across the screen for three words.
+; (The plate's StyleBoxFlat is `StyleBoxFlat_ready_objective`, up with the other
+; sub-resources — every `[sub_resource]` has to precede the first `[node]` in a .tscn.)
+[node name="ReadyObjectiveRow" type="CenterContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -560.0
+offset_top = -184.0
+offset_right = 560.0
+offset_bottom = -120.0
+mouse_filter = 2
+visible = false
+
+[node name="Plate" type="PanelContainer" parent="ReadyObjectiveRow"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_ready_objective")
+
+[node name="ReadyObjective" type="Label" parent="ReadyObjectiveRow/Plate"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 38
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "KNOCK THE LATA DOWN"
 
 [node name="Crosshair" type="Control" parent="."]
 unique_name_in_owner = true
