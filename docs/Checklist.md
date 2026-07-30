@@ -2808,6 +2808,17 @@ an **idle settle** so an arrived unit shifts its weight instead of freezing.
 | Aim error at release | *not measured* | **0.39 units mean** | — |
 | Went-nowhere (displacement) | *not measured* | **3.85 s worst** | < 2 s |
 
+**RE-RUN AT `scale=1` BEFORE BEING WRITTEN AS FINAL, per this section's own rule** — and on the map as
+it stood after the chalk/children's-drawings pass, so it is also a re-check against a changed world.
+20 rounds, scale 1: **throws blocked 78.3%** (scale 4 said 78.1%), aim error **0.21 units** mean / 0.40
+worst, dents 0.05, 20/20 by tag, first throw 0.6 s. The headline reproduces; the scale-4 figures above
+are admissible.
+
+**INDEPENDENCE MODE IS GREEN AGAIN, AND IT WAS NOT BEFORE THIS PASS.** `godot --path <abs>
+tools/ai_probe.tscn`: **longest still run 1.70 s (fair < 2 s)**, frames where 2+ bots changed state
+together **0 / 843** (recorded figure: 1/843), 37 transitions across three driven bots, none frozen.
+Before the fixes the same audit read **7.03 s** on `TeamAProp` — the Can that could not move.
+
 **VERDICT, stated plainly: the AI is materially better and the game is still not fair.** Seven real
 defects are gone, the block rate is down 16.6 points, the attacker no longer walks into the tag at the
 opening whistle, and every unit moves. **But the defence still wins 100% of rounds and 20/20 still end
