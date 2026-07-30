@@ -44,6 +44,33 @@ it is measured.
 * **Never claim a verification you did not perform.** `[x]` needs a named probe, a
   screenshot, or a log. Everything else is `[~]`.
 
+### ⚠️ THE REACHABILITY RULE — read this before you build any UI
+
+**A feature that a player cannot reach from the menus does not exist, and does not tick a
+box.** This project has already shipped systems that only a command-line flag could start.
+That is the failure mode this rule closes.
+
+Whatever you build, you also **wire into the screen a player actually meets it on**, in the
+same commit:
+
+* Name the entry point before you write the feature — which screen, which control, what it
+  is called on screen.
+* It must be **operable with a mouse and reachable by keyboard focus**, and it must sit in
+  the existing focus order rather than beside it.
+* It must survive a real path, not just the scene opened alone: Single Player *and*
+  Multiplayer where both apply, host *and* client.
+* A debug flag, an autoload variable or a console command is **not** an entry point. It may
+  exist alongside one.
+* Render the screen and look at it. "The control is added to the tree" is not the claim;
+  "I can see it and it does the thing" is.
+
+**Worked example — spectator, which is `build ux`'s first item.** The camera exists and
+today only `--spectate` starts it. It needs a **SPECTATE toggle button in the lobby**:
+visible on the multiplayer lobby *and* on the pre-match setup screen, on by default off,
+reflecting state when toggled, releasing the seat, and carrying that choice into the match.
+`match_setup.gd` already builds one in code and it has never been rendered — start there,
+finish it, and put one in `multiplayer_setup.gd` too.
+
 ---
 
 ## EXECUTION ORDER — fixed, not negotiable
@@ -150,14 +177,17 @@ Lata
 
 ### 3 · 🖥️ `build ux` — Screens, spectator, teardown *(Sonnet 5 · high)*
 
-- [ ] 3.1 **Spectator mode** — free-flying camera, no physical model, clips through all geometry, reachable from the setup screen in **Single Player and Multiplayer**
-- [ ] 3.2 Spectator claims no seat, is excluded from the ready gate, its slot is bot-filled
+**Do 3.1 and 3.2 first.** Everything in this section is bound by the REACHABILITY RULE.
+
+- [ ] 3.1 **A SPECTATE toggle button in the lobby** — on the multiplayer lobby *and* the pre-match setup screen, in the focus order, showing its own state, in Single Player and Multiplayer, host and client. Rendered and looked at
+- [ ] 3.2 **Spectator mode** — free-flying camera, no physical model, clips through all geometry; claims no seat, excluded from the ready gate, its slot bot-filled. Entered from 3.1, not from `--spectate`
 - [ ] 3.3 **UI countdown for every stun and status effect** — a stun the player cannot time is a stun they cannot play around
 - [ ] 3.4 **Character-select desync** — lata and tsinelas picks reliably reach the match on every path: solo, host, client, and an AI-held Prop seat beside a human. The model must not change mid-match
 - [ ] 3.5 **Host disconnect** — the host announces it is leaving before closing the socket; clients bounce out immediately instead of waiting out the ENet timeout. Wired to the quit dialog
 - [ ] 3.6 **Trajectory preview** visible for throws and charge-ups, integrating the *same* solve the throw uses
-- [ ] 3.7 Charge/meter readouts for the bump meter and the throw lock
+- [ ] 3.7 Charge/meter readouts for the bump meter, the stamina bar and the throw lock
 - [ ] 3.8 Max power shown in the custom slipper description
+- [ ] 3.9 **Sweep for orphans.** Every system the other lanes built has a menu entry point a player can find — spectator, hanger, skins, stamina, the smash cooldowns. Anything reachable only by flag or autoload is filed here and fixed
 
 ### 4 · 🎨 `build model` — Models and classes *(Sonnet 5 · medium)*
 
@@ -261,11 +291,19 @@ Each block is paste-ready. Set model and effort first.
 > player picked is not the character that loads, and there is no way to film the match
 > from outside it.
 >
-> Five pieces of work:
-> * **Spectator mode** — free-flying camera, no body, no collision, clips through
->   everything, in both Single Player and Multiplayer. Seat −1: no seat claimed, out of
->   the ready count, slot bot-filled. `spectator_camera.gd` exists and boots; it has never
->   run beside a real second peer.
+> **§ THE REACHABILITY RULE applies to every line you write.** A screen nobody can get to
+> is not a feature. Name the entry point first, wire it in the same commit, render it and
+> look at it.
+>
+> Five pieces of work, **spectator first**:
+> * **Spectator mode, entered from a SPECTATE toggle button in the lobby.** The camera
+>   itself exists (`spectator_camera.gd`) and today only the `--spectate` command-line flag
+>   starts it, which is exactly the failure the rule above describes. Put a real toggle on
+>   the multiplayer lobby and on the pre-match setup screen — `match_setup.gd` already
+>   builds one in code that has never been rendered. Free-flying camera, no body, no
+>   collision, clips through everything, Single Player and Multiplayer. Seat −1: no seat
+>   claimed, out of the ready count, slot bot-filled. It has never run beside a real second
+>   peer.
 > * **Status timers** — one visible countdown per live effect. This is most of what "the
 >   defender feels overpowered" actually was.
 > * **The character-select desync** — the human's report is that the lata and tsinelas
