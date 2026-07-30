@@ -198,6 +198,8 @@ standing still inside the arena.
 | Every changed script parses | **MEASURED** — `--check-only` over all of `scripts/**` and `tools/**`. The only remaining `Parse Error` is `main.gd`'s preload-typing artefact, which reproduces on a clean `git stash` of this branch and is pre-existing. |
 | `Main.tscn` runs a Single Player match without a script error | **MEASURED** — 25 s with a real Vulkan device, `--log-file` captured. 61 lines, every one of them the engine's own `StringName` teardown at `string_name.cpp:117`. Zero GDScript errors. |
 | `MatchSetup.tscn` loads with the code-built SPECTATE button | **MEASURED** — same method, clean log. |
+| Round transitions survive the new per-round resets | **MEASURED** — `round_probe`, 6 transitions with a `(9, 4, 4)` impulse fired into each intermission gap: **0.00 m/s and 0.00 m of drift on all four units.** PASS. |
+| The throw still lands where it is aimed after `launch_velocity` was pulled out of `host_throw` | **MEASURED** — `phys_probe -- ballistics`, all four profiles, both lines. Every lob lands within **0.02 m** of the mark and apexes 2.63–2.66 m, and every flat throw still clears in 0.22–0.30 s. The refactor did not move the arc. |
 | No infinite stunlock exists | **ARGUED, not measured** — the chain is named in `Design.md` §11 and rests on four properties that are each a line of code. Nobody has tried to stunlock anybody. |
 | Every number in `Design.md` matches the code | **MEASURED** by reading both. |
 | The game is fun, fair, or balanced | **NEITHER.** See below. |

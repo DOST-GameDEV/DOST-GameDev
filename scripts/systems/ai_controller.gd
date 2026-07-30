@@ -231,9 +231,12 @@ const TSINELAS_ARRIVE_DISTANCE: float = 1.0
 ## body-blocking, which is what this file did before the behaviour-tree pass).
 ##
 ## ⚠️ MEASURED, 2026-07-29, 20 rounds per value, Option A — full table in the
-## fairness log (docs/Checklist.md §9). A tag by the defending Person ends the
-## round outright (hitbox.gd's own rule, not this file's), so pursuit is not a
-## small adjustment:
+## fairness log (docs/Checklist.md §9). AT THE TIME, a tag by the defending Person
+## ended the round outright (hitbox.gd's own rule, not this file's) — that branch
+## is deleted as of 2026-07-30 (`Design.md` §1), so read "by tag" below as history:
+## the table is kept for what it says about pursuit distance, not for what a tag
+## was worth, which no longer applies to anything. So pursuit was not a small
+## adjustment, historically:
 ##     0.0 -> defence 100%, 12/20 by tag,  8/20 timeout, longest still-run 23.6s
 ##     2.0 -> defence 100%, 10/20 by tag, 10/20 timeout, longest still-run 30.9s
 ##     5.0 -> defence 100%, 20/20 by tag,  0/20 timeout, longest still-run  2.0s
@@ -242,18 +245,30 @@ const TSINELAS_ARRIVE_DISTANCE: float = 1.0
 ## today, it only decides HOW the defence wins.
 ##
 ## ⚠️ NO LONGER 0.0. Human call: *"ensure the defender AI actively tries to tag
-## attackers."* At 0.0 the Taya never leaves its blocking post, so
-## `_act_taya_tag` — the only leaf that presses bump — could only ever fire if the
-## attacker walked into it. That is body-blocking, not tagging, and the report is
-## correct that it does not look like a defender playing.
+## attackers."* At 0.0 the Taya never leaves its blocking post, so the only leaf
+## that could ever act on a threat in melee could only ever fire if the attacker
+## walked into it. That is body-blocking, not engaging, and the report is correct
+## that it does not look like a defender playing.
+##
+## ⚠️⚠️ THE MEASUREMENTS ABOVE ARE ALL PRE-TAG-DELETION, AND ARE KEPT FOR THE
+## GEOMETRY ARGUMENT, NOT THE OUTCOME. "Won by tag" and "20/20 by tag" describe a
+## mechanic that ended the round outright on contact (`person_action.gd`,
+## `hitbox.gd`'s round-win-by-tag branch — both deleted 2026-07-30, `Design.md` §1:
+## "The defence no longer has an instant win at all"). What replaced it is the
+## charged bump meter on `special_ability` (Design.md §4), which staggers and drops
+## the attacker's slipper on a full charge but does not end the round by itself —
+## see `_act_taya_manage_bump`. The GEOMETRY these numbers measured still holds
+## (how far a Taya can usefully chase without abandoning the can), which is why the
+## radius is unchanged; the WORDING that follows should be read as "closes to melee
+## and lands a bump", not "tags".
 ##
 ## ⚠️ 3.6, NOT 5.0, AND THE DIFFERENCE IS THE WHOLE MEASUREMENT ABOVE. 5.0 is
 ## CONFINEMENT_RADIUS, i.e. "chase anywhere in my box", and it measured 20/20
-## rounds won by tag. 3.6 sits INSIDE the box: the Taya holds its post while the
+## rounds won this way. 3.6 sits INSIDE the box: the Taya holds its post while the
 ## attacker is out at the 6.0 throwing line, and breaks off to chase only once the
 ## attacker crosses into the defended area — which is exactly the moment it has to
-## come in and fetch its own tsinelas. So the Taya tags the thing worth tagging
-## and does not abandon the can to sprint at a thrower it can never reach.
+## come in and fetch its own tsinelas. So the Taya closes on the threat worth
+## closing on and does not abandon the can to sprint at a thrower it can never reach.
 ##
 ## ⚠️ THE TABLE ABOVE PREDATES ATTACKER EVASION. Those runs were recorded when the
 ## attacker had no dodge at all (`_act_attacker_dodge` did not exist), so 5.0's
@@ -789,6 +804,22 @@ func _build_attacker_branch() -> BTNode:
 		# radius is one melee range plus a margin, and a throw already past its commit
 		# point still goes out (see _cond_attacker_panic), so a committed shot is still
 		# committed and still readable.
+		#
+		# ⚠️⚠️ EVERYTHING ABOVE THIS LINE DESCRIBES THE TAG, AND THE TAG IS GONE,
+		# 2026-07-30 (Design.md §1 -- person_action.gd and hitbox.gd's round-win-by-tag
+		# branch both deleted; "the defence no longer has an instant win at all").
+		# "Being tagged ends the round outright" is no longer true of anything: what a
+		# defender at arm's length can land now is the charged bump meter on
+		# special_ability (Design.md §4), which drops the slipper and staggers on a
+		# FULL charge but does nothing of the kind on a bare TAP ("no stagger, no
+		# drop" is Design.md's own line for it). So mere proximity is no longer the
+		# danger -- _cond_attacker_panic now reacts to the defender's own bump-charge
+		# broadcast instead (CharacterBase.observed_bump_charge(), the same wind-up
+		# telegraph Design.md says exists precisely "so the attacker can see the
+		# commitment and dash, jump or throw through it"). The radius, the
+		# commit-fraction override and the empty-handed/holding split above are all
+		# still the right shape and are unchanged; only the trigger question changed,
+		# from "is a defender near" to "is a defender near AND winding up".
 		BTSequence.new(&"panic", [
 			BTCondition.new(&"tagger-at-arms-length", &"_cond_attacker_panic"),
 			BTAction.new(&"break-away", &"_act_attacker_dodge"),
@@ -1612,15 +1643,85 @@ func _cond_taya_threat_in_confinement() -> bool:
 	var flat := Vector2(_bb_enemy_attacker.global_position.x, _bb_enemy_attacker.global_position.z)
 	return flat.length() <= minf(taya_pursue_radius, CharacterBase.confinement_radius)
 
-func _act_taya_tag(_delta: float) -> int:
+## ---------------------------------------------------------------------------
+## THE BUMP METER, TAYA SIDE. `Design.md` §4: `special_ability` (LMB) is now a
+## charged bump — tap for a light nudge (no stagger, no drop), hold to
+## `BUMP_CHARGE_FULL_TIME` (1.35 s) for a power bump that displaces 1 m, drops the
+## attacker's slipper, staggers them 0.9 s and slows them for 1.2 s. This runs on
+## EVERY tick a threat is visible (see the `engage` sequence), not only once the
+## attacker is already in melee, because the whole point of a 1.35 s charge is that
+## it has to START before the attacker arrives to be worth anything by then.
+## ---------------------------------------------------------------------------
+
+## How close the enemy attacker has to be, WHILE CLOSING, before the Taya will begin
+## charging a bump against them. WRITTEN, NOT MEASURED — no probe run backs this the
+## way `taya_block_standoff` or `ATTACKER_PANIC_RADIUS` have one. Sized so a charge
+## started here has a real chance of reaching a useful power by the time the attacker
+## crosses into `TAYA_MELEE_RANGE`: at the walking `SPEED` (4.6) closing this whole
+## gap takes ~0.8 s, comfortably past `BUMP_TAP_TIME` (0.18) even before a sprinting
+## attacker closes it faster.
+const TAYA_BUMP_CHARGE_RANGE: float = 4.5
+## Same shape and same idiom as `ATTACKER_DODGE_CLOSING_SPEED` — metres per second of
+## approach along the line between the two, so standing near the Taya without
+## actually closing on it never starts a charge (the human's own "should NOT hold a
+## charge while nobody is near").
+const TAYA_BUMP_CLOSING_SPEED: float = 0.35
+
+## The whole charge/tap/release decision, run once per tick regardless of which
+## movement leaf (`melee`/`close-gap`/`block-how`) fires alongside it this same
+## tick — same shape as `_track_can_velocity` running ahead of the role fork, a
+## shared per-tick concern factored out of the movement leaves rather than
+## duplicated across them.
+func _act_taya_manage_bump(_delta: float) -> int:
+	var in_melee := _cond_taya_threat_in_melee()
+	var charging := bool(_held_actions.get("special_ability", false))
+	if in_melee:
+		if charging:
+			# RELEASE. Whatever charge has built fires through character_base.gd's
+			# own bump meter on the release edge (`_release_bump`) — this leaf only
+			# ever decides WHEN, never the power.
+			_set_held("special_ability", false)
+		elif _taya_tap_cooldown <= 0.0:
+			# Nothing was charging — the attacker closed faster than
+			# TAYA_BUMP_CHARGE_RANGE gave us credit for, or simply appeared here (a
+			# round reset, a dash). A bare TAP still "breaks a stance", the human's
+			# own framing for the light bump (Design.md §4) — and reuses
+			# TAYA_TAP_INTERVAL/`_taya_tap_cooldown` so this cannot fire every single
+			# tick the attacker stays in reach.
+			_taya_tap_cooldown = TAYA_TAP_INTERVAL
+			_tap("special_ability")
+		return BTNode.SUCCESS
+	if charging:
+		# Already committed. Keep holding unless the threat has genuinely backed
+		# off — "release when in melee reach" is the only scripted release point;
+		# a threat that retreats out of TAYA_BUMP_CHARGE_RANGE is the one case worth
+		# abandoning the charge for, per the human's own "should NOT hold a charge
+		# while nobody is near".
+		var still_close := character.global_position.distance_to(_bb_enemy_attacker.global_position) \
+			<= TAYA_BUMP_CHARGE_RANGE
+		_set_held("special_ability", still_close)
+		return BTNode.SUCCESS
+	# Not charging, not in melee: only START on an attacker that is both within
+	# range AND genuinely closing — never idle-charge one that is standing off or
+	# already receding, per the same instruction.
+	var to_us := character.global_position - _bb_enemy_attacker.global_position
+	to_us.y = 0.0
+	var distance := to_us.length()
+	if distance < 0.05 or distance > TAYA_BUMP_CHARGE_RANGE:
+		return BTNode.SUCCESS
+	var closing := _bb_enemy_attacker.velocity.dot(to_us.normalized())
+	if closing >= TAYA_BUMP_CLOSING_SPEED:
+		_set_held("special_ability", true)
+	return BTNode.SUCCESS
+
+## Movement half of "melee": stop advancing and let the bump meter (above) resolve,
+## rather than continuing to close-gap into a target that is already in reach.
+func _act_taya_hold_ground(_delta: float) -> int:
 	_release_move(0.0)
-	if _taya_tap_cooldown <= 0.0:
-		_taya_tap_cooldown = TAYA_TAP_INTERVAL
-		_tap("bump")
 	return BTNode.SUCCESS
 
 func _act_taya_close_gap(_delta: float) -> int:
-	_set_held("bump", false)
+	_sprint_want = true
 	_move_toward(_bb_enemy_attacker.global_position)
 	return BTNode.SUCCESS
 
@@ -1644,7 +1745,6 @@ func _act_taya_close_gap(_delta: float) -> int:
 ## window has expired AND the attacker has swung more than `taya_repost_angle` off
 ## the posted bearing. See the R-07 block near `taya_post_hold` for why.
 func _act_taya_body_block(_delta: float) -> int:
-	_set_held("bump", false)
 	var can := _find_tracked_can()
 	if can == null or not is_instance_valid(can):
 		# No can to stand in front of (pre-round, or it was just sealed) —
@@ -1691,7 +1791,6 @@ func _cond_taya_post_committed() -> bool:
 
 ## Walk to the post already committed to, wherever the attacker has got to since.
 func _act_taya_walk_to_post(_delta: float) -> int:
-	_set_held("bump", false)
 	var can := _find_tracked_can()
 	if can == null or not is_instance_valid(can):
 		_taya_post_valid = false
@@ -1719,7 +1818,16 @@ func taya_post_error() -> float:
 ## around obstacles, since a straight-line wander is "moves with intent," not
 ## "plays well," per this item's own acceptance bar.
 func _act_taya_wander(_delta: float) -> int:
-	_set_held("bump", false)
+	# ⚠️ THE ONE PLACE A STALE BUMP CHARGE GETS CLEARED WHEN THE THREAT ITSELF
+	# VANISHES. `_act_taya_manage_bump` only runs inside the `engage` sequence,
+	# gated on `_cond_taya_threat_visible` — so if the enemy attacker leaves
+	# detection range (or the round swaps this unit's role) mid-charge, `engage`
+	# fails outright and manage-bump never gets a tick to release what it started.
+	# `patrol` is the fallback every such tick lands on, so it is the leaf that has
+	# to notice and let go — same shape `_cond_attacker_empty_handed` uses to cancel
+	# a stale attacker charge the instant hands go empty.
+	if bool(_held_actions.get("special_ability", false)):
+		_set_held("special_ability", false)
 	# R-07: no threat in range, so the post is stale by definition. Dropped here
 	# rather than left to expire, or the Taya would walk back to a post taken
 	# against an attacker that has since been replaced by the round swap.
