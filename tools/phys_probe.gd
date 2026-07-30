@@ -100,6 +100,27 @@ func _ready() -> void:
 	if _slipper == null or _can == null:
 		print("PHYS: could not find slipper/can"); get_tree().quit(1); return
 	print("slipper=", _slipper.name, " can=", _can.name)
+	# ⚠️ THE ROUND-WIN SHAPE, PRINTED BEFORE ANY SWEEP FREEZES THE ROUND AND CLEARS THE
+	# TRACKED LIST. Every mode below calls `_freeze_round()`, which un-tracks the cans on
+	# purpose, so this is the only point in the run where the LIVE registration is
+	# observable at all — and it is the one thing "the offence never wins a round" needs
+	# before it can be called a balance number.
+	#
+	# `RoundManager._on_tracked_can_dents_changed` and the all-Sealed check both require
+	# EVERY tracked can to be finished, so the size of this list multiplies the offence's
+	# whole win requirement. `main.gd::_reregister_tracked_cans` registers every spawned
+	# character whose `is_can` is true, and how many that is per round is a fact about the
+	# role swap, not something to infer from the GDD.
+	var tracked := RoundManager.get_tracked_cans()
+	var names: Array[String] = []
+	for t in tracked:
+		names.append(String(t.name))
+	print("  round-win shape : %d tracked can(s) %s | MAX_DENTS %d | FALL_LIMIT %d | %s"
+		% [tracked.size(), str(names), CharacterBase.MAX_DENTS, RoundManager.FALL_LIMIT,
+			"OPTION_A (dents)" if GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A
+			else "OPTION_B (downed/seal)"])
+	print("  -> offence must land %d dent(s) total to win by denting, %d knockdown(s) to win by FALL_LIMIT"
+		% [tracked.size() * CharacterBase.MAX_DENTS, RoundManager.FALL_LIMIT])
 	_watch_slipper_hitboxes()
 	set_physics_process(true)
 	if _ballistics:
