@@ -141,6 +141,56 @@ def xform_uniform(x, y, z, yaw, s):
             f"{sn * s:.5f}, 0, {c * s:.5f}, {x:.4f}, {y:.4f}, {z:.4f})")
 
 
+
+
+def xform_lean(x, y, z, yaw, scale, lean_x, lean_z):
+    """A yawed, uniformly-scaled transform with a small LEAN off vertical.
+
+    ⚠️ A PLUMB TREE IS THE LAST THING THAT READS AS FAKE. Everything else about the
+    row was fixed — species mix, clustered spacing, per-tree scale, planting at the
+    trunks, foliage tint variation — and the human still said "it still feels fake
+    and unnatural". A tree standing at exactly 90 degrees to the ground is a
+    lamppost with leaves; no tree on a real street is plumb, and once a dozen of
+    them are all plumb the eye reads the whole row as placed rather than grown.
+    `add_kit` can only yaw, so this is the one placement in the file that composes
+    its own basis.
+
+    ⚠️ ROTATES ABOUT THE PIECE'S OWN BASE, which is what keeps the trunk foot
+    planted. Every kit tree is authored with its base at local y = 0 (that is what
+    `add_kit` relies on to ground it), so rotating about the origin tips the crown
+    and leaves the roots where they were. Rotating about the centre would lift one
+    side of the trunk out of the ground.
+
+    ⚠️ AND IT EMITS ROW-MAJOR. A Transform3D in a .tscn is serialised as three ROWS
+    while its basis VECTORS are the COLUMNS — writing X, Y, Z as consecutive triples
+    hands Godot the transpose. That already cost this lane a whole misdiagnosed
+    lighting bug (see the DirectionalLight3D note), so it is spelled out here.
+    """
+    cy, sy = math.cos(yaw), math.sin(yaw)
+    cx, sx_ = math.cos(lean_x), math.sin(lean_x)
+    cz, sz_ = math.cos(lean_z), math.sin(lean_z)
+    # Basis columns: yaw about Y, then a small tilt about X and Z.
+    bx = (cy * cz + sy * sx_ * sz_, cx * sz_, -sy * cz + cy * sx_ * sz_)
+    by = (-cy * sz_ + sy * sx_ * cz, cx * cz, sy * sz_ + cy * sx_ * cz)
+    bz = (sy * cx, -sx_, cy * cx)
+    b = [[c * scale for c in bx], [c * scale for c in by], [c * scale for c in bz]]
+    rows = [(b[0][i], b[1][i], b[2][i]) for i in range(3)]
+    flat = ", ".join("%.5f" % v for r in rows for v in r)
+    return f"Transform3D({flat}, {x:.4f}, {y:.4f}, {z:.4f})"
+
+
+def add_tree(parent, name, mesh_name, x, z, yaw, scale, lean_x, lean_z):
+    """`add_kit` with a lean. Same grounding and the same lane law."""
+    base_y = surfaces.height_at(x, z)
+    extent = piece_extent(mesh_name, yaw, scale)
+    assert_clear_of_lane(name, x, z, extent)
+    y = base_y - extent[4]
+    order.append((parent, name, mesh(mesh_name),
+                  xform_lean(x, y, z, yaw, scale, lean_x, lean_z)))
+    surfaces.record(name, mesh_name, x, y, z, yaw, scale, is_marking=False,
+                    uniform=True, group=parent.split("/")[-1])
+
+
 # --- Measurement, not assumption ---------------------------------------------
 
 def piece_extent(mesh_name, yaw=0.0, scale=1.0):
@@ -690,11 +740,24 @@ for side in (-1.0, 1.0):
 _PUNO_MIX = [PUNO_MESH, PUNO_MESH, "kits/town/tree-high", PUNO_MESH,
              PUNO_MESH, "kits/town/tree-crooked", PUNO_MESH, "kits/town/tree",
              PUNO_MESH, PUNO_MESH]
-_PUNO_SCALE_V = [1.05, 1.28, 0.86, 1.14, 0.94, 1.34, 0.82, 1.19, 1.0, 0.9]
+## ⚠️ A MUCH WIDER SPREAD THAN BEFORE (0.72..1.85, was 0.82..1.34). A row where
+## every tree is within 25% of the same height reads as one tree stamped repeatedly
+## no matter how the spacing varies — the SILHOUETTE is what the eye groups on. Real
+## street trees include saplings and forty-year-olds side by side.
+_PUNO_SCALE_V = [1.15, 1.72, 0.78, 1.34, 0.72, 1.85, 0.95, 1.48, 1.05, 0.84]
+## Lean, in radians, off vertical. Small — 3 to 9 degrees. More than that reads as
+## storm damage rather than as a tree.
+_PUNO_LEAN = [0.06, -0.11, 0.14, -0.05, 0.09, -0.15, 0.04, -0.08, 0.12, -0.03]
 _PUNO_XJIT = [0.0, 0.85, -0.7, 0.45, -1.05, 0.65, -0.35, 1.0, -0.85, 0.25]
-## Irregular, and DIFFERENT PER SIDE so the two rows never line up across the road.
-_PUNO_Z_E = [-16.2, -12.9, -7.4, -2.1, 3.8, 8.4, 13.9, 18.6]
-_PUNO_Z_W = [-14.6, -9.8, -4.3, 1.2, 6.9, 11.7, 17.2]
+## ⚠️ CLUSTERED, NOT SPACED. Human, after the first variation pass: "although not
+## uniform, it still feels fake and unnatural." Evenly-scattered singles are still a
+## pattern — a row of lollipops at irregular intervals is a row of lollipops. Trees
+## on a real street come in TWOS AND THREES with long bare stretches between them,
+## because somebody planted two by their gate and nobody planted anything for the
+## next fifteen metres. These are clumps of 2-3 at 1.8-2.6 apart, separated by gaps
+## of 6-9.
+_PUNO_Z_E = [-16.4, -14.6, -9.2, 1.4, 3.6, 9.8, 17.1, 18.9]
+_PUNO_Z_W = [-12.8, -11.0, -5.4, 2.8, 11.6, 13.4, 19.4]
 
 
 def _puno_x(mesh_name, want, yaw, scale):
@@ -719,18 +782,36 @@ for side, zlist in ((1.0, _PUNO_Z_E), (-1.0, _PUNO_Z_W)):
         # rather than as an avenue of pines.
         sc = TOWN_SCALE * _PUNO_SCALE_V[k] * (1.0 if mesh_name == PUNO_MESH else 0.72)
         yaw = (_pn_t % 5) * 1.27
-        x = _puno_x(mesh_name, 6.35 + _PUNO_XJIT[k], yaw, sc)
-        _placer.try_place(_put("Puno"), f"Puno_{n}_{tag}", mesh_name,
-                          side * x, zz, yaw, sc)
+        # ⚠️ HARD AGAINST THE WALL LINE, NOT OUT IN THE ROAD. At |x| ~6.3 the trees
+        # stood in the middle of the walkable band with bare paving all round them,
+        # which is what made them read as props dropped on a street rather than as
+        # things growing beside it. `_puno_x` clamps to WALL_FACE_X - h, so asking
+        # for 8.2 puts each canopy edge within centimetres of the facade and the
+        # crown overhangs the road the way a real one does.
+        x = _puno_x(mesh_name, 8.2 + _PUNO_XJIT[k] * 0.35, yaw, sc)
+        if _placer.clear_at(mesh_name, side * x, zz, yaw, sc):
+            lx = _PUNO_LEAN[k]
+            lz = _PUNO_LEAN[(k + 4) % len(_PUNO_LEAN)]
+            add_tree("Dressing/Puno", f"Puno_{n}_{tag}", mesh_name,
+                     side * x, zz, yaw, sc, lx, lz)
+            _placer.placed += 1
+        else:
+            _placer.skipped += 1
+            _placer.skips.append(f"Puno_{n}_{tag}")
         _pn_t += 1
 
 # Understory, so a trunk is not standing alone on bare paving. Cheap, low, and it
 # is the layer that stops the row reading as posts in a car park.
-_PLANT_AT = [(-6.9, -13.4), (7.2, -7.9), (-7.3, 1.7), (6.8, 9.1),
-             (-6.6, 17.6), (7.4, -16.8)]
+# ⚠️ AT THE TRUNKS, NOT SCATTERED. A tree emerging from bare asphalt is the other
+# half of "fake": real ones come out of a planted patch, a broken kerb or somebody's
+# soil. These sit at the base of the clumps rather than in random spots, so each
+# trunk has something growing round it.
+_PLANT_AT = [(-7.6, -12.8), (-7.9, -11.0), (7.9, -16.4), (7.6, -9.2),
+             (-7.7, 2.8), (7.8, 3.6), (7.6, 9.8), (-7.9, 11.6),
+             (-7.6, 19.4), (7.9, 17.1)]
 for n, (px, pz) in enumerate(_PLANT_AT):
     _placer.try_place(_put("Puno"), f"Halaman_{n}", "kits/forest/plant",
-                      px, pz, (n % 4) * 1.5, TOWN_SCALE * 1.4)
+                      px, pz, (n % 4) * 1.5, TOWN_SCALE * 1.5)
 
 # --- Layer 3: overhead. Highest read-per-triangle in the kit. ---------------
 # ⚠️⚠️ THE WIRE SPAN IS 6.0 AND THE POST SPACING MUST EQUAL IT, OR THE WIRES

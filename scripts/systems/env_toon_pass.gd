@@ -146,8 +146,19 @@ const BELT_FADE_AMOUNT: float = 0.68
 ## swap and rendered the shipped kit atlas raw — mint roof, off-white wall. The
 ## houses were not off-theme; they were untouched. Adding a group to the map
 ## generator means adding it here in the same commit.
+## ⚠️ THE TREE GROUPS ARE IN HERE FOR THE FOLIAGE TINT, NOT FOR FACADES, AND THEY
+## WERE MISSING. `FOLIAGE_TINTS` is only reached inside the `facaded` branch, so a
+## group that is not listed here gets NO tint at all — which meant every tree on
+## both maps was the one identical green straight off the atlas. That is most of
+## what read as "fake and unnatural": a hundred instances of one model in one
+## colour. The variation mechanism already existed and simply was not wired to the
+## groups the trees actually live in.
+##
+## ⚠️ SAFE, because `_is_building()` rejects any name containing "Puno" before the
+## building test — so a tree in this list takes a foliage tint and can never be
+## handed a City Kit roof atlas, which is the bug that branch exists to prevent.
 const FACADE_GROUPS: Array[String] = [
-	"Bahay", "Likod", "Malayo", "Kanto",
+	"Bahay", "Likod", "Malayo", "Kanto", "Puno", "TreesNear", "TreesFar",
 	"Layer1", "Layer2", "Belt", "CrossRow"]
 
 ## ⚠️ ROOFS NEED A DIFFERENT LEVER FROM WALLS, AND THIS IS IT.
