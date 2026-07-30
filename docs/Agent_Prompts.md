@@ -44,7 +44,7 @@ not done however green the cell looks.
 | [🩴 ART-FEEL](#lane-art-feel) | Claude Sonnet 5 · high | ⚪ NOT STARTED |  |
 | [🌏 MAPS](#lane-maps) | Claude Opus 5 · high | 🟢 DONE | 2026-07-30 · `3a34473`, `cd9ecc2`, `698fa0b`, `67122d0`, `760e23a` — R-19/20/33 shipped and rendered; R-21 sightlines done, **heatmap paused pending AI fix** (Handoff §5) |
 | [🌐 NET](#lane-net) | Claude Opus 5 · high | ⚪ NOT STARTED |  |
-| [🖥️ UX](#lane-ux) | Claude Sonnet 5 · medium | ⚪ NOT STARTED |  |
+| [🖥️ UX](#lane-ux) | Claude Sonnet 5 · medium | 🟡 IN PROGRESS | 2026-07-30 · `59871e6` + this commit, branch `ux/onboarding-readability` (**NOT merged to `integration` — the human wants to diff first**). **R-09 picker** done, host-owned on both sync call sites. **B-141** character-select backdrop — the *"or its just blue"* report; fixed and rendered, standalone **and** as MatchSetup's overlay over the live map (new `tools/ui/charselect_overlay_shot.tscn`). **B-142** the layout probe's "second resolution" was the 1080p pass twice — corrected to 21:9 + a `SAME CONTENT RECT` assertion proven to fire; **44 assertions pass**. **Still open: R-27 onboarding, R-28 readability, R-29 intermission reason.** R-26's lobby half is 🔴 on the NET lane. |
 | [🎵 AUDIO](#lane-audio) | Claude Sonnet 5 · medium | 🟢 DONE | 2026-07-29 · `Checklist.md` 4.1 — 32 SFX + 2 ambience beds, probe-verified |
 | [🔬 QA](#lane-qa) | Claude Sonnet 5 · medium | ⚪ NOT STARTED |  |
 | [🧹 CHORE](#lane-chore) | Claude Haiku 4.5 · low | ⚪ NOT STARTED |  |

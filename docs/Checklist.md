@@ -2206,11 +2206,50 @@ them a real layout defect and two of them wording.
   resolution: `LeftColumn` 83..1043, `RightColumn` 1097..1824, `Rect2.intersects`
   false. Re-run with both pennants visible and the longest lobby strings — the
   tallest state the screen has — `BackButton` still lands above 1080.
-- ⚠️ **STILL NOBODY HAS CLICKED IT.** Renders and rect arithmetic, same as 10.5.
-  `[~]` for that reason.
-- ⚠️ **Not covered:** any resolution other than 1920×1080. The layout is now
-  container-driven so it should survive one, which is a *should*, not a measured
-  result.
+- ⚠️ **What backs this entry is renders and rect arithmetic**, same as 10.5 — no
+  probe here drives input. `[~]` for that reason.
+- ⚠️ ~~**Not covered:** any resolution other than 1920×1080.~~ **Addressed in
+  10.5.2, and the first attempt at it was fake — see B-142.** A second *aspect*
+  (21:9) is now measured; a second *pixel count* at the same aspect turns out to
+  be a no-op under `stretch/aspect="expand"`.
+
+### 10.5.2 · The character-select backdrop, and the resolution claim that was not one `[x]`
+
+**Executed 2026-07-30**, 🖥️ UX lane, branch `ux/onboarding-readability`. Both items
+are render-verified — the PNGs were opened and looked at, which is the only
+acceptance test for either of them.
+
+- [x] **A real backdrop behind the character** — B-141, reported from play
+      (*"or its just blue"*). It was one flat `#161F35` fill from the preview
+      `Environment`'s `BG_COLOR`, and an opaque `SubViewport` meant the backdrop
+      nodes already in the scene could never have shown. Now
+      `transparent_bg = true` + `background_mode = 0`, with a `Backdrop`
+      (vertical `GradientTexture2D`, PANEL-haze → INK floor) and a `BackdropGlow`
+      (`FILL_RADIAL`, neutral PANEL ≤0.30 alpha, `fill_from` in **UV** so it
+      tracks the figure's screen fraction as the viewport grows) as the root's
+      first two children. **Textures, not a shader.** Light-at-top so the dark
+      hair reads against the light end and the pale shoes against the dark one.
+- [x] **The overlay case, which no probe covered.** `MatchSetup.tscn` instances
+      `CharacterSelect.tscn` as `%CharacterSelectPanel` over a **live 3D map
+      render**, and the panel's opacity used to come from exactly the flat fill
+      that was removed. New `tools/ui/charselect_overlay_shot.tscn` opens the
+      panel through its own button and shoots all three tabs — the map does not
+      show through. Every pre-existing probe loads `CharacterSelect.tscn`
+      standalone, where there is nothing behind it to leak.
+- [x] **The "second resolution" was the 1080p pass twice** — B-142. The probe
+      banner said `1280 x 720` and the next line said `viewport 1920x1080`, with
+      every rect identical. Under `stretch/aspect="expand"` the content rect
+      follows **aspect**, not pixel count, so a same-aspect window cannot change
+      it. Second preset → `2560x1080` (21:9), plus a **`SAME CONTENT RECT`**
+      assertion so this cannot recur silently. **44 assertions pass** across
+      16:9 + 21:9.
+      ⚠️ **The new assertion was proven to fire, not just to pass**:
+      `-- "" 1920x1080,1280x720` gives `FAIL — 1 of 44`. An assertion that has
+      only ever passed is untested.
+      ⚠️ **`expand` only ever grows the content rect** (4:3 lays out `1920x1440`),
+      so nothing can be pushed off the **right** edge and **16:9 stays the
+      tightest case vertically** — which is why R-09's 7px `BackButton` overflow
+      showed only at 1080p.
 
 ## Phase 9 · AI FAIRNESS LOG — the running record for balance testing
 
