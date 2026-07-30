@@ -158,6 +158,56 @@ For any coding agent picking up this queue.
 **Only open items live here.** B-01 … B-66 are in [`Handoff.md`](Handoff.md); everything
 marked `[FIXED]` there is done and settled. New bugs take the next free number **in this file**.
 
+**B-139 · THE AI HAD EIGHT DEFECTS THAT LOOKED LIKE BALANCE, AND THE HARNESS HAD A NINTH. [FIXED 2026-07-30 — `534fe36`, `d900209`]**
+
+Kept as one entry because they share one cause: nine runs of the fairness log read the aggregate columns
+and nobody instrumented the events underneath them. Full numbers in `Checklist.md` §Phase 9 RUNS 10–15;
+this is the index so a future session can grep it.
+
+ 1. **The attacker threw from inside the defended area** — `_cond_attacker_out_of_range` only asked "am
+    I too far". Fixed with a band, `[4.6, 6.0]`.
+ 2. **It walked into the taya's lap to fetch its slipper**, when its own tsinelas already crawls out to
+    meet it. Now waits at the band's inner edge.
+ 3. ⚠️ **Its dodge was blind to the only defender that could hit it.** Threat detection required a
+    defender *closing* at ≥ 0.35 m/s, and `_act_taya_tag` **releases movement in order to tag** — so at
+    the instant a tag was coming the taya's velocity was ~0 and the attacker scored it harmless. Found
+    with `bt_trace()` at the moment of contact: tagged in `approach` ×4, `settle` ×2, `fetch` ×1,
+    `wait-out-the-guard` ×1 — never once defending itself. Now: arm's length is an emergency regardless.
+ 4. **The Can never moved.** `CAN_HOLD_RADIUS` 0.45 vs `ARRIVE_DISTANCE` 0.6 — the deadzone was wider
+    than the circle it picked points in. Fixed with a 0.12 arrival distance.
+ 5. ⚠️ **Fixing 4 made the Can unhittable**, because `character_base.gd` NORMALISES an AI movement
+    vector: a 0.22-unit shuffle was performed at the full 6.0 m/s, ~2 units of travel per flight. Fixed
+    by shuffling at shuffling pace; evasion stays full speed.
+ 6. **The same normalisation broke the AI's lead** — it extrapolated instantaneous velocity. Smoothed.
+ 7. ⚠️ **The Guard was a free perfect third layer.** A hit is not a dent while Guard is up, and the can
+    raised it in reaction to every throw: 23 throws, 19 blocked, **2 reached the can, 0 dents.** Now
+    needs a reaction delay and cannot guard twice in a row.
+ 8. **The grab fired exactly one edge ever.** `_tap()` called every tick resets its own release
+    countdown, so the key never came back up. Fixed with a grab interval.
+ 9. ⚠️ **`ai_probe`'s `scale=` was distorting the physics** — see B-140.
+
+**B-140 · `Engine.time_scale` MAKES EACH PHYSICS STEP LONGER, NOT THE GAME FASTER. [FIXED in `ai_probe`, OPEN for `flow_probe`]**
+
+At the default 60 ticks/second, `scale=N` makes one physics step cover N/60 s of game time — so at
+`scale=16` a unit at `SPEED` 6.0 **teleports 1.6 units per step** and every distance-based decision is
+made on a world that jumps a body-width at a time. Caught by an impossible number: the probe reported the
+AI *asking* for an aim point 3.1 units from the can when the aiming code cannot offset more than 1.65.
+
+**Fix:** raise `Engine.physics_ticks_per_second` in proportion to `time_scale` (`ai_probe.gd::_parse_args`).
+**Validated:** scale 1 and 4 now agree (aim error 0.28 vs 0.34 units; block 82.6% vs 78.6%). **Scale 8
+does not** — 480 ticks/s for four units exceeds real time on this machine. **Ceiling is 4.**
+
+⚠️ **THIS IS NOT THE HITSTOP BUG, AND BOTH ARE REAL.** The MAPS lane's handoff reported that ai_probe's
+`scale=` "has never worked past the first dent" because `_end_hitstop()` restores `time_scale` to a
+hardcoded 1.0. That one was already fixed — `ai_probe.gd::_reassert_scale()` has been called every
+physics frame since the fairness mode was written, and its own doc records the measurement that prompted
+it. B-140 is a second, independent fault in the same argument.
+
+🌏 **FOR THE MAPS LANE:** `tools/flow_probe.gd` copies the `_reassert_scale` line but **not** the tick-rate
+fix, and its documented invocation is `scale=30` — i.e. **0.5 s per physics step, 3 units of travel per
+step.** The blob-shaped heatmaps in `Handoff.md` §5 were measured under that. Re-run at `scale=4` before
+concluding anything about flow from them; the AI-movement half of that entry is now fixed either way.
+
 **B-136 · STEP AND TOUCH ON AN OPPONENT'S TSINELAS. [ADDED 2026-07-29 — both branches verified
 firing; the shove's MAGNITUDE is not]**
 

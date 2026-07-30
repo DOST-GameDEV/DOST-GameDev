@@ -290,6 +290,9 @@ func _assert_probe_honesty() -> void:
 		push_error("ai_probe: a fairness run must force OPTION_A unless mode=b was "
 			+ "asked for — under OPTION_B the dents column measures literally nothing.")
 
+	# (d) R-21. THE PAINTED BOX AND THE PHYSICS BOX MUST BE THE SAME BOX.
+	_assert_chalk_matches_physics()
+
 	# (c) is asserted at report time; announced here so the contract reads as three.
 	print("  (c) attacking side changes hands: checked at report time over all rounds")
 	if _break == "swap":
@@ -423,6 +426,31 @@ func _person_gap() -> float:
 	var b: Vector3 = persons[1].global_position
 	return Vector2(a.x - b.x, a.z - b.z).length()
 
+## R-21 · ⚠️ THE CHALK AND THE PHYSICS HAVE TO AGREE, AND `confine=` CAN MAKE THEM
+## DISAGREE. Both map builders draw the confinement square from the `const` in
+## `character_base.gd` and emit their `.tscn` wholesale, so moving the box for real means
+## editing that const and re-running the builders. `confine=` moves only the runtime
+## clamp — useful for measuring how sensitive fairness is to the box size, and dishonest
+## if reported as a playable configuration, which is exactly the RUN 3 defect (a round
+## marker over a square clamp) re-introduced by a test.
+##
+## So the run says so out loud. It does not `push_error` — a deliberate sensitivity sweep
+## is a legitimate thing to run — but it refuses to be called a fairness measurement.
+func _assert_chalk_matches_physics() -> void:
+	var painted := 0.0
+	for node in _main.find_children("Confinement*", "Node3D", true, false):
+		painted = maxf(painted, maxf(absf(node.global_position.x), absf(node.global_position.z)))
+	print("  (d) confinement: physics %.2f | chalk %s"
+		% [CharacterBase.confinement_radius,
+			("%.2f" % painted) if painted > 0.0 else "not found in this map"])
+	if painted > 0.0 and absf(painted - CharacterBase.confinement_radius) > 0.15:
+		_honesty_ok = false
+		push_warning("ai_probe: the PAINTED confinement square is at %.2f and the physics "
+			% painted + "clamp is at %.2f. This run measures SENSITIVITY to the box size, "
+			% CharacterBase.confinement_radius
+			+ "not a playable configuration — a shipped value needs the const in "
+			+ "character_base.gd changed and both map builders re-run.")
+
 func _driven_count() -> int:
 	var driven := 0
 	for c in _main.find_children("*", "CharacterBase", true, false):
@@ -491,6 +519,9 @@ func _parse_args() -> void:
 			AIController.taya_repost_angle = maxf(0.0, float(token.substr(7)))
 		# The rest of the levers this pass added, all sweepable for the same reason
 		# R-01 exists: a knob without a probe argument is a knob nobody measures.
+		# R-21's sweep half. ⚠️ PHYSICS ONLY — see _assert_chalk_matches_physics().
+		elif token.begins_with("confine="):
+			CharacterBase.confinement_radius = clampf(float(token.substr(8)), 2.0, 12.0)
 		elif token.begins_with("minrange="):
 			AIController.attacker_min_throw_range = maxf(0.0, float(token.substr(9)))
 		elif token.begins_with("fetchdanger="):

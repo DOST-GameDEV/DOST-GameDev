@@ -113,6 +113,20 @@ const LUCKY_FALL_CHANCE: float = 0.12
 ##
 ## Still a first guess, not a measurement; needs a human to actually play it.
 const CONFINEMENT_RADIUS: float = 5.0
+## ⚠️ R-21. The live value every gameplay read goes through, promoted so
+## `tools/ai_probe.gd` can sweep the box size (`confine=`) without editing this file —
+## the same shape R-01 used for `TAYA_BLOCK_STANDOFF`, and for the same reason: a
+## constant with no probe argument is a constant nobody measures.
+##
+## ⚠️⚠️ THE `const` ABOVE MUST STAY, AND MUST STAY IN THAT EXACT SYNTAX.
+## `tools/maps/floorcheck.py` reads the box size by regexing
+## `^const CONFINEMENT_RADIUS: float = ...` out of this file, and BOTH map builders draw
+## the chalk from it. Delete or reshape the const and every map build aborts.
+##
+## ⚠️ CHANGING THIS AT RUNTIME MOVES THE PHYSICS BOX AND NOT THE PAINTED ONE. A shipped
+## value must be set on the `const` and the maps rebuilt; `confine=` is for measuring
+## sensitivity only, and `ai_probe` refuses to call such a run a fairness measurement.
+static var confinement_radius: float = CONFINEMENT_RADIUS
 ## Bump is "no cooldown" per the GDD but still needs an active window so standing
 ## next to an opponent doesn't stagger them every physics tick — press-to-bump,
 ## briefly live, matches "light melee" better than always-on contact damage.
@@ -599,8 +613,8 @@ func _move_and_confine() -> void:
 	# ⚠️ THIS IS A BALANCE CHANGE, not just a correctness one: it enlarges the
 	# defended area by 4/pi (~27%) and gives the Taya up to 2.07 more units of
 	# reach on the diagonals. AI fairness was measured either side of it.
-	global_position.x = clampf(global_position.x, -CONFINEMENT_RADIUS, CONFINEMENT_RADIUS)
-	global_position.z = clampf(global_position.z, -CONFINEMENT_RADIUS, CONFINEMENT_RADIUS)
+	global_position.x = clampf(global_position.x, -confinement_radius, confinement_radius)
+	global_position.z = clampf(global_position.z, -confinement_radius, confinement_radius)
 
 ## STEP AND TOUCH ON AN OPPONENT'S TSINELAS. Human request, 2026-07-29: *"add a
 ## mechanic that defender can step or touch the slipper of enemy team and it will

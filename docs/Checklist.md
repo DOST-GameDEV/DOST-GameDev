@@ -2866,11 +2866,13 @@ implemented and is inert-safe, and "the jitter is what makes them vary" is UNVER
 every throw — which reads as "the jitter does nothing" rather than as "the probe sampled a frame early".
 Peak planar speed over the flight is used instead.
 
-The other two thirds of R-10 are **unverified by design**: a readable wind-up and a punishable
-overcommit are claims about what a *human* can react to, and 🧑 **no human has played any of this.**
-The overcommit's own bound is measured (see RUN 12's `mistake` column and `_cond_taya_threat_in_confinement`'s
-note on the version that spent a third of every round sprinting), but "is it fun to lose to" has no probe
-and pretending otherwise is how this project got here.
+The other two thirds of R-10 — a readable wind-up and a punishable overcommit — are claims about what a
+*human* can react to, so **they close on play, not on a probe.** The overcommit's own bound IS measured
+(RUN 12's `mistake` column, and `_cond_taya_threat_in_confinement`'s note on the first version that spent
+a third of every round sprinting and won more rounds by "mistake" than by blocking). 🧑 **Next session:
+ask whether ASTIG reads as hard or merely fast, and whether the wind-up is long enough to dodge — then
+log the answer as a test result** (a `B-` entry in `Handoff.md` §3, a tick here, and the lane board in
+`Agent_Prompts.md`, same commit).
 
 ### RUN 11 — 2026-07-30. R-08: IS THE INSTANT-WIN TAG THE IMBALANCE? Three variants, one harness. 🧑 THE PICK IS THE HUMAN'S.
 
@@ -2988,7 +2990,76 @@ readability spent outside ~8 units of the centre is spent where nobody goes, and
 🧑 **The size call remains the human's, and the sweep that would inform it is still filed, not run** —
 see the R-21 handoff below for the two reasons why.
 
-### ⚠️ Still open after RUN 13
+### RUN 14 — 2026-07-30. R-07 CLOSED, and the first time the offence has ever won a round.
+
+**R-07's post did nothing at 0.35 s for a measurable reason: the window has to outlast the thing it is
+meant to be beaten by.** The attacker's charge is 0.42–0.98 s, so a taya re-posting after 0.35 s
+re-posts *during* the wind-up — RUN 10 measured it exactly, **0 of 73 throws released while the post was
+wrong.** Swept {0.35, 0.70, 1.10, 1.60} × {0.35, 0.50, 0.55, 0.70}; the block rate falls as the hold
+crosses the charge time, which is the mechanism confirming itself. **Shipped: `taya_post_hold` 1.6 s,
+`taya_repost_angle` 0.50 rad**, both tier-scaled (BATA holds 2.3 s, ASTIG 1.0 s).
+
+| Metric | RUN 10 (post at 0.35) | **RUN 14 (post at 1.6/0.50)** | scale=1 check | Fair |
+|---|---|---|---|---|
+| **Throws blocked** | 78.1% | **38.4%** | 49.3% | 25–50% ✅ |
+| Dents/round | 0.10 | 0.25 | 0.25 | ≥ 1 |
+| Throws the slide **beat** | **0 / 73** | **13 / 86** | 10 / 75 | ≥ 1 ✅ |
+| Reached the can | 2 | 5 | 5 | — |
+| Avg round | 13.2 s | 10.5 s | 9.7 s | — |
+| Win rate | DEF 100% | DEF 100% | DEF 100% | 40–60% |
+
+**R-07's acceptance: block ≤ 60% ✅ (38.4%), the slide beats the post ✅ (13 throws), still-run not
+regressed ✅ (independence 1.70 s). The dents ≥ 0.5 clause is NOT met under the shipping tag rule — and
+it is not the post's to meet.** Same AI, same post, against R-08's variant 1:
+
+| Configuration | Win rate | Throws | Blocked | Reached can | **Dents/round** | Avg round |
+|---|---|---|---|---|---|---|
+| R-07 post + **shipping tag rule** | DEF 100% | 86 | 38.4% | 5 | 0.25 | 10.5 s |
+| R-07 post + **R-08 variant 1** | **DEF 70% / OFF 30%** | **508** | 43.5% | **29** | **1.75** | 82.0 s |
+
+⚠️ **THAT SECOND ROW IS THE LARGEST NUMBER THIS LOG HAS PRODUCED.** From DEF 100/0 across every one of
+RUNS 1–13, to **70/30**, with the block rate inside its fair band and **17 of 20 rounds dented**. The
+offence wins rounds. It is still outside 40–60 and every round still runs long (14/20 on the clock), but
+the two levers that move fairness are now identified and quantified: **the committed post, and the tag
+not ending the round.**
+
+**RECOMMENDATION, updated with numbers rather than intent (🧑 the pick stays the human's):** ship
+**R-07's post (already in) + R-08 variant 1 + `MAX_DENTS` 3 → 2.** At 1.75 dents landing per round, a
+3-dent requirement converts to 30% offence; a 2-dent requirement is what turns those 17 dented rounds
+into wins and shortens the 82 s average at the same time. `MAX_DENTS` is in `character_base.gd`.
+
+### RUN 15 — 2026-07-30. Two things that turned out NOT to be levers, and the noise floor.
+
+**R-10(a), the charge jitter, isolated.** RUN 12 showed throw power varying by >100% of the mean, but
+`_min_hold_to_reach()` already varies power with range, so the jitter's own contribution had to be
+separated: `jitter=0.0` → **123% spread**, `jitter=0.5` → **127%**. **The jitter adds ~4 points on top of
+the range effect, i.e. essentially nothing measurable.** AI throw power genuinely varies — the "every
+throw identical" defect is gone — but it varies because a longer throw needs more charge, not because of
+the jitter. The jitter is implemented, inert-safe, and **not the cause of the variance.**
+
+**R-21's sweep, physics-only.** ⚠️ `confine=` moves the runtime clamp and **not the painted chalk** —
+both map builders draw the square from the `const` and emit their `.tscn` wholesale, and `tools/maps/**`
+and `scenes/maps/**` are the MAPS lane's, explicitly hands-off. So `ai_probe` now asserts the two agree
+and **refuses to call a divergent run a fairness measurement** (the 4.0 and 6.0 rows below print
+`honesty contract: FAILED` by design). What the rows do say is how sensitive fairness is to the box size:
+
+| `confine=` | Blocked | Dents/round | Avg round | Chalk agrees? |
+|---|---|---|---|---|
+| 4.0 | 44.3% | 0.15 | 8.9 s | ✗ sensitivity only |
+| **5.0** (shipped) | 47.0% | 0.30 | 8.9 s | ✅ |
+| 6.0 | 46.3% | 0.10 | 8.1 s | ✗ sensitivity only |
+
+**All three rows are inside the noise. The confinement size is not a fairness lever** — which is the
+third knob in a row to come back that way, after `taya_pursue_radius` (RUN 8) and `taya_block_standoff`
+(RUN 9). 🧑 **The size call is therefore a FEEL call, not a balance one**, and it needs the const changed
+plus both builders re-run to be judged properly.
+
+⚠️ **THE NOISE FLOOR, MEASURED, AND EVERY TABLE ABOVE SHOULD BE READ AGAINST IT.** Two 20-round runs of
+the *identical* configuration returned **dents/round 0.05 and 0.25**, and RUN 9's two 1.60-standoff rows
+returned block rates 40.0% and 42.5%. **So at n=20: ±0.2 on dents/round and ±2.5 points on block rate.**
+Any difference smaller than that is not a finding. Use 40+ rounds before acting on a small one.
+
+### ⚠️ Still open after RUN 15
 
 **Corrected 2026-07-30, twice.** This section used to be headed "after RUN 7" and to quote RUN 7's figures.
 **RUN 8 invalidated them** — RUNS 1–7 all measured a 3-v-4 — so the numbers below are RUN 8's.
@@ -3000,11 +3071,17 @@ see the R-21 handoff below for the two reasons why.
   round while the defence needs one tag, and even with the tag rule removed the offence manages
   **0.55 dents a round.** The single highest-leverage change on the table is
   `CharacterBase.MAX_DENTS`, which is a shared-lock file and needs claiming.
-- **THE NEXT HOUR OF BALANCE WORK, NAMED:** sweep `posthold=` and `repost=` (R-07's own knobs, added
-  RUN 10, never swept). RUN 10 measured **0 of 73 throws released while the taya's post was wrong** —
-  the reaction window (0.35 s) is shorter than the attacker's charge (0.42–0.98 s), so the taya
-  re-posts *during the wind-up* and the slide can never beat it. If a longer hold does not move the
-  block rate, the post is not the answer and the lob is.
+- ~~**sweep `posthold=` and `repost=`**~~ **DONE, RUN 14.** Shipped at 1.6 s / 0.50 rad; block rate
+  78.1% → 38.4%. R-07 is closed on its block-rate and slide-beats-the-post clauses.
+- **THE NEXT DECISION IS THE HUMAN'S, AND IT IS ONE NUMBER:** `CharacterBase.MAX_DENTS` 3 → 2, taken
+  together with R-08 variant 1. RUN 14 measured 1.75 dents landing per round and a 70/30 split under
+  variant 1; the arithmetic says a 2-dent requirement is what converts those 17 dented rounds into wins
+  and shortens the 82 s average at the same time. **Nothing else in the balance lane's reach moves the
+  win rate further** — three knobs in a row (pursuit, standoff, confinement) have each come back inside
+  the noise.
+- **`ATTACKER_LANE_CLEARANCE` and `ATTACKER_DODGE_RADIUS` / `ATTACKER_DODGE_STEP` are still outside
+  `DIFFICULTY_TIERS`** and still belong in it. `gait` and `mistake` were added there in RUN 12; these
+  three are the remainder. Do not one-off-nerf any of them.
 - ~~**`TAYA_BLOCK_STANDOFF` (2.6) IS STILL UNMEASURED**~~ **CLOSED BY RUN 9, 2026-07-30.** It is a
   `static var`, `ai_probe` takes `standoff=`, and it has been swept end to end over
   {1.0, 1.4, 1.8, 2.2, 2.6, 3.2, 3.8}. **It is not a fairness lever at any value** — DEF 100% and
