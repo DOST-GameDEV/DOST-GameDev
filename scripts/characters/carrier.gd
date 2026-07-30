@@ -36,6 +36,40 @@ const CHARGE_FULL_TIME: float = 0.9
 ## Power floor, so a tap still throws rather than dropping the slipper at your
 ## feet. Fraction of ThrowProfile.launch_speed.
 const CHARGE_MIN_POWER: float = 0.35
+
+## ---------------------------------------------------------------------------
+## R-06 · THE LOB (`bagsak`) — seconds of hold PAST full power at which the throw
+## stops being a flat rifle shot and becomes a dropping lob.
+##
+## ⚠️ NOT A NEW INPUT ACTION, AND THAT IS THE DESIGN, NOT A SHORTCUT. The charge
+## is already an analogue hold; the lob is a REGION of it. A fourth verb on a
+## four-player party game is a fifth thing to explain in the tutorial (R-06's own
+## note), and the existing hold already carries a number nobody was reading:
+## `_charge_time` used to be clamped flat at CHARGE_FULL_TIME, so every millisecond
+## of hold past 0.9 s produced the identical throw. That surplus is the input.
+##
+## ⚠️ PUBLIC, AND `AIController.attacker_lob_overhold` MUST READ IT RATHER THAN
+## RESTATE IT. That file shipped its half of R-06 ahead of this one and had to
+## guess the threshold (`ATTACKER_LOB_OVERHOLD = 0.20`, with a note saying "the
+## PHYS lane owns the real threshold ... the two have to agree or the AI will hold
+## for a lob and throw a flat"). 0.20 is deliberately kept, so the two agree TODAY
+## by coincidence of value; they should agree BY CONSTRUCTION, exactly as
+## `_charge_fraction()` already reads CHARGE_MIN_POWER and CHARGE_FULL_TIME out of
+## this file. Flagged for the balance lane — `ai_controller.gd` is not this lane's
+## to write.
+##
+## Sized as a COMMITMENT WINDOW, not a ramp: the whole 0.20 s is the price of the
+## lob, and releasing anywhere inside it still throws the ordinary full-power flat
+## shot. So a player who simply holds too long is not punished with a mystery
+## trajectory — they get the shot they were charging — and a player who wants the
+## lob has to hold visibly, deliberately longer, which is the readability R-10
+## asks of every committed throw.
+const LOB_OVERHOLD_TIME: float = 0.20
+## Where the hold stops accumulating at all. Past this the lob is armed and more
+## hold changes nothing, so there is no hidden third region.
+const CHARGE_MAX_TIME: float = CHARGE_FULL_TIME + LOB_OVERHOLD_TIME
+## What `charge_changed` reports at the instant the lob arms. See charge_meter().
+const LOB_METER_ARMED: float = 2.0
 ## T-3: seconds of uninterrupted hold to stand a knocked-down lata back up. Long
 ## enough that the attacking side gets a real window to punish a taya who commits
 ## to it, short enough that defending is not hopeless once the can goes over.
@@ -51,8 +85,12 @@ const CHARGE_MIN_POWER: float = 0.35
 ## defensive half of the round.
 const RESET_CHANNEL_TIME: float = 2.2
 
-## Emitted on the local peer while charging, 0..1, for the HUD's charge meter.
+## Emitted on the local peer while charging, for the HUD's charge meter.
 ## -1 means "not charging", which is a distinct state from "charging at zero".
+##
+## ⚠️ THE RANGE IS 0..2 NOW, NOT 0..1, AND THE TOP HALF IS THE LOB (R-06). The
+## signal signature is deliberately UNCHANGED — see charge_meter() for the encoding
+## and for why the two existing consumers keep working untouched.
 signal charge_changed(power: float)
 ## Emitted when this Person picks something up or loses it, so the HUD can show
 ## SLIPPER READY vs GO GET IT without polling every frame.
@@ -130,11 +168,62 @@ func is_charging() -> bool:
 ## The trait is applied once, at the moment of release, in `_request_throw()` —
 ## so a strong thrower's full bar simply carries further than a weak one's full
 ## bar, which is the thing being modelled.
+## ⚠️ STILL CLAMPED TO 1.0 WITH THE LOB REGION IN PLAY, and that is required, not
+## incidental: this is what the throw's SPEED is scaled by (`host_throw` clamps it
+## again) and what the viewmodel wind-up reads. A lob is not a harder throw — it is
+## the same speed on the other root of the same arc — so letting this exceed 1.0
+## would silently make the lob a power buff as well as a trajectory, which is
+## exactly the "strictly better shot" R-06 forbids.
 func charge_power() -> float:
 	if not _is_charging:
 		return -1.0
 	return clampf(CHARGE_MIN_POWER + (_charge_time / CHARGE_FULL_TIME) * (1.0 - CHARGE_MIN_POWER),
 		CHARGE_MIN_POWER, 1.0)
+
+## R-06. How far into the lob commitment window this hold has got, 0..1. 0 for the
+## whole of the ordinary charge, 1 when the lob is armed. -1 when not charging, the
+## same convention every other read in this file uses.
+func lob_progress() -> float:
+	if not _is_charging:
+		return -1.0
+	if LOB_OVERHOLD_TIME <= 0.0:
+		return 1.0 if _charge_time >= CHARGE_FULL_TIME else 0.0
+	return clampf((_charge_time - CHARGE_FULL_TIME) / LOB_OVERHOLD_TIME, 0.0, 1.0)
+
+## R-06. True when releasing RIGHT NOW throws a `bagsak` lob rather than a flat
+## shot. This is the one question the throw itself asks — read it before
+## `_cancel_charge()`, which zeroes the timer it depends on.
+func is_lob_armed() -> bool:
+	return _is_charging and _charge_time >= CHARGE_MAX_TIME
+
+## ⚠️ WHAT `charge_changed` CARRIES, AND WHY IT IS ONE FLOAT AND NOT TWO ARGUMENTS.
+##
+## R-06 asks for the lob region to be surfaced "in the existing charge signal" so
+## the HUD and the viewmodel can show it. Widening the signal to
+## `charge_changed(power, lob)` is the obvious way and it is the wrong one: the only
+## consumer, `you_card.gd::_on_charge_changed(power: float)`, takes one argument, and
+## a Godot signal emitted with more arguments than its callable accepts throws
+## *"Method expected 1 arguments, but called with 2"* on every single emit. That file
+## belongs to the UX lane, so widening here would break a file this lane may not fix.
+##
+## So the region rides the value instead, monotonically, in one number:
+##
+##     -1.0            not charging
+##     0.35 .. 1.0     the ordinary charge, exactly as before
+##     1.0  .. 2.0     inside the lob commitment window, filling
+##     2.0             the lob is ARMED — release now and it lobs
+##
+## ⚠️ AND IT IS BACKWARD COMPATIBLE ON BOTH CONSUMERS, CHECKED RATHER THAN ASSUMED.
+## `you_card.gd` does `charge_bar.value = power * charge_bar.max_value`, and a
+## `ProgressBar` clamps its own value — so the meter "fills and stops rather than
+## overflowing", which is what R-06's written spec asks for in those words.
+## `camera_rig.gd::set_viewmodel_charge` already does `clampf(power, 0.0, 1.0)`, so
+## the arm reaches full cock and holds. Neither file needs a line changed, and a HUD
+## lane that WANTS to draw the lob segment now has the number to draw it from.
+func charge_meter() -> float:
+	if not _is_charging:
+		return -1.0
+	return charge_power() + lob_progress() * (LOB_METER_ARMED - 1.0)
 
 ## Called from carriable.gd's host broadcast on EVERY peer, so `_held` and
 ## `Carriable.carrier` are always set and cleared together. Never call this to
@@ -193,20 +282,26 @@ func _step_throw(delta: float) -> void:
 	if _character.input_just_pressed("special_ability"):
 		_is_charging = true
 		_charge_time = 0.0
-		charge_changed.emit(charge_power())
+		charge_changed.emit(charge_meter())
 		# 4.1. This file's own header calls a committed throw "a real decision
 		# the taya can read and punish" — until now it was readable only if the
 		# taya happened to be looking straight at the attacker's arm. The rising
 		# charge tone is what makes it readable from behind the can.
 		AudioManager.play_at("throw_charge", _character.global_position)
 	elif _is_charging and _character.input_pressed("special_ability"):
-		_charge_time = minf(_charge_time + delta, CHARGE_FULL_TIME)
-		charge_changed.emit(charge_power())
+		# R-06: CHARGE_MAX_TIME, not CHARGE_FULL_TIME. The extra LOB_OVERHOLD_TIME
+		# past full power is the lob's entire input surface — this one word is what
+		# makes the surplus hold mean something instead of being discarded.
+		_charge_time = minf(_charge_time + delta, CHARGE_MAX_TIME)
+		charge_changed.emit(charge_meter())
 	elif _is_charging and _character.input_just_released("special_ability"):
 		var power := charge_power()
+		# ⚠️ BEFORE _cancel_charge(), which zeroes `_charge_time` — the whole basis
+		# of the answer.
+		var lob := is_lob_armed()
 		_cancel_charge()
 		_character.play_visual_action("throw")
-		_request_throw(power)
+		_request_throw(power, lob)
 
 ## T-3 / B-46 — the lata reset channel, driver side. Hold `grab` next to your own
 ## knocked-down lata and it stands back up when the bar fills; anything that
@@ -395,7 +490,14 @@ func _request_grab(target: Carriable) -> void:
 ## The raycast has to happen on the peer that owns the camera, so the point is
 ## resolved here and travels; the host still owns whether the throw happens and
 ## how it flies.
-func _request_throw(power: float) -> void:
+##
+## ⚠️ `lob` TRAVELS WITH THE THROW AND IS NEVER RE-DERIVED AT THE FAR END (R-06).
+## `power` clamps at 1.0, so a full-power flat throw and a lob are INDISTINGUISHABLE
+## by the time the host sees them — inferring "it was a lob" from the power value is
+## not merely fragile, it is impossible. The bool is the only carrier of a decision
+## that was made on the aiming peer, which is the same split aim itself already
+## uses: the client owns what it meant, the host owns whether it may happen.
+func _request_throw(power: float, lob: bool) -> void:
 	var target_point := _aim_point()
 	# LAKAS, applied once, at release — see charge_power()'s own note for why it is
 	# not baked into the meter. `host_throw()` clamps to 0..1 on the host, so a
@@ -403,9 +505,9 @@ func _request_throw(power: float) -> void:
 	# buys is reaching full power from a shorter hold, which is exactly "stronger".
 	var thrown_power := clampf(power * _character.trait_power_scale(), 0.0, 1.0)
 	if _is_host():
-		_held.host_throw(target_point, thrown_power)
+		_held.host_throw(target_point, thrown_power, lob)
 	else:
-		_rpc_request_throw.rpc_id(1, target_point, thrown_power)
+		_rpc_request_throw.rpc_id(1, target_point, thrown_power, lob)
 
 ## T-3. Same shape as _request_grab: on the host, straight through; on a client,
 ## a request to peer 1. The host re-checks can_be_reset_by() from scratch — a
@@ -438,11 +540,13 @@ func _rpc_request_grab(target_character_path: NodePath) -> void:
 ## aim, which is client-authoritative by the same rule that makes a peer's own
 ## movement client-authoritative. WHETHER the throw may happen at all, and what
 ## it then hits, stay with the host.
+## `lob` defaults false so an older peer's two-argument call still resolves to the
+## flat throw that peer meant, rather than failing the RPC outright.
 @rpc("any_peer", "call_remote", "reliable")
-func _rpc_request_throw(target_point: Vector3, power: float) -> void:
+func _rpc_request_throw(target_point: Vector3, power: float, lob: bool = false) -> void:
 	if not _is_host() or _held == null:
 		return
-	_held.host_throw(target_point, clampf(power, 0.0, 1.0))
+	_held.host_throw(target_point, clampf(power, 0.0, 1.0), lob)
 
 ## Client → host, T-3. Mirrors _rpc_request_grab exactly, including re-resolving
 ## the target node from its path rather than trusting anything the client sent
