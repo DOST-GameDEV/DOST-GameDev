@@ -631,20 +631,13 @@ at 20 units. A single shared width will not work across the kit.
 
 ## Brief — 3D Modeling & Art Agent
 
+> **Trimmed 2026-07-30 (~99 lines).** Cut: the paste-as-prompt block — superseded by the ART-FEEL lane prompt; scope — the lane prompts carry scope now; reporting contract — same, and it is in every lane prompt; the M-block status table — Checklist.md is the live source. Kept, because this brief is still the best source for them: the moodboard record, the prop asset moodboards, the palette rules, the five generator traps, and the modeling decisions that are not to be relitigated.
+
+
 > ## ⚠️ PARTLY SUPERSEDED — read this box first (2026-07-27)
 >
 > **Most of the `M-` block has shipped since this brief was written.** Re-verified against the
 > code, not against checkboxes:
->
-> | | |
-> |---|---|
-> | **M-1** generator toolchain | `[x]` shipped v3.5, deterministic |
-> | **M-2** lata — revolved body, 3 dent states, knocked-down tilt | `[x]` shipped v3.7, **renders as a can** |
-> | **M-3** tsinelas — extruded sole, real Y-strap | `[x]` shipped v4.12. Geometry is good; its **scale** is now the open question |
-> | **M-4** flat toon + ink outline | `[x]` shipped v4.11 |
-> | **M-5** Persons — restyle | `[ ]` steps 1–3 open. **Step 4 (walk/run) is DONE** — the "only `idle` of 32 clips is wired" claim is stale |
-> | **M-6** environment kit · **M-7** Eskinita | `[ ]` — now owned by [`Art_Direction.md`](Art_Direction.md) |
-> | **M-8** logo | `[ ]` — blocked on the typeface decision |
 >
 > **Live state and ordering are in [`Checklist.md`](Checklist.md), not in this file.** The
 > branch instructions in §0 below are stale — see the box under it.
@@ -665,63 +658,6 @@ this file itself.
 
 **Attach the moodboard image to the first message.** It is not in the repo and everything below
 describes it second-hand. A description of a logo is not a logo.
-
----
-
-### 0. The prompt — paste this
-
-> You are the Lead Technical Artist and 3D Modeler for **Tumbang Preso**, a Godot 4.7 (GDScript,
-> Forward+) 2v2 LAN arena brawler built on the Filipino street game *tumbang preso*, for the Gear
-> Up NCR Esports Game Dev Challenge. Repo: `DOST-GameDEV/DOST-GameDev`.
->
-> **Before anything else:**
->
-> 1. ⚠️ **STALE — the instruction below is from an earlier pass.** `design-ui-models-and-fixes` has
->    long since merged; `main` carries everything. Branch off `main` (or off `integration` if a
->    second agent is running — see [`Concurrency_Protocol.md`](Concurrency_Protocol.md)) and cut
->    `art/<task>`. The original text is kept only so the history reads honestly:
->
->    > Get on the branch that holds the plan:
->    > ```
->    > git fetch origin
->    > git checkout design-ui-models-and-fixes && git pull
->    > ```
->    > **The plan is not on `main` yet.** `main` is at `6f6d3b7` (v3.4) — correct code, but it does
->    > not have the queue you are about to work, `Handoff.md`, or this brief.
-> 2. Set your identity **exactly**:
->    ```
->    git config user.name "M4tyu633"
->    git config user.email "matthewtlabrador@gmail.com"
->    ```
-> 3. **AUTHORSHIP RULE — non-negotiable.** Every commit is authored and committed **solely by
->    `M4tyu633`**. Do **not** add a `Co-authored-by:` trailer. Do **not** name Claude, an AI
->    assistant, or any tool as author, co-author, or committer. Do not let your environment inject
->    its own identity. After your first commit, verify with:
->    ```
->    git log -1 --format='%an <%ae> | %cn <%ce>'
->    ```
->    It must print `M4tyu633 <matthewtlabrador@gmail.com>` on **both** sides. If it does not, stop
->    and fix it before continuing — a commit that lands with the wrong author has to be rewritten
->    out of history, which is far more expensive than checking.
-> 4. Read, in full: `docs/Handoff.md` (§0–§4), `docs/Dev_Plan.md` (§0, §1, §3, §4), and
->    `docs/Art_Direction.md` (this file — the rest of it is your reference).
-> 5. Read the actual code before trusting any doc about it. This project has a documented history
->    of docs describing things the code contradicts, in both directions.
->
-> **Your scope is `Handoff.md` §4's M- block: M-1 through M-8.** Work them in order — M-1 is the
-> toolchain everything else uses, and nothing can start before it exists and is proven
-> deterministic. Do not touch the F-, A- or U- blocks; they belong to other passes.
->
-> **The standing camera directive is inviolable: a Person is always first-person, a Prop (Can /
-> Tsinelas) is always third-person, derived from `is_person`. No toggle, no override, no
-> exception.** Your models are viewed under both. Every mesh must read correctly from a TPP
-> spring arm at ~4.5 units *and* be invisible-but-shadow-casting when it is the body you are
-> looking out of.
->
-> Work to the *Acceptance* line on each task. If you cannot run the game to confirm one, say so
-> explicitly in the commit and mark the item `[~]`, not `[x]`. Update `Handoff.md` §4 checkboxes
-> and §3's ledger as you go. One concern per commit, with the task ID in the subject, and bump
-> `application/config/version` in `project.godot` in the same commit.
 
 ---
 
@@ -922,38 +858,6 @@ generous for the style — the moodboard's look comes from flat colour and clean
 from density.
 
 ---
-
-### 5. What is NOT yours
-
-- **The F-, A- and U- blocks** in `Handoff.md` §4. In particular, do not "fix" the camera while
-  you are in there — **A-2** deletes the scene-level `Camera3D` and is a separate pass with its
-  own acceptance test.
-- **Gameplay logic.** Round-win logic stays out of `character_base.gd` and `hitbox.gd`.
-  `CharacterBase` must never learn what a dent looks like — that is `character_visual.gd`'s job,
-  by design.
-- **`DebugPlayerSwitcher` and anything `debug_`-prefixed.** Gameplay code — which includes every
-  visual script — may never reference debug code, not even behind `if OS.is_debug_build()`. See
-  `Dev_Plan.md` §0.3.
-- **Audio.** Not in this queue, and it needs an owner (`Handoff.md` §6).
-
-### 6. Reporting
-
-- If a task turns out to be already done, **say so and move on.** Do not rewrite working code.
-- If this brief or `Handoff.md` is wrong about the code, **say it is wrong** rather than building
-  around it. Both have been wrong before, in both directions.
-- If you finish 6 of 8 tasks, say which 2 you did not do and why. Do not silently narrow scope.
-- Screenshots beat descriptions for this work. `mcp__godot-mcp__capture_screenshot` exists; use
-  it, and put before/after pairs in the commit body or the PR.
-
-
----
-
-
-<a id="part-3"></a>
-
-# Part 3 — Environment kit specification
-
-*(was `docs/Art_Direction.md`)*
 
 ## Environment Kit Spec — checklist 2.1a
 
