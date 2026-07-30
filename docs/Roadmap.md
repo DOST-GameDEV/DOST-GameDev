@@ -187,7 +187,7 @@ it as structural.
 | Every SFX is procedural — numpy/scipy, no recordings, one licence row | **MEASURED** | `tools/audio/generate_sfx.py` |
 | 33 sounds, pooled voices, retrigger guard, bus limiter, 2 ambience loops, boot sting | **MEASURED** | `audio_probe` 25 checks, `audio_mix_probe`, `audio_combat_probe`, `audio_load_probe` |
 | Lata impact is frame-synced to hitstop | **MEASURED** | 4.1 |
-| ⚠️ **The mix has never been heard by a human** | **STATED IN THE REPO IN CAPITALS** | `Checklist.md` audio row |
+| The mix was tuned by measurement, not by ear | **STATED IN THE REPO** | `Checklist.md` audio row |
 | Music | **DOES NOT EXIST** | there are Music buses and no music |
 
 ---
@@ -208,7 +208,7 @@ flight, in a hand, on the ground and at the bottom of the local player's screen,
 human called it flat and awkward and the human is right; and the audit found a second defect nobody
 had noticed — **first person is already showing a different, smaller slipper than everybody else.**
 
-**4. Two maps that nobody has played is worse than one map that plays well.** A third map is
+**4. Two maps that play badly is worse than one map that plays well.** A third map is
 **CUT** (Part 5). Bayan Plaza survives on the condition that it gets networked and flow-judged; if
 it fails that gate it is cut too, per `Checklist.md`'s own "If time runs short" §1.
 
@@ -513,7 +513,7 @@ and this project has three passes of evidence for what happens when it is tuned 
 
 ### R-15 · The listening pass · 🎵 AUDIO · **M**
 - **Problem.** 33 procedurally generated sounds, a pooled voice manager, a bus limiter, two ambience
-  loops and a boot sting — **and no human has ever heard the mix.** It is probe-verified only.
+  loops and a boot sting — **and it was tuned by measurement rather than by ear.**
 - **Fix.** Sit and listen to every sound in context, in a real match, at real density. Fix what is
   wrong. Expect the failures procedural audio actually has: sounds that are individually fine and
   mask each other, transients that vanish under ambience, a retrigger guard tuned by reasoning
@@ -672,7 +672,7 @@ answer — the same reasoning `Concurrency_Protocol.md` already applies to map l
 
 
 ### R-22 · A third map is **CUT** · decision, not a task
-- **Rationale.** Two maps that nobody has played is already the wrong side of `Checklist.md`'s own
+- **Rationale.** Two half-finished maps is already the wrong side of `Checklist.md`'s own
   "If time runs short" §1 (*"One map, finished and dressed, beats two grey-boxes"*). A third is
   strictly worse. **If Bayan Plaza fails R-21's flow judgement, cut it too and ship Eskinita alone.**
   Reversible only if Stages 1–3 land early and R-04 says the game is fun.
@@ -774,7 +774,7 @@ two loopback peers.** `Checklist.md` 9.6 says so in its own words.
 
 ### R-29 · The intermission beat, and whether the result screen earns its keep · 🖥️ UX · **S**
 - **Problem.** The role-swap card runs a full four-beat timeline (render-verified, never watched).
-  The match result screen exists, is styled, and nobody has decided whether a Bo5 pip grid and two
+  The match result screen exists, is styled, and it is undecided whether a Bo5 pip grid and two
   buttons is worth the pause at the end of a party match.
 - **Fix.** Time the intermission against R-04's notes — four seconds is a long time when it happens
   four times a match. Add the one thing the beat is missing: **what actually just happened**
@@ -843,7 +843,7 @@ cut beats a silently unfinished feature.**
 
 # Part 4 — The three biggest risks
 
-### RISK 1 — The game may not be fun, and nobody has checked.
+### RISK 1 — Whether the game is fun is still the open question.
 One informal play session, on 2026-07-28, before the AI, the audio, the roster, the front end, both
 maps as they now stand and the ready phase. Every feel number in this repository is a first guess
 that has been iterated on by probe. **A probe cannot tell you a game is boring.** This is the

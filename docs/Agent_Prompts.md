@@ -1,61 +1,30 @@
 # Agent Prompts — paste-ready openers for each lane
 
-## FOR THE HUMAN — what to run, on what, in what order
+## FOR THE HUMAN — what to run, in what order
 
-Each row is a block further down this file. **Copy the block verbatim into a brand-new chat**
-with no other context, and **set the model and effort in the client before pasting** — the prompt
-names them but cannot set them.
+**Rewritten 2026-07-30.** The previous table was from 2026-07-28 and listed lanes that
+have since shipped. Each row is a `<details>` block further down this file: open it,
+copy it verbatim into a brand-new chat, and **set the model and effort in the client
+before pasting** — the prompt names them but cannot set them.
 
-| # | Lane | Model | Effort | Run it when | Why here in the order |
-|---|---|---|---|---|---|
-| **1** | ~~🔧 **BUILD-PHYS**~~ | **Sonnet** | high | ✅ **Done 2026-07-28 — `Checklist.md` 2.5.** | Per-unit collision, both props rescaled, `HAND_CARRY_OFFSET` re-measured, `base_circle_decal` resized, 4.4a fixed. Row 4 is unblocked. |
-| **2** | ~~🔧 **BUILD-UX**~~ | **Sonnet** | medium | ✅ **Done 2026-07-28.** | **B-86 could not be reproduced** — re-rendered six times, crosshair present every time; see `Handoff.md` B-86. Charge-glow shader hook built in `you_card.gd` (`CHARGE_SHADER_PARAM`), verified by a scripted run. 5.3 (strip Local Match/debug switcher) deliberately **not** done this pass — it is blocked on 0.4 and 4.4 in `Checklist.md`, and `Art_Direction.md`'s own resolution says do it late, after the last playtest, not before. |
-| **3** | ~~🔧 **BUILD-NET**~~ | **Sonnet** | high | ✅ **Done 2026-07-28 — `Checklist.md` 4.2, 4.3, 4.6, 4.7.** | Remote-visual interpolation, rejoin identity (stable token + a mid-match redirect out of the lobby), solo-host pause/debug-switcher QoL, and a live peer-drop account are all in. Real-device testing over wifi (6.1) is still 🧑 human and still unrun — this lane only made the loopback case correct. |
-| **4** | 🎨 **DESIGN-ART** | **Opus** | high | **Unblocked — row 1 is done** | Its first job was rescaling props, which depended on 1; that shipped (`generate_all.gd`'s meshes), so this lane's remaining scope is whatever `Checklist.md` still lists open under 2.x. Opus because its question is *"does this match the moodboard"* — a judgement call, not a testable one. **Attach the moodboard image.** |
-| **5** | ~~🎵 **BUILD-AUDIO**~~ | **Sonnet** | medium | ✅ **Done 2026-07-29 — `Checklist.md` 4.1.** | Master/SFX/Music buses, an `AudioManager` autoload, volume sliders, **32 procedurally generated SFX** (`tools/audio/generate_sfx.py` — no recordings, one licence row), two CC0 ambience beds, and hooks across combat, the slipper, all five abilities, match state and the menus. Lata impact is frame-synced to hitstop. Verified by `tools/audio_probe.gd`; **still unheard by a human** — a listening pass is the follow-up. See the Audio appendix. |
-| **6** | 🔬 **QA** | **Sonnet** | medium | **Alongside anything** | Writes only `docs/`, so it can never collide. Good to keep running continuously. |
-| **7** | 📦 **PRODUCER** | **Sonnet** | medium | **Alongside anything** | Also `docs/`-only. Submission paperwork has a deadline that does not move. |
-| **8** | ~~🔧 **BUILD-AI**~~ | **Sonnet** | high | ✅ **Done 2026-07-28 — `Checklist.md` 5.5.** | Local Match renamed to Single Player; a new `ai_controller.gd` drives the three units the human isn't personally controlling via the same Input surface a human would, one hook in `character_base.gd`, no forked `_physics_process`. Debug switcher kept as a manual override; Settings panel's P2 rebind column removed. |
+Order is by **what unblocks the most**, not by importance. Rows 1–2 are the critical
+path; 3–5 are parallel-safe against each other; 6–8 are safe alongside anything.
 
-### Rules for running more than one at a time
+| # | Lane | Model · effort | Why it is here | Blocks |
+|---|---|---|---|---|
+| **1** | [⚖️ BALANCE](#lane-balance) | Opus 5 · xhigh | **The AI is the bottleneck for everything measurable.** Only the defender wins, and the bots barely traverse either map — MAPS built the flow heatmap and it came out as blobs sitting on the spawns. Nothing about balance, flow or map layout can be judged until units actually move. ⚠️ It also has a real bug waiting: `ai_probe.gd`'s `scale=` does not survive the first dent, because `character_base.gd::_hitstop()` restores `Engine.time_scale` to a hardcoded `1.0` — so **every fairness number recorded at `scale=4` was measured at scale 1.** | R-21's flow judgement, every tuning pass, the "is it fun" risk |
+| **2** | [🥊 PHYS](#lane-phys) | Sonnet 5 · high | The central mechanic — carry, charge-throw, grab, reset channel — is code-complete and still being tuned. This is the lane that decides whether the game feels good, which is the project's top risk. Best run *after* BALANCE so the bots can exercise it. | The fun question; ART-FEEL's animation timings |
+| **3** | [🖥️ UX](#lane-ux) | Sonnet 5 · medium | A judge meets the UI before they meet the game. Onboarding (R-27) is the big one: someone who has never heard of tumbang preso must know what to do without reading eight pages. | Demo readiness |
+| **4** | [🌐 NET](#lane-net) | Opus 5 · high | Everything so far is loopback on one machine. **Real multi-device LAN over real wifi is genuinely untested and needs two machines** — this is one of the few "not tested" claims in these docs that is actually true. If it forces a shared-screen fallback you want to know weeks early. | The 2v2 LAN promise |
+| **5** | [🩴 ART-FEEL](#lane-art-feel) | Sonnet 5 · high | Character and prop feel — hit reactions, weight, the toon pass on actors. Parallel-safe with UX and NET. | Polish |
+| **6** | [🎵 AUDIO](#lane-audio) | Sonnet 5 · medium | Shipped 2026-07-29 (32 SFX, 2 ambience beds), tuned by **measurement rather than by ear**. Re-open it when you have notes on the mix; your ears beat the probe numbers here. | — |
+| **7** | [🌏 MAPS](#lane-maps) | Opus 5 · high | R-19, R-20 and R-33 are shipped. **Re-open it AFTER BALANCE lands** to re-run the flow heatmap and answer the confinement-square question. Also holds the open tree/house look calls. | R-22's cut decision |
+| **8** | [🔬 QA](#lane-qa) · [🧹 CHORE](#lane-chore) · [📦 PRODUCER](#lane-producer) | Sonnet / Haiku | Docs-only, safe alongside anything above. Run PRODUCER before submission, CHORE whenever the registries drift. | Submission |
 
-- **At most TWO code lanes at once** (1, 2, 3, 5 are code lanes), and never two whose file sets
-  overlap — see [`Concurrency_Protocol.md`](Concurrency_Protocol.md) §2 for the ownership table.
-- **QA and PRODUCER are always safe** to add on top; they touch no code.
-- **One person does the setup in `Concurrency_Protocol.md` §11 once** before any lane starts.
-- If a lane needs a shared file it must claim it in [`SHARED_LOCKS.md`](SHARED_LOCKS.md) first.
-  **A rejected push means it did not get the lock** — that rejection *is* the mutex.
-
-### Only Opus for one lane, and why
-
-Opus is for *"I do not know what this should look like."* Every other lane has a known target and
-a testable answer, which is Sonnet work. Paying Opus rates for a task with a right answer is
-waste; running Sonnet on a taste call is how you get something that compiles and looks wrong.
-
-### These four are human-only — no model can do them
-
-| Task | Why it is blocking |
-|---|---|
-| **5.1** Install Godot export templates | **No `.exe` has ever been produced.** Everything downstream of handing a judge a build waits on this. |
-| **6.1** Real multi-device LAN test | Everything so far is loopback on one machine. If it forces the shared-screen fallback you need weeks of warning. |
-| **1.1** Pick the display typeface | Blocks the logo and every screen's finished read. |
-| **0.4** Keep playing it | One session found four bugs, three of which were a single missing line. Highest-value hour available. |
-
----
-
-> ## ⚠️ START HERE — the live set is [§ THE ROADMAP PIPELINE](#roadmap-pipeline)
->
-> **Written 2026-07-30 against `docs/Roadmap.md`.** Nine lanes, each with a charter, an exact
-> path-ownership row, an ordered task list drawn from the roadmap, a verification contract naming
-> the probe that proves each task, a model and effort assignment, and a complete ready-to-paste
-> system prompt.
->
-> The **v4.36 set** below it is **HISTORICAL**. Several of its items have shipped and its scope
-> predates the roadmap. Keep it for the standing rules (setup, locks, smoke gate) and for the
-> appendix briefs, which are still the best long-form reference for netcode, UI, audio and
-> interaction tuning. **Do not take scope from it.**
-
----
+**Do not run two lanes that write the same files at once.** Check
+[`SHARED_LOCKS.md`](SHARED_LOCKS.md) first — `scenes/ui/*.tscn`, `Main.tscn`,
+`CharacterBase.tscn`, `CameraRig.tscn`, `project.godot` and
+`tools/models/generate_all.gd` are the six that cannot be partitioned.
 
 <a id="roadmap-pipeline"></a>
 
@@ -76,7 +45,7 @@ not done however green the cell looks.
 | [🌏 MAPS](#lane-maps) | Claude Opus 5 · high | 🟢 DONE | 2026-07-30 · `3a34473`, `cd9ecc2`, `698fa0b`, `67122d0`, `760e23a` — R-19/20/33 shipped and rendered; R-21 sightlines done, **heatmap paused pending AI fix** (Handoff §5) |
 | [🌐 NET](#lane-net) | Claude Opus 5 · high | ⚪ NOT STARTED |  |
 | [🖥️ UX](#lane-ux) | Claude Sonnet 5 · medium | ⚪ NOT STARTED |  |
-| [🎵 AUDIO](#lane-audio) | Claude Sonnet 5 · medium | 🟢 DONE | 2026-07-29 · `Checklist.md` 4.1 — 32 SFX + 2 ambience beds, probe-verified, never listened to |
+| [🎵 AUDIO](#lane-audio) | Claude Sonnet 5 · medium | 🟢 DONE | 2026-07-29 · `Checklist.md` 4.1 — 32 SFX + 2 ambience beds, probe-verified |
 | [🔬 QA](#lane-qa) | Claude Sonnet 5 · medium | ⚪ NOT STARTED |  |
 | [🧹 CHORE](#lane-chore) | Claude Haiku 4.5 · low | ⚪ NOT STARTED |  |
 | [📦 PRODUCER](#lane-producer) | Claude Sonnet 5 · medium | ⚪ NOT STARTED |  |
@@ -173,6 +142,40 @@ blocked on it), R-23's real four-machine Wi-Fi run, R-31's export on the judging
 
 <details>
 <summary><b>BALANCE</b> — AI / Balance Engineer · Claude Opus 5, xhigh effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
+
+> ## STOP INVENTING "UNTESTED" STATUS — READ BEFORE PLANNING THE SESSION
+>
+> **You cannot see the human's testing, and they test constantly.** They play this
+> build, they hear it, they look at it, and they file precise bug reports — most of
+> the fixes in this repo came from exactly that. What you never see is the testing
+> itself, so an agent that writes "nobody has played this" is not reporting a fact,
+> it is reporting its own blind spot as if it were one.
+>
+> Older versions of these docs were full of that, and it did two kinds of damage: it
+> was **untrue**, and it pushed sessions into spending most of their time re-proving
+> the project's state instead of building.
+>
+> **The rule: report what YOU did. Say nothing about what the human has or has not
+> done.**
+>
+> * ✅ "Rendered and looked at; the apron edge is soft." — you did that.
+> * ✅ "Not verified: frame time on other GPUs." — genuinely outside your reach.
+> * ❌ "Never played by a human." — you do not know that, and it is usually false.
+> * ❌ "Nobody has heard the mix." — same.
+> * ❌ Re-verifying subsystems you did not touch, to "be thorough".
+>
+> **TESTING IS STILL REQUIRED — the ceremony is what is banned.** Verify the thing
+> you changed with the cheapest probe that actually looks at it (if you changed
+> geometry, render it and LOOK), and re-run the smoke gate before you commit. What
+> you should not do is re-derive the whole project's state at session start: read
+> `Checklist.md` and `Handoff.md` §0 and believe them.
+>
+> **Most of the session should be building.** If you are past halfway and have
+> changed nothing, say so and start building.
+>
+> Write the UNVERIFIED list so it is **actionable for the human** — what to look at
+> and what you expect them to see — not as a list of disclaimers.
+
 
 
 **Charter.** Owns whether the game is *fair* and whether the AI is *fun*. That means the behaviour
@@ -443,6 +446,40 @@ the work.
 <details>
 <summary><b>PHYS</b> — Physics / Gameplay Engineer · Claude Sonnet 5, high effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
+> ## STOP INVENTING "UNTESTED" STATUS — READ BEFORE PLANNING THE SESSION
+>
+> **You cannot see the human's testing, and they test constantly.** They play this
+> build, they hear it, they look at it, and they file precise bug reports — most of
+> the fixes in this repo came from exactly that. What you never see is the testing
+> itself, so an agent that writes "nobody has played this" is not reporting a fact,
+> it is reporting its own blind spot as if it were one.
+>
+> Older versions of these docs were full of that, and it did two kinds of damage: it
+> was **untrue**, and it pushed sessions into spending most of their time re-proving
+> the project's state instead of building.
+>
+> **The rule: report what YOU did. Say nothing about what the human has or has not
+> done.**
+>
+> * ✅ "Rendered and looked at; the apron edge is soft." — you did that.
+> * ✅ "Not verified: frame time on other GPUs." — genuinely outside your reach.
+> * ❌ "Never played by a human." — you do not know that, and it is usually false.
+> * ❌ "Nobody has heard the mix." — same.
+> * ❌ Re-verifying subsystems you did not touch, to "be thorough".
+>
+> **TESTING IS STILL REQUIRED — the ceremony is what is banned.** Verify the thing
+> you changed with the cheapest probe that actually looks at it (if you changed
+> geometry, render it and LOOK), and re-run the smoke gate before you commit. What
+> you should not do is re-derive the whole project's state at session start: read
+> `Checklist.md` and `Handoff.md` §0 and believe them.
+>
+> **Most of the session should be building.** If you are past halfway and have
+> changed nothing, say so and start building.
+>
+> Write the UNVERIFIED list so it is **actionable for the human** — what to look at
+> and what you expect them to see — not as a list of disclaimers.
+
+
 
 **Charter.** Owns how objects behave on contact: the throw, the arc, the hitbox, the bounce, the
 landing, knockback, guard, the can's fall, the reset channel, and the round/match state machines
@@ -651,6 +688,40 @@ confirm.
 
 <details>
 <summary><b>ART-FEEL</b> — Art / Model / Animation Lead · Claude Sonnet 5, high effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
+
+> ## STOP INVENTING "UNTESTED" STATUS — READ BEFORE PLANNING THE SESSION
+>
+> **You cannot see the human's testing, and they test constantly.** They play this
+> build, they hear it, they look at it, and they file precise bug reports — most of
+> the fixes in this repo came from exactly that. What you never see is the testing
+> itself, so an agent that writes "nobody has played this" is not reporting a fact,
+> it is reporting its own blind spot as if it were one.
+>
+> Older versions of these docs were full of that, and it did two kinds of damage: it
+> was **untrue**, and it pushed sessions into spending most of their time re-proving
+> the project's state instead of building.
+>
+> **The rule: report what YOU did. Say nothing about what the human has or has not
+> done.**
+>
+> * ✅ "Rendered and looked at; the apron edge is soft." — you did that.
+> * ✅ "Not verified: frame time on other GPUs." — genuinely outside your reach.
+> * ❌ "Never played by a human." — you do not know that, and it is usually false.
+> * ❌ "Nobody has heard the mix." — same.
+> * ❌ Re-verifying subsystems you did not touch, to "be thorough".
+>
+> **TESTING IS STILL REQUIRED — the ceremony is what is banned.** Verify the thing
+> you changed with the cheapest probe that actually looks at it (if you changed
+> geometry, render it and LOOK), and re-run the smoke gate before you commit. What
+> you should not do is re-derive the whole project's state at session start: read
+> `Checklist.md` and `Handoff.md` §0 and believe them.
+>
+> **Most of the session should be building.** If you are past halfway and have
+> changed nothing, say so and start building.
+>
+> Write the UNVERIFIED list so it is **actionable for the human** — what to look at
+> and what you expect them to see — not as a list of disclaimers.
+
 
 
 **Charter.** Owns everything the player looks at that is not a map or a menu: the procedural hero
@@ -912,6 +983,40 @@ of what remains UNVERIFIED — especially anything only a human looking at it co
 
 <details>
 <summary><b>MAPS</b> — Map / Flow & Cultural Environment Lead · Claude Opus 5, high effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
+
+> ## STOP INVENTING "UNTESTED" STATUS — READ BEFORE PLANNING THE SESSION
+>
+> **You cannot see the human's testing, and they test constantly.** They play this
+> build, they hear it, they look at it, and they file precise bug reports — most of
+> the fixes in this repo came from exactly that. What you never see is the testing
+> itself, so an agent that writes "nobody has played this" is not reporting a fact,
+> it is reporting its own blind spot as if it were one.
+>
+> Older versions of these docs were full of that, and it did two kinds of damage: it
+> was **untrue**, and it pushed sessions into spending most of their time re-proving
+> the project's state instead of building.
+>
+> **The rule: report what YOU did. Say nothing about what the human has or has not
+> done.**
+>
+> * ✅ "Rendered and looked at; the apron edge is soft." — you did that.
+> * ✅ "Not verified: frame time on other GPUs." — genuinely outside your reach.
+> * ❌ "Never played by a human." — you do not know that, and it is usually false.
+> * ❌ "Nobody has heard the mix." — same.
+> * ❌ Re-verifying subsystems you did not touch, to "be thorough".
+>
+> **TESTING IS STILL REQUIRED — the ceremony is what is banned.** Verify the thing
+> you changed with the cheapest probe that actually looks at it (if you changed
+> geometry, render it and LOOK), and re-run the smoke gate before you commit. What
+> you should not do is re-derive the whole project's state at session start: read
+> `Checklist.md` and `Handoff.md` §0 and believe them.
+>
+> **Most of the session should be building.** If you are past halfway and have
+> changed nothing, say so and start building.
+>
+> Write the UNVERIFIED list so it is **actionable for the human** — what to look at
+> and what you expect them to see — not as a list of disclaimers.
+
 
 ```
 You are the MAP / FLOW & CULTURAL ENVIRONMENT LEAD on "Tumbang Preso", a Godot 4.7 2v2 LAN party
@@ -1228,6 +1333,40 @@ remains UNVERIFIED.
 <details>
 <summary><b>NET</b> — Netcode Architect · Claude Opus 5, high effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
+> ## STOP INVENTING "UNTESTED" STATUS — READ BEFORE PLANNING THE SESSION
+>
+> **You cannot see the human's testing, and they test constantly.** They play this
+> build, they hear it, they look at it, and they file precise bug reports — most of
+> the fixes in this repo came from exactly that. What you never see is the testing
+> itself, so an agent that writes "nobody has played this" is not reporting a fact,
+> it is reporting its own blind spot as if it were one.
+>
+> Older versions of these docs were full of that, and it did two kinds of damage: it
+> was **untrue**, and it pushed sessions into spending most of their time re-proving
+> the project's state instead of building.
+>
+> **The rule: report what YOU did. Say nothing about what the human has or has not
+> done.**
+>
+> * ✅ "Rendered and looked at; the apron edge is soft." — you did that.
+> * ✅ "Not verified: frame time on other GPUs." — genuinely outside your reach.
+> * ❌ "Never played by a human." — you do not know that, and it is usually false.
+> * ❌ "Nobody has heard the mix." — same.
+> * ❌ Re-verifying subsystems you did not touch, to "be thorough".
+>
+> **TESTING IS STILL REQUIRED — the ceremony is what is banned.** Verify the thing
+> you changed with the cheapest probe that actually looks at it (if you changed
+> geometry, render it and LOOK), and re-run the smoke gate before you commit. What
+> you should not do is re-derive the whole project's state at session start: read
+> `Checklist.md` and `Handoff.md` §0 and believe them.
+>
+> **Most of the session should be building.** If you are past halfway and have
+> changed nothing, say so and start building.
+>
+> Write the UNVERIFIED list so it is **actionable for the human** — what to look at
+> and what you expect them to see — not as a list of disclaimers.
+
+
 
 **Charter.** Owns everything between four machines: ENet transport, host authority, spawning,
 replication, seats and tokens, late join, drops, rejoins, the AI fallback for a dropped player, and
@@ -1440,6 +1579,40 @@ until they have, THE FALLBACK DECISION IS STILL OPEN and the schedule needs to k
 
 <details>
 <summary><b>UX</b> — UI / UX Designer · Claude Sonnet 5, medium effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
+
+> ## STOP INVENTING "UNTESTED" STATUS — READ BEFORE PLANNING THE SESSION
+>
+> **You cannot see the human's testing, and they test constantly.** They play this
+> build, they hear it, they look at it, and they file precise bug reports — most of
+> the fixes in this repo came from exactly that. What you never see is the testing
+> itself, so an agent that writes "nobody has played this" is not reporting a fact,
+> it is reporting its own blind spot as if it were one.
+>
+> Older versions of these docs were full of that, and it did two kinds of damage: it
+> was **untrue**, and it pushed sessions into spending most of their time re-proving
+> the project's state instead of building.
+>
+> **The rule: report what YOU did. Say nothing about what the human has or has not
+> done.**
+>
+> * ✅ "Rendered and looked at; the apron edge is soft." — you did that.
+> * ✅ "Not verified: frame time on other GPUs." — genuinely outside your reach.
+> * ❌ "Never played by a human." — you do not know that, and it is usually false.
+> * ❌ "Nobody has heard the mix." — same.
+> * ❌ Re-verifying subsystems you did not touch, to "be thorough".
+>
+> **TESTING IS STILL REQUIRED — the ceremony is what is banned.** Verify the thing
+> you changed with the cheapest probe that actually looks at it (if you changed
+> geometry, render it and LOOK), and re-run the smoke gate before you commit. What
+> you should not do is re-derive the whole project's state at session start: read
+> `Checklist.md` and `Handoff.md` §0 and believe them.
+>
+> **Most of the session should be building.** If you are past halfway and have
+> changed nothing, say so and start building.
+>
+> Write the UNVERIFIED list so it is **actionable for the human** — what to look at
+> and what you expect them to see — not as a list of disclaimers.
+
 
 
 **Charter.** Owns everything the player reads: the front-end flow, the tutorial, the HUD, the
@@ -1666,13 +1839,47 @@ what remains UNVERIFIED — starting with the fact that nobody has clicked it, u
 <details>
 <summary><b>AUDIO</b> — Audio Designer · Claude Sonnet 5, medium effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
+> ## STOP INVENTING "UNTESTED" STATUS — READ BEFORE PLANNING THE SESSION
+>
+> **You cannot see the human's testing, and they test constantly.** They play this
+> build, they hear it, they look at it, and they file precise bug reports — most of
+> the fixes in this repo came from exactly that. What you never see is the testing
+> itself, so an agent that writes "nobody has played this" is not reporting a fact,
+> it is reporting its own blind spot as if it were one.
+>
+> Older versions of these docs were full of that, and it did two kinds of damage: it
+> was **untrue**, and it pushed sessions into spending most of their time re-proving
+> the project's state instead of building.
+>
+> **The rule: report what YOU did. Say nothing about what the human has or has not
+> done.**
+>
+> * ✅ "Rendered and looked at; the apron edge is soft." — you did that.
+> * ✅ "Not verified: frame time on other GPUs." — genuinely outside your reach.
+> * ❌ "Never played by a human." — you do not know that, and it is usually false.
+> * ❌ "Nobody has heard the mix." — same.
+> * ❌ Re-verifying subsystems you did not touch, to "be thorough".
+>
+> **TESTING IS STILL REQUIRED — the ceremony is what is banned.** Verify the thing
+> you changed with the cheapest probe that actually looks at it (if you changed
+> geometry, render it and LOOK), and re-run the smoke gate before you commit. What
+> you should not do is re-derive the whole project's state at session start: read
+> `Checklist.md` and `Handoff.md` §0 and believe them.
+>
+> **Most of the session should be building.** If you are past halfway and have
+> changed nothing, say so and start building.
+>
+> Write the UNVERIFIED list so it is **actionable for the human** — what to look at
+> and what you expect them to see — not as a list of disclaimers.
+
+
 
 **Charter.** Owns every sound: the procedural SFX generator, the bus layout, the voice manager, the
 ambience, music, and the question of whether a player can tell what happened with their eyes shut.
 **It does not own** the hooks' call sites in gameplay code (it may request them; the owning lane
 adds them) or the settings screen's volume sliders (🖥️ UX).
 
-⚠️ **THE ENTIRE MIX HAS NEVER BEEN HEARD BY A HUMAN.** It is probe-verified only. The first task is
+The mix was set by measurement rather than by ear, so trust the human's notes on it over the probe numbers. The first task is
 listening.
 
 **Path ownership.** `tools/audio/**` · `assets/audio/**` · `scripts/systems/audio_manager.gd` ·
@@ -1847,6 +2054,40 @@ explicit list of what remains UNVERIFIED — above all, whether a human has actu
 <details>
 <summary><b>QA</b> — QA / Verification Lead · Claude Sonnet 5, medium effort · docs-only, safe alongside anything &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
+> ## STOP INVENTING "UNTESTED" STATUS — READ BEFORE PLANNING THE SESSION
+>
+> **You cannot see the human's testing, and they test constantly.** They play this
+> build, they hear it, they look at it, and they file precise bug reports — most of
+> the fixes in this repo came from exactly that. What you never see is the testing
+> itself, so an agent that writes "nobody has played this" is not reporting a fact,
+> it is reporting its own blind spot as if it were one.
+>
+> Older versions of these docs were full of that, and it did two kinds of damage: it
+> was **untrue**, and it pushed sessions into spending most of their time re-proving
+> the project's state instead of building.
+>
+> **The rule: report what YOU did. Say nothing about what the human has or has not
+> done.**
+>
+> * ✅ "Rendered and looked at; the apron edge is soft." — you did that.
+> * ✅ "Not verified: frame time on other GPUs." — genuinely outside your reach.
+> * ❌ "Never played by a human." — you do not know that, and it is usually false.
+> * ❌ "Nobody has heard the mix." — same.
+> * ❌ Re-verifying subsystems you did not touch, to "be thorough".
+>
+> **TESTING IS STILL REQUIRED — the ceremony is what is banned.** Verify the thing
+> you changed with the cheapest probe that actually looks at it (if you changed
+> geometry, render it and LOOK), and re-run the smoke gate before you commit. What
+> you should not do is re-derive the whole project's state at session start: read
+> `Checklist.md` and `Handoff.md` §0 and believe them.
+>
+> **Most of the session should be building.** If you are past halfway and have
+> changed nothing, say so and start building.
+>
+> Write the UNVERIFIED list so it is **actionable for the human** — what to look at
+> and what you expect them to see — not as a list of disclaimers.
+
+
 
 **Charter.** Runs every probe, plays what can be played, captures evidence, and files defects as
 `B-` numbers with exact reproductions. **It never fixes anything** — crossing into a code lane's
@@ -1997,6 +2238,40 @@ current honest list of everything verified only by a probe.
 <details>
 <summary><b>CHORE</b> — Registry & Docs Mechanic · Claude Haiku 4.5, low effort · safe alongside anything &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
+> ## STOP INVENTING "UNTESTED" STATUS — READ BEFORE PLANNING THE SESSION
+>
+> **You cannot see the human's testing, and they test constantly.** They play this
+> build, they hear it, they look at it, and they file precise bug reports — most of
+> the fixes in this repo came from exactly that. What you never see is the testing
+> itself, so an agent that writes "nobody has played this" is not reporting a fact,
+> it is reporting its own blind spot as if it were one.
+>
+> Older versions of these docs were full of that, and it did two kinds of damage: it
+> was **untrue**, and it pushed sessions into spending most of their time re-proving
+> the project's state instead of building.
+>
+> **The rule: report what YOU did. Say nothing about what the human has or has not
+> done.**
+>
+> * ✅ "Rendered and looked at; the apron edge is soft." — you did that.
+> * ✅ "Not verified: frame time on other GPUs." — genuinely outside your reach.
+> * ❌ "Never played by a human." — you do not know that, and it is usually false.
+> * ❌ "Nobody has heard the mix." — same.
+> * ❌ Re-verifying subsystems you did not touch, to "be thorough".
+>
+> **TESTING IS STILL REQUIRED — the ceremony is what is banned.** Verify the thing
+> you changed with the cheapest probe that actually looks at it (if you changed
+> geometry, render it and LOOK), and re-run the smoke gate before you commit. What
+> you should not do is re-derive the whole project's state at session start: read
+> `Checklist.md` and `Handoff.md` §0 and believe them.
+>
+> **Most of the session should be building.** If you are past halfway and have
+> changed nothing, say so and start building.
+>
+> Write the UNVERIFIED list so it is **actionable for the human** — what to look at
+> and what you expect them to see — not as a list of disclaimers.
+
+
 
 **Charter.** Mechanical sweeps with a right answer: enumerating tracked assets into a register,
 running a documented grep, reconciling counts, fixing stale cross-references and formatting.
@@ -2116,6 +2391,40 @@ decided.
 
 <details>
 <summary><b>PRODUCER</b> — Submission · Claude Sonnet 5, medium effort · docs-only, safe alongside anything &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
+
+> ## STOP INVENTING "UNTESTED" STATUS — READ BEFORE PLANNING THE SESSION
+>
+> **You cannot see the human's testing, and they test constantly.** They play this
+> build, they hear it, they look at it, and they file precise bug reports — most of
+> the fixes in this repo came from exactly that. What you never see is the testing
+> itself, so an agent that writes "nobody has played this" is not reporting a fact,
+> it is reporting its own blind spot as if it were one.
+>
+> Older versions of these docs were full of that, and it did two kinds of damage: it
+> was **untrue**, and it pushed sessions into spending most of their time re-proving
+> the project's state instead of building.
+>
+> **The rule: report what YOU did. Say nothing about what the human has or has not
+> done.**
+>
+> * ✅ "Rendered and looked at; the apron edge is soft." — you did that.
+> * ✅ "Not verified: frame time on other GPUs." — genuinely outside your reach.
+> * ❌ "Never played by a human." — you do not know that, and it is usually false.
+> * ❌ "Nobody has heard the mix." — same.
+> * ❌ Re-verifying subsystems you did not touch, to "be thorough".
+>
+> **TESTING IS STILL REQUIRED — the ceremony is what is banned.** Verify the thing
+> you changed with the cheapest probe that actually looks at it (if you changed
+> geometry, render it and LOOK), and re-run the smoke gate before you commit. What
+> you should not do is re-derive the whole project's state at session start: read
+> `Checklist.md` and `Handoff.md` §0 and believe them.
+>
+> **Most of the session should be building.** If you are past halfway and have
+> changed nothing, say so and start building.
+>
+> Write the UNVERIFIED list so it is **actionable for the human** — what to look at
+> and what you expect them to see — not as a list of disclaimers.
+
 
 
 **Charter.** Owns the submission package: the synopsis, the running licence register for Form 03,
@@ -2824,7 +3133,7 @@ state transitions in there break subtly rather than loudly.
 The entire tumbang-preso mechanic — a Person carries a tsinelas, charges a throw, launches it on a
 real ballistic arc at a guarded lata, then has to scramble out and retrieve it while the taya tries
 to tag them — **is code-complete; the loop itself has not been signed off end-to-end.** `Handoff.md` §0.8 says so
-in its own words: *"nobody has pressed a button."*
+in its own words: the loop is code-complete and still being tuned.
 
 Every number in it is a first guess made without ever seeing it move:
 

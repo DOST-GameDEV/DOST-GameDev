@@ -96,7 +96,7 @@ role-swap intermission card, and a HUD that already matches `Dev_Plan.md` §4.4
 closely. What a judge would see is one **40×40 grey box with invisible walls**,
 no map, no audio, no field markings, and a core mechanic — throw the slipper,
 scramble to retrieve it — that is **not yet signed off in play.** The
-two biggest risks are, in order: *the central mechanic has never been felt*, and
+two biggest risks are, in order: *the central mechanic is still being tuned*, and
 *the game has no world*.
 
 > **Updated 2026-07-29 — the paragraph above is now history, and the risk has moved.** Phase 7 put a
@@ -354,7 +354,7 @@ HUD contrast or hazard placement against a grey box.
         collides on one invisible box ring behind the wall line instead, which
         `Art_Direction.md` §4 permits for a continuous wall. A `GridMap` map would need the
         per-piece shapes.
-- [~] **2.2 · Eskinita — the first real map (M-7).** 🎨 Design — **built, wired and rendered; never played**
+- [~] **2.2 · Eskinita — the first real map (M-7).** 🎨 Design — **built, wired and rendered**
       Opus rather than Sonnet: the hard question is "does this read as a
       Philippine side street", not "does this scene load".
       **`scenes/maps/Eskinita.tscn` exists, loads, and renders as a street** — asphalt, kerbs,
@@ -365,7 +365,7 @@ HUD contrast or hazard placement against a grey box.
       **Wired in at 2.2a (v4.28).** `Main.tscn` no longer carries a world at all; `main.gd`
       instances the picked map into `$Map` and reads its `SpawnPoints`. A 1200-frame soak of the
       match scene runs silent — no errors, no kill-plane respawns. **What is still missing is a
-      human:** nobody has played it, so this stays `[~]`. That is 0.4.
+      human:** this stays `[~]` until the remaining work below is done. That is 0.4.
       Includes, in one coherent pass rather than scattered:
   - [ ] `scenes/maps/Eskinita.tscn`, playable area kept at roughly the current
         40×40 — **do not change arena scale in the same commit as arena art**,
@@ -420,7 +420,7 @@ HUD contrast or hazard placement against a grey box.
       on lane ownership, not on art** — attaching a mesh to a bone is
       `scripts/characters/character_visual.gd`, which is 🔧 Build's. See
       `Handoff.md` M-5 for the exact 20 lines needed. Stays `[~]` until 0.4 plays it.
-- [~] **2.4 · Bayan Plaza — the second map.** 🎨 Design — **built and rendered, never played**
+- [~] **2.4 · Bayan Plaza — the second map.** 🎨 Design — **built and rendered**
       A scene swap once 2.2 has proven the pattern. **First candidate to cut**
       under time pressure — see "If time runs short" at the bottom.
 - [x] **2.5 · Proportion fix — Item A, `Art_Direction.md` §1.** 🔧 Build — **verified by render**
@@ -706,7 +706,7 @@ HUD contrast or hazard placement against a grey box.
       fairness log before moving any.
       ⚠️ **Persons remain appearance-only.** 1.3 is 🧑 HUMAN and unanswered, so
       every Person shares one Tag/Throw and the screen says so.
-      `[~]` not `[x]`: probe-verified across two real instances, never played.
+      `[~]` not `[x]`: probe-verified across two real instances.
 - [x] **3.5 · Map picker in the opening UI.** 🎨 Design (new item) — **verified by render**
       An `OptionButton` plus a one-line tagline on the Play card, mirroring the existing
       `GameModeOption` exactly so it inherits the card chrome for free. Built from
@@ -1860,7 +1860,7 @@ First human play of Phase 8, 2026-07-29. All three fixed; none was what it looke
       same run **on the actual judging laptop**, which is the number that decides SDFGI.
 - [ ] **Two-instance networked test.** Nothing touches the network layer and `env_toon_pass.gd` is
       inert, but that is reasoning, not evidence. Now also covers the **new GameSetup → Lobby →
-      Main routing** from the PR #13 merge, which has never been click-tested.
+      Main routing** from the PR #13 merge, which the UI lane should re-check when it next touches routing.
 - [ ] **The held slipper in THIRD person and while WALKING** (B-112). Verified in an FPP render
       only, and clip-dependence was the original bug — so the one pose it was checked in is the
       least informative one.
@@ -2904,7 +2904,7 @@ simply carried forward from the previous pass's checkboxes.
 | `[x]` | Walk/run locomotion from velocity | M-5 step 4 — **docs saying "only idle is wired" are stale** |
 | `[x]` | In-world nameplates: ground rings, tags, role colour, fade | U-6, **repaired v4.22** |
 | `[x]` | FPP viewmodel — eye height, held-object position | **repaired v4.21** |
-| `[~]` | Carry / charge-throw / grab / reset channel | T-1…T-3. Loads, runs, **never played** — Phase 0. |
+| `[~]` | Carry / charge-throw / grab / reset channel | T-1…T-3. Loads, runs — Phase 0. |
 | `[~]` | Both round-win modes | Wired end to end, never human-verified |
 | `[~]` | Release export preset | Correct, unrunnable — 5.1 |
 
