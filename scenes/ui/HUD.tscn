@@ -41,91 +41,148 @@ material = SubResource("ShaderMaterial_1")
 mouse_filter = 2
 visible = false
 
+; ═══ TEAM CARD, LEFT ═══ Restyled 2026-07-30 to the menu's wood-and-amber language.
+;
+; Reported from play: the mid-game HUD "kinda doesnt look like our theme (menu and
+; lobby), it looks ugly and plain and confusing". It was a near-white `card_style`
+; panel — correct per the older §4.1 note, and nothing like the wood the front end
+; actually shipped with.
+;
+; ⚠️ THE STYLEBOX IS NOT SET HERE. `hud.gd::_apply_wood_skin()` builds it from
+; `UiTheme.wood_style()` — the same static call the menu's own `WoodSlot` uses — so the
+; HUD cannot drift from the front end. It is done in code rather than as a theme
+; variation only because the variations live in `ui_theme.gd`, which is ART's file and
+; not writable by this lane; filed for ART to promote.
+;
+; ⚠️ THE LETTER MARK IS WHY THIS IS AN HBOX NOW. The hard rule is that team identity is
+; the A/B letter and NEVER hue — but the letter was buried mid-string in "A · OFFENSE"
+; at body size, so in practice hue was doing all the work and the two cards were
+; distinguished only by which corner they sat in. The letter is now its own amber glyph
+; at display size, and the ROLE word beside it carries the role colour. Widened 200→250
+; to pay for it; still clear of TopCentre, which the probe's DISJOINT check asserts.
 [node name="TopLeft" type="PanelContainer" parent="."]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 0
 offset_left = 16.0
 offset_top = 12.0
-offset_right = 216.0
-offset_bottom = 92.0
-theme_type_variation = &"OffenseCard"
+offset_right = 266.0
+offset_bottom = 104.0
 mouse_filter = 2
 
-[node name="VBoxContainer" type="VBoxContainer" parent="TopLeft"]
+[node name="Row" type="HBoxContainer" parent="TopLeft"]
 layout_mode = 2
+theme_override_constants/separation = 12
 mouse_filter = 2
 
-[node name="TeamALabel" type="Label" parent="TopLeft/VBoxContainer"]
+[node name="TeamALetter" type="Label" parent="TopLeft/Row"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_type_variation = &"HudBody"
-text = "A · OFFENSE"
+theme_override_font_sizes/font_size = 48
+vertical_alignment = 1
+text = "A"
 
-[node name="TeamAPipsBox" type="HBoxContainer" parent="TopLeft/VBoxContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="TopLeft/Row"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 4
+mouse_filter = 2
+
+[node name="TeamALabel" type="Label" parent="TopLeft/Row/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+clip_text = true
+text_overrun_behavior = 3
+text = "OFFENSE"
+
+[node name="TeamAPipsBox" type="HBoxContainer" parent="TopLeft/Row/VBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 2
 mouse_filter = 2
 
-[node name="TeamAPip0" type="Panel" parent="TopLeft/VBoxContainer/TeamAPipsBox"]
+[node name="TeamAPip0" type="Panel" parent="TopLeft/Row/VBoxContainer/TeamAPipsBox"]
 layout_mode = 2
 custom_minimum_size = Vector2(14, 14)
 mouse_filter = 2
 
-[node name="TeamAPip1" type="Panel" parent="TopLeft/VBoxContainer/TeamAPipsBox"]
+[node name="TeamAPip1" type="Panel" parent="TopLeft/Row/VBoxContainer/TeamAPipsBox"]
 layout_mode = 2
 custom_minimum_size = Vector2(14, 14)
 mouse_filter = 2
 
-[node name="TeamAPip2" type="Panel" parent="TopLeft/VBoxContainer/TeamAPipsBox"]
+[node name="TeamAPip2" type="Panel" parent="TopLeft/Row/VBoxContainer/TeamAPipsBox"]
 layout_mode = 2
 custom_minimum_size = Vector2(14, 14)
 mouse_filter = 2
 
+; ═══ TEAM CARD, RIGHT ═══ Mirrors TopLeft node-for-node; read its comment.
+; The letter mark is the LAST child here and the first one there, so both cards put the
+; glyph on their own outer edge and the two read as a matched pair rather than as one
+; layout and its copy.
 [node name="TopRight" type="PanelContainer" parent="."]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -216.0
+offset_left = -266.0
 offset_top = 12.0
 offset_right = -16.0
-offset_bottom = 92.0
-theme_type_variation = &"DefenseCard"
+offset_bottom = 104.0
 mouse_filter = 2
 
-[node name="VBoxContainer" type="VBoxContainer" parent="TopRight"]
+[node name="Row" type="HBoxContainer" parent="TopRight"]
 layout_mode = 2
+theme_override_constants/separation = 12
 mouse_filter = 2
 
-[node name="TeamBLabel" type="Label" parent="TopRight/VBoxContainer"]
-unique_name_in_owner = true
+[node name="VBoxContainer" type="VBoxContainer" parent="TopRight/Row"]
 layout_mode = 2
-theme_type_variation = &"HudBody"
-text = "B · DEFENSE"
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 4
+mouse_filter = 2
 
-[node name="TeamBPipsBox" type="HBoxContainer" parent="TopRight/VBoxContainer"]
+[node name="TeamBLabel" type="Label" parent="TopRight/Row/VBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2
+theme_override_font_sizes/font_size = 22
+horizontal_alignment = 2
+clip_text = true
+text_overrun_behavior = 3
+text = "DEFENSE"
+
+[node name="TeamBPipsBox" type="HBoxContainer" parent="TopRight/Row/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+alignment = 2
 theme_override_constants/separation = 2
 mouse_filter = 2
 
-[node name="TeamBPip0" type="Panel" parent="TopRight/VBoxContainer/TeamBPipsBox"]
+[node name="TeamBPip0" type="Panel" parent="TopRight/Row/VBoxContainer/TeamBPipsBox"]
 layout_mode = 2
 custom_minimum_size = Vector2(14, 14)
 mouse_filter = 2
 
-[node name="TeamBPip1" type="Panel" parent="TopRight/VBoxContainer/TeamBPipsBox"]
+[node name="TeamBPip1" type="Panel" parent="TopRight/Row/VBoxContainer/TeamBPipsBox"]
 layout_mode = 2
 custom_minimum_size = Vector2(14, 14)
 mouse_filter = 2
 
-[node name="TeamBPip2" type="Panel" parent="TopRight/VBoxContainer/TeamBPipsBox"]
+[node name="TeamBPip2" type="Panel" parent="TopRight/Row/VBoxContainer/TeamBPipsBox"]
 layout_mode = 2
 custom_minimum_size = Vector2(14, 14)
 mouse_filter = 2
+
+[node name="TeamBLetter" type="Label" parent="TopRight/Row"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 48
+vertical_alignment = 1
+text = "B"
 
 [node name="TopCentre" type="VBoxContainer" parent="."]
 layout_mode = 1

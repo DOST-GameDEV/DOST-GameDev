@@ -2251,6 +2251,45 @@ acceptance test for either of them.
       tightest case vertically** — which is why R-09's 7px `BackButton` overflow
       showed only at 1080p.
 
+### 10.5.3 · R-27 onboarding, and the HUD moved onto the front end's own theme `[~]`
+
+**Executed 2026-07-30**, 🖥️ UX lane. Render-verified — every claim below was checked
+by opening the PNG.
+
+- [x] **R-27(a) · the premise card, in front of the eight reference pages.** Page 1 is
+      four pictures and twelve words: LATA/can · TAYA/guard in defence blue,
+      TSINELAS/slipper · TAKBO/run in offence orange, over a four-word lede. The
+      colour rule is taught by being used, like the vocabulary. The pictures are the
+      **real can, slipper and person rigs** through `CharacterPreview` — there is no
+      icon art in `assets/ui/` and drawing four pieces of it is ART's call, but the
+      real rigs mean the card cannot go stale when a model is reskinned. New
+      `scenes/ui/PremiseIcon.tscn`. The eight reference pages are unchanged.
+      ⚠️ Tile height is a **stretch flag, not a number** — 210 stranded the strip at
+      the top of an empty panel, 330 clipped the gloss and raised a scrollbar, and a
+      card you have to scroll cannot be read at a glance.
+      ⚠️ The confinement radius still has **no number** (GDD 3 vs `CONFINEMENT_RADIUS`
+      5.0) — page 3 still describes the rule. Unchanged on purpose.
+- [x] **R-27(b) · the ready phase says what your job is.** It previously said only how
+      to start the round. `hud.gd` **derives** the objective from `you_card`'s local
+      character plus `MatchManager.team_a_is_can` rather than taking it as an argument,
+      because `main.gd` owns all four call sites and is not this lane's file. Blank when
+      the role cannot be established — a late-joining peer reaches the ready phase
+      before its character spawns.
+      **Both states rendered and measured**, `tools/ui/ready_objective_shot.tscn`:
+      `0080e8` / "GUARD THE LATA.  TAG THE THROWER." and `f87020` / "KNOCK THE LATA
+      DOWN". ⚠️ That probe's own limit is in its header — it flips `team_a_is_can`, which
+      the team cards follow but the YOU card does not.
+- [~] **B-143 · the HUD restyled onto the menu's wood-and-amber language.** Reported as
+      *"ugly and plain and confusing"*. Built from `UiTheme.wood_style()`, the same call
+      the menu's `WoodSlot` uses. Two real defects fixed inside the "confusing" half: an
+      **unwon score pip was drawn at alpha 0** (invisible empty state — the readable half
+      of the older "boxes remain empty" report, which only ever fixed the fill), and
+      **team identity was a single character mid-string at body size**, leaving hue doing
+      the letter mark's job against §4.2. Letter is now its own 48px amber glyph.
+      `[~]` because **`RoleSwapCard` and `MatchResult` are still on the old face**, and
+      because the overrides are per-node in code — the `Hud*` variations live in
+      `ui_theme.gd`, which is ART's file. 🩴 **Filed for ART to promote.**
+
 ## Phase 9 · AI FAIRNESS LOG — the running record for balance testing
 
 **Human call, 2026-07-29:** *"Make sure the AI's fulfil their roles as well and try to win (attacker
