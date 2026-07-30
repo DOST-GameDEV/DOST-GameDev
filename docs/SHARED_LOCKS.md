@@ -17,6 +17,7 @@ to type.
 |---|---|---|---|
 | `scenes/main/Main.tscn` | — free — | | |
 | `scenes/characters/CharacterBase.tscn` | — free — | | |
+| `scripts/characters/character_base.gd` | 🥊 PHYS | `integration` | 2026-07-30 — R-18b (make `LUCKY_FALL_CHANCE` sweepable so the networked two-peer test can produce both outcomes), and the human's "the attacker faces backwards when it throws" (the body yaw is written here) |
 | `scenes/characters/CameraRig.tscn` | — free — | | |
 | `scenes/ui/*.tscn` | 🖥️ UX | `integration` | 2026-07-30 — R-09 picker, R-27 premise card, R-28 crosshair, R-29 round-end reason |
 | `project.godot` | — free — | | |
