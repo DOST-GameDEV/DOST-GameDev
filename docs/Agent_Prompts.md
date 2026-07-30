@@ -143,6 +143,21 @@ blocked on it), R-23's real four-machine Wi-Fi run, R-31's export on the judging
 <details>
 <summary><b>BALANCE</b> — AI / Balance Engineer · Claude Opus 5, xhigh effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
+> ## 📖 READ BUDGET — DO NOT READ THE DOCS SET
+>
+> **All of `docs/` is ~281k tokens.** Reading it would spend your whole session before
+> you changed anything. `Handoff.md` alone is 82k and `Checklist.md` 62k.
+>
+> * **GREP, don't open.** `Handoff.md` and `Checklist.md` are reference — search them
+>   for your item, your `B-` number, your phase. Never read either end to end.
+> * **Open in full only:** `SHARED_LOCKS.md` (1k) and `README.md` (3k) if you need the
+>   source-of-truth order.
+> * **Read only the sections your own lane block names below.** If it does not name a
+>   section, you do not need it.
+> * The `<details>` blocks and jump indexes in these docs are for the HUMAN scrolling.
+>   They cost you the same tokens collapsed or open — so do not open this file whole
+>   either; you were given your lane's block already.
+>
 > ## ⏱️ DON'T INVENT "UNTESTED" STATUS — AND LOG WHAT THE HUMAN TELLS YOU
 >
 > **You cannot see the human's testing, and they test constantly.** Never write "no
@@ -429,6 +444,21 @@ the work.
 <details>
 <summary><b>PHYS</b> — Physics / Gameplay Engineer · Claude Sonnet 5, high effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
+> ## 📖 READ BUDGET — DO NOT READ THE DOCS SET
+>
+> **All of `docs/` is ~281k tokens.** Reading it would spend your whole session before
+> you changed anything. `Handoff.md` alone is 82k and `Checklist.md` 62k.
+>
+> * **GREP, don't open.** `Handoff.md` and `Checklist.md` are reference — search them
+>   for your item, your `B-` number, your phase. Never read either end to end.
+> * **Open in full only:** `SHARED_LOCKS.md` (1k) and `README.md` (3k) if you need the
+>   source-of-truth order.
+> * **Read only the sections your own lane block names below.** If it does not name a
+>   section, you do not need it.
+> * The `<details>` blocks and jump indexes in these docs are for the HUMAN scrolling.
+>   They cost you the same tokens collapsed or open — so do not open this file whole
+>   either; you were given your lane's block already.
+>
 > ## ⏱️ DON'T INVENT "UNTESTED" STATUS — AND LOG WHAT THE HUMAN TELLS YOU
 >
 > **You cannot see the human's testing, and they test constantly.** Never write "no
@@ -655,6 +685,21 @@ confirm.
 <details>
 <summary><b>ART-FEEL</b> — Art / Model / Animation Lead · Claude Sonnet 5, high effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
+> ## 📖 READ BUDGET — DO NOT READ THE DOCS SET
+>
+> **All of `docs/` is ~281k tokens.** Reading it would spend your whole session before
+> you changed anything. `Handoff.md` alone is 82k and `Checklist.md` 62k.
+>
+> * **GREP, don't open.** `Handoff.md` and `Checklist.md` are reference — search them
+>   for your item, your `B-` number, your phase. Never read either end to end.
+> * **Open in full only:** `SHARED_LOCKS.md` (1k) and `README.md` (3k) if you need the
+>   source-of-truth order.
+> * **Read only the sections your own lane block names below.** If it does not name a
+>   section, you do not need it.
+> * The `<details>` blocks and jump indexes in these docs are for the HUMAN scrolling.
+>   They cost you the same tokens collapsed or open — so do not open this file whole
+>   either; you were given your lane's block already.
+>
 > ## ⏱️ DON'T INVENT "UNTESTED" STATUS — AND LOG WHAT THE HUMAN TELLS YOU
 >
 > **You cannot see the human's testing, and they test constantly.** Never write "no
@@ -933,6 +978,21 @@ of what remains UNVERIFIED — especially anything only a human looking at it co
 <details>
 <summary><b>MAPS</b> — Map / Flow & Cultural Environment Lead · Claude Opus 5, high effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
+> ## 📖 READ BUDGET — DO NOT READ THE DOCS SET
+>
+> **All of `docs/` is ~281k tokens.** Reading it would spend your whole session before
+> you changed anything. `Handoff.md` alone is 82k and `Checklist.md` 62k.
+>
+> * **GREP, don't open.** `Handoff.md` and `Checklist.md` are reference — search them
+>   for your item, your `B-` number, your phase. Never read either end to end.
+> * **Open in full only:** `SHARED_LOCKS.md` (1k) and `README.md` (3k) if you need the
+>   source-of-truth order.
+> * **Read only the sections your own lane block names below.** If it does not name a
+>   section, you do not need it.
+> * The `<details>` blocks and jump indexes in these docs are for the HUMAN scrolling.
+>   They cost you the same tokens collapsed or open — so do not open this file whole
+>   either; you were given your lane's block already.
+>
 > ## ⏱️ DON'T INVENT "UNTESTED" STATUS — AND LOG WHAT THE HUMAN TELLS YOU
 >
 > **You cannot see the human's testing, and they test constantly.** Never write "no
@@ -1265,6 +1325,21 @@ remains UNVERIFIED.
 <details>
 <summary><b>NET</b> — Netcode Architect · Claude Opus 5, high effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
+> ## 📖 READ BUDGET — DO NOT READ THE DOCS SET
+>
+> **All of `docs/` is ~281k tokens.** Reading it would spend your whole session before
+> you changed anything. `Handoff.md` alone is 82k and `Checklist.md` 62k.
+>
+> * **GREP, don't open.** `Handoff.md` and `Checklist.md` are reference — search them
+>   for your item, your `B-` number, your phase. Never read either end to end.
+> * **Open in full only:** `SHARED_LOCKS.md` (1k) and `README.md` (3k) if you need the
+>   source-of-truth order.
+> * **Read only the sections your own lane block names below.** If it does not name a
+>   section, you do not need it.
+> * The `<details>` blocks and jump indexes in these docs are for the HUMAN scrolling.
+>   They cost you the same tokens collapsed or open — so do not open this file whole
+>   either; you were given your lane's block already.
+>
 > ## ⏱️ DON'T INVENT "UNTESTED" STATUS — AND LOG WHAT THE HUMAN TELLS YOU
 >
 > **You cannot see the human's testing, and they test constantly.** Never write "no
@@ -1495,6 +1570,21 @@ until they have, THE FALLBACK DECISION IS STILL OPEN and the schedule needs to k
 <details>
 <summary><b>UX</b> — UI / UX Designer · Claude Sonnet 5, medium effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
+> ## 📖 READ BUDGET — DO NOT READ THE DOCS SET
+>
+> **All of `docs/` is ~281k tokens.** Reading it would spend your whole session before
+> you changed anything. `Handoff.md` alone is 82k and `Checklist.md` 62k.
+>
+> * **GREP, don't open.** `Handoff.md` and `Checklist.md` are reference — search them
+>   for your item, your `B-` number, your phase. Never read either end to end.
+> * **Open in full only:** `SHARED_LOCKS.md` (1k) and `README.md` (3k) if you need the
+>   source-of-truth order.
+> * **Read only the sections your own lane block names below.** If it does not name a
+>   section, you do not need it.
+> * The `<details>` blocks and jump indexes in these docs are for the HUMAN scrolling.
+>   They cost you the same tokens collapsed or open — so do not open this file whole
+>   either; you were given your lane's block already.
+>
 > ## ⏱️ DON'T INVENT "UNTESTED" STATUS — AND LOG WHAT THE HUMAN TELLS YOU
 >
 > **You cannot see the human's testing, and they test constantly.** Never write "no
@@ -1737,6 +1827,21 @@ what remains UNVERIFIED — starting with the fact that nobody has clicked it, u
 <details>
 <summary><b>AUDIO</b> — Audio Designer · Claude Sonnet 5, medium effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
+> ## 📖 READ BUDGET — DO NOT READ THE DOCS SET
+>
+> **All of `docs/` is ~281k tokens.** Reading it would spend your whole session before
+> you changed anything. `Handoff.md` alone is 82k and `Checklist.md` 62k.
+>
+> * **GREP, don't open.** `Handoff.md` and `Checklist.md` are reference — search them
+>   for your item, your `B-` number, your phase. Never read either end to end.
+> * **Open in full only:** `SHARED_LOCKS.md` (1k) and `README.md` (3k) if you need the
+>   source-of-truth order.
+> * **Read only the sections your own lane block names below.** If it does not name a
+>   section, you do not need it.
+> * The `<details>` blocks and jump indexes in these docs are for the HUMAN scrolling.
+>   They cost you the same tokens collapsed or open — so do not open this file whole
+>   either; you were given your lane's block already.
+>
 > ## ⏱️ DON'T INVENT "UNTESTED" STATUS — AND LOG WHAT THE HUMAN TELLS YOU
 >
 > **You cannot see the human's testing, and they test constantly.** Never write "no
@@ -1935,6 +2040,21 @@ explicit list of what remains UNVERIFIED — above all, whether a human has actu
 <details>
 <summary><b>QA</b> — QA / Verification Lead · Claude Sonnet 5, medium effort · docs-only, safe alongside anything &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
+> ## 📖 READ BUDGET — DO NOT READ THE DOCS SET
+>
+> **All of `docs/` is ~281k tokens.** Reading it would spend your whole session before
+> you changed anything. `Handoff.md` alone is 82k and `Checklist.md` 62k.
+>
+> * **GREP, don't open.** `Handoff.md` and `Checklist.md` are reference — search them
+>   for your item, your `B-` number, your phase. Never read either end to end.
+> * **Open in full only:** `SHARED_LOCKS.md` (1k) and `README.md` (3k) if you need the
+>   source-of-truth order.
+> * **Read only the sections your own lane block names below.** If it does not name a
+>   section, you do not need it.
+> * The `<details>` blocks and jump indexes in these docs are for the HUMAN scrolling.
+>   They cost you the same tokens collapsed or open — so do not open this file whole
+>   either; you were given your lane's block already.
+>
 > ## ⏱️ DON'T INVENT "UNTESTED" STATUS — AND LOG WHAT THE HUMAN TELLS YOU
 >
 > **You cannot see the human's testing, and they test constantly.** Never write "no
@@ -2102,6 +2222,21 @@ current honest list of everything verified only by a probe.
 <details>
 <summary><b>CHORE</b> — Registry & Docs Mechanic · Claude Haiku 4.5, low effort · safe alongside anything &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
+> ## 📖 READ BUDGET — DO NOT READ THE DOCS SET
+>
+> **All of `docs/` is ~281k tokens.** Reading it would spend your whole session before
+> you changed anything. `Handoff.md` alone is 82k and `Checklist.md` 62k.
+>
+> * **GREP, don't open.** `Handoff.md` and `Checklist.md` are reference — search them
+>   for your item, your `B-` number, your phase. Never read either end to end.
+> * **Open in full only:** `SHARED_LOCKS.md` (1k) and `README.md` (3k) if you need the
+>   source-of-truth order.
+> * **Read only the sections your own lane block names below.** If it does not name a
+>   section, you do not need it.
+> * The `<details>` blocks and jump indexes in these docs are for the HUMAN scrolling.
+>   They cost you the same tokens collapsed or open — so do not open this file whole
+>   either; you were given your lane's block already.
+>
 > ## ⏱️ DON'T INVENT "UNTESTED" STATUS — AND LOG WHAT THE HUMAN TELLS YOU
 >
 > **You cannot see the human's testing, and they test constantly.** Never write "no
@@ -2239,6 +2374,21 @@ decided.
 <details>
 <summary><b>PRODUCER</b> — Submission · Claude Sonnet 5, medium effort · docs-only, safe alongside anything &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
+> ## 📖 READ BUDGET — DO NOT READ THE DOCS SET
+>
+> **All of `docs/` is ~281k tokens.** Reading it would spend your whole session before
+> you changed anything. `Handoff.md` alone is 82k and `Checklist.md` 62k.
+>
+> * **GREP, don't open.** `Handoff.md` and `Checklist.md` are reference — search them
+>   for your item, your `B-` number, your phase. Never read either end to end.
+> * **Open in full only:** `SHARED_LOCKS.md` (1k) and `README.md` (3k) if you need the
+>   source-of-truth order.
+> * **Read only the sections your own lane block names below.** If it does not name a
+>   section, you do not need it.
+> * The `<details>` blocks and jump indexes in these docs are for the HUMAN scrolling.
+>   They cost you the same tokens collapsed or open — so do not open this file whole
+>   either; you were given your lane's block already.
+>
 > ## ⏱️ DON'T INVENT "UNTESTED" STATUS — AND LOG WHAT THE HUMAN TELLS YOU
 >
 > **You cannot see the human's testing, and they test constantly.** Never write "no
