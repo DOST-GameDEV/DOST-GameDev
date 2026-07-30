@@ -45,7 +45,7 @@ const SAMPLE_INTERVAL := 1.0
 var _mode := "heatmap"
 var _map_id := &"eskinita"
 var _out := ""
-var _target_rounds := 40
+var _target_rounds := 10
 var _scale := 8.0
 
 var _main: Node
@@ -55,10 +55,10 @@ var _samples := 0
 var _finishing := false
 ## Flat count grid, HEATMAP_PX * HEATMAP_PX. A PackedInt32Array rather than a
 ## 2D structure so the write loop below is a single pass.
-var _grid := PackedInt32Array()
+var _grid := PackedFloat32Array()
 ## Sampled separately, because "where does the Taya go" and "where does an
 ## attacker go" are different questions and one blended cloud answers neither.
-var _grid_can := PackedInt32Array()
+var _grid_can := PackedFloat32Array()
 
 ## Sightline mode. (label, eye, look_at) — all at an FPP Person's real eye height
 ## of 1.25 above the ground, never a flattering angle.
@@ -131,6 +131,20 @@ func _physics_process(delta: float) -> void:
 	# one sample per accumulated second means the sample RATE is identical at
 	# scale 1 and scale 8 and the two runs are comparable. Sampling per frame
 	# instead would make a fast machine look like a busier map.
+	# ⚠️⚠️ REASSERTED EVERY FRAME, NOT SET ONCE, AND THE RUN WAS SILENTLY REAL-TIME
+	# UNTIL IT WAS. Reported by the human: "it aint running at scale 30 its running
+	# at normal time." Setting Engine.time_scale in _ready() holds only until the
+	# first hit lands: `character_base.gd::_hitstop()` dips the global time_scale for
+	# 60 ms and then restores it to a HARDCODED 1.0 rather than to whatever it was.
+	# So the first dent of the first round permanently reset the whole run to
+	# real-time, and a 40-round capture that should take four minutes was going to
+	# take two hours — with nothing in the output saying so.
+	#
+	# ⚠️ THE SAME TRAP APPLIES TO `tools/ai_probe.gd`'s `scale=` ARGUMENT, which is
+	# another lane's file and sets time_scale exactly once in _ready(). Every
+	# fairness number recorded with `scale=4` after the first dent was measured at
+	# scale 1. Flagged for BALANCE; not fixed here because that file is theirs.
+	Engine.time_scale = _scale
 	_accum += delta
 	if _accum < SAMPLE_INTERVAL:
 		return
@@ -151,9 +165,9 @@ func _sample() -> void:
 		# The Can/Taya pair is confined and everyone else is not, so they are
 		# counted apart — see the _grid_can note.
 		if _is_defender(c):
-			_grid_can[idx] += 1
+			_grid_can[idx] += 1.0
 		else:
-			_grid[idx] += 1
+			_grid[idx] += 1.0
 	_samples += 1
 
 
@@ -214,30 +228,99 @@ func _finish() -> void:
 ## THE RENDERING HALF. Density -> image, with the court drawn over it so the
 ## picture can be read against the geometry rather than floating free.
 func _write_heatmap() -> void:
+	# ⚠️ A SAMPLE IS A POINT AND A HEATMAP IS A FIELD, AND THE FIRST VERSION SHIPPED
+	# THE POINTS. Four units sampled once a second over 40 rounds is ~14,700 hits
+	# spread across 320 x 320 = 102,400 cells, so almost every cell was empty and the
+	# occupied ones were single pixels. Rendered, that is a black square with a
+	# dozen specks in it — technically the data, useless as a picture, and it would
+	# have been easy to read as "the units never move".
+	#
+	# So the counts are SPREAD before they are drawn: two passes of a separable box
+	# blur turn each hit into a soft splat about a metre across, which is roughly the
+	# footprint a person actually occupies. Blurring at write time rather than
+	# splatting at sample time keeps `_sample()` four lines, which is what makes it
+	# liftable into ai_probe.
+	var atk := _blur(_blur(_grid))
+	var def := _blur(_blur(_grid_can))
+	# ⚠️ NORMALISED PER GRID, NOT AGAINST A SHARED PEAK. The Taya is confined to a
+	# 10 x 10 square and the attackers roam the whole map, so the defence's peak
+	# density is several times the attack's. One shared divisor renders the attackers
+	# as black — which is exactly the half of the map the flow question is about.
 	var img := Image.create(HEATMAP_PX, HEATMAP_PX, false, Image.FORMAT_RGB8)
-	var peak := 1
-	for i in range(_grid.size()):
-		peak = maxi(peak, maxi(_grid[i], _grid_can[i]))
-	# ⚠️ LOG SCALE, NOT LINEAR. Units stand still at spawns and at the can far
-	# longer than anywhere else, so on a linear ramp two or three cells saturate
-	# and the entire rest of the map — which is the part the question is about —
-	# renders as black. Log is what makes the ROUTES visible.
-	var denom: float = log(float(peak) + 1.0)
+	var pa := _peak(atk)
+	var pd := _peak(def)
 	for y in range(HEATMAP_PX):
 		for x in range(HEATMAP_PX):
 			var i := y * HEATMAP_PX + x
-			var a: float = log(float(_grid[i]) + 1.0) / denom
-			var d: float = log(float(_grid_can[i]) + 1.0) / denom
-			# Attackers warm, defence cool, so an overlap reads as a third
-			# colour instead of hiding one under the other.
-			img.set_pixel(x, y, Color(0.06 + a * 0.94, 0.06 + d * 0.55,
-				0.10 + d * 0.90))
+			# Gamma 0.45 on top of the normalise: density has a very long tail
+			# (everyone stands at a spawn), and without it the routes — which are
+			# the answer — sit in the bottom 5% of the ramp.
+			var a: float = pow(atk[i] / pa, 0.45)
+			var d: float = pow(def[i] / pd, 0.45)
+			img.set_pixel(x, y, Color(0.04 + a * 0.96, 0.04 + d * 0.45 + a * 0.35,
+				0.08 + d * 0.92))
 	_draw_reference(img)
-	var path := _out + "flow_heatmap_" + String(_map_id) + ".png"
+	_save(img, "flow_heatmap_" + String(_map_id))
+	# ⚠️ AND THE TWO ROLES SEPARATELY, because the combined image answers neither
+	# question on its own. "Does the attacker use the map's width" and "does the
+	# Taya fill the confinement square" are different pictures, and overlaying them
+	# hides whichever is dimmer — which is always the attacker, since a confined
+	# unit concentrates its density into a tenth of the area.
+	_save(_single(atk, pa, true), "flow_attack_" + String(_map_id))
+	_save(_single(def, pd, false), "flow_defend_" + String(_map_id))
+
+
+func _single(g: PackedFloat32Array, peak: float, warm: bool) -> Image:
+	var img := Image.create(HEATMAP_PX, HEATMAP_PX, false, Image.FORMAT_RGB8)
+	for y in range(HEATMAP_PX):
+		for x in range(HEATMAP_PX):
+			var v: float = pow(g[y * HEATMAP_PX + x] / peak, 0.45)
+			if warm:
+				img.set_pixel(x, y, Color(0.04 + v, 0.04 + v * 0.45, 0.08))
+			else:
+				img.set_pixel(x, y, Color(0.04, 0.04 + v * 0.5, 0.08 + v))
+	_draw_reference(img)
+	return img
+
+
+func _save(img: Image, stem: String) -> void:
+	var path := _out + stem + ".png"
 	if img.save_png(path) != OK:
 		push_error("flow_probe: could not write " + path)
 	else:
 		print("wrote ", path)
+
+
+## Separable 5-wide box blur, run as two 1D passes. Cheap enough to call twice.
+func _blur(src: PackedFloat32Array) -> PackedFloat32Array:
+	var tmp := PackedFloat32Array()
+	tmp.resize(src.size())
+	var out := PackedFloat32Array()
+	out.resize(src.size())
+	for y in range(HEATMAP_PX):
+		for x in range(HEATMAP_PX):
+			var acc := 0.0
+			for k in range(-2, 3):
+				var xx := x + k
+				if xx >= 0 and xx < HEATMAP_PX:
+					acc += src[y * HEATMAP_PX + xx]
+			tmp[y * HEATMAP_PX + x] = acc
+	for y in range(HEATMAP_PX):
+		for x in range(HEATMAP_PX):
+			var acc := 0.0
+			for k in range(-2, 3):
+				var yy := y + k
+				if yy >= 0 and yy < HEATMAP_PX:
+					acc += tmp[yy * HEATMAP_PX + x]
+			out[y * HEATMAP_PX + x] = acc
+	return out
+
+
+func _peak(g: PackedFloat32Array) -> float:
+	var p := 0.0
+	for v in g:
+		p = maxf(p, v)
+	return maxf(p, 1.0)
 
 
 ## The court, in white, so a bright patch can be located. Read from the same

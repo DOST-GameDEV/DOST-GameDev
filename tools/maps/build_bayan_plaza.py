@@ -403,18 +403,43 @@ def _civic_blocked(mesh_name, x, z, yaw, scale):
 PUNO_MESH = "kits/town/tree-high-round"
 PUNO_SCALE = [1.0, 1.18, 0.88, 1.09, 0.95, 1.14]
 TREE_RING_OUT = 2.6
+# ⚠️⚠️ THE RING WAS A SURVEY LINE AND THE HUMAN CALLED IT: "your tree placement is
+# too uniform ... it doesnt look natural for both maps." It walked all four edges on
+# a CONSTANT 3.2 step at a CONSTANT radius, so the plaza was fringed by an evenly
+# spaced palisade. A real plaza's planting is clumped, gapped and ragged.
+#
+# Four things vary now, all from seeded tables so the layout still diffs clean:
+# an irregular STEP, a per-tree RADIUS push in or out, GAPS where nothing is planted
+# at all, and species/scale/yaw. Same weighting rule as Eskinita — the rounded
+# broadleaf dominates and is always the largest, the coned models come in smaller as
+# scrub, so the ring reads planted rather than coniferous.
 JITTER = [0.0, 0.9, -0.6, 1.4, -1.1, 0.4, -1.6, 1.1]
+## Irregular spacing along each edge, and a radial push so the line is not a line.
+RING_STEP = [3.0, 4.4, 2.6, 3.8, 5.0, 2.8, 4.0, 3.4]
+RING_PUSH = [0.0, 1.5, -0.8, 2.2, 0.6, -1.2, 1.9, 0.3]
+## Which indices are left EMPTY. A ring with no gaps is a fence.
+RING_GAP = [3, 7, 12, 16, 21, 25]
+RING_MIX = [PUNO_MESH, PUNO_MESH, "kits/town/tree-high", PUNO_MESH,
+            "kits/town/tree-crooked", PUNO_MESH, PUNO_MESH, "kits/town/tree"]
 n = 0
-step = 3.2
-count = int((BOUND * 2) / step) + 1
-for k in range(count):
-    t = -BOUND + k * step
+_t = -BOUND
+k = -1
+while _t <= BOUND:
+    k += 1
+    t = _t
+    _t += RING_STEP[k % len(RING_STEP)]
+    if k in RING_GAP:
+        continue
     j = JITTER[k % len(JITTER)]
     for sx, sz, axis in ((1, 0, "x"), (-1, 0, "x"), (0, 1, "z"), (0, -1, "z")):
+        # The radial push is OUTWARD only. Pulling a tree inward would walk its
+        # canopy back over the collision wall, which is the bug TREE_RING_OUT was
+        # raised to fix in the first place.
+        out = BOUND + TREE_RING_OUT + max(0.0, RING_PUSH[k % len(RING_PUSH)])
         if axis == "x":
-            x, z = sx * (BOUND + TREE_RING_OUT), t + j
+            x, z = sx * out, t + j
         else:
-            x, z = t + j, sz * (BOUND + TREE_RING_OUT)
+            x, z = t + j, sz * out
         # ⚠️ BROADLEAF KIT TREES, NOT CONIFERS AND NOT THE GENERATED PUNO.
         # Open item 7 was that every tree here was a Kenney PINE, so a plaza with a
         # Philippine church and a bell tower in it was ringed by a Nordic forest.
@@ -430,15 +455,18 @@ for k in range(count):
         # Picking "a different kit so it reads as another species" therefore picked
         # another PINE, which is open item 7 all over again. Repetition is broken
         # with seeded scale and yaw instead; see build_eskinita.py's note.
-        near_yaw = (k % 4) * 0.7
-        near_s = TOWN_SCALE * PUNO_SCALE[k % len(PUNO_SCALE)]
-        if not _civic_blocked(PUNO_MESH, x, z, near_yaw, near_s):
-            add_kit("Dressing/TreesNear", f"Puno_{n}", PUNO_MESH, x, z,
+        near_mesh = RING_MIX[(k + int(sx) + int(sz)) % len(RING_MIX)]
+        near_yaw = (k % 7) * 0.91
+        near_s = TOWN_SCALE * PUNO_SCALE[k % len(PUNO_SCALE)]             * (1.0 if near_mesh == PUNO_MESH else 0.7)
+        if not _civic_blocked(near_mesh, x, z, near_yaw, near_s):
+            add_kit("Dressing/TreesNear", f"Puno_{n}", near_mesh, x, z,
                     near_yaw, near_s)
         n += 1
         # The layer behind: the SAME tree, taller and further out, which is what
         # gives the ring two depths of canopy.
-        fx, fz, far_yaw = x * 1.28 - j * 0.4, z * 1.28 + j * 0.4, (k % 3) * 0.9
+        fx = x * (1.22 + 0.10 * float(k % 3)) - j * 0.4
+        fz = z * (1.22 + 0.10 * float((k + 1) % 3)) + j * 0.4
+        far_yaw = (k % 5) * 1.13
         far_s = 3.4 * PUNO_SCALE[(k + 3) % len(PUNO_SCALE)]
         if not _civic_blocked(PUNO_MESH, fx, fz, far_yaw, far_s):
             add_kit("Dressing/TreesFar", f"PunoMalayo_{n}", PUNO_MESH, fx, fz,
