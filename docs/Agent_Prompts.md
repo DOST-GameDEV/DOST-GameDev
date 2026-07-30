@@ -143,50 +143,21 @@ blocked on it), R-23's real four-machine Wi-Fi run, R-31's export on the judging
 <details>
 <summary><b>BALANCE</b> — AI / Balance Engineer · Claude Opus 5, xhigh effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
-> ## STOP INVENTING "UNTESTED" STATUS — READ BEFORE PLANNING THE SESSION
+> ## ⏱️ DON'T INVENT "UNTESTED" STATUS — AND LOG WHAT THE HUMAN TELLS YOU
 >
-> **You cannot see the human's testing, and they test constantly.** They play this
-> build, they hear it, they look at it, and they file precise bug reports — most of
-> the fixes in this repo came from exactly that. What you never see is the testing
-> itself, so an agent that writes "nobody has played this" is not reporting a fact,
-> it is reporting its own blind spot as if it were one.
+> **You cannot see the human's testing, and they test constantly.** Never write "no
+> human has played this" — you don't know that, and it is usually false. Report what
+> YOU did; say nothing about what they did or did not do.
 >
-> Older versions of these docs were full of that, and it did two kinds of damage: it
-> was **untrue**, and it pushed sessions into spending most of their time re-proving
-> the project's state instead of building.
+> **Still test** — the thing you changed, with the cheapest probe that actually looks
+> at it (changed geometry -> render it and LOOK), plus the smoke gate before you
+> commit. Do not re-derive the project's state at session start: read `Checklist.md`
+> and `Handoff.md` §0 and believe them. Most of the session should be building.
 >
-> **The rule: report what YOU did. Say nothing about what the human has or has not
-> done.**
->
-> * ✅ "Rendered and looked at; the apron edge is soft." — you did that.
-> * ✅ "Not verified: frame time on other GPUs." — genuinely outside your reach.
-> * ❌ "Never played by a human." — you do not know that, and it is usually false.
-> * ❌ "Nobody has heard the mix." — same.
-> * ❌ Re-verifying subsystems you did not touch, to "be thorough".
->
-> **TESTING IS STILL REQUIRED — the ceremony is what is banned.** Verify the thing
-> you changed with the cheapest probe that actually looks at it (if you changed
-> geometry, render it and LOOK), and re-run the smoke gate before you commit. What
-> you should not do is re-derive the whole project's state at session start: read
-> `Checklist.md` and `Handoff.md` §0 and believe them.
->
-> **Most of the session should be building.** If you are past halfway and have
-> changed nothing, say so and start building.
->
-> Write the UNVERIFIED list so it is **actionable for the human** — what to look at
-> and what you expect them to see — not as a list of disclaimers.
->
-> ### LOG IT. THE HUMAN'S FEEDBACK **IS** A TEST RESULT.
->
-> When they say "the trees clip into the houses" or "the mix is too loud", **they just
-> played it.** That is a bug report from a real playtest — record it as one.
->
-> Before you finish, in the SAME commit as the fix:
-> * **`Handoff.md` §3** — add the bug with the next free `B-` number, or mark the
->   existing one `[FIXED]` with what the fix was.
-> * **`Checklist.md`** — tick the box, or update the item's remaining work.
-> * **`Agent_Prompts.md` LANE STATUS BOARD** — your lane's status + evidence.
-> * Anything you made untrue elsewhere in `docs/` — grep and fix all of it.
+> **Their feedback IS a test result.** "The trees clip into the houses" means they
+> just played it. In the SAME commit as the fix: `Handoff.md` §3 (next free `B-`
+> number, or mark the existing one `[FIXED]`), tick `Checklist.md`, update the LANE
+> STATUS BOARD, and grep `docs/` for whatever your change made untrue.
 
 
 
@@ -458,50 +429,21 @@ the work.
 <details>
 <summary><b>PHYS</b> — Physics / Gameplay Engineer · Claude Sonnet 5, high effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
-> ## STOP INVENTING "UNTESTED" STATUS — READ BEFORE PLANNING THE SESSION
+> ## ⏱️ DON'T INVENT "UNTESTED" STATUS — AND LOG WHAT THE HUMAN TELLS YOU
 >
-> **You cannot see the human's testing, and they test constantly.** They play this
-> build, they hear it, they look at it, and they file precise bug reports — most of
-> the fixes in this repo came from exactly that. What you never see is the testing
-> itself, so an agent that writes "nobody has played this" is not reporting a fact,
-> it is reporting its own blind spot as if it were one.
+> **You cannot see the human's testing, and they test constantly.** Never write "no
+> human has played this" — you don't know that, and it is usually false. Report what
+> YOU did; say nothing about what they did or did not do.
 >
-> Older versions of these docs were full of that, and it did two kinds of damage: it
-> was **untrue**, and it pushed sessions into spending most of their time re-proving
-> the project's state instead of building.
+> **Still test** — the thing you changed, with the cheapest probe that actually looks
+> at it (changed geometry -> render it and LOOK), plus the smoke gate before you
+> commit. Do not re-derive the project's state at session start: read `Checklist.md`
+> and `Handoff.md` §0 and believe them. Most of the session should be building.
 >
-> **The rule: report what YOU did. Say nothing about what the human has or has not
-> done.**
->
-> * ✅ "Rendered and looked at; the apron edge is soft." — you did that.
-> * ✅ "Not verified: frame time on other GPUs." — genuinely outside your reach.
-> * ❌ "Never played by a human." — you do not know that, and it is usually false.
-> * ❌ "Nobody has heard the mix." — same.
-> * ❌ Re-verifying subsystems you did not touch, to "be thorough".
->
-> **TESTING IS STILL REQUIRED — the ceremony is what is banned.** Verify the thing
-> you changed with the cheapest probe that actually looks at it (if you changed
-> geometry, render it and LOOK), and re-run the smoke gate before you commit. What
-> you should not do is re-derive the whole project's state at session start: read
-> `Checklist.md` and `Handoff.md` §0 and believe them.
->
-> **Most of the session should be building.** If you are past halfway and have
-> changed nothing, say so and start building.
->
-> Write the UNVERIFIED list so it is **actionable for the human** — what to look at
-> and what you expect them to see — not as a list of disclaimers.
->
-> ### LOG IT. THE HUMAN'S FEEDBACK **IS** A TEST RESULT.
->
-> When they say "the trees clip into the houses" or "the mix is too loud", **they just
-> played it.** That is a bug report from a real playtest — record it as one.
->
-> Before you finish, in the SAME commit as the fix:
-> * **`Handoff.md` §3** — add the bug with the next free `B-` number, or mark the
->   existing one `[FIXED]` with what the fix was.
-> * **`Checklist.md`** — tick the box, or update the item's remaining work.
-> * **`Agent_Prompts.md` LANE STATUS BOARD** — your lane's status + evidence.
-> * Anything you made untrue elsewhere in `docs/` — grep and fix all of it.
+> **Their feedback IS a test result.** "The trees clip into the houses" means they
+> just played it. In the SAME commit as the fix: `Handoff.md` §3 (next free `B-`
+> number, or mark the existing one `[FIXED]`), tick `Checklist.md`, update the LANE
+> STATUS BOARD, and grep `docs/` for whatever your change made untrue.
 
 
 
@@ -713,50 +655,21 @@ confirm.
 <details>
 <summary><b>ART-FEEL</b> — Art / Model / Animation Lead · Claude Sonnet 5, high effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
-> ## STOP INVENTING "UNTESTED" STATUS — READ BEFORE PLANNING THE SESSION
+> ## ⏱️ DON'T INVENT "UNTESTED" STATUS — AND LOG WHAT THE HUMAN TELLS YOU
 >
-> **You cannot see the human's testing, and they test constantly.** They play this
-> build, they hear it, they look at it, and they file precise bug reports — most of
-> the fixes in this repo came from exactly that. What you never see is the testing
-> itself, so an agent that writes "nobody has played this" is not reporting a fact,
-> it is reporting its own blind spot as if it were one.
+> **You cannot see the human's testing, and they test constantly.** Never write "no
+> human has played this" — you don't know that, and it is usually false. Report what
+> YOU did; say nothing about what they did or did not do.
 >
-> Older versions of these docs were full of that, and it did two kinds of damage: it
-> was **untrue**, and it pushed sessions into spending most of their time re-proving
-> the project's state instead of building.
+> **Still test** — the thing you changed, with the cheapest probe that actually looks
+> at it (changed geometry -> render it and LOOK), plus the smoke gate before you
+> commit. Do not re-derive the project's state at session start: read `Checklist.md`
+> and `Handoff.md` §0 and believe them. Most of the session should be building.
 >
-> **The rule: report what YOU did. Say nothing about what the human has or has not
-> done.**
->
-> * ✅ "Rendered and looked at; the apron edge is soft." — you did that.
-> * ✅ "Not verified: frame time on other GPUs." — genuinely outside your reach.
-> * ❌ "Never played by a human." — you do not know that, and it is usually false.
-> * ❌ "Nobody has heard the mix." — same.
-> * ❌ Re-verifying subsystems you did not touch, to "be thorough".
->
-> **TESTING IS STILL REQUIRED — the ceremony is what is banned.** Verify the thing
-> you changed with the cheapest probe that actually looks at it (if you changed
-> geometry, render it and LOOK), and re-run the smoke gate before you commit. What
-> you should not do is re-derive the whole project's state at session start: read
-> `Checklist.md` and `Handoff.md` §0 and believe them.
->
-> **Most of the session should be building.** If you are past halfway and have
-> changed nothing, say so and start building.
->
-> Write the UNVERIFIED list so it is **actionable for the human** — what to look at
-> and what you expect them to see — not as a list of disclaimers.
->
-> ### LOG IT. THE HUMAN'S FEEDBACK **IS** A TEST RESULT.
->
-> When they say "the trees clip into the houses" or "the mix is too loud", **they just
-> played it.** That is a bug report from a real playtest — record it as one.
->
-> Before you finish, in the SAME commit as the fix:
-> * **`Handoff.md` §3** — add the bug with the next free `B-` number, or mark the
->   existing one `[FIXED]` with what the fix was.
-> * **`Checklist.md`** — tick the box, or update the item's remaining work.
-> * **`Agent_Prompts.md` LANE STATUS BOARD** — your lane's status + evidence.
-> * Anything you made untrue elsewhere in `docs/` — grep and fix all of it.
+> **Their feedback IS a test result.** "The trees clip into the houses" means they
+> just played it. In the SAME commit as the fix: `Handoff.md` §3 (next free `B-`
+> number, or mark the existing one `[FIXED]`), tick `Checklist.md`, update the LANE
+> STATUS BOARD, and grep `docs/` for whatever your change made untrue.
 
 
 
@@ -1020,50 +933,21 @@ of what remains UNVERIFIED — especially anything only a human looking at it co
 <details>
 <summary><b>MAPS</b> — Map / Flow & Cultural Environment Lead · Claude Opus 5, high effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
-> ## STOP INVENTING "UNTESTED" STATUS — READ BEFORE PLANNING THE SESSION
+> ## ⏱️ DON'T INVENT "UNTESTED" STATUS — AND LOG WHAT THE HUMAN TELLS YOU
 >
-> **You cannot see the human's testing, and they test constantly.** They play this
-> build, they hear it, they look at it, and they file precise bug reports — most of
-> the fixes in this repo came from exactly that. What you never see is the testing
-> itself, so an agent that writes "nobody has played this" is not reporting a fact,
-> it is reporting its own blind spot as if it were one.
+> **You cannot see the human's testing, and they test constantly.** Never write "no
+> human has played this" — you don't know that, and it is usually false. Report what
+> YOU did; say nothing about what they did or did not do.
 >
-> Older versions of these docs were full of that, and it did two kinds of damage: it
-> was **untrue**, and it pushed sessions into spending most of their time re-proving
-> the project's state instead of building.
+> **Still test** — the thing you changed, with the cheapest probe that actually looks
+> at it (changed geometry -> render it and LOOK), plus the smoke gate before you
+> commit. Do not re-derive the project's state at session start: read `Checklist.md`
+> and `Handoff.md` §0 and believe them. Most of the session should be building.
 >
-> **The rule: report what YOU did. Say nothing about what the human has or has not
-> done.**
->
-> * ✅ "Rendered and looked at; the apron edge is soft." — you did that.
-> * ✅ "Not verified: frame time on other GPUs." — genuinely outside your reach.
-> * ❌ "Never played by a human." — you do not know that, and it is usually false.
-> * ❌ "Nobody has heard the mix." — same.
-> * ❌ Re-verifying subsystems you did not touch, to "be thorough".
->
-> **TESTING IS STILL REQUIRED — the ceremony is what is banned.** Verify the thing
-> you changed with the cheapest probe that actually looks at it (if you changed
-> geometry, render it and LOOK), and re-run the smoke gate before you commit. What
-> you should not do is re-derive the whole project's state at session start: read
-> `Checklist.md` and `Handoff.md` §0 and believe them.
->
-> **Most of the session should be building.** If you are past halfway and have
-> changed nothing, say so and start building.
->
-> Write the UNVERIFIED list so it is **actionable for the human** — what to look at
-> and what you expect them to see — not as a list of disclaimers.
->
-> ### LOG IT. THE HUMAN'S FEEDBACK **IS** A TEST RESULT.
->
-> When they say "the trees clip into the houses" or "the mix is too loud", **they just
-> played it.** That is a bug report from a real playtest — record it as one.
->
-> Before you finish, in the SAME commit as the fix:
-> * **`Handoff.md` §3** — add the bug with the next free `B-` number, or mark the
->   existing one `[FIXED]` with what the fix was.
-> * **`Checklist.md`** — tick the box, or update the item's remaining work.
-> * **`Agent_Prompts.md` LANE STATUS BOARD** — your lane's status + evidence.
-> * Anything you made untrue elsewhere in `docs/` — grep and fix all of it.
+> **Their feedback IS a test result.** "The trees clip into the houses" means they
+> just played it. In the SAME commit as the fix: `Handoff.md` §3 (next free `B-`
+> number, or mark the existing one `[FIXED]`), tick `Checklist.md`, update the LANE
+> STATUS BOARD, and grep `docs/` for whatever your change made untrue.
 
 
 ```
@@ -1381,50 +1265,21 @@ remains UNVERIFIED.
 <details>
 <summary><b>NET</b> — Netcode Architect · Claude Opus 5, high effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
-> ## STOP INVENTING "UNTESTED" STATUS — READ BEFORE PLANNING THE SESSION
+> ## ⏱️ DON'T INVENT "UNTESTED" STATUS — AND LOG WHAT THE HUMAN TELLS YOU
 >
-> **You cannot see the human's testing, and they test constantly.** They play this
-> build, they hear it, they look at it, and they file precise bug reports — most of
-> the fixes in this repo came from exactly that. What you never see is the testing
-> itself, so an agent that writes "nobody has played this" is not reporting a fact,
-> it is reporting its own blind spot as if it were one.
+> **You cannot see the human's testing, and they test constantly.** Never write "no
+> human has played this" — you don't know that, and it is usually false. Report what
+> YOU did; say nothing about what they did or did not do.
 >
-> Older versions of these docs were full of that, and it did two kinds of damage: it
-> was **untrue**, and it pushed sessions into spending most of their time re-proving
-> the project's state instead of building.
+> **Still test** — the thing you changed, with the cheapest probe that actually looks
+> at it (changed geometry -> render it and LOOK), plus the smoke gate before you
+> commit. Do not re-derive the project's state at session start: read `Checklist.md`
+> and `Handoff.md` §0 and believe them. Most of the session should be building.
 >
-> **The rule: report what YOU did. Say nothing about what the human has or has not
-> done.**
->
-> * ✅ "Rendered and looked at; the apron edge is soft." — you did that.
-> * ✅ "Not verified: frame time on other GPUs." — genuinely outside your reach.
-> * ❌ "Never played by a human." — you do not know that, and it is usually false.
-> * ❌ "Nobody has heard the mix." — same.
-> * ❌ Re-verifying subsystems you did not touch, to "be thorough".
->
-> **TESTING IS STILL REQUIRED — the ceremony is what is banned.** Verify the thing
-> you changed with the cheapest probe that actually looks at it (if you changed
-> geometry, render it and LOOK), and re-run the smoke gate before you commit. What
-> you should not do is re-derive the whole project's state at session start: read
-> `Checklist.md` and `Handoff.md` §0 and believe them.
->
-> **Most of the session should be building.** If you are past halfway and have
-> changed nothing, say so and start building.
->
-> Write the UNVERIFIED list so it is **actionable for the human** — what to look at
-> and what you expect them to see — not as a list of disclaimers.
->
-> ### LOG IT. THE HUMAN'S FEEDBACK **IS** A TEST RESULT.
->
-> When they say "the trees clip into the houses" or "the mix is too loud", **they just
-> played it.** That is a bug report from a real playtest — record it as one.
->
-> Before you finish, in the SAME commit as the fix:
-> * **`Handoff.md` §3** — add the bug with the next free `B-` number, or mark the
->   existing one `[FIXED]` with what the fix was.
-> * **`Checklist.md`** — tick the box, or update the item's remaining work.
-> * **`Agent_Prompts.md` LANE STATUS BOARD** — your lane's status + evidence.
-> * Anything you made untrue elsewhere in `docs/` — grep and fix all of it.
+> **Their feedback IS a test result.** "The trees clip into the houses" means they
+> just played it. In the SAME commit as the fix: `Handoff.md` §3 (next free `B-`
+> number, or mark the existing one `[FIXED]`), tick `Checklist.md`, update the LANE
+> STATUS BOARD, and grep `docs/` for whatever your change made untrue.
 
 
 
@@ -1640,50 +1495,21 @@ until they have, THE FALLBACK DECISION IS STILL OPEN and the schedule needs to k
 <details>
 <summary><b>UX</b> — UI / UX Designer · Claude Sonnet 5, medium effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
-> ## STOP INVENTING "UNTESTED" STATUS — READ BEFORE PLANNING THE SESSION
+> ## ⏱️ DON'T INVENT "UNTESTED" STATUS — AND LOG WHAT THE HUMAN TELLS YOU
 >
-> **You cannot see the human's testing, and they test constantly.** They play this
-> build, they hear it, they look at it, and they file precise bug reports — most of
-> the fixes in this repo came from exactly that. What you never see is the testing
-> itself, so an agent that writes "nobody has played this" is not reporting a fact,
-> it is reporting its own blind spot as if it were one.
+> **You cannot see the human's testing, and they test constantly.** Never write "no
+> human has played this" — you don't know that, and it is usually false. Report what
+> YOU did; say nothing about what they did or did not do.
 >
-> Older versions of these docs were full of that, and it did two kinds of damage: it
-> was **untrue**, and it pushed sessions into spending most of their time re-proving
-> the project's state instead of building.
+> **Still test** — the thing you changed, with the cheapest probe that actually looks
+> at it (changed geometry -> render it and LOOK), plus the smoke gate before you
+> commit. Do not re-derive the project's state at session start: read `Checklist.md`
+> and `Handoff.md` §0 and believe them. Most of the session should be building.
 >
-> **The rule: report what YOU did. Say nothing about what the human has or has not
-> done.**
->
-> * ✅ "Rendered and looked at; the apron edge is soft." — you did that.
-> * ✅ "Not verified: frame time on other GPUs." — genuinely outside your reach.
-> * ❌ "Never played by a human." — you do not know that, and it is usually false.
-> * ❌ "Nobody has heard the mix." — same.
-> * ❌ Re-verifying subsystems you did not touch, to "be thorough".
->
-> **TESTING IS STILL REQUIRED — the ceremony is what is banned.** Verify the thing
-> you changed with the cheapest probe that actually looks at it (if you changed
-> geometry, render it and LOOK), and re-run the smoke gate before you commit. What
-> you should not do is re-derive the whole project's state at session start: read
-> `Checklist.md` and `Handoff.md` §0 and believe them.
->
-> **Most of the session should be building.** If you are past halfway and have
-> changed nothing, say so and start building.
->
-> Write the UNVERIFIED list so it is **actionable for the human** — what to look at
-> and what you expect them to see — not as a list of disclaimers.
->
-> ### LOG IT. THE HUMAN'S FEEDBACK **IS** A TEST RESULT.
->
-> When they say "the trees clip into the houses" or "the mix is too loud", **they just
-> played it.** That is a bug report from a real playtest — record it as one.
->
-> Before you finish, in the SAME commit as the fix:
-> * **`Handoff.md` §3** — add the bug with the next free `B-` number, or mark the
->   existing one `[FIXED]` with what the fix was.
-> * **`Checklist.md`** — tick the box, or update the item's remaining work.
-> * **`Agent_Prompts.md` LANE STATUS BOARD** — your lane's status + evidence.
-> * Anything you made untrue elsewhere in `docs/` — grep and fix all of it.
+> **Their feedback IS a test result.** "The trees clip into the houses" means they
+> just played it. In the SAME commit as the fix: `Handoff.md` §3 (next free `B-`
+> number, or mark the existing one `[FIXED]`), tick `Checklist.md`, update the LANE
+> STATUS BOARD, and grep `docs/` for whatever your change made untrue.
 
 
 
@@ -1911,50 +1737,21 @@ what remains UNVERIFIED — starting with the fact that nobody has clicked it, u
 <details>
 <summary><b>AUDIO</b> — Audio Designer · Claude Sonnet 5, medium effort &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
-> ## STOP INVENTING "UNTESTED" STATUS — READ BEFORE PLANNING THE SESSION
+> ## ⏱️ DON'T INVENT "UNTESTED" STATUS — AND LOG WHAT THE HUMAN TELLS YOU
 >
-> **You cannot see the human's testing, and they test constantly.** They play this
-> build, they hear it, they look at it, and they file precise bug reports — most of
-> the fixes in this repo came from exactly that. What you never see is the testing
-> itself, so an agent that writes "nobody has played this" is not reporting a fact,
-> it is reporting its own blind spot as if it were one.
+> **You cannot see the human's testing, and they test constantly.** Never write "no
+> human has played this" — you don't know that, and it is usually false. Report what
+> YOU did; say nothing about what they did or did not do.
 >
-> Older versions of these docs were full of that, and it did two kinds of damage: it
-> was **untrue**, and it pushed sessions into spending most of their time re-proving
-> the project's state instead of building.
+> **Still test** — the thing you changed, with the cheapest probe that actually looks
+> at it (changed geometry -> render it and LOOK), plus the smoke gate before you
+> commit. Do not re-derive the project's state at session start: read `Checklist.md`
+> and `Handoff.md` §0 and believe them. Most of the session should be building.
 >
-> **The rule: report what YOU did. Say nothing about what the human has or has not
-> done.**
->
-> * ✅ "Rendered and looked at; the apron edge is soft." — you did that.
-> * ✅ "Not verified: frame time on other GPUs." — genuinely outside your reach.
-> * ❌ "Never played by a human." — you do not know that, and it is usually false.
-> * ❌ "Nobody has heard the mix." — same.
-> * ❌ Re-verifying subsystems you did not touch, to "be thorough".
->
-> **TESTING IS STILL REQUIRED — the ceremony is what is banned.** Verify the thing
-> you changed with the cheapest probe that actually looks at it (if you changed
-> geometry, render it and LOOK), and re-run the smoke gate before you commit. What
-> you should not do is re-derive the whole project's state at session start: read
-> `Checklist.md` and `Handoff.md` §0 and believe them.
->
-> **Most of the session should be building.** If you are past halfway and have
-> changed nothing, say so and start building.
->
-> Write the UNVERIFIED list so it is **actionable for the human** — what to look at
-> and what you expect them to see — not as a list of disclaimers.
->
-> ### LOG IT. THE HUMAN'S FEEDBACK **IS** A TEST RESULT.
->
-> When they say "the trees clip into the houses" or "the mix is too loud", **they just
-> played it.** That is a bug report from a real playtest — record it as one.
->
-> Before you finish, in the SAME commit as the fix:
-> * **`Handoff.md` §3** — add the bug with the next free `B-` number, or mark the
->   existing one `[FIXED]` with what the fix was.
-> * **`Checklist.md`** — tick the box, or update the item's remaining work.
-> * **`Agent_Prompts.md` LANE STATUS BOARD** — your lane's status + evidence.
-> * Anything you made untrue elsewhere in `docs/` — grep and fix all of it.
+> **Their feedback IS a test result.** "The trees clip into the houses" means they
+> just played it. In the SAME commit as the fix: `Handoff.md` §3 (next free `B-`
+> number, or mark the existing one `[FIXED]`), tick `Checklist.md`, update the LANE
+> STATUS BOARD, and grep `docs/` for whatever your change made untrue.
 
 
 
@@ -2138,50 +1935,21 @@ explicit list of what remains UNVERIFIED — above all, whether a human has actu
 <details>
 <summary><b>QA</b> — QA / Verification Lead · Claude Sonnet 5, medium effort · docs-only, safe alongside anything &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
-> ## STOP INVENTING "UNTESTED" STATUS — READ BEFORE PLANNING THE SESSION
+> ## ⏱️ DON'T INVENT "UNTESTED" STATUS — AND LOG WHAT THE HUMAN TELLS YOU
 >
-> **You cannot see the human's testing, and they test constantly.** They play this
-> build, they hear it, they look at it, and they file precise bug reports — most of
-> the fixes in this repo came from exactly that. What you never see is the testing
-> itself, so an agent that writes "nobody has played this" is not reporting a fact,
-> it is reporting its own blind spot as if it were one.
+> **You cannot see the human's testing, and they test constantly.** Never write "no
+> human has played this" — you don't know that, and it is usually false. Report what
+> YOU did; say nothing about what they did or did not do.
 >
-> Older versions of these docs were full of that, and it did two kinds of damage: it
-> was **untrue**, and it pushed sessions into spending most of their time re-proving
-> the project's state instead of building.
+> **Still test** — the thing you changed, with the cheapest probe that actually looks
+> at it (changed geometry -> render it and LOOK), plus the smoke gate before you
+> commit. Do not re-derive the project's state at session start: read `Checklist.md`
+> and `Handoff.md` §0 and believe them. Most of the session should be building.
 >
-> **The rule: report what YOU did. Say nothing about what the human has or has not
-> done.**
->
-> * ✅ "Rendered and looked at; the apron edge is soft." — you did that.
-> * ✅ "Not verified: frame time on other GPUs." — genuinely outside your reach.
-> * ❌ "Never played by a human." — you do not know that, and it is usually false.
-> * ❌ "Nobody has heard the mix." — same.
-> * ❌ Re-verifying subsystems you did not touch, to "be thorough".
->
-> **TESTING IS STILL REQUIRED — the ceremony is what is banned.** Verify the thing
-> you changed with the cheapest probe that actually looks at it (if you changed
-> geometry, render it and LOOK), and re-run the smoke gate before you commit. What
-> you should not do is re-derive the whole project's state at session start: read
-> `Checklist.md` and `Handoff.md` §0 and believe them.
->
-> **Most of the session should be building.** If you are past halfway and have
-> changed nothing, say so and start building.
->
-> Write the UNVERIFIED list so it is **actionable for the human** — what to look at
-> and what you expect them to see — not as a list of disclaimers.
->
-> ### LOG IT. THE HUMAN'S FEEDBACK **IS** A TEST RESULT.
->
-> When they say "the trees clip into the houses" or "the mix is too loud", **they just
-> played it.** That is a bug report from a real playtest — record it as one.
->
-> Before you finish, in the SAME commit as the fix:
-> * **`Handoff.md` §3** — add the bug with the next free `B-` number, or mark the
->   existing one `[FIXED]` with what the fix was.
-> * **`Checklist.md`** — tick the box, or update the item's remaining work.
-> * **`Agent_Prompts.md` LANE STATUS BOARD** — your lane's status + evidence.
-> * Anything you made untrue elsewhere in `docs/` — grep and fix all of it.
+> **Their feedback IS a test result.** "The trees clip into the houses" means they
+> just played it. In the SAME commit as the fix: `Handoff.md` §3 (next free `B-`
+> number, or mark the existing one `[FIXED]`), tick `Checklist.md`, update the LANE
+> STATUS BOARD, and grep `docs/` for whatever your change made untrue.
 
 
 
@@ -2334,50 +2102,21 @@ current honest list of everything verified only by a probe.
 <details>
 <summary><b>CHORE</b> — Registry & Docs Mechanic · Claude Haiku 4.5, low effort · safe alongside anything &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
-> ## STOP INVENTING "UNTESTED" STATUS — READ BEFORE PLANNING THE SESSION
+> ## ⏱️ DON'T INVENT "UNTESTED" STATUS — AND LOG WHAT THE HUMAN TELLS YOU
 >
-> **You cannot see the human's testing, and they test constantly.** They play this
-> build, they hear it, they look at it, and they file precise bug reports — most of
-> the fixes in this repo came from exactly that. What you never see is the testing
-> itself, so an agent that writes "nobody has played this" is not reporting a fact,
-> it is reporting its own blind spot as if it were one.
+> **You cannot see the human's testing, and they test constantly.** Never write "no
+> human has played this" — you don't know that, and it is usually false. Report what
+> YOU did; say nothing about what they did or did not do.
 >
-> Older versions of these docs were full of that, and it did two kinds of damage: it
-> was **untrue**, and it pushed sessions into spending most of their time re-proving
-> the project's state instead of building.
+> **Still test** — the thing you changed, with the cheapest probe that actually looks
+> at it (changed geometry -> render it and LOOK), plus the smoke gate before you
+> commit. Do not re-derive the project's state at session start: read `Checklist.md`
+> and `Handoff.md` §0 and believe them. Most of the session should be building.
 >
-> **The rule: report what YOU did. Say nothing about what the human has or has not
-> done.**
->
-> * ✅ "Rendered and looked at; the apron edge is soft." — you did that.
-> * ✅ "Not verified: frame time on other GPUs." — genuinely outside your reach.
-> * ❌ "Never played by a human." — you do not know that, and it is usually false.
-> * ❌ "Nobody has heard the mix." — same.
-> * ❌ Re-verifying subsystems you did not touch, to "be thorough".
->
-> **TESTING IS STILL REQUIRED — the ceremony is what is banned.** Verify the thing
-> you changed with the cheapest probe that actually looks at it (if you changed
-> geometry, render it and LOOK), and re-run the smoke gate before you commit. What
-> you should not do is re-derive the whole project's state at session start: read
-> `Checklist.md` and `Handoff.md` §0 and believe them.
->
-> **Most of the session should be building.** If you are past halfway and have
-> changed nothing, say so and start building.
->
-> Write the UNVERIFIED list so it is **actionable for the human** — what to look at
-> and what you expect them to see — not as a list of disclaimers.
->
-> ### LOG IT. THE HUMAN'S FEEDBACK **IS** A TEST RESULT.
->
-> When they say "the trees clip into the houses" or "the mix is too loud", **they just
-> played it.** That is a bug report from a real playtest — record it as one.
->
-> Before you finish, in the SAME commit as the fix:
-> * **`Handoff.md` §3** — add the bug with the next free `B-` number, or mark the
->   existing one `[FIXED]` with what the fix was.
-> * **`Checklist.md`** — tick the box, or update the item's remaining work.
-> * **`Agent_Prompts.md` LANE STATUS BOARD** — your lane's status + evidence.
-> * Anything you made untrue elsewhere in `docs/` — grep and fix all of it.
+> **Their feedback IS a test result.** "The trees clip into the houses" means they
+> just played it. In the SAME commit as the fix: `Handoff.md` §3 (next free `B-`
+> number, or mark the existing one `[FIXED]`), tick `Checklist.md`, update the LANE
+> STATUS BOARD, and grep `docs/` for whatever your change made untrue.
 
 
 
@@ -2500,50 +2239,21 @@ decided.
 <details>
 <summary><b>PRODUCER</b> — Submission · Claude Sonnet 5, medium effort · docs-only, safe alongside anything &nbsp;·&nbsp; <i>click to open the full paste-ready prompt</i></summary>
 
-> ## STOP INVENTING "UNTESTED" STATUS — READ BEFORE PLANNING THE SESSION
+> ## ⏱️ DON'T INVENT "UNTESTED" STATUS — AND LOG WHAT THE HUMAN TELLS YOU
 >
-> **You cannot see the human's testing, and they test constantly.** They play this
-> build, they hear it, they look at it, and they file precise bug reports — most of
-> the fixes in this repo came from exactly that. What you never see is the testing
-> itself, so an agent that writes "nobody has played this" is not reporting a fact,
-> it is reporting its own blind spot as if it were one.
+> **You cannot see the human's testing, and they test constantly.** Never write "no
+> human has played this" — you don't know that, and it is usually false. Report what
+> YOU did; say nothing about what they did or did not do.
 >
-> Older versions of these docs were full of that, and it did two kinds of damage: it
-> was **untrue**, and it pushed sessions into spending most of their time re-proving
-> the project's state instead of building.
+> **Still test** — the thing you changed, with the cheapest probe that actually looks
+> at it (changed geometry -> render it and LOOK), plus the smoke gate before you
+> commit. Do not re-derive the project's state at session start: read `Checklist.md`
+> and `Handoff.md` §0 and believe them. Most of the session should be building.
 >
-> **The rule: report what YOU did. Say nothing about what the human has or has not
-> done.**
->
-> * ✅ "Rendered and looked at; the apron edge is soft." — you did that.
-> * ✅ "Not verified: frame time on other GPUs." — genuinely outside your reach.
-> * ❌ "Never played by a human." — you do not know that, and it is usually false.
-> * ❌ "Nobody has heard the mix." — same.
-> * ❌ Re-verifying subsystems you did not touch, to "be thorough".
->
-> **TESTING IS STILL REQUIRED — the ceremony is what is banned.** Verify the thing
-> you changed with the cheapest probe that actually looks at it (if you changed
-> geometry, render it and LOOK), and re-run the smoke gate before you commit. What
-> you should not do is re-derive the whole project's state at session start: read
-> `Checklist.md` and `Handoff.md` §0 and believe them.
->
-> **Most of the session should be building.** If you are past halfway and have
-> changed nothing, say so and start building.
->
-> Write the UNVERIFIED list so it is **actionable for the human** — what to look at
-> and what you expect them to see — not as a list of disclaimers.
->
-> ### LOG IT. THE HUMAN'S FEEDBACK **IS** A TEST RESULT.
->
-> When they say "the trees clip into the houses" or "the mix is too loud", **they just
-> played it.** That is a bug report from a real playtest — record it as one.
->
-> Before you finish, in the SAME commit as the fix:
-> * **`Handoff.md` §3** — add the bug with the next free `B-` number, or mark the
->   existing one `[FIXED]` with what the fix was.
-> * **`Checklist.md`** — tick the box, or update the item's remaining work.
-> * **`Agent_Prompts.md` LANE STATUS BOARD** — your lane's status + evidence.
-> * Anything you made untrue elsewhere in `docs/` — grep and fix all of it.
+> **Their feedback IS a test result.** "The trees clip into the houses" means they
+> just played it. In the SAME commit as the fix: `Handoff.md` §3 (next free `B-`
+> number, or mark the existing one `[FIXED]`), tick `Checklist.md`, update the LANE
+> STATUS BOARD, and grep `docs/` for whatever your change made untrue.
 
 
 
