@@ -490,6 +490,14 @@ func _ready() -> void:
 				should_host = true
 			elif arg.begins_with("--join="):
 				join_target = arg.substr(len("--join="))
+			elif arg == "--spectate":
+				# ⚠️ THE ONLY WAY TO REACH SPECTATOR MODE WITHOUT CLICKING THROUGH THE
+				# SETUP SCREEN, and it exists for the same reason `--host`/`--join=` do:
+				# this project is developed by launching Main.tscn directly, and a mode
+				# that can only be entered through three screens is a mode nobody
+				# verifies. Deliberately inside the command-line branch, so it can never
+				# override a real `GameLaunch.spectator` set by the lobby.
+				GameLaunch.spectator = true
 
 	if should_host:
 		_start_hosting()
