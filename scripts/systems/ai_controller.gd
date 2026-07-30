@@ -2534,6 +2534,12 @@ func _cond_tsinelas_arrived() -> bool:
 		<= TSINELAS_ARRIVE_DISTANCE
 
 func _act_tsinelas_crawl(_delta: float) -> int:
+	# SPRINT. `Design.md` §2: "the objects sprint too" — a crawling tsinelas already
+	# moves at CRAWL_SPEED_SCALE (0.45x); stacking the sprint multiplier on top of
+	# that (character_base.gd::_physics_process multiplies every scale together) is
+	# still meaningfully faster than a plain crawl and this IS the "retrieving" half
+	# of "sprint when closing distance or retrieving".
+	_sprint_want = true
 	_move_toward(_bb_own_attacker.global_position, TSINELAS_ARRIVE_DISTANCE)
 	return BTNode.SUCCESS
 
@@ -2545,6 +2551,81 @@ func _act_tsinelas_settle(_delta: float) -> int:
 		_move_toward(character.global_position, 0.0)
 		return BTNode.SUCCESS
 	_release_move(0.0)
+	return BTNode.SUCCESS
+
+## ---------------------------------------------------------------------------
+## GROUND SMASH & THE SELF-LAUNCH. `Design.md` §6. `character._dive_active` is the
+## one flag both leaves below have to respect: true from the `bump` press that
+## starts the dive (`PropSmash.begin_ground_smash`) until the landing that resolves
+## it (`PropSmash.step_dive`), and nothing here may steer during it — see
+## `_build_tsinelas_branch`'s own note on why `diving` sits above both.
+## ---------------------------------------------------------------------------
+
+func _cond_tsinelas_diving() -> bool:
+	return character._dive_active
+
+## `Carriable.can_ground_smash()` already asks the real question — LOOSE, airborne,
+## and above `PropSmash.GROUND_SMASH_MIN_HEIGHT` by its own downward clearance ray
+## (see that function's own doc for why a raw world-Y test would be wrong on a map
+## with a raised lane strip). This leaf only has to read the answer.
+func _cond_tsinelas_can_smash() -> bool:
+	var carriable := character.get_node_or_null("Carriable") as Carriable
+	return carriable != null and carriable.can_ground_smash()
+
+## Stop steering — see `_build_tsinelas_branch`'s own note on why — and press the
+## dive. `_try_prop_smash()` (character_base.gd) routes a tsinelas's `bump` press to
+## `PropSmash.begin_ground_smash` exactly when `can_ground_smash()` agrees, which is
+## the same predicate `_cond_tsinelas_can_smash` just checked.
+func _act_tsinelas_smash(_delta: float) -> int:
+	_release_move(0.0)
+	_tap("bump")
+	return BTNode.SUCCESS
+
+## Line of sight to the tracked can — a raycast, not a distance check, so a wall or
+## a piece of clutter between here and the can refuses the launch rather than
+## sending it in blind. Same idiom `Carriable.can_ground_smash()` and
+## `Carrier._aim_point()` already use for their own raycasts.
+func _cond_tsinelas_can_launch() -> bool:
+	_bb_can = _find_tracked_can()
+	if _bb_can == null or not is_instance_valid(_bb_can):
+		return false
+	if not RoundManager.round_active:
+		return false
+	var space := character.get_world_3d().direct_space_state
+	var from := character.global_position + Vector3.UP * 0.15
+	var to := _bb_can.global_position + Vector3.UP * 0.15
+	var query := PhysicsRayQueryParameters3D.create(from, to)
+	query.exclude = [character.get_rid()]
+	return space.intersect_ray(query).is_empty()
+
+## Face and close on the can, holding `jump` for `Carriable.SELF_LAUNCH_CHARGE_TIME`
+## (0.75 s) before releasing — same charge/release shape `_charge_and_release` uses
+## for the attacker's throw, read off the mechanic's own constant rather than
+## restated (the file's usual rule — see `_charge_fraction`'s own note on why).
+##
+## ⚠️ ALWAYS A FULL CHARGE. `Carriable.jump_charge_step` scales speed 6.0 -> 13.0
+## m/s by how long `jump` was held; this leaf never has a reason to release early,
+## since a bigger jump only ever gets it closer to (or onto) the can it is already
+## trying to reach.
+##
+## ⚠️ `arrive = 0.0`. Unlike every other `_move_toward` call in this file, this one
+## must not let the Taya's own body block a settle-radius "arrival" from resolving
+## early — it should keep walking and facing the can for the WHOLE charge, since
+## `jump_charge_step`'s release reads THIS character's own forward vector
+## (`-global_transform.basis.z`) at the moment it fires (see that function's own
+## doc), and a body that stopped and started idle-shuffling partway through the
+## charge would release toward wherever the shuffle last faced instead.
+var _tsinelas_launch_time: float = 0.0
+
+func _act_tsinelas_launch(delta: float) -> int:
+	_sprint_want = true
+	_move_toward(_bb_can.global_position, 0.0)
+	_set_held("jump", true)
+	_tsinelas_launch_time += delta
+	if _tsinelas_launch_time < Carriable.SELF_LAUNCH_CHARGE_TIME:
+		return BTNode.RUNNING
+	_set_held("jump", false)
+	_tsinelas_launch_time = 0.0
 	return BTNode.SUCCESS
 
 ## ---------------------------------------------------------------------------

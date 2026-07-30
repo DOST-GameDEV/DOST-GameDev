@@ -181,6 +181,17 @@ the remaining duration rather than adding, so overlapping stuns are one stun; th
 longest producible chain is 2.5 s and needs two units, two commitments and an 8 s
 cooldown. `ai_controller.gd` learned the new verbs.
 
+**⚖️ FAIRNESS — three faults the probes caught, two of them in the probes.**
+* `input_probe` went red on a check unrelated to the lock's purpose: the charge never
+  started on a button held down for the whole test. `grab` and `special_ability` share
+  LEFT CLICK by design, so the press that grabs is the press that would charge, and
+  `THROW_LOCK_TIME` refused that frame — leaving no just-pressed edge to catch. The
+  start condition is HELD rather than newly-pressed now.
+* `hud_probe` had been red for an unknown number of sessions on a hardcoded node path,
+  and once that was fixed it reported **three filled pips at a score of zero** — two
+  numbers that cannot both be true, so the metric was the bug (an alpha test left over
+  from before B-143 made the empty pip visible).
+
 **⚖️ FAIRNESS — the counterplay gap it found and closed.** The out-of-circle countdown
 shipped with no answer, and the gap was structural rather than a tuning miss: a lata is
 displaced by being *hit*, and being hit is exactly the state in which it cannot drive
@@ -200,6 +211,8 @@ standing still inside the arena.
 | `MatchSetup.tscn` loads with the code-built SPECTATE button | **MEASURED** — same method, clean log. |
 | Round transitions survive the new per-round resets | **MEASURED** — `round_probe`, 6 transitions with a `(9, 4, 4)` impulse fired into each intermission gap: **0.00 m/s and 0.00 m of drift on all four units.** PASS. |
 | The throw still lands where it is aimed after `launch_velocity` was pulled out of `host_throw` | **MEASURED** — `phys_probe -- ballistics`, all four profiles, both lines. Every lob lands within **0.02 m** of the mark and apexes 2.63–2.66 m, and every flat throw still clears in 0.22–0.30 s. The refactor did not move the arc. |
+| The new bindings do not collide, and input isolation survives | **MEASURED** — `input_probe` **11/11**. All 9 actions bound (`sprint` included), **zero** conflicts across the Shift→sprint / Ctrl→`guard_dash` split, exactly one unit answers the keyboard through all four Tab handovers. |
+| The pips read the score | **MEASURED** — `hud_probe`, 0/1/2/3 wins → 0/1/2/3 filled, after two harness faults in the probe itself were fixed. |
 | No infinite stunlock exists | **ARGUED, not measured** — the chain is named in `Design.md` §11 and rests on four properties that are each a line of code. Nobody has tried to stunlock anybody. |
 | Every number in `Design.md` matches the code | **MEASURED** by reading both. |
 | The game is fun, fair, or balanced | **NEITHER.** See below. |
