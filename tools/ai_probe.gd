@@ -140,6 +140,8 @@ var _post_error_at_throw: Dictionary = {}
 ## check on the hitbox metric. See _track_flight_geometry().
 var _closest_approaches: Array[float] = []
 var _closest_unblocked: Array[float] = []
+## R-10(a): the planar launch speed of every throw, i.e. charge power made visible.
+var _launch_speeds: Array[float] = []
 var _aim_errors: Array[float] = []
 var _throw_ranges: Array[float] = []
 
@@ -386,6 +388,15 @@ func _track_flight_geometry() -> void:
 		var d: float = prop.global_position.distance_to(can.global_position)
 		if d < float(flight.get("closest", 1e9)):
 			flight["closest"] = d
+		# R-10(a)'s acceptance number. ⚠️ SAMPLED DURING THE FLIGHT, NOT AT THE
+		# CARRY-STATE SIGNAL: `carry_state_changed` fires from `_set_state()` BEFORE
+		# `_rpc_set_flying` has written the velocity, so reading it there returns 0.00
+		# for every throw — measured, and it read as "the jitter does nothing" rather
+		# than as "the probe sampled a frame early". The peak planar speed over the
+		# flight is the launch speed, since nothing accelerates a slipper horizontally.
+		var v: float = Vector2(prop.velocity.x, prop.velocity.z).length()
+		if v > float(flight.get("peak_speed", 0.0)):
+			flight["peak_speed"] = v
 
 ## R-07. The defending Person's own view of how wrong its post is, in radians, or
 ## -1.0 when there is no taya or it has no post. Asked of the controller, never
@@ -865,6 +876,9 @@ func _on_carry_state_changed(new_state: int, carriable: Carriable) -> void:
 	# for the same reason `blocked` is — only the finished flight knows.
 	if not flight["hit_taya"] and float(flight.get("post_error", -1.0)) > AIController.taya_repost_angle:
 		_round["beat_the_post"] += 1
+	var peak: float = float(flight.get("peak_speed", 0.0))
+	if peak > 0.0:
+		_launch_speeds.append(peak)
 	var closest: float = float(flight.get("closest", 1e9))
 	if closest < 1e8:
 		_closest_approaches.append(closest)
@@ -1235,6 +1249,26 @@ func _report_fairness() -> void:
 			print("  release range: %.2f mean" % (range_sum / maxi(range_n, 1)))
 			print("  -> aim error small + closest approach large = the BALLISTICS are not "
 				+ "delivering; both large = the AI is aiming at the wrong place.")
+
+	# R-10(a) · DOES THE AI'S THROW POWER ACTUALLY VARY? Its acceptance bar is
+	# ">= +/-25%", and before this pass every AI throw in the project's history had
+	# identical power because `tier_charge` is one fixed number.
+	if _launch_speeds.size() >= 2:
+		var lo := _launch_speeds[0]
+		var hi := _launch_speeds[0]
+		var total := 0.0
+		for s in _launch_speeds:
+			lo = minf(lo, s)
+			hi = maxf(hi, s)
+			total += s
+		var mean: float = total / _launch_speeds.size()
+		var spread: float = 100.0 * (hi - lo) / maxf(mean, 0.01)
+		print("\n  --- R-10(a): throw power, measured off the slipper's own launch speed ---")
+		print("  %d throws: %.2f min, %.2f mean, %.2f max m/s  -> spread %.0f%% of the mean %s"
+			% [_launch_speeds.size(), lo, mean, hi, spread,
+				_verdict(spread >= 50.0)])
+		print("  (the bar is +/-25%%, i.e. a 50%% spread. Flat 0%% means every throw is "
+			+ "identical — which is what it was before R-10.)")
 
 	print("\n  --- R-07: the taya's post ---")
 	print("  throws released while the post was already wrong (> %.2f rad): %d / %d"
