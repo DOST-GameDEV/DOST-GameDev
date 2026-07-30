@@ -60,16 +60,34 @@ func _ready() -> void:
 	print("\n=== INPUT ISOLATION PROBE ===")
 	print("  action set: unsuffixed since 2026-07-29 (was *_p1..*_p4)")
 	_report_bindings()
+	_report_binding_conflicts()
 	await _check_isolation("default Single Player")
+	await _check_charge_on_shared_button()
 
 	# The reworked debug switcher is the thing that can break the invariant, so
 	# exercise it rather than trusting that it holds only in the start state.
 	# Cycling moves AI control from one unit to the next; if it ever leaves TWO
 	# units AI-free, the behavioural check below catches it as two movers.
-	for i in 3:
-		DebugPlayerSwitcher._cycle()
-		await get_tree().physics_frame
-		await _check_isolation("after Tab #%d" % (i + 1))
+	# ⚠️ NET-2 — LOOKED UP, NOT NAMED. This used to be a bare
+	# `DebugPlayerSwitcher._cycle()`, which is a COMPILE-TIME reference to an
+	# autoload: R-30 deletes that autoload, and a deleted autoload makes this
+	# whole file fail to PARSE — while "input_probe green" is part of R-30's own
+	# acceptance. The probe would have had to be fixed in the same commit that
+	# broke it, by whoever was doing an unrelated cleanup.
+	#
+	# Through `get_node_or_null` the reference is resolved at RUNTIME, so this
+	# file parses and runs either way, and the switcher half simply reports itself
+	# skipped once the autoload is gone. The isolation invariant it exercises is
+	# still asserted above from the default state.
+	var switcher := get_node_or_null("/root/DebugPlayerSwitcher")
+	if switcher == null or not switcher.has_method("_cycle"):
+		print("\n  --- DebugPlayerSwitcher absent — switcher cycles skipped ---")
+		print("      (expected after R-30 removes it; the default-state checks above still ran.)")
+	else:
+		for i in 3:
+			switcher.call("_cycle")
+			await get_tree().physics_frame
+			await _check_isolation("after Tab #%d" % (i + 1))
 
 	print("\n=== %s (%d/%d checks clean) ===" % [
 		"ALL CHECKS PASSED" if _fails == 0 else "%d FAILURES" % _fails,
@@ -194,3 +212,138 @@ func _displacements(hold_key: bool) -> Dictionary:
 func _name_of(instance_id: int) -> String:
 	var obj := instance_from_id(instance_id)
 	return (obj as Node).name if obj is Node else str(instance_id)
+
+
+## ---------------------------------------------------------------------------
+## ⚠️ TWO ACTIONS ON ONE PHYSICAL INPUT — 🧑 report, 2026-07-30: *"i cant wind up
+## as attacker?? i cant even throw no more"*, with the user's own guess that
+## *"this broke bcz i overhauled controls earlier"*. It did.
+##
+## `_report_bindings()` above asks only "is every action bound to SOMETHING",
+## which is the check that would have caught an action bound to nothing. It
+## cannot see the opposite mistake: ONE button bound to TWO actions that then
+## fight each other. The overhaul left `grab` on E **and LEFT CLICK** while
+## `special_ability` is on Q, LEFT CLICK **and RIGHT CLICK**, so a left click
+## fires both in the same frame.
+##
+## The game's own tutorial states the intended split — "E · Grab the tsinelas"
+## and "Q / LEFT CLICK · Special" — so the extra `grab` binding contradicts
+## documented, shipped copy. That disagreement is itself the evidence.
+const GAMEPLAY_ACTIONS: Array[String] = [
+	"move_left", "move_right", "move_up", "move_down",
+	"jump", "bump", "guard_dash", "special_ability", "grab", "ready_up",
+]
+
+func _report_binding_conflicts() -> void:
+	# Keyed by a stable description of the physical input, so a keyboard key and
+	# a mouse button with the same numeric code cannot collide in this dictionary.
+	var owners: Dictionary = {}
+	for base in GAMEPLAY_ACTIONS:
+		if not InputMap.has_action(base):
+			continue
+		for event in InputMap.action_get_events(base):
+			var key := ""
+			if event is InputEventKey:
+				var ev := event as InputEventKey
+				var code: int = ev.physical_keycode if ev.physical_keycode != 0 else ev.keycode
+				if code == 0:
+					continue
+				key = "key:%s" % OS.get_keycode_string(code)
+			elif event is InputEventMouseButton:
+				key = "mouse:%d" % (event as InputEventMouseButton).button_index
+			elif event is InputEventJoypadButton:
+				key = "pad:%d" % (event as InputEventJoypadButton).button_index
+			else:
+				continue
+			if not owners.has(key):
+				owners[key] = []
+			(owners[key] as Array).append(base)
+	var clashes: Array[String] = []
+	for key in owners:
+		var actions: Array = owners[key]
+		if actions.size() > 1:
+			clashes.append("%s -> %s" % [key, ", ".join(actions)])
+	_checks += 1
+	if clashes.is_empty():
+		print("  conflicts : none — every physical input drives exactly one action")
+		return
+	_fails += 1
+	print("  *** FAIL: one physical input drives more than one action ***")
+	for clash in clashes:
+		print("      %s" % clash)
+
+## ---------------------------------------------------------------------------
+## THE BEHAVIOURAL HALF OF THE SAME REPORT, and the one that says whether the
+## conflict above actually costs the player anything.
+##
+## `carrier.gd::_step_grab()` runs BEFORE `_step_throw()` in the same frame, and
+## `_request_grab` is a round trip — so on the frame a left click picks the
+## tsinelas up, `_held` is still null when `_step_throw` looks, and it takes the
+## "nothing in hand" branch and calls `_cancel_charge()`. By the next frame the
+## slipper has arrived but `special_ability` is no longer JUST pressed, only
+## held, so the charge never starts. The player holds the button and nothing
+## winds up — exactly the report.
+##
+## Measured by pressing the two actions TOGETHER, which is what one left click
+## does, and asking whether the charge meter ever leaves zero.
+## The keyboard-driven Person currently on the OFFENCE side, or null.
+func _keyboard_attacker() -> CharacterBase:
+	for node in _main.find_children("*", "CharacterBase", true, false):
+		var ch := node as CharacterBase
+		if ch != null and ch.is_person and not ch.team_is_can_side \
+				and not ch.input_parked and not ch.is_ai_driven():
+			return ch
+	return null
+
+func _check_charge_on_shared_button() -> void:
+	# ⚠️ THE HUMAN IS NOT THE ATTACKER IN ROUND 1, and the first version of this
+	# check simply reported "no keyboard-driven attacking Person to test" and
+	# passed over the whole question. `_start_local_test` gives the keyboard
+	# TeamAPerson while `team_a_is_can` starts true, so the human opens on
+	# DEFENCE and only the AI has a tsinelas. Swap roles first rather than
+	# skipping — a check that quietly does nothing is worse than no check.
+	print("\n  --- LEFT CLICK: grab and wind-up on one button ---")
+	var attacker := _keyboard_attacker()
+	if attacker == null:
+		MatchManager.report_round_result(true)
+		await get_tree().create_timer(4.0).timeout
+		attacker = _keyboard_attacker()
+		print("  (swapped roles once so the keyboard unit is on offence)")
+	_checks += 1
+	if attacker == null:
+		print("  *** FAIL: no keyboard-driven attacking Person to test ***")
+		_fails += 1
+		return
+	var carrier := attacker.get_node_or_null("Carrier") as Carrier
+	if carrier == null:
+		print("  *** FAIL: the attacker has no Carrier ***")
+		_fails += 1
+		return
+
+	# One left click = both actions, pressed on the same frame and held.
+	Input.action_press("grab")
+	Input.action_press("special_ability")
+	var peak := 0.0
+	var held_at := -1
+	for i in 40:
+		await get_tree().physics_frame
+		peak = maxf(peak, carrier.charge_meter())
+		if held_at < 0 and carrier.held() != null:
+			held_at = i
+	Input.action_release("grab")
+	Input.action_release("special_ability")
+	await get_tree().physics_frame
+
+	print("  slipper in hand after      : %s" % (
+		"%d frames" % held_at if held_at >= 0 else "never"))
+	print("  peak charge while holding  : %.3f  (0.0 means the wind-up never started)" % peak)
+	if held_at >= 0 and peak <= 0.001:
+		_fails += 1
+		print("  *** FAIL: the attacker grabbed the tsinelas and then never wound up,")
+		print("      on a button that was held down the whole time. `grab` and")
+		print("      `special_ability` share LEFT CLICK; the grab consumes the frame")
+		print("      and special_ability is never JUST-pressed again. ***")
+	elif peak > 0.001:
+		print("  OK — the wind-up starts and charges on a held button.")
+	else:
+		print("  INCONCLUSIVE — nothing was grabbed, so the charge was never reachable.")
