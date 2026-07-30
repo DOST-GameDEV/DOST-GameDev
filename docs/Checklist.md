@@ -3172,6 +3172,121 @@ longer produces the identical throw slightly later — it cannot silently move a
 with `lob=on` must bring the block rate **below 70%** (from 94.7%). If it does not, the item has
 failed and comes out.
 
+#### R-06 · BUILT AND MEASURED, 2026-07-30 — 🥊 PHYS. The lob is a FIXED-ANGLE solve.
+
+**The spec above asked for the high root. It was built exactly as written, measured, and
+rejected on the numbers.** The high root at full launch speed is a mortar, and it scales
+the wrong way — the lightest, fastest slipper produces the highest, slowest lob:
+
+| profile | high-root angle | flight | apex above the hand |
+|---|---|---|---|
+| `throw_bagsak` | 74.8° | 1.22 s | 5.06 m |
+| `throw_bakya` | 77.4° | 1.40 s | 6.22 m |
+| `throw_default` | 80.5° | 1.68 s | 8.41 m |
+| `throw_flick` | **85.6°** | **2.90 s** | **18.45 m** |
+
+18 m is above Eskinita's 10–14 m rooflines and outside an FPP player's field of view —
+they would have to look at the sky to watch their own throw — and 2.9 s is a dead beat in
+a 90 s round. The cause is structural: the high root's angle is a function of surplus
+speed over the minimum needed to reach the target, and a full charge at the 6.0 line has
+plenty.
+
+**So the lob fixes the angle at 60° and solves the SPEED** — `v² = g·d² / (2·cos²θ·(d·tanθ
+− h))`. That is the same arc read from the other end of the same equation: it IS the high
+root, at the speed that makes the high root 60°. Every clause of the spec survives — it
+passes exactly through the crosshair point, no new `ThrowProfile` field, no new input
+action, and it uses LESS speed than the charge earned so it is never a power buff.
+
+60° is derived, not chosen: a taya at `taya_block_standoff` 2.6 stands 3.4 m along a 6.0 m
+lane and its Hurtbox tops out at world y 1.75 against a hand at 0.90. At 60° the arc is
+**2.42 m above the hand there — clearing the defender's head by 1.57 m.** 45° is the
+flattest arc that reaches at all and clears by 0.09 m, i.e. inside one frame of travel.
+
+**Ballistics, re-run in full on BOTH maps, row by row against the 2026-07-29 baseline:**
+
+| profile | flat flight | LOB flight | LOB apex | reach floor (flat) | baseline reach floor |
+|---|---|---|---|---|---|
+| `throw_flick` | 0.27 s | 1.10 s | 2.32 m | 50% | 50% ✅ |
+| `throw_default` | 0.32 s | 0.93 s | 2.31 m | 65% | 65% ✅ |
+| `throw_bakya` | 0.33 s | 0.89 s | 2.31 m | 65–80% | 65–80% ✅ |
+| `throw_bagsak` | 0.35 s | 0.86 s | 2.31 m | 80% | 80% ✅ |
+
+**Every flat row reproduces the baseline to the charge step**, which is the regression test
+on the root selection: picking the minus root explicitly did not change the throw the game
+already had. Scatter is still 0.00–0.02 m. Eskinita and Bayan Plaza agree to 0.02 m — the
+cross-check that matters, since ballistics is map-independent.
+
+**Apex is profile-INDEPENDENT (2.31–2.53 m) because `g` cancels out of it.** So every
+slipper lobs to one readable height and the profile identity survives as *timing*: the
+floaty flick hangs longest at 1.10 s, the heavy bagsak arrives soonest at 0.86 s. All four
+exceed `CAN_EVADE_LOOKAHEAD`'s 0.6 s; **no flat throw does.**
+
+⚠️ **`eta` in `_cond_slipper_incoming()` is exactly time-to-impact** (horizontal distance ÷
+horizontal speed, and horizontal speed is constant under gravity), so the can's warning is
+`min(flight_time, 0.6)`. A flat throw gives it 0.32 s; every lob gives it the full
+lookahead. That is the balance clause, and it is a property of the arc, not of the AI.
+
+**The triangle — `phys_probe -- lane`, 10 throws per cell, taya parked at standoff 2.6:**
+
+| throw | lane | can | contact | stopped by taya |
+|---|---|---|---|---|
+| flat | blocked | parked | **0%** | 100% |
+| flat | blocked | dodging | 0% | 100% |
+| **LOB** | **blocked** | **parked** | **100%** | 0% |
+| LOB | blocked | dodging | 40% | 0% |
+| flat | open | parked | 100% | 0% |
+| flat | open | dodging | **0%** | 0% |
+| LOB | open | parked | 100% | 0% |
+| LOB | open | dodging | **50%** | 0% |
+
+- **Leg 1 — the lob beats the taya: PASS.** 100% vs 0%, against a bar of ≥ 40%.
+- **Leg 2 — the dodge beats the lob: PASS.** 50% dodging vs 100% parked.
+- **Leg 3 — the flat throw beats the dodge: FAIL, and the cause is not the lob.**
+  `_act_can_evade` sidesteps LATERALLY with `CAN_EVADE_STEP` 1.2 m against a ~0.52 m
+  overlap band. A lateral step of twice the band is a complete answer to something
+  arriving flat and a poor one to something arriving nearly vertically — you cannot
+  sidestep out from under a drop. So the dodge beats the flat throw *more* thoroughly
+  than it beats the lob, which inverts the intended triangle.
+  ⚠️ **DO NOT REVERT THE LOB ON THIS ROW.** Nothing in it is a property of the arc.
+  **Handover to ⚖️ BALANCE:** have the can answer `Carriable.flight_is_lob` (replicated to
+  every peer for exactly this) differently from a flat throw — step under the arc, or
+  spend the extra warning on Guard, which blocks outright.
+
+⚠️ **A STEER CEILING CAME WITH IT AND IS NOT COSMETIC.** `steer_strength` is an
+acceleration, so authority is strength × flight time, and the lob multiplies flight time by
+six: `throw_default` would have gone from 1.7 to 10.0 m/s of lateral correction, letting the
+slipper's own pilot steer back onto a dodging can and erasing the lob's counterplay.
+`Carriable.MAX_STEER_DELTA_V` bounds the product at 3.0 — above every profile's existing
+flat-throw authority (flick is the highest at 2.3), so **no flat throw moves at all.**
+
+⚠️ **`AIController.ATTACKER_LOB_OVERHOLD` should now READ `Carrier.LOB_OVERHOLD_TIME`**
+rather than restating 0.20, exactly as `_charge_fraction()` already reads
+`CHARGE_MIN_POWER`/`CHARGE_FULL_TIME`. The values agree today by coincidence; they should
+agree by construction. `ai_controller.gd` is not the PHYS lane's file.
+
+#### R-18(a) · BOUNCE MEASURED, NOT TUNED, 2026-07-30 — 🥊 PHYS
+
+`BOUNCE_DAMPING` and `MAX_BOUNCES` are `static var` now (the `const` kept as the shipped
+baseline), swept with `phys_probe -- bounce`. The gameplay consequence of a bounce setting
+is a DISTANCE — how far past first contact the slipper ends up — because that distance *is*
+the retrieval scramble, and `CRAWL_SPEED_SCALE` is 0.45.
+
+| damping | bounces | skid past first contact | settle |
+|---|---|---|---|
+| 0.00 | 1 | 0.00 m (stops dead — the original complaint) | 0.02 s |
+| 0.15 | 1 | 0.17 m | 0.07 s |
+| **0.30** | **1** | **0.79 m  ← SHIPPED** | **0.13 s** |
+| 0.45 | 1 | 1.86 m | 0.20 s |
+| 0.60 | 1 | 3.37 m | 0.28 s |
+| 0.45 | 2 | 2.20 m (the PRE-NERF setting) | 0.29 s |
+| 0.60 | 2 | 4.47 m | 0.44 s |
+
+The 0.45/2 → 0.30/1 retune cut the skid from 2.20 m to 0.79 m. At crawl speed that is 0.81 s
+versus 0.29 s of retrieval — **under a second either way, so this is a feel call and not a
+balance one.** 🧑 Left at the shipped values and asked rather than guessed. If more life is
+wanted, **0.45 / 1 bounce** is the row to try: the complaint was about `MAX_BOUNCES = 2`
+chaining into a ragdoll, not about the damping.
+
 #### HANDOFF — R-09 (the difficulty picker) to the 🖥️ UX lane
 
 **The mechanism is complete and measured; only the screen is missing.**
