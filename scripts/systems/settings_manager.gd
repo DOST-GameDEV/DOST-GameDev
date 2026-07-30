@@ -83,9 +83,60 @@ var master_volume: float = DEFAULT_VOLUME
 var sfx_volume: float = DEFAULT_VOLUME
 var music_volume: float = DEFAULT_VOLUME
 
+## ---------------------------------------------------------------------------
+## R-09 · KALARO DIFFICULTY — the tier the AI plays at.
+##
+## `AIController.DIFFICULTY_TIERS` (BATA / NORMAL / ASTIG) and `apply_difficulty()`
+## have been complete and correct for two passes and reachable from nowhere: until
+## `tools/ai_probe.gd` gained a `tier=` argument on 2026-07-30, **nothing outside
+## that class had ever called `apply_difficulty()`**, and no tier but NORMAL had
+## ever been measured. The BALANCE lane's RUN 12 and RUN 14 measured all three;
+## this is the half that lets a player choose one.
+##
+## ⚠️⚠️ IT IS A MATCH-AFFECTING VALUE, SO IT IS HOST-OWNED IN MULTIPLAYER AND THIS
+## FILE IS NOT WHERE THAT IS ENFORCED. The picker on `MatchSetup.tscn` broadcasts
+## it down the SAME `_rpc_sync_config` path map and mode already take (10.5, U-8),
+## and clients receive it and call in here. **A per-peer difficulty is the exact bug
+## U-8 fixed twice** — a client on DENTS denting a can the host on CAPTURE did not,
+## and a client on another map walking through walls only it had. Do not add a
+## second sync path, and do not "helpfully" apply the local preference on a client.
+##
+## ⚠️ WHY THE VALUE IS STORED AS AN INT AND NOT AS `AIController.Difficulty`.
+## `settings.cfg` is written by `ConfigFile` and read back by a build that may have
+## a different enum; an int with a clamp survives that, an enum cast does not. It is
+## clamped on load rather than trusted.
+##
+## The knobs `apply_difficulty()` writes are `static var`s on AIController, so one
+## call covers every controller in the process — including ones spawned later, which
+## is why this needs no per-match hook beyond being applied when it changes and once
+## on load (for a process that never passes through the setup screen at all: a probe,
+## or `--host` from the command line).
+const SETTINGS_SECTION_MATCH: String = "match"
+## Index into AIController.Difficulty. 1 == NORMAL, which is what every measurement
+## before RUN 12 was taken at, so it stays the default.
+const DEFAULT_DIFFICULTY: int = 1
+
+var ai_difficulty: int = DEFAULT_DIFFICULTY
+
 func _ready() -> void:
 	_capture_defaults()
 	_load_and_apply()
+
+## R-09. Sets the tier AND pushes it into the live AI knobs. One function, because a
+## stored value that is not applied is the shape of the bug this item exists to fix —
+## the tiers were already stored, in code, and reachable from nowhere.
+##
+## `persist` false is for the receiving end of the host's broadcast: a client should
+## play the host's tier for this match without that overwriting its own saved
+## preference for the next one it hosts.
+func set_ai_difficulty(value: int, persist: bool = true) -> void:
+	ai_difficulty = clampi(value, 0, AIController.DIFFICULTY_TIERS.size() - 1)
+	_apply_ai_difficulty()
+	if persist:
+		_save()
+
+func _apply_ai_difficulty() -> void:
+	AIController.apply_difficulty(ai_difficulty as AIController.Difficulty)
 
 func set_mouse_sensitivity(value: float) -> void:
 	mouse_sensitivity = value
@@ -205,6 +256,7 @@ func _save() -> void:
 	config.set_value(SETTINGS_SECTION_AUDIO, "master_volume", master_volume)
 	config.set_value(SETTINGS_SECTION_AUDIO, "sfx_volume", sfx_volume)
 	config.set_value(SETTINGS_SECTION_AUDIO, "music_volume", music_volume)
+	config.set_value(SETTINGS_SECTION_MATCH, "ai_difficulty", ai_difficulty)
 	var err := config.save(SETTINGS_PATH)
 	if err != OK:
 		push_warning("SettingsManager: failed to save %s (error %d)" % [SETTINGS_PATH, err])
@@ -219,6 +271,10 @@ func _load_and_apply() -> void:
 		# mix 2 dB louder than every returning player's — the one case where
 		# "no saved file" is not the same as "nothing to do".
 		_apply_volumes()
+		# R-09: and the difficulty, for the same reason — the AI's live knobs sit at
+		# whatever the class initialiser left them, which is NORMAL, and a first-time
+		# player must get the same tier a returning one does rather than a coincidence.
+		_apply_ai_difficulty()
 		return
 	for action in REBINDABLE_ACTIONS:
 		if config.has_section_key(SETTINGS_SECTION, action):
@@ -236,3 +292,8 @@ func _load_and_apply() -> void:
 	sfx_volume = config.get_value(SETTINGS_SECTION_AUDIO, "sfx_volume", DEFAULT_VOLUME)
 	music_volume = config.get_value(SETTINGS_SECTION_AUDIO, "music_volume", DEFAULT_VOLUME)
 	_apply_volumes()
+	# R-09. Clamped through the setter rather than assigned, so a settings.cfg written
+	# by a build with a different tier list cannot push an out-of-range enum into
+	# AIController. `persist` false: loading is not a change worth writing back.
+	set_ai_difficulty(int(config.get_value(SETTINGS_SECTION_MATCH, "ai_difficulty",
+		DEFAULT_DIFFICULTY)), false)
