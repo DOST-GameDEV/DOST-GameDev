@@ -351,6 +351,11 @@ func _sample(label: String) -> void:
 		_report_facing("TAYA", taya, can, false)
 	_report_carry(characters)
 	_report_prop_picks(characters)
+	# NET-1(c) — LAST in the sample, deliberately. It shoves and walks the units
+	# it measures, so anything above it would be reading a world this had already
+	# perturbed. It restores what it touched; the next round's _reset_world()
+	# re-places everyone regardless.
+	await _measure_prop_observable(characters)
 
 ## One unit's facing, measured two independent ways. Both must agree with the
 ## direction to the can, and the disagreement between them is itself diagnostic:
@@ -549,6 +554,176 @@ func _report_prop_picks(characters: Array[CharacterBase]) -> void:
 		elif index == 0:
 			print("[%s]             ⚠️ entry 0 — the stock 3/3/3. Correct if nobody picked," % _tag)
 			print("[%s]                indistinguishable from the fallback if somebody did." % _tag)
+
+## ---------------------------------------------------------------------------
+## NET-1(c) · DOES A PROP'S TRAIT REACH ANYTHING PHYSICAL?
+##
+## ⚠️ THE HALF NOTHING HAD EVER MEASURED. `_report_prop_picks()` above proves the
+## INDEX arrives and that both peers resolve the same one — verified over four
+## rounds and both sides of a role swap. It does not prove the trait reaches the
+## object: `trait_points()` returning 5 proves a dictionary lookup. The Person
+## path has its physical half (`phys_probe -- traits`); `prop_trait` is a
+## DIFFERENT function against DIFFERENT lists and has never had one.
+##
+## Same three observables as that block, so the two are comparable:
+##
+##   BILIS -> metres actually travelled in a fixed number of frames
+##   LAKAS -> m/s of shove this unit's own Hitbox produces
+##   TATAG -> m/s KEPT of a fixed shove
+##
+## ⚠️ RUN ON THE AUTHORITY ONLY. Every one of these is a physics question and a
+## peer that does not own the body is reading a replicated transform, so a
+## non-authoritative row would measure the synchroniser. Each peer measures the
+## Props it owns and the two logs are read side by side.
+##
+## ⚠️ AND IT RUNS ON EVERY ROUND SAMPLE FOR THE REASON THE PICKS BLOCK DOES:
+## `is_can` flips, so the SAME unit answers off the CANS list one round and the
+## SLIPPERS list the next. The role swap is the test — a build that cached the
+## trait at spawn passes every single-round check and fails here.
+
+## Frames to walk. At SPEED 6.0 a full BILIS spread is +/-10%, so 40 frames
+## (0.67 s) separates a 1 from a 5 by ~0.8 m — far above depenetration jitter.
+const PROP_WALK_FRAMES: int = 40
+## The fixed shove TATAG is asked to absorb, m/s. Same value the Person block
+## used, so the two tables can be read against each other. Well under
+## MAX_KNOCKBACK_SPEED (14.0), or the clamp would flatten the trait.
+const PROP_SHOVE: float = 10.0
+## Metres of clear floor a walk direction needs before it is used.
+const PROP_WALK_CLEARANCE: float = 3.0
+
+func _measure_prop_observable(characters: Array[CharacterBase]) -> void:
+	for ch in characters:
+		if ch.is_person or not ch.is_multiplayer_authority():
+			continue
+		var list_name: String = "CANS" if ch.is_can else "SLIPPERS"
+		var bilis := ch.trait_points(&"bilis")
+		var lakas := ch.trait_points(&"lakas")
+		var tatag := ch.trait_points(&"tatag")
+
+		# ---- LAKAS: what this unit's own Hitbox delivers ---------------------
+		# ⚠️ TWO BRANCHES, AND ONLY ONE OF THEM CARRIES THE TRAIT — see the
+		# finding printed below. hitbox.gd::_impulse_for asks the Carriable
+		# FIRST, and Carriable.knockback_impulse() is the ThrowProfile path.
+		var hitbox := ch.get_node_or_null("Hitbox") as Hitbox
+		var carriable := ch.get_node_or_null("Carriable") as Carriable
+		var flying: bool = carriable != null and carriable.state == Carriable.CarryState.FLYING
+		var shove := -1.0
+		if hitbox != null and not flying:
+			var keep_velocity := ch.velocity
+			ch.velocity = Vector3.ZERO
+			var impulse: Vector3 = hitbox._impulse_for(false)
+			shove = Vector2(impulse.x, impulse.z).length()
+			ch.velocity = keep_velocity
+
+		# ---- TATAG: what it accepts of a fixed shove -------------------------
+		# ⚠️ apply_knockback REFUSES between rounds, when SEALED and while
+		# guarding, all three by design. A refused row reads as a dead trait, so
+		# the gates are printed rather than silently producing a 0.
+		var kept := -1.0
+		var gated: bool = not RoundManager.round_active \
+			or ch.state == CharacterBase.State.SEALED
+		if not gated:
+			var keep_velocity := ch.velocity
+			ch.velocity = Vector3.ZERO
+			ch.apply_knockback(Vector3(PROP_SHOVE, 0.0, 0.0))
+			kept = absf(ch.velocity.x)
+			ch.velocity = keep_velocity
+
+		# ---- BILIS: how fast the body actually travels -----------------------
+		var walk: Dictionary = await _measure_prop_walk(ch)
+		var walked: float = walk.get("speed", -1.0)
+
+		# ⚠️ ONE LINE, FIXED ORDER, SO THE ROLE SWAP IS A MECHANICAL DIFF. Grep
+		# both logs for PROPOBS and one unit name: the row must CHANGE between a
+		# round where is_can=true and one where it is false, because the unit is
+		# answering off a different list. Two identical rows across a swap is the
+		# cached-at-spawn bug and is the whole reason this runs every round.
+		print("[%s]    PROPOBS  %-11s is_can=%-5s %-8s[%2d]  bilis=%d lakas=%d tatag=%d  ->  walked=%s  shove=%s  kept=%s" % [
+			_tag, ch.name, str(ch.is_can), list_name,
+			(ch.can_index if ch.is_can else ch.slipper_index), bilis, lakas, tatag,
+			"%.3f m/s over %.2f m" % [walked, float(walk.get("metres", 0.0))] if walked >= 0.0
+				else ("obstructed" if walked < -1.5 else "carried/flying"),
+			"%.3f m/s" % shove if shove >= 0.0 else ("flying — ThrowProfile" if flying else "n/a"),
+			"%.3f m/s" % kept if kept >= 0.0 else "gated"])
+
+## Walks a Prop under its own body and returns
+## `{"speed": median m/s per frame, "metres": total flat distance}`, restoring
+## where it stood. `speed` is -1.0 when the unit cannot be measured.
+##
+## ⚠️ A CARRIED OR FLYING PROP CANNOT MOVE ITSELF AND THAT IS NOT A DEAD TRAIT.
+## `Carriable.drives_movement()` hands the whole frame to the carry code, so a
+## tsinelas in somebody's hand reads 0.000 m on a perfectly healthy build — the
+## same trap `_check_local_input()` above fell into and documents. `_reset_world()`
+## auto-grabs the tsinelas for the attacking Person every round, so the SLIPPER
+## side of the swap is unmeasurable for BILIS by design, and says so rather than
+## reporting a zero.
+##
+## ⚠️⚠️ THE HEADLINE IS THE MEDIAN PER-FRAME STEP, NOT THE TOTAL DISTANCE, AND
+## THE FIRST CUT OF THIS WAS TOTAL DISTANCE AND WAS WRONG. It ran on two real
+## peers and reported a NEUTRAL bilis=3 can travelling 1.034 m while a bilis=1
+## can travelled 3.022 m — a slower pick out-walking a faster one, which cannot
+## be true, so the metric was the bug (this repo's method note, again). Total
+## distance over 40 frames is contaminated two ways at once and both are the
+## GAME WORKING: `CONFINEMENT_RADIUS` (5.0) clamps a Can that walks off its base
+## circle, and `eskinita` is a narrow alley where 4 m of walk meets the dressing.
+## A median step is immune to both — a wall or a clamp shortens the tail, not the
+## middle — as long as the unit is free for most of the window.
+func _measure_prop_walk(who: CharacterBase) -> Dictionary:
+	var blocked := {"speed": -1.0, "metres": 0.0}
+	var carriable := who.get_node_or_null("Carriable") as Carriable
+	if carriable != null and carriable.drives_movement():
+		return blocked
+	# Walk toward the most open direction rather than the first passable one:
+	# on a map this tight, "not blocked within 3 m" is satisfied by directions
+	# with a wall at 3.1 m.
+	var space := who.get_world_3d().direct_space_state
+	var heading := Vector3.ZERO
+	var best := 0.0
+	for candidate in [Vector3.RIGHT, Vector3.LEFT, Vector3.FORWARD, Vector3.BACK,
+			Vector3(1, 0, 1).normalized(), Vector3(1, 0, -1).normalized(),
+			Vector3(-1, 0, 1).normalized(), Vector3(-1, 0, -1).normalized()]:
+		var from := who.global_position + Vector3.UP * 0.3
+		var query := PhysicsRayQueryParameters3D.create(
+			from, from + candidate * PROP_WALK_CLEARANCE)
+		query.exclude = [who.get_rid()]
+		var hit := space.intersect_ray(query)
+		var free: float = PROP_WALK_CLEARANCE
+		if not hit.is_empty():
+			free = from.distance_to(hit["position"])
+		if free > best:
+			best = free
+			heading = candidate
+	if best < 1.5:
+		return blocked
+	var start := who.global_position
+	var keep_transform := who.global_transform
+	var keep_velocity := who.velocity
+	var speed: float = CharacterBase.SPEED * who.trait_speed_scale()
+	var steps: Array[float] = []
+	for _frame in PROP_WALK_FRAMES:
+		var was := who.global_position
+		who.velocity.x = heading.x * speed
+		who.velocity.z = heading.z * speed
+		await get_tree().physics_frame
+		steps.append(Vector2(who.global_position.x - was.x,
+			who.global_position.z - was.z).length())
+	var travelled := Vector2(who.global_position.x - start.x,
+		who.global_position.z - start.z).length()
+	who.global_transform = keep_transform
+	who.velocity = keep_velocity
+	steps.sort()
+	var median: float = steps[steps.size() / 2] / _physics_delta()
+	# ⚠️ A MEDIAN IS ONLY IMMUNE TO A WALL WHILE THE UNIT IS FREE FOR MOST OF THE
+	# WINDOW, AND ON THIS MAP IT SOMETIMES IS NOT. Measured on two real peers: a
+	# free tsinelas printed 0.006 m/s beside a total of 1.14 m — pinned for most
+	# of the 40 frames and shoved along in a few. Half a metre per second cannot
+	# also be 1.14 m of travel, so the row is refused rather than reported.
+	if median < speed * 0.5:
+		return {"speed": -2.0, "metres": travelled}
+	return {"speed": median, "metres": travelled}
+
+func _physics_delta() -> float:
+	return 1.0 / float(Engine.physics_ticks_per_second)
 
 func _off_axis(forward: Vector3, target: Vector3) -> float:
 	if forward.length() < 0.001:
