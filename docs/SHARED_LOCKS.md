@@ -19,7 +19,7 @@ to type.
 | `scenes/characters/CharacterBase.tscn` | — free — | | |
 | `scripts/characters/character_base.gd` | — free — | | |
 | `scenes/characters/CameraRig.tscn` | — free — | | |
-| `scenes/ui/*.tscn` | — free — | | |
+| `scenes/ui/*.tscn` | 🌐 NET | `integration` | 2026-07-30 — human-priority UI pass: back button off-screen, one-topic detail box, banner overlap, de-Tagalog |
 | `project.godot` | — free — | | |
 | `tools/models/generate_all.gd` | — free — | | |
 | `docs/Checklist.md` | *no lock needed* | | append-only-ish; conflicts resolved by taking both sides |
