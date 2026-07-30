@@ -699,21 +699,43 @@ func host_grab(by: CharacterBase) -> void:
 ## carrier.gd::_aim_point() for the measurements behind that, and _solve_arc()
 ## below for the maths. The parameter used to be a unit direction; anything
 ## calling this with one will now aim at a point 1 metre from the world origin.
-## ⚠️ `lob` IS R-06, AND IT IS THE ONLY NEW PARAMETER THE MECHANIC NEEDED. Default
+## ⚠️ `lob` IS R-06, AND IT IS THE ONLY NEW PARAMETER *THAT MECHANIC* NEEDED. Default
 ## false so every existing caller — the probes, and any ability that ever throws —
 ## keeps the flat throw it already asked for.
-func host_throw(target_point: Vector3, power: float, lob: bool = false) -> void:
+##
+## ⚠️ `launch_origin` IS 10.6, AND IT HAS NO DEFAULT ON PURPOSE. Merged 2026-07-30 from
+## `code/throw-feel`, which was written against a `host_throw` that had neither `lob` nor
+## the LAKAS power scale — the two changes are complementary (one is WHERE the throw
+## leaves from, the other is WHAT SHAPE it flies) and both are kept in full.
+##
+## It is the FIRST parameter and it is required, so that every one of the ten call sites
+## across four probes had to be visited by hand rather than silently inheriting a default
+## that would have quietly restored the sag this fixes. See `carrier.gd::_throw_origin()`.
+func host_throw(launch_origin: Vector3, target_point: Vector3, power: float,
+		lob: bool = false) -> void:
 	if not _is_host() or state != CarryState.CARRIED:
 		return
 	var profile := _profile()
 	var speed_now: float = profile.launch_speed * clampf(power, 0.0, 1.0)
+	# ⚠️ SOLVED FROM, AND LAUNCHED FROM, THE SIGHT LINE — not this unit's own
+	# position. See carrier.gd::_throw_origin() for the measurements: leaving
+	# from the hand hung the whole flight up to 0.43 m under the line the player
+	# was aiming along, worst within a fifth of a metre of their face. Both the
+	# solve and the broadcast below use the same origin, or the arc would be
+	# solved for a flight that never happens.
+	#
+	# ⚠️ AND THE LOB TAKES IT TOO — that is a merge DECISION, not a mechanical
+	# resolution. `code/throw-feel` predates R-06 and so only ever fixed the flat
+	# throw. Leaving the lob on `_character.global_position` would have kept the
+	# exact sag this fixes for the one throw whose whole identity is its arc, and
+	# split the two paths over which origin they launch from for no reason.
 	if lob:
 		# The lob solves the SPEED for a fixed angle instead of the angle for a fixed
 		# speed — the mirror image of the flat throw, and the same arc. See _solve_lob.
-		_broadcast_flying(_character.global_position,
-			_solve_lob(_character.global_position, target_point, profile, speed_now), true)
+		_broadcast_flying(launch_origin,
+			_solve_lob(launch_origin, target_point, profile, speed_now), true)
 		return
-	var aim := _solve_arc(_character.global_position, target_point, speed_now, profile, lob)
+	var aim := _solve_arc(launch_origin, target_point, speed_now, profile, lob)
 	# ⚠️ THE SIGN HERE WAS INVERTED, AND IT IS WHY EVERY THROW FLEW LOW.
 	# 2026-07-29, user report: "the height when you throw it is still too low."
 	#
@@ -739,15 +761,18 @@ func host_throw(target_point: Vector3, power: float, lob: bool = false) -> void:
 	if horizontal.length() > 0.01 and not is_zero_approx(profile.arc_angle_deg):
 		var axis := horizontal.normalized().cross(Vector3.UP)
 		aim = aim.rotated(axis.normalized(), deg_to_rad(profile.arc_angle_deg))
-	_broadcast_flying(_character.global_position, aim.normalized() * speed_now, lob)
+	_broadcast_flying(launch_origin, aim.normalized() * speed_now, lob)
 
 ## THE LAUNCH ANGLE THAT ACTUALLY PASSES THROUGH `target`.
 ##
 ## ⚠️ THIS, NOT THE LAUNCH DIRECTION, IS WHAT "ALIGNED WITH THE CROSSHAIR"
 ## MEANS. Pointing the initial velocity at the crosshair is not the same thing
-## and does not look like it: the slipper leaves the HAND (y 0.89) rather than
-## the eye (y 1.35), and gravity then bends it away from the sight line by an
-## amount that grows with range. Measured with the launch merely parallel to the
+## and does not look like it: gravity bends the flight away from the sight line by an
+## amount that grows with range.
+## ⚠️ THIS PARAGRAPH USED TO SAY "the slipper leaves the HAND (y 0.89) rather than the
+## eye (y 1.35)". It no longer does — 10.6 moved the launch onto the sight line, and
+## `host_throw` now takes that origin. The solve below is still what makes the flight pass
+## THROUGH the point; the origin is what stops it sagging under the line on the way. Measured with the launch merely parallel to the
 ## aim, from the 6.0 throwing line: a target 7.04 m out landed 1.70 m SHORT and
 ## one 3.38 m out landed 1.47 m LONG — the two only ever agreed at a single
 ## distance, which is exactly what "the height is too low" describes.

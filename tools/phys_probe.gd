@@ -154,7 +154,11 @@ func _ready() -> void:
 		_hit_targets_this_throw.clear()
 		# host_throw takes the POINT to aim at, not a direction — it solves the
 		# launch angle that lands there (carriable.gd::_solve_arc).
-		carriable.host_throw(aim_point, 1.0)
+		# Sight-line origin, matching the production path (carrier.gd::_throw_origin).
+		# The Person's eye is CameraRig's FPP height above its origin.
+		var throw_from := _attacker.global_position + Vector3.UP * 1.35 \
+			+ (aim_point - _attacker.global_position).normalized() * Carrier.MUZZLE_FORWARD
+		carriable.host_throw(throw_from, aim_point, 1.0)
 		# The pulse hitbox is spawned INSIDE host_throw's broadcast, so it does
 		# not exist until after that call — re-arm the watch every throw or the
 		# flight hitbox's own hits go uncounted.
@@ -659,7 +663,17 @@ func _ballistic_throw(origin: Vector3, charge: float, lob: bool = false) -> Dict
 	if carriable.state != Carriable.CarryState.CARRIED:
 		return {"ok": false}
 	var launch_y := _slipper.global_position.y
-	carriable.host_throw(_aim_point, charge, lob)
+	# ⚠️ SIGHT-LINE ORIGIN, matching the production path (`carrier.gd::_throw_origin`).
+	# Merged 2026-07-30: this sweep measures where a throw LANDS and how its arc is
+	# solved, so it has to leave from where a real throw leaves from — the eye, not the
+	# slipper's own position. Throwing from the slipper here while the game throws from
+	# the eye would make every number in this table describe a flight nobody performs.
+	# ⚠️ SIGHT-LINE ORIGIN, from `Carrier.throw_origin_for()` — the SAME function the
+	# production throw uses. This sweep measures where a throw lands and how its arc is
+	# solved, so launching from anywhere the game does not would make every number in the
+	# table describe a flight nobody performs.
+	carriable.host_throw(Carrier.throw_origin_for(_attacker, _aim_point), _aim_point,
+		charge, lob)
 	# Read the SOLVED angle off the launch velocity the throw actually produced,
 	# rather than re-deriving it from the quadratic here. A probe that recomputes the
 	# thing under test cannot catch the thing under test being wrong.
@@ -992,7 +1006,8 @@ func _lane_cell(can_mark: Vector3, line: Vector3, lob: bool, dodging: bool,
 		# ⚠️ ARMED AFTER THE THROW, NOT BEFORE — the pulse hitbox does not exist until
 		# _rpc_set_flying runs inside host_throw. Arming before is precisely the bug
 		# that made ai_probe report zero hits for every run it ever recorded.
-		carriable.host_throw(can_mark + Vector3(0.0, 0.25, 0.0), 1.0, lob)
+		carriable.host_throw(Carrier.throw_origin_for(_attacker,
+			can_mark + Vector3(0.0, 0.25, 0.0)), can_mark + Vector3(0.0, 0.25, 0.0), 1.0, lob)
 		_watch_lane_hitboxes()
 		# Long enough for a lob (measured ~1.7 s) plus its bounce and settle.
 		var guard := 0
@@ -1270,7 +1285,8 @@ func _band_dodge(can_mark: Vector3, line: Vector3, can_ai: AIController) -> Dict
 			_band_perp_at_closest = 0.0
 			_band_watch = _can
 			var t0 := Time.get_ticks_msec()
-			carriable.host_throw(can_mark + Vector3(0.0, 0.25, 0.0), 1.0, lob)
+			carriable.host_throw(Carrier.throw_origin_for(_attacker,
+			can_mark + Vector3(0.0, 0.25, 0.0)), can_mark + Vector3(0.0, 0.25, 0.0), 1.0, lob)
 			_watch_lane_hitboxes()
 			var guard := 0
 			while carriable.state == Carriable.CarryState.FLYING and guard < 240:
@@ -1401,7 +1417,8 @@ func _band_sweep(can_mark: Vector3, line: Vector3, lob: bool,
 			_band_min_flat = 9999.0
 			_band_min_3d = 9999.0
 			_band_watch = _can
-			carriable.host_throw(can_mark + Vector3(0.0, 0.25, 0.0), 1.0, lob)
+			carriable.host_throw(Carrier.throw_origin_for(_attacker,
+			can_mark + Vector3(0.0, 0.25, 0.0)), can_mark + Vector3(0.0, 0.25, 0.0), 1.0, lob)
 			_watch_lane_hitboxes()
 			var guard := 0
 			while carriable.state == Carriable.CarryState.FLYING and guard < 240:

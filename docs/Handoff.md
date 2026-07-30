@@ -158,6 +158,37 @@ For any coding agent picking up this queue.
 **Only open items live here.** B-01 … B-66 are in [`Handoff.md`](Handoff.md); everything
 marked `[FIXED]` there is done and settled. New bugs take the next free number **in this file**.
 
+**B-144 · `aim_probe` FAILS ITS OWN AIM CLAUSE AFTER THE 10.6 MERGE — 0.41 m AGAINST A 0.40 m MARK. [OPEN · 🥊 PHYS]**
+
+⚠️ **REPORTED AGAINST MY OWN MERGE, MEASURED BOTH SIDES, AND NOT PAPERED OVER.** `code/throw-feel`
+(10.6, the sight-line launch origin) was merged into `integration` on 2026-07-30. It does what it says,
+and it also moved the aim number the wrong way. Both measured with `tools/aim_probe.tscn`:
+
+| | worst closest approach | worst near-field sag | verdict |
+|---|---|---|---|
+| `integration` before the merge (`b6c5460`) | **0.34 m** | not measured | PASS |
+| after the merge | **0.41 m** | **0.002 m** | **FAIL** (aim) / PASS (sag) |
+
+**The trade is real and it is almost certainly worth it:** sag went from up to ~0.43 m — the slipper
+visibly dropping out of the bottom of the screen the instant it left the hand, reported by a player
+three separate times — down to 0.002 m. The cost is 7 cm of closest approach on a **24-metre** throw.
+
+**Two things make the FAIL less alarming than it reads, and neither is a reason to ignore it:**
+1. **The pass mark is an ABSOLUTE 0.40 m applied to a 23.9 m throw** — 1.7% of range. Only the two
+   long-range rows (+0.0 and +10.0 pitch) are anywhere near it; every short throw is 0.28–0.38 m.
+2. **The aim point itself moved**, so this is not quite like-for-like: a higher launch origin raycasts
+   further before it meets the ground, and the audit's range went 23.42 m → 23.89 m. The merged run is
+   aiming at a *further* point than the baseline did.
+
+**What is NOT yet known:** whether the residual is the solve, the `arc_angle_deg` rotation applied after
+it, or simply the harness's absolute threshold scaling badly with range.
+
+⚠️ **DELIBERATELY NOT "FIXED" BY THE UX LANE.** The two candidate actions are retuning ballistics or
+relaxing a pass mark, and `carriable.gd`/`carrier.gd`/`aim_probe.gd` are 🥊 PHYS's files — a UX lane
+loosening a threshold until its own merge goes green is exactly how a real regression gets buried.
+**Recommendation:** make the mark proportional to range (e.g. 2% of the aim distance, floored at 0.30 m)
+rather than absolute, then re-measure. If it still fails on the short rows, that is a solve bug.
+
 **B-143 · THE MID-GAME HUD WAS A DIFFERENT DESIGN LANGUAGE FROM THE GAME IT IS IN. [FIXED 2026-07-30 — first pass]**
 
 Reported from play: the HUD and mid-game UI *"kinda doesnt look like our theme (menu and lobby), it looks
@@ -1112,6 +1143,33 @@ exact repro rather than either silently fixing something in someone else's
 file or silently dropping it.
 
 ### P2 — open, carried over from the archive
+
+- **B-132 · The sight-line launch makes the Can's sidestep much more effective.** Found while
+  fixing the throw trajectory (see `carrier.gd::_throw_origin`), and **measured, not suspected**:
+  `tools/phys_probe.gd`, 12 full-charge throws at an evading Can, one variable changed.
+
+  | launch origin | throws connected | Can evading |
+  |---|---|---|
+  | the slipper's own position, hand height (before) | **9 / 12** | 48% of in-flight frames |
+  | the sight line, 0.5 m ahead of the eye | **1 / 12** | 66% |
+  | the sight line, 0.15 m ahead of the eye (shipped) | **5 / 12** | 64% |
+
+  Two separate mechanisms, and only one of them is fixed. Moving the launch FORWARD shortens the
+  horizontal distance `ai_controller.gd::_cond_slipper_incoming()` divides by to get its ETA — it
+  works entirely in the horizontal plane — so the throw enters the Can's `CAN_EVADE_LOOKAHEAD`
+  (0.6 s) window sooner. Cutting the offset to 0.15 recovers most of that. Moving the launch UP
+  does not have a cheap fix: a throw that starts 0.46 m higher arrives at a floor-level can on a
+  steeper line, so it crosses can-height over a shorter horizontal run and an unchanged sidestep
+  clears it more often. That is geometry, not a bug in either system.
+
+  ⚠️ **NOT retuned here, deliberately.** `Checklist.md`'s Phase 9 fairness log already names Can
+  evasion "the biggest single balance lever" and says a 0.3 s change in lookahead spans
+  "unhittable" to "never dodges" — so moving it is a balance decision that wants a win-rate run
+  behind it, not a side effect of a throw-feel fix. The two obvious levers are
+  `CAN_EVADE_LOOKAHEAD` and the profiles' own `launch_speed` (a faster throw is both flatter and
+  gives less warning). **Neither has been tried.** Note also that this only affects the AI Can —
+  a human-controlled Can has no auto-dodge, and aim accuracy against a stationary target is
+  unchanged at 0.18-0.31 m.
 
 - **B-13 · The match starts before anyone joins.** `_start_hosting()` calls `begin_next_round()`
   immediately. The lobby is the real fix — **U-4**.
