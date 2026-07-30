@@ -234,6 +234,22 @@ const GAMEPLAY_ACTIONS: Array[String] = [
 	"jump", "bump", "guard_dash", "special_ability", "grab", "ready_up",
 ]
 
+## ⚠️ THE ONE PAIR THAT IS ALLOWED TO SHARE A BUTTON, AND IT IS ONLY ALLOWED BECAUSE THE
+## SECTION BELOW MEASURES IT.
+##
+## 🧑 answered the other one on 2026-07-30: **Space is jump only**, so `bump` moved to F
+## (`project.godot`, plus a `settings_manager.gd` migration, because every settings.cfg on
+## disk still held `bump=32` and would have put it straight back). That leaves LEFT CLICK on
+## both `grab` and `special_ability` — which is DESIGNED: one button picks the tsinelas up
+## and then winds it up, the tutorial advertises "Q / LEFT CLICK · Special", and
+## `_check_charge_on_shared_button()` drives exactly that sequence and measures the charge
+## that comes out of it (0.807 peak, and 0 means the wind-up never started).
+##
+## Keyed on the sorted action list, not just the input, so this exempts THAT pair on THAT
+## button and nothing else — a third action landing on left click still fails, and so does
+## the same pair appearing on some other key.
+const EXPECTED_SHARED: Array[String] = ["mouse:1:grab,special_ability"]
+
 func _report_binding_conflicts() -> void:
 	# Keyed by a stable description of the physical input, so a keyboard key and
 	# a mouse button with the same numeric code cannot collide in this dictionary.
@@ -262,6 +278,12 @@ func _report_binding_conflicts() -> void:
 	for key in owners:
 		var actions: Array = owners[key]
 		if actions.size() > 1:
+			var sorted := (actions as Array).duplicate()
+			sorted.sort()
+			if EXPECTED_SHARED.has("%s:%s" % [key, ",".join(sorted)]):
+				print("  shared    : %s -> %s (intended — see EXPECTED_SHARED)"
+					% [key, ", ".join(actions)])
+				continue
 			clashes.append("%s -> %s" % [key, ", ".join(actions)])
 	_checks += 1
 	if clashes.is_empty():
