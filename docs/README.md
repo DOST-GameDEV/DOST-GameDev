@@ -18,7 +18,10 @@ the deepest documentation in this project and they stay.
 
 1. **Branch from `feature/objects-overhaul-v2`** for overhaul work; `integration` is the
    stable line. Never from `main`.
-2. **Commit authorship is `M4tyu633 <matthewtlabrador@gmail.com>`.** No co-author trailer.
+2. **Every commit is authored by `M4tyu633 <matthewtlabrador@gmail.com>` and nobody else.**
+   No `Co-Authored-By:` trailer, no "Generated with", no 🤖 line, no model or tool named
+   anywhere in the message. This is submitted as one person's work and the history has to
+   read that way. Full rule in `Agent_Prompts.md`.
 3. **Feature commits do not bump `application/config/version`.** The merge does.
 4. **Never claim a verification you did not perform.** Say "written", "measured" or
    "played", and mean it.
