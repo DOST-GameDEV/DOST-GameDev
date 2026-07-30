@@ -7,7 +7,7 @@ deleted, not archived.
 
 **What this branch is.** `feature/objects-overhaul` was built in one uncontrolled session.
 The *code* it produced is good and is carried here in full. The *process* is discarded and
-replaced by the six `build xxx` lanes below, run in a fixed order. Read § SALVAGE before
+replaced by the seven `build xxx` lanes below, run in order. Read § SALVAGE before
 you assume anything is unbuilt: most of the checklist is already written and almost none of
 it is measured.
 
@@ -84,8 +84,9 @@ same commit:
 * Render the screen and look at it. "The control is added to the tree" is not the claim;
   "I can see it and it does the thing" is.
 
-**Worked example — spectator, which is `build ux`'s first item.** The camera exists and
-today only `--spectate` starts it. It needs a **SPECTATE toggle button in the lobby**:
+**Worked example — spectator, which is 👁️ `build spec`, the whole of lane 2.** The camera
+exists and today only `--spectate` starts it. It needs a **SPECTATE toggle button in the
+lobby**:
 visible on the multiplayer lobby *and* on the pre-match setup screen, off by default,
 showing its own state when toggled, releasing the seat, and carrying that choice into the
 match.
@@ -94,19 +95,26 @@ finish it, and put one in `multiplayer_setup.gd` too.
 
 ---
 
-## EXECUTION ORDER — fixed, not negotiable
+## EXECUTION ORDER
 
-Mechanics → Visuals → Physics → Fairness. A lane may not start until the one above it has
-committed.
+Mechanics → Visuals → Physics → Fairness. **A lane may not start until the one above it has
+committed.**
+
+⚠️ **One deviation, taken on human instruction 2026-07-31:** 👁️ `build spec` is a
+Visuals-phase lane running at position **2**, ahead of the rest of Mechanics, because the
+spectator camera is needed for filming as soon as possible. It is safe to move because it
+depends on nothing else on this board and nothing depends on it. Recorded here rather than
+made silently. The rest of the order stands.
 
 | # | Lane | Model · effort | Owns | Why this model |
 |---|---|---|---|---|
 | **1** | 🎮 **`build mech`** | **Opus 5 · high** | the rules of the game | Deletes the defence's only win and replaces the whole win-condition set. Novel rule design under ambiguity, no lookup-able answer, and getting the feel wrong here costs the video. |
-| **2** | 💥 **`build abil`** | **Sonnet 5 · high** | the five object verbs | Exact radii, durations and host-side resolution against a spec that already exists. High, not medium: a shockwave that resolves on the wrong peer looks perfect solo and does nothing on LAN. |
-| **3** | 🖥️ **`build ux`** | **Sonnet 5 · high** | every screen, spectator, the net teardown | Three of its items are races that only reproduce across peers. High because "it works on my machine" is the exact failure mode. |
-| **4** | 🎨 **`build model`** | **Opus 5 · medium** | the lata and tsinelas classes, their models and their names | Upgraded 2026-07-31: it now authors real geometry, sets the roster size and names it. *"Does this silhouette read as a sardine tin from across a street, and is that name right in Filipino?"* is taste and cultural specificity — the one thing Sonnet was picked for not needing. Medium, not high: the difficulty is judgement per object, not depth on any one. |
-| **5** | 🥊 **`build phys`** | **Sonnet 5 · high** | contact, knockback, ragdoll read | Executing against measured targets with a documented authority trap list. |
-| **6** | ⚖️ **`build fair`** | **Opus 5 · xhigh** | every number, the AI | **LAST. ALWAYS.** The only lane allowed to move a shipped number, and the only one that can judge whether the objects are actually fun. Being wrong here costs the submission. |
+| **2** | 👁️ **`build spec`** | **Sonnet 5 · high** | spectator, and the lobby toggle that reaches it | **Pulled forward on human instruction — needed as soon as possible.** Split out of `build ux` because it depends on nothing else on the board and nothing depends on it. High, not medium: the seat and ready-gate exclusion is a cross-peer race, and "works solo" is exactly how it has failed so far. |
+| **3** | 💥 **`build abil`** | **Sonnet 5 · high** | the five object verbs | Exact radii, durations and host-side resolution against a spec that already exists. High, not medium: a shockwave that resolves on the wrong peer looks perfect solo and does nothing on LAN. |
+| **4** | 🖥️ **`build ux`** | **Sonnet 5 · high** | every other screen, the net teardown | Three of its items are races that only reproduce across peers. High because "it works on my machine" is the exact failure mode. |
+| **5** | 🎨 **`build model`** | **Opus 5 · medium** | the lata and tsinelas classes, their models and their names | Upgraded 2026-07-31: it now authors real geometry, sets the roster size and names it. *"Does this silhouette read as a sardine tin from across a street, and is that name right in Filipino?"* is taste and cultural specificity — the one thing Sonnet was picked for not needing. Medium, not high: the difficulty is judgement per object, not depth on any one. |
+| **6** | 🥊 **`build phys`** | **Sonnet 5 · high** | contact, knockback, ragdoll read | Executing against measured targets with a documented authority trap list. |
+| **7** | ⚖️ **`build fair`** | **Opus 5 · xhigh** | every number, the AI | **LAST. ALWAYS.** The only lane allowed to move a shipped number, and the only one that can judge whether the objects are actually fun. Being wrong here costs the submission. |
 
 ---
 
@@ -148,7 +156,8 @@ code ships **8.0 s**. `build abil` decides and records which, in `Design.md` §1
 |---|---|
 | 🎮 `build mech` | `characters/character_base.gd` · `carrier.gd` · `carriable.gd` · `hitbox.gd` · `hurtbox.gd` · `throw_profile.gd` · `systems/round_manager.gd` · `match_manager.gd` · `Design.md` |
 | 💥 `build abil` | `scripts/abilities/**` · the ability hook sites in `character_base.gd` · `Design.md` §5.3/§6 |
-| 🖥️ `build ux` | `scripts/ui/**` · `systems/spectator_camera.gd` · **`systems/camera_rig.gd`** · `trajectory_preview.gd` · `network_manager.gd` · `game_launch.gd` · `main.gd` · `settings_manager.gd` · `tools/ui/**` |
+| 👁️ `build spec` | `systems/spectator_camera.gd` · `ui/match_setup.gd` · `ui/multiplayer_setup.gd` · the seat/identify path in `network_manager.gd` · `game_launch.gd` · `main.gd` · the no-character branches of `ui/hud.gd` |
+| 🖥️ `build ux` | `scripts/ui/**` · **`systems/camera_rig.gd`** · `trajectory_preview.gd` · `network_manager.gd` · `settings_manager.gd` · `tools/ui/**` |
 | 🎨 `build model` | `character_visual.gd` · `character_nameplate.gd` · `systems/character_roster.gd` `CANS`/`SLIPPERS` tables · `scenes/characters/visuals/**` · `assets/models/**` · `tools/models/**` · `Art_Direction.md` |
 | 🥊 `build phys` | `character_base.gd` movement/collision block · `carriable.gd` flight · `tools/phys_probe.gd` · `settle_probe.gd` · `aim_probe.gd` |
 | ⚖️ `build fair` | **any number in any file** · `systems/ai_controller.gd` · `tools/ai_probe.gd` · `hit_probe.gd` · `round_probe.gd` |
@@ -157,11 +166,17 @@ code ships **8.0 s**. `build abil` decides and records which, in `Design.md` §1
 writes it first and completely, `build phys` takes only the movement and collision block
 after, `build fair` moves numbers last.
 
-**Both cameras are 🖥️ `build ux`'s** — `spectator_camera.gd` (new, §3.1–3.2) and
-`camera_rig.gd` (the gameplay camera). ⚠️ **The camera directive is not negotiable:** Person
-→ first person, Prop → third person, derived from `is_person` at `_ready()`, no toggle, no
-export, no per-map exception. The spectator is not an exception to it either — it is a
-separate camera for a unit that has no body, not a third mode on the rig.
+**The two cameras are split.** `spectator_camera.gd` is 👁️ `build spec`'s (§2);
+`camera_rig.gd`, the gameplay camera, is 🖥️ `build ux`'s. ⚠️ **The camera directive is not
+negotiable:** Person → first person, Prop → third person, derived from `is_person` at
+`_ready()`, no toggle, no export, no per-map exception. The spectator is not an exception to
+it either — it is a separate camera for a unit that has no body, not a third mode on the
+rig, which is why the two files can sit in different lanes at all.
+
+**`build spec` and `build ux` share four files** — `match_setup.gd`,
+`multiplayer_setup.gd`, `network_manager.gd` and `hud.gd`. `build spec` runs first and takes
+only the seat, the toggle and the no-character branches; `build ux` takes everything else
+afterwards and must read what `spec` left before editing them.
 
 ---
 
@@ -192,31 +207,48 @@ Lata
 - [ ] 1.13 Each recovery back inside permanently shortens the **next** countdown by **0.75 s**, stacking **5×** to a floor of **1.25 s**
 - [ ] 1.14 The defence has a real answer to a displaced lata it cannot itself move
 
-### 2 · 💥 `build abil` — Abilities *(Sonnet 5 · high)*
+### 2 · 👁️ `build spec` — Spectator *(Sonnet 5 · high)* — **RUN THIS NEXT**
 
-- [ ] 2.1 **Can-Smash** — ground smash, shockwave in a stated radius, **1–2 s** stun on incoming slippers and players, telegraphed wind-up. Base cooldown: resolve 3.0 s (brief) vs 8.0 s (code) and record why
-- [ ] 2.2 **Can-Dash** — one evasion per round
-- [ ] 2.3 **Ground Smash** — the tsinelas dives downward, shockwave on landing, stun on hit, cooldown
-- [ ] 2.4 **Ground Smash direct hit on the lata = the attacking side wins instantly**, and it is bounded on more than one side
-- [ ] 2.5 **Charged self-launch** — a loose tsinelas charges a mini-jump and flings *itself*
-- [ ] 2.6 Every shockwave resolves **host-side** through `AbilityUtils.spawn_pulse_hitbox`
-- [ ] 2.7 The six roster skin abilities still work beside the new role verbs
+> **Split out of `build ux` on 2026-07-31 at the human's request: spectator is needed as
+> soon as possible.** It is genuinely independent of everything else on the board — no
+> mechanic, no ability and no model depends on it, and nothing it touches depends on them.
+> Small, self-contained, run it the moment `build mech` commits.
+>
+> ⚠️ **This runs a Visuals-phase item before the Mechanics phase finishes** (`build abil` is
+> still Mechanics). That is a deliberate deviation from the fixed order, taken on human
+> instruction and recorded here rather than made silently.
 
-### 3 · 🖥️ `build ux` — Screens, spectator, teardown *(Sonnet 5 · high)*
+- [ ] 2.1 **A SPECTATE toggle button in the lobby** — on the multiplayer lobby *and* the pre-match setup screen, in the focus order, showing its own state, in Single Player and Multiplayer, host and client. Rendered and looked at
+- [ ] 2.2 **Spectator mode** — free-flying camera, no physical model, clips through all geometry, flies anywhere. Entered from 2.1, not from `--spectate`
+- [ ] 2.3 Claims no seat, excluded from the ready gate, its slot bot-filled — verified with a real second peer, not just solo
+- [ ] 2.4 Leaving and re-entering the lobby returns the seat cleanly; a spectating host still runs the match
+- [ ] 2.5 The HUD is sane with no character — no null character lines, no orphaned role colour
+- [ ] 2.6 It is filmable: free look, a follow-target cycle, and a speed control that makes wide shots and close shots both possible
 
-**Do 3.1 and 3.2 first.** Everything in this section is bound by the REACHABILITY RULE.
+### 3 · 💥 `build abil` — Abilities *(Sonnet 5 · high)*
 
-- [ ] 3.1 **A SPECTATE toggle button in the lobby** — on the multiplayer lobby *and* the pre-match setup screen, in the focus order, showing its own state, in Single Player and Multiplayer, host and client. Rendered and looked at
-- [ ] 3.2 **Spectator mode** — free-flying camera, no physical model, clips through all geometry; claims no seat, excluded from the ready gate, its slot bot-filled. Entered from 3.1, not from `--spectate`
-- [ ] 3.3 **UI countdown for every stun and status effect** — a stun the player cannot time is a stun they cannot play around
-- [ ] 3.4 **Character-select desync** — lata and tsinelas picks reliably reach the match on every path: solo, host, client, and an AI-held Prop seat beside a human. The model must not change mid-match
-- [ ] 3.5 **Host disconnect** — the host announces it is leaving before closing the socket; clients bounce out immediately instead of waiting out the ENet timeout. Wired to the quit dialog
-- [ ] 3.6 **Trajectory preview** visible for throws and charge-ups, integrating the *same* solve the throw uses
-- [ ] 3.7 Charge/meter readouts for the bump meter, the stamina bar and the throw lock
-- [ ] 3.8 Max power shown in the custom slipper description
-- [ ] 3.9 **Sweep for orphans.** Every system the other lanes built has a menu entry point a player can find — spectator, hanger, skins, stamina, the smash cooldowns. Anything reachable only by flag or autoload is filed here and fixed
+- [ ] 3.1 **Can-Smash** — ground smash, shockwave in a stated radius, **1–2 s** stun on incoming slippers and players, telegraphed wind-up. Base cooldown: resolve 3.0 s (brief) vs 8.0 s (code) and record why
+- [ ] 3.2 **Can-Dash** — one evasion per round
+- [ ] 3.3 **Ground Smash** — the tsinelas dives downward, shockwave on landing, stun on hit, cooldown
+- [ ] 3.4 **Ground Smash direct hit on the lata = the attacking side wins instantly**, and it is bounded on more than one side
+- [ ] 3.5 **Charged self-launch** — a loose tsinelas charges a mini-jump and flings *itself*
+- [ ] 3.6 Every shockwave resolves **host-side** through `AbilityUtils.spawn_pulse_hitbox`
+- [ ] 3.7 The roster's per-class abilities still work beside the new role verbs
 
-### 4 · 🎨 `build model` — Models, classes and names *(Opus 5 · medium)*
+### 4 · 🖥️ `build ux` — Screens and teardown *(Sonnet 5 · high)*
+
+Everything in this section is bound by the REACHABILITY RULE. Spectator is `build spec`'s;
+do not re-open it.
+
+- [ ] 4.1 **UI countdown for every stun and status effect** — a stun the player cannot time is a stun they cannot play around
+- [ ] 4.2 **Character-select desync** — lata and tsinelas picks reliably reach the match on every path: solo, host, client, and an AI-held Prop seat beside a human. The model must not change mid-match
+- [ ] 4.3 **Host disconnect** — the host announces it is leaving before closing the socket; clients bounce out immediately instead of waiting out the ENet timeout. Wired to the quit dialog
+- [ ] 4.4 **Trajectory preview** visible for throws and charge-ups, integrating the *same* solve the throw uses
+- [ ] 4.5 Charge/meter readouts for the bump meter, the stamina bar and the throw lock
+- [ ] 4.6 Max power shown in the custom tsinelas description
+- [ ] 4.7 **Sweep for orphans.** Every system the other lanes built has a menu entry point a player can find — hanger, classes, stamina, the smash cooldowns. Anything reachable only by flag or autoload is filed here and fixed
+
+### 5 · 🎨 `build model` — Models, classes and names *(Opus 5 · medium)*
 
 > ⚠️ **THE "NO NEW BASE MESH" LAW IS LIFTED FOR THIS LANE.** Human directive, 2026-07-31:
 > *"those were just placeholders."* `lata.obj` and `tsinelas.obj` are one mesh each, and
@@ -237,36 +269,36 @@ Lata
 > shifts every index after it** — if you do it, do it in one commit, check every default and
 > saved pick that names an index, and say so in § LOG.
 
-- [ ] 4.1 **A lata base mesh per class, each recognisably a specific Filipino tin** — the silhouette does the work, not the tint. Sardinas, gatas, biskwit, pintura, kape, softdrink: all different profiles, all readable from across the arena
-- [ ] 4.2 **A tsinelas base mesh per class, with genuinely different shapes** — a bakya is a carved wooden clog, not a tinted rubber flip-flop. Render the tsinelas types real Tumbang Preso is played with
-- [ ] 4.3 **Every class is Filipino-themed and newly named by you** — the `name` field in Filipino, specific enough that a player from the street recognises it. **Taglines and everything else stay English.** Rewrite `CANS` / `SLIPPERS` in `character_roster.gd`
-- [ ] 4.4 **The roster size is your call** — final count of lata and tsinelas classes decided, justified in § LOG, and consistent everywhere an index is assumed
-- [ ] 4.5 Tsinelas **visibly bigger** in game
-- [ ] 4.6 A **hanger** in tsinelas customisation that provably cannot affect physics
-- [ ] 4.7 Junk and wear still bolted on per class where it adds character — the attachment system stays, it just stops carrying the whole job alone
-- [ ] 4.8 **Render every class and look at it.** Nothing here is `[x]` without a screenshot
-- [ ] 4.9 Every class reads at gameplay camera distance, not just in the preview
-- [ ] 4.10 Collision is unchanged by any of it — `_COLLISION_BY_ROLE` still sizes every shape, and the dent meshes still line up with the new lata
+- [ ] 5.1 **A lata base mesh per class, each recognisably a specific Filipino tin** — the silhouette does the work, not the tint. Sardinas, gatas, biskwit, pintura, kape, softdrink: all different profiles, all readable from across the arena
+- [ ] 5.2 **A tsinelas base mesh per class, with genuinely different shapes** — a bakya is a carved wooden clog, not a tinted rubber flip-flop. Render the tsinelas types real Tumbang Preso is played with
+- [ ] 5.3 **Every class is Filipino-themed and newly named by you** — the `name` field in Filipino, specific enough that a player from the street recognises it. **Taglines and everything else stay English.** Rewrite `CANS` / `SLIPPERS` in `character_roster.gd`
+- [ ] 5.4 **The roster size is your call** — final count of lata and tsinelas classes decided, justified in § LOG, and consistent everywhere an index is assumed
+- [ ] 5.5 Tsinelas **visibly bigger** in game
+- [ ] 5.6 A **hanger** in tsinelas customisation that provably cannot affect physics
+- [ ] 5.7 Junk and wear still bolted on per class where it adds character — the attachment system stays, it just stops carrying the whole job alone
+- [ ] 5.8 **Render every class and look at it.** Nothing here is `[x]` without a screenshot
+- [ ] 5.9 Every class reads at gameplay camera distance, not just in the preview
+- [ ] 5.10 Collision is unchanged by any of it — `_COLLISION_BY_ROLE` still sizes every shape, and the dent meshes still line up with the new lata
 
-### 5 · 🥊 `build phys` — Contact and readability *(Sonnet 5 · high)*
+### 6 · 🥊 `build phys` — Contact and readability *(Sonnet 5 · high)*
 
-- [ ] 5.1 **Waiting-screen phasing** — objects no longer pass through each other pre-round
-- [ ] 5.2 Can knockback **measured**, not predicted, against the ~1 m target
-- [ ] 5.3 **A knocked-down lata visibly rolls.** The current read — "hard to tell it fell" — is the bug being fixed
-- [ ] 5.4 Collision tuning for the enlarged tsinelas: capsule, hurtbox and hitbox all agree with the new visual scale
-- [ ] 5.5 Bump displacement measured for tap and full charge
-- [ ] 5.6 The preview arc and the thrown arc land in the same place
+- [ ] 6.1 **Waiting-screen phasing** — objects no longer pass through each other pre-round
+- [ ] 6.2 Lata knockback **measured**, not predicted, against the ~1 m target
+- [ ] 6.3 **A knocked-down lata visibly rolls.** The current read — "hard to tell it fell" — is the bug being fixed
+- [ ] 6.4 Collision tuning for the enlarged tsinelas: capsule, hurtbox and hitbox all agree with the new visual scale
+- [ ] 6.5 Bump displacement measured for tap and full charge
+- [ ] 6.6 The preview arc and the thrown arc land in the same place
 
-### 6 · ⚖️ `build fair` — Balance and AI *(Opus 5 · xhigh)* — **RUNS LAST, ALONE**
+### 7 · ⚖️ `build fair` — Balance and AI *(Opus 5 · xhigh)* — **RUNS LAST, ALONE**
 
-- [ ] 6.1 A fairness run **on this branch**. No number for these rules exists yet; none may be quoted until it does
-- [ ] 6.2 The Defender is no longer the strongest role — proven by win rate, not by argument
-- [ ] 6.3 The objects have equal presence: a round can be decided by the lata or the tsinelas without either Person acting
-- [ ] 6.4 Final pass on every cooldown, stun duration, hit penalty and meter
-- [ ] 6.5 **No stunlock.** Prove it by naming the chain, not by asserting it
-- [ ] 6.6 Named counterplay for every powerful object action
-- [ ] 6.7 The AI uses every new verb — bump meter, smash, dash, dive, self-launch, sprint, and driving the lata home
-- [ ] 6.8 Legacy AI constants derived from the old `SPEED = 6.0` re-derived or explicitly kept
+- [ ] 7.1 A fairness run **on this branch**. No number for these rules exists yet; none may be quoted until it does
+- [ ] 7.2 The Defender is no longer the strongest role — proven by win rate, not by argument
+- [ ] 7.3 The objects have equal presence: a round can be decided by the lata or the tsinelas without either Person acting
+- [ ] 7.4 Final pass on every cooldown, stun duration, hit penalty and meter
+- [ ] 7.5 **No stunlock.** Prove it by naming the chain, not by asserting it
+- [ ] 7.6 Named counterplay for every powerful object action
+- [ ] 7.7 The AI uses every new verb — bump meter, smash, dash, dive, self-launch, sprint, and driving the lata home
+- [ ] 7.8 Legacy AI constants derived from the old `SPEED = 6.0` re-derived or explicitly kept
 
 ---
 
@@ -305,9 +337,52 @@ Each block is paste-ready. Set model and effort first.
 
 </details>
 
+<details><summary>👁️ <b><code>build spec</code></b> — Spectator · Sonnet 5 · high — <b>RUN THIS NEXT</b></summary>
+
+> You are a Godot 4.7 gameplay engineer on **Tumbang Preso** — 2v2 Filipino street game,
+> GDScript, LAN over ENet, host-authoritative. Repo:
+> `C:\Users\matth\Documents\GitHub\DOST-GameDev`, branch `feature/objects-overhaul-v2`.
+>
+> Read `docs/README.md` and `docs/Agent_Prompts.md` § HOW TO RUN A LANE, § THE REACHABILITY
+> RULE, § SALVAGE, § PATHS and § CHECKLIST §2 — those six boxes are your whole task list.
+>
+> **Why you exist, and why you are urgent.** A gameplay video is being recorded off this
+> branch and there is currently no way to film the match from outside it. You are a small,
+> self-contained lane pulled ahead of the rest of the board for exactly that reason.
+>
+> Build **spectator mode**: a free-flying camera with no body, no collision and no physics
+> layer, so it clips through all geometry by construction rather than by a mask. It must fly
+> anywhere, in **both Single Player and Multiplayer**.
+>
+> **It is entered from a SPECTATE toggle button in the lobby, not from a command-line flag.**
+> `scripts/systems/spectator_camera.gd` already exists and boots, and today only
+> `--spectate` reaches it — which is the exact failure § THE REACHABILITY RULE describes.
+> `ui/match_setup.gd` already builds a toggle in code that has never been rendered: finish
+> that one, add one to `ui/multiplayer_setup.gd`, put both in the focus order, and look at
+> them.
+>
+> Seat −1 is the spectator seat: claim no seat, be excluded from the ready count, and let
+> the vacated slot be AI-filled by the path that already fills empty slots. **That exclusion
+> has never run beside a real second peer** — verify it with two, not with one.
+>
+> It has to be usable as a camera, not just present: free look, a follow-target cycle, and a
+> speed control, so both wide shots and close shots are possible. And the HUD must be sane
+> for a unit with no character.
+>
+> ⚠️ **`build mech` owns `character_base.gd`, `round_manager.gd`, `carrier.gd`,
+> `carriable.gd` and `Design.md`. Do not touch them** — if you need something from one, file
+> it in § LOG instead. ⚠️ **`build ux` runs after you** and shares `match_setup.gd`,
+> `multiplayer_setup.gd`, `network_manager.gd` and `hud.gd`: take only the seat, the toggle
+> and the no-character branches, and say in § LOG what you left.
+>
+> Prefer building controls in code over editing a `.tscn`. Tick §2, append to § LOG.
+> Do not spawn subagents.
+
+</details>
+
 <details><summary>💥 <b><code>build abil</code></b> — Abilities · Sonnet 5 · high</summary>
 
-> Same project, same branch, same reading rules. Your tasks are § CHECKLIST §2, and the
+> Same project, same branch, same reading rules. Your tasks are § CHECKLIST §3, and the
 > current numbers are `Design.md` §5.3 and §6.
 >
 > **Why you exist.** The objects need verbs of their own, powerful enough that a round can
@@ -327,33 +402,28 @@ Each block is paste-ready. Set model and effort first.
 > from the can", which is the opposite of this game.
 >
 > Resolve the Can-Smash cooldown conflict in § SALVAGE. You have final say on radii,
-> durations and cooldowns — record each decision. Tick §2, append to § LOG.
+> durations and cooldowns — record each decision. Tick §3, append to § LOG.
 > Do not spawn subagents.
 
 </details>
 
-<details><summary>🖥️ <b><code>build ux</code></b> — Screens, spectator, teardown · Sonnet 5 · high</summary>
+<details><summary>🖥️ <b><code>build ux</code></b> — Screens and teardown · Sonnet 5 · high</summary>
 
-> Same project, same branch, same reading rules. Your tasks are § CHECKLIST §3.
+> Same project, same branch, same reading rules. Your tasks are § CHECKLIST §4.
 >
-> **Why you exist.** A gameplay video is being recorded off this branch. Three things
-> currently spoil it: a player cannot see how long they are stunned, the character the
-> player picked is not the character that loads, and there is no way to film the match
-> from outside it.
+> **Why you exist.** A gameplay video is being recorded off this branch. Two things
+> currently spoil it: a player cannot see how long they are stunned, and the character the
+> player picked is not the character that loads.
 >
 > **§ THE REACHABILITY RULE applies to every line you write.** A screen nobody can get to
 > is not a feature. Name the entry point first, wire it in the same commit, render it and
 > look at it.
 >
-> Five pieces of work, **spectator first**:
-> * **Spectator mode, entered from a SPECTATE toggle button in the lobby.** The camera
->   itself exists (`spectator_camera.gd`) and today only the `--spectate` command-line flag
->   starts it, which is exactly the failure the rule above describes. Put a real toggle on
->   the multiplayer lobby and on the pre-match setup screen — `match_setup.gd` already
->   builds one in code that has never been rendered. Free-flying camera, no body, no
->   collision, clips through everything, Single Player and Multiplayer. Seat −1: no seat
->   claimed, out of the ready count, slot bot-filled. It has never run beside a real second
->   peer.
+> ⚠️ **Spectator is 👁️ `build spec`'s and is already done — do not re-open it.** You share
+> `match_setup.gd`, `multiplayer_setup.gd`, `network_manager.gd` and `hud.gd` with that
+> lane: read its § LOG entry and what it left before you edit any of the four.
+>
+> Four pieces of work:
 > * **Status timers** — one visible countdown per live effect. This is most of what "the
 >   defender feels overpowered" actually was.
 > * **The character-select desync** — the human's report is that the lata and tsinelas
@@ -368,14 +438,14 @@ Each block is paste-ready. Set model and effort first.
 >   same solve `carriable.gd` throws with. A second ballistics path that disagrees with
 >   the first is worse than no preview.
 >
-> Prefer building controls in code over editing a `.tscn`. Tick §3, append to § LOG.
+> Prefer building controls in code over editing a `.tscn`. Tick §4, append to § LOG.
 > Do not spawn subagents.
 
 </details>
 
 <details><summary>🎨 <b><code>build model</code></b> — Models, classes and names · Opus 5 · medium</summary>
 
-> Same project, same branch, same reading rules. Your tasks are § CHECKLIST §4; the laws
+> Same project, same branch, same reading rules. Your tasks are § CHECKLIST §5; the laws
 > are `Art_Direction.md` §1 (colour), §2 (scale) and §4 (attachments).
 >
 > **Why you exist.** `lata.obj` and `tsinelas.obj` are placeholders, and every class is one
@@ -420,13 +490,13 @@ Each block is paste-ready. Set model and effort first.
 > preview. Godot's `--headless` has no rendering device and returns blank captures — use
 > the plain exe.
 >
-> Tick §4, append to § LOG. Do not spawn subagents.
+> Tick §5, append to § LOG. Do not spawn subagents.
 
 </details>
 
 <details><summary>🥊 <b><code>build phys</code></b> — Contact and readability · Sonnet 5 · high</summary>
 
-> Same project, same branch, same reading rules. Your tasks are § CHECKLIST §5.
+> Same project, same branch, same reading rules. Your tasks are § CHECKLIST §6.
 >
 > **Why you exist.** The mechanics above are written and predicted; almost none of them
 > are measured. You are the lane that puts numbers on them and fixes what the numbers
@@ -444,7 +514,7 @@ Each block is paste-ready. Set model and effort first.
 >
 > Measure with the cheapest probe that actually looks at the thing, and apply the
 > project's impossible-number rule: if two numbers cannot both be true, the metric is the
-> bug. It has caught five harness faults here already. Tick §5, append to § LOG.
+> bug. It has caught five harness faults here already. Tick §6, append to § LOG.
 > Do not spawn subagents.
 
 </details>
@@ -454,7 +524,7 @@ Each block is paste-ready. Set model and effort first.
 > Same project, same branch, same reading rules. You are the **final lane**. Nothing runs
 > after you. Do this directly in one focused pass and **do not spawn subagents**.
 >
-> Your tasks are § CHECKLIST §6, and you have final authority over **every number in the
+> Your tasks are § CHECKLIST §7, and you have final authority over **every number in the
 > game** — that is your row in § PATHS and nobody else's.
 >
 > **Why you exist.** Two claims are being made about this branch and neither has been
@@ -473,7 +543,7 @@ Each block is paste-ready. Set model and effort first.
 > the new verbs and its behaviour has never been observed. Legacy constants derived from
 > the old `SPEED = 6.0` are flagged in-file and not re-derived.
 >
-> Tick §6, append to § LOG, and say plainly which conclusions are **measured** and which
+> Tick §7, append to § LOG, and say plainly which conclusions are **measured** and which
 > are **argued**.
 
 </details>
