@@ -149,6 +149,7 @@ func _ready() -> void:
 
 	await get_tree().create_timer(CONNECT_WAIT).timeout
 	_report_layers()
+	await _net_ready_up()
 
 	if _is_host:
 		await _drive_throws()
@@ -208,6 +209,40 @@ func _report_layers() -> void:
 ## target's own hurtbox centre is the most favourable shot the game can produce,
 ## which is the point: if THAT misses, nothing about the report is subtle.
 ## ---------------------------------------------------------------------------
+## ⚠️ NET-3 — THE LINE THIS PROBE WAS MISSING, AND WHY IT REPORTED 0 THROWS ON REAL PEERS.
+##
+## `_drive_throws()` waits on `RoundManager.round_active` and presses nothing. Nothing starts
+## a networked round any more: `main.gd::_enter_net_ready_phase()` holds the match until every
+## peer declares READY, and the host counts PEERS, not characters — so two probe instances sat
+## in the ready phase until they timed out, one of them printing 40 skipped attempts as "0
+## throws". The measurement was of the harness, not the game, and a local run passing 40/40
+## was never evidence otherwise.
+##
+## Polled rather than signal-driven, and `rpc_id(1)` rather than a local call, for the reason
+## `aim_probe.gd::_net_ready_up()` records: `_awaiting_net_ready` is only set once the host's
+## own phase RPC has landed here, which can be after this probe's first look. Copied from
+## that working implementation deliberately — this is the third probe to need it.
+##
+## No-ops in a single-instance run: without a session `_awaiting_net_ready` is never set and
+## `round_active`/`_counting_down` answer immediately, so the LOCAL path is untouched.
+func _net_ready_up() -> void:
+	var main := get_tree().current_scene
+	if main == null:
+		return
+	for _i in 60:
+		if not bool(main.get("_awaiting_net_ready")):
+			if RoundManager.round_active or bool(main.get("_counting_down")):
+				print("[%s] round is live" % _tag)
+				return
+		else:
+			main._rpc_declare_ready.rpc_id(1)
+		await get_tree().create_timer(0.5).timeout
+		if RoundManager.round_active:
+			print("[%s] round is live" % _tag)
+			return
+	print("[%s] ⚠️ never reached a live round — the ready phase did not complete, so any"
+		% _tag + " throw count below is a harness result and not a measurement")
+
 func _drive_throws() -> void:
 	var attempts := 0
 	while _records.size() < THROWS and attempts < THROWS * 6:

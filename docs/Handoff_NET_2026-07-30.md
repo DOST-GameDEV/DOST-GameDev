@@ -213,3 +213,138 @@ R-26's lobby half is marked 🔴 on this lane by the UX lane.
   and none by inspection: the client log calling unit `-4` human-owned while the host called it a
   bot; the client printing `can=kape(3)` while its unit reported `can_index=4`; and a text-overflow
   check reporting "every label fits" against a screenshot showing a control hanging off its panel.
+
+---
+
+# NET session 2 — 2026-07-30 (later the same day)
+
+Everything below was measured on this machine. Where a claim is networked, the run is two real
+ENet peers and the OBSERVING peer's numbers are the evidence; a local pass is not offered as any.
+
+## 🧑's two priorities, both closed
+
+### "ui goes below screen" — the WINDOW was 39px taller than the screen
+
+⚠️ **Nothing in `HUD.tscn` overflowed.** The screenshot 🧑 sent is **1920x1037**, not 1080. The YOU
+card lays out at y 908..1064 (`ui_layout_probe`, every row set, both presets; worst real content is
+146px inside a 156px anchor box) — inside 1080 and outside 1037. `project.godot` asks for a
+1920x1080 **windowed** window; add a title bar and a border and the decorated window measures
+1936x1119, so its bottom 39px sit under the taskbar and off the panel. `stretch/aspect="expand"`
+hides that from every layout check ever run here, because the CONTENT rect is still a perfect
+1920x1080 and every rect in it is exactly where it was designed to be.
+
+`GameLaunch.fit_window_to_usable_screen()`, once at boot: shrink the client area until the
+DECORATED window fits the usable rect (which already excludes the taskbar), then re-centre.
+Measured after: **1866x1080 decorated, enclosed, content rect still exactly 1920x1080** — the
+aspect is preserved on purpose, because under `expand` the aspect IS the layout. **Not fullscreen**
+(it would break two-instance LAN testing and needs the `project.godot` lock). An explicit
+`--resolution` makes it stand aside, or every capture harness in `tools/` would return images at a
+size nobody asked for.
+
+Then, on 🧑's follow-up (*"js raise it up all by a bit ... so that it doesnt keep on breaking bcz
+this is such a reoccuring issue"*): every HUD anchor moved off its edge and the bands are now
+**asserted** — bottom 64px (was 16), top 24px (was 8-12), sides 16. ⚠️ **And moving the timer card
+immediately broke something else**: TopCentre's bottom went to y 143 through a toast starting at
+132 — 11px, both fully on screen, both clearing every band, invisible to everything but the overlap
+check. `ToastLabel` is now in the HUD's DISJOINT group.
+
+⚠️ **The bands are scoped to `HUD.tscn`.** On the setup screens they fail two things that are
+correct (`BackButton`'s measured 44px of clearance, `Banner`'s deliberate bleed off the left edge).
+
+### "make sure other sees windup too, not js attacker FPP"
+
+⚠️ **The input half was already fixed and was not the complaint.** Measured first: a real physical
+left click reads as `special_ability` (runtime map `MOUSE:1, MOUSE:2, key:Q`), the charge runs
+0.398→1.000, and the FPP fist travels 0.25 m UP. What did not exist:
+
+| observable | value |
+|---|---|
+| third-person hand, full 1.4 s hold, charge 0.398→1.000 | **0.0000 m** |
+| control — same observable, walking, empty-handed | 0.2695 m |
+
+⚠️ **The documented fix was wrong, and measuring it is what showed that.** `carrier.gd` says a
+`"charge"` row in `ACTION_CLIPS` is "the whole remaining job"; `Art_Direction` §234 recommends
+holding a scrubbed frame of `holding-right-shoot`. Both were built, then all 32 clips on the rig
+were scanned: **both `*-shoot` clips move the arm bone EXACTLY zero** — they are not throw arcs on
+this rig — and the scrubbed build measured 0.0046 m over a full hold. A one-shot is the wrong shape
+anyway: it runs out inside a 1.1 s hold, and the clip it plays is the THROW.
+
+So the pose is a **bone rotation** — `arm-right` by `charge * CameraRig.VIEWMODEL_WINDUP_RAD`, read
+from that constant so the two views cannot disagree about how far back the arm went — driven by
+**`observed_charge_power()`, never `charge_power()`**, which is the whole difference between visible
+to everyone and visible to one peer. Four things the measurement caught: the SIGN was inverted
+(B-131 again, on a different node); the animator has to be **paused**, or whatever clip is playing
+re-applies the same bone and the pose lands only on frames where the clip has ended (0.0250 m while
+racing, against 0.62 rad); a held pose driven by a clock alone **freezes the body** if a stop is
+ever missed (a bot switched off mid-charge did exactly that), so the pose also requires NORMAL state
+and something in hand; and the first METRIC was the wrong one — `HandPoint` sits 0.076 from the
+shoulder joint, so it is a good DIRECTION indicator and a useless magnitude one. The pass rides on
+the arm ANGLE.
+
+**Two peers, and the OBSERVING peer is the one that matters** — it never runs `input_step()` for
+that unit, so every number comes off the observed clock and replicated state:
+`observed_charge_power 0.687 → 1.000`, `arm-right` swept **11.1° RISING with the hold**, hand up and
+back. Driver: observed 0.386 → 1.000, 21.8° of swing, FPP fist 0.31 m and up.
+
+New: `tools/charge_tell_probe.{gd,tscn}` (`-- --host` / `-- --join=IP`, `-- --scan` for the clip
+table). Five harness faults of its own were caught by the impossible-number rule before any of the
+above could be trusted, each written up at its own line in that file.
+
+⚠️ `scripts/characters/character_visual.gd` is **🩴 ART-FEEL's file** and has no lock row. Taken on
+🧑's direct instruction to fix this; flag on merge.
+
+## Space is jump only (🧑's call), and every settings.cfg follows
+
+Asked and answered: **Space = jump only**, `bump` moves to **F**. ⚠️ Changing `project.godot` alone
+would have fixed nothing for anyone who has played: every `settings.cfg` holds `bump=32` and
+`_load_and_apply()` re-applies it at startup — the same file-says-one-thing / runtime-says-another
+split that hid the left-click wind-up bug for a month. `SettingsManager._migrate_bindings()` drops
+**only** a saved row still equal to the OLD default (that is a stale copy of a default, not a
+choice), once, keyed on `bindings_version` written into the file. Measured: *"bindings migrated to
+v2 — dropped stale bump, bump_p1, project defaults stand"*, and nothing on the second run.
+
+**`input_probe` is GREEN, 11/11** (was 10/11), which also unblocks the "input_probe green" half of
+R-30's acceptance. Left click still drives `grab` **and** `special_ability`; that pair is exempted
+NARROWLY — keyed on the input AND the sorted action list — because it is designed, the tutorial
+advertises it, and this probe's own `_check_charge_on_shared_button()` measures what comes out of it
+(peak charge 0.807; 0.0 would mean the wind-up never started).
+
+## NET-5 closed — the difficulty tier crosses the wire on BOTH call sites
+
+Host HARD, client EASY, deliberately opposite. The client's FIRST look, with nothing in the lobby
+touched: **took HARD (2)**, which is `_rpc_sync_state`'s welcome packet and nothing else. The host
+then walks the selector and both peers read **NORMAL (1)** — that is `_rpc_sync_config`. Both are
+still NORMAL after START, in the match. Third field on the assertion `lobby_probe` already made; no
+new probe.
+
+⚠️ **PREV, not NEXT.** NEXT from HARD wraps to EASY, which is the client's own starting tier, so a
+client that ignored the broadcast entirely would land on the expected value and pass. PREV lands on
+NORMAL, which is neither peer's start.
+
+⚠️ **The first version failed the ready gate, and the game was right.** `_rpc_sync_config` CLEARS
+EVERY READY FLAG on purpose. Attributed by re-running the probe with the press removed (green), not
+by reading the code and assuming. The probe's beats moved; the game did not.
+
+## NET-3 — `hit_probe` presses READY now
+
+`hit_probe.gd:223` waited on `RoundManager.round_active` and pressed nothing, and nothing starts a
+networked round until every peer declares READY (`main.gd::_awaiting_net_ready`, and the host counts
+PEERS, not characters). Two instances sat in the ready phase and one printed 40 skipped attempts as
+"0 throws" — a harness result reported as a measurement. `_net_ready_up()` is copied from
+`aim_probe`'s working implementation (polled, `rpc_id(1)`; this is the third probe to need it) and
+no-ops on the local path. The host now prints `round is live` and drives throws.
+
+## Still open on this lane
+
+- **B-144** — `aim_probe` fails its own aim clause and exits 1. ⚠️ Answer the RANGE question first:
+  PITCHES aims at a wall ~24 m out while the throwing line is z = -6.0, and `phys_probe -- band` is
+  flat 3/3 on the can at gameplay range. If no throw ever travels 24 m, the audit's geometry is the
+  bug. Do NOT relax `PASS_WITHIN` — that recommendation was formally withdrawn.
+- **NET-1's observable** — `prop_trait` has still never been measured against anything physical.
+- **R-23..R-26**, and item 7 (`ai_controller.gd`: hold R-06 leg 3's sidestep rather than widening
+  it, `ATTACKER_LOB_OVERHOLD` should READ `Carrier.LOB_OVERHOLD_TIME`; `ai_probe`'s dents/blocked
+  columns disagree; `GameLaunch.game_mode` defaults to OPTION_B which has never been in a fairness
+  run at all — that is the larger hole).
+- **`downed_lucky` does not apply on a remote peer** — 0 of 28, from the previous session, still
+  unverified.
+- **R-30 stays 🔴** — but its `input_probe` dependency is now met.
