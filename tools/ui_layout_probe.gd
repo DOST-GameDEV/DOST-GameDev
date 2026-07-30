@@ -75,7 +75,11 @@ const DISJOINT: Dictionary = {
 	# The HUD's own version of the same risk: two team panels and the centre timer
 	# share one line across the top, and the team labels carry a role word that a
 	# longer one would widen.
-	"HUD.tscn": ["TopLeft", "TopCentre", "TopRight"],
+	# ⚠️ `ToastLabel` JOINED THIS LIST 2026-07-30, immediately earning its place: raising
+	# the timer card off the top edge to clear TOP_SAFE_BAND pushed its bottom to y 143,
+	# straight through a toast that starts at 132. Both were on screen, both cleared every
+	# band, and they overlapped by 11px — exactly the failure this assertion exists for.
+	"HUD.tscn": ["TopLeft", "TopCentre", "TopRight", "ToastLabel"],
 }
 
 ## The design size first, then the one that catches a layout which only works at it.
@@ -303,12 +307,31 @@ func _report(tag: String) -> void:
 		var rect := node.get_global_rect()
 		var inside := rect.position.y >= -1.0 and rect.end.y <= screen_size.y + 1.0 \
 			and rect.position.x >= -1.0 and rect.end.x <= screen_size.x + 1.0
+		# ⚠️ ON SCREEN IS NOT ENOUGH — see BOTTOM_SAFE_BAND. On screen by one pixel is
+		# exactly what kept breaking. Full-bleed controls (the downed vignette, the
+		# role-swap overlay) are exempt: a control that covers the screen by design has
+		# no edge margin to keep.
+		#
+		# ⚠️ THE BANDS ARE A HUD RULE, AND THE SCOPE IS DELIBERATE. Run against the setup
+		# screens they fail two things that are correct: `BackButton` sits 44px off the
+		# bottom of a column whose spacing was measured and signed off last session, and
+		# `Banner` is a pennant that BLEEDS off the left edge on purpose. Those screens are
+		# static, they were rendered and checked, and nothing on them has ever been reported
+		# clipped — the recurring failure is the mid-match HUD, drawn over a 3D scene, at
+		# whatever window size the player happens to have. Widening the rule to screens it
+		# was not written for would mean re-litigating a settled layout to satisfy a check.
+		var hud_only := String(SCREENS[_i][1]).get_file() == "HUD.tscn"
+		var full_bleed := rect.size.y >= screen_size.y - 1.0 \
+			or rect.size.x >= screen_size.x - 1.0
+		var clears := not hud_only or full_bleed or _clears_bands(rect, screen_size)
 		_checks += 1
-		if not inside:
+		if not inside or not clears:
 			_fails += 1
 		print("  %-14s x %6.0f..%-6.0f  y %6.0f..%-6.0f  %s" % [
 			name, rect.position.x, rect.end.x, rect.position.y, rect.end.y,
-			"ok" if inside else "** OFF SCREEN **"])
+			"ok" if inside and clears else ("** OFF SCREEN **" if not inside
+				else "** INSIDE AN EDGE BAND (top %.0f bottom %.0f sides %.0f) **"
+					% [TOP_SAFE_BAND, BOTTOM_SAFE_BAND, SIDE_SAFE_BAND])])
 	_report_overlaps(String(SCREENS[_i][1]).get_file())
 	_report_detail_fit()
 	_report_detail_topics()
@@ -544,6 +567,32 @@ const YOU_CARD_CASES := [
 ## forced OFF, so one case cannot inherit the previous one's height.
 const YOU_CARD_ROWS := ["GuardDashRow", "HoldLabel", "ChargeRow", "ResetChannelRow"]
 
+## ⚠️ THE EDGE BANDS NO HUD CONTROL MAY ENTER — 🧑, twice: *"pls make sure no ui goes below
+## screen bruh"*, then *"js raise it up all by a bit but not too much that it overlaps with
+## something so that it doesnt keep on breaking bcz this is such a reoccuring issue"*.
+##
+## `game_launch.gd::fit_window_to_usable_screen()` is what makes the whole content rect
+## visible; these bands are the cheap insurance on top of it, and they are the part that
+## stops this recurring. The HUD shipped with 16px of clearance at the bottom and 8-12px at
+## the top, which survives a 1920x1080 window and nothing else.
+##
+## Bottom is the widest band because that is where the failure has always been: a taskbar, a
+## title bar and TV overscan all eat the bottom of a frame, and the FPP viewmodel arms live
+## down there too. Top is smaller — the only thing above the HUD is window chrome, which the
+## fit function already accounts for, and the team cards are the read-at-a-glance row, so
+## pushing them further in costs more than it buys. Sides stay at 16: nothing has ever been
+## clipped horizontally, because under `stretch/aspect="expand"` the content rect only ever
+## grows WIDER than the design size.
+const BOTTOM_SAFE_BAND: float = 64.0
+const TOP_SAFE_BAND: float = 24.0
+const SIDE_SAFE_BAND: float = 16.0
+
+func _clears_bands(rect: Rect2, screen_size: Vector2) -> bool:
+	return rect.position.y >= TOP_SAFE_BAND - 1.0 \
+		and rect.end.y <= screen_size.y - BOTTOM_SAFE_BAND + 1.0 \
+		and rect.position.x >= SIDE_SAFE_BAND - 1.0 \
+		and rect.end.x <= screen_size.x - SIDE_SAFE_BAND + 1.0
+
 ## The content margins `you_card.gd::refresh()` puts on the card's wood stylebox at
 ## runtime — 14 left/right, 8 top/bottom. Restated rather than read because they are
 ## inline literals in that file, which is the UX lane's; if that padding changes,
@@ -600,7 +649,8 @@ func _report_you_card(screen_size: Vector2) -> void:
 		var inside := rect.end.y <= screen_size.y + 1.0 and rect.position.y >= -1.0 \
 			and rect.position.x >= -1.0 and rect.end.x <= screen_size.x + 1.0
 		var in_box := rect.end.y <= anchored.end.y + 1.0
-		if not inside or not in_box:
+		var clears := _clears_bands(rect, screen_size)
+		if not inside or not in_box or not clears:
 			_fails += 1
 		# ⚠️ THE CONTENT MINIMUM, NOT JUST THE LAID-OUT RECT. `Card` is stretched to
 		# the anchor box whenever its content is smaller, so the rect alone reports
@@ -616,6 +666,9 @@ func _report_you_card(screen_size: Vector2) -> void:
 		elif not in_box:
 			verdict = "** %.0f px BELOW ITS OWN ANCHOR BOX — grow_vertical must be BEGIN **" \
 				% (rect.end.y - anchored.end.y)
+		elif not clears:
+			verdict = "** %.0f px INSIDE THE %.0f px BOTTOM BAND **" \
+				% [rect.end.y - (screen_size.y - BOTTOM_SAFE_BAND), BOTTOM_SAFE_BAND]
 		print("  %-14s %-24s card y %6.1f..%-7.1f (content %.0f px in a %.0f px anchor box)  %s" % [
 			"YouCardRows", String(case[0]), rect.position.y, rect.end.y,
 			content, anchored.size.y, verdict])

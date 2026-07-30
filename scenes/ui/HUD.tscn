@@ -28,6 +28,13 @@ material = SubResource("ShaderMaterial_1")
 mouse_filter = 2
 visible = false
 
+; ⚠️ 28px OF CLEARANCE AT THE TOP, NOT 8-12 — the same edge-band rule the bottom cards
+; follow, applied to every HUD anchor rather than only the one that was reported. 🧑:
+; *"do it for all huds, js raise it up all by a bit but not too much that it overlaps
+; with something so that it doesnt keep on breaking bcz this is such a reoccuring
+; issue"*. Asserted by `ui_layout_probe.gd` against TOP_SAFE_BAND; the bands and the
+; reasoning for each number live there.
+;
 ; ═══ TEAM CARD, LEFT ═══ Restyled 2026-07-30 to the menu's wood-and-amber language.
 ;
 ; Reported from play: the mid-game HUD "kinda doesnt look like our theme (menu and
@@ -65,9 +72,9 @@ unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 0
 offset_left = 16.0
-offset_top = 12.0
+offset_top = 28.0
 offset_right = 16.0
-offset_bottom = 12.0
+offset_bottom = 28.0
 mouse_filter = 2
 
 [node name="Row" type="HBoxContainer" parent="TopLeft"]
@@ -126,9 +133,9 @@ anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -16.0
-offset_top = 12.0
+offset_top = 28.0
 offset_right = -16.0
-offset_bottom = 12.0
+offset_bottom = 28.0
 grow_horizontal = 0
 mouse_filter = 2
 
@@ -185,7 +192,7 @@ anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
 offset_left = -120.0
-offset_top = 8.0
+offset_top = 28.0
 offset_right = 120.0
 mouse_filter = 2
 
@@ -222,9 +229,9 @@ anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = -216.0
-offset_top = -100.0
+offset_top = -148.0
 offset_right = -16.0
-offset_bottom = -16.0
+offset_bottom = -64.0
 grow_horizontal = 0
 grow_vertical = 0
 theme_type_variation = &"HudCard"
@@ -273,6 +280,12 @@ visible = false
 unique_name_in_owner = true
 layout_mode = 1
 
+; ⚠️ PUSHED DOWN TO CLEAR THE TIMER — and it is only here because moving the timer card
+; 20px off the top edge closed the gap this label used to sit in. Measured by
+; `ui_layout_probe`'s own overlap check straight after that move: `TopCentre` ended at
+; y 143 and this began at 132, an 11px collision that no viewport or edge-band check can
+; see. `TopCentre` and `ToastLabel` are now a DISJOINT pair in that probe, so the next
+; nudge to either one fails instead of stacking two boxes down the middle of the screen.
 [node name="ToastLabel" type="Label" parent="."]
 unique_name_in_owner = true
 layout_mode = 1
@@ -280,7 +293,7 @@ anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
 offset_left = -200.0
-offset_top = 132.0
+offset_top = 160.0
 offset_right = 200.0
 theme_type_variation = &"HudToast"
 horizontal_alignment = 1
@@ -315,9 +328,9 @@ anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
 offset_left = -260.0
-offset_top = -110.0
+offset_top = -158.0
 offset_right = 260.0
-offset_bottom = -70.0
+offset_bottom = -118.0
 theme_type_variation = &"HudToast"
 horizontal_alignment = 1
 text = "Walk around freely. Press [R] when you're ready to start the round."
@@ -353,9 +366,9 @@ anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
 offset_left = -560.0
-offset_top = -184.0
+offset_top = -232.0
 offset_right = 560.0
-offset_bottom = -120.0
+offset_bottom = -168.0
 mouse_filter = 2
 visible = false
 
