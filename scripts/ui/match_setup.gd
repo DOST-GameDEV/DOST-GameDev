@@ -103,27 +103,30 @@ const LOCKED_MODULATE: Color = Color(1, 1, 1, 0.28)
 const MODES: Array[Dictionary] = [
 	{
 		"id": GameLaunchScript.GameMode.OPTION_B, "label": "CAPTURE",
-		"detail": "Knock the lata over and keep it down. A fall nobody rights in time ends the round, and five falls ends it outright. The taya wins by tagging the thrower, or by surviving the clock.",
+		"detail": "Knock the lata over and keep it down. A fall nobody rights in time ends the round, and five falls ends it outright. The defender wins by tagging the thrower, or by surviving the clock.",
 	},
 	{
 		"id": GameLaunchScript.GameMode.OPTION_A, "label": "DENTS",
-		"detail": "The lata carries a health bar instead. Dent it three times to win. The taya can beat a dent back out by standing it up, wins on the clock, or by knocking the tsinelas out of bounds.",
+		"detail": "The lata carries a health bar instead. Dent it three times to win. The defender can beat a dent back out by standing it up, wins on the clock, or by knocking the tsinelas out of bounds.",
 	},
 ]
 
 ## ---------------------------------------------------------------------------
-## R-09 · THE KALARO PICKER.
+## R-09 · THE BOT DIFFICULTY PICKER.
 ##
 ## `AIController.DIFFICULTY_TIERS` has been complete and unreachable for two passes.
 ## This is the screen half. ⚠️ It sits BESIDE map and mode and rides the SAME
 ## `_rpc_sync_config` broadcast, because it is a match-affecting value and a per-peer
 ## one is the bug 10.5's U-8 fixed twice. Do not give it its own RPC.
 ##
-## THE LABEL IS THE FILIPINO WORD AND THE GLOSS IS UNDERNEATH, which is the rule the
-## character roster already follows — and here it costs nothing, because the tier
-## names already carry the characterisation: *bata* is the kid, *astig* is the one who
-## wins. "EASY / NORMAL / HARD" would throw away a piece of the game's own voice for
-## no gain in clarity.
+## ⚠️ THE TIER NAMES WERE `BATA / NORMAL / ASTIG` AND ARE NOW ENGLISH — 🧑 human
+## call, 2026-07-30: *"only tagalog i want are names and possible skill, i dont
+## want sino or siya or stuff its so cringe."* The previous note here argued the
+## Filipino words carried characterisation worth keeping; that argument lost, and
+## it is recorded rather than deleted so nobody re-litigates it from scratch. The
+## characterisation now lives entirely in `detail`, which is where the measured
+## numbers already were. `lata`, `tsinelas` and the character/ability names stay
+## Filipino — those were named as the ones to keep.
 ##
 ## ⚠️ `detail` IS MEASURED, NOT ADJECTIVES. Every number below is the BALANCE lane's,
 ## from `Checklist.md` §Phase 9 RUN 12 and RUN 14 — the first runs in this project's
@@ -132,7 +135,7 @@ const MODES: Array[Dictionary] = [
 ## coin toss with extra steps; these three genuinely differ and the copy says how.
 const DIFFICULTIES: Array[Dictionary] = [
 	{
-		"id": 0, "label": "BATA",
+		"id": 0, "label": "EASY",
 		"detail": "The kid. Holds its post, aims where the lata is rather than where it is going, and overcommits often enough that you can learn to bait it. Measured the most beatable of the three: it blocks 29% of throws.",
 	},
 	{
@@ -140,7 +143,7 @@ const DIFFICULTIES: Array[Dictionary] = [
 		"detail": "The default, and the tier every balance number in this project was measured at. Reads your bearing, leads the lata, and blocks about 38% of what you throw.",
 	},
 	{
-		"id": 2, "label": "ASTIG",
+		"id": 2, "label": "HARD",
 		"detail": "The one who wins. Chases to the edge of its own box, leads almost perfectly, and barely ever makes a mistake. Measured: it blocks 62% of throws and rounds end fast, so expect to be tagged on the way in.",
 	},
 ]
@@ -159,6 +162,14 @@ const DIFFICULTIES: Array[Dictionary] = [
 @onready var difficulty_value_label: Label = %DifficultyValueLabel
 @onready var character_button: Button = %CharacterButton
 @onready var character_panel: CharacterSelect = %CharacterSelectPanel
+
+## The four config rows, as hover targets for the detail box — see
+## `_wire_detail_focus`. Referenced as whole rows rather than as their arrows so
+## that hovering the caption ("MAP:") counts too.
+@onready var map_row: Control = %MapRow
+@onready var mode_row: Control = %ModeRow
+@onready var difficulty_row: Control = %DifficultyRow
+@onready var fighter_row: Control = %FighterRow
 
 @onready var detail_label: Label = %DetailLabel
 @onready var primary_button: ArrowButton = %PrimaryButton
@@ -180,6 +191,14 @@ var _map_index: int = 0
 var _mode_index: int = 0
 ## R-09. Index into DIFFICULTIES, mirroring _map_index / _mode_index exactly.
 var _difficulty_index: int = 1
+
+## Which row the detail box is currently explaining. See `_refresh_detail`.
+## SEAT covers both the CHARACTER button and the four seat rows on the right —
+## they are one subject ("what am I playing, and what do my picks buy it").
+enum DetailTopic { MAP, MODE, DIFFICULTY, SEAT }
+## Opens on MAP: it is the top row, and the map is the only one of the four whose
+## explanation the player cannot infer from the value shown beside it.
+var _detail_topic: DetailTopic = DetailTopic.MAP
 
 # --- Networked lobby state ---------------------------------------------------
 # All three are host-authoritative and broadcast. On a client they are populated
@@ -232,6 +251,19 @@ func _ready() -> void:
 		# arrow_button.gd), these do not, so both halves are wired here.
 		seat_buttons[i].mouse_entered.connect(func() -> void: AudioManager.play("ui_hover"))
 
+	# One topic in the detail box, chosen by what is highlighted — see
+	# `_refresh_detail`. Wired AFTER the seat buttons above so their own
+	# `mouse_entered` audio is already connected and this only adds to it.
+	_wire_detail_focus(DetailTopic.MAP,
+		[map_row, map_prev_button, map_next_button])
+	_wire_detail_focus(DetailTopic.MODE,
+		[mode_row, mode_prev_button, mode_next_button])
+	_wire_detail_focus(DetailTopic.DIFFICULTY,
+		[difficulty_row, difficulty_prev_button, difficulty_next_button])
+	var seat_targets: Array[Control] = [fighter_row, character_button]
+	seat_targets.append_array(seat_buttons)
+	_wire_detail_focus(DetailTopic.SEAT, seat_targets)
+
 	primary_button.pressed.connect(_on_primary_pressed)
 	start_button.pressed.connect(_on_start_pressed)
 	back_button.pressed.connect(_on_back_pressed)
@@ -280,12 +312,13 @@ func _wire_selector(prev: TextureButton, next: TextureButton,
 func _setup_solo() -> void:
 	banner_label.text = "SINGLE PLAYER"
 	seat_heading.text = "YOUR CHARACTER"
-	# ⚠️ "BOT" IS GONE FROM THE WHOLE FRONT END. Human ask: rename it to something
-	# more immersive. KALARO is the Filipino word for the person you play with, and
-	# it is the right word here for a reason beyond flavour: these are not filler
-	# opponents, they are the other three kids in a 2v2, one of them on YOUR team.
-	# "BOT" said "this seat is empty"; KALARO says "somebody is playing it".
-	seat_hint.text = "A team is one Tao and one Gamit. The other three are kalaro, the kids from the street who fill in."
+	# ⚠️ THIS SAID "KALARO" AND NOW SAYS "BOT" AGAIN — 🧑 human call, 2026-07-30:
+	# *"can u change the tagalog kalaro to characters."* An earlier ask had gone
+	# the other way (rename BOT to something more immersive) and the reasoning is
+	# kept because it is still true — these are the other three kids in a 2v2, one
+	# of them on YOUR team, not filler opponents — but the newer instruction wins.
+	# The "kids from the street who fill in" clause carries that meaning now.
+	seat_hint.text = "A team is one person and one object. The other three are bots, the kids from the street who fill in."
 	primary_button.caption = "START MATCH"
 	start_button.visible = false
 	_refresh_seats()
@@ -302,7 +335,7 @@ func _setup_host() -> void:
 		seat_heading.text = "NOT HOSTING"
 		return
 	seat_heading.text = "LOBBY  ·  HOST %s" % _lan_address()
-	seat_hint.text = "You pick the map and the mode for everyone. Click a seat to move. Empty seats are played by kalaro."
+	seat_hint.text = "You pick the map and the mode for everyone. Click a seat to move. Empty seats are played by bots."
 	primary_button.caption = "READY"
 	start_button.visible = true
 	start_button.disabled = true
@@ -321,7 +354,7 @@ func _setup_host() -> void:
 
 func _setup_join() -> void:
 	banner_label.text = "LOBBY"
-	seat_hint.text = "The host picks the map and the mode. Click a free seat to move. Empty seats are played by kalaro."
+	seat_hint.text = "The host picks the map and the mode. Click a free seat to move. Empty seats are played by bots."
 	primary_button.caption = "READY"
 	start_button.visible = false
 	# A client may look at the host's map and mode but not change them — this is
@@ -440,7 +473,7 @@ func _first_free_seat() -> int:
 # every peer (`/root/MatchSetup`) because every peer loads this same scene —
 # the same arrangement the lobby it replaces used.
 
-## Host -> one new joiner: the whole board at once, map, mode and kalaro tier
+## Host -> one new joiner: the whole board at once, map, mode and bot tier
 ## included.
 ## ⚠️ R-09: THE TIER HAD TO BE ADDED HERE AS WELL AS TO `_rpc_sync_config`, AND
 ## MISSING THIS ONE WOULD HAVE BEEN INVISIBLE. `_rpc_sync_config` only fires when the
@@ -617,7 +650,7 @@ func _apply_difficulty() -> void:
 	SettingsManager.set_ai_difficulty(int(tier["id"]))
 	_refresh_detail()
 
-## Solo changes nothing but its own copy; a host pushes map, mode and the kalaro
+## Solo changes nothing but its own copy; a host pushes map, mode and the bot
 ## tier to every client. A client never reaches here at all — its arrows are
 ## disabled.
 func _broadcast_config() -> void:
@@ -684,19 +717,67 @@ static func _entry_name(list: Array[Dictionary], index: int) -> String:
 ## (`_apply_map`, `_apply_mode`, `_on_seat_pressed`, `_refresh_seats`,
 ## `_refresh_character_button`, and the host-config RPC), so there is no path that
 ## changes a selection and leaves the explanation describing the previous one.
+## ⚠️ ONE TOPIC AT A TIME — 🧑 human call, 2026-07-30: *"i want the description
+## for eskinita/capture/character to only show up when i highlight it, example i
+## highlight map, it will show map desc but if i highlight mode or other shit,
+## that text box will change."*
+##
+## This used to concatenate ALL FOUR explanations into one Label every refresh,
+## and that was not only noisy — it was the LAYOUT BUG in the same report. The
+## left column is a VBox whose height is the sum of its children, and an
+## `autowrap_mode = 2` Label's minimum height is however tall the wrapped text
+## turns out to be. Four paragraphs measured 277 px at 1080p and left `BackButton`
+## ending at y=1063 of 1080: seventeen pixels of margin, held up by nothing but
+## the particular strings that happened to be selected. Picking DENTS + HARD +
+## an OBJECT seat — all three longer than the defaults — is enough to push BACK
+## off the bottom, which is exactly what the human photographed.
+##
+## So the fix is BOTH halves and neither alone is sufficient: show one topic, and
+## give the box a FIXED height (`DetailBox` in the scene, `clip_contents`) so the
+## column's geometry no longer depends on the copy at all. `_detail_height_probe`
+## in `ui_layout_probe.gd` asserts the longest topic still fits inside it.
 func _refresh_detail() -> void:
-	var lines: Array[String] = []
+	detail_label.text = detail_text_for(_detail_topic)
 
-	var map_entry: Dictionary = GameLaunch.MAPS[_map_index]
-	lines.append("%s   %s" % [String(map_entry["name"]), String(map_entry["tagline"])])
-	lines.append("%s   %s" % [
-		String(MODES[_mode_index]["label"]), String(MODES[_mode_index]["detail"])])
-	lines.append("%s   %s" % [
-		String(DIFFICULTIES[_difficulty_index]["label"]),
-		String(DIFFICULTIES[_difficulty_index]["detail"])])
-	lines.append(_seat_detail())
+## Split out from `_refresh_detail` so `ui_layout_probe.gd` can ask for every
+## topic's text without driving the screen through four hover events.
+func detail_text_for(topic: DetailTopic) -> String:
+	match topic:
+		DetailTopic.MAP:
+			var map_entry: Dictionary = GameLaunch.MAPS[_map_index]
+			return "%s   %s" % [String(map_entry["name"]), String(map_entry["tagline"])]
+		DetailTopic.MODE:
+			return "%s   %s" % [
+				String(MODES[_mode_index]["label"]), String(MODES[_mode_index]["detail"])]
+		DetailTopic.DIFFICULTY:
+			return "%s   %s" % [
+				String(DIFFICULTIES[_difficulty_index]["label"]),
+				String(DIFFICULTIES[_difficulty_index]["detail"])]
+		_:
+			return _seat_detail()
 
-	detail_label.text = "\n".join(lines)
+## Called from every row's hover AND focus. Both, not either: hover is what the
+## human described, and focus is the same gesture on a keyboard or a pad, which
+## is the only way this screen is navigable without a mouse.
+##
+## Guarded on a real change so that sweeping the pointer across a row does not
+## rebuild the Label once per mouse-enter of every child control.
+func _focus_detail(topic: DetailTopic) -> void:
+	if _detail_topic == topic:
+		return
+	_detail_topic = topic
+	_refresh_detail()
+
+## Every control that, when highlighted, should make the box explain `topic`.
+## Containers are included so hovering the caption or the empty space in a row
+## counts as highlighting that row — the human's example is "i highlight map",
+## not "i highlight the map arrow".
+func _wire_detail_focus(topic: DetailTopic, controls: Array[Control]) -> void:
+	for control in controls:
+		if control == null:
+			continue
+		control.mouse_entered.connect(func() -> void: _focus_detail(topic))
+		control.focus_entered.connect(func() -> void: _focus_detail(topic))
 
 ## What the seat the player is sitting in actually does, and what their picks buy
 ## it. Split out so `_refresh_detail` above reads as the three things it is
@@ -705,13 +786,13 @@ func _seat_detail() -> String:
 	var seat := _local_seat()
 	if _seat_is_person(seat):
 		# Checklist 1.3 (does a Person get its own ability roster?) is still
-		# HUMAN-owned and open, so every Tao shares one Tag / Throw kit. Say that
+		# HUMAN-owned and open, so every person shares one Tag / Throw kit. Say that
 		# plainly rather than letting the player believe a kit choice applies to a
 		# character it does not.
-		return "TAO   You are the person. On defence you are the taya: body-block, tag, and stand your lata back up. On offence you carry the tsinelas and throw it. Your %s and %s picks belong to your Gamit teammate and only apply if you move to that seat." % [
+		return "PERSON   You are the person. On defence you are the defender: body-block, tag, and stand your lata back up. On offence you carry the tsinelas and throw it. Your %s and %s picks belong to your object teammate and only apply if you move to that seat." % [
 			_entry_name(CharacterRoster.CANS, GameLaunch.can_index()),
 			_entry_name(CharacterRoster.SLIPPERS, GameLaunch.slipper_index())]
-	return "GAMIT   You are the object. A lata on defence, holding the mark and guarding, then a tsinelas on offence, thrown and scrambling home. Your kit swaps with the role: %s as the lata, %s as the tsinelas." % [
+	return "OBJECT   You are the object. A lata on defence, holding the mark and guarding, then a tsinelas on offence, thrown and scrambling home. Your kit swaps with the role: %s as the lata, %s as the tsinelas." % [
 		_kit_name(CharacterRoster.CANS, GameLaunch.can_index()),
 		_kit_name(CharacterRoster.SLIPPERS, GameLaunch.slipper_index())]
 
@@ -737,15 +818,22 @@ static func _kit_name(list: Array[Dictionary], index: int) -> String:
 static func _seat_is_person(seat: int) -> bool:
 	return seat % 2 == 0
 
-## ⚠️ FILIPINO ROLE WORDS THROUGHOUT, and they are the SAME words the tutorial,
-## the HUD and the lore use: TAO is the person, GAMIT is the object they field
-## (a lata one round, a tsinelas the next). Human ask: *"update the UI to use
-## Filipino terms for gameplay roles."* The team letter stays A/B because that is
-## an identity, not a role, and `Dev_Plan.md` §4.2 is explicit that team identity
-## is carried by the letter mark rather than by any word or hue.
+## ⚠️ THESE WERE `TAO` / `GAMIT` AND ARE NOW ENGLISH — 🧑 human call, 2026-07-30:
+## *"only tagalog i want are names and possible skill... use person, lata,
+## tsinelas i guess thats fine."* An earlier ask had gone the other way ("update
+## the UI to use Filipino terms for gameplay roles") and that is why the words
+## were there; the newer instruction supersedes it, and both are recorded so the
+## next pass does not flip them back a third time.
+##
+## PERSON is the human unit, OBJECT is the thing they field (a lata one round, a
+## tsinelas the next) — and `lata`/`tsinelas` themselves stay Filipino, because
+## those are two of the three words the human explicitly kept. The team letter
+## stays A/B because that is an identity, not a role, and `Dev_Plan.md` §4.2 is
+## explicit that team identity is carried by the letter mark rather than by any
+## word or hue.
 static func _seat_name(seat: int) -> String:
 	return "TEAM %s · %s" % ["A" if seat / 2 == 0 else "B",
-		"TAO" if _seat_is_person(seat) else "GAMIT"]
+		"PERSON" if _seat_is_person(seat) else "OBJECT"]
 
 ## Which seat this peer is in right now. Solo has no peers, so it reads the
 ## GameLaunch value the seat buttons write directly.
@@ -834,7 +922,7 @@ func _seat_row_text(seat: int) -> String:
 	if not _is_networked_lobby():
 		if seat == GameLaunch.solo_seat:
 			return "%s   ◀ YOU" % label
-		return "%s   · KALARO" % label
+		return "%s   · BOT" % label
 
 	var occupant := _occupant_of(seat)
 	if occupant == -1:
@@ -843,7 +931,7 @@ func _seat_row_text(seat: int) -> String:
 		# than a match with two missing players. Saying "BOT" is what makes a
 		# lone host obviously startable — and it is set in the same caps as the
 		# rest of the row so it reads as a roster entry, not as a footnote.
-		return "%s   · KALARO" % label
+		return "%s   · BOT" % label
 	var who := "YOU" if occupant == multiplayer.get_unique_id() else "PLAYER %d" % _player_number(occupant)
 	# ⚠️ Deliberately does NOT show the occupant's character picks.
 	# `NetworkManager.peer_characters` is HOST-ONLY by design (see its own doc) —

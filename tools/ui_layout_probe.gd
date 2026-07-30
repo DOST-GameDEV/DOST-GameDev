@@ -18,12 +18,23 @@ extends Node
 ## The tsinelas tab is listed separately because it is the one the report was
 ## about ("the weird viewing angle for the slippers") and it is also the hardest
 ## subject to frame — 0.432 long by 0.078 tall against a 4-unit standing figure.
+## A fourth field, `action`, is the `GameLaunch.pending_action` the screen is stood
+## up under — "" leaves whatever the previous entry set.
+##
+## ⚠️ `match_setup_host` EXISTS BECAUSE SOLO AND MULTIPLAYER ARE NOT THE SAME
+## LAYOUT, though they are the same scene. 🧑 asked for the setup-screen fixes to
+## "apply ... to multiplayer screen to", and a solo-only pass cannot answer that:
+## `_setup_host()` makes `StartButton` VISIBLE, which adds a second 101px pennant
+## to a left column that already had `BackButton` closest to the bottom edge. A
+## column that fits in solo can therefore still overflow as a host, and every
+## number this probe had ever printed described solo.
 const SCREENS := [
-	["hud", "res://scenes/ui/HUD.tscn", -1],
-	["match_setup", "res://scenes/ui/MatchSetup.tscn", -1],
-	["character_select", "res://scenes/ui/CharacterSelect.tscn", 0],
-	["character_select_lata", "res://scenes/ui/CharacterSelect.tscn", 1],
-	["character_select_tsinelas", "res://scenes/ui/CharacterSelect.tscn", 2],
+	["hud", "res://scenes/ui/HUD.tscn", -1, "local"],
+	["match_setup", "res://scenes/ui/MatchSetup.tscn", -1, "local"],
+	["match_setup_host", "res://scenes/ui/MatchSetup.tscn", -1, "host"],
+	["character_select", "res://scenes/ui/CharacterSelect.tscn", 0, "local"],
+	["character_select_lata", "res://scenes/ui/CharacterSelect.tscn", 1, "local"],
+	["character_select_tsinelas", "res://scenes/ui/CharacterSelect.tscn", 2, "local"],
 ]
 
 ## ⚠️ EXTENDED 2026-07-30 WITH THE TWO THINGS THE VERIFICATION CONTRACT ASKS FOR AND
@@ -55,7 +66,12 @@ const SCREENS := [
 ## missing means "no pair to check on this screen" — the viewport test still runs.
 const DISJOINT: Dictionary = {
 	# The two that actually collided in a shipped build.
-	"MatchSetup.tscn": ["ConfigPanel", "SeatPanel"],
+	# ⚠️ `Banner` JOINED THIS LIST 2026-07-30. The pennant is hand-placed
+	# (`layout_mode = 0`) while everything under it is container-driven, so it is
+	# exactly the pair no container can keep apart — and it had been sitting ON
+	# TOP of `ConfigPanel`, clipping "SINGLE PLAYER" in half, in a build this
+	# assertion passed because the pennant was never one of the names.
+	"MatchSetup.tscn": ["ConfigPanel", "SeatPanel", "Banner"],
 	# The HUD's own version of the same risk: two team panels and the centre timer
 	# share one line across the top, and the team labels carry a role word that a
 	# longer one would widen.
@@ -130,6 +146,12 @@ func _apply_size() -> void:
 func _load() -> void:
 	if _screen != null and is_instance_valid(_screen):
 		_screen.queue_free()
+	# ⚠️ BEFORE instantiate(). `match_setup.gd` reads `pending_action` in its own
+	# `_ready()` and never looks again, so setting it afterwards measures a solo
+	# screen while the log calls it a host one.
+	var action := String(SCREENS[_i][3]) if SCREENS[_i].size() > 3 else ""
+	if action != "":
+		GameLaunch.pending_action = action
 	_screen = (load(String(SCREENS[_i][1])) as PackedScene).instantiate()
 	add_child(_screen)
 	var tab: int = int(SCREENS[_i][2])
@@ -173,7 +195,7 @@ func _process(_delta: float) -> void:
 ## parent, because "off the bottom of the screen" is what was reported and a
 ## control can be perfectly placed inside a container that is itself too tall.
 const WATCHED := ["BackButton", "PrimaryButton", "StartButton", "ConfirmButton",
-	"DetailLabel", "TraitRows", "StatusLabel"]
+	"DetailLabel", "TraitRows", "StatusLabel", "Banner", "ConfigPanel", "DetailBox"]
 
 func _report(tag: String) -> void:
 	var screen_size := Vector2(get_viewport().get_visible_rect().size)
@@ -216,6 +238,9 @@ func _report(tag: String) -> void:
 			name, rect.position.x, rect.end.x, rect.position.y, rect.end.y,
 			"ok" if inside else "** OFF SCREEN **"])
 	_report_overlaps(String(SCREENS[_i][1]).get_file())
+	_report_detail_fit()
+	_report_detail_topics()
+	_report_containment()
 
 ## ⚠️ THE ASSERTION THAT CATCHES THE CLASS OF BUG THAT ALREADY SHIPPED ONCE.
 ## Every PAIR in the group, not just adjacent ones — a three-panel row can have the
@@ -247,3 +272,179 @@ func _report_overlaps(file_name: String) -> void:
 
 func _fmt(r: Rect2) -> String:
 	return "(%.0f,%.0f %.0fx%.0f)" % [r.position.x, r.position.y, r.size.x, r.size.y]
+
+
+## ⚠️ THE ASSERTION THE FIXED-HEIGHT DETAIL BOX NEEDS, AND THE ONE A SCREENSHOT
+## CANNOT MAKE. `DetailBox` is `clip_contents`, so copy that overflows it no longer
+## pushes `BackButton` off the bottom — it silently disappears instead, which
+## trades a visible bug for an invisible one. 🧑 asked for exactly this guarantee:
+## *"make sure that truncating it doesnt cause it to overflow or look bad."*
+##
+## ⚠️ SWEEPS EVERY SELECTION, NOT THE ONE THE SCREEN OPENED ON. This is the whole
+## point and the first version got it wrong: it measured the four topics at the
+## DEFAULT map/mode/tier/seat and reported a comfortable 96px in a 150px box. But
+## every one of those strings is selection-dependent — DENTS is longer than
+## CAPTURE, HARD is longer than NORMAL, the PERSON seat blurb is longer than the
+## OBJECT one and it interpolates two roster names whose lengths vary too. The
+## default is nowhere near the worst case, so a probe that only measures it is
+## certifying a box against copy nobody will read.
+##
+## So: drive the screen's own indices across their full range, ask it for the
+## string each time, and hold the TALLEST of all of them to the box.
+func _report_detail_fit() -> void:
+	var box := _screen.find_child("DetailBox", true, false) as Control
+	var label := _screen.find_child("DetailLabel", true, false) as Label
+	if box == null or label == null or not _screen.has_method("detail_text_for"):
+		return
+	var font := label.get_theme_font(&"font")
+	var font_size := label.get_theme_font_size(&"font_size")
+	if font == null:
+		return
+
+	var keep_map: int = _screen.get("_map_index")
+	var keep_mode: int = _screen.get("_mode_index")
+	var keep_tier: int = _screen.get("_difficulty_index")
+	var keep_seat: int = GameLaunch.solo_seat
+
+	var worst := 0.0
+	var worst_label := ""
+	var cases: Array = []
+	for i in range(GameLaunch.MAPS.size()):
+		cases.append(["_map_index", i, 0, "MAP %d" % i])
+	for i in range(MatchSetupScreen.MODES.size()):
+		cases.append(["_mode_index", i, 1, "MODE %s" % MatchSetupScreen.MODES[i]["label"]])
+	for i in range(MatchSetupScreen.DIFFICULTIES.size()):
+		cases.append(["_difficulty_index", i, 2,
+			"TIER %s" % MatchSetupScreen.DIFFICULTIES[i]["label"]])
+	# The seat blurb is the one that reads off GameLaunch rather than off an index
+	# on the screen, and it is also the longest of the four — both halves of the
+	# PERSON / OBJECT split have to be measured, not just whichever seat is current.
+	for seat in range(4):
+		cases.append(["", seat, 3, "SEAT %d" % seat])
+
+	for case in cases:
+		var field := String(case[0])
+		if field == "":
+			GameLaunch.solo_seat = int(case[1])
+		else:
+			_screen.set(field, int(case[1]))
+		var text: String = _screen.call("detail_text_for", int(case[2]))
+		var height := font.get_multiline_string_size(
+			text, HORIZONTAL_ALIGNMENT_LEFT, box.size.x, font_size).y
+		if height > worst:
+			worst = height
+			worst_label = String(case[3])
+		if field != "":
+			_screen.set(field, keep_map if field == "_map_index" else (
+				keep_mode if field == "_mode_index" else keep_tier))
+	GameLaunch.solo_seat = keep_seat
+
+	_checks += 1
+	var fits := worst <= box.size.y + 1.0
+	if not fits:
+		_fails += 1
+	# ⚠️ THE HEADROOM IS THE POINT, not just the pass. Measured 2026-07-30 at
+	# 1080p: one line is 32px, and the eleven selections come out 32 / 64 / 96 —
+	# so the box holds the worst real string with a full line and a half to spare.
+	# If a future copy edit takes this past ~128 the right move is to raise the box
+	# (BackButton has ~72px of slack under it), NOT to let clip_contents eat a line.
+	print("  %-14s worst of %d selections is %s: %.0f px in a %.0f px box  %s" % [
+		"DetailFit", cases.size(), worst_label, worst, box.size.y,
+		"ok" if fits else "** DETAIL TEXT IS BEING CLIPPED **"])
+
+## ⚠️ THE BEHAVIOURAL HALF, AND IT IS NOT A LAYOUT CLAIM — kept here anyway because
+## this is the only harness that already stands `MatchSetup` up with its autoloads.
+## 🧑 asked for "the description ... to only show up when i highlight it, example i
+## highlight map, it will show map desc but if i highlight mode ... that text box
+## will change". Every part of that is invisible to a screenshot and to the rect
+## checks above: the box is the right size and in the right place whichever topic
+## it is showing.
+##
+## Drives the REAL signal (`mouse_entered` on the row) rather than calling the
+## handler directly, so a row that was never wired fails here — which is the actual
+## regression risk, four rows wired by hand in `_ready`.
+func _report_detail_topics() -> void:
+	var label := _screen.find_child("DetailLabel", true, false) as Label
+	if label == null or not _screen.has_method("detail_text_for"):
+		return
+	var rows := {"MapRow": 0, "ModeRow": 1, "DifficultyRow": 2, "FighterRow": 3}
+	var seen := {}
+	for row_name in rows:
+		var row := _screen.find_child(String(row_name), true, false) as Control
+		_checks += 1
+		if row == null:
+			_fails += 1
+			print("  %-14s %s MISSING — cannot assert" % ["DetailTopic", row_name])
+			continue
+		row.mouse_entered.emit()
+		var shown := label.text
+		var want: String = _screen.call("detail_text_for", rows[row_name])
+		var ok := shown == want and shown != ""
+		# ⚠️ DISTINCTNESS IS PART OF IT. Four rows that all "match" because every
+		# topic returns the same string would pass the equality check above and be
+		# exactly the reported bug — one box that never changes.
+		if seen.has(shown):
+			ok = false
+		seen[shown] = true
+		if not ok:
+			_fails += 1
+		print("  %-14s hover %-14s -> %-30s %s" % [
+			"DetailTopic", row_name, shown.substr(0, 28),
+			"ok" if ok else "** BOX DID NOT FOLLOW THE HIGHLIGHT **"])
+
+## ⚠️ A CONTROL PUSHED OUT OF THE PANEL DRAWN BEHIND IT — 🧑 report, 2026-07-30:
+## *"wtf the text goes out of the boxes now."*
+##
+## ⚠️ THE OBVIOUS VERSION OF THIS CHECK IS VACUOUS, and it was written and run
+## before this one replaced it. Measuring a Label's string against the Label's OWN
+## rect always passes: a non-clipping Label's minimum size IS its text width, so the
+## rect grows to fit and the comparison can never fail. It printed "every
+## fixed-width label fits its control" against the exact build whose screenshot
+## shows the selector hanging off the panel — a green check beside a visible bug,
+## which is the failure mode this whole probe exists to prevent.
+##
+## What actually happens is a ROW-MATE problem. Renaming `SINO:` to `CHARACTER:`
+## more than doubled that caption's minimum width; the HBox honoured it, handed the
+## remainder to `CharSelector`, and the selector — which has a 380px minimum of its
+## own — was pushed straight through `ConfigPanel`'s right edge. Every rect involved
+## is on screen and no two PANELS overlap, so the viewport check and the disjoint
+## check pass as well.
+##
+## So the assertion is CONTAINMENT: this control must sit inside that ancestor's
+## rect. It is the only one of the four that can see a copy change break a box.
+const CONTAINED: Dictionary = {
+	"MatchSetup.tscn": [
+		["MapRow", "ConfigPanel"], ["ModeRow", "ConfigPanel"],
+		["DifficultyRow", "ConfigPanel"], ["FighterRow", "ConfigPanel"],
+		["SeatButton0", "SeatPanel"], ["SeatButton3", "SeatPanel"],
+		["DetailLabel", "DetailBox"],
+	],
+	"CharacterSelect.tscn": [
+		["TabBar", "ConfigPanel"], ["NameRow", "ConfigPanel"],
+		["TaglineLabel", "ConfigPanel"], ["TraitRows", "ConfigPanel"],
+	],
+}
+
+func _report_containment() -> void:
+	var file_name := String(SCREENS[_i][1]).get_file()
+	if not CONTAINED.has(file_name):
+		return
+	for pair in CONTAINED[file_name]:
+		var inner := _screen.find_child(String(pair[0]), true, false) as Control
+		var outer := _screen.find_child(String(pair[1]), true, false) as Control
+		_checks += 1
+		if inner == null or outer == null:
+			_fails += 1
+			print("  %-14s %s in %s — MISSING, cannot assert" % ["Contained", pair[0], pair[1]])
+			continue
+		var a := inner.get_global_rect()
+		var b := outer.get_global_rect()
+		# One pixel of slack each way: a child laid out flush against its parent's
+		# edge is correct, and the two rects are computed by different paths.
+		var fits := a.position.x >= b.position.x - 1.0 and a.end.x <= b.end.x + 1.0 \
+			and a.position.y >= b.position.y - 1.0 and a.end.y <= b.end.y + 1.0
+		if not fits:
+			_fails += 1
+		print("  %-14s %-14s in %-12s  x %6.0f..%-6.0f vs %6.0f..%-6.0f  %s" % [
+			"Contained", pair[0], pair[1], a.position.x, a.end.x, b.position.x, b.end.x,
+			"ok" if fits else "** PUSHED OUT OF ITS BOX **"])

@@ -84,7 +84,7 @@ var sfx_volume: float = DEFAULT_VOLUME
 var music_volume: float = DEFAULT_VOLUME
 
 ## ---------------------------------------------------------------------------
-## R-09 · KALARO DIFFICULTY — the tier the AI plays at.
+## R-09 · BOT DIFFICULTY — the tier the AI plays at.
 ##
 ## `AIController.DIFFICULTY_TIERS` (BATA / NORMAL / ASTIG) and `apply_difficulty()`
 ## have been complete and correct for two passes and reachable from nowhere: until
