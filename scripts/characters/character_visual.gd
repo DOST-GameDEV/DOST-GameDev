@@ -458,7 +458,13 @@ func _refresh_can_damage(dent_count: int) -> void:
 	var model := get_child(0) as Node3D if get_child_count() > 0 else null
 	if model == null:
 		return
-	var meshes := model.find_children("*", "MeshInstance3D", true, false)
+	# ⚠️ THE CAN'S OWN MESH, NOT ITS CLASS JUNK. Attachments are MeshInstance3D children
+	# of the same model (see PROP_ATTACHMENT_GROUP), and `meshes[0]` swapping a wire
+	# handle for a crushed can would be a silent, extremely funny bug.
+	var meshes: Array[Node] = []
+	for node in model.find_children("*", "MeshInstance3D", true, false):
+		if not (node as Node).is_in_group(PROP_ATTACHMENT_GROUP):
+			meshes.append(node)
 	if meshes.is_empty():
 		return
 	var index := clampi(dent_count, 0, CAN_MESHES.size() - 1)
@@ -487,17 +493,126 @@ func _refresh_can_damage(dent_count: int) -> void:
 	# never announced itself would render solid in first person (B-61).
 	model_changed.emit()
 
-## Tips the can onto its side while Downed and stands it back up on recovery.
-## Only ever a Can — a toppled Person or Tsinelas would read as a bug.
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE KNOCKDOWN ROLLS NOW. Human report, 2026-07-30: *"it is hard to tell the can
+## fell — improve the physics so it looks like it is physically rolling when knocked
+## down."*
+##
+## The old read was a single tween of `rotation.z` to 78 degrees over 0.28 s: correct,
+## cheap, and completely static once it arrived. A lata that has just taken 2.6x
+## knockback (`CharacterBase.CAN_KNOCKBACK_SCALE`) is now travelling roughly a metre
+## across the ground while lying at 78 degrees and not turning, which reads as a
+## cardboard cutout being dragged rather than as a can going over.
+##
+## ⚠️ IT IS STILL NOT A RAGDOLL, AND IT MUST NOT BECOME ONE. Nothing simulates limbs or
+## hands the body to the physics server. What changed is that the tilt is now the START
+## of a roll whose RATE is derived from the body's own measured travel:
+##
+##     radians this frame = distance travelled / capsule radius
+##
+## i.e. rolling without slipping, which is the one relationship that makes a rolling
+## object look attached to the ground rather than skating on it. The axis is the
+## horizontal perpendicular to travel, so it rolls the way it is going.
+##
+## ⚠️ THE ROLL IS WRITTEN ONTO THE MODEL NODE'S TRANSFORM, NOT ONTO THIS ONE, AND NOT
+## ONTO A NEW PIVOT NODE. Two constraints force that and both are load-bearing:
+##
+##   * `_process_remote_smoothing` writes `position` and `rotation.y` on THIS node every
+##     frame for a remote unit, and its own docstring promises that only `.y` is its to
+##     write. A full-basis roll here would fight it.
+##   * `get_child(0)` IS THE MODEL, and four other functions in this file rely on that —
+##     `_refresh_can_damage`, `_build_hand_attachment`, `_align_to_capsule_floor` and
+##     `apply()`'s own teardown. Inserting a pivot node between them would break all
+##     four silently, in the quiet way a wrong node path always does here.
+##
+## So the roll is a rotation of the model ABOUT THE VISUAL CENTRE, composed by hand:
+## `T = C + R*(rest - C)`. Rotating about the model's own origin instead would swing the
+## can around a point on the road surface, because `_align_to_capsule_floor` deliberately
+## drops the model so its BOTTOM sits on the capsule floor.
+const DOWNED_ROLL_SETTLE: float = 0.35 ## m/s below which a downed can stops rolling
+var _roll_angle: float = 0.0
+var _roll_axis: Vector3 = Vector3.RIGHT
+var _roll_rest: Transform3D = Transform3D.IDENTITY
+var _last_roll_position: Vector3 = Vector3.ZERO
+var _rolling: bool = false
+
 func _refresh_downed_tilt(is_downed: bool) -> void:
 	if _character == null or not _character.is_can:
 		rotation.z = 0.0
+		_end_roll()
 		return
 	if _tilt_tween != null and _tilt_tween.is_valid():
 		_tilt_tween.kill()
 	_tilt_tween = create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_tilt_tween.tween_property(self, "rotation:z",
 		deg_to_rad(DOWNED_TILT_DEGREES) if is_downed else 0.0, DOWNED_TILT_TIME)
+	if is_downed:
+		_begin_roll()
+	else:
+		_end_roll()
+
+func _begin_roll() -> void:
+	var model := _model_node()
+	if model == null:
+		return
+	_rolling = true
+	_roll_angle = 0.0
+	# Snapshotted at the START of the roll rather than read live every frame: the roll
+	# itself is what writes this transform, so reading it back mid-roll would compound
+	# the rotation into itself and spin the can at an accelerating rate.
+	_roll_rest = model.transform
+	_last_roll_position = _character.global_position
+	# The axis is fixed at the moment of the knockdown rather than re-derived each
+	# frame. A can that slows, stops and is nudged again would otherwise pick a new axis
+	# mid-roll and visibly snap; taking the impulse's own direction once means the whole
+	# tumble reads as one event, which is what it is.
+	var travel := _character.velocity
+	travel.y = 0.0
+	if travel.length() < 0.05:
+		travel = -_character.global_transform.basis.z
+		travel.y = 0.0
+	if travel.length() < 0.05:
+		travel = Vector3.FORWARD
+	_roll_axis = travel.normalized().cross(Vector3.UP).normalized()
+
+func _end_roll() -> void:
+	if not _rolling:
+		return
+	_rolling = false
+	_roll_angle = 0.0
+	var model := _model_node()
+	if model != null:
+		model.transform = _roll_rest
+
+## `get_child(0)`, guarded — the model, or null between a teardown and a rebuild.
+func _model_node() -> Node3D:
+	if get_child_count() == 0:
+		return null
+	return get_child(0) as Node3D
+
+## Called from `_process`. Cheap: one distance, one basis build, and only while a can is
+## actually down and actually moving.
+func _process_downed_roll(_delta: float) -> void:
+	if not _rolling or _character == null or not is_instance_valid(_character):
+		return
+	var here := _character.global_position
+	var moved := Vector3(here.x - _last_roll_position.x, 0.0, here.z - _last_roll_position.z)
+	_last_roll_position = here
+	var speed_flat := Vector2(_character.velocity.x, _character.velocity.z).length()
+	if speed_flat < DOWNED_ROLL_SETTLE:
+		return # come to rest: a can lying still must lie still, not creep
+	var radius: float = maxf(0.05, _character.capsule_radius())
+	# Signed by which way we are going along the roll axis' own forward, so reversing
+	# direction reverses the roll instead of always spinning one way.
+	var forward := Vector3.UP.cross(_roll_axis).normalized()
+	_roll_angle += moved.dot(forward) / radius
+	var model := _model_node()
+	if model == null:
+		return
+	var rotation_basis := Basis(_roll_axis, _roll_angle)
+	var centre := _visual_centre_offset
+	model.transform = Transform3D(rotation_basis * _roll_rest.basis,
+		centre + rotation_basis * (_roll_rest.origin - centre))
 
 ## Builds (or rebuilds) the model for this unit. Safe to call every round.
 func apply(is_person: bool, is_can: bool, team: int) -> void:
@@ -550,6 +665,9 @@ func apply(is_person: bool, is_can: bool, team: int) -> void:
 	# reference here would make the first play_action() after a role swap throw.
 	_animator = null
 	_action_clip = ""
+	# The roll's snapshot describes a model that has just been freed. Restoring it onto
+	# the incoming one would offset a brand-new mesh by the last one's tumble.
+	_rolling = false
 	# Same reasoning: the BoneAttachment3D was a child of the outgoing skeleton
 	# and has just been freed with it. Null it rather than rebuilding eagerly —
 	# get_hand_attachment() rebuilds on demand, and most units never carry.
@@ -584,6 +702,12 @@ func apply(is_person: bool, is_can: bool, team: int) -> void:
 	# would put it in the shared resource and recolour both teams' props at once.
 	_apply_prop_tint(is_person, is_can)
 	_align_to_capsule_floor(model)
+	# ⚠️ AFTER `_collect_meshes` AND AFTER THE TINT, DELIBERATELY. The attachments are
+	# junk bolted to a can, not part of it: they must not be swept into `_materials`
+	# (which is what the hit flash writes into, and a wire handle flashing white on a
+	# hit reads as the handle being hit) and they must not take the skin's `albedo_color`
+	# (a green paint-tin's rusted lid is not green). They carry their own colours.
+	_build_prop_attachments(is_person, is_can)
 	_play_idle(model)
 	model_changed.emit()
 	# A rebuild produces a pristine model, so re-apply whatever damage and
@@ -593,6 +717,223 @@ func apply(is_person: bool, is_can: bool, team: int) -> void:
 	if _character != null:
 		_refresh_can_damage(_character.dents)
 		_refresh_downed_tilt(_character.state == CharacterBase.State.DOWNED)
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ PROP CLASS ATTACHMENTS — the junk that tells six latas and six tsinelas apart.
+##
+## Human instruction, 2026-07-30: *"create new Can and Slipper models to represent
+## different classes. Edit existing can models to differentiate classes creatively (e.g.
+## add new visual elements/junk attached to the can)."* And, from the standing art rule
+## the human set earlier: *"dont create other models use existing ones, js edit these
+## models."*
+##
+## Both hold at once, which is why this is ATTACHMENTS rather than twelve new meshes.
+## Every lata is still Kenney's `soda-can.glb` and every tsinelas is still the project's
+## own `tsinelas.obj`; what a class adds is a handful of primitives bolted on — a wire
+## handle, a sardine key, a paint drip, a coat hanger — built from `TorusMesh`,
+## `CylinderMesh` and `BoxMesh` at load time. No new asset files, no import step, and a
+## silhouette that reads across the arena, which is the only test that matters.
+##
+## ⚠️⚠️ AN ATTACHMENT CANNOT AFFECT PHYSICS, BY CONSTRUCTION AND NOT BY CARE. The human
+## asked to *"ensure these attachments do not break physics"*, and the answer is
+## structural: every node built here is a `MeshInstance3D` parented under the MODEL,
+## which is under `Visual`, which is a plain `Node3D` under the body. The body's
+## `CollisionShape3D`, `Hurtbox` and `Hitbox` are siblings of `Visual` and are sized
+## exclusively by `CharacterBase._apply_role_collision()` from `_COLLISION_BY_ROLE` — a
+## table that names three roles and knows nothing about skins. There is no code path
+## from a mesh under `Visual` to a collision shape. A hanger that sticks out 0.3 m
+## changes what you SEE and not what you can HIT, which is exactly the contract.
+##
+## ⚠️ PARENTED UNDER THE MODEL, NOT UNDER `Visual`. The knockdown roll rotates the model
+## about the visual centre; junk parented a level higher would stay resolutely upright
+## while the can it is welded to tumbled away underneath it.
+##
+## Each entry is a list of parts. `kind` picks the primitive; the rest is geometry:
+##   ring      torus, `r` outer / `t` tube            handles, lids, straps
+##   rod       cylinder, `r` radius / `h` height      keys, dowels, hooks
+##   slab      box, `size`                            labels, planks, tags
+## `pos` and `rot` are in the MODEL's own local space, `rot` in degrees.
+const PROP_ATTACHMENT_UNSHADED_ROUGHNESS: float = 0.85
+## Every part built here joins this group, and two measurement passes skip it — see
+## `_collect_meshes` (the hit flash) and `_align_to_capsule_floor` (the ground drop).
+const PROP_ATTACHMENT_GROUP: StringName = &"prop_attachment"
+
+## THE LATAS. Every part is drawn against the can's own ~0.34 m height, so nothing here
+## is taller than the object it hangs on — a class marker that changes the unit's
+## effective silhouette height would quietly change how a throw has to be aimed.
+const CAN_ATTACHMENTS: Dictionary = {
+	# SARSILYA — the stock lata. Deliberately BARE: entry 0 of every roster list is the
+	# signed-off default and must look exactly as it always has, or a player who never
+	# opens the CHARACTER screen gets a surprise.
+	&"sarsi": [],
+	# LATA NG GATAS — condensed milk. Two punched holes in the lid, the way you actually
+	# open one, and the dense little body reads as heavy.
+	&"gatas": [
+		{"kind": "rod", "r": 0.022, "h": 0.012, "pos": Vector3(0.035, 0.175, 0.02),
+			"colour": Color("2b2b30")},
+		{"kind": "rod", "r": 0.022, "h": 0.012, "pos": Vector3(-0.035, 0.175, -0.02),
+			"colour": Color("2b2b30")},
+	],
+	# LATA NG SARDINAS — flat and wide, with the roll-back key still attached. The key is
+	# the single most recognisable thing about a sardine tin.
+	&"sardinas": [
+		{"kind": "ring", "r": 0.045, "t": 0.008, "pos": Vector3(0.0, 0.19, -0.06),
+			"rot": Vector3(90, 0, 0), "colour": Color("cfd4d8")},
+		{"kind": "rod", "r": 0.006, "h": 0.07, "pos": Vector3(0.0, 0.19, -0.02),
+			"rot": Vector3(90, 0, 0), "colour": Color("cfd4d8")},
+	],
+	# LATA NG KAPE — empty and skittish. A crumpled foil lid peeled half off, so it
+	# visibly rattles even standing still.
+	&"kape": [
+		{"kind": "slab", "size": Vector3(0.13, 0.006, 0.10), "pos": Vector3(0.03, 0.185, 0.0),
+			"rot": Vector3(0, 15, 22), "colour": Color("d8d2c4")},
+	],
+	# LATA NG PINTURA — leftover fence paint, gone to rust. A wire bail handle over the
+	# top and a run of dried paint down one side.
+	&"pintura": [
+		{"kind": "ring", "r": 0.115, "t": 0.007, "pos": Vector3(0.0, 0.17, 0.0),
+			"rot": Vector3(0, 0, 90), "colour": Color("6b6b70")},
+		{"kind": "slab", "size": Vector3(0.03, 0.16, 0.012), "pos": Vector3(0.09, 0.07, 0.04),
+			"colour": Color("4f8c6a")},
+		{"kind": "rod", "r": 0.013, "h": 0.03, "pos": Vector3(0.09, -0.02, 0.04),
+			"colour": Color("4f8c6a")},
+	],
+	# LATA NG BISKWIT — Lola's biscuit tin. Wide pressed lid with a rim, and a scrap of
+	# masking tape somebody labelled it with years ago.
+	&"biskwit": [
+		{"kind": "ring", "r": 0.125, "t": 0.014, "pos": Vector3(0.0, 0.175, 0.0),
+			"rot": Vector3(90, 0, 0), "colour": Color("caa06a")},
+		{"kind": "slab", "size": Vector3(0.10, 0.045, 0.004), "pos": Vector3(0.0, 0.06, 0.105),
+			"colour": Color("efe4cd")},
+	],
+}
+
+## THE TSINELAS. Drawn against a mesh that is 0.432 long x 0.166 wide x 0.078 tall in
+## its own space, before `TsinelasVisual.tscn`'s 1.6x — so these numbers are pre-scale
+## and grow with the slipper, which is what keeps a hanger looking bolted on rather than
+## floating beside a bigger shoe.
+const SLIPPER_ATTACHMENTS: Dictionary = {
+	# TSINELAS NA GOMA — plain rubber, entry 0, the signed-off default. Bare.
+	&"goma": [],
+	# BAKYA — solid wood. A raised heel block and a nailed leather toe strap: the two
+	# things that make a bakya a bakya rather than a thick flip-flop.
+	&"bakya": [
+		{"kind": "slab", "size": Vector3(0.13, 0.05, 0.14), "pos": Vector3(0.0, -0.05, 0.13),
+			"colour": Color("6b4a28")},
+		{"kind": "slab", "size": Vector3(0.16, 0.02, 0.05), "pos": Vector3(0.0, 0.055, -0.09),
+			"rot": Vector3(12, 0, 0), "colour": Color("3d2a18")},
+	],
+	# TSINELAS NA PULA — kept for church. A buckle on the strap, because it is the good
+	# pair and the good pair has a buckle.
+	&"pula": [
+		{"kind": "ring", "r": 0.028, "t": 0.007, "pos": Vector3(0.0, 0.06, -0.05),
+			"rot": Vector3(0, 0, 90), "colour": Color("d8c47a")},
+	],
+	# TSINELAS NA ASUL — bleached pale by ten summers on a windowsill. A sun-faded strip
+	# down the footbed, lighter than the tint.
+	&"asul": [
+		{"kind": "slab", "size": Vector3(0.05, 0.004, 0.30), "pos": Vector3(0.0, 0.045, 0.0),
+			"colour": Color("cfe0ea")},
+	],
+	# TSINELAS NA DILAW — so bright you can find it from across the plaza, which is the
+	# whole point of owning it. A reflective toe patch that says so.
+	&"dilaw": [
+		{"kind": "slab", "size": Vector3(0.09, 0.005, 0.07), "pos": Vector3(0.0, 0.046, -0.14),
+			"colour": Color("fff2a8")},
+	],
+	# TSINELAS NA LUMA — the sole worn through to nothing. A hole in the footbed and a
+	# strap repaired with a twist of wire.
+	&"luma": [
+		{"kind": "ring", "r": 0.035, "t": 0.006, "pos": Vector3(0.0, 0.042, 0.10),
+			"rot": Vector3(90, 0, 0), "colour": Color("3a342e")},
+		{"kind": "rod", "r": 0.004, "h": 0.05, "pos": Vector3(0.045, 0.05, -0.06),
+			"rot": Vector3(0, 0, 40), "colour": Color("9aa3a2")},
+	],
+	# ⚠️ TSINELAS NA SABIT — THE HANGER. Human instruction: *"add a hanger to the slipper
+	# customization options."* A wire coat hanger through the strap, the way a tsinelas
+	# actually ends up hung on a nail by the door.
+	#
+	# It is the largest attachment in the game — the hook stands 0.19 above the footbed,
+	# which after the 1.6x visual scale is 0.30 m of extra silhouette — and it changes
+	# NOTHING about the collision capsule, the hurtbox, the hitbox, the grab radius or
+	# the throw profile. That is the whole demonstration this row exists to be: see the
+	# structural argument in this block's header.
+	&"sabit": [
+		{"kind": "ring", "r": 0.055, "t": 0.006, "pos": Vector3(0.0, 0.12, -0.02),
+			"rot": Vector3(0, 90, 0), "colour": Color("b8bec4")},
+		{"kind": "rod", "r": 0.005, "h": 0.09, "pos": Vector3(0.0, 0.185, -0.02),
+			"colour": Color("b8bec4")},
+		{"kind": "ring", "r": 0.022, "t": 0.005, "pos": Vector3(0.0, 0.235, -0.045),
+			"rot": Vector3(0, 90, 0), "colour": Color("b8bec4")},
+		{"kind": "slab", "size": Vector3(0.10, 0.008, 0.02), "pos": Vector3(0.0, 0.065, -0.02),
+			"colour": Color("8a7f6a")},
+	],
+}
+
+func _build_prop_attachments(is_person: bool, is_can: bool) -> void:
+	if is_person or _character == null:
+		return
+	var model := _model_node()
+	if model == null:
+		return
+	var index: int = _character.can_index if is_can else _character.slipper_index
+	var entries: Array = CharacterRoster.CANS if is_can else CharacterRoster.SLIPPERS
+	# -1 is the honest "no pick" sentinel an AI slot and a command-line session carry.
+	# It resolves to entry 0, which is bare by design — see `sarsi`/`goma` above.
+	if index < 0 or index >= entries.size():
+		return
+	var id: StringName = entries[index].get("id", &"")
+	var table: Dictionary = CAN_ATTACHMENTS if is_can else SLIPPER_ATTACHMENTS
+	if not table.has(id):
+		return
+	for part in table[id]:
+		var node := _build_attachment_part(part)
+		if node != null:
+			model.add_child(node)
+
+func _build_attachment_part(part: Dictionary) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	match String(part.get("kind", "slab")):
+		"ring":
+			var torus := TorusMesh.new()
+			var outer: float = float(part.get("r", 0.05))
+			var tube: float = float(part.get("t", 0.008))
+			torus.outer_radius = outer
+			torus.inner_radius = maxf(0.001, outer - tube)
+			torus.rings = 12
+			torus.ring_segments = 8
+			mesh_instance.mesh = torus
+		"rod":
+			var cylinder := CylinderMesh.new()
+			cylinder.top_radius = float(part.get("r", 0.01))
+			cylinder.bottom_radius = cylinder.top_radius
+			cylinder.height = float(part.get("h", 0.05))
+			cylinder.radial_segments = 8
+			cylinder.rings = 1
+			mesh_instance.mesh = cylinder
+		_:
+			var box := BoxMesh.new()
+			box.size = part.get("size", Vector3(0.05, 0.01, 0.05))
+			mesh_instance.mesh = box
+	mesh_instance.position = part.get("pos", Vector3.ZERO)
+	var euler: Vector3 = part.get("rot", Vector3.ZERO)
+	mesh_instance.rotation = Vector3(
+		deg_to_rad(euler.x), deg_to_rad(euler.y), deg_to_rad(euler.z))
+	# Its own material, never a shared one — two latas of the same class would otherwise
+	# hand each other their colours, which is the exact bug `_collect_meshes` duplicates
+	# materials to avoid.
+	var material := StandardMaterial3D.new()
+	material.albedo_color = part.get("colour", Color.WHITE)
+	material.roughness = PROP_ATTACHMENT_UNSHADED_ROUGHNESS
+	mesh_instance.material_override = material
+	# Small junk casts no shadow: both maps carry 500-640 instances and the shadow of a
+	# 6 mm wire is a cost with no read at arena distance.
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# The group is how `_collect_meshes` and `_align_to_capsule_floor` recognise junk.
+	# A group rather than a name check, because a name is a string somebody will
+	# reasonably change and a group is a declaration of what the node IS.
+	mesh_instance.add_to_group(PROP_ATTACHMENT_GROUP)
+	return mesh_instance
 
 ## Task 1 — the node a carried tsinelas snaps to. Returns null for anything with
 ## no skeleton (a Can, a Tsinelas, or a Person whose model has not been instanced
@@ -654,6 +995,15 @@ func _align_to_capsule_floor(model: Node3D) -> void:
 	var bounds := AABB()
 	var first := true
 	for node in model.find_children("*", "VisualInstance3D", true, false):
+		# ⚠️ CLASS JUNK IS NOT PART OF THE OBJECT'S HEIGHT. A hanger that stands 0.19
+		# above the footbed would otherwise grow the measured AABB, and this function
+		# drops the model by its LOWEST point — so a part hanging below the sole (the
+		# bakya's heel block, the paint tin's drip) would lift the whole prop off the
+		# road by the height of its own decoration. The attachments are cosmetic and
+		# they stay out of every measurement, exactly as they stay out of every
+		# collision shape. See PROP_ATTACHMENT_GROUP.
+		if (node as Node).is_in_group(PROP_ATTACHMENT_GROUP):
+			continue
 		var box: AABB = (node as VisualInstance3D).get_aabb()
 		box = (node as Node3D).transform * box
 		if first:
@@ -843,6 +1193,11 @@ func _apply_person_material(model: Node3D, material_path: String) -> void:
 ## flashing?") instead of a colour uniform that happened to correlate.
 func _collect_meshes(model: Node3D) -> void:
 	for node in model.find_children("*", "MeshInstance3D", true, false):
+		# Class junk keeps its own colours and does not flash — see PROP_ATTACHMENT_GROUP.
+		# `_refresh_can_damage` re-runs this whole function on every dent, so without the
+		# skip a can that took a hit would start flashing its wire handle white.
+		if (node as Node).is_in_group(PROP_ATTACHMENT_GROUP):
+			continue
 		var mesh_instance := node as MeshInstance3D
 		for surface in range(mesh_instance.get_surface_override_material_count()):
 			var source: Material = mesh_instance.get_active_material(surface)
@@ -997,6 +1352,7 @@ func _process(delta: float) -> void:
 	# ⚠️ BEFORE _play_locomotion(), which returns early while a charge pose is held.
 	_drive_charge_pose()
 	_play_locomotion()
+	_process_downed_roll(delta)
 	_spin_while_airborne(delta)
 	_drive_viewmodel_charge()
 	_process_remote_smoothing(delta)

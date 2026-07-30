@@ -110,7 +110,30 @@ var local_picks: Dictionary = {"character": -1, "can": -1, "slipper": -1}
 ## does not have to know this dictionary exists, mirroring how it reaches tokens
 ## through `peer_tokens` rather than through the wire format.
 func picks_for(peer_id: int) -> Dictionary:
-	return peer_characters.get(peer_id, {"character": -1, "can": -1, "slipper": -1})
+	return peer_characters.get(peer_id,
+		{"character": -1, "can": -1, "slipper": -1, "spectator": 0})
+
+## Whether `peer_id` joined to WATCH rather than to play. Host-side, read by
+## `main.gd::_spawn_player` (which skips them entirely) and by
+## `_expected_ready_count()` (which must not wait for a READY press from somebody with
+## no character to ready). See `GameLaunch.spectator`.
+func is_spectator(peer_id: int) -> bool:
+	return int(picks_for(peer_id).get("spectator", 0)) != 0
+
+## How many connected peers are actually PLAYING. The ready gate counts these, not
+## `connected_peer_ids.size()` — a lobby of two players and two spectators must start on
+## two presses, and counting all four would hang it forever on people who cannot press.
+##
+## Floored at 1 for the same reason `_expected_ready_count` already floors: a host whose
+## own peer list has not populated yet still owes its own press. Note that a host who is
+## ITSELF spectating still counts here — somebody has to be able to start the match, and
+## the host is the only peer that can.
+func playing_peer_count() -> int:
+	var count := 0
+	for peer_id in connected_peer_ids:
+		if peer_id == multiplayer.get_unique_id() or not is_spectator(peer_id):
+			count += 1
+	return maxi(1, count)
 
 ## This process's own three picks, read off GameLaunch. Kept here rather than
 ## inlined at both call sites so the host's self-seed and the client's RPC cannot
@@ -120,6 +143,16 @@ func _local_picks() -> Dictionary:
 		"character": GameLaunch.character_index(),
 		"can": GameLaunch.can_index(),
 		"slipper": GameLaunch.slipper_index(),
+		# ⚠️ SPECTATING RIDES THE PICKS PACKET RATHER THAN GETTING AN RPC OF ITS OWN.
+		# It is answered by the same question the three picks answer — "who is this peer,
+		# and what should the host build for them" — and it has to be known BEFORE the
+		# host spawns anybody. A second RPC would create exactly the window
+		# `peer_characters`' own doc describes for the character index: the host knows a
+		# peer exists but not yet what it is, precisely when it is about to seat it.
+		#
+		# An int, not a bool: this dictionary crosses the wire and every other value in
+		# it is an int, so a mixed-type payload buys nothing and costs a type surprise.
+		"spectator": 1 if GameLaunch.spectator else 0,
 	}
 ## Host-only: true once the host has left the pre-match lobby and is
 ## actually running Main.tscn — set by `main.gd::_start_hosting()`, cleared
@@ -191,6 +224,53 @@ func join_game(address: String, port: int = DEFAULT_PORT) -> Error:
 	multiplayer.multiplayer_peer = peer
 	_is_networked = true
 	return OK
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE HOST SAYS GOODBYE BEFORE IT CLOSES THE SOCKET. Human report, 2026-07-30:
+## *"the host must notify clients it is leaving before it closes the server. Currently,
+## quitting politely strands everyone for ~5 seconds."*
+##
+## MEASURED before this existed, on real peers: an ABRUPT quit (alt-F4) and a GRACEFUL
+## one (the pause menu's QUIT TO MENU) produced the SAME teardown time — 5.20 s and
+## 5.40 s. That is not a coincidence, it is `ENET_TIMEOUT_MIN` (10 000 ms, halved by
+## ENet's own adaptive window): a closed socket is indistinguishable from a silent one,
+## so a client learns about a polite exit exactly as slowly as about a yanked cable, by
+## waiting for the timeout to expire. `_on_server_disconnected` was already wired and
+## already correct; nothing was ever telling it.
+##
+## ⚠️ DO NOT "FIX" THIS BY SHORTENING `ENET_TIMEOUT_MIN`. That window is deliberately
+## wide because this game is played over Hamachi, where an ordinary latency spike would
+## otherwise be flagged as a drop and cost somebody their round. The fix is an
+## announcement, not a shorter fuse — the timeout stays exactly where it is and remains
+## the backstop for the abrupt case, which by definition cannot be announced.
+##
+## ⚠️ IT YIELDS TWO FRAMES BEFORE CLOSING. `rpc()` hands the packet to ENet, which
+## flushes on its own poll — calling `close()` on the same frame discards the queued
+## packet and the announcement never leaves the building, which is exactly the bug this
+## is fixing wearing a different hat. Two `process_frame` awaits is a handful of
+## milliseconds and is invisible next to the 5 s it removes.
+##
+## `await`, so callers must `await` it too if they intend to change scene afterwards —
+## `main.gd::_on_return_to_menu_pressed` does.
+func announce_host_leaving() -> void:
+	if not is_host():
+		return
+	_rpc_host_closing.rpc()
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree != null:
+		await tree.process_frame
+		await tree.process_frame
+
+## Host -> every client. Deliberately does the SAME teardown a real timeout would, by
+## going through the same signal: `server_disconnected` is what `main.gd` already
+## listens to, and it already bounces to MultiplayerSetup with a status message. A
+## second, parallel "the host left politely" path would be a second thing to keep
+## correct, and the two would drift the first time either was touched.
+@rpc("authority", "call_remote", "reliable")
+func _rpc_host_closing() -> void:
+	if is_host():
+		return
+	_on_server_disconnected()
 
 func disconnect_network() -> void:
 	if multiplayer.multiplayer_peer:
@@ -301,6 +381,10 @@ func _rpc_identify(token: String, picks: Dictionary = {}) -> void:
 		"character": _validated(picks, "character", CharacterRoster.ROSTER.size()),
 		"can": _validated(picks, "can", CharacterRoster.CANS.size()),
 		"slipper": _validated(picks, "slipper", CharacterRoster.SLIPPERS.size()),
+		# Absent (a peer on an older build) reads as 0, i.e. a player. That is the right
+		# default: an unknown peer that is silently never spawned would be a black screen
+		# with no error, which is the worst failure this could have.
+		"spectator": 1 if int(picks.get("spectator", 0)) != 0 else 0,
 	}
 	if match_in_progress:
 		_rpc_route_to_running_match.rpc_id(peer_id)

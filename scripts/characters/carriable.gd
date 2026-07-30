@@ -121,6 +121,60 @@ static var max_bounces: int = MAX_BOUNCES
 ## ⚠️ Reset in `_rpc_set_flying`, i.e. per THROW, on every peer — same lifetime and
 ## same reasoning as `clear_hit_memory()` on the line beside it.
 const MAX_STEER_DELTA_V: float = 3.0
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE LONG THROW — the attacker's reward for standing where they can be punished.
+## `Design.md` §3.1. Human instruction: *"if the attacker is behind the throwing line
+## (outside the defender zone), their throws become more powerful. If a slipper is
+## thrown at max power from here and hits the defender, it applies a 5-second hit stun."*
+##
+## ⚠️ THE TEST IS CHEBYSHEV, NOT EUCLIDEAN, AND THAT IS NOT PEDANTRY. The defended box
+## is a SQUARE at |x| = |z| = `CharacterBase.CONFINEMENT_RADIUS` (5.0) — a ring was
+## drawn once, rejected as ugly, and the physics was corrected to match the chalk in
+## 2026-07-29. A radial test here would call a thrower standing on the 6.0 line at a
+## CORNER "inside", because their Euclidean distance is 8.49 while the square's edge is
+## 6.0 away along each axis. Same 2.07-unit disagreement that cost a session before.
+##
+## ⚠️ AND IT IS RESOLVED ON THE HOST, AT RELEASE. Where the thrower stood and what the
+## charge had reached are facts about the moment the button came up; by the time the
+## slipper lands, several frames and a couple of metres later, neither is recoverable.
+## `hitbox.gd::_long_throw_punish` therefore asks THIS node rather than measuring
+## anything itself.
+const LONG_THROW_LINE: float = 6.0
+const LONG_THROW_SPEED_BONUS: float = 1.20
+const LONG_THROW_KNOCKBACK_BONUS: float = 1.25
+## How much of the charge the release has to have reached to earn the punish. Not 1.0:
+## `charge_power()` is sampled on a physics frame, so a player who holds the button
+## flat-out still releases at 0.995-ish depending on where the frame fell, and a
+## threshold of exactly 1.0 would make the mechanic fire roughly never and look like a
+## bug rather than a rule.
+const LONG_THROW_PUNISH_POWER: float = 0.98
+const LONG_THROW_PUNISH_STUN: float = 5.0
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE TSINELAS LAUNCHES ITSELF. Human instruction, 2026-07-30: *"allow slippers to
+## charge up a mini-jump, and give them the ability to launch themselves."*
+##
+## This is the single change that makes the slipper a PLAYER rather than ammunition. A
+## LOOSE tsinelas has, until now, had exactly one verb — crawl home at 45% speed and be
+## picked up — and its own player spent most of a round as cargo. Now it charges `jump`
+## and flings itself: over the taya, onto the lata, out of a corner, or simply home
+## faster than the crawl allows.
+##
+## ⚠️ IT IS ORDINARY CHARACTERBODY MOTION, NOT A SECOND PHYSICS PATH. A LOOSE slipper
+## returns false from `drives_movement()`, so `character_base.gd` runs it through the
+## normal gravity / `move_and_slide` / confinement path. The launch is one write to
+## `velocity`, exactly like a jump — which is why it lands, bounces off geometry, obeys
+## the round freeze and can be stepped on, all for free.
+##
+## The split is 0.62 vertical because a flatter launch just skids (the floor eats it in
+## two frames at FRICTION 30) and a steeper one lands where it started. At full charge
+## that is 8.06 m/s up — an apex of 1.62 m, clearly over a 1.6-unit Person — and 10.2
+## m/s along the ground.
+const SELF_LAUNCH_CHARGE_TIME: float = 0.75
+const SELF_LAUNCH_MIN_SPEED: float = 6.0
+const SELF_LAUNCH_MAX_SPEED: float = 13.0
+const SELF_LAUNCH_VERTICAL_FRACTION: float = 0.62
+
 ## Fallback used when a slipper's ability carries no ThrowProfile of its own
 ## (e.g. the networked Prop default, which is currently quick_stand.tres for
 ## every Prop — see main.gd PROP_ABILITY).
@@ -232,6 +286,14 @@ var carrier: CharacterBase = null
 ## to a lob without asking who threw it or re-deriving it from the arc. Meaningless
 ## unless FLYING.
 var flight_is_lob: bool = false
+## Whether the throw currently in the air was released from behind the throwing line,
+## and at what charge. Both ride the launch broadcast rather than being re-derived, for
+## the reason the LONG_THROW block above documents. Meaningless unless FLYING.
+var flight_long_range: bool = false
+var flight_power: float = 0.0
+
+## The self-launch charge, 0..SELF_LAUNCH_CHARGE_TIME, or -1 when not charging.
+var _launch_charge: float = -1.0
 
 var _character: CharacterBase = null
 var _flight_velocity: Vector3 = Vector3.ZERO
@@ -451,11 +513,114 @@ func _rpc_apply_scuff(kind: String, direction: Vector3) -> void:
 		direction * TOUCH_KNOCKBACK_SPEED + Vector3.UP * TOUCH_KNOCKBACK_LIFT)
 	AudioManager.play_at("slipper_land", _character.global_position)
 
+## ⚠️ HOW LONG A STUN THIS PARTICULAR THROW EARNED, or 0.0 — asked by `hitbox.gd` on
+## the frame the hit resolves. `Design.md` §3.1.
+##
+## Both conditions were decided at RELEASE and are carried on the flight (see
+## `_rpc_set_flying`). Nothing here re-measures anything, which is the point: by the
+## time a slipper lands, the thrower has usually already turned and run.
+func long_throw_punish_stun() -> float:
+	if state != CarryState.FLYING:
+		return 0.0
+	if not flight_long_range or flight_power < LONG_THROW_PUNISH_POWER:
+		return 0.0
+	return LONG_THROW_PUNISH_STUN
+
+## ---------------------------------------------------------------------------
+## THE SELF-LAUNCH. Driven from `character_base.gd`'s jump block; returns true when it
+## consumed this frame's jump input so the ordinary jump does not ALSO fire.
+##
+## ⚠️ LOOSE AND GROUNDED ONLY. Mid-air it must not re-arm (that would be a flight
+## controller, not a launch), and CARRIED / FLYING belong to the thrower.
+##
+## ⚠️ NO HOST ROUND-TRIP, DELIBERATELY, AND IT IS NOT AN INCONSISTENCY WITH THE REST OF
+## THIS FILE. Every host-authoritative transition here changes CARRY STATE — who holds
+## what, whether a throw happened — because those decide rounds. This changes
+## `velocity` on a body the peer already owns and simulates, exactly as pressing `jump`
+## does, and it is replicated outward by the same MultiplayerSynchronizer that has
+## carried this unit's movement all along. Routing a jump through peer 1 would add a
+## round-trip of input lag to the one verb whose whole appeal is that it is instant.
+func jump_charge_step(delta: float) -> bool:
+	if not is_throwable() or state != CarryState.LOOSE:
+		_launch_charge = -1.0
+		return false
+	if not RoundManager.round_active:
+		_launch_charge = -1.0
+		return false
+	if _character.state != CharacterBase.State.NORMAL or not _character.is_on_floor():
+		# Interrupted (bumped, knocked down) or already airborne — a banked charge must
+		# not survive to fire on landing.
+		_launch_charge = -1.0
+		return false
+	if _character.input_just_pressed("jump"):
+		_launch_charge = 0.0
+		AudioManager.play_at("throw_charge", _character.global_position, -6.0)
+		return true
+	if _launch_charge < 0.0:
+		return false
+	if _character.input_pressed("jump"):
+		_launch_charge = minf(_launch_charge + delta, SELF_LAUNCH_CHARGE_TIME)
+		return true
+	# Released.
+	var power := clampf(_launch_charge / SELF_LAUNCH_CHARGE_TIME, 0.0, 1.0)
+	_launch_charge = -1.0
+	var speed := lerpf(SELF_LAUNCH_MIN_SPEED, SELF_LAUNCH_MAX_SPEED, power) \
+		* _character.trait_power_scale()
+	var forward := -_character.global_transform.basis.z
+	forward.y = 0.0
+	if forward.length() < 0.01:
+		forward = Vector3.FORWARD
+	forward = forward.normalized()
+	var flat := speed * (1.0 - SELF_LAUNCH_VERTICAL_FRACTION)
+	_character.velocity.x = forward.x * flat
+	_character.velocity.z = forward.z * flat
+	_character.velocity.y = speed * SELF_LAUNCH_VERTICAL_FRACTION
+	AudioManager.play_at("jump", _character.global_position)
+	return true
+
+## Whether this tsinelas is in a position to dive. LOOSE, airborne, and high enough that
+## the dive is a real commitment rather than a stomp — see PropSmash's own constants.
+##
+## ⚠️ THE HEIGHT IS MEASURED OFF THE FLOOR CONTACT, NOT OFF A WORLD Y. Both maps have a
+## raised lane strip and a kerb, so an absolute height would arm the dive on one part of
+## the arena and refuse it on another. `is_on_floor()` going false plus a downward
+## clearance ray is the honest question, and the ray is what the body itself already
+## uses to decide it is airborne.
+func can_ground_smash() -> bool:
+	if not is_throwable() or state != CarryState.LOOSE:
+		return false
+	if _character.is_on_floor():
+		return false
+	var space := _character.get_world_3d().direct_space_state
+	var from := _character.global_position
+	var to := from + Vector3.DOWN * (PropSmash.GROUND_SMASH_MIN_HEIGHT
+		+ _character.capsule_height() * 0.5)
+	var query := PhysicsRayQueryParameters3D.create(from, to)
+	query.exclude = [_character.get_rid()]
+	# Empty means nothing within the minimum height below us — i.e. we are genuinely up
+	# in the air rather than a frame off a kerb.
+	return space.intersect_ray(query).is_empty()
+
+## 0..1 while a self-launch is charging, -1 otherwise. Same "-1 means not active"
+## convention every meter in this project uses. Read by the HUD.
+func launch_charge_ratio() -> float:
+	if _launch_charge < 0.0:
+		return -1.0
+	return clampf(_launch_charge / SELF_LAUNCH_CHARGE_TIME, 0.0, 1.0)
+
 ## Read by character_visual.gd for the in-flight tumble. Exposed rather than
 ## making callers reach through to `ability` themselves — how a slipper flies is
 ## this node's business, what that looks like is theirs.
 func spin_speed_deg() -> float:
 	return _profile().spin_speed_deg
+
+## The effective gravity this slipper flies under, so the trajectory preview integrates
+## the arc with the same constant `_step_flying` does rather than assuming
+## `CharacterBase.GRAVITY`. A Bakya at `gravity_scale` 1.4 and a worn-out Havaianas at
+## 0.8 fall visibly differently, and a preview that ignored the profile would draw the
+## same line for both.
+func flight_gravity() -> float:
+	return CharacterBase.GRAVITY * _profile().gravity_scale
 
 ## Read by character_visual.gd alongside spin_speed_deg() — the end-over-end
 ## flip, as opposed to the spin about the slipper's own long axis. See
@@ -504,6 +669,12 @@ func knockback_impulse(force_downed: bool) -> Vector3:
 	if _character != null and is_instance_valid(_character):
 		power = _character.trait_power_scale()
 	var strength: float = profile.knockback_scale * profile.mass * power
+	# The long-throw bonus, impact half. The SPEED half is already baked into
+	# `_flight_velocity` at launch, so without this line a throw from behind the line
+	# would arrive faster and hit exactly as hard — which is a range buff, not the
+	# "more powerful" the design asks for. See the LONG_THROW block.
+	if flight_long_range:
+		strength *= LONG_THROW_KNOCKBACK_BONUS
 	if force_downed:
 		strength *= profile.faceslop_multiplier
 	var lift: float = profile.knockback_lift * (profile.faceslop_multiplier if force_downed else 1.0)
@@ -730,12 +901,53 @@ func host_grab(by: CharacterBase) -> void:
 ## It is the FIRST parameter and it is required, so that every one of the ten call sites
 ## across four probes had to be visited by hand rather than silently inheriting a default
 ## that would have quietly restored the sag this fixes. See `carrier.gd::_throw_origin()`.
+## ⚠️ WHETHER A THROWER IS "BEHIND THE LINE", ASKED OF A POSITION RATHER THAN OF A NODE.
+## Static and public so the aiming peer's trajectory preview and the host's own release
+## reach the same answer from the same expression — the preview showing a stronger arc
+## than the throw delivers would be worse than no preview at all. See the LONG_THROW
+## block for why this is a chebyshev test.
+static func is_behind_throwing_line(where: Vector3) -> bool:
+	return maxf(absf(where.x), absf(where.z)) >= LONG_THROW_LINE
+
+## ⚠️⚠️ THE ONE PLACE A LAUNCH VELOCITY IS COMPUTED. `host_throw` releases it and
+## `trajectory_preview.gd` draws it, and they call THIS — not two copies of the same
+## arithmetic that agree today.
+##
+## The preview is the reason this was pulled out. A trajectory line derived from its own
+## reading of the profile would drift from the throw the moment either changed, and a
+## line that lies about where the slipper goes is a worse feature than no line: the
+## player stops trusting the one piece of aiming feedback they have.
+func launch_velocity(origin: Vector3, target_point: Vector3, power: float,
+		lob: bool, long_range: bool) -> Vector3:
+	var profile := _profile()
+	var speed_now: float = profile.launch_speed * clampf(power, 0.0, 1.0)
+	if long_range:
+		speed_now *= LONG_THROW_SPEED_BONUS
+	if lob:
+		return _solve_lob(origin, target_point, profile, speed_now)
+	var aim := _solve_arc(origin, target_point, speed_now, profile, lob)
+	var horizontal := Vector3(aim.x, 0.0, aim.z)
+	if horizontal.length() > 0.01 and not is_zero_approx(profile.arc_angle_deg):
+		var axis := horizontal.normalized().cross(Vector3.UP)
+		aim = aim.rotated(axis.normalized(), deg_to_rad(profile.arc_angle_deg))
+	return aim.normalized() * speed_now
+
 func host_throw(launch_origin: Vector3, target_point: Vector3, power: float,
 		lob: bool = false) -> void:
 	if not _is_host() or state != CarryState.CARRIED:
 		return
+	# ⚠️ DERIVED ON THE HOST FROM THE THROWER'S OWN REPLICATED POSITION, NOT SENT BY THE
+	# CLIENT. Aim is client-authoritative because it is a camera fact only that peer
+	# owns; "am I standing in the place that makes my throws stronger" is a WORLD fact
+	# the host already has, and it is worth a 20% damage bonus, so the host answers it.
+	# Same client-proposes / host-decides split every other transition in this file uses.
+	var thrower: CharacterBase = carrier if carrier != null and is_instance_valid(carrier) \
+		else _character
+	var long_range := is_behind_throwing_line(thrower.global_position)
 	var profile := _profile()
 	var speed_now: float = profile.launch_speed * clampf(power, 0.0, 1.0)
+	if long_range:
+		speed_now *= LONG_THROW_SPEED_BONUS
 	# ⚠️ SOLVED FROM, AND LAUNCHED FROM, THE SIGHT LINE — not this unit's own
 	# position. See carrier.gd::_throw_origin() for the measurements: leaving
 	# from the hand hung the whole flight up to 0.43 m under the line the player
@@ -752,7 +964,8 @@ func host_throw(launch_origin: Vector3, target_point: Vector3, power: float,
 		# The lob solves the SPEED for a fixed angle instead of the angle for a fixed
 		# speed — the mirror image of the flat throw, and the same arc. See _solve_lob.
 		_broadcast_flying(launch_origin,
-			_solve_lob(launch_origin, target_point, profile, speed_now), true)
+			_solve_lob(launch_origin, target_point, profile, speed_now), true,
+			long_range, power)
 		return
 	var aim := _solve_arc(launch_origin, target_point, speed_now, profile, lob)
 	# ⚠️ THE SIGN HERE WAS INVERTED, AND IT IS WHY EVERY THROW FLEW LOW.
@@ -780,7 +993,7 @@ func host_throw(launch_origin: Vector3, target_point: Vector3, power: float,
 	if horizontal.length() > 0.01 and not is_zero_approx(profile.arc_angle_deg):
 		var axis := horizontal.normalized().cross(Vector3.UP)
 		aim = aim.rotated(axis.normalized(), deg_to_rad(profile.arc_angle_deg))
-	_broadcast_flying(launch_origin, aim.normalized() * speed_now, lob)
+	_broadcast_flying(launch_origin, aim.normalized() * speed_now, lob, long_range, power)
 
 ## THE LAUNCH ANGLE THAT ACTUALLY PASSES THROUGH `target`.
 ##
@@ -958,6 +1171,9 @@ func reset_for_new_round() -> void:
 	_flight_time = 0.0
 	_thrower_ignore_left = 0.0
 	flight_is_lob = false
+	flight_long_range = false
+	flight_power = 0.0
+	_launch_charge = -1.0
 	_steer_spent = 0.0
 	_character.clear_hit_memory()
 	if carrier != null and is_instance_valid(carrier):
@@ -1023,11 +1239,12 @@ func _broadcast_carried(carrier_path: NodePath) -> void:
 	else:
 		_rpc_set_carried(carrier_path)
 
-func _broadcast_flying(origin: Vector3, velocity: Vector3, lob: bool = false) -> void:
+func _broadcast_flying(origin: Vector3, velocity: Vector3, lob: bool = false,
+		long_range: bool = false, power: float = 0.0) -> void:
 	if NetworkManager.is_networked():
-		_rpc_set_flying.rpc(origin, velocity, lob)
+		_rpc_set_flying.rpc(origin, velocity, lob, long_range, power)
 	else:
-		_rpc_set_flying(origin, velocity, lob)
+		_rpc_set_flying(origin, velocity, lob, long_range, power)
 
 func _broadcast_loose(where: Vector3) -> void:
 	if NetworkManager.is_networked():
@@ -1062,8 +1279,18 @@ func _rpc_set_carried(carrier_path: NodePath) -> void:
 ## peer has to agree, because the steer ceiling below is applied locally on the
 ## slipper's own pilot. Defaulted so nothing that calls the two-argument form breaks.
 @rpc("any_peer", "call_local", "reliable")
-func _rpc_set_flying(origin: Vector3, velocity: Vector3, lob: bool = false) -> void:
+func _rpc_set_flying(origin: Vector3, velocity: Vector3, lob: bool = false,
+		long_range: bool = false, power: float = 0.0) -> void:
 	flight_is_lob = lob
+	# ⚠️ THE TWO LONG-THROW FIELDS RIDE THE LAUNCH BROADCAST RATHER THAN BEING SET ON
+	# THE HOST BEFORE IT. `call_local` means the host runs this handler too, so a
+	# host-only pre-assignment would be overwritten here half a line later — the exact
+	# shape of bug `flight_is_lob` was added to avoid on the peer side.
+	flight_long_range = long_range
+	flight_power = power
+	# The launch cancels any self-launch charge that was running: being picked up and
+	# thrown is not a state in which this slipper is winding up anything of its own.
+	_launch_charge = -1.0
 	_steer_spent = 0.0
 	_character.global_position = origin
 	# 2026-07-28 — user report: a thrown slipper "doesnt land flat, sometimes
@@ -1146,6 +1373,11 @@ func _rpc_set_loose(where: Vector3) -> void:
 	# at round reset. FLYING is the state that means "it just landed".
 	if state == CarryState.FLYING:
 		AudioManager.play_at("slipper_land", where)
+	# The long-throw facts describe THE FLIGHT THAT JUST ENDED. Leaving them set would
+	# have a slipper lying on the ground still answering `long_throw_punish_stun()` with
+	# 5.0 if anything ever asked outside the FLYING guard.
+	flight_long_range = false
+	flight_power = 0.0
 	_set_state(CarryState.LOOSE)
 
 ## ---------------------------------------------------------------------------

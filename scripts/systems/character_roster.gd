@@ -385,7 +385,47 @@ const SLIPPERS: Array[Dictionary] = [
 		"ability": "res://scripts/abilities/resources/flick_dash.tres",
 		"tint": Color("5c5248"),
 	},
+	# ⚠️ APPENDED, NOT INSERTED. See the ROSTER header: the index is the wire format
+	# (`CharacterBase.slipper_index` is a replicated int), so a new entry goes on the END
+	# or two peers on different builds quietly render different objects.
+	#
+	# THE HANGER. Human instruction, 2026-07-30: *"add a hanger to the slipper
+	# customization options and ensure these attachments do not break physics."* The
+	# hanger itself is four primitives in `character_visual.gd::SLIPPER_ATTACHMENTS`
+	# under this same `id`, parented under the model and invisible to every collision
+	# shape — the structural argument is in that block's header.
+	{
+		"id": &"sabit",
+		"name": "TSINELAS NA SABIT",
+		"tagline": "Hung on a nail by the door and never taken off its hanger. It throws the whole coat rack at you.",
+		"traits": {&"bilis": 2, &"lakas": 5, &"tatag": 4},
+		"ability": "res://scripts/abilities/resources/bakya_bash.tres",
+		"tint": Color("6f6a86"),
+	},
 ]
+
+## ⚠️ MAX POWER, FOR THE TSINELAS DESCRIPTION ON THE CHARACTER SCREEN. Human
+## instruction: *"display the max power in the custom slipper description UI."*
+##
+## Read off the skin's own `ThrowProfile.launch_speed` rather than stored as a second
+## number here, which is the whole point: the two lists already disagree about nothing
+## because there is only ever one place a slipper's launch speed lives. A hand-copied
+## "power: 4" beside it would be true on the day it was typed.
+##
+## Returned in metres/second, the raw profile value, so the screen can present it however
+## it likes. -1.0 when the skin's ability carries no profile (the three Can abilities do
+## not) or the index is the -1 "no pick" sentinel.
+static func slipper_max_power(index: int) -> float:
+	if index < 0 or index >= SLIPPERS.size():
+		return -1.0
+	var path: String = String(SLIPPERS[index].get("ability", ""))
+	if path == "":
+		return -1.0
+	var ability := load(path)
+	if ability == null or not ability.has_method("get_throw_profile"):
+		return -1.0
+	var profile: ThrowProfile = ability.get_throw_profile()
+	return profile.launch_speed if profile != null else -1.0
 
 ## The three tabs, in the order the screen shows them. A list rather than three
 ## hardcoded branches so `character_select.gd` cycles tabs the same way it cycles

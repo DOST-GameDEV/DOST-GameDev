@@ -85,6 +85,37 @@ const LOB_METER_ARMED: float = 2.0
 ## defensive half of the round.
 const RESET_CHANNEL_TIME: float = 2.2
 
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE ANTI-CHEESE LOCK. Human instruction, 2026-07-30: *"implement a throw cooldown
+## upon picking up a slipper before it can be thrown. I suggest 1 or 2 seconds, but you
+## must decide the final fair cooldown value."*
+##
+## **1.25 s, and here is the arithmetic behind the choice rather than a shrug.**
+##
+## The cheese it removes is real and it is the attacker's best play today: a tsinelas
+## that lands near the taya can be run down, grabbed and released point-blank inside one
+## `_step_grab` / `_step_throw` pair — i.e. on consecutive frames — at a range where the
+## can's evasion AI has no lookahead left (`CAN_EVADE_LOOKAHEAD` is 0.6 s and a
+## point-blank flat throw's whole flight is under 0.1 s) and where the taya cannot
+## interpose. Retrieval, aim and commitment all get skipped at once.
+##
+## The value is bounded from both ends:
+##   * **Above 1.0 s**, because `Carrier.CHARGE_FULL_TIME` is 0.9 — anything shorter
+##     than a full charge means the lock expires before a committed throw is ready and
+##     therefore forbids nothing anyone was doing.
+##   * **Below 1.35 s**, because that is `CharacterBase.BUMP_CHARGE_FULL_TIME`. A lock
+##     longer than the defender's own full commitment would mean a taya who watches you
+##     pick up can ALWAYS start and land a power bump before you can answer, which
+##     replaces one cheese with another pointing the other way.
+##
+## 1.25 s sits inside that window with room either side. It is shown on the HUD as
+## `THROW LOCK` (`Design.md` §10) — an invisible lock reads as a broken button.
+##
+## ⚠️ IT LOCKS THE CHARGE, NOT THE RELEASE. Blocking the release would let a player bank
+## a full charge during the lock and fire the instant it lapsed, which is the same
+## point-blank throw one beat later. The charge cannot START until the lock is done.
+const THROW_LOCK_TIME: float = 1.25
+
 ## Emitted on the local peer while charging, for the HUD's charge meter.
 ## -1 means "not charging", which is a distinct state from "charging at zero".
 ##
@@ -109,6 +140,13 @@ var _is_charging: bool = false
 ## T-3. The lata currently being channelled, and how far in we are.
 var _channel_target: Carriable = null
 var _channel_time: float = 0.0
+## Seconds left on the pick-up lock — see THROW_LOCK_TIME. Ticks on EVERY peer (in
+## `_physics_process`, not `input_step`) so an observer's HUD and the charge gate agree,
+## and so a client that is not the authority still counts the same lock down.
+var _throw_lock_left: float = 0.0
+## The dotted aiming arc. Built lazily on the first charge and only ever on the peer
+## that is actually aiming — see `_ensure_trajectory()`.
+var _trajectory: TrajectoryPreview = null
 
 ## ---------------------------------------------------------------------------
 ## ⚠️⚠️ THE WIND-UP EVERY OTHER PEER CAN SEE. Human report, 2026-07-30: *"everyone
@@ -169,6 +207,13 @@ func observed_lob_armed() -> bool:
 func _physics_process(delta: float) -> void:
 	if _observed_charge_time >= 0.0:
 		_observed_charge_time = minf(_observed_charge_time + delta, CHARGE_MAX_TIME)
+	if _throw_lock_left > 0.0:
+		_throw_lock_left = maxf(0.0, _throw_lock_left - delta)
+
+## Seconds of pick-up lock remaining, 0.0 when the slipper may be thrown. Read by
+## `CharacterBase.status_effects()` for the HUD row.
+func throw_lock_left() -> float:
+	return _throw_lock_left
 
 ## Told to every peer at the START of a charge and again when it ends, by any route —
 ## released, cancelled, tagged out of our hands, round reset.
@@ -313,9 +358,16 @@ func notify_holding(what: Carriable) -> void:
 		return
 	_held = what
 	# A throw in progress is void the moment the thing being thrown leaves the
-	# hand by any other route (round reset, a drop, the carrier being tagged).
+	# hand by any other route (round reset, a drop, the carrier being bumped).
 	if what == null:
 		_cancel_charge()
+	else:
+		# ⚠️ ARMED HERE, ON THE HOST'S BROADCAST, AND NOT AT THE GRAB REQUEST. Every
+		# peer runs this function from `carriable.gd::_rpc_set_carried`, so every peer
+		# starts the identical lock at the identical moment — including the observers
+		# whose HUD draws it. Starting it in `_step_grab()` instead would arm it on the
+		# grabbing peer only, and arm it even when the host refused the grab.
+		_throw_lock_left = THROW_LOCK_TIME
 	held_changed.emit(_held)
 
 ## Driven from character_base.gd's _physics_process, only for the unit this peer
@@ -360,6 +412,11 @@ func _step_throw(delta: float) -> void:
 		return
 
 	if _character.input_just_pressed("special_ability"):
+		# THE PICK-UP LOCK. See THROW_LOCK_TIME — the CHARGE is what is forbidden, not
+		# the release, or a player would simply bank a full charge inside the lock.
+		if _throw_lock_left > 0.0:
+			AudioManager.play_at("ui_back", _character.global_position, -12.0)
+			return
 		_is_charging = true
 		_charge_time = 0.0
 		charge_changed.emit(charge_meter())
@@ -376,6 +433,7 @@ func _step_throw(delta: float) -> void:
 		# makes the surplus hold mean something instead of being discarded.
 		_charge_time = minf(_charge_time + delta, CHARGE_MAX_TIME)
 		charge_changed.emit(charge_meter())
+		_update_trajectory()
 	elif _is_charging and _character.input_just_released("special_ability"):
 		var power := charge_power()
 		# ⚠️ BEFORE _cancel_charge(), which zeroes `_charge_time` — the whole basis
@@ -480,6 +538,51 @@ func _cancel_charge() -> void:
 	_charge_time = 0.0
 	charge_changed.emit(-1.0)
 	_broadcast_charge(false)
+	if _trajectory != null and is_instance_valid(_trajectory):
+		_trajectory.clear()
+
+## ---------------------------------------------------------------------------
+## THE AIMING ARC. Human instruction: *"add a visual trajectory path for all throws and
+## charge-ups."* `Design.md` §3, and `Art_Direction.md` §7 records that the moodboard
+## asked for this and it was never built (it was filed as B-45 and closed as "an
+## illustrated idea").
+##
+## ⚠️ IT DRAWS THE THROW, NOT A THROW. Every sample comes from
+## `Carriable.launch_velocity()` — the SAME function `host_throw` releases through —
+## integrated with the same gravity the flight uses. A preview with its own copy of the
+## ballistics is worse than none at all: it agrees on the day it is written and then
+## silently diverges, and the player stops trusting the only aiming feedback they have.
+## That is why `launch_velocity` was pulled out of `host_throw` rather than duplicated.
+##
+## ⚠️ LOCAL AND COSMETIC. Built only on the peer whose player is aiming (`input_step` is
+## already behind that gate) and never replicated — showing every observer where every
+## thrower is currently pointing would hand the defence perfect information, which is
+## the opposite of what a wind-up telegraph is for. What observers get is the wind-up
+## itself (`_broadcast_charge`), i.e. *that* a throw is coming, not *where*.
+func _ensure_trajectory() -> void:
+	if _trajectory != null and is_instance_valid(_trajectory):
+		return
+	_trajectory = TrajectoryPreview.new()
+	# Parented to the scene root rather than to the character, with `top_level` handled
+	# inside, so the arc is drawn in world space and does not inherit the thrower's yaw,
+	# their PERSON_SCALE, or the 55-degree carry tilt the hand transform carries.
+	_character.get_tree().current_scene.add_child(_trajectory)
+
+func _update_trajectory() -> void:
+	if _held == null or not is_instance_valid(_held):
+		return
+	_ensure_trajectory()
+	var origin := _throw_origin()
+	var target := _aim_point()
+	var power := clampf(charge_power() * _character.trait_power_scale(), 0.0, 1.0)
+	var long_range := Carriable.is_behind_throwing_line(_character.global_position)
+	var velocity := _held.launch_velocity(origin, target, power, is_lob_armed(), long_range)
+	# ROLE COLOUR, not a fixed one. `Dev`-era HUD work settled that orange means offense
+	# and blue means defence and that they track the ROLE rather than the team; a
+	# thrower is by definition on the offence side, and the lob gets the HIGHLIGHT hue
+	# so a committed lob reads differently from a flat shot at a glance.
+	var tint := UiTheme.HIGHLIGHT if is_lob_armed() else UiTheme.OFFENSE
+	_trajectory.draw_arc(origin, velocity, _held.flight_gravity(), tint)
 
 ## Nearest thing in the grab area this Person is actually allowed to pick up.
 ## The ownership rule itself lives in carriable.gd — this only asks.

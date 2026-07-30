@@ -40,15 +40,22 @@ const SETTINGS_SECTION: String = "input"
 ## player's settings rather than a no-op.
 const REBINDABLE_ACTIONS: Array[String] = [
 	"move_left", "move_right", "move_up", "move_down",
-	"bump", "guard_dash", "special_ability", "jump",
+	"bump", "guard_dash", "special_ability", "jump", "sprint",
 ]
 
 ## Human-readable labels for the panel — action string -> display text.
+##
+## ⚠️ THE LABELS CHANGED WITH THE 2026-07-30 OVERHAUL AND THE ACTION NAMES DID NOT.
+## `guard_dash` no longer guards — a lata's Guard was removed outright and the slot
+## is Can-Dash / Flick Dash now (`Design.md` §5.3, §6). `bump` is Can-Smash on a lata
+## and Ground Smash on an airborne tsinelas. Renaming the ACTIONS would invalidate
+## every saved `settings.cfg` key and every `input_probe` assertion for a cosmetic
+## gain; the display string is the part a player reads.
 const ACTION_LABELS: Dictionary = {
 	"move_left": "Move Left", "move_right": "Move Right",
 	"move_up": "Move Up", "move_down": "Move Down",
-	"bump": "Bump", "guard_dash": "Guard/Dash",
-	"special_ability": "Special Ability", "jump": "Jump",
+	"bump": "Bump / Smash", "guard_dash": "Dash",
+	"special_ability": "Throw / Bump Meter", "jump": "Jump", "sprint": "Sprint",
 }
 
 ## action -> physical_keycode captured from the project's InputMap defaults,
@@ -295,7 +302,7 @@ func _save() -> void:
 
 ## Bump this when a DEFAULT binding moves, and add the migration below. Written into
 ## `settings.cfg` so an existing file can be told apart from a fresh one.
-const BINDINGS_VERSION: int = 2
+const BINDINGS_VERSION: int = 3
 const SETTINGS_SECTION_META: String = "meta"
 
 ## ⚠️⚠️ A SAVED BINDING OUTLIVES A DEFAULT, AND THAT IS HOW THE LAST TWO CONTROL BUGS
@@ -314,11 +321,19 @@ const SETTINGS_SECTION_META: String = "meta"
 ##
 ## Deliberately drops ONLY the stale rows and only once. A migration that reset every
 ## binding would throw away rebinds the player made on purpose.
+## ⚠️ v3, 2026-07-30 — SPRINT TOOK SHIFT AND `guard_dash` MOVED TO CTRL. Stamina
+## (`Design.md` §2) needs a sprint key and Shift is the only one a player will reach for.
+## `guard_dash` held Left Shift (physical 4194325) since it shipped, so every
+## `settings.cfg` on disk carries that value — without this row the two actions would
+## BOTH answer Shift on the next launch for everyone who has ever run the game, which is
+## exactly the Space/jump/bump conflict from v2 in a new place. The project file would
+## look correct the whole time.
 const MOVED_BINDINGS: Dictionary = {
 	# action -> the default keycode it used to have. A saved value equal to the old default
 	# is a stale copy of that default, not a choice; anything else is a real rebind and is
 	# left alone.
 	"bump": 32, # Space, now jump's alone
+	"guard_dash": 4194325, # Left Shift, now sprint's
 }
 
 func _migrate_bindings(config: ConfigFile) -> void:

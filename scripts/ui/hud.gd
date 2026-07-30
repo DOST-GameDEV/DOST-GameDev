@@ -207,9 +207,177 @@ func _process(delta: float) -> void:
 	# §4.4 crosshair: visible in FPP (Person) only. Reads the you_card's cached
 	# character so the scan logic stays in one place (you_card.gd::_find_local_character).
 	var local_char := you_card.get_local_character()
+	# A spectator has no character, and the three lines below all describe one. Guarded
+	# here rather than by hiding the nodes once, because `_process` re-asserts
+	# `crosshair.visible` every frame and would put it straight back.
+	if _spectating:
+		_refresh_status_stack(null)
+		return
 	crosshair.visible = local_char != null and is_instance_valid(local_char) and local_char.is_person
 	# 3.4: same cached character, no second scan.
 	offscreen_indicators.update(local_char)
+	_refresh_status_stack(local_char)
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE STATUS STACK — every stun and every status effect, with a number on it.
+##
+## Human instruction, 2026-07-30: *"add visible UI timers for all stun durations and
+## status effects so players clearly know when they can move or act again."*
+##
+## This is most of what "the defender feels overpowered" actually was. A stun you cannot
+## time is a stun you cannot play around: a player who has just been knocked over has no
+## way to know whether to hold movement, whether their dash is back, or whether the
+## slipper in their hands can be thrown yet — so every one of those reads as the game
+## taking control away rather than as a cost with a known price.
+##
+## ⚠️ IT ASKS THE CHARACTER FOR A LIST, IT DOES NOT KNOW WHAT A STUN IS.
+## `CharacterBase.status_effects()` returns whatever is currently live, most urgent
+## first, and this draws it. That indirection is the point: a status the gameplay code
+## gains later appears on screen with no edit here, and the "all" in the instruction
+## stays true without anybody having to remember. See that function's own note.
+##
+## ⚠️ BUILT IN CODE, NOT IN `HUD.tscn`. The scene is a shared-lock file and the rows are
+## a variable-length list — a fixed set of nodes in the scene would have to be hidden and
+## re-labelled, which is more state than building three labels on demand.
+const STATUS_ROW_LIMIT: int = 4
+const STATUS_BAR_SIZE: Vector2 = Vector2(148, 6)
+
+var _status_root: VBoxContainer = null
+var _status_rows: Array[Control] = []
+
+func _ensure_status_root() -> VBoxContainer:
+	if _status_root != null and is_instance_valid(_status_root):
+		return _status_root
+	_status_root = VBoxContainer.new()
+	_status_root.name = "StatusStack"
+	_status_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_status_root.add_theme_constant_override("separation", 4)
+	# Directly under the timer card, top-centre: the one place on the screen a player
+	# already looks at under pressure. Anchored rather than parented to the timer so a
+	# growing stack cannot push the timer around.
+	_status_root.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_status_root.position = Vector2(-STATUS_BAR_SIZE.x * 0.5, 96)
+	_status_root.custom_minimum_size = Vector2(STATUS_BAR_SIZE.x, 0)
+	add_child(_status_root)
+	return _status_root
+
+func _build_status_row() -> Control:
+	var row := VBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_theme_constant_override("separation", 2)
+	var label := Label.new()
+	label.name = "Label"
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 15)
+	# The same heavy INK outline the objective and the ready prompt use — this text sits
+	# over a live 3D scene and has to survive being drawn over a road, a wall or a
+	# role-orange viewmodel arm.
+	label.add_theme_color_override("font_outline_color", UiTheme.INK)
+	label.add_theme_constant_override("outline_size", TEXT_OUTLINE)
+	row.add_child(label)
+	var bar := ProgressBar.new()
+	bar.name = "Bar"
+	bar.show_percentage = false
+	bar.custom_minimum_size = STATUS_BAR_SIZE
+	bar.max_value = 1.0
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(bar)
+	return row
+
+## ⚠️ THE COLOUR IS THE MESSAGE. Three bands, and they mean three different things to
+## somebody glancing at them mid-fight:
+##   DANGER    you cannot act at all — STUNNED, DOWNED
+##   HIGHLIGHT you can act but something is spent or restricted
+##   OFFENSE   a countdown that is costing YOUR SIDE the round (the lata off its circle)
+func _status_colour(label: String) -> Color:
+	match label:
+		"STUNNED", "DOWNED", "OUT":
+			return UiTheme.DANGER
+		"LATA OUT":
+			return UiTheme.OFFENSE
+		_:
+			return UiTheme.HIGHLIGHT
+
+func _refresh_status_stack(local_char: CharacterBase) -> void:
+	var root := _ensure_status_root()
+	var effects: Array[Dictionary] = []
+	if local_char != null and is_instance_valid(local_char):
+		effects = local_char.status_effects()
+	# ⚠️ THE LATA COUNTDOWN IS APPENDED HERE, NOT IN `status_effects()`, AND THAT IS A
+	# REAL DISTINCTION. Everything the character returns is a fact about YOUR OWN BODY;
+	# this is a fact about the ROUND, it is the same number for all four players, and it
+	# lives on `RoundManager`. Asking a character about it would have four units each
+	# reporting the state of an object none of them is.
+	var out_left := RoundManager.can_out_left()
+	if out_left >= 0.0 and RoundManager.round_active:
+		effects.append({"label": "LATA OUT", "seconds": out_left,
+			"total": RoundManager.can_out_limit()})
+	var wanted: int = mini(effects.size(), STATUS_ROW_LIMIT)
+	while _status_rows.size() < wanted:
+		var row := _build_status_row()
+		root.add_child(row)
+		_status_rows.append(row)
+	for i in _status_rows.size():
+		var row: Control = _status_rows[i]
+		if i >= wanted:
+			row.visible = false
+			continue
+		var effect: Dictionary = effects[i]
+		var seconds: float = float(effect.get("seconds", 0.0))
+		var total: float = maxf(0.01, float(effect.get("total", 1.0)))
+		var text: String = String(effect.get("label", ""))
+		var colour := _status_colour(text)
+		row.visible = true
+		var label := row.get_node("Label") as Label
+		label.text = "%s  %.1fs" % [text, maxf(0.0, seconds)]
+		label.add_theme_color_override("font_color", colour)
+		var bar := row.get_node("Bar") as ProgressBar
+		bar.value = clampf(seconds / total, 0.0, 1.0)
+		bar.add_theme_stylebox_override("fill", _status_fill(colour))
+		bar.add_theme_stylebox_override("background", _status_fill(UiTheme.INK, 0.55))
+
+func _status_fill(colour: Color, alpha: float = 1.0) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(colour.r, colour.g, colour.b, alpha)
+	sb.set_corner_radius_all(3)
+	return sb
+
+## ---------------------------------------------------------------------------
+## SPECTATOR HUD. `Design.md` §9.
+##
+## ⚠️ IT STRIPS RATHER THAN REPLACES. Every gameplay element on this HUD describes a
+## character — the YOU card, the crosshair, the lata card, the off-screen indicators —
+## and a spectator has none. `you_card.get_local_character()` would return null and most
+## of them would simply draw nothing, which reads as a broken HUD rather than as a
+## deliberate one. The timer and the scoreboard stay, because those are facts about the
+## MATCH and are exactly what somebody watching wants.
+##
+## Called once, from `main.gd::_enter_spectator_mode`. There is no leaving it: a
+## spectator spectates for the session.
+func enter_spectator_mode(controls: String) -> void:
+	you_card.visible = false
+	crosshair.visible = false
+	lata_card.visible = false
+	downed_flash.visible = false
+	ready_prompt.visible = false
+	ready_objective_row.visible = false
+	offscreen_indicators.visible = false
+	_spectating = true
+	var legend := Label.new()
+	legend.name = "SpectatorLegend"
+	legend.text = controls
+	legend.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	legend.add_theme_font_size_override("font_size", 15)
+	legend.add_theme_color_override("font_color", UiTheme.CREAM_MUTED)
+	legend.add_theme_color_override("font_outline_color", UiTheme.INK)
+	legend.add_theme_constant_override("outline_size", TEXT_OUTLINE)
+	legend.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	legend.offset_top = -46
+	legend.offset_bottom = -18
+	legend.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(legend)
+
+var _spectating: bool = false
 
 ## Kills the pulse tween and resets the timer card to its natural scale.
 func _kill_pulse_tween() -> void:

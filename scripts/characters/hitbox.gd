@@ -125,6 +125,37 @@ func _on_area_entered(area: Area3D) -> void:
 	else:
 		kind = "stagger"
 
+	# ⚠️ THE BUMP METER DECIDES WHAT A BODY-CHECK IS NOW. `Design.md` §4.
+	#
+	# `requires_bump_window` is true only on CharacterBase.tscn's always-present melee
+	# box, so this selects the charged bump and nothing else — an ability pulse, a
+	# thrown slipper and a shockwave all skip it. A TAP (power 0) is a NUDGE: it moves
+	# you and does not stun you, which is the whole distinction the human asked for and
+	# is why it cannot simply be a short stagger. A stagger of any length drops the
+	# target's carried tsinelas (`carriable.gd::_on_carrier_state_changed` fires on any
+	# non-NORMAL state), and a tap that stripped the attacker's slipper would make the
+	# 1.35 s charge pointless.
+	var bump_duration := stagger_duration
+	if requires_bump_window and owner_character != null and owner_character.is_person:
+		bump_duration = owner_character.bump_stagger_duration()
+		if kind == "stagger" and bump_duration <= 0.0:
+			kind = "nudge"
+
+	# ⚠️ THE LONG-THROW PUNISH. `Design.md` §3.1, human instruction: a max-power throw
+	# from behind the throwing line that hits the DEFENDER applies a 5-second hit stun.
+	#
+	# Asked of the slipper rather than recomputed here, for the same reason `sfx` is
+	# asked of the hurtbox and the impulse is asked of the carriable: the thrower's
+	# distance from the circle and the charge it released at are facts about the THROW,
+	# and they were decided on the host in `carriable.gd::host_throw` where both were
+	# already in hand. Re-deriving them at resolution time would mean reading a position
+	# the thrower has since walked away from.
+	if kind == "stagger" or kind == "nudge":
+		var punish := _long_throw_punish(target)
+		if punish > 0.0:
+			kind = "stagger"
+			bump_duration = punish
+
 	# ⚠️ TELL THE HOST'S OWN ROUND MANAGER, HERE, WHERE THE ROLL WAS JUST MADE.
 	#
 	# This line is already past the host gate above, so exactly one machine reaches it,
@@ -161,57 +192,69 @@ func _on_area_entered(area: Area3D) -> void:
 
 	if NetworkManager.is_networked():
 		target._apply_hit_result.rpc_id(
-			target.get_multiplayer_authority(), kind, stagger_duration, knockback)
+			target.get_multiplayer_authority(), kind, bump_duration, knockback)
 		# B-66/Q-8: unlike _apply_hit_result above (targeted at the struck
 		# character's own owning peer only), this broadcasts to every peer —
 		# otherwise nobody except the struck player ever sees the flash/shake/
 		# particles land.
 		target._rpc_play_hit_vfx.rpc(sfx)
 	else:
-		target._apply_hit_result(kind, stagger_duration, knockback)
+		target._apply_hit_result(kind, bump_duration, knockback)
 		target._rpc_play_hit_vfx(sfx)
 	landed_on.emit(target)
 
-	# User feedback, 2026-07-28: "the person on team can may tag the human on
-	# team slipper and they win that round." Deliberately after the normal
-	# stagger/VFX dispatch above, not instead of it: a round-winning tag should
-	# still read as contact landing, not as a rules screen appearing out of
-	# nowhere. report_round_win() no-ops if the round already ended, so this is
-	# safe to call unconditionally; this whole function is already host-only past
-	# the NetworkManager guard above, so no further authority check is needed.
+	# THE HIT PENALTY — the slow a full-charge bump leaves behind, on top of the stun.
+	# Deliberately NOT part of `_apply_hit_result`'s `kind`: it is a property of the
+	# STRIKE (only a charged bump produces one), not of the outcome, and widening that
+	# RPC's signature to carry it would break every older peer's four-argument call.
+	# Routed as its own broadcast for the same reason the VFX is.
+	if requires_bump_window and owner_character != null and owner_character.is_person \
+			and owner_character.bump_power() >= 0.99:
+		if NetworkManager.is_networked():
+			target._rpc_apply_hit_penalty.rpc_id(target.get_multiplayer_authority())
+		else:
+			target._rpc_apply_hit_penalty()
+
+	# ⚠️⚠️ THE ROUND-WINNING TAG USED TO BE HERE AND IT IS DELETED. 2026-07-30.
 	#
-	# ⚠️⚠️ `and not requires_bump_window` — A BUMP IS NOT A TAG, AND UNTIL NOW IT WAS.
-	# Human report, 2026-07-30: *"make tag mechanics better, they feel so buns."*
+	# Human report: *"the defender role currently feels far too overpowered."* This
+	# branch is most of why. A defending Person who touched the attacking Person ended
+	# the round outright — 18 of 20 rounds ended that way in the last fairness run — and
+	# the attacker's only counter was never to be within reach, which is avoidance
+	# rather than counterplay. Narrowing it to the Tag pulse (`not requires_bump_window`)
+	# in an earlier pass made it slower to produce and did not change what it WAS: a
+	# proximity coin flip that skipped the entire game.
 	#
-	# This condition used to accept ANY hitbox from the defending Person, and its own
-	# note said so out loud: "the always-on Bump as much as the Tag ability's own
-	# transient hitbox, both resolve through this same function". So the single most
-	# decisive event in the game — a tag ends the round outright, and 18 of 20 rounds
-	# end that way (Checklist Phase 9, RUN 3) — could be produced by WALKING INTO
-	# SOMEONE and pressing the shove button. The Tag ability had no mechanical identity
-	# at all: it was a second, slower way to do what body contact already did.
+	# **The defence has no instant win any more.** It wins by surviving the 90 s round,
+	# and the tools it survives with are the charged bump (`Design.md` §4), the lata's
+	# own dash and smash, and the circle countdown it must keep resetting. Every one of
+	# those is a spend the attacker can see and play around.
 	#
-	# That is most of what "feels buns" is. A round-ender with no commitment, no
-	# telegraph and no distinct input is a coin flip on proximity, and the defender's
-	# best play is to stand next to the attacker and mash.
-	#
-	# ⚠️ AND THE CODE ALREADY BELIEVED THE DISTINCTION EVERYWHERE ELSE — this line was
-	# the outlier. `hurtbox.gd::impact_sfx()` takes `from_melee` (i.e. exactly this
-	# flag) and returns "bump" or "tag" precisely because, in its own words,
-	# "shoulder-charging the attacker and CATCHING them are different events with
-	# different consequences (hitbox.gd's round-win branch fires on one of them)". It
-	# fired on both. The audio has been telling the truth about a rule the rules did not
-	# enforce.
-	#
-	# `requires_bump_window` is true only on CharacterBase.tscn's always-present melee
-	# box and false on every hitbox an ability spawns (ability_utils.gd sets it), so this
-	# selects the Tag pulse and nothing else. A bump still staggers, still knocks the
-	# slipper out of a carrier's hands (B-75, "most of the point of tagging"), and still
-	# shoves — it simply no longer wins the round by accident.
-	if owner_character and owner_character.is_person and owner_character.team_is_can_side \
-			and target.is_person and not target.team_is_can_side \
-			and not requires_bump_window:
-		RoundManager.report_round_win(true) # Cans win the round
+	# `person_action.gd` — the Tag ability itself — went with it. `Design.md` §1.
+
+## ⚠️ THE 5-SECOND PUNISH, AND IT IS ASKED OF THE SLIPPER, NOT MEASURED HERE.
+##
+## `Design.md` §3.1: a MAX-POWER throw released from behind the 6.0 throwing line that
+## lands on the DEFENDING Person stuns them for five seconds. Both conditions are facts
+## about the throw at RELEASE — where the thrower stood and what the charge had reached
+## — and `carriable.gd::host_throw` is the one place that knew both, on the one machine
+## that decides. Recomputing them here would read a thrower's position several frames
+## and up to a couple of metres later.
+##
+## Returns 0.0 for every hit that is not that hit, which is nearly all of them: a bump,
+## an ability pulse, a shockwave, a short throw, a partial charge, and any hit landing
+## on a lata or on a tsinelas rather than on the taya.
+func _long_throw_punish(target: CharacterBase) -> float:
+	if owner_character == null or not is_instance_valid(owner_character):
+		return 0.0
+	# The taya only. Knocking the lata a metre is already what a long throw is FOR; a
+	# five-second stun on the object as well would make the bonus a round-ender.
+	if not target.is_person or not target.team_is_can_side:
+		return 0.0
+	var carriable := owner_character.get_node_or_null("Carriable") as Carriable
+	if carriable == null:
+		return 0.0
+	return carriable.long_throw_punish_stun()
 
 ## The raw impulse this hitbox should impart, before the struck object's own
 ## resistance. Two sources, in priority order:
@@ -238,6 +281,16 @@ func _impulse_for(force_downed: bool) -> Vector3:
 	direction.y = 0.0
 	if direction.length() < 0.01:
 		return Vector3.ZERO
+	# ⚠️ A PERSON'S BODY-CHECK IS THE BUMP METER NOW, AND ITS NUMBERS COME FROM THE
+	# CHARGE. `MELEE_KNOCKBACK` below survives for everything else that reaches this
+	# line — an ability pulse, a shockwave, a Prop shoulder-charging something — because
+	# those have no meter behind them and still have to shove somewhere.
+	#
+	# The direction is unchanged and is still the striker's own travel, falling back to
+	# their facing: a charged bump delivered while running should send the target the
+	# way the runner was going, which is what makes a committed charge read as weight.
+	if requires_bump_window and owner_character.is_person:
+		return owner_character.bump_impulse(direction)
 	# LAKAS. The striker's own trait scales what it delivers; the target's TATAG
 	# then scales what it accepts (character_base.gd::apply_knockback). Two
 	# separate questions, answered at the two ends, exactly as `sfx` and

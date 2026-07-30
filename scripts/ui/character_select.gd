@@ -270,7 +270,21 @@ func _apply() -> void:
 	var entry: Dictionary = entries[index]
 
 	name_label.text = String(entry["name"])
-	tagline_label.text = String(entry["tagline"])
+	# ⚠️ MAX POWER RIDES THE DESCRIPTION, IT DOES NOT GET A ROW OF ITS OWN. Human
+	# instruction: *"display the max power in the custom slipper description UI."*
+	#
+	# The three chalk meters below already carry SPEED / POWER / GRIT, and those are the
+	# CHARACTER's traits — a 1..5 scale that means "how much of the shared baseline does
+	# this one get". Launch speed is a different kind of number entirely (metres per
+	# second, off the skin's own ThrowProfile) and putting it in the same column would
+	# read as a fourth trait on the same scale, which it is not. Appending it to the
+	# sentence keeps the two apart and costs no layout.
+	var detail := String(entry["tagline"])
+	if String(CharacterRoster.category(_tab)["slot"]) == "slipper":
+		var power := CharacterRoster.slipper_max_power(index)
+		if power > 0.0:
+			detail += "\n\nMAX POWER  %.0f m/s" % power
+	tagline_label.text = detail
 	# The meters sit directly under the sentence they are supposed to agree with,
 	# which is the point of putting them on this screen at all — see
 	# `character_roster.gd`'s own rule that a stat must be readable off the lore.
