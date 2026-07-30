@@ -3398,6 +3398,53 @@ balance one.** 🧑 Left at the shipped values and asked rather than guessed. If
 wanted, **0.45 / 1 bounce** is the row to try: the complaint was about `MAX_BOUNCES = 2`
 chaining into a ragdoll, not about the damping.
 
+#### THE ROUNDS TIME OUT BECAUSE OF ARITHMETIC, AND `MAX_DENTS` 3 → 2 DOES NOT FIX IT, 2026-07-30 — 🥊 PHYS
+
+The tag fix is correct and the consequence is 10/10 rounds reaching the 90 s clock with the
+defence at 100%. **Before treating that as a balance number, the round-win shape was
+measured** — `phys_probe` now prints it at startup, before any sweep calls `_freeze_round()`
+and un-tracks the cans (which is the only window in a run where the live registration is
+observable at all):
+
+```
+round-win shape : 1 tracked can(s) ["TeamAProp"] | MAX_DENTS 3 | FALL_LIMIT 4 | OPTION_B
+-> offence must land 3 dent(s) total to win by denting, 4 knockdown(s) by FALL_LIMIT
+```
+
+- ✅ **Exactly ONE tracked can per round.** This kills a real candidate cause:
+  `_on_tracked_can_dents_changed` and the all-Sealed check both require **every** tracked can
+  to be finished, so a second registration would have silently doubled the offence's whole
+  win requirement. `main.gd::_reregister_tracked_cans` registers every spawned character with
+  `is_can` true, and that it comes to one is a fact about the role swap, not a guarantee.
+  Measured, not assumed.
+- ⚠️ **So the timeout is arithmetic.** The offence needs **3** dents and RUN 14's successor
+  measured **1.00 dents/round**. Three is not reachable in 90 s at that rate, and a round
+  that cannot be won ends on the clock by definition.
+
+⚠️⚠️ **AND THE STANDING RECOMMENDATION IS NOT ENOUGH, ON ITS OWN NUMBERS.** RUN 14 proposed
+`MAX_DENTS` **3 → 2** against **1.75** dents/round, where it converts. The dent rate has since
+fallen to **1.00**, so 2 dents is still twice what a round delivers. **2 will not turn these
+timeouts into offence wins.** Either the dent rate has to come up or the requirement has to
+go to 1 — and a 1-dent round is a different game, not a tuning step. 🧑 **The pick is the
+human's and `MAX_DENTS` is left alone**, per RUN 14's own note; what is new here is that the
+number it was chosen against has moved.
+
+⚠️ **Also worth the balance lane's attention: 1.75 → 1.00 dents/round happened while
+`blocked` IMPROVED, 43.5% → 41.2%.** Fewer throws stopped, fewer dents landed. Those two
+pull opposite ways and one of them is probably not measuring what its column says — which is
+the same shape as the four instrument faults already logged in this file. Not this lane's
+probe and not diagnosed here, but it should be resolved before either number is used to pick
+`MAX_DENTS`.
+
+⚠️ **A GAP NOBODY HAS NAMED: the SHIPPED default mode has never been in a fairness run.**
+`GameLaunch.game_mode` defaults to **OPTION_B** (downed/seal). `ai_probe` *forces* OPTION_A
+for fairness runs and `push_error`s if it is not set — correctly, since under OPTION_B
+`hitbox.gd` never takes the dent branch and the dents column would measure nothing. The
+consequence is that **every fairness figure in this log, and both round-win levers argued
+from them, describe OPTION_A** — while OPTION_B's own offence paths (all-Sealed, and
+`FALL_LIMIT` 4 knockdowns) have no measured rate at all. This is what the session brief means
+by needing R-08's variants beside the tag fix, and it is the larger of the two holes.
+
 #### R-06 leg 3 · MEASURED, AND THE HANDOVER IS THE OPPOSITE OF THE ONE ABOVE, 2026-07-30 — 🥊 PHYS. `phys_probe -- band`
 
 **The can steps out of the way and then comes back before the lob lands. The sidestep is
