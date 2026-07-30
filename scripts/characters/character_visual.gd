@@ -358,6 +358,10 @@ var _current_key: String = ""
 ## The roster palette currently applied, so apply() can tell "same rig, different
 ## character" from "nothing changed" — see its own note.
 var _current_material_key: String = ""
+## B-145. The lata/tsinelas roster index this model was last painted for, or -1.
+## Part of the rebuild key — see `apply()` for why the mesh path alone is not
+## enough for a Prop.
+var _current_skin_key: int = -1
 ## The per-surface materials this unit owns, not the MeshInstance3Ds — a model
 ## can have several surfaces per mesh, and keying the flash off surface 0 would
 ## silently miss the rest and desync from the albedo list.
@@ -505,10 +509,29 @@ func apply(is_person: bool, is_can: bool, team: int) -> void:
 	# Bebang, get Inday's palette, and nothing would look broken enough to
 	# explain why.
 	var material_path := _person_material_path(is_person)
-	if key == _current_key and material_path == _current_material_key:
+	# ⚠️⚠️ B-145 — THE PROP SKIN IS PART OF THE CACHE KEY, AND LEAVING IT OUT IS
+	# 🧑's *"i pick coffee, if i switch to can, old model stays"*.
+	#
+	# Every lata shares ONE mesh (`CAN_VISUAL`) and every tsinelas shares one
+	# (`TSINELAS_VISUAL`) — the pick is a TINT, applied at the bottom of this
+	# function. So for a Prop the key above is identical for all six skins, and
+	# the early return below skipped the whole function whenever `can_index`
+	# changed without `is_can` changing. That is not a corner case: since B-145
+	# the index frequently arrives AFTER the unit is built (the host sends the
+	# picks table on join), so the common path is "spawn with -1, draw the stock
+	# skin, receive the real pick, and never redraw".
+	#
+	# Exactly the reasoning the material path is already in this key for, one
+	# type down — two roster entries sharing a rig must still repaint.
+	var skin_key := -1
+	if not is_person and _character != null:
+		skin_key = _character.can_index if is_can else _character.slipper_index
+	if key == _current_key and material_path == _current_material_key \
+			and skin_key == _current_skin_key:
 		return
 	_current_key = key
 	_current_material_key = material_path
+	_current_skin_key = skin_key
 
 	if _flash_tween != null and _flash_tween.is_valid():
 		_flash_tween.kill()

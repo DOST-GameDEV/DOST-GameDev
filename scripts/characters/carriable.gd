@@ -484,7 +484,26 @@ func knockback_impulse(force_downed: bool) -> Vector3:
 	var flat := Vector3(_flight_velocity.x, 0.0, _flight_velocity.z)
 	if flat.length() < 0.01:
 		return Vector3.ZERO
-	var strength: float = profile.knockback_scale * profile.mass
+	# ⚠️ B-145 · THE TSINELAS'S OWN LAKAS RIDES ITS OWN THROW, AND UNTIL NOW IT DID
+	# NOT. Measured on two real peers (`Checklist.md` § NET-1(c)): a Prop's LAKAS
+	# moves the impulse its Hitbox produces — 2.924 / 3.400 / 3.876 m/s at 1 / 3 /
+	# 5 — but that is `hitbox.gd::_impulse_for`'s MELEE branch, and this function
+	# is asked FIRST for anything in flight. So the stat was live when a slipper
+	# body-checked somebody and absent from the throw that is its entire job: a
+	# BAKYA (LAKAS 5) hit exactly as hard as a TSINELAS NA LUMA (LAKAS 1).
+	#
+	# ⚠️ THE THROWER'S LAKAS ALREADY SCALES THE CHARGE (`carrier.gd`), and this is
+	# not that. Two different characters answer two different questions — who
+	# threw it, and what was thrown — exactly as `sfx`/`absorb_knockback` and the
+	# LAKAS/TATAG pair at the two ends of a hit already do.
+	#
+	# 🥊 PHYS: this is your file and it has no lock row. Taken on 🧑's direct
+	# instruction while closing B-145; flag it on merge. It is one factor and
+	# reverting it is deleting `* power`.
+	var power: float = 1.0
+	if _character != null and is_instance_valid(_character):
+		power = _character.trait_power_scale()
+	var strength: float = profile.knockback_scale * profile.mass * power
 	if force_downed:
 		strength *= profile.faceslop_multiplier
 	var lift: float = profile.knockback_lift * (profile.faceslop_multiplier if force_downed else 1.0)

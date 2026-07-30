@@ -3866,6 +3866,64 @@ is **8 gameplay files, not 5**; the extra ones are `network_manager.gd`, `carria
 positive on the words *"debug cruft"*) and **`character_base.gd` with 5 hits — a shared-lock
 file, so R-30 needs a mutex its plan does not mention.**
 
+#### B-145 · FIXED, 2026-07-30 — 🌐 NET. Four real peers: **27/27, 28/28, 28/28, 21/21**
+
+🧑's three reports were **one pipeline seen from three angles**, and two of the three had a
+different cause from the one the report suggested.
+
+**1 · NETWORKED — a third-party peer never learns anybody else's pick.** For any one Prop
+there are three kinds of peer: the **HOST** (`picks_for()` is host-side, right), the
+**OWNER** (writes its own `GameLaunch`, right), and **EVERYBODY ELSE** (`can_index = -1`,
+stock skin, neutral 3/3/3). ⚠️ **With two peers there is no everybody-else** — which is
+precisely why every two-instance run this project has ever done was green while a real
+four-player match was broken. Measured on four peers from a verified-clean start: host and
+owner `can_index=3`, the two third-party clients `-1`, same unit, same round.
+
+⚠️ **TWO PLAUSIBLE FIXES WERE TRIED FIRST AND BOTH MEASURED NO CHANGE.** Recorded so nobody
+spends the afternoon re-deriving them: (a) `_build_networked_character` stamping -1 over a
+replicated value — real, guarded now, **not** the cause; (b) flipping the three properties
+from `ON_CHANGE` to `ALWAYS` in `CharacterBase.tscn` — no change either, because the state
+is not arriving at all, so how often it *would* be re-sent is beside the point. **(b) was
+reverted** rather than left in as unearned bandwidth, and the lock released.
+
+The fix is `_rpc_sync_picks`, sent on the **same trigger, to the same one peer**, as the
+round-state catch-up that already exists for exactly this reason. ⚠️ **Not U-8** — U-8 is a
+second path for something the host already delivers, and nothing delivered this.
+
+**2 · A BOT PROP BESIDE A HUMAN TEAMMATE STAYED NEUTRAL ALL MATCH.** NET-1 gave AI-held
+Props their human teammate's picks, but `_fill_empty_slots_with_placeholders()` runs inside
+`_start_hosting()` — **before a single client has connected** — so `_team_prop_picks` had
+nobody to inherit from, wrote -1, and was never asked again. `_refresh_ai_prop_picks()` now
+re-asks whenever a peer is seated. This was the last red row on the four-peer run.
+
+**3 · SINGLE PLAYER — *"the models we pick don't show up"*.** Nothing to do with the
+network. The four solo units are **authored in `Main.tscn`**, so their `_ready()` — which
+calls `_visual.apply()` — runs when the scene loads, *before* `_start_local_test()` writes
+the picks onto them. The model was drawn from -1 every time and nothing asked again until
+`reset_for_new_round()` at the END of round 1 — and the pre-round free-roam window is
+exactly when a player stands about looking at their character.
+
+**4 · *"i pick coffee, if i switch to can, old model stays"*.** `character_visual.gd::apply()`
+early-returns on an unchanged cache key, and **all six latas share one mesh** (the pick is a
+TINT). So the key was identical for every skin and the function was skipped whenever
+`can_index` changed without `is_can` changing — which, since the fix above sends picks after
+the unit exists, is now the *common* path. The skin index is part of the cache key.
+
+⚠️ `scripts/characters/character_visual.gd` is 🩴 **ART's file and has no lock row**; touched
+on 🧑's direct instruction, second session running. **Flag on merge.**
+
+**5 · A TSINELAS'S OWN LAKAS DID NOT RIDE ITS OWN THROW.** `hitbox.gd::_impulse_for` asks the
+Carriable first, and `carriable.gd::knockback_impulse()` built its impulse from
+`ThrowProfile.knockback_scale * mass` with **no trait term** — so LAKAS was live when a
+slipper body-checked someone and absent from the throw that is its whole job. A BAKYA (LAKAS
+5) hit exactly as hard as a TSINELAS NA LUMA (LAKAS 1). One factor added. ⚠️ 🥊 **PHYS's
+file, no lock row, taken on 🧑's instruction — flag on merge; reverting is deleting
+`* power`.** ⚠️ This is *not* the thrower's LAKAS, which already scales the charge in
+`carrier.gd`: two characters, two questions — who threw it, and what was thrown.
+
+**Regression:** `spawn_probe` ALL SPAWNS CORRECT, `input_probe` 11/11, four-peer
+`net_spawn_probe` green on every peer, `phys_probe -- band` unchanged.
+
 #### R-24 · THE AI FALLBACK SURVIVES REAL DROPS, 2026-07-30 — 🌐 NET. `net_spawn_probe dropat=`
 
 All four named cases driven on three real ENet peers, with the drop landing **mid-round**
