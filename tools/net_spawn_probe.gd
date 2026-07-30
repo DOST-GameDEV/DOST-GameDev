@@ -110,6 +110,13 @@ func _ready() -> void:
 			_can_id = StringName(token.substr(4))
 		elif token.begins_with("slipper="):
 			_slipper_id = StringName(token.substr(8))
+		elif token == "graceful":
+			_host_quit_graceful = true
+		elif token.begins_with("hostquit="):
+			# R-25. Passed to BOTH peers: the host to know when to die, the
+			# client to know it is running the host-quit beats rather than the
+			# round loop.
+			_host_quit_at = float(token.substr(9))
 	_tag = "HOST" if _is_host else "CLIENT"
 	# ⚠️ BEFORE Main.tscn is instantiated — main.gd reads selected_map_scene() as
 	# it builds the world, so setting it afterwards silently measures Eskinita
@@ -149,6 +156,13 @@ func _ready() -> void:
 	await get_tree().create_timer(CONNECT_WAIT).timeout
 	_sample("initial spawn")
 	await _check_local_input()
+
+	# R-25 · THE HOST QUITS MID-ROUND. Branches before the round loop so the
+	# quit lands with a round genuinely live, which is the case that matters —
+	# a host leaving between rounds tears down far less.
+	if _host_quit_at > 0.0:
+		await _run_host_quit()
+		return
 
 	if _is_host:
 		# Only the host drives rounds; the client observes what it was told.
@@ -724,6 +738,140 @@ func _measure_prop_walk(who: CharacterBase) -> Dictionary:
 
 func _physics_delta() -> float:
 	return 1.0 / float(Engine.physics_ticks_per_second)
+
+## ---------------------------------------------------------------------------
+## R-25 · A CLEAN HOST-QUIT STORY. `hostquit=SECONDS` on BOTH peers.
+##
+##   godot --path . --headless tools/net_spawn_probe.tscn -- --host hostquit=10
+##   godot --path . --headless tools/net_spawn_probe.tscn -- --join=127.0.0.1 hostquit=10
+##
+## There is no host migration and there will not be one, so the honest version
+## is: every client gets off the dead match promptly, lands somewhere it can
+## rejoin from, and leaves nothing behind.
+##
+## ⚠️ THE 3 s IS MEASURED FROM `server_disconnected`, NOT FROM THE HOST'S QUIT,
+## and that is deliberate rather than generous. The gap between a host process
+## dying and ENet noticing is a TIMEOUT, not this game's teardown — it is set by
+## the peer's own keep-alive and no amount of work in `main.gd` shortens it.
+## Both numbers are printed so the split is visible; only the second is gated.
+##
+## ⚠️ AND THE ORPHAN CHECK IS THE HALF THAT ACTUALLY BITES. Reaching the menu
+## while `/root/Main` is still parented — or with four CharacterBase nodes still
+## in the tree under a freed scene — is the soft-leak that shows up two rejoins
+## later as a match that starts with eight characters. Gated separately from the
+## scene change for that reason: they fail differently and mean different things.
+const HOST_QUIT_MENU: String = "res://scenes/ui/MultiplayerSetup.tscn"
+## Seconds a client may take to leave the dead match, measured from
+## `server_disconnected`.
+const HOST_QUIT_GRACE: float = 3.0
+## How long a client waits for that signal before giving up on the run.
+const HOST_QUIT_WAIT: float = 25.0
+
+var _host_quit_at: float = -1.0
+var _host_quit_graceful: bool = false
+var _disconnect_seen_at: float = -1.0
+## ⚠️ CAPTURED IN THE SIGNAL HANDLER, NOT READ OFF GameLaunch LATER. The first
+## version checked it after the scene change and reported "landed on the menu
+## with no explanation" on both clients — but the message is CONSUMED by the
+## screen that shows it (`mode_select.gd` reads it and blanks it), so the probe
+## was measuring its own lateness. `main.gd::_on_server_disconnected` connects
+## before this does and therefore runs first, so by the time this handler is
+## called the message is set and not yet consumed.
+var _status_at_disconnect: String = ""
+
+func _on_server_disconnected_probe() -> void:
+	_disconnect_seen_at = Time.get_ticks_msec() / 1000.0
+	_status_at_disconnect = String(GameLaunch.pending_status_message)
+	print("[%s]    server_disconnected at %.2fs" % [_tag, _disconnect_seen_at])
+
+func _run_host_quit() -> void:
+	if _is_host:
+		# ⚠️ MID-ROUND, AND THE FIRST RUN OF THIS WAS NOT. It quit at
+		# round_active=false round=0 — a host leaving the ready phase, which
+		# tears down far less than R-25 is about. The host drives one round
+		# first, exactly as the round loop above does, and the state it quit in
+		# is PRINTED rather than assumed.
+		MatchManager.report_round_result(true)
+		await get_tree().create_timer(_host_quit_at).timeout
+		print("[%s] round_active=%s round=%d — QUITTING NOW (%s)" % [
+			_tag, str(RoundManager.round_active), MatchManager.round_number,
+			"graceful: disconnect_network() first" if _host_quit_graceful
+			else "abrupt: the process simply dies"])
+		# R-25 · THE TWO QUITS ARE NOT THE SAME EVENT AND THE DIFFERENCE IS THE
+		# WHOLE FINDING. An abrupt death (alt-F4, power, crash) gives the clients
+		# nothing but silence, so they wait out ENET_TIMEOUT_MIN — deliberately
+		# 10 s, widened for Hamachi jitter, and not a defect. A graceful quit can
+		# CLOSE the peer, which ENet announces immediately. Measured both ways.
+		if _host_quit_graceful:
+			NetworkManager.disconnect_network()
+			await get_tree().create_timer(0.5).timeout
+		# ⚠️ THE PROCESS DIES. Calling `disconnect_network()` would test a tidy
+		# in-process teardown that a real host-quit does not necessarily take —
+		# a player alt-F4ing, losing power or closing the window gives the
+		# clients nothing but silence, and silence is the case worth proving.
+		get_tree().quit(0)
+		return
+
+	NetworkManager.server_disconnected.connect(_on_server_disconnected_probe)
+	var waited := 0.0
+	while _disconnect_seen_at < 0.0 and waited < HOST_QUIT_WAIT:
+		await get_tree().create_timer(0.1).timeout
+		waited += 0.1
+	_samples += 1
+	if _disconnect_seen_at < 0.0:
+		_fails += 1
+		print("[%s]    *** FAIL: the host quit and this client was never told ***" % _tag)
+		print("[%s] === 1 FAILURES ===" % _tag)
+		get_tree().quit(1)
+		return
+	print("[%s]    OK — told the host was gone (ENet took %.2fs to notice)" % [_tag, waited])
+
+	var left_at := -1.0
+	var elapsed := 0.0
+	while elapsed < HOST_QUIT_GRACE + 2.0:
+		await get_tree().create_timer(0.05).timeout
+		elapsed += 0.05
+		var scene := get_tree().current_scene
+		if scene != null and scene.scene_file_path == HOST_QUIT_MENU:
+			left_at = elapsed
+			break
+	_samples += 1
+	if left_at < 0.0:
+		_fails += 1
+		print("[%s]    *** FAIL: still on the dead match %.1fs after being told ***"
+			% [_tag, elapsed])
+	elif left_at > HOST_QUIT_GRACE:
+		_fails += 1
+		print("[%s]    *** FAIL: took %.2fs to reach %s (grace %.1fs) ***"
+			% [_tag, left_at, HOST_QUIT_MENU, HOST_QUIT_GRACE])
+	else:
+		print("[%s]    OK — reached MultiplayerSetup in %.2fs (grace %.1fs)"
+			% [_tag, left_at, HOST_QUIT_GRACE])
+
+	# One frame for the freed scene to actually leave the tree.
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var orphan_main := get_tree().root.get_node_or_null("Main")
+	var orphan_characters := get_tree().root.find_children("*", "CharacterBase", true, false)
+	_samples += 1
+	if orphan_main != null or not orphan_characters.is_empty():
+		_fails += 1
+		print("[%s]    *** FAIL: orphans left behind — /root/Main=%s, %d CharacterBase ***"
+			% [_tag, str(orphan_main != null), orphan_characters.size()])
+	else:
+		print("[%s]    OK — nothing orphaned: no /root/Main, 0 CharacterBase" % _tag)
+	_samples += 1
+	var message := _status_at_disconnect
+	if message == "":
+		_fails += 1
+		print("[%s]    *** FAIL: landed on the menu with no explanation for the player ***" % _tag)
+	else:
+		print("[%s]    OK — the player is told why: \"%s\"" % [_tag, message])
+
+	print("\n[%s] === %s (%d/%d checks clean) ===" % [
+		_tag, "ALL CHECKS PASSED" if _fails == 0 else "%d FAILURES" % _fails,
+		_samples - _fails, _samples])
+	get_tree().quit(1 if _fails > 0 else 0)
 
 func _off_axis(forward: Vector3, target: Vector3) -> float:
 	if forward.length() < 0.001:

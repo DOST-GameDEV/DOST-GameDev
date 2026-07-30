@@ -3866,6 +3866,57 @@ is **8 gameplay files, not 5**; the extra ones are `network_manager.gd`, `carria
 positive on the words *"debug cruft"*) and **`character_base.gd` with 5 hits — a shared-lock
 file, so R-30 needs a mutex its plan does not mention.**
 
+#### R-25 · THE TEARDOWN IS CLEAN; THE ANNOUNCEMENT IS NOT, 2026-07-30 — 🌐 NET
+
+`net_spawn_probe -- --host hostquit=8 [graceful]`, three peers, the host quitting with a
+round genuinely live (`round_active=true round=1`, printed rather than assumed).
+
+| assertion | result |
+|---|---|
+| every client is told the host is gone | ✅ |
+| reaches `MultiplayerSetup.tscn` after being told | ✅ **0.05 s** (grace 3.0 s) |
+| nothing orphaned | ✅ no `/root/Main`, **0 CharacterBase** |
+| the player is told WHY | ✅ *"Host ended the match."* |
+
+**Once a client knows, `main.gd::_on_server_disconnected` is exemplary — 0.05 s, no orphans,
+a real message.** The problem is entirely in finding out.
+
+⚠️ **CLIENTS SPEND ~5 SECONDS ON A FROZEN MATCH BEFORE ANYTHING HAPPENS, AND CLOSING THE
+PEER DOES NOT HELP.** Measured both ways, mid-round, same three-peer set-up:
+
+| how the host leaves | time for the client to be told |
+|---|---|
+| abrupt — the process simply dies (alt-F4, power, crash) | **5.20 s** |
+| graceful — `NetworkManager.disconnect_network()` first, which calls `close()` | **5.40 s** |
+
+**They are the same number.** Closing the ENet peer buys nothing measurable, so a host who
+quits *politely* strands everyone exactly as long as one whose laptop dies. The wait is
+`ENET_TIMEOUT_MIN`, **deliberately widened to 10000 ms** so a Hamachi latency spike cannot
+be mistaken for a drop (B-65's rejoin identity exists for the same reason) — **so this is
+not a defect to fix by shortening the timeout.** Narrowing it would trade "the host quit
+screen is slow" for "an ordinary VPN blip ejects everyone mid-round", which is strictly
+worse.
+
+**RECOMMENDATION, not built here:** the host's own quit path should **tell** the clients
+before it goes — one explicit "I am leaving" message, then close. That is the piece R-25
+actually asks for (*"THE HOST'S OWN QUIT PATH ASKS FOR CONFIRMATION and tells them what will
+happen to everyone else"*), and it costs nothing in timeout safety because it does not touch
+the timeout. ⚠️ **It is not U-8.** U-8 is inventing a second broadcast path for something
+the host already owns; there is no existing "the host is leaving" message at all — silence
+is currently the entire protocol.
+
+⚠️ **THE CONFIRMATION DIALOG IS 🖥️ UX's AND NEEDS A LOCK.** `scenes/ui/*.tscn` is
+SHARED-LOCK; the dialog, and the copy telling the host what happens to everyone else, are
+handed over in writing rather than taken.
+
+⚠️ **TWO PROBE FAULTS WERE FIXED BEFORE ANY OF THIS COUNTED.** The first run quit at
+`round_active=false round=0` — a host leaving the READY PHASE, which tears down far less
+than a live round, so it was not the case R-25 names at all; the host now drives a round
+first. The second reported *"landed on the menu with no explanation for the player"* on both
+clients — false, and the probe was measuring its own lateness: the message is **consumed by
+the screen that displays it** (`mode_select.gd` reads it and blanks it), so it is now
+captured in the `server_disconnected` handler, which runs immediately after `main.gd`'s own.
+
 #### R-26 · THE NET HALF DONE, 2026-07-30 — 🌐 NET. `lobby_probe` at FOUR peers
 
 All three uncovered cases are covered, each on four real ENet instances, and **every one of
