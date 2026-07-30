@@ -95,7 +95,29 @@ const TAYA_TAP_INTERVAL: float = 0.5
 ## How far out from the can the Taya plants itself when body-blocking. Far enough
 ## to actually intercept a throw rather than hugging the can, comfortably inside
 ## CONFINEMENT_RADIUS so it never presses on its own boundary.
+## ⚠️ SUPERSEDED BY `taya_block_standoff` AT ITS ONE CALL SITE — kept as the
+## documented NORMAL baseline and as the value the fairness log's runs before
+## RUN 9 were all measured at, exactly as DECISION_INTERVAL and
+## ATTACKER_CHARGE_TIME already are. Read the `static var` below, not this.
 const TAYA_BLOCK_STANDOFF: float = 2.6
+## ⚠️ R-01. The lever RUN 3, RUN 7 and RUN 8 each pointed at and which none of
+## them could measure, because it was a `const` and `tools/ai_probe.gd` had no
+## argument for it. It is a `static var` for exactly the reason
+## `taya_pursue_radius` is: `ai_probe.gd`'s fairness mode sweeps it from the
+## command line (`standoff=`) without editing this file, which is the only way
+## "measured, not assumed" is cheap enough to actually happen.
+##
+## Geometry that bounds the useful range, so a sweep is read against something
+## rather than against nothing: the can sits at the world origin, the attacker
+## throws from ATTACKER_THROW_RANGE 6.0, and the Taya is clamped to
+## CONFINEMENT_RADIUS 5.0 (character_base.gd::_move_and_confine). A standoff at
+## or past ~4.6 therefore puts the post on the Taya's own wall, and a standoff
+## near 0 makes it hug the can. `_act_taya_body_block` clamps to
+## CONFINEMENT_RADIUS - 0.4 regardless, so values above that are the same run.
+##
+## ⚠️ NOT IN DIFFICULTY_TIERS YET, deliberately: RUN 9 has to say whether it is a
+## lever at all before a tier table is written against it.
+static var taya_block_standoff: float = TAYA_BLOCK_STANDOFF
 ## Distance from the can an Attacker tries to hold before charging — mirrors
 ## the map's own throwing line (Art_Direction.md §9's 6-unit derivation).
 ## This file does not import that constant; it just aims for the same number
@@ -993,7 +1015,7 @@ func _act_taya_body_block(_delta: float) -> int:
 	bearing.y = 0.0
 	if bearing.length() < 0.1:
 		bearing = Vector3.FORWARD
-	var standoff: float = minf(TAYA_BLOCK_STANDOFF, CharacterBase.CONFINEMENT_RADIUS - 0.4)
+	var standoff: float = minf(taya_block_standoff, CharacterBase.CONFINEMENT_RADIUS - 0.4)
 	_move_toward(can.global_position + bearing.normalized() * standoff)
 	return BTNode.SUCCESS
 
