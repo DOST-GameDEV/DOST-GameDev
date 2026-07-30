@@ -186,8 +186,25 @@ it, or simply the harness's absolute threshold scaling badly with range.
 ⚠️ **DELIBERATELY NOT "FIXED" BY THE UX LANE.** The two candidate actions are retuning ballistics or
 relaxing a pass mark, and `carriable.gd`/`carrier.gd`/`aim_probe.gd` are 🥊 PHYS's files — a UX lane
 loosening a threshold until its own merge goes green is exactly how a real regression gets buried.
-**Recommendation:** make the mark proportional to range (e.g. 2% of the aim distance, floored at 0.30 m)
-rather than absolute, then re-measure. If it still fails on the short rows, that is a solve bug.
+
+⚠️ **CORRECTED RECOMMENDATION.** This entry first said "make the mark proportional to range". **Do not
+do that.** `PASS_WITHIN`'s own comment (`aim_probe.gd:24`) justifies 0.40 m by the tightest shipped
+`hit_radius` — 0.30 for flick — i.e. *"a trajectory inside this genuinely hits what was pointed at."*
+A proportional mark decouples it from the only thing that makes it mean anything, and at 0.41 m against
+a 0.30 m hit radius the throw **would** miss. Taken at face value the FAIL is real, not harness noise.
+
+**So the first question is a RANGE question, and it is cheap to answer.** `PITCHES` aims at whatever the
+ray hits, which at +0.0 and +10.0 is a wall ~24 m out. **The throwing line is z = -6.0 — six metres.**
+`phys_probe -- band` at gameplay range reports flat **3/3 on the can** out to a 0.30 m offset. If no
+throw in the game ever travels 24 m, the audit is failing on a shot nobody takes, and the fix is the
+**audit's geometry** (aim at a target inside real throw range, or report the long rows separately as
+out-of-envelope) — **not** the mark and **not** the ballistics.
+
+**Only if the miss reproduces inside ~10 m is this a solve bug**, and then it is `carriable.gd
+::_solve_arc` or the `arc_angle_deg` rotation applied after it.
+
+⚠️ `aim_probe` **exits 1** on this failure (`aim_probe.gd:514`), so anything treating its exit code as a
+gate is red until this is settled.
 
 **B-143 · THE MID-GAME HUD WAS A DIFFERENT DESIGN LANGUAGE FROM THE GAME IT IS IN. [FIXED 2026-07-30 — first pass]**
 
