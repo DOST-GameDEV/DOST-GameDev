@@ -117,9 +117,15 @@ func _run_local() -> void:
 ##
 ## ⚠️ WHAT "TWO PEERS AGREEING" CAN ACTUALLY MEAN, WHICH IS NOT WHAT IT LOOKS LIKE.
 ## `last_fall_scored` is written inside `_apply_hit_result`, and that is an `rpc_id` to
-## the STRUCK character's own authority — so no other peer is ever told the flag at all.
-## Comparing the flag across peers is therefore impossible by construction, and a probe
-## that tried would be measuring nothing on one side.
+## the STRUCK character's own authority — so no peer OTHER THAN THE OWNER is ever told the
+## flag. Comparing the flag on a can you do not own is therefore measuring nothing.
+##
+## ⚠️ AND THIS PARAGRAPH USED TO SAY "no OTHER peer is ever told the flag at all", WHICH
+## READ ONE STEP TOO FAR AND COST A WHOLE FALSE FINDING. The owner is a peer too. For a
+## client-owned lata the client IS the authority the `rpc_id` targets, so it is the one
+## machine holding the applied result first-hand — and on the strength of that sentence
+## `_physics_process` substituted a literal `true` for it and the run reported 0 lucky
+## falls out of 28 at a pinned chance of 0.5. See the note at the substitution site.
 ##
 ## What every peer CAN see is the CONSEQUENCE, because `state` replicates from the
 ## authority outward through CharacterBase.tscn's synchronizer:
@@ -305,13 +311,31 @@ func _physics_process(_delta: float) -> void:
 	var can := _net_watch_can
 	if can.state == CharacterBase.State.DOWNED and not _net_was_downed:
 		_net_was_downed = true
+		# ⚠️⚠️ THE FLAG IS READ IFF THIS PEER OWNS THE CAN, AND THE OLD CONDITION WAS
+		# `if _net_host else true`. THAT `true` IS A CONSTANT, NOT A MEASUREMENT, and it
+		# is the entire "downed_lucky does not apply on a remote peer" finding.
+		#
+		# `_net_host` is the wrong question. `_apply_hit_result` is an `rpc_id` to
+		# `target.get_multiplayer_authority()`, so the peer that is told the kind is the
+		# peer that OWNS the can — which for a client-owned lata is the CLIENT, not the
+		# host. The client was therefore the one peer with first-hand evidence, and the
+		# harness threw it away and substituted `true`; the classifier below then read
+		# that constant back out through `mark = "L" if not flag_scored else "S"` and
+		# could only ever print S. 0 lucky out of 28 at a pinned chance of 0.5 is
+		# p ≈ 3.7e-9 — an impossible number, and the metric was the bug.
+		#
+		# The header's claim that "no other peer is ever told the flag" is true and was
+		# read one step too far: not-told applies to peers that do NOT own the can (the
+		# host looking at a client's lata, and vice versa). `flag_known` now carries that
+		# distinction explicitly instead of leaving a stale default to stand in for it.
+		var mine := can.get_multiplayer_authority() == multiplayer.get_unique_id()
 		_net_records.append({
 			"round": MatchManager.round_number,
 			"can": String(can.name),
-			# Host-only facts. A client is never told either — see this section's header.
-			"flag_scored": can.last_fall_scored if _net_host else true,
+			"flag_scored": can.last_fall_scored if mine else true,
+			"flag_known": mine,
 			"fall_delta": -99,
-			"mine": can.get_multiplayer_authority() == multiplayer.get_unique_id(),
+			"mine": mine,
 			"resolved": "?",
 		})
 		if _net_host:
@@ -351,12 +375,24 @@ func _net_report() -> void:
 	var lucky := 0
 	var scored := 0
 	var seq := ""
+	# ⚠️ THE HOST'S OWN WITHIN-MACHINE CHECK, on the knockdowns where the host owns the can
+	# and therefore holds BOTH facts: the roll it made (`can_fell`) and the flag
+	# `_apply_hit_result` wrote locally through `call_local`. Those cannot legitimately
+	# disagree on one machine, so a non-zero count here is a bug in the mechanic itself and
+	# not in the wire — which is exactly the half of the question a cross-peer diff cannot
+	# answer.
+	var self_checked := 0
+	var self_mismatch := 0
 	for i in _net_records.size():
 		var r: Dictionary = _net_records[i]
 		# One character per knockdown, in flight order, so the two logs line up index for
 		# index: L / S from whichever evidence THIS peer legitimately has, '.' where this
 		# peer has none (it does not own the can and is not the host).
 		var mark := "."
+		var flag_known := bool(r.get("flag_known", false))
+		var flag_mark := "?"
+		if flag_known:
+			flag_mark = "S" if bool(r["flag_scored"]) else "L"
 		if _net_host:
 			# `fall_delta` now carries the host's ROLL: 0 lucky, 1 scoring, -1 none seen.
 			var d: int = int(r["fall_delta"])
@@ -364,23 +400,46 @@ func _net_report() -> void:
 				mark = "L"
 			elif d == 1:
 				mark = "S"
-		elif bool(r["mine"]):
-			mark = "L" if not bool(r["flag_scored"]) else "S"
+			if flag_known and mark != ".":
+				self_checked += 1
+				if flag_mark != mark:
+					self_mismatch += 1
+		elif flag_known:
+			mark = flag_mark
 		if mark == "L":
 			lucky += 1
 		elif mark == "S":
 			scored += 1
 		seq += mark
-		print("[%s]   %-3d round %-2d %-12s mine=%-5s flag_scored=%-5s fall_delta=%-4d ended=%-6s -> %s"
-			% [_net_tag, i, r["round"], r["can"], str(r["mine"]), str(r["flag_scored"]),
+		print("[%s]   %-3d round %-2d %-12s mine=%-5s flag=%-4s fall_delta=%-4d ended=%-6s -> %s"
+			% [_net_tag, i, r["round"], r["can"], str(r["mine"]),
+				flag_mark if flag_known else "n/a",
 				int(r["fall_delta"]), r["resolved"], mark])
 	print("[%s]   lucky (no point) : %d" % [_net_tag, lucky])
 	print("[%s]   scoring          : %d" % [_net_tag, scored])
+	if _net_host:
+		print("[%s]   host-owned rows where the roll and the applied flag agree: %d/%d%s"
+			% [_net_tag, self_checked - self_mismatch, self_checked,
+				"" if self_mismatch == 0 else "   *** %d DISAGREE ***" % self_mismatch])
 	# ⚠️ THE CROSS-PEER COMPARISON IS THIS ONE LINE. Diff it between the two logs. Every
 	# position where BOTH peers printed a letter must carry the SAME letter: that is the
 	# host's roll and the owning peer's applied result agreeing on the same hit. A '.' is
 	# "this peer has no evidence about that one", not a disagreement.
-	print("[%s]   OUTCOME-SEQ: %s" % [_net_tag, seq])
+	#
+	# ⚠️⚠️ ALIGN BY SUFFIX, NOT BY INDEX 0, AND FILTER TO ONE CAN FIRST. The two peers do
+	# NOT record the same number of knockdowns and that is not a fault: the host begins
+	# driving as soon as its own ready-up returns, while a client's `_net_watch_can` is not
+	# assigned until `_net_observe()` starts, so the client legitimately misses the first
+	# knockdown or two. Measured 2026-07-30: host 42 rows, client 39, and on the
+	# client-owned can specifically 21 against 19.
+	#
+	# So: grep both logs for the SAME can name, take the mark column, and align the
+	# shorter sequence to the END of the longer. That alignment is checkable rather than
+	# assumed — sliding the 19-long client sequence along the 21-long host one scored
+	# 11, 12 and 19 agreements at offsets 0, 1 and 2, so the correct offset is the unique
+	# maximum and not a choice. At it, agreement was 19/19.
+	print("[%s]   OUTCOME-SEQ: %s   (%d rows; align by SUFFIX per can — see the note)"
+		% [_net_tag, seq, _net_records.size()])
 
 func _report() -> void:
 	print("\n=== AIM AUDIT (does the throw go where the crosshair points?) ===")
