@@ -110,6 +110,86 @@ var _is_charging: bool = false
 var _channel_target: Carriable = null
 var _channel_time: float = 0.0
 
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE WIND-UP EVERY OTHER PEER CAN SEE. Human report, 2026-07-30: *"everyone
+## else should see its windup happening."*
+##
+## They could not, and not by oversight — there was no path for it to travel. The
+## charge lived entirely on the charging peer:
+##
+##   * `_charge_time` is written in `input_step()`, which `character_base.gd` calls
+##     only for the character THAT PEER controls (its authority gate);
+##   * `charge_changed` is a local signal consumed by `you_card.gd`, i.e. the charging
+##     player's own HUD;
+##   * `character_visual.gd` polls `charge_power()` to drive the FIRST-PERSON viewmodel
+##     arm — which by construction only the charging player can see.
+##
+## So a taya had nothing to read. This file's own header calls a committed throw "a
+## real decision the taya can read and punish", and R-10's whole premise is that a
+## wind-up is readable; both were true only of the thrower's own screen. The rising
+## charge tone (`throw_charge`, played positionally on every peer) was the ONLY cue
+## anyone else got, which is why the fix was worth having and why the sound alone was
+## not enough.
+##
+## ⚠️ BROADCAST ONCE, THEN RECOMPUTED LOCALLY — NOT STREAMED. An RPC per frame at 60 Hz
+## for a cosmetic ramp is exactly what B-19 throttled `_sync_state` for. The charge
+## curve is deterministic in elapsed time, so every peer starts its own clock from one
+## "begin" message and arrives at the same number, which is the same idiom
+## `carriable.gd::_step_carried` uses for a carried slipper ("once every peer knows WHO
+## is carrying, each recomputes the transform locally") and the same one
+## `_rpc_apply_scuff` uses for its timers.
+##
+## What is NOT built here, deliberately: the third-person POSE. `play_visual_action`
+## is emitted on every peer with the kind `"charge"`, and `character_visual.gd`'s
+## `ACTION_CLIPS` has no entry for it yet — that file is the visual lane's and adding
+## one line to that dictionary is the whole remaining job. Until it does, this is a
+## silent no-op on the body (both `play_action` and `play_viewmodel_action` skip an
+## unknown clip) and the observable value below is available for it.
+## ---------------------------------------------------------------------------
+
+## Ticks on EVERY peer while this Person is observed to be charging, -1 when not.
+var _observed_charge_time: float = -1.0
+
+## The charge fraction as any peer can see it, 0..1, or -1 when this Person is not
+## charging. Same curve as `charge_power()`, recomputed rather than replicated.
+func observed_charge_power() -> float:
+	if _observed_charge_time < 0.0:
+		return -1.0
+	return clampf(
+		CHARGE_MIN_POWER + (_observed_charge_time / CHARGE_FULL_TIME) * (1.0 - CHARGE_MIN_POWER),
+		CHARGE_MIN_POWER, 1.0)
+
+## Whether the throw this Person is currently winding up would be a lob — visible to
+## every peer, so a defender can read "that one is going over you" and move.
+func observed_lob_armed() -> bool:
+	return _observed_charge_time >= CHARGE_MAX_TIME
+
+## Runs on every peer, unlike input_step(). Only the observed clock is ticked here;
+## the authoritative `_charge_time` stays where the input is read.
+func _physics_process(delta: float) -> void:
+	if _observed_charge_time >= 0.0:
+		_observed_charge_time = minf(_observed_charge_time + delta, CHARGE_MAX_TIME)
+
+## Told to every peer at the START of a charge and again when it ends, by any route —
+## released, cancelled, tagged out of our hands, round reset.
+func _broadcast_charge(active: bool) -> void:
+	if NetworkManager.is_networked():
+		_rpc_charge_visual.rpc(active)
+	else:
+		_rpc_charge_visual(active)
+
+## "any_peer" / "call_local" for the reason every broadcast in carriable.gd documents:
+## this is sent by the charging peer, which is not necessarily this node's authority as
+## far as any given receiver is concerned, and an "authority" RPC would be dropped.
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_charge_visual(active: bool) -> void:
+	_observed_charge_time = 0.0 if active else -1.0
+	if _character == null:
+		return
+	# Cosmetic only, and the same contract bump/throw/grab already use: this says WHAT
+	# happened and CharacterVisual decides what it looks like.
+	_character.play_visual_action("charge" if active else "throw")
+
 @onready var _grab_area: Area3D = get_parent().get_node_or_null("GrabArea")
 
 func _ready() -> void:
@@ -283,6 +363,8 @@ func _step_throw(delta: float) -> void:
 		_is_charging = true
 		_charge_time = 0.0
 		charge_changed.emit(charge_meter())
+		# Tell every other peer a wind-up has started — see _broadcast_charge.
+		_broadcast_charge(true)
 		# 4.1. This file's own header calls a committed throw "a real decision
 		# the taya can read and punish" — until now it was readable only if the
 		# taya happened to be looking straight at the attacker's arm. The rising
@@ -300,7 +382,8 @@ func _step_throw(delta: float) -> void:
 		# of the answer.
 		var lob := is_lob_armed()
 		_cancel_charge()
-		_character.play_visual_action("throw")
+		# `_broadcast_charge(false)` inside _cancel_charge() already plays the throw
+		# follow-through on every peer, so this is not repeated here.
 		_request_throw(power, lob)
 
 ## T-3 / B-46 — the lata reset channel, driver side. Hold `grab` next to your own
@@ -385,12 +468,18 @@ func _find_resettable() -> Carriable:
 			best = carriable
 	return best
 
+## ⚠️ EVERY exit from a charge comes through here — released, cancelled, the slipper
+## knocked out of our hands mid-hold, a round reset — which is exactly why the "the
+## wind-up is over" broadcast belongs here and not at the release site. A pose left
+## running on a Person who was tagged mid-charge is the mirror image of the invisible
+## wind-up: wrong on every screen except the one that knows.
 func _cancel_charge() -> void:
 	if not _is_charging:
 		return
 	_is_charging = false
 	_charge_time = 0.0
 	charge_changed.emit(-1.0)
+	_broadcast_charge(false)
 
 ## Nearest thing in the grab area this Person is actually allowed to pick up.
 ## The ownership rule itself lives in carriable.gd — this only asks.

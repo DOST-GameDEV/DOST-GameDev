@@ -18,6 +18,14 @@ class_name RoundManagerScript
 ## docs/Dev_Plan.md, Section 3, Phase 1).
 
 signal round_won(winning_team: int)
+## Fired on the HOST the moment it resolves a knockdown on a tracked Can, carrying its
+## own decision: `scored` false is the lucky fall (CharacterBase.LUCKY_FALL_CHANCE).
+##
+## Exists because that decision was, until now, observable nowhere except as a side
+## effect on a counter — which made it untestable across peers and invisible to any HUD
+## that wanted to show "3 falls, one of them free". Emitted for BOTH outcomes and before
+## the counting below, so a listener sees every roll and not just the ones that pay.
+signal can_fell(fallen: CharacterBase, scored: bool)
 
 const ROUND_TIME: float = 90.0
 ## B-19: _sync_state used to RPC every rendered frame per client just to drive
@@ -108,27 +116,70 @@ func clear_tracked_cans() -> void:
 				can.dents_changed.disconnect(_on_tracked_can_dents_changed)
 	_tracked_cans.clear()
 
+## ⚠️⚠️ THE FALL COUNT IS TOLD TO THE HOST BY THE HOST, AND IT USED TO BE READ OFF A
+## FLAG THE HOST DOES NOT OWN. MEASURED ON TWO REAL PEERS, 2026-07-30.
+##
+## `hitbox.gd` rolls the lucky fall host-side and ships the answer as its `kind`
+## through `target._apply_hit_result.rpc_id(target.get_multiplayer_authority(), ...)`.
+## That RPC lands on the CAN'S OWN PEER, which is where `go_downed(false)` runs and
+## therefore where `last_fall_scored` is written. **`last_fall_scored` is not in
+## CharacterBase.tscn's replication config**, so the host's own copy of it never changes
+## from its `true` default for a can owned by a client.
+##
+## This handler used to read exactly that flag. So for a client-owned lata:
+##   * the CAN self-righted correctly (the exception in `_physics_process`'s DOWNED
+##     branch runs on the owning peer, which does have the right flag), so it LOOKED
+##     right on every screen, and
+##   * the host counted the fall toward FALL_LIMIT anyway.
+## i.e. the lucky fall's entire purpose — *"this isn't a point for the enemy"* — was
+## silently false for half the cans in any networked match, while visibly working.
+##
+## MEASURED with `tools/aim_probe.tscn -- net` (host + one real client, chance pinned to
+## 0.5 so both outcomes appear): 33 knockdowns, and **every lucky fall observed was on a
+## host-owned can — 0 of 26 on the client-owned one**, which at even odds is not chance.
+## The host's rows read `flag_scored=true, fall_delta=1` on knockdowns the owning peer
+## had been told were lucky.
+##
+## The fix is to stop asking a character we do not own about a decision we made
+## ourselves. `hitbox.gd` calls this from the one place that is already host-only and
+## already holds the answer, so the count now comes from the same machine and the same
+## line as the roll.
+##
+## ⚠️ A LOCAL-PATH TEST CANNOT SEE ANY OF THIS. Non-networked, the host owns every
+## character, so the flag is always correct and the old code passed. That is trap 1 in
+## `Handoff_Physics_AI_LAN.md`, and it is why R-18's acceptance demands two real peers.
+func host_note_fall(fallen: CharacterBase, scored: bool) -> void:
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		return
+	if not round_active or _tracked_cans.is_empty():
+		return
+	# ⚠️ PARENTHESISED. `not fallen in _tracked_cans` parses as `(not fallen) in
+	# _tracked_cans` in GDScript — a bool tested for membership in an array of
+	# CharacterBase, which is always false, so the guard would never fire.
+	if fallen == null or not is_instance_valid(fallen) or not (fallen in _tracked_cans):
+		return
+	can_fell.emit(fallen, scored)
+	# User feedback: "if can falls 5 times they lose" — counts the transition INTO
+	# Downed, not Sealed, so a Taya who saves every single fall still loses the round on
+	# the last one. A lucky fall is the exception and does not count: the can still
+	# visibly went over and CharacterBase's DOWNED branch self-rights it, so it costs
+	# the defence nothing and pays the offence nothing.
+	if not scored:
+		return
+	_fall_count += 1
+	if _fall_count >= FALL_LIMIT:
+		report_round_win(false) # Slippers win regardless of this fall's own outcome
+
 func _on_tracked_can_state_changed(new_state: int, fallen: CharacterBase) -> void:
 	if not round_active or _tracked_cans.is_empty():
 		return
-	# User feedback: "if can falls 5 times they lose" — counts the transition
-	# INTO Downed, not Sealed, so a Taya who saves every single fall still
-	# loses the round on the 5th one. Checked before the Sealed loop below so
-	# it can win the round even on a fall that would otherwise be recoverable.
+	# ⚠️ THE FALL COUNT IS NO LONGER DONE HERE — see host_note_fall() above for the
+	# measured reason. This handler is now only the all-Sealed win check.
 	#
-	# THE LUCKY FALL IS THE EXCEPTION, and it is the reason `can` is bound into
-	# this connection at all: a knockdown that landed the can on its head or its
-	# back is not a point for the attacking side, so it does not count here. The
-	# can still visibly went over, and CharacterBase's DOWNED branch self-rights it
-	# rather than auto-sealing, so it costs the defence nothing either.
-	# See CharacterBase.LUCKY_FALL_CHANCE for where the roll is made and why it has
-	# to be the host that makes it.
-	if new_state == CharacterBase.State.DOWNED and fallen != null \
-			and is_instance_valid(fallen) and fallen.last_fall_scored:
-		_fall_count += 1
-		if _fall_count >= FALL_LIMIT:
-			report_round_win(false) # Slippers win regardless of this fall's own outcome
-			return
+	# It reaches the host at all only because `CharacterBase.state` has a setter as of
+	# 2026-07-30; before that, a synchronizer's write to a replicated property emitted
+	# nothing and this function never ran on the host for a client-owned can, so BOTH
+	# win paths were unreachable for half the cans in any match.
 	for can in _tracked_cans:
 		if not is_instance_valid(can) or can.state != CharacterBase.State.SEALED:
 			return

@@ -83,6 +83,21 @@ const DOWNED_SELF_RIGHT_WINDOW: float = 1.25
 ## it. It is the difficulty knob for the whole defensive half of Option B and
 ## belongs in the fairness tiers (Checklist Phase 9, item 6).
 const LUCKY_FALL_CHANCE: float = 0.12
+## ⚠️ R-18(b) — SWEEPABLE, AND THE `const` ABOVE STAYS AS THE SHIPPED BASELINE.
+## Same shape as `AIController.taya_block_standoff` and `Carriable.bounce_damping`.
+##
+## This exists for a specific measurement problem rather than for tuning. R-18's
+## acceptance is the lucky fall verified on the NETWORKED path with two real peers
+## agreeing on the same outcome for the same hit — and at one chance in eight, a
+## 40-throw two-peer run produces one or two lucky falls if it is lucky itself, so a
+## green result would rest on a sample of one and a red one would be indistinguishable
+## from never having rolled a lucky fall at all. Pinning the chance lets a probe
+## produce BOTH outcomes in one session and check that both cross the wire; the
+## shipped 0.12 is then a separate, honest question about frequency.
+##
+## ⚠️ `static`, i.e. process-wide, so a probe that leaves it changed has retuned the
+## game. Put it back.
+static var lucky_fall_chance: float = LUCKY_FALL_CHANCE
 ## User feedback, 2026-07-28: "team can shouldnt be allowed to go outside of a
 ## box/line when game starts." Confines the Can and its Taya (defending
 ## Person) to this radius around the map's base circle (world origin — every
@@ -302,7 +317,46 @@ signal hit_blocked
 ## left it declared twice, which is a GDScript parse error — this is the
 ## surviving single declaration.)
 var spawn_position: Vector3 = Vector3.ZERO
-var state: State = State.NORMAL
+## ⚠️⚠️ THE SETTER IS THE FIX FOR THREE SYMPTOMS WITH ONE CAUSE, AND IT WAS FOUND BY
+## MEASUREMENT, NOT BY READING.
+##
+## `state` is replicated (CharacterBase.tscn, `properties/2`, replication_mode 2) and a
+## MultiplayerSynchronizer writes a replicated property DIRECTLY. `_set_state()` was the
+## only emitter of `state_changed`, so on a peer that RECEIVED a state the signal never
+## fired at all — the value changed silently. Everything hanging off that signal was
+## therefore dead for any character that peer does not own:
+##
+##   1. `RoundManager._on_tracked_can_state_changed` never ran on the HOST for a
+##      client-owned can. It is where FALL_LIMIT is counted ("if the can falls 4 times
+##      they lose") and where the all-Sealed win is evaluated — and `report_round_win`
+##      is host-only. So for a client-owned lata BOTH win paths were unreachable: the
+##      client counted the falls and could not act on them, and the host could act and
+##      was never told.
+##   2. `_on_state_changed_audio` — whose own doc claims *"`state_changed` fires on every
+##      peer, because every peer's synchronizer applies the replicated state locally"* —
+##      only ever played on the owning peer. That claim was the intent; this makes it
+##      true. Until now the only player who heard a lata go over was the player who owned
+##      it.
+##   3. `Carriable._on_carrier_state_changed` (B-75, knocking the slipper out of a tagged
+##      carrier's hands) is host-gated inside, so it survived — but only because the host
+##      happens to own the resolution, not because the signal reached it.
+##
+## MEASURED, 2026-07-30, two real ENet peers on `tools/aim_probe.tscn -- net`: every
+## scoring knockdown on a CLIENT-owned can reported `fall_delta = 0` on the host where 1
+## was required, while lucky falls on host-owned cans reported 0 correctly. Two rows that
+## could not both be right, which is how this surfaced.
+##
+## ⚠️ THE SETTER IS THE *ONLY* EMITTER NOW. `_set_state()` just assigns. Do not add an
+## emit back to it — that is a double fire, and `_fall_count` would count every fall
+## twice on the peer that owns the can. GDScript does not re-enter an accessor on a
+## direct self-assignment inside it, which is why the line below is not infinite
+## recursion.
+var state: State = State.NORMAL:
+	set(value):
+		if value == state:
+			return
+		state = value
+		state_changed.emit(state)
 ## Option A only. Always 0 for Persons and Slippers — only a Can (is_can true)
 ## ever takes dents. Synced like `state` (see CharacterBase.tscn) so RoundManager
 ## can watch it identically on every peer; only the host's report actually counts
@@ -1021,6 +1075,40 @@ func _physics_process(delta: float) -> void:
 	# and crawl scales rather than replacing either: a fast character crawling a
 	# loose tsinelas through mud is still slow, just less slow than Lola Pacing.
 	var trait_scale := trait_speed_scale()
+	# ⚠️⚠️ FACE WHAT YOU ARE THROWING AT. Human report, 2026-07-30: *"the attacker AI
+	# was facing backwards when shooting towards defender, it should face towards you
+	# when it throws for it to be realistic."*
+	#
+	# Correct, and the cause is the two lines below this one. Yaw is written in exactly
+	# one place for a non-mouse-aimed unit — `look_at(position + direction)` — and
+	# `direction` is MOVEMENT INPUT, so a unit that is standing still keeps the bearing
+	# it last WALKED, forever. `AIController._act_attacker_charge_release` deliberately
+	# stands still to charge (`_release_move(0.0)`), so an AI thrower faces wherever it
+	# happened to be heading when it stopped, which after an orbiting approach is very
+	# often straight backwards.
+	#
+	# This is the same root cause as B-125, one layer out. That bug was that the THROW
+	# went where the body was pointing; the fix was `ai_aim_point`, which made the throw
+	# ignore the body. So the projectile has been leaving on the correct bearing ever
+	# since and the body has been lying about it — the report is about the half B-125
+	# did not touch.
+	#
+	# ⚠️ FIXED HERE, ON THE BODY, AND NOT ON THE MODEL. `character_visual.gd` carries a
+	# +Z/-Z correction for this rig (the ten-session "spawns facing backward" bug,
+	# measured 2026-07-30 with model_facing_probe) and its own note is explicit that the
+	# correction belongs on the MODEL node and never on the body. This writes body yaw,
+	# which is the same quantity `look_at` below already writes, so the model correction
+	# continues to apply on top of it exactly as it does for walking.
+	#
+	# ⚠️ AND NOT FOR A MOUSE-AIMED UNIT, for the reason B-60 documents at length: the
+	# rig owns yaw for whoever is driving, and writing it here drags their camera.
+	var facing := _throw_facing_target()
+	if not mouse_aimed and facing != Vector3.INF:
+		var flat_facing := Vector3(facing.x, global_position.y, facing.z)
+		# look_at() errors on a zero-length basis, which is what a target at our own
+		# feet gives — a point-blank aim point is not a bearing.
+		if global_position.distance_to(flat_facing) > 0.05:
+			look_at(flat_facing, Vector3.UP)
 	if direction:
 		velocity.x = direction.x * SPEED * _speed_multiplier * carry_scale * trait_scale
 		velocity.z = direction.z * SPEED * _speed_multiplier * carry_scale * trait_scale
@@ -1031,7 +1119,10 @@ func _physics_process(delta: float) -> void:
 		# Skipped when mouse-aimed: the rig already wrote yaw this frame, and
 		# overwriting it here is exactly the bug above. Attacks still fire where
 		# you are looking, which is what B-05 actually wanted.
-		if not mouse_aimed:
+		# ⚠️ `and facing == Vector3.INF` — a thrower that is walking while charging must
+		# keep facing its target, not snap back to its footwork. Movement is what wrote
+		# the wrong bearing in the first place (see _throw_facing_target).
+		if not mouse_aimed and facing == Vector3.INF:
 			look_at(global_position + direction, Vector3.UP)
 	else:
 		velocity.x = move_toward(velocity.x, 0, FRICTION * delta)
@@ -1068,6 +1159,26 @@ func _physics_process(delta: float) -> void:
 	# charged throw would never fire for a bot.
 	if ai_controller != null:
 		ai_commit_intent_frame()
+
+## WHERE THIS UNIT SHOULD BE FACING BECAUSE OF A THROW, or Vector3.INF for "nothing
+## overrides the ordinary movement facing". See the block in _physics_process.
+##
+## Deliberately asked of the CARRIER rather than mirrored into a field here: whether a
+## charge is running is that node's business, exactly as "where does a Person's hand
+## sit" is CharacterVisual's. This file must never learn what carrying is.
+##
+## ⚠️ ONLY WHILE A CHARGE IS ACTUALLY RUNNING. `ai_aim_point` is left set for a frame
+## after release on purpose (`_act_attacker_settle` clears it, one frame late, so the
+## release is not raced), so keying off the aim point alone would hold a unit staring
+## at the can after the throw is long gone and stop it turning to run.
+func _throw_facing_target() -> Vector3:
+	if _carrier == null or not _carrier.is_charging():
+		return Vector3.INF
+	# An AI aims at a point it was TOLD (B-125). A human is mouse-aimed and never
+	# reaches here — the rig owns their yaw and this must not fight it.
+	if is_ai_driven() and ai_aim_point != Vector3.INF:
+		return ai_aim_point
+	return Vector3.INF
 
 ## Called on this character when it's hit by an opponent's Hitbox (see hitbox.gd).
 func apply_stagger(duration: float = BUMP_STAGGER_TIME) -> void:
@@ -1867,11 +1978,11 @@ func capsule_radius() -> float:
 func _carrier_is_holding() -> bool:
 	return _carrier != null and _carrier.held() != null
 
+## Kept as the named transition point every call site in this file already uses. The
+## assignment below goes through `state`'s own setter, which is what emits — see there,
+## and do NOT emit here as well.
 func _set_state(new_state: State) -> void:
-	if new_state == state:
-		return
 	state = new_state
-	state_changed.emit(state)
 
 ## Called by KillPlane (B-15/B-35) when this character falls off the arena.
 ## Stun-only, no elimination — same "straight back in the fight" rule as a
@@ -1916,11 +2027,20 @@ func reset_for_new_round() -> void:
 	_is_guarding = false
 	_dash_cooldown_left = 0.0
 	_dash_active_time_left = 0.0
-	state = State.NORMAL
 	# B-122: before the emit, or a unit that ended the round DOWNED fires a
 	# recovery chime at the start of every new round.
+	#
+	# ⚠️ AND NOW IT HAS TO BE BEFORE THE ASSIGNMENT, NOT MERELY BEFORE AN EXPLICIT
+	# EMIT — `state` has a setter and the assignment IS the emit. Reordering these two
+	# lines re-opens B-122 exactly as it was.
 	_audio_prev_state = State.NORMAL
-	state_changed.emit(state)
+	var was_state := state
+	state = State.NORMAL
+	# The setter only emits on an actual change. This reset has always emitted
+	# unconditionally, and things downstream refresh off it, so keep that for the
+	# already-NORMAL case rather than quietly dropping a signal at every round boundary.
+	if was_state == State.NORMAL:
+		state_changed.emit(state)
 	dents = 0
 	dents_changed.emit(dents)
 	if ability:
