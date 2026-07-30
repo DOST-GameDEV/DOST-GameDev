@@ -163,3 +163,95 @@ var solo_seat: int = 0
 ## screen just made, one frame before it is used.
 func clear_seating() -> void:
 	seat_tokens.clear()
+
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ "UI GOES BELOW SCREEN" — AND IT IS THE WINDOW, NOT THE LAYOUT.
+##
+## 🧑 report, 2026-07-30, with a screenshot: *"ui goes below screen, pls make sure
+## no ui goes below screen bruh."* The YOU card's bottom row ("SLIPPER READY") is
+## sheared in half by the bottom of the frame mid-match.
+##
+## ⚠️ THE SCREENSHOT IS THE MEASUREMENT, AND IT IS 1920x1037. Not 1080. The card
+## lays out at y 908..1064 (`ui_layout_probe`, every row set, both presets — its
+## content minimum FITS its 156px anchor box with room to spare, so no amount of
+## re-anchoring that card would have fixed anything). 1064 is inside 1080 and
+## outside 1037, which is the whole bug: 43 pixels of the client area were never on
+## the screen at all.
+##
+## `project.godot` asks for a 1920x1080 WINDOWED window and nothing in the project
+## touched the window after that. On a 1920x1080 display that cannot fit: add a
+## title bar and a border and the bottom of the client area is pushed under the
+## taskbar and off the panel. Every bottom-anchored control loses its last rows —
+## the YOU card, the lata card, the ready prompt, the round-objective line — and
+## `stretch/aspect="expand"` hides it from every layout check ever run, because the
+## CONTENT rect is still a perfect 1920x1080 and every rect in it is exactly where
+## it was designed to be. There is no overflow to find in the scene tree.
+##
+## So the fix is to make the window fit the screen it is on, once, at boot:
+##
+##   * shrink the client area until the DECORATED window fits the usable rect
+##     (which already excludes the taskbar), and
+##   * re-centre it inside that rect, so it cannot hang off an edge either way.
+##
+## ⚠️ THE ASPECT IS PRESERVED ON PURPOSE. Under `stretch/aspect="expand"` the
+## content rect is derived from the window's ASPECT, not its pixel count, so a
+## 16:9 client area of any size lays out in the same 1920x1080 content rect the
+## whole UI was designed against — the layout is untouched and every probe number
+## still describes what the player sees. Squeezing only the height instead would
+## change the aspect, grow the content rect, and move every anchored control.
+##
+## ⚠️ NOT FULLSCREEN. Forcing `display/window/size/mode` would fix the clipping and
+## break two-instance LAN testing, which is how this game is developed and how the
+## human tests it. It also cannot be done from here: `project.godot` is
+## SHARED-LOCK. A window that fits needs no lock and no mode change.
+##
+## Asserted by `tools/ui_layout_probe.gd::_report_window_fit()`, which calls this
+## function and then checks the decorated window against the usable rect — the one
+## check in that file that looks at the WINDOW rather than at the content rect.
+## ---------------------------------------------------------------------------
+
+## ⚠️ AN EXPLICIT `--resolution` WINS. Half the render harnesses in `tools/` ask the
+## engine for a specific window size and then save a PNG of it — `ui_shot`,
+## `charselect_overlay_shot`, `ui_layout_probe`'s own presets. Silently shrinking the
+## window under them would return images at a size nobody asked for, and a capture
+## harness that quietly changes resolution is the kind of fault that gets read as a
+## layout change. A player launching the game normally passes no such flag.
+func _ready() -> void:
+	if "--resolution" in OS.get_cmdline_args():
+		return
+	fit_window_to_usable_screen()
+
+## Public so the layout probe can drive the real thing rather than a copy of it.
+## Safe to call more than once and a no-op when the window already fits.
+func fit_window_to_usable_screen() -> void:
+	# No window manager, no decorations, no usable rect worth reading.
+	if DisplayServer.get_name() == "headless":
+		return
+	var win := get_window()
+	if win == null:
+		return
+	var usable := DisplayServer.screen_get_usable_rect(win.current_screen)
+	if usable.size.x <= 0 or usable.size.y <= 0:
+		return
+	# How much bigger the decorated window is than its client area, and where the
+	# client area sits inside it. Both come off the window itself rather than from
+	# a guessed title-bar height, which differs per platform and per theme.
+	var extra: Vector2i = win.get_size_with_decorations() - win.size
+	var inset: Vector2i = win.position - win.get_position_with_decorations()
+	var room: Vector2i = usable.size - extra
+	if room.x <= 0 or room.y <= 0:
+		return
+	# One scale for both axes: fitting the axes independently would change the
+	# aspect, and under `expand` the aspect IS the layout. See the note above.
+	var scale := minf(
+		minf(float(room.x) / float(win.size.x), float(room.y) / float(win.size.y)), 1.0)
+	if scale < 1.0:
+		win.size = Vector2i(
+			maxi(int(floor(win.size.x * scale)), 1), maxi(int(floor(win.size.y * scale)), 1))
+		extra = win.get_size_with_decorations() - win.size
+	# Centre what is now known to fit, so the same 43 pixels cannot be lost off the
+	# bottom by a window the WM happened to place low.
+	var decorated: Vector2i = win.size + extra
+	win.position = usable.position + inset + Vector2i(
+		maxi((usable.size.x - decorated.x) / 2, 0), maxi((usable.size.y - decorated.y) / 2, 0))

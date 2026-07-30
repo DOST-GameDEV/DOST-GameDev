@@ -23,7 +23,7 @@ class_name TutorialPanel
 ## ⚠️ THE CONFINEMENT RADIUS IS DELIBERATELY NOT GIVEN A NUMBER. The GDD says 3
 ## units and `CharacterBase.CONFINEMENT_RADIUS` says 5.0. Rather than print
 ## whichever one happens to be right this week, page 2 describes the rule — the
-## taya cannot leave its post — which is the part a player needs and the part
+## defender cannot leave its post — which is the part a player needs and the part
 ## both sources agree on. Put a number here once they agree.
 
 signal back_pressed
@@ -38,32 +38,34 @@ signal back_pressed
 ## is has no hook to hang `["90 SECONDS", ...]` on. So the premise goes IN FRONT and
 ## stays wordless enough to be read in one glance:
 ##
-##   LATA / can · TAYA / guard   are the DEFENCE pair, and their words are blue
-##   TSINELAS / slipper · TAKBO / run   are the OFFENCE pair, and their words are orange
+##   LATA / can · DEFENDER / holds the post   are the DEFENCE pair, and their words are blue
+##   TSINELAS / slipper · ATTACKER / throws, then runs   are the OFFENCE pair, and their words are orange
 ##
 ## which teaches the colour rule by using it rather than by stating it — the same way
 ## the vocabulary itself is taught. Word count is the whole budget, lede included:
-## four glosses, four Filipino words, and a four-word lede is twelve.
+## four glosses, four headwords, and a four-word lede is twelve. ⚠️ Only LATA and
+## TSINELAS are still Filipino — 🧑 2026-07-30 kept exactly those two plus
+## "person"; TAYA and TAKBO became DEFENDER and ATTACKER.
 const PAGES: Array[Dictionary] = [
 	{
 		"title": "TUMBANG PRESO",
 		"lede": "One can. Two sides.",
 		"tiles": [
-			# ⚠️ Two DIFFERENT roster entries for the two tao tiles. Both concepts are
+			# ⚠️ Two DIFFERENT roster entries for the two person tiles. Both concepts are
 			# "a person", and rendering the same rig twice would read as a duplicated
 			# picture rather than as two jobs — the role colour alone cannot carry that
 			# when the silhouette is identical.
 			{"kind": "can", "fil": "LATA", "eng": "can", "role": "defense"},
-			{"kind": "person", "index": 0, "fil": "TAYA", "eng": "guard", "role": "defense"},
+			{"kind": "person", "index": 0, "fil": "DEFENDER", "eng": "holds the post", "role": "defense"},
 			{"kind": "slipper", "fil": "TSINELAS", "eng": "slipper", "role": "offense"},
-			{"kind": "person", "index": 1, "fil": "TAKBO", "eng": "run", "role": "offense"},
+			{"kind": "person", "index": 1, "fil": "ATTACKER", "eng": "throws, then runs", "role": "offense"},
 		],
 	},
 	{
 		"title": "THE GAME",
 		"lede": "Tumbang preso, played as a sport. One side guards the lata. The other side throws a tsinelas at it.",
 		"rows": [
-			["2 v 2", "Each team is one TAO and one GAMIT. The gamit is a lata when you defend and a tsinelas when you attack. Every unit is driven by somebody: a player, or a kalaro filling an empty seat."],
+			["2 v 2", "Each team is one PERSON and one OBJECT. The object is a lata when you defend and a tsinelas when you attack. Every unit is driven by somebody: a player, or a bot filling an empty seat."],
 			["90 SECONDS", "How long a round lasts. If nothing else has decided it by then, the defending side keeps the round."],
 			["BEST OF 5", "First team to 3 round wins takes the match."],
 			["SWAP EVERY ROUND", "You attack one round and defend the next. Both teams play both jobs, so the match is never decided by which side you drew."],
@@ -73,8 +75,8 @@ const PAGES: Array[Dictionary] = [
 		"title": "THE TWO SIDES",
 		"lede": "Orange is offense and blue is defense. The colours track the ROLE, not the team, so they swap when you do.",
 		"rows": [
-			["LATA SIDE\nDEFENSE", "Your tao is the taya. You and your lata are pinned inside a chalk square around the base circle for the whole round, so you cannot chase the attacker back to the throwing line. Holding the post IS the job."],
-			["TSINELAS SIDE\nOFFENSE", "Your tao carries the tsinelas, throws it at the lata, and then has to go out into the open and get it back."],
+			["LATA SIDE\nDEFENSE", "Your person is the defender. You and your lata are pinned inside a chalk square around the base circle for the whole round, so you cannot chase the attacker back to the throwing line. Holding the post IS the job."],
+			["TSINELAS SIDE\nOFFENSE", "Your person carries the tsinelas, throws it at the lata, and then has to go out into the open and get it back."],
 			["NOBODY IS OUT", "Contact stuns and knocks back. Nobody is ever eliminated, so one bad tag never puts a round out of reach."],
 		],
 	},
@@ -82,10 +84,10 @@ const PAGES: Array[Dictionary] = [
 		"title": "HOW A ROUND GOES",
 		"lede": "Five beats, and the third one is where the whole game lives.",
 		"rows": [
-			["1.  CARRY", "The attacking tao picks the tsinelas up and walks it out to the throwing line."],
+			["1.  CARRY", "The attacking person picks the tsinelas up and walks it out to the throwing line."],
 			["2.  THROW", "Hold the ability button to charge, release to let it go. It leaves the hand on a real ballistic arc, aimed with the camera."],
 			["3.  SCRAMBLE", "The tsinelas lands loose on the ground. Either the attacker sprints out and grabs it, or the slipper's own player crawls it home, slowly and completely exposed. Both routes can be tagged."],
-			["4.  DEFEND", "The taya body-blocks the throw, tags the attacker, and stands the lata back up when it goes over. Standing it up takes 2.2 seconds of holding still, so it is a commitment, not a reflex."],
+			["4.  DEFEND", "The defender body-blocks the throw, tags the attacker, and stands the lata back up when it goes over. Standing it up takes 2.2 seconds of holding still, so it is a commitment, not a reflex."],
 			["5.  END", "On a win condition below, or on the 90-second timer."],
 		],
 	},
@@ -95,7 +97,12 @@ const PAGES: Array[Dictionary] = [
 		"rows": [
 			["W A S D", "Move."],
 			["MOUSE", "Look, and aim your throw. The slipper flies to the point your crosshair is actually on, not just along the line it points down."],
-			["SPACE", "Jump, and Bump: a light melee with a small stagger and no cooldown."],
+			# 🧑 2026-07-30: Space is JUMP only. It used to drive both, so one press jumped
+			# AND melee'd — `input_probe`'s conflict check found it and the human made the
+			# call. Bump moved to F. This page is the only place the game tells a player
+			# what the keys are, so it moves with the binding or it lies.
+			["SPACE", "Jump."],
+			["F", "Bump: a light melee with a small stagger and no cooldown."],
 			["SHIFT", "Guard if you are a Can, dash-evade if you are a Tsinelas."],
 		],
 	},
@@ -103,8 +110,8 @@ const PAGES: Array[Dictionary] = [
 		"title": "CONTROLS  ·  HANDS",
 		"lede": "The two buttons that decide rounds.",
 		"rows": [
-			["E", "Grab the tsinelas. As the taya, HOLD it beside your knocked-over lata to stand it back up. That takes 2.2 seconds and being tagged out of it cancels the whole thing, with no partial credit."],
-			["Q  /  LEFT CLICK", "Special. With a tsinelas in hand, holding it charges the throw: 0.9 seconds to full power, and a tap still throws. Empty-handed it is your tao's Tag."],
+			["E", "Grab the tsinelas. As the defender, HOLD it beside your knocked-over lata to stand it back up. That takes 2.2 seconds and being tagged out of it cancels the whole thing, with no partial credit."],
+			["Q  /  LEFT CLICK", "Special. With a tsinelas in hand, holding it charges the throw: 0.9 seconds to full power, and a tap still throws. Empty-handed it is your person's Tag."],
 			["R", "Ready up, in the match itself, before the first round. Everybody walks around freely until every player has pressed it, then the 3, 2, 1 runs and the round starts."],
 			["ESC", "Pause."],
 		],
@@ -113,8 +120,8 @@ const PAGES: Array[Dictionary] = [
 		"title": "HOW YOU WIN",
 		"lede": "Two round-win modes. Pick one on the setup screen before you start. In multiplayer only the host picks, and it applies to everyone.",
 		"rows": [
-			["CAPTURE\nlata side", "Tag the attacking tao, with the always-on Bump or with the Tag ability, and the round ends in your favour immediately. Or simply survive to the 90-second timer."],
-			["CAPTURE\ntsinelas side", "Knock the lata down and stop it getting back up. A fall nobody recovers inside its self-right window ends the round, and knocking it down 4 times wins outright whether or not the taya saved every one. Now and then it lands on its head and rights itself for free, which costs you the throw and nothing else."],
+			["CAPTURE\nlata side", "Tag the attacking person, with the always-on Bump or with the Tag ability, and the round ends in your favour immediately. Or simply survive to the 90-second timer."],
+			["CAPTURE\ntsinelas side", "Knock the lata down and stop it getting back up. A fall nobody recovers inside its self-right window ends the round, and knocking it down 4 times wins outright whether or not the defender saved every one. Now and then it lands on its head and rights itself for free, which costs you the throw and nothing else."],
 			["DENTS", "The lata carries a health bar instead. The tsinelas side wins by fully denting it. The lata side wins on the timer, by beating dents back out with the reset channel, or by knocking the tsinelas out of bounds 3 times."],
 		],
 	},
@@ -131,7 +138,7 @@ const PAGES: Array[Dictionary] = [
 		"title": "THE TSINELAS",
 		"lede": "Three kits on the attacking side. A tsinelas special is NOT a button. It is HOW that slipper flies when your Tao throws it, so you choose it before the match and then you live with it.",
 		"rows": [
-			["BAGSAK BOMB\nPula · Dilaw", "The lob. High arc and heavy gravity, so it comes down onto the lata from above and bursts wide where it lands. The throw to pick when a taya is standing in your lane."],
+			["BAGSAK BOMB\nPula · Dilaw", "The lob. High arc and heavy gravity, so it comes down onto the lata from above and bursts wide where it lands. The throw to pick when a defender is standing in your lane."],
 			["BAKYA BASH\nBakya · Asul", "The heavy. Flattest arc, barely steerable once it leaves your hand, and a direct hit knocks the lata flat outright."],
 			["FLICK DASH\nGoma · Luma", "The line drive. Fastest launch and the most steering in mid-air, but it is the one throw that will not knock the lata down on its own. It sets up the next one."],
 		],
@@ -298,7 +305,7 @@ func _build_premise_strip(tiles: Array) -> HBoxContainer:
 ##
 ## ⚠️ ONLY THE WORDS TAKE THE ROLE COLOUR, never the model. `show_character()` applies
 ## the roster's own material (skin, clothes) and flat-tinting a person orange would
-## both fight ART's palette and stop the tao reading as a tao. The colour rule is
+## both fight ART's palette and stop the person reading as a person. The colour rule is
 ## about what the UI says, and the words are the UI.
 func _build_premise_tile(tile: Dictionary) -> VBoxContainer:
 	var is_offense := String(tile.get("role", "defense")) == "offense"
