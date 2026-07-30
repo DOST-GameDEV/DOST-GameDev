@@ -2220,9 +2220,30 @@ godot --path . tools/ai_probe.tscn -- fairness rounds=20 scale=6
 godot --path . tools/ai_probe.tscn -- fairness rounds=20 scale=6 pursue=0
 ```
 
-⚠️ **There is no `standoff=` argument and `TAYA_BLOCK_STANDOFF` is still a `const`.** That is the
-one lever RUN 3, RUN 7 and RUN 8 all point at, and adding it is `Roadmap.md` R-01 — the first task
-of the ⚖️ BALANCE lane.
+```bash
+# The standoff sweep. ⚠️ NOT THE LEVER EITHER — corrected 2026-07-30 by RUN 9, which swept it at
+# 1.0 / 1.4 / 1.8 / 2.2 / 2.6 / 3.2 / 3.8 and got DEF 100% and <= 0.10 dents at every value. What it
+# does decide is ROUND LENGTH, non-monotonically: outside 2.2-2.6 a round is over in ~2s.
+godot --path . tools/ai_probe.tscn -- fairness rounds=20 scale=4 standoff=1.4
+
+# R-07's two knobs, and R-09's tiers — no tier but NORMAL had ever been measured before `tier=`
+# existed, because nothing outside AIController called apply_difficulty().
+godot --path . tools/ai_probe.tscn -- fairness rounds=20 scale=4 posthold=0.5 repost=0.5
+godot --path . tools/ai_probe.tscn -- fairness rounds=20 scale=4 tier=BATA
+
+# R-08's three round-win variants, imposed from the probe and never from hitbox.gd.
+godot --path . tools/ai_probe.tscn -- fairness rounds=20 scale=4 tag=control|slipper|inside
+
+# R-21's position heatmap (ASCII grid + a PNG), and bt_trace() at every throw.
+godot --path . tools/ai_probe.tscn -- fairness rounds=20 scale=4 heatmap trace
+
+# R-02's acceptance test: break one honesty assertion on purpose and watch the run refuse.
+godot --path . tools/ai_probe.tscn -- fairness rounds=2 scale=8 break=park|map|swap
+```
+
+⚠️ **`--headless --path <abs> --import` FIRST, on any fresh checkout.** A map whose `.obj` meshes
+have never been imported loads with `Parse Error: [ext_resource] referenced non-existent resource`
+and the probe runs anyway, producing a complete and wrong table. See RUN 9.
 
 ⚠️ **Never `--headless`**, same rule as smoke-gate commands 3 and 4. ⚠️ **The fairness mode attaches
 a fourth `AIController` to `TeamAPerson`**, the slot `main.gd::_start_local_test()` leaves for the
@@ -2606,18 +2627,120 @@ Three runs, 10 rounds each, Option A, scale 4, Eskinita. Only `taya_pursue_radiu
 **Nothing in this pass claims to have balanced the AI.** It made the measurement honest and left the
 number where it found it.
 
-### ⚠️ Still open after RUN 8
+### RUN 9 — 2026-07-30. THE STANDOFF SWEEP, OWED SINCE RUN 3. It is not the lever, and the way it fails is the finding.
+
+**R-01 and R-02 landed first**, so this is the first run in the log taken with the harness asserting
+its own honesty rather than being trusted. Every row below printed
+`honesty contract: PASSED` — four genuinely AI-driven units (asked with `is_enabled()`, never
+`!= null`), Eskinita actually in the tree and compared against the scene the row claims, OPTION_A in
+effect, and the attacking side changing hands across the run. All three assertions were also
+deliberately broken to confirm they refuse; the three refusals are quoted in `git log` for
+`d82b56d`.
+
+⚠️ **ONE SETUP STEP THAT INVALIDATED THE FIRST ATTEMPT, RECORDED SO IT IS NOT RE-DISCOVERED.**
+`cd9ecc2` (the eskinita dressing pass) added `.obj` meshes that had never been imported on this
+machine, and `Eskinita.tscn` therefore loaded with `Parse Error: [ext_resource] referenced
+non-existent resource` for every one of them. The probe ran anyway and produced a complete,
+plausible, **wrong** table — rounds were about a third shorter than the real ones.
+`--headless --path <abs> --import` is a precondition of a fairness run on a fresh checkout, exactly
+as `Handoff_Physics_AI_LAN.md` says, and the numbers below are all post-import. The dressing itself
+has no collision (Eskinita's only `StaticBody3D`s are `Floor` and the four `Bounds/Wall*`), so it is
+not a physics confound — only an import one.
+
+Harness: `godot --path <abs> tools/ai_probe.tscn -- fairness rounds=20 scale=4 standoff=<s>`,
+Eskinita, Option A, four AI-driven units, 20 rounds per row, `taya_pursue_radius` at its shipped
+1.8. **Only `taya_block_standoff` differs between rows.** Nothing but `ai_controller.gd`'s R-01
+promotion has touched gameplay since RUN 8 was logged, so this is a clean comparison to it.
+
+| `standoff=` | Round win rate | 1st throw | Throws taken | **Blocked** | Reached the can | **Dents/round** | Ended by tag | Timed out | **Avg round** | Longest still-run |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **1.0** | DEF **100%** | 0.6 s | 20 | 60.0% | 0 | **0.00** | 20/20 | 0/20 | **2.4 s** | 1.38 s |
+| **1.4** | DEF **100%** | 0.6 s | 21 | 61.9% | 0 | **0.00** | 20/20 | 0/20 | **2.6 s** | 2.48 s |
+| **1.8** | DEF **100%** | 0.6 s | 35 | 77.1% | 0 | **0.00** | 20/20 | 0/20 | **4.4 s** | 2.35 s |
+| **2.2** | DEF **100%** | 0.8 s | 221 | **94.1%** | 2 | **0.10** | 20/20 | 0/20 | **33.3 s** | 3.13 s |
+| **2.6** (shipped) | DEF **100%** | 0.8 s | 188 | **94.7%** | 1 | **0.05** | 19/20 | 1/20 | **28.2 s** | 6.88 s |
+| **3.2** | DEF **100%** | 0.6 s | 23 | 65.2% | 0 | **0.00** | 20/20 | 0/20 | **2.1 s** | 2.10 s |
+| **3.8** | DEF **100%** | 0.6 s | 20 | 60.0% | 0 | **0.00** | 20/20 | 0/20 | **1.5 s** | 1.12 s |
+
+**VERDICT, in the sentence R-05 asks for: `TAYA_BLOCK_STANDOFF` IS NOT A FAIRNESS LEVER, and the
+number that says so is the dents column — 0.00 at five of seven values and 0.10 at its best, with
+the defence winning 100% of rounds at every single value from 1.0 to 3.8.** There is no setting of
+this knob at which the offence scores. Two runs and three documents have called it "the single most
+obvious next lever"; it is now measured, and it decides how the defence wins, not whether. That is
+the same shape as `taya_pursue_radius`'s own result in RUN 8, arrived at independently.
+
+**But the SECOND finding is bigger than the first, and it is a mechanism rather than a number.**
+
+**Read the dents column first, then read the AVG ROUND column, because that is where the response
+lives — and it is not monotonic.** There is a narrow band, 2.2–2.6, where a round lasts ~30 seconds
+and the attacker gets 10–30 throws. Outside it, in BOTH directions, **a round is over in about two
+seconds and the attacker gets exactly one throw.** 1.0 and 3.8 produce almost identical tables from
+opposite geometry, which is the tell:
+
+- **At a SMALL standoff the taya is parked on the can** — which is exactly where the attacker's own
+  slipper lands and where it must therefore walk to retrieve it. It is tagged on the way in, at
+  ~2.4 s, every round.
+- **At a LARGE standoff the taya walks out to its own wall.** `_act_taya_body_block` clamps the post
+  to `CONFINEMENT_RADIUS - 0.4` = 4.6, and `_open_throwing_spot` puts the attacker at
+  `ATTACKER_THROW_RANGE * 0.92` = 5.52. That is a gap of **0.92 units against a `TAYA_MELEE_RANGE`
+  of 1.4** — the post is inside tagging distance of the throwing line, so the taya simply walks up
+  and tags. At ~1.5 s, every round.
+- **The middle band is the only place the taya is too far from the can to tag on retrieval and too
+  far from the line to tag at the throw.** The shipped 2.6 is inside it, which is the only reason
+  the game currently lasts long enough to look like a game at all.
+
+⚠️ **THE HEADLINE ROW IS BIMODAL AND THE AGGREGATE HIDES IT** — §9's own warning, and it fires here.
+"28.2 s average" at the shipped standoff is not what any round looked like. The per-round table is
+two populations: **1.6–2.5 s rounds with one throw** (the attacker tagged almost immediately) and
+**20–90 s rounds with 10–30 throws, every one of them blocked**. Nothing in between. A single
+90.2 s round timed out having taken **30 throws, 30 blocked, 0 on the can**.
+
+⚠️ **RUN 7's WARNING, HONOURED RATHER THAN QUOTED: two metrics move in opposite directions here —
+block rate rises with the standoff while round length collapses at both ends — so this pass
+ROOT-CAUSED IT INSTEAD OF STACKING A SECOND NERF.** The root cause is the two geometric collisions
+above (post-on-the-can, and post-inside-melee-range-of-the-line), and it is not a tuning problem:
+both of them end the round with a **tag**, which ends it **outright**. That is
+[`Roadmap.md`](Roadmap.md) R-08's premise, and RUN 9 has now measured its mechanism rather than
+inferring it. **Do not "fix" this by moving the standoff.** Every value away from 2.2–2.6 makes
+rounds two seconds long, which is a worse failure than an unfair one.
+
+**A cross-check, because a dents column that reads 0.00 seven times is exactly when a metric should
+be doubted.** `tools/phys_probe.tscn -- target=can` on the same build: `RESULT: CONTACT RESOLVES`,
+3 of 9 perfectly-aimed throws connected, one resolution per connecting throw. So the hitbox path is
+alive and **33% is the ceiling for a completely unopposed, dead-centre throw** — the can's own
+evasion eats the other two thirds (it moved on 40% of in-flight frames, up to 0.92 units). RUN 9's
+`reached the can` values are consistent with that ceiling applied to the 5–6% of throws the taya
+does not block: 13 unblocked throws at standoff 2.2 produced 2 hits. Two columns of the same event
+agree, so the metric is not the bug this time.
+
+**What this changes for the plan.** RUN 8 said the framing had to move from tuning to structural.
+RUN 9 is the confirmation, from the other direction: the one knob everyone was waiting on has been
+swept end to end and there is no value of it that makes the game fair. R-07 (a post that can be
+wrong-footed) and R-08 (whether an instant-win tag is the imbalance) are now the whole of Stage 1's
+fairness argument, and R-06's lob has a measured target to beat: **94.7% blocked.**
+
+### ⚠️ Still open after RUN 9
 
 **Corrected 2026-07-30.** This section used to be headed "after RUN 7" and to quote RUN 7's figures.
 **RUN 8 invalidated them** — RUNS 1–7 all measured a 3-v-4 — so the numbers below are RUN 8's.
 
 - **Win rate DEF 100% and dents 0.00–0.10.** Not "improved, still out". **The offence does not
   score.** 92% of throws are blocked, and 10/10 rounds end by tag.
-- **`TAYA_BLOCK_STANDOFF` (2.6) IS STILL UNMEASURED**, and it is now the single most obvious lever —
-  RUN 3, RUN 7 and RUN 8 have each said so. Sweeping it still needs the constant promoted to a
-  `static var`, the way `taya_pursue_radius` already is, plus a `standoff=` argument on `ai_probe`.
-  **Neither exists yet.** ⚠️ RUN 6's 50.6% block rate is no longer a baseline to start from — it is
-  a 3-v-4 number like every other figure before RUN 8.
+- ~~**`TAYA_BLOCK_STANDOFF` (2.6) IS STILL UNMEASURED**~~ **CLOSED BY RUN 9, 2026-07-30.** It is a
+  `static var`, `ai_probe` takes `standoff=`, and it has been swept end to end over
+  {1.0, 1.4, 1.8, 2.2, 2.6, 3.2, 3.8}. **It is not a fairness lever at any value** — DEF 100% and
+  ≤ 0.10 dents throughout. It IS a round-length lever with a non-monotonic response, and the shipped
+  2.6 sits in the only band where a round lasts more than about two seconds. ⚠️ **Three documents
+  called this the most obvious next lever and all three were wrong**, which is the argument for
+  R-01-style promotion in general: the cost of that belief was three runs.
+  ⚠️ RUN 6's 50.6% block rate is not a baseline to start from — it is a 3-v-4 number like every other
+  figure before RUN 8. The live number to beat is RUN 9's **94.7%**.
+- **THE CAN'S EVASION IS A SECOND CEILING, and it is not in anyone's task list.** `phys_probe
+  target=can` on today's build: a dead-centre, full-charge, completely unopposed throw connects
+  **3 times in 9**. So even a perfectly beaten taya leaves the offence converting at ~33%. Any
+  fairness target that assumes an open lane is a scored dent is off by a factor of three. Do NOT
+  answer this by moving `CAN_EVADE_LOOKAHEAD` — its sweep is non-monotonic and documented as
+  untunable; `CAN_EVADE_MISS_MARGIN` is the knob with a monotonic response.
 - **Difficulty tiers EXIST IN CODE and are UNREACHABLE.** ⚠️ **This entry used to say tiers did not
   exist and that entry is now stale.** `ai_controller.gd`'s `DIFFICULTY_TIERS`
   (BATA / NORMAL / ASTIG) and `apply_difficulty()` are complete and correct, and they already carry
