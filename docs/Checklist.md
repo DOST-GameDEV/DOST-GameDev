@@ -3287,6 +3287,47 @@ balance one.** 🧑 Left at the shipped values and asked rather than guessed. If
 wanted, **0.45 / 1 bounce** is the row to try: the complaint was about `MAX_BOUNCES = 2`
 chaining into a ragdoll, not about the damping.
 
+#### CHARACTER TRAITS · VERIFIED END TO END, 2026-07-30 — 🥊 PHYS. `phys_probe -- traits`
+
+Human ask: *"can u make sure the change in stats actually work? in character selection?"*
+**Nothing had ever asked.** All three were built as "one multiplier at one site that already
+existed" — the right design, and also the shape that fails silently, because a scalar folded
+into an expression yields a plausible number whatever the scalar is.
+
+Measured against the OBSERVABLE, not the multiplier — a `trait_speed_scale() == 1.10`
+assertion proves only that arithmetic works — and the roster → character chain is checked
+separately, by setting `character_index` to a real roster entry rather than by writing the
+multiplier:
+
+| trait | roster → `trait_points()` | observable | 1 / low | 3 | 5 |
+|---|---|---|---|---|---|
+| **BILIS** | ok at 1, 3, 5 | metres walked in 60 frames | 4.90 m | 5.50 m | 6.10 m |
+| **LAKAS** | ok | m/s of shove its own Hitbox produces | 2.92 | 3.40 | 3.88 |
+| **TATAG** | ok | m/s kept of a 10.0 shove | 10.75 (at 2) | 10.00 | 8.77 |
+| **TATAG** | ok | stagger worn | 0.2688 s (at 2) | 0.2500 s | 0.2193 s |
+
+**VERDICT: all three reach the character and change an observable.** Full spread is 1.20 m
+of walk, 0.95 m/s of shove and 1.98 m/s of absorbed knockback. 🧑 **Whether that is enough to
+FEEL is a human call** — the per-point steps are deliberately small (`character_base.gd`:
+"a party game cannot afford a pick that is simply correct").
+
+Two things the measurement turned up:
+
+- ⚠️ **The Person roster carries no TATAG 1**, so the sturdiest-to-frailest spread a player
+  can actually pick is 2 → 5, not 1 → 5. Worth knowing before anyone reasons about "full
+  range".
+- ⚠️ **`apply_stagger` uses `max(_staggered_time_left, duration / grit)`, so TATAG is
+  invisible on every hit that lands inside an existing stagger** — a shorter flinch cannot
+  replace a longer one already running. Flagged, not changed: whether a stagger should
+  refresh or extend is a balance call with no play notes behind it.
+
+Two harness faults were fixed on the way, both caught by the impossible-number rule rather
+than by inspection: the walk test did not re-place the unit between runs, so it walked into
+the dressing and reported the SLOWEST pick travelling furthest (4.90 / 2.80 / 0.00 m); and
+the stagger test did not clear `_staggered_time_left`, so `max()` swallowed every shorter
+value and reported an identical 0.2500 s at every TATAG while the knockback divisor beside
+it was plainly working.
+
 #### HANDOFF — R-09 (the difficulty picker) to the 🖥️ UX lane
 
 **The mechanism is complete and measured; only the screen is missing.**

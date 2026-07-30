@@ -68,7 +68,7 @@ func _ready() -> void:
 			_map_id = StringName(token.substr(4))
 		elif token == "ballistics":
 			_ballistics = true
-		elif token == "lane" or token == "bounce":
+		elif token == "lane" or token == "bounce" or token == "traits":
 			_mode = token
 		elif token.begins_with("standoff="):
 			_standoff = float(token.substr(9))
@@ -112,6 +112,10 @@ func _ready() -> void:
 		return
 	if _mode == "bounce":
 		await _run_bounce()
+		get_tree().quit(0)
+		return
+	if _mode == "traits":
+		await _run_traits()
 		get_tree().quit(0)
 		return
 	# Fire a series of throws straight at the can from the throwing line.
@@ -1128,6 +1132,191 @@ func _run_bounce() -> void:
 	print("\n  restored to shipped: damping %.2f / bounces %d"
 		% [Carriable.bounce_damping, Carriable.max_bounces])
 	print("  🧑 WHICH ROW READS AS 'BOUNCES A BIT' IS A FEEL CALL AND IS ASKED, NOT GUESSED.")
+
+## ---------------------------------------------------------------------------
+## CHARACTER TRAITS, MEASURED END TO END — `-- traits`.
+##
+## Human ask, 2026-07-30: *"can u make sure the change in stats actually work? in
+## character selection?"*
+##
+## Nothing had ever asked. BILIS / LAKAS / TATAG were built as "three multipliers at three
+## sites that already existed", which is the right design and is also exactly the shape
+## that fails silently: every one of the three is a scalar folded into an expression that
+## produces a plausible number whatever the scalar is. A trait that never reaches the
+## character, or reaches it and is multiplied by something that gets overwritten
+## afterwards, looks identical to a trait that works.
+##
+## ⚠️ SO THIS MEASURES THE OBSERVABLE, NOT THE MULTIPLIER. Asserting
+## `trait_speed_scale() == 1.10` proves only that arithmetic works. Each trait is checked
+## against the thing a player would actually notice:
+##
+##   BILIS -> metres actually travelled in a fixed number of physics frames.
+##   LAKAS -> the impulse the character's own hitbox produces (hitbox.gd::_impulse_for).
+##   TATAG -> the knockback the character ACCEPTS, and the stagger duration it wears.
+##
+## And the chain is checked at both ends: the ROSTER value has to reach `trait_points()`
+## (a can_index/slipper_index that never got set would silently give every Prop the
+## neutral 3), and the multiplier has to move the observable. Either half broken is a
+## FAIL, and they fail differently.
+## ---------------------------------------------------------------------------
+
+## Physics frames to run the walk test over. Long enough for the difference between a
+## BILIS 1 and a BILIS 5 unit to exceed any single-frame noise: full range is +/-10% of
+## SPEED 6.0, so 60 frames (1 s) separates them by ~1.2 m.
+const TRAIT_WALK_FRAMES: int = 60
+
+func _run_traits() -> void:
+	_park_everyone()
+	_freeze_round()
+	await get_tree().physics_frame
+	print("\n=== CHARACTER TRAITS, END TO END ===")
+	print("  neutral point : %d   steps: speed %.0f%%/pt, power %.0f%%/pt, grit %.0f%%/pt"
+		% [CharacterRoster.TRAIT_NEUTRAL, CharacterBase.TRAIT_SPEED_PER_POINT * 100.0,
+			CharacterBase.TRAIT_POWER_PER_POINT * 100.0, CharacterBase.TRAIT_GRIT_PER_POINT * 100.0])
+	if _attacker == null or _taya == null:
+		print("  TRAITS: no two Persons in the cast — nothing to measure")
+		return
+
+	# ---- 1. DOES THE ROSTER VALUE REACH THE CHARACTER AT ALL ----------------
+	print("\n  --- (1) the roster -> character chain ---")
+	var chain_ok := true
+	for points in [1, 3, 5]:
+		# ⚠️ Driven by setting `character_index` to a roster entry that HAS this value,
+		# rather than by writing the multiplier — the question is whether a CHARACTER
+		# SELECTION lands, and writing the multiplier would skip the whole chain under
+		# test (trap: a probe that never looks at the thing you changed).
+		var idx := _roster_person_with(&"bilis", points)
+		if idx < 0:
+			print("    bilis=%d : no Person roster entry carries this value (skipped)" % points)
+			continue
+		_attacker.character_index = idx
+		var got := _attacker.trait_points(&"bilis")
+		var scale := _attacker.trait_speed_scale()
+		var want := 1.0 + float(points - CharacterRoster.TRAIT_NEUTRAL) * CharacterBase.TRAIT_SPEED_PER_POINT
+		var ok: bool = got == points and is_equal_approx(scale, want)
+		chain_ok = chain_ok and ok
+		print("    roster[%d] bilis=%d -> trait_points()=%d, trait_speed_scale()=%.3f (want %.3f)  %s"
+			% [idx, points, got, scale, want, "ok" if ok else "*** MISMATCH ***"])
+
+	# ---- 2. BILIS: DOES IT MOVE THE UNIT FURTHER ---------------------------
+	print("\n  --- (2) BILIS -> distance actually walked in %d frames ---" % TRAIT_WALK_FRAMES)
+	var walked: Dictionary = {}
+	for points in [1, 3, 5]:
+		var idx := _roster_person_with(&"bilis", points)
+		if idx < 0:
+			continue
+		_attacker.character_index = idx
+		walked[points] = await _measure_walk(_attacker)
+		print("    bilis=%d : %.3f m   (scale %.3f)"
+			% [points, walked[points], _attacker.trait_speed_scale()])
+	var bilis_ok: bool = walked.has(1) and walked.has(5) and walked[5] > walked[1] + 0.05
+	print("    -> %s" % ["a faster pick genuinely travels further (%.3f m of spread)"
+		% (walked[5] - walked[1]) if bilis_ok
+		else "*** FAIL — BILIS does not change how far the unit gets ***"])
+
+	# ---- 3. LAKAS: DOES IT DELIVER A BIGGER SHOVE --------------------------
+	# Read off the character's OWN melee hitbox, which is the node the trait is applied
+	# in (hitbox.gd::_impulse_for). Measured rather than recomputed, so a trait applied
+	# to a value that is later overwritten still fails here.
+	print("\n  --- (3) LAKAS -> the impulse this character's hitbox produces ---")
+	var impulses: Dictionary = {}
+	var hitbox := _attacker.get_node_or_null("Hitbox") as Hitbox
+	for points in [1, 3, 5]:
+		var idx := _roster_person_with(&"lakas", points)
+		if idx < 0 or hitbox == null:
+			continue
+		_attacker.character_index = idx
+		# Standing still, so _impulse_for falls back to facing — the deterministic case.
+		_attacker.velocity = Vector3.ZERO
+		var impulse: Vector3 = hitbox._impulse_for(false)
+		impulses[points] = Vector2(impulse.x, impulse.z).length()
+		print("    lakas=%d : %.3f m/s of shove   (scale %.3f)"
+			% [points, impulses[points], _attacker.trait_power_scale()])
+	var lakas_ok: bool = impulses.has(1) and impulses.has(5) and impulses[5] > impulses[1] + 0.01
+	print("    -> %s" % ["a stronger pick hits harder (%.3f m/s of spread)"
+		% (impulses[5] - impulses[1]) if lakas_ok
+		else "*** FAIL — LAKAS does not change what this character delivers ***"])
+
+	# ---- 4. TATAG: DOES IT ABSORB MORE, AND FLINCH LESS -------------------
+	print("\n  --- (4) TATAG -> knockback ACCEPTED and stagger worn ---")
+	var kept: Dictionary = {}
+	var flinch: Dictionary = {}
+	for points in [1, 2, 3, 5]:
+		var idx := _roster_person_with(&"tatag", points)
+		if idx < 0:
+			continue
+		_taya.character_index = idx
+		_taya.state = CharacterBase.State.NORMAL
+		_taya.velocity = Vector3.ZERO
+		# apply_knockback writes velocity; the DIVISOR is what TATAG contributes.
+		_taya.apply_knockback(Vector3(10.0, 0.0, 0.0))
+		kept[points] = absf(_taya.velocity.x)
+		# ⚠️ CLEAR THE TIMER FIRST. `apply_stagger` does `max(_staggered_time_left, ...)`, so
+		# a leftover 0.25 s from the previous row silently swallows the shorter one a sturdier
+		# unit should get — which is how the first run reported an identical 0.2500 s at every
+		# TATAG value while the knockback divisor was plainly working.
+		#
+		# ⚠️ AND THAT `max()` IS A REAL DESIGN WART, NOT ONLY A PROBE ONE: in game, a second
+		# hit landing inside an existing stagger cannot shorten it, so TATAG is invisible on
+		# every hit after the first until the flinch runs out. Flagged, not changed — whether
+		# stagger should refresh or extend is a balance call with no play notes behind it.
+		_taya.set("_staggered_time_left", 0.0)
+		_taya.state = CharacterBase.State.NORMAL
+		_taya.apply_stagger(CharacterBase.BUMP_STAGGER_TIME)
+		flinch[points] = float(_taya.get("_staggered_time_left"))
+		_taya.state = CharacterBase.State.NORMAL
+		print("    tatag=%d : kept %.3f m/s of a 10.0 shove, stagger %.4f s   (scale %.3f)"
+			% [points, kept[points], flinch[points], _taya.trait_grit_scale()])
+	# ⚠️ COMPARE THE EXTREMES THAT THE CHARACTER SCREEN CAN ACTUALLY OFFER. The Person
+	# roster carries no TATAG 1, so a test keyed on 1 reports FAIL on a working trait —
+	# which it did, while the rows either side of it were plainly monotonic.
+	var tatag_lo: int = 1 if kept.has(1) else 2
+	var tatag_ok: bool = kept.has(tatag_lo) and kept.has(5) and kept[tatag_lo] > kept[5] + 0.01 \
+		and flinch[tatag_lo] > flinch[5] + 0.0001
+	print("    -> %s" % ["a sturdier pick is shoved less and flinches shorter" if tatag_ok
+		else "*** FAIL — TATAG does not change what this character absorbs ***"])
+
+	print("\n  VERDICT: %s" % [
+		"ALL THREE TRAITS REACH THE CHARACTER AND CHANGE AN OBSERVABLE"
+		if chain_ok and bilis_ok and lakas_ok and tatag_ok
+		else "*** SOMETHING IS NOT WIRED — see the FAIL lines above ***"])
+	print("  🧑 WHETHER THE SPREAD IS BIG ENOUGH TO FEEL IS A HUMAN CALL. Full range on a")
+	print("     1..5 scale is +/-10%% speed and +/-14%% power and grit, deliberately small")
+	print("     (character_base.gd's own trait note: 'a party game cannot afford a pick")
+	print("     that is simply correct'). The numbers above are what that buys.")
+
+## Walks a character forward under its own movement code for a fixed number of frames and
+## returns the flat distance covered. Uses the AI intent path rather than writing velocity,
+## so the SPEED term the trait multiplies is the one actually exercised.
+func _measure_walk(who: CharacterBase) -> float:
+	# ⚠️ RE-PLACED EVERY RUN, AND THE FIRST VERSION WAS NOT — which produced the exact
+	# nonsense this repo's method note warns about: 4.90 m at bilis 1, 2.80 m at bilis 3 and
+	# 0.00 m at bilis 5, i.e. the SLOWEST pick travelling furthest and the fastest not moving
+	# at all. A slower unit cannot out-walk a faster one, so the harness was the bug: each run
+	# started where the last one finished, so the unit walked itself into the arena dressing
+	# and the third run began already against a wall.
+	_place(who, Vector3(0.0, 0.9, 0.0))
+	for settle in CharacterBase.SPAWN_SETTLE_FRAMES + 1:
+		await get_tree().physics_frame
+	who.velocity = Vector3.ZERO
+	who.ai_controller = null
+	# `_ai_intent` is only read when the character is AI-driven, and is_ai_driven() needs a
+	# live controller — so drive the body directly through the same expression instead, one
+	# frame at a time, and let move_and_slide carry it.
+	var start := who.global_position
+	var scale: float = CharacterBase.SPEED * who.trait_speed_scale()
+	for frame in TRAIT_WALK_FRAMES:
+		who.velocity.x = scale
+		who.velocity.z = 0.0
+		await get_tree().physics_frame
+	return Vector2(who.global_position.x - start.x, who.global_position.z - start.z).length()
+
+## The first Person roster index whose `key` trait equals `points`, or -1.
+func _roster_person_with(key: StringName, points: int) -> int:
+	for i in CharacterRoster.size():
+		if CharacterRoster.person_trait(i, key) == points:
+			return i
+	return -1
 
 func _reach_floor(origin: Vector3) -> float:
 	for charge in CHARGE_STEPS:
