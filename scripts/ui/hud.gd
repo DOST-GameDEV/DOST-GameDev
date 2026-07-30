@@ -26,12 +26,13 @@ class_name Hud
 @onready var toast_label: Label = %ToastLabel
 @onready var ready_prompt: Label = %ReadyPrompt
 @onready var ready_objective: Label = %ReadyObjective
-## The plate the objective sits on — visibility is toggled here, not on the Label, so
-## the backing goes with it. See the node's comment in HUD.tscn for why it exists.
+## The centring row the objective sits in. Visibility is toggled here rather than on the
+## Label so the row keeps one job — position — and the Label keeps one job: the words.
 @onready var ready_objective_row: CenterContainer = %ReadyObjectiveRow
 @onready var countdown_label: Label = %CountdownLabel
 @onready var you_card: YouCard = %YouCard
 @onready var crosshair: Control = %Crosshair
+@onready var crosshair_label: Label = %CrosshairLabel
 @onready var offscreen_indicators: OffscreenIndicators = %OffscreenIndicators
 
 var _toast_time_left: float = 0.0
@@ -86,8 +87,15 @@ func _ready() -> void:
 # Filed for ART to promote these into variations; until then the overrides are here so
 # the tokens stay in one place even if the application does not.
 
+## INK outline on the free-floating lines — the objective, the ready prompt and the toast.
+## Heavy, because it has to carry role-orange text over a role-orange viewmodel arm.
+const TEXT_OUTLINE: int = 8
+## The crosshair sits at dead centre of the busiest part of an FPP frame, so its outline
+## is heavier still relative to its size.
+const CROSSHAIR_OUTLINE: int = 5
+
 ## Trimmed from the menu's own wood face. `wood_style()`'s margins are sized for a menu
-## button (24px sides) and a 250x92 HUD card cannot afford them.
+## button (24px sides) and a HUD card that hugs a glyph and a word cannot afford them.
 func _hud_wood_style(fill: Color, border: Color, sink: bool = false) -> StyleBoxFlat:
 	var sb := UiTheme.wood_style(fill, border, sink)
 	sb.content_margin_left = 14.0
@@ -115,13 +123,21 @@ func _apply_wood_skin() -> void:
 	lata_label.add_theme_color_override("font_color", UiTheme.AMBER)
 	dent_text_label.add_theme_color_override("font_color", UiTheme.CREAM)
 
-	# Both floating lines used to be bare text over the 3D scene — the ready prompt in
-	# DANGER red, which over the orange viewmodel arms is the worst pairing on the
-	# screen. On a wood plate they read anywhere, and they now look like the same game
-	# the menu belongs to.
-	for label in [ready_prompt, toast_label]:
-		label.add_theme_stylebox_override("normal",
-			_hud_wood_style(UiTheme.WOOD_DEEP, UiTheme.WOOD_EDGE))
+	# ⚠️ THE THREE FLOATING LINES ARE STYLIZED TEXT, NOT PANELS, AND THAT IS THE SECOND
+	# ANSWER. They started as bare text — the ready prompt in DANGER red, illegible over
+	# the orange viewmodel arms. The first fix gave all three a wood plate, and the plates
+	# were rejected on sight: *"it kinda looks ugly with that hud/ui, can u js do text
+	# there but stylized, right color and font"*. Correct call — two stacked boxes at the
+	# bottom of the frame fought the 3D instead of sitting on it, and the HUD already has
+	# enough rectangles.
+	#
+	# So legibility comes from a heavy INK outline instead of a box: the same trick
+	# `offscreen_indicators.gd` uses on the screen-edge arrows, for the same reason. An
+	# outlined glyph survives sky, asphalt and a lit orange arm without adding a shape.
+	# Colours are the theme's own — CREAM for instruction, AMBER for an alert.
+	for label in [ready_prompt, toast_label, ready_objective]:
+		label.add_theme_constant_override("outline_size", TEXT_OUTLINE)
+		label.add_theme_color_override("font_outline_color", UiTheme.INK)
 	ready_prompt.add_theme_color_override("font_color", UiTheme.CREAM)
 	toast_label.add_theme_color_override("font_color", UiTheme.AMBER)
 
@@ -131,6 +147,28 @@ func _style_team_card(panel: PanelContainer, label: Label, role_colour: Color) -
 	panel.add_theme_stylebox_override("panel",
 		_hud_wood_style(UiTheme.WOOD_DEEP, role_colour))
 	label.add_theme_color_override("font_color", role_colour)
+
+## R-28 — the two in-world markers that answer "what am I doing" take the LOCAL player's
+## role colour: the crosshair they aim with, and the edge arrow pointing at the lata.
+##
+## ⚠️ DRIVEN OFF THE LOCAL UNIT, NOT OFF TEAM A. `set_round_display()` knows which TEAM
+## defends; only the local character knows which side the person holding this keyboard is
+## on. Called from both of the existing "the role may just have changed" hooks —
+## `set_round_display` (round swap) and `refresh_you_card` (late joiner, B-29) — rather
+## than from `_process`, so it is a handful of calls per match instead of 60 a second.
+##
+## The crosshair also takes an INK outline. It is a thin `+` at dead centre of an FPP
+## camera, which is the busiest part of the frame; role colour alone would lose it against
+## a wall in the same hue.
+func _refresh_role_accents() -> void:
+	var local_char := you_card.get_local_character()
+	if local_char == null or not is_instance_valid(local_char):
+		return
+	var role_colour: Color = UiTheme.DEFENSE if local_char.team_is_can_side else UiTheme.OFFENSE
+	crosshair_label.add_theme_color_override("font_color", role_colour)
+	crosshair_label.add_theme_constant_override("outline_size", CROSSHAIR_OUTLINE)
+	crosshair_label.add_theme_color_override("font_outline_color", UiTheme.INK)
+	offscreen_indicators.set_can_arrow_colour(role_colour)
 
 func _process(delta: float) -> void:
 	var t := int(ceil(RoundManager.time_left))
@@ -290,13 +328,6 @@ func _refresh_ready_objective(active: bool) -> void:
 	ready_objective.text = "GUARD THE LATA.  TAG THE THROWER." if defending \
 		else "KNOCK THE LATA DOWN"
 	ready_objective.add_theme_color_override("font_color", role_colour)
-	# ⚠️ THE PLATE IS RE-SKINNED HERE, and the first restyle render is why. HUD.tscn
-	# authors it as a plain INK box — which was right when the rest of the HUD was navy
-	# cards, and became the one navy element on a wood screen the moment the skin landed.
-	# Wood body, role-coloured border: the same face as the two team cards, so the
-	# objective reads as part of the same HUD rather than as a leftover.
-	(ready_objective_row.get_child(0) as PanelContainer).add_theme_stylebox_override(
-		"panel", _hud_wood_style(UiTheme.WOOD_DEEP, role_colour))
 	ready_objective_row.visible = true
 
 ## 2026-07-28 — "add a 3 2 1 timer before each match starts too, think about
@@ -361,12 +392,16 @@ func set_round_display(round_number: int, team_a_is_can: bool) -> void:
 		_style_team_card(top_right_panel, team_b_label, UiTheme.DEFENSE)
 	_fill_pips(team_a_pips_box, MatchManager.team_a_wins, _pip_color(true))
 	_fill_pips(team_b_pips_box, MatchManager.team_b_wins, _pip_color(false))
+	_refresh_role_accents()
 
 ## Q-5: a joining peer never sees round_started for the round already in
 ## progress (B-29) — main.gd::_sync_state_to_late_joiner calls this next to
 ## set_round_display() so the YOU card isn't blank until the next round.
 func refresh_you_card() -> void:
 	you_card.refresh()
+	# The local character may only NOW exist (B-29), which is the first moment the
+	# crosshair and the lata arrow can know which role they belong to.
+	_refresh_role_accents()
 
 ## 4.1 — ROUND WIN / ROUND LOSS.
 ##

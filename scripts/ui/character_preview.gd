@@ -172,6 +172,9 @@ var _dragging: bool = false
 ## True once the player has touched the camera at all — see the header for why
 ## the idle turn yields rather than fighting them.
 var _user_took_over: bool = false
+## True when this rig is a centred TILE rather than a screen backdrop — see
+## `set_tile_framing()`. Zeroes the off-centre `h_offset` below.
+var _centre_subject: bool = false
 
 func _ready() -> void:
 	# A SubViewportContainer defaults to ignoring the mouse. It has to receive
@@ -297,7 +300,10 @@ func _apply_camera() -> void:
 	# The off-centre framing, re-derived for THIS subject's CURRENT distance — see
 	# FRAME_H_OFFSET_RATIO for why it cannot be a constant. It has to follow the
 	# zoom too, or dollying in walks the subject back behind the wood panel.
-	camera.h_offset = FRAME_H_OFFSET_RATIO * (2.0 * distance * _frame_half_fov) * _frame_aspect
+	# ⚠️ Skipped entirely for a TILE, which has no panel to clear and is cropped by this
+	# rather than helped by it — see `set_tile_framing()`.
+	camera.h_offset = 0.0 if _centre_subject \
+		else FRAME_H_OFFSET_RATIO * (2.0 * distance * _frame_half_fov) * _frame_aspect
 
 ## ⚠️ `_gui_input`, NOT `_unhandled_input`. This is a Control sitting behind the
 ## whole screen, and the panel, the tabs and both buttons are in front of it — a
@@ -334,6 +340,31 @@ func _gui_input(event: InputEvent) -> void:
 func _zoom_by(amount: float) -> void:
 	_user_took_over = true
 	_user_zoom = clampf(_user_zoom + amount, ZOOM_MIN, ZOOM_MAX)
+	_apply_camera()
+
+## TILE FRAMING: subject CENTRED in its box and pulled in to fill it. For a caller showing
+## this rig as a small picture rather than as a screen backdrop.
+##
+## ⚠️ TWO CHANGES, AND BOTH ARE NEEDED — the first attempt did only the zoom and the render
+## came back with the lata cropped top and bottom and the running figure cropped through
+## its feet and its right side.
+##
+## 1. `FRAME_MARGIN` is 1.62 — 62% air around the subject. Right on the CHARACTER screen,
+##    where the figure shares the frame with a wood panel and must sit clear of it, and
+##    measured against a T-POSE so it has to be generous. In a 250px tile that same margin
+##    is the *"big negative space"* that was reported.
+## 2. ⚠️ `h_offset` IS WHY IT CROPPED SIDEWAYS. `_apply_camera()` always shoves the subject
+##    off-centre by `FRAME_H_OFFSET_RATIO`, so the character screen's figure clears the
+##    panel on the left. In a centred tile there is no panel to clear — the offset just
+##    walks the subject towards one edge, and any zoom then pushes it out of frame. A tile
+##    has to zero it, which is what `_centre_subject` does.
+##
+## ⚠️ DOES NOT SET `_user_took_over`, unlike `_zoom_by()`. That flag means "a human has
+## taken the camera, stop moving it", and this is the SCREEN choosing its own framing — if
+## it set the flag it would silently kill the idle turn on all four tiles.
+func set_tile_framing(factor: float) -> void:
+	_centre_subject = true
+	_user_zoom = clampf(factor, ZOOM_MIN, ZOOM_MAX)
 	_apply_camera()
 
 ## Back to the measured shot, and back to turning on its own. Public because the
