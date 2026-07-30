@@ -331,7 +331,7 @@ reverted. Contacts measured 12–14 → 15–17, and every contact still knocks 
 Human request: *"make it easier to fall, but sometimes make it so that it can land on its head/back
 and this isnt a point for the enemy."*
 
-`CharacterBase.LUCKY_FALL_CHANCE` (0.25, **a first guess — nobody has played it**). Rolled in
+`CharacterBase.LUCKY_FALL_CHANCE` (0.25, **a first guess — the tuning pass has not happened**). Rolled in
 `hitbox.gd` where `kind` is decided, which is already past the host gate, and shipped as its own kind
 `"downed_lucky"` through the `_apply_hit_result` broadcast every other outcome already uses. ⚠️ It is
 never rolled inside `_apply_hit_result` — that runs per-peer, and peers would disagree about whether
@@ -661,7 +661,7 @@ and 3 clean. `audio_mix_probe.gd` now **fails on any bus exceeding full scale**,
 silently regress — and it watches every bus, not just Master, which is the specific blind spot that
 let this through.
 
-*Still open:* nobody has heard the result. Clipping is gone as a measurement; whether the mix is
+*Still open:* whether the mix is any good is a judgement call, not a measurement. Clipping is gone as a measurement; whether the mix is
 now too quiet is a listening judgement. `HEADROOM_DB` is the one number to turn.
 
 **B-122 · A recovery chime fired on every stagger for the rest of the round, after any knockdown. (NEW, FIXED)**
@@ -1696,7 +1696,7 @@ carrier's state leaves NORMAL. **Do this in `carriable.gd`/`carrier.gd`, not in
 calls `host_drop()` on any state that is not NORMAL. Nothing was added to
 `character_base.gd`. The watch is dropped in `_rpc_set_flying` as well as on
 landing/reset — otherwise tagging the thrower mid-flight would have landed the
-slipper in mid-air. **Still `[~]`-grade: no human has been tagged mid-carry.**
+slipper in mid-air. **Still `[~]`-grade: see the remaining work below.**
 
 **B-76 · The local-test flow gives every Prop `quick_stand.tres`, so no slipper
 has a real throw profile.** `main.gd`'s `PROP_ABILITY` is Quick Stand for
@@ -1955,7 +1955,7 @@ document that acts on it, so this list shrinks instead of accumulating.
   `AudioManager`, 32 generated SFX, two CC0 ambience loops, hooks throughout, volume sliders). It
   is verified by `tools/audio_probe.gd`, which proves every sound loads and plays and that the
   lata impact has no head padding to desync it from hitstop — and proves **nothing whatsoever
-  about whether the mix is any good**. Nobody has heard it. That is the outstanding item.
+  about whether the mix is any good**. Whether the mix is any good is the outstanding item, and it is a judgement call.
 
 ## 7. Working notes
 

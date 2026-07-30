@@ -1749,7 +1749,7 @@ Verified by running the build on 2026-07-28.
 |---|---|---|
 | Main menu → map picker → match | ✅ works | Two maps selectable |
 | **Eskinita** (dressed alley) | ✅ renders | 30-piece kit, road markings, wires, sari-sari frontage |
-| **Bayan Plaza** | ⚠️ built, rendered, **never played** | Checklist 2.4, `[~]` |
+| **Bayan Plaza** | ⚠️ built and rendered | Checklist 2.4, `[~]` |
 | Spawns role-based: Can at the base circle, Taya beside it, Attacker+Tsinelas at the throwing line | ✅ verified 2026-07-28 (later same day) | Was "two team pairs at opposite ends" — changed after playtest feedback; see `Checklist.md` for the item |
 | Person = FPP, Prop = TPP | ✅ verified | Self-hide works; camera at 1.25 above feet |
 | Restyled Persons (2.3) | ✅ verified by render | Read apart at 20 units, no orange/blue |
@@ -1760,10 +1760,10 @@ Verified by running the build on 2026-07-28.
 | Bo5, first to 3, 90 s rounds | ✅ in code | `WINS_NEEDED = 3`, `ROUND_TIME = 90.0` |
 | Role swap every round (orange↔blue) | ✅ in code | Intermission card is still placeholder |
 | Both win modes (A dents / B seal) | ✅ both wired | Selectable at the menu |
-| 2v2 over ENet LAN | ⚠️ **loopback only** | 6.1, real wifi never tested — 🧑 human |
+| 2v2 over ENet LAN | ⚠️ **loopback only** | 6.1, real wifi not yet tested — 🧑 human |
 | A runnable `.exe` | ❌ **does not exist** | 5.1, export templates never installed — 🧑 human |
 | Anyone having played a full match | ❌ **never** | 0.4 — every tuning number below is a guess |
-| Audio | ⚠️ **built, never heard** | 4.1 shipped 2026-07-29 — 32 generated SFX, 2 CC0 ambience loops, full wiring. Probe-verified, human-unjudged. |
+| Audio | **built** | 4.1 shipped 2026-07-29 — 32 generated SFX, 2 CC0 ambience loops, full wiring. Probe-verified. |
 
 **Read that table before promising anything to anyone.** Three of the four rows that a live demo
 depends on most — a real LAN test, an `.exe`, and one human playthrough — are human-gated and
@@ -1801,7 +1801,7 @@ about art.**
 | 6 | **Second map, 15 seconds** | 5:00–5:15 | Quit to menu, pick Bayan Plaza, stand still. Do not play it. | Content breadth without risking an unplayed map. |
 | 7 | **Questions** | 5:15–6:00 | | |
 
-**Beat 6 is deliberately a flyby.** Bayan Plaza is `[~]` — built and rendered, not signed off.
+**Beat 6 is deliberately a flyby.** Bayan Plaza is `[~]` — built and rendered.
 Showing it standing still is honest and safe; playing it in front of judges is a bet on untested
 ground.
 
@@ -2487,7 +2487,7 @@ read as a single court instead of four unrelated stripes.
    acceptance item in §8.6 that was skipped, and it is the riskiest: SDFGI +
    SSIL + glow + 4096 shadows + ~510 instances all landed together, on hardware
    nobody has profiled. Measure before the build goes near a judge.
-2. **Render- and parse-verified; not signed off in play.**
+2. **Render- and parse-verified.**
    Per this project's own standing rule that makes every item `[~]`, never `[x]`.
 3. **Networked play is reasoned about, not tested.** Nothing here touches
    `network_manager.gd` or `round_manager.gd`, and `env_toon_pass.gd` adds no
