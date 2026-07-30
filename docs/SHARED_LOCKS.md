@@ -20,7 +20,7 @@ to type.
 | `scripts/characters/character_base.gd` | — free — | | |
 | `scenes/characters/CameraRig.tscn` | — free — | | |
 | `scenes/ui/*.tscn` | — free — | | |
-| `project.godot` | 🌐 NET | `integration` | 2026-07-30 — input map: left click drives no wind-up (human report) |
+| `project.godot` | — free — | | |
 | `tools/models/generate_all.gd` | — free — | | |
 | `docs/Checklist.md` | *no lock needed* | | append-only-ish; conflicts resolved by taking both sides |
 

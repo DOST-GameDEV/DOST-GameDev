@@ -223,11 +223,43 @@ func _find_conflicting_action(action: String, physical_keycode: int) -> String:
 			return other_action
 	return ""
 
+## ⚠️⚠️ REPLACES THE KEY EVENT ONLY, AND THAT ONE WORD IS A SHIPPED BUG FIX.
+##
+## 🧑 report, 2026-07-30: *"i cant wind up as attacker?? i cant even throw no
+## more"*, with the correct guess that *"this broke bcz i overhauled controls
+## earlier"*.
+##
+## This used to call `InputMap.action_erase_events(action)` — which erases EVERY
+## event on the action, not just the keyboard one — and then add back a single
+## `InputEventKey`. For the four movement actions that is harmless, because they
+## only ever had a key. `special_ability` is different: `project.godot` binds it
+## to **Q, LEFT CLICK and RIGHT CLICK**, and the game's own tutorial page
+## advertises "Q / LEFT CLICK · Special". The wipe destroyed both mouse bindings
+## and re-added Q alone.
+##
+## ⚠️ AND IT DID NOT NEED A REBIND TO TRIGGER — `_load()` ran the identical
+## erase-and-re-add for every action present in `user://settings.cfg`, so ANY
+## player with a saved settings file lost left-click on every launch, silently,
+## with the correct bindings still sitting in `project.godot`. That is why
+## reading `project.godot` says the mouse is bound and the running game says it
+## is not; the file is right and the runtime was overwriting it. Measured on this
+## machine: `settings.cfg` held `special_ability=81`, and a runtime dump of the
+## InputMap showed `special_ability -> key:Q` with no mouse event at all, while
+## `grab` — which is NOT in REBINDABLE_ACTIONS and so was never touched — still
+## had its `E, MOUSE:1`. Left click therefore grabbed and could never wind up.
+##
+## Erasing only the `InputEventKey`s leaves mouse and pad bindings from
+## `project.godot` intact, which is what a KEY rebind was always supposed to mean.
+func _replace_key_binding(action: String, physical_keycode: int) -> void:
+	for event in InputMap.action_get_events(action):
+		if event is InputEventKey:
+			InputMap.action_erase_event(action, event)
+	var replacement := InputEventKey.new()
+	replacement.physical_keycode = physical_keycode
+	InputMap.action_add_event(action, replacement)
+
 func _set_binding(action: String, physical_keycode: int) -> void:
-	InputMap.action_erase_events(action)
-	var event := InputEventKey.new()
-	event.physical_keycode = physical_keycode
-	InputMap.action_add_event(action, event)
+	_replace_key_binding(action, physical_keycode)
 	binding_changed.emit(action)
 	_save()
 
@@ -280,10 +312,12 @@ func _load_and_apply() -> void:
 		if config.has_section_key(SETTINGS_SECTION, action):
 			var keycode: int = config.get_value(SETTINGS_SECTION, action)
 			if keycode > 0:
-				InputMap.action_erase_events(action)
-				var event := InputEventKey.new()
-				event.physical_keycode = keycode
-				InputMap.action_add_event(action, event)
+				# ⚠️ THE SAME ERASE-EVERYTHING BUG AS `_set_binding`, and THIS is
+				# the copy that actually reached players: it runs at startup for
+				# every saved action, so a settings.cfg written before the mouse
+				# bindings existed silently stripped them on every launch. See
+				# `_replace_key_binding`.
+				_replace_key_binding(action, keycode)
 	if config.has_section_key(SETTINGS_SECTION_CAMERA, "mouse_sensitivity"):
 		mouse_sensitivity = config.get_value(SETTINGS_SECTION_CAMERA, "mouse_sensitivity")
 	if config.has_section_key(SETTINGS_SECTION_CAMERA, "invert_y"):
