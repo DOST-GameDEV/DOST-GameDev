@@ -2843,6 +2843,35 @@ three consecutive runs". `ai_probe` now reports stillness by **displacement** as
 the branch named. The residual 3.85 s of went-nowhere is **a charging attacker (a deliberately
 readable wind-up) and a taya on its post** — both nameable now, neither a freeze.
 
+#### R-10's own acceptance, measured — and one half of it is NOT proven
+
+R-10(a) asks for AI throw power varying by **≥ ±25%** (a 50% spread), against a history in which
+`tier_charge` was one fixed number and **every AI throw ever taken had identical power**. Measured off
+the slipper's own peak launch speed, 10 rounds at BATA:
+
+| Configuration | Throws | Launch speed min / mean / max | Spread |
+|---|---|---|---|
+| flavour **on** (`fun=on`, shipped) | 25 | 7.09 / 12.69 / 19.73 m/s | **100% of the mean** |
+| flavour **off** (`fun=off`) | 134 | 7.09 / 11.87 / 23.18 m/s | **136% of the mean** |
+
+⚠️ **THE BAR IS MET AND THE CLAIM IS NOT.** Power varies by well over 50% either way — but it varies
+just as much with the flavour switched OFF, because `_min_hold_to_reach()` scales the hold with the
+distance to the can, so a throw from 6.0 units is legitimately harder than one from 4.6. **That
+range-dependence, not the per-throw jitter, is what this metric is seeing.** Isolating the jitter needs
+power sampled at a fixed release range, which has not been done. So: **AI throws do vary, the jitter is
+implemented and is inert-safe, and "the jitter is what makes them vary" is UNVERIFIED.**
+
+⚠️ **Sampling note, because it cost a run.** `carry_state_changed` fires from `Carriable::_set_state()`
+**before** `_rpc_set_flying` writes the velocity, so reading launch speed at the signal returns 0.00 for
+every throw — which reads as "the jitter does nothing" rather than as "the probe sampled a frame early".
+Peak planar speed over the flight is used instead.
+
+The other two thirds of R-10 are **unverified by design**: a readable wind-up and a punishable
+overcommit are claims about what a *human* can react to, and 🧑 **no human has played any of this.**
+The overcommit's own bound is measured (see RUN 12's `mistake` column and `_cond_taya_threat_in_confinement`'s
+note on the version that spent a third of every round sprinting), but "is it fun to lose to" has no probe
+and pretending otherwise is how this project got here.
+
 ### RUN 11 — 2026-07-30. R-08: IS THE INSTANT-WIN TAG THE IMBALANCE? Three variants, one harness. 🧑 THE PICK IS THE HUMAN'S.
 
 ⚠️ **Imposed from the probe, never from `hitbox.gd`.** That file is another lane's, R-08's deliverable
