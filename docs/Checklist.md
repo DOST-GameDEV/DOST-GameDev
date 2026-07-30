@@ -3866,6 +3866,74 @@ is **8 gameplay files, not 5**; the extra ones are `network_manager.gd`, `carria
 positive on the words *"debug cruft"*) and **`character_base.gd` with 5 hits — a shared-lock
 file, so R-30 needs a mutex its plan does not mention.**
 
+#### NET-6 · ANSWERED, 2026-07-30 — 🌐 NET. `ai_probe -- fairness`, and the answer is BOTH columns
+
+**Two separate faults, and the first one dissolves the question as asked.**
+
+**1. HALF THE "CONTRADICTION" IS INSIDE THIS PROJECT'S OWN NOISE FLOOR.** It was recorded as
+*"dents/round fell 1.75 → 1.00 while blocked IMPROVED 43.5% → 41.2%"*. `Agent_Prompts.md`'s
+behavioural guidelines put the measured noise at **±0.2 on dents-per-round and ±2.5 points
+on block rate over 20-round runs**. The block-rate move is **2.3 points** — under the floor,
+i.e. not a finding at all. Only the dents column actually moved. There was never two
+columns to reconcile.
+
+**2. AND THE COLUMNS ARE NOT COMPARABLE ANYWAY — `dents` CAN EXCEED `on-can`.** A funnel
+line now prints `taken → blocked → reached the can → dented`, and the first run to carry it
+said:
+
+```
+the funnel  187 taken -> 110 blocked by the taya -> 13 reached the can -> 15 dented
+```
+
+⚠️ **15 dents out of 13 throws that reached the can is impossible on its face**, and one
+round printed `on-can 2, dents 3` on its own. The two are counted on different events:
+`blocked` and `on-can` are per-FLIGHT and are only tallied when a flight **ENDS**
+(deliberately — a slipper that clips the taya and dents anyway was not blocked, and only the
+finished flight knows), while `dents` counts every increment of the can's own
+`dents_changed` **whenever it fires**. A round that ends with a slipper still in the air —
+and 8 of these 10 ended on the 90 s clock — books the dent and never books the flight. **So
+`dents` against `blocked` was never a valid comparison**, which is the concrete version of
+"one of those columns is wrong": neither is wrong about what it measures, and the pair was
+wrong.
+
+The funnel also makes the third filter visible, which is the other reason the two numbers
+could move independently: `character_base.apply_dent` refuses a dent outright while the
+can's **Guard** is up, and a guarded hit still resolves as `hit_can`. Fewer dents at an
+unchanged block rate is what more guarding looks like.
+
+**Not fixed here:** making `dents` per-flight would mean attributing a dent to the flight
+that caused it, which is a change to what the probe records and wants its own pass. The
+invalid comparison is now impossible to make by accident, which was the gate.
+
+#### NET-7 · OPTION_B's FIRST-EVER FAIRNESS RUN, 2026-07-30 — 🌐 NET. 10 rounds each
+
+⚠️ **A FIRST LOOK, NOT A VERDICT.** The quoted noise floor is for **20-round** runs; these
+are 10. Both ran after this session's `ai_controller.gd` change, so B has no before-picture
+at all and A's is a partial 8-round run that was killed.
+
+| | **OPTION_B** (FALL_LIMIT 4, all-Sealed) | **OPTION_A** (dents) |
+|---|---|---|
+| round win rate | **DEFENCE 40.0 / OFFENCE 60.0** — *in range* | DEFENCE 80.0 / OFFENCE 20.0 — out |
+| throws blocked | 81 / 137 = **59.1%** — out (fair 25–50) | 110 / 187 = **58.8%** — out |
+| dents per round | 0.00 **by construction** | 1.50 (8/10 rounds) — ok |
+| time to first throw | 1.1 s | 0.6 s |
+| avg round duration | **58.1 s** | 83.3 s |
+| rounds timed out | 4 / 10 | **8 / 10** |
+| defence won by TAG | 4 / 10 | 8 / 10 |
+
+**The headline: B is the one whose win rate is in range, and A's is 20 points outside it.**
+B also finishes 25 s sooner and reaches the clock half as often — under A, eight of ten
+rounds ran the full 90 s and the defence won on the whistle. 🧑 **This is a mode-level
+balance finding and the call is the human's**, both because `game_mode` DEFAULTS to
+OPTION_B (so B is what anyone launching the game actually plays) and because neither
+round-win mode may be deprioritised. It wants a 20-round pair before anything is decided on
+it.
+
+⚠️ **A REPORTING BUG FOUND IN THE SAME RUN AND FIXED:** `_ended_by()` returned `"dented"`
+for every offence win regardless of mode, so six of B's ten rounds printed `ended-by dented`
+beside `dents 0` — a pair that cannot both be true, on the column a reader would trust
+most. B's offence wins on `FALL_LIMIT` knockdowns and seals; it now says `falls/seal`.
+
 #### R-06 leg 3 · THE AI SIDE, DONE, 2026-07-30 — 🌐 NET by human grant. `phys_probe -- band`
 
 Both handover items taken exactly as specified: **the sidestep is HELD, not widened**

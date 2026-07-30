@@ -1198,6 +1198,28 @@ func _report_fairness() -> void:
 	print("  can dents per round  %.2f  (%d/%d rounds dented)      (fair: >= 1)     %s   [%s]"
 		% [dents_per_round, rounds_with_dent, _rounds.size(),
 			_verdict(rounds_with_dent * 2 >= _rounds.size()), _mode_name()])
+	# ⚠️ NET-6 — THE COLUMN THAT WAS MISSING, AND WHY `dents` AND `blocked` LOOKED
+	# LIKE THEY CONTRADICTED EACH OTHER. Recorded as "dents/round fell 1.75 -> 1.00
+	# while blocked IMPROVED 43.5% -> 41.2%, so one of those columns is wrong."
+	# Neither is. They measure two different filters out of THREE, and the third
+	# was never printed:
+	#
+	#     taken -> [the taya's body block] -> blocked
+	#           -> [the can's dodge]       -> never reaches it
+	#           -> [the can's GUARD]       -> reaches it and dents NOTHING
+	#
+	# `character_base.apply_dent` refuses the dent outright while Guard is up, and
+	# a guarded hit still resolves as `hit_can`, so it counts in `on-can` and not
+	# in `blocked` and never becomes a dent. Fewer dents with an unchanged block
+	# rate is therefore what MORE GUARDING looks like, not a broken column — and
+	# with the funnel printed, the two rates can be read against each other
+	# instead of argued about. The dodge is the gap between `taken - blocked` and
+	# `on-can`; the guard is the gap between `on-can` and `dents`.
+	print("  the funnel           %d taken -> %d blocked by the taya -> %d reached the can -> %d dented"
+		% [throws, blocked, on_can, dents])
+	if GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A:
+		print("                       so %d dodged and %d reached it and did not dent (Guard, or a dent already at MAX_DENTS)"
+			% [maxi(throws - blocked - on_can, 0), maxi(on_can - dents, 0)])
 	print("  longest still run    %.2fs                             (fair: < 2s)     %s"
 		% [still_max / 60.0, _verdict(still_max < 120)])
 	# ⚠️ NO FAIR RANGE ON THIS ONE ON PURPOSE — R-08 introduces it and nobody has
@@ -1559,7 +1581,13 @@ func _mode_name() -> String:
 ## three, and knowing which one it used is what turns a number into a decision.
 func _ended_by(r: Dictionary) -> String:
 	if not r["defender_won"]:
-		return "dented"
+		# ⚠️ NOT "dented" UNDER OPTION_B, WHERE NOTHING EVER DENTS. Printing it
+		# there put `ended-by dented` on the same row as `dents 0`, in six of ten
+		# rounds of OPTION_B's first-ever fairness run — a pair that cannot both
+		# be true, on the one column somebody reading that run would trust. B's
+		# offence wins on FALL_LIMIT knockdowns and seals, not dents.
+		return "dented" if GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A \
+			else "falls/seal"
 	if r["timed_out"]:
 		return "timeout"
 	if r["tagged"]:
