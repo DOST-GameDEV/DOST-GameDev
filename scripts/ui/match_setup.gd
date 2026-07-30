@@ -111,6 +111,40 @@ const MODES: Array[Dictionary] = [
 	},
 ]
 
+## ---------------------------------------------------------------------------
+## R-09 · THE KALARO PICKER.
+##
+## `AIController.DIFFICULTY_TIERS` has been complete and unreachable for two passes.
+## This is the screen half. ⚠️ It sits BESIDE map and mode and rides the SAME
+## `_rpc_sync_config` broadcast, because it is a match-affecting value and a per-peer
+## one is the bug 10.5's U-8 fixed twice. Do not give it its own RPC.
+##
+## THE LABEL IS THE FILIPINO WORD AND THE GLOSS IS UNDERNEATH, which is the rule the
+## character roster already follows — and here it costs nothing, because the tier
+## names already carry the characterisation: *bata* is the kid, *astig* is the one who
+## wins. "EASY / NORMAL / HARD" would throw away a piece of the game's own voice for
+## no gain in clarity.
+##
+## ⚠️ `detail` IS MEASURED, NOT ADJECTIVES. Every number below is the BALANCE lane's,
+## from `Checklist.md` §Phase 9 RUN 12 and RUN 14 — the first runs in this project's
+## history in which any tier but NORMAL was measured at all. A picker that promises
+## "harder" without knowing whether the tiers differ is what the roadmap called a
+## coin toss with extra steps; these three genuinely differ and the copy says how.
+const DIFFICULTIES: Array[Dictionary] = [
+	{
+		"id": 0, "label": "BATA",
+		"detail": "The kid. Holds its post, aims where the lata is rather than where it is going, and overcommits often enough that you can learn to bait it. Measured the most beatable of the three: it blocks 29% of throws.",
+	},
+	{
+		"id": 1, "label": "NORMAL",
+		"detail": "The default, and the tier every balance number in this project was measured at. Reads your bearing, leads the lata, and blocks about 38% of what you throw.",
+	},
+	{
+		"id": 2, "label": "ASTIG",
+		"detail": "The one who wins. Chases to the edge of its own box, leads almost perfectly, and barely ever makes a mistake. Measured: it blocks 62% of throws and rounds end fast, so expect to be tagged on the way in.",
+	},
+]
+
 @onready var map_preview: MapPreview = %MapPreview
 @onready var banner_label: Label = %BannerLabel
 
@@ -120,6 +154,9 @@ const MODES: Array[Dictionary] = [
 @onready var mode_prev_button: TextureButton = %ModePrevButton
 @onready var mode_next_button: TextureButton = %ModeNextButton
 @onready var mode_value_label: Label = %ModeValueLabel
+@onready var difficulty_prev_button: TextureButton = %DifficultyPrevButton
+@onready var difficulty_next_button: TextureButton = %DifficultyNextButton
+@onready var difficulty_value_label: Label = %DifficultyValueLabel
 @onready var character_button: Button = %CharacterButton
 @onready var character_panel: CharacterSelect = %CharacterSelectPanel
 
@@ -141,6 +178,8 @@ var _action: String = "local"
 
 var _map_index: int = 0
 var _mode_index: int = 0
+## R-09. Index into DIFFICULTIES, mirroring _map_index / _mode_index exactly.
+var _difficulty_index: int = 1
 
 # --- Networked lobby state ---------------------------------------------------
 # All three are host-authoritative and broadcast. On a client they are populated
@@ -167,9 +206,14 @@ func _ready() -> void:
 	# who picked Bayan Plaza and Havaianas should not re-pick both every match.
 	_map_index = GameLaunch.map_index()
 	_mode_index = _index_for_mode(GameLaunch.game_mode)
+	# R-09: the tier is a PREFERENCE with the same lifetime as the map and the
+	# character picks, so it opens on whatever was chosen last rather than resetting.
+	_difficulty_index = clampi(SettingsManager.ai_difficulty, 0, DIFFICULTIES.size() - 1)
 
 	_wire_selector(map_prev_button, map_next_button, _on_map_prev, _on_map_next)
 	_wire_selector(mode_prev_button, mode_next_button, _on_mode_prev, _on_mode_next)
+	_wire_selector(difficulty_prev_button, difficulty_next_button,
+		_on_difficulty_prev, _on_difficulty_next)
 	character_button.pressed.connect(_on_character_pressed)
 	character_button.mouse_entered.connect(func() -> void: AudioManager.play("ui_hover")) # 4.1
 	character_panel.visible = false
@@ -195,6 +239,7 @@ func _ready() -> void:
 
 	_apply_map()
 	_apply_mode()
+	_apply_difficulty()
 	_refresh_character_button()
 
 	match _action:
@@ -314,7 +359,8 @@ static func _lan_address() -> String:
 	return "127.0.0.1"
 
 func _lock_host_only_controls() -> void:
-	for button in [map_prev_button, map_next_button, mode_prev_button, mode_next_button]:
+	for button in [map_prev_button, map_next_button, mode_prev_button, mode_next_button,
+			difficulty_prev_button, difficulty_next_button]:
 		button.disabled = true
 		button.modulate = LOCKED_MODULATE
 
@@ -368,7 +414,7 @@ func _on_peer_joined(peer_id: int) -> void:
 	# Full snapshot to the newcomer, then the deltas to everyone (including the
 	# newcomer, harmlessly) so nobody is holding a half-built board.
 	_rpc_sync_state.rpc_id(peer_id, _peer_seats, _peer_ready,
-		GameLaunch.selected_map, int(GameLaunch.game_mode))
+		GameLaunch.selected_map, int(GameLaunch.game_mode), SettingsManager.ai_difficulty)
 	_rpc_sync_seats.rpc(_peer_seats)
 	_refresh_seats()
 	_refresh_start_button()
@@ -394,13 +440,20 @@ func _first_free_seat() -> int:
 # every peer (`/root/MatchSetup`) because every peer loads this same scene —
 # the same arrangement the lobby it replaces used.
 
-## Host -> one new joiner: the whole board at once, map and mode included.
+## Host -> one new joiner: the whole board at once, map, mode and kalaro tier
+## included.
+## ⚠️ R-09: THE TIER HAD TO BE ADDED HERE AS WELL AS TO `_rpc_sync_config`, AND
+## MISSING THIS ONE WOULD HAVE BEEN INVISIBLE. `_rpc_sync_config` only fires when the
+## host CHANGES something; a peer that joins a lobby nobody touches afterwards is
+## configured entirely by this welcome packet. Leave the tier out and that peer plays
+## the host's map and mode against its own difficulty — the exact per-peer split U-8
+## fixed, reintroduced through the one path that only runs once.
 @rpc("authority", "call_remote", "reliable")
 func _rpc_sync_state(seats: Dictionary, ready_states: Dictionary,
-		map_id: StringName, mode: int) -> void:
+		map_id: StringName, mode: int, difficulty: int) -> void:
 	_peer_seats = seats
 	_peer_ready = ready_states
-	_apply_host_config(map_id, mode)
+	_apply_host_config(map_id, mode, difficulty)
 	_refresh_seats()
 
 ## Host -> everyone: the seating changed.
@@ -419,8 +472,8 @@ func _rpc_sync_seats(seats: Dictionary) -> void:
 ## READY again, which is the correct trade and is said out loud in the status
 ## line rather than left to be discovered.
 @rpc("authority", "call_local", "reliable")
-func _rpc_sync_config(map_id: StringName, mode: int) -> void:
-	_apply_host_config(map_id, mode)
+func _rpc_sync_config(map_id: StringName, mode: int, difficulty: int) -> void:
+	_apply_host_config(map_id, mode, difficulty)
 	for peer_id in _peer_ready:
 		_peer_ready[peer_id] = false
 	primary_button.caption = "READY"
@@ -428,13 +481,20 @@ func _rpc_sync_config(map_id: StringName, mode: int) -> void:
 	_refresh_seats()
 	_refresh_start_button()
 
-func _apply_host_config(map_id: StringName, mode: int) -> void:
+func _apply_host_config(map_id: StringName, mode: int, difficulty: int) -> void:
 	GameLaunch.selected_map = map_id
 	_map_index = GameLaunch.map_index()
 	GameLaunch.game_mode = mode as GameLaunchScript.GameMode
 	_mode_index = _index_for_mode(GameLaunch.game_mode)
+	# R-09. ⚠️ `persist` FALSE: this is the HOST's choice for THIS match, and writing
+	# it into the client's own settings.cfg would silently change what that player
+	# gets the next time they host. The bug U-8 fixed was a per-peer value deciding
+	# the match; the mirror-image mistake is a per-match value editing a preference.
+	_difficulty_index = clampi(difficulty, 0, DIFFICULTIES.size() - 1)
+	SettingsManager.set_ai_difficulty(_difficulty_index, false)
 	map_value_label.text = String(GameLaunch.MAPS[_map_index]["name"])
 	mode_value_label.text = String(MODES[_mode_index]["label"])
+	difficulty_value_label.text = String(DIFFICULTIES[_difficulty_index]["label"])
 	map_preview.show_map(GameLaunch.MAPS[_map_index])
 	# A client cannot change either of these, but the HOST can change them under
 	# it - so the explanation has to follow the broadcast as well as the click.
@@ -536,11 +596,34 @@ func _apply_mode() -> void:
 	GameLaunch.game_mode = int(mode["id"]) as GameLaunchScript.GameMode
 	_refresh_detail()
 
-## Solo changes nothing but its own copy; a host pushes map and mode to every
-## client. A client never reaches here at all — its arrows are disabled.
+func _on_difficulty_prev() -> void:
+	_cycle_difficulty(-1)
+
+func _on_difficulty_next() -> void:
+	_cycle_difficulty(1)
+
+func _cycle_difficulty(step: int) -> void:
+	AudioManager.play("ui_click") # 4.1
+	_difficulty_index = posmod(_difficulty_index + step, DIFFICULTIES.size())
+	_apply_difficulty()
+	_broadcast_config()
+
+## R-09. Writes the tier through SettingsManager rather than at AIController
+## directly, so the one function that stores it is also the one that applies it —
+## see `set_ai_difficulty`'s own note on why those cannot be separate steps here.
+func _apply_difficulty() -> void:
+	var tier: Dictionary = DIFFICULTIES[_difficulty_index]
+	difficulty_value_label.text = String(tier["label"])
+	SettingsManager.set_ai_difficulty(int(tier["id"]))
+	_refresh_detail()
+
+## Solo changes nothing but its own copy; a host pushes map, mode and the kalaro
+## tier to every client. A client never reaches here at all — its arrows are
+## disabled.
 func _broadcast_config() -> void:
 	if _is_lobby_host():
-		_rpc_sync_config.rpc(GameLaunch.selected_map, int(GameLaunch.game_mode))
+		_rpc_sync_config.rpc(GameLaunch.selected_map, int(GameLaunch.game_mode),
+			SettingsManager.ai_difficulty)
 
 ## Opens the CHARACTER panel in place rather than changing scene — see
 ## `character_select.gd`'s own note for why a scene change would be wrong here
@@ -608,6 +691,9 @@ func _refresh_detail() -> void:
 	lines.append("%s   %s" % [String(map_entry["name"]), String(map_entry["tagline"])])
 	lines.append("%s   %s" % [
 		String(MODES[_mode_index]["label"]), String(MODES[_mode_index]["detail"])])
+	lines.append("%s   %s" % [
+		String(DIFFICULTIES[_difficulty_index]["label"]),
+		String(DIFFICULTIES[_difficulty_index]["detail"])])
 	lines.append(_seat_detail())
 
 	detail_label.text = "\n".join(lines)

@@ -116,7 +116,7 @@ theme_override_constants/margin_bottom = 12
 
 [node name="Rows" type="VBoxContainer" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin"]
 layout_mode = 2
-theme_override_constants/separation = 12
+theme_override_constants/separation = 8
 alignment = 1
 
 [node name="MapRow" type="HBoxContainer" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows"]
@@ -132,7 +132,7 @@ vertical_alignment = 1
 text = "MAP:"
 
 [node name="MapSelector" type="TextureRect" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/MapRow"]
-custom_minimum_size = Vector2(380, 93)
+custom_minimum_size = Vector2(380, 84)
 layout_mode = 2
 size_flags_horizontal = 0
 size_flags_vertical = 4
@@ -194,7 +194,7 @@ vertical_alignment = 1
 text = "MODE:"
 
 [node name="ModeSelector" type="TextureRect" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/ModeRow"]
-custom_minimum_size = Vector2(380, 93)
+custom_minimum_size = Vector2(380, 84)
 layout_mode = 2
 size_flags_horizontal = 0
 size_flags_vertical = 4
@@ -243,6 +243,68 @@ texture_normal = ExtResource("7")
 ignore_texture_size = true
 stretch_mode = 5
 
+[node name="DifficultyRow" type="HBoxContainer" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 46
+
+[node name="DifficultyCaption" type="Label" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/DifficultyRow"]
+custom_minimum_size = Vector2(250, 0)
+layout_mode = 2
+size_flags_horizontal = 0
+theme_type_variation = &"MenuDisplay"
+vertical_alignment = 1
+text = "KALARO:"
+
+[node name="DifficultySelector" type="TextureRect" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/DifficultyRow"]
+custom_minimum_size = Vector2(380, 84)
+layout_mode = 2
+size_flags_horizontal = 0
+size_flags_vertical = 4
+mouse_filter = 1
+texture = ExtResource("5")
+expand_mode = 1
+stretch_mode = 0
+
+[node name="Inner" type="HBoxContainer" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/DifficultyRow/DifficultySelector"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 19.0
+offset_top = 12.0
+offset_right = -26.0
+offset_bottom = -15.0
+theme_override_constants/separation = 8
+
+[node name="DifficultyPrevButton" type="TextureButton" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/DifficultyRow/DifficultySelector/Inner"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(32, 45)
+layout_mode = 2
+size_flags_vertical = 4
+texture_normal = ExtResource("6")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="DifficultyValueLabel" type="Label" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/DifficultyRow/DifficultySelector/Inner"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"MenuHeading"
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "NORMAL"
+clip_text = true
+text_overrun_behavior = 3
+
+[node name="DifficultyNextButton" type="TextureButton" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/DifficultyRow/DifficultySelector/Inner"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(32, 45)
+layout_mode = 2
+size_flags_vertical = 4
+texture_normal = ExtResource("7")
+ignore_texture_size = true
+stretch_mode = 5
+
 [node name="FighterRow" type="HBoxContainer" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows"]
 layout_mode = 2
 theme_override_constants/separation = 46
@@ -257,7 +319,7 @@ text = "KALARO:"
 
 [node name="CharacterButton" type="Button" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/FighterRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(380, 93)
+custom_minimum_size = Vector2(380, 84)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
