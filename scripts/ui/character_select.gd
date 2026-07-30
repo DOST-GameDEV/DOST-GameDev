@@ -283,7 +283,16 @@ func _apply() -> void:
 	if String(CharacterRoster.category(_tab)["slot"]) == "slipper":
 		var power := CharacterRoster.slipper_max_power(index)
 		if power > 0.0:
-			detail += "\n\nMAX POWER  %.0f m/s" % power
+			# ⚠️ ONE NEWLINE, NOT TWO, AND `ui_layout_probe` IS WHY. The blank separator
+			# line read better and cost 39 px of a panel that has 30 to spare: the probe
+			# went from 196/196 to 192/196 with `TabBar` and `TraitRows` both **PUSHED
+			# OUT OF ITS BOX** on the tsinelas tab and nowhere else, because `ConfigPanel`
+			# is a fixed 246..726 and `TaglineLabel` autowraps into whatever is left.
+			#
+			# Measured either way: two newlines put `TraitRows` at y 585..735 against the
+			# lata tab's 546..696 — nine pixels past the panel's own bottom edge. One
+			# newline is the whole fix and the row still reads as its own line.
+			detail += "\nMAX POWER  %.0f m/s" % power
 	tagline_label.text = detail
 	# The meters sit directly under the sentence they are supposed to agree with,
 	# which is the point of putting them on this screen at all — see
