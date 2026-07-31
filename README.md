@@ -38,8 +38,10 @@ four players free-for-all, and the rules are the ones the street game actually h
 tag, reset. `docs/Design.md` §12 lists everything that went and why.
 
 **👉 [`docs/Agent_Prompts.md`](docs/Agent_Prompts.md) is the single place progress is tracked.**
-Seven `build xxx` lanes, run one at a time in board order. The first unticked box in a lane's
-section is the next thing to do.
+**Five** `build xxx` lanes, run one at a time in board order. The first unticked box in a lane's
+section is the next thing to do. Five and not more is deliberate: the board this replaced had
+eleven and never finished them, and a lane is a whole session with a cold start — so the count is
+a schedule, not a taxonomy.
 
 **🔊 `build voice` runs next, at position 3, and it is the one lane that blocks on people rather
 than on code** — the team is recording Filipino voice lines and composing a five-track chiptune

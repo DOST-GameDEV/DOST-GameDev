@@ -146,25 +146,30 @@ delete the control or give it something new to drive — in the same commit.
 
 ## EXECUTION ORDER
 
-**Readability → Balance → Feel → Presentation → Single Player → Ship.**
-A lane may not start until the one above it has committed.
+**Readability → Balance → Presentation → Single Player.**
+A lane may not start until the one above it has committed. **Five lanes.**
 
 ⚠️ **MULTIPLAYER FIRST, SINGLE PLAYER LATER — HUMAN INSTRUCTION, 2026-07-31:** *"we will
 fix the ai as well but put that in the end of agent prompts lane, we will focus on making
 multiplayer first then single player next time."* That is why 🤖 `build ai` sits at
-position **6** despite being the largest single piece of work left. Do not promote it.
+**last** despite being the largest single piece of work left. Do not promote it. It also
+carries § CHECKLIST §8, the ship checklist, because it is the session that ends the board.
 
 | Run | § | Lane | Model · effort | Owns | Rubric it feeds |
 |---|---|---|---|---|---|
 | **—** | §0 | 🎮 **`build core`** | — | the rules, the props, the loop | — · **CLOSED 2026-07-31** |
 | **—** | §7 | 👁️ **`build spec`** | — | spectator camera + POV | — · **CLOSED, carried over intact** |
 | **1** | §1 | 🖥️ **`build ui`** | **Sonnet 5 · high** | `scripts/ui/**`, `scenes/ui/**`, the tutorial | Gameplay · Esports · Completeness |
-| **2** | §2 | ⚖️ **`build fair`** | **Opus 5 · xhigh** | every number, `Design.md` | **Esports Potential** · Gameplay |
-| **3** | §3 | 🥊 **`build feel`** | **Sonnet 5 · high** | contact, knockback, camera, readability | Gameplay · Esports |
-| **4** | §4 | 🔊 **`build sound`** | **Sonnet 5 · medium** | music, VO, SFX, the mix | **Music and Sound Design 10%** |
-| **5** | §5 | 🎨 **`build model`** | **Opus 5 · medium** | Blender MCP model revamp | **Graphics and Art** · Aesthetics |
-| **6** | §6 | 🤖 **`build ai`** | **Opus 5 · high** | `ai_controller.gd`, Single Player | Gameplay · Completeness |
-| **7** | §8 | 📦 **`build ship`** | **Sonnet 5 · medium** | exports, the submission build | Completeness |
+| **2** | §2 | ⚖️ **`build fair`** | **Opus 5 · xhigh** | every number **and the feedback that sells it** | **Esports Potential** · Gameplay |
+| **3** | §4 | 🔊 **`build sound`** | **Sonnet 5 · medium** | music, VO, SFX, the mix | **Music and Sound Design 10%** |
+| **4** | §5 | 🎨 **`build model`** | **Opus 5 · medium** | Blender MCP model revamp | **Graphics and Art** · Aesthetics |
+| **5** | §6 | 🤖 **`build ai`** | **Opus 5 · high** | `ai_controller.gd`, Single Player | Gameplay · Completeness |
+
+**FIVE LANES, AND THAT IS THE POINT.** 🧑 2026-07-31: *"too many lanes, that was the
+problem with last one too, we are short on time"*. The board this replaced had eleven and
+never finished them; the first draft of this one had seven. A lane is a whole session
+with a cold start, so the count is a schedule, not a taxonomy — **if two lanes would
+argue with each other over the same file, they were always one lane.**
 
 **Why these models.**
 
@@ -172,10 +177,8 @@ position **6** despite being the largest single piece of work left. Do not promo
   rather than medium because three of its items are cross-peer races and "it works on my
   machine" is the exact failure mode.
 * **`build fair` — Opus, xhigh.** It is the only lane allowed to move a shipped number,
-  and §2.1 is a scoring-economy problem with no lookup-able answer. Being wrong here
-  costs the submission.
-* **`build feel` — Sonnet, high.** Executing against measured targets with a documented
-  authority-trap list.
+  §2.1 is a scoring-economy problem with no lookup-able answer, and it now owns the
+  feedback for the things it tunes as well. Being wrong here costs the submission.
 * **`build sound` — Sonnet, medium.** Breadth and taste over a system that already
   exists and already routes buses correctly.
 * **`build model` — Opus, medium.** *"Does this silhouette read as a sardine tin from
@@ -184,7 +187,11 @@ position **6** despite being the largest single piece of work left. Do not promo
   any one.
 * **`build ai` — Opus, high.** Novel behaviour design under a 1-vs-3 asymmetry nothing
   in this repo has ever measured.
-* **`build ship` — Sonnet, medium.** A checklist, not a design lane.
+
+**Why `build sound` and `build model` did NOT merge**, when everything else did: they are
+different toolchains (an audio bus graph and Blender MCP), they block on different people
+delivering different things, and neither can start early. One lane that waits on both
+finishes when the slower one arrives.
 
 ---
 
@@ -225,16 +232,16 @@ throwing, and scoring a knockdown.
 | Lane | Writes |
 |---|---|
 | 🖥️ `build ui` | `scripts/ui/**` · `scenes/ui/**` · `systems/camera_rig.gd` · `trajectory_preview.gd` · `tools/ui/**` |
-| ⚖️ `build fair` | **any number in any file** · `docs/Design.md` · `tools/*_probe.gd` |
-| 🥊 `build feel` | `character_base.gd` movement/contact block · `objects/slipper.gd` flight · `objects/lata.gd` topple |
+| ⚖️ `build fair` | **any number in any file** · `docs/Design.md` · `tools/*_probe.gd` · `character_base.gd` movement/contact block · `objects/slipper.gd` flight · `objects/lata.gd` topple |
 | 🔊 `build sound` | `systems/audio_manager.gd` · `assets/audio/**` · `default_bus_layout.tres` · the audio rows of `ui/settings_panel.gd` · `docs/HUMAN.md` |
 | 🎨 `build model` | `character_visual.gd` · `character_nameplate.gd` · `character_roster.gd` `ROSTER`/`CANS`/`SLIPPERS` · `scenes/characters/visuals/**` · `scenes/objects/**` visuals · `assets/models/**` · `tools/models/**` · `docs/Art_Direction.md` |
-| 🤖 `build ai` | `systems/ai_controller.gd` · `tools/ai_probe.gd` |
-| 📦 `build ship` | `export_presets.cfg` · `.gitignore` · the output paths of `tools/*_probe.gd` |
+| 🤖 `build ai` | `systems/ai_controller.gd` · `tools/ai_probe.gd` · `export_presets.cfg` and `.gitignore` (the ship checklist — it runs last) |
 
-**`character_base.gd` is touched by three lanes.** Sequential order is the lock:
-`build fair` moves numbers, `build feel` takes the movement and contact block, `build ai`
-touches only the intent harness. **`build ui` never writes it.**
+**`character_base.gd` is touched by two lanes.** Sequential order is the lock: `build
+fair` owns the numbers, the movement block and the contact block together; `build ai`
+touches only the intent harness. **`build ui` never writes it.** That this file used to be
+split between three lanes is most of why two of them merged — a boundary drawn through
+the middle of one file is a boundary somebody crosses.
 
 ⚠️ **`build sound` FIRES FROM FILES IT DOES NOT OWN** — a score callout has to trigger
 from `round_manager.gd` and a menu stinger from `scripts/ui/**`. **It does not edit
@@ -292,7 +299,12 @@ specifically is unverified. Tick only your own section.
 - [ ] 1.9 **Settings has a player-name row built in code** (`_build_name_row`), for the
   same reason as 1.1. Promote it into `SettingsPanel.tscn` and into the focus order.
 
-### 2 · ⚖️ `build fair` — every number *(Opus 5 · xhigh)*
+### 2 · ⚖️ `build fair` — every number, and the feedback that sells it *(Opus 5 · xhigh)*
+
+**⚠️ THIS SECTION ABSORBED `build feel` (the old §3) ON 2026-07-31.** Items 2.11–2.16
+ came from it. They merged because they are the same judgement made twice: you cannot
+decide whether the tag is worth 100 points without also deciding that it currently has no
+wind-up, no animation and no contact moment. They also shared files.
 
 - [ ] 2.1 **Passive defence is very probably broken and it is the first thing to
   measure.** +10/s for 90 s is **900 points** uncontested, against **+100** for a
@@ -324,30 +336,29 @@ specifically is unverified. Tick only your own section.
   invisible** — a 1.25 s shove stun inside the 5 s tag penalty reads as nothing
   happening. Decide whether that is acceptable or whether the status stack needs two
   rows.
+- [ ] 2.11 **A blocked slipper just stops.** No stagger, no sound beyond `hit_body`, no
+  visual. Body-blocking is the taya's entire passive verb and currently has almost no
+  feedback. *(was `build feel` §3.1)*
+- [ ] 2.12 **The lata's topple is an 88° rotation over 0.22 s.** Judge whether it reads
+  as a can being knocked over from the spectator camera at range. *(§3.2)*
+- [ ] 2.13 **A thrown slipper has no trail, no impact VFX and no landing sound.** It is
+  the object the whole game is about. *(§3.3)*
+- [ ] 2.14 **The tag has no wind-up, no animation and no contact moment** — you are
+  simply teleported. It is worth 100 points and it is invisible. Decide this together
+  with 2.6 and 2.7, which are the same action's radius and penalty. *(§3.4)*
+- [ ] 2.15 **The shove's 1.25 s wind-up broadcasts a bone pose** (`character_visual.gd`
+  reads `observed_shove_charge()`); confirm it is actually visible on a second peer,
+  which is the only thing that makes it dodgeable — and therefore the only thing that
+  makes 2.4's numbers fair. *(§3.5)*
+- [ ] 2.16 **Verify the trajectory preview still lands where the slipper lands.** The arc
+  is drawn from `Slipper.launch_velocity_for()` and integrated at the physics tick; the
+  old measurement was 0.000 m of error and nothing has re-checked it since the throw
+  profiles were deleted. *(§3.6)*
 - [ ] 2.10 **Every probe in `tools/` is stale.** `mech_probe`, `phys_probe`,
   `round_probe`, `hit_probe`, `abil_probe`, `ai_probe`, `scuff_probe` and `spec_probe`
   all assert deleted mechanics. They still parse only because nothing runs them. You are
   the lane that needs them; budget for rewriting the two or three that earn it rather
   than all of them.
-
-### 3 · 🥊 `build feel` — contact and readability *(Sonnet 5 · high)*
-
-- [ ] 3.1 **A blocked slipper just stops.** No stagger, no sound beyond `hit_body`, no
-  visual. Body-blocking is the taya's entire passive verb and currently has almost no
-  feedback.
-- [ ] 3.2 **The lata's topple is an 88° rotation over 0.22 s.** Judge whether it reads as
-  a can being knocked over from the spectator camera at range.
-- [ ] 3.3 **A thrown slipper has no trail, no impact VFX and no landing sound.** It is
-  the object the whole game is about.
-- [ ] 3.4 **The tag has no wind-up, no animation and no contact moment** — you are
-  simply teleported. It is worth 100 points and it is invisible.
-- [ ] 3.5 **The shove's 1.25 s wind-up broadcasts a bone pose** (`character_visual.gd`
-  reads `observed_shove_charge()`); confirm it is actually visible on a second peer,
-  which is the only thing that makes it dodgeable.
-- [ ] 3.6 **Verify the trajectory preview still lands where the slipper lands.** The arc
-  is drawn from `Slipper.launch_velocity_for()` and integrated at the physics tick; the
-  old measurement was 0.000 m of error and nothing has re-checked it since the profiles
-  were deleted.
 
 ### 4 · 🔊 `build sound` — music, voice and the mix *(Sonnet 5 · medium)*
 
@@ -383,7 +394,7 @@ specifically is unverified. Tick only your own section.
 - [ ] 5.7 Orphaned assets swept: `lata_dent1..3.obj` and the dent generator in
   `tools/models/generate_all.gd` describe a deleted mechanic.
 
-### 6 · 🤖 `build ai` — Single Player *(Opus 5 · high)* — **RUNS SECOND TO LAST**
+### 6 · 🤖 `build ai` — Single Player *(Opus 5 · high)* — **RUNS LAST**
 
 *The full prompt is in § THE LANES.*
 
@@ -400,6 +411,8 @@ specifically is unverified. Tick only your own section.
   that writes `velocity` directly desyncs the moment it is not the authority for the
   body it is writing to.
 - [ ] 6.5 `tools/ai_probe.gd` is stale and is yours.
+- [ ] 6.6 **You also run § CHECKLIST §8, the ship checklist**, at the end of your
+  session. Three mechanical items, not worth their own cold start.
 
 ### 7 · 👁️ `build spec` — spectator *(CLOSED)*
 
@@ -408,10 +421,17 @@ specifically is unverified. Tick only your own section.
 - [x] 7.2 Its descend key is now its own action, `spectator_down` (Ctrl), rather than
   borrowing the deleted `guard_dash`. *Verified: a 130 s spectator run is clean.*
 
-### 8 · 📦 `build ship` — the submission build *(Sonnet 5 · medium)* — **LAST OF ALL**
+### 8 · 📦 SHIP CHECKLIST — **not a lane**
+
+**⚠️ THIS STOPPED BEING A LANE ON 2026-07-31.** The board's own description of it was
+already *"a checklist, not a design lane"*, and spending a whole cold-start session on
+three mechanical items is exactly the overhead the five-lane cut exists to remove.
+**Whoever runs `build ai` (the last lane) does this at the end of that session**, or the
+human does it by hand. It owns `export_presets.cfg` and `.gitignore`.
 
 - [ ] 8.1 `export_presets.cfg` is only true about the code that existed when it was
-  written. Re-check it against the current file set.
+  written, and a great deal has been deleted since. Re-check it against the current file
+  set.
 - [ ] 8.2 Probes and `tools/**` must not ship in the export.
 - [ ] 8.3 A clean-clone build test.
 
@@ -454,51 +474,43 @@ Read docs/Agent_Prompts.md end to end first, then docs/Design.md — which is th
 source of truth and which you own. Obey HOW TO RUN A LANE and the COMMIT AUTHORSHIP
 rule exactly.
 
-You are the only lane allowed to move a shipped number, and every number you move moves
-in Design.md in the same commit.
+You own every number in every file, Design.md, tools/*_probe.gd, the movement and
+contact block of character_base.gd, slipper.gd's flight and lata.gd's topple. You are
+the only lane allowed to move a shipped number, and every number you move moves in
+Design.md in the same commit.
+
+⚠️ THIS LANE ABSORBED THE OLD `build feel`. You own the FEEDBACK for the things you
+tune as well as the values, and the two halves are one job: you cannot decide whether
+the tag is worth 100 points without also noticing it currently has no wind-up, no
+animation and no contact moment at all — the player is simply teleported.
 
 Start with § CHECKLIST §2.1. Passive defence pays the taya +10/s for 90 seconds — 900
 points — against +100 for knocking the lata down. On those numbers a taya nobody
 challenges beats three attackers who each score. Measure a real match before you decide
 what to do about it; do not reason your way to a number.
 
-Then 2.2 through 2.10. Note that 2.2 (the box size) requires a map rebuild:
-tools/maps/floorcheck.py regexes the CONFINEMENT_RADIUS const line out of
-character_base.gd and both map builders draw the chalk from it.
+Then work 2.2 through 2.16. Some of them are deliberately adjacent and should be decided
+together rather than in list order: 2.6, 2.7 and 2.14 are all the tag; 2.4 and 2.15 are
+both the shove, and the wind-up being visible on a second peer is the only thing that
+makes its numbers fair.
+
+Note that 2.2 (the box size) requires a map rebuild: tools/maps/floorcheck.py regexes
+the CONFINEMENT_RADIUS const line out of character_base.gd and both map builders draw
+the chalk from it.
 
 2.8 is a design decision the human explicitly handed to a lane rather than a new one:
 decide whether lata and tsinelas SKINS carry soft stats, what they would mean on an
 object nobody drives, and record the answer in Design.md §9 — including a decision to
-leave them purely cosmetic. Coordinate with `build model`, which owns the roster tables.
-
-Every probe in tools/ asserts deleted mechanics. Rewrite the two or three you actually
-need rather than all of them.
-
-Tick your own boxes and append to § LOG in the same commit.
-```
-
-### 🥊 `build feel`
-
-```
-You are `build feel` on branch HARRYDAKS of the Tumbang Preso repo. Model: Sonnet 5,
-effort high.
-
-Read docs/Agent_Prompts.md end to end first, then docs/Design.md. Obey HOW TO RUN A LANE
-and the COMMIT AUTHORSHIP rule exactly.
-
-You own the movement and contact block of character_base.gd, slipper.gd's flight and
-lata.gd's topple. You do not move balance numbers — that is `build fair`, which has
-already run. If a change of yours needs a number moved, file it to them.
-
-Work § CHECKLIST §3. The theme is that this pivot built correct rules and left them
-almost silent: a blocked slipper just stops, the tag teleports you with no contact
-moment, and the object the whole game is named after has no trail, no impact and no
-landing sound.
+leave them purely cosmetic. `build model` reads your § LOG entry and implements it.
 
 ⚠️ Contact resolves BY DISTANCE ON THE HOST, not through Area3D overlaps, in three
 places: RoundManager._step_tag, Slipper._first_body_hit and Lata.is_in_ring. That is
 deliberate — hit_probe measured 16 of 36 Area3D overlaps failing to land, split by
-target. Do not reintroduce overlap-based contact.
+target. Do not reintroduce overlap-based contact while tuning it.
+
+Every probe in tools/ asserts deleted mechanics. Rewrite the two or three you actually
+need rather than all of them. tools/harrydaks_shot.tscn already renders a live match and
+prints match state — copy it rather than inventing a new harness.
 
 Tick your own boxes and append to § LOG in the same commit.
 ```
@@ -507,13 +519,16 @@ Tick your own boxes and append to § LOG in the same commit.
 
 ```
 You are `build ai` on branch HARRYDAKS of the Tumbang Preso repo. Model: Opus 5, effort
-high.
+high. You are the LAST lane on the board.
 
 Read docs/Agent_Prompts.md end to end first, then docs/Design.md, then
 scripts/systems/ai_controller.gd in full. Obey HOW TO RUN A LANE and the COMMIT
 AUTHORSHIP rule exactly.
 
-You own systems/ai_controller.gd and tools/ai_probe.gd, and nothing else.
+You own systems/ai_controller.gd and tools/ai_probe.gd. You also own export_presets.cfg
+and .gitignore for one job only: § CHECKLIST §8, the three-item ship checklist, done at
+the END of your session. It is not worth its own cold start, which is why it is not its
+own lane.
 
 The AI you are replacing is deliberately minimal — about 250 lines, written so that the
 game films rather than so that it plays well. It is a placeholder, not a baseline: do
@@ -531,30 +546,13 @@ the moment it is not the authority for the body it is writing to.
 
 Measure fairness with a real probe over many rounds, not by watching one match.
 
-Tick your own boxes and append to § LOG in the same commit.
-```
-
-### 📦 `build ship`
-
-```
-You are `build ship` on branch HARRYDAKS of the Tumbang Preso repo. Model: Sonnet 5,
-effort medium. You run last of all.
-
-Read docs/Agent_Prompts.md end to end first. Obey HOW TO RUN A LANE and the COMMIT
-AUTHORSHIP rule exactly.
-
-You own export_presets.cfg, .gitignore and the output paths of tools/*_probe.gd.
-
-This is a checklist, not a design lane. Work § CHECKLIST §8. An export preset is only
-true about the code that existed when it was written, and a great deal has been deleted
-since this one was — verify rather than assume.
-
-Do a clean-clone build test. Do not ship tools/**.
+Then do § CHECKLIST §8 and stop.
 
 Tick your own boxes and append to § LOG in the same commit.
 ```
 
-*(🔊 `build sound` and 🎨 `build model` prompts follow in § FUTURE LANES.)*
+*(🔊 `build sound` and 🎨 `build model` prompts follow in § FUTURE LANES — they are lanes
+3 and 4, written in full and blocked only on assets.)*
 
 ---
 
@@ -563,7 +561,7 @@ Tick your own boxes and append to § LOG in the same commit.
 These two are written and ready but are **not** blocked on code — they are blocked on
 assets and on humans. Run them at their board positions.
 
-### 🔊 `build sound` — audio integration *(Sonnet 5 · medium, run at position 4)*
+### 🔊 `build sound` — audio integration *(Sonnet 5 · medium, run at position 3)*
 
 ```
 You are `build sound` on branch HARRYDAKS of the Tumbang Preso repo. Model: Sonnet 5,
@@ -621,7 +619,7 @@ stream loaded. Tick your own boxes in § CHECKLIST §4 and append to § LOG in t
 commit as the work.
 ```
 
-### 🎨 `build model` — Blender MCP model revamp *(Opus 5 · medium, run at position 5)*
+### 🎨 `build model` — Blender MCP model revamp *(Opus 5 · medium, run at position 4)*
 
 ```
 You are `build model` on branch HARRYDAKS of the Tumbang Preso repo. Model: Opus 5,
@@ -736,6 +734,8 @@ is `Design.md` §12; this section is about the *board*.
 | 🎮 `build mech` | the rules of the game | **Superseded by `build core`,** closed above. |
 | 🔊 `build voice` | the recording brief, and wiring the voice that comes back | **Merged into `build sound`.** It was split out because it blocked on humans recording; `docs/HUMAN.md` is written and the team can record against it today, so the remaining work is plumbing and does not need its own lane. |
 | 👁️ `build spec` | spectator | **Closed, not deleted.** Spectator was kept whole on human instruction and needs no further work. |
+| 🥊 `build feel` | contact, knockback and readability | **Merged into ⚖️ `build fair` 2026-07-31** as §2.11–§2.16. They shared `character_base.gd`'s contact block, `slipper.gd`'s flight and `lata.gd`'s topple, and they were the same judgement made twice — a value and the feedback that sells it. |
+| 📦 `build ship` | exports and the submission build | **Demoted to § CHECKLIST §8, a checklist rather than a lane.** The board already described it that way; a cold-start session for three mechanical items is the overhead the five-lane cut exists to remove. |
 
 **Also deleted from the board:** the rubric's "do not improve the objects-are-players
 thesis" clause (see § THE RUBRIC), the § SALVAGE table (replaced by § WHAT IS ALREADY
