@@ -875,6 +875,31 @@ func _reassert_spectated_bots() -> void:
 		if character.ai_controller != null:
 			character.ai_controller.set_enabled(true)
 		character.input_parked = true
+		# ⚠️⚠️ AND EVERY RIG GOES OFF, WHICH IS THE HALF I MISSED THE FIRST TIME.
+		#
+		# 🧑 report, 2026-07-31: *"i dont see one of the characters bruh in spectator"*,
+		# with a screenshot showing two Person nameplates over one visible model. Measured
+		# by `spec_probe --solo`: `TeamAPerson rig_active=true` while spectating, with the
+		# other three false — `debug_player_switcher.gd::_apply_slots()` had claimed that
+		# unit and called `set_active(true)` on its rig.
+		#
+		# An active rig is not just a camera. `camera_rig.gd::_apply_fpp_self_hide()` drops
+		# that character's HEAD MESH and its CARRIED SLIPPER for as long as the rig is
+		# active, because the peer looking through it is supposed to be looking PAST its
+		# own body — and it shows the viewmodel arms in their place. On a spectator's
+		# screen that is a unit missing pieces of itself, seen from the outside.
+		#
+		# I took `Camera3D.current` back off this same mechanism earlier and stopped there,
+		# which fixed the picture and left a body broken inside it. That is why this
+		# deactivates the rig outright rather than fighting it property by property: a
+		# spectated match has NO local peer holding any character, so there is no rig here
+		# that should be active, and every symptom is downstream of that one fact.
+		#
+		# `set_active()` is CameraRig's own public API — called, not edited. `camera_rig.gd`
+		# is `build ux`'s file and stays untouched.
+		var rig := character.get_node_or_null("CameraRig") as CameraRig
+		if rig != null:
+			rig.set_active(false)
 
 func _enter_spectator_mode() -> void:
 	if _spectator != null and is_instance_valid(_spectator):
