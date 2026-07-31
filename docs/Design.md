@@ -105,8 +105,18 @@ wind-up broadcast), so the attacker can dash, jump or throw through the commitme
 | `CAN_KNOCKBACK_SCALE` | **×2.6** | on every incoming impulse. A clean hit moves it ~1 m instead of dropping it in place. |
 | `DOWNED_SELF_RIGHT_WINDOW` | 1.25 s | press bump to get up early |
 | `DOWNED_MAX_TIME` | **2.0 s** | the ceiling on being down. Applies to every Person and every tsinelas wherever they lie, and to a lata **on its circle** — see below |
+| lata `hurt_r` / `hurt_h` | **0.28 / 0.62** | was 0.17 / 0.40. `_COLLISION_BY_ROLE` in `character_base.gd` |
 
 The lata is lost by being displaced, not by lying down. That is what makes ×2.6 safe.
+
+**The lata is a bigger target than it looks, on purpose.** 🧑 2026-07-31: *"make can's
+hitbox larger it's ass to hit it bro."* Its hurtbox was the smallest in the game (0.17,
+against 0.307 on a tsinelas and 0.45 on a Person), and a thrown slipper carries `hit_r`
+0.230 — so the effective target radius was **0.40 m**, from the 6.0 m throwing line, for
+the offence's entire win condition. It is now **0.51 m**, a ~1.6× cross-section. The
+lata's *body* radius is unchanged at 0.14: the hurtbox is what you hit, the body is what
+you walk into and what `CAN_HOME_RADIUS` is sized against. ⚠️ **This is a balance change
+and it has not been re-measured** — filed to ⚖️ `build fair` as §7.18.
 
 ### 5.1.1 · The lata may only stand up on its circle
 

@@ -652,8 +652,28 @@ const _COLLISION_BY_ROLE: Dictionary = {
 		"body_r": 0.40, "body_h": 1.60, "hurt_r": 0.45, "hurt_h": 1.70,
 		"hit_r": 0.72, "hit_off": Vector3(0, -0.05, -0.55), "grab_r": 1.70,
 	},
+	# ⚠️ THE LATA'S HURTBOX IS DELIBERATELY MUCH BIGGER THAN ITS BODY. 2026-07-31,
+	# 🧑 report: *"make can's hitbox larger it's ass to hit it bro."*
+	#
+	# It was `hurt_r` 0.17 / `hurt_h` 0.40 — the smallest hurtbox in the game, against
+	# 0.307 on a tsinelas and 0.45 on a Person. A thrown slipper's own hitbox is
+	# `hit_r` 0.230, so the effective target radius was 0.230 + 0.170 = **0.40 m** on
+	# an object the attacker is throwing at from the 6.0 m line. That is the whole
+	# offence's win condition gated behind the tightest collision test on the board.
+	#
+	# 0.28 / 0.62 takes the effective radius to **0.51 m** — a ~1.6x larger
+	# cross-section — while staying under the tsinelas's own 0.307 so the lata is
+	# still not the fattest target in the game. `hurt_h` 0.62 because a Godot
+	# `CapsuleShape3D` clamps `height` to at least `2 * radius` (0.56), so the old
+	# 0.40 would have been silently overridden and the capsule would not have been
+	# the shape written here.
+	#
+	# ⚠️ BODY radius is UNCHANGED at 0.14. The hurtbox is what you HIT; the body is
+	# what you walk into and what the 0.9 m circle test is sized against
+	# (`CAN_HOME_RADIUS`'s own note does that arithmetic). Growing the body instead
+	# would have moved the circle rule and the physics both.
 	"can": {
-		"body_r": 0.14, "body_h": 0.34, "hurt_r": 0.17, "hurt_h": 0.40,
+		"body_r": 0.14, "body_h": 0.34, "hurt_r": 0.28, "hurt_h": 0.62,
 		"hit_r": 0.20, "hit_off": Vector3(0, 0.02, -0.16), "grab_r": 0.60,
 	},
 	# x1.28 against the 1.25-era row — see TSINELAS_VISUAL_SCALE.
