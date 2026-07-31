@@ -285,6 +285,17 @@ func _run_solo() -> void:
 	_check("no AI is attached to the spectator", brains.is_empty(),
 		"found %d" % brains.size())
 
+	# ⚠️⚠️ ARE WE ACTUALLY LOOKING THROUGH IT. Every other check in this file passed while
+	# the rendered frame was a Person's first-person view with its viewmodel arms across
+	# the bottom — `debug_player_switcher.gd` had claimed TeamAPerson and its `CameraRig`
+	# took `current`. The camera flew, the HUD stripped, the speed changed, and the picture
+	# was somebody else's. Asserted against the VIEWPORT, which is the only thing that
+	# knows who actually won.
+	var live := get_viewport().get_camera_3d()
+	_check("§2.2 the spectator's camera is the one being rendered",
+		live != null and live.get_parent() == spectator,
+		"viewport camera is %s" % ["none" if live == null else String(live.get_path())])
+
 	# --- §2.3's solo half: the vacated seat is bot-filled, the match is still a 2v2 ----
 	var units := main.find_children("*", "CharacterBase", true, false)
 	var ai_driven := 0
