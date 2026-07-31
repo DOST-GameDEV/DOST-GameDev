@@ -465,6 +465,7 @@ func set_clean_feed(on: bool) -> void:
 	if on == _clean_feed:
 		return
 	_clean_feed = on
+	_apply_clean_feed_to_world(on)
 	if on:
 		_clean_feed_restore.clear()
 		for child in get_children():
@@ -482,6 +483,34 @@ func set_clean_feed(on: bool) -> void:
 		# honest default rather than staying invisible forever.
 		item.visible = bool(_clean_feed_restore.get(item, true))
 	_clean_feed_restore.clear()
+
+## ⚠️⚠️ THE NAMEPLATES AND THE GROUND RINGS ARE NOT PART OF THIS HUD, AND A CLEAN FEED
+## THAT LEAVES THEM ON IS NOT CLEAN. 🧑 2026-07-31, with a screenshot: *"turn off
+## character labels as well as circles around player when click H, we want H turn off hud
+## to make it cinematic so turn off that stuff."*
+##
+## They are `Node3D`s parented to each unit (`CharacterBase.tscn` → `Nameplate`, holding
+## `NameplateRing` + `NameplateLabel`), so they live in the WORLD, not in this
+## `CanvasLayer` — which is exactly why the first version of the toggle missed them: it
+## walked this node's own children and they were never among them.
+##
+## ⚠️ ONE NODE HIDES BOTH, deliberately. The ring and the tag are siblings under
+## `Nameplate`, so hiding the parent takes the label AND the coloured circle in one move
+## and cannot leave the two disagreeing. `character_nameplate.gd` is not touched — this
+## is a `visible` sweep from the outside, the same contract the rest of the clean feed
+## keeps.
+##
+## ⚠️ RE-SWEPT ON EVERY TOGGLE rather than remembered, because the roster changes: a unit
+## that respawns, or a Prop rebuilt by a role swap, gets a fresh `Nameplate` this has
+## never seen. Asking the tree each time is cheap (four units) and cannot go stale.
+func _apply_clean_feed_to_world(hidden: bool) -> void:
+	var scene := get_tree().current_scene
+	if scene == null:
+		return
+	for node in scene.find_children("*", "CharacterBase", true, false):
+		var nameplate := (node as Node).get_node_or_null("Nameplate") as Node3D
+		if nameplate != null:
+			nameplate.visible = not hidden
 
 func is_clean_feed() -> bool:
 	return _clean_feed
@@ -577,6 +606,36 @@ func _kill_pulse_tween() -> void:
 ## cache below makes it a no-op unless the count or the colour actually moved,
 ## which is the "HUD updates cleanly without lag" half of the same report.
 var _pip_cache: Dictionary = {}
+
+## ⚠️⚠️ WITHOUT THIS THE SCOREBOARD SITS AT 0–0 FOR TWO WHOLE ROUNDS. 🧑 reported it
+## straight after §8.1 landed: *"hindi uli nag didisplay yung score."*
+##
+## The pips are honest — a **set** is only awarded once BOTH teams have attacked, so
+## nothing can legitimately fill after round 1. But "honest" and "readable" are not the
+## same thing: under the old best-of-5 a round win lit a pip immediately, and now a team
+## can win a round and see the board not move at all, which reads as broken rather than
+## as pending.
+##
+## So the round line carries the in-set state, and it is the tiebreak that supplies it —
+## the number this format already computes and nothing was showing. In round 2 the
+## attacking side has a clock to beat, which is the whole drama of the set:
+##
+##   round 1        SET 1 · ROUND 1/2
+##   round 2, scored    SET 1 · ROUND 2/2 · BEAT 41.2s
+##   round 2, held      SET 1 · ROUND 2/2 · SCORE TO WIN
+##
+## `NEVER` means that team's attack never took the lata out, so the side attacking now
+## wins the set by scoring at all — which is a genuinely different instruction to give a
+## player than a time, and worth saying in words rather than as a sentinel number.
+func _set_state_suffix() -> String:
+	if MatchManager.round_in_set < MatchManagerScript.ROUNDS_PER_SET:
+		return ""
+	# Round 2: whoever is defending now is the team that already had its attack.
+	var first_attacker := 0 if MatchManager.team_a_is_can else 1
+	var benchmark := MatchManager.attack_time_for(first_attacker)
+	if benchmark >= MatchManagerScript.NEVER:
+		return "  ·  SCORE TO WIN"
+	return "  ·  BEAT %.1fs" % benchmark
 
 ## `Hud.tscn` authors THREE pip nodes per team, for the old first-to-3 over single
 ## rounds. The match is first to `SETS_NEEDED` sets now (§8.1), so the third pip is a
@@ -724,8 +783,8 @@ func set_round_display(round_number: int, team_a_is_can: bool) -> void:
 	# Falls back to the round number alone before the first set opens (`set_number` is
 	# 0 during the pre-round free-roam window).
 	if MatchManager.set_number > 0:
-		round_label.text = "SET %d  ·  ROUND %d/%d" % [MatchManager.set_number,
-			MatchManager.round_in_set, MatchManagerScript.ROUNDS_PER_SET]
+		round_label.text = "SET %d  ·  ROUND %d/%d%s" % [MatchManager.set_number,
+			MatchManager.round_in_set, MatchManagerScript.ROUNDS_PER_SET, _set_state_suffix()]
 	else:
 		round_label.text = "ROUND %d" % maxi(round_number, 1)
 	_trim_pips(team_a_pips_box)
