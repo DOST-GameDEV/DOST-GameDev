@@ -833,8 +833,20 @@ func begin_spawn_settle() -> void:
 	_spawn_settle_at = global_transform
 	velocity = Vector3.ZERO
 
+## ⚠️⚠️ HOW HIGH A PERCH HAS TO BE BEFORE IT SHEDS YOU, AND WHY THERE IS A SPEED AT ALL.
+## `_shed_character_perch()` only fires on a contact whose normal is steeper than this,
+## i.e. a genuine "I am standing on top of them" — a side contact is the BODY BLOCK
+## (`Design.md` §3.1's defender in the lane) and must keep working exactly as it does.
+## 0.7 is ~45°, the same shape `floor_max_angle` already uses.
+const PERCH_NORMAL_MIN: float = 0.7
+## Nudged off, not launched. Enough that the two capsules separate within a few frames
+## and gravity takes over; small enough that it reads as losing your footing rather than
+## as being hit by something.
+const PERCH_SHED_SPEED: float = 2.5
+
 func _move_and_confine() -> void:
 	move_and_slide()
+	_shed_character_perch()
 	# ⚠️ BEFORE THE CONFINEMENT EARLY-RETURN BELOW. The attacking Person is not
 	# confined, and it is just as entitled to boot the defenders' slipper around
 	# as they are its own — putting this after the return would have made the
@@ -863,6 +875,58 @@ func _move_and_confine() -> void:
 	# reach on the diagonals. AI fairness was measured either side of it.
 	global_position.x = clampf(global_position.x, -confinement_radius, confinement_radius)
 	global_position.z = clampf(global_position.z, -confinement_radius, confinement_radius)
+
+## ⚠️⚠️ YOU CANNOT STAND ON SOMEBODY'S HEAD. 🧑 2026-07-31: *"jumping position bug, pic
+## attached, can still move js stuck there"*, with a screenshot of a Person hanging in
+## the air above the base circle.
+##
+## **"Can still move" is the whole diagnosis.** Horizontal control working means
+## `move_and_slide()` is being reached every frame, so the bug is not a frozen body or a
+## skipped `_physics_process` — it is that `is_on_floor()` is TRUE while the unit is in
+## the air, which switches off the `if not grounded: velocity.y -= GRAVITY * delta`
+## branch above. Gravity is never applied, `velocity.y` stays 0, and the unit hovers
+## with full walking control. Three other candidates were ruled out by reading first:
+## the intermission freeze applies gravity ABOVE its own gate, the
+## STAGGERED/DOWNED/SEALED branch also calls `_move_and_confine()`, and the confinement
+## clamp only ever writes x and z.
+##
+## What it is standing ON is another character. Every unit is on collision layer 1 with
+## the world and with each other, so one capsule resting on another is a perfectly legal
+## floor as far as `CharacterBody3D` is concerned — and this file already records the
+## same geometry happening by accident: B-100's note describes a Person "stacked on its
+## head (normal 0,1,0)" and shoved 1.60 up. `SPAWN_SETTLE_FRAMES` stopped that ONE
+## cause at spawn; it did not stop a player simply jumping onto a teammate mid-round,
+## which is the case a screenshot from live play shows.
+##
+## ⚠️ THE FIX IS A NUDGE, NOT A COLLISION-LAYER CHANGE. Turning character-vs-character
+## collision off would take the BODY BLOCK with it — a defender standing in the throwing
+## lane is a real mechanic (`Design.md` §3.1) and every side-on contact must keep
+## working. So only a contact steep enough to be a *perch* is answered, and it is
+## answered by pushing the two apart horizontally: the perched unit slides off its
+## support, `is_on_floor()` goes false the moment it clears the edge, and ordinary
+## gravity finishes the job. Nothing is teleported and no state is invented.
+func _shed_character_perch() -> void:
+	if not is_on_floor():
+		return
+	for i in get_slide_collision_count():
+		var contact := get_slide_collision(i)
+		var other := contact.get_collider() as CharacterBase
+		if other == null or other == self:
+			continue
+		if contact.get_normal().y <= PERCH_NORMAL_MIN:
+			continue # a side contact — that is the body block, and it stays
+		var away := global_position - other.global_position
+		away.y = 0.0
+		# ⚠️ DETERMINISTIC, NOT RANDOM, for two capsules resting exactly concentric.
+		# Every peer runs this for itself, so a random direction would have two machines
+		# shed the same perch in different directions and then argue about the position.
+		# The support's own facing is a fact both of them already agree on.
+		if away.length() < 0.01:
+			away = other.global_transform.basis.x
+		away = away.normalized()
+		velocity.x += away.x * PERCH_SHED_SPEED
+		velocity.z += away.z * PERCH_SHED_SPEED
+		return
 
 ## STEP AND TOUCH ON AN OPPONENT'S TSINELAS. Human request, 2026-07-29: *"add a
 ## mechanic that defender can step or touch the slipper of enemy team and it will
