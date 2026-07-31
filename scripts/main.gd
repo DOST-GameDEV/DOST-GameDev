@@ -510,6 +510,11 @@ var _spawned_characters: Dictionary = {} # peer_id -> CharacterBase
 ## `CharacterBase.input_parked`.
 var _index_to_character: Dictionary = {}
 
+## join index -> the peer_id that reclaimed it, for a reclaim whose RPC beat the
+## character's own spawn to this peer. Consumed once, from `_build_networked_character`.
+## Same shape and same reason as `_known_picks` — see `_rpc_reclaim_character`.
+var _pending_reclaims: Dictionary = {}
+
 func _ready() -> void:
 	# B-14: MatchManager/RoundManager are autoloads and previously carried a
 	# finished match's score/round_number into the next one. Main.tscn is the
@@ -2029,6 +2034,19 @@ func _build_networked_character(data: Dictionary) -> Node:
 	# unit that turns up afterwards. Placed after `index` is derived, because the
 	# first attempt referenced it forty lines before it existed.
 	_apply_known_picks(character, index)
+	# ⚠️ THE REJOIN'S OTHER DIRECTION, and the blank screen 🧑 reported. If
+	# `_rpc_reclaim_character` arrived before this spawn did, the reclaim is sitting in
+	# `_pending_reclaims` waiting for exactly this moment — see that function's note.
+	#
+	# ⚠️ DEFERRED, unlike `_apply_known_picks` directly above, and the difference is real:
+	# this is a `spawn_function`, so `character` is INSTANTIATED BUT NOT YET IN THE TREE.
+	# `_apply_reclaim` ends in `_refresh_rig_ownership()`, which sets `Camera3D.current` —
+	# and `current` on a camera outside the tree does not make it the viewport's camera.
+	# Applying it here directly would reproduce the very symptom this fixes.
+	if _pending_reclaims.has(index):
+		var reclaim_peer: int = _pending_reclaims[index]
+		_pending_reclaims.erase(index)
+		_apply_reclaim.call_deferred(character, index, reclaim_peer)
 	if is_ai:
 		# Only the host's own local instance of this spawn_function call
 		# attaches a driving AIController (add_child, never baked into
@@ -2485,6 +2503,34 @@ func _rpc_convert_to_ai(index: int) -> void:
 @rpc("authority", "call_local", "reliable")
 func _rpc_reclaim_character(index: int, new_peer_id: int) -> void:
 	var character: CharacterBase = _index_to_character.get(index)
+	if character == null or not is_instance_valid(character):
+		# ⚠️⚠️ THIS EARLY RETURN WAS THE BLANK SCREEN ON REJOIN. 🧑 2026-07-31:
+		# *"blank screen when rejoining sa ongoing na match."*
+		#
+		# A REJOINING PEER HAS A FRESHLY LOADED `Main.tscn`, so its own
+		# `_index_to_character` is EMPTY — the four characters reach it as
+		# `MultiplayerSpawner` deliveries, and this reliable RPC races them. When it
+		# lost that race the function returned silently and NOTHING else ever retried:
+		# no authority migration, no `_refresh_rig_ownership()`, so no rig ever became
+		# current and the rejoiner sat looking at whatever the engine fell back to.
+		# The bookkeeping that makes rejoin work at all (B-65's token-keyed seat) had
+		# already succeeded, which is exactly why this looked like "the match is gone"
+		# rather than like a seating bug.
+		#
+		# ⚠️ THE FIX IS THE ONE THIS FILE ALREADY LEARNED ONCE. `_rpc_sync_picks` hit
+		# the identical race and its note states the rule: *"a unit that has not
+		# arrived yet can be answered when it does — the spawn order and this message
+		# have no guaranteed relationship, and assuming one is how the first version
+		# of this dropped the seat that arrived a frame late."* It remembers in
+		# `_known_picks` and re-applies from the spawn path. This now does the same
+		# through `_pending_reclaims`, so both orderings resolve.
+		_pending_reclaims[index] = new_peer_id
+		return
+	_apply_reclaim(character, index, new_peer_id)
+
+## The reclaim itself, split out so the spawn path can run it for a character that
+## arrived AFTER the RPC did. See `_rpc_reclaim_character`'s note.
+func _apply_reclaim(character: CharacterBase, index: int, new_peer_id: int) -> void:
 	if character == null or not is_instance_valid(character):
 		return
 	for old_peer_id in _spawned_characters.keys():
