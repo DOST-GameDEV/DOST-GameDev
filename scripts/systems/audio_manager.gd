@@ -102,6 +102,17 @@ const MUSIC_PATHS: Dictionary = {
 ## a cut, short enough that "round 1 starts" doesn't leave the menu bed
 ## bleeding through the countdown.
 const MUSIC_CROSSFADE_TIME: float = 1.5
+## ⚠️ CHECKLIST 5 — THE MIX, INTERIM. `_TRIM_DB`/`HEADROOM_DB` above exist
+## because the SFX bus was measured clipping at +2.0 dBFS (B-121) with music
+## silent; the delivered OST masters' own peak is unmeasured (no audio output
+## in this session — see § LOG), so rather than ship them at the SFX table's
+## 0 dB reference and risk repeating that bug the moment a real match layers
+## impacts, the tag, VO and the bed at once, the bed starts here, quieter than
+## everything else by default. **This is a starting point, not a measurement**
+## — `tools/audio_mix_probe.gd` (the same probe B-121 used) is the one thing
+## that should move this number, against a real recorded match with the OST
+## actually playing.
+const MUSIC_BASE_DB: float = -6.0
 ## The intensity lift, checklist 4.2's third bed. No dedicated PRESSURE track
 ## has been delivered yet (docs/HUMAN.md § TABLE D track 4) — until it is, the
 ## last 15 s of a round get a volume lift on the SAME match bed rather than a
@@ -437,7 +448,7 @@ func _fade_music_player(index: int, target_db: float, fade_time: float,
 ## duck NOT included (the duck tween works relative to this and restores to
 ## it, so ducking never has to know whether a lift is active).
 func _music_target_db() -> float:
-	return MUSIC_LIFT_DB if _music_lift_on else 0.0
+	return MUSIC_BASE_DB + (MUSIC_LIFT_DB if _music_lift_on else 0.0)
 
 
 func _process(_delta: float) -> void:
