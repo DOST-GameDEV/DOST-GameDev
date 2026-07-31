@@ -187,6 +187,27 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 
 func _process(delta: float) -> void:
+	# ⚠️⚠️ IT RE-CLAIMS `current` EVERY FRAME, AND WITHOUT THIS THE WHOLE MODE IS A LIE.
+	#
+	# Found by rendering a spectated match and LOOKING at the frame, which is the half of
+	# § THE REACHABILITY RULE that no assertion in `spec_probe` was covering: every control
+	# measured correctly — the speed changed, TAB picked up a target, the HUD stripped —
+	# and the picture was a Person's first-person view with its orange viewmodel arms
+	# across the bottom of the shot. The camera was flying perfectly and nobody was looking
+	# through it.
+	#
+	# `Camera3D.current` is winner-takes-all per viewport and the LAST writer wins.
+	# `debug_player_switcher.gd::_apply_slots()` claims `DEFAULT_P1_UNIT` ("TeamAPerson")
+	# whenever the DebugBar registers and calls `set_active(true)` on that unit's
+	# `CameraRig` — which is exactly the seat a spectator has just vacated. `_ready()`
+	# below sets `current` once, at spawn, and loses it silently some frames later.
+	#
+	# A one-shot re-assert would only move the race. This is authoritative instead, and
+	# that is the correct reading rather than a workaround: a spectator has no rig, no
+	# body and no seat, so for as long as this node exists there is no other legitimate
+	# owner of the view. One bool compare per frame.
+	if _camera != null and not _camera.current:
+		_camera.current = true
 	# ⚠️ `_process`, NOT `_physics_process`. There is no physics here — nothing to step,
 	# nothing to collide, nothing another body has to agree with — and a camera that
 	# moves on the render frame is smoother than one that moves on the physics tick and

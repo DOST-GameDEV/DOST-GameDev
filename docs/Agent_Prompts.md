@@ -255,12 +255,12 @@ Lata
 > still Mechanics). That is a deliberate deviation from the fixed order, taken on human
 > instruction and recorded here rather than made silently.
 
-**The named probe for this section is `tools/spec_probe.tscn` — `--solo` 20/20, and a
+**The named probe for this section is `tools/spec_probe.tscn` — `--solo` 21/21, and a
 two-peer `--lobby-host` / `--lobby-join=127.0.0.1` pair at HOST 15/15, twice.** A new
 file, for the same reason `mech_probe` was: § PATHS gives this lane no `tools/` row.
 
 - [x] 2.1 **A SPECTATE toggle button in the lobby** — on the multiplayer lobby *and* the pre-match setup screen, in the focus order, showing its own state, in Single Player and Multiplayer, host and client. Rendered and looked at — `ui_shot` renders of both screens, looked at. The `match_setup.gd` one was already built and added to the tree and had never been *styled*: it drew as a small grey engine-default button under four wood planks
-- [x] 2.2 **Spectator mode** — free-flying camera, no physical model, clips through all geometry, flies anywhere. Entered from 2.1, not from `--spectate` — measured: not a `PhysicsBody3D`, zero `CollisionShape3D`, flew **24.02 m straight down through the road** to y = −15.02 m
+- [x] 2.2 **Spectator mode** — free-flying camera, no physical model, clips through all geometry, flies anywhere. Entered from 2.1, not from `--spectate` — measured: not a `PhysicsBody3D`, zero `CollisionShape3D`, flew **24.02 m straight down through the road** to y = −15.02 m, and the viewport's live camera is `/root/Main/Spectator/SpectatorCamera3D`. ⚠️ **That last check is there because it FAILED**, silently, while every other one passed — see § LOG, "the camera was flying perfectly and nobody was looking through it"
 - [x] 2.3 Claims no seat, excluded from the ready gate, its slot bot-filled — **measured on two real peers, twice.** The host learned the client was spectating (`is_spectator` true), the board went to `seats={1: 0}` with the client absent, `playing_peer_count` 2 → **1**, no READY tick held, the vacated seat read `TEAM A · OBJECT   · BOT`, and START MATCH went live without the spectator ever pressing anything. Solo half too: 4 units, **4 of 4** bot-held with the human's seat vacated
 - [x] 2.4 Leaving and re-entering the lobby returns the seat cleanly; a spectating host still runs the match — **measured on two real peers, twice.** Un-spectating returned the client to seat **1, the one it vacated** (not "first free"), and `playing_peer_count` went back to 2. The host then spectated itself: its own flag updated (`host_game()` had frozen it), it released seat 0, and START MATCH stayed live
 - [x] 2.5 The HUD is sane with no character — no null character lines, no orphaned role colour — measured: YOU card, crosshair and lata card hidden, **zero** status rows built
@@ -313,7 +313,7 @@ do not re-open it.
 - [ ] 4.9 **The circle countdown and its stack count are the round's main drama and the HUD barely says so.** `RoundManager.can_out_left()` / `can_out_limit()` / `can_out_stacks()` are all public and mirrored to every peer. Both sides need to read it: the defence to panic, the offence to press. The **stack** matters as much as the clock — "this save buys you 2.00 s, the next one 1.25" is the whole escalation
 **Filed by `build spec` 2026-07-31:**
 
-- [ ] 4.11 **`debug_player_switcher.gd` switches a bot OFF in a spectated match, and it is the seat nobody is in.** Measured by `spec_probe --solo`: *"every seat including the vacated one is bot-held — FAIL, 3 of 4 ai-driven"*. `_apply_slots()` claims `DEFAULT_P1_UNIT` ("TeamAPerson") for player 1 and disables that unit's controller — which in a spectated Single Player is exactly the seat the spectator just vacated, so one unit stands still for the whole round, on camera. `main.gd` now re-asserts the controllers a frame later and the probe reads 4/4, but that is the cheap half; the switcher is `scripts/ui/**` and the real fix is yours — it should not claim a unit in a session with no local human
+- [ ] 4.11 **`debug_player_switcher.gd` switches a bot OFF in a spectated match, and it is the seat nobody is in.** Measured by `spec_probe --solo`: *"every seat including the vacated one is bot-held — FAIL, 3 of 4 ai-driven"*. `_apply_slots()` claims `DEFAULT_P1_UNIT` ("TeamAPerson") for player 1 and disables that unit's controller — which in a spectated Single Player is exactly the seat the spectator just vacated, so one unit stands still for the whole round, on camera. `main.gd` now re-asserts the controllers a frame later and the probe reads 4/4, but that is the cheap half; the switcher is `scripts/ui/**` and the real fix is yours — it should not claim a unit in a session with no local human. ⚠️ **And it does the same thing to the CAMERA, which is worse.** `_apply_slots()` calls `set_active(true)` on that unit's `CameraRig`, and `Camera3D.current` is winner-takes-all per viewport — so a spectated match rendered a Person's first-person view, viewmodel arms and all, while the free camera flew around unseen. `spectator_camera.gd` now re-claims `current` every frame, which is authoritative and correct for a unit with no rig, but the switcher should not be claiming a seat nobody is sitting in in the first place
 - [ ] 4.12 **`_refresh_status_stack()` is yours and the spectator no longer calls it.** `hud.gd`'s `_process` spectator branch used to call it with a null character purely to get the one `LATA OUT` row it appends from `RoundManager`; it now calls `_refresh_spectator_panel()`, which draws that clock **plus the save count** (§2.7). Nothing player-facing changed — but when you build §4.1/§4.9, know the spectator has its own readout and the two must not both grow a countdown
 
 - [ ] 4.10 **`scripts/ui/tutorial.gd` is yours and it is wrong twice.** It still teaches *"the defender body-blocks the throw, **tags the attacker**, and stands the lata back up"* — the tag was deleted on 2026-07-30 — and it quotes the reset channel at **2.2 s** in two places when it is now 1.8. It also never mentions that a displaced lata cannot stand up by itself, which is now the single most important rule a new player does not know
@@ -714,7 +714,23 @@ free and to first-free if it is not. An all-spectator lobby is deliberately star
 is the filming case, and the empty-board guard would have disabled the one button a
 spectator is there to press.
 
-**Three defects the probe found that no amount of reading would have.**
+**⚠️⚠️ THE ONE THE PROBE DID NOT FIND, AND LOOKING AT THE PICTURE DID.** Twenty checks
+passed — the camera flew, TAB picked up a target, the wheel retuned, the HUD stripped to
+nothing — and the rendered frame was **a Person's first-person view with its orange
+viewmodel arms across the bottom of the shot**. `Camera3D.current` is winner-takes-all per
+viewport and the last writer wins; `debug_player_switcher.gd::_apply_slots()` claims
+`DEFAULT_P1_UNIT` ("TeamAPerson") when the DebugBar registers and calls `set_active(true)`
+on its rig — the seat the spectator had just vacated. `_ready()` set `current` once at
+spawn and lost it silently a few frames later. The camera was flying perfectly and nobody
+was looking through it, which is the entire feature failing while every assertion about it
+held. It now re-claims `current` every frame — authoritative rather than a one-shot
+re-assert, because a spectator has no rig, no body and no seat and there is no other
+legitimate owner of the view — and `spec_probe` gained the check that would have caught
+it, asked of the VIEWPORT rather than of the node. **This is what "render the screen and
+look at it" is for, and it is the second time this session that the thing which was
+verified and the thing which was true came apart.**
+
+**Three more defects the probe itself found, that no amount of reading would have.**
 
 * **`TAB` never arrived.** It is bound to `ui_focus_next`, the Viewport consumes
   focus-navigation keys during the GUI phase, and that runs before `_unhandled_input`. The
@@ -737,7 +753,7 @@ countdown is drawn in a **spectator-only** readout, not in `_refresh_status_stac
 stack is `build ux`'s §4.1/§4.9 and I am not pre-empting it, so the spectator branch of
 `_process` calls its own panel instead of the shared one. Filed as **4.12** so they know.
 
-**Measured — `tools/spec_probe.tscn --solo`, 20/20.** (The two-peer run is below.) Not a physics body, zero collision
+**Measured — `tools/spec_probe.tscn --solo`, 21/21.** (The two-peer run is below.) Not a physics body, zero collision
 shapes, no `AIController` anywhere on it, flew **24.02 m straight down through the road** to
 y = −15.02 m, four units with 4 of 4 bot-held, wheel 12.0 → 21.9 m/s, TAB picked up
 TeamAProp, the same wheel pulled the shot 6.5 → 2.6 m, F freed it, and the HUD stripped to
