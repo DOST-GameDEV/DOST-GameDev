@@ -390,11 +390,75 @@ func enter_spectator_mode(camera: SpectatorCamera) -> void:
 	add_child(legend)
 	_spectator_status = _build_spectator_label(-70, -46, 15, UiTheme.CREAM_MUTED)
 	_spectator_round = _build_spectator_label(-104, -70, 21, UiTheme.AMBER)
+	# The clean feed is only discoverable if it is written down where the operator is
+	# already reading. Appended here rather than inside `SpectatorCamera.controls_text()`
+	# because that static describes the CAMERA's keys and this one is the HUD's.
+	legend.text += "   ·   H clean feed"
+	set_process_unhandled_input(true)
 
 var _spectating: bool = false
 var _spectator_camera: SpectatorCamera = null
 var _spectator_status: Label = null
 var _spectator_round: Label = null
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE CLEAN FEED — `H`. 🧑 2026-07-31: *"allow option to remove everything in
+## screen to js do record the game bcz we only added spectator for the video record"*,
+## and then, explicitly: *"the remove hud is only for spectator okay, no one else."*
+##
+## SPECTATOR ONLY, AND THAT IS ENFORCED RATHER THAN DOCUMENTED. `_unhandled_input`
+## returns immediately unless `_spectating`, so a player in a live match cannot hide
+## their own timer, status stack or charge meters by leaning on a key — which would be
+## a competitive advantage handed out by a typo.
+##
+## ⚠️ IT HIDES THE CHILDREN, NOT `self`, AND THAT IS DELIBERATE. Hiding the HUD root
+## would be the obvious one line, and it risks a one-way trip: input delivery to a
+## hidden Control is not something to bet an operator's recording session on. The root
+## stays visible and empty, so the key that turned the overlay off is guaranteed to
+## still be listening when they press it again.
+##
+## ⚠️ AND IT RESTORES WHAT WAS THERE, NOT EVERYTHING. `enter_spectator_mode()` has
+## already hidden the YOU card, the crosshair, the lata card and the ready prompt —
+## blanket-showing every child on the way back would resurrect exactly the gameplay
+## chrome a spectator must not have. Prior visibility is recorded on the way out.
+const CLEAN_FEED_KEY: Key = KEY_H
+var _clean_feed: bool = false
+var _clean_feed_restore: Dictionary = {}
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not _spectating:
+		return
+	var key := event as InputEventKey
+	if key == null or not key.pressed or key.echo or key.keycode != CLEAN_FEED_KEY:
+		return
+	get_viewport().set_input_as_handled()
+	set_clean_feed(not _clean_feed)
+
+## Public so `spec_probe` can drive it without synthesising a key event.
+func set_clean_feed(on: bool) -> void:
+	if on == _clean_feed:
+		return
+	_clean_feed = on
+	if on:
+		_clean_feed_restore.clear()
+		for child in get_children():
+			var item := child as CanvasItem
+			if item == null:
+				continue
+			_clean_feed_restore[item] = item.visible
+			item.visible = false
+		return
+	for child in get_children():
+		var item := child as CanvasItem
+		if item == null:
+			continue
+		# A node added while the feed was clean was never recorded, so it takes the
+		# honest default rather than staying invisible forever.
+		item.visible = bool(_clean_feed_restore.get(item, true))
+	_clean_feed_restore.clear()
+
+func is_clean_feed() -> bool:
+	return _clean_feed
 
 ## ---------------------------------------------------------------------------
 ## ⚠️⚠️ §2.7 — THE ROUND'S DRAMA IS A CLOCK AND A SPECTATOR HAS NO CHARACTER TO READ IT
@@ -487,6 +551,17 @@ func _kill_pulse_tween() -> void:
 ## cache below makes it a no-op unless the count or the colour actually moved,
 ## which is the "HUD updates cleanly without lag" half of the same report.
 var _pip_cache: Dictionary = {}
+
+## `Hud.tscn` authors THREE pip nodes per team, for the old first-to-3 over single
+## rounds. The match is first to `SETS_NEEDED` sets now (§8.1), so the third pip is a
+## score nobody can reach and it reads as "0 of 3" to anyone watching. Hidden rather
+## than freed — the scene is 🖥️ `build ux`'s file and removing the node belongs with
+## its layout pass, filed as §4.20.
+func _trim_pips(container: HBoxContainer) -> void:
+	for i in container.get_child_count():
+		var pip := container.get_child(i) as CanvasItem
+		if pip != null:
+			pip.visible = i < MatchManagerScript.SETS_NEEDED
 
 func _fill_pips(container: HBoxContainer, filled: int, fill_color: Color = UiTheme.DEFENSE) -> void:
 	var key := container.get_instance_id()
@@ -615,7 +690,20 @@ func _on_round_started(round_number: int, team_a_is_can: bool) -> void:
 ## never team-coloured. The panel accent bar and label text both move with
 ## the role; the panel's physical position (left vs right) stays with the team.
 func set_round_display(round_number: int, team_a_is_can: bool) -> void:
-	round_label.text = "Round %d / 5" % round_number
+	# ⚠️ "Round n / 5" WAS A BEST-OF-5 STRING AND THE MATCH IS NOT ONE ANY MORE.
+	# 📋 `build rules` §8.1 scores paired sets: a set is two rounds, both teams attack
+	# once, first to `SETS_NEEDED`. A bare round number no longer tells anybody where
+	# the match is, and "/ 5" was simply false — this is the one HUD row a judge or a
+	# viewer reads to follow the format, and it is on camera for the whole video.
+	# Falls back to the round number alone before the first set opens (`set_number` is
+	# 0 during the pre-round free-roam window).
+	if MatchManager.set_number > 0:
+		round_label.text = "SET %d  ·  ROUND %d/%d" % [MatchManager.set_number,
+			MatchManager.round_in_set, MatchManagerScript.ROUNDS_PER_SET]
+	else:
+		round_label.text = "ROUND %d" % maxi(round_number, 1)
+	_trim_pips(team_a_pips_box)
+	_trim_pips(team_b_pips_box)
 	# ⚠️ THE LETTER IS NO LONGER IN THIS STRING. It is its own amber glyph on each card
 	# (see `_apply_wood_skin`), so the label carries the ROLE alone and the two channels —
 	# letter for team, colour for role — are finally separate rather than sharing one line
