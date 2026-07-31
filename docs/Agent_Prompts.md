@@ -411,6 +411,14 @@ do not re-open it.
 - [ ] 4.19 **`LMB` is bound to two different actions at once, and `tutorial.gd`'s CONTROLS pages get a third and fourth thing wrong.** Read straight out of the `[input]` block of `project.godot` on 2026-07-31: **`grab` is `E` + LMB, and `special_ability` is `Q` + LMB + RMB** — so one left-click can fire both, which on an attacker standing over a loose tsinelas means "pick it up" and "start the throw charge" resolve off the same press. Nobody has watched what that actually does; it may be harmless ordering or it may be why a pickup sometimes eats a charge. **Decide it deliberately and record which action keeps LMB.** Separately, the tutorial's CONTROLS · MOVING page teaches *"SHIFT — Guard if you are a Can, dash-evade if you are a Tsinelas"* when `sprint` is Shift and `guard_dash` is **Ctrl**, and it teaches *"F — Bump: a light melee with a small stagger and no cooldown"* when `bump` on an object is **Can-Smash / Ground Smash** with an 8 s and a 12 s cooldown respectively. That is on top of §4.10's two errors, so the tutorial is now wrong in **four** places and every one of them is a control a judge would press
 - [ ] 4.18 **`match_setup.gd`'s round-mode control is `build rules`' to delete, and the screen around it is yours.** §8.2 removes Option A entirely; the setup screen then has a dead row and a focus order with a hole in it. Coordinate rather than collide: `build rules` runs at position **4**, well before you, so read its § LOG entry and lay the screen out for one ruleset
 
+
+**Filed by 📋 `build rules` 2026-07-31:**
+
+- [ ] 4.20 **`Hud.tscn` authors three score pips per team and the match is now first to TWO sets.** §8.1 replaced best-of-5 single rounds with paired sets (`MatchManagerScript.SETS_NEEDED` = 2). `hud.gd::_trim_pips()` HIDES the third pip at runtime because the scene node is yours — the node itself should go with the layout and focus pass. The same commit corrected `set_round_display()`'s `"Round %d / 5"`, a literal best-of-5 string, to `SET n · ROUND n/2`. ⚠️ **Both are on camera for the entire demo video**, which is why they were corrected in your file rather than filed and left wrong
+- [ ] 4.21 **`hud.gd::set_dents()` and its `DentPipsBox` / `DentTextLabel` are unreachable code now.** §8.2 deleted `dents`, `MAX_DENTS` and `dents_changed`, and with them `main.gd`'s only call into it. Measured: `grep -rn "set_dents"` returns the definition and nothing else. The function, the two `@onready` refs and the two scene nodes are all dead; left in place because `hud.gd` is yours
+- [ ] 4.22 **`tutorial.gd` now teaches a format and a mode that do not exist. This is §8.5, filed rather than edited because §8.5 forbids this lane from touching the file.** Four rows, on top of §4.10's two and §4.19's four: **(a)** any "BEST OF 5" / first-to-3 framing — the match is **first to 2 SETS**, a set being two rounds in which both teams attack exactly once (`Design.md` §7·a); **(b)** "SWAP EVERY ROUND" is no longer the whole rule — the swap is a schedule derived from `(set, round_in_set)`, and *which team attacks first alternates by set*; **(c)** the **DENTS** row and anything about the host picking a mode — Option A is deleted (`Design.md` §7.1); **(d)** the HOW YOU WIN page's two-mode structure collapses to one ruleset — attackers win on the countdown, a direct Ground Smash, or `FALL_LIMIT` 4; defenders win only on the 90 s clock. ⚠️ **§4.17 depends on this** — do not build a playable range around a deleted mode
+- [ ] 4.23 **The spectator has a clean feed on `H` and it is a `hud.gd` behaviour you now own.** 🧑 asked for it by name (*"allow option to remove everything in screen to js do record the game"*) and then scoped it (*"the remove hud is only for spectator okay, no one else"*). Built: `set_clean_feed()` / `is_clean_feed()`, bound to `H` in `_unhandled_input`, **gated on `_spectating`** so a player in a live match cannot hide their own timer or meters. It hides the HUD's CHILDREN rather than the root — input delivery to a hidden `Control` is not worth betting a recording session on — and restores prior visibility so the gameplay chrome `enter_spectator_mode()` stripped does not come back with it. ⚠️ **This overlaps §4.16 and largely closes it**; what is left there is your call on whether the nameplates and crosshair (which live outside `hud.gd`) should go with it
+
 ### 5 · 🎨 `build model` — Models, classes and names *(Opus 5 · medium)*
 
 > ⚠️ **THE "NO NEW BASE MESH" LAW IS LIFTED FOR THIS LANE.** Human directive, 2026-07-31:
@@ -443,6 +451,11 @@ do not re-open it.
 - [ ] 5.9 Every class reads at gameplay camera distance, not just in the preview
 - [ ] 5.10 Collision is unchanged by any of it — `_COLLISION_BY_ROLE` still sizes every shape, and the dent meshes still line up with the new lata
 
+
+**Filed by 📋 `build rules` 2026-07-31:**
+
+- [ ] 5.11 **The `lata_dent*.obj` meshes are dead and 5.10's promise about them is moot — but they were ALREADY half-dead before §8.2, which is the part worth knowing.** 5.10 still says *"the dent meshes still line up with the new lata"*. Measured 2026-07-31: `character_visual.gd::CAN_MESHES` does **not** reference them — it points at `assets/models/kits/food/soda-can.glb` ×3 plus `soda-can-crushed.glb`, with `CAN_DENT_SQUASH` faking the two middle states. So `assets/models/lata_dent1/2/3.obj` (+ `.mtl`, `.import`) and `generate_all.gd`'s `_apply_dents` generator have been orphaned since the Kenney kit swap. §8.2 then deleted the dent COUNT that indexed `CAN_MESHES` at all, so `_refresh_can_damage()` is permanently pinned to index 0. **Two calls are yours:** whether the lata keeps a visible damage read at all (there is no damage number left to drive one — it would have to come off something else, e.g. the §5.2 save stack), and whether the four orphaned `.obj` files and their generator are deleted. ⚠️ **`_refresh_can_damage(0)` must stay CALLED** on every model rebuild — it is also what installs the pristine can mesh, so removing the call changes how a lata looks
+
 ### 6 · 🥊 `build phys` — Contact and readability *(Sonnet 5 · high)*
 
 - [ ] 6.1 **Waiting-screen phasing** — objects no longer pass through each other pre-round
@@ -458,6 +471,11 @@ do not re-open it.
 - [ ] 6.8 **A `STRANDED` lata must not look like a lata that is about to get up.** 6.3 is fixing "hard to tell it fell"; §1.9 adds a second read on top — *this* one is never getting up on its own, and the player's answer is to run to it. If a stranded lata and a two-second knockdown look the same, the defence cannot tell which one needs them
 - [ ] 6.9 **Measure the punt on the networked path.** §1.4's punt rides a new defaulted argument on `carriable.gd::_rpc_set_loose` and applies its impulse on every peer, the same idiom `_rpc_apply_scuff` uses. Measured **3.13 m locally, twice** (`mech_probe`); never once across two real peers, where the drop is triggered by replicated state arriving frames after the hit
 - [ ] 6.10 **6.2's ~1 m target has one real number against it and it came from the wrong end:** a *tap* bump on a lata measured **0.951 m** in `mech_probe`. A tap is `BUMP_LIGHT_SPEED` 3.0 — if the weakest shove in the game already moves the lata a metre, `CAN_KNOCKBACK_SCALE` ×2.6 may be doing more than "~1 m per solid hit" was ever meant to mean
+
+
+**Filed by 📋 `build rules` 2026-07-31:**
+
+- [ ] 6.11 **This lane wrote in your block, once, and it needs measuring rather than reviewing.** 🧑 reported *"jumping position bug ... can still move js stuck there"* with a screenshot of a Person hovering. Root cause: every unit shares collision layer 1, so one capsule resting on another is a legal floor — `is_on_floor()` returns true in mid-air, the `if not grounded` gravity branch never runs, and the unit hovers with full horizontal control (which is exactly what "can still move" reports). `character_base.gd` gained `_shed_character_perch()`, called from `_move_and_confine()`: a contact steeper than `PERCH_NORMAL_MIN` 0.7 whose collider is a `CharacterBase` gets a `PERCH_SHED_SPEED` 2.5 horizontal nudge away from its support, so the perched unit slides off and ordinary gravity finishes. **Side contacts are untouched on purpose** — that is the body block (`Design.md` §3.1). ⚠️ **Both numbers are first guesses and no probe fires this path.** It is also the same family as **6.1** (waiting-screen phasing) and it is a partial answer to the `*** LAUNCHED ***` verdict `phys_probe` returns on this branch (`TeamBProp peak y 2.73`, `TeamBPerson peak y 2.43`), which is NOT fully explained by it
 
 ### 7 · ⚖️ `build fair` — Balance and AI *(Opus 5 · xhigh)* — **RUNS LAST, ALONE**
 
@@ -488,16 +506,23 @@ do not re-open it.
 - [ ] 7.16 **7.9 is now blocking a rubric line, not just a claim, and its order is fixed: 7.10 → 7.7 → 7.2.** Judges at the demo will play against these bots — a bot lata that mashes a dead button while its round runs out reads as *both* "unbalanced" and "incomplete", which is two 20% categories out of one defect. Nothing in §7 can be quoted until a fairness run stops timing out, so treat 7.10's channel behaviour as the first thing you write rather than the fourth
 - [ ] 7.17 **`build rules` §8.1 changes what a "win rate" even means and you are downstream of it.** The match format becomes paired sets — both teams attack once per set — specifically so the seat draw stops deciding matches. **Measure per-ROLE win rate (attack vs defence), not per-TEAM**, because per-team is symmetric by construction once §8.1 lands and a 50/50 there would prove nothing. If §8.1's tiebreak is live, check it does not quietly hand every tie to the same role
 
+
+**Filed by 📋 `build rules` 2026-07-31:**
+
+- [ ] 7.18 **The lata's hurtbox was enlarged on 🧑's instruction and NOTHING has been re-measured against it.** 🧑 2026-07-31: *"make can's hitbox larger it's ass to hit it bro."* `_COLLISION_BY_ROLE["can"]` went from `hurt_r` 0.17 / `hurt_h` 0.40 to **0.28 / 0.62**. With a thrown slipper's own `hit_r` 0.230 the effective target radius goes 0.40 m → **0.51 m**, about 1.6× the cross-section. `hurt_h` is 0.62 rather than ~0.55 because a `CapsuleShape3D` clamps `height` to `2 * radius`, so a smaller number would have been silently overridden. **The BODY radius is untouched at 0.14**, so `CAN_HOME_RADIUS`'s 0.9 m derivation and the walk-into-it physics are unchanged. ⚠️ This makes the offence's win condition materially easier and it lands directly on **7.2** — every attack/defence win rate taken before 2026-07-31 now describes a different game
+- [ ] 7.19 **The lata AI dodges very nearly everything, and 🧑 routed it to this lane by name** (*"give all AI problems to the AI lane"*, *"dont resolve it yet"*). 🧑's report: *"bro yung ai ng can sobrang op na ddodge niya lahat."* Evidence, `phys_probe` on this branch: `CAN evasion: moved on 259 of 315 in-flight frames (82%), max 5.09 m from mark` — and in a harness that aims **directly** at it, only 6 of 9 throws connected. ⚠️ Read it beside **7.18**: the hurtbox just grew ~1.6×, so re-measure the dodge rate *after* that change before tuning the bot, or you will tune against a number that no longer exists. It also sits underneath **7.9/7.16** — a can that cannot be hit is a round that times out, and a timeout is a defender win
+- [ ] 7.20 **No probe plays a full SET, so §8.1's scoring has never actually executed.** §8.1 is ticked `[~]` for exactly this. What IS measured is the round-win handoff underneath it (`mech_probe` 16/16, including *"the countdown reaching zero ended the round"* and *"awarded to the tsinelas side"*). What is **not**: that two rounds award a set, that the attack-time tiebreak picks the faster side, that a drawn set (both sides `NEVER`) awards nothing, and that `_finish_on_aggregate()`'s `MAX_SETS` path terminates a match — that last branch has never run once. `round_probe` is your file and is the natural home. ⚠️ **7.17** already tells you to measure per-ROLE rather than per-TEAM; this is the gate that makes that measurement trustworthy
+
 ### 8 · 📋 `build rules` — Match format and the second ruleset *(Opus 5 · high)* — **RUNS AT POSITION 3**
 
 **New 2026-07-31 from the rubric pass.** Both items are Esports Potential, and both are things
 the game currently gets *wrong*, not things it merely lacks. Inherits `build mech`'s § PATHS row.
 
-- [ ] 8.1 **The match format hands one team a structural advantage and the tutorial denies it.** `match_manager.gd:32` ships `var team_a_is_can: bool = true` with **no coin flip**, roles swap every round, and `WINS_NEEDED = 3` over single rounds — so **Team A always defends rounds 1, 3 and 5**, and a 3–0 means one team defended twice and attacked once. Whichever role turns out stronger, the lobby seat decides matches. Meanwhile `tutorial.gd` teaches *"the match is never decided by which side you drew"*, which is false today. **Fix it by scoring in paired rounds, not single ones:** a **set** = both teams attack exactly once, first to 2 sets, so both sides always play both jobs an equal number of times. Tiebreak a tied set on **which side took the lata out faster** — which also gives a caster and the HUD a number to show, and gives the format a natural sudden-death. ⚠️ **The tiebreak needs a real clock**, so decide where the per-round attack time is recorded and make sure it is host-authoritative and mirrored like everything else in `round_manager.gd`. ⚠️ You may overrule the shape — a coin flip plus a side-choice final round is the cheaper answer and it is *not* as good — but if you do, say in § LOG how the seat draw stops mattering, because that is the acceptance test, not the format
-- [ ] 8.2 **Delete Option A entirely — dents, `MAX_DENTS`, ring-outs, `RING_OUT_LIMIT`, the mode control, and the tutorial page that teaches it.** No competitive game ships two win-condition sets and lets the host pick between them, and this one pays for it three times over: double the balance surface for `build fair`, a tutorial that has to teach two games, and a bug class `Design.md` §5.2 already records — an Option A round could be lost to a countdown nothing in that mode explained. **`Design.md` §7 documents Option A as "maintained in parallel and unchanged"; that sentence is what is being deleted.** The circle countdown is the game
-- [ ] 8.3 **8.2 is a deletion and deletions are the easy thing to do 90% of — so document what was there before you remove it.** Write a short **§7.1 "Removed: Option A"** block in `Design.md` recording what the mode was (dents as a lata health bar, `MAX_DENTS` 3, ring-outs at `RING_OUT_LIMIT` 3, defenders winning on the timer or by beating dents back out with the reset channel), **why it went** (one ruleset is a rubric position, not a cleanup), and **what was left behind on purpose** if anything is. 🧑 asked for this explicitly on 2026-07-31: *"remove gamemode completely but document that it was there."* It is also self-defence — `seal()` and the `SEALED` state already survive for "Option A and the state machine's own shape" per `Design.md` §7, so somebody has to decide in writing whether they still have a reason to exist once Option A does not
-- [ ] 8.4 **Sweep for what the deletion strands, and hand each piece to its owner.** `character_base.gd` carries the dent state and `character_visual.gd` the three `lata_dent*.obj` meshes that `build model` §5.10 is still promising to line up with new geometry — if those meshes are dead, **`build model` needs to know before it runs at position 7**, not after. `round_manager.gd`'s `register_ring_out()` and the kill-plane path that feeds it are yours; `ui/match_setup.gd`'s mode row is yours to remove and **§4.18 is already filed** telling `build ux` to lay the screen out for one ruleset. File anything else per § IF YOU FLAG IT, FILE IT
-- [ ] 8.5 **Neither item is done until `Design.md` and `tutorial.gd` agree with the code.** §8.1 rewrites `Design.md` §7's win conditions and the "BEST OF 5" / "SWAP EVERY ROUND" tutorial rows; §8.2 deletes the "DENTS" row and the "HOW YOU WIN" page's two-mode framing. ⚠️ **`tutorial.gd` is `build ux`'s file and it runs after you** — do not edit it. **File the exact rows** that your changes falsify onto §4, beside §4.10 which is already fixing two other lies on the same screen. A tutorial that describes a deleted mode is the single most visible kind of Completeness defect a judge can hit
+- [~] 8.1 **DONE, WRITTEN NOT MEASURED — the format is paired sets.** `MatchManager` scores a **set** = two rounds in which both teams attack exactly once, first to `SETS_NEEDED` 2, and **role is now a pure function of `(set, round_in_set)`** (`_team_a_is_can_for`) rather than a bool seeded `true` and flipped. Which team attacks FIRST alternates by set, because attacking second means knowing the time to beat — without that the old bug just moves up a level. The tiebreak is one comparison: each team's **attack time** (`RoundManager.last_attack_time()`, `ROUND_TIME - time_left`, or `NEVER`), lower takes the set, so "scored when they did not" and "scored faster" are the same test. `Design.md` §7·a. ⚠️ **What is unverified is the SET SCORING specifically**: no probe plays two rounds and asserts a set was awarded, and `_finish_on_aggregate`'s `MAX_SETS` path has never executed. What *is* measured is the round-win handoff it stands on — `mech_probe` 16/16, including *"the countdown reaching zero ended the round"* and *"it was awarded to the tsinelas side"*. A `round_probe` extension that plays a full set is the missing gate and is filed as ⚖️ **7.20**
+- [x] 8.2 **DONE — Option A is deleted, and the sweep is the evidence.** `dents`, `MAX_DENTS`, `apply_dent()`, `clear_dent()`, `dents_changed`, `RING_OUT_LIMIT`, `register_ring_out()`, `_on_tracked_can_dents_changed()`, the `GameMode` enum, `GameLaunch.game_mode` and the setup screen's MODE picker are gone, along with the `dents` row in `CharacterBase.tscn`'s `SceneReplicationConfig` (**a replicated property pointing at a deleted field is a per-spawn runtime error, not a parse one** — the remaining properties were renumbered). Measured three ways: a repo-wide grep for every deleted symbol returns **empty**; `--check-only` over all 13 edited scripts is **0 Parse Errors** against a warm class cache; and `mech_probe` **16/16** plus `phys_probe` both run clean afterwards. ⚠️ **One real breakage was caught by that gate and is worth recording** — deleting the leading `if` of the `kind` chain in `hitbox.gd` left a dangling `elif forces_downed:`. It failed loudly. The same shape in a chain that still had a leading `if` would not have
+- [x] 8.3 **DONE — `Design.md` §7.1 "Removed: Option A" is written, and it was written BEFORE the removal.** Records what the mode was (the dent health bar at `MAX_DENTS` 3, `clear_dent()` on the reset channel, ring-outs at `RING_OUT_LIMIT` 3, the defender timer win, the four `CAN_MESHES` damage states), why it went, and **what was kept on purpose**: `seal()`/`SEALED` survive as the state machine's shape — four call sites test that state and collapsing it into `DOWNED` would change what they mean — the kill plane still respawns but no longer scores, and the MODE row stays in `MatchSetup.tscn` for §4.18
+- [x] 8.4 **DONE — swept, and every stranded piece is filed on its owner.** 🎨 `build model` **5.11** (the dent meshes — and they were *already* half-orphaned before this pass, see the entry), 🖥️ `build ux` **4.20/4.21/4.22**, ⚖️ `build fair` **7.18/7.19/7.20**, 🥊 `build phys` **6.11**
+- [x] 8.5 **DONE — the falsified tutorial rows are filed on §4 as 4.22, not edited.** `tutorial.gd` is 🖥️ `build ux`'s and runs after this lane. ⚠️ **Two rows this lane could not leave alone are in files a player looks at for the whole match**, so they were corrected rather than filed: `hud.gd`'s `"Round n / 5"` (a best-of-5 string for a format that no longer exists) and its three score pips (a third pip nobody can reach). Both are on camera for the entire video
 
 ### 9 · 🔊 `build sound` — Music, voice and the mix *(Sonnet 5 · medium)* — **RUNS AT POSITION 7**
 
@@ -1025,6 +1050,95 @@ Each block is paste-ready. Set model and effort first.
 
 Newest first. One entry per lane run: what changed, what was **measured** versus written,
 what decision you made and why, and what you are handing the next lane. Short.
+
+### 2026-07-31 · 📋 `build rules` · §8 · branch `feature/objects-overhaul-v2`
+
+**§8.1 — HOW THE SEAT DRAW STOPS MATTERING, which is the acceptance test rather than the
+format.** Two things do it, and the second is the one that would have been easy to miss.
+**(1)** A **set** is two rounds in which both teams attack exactly once, and a set is not
+scored until both have. Every scoring event is therefore a comparison between the two
+teams doing *the same job*, so no result can be produced by the side anybody was handed.
+**(2)** Role is now **derived, not accumulated** — `_team_a_is_can_for(set, round_in_set)`
+is a pure function of the schedule, where before it was a bool seeded `true` and flipped
+once per round. That is the actual repair: a schedule expressed as a flip has no way to
+state the invariant it is meant to keep, and "Team A always defends the odd rounds" was
+that flip working exactly as written.
+
+**And the first-attack seat alternates by set**, which the brief did not ask for. Inside a
+set the two attacks are *not* symmetric — whoever attacks second knows the time it has to
+beat. Left alone, the original bug just moves up a level, from "A always defends round 1"
+to "A always attacks second". Odd sets open with B attacking, even sets with A.
+
+**The tiebreak is one comparison, not two rules.** Each team's **attack time** is how long
+it took to take the lata out on its own attacking round, or `NEVER` if it did not. Lower
+takes the set. Any finite time beats `NEVER`, so "scored when they did not" and "scored
+faster than they did" collapse into the same test — and it hands a caster a real number.
+A set where neither side scored is genuinely drawn and awards nothing, so `MAX_SETS` 5
+exists purely so "first to 2" is guaranteed to terminate.
+
+**§8.2/§8.3 — Option A is deleted, and `Design.md` §7.1 was written BEFORE the removal**,
+which is what 🧑 asked for (*"remove gamemode completely but document that it was there"*).
+Kept on purpose and said so in writing: `seal()`/`SEALED` survive as the **state machine's**
+shape — four call sites test that state and folding it into `DOWNED` would quietly change
+what they mean — while the "for Option A" half of their old justification is gone.
+
+**MEASURED vs WRITTEN.** Measured: the deletion sweep (a repo-wide grep for every removed
+symbol returns empty; `--check-only` over 13 edited scripts is 0 Parse Errors against a
+**warm** class cache — cold, the same run reports hundreds of false ones, so warming it is
+the difference between a gate and a coin toss); `mech_probe` **16/16**, including *"the
+countdown reaching zero ended the round"* and *"awarded to the tsinelas side"*; `phys_probe`
+clean. **Written, not measured:** the set scoring itself. No probe plays two rounds and
+asserts a set was awarded, and `_finish_on_aggregate()`'s `MAX_SETS` branch has never
+executed. §8.1 is `[~]` for that reason and the gate is filed as ⚖️ 7.20.
+
+**🧑's bug list — what was actually wrong.** *"walang win condition sa attacking"* was
+real and Option-A-specific: `state` was given a setter on 2026-07-30 precisely so the host's
+handler fires for a **client-owned** lata, and `dents` never got the same treatment — so
+`dents_changed` never reached the host for half the cans in any networked match and the dent
+win was unreachable. Deleting the mode removes it by construction. *"can's hitbox... ass to
+hit"* was the smallest hurtbox in the game (0.17, vs 0.307 on a tsinelas) gating the whole
+offence; now 0.28/0.62. *"no hand animation... as defender"* was **not** a missing clip — the
+rig ships `attack-melee-right` — it was `_drive_charge_pose()` requiring `carrier.held() != null`,
+and a defender holds nothing, so the taya's 1.35 s wind-up posed nothing for the entire
+defending role. That also made `Design.md` §4's *"visible on every peer"* and §11's counterplay
+line false on the body. *"jumping position bug... can still move"* is a unit standing on
+another unit: shared collision layer 1 makes a capsule a legal floor, `is_on_floor()` goes
+true in mid-air, and the gravity branch stops running — horizontal control keeps working,
+which is exactly what the report says. *"slippers trajectory fucked"* was a timestep mismatch,
+not a solve mismatch: the preview stepped 52 ms while the flight steps 16.7, and semi-implicit
+Euler's error is O(h). Sharing `launch_velocity()` was necessary and not sufficient. Measured
+landing error +0.086/-0.082/-0.227 m at 10/20/30°, now 0.000.
+
+**DECISIONS I TOOK.** The mode ROW is hidden rather than cut from `MatchSetup.tscn` — the scene
+is `build ux`'s and §4.18 already owns the focus order; `detail_text_for(MODE)` still returns
+the single ruleset's text because `ui_layout_probe` indexes `DetailTopic` **by int**, so
+deleting the enum member would silently shift `DIFFICULTY` and `SEAT` underneath it.
+`_refresh_can_damage(0)` is still **called** on every model rebuild even though the dent count
+is gone, because it is also what installs the pristine can mesh — removing the call would
+change how a lata looks, which is not this lane's decision to make.
+
+**OUT OF ROW, and why — say it plainly.** §8.2 cannot be done inside this lane's paths: the
+mode was branched on in `hitbox.gd`, `carriable.gd`, `game_launch.gd`, `main.gd`,
+`role_swap_card.gd` and four probes, and a half-deleted enum does not parse. Beyond that,
+🧑 directed this run to fix the reported bugs rather than file them (*"fix bugs already dont
+give to the other lanes, except for ai"*), which is why `character_visual.gd`, `hud.gd` and
+`main.gd` were edited here. **Every one of those edits is recorded on the owning lane's
+checklist** — 4.20/4.21/4.23, 5.11, 6.11 — so the next lane reads what changed under it
+rather than discovering it.
+
+**Also cleaned, on 🧑's ask:** fourteen probe-output PNGs (`flow_*`, `hud_*`) were **tracked**
+in the repo root, not merely untracked as §4.13 and §10.3 assumed. Removed from tracking and
+added to `.gitignore`. Their boxes stay unticked — they are not this lane's to tick.
+
+⚠️ **The `--headless` import trap bit once and is worth recording.** Running
+`godot --headless --import` to warm the class cache **re-imported every texture without VRAM
+compression**, because a headless run has no rendering device — it rewrote 16 `.import` files
+and would have degraded every texture in the build for the whole team. `docs/README.md` warns
+about `--headless` for *captures*; it applies to `--import` too. Reverted, and the commits are
+clean of it.
+
+**Handed on:** 🖥️ 4.20–4.23 · 🎨 5.11 · 🥊 6.11 · ⚖️ 7.18–7.20. The AI dodge
+report went to ⚖️ 7.19 on 🧑's explicit instruction (*"give all AI problems to the AI lane"*).
 
 ### 2026-07-31 · 🔊 voice + OST planning · no lane · branch `feature/objects-overhaul-v2`
 

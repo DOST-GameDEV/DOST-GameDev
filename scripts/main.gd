@@ -900,6 +900,67 @@ func _reassert_spectated_bots() -> void:
 		var rig := character.get_node_or_null("CameraRig") as CameraRig
 		if rig != null:
 			rig.set_active(false)
+	_dress_spectated_units()
+
+## ⚠️⚠️ A SPECTATED MATCH WAS BEING FILMED IN THE STOCK SKIN. 🧑 2026-07-31:
+## *"the skins/chara models that are chosen by everyone in char select dont change in
+## spectator mode"*, clarified as *"it sees the models BUT it doesnt have custom skin."*
+##
+## The solo path deliberately writes picks onto ONLY the human's own seat and that
+## team's Prop, and leaves every other unit at `character_index`/`can_index` = -1. That
+## rule is CORRECT for a playing human and its reason is recorded where it is written:
+## handing the player's own pick to an opponent would let somebody play a match against
+## a character wearing their exact silhouette. **But a spectator holds no seat**, so in
+## a spectated match the rule has nothing to protect and leaves three of four units on
+## the neutral 3/3/3 default — which is precisely the match that gets recorded.
+##
+## ⚠️ SPECTATOR ONLY. This is reached from `_reassert_spectated_bots()`, which runs
+## only under `GameLaunch.spectator`, so ordinary play keeps the anti-mirror rule intact.
+##
+## ⚠️ PERSONS TAKE ROSTER 0 AND 1 ON PURPOSE, not an arbitrary spread.
+## `character_roster.gd` pins its first two entries as the signed-off pair chosen to
+## read apart at arena distance (`Art_Direction.md`), so this dresses them in real
+## roster entries without spending the readability that pinning exists to protect.
+##
+## ⚠️ It only ever fills a MISSING pick (`< 0`), so the one unit the spectator chose
+## before vacating its seat keeps what it chose.
+func _dress_spectated_units() -> void:
+	var persons: Array[CharacterBase] = [team_a_person, team_b_person]
+	var used_person: Array[int] = []
+	for person in persons:
+		if is_instance_valid(person) and person.character_index >= 0:
+			used_person.append(person.character_index)
+	for i in persons.size():
+		var person := persons[i]
+		if not is_instance_valid(person) or person.character_index >= 0:
+			continue
+		var pick := i
+		while pick in used_person and pick < CharacterRoster.size():
+			pick += 1
+		person.character_index = posmod(pick, maxi(1, CharacterRoster.size()))
+		used_person.append(person.character_index)
+	var props: Array[CharacterBase] = [team_a_prop, team_b_prop]
+	for i in props.size():
+		var prop := props[i]
+		if not is_instance_valid(prop):
+			continue
+		if prop.can_index < 0:
+			prop.can_index = i % CharacterRoster.CANS.size()
+		if prop.slipper_index < 0:
+			prop.slipper_index = i % CharacterRoster.SLIPPERS.size()
+		# A skin carries that round's ability as well as its look — see
+		# `_apply_known_picks`, which does the same pairing on the networked path.
+		prop.ability = _prop_ability_for(prop).duplicate()
+	# ⚠️ AND THE MODELS HAVE TO BE TOLD. `_visual.apply()` runs at `_ready()` and on a
+	# role swap; neither happens here, so without this the units keep wearing whatever
+	# they were drawn with before the picks landed. Same fix, same reason, as
+	# `_apply_known_picks()`.
+	for character in _local_roster:
+		if not is_instance_valid(character):
+			continue
+		var visual: Node = character.get_node_or_null("Visual")
+		if visual != null and visual.has_method("apply"):
+			visual.apply(character.is_person, character.is_can, character.team)
 
 func _enter_spectator_mode() -> void:
 	if _spectator != null and is_instance_valid(_spectator):

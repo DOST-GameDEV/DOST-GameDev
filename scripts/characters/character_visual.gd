@@ -1532,19 +1532,40 @@ var _charge_skeleton: Skeleton3D = null
 func _drive_charge_pose() -> void:
 	if _animator == null or _character == null or not _character.is_person:
 		return
+	# ⚠️⚠️ TWO CHARGES WIND THIS ARM UP, AND ONLY ONE OF THEM USED TO.
+	#
+	# 🧑 2026-07-31: *"no hand animation kapag nag tag ka as defender."* The verb being
+	# described is the charged BUMP (the tag was deleted 2026-07-30). This function read
+	# the CARRIER — the throw charge — and required `carrier.held() != null`, i.e. the
+	# Person had to be holding a slipper. **A defender holds nothing**, so the condition
+	# was false for the entire defending role and the taya's 1.35 s wind-up posed
+	# nothing at all. The attacker got an arm; the defender got a statue.
+	#
+	# ⚠️ IT IS NOT ONLY AN ANIMATION BUG. `Design.md` §4 says the whole 1.35 s "is
+	# visible on **every peer** ... so the attacker can dash, jump or throw through the
+	# commitment", and §11's counterplay table answers the power bump with exactly
+	# *"1.35 s of visible wind-up"*. That counterplay was unreadable on the body — the
+	# one place an opponent actually looks — so the bump's price was being paid by the
+	# defender and not shown to anyone.
+	#
+	# ⚠️ THE THREE-CONDITION RULE BELOW IS KEPT, and it is why this is a widening rather
+	# than a second system. `observed_*` are clocks started and stopped by broadcast, and
+	# a held pose driven by a clock alone freezes the body for good if a stop is missed —
+	# measured: a bot switched off mid-charge left the arm cocked and locomotion
+	# suppressed for the rest of the round. State NORMAL plus a live clock plus (for the
+	# throw) something in hand are all facts every peer already has.
 	var carrier := _character.get_node_or_null("Carrier") as Carrier
-	if carrier == null:
-		return
-	# ⚠️ THREE CONDITIONS, NOT ONE. `observed_charge_power()` is a clock that is
-	# started and stopped by broadcast, and a held pose driven by a clock alone freezes
-	# the body for good if a stop is ever missed — measured: a bot switched off
-	# mid-charge left the arm cocked and locomotion suppressed for the rest of the
-	# round. A Person can only be winding up if they are on their feet and holding
-	# something, which are both facts every peer already has, so they are cheap
-	# insurance against a stale clock.
-	var power := carrier.observed_charge_power()
-	var winding := power >= 0.0 and carrier.held() != null \
-		and _character.state == CharacterBase.State.NORMAL
+	var power := -1.0
+	if carrier != null and carrier.held() != null:
+		power = carrier.observed_charge_power()
+	if power < 0.0:
+		# The bump meter, mirrored to every peer by `_rpc_bump_charge_visual`. -1.0 is
+		# its idle value, the same contract `observed_charge_power()` keeps, so the two
+		# compose without either learning about the other.
+		var bump := _character.observed_bump_charge()
+		if bump >= 0.0:
+			power = clampf(bump / CharacterBase.BUMP_CHARGE_FULL_TIME, 0.0, 1.0)
+	var winding := power >= 0.0 and _character.state == CharacterBase.State.NORMAL
 	if not winding:
 		if _charge_posing:
 			_clear_charge_pose()
