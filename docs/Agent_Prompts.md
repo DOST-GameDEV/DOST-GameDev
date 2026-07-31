@@ -255,12 +255,12 @@ Lata
 > still Mechanics). That is a deliberate deviation from the fixed order, taken on human
 > instruction and recorded here rather than made silently.
 
-**The named probe for this section is `tools/spec_probe.tscn` — `--solo` 21/21, and a
-two-peer `--lobby-host` / `--lobby-join=127.0.0.1` pair at HOST 15/15, twice.** A new
+**The named probe for this section is `tools/spec_probe.tscn` — `--solo` 30/30, and a
+two-peer `--lobby-host` / `--lobby-join=127.0.0.1` pair at HOST 15/15, three times.** A new
 file, for the same reason `mech_probe` was: § PATHS gives this lane no `tools/` row.
 
 - [x] 2.1 **A SPECTATE toggle button in the lobby** — on the multiplayer lobby *and* the pre-match setup screen, in the focus order, showing its own state, in Single Player and Multiplayer, host and client. Rendered and looked at — `ui_shot` renders of both screens, looked at. The `match_setup.gd` one was already built and added to the tree and had never been *styled*: it drew as a small grey engine-default button under four wood planks
-- [x] 2.2 **Spectator mode** — free-flying camera, no physical model, clips through all geometry, flies anywhere. Entered from 2.1, not from `--spectate` — measured: not a `PhysicsBody3D`, zero `CollisionShape3D`, flew **24.02 m straight down through the road** to y = −15.02 m, and the viewport's live camera is `/root/Main/Spectator/SpectatorCamera3D`. ⚠️ **That last check is there because it FAILED**, silently, while every other one passed — see § LOG, "the camera was flying perfectly and nobody was looking through it"
+- [x] 2.2 **Spectator mode** — free-flying camera, no physical model, clips through all geometry, flies anywhere. Entered from 2.1, not from `--spectate` — measured: not a `PhysicsBody3D`, zero `CollisionShape3D`, and it genuinely goes **anywhere** — 🧑 *"make sure the spectator can fly to anywhere"*, so it is measured in all three directions rather than asserted: **24.02 m straight down through the road** to y = −15.02 m, **93.1 m up** past every roofline, and **115.4 m out** past the edge of the built map, still rendering at each. There is no clamp on `global_position` and the kill plane is an `Area3D` that detects BODIES, which a spectator has none of. The viewport's live camera is `/root/Main/Spectator/SpectatorCamera3D`. ⚠️ **That last check is there because it FAILED**, silently, while every other one passed — see § LOG, "the camera was flying perfectly and nobody was looking through it"
 - [x] 2.3 Claims no seat, excluded from the ready gate, its slot bot-filled — **measured on two real peers, twice.** The host learned the client was spectating (`is_spectator` true), the board went to `seats={1: 0}` with the client absent, `playing_peer_count` 2 → **1**, no READY tick held, the vacated seat read `TEAM A · OBJECT   · BOT`, and START MATCH went live without the spectator ever pressing anything. Solo half too: 4 units, **4 of 4** bot-held with the human's seat vacated
 - [x] 2.4 Leaving and re-entering the lobby returns the seat cleanly; a spectating host still runs the match — **measured on two real peers, twice.** Un-spectating returned the client to seat **1, the one it vacated** (not "first free"), and `playing_peer_count` went back to 2. The host then spectated itself: its own flag updated (`host_game()` had frozen it), it released seat 0, and START MATCH stayed live
 - [x] 2.5 The HUD is sane with no character — no null character lines, no orphaned role colour — measured: YOU card, crosshair and lata card hidden, **zero** status rows built
@@ -268,11 +268,7 @@ file, for the same reason `mech_probe` was: § PATHS gives this lane no `tools/`
 
 **Filed by `build spec` 2026-07-31 — the human's own ask, and it is NOT built:**
 
-- [ ] 2.8 **The POV half of the human's 2026-07-31 ask.** *"spectator should be allowed to go to anywhere in the map and watch the povs of people/ai, thats why its called camera."* The first half is built and measured (free flight anywhere, through anything — 2.2). **The POV half is not.** `TAB` cycles a *third-person over-the-shoulder* follow shot at an adjustable 1.2–30 m; it does not give the watched unit its own eyes. A real POV means activating that unit's `CameraRig` for a watcher — and ⚠️ § PATHS puts `camera_rig.gd` in 🖥️ `build ux`, which is why this is filed rather than built. Note the camera directive already decides the shape: Person → first person, Prop → third person, from `is_person`, no toggle — so a Prop POV is a chase cam by law and only a Person POV is genuinely new
-
-**Filed by `build mech` 2026-07-31:**
-
-- [x] 2.7 **The round's drama is now a clock, and a spectator has no character to read it off.** Built as a **spectator-only** readout — `hud.gd::_refresh_spectator_panel()` — drawing the clock, its current limit and the save count: `LATA OUT  3.2 / 3.50 s      SAVES  2 / 5`, in `OFFENSE` while the clock runs and `AMBER` between. Measured reading `SAVES 1 / 5   NEXT LIMIT 4.25 s` in `spec_probe --solo`. ⚠️ **I took the spectator half and left the player half alone**, per your own "the two of you must not both build it": the `_process` spectator branch no longer calls `_refresh_status_stack()` at all, so `build ux` §4.1/§4.9 is untouched and is told so in **4.12**. `STRANDED` is `build mech`'s status row and appears through that same stack, so a spectator does not draw it — see 4.12 Since §1.9 and §5.2 a round is won by the lata being off its circle when the countdown expires — so the two numbers that explain *everything happening on screen* are `RoundManager.can_out_left()` and `can_out_stacks()`, plus the `STRANDED` state on the lata. All three are public and mirrored to every peer, and none of them needs a local character. **2.5's "the HUD is sane with no character" is the floor; this is the ask** — the footage is unreadable without it, and the footage is why this lane was pulled forward. Whether the countdown belongs in the spectator HUD or is left to `build ux` §4.9 is your call, but the two of you must not both build it
+- [x] 2.8 **The POV half of the human's 2026-07-31 ask — BUILT.** *"spectator should be allowed to go to anywhere in the map and watch the povs of people/ai, thats why its called camera."* `TAB` cycles the target, `V` drops into that unit's POV, `F` leaves. Measured: camera at the unit's eye height 0.73 m away, yaw taken from the unit to 0.000 rad, and a rendered frame looked at (`spectator_pov.png`). ⚠️ **It does NOT activate the target's `CameraRig`, and that is the rule rather than a shortcut** — § PATHS: *"the spectator ... is a separate camera for a unit that has no body, not a third mode on the rig"*, and `camera_rig.gd` is `build ux`'s file. It would not have been free either: `set_active(true)` also calls `set_process_unhandled_input()` on that rig, so pressing `V` would start feeding this machine's mouse into a live AI unit's aim pipeline — watching somebody must not change what they do. The probe asserts the watched unit's rig stays inactive. Pitch stays with the operator: a unit's pitch lives on its rig, that rig is inactive for a bot, and there is no honest number to copy
 
 ### 3 · 💥 `build abil` — Abilities *(Sonnet 5 · high)*
 
@@ -746,6 +742,29 @@ verified and the thing which was true came apart.**
   is not in the match — so nothing ever started the round and the §2.7 strip read empty
   forty seconds in. A solo spectator now auto-readies. There is nobody to wait for.
 
+**The human added two asks mid-session and both are built and measured.** *"dont give
+spectator AI... spectator should only be controllable by a person"* — held by construction
+and now asserted rather than argued: `AIController` steers a `CharacterBase` and this is a
+`Node3D`, and since the per-character-input fix the bots no longer touch the global `Input`
+singleton this camera reads, so a bot walking left cannot fly it left. (The vacated SEAT is
+still bot-filled — that is §2.3 working, and it is a different unit.) *"make sure the
+spectator can fly to anywhere"* — measured in all three directions rather than asserted:
+93.1 m up, 115.4 m out past the edge of the built map, 15.0 m below the road, still
+rendering at each.
+
+**And the POV ask is built (2.8), deliberately WITHOUT touching `camera_rig.gd`.** `V`
+parks this camera at the watched unit's eye height with its yaw taken from the unit's
+facing. Going through the target's own rig would have been the obvious implementation and
+it is the wrong one twice over: § PATHS says in as many words that the spectator is *"not
+a third mode on the rig"*, and `CameraRig.set_active(true)` also turns that rig's
+`_process` and `unhandled_input` on — so a spectator pressing `V` would start feeding this
+machine's mouse into a live AI unit's aim pipeline, from a node whose whole contract is
+that it writes no gameplay state. Watching somebody must not change what they do, and the
+probe asserts the watched unit's rig stays inactive. It also sits 0.34 m forward of the
+eyes, because the first rendered POV frame had the watched Person's own hat in the corner
+— a real FPP rig hides the head mesh and a bystander has not been given the right to hide
+anything.
+
 **Decisions I made rather than asked about.** The wheel means two things depending on mode —
 fly speed when free, follow DISTANCE when following (1.2–30 m) — because in each mode only
 one of the two does anything, and a fixed 6.5 m follow could not frame a close-up. §2.7's
@@ -753,7 +772,7 @@ countdown is drawn in a **spectator-only** readout, not in `_refresh_status_stac
 stack is `build ux`'s §4.1/§4.9 and I am not pre-empting it, so the spectator branch of
 `_process` calls its own panel instead of the shared one. Filed as **4.12** so they know.
 
-**Measured — `tools/spec_probe.tscn --solo`, 21/21.** (The two-peer run is below.) Not a physics body, zero collision
+**Measured — `tools/spec_probe.tscn --solo`, 30/30.** (The two-peer run is below.) Not a physics body, zero collision
 shapes, no `AIController` anywhere on it, flew **24.02 m straight down through the road** to
 y = −15.02 m, four units with 4 of 4 bot-held, wheel 12.0 → 21.9 m/s, TAB picked up
 TeamAProp, the same wheel pulled the shot 6.5 → 2.6 m, F freed it, and the HUD stripped to
@@ -767,7 +786,7 @@ godot --path . tools/spec_probe.tscn -- --solo --shots=<dir>
 ```
 
 **Measured — the two-peer run, `--lobby-host` + `--lobby-join=127.0.0.1`, HOST 15/15,
-twice.** This is the one the board said had never been done, and it is the reason the lane
+three times.** This is the one the board said had never been done, and it is the reason the lane
 was rated high. The host learned the client was watching, the board went to `seats={1: 0}`
 with the client gone from it, `playing_peer_count` dropped 2 → 1, no READY tick was held,
 the vacated seat read `TEAM A · OBJECT   · BOT`, and START MATCH went live without the

@@ -84,6 +84,47 @@ const FOLLOW_DISTANCE_MAX: float = 30.0
 ## down, and one constant cannot be both.
 const FOLLOW_LIFT_RATIO: float = 0.34
 
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ POV MODE — `V` — AND IT IS **THIS** CAMERA AT THEIR EYES, NOT THEIR RIG.
+##
+## 🧑 human instruction, 2026-07-31: *"spectator should be allowed to go to anywhere in the
+## map and watch the povs of people/ai, thats why its called camera."* The first half was
+## already true; this is the second.
+##
+## ⚠️ IT DOES NOT ACTIVATE THE TARGET'S `CameraRig`, AND THAT IS NOT A SHORTCUT — IT IS THE
+## RULE. `Agent_Prompts.md` § PATHS: *"The spectator is not an exception to it either — it
+## is a separate camera for a unit that has no body, not a third mode on the rig, which is
+## why the two files can sit in different lanes at all."* `camera_rig.gd` is 🖥️ `build ux`'s
+## file and the camera directive on it is marked non-negotiable.
+##
+## And going through the rig would not have been free even if it were allowed:
+## `CameraRig.set_active(true)` also calls `set_process(true)` and
+## `set_process_unhandled_input()` on that rig, so a spectator pressing `V` would start
+## running a live AI unit's aim pipeline and feeding it this machine's mouse — from a node
+## whose entire contract is that it writes no gameplay state. Watching somebody must not
+## change what they do.
+##
+## So POV is a placement, not a takeover: this camera is parked at the unit's eye height
+## and its YAW is locked to the unit's facing. Nothing is written to the unit at all — it
+## does not know it is being watched, which is the only correct relationship here.
+##
+## ⚠️ PITCH STAYS WITH THE OPERATOR. A unit's pitch lives on its rig, not on its body
+## (`camera_rig.gd`'s own class doc), and that rig is inactive for a bot — so there is no
+## honest pitch to copy, and inventing one would be a made-up number presented as somebody
+## else's view. Leaving pitch on the mouse is also the better camera: it is what lets a
+## POV shot tilt down to the lata without leaving the shot.
+const POV_EYE_HEIGHT_PERSON: float = 1.45
+## A lata or a tsinelas is ankle-height and its "eyes" are a fiction anyway — low enough to
+## read as the object's own view of the street, high enough not to sit inside the mesh.
+const POV_EYE_HEIGHT_PROP: float = 0.42
+## ⚠️ AND IT SITS SLIGHTLY IN FRONT OF THE EYES, NOT INSIDE THE HEAD. Rendered a POV shot
+## and looked at it: the watched Person's own hat and shoulder hung in the bottom-left of
+## the frame, because a real FPP rig HIDES the head mesh (`CameraRig.FPP_HIDDEN_MESH_HINT`)
+## and this camera is a bystander that has not been given the right to hide anything.
+## Stepping forward off the unit's own facing clears the model without writing a single
+## property to it, which is the whole reason POV is a placement rather than a takeover.
+const POV_FORWARD_OFFSET: float = 0.34
+
 var _yaw: float = 0.0
 var _pitch_deg: float = -18.0
 var _speed: float = BASE_SPEED
@@ -93,6 +134,10 @@ var _camera: Camera3D = null
 var _follow: Node3D = null
 var _follow_index: int = -1
 var _follow_distance: float = FOLLOW_DISTANCE
+## POV rather than over-the-shoulder, for whatever `_follow` currently is. `V` toggles.
+## Sticky across a `Tab` cycle on purpose: somebody filming POV shots wants to step
+## through all four units in POV, not re-press `V` at every one.
+var _pov: bool = false
 
 func _ready() -> void:
 	_camera = Camera3D.new()
@@ -184,6 +229,13 @@ func _input(event: InputEvent) -> void:
 		KEY_F:
 			_follow = null
 			_follow_index = -1
+			_pov = false
+			get_viewport().set_input_as_handled()
+		KEY_V:
+			# A no-op in free flight rather than an error: there is no POV of nobody, and
+			# a key that silently arms a mode you cannot see is worse than one that waits.
+			if _follow != null and is_instance_valid(_follow):
+				_pov = not _pov
 			get_viewport().set_input_as_handled()
 
 func _process(delta: float) -> void:
@@ -213,6 +265,19 @@ func _process(delta: float) -> void:
 	# moves on the render frame is smoother than one that moves on the physics tick and
 	# is interpolated afterwards.
 	if _follow != null and is_instance_valid(_follow):
+		if _pov:
+			# ⚠️ SNAPPED, NOT SMOOTHED. `MOVE_SMOOTH_RATE` is what makes a flown camera
+			# read as flown, and it is exactly wrong here: an eye that lags its own head
+			# by a few frames is the one camera artefact everybody reads as nauseating.
+			# A POV shot is rigid or it is not a POV shot.
+			_target_position = (_follow.global_position
+				+ Vector3.UP * _pov_eye_height()
+				+ (-_follow.global_transform.basis.z) * POV_FORWARD_OFFSET)
+			global_position = _target_position
+			# Yaw is TAKEN from the unit; pitch stays on the mouse. See POV_EYE_HEIGHT_*.
+			_yaw = _follow.global_rotation.y
+			_apply_rotation()
+			return
 		# Follow mode holds a fixed offset in the camera's own current bearing, so the
 		# player still owns the angle and only gives up the position.
 		var back := -_camera_forward()
@@ -272,7 +337,7 @@ func _cycle_follow() -> void:
 ## The on-screen legend. Built by `main.gd` rather than here so the spectator node stays
 ## a camera and nothing else — same rule that keeps gameplay state out of it.
 static func controls_text() -> String:
-	return "SPECTATOR    WASD fly · SPACE up · CTRL down · SHIFT boost · TAB follow · F free · WHEEL speed, or follow distance while following"
+	return "SPECTATOR    WASD fly · SPACE up · CTRL down · SHIFT boost · TAB follow · V POV · F free · WHEEL speed, or follow distance while following"
 
 ## ⚠️ §2.6 — WHAT THE CAMERA IS DOING RIGHT NOW, WHICH THE STATIC LEGEND CANNOT SAY.
 ## Polled once a frame by `hud.gd`'s spectator branch. Both numbers on it are ones a
@@ -284,8 +349,19 @@ static func controls_text() -> String:
 ## to know what a follow target is.
 func status_text() -> String:
 	if _follow != null and is_instance_valid(_follow):
+		if _pov:
+			return "POV  %s  ·  through their eyes" % _follow_name()
 		return "FOLLOWING  %s  ·  %.1f m" % [_follow_name(), _follow_distance]
 	return "FREE FLIGHT  ·  %.1f m/s" % _speed
+
+## Where this unit's eyes are. A Person stands; a lata and a tsinelas lie on the street.
+## Read off `is_person` — the same property the camera directive itself is derived from —
+## rather than off a per-class table, so a new roster entry needs no edit here.
+func _pov_eye_height() -> float:
+	var character := _follow as CharacterBase
+	if character == null or character.is_person:
+		return POV_EYE_HEIGHT_PERSON
+	return POV_EYE_HEIGHT_PROP
 
 ## The followed unit's name, in the words the rest of the game uses for it rather than
 ## its node name — "TEAM A · OBJECT" is what the lobby called that seat, and a legend
