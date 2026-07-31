@@ -389,19 +389,72 @@ wind-up, no animation and no contact moment. They also shared files.
   the lane that needs them; budget for rewriting the two or three that earn it rather
   than all of them.
 
+**Filed by `build sound` 2026-08-01:**
+
+- [ ] 2.17 **A slipper that lands without hitting a body or the lata plays no sound at
+  all.** `slipper.gd::_step_flying`'s plain-miss branch (the `if global_position.y <=
+  REST_HEIGHT:` case, around line 280) calls `_apply_landed()` directly with no
+  preceding `AudioManager` call — contrast the body-block branch three lines up, which
+  calls `AudioManager.play_at("hit_body", ...)` before the same `_apply_landed()`. The
+  asset is already there and already registered (`slipper_land` — see
+  `audio_manager.gd`'s `SFX_NAMES`) and has been since the 4.1 pass; it has simply never
+  had a caller for this specific path. `slipper.gd`'s flight is this lane's file, not
+  🔊 `build sound`'s, which is why this is filed rather than fixed directly.
+
 ### 4 · 🔊 `build sound` — music, voice and the mix *(Sonnet 5 · medium)*
 
 *The full prompt is in § THE LANES.*
 
-- [ ] 4.1 There is **no music at all.** `audio_manager.gd` applies volume to a `Music`
-  bus that plays nothing. This is 10% of the final score and the cheapest points on the
-  board.
-- [ ] 4.2 Dynamic OST: a menu bed, a match bed, and an intensity lift for the last 15 s.
-- [ ] 4.3 Round and match countdown audio — the 3-2-1, the round-end, the match-end.
-- [ ] 4.4 Voice-over against `docs/HUMAN.md`'s recording brief.
-- [ ] 4.5 SFX for the events this pivot created and left silent: the tag, the shove
-  connecting, the reset channel completing, a slipper landing, a score award.
-- [ ] 4.6 Mix and duck: the countdown must cut through the match bed.
+- [~] 4.1 **No longer no music.** Two of five OST tracks delivered by the human team
+  (`docs/HUMAN.md` § TABLE D) — `ost_menu.mp3` (title/character-select/lobby) and
+  `ost_match.mp3` (the 90 s round) — are loaded and playing through a real
+  `AudioStreamPlayer` pair on the `Music` bus. *Verified: `--headless --import`
+  reimports both with no Parse Error.* **Unverified: nobody has heard it** — this
+  session has no audio output to confirm against, and `docs/HUMAN.md`'s own OGG spec
+  was not followed by the delivered files (they arrived as MP3 data saved with a
+  `.wav` extension — noted there, not blocking, Godot imports MP3 natively).
+- [~] 4.2 **Menu bed and match bed cross-fade** on `MatchManager.round_started`
+  (round 1) and `match_won`, from `AudioManager`'s own `_ready()` and signal
+  subscriptions — no `scripts/ui/**` or `main.gd` file touched. **The last-15s
+  intensity lift is a volume lift on the SAME match bed, not a real track 4
+  cross-fade** — no PRESSURE track has been delivered yet; `_set_music_lift()` is
+  the hook to swap it out the day one lands. *Unverified by ear, same caveat as 4.1.*
+- [~] 4.3 **Round-end/match-win/round-lose now register real streams** —
+  `hud.gd::_on_round_intermission_audio` and `_on_match_won` already called
+  `AudioManager.play("round_end"/"match_win"/"round_lose")`; `round_end` had no
+  stream registered at all and now does (`tools/audio/generate_sfx.py`'s new
+  `build_pivot_extras()`). The 3-2-1 (`countdown_tick`/`countdown_go`) already
+  worked before this session. *Verified: generator ran with no assertion failure
+  (see `_write()`'s silence/head-trim checks) and `--import` is clean. Unverified
+  by ear.*
+- [~] 4.4 **Voice-over pooling built, zero lines recorded.** `audio_manager.gd`
+  scans `assets/audio/vo/` for `vo_<id>_<name>.wav`, pools every take per id,
+  never repeats the last take, and cooldowns per id (`VO_COOLDOWN_MS`) — wired to
+  every event this lane could reach without editing a file it does not own
+  (`title` at boot, `taya`/`ayos` off `RoundManager.attacker_tagged`, `tumbang` off
+  `lata_knocked`, `lata_restored`, `match_win`/`match_draw` off `match_won`,
+  `clock_30`/`clock_10`/`bilis` off its own `_process` poll of
+  `RoundManager.time_left`). `docs/HUMAN.md`'s Table A/B were also corrected —
+  three lines each struck for describing mechanics the HARRYDAKS pivot deleted
+  (the out-of-circle countdown, teams) and replaced with the events that are
+  actually real now. **This item does not close: it depends on the team
+  recording**, which is the whole reason `docs/HUMAN.md` exists. `sayang` stays
+  struck until 2.17 (filed above) gives it a trigger.
+- [~] 4.5 **Five of six previously-silent call sites now have a registered sound**:
+  `hit_body`/`bump_swing` (the shove connecting — reuses the orphaned `bump`/`dash`
+  SFX from the deleted 2v2 bump and dash mechanics), `can_knockdown`/
+  `reset_complete` (the lata's own knockdown/restore audio, aliased to the
+  existing `lata_knockdown`/`reset_channel_complete` assets), `pickup`/
+  `throw_release` (aliased to `grab`/`throw_whoosh`), and a new `score_award` ding
+  on every non-DEFENSE `MatchManager.score_changed` (DEFENSE deliberately
+  excluded — it fires every second of every round). **The sixth — a slipper
+  landing with no body or lata in the way — is filed as 2.17** above rather than
+  fixed here: the call site does not exist yet and the file is `build fair`'s.
+- [~] 4.6 **Ducking implemented inside `AudioManager.play()` itself** —
+  `countdown_tick`/`countdown_go`/`round_end`/`match_win`/`round_lose`/
+  `score_award` all duck the active music player (fast attack, slower release)
+  the instant they play, with no other file needing to know the duck exists.
+  *Unverified by ear.*
 
 ### 5 · 🎨 `build model` — Blender MCP model revamp *(Opus 5 · medium)*
 
@@ -866,3 +919,55 @@ branch. Filed to `build ui` §1.8.
 ⚠️ **The single biggest known risk is `build fair` §2.1.** Passive defence pays 900 a
 round uncontested against 100 for a knockdown. It is very probably wrong and it is the
 first number anybody should measure.
+
+### 2026-08-01 · 🔊 `build sound` · §4 · branch `HARRYDAKS`
+
+**Music, VO wiring, and the pivot's silent SFX.** The human team is now composing the
+soundtrack directly (`docs/HUMAN.md` § TABLE D, decided 2026-07-31) rather than this
+lane synthesising beds — the brief for that shift was written before this session and
+this session is the first to receive actual files against it: two masters, `Rounds`
+(the match bed) and `Main Menu and Character Select` (the menu bed), landed mid-session
+and are now integrated and cross-fading. Both were MP3 data saved with a `.wav`
+extension — renamed to `.mp3` rather than reconverted, since Godot imports MP3 natively
+and re-encoding a delivered master loses quality for no reason.
+
+**Every new hook is an autoload signal subscription or a call made from inside
+`AudioManager` itself** — `RoundManager`/`MatchManager` are autoloads, so
+`play_music()`/`play_vo()`/the duck/lift logic all reach round starts, tags, knockdowns,
+score awards and match end without a single line touched in `scripts/ui/**`,
+`main.gd`, `character_base.gd`, `lata.gd` or `slipper.gd`. Where an event genuinely had
+no reachable hook (a slipper's clean-miss landing), it is filed to `build fair` as
+§2.17 rather than forced by editing a file outside this lane's row.
+
+**Six previously-silent call sites turned out to be a naming problem, not a missing
+feature.** `character_base.gd`, `lata.gd` and `slipper.gd` already called
+`AudioManager.play_at()` with names (`hit_body`, `bump_swing`, `can_knockdown`,
+`reset_complete`, `pickup`, `throw_release`) that had never been registered in
+`SFX_NAMES` — the pivot wired the call sites and moved on. Two of those six are reused
+audio, not new synthesis: `bump.wav` and `dash.wav` were generated for the deleted 2v2
+bump and dash mechanics and have had no caller since — a body-on-body thump already
+existed and needed nothing but a second name pointing at it.
+
+**`docs/HUMAN.md` had drifted with the mechanics it predates by about a day.** Its Table
+A/B were written before this exact session but described the out-of-circle countdown and
+team framing the HARRYDAKS pivot deleted (`lata_out`/`lata_safe`/`lata_last`,
+`win_defence`/`win_offence`, `bangon`, `balik`). Struck and replaced with the events that
+are real now (`tumbang`, `lata_restored`, `match_win`, `match_draw`) rather than left to
+be recorded against a game that no longer exists.
+
+**Verified:** `--headless --import` reimports the whole project with no Parse Error,
+including the two new `.mp3` masters and three newly-synthesised `.wav`s.
+`tools/audio/generate_sfx.py` ran clean (its own `_write()` asserts against pure silence
+and head-padding on every file, so a clean run is a real check, not just "no exception").
+
+⚠️ **NOT verified: any of it by ear.** This session has no audio output device to
+confirm against, and nobody has run a live rendered match with sound during it — every
+`[~]` in § CHECKLIST §4 says so explicitly rather than claiming an `[x]` for a stream
+that merely loaded. Checklist item 5, the mix pass ("balance the three buses against a
+real match"), could not be done for the same reason and is the first thing to actually
+listen to.
+
+⚠️ **VO is fully wired and completely silent** — `assets/audio/vo/` is empty. That is
+expected, not a defect: `docs/HUMAN.md` is the recording brief and nobody has recorded
+against it yet. The pool activates per line the moment a file lands at
+`vo_<id>_<name>.wav`, no code change required.
