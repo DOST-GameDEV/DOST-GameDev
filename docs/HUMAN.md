@@ -93,6 +93,12 @@ Drop the whole folder in the shared drive — **do not commit audio yourself.** 
 tracked in this repo and a wrong `git add` on a big folder is annoying to undo. `build voice`
 takes it from the drive and commits it properly.
 
+> ✅ **The wiring is already built and waiting.** Every ID on this page has an event hooked up
+> in `audio_manager.gd` (or is filed above as needing one first) — the moment a file lands at
+> `assets/audio/vo/vo_<id>_<yourname>.wav` it is in the game's rotation with no code change. A
+> second take of the same ID (`vo_tumbang_cy.wav`, `vo_tumbang_jo.wav`) is picked up automatically
+> too, and the game will not play the same take twice in a row.
+
 ---
 
 ## 👥 WHO RECORDS WHAT
@@ -122,18 +128,25 @@ These play flat, non-positional, over the top of the match. **Clear beats loud.*
 | `count_go` | **"Simula!"** | Begin! | 2 | The round actually starts |
 | `clock_30` | **"Tatlumpu na lang!"** | Thirty left! | 1 | 30 s left on the 90 s round |
 | `clock_10` | **"Sampu na lang!"** | Ten left! | 1 | 10 s left |
-| `lata_out` | **"Nasa labas!"** | It's outside! | 3 | The lata leaves its circle and the countdown starts |
-| `lata_safe` | **"Ligtas!"** | Safe! | 3 | The defence gets the lata home |
-| `lata_last` | **"Huling bilang!"** | Last count! | 2 | The countdown is at its shortest — the defence cannot save it again |
 | `tumbang` | **"TUMBANG!"** | It's down! | 3 | The lata goes over. **The money line — give it everything** |
-| `win_defence` | **"Panalo ang depensa!"** | Defence wins! | 2 | Round won by surviving |
-| `win_offence` | **"Panalo ang atake!"** | Offence wins! | 2 | Round won by the countdown or a smash |
+| `lata_restored` | **"Nakatayo na!"** | Back up! | 2 | The taya's reset channel completes and the lata stands again |
+| `match_win` | **"Panalo!"** | Winner! | 2 | The match ends with a leader — fires for the whole room, not one side |
+| `match_draw` | **"Patas!"** | It's a draw! | 2 | The match ends tied at the top |
 
-> ⭐ **The count 5→1 does double duty and that is why it is five numbers, not three.** The
-> round-start countdown is 3-2-1, but the lata's out-of-circle countdown starts at **5 seconds** —
-> so one set of numbers covers both, and the game just starts playing at whichever number it needs.
-> **Say them evenly, one per second, same energy each.** These five are the only lines on this page
-> that must sound identical to each other.
+> ⚠️ **`lata_out`, `lata_safe`, `lata_last`, `win_defence` and `win_offence` are STRUCK, not
+> renamed.** They were written for the out-of-circle countdown and the per-round winner the
+> pre-pivot ruleset had — `round_manager.gd`'s own header now says it in as many words: *"Nothing
+> 'wins' a round any more... There is no per-round winner."* Recording them would record lines for
+> a game that no longer exists. `tumbang`, `lata_restored`, `match_win` and `match_draw` are what
+> replaced them — the events that are actually real now (`RoundManager.lata_knocked`,
+> `RoundManager.lata_restored`, `MatchManager.match_won`).
+>
+> ⭐ **The count 5→1 was written for the SAME deleted mechanic** (double duty with a 5-second
+> out-of-circle countdown that no longer runs) and is kept here anyway, trimmed to what still
+> applies: it is now only the round-start 3-2-1. Keep all five recorded — a spare `count_5`/
+> `count_4` costs nothing and a future countdown (the intermission, say) may still want them —
+> but do not read the old "double duty" reasoning as still true. **Say them evenly, one per
+> second, same energy each.**
 
 ---
 
@@ -144,12 +157,18 @@ real. **Two or three people each**, and do not try to sound like each other.
 
 | ID | Filipino line | English | Takes each | When it fires |
 |---|---|---|---|---|
-| `taya` | **"Taya!"** | You're it! | 3 | Round start, and when the taya lands a hit |
-| `bangon` | **"Bangon!"** | Get up! | 3 | Your teammate is down |
-| `bilis` | **"Bilis!"** | Hurry! | 3 | The countdown is running and your lata is out |
-| `balik` | **"Balik!"** | Bring it back! | 3 | Shouted at a stranded lata |
-| `ayos` | **"Ayos!"** | Nice! | 3 | A good hit lands |
-| `sayang` | **"Sayang!"** | So close! | 3 | A throw just misses |
+| `taya` | **"Taya!"** | You're it! | 3 | Round 1 start, and every time the taya lands a tag |
+| `bilis` | **"Bilis!"** | Hurry! | 3 | The last 15 s of a round — same clock as the music's intensity lift |
+| `ayos` | **"Ayos!"** | Nice! | 3 | A tag lands |
+
+> ⚠️ **`bangon`, `balik` and `sayang` are STRUCK.** `bangon` ("your TEAMMATE is down") assumes
+> teams, which this pivot removed — four players, no sides. `balik` was shouted at a lata stuck
+> outside its circle, a mechanic that no longer exists (see Table A's note above). `sayang` needs
+> a "the throw missed everything" signal that does not exist yet — `slipper.gd` only distinguishes
+> a body-block, a lata hit, and a plain miss internally, and none of those is exposed as a signal
+> a different file can listen for. **Filed to ⚖️ `build fair` § CHECKLIST §2** (it owns
+> `slipper.gd`'s flight) as the item below — if that lands, `sayang` un-strikes itself and needs
+> nothing more than a `play_vo("sayang")` call in `audio_manager.gd`.
 
 ---
 
@@ -198,6 +217,22 @@ that a generated ambience bed never would.
 
 **🔊 `build sound` owns this table** and may revise it when it runs. Everything below is the plan
 to compose against today.
+
+> ✅ **DELIVERED, 2026-08-01: two of five.** `Rounds` (track 3, MATCH) and `Main Menu and
+> Character Select` (covering tracks 1 and 2, TITLE and LOBBY, as one bed until a dedicated LOBBY
+> track exists) are in the build and audible — cross-fading menu → match at round 1 and back at
+> match end, with a volume lift standing in for track 4 on the last 15 s of a round (see below).
+> **Still owed: a dedicated LOBBY track, track 4 PRESSURE, and track 5 VICTORY.**
+>
+> ⚠️ **Both files arrived as MP3 data saved with a `.wav` extension**, not the OGG this page asks
+> for — Godot imports MP3 natively so nothing broke, but the size saving OGG exists for is not
+> happening yet. Not blocking; worth fixing on the next export if it's easy on your end.
+>
+> ⚠️ **NO PRESSURE TRACK YET, SO THE CROSSFADE THIS SECTION DESCRIBES ISN'T RUNNING YET EITHER.**
+> The last 15 s of a round instead gets a volume lift on the SAME match bed
+> (`audio_manager.gd::_set_music_lift`) — audible, but not the "angrier version of the same song"
+> effect track 4 is for. Swap it for a real cross-fade the moment `ost_4_pressure.ogg` (or
+> whatever it's named) lands; the hook already expects it.
 
 ### Where the five go
 
