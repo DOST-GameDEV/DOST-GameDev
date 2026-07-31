@@ -43,7 +43,7 @@ extends Node
 ## the host quits (see the clock table below), so its scene is torn down by
 ## `_on_server_disconnected` before `_finish()` can print a summary or set an exit code.
 ## Its four PASS lines do print, and they are worth reading; the number to gate on is the
-## host's. Measured 2026-07-31: HOST 15/15 twice, JOIN 4/4 twice.
+## host's. Measured 2026-07-31: HOST 15/15 three times, JOIN 4/4 three times; --solo 30/30.
 
 const MATCH_SETUP_PATH: String = "res://scenes/ui/MatchSetup.tscn"
 const MAIN_SCENE_PATH: String = "res://scenes/main/Main.tscn"
@@ -321,6 +321,34 @@ func _run_solo() -> void:
 	_check("§2.2 it clipped through the ground plane", spectator.global_position.y < 0.0,
 		"y = %.2f m" % spectator.global_position.y)
 
+	# --- §2.2 "flies ANYWHERE" · 🧑 2026-07-31: "make sure the spectator can fly to
+	# anywhere". Down through the road is one direction. These are the other two, and
+	# they are the ones a clamp, a bound or a kill plane would show up in: straight up
+	# past the rooflines, and far out past the edge of the built map. Nothing in this
+	# node clamps `global_position`, and the kill plane is an Area3D that detects BODIES —
+	# a spectator has none — so the claim is that there is no ceiling and no fence. That
+	# is a claim, and it is cheap to actually measure.
+	Input.action_press("sprint") # boost, so the sample is unambiguous
+	Input.action_press("jump")
+	await _wait(3.0)
+	Input.action_release("jump")
+	await _wait(0.5)
+	var ceiling: float = spectator.global_position.y
+	_check("§2.2 no ceiling — it climbs past the rooflines", ceiling > 60.0,
+		"y = %.1f m" % ceiling)
+	Input.action_press("move_up") # forward, away from the arena
+	await _wait(4.0)
+	Input.action_release("move_up")
+	Input.action_release("sprint")
+	await _wait(0.5)
+	var out: float = Vector2(spectator.global_position.x,
+		spectator.global_position.z).length()
+	_check("§2.2 no fence — it leaves the built map entirely", out > 100.0,
+		"%.1f m from the circle, at y = %.1f m" % [out, spectator.global_position.y])
+	_check("§2.2 it is still the rendered camera out there",
+		get_viewport().get_camera_3d() != null
+			and get_viewport().get_camera_3d().get_parent() == spectator)
+
 	# --- §2.6 filmable: follow cycle, and a speed control that spans wide and close ----
 	var speed_before: float = spectator._speed
 	_send_wheel(MOUSE_BUTTON_WHEEL_UP)
@@ -344,9 +372,32 @@ func _run_solo() -> void:
 		spectator.global_position.distance_to(spectator._follow.global_position) < 12.0,
 		"%.1f m from target" % spectator.global_position.distance_to(
 			spectator._follow.global_position))
+	# --- 2.8 · POV, the human's own ask: watch through a unit's eyes -------------------
+	_send_key(KEY_V)
+	await _wait(0.4)
+	_check("2.8 V enters POV on the followed unit", spectator._pov)
+	var target: Node3D = spectator._follow
+	var eye: float = spectator.global_position.y - target.global_position.y
+	_check("2.8 the camera sits at the unit's eye height, not behind it",
+		spectator.global_position.distance_to(target.global_position) < 1.8 and eye > 0.1,
+		"%.2f m away, %.2f m above" % [
+			spectator.global_position.distance_to(target.global_position), eye])
+	_check("2.8 the yaw is TAKEN from the unit",
+		absf(angle_difference(spectator._yaw, target.global_rotation.y)) < 0.05,
+		"camera %.3f rad vs unit %.3f rad" % [spectator._yaw, target.global_rotation.y])
+	# ⚠️ THE POINT OF DOING THIS WITHOUT THE RIG: watching must not change what they do.
+	var rig := target.get_node_or_null("CameraRig") as CameraRig
+	_check("2.8 the watched unit's own rig was NOT activated",
+		rig == null or not rig._active,
+		"rig active=%s" % ["no rig" if rig == null else str(rig._active)])
+	_check("2.8 the spectator still owns the rendered view",
+		get_viewport().get_camera_3d() != null
+			and get_viewport().get_camera_3d().get_parent() == spectator)
+
 	_send_key(KEY_F)
 	await _wait(0.3)
 	_check("§2.6 F returns to free flight", spectator._follow == null)
+	_check("2.8 F drops POV with it", not spectator._pov)
 
 	# --- §2.5 / §2.7 the HUD ----------------------------------------------------------
 	var hud := main.get_node_or_null("HUDLayer/HUD")
@@ -368,7 +419,10 @@ func _run_solo() -> void:
 			"'%s'" % (hud._spectator_status.text if hud._spectator_status != null else ""))
 
 	if _shots_dir != "":
-		# Back up to a framing worth looking at before the shutter.
+		# ⚠️ TWO SHOTS, BECAUSE THEY ARE TWO DIFFERENT CLAIMS. "The free camera renders"
+		# and "POV renders somebody else's view" are not evidence for each other, and this
+		# lane has already had one mode pass every assertion while drawing the wrong
+		# picture entirely.
 		spectator._target_position = Vector3(0.0, 7.0, 13.0)
 		spectator.global_position = spectator._target_position
 		await _wait(1.5)
@@ -376,6 +430,19 @@ func _run_solo() -> void:
 		get_viewport().get_texture().get_image().save_png(
 			_shots_dir.path_join("spectator_ingame.png"))
 		print("[%s]  wrote spectator_ingame.png" % _tag)
+		# POV of a PERSON specifically — the Prop case is a slipper on the road and reads
+		# as a bug in a still even when it is correct.
+		for unit in units:
+			if (unit as CharacterBase).is_person:
+				spectator._follow = unit as Node3D
+				break
+		spectator._pov = true
+		spectator._pitch_deg = -6.0
+		await _wait(1.5)
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png(
+			_shots_dir.path_join("spectator_pov.png"))
+		print("[%s]  wrote spectator_pov.png" % _tag)
 
 ## Raw events through `Input.parse_input_event`, so they arrive at
 ## `SpectatorCamera._unhandled_input` down the real chain rather than by calling it.
