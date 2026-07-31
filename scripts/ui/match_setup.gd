@@ -867,8 +867,10 @@ static func _kit_name(list: Array[Dictionary], index: int) -> String:
 	var path := String(list[index].get("ability", ""))
 	if path == "":
 		return "the default kit"
-	var ability := load(path) as AbilityBase
-	return String(ability.ability_name) if ability != null else "the default kit"
+	# ⚠️ WAS `load(path) as AbilityBase`. Abilities are deleted; a roster entry's
+	# `ability` field is now an inert leftover, so the skin's own name is the honest
+	# answer rather than a kit that does not exist.
+	return path.get_file().get_basename().capitalize()
 
 # =============================================================================
 # Seats

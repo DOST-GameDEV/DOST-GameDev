@@ -58,14 +58,20 @@ func _unhandled_input(event: InputEvent) -> void:
 		_on_menu_pressed()
 
 func _on_match_won(winning_team: int) -> void:
-	message_label.text = "%s WINS THE MATCH!" % ("TEAM A" if winning_team == 0 else "TEAM B")
+	# ⚠️ `winning_team` IS A PLAYER SLOT NOW, AND -1 IS A REAL RESULT. Four players
+	# score cumulatively, so a dead heat at the top is an honest outcome rather than
+	# something to break arbitrarily — `MatchManager._leading_slot()` reports it as -1
+	# on purpose.
+	if winning_team < 0:
+		message_label.text = "DRAW"
+	else:
+		message_label.text = "P%d WINS THE MATCH!  %d PTS" % [
+			winning_team + 1, MatchManager.score_for(winning_team)]
 	# Q-4/§4.2 hard rule: the accent bar tracks ROLE, not team — colour the
 	# winning team's card by which side it held in the FINAL round
 	# (MatchManager.team_a_is_can), not by team identity. Nothing has reset
 	# this yet — match_won fires before Rematch/Menu ever touch MatchManager.
-	var team_a_is_can := MatchManager.team_a_is_can
-	var winner_is_can_side := team_a_is_can if winning_team == 0 else not team_a_is_can
-	var accent := UiTheme.DEFENSE if winner_is_can_side else UiTheme.OFFENSE
+	var accent := UiTheme.HIGHLIGHT if winning_team >= 0 else UiTheme.AMBER
 	# B-143 — the wood face, matching the HUD, the intermission card and the menu. This was
 	# `card_style(PANEL, …)`, a near-white panel, and it was the last screen in the whole
 	# mid-game flow still on the old language.
@@ -75,8 +81,12 @@ func _on_match_won(winning_team: int) -> void:
 	# Same rule applied to both team blocks' pip fill colour, not just the
 	# winner's accent bar — each team's pips read as whichever role it held
 	# this same final round.
-	_fill_pips(team_a_pips, MatchManager.team_a_wins, UiTheme.DEFENSE if team_a_is_can else UiTheme.OFFENSE)
-	_fill_pips(team_b_pips, MatchManager.team_b_wins, UiTheme.OFFENSE if team_a_is_can else UiTheme.DEFENSE)
+	# ⚠️ THE TWO PIP ROWS ARE HIDDEN, NOT REPURPOSED. They counted sets won by two
+	# teams; four cumulative scores do not fit in three pips, and inventing a mapping
+	# would be a chart that lies. The final standings are drawn as text instead.
+	team_a_pips.visible = false
+	team_b_pips.visible = false
+	_render_standings()
 	visible = true
 	# B-51: main.gd captures the cursor for the whole match and nothing released
 	# it when the match ended, so this screen appeared with an invisible, captured
@@ -115,15 +125,32 @@ func _on_match_won(winning_team: int) -> void:
 ## INK/CARD square would lose the role-colour read the moodboard specifies,
 ## and reusing UiTheme.card_style keeps the border/radius identical to every
 ## other box in the theme instead of a one-off number.
-func _fill_pips(container: HBoxContainer, wins: int, fill_color: Color) -> void:
-	for i in range(container.get_child_count()):
-		var pip: Panel = container.get_child(i)
-		var filled := i < wins
-		# B-143: the unfilled state was `UiTheme.CARD`, a near-white square — invisible on
-		# the wood card this now sits on, and the same invisible-empty-state problem the
-		# HUD's own pips had. A dark well reads as "a round you did not win".
-		pip.add_theme_stylebox_override("panel",
-			UiTheme.card_style(fill_color if filled else UiTheme.WOOD_DARK, UiTheme.WOOD_EDGE))
+## ⚠️ `_fill_pips()` WAS REPLACED BY `_render_standings()`. It drew one team's set
+## wins as three filled squares. Four cumulative scores are a table, not a pip row,
+## and squeezing them into one would be a chart that lies about the margin.
+##
+## Built as text into `%TeamAPips`'s parent rather than as new scene nodes, so the
+## card keeps the anchors and the wood face the rest of the mid-game flow uses.
+func _render_standings() -> void:
+	var holder := team_a_pips.get_parent() as Control
+	if holder == null:
+		return
+	var existing := holder.get_node_or_null("Standings") as Label
+	if existing == null:
+		existing = Label.new()
+		existing.name = "Standings"
+		existing.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		existing.add_theme_font_size_override("font_size", 18)
+		existing.add_theme_color_override("font_color", UiTheme.CREAM)
+		existing.add_theme_color_override("font_outline_color", UiTheme.INK)
+		existing.add_theme_constant_override("outline_size", 4)
+		holder.add_child(existing)
+	var lines := PackedStringArray()
+	var place := 1
+	for slot in MatchManager.ranking():
+		lines.append("%d.  P%d      %d PTS" % [place, slot + 1, MatchManager.score_for(slot)])
+		place += 1
+	existing.text = "\n".join(lines)
 
 ## Resets in place — no scene reload — so a networked rematch doesn't tear
 ## down the connection or any spawned character. main.gd::_on_match_round_started

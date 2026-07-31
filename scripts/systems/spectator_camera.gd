@@ -289,7 +289,13 @@ func _process(delta: float) -> void:
 		var move := _camera_forward() * -input_dir.y + _camera_right() * input_dir.x
 		if Input.is_action_pressed("jump"):
 			move += Vector3.UP
-		if Input.is_action_pressed("guard_dash"):
+		# ⚠️ WAS `guard_dash`, WHICH NO LONGER EXISTS. That action was Can-Dash and
+		# Flick Dash; both are deleted, and so is the action — leaving this reading it
+		# threw `The InputMap action "guard_dash" doesn't exist` every single frame a
+		# spectator was live. `spectator_down` is its own binding on the same Ctrl key,
+		# so the documented controls are unchanged and the camera no longer borrows a
+		# gameplay action it has nothing to do with.
+		if Input.is_action_pressed("spectator_down"):
 			move += Vector3.DOWN
 		if move.length() > 0.001:
 			var speed := _speed * (BOOST_SCALE if Input.is_action_pressed("sprint") else 1.0)

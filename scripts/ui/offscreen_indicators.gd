@@ -70,13 +70,19 @@ func update(local_character: CharacterBase) -> void:
 		can_arrow.visible = false
 		return
 	_update_one(teammate_arrow, camera, _find_teammate(local_character))
-	_update_one(can_arrow, camera, _find_can(local_character))
+	# ⚠️ THE LATA IS READ STRAIGHT OFF `RoundManager`, NOT FOUND BY A TREE SCAN. There
+	# is exactly one of it and the manager already holds the reference, so a recursive
+	# `_find_character` walk every frame would be a search for something never lost.
+	_update_one(can_arrow, camera, RoundManager.lata)
 
 ## The standard "radar arrow" recipe: project the target, detect off-screen
 ## (including behind-camera, which `unproject_position` does not itself
 ## flag), then clamp the centre-to-target ray to the inset screen rect and
 ## point the arrow along it.
-func _update_one(arrow: Control, camera: Camera3D, target: CharacterBase) -> void:
+## ⚠️ `target` IS A `Node3D`, NOT A `CharacterBase`. The lata is a plain prop now, and
+## it is the one target this still points at — everything below only ever reads
+## `global_position` and `is_inside_tree()`, so widening the type costs nothing.
+func _update_one(arrow: Control, camera: Camera3D, target: Node3D) -> void:
 	# `is_inside_tree()`, not just `is_instance_valid()` — measured live during
 	# 4.3's peer-drop testing: a character mid-`queue_free()` (main.gd's
 	# `_on_player_disconnected`, fired on every peer, not just the host —
@@ -133,19 +139,30 @@ func _update_one(arrow: Control, camera: Camera3D, target: CharacterBase) -> voi
 
 ## Same team, not yourself — a team is 1 Person + 1 Prop (never two of the
 ## same kind), so this is unambiguous without checking is_person at all.
-func _find_teammate(local_character: CharacterBase) -> CharacterBase:
-	return _find_character(get_tree().current_scene, func(c: CharacterBase) -> bool:
-		return c != local_character and c.team == local_character.team)
+## ⚠️ THERE ARE NO TEAMMATES ANY MORE — it is a four-player free-for-all. The arrow
+## this fed pointed at the one other unit on your side; every other player is now an
+## opponent, and four arrows would be noise rather than information.
+##
+## What survives is the arrow that mattered: the one pointing at the lata, which is
+## the objective for all four of them. Kept as a null-returning stub so `update()`
+## keeps its shape and the UI lane can decide whether a "nearest threat" arrow earns
+## its place.
+func _find_teammate(_local_character: CharacterBase) -> CharacterBase:
+	return null
 
 ## Reads RoundManager's own tracked-Can list rather than re-scanning for
 ## `is_can` — that is the one place this is already kept correct across a
 ## role swap (see round_manager.gd::get_tracked_cans doc). Skips yourself:
 ## if you ARE the tracked Can, you don't need an arrow pointing at your own
 ## body.
-func _find_can(local_character: CharacterBase) -> CharacterBase:
-	for can in RoundManager.get_tracked_cans():
-		if is_instance_valid(can) and can != local_character:
-			return can
+## ⚠️ WAS `RoundManager.get_tracked_cans()`. The lata is a single world object now
+## rather than whichever Prop was playing the can this round, so there is nothing to
+## track and nothing to pick from.
+##
+## ⚠️ RETURNS `null` AND THE CALLER READS THE LATA DIRECTLY. `Lata` is not a
+## `CharacterBase` — that is the whole point of the rewrite — so it cannot be
+## returned through this signature. `update()` handles the lata arrow itself.
+func _find_can(_local_character: CharacterBase) -> CharacterBase:
 	return null
 
 func _find_character(node: Node, matches: Callable) -> CharacterBase:
