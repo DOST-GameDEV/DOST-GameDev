@@ -438,6 +438,33 @@ const CATEGORIES: Array[Dictionary] = [
 	{"id": &"slipper","label": "TSINELAS", "slot": &"slipper",   "entries": SLIPPERS},
 ]
 
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ ALL THREE TABS STAY, AND THE TWO PROP TABS NOW DRIVE SOMETHING AGAIN.
+## 🧑 2026-07-31: *"make slipper can and human still selectable in char select"*.
+##
+## They were nearly lost with the prop rewrite, and the reason is worth recording so
+## it is not re-derived: these tabs used to pick which skin the PLAYER-DRIVEN lata
+## and tsinelas units wore, and those units no longer exist. For one commit the picks
+## therefore read nothing — **a tab that picks something nothing reads is worse than
+## no tab**, because it costs a player real time and teaches them the choice matters.
+##
+## They are wired to the real props instead: `Lata.apply_skin()` and
+## `Slipper.apply_skin()` take the `tint` from these tables, and `main.gd` pushes the
+## host's pick to every peer at each round start so all four machines see one lata.
+##
+## ⚠️ THE "SOFT STATS" QUESTION IS ALREADY HALF-ANSWERED AND IT IS NOT A NEW SYSTEM.
+## Every entry here — Person, lata and tsinelas alike — already carries
+## `bilis` / `lakas` / `tatag`, they are ±5–7% per point on 1..5, and the Person ones
+## are read live by `character_base.gd`. That is exactly "soft". What is undecided is
+## whether the LATA and TSINELAS entries' traits should reach gameplay too, and
+## that is a balance call filed to a lane rather than made here.
+##
+## ⚠️ THE `ability` FIELD ON EVERY ENTRY IS NOW INERT. `scripts/abilities/**` is
+## deleted. The keys are left in place rather than stripped out of thirty-odd
+## dictionary literals in a mechanics commit; whoever re-authors this table for the
+## new models should drop them.
+## ---------------------------------------------------------------------------
+
 static func category(index: int) -> Dictionary:
 	return CATEGORIES[posmod(index, CATEGORIES.size())]
 

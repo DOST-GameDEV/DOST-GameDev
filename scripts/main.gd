@@ -548,6 +548,10 @@ func _start_local_test() -> void:
 	# their exact silhouette.
 	var picked_unit := _local_unit_for_seat(GameLaunch.solo_seat)
 	picked_unit.character_index = GameLaunch.character_index()
+	# ⚠️ ONLY THE HUMAN'S SEAT TAKES THE SAVED NAME. Handing it to all four would put
+	# the player's own name on the three bots they are playing against, which is worse
+	# than no names at all.
+	picked_unit.player_name = SettingsManager.player_name
 	# ⚠️ ROUND 1'S ROLES COME FROM THE SCHEDULE UP FRONT, NOT FROM THE SCENE'S
 	# EXPORT DEFAULTS. `is_defender` is an `@export` on `CharacterBase.tscn`, so
 	# without this every unit loads with whatever the scene file happened to say and
@@ -1164,7 +1168,7 @@ func _picks_table() -> Array:
 		var character: CharacterBase = _index_to_character[index]
 		if character == null or not is_instance_valid(character):
 			continue
-		table.append([int(index), character.character_index])
+		table.append([int(index), character.character_index, character.player_name])
 	return table
 
 ## Host → ONE peer. Applies to the units that already exist here, and is kept so
@@ -1192,6 +1196,11 @@ func _apply_known_picks(character: CharacterBase, index: int) -> void:
 		return
 	if int(row[1]) >= 0:
 		character.character_index = int(row[1])
+	# ⚠️ SANITISED ON ARRIVAL. This string came off the wire from another peer and is
+	# about to be drawn on a scoreboard and a 3D label; `SettingsManager` owns the one
+	# trim-and-cap so a hostile or merely careless client cannot post a novel.
+	if row.size() >= 3:
+		character.player_name = SettingsManagerScript.sanitise_name(String(row[2]))
 	# ⚠️ THE MODEL HAS TO BE TOLD. `_visual.apply()` runs at `_ready()` and on every
 	# role rotation — neither of which happens when a pick lands mid-round, so
 	# without this the unit keeps wearing whatever it was drawn with.
@@ -1604,6 +1613,8 @@ func _build_networked_character(data: Dictionary) -> Node:
 	var person := int(picks.get("character", -1))
 	if person >= 0:
 		character.character_index = person
+	character.player_name = SettingsManagerScript.sanitise_name(
+		String(picks.get("name", "")))
 	var peer_id: int = data["peer_id"]
 	var is_ai := peer_id < 0
 	character.set_multiplayer_authority(1 if is_ai else peer_id)
@@ -1673,6 +1684,31 @@ func _reset_world(defender_slot: int) -> void:
 		lata.host_reset_for_new_round()
 
 	_reset_slippers(roster, defender_slot)
+	_push_prop_skins()
+
+## The character screen's LATA and TSINELAS tabs, made real. Broadcast rather than
+## read locally because all four players look at the SAME lata — see
+## `Lata.apply_skin()` for why the host's pick is the one that wins.
+func _push_prop_skins() -> void:
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		return
+	var can_pick := GameLaunch.can_index()
+	var slipper_pick := GameLaunch.slipper_index()
+	if NetworkManager.is_networked():
+		_rpc_prop_skins.rpc(can_pick, slipper_pick)
+	else:
+		_apply_prop_skins(can_pick, slipper_pick)
+
+@rpc("authority", "call_local", "reliable")
+func _rpc_prop_skins(can_pick: int, slipper_pick: int) -> void:
+	_apply_prop_skins(can_pick, slipper_pick)
+
+func _apply_prop_skins(can_pick: int, slipper_pick: int) -> void:
+	if lata != null and is_instance_valid(lata):
+		lata.apply_skin(can_pick)
+	for slipper in slippers:
+		if is_instance_valid(slipper):
+			slipper.apply_skin(slipper_pick)
 
 ## Every Attacker starts a round holding a slipper, so the first throw does not
 ## need a retrieval run in front of it. The Defender holds nothing — they have

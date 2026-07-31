@@ -142,7 +142,7 @@ func refresh() -> void:
 	# point of the tag: "P3" is who you have been chasing all match, "TAYA" is what
 	# they happen to be doing this round.
 	var role_glyph := "TAYA" if is_defense else "ATK"
-	_label.text = "P%d · %s" % [_character.player_slot + 1, role_glyph]
+	_label.text = "%s · %s" % [_character.display_name(), role_glyph]
 	_label.modulate = _role_color
 
 ## The tag fade (§4.5). Polled rather than signalled because distance to the

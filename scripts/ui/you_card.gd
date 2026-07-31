@@ -104,10 +104,14 @@ func refresh() -> void:
 	# round — they are different games.
 	var is_defense := _character.is_defender
 	class_label.text = "TAYA (DEFENDER)" if is_defense else "ATTACKER"
-	var seat_label := "P%d" % [_character.player_slot + 1]
 	# §4.2 hard rule: team identity is the letter mark, never hue — only the
 	# accent bar and the OFFENSE/DEFENSE word track role colour.
-	detail_label.text = "%s · %d PTS" % [seat_label, MatchManager.score_for(_character.player_slot)]
+	# ⚠️ THE SCORE WAS REMOVED FROM THIS ROW. 🧑 2026-07-31: *"why are there points
+	# here, it's already up top it feels redundant"* — and it was: the scoreboard four
+	# inches away carries all four scores including this one. The row says who you are
+	# instead, which is the thing this card is for and the only place the player's own
+	# chosen name appears to them.
+	detail_label.text = _character.display_name()
 	var accent := UiTheme.DEFENSE if is_defense else UiTheme.OFFENSE
 	# ⚠️ WOOD, MATCHING THE TEAM CARDS AND THE MENU — 2026-07-30. This was a navy
 	# translucent `card_style` with a role-coloured left bar, which is the treatment the
@@ -161,10 +165,31 @@ func _update_guard_dash_meter() -> void:
 		return
 	var ratio: float = _character.get_stamina_ratio()
 	guard_dash_bar.value = ratio * guard_dash_bar.max_value
+	# ⚠️ FATIGUE IS SHOWN HERE BECAUSE IT IS THE SAME BAR. Emptying the meter now
+	# costs a 2.5 s lockout, and a bar that simply sits at zero does not say that —
+	# it reads as "wait for it to refill", which is the wrong instruction. Red plus
+	# the word is the difference between empty and punished.
+	var fatigued: bool = _character.is_fatigued()
+	if fatigued != _was_fatigued:
+		_was_fatigued = fatigued
+		guard_dash_bar.add_theme_stylebox_override("fill",
+			_bar_style(UiTheme.DANGER if fatigued else UiTheme.HIGHLIGHT))
+		guard_dash_key_label.text = "FATIGUED" if fatigued else _sprint_key_text()
+		guard_dash_key_label.add_theme_color_override("font_color",
+			UiTheme.DANGER if fatigued else UiTheme.CREAM_MUTED)
 	var is_ready := ratio >= 1.0
-	if is_ready and not _was_ready:
+	if is_ready and not _was_ready and not fatigued:
 		_flash_bar_ready()
 	_was_ready = is_ready
+
+var _was_fatigued: bool = false
+
+## The label the sprint row returns to once fatigue clears. Pulled out so the
+## fatigue swap above and the initial paint cannot drift apart.
+func _sprint_key_text() -> String:
+	if _character == null or not is_instance_valid(_character):
+		return "SPRINT"
+	return "SPRINT [%s]" % _action_key_label(_character, "sprint")
 
 ## Q-6: flash to CARD (~off-white) for ~0.2s when the bar returns to full so
 ## 'ready again' is readable without watching the bar.

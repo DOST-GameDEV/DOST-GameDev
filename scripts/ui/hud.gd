@@ -119,7 +119,13 @@ func _apply_wood_skin() -> void:
 	timer_card.add_theme_stylebox_override("panel",
 		_hud_wood_style(UiTheme.WOOD_DARK, UiTheme.WOOD_EDGE, true))
 	timer_label.add_theme_color_override("font_color", UiTheme.AMBER)
-	round_label.add_theme_color_override("font_color", UiTheme.CREAM_MUTED)
+	# ⚠️ WAS `CREAM_MUTED`. This line carries the round number and who is playing taya
+	# — the two facts that change everything about how the next 90 s goes — and it was
+	# styled as a caption under the clock.
+	round_label.add_theme_color_override("font_color", UiTheme.CREAM)
+	round_label.add_theme_font_size_override("font_size", 20)
+	round_label.add_theme_color_override("font_outline_color", UiTheme.INK)
+	round_label.add_theme_constant_override("outline_size", TEXT_OUTLINE)
 
 	# The letter marks: amber, and deliberately NOT role-coloured. This is the one thing
 	# on the card that identifies the team, and it has to stay put when the roles swap.
@@ -833,8 +839,38 @@ func _on_match_won(winning_slot: int) -> void:
 ## better failure than a silent round end.
 ## Call when the locally-viewed Can enters/exits Downed — clear visual read for
 ## stream/demo per GDD Section 6.
+## ⚠️⚠️ A PULSE, NOT A STATE, AND THAT DISTINCTION IS THE WHOLE BUG.
+##
+## This used to be `downed_flash.visible = active`, driven by whether the unit YOU
+## were driving was down — a damage vignette, on for the second or two you spent on
+## the floor. It is now driven by whether the LATA is down, which in a real round is
+## most of the time, and a full-screen red `ColorRect` left on for forty seconds does
+## not read as feedback. It reads as the renderer being broken: measured on the first
+## captured frame of a live match, the entire arena was washed red.
+##
+## So the knockdown gets a flash the length of a flash. `active` false still clears
+## it immediately, because the lata coming back up should not wait out a tween.
 func set_downed_flash(active: bool) -> void:
-	downed_flash.visible = active
+	if _flash_tween != null and _flash_tween.is_valid():
+		_flash_tween.kill()
+	if not active:
+		downed_flash.visible = false
+		return
+	downed_flash.visible = true
+	# ⚠️ PEAKS BELOW FULL. At alpha 1.0 the vignette is opaque enough to hide the arena
+	# for its whole duration, and the frame it lands on is exactly the frame the player
+	# wants to see — where the lata went and who threw it. It has to register as a hit,
+	# not black the shot out.
+	downed_flash.modulate.a = DOWNED_FLASH_PEAK
+	_flash_tween = create_tween()
+	_flash_tween.tween_property(downed_flash, "modulate:a", 0.0, DOWNED_FLASH_TIME)
+	_flash_tween.tween_callback(func() -> void: downed_flash.visible = false)
+
+## How long the knockdown vignette lasts. Long enough to register as a hit landing,
+## short enough that it is gone before the player looks for the lata.
+const DOWNED_FLASH_TIME: float = 0.45
+const DOWNED_FLASH_PEAK: float = 0.45
+var _flash_tween: Tween = null
 
 ## Option A only. Call with the locally-viewed Can's current dent count once
 ## GameLaunch.game_mode == OPTION_A; leave uncalled (default hidden) under
@@ -862,9 +898,6 @@ var _score_rows: Array[Control] = []
 ## Only redraw when something actually changed — a scoreboard rebuilt every frame is
 ## four `StyleBoxFlat` allocations a frame for a thing that moves twice a round.
 var _score_stamp: String = ""
-var _stamina_bar: ProgressBar = null
-var _stamina_label: Label = null
-var _stamina_holder: Control = null
 
 func _build_scoreboard() -> void:
 	if not _score_rows.is_empty():
@@ -875,6 +908,15 @@ func _build_scoreboard() -> void:
 		if node != null and is_instance_valid(node):
 			(node as CanvasItem).visible = false
 	top_right_panel.visible = false
+	# ⚠️⚠️ THE PANEL HAS TO BE RE-SKINNED HERE. `_apply_wood_skin()` styles the timer
+	# and the lata card but NOT the two team panels — those were painted by
+	# `set_round_display()` calling `_style_team_card()` with a role colour, and that
+	# call went with the two-team layout. Without this the scoreboard renders on the
+	# stock theme: a flat white box next to a wood-and-amber timer, which is exactly
+	# the "doesn't look like our theme" complaint the wood restyle was done to fix.
+	# 🧑 2026-07-31, on the first screenshot of this build: *"ugly ui btw, not even
+	# same theme wtf is that white shit"*.
+	_style_team_card(top_left_panel, team_a_label, UiTheme.AMBER)
 	team_a_label.text = "SCORES"
 	team_a_label.add_theme_color_override("font_color", UiTheme.AMBER)
 	var column := team_a_label.get_parent() as VBoxContainer
@@ -882,21 +924,27 @@ func _build_scoreboard() -> void:
 		return
 	for slot in range(MatchManagerScript.PLAYER_COUNT):
 		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 8)
+		row.add_theme_constant_override("separation", 14)
 		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		row.add_child(_score_cell("Name", 116, HORIZONTAL_ALIGNMENT_LEFT))
-		row.add_child(_score_cell("Score", 56, HORIZONTAL_ALIGNMENT_RIGHT))
+		row.add_child(_score_cell("Name", 132, HORIZONTAL_ALIGNMENT_LEFT))
+		row.add_child(_score_cell("Score", 64, HORIZONTAL_ALIGNMENT_RIGHT))
 		column.add_child(row)
 		_score_rows.append(row)
 
+## ⚠️ 20 px, NOT 15. The scoreboard sits next to a 48 px timer and a 22 px header,
+## and at 15 it read as a debug printout rather than as part of the HUD — 🧑 2026-07-31:
+## *"the text look bad too"*. It is the only place in the match a player reads four
+## numbers at a glance, so it gets close to the header's weight rather than the
+## status stack's.
 func _score_cell(cell_name: String, width: int, align: int) -> Label:
 	var label := Label.new()
 	label.name = cell_name
 	label.custom_minimum_size = Vector2(width, 0)
 	label.horizontal_alignment = align
-	label.add_theme_font_size_override("font_size", 15)
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 20)
 	label.add_theme_color_override("font_outline_color", UiTheme.INK)
-	label.add_theme_constant_override("outline_size", 4)
+	label.add_theme_constant_override("outline_size", 5)
 	return label
 
 ## ⚠️ SORTED BY SCORE, NOT BY SEAT, AND THE MARKER SAYS WHO IS DEFENDING. Both halves
@@ -923,8 +971,14 @@ func _refresh_scoreboard() -> void:
 		var is_taya := slot == MatchManager.defender_slot
 		var name_label := row.get_node("Name") as Label
 		var score_label := row.get_node("Score") as Label
-		name_label.text = "%s P%d%s" % ["<" if slot == mine else " ", slot + 1,
-			"  [TAYA]" if is_taya else ""]
+		# The bullet marks YOU; the word marks the taya. Two different questions, so
+		# two different marks rather than one overloaded glyph.
+		# The bullet marks YOU; the word marks the taya. Two different questions, so
+		# two marks rather than one overloaded glyph.
+		var who := RoundManager.player_at(slot)
+		var who_name: String = who.display_name() if who != null else "P%d" % [slot + 1]
+		name_label.text = "%s %s%s" % ["\u25B8" if slot == mine else "  ", who_name,
+			"  TAYA" if is_taya else ""]
 		score_label.text = str(MatchManager.score_for(slot))
 		var colour: Color = UiTheme.DEFENSE if is_taya else UiTheme.OFFENSE
 		if slot == mine:
@@ -969,48 +1023,14 @@ func _refresh_lata_card() -> void:
 ## duplicate. The stack row says how long it lasts; the bar says why it happened. A
 ## player who empties the bar and then cannot sprint needs both facts in one glance,
 ## and the stack is top-centre while the bar is above their own card.
-func _refresh_stamina(local_char: CharacterBase) -> void:
-	if local_char == null or not is_instance_valid(local_char):
-		if _stamina_holder != null and is_instance_valid(_stamina_holder):
-			_stamina_holder.visible = false
-		return
-	if _stamina_bar == null or not is_instance_valid(_stamina_bar):
-		_build_stamina_bar()
-	_stamina_holder.visible = true
-	_stamina_bar.value = local_char.get_stamina_ratio()
-	var fatigued := local_char.is_fatigued()
-	var colour: Color = UiTheme.DANGER if fatigued else UiTheme.AMBER
-	_stamina_label.text = "FATIGUED" if fatigued else "STAMINA"
-	_stamina_label.add_theme_color_override("font_color", colour)
-	_stamina_bar.add_theme_stylebox_override("fill", _status_fill(colour))
-	_stamina_bar.add_theme_stylebox_override("background", _status_fill(UiTheme.INK, 0.55))
-
-func _build_stamina_bar() -> void:
-	_stamina_label = Label.new()
-	_stamina_label.text = "STAMINA"
-	_stamina_label.add_theme_font_size_override("font_size", 12)
-	_stamina_label.add_theme_color_override("font_outline_color", UiTheme.INK)
-	_stamina_label.add_theme_constant_override("outline_size", 4)
-	_stamina_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_stamina_bar = ProgressBar.new()
-	_stamina_bar.show_percentage = false
-	_stamina_bar.max_value = 1.0
-	_stamina_bar.custom_minimum_size = Vector2(196, 8)
-	_stamina_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var holder := VBoxContainer.new()
-	holder.name = "StaminaHolder"
-	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	holder.add_theme_constant_override("separation", 2)
-	holder.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	# ⚠️ CLEAR OF THE BOTTOM EDGE BY MORE THAN THE 64 px BAND `ui_layout_probe`
-	# ASSERTS. A 1920x1080 windowed window decorates taller than the panel, so 39 px
-	# of client area can sit off screen — anything anchored flush to the bottom is
-	# the first thing to disappear, and that has been reported once already.
-	holder.position = Vector2(-98, -104)
-	holder.add_child(_stamina_label)
-	holder.add_child(_stamina_bar)
-	add_child(holder)
-	_stamina_holder = holder
+## ⚠️ THE HUD NO LONGER DRAWS ITS OWN STAMINA BAR, AND THIS IS THE SECOND HALF OF
+## THAT DECISION. A centre-bottom bar was added here at the same time `you_card.gd`
+## was already drawing one from the same `get_stamina_ratio()` — two bars, same
+## number, forty pixels apart. `YouCard` keeps it, because that card is where a
+## player already looks for their own state, and it now carries the FATIGUED read
+## as well (`you_card.gd::_update_guard_dash_meter`).
+func _refresh_stamina(_local_char: CharacterBase) -> void:
+	pass
 
 # --- Score and event feedback -------------------------------------------------
 
