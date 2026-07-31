@@ -41,7 +41,19 @@ const CAN_SMASH_WINDUP: float = 0.35
 const CAN_SMASH_RADIUS: float = 3.6
 const CAN_SMASH_PULSE_TIME: float = 0.18
 const CAN_SMASH_STUN: float = 1.6
-const CAN_SMASH_COOLDOWN: float = 8.0
+## ⚠️ RESOLVED 2026-07-31 by `build abil`, § SALVAGE's flagged conflict: the brief said
+## 3.0 s, the salvaged code shipped 8.0 s. **3.0 s wins.** Can-Smash does not force a
+## knockdown and cannot itself win a round — it is the lata's ONLY upstream answer to an
+## approaching attacker (§1.14/§3.10: its kit has to matter before it is displaced, and
+## there is nothing after). At 8.0 s a 90 s round sees it roughly ten times and an
+## attacker who eats one smash was never threatened by a second inside the same
+## approach; at 3.0 s cooldown plus the 0.35 s windup it is live again every 3.35 s, one
+## real area-denial cycle per approach rather than a once-per-round panic button. The
+## 0.35 s telegraph is unchanged and is still the whole reason this is fair (§3.1's own
+## header): a `DASH_DURATION` 0.15 dash or a jump clears it every single time it fires,
+## at 3.0 s same as at 8.0. Nothing about the counterplay gets harder — only the number
+## of times the lata gets to try. `Design.md` §5.3 and §11 updated in the same commit.
+const CAN_SMASH_COOLDOWN: float = 3.0
 
 ## ---------------------------------------------------------------------------
 ## GROUND SMASH — the tsinelas dives.
@@ -137,6 +149,19 @@ static func step_dive(character: CharacterBase, _delta: float) -> void:
 ## shockwave hitbox above is 3.2 m and this is 0.75 m, and expressing "direct hit" as a
 ## second, smaller Area3D would make the round-winning condition depend on the order two
 ## overlaps happened to be delivered in.
+##
+## ⚠️ RESOLVED 2026-07-31 by `build abil`, filed by `build mech` as §3.9: a stranded or
+## downed lata cannot dodge, cannot Can-Dash and cannot Can-Smash (§1.9/§5.1.1 — it has no
+## verb at all while down), so treating it as a live instant-win target turned bound #2
+## ("a hit, not a proximity check") into no bound at all — walk over a body that is
+## already losing and tap it in. `can.state == NORMAL` restores the fourth thing this
+## move was supposed to require: the lata has to still be UP, actively holding its
+## ground, for a direct hit to be the one that ends the round outright. A lata that is
+## already down is already being timed out by §5.2's countdown — that is its own,
+## separate loss condition, and it needs no second one stacked on top for free. This
+## costs the diver nothing they were relying on: §6's whole loop is charge past the
+## taya and land ON a can that is still fighting, not corpse-kick one a teammate's bump
+## already finished.
 static func _resolve_direct_hit(character: CharacterBase) -> void:
 	if NetworkManager.is_networked() and not NetworkManager.is_host():
 		return
@@ -147,6 +172,8 @@ static func _resolve_direct_hit(character: CharacterBase) -> void:
 			continue
 		if can.team == character.team:
 			continue # your own team's lata is not a win condition (B-09's rule)
+		if can.state != CharacterBase.State.NORMAL:
+			continue # §3.9: already down is already losing to §5.2, not to this
 		if character.global_position.distance_to(can.global_position) > DIRECT_HIT_RADIUS:
 			continue
 		AudioManager.play_at("match_win", can.global_position)
