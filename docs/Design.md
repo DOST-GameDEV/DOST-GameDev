@@ -191,7 +191,7 @@ and returns it to 0.00 m from centre, and the save shortens the next countdown b
 
 | Ability | Input | Numbers |
 |---|---|---|
-| **Can-Smash** | `bump` (F) | 0.35 s wind-up · radius **3.6 m** · **1.6 s** stun on a Person, **1.2 s** on a tsinelas (a slipper in flight is dropped LOOSE) · **8.0 s** cooldown ⚠️ the brief says 3.0 s — `build abil` resolves |
+| **Can-Smash** | `bump` (F) | 0.35 s wind-up · radius **3.6 m** · **1.6 s** stun on a Person, **1.2 s** on a tsinelas (a slipper in flight is dropped LOOSE) · **3.0 s** cooldown (was 8.0 — 💥 `build abil` resolved the brief-vs-code conflict in favour of the brief, 2026-07-31) |
 | **Can-Dash** | `guard_dash` (Ctrl) | 16.0 m/s for 0.18 s · **one use per round** |
 | Roster special | `special_ability` (LMB) | Quick Stand / Spin Guard / Shatter Trap, per the picked skin |
 
@@ -211,7 +211,7 @@ radius, plus a 78° topple. Readability is `build phys` 5.3 and is not yet confi
 |---|---|---|
 | **Charged self-launch** | hold `jump` while LOOSE | 0.75 s to full · **6.0 → 13.0 m/s**, 0.62 vertical · the slipper flings *itself* |
 | **Ground Smash** | `bump` (F) airborne, ≥ 0.6 m up | dive at **22 m/s** · on impact radius **3.2 m**, **1.4 s** stun · **12.0 s** cooldown |
-| **Ground Smash, direct hit** | within **0.75 m** of the lata | **the attacking side wins the round instantly** |
+| **Ground Smash, direct hit** | within **0.75 m** of a lata that is still **NORMAL** | **the attacking side wins the round instantly** |
 | **Flick Dash** | `guard_dash` (Ctrl) | 14.0 m/s, 0.15 s, 2.5 s cooldown |
 | Mid-flight steer | movement keys while FLYING | capped at `MAX_STEER_DELTA_V` 3.0 m/s per throw |
 
@@ -221,7 +221,15 @@ whole pass: **the slipper can win a round without its Person ever touching it.**
 ## 7 · Round and match win conditions — the only ruleset
 
 **Attackers win a round by:** the out-of-circle countdown reaching zero (§5.2) · a direct
-Ground Smash on the lata (§6) · `FALL_LIMIT` = 4 scoring knockdowns in one round.
+Ground Smash on a lata that is **still standing** (§6) · `FALL_LIMIT` = 4 scoring
+knockdowns in one round.
+
+⚠️ **"Still standing" is load-bearing and it was added 2026-07-31** (💥 `build abil`, §3.9).
+A downed or stranded lata has no verb at all — it cannot dodge, Can-Dash or Can-Smash
+(§5.1.1) — so treating it as a live instant-win target made the direct hit a proximity
+check on a body that was already losing, which is the tap-out rebuilt by accident. A lata
+that is already down is being timed out by §5.2's countdown; that is its own loss
+condition and needs no second one stacked on it for free.
 
 **Defenders win a round by:** the 90 s `ROUND_TIME` running out. That is the only way.
 There is no tag.
@@ -353,7 +361,7 @@ there while nothing happens is exactly the defect this section exists to prevent
 |---|---|---|
 | Light bump | 0.45 s | — |
 | Power bump | 0.80 s | 0.9 s + 1.2 s penalty |
-| Can-Smash | 8.0 s ⚠️ under review | 1.6 s / 1.2 s |
+| Can-Smash | **3.0 s** | 1.6 s / 1.2 s |
 | Can-Dash | once per round | — |
 | Ground Smash | 12.0 s | 1.4 s |
 | Flick Dash | 2.5 s | — |
@@ -378,8 +386,11 @@ properties are claimed to bound every chain at 2.5 s:
    `tools/mech_probe.tscn` holds a lata down 3.0 s off the circle and a Person 2.4 s at
    the same spot, and only the lata is still there.
 3. **The longest producible chain is 2.5 s** — power bump (0.9) into Can-Smash (1.6). It
-   needs two units committing in sequence, one of which then owes 8.0 s of cooldown, and
-   the bump's 1.35 s wind-up is visible on every peer first.
+   needs two units committing in sequence, one of which then owes **3.0 s** of cooldown,
+   and the bump's 1.35 s wind-up is visible on every peer first. ⚠️ **That number was 8.0
+   when this argument was written and it is now 3.0** (💥 `build abil`, 2026-07-31), so the
+   "not repeatable" half of this bound is materially weaker than when it was argued —
+   ⚖️ `build fair` 7.5/7.12 re-checks it, and this line is the reason it must.
 4. **The 5 s long-throw punish is not repeatable** — it costs the tsinelas, the retrieval
    scramble and a 1.25 s throw lock before it could be set up again.
 
