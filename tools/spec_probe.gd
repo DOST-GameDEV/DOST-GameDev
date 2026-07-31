@@ -117,6 +117,9 @@ func _ready() -> void:
 	elif _joined_address(args) != "":
 		_tag = "JOIN"
 		await _run_lobby_client(_joined_address(args))
+	elif "--shots-ui" in args:
+		_tag = "SHOTS"
+		await _run_ui_shots()
 	elif "--solo" in args:
 		_tag = "SOLO"
 		await _run_solo("--no-spectate" not in args)
@@ -125,6 +128,30 @@ func _ready() -> void:
 		get_tree().quit(1)
 		return
 	_finish()
+
+## ⚠️ RENDERS THE SETUP SCREEN IN BOTH TOGGLE STATES. `tools/ui_shot.tscn` already shoots
+## this screen, but only ever in its default state — and the SPECTATE toggle's whole job is
+## to look different when it is on. The OFF shot is the one that gets taken by habit and
+## the ON shot is the one that was wrong: 🧑 rejected two versions of this control on the
+## ON state alone, both of which looked fine off. A control with two faces needs two shots
+## or half of it is unverified.
+func _run_ui_shots() -> void:
+	for spectating in [false, true]:
+		GameLaunch.spectator = spectating
+		var lobby := _stand_up_lobby("local", "")
+		GameLaunch.spectator = spectating # _stand_up_lobby clears it
+		var button := lobby.find_child("SpectateButton", true, false) as Button
+		if button != null:
+			button.button_pressed = spectating
+			button.pressed.emit()
+		await _wait(1.2)
+		await RenderingServer.frame_post_draw
+		var name := "spectate_on" if spectating else "spectate_off"
+		get_viewport().get_texture().get_image().save_png(
+			_shots_dir.path_join("matchsetup_%s.png" % name))
+		print("[%s]  wrote matchsetup_%s.png" % [_tag, name])
+		lobby.queue_free()
+		await _wait(0.4)
 
 ## `PackedStringArray` has no `any()` — this is the one place the probe needs it.
 static func _joined_address(args: PackedStringArray) -> String:
@@ -296,8 +323,13 @@ func _run_lobby_client(address: String) -> void:
 			== MultiplayerPeer.CONNECTION_CONNECTED)
 	_press_spectate(lobby, true)
 	await _wait(1.0)
+	# ⚠️ ASSERTS THE WORD, NOT THE OLD SENTENCE. This read `"WATCHING" in ...text` against
+	# the first label ("SPECTATING · WATCHING, NO CHARACTER ◀ YOU") and went red the moment
+	# the label was shortened to one word — a probe failing because the thing it watches
+	# improved. The state is carried by the styling now (a lit amber slab); the text is the
+	# part a probe can still read, so it checks the text and the shots check the styling.
 	_check("§2.1 the toggle shows its own state",
-		"WATCHING" in (lobby.find_child("SpectateButton", true, false) as Button).text)
+		(lobby.find_child("SpectateButton", true, false) as Button).text == "SPECTATING")
 	_check("§2.3 READY is withdrawn from a spectator", lobby.primary_button.disabled)
 	# Hold through the host's sample A, then hand the seat back for its sample B.
 	await _wait(CLIENT_WATCH_HOLD)
@@ -508,15 +540,29 @@ func _run_solo(spectating: bool = true) -> void:
 	var ceiling: float = spectator.global_position.y
 	_check("§2.2 no ceiling — it climbs past the rooflines", ceiling > 60.0,
 		"y = %.1f m" % ceiling)
+	# ⚠️ AIM LEVEL AND DUE NORTH FIRST. "Forward" is the CAMERA's forward, and by this point
+	# the camera has been flown up and down, so its pitch decides how much of a 4-second
+	# burst goes sideways versus straight up. The first version of this check just held
+	# `move_up` and measured horizontal distance, and it read 115.4 m on one run and 18.0 m
+	# on the next off the same code — the camera was simply pointing somewhere else. That
+	# is a probe measuring its own starting conditions, which is exactly the class of
+	# metric `docs/README.md`'s impossible-number rule is about. Pinned, so the number
+	# means "how far can it get", not "where was it looking".
+	spectator._pitch_deg = 0.0
+	spectator._yaw = 0.0
+	spectator._apply_rotation()
+	await _wait(0.2)
+	var out_start := Vector2(spectator.global_position.x, spectator.global_position.z)
 	Input.action_press("move_up") # forward, away from the arena
 	await _wait(4.0)
 	Input.action_release("move_up")
 	Input.action_release("sprint")
 	await _wait(0.5)
-	var out: float = Vector2(spectator.global_position.x,
-		spectator.global_position.z).length()
+	var out: float = out_start.distance_to(
+		Vector2(spectator.global_position.x, spectator.global_position.z))
 	_check("§2.2 no fence — it leaves the built map entirely", out > 100.0,
-		"%.1f m from the circle, at y = %.1f m" % [out, spectator.global_position.y])
+		"travelled %.1f m horizontally, ending %.1f m from the circle" % [out,
+			Vector2(spectator.global_position.x, spectator.global_position.z).length()])
 	_check("§2.2 it is still the rendered camera out there",
 		get_viewport().get_camera_3d() != null
 			and get_viewport().get_camera_3d().get_parent() == spectator)

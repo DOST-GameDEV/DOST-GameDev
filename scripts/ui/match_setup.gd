@@ -331,6 +331,7 @@ func _setup_solo() -> void:
 	# of them on YOUR team, not filler opponents — but the newer instruction wins.
 	# The "kids from the street who fill in" clause carries that meaning now.
 	seat_hint.text = "A team is one person and one object. The other three are bots, the kids from the street who fill in."
+	_seat_hint_base = seat_hint.text
 	primary_button.caption = "START MATCH"
 	start_button.visible = false
 	_refresh_seats()
@@ -348,6 +349,7 @@ func _setup_host() -> void:
 		return
 	seat_heading.text = "LOBBY  ·  HOST %s" % _lan_address()
 	seat_hint.text = "You pick the map and the mode for everyone. Click a seat to move. Empty seats are played by bots."
+	_seat_hint_base = seat_hint.text
 	primary_button.caption = "READY"
 	start_button.visible = true
 	start_button.disabled = true
@@ -376,6 +378,7 @@ func _setup_host() -> void:
 func _setup_join() -> void:
 	banner_label.text = "LOBBY"
 	seat_hint.text = "The host picks the map and the mode. Click a free seat to move. Empty seats are played by bots."
+	_seat_hint_base = seat_hint.text
 	primary_button.caption = "READY"
 	start_button.visible = false
 	# A client may look at the host's map and mode but not change them — this is
@@ -1017,11 +1020,38 @@ func _claim_seat(peer_id: int, seat: int) -> bool:
 ## expand so the button is pinned right whatever the heading says.
 var _spectate_button: Button = null
 
-## Compact — this is a toggle, not a roster row. Wide enough for the longest state it
-## shows ("SPECTATING · 1 WATCHING") at the size below, so the text never has to clip in
-## the states that actually occur.
-const SPECTATE_BUTTON_SIZE: Vector2 = Vector2(300, 56)
-const SPECTATE_FONT_SIZE: int = 22
+## Compact — this is a toggle, not a roster row — but sized so the WORD fills it. The
+## first pass was 300x56 at font 22 and 🧑 called it *"too small/ugly"*: a short label
+## floating in a wide empty plank reads as a control that failed to load, not as a button.
+## The text now carries the box instead of rattling around in it.
+const SPECTATE_BUTTON_SIZE: Vector2 = Vector2(286, 62)
+const SPECTATE_FONT_SIZE: int = 27
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE ON STATE IS A FILLED AMBER PLANK WITH DARK LETTERING, AND IT IS BUILT HERE
+## RATHER THAN INHERITED. 🧑, 2026-07-31: *"spectate looks too small/ugly, especially when
+## its turned on."*
+##
+## Inherited, "on" was the `WoodButton` variation's PRESSED face — a dark sunk plank with a
+## bright yellow ring around it. That is the right look for *"this button is being held
+## down right now"* and the wrong one for *"this mode is active": a hairline ring is the
+## weakest signal the theme has, and it was carrying the single most important piece of
+## state on the screen — whether you are in the match at all — on a screen where every
+## other row had simultaneously gone dim.
+##
+## Filled AMBER with INK lettering is the inversion, and it is the front end's own
+## language rather than a new colour: `AMBER` is already "headings, values, hover
+## lettering", i.e. the lit thing. A lit slab beside four dimmed planks says which one is
+## live without anybody having to read it.
+##
+## ⚠️ FOUR STYLEBOXES, NOT TWO, because a toggle has a hover state in BOTH positions and
+## Godot draws `hover_pressed` for the on-and-hovered case. Miss it and hovering an active
+## toggle flips it back to looking inactive for as long as the pointer is over it — the
+## exact moment the player is about to click, which is the worst possible time to lie.
+## The font colours are set per state for the same reason: CREAM on wood, INK on amber,
+## and no per-frame code deciding which.
+const SPECTATE_ON: Color = Color("ffba00")      ## == UiTheme.AMBER, the lit face
+const SPECTATE_ON_HOVER: Color = Color("ffd45c") ## the same amber, lifted
 
 func _build_spectate_button() -> void:
 	if seat_buttons.is_empty() or seat_heading == null:
@@ -1048,11 +1078,28 @@ func _build_spectate_button() -> void:
 	_spectate_button.toggle_mode = true
 	_spectate_button.button_pressed = GameLaunch.spectator
 	_spectate_button.focus_mode = Control.FOCUS_ALL
-	# The wood face is shared with the rest of the screen so it still belongs here; the
-	# SIZE is what separates it from the seat rows, which is the distinction being drawn.
-	_spectate_button.theme_type_variation = seat_buttons[0].theme_type_variation
+	# ⚠️ NO `theme_type_variation` — the four states below fully replace it. Leaving
+	# `WoodButton` on as well would layer this lane's `pressed` under the variation's and
+	# make which one wins depend on theme load order.
 	_spectate_button.custom_minimum_size = SPECTATE_BUTTON_SIZE
 	_spectate_button.add_theme_font_size_override("font_size", SPECTATE_FONT_SIZE)
+	_spectate_button.add_theme_stylebox_override("normal",
+		UiTheme.wood_style(UiTheme.WOOD_DEEP, UiTheme.WOOD_EDGE))
+	_spectate_button.add_theme_stylebox_override("hover",
+		UiTheme.wood_style(UiTheme.WOOD_MID, UiTheme.AMBER))
+	_spectate_button.add_theme_stylebox_override("pressed",
+		UiTheme.wood_style(SPECTATE_ON, UiTheme.WOOD_EDGE))
+	_spectate_button.add_theme_stylebox_override("hover_pressed",
+		UiTheme.wood_style(SPECTATE_ON_HOVER, UiTheme.WOOD_EDGE))
+	# The focus ring is the theme's own focus colour, so a keyboard player sees the same
+	# emphasis here as everywhere else on the screen.
+	_spectate_button.add_theme_stylebox_override("focus",
+		UiTheme.wood_style(Color(0, 0, 0, 0), UiTheme.IMPACT))
+	_spectate_button.add_theme_color_override("font_color", UiTheme.CREAM)
+	_spectate_button.add_theme_color_override("font_hover_color", UiTheme.AMBER)
+	_spectate_button.add_theme_color_override("font_pressed_color", UiTheme.INK)
+	_spectate_button.add_theme_color_override("font_hover_pressed_color", UiTheme.INK)
+	_spectate_button.add_theme_color_override("font_focus_color", UiTheme.CREAM)
 	_spectate_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_spectate_button.clip_text = true
 	_spectate_button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -1085,20 +1132,35 @@ func _on_spectate_pressed() -> void:
 func _refresh_spectate_button() -> void:
 	if _spectate_button == null or not is_instance_valid(_spectate_button):
 		return
-	# Short, because it is a corner toggle now and not a roster row with space to explain
-	# itself. The seat rows going dead and the detail box switching to the SPECTATOR
-	# paragraph carry the explanation between them; this just has to say which way it is.
-	var label := "SPECTATING" if GameLaunch.spectator else "SPECTATE"
-	# The four seat rows are the roster and a spectator is not on them, so this button is
-	# the only place the OTHER players can see that somebody is watching. Two humans and
-	# two watchers has to look different from two humans alone.
+	# ⚠️ ONE WORD. The state IS the styling now — a lit amber slab versus a dark one — so
+	# the label does not also have to carry a count, a mode name and an explanation. The
+	# earlier version appended "· 1 WATCHING" here and that is what forced the font down to
+	# a size 🧑 called ugly: the button was sized around its rarest string instead of its
+	# normal one. The count moved to the hint line below, which is a sentence and can hold
+	# a clause without changing shape.
+	_spectate_button.text = "SPECTATING" if GameLaunch.spectator else "SPECTATE"
+	_refresh_seat_hint()
+
+## The descriptive line under the heading, plus the one thing about the lobby that no seat
+## row can show: somebody is here who is not on the board. Kept off the toggle so that
+## button can be sized for the word it almost always shows.
+func _refresh_seat_hint() -> void:
+	if seat_hint == null or _seat_hint_base == "":
+		return
 	var others := 0
 	for peer_id in _peer_spectating:
 		if peer_id != multiplayer.get_unique_id():
 			others += 1
-	if others > 0:
-		label += "  ·  %d WATCHING" % others
-	_spectate_button.text = label
+	if others <= 0:
+		seat_hint.text = _seat_hint_base
+		return
+	seat_hint.text = "%s  ·  %d %s watching." % [_seat_hint_base, others,
+		"player is" if others == 1 else "players are"]
+
+## ⚠️ CACHED, because `_refresh_seat_hint` rewrites the label and would otherwise append
+## to its own output every time the board syncs. The three `_setup_*` branches each write
+## the base copy once; this is the copy they wrote.
+var _seat_hint_base: String = ""
 
 ## ⚠️ A SPECTATOR IS NOT IN THE READY COUNT, SO IT MUST NOT BE OFFERED THE READY BUTTON.
 ## Leaving it live let a watching client press READY and sit in `_peer_ready` holding a
