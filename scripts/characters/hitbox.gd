@@ -95,7 +95,7 @@ func _on_area_entered(area: Area3D) -> void:
 	# It read `if GameLaunch.game_mode == OPTION_A and target.is_can: kind = "dent"`, which
 	# converted every hit on a lata into a health-bar tick and bypassed the Downed state
 	# machine entirely. There is one ruleset now, so a hit on a lata is always a knockdown.
-	# `Design.md` §7.1.
+	# `Design.md` §7.2.
 	#
 	# ⚠️⚠️ THE SEAL-ON-HIT USED TO BE HERE AND §1.9 IS WHY IT IS DELETED. It read:
 	#
@@ -123,7 +123,7 @@ func _on_area_entered(area: Area3D) -> void:
 	#
 	# `seal()` and the SEALED state survive as the state machine's own shape — nothing
 	# in the shipped ruleset reaches them, and nothing about a Person changed.
-	# See `Design.md` §7.1 for why they were kept rather than deleted alongside Option A.
+	# See `Design.md` §7.2 for why they were kept rather than deleted alongside Option A.
 	#
 	# ⚠️ `if`, NOT `elif` — this branch opened as an `elif` while the Option A test above
 	# it existed. Deleting that test without demoting this one is exactly the "easy to do

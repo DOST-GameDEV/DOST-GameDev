@@ -11,7 +11,7 @@ class_name RoundManagerScript
 ## never affect round-win, only Prop-vs-Prop does, matching the GDD.
 ##
 ## ⚠️⚠️ THERE IS ONE RULESET. 2026-07-31, 📋 `build rules` §8.2 — Option A (dents,
-## `MAX_DENTS`, ring-outs) is DELETED, not disabled, and `Design.md` §7.1 is the record
+## `MAX_DENTS`, ring-outs) is DELETED, not disabled, and `Design.md` §7.2 is the record
 ## of what it was and why it went. The circle countdown (`_step_can_out`) is the game.
 ## Every `GameLaunch.game_mode` branch that used to live in this file is gone with it,
 ## including the one that gated the countdown — a gate that existed only because two
@@ -303,7 +303,7 @@ func _on_tracked_can_state_changed(new_state: int, fallen: CharacterBase) -> voi
 ## ⚠️ `_on_tracked_can_dents_changed()` AND `register_ring_out()` WERE DELETED HERE
 ## (§8.2, 2026-07-31). They were Option A's two win checks — "every tracked can has
 ## taken `MAX_DENTS` hits" and "the attacking tsinelas has been knocked out of bounds
-## `RING_OUT_LIMIT` times". Both are recorded in `Design.md` §7.1 rather than kept as
+## `RING_OUT_LIMIT` times". Both are recorded in `Design.md` §7.2 rather than kept as
 ## dead branches. The kill-plane path that fed the ring-out counter still exists and
 ## still respawns a fallen unit; it simply no longer scores anything, which is what it
 ## did under the shipped ruleset anyway.

@@ -116,7 +116,7 @@ against 0.307 on a tsinelas and 0.45 on a Person), and a thrown slipper carries 
 the offence's entire win condition. It is now **0.51 m**, a ~1.6× cross-section. The
 lata's *body* radius is unchanged at 0.14: the hurtbox is what you hit, the body is what
 you walk into and what `CAN_HOME_RADIUS` is sized against. ⚠️ **This is a balance change
-and it has not been re-measured** — filed to ⚖️ `build fair` as §7.18.
+and it has not been re-measured** — filed to ⚖️ `build fair` as §7.28.
 
 ### 5.1.1 · The lata may only stand up on its circle
 
@@ -158,7 +158,7 @@ seconds, so the defence's ability to keep saving is itself the clock.
 
 **This is the only ruleset.** The countdown used to be gated to Option B, because an
 Option A round could otherwise be lost to a clock nothing in that mode explained. Option A
-is deleted (§7.1) and the gate went with it — the countdown now runs unconditionally.
+is deleted (§7.2) and the gate went with it — the countdown now runs unconditionally.
 
 **The channel time is set against this table, not against feel.** With `RESET_CHANNEL_TIME`
 at 2.2 s the fifth stack was unreachable decoration — the round was already decided a row
@@ -236,9 +236,9 @@ There is no tag.
 
 **There is no seal.** Sealing a lata by touching it is gone (§1). `seal()` and the SEALED
 state survive as the state machine's own shape — nothing in this ruleset reaches them; see
-§7.1 for why they were kept rather than deleted.
+§7.2 for why they were kept rather than deleted.
 
-### 7 · a · The match is scored in paired sets
+### 7.1 · The match is scored in paired sets
 
 | Constant | Value | Note |
 |---|---|---|
@@ -275,7 +275,7 @@ time, and a genuine dead heat reports `winning_team = -1`.
 because every scoring event is a comparison between the two teams doing *the same job*, and
 because role comes from the schedule rather than from a bool that was seeded `true`.
 
-### 7.1 · Removed: Option A
+### 7.2 · Removed: Option A
 
 **Deleted 2026-07-31** by 📋 `build rules` §8.2, on the rubric finding that two shipped
 rulesets is not an esport. Recorded here because 🧑 asked for it in those words — *"remove

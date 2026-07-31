@@ -220,7 +220,7 @@ static var confinement_radius: float = CONFINEMENT_RADIUS
 const BUMP_ACTIVE_TIME: float = 0.15
 ## ⚠️ `const MAX_DENTS` WAS DELETED HERE. 2026-07-31, 📋 `build rules` §8.2 — it was
 ## Option A's lata health bar (3 hits and the attackers took the round). One ruleset
-## ships now and it is the circle countdown; `Design.md` §7.1 is the record.
+## ships now and it is the circle countdown; `Design.md` §7.2 is the record.
 
 ## ---------------------------------------------------------------------------
 ## ⚠️⚠️ GUARD IS GONE. 2026-07-30, and it is one of the three deletions the whole
@@ -1685,7 +1685,7 @@ func self_right() -> bool:
 ## ⚠️ `apply_dent()` AND `clear_dent()` WERE DELETED HERE (§8.2, 2026-07-31).
 ## `apply_dent()` was the Option A hit path — a landed hit on a lata ticked a health
 ## bar instead of knocking it over — and `clear_dent()` was the taya's reset channel
-## beating one back out. Both are recorded in `Design.md` §7.1. The reset channel still
+## beating one back out. Both are recorded in `Design.md` §7.2. The reset channel still
 ## exists and still does the thing that matters under the shipped ruleset: it carries a
 ## displaced lata home and stands it up (`Design.md` §5.2).
 
