@@ -7,11 +7,56 @@ deleted, not archived.
 
 **What this branch is.** `feature/objects-overhaul` was built in one uncontrolled session.
 The *code* it produced is good and is carried here in full. The *process* is discarded and
-replaced by the seven `build xxx` lanes below, run in order. Read § SALVAGE before
+replaced by the `build xxx` lanes below, run in order — **seven at the time of writing, ten since
+the 2026-07-31 rubric pass added §8, §9 and §10.** Read § SALVAGE before
 you assume anything is unbuilt: most of the checklist is already written and almost none of
 it is measured.
 
 **The goal is a recordable gameplay video.** Everything on this board serves that.
+
+---
+
+## THE RUBRIC — what the board is actually being scored against
+
+**Added 2026-07-31 after a rubric pass against the Gear Up NCR brief.** Every lane below now
+says which criterion it feeds. Read your lane's line before you decide what "done" means.
+
+**Screening (each 20%):** Completeness · Theme Relevance · Originality · Gameplay ·
+Aesthetics and Creativity
+**Final judging:** Gameplay 20 · **Esports Potential 20** · Graphics and Art 10 ·
+**Music and Sound Design 10** · Creativity and Innovation 20 · Game Feedback 20 *(audience vote
+off the trailer and the demo)*
+
+Four findings from that pass are now work on this board, and they are the reason §8, §9 and §10
+exist:
+
+1. **The match format has a built-in unfair advantage.** `match_manager.gd` ships
+   `team_a_is_can = true` with no coin flip and `WINS_NEEDED = 3` over single rounds, so Team A
+   always defends rounds 1, 3 and 5 — a 3–0 means one team defended twice and attacked once, and
+   the lobby seat decides matches. *"Balanced mechanics to avoid unfair advantage to one or more
+   player/s or team/s"* is a named criterion, and `tutorial.gd` currently claims the opposite in
+   so many words. **→ §8.**
+2. **Two shipped rulesets is not an esport.** Option A (dents, ring-outs) and Option B (the
+   circle countdown) both ship and the host picks. No competitive game does this; it also doubles
+   the balance surface, the tutorial length and the bug surface, and `Design.md` §5.2 already
+   records a bug class caused purely by the countdown leaking into Option A. **→ §8.**
+3. **There is no music and no voice at all.** 34 SFX and 2 ambience beds, and
+   `audio_manager.gd` applies volume to a `Music` bus that plays nothing. *"Music, sound effects,
+   and voice casting"* is 10% on its own and the cheapest points on the board. **→ §9.**
+4. **Spectator has a camera but no broadcast.** §2 shipped a genuinely good free-fly + POV rig;
+   what a crowd needs is the *overlay* — *"gameplay is exciting and understandable for
+   spectators/viewers"* is an Esports Potential bullet and the countdown that decides every round
+   is a small HUD row. **→ §4.15.**
+
+**Two things this pass deliberately did NOT add.** A PVE leaderboard mode was considered as an
+alternative esports path and as a browser build, and **rejected on time** — the rules allow
+PVP *or* PVE-with-leaderboards and this entry is PVP, which satisfies the requirement on its own.
+And **Circular Economy was dropped as a secondary theme** — see `README.md`.
+
+**What is not broken and must not be "improved":** the objects-are-players thesis. A slipper that
+charges a jump and dives onto a can to take a round without its Person ever touching it is the
+Creativity and Innovation 20% and it is genuinely novel. Every item on this board exists to make
+*that* legible to a judge and to a crowd, never to replace it.
 
 ---
 
@@ -138,15 +183,25 @@ spectator camera is needed for filming as soon as possible. It is safe to move b
 depends on nothing else on this board and nothing depends on it. Recorded here rather than
 made silently. The rest of the order stands.
 
-| # | Lane | Model · effort | Owns | Why this model |
-|---|---|---|---|---|
-| **1** | 🎮 **`build mech`** | **Opus 5 · high** | the rules of the game | Deletes the defence's only win and replaces the whole win-condition set. Novel rule design under ambiguity, no lookup-able answer, and getting the feel wrong here costs the video. |
-| **2** | 👁️ **`build spec`** | **Sonnet 5 · high** | spectator, and the lobby toggle that reaches it | **Pulled forward on human instruction — needed as soon as possible.** Split out of `build ux` because it depends on nothing else on the board and nothing depends on it. High, not medium: the seat and ready-gate exclusion is a cross-peer race, and "works solo" is exactly how it has failed so far. |
-| **3** | 💥 **`build abil`** | **Sonnet 5 · high** | the five object verbs | Exact radii, durations and host-side resolution against a spec that already exists. High, not medium: a shockwave that resolves on the wrong peer looks perfect solo and does nothing on LAN. |
-| **4** | 🖥️ **`build ux`** | **Sonnet 5 · high** | every other screen, the net teardown | Three of its items are races that only reproduce across peers. High because "it works on my machine" is the exact failure mode. |
-| **5** | 🎨 **`build model`** | **Opus 5 · medium** | the lata and tsinelas classes, their models and their names | Upgraded 2026-07-31: it now authors real geometry, sets the roster size and names it. *"Does this silhouette read as a sardine tin from across a street, and is that name right in Filipino?"* is taste and cultural specificity — the one thing Sonnet was picked for not needing. Medium, not high: the difficulty is judgement per object, not depth on any one. |
-| **6** | 🥊 **`build phys`** | **Sonnet 5 · high** | contact, knockback, ragdoll read | Executing against measured targets with a documented authority trap list. |
-| **7** | ⚖️ **`build fair`** | **Opus 5 · xhigh** | every number, the AI | **LAST. ALWAYS.** The only lane allowed to move a shipped number, and the only one that can judge whether the objects are actually fun. Being wrong here costs the submission. |
+⚠️ **THE SECTION NUMBER IS NOT THE RUN ORDER — read the first two columns.** The three lanes
+added by the 2026-07-31 rubric pass took the **next free section numbers (§8, §9, §10)** rather
+than being inserted at their run positions, because this document, every § LOG entry and dozens
+of item bodies cross-reference sections by number (*"`build phys` 6.2"*, *"§1.9"*, *"4.1 must
+draw it"*). Renumbering §3–§7 to make the two columns agree would have silently invalidated all
+of it. **Run by the `Run` column; tick by the `§` column.**
+
+| Run | § | Lane | Model · effort | Owns | Rubric it feeds | Why this model |
+|---|---|---|---|---|---|---|
+| **1 ✅** | §1 | 🎮 **`build mech`** | **Opus 5 · high** | the rules of the game | Gameplay · Creativity | Deletes the defence's only win and replaces the whole win-condition set. Novel rule design under ambiguity, no lookup-able answer, and getting the feel wrong here costs the video. |
+| **2 ✅** | §2 | 👁️ **`build spec`** | **Sonnet 5 · high** | spectator, and the lobby toggle that reaches it | Esports · Game Feedback | **Pulled forward on human instruction — needed as soon as possible.** Split out of `build ux` because it depends on nothing else on the board and nothing depends on it. High, not medium: the seat and ready-gate exclusion is a cross-peer race, and "works solo" is exactly how it has failed so far. |
+| **3** | **§8** | 📋 **`build rules`** | **Opus 5 · high** | the match format, and deleting Option A | **Esports Potential** · Completeness | **New 2026-07-31, and it runs before any more code is written.** Inherits `build mech`'s files now that lane has committed. Opus and high because §8.1 is a format redesign with a fairness argument attached, not an edit — and because §8.2 is a deletion, which is the class of change that is easy to do 90% of. |
+| **4** | §3 | 💥 **`build abil`** | **Sonnet 5 · high** | the five object verbs | **Creativity and Innovation** | Exact radii, durations and host-side resolution against a spec that already exists. High, not medium: a shockwave that resolves on the wrong peer looks perfect solo and does nothing on LAN. |
+| **5** | §4 | 🖥️ **`build ux`** | **Sonnet 5 · high** | every other screen, the net teardown, the broadcast overlay | Gameplay · Esports · Completeness | Three of its items are races that only reproduce across peers. High because "it works on my machine" is the exact failure mode. **Grew two rubric items on 2026-07-31 — §4.15 and §4.16.** |
+| **6** | §5 | 🎨 **`build model`** | **Opus 5 · medium** | the lata and tsinelas classes, their models and their names | **Aesthetics · Graphics and Art** | Upgraded 2026-07-31: it now authors real geometry, sets the roster size and names it. *"Does this silhouette read as a sardine tin from across a street, and is that name right in Filipino?"* is taste and cultural specificity — the one thing Sonnet was picked for not needing. Medium, not high: the difficulty is judgement per object, not depth on any one. |
+| **7** | **§9** | 🔊 **`build sound`** | **Sonnet 5 · medium** | music, voice, and the mix | **Music and Sound Design 10%** | **New 2026-07-31.** The single worst-scoring category and the cheapest to fix: there is no music at all. Medium, not high — the work is breadth and taste over a system that already exists and already routes buses correctly. Runs after `build model` so the trailer's look and its sound are decided together. |
+| **8** | §6 | 🥊 **`build phys`** | **Sonnet 5 · high** | contact, knockback, ragdoll read | Gameplay · **Esports (spectator read)** | Executing against measured targets with a documented authority trap list. §6.3 and §6.8 are spectator-legibility items as much as physics ones — a crowd that cannot tell a fallen lata from a standing one cannot follow the round. |
+| **9** | §7 | ⚖️ **`build fair`** | **Opus 5 · xhigh** | every number, the AI | **Esports Potential** | **LAST OF THE BUILD LANES. ALWAYS.** The only lane allowed to move a shipped number, and the only one that can judge whether the objects are actually fun. Being wrong here costs the submission. It is also the only lane that can produce the one sentence no competing entry will have — see §7.15. |
+| **10** | **§10** | 📦 **`build ship`** | **Sonnet 5 · medium** | exports and the submission build | Completeness | **New 2026-07-31, and it is a checklist, not a design lane.** Runs after everything. Filed here rather than done early because an export preset is only true about the code that exists when it is written. |
 
 ---
 
@@ -194,6 +249,21 @@ code ships **8.0 s**. `build abil` decides and records which, in `Design.md` §1
 | 🎨 `build model` | `character_visual.gd` · `character_nameplate.gd` · `systems/character_roster.gd` `CANS`/`SLIPPERS` tables · `scenes/characters/visuals/**` · `assets/models/**` · `tools/models/**` · `Art_Direction.md` |
 | 🥊 `build phys` | `character_base.gd` movement/collision block · `carriable.gd` flight · `tools/phys_probe.gd` · `settle_probe.gd` · `aim_probe.gd` |
 | ⚖️ `build fair` | **any number in any file** · `systems/ai_controller.gd` · `tools/ai_probe.gd` · `hit_probe.gd` · `round_probe.gd` |
+| 📋 `build rules` | `systems/match_manager.gd` · `systems/round_manager.gd` · the dent/ring-out block of `character_base.gd` · `Design.md` §7 · the mode control in `ui/match_setup.gd` |
+| 🔊 `build sound` | `systems/audio_manager.gd` · `assets/audio/**` · `default_bus_layout.tres` · the audio rows of `ui/settings_panel.gd` |
+| 📦 `build ship` | `export_presets.cfg` · `.gitignore` · the output paths of `tools/*_probe.gd` |
+
+**📋 `build rules` inherits 🎮 `build mech`'s row, and that is why it is a lane rather than an
+item.** `match_manager.gd`, `round_manager.gd` and `Design.md` were `build mech`'s and that lane
+has **committed and closed** — its boxes are ticked and it is not being re-opened. One writer per
+file is preserved by succession: `build rules` is now the writer, and `build mech`'s § CHECKLIST
+section is a record. ⚠️ Its `character_base.gd` row is **only the dent and ring-out block** that
+§8.2 deletes; the movement and collision block is still `build phys`'s and the numbers are still
+`build fair`'s.
+
+**🔊 `build sound` owns files no lane has ever owned.** `audio_manager.gd` and `assets/audio/**`
+appear in nobody's row today, which is exactly how the project ended up with a `Music` bus and no
+music — a file with no owner gets no work. It reads `Design.md` and writes none of it.
 
 `character_base.gd` is touched by three lanes. Sequential order is the lock: `build mech`
 writes it first and completely, `build phys` takes only the movement and collision block
@@ -244,7 +314,7 @@ Lata
 - [x] 1.13 Each recovery shortens the **next** countdown by **0.75 s**, stacking **5×** to **1.25 s** — measured: a save moved the limit 3.50 → 2.75. ⚠️ The 5-stack floor is only reachable now that the channel is 1.8 s; at 2.2 it was decoration
 - [x] 1.14 The defence has a real answer to a displaced lata it cannot itself move — measured: a completed channel stands a **stranded** lata up and returns it to 0.00 m from centre
 
-### 2 · 👁️ `build spec` — Spectator *(Sonnet 5 · high)* — **RUN THIS NEXT**
+### 2 · 👁️ `build spec` — Spectator *(Sonnet 5 · high)* — **DONE 2026-07-31**
 
 > **Split out of `build ux` on 2026-07-31 at the human's request: spectator is needed as
 > soon as possible.** It is genuinely independent of everything else on the board — no
@@ -318,6 +388,14 @@ do not re-open it.
 
 - [ ] 4.10 **`scripts/ui/tutorial.gd` is yours and it is wrong twice.** It still teaches *"the defender body-blocks the throw, **tags the attacker**, and stands the lata back up"* — the tag was deleted on 2026-07-30 — and it quotes the reset channel at **2.2 s** in two places when it is now 1.8. It also never mentions that a displaced lata cannot stand up by itself, which is now the single most important rule a new player does not know
 
+**Filed by the rubric pass 2026-07-31 — see § THE RUBRIC:**
+
+- [ ] 4.15 **The spectator can fly but the round cannot be read, and that is an Esports Potential bullet.** §2 shipped the camera; *"gameplay is exciting and understandable for spectators/viewers"* is about the **overlay**, and there is effectively none. A crowd watching four units — two of which are a can and a slipper — in a 3D alley has to be told what is happening in one glance. Build a spectator-only broadcast layer on `hud.gd`: **the §5.2 countdown at centre screen and large**, because it is the drama of every round and today it is one small status row; **the save stacks as pips beside it**, because *"this save buys you 2.00 s, the next one 1.25"* is the escalation and it is currently invisible; team names, round pips, side colours, and both Persons' charge meters as a caster bar. `RoundManager.can_out_left()` / `can_out_limit()` / `can_out_stacks()` are already public and already mirrored to every peer — this is a drawing job, not a networking one. ⚠️ **Read §4.12 first**: `build spec` left the spectator its own `_refresh_spectator_panel()`, and that panel plus §4.9 plus this must not each grow a separate countdown
+- [ ] 4.16 **§4.15 needs an OFF switch, and the human asked for it by name.** 🧑 2026-07-31: *"allow option to remove everything in screen to js do record the game bcz we only added spectator for the video record."* A **clean-feed toggle** that hides the entire overlay — broadcast bar, status stack, crosshair, nameplates, every element — leaving nothing but the rendered game. The trailer and the 3–5 minute demo video are both cut from this camera, and an overlay burnt into footage cannot be taken out later while a clean plate can always have graphics added over it. **Ship the clean feed as the state the operator can always get back to in one key**, and say in § LOG which key and where it is documented for whoever records. ⚠️ It is a `visible` sweep on `hud.gd`, which is yours — do **not** re-open `spectator_camera.gd` to add an input there; that file is `build spec`'s and closed
+- [ ] 4.17 **§4.10 is a correction and the tutorial needs more than correcting — this is the "easy to learn" half of the Gameplay 20%.** Screening asks for *"instructions, a tutorial, or onboarding so that new players can understand how to play"*, and nine pages of static text against eight verbs across four unit types is the weakest form that satisfies it. After §4.10's fixes, add a **playable range**: throw once, get bumped once, hold the 1.8 s channel to carry a lata home once. Three interactions, no scoring, skippable, reachable from the main menu beside TUTORIAL. It reuses the match scene and the bots wholesale. ⚠️ **It also depends on §8.2** — do not write a tutorial page for a mode that lane is deleting; read § CHECKLIST §8 before you touch `PAGES`
+- [ ] 4.19 **`LMB` is bound to two different actions at once, and `tutorial.gd`'s CONTROLS pages get a third and fourth thing wrong.** Read straight out of the `[input]` block of `project.godot` on 2026-07-31: **`grab` is `E` + LMB, and `special_ability` is `Q` + LMB + RMB** — so one left-click can fire both, which on an attacker standing over a loose tsinelas means "pick it up" and "start the throw charge" resolve off the same press. Nobody has watched what that actually does; it may be harmless ordering or it may be why a pickup sometimes eats a charge. **Decide it deliberately and record which action keeps LMB.** Separately, the tutorial's CONTROLS · MOVING page teaches *"SHIFT — Guard if you are a Can, dash-evade if you are a Tsinelas"* when `sprint` is Shift and `guard_dash` is **Ctrl**, and it teaches *"F — Bump: a light melee with a small stagger and no cooldown"* when `bump` on an object is **Can-Smash / Ground Smash** with an 8 s and a 12 s cooldown respectively. That is on top of §4.10's two errors, so the tutorial is now wrong in **four** places and every one of them is a control a judge would press
+- [ ] 4.18 **`match_setup.gd`'s round-mode control is `build rules`' to delete, and the screen around it is yours.** §8.2 removes Option A entirely; the setup screen then has a dead row and a focus order with a hole in it. Coordinate rather than collide: `build rules` runs at position **3**, well before you, so read its § LOG entry and lay the screen out for one ruleset
+
 ### 5 · 🎨 `build model` — Models, classes and names *(Opus 5 · medium)*
 
 > ⚠️ **THE "NO NEW BASE MESH" LAW IS LIFTED FOR THIS LANE.** Human directive, 2026-07-31:
@@ -389,6 +467,48 @@ do not re-open it.
 
 - [ ] 7.14 **Every number on the spectator camera is a first guess that has never been flown.** `spectator_camera.gd` ships `BASE_SPEED` 12.0, `BOOST_SCALE` 3.0, a 3.0–40.0 m/s wheel range at `SPEED_STEP` 1.35, `MOVE_SMOOTH_RATE` 14.0, a 1.2–30.0 m follow band and `POV_EYE_HEIGHT_PERSON` 1.45 / `_PROP` 0.42. All of them are measured — `spec_probe` asserts each one moves the camera the way it claims — and **not one has been judged by a person looking through it**, which is the only test that matters for a camera. ⚠️ You are the lane that moves numbers, but flag this one to the HUMAN rather than tuning it blind: the acceptance test is *"does the footage look good"*, and that is not a probe's call. It is also cheap to answer — a spectated Single Player match and two minutes
 
+**Filed by the rubric pass 2026-07-31 — see § THE RUBRIC:**
+
+- [ ] 7.15 **Your output is not only a balanced game — it is a NUMBER, written down where a judge reads it.** *"The game has balanced mechanics to avoid unfair advantage to one or more player/s or team/s"* is scored by people who cannot inspect the code, so the argument has to be handed to them. When 7.2 finally has data, produce **one quotable line** — *"attack 51.3% / defence 48.7% over 200 AI rounds, `ai_probe fairness`"* — and put it in § LOG **and** in `Design.md` §8 under a heading the write-up can lift verbatim. Almost no competing entry will have measured this at all, which makes it worth more than the balance it reports. ⚠️ Say plainly which side the residual sits on and whether it is inside noise for the sample size; a fabricated dead heat is worse than an honest 53/47
+- [ ] 7.16 **7.9 is now blocking a rubric line, not just a claim, and its order is fixed: 7.10 → 7.7 → 7.2.** Judges at the demo will play against these bots — a bot lata that mashes a dead button while its round runs out reads as *both* "unbalanced" and "incomplete", which is two 20% categories out of one defect. Nothing in §7 can be quoted until a fairness run stops timing out, so treat 7.10's channel behaviour as the first thing you write rather than the fourth
+- [ ] 7.17 **`build rules` §8.1 changes what a "win rate" even means and you are downstream of it.** The match format becomes paired sets — both teams attack once per set — specifically so the seat draw stops deciding matches. **Measure per-ROLE win rate (attack vs defence), not per-TEAM**, because per-team is symmetric by construction once §8.1 lands and a 50/50 there would prove nothing. If §8.1's tiebreak is live, check it does not quietly hand every tie to the same role
+
+### 8 · 📋 `build rules` — Match format and the second ruleset *(Opus 5 · high)* — **RUNS AT POSITION 3**
+
+**New 2026-07-31 from the rubric pass.** Both items are Esports Potential, and both are things
+the game currently gets *wrong*, not things it merely lacks. Inherits `build mech`'s § PATHS row.
+
+- [ ] 8.1 **The match format hands one team a structural advantage and the tutorial denies it.** `match_manager.gd:32` ships `var team_a_is_can: bool = true` with **no coin flip**, roles swap every round, and `WINS_NEEDED = 3` over single rounds — so **Team A always defends rounds 1, 3 and 5**, and a 3–0 means one team defended twice and attacked once. Whichever role turns out stronger, the lobby seat decides matches. Meanwhile `tutorial.gd` teaches *"the match is never decided by which side you drew"*, which is false today. **Fix it by scoring in paired rounds, not single ones:** a **set** = both teams attack exactly once, first to 2 sets, so both sides always play both jobs an equal number of times. Tiebreak a tied set on **which side took the lata out faster** — which also gives a caster and the HUD a number to show, and gives the format a natural sudden-death. ⚠️ **The tiebreak needs a real clock**, so decide where the per-round attack time is recorded and make sure it is host-authoritative and mirrored like everything else in `round_manager.gd`. ⚠️ You may overrule the shape — a coin flip plus a side-choice final round is the cheaper answer and it is *not* as good — but if you do, say in § LOG how the seat draw stops mattering, because that is the acceptance test, not the format
+- [ ] 8.2 **Delete Option A entirely — dents, `MAX_DENTS`, ring-outs, `RING_OUT_LIMIT`, the mode control, and the tutorial page that teaches it.** No competitive game ships two win-condition sets and lets the host pick between them, and this one pays for it three times over: double the balance surface for `build fair`, a tutorial that has to teach two games, and a bug class `Design.md` §5.2 already records — an Option A round could be lost to a countdown nothing in that mode explained. **`Design.md` §7 documents Option A as "maintained in parallel and unchanged"; that sentence is what is being deleted.** The circle countdown is the game
+- [ ] 8.3 **8.2 is a deletion and deletions are the easy thing to do 90% of — so document what was there before you remove it.** Write a short **§7.1 "Removed: Option A"** block in `Design.md` recording what the mode was (dents as a lata health bar, `MAX_DENTS` 3, ring-outs at `RING_OUT_LIMIT` 3, defenders winning on the timer or by beating dents back out with the reset channel), **why it went** (one ruleset is a rubric position, not a cleanup), and **what was left behind on purpose** if anything is. 🧑 asked for this explicitly on 2026-07-31: *"remove gamemode completely but document that it was there."* It is also self-defence — `seal()` and the `SEALED` state already survive for "Option A and the state machine's own shape" per `Design.md` §7, so somebody has to decide in writing whether they still have a reason to exist once Option A does not
+- [ ] 8.4 **Sweep for what the deletion strands, and hand each piece to its owner.** `character_base.gd` carries the dent state and `character_visual.gd` the three `lata_dent*.obj` meshes that `build model` §5.10 is still promising to line up with new geometry — if those meshes are dead, **`build model` needs to know before it runs at position 6**, not after. `round_manager.gd`'s `register_ring_out()` and the kill-plane path that feeds it are yours; `ui/match_setup.gd`'s mode row is yours to remove and **§4.18 is already filed** telling `build ux` to lay the screen out for one ruleset. File anything else per § IF YOU FLAG IT, FILE IT
+- [ ] 8.5 **Neither item is done until `Design.md` and `tutorial.gd` agree with the code.** §8.1 rewrites `Design.md` §7's win conditions and the "BEST OF 5" / "SWAP EVERY ROUND" tutorial rows; §8.2 deletes the "DENTS" row and the "HOW YOU WIN" page's two-mode framing. ⚠️ **`tutorial.gd` is `build ux`'s file and it runs after you** — do not edit it. **File the exact rows** that your changes falsify onto §4, beside §4.10 which is already fixing two other lies on the same screen. A tutorial that describes a deleted mode is the single most visible kind of Completeness defect a judge can hit
+
+### 9 · 🔊 `build sound` — Music, voice and the mix *(Sonnet 5 · medium)* — **RUNS AT POSITION 7**
+
+**New 2026-07-31 from the rubric pass.** Music and Sound Design is **10% on its own** and this is
+the lowest-scoring category in the entry by a distance: `assets/audio/` holds 34 SFX and 2
+ambience beds, and `audio_manager.gd:437` applies a volume to a **`Music` bus that plays
+nothing**. The bus, the settings slider and the routing all already exist and are correct — the
+work is content, not plumbing, which is why this is the cheapest block of points on the board.
+
+- [ ] 9.1 **There is no music. Write some.** At minimum three beds: **menu**, **match**, and a **round-result** sting. Filipino instrumentation is the obvious and correct answer — rondalla strings, kulintang, bamboo percussion — and it feeds Theme Relevance at the same time as this criterion. Everything in `assets/audio/` today is synthesised in-repo and that precedent is worth keeping for originality: it makes Form 03 shorter and it cannot infringe anything
+- [ ] 9.2 **Layer the match music against the §5.2 countdown.** *"Music and other sound elements must complement the game environment and must show the necessary emotion when playing with such sounds"* is the rubric line, almost verbatim, and this game has a purpose-built tension clock to hang it on: while the lata is off its circle a round is actively being lost. A tension layer that fades in on `RoundManager.can_out_left()` and cuts on the save answers that bullet directly, and — with §4.15 drawing the same clock — makes the most important thing on screen also the loudest thing in the mix
+- [ ] 9.3 **Voice, which the rubric names and the game has none of.** *"Voice casting"* is in the criterion text. Filipino street callouts are free theme points and cost one phone microphone: *"Taya!"*, *"Tumbang!"*, *"Bangon!"*, a counting-out, a round-win shout. Recorded by the team is ideal — it is original by construction, it is culturally specific in a way no synthesised asset can be, and it is the thing an audience at the demo will actually repeat back. ⚠️ **Anything recorded goes on Form 03 if a tool touched it**, and anything performed by a non-team member needs their permission in writing; keep it to the team and the question does not arise
+- [ ] 9.4 **The SFX set has holes the new mechanics opened.** `build mech` and `build abil` added verbs that make no sound: the bump **wind-up** (a 1.35 s commitment that is meant to be readable by every peer — see `Design.md` §4 — and is currently silent), the **punt**, the **stamina break** when a sprint runs out, **Can-Dash**, the **self-launch charge**, and the moment a lata goes `STRANDED`. A telegraph nobody can hear is half a telegraph, so this is a fairness item wearing an audio costume
+- [ ] 9.5 **Mix it, then listen on laptop speakers.** The demo is played in a hall off whatever hardware is there. Check the three buses against each other at the settings defaults, confirm the ambience beds do not bury the callouts, and say in § LOG what you listened on. ⚠️ **`--headless` has no audio device**; this lane's acceptance test is a human with headphones and there is no probe substitute for it
+
+### 10 · 📦 `build ship` — The submission build *(Sonnet 5 · medium)* — **RUNS LAST OF ALL**
+
+**New 2026-07-31.** 🧑 marked this "final build path" — it is a checklist, not a design lane, and
+it runs after `build fair` because an export preset is only true about the code that exists when
+it is written.
+
+- [ ] 10.1 **`export_presets.cfg` cannot currently produce a build.** `preset.0` is Windows Desktop with an **empty `export_path`**; `preset.1` is macOS pointed at `build/TumbangPreso-macos-UNTESTED.zip` and the filename is telling the truth. Give Windows a real path and produce an actual artifact — the rules require the prototype to run *"on a browser, personal computer, or mobile device without the purchase of subscription or license"*, and a Windows build satisfies that on its own
+- [ ] 10.2 **Run the exported build on a machine that is not the dev machine, before the deadline and not on the day.** A Godot export that boots in-editor and dies on a clean box is a normal failure — missing LFS binaries, an absolute path, a debug-only autoload. This is the whole point of the lane
+- [ ] 10.3 **Seven untracked PNGs live in the repo root** — `flow_attack_eskinita.png`, `flow_defend_eskinita.png`, `flow_heatmap_eskinita.png`, `hud_00/10/21/32.png` and their `.import` sidecars — because `flow_probe` and `hud_probe` default their output to `res://`. **This is §4.13 and `build ux` may already have fixed it; check before you redo it.** A permanently dirty working tree is what hides a real uncommitted change on submission day
+- [ ] 10.4 **Strip the test harness.** `README.md` already commits to this: *"Local Match and the debug switcher are a test harness and are stripped before submission."* Confirm nothing in the shipped build reaches `debug_player_switcher.gd`, `DebugBar.tscn` or the `--host` / `--join` / `--spectate` command-line paths as a *substitute* for a menu — ⚠️ the flags may remain, but § THE REACHABILITY RULE means every one of them must also have a real menu entry point by now, and §4.11 is a live report that the switcher misbehaves in a spectated match
+
 ---
 
 ## THE LANES
@@ -426,7 +546,7 @@ Each block is paste-ready. Set model and effort first.
 
 </details>
 
-<details><summary>👁️ <b><code>build spec</code></b> — Spectator · Sonnet 5 · high — <b>RUN THIS NEXT</b></summary>
+<details><summary>👁️ <b><code>build spec</code></b> — Spectator · Sonnet 5 · high — <b>DONE — kept as a record</b></summary>
 
 > You are a Godot 4.7 gameplay engineer on **Tumbang Preso** — 2v2 Filipino street game,
 > GDScript, LAN over ENet, host-authoritative. Repo:
@@ -471,6 +591,56 @@ Each block is paste-ready. Set model and effort first.
 > fixed.
 >
 > Prefer building controls in code over editing a `.tscn`. Tick §2, append to § LOG.
+> Do not spawn subagents.
+
+</details>
+
+<details><summary>📋 <b><code>build rules</code></b> — Match format · Opus 5 · high — <b>RUN THIS NEXT (position 3)</b></summary>
+
+> You are a Godot 4.7 gameplay engineer on **Tumbang Preso** — 2v2 Filipino street game,
+> GDScript, LAN over ENet, host-authoritative. Repo:
+> `C:\Users\matth\Documents\GitHub\DOST-GameDev`, branch `feature/objects-overhaul-v2`.
+>
+> Read `docs/README.md`, `docs/Design.md`, and `docs/Agent_Prompts.md` § THE RUBRIC, § HOW TO
+> RUN A LANE, § SALVAGE, § PATHS and § CHECKLIST §8 — those five boxes are your whole task
+> list. Open `scripts/systems/match_manager.gd` and `round_manager.gd` before you change
+> anything.
+>
+> **Why you exist.** This entry is scored against a competition rubric, and two of its
+> Esports Potential lines are things the game currently gets **wrong** rather than lacks.
+>
+> **One: the match format hands one team a structural advantage.** `team_a_is_can` is
+> hardcoded `true`, there is no coin flip, roles swap every round and it is first-to-3 over
+> single rounds — so Team A always defends rounds 1, 3 and 5, and whichever role is stronger,
+> the lobby seat decides the match. `tutorial.gd` meanwhile promises *"the match is never
+> decided by which side you drew"*. Score in **paired sets** instead: a set is both teams
+> attacking exactly once, first to 2 sets, tiebroken on who took the lata out faster. You may
+> overrule the shape — but the acceptance test is "the seat draw stops mattering", and you
+> must say in § LOG how yours achieves it.
+>
+> **Two: two rulesets ship and the host picks between them.** Delete Option A — dents,
+> ring-outs, the mode control, all of it. The circle countdown is the game. ⚠️ **Document the
+> mode in `Design.md` before you remove it** (§8.3) — the human asked for that in those words.
+> A deletion is the class of change that is easy to do 90% of, so §8.4's sweep for what it
+> strands is not optional: the dent meshes in particular are something `build model` is still
+> promising to line up with new geometry at position 6.
+>
+> **You inherit 🎮 `build mech`'s § PATHS row.** That lane has committed and closed; you are
+> now the writer for `match_manager.gd`, `round_manager.gd` and `Design.md` §7. ⚠️ Your
+> `character_base.gd` claim is **only the dent and ring-out block** — the movement and
+> collision block is `build phys`'s and every *number* is `build fair`'s.
+>
+> ⚠️ **`tutorial.gd` and the rest of `scripts/ui/**` are `build ux`'s and it runs after you.**
+> Your changes falsify several tutorial rows. Do not edit them — **file them** onto § CHECKLIST
+> §4, beside §4.10 which is already fixing two other lies on the same screen.
+>
+> **If you flag something outside your own paths — a bug, a stale string, a number your
+> change invalidated, a claim you could not verify — FILE IT as a numbered `- [ ]` item
+> on the owning lane's § CHECKLIST section, under a `**Filed by ‹your lane› ‹date›:**`
+> line. See § HOW TO RUN A LANE. A finding that only appears in § LOG does not get
+> fixed.
+>
+> Tick §8, append to § LOG, and keep `Design.md` in step with every rule you move.
 > Do not spawn subagents.
 
 </details>
@@ -607,6 +777,55 @@ Each block is paste-ready. Set model and effort first.
 
 </details>
 
+<details><summary>🔊 <b><code>build sound</code></b> — Music, voice and the mix · Sonnet 5 · medium</summary>
+
+> Same project, same branch, same reading rules. Your tasks are § CHECKLIST §9.
+>
+> **Why you exist.** Music and Sound Design is **10% of the final score on its own**, and this
+> entry currently has **no music and no voice at all** — 34 SFX, 2 ambience beds, and an
+> `AudioManager` that applies a volume to a `Music` bus that plays nothing. That is the
+> lowest-scoring category in the submission and the cheapest one to fix, because the bus, the
+> settings slider and the routing already exist and are already correct. **Your work is
+> content, not plumbing.**
+>
+> Three beds — menu, match, round-result sting — and Filipino instrumentation is the obvious
+> and correct answer, because it scores Theme Relevance at the same time. Everything in
+> `assets/audio/` today is synthesised in-repo; keeping that precedent makes Form 03 shorter
+> and means nothing you ship can infringe anything.
+>
+> **The one design idea worth more than the rest: layer the match music against the §5.2
+> countdown.** The rubric asks that sound *"show the necessary emotion"*, and this game has a
+> purpose-built tension clock — while the lata is off its circle, a round is actively being
+> lost. Fade a tension layer in on `RoundManager.can_out_left()`, cut it on the save. `build
+> ux` §4.15 is drawing that same clock large on the spectator overlay, so the most important
+> thing on screen becomes the loudest thing in the mix.
+>
+> **Voice is in the criterion text and the game has none.** Filipino street callouts — *Taya!*,
+> *Tumbang!*, *Bangon!* — cost one phone microphone, are original by construction, and are the
+> thing an audience at the demo repeats back. Recorded by the team only; a non-member's voice
+> needs their written permission and is not worth the paperwork.
+>
+> And §9.4 is a fairness item wearing an audio costume: the bump wind-up is a 1.35 s commitment
+> that `Design.md` §4 says every peer must be able to read, and it is **silent**.
+>
+> ⚠️ **`--headless` has no audio device.** There is no probe substitute here — the acceptance
+> test is a human with headphones, and then again on laptop speakers, because that is what the
+> demo hall will have. Say in § LOG what you listened on.
+>
+> ⚠️ You own `audio_manager.gd`, `assets/audio/**`, `default_bus_layout.tres` and the audio rows
+> of `settings_panel.gd` — files no lane has ever owned, which is exactly how the project
+> ended up with a music bus and no music. You read `Design.md` and write none of it.
+>
+> **If you flag something outside your own paths — a bug, a stale string, a number your
+> change invalidated, a claim you could not verify — FILE IT as a numbered `- [ ]` item
+> on the owning lane's § CHECKLIST section, under a `**Filed by ‹your lane› ‹date›:**`
+> line. See § HOW TO RUN A LANE. A finding that only appears in § LOG does not get
+> fixed.
+>
+> Tick §9, append to § LOG. Do not spawn subagents.
+
+</details>
+
 <details><summary>🥊 <b><code>build phys</code></b> — Contact and readability · Sonnet 5 · high</summary>
 
 > Same project, same branch, same reading rules. Your tasks are § CHECKLIST §6.
@@ -673,12 +892,101 @@ Each block is paste-ready. Set model and effort first.
 
 </details>
 
+<details><summary>📦 <b><code>build ship</code></b> — The submission build · Sonnet 5 · medium — <b>RUNS LAST OF ALL</b></summary>
+
+> Same project, same branch, same reading rules. Your tasks are § CHECKLIST §10.
+>
+> **This is a checklist, not a design lane.** You change no rule, no number and no asset. You
+> run after `build fair` because an export preset is only true about the code that exists when
+> it is written.
+>
+> `export_presets.cfg` cannot currently produce a build: the Windows preset has an **empty
+> `export_path`** and the macOS one is named `-UNTESTED`, accurately. Give Windows a real path,
+> produce an artifact, and then do the only thing that matters — **run it on a machine that is
+> not the dev machine, before the deadline rather than on the day.** A Godot export that boots
+> in-editor and dies on a clean box is the normal failure, not the surprising one: missing LFS
+> binaries, an absolute path, a debug-only autoload.
+>
+> Then the two hygiene items: the probe PNGs in the repo root (§10.3 — **check whether `build
+> ux` §4.13 already fixed it** rather than redoing it), and confirming the test harness is
+> stripped as `README.md` already promises it is.
+>
+> **If you flag something outside your own paths — a bug, a stale string, a number your
+> change invalidated, a claim you could not verify — FILE IT as a numbered `- [ ]` item
+> on the owning lane's § CHECKLIST section, under a `**Filed by ‹your lane› ‹date›:**`
+> line. See § HOW TO RUN A LANE. A finding that only appears in § LOG does not get
+> fixed.
+>
+> Tick §10, append to § LOG. Do not spawn subagents.
+
+</details>
+
 ---
 
 ## LOG
 
 Newest first. One entry per lane run: what changed, what was **measured** versus written,
 what decision you made and why, and what you are handing the next lane. Short.
+
+### 2026-07-31 · 📋 rubric pass + doc reconciliation · no lane · branch `feature/objects-overhaul-v2`
+
+**Human-directed, not a lane.** No game code changed — this is `Agent_Prompts.md`, `Design.md`
+and the root `README.md` only.
+
+**The board was read against the Gear Up NCR rubric** and four findings became work: the match
+format's structural bias (§8.1), two shipped rulesets (§8.2), no music at all (§9), and a
+spectator camera with no broadcast overlay (§4.15). Three lanes added — 📋 `build rules` at run
+position **3**, 🔊 `build sound` at **7**, 📦 `build ship` at **10** — plus §4.15–4.19 and
+§7.15–7.17 filed onto existing unrun lanes. § THE RUBRIC at the top of this file records which
+criterion each lane feeds, and records the two things deliberately **not** added: a PVE
+leaderboard mode (rejected on time; the rules allow PVP *or* PVE and this entry is PVP) and
+Circular Economy as a secondary theme (dropped — it was claimed in a README and absent from the
+screen, and the rubric scores communication, not declaration).
+
+⚠️ **New lanes took §8/§9/§10 rather than being inserted at their run positions.** This document,
+every § LOG entry and dozens of item bodies cross-reference sections by number — renumbering
+§3–§7 to make the numbers match the order would have silently invalidated all of it. § EXECUTION
+ORDER now carries a separate `Run` column and says so twice.
+
+⚠️ **📋 `build rules` inherits 🎮 `build mech`'s § PATHS row** — `match_manager.gd`,
+`round_manager.gd`, `Design.md`. That lane has committed and closed, so one-writer-per-file is
+preserved by succession rather than broken. 🔊 `build sound` owns `audio_manager.gd` and
+`assets/audio/**`, which **no lane has ever owned** — which is precisely how this project ended
+up shipping a `Music` bus with no music on it. A file with no owner gets no work.
+
+**Four doc claims were checked against the code and were false.** All read directly, not
+inferred:
+
+1. **`README.md` documented a P2 binding set that no longer exists.** The `[input]` block of
+   `project.godot` defines exactly **eleven** actions — `ready_up`, `jump`, `move_*`, `bump`,
+   `guard_dash`, `sprint`, `special_ability`, `grab` — and **not one is per-player**. 🧑
+   2026-07-31 gave the history: *"theres no p2 at all — only one settings bcz back then ppl could
+   play on one pc but now its local multiplayer not same pc."* **The second seat was deleted when
+   the project moved from same-PC play to LAN**; the "P2 — arrows, Enter bump, End dash, Right
+   Shift special" row outlived the thing it described. ⚠️ Recorded as *removed*, not as *never
+   built*, because the distinction matters to anyone who finds the old bindings in history and
+   assumes they were dropped by accident. **Two people on one keyboard is not coming back** — two
+   players means two machines, and Settings holds one profile by design.
+2. **`README.md` said "Space bump".** `bump` is physical keycode **70 = F**; `jump` is 32 =
+   Space. Bump moved to F on 2026-07-30 after `input_probe` found one press doing both.
+3. **`README.md` advertised `Shift+F1–F4` and `F5` on the debug switcher.**
+   `debug_player_switcher.gd` deleted the second slot: *"Shift is no longer read at all… solo is
+   now the only mode"*, and *"F5 (solo drive) is gone with the second slot"*.
+4. **`Design.md` §9 omitted `V`, the spectator POV key** — half of what the human asked spectator
+   for. §9 now documents it, including *why* it is a camera placement rather than a rig takeover.
+
+`README.md`'s controls section is now a table transcribed from `project.godot` with the
+corrections recorded inline, so the next person to find it wrong can see what it used to claim.
+**`README.md` also said "Six `build xxx` lanes"** against a board that had seven; it says ten.
+
+**Handed on:** §4.19 files the one thing this pass found and did **not** fix — **`LMB` is bound
+to both `grab` and `special_ability`**, so a single left-click can fire both, and
+`scripts/ui/**` is 🖥️ `build ux`'s. That item also carries two further `tutorial.gd` errors
+(Shift/Ctrl, and "bump has no cooldown") on top of §4.10's two, which puts the tutorial at
+**four** wrong controls — every one of them a key a judge would press.
+
+**Not touched, deliberately:** `tutorial.gd` and every other file outside these three documents.
+The Can-Smash 3.0 s vs 8.0 s conflict in § SALVAGE stays open and stays 💥 `build abil`'s.
 
 ### 2026-07-31 · 👁️ `build spec` · §2 · branch `feature/objects-overhaul-v2`
 

@@ -238,7 +238,17 @@ in **both** Single Player and Multiplayer; a spectating peer claims no seat, is 
 from the ready count, and its seat is bot-filled.
 
 Controls: WASD + mouse · `Space` up · `Ctrl` down · `Shift` boost (×3) · wheel changes base
-speed · `Tab` cycles a follow target · `F` frees the camera.
+speed (or the follow distance while following) · `Tab` cycles a follow target · **`V` drops into
+that unit's POV** · `F` frees the camera.
+
+⚠️ **`V` was missing from this section until 2026-07-31** and it is not a minor omission — POV is
+half of what the human asked spectator for (*"watch the povs of people/ai, thats why its called
+camera"*). It is a **placement, not a takeover**: this camera parks at the unit's eye height
+(1.45 m on a Person, 0.42 m on a Prop) and takes its yaw, and the watched unit's own `CameraRig`
+stays inactive on purpose — activating it would feed the spectator's mouse into a live unit's aim
+pipeline, and watching somebody must not change what they do. Pitch stays with the operator.
+`V` is sticky across a `Tab` cycle, so a filmed POV pass steps through all four units without
+re-pressing it. Source: `spectator_camera.gd`, and § LOG's `build spec` entry.
 
 ## 10 · Status readability
 

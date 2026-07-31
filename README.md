@@ -13,9 +13,14 @@ a round by itself.
 
 Roles swap every round. Best of five.
 
-**Engine:** Godot 4.7 (Forward+, GDScript) · **Theme:** Philippine Games and Sports, with Circular
-Economy as a secondary angle — the whole premise is reusing everyday objects as sports equipment ·
-**Format:** 2v2 LAN
+**Engine:** Godot 4.7 (Forward+, GDScript) · **Theme:** Philippine Games and Sports — one theme, taken
+all the way down, not two taken halfway · **Format:** 2v2 LAN
+
+> **Circular Economy was dropped as a secondary theme on 2026-07-31**, deliberately. The rubric scores
+> *"effectively communicates or raises awareness about the chosen theme's goals, values, or lessons"* —
+> and nothing in the game ever said it. A theme claimed in a README and absent from the screen is worth
+> less than one theme expressed completely, and it invited a bolt-on that would have read as a lecture.
+> Philippine Games and Sports is the entry's whole answer.
 
 ---
 
@@ -33,8 +38,11 @@ lost by an out-of-circle countdown instead of a knockdown; and both objects got 
 Most of it is written and very little of it is measured.
 
 **👉 [`docs/Agent_Prompts.md`](docs/Agent_Prompts.md) is the single place progress is tracked.**
-Six `build xxx` lanes, run one at a time in board order. The first unticked box in a lane's section
-is the next thing to do.
+**Ten** `build xxx` lanes, run one at a time in board order. The first unticked box in a lane's
+section is the next thing to do. ⚠️ **The section number is not the run order** — three lanes were
+added by the 2026-07-31 rubric pass and took the next free section numbers rather than being
+inserted, because the board cross-references sections by number everywhere. Run by the `Run`
+column of § EXECUTION ORDER.
 
 ---
 
@@ -55,12 +63,41 @@ Code comments still name documents that no longer exist (`Dev_Plan.md`, `Handoff
 ## Running it
 
 Open `project.godot` in **Godot 4.7** and press **F5** → **Start** → **Local Match** for the
-single-PC four-unit flow.
+single-PC flow: **one human unit, three bots**, with a switcher for which unit is yours.
 
-- **P1** — WASD, Space bump, Shift sprint, Ctrl dash, Q special
-- **P2** — arrows, Enter bump, End dash, Right Shift special
-- **Tab / F1–F4 / Shift+F1–F4 / F5 / F6** — the debug switcher, to drive any of the four units
+| Key | Action | |
+|---|---|---|
+| **WASD** | move | |
+| **Mouse** | look, and aim the throw | |
+| **Space** | `jump` | as a loose tsinelas, **hold** to charge the self-launch |
+| **Shift** | `sprint` | costs stamina |
+| **Ctrl** | `guard_dash` | Can-Dash · Flick Dash |
+| **F** | `bump` | Person's instant melee · **Can-Smash** as a lata · **Ground Smash** as an airborne tsinelas · press to self-right when downed |
+| **E** *or* **LMB** | `grab` | pick up the tsinelas · **hold** beside your own downed lata for the reset channel |
+| **Q** *or* **LMB / RMB** | `special_ability` | charge the throw while carrying · **charge the bump** empty-handed · roster special as a lata |
+| **R** | `ready_up` | before the first round |
+| **Esc** | pause | |
+
+- **Tab / F1–F4 / F6** — the debug switcher, to choose which of the four units you drive
 - All bindings are rebindable in **Settings**
+
+> ⚠️ **This table is the `[input]` block of `project.godot`, read on 2026-07-31, and three earlier
+> claims here were wrong.** **There is no P2 binding set** — the file defines exactly eleven
+> actions and not one of them is per-player. 🧑 2026-07-31: *"theres no p2 at all — only one
+> settings bcz back then ppl could play on one pc but now its local multiplayer not same pc."*
+> **The second seat was removed when the project moved from same-PC to LAN**, and the
+> "arrows / Enter / End / Right Shift" row simply outlived it. The switcher's **second slot went
+> with it** (`debug_player_switcher.gd`: *"Shift is no longer read at all… solo is now the only
+> mode"*), which retires `Shift+F1–F4` and `F5`. And **Space is `jump`, not `bump`** — bump moved
+> to `F` on 2026-07-30 after `input_probe` caught one press doing both.
+>
+> **Two people on one keyboard is not a supported mode and is not coming back.** Two players means
+> two machines on a LAN. Rebinding in **Settings** is therefore one profile, not two, and that is
+> the design rather than a limitation.
+>
+> ⚠️ **`LMB` is bound to BOTH `grab` and `special_ability`** in `project.godot`. That is recorded
+> here as an observation, not a decision — one left-click can fire both actions. `scripts/ui/**`
+> is 🖥️ `build ux`'s and the conflict is filed on its checklist.
 
 **LAN:** **Host Game** on one machine, **Join** with the host's local IP on the others. To test on
 one PC, use **Debug → Run Multiple Instances → 2** with per-instance arguments `--host` and
