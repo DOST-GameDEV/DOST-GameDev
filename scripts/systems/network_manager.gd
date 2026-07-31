@@ -113,14 +113,14 @@ var peer_characters: Dictionary = {} # peer_id -> {character, can, slipper}
 ## What THIS process picked, published to the host on connect. Snapshotted at
 ## connect time rather than read live, so a menu the player wanders back into
 ## mid-connection cannot change what the host was already told.
-var local_picks: Dictionary = {"character": -1, "can": -1, "slipper": -1}
+var local_picks: Dictionary = {"character": -1, "can": -1, "slipper": -1, "name": ""}
 
 ## What `peer_id` picked, or all -1 if it never said. Host-side lookup so main.gd
 ## does not have to know this dictionary exists, mirroring how it reaches tokens
 ## through `peer_tokens` rather than through the wire format.
 func picks_for(peer_id: int) -> Dictionary:
 	return peer_characters.get(peer_id,
-		{"character": -1, "can": -1, "slipper": -1, "spectator": 0})
+		{"character": -1, "can": -1, "slipper": -1, "spectator": 0, "name": ""})
 
 ## Whether `peer_id` joined to WATCH rather than to play. Host-side, read by
 ## `main.gd::_spawn_player` (which skips them entirely) and by
@@ -207,6 +207,11 @@ func _local_picks() -> Dictionary:
 		"character": GameLaunch.character_index(),
 		"can": GameLaunch.can_index(),
 		"slipper": GameLaunch.slipper_index(),
+		# ⚠️ THE NAME RIDES THE SAME PACKET, for the same reason spectating does: it
+		# answers "who is this peer" and the host needs it BEFORE it spawns anybody. A
+		# separate RPC would open the window where the host has seated a player it
+		# cannot yet label.
+		"name": GameLaunch.player_name(),
 		# ⚠️ SPECTATING RIDES THE PICKS PACKET RATHER THAN GETTING AN RPC OF ITS OWN.
 		# It is answered by the same question the three picks answer — "who is this peer,
 		# and what should the host build for them" — and it has to be known BEFORE the
@@ -449,6 +454,11 @@ func _rpc_identify(token: String, picks: Dictionary = {}) -> void:
 		# default: an unknown peer that is silently never spawned would be a black screen
 		# with no error, which is the worst failure this could have.
 		"spectator": 1 if int(picks.get("spectator", 0)) != 0 else 0,
+		# ⚠️ SANITISED HERE, ON THE HOST, ON ARRIVAL. Same rule as the three indices
+		# above — the sender proposes, the host decides. This string is drawn on every
+		# peer's scoreboard and on a 3D label in the world, so an untrimmed one from a
+		# careless (or hostile) client would be everybody's problem, not just its own.
+		"name": SettingsManagerScript.sanitise_name(String(picks.get("name", ""))),
 	}
 	if match_in_progress:
 		_rpc_route_to_running_match.rpc_id(peer_id)

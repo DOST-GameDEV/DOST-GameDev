@@ -143,6 +143,17 @@ enum State { NORMAL, STAGGERED, DOWNED }
 @export var player_slot: int = 0
 @export_range(1, 4, 1) var player_id: int = 1
 
+## ⚠️ REPLICATED, AND EMPTY IS A REAL VALUE. What this player calls themselves, from
+## the Settings screen. Empty means "never set one", and every reader falls back to
+## `display_name()` rather than printing a blank row — which is why nothing that
+## draws a name has to know whether one exists.
+@export var player_name: String = ""
+
+## The name to actually draw. One function, so the scoreboard, the 3D nameplate, the
+## YOU card and every toast cannot disagree about what an unnamed player is called.
+func display_name() -> String:
+	return player_name if player_name != "" else "P%d" % [player_slot + 1]
+
 ## Roster pick, for the model and the traits. -1 until a pick arrives.
 var character_index: int = -1
 

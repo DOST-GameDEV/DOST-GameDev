@@ -94,6 +94,12 @@ var selected_character: StringName = &"berto"
 ## Roster index for `selected_character`, or 0 if the id is unknown — which is
 ## what a preference saved by a newer build looks like to an older one. Falls
 ## back to the signed-off Person rather than to nothing.
+## The name this peer plays under, straight from Settings. Exposed here rather than
+## read from `SettingsManager` at each call site so the lobby, the spawn path and the
+## HUD all take it from the same place a roster pick comes from.
+func player_name() -> String:
+	return SettingsManager.player_name
+
 func character_index() -> int:
 	var index := CharacterRoster.index_of(selected_character)
 	return index if index >= 0 else 0

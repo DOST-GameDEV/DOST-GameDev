@@ -23,6 +23,9 @@ class_name SettingsManagerScript
 ## duplicate hardcoded list of the original keys.
 
 signal binding_changed(action: String)
+## Fires when the player renames themselves, so every screen showing a name can
+## re-read it without polling.
+signal player_name_changed(new_name: String)
 
 const SETTINGS_PATH: String = "user://settings.cfg"
 const SETTINGS_SECTION: String = "input"
@@ -314,6 +317,38 @@ func reset_all_to_default() -> void:
 	for action in REBINDABLE_ACTIONS:
 		reset_action_to_default(action)
 
+## ---------------------------------------------------------------------------
+## THE PLAYER'S NAME. 🧑 2026-07-31: *"add the option to change name in settings so
+## that P1 is an actual username"*.
+##
+## ⚠️ IT IS SANITISED ON THE WAY IN, NOT ON THE WAY OUT. This string is drawn on a
+## scoreboard, on a 3D nameplate and in toasts, and it arrives over the wire from
+## another peer — so it is trimmed and length-capped ONCE, here, rather than at each
+## of the places that draw it. A name that is empty after trimming falls back to the
+## seat label, which is why nothing downstream needs a null check.
+const PLAYER_NAME_MAX: int = 14
+const DEFAULT_PLAYER_NAME: String = ""
+
+var player_name: String = DEFAULT_PLAYER_NAME
+
+static func sanitise_name(raw: String) -> String:
+	var clean := raw.strip_edges()
+	# One line, one row on a scoreboard: newlines and tabs would break the layout
+	# of a control that has no business re-wrapping.
+	clean = clean.replace("\n", " ").replace("\t", " ").replace("\r", " ")
+	if clean.length() > PLAYER_NAME_MAX:
+		clean = clean.substr(0, PLAYER_NAME_MAX)
+	return clean
+
+func set_player_name(value: String, persist: bool = true) -> void:
+	var clean := sanitise_name(value)
+	if clean == player_name:
+		return
+	player_name = clean
+	if persist:
+		_save()
+	player_name_changed.emit(player_name)
+
 func _save() -> void:
 	var config := ConfigFile.new()
 	# Load first so we don't clobber other sections/keys some later feature
@@ -327,6 +362,7 @@ func _save() -> void:
 	config.set_value(SETTINGS_SECTION_AUDIO, "sfx_volume", sfx_volume)
 	config.set_value(SETTINGS_SECTION_AUDIO, "music_volume", music_volume)
 	config.set_value(SETTINGS_SECTION_MATCH, "ai_difficulty", ai_difficulty)
+	config.set_value(SETTINGS_SECTION_MATCH, "player_name", player_name)
 	var err := config.save(SETTINGS_PATH)
 	if err != OK:
 		push_warning("SettingsManager: failed to save %s (error %d)" % [SETTINGS_PATH, err])
@@ -427,3 +463,5 @@ func _load_and_apply() -> void:
 	# AIController. `persist` false: loading is not a change worth writing back.
 	set_ai_difficulty(int(config.get_value(SETTINGS_SECTION_MATCH, "ai_difficulty",
 		DEFAULT_DIFFICULTY)), false)
+	set_player_name(String(config.get_value(SETTINGS_SECTION_MATCH, "player_name",
+		DEFAULT_PLAYER_NAME)), false)

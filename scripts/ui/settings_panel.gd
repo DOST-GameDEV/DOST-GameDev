@@ -50,6 +50,61 @@ func _ready() -> void:
 	sensitivity_slider.value_changed.connect(_on_sensitivity_changed)
 	invert_y_check.toggled.connect(SettingsManager.set_invert_y)
 	_init_volume_rows()
+	_build_name_row()
+
+## ---------------------------------------------------------------------------
+## THE PLAYER NAME ROW. 🧑 2026-07-31: *"add the option to change name in settings
+## so that P1 is an actual username"*.
+##
+## ⚠️ BUILT IN CODE, AT THE TOP OF THE BINDINGS LIST. `SettingsPanel.tscn` is the UI
+## lane's file and this is a mechanics-and-UX commit; adding the row here keeps the
+## scene theirs to restructure while the control still exists and still works. It is
+## first in the list on purpose — it is the only row that is about WHO you are rather
+## than about how the game reads your hardware.
+##
+## ⚠️ COMMITTED ON `text_submitted` AND ON FOCUS LOSS, NOT ON EVERY KEYSTROKE.
+## `SettingsManager.set_player_name()` writes `settings.cfg`, and saving a config
+## file once per typed character is a real cost for a control the player is holding
+## down backspace in.
+## ---------------------------------------------------------------------------
+func _build_name_row() -> void:
+	if bindings_list.has_node("PlayerNameRow"):
+		return
+	var row := HBoxContainer.new()
+	row.name = "PlayerNameRow"
+	row.add_theme_constant_override("separation", 12)
+	var label := Label.new()
+	label.text = "Player name"
+	label.custom_minimum_size = Vector2(220, 0)
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	row.add_child(label)
+	var field := LineEdit.new()
+	field.name = "PlayerNameField"
+	field.text = SettingsManager.player_name
+	# Empty is legal and means "use the seat label", so the placeholder shows what
+	# the player will be called if they leave it alone rather than nagging them.
+	field.placeholder_text = "P1"
+	field.max_length = SettingsManagerScript.PLAYER_NAME_MAX
+	field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	field.custom_minimum_size = Vector2(220, 0)
+	row.add_child(field)
+	bindings_list.add_child(row)
+	bindings_list.move_child(row, 0)
+	field.text_submitted.connect(_on_player_name_submitted)
+	field.focus_exited.connect(func() -> void: _on_player_name_submitted(field.text))
+
+func _on_player_name_submitted(value: String) -> void:
+	SettingsManager.set_player_name(value)
+	AudioManager.play("ui_click")
+	# ⚠️ APPLIED TO THE LIVE CHARACTER TOO, NOT JUST SAVED. This panel is reachable
+	# from the in-match pause menu, and a rename that only took effect on the next
+	# launch would read as the control not working. `player_name` is a replicated
+	# property, so writing it on the seat this peer has authority over is what carries
+	# it to the other three scoreboards.
+	for node in RoundManager.players():
+		var who := node as CharacterBase
+		if who != null and who.is_multiplayer_authority() and not who.is_ai_driven():
+			who.player_name = SettingsManager.player_name
 
 func _on_sensitivity_changed(value: float) -> void:
 	SettingsManager.set_mouse_sensitivity(value)

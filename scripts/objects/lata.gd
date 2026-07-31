@@ -180,3 +180,48 @@ func adopt_state(now_upright: bool, where: Vector3) -> void:
 		is_upright = now_upright
 		_apply_upright_visual(now_upright, false)
 		upright_changed.emit(now_upright)
+
+## ---------------------------------------------------------------------------
+## SKINS. The character screen's LATA tab picks one of these, and this is what
+## makes that pick a real choice rather than a dead control.
+##
+## ⚠️ THE HOST'S PICK WINS AND IS BROADCAST. There is one lata in the world and
+## all four players look at it, so it cannot wear four different skins. `main.gd`
+## pushes the host's index at every round start; in Single Player that is your own.
+##
+## ⚠️ THE MATERIAL IS DUPLICATED PER MESH BEFORE IT IS WRITTEN. An imported `.glb`
+## or `.obj` shares one `Material` resource across every instance of that mesh in
+## the project — writing the tint straight onto it would recolour the preview on the
+## character screen, and every other copy in the scene, at the same time.
+## ---------------------------------------------------------------------------
+
+## Which roster entry this prop is wearing. -1 is "stock, never picked".
+var skin_index: int = -1
+
+func apply_skin(index: int) -> void:
+	if index < 0 or index == skin_index:
+		return
+	skin_index = index
+	var entry: Dictionary = CharacterRoster.can_at(index)
+	if not entry.has("tint"):
+		return
+	_tint_meshes(entry["tint"])
+
+func _tint_meshes(tint: Color) -> void:
+	var visual := get_node_or_null("Visual")
+	if visual == null:
+		return
+	for node in visual.find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		for surface in range(mesh.get_surface_override_material_count()):
+			var material := mesh.get_active_material(surface)
+			if material == null:
+				continue
+			var copy := material.duplicate()
+			if copy is StandardMaterial3D:
+				(copy as StandardMaterial3D).albedo_color = tint
+			elif copy is ShaderMaterial:
+				# The toon pass reads `albedo_color` as the actual colour, so a
+				# tinted prop still flashes correctly and returns to its tint.
+				(copy as ShaderMaterial).set_shader_parameter("albedo_color", tint)
+			mesh.set_surface_override_material(surface, copy)
