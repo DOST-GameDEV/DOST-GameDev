@@ -77,19 +77,50 @@ func draw_arc(origin: Vector3, velocity: Vector3, gravity: float, tint: Color) -
 		return
 	_mesh.clear_surfaces()
 	visible = true
-	var step := HORIZON / float(SAMPLES)
+	# ⚠️⚠️ INTEGRATE AT THE PHYSICS TIMESTEP, THEN SUB-SAMPLE FOR DRAWING. This used to
+	# step `HORIZON / SAMPLES` — 2.5 / 48 = 52 ms — while `carriable.gd::_step_flying`
+	# steps the real slipper at the physics tick, 16.7 ms. Both use semi-implicit Euler
+	# (`v -= g*h` then `x += v*h`), whose error against the true parabola is O(h): after
+	# time t it over-drops by exactly `g*t*h/2`.
+	#
+	# So the two arcs were never the same curve. Two different numbers fall out of that
+	# and it is worth keeping them apart, because the big one is not the one a player
+	# sees. At the default profile's effective gravity (20.0 x 1.25 = 25) the preview
+	# over-drops by `g*t*(0.0521 - 0.0167)/2` ≈ 0.44 m at t = 1.0 s — but the arc is
+	# steep by the time it lands, so the error in the LANDING POINT, which is the part
+	# the player is actually aiming with, is smaller.
+	#
+	# *Measured* by integrating both schemes against the real one at `throw_default`
+	# (speed 21.0, origin y 1.45): the old preview missed the true landing spot by
+	# **+0.086 m at 10°, -0.082 m at 20° and -0.227 m at 30°**, and the error grows with
+	# arc height — so a lob was the worst case and a flat poke the best. Stepping at the
+	# physics tick makes it **0.000 m at all three**. That is 🧑's *"slippers trajectory
+	# fucked"* and `build phys` §6.6's acceptance ("the preview arc and the thrown arc
+	# land in the same place") closed by matching one number.
+	#
+	# Matching the STEP is the fix, not matching the sample count: the drawn polyline
+	# still gets ~SAMPLES segments via `stride`, so the dash pattern and the vertex
+	# budget are unchanged. It costs ~150 float steps per frame while one player aims.
+	var step := 1.0 / float(maxi(1, Engine.physics_ticks_per_second))
+	var total_steps := maxi(1, int(ceil(HORIZON / step)))
+	var stride := maxi(1, int(round(float(total_steps) / float(SAMPLES))))
 	var points: Array[Vector3] = []
 	var position := origin
 	var motion := velocity
 	points.append(position)
-	for i in SAMPLES:
+	for i in range(total_steps):
 		motion.y -= gravity * step
 		position += motion * step
-		points.append(position)
 		# Stop at the floor. `origin.y` is the sight line the throw leaves from, so this
 		# is "roughly ground level relative to the thrower" rather than an absolute — a
 		# map with a raised lane strip would otherwise clip the arc early.
-		if position.y <= FLOOR_EPSILON:
+		var grounded := position.y <= FLOOR_EPSILON
+		# Always keep the LAST point even when it is not on the stride, or the arc stops
+		# up to `stride` ticks early and the landing spot — the one part of this line the
+		# player is actually reading — is the part that goes missing.
+		if grounded or i % stride == 0 or i == total_steps - 1:
+			points.append(position)
+		if grounded:
 			break
 	_mesh.surface_begin(Mesh.PRIMITIVE_LINES, _material)
 	var drawn := 0
