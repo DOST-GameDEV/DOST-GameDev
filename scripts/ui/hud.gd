@@ -393,8 +393,11 @@ func enter_spectator_mode(camera: SpectatorCamera) -> void:
 	# The clean feed is only discoverable if it is written down where the operator is
 	# already reading. Appended here rather than inside `SpectatorCamera.controls_text()`
 	# because that static describes the CAMERA's keys and this one is the HUD's.
-	legend.text += "   ·   H clean feed"
-	set_process_unhandled_input(true)
+	# ⚠️ ASKED, NOT HARDCODED. `clean_feed` is rebindable in Settings, so a literal "H"
+	# here would start lying the moment anybody changed it — and this legend is the only
+	# place the control is advertised on screen.
+	legend.text += "   ·   %s clean feed" % SettingsManager.get_binding_display_name("clean_feed")
+	set_process_input(true)
 
 var _spectating: bool = false
 var _spectator_camera: SpectatorCamera = null
@@ -421,15 +424,38 @@ var _spectator_round: Label = null
 ## already hidden the YOU card, the crosshair, the lata card and the ready prompt —
 ## blanket-showing every child on the way back would resurrect exactly the gameplay
 ## chrome a spectator must not have. Prior visibility is recorded on the way out.
-const CLEAN_FEED_KEY: Key = KEY_H
+## ⚠️ AN ACTION, NOT A KEYCODE — and the first version of this was the keycode.
+## It shipped comparing `event.keycode` against a hardcoded `KEY_H`, which meant the one
+## control the camera operator needs was not in the InputMap, not in the settings panel,
+## not rebindable, and invisible to `SettingsManager`'s conflict check — the same class
+## of thing the REACHABILITY RULE calls "not an entry point". It is `clean_feed` now,
+## default H, and it sits in `REBINDABLE_ACTIONS` beside every other control.
+##
+## ⚠️ `keycode` -> `physical_keycode` came free with that. The raw check used `keycode`,
+## which is the LAYOUT symbol: on AZERTY or QWERTZ the key that produces "H" is not in
+## the same place, and `SettingsManager` stores `physical_keycode` everywhere else.
+## `is_action_pressed()` goes through the InputMap and inherits that.
 var _clean_feed: bool = false
 var _clean_feed_restore: Dictionary = {}
 
-func _unhandled_input(event: InputEvent) -> void:
+## ⚠️⚠️ `_input`, NOT `_unhandled_input`, AND THE REASON IS MEASURED — BY ANOTHER LANE.
+## `spectator_camera.gd` moved `Tab`/`F`/`V` to `_input` after `spec_probe --solo` caught
+## Tab never arriving at all: the Viewport consumes input during the GUI phase, which runs
+## BEFORE `_unhandled_input`, and **this HUD is exactly the "live CanvasLayer of Controls"
+## that note blames**. `H` is not a focus-navigation key so it would *probably* have
+## survived `_unhandled_input` — but "probably" is not what you want under the one control
+## a camera operator reaches for mid-take, and the failure mode is silent.
+##
+## ⚠️ NARROW ON PURPOSE, same discipline as that file: the `_spectating` gate is tested
+## first and the event is consumed ONLY when the action actually matches, so nothing else
+## on screen — the pause toggle above all — ever loses an event to this.
+func _input(event: InputEvent) -> void:
 	if not _spectating:
 		return
-	var key := event as InputEventKey
-	if key == null or not key.pressed or key.echo or key.keycode != CLEAN_FEED_KEY:
+	# `allow_echo` defaults false, which is the guard the first version spelled out by
+	# hand. Modifiers are deliberately not matched exactly — an operator with a finger
+	# already on Shift should still get their clean plate.
+	if not event.is_action_pressed("clean_feed"):
 		return
 	get_viewport().set_input_as_handled()
 	set_clean_feed(not _clean_feed)
