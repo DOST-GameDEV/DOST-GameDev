@@ -38,9 +38,29 @@ const SETTINGS_SECTION: String = "input"
 ## rebound keys silently gets the defaults back once. Harmless, and cheaper than
 ## a migration for a pre-release build, but it IS a real (one-time) loss of the
 ## player's settings rather than a no-op.
+## ⚠️ `clean_feed` IS IN HERE BECAUSE A KEY NOBODY CAN SEE OR CHANGE IS NOT A CONTROL.
+## It hides the whole HUD while spectating, for the trailer and the demo capture, and it
+## shipped 2026-07-31 as a hardcoded `KEY_H` compared straight off `event.keycode` — no
+## InputMap action, no settings row, no way to rebind it, and invisible to the conflict
+## check that stops two actions sharing a key. Every other control in the game is an
+## action; this one is now too. Default H.
+## ⚠️⚠️ `grab` AND `ready_up` WERE IN THE INPUTMAP AND NOT IN THIS LIST, WHICH MADE THEM
+## UNREBINDABLE GAMEPLAY CONTROLS. Swept 2026-07-31 by comparing `project.godot`'s
+## `[input]` block against this array: every action was present except those two.
+##
+## `grab` is not a convenience key. It is **pick up the tsinelas** and it is **hold for
+## `RESET_CHANNEL_TIME` beside your own lata** — the taya's only answer to a stranded lata
+## (`Design.md` §5.2), i.e. the defence's entire counterplay to the countdown that decides
+## every round. A player who cannot reach `E` could not perform the defence's one verb.
+## `ready_up` starts the round and a player who cannot press it cannot start a match.
+##
+## ⚠️ `grab` ALSO CARRIES A MOUSE BINDING (LMB) and rebinding does not disturb it —
+## `_replace_key_binding()` erases only `InputEventKey` events. Note the LMB half is
+## double-bound with `special_ability`, which is a separate open question on §4.19.
 const REBINDABLE_ACTIONS: Array[String] = [
 	"move_left", "move_right", "move_up", "move_down",
 	"bump", "guard_dash", "special_ability", "jump", "sprint",
+	"grab", "ready_up", "clean_feed",
 ]
 
 ## Human-readable labels for the panel — action string -> display text.
@@ -56,6 +76,14 @@ const ACTION_LABELS: Dictionary = {
 	"move_up": "Move Up", "move_down": "Move Down",
 	"bump": "Bump / Smash", "guard_dash": "Dash",
 	"special_ability": "Throw / Bump Meter", "jump": "Jump", "sprint": "Sprint",
+	# Named for both jobs, because the second one is the one a defender needs and the
+	# one nobody guesses from the word "grab": it is also the hold that carries a
+	# displaced lata home (`Design.md` §5.2).
+	"grab": "Grab / Carry Lata Home",
+	"ready_up": "Ready Up",
+	# Named for what it DOES to the recording, not for what it hides — the operator
+	# reading this row is looking for the setting that gives them a clean plate.
+	"clean_feed": "Hide HUD (Spectator)",
 }
 
 ## action -> physical_keycode captured from the project's InputMap defaults,

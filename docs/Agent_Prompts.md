@@ -417,7 +417,7 @@ do not re-open it.
 - [ ] 4.20 **`Hud.tscn` authors three score pips per team and the match is now first to TWO sets.** §8.1 replaced best-of-5 single rounds with paired sets (`MatchManagerScript.SETS_NEEDED` = 2). `hud.gd::_trim_pips()` HIDES the third pip at runtime because the scene node is yours — the node itself should go with the layout and focus pass. The same commit corrected `set_round_display()`'s `"Round %d / 5"`, a literal best-of-5 string, to `SET n · ROUND n/2`. ⚠️ **Both are on camera for the entire demo video**, which is why they were corrected in your file rather than filed and left wrong
 - [ ] 4.21 **`hud.gd::set_dents()` and its `DentPipsBox` / `DentTextLabel` are unreachable code now.** §8.2 deleted `dents`, `MAX_DENTS` and `dents_changed`, and with them `main.gd`'s only call into it. Measured: `grep -rn "set_dents"` returns the definition and nothing else. The function, the two `@onready` refs and the two scene nodes are all dead; left in place because `hud.gd` is yours
 - [ ] 4.22 **`tutorial.gd` now teaches a format and a mode that do not exist. This is §8.5, filed rather than edited because §8.5 forbids this lane from touching the file.** Four rows, on top of §4.10's two and §4.19's four: **(a)** any "BEST OF 5" / first-to-3 framing — the match is **first to 2 SETS**, a set being two rounds in which both teams attack exactly once (`Design.md` §7·a); **(b)** "SWAP EVERY ROUND" is no longer the whole rule — the swap is a schedule derived from `(set, round_in_set)`, and *which team attacks first alternates by set*; **(c)** the **DENTS** row and anything about the host picking a mode — Option A is deleted (`Design.md` §7.1); **(d)** the HOW YOU WIN page's two-mode structure collapses to one ruleset — attackers win on the countdown, a direct Ground Smash, or `FALL_LIMIT` 4; defenders win only on the 90 s clock. ⚠️ **§4.17 depends on this** — do not build a playable range around a deleted mode
-- [ ] 4.23 **The spectator has a clean feed on `H` and it is a `hud.gd` behaviour you now own.** 🧑 asked for it by name (*"allow option to remove everything in screen to js do record the game"*) and then scoped it (*"the remove hud is only for spectator okay, no one else"*). Built: `set_clean_feed()` / `is_clean_feed()`, bound to `H` in `_unhandled_input`, **gated on `_spectating`** so a player in a live match cannot hide their own timer or meters. It hides the HUD's CHILDREN rather than the root — input delivery to a hidden `Control` is not worth betting a recording session on — and restores prior visibility so the gameplay chrome `enter_spectator_mode()` stripped does not come back with it. ⚠️ **This overlaps §4.16 and largely closes it**; what is left there is your call on whether the nameplates and crosshair (which live outside `hud.gd`) should go with it
+- [ ] 4.23 **The spectator has a clean feed on the `clean_feed` action (default `H`) and it is a `hud.gd` behaviour you now own.** 🧑 asked for it by name (*"allow option to remove everything in screen to js do record the game"*) and then scoped it (*"the remove hud is only for spectator okay, no one else"*). Built: `set_clean_feed()` / `is_clean_feed()`, fired from `_unhandled_input` via `is_action_pressed("clean_feed")`, **gated on `_spectating`** so a player in a live match cannot hide their own timer or meters. ⚠️ **It is a real InputMap action and a Settings row, because the first version was not** — it shipped as a hardcoded `KEY_H` read straight off `event.keycode`, which is the shape the REACHABILITY RULE calls "not an entry point": no InputMap entry, no settings row, unrebindable, and invisible to `SettingsManager`'s two-actions-one-key conflict check. It is now in `REBINDABLE_ACTIONS` with the label **"Hide HUD (Spectator)"**, and the spectator legend asks `get_binding_display_name()` rather than printing a literal "H", so a rebind cannot make the on-screen hint lie. The bindings list is inside a `ScrollContainer`, so the tenth row scrolls rather than overflowing — **but nobody has rendered that panel since the row was added**, which is yours to look at. It hides the HUD's CHILDREN rather than the root — input delivery to a hidden `Control` is not worth betting a recording session on — and restores prior visibility so the gameplay chrome `enter_spectator_mode()` stripped does not come back with it. ⚠️ **This overlaps §4.16 and largely closes it**; what is left there is your call on whether the nameplates and crosshair (which live outside `hud.gd`) should go with it
 
 ### 5 · 🎨 `build model` — Models, classes and names *(Opus 5 · medium)*
 
@@ -1136,6 +1136,58 @@ compression**, because a headless run has no rendering device — it rewrote 16 
 and would have degraded every texture in the build for the whole team. `docs/README.md` warns
 about `--headless` for *captures*; it applies to `--import` too. Reverted, and the commits are
 clean of it.
+
+**THE CLEAN FEED IS `clean_feed`, DEFAULT `H`, AND IT IS IN SETTINGS — which reverses a
+decision 👋 `build spec` wrote down, so here is why.** 🧑 asked *"whats the only control for
+spectator hud off — is that in settings"*, then *"fix it then gang"*. It shipped an hour
+earlier as a hardcoded `KEY_H` compared straight off `event.keycode`: no InputMap action, no
+settings row, unrebindable, invisible to `SettingsManager`'s two-actions-one-key conflict
+check, and reading the LAYOUT symbol rather than the physical key (so it moves on AZERTY).
+`spectator_camera.gd` argues explicitly against actions for spectator-only keys — *"two more
+rows in the rebind panel, two more `input_probe` conflict checks, and a `settings.cfg`
+migration ... for a mode with no gameplay stake"*. **One third of that is not true**:
+`_load_bindings()` reads `config.has_section_key(SECTION, action)` per action, so an existing
+`settings.cfg` with nine keys simply falls through to the default for the tenth — there is no
+migration. The conflict check passes (72 is unused). The real cost is one extra rebind row,
+which is precisely what was asked for. Label: **"Hide HUD (Spectator)"**. The on-screen legend
+asks `get_binding_display_name()` instead of printing "H", so a rebind cannot make the hint lie.
+
+**But I kept that lane's MEASURED lesson while overruling its preference:** the handler is
+`_input`, not `_unhandled_input`, because `spec_probe --solo` caught `Tab` never arriving —
+the Viewport consumes input in the GUI phase first, and this HUD is exactly the "live
+CanvasLayer of Controls" that note blames. `H` is not a focus key so it would probably have
+survived; "probably" is the wrong standard for the one control an operator reaches for
+mid-take, and the failure is silent. It is gated on `_spectating` before anything else and
+consumes the event only on a match.
+
+**A SWEEP FOR OTHER UNEDITABLE CONTROLS FOUND TWO, AND BOTH ARE GAMEPLAY.** 🧑 asked
+*"check for uneditable settings in code base and add too."* Comparing `project.godot`'s
+`[input]` block against `REBINDABLE_ACTIONS`, every action was present **except `grab` and
+`ready_up`** — neither had a settings row, so neither could be rebound. `grab` is not a
+convenience: it is pick-up AND the hold that carries a displaced lata home (`Design.md`
+§5.2), i.e. the defence's only counterplay to the countdown that decides every round. Both
+added; `input_probe` reports *"conflicts : none — every physical input drives exactly one
+action"* across all twelve. Rebinding `grab` does not disturb its LMB half —
+`_replace_key_binding()` erases only `InputEventKey` events. The non-key settings were
+already complete (sensitivity, invert-Y, three volumes); `ai_difficulty` is deliberately
+per-match and lives on the setup screen.
+
+⚠️ **AND ONE I DELIBERATELY DID NOT ADD, because the sweep is what showed why 👋 `build spec`
+was right.** `spectator_camera.gd`'s `Tab` / `V` / `F` are raw keycodes on purpose. Making
+them rebindable actions looked consistent until the collision showed up: **`F` is already
+`bump` (physical 70)**, so a `spectate_free` action would trip the very conflict check this
+lane just used as evidence, and forcing one of the two off its documented key to satisfy a
+checker is a worse outcome than a spectator-only key that is not rebindable. `Tab` is worse
+still — it is Godot's built-in `ui_focus_next`, which is exactly why that file bypasses the
+GUI phase with `_input`. Left alone, and recorded here so the next lane does not "fix" it.
+
+**It works on every peer, and that was checked rather than assumed.** `_enter_spectator_mode()`
+has three call sites — the solo branch, the CLIENT branch at `main.gd`'s network setup, and
+the host's own spectator seat in `_spawn_player`. All three call `hud.enter_spectator_mode()`,
+which is what sets `_spectating`. The toggle is deliberately per-peer and never replicated:
+each operator hides their own overlay, which is what a second camera on the same LAN needs.
+⚠️ **Still unrendered** — nobody has looked at the settings panel with a tenth row in it, and
+nobody has watched the feed toggle. Filed on 🖥️ 4.23.
 
 **Handed on:** 🖥️ 4.20–4.23 · 🎨 5.11 · 🥊 6.11 · ⚖️ 7.18–7.20. The AI dodge
 report went to ⚖️ 7.19 on 🧑's explicit instruction (*"give all AI problems to the AI lane"*).
