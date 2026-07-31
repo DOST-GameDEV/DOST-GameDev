@@ -7,8 +7,8 @@ deleted, not archived.
 
 **What this branch is.** `feature/objects-overhaul` was built in one uncontrolled session.
 The *code* it produced is good and is carried here in full. The *process* is discarded and
-replaced by the `build xxx` lanes below, run in order — **seven at the time of writing, ten since
-the 2026-07-31 rubric pass added §8, §9 and §10.** Read § SALVAGE before
+replaced by the `build xxx` lanes below, run in order — **seven at the time of writing; eleven since
+the 2026-07-31 rubric pass added §8, §9 and §10, and the voice work added §11.** Read § SALVAGE before
 you assume anything is unbuilt: most of the checklist is already written and almost none of
 it is measured.
 
@@ -194,14 +194,15 @@ of it. **Run by the `Run` column; tick by the `§` column.**
 |---|---|---|---|---|---|---|
 | **1 ✅** | §1 | 🎮 **`build mech`** | **Opus 5 · high** | the rules of the game | Gameplay · Creativity | Deletes the defence's only win and replaces the whole win-condition set. Novel rule design under ambiguity, no lookup-able answer, and getting the feel wrong here costs the video. |
 | **2 ✅** | §2 | 👁️ **`build spec`** | **Sonnet 5 · high** | spectator, and the lobby toggle that reaches it | Esports · Game Feedback | **Pulled forward on human instruction — needed as soon as possible.** Split out of `build ux` because it depends on nothing else on the board and nothing depends on it. High, not medium: the seat and ready-gate exclusion is a cross-peer race, and "works solo" is exactly how it has failed so far. |
-| **3** | **§8** | 📋 **`build rules`** | **Opus 5 · high** | the match format, and deleting Option A | **Esports Potential** · Completeness | **New 2026-07-31, and it runs before any more code is written.** Inherits `build mech`'s files now that lane has committed. Opus and high because §8.1 is a format redesign with a fairness argument attached, not an edit — and because §8.2 is a deletion, which is the class of change that is easy to do 90% of. |
-| **4** | §3 | 💥 **`build abil`** | **Sonnet 5 · high** | the five object verbs | **Creativity and Innovation** | Exact radii, durations and host-side resolution against a spec that already exists. High, not medium: a shockwave that resolves on the wrong peer looks perfect solo and does nothing on LAN. |
-| **5** | §4 | 🖥️ **`build ux`** | **Sonnet 5 · high** | every other screen, the net teardown, the broadcast overlay | Gameplay · Esports · Completeness | Three of its items are races that only reproduce across peers. High because "it works on my machine" is the exact failure mode. **Grew two rubric items on 2026-07-31 — §4.15 and §4.16.** |
-| **6** | §5 | 🎨 **`build model`** | **Opus 5 · medium** | the lata and tsinelas classes, their models and their names | **Aesthetics · Graphics and Art** | Upgraded 2026-07-31: it now authors real geometry, sets the roster size and names it. *"Does this silhouette read as a sardine tin from across a street, and is that name right in Filipino?"* is taste and cultural specificity — the one thing Sonnet was picked for not needing. Medium, not high: the difficulty is judgement per object, not depth on any one. |
-| **7** | **§9** | 🔊 **`build sound`** | **Sonnet 5 · medium** | music, voice, and the mix | **Music and Sound Design 10%** | **New 2026-07-31.** The single worst-scoring category and the cheapest to fix: there is no music at all. Medium, not high — the work is breadth and taste over a system that already exists and already routes buses correctly. Runs after `build model` so the trailer's look and its sound are decided together. |
-| **8** | §6 | 🥊 **`build phys`** | **Sonnet 5 · high** | contact, knockback, ragdoll read | Gameplay · **Esports (spectator read)** | Executing against measured targets with a documented authority trap list. §6.3 and §6.8 are spectator-legibility items as much as physics ones — a crowd that cannot tell a fallen lata from a standing one cannot follow the round. |
-| **9** | §7 | ⚖️ **`build fair`** | **Opus 5 · xhigh** | every number, the AI | **Esports Potential** | **LAST OF THE BUILD LANES. ALWAYS.** The only lane allowed to move a shipped number, and the only one that can judge whether the objects are actually fun. Being wrong here costs the submission. It is also the only lane that can produce the one sentence no competing entry will have — see §7.15. |
-| **10** | **§10** | 📦 **`build ship`** | **Sonnet 5 · medium** | exports and the submission build | Completeness | **New 2026-07-31, and it is a checklist, not a design lane.** Runs after everything. Filed here rather than done early because an export preset is only true about the code that exists when it is written. |
+| **3** ⏸️ | **§11** | 🔊 **`build voice`** | **Sonnet 5 · medium** | the recording brief, and wiring the voice that comes back | **Music and Sound Design 10%** | **⏸️ PARKED — run it when the audio files actually land, and skip past it until then.** It sits at 3 because it is the only lane that blocks on **humans doing something in the physical world**, and recording takes calendar days no ordering can compress. ⚠️ **But its urgent half is already done**: `docs/HUMAN.md` was written 2026-07-31 and the team can record against it today without this lane running at all. What is left — the wiring — cannot start until there are files to wire. **So hand the team `HUMAN.md`, then run position 4 and keep going.** Medium: the hard part was the line list and the repetition problem, not the plumbing, which is nine lines of `audio_manager.gd`. |
+| **4** | **§8** | 📋 **`build rules`** | **Opus 5 · high** | the match format, and deleting Option A | **Esports Potential** · Completeness | **New 2026-07-31, and it runs before any more code is written.** Inherits `build mech`'s files now that lane has committed. Opus and high because §8.1 is a format redesign with a fairness argument attached, not an edit — and because §8.2 is a deletion, which is the class of change that is easy to do 90% of. |
+| **5** | §3 | 💥 **`build abil`** | **Sonnet 5 · high** | the five object verbs | **Creativity and Innovation** | Exact radii, durations and host-side resolution against a spec that already exists. High, not medium: a shockwave that resolves on the wrong peer looks perfect solo and does nothing on LAN. |
+| **6** | §4 | 🖥️ **`build ux`** | **Sonnet 5 · high** | every other screen, the net teardown, the broadcast overlay | Gameplay · Esports · Completeness | Three of its items are races that only reproduce across peers. High because "it works on my machine" is the exact failure mode. **Grew two rubric items on 2026-07-31 — §4.15 and §4.16.** |
+| **7** | §5 | 🎨 **`build model`** | **Opus 5 · medium** | the lata and tsinelas classes, their models and their names | **Aesthetics · Graphics and Art** | Upgraded 2026-07-31: it now authors real geometry, sets the roster size and names it. *"Does this silhouette read as a sardine tin from across a street, and is that name right in Filipino?"* is taste and cultural specificity — the one thing Sonnet was picked for not needing. Medium, not high: the difficulty is judgement per object, not depth on any one. |
+| **8** | **§9** | 🔊 **`build sound`** | **Sonnet 5 · medium** | music, voice, and the mix | **Music and Sound Design 10%** | **New 2026-07-31.** The single worst-scoring category and the cheapest to fix: there is no music at all. Medium, not high — the work is breadth and taste over a system that already exists and already routes buses correctly. Runs after `build model` so the trailer's look and its sound are decided together. |
+| **9** | §6 | 🥊 **`build phys`** | **Sonnet 5 · high** | contact, knockback, ragdoll read | Gameplay · **Esports (spectator read)** | Executing against measured targets with a documented authority trap list. §6.3 and §6.8 are spectator-legibility items as much as physics ones — a crowd that cannot tell a fallen lata from a standing one cannot follow the round. |
+| **10** | §7 | ⚖️ **`build fair`** | **Opus 5 · xhigh** | every number, the AI | **Esports Potential** | **LAST OF THE BUILD LANES. ALWAYS.** The only lane allowed to move a shipped number, and the only one that can judge whether the objects are actually fun. Being wrong here costs the submission. It is also the only lane that can produce the one sentence no competing entry will have — see §7.15. |
+| **11** | **§10** | 📦 **`build ship`** | **Sonnet 5 · medium** | exports and the submission build | Completeness | **New 2026-07-31, and it is a checklist, not a design lane.** Runs after everything. Filed here rather than done early because an export preset is only true about the code that exists when it is written. |
 
 ---
 
@@ -250,7 +251,8 @@ code ships **8.0 s**. `build abil` decides and records which, in `Design.md` §1
 | 🥊 `build phys` | `character_base.gd` movement/collision block · `carriable.gd` flight · `tools/phys_probe.gd` · `settle_probe.gd` · `aim_probe.gd` |
 | ⚖️ `build fair` | **any number in any file** · `systems/ai_controller.gd` · `tools/ai_probe.gd` · `hit_probe.gd` · `round_probe.gd` |
 | 📋 `build rules` | `systems/match_manager.gd` · `systems/round_manager.gd` · the dent/ring-out block of `character_base.gd` · `Design.md` §7 · the mode control in `ui/match_setup.gd` |
-| 🔊 `build sound` | `systems/audio_manager.gd` · `assets/audio/**` · `default_bus_layout.tres` · the audio rows of `ui/settings_panel.gd` |
+| 🔊 `build voice` | `docs/HUMAN.md` · `assets/audio/sfx/vo_*.wav` · the `SFX_NAMES` / `_NO_JITTER` / `_TRIM_DB` tables and the VO trigger sites · `systems/audio_manager.gd` **(first writer)** |
+| 🔊 `build sound` | `systems/audio_manager.gd` **(after `build voice`)** · `assets/audio/music/**` · the non-VO half of `assets/audio/**` · `default_bus_layout.tres` · the audio rows of `ui/settings_panel.gd` |
 | 📦 `build ship` | `export_presets.cfg` · `.gitignore` · the output paths of `tools/*_probe.gd` |
 
 **📋 `build rules` inherits 🎮 `build mech`'s row, and that is why it is a lane rather than an
@@ -261,9 +263,22 @@ section is a record. ⚠️ Its `character_base.gd` row is **only the dent and r
 §8.2 deletes; the movement and collision block is still `build phys`'s and the numbers are still
 `build fair`'s.
 
-**🔊 `build sound` owns files no lane has ever owned.** `audio_manager.gd` and `assets/audio/**`
-appear in nobody's row today, which is exactly how the project ended up with a `Music` bus and no
-music — a file with no owner gets no work. It reads `Design.md` and writes none of it.
+**🔊 The two audio lanes own files no lane has ever owned.** `audio_manager.gd` and
+`assets/audio/**` appear in nobody's row today, which is exactly how the project ended up with a
+`Music` bus and no music — a file with no owner gets no work. Neither lane writes `Design.md`.
+
+**`build voice` and `build sound` share `audio_manager.gd`, and the split is by run order, not by
+line number** — the same succession pattern `build spec` → `build ux` already uses for their four
+shared files. `build voice` runs at **3** and takes the file first: the `SFX_NAMES` rows for the
+voice clips, their `_NO_JITTER` exemptions, their `_TRIM_DB` entries, and the call sites that fire
+them. `build sound` runs at **8**, **reads `build voice`'s § LOG entry before it edits**, and takes
+everything else — the music bus, the stream table for the beds, the mix.
+
+⚠️ **`build voice` also fires from files it does not own** — a win callout has to be triggered from
+`round_manager.gd` (📋 `build rules`') and a menu stinger from `scripts/ui/**` (🖥️ `build ux`'s).
+**It does not edit them.** It exposes what it needs on `AudioManager`, and **files** the trigger
+onto the owning lane's § CHECKLIST, which is what § IF YOU FLAG IT, FILE IT is for. A voice line
+with no trigger is filed, not forced.
 
 `character_base.gd` is touched by three lanes. Sequential order is the lock: `build mech`
 writes it first and completely, `build phys` takes only the movement and collision block
@@ -394,7 +409,7 @@ do not re-open it.
 - [ ] 4.16 **§4.15 needs an OFF switch, and the human asked for it by name.** 🧑 2026-07-31: *"allow option to remove everything in screen to js do record the game bcz we only added spectator for the video record."* A **clean-feed toggle** that hides the entire overlay — broadcast bar, status stack, crosshair, nameplates, every element — leaving nothing but the rendered game. The trailer and the 3–5 minute demo video are both cut from this camera, and an overlay burnt into footage cannot be taken out later while a clean plate can always have graphics added over it. **Ship the clean feed as the state the operator can always get back to in one key**, and say in § LOG which key and where it is documented for whoever records. ⚠️ It is a `visible` sweep on `hud.gd`, which is yours — do **not** re-open `spectator_camera.gd` to add an input there; that file is `build spec`'s and closed
 - [ ] 4.17 **§4.10 is a correction and the tutorial needs more than correcting — this is the "easy to learn" half of the Gameplay 20%.** Screening asks for *"instructions, a tutorial, or onboarding so that new players can understand how to play"*, and nine pages of static text against eight verbs across four unit types is the weakest form that satisfies it. After §4.10's fixes, add a **playable range**: throw once, get bumped once, hold the 1.8 s channel to carry a lata home once. Three interactions, no scoring, skippable, reachable from the main menu beside TUTORIAL. It reuses the match scene and the bots wholesale. ⚠️ **It also depends on §8.2** — do not write a tutorial page for a mode that lane is deleting; read § CHECKLIST §8 before you touch `PAGES`
 - [ ] 4.19 **`LMB` is bound to two different actions at once, and `tutorial.gd`'s CONTROLS pages get a third and fourth thing wrong.** Read straight out of the `[input]` block of `project.godot` on 2026-07-31: **`grab` is `E` + LMB, and `special_ability` is `Q` + LMB + RMB** — so one left-click can fire both, which on an attacker standing over a loose tsinelas means "pick it up" and "start the throw charge" resolve off the same press. Nobody has watched what that actually does; it may be harmless ordering or it may be why a pickup sometimes eats a charge. **Decide it deliberately and record which action keeps LMB.** Separately, the tutorial's CONTROLS · MOVING page teaches *"SHIFT — Guard if you are a Can, dash-evade if you are a Tsinelas"* when `sprint` is Shift and `guard_dash` is **Ctrl**, and it teaches *"F — Bump: a light melee with a small stagger and no cooldown"* when `bump` on an object is **Can-Smash / Ground Smash** with an 8 s and a 12 s cooldown respectively. That is on top of §4.10's two errors, so the tutorial is now wrong in **four** places and every one of them is a control a judge would press
-- [ ] 4.18 **`match_setup.gd`'s round-mode control is `build rules`' to delete, and the screen around it is yours.** §8.2 removes Option A entirely; the setup screen then has a dead row and a focus order with a hole in it. Coordinate rather than collide: `build rules` runs at position **3**, well before you, so read its § LOG entry and lay the screen out for one ruleset
+- [ ] 4.18 **`match_setup.gd`'s round-mode control is `build rules`' to delete, and the screen around it is yours.** §8.2 removes Option A entirely; the setup screen then has a dead row and a focus order with a hole in it. Coordinate rather than collide: `build rules` runs at position **4**, well before you, so read its § LOG entry and lay the screen out for one ruleset
 
 ### 5 · 🎨 `build model` — Models, classes and names *(Opus 5 · medium)*
 
@@ -481,7 +496,7 @@ the game currently gets *wrong*, not things it merely lacks. Inherits `build mec
 - [ ] 8.1 **The match format hands one team a structural advantage and the tutorial denies it.** `match_manager.gd:32` ships `var team_a_is_can: bool = true` with **no coin flip**, roles swap every round, and `WINS_NEEDED = 3` over single rounds — so **Team A always defends rounds 1, 3 and 5**, and a 3–0 means one team defended twice and attacked once. Whichever role turns out stronger, the lobby seat decides matches. Meanwhile `tutorial.gd` teaches *"the match is never decided by which side you drew"*, which is false today. **Fix it by scoring in paired rounds, not single ones:** a **set** = both teams attack exactly once, first to 2 sets, so both sides always play both jobs an equal number of times. Tiebreak a tied set on **which side took the lata out faster** — which also gives a caster and the HUD a number to show, and gives the format a natural sudden-death. ⚠️ **The tiebreak needs a real clock**, so decide where the per-round attack time is recorded and make sure it is host-authoritative and mirrored like everything else in `round_manager.gd`. ⚠️ You may overrule the shape — a coin flip plus a side-choice final round is the cheaper answer and it is *not* as good — but if you do, say in § LOG how the seat draw stops mattering, because that is the acceptance test, not the format
 - [ ] 8.2 **Delete Option A entirely — dents, `MAX_DENTS`, ring-outs, `RING_OUT_LIMIT`, the mode control, and the tutorial page that teaches it.** No competitive game ships two win-condition sets and lets the host pick between them, and this one pays for it three times over: double the balance surface for `build fair`, a tutorial that has to teach two games, and a bug class `Design.md` §5.2 already records — an Option A round could be lost to a countdown nothing in that mode explained. **`Design.md` §7 documents Option A as "maintained in parallel and unchanged"; that sentence is what is being deleted.** The circle countdown is the game
 - [ ] 8.3 **8.2 is a deletion and deletions are the easy thing to do 90% of — so document what was there before you remove it.** Write a short **§7.1 "Removed: Option A"** block in `Design.md` recording what the mode was (dents as a lata health bar, `MAX_DENTS` 3, ring-outs at `RING_OUT_LIMIT` 3, defenders winning on the timer or by beating dents back out with the reset channel), **why it went** (one ruleset is a rubric position, not a cleanup), and **what was left behind on purpose** if anything is. 🧑 asked for this explicitly on 2026-07-31: *"remove gamemode completely but document that it was there."* It is also self-defence — `seal()` and the `SEALED` state already survive for "Option A and the state machine's own shape" per `Design.md` §7, so somebody has to decide in writing whether they still have a reason to exist once Option A does not
-- [ ] 8.4 **Sweep for what the deletion strands, and hand each piece to its owner.** `character_base.gd` carries the dent state and `character_visual.gd` the three `lata_dent*.obj` meshes that `build model` §5.10 is still promising to line up with new geometry — if those meshes are dead, **`build model` needs to know before it runs at position 6**, not after. `round_manager.gd`'s `register_ring_out()` and the kill-plane path that feeds it are yours; `ui/match_setup.gd`'s mode row is yours to remove and **§4.18 is already filed** telling `build ux` to lay the screen out for one ruleset. File anything else per § IF YOU FLAG IT, FILE IT
+- [ ] 8.4 **Sweep for what the deletion strands, and hand each piece to its owner.** `character_base.gd` carries the dent state and `character_visual.gd` the three `lata_dent*.obj` meshes that `build model` §5.10 is still promising to line up with new geometry — if those meshes are dead, **`build model` needs to know before it runs at position 7**, not after. `round_manager.gd`'s `register_ring_out()` and the kill-plane path that feeds it are yours; `ui/match_setup.gd`'s mode row is yours to remove and **§4.18 is already filed** telling `build ux` to lay the screen out for one ruleset. File anything else per § IF YOU FLAG IT, FILE IT
 - [ ] 8.5 **Neither item is done until `Design.md` and `tutorial.gd` agree with the code.** §8.1 rewrites `Design.md` §7's win conditions and the "BEST OF 5" / "SWAP EVERY ROUND" tutorial rows; §8.2 deletes the "DENTS" row and the "HOW YOU WIN" page's two-mode framing. ⚠️ **`tutorial.gd` is `build ux`'s file and it runs after you** — do not edit it. **File the exact rows** that your changes falsify onto §4, beside §4.10 which is already fixing two other lies on the same screen. A tutorial that describes a deleted mode is the single most visible kind of Completeness defect a judge can hit
 
 ### 9 · 🔊 `build sound` — Music, voice and the mix *(Sonnet 5 · medium)* — **RUNS AT POSITION 7**
@@ -492,11 +507,35 @@ ambience beds, and `audio_manager.gd:437` applies a volume to a **`Music` bus th
 nothing**. The bus, the settings slider and the routing all already exist and are correct — the
 work is content, not plumbing, which is why this is the cheapest block of points on the board.
 
-- [ ] 9.1 **There is no music. Write some.** At minimum three beds: **menu**, **match**, and a **round-result** sting. Filipino instrumentation is the obvious and correct answer — rondalla strings, kulintang, bamboo percussion — and it feeds Theme Relevance at the same time as this criterion. Everything in `assets/audio/` today is synthesised in-repo and that precedent is worth keeping for originality: it makes Form 03 shorter and it cannot infringe anything
-- [ ] 9.2 **Layer the match music against the §5.2 countdown.** *"Music and other sound elements must complement the game environment and must show the necessary emotion when playing with such sounds"* is the rubric line, almost verbatim, and this game has a purpose-built tension clock to hang it on: while the lata is off its circle a round is actively being lost. A tension layer that fades in on `RoundManager.can_out_left()` and cuts on the save answers that bullet directly, and — with §4.15 drawing the same clock — makes the most important thing on screen also the loudest thing in the mix
+- [ ] 9.1 **⚠️ THE PLAN CHANGED 2026-07-31: the team is composing the music, five chiptune tracks. You are not writing it — you are integrating it.** 🧑: *"we will also add human made chiptune ost, planning around 5."* That supersedes "synthesise beds in-repo" and it is a straight upgrade: human-composed scores Originality as well as this criterion, and it gives the game a sonic identity a generated bed never would. The brief, the placement and the format spec are **`docs/HUMAN.md` Table D**, which 🔊 `build voice` created and **you inherit** — revise it if the plan is wrong, it is addressed to your teammates. Build the music side of `AudioManager`: the `Music` bus already exists and already takes the settings slider, and it has never had a stream on it
+- [ ] 9.2 **Tracks 3 and 4 are a crossfade pair and that is the whole reason the OST is five tracks and not four.** *"Music and other sound elements must complement the game environment and must show the necessary emotion when playing with such sounds"* is the rubric line almost verbatim, and this game has a purpose-built tension clock to hang it on: while the lata is off its circle, a round is actively being lost. **Track 4 is track 3 at the same tempo, key and length with the intensity added** — so crossfade 3 → 4 when `RoundManager.can_out_left()` starts running and back on the save. ⚠️ **Two `AudioStreamPlayer`s playing in sync with the volumes crossed, not a stop-and-start** — restarting the track on a state change is exactly the artefact this design exists to avoid, and a seam every time the lata is bumped would be worse than no reactive music at all. With §4.15 drawing the same clock large, the most important thing on screen becomes the loudest thing in the mix
+- [ ] 9.6 **Looping is where a music integration actually fails, and Godot's importer is where you fix it.** Tracks 1–4 must loop seamlessly under rounds that run 90 s and menus that sit open indefinitely. `HUMAN.md` puts the no-fade / whole-bars requirement on the composer, but **an OGG that loops perfectly in a media player can still click in Godot** if the import sets `loop` off or the loop offset wrong. Import each one, **listen to at least two full loop points**, and say in § LOG that you did — this is not a `--headless` check and there is no probe for it. ⚠️ Track 5 (victory) must **not** loop
 - [ ] 9.3 **Voice, which the rubric names and the game has none of.** *"Voice casting"* is in the criterion text. Filipino street callouts are free theme points and cost one phone microphone: *"Taya!"*, *"Tumbang!"*, *"Bangon!"*, a counting-out, a round-win shout. Recorded by the team is ideal — it is original by construction, it is culturally specific in a way no synthesised asset can be, and it is the thing an audience at the demo will actually repeat back. ⚠️ **Anything recorded goes on Form 03 if a tool touched it**, and anything performed by a non-team member needs their permission in writing; keep it to the team and the question does not arise
 - [ ] 9.4 **The SFX set has holes the new mechanics opened.** `build mech` and `build abil` added verbs that make no sound: the bump **wind-up** (a 1.35 s commitment that is meant to be readable by every peer — see `Design.md` §4 — and is currently silent), the **punt**, the **stamina break** when a sprint runs out, **Can-Dash**, the **self-launch charge**, and the moment a lata goes `STRANDED`. A telegraph nobody can hear is half a telegraph, so this is a fairness item wearing an audio costume
 - [ ] 9.5 **Mix it, then listen on laptop speakers.** The demo is played in a hall off whatever hardware is there. Check the three buses against each other at the settings defaults, confirm the ambience beds do not bury the callouts, and say in § LOG what you listened on. ⚠️ **`--headless` has no audio device**; this lane's acceptance test is a human with headphones and there is no probe substitute for it
+
+### 11 · 🔊 `build voice` — The recording brief, and wiring what comes back *(Sonnet 5 · medium)* — **RUNS AT POSITION 3**
+
+**New 2026-07-31.** ⏸️ **PARKED — do not run this lane until there are recordings to wire.**
+
+You are the only lane whose output depends on humans doing something in the physical world, which
+is why you sit at position 3. **Your urgent half is already delivered**: `docs/HUMAN.md` was
+written human-directed on 2026-07-31 so the team could start recording immediately, and it does
+not need this lane to run first. 🧑 2026-07-31: *"im planning on doing audio a little later, not
+rn, imma run other lanes rn."*
+
+**So the board skips past you to position 4 and comes back.** Everything below waits on files that
+do not exist yet, and §11.1 — reviewing the brief with somebody who actually speaks Filipino — is
+better done alongside the people recording than in advance of them.
+
+- [ ] 11.1 **`docs/HUMAN.md` exists as a starter and is yours to finish.** It was written human-directed on 2026-07-31 so recording could begin immediately, and it carries the format spec, the room and mic guidance, the two voice roles, Tables A–C (announcer, street, title) and Table D (the five-track chiptune OST). **Read it as a first draft by somebody who cannot speak Filipino.** Check every line: is it natural, is it what somebody would actually shout on a street, is the English gloss right, is it too long to say in the moment it fires. **Change what is wrong** — the team speaks the language and the board does not. ⚠️ It is written for **teammates holding a phone**, not for an agent; keep it that way, and keep it short enough to read once
+- [ ] 11.2 **Design against repetition, because that is how voice work actually fails.** A shout heard four times a round is charming once and irritating by round two. `HUMAN.md`'s **Takes** column is the mechanism — three recordings of a line, three different street voices, and the game picks one at random each time. **Build the variant picker** (`vo_tumbang_1/2/3` → one call site) and decide the rule for what deserves variants at all. ⚠️ **Anything that fires more than about once every ten seconds should not be a voice line** — that is what SFX are for, and no number of variants saves it
+- [ ] 11.3 **⚠️ `PITCH_JITTER` = 0.07 is applied to every sound in `AudioManager` and it must NOT touch a voice line.** Random pitch-shifting is what stops a repeated SFX sounding machine-gunned; on a human voice it is instantly audible as broken. **Every `vo_*` name goes in `_NO_JITTER`.** The variants in §11.2 are what provides the variety instead. This is the one integration detail that will sound obviously wrong if it is missed and is cheap to get right
+- [ ] 11.4 **Wire the clips.** `AudioManager` loads by convention — `SFX_DIR + name + ".wav"` for every entry in `SFX_NAMES` — so adding a line is a name and a file. Announcer lines (Table A) fire through **`play()`**, flat and non-positional: a caster does not attenuate with distance. Street lines (Table B) fire through **`play_at()`** so they come from the unit that said them. Give each a `_TRIM_DB` entry — voice sits at a different level from a synthesised impact and the `HEADROOM_DB` −7.0 budget is already spoken for
+- [ ] 11.5 **Convert the masters, and keep them.** The team records 48 kHz / 24-bit mono; the repo is **44.1 kHz / 16-bit mono**, which is what every existing SFX is and what the loader expects. You do the conversion — `HUMAN.md` explicitly tells them not to, because converting twice loses quality that cannot come back. ⚠️ **`.wav` is Git LFS-tracked** (`.gitattributes`); confirm the files land as LFS pointers and not as blobs in the tree
+- [ ] 11.6 **You will need triggers in files you do not own, and you do not take them.** A win callout fires from `round_manager.gd` (📋 `build rules`', running at 4) and a title stinger from `scripts/ui/**` (🖥️ `build ux`'s, at 6). **Expose what you need on `AudioManager` and FILE the trigger** onto the owning lane's § CHECKLIST per § IF YOU FLAG IT, FILE IT. A voice line with no trigger is a filed item, not a reason to edit somebody else's file
+- [ ] 11.7 **Table D's blocked lines are yours to unblock.** `HUMAN.md` tells the team **not** to record anything naming a round or set number, *"match point"*, or team names, because 📋 `build rules` §8.1 replaces single rounds with paired sets and recording them now means recording them twice. **After `build rules` commits, add the Table D follow-up** with the format that actually shipped, and tell the human there is a second short session to do
+- [ ] 11.8 **The `Music` bus is not yours.** 🔊 `build sound` runs at **8** and takes `audio_manager.gd` after you, including the whole OST integration in §9. **Say in § LOG exactly what you left in that file** so it can read your work before editing it — this is the same succession the `build spec` → `build ux` handover uses, and it is the only thing keeping one-writer-per-file true across two audio lanes
 
 ### 10 · 📦 `build ship` — The submission build *(Sonnet 5 · medium)* — **RUNS LAST OF ALL**
 
@@ -595,7 +634,66 @@ Each block is paste-ready. Set model and effort first.
 
 </details>
 
-<details><summary>📋 <b><code>build rules</code></b> — Match format · Opus 5 · high — <b>RUN THIS NEXT (position 3)</b></summary>
+<details><summary>🔊 <b><code>build voice</code></b> — Recording brief and VO wiring · Sonnet 5 · medium — <b>RUN THIS NEXT (position 3)</b></summary>
+
+> You are a Godot 4.7 engineer on **Tumbang Preso** — 2v2 Filipino street game, GDScript, LAN
+> over ENet, host-authoritative. Repo: `C:\Users\matth\Documents\GitHub\DOST-GameDev`, branch
+> `feature/objects-overhaul-v2`.
+>
+> Read `docs/README.md`, **`docs/HUMAN.md`**, and `docs/Agent_Prompts.md` § THE RUBRIC, § HOW TO
+> RUN A LANE, § PATHS and § CHECKLIST §11 — those eight boxes are your task list. Open
+> `scripts/systems/audio_manager.gd` before you change anything.
+>
+> **Why you exist, and why you are third.** The game has **no voice and no music**, and Music and
+> Sound Design is 10% of the final score — the rubric names *"voice casting"* explicitly. The team
+> is recording Filipino callouts and composing a five-track chiptune OST themselves, which is
+> original by construction and needs no licence.
+>
+> ⚠️ **You are the only lane on this board whose output depends on humans doing something in the
+> physical world.** Recording takes calendar days that no amount of ordering can compress. That is
+> the entire reason you run at 3 instead of beside the other audio lane at 8. **§11.1 comes first,
+> you commit it on its own, and you tell the human the brief is ready before you write a line of
+> GDScript.** Everything downstream of you is code and can wait; the recording cannot.
+>
+> `docs/HUMAN.md` already exists as a starter — format spec, room and mic guidance, two voice
+> roles, Tables A–D. **Read it as a first draft written by somebody who does not speak Filipino,
+> because it was.** Check every line for whether a person would really shout it, whether the gloss
+> is right, and whether it is short enough to land in the moment it fires. Change what is wrong.
+> It is addressed to **teammates holding a phone**, not to an agent — keep it that way and keep it
+> readable in one sitting.
+>
+> Then the integration, and three details decide whether it sounds professional or broken:
+>
+> * ⚠️ **`PITCH_JITTER` 0.07 applies to every sound and must never touch a voice line.** Random
+>   pitch-shift stops a repeated SFX machine-gunning; on a human voice it is instantly audible as
+>   broken. Every `vo_*` name goes in `_NO_JITTER`.
+> * **Variants, not jitter, are how voice avoids repetition** — three takes, picked at random. And
+>   anything firing more than about once per ten seconds should not be a voice line at all.
+> * **Announcer lines are `play()`** (flat, non-positional — a caster does not attenuate with
+>   distance); **street lines are `play_at()`** so they come from the unit that said them.
+>
+> ⚠️ **You will need triggers in files you do not own** — a win callout lives in
+> `round_manager.gd` (📋 `build rules`', running after you) and a menu stinger in `scripts/ui/**`
+> (🖥️ `build ux`'s). **Expose what you need on `AudioManager` and file the trigger.** Do not edit
+> them.
+>
+> ⚠️ **The `Music` bus and the OST are NOT yours** — 🔊 `build sound` runs at 8 and takes
+> `audio_manager.gd` after you. Say in § LOG exactly what you left in that file.
+>
+> **If you flag something outside your own paths — a bug, a stale string, a number your
+> change invalidated, a claim you could not verify — FILE IT as a numbered `- [ ]` item
+> on the owning lane's § CHECKLIST section, under a `**Filed by ‹your lane› ‹date›:**`
+> line. See § HOW TO RUN A LANE. A finding that only appears in § LOG does not get
+> fixed.
+>
+> ⚠️ `--headless` has no audio device. Anything about how this *sounds* is a human's call, not a
+> probe's — say in § LOG which claims you verified by listening and which you did not.
+>
+> Tick §11, append to § LOG. Do not spawn subagents.
+
+</details>
+
+<details><summary>📋 <b><code>build rules</code></b> — Match format · Opus 5 · high — <b>run at position 4</b></summary>
 
 > You are a Godot 4.7 gameplay engineer on **Tumbang Preso** — 2v2 Filipino street game,
 > GDScript, LAN over ENet, host-authoritative. Repo:
@@ -777,7 +875,7 @@ Each block is paste-ready. Set model and effort first.
 
 </details>
 
-<details><summary>🔊 <b><code>build sound</code></b> — Music, voice and the mix · Sonnet 5 · medium</summary>
+<details><summary>🔊 <b><code>build sound</code></b> — The OST and the mix · Sonnet 5 · medium — <b>run at position 8</b></summary>
 
 > Same project, same branch, same reading rules. Your tasks are § CHECKLIST §9.
 >
@@ -928,6 +1026,47 @@ Each block is paste-ready. Set model and effort first.
 Newest first. One entry per lane run: what changed, what was **measured** versus written,
 what decision you made and why, and what you are handing the next lane. Short.
 
+### 2026-07-31 · 🔊 voice + OST planning · no lane · branch `feature/objects-overhaul-v2`
+
+**Human-directed, not a lane.** No game code changed — `docs/HUMAN.md` (new), `docs/README.md`,
+the root `README.md` and this file.
+
+**The team is recording Filipino voice lines and composing a five-track chiptune OST themselves.**
+🧑 2026-07-31: *"smth like our voice of counting dwon 5to 1 or 30 seocnds left or defenders win"*
+and *"we will also add human made chiptune ost, planning around 5."* That supersedes §9.1's
+"synthesise beds in-repo" and is a straight upgrade — human-composed and human-performed audio
+scores Originality as well as Music and Sound Design, and needs no licence.
+
+**`docs/HUMAN.md` is new and is the fifth doc**, against a stated four-file budget. Justified in
+`docs/README.md`: every other doc here is written for whoever is *building*; this one is written
+for **teammates holding a phone**, who will not read a checklist board. It also has an end date —
+when the audio is in, it stops being instructions and becomes a record.
+
+**Content decisions worth recording:**
+
+* **The count is 5→1, not 3→1, and that is deliberate.** The round-start countdown is 3-2-1 but
+  the lata's out-of-circle countdown starts at **5 s** — one set of five numbers serves both, and
+  the game starts playing at whichever it needs.
+* **Two voice roles, not one.** A single ANNOUNCER for the flat caster lines, and two or three
+  STREET voices for the in-world shouts, because four units in an alley should not all sound like
+  one person.
+* **Lines naming a round or set number are explicitly blocked** until 📋 `build rules` §8.1 lands.
+  Recording them now means recording them twice.
+* **OST track 4 is track 3 with the intensity added** — same tempo, key and length — so the game
+  can crossfade on the §5.2 countdown rather than restart a track. That pairing is worth more than
+  a second map theme, which is why five tracks buys four pieces of music.
+* **Ask for the tracker project files.** They never ship; they are the best originality evidence
+  the entry has, and the rules say organisers may request source files.
+
+**Two integration traps found by reading `audio_manager.gd` and recorded on §11 before anyone hits
+them:** `PITCH_JITTER` 0.07 applies to every sound and would randomly pitch-shift a human voice
+(every `vo_*` goes in `_NO_JITTER`); and `.wav` is already LFS-tracked, so voice files must land as
+pointers, not blobs.
+
+⏸️ **The lane is PARKED, and the board skips it.** 🧑: *"im planning on doing audio a little later,
+not rn, imma run other lanes rn."* Its urgent half — the brief — is delivered, and the rest cannot
+start until there are files to wire. **Next lane to run is position 4, 📋 `build rules`.**
+
 ### 2026-07-31 · 📋 rubric pass + doc reconciliation · no lane · branch `feature/objects-overhaul-v2`
 
 **Human-directed, not a lane.** No game code changed — this is `Agent_Prompts.md`, `Design.md`
@@ -936,7 +1075,7 @@ and the root `README.md` only.
 **The board was read against the Gear Up NCR rubric** and four findings became work: the match
 format's structural bias (§8.1), two shipped rulesets (§8.2), no music at all (§9), and a
 spectator camera with no broadcast overlay (§4.15). Three lanes added — 📋 `build rules` at run
-position **3**, 🔊 `build sound` at **7**, 📦 `build ship` at **10** — plus §4.15–4.19 and
+position **4**, 🔊 `build sound` at **8**, 📦 `build ship` at **11** — plus §4.15–4.19 and
 §7.15–7.17 filed onto existing unrun lanes. § THE RUBRIC at the top of this file records which
 criterion each lane feeds, and records the two things deliberately **not** added: a PVE
 leaderboard mode (rejected on time; the rules allow PVP *or* PVE and this entry is PVP) and

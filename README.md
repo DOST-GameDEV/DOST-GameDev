@@ -38,21 +38,26 @@ lost by an out-of-circle countdown instead of a knockdown; and both objects got 
 Most of it is written and very little of it is measured.
 
 **👉 [`docs/Agent_Prompts.md`](docs/Agent_Prompts.md) is the single place progress is tracked.**
-**Ten** `build xxx` lanes, run one at a time in board order. The first unticked box in a lane's
-section is the next thing to do. ⚠️ **The section number is not the run order** — three lanes were
-added by the 2026-07-31 rubric pass and took the next free section numbers rather than being
-inserted, because the board cross-references sections by number everywhere. Run by the `Run`
-column of § EXECUTION ORDER.
+**Eleven** `build xxx` lanes, run one at a time in board order. The first unticked box in a lane's
+section is the next thing to do. ⚠️ **The section number is not the run order** — four lanes were
+added on 2026-07-31 and took the next free section numbers rather than being inserted, because the
+board cross-references sections by number everywhere. Run by the `Run` column of § EXECUTION ORDER.
+
+**🔊 `build voice` runs next, at position 3, and it is the one lane that blocks on people rather
+than on code** — the team is recording Filipino voice lines and composing a five-track chiptune
+OST, and that takes calendar time nothing else on the board can compress. **[`docs/HUMAN.md`](docs/HUMAN.md)
+is the brief: what to record, how, and in what format.**
 
 ---
 
-## Docs — four files, and that is the budget
+## Docs — five files, and that is the budget
 
 | | |
 |---|---|
 | **[`docs/Agent_Prompts.md`](docs/Agent_Prompts.md)** | **Start here.** The pipeline, the execution order, the checklist and the log. The only place a box is ticked. |
 | [`docs/Design.md`](docs/Design.md) | The rules and every tunable number. The single source of truth for balance. |
 | [`docs/Art_Direction.md`](docs/Art_Direction.md) | Colour law, scale law, arena geometry, model and kit rules. |
+| **[`docs/HUMAN.md`](docs/HUMAN.md)** | **For teammates with a microphone.** What to record and compose, and the format to deliver it in. The only doc here not addressed to whoever is building. |
 | [`docs/README.md`](docs/README.md) | Index, standing rules, and the machine notes for running Godot here. |
 
 Code comments still name documents that no longer exist (`Dev_Plan.md`, `Handoff.md`,
