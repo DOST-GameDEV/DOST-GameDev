@@ -43,7 +43,7 @@ extends Node
 ## the host quits (see the clock table below), so its scene is torn down by
 ## `_on_server_disconnected` before `_finish()` can print a summary or set an exit code.
 ## Its four PASS lines do print, and they are worth reading; the number to gate on is the
-## host's. Measured 2026-07-31: HOST 22/22, JOIN 8/8, --solo 30/30.
+## host's. Measured 2026-07-31: HOST 22/22, JOIN 8/8, --solo 31/31.
 
 const MATCH_SETUP_PATH: String = "res://scenes/ui/MatchSetup.tscn"
 const MAIN_SCENE_PATH: String = "res://scenes/main/Main.tscn"
@@ -383,6 +383,23 @@ func _run_solo() -> void:
 			ai_driven += 1
 	_check("§2.3 the match is still four units", units.size() == 4,
 		"found %d" % units.size())
+	# ⚠️ NOT A SPECTATOR CHECK ON ITS FACE, AND IT EARNS ITS PLACE ANYWAY. Footage of four
+	# Props that cannot use a kit is not footage of this game, and `main.gd::
+	# _prop_ability_for()` is the fallback that gives an AI-held Prop one. It is also the
+	# one function this lane changed for a reason unrelated to spectating (§3.11 — the
+	# three ability constants are typed `Resource` now and cast here), so this is the
+	# guard on that change: a bad cast would return null silently and cost the props their
+	# abilities with nothing anywhere reporting it.
+	var props_with_kit := 0
+	var props := 0
+	for unit in units:
+		if not (unit as CharacterBase).is_person:
+			props += 1
+			if (unit as CharacterBase).ability != null:
+				props_with_kit += 1
+	_check("§3.11 guard: every Prop still resolved a real ability kit",
+		props > 0 and props_with_kit == props,
+		"%d of %d props have a kit" % [props_with_kit, props])
 	_check("§2.3 every seat including the vacated one is bot-held", ai_driven == 4,
 		"%d of %d ai-driven" % [ai_driven, units.size()])
 
