@@ -96,7 +96,33 @@ const CHARACTER_SCENE: PackedScene = preload("res://scenes/characters/CharacterB
 ## is the same "resolved once, wrong from round 2" trap as B-42/B-80(c).
 ## `.duplicate()` at every call site — an AbilityBase carries per-instance cooldown
 ## state on the Resource itself, so two Props sharing one instance share a cooldown.
-const CAN_ABILITY: AbilityBase = preload("res://scripts/abilities/resources/quick_stand.tres")
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THESE THREE ARE TYPED `Resource`, NOT `AbilityBase`, AND THAT IS NOT SLOPPINESS —
+## IT IS WHAT MAKES THIS FILE PASS THE PROJECT'S ONE CHEAP GATE.
+##
+## `docs/README.md` calls grepping `--check-only` output for `Parse Error` *"the one cheap
+## real gate"*. Annotated as `AbilityBase`, this file did not pass it:
+##
+##   Parse Error: Cannot assign a value of type Resource to constant
+##   "TSINELAS_ABILITY_TEAM_A" with specified type AbilityBase.   (main.gd:107, :108)
+##
+## A `.tres` records `type="Resource" script_class="BakyaBash"`, so the static analyser
+## has to go through the global class cache to learn that a `BakyaBash` IS an
+## `AbilityBase`. When it cannot, `preload()` comes back as a bare `Resource` and a
+## const's declared type is checked at parse time, with no runtime cast available to
+## rescue it.
+##
+## ⚠️ AND IT WAS INCONSISTENT, WHICH IS WHY IT SURVIVED. `CAN_ABILITY` on this same
+## pattern resolved fine while the two below did not, on the same run — so the file looked
+## like it had two broken lines rather than one unreliable idiom, and the gate was
+## quietly useless for the largest file in the project instead of obviously so.
+##
+## Measured 2026-07-31: warm class cache → exactly these 2 Parse Errors; emptied cache →
+## 345. So the cache state changes HOW MUCH resolves, and no cache state makes the const
+## annotation dependable. The type is asserted at the one place it is actually consumed
+## (`_prop_ability_for`) instead, where a cast is available and a mismatch would be a
+## null rather than a file that will not parse.
+const CAN_ABILITY: Resource = preload("res://scripts/abilities/resources/quick_stand.tres")
 ## Two of the three Tsinelas identities, picked one per team for the biggest
 ## contrast a 2-Prop match can show: Bakya Bash is the heavy knockdown
 ## (forces_downed, flattest-but-one arc), Flick Dash is the fast curving poke
@@ -104,8 +130,8 @@ const CAN_ABILITY: AbilityBase = preload("res://scripts/abilities/resources/quic
 ## so a single sitting cannot reach all three roster identities regardless of
 ## which two are picked here — that needs 3.3 (character select). Bagsak Bomb
 ## (the lob) is reachable today only by swapping one of these two constants.
-const TSINELAS_ABILITY_TEAM_A: AbilityBase = preload("res://scripts/abilities/resources/bakya_bash.tres")
-const TSINELAS_ABILITY_TEAM_B: AbilityBase = preload("res://scripts/abilities/resources/flick_dash.tres")
+const TSINELAS_ABILITY_TEAM_A: Resource = preload("res://scripts/abilities/resources/bakya_bash.tres")
+const TSINELAS_ABILITY_TEAM_B: Resource = preload("res://scripts/abilities/resources/flick_dash.tres")
 ## Local-test roster, in a flat array so round-swap/registration code (below)
 ## can treat all 4 the same way it treats _spawned_characters for the
 ## networked flow, rather than hand-writing 4 near-identical blocks.
@@ -1761,9 +1787,13 @@ func _prop_ability_for(character: CharacterBase) -> AbilityBase:
 		if picked != null:
 			return picked
 		push_warning("main.gd: a roster skin names a missing ability '%s'; using the default." % path)
+	# The `as AbilityBase` is where the three constants above get their type back — see
+	# their own note. Identical at runtime; the difference is that a surprise here is a
+	# null this function's callers already handle, not a parse error in the whole file.
 	if character.is_can:
-		return CAN_ABILITY
-	return TSINELAS_ABILITY_TEAM_A if character.team == 0 else TSINELAS_ABILITY_TEAM_B
+		return CAN_ABILITY as AbilityBase
+	return (TSINELAS_ABILITY_TEAM_A if character.team == 0
+		else TSINELAS_ABILITY_TEAM_B) as AbilityBase
 
 ## Runs on every peer (host and clients) when the spawner replicates a spawn.
 func _build_networked_character(data: Dictionary) -> Node:

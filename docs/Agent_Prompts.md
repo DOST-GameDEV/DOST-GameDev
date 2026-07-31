@@ -255,7 +255,7 @@ Lata
 > still Mechanics). That is a deliberate deviation from the fixed order, taken on human
 > instruction and recorded here rather than made silently.
 
-**The named probe for this section is `tools/spec_probe.tscn` — `--solo` 30/30, and a
+**The named probe for this section is `tools/spec_probe.tscn` — `--solo` 31/31, and a
 two-peer `--lobby-host` / `--lobby-join=127.0.0.1` pair at HOST 22/22 + JOIN 8/8.** The
 two-peer run follows both peers **out of the lobby and into a real match**, which is where
 the last and worst defect of this lane was hiding. A new
@@ -288,9 +288,9 @@ file, for the same reason `mech_probe` was: § PATHS gives this lane no `tools/`
 - [ ] 3.9 **3.4's "bounded on more than one side" got weaker and you own it.** A stranded lata is a *stationary* target that cannot dodge, cannot Can-Dash and cannot smash — so Ground Smash's `within 0.75 m = instant win` is now trivially landable on a can that is already lying there. Either bound it (no instant win on an already-downed lata — the countdown is already winning that round) or say why the free win is fine
 - [ ] 3.10 **The lata's kit has to matter *before* it is displaced**, because after it there is nothing: DOWNED blocks Can-Smash and Can-Dash by construction. That is the intended shape of §1.9 — check the radii and cooldowns read as "keep them off the mark" rather than "answer a knockdown"
 
-**Filed by `build spec` 2026-07-31:**
+**Filed and then FIXED by `build spec` 2026-07-31 — no action required:**
 
-- [ ] 3.11 **`main.gd` cannot pass `--check-only`, and it is your resources.** `godot --check-only --script scripts/main.gd` emits `Parse Error: Cannot assign a value of type Resource to constant "TSINELAS_ABILITY_TEAM_A"` (and `..._TEAM_B`) — `main.gd:107-108` preload `bakya_bash.tres` / `flick_dash.tres` typed as `AbilityBase`, and offline the `.tres` script association does not resolve, so they come back as bare `Resource`. **Verified pre-existing**: identical on a clean checkout of `main.gd` with this lane's change removed. Runtime is fine. But `docs/README.md` calls grepping `--check-only` for `Parse Error` *"the one cheap real gate"*, and that gate is currently useless for the project's largest file
+- [x] 3.11 **`main.gd` could not pass `--check-only`. FIXED BY `build spec` 2026-07-31 — nothing left for you here, this line is a record, not a task.** `godot --check-only --script scripts/main.gd` emitted `Parse Error: Cannot assign a value of type Resource to constant "TSINELAS_ABILITY_TEAM_A"` (and `..._TEAM_B`) — a `.tres` records `type="Resource" script_class="BakyaBash"`, so the analyser must go through the global class cache to learn a `BakyaBash` IS an `AbilityBase`, and a const's declared type is checked at parse time with no runtime cast to rescue it. **It was inconsistent, which is why it survived**: `CAN_ABILITY` resolved on the same pattern in the same run while the other two did not, so the file read as two bad lines rather than one undependable idiom. Measured: warm class cache → exactly 2 Parse Errors, emptied cache → 345, i.e. the cache changes how much resolves and no cache state makes the annotation dependable. All three constants are now typed `Resource` and cast to `AbilityBase` at the single place they are consumed (`_prop_ability_for`), where a mismatch is a null the callers already handle instead of a file that will not parse. `main.gd` is 0 Parse Errors, and `spec_probe --solo` gained a guard asserting every Prop still resolves a real kit (2 of 2). ⚠️ **`main.gd` is `build spec`'s row in § PATHS, so this was mine to fix rather than to file** — filing it was the wrong call and it is corrected here
 
 ### 4 · 🖥️ `build ux` — Screens and teardown *(Sonnet 5 · high)*
 
@@ -793,7 +793,7 @@ countdown is drawn in a **spectator-only** readout, not in `_refresh_status_stac
 stack is `build ux`'s §4.1/§4.9 and I am not pre-empting it, so the spectator branch of
 `_process` calls its own panel instead of the shared one. Filed as **4.12** so they know.
 
-**Measured — `tools/spec_probe.tscn --solo`, 30/30.** (The two-peer run is below.) Not a physics body, zero collision
+**Measured — `tools/spec_probe.tscn --solo`, 31/31.** (The two-peer run is below.) Not a physics body, zero collision
 shapes, no `AIController` anywhere on it, flew **24.02 m straight down through the road** to
 y = −15.02 m, four units with 4 of 4 bot-held, wheel 12.0 → 21.9 m/s, TAB picked up
 TeamAProp, the same wheel pulled the shot 6.5 → 2.6 m, F freed it, and the HUD stripped to
@@ -839,13 +839,28 @@ spectate button, the seat/ready path around it, and `_seat_detail`'s spectator l
 spectator/identify path. In `hud.gd`, only the no-character branches — `_refresh_status_stack`,
 the timer, the pips and everything a *player* sees are untouched.
 
-**Handed on — filed as checklist items, not left here.** **3.11** (`main.gd` fails
-`--check-only` on two pre-existing ability preloads), **4.11** (the debug switcher claims
-the vacated seat's unit *and its camera*), **4.12** (the spectator no longer shares the
-player status stack), **4.13** (probes write PNGs into the repo root, so the tree is
+**Handed on — filed as checklist items, not left here.** **4.11** (the debug switcher
+claims the vacated seat's unit *and its camera*), **4.12** (the spectator no longer shares
+the player status stack), **4.13** (probes write PNGs into the repo root, so the tree is
 permanently dirty), **7.14** (every camera number is an unflown first guess, and the
-acceptance test is a human's). 2.8 was filed and then built in the same session, so it is
-ticked above rather than handed on.
+acceptance test is a human's rather than a probe's).
+
+**Two things I filed and then did myself instead, which is the better outcome and is
+recorded rather than quietly tidied.** **2.8** — the human's POV ask — was filed to
+`build ux` on the grounds that a POV needs `camera_rig.gd`; it does not, and building it as
+a placement of this lane's own camera turned out to be both allowed and *more* correct than
+going through the rig. And **3.11** was filed to `build abil` when `main.gd` is this lane's
+own row in § PATHS: the ability `.tres` files are theirs, but the three broken constants
+were in my file and the fix belonged with them. Filing work that is yours is not caution,
+it is just a slower way of not doing it.
+
+⚠️ **A correction to how 3.11 was first described.** The initial report called it
+"pre-existing and unrelated to this lane", which was true, and left the impression it was a
+defect in the ability resources. It is not: it is an undependable *idiom* in `main.gd` —
+a const with a declared type whose resolution depends on the global class cache. The
+evidence for that is that `CAN_ABILITY` passed on the identical pattern in the identical
+run, which is the impossible-number rule again: two lines cannot both be correct and
+differently correct, so the metric was the bug.
 
 ### 2026-07-31 · 🎮 `build mech` · §1 · branch `feature/objects-overhaul-v2`
 
