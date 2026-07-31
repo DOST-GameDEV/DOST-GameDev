@@ -43,7 +43,7 @@ extends Node
 ## the host quits (see the clock table below), so its scene is torn down by
 ## `_on_server_disconnected` before `_finish()` can print a summary or set an exit code.
 ## Its four PASS lines do print, and they are worth reading; the number to gate on is the
-## host's. Measured 2026-07-31: HOST 22/22, JOIN 8/8, --solo 31/31.
+## host's. Measured 2026-07-31: HOST 22/22, JOIN 8/8, --solo 33/33.
 
 const MATCH_SETUP_PATH: String = "res://scenes/ui/MatchSetup.tscn"
 const MAIN_SCENE_PATH: String = "res://scenes/main/Main.tscn"
@@ -119,7 +119,7 @@ func _ready() -> void:
 		await _run_lobby_client(_joined_address(args))
 	elif "--solo" in args:
 		_tag = "SOLO"
-		await _run_solo()
+		await _run_solo("--no-spectate" not in args)
 	else:
 		print("spec_probe: pass --lobby-host, --lobby-join=<ip> or --solo")
 		get_tree().quit(1)
@@ -334,14 +334,90 @@ func _run_lobby_client(address: String) -> void:
 # Single Player in-match — §2.2 (free flight, no body), §2.5/§2.7 (HUD), §2.6 (filmable)
 # =============================================================================
 
-func _run_solo() -> void:
+## ⚠️ `spectating` IS A PARAMETER SO THE SAME SCENE CAN BE RUN BOTH WAYS. A defect seen
+## while spectating is not a spectator defect until the non-spectating run has been asked
+## the same question — otherwise this lane fixes somebody else's bug in its own file, or
+## files a bug that is really its own. `--no-spectate` runs the identical solo match with
+## the camera off and checks only the things that are true either way.
+func _run_solo(spectating: bool = true) -> void:
+	_tag = "SOLO" if spectating else "SOLO-PLAY"
 	GameLaunch.pending_action = "local"
-	GameLaunch.spectator = true
+	GameLaunch.spectator = spectating
 	GameLaunch.solo_seat = 0
 	var main := (load(MAIN_SCENE_PATH) as PackedScene).instantiate()
 	main.name = "Main"
 	get_tree().root.add_child(main)
 	await _wait(4.0)
+
+	# ⚠️ THE UNIT-OVERLAP CHECK RUNS IN BOTH MODES, and it is the whole point of having a
+	# non-spectating mode at all. 🧑 report, 2026-07-31, with a screenshot: *"i dont see one
+	# of the characters bruh in spectator"* — two Person nameplates ("A1 · DEF" and
+	# "B1 · OFF") stacked over a single visible model. Either two units are occupying one
+	# spot, or one has no model. Both are unwatchable on film and neither is obviously
+	# this lane's.
+	var units0 := main.find_children("*", "CharacterBase", true, false)
+	var closest := 999.0
+	var closest_pair := ""
+	for i in units0.size():
+		for j in range(i + 1, units0.size()):
+			var a := units0[i] as CharacterBase
+			var b := units0[j] as CharacterBase
+			# ⚠️ A CARRIED TSINELAS IS *SUPPOSED* TO BE INSIDE ITS CARRIER. The first
+			# version of this check read "TeamBProp / TeamBPerson at 0.45 m" as an overlap
+			# and reported FAIL on a slipper sitting correctly in a Person's hand — a
+			# probe inventing a defect, which is worse than not having the check.
+			if _is_carried(a) or _is_carried(b):
+				continue
+			var d := a.global_position.distance_to(b.global_position)
+			if d < closest:
+				closest = d
+				closest_pair = "%s / %s" % [a.name, b.name]
+	_check("no two units are standing in the same place", closest > 0.6,
+		"closest pair %s at %.2f m" % [closest_pair, closest])
+	for unit in units0:
+		var u := unit as CharacterBase
+		print("[%s]    %-14s pos=(%.2f, %.2f, %.2f)  person=%s  can=%s  visible=%s" % [
+			_tag, u.name, u.global_position.x, u.global_position.y, u.global_position.z,
+			u.is_person, u.is_can, u.visible])
+	# ⚠️⚠️ 🧑 report, 2026-07-31: *"i dont see one of the characters bruh in spectator"*, with
+	# a screenshot showing two Person nameplates over one visible model. The units are NOT
+	# overlapping (measured above), so the question is whether one of them is being HIDDEN.
+	#
+	# `camera_rig.gd::_apply_fpp_self_hide()` drops the head mesh and the carried slipper
+	# whenever `_active and _mode == FPP` — correct for the peer looking through that rig,
+	# and catastrophic for a spectator, because a rig left active by
+	# `debug_player_switcher.gd` keeps hiding its own body on a screen that is now looking
+	# at it from the outside. This lane already had to take `Camera3D.current` back off
+	# that same mechanism; the self-hide is the half that does not show up in a camera
+	# check, because the picture is right and a body is simply missing from it.
+	for unit in units0:
+		var rig := (unit as CharacterBase).get_node_or_null("CameraRig") as CameraRig
+		var vis := (unit as CharacterBase).get_node_or_null("Visual") as Node3D
+		var hidden_meshes := 0
+		if vis != null:
+			for m in vis.find_children("*", "MeshInstance3D", true, false):
+				if not (m as MeshInstance3D).visible:
+					hidden_meshes += 1
+		print("[%s]    %-14s rig_active=%s  hidden_meshes=%d" % [
+			_tag, (unit as CharacterBase).name,
+			"none" if rig == null else str(rig._active), hidden_meshes])
+	if not spectating:
+		return
+
+	var active_rigs := 0
+	var self_hidden := 0
+	for unit in units0:
+		var rig2 := (unit as CharacterBase).get_node_or_null("CameraRig") as CameraRig
+		if rig2 != null and rig2._active:
+			active_rigs += 1
+		var vis2 := (unit as CharacterBase).get_node_or_null("Visual") as Node3D
+		if vis2 != null:
+			for m2 in vis2.find_children("*", "MeshInstance3D", true, false):
+				if not (m2 as MeshInstance3D).visible:
+					self_hidden += 1
+	_check("no unit is still hiding its own body for a rig nobody looks through",
+		active_rigs == 0 and self_hidden == 0,
+		"%d active rigs, %d hidden meshes" % [active_rigs, self_hidden])
 
 	var spectator := main.get_node_or_null("Spectator") as SpectatorCamera
 	_check("§2.2 the spectator exists in Single Player", spectator != null)
@@ -542,6 +618,11 @@ func _run_solo() -> void:
 
 ## Raw events through `Input.parse_input_event`, so they arrive at
 ## `SpectatorCamera._unhandled_input` down the real chain rather than by calling it.
+## True while this unit is riding in somebody's hand rather than standing on the street.
+static func _is_carried(unit: CharacterBase) -> bool:
+	var carriable := unit.get_node_or_null("Carriable")
+	return carriable != null and carriable.get("carrier") != null
+
 func _send_key(code: Key) -> void:
 	var event := InputEventKey.new()
 	event.physical_keycode = code

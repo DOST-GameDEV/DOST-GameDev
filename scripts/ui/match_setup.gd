@@ -991,45 +991,80 @@ func _claim_seat(peer_id: int, seat: int) -> bool:
 ## nobody took it meanwhile and into the first free one if they did. That is what the old
 ## note was actually after, and this is the version of it that survives a second peer.
 ##
-## ⚠️ IT IS STYLED OFF THE FOUR SEAT ROWS, NOT LEFT AT THE ENGINE DEFAULT. It was built
-## and added to the tree correctly and nobody had ever looked at it: with no
-## `theme_type_variation` it rendered as a small grey Godot button under four 66px wood
-## planks, which is what § THE REACHABILITY RULE means by "render the screen and look at
-## it" rather than "the control is added to the tree".
+## ⚠️ IT SITS ON THE HEADING ROW, NOT AT THE BOTTOM OF THE SEAT LIST — 🧑 human call,
+## 2026-07-31, with a screenshot and an arrow pointing at the top right of the panel.
+##
+## It was a fifth full-width plank under the four seat rows, styled to match them exactly.
+## That was the wrong read and the styling is what made it wrong: spectating is NOT a
+## fifth seat, it is the decision to take no seat at all, and a control that looks
+## identical to the four things it opts out of says the opposite. Four planks and then a
+## fifth plank is a list of five choices.
+##
+## On the heading row it is a compact toggle beside "YOUR CHARACTER" — visibly a different
+## kind of control, in the corner where a mode switch belongs, and it stops competing with
+## the roster for the eye. The four seats stay a list of four.
+##
+## ⚠️ THE HEADING IS REPARENTED INTO AN HBOX AT RUNTIME rather than the row being authored
+## in `MatchSetup.tscn`. Same reason the button itself is built in code: the whole state is
+## one bool, and `MatchSetup.tscn` is a shared-lock scene with `%`-unique nodes and a
+## hand-tuned layout. `%SeatHeading` keeps resolving after the move — unique names are
+## owner-scoped, not parent-scoped.
+##
+## ⚠️ AND THE HEADING LOSES ITS WRAP, DELIBERATELY. It is `autowrap_mode = 2` in the scene,
+## which is correct for a full-width Label and wrong inside an HBox: in the lobby it reads
+## "LOBBY  ·  HOST 192.168.1.12", and wrapping that would grow the row's height and shove
+## the button around as the address changes. Ellipsis instead, with the heading taking the
+## expand so the button is pinned right whatever the heading says.
 var _spectate_button: Button = null
 
+## Compact — this is a toggle, not a roster row. Wide enough for the longest state it
+## shows ("SPECTATING · 1 WATCHING") at the size below, so the text never has to clip in
+## the states that actually occur.
+const SPECTATE_BUTTON_SIZE: Vector2 = Vector2(300, 56)
+const SPECTATE_FONT_SIZE: int = 22
+
 func _build_spectate_button() -> void:
-	if seat_buttons.is_empty():
+	if seat_buttons.is_empty() or seat_heading == null:
 		return
-	var parent := seat_buttons[0].get_parent() as Container
-	if parent == null:
+	var rows := seat_heading.get_parent() as Container
+	if rows == null:
 		return
-	var model: Button = seat_buttons[seat_buttons.size() - 1]
+	var header_row := HBoxContainer.new()
+	header_row.name = "HeaderRow"
+	header_row.add_theme_constant_override("separation", 18)
+	rows.add_child(header_row)
+	rows.move_child(header_row, seat_heading.get_index())
+	rows.remove_child(seat_heading)
+	header_row.add_child(seat_heading)
+	seat_heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	seat_heading.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	# See the note above: wrap off, ellipsis on, so a long host address cannot reflow the
+	# row or push the button out of the corner.
+	seat_heading.autowrap_mode = TextServer.AUTOWRAP_OFF
+	seat_heading.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+
 	_spectate_button = Button.new()
 	_spectate_button.name = "SpectateButton"
 	_spectate_button.toggle_mode = true
 	_spectate_button.button_pressed = GameLaunch.spectator
 	_spectate_button.focus_mode = Control.FOCUS_ALL
-	# Copied off the last seat row rather than restated, so the fifth seat cannot drift
-	# from the four it sits under the next time the scene's rows are restyled.
-	_spectate_button.theme_type_variation = model.theme_type_variation
-	_spectate_button.custom_minimum_size = model.custom_minimum_size
-	_spectate_button.add_theme_font_size_override(
-		"font_size", model.get_theme_font_size("font_size"))
-	_spectate_button.alignment = model.alignment
+	# The wood face is shared with the rest of the screen so it still belongs here; the
+	# SIZE is what separates it from the seat rows, which is the distinction being drawn.
+	_spectate_button.theme_type_variation = seat_buttons[0].theme_type_variation
+	_spectate_button.custom_minimum_size = SPECTATE_BUTTON_SIZE
+	_spectate_button.add_theme_font_size_override("font_size", SPECTATE_FONT_SIZE)
+	_spectate_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_spectate_button.clip_text = true
-	_spectate_button.text_overrun_behavior = model.text_overrun_behavior
-	parent.add_child(_spectate_button)
-	# THE FOCUS ORDER, EXPLICITLY. Tree order already puts this after SeatButton3 for
-	# `ui_focus_next`, but the four rows are navigated with the arrow keys in a VBox and
-	# `focus_neighbor_bottom` is what those read — leave it unset and a keyboard player
-	# arrowing down the roster stops at SeatButton3 and never learns the fifth seat is
-	# there. Reachable by keyboard is half of the REACHABILITY RULE.
-	model.focus_neighbor_bottom = _spectate_button.get_path()
-	_spectate_button.focus_neighbor_top = model.get_path()
+	_spectate_button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	header_row.add_child(_spectate_button)
+	# THE FOCUS ORDER, EXPLICITLY. It now sits ABOVE the roster rather than below it, so
+	# the neighbours are the other way round from the first version of this control. Left
+	# unset, a keyboard player arrowing up from the first seat would fall off the list and
+	# never find it — reachable by keyboard is half of § THE REACHABILITY RULE.
+	_spectate_button.focus_neighbor_bottom = seat_buttons[0].get_path()
+	seat_buttons[0].focus_neighbor_top = _spectate_button.get_path()
 	_spectate_button.pressed.connect(_on_spectate_pressed)
-	# 4.1: a plain Button carries no audio of its own — same wiring the four seat rows
-	# get directly above.
+	# 4.1: a plain Button carries no audio of its own — same wiring the four seat rows get.
 	_spectate_button.mouse_entered.connect(func() -> void: AudioManager.play("ui_hover"))
 	_refresh_spectate_button()
 
@@ -1050,20 +1085,19 @@ func _on_spectate_pressed() -> void:
 func _refresh_spectate_button() -> void:
 	if _spectate_button == null or not is_instance_valid(_spectate_button):
 		return
-	# The pressed plank already reads as "on"; the text says what being on MEANS, because
-	# a sunk plank alone does not distinguish "I am watching" from "I clicked something".
-	var label := ("SPECTATE  ·  WATCHING, NO CHARACTER  ◀ YOU"
-		if GameLaunch.spectator else "SPECTATE  ·  free camera, no character")
-	# The four seat rows are the roster and a spectator is not on them any more, so this
-	# button is the only place the OTHER players can see that somebody is watching. Two
-	# humans and two watchers has to look different from two humans alone, or the pair
-	# who are playing cannot tell whether they are waiting for anyone.
+	# Short, because it is a corner toggle now and not a roster row with space to explain
+	# itself. The seat rows going dead and the detail box switching to the SPECTATOR
+	# paragraph carry the explanation between them; this just has to say which way it is.
+	var label := "SPECTATING" if GameLaunch.spectator else "SPECTATE"
+	# The four seat rows are the roster and a spectator is not on them, so this button is
+	# the only place the OTHER players can see that somebody is watching. Two humans and
+	# two watchers has to look different from two humans alone.
 	var others := 0
 	for peer_id in _peer_spectating:
 		if peer_id != multiplayer.get_unique_id():
 			others += 1
 	if others > 0:
-		label += "   · %d WATCHING" % others
+		label += "  ·  %d WATCHING" % others
 	_spectate_button.text = label
 
 ## ⚠️ A SPECTATOR IS NOT IN THE READY COUNT, SO IT MUST NOT BE OFFERED THE READY BUTTON.

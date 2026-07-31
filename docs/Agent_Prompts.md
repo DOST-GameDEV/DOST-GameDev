@@ -255,7 +255,7 @@ Lata
 > still Mechanics). That is a deliberate deviation from the fixed order, taken on human
 > instruction and recorded here rather than made silently.
 
-**The named probe for this section is `tools/spec_probe.tscn` — `--solo` 31/31, and a
+**The named probe for this section is `tools/spec_probe.tscn` — `--solo` 33/33, and a
 two-peer `--lobby-host` / `--lobby-join=127.0.0.1` pair at HOST 22/22 + JOIN 8/8.** The
 two-peer run follows both peers **out of the lobby and into a real match**, which is where
 the last and worst defect of this lane was hiding. A new
@@ -311,8 +311,9 @@ do not re-open it.
 - [ ] 4.9 **The circle countdown and its stack count are the round's main drama and the HUD barely says so.** `RoundManager.can_out_left()` / `can_out_limit()` / `can_out_stacks()` are all public and mirrored to every peer. Both sides need to read it: the defence to panic, the offence to press. The **stack** matters as much as the clock — "this save buys you 2.00 s, the next one 1.25" is the whole escalation
 **Filed by `build spec` 2026-07-31:**
 
-- [ ] 4.11 **`debug_player_switcher.gd` switches a bot OFF in a spectated match, and it is the seat nobody is in.** Measured by `spec_probe --solo`: *"every seat including the vacated one is bot-held — FAIL, 3 of 4 ai-driven"*. `_apply_slots()` claims `DEFAULT_P1_UNIT` ("TeamAPerson") for player 1 and disables that unit's controller — which in a spectated Single Player is exactly the seat the spectator just vacated, so one unit stands still for the whole round, on camera. `main.gd` now re-asserts the controllers a frame later and the probe reads 4/4, but that is the cheap half; the switcher is `scripts/ui/**` and the real fix is yours — it should not claim a unit in a session with no local human. ⚠️ **And it does the same thing to the CAMERA, which is worse.** `_apply_slots()` calls `set_active(true)` on that unit's `CameraRig`, and `Camera3D.current` is winner-takes-all per viewport — so a spectated match rendered a Person's first-person view, viewmodel arms and all, while the free camera flew around unseen. `spectator_camera.gd` now re-claims `current` every frame, which is authoritative and correct for a unit with no rig, but the switcher should not be claiming a seat nobody is sitting in in the first place
+- [ ] 4.11 **`debug_player_switcher.gd` switches a bot OFF in a spectated match, and it is the seat nobody is in.** Measured by `spec_probe --solo`: *"every seat including the vacated one is bot-held — FAIL, 3 of 4 ai-driven"*. `_apply_slots()` claims `DEFAULT_P1_UNIT` ("TeamAPerson") for player 1 and disables that unit's controller — which in a spectated Single Player is exactly the seat the spectator just vacated, so one unit stands still for the whole round, on camera. `main.gd` now re-asserts the controllers a frame later and the probe reads 4/4, but that is the cheap half; the switcher is `scripts/ui/**` and the real fix is yours — it should not claim a unit in a session with no local human. ⚠️ **And it does the same thing to the CAMERA and to the BODY, which are both worse.** `_apply_slots()` calls `set_active(true)` on that unit's `CameraRig`. Two consequences, and this lane hit them one after the other rather than together: `Camera3D.current` is winner-takes-all per viewport, so a spectated match rendered a Person's first-person view, viewmodel arms and all, while the free camera flew around unseen — and an active rig also runs `_apply_fpp_self_hide()`, which drops that character's **head mesh and its carried slipper** for as long as it is active, because the peer looking through it is meant to be looking past its own body. 🧑 reported the second one directly: *"i dont see one of the characters bruh in spectator"*, with a screenshot of two Person nameplates over one visible model. Measured by `spec_probe --solo`: `TeamAPerson rig_active=true`, the other three false. `main.gd` now calls `rig.set_active(false)` on every unit when a spectator enters, and the probe asserts 0 active rigs and 0 hidden meshes — but that is this lane defending itself downstream. **The switcher should not be claiming a unit in a session that has no local human**, which is the fix
 - [ ] 4.12 **`_refresh_status_stack()` is yours and the spectator no longer calls it.** `hud.gd`'s `_process` spectator branch used to call it with a null character purely to get the one `LATA OUT` row it appends from `RoundManager`; it now calls `_refresh_spectator_panel()`, which draws that clock **plus the save count** (§2.7). Nothing player-facing changed — but when you build §4.1/§4.9, know the spectator has its own readout and the two must not both grow a countdown
+- [ ] 4.14 **The trajectory preview is 🧑-reported broken in two different ways, and the second one is a rule, not a polish pass.** Human report, 2026-07-31: *"pls add somewhere in the build lanes to make trajectory path better — it looks ugly and clunky; others can see it, only teammates should see trajectory of shit."* ⚠️ **The visibility half is the serious one.** A thrown tsinelas is the offence's whole commitment, and an arc the DEFENCE can read is a wall-hack: the taya knows the landing spot before the throw is released, which deletes the mind-game the throw is supposed to be and makes §7.2's "the Defender is no longer the strongest role" harder to reach for a reason nothing on the board records. `trajectory_preview.gd` is yours per § PATHS and it sits beside your existing **4.4** (the preview must integrate the same solve the throw uses) — so 4.4, this, and `build phys` **6.6** (the preview arc and the thrown arc land in the same place) are three views of one object. ⚠️ Whatever you do for visibility must survive the network: "only teammates see it" resolved per-peer means a client that computes its own arc still draws it, so this is a replication question, not a `visible = false`. And note a spectator is neither team — decide deliberately whether a watcher sees every arc (good for filming, and this lane would say yes) or none
 - [ ] 4.13 **Probe harnesses are writing PNGs into the repository root.** `git status` on a clean checkout of this branch already carries seven untracked files — `flow_attack_eskinita.png.import`, `flow_defend_eskinita.png.import`, `flow_heatmap_eskinita.png.import` and `hud_00/10/21/32.png.import` — because `flow_probe` and `hud_probe` default their output to `res://` and Godot then generates an `.import` sidecar for each. Small, but a permanently dirty working tree is what hides a real uncommitted change, and it cost this lane a double-check on `project.godot`. Either default those probes to a `user://` or ignored path, or add the pattern to `.gitignore`
 
 - [ ] 4.10 **`scripts/ui/tutorial.gd` is yours and it is wrong twice.** It still teaches *"the defender body-blocks the throw, **tags the attacker**, and stands the lata back up"* — the tag was deleted on 2026-07-30 — and it quotes the reset channel at **2.2 s** in two places when it is now 1.8. It also never mentions that a displaced lata cannot stand up by itself, which is now the single most important rule a new player does not know
@@ -793,7 +794,7 @@ countdown is drawn in a **spectator-only** readout, not in `_refresh_status_stac
 stack is `build ux`'s §4.1/§4.9 and I am not pre-empting it, so the spectator branch of
 `_process` calls its own panel instead of the shared one. Filed as **4.12** so they know.
 
-**Measured — `tools/spec_probe.tscn --solo`, 31/31.** (The two-peer run is below.) Not a physics body, zero collision
+**Measured — `tools/spec_probe.tscn --solo`, 33/33** (plus a `--no-spectate` A/B mode). (The two-peer run is below.) Not a physics body, zero collision
 shapes, no `AIController` anywhere on it, flew **24.02 m straight down through the road** to
 y = −15.02 m, four units with 4 of 4 bot-held, wheel 12.0 → 21.9 m/s, TAB picked up
 TeamAProp, the same wheel pulled the shot 6.5 → 2.6 m, F freed it, and the HUD stripped to
@@ -842,8 +843,44 @@ the timer, the pips and everything a *player* sees are untouched.
 **Handed on — filed as checklist items, not left here.** **4.11** (the debug switcher
 claims the vacated seat's unit *and its camera*), **4.12** (the spectator no longer shares
 the player status stack), **4.13** (probes write PNGs into the repo root, so the tree is
-permanently dirty), **7.14** (every camera number is an unflown first guess, and the
+permanently dirty), **4.14** (the trajectory preview is ugly, and visible to the defence,
+which is a wall-hack rather than a polish item), **7.14** (every camera number is an unflown first guess, and the
 acceptance test is a human's rather than a probe's).
+
+**⚠️ A SECOND ROUND OF THE SAME ROOT CAUSE, AND I STOPPED TOO EARLY THE FIRST TIME.**
+🧑 reported *"i dont see one of the characters bruh in spectator"* with a screenshot of two
+Person nameplates stacked over one visible model. It was not an overlap — measured, the two
+Persons were 8.8 m apart. It was `debug_player_switcher.gd` again: it had claimed
+`TeamAPerson` and called `CameraRig.set_active(true)`, and an active rig does not only take
+`Camera3D.current` — it also runs `_apply_fpp_self_hide()`, which drops that character's
+**head mesh and carried slipper** for as long as it is active, because the peer looking
+through it is supposed to be looking past its own body. I had taken the camera back off
+that exact mechanism earlier and stopped there, which fixed the picture and left a body
+broken inside it. Every unit's rig is now deactivated outright when a spectator enters —
+a spectated match has no local peer holding any character, so no rig here should be active,
+and every symptom is downstream of that one fact. `set_active()` is CameraRig's own public
+API, called and not edited; `camera_rig.gd` stays `build ux`'s file and stays untouched.
+Measured: 0 active rigs, 0 hidden meshes, `--solo` 33/33. **The lesson is the one this
+project keeps re-learning: fixing the symptom you can see is how you keep the one you
+cannot.**
+
+**The A/B mode is why that was diagnosable at all.** `spec_probe --solo --no-spectate` runs
+the identical match with the camera off, and the checks that are true either way run in
+both. A defect seen while spectating is not a spectator defect until the non-spectating run
+has been asked the same question — otherwise this lane fixes somebody else's bug inside its
+own file, or files one that was really its own. It immediately paid for itself twice: it
+proved the rig activation was spectator-specific, and it caught the probe itself inventing
+a defect (it read a carried tsinelas sitting correctly in a Person's hand, 0.45 m away, as
+two units in the same place).
+
+**The SPECTATE toggle moved to the heading row — 🧑 call, with an arrow on a screenshot.**
+It had been a fifth full-width plank under the four seat rows, styled to match them
+exactly, and the styling is what made it wrong: spectating is not a fifth seat, it is the
+decision to take no seat, and a control identical to the four things it opts out of says
+the opposite. Four planks and then a fifth plank is a list of five choices. It is a compact
+toggle beside "YOUR CHARACTER" now, visibly a different kind of control, and the roster is
+a list of four again. Focus neighbours went with it — it is above the seats now, so arrowing
+up from the first seat reaches it.
 
 **One correction inside `build mech`'s section, which is not mine and which I made
 anyway.** §1.10 pointed the lata-knockback measurement at *"`build phys` 5.2"*. There is
