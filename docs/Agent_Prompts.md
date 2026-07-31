@@ -146,8 +146,20 @@ delete the control or give it something new to drive — in the same commit.
 
 ## EXECUTION ORDER
 
-**Readability → Balance → Presentation → Single Player.**
+**Presentation → Balance → Single Player.**
 A lane may not start until the one above it has committed. **Five lanes.**
+
+⚠️ **THE THREE PRESENTATION LANES WERE PULLED TO THE FRONT ON 2026-07-31.** 🧑: *"imma do
+model sound and ui first bcz we gonna record demo soon"*. Everything a demo video shows is
+in those three, and none of them depends on the two behind them. Recorded first, they also
+give `build fair` a match worth measuring instead of a grey one.
+
+⚠️ **IF THE ART AND AUDIO ASSETS ARE NOT IN THE REPO YET, RUN 🖥️ `build ui` FIRST AND
+COME BACK.** Lanes 1 and 2 both block on a human delivering files — 🎨 `build model` needs
+the 2D orthographic drawings and 🔊 `build sound` needs recorded audio. 🖥️ `build ui`
+blocks on nothing at all, and its two biggest items (the tutorial teaches a game that no
+longer exists; half the HUD is built in code over the deleted 2v2 scene) are both squarely
+on camera. Swapping it forward costs nothing and no ordering rule here forbids it.
 
 ⚠️ **MULTIPLAYER FIRST, SINGLE PLAYER LATER — HUMAN INSTRUCTION, 2026-07-31:** *"we will
 fix the ai as well but put that in the end of agent prompts lane, we will focus on making
@@ -159,10 +171,10 @@ carries § CHECKLIST §8, the ship checklist, because it is the session that end
 |---|---|---|---|---|---|
 | **—** | §0 | 🎮 **`build core`** | — | the rules, the props, the loop | — · **CLOSED 2026-07-31** |
 | **—** | §7 | 👁️ **`build spec`** | — | spectator camera + POV | — · **CLOSED, carried over intact** |
-| **1** | §1 | 🖥️ **`build ui`** | **Sonnet 5 · high** | `scripts/ui/**`, `scenes/ui/**`, the tutorial | Gameplay · Esports · Completeness |
-| **2** | §2 | ⚖️ **`build fair`** | **Opus 5 · xhigh** | every number **and the feedback that sells it** | **Esports Potential** · Gameplay |
-| **3** | §4 | 🔊 **`build sound`** | **Sonnet 5 · medium** | music, VO, SFX, the mix | **Music and Sound Design 10%** |
-| **4** | §5 | 🎨 **`build model`** | **Opus 5 · medium** | Blender MCP model revamp | **Graphics and Art** · Aesthetics |
+| **1** | §5 | 🎨 **`build model`** | **Opus 5 · medium** | Blender MCP model revamp | **Graphics and Art** · Aesthetics |
+| **2** | §4 | 🔊 **`build sound`** | **Sonnet 5 · medium** | music, VO, SFX, the mix | **Music and Sound Design 10%** |
+| **3** | §1 | 🖥️ **`build ui`** | **Sonnet 5 · high** | `scripts/ui/**`, `scenes/ui/**`, the tutorial | Gameplay · Esports · Completeness |
+| **4** | §2 | ⚖️ **`build fair`** | **Opus 5 · xhigh** | every number **and the feedback that sells it** | **Esports Potential** · Gameplay |
 | **5** | §6 | 🤖 **`build ai`** | **Opus 5 · high** | `ai_controller.gd`, Single Player | Gameplay · Completeness |
 
 **FIVE LANES, AND THAT IS THE POINT.** 🧑 2026-07-31: *"too many lanes, that was the
@@ -179,6 +191,10 @@ argue with each other over the same file, they were always one lane.**
 * **`build fair` — Opus, xhigh.** It is the only lane allowed to move a shipped number,
   §2.1 is a scoring-economy problem with no lookup-able answer, and it now owns the
   feedback for the things it tunes as well. Being wrong here costs the submission.
+  ⚠️ **It used to run second and now runs fourth**, which inverts one dependency: §2.8
+  (do prop skins carry soft stats?) was written for `build model` to *read* afterwards.
+  `build model` now runs FIRST, so it leaves the stat fields exactly as they are and
+  `build fair` applies its own decision to the tables when it gets there.
 * **`build sound` — Sonnet, medium.** Breadth and taste over a system that already
   exists and already routes buses correctly.
 * **`build model` — Opus, medium.** *"Does this silhouette read as a sardine tin from
@@ -269,6 +285,9 @@ specifically is unverified. Tick only your own section.
 
 ### 1 · 🖥️ `build ui` — screens and readability *(Sonnet 5 · high)*
 
+**⚠️ START AT 1.8, NOT 1.1.** A two-peer smoke test is the only item here that can
+invalidate a whole recording session, and it is the only one nobody has ever run.
+
 - [ ] 1.1 **`HUD.tscn` still carries the 2v2 layout underneath the new HUD.** The
   scoreboard, the lata card's second line and the status stack are all built in
   **code** by `hud.gd`, on top of scene nodes that are hidden rather than removed —
@@ -292,10 +311,18 @@ specifically is unverified. Tick only your own section.
   slot, or delete the arrow and its node.
 - [ ] 1.7 **The FPP viewmodel arms are enormous** and dominate the lower third of every
   frame — visible in every capture in § LOG. That is the shot the trailer is filmed in.
-- [ ] 1.8 **Nothing on this branch has been run on two real peers.** Names, prop skins,
-  the tag, the scoring RPCs and the round rotation all have host-authoritative paths
-  that only a second peer exercises. `tools/aim_probe.gd` has a `--host` / `--join`
-  harness to copy.
+- [ ] 1.8 ⚠️⚠️ **DO THIS ONE FIRST, BEFORE ANYTHING ELSE IN THIS SECTION. NOTHING ON
+  THIS BRANCH HAS EVER RUN ON TWO REAL PEERS, AND THE DEMO IS BEING RECORDED IN
+  MULTIPLAYER.** 🧑 2026-07-31: *"the record is in multiplayer bruh"*.
+  Every one of these resolves host-side and is therefore untested by definition on a
+  single machine: the tag (`RoundManager._step_tag`), slipper contact
+  (`Slipper._first_body_hit`), the shove request (`_rpc_request_shove`), every score
+  award (`MatchManager._sync_score`), the round rotation and world reset, the lata's
+  upright RPCs, prop skin push, and player names arriving on the identify packet.
+  A failure in any of them is invisible in Single Player and ruins a recording session
+  that has four people in a room. `tools/aim_probe.gd` has a `--host` / `--join`
+  harness to copy, and `tools/harrydaks_shot.tscn` already prints per-player match state
+  — point one at each end and diff the two reports.
 - [ ] 1.9 **Settings has a player-name row built in code** (`_build_name_row`), for the
   same reason as 1.1. Promote it into `SettingsPanel.tscn` and into the focus order.
 
@@ -325,7 +352,9 @@ wind-up, no animation and no contact moment. They also shared files.
   are 0.45; 1.1 is contact plus a lag band picked by eye.
 - [ ] 2.7 **`TAG_STUN_TIME` 5.0 s is a long time to hold a controller and do nothing** in
   a 90 s round — 5.6% of it, and it can happen repeatedly.
-- [ ] 2.8 **Decide whether lata and tsinelas SKINS carry soft stats.** 🧑 2026-07-31:
+- [ ] 2.8 **Decide whether lata and tsinelas SKINS carry soft stats, and apply it
+  yourself.** ⚠️ `build model` runs before you now and was told to preserve the `traits`
+  fields untouched rather than guess, so the tables are waiting for you. 🧑 2026-07-31:
   *"maybe the skins could have soft stats? (dunno what those stats are yet though)"*.
   The `CANS` and `SLIPPERS` roster entries already carry `bilis`/`lakas`/`tatag` and
   nothing reads them. **You own whether they should, and what they would mean on an
@@ -390,7 +419,9 @@ wind-up, no animation and no contact moment. They also shared files.
   are recoloured at runtime from the roster entry's `tint`.
 - [ ] 5.5 `ROSTER` / `CANS` / `SLIPPERS` re-authored against the new models, and the
   dead `ability` key dropped from every entry.
-- [ ] 5.6 Coordinate with ⚖️ `build fair` §2.8 on whether prop skins carry soft stats.
+- [ ] 5.6 **Carry the `traits` dictionaries across unchanged.** ⚖️ `build fair` §2.8
+  decides whether prop skins carry soft stats and it now runs *after* this lane, so
+  preserving them is how that decision stays open.
 - [ ] 5.7 Orphaned assets swept: `lata_dent1..3.obj` and the dent generator in
   `tools/models/generate_all.gd` describe a deleted mechanic.
 
@@ -453,8 +484,17 @@ tools/ui/**. You do not write character_base.gd.
 
 Your job: the game is playable and the HUD works, but half of it is built in code on
 top of a scene that still describes the deleted 2v2 layout, and the tutorial teaches a
-game that no longer exists. Work § CHECKLIST §1, items 1.1 through 1.9, in that order.
-1.1 and 1.2 are the two that matter most for a recordable video.
+game that no longer exists.
+
+⚠️ START AT 1.8 AND DO IT BEFORE ANYTHING ELSE. Nothing on this branch has ever run on
+two real peers and the demo is being recorded in multiplayer. Every scoring, contact and
+rotation path resolves host-side, so all of it is untested by definition on one machine,
+and a failure there is invisible in Single Player and ruins a session with four people in
+a room. Get a host and a client into the same match, play a full round, and diff what the
+two ends report before you touch a single scene file.
+
+Then work 1.1 through 1.9 in order. 1.1 (the HUD scene) and 1.2 (the tutorial) are the
+two that matter most for a recordable video.
 
 Render every screen you touch and look at it. "The control is added to the tree" is not
 the claim. Use the PLAIN Godot exe for anything that renders; --headless captures come
@@ -558,10 +598,12 @@ Tick your own boxes and append to § LOG in the same commit.
 
 ## FUTURE LANES
 
-These two are written and ready but are **not** blocked on code — they are blocked on
-assets and on humans. Run them at their board positions.
+⚠️ **"FUTURE" IS NOW A MISNOMER AND THE SECTION IS KEPT ONLY SO EVERY LINK TO IT STILL
+RESOLVES.** These two are lanes **1 and 2** — the front of the board, not the back. They
+are blocked on assets and on humans rather than on code, which is exactly why they were
+written in full before they were needed.
 
-### 🔊 `build sound` — audio integration *(Sonnet 5 · medium, run at position 3)*
+### 🔊 `build sound` — audio integration *(Sonnet 5 · medium — **RUNS 2nd**)*
 
 ```
 You are `build sound` on branch HARRYDAKS of the Tumbang Preso repo. Model: Sonnet 5,
@@ -619,7 +661,7 @@ stream loaded. Tick your own boxes in § CHECKLIST §4 and append to § LOG in t
 commit as the work.
 ```
 
-### 🎨 `build model` — Blender MCP model revamp *(Opus 5 · medium, run at position 4)*
+### 🎨 `build model` — Blender MCP model revamp *(Opus 5 · medium — **RUNS 1st**)*
 
 ```
 You are `build model` on branch HARRYDAKS of the Tumbang Preso repo. Model: Opus 5,
@@ -705,9 +747,12 @@ YOUR WORK:
 5. RE-AUTHOR THE ROSTER TABLES against the new models. While you are in there, drop the
    `ability` key from every entry — scripts/abilities/** is deleted and the field is
    inert.
-6. SOFT STATS: `build fair` §2.8 decides whether lata and tsinelas skins carry
-   bilis/lakas/tatag. Read their § LOG entry before you re-author the tables, and
-   implement whatever they decided. Do not decide it yourself.
+6. SOFT STATS — LEAVE THEM ALONE. `build fair` §2.8 decides whether lata and tsinelas
+   skins carry bilis/lakas/tatag, and it runs AFTER you now (it used to run before). So
+   when you re-author the CANS and SLIPPERS tables, carry the existing `traits`
+   dictionaries across UNCHANGED even though nothing reads them yet, and do not invent
+   values to match your new models. Deleting or re-rolling them would silently make that
+   decision for a lane that has not made it. Note in your § LOG that you preserved them.
 7. SWEEP THE ORPHANS: lata_dent1..3.obj and the dent generator in
    tools/models/generate_all.gd describe a mechanic that no longer exists.
 

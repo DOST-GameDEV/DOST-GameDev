@@ -38,7 +38,9 @@ four players free-for-all, and the rules are the ones the street game actually h
 tag, reset. `docs/Design.md` §12 lists everything that went and why.
 
 **👉 [`docs/Agent_Prompts.md`](docs/Agent_Prompts.md) is the single place progress is tracked.**
-**Five** `build xxx` lanes, run one at a time in board order. The first unticked box in a lane's
+**Five** `build xxx` lanes, run one at a time in board order — currently 🎨 model → 🔊 sound →
+🖥️ ui → ⚖️ fair → 🤖 ai, with the three presentation lanes pulled to the front for a demo
+recording. The first unticked box in a lane's
 section is the next thing to do. Five and not more is deliberate: the board this replaced had
 eleven and never finished them, and a lane is a whole session with a cold start — so the count is
 a schedule, not a taxonomy.
