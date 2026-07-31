@@ -843,6 +843,11 @@ const PERCH_NORMAL_MIN: float = 0.7
 ## and gravity takes over; small enough that it reads as losing your footing rather than
 ## as being hit by something.
 const PERCH_SHED_SPEED: float = 2.5
+## Set by `_shed_character_perch()` when this body's floor is ANOTHER UNIT, and read one
+## frame later by `_physics_process`'s gravity branch. One frame of lag is correct here
+## rather than merely tolerable: the answer comes from `move_and_slide()`'s own contact
+## list, so it cannot be known before the move that produced it.
+var _perched_on_character: bool = false
 
 func _move_and_confine() -> void:
 	move_and_slide()
@@ -906,6 +911,7 @@ func _move_and_confine() -> void:
 ## support, `is_on_floor()` goes false the moment it clears the edge, and ordinary
 ## gravity finishes the job. Nothing is teleported and no state is invented.
 func _shed_character_perch() -> void:
+	_perched_on_character = false
 	if not is_on_floor():
 		return
 	for i in get_slide_collision_count():
@@ -915,6 +921,19 @@ func _shed_character_perch() -> void:
 			continue
 		if contact.get_normal().y <= PERCH_NORMAL_MIN:
 			continue # a side contact — that is the body block, and it stays
+		# ⚠️⚠️ THE FLAG IS THE FIX; THE SHOVE BELOW IS ONLY THE POLISH. First version
+		# of this shed the perch with a horizontal nudge alone and 🧑 reported it still
+		# stuck — *"u didnt fix stuck in jump for multiplayer"*. The nudge could never
+		# have worked on its own: the movement block ASSIGNS rather than accumulates
+		# (`velocity.x = direction.x * speed_now`), so the very next frame of held input
+		# overwrote it, and with no input at all `FRICTION` 30 erases 2.5 m/s in about
+		# 0.08 s. It was a push that was deleted before it could move anybody.
+		#
+		# What actually strands the unit is `is_on_floor()` being TRUE in mid-air, which
+		# switches gravity off entirely. So the honest repair is to stop calling another
+		# unit's head a floor: `_physics_process` reads this flag and keeps integrating
+		# gravity, which no input can overwrite because it acts on `velocity.y`.
+		_perched_on_character = true
 		var away := global_position - other.global_position
 		away.y = 0.0
 		# ⚠️ DETERMINISTIC, NOT RANDOM, for two capsules resting exactly concentric.
@@ -1118,7 +1137,13 @@ func _physics_process(delta: float) -> void:
 	# footsteps. JUMP_VELOCITY is 5.8, so anything past ~2 is a real fall and a
 	# seam blip (which carries essentially no downward speed, because the
 	# character never left the ground) is not.
-	var grounded := is_on_floor()
+	# ⚠️ STANDING ON ANOTHER UNIT IS NOT STANDING ON THE FLOOR. See
+	# `_shed_character_perch()` — `is_on_floor()` is true for a capsule resting on another
+	# capsule, which switched gravity off and left a body hovering in mid-air with full
+	# walking control (🧑: *"can still move js stuck there"*). Excluding it here is what
+	# makes the shed work at all; the horizontal nudge alone was overwritten every frame
+	# by the movement block's `velocity.x = ...` assignment.
+	var grounded := is_on_floor() and not _perched_on_character
 	if grounded and _was_airborne and _fall_speed > LAND_SFX_MIN_SPEED:
 		AudioManager.play_at("land", global_position)
 	_was_airborne = not grounded
