@@ -1,411 +1,348 @@
 # Design — the rules, and every number that decides them
 
 **This file is the balance source of truth.** A number in the code must match a number
-here, or one of the two is a bug. **⚖️ `build fair` has final authority over every value
-below**; any lane that moves one moves it here in the same commit.
+here, or one of the two is a bug. Any lane that moves one moves it here in the same
+commit.
+
+**Rewritten 2026-07-31 on branch `HARRYDAKS`.** It replaces the 2v2
+objects-are-players design completely. § 12 records what was deleted and why, because
+a deletion nobody wrote down is a deletion the next lane re-derives from a dangling
+comment.
 
 ## 0 · The premise
 
-2v2. A **team is one Person + one Prop**. The Prop is a **lata** (can) on the defending
-round and a **tsinelas** (slipper) on the attacking round. Attackers throw the tsinelas at
-the lata. Defenders keep the lata standing **on its circle**. Rounds are 90 s and are
-scored in **paired sets** — see §7.
+**Four players. Four rounds. One taya.**
 
-**The thesis: the objects are players, not props.** The lata used to stand still and the
-tsinelas used to be ammunition, while the two Persons decided every round. Both now have
-their own charge meters, movement verbs and win conditions.
+Tumbang preso as it is actually played. One **Defender** (the *taya*) guards a **lata**
+standing inside a chalk box. Three **Attackers** throw slippers at it from outside the
+box, then have to run in and retrieve them — which is the only moment they can be
+caught. At the end of each 90 s round the taya role rotates clockwise. Everyone plays
+taya exactly once. Highest cumulative score after round 4 wins.
 
-## 1 · Removed, and why
+**The thesis: the tension is the retrieval, not the throw.** Throwing is safe and free.
+Getting your slipper back is what costs you.
 
-| Removed | Why |
-|---|---|
-| **The tag / tap-out** | One button near the attacker ended the round outright, with no counterplay worth the name. **The defence no longer has an instant win at all.** |
-| **Can Guard** (hold to block a hit) | It nullified the attacker's one window per throw. Replaced by Can-Dash and Can-Smash — commitments, not a hold. |
-| **Auto-seal on an unrecovered knockdown** | Replaced by the out-of-circle countdown (§5.2). A lata no longer loses by lying still; it loses by being *displaced*. |
-| **Seal-on-hit** (touch a lata that is past its self-right window → round over) | The last piece of the auto-seal, and §5.1's stand-up rule turned it into a second tap-out: a stranded lata never leaves that window, so any attacker could walk over, press bump and end the round. **A follow-up hit on a downed lata now just shoves it further from the circle**, which is continuous, legible, and stacks with the clock instead of skipping it. |
+## 1 · Match structure
 
-## 2 · Movement and stamina — every unit
+| Constant | Value | Where |
+|---|---|---|
+| `ROUNDS` | **4** | `match_manager.gd` |
+| `PLAYER_COUNT` | **4** | `match_manager.gd` |
+| `ROUND_TIME` | **90.0 s** | `round_manager.gd` |
+| `INTERMISSION_DURATION` | 3.0 s | `match_manager.gd` |
+
+Total match ≈ 6 minutes plus intermissions.
+
+**Role is derived, never accumulated.** `MatchManager.defender_slot_for(round)` is
+`(round - 1) % 4` — a pure function of the round number.
+
+| round | 1 | 2 | 3 | 4 |
+|---|---|---|---|---|
+| taya | P1 | P2 | P3 | P4 |
+
+⚠️ **That it is a function and not a counter is the whole fairness argument.** A schedule
+expressed as a mutating counter has no way to state the invariant it is supposed to
+keep, and it desyncs the moment one peer misses one call. "Everyone defends exactly
+once, clockwise" is true here by construction. The 2v2 format this replaced needed a
+whole paired-set system to reach the same property; four players and four rounds get it
+for free.
+
+**At the end of a round:** scores persist, everyone resets to the Safe Zone, the taya
+rotates. **There is no per-round winner.**
+
+## 2 · The arena
 
 | Constant | Value | Note |
 |---|---|---|
-| `SPEED` (walk) | **4.6** | was 6.0. Everything below is built on the lower base. |
-| `SPRINT_SCALE` | **1.45** → 6.67 top | Hold **Shift**. |
-| `STAMINA_MAX` | **4.0 s** | of continuous sprint |
-| `STAMINA_DRAIN_RATE` | 1.0 /s | |
-| `STAMINA_REGEN_RATE` | 0.7 /s | a full bar costs 5.7 s to refill |
-| `STAMINA_REGEN_DELAY` | 0.8 s | after the last sprint frame |
-| `STAMINA_SPRINT_FLOOR` | 0.6 s | you cannot *start* a sprint below this, so the bar cannot be feathered |
-| `JUMP_VELOCITY` | 5.8 | the map's clutter-height law caps it |
+| `CONFINEMENT_RADIUS` | **5.0** | `character_base.gd`. A **square** at \|x\| = \|z\| = 5.0 |
+| `SAFE_ZONE_MARGIN` | 2.0 | Attackers spawn on a ring at 5.0 + 2.0 = **7.0** |
+| `DEFENDER_START_OFFSET` | 2.5 | the taya's mark inside its own box |
+| `INTERACTION_RADIUS` | 1.6 | the lata's reset ring, `lata.gd` |
+
+**The Defender's Box (the danger zone).** The taya is clamped inside it and cannot
+leave. Attackers move freely everywhere; the box is merely *dangerous* to them.
+
+**The Safe Zone is everything outside the box.** An Attacker there cannot be tagged,
+full stop.
+
+⚠️ **A SQUARE, NOT A CIRCLE, AND THE CHALK IS THE TRUTH.** Both map builders draw the
+marker as four straight court lines at \|x\| = \|z\| = 5.0, and `_move_and_confine()`
+clamps X and Z independently to match. A square and a circle of the same "radius" only
+agree at the four edge midpoints; on the diagonals they disagree by 2.07 units, which is
+exactly where a taya moves when covering a corner. Human call, 2026-07-29.
+
+⚠️ **`tools/maps/floorcheck.py` REGEXES `^const CONFINEMENT_RADIUS: float = ...` OUT OF
+`character_base.gd`,** and both map builders draw the chalk from it. Delete or reshape
+that const and every map build aborts.
+
+⚠️ **5.0 IS INHERITED AND HAS NOT BEEN RE-TUNED FOR FOUR PLAYERS.** It was measured for
+one taya and one attacker. It now has to hold one taya against three converging
+attackers. Backlog.
+
+⚠️ **Spawns are computed from the box, not read from map markers** (`main.gd`). "Outside
+the box" is the rule; a marker drifting half a metre inside `CONFINEMENT_RADIUS` would
+spawn an Attacker VULNERABLE on frame one and read as a rules bug rather than a map bug.
+
+## 3 · Movement and stamina — every player
+
+| Constant | Value | Note |
+|---|---|---|
+| `SPEED` | **4.6** | walk |
+| `SPRINT_SCALE` | **1.50** → 6.90 | hold **Shift**. The GDD's "+50% speed" |
+| `STAMINA_MAX` | **100.0** | points, not seconds |
+| `STAMINA_DRAIN_RATE` | **20.0 /s** | = **5.0 s** of continuous sprint |
+| `STAMINA_REGEN_RATE` | **20.0 /s** | a full bar refills in 5.0 s |
+| `STAMINA_REGEN_DELAY` | **2.5 s** | after the last sprint frame |
+| `STAMINA_SPRINT_FLOOR` | 15.0 | you cannot *start* a sprint below this, so the bar cannot be feathered |
+| `FATIGUE_TIME` | **2.5 s** | triggered by reaching 0 |
+| `FATIGUE_SPEED_SCALE` | **0.75** | −25% speed, sprint locked out |
+| `JUMP_VELOCITY` | 5.8 | |
 | `GRAVITY` | 20.0 | |
 | `FRICTION` | 30.0 | **knockback distance = v² / 60** |
 
-## 3 · The attacker (Person, offence side)
+⚠️ **THE BAR IS IN POINTS NOW AND THE NUMBERS ARE NOT A RESCALE.** It used to be
+`STAMINA_MAX = 4.0` meaning four seconds. 100/20 is **5.0 s**, not 4.0.
 
-| Constant | Value | Note |
+**Fatigue rides the speed-zone stack** (`enter_speed_zone`/`exit_speed_zone`) rather
+than being multiplied in, so it composes with a hazard zone instead of one silently
+winning.
+
+## 4 · Controls
+
+| Input | Action |
+|---|---|
+| **WASD** | 8-way movement |
+| **Shift** | sprint |
+| **Space** | jump |
+| **Left-click** | hold to charge a throw, release to throw |
+| **E** | contextual — see below |
+
+⚠️ **E DOES THREE JOBS AND PICKS BY WHAT IS IN FRONT OF YOU.** The GDD gives it all
+three; rather than inventing two more keybinds for a game whose brief is "simpler", the
+press resolves against context. `carrier.gd` gets first refusal, and only a press
+neither pickup nor channel consumed reaches the shove.
+
+| Press | Condition | Result |
 |---|---|---|
-| `THROW_LOCK_TIME` | **1.25 s** | after pickup, before it may be thrown. Anti-cheese: grab-and-fling at the taya's feet was free. HUD: `THROW LOCK`. |
-| `CHARGE_FULL_TIME` | 0.9 s | |
-| `CHARGE_MIN_POWER` | 0.35 | |
-| `LOB_OVERHOLD_TIME` | 0.20 s | hold past full to arm the `bagsak` lob |
-| `LOB_LAUNCH_ANGLE_DEG` | 60° | the lob solves SPEED for a fixed angle |
-| Trajectory preview | whole charge | dotted arc, 48 samples, 2.5 s horizon, role-coloured |
+| **E tap** | Attacker, loose slipper within `PICKUP_RADIUS` | **pick up** |
+| **E hold 1.25 s** | Attacker, nothing grabbable | **shove**, on release |
+| **E hold 2.5 s** | Defender, in the lata's ring, lata down | **reset the lata** |
 
-### 3.1 · The long-throw bonus
+## 5 · The Attacker (three players)
 
-The throwing line sits **6.0** from the base circle; the defended box is a **square** at
-|x| = |z| = 5.0. Behind the line means `max(|x|,|z|) >= 6.0` — outside the box, out of the
-taya's reach, and exposed.
+### 5.1 · The throw
+
+| Constant | Value | Where |
+|---|---|---|
+| `CHARGE_FULL_TIME` | 0.9 s | `carrier.gd` |
+| `CHARGE_MIN_POWER` | 0.35 | a tap still throws |
+| `THROW_LOCK_TIME` | **1.25 s** | after a pickup, before it may be thrown |
+| `LAUNCH_SPEED` | **17.0 m/s** | at full charge, `slipper.gd` |
+| `PICKUP_RADIUS` | 1.4 | |
+| `MUZZLE_FORWARD` | 0.15 | |
+| `HIT_RADIUS` | 0.23 | the slipper's contact radius |
+| `MAX_FLIGHT_TIME` | 6.0 s | |
+| `THROWER_IGNORE_TIME` | 0.25 s | you cannot block your own throw on release |
+
+**All four of these must hold or the throw is refused** (`RoundManager.can_throw()`):
+
+1. holding a slipper;
+2. the lata is **upright**;
+3. **outside the box** — `max(|x|,|z|) >= 5.0`;
+4. the post-restore cooldown has expired.
+
+⚠️ **THE CROSSHAIR ASKS THE SAME FUNCTION.** It is shown only when a throw would
+actually be accepted, so it greys out for exactly the reasons the throw refuses. A
+second opinion about legality is a crosshair that promises a throw the rules then
+refuse, which is the most confusing possible failure — the player sees no reason for
+nothing to happen.
+
+⚠️ **THE THROW LEAVES FROM THE SIGHT LINE, NOT THE HAND.** Measured: leaving from the
+hand, the flight sags **0.38–0.43 m** below the line the player is aiming along, peaking
+within 0.2 m of them — the slipper drops out of the bottom of the screen the instant it
+is released. From the sight line it is **0.001–0.043 m**. The path was right; the
+starting height was not.
+
+⚠️ **`THROW_RESTORE_COOLDOWN` 1.25 s.** After the taya stands the lata back up, nobody
+may throw. It stops the lata being re-knocked by a slipper already charged and waiting
+on the last frame of the 2.5 s channel.
+
+### 5.2 · Retrieval and vulnerability
+
+* Any Attacker not already holding one may pick up **any** loose slipper, and doing so
+  reassigns ownership. Deliberately not "your own only": three attackers converging on
+  one box land slippers in a pile, and a rule that makes you hunt for your specific one
+  reads as a bug.
+* **An Attacker inside the box is 100% safe until they pick a slipper up.** Once
+  `holding_slipper` is true they can be tagged, until they cross back out.
+* `CharacterBase.is_taggable()` is that entire rule, in one function, read by both the
+  tag and the HUD's `VULNERABLE` row — so the warning the player sees cannot disagree
+  with the rule that tags them.
+
+### 5.3 · The shove
 
 | Constant | Value |
 |---|---|
-| `LONG_THROW_LINE` | 6.0 |
-| `LONG_THROW_SPEED_BONUS` | ×1.20 |
-| `LONG_THROW_KNOCKBACK_BONUS` | ×1.25 |
-| `LONG_THROW_PUNISH_POWER` | ≥ 0.98 charge |
-| `LONG_THROW_PUNISH_STUN` | **5.0 s** on the defending Person |
+| `SHOVE_CHARGE_TIME` | **1.25 s** |
+| `SHOVE_SPEED` | **7.75 m/s** → **1.00 m** by v²/60 |
+| `SHOVE_LIFT` | 2.2 |
+| `SHOVE_STUN` | **1.25 s** |
+| `SHOVE_STAMINA_COST` | **25.0** |
+| `SHOVE_COOLDOWN` | **10.0 s** |
+| `SHOVE_RANGE` | 1.6 m |
+| `SHOVE_ARC_DEG` | 70° half-angle |
 
-Enormous on purpose: it answers a defender who body-blocks the lane, it costs the attacker
-their tsinelas and the whole retrieval scramble to set up, TATAG divides the duration, and
-the counterplay is simply not standing in a straight line at range.
+**Attackers shove Attackers.** The Defender cannot be shoved and cannot shove — they
+have the tag, and giving them both would make the box unenterable.
 
-## 4 · The defender (Person, defence side) — the bump meter
+⚠️ **7.75 IS SALVAGED, NOT RE-DERIVED.** The GDD asks for 1 metre of knockback. The
+deleted power bump was already tuned to 7.75 m/s against `FRICTION` 30, and
+`distance = v²/60` — so 7.75 *is* one metre on this exact friction model.
 
-The tag is gone. **Left-click is a charged bump**, the mirror of the attacker's charged
-throw and deliberately slower than it.
+## 6 · The Defender (the taya)
 
-| Constant | Value | Note |
-|---|---|---|
-| `BUMP_CHARGE_FULL_TIME` | **1.35 s** | = 1.5 × the attacker's `CHARGE_FULL_TIME` |
-| `BUMP_TAP_TIME` | 0.18 s | below this it is a tap |
-| **Tap — light bump** | 3.0 m/s flat, 0.6 lift | ≈ 0.15 m. No stagger, no drop. A nudge to break a stance. |
-| **Full — power bump** | **7.75 m/s flat, 2.2 lift** | = **1.00 m** by v²/60 |
-| Power bump extras | **punts** the carried tsinelas · **0.9 s** stagger · **1.2 s** penalty at 0.55× speed | |
-| `PUNT_SPEED` / `PUNT_LIFT` | **13.5** / 3.8 → **3.13 m** | scaled by the charge; a tap punts nothing |
-| `BUMP_LIGHT_COOLDOWN` | 0.45 s | |
-| `BUMP_POWER_COOLDOWN` | 0.80 s | |
-
-**The punt is the "far away" half of the drop, and it was missing.** A stagger already
-dropped the slipper for free — any non-NORMAL state does — but it dropped it *at the
-carrier's own feet*, so eating a 1.35 s bump cost the attacker one bend of the knees.
-It now leaves along the line the bump sent its carrier. **3.13 m measured**
-(`tools/mech_probe.tscn`, full charge, default skin, two runs) is ~1.5 s of crawling
-back at `CRAWL_SPEED_SCALE` plus the 1.25 s throw lock: about 2.8 s of tempo. The lift
-is cosmetic — a loose slipper is bled by `FRICTION` in the air too, so distance is
-`v²/60` and airtime adds nothing.
-
-Partial charges interpolate linearly. The whole 1.35 s is visible on **every peer** (the
-wind-up broadcast), so the attacker can dash, jump or throw through the commitment.
-
-## 5 · The lata (Prop, defence side)
-
-### 5.1 · It gets knocked around now
-
-| Constant | Value | Note |
-|---|---|---|
-| `CAN_KNOCKBACK_SCALE` | **×2.6** | on every incoming impulse. A clean hit moves it ~1 m instead of dropping it in place. |
-| `DOWNED_SELF_RIGHT_WINDOW` | 1.25 s | press bump to get up early |
-| `DOWNED_MAX_TIME` | **2.0 s** | the ceiling on being down. Applies to every Person and every tsinelas wherever they lie, and to a lata **on its circle** — see below |
-| lata `hurt_r` / `hurt_h` | **0.28 / 0.62** | was 0.17 / 0.40. `_COLLISION_BY_ROLE` in `character_base.gd` |
-
-The lata is lost by being displaced, not by lying down. That is what makes ×2.6 safe.
-
-**The lata is a bigger target than it looks, on purpose.** 🧑 2026-07-31: *"make can's
-hitbox larger it's ass to hit it bro."* Its hurtbox was the smallest in the game (0.17,
-against 0.307 on a tsinelas and 0.45 on a Person), and a thrown slipper carries `hit_r`
-0.230 — so the effective target radius was **0.40 m**, from the 6.0 m throwing line, for
-the offence's entire win condition. It is now **0.51 m**, a ~1.6× cross-section. The
-lata's *body* radius is unchanged at 0.14: the hurtbox is what you hit, the body is what
-you walk into and what `CAN_HOME_RADIUS` is sized against. ⚠️ **This is a balance change
-and it has not been re-measured** — filed to ⚖️ `build fair` as §7.28.
-
-### 5.1.1 · The lata may only stand up on its circle
-
-**A lata knocked out of its circle does not get up.** Not at `DOWNED_SELF_RIGHT_WINDOW`,
-not at the 2.0 s ceiling, not by mashing bump, not by Quick Stand. It is `STRANDED`, and
-the only clock that means anything to it is the one in §5.2 that ends the round.
-
-The rule is written once, as **"the out-of-circle countdown is not running"**, rather
-than as a second radius test — one line on the floor, one source of truth. It therefore
-does not apply during the intermission or the pre-round free-roam window, because no
-countdown runs there.
-
-What bounds it is the round, not the body: at most `CAN_OUT_LIMIT_BASE` seconds, less
-0.75 per save, at the end of which the attackers have won. That is deliberate — being
-displaced is the thing that loses the round, so it has to be the thing that costs.
-
-Its price is that the lata has no verb while stranded; its answers are all upstream
-(Can-Dash out of the throw, Can-Smash to keep bodies off the mark, walking home when it
-was merely shoved) and its last one is its teammate. **This is the one moment in a round
-the two defenders must actually cooperate**, which is worth having in a 2v2.
-
-*Measured*, `tools/mech_probe.tscn`: held down 3.0 s off the circle against a 2.0 s
-ceiling; stands within 6 frames of arriving home with no fresh input; a Person downed at
-the same spot still gets up by 2.0 s.
-
-### 5.2 · The circle countdown — the defence's real job
+* **Body-block.** Physically stop a slipper before it reaches the lata. A blocked
+  slipper drops at the point of contact, which is the trade: the throw stopped, and the
+  slipper is now deep inside the box.
+* **Reset the lata.** Stand in the ring, hold **E** for `RESET_CHANNEL_TIME` **2.5 s**.
+  It goes back on its mark **and then** stands up, in that order — a lata that stands
+  up where it was knocked to is a lata the next throw cannot miss. Letting go zeroes the
+  channel.
+* **Tag.** Touch any Attacker in the box who is holding a slipper, while the lata is
+  upright.
 
 | Constant | Value |
 |---|---|
-| `CAN_HOME_RADIUS` | 0.9 m (drawn ring 0.70; the lata's capsule 0.14) |
-| `CAN_OUT_LIMIT_BASE` | **5.0 s** |
-| `CAN_OUT_RECOVERY_STEP` | **0.75 s** per recovery |
-| `CAN_OUT_RECOVERY_MAX` | **5** stacks → floor **1.25 s** |
+| `TAG_RADIUS` | 1.1 m |
+| `TAG_STUN_TIME` | **5.0 s** |
+| `RESET_CHANNEL_TIME` | 2.5 s |
 
-While the round is live and the lata is outside `CAN_HOME_RADIUS`, a countdown runs; at
-zero the **attackers win the round**. Getting back inside stops and resets it — and
-permanently shortens the next one by 0.75 s, five times over. The fifth save buys 1.25
-seconds, so the defence's ability to keep saving is itself the clock.
+**Tag penalty:** the Attacker is teleported to the Safe Zone and stunned 5 s.
 
-**This is the only ruleset.** The countdown used to be gated to Option B, because an
-Option A round could otherwise be lost to a clock nothing in that mode explained. Option A
-is deleted (§7.2) and the gate went with it — the countdown now runs unconditionally.
+⚠️ **THE SLIPPER IS DROPPED WHERE THEY WERE TAGGED, NOT CARRIED HOME.** That is the
+point of the penalty: the retrieval run has to be made again, against a taya who now
+knows exactly where you are going.
 
-**The channel time is set against this table, not against feel.** With `RESET_CHANNEL_TIME`
-at 2.2 s the fifth stack was unreachable decoration — the round was already decided a row
-above it. At 1.8 s the cliff lands on the floor:
+⚠️ **THE TAG IS A PROXIMITY CHECK ON THE HOST, NOT AN `Area3D`.** So is slipper contact,
+and so is the reset ring. An overlap fires on whichever peer owns the body — `hit_probe`
+measured the consequence directly: **16 of 36 overlaps did not land, split by target**.
+Sixteen distance checks a frame on the host is cheaper than one correct networked
+overlap, and it can only happen where the score is written.
 
-| saves | 0 | 1 | 2 | 3 | 4 | 5+ |
-|---|---|---|---|---|---|---|
-| limit | 5.00 | 4.25 | 3.50 | 2.75 | 2.00 | **1.25** |
-| save by channel (1.8 s + travel) | easy | easy | easy | ok | knife-edge | **impossible** |
+## 7 · The lata
 
-So at maximum stacks a knockdown outside the circle simply ends the round, and the lata's
-only survival is not to be knocked over. That escalation is the beat the round is built
-around.
-
-**The taya's counterplay: the reset channel carries it home.** A lata is displaced by being
-*hit*, and being hit is exactly the state in which it cannot drive itself — so if its own
-player were the only one who could move it, the correct attacking play would be to knock it
-out and keep it stunned while the taya watched (`hitbox.gd`'s same-team rule forbids even
-shoving it). Holding `grab` beside your own lata for `RESET_CHANNEL_TIME` (**1.8 s**) puts
-it back on the mark **and then** stands it up — in that order, because §5.1.1 refuses the
-stand-up anywhere else. The price is 1.8 s of standing still inside the arena, longer than
-the defender's own full bump commitment and twice a full throw charge — the one moment the
-attacker gets to punish.
-
-*Measured*, `tools/mech_probe.tscn`: a completed channel on a stranded lata stands it up
-and returns it to 0.00 m from centre, and the save shortens the next countdown by exactly
-0.75 s.
-
-### 5.3 · Lata abilities
-
-| Ability | Input | Numbers |
-|---|---|---|
-| **Can-Smash** | `bump` (F) | 0.35 s wind-up · radius **3.6 m** · **1.6 s** stun on a Person, **1.2 s** on a tsinelas (a slipper in flight is dropped LOOSE) · **3.0 s** cooldown (was 8.0 — 💥 `build abil` resolved the brief-vs-code conflict in favour of the brief, 2026-07-31) |
-| **Can-Dash** | `guard_dash` (Ctrl) | 16.0 m/s for 0.18 s · **one use per round** |
-| Roster special | `special_ability` (LMB) | Quick Stand / Spin Guard / Shatter Trap, per the picked skin |
-
-Radius 3.6 is derived: the taya's standoff post is 2.6 m from the can and the confinement
-square's edge is 5.0, so it covers the approach lane and stops short of the 6.0 throwing
-line. **The can cannot hit anybody who kept their distance.**
-
-### 5.4 · Ragdoll read
-
-Downed is a rotation, not a simulated ragdoll — but it **rolls**: the visual tumbles about
-the axis perpendicular to its travel, at the rolling-without-slipping rate for its capsule
-radius, plus a 78° topple. Readability is `build phys` 5.3 and is not yet confirmed.
-
-## 6 · The tsinelas (Prop, offence side)
-
-| Ability | Input | Numbers |
-|---|---|---|
-| **Charged self-launch** | hold `jump` while LOOSE | 0.75 s to full · **6.0 → 13.0 m/s**, 0.62 vertical · the slipper flings *itself* |
-| **Ground Smash** | `bump` (F) airborne, ≥ 0.6 m up | dive at **22 m/s** · on impact radius **3.2 m**, **1.4 s** stun · **12.0 s** cooldown |
-| **Ground Smash, direct hit** | within **0.75 m** of a lata that is still **NORMAL** | **the attacking side wins the round instantly** |
-| **Flick Dash** | `guard_dash` (Ctrl) | 14.0 m/s, 0.15 s, 2.5 s cooldown |
-| Mid-flight steer | movement keys while FLYING | capped at `MAX_STEER_DELTA_V` 3.0 m/s per throw |
-
-Charge the jump, launch over the taya, dive on the can, win. That loop is the point of the
-whole pass: **the slipper can win a round without its Person ever touching it.**
-
-## 7 · Round and match win conditions — the only ruleset
-
-**Attackers win a round by:** the out-of-circle countdown reaching zero (§5.2) · a direct
-Ground Smash on a lata that is **still standing** (§6) · `FALL_LIMIT` = 4 scoring
-knockdowns in one round.
-
-⚠️ **"Still standing" is load-bearing and it was added 2026-07-31** (💥 `build abil`, §3.9).
-A downed or stranded lata has no verb at all — it cannot dodge, Can-Dash or Can-Smash
-(§5.1.1) — so treating it as a live instant-win target made the direct hit a proximity
-check on a body that was already losing, which is the tap-out rebuilt by accident. A lata
-that is already down is being timed out by §5.2's countdown; that is its own loss
-condition and needs no second one stacked on it for free.
-
-**Defenders win a round by:** the 90 s `ROUND_TIME` running out. That is the only way.
-There is no tag.
-
-**There is no seal.** Sealing a lata by touching it is gone (§1). `seal()` and the SEALED
-state survive as the state machine's own shape — nothing in this ruleset reaches them; see
-§7.2 for why they were kept rather than deleted.
-
-### 7.1 · The match is scored in paired sets
-
-| Constant | Value | Note |
-|---|---|---|
-| `SETS_NEEDED` | **2** | first to two sets takes the match |
-| `ROUNDS_PER_SET` | **2** | definitional: both teams attack exactly once |
-| `MAX_SETS` | 5 | termination guard, not a format choice |
-| `NEVER` | 999999.0 | the attack-time sentinel for "never took the lata out" |
-
-**A set is two rounds in which both teams attack exactly once.** Sets are the scoring
-unit. A set is not awarded until both teams have done both jobs, so the format cannot pay
-a team for the side it was handed.
-
-**Role is derived, never accumulated.** `MatchManager._team_a_is_can_for(set, round_in_set)`
-is a pure function of the schedule:
-
-| | round 1 of the set | round 2 of the set |
-|---|---|---|
-| **odd sets** (1, 3, 5) | A defends, B attacks | A attacks, B defends |
-| **even sets** (2, 4) | A attacks, B defends | A defends, B attacks |
-
-**Which team attacks FIRST alternates with the set number**, because attacking second means
-knowing the time you have to beat. Without that alternation the old bug simply moves up one
-level, from *"A always defends round 1"* to *"A always attacks second"*.
-
-**The tiebreak is one comparison, not two rules.** Each team's **attack time** is how long
-it took to take the lata out on its own attacking round, or `NEVER` if it did not
-(`RoundManager.last_attack_time()`, measured host-side as `ROUND_TIME - time_left`). **The
-lower number takes the set.** Any finite time beats `NEVER`, so "scored when the other side
-did not" and "scored faster than the other side" are the same test. Two `NEVER`s is a drawn
-set and awards nothing; `MAX_SETS` then resolves the match on sets, then on aggregate attack
-time, and a genuine dead heat reports `winning_team = -1`.
-
-⚠️ **The acceptance test is "the seat draw stops mattering", not the format.** It is met
-because every scoring event is a comparison between the two teams doing *the same job*, and
-because role comes from the schedule rather than from a bool that was seeded `true`.
-
-### 7.2 · Removed: Option A
-
-**Deleted 2026-07-31** by 📋 `build rules` §8.2, on the rubric finding that two shipped
-rulesets is not an esport. Recorded here because 🧑 asked for it in those words — *"remove
-gamemode completely but document that it was there"* — and because a deletion nobody wrote
-down is a deletion the next lane re-derives from a dangling comment.
-
-**What it was.** A second, host-selectable win-condition set, picked from a MODE row on the
-match setup screen (`CAPTURE` vs `DENTS`) and carried to every peer on the lobby config
-broadcast:
-
-| Piece | Value | What it did |
-|---|---|---|
-| `CharacterBase.MAX_DENTS` | 3 | the lata had a **health bar**. `apply_dent()` converted every landed hit into a dent instead of a knockdown, bypassing the Downed/Seal machine entirely |
-| `CharacterBase.clear_dent()` | — | the taya's reset channel beat **one dent back out** rather than carrying the lata home |
-| `RoundManager.RING_OUT_LIMIT` | 3 | **ring-outs**: the defending side won by knocking the attacking tsinelas off the arena three times, counted off the kill plane |
-| defender timer win | 90 s | unchanged from the shipped ruleset |
-| `CAN_MESHES` / `lata_dent1..3.obj` | 4 states | the dent count was the lata's only in-world damage read |
-
-**Why it went.** One ruleset is a rubric position, not a cleanup. Two doubled the balance
-surface `build fair` has to measure, doubled what a tutorial has to teach, and had already
-produced a real bug class: the §5.2 countdown shipped ungated, so an Option A round could be
-lost to a clock that mode never explained. The circle countdown is the game.
-
-**What was left behind on purpose, and why.**
-
-* **`seal()` and the `SEALED` state stay.** They were previously justified as *"for Option A
-  and for the state machine's own shape"*; with Option A gone only the second half survives,
-  and it is still load-bearing. `SEALED` is a terminal non-NORMAL state that four call sites
-  test for (drop-the-slipper, knockback refusal, audio, nameplates), and collapsing it into
-  `DOWNED` would make those tests mean something subtly different. Nothing reaches it in
-  play. **If a later lane wants it gone, that is a state-machine change, not a mode cleanup.**
-* **The kill plane still respawns.** `register_ring_out()` is deleted; falling off the arena
-  still returns a unit to its spawn, it just no longer scores.
-* **`lata_dent1/2/3.obj` and `tools/models/generate_all.gd`'s dent generator are now
-  orphaned** — and they were already half-orphaned before this pass, since `CAN_MESHES`
-  points at Kenney `.glb` files. Filed to 🎨 `build model` as §5.11.
-* **The MODE row is hidden, not deleted from the scene.** `match_setup.gd` no longer has a
-  picker; `MatchSetup.tscn` still carries the row for 🖥️ `build ux` §4.18 to remove with the
-  focus order.
-
-## 8 · Traits
-
-`BILIS` → the `SPEED` term. `LAKAS` → outgoing impulse and throw charge. `TATAG` → divides
-incoming knockback and shortens stagger. Per point: speed ±5 %, power ±7 %, grit ±7 %, on
-1..5 with 3 neutral. Narrow on purpose — a pick must be a personality, not the correct
-answer.
-
-## 9 · Spectator mode
-
-A free-flying camera with **no body, no collision and no physics layer**, so it clips
-through everything by construction rather than by a mask. Reachable from the setup screen
-in **both** Single Player and Multiplayer; a spectating peer claims no seat, is excluded
-from the ready count, and its seat is bot-filled.
-
-Controls: WASD + mouse · `Space` up · `Ctrl` down · `Shift` boost (×3) · wheel changes base
-speed (or the follow distance while following) · `Tab` cycles a follow target · **`V` drops into
-that unit's POV** · `F` frees the camera.
-
-⚠️ **`V` was missing from this section until 2026-07-31** and it is not a minor omission — POV is
-half of what the human asked spectator for (*"watch the povs of people/ai, thats why its called
-camera"*). It is a **placement, not a takeover**: this camera parks at the unit's eye height
-(1.45 m on a Person, 0.42 m on a Prop) and takes its yaw, and the watched unit's own `CameraRig`
-stays inactive on purpose — activating it would feed the spectator's mouse into a live unit's aim
-pipeline, and watching somebody must not change what they do. Pitch stays with the operator.
-`V` is sticky across a `Tab` cycle, so a filmed POV pass steps through all four units without
-re-pressing it. Source: `spectator_camera.gd`, and § LOG's `build spec` entry.
-
-## 10 · Status readability
-
-The HUD carries a status stack (top-centre, under the timer), one row per live effect with
-its own countdown: `STUNNED`, `DOWNED`, `STRANDED`, `SLOWED`, `THROW LOCK`, `SMASH`,
-`DASH`, `LATA OUT`. **A stun the player cannot time is a stun they cannot play around**,
-which is most of what "the defender feels overpowered" was.
-
-`STRANDED` replaces `DOWNED` on a lata that is off its circle, and the swap is the whole
-point: that lata is not counting down to standing up, it is counting down to losing the
-round, so it reads the §5.2 clock instead. A `DOWNED` bar ticking to 0.00 and then sitting
-there while nothing happens is exactly the defect this section exists to prevent.
-
-## 11 · Cooldown table — the whole game on one screen
-
-| Action | Cooldown | Stun it applies |
-|---|---|---|
-| Light bump | 0.45 s | — |
-| Power bump | 0.80 s | 0.9 s + 1.2 s penalty |
-| Can-Smash | **3.0 s** | 1.6 s / 1.2 s |
-| Can-Dash | once per round | — |
-| Ground Smash | 12.0 s | 1.4 s |
-| Flick Dash | 2.5 s | — |
-| Throw (after pickup) | 1.25 s | — |
-| Max-power long throw on the taya | — | 5.0 s |
-
-### The stunlock argument — the starting position, not a verdict
-
-⚠️ **Argued, never measured. `build fair` 6.5 owns proving or breaking it.** Four
-properties are claimed to bound every chain at 2.5 s:
-
-1. **Stuns overlap, they do not stack.** Every stun arrives through
-   `CharacterBase.apply_stagger()`, which takes `max(_staggered_time_left, duration/grit)`.
-   Two 1.6 s smashes 0.2 s apart are 1.8 s, not 3.2 s. There is no additive path.
-2. **DOWNED has a hard ceiling.** `DOWNED_MAX_TIME` 2.0 s is a wall-clock total, not a
-   refreshable window. ⚠️ **It has exactly one exception and it is §5.1.1**: a lata off
-   its circle stays down. That is not a stunlock, and the distinction is worth stating
-   rather than waving at — a stunlock is a state you cannot act out of *and cannot lose
-   out of*, so it stalls the game. A stranded lata is bounded by a countdown that ends
-   the round in at most 5.0 s (1.25 s at full stacks), it can be ended early by the
-   taya's channel, and nothing about it touches a Person. *Measured*, not argued:
-   `tools/mech_probe.tscn` holds a lata down 3.0 s off the circle and a Person 2.4 s at
-   the same spot, and only the lata is still there.
-3. **The longest producible chain is 2.5 s** — power bump (0.9) into Can-Smash (1.6). It
-   needs two units committing in sequence, one of which then owes **3.0 s** of cooldown,
-   and the bump's 1.35 s wind-up is visible on every peer first. ⚠️ **That number was 8.0
-   when this argument was written and it is now 3.0** (💥 `build abil`, 2026-07-31), so the
-   "not repeatable" half of this bound is materially weaker than when it was argued —
-   ⚖️ `build fair` 7.5/7.12 re-checks it, and this line is the reason it must.
-4. **The 5 s long-throw punish is not repeatable** — it costs the tsinelas, the retrieval
-   scramble and a 1.25 s throw lock before it could be set up again.
-
-### Counterplay, per powerful action
-
-Nothing here is answered only by "do not be there".
-
-| Action | Answer |
+| Constant | Value |
 |---|---|
-| Power bump | 1.35 s of visible wind-up — dash, jump, throw, or leave 1.27 m of reach |
-| The punt (losing your tsinelas 3 m away) | it only lands off a *charged* bump, so the same 1.35 s tell answers it; and a loose tsinelas self-launches home far faster than it crawls |
-| A stranded lata (§5.1.1) | do not be displaced: Can-Dash out of the throw, Can-Smash to keep bodies off the mark — and failing both, the taya's 1.8 s channel |
-| Can-Smash | 0.35 s wind-up, and 3.6 m never reaches the 6.0 throwing line |
-| Can-Dash | one per round; bait it, then commit |
-| Ground Smash | needs height, so it is telegraphed on the ground first; Can-Dash beats it, a miss costs 12 s |
-| Long-throw punish | do not stand in the lane at max range |
-| Circle countdown | the reset channel carries the lata home (§5.2) |
-| Self-launch | a committed arc with no steering; a lata that moves is not under it |
+| `INTERACTION_RADIUS` | 1.6 m |
+| `DOWNED_TILT_DEG` | 88° |
+| `TOPPLE_TIME` | 0.22 s |
+| hurtbox | 0.28 r / 0.62 h |
+
+`is_upright` gates **four** separate rules: the throw, the tag, passive scoring and the
+reset channel. It is host-authoritative and replicated through an **explicit RPC, not a
+`MultiplayerSynchronizer` property** — a synchronizer writes a property directly, so a
+setter's `signal` never fires on the peer that *received* it. That exact defect cost a
+whole session on 2026-07-30 (one setter, three symptoms).
+
+**The bigger hurtbox survives the rewrite.** 🧑 2026-07-31: *"make can's hitbox larger
+it's ass to hit it bro."* Body radius stays 0.14; the hurtbox is what you hit.
+
+## 8 · Scoring
+
+| Event | Points | To |
+|---|---|---|
+| Knock the lata down | **+100** | the thrower |
+| **Sabotage** — shove an Attacker who is tagged within 2.5 s | **+50** | the shover |
+| Tag a vulnerable Attacker | **+100** | the Defender |
+| Passive defence, per 1.0 s the lata is upright | **+10** | the Defender |
+
+Highest cumulative score at the end of round 4 wins. A tie at the top reports
+`winning_slot = -1` and is an honest draw.
+
+⚠️ **EVERY POINT IN THE GAME IS AWARDED IN ONE FILE**, host-side, through
+`MatchManager.add_score()`. The predecessor spread its win conditions across four files
+and the recurring bug class was a rule that fired on the wrong peer. A point that can
+only be created in one function cannot be created on a client at all.
+
+⚠️ **`SABOTAGE_WINDOW` 2.5 s IS A GUESS AND HAS NEVER BEEN MEASURED.**
+
+⚠️ **PASSIVE DEFENCE IS A LARGE TERM AND IS UNBALANCED.** 90 uncontested seconds is
+**900 points**, against 100 for a knockdown. On the numbers as they stand, a taya who is
+simply never challenged out-scores three attackers who each land a throw. This is the
+single most likely thing to be wrong in the whole table and it is the balance lane's
+first job.
+
+## 9 · Traits and skins
+
+`BILIS` → `SPEED`. `LAKAS` → outgoing impulse. `TATAG` → divides incoming knockback and
+shortens stagger. Per point: speed ±5%, power ±7%, grit ±7%, on 1..5 with 3 neutral.
+Narrow on purpose — a pick must be a personality, not the correct answer.
+
+**Character select keeps all three tabs** (PERSON / LATA / TSINELAS). The Person pick
+drives the model and the traits above; the lata and tsinelas picks tint the real props,
+pushed from the host so all four peers see one lata.
+
+⚠️ **THE "SOFT STATS" QUESTION IS OPEN.** Every roster entry — Person, lata and tsinelas
+alike — already carries `bilis`/`lakas`/`tatag`. The Person ones reach gameplay. Whether
+the **prop** ones should is undecided and is filed to a lane.
+
+⚠️ **THE `ability` FIELD ON EVERY ROSTER ENTRY IS INERT.** `scripts/abilities/**` is
+deleted.
+
+## 10 · Player names
+
+Set in Settings, capped at `PLAYER_NAME_MAX` **14** characters, sanitised once on the
+host on arrival. Empty is legal and falls back to the seat label (`P1`..`P4`) through
+`CharacterBase.display_name()`, so nothing that draws a name needs a null check. The
+property is replicated, so a rename from the pause menu reaches every peer without
+waiting for a round boundary.
+
+## 11 · Status readability
+
+The HUD carries a status stack, one row per live effect with its own countdown:
+`STUNNED`, `DOWNED`, `FATIGUED`, `VULNERABLE`, `SHOVE CD`, `THROW CD`. **A stun the
+player cannot time is a stun they cannot play around.**
+
+⚠️ **`VULNERABLE` HAS NO COUNTDOWN AND THAT IS CORRECT** — it lasts exactly as long as
+you choose to stand in the box holding a slipper. It draws as a solid bar with no timer;
+printing "VULNERABLE 0.0s" would read as an effect that had already expired.
+
+⚠️ **`apply_stagger()` USES `max()`, SO STUNS OVERLAP RATHER THAN STACK.** There is no
+additive path anywhere in the game, which is what bounds a stun chain. **Its known cost:
+a short stun landing inside a longer one is invisible** — a 1.25 s shove stun inside the
+5 s tag penalty reads as nothing happening. Backlog.
+
+## 12 · Removed, and why
+
+**Recorded rather than silently dropped.** 🧑 2026-07-31: *"we're making the game way
+simpler basically, there were so many skills and shit earlier, it was too complicated
+and far from tumbang preso"*, and *"drop the irrelevant mechanics now like bump and shit
+and slipper being a character and can being a character"*.
+
+| Removed | What it was | Why |
+|---|---|---|
+| **The objects-are-players thesis** | the lata and tsinelas were full `CharacterBase` player units with lobby seats, cameras, roster entries and AI | It is not tumbang preso. Both are props now |
+| **The whole ability layer** | `scripts/abilities/**` — Can-Smash, Can-Dash, Ground Smash, Quick Stand, Spin Guard, Shatter Trap, Bakya Bash, Flick Dash, + 10 `.tres` | Eight verbs nobody asked for |
+| **The bump meter** | LMB-charged bump, tap/power split, the punt, the hit penalty | Replaced by the shove, which kept its impulse number |
+| **2v2 and paired sets** | `SETS_NEEDED`, `ROUNDS_PER_SET`, attack-time tiebreak, `NEVER` | Four players do not have teams. The fairness property it existed to guarantee is structural now |
+| **The out-of-circle countdown** | `CAN_OUT_*`, recovery stacks, `STRANDED` | It was the primary win condition of a game with win conditions. Rounds are scored, not won |
+| **`FALL_LIMIT`, ring-outs, dents, the seal** | four more win conditions | Same |
+| **The lob** (`bagsak`) | overhold past full charge, 60° fixed-angle solve | One throw, one arc |
+| **Long-throw bonuses** | speed ×1.20, knockback ×1.25, a 5 s punish stun | |
+| **Self-launch, mid-flight steer, scuffing, bouncing** | `carriable.gd` | |
+| **`ThrowProfile`** | per-class launch speed, gravity, mass, spin | Every slipper flies the same way |
+| **`Hitbox` / `Hurtbox`** | Area3D contact | Contact resolves by distance on the host |
+| **`guard_dash` and `bump` input actions** | | Nothing pressed them. The spectator's descend key became `spectator_down` |
+
+**Kept deliberately, and each for a stated reason:**
+
+* **`SPAWN_SETTLE_FRAMES`** — a real, expensively-diagnosed physics fix (B-100), and
+  role rotation is exactly what triggers it.
+* **`_shed_character_perch()`** — you cannot stand on somebody's head. From live play,
+  and *more* likely with three attackers converging on one box.
+* **`_solve_arc()`** — measured, and `trajectory_preview.gd` shares it, so the aim line
+  and the flight line are one line by construction.
+* **The AI intent indirection** — a bot presses the same buttons a human does, which is
+  the only reason one `_physics_process` serves both.
+* **`CANS` / `SLIPPERS` roster tables** — the models are still wanted.
+* **Spectator** — kept whole, on human instruction.
