@@ -45,6 +45,13 @@ func _ready() -> void:
 	# 4.1 — round result. See _on_round_intermission_audio for why this signal
 	# rather than RoundManager.round_won.
 	MatchManager.round_intermission_started.connect(_on_round_intermission_audio)
+	# ⚠️ THE SCOREBOARD IS EVENT-DRIVEN, NOT POLLED, and that is what makes a score
+	# floater possible at all: `_process` can see that a number changed but not by
+	# how much or why, and "+50 SABOTAGE" is the half a spectator actually reads.
+	MatchManager.score_changed.connect(_on_score_changed)
+	RoundManager.lata_knocked.connect(_on_lata_knocked)
+	RoundManager.lata_restored.connect(_on_lata_restored)
+	RoundManager.attacker_tagged.connect(_on_attacker_tagged)
 	downed_flash.visible = false
 	toast_label.visible = false
 	lata_card.visible = false
@@ -55,7 +62,8 @@ func _ready() -> void:
 	_apply_wood_skin()
 	# Initialise panels from current MatchManager state so pips and colours are
 	# correct on load (e.g. a late-joining peer, or a match already in progress).
-	set_round_display(MatchManager.round_number, MatchManager.team_a_is_can)
+	_build_scoreboard()
+	set_round_display(MatchManager.round_number, MatchManager.defender_slot)
 	# Build stamp in-match too — outlined HudCaption reads over the 3D scene.
 	GameVersion.attach_to(self, true)
 
@@ -164,7 +172,7 @@ func _refresh_role_accents() -> void:
 	var local_char := you_card.get_local_character()
 	if local_char == null or not is_instance_valid(local_char):
 		return
-	var role_colour: Color = UiTheme.DEFENSE if local_char.team_is_can_side else UiTheme.OFFENSE
+	var role_colour: Color = UiTheme.DEFENSE if local_char.is_defender else UiTheme.OFFENSE
 	crosshair_label.add_theme_color_override("font_color", role_colour)
 	crosshair_label.add_theme_constant_override("outline_size", CROSSHAIR_OUTLINE)
 	crosshair_label.add_theme_color_override("font_outline_color", UiTheme.INK)
@@ -197,8 +205,8 @@ func _process(delta: float) -> void:
 	# changed — see its own doc. Polling is kept rather than signal-driven
 	# because MatchManager mutates wins from several paths and a missed signal
 	# is a silently stale scoreboard.
-	_fill_pips(team_a_pips_box, MatchManager.team_a_wins, _pip_color(true))
-	_fill_pips(team_b_pips_box, MatchManager.team_b_wins, _pip_color(false))
+	_refresh_scoreboard()
+	_refresh_lata_card()
 
 	if _toast_time_left > 0.0:
 		_toast_time_left -= delta
@@ -219,10 +227,16 @@ func _process(delta: float) -> void:
 		# the countdown twice with two different amounts of context. See §2.7.
 		_refresh_spectator_panel()
 		return
-	crosshair.visible = local_char != null and is_instance_valid(local_char) and local_char.is_person
+	# ⚠️ THE CROSSHAIR IS THE THROW-LEGALITY TELL, and it asks the SAME function the
+	# throw itself asks. A second opinion about legality is a crosshair that promises
+	# a throw the rules then refuse, which is the most confusing possible failure —
+	# the player sees no reason for nothing to have happened.
+	var live := local_char != null and is_instance_valid(local_char)
+	crosshair.visible = live and RoundManager.can_throw(local_char)
 	# 3.4: same cached character, no second scan.
 	offscreen_indicators.update(local_char)
 	_refresh_status_stack(local_char)
+	_refresh_stamina(local_char)
 
 ## ---------------------------------------------------------------------------
 ## ⚠️⚠️ THE STATUS STACK — every stun and every status effect, with a number on it.
@@ -297,10 +311,10 @@ func _build_status_row() -> Control:
 ##   OFFENSE   a countdown that is costing YOUR SIDE the round (the lata off its circle)
 func _status_colour(label: String) -> Color:
 	match label:
-		"STUNNED", "DOWNED", "OUT":
+		"STUNNED", "DOWNED", "VULNERABLE":
 			return UiTheme.DANGER
-		"LATA OUT":
-			return UiTheme.OFFENSE
+		"FATIGUED":
+			return UiTheme.AMBER
 		_:
 			return UiTheme.HIGHLIGHT
 
@@ -314,10 +328,6 @@ func _refresh_status_stack(local_char: CharacterBase) -> void:
 	# this is a fact about the ROUND, it is the same number for all four players, and it
 	# lives on `RoundManager`. Asking a character about it would have four units each
 	# reporting the state of an object none of them is.
-	var out_left := RoundManager.can_out_left()
-	if out_left >= 0.0 and RoundManager.round_active:
-		effects.append({"label": "LATA OUT", "seconds": out_left,
-			"total": RoundManager.can_out_limit()})
 	var wanted: int = mini(effects.size(), STATUS_ROW_LIMIT)
 	while _status_rows.size() < wanted:
 		var row := _build_status_row()
@@ -335,10 +345,15 @@ func _refresh_status_stack(local_char: CharacterBase) -> void:
 		var colour := _status_colour(text)
 		row.visible = true
 		var label := row.get_node("Label") as Label
-		label.text = "%s  %.1fs" % [text, maxf(0.0, seconds)]
+		# ⚠️ A ROW WITH NO COUNTDOWN IS A REAL CASE, NOT A BUG. `VULNERABLE` lasts
+		# exactly as long as the player chooses to stand in the box holding a slipper,
+		# so it reports `seconds` 0 and draws as a solid bar with no timer. Printing
+		# "VULNERABLE  0.0s" would read as an effect that had already expired.
+		var timed := seconds > 0.0
+		label.text = ("%s  %.1fs" % [text, seconds]) if timed else text
 		label.add_theme_color_override("font_color", colour)
 		var bar := row.get_node("Bar") as ProgressBar
-		bar.value = clampf(seconds / total, 0.0, 1.0)
+		bar.value = clampf(seconds / total, 0.0, 1.0) if timed else 1.0
 		bar.add_theme_stylebox_override("fill", _status_fill(colour))
 		bar.add_theme_stylebox_override("background", _status_fill(UiTheme.INK, 0.55))
 
@@ -554,24 +569,23 @@ func _refresh_spectator_panel() -> void:
 			or not is_instance_valid(_spectator_camera) else _spectator_camera.status_text())
 	if _spectator_round == null or not is_instance_valid(_spectator_round):
 		return
-	var out_left := RoundManager.can_out_left()
-	var stacks: int = RoundManager.can_out_stacks()
-	# ⚠️ THE STACK LINE SURVIVES THE CLOCK ENDING, deliberately. It is a fact about the
-	# ROUND SO FAR, not about the current knockdown, and blanking it the moment the lata
-	# gets home would hide the escalation precisely between the saves — which is the only
-	# time anyone has a second to read it.
-	var saves := "SAVES  %d / %d" % [stacks, RoundManager.CAN_OUT_RECOVERY_MAX]
-	if out_left >= 0.0 and RoundManager.round_active:
-		_spectator_round.add_theme_color_override("font_color", UiTheme.OFFENSE)
-		_spectator_round.text = "LATA OUT  %.1f / %.2f s      %s" % [
-			maxf(0.0, out_left), RoundManager.can_out_limit(), saves]
+	if not RoundManager.round_active:
+		_spectator_round.add_theme_color_override("font_color", UiTheme.AMBER)
+		_spectator_round.text = "WAITING FOR THE ROUND TO START"
 		return
-	_spectator_round.add_theme_color_override("font_color", UiTheme.AMBER)
-	# ⚠️ NEVER BLANK. `spec_probe --solo` caught this reading '' for the whole pre-round
-	# window — and that window is exactly when a spectator is deciding where to fly to.
-	# An empty strip reads as a HUD that has not loaded.
-	_spectator_round.text = ("%s      NEXT LIMIT  %.2f s" % [saves, RoundManager.can_out_limit()]
-		if RoundManager.round_active else "WAITING FOR THE ROUND TO START")
+	# ⚠️ WAS THE OUT-OF-CIRCLE COUNTDOWN. That clock decided every round in the old
+	# ruleset, so it was the one thing a caster had to see. There is no such clock —
+	# the round is 90 s of scoring — so the broadcast line is the thing that now
+	# decides it: who is defending, and whether the lata is up.
+	var order := MatchManager.ranking()
+	var leader := order[0] if not order.is_empty() else 0
+	var up: bool = RoundManager.lata != null and RoundManager.lata.is_upright
+	_spectator_round.add_theme_color_override("font_color",
+		UiTheme.DEFENSE if up else UiTheme.OFFENSE)
+	_spectator_round.text = "ROUND %d/%d   ·   TAYA  P%d   ·   LATA %s   ·   LEADER  P%d  %d" % [
+		maxi(1, MatchManager.round_number), MatchManagerScript.ROUNDS,
+		MatchManager.defender_slot + 1, "UP" if up else "DOWN",
+		leader + 1, MatchManager.score_for(leader)]
 
 ## Kills the pulse tween and resets the timer card to its natural scale.
 func _kill_pulse_tween() -> void:
@@ -627,27 +641,15 @@ var _pip_cache: Dictionary = {}
 ## `NEVER` means that team's attack never took the lata out, so the side attacking now
 ## wins the set by scoring at all — which is a genuinely different instruction to give a
 ## player than a time, and worth saying in words rather than as a sentinel number.
-func _set_state_suffix() -> String:
-	if MatchManager.round_in_set < MatchManagerScript.ROUNDS_PER_SET:
-		return ""
-	# Round 2: whoever is defending now is the team that already had its attack.
-	var first_attacker := 0 if MatchManager.team_a_is_can else 1
-	var benchmark := MatchManager.attack_time_for(first_attacker)
-	if benchmark >= MatchManagerScript.NEVER:
-		return "  ·  SCORE TO WIN"
-	return "  ·  BEAT %.1fs" % benchmark
+## ⚠️ `_set_state_suffix()` AND `_trim_pips()` WERE DELETED HERE. They rendered the
+## paired-set format's attack-time benchmark ("BEAT 41.2s") and clipped the win-pip
+## row to `SETS_NEEDED`. There are no sets and no per-round winner.
 
 ## `Hud.tscn` authors THREE pip nodes per team, for the old first-to-3 over single
 ## rounds. The match is first to `SETS_NEEDED` sets now (§8.1), so the third pip is a
 ## score nobody can reach and it reads as "0 of 3" to anyone watching. Hidden rather
 ## than freed — the scene is 🖥️ `build ux`'s file and removing the node belongs with
 ## its layout pass, filed as §4.20.
-func _trim_pips(container: HBoxContainer) -> void:
-	for i in container.get_child_count():
-		var pip := container.get_child(i) as CanvasItem
-		if pip != null:
-			pip.visible = i < MatchManagerScript.SETS_NEEDED
-
 func _fill_pips(container: HBoxContainer, filled: int, fill_color: Color = UiTheme.DEFENSE) -> void:
 	var key := container.get_instance_id()
 	var stamp := "%d:%s" % [filled, fill_color.to_html(false)]
@@ -673,11 +675,8 @@ func _fill_pips(container: HBoxContainer, filled: int, fill_color: Color = UiThe
 ## The colour a team's pips take THIS round — the same role colour its card and
 ## label already use, so a filled pip reads as "that side won a round" at a
 ## glance rather than needing the label to disambiguate it.
-func _pip_color(is_team_a: bool) -> Color:
-	var a_is_can := MatchManager.team_a_is_can
-	if is_team_a:
-		return UiTheme.DEFENSE if a_is_can else UiTheme.OFFENSE
-	return UiTheme.OFFENSE if a_is_can else UiTheme.DEFENSE
+## ⚠️ `_pip_color()` WAS DELETED HERE — it coloured a pip by which side Team A was
+## playing, and there are no teams.
 
 ## B-15/B-35: brief on-screen call-out for a locally-relevant event that
 ## isn't otherwise visible on the HUD, e.g. "OUT OF BOUNDS" from the
@@ -724,12 +723,15 @@ func _refresh_ready_objective(active: bool) -> void:
 	if local_char == null or not is_instance_valid(local_char):
 		ready_objective_row.visible = false
 		return
-	var defending: bool = (local_char.team == 0) == MatchManager.team_a_is_can
+	var defending: bool = local_char.is_defender
 	# Two sentences for defence because it IS two jobs, and players who only hear
 	# "guard the lata" stand on the base and never tag the thrower.
 	var role_colour := UiTheme.DEFENSE if defending else UiTheme.OFFENSE
-	ready_objective.text = "GUARD THE LATA.  TAG THE THROWER." if defending \
-		else "KNOCK THE LATA DOWN"
+	# Two sentences for the taya because it IS two jobs, and a player who only hears
+	# "guard the lata" stands on the base and never tags anybody. Two for the attacker
+	# for the same reason: the retrieval run is the half people miss.
+	ready_objective.text = "GUARD THE LATA.  TAG ANYONE HOLDING A SLIPPER." if defending \
+		else "KNOCK THE LATA DOWN.  RETRIEVE FROM THE BOX."
 	ready_objective.add_theme_color_override("font_color", role_colour)
 	ready_objective_row.visible = true
 
@@ -761,8 +763,8 @@ func hide_countdown() -> void:
 		_countdown_tween.kill()
 	countdown_label.visible = false
 
-func _on_round_started(round_number: int, team_a_is_can: bool) -> void:
-	set_round_display(round_number, team_a_is_can)
+func _on_round_started(round_number: int, defender_slot: int) -> void:
+	set_round_display(round_number, defender_slot)
 
 ## Public so a late-joining client can refresh the round/role display directly
 ## (see main.gd::_sync_state_to_late_joiner, B-29) without going through
@@ -774,40 +776,14 @@ func _on_round_started(round_number: int, team_a_is_can: bool) -> void:
 ## Colour rule (§4.2): orange = OFFENSE, blue = DEFENSE — role-coloured,
 ## never team-coloured. The panel accent bar and label text both move with
 ## the role; the panel's physical position (left vs right) stays with the team.
-func set_round_display(round_number: int, team_a_is_can: bool) -> void:
-	# ⚠️ "Round n / 5" WAS A BEST-OF-5 STRING AND THE MATCH IS NOT ONE ANY MORE.
-	# 📋 `build rules` §8.1 scores paired sets: a set is two rounds, both teams attack
-	# once, first to `SETS_NEEDED`. A bare round number no longer tells anybody where
-	# the match is, and "/ 5" was simply false — this is the one HUD row a judge or a
-	# viewer reads to follow the format, and it is on camera for the whole video.
-	# Falls back to the round number alone before the first set opens (`set_number` is
-	# 0 during the pre-round free-roam window).
-	if MatchManager.set_number > 0:
-		round_label.text = "SET %d  ·  ROUND %d/%d%s" % [MatchManager.set_number,
-			MatchManager.round_in_set, MatchManagerScript.ROUNDS_PER_SET, _set_state_suffix()]
-	else:
-		round_label.text = "ROUND %d" % maxi(round_number, 1)
-	_trim_pips(team_a_pips_box)
-	_trim_pips(team_b_pips_box)
-	# ⚠️ THE LETTER IS NO LONGER IN THIS STRING. It is its own amber glyph on each card
-	# (see `_apply_wood_skin`), so the label carries the ROLE alone and the two channels —
-	# letter for team, colour for role — are finally separate rather than sharing one line
-	# of body text. The panel skin comes from `_style_team_card` instead of a theme
-	# variation for the reason given in that section's header.
-	if team_a_is_can:
-		# Team A holds the can this round → Team A defends, Team B attacks.
-		team_a_label.text = "DEFENSE"
-		team_b_label.text = "OFFENSE"
-		_style_team_card(top_left_panel, team_a_label, UiTheme.DEFENSE)
-		_style_team_card(top_right_panel, team_b_label, UiTheme.OFFENSE)
-	else:
-		# Team A throws the slipper this round → Team A attacks, Team B defends.
-		team_a_label.text = "OFFENSE"
-		team_b_label.text = "DEFENSE"
-		_style_team_card(top_left_panel, team_a_label, UiTheme.OFFENSE)
-		_style_team_card(top_right_panel, team_b_label, UiTheme.DEFENSE)
-	_fill_pips(team_a_pips_box, MatchManager.team_a_wins, _pip_color(true))
-	_fill_pips(team_b_pips_box, MatchManager.team_b_wins, _pip_color(false))
+func set_round_display(round_number: int, defender_slot: int) -> void:
+	round_label.text = "ROUND %d / %d   ·   TAYA: P%d" % [
+		maxi(round_number, 1), MatchManagerScript.ROUNDS, defender_slot + 1]
+	# The two top cards are now a scoreboard and a lata readout rather than two team
+	# panels. The letters and pip boxes the 2v2 layout used are hidden in
+	# `_build_scoreboard()` rather than deleted from `HUD.tscn`, so the scene stays
+	# 🖥️ `build ui`'s to reshape.
+	_refresh_scoreboard()
 	_refresh_role_accents()
 
 ## Q-5: a joining peer never sees round_started for the round already in
@@ -837,30 +813,24 @@ func refresh_you_card() -> void:
 ## the JUST-ENDED round's value at this point (it is only flipped later, by
 ## _sync_round_started), so the two compose into which TEAM won without needing
 ## anything extra sent over the wire.
-func _on_round_intermission_audio(_next_round: int, _next_team_a_is_can: bool, can_team_won: bool) -> void:
-	var team_a_won := can_team_won == MatchManager.team_a_is_can
-	AudioManager.play(_result_sfx(team_a_won))
+func _on_round_intermission_audio(_next_round: int, _next_defender_slot: int) -> void:
+	# ⚠️ NO PER-ROUND WIN/LOSE STING ANY MORE, because there is no per-round winner —
+	# a round ends, the scores persist, the taya rotates. Playing the old
+	# `round_win`/`round_lose` pair here would tell every player they had won or lost
+	# something that did not happen.
+	AudioManager.play("round_end")
 
-func _on_match_won(winning_team: int) -> void:
-	round_label.text = "MATCH WON"
-	# 4.1. Non-positional (AudioManager.play, not play_at): a result is a fact
-	# about the match, not an event at a place in the arena.
-	AudioManager.play("match_win" if _local_team_won(winning_team == 0) else "round_lose")
+func _on_match_won(winning_slot: int) -> void:
+	round_label.text = "MATCH OVER"
+	var local_char := you_card.get_local_character()
+	var mine := local_char != null and is_instance_valid(local_char) 		and local_char.player_slot == winning_slot
+	AudioManager.play("match_win" if mine else "round_lose")
 
 ## "did the local player's team win", given whether TEAM A did. Falls back to
 ## treating team A as ours when there is no local character to ask — the HUD is
 ## only ever instanced inside a match, but a late-joining peer can reach here
 ## before its own character has spawned, and a wrong-but-present fanfare is a
 ## better failure than a silent round end.
-func _local_team_won(team_a_won: bool) -> bool:
-	var local_char := you_card.get_local_character()
-	if local_char == null or not is_instance_valid(local_char):
-		return team_a_won
-	return (local_char.team == 0) == team_a_won
-
-func _result_sfx(team_a_won: bool) -> String:
-	return "round_win" if _local_team_won(team_a_won) else "round_lose"
-
 ## Call when the locally-viewed Can enters/exits Downed — clear visual read for
 ## stream/demo per GDD Section 6.
 func set_downed_flash(active: bool) -> void:
@@ -870,11 +840,211 @@ func set_downed_flash(active: bool) -> void:
 ## GameLaunch.game_mode == OPTION_A; leave uncalled (default hidden) under
 ## Option B, which has no dent concept.
 ## Filled pip = structural integrity remaining (max_dents − current).
-func set_dents(current: int, max_dents: int) -> void:
+## ⚠️ `set_dents()` WAS DELETED HERE. It drew Option A's lata health bar, a mode
+## that was removed before this rewrite and whose last caller went with the dent
+## field. `LataCard` now reports whether the lata is standing — see
+## `_refresh_lata_card()`.
+
+# =============================================================================
+# THE SCOREBOARD, THE LATA CARD AND THE STAMINA BAR
+#
+# ⚠️ ALL THREE ARE BUILT IN CODE INTO PANELS `HUD.tscn` ALREADY HAS, and that is a
+# deliberate scope decision rather than laziness. The scene was authored for two
+# team cards with a three-pip win row each; four players need four rows, and the
+# lata needs a state readout rather than a dent counter. Reshaping the scene is the
+# UI lane's row on the board. Hiding the 2v2 children and appending real ones keeps
+# the anchors, the wood skin and the safe-area work the window-fit pass measured —
+# and it leaves the scene file that lane's to restructure.
+# =============================================================================
+
+## One row per player. Built once, refreshed when something moves.
+var _score_rows: Array[Control] = []
+## Only redraw when something actually changed — a scoreboard rebuilt every frame is
+## four `StyleBoxFlat` allocations a frame for a thing that moves twice a round.
+var _score_stamp: String = ""
+var _stamina_bar: ProgressBar = null
+var _stamina_label: Label = null
+var _stamina_holder: Control = null
+
+func _build_scoreboard() -> void:
+	if not _score_rows.is_empty():
+		return
+	# Hide what the 2v2 layout put here, without removing it from the scene.
+	for node in [team_a_letter, team_b_letter, team_a_pips_box, team_b_pips_box,
+			team_b_label, dent_pips_box]:
+		if node != null and is_instance_valid(node):
+			(node as CanvasItem).visible = false
+	top_right_panel.visible = false
+	team_a_label.text = "SCORES"
+	team_a_label.add_theme_color_override("font_color", UiTheme.AMBER)
+	var column := team_a_label.get_parent() as VBoxContainer
+	if column == null:
+		return
+	for slot in range(MatchManagerScript.PLAYER_COUNT):
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(_score_cell("Name", 116, HORIZONTAL_ALIGNMENT_LEFT))
+		row.add_child(_score_cell("Score", 56, HORIZONTAL_ALIGNMENT_RIGHT))
+		column.add_child(row)
+		_score_rows.append(row)
+
+func _score_cell(cell_name: String, width: int, align: int) -> Label:
+	var label := Label.new()
+	label.name = cell_name
+	label.custom_minimum_size = Vector2(width, 0)
+	label.horizontal_alignment = align
+	label.add_theme_font_size_override("font_size", 15)
+	label.add_theme_color_override("font_outline_color", UiTheme.INK)
+	label.add_theme_constant_override("outline_size", 4)
+	return label
+
+## ⚠️ SORTED BY SCORE, NOT BY SEAT, AND THE MARKER SAYS WHO IS DEFENDING. Both halves
+## matter to a spectator: the ranking is the story of the match, and the defender
+## marker is the only thing on screen that explains why one player is behaving
+## completely differently from the other three.
+func _refresh_scoreboard() -> void:
+	if _score_rows.is_empty():
+		return
+	var stamp := "%s|%d" % [str(MatchManager.scores), MatchManager.defender_slot]
+	if stamp == _score_stamp:
+		return
+	_score_stamp = stamp
+	var order := MatchManager.ranking()
+	var local_char := you_card.get_local_character()
+	var mine := local_char.player_slot if local_char != null and is_instance_valid(local_char) else -1
+	for i in _score_rows.size():
+		var row: Control = _score_rows[i]
+		if i >= order.size():
+			row.visible = false
+			continue
+		var slot: int = order[i]
+		row.visible = true
+		var is_taya := slot == MatchManager.defender_slot
+		var name_label := row.get_node("Name") as Label
+		var score_label := row.get_node("Score") as Label
+		name_label.text = "%s P%d%s" % ["<" if slot == mine else " ", slot + 1,
+			"  [TAYA]" if is_taya else ""]
+		score_label.text = str(MatchManager.score_for(slot))
+		var colour: Color = UiTheme.DEFENSE if is_taya else UiTheme.OFFENSE
+		if slot == mine:
+			colour = UiTheme.HIGHLIGHT
+		name_label.add_theme_color_override("font_color", colour)
+		score_label.add_theme_color_override("font_color", colour)
+
+## `LataCard` is the one readout every player needs whatever their role: the throw is
+## illegal while the lata is down, and the passive score only ticks while it is up.
+func _refresh_lata_card() -> void:
+	var lata := RoundManager.lata
+	if lata == null or not RoundManager.round_active:
+		lata_card.visible = false
+		return
 	lata_card.visible = true
-	_fill_pips(dent_pips_box, max_dents - current, UiTheme.DEFENSE)
-	if current > 0:
-		dent_text_label.text = "Dents: %d / %d" % [current, max_dents]
-		dent_text_label.visible = true
-	else:
+	lata_label.text = "LATA  ·  UPRIGHT" if lata.is_upright else "LATA  ·  DOWN"
+	lata_label.add_theme_color_override("font_color",
+		UiTheme.DEFENSE if lata.is_upright else UiTheme.OFFENSE)
+	var local_char := you_card.get_local_character()
+	if local_char == null or not is_instance_valid(local_char):
 		dent_text_label.visible = false
+		return
+	# The second line is what THIS player can do about it, which differs by role and
+	# is the whole reason the card is not just a coloured light.
+	var line := ""
+	if local_char.is_defender:
+		if not lata.is_upright:
+			var carrier := local_char.get_node_or_null("Carrier") as Carrier
+			var progress: float = carrier.channel_progress() if carrier != null else -1.0
+			line = ("RESETTING  %d%%" % int(progress * 100.0)) if progress >= 0.0 \
+				else "HOLD E IN THE RING"
+	elif RoundManager.throw_cooldown_left() > 0.0:
+		line = "THROW LOCKED  %.1fs" % RoundManager.throw_cooldown_left()
+	elif not local_char.holding_slipper():
+		line = "RETRIEVE A SLIPPER"
+	elif local_char.is_inside_box():
+		line = "GET OUT OF THE BOX TO THROW"
+	dent_text_label.text = line
+	dent_text_label.visible = line != ""
+
+## ⚠️ FATIGUE IS SHOWN ON THE BAR AS WELL AS IN THE STATUS STACK, and that is not a
+## duplicate. The stack row says how long it lasts; the bar says why it happened. A
+## player who empties the bar and then cannot sprint needs both facts in one glance,
+## and the stack is top-centre while the bar is above their own card.
+func _refresh_stamina(local_char: CharacterBase) -> void:
+	if local_char == null or not is_instance_valid(local_char):
+		if _stamina_holder != null and is_instance_valid(_stamina_holder):
+			_stamina_holder.visible = false
+		return
+	if _stamina_bar == null or not is_instance_valid(_stamina_bar):
+		_build_stamina_bar()
+	_stamina_holder.visible = true
+	_stamina_bar.value = local_char.get_stamina_ratio()
+	var fatigued := local_char.is_fatigued()
+	var colour: Color = UiTheme.DANGER if fatigued else UiTheme.AMBER
+	_stamina_label.text = "FATIGUED" if fatigued else "STAMINA"
+	_stamina_label.add_theme_color_override("font_color", colour)
+	_stamina_bar.add_theme_stylebox_override("fill", _status_fill(colour))
+	_stamina_bar.add_theme_stylebox_override("background", _status_fill(UiTheme.INK, 0.55))
+
+func _build_stamina_bar() -> void:
+	_stamina_label = Label.new()
+	_stamina_label.text = "STAMINA"
+	_stamina_label.add_theme_font_size_override("font_size", 12)
+	_stamina_label.add_theme_color_override("font_outline_color", UiTheme.INK)
+	_stamina_label.add_theme_constant_override("outline_size", 4)
+	_stamina_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_stamina_bar = ProgressBar.new()
+	_stamina_bar.show_percentage = false
+	_stamina_bar.max_value = 1.0
+	_stamina_bar.custom_minimum_size = Vector2(196, 8)
+	_stamina_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var holder := VBoxContainer.new()
+	holder.name = "StaminaHolder"
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.add_theme_constant_override("separation", 2)
+	holder.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	# ⚠️ CLEAR OF THE BOTTOM EDGE BY MORE THAN THE 64 px BAND `ui_layout_probe`
+	# ASSERTS. A 1920x1080 windowed window decorates taller than the panel, so 39 px
+	# of client area can sit off screen — anything anchored flush to the bottom is
+	# the first thing to disappear, and that has been reported once already.
+	holder.position = Vector2(-98, -104)
+	holder.add_child(_stamina_label)
+	holder.add_child(_stamina_bar)
+	add_child(holder)
+	_stamina_holder = holder
+
+# --- Score and event feedback -------------------------------------------------
+
+## ⚠️ ONLY THE LOCAL PLAYER'S OWN AWARDS POP A FLOATER, AND THE PASSIVE TICK NEVER
+## DOES. Passive defence fires every single second of every round; toasting it would
+## be a message that never leaves the screen and says nothing while it is there. The
+## scoreboard already carries that number.
+func _on_score_changed(slot: int, _total: int, delta: int, reason: String) -> void:
+	if reason == "DEFENSE":
+		return
+	var local_char := you_card.get_local_character()
+	if local_char == null or not is_instance_valid(local_char):
+		return
+	if local_char.player_slot != slot:
+		return
+	show_toast("+%d  %s" % [delta, reason], 1.2)
+
+func _on_lata_knocked(by_slot: int) -> void:
+	var local_char := you_card.get_local_character()
+	if local_char == null or not is_instance_valid(local_char):
+		return
+	if local_char.is_defender:
+		show_toast("LATA DOWN  ·  RESET IT", 1.6)
+	elif by_slot >= 0 and by_slot != local_char.player_slot:
+		show_toast("P%d KNOCKED THE LATA DOWN" % [by_slot + 1], 1.2)
+
+func _on_lata_restored() -> void:
+	show_toast("LATA IS BACK UP", 1.2)
+
+func _on_attacker_tagged(defender_slot: int, victim_slot: int) -> void:
+	var local_char := you_card.get_local_character()
+	if local_char == null or not is_instance_valid(local_char):
+		return
+	if local_char.player_slot == victim_slot:
+		show_toast("TAGGED  ·  BACK TO THE SAFE ZONE", 2.0)
+	elif local_char.player_slot == defender_slot:
+		show_toast("TAG  ·  P%d" % [victim_slot + 1], 1.4)

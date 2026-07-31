@@ -369,9 +369,8 @@ func _describe() -> String:
 func _describe_unit(unit: CharacterBase, label: String) -> String:
 	if unit == null:
 		return "%s (missing)" % label
-	var role := "Person" if unit.is_person else ("Can" if unit.is_can else "Tsinelas")
-	var side := "DEFENSE" if unit.team_is_can_side else "OFFENSE"
-	return "%s (%s · Team %s · %s)" % [label, role, "A" if unit.team == 0 else "B", side]
+	var side := "TAYA" if unit.is_defender else "ATTACKER"
+	return "%s (P%d · %s)" % [label, unit.player_slot + 1, side]
 
 ## Re-read and re-describe both slots without changing them. Called by the bar
 ## on MatchManager.round_started, since is_can/team_is_can_side flip there.

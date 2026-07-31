@@ -26,7 +26,11 @@ static func spawn(parent: Node, at_position: Vector3, radius: float, duration: f
 	zone.speed_multiplier = multiplier
 	zone.lifetime = duration
 	zone.collision_layer = 0
-	zone.collision_mask = 2 # matches Hurtbox layer
+	# ⚠️ WAS MASK 2 (the deleted `Hurtbox` layer) AND WAS AREA-BASED. Hurtboxes are
+	# gone with the prop-as-player rewrite, so this watches BODIES on layer 1 — the
+	# `CharacterBody3D` every player already has — instead of a companion area that
+	# no longer exists.
+	zone.collision_mask = 1
 	# Item 10 / B-37: main.gd::_reset_world frees anything still in this group
 	# between rounds — an ability-spawned hazard (Shatter Trap) shouldn't
 	# outlive the round it was cast in. Only tag the timed (duration > 0)
@@ -57,8 +61,8 @@ static func spawn(parent: Node, at_position: Vector3, radius: float, duration: f
 
 func _ready() -> void:
 	monitoring = true
-	area_entered.connect(_on_area_entered)
-	area_exited.connect(_on_area_exited)
+	body_entered.connect(_on_body_entered)
+	body_exited.connect(_on_body_exited)
 	if lifetime > 0.0:
 		get_tree().create_timer(lifetime).timeout.connect(_expire)
 	_build_visual()
@@ -106,17 +110,15 @@ func _find_collision_shape() -> CollisionShape3D:
 ## speed even if the character was still standing in a second overlapping
 ## zone — enter_speed_zone()/exit_speed_zone() track per-zone state instead
 ## (see character_base.gd) so this only ever adds/removes THIS zone's effect.
-func _on_area_entered(area: Area3D) -> void:
-	if area is Hurtbox:
-		var owner_character := (area as Hurtbox).owner_character
-		if owner_character:
-			owner_character.enter_speed_zone(speed_multiplier)
+func _on_body_entered(body: Node3D) -> void:
+	var who := body as CharacterBase
+	if who != null:
+		who.enter_speed_zone(speed_multiplier)
 
-func _on_area_exited(area: Area3D) -> void:
-	if area is Hurtbox:
-		var owner_character := (area as Hurtbox).owner_character
-		if owner_character:
-			owner_character.exit_speed_zone(speed_multiplier)
+func _on_body_exited(body: Node3D) -> void:
+	var who := body as CharacterBase
+	if who != null:
+		who.exit_speed_zone(speed_multiplier)
 
 ## B-17: don't rely on Godot firing area_exited for everyone still overlapping
 ## at the moment this zone frees itself — explicitly clear this zone's effect
@@ -124,9 +126,8 @@ func _on_area_exited(area: Area3D) -> void:
 ## hazard can't leave someone permanently slowed.
 func _expire() -> void:
 	if is_instance_valid(self):
-		for area in get_overlapping_areas():
-			if area is Hurtbox:
-				var owner_character := (area as Hurtbox).owner_character
-				if owner_character:
-					owner_character.exit_speed_zone(speed_multiplier)
+		for body in get_overlapping_bodies():
+			var who := body as CharacterBase
+			if who != null:
+				who.exit_speed_zone(speed_multiplier)
 		queue_free()

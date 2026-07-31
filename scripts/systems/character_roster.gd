@@ -421,11 +421,10 @@ static func slipper_max_power(index: int) -> float:
 	var path: String = String(SLIPPERS[index].get("ability", ""))
 	if path == "":
 		return -1.0
-	var ability := load(path)
-	if ability == null or not ability.has_method("get_throw_profile"):
-		return -1.0
-	var profile: ThrowProfile = ability.get_throw_profile()
-	return profile.launch_speed if profile != null else -1.0
+	# ⚠️ WAS READ OFF THE SKIN'S `ThrowProfile`. Per-class throw profiles are
+	# deleted — every slipper flies the same way now — so the MAX POWER row on the
+	# character screen reports the one launch speed there is.
+	return Slipper.LAUNCH_SPEED
 
 ## The three tabs, in the order the screen shows them. A list rather than three
 ## hardcoded branches so `character_select.gd` cycles tabs the same way it cycles

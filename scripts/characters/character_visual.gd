@@ -100,8 +100,11 @@ const ACTION_CLIPS: Dictionary = {
 	# The Person's Tag/Throw. `pick-up` is the grab read the brief asked for;
 	# the holding-*-shoot pair are the throw follow-through.
 	"throw": ["holding-right-shoot", "pick-up", "interact-right"] as Array[String],
-	# Bump — a shove, so a melee swing rather than a throw.
-	"bump": ["attack-melee-right", "attack-kick-right", "interact-right"] as Array[String],
+	# The Attacker's shove — a two-handed push, so a melee swing rather than a
+	# throw. ⚠️ RENAMED FROM `"bump"` 2026-07-31: the bump meter it was built for is
+	# deleted, and a clip key naming a mechanic that no longer exists is how the
+	# next reader concludes the mechanic still does.
+	"shove": ["attack-melee-right", "attack-kick-right", "interact-right"] as Array[String],
 	# 7.7 — the ready-up press, so everyone ELSE can see who has readied without
 	# looking at a HUD. `emote-yes` is literally a thumbs-up on this rig; it was
 	# one of the 24 clips shipping unused.
@@ -1403,8 +1406,10 @@ func _should_smooth_remote() -> bool:
 		return false
 	if _character.is_multiplayer_authority():
 		return false
-	var carriable := _character.get_node_or_null("Carriable") as Carriable
-	return carriable == null or not carriable.drives_movement()
+	# ⚠️ WAS GATED ON `Carriable.drives_movement()` — a Prop being driven by its own
+	# player used to move the CharacterBase directly, so smoothing had to stand
+	# aside for it. No unit drives another's movement any more.
+	return true
 
 ## Resets the smoothing state to "caught up, right now" — called whenever the
 ## body's position was just TELEPORTED rather than walked (a round reset, a
@@ -1559,12 +1564,17 @@ func _drive_charge_pose() -> void:
 	if carrier != null and carrier.held() != null:
 		power = carrier.observed_charge_power()
 	if power < 0.0:
-		# The bump meter, mirrored to every peer by `_rpc_bump_charge_visual`. -1.0 is
-		# its idle value, the same contract `observed_charge_power()` keeps, so the two
-		# compose without either learning about the other.
-		var bump := _character.observed_bump_charge()
-		if bump >= 0.0:
-			power = clampf(bump / CharacterBase.BUMP_CHARGE_FULL_TIME, 0.0, 1.0)
+		# The SHOVE meter, mirrored to every peer by `_rpc_shove_charge_visual`. -1.0
+		# is its idle value, the same contract `observed_charge_power()` keeps, so the
+		# two compose without either learning about the other.
+		# ⚠️ WAS THE BUMP METER. Bump is deleted; the shove is the one charged melee
+		# commitment left, and it needs this tell for exactly the reason bump did —
+		# a 1.25 s wind-up nobody else can see is a wind-up nobody can dodge.
+		# `observed_shove_charge()` already returns a 0..1 ratio, so unlike
+		# `observed_bump_charge()` it needs no division here.
+		var shove := _character.observed_shove_charge()
+		if shove >= 0.0:
+			power = clampf(shove, 0.0, 1.0)
 	var winding := power >= 0.0 and _character.state == CharacterBase.State.NORMAL
 	if not winding:
 		if _charge_posing:
@@ -1646,41 +1656,12 @@ func _drive_viewmodel_charge() -> void:
 ## same reasoning _play_locomotion already documents for reading velocity. It
 ## also sidesteps a sibling-ready ordering question: Carriable and this node are
 ## both children of CharacterBase, and nothing guarantees which is ready first.
-func _spin_while_airborne(delta: float) -> void:
-	if _character == null:
-		return
-	var carriable: Carriable = _character.get_node_or_null("Carriable") as Carriable
-	if carriable == null:
-		return
-	if carriable.state != Carriable.CarryState.FLYING:
-		# Land flat. Not an else-branch on a tween: a slipper that stops spinning
-		# mid-tumble and freezes at 37° looks like a physics bug.
-		if rotation != Vector3.ZERO:
-			rotation = Vector3.ZERO
-		return
-	# ⚠️ TWO AXES, NOT ONE, AND THAT IS THE WHOLE POINT. This used to advance
-	# `rotation.x` alone, which rotates the slipper about a single axis — from
-	# the side that reads as a sole turning in place, and it is what made the
-	# throw look "perfectly flat" however fast the number was cranked. A real
-	# thrown tsinelas also flips END OVER END, and it is the combination of the
-	# two that the eye reads as tumbling.
-	#
-	# ⚠️ WRITES ONLY .x AND .z. NOT `basis`, AND NOT .y. Two other things own
-	# rotation on this node and both would silently undo a wholesale basis
-	# write: `_process_remote_smoothing()` writes `rotation.y` and runs AFTER
-	# this in _process(), and `_refresh_downed_tilt()` tweens `rotation:z`.
-	# Assigning a full basis here (the tempting way to tumble about an arbitrary
-	# travel-relative axis) survives exactly until either of those touches a
-	# single Euler component, which re-derives the whole rotation and throws the
-	# off-axis part away. Staying inside the two components this function
-	# already owned keeps the existing division of labour intact.
-	#
-	# `_refresh_downed_tilt()` is the one that also writes .z, but it is
-	# signal-driven off a Downed transition and a slipper in mid-air is not
-	# changing Downed state, so the two never write in the same frame. The
-	# landing branch above zeroes all three regardless.
-	rotation.x += deg_to_rad(carriable.spin_speed_deg()) * delta
-	rotation.z += deg_to_rad(carriable.tumble_speed_deg()) * delta
+## ⚠️ THE AIRBORNE SPIN MOVED TO THE SLIPPER ITSELF. It used to live here because
+## the tsinelas was a `CharacterBase` and this was its visual; it is a prop now and
+## `scripts/objects/slipper.gd::_spin()` owns both axes of it. Kept as a no-op
+## because `_process` calls it unconditionally.
+func _spin_while_airborne(_delta: float) -> void:
+	pass
 
 ## Whether this Person currently has something in their hand. Asked of the
 ## Carrier component (the holder's side), not of Carriable (the held thing's

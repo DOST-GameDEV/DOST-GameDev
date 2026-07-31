@@ -59,7 +59,7 @@ const SETTINGS_SECTION: String = "input"
 ## double-bound with `special_ability`, which is a separate open question on §4.19.
 const REBINDABLE_ACTIONS: Array[String] = [
 	"move_left", "move_right", "move_up", "move_down",
-	"bump", "guard_dash", "special_ability", "jump", "sprint",
+	"special_ability", "grab", "jump", "sprint",
 	"grab", "ready_up", "clean_feed",
 ]
 
@@ -74,7 +74,10 @@ const REBINDABLE_ACTIONS: Array[String] = [
 const ACTION_LABELS: Dictionary = {
 	"move_left": "Move Left", "move_right": "Move Right",
 	"move_up": "Move Up", "move_down": "Move Down",
-	"bump": "Bump / Smash", "guard_dash": "Dash",
+	# ⚠️ `bump` AND `guard_dash` WERE REMOVED FROM BOTH TABLES. Their input actions are
+	# deleted from `project.godot`, and `_replace_key_binding()` calls
+	# `InputMap.action_add_event()` on every rebindable action at boot — which errors
+	# out loudly for an action that does not exist. A stale row here is not cosmetic.
 	"special_ability": "Throw / Bump Meter", "jump": "Jump", "sprint": "Sprint",
 	# Named for both jobs, because the second one is the one a defender needs and the
 	# one nobody guesses from the word "grab": it is also the hold that carries a

@@ -67,7 +67,7 @@ var _channeling: bool = false
 func _ready() -> void:
 	# is_can / team_is_can_side flip on every role swap — a card populated
 	# once here would be wrong from round 2 onward.
-	MatchManager.round_started.connect(func(_round_number, _team_a_is_can): refresh())
+	MatchManager.round_started.connect(func(_round_number, _defender_slot): refresh())
 	guard_dash_bar.add_theme_stylebox_override("fill", _bar_style(UiTheme.HIGHLIGHT))
 	guard_dash_bar.add_theme_stylebox_override("background", _bar_style(UiTheme.CARD))
 	# Plain, role-consistent colours (§4.2: orange = offense, blue = defence) —
@@ -98,12 +98,16 @@ func refresh() -> void:
 		_set_carrier(null)
 		return
 	visible = true
-	class_label.text = "PERSON" if _character.is_person else ("CAN (LATA)" if _character.is_can else "TSINELAS")
-	var is_defense := _character.team_is_can_side
-	var team_letter := "A" if _character.team == 0 else "B"
+	# ⚠️ THE CLASS ROW IS THE ROLE ROW NOW. It used to name which of three unit
+	# KINDS you were driving (Person / lata / tsinelas); there is only one kind, and
+	# the thing a player actually needs telling is which of the two JOBS they have this
+	# round — they are different games.
+	var is_defense := _character.is_defender
+	class_label.text = "TAYA (DEFENDER)" if is_defense else "ATTACKER"
+	var seat_label := "P%d" % [_character.player_slot + 1]
 	# §4.2 hard rule: team identity is the letter mark, never hue — only the
 	# accent bar and the OFFENSE/DEFENSE word track role colour.
-	detail_label.text = "TEAM %s · %s" % [team_letter, "DEFENSE" if is_defense else "OFFENSE"]
+	detail_label.text = "%s · %d PTS" % [seat_label, MatchManager.score_for(_character.player_slot)]
 	var accent := UiTheme.DEFENSE if is_defense else UiTheme.OFFENSE
 	# ⚠️ WOOD, MATCHING THE TEAM CARDS AND THE MENU — 2026-07-30. This was a navy
 	# translucent `card_style` with a role-coloured left bar, which is the treatment the
@@ -234,7 +238,7 @@ func _set_charge_shader_param(ratio: float) -> void:
 	if mat is ShaderMaterial:
 		(mat as ShaderMaterial).set_shader_parameter(CHARGE_SHADER_PARAM, ratio)
 
-func _on_held_changed(held: Carriable) -> void:
+func _on_held_changed(held: Slipper) -> void:
 	hold_label.text = "SLIPPER READY" if held != null else "GO GET IT"
 
 func _on_reset_channel_changed(progress: float) -> void:
@@ -271,21 +275,28 @@ func _update_row_visibility() -> void:
 ## polling the charge pose rather than listening for it.
 var _bump_charging: bool = false
 
+## ⚠️ THIS ROW WAS THE BUMP METER AND IT IS NOW THE SHOVE METER. The bump is deleted
+## (`Design.md` §Removed); the shove is the one charged melee commitment left, it is
+## Attacker-only, and it is bound to `grab` rather than to `special_ability` — so both
+## the source AND the key label changed with it. Still polled rather than signalled,
+## for the reason recorded above: the meter lives on `CharacterBase`, and adding a
+## signal there for one HUD row would put a UI concern in the file whose whole
+## discipline is not knowing what rendering is.
 func _update_bump_meter() -> void:
-	if _character == null or not is_instance_valid(_character) or not _character.is_person:
+	if _character == null or not is_instance_valid(_character) or _character.is_defender:
 		_bump_charging = false
 		return
-	var ratio := _character.bump_charge_ratio()
+	var ratio := _character.shove_charge_ratio()
 	var was := _bump_charging
 	_bump_charging = ratio >= 0.0
 	if _bump_charging:
 		charge_bar.value = ratio * charge_bar.max_value
 		_set_charge_shader_param(ratio)
-		charge_key_label.text = "BUMP [%s]" % _action_key_label(_character, "special_ability")
+		charge_key_label.text = "SHOVE [%s]" % _action_key_label(_character, "grab")
 	elif was:
 		_set_charge_shader_param(0.0)
-		# Handed back to the throw's own label, so an attacker who puts a slipper down
-		# and picks it up again does not keep reading BUMP over a throw charge.
+		# Handed back to the throw's own label, so an attacker who shoves and then
+		# charges a throw does not keep reading SHOVE over the throw meter.
 		if _is_attacker_person:
 			charge_key_label.text = "[%s]" % _action_key_label(_character, "special_ability")
 	if was != _bump_charging:

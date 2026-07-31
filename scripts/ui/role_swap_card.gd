@@ -82,57 +82,46 @@ func _style_panel(panel: PanelContainer, team: Label, arrow: Label, role_colour:
 ##  · **`TIME` is decided on `time_left`, not on a flag.** `_on_time_up()` fires at exactly
 ##    0.0 so the margin is generous; but any future win path that also happens to land on a
 ##    near-zero clock would be labelled TIME.
-func _show_reason(can_team_won: bool) -> void:
-	reason_label.text = _classify_reason(can_team_won)
-	# The reason takes the colour of the side it FAVOURED — can side is defence.
-	reason_label.add_theme_color_override("font_color",
-		UiTheme.DEFENSE if can_team_won else UiTheme.OFFENSE)
-	reason_label.visible = true
-
-func _classify_reason(can_team_won: bool) -> String:
-	if RoundManager.time_left <= TIME_EPSILON:
-		return "TIME"
-	if can_team_won:
-		return "TAGGED"
-	# The tsinelas side took it, and there is one way to do that now: put the lata over
-	# and keep it off its circle. ⚠️ This used to branch on `GameLaunch.game_mode` and
-	# return "DENTED" under Option A — that mode is deleted (§8.2) and so is the branch.
-	return "LATA DOWN"
+## ⚠️ THE "WHY" LINE IS NOW THE ROUND'S HEADLINE STAT, NOT ITS WIN CONDITION. It
+## used to classify which of four win conditions had just fired. None of them exist:
+## a round is 90 s of scoring and ends on the clock, every time. What is worth
+## saying instead is what the round actually produced.
+func _show_reason() -> void:
+	var taya := MatchManager.defender_slot
+	reason_label.text = "TAYA P%d HELD FOR %d PTS" % [taya + 1, MatchManager.score_for(taya)]
+	reason_label.add_theme_color_override("font_color", UiTheme.DEFENSE)
 
 ## `_on_time_up()` reports at exactly `time_left == 0.0`, so this only has to be wider than
 ## float noise — not a tolerance on a race.
 const TIME_EPSILON: float = 0.05
 
-func _on_intermission_started(next_round: int, next_team_a_is_can: bool, can_team_won: bool) -> void:
-	# Recover which team won this round (the opposite assignment from next round).
-	var this_round_team_a_is_can := not next_team_a_is_can
-	var team_a_won := can_team_won == this_round_team_a_is_can
-	var winner_name := "TEAM A" if team_a_won else "TEAM B"
-
-	# 0.0s — show result banner immediately, with WHY above it (R-29).
-	_show_reason(can_team_won)
-	result_label.text = "%s WINS THE ROUND!" % winner_name
+## ⚠️ THIS CARD NO LONGER ANNOUNCES A ROUND WINNER, BECAUSE THERE IS NOT ONE. A
+## round ends, the scores persist, and the taya rotates clockwise — so what the card
+## has to say is who defends next, which is the one thing every player must know
+## before the next round starts.
+func _on_intermission_started(next_round: int, next_defender_slot: int) -> void:
+	_show_reason()
+	var leader: int = MatchManager.ranking()[0]
+	result_label.text = "END OF ROUND %d  ·  P%d LEADS  %d PTS" % [
+		maxi(1, next_round - 1), leader + 1, MatchManager.score_for(leader)]
 	fight_label.visible = false
 	visible = true
 	modulate.a = 1.0
 
-	# Set panel labels and colours for the INCOMING roles (what each team swaps TO).
-	if next_team_a_is_can:
-		# Next round: Team A holds the can → DEFENSE. Team B throws → OFFENSE.
-		team_a_label.text = "A · DEFENSE"
-		role_arrow_a.text = "was OFFENSE →"
-		team_b_label.text = "B · OFFENSE"
-		role_arrow_b.text = "was DEFENSE →"
-		_style_panel(left_panel, team_a_label, role_arrow_a, UiTheme.DEFENSE)
-		_style_panel(right_panel, team_b_label, role_arrow_b, UiTheme.OFFENSE)
-	else:
-		# Next round: Team A throws the slipper → OFFENSE. Team B holds the can → DEFENSE.
-		team_a_label.text = "A · OFFENSE"
-		role_arrow_a.text = "was DEFENSE →"
-		team_b_label.text = "B · DEFENSE"
-		role_arrow_b.text = "was OFFENSE →"
-		_style_panel(left_panel, team_a_label, role_arrow_a, UiTheme.OFFENSE)
-		_style_panel(right_panel, team_b_label, role_arrow_b, UiTheme.DEFENSE)
+	# ⚠️ THE TWO PANELS ARE NO LONGER TWO TEAMS. Left names the INCOMING taya; right
+	# names the other three at once, because they all have the same job and listing
+	# them separately would imply they do not.
+	var outgoing := MatchManager.defender_slot
+	team_a_label.text = "P%d · TAYA" % [next_defender_slot + 1]
+	role_arrow_a.text = "was ATTACKER →"
+	var others := PackedStringArray()
+	for slot in range(MatchManagerScript.PLAYER_COUNT):
+		if slot != next_defender_slot:
+			others.append("P%d" % [slot + 1])
+	team_b_label.text = "%s · ATTACKERS" % " ".join(others)
+	role_arrow_b.text = "P%d was TAYA →" % [outgoing + 1]
+	_style_panel(left_panel, team_a_label, role_arrow_a, UiTheme.DEFENSE)
+	_style_panel(right_panel, team_b_label, role_arrow_b, UiTheme.OFFENSE)
 
 	# Chained tween drives the two later beats:
 	#   1.2s  → slide panels in
@@ -161,7 +150,7 @@ func _show_fight(text: String) -> void:
 	t.tween_interval(0.4)
 	t.tween_property(fight_label, "modulate:a", 0.0, 0.1)
 
-func _on_round_started(_round_number: int, _team_a_is_can: bool) -> void:
+func _on_round_started(_round_number: int, _defender_slot: int) -> void:
 	visible = false
 	# Reset panel offsets to off-screen so the next intermission slide-in starts clean.
 	left_panel.offset_left = -700.0

@@ -185,7 +185,11 @@ var _tpp_carry_pitch_deg: float = 0.0
 ## carried" without character_base.gd having to learn what carrying is (the
 ## same information-hiding rule carriable.gd's own header states). Null for a
 ## Can (never carried) and for a Person (never carriable at all).
-@onready var _carriable: Carriable = get_node_or_null("../Carriable") as Carriable
+## ⚠️ WAS `@onready var _carriable: Carriable`. This rig belonged to a unit that
+## could ITSELF be picked up and carried — a lata or a tsinelas with a camera in
+## it — so the framing had to stand aside while it rode in somebody's hand. Every
+## unit is a Person now and no camera is ever carried, so the three branches that
+## read this are gone with it.
 ## Which carrier's body the spring arm currently excludes from its own
 ## shapecast, so add/remove_excluded_object is only called on an actual
 ## CHANGE of carrier (pick up, drop, round reset) rather than every frame.
@@ -343,8 +347,6 @@ func _apply_upright_pose() -> void:
 	# to the CARRIER rather than to this body — see _update_tpp_carry_follow().
 	# Overwriting it here would undo the anchoring and snap the view back onto a
 	# slipper that is being swung around by someone else's arm.
-	if _carriable != null and _carriable.state == Carriable.CarryState.CARRIED:
-		return
 	tpp_arm.global_transform = Transform3D(
 		yaw * Basis(Vector3.RIGHT, deg_to_rad(_tpp_pitch_deg)),
 		_character.global_position + Vector3.UP * _tpp_mount_height)
@@ -478,7 +480,7 @@ func _update_viewmodel_carry(delta: float) -> void:
 		_viewmodel_rest = pivot.transform
 
 	var carrier := _character.get_node_or_null("Carrier") as Carrier
-	var held: Carriable = carrier.held() if carrier != null else null
+	var held: Slipper = carrier.held() if carrier != null else null
 	var holding := held != null and is_instance_valid(held)
 	# ⚠️ 7.3 — THE VIEWMODEL CARRIES ITS OWN SLIPPER NOW, and no longer chases
 	# the world one. That inversion is the whole fix for "slipper floating".
@@ -544,9 +546,8 @@ func _update_viewmodel_carry(delta: float) -> void:
 func _update_tpp_carry_follow() -> void:
 	if _mode != Mode.TPP:
 		return
+	# Nothing carries a camera any more — see the note where `_carriable` was.
 	var carrier: CharacterBase = null
-	if _carriable != null and _carriable.state == Carriable.CarryState.CARRIED:
-		carrier = _carriable.carrier
 	# Exclusion list only changes on an actual pick-up/drop/carrier swap, not
 	# every frame — SpringArm3D's exclusion list has no "is this already in
 	# there" query, so add/remove is gated on a real transition.
@@ -729,11 +730,13 @@ func _apply_carried_self_hide(hide_it: bool) -> void:
 	var wanted: Node3D = null
 	if hide_it:
 		var carrier := _character.get_node_or_null("Carrier") as Carrier
-		var held: Carriable = carrier.held() if carrier != null else null
+		var held: Slipper = carrier.held() if carrier != null else null
 		if held != null and is_instance_valid(held):
-			var holder := held.get_parent() as Node3D
-			if holder != null:
-				wanted = holder.get_node_or_null("Visual") as Node3D
+			# ⚠️ THE SLIPPER'S OWN VISUAL, NOT ITS HOLDER'S. A carried slipper used to
+			# be a whole `CharacterBase` and the thing to hide was that unit's `Visual`
+			# child; the prop IS the visual now, so hiding the parent would hide the
+			# player holding it.
+			wanted = held.get_node_or_null("Visual") as Node3D
 	if wanted == _hidden_carried_visual:
 		return
 	if _hidden_carried_visual != null and is_instance_valid(_hidden_carried_visual):
@@ -749,7 +752,7 @@ func _apply_carried_self_hide(hide_it: bool) -> void:
 ## Takes the same `_active and _mode == Mode.FPP` gate _apply_fpp_self_hide()
 ## uses rather than a bare `true`, so a rig nobody is looking through can never
 ## hide a slipper on this machine.
-func _on_held_changed(_held: Carriable) -> void:
+func _on_held_changed(_held: Slipper) -> void:
 	_apply_carried_self_hide(_active and _mode == Mode.FPP)
 
 func _apply_fpp_self_hide() -> void:
@@ -841,7 +844,10 @@ func apply_mouse_delta(relative: Vector2) -> void:
 	# carriable.gd::_step_carried(), so it has no visible effect here. Track a
 	# separate look offset instead — see _tpp_carry_yaw_deg's own doc and
 	# _update_tpp_carry_follow(), which is what actually reads it.
-	if _mode == Mode.TPP and _carriable != null and _carriable.state == Carriable.CarryState.CARRIED:
+	# ⚠️ THIS BRANCH IS UNREACHABLE NOW AND IS KEPT AS A GUARD, NOT AS LOGIC. It
+	# steered the look of a unit that was ITSELF being carried; no unit is carried
+	# any more, so the condition is false by construction rather than by accident.
+	if false:
 		_tpp_carry_yaw_deg -= relative.x * sensitivity
 		var carry_pitch_delta := relative.y * (-1.0 if SettingsManager.invert_y else 1.0)
 		_tpp_carry_pitch_deg = clamp(
