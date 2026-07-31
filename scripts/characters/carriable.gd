@@ -380,12 +380,11 @@ func can_be_reset_by(who: CharacterBase) -> bool:
 		return false # only a lata is ever stood back up
 	if not who.is_person or who.team != _character.team:
 		return false # the taya rights their own can; nobody else touches it
-	if GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A:
-		# Option A: no Downed/Seal machinery at all, the can just carries dents.
-		# Beat one back out. At MAX_DENTS the round has already been reported, so
-		# only a partially dented can is worth channelling.
-		return _character.dents > 0 and _character.dents < CharacterBase.MAX_DENTS
-	# Option B: DOWNED, or — since 2026-07-30 — OUT OF THE CIRCLE.
+	# ⚠️ THE OPTION A BRANCH IS DELETED (§8.2, 2026-07-31). It returned
+	# `dents > 0 and dents < MAX_DENTS`, i.e. the channel was worth running only on a
+	# partially dented can. There is one ruleset now and the condition below is it.
+	#
+	# DOWNED, or — since 2026-07-30 — OUT OF THE CIRCLE.
 	#
 	# ⚠️⚠️ THIS IS THE COUNTERPLAY THE OUT-OF-CIRCLE COUNTDOWN WOULD OTHERWISE NOT HAVE,
 	# AND IT WAS FOUND BY ASKING WHO CAN ACTUALLY ANSWER IT.
@@ -438,15 +437,10 @@ func host_reset_upright(by: CharacterBase) -> void:
 @rpc("any_peer", "call_local", "reliable")
 func _rpc_apply_reset() -> void:
 	# 4.1 — "reset-channel complete", one of the checklist's named minimum set.
-	# Played here rather than only from CharacterBase's state hook because the
-	# OPTION_A branch below does not change `state` at all (it beats a dent back
-	# out), so under Option A there is no state transition to hang it on and the
-	# channel would finish silently. Under Option B both fire and AudioManager's
-	# retrigger guard collapses them.
+	# Played here as well as from CharacterBase's state hook; AudioManager's retrigger
+	# guard collapses the two. ⚠️ The `OPTION_A` early return that used to sit under this
+	# line — `_character.clear_dent(); return` — is deleted with the mode (§8.2).
 	AudioManager.play_at("reset_channel_complete", _character.global_position)
-	if GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A:
-		_character.clear_dent()
-		return
 	# ⚠️⚠️ THE CARRY HOME RUNS **BEFORE** THE STAND-UP, AND SINCE §1.9 THAT ORDER IS THE
 	# WHOLE FUNCTION RATHER THAN A TIDINESS PREFERENCE. `CharacterBase.self_right()` now
 	# REFUSES for a lata that is off its circle — so calling it first, as this did, would

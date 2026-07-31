@@ -91,12 +91,12 @@ func _on_area_entered(area: Area3D) -> void:
 	# window) Can seals it, regardless of forces_downed — GDD's "reach it and
 	# seal it".
 	var kind: String
-	if GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A and target.is_can:
-		# Option A: a hit landing on a Can is a dent, full stop — no Downed/Seal
-		# state machine involved at all (see CharacterBase.apply_dent). Hits on
-		# a Person or Slipper still just fall through to stagger below, same
-		# stun-only rule as Option B.
-		kind = "dent"
+	# ⚠️ THE OPTION A BRANCH USED TO OPEN THIS CHAIN AND IT IS DELETED (§8.2, 2026-07-31).
+	# It read `if GameLaunch.game_mode == OPTION_A and target.is_can: kind = "dent"`, which
+	# converted every hit on a lata into a health-bar tick and bypassed the Downed state
+	# machine entirely. There is one ruleset now, so a hit on a lata is always a knockdown.
+	# `Design.md` §7.1.
+	#
 	# ⚠️⚠️ THE SEAL-ON-HIT USED TO BE HERE AND §1.9 IS WHY IT IS DELETED. It read:
 	#
 	#     elif target.is_can and target.state == DOWNED and not target.is_self_rightable():
@@ -121,9 +121,15 @@ func _on_area_entered(area: Area3D) -> void:
 	# is a longer run and the save is a worse trade. Continuous, legible, and it stacks
 	# with the clock instead of skipping it.
 	#
-	# `seal()` and the SEALED state survive untouched; Option A and the state machine both
-	# still name them, and nothing about a Person changed.
-	elif forces_downed:
+	# `seal()` and the SEALED state survive as the state machine's own shape — nothing
+	# in the shipped ruleset reaches them, and nothing about a Person changed.
+	# See `Design.md` §7.1 for why they were kept rather than deleted alongside Option A.
+	#
+	# ⚠️ `if`, NOT `elif` — this branch opened as an `elif` while the Option A test above
+	# it existed. Deleting that test without demoting this one is exactly the "easy to do
+	# 90% of" failure §8.2 warns about: it is a parse error, so it fails loudly, but the
+	# same shape in a chain that still had a leading `if` would have failed silently.
+	if forces_downed:
 		kind = "downed"
 		# THE LUCKY FALL — human request, 2026-07-29: *"sometimes make it so that
 		# it can land on its head/back and this isnt a point for the enemy."*

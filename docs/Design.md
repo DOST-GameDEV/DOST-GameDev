@@ -7,9 +7,9 @@ below**; any lane that moves one moves it here in the same commit.
 ## 0 · The premise
 
 2v2. A **team is one Person + one Prop**. The Prop is a **lata** (can) on the defending
-round and a **tsinelas** (slipper) on the attacking round; roles swap every round.
-Attackers throw the tsinelas at the lata. Defenders keep the lata standing **on its
-circle**. Best of N rounds, 90 s each.
+round and a **tsinelas** (slipper) on the attacking round. Attackers throw the tsinelas at
+the lata. Defenders keep the lata standing **on its circle**. Rounds are 90 s and are
+scored in **paired sets** — see §7.
 
 **The thesis: the objects are players, not props.** The lata used to stand still and the
 tsinelas used to be ammunition, while the two Persons decided every round. Both now have
@@ -116,8 +116,8 @@ the only clock that means anything to it is the one in §5.2 that ends the round
 
 The rule is written once, as **"the out-of-circle countdown is not running"**, rather
 than as a second radius test — one line on the floor, one source of truth. It therefore
-does not apply during the intermission or the pre-round free-roam window, and it does not
-apply under Option A, both because no countdown runs there.
+does not apply during the intermission or the pre-round free-roam window, because no
+countdown runs there.
 
 What bounds it is the round, not the body: at most `CAN_OUT_LIMIT_BASE` seconds, less
 0.75 per save, at the end of which the attackers have won. That is deliberate — being
@@ -146,9 +146,9 @@ zero the **attackers win the round**. Getting back inside stops and resets it �
 permanently shortens the next one by 0.75 s, five times over. The fifth save buys 1.25
 seconds, so the defence's ability to keep saving is itself the clock.
 
-**Option B only.** Option A keeps dents, ring-outs and the timer, exactly as §7 claims it
-does; the countdown used to run there too, which meant an Option A round could be lost to
-a clock nothing in that mode explains.
+**This is the only ruleset.** The countdown used to be gated to Option B, because an
+Option A round could otherwise be lost to a clock nothing in that mode explained. Option A
+is deleted (§7.1) and the gate went with it — the countdown now runs unconditionally.
 
 **The channel time is set against this table, not against feel.** With `RESET_CHANNEL_TIME`
 at 2.2 s the fifth stack was unreachable decoration — the round was already decided a row
@@ -208,20 +208,95 @@ radius, plus a 78° topple. Readability is `build phys` 5.3 and is not yet confi
 Charge the jump, launch over the taya, dive on the can, win. That loop is the point of the
 whole pass: **the slipper can win a round without its Person ever touching it.**
 
-## 7 · Round win conditions (Option B — the shipped mode)
+## 7 · Round and match win conditions — the only ruleset
 
-**Attackers win by:** the out-of-circle countdown reaching zero (§5.2) · a direct Ground
-Smash on the lata (§6) · `FALL_LIMIT` = 4 scoring knockdowns in one round.
+**Attackers win a round by:** the out-of-circle countdown reaching zero (§5.2) · a direct
+Ground Smash on the lata (§6) · `FALL_LIMIT` = 4 scoring knockdowns in one round.
 
-**Defenders win by:** the 90 s `ROUND_TIME` running out. That is the only way. There is no
-tag.
+**Defenders win a round by:** the 90 s `ROUND_TIME` running out. That is the only way.
+There is no tag.
 
-**There is no seal.** Sealing a lata by touching it is gone (§1); `seal()` and the SEALED
-state survive for Option A and for the state machine's own shape, and under Option B
-nothing reaches them.
+**There is no seal.** Sealing a lata by touching it is gone (§1). `seal()` and the SEALED
+state survive as the state machine's own shape — nothing in this ruleset reaches them; see
+§7.1 for why they were kept rather than deleted.
 
-Option A (dents, `MAX_DENTS` 3, `RING_OUT_LIMIT` 3) is maintained in parallel and
-unchanged — and is now actually unchanged: the §5.2 countdown is gated to Option B.
+### 7 · a · The match is scored in paired sets
+
+| Constant | Value | Note |
+|---|---|---|
+| `SETS_NEEDED` | **2** | first to two sets takes the match |
+| `ROUNDS_PER_SET` | **2** | definitional: both teams attack exactly once |
+| `MAX_SETS` | 5 | termination guard, not a format choice |
+| `NEVER` | 999999.0 | the attack-time sentinel for "never took the lata out" |
+
+**A set is two rounds in which both teams attack exactly once.** Sets are the scoring
+unit. A set is not awarded until both teams have done both jobs, so the format cannot pay
+a team for the side it was handed.
+
+**Role is derived, never accumulated.** `MatchManager._team_a_is_can_for(set, round_in_set)`
+is a pure function of the schedule:
+
+| | round 1 of the set | round 2 of the set |
+|---|---|---|
+| **odd sets** (1, 3, 5) | A defends, B attacks | A attacks, B defends |
+| **even sets** (2, 4) | A attacks, B defends | A defends, B attacks |
+
+**Which team attacks FIRST alternates with the set number**, because attacking second means
+knowing the time you have to beat. Without that alternation the old bug simply moves up one
+level, from *"A always defends round 1"* to *"A always attacks second"*.
+
+**The tiebreak is one comparison, not two rules.** Each team's **attack time** is how long
+it took to take the lata out on its own attacking round, or `NEVER` if it did not
+(`RoundManager.last_attack_time()`, measured host-side as `ROUND_TIME - time_left`). **The
+lower number takes the set.** Any finite time beats `NEVER`, so "scored when the other side
+did not" and "scored faster than the other side" are the same test. Two `NEVER`s is a drawn
+set and awards nothing; `MAX_SETS` then resolves the match on sets, then on aggregate attack
+time, and a genuine dead heat reports `winning_team = -1`.
+
+⚠️ **The acceptance test is "the seat draw stops mattering", not the format.** It is met
+because every scoring event is a comparison between the two teams doing *the same job*, and
+because role comes from the schedule rather than from a bool that was seeded `true`.
+
+### 7.1 · Removed: Option A
+
+**Deleted 2026-07-31** by 📋 `build rules` §8.2, on the rubric finding that two shipped
+rulesets is not an esport. Recorded here because 🧑 asked for it in those words — *"remove
+gamemode completely but document that it was there"* — and because a deletion nobody wrote
+down is a deletion the next lane re-derives from a dangling comment.
+
+**What it was.** A second, host-selectable win-condition set, picked from a MODE row on the
+match setup screen (`CAPTURE` vs `DENTS`) and carried to every peer on the lobby config
+broadcast:
+
+| Piece | Value | What it did |
+|---|---|---|
+| `CharacterBase.MAX_DENTS` | 3 | the lata had a **health bar**. `apply_dent()` converted every landed hit into a dent instead of a knockdown, bypassing the Downed/Seal machine entirely |
+| `CharacterBase.clear_dent()` | — | the taya's reset channel beat **one dent back out** rather than carrying the lata home |
+| `RoundManager.RING_OUT_LIMIT` | 3 | **ring-outs**: the defending side won by knocking the attacking tsinelas off the arena three times, counted off the kill plane |
+| defender timer win | 90 s | unchanged from the shipped ruleset |
+| `CAN_MESHES` / `lata_dent1..3.obj` | 4 states | the dent count was the lata's only in-world damage read |
+
+**Why it went.** One ruleset is a rubric position, not a cleanup. Two doubled the balance
+surface `build fair` has to measure, doubled what a tutorial has to teach, and had already
+produced a real bug class: the §5.2 countdown shipped ungated, so an Option A round could be
+lost to a clock that mode never explained. The circle countdown is the game.
+
+**What was left behind on purpose, and why.**
+
+* **`seal()` and the `SEALED` state stay.** They were previously justified as *"for Option A
+  and for the state machine's own shape"*; with Option A gone only the second half survives,
+  and it is still load-bearing. `SEALED` is a terminal non-NORMAL state that four call sites
+  test for (drop-the-slipper, knockback refusal, audio, nameplates), and collapsing it into
+  `DOWNED` would make those tests mean something subtly different. Nothing reaches it in
+  play. **If a later lane wants it gone, that is a state-machine change, not a mode cleanup.**
+* **The kill plane still respawns.** `register_ring_out()` is deleted; falling off the arena
+  still returns a unit to its spawn, it just no longer scores.
+* **`lata_dent1/2/3.obj` and `tools/models/generate_all.gd`'s dent generator are now
+  orphaned** — and they were already half-orphaned before this pass, since `CAN_MESHES`
+  points at Kenney `.glb` files. Filed to 🎨 `build model` as §5.11.
+* **The MODE row is hidden, not deleted from the scene.** `match_setup.gd` no longer has a
+  picker; `MatchSetup.tscn` still carries the row for 🖥️ `build ux` §4.18 to remove with the
+  focus order.
 
 ## 8 · Traits
 

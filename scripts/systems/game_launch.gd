@@ -9,12 +9,10 @@ class_name GameLaunchScript
 ## `--host` / `--join=<ip>` command-line-args flow (still handy for
 ## Debug > Run Multiple Instances) if nothing was set here.
 
-enum GameMode {
-	OPTION_B, ## Capture-the-base + Downed/Seal.
-	OPTION_A, ## Stock/Health (dents) — 3 dents on a Can ends the round for the
-	          ## Slippers (both Cans must be fully dented). Session 7: both modes
-	          ## are now real, see round_manager.gd / hitbox.gd.
-}
+## ⚠️ `enum GameMode` AND `var game_mode` WERE DELETED HERE. 2026-07-31, 📋 `build rules`
+## §8.2 — the game shipped two win-condition sets and let the host pick between them.
+## There is now one ruleset (the circle countdown) and therefore nothing to select.
+## `Design.md` §7.1 records what Option A was and why it went.
 
 ## Checklist 3.5 — THE MAP REGISTRY, and the single place a map is named.
 ##
@@ -116,7 +114,6 @@ func slipper_index() -> int:
 
 var pending_action: String = "" ## "", "host", "join", or "local"
 var pending_join_address: String = ""
-var game_mode: GameMode = GameMode.OPTION_B
 ## Q-1/B-62: set by main.gd right before bouncing back to MainMenu.tscn after
 ## a network teardown the player didn't initiate (host quit, connection
 ## failed), so main_menu.gd can explain why they're back here instead of a

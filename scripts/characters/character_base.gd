@@ -218,11 +218,9 @@ static var confinement_radius: float = CONFINEMENT_RADIUS
 ## next to an opponent doesn't stagger them every physics tick — press-to-bump,
 ## briefly live, matches "light melee" better than always-on contact damage.
 const BUMP_ACTIVE_TIME: float = 0.15
-## Option A (GDD Section 3, "Stock/Life"): a Can's health bar. Slippers win the
-## round once a tracked Can reaches this many dents — see RoundManager
-## _on_tracked_can_dents_changed. Only ever meaningful for a Can (is_can true);
-## Persons and Slippers never accumulate dents. 3 per user decision (Session 7).
-const MAX_DENTS: int = 3
+## ⚠️ `const MAX_DENTS` WAS DELETED HERE. 2026-07-31, 📋 `build rules` §8.2 — it was
+## Option A's lata health bar (3 hits and the attackers took the round). One ruleset
+## ships now and it is the circle countdown; `Design.md` §7.1 is the record.
 
 ## ---------------------------------------------------------------------------
 ## ⚠️⚠️ GUARD IS GONE. 2026-07-30, and it is one of the three deletions the whole
@@ -443,9 +441,9 @@ var can_index: int = -1
 var slipper_index: int = -1
 
 signal state_changed(new_state: State)
-## Option A only (see MAX_DENTS above). Fires whenever `dents` changes so
-## RoundManager can watch for a tracked Can reaching MAX_DENTS without polling.
-signal dents_changed(new_dents: int)
+## ⚠️ `signal dents_changed` WAS DELETED HERE with the rest of Option A (§8.2).
+## `round_manager.gd` and `character_visual.gd` were its only listeners and both have
+## dropped it.
 ## Q-6: fires whenever a Guard blocks an incoming stagger/dent — the mechanic
 ## had no feedback of any kind, on the player being hit OR the one landing a
 ## now-nullified hit. CharacterVisual answers with a distinct (DEFENSE-tinted,
@@ -503,11 +501,11 @@ var state: State = State.NORMAL:
 			return
 		state = value
 		state_changed.emit(state)
-## Option A only. Always 0 for Persons and Slippers — only a Can (is_can true)
-## ever takes dents. Synced like `state` (see CharacterBase.tscn) so RoundManager
-## can watch it identically on every peer; only the host's report actually counts
-## (same pattern as _on_tracked_can_state_changed).
-var dents: int = 0
+## ⚠️ `var dents` WAS DELETED HERE (§8.2), and so was its row in
+## `CharacterBase.tscn`'s `SceneReplicationConfig` — it was a replicated property, so
+## leaving the scene pointing at a field that no longer exists would have been a
+## silent per-spawn replication error rather than a parse one. The remaining
+## properties were renumbered to close the gap.
 ## Whether the knockdown this Can is currently in counts for the attacking side.
 ## False for a lucky fall — see LUCKY_FALL_CHANCE. Written from the KIND the host
 ## sent, in `_apply_hit_result`, so every peer derives it from the same broadcast
@@ -1575,42 +1573,12 @@ func self_right() -> bool:
 	_set_state(State.NORMAL)
 	return true
 
-## Option A only: a landed hit on this Can adds one dent (capped at MAX_DENTS)
-## and applies a brief stagger for hit feedback — deliberately does NOT use the
-## Downed/Seal state machine at all, since Option A's win condition is purely
-## the dent count, tracked independently by RoundManager (see
-## _on_tracked_can_dents_changed). No-op for a Person or Slipper.
-func apply_dent(stagger_duration: float = BUMP_STAGGER_TIME) -> void:
-	if not is_can:
-		return
-	# B-16: Guard blocks dents too — the whole point of a Can blocking is to
-	# protect its own health bar, not just avoid the cosmetic stagger.
-	# ⚠️ `is_guarding()` IS CONSTANT FALSE SINCE GUARD WAS REMOVED — see its own note.
-	# Kept as a call rather than deleted: the block is the correct SHAPE for "this body
-	# is currently immune", the signal and the flash behind it both still work, and if a
-	# future pass gives some unit a block again this is where it plugs back in. The
-	# optimiser folds a constant `return false` away; a deleted branch is a rewrite.
-	if is_guarding():
-		hit_blocked.emit()
-		_flash_blocked()
-		return
-	dents = min(dents + 1, MAX_DENTS)
-	dents_changed.emit(dents)
-	apply_stagger(stagger_duration)
-
-## T-3 / B-46, Option A half: the taya's reset channel beats one dent back out of
-## this Can. The exact mirror of apply_dent() above and it lives here for the same
-## reason — `dents` is this file's business, and nothing outside it writes the
-## field directly. No stagger, because being repaired is not being hit.
-##
-## Deliberately NOT a round-win concern: RoundManager watches dents_changed and
-## re-evaluates on its own (_on_tracked_can_dents_changed), so dropping back below
-## MAX_DENTS needs no cooperation from here. Same contract apply_dent() relies on.
-func clear_dent() -> void:
-	if not is_can or dents <= 0:
-		return
-	dents -= 1
-	dents_changed.emit(dents)
+## ⚠️ `apply_dent()` AND `clear_dent()` WERE DELETED HERE (§8.2, 2026-07-31).
+## `apply_dent()` was the Option A hit path — a landed hit on a lata ticked a health
+## bar instead of knocking it over — and `clear_dent()` was the taya's reset channel
+## beating one back out. Both are recorded in `Design.md` §7.1. The reset channel still
+## exists and still does the thing that matters under the shipped ruleset: it carries a
+## displaced lata home and stands it up (`Design.md` §5.2).
 
 ## Transitions Downed -> Sealed once the self-right window has passed.
 ## Previously only ever called by an opponent's follow-up Hitbox landing on an
@@ -2194,9 +2162,10 @@ func _apply_hit_result(kind: String, duration: float, knockback: Vector3 = Vecto
 			go_downed(false)
 		"seal":
 			seal()
-		"dent":
-			apply_dent(duration)
-	# AFTER the state transition, deliberately. apply_stagger()/apply_dent()
+		# ⚠️ THE "dent" KIND IS GONE (§8.2). `hitbox.gd` no longer produces it, so a
+		# peer on this build can never receive one; an older peer sending it now falls
+		# through this match to no-op rather than calling a deleted function.
+	# AFTER the state transition, deliberately. apply_stagger()
 	# no-op a guarded or already-Downed hit, and a shove that landed anyway
 	# would be the one visible sign of a hit that the rules just said did not
 	# happen. `knockback` is already zero for a guarded hit
@@ -2773,8 +2742,6 @@ func reset_for_new_round() -> void:
 	# already-NORMAL case rather than quietly dropping a signal at every round boundary.
 	if was_state == State.NORMAL:
 		state_changed.emit(state)
-	dents = 0
-	dents_changed.emit(dents)
 	if ability:
 		ability.reset_round_charge()
 	# Task 0: a slipper still in someone's hand, or still in the air, when the

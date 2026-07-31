@@ -115,12 +115,10 @@ func _ready() -> void:
 	var names: Array[String] = []
 	for t in tracked:
 		names.append(String(t.name))
-	print("  round-win shape : %d tracked can(s) %s | MAX_DENTS %d | FALL_LIMIT %d | %s"
-		% [tracked.size(), str(names), CharacterBase.MAX_DENTS, RoundManager.FALL_LIMIT,
-			"OPTION_A (dents)" if GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A
-			else "OPTION_B (downed/seal)"])
-	print("  -> offence must land %d dent(s) total to win by denting, %d knockdown(s) to win by FALL_LIMIT"
-		% [tracked.size() * CharacterBase.MAX_DENTS, RoundManager.FALL_LIMIT])
+	print("  round-win shape : %d tracked can(s) %s | FALL_LIMIT %d | CAPTURE (circle countdown)"
+		% [tracked.size(), str(names), RoundManager.FALL_LIMIT])
+	print("  -> offence wins on the circle countdown, a direct Ground Smash, or %d knockdown(s)"
+		% RoundManager.FALL_LIMIT)
 	_watch_slipper_hitboxes()
 	set_physics_process(true)
 	if _ballistics:
@@ -193,8 +191,7 @@ func _ready() -> void:
 	print("  frames outside map bounds: %d" % _outside_bounds)
 	print("  peak slipper speed       : %.2f" % _max_speed)
 	print("  throws actually launched : %d" % _throws)
-	print("  can dents                : %d / %d" % [_can.dents, CharacterBase.MAX_DENTS])
-	print("  mode                     : %s" % ("OPTION_A (dents)" if GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A else "OPTION_B (downed/seal)"))
+	print("  ruleset                  : CAPTURE (circle countdown)")
 	print("  frames can was NOT NORMAL: %d" % _state_hits)
 	print("  can final state          : %d (0=NORMAL 1=STAGGERED 2=DOWNED 3=SEALED)" % _can.state)
 	print("  CAN evasion: moved on %d of %d in-flight frames (%.0f%%), max %.2f from mark" % [_can_move_while_flying, _flying_frames, 100.0*_can_move_while_flying/maxi(_flying_frames,1), _can_max_disp])
@@ -386,7 +383,6 @@ func _physics_process(_d: float) -> void:
 	_max_speed = maxf(_max_speed, _slipper.velocity.length())
 	if p.y < 0.0: _below_floor += 1
 	if absf(p.x) > 9.5 or absf(p.z) > 19.0: _outside_bounds += 1
-	if _can != null and _can.dents > _dents_seen: _dents_seen = _can.dents
 	if _can != null and _can.state != 0: _state_hits += 1
 	if _slipper != null and _can != null:
 		var cr := _slipper.get_node_or_null("Carriable") as Carriable
@@ -558,7 +554,6 @@ func _freeze_round() -> void:
 	MatchManager.team_a_wins = 0
 	MatchManager.team_b_wins = 0
 	if _can != null and is_instance_valid(_can):
-		_can.dents = 0
 		if _can.state != CharacterBase.State.NORMAL:
 			_can.state = CharacterBase.State.NORMAL
 
@@ -926,7 +921,7 @@ func _run_lane() -> void:
 		% [line.z, LANE_THROWS])
 	print("  taya standoff  : %.2f from the can, parked ON the lane" % _standoff)
 	print("  can mark       : (%.2f, %.2f, %.2f)" % [can_mark.x, can_mark.y, can_mark.z])
-	print("  mode           : %s" % ("OPTION_A (dents)" if GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A else "OPTION_B (downed/seal)"))
+	print("  ruleset        : CAPTURE (circle countdown)")
 	print("")
 	print("  %-6s %-8s %-8s %8s %8s %8s   %s" % [
 		"throw", "lane", "can", "contact", "blocked", "neither", "detail"])

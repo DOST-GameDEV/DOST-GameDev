@@ -50,8 +50,8 @@ func _ready() -> void:
 
 func _shoot(tag: String, can_team_won: bool, time_left: float, option_a: bool) -> void:
 	RoundManager.time_left = time_left
-	GameLaunch.game_mode = GameLaunch.GameMode.OPTION_A if option_a \
-		else GameLaunch.GameMode.OPTION_B
+	# §8.2: one ruleset, so `option_a` selects nothing. The flag is accepted and
+	# ignored so older capture invocations still run.
 	# Through the signal the card is connected to, not by calling its handler — same rule
 	# every other shot tool in this directory follows.
 	MatchManager.round_intermission_started.emit(2, true, can_team_won)
