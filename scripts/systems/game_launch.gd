@@ -12,7 +12,7 @@ class_name GameLaunchScript
 ## ⚠️ `enum GameMode` AND `var game_mode` WERE DELETED HERE. 2026-07-31, 📋 `build rules`
 ## §8.2 — the game shipped two win-condition sets and let the host pick between them.
 ## There is now one ruleset (the circle countdown) and therefore nothing to select.
-## `Design.md` §7.1 records what Option A was and why it went.
+## `Design.md` §7.2 records what Option A was and why it went.
 
 ## Checklist 3.5 — THE MAP REGISTRY, and the single place a map is named.
 ##
