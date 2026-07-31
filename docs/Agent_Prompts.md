@@ -238,7 +238,7 @@ Attacker
 
 Lata
 - [x] 1.9 **The lata may only stand up while on the circle** — built. Measured: held down 3.0 s off the circle against a 2.0 s ceiling, stands within 6 frames of arriving home, a Person at the same spot is unaffected
-- [~] 1.10 High knockback susceptibility: a solid hit displaces it ~1 m — a *tap* bump measured **0.951 m** in passing (`×2.6` is doing what it claims), but a solid hit is not measured and **`build phys` 5.2 owns that**
+- [~] 1.10 High knockback susceptibility: a solid hit displaces it ~1 m — a *tap* bump measured **0.951 m** in passing (`×2.6` is doing what it claims), but a solid hit is not measured and **`build phys` 6.2 owns that** — ⚠️ *this pointer said `build phys` 5.2, corrected by `build spec` 2026-07-31: §5 is `build model`, whose 5.2 is "a tsinelas base mesh per class". The lata-knockback item is **6.2**, and **6.10** is the follow-up argument about it. `build mech` has already run, so a wrong pointer in its section is one nobody would have come back to fix*
 - [x] 1.11 Actively fights to stay upright; **cannot be down longer than 2 s** — measured for a lata at home and for a Person. ⚠️ **One exception, by design: §1.9's stranded lata.** `Design.md` §11 states it
 - [x] 1.12 Game over is the countdown, not the knockdown — measured end to end: clock runs while out, round ends at zero, win goes to the tsinelas side
 - [x] 1.13 Each recovery shortens the **next** countdown by **0.75 s**, stacking **5×** to **1.25 s** — measured: a save moved the limit 3.50 → 2.75. ⚠️ The 5-stack floor is only reachable now that the channel is 1.8 s; at 2.2 it was decoration
@@ -844,6 +844,16 @@ claims the vacated seat's unit *and its camera*), **4.12** (the spectator no lon
 the player status stack), **4.13** (probes write PNGs into the repo root, so the tree is
 permanently dirty), **7.14** (every camera number is an unflown first guess, and the
 acceptance test is a human's rather than a probe's).
+
+**One correction inside `build mech`'s section, which is not mine and which I made
+anyway.** §1.10 pointed the lata-knockback measurement at *"`build phys` 5.2"*. There is
+no 5.2 in `build phys`: §5 is `build model`, and its 5.2 is "a tsinelas base mesh per
+class" — so anyone following that pointer lands somewhere unrelated. The real items are
+**6.2** and **6.10**. I did not tick anything of theirs and did not touch their § LOG
+entry; I corrected the pointer in place and marked the correction inline, because
+`build mech` has already run and a broken cross-reference in a section nobody will revisit
+is a session `build phys` loses. Flagging it back to a finished lane would have been
+filing a bug with a lane that no longer exists.
 
 **Two things I filed and then did myself instead, which is the better outcome and is
 recorded rather than quietly tidied.** **2.8** — the human's POV ask — was filed to
