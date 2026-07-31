@@ -208,6 +208,15 @@ var _detail_topic: DetailTopic = DetailTopic.MAP
 
 var _peer_seats: Dictionary = {}    ## peer_id -> seat 0..3
 var _peer_ready: Dictionary = {}    ## peer_id -> bool
+## peer_id -> true, for every peer that is here to WATCH. Disjoint from `_peer_seats` by
+## construction — a peer is in exactly one of the two — which is what makes "claims no
+## seat" and "excluded from the ready count" the SAME fact rather than two flags that can
+## disagree. Broadcast beside the seats for that reason.
+var _peer_spectating: Dictionary = {}
+## HOST ONLY: peer_id -> the seat it gave up when it started watching, so un-spectating
+## returns it rather than dropping the player into "first free" beside three people who
+## have not moved. Not broadcast: nobody else needs to know about a chair nobody is in.
+var _vacated_seats: Dictionary = {}
 
 func _ready() -> void:
 	_action = GameLaunch.pending_action
@@ -345,6 +354,7 @@ func _setup_host() -> void:
 
 	NetworkManager.player_connected.connect(_on_peer_joined)
 	NetworkManager.player_disconnected.connect(_on_peer_left)
+	NetworkManager.peer_spectator_changed.connect(_on_peer_spectator_changed)
 
 	# The host is peer 1 and `peer_connected` never fires for self on a server,
 	# so it seats itself. Seat 0 (Team A's Person) rather than "first free": it
@@ -353,7 +363,15 @@ func _setup_host() -> void:
 	var host_id := multiplayer.get_unique_id()
 	_peer_seats[host_id] = 0
 	_peer_ready[host_id] = false
+	# ⚠️ SPECTATING IS A PREFERENCE THAT SURVIVES THE MENU (see `GameLaunch.spectator`),
+	# so a host who watched the last match walks in here already watching — seated one
+	# line above by the default path, and holding a chair. Republished rather than
+	# assumed: `host_game()` snapshotted the picks before this screen ran, and this is the
+	# first frame in which the preference and the session both exist.
+	if GameLaunch.spectator:
+		NetworkManager.publish_spectator(true)
 	_refresh_seats()
+	_refresh_primary_button()
 
 func _setup_join() -> void:
 	banner_label.text = "LOBBY"
@@ -382,6 +400,7 @@ func _setup_join() -> void:
 	NetworkManager.player_disconnected.connect(_on_peer_left)
 	status_label.text = "Connecting…"
 	_refresh_seats()
+	_refresh_primary_button()
 
 ## Reported the same way the old lobby did — first non-loopback IPv4 address.
 ## Static and self-contained so it can be read without an instance.
@@ -450,16 +469,19 @@ func _on_peer_joined(peer_id: int) -> void:
 	# Full snapshot to the newcomer, then the deltas to everyone (including the
 	# newcomer, harmlessly) so nobody is holding a half-built board.
 	_rpc_sync_state.rpc_id(peer_id, _peer_seats, _peer_ready,
-		GameLaunch.selected_map, int(GameLaunch.game_mode), SettingsManager.ai_difficulty)
-	_rpc_sync_seats.rpc(_peer_seats)
+		GameLaunch.selected_map, int(GameLaunch.game_mode), SettingsManager.ai_difficulty,
+		_peer_spectating)
+	_rpc_sync_seats.rpc(_peer_seats, _peer_spectating)
 	_refresh_seats()
 	_refresh_start_button()
 
 func _on_peer_left(peer_id: int) -> void:
 	_peer_seats.erase(peer_id)
 	_peer_ready.erase(peer_id)
+	_peer_spectating.erase(peer_id)
+	_vacated_seats.erase(peer_id)
 	if _is_lobby_host():
-		_rpc_sync_seats.rpc(_peer_seats)
+		_rpc_sync_seats.rpc(_peer_seats, _peer_spectating)
 		_refresh_start_button()
 	_refresh_seats()
 
@@ -468,6 +490,54 @@ func _first_free_seat() -> int:
 		if not _peer_seats.values().has(seat):
 			return seat
 	return -1
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE SEAT AND THE READY GATE, WHICH IS §2.3 AND THE HALF THAT HAD NEVER RUN BESIDE
+## A SECOND PEER.
+##
+## HOST ONLY — `_peer_seats` has exactly one writer and this does not change that.
+## Reached from two places, and it matters that both go through here rather than one of
+## them doing it inline: a peer that toggles SPECTATE mid-lobby
+## (`NetworkManager._rpc_set_spectator`) and a peer that walked in already spectating
+## (`NetworkManager._rpc_identify`) are the same state change arriving at two different
+## moments, and the second one arrives AFTER `_on_peer_joined` has already given that
+## peer a chair.
+##
+## Three things happen together, and leaving any one of them out is a lobby that hangs:
+##   * the seat goes back to the pool, where `main.gd::_fill_empty_slots_with_
+##     placeholders` picks it up as an ordinary unclaimed slot — the path that has always
+##     filled one. A spectator's slot is not a special kind of empty;
+##   * the ready TICK is dropped, because `_refresh_start_button` gates on a tick per
+##     SEATED peer and a watcher has nothing to be ready about;
+##   * `_peer_spectating` is broadcast, because the other three players are looking at a
+##     roster that has to explain where that person went. A seat that silently turns into
+##     "· BOT" reads as a disconnect.
+func _on_peer_spectator_changed(peer_id: int, spectating: bool) -> void:
+	if not _is_lobby_host():
+		return
+	if spectating == bool(_peer_spectating.get(peer_id, false)):
+		# `_rpc_identify` fires this for players too — see its own note. A peer that is
+		# already correctly seated must not be re-seated, or the identify packet would
+		# move somebody who had just clicked a chair into a different one.
+		return
+	if spectating:
+		if _peer_seats.has(peer_id):
+			_vacated_seats[peer_id] = int(_peer_seats[peer_id])
+			_peer_seats.erase(peer_id)
+		_peer_spectating[peer_id] = true
+		_peer_ready.erase(peer_id)
+	else:
+		_peer_spectating.erase(peer_id)
+		var wanted := int(_vacated_seats.get(peer_id, -1))
+		_vacated_seats.erase(peer_id)
+		if wanted < 0 or _peer_seats.values().has(wanted):
+			wanted = _first_free_seat()
+		if wanted >= 0:
+			_peer_seats[peer_id] = wanted
+		_peer_ready[peer_id] = false
+	_rpc_sync_seats.rpc(_peer_seats, _peer_spectating)
+	_refresh_seats()
+	_refresh_start_button()
 
 # =============================================================================
 # RPCs
@@ -486,16 +556,23 @@ func _first_free_seat() -> int:
 ## fixed, reintroduced through the one path that only runs once.
 @rpc("authority", "call_remote", "reliable")
 func _rpc_sync_state(seats: Dictionary, ready_states: Dictionary,
-		map_id: StringName, mode: int, difficulty: int) -> void:
+		map_id: StringName, mode: int, difficulty: int,
+		spectating: Dictionary = {}) -> void:
 	_peer_seats = seats
 	_peer_ready = ready_states
+	_peer_spectating = spectating
 	_apply_host_config(map_id, mode, difficulty)
 	_refresh_seats()
+	_refresh_primary_button()
 
-## Host -> everyone: the seating changed.
+## Host -> everyone: the seating changed. ⚠️ `spectating` rides the SAME message as the
+## seats and is not given one of its own, for the reason `_on_peer_spectator_changed`
+## states: they are one fact. Two messages could land in either order and produce a frame
+## in which a peer is drawn both seated and watching.
 @rpc("authority", "call_local", "reliable")
-func _rpc_sync_seats(seats: Dictionary) -> void:
+func _rpc_sync_seats(seats: Dictionary, spectating: Dictionary = {}) -> void:
 	_peer_seats = seats
+	_peer_spectating = spectating
 	_refresh_seats()
 
 ## Host -> everyone: the map or the mode changed.
@@ -786,6 +863,11 @@ func _wire_detail_focus(topic: DetailTopic, controls: Array[Control]) -> void:
 ## it. Split out so `_refresh_detail` above reads as the three things it is
 ## explaining rather than as a branch.
 func _seat_detail() -> String:
+	# The four seat rows go dead while spectating (`_refresh_seats`), so the detail box is
+	# the only thing left that can explain WHY they are dead. Says what the mode actually
+	# does rather than just naming it — the same standard the map and mode copy is held to.
+	if GameLaunch.spectator:
+		return "SPECTATOR   You take no seat and control no character: a free camera with no body, flying anywhere and through anything. Your slot is played by a bot, so the match is still a full 2v2. WASD to fly, mouse to look, TAB to follow a unit, wheel for speed."
 	var seat := _local_seat()
 	if _seat_is_person(seat):
 		# Checklist 1.3 (does a Person get its own ability roster?) is still
@@ -880,7 +962,7 @@ func _claim_seat(peer_id: int, seat: int) -> bool:
 			return false
 	_peer_seats[peer_id] = seat
 	_peer_ready[peer_id] = false
-	_rpc_sync_seats.rpc(_peer_seats)
+	_rpc_sync_seats.rpc(_peer_seats, _peer_spectating)
 	_rpc_set_ready.rpc(peer_id, false)
 	_refresh_seats()
 	_refresh_start_button()
@@ -900,11 +982,20 @@ func _claim_seat(peer_id: int, seat: int) -> bool:
 ## whose entire state is one bool. It is styled off the same `wood_style()` the rest of
 ## the screen uses, so it cannot drift from the four buttons it sits under.
 ##
-## ⚠️ IT DOES NOT CLEAR THE SEAT. A player who spectates keeps whichever seat they had
-## highlighted, so un-spectating puts them straight back rather than into "first free" —
-## and in a networked lobby the host is still refereeing exclusivity for a chair nobody
-## is sitting in, which `_claim_seat` already handles because a spectator simply never
-## claims one.
+## ⚠️ IT **DOES** CLEAR THE SEAT NOW, and the note that used to sit here said the
+## opposite. "Keeps whichever seat they had highlighted" is not compatible with §2.3 —
+## *claims no seat, its slot bot-filled* — because a chair still listed under your peer
+## id is a chair the other three players cannot sit in, for a match you are not playing.
+## The seat is released to the bot pool the moment you press this and REMEMBERED
+## host-side (`_vacated_seats`), so un-spectating puts you straight back into it if
+## nobody took it meanwhile and into the first free one if they did. That is what the old
+## note was actually after, and this is the version of it that survives a second peer.
+##
+## ⚠️ IT IS STYLED OFF THE FOUR SEAT ROWS, NOT LEFT AT THE ENGINE DEFAULT. It was built
+## and added to the tree correctly and nobody had ever looked at it: with no
+## `theme_type_variation` it rendered as a small grey Godot button under four 66px wood
+## planks, which is what § THE REACHABILITY RULE means by "render the screen and look at
+## it" rather than "the control is added to the tree".
 var _spectate_button: Button = null
 
 func _build_spectate_button() -> void:
@@ -913,12 +1004,29 @@ func _build_spectate_button() -> void:
 	var parent := seat_buttons[0].get_parent() as Container
 	if parent == null:
 		return
+	var model: Button = seat_buttons[seat_buttons.size() - 1]
 	_spectate_button = Button.new()
 	_spectate_button.name = "SpectateButton"
 	_spectate_button.toggle_mode = true
 	_spectate_button.button_pressed = GameLaunch.spectator
 	_spectate_button.focus_mode = Control.FOCUS_ALL
+	# Copied off the last seat row rather than restated, so the fifth seat cannot drift
+	# from the four it sits under the next time the scene's rows are restyled.
+	_spectate_button.theme_type_variation = model.theme_type_variation
+	_spectate_button.custom_minimum_size = model.custom_minimum_size
+	_spectate_button.add_theme_font_size_override(
+		"font_size", model.get_theme_font_size("font_size"))
+	_spectate_button.alignment = model.alignment
+	_spectate_button.clip_text = true
+	_spectate_button.text_overrun_behavior = model.text_overrun_behavior
 	parent.add_child(_spectate_button)
+	# THE FOCUS ORDER, EXPLICITLY. Tree order already puts this after SeatButton3 for
+	# `ui_focus_next`, but the four rows are navigated with the arrow keys in a VBox and
+	# `focus_neighbor_bottom` is what those read — leave it unset and a keyboard player
+	# arrowing down the roster stops at SeatButton3 and never learns the fifth seat is
+	# there. Reachable by keyboard is half of the REACHABILITY RULE.
+	model.focus_neighbor_bottom = _spectate_button.get_path()
+	_spectate_button.focus_neighbor_top = model.get_path()
 	_spectate_button.pressed.connect(_on_spectate_pressed)
 	# 4.1: a plain Button carries no audio of its own — same wiring the four seat rows
 	# get directly above.
@@ -928,15 +1036,57 @@ func _build_spectate_button() -> void:
 func _on_spectate_pressed() -> void:
 	AudioManager.play("ui_click")
 	GameLaunch.spectator = _spectate_button.button_pressed
+	# ⚠️ THE HOST HAS TO BE TOLD, AND THIS IS THE ONLY THING THAT TELLS IT. Everything
+	# downstream — the ready gate, the spawn skip, the bot that fills the vacated slot —
+	# reads `NetworkManager.is_spectator()`, which is fed by a packet sent BEFORE this
+	# screen existed. See `NetworkManager.publish_spectator`. A no-op in Single Player,
+	# which reads `GameLaunch.spectator` directly and has nobody to tell.
+	NetworkManager.publish_spectator(GameLaunch.spectator)
 	_refresh_spectate_button()
 	_refresh_seats()
 	_refresh_detail()
+	_refresh_primary_button()
 
 func _refresh_spectate_button() -> void:
 	if _spectate_button == null or not is_instance_valid(_spectate_button):
 		return
-	_spectate_button.text = ("SPECTATING  ·  free camera, no character"
-		if GameLaunch.spectator else "SPECTATE INSTEAD")
+	# The pressed plank already reads as "on"; the text says what being on MEANS, because
+	# a sunk plank alone does not distinguish "I am watching" from "I clicked something".
+	var label := ("SPECTATE  ·  WATCHING, NO CHARACTER  ◀ YOU"
+		if GameLaunch.spectator else "SPECTATE  ·  free camera, no character")
+	# The four seat rows are the roster and a spectator is not on them any more, so this
+	# button is the only place the OTHER players can see that somebody is watching. Two
+	# humans and two watchers has to look different from two humans alone, or the pair
+	# who are playing cannot tell whether they are waiting for anyone.
+	var others := 0
+	for peer_id in _peer_spectating:
+		if peer_id != multiplayer.get_unique_id():
+			others += 1
+	if others > 0:
+		label += "   · %d WATCHING" % others
+	_spectate_button.text = label
+
+## ⚠️ A SPECTATOR IS NOT IN THE READY COUNT, SO IT MUST NOT BE OFFERED THE READY BUTTON.
+## Leaving it live let a watching client press READY and sit in `_peer_ready` holding a
+## tick for a seat it does not have, while `_refresh_start_button` — which iterates
+## `_peer_seats` — never looked at it. Harmless by luck rather than by design, and it
+## told the player they were part of a gate they had just left. The HOST keeps its START
+## button either way: somebody has to be able to begin the match and it is the only peer
+## that can (the same carve-out `NetworkManager.playing_peer_count()` documents).
+func _refresh_primary_button() -> void:
+	if not _is_networked_lobby():
+		return
+	primary_button.disabled = GameLaunch.spectator
+	if GameLaunch.spectator:
+		primary_button.caption = "SPECTATING"
+		status_label.text = ("Watching. Your seat is played by a bot"
+			+ ("; press START MATCH when everyone is ready." if _is_lobby_host()
+				else " and the others do not wait for you."))
+		return
+	# Back into the gate. The tick was dropped when the seat was released, so this is
+	# always the un-readied caption rather than whatever was showing before.
+	primary_button.caption = "READY"
+	status_label.text = ""
 
 func _refresh_seats() -> void:
 	_refresh_spectate_button()
@@ -961,8 +1111,15 @@ func _refresh_seats() -> void:
 ## read "PLAYER 816586678" until this existed. Derived by sorting the seat map's
 ## keys, which every peer holds identically (the host broadcasts it), so the same
 ## player is the same number on everybody's screen.
+## ⚠️ THE UNION OF SEATED AND WATCHING PEERS, not `_peer_seats` alone. Numbering off the
+## seat map only meant that the moment somebody pressed SPECTATE, every player numbered
+## after them was renumbered on all four screens — PLAYER 3 became PLAYER 2 while they
+## were looking at it, for a reason nothing on the board explained.
 func _player_number(peer_id: int) -> int:
 	var ids: Array = _peer_seats.keys()
+	for id in _peer_spectating:
+		if not ids.has(id):
+			ids.append(id)
 	ids.sort()
 	return ids.find(peer_id) + 1
 
@@ -1012,7 +1169,11 @@ func _refresh_start_button() -> void:
 		if not bool(_peer_ready.get(peer_id, false)):
 			start_button.disabled = true
 			return
-	start_button.disabled = _peer_seats.is_empty()
+	# ⚠️ AN ALL-SPECTATOR LOBBY IS STARTABLE, AND IT IS THE FILMING CASE. `_peer_seats` is
+	# empty when the only human present is watching — four bots, nobody seated — and the
+	# empty-board guard below would have disabled the one button that can begin the match
+	# a spectator is there to film. §2.4: a spectating host still runs the match.
+	start_button.disabled = _peer_seats.is_empty() and _peer_spectating.is_empty()
 
 # =============================================================================
 # Launch

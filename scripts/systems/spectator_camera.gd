@@ -27,6 +27,27 @@ class_name SpectatorCamera
 ## ⚠️ IT IS NOT A PLAYER AND MUST NEVER BECOME ONE. Nothing here writes gameplay state,
 ## sends an RPC, or resolves a hit. If a future pass wants a spectator to be able to
 ## nudge anything, that is a different node.
+##
+## ⚠️⚠️ AND IT IS DRIVEN BY A HUMAN, ONLY, BY CONSTRUCTION. 🧑 human instruction,
+## 2026-07-31: *"dont give spectator AI... spectator should only be controllable by a
+## person."* Three things hold that, and none of them is a flag anyone has to remember:
+##
+##   * `AIController` steers a `CharacterBase`, through `character.ai_set_intent()`. This
+##     is a `Node3D`. There is nothing here for a controller to attach to and no
+##     `_attach_ai` call site that can reach it — `main.gd` only ever attaches one while
+##     iterating characters.
+##   * it reads the `Input` singleton DIRECTLY, and the AI deliberately does not. That
+##     used to be the other way round and it was the bug `character_base.gd`'s
+##     PER-CHARACTER INPUT block was written about: bots calling `Input.action_press()`
+##     put process-global state where anything reading `Input` would pick it up. Since
+##     that fix the bots write per-character intent and touch the global singleton not at
+##     all, so a bot walking left cannot fly this camera left.
+##   * the vacated SEAT is bot-filled and that is a different unit entirely
+##     (`main.gd::_fill_empty_slots_with_placeholders`). A spectator's slot having a bot
+##     in it is §2.3 working; the camera itself has no body for one to hold.
+##
+## If a "cinematic auto-cam" is ever wanted it is a new node with a new name, not an
+## `AIController` bolted onto this one.
 
 ## Metres per second at the base speed. Deliberately faster than a Person's 4.6 walk —
 ## a spectator is covering a whole map, not a lane, and the point of the mode is to get
@@ -49,6 +70,20 @@ const PITCH_LIMIT_DEG: float = 88.0
 ## with any smoothing on it feels like input lag.
 const MOVE_SMOOTH_RATE: float = 14.0
 
+## ⚠️ §2.6 — FOLLOW DISTANCE IS THE OTHER HALF OF "WIDE SHOTS AND CLOSE SHOTS BOTH".
+## The wheel already retuned the FLY speed, which does nothing at all while following a
+## unit, so the follow shot was a single fixed 6.5 m over-the-shoulder framing and the
+## only way to get a close-up of the lata being knocked over was to leave follow mode and
+## hand-fly. Same wheel, same gesture, and which number it moves depends on which mode
+## you are in — because in each mode that is the only one of the two that does anything.
+const FOLLOW_DISTANCE: float = 6.5
+const FOLLOW_DISTANCE_MIN: float = 1.2
+const FOLLOW_DISTANCE_MAX: float = 30.0
+## Metres above the followed unit's origin. Scaled with the distance rather than held
+## flat: a 1.2 m close-up wants to be near eye level and a 30 m wide wants to be looking
+## down, and one constant cannot be both.
+const FOLLOW_LIFT_RATIO: float = 0.34
+
 var _yaw: float = 0.0
 var _pitch_deg: float = -18.0
 var _speed: float = BASE_SPEED
@@ -57,6 +92,7 @@ var _camera: Camera3D = null
 ## Which unit the camera is following, or null for free flight. `Tab` cycles, `F` frees.
 var _follow: Node3D = null
 var _follow_index: int = -1
+var _follow_distance: float = FOLLOW_DISTANCE
 
 func _ready() -> void:
 	_camera = Camera3D.new()
@@ -99,23 +135,56 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed:
 		var button := (event as InputEventMouseButton).button_index
+		# Following: the wheel pulls in and pushes out. Free: it retunes the fly speed.
+		# See FOLLOW_DISTANCE's own note for why one control does both.
+		var following := _follow != null and is_instance_valid(_follow)
 		if button == MOUSE_BUTTON_WHEEL_UP:
-			_speed = clampf(_speed * SPEED_STEP, SPEED_MIN, SPEED_MAX)
+			if following:
+				_follow_distance = clampf(_follow_distance / SPEED_STEP,
+					FOLLOW_DISTANCE_MIN, FOLLOW_DISTANCE_MAX)
+			else:
+				_speed = clampf(_speed * SPEED_STEP, SPEED_MIN, SPEED_MAX)
 		elif button == MOUSE_BUTTON_WHEEL_DOWN:
-			_speed = clampf(_speed / SPEED_STEP, SPEED_MIN, SPEED_MAX)
+			if following:
+				_follow_distance = clampf(_follow_distance * SPEED_STEP,
+					FOLLOW_DISTANCE_MIN, FOLLOW_DISTANCE_MAX)
+			else:
+				_speed = clampf(_speed / SPEED_STEP, SPEED_MIN, SPEED_MAX)
 		return
-	# `Tab` and `F` are read as raw keys rather than through the InputMap on purpose:
-	# adding two actions to `project.godot` for a spectator-only convenience would mean
-	# two more rows in the rebind panel, two more `input_probe` conflict checks, and a
-	# `settings.cfg` migration — for a mode with no gameplay stake at all.
-	if event is InputEventKey and (event as InputEventKey).pressed \
-			and not (event as InputEventKey).echo:
-		match (event as InputEventKey).physical_keycode:
-			KEY_TAB:
-				_cycle_follow()
-			KEY_F:
-				_follow = null
-				_follow_index = -1
+
+## ⚠️⚠️ `_input`, NOT `_unhandled_input`, AND ONLY FOR THESE TWO KEYS — BECAUSE TAB NEVER
+## ARRIVED. Measured by `spec_probe --solo`: "TAB picks up a follow target — FAIL,
+## following nothing", with the follow list correctly populated the whole time.
+##
+## `Tab` is bound to `ui_focus_next` in Godot's built-in InputMap, and the Viewport
+## consumes focus-navigation keys during the GUI phase, which runs BEFORE
+## `_unhandled_input`. The HUD is a live CanvasLayer of Controls, so there is always
+## something for focus to move to — the press was being eaten by the UI and the follow
+## cycle, the one control that makes this camera usable for anything but a static wide
+## shot, could not be reached at all. It read as "Tab does nothing", which is
+## indistinguishable from "the follow cycle is not built".
+##
+## Deliberately narrow: this handles exactly `Tab` and `F` and consumes only those, so
+## nothing else on the screen — the pause toggle above all — loses an event to it. Mouse
+## look and the wheel stay in `_unhandled_input` below, where they are not competing with
+## anything.
+##
+## Raw keys rather than InputMap actions, still on purpose: adding two actions to
+## `project.godot` for a spectator-only convenience would mean two more rows in the
+## rebind panel, two more `input_probe` conflict checks, and a `settings.cfg` migration —
+## for a mode with no gameplay stake at all. `project.godot` is also a shared-lock file.
+func _input(event: InputEvent) -> void:
+	var key := event as InputEventKey
+	if key == null or not key.pressed or key.echo:
+		return
+	match key.physical_keycode:
+		KEY_TAB:
+			_cycle_follow()
+			get_viewport().set_input_as_handled()
+		KEY_F:
+			_follow = null
+			_follow_index = -1
+			get_viewport().set_input_as_handled()
 
 func _process(delta: float) -> void:
 	# ⚠️ `_process`, NOT `_physics_process`. There is no physics here — nothing to step,
@@ -126,7 +195,9 @@ func _process(delta: float) -> void:
 		# Follow mode holds a fixed offset in the camera's own current bearing, so the
 		# player still owns the angle and only gives up the position.
 		var back := -_camera_forward()
-		_target_position = _follow.global_position + Vector3.UP * 2.2 + back * 6.5
+		_target_position = (_follow.global_position
+			+ Vector3.UP * (_follow_distance * FOLLOW_LIFT_RATIO)
+			+ back * _follow_distance)
 	else:
 		var input_dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 		var move := _camera_forward() * -input_dir.y + _camera_right() * input_dir.x
@@ -180,4 +251,27 @@ func _cycle_follow() -> void:
 ## The on-screen legend. Built by `main.gd` rather than here so the spectator node stays
 ## a camera and nothing else — same rule that keeps gameplay state out of it.
 static func controls_text() -> String:
-	return "SPECTATOR    WASD fly · SPACE up · CTRL down · SHIFT boost · WHEEL speed · TAB follow · F free"
+	return "SPECTATOR    WASD fly · SPACE up · CTRL down · SHIFT boost · TAB follow · F free · WHEEL speed, or follow distance while following"
+
+## ⚠️ §2.6 — WHAT THE CAMERA IS DOING RIGHT NOW, WHICH THE STATIC LEGEND CANNOT SAY.
+## Polled once a frame by `hud.gd`'s spectator branch. Both numbers on it are ones a
+## person framing a shot is actively changing and cannot otherwise see: turning the wheel
+## produced no feedback at all, so "am I at 3 m/s or 40" was answered by flying and
+## finding out — twice, because the wheel means two different things in the two modes.
+##
+## Returns a plain String and reads nothing outside this node, so the HUD does not have
+## to know what a follow target is.
+func status_text() -> String:
+	if _follow != null and is_instance_valid(_follow):
+		return "FOLLOWING  %s  ·  %.1f m" % [_follow_name(), _follow_distance]
+	return "FREE FLIGHT  ·  %.1f m/s" % _speed
+
+## The followed unit's name, in the words the rest of the game uses for it rather than
+## its node name — "TEAM A · OBJECT" is what the lobby called that seat, and a legend
+## that says `TeamAProp@3` is a debug print with a nicer font.
+func _follow_name() -> String:
+	var character := _follow as CharacterBase
+	if character == null:
+		return String(_follow.name)
+	return "TEAM %s · %s" % ["A" if character.team == 0 else "B",
+		"PERSON" if character.is_person else ("LATA" if character.is_can else "TSINELAS")]

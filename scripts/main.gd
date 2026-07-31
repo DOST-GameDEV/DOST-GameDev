@@ -746,6 +746,17 @@ func _start_local_test() -> void:
 			human.ai_controller.set_enabled(true)
 		human.input_parked = true
 		_enter_spectator_mode()
+		# ⚠️ RE-ASSERTED A FRAME LATER, BECAUSE SOMETHING TURNS IT BACK OFF.
+		# Measured by `spec_probe --solo`: "every seat including the vacated one is
+		# bot-held — FAIL, 3 of 4 ai-driven". `debug_player_switcher.gd::_apply_slots()`
+		# runs when the DebugBar registers, claims `DEFAULT_P1_UNIT` ("TeamAPerson") for
+		# player 1 and DISABLES that unit's controller — which in a spectated solo match
+		# is precisely the seat the spectator just vacated. The result is a 2v2 with one
+		# unit standing still for the whole round, filmed.
+		# Deferred rather than ordered: the switcher registers on its own schedule and
+		# this is the cheap half of the fix. The switcher itself is `scripts/ui/**` and
+		# therefore `build ux`'s — filed as §4.11.
+		_reassert_spectated_bots.call_deferred()
 	else:
 		var default_rig := human.get_node("CameraRig") as CameraRig
 		default_rig.set_active(true)
@@ -756,6 +767,15 @@ func _start_local_test() -> void:
 	# RoundManager.round_active) doesn't start until the player readies up.
 	_awaiting_local_ready = true
 	hud.show_ready_prompt(true)
+	# ⚠️ A SOLO SPECTATOR HAS NOBODY TO READY UP, AND THE PROMPT ASKING THEM TO IS HIDDEN.
+	# `hud.enter_spectator_mode()` strips `ready_prompt` along with every other element
+	# that describes a character — correctly, it says "press [R] to start" to somebody who
+	# is not in the match — so a spectated Single Player sat in the pre-round window with
+	# no instruction on screen and no round ever starting. Measured: `spec_probe --solo`
+	# read the §2.7 round strip as '' because `RoundManager.round_active` was still false
+	# forty seconds in. There is no second player to wait for here, so waiting is the bug.
+	if GameLaunch.spectator:
+		_run_ready_countdown.call_deferred()
 
 ## Single Player's seat choice, resolved to one of Main.tscn's four hand-placed
 ## units. The seat numbering is the networked one, unchanged — `team = seat / 2`,
@@ -813,6 +833,23 @@ func _give_human_player_one(human: CharacterBase) -> void:
 ## second camera fighting the first for `current`.
 var _spectator: SpectatorCamera = null
 
+## Single Player only. Every one of the four units is a bot while this peer is watching —
+## there is no human in the match at all — so nothing local should ever be reading the
+## keyboard. Idempotent and cheap; see the call site for the measurement that made it
+## necessary and for who owns the real fix.
+##
+## ⚠️ THE SPECTATOR ITSELF IS NOT IN `_local_roster` AND GETS NO CONTROLLER. 🧑 2026-07-31:
+## *"dont give spectator AI... spectator should only be controllable by a person."* This
+## loop walks characters; the camera is a `Node3D` with no `CharacterBase` on it and
+## cannot be reached from here. `spec_probe --solo` asserts that directly.
+func _reassert_spectated_bots() -> void:
+	for character in _local_roster:
+		if not is_instance_valid(character):
+			continue
+		if character.ai_controller != null:
+			character.ai_controller.set_enabled(true)
+		character.input_parked = true
+
 func _enter_spectator_mode() -> void:
 	if _spectator != null and is_instance_valid(_spectator):
 		return
@@ -823,7 +860,10 @@ func _enter_spectator_mode() -> void:
 	# player does not have. `you_card.get_local_character()` would return null and most
 	# of the HUD would simply draw nothing, but "mostly blank UI" reads as broken rather
 	# than as deliberate — so the whole gameplay layer goes, and the legend replaces it.
-	hud.enter_spectator_mode(SpectatorCamera.controls_text())
+	# ⚠️ THE CAMERA GOES WITH IT NOW, not just its static legend: §2.7 needs a live
+	# readout (speed, follow target) that only the node itself can answer, and §2.6's
+	# whole point is that those two are being changed while a shot is being framed.
+	hud.enter_spectator_mode(_spectator)
 
 ## 2026-07-28 — the other half of the pre-round free-roam window. Pressing
 ## ready_up while waiting simply calls begin_next_round(); MatchManager's own
