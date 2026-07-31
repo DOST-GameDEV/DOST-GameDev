@@ -256,14 +256,16 @@ Lata
 > instruction and recorded here rather than made silently.
 
 **The named probe for this section is `tools/spec_probe.tscn` — `--solo` 30/30, and a
-two-peer `--lobby-host` / `--lobby-join=127.0.0.1` pair at HOST 15/15, three times.** A new
+two-peer `--lobby-host` / `--lobby-join=127.0.0.1` pair at HOST 22/22 + JOIN 8/8.** The
+two-peer run follows both peers **out of the lobby and into a real match**, which is where
+the last and worst defect of this lane was hiding. A new
 file, for the same reason `mech_probe` was: § PATHS gives this lane no `tools/` row.
 
 - [x] 2.1 **A SPECTATE toggle button in the lobby** — on the multiplayer lobby *and* the pre-match setup screen, in the focus order, showing its own state, in Single Player and Multiplayer, host and client. Rendered and looked at — `ui_shot` renders of both screens, looked at. The `match_setup.gd` one was already built and added to the tree and had never been *styled*: it drew as a small grey engine-default button under four wood planks
 - [x] 2.2 **Spectator mode** — free-flying camera, no physical model, clips through all geometry, flies anywhere. Entered from 2.1, not from `--spectate` — measured: not a `PhysicsBody3D`, zero `CollisionShape3D`, and it genuinely goes **anywhere** — 🧑 *"make sure the spectator can fly to anywhere"*, so it is measured in all three directions rather than asserted: **24.02 m straight down through the road** to y = −15.02 m, **93.1 m up** past every roofline, and **115.4 m out** past the edge of the built map, still rendering at each. There is no clamp on `global_position` and the kill plane is an `Area3D` that detects BODIES, which a spectator has none of. The viewport's live camera is `/root/Main/Spectator/SpectatorCamera3D`. ⚠️ **That last check is there because it FAILED**, silently, while every other one passed — see § LOG, "the camera was flying perfectly and nobody was looking through it"
 - [x] 2.3 Claims no seat, excluded from the ready gate, its slot bot-filled — **measured on two real peers, twice.** The host learned the client was spectating (`is_spectator` true), the board went to `seats={1: 0}` with the client absent, `playing_peer_count` 2 → **1**, no READY tick held, the vacated seat read `TEAM A · OBJECT   · BOT`, and START MATCH went live without the spectator ever pressing anything. Solo half too: 4 units, **4 of 4** bot-held with the human's seat vacated
 - [x] 2.4 Leaving and re-entering the lobby returns the seat cleanly; a spectating host still runs the match — **measured on two real peers, twice.** Un-spectating returned the client to seat **1, the one it vacated** (not "first free"), and `playing_peer_count` went back to 2. The host then spectated itself: its own flag updated (`host_game()` had frozen it), it released seat 0, and START MATCH stayed live
-- [x] 2.5 The HUD is sane with no character — no null character lines, no orphaned role colour — measured: YOU card, crosshair and lata card hidden, **zero** status rows built
+- [x] 2.5 The HUD is sane with no character — no null character lines, no orphaned role colour — measured: YOU card, crosshair and lata card hidden, **zero** status rows built, and on a real second peer the joining client's HUD reports `_spectating` inside the match
 - [x] 2.6 It is filmable: free look, a follow-target cycle, and a speed control that makes wide shots and close shots both possible — measured: wheel 12.0 → 21.9 m/s, TAB picked up TeamAProp, the same wheel pulled the follow shot 6.5 → 2.6 m, F freed it. ⚠️ **TAB never arrived before this lane**: `Tab` is `ui_focus_next` and the GUI phase ate it before `_unhandled_input`
 
 **Filed by `build spec` 2026-07-31 — the human's own ask, and it is NOT built:**
@@ -311,6 +313,7 @@ do not re-open it.
 
 - [ ] 4.11 **`debug_player_switcher.gd` switches a bot OFF in a spectated match, and it is the seat nobody is in.** Measured by `spec_probe --solo`: *"every seat including the vacated one is bot-held — FAIL, 3 of 4 ai-driven"*. `_apply_slots()` claims `DEFAULT_P1_UNIT` ("TeamAPerson") for player 1 and disables that unit's controller — which in a spectated Single Player is exactly the seat the spectator just vacated, so one unit stands still for the whole round, on camera. `main.gd` now re-asserts the controllers a frame later and the probe reads 4/4, but that is the cheap half; the switcher is `scripts/ui/**` and the real fix is yours — it should not claim a unit in a session with no local human. ⚠️ **And it does the same thing to the CAMERA, which is worse.** `_apply_slots()` calls `set_active(true)` on that unit's `CameraRig`, and `Camera3D.current` is winner-takes-all per viewport — so a spectated match rendered a Person's first-person view, viewmodel arms and all, while the free camera flew around unseen. `spectator_camera.gd` now re-claims `current` every frame, which is authoritative and correct for a unit with no rig, but the switcher should not be claiming a seat nobody is sitting in in the first place
 - [ ] 4.12 **`_refresh_status_stack()` is yours and the spectator no longer calls it.** `hud.gd`'s `_process` spectator branch used to call it with a null character purely to get the one `LATA OUT` row it appends from `RoundManager`; it now calls `_refresh_spectator_panel()`, which draws that clock **plus the save count** (§2.7). Nothing player-facing changed — but when you build §4.1/§4.9, know the spectator has its own readout and the two must not both grow a countdown
+- [ ] 4.13 **Probe harnesses are writing PNGs into the repository root.** `git status` on a clean checkout of this branch already carries seven untracked files — `flow_attack_eskinita.png.import`, `flow_defend_eskinita.png.import`, `flow_heatmap_eskinita.png.import` and `hud_00/10/21/32.png.import` — because `flow_probe` and `hud_probe` default their output to `res://` and Godot then generates an `.import` sidecar for each. Small, but a permanently dirty working tree is what hides a real uncommitted change, and it cost this lane a double-check on `project.godot`. Either default those probes to a `user://` or ignored path, or add the pattern to `.gitignore`
 
 - [ ] 4.10 **`scripts/ui/tutorial.gd` is yours and it is wrong twice.** It still teaches *"the defender body-blocks the throw, **tags the attacker**, and stands the lata back up"* — the tag was deleted on 2026-07-30 — and it quotes the reset channel at **2.2 s** in two places when it is now 1.8. It also never mentions that a displaced lata cannot stand up by itself, which is now the single most important rule a new player does not know
 
@@ -380,6 +383,10 @@ do not re-open it.
 - [ ] 7.11 **The power bump got materially stronger and its price did not move.** It was ~1 m + 0.9 s stagger + 1.2 s slow; it now also punts the tsinelas **3.13 m**, i.e. ~2.8 s of retrieval tempo. `BUMP_CHARGE_FULL_TIME` was deliberately left at 1.35 s (the 1.5× symmetry with the throw charge is worth keeping) — **you are the lane that decides whether 1.35 s of visible wind-up still buys all of that.** `PUNT_SPEED` is the cheaper knob if it does not
 - [ ] 7.12 **7.5's stunlock argument has a new exception to re-argue, not to inherit.** `Design.md` §11 item 2 now reads "`DOWNED_MAX_TIME` bounds every unit **except a lata off its circle**". My claim is that this is not a stunlock because the state is bounded by a countdown that *ends the round* (≤5.0 s, 1.25 s at full stacks) and can be cut short by the channel. **Break it or confirm it by naming the chain** — in particular check that re-downing a stranded lata (`go_downed()` has no already-downed guard) cannot be used to stall anything
 - [ ] 7.13 **The §5.2 recovery table is now load-bearing and has never been played.** The whole round is designed to escalate along it — save 4 is a knife-edge, save 5 is unsurvivable-by-channel. If real rounds never reach 3 stacks, the escalation is theatre; if they reach 5 in the first 30 s, the round is over before it starts. `CAN_OUT_RECOVERY_STEP` and `RESET_CHANNEL_TIME` are the two knobs
+
+**Filed by `build spec` 2026-07-31:**
+
+- [ ] 7.14 **Every number on the spectator camera is a first guess that has never been flown.** `spectator_camera.gd` ships `BASE_SPEED` 12.0, `BOOST_SCALE` 3.0, a 3.0–40.0 m/s wheel range at `SPEED_STEP` 1.35, `MOVE_SMOOTH_RATE` 14.0, a 1.2–30.0 m follow band and `POV_EYE_HEIGHT_PERSON` 1.45 / `_PROP` 0.42. All of them are measured — `spec_probe` asserts each one moves the camera the way it claims — and **not one has been judged by a person looking through it**, which is the only test that matters for a camera. ⚠️ You are the lane that moves numbers, but flag this one to the HUMAN rather than tuning it blind: the acceptance test is *"does the footage look good"*, and that is not a probe's call. It is also cheap to answer — a spectated Single Player match and two minutes
 
 ---
 
@@ -710,7 +717,21 @@ free and to first-free if it is not. An all-spectator lobby is deliberately star
 is the filming case, and the empty-board guard would have disabled the one button a
 spectator is there to press.
 
-**⚠️⚠️ THE ONE THE PROBE DID NOT FIND, AND LOOKING AT THE PICTURE DID.** Twenty checks
+**⚠️⚠️ THE WORST ONE, AND IT WAS ONLY EVER GOING TO SHOW UP ON A SECOND MACHINE: A
+SPECTATING CLIENT NEVER GOT A CAMERA AT ALL.** `_enter_spectator_mode()` had exactly two
+call sites — the Single Player branch, and `_spawn_player()` — and **`_spawn_player` is
+host-only**. It is driven by the host's own connect loop and by `_try_late_join`; a client
+is never spawned by anything local, because the host decides who gets a body and the client
+only receives the result. So the whole spectator path existed for a solo player and for a
+host, and a joining client fell straight through it: no camera added, no HUD strip, and the
+view left on whatever `Camera3D` happened to be current in `Main.tscn`. **This is what
+§ SALVAGE's "boots, single-peer only" actually meant, and it is the reason spectating could
+never have been used to film a LAN match** — which is the one job this lane was pulled
+forward to do. Found only because the two-peer probe was extended to press START and follow
+both peers into the match; every lobby check on that same run was green. `_start_joining()`
+now enters spectator mode for a client that chose it.
+
+**⚠️⚠️ AND ONE THE PROBE DID NOT FIND, THAT LOOKING AT THE PICTURE DID.** Twenty checks
 passed — the camera flew, TAB picked up a target, the wheel retuned, the HUD stripped to
 nothing — and the rendered frame was **a Person's first-person view with its orange
 viewmodel arms across the bottom of the shot**. `Camera3D.current` is winner-takes-all per
@@ -785,8 +806,8 @@ godot --path . --resolution 1920x1080 tools/ui_shot.tscn -- <dir>/
 godot --path . tools/spec_probe.tscn -- --solo --shots=<dir>
 ```
 
-**Measured — the two-peer run, `--lobby-host` + `--lobby-join=127.0.0.1`, HOST 15/15,
-three times.** This is the one the board said had never been done, and it is the reason the lane
+**Measured — the two-peer run, `--lobby-host` + `--lobby-join=127.0.0.1`, HOST 22/22 and
+JOIN 8/8, carried out of the lobby and into a real match.** This is the one the board said had never been done, and it is the reason the lane
 was rated high. The host learned the client was watching, the board went to `seats={1: 0}`
 with the client gone from it, `playing_peer_count` dropped 2 → 1, no READY tick was held,
 the vacated seat read `TEAM A · OBJECT   · BOT`, and START MATCH went live without the
@@ -803,12 +824,14 @@ the silent-empty-log trap `net_spawn_probe.gd` documents. The impossible-number 
 it — a seat cannot be returned before it is asked for. The clock table is now written into
 `spec_probe.gd` rather than left as four bare numbers.
 
-**⚠️ WHAT I DID NOT VERIFY, AND NOBODY SHOULD QUOTE AS IF I HAD.** Two real peers were
-verified in the **lobby**, not in the **match**: nothing here watched a spectating client
-actually load `Main.tscn` beside a live host and confirm the bot took its seat there — the
-seat and gate are proven, the spawn skip is inherited from code that already existed. The
-POV ask (2.8) is not built. And nobody has flown this camera by hand yet; every control is
-measured, none is *played*.
+**⚠️ WHAT I DID NOT VERIFY, AND NOBODY SHOULD QUOTE AS IF I HAD.** Everything above is
+measured by a harness; **nobody has flown this camera by hand.** Every control has a number
+against it and not one of them has been *played* — `BASE_SPEED` 12.0, `BOOST_SCALE` 3.0, the
+3–40 m/s wheel range, `MOVE_SMOOTH_RATE` 14.0, the 1.2–30 m follow band and the two POV eye
+heights are first guesses that happen to satisfy their own assertions. Filed to `build fair`
+as **7.14**, and it is the one thing on this lane a human has to answer. The two-peer runs
+were also all on **127.0.0.1**: the seat, the gate and the spawn skip are proven, the
+latency is not.
 
 **Left for `build ux`, per the shared-file rule.** In `match_setup.gd` I took only the
 spectate button, the seat/ready path around it, and `_seat_detail`'s spectator line. In
@@ -816,10 +839,13 @@ spectate button, the seat/ready path around it, and `_seat_detail`'s spectator l
 spectator/identify path. In `hud.gd`, only the no-character branches — `_refresh_status_stack`,
 the timer, the pips and everything a *player* sees are untouched.
 
-**Handed on — filed as checklist items, not left here:** **2.8** (the human's POV ask, which
-needs `camera_rig.gd` and is therefore not mine), **3.11** (`main.gd` fails `--check-only` on
-two pre-existing ability preloads), **4.11** (the debug switcher kills the vacated seat's
-bot), **4.12** (the spectator no longer shares the player status stack).
+**Handed on — filed as checklist items, not left here.** **3.11** (`main.gd` fails
+`--check-only` on two pre-existing ability preloads), **4.11** (the debug switcher claims
+the vacated seat's unit *and its camera*), **4.12** (the spectator no longer shares the
+player status stack), **4.13** (probes write PNGs into the repo root, so the tree is
+permanently dirty), **7.14** (every camera number is an unflown first guess, and the
+acceptance test is a human's). 2.8 was filed and then built in the same session, so it is
+ticked above rather than handed on.
 
 ### 2026-07-31 · 🎮 `build mech` · §1 · branch `feature/objects-overhaul-v2`
 

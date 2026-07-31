@@ -1068,6 +1068,26 @@ func _start_hosting() -> void:
 
 func _start_joining(address: String) -> void:
 	_clear_local_test_characters()
+	# ⚠️⚠️ A SPECTATING **CLIENT** GOT NO CAMERA AT ALL, AND NOTHING ANYWHERE CALLED FOR ONE.
+	#
+	# Measured by `spec_probe --lobby-join`: "IN THE MATCH: the client got a free camera —
+	# FAIL", with `/root/Main/Spectator` absent while every seat and ready-gate check on
+	# the same match passed. `_enter_spectator_mode()` had exactly two call sites — the
+	# Single Player branch, and `_spawn_player()` — and **`_spawn_player` is host-only**
+	# (it is driven by the host's own connect loop and by `_try_late_join`). So the entire
+	# spectator path existed for a solo player and for a host, and a joining client fell
+	# through it silently: no camera added, no HUD strip, and the view left on whatever
+	# `Camera3D` happened to be current in `Main.tscn`.
+	#
+	# That is the "boots, single-peer only" line in § SALVAGE, and it is the actual reason
+	# spectating could never have been used to film a LAN match.
+	#
+	# Here rather than in `_spawn_player` because a client is never spawned BY anything
+	# local — the host decides who gets a body and the client only ever receives the
+	# result. `GameLaunch.spectator` is this peer's own choice, known locally, and this is
+	# the first moment on the client where the HUD exists to be stripped.
+	if GameLaunch.spectator:
+		_enter_spectator_mode()
 	NetworkManager.player_connected.connect(_on_player_connected)
 	NetworkManager.player_disconnected.connect(_on_player_disconnected)
 	# Q-1/B-62: only a client can lose its server or fail to reach one — a host

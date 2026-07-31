@@ -43,7 +43,7 @@ extends Node
 ## the host quits (see the clock table below), so its scene is torn down by
 ## `_on_server_disconnected` before `_finish()` can print a summary or set an exit code.
 ## Its four PASS lines do print, and they are worth reading; the number to gate on is the
-## host's. Measured 2026-07-31: HOST 15/15 three times, JOIN 4/4 three times; --solo 30/30.
+## host's. Measured 2026-07-31: HOST 22/22, JOIN 8/8, --solo 30/30.
 
 const MATCH_SETUP_PATH: String = "res://scenes/ui/MatchSetup.tscn"
 const MAIN_SCENE_PATH: String = "res://scenes/main/Main.tscn"
@@ -86,7 +86,15 @@ const CONNECT_WAIT: float = 4.0
 const SAMPLE_A_WAIT: float = 5.0   ## after the peer check, on the host
 const SAMPLE_B_WAIT: float = 10.0  ## after sample A, on the host
 const CLIENT_WATCH_HOLD: float = 9.0   ## client stays spectating across sample A
-const CLIENT_LINGER: float = 20.0      ## client outlives the host, deliberately
+const CLIENT_LINGER: float = 10.0
+## ⚠️ AND ONCE THE RUN FOLLOWS THE PLAYERS INTO THE MATCH, THE DIRECTION REVERSES: the
+## HOST must outlive the CLIENT, because the client now has checks of its own on the far
+## side of the scene change. The host quitting first tears the client's match down through
+## `main.gd::_on_server_disconnected`, which bounces it to MultiplayerSetup and frees
+## `/root/Main` — measured exactly once as "§2.2 the spectating CLIENT reached the match —
+## FAIL" while the host had just reported 22/22 on the same match. The client was 5 s late,
+## not wrong.
+const HOST_LINGER: float = 14.0
 
 var _tag: String = "?"
 var _failures: int = 0
@@ -152,6 +160,15 @@ func _stand_up_lobby(action: String, address: String) -> MatchSetupScreen:
 	var lobby := (load(MATCH_SETUP_PATH) as PackedScene).instantiate() as MatchSetupScreen
 	lobby.name = "MatchSetup" # see the header: the RPCs resolve by path
 	get_tree().root.add_child(lobby)
+	# ⚠️⚠️ THE LOBBY BECOMES `current_scene` AND THIS PROBE STOPS BEING IT. Without this the
+	# run cannot follow the players out of the lobby at all: `_rpc_begin_match` ends in
+	# `change_scene_to_file(Main.tscn)`, which FREES the current scene — and that was this
+	# probe, mid-`await`, on both peers at once. Handing the title to the lobby means the
+	# engine frees the lobby instead and loads `Main` at `/root/Main` (the same path on
+	# every peer, which the spawner and every RPC need), while the probe carries on as a
+	# plain sibling under `/root`. Same reasoning `net_spawn_probe.gd` gives for parenting
+	# Main by hand; this is the version that works when the GAME does the scene change.
+	get_tree().current_scene = lobby
 	return lobby
 
 ## Presses the SPECTATE plank the way a player does — through the same `pressed` signal
@@ -231,6 +248,46 @@ func _run_lobby_host() -> void:
 	_check("§2.4 START MATCH still live with the host watching",
 		not lobby.start_button.disabled)
 
+	# --- D · into the MATCH, with the client spectating and the host playing ----------
+	# ⚠️ EVERYTHING ABOVE IS THE LOBBY. §2.3's third clause — "its slot bot-filled" — is a
+	# claim about `main.gd::_spawn_player`, which no lobby check reaches: the seat can be
+	# released perfectly and the peer still be handed a character on the other side of the
+	# scene change. This is the half that was going to be handed to the next lane as
+	# unverified, and it is the headline box of the whole section.
+	_press_spectate(lobby, false) # the host plays; the client is watching again by now
+	await _wait(4.0)
+	_check("§2.3 the client is watching again before the match starts",
+		NetworkManager.is_spectator(client_id))
+	lobby._peer_ready[multiplayer.get_unique_id()] = true
+	lobby._on_start_pressed()
+	await _wait(8.0)
+
+	var main := get_tree().root.get_node_or_null("Main")
+	_check("§2.3 the match actually loaded on the host", main != null)
+	if main == null:
+		return
+	var units := main.find_children("*", "CharacterBase", true, false)
+	_check("§2.3 IN THE MATCH: still a full 2v2 with one human and one watcher",
+		units.size() == 4, "found %d units" % units.size())
+	_check("§2.3 IN THE MATCH: the spectating peer was handed NO character",
+		main._spawned_characters.get(client_id) == null,
+		"spawned_characters=%s" % [main._spawned_characters.keys()])
+	_check("§2.3 IN THE MATCH: it was still marked dealt-with, so no late path re-seats it",
+		bool(main._spawned_peer_ids.get(client_id, false)))
+	var ai_units := 0
+	for unit in units:
+		if (unit as CharacterBase).is_ai_driven():
+			ai_units += 1
+	_check("§2.3 IN THE MATCH: the vacated slot is bot-filled (3 bots, 1 human host)",
+		ai_units == 3, "%d of %d bot-held" % [ai_units, units.size()])
+	_check("§2.3 IN THE MATCH: the host is not waiting on the spectator to ready",
+		NetworkManager.playing_peer_count() == 1,
+		"playing_peer_count=%d" % NetworkManager.playing_peer_count())
+
+	# Hold the session open until the client has finished its own in-match checks. See
+	# HOST_LINGER: this is not padding, it is the ordering the run depends on.
+	await _wait(HOST_LINGER)
+
 func _run_lobby_client(address: String) -> void:
 	var lobby := _stand_up_lobby("join", address)
 	await _wait(CONNECT_WAIT)
@@ -246,6 +303,28 @@ func _run_lobby_client(address: String) -> void:
 	await _wait(CLIENT_WATCH_HOLD)
 	_press_spectate(lobby, false)
 	_check("§2.4 READY is offered again", not lobby.primary_button.disabled)
+	# Back to watching, and stay that way — the host takes us into the match from here.
+	await _wait(6.0)
+	_press_spectate(lobby, true)
+	# The host presses START at host t≈26 (client t≈22). Sampled at client t≈28, which is
+	# inside the window the host holds open for it — see HOST_LINGER.
+	await _wait(8.0)
+	var main := get_tree().root.get_node_or_null("Main")
+	_check("§2.2 the spectating CLIENT reached the match", main != null)
+	if main != null:
+		var spectator := main.get_node_or_null("Spectator")
+		_check("§2.2 IN THE MATCH: the client got a free camera",
+			spectator is SpectatorCamera)
+		var chud = main.find_children("*", "Hud", true, false)
+		_check("§2.5 IN THE MATCH: the client's HUD knows it has no character",
+			not chud.is_empty() and chud[0]._spectating,
+			"hud found=%s" % [not chud.is_empty()])
+		var mine: Array = []
+		for unit in main.find_children("*", "CharacterBase", true, false):
+			if (unit as CharacterBase).is_multiplayer_authority():
+				mine.append(unit)
+		_check("§2.3 IN THE MATCH: the client owns NO character at all", mine.is_empty(),
+			"owns %d" % mine.size())
 	# Outlive the host — see the clock table above. A client that drops first erases the
 	# state the host is about to read, and a client that is still here when the host goes
 	# gets its scene swapped out from under it, which silently ends this run.
