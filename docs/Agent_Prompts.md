@@ -156,7 +156,7 @@ give `build fair` a match worth measuring instead of a grey one.
 
 ⚠️ **IF THE ART AND AUDIO ASSETS ARE NOT IN THE REPO YET, RUN 🖥️ `build ui` FIRST AND
 COME BACK.** Lanes 1 and 2 both block on a human delivering files — 🎨 `build model` needs
-the 2D orthographic drawings and 🔊 `build sound` needs recorded audio. 🖥️ `build ui`
+the tsinelas and lata drawings and 🔊 `build sound` needs recorded audio. 🖥️ `build ui`
 blocks on nothing at all, and its two biggest items (the tutorial teaches a game that no
 longer exists; half the HUD is built in code over the deleted 2v2 scene) are both squarely
 on camera. Swapping it forward costs nothing and no ordering rule here forbids it.
@@ -171,7 +171,7 @@ carries § CHECKLIST §8, the ship checklist, because it is the session that end
 |---|---|---|---|---|---|
 | **—** | §0 | 🎮 **`build core`** | — | the rules, the props, the loop | — · **CLOSED 2026-07-31** |
 | **—** | §7 | 👁️ **`build spec`** | — | spectator camera + POV | — · **CLOSED, carried over intact** |
-| **1** | §5 | 🎨 **`build model`** | **Opus 5 · medium** | Blender MCP model revamp | **Graphics and Art** · Aesthetics |
+| **1** | §5 | 🎨 **`build model`** | **Opus 5 · medium** | the lata, the tsinelas, the play area | **Graphics and Art** · Aesthetics |
 | **2** | §4 | 🔊 **`build sound`** | **Sonnet 5 · medium** | music, VO, SFX, the mix | **Music and Sound Design 10%** |
 | **3** | §1 | 🖥️ **`build ui`** | **Sonnet 5 · high** | `scripts/ui/**`, `scenes/ui/**`, the tutorial | Gameplay · Esports · Completeness |
 | **4** | §2 | ⚖️ **`build fair`** | **Opus 5 · xhigh** | every number **and the feedback that sells it** | **Esports Potential** · Gameplay |
@@ -205,7 +205,7 @@ argue with each other over the same file, they were always one lane.**
   in this repo has ever measured.
 
 **Why `build sound` and `build model` did NOT merge**, when everything else did: they are
-different toolchains (an audio bus graph and Blender MCP), they block on different people
+different toolchains (an audio bus graph and a procedural mesh generator), they block on different people
 delivering different things, and neither can start early. One lane that waits on both
 finishes when the slower one arrives.
 
@@ -250,7 +250,7 @@ throwing, and scoring a knockdown.
 | 🖥️ `build ui` | `scripts/ui/**` · `scenes/ui/**` · `systems/camera_rig.gd` · `trajectory_preview.gd` · `tools/ui/**` |
 | ⚖️ `build fair` | **any number in any file** · `docs/Design.md` · `tools/*_probe.gd` · `character_base.gd` movement/contact block · `objects/slipper.gd` flight · `objects/lata.gd` topple |
 | 🔊 `build sound` | `systems/audio_manager.gd` · `assets/audio/**` · `default_bus_layout.tres` · the audio rows of `ui/settings_panel.gd` · `docs/HUMAN.md` |
-| 🎨 `build model` | `character_visual.gd` · `character_nameplate.gd` · `character_roster.gd` `ROSTER`/`CANS`/`SLIPPERS` · `scenes/characters/visuals/**` · `scenes/objects/**` visuals · `assets/models/**` · `tools/models/**` · `docs/Art_Direction.md` |
+| 🎨 `build model` | `character_roster.gd` `CANS`/`SLIPPERS` (and the `ability` key only, in `ROSTER`) · `scenes/objects/**` visuals · `assets/models/**` · `tools/models/**` · `tools/maps/**` · `docs/Art_Direction.md`. ⚠️ **NOT the character rigs, `colormap.png`, `person_*.tres` or `generate_person_palettes.py` — reverted and out of scope, § CHECKLIST §5.** |
 | 🤖 `build ai` | `systems/ai_controller.gd` · `tools/ai_probe.gd` · `export_presets.cfg` and `.gitignore` (the ship checklist — it runs last) |
 
 **`character_base.gd` is touched by two lanes.** Sequential order is the lock: `build
@@ -479,27 +479,90 @@ wind-up, no animation and no contact moment. They also shared files.
   the instant they play, with no other file needing to know the duck exists.
   *Unverified by ear.*
 
-### 5 · 🎨 `build model` — Blender MCP model revamp *(Opus 5 · medium)*
+### 5 · 🎨 `build model` — the two props, and the play area *(Opus 5 · medium)*
 
 *The full prompt is in § THE LANES.*
 
-- [ ] 5.1 Characters **edited, not rebuilt**, from the human's 2D orthographic drawings
-  (which are drawn over screenshots of the current models). The rig, the skeleton and
-  the 32 clips `ACTION_CLIPS` names must survive.
+> ### 🚨 OVERHAULED 2026-08-01, MID-SESSION, ON HUMAN INSTRUCTION
+>
+> 🧑: *"overhaul the model plan · remove blender and shit · we wont remove the
+> characters anymore just add cans and slippers from my drawing but without blender"*.
+>
+> **THE CHARACTERS ARE OUT OF SCOPE. ALL TWELVE STAY.** The previous version of this
+> lane cut the roster to four and edited the Kenney rigs in Blender. That work was
+> attempted, rejected by the human on look, and **fully reverted** — the twelve `.glb`
+> files, `colormap.png`, the palettes and `generate_person_palettes.py` are all back at
+> their committed state. Do not restart it. Do not "improve" a character. The only art
+> this lane makes now is the lata and the tsinelas.
+>
+> **BLENDER IS OUT OF THE PIPELINE.** No Blender, no Blender MCP, no `.glb` authoring,
+> no round trip. See § WHY BLENDER WAS DROPPED below — it is a recorded finding, not a
+> preference, and re-introducing it re-runs a failed session.
+
+- [ ] 5.1 ⚠️⚠️ **THE PLAY AREA IS TOO SMALL AND IT IS THE FIRST ITEM.** 🧑, 2026-08-01:
+  *"We recently overhauled the mechanics of the game and the current play area feels too
+  small"* and *"i said bugs like play area needs to be bigger"*. Expand the Defender's
+  allowed area, adjust the map meshes to suit, and **redraw the chalk on BOTH maps** so
+  the play area and the throwing line visually demarcate the new boundary.
+  ⚠️ The box is `CharacterBase.CONFINEMENT_RADIUS` (5.0), which
+  `tools/maps/floorcheck.py` regexes straight out of the `.gd` and both map builders draw
+  the chalk from — so a retune is a map rebuild, and **the `const` itself is
+  ⚖️ `build fair`'s file, not this lane's** (§2.2 is the same number). Move the maps and
+  the chalk; agree the value with them or file it.
 - [ ] 5.2 The slipper — the object the game is named after — **built new** from the
-  human's drawings. Must respect `HIT_RADIUS` 0.23, `REST_HEIGHT` 0.08, and a centred
-  origin (it spins on two axes in flight).
-- [ ] 5.3 The lata **built new** from the human's drawings. Must respect body radius
-  0.14, and its silhouette must read as a can from across the arena while lying at 88°.
-- [ ] 5.4 Textures updated to match the references, and **tint-friendly** — both props
-  are recoloured at runtime from the roster entry's `tint`.
-- [ ] 5.5 `ROSTER` / `CANS` / `SLIPPERS` re-authored against the new models, and the
-  dead `ability` key dropped from every entry.
-- [ ] 5.6 **Carry the `traits` dictionaries across unchanged.** ⚖️ `build fair` §2.8
-  decides whether prop skins carry soft stats and it now runs *after* this lane, so
-  preserving them is how that decision stays open.
-- [ ] 5.7 Orphaned assets swept: `lata_dent1..3.obj` and the dent generator in
-  `tools/models/generate_all.gd` describe a deleted mechanic.
+  human's drawing, in `tools/models/generate_all.gd`. Its origin must sit at its centre
+  of mass: it spins on two axes in flight (`SPIN_SPEED_DEG` 900 about its long axis,
+  `TUMBLE_SPEED_DEG` 520 end over end) and an off-centre origin wobbles like a bent wheel.
+- [ ] 5.3 The lata **built new** from the human's drawing, same generator. Its silhouette
+  has to read as a can from across the arena, at spectator camera distance, **while lying
+  on its side at 88°**. That readability is a gameplay requirement, not a look: a crowd
+  that cannot tell a fallen lata from a standing one cannot follow the round.
+- [ ] 5.4 ⚠️ **SIZES MAY CHANGE — PHYSICS CONSTANTS MOVE WITH THEM.** The old fixed-size
+  rules are lifted (🧑 2026-08-01). Scale either prop to match the drawings, then update
+  `Slipper.HIT_RADIUS` / `REST_HEIGHT` and the lata's body and hurtbox radii to match the
+  new mesh **in the same commit**, and move the same numbers in `Design.md`.
+- [ ] 5.5 **Tint-friendly materials.** `lata.gd` and `slipper.gd` walk every
+  `MeshInstance3D` and write `albedo_color` from the roster entry's `tint`. A fully baked
+  multi-colour texture fights that; author for a tint.
+- [ ] 5.6 **LOW POLY ONLY.** Match the existing assets. No subdivision surfaces, no
+  high-res detailing, no smooth shading that breaks the flat toon style.
+- [ ] 5.7 `CANS` / `SLIPPERS` re-authored against the new meshes, and the dead `ability`
+  key dropped from every entry in all three tables — `scripts/abilities/**` is deleted and
+  the field is inert. **`ROSTER` is otherwise untouched**: the twelve characters stay.
+- [ ] 5.8 **Carry the `traits` dictionaries across unchanged.** ⚖️ `build fair` §2.8
+  decides whether prop skins carry soft stats and it runs *after* this lane, so preserving
+  them is how that decision stays open.
+- [ ] 5.9 Orphaned assets swept: `lata_dent1..3.obj` and the dent generator in
+  `tools/models/generate_all.gd` describe a mechanic that no longer exists.
+
+#### WHY BLENDER WAS DROPPED — a recorded finding, do not re-litigate
+
+A full session was spent editing the Kenney rigs through Blender MCP. It reached four
+re-modelled characters and was rejected. What went wrong is worth keeping, because every
+item is a property of the APPROACH rather than of the effort:
+
+* **The repo already has a mesh pipeline and it is not Blender.**
+  `tools/models/generate_all.gd` + `obj_writer.gd` build `lata.obj`, `tsinelas.obj`,
+  `viewmodel_arm.obj` and the whole `env_kit` procedurally, run by `godot --headless -s`.
+  It is deterministic by contract (run it twice, `git status` must be clean), diffable,
+  and needs no second application installed. A Blender step is a parallel pipeline for a
+  job this one already does.
+* **Blender MCP is not a reliable build step.** A `raise SystemExit` inside a guard killed
+  the Blender process outright and took the session's connection with it; the addon also
+  leaves a stray `Icosphere` in every scene, which a name-based mesh lookup silently
+  treated as a character's head.
+* **The glTF round trip loses the embedded texture** and, worse, ships **custom split
+  normals** that smooth-shade every flat face. That mismatch — low-poly silhouette,
+  high-poly shading — is what the human called *"bumpy and unnatural"* and *"very
+  uncanny"*, and it is invisible in Blender's own viewport.
+* **Editing someone else's topology is a bad trade.** Kenney's garment UV regions match no
+  drawing, its arms are three boxes of differing widths (a lump at every wrist), and its
+  limbs are chamfered so any hem drawn through them lands mid-polygon. Each needed a
+  bespoke fix, and the human rejected the result four times.
+
+**The props have none of these problems**, which is exactly why they are what is left: no
+skeleton, no rig, no clip, no weights, and a generator that already knows how to build
+them.
 
 ### 6 · 🤖 `build ai` — Single Player *(Opus 5 · high)* — **RUNS LAST**
 
@@ -737,107 +800,102 @@ stream loaded. Tick your own boxes in § CHECKLIST §4 and append to § LOG in t
 commit as the work.
 ```
 
-### 🎨 `build model` — Blender MCP model revamp *(Opus 5 · medium — **RUNS 1st**)*
+### 🎨 `build model` — the two props, and the play area *(Opus 5 · medium — **RUNS 1st**)*
 
 ```
 You are `build model` on branch HARRYDAKS of the Tumbang Preso repo. Model: Opus 5,
 effort medium.
 
 Read docs/Agent_Prompts.md end to end first, then docs/Design.md and
-docs/Art_Direction.md. Obey HOW TO RUN A LANE, THE REACHABILITY RULE and the COMMIT
-AUTHORSHIP rule exactly.
+docs/Art_Direction.md. Obey HOW TO RUN A LANE and the COMMIT AUTHORSHIP rule exactly.
 
-You own character_visual.gd, character_nameplate.gd, character_roster.gd's ROSTER /
-CANS / SLIPPERS tables, scenes/characters/visuals/**, the visuals inside
-scenes/objects/**, assets/models/**, tools/models/** and docs/Art_Direction.md.
+You own character_roster.gd's CANS / SLIPPERS tables, the visuals inside
+scenes/objects/**, assets/models/**, tools/models/**, tools/maps/** and
+docs/Art_Direction.md.
 
-TOOLING — READ THIS BEFORE YOU START:
+TWO THINGS ARE OUT OF SCOPE AND BOTH WERE TRIED AND REVERTED. Read
+"WHY BLENDER WAS DROPPED" in CHECKLIST 5 before you do anything.
 
-  * You are using BLENDER MCP. The Blender executable is at
-        C:\Program Files\Blender Foundation\Blender 5.2\
-    It is not on PATH. Use the Blender MCP tools rather than shelling out to it.
+  * NO BLENDER. Not the app, not the MCP tools, not a .glb round trip. The repo
+    already has its own mesh pipeline and it is GDScript.
+  * DO NOT TOUCH THE CHARACTERS. All twelve rigs stay exactly as they are. Do not
+    cut the roster, do not edit a .glb, do not touch colormap.png, the person_*.tres
+    palettes or generate_person_palettes.py. ROSTER changes only to drop the dead
+    `ability` key.
 
-  * THE HUMAN WILL PROVIDE 2D ORTHOGRAPHIC DRAWINGS — front and back. Ask for them
-    before you touch anything if they are not already in the repo. There are two kinds
-    and THEY ARE USED DIFFERENTLY:
+THE PIPELINE YOU ACTUALLY USE:
 
-      (a) CHARACTER drawings are drawn DIRECTLY OVER SCREENSHOTS OF THE CURRENT 3D
-          MODELS. They are references, not concept art: because they were drawn over
-          the existing models they are already in those models' own proportions, so
-          they load as background/reference images and are matched directly.
+    godot --headless -s tools/models/generate_all.gd
 
-      (b) TSINELAS and LATA drawings are the human's own designs for those two objects
-          and are NOT drawn over anything.
+  tools/models/generate_all.gd + obj_writer.gd build every generated mesh in
+  assets/models/ procedurally - lata.obj and tsinelas.obj included, today. You add or
+  rewrite a `_build_*()` there and re-run it. Read obj_writer.gd's header first.
 
-  * ⚠️⚠️ THE TWO CASES GET OPPOSITE TREATMENT. Do not apply one rule to both.
+  ITS ACCEPTANCE TEST IS DETERMINISM: run the generator twice and `git status` must be
+  clean after the second run. A generator that rolls dice or iterates a Dictionary
+  makes every future model commit unreviewable noise.
 
-    CHARACTERS — SUBTLY EDIT THE EXISTING GEOMETRY. DO NOT REBUILD FROM SCRATCH.
-    Push and pull the vertices that are already there, adjust the silhouette, and
-    update the textures to match the references. The character models are RIGGED,
-    scaled and weighted against real gameplay constants — PERSON_SCALE 2.38 was
-    measured from the imported AABB, the rig's face is on +Z where Godot's forward is
-    -Z, and character_visual.gd's ACTION_CLIPS names 32 clips on that exact skeleton.
-    A rebuilt mesh loses all of it and costs a session to re-derive. That the human
-    drew OVER screenshots is the whole point: it is a refinement pass, not a
-    replacement.
+  Look at what you made, on a turntable, without launching a match:
+      godot --path . res://tools/models/preview.tscn -- --model=res://assets/models/lata.obj
 
-    TSINELAS AND LATA — BUILD NEW MODELS FROM THE DRAWINGS. Human instruction,
-    2026-07-31: *"get the model prompt to make new models using blender based on my
-    tsinelas and lata drawings"*. These two are SAFE to rebuild and the characters are
-    not, and the reason is structural rather than a preference: neither prop has a
-    skeleton, a rig, an animation clip or a bone weight. They are static meshes hung
-    under a Node3D (scenes/objects/Lata.tscn and Slipper.tscn), so nothing downstream
-    depends on their topology. What they DO have to respect is listed below.
+THE HUMAN PROVIDES 2D DRAWINGS of the tsinelas and the lata. These are their own
+designs, not drawn over anything. Ask for them before you start if they are not in
+docs/refs/ already, and do not invent a design to fill the gap.
 
-  * ⚠️ THE THREE THINGS A NEW PROP MESH MUST STILL SATISFY. These are gameplay
-    constants, not art direction, and a beautiful model that breaks one of them is a
-    broken model:
+YOUR WORK, in this order:
 
-      - THE LATA'S BODY RADIUS IS 0.14 AND ITS HURTBOX IS 0.28 r / 0.62 h. The hurtbox
-        is what a slipper hits and it is deliberately much larger than the body —
-        human call: *"make can's hitbox larger it's ass to hit it bro"*. Build the
-        mesh around the 0.14 body, not around the hurtbox.
-      - THE SLIPPER'S CONTACT RADIUS IS 0.23 (Slipper.HIT_RADIUS) and it rests at
-        REST_HEIGHT 0.08. It also spins on two axes in flight (SPIN_SPEED_DEG 900 about
-        its long axis, TUMBLE_SPEED_DEG 520 end over end), so its origin must sit at
-        its centre of mass or it will wobble like a bent wheel.
-      - BOTH ARE TINTED AT RUNTIME. lata.gd and slipper.gd walk every MeshInstance3D
-        and write albedo_color from the roster entry's `tint`. Author them with a
-        material that takes a tint — a fully baked multi-colour texture will fight it.
+1. THE PLAY AREA IS TOO SMALL. Do this first - it is the item the human raised twice.
+   Expand the Defender's allowed area, adjust both maps' meshes, and redraw the chalk
+   on BOTH maps so the play area and the throwing line demarcate the new boundary.
+   tools/maps/floorcheck.py regexes CONFINEMENT_RADIUS out of character_base.gd and
+   both map builders draw the chalk from it - that const is `build fair`'s file (2.2 is
+   the same number), so agree the value with them or file it, and move the maps and the
+   chalk yourself.
 
-  * Re-export in the format each asset already uses, and keep the existing file names
-    and paths so nothing has to be re-pointed.
+2. THE SLIPPER - new mesh from the drawing, in generate_all.gd. It is the object the
+   game is named after and it is thrown at every throw. Its origin MUST sit at its
+   centre of mass: it spins on two axes in flight (SPIN_SPEED_DEG 900 about its long
+   axis, TUMBLE_SPEED_DEG 520 end over end) and an off-centre origin wobbles like a
+   bent wheel.
 
-YOUR WORK:
+3. THE LATA - new mesh from the drawing. Its silhouette has to read as a can from
+   across the arena, at spectator camera distance, WHILE LYING ON ITS SIDE AT 88
+   DEGREES. That is a gameplay requirement, not a look: a crowd that cannot tell a
+   fallen lata from a standing one cannot follow the round.
 
-1. THE CHARACTERS — EDIT, do not rebuild. Match the 2D references. Keep the rig and the
-   skeleton intact.
-2. THE SLIPPER — NEW MODEL from the human's drawings. It is the object the game is named
-   after, it is thrown at every throw, and it is currently one shared tsinelas.obj for
-   every entry in the roster.
-3. THE LATA — NEW MODEL from the human's drawings. Its silhouette has to read as a can
-   from across the arena, at spectator camera distance, while lying on its side at 88
-   degrees. That readability is a gameplay requirement, not a look — a crowd that cannot
-   tell a fallen lata from a standing one cannot follow the round.
-4. TEXTURES to match the references, tint-friendly per the note above.
-5. RE-AUTHOR THE ROSTER TABLES against the new models. While you are in there, drop the
-   `ability` key from every entry — scripts/abilities/** is deleted and the field is
-   inert.
-6. SOFT STATS — LEAVE THEM ALONE. `build fair` §2.8 decides whether lata and tsinelas
-   skins carry bilis/lakas/tatag, and it runs AFTER you now (it used to run before). So
-   when you re-author the CANS and SLIPPERS tables, carry the existing `traits`
+4. SIZES MAY CHANGE, AND THE PHYSICS MOVES WITH THEM. The old fixed-size rule is
+   lifted. Scale either prop to match the drawing - then update Slipper.HIT_RADIUS,
+   Slipper.REST_HEIGHT and the lata's body and hurtbox radii to match the new mesh IN
+   THE SAME COMMIT, and move the same numbers in Design.md. A mesh and a hitbox that
+   disagree is the bug this clause exists to prevent.
+
+5. TINT-FRIENDLY, AND LOW POLY. lata.gd and slipper.gd walk every MeshInstance3D and
+   write albedo_color from the roster entry's `tint`, so a baked multi-colour texture
+   fights them. And keep both strictly low poly, matching the rest of the game: no
+   subdivision, no smooth shading, flat faces only.
+
+6. RE-AUTHOR CANS / SLIPPERS against the new meshes, and drop the `ability` key from
+   every entry in all three tables - scripts/abilities/** is deleted and the field is
+   inert. Leave ROSTER otherwise alone.
+
+7. SOFT STATS - LEAVE THEM ALONE. `build fair` 2.8 decides whether lata and tsinelas
+   skins carry bilis/lakas/tatag and it runs AFTER you. Carry the existing `traits`
    dictionaries across UNCHANGED even though nothing reads them yet, and do not invent
-   values to match your new models. Deleting or re-rolling them would silently make that
-   decision for a lane that has not made it. Note in your § LOG that you preserved them.
-7. SWEEP THE ORPHANS: lata_dent1..3.obj and the dent generator in
-   tools/models/generate_all.gd describe a mechanic that no longer exists.
+   values to match your new meshes. Note in the LOG that you preserved them.
 
-VERIFY WITH SCREENSHOTS, IN GODOT, NOT IN BLENDER. A model that looks right in a
-viewport and wrong at arena distance under the toon pass is the failure mode here.
-tools/harrydaks_shot.tscn renders a live match. Use the PLAIN Godot exe — --headless has
-no rendering device and every capture comes back blank.
+8. SWEEP THE ORPHANS: lata_dent1..3.obj and the dent generator in generate_all.gd
+   describe a mechanic that no longer exists.
 
-Tick your own boxes in § CHECKLIST §5 and append to § LOG in the same commit as the work.
+VERIFY WITH SCREENSHOTS, IN GODOT. A prop that looks right on the preview turntable and
+wrong at arena distance under the toon pass is the failure mode here.
+tools/harrydaks_shot.tscn renders a live match. Use the PLAIN Godot exe for anything
+that renders - --headless has no rendering device and every capture comes back blank.
+--headless is still correct for `-s generate_all.gd` and for `--import`.
+
+SHOW THE HUMAN RENDERS OF THE MAP, THE CANS AND THE SLIPPERS before you call any of it
+done, and act on the notes rather than defending the build.
+
+Tick your own boxes in CHECKLIST 5 and append to the LOG in the same commit as the work.
 ```
 
 ---
@@ -1034,3 +1092,53 @@ lane's § PATHS row.
 **Verified:** `--headless --check-only` clean, no Parse Error, both before and after
 these changes. **Unverified by ear** — same standing caveat as the first two commits
 this session; nobody has run a rendered match with sound during it.
+
+### 2026-08-01 · 🎨 `build model` · §5 · branch `HARRYDAKS` — **PLAN OVERHAUL, NO ART SHIPPED**
+
+**This session produced no asset. It produced a corrected plan, and the correction is
+the deliverable.** Recording it in full because the failed approach was expensive and is
+the kind of thing a cold-start lane would cheerfully try again.
+
+**What was attempted.** The lane as written called for editing the twelve Kenney rigs in
+Blender via MCP against the human's four character drawings, and cutting the roster to
+four. That was built: four rigs re-modelled (garments re-UV'd by height band, faces
+rebuilt to one shared design, limbs boxed, hair rebuilt from block tufts), a print atlas
+painted into the unused top half of `colormap.png`, and three generators to drive it.
+It survived its own contract tests — 32 clips, 7 bones, 7 vertex groups, no unweighted
+vertices, ~900 tris each.
+
+**The human rejected it, repeatedly and correctly.** 🧑: *"what the fuck did u make. it
+does not look anything like my drawing"* · *"none of your drawings look like mine"* ·
+*"this is supposed to be low poly as well... it was very uncanny earlier"* · and finally
+*"i give up holy shit · overhaul the model plan · remove blender and shit · we wont
+remove the characters anymore"*.
+
+**All of it is reverted.** The twelve `.glb` files, `colormap.png`, the `person_*.tres`
+palettes and `generate_person_palettes.py` are back at their committed state; the four
+Blender-era generators are deleted. The only thing kept is `docs/refs/`, the human's own
+drawings, which are now the reference for whatever comes next.
+
+**Why it failed, structurally** — the full record is § CHECKLIST §5's *WHY BLENDER WAS
+DROPPED*. In short: this repo already has a deterministic procedural mesh pipeline
+(`tools/models/generate_all.gd` + `obj_writer.gd`, run by `godot --headless -s`) that
+builds `lata.obj` and `tsinelas.obj` today, so Blender was a second pipeline for a job
+the first one does; the glTF round trip ships custom split normals that smooth-shade
+every flat face, which is exactly the *"bumpy and unnatural"* read and is invisible in
+Blender's own viewport; and editing someone else's topology meant a bespoke fix for
+every one of Kenney's quirks (garment UV regions that match no drawing, three-box arms
+with a lump at each wrist, chamfered limbs that any hem cuts through mid-polygon).
+
+**⚠️ THE ONE PROCESS FINDING WORTH MORE THAN THE ART.** Two agents were running on this
+branch at once, and the other one repeatedly reverted files under this session —
+`generate_person_palettes.py` twice, `colormap.png`, eight `.glb` files, and both large
+edits to this document. A black chest on a rendered character was chased as a UV bug for
+a full pass before the cause turned out to be the atlas being rolled back underneath it.
+**One lane at a time is not a style rule on this board, it is the thing that makes a
+render trustworthy** — see § HOW TO RUN A LANE, which already said so.
+
+**What the lane is now:** the lata, the tsinelas, and the play area. No Blender, no
+character work. The play-area item is first because the human raised it twice and it is
+the only one of the three that is not blocked on a drawing.
+
+⚠️ **NOT verified, because nothing was built:** no Godot render, no `--import`, no
+determinism run of `generate_all.gd`. No § CHECKLIST box is ticked.
