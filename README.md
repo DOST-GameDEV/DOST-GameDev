@@ -1,20 +1,19 @@
 # TUMBANG PRESO 🥫🩴
 
-A **2v2 LAN arena brawler** built on the Filipino street game *tumbang preso*, for the
+A **4-player LAN party game** built on the Filipino street game *tumbang preso*, for the
 **Gear Up NCR — Esports Game Dev Challenge**.
 
-Each team is **one Person and one living object**. The defending side fields a **Lata** (tin can)
-that must stay standing on its base circle; the attacking side fields a **Tsinelas** (rubber
-slipper). All four units are player-controlled and mobile — the Person carries the slipper, charges
-a throw and launches it at the guarded can, then scrambles to retrieve it while the *taya*
-body-blocks and charges a bump to knock the carrier off their slipper. The objects fight too: the
-lata smashes the ground and dashes, and the slipper can charge a jump and dive onto the can to take
-a round by itself.
+One player is the **taya** (defender), locked inside a chalk box guarding a **lata** (tin can).
+The other three are **attackers**, throwing **tsinelas** (rubber slippers) at it from outside the
+box. Throwing is safe and free — the tension is the **retrieval**: your slipper lands inside the
+taya's box, and the moment you pick it up you can be tagged. Knock the lata over and the taya has
+to spend 2.5 seconds standing it back up, which is the one window they cannot defend.
 
-Roles swap every round. Best of five.
+**Four rounds of 90 seconds. The taya role rotates clockwise, so everyone plays it exactly once.**
+Scores are cumulative and personal; highest total after round 4 takes the match.
 
-**Engine:** Godot 4.7 (Forward+, GDScript) · **Theme:** Philippine Games and Sports — one theme, taken
-all the way down, not two taken halfway · **Format:** 2v2 LAN
+**Engine:** Godot 4.7 (Forward+, GDScript) · **Theme:** Philippine Games and Sports — one theme,
+taken all the way down, not two taken halfway · **Format:** 4-player LAN
 
 > **Circular Economy was dropped as a secondary theme on 2026-07-31**, deliberately. The rubric scores
 > *"effectively communicates or raises awareness about the chosen theme's goals, values, or lessons"* —
@@ -26,22 +25,21 @@ all the way down, not two taken halfway · **Format:** 2v2 LAN
 
 ## Where the project stands
 
-The LAN loop hosts, joins, spawns, syncs late joiners, runs a 90-second round, decides a winner,
-swaps roles and completes a Bo5. Two maps are built (**Eskinita**, **Bayan Plaza**), audio is in
-(SFX + ambience beds, all synthesised in-repo), and there is a themed main menu, a lobby with
-ready-up, character select, settings, pause, a match-result screen, a role-swap card, nameplates
-and a HUD.
+The LAN loop hosts, joins, spawns, syncs late joiners, runs a 90-second round, rotates the taya and
+completes a four-round match. Two maps are built (**Eskinita**, **Bayan Plaza**), audio is in
+(SFX + ambience beds, all synthesised in-repo — **there is still no music**), and there is a themed
+main menu, a lobby with ready-up, character select, settings, pause, a match-result screen, a
+role-swap card, nameplates, a spectator camera and a HUD.
 
-**The current work is the objects overhaul**, on `feature/objects-overhaul-v2`: the defender's
-instant-win tap-out is gone and replaced by a charged bump meter and stamina; the lata is won and
-lost by an out-of-circle countdown instead of a knockdown; and both objects got their own abilities.
-Most of it is written and very little of it is measured.
+**The 2v2 design was removed on 2026-07-31**, on branch `HARRYDAKS`. Until then the lata and the
+tsinelas were themselves playable characters, with eight abilities between them, dashes, shockwaves
+and a self-launch — *"too complicated and far from tumbang preso"*. They are props now, the game is
+four players free-for-all, and the rules are the ones the street game actually has: throw, retrieve,
+tag, reset. `docs/Design.md` §12 lists everything that went and why.
 
 **👉 [`docs/Agent_Prompts.md`](docs/Agent_Prompts.md) is the single place progress is tracked.**
-**Eleven** `build xxx` lanes, run one at a time in board order. The first unticked box in a lane's
-section is the next thing to do. ⚠️ **The section number is not the run order** — four lanes were
-added on 2026-07-31 and took the next free section numbers rather than being inserted, because the
-board cross-references sections by number everywhere. Run by the `Run` column of § EXECUTION ORDER.
+Seven `build xxx` lanes, run one at a time in board order. The first unticked box in a lane's
+section is the next thing to do.
 
 **🔊 `build voice` runs next, at position 3, and it is the one lane that blocks on people rather
 than on code** — the team is recording Filipino voice lines and composing a five-track chiptune
@@ -74,19 +72,27 @@ single-PC flow: **one human unit, three bots**, with a switcher for which unit i
 |---|---|---|
 | **WASD** | move | |
 | **Mouse** | look, and aim the throw | |
-| **Space** | `jump` | as a loose tsinelas, **hold** to charge the self-launch |
+| **Space** | `jump` | |
 | **Shift** | `sprint` | costs stamina |
-| **Ctrl** | `guard_dash` | Can-Dash · Flick Dash |
-| **F** | `bump` | Person's instant melee · **Can-Smash** as a lata · **Ground Smash** as an airborne tsinelas · press to self-right when downed |
-| **E** *or* **LMB** | `grab` | pick up the tsinelas · **hold** beside your own downed lata for the reset channel |
-| **Q** *or* **LMB / RMB** | `special_ability` | charge the throw while carrying · **charge the bump** empty-handed · roster special as a lata |
+| **Ctrl** | `spectator_down` | descend, spectator camera only |
+| **E** *or* **LMB** | `grab` | **tap** to pick up a slipper · **hold 1.25 s** to shove another attacker · **hold 2.5 s** as the taya, in the lata’s ring, to stand it back up |
+| **Q** *or* **LMB / RMB** | `special_ability` | hold to charge a throw, release to throw |
 | **R** | `ready_up` | before the first round |
 | **Esc** | pause | |
 
-- **Tab / F1–F4 / F6** — the debug switcher, to choose which of the four units you drive
+- **Tab / F1–F4 / F6** — the debug switcher, to choose which of the four players you drive
 - All bindings are rebindable in **Settings**
 
-> ⚠️ **This table is the `[input]` block of `project.godot`, read on 2026-07-31, and three earlier
+> ⚠️ **E IS CONTEXTUAL AND THAT IS DELIBERATE.** The GDD gives it three jobs — pick up, shove,
+> reset the lata. Rather than invent two more keybinds for a game whose whole brief is "simpler",
+> the press resolves against what is actually in front of you: `carrier.gd` gets first refusal, and
+> only a press that neither the pickup nor the reset channel consumed reaches the shove.
+>
+> ⚠️ **`bump` and `guard_dash` were DELETED from `project.godot` on 2026-07-31** along with the
+> bump meter, Can-Dash, Flick Dash, Can-Smash and Ground Smash. The spectator camera’s descend
+> key kept Ctrl but has its own action now (`spectator_down`) rather than borrowing a gameplay one.
+>
+> ⚠️ **This table is the `[input]` block of `project.godot`, and three earlier
 > claims here were wrong.** **There is no P2 binding set** — the file defines exactly eleven
 > actions and not one of them is per-player. 🧑 2026-07-31: *"theres no p2 at all — only one
 > settings bcz back then ppl could play on one pc but now its local multiplayer not same pc."*
