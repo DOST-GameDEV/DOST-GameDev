@@ -328,6 +328,12 @@ var _vo_next: int = 0
 ## frame `time_left` sits at or below the threshold.
 var _clock_30_said: bool = false
 var _clock_10_said: bool = false
+## Edge-detected in `_process()`, NOT read once at boot — see that function's
+## note. `false` at startup deliberately: the splash screen is up first, and
+## the edge into `MainMenu` (splash finishing, OR returning from a match by
+## any path at all — the result screen's "menu" button, a network
+## disconnect bounce, a solo quit) is what actually starts the menu bed.
+var _was_main_menu: bool = false
 
 ## 0..1, mirrored from SettingsManager (which owns persistence). Kept here too so
 ## the bus state and the saved state can be compared without reaching across.
@@ -353,11 +359,15 @@ func _ready() -> void:
 	_load_vo()
 	_build_vo_voices()
 	# ⚠️ FIRES FROM AUTOLOAD SIGNALS ONLY — no scripts/ui/** or main.gd call site
-	# is touched. Boot straight into the menu bed; `RoundManager`/`MatchManager`
-	# are autoloads too, so subscribing here reaches every round and match-end
-	# without this lane writing a line in a file it does not own.
-	play_music("menu", 0.0)
-	play_vo("title")
+	# is touched. `RoundManager`/`MatchManager` are autoloads too, so subscribing
+	# here reaches every round and match-end without this lane writing a line
+	# in a file it does not own.
+	#
+	# ⚠️ NOT STARTED HERE ANY MORE. Starting the menu bed straight from `_ready()`
+	# raced `SplashScreen`'s intro clip — the bed was audible under the intro
+	# video before the video's own `AudioManager.play("boot_sting")` had even
+	# finished. `_process()`'s `MainMenu` scene-edge check below is what
+	# actually starts it, the instant the splash hands off — see that function.
 	MatchManager.round_started.connect(_on_round_started_music)
 	MatchManager.match_won.connect(_on_match_won_music)
 	MatchManager.score_changed.connect(_on_score_changed_audio)
@@ -451,7 +461,32 @@ func _music_target_db() -> float:
 	return MUSIC_BASE_DB + (MUSIC_LIFT_DB if _music_lift_on else 0.0)
 
 
+## ⚠️ THIS IS THE MENU-BED ENTRY POINT, NOT `_ready()`. Filed bug: the menu bed
+## used to start straight from `_ready()`, which raced `SplashScreen`'s intro
+## clip — the bed was audible under the boot video, ahead of the video's own
+## sting. `MainMenu` is a `class_name`-registered scene root
+## (`scripts/ui/main_menu.gd`) this lane can check for BY TYPE without owning
+## or editing that file — reading a class name is not writing to its file.
+##
+## ⚠️ ALSO THE FIX FOR "MENU MUSIC KEEPS PLAYING AFTER A MATCH ENDS."
+## `_on_match_won_music` already crossfades to "menu", but that only covers
+## the ONE path that emits `match_won`. A network disconnect bounce
+## (`server_disconnected`), the match-result screen's own "back to menu"
+## button, and a solo quit-to-menu all land here too, by construction, because
+## every single one of them ends with `MainMenu.tscn` becoming the current
+## scene — checking the SCENE rather than chasing every path that can produce
+## it is what makes this correct for paths this lane has never even read.
+func _poll_main_menu_edge() -> void:
+	var scene := get_tree().current_scene
+	var is_main_menu := scene is MainMenu
+	if is_main_menu and not _was_main_menu:
+		play_music("menu")
+		play_vo("title")
+	_was_main_menu = is_main_menu
+
+
 func _process(_delta: float) -> void:
+	_poll_main_menu_edge()
 	var should_lift := RoundManager.round_active \
 		and RoundManager.time_left <= MUSIC_LIFT_SECONDS_LEFT \
 		and RoundManager.time_left > 0.0
@@ -734,6 +769,17 @@ func play(sound_name: String, volume_db: float = 0.0) -> void:
 	player.play()
 	if sound_name in MUSIC_DUCK_TRIGGERS:
 		_duck_music()
+	# ⚠️ THE MATCH BED STARTS AT THE FIRST COUNTDOWN TICK, NOT AT ROUND_STARTED.
+	# `hud.gd::show_countdown_tick`'s only call site is the pre-round 3-2-1-GO
+	# (see main.gd's ready phase); `MatchManager.round_started` does not fire
+	# until AFTER that countdown finishes (`begin_next_round()` is the last
+	# call in main.gd's countdown coroutine). Filed bug: the menu bed was
+	# still playing under the ENTIRE countdown and only crossfaded on "GO!" —
+	# late by exactly the length of the countdown. `countdown_tick` is that
+	# countdown's own SFX name, already unique to this one call site, so
+	# hooking it here needs no other file touched, same as the duck above.
+	if sound_name == "countdown_tick":
+		play_music("match")
 
 
 ## Positional. Everything that happens at a place in the arena goes through

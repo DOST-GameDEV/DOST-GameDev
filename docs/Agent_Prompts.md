@@ -326,6 +326,17 @@ invalidate a whole recording session, and it is the only one nobody has ever run
 - [ ] 1.9 **Settings has a player-name row built in code** (`_build_name_row`), for the
   same reason as 1.1. Promote it into `SettingsPanel.tscn` and into the focus order.
 
+**Filed by `build sound` 2026-08-01:**
+
+- [ ] 1.10 **The round label prints "TAYA: P3", never the taya's set name.**
+  `hud.gd::set_round_display`, line 786-787: `round_label.text = "ROUND %d / %d ·
+  TAYA: P%d" % [..., defender_slot + 1]` — a raw seat number, not
+  `RoundManager.player_at(defender_slot).display_name()`. Contrast
+  `_refresh_scoreboard()` a few dozen lines down, which already reads
+  `who.display_name()` correctly for every row including the taya's — this one
+  line is the odd one out. Reported by a human as "username doesn't show if
+  you're taya."
+
 ### 2 · ⚖️ `build fair` — every number, and the feedback that sells it *(Opus 5 · xhigh)*
 
 **⚠️ THIS SECTION ABSORBED `build feel` (the old §3) ON 2026-07-31.** Items 2.11–2.16
@@ -419,6 +430,18 @@ wind-up, no animation and no contact moment. They also shared files.
   intensity lift is a volume lift on the SAME match bed, not a real track 4
   cross-fade** — no PRESSURE track has been delivered yet; `_set_music_lift()` is
   the hook to swap it out the day one lands. *Unverified by ear, same caveat as 4.1.*
+  **Three sequencing bugs found after this item was first ticked, all fixed same
+  session:** (1) the menu bed started straight from `AudioManager._ready()` and
+  raced `SplashScreen`'s intro clip — audible under the boot video, ahead of its
+  own sting; (2) the match bed only started at `round_started`, which fires
+  AFTER the pre-round 3-2-1-GO countdown, so the menu bed played under the whole
+  countdown; (3) nothing crossfaded back to the menu bed on a path OTHER than
+  `match_won` (a network-disconnect bounce, the result screen's own "back to
+  menu" button, a solo quit). All three are now driven by
+  `_poll_main_menu_edge()` (checks `get_tree().current_scene is MainMenu` every
+  frame, fires only on the false→true edge) and a `countdown_tick`-name hook
+  inside `play()` — both self-contained inside `audio_manager.gd`, no other file
+  touched. *Still unverified by ear — same caveat.*
 - [~] 4.3 **Round-end/match-win/round-lose now register real streams** —
   `hud.gd::_on_round_intermission_audio` and `_on_match_won` already called
   `AudioManager.play("round_end"/"match_win"/"round_lose")`; `round_end` had no
@@ -971,3 +994,43 @@ listen to.
 expected, not a defect: `docs/HUMAN.md` is the recording brief and nobody has recorded
 against it yet. The pool activates per line the moment a file lands at
 `vo_<id>_<name>.wav`, no code change required.
+
+### 2026-08-01 · 🔊 `build sound` · §4 · branch `HARRYDAKS` (follow-up)
+
+**Four bugs reported directly from play, after the first two commits landed.** Three
+were music sequencing, one was a HUD bug outside this lane's paths.
+
+* **The menu bed started under the intro video.** `AudioManager._ready()` called
+  `play_music("menu", 0.0)` unconditionally at autoload boot, which runs before
+  `SplashScreen` even starts its clip — so the bed was audible under the boot video,
+  ahead of `splash_screen.gd`'s own `AudioManager.play("boot_sting")`.
+* **The match bed started a full countdown late.** `MatchManager.round_started` — the
+  only signal this lane had hooked — does not fire until AFTER the pre-round 3-2-1-GO
+  countdown finishes (`main.gd`'s ready-phase coroutine calls `begin_next_round()` last).
+  So the menu bed played straight through the entire countdown and only handed off on
+  "GO!", which reads as late by design once you look at the call order.
+* **Nothing brought the menu bed back except `match_won`.** A network-disconnect
+  bounce, the match-result screen's own "back to menu" button, and a solo quit all
+  return to `MainMenu.tscn` without ever emitting `match_won` — so the match bed kept
+  playing over the main menu on every one of those paths.
+
+**All three fixed by watching state instead of chasing every path that can produce
+it.** `_poll_main_menu_edge()`, called every frame from `AudioManager._process()`,
+checks `get_tree().current_scene is MainMenu` — `MainMenu` is `main_menu.gd`'s own
+`class_name`, so this reads a type off a scene this lane does not own without writing a
+line into it — and fires only on the false→true edge. That is simultaneously the splash
+hand-off, the "return from a match" case for every path that produces it, and needs no
+signal from `SplashScreen`, `NetworkManager` or `match_result.gd` individually. The
+countdown fix hooks `play()`'s own `sound_name == "countdown_tick"` — already unique to
+one call site (`hud.gd::show_countdown_tick`) — the same pattern the music duck already
+used.
+
+**The fourth bug is not this lane's file.** "Username doesn't show if you're taya" is
+`hud.gd::set_round_display` printing `"TAYA: P%d"` off the raw seat number instead of
+`display_name()`, one line above a scoreboard row that gets this right. Filed to
+🖥️ `build ui` § CHECKLIST as 1.10 rather than fixed here — `hud.gd` is not in this
+lane's § PATHS row.
+
+**Verified:** `--headless --check-only` clean, no Parse Error, both before and after
+these changes. **Unverified by ear** — same standing caveat as the first two commits
+this session; nobody has run a rendered match with sound during it.
