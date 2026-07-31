@@ -100,16 +100,17 @@ const LOCKED_MODULATE: Color = Color(1, 1, 1, 0.28)
 ## explain the selection." A mode picker that shows two words the player has
 ## never seen ("CAPTURE", "DENTS") and explains neither is a coin toss with extra
 ## steps, and both of these change how a round is WON.
-const MODES: Array[Dictionary] = [
-	{
-		"id": GameLaunchScript.GameMode.OPTION_B, "label": "CAPTURE",
-		"detail": "Knock the lata over and keep it down. A fall nobody rights in time ends the round, and five falls ends it outright. The defender wins by tagging the thrower, or by surviving the clock.",
-	},
-	{
-		"id": GameLaunchScript.GameMode.OPTION_A, "label": "DENTS",
-		"detail": "The lata carries a health bar instead. Dent it three times to win. The defender can beat a dent back out by standing it up, wins on the clock, or by knocking the tsinelas out of bounds.",
-	},
-]
+## ⚠️ `MODES` WAS A TWO-ENTRY PICKER AND THERE IS NOTHING LEFT TO PICK. 2026-07-31,
+## 📋 `build rules` §8.2 — Option A ("DENTS") is deleted and the game ships one
+## ruleset, so the mode ROW is hidden in `_ready()` and every arrow, index and
+## broadcast argument behind it is gone. The row itself and its scene nodes are left
+## in `MatchSetup.tscn` for 🖥️ `build ux` to remove properly along with the focus
+## order — that is §4.18, already filed, and the scene is its file not this lane's.
+##
+## The text survives because the detail box still has to explain how a round is won;
+## it is now a statement rather than half of a choice.
+const RULESET_LABEL: String = "CAPTURE"
+const RULESET_DETAIL: String = "Knock the lata off its circle and keep it there. The countdown at the top of the screen is the round: when it hits zero the attackers take it. Four knockdowns ends it outright. The defenders win by surviving the clock."
 
 ## ---------------------------------------------------------------------------
 ## R-09 · THE BOT DIFFICULTY PICKER.
@@ -188,8 +189,7 @@ const DIFFICULTIES: Array[Dictionary] = [
 var _action: String = "local"
 
 var _map_index: int = 0
-var _mode_index: int = 0
-## R-09. Index into DIFFICULTIES, mirroring _map_index / _mode_index exactly.
+## R-09. Index into DIFFICULTIES, mirroring _map_index exactly.
 var _difficulty_index: int = 1
 
 ## Which row the detail box is currently explaining. See `_refresh_detail`.
@@ -233,13 +233,11 @@ func _ready() -> void:
 	# returning to the menu (see their own docs in game_launch.gd), so a player
 	# who picked Bayan Plaza and Havaianas should not re-pick both every match.
 	_map_index = GameLaunch.map_index()
-	_mode_index = _index_for_mode(GameLaunch.game_mode)
 	# R-09: the tier is a PREFERENCE with the same lifetime as the map and the
 	# character picks, so it opens on whatever was chosen last rather than resetting.
 	_difficulty_index = clampi(SettingsManager.ai_difficulty, 0, DIFFICULTIES.size() - 1)
 
 	_wire_selector(map_prev_button, map_next_button, _on_map_prev, _on_map_next)
-	_wire_selector(mode_prev_button, mode_next_button, _on_mode_prev, _on_mode_next)
 	_wire_selector(difficulty_prev_button, difficulty_next_button,
 		_on_difficulty_prev, _on_difficulty_next)
 	character_button.pressed.connect(_on_character_pressed)
@@ -282,7 +280,9 @@ func _ready() -> void:
 	back_button.mouse_entered.connect(func() -> void: AudioManager.play("ui_hover"))
 
 	_apply_map()
-	_apply_mode()
+	# §8.2: one ruleset, so the picker is not reachable. The row and its nodes stay
+	# in the scene for `build ux` §4.18 to remove with the focus order.
+	mode_row.visible = false
 	_apply_difficulty()
 	_refresh_character_button()
 
@@ -472,7 +472,7 @@ func _on_peer_joined(peer_id: int) -> void:
 	# Full snapshot to the newcomer, then the deltas to everyone (including the
 	# newcomer, harmlessly) so nobody is holding a half-built board.
 	_rpc_sync_state.rpc_id(peer_id, _peer_seats, _peer_ready,
-		GameLaunch.selected_map, int(GameLaunch.game_mode), SettingsManager.ai_difficulty,
+		GameLaunch.selected_map, SettingsManager.ai_difficulty,
 		_peer_spectating)
 	_rpc_sync_seats.rpc(_peer_seats, _peer_spectating)
 	_refresh_seats()
@@ -559,12 +559,12 @@ func _on_peer_spectator_changed(peer_id: int, spectating: bool) -> void:
 ## fixed, reintroduced through the one path that only runs once.
 @rpc("authority", "call_remote", "reliable")
 func _rpc_sync_state(seats: Dictionary, ready_states: Dictionary,
-		map_id: StringName, mode: int, difficulty: int,
+		map_id: StringName, difficulty: int,
 		spectating: Dictionary = {}) -> void:
 	_peer_seats = seats
 	_peer_ready = ready_states
 	_peer_spectating = spectating
-	_apply_host_config(map_id, mode, difficulty)
+	_apply_host_config(map_id, difficulty)
 	_refresh_seats()
 	_refresh_primary_button()
 
@@ -588,8 +588,8 @@ func _rpc_sync_seats(seats: Dictionary, spectating: Dictionary = {}) -> void:
 ## READY again, which is the correct trade and is said out loud in the status
 ## line rather than left to be discovered.
 @rpc("authority", "call_local", "reliable")
-func _rpc_sync_config(map_id: StringName, mode: int, difficulty: int) -> void:
-	_apply_host_config(map_id, mode, difficulty)
+func _rpc_sync_config(map_id: StringName, difficulty: int) -> void:
+	_apply_host_config(map_id, difficulty)
 	for peer_id in _peer_ready:
 		_peer_ready[peer_id] = false
 	primary_button.caption = "READY"
@@ -597,11 +597,9 @@ func _rpc_sync_config(map_id: StringName, mode: int, difficulty: int) -> void:
 	_refresh_seats()
 	_refresh_start_button()
 
-func _apply_host_config(map_id: StringName, mode: int, difficulty: int) -> void:
+func _apply_host_config(map_id: StringName, difficulty: int) -> void:
 	GameLaunch.selected_map = map_id
 	_map_index = GameLaunch.map_index()
-	GameLaunch.game_mode = mode as GameLaunchScript.GameMode
-	_mode_index = _index_for_mode(GameLaunch.game_mode)
 	# R-09. ⚠️ `persist` FALSE: this is the HOST's choice for THIS match, and writing
 	# it into the client's own settings.cfg would silently change what that player
 	# gets the next time they host. The bug U-8 fixed was a per-peer value deciding
@@ -609,7 +607,6 @@ func _apply_host_config(map_id: StringName, mode: int, difficulty: int) -> void:
 	_difficulty_index = clampi(difficulty, 0, DIFFICULTIES.size() - 1)
 	SettingsManager.set_ai_difficulty(_difficulty_index, false)
 	map_value_label.text = String(GameLaunch.MAPS[_map_index]["name"])
-	mode_value_label.text = String(MODES[_mode_index]["label"])
 	difficulty_value_label.text = String(DIFFICULTIES[_difficulty_index]["label"])
 	map_preview.show_map(GameLaunch.MAPS[_map_index])
 	# A client cannot change either of these, but the HOST can change them under
@@ -651,10 +648,9 @@ func _rpc_set_ready(peer_id: int, is_ready: bool) -> void:
 ## `seat_tokens` is keyed by NetworkManager's stable per-install token, not by
 ## peer id, because peer ids do not survive a reconnect and seats must (B-65).
 @rpc("authority", "call_local", "reliable")
-func _rpc_begin_match(seat_tokens: Dictionary, map_id: StringName, mode: int) -> void:
+func _rpc_begin_match(seat_tokens: Dictionary, map_id: StringName) -> void:
 	GameLaunch.seat_tokens = seat_tokens
 	GameLaunch.selected_map = map_id
-	GameLaunch.game_mode = mode as GameLaunchScript.GameMode
 	# B-14: the autoloads survive scene changes, so a second match would resume
 	# the first one's score. Reset here as well as on the way in — main.gd resets
 	# defensively too, and three cheap resets beat one missed one.
@@ -665,12 +661,6 @@ func _rpc_begin_match(seat_tokens: Dictionary, map_id: StringName, mode: int) ->
 # =============================================================================
 # Selectors
 # =============================================================================
-
-func _index_for_mode(mode: GameLaunchScript.GameMode) -> int:
-	for i in range(MODES.size()):
-		if MODES[i]["id"] == mode:
-			return i
-	return 0
 
 func _on_map_prev() -> void:
 	_cycle_map(-1)
@@ -694,23 +684,6 @@ func _apply_map() -> void:
 	map_preview.show_map(entry)
 	_refresh_detail() # the explanation follows the selection - see _refresh_detail
 
-func _on_mode_prev() -> void:
-	_cycle_mode(-1)
-
-func _on_mode_next() -> void:
-	_cycle_mode(1)
-
-func _cycle_mode(step: int) -> void:
-	AudioManager.play("ui_click") # 4.1
-	_mode_index = posmod(_mode_index + step, MODES.size())
-	_apply_mode()
-	_broadcast_config()
-
-func _apply_mode() -> void:
-	var mode: Dictionary = MODES[_mode_index]
-	mode_value_label.text = String(mode["label"])
-	GameLaunch.game_mode = int(mode["id"]) as GameLaunchScript.GameMode
-	_refresh_detail()
 
 func _on_difficulty_prev() -> void:
 	_cycle_difficulty(-1)
@@ -738,8 +711,7 @@ func _apply_difficulty() -> void:
 ## disabled.
 func _broadcast_config() -> void:
 	if _is_lobby_host():
-		_rpc_sync_config.rpc(GameLaunch.selected_map, int(GameLaunch.game_mode),
-			SettingsManager.ai_difficulty)
+		_rpc_sync_config.rpc(GameLaunch.selected_map, SettingsManager.ai_difficulty)
 
 ## Opens the CHARACTER panel in place rather than changing scene — see
 ## `character_select.gd`'s own note for why a scene change would be wrong here
@@ -830,8 +802,10 @@ func detail_text_for(topic: DetailTopic) -> String:
 			var map_entry: Dictionary = GameLaunch.MAPS[_map_index]
 			return "%s   %s" % [String(map_entry["name"]), String(map_entry["tagline"])]
 		DetailTopic.MODE:
-			return "%s   %s" % [
-				String(MODES[_mode_index]["label"]), String(MODES[_mode_index]["detail"])]
+			# Kept as a topic rather than removed from the enum: `ui_layout_probe.gd`
+			# indexes DetailTopic by int, so deleting a member would silently shift
+			# DIFFICULTY and SEAT underneath it.
+			return "%s   %s" % [RULESET_LABEL, RULESET_DETAIL]
 		DetailTopic.DIFFICULTY:
 			return "%s   %s" % [
 				String(DIFFICULTIES[_difficulty_index]["label"]),
@@ -1317,7 +1291,7 @@ func _on_start_pressed() -> void:
 		var token: String = NetworkManager.peer_tokens.get(peer_id, "")
 		if token != "":
 			seat_tokens[token] = seat
-	_rpc_begin_match.rpc(seat_tokens, GameLaunch.selected_map, int(GameLaunch.game_mode))
+	_rpc_begin_match.rpc(seat_tokens, GameLaunch.selected_map)
 
 func _on_back_pressed() -> void:
 	AudioManager.play("ui_back") # 4.1

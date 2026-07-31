@@ -1352,14 +1352,19 @@ func _try_late_join(peer_id: int) -> void:
 	# B-29/B-48: _start_hosting() already called MatchManager.begin_next_round()
 	# before anyone could possibly be connected (see B-13), so every joining
 	# peer — not just a "late" one — missed the one-shot _sync_round_started
-	# broadcast and is stuck at round_number 0. GameLaunch.game_mode is also
-	# never networked at all; each peer reads its own menu selection, so a
-	# client's copy can silently disagree with the host's. Catch this one
-	# peer up on both in a single reliable RPC.
+	# broadcast and is stuck at round_number 0. Catch this one peer up in a single
+	# reliable RPC.
+	#
+	# ⚠️ `GameLaunch.game_mode` USED TO RIDE ALONG HERE and is gone with Option A
+	# (§8.2) — there is one ruleset, so there is nothing per-peer left to disagree
+	# about. The set cursor replaces it: under paired sets (§8.1) `round_number`
+	# alone no longer tells a joiner where the match is, because the role schedule is
+	# a function of (set, round-in-set).
 	_sync_state_to_late_joiner.rpc_id(
 		peer_id, MatchManager.round_number, MatchManager.team_a_is_can,
 		MatchManager.team_a_wins, MatchManager.team_b_wins,
-		RoundManager.time_left, RoundManager.round_active, GameLaunch.game_mode
+		RoundManager.time_left, RoundManager.round_active,
+		MatchManager.set_number, MatchManager.round_in_set
 	)
 	# B-145 — see `_rpc_sync_picks`. The same catch-up, for the three indices the
 	# synchronizer does not deliver to a peer that owns neither the node nor the
@@ -1390,13 +1395,10 @@ func _try_late_join(peer_id: int) -> void:
 func _on_character_respawned(character: CharacterBase) -> void:
 	if not NetworkManager.is_networked() or character.is_multiplayer_authority():
 		hud.show_toast("OUT OF BOUNDS")
-	# Dev_Plan.md §3's second Option A win path for the Can side — see
-	# RoundManager.register_ring_out()'s own doc for why this was missing and
-	# what it filters down to. Called unconditionally (not gated on this being
-	# "our" character, unlike the toast above): it's a round-win decision, not
-	# a per-viewer cosmetic, and register_ring_out() already gates itself to
-	# the host.
-	RoundManager.register_ring_out(character)
+	# ⚠️ `RoundManager.register_ring_out(character)` WAS CALLED HERE and is deleted
+	# with Option A (§8.2) — ring-outs were that mode's second win path for the can
+	# side. The respawn itself is unchanged: a unit that falls off the arena still
+	# comes back, it just no longer scores anything for anybody.
 
 ## Focus loss always releases the mouse outright: alt-tabbing away with the
 ## cursor still captured is a bad experience regardless of what's on screen.
@@ -2159,14 +2161,15 @@ func _all_characters() -> Array[CharacterBase]:
 ## already-known Cans with RoundManager for completeness — both side-effect
 ## free, unlike a full reset.
 @rpc("authority", "call_remote", "reliable")
-func _sync_state_to_late_joiner(new_round_number: int, new_team_a_is_can: bool, new_team_a_wins: int, new_team_b_wins: int, new_time_left: float, new_round_active: bool, new_game_mode: GameLaunch.GameMode) -> void:
+func _sync_state_to_late_joiner(new_round_number: int, new_team_a_is_can: bool, new_team_a_wins: int, new_team_b_wins: int, new_time_left: float, new_round_active: bool, new_set_number: int = 0, new_round_in_set: int = 0) -> void:
 	MatchManager.round_number = new_round_number
 	MatchManager.team_a_is_can = new_team_a_is_can
 	MatchManager.team_a_wins = new_team_a_wins
 	MatchManager.team_b_wins = new_team_b_wins
+	MatchManager.set_number = new_set_number
+	MatchManager.round_in_set = new_round_in_set
 	RoundManager.time_left = new_time_left
 	RoundManager.round_active = new_round_active
-	GameLaunch.game_mode = new_game_mode
 	hud.set_round_display(new_round_number, new_team_a_is_can)
 	hud.refresh_you_card()
 	_reregister_tracked_cans()
@@ -2227,10 +2230,10 @@ func _wire_downed_flash(character: CharacterBase) -> void:
 		if character.is_can:
 			hud.set_downed_flash(new_state == CharacterBase.State.DOWNED)
 	)
-	character.dents_changed.connect(func(new_dents: int) -> void:
-		if character.is_can and GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A:
-			hud.set_dents(new_dents, CharacterBase.MAX_DENTS)
-	)
+	# ⚠️ A `dents_changed` HOOK DRIVING `hud.set_dents()` WAS HERE (§8.2). The signal,
+	# the field and the mode are all gone. `hud.gd`'s `set_dents()` and its dent-pip
+	# row are now unreachable — that file is 🖥️ `build ux`'s and the removal is filed
+	# as §4.21 rather than reached into from here.
 
 ## Checklist 5.5, later reused for networked AI takeover (see
 ## _build_networked_character / _rpc_convert_to_ai) — instances an

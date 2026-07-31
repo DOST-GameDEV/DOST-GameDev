@@ -410,13 +410,12 @@ func _ready() -> void:
 	_character = get_parent() as CharacterBase
 	if _character == null:
 		return
-	_character.dents_changed.connect(_on_dents_changed)
+	# ⚠️ `dents_changed` WAS CONNECTED HERE AND THE SIGNAL NO LONGER EXISTS (§8.2,
+	# 2026-07-31). With Option A deleted the lata has no damage number, so nothing ever
+	# advances `_refresh_can_damage` past index 0 — see CAN_MESHES. Whether the lata
+	# should still get a visible damage read off some OTHER quantity is 🎨 `build model`'s
+	# call, and it is filed as §5.11.
 	_character.state_changed.connect(_on_state_changed)
-
-## Option A: swap in the lata carrying this many dents. Nothing else in the
-## codebase needs to know these meshes exist.
-func _on_dents_changed(new_dents: int) -> void:
-	_refresh_can_damage(new_dents)
 
 func _on_state_changed(new_state: CharacterBase.State) -> void:
 	_refresh_downed_tilt(new_state == CharacterBase.State.DOWNED)
@@ -715,7 +714,11 @@ func apply(is_person: bool, is_can: bool, team: int) -> void:
 	# Tsinelas -> Can mid-match would come back with a clean lata and stand
 	# upright while still Downed.
 	if _character != null:
-		_refresh_can_damage(_character.dents)
+		# ⚠️ CONSTANT 0, NOT `_character.dents` — that field is deleted (§8.2). The call
+		# is KEPT rather than removed because it is also what installs the pristine can
+		# mesh on a rebuild, so deleting it would change how a lata LOOKS, which is a
+		# 🎨 `build model` decision and not a side effect this lane gets to cause.
+		_refresh_can_damage(0)
 		_refresh_downed_tilt(_character.state == CharacterBase.State.DOWNED)
 
 ## ---------------------------------------------------------------------------

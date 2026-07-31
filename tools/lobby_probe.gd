@@ -36,8 +36,8 @@ const MAIN_PATH: String = "res://scenes/main/Main.tscn"
 ## with "Identifier not found: GameLaunch" before a line of it runs. Every
 ## autoload here is therefore resolved by node path at runtime instead — see
 ## `_gl()` / `_nm()`.
-const MODE_CAPTURE: int = 0
-const MODE_DENTS: int = 1
+## ⚠️ `MODE_CAPTURE` / `MODE_DENTS` WERE HERE and went with Option A (§8.2,
+## 2026-07-31). The lobby no longer syncs a mode because there is only one.
 
 var _role: String = "host"
 var _address: String = "127.0.0.1"
@@ -184,7 +184,6 @@ func _begin() -> void:
 	if _role == "host":
 		gl.set("pending_action", "host")
 		gl.set("selected_map", &"bayan_plaza")
-		gl.set("game_mode", MODE_DENTS)
 		gl.set("selected_slipper", &"bakya")
 		# NET-5 / R-09's remaining acceptance. Deliberately opposite tiers, same reason
 		# the map and mode are: a pass has to mean the value TRAVELLED, not that both
@@ -197,7 +196,6 @@ func _begin() -> void:
 		# Deliberately the OTHER map and mode, so "the client ends up on the
 		# host's" cannot pass by both sides happening to agree already.
 		gl.set("selected_map", &"eskinita")
-		gl.set("game_mode", MODE_CAPTURE)
 		gl.set("selected_slipper", &"goma")
 		_settings().call("set_ai_difficulty", TIER_EASY, false)
 	change_scene_to_file(SETUP_PATH)
@@ -377,8 +375,6 @@ func _client_beats(screen: Node) -> bool:
 		# 1 — the whole point.
 		_check("took the HOST's map, not its own",
 			_gl().get("selected_map") == &"bayan_plaza")
-		_check("took the HOST's mode, not its own",
-			int(_gl().get("game_mode")) == MODE_DENTS)
 		# NET-5, call site 2 of 2: nothing in this lobby has been touched yet, so the only
 		# thing that can have set this is `_rpc_sync_state`'s welcome packet.
 		_check("took the HOST's difficulty from the WELCOME packet (want %d, own start %d, got %d)"
@@ -386,8 +382,8 @@ func _client_beats(screen: Node) -> bool:
 		# 2
 		_check("map arrows locked on a client",
 			(screen.get_node("%MapNextButton") as BaseButton).disabled)
-		_check("mode arrows locked on a client",
-			(screen.get_node("%ModeNextButton") as BaseButton).disabled)
+		# ⚠️ The "mode arrows locked on a client" check was removed with the mode
+		# picker itself (§8.2); `build ux` §4.18 takes the row out of the scene.
 	elif _stage == 1 and _t > _beat(3.5):
 		_stage = 2
 		# 3a — ask for the seat the host is already in.

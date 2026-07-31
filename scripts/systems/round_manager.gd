@@ -9,13 +9,13 @@ class_name RoundManagerScript
 ## character whose `is_can` is true, and `is_can` is now false for Persons
 ## unconditionally (see main.gd) — so Person-vs-Person or Person-vs-Prop hits
 ## never affect round-win, only Prop-vs-Prop does, matching the GDD.
-## Round-win logic is still an open decision between two options:
-##   Option A — Stock/Life (dents): Cans have a health bar, Slippers win by fully
-##              denting a Can; Cans win on timer or ring-outs.
-##   Option B — Capture the Base + Downed/Seal: hit knocks Can out of its base circle
-##              into a Downed state, ~2s self-right window before a Tsinelas can "seal" it.
-## Build/test both cheaply against the same single-player loop before committing (see
-## docs/Dev_Plan.md, Section 3, Phase 1).
+##
+## ⚠️⚠️ THERE IS ONE RULESET. 2026-07-31, 📋 `build rules` §8.2 — Option A (dents,
+## `MAX_DENTS`, ring-outs) is DELETED, not disabled, and `Design.md` §7.1 is the record
+## of what it was and why it went. The circle countdown (`_step_can_out`) is the game.
+## Every `GameLaunch.game_mode` branch that used to live in this file is gone with it,
+## including the one that gated the countdown — a gate that existed only because two
+## rulesets did.
 
 signal round_won(winning_team: int)
 ## Fired on the HOST the moment it resolves a knockdown on a tracked Can, carrying its
@@ -37,16 +37,6 @@ var time_left: float = ROUND_TIME
 var round_active: bool = false
 var _sync_accum: float = 0.0
 
-## Session 6: MainMenu lets the player pick GameLaunch.game_mode (OPTION_A /
-## OPTION_B) before a match starts — see game_launch.gd.
-## Session 7: Option A is now implemented too (dents, see MAX_DENTS on
-## CharacterBase and _on_tracked_can_dents_changed below) — hitbox.gd branches
-## on GameLaunch.game_mode so a landed hit becomes a dent (Option A) instead of
-## stagger/downed/seal (Option B). Both win checks are wired up here
-## unconditionally, but only one ever actually fires per match: whichever mode
-## isn't selected never has its corresponding signal (`state_changed` to
-## SEALED, or `dents_changed` to MAX_DENTS) change in the first place.
-## --- Option B testbed (all Cans Sealed = Slippers win) ---------------------------
 ## Not auto-populated on its own — call register_can() for whichever characters are
 ## playing Can this round (see scripts/main.gd for a working example). Deliberately
 ## opt-in rather than scanning the scene tree, since which characters ARE the Cans
@@ -75,6 +65,29 @@ var _tracked_cans: Array[CharacterBase] = []
 ## First guess, not a measurement — needs a human to actually play it.
 const FALL_LIMIT: int = 4
 var _fall_count: int = 0
+
+## §8.1: how long the ATTACKING side took to take the lata out on the round just
+## finished, or `MatchManager.NEVER` if it never did. Written once per round by
+## report_round_win() and read by MatchManager to score the set. Round-scoped like
+## every other counter here.
+##
+## ⚠️ HOST-AUTHORITATIVE AND IT DOES NOT NEED ITS OWN RPC. The host is the only peer
+## that ever calls report_round_win(), and it hands this straight to
+## MatchManager.report_round_result(), whose result reaches clients through the
+## match-level `_sync_round_started` / `_sync_match_won` broadcasts that already
+## mirror the score. A client never scores a set itself, so it never reads this.
+##
+## ⚠️ `MatchManagerScript.NEVER`, NOT `MatchManager.NEVER`. This is a member-variable
+## initializer, and `[autoload]` in `project.godot` brings **RoundManager up before
+## MatchManager** — so the singleton is still null when this line runs and the
+## instance form would crash the whole game on boot. The `class_name` form is a
+## constant lookup on the script and needs no instance. Same reason the calls below
+## use it too: one idiom, no line that only works because of when it happens to run.
+var _last_attack_time: float = MatchManagerScript.NEVER
+
+## Seconds the attackers took on the round just finished, or `MatchManagerScript.NEVER`.
+func last_attack_time() -> float:
+	return _last_attack_time
 
 ## ---------------------------------------------------------------------------
 ## ⚠️⚠️ THE OUT-OF-CIRCLE COUNTDOWN — the defence's real job, and the attackers' main
@@ -143,20 +156,12 @@ func can_out_stacks() -> int:
 ## correctly if a second one is ever added — a defence with two cans has to keep both
 ## home, not whichever one it prefers.
 func _step_can_out(delta: float) -> void:
-	# ⚠️ OPTION B ONLY, AND THIS GATE WAS MISSING. `Design.md` §7 says Option A "is
-	# maintained in parallel and unchanged", and it was not: the countdown shipped
-	# ungated, so an Option A match — whose whole win condition is the dent count, and
-	# whose lata has no Downed/Seal machinery at all (`hitbox.gd` converts every hit on a
-	# can to a dent) — could still lose the round to a clock nothing in that mode
-	# explains. `register_ring_out()` two functions down already gates itself exactly
-	# this way, for exactly this reason.
-	#
-	# ⚠️ AND `character_base.gd::can_self_right()` READS THIS THROUGH `can_out_left()`,
-	# so gating here is also what keeps §1.9 out of Option A. One gate, both rules.
-	if GameLaunch.game_mode != GameLaunch.GameMode.OPTION_B:
-		_can_out_left = -1.0
-		_can_was_out = false
-		return
+	# ⚠️ THE MODE GATE THAT USED TO OPEN THIS FUNCTION IS GONE (§8.2). It read
+	# `if GameLaunch.game_mode != OPTION_B: return`, and it existed only to keep the
+	# countdown out of a ruleset that no longer exists. With one ruleset the countdown
+	# is unconditional — which also means `character_base.gd::can_self_right()`, which
+	# reads this through `can_out_left()`, no longer has a mode in which it silently
+	# behaves differently.
 	if _tracked_cans.is_empty():
 		_can_out_left = -1.0
 		_can_was_out = false
@@ -215,8 +220,6 @@ func register_can(can: CharacterBase) -> void:
 	var bound := _on_tracked_can_state_changed.bind(can)
 	if not can.state_changed.is_connected(bound):
 		can.state_changed.connect(bound)
-	if not can.dents_changed.is_connected(_on_tracked_can_dents_changed):
-		can.dents_changed.connect(_on_tracked_can_dents_changed)
 
 func clear_tracked_cans() -> void:
 	for can in _tracked_cans:
@@ -225,8 +228,6 @@ func clear_tracked_cans() -> void:
 			var bound := _on_tracked_can_state_changed.bind(can)
 			if can.state_changed.is_connected(bound):
 				can.state_changed.disconnect(bound)
-			if can.dents_changed.is_connected(_on_tracked_can_dents_changed):
-				can.dents_changed.disconnect(_on_tracked_can_dents_changed)
 	_tracked_cans.clear()
 
 ## ⚠️⚠️ THE FALL COUNT IS TOLD TO THE HOST BY THE HOST, AND IT USED TO BE READ OFF A
@@ -298,60 +299,15 @@ func _on_tracked_can_state_changed(new_state: int, fallen: CharacterBase) -> voi
 			return
 	report_round_win(false) # every tracked Can Sealed -> Slippers win the round
 
-## Option A — parallel to the Option B check above, just watching `dents`
-## instead of `state`. Never fires under Option B since dents never changes
-## there (apply_dent() is Option-A-only, see hitbox.gd). Session 7 default:
-## requires BOTH tracked Cans to hit MAX_DENTS (mirrors Option B's "every Can
-## Sealed" rule) rather than either one alone — change the `for` loop below to
-## `break` on the first fully-dented Can instead if you'd rather have EITHER
-## Can alone end the round.
-func _on_tracked_can_dents_changed(_new_dents: int) -> void:
-	if not round_active or _tracked_cans.is_empty():
-		return
-	for can in _tracked_cans:
-		if not is_instance_valid(can) or can.dents < CharacterBase.MAX_DENTS:
-			return
-	report_round_win(false) # every tracked Can fully dented -> Slippers win the round
 ## ----------------------------------------------------------------------------------
-
-## Dev_Plan.md §3: "Cans win by the timer running out, OR by knocking Slippers
-## out of bounds a set number of times" — Option A only; Option B's Can-win
-## condition is survival to the timer, no ring-out clause. This second win path
-## was never wired up: KillPlane.character_respawned fired a HUD toast
-## ("OUT OF BOUNDS") and nothing else, so the round could only ever end by
-## denting or by the timer. Found auditing the code against the GDD.
-##
-## Round-scoped, not match-scoped — reset alongside `time_left` in
-## start_round()/reset() below, same lifetime as the timer it's an alternate
-## win path for.
-const RING_OUT_LIMIT: int = 3
-var _ring_out_count: int = 0
-
-## Called from main.gd's KillPlane.character_respawned handler, for the
-## character that just respawned. Filters down to "was this THIS round's
-## Tsinelas" itself (not the Can, not a Person) rather than trusting the
-## caller, for the same reason register_can() re-derives is_can rather than
-## trusting a bare bool: this file owns the round-win rule, nothing calling in
-## should have to know its exact shape.
-##
-## Host-only when networked, matching report_round_win()'s own gate — KillPlane
-## fires `body_entered` on every peer's local physics world (a replicated
-## body's position is present there even when that peer doesn't own it), so
-## every peer's own RoundManager would otherwise count the same fall once per
-## peer. Only the host's count is ever acted on; a client's local increment is
-## harmless (never read) but skipped anyway for clarity.
-func register_ring_out(character: CharacterBase) -> void:
-	if NetworkManager.is_networked() and not NetworkManager.is_host():
-		return
-	if not round_active or character == null or not is_instance_valid(character):
-		return
-	if GameLaunch.game_mode != GameLaunch.GameMode.OPTION_A:
-		return # Option B has no ring-out clause
-	if character.is_person or character.is_can:
-		return # only the attacking Prop (this round's Tsinelas) counts
-	_ring_out_count += 1
-	if _ring_out_count >= RING_OUT_LIMIT:
-		report_round_win(true) # Cans win the round
+## ⚠️ `_on_tracked_can_dents_changed()` AND `register_ring_out()` WERE DELETED HERE
+## (§8.2, 2026-07-31). They were Option A's two win checks — "every tracked can has
+## taken `MAX_DENTS` hits" and "the attacking tsinelas has been knocked out of bounds
+## `RING_OUT_LIMIT` times". Both are recorded in `Design.md` §7.1 rather than kept as
+## dead branches. The kill-plane path that fed the ring-out counter still exists and
+## still respawns a fallen unit; it simply no longer scores anything, which is what it
+## did under the shipped ruleset anyway.
+## ----------------------------------------------------------------------------------
 
 ## Session 6: networked, this whole autoload becomes host-authoritative — same
 ## pattern as combat (see hitbox.gd/character_base.gd). The host runs the real
@@ -366,8 +322,8 @@ func start_round() -> void:
 	time_left = ROUND_TIME
 	round_active = true
 	_sync_accum = 0.0
-	_ring_out_count = 0
 	_fall_count = 0
+	_last_attack_time = MatchManagerScript.NEVER
 	# ROUND-SCOPED, like every other counter here. The recovery stack must NOT survive a
 	# round: it is the price of this round's saves, and carrying it forward would have a
 	# team that defended well in round 1 start round 3 with a 1.25 s clock it never
@@ -410,19 +366,29 @@ func _on_time_up() -> void:
 	# Cans win on timer expiry — true under both Option A and Option B (GDD Section 3).
 	report_round_win(true)
 
-## Call this from whichever round-win option gets implemented first (Slippers denting
-## a Can under Option A, or sealing it under Option B — see character_base.gd `seal()`).
-## Host-only when networked — see class doc above.
+## Every win path in the game ends here: the circle countdown reaching zero
+## (`_step_can_out`), `FALL_LIMIT` knockdowns (`host_note_fall`), a direct Ground
+## Smash (`carriable.gd`), or the round timer expiring (`_on_time_up`, the only
+## defender win). Host-only when networked — see class doc above.
+##
+## ⚠️ IT ALSO STOPS THE ATTACK CLOCK, which is what §8.1's set tiebreak is scored on.
+## `last_attack_time()` is "how long the attacking side took to take the lata out this
+## round", and `MatchManager.NEVER` when they did not — a defender win is by definition
+## an attack that never landed. MatchManager compares the two teams' numbers at the end
+## of a set; see its header for why one comparison covers both the win and the tiebreak.
 func report_round_win(can_team_won: bool) -> void:
 	if NetworkManager.is_networked() and not NetworkManager.is_host():
 		return
 	if not round_active:
 		return
 	round_active = false
+	# Elapsed, not remaining. Measured off the same `time_left` the HUD shows, so a
+	# caster's number and the scoring number are the same number.
+	_last_attack_time = MatchManagerScript.NEVER if can_team_won else (ROUND_TIME - time_left)
 	if NetworkManager.is_networked():
 		_sync_state.rpc(time_left, round_active)
 	round_won.emit(0 if can_team_won else 1)
-	MatchManager.report_round_result(can_team_won)
+	MatchManager.report_round_result(can_team_won, _last_attack_time)
 
 ## B-14: nothing reset this autoload between matches, so a second match
 ## resumed the first one's timer/tracked-Can state. Call before a fresh match
@@ -437,8 +403,8 @@ func reset() -> void:
 	time_left = ROUND_TIME
 	round_active = false
 	_sync_accum = 0.0
-	_ring_out_count = 0
 	_fall_count = 0
+	_last_attack_time = MatchManagerScript.NEVER
 	_can_out_left = -1.0
 	_can_out_stacks = 0
 	_can_was_out = false

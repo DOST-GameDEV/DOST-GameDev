@@ -284,11 +284,9 @@ func _assert_probe_honesty() -> void:
 		_honesty_ok = false
 		push_error("ai_probe: the map in the tree (%s) is not the map this run " % loaded
 			+ "claims to measure (%s) — the numbers are labelled wrong." % want_scene)
-	if GameLaunch.game_mode != GameLaunch.GameMode.OPTION_A \
-			and not "mode=b" in OS.get_cmdline_user_args():
-		_honesty_ok = false
-		push_error("ai_probe: a fairness run must force OPTION_A unless mode=b was "
-			+ "asked for — under OPTION_B the dents column measures literally nothing.")
+	# ⚠️ THE MODE HONESTY CHECK WAS DELETED HERE (§8.2, 2026-07-31). It refused any
+	# fairness run not forced into OPTION_A, because the dents column measured
+	# nothing under OPTION_B. One ruleset ships now, so there is no mode to force.
 
 	# (d) R-21. THE PAINTED BOX AND THE PHYSICS BOX MUST BE THE SAME BOX.
 	_assert_chalk_matches_physics()
@@ -489,10 +487,8 @@ func _parse_args() -> void:
 		# not softened by it.
 		elif token.begins_with("scale="):
 			scale = clampf(float(token.substr(6)), 0.25, 8.0)
-		elif token == "mode=b":
-			GameLaunch.game_mode = GameLaunch.GameMode.OPTION_B
-		elif token == "mode=a":
-			GameLaunch.game_mode = GameLaunch.GameMode.OPTION_A
+		# `mode=a` / `mode=b` went with Option A (§8.2). An old invocation passing
+		# either now falls through and is ignored rather than failing the run.
 		# ⚠️ `map=` DID NOT EXIST, so every fairness number this harness has ever
 		# produced describes Eskinita — and Bayan Plaza has never had its AI
 		# tested at all. That map is the one with the project's ONLY piece of
@@ -636,8 +632,6 @@ func _parse_args() -> void:
 	# round" row measures literally nothing. This exact trap already cost this
 	# project a debugging round once; see Handoff.md's own warning under B-118.
 	# Pass `mode=b` to measure Option B deliberately.
-	if _mode == "fairness" and not "mode=b" in OS.get_cmdline_user_args():
-		GameLaunch.game_mode = GameLaunch.GameMode.OPTION_A
 
 ## ⚠️ MEASURED, NOT GUESSED — the first fairness run reported "time_scale 0.1"
 ## in its own header despite being launched at scale=6.
@@ -724,7 +718,6 @@ func _wire_fairness_signals() -> void:
 	MatchManager.match_won.connect(_on_match_won)
 	RoundManager.round_won.connect(_on_round_won)
 	for c in _main.find_children("*", "CharacterBase", true, false):
-		c.dents_changed.connect(_on_dents_changed.bind(c))
 		var carriable := c.get_node_or_null("Carriable") as Carriable
 		if carriable != null:
 			carriable.carry_state_changed.connect(_on_carry_state_changed.bind(carriable))
@@ -843,12 +836,8 @@ func _dismiss_result_screen() -> void:
 		result.visible = false
 	get_tree().paused = false
 
-func _on_dents_changed(new_dents: int, who: CharacterBase) -> void:
-	var previous: int = _dents_seen.get(who, 0)
-	_dents_seen[who] = new_dents
-	if not _round_open or new_dents <= previous:
-		return # a reset back to 0, or a repair — neither is a new dent
-	_round["dents"] += new_dents - previous
+## ⚠️ `_on_dents_changed()` WAS HERE and went with Option A (§8.2). The `dents`
+## column it fed is permanently 0 now and is kept only so older run logs line up.
 
 ## A throw begins on CARRIED -> FLYING and ends on FLYING -> anything else.
 ## Resolving on the END is what makes "blocked" honest: a slipper that clips the
@@ -1217,9 +1206,6 @@ func _report_fairness() -> void:
 	# `on-can`; the guard is the gap between `on-can` and `dents`.
 	print("  the funnel           %d taken -> %d blocked by the taya -> %d reached the can -> %d dented"
 		% [throws, blocked, on_can, dents])
-	if GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A:
-		print("                       so %d dodged and %d reached it and did not dent (Guard, or a dent already at MAX_DENTS)"
-			% [maxi(throws - blocked - on_can, 0), maxi(on_can - dents, 0)])
 	print("  longest still run    %.2fs                             (fair: < 2s)     %s"
 		% [still_max / 60.0, _verdict(still_max < 120)])
 	# ⚠️ NO FAIR RANGE ON THIS ONE ON PURPOSE — R-08 introduces it and nobody has
@@ -1573,8 +1559,7 @@ func _tag_variant_name() -> String:
 ## two completely different things in the two modes and a run whose mode is not
 ## on the same page as its numbers is a run somebody will misread later.
 func _mode_name() -> String:
-	return "OPTION_A (dents)" if GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A \
-		else "OPTION_B (downed/seal — dents are ALWAYS 0)"
+	return "CAPTURE (circle countdown — the only ruleset)"
 
 ## How a round actually ended, which is the thing a bare win rate cannot tell
 ## you. "dented" is the offence's only win path under Option A; the defence has
@@ -1586,8 +1571,7 @@ func _ended_by(r: Dictionary) -> String:
 		# rounds of OPTION_B's first-ever fairness run — a pair that cannot both
 		# be true, on the one column somebody reading that run would trust. B's
 		# offence wins on FALL_LIMIT knockdowns and seals, not dents.
-		return "dented" if GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A \
-			else "falls/seal"
+		return "falls/seal"
 	if r["timed_out"]:
 		return "timeout"
 	if r["tagged"]:

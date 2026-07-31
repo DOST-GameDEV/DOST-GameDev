@@ -94,10 +94,10 @@ func _classify_reason(can_team_won: bool) -> String:
 		return "TIME"
 	if can_team_won:
 		return "TAGGED"
-	# The tsinelas side took it, and which way it can do that is the mode's whole
-	# difference: Option A dents a health bar down, Option B puts the lata over and keeps
-	# it there.
-	return "DENTED" if GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A else "LATA DOWN"
+	# The tsinelas side took it, and there is one way to do that now: put the lata over
+	# and keep it off its circle. ⚠️ This used to branch on `GameLaunch.game_mode` and
+	# return "DENTED" under Option A — that mode is deleted (§8.2) and so is the branch.
+	return "LATA DOWN"
 
 ## `_on_time_up()` reports at exactly `time_left == 0.0`, so this only has to be wider than
 ## float noise — not a tolerance on a race.
