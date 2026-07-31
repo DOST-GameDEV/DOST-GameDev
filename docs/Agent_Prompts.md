@@ -261,7 +261,7 @@ two-peer run follows both peers **out of the lobby and into a real match**, whic
 the last and worst defect of this lane was hiding. A new
 file, for the same reason `mech_probe` was: § PATHS gives this lane no `tools/` row.
 
-- [x] 2.1 **A SPECTATE toggle button in the lobby** — on the multiplayer lobby *and* the pre-match setup screen, in the focus order, showing its own state, in Single Player and Multiplayer, host and client. Rendered and looked at — `ui_shot` renders of both screens, looked at. The `match_setup.gd` one was already built and added to the tree and had never been *styled*: it drew as a small grey engine-default button under four wood planks
+- [x] 2.1 **A SPECTATE toggle button in the lobby** — on the multiplayer lobby *and* the pre-match setup screen, in the focus order, showing its own state, in Single Player and Multiplayer, host and client. Rendered and looked at — `ui_shot` for both screens, plus `spec_probe --shots-ui`, which renders the setup screen in **both toggle states**: a control with two faces needs two shots, and 🧑 rejected two versions of this one on the ON state alone, both of which looked fine off. The `match_setup.gd` one was already built and added to the tree and had never been *styled*: it drew as a small grey engine-default button under four wood planks
 - [x] 2.2 **Spectator mode** — free-flying camera, no physical model, clips through all geometry, flies anywhere. Entered from 2.1, not from `--spectate` — measured: not a `PhysicsBody3D`, zero `CollisionShape3D`, and it genuinely goes **anywhere** — 🧑 *"make sure the spectator can fly to anywhere"*, so it is measured in all three directions rather than asserted: **24.02 m straight down through the road** to y = −15.02 m, **93.1 m up** past every roofline, and **115.4 m out** past the edge of the built map, still rendering at each. There is no clamp on `global_position` and the kill plane is an `Area3D` that detects BODIES, which a spectator has none of. The viewport's live camera is `/root/Main/Spectator/SpectatorCamera3D`. ⚠️ **That last check is there because it FAILED**, silently, while every other one passed — see § LOG, "the camera was flying perfectly and nobody was looking through it"
 - [x] 2.3 Claims no seat, excluded from the ready gate, its slot bot-filled — **measured on two real peers, twice.** The host learned the client was spectating (`is_spectator` true), the board went to `seats={1: 0}` with the client absent, `playing_peer_count` 2 → **1**, no READY tick held, the vacated seat read `TEAM A · OBJECT   · BOT`, and START MATCH went live without the spectator ever pressing anything. Solo half too: 4 units, **4 of 4** bot-held with the human's seat vacated
 - [x] 2.4 Leaving and re-entering the lobby returns the seat cleanly; a spectating host still runs the match — **measured on two real peers, twice.** Un-spectating returned the client to seat **1, the one it vacated** (not "first free"), and `playing_peer_count` went back to 2. The host then spectated itself: its own flag updated (`host_game()` had frozen it), it released seat 0, and START MATCH stayed live
@@ -864,6 +864,16 @@ Measured: 0 active rigs, 0 hidden meshes, `--solo` 33/33. **The lesson is the on
 project keeps re-learning: fixing the symptom you can see is how you keep the one you
 cannot.**
 
+**⚠️ Two more probe faults caught by the impossible-number rule, both mine.** The
+fly-anywhere check read **115.4 m on one run and 18.0 m on the next off unchanged code** —
+"forward" is the CAMERA's forward, and by that point in the run the camera had been flown
+up and down, so its pitch decided how much of a fixed burst went sideways rather than
+straight up. The probe was measuring its own starting conditions. Pinned to level and it is
+144.1 m twice. And the `§2.1 the toggle shows its own state` check asserted
+`"WATCHING" in text` against the old long label, so it went red the moment the label was
+shortened — a probe failing because the thing it watches got better. It asserts the word
+now; the styling is checked by the two shots instead, which is the only honest place for it.
+
 **The A/B mode is why that was diagnosable at all.** `spec_probe --solo --no-spectate` runs
 the identical match with the camera off, and the checks that are true either way run in
 both. A defect seen while spectating is not a spectator defect until the non-spectating run
@@ -873,14 +883,30 @@ proved the rig activation was spectator-specific, and it caught the probe itself
 a defect (it read a carried tsinelas sitting correctly in a Person's hand, 0.45 m away, as
 two units in the same place).
 
-**The SPECTATE toggle moved to the heading row — 🧑 call, with an arrow on a screenshot.**
-It had been a fifth full-width plank under the four seat rows, styled to match them
-exactly, and the styling is what made it wrong: spectating is not a fifth seat, it is the
-decision to take no seat, and a control identical to the four things it opts out of says
-the opposite. Four planks and then a fifth plank is a list of five choices. It is a compact
-toggle beside "YOUR CHARACTER" now, visibly a different kind of control, and the roster is
-a list of four again. Focus neighbours went with it — it is above the seats now, so arrowing
-up from the first seat reaches it.
+**The SPECTATE toggle moved to the heading row, then had to be restyled — 🧑, twice, both
+times with a screenshot.** It had been a fifth full-width plank under the four seat rows,
+styled to match them exactly, and the styling is what made it wrong: spectating is not a
+fifth seat, it is the decision to take no seat, and a control identical to the four things
+it opts out of says the opposite. Four planks and then a fifth plank is a list of five
+choices. It is a compact toggle beside "YOUR CHARACTER" now and the roster is a list of
+four again; focus neighbours went with it, so arrowing up from the first seat reaches it.
+
+Then *"spectate looks too small/ugly, especially when its turned on."* Both halves were
+fair. The label had been sized around its RAREST string — it appended "· 1 WATCHING" — so
+the font was dropped to 22 to fit a case that almost never occurs, leaving one short word
+rattling around a wide empty plank in the case that always does. And "on" was inherited
+from the `WoodButton` variation's PRESSED face: a dark sunk plank with a hairline yellow
+ring, which is the right look for *"this button is being held down"* and the wrong one for
+*"this mode is active"* — the weakest signal the theme has, carrying the most important
+state on the screen, at the moment every other row had gone dim.
+
+Now: one word at font 27, and four explicit styleboxes with the ON state a **filled amber
+slab with INK lettering**. That is the front end's own language rather than a new colour —
+`AMBER` is already "headings, values, hover lettering", the lit thing — and a lit slab
+beside four dimmed planks needs no reading. `hover_pressed` is set as well as `pressed`,
+because a toggle has a hover state in both positions and missing it makes an active toggle
+look inactive exactly while the pointer is on it. The watcher count moved to the hint line,
+which is a sentence and can take a clause without changing shape.
 
 **One correction inside `build mech`'s section, which is not mine and which I made
 anyway.** §1.10 pointed the lata-knockback measurement at *"`build phys` 5.2"*. There is
