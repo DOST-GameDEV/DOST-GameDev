@@ -783,8 +783,15 @@ func _on_round_started(round_number: int, defender_slot: int) -> void:
 ## never team-coloured. The panel accent bar and label text both move with
 ## the role; the panel's physical position (left vs right) stays with the team.
 func set_round_display(round_number: int, defender_slot: int) -> void:
-	round_label.text = "ROUND %d / %d   ·   TAYA: P%d" % [
-		maxi(round_number, 1), MatchManagerScript.ROUNDS, defender_slot + 1]
+	# ⚠️ NAME, NOT SEAT. This used to hardcode "P%d" off the raw slot, so a taya
+	# who set a name in Settings still read as "P3" here — the one thing on
+	# screen that most needs to say who is playing. `_refresh_scoreboard()` a
+	# few dozen lines down already reads `display_name()` for every row;
+	# this is the row that didn't.
+	var taya := RoundManager.player_at(defender_slot)
+	var taya_name := taya.display_name() if taya != null else "P%d" % [defender_slot + 1]
+	round_label.text = "ROUND %d / %d   ·   TAYA: %s" % [
+		maxi(round_number, 1), MatchManagerScript.ROUNDS, taya_name]
 	# The two top cards are now a scoreboard and a lata readout rather than two team
 	# panels. The letters and pip boxes the 2v2 layout used are hidden in
 	# `_build_scoreboard()` rather than deleted from `HUD.tscn`, so the scene stays

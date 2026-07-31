@@ -328,14 +328,18 @@ invalidate a whole recording session, and it is the only one nobody has ever run
 
 **Filed by `build sound` 2026-08-01:**
 
-- [ ] 1.10 **The round label prints "TAYA: P3", never the taya's set name.**
+- [x] 1.10 **The round label prints "TAYA: P3", never the taya's set name.**
   `hud.gd::set_round_display`, line 786-787: `round_label.text = "ROUND %d / %d ·
   TAYA: P%d" % [..., defender_slot + 1]` — a raw seat number, not
   `RoundManager.player_at(defender_slot).display_name()`. Contrast
   `_refresh_scoreboard()` a few dozen lines down, which already reads
   `who.display_name()` correctly for every row including the taya's — this one
   line is the odd one out. Reported by a human as "username doesn't show if
-  you're taya."
+  you're taya." **Fixed outside the normal lane order, on direct human
+  instruction, by 🔊 `build sound`** — now reads `RoundManager.player_at(
+  defender_slot).display_name()`, falling back to `P%d` only if the seat is
+  somehow empty. *Verified: `--headless --check-only` clean, no Parse Error.
+  Unverified by eye — no rendered capture taken.*
 
 ### 2 · ⚖️ `build fair` — every number, and the feedback that sells it *(Opus 5 · xhigh)*
 
