@@ -211,7 +211,13 @@ func _process(delta: float) -> void:
 	# here rather than by hiding the nodes once, because `_process` re-asserts
 	# `crosshair.visible` every frame and would put it straight back.
 	if _spectating:
-		_refresh_status_stack(null)
+		# ⚠️ NOT `_refresh_status_stack(null)` ANY MORE, and the difference is ownership.
+		# That function is the PLAYER's stack — `build ux` §4.1/§4.9 own it — and with a
+		# null character all it could contribute was the one LATA OUT row it appends from
+		# RoundManager. `_refresh_spectator_panel` below draws that same clock plus the
+		# stack count a spectator needs and a player does not, so calling both would print
+		# the countdown twice with two different amounts of context. See §2.7.
+		_refresh_spectator_panel()
 		return
 	crosshair.visible = local_char != null and is_instance_valid(local_char) and local_char.is_person
 	# 3.4: same cached character, no second scan.
@@ -354,7 +360,12 @@ func _status_fill(colour: Color, alpha: float = 1.0) -> StyleBoxFlat:
 ##
 ## Called once, from `main.gd::_enter_spectator_mode`. There is no leaving it: a
 ## spectator spectates for the session.
-func enter_spectator_mode(controls: String) -> void:
+##
+## ⚠️ TAKES THE CAMERA, so `_refresh_spectator_panel` can ask it what it is doing. The
+## dependency is one-way and stays that way: the HUD reads `status_text()` off the
+## camera, the camera has never heard of the HUD, which is the same rule that keeps
+## `controls_text()` a static on the camera and the Label a node over here.
+func enter_spectator_mode(camera: SpectatorCamera) -> void:
 	you_card.visible = false
 	crosshair.visible = false
 	lata_card.visible = false
@@ -363,9 +374,10 @@ func enter_spectator_mode(controls: String) -> void:
 	ready_objective_row.visible = false
 	offscreen_indicators.visible = false
 	_spectating = true
+	_spectator_camera = camera
 	var legend := Label.new()
 	legend.name = "SpectatorLegend"
-	legend.text = controls
+	legend.text = SpectatorCamera.controls_text()
 	legend.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	legend.add_theme_font_size_override("font_size", 15)
 	legend.add_theme_color_override("font_color", UiTheme.CREAM_MUTED)
@@ -376,8 +388,71 @@ func enter_spectator_mode(controls: String) -> void:
 	legend.offset_bottom = -18
 	legend.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(legend)
+	_spectator_status = _build_spectator_label(-70, -46, 15, UiTheme.CREAM_MUTED)
+	_spectator_round = _build_spectator_label(-104, -70, 21, UiTheme.AMBER)
 
 var _spectating: bool = false
+var _spectator_camera: SpectatorCamera = null
+var _spectator_status: Label = null
+var _spectator_round: Label = null
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ §2.7 — THE ROUND'S DRAMA IS A CLOCK AND A SPECTATOR HAS NO CHARACTER TO READ IT
+## OFF. Filed by `build mech` 2026-07-31, and it is the reason this lane was pulled
+## forward: since §1.9 and §5.2 a round is won by the lata being off its circle when the
+## countdown expires, so the two numbers that explain everything happening on screen are
+## `RoundManager.can_out_left()` and `can_out_stacks()`. Both are public, both are
+## mirrored to every peer at 4 Hz, and neither needs a local character — which is exactly
+## why a spectator can show them and why "the HUD is sane with no character" (§2.5) is
+## the floor rather than the ask. Footage of a lata lying in the street with no clock on
+## screen does not read as a round being lost; it reads as nothing happening.
+##
+## ⚠️ THE STACK COUNT IS HERE FOR THE SAME REASON THE CLOCK IS. "3.2 s left" is a number;
+## "3.2 s left, and this is the fourth save, so the next one only buys 1.25" is the
+## escalation the whole round is designed around. A viewer who cannot see the stack
+## cannot tell a routine knockdown from the one that ends the match.
+##
+## ⚠️ WHAT THIS DELIBERATELY DOES NOT DO: draw a countdown for the PLAYERS. `build ux`
+## §4.9 owns that and must not be pre-empted — this Label is created only inside
+## `enter_spectator_mode` and only a peer with no character ever sees it.
+func _build_spectator_label(top: float, bottom: float, size: int, colour: Color) -> Label:
+	var label := Label.new()
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", size)
+	label.add_theme_color_override("font_color", colour)
+	label.add_theme_color_override("font_outline_color", UiTheme.INK)
+	label.add_theme_constant_override("outline_size", TEXT_OUTLINE)
+	label.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	label.offset_top = top
+	label.offset_bottom = bottom
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(label)
+	return label
+
+func _refresh_spectator_panel() -> void:
+	if _spectator_status != null and is_instance_valid(_spectator_status):
+		_spectator_status.text = ("" if _spectator_camera == null
+			or not is_instance_valid(_spectator_camera) else _spectator_camera.status_text())
+	if _spectator_round == null or not is_instance_valid(_spectator_round):
+		return
+	var out_left := RoundManager.can_out_left()
+	var stacks: int = RoundManager.can_out_stacks()
+	# ⚠️ THE STACK LINE SURVIVES THE CLOCK ENDING, deliberately. It is a fact about the
+	# ROUND SO FAR, not about the current knockdown, and blanking it the moment the lata
+	# gets home would hide the escalation precisely between the saves — which is the only
+	# time anyone has a second to read it.
+	var saves := "SAVES  %d / %d" % [stacks, RoundManager.CAN_OUT_RECOVERY_MAX]
+	if out_left >= 0.0 and RoundManager.round_active:
+		_spectator_round.add_theme_color_override("font_color", UiTheme.OFFENSE)
+		_spectator_round.text = "LATA OUT  %.1f / %.2f s      %s" % [
+			maxf(0.0, out_left), RoundManager.can_out_limit(), saves]
+		return
+	_spectator_round.add_theme_color_override("font_color", UiTheme.AMBER)
+	# ⚠️ NEVER BLANK. `spec_probe --solo` caught this reading '' for the whole pre-round
+	# window — and that window is exactly when a spectator is deciding where to fly to.
+	# An empty strip reads as a HUD that has not loaded.
+	_spectator_round.text = ("%s      NEXT LIMIT  %.2f s" % [saves, RoundManager.can_out_limit()]
+		if RoundManager.round_active else "WAITING FOR THE ROUND TO START")
 
 ## Kills the pulse tween and resets the timer card to its natural scale.
 func _kill_pulse_tween() -> void:

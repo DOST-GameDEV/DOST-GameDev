@@ -29,6 +29,15 @@ signal server_disconnected
 ## token has necessarily arrived over the wire — see `_rpc_identify`'s own
 ## doc for the race this exists to close.
 signal player_identified(peer_id: int, token: String)
+## HOST-ONLY, and it fires for a peer's FIRST declaration as well as for every later
+## change — see `publish_spectator`. `match_setup.gd` listens: a peer that starts
+## watching has to give its seat back to the bot pool and leave the ready count, and
+## the lobby board is the only thing that can show that happening.
+##
+## Emitted from `_rpc_identify` too (not only from a mid-lobby toggle), because a peer
+## that walked into the lobby ALREADY spectating declares it in its identify packet and
+## the board would otherwise seat it like anybody else.
+signal peer_spectator_changed(peer_id: int, spectating: bool)
 
 const DEFAULT_PORT: int = 8910
 const MAX_PLAYERS: int = 4
@@ -119,6 +128,61 @@ func picks_for(peer_id: int) -> Dictionary:
 ## no character to ready). See `GameLaunch.spectator`.
 func is_spectator(peer_id: int) -> bool:
 	return int(picks_for(peer_id).get("spectator", 0)) != 0
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE SPECTATE CHOICE IS MADE **AFTER** THE IDENTIFY PACKET HAS ALREADY GONE, AND
+## WITHOUT THIS NOTHING EVER TOLD THE HOST.
+##
+## `_local_picks()` is snapshotted once — at `host_game()` for the host, at
+## `_on_connected_to_server()` for a client — and the SPECTATE toggle lives one screen
+## LATER, in the lobby the peer is sitting in while connected. So every consumer of
+## `is_spectator()` (the ready gate, `_spawn_player`, `playing_peer_count`) was reading a
+## value frozen before the player had been given any way to set it:
+##
+##   * a CLIENT that pressed SPECTATE in the lobby was spawned a character anyway and
+##     counted in the ready gate — the toggle did nothing at all off the local machine;
+##   * a HOST that pressed it got a body too, because `host_game()` had already written
+##     `peer_characters[1]` with `spectator = 0` before the lobby existed.
+##
+## Solo is unaffected and deliberately does not come through here: `main.gd::
+## _start_local_test` reads `GameLaunch.spectator` directly and there is no host to tell.
+##
+## Host-authoritative like every other pick: the sender proposes, the host records. A
+## client never writes another peer's flag, and its own copy of `peer_characters` stays
+## empty exactly as it is for the three character indices.
+func publish_spectator(spectating: bool) -> void:
+	local_picks["spectator"] = 1 if spectating else 0
+	if not is_networked():
+		return
+	if is_host():
+		_apply_spectator(multiplayer.get_unique_id(), spectating)
+		return
+	# Same window `match_setup.gd::_can_rpc` documents: `join_game()` returns when the
+	# socket opens, not when the handshake completes, and the SPECTATE button is
+	# clickable throughout. A press inside that window is not lost — `local_picks` above
+	# already carries it, and `_on_connected_to_server` sends the packet.
+	if multiplayer.multiplayer_peer == null:
+		return
+	if multiplayer.multiplayer_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
+		return
+	_rpc_set_spectator.rpc_id(1, spectating)
+
+## Any peer -> host: "I am watching / I am playing after all."
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_set_spectator(spectating: bool) -> void:
+	if not is_host():
+		return
+	_apply_spectator(multiplayer.get_remote_sender_id(), spectating)
+
+## HOST ONLY. Writes the flag into the same `peer_characters` entry `_rpc_identify`
+## builds, rather than into a parallel dictionary, so `is_spectator()` has exactly one
+## source and cannot answer two different things depending on which one was written last.
+func _apply_spectator(peer_id: int, spectating: bool) -> void:
+	var picks: Dictionary = peer_characters.get(peer_id,
+		{"character": -1, "can": -1, "slipper": -1, "spectator": 0})
+	picks["spectator"] = 1 if spectating else 0
+	peer_characters[peer_id] = picks
+	peer_spectator_changed.emit(peer_id, spectating)
 
 ## How many connected peers are actually PLAYING. The ready gate counts these, not
 ## `connected_peer_ids.size()` — a lobby of two players and two spectators must start on
@@ -388,6 +452,11 @@ func _rpc_identify(token: String, picks: Dictionary = {}) -> void:
 	}
 	if match_in_progress:
 		_rpc_route_to_running_match.rpc_id(peer_id)
+	# ⚠️ FIRED FOR A PLAYER TOO, NOT ONLY FOR A SPECTATOR, AND THE LOBBY RELIES ON THAT.
+	# `player_connected` fires the instant ENet completes its handshake — BEFORE this
+	# packet arrives — so the lobby has already auto-seated this peer by now and cannot
+	# know yet whether it wanted a seat. This is the first moment anybody does.
+	peer_spectator_changed.emit(peer_id, is_spectator(peer_id))
 	player_identified.emit(peer_id, token)
 
 ## One client-sent pick, range-checked against the roster it indexes. -1 is
