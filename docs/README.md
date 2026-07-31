@@ -1,4 +1,4 @@
-# docs/ — four files, and that is the budget
+# docs/ — five files, and that is the budget
 
 **Every word here is load-bearing. If you add a paragraph, delete one.** Stale content
 gets deleted, never labelled outdated.
@@ -8,7 +8,16 @@ gets deleted, never labelled outdated.
 | [`Agent_Prompts.md`](Agent_Prompts.md) | **The `build xxx` pipeline, the execution order, the checklist and the log.** The only place a box is ticked. |
 | [`Design.md`](Design.md) | The rules and every tunable number. The single source of truth for balance. |
 | [`Art_Direction.md`](Art_Direction.md) | Colour law, scale law, arena geometry, model and kit rules. |
+| [`HUMAN.md`](HUMAN.md) | **What the team records with a microphone, and in what format.** 🔊 `build voice` owns it. |
 | `README.md` | This index and the machine notes. |
+
+⚠️ **The budget went from four to five on 2026-07-31 and that is a deliberate exception, not
+drift.** Every other file here is written for whoever is *building* — agent or human, same
+audience. `HUMAN.md` is written for **teammates holding a phone**, who will not read a
+checklist board and should not have to. A recording brief buried inside `Agent_Prompts.md`
+would be a recording brief nobody records against. It is also the one file here with an end
+date: when the voice lines are in the game, it stops being instructions and becomes a
+record, and the budget goes back to four.
 
 Code comments still name deleted files (`Dev_Plan.md §4`, `Handoff.md`, `Checklist.md`).
 Read those as "there was a reason, it is now in `Design.md`". The comments themselves are
