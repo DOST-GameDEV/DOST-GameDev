@@ -54,6 +54,24 @@ the lata and slipper as props; stamina, shove, the lunge tag, the throw gate;
 the HUD, tutorial, lobby, result screen; spectator; netcode and late-join;
 four cans and four slippers with per-skin meshes; both maps at the 6.5 box.
 
+> ### 🧑 STANDING ORDER, 2026-08-01 (EVENING) — LANES NO LONGER GATE THE WORK
+>
+> Verbatim: *"do all fixes i ask u to even if not in ur lane"*, then *"do everything!
+> fix everythinG!"*. So §3's one-writer-per-file table is now a record of who
+> USUALLY owns a file, not a permission check: whoever the human hands a bug to
+> fixes it wherever it lives.
+>
+> ⚠️ **THE RECORDING RULE SURVIVES AND MATTERS MORE, NOT LESS.** The table's real
+> value was never the gate — it was that a change outside your row got written down,
+> so the next lane could find it. Keep filing every out-of-row edit into the owning
+> lane's §4 section and into §7. Without the gate, the record is the only thing left.
+>
+> ⚠️ **THE BRANCH IS `ESPORTS`, NOT `HANSDAKS-test`.** Every lane prompt in §5 and
+> the first line of this file still say `HANSDAKS-test`; that is stale.
+> `HANSDAKS-test`'s copy of this document is ~540 lines behind. Check out `ESPORTS`
+> and re-read the board from there, and `git pull --rebase` often — it moved three
+> times inside one session.
+
 > ### 🧑 STANDING ORDER, 2026-08-01 — THE LAST TWO LANES ARE DEFERRED
 >
 > * **⚖️ `build fair` RUNS LAST, after everything else.** Verbatim: *"we will do
@@ -535,6 +553,32 @@ what specifically. **Tick only your own section.**
   mesh** — see `Design.md` §7.1 for that ruling. *Verified: `lata_floor_probe` PASSes
   all four skins upright and downed (+0.0000 / +0.0001), and its reported lifts are
   the per-skin radii the collider now uses.*
+
+**Filed by 🔊 `build sound` 2026-08-01 (evening), measured while chasing *"AI still
+doesnt TAG"*:**
+
+- [ ] 2.30 ⚠⚠ **THE TAG HAS ALL BUT STOPPED HAPPENING, AND NOTHING BROKE — THE
+  OFFENCE GETTING FIXED IS WHAT DID IT.** Measured, one whole 4-round match at
+  NORMAL: **2 tags**, TAG worth **3.6%** of every point. §6.8's own table has TAG at
+  **24.5%** at the same tier, and §6.2 claims 15-29 tags a match.
+  **The cause is a rule, not the AI.** `CharacterBase.host_resolve_punch()` and the
+  lunge sweep both open with *"a tag requires the can standing"* and return early.
+  LATA DOWN has gone from **0% → 62-70%** of all points as the bots learned to
+  convert, so the can is now over for most of the round and **the taya's only
+  scoring verb is legal for the minority of it**. The better the attackers get, the
+  less the taya is allowed to tag them — the two terms move against each other by
+  construction. `_tag_target()` now carries the same condition so the bot stops
+  swinging at people the rules will not let it touch, but **the balance question is
+  yours**: either the tag survives a downed lata, or the taya needs a scoring verb
+  that does, or DEFENSE is meant to carry that window (it measures 34%).
+- [ ] 2.31 **The punch out-ranges the lunge's own tag radius, so inside 1.7 m the
+  lunge is never the right button.** `PUNCH_RANGE` is **1.7 m** and instant;
+  `LUNGE_TAG_RADIUS` is **1.3 m** behind a 0.5 s charge. The split the punch was
+  added for is real (🧑: the lunge charge is *"exactly long enough for them to
+  leave"*) — punch for adjacent, lunge to close 2.5 m — but as numbered, the punch
+  strictly dominates everywhere the lunge could also tag. 🧑 asked the question
+  directly: *"why even use punch at all"*, which is the same observation from the
+  other side. Either number moves this; both are yours.
 
 **Filed by 🤖 `build ai` 2026-08-01 — §2.1 finally has numbers. Read 2.25 FIRST.**
 
@@ -1939,3 +1983,88 @@ checks format, pooling, routing and level, and a human has to check the rest.
 ⚠️ **Still owed:** `tumbang` above all (the lata going over is the whole game and it
 is silent), plus `taya`, `ayos`, `bilis`, `title`, `lata_restored` — all wired, all
 empty, all live the moment a file lands.
+
+**2026-08-01 · 🔊 `build sound` (follow-up)** — a long play-and-point session. The
+human played the running game and reported bugs by screenshot; almost none of them
+were in this lane, and 🧑 removed the lane gate partway through (*"do all fixes i
+ask u to even if not in ur lane"*). Everything below is recorded rather than
+quietly done, which is the half of §3 that still applies.
+
+*Two bugs were mine, and both are worth keeping.* **A stale constant reference took
+the whole game down** — `RIBBON_WIDTH` renamed to `WIDTH_PER_METRE` with one
+straggler, which cascaded `trajectory_preview` → `carrier` → `character_base` →
+`ai_controller` → `round_manager`. The human's report was *"the restricted area for
+throwing doesnt exist anyjmjore, all bots are just running to the can"*, and both
+halves were true because the rules and the brains were dead. ⚠️ **`--headless
+--import` reported it CLEAN** — §6 trap 17 says importing does not prove a script
+compiles, and this is the second time that has cost real time. Run a probe.
+And **the open-pickup change made every bot idle after throwing**: `_my_slipper()`
+was rewritten to choose among LOOSE slippers, but `_pick_plan()` asks it while not
+holding and immediately tests `mine.is_flying()`, so a slipper became invisible to
+its own thrower the instant it left the hand. Measured 27 → 14 throws, 48.1% → 28.6%
+hit rate, DEFENSE 31.7% → 70.8%.
+
+⚠️ **`ai_probe` REPORTED `PASS` ON BOTH OF THOSE RUNS**, which is the more useful
+finding. Its only offence gate was ≥1 knockdown per match, and a collapsed offence
+still lands a lucky shot over four rounds. It has a hit-rate floor now (30%, NORMAL
+and HARD only — EASY is *meant* to miss), verified red at a 90% floor and green at
+48.4%.
+
+*The "big grey block" was three different objects across two sessions, and only the
+third answer was right.* Not the `CLUTTER_TALL` yero tier — that had already been
+moved for the identical complaint, and tinting every tall piece on that edge left
+the reported object untinted. It was the **sari-sari store**, blank because
+`front_yaw` aims the counter at the alley so the court only ever sees its back.
+Moving it surfaced that the WEST store had never been on the map: pinned, blocked,
+dropped by `try_place`, and past `Placer.report`'s four-name truncation. Restoring
+it at z 9.0 put a fresh slab at the court corner — **and the render sent as proof of
+the fix had the block in it**. 🧑: *"in the pic u sent me the block is STILL
+THERE"*. Two rules came out of it and both are now §6 trap 19: a nudge ladder's
+reach is part of any keep-away and must be subtracted from the nominal, and a piece
+that PLACES IN THE WRONG PLACE reports as a success, so assert the placed position
+and not merely that something placed.
+
+*Slippers disappearing was two unrelated bugs wearing one description.* On other
+machines it was the **MultiplayerSynchronizer left silenced**: both halves of the
+quiet period were side effects of `_attach_to_hand()`/`_detach_from_hand()` and both
+of those return early, so any path that put the slipper back another way never
+re-opened it and the prop froze where it was last seen. On the thrower's OWN screen
+it was **`SHADOW_CASTING_SETTING_SHADOWS_ONLY`** — 🧑: *"they disappear and are just
+a shadow"* — because `camera_rig.gd` blanks the local body in FPP with SHADOWS_ONLY
+rather than `hide()` (correct: losing your shadow destroys the ground read), applies
+it to every mesh under `Visual`, and a carried slipper is re-parented under that
+same `Visual`. Throw it and it leaves the subtree still flagged, and the restore
+loop only walks what is under `Visual` now. **Both are §6 trap 12 a third and fourth
+time** and both are driven from the carry STATE now rather than from a reparent that
+can decline.
+
+*Slipper ownership was reversed, having been reversed the same morning.* Any
+attacker may take any slipper; `owner_slot` survives as the label the arrow and the
+glow read. That re-opens §6.3, answered by a claim rule (only the nearest eligible
+attacker goes) plus a 3.5 m handicap on a human's own slipper — a handicap rather
+than a dice roll, because a random refusal is unreadable. `Design.md` §5.2 keeps
+both instructions.
+
+*The aim arc was not a styling problem.* Godot 4 rasterises every line primitive at
+exactly one pixel and no material property widens it, so no colour would have fixed
+it. Camera-facing ribbon now, scaled by distance — and the first version used a
+constant WORLD width, which looked right side-on and became a yellow band across a
+third of the first-person view. **Caught only by rendering it from the eye the
+complaint came from.**
+
+*The CHARACTER panel overflowed on all 20 entries, not just the reported one,* by
+20–97 px. `bounds_sweep` passes because it only ever renders the default entry.
+`tools/ui/charselect_fit_probe.tscn` walks every entry on every tab now.
+
+⚠️ **Not done, and why:** the *"Tutorial and Credits signboards float"* item from
+the handoff. Both are 2D `Control` panels (`Tutorial.tscn`, `CreditsPanel.tscn`) —
+there is no 3D signboard in either, and nothing in the project matches
+`signboard`/`karatula`. The handoff's own § HOW THE HUMAN WORKS says to ask which
+element rather than guess, because a wrong guess there cost two full map rebuilds.
+**Which object floats?** Also not reproduced: the *"low-contrast filter over the
+main menu"* — the menu was rendered at 1920×1080 and the artwork reads clean, so
+either it is already gone or it is a different screen.
+
+⚠️ **Still not verified:** that the arrow RENDERS on the screen edge (it now
+resolves a target, which it did not before); that the VO says the words it is named
+for; two real peers on any of today's replication changes.
