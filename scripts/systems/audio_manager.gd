@@ -143,18 +143,51 @@ const MUSIC_DUCK_TRIGGERS: PackedStringArray = [
 ## column here is exactly that file's `ID` column — do not rename one without
 ## the other.
 ##
-## ⚠️ NO RECORDINGS EXIST YET. Every function below is written against the
-## SAME "missing asset warns once and no-ops" contract the SFX table already
-## uses, so this whole subsystem is silent and harmless until the team's
-## drive folder actually has files in it — see `_load_vo()`.
+## ⚠️ DELIVERED 2026-08-01, PARTIALLY: eight of the sixteen ids on that page have
+## takes. The pool contract below is unchanged and is what makes a partial
+## delivery a non-event — an id with no file is an empty Array, `play_vo()`
+## returns on `is_empty()`, and the trigger stays wired for the day it lands.
+## `tumbang`, `taya`, `ayos`, `bilis`, `title` and `lata_restored` are in exactly
+## that state right now. **Do not delete their triggers to "clean up".**
+##
+## ⚠️ THE DELIVERY ARRIVED AS AAC-IN-3GP NAMED `.wav` and had to be transcoded —
+## `tools/audio/vo_import.py` is that conversion and its header is the record.
+## Godot has no AAC decoder, so `load()` would have returned null for all eleven
+## and this subsystem would have looked exactly as wired and exactly as silent as
+## it did before the files existed. **Import through that tool, never by copying.**
 ## ---------------------------------------------------------------------------
 const VO_DIR: String = "res://assets/audio/vo/"
+## ⚠️ VOICE HAS ITS OWN HEADROOM AND IT IS NOT DECORATION — WITHOUT IT THE VO IS
+## THE LOUDEST THING IN THE GAME BY ~7 dB.
+##
+## `play()`/`play_at()` both route through `_trim()`, which subtracts
+## `HEADROOM_DB` (-7) from every sound effect. `play_vo()` never did, because
+## when it was written there was nothing to play and 0 dB is what an unset
+## `volume_db` is. The delivered takes are normalised to -6 dBFS peak
+## (`vo_import.py`), so an untrimmed voice line would sit over `lata_impact` —
+## the 0 dB reference the whole SFX table is quieter THAN — while also ducking
+## the music by 10 dB every time it spoke.
+##
+## -4.0 rather than -7.0 deliberately: an announcer is SUPPOSED to sit above the
+## scenery, just not above the impact. That puts a voice peak at -10 dBFS against
+## `lata_impact`'s ~-8.4, i.e. just under the loudest thing in a fight.
+## **A starting point measured, not a guess** — see § LOG and
+## `tools/audio_mix_probe.gd`, which is the probe that should move it.
+const VO_TRIM_DB: float = -4.0
 ## Minimum real-ms gap between two plays of the SAME line id. Per-category
 ## rather than global: `tumbang` and `taya` should not silence each other.
 const VO_COOLDOWN_MS: Dictionary = {
 	"tumbang": 6000, "taya": 5000, "ayos": 4000,
 	"clock_30": 0, "clock_10": 0, # each fires at most once per round anyway
 	"match_win": 0, "match_draw": 0, "title": 0,
+	# ⚠️ THE COUNTDOWN LINES MUST BE 0 AND THE DEFAULT WOULD HAVE BROKEN THEM.
+	# They are separate ids so the 4 s default never applies BETWEEN them — but a
+	# countdown runs before every round, and rounds 1 and 2 are far more than 4 s
+	# apart only because the round is 90 s. Anything that ever re-counts inside
+	# the window (a re-ready, an intermission counter) would silently lose the
+	# line rather than the sound, which is the worst kind of missing: intermittent.
+	"count_3": 0, "count_2": 0, "count_1": 0, "count_go": 0,
+	"count_5": 0, "count_4": 0,
 }
 const VO_DEFAULT_COOLDOWN_MS: int = 4000
 
@@ -377,6 +410,12 @@ func _ready() -> void:
 	MatchManager.match_won.connect(_on_match_won_vo)
 	RoundManager.lata_knocked.connect(_on_lata_knocked_vo)
 	RoundManager.attacker_tagged.connect(_on_attacker_tagged_vo)
+	# docs/HUMAN.md TABLE A's `lata_restored` ("Nakatayo na!"). No take delivered
+	# in the 2026-08-01 batch — wired anyway, because the whole point of the pool
+	# contract is that a trigger costs nothing while its pool is empty and the
+	# line is live the moment a file lands. Its counterpart `tumbang` is in the
+	# same state and has been wired since the pooling was written.
+	RoundManager.lata_restored.connect(_on_lata_restored_vo)
 
 
 ## ---------------------------------------------------------------------------
@@ -695,8 +734,38 @@ func play_vo(line_id: String) -> void:
 	var player := _vo_voices[_vo_next]
 	_vo_next = (_vo_next + 1) % _vo_voices.size()
 	player.stream = takes[index]
+	# See VO_TRIM_DB. Set every play rather than once at build time because these
+	# voices are pooled and reused, and a future per-line trim belongs here.
+	player.volume_db = VO_TRIM_DB
 	player.play()
 	_duck_music()
+
+
+## ⚠️ THE 3-2-1 COUNTDOWN'S SFX **AND** ITS VOICE, IN ONE CALL, BECAUSE ONLY THE
+## CALLER KNOWS WHICH NUMBER IT IS.
+##
+## `play("countdown_tick")` is the same string for "3", "2" and "1", so this lane
+## could not tell the three apart from inside `play()` — and the delivered VO has
+## a separate recording for each (docs/HUMAN.md TABLE A: `count_3`/`count_2`/
+## `count_1`/`count_go`). The number lives in `hud.gd::show_countdown_tick`'s own
+## argument and nowhere else.
+##
+## ⚠️ IT IS DERIVED FROM THE TEXT, NOT FROM A TICK COUNTER, AND THAT IS THE POINT.
+## A counter in this file would be inferring another lane's loop shape
+## (`main.gd::_run_ready_countdown`'s literal `["3", "2", "1"]`) and would speak a
+## WRONG number the day that loop changes length — §6 trap 12's "do not infer a
+## value from an action that has its own preconditions". Reading the digit means a
+## 5-count asks for `count_5`, which is a real docs/HUMAN.md id with no take
+## delivered, so it degrades to SILENCE rather than to a lie.
+func play_countdown(tick_text: String) -> void:
+	var is_go := tick_text == "GO!"
+	# Unchanged behaviour, including the `countdown_tick` -> `play_music("match")`
+	# hook inside `play()`. This wraps that call; it does not replace it.
+	play("countdown_go" if is_go else "countdown_tick")
+	if is_go:
+		play_vo("count_go")
+	elif tick_text.is_valid_int():
+		play_vo("count_%d" % tick_text.to_int())
 
 
 func _on_round_started_vo(round_number: int, _defender_slot: int) -> void:
@@ -710,6 +779,10 @@ func _on_match_won_vo(winning_slot: int) -> void:
 
 func _on_lata_knocked_vo(_by_slot: int) -> void:
 	play_vo("tumbang")
+
+
+func _on_lata_restored_vo() -> void:
+	play_vo("lata_restored")
 
 
 func _on_attacker_tagged_vo(_defender_slot: int, _victim_slot: int) -> void:

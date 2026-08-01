@@ -353,6 +353,17 @@ what specifically. **Tick only your own section.**
   showing. Glow: the owned slipper (`owner_slot == player_slot`) rendered LOOSE
   with the rim outline visibly lit, beside the un-lit lata.*
 
+**Filed by 🔊 `build sound` 2026-08-01:**
+
+- [ ] 1.19 **`hud.gd::show_countdown_tick` now calls `AudioManager.play_countdown(text)`
+  instead of `AudioManager.play(...)` — one line, in your file, and you should know it
+  moved.** The SFX behaviour is byte-for-byte what it was; the wrapper exists because
+  `countdown_tick` is the same string for "3", "2" and "1" and the delivered VO has a
+  separate recording for each, so the number has to come from the caller. `text` is the
+  only place it exists. Nothing to do unless you change the countdown's SHAPE — if it
+  ever counts from 5, `play_countdown` will ask for `count_5`, which is a real
+  `docs/HUMAN.md` id with no take, and it will go quiet rather than say a wrong number.
+
 ### ⚖️ `build fair` — every number, and the feedback  ·  items **2.x**
 
 - [x] 2.1 ⚠️⚠️ **SETTLED 2026-08-01: THE ARITHMETIC WAS RIGHT, THE CONCLUSION WAS
@@ -666,22 +677,64 @@ what specifically. **Tick only your own section.**
   chain splash → menu → mode select → lobby → match → back, and the new
   free-roam check FAILS on the pre-fix code.* See §6.
 - [x] 4.3 Round-end / match-win / round-lose register real streams. **Heard.**
-- [ ] 4.4 ⚠⚠ **THE VO IS THE ONE REMAINING JOB, AND IT IS THE WHOLE LANE NOW.**
-  🧑 2026-08-01: *"we js have to make it put in the VOs, we trimmed a lot of its plan
-  but we will upload only what we kept"*. The pooling is built and every pool
-  activates the moment a file lands — `assets/audio/vo/` is simply empty.
-  ⚠️ **`docs/HUMAN.md`'s script is LONGER THAN WHAT IS COMING.** The team cut the
-  list down; treat the recorded set as the spec and the document as the superset,
-  and **file, do not force**, any line whose trigger does not exist. A pool with no
-  file is expected, not a defect.
+- [x] 4.4 **THE VO IS IN — 11 takes across 8 ids, and every one of them plays.**
+  🧑 2026-08-01: *"we js have to make it put in the VOs"*, *"i named them already the
+  right way"* — and the ids WERE right, all eleven. Two things were not, and neither
+  was the naming:
+  * ⚠️ **The delivery was AAC-in-3GP carrying a `.wav` extension** — a phone
+    recorder export. Godot has no AAC decoder, so `load()` returns null, `_load_vo()`
+    skips it, and the folder looks full while every pool stays empty. Transcoded by
+    the new `tools/audio/vo_import.py`, which SNIFFS the container and never trusts
+    the suffix. **Second time on this project** — TABLE D's OST masters were MP3
+    called `.wav`.
+  * ⚠️ **`_vo_id_from_filename()` strips the LAST underscore segment**, so
+    `clock_10.wav` copied in verbatim resolves to the id `clock`. Eight of eleven
+    delivered names have that shape. The repo name is `vo_<id>_<take>.wav` and the
+    importer writes it.
+  Also trimmed (0.15–0.28 s of head silence — a countdown line a beat late is worse
+  than none) and normalised to −6 dBFS (they arrived at −0.9 to **+0.2**).
+  *Verified: `tools/audio/vo_probe.tscn` (new) — 11 files on disk, 11 streams pooled,
+  every take 0.74–1.45 s, `play_countdown()` routes 3/2/1/GO! to `count_3`/`count_2`/
+  `count_1`/`count_go`, and an unrecorded "5" degrades to silence. **Red proof: copy
+  the delivered files in unchanged and it reports 11 on disk / 0 pooled, 17 FAIL,
+  exit 1.***
+  ⚠️ **Six ids stay wired and empty and that is correct** — `tumbang`, `taya`,
+  `ayos`, `bilis`, `title`, `lata_restored`. `docs/HUMAN.md` now lists exactly what
+  landed against what is still owed and asks which are cut vs pending. **`tumbang` is
+  the one that matters** — the lata going over is the whole game and it is silent.
 - [~] 4.5 Five of six previously-silent call sites now have a sound. The sixth is
   filed as 2.17.
 - [x] 4.6 Ducking implemented inside `play()`. **Heard.**
-- [~] 4.7 ⚠️ **THE MIX HAS BEEN HEARD — this item is no longer "nobody has ever
-  heard this game".** 🧑 2026-08-01: *"everyones listened to the audio"*. What is left
-  is not a first listen, it is a BALANCE pass with the VO in it, because the three
-  buses cannot be set against each other until the thing that has to sit on top of
-  them exists. `tools/audio_mix_probe.gd` still moves `MUSIC_BASE_DB`.
+- [x] 4.7 **BALANCED AGAINST A REAL MATCH WITH THE VOICE IN IT.** 🧑 2026-08-01:
+  *"everyones listened to the audio"* — so this was never a first listen, it was the
+  balance that could not happen until the thing sitting on top of the buses existed.
+  It exists now (4.4), and `tools/audio/vo_mix_probe.tscn` (new, this lane's — the
+  root `audio_mix_probe.gd` is ⚖️ `build fair`'s per §3 and never speaks) measures
+  three windows under identical conditions: voice alone, match without voice, match
+  with voice.
+
+  | window | SFX RMS / peak | Music RMS / peak | Master RMS / peak |
+  |---|---|---|---|
+  | voice alone | −21.0 / −1.0 | −40.4 / −23.4 | −23.8 / −3.8 |
+  | match, no voice | −19.9 / −3.1 | −25.4 / −6.6 | −22.1 / −4.5 |
+  | match + voice | −22.0 / −4.9 | −23.0 / −6.1 | −23.2 / −4.7 |
+
+  **Voice sits +2.1 dB peak / −1.1 dB RMS against the effects and +5.6 dB peak over
+  the bed, and the full mix peaks at −4.7 dBFS** — above the action, under the
+  impacts, nothing clipping.
+  * ⚠️ **THE REAL FIX WAS THAT `play_vo()` HAD NO TRIM AT ALL.** `play()`/`play_at()`
+    both subtract `HEADROOM_DB` (−7); `play_vo()` never did, because when it was
+    written there was nothing to play and an unset `volume_db` is 0. Measured, that
+    ships the voice **~7 dB over every sound effect in the game** while ducking the
+    music 10 dB every time it speaks. New `VO_TRIM_DB`, and −4.0 is now a
+    measurement rather than the guess it started as.
+  * ⚠️ **`MUSIC_BASE_DB` IS UNCHANGED AT −6.0 AND THAT IS A RESULT, NOT AN
+    OMISSION.** The bed measures 5.5 dB under the effects and 5.6 under the voice —
+    it sits where a bed should. This item has said for two sessions that the probe
+    "should move" the number; it was run, and the number was already right.
+  * ⚠️ **Do not tune this on a short window.** The first run used 5 s phases and the
+    two match windows disagreed by 7.3 dB on SFX RMS — not a mix difference, just
+    two different slices of a round. The probe uses 14 s and says so.
 - [x] 4.8 **Both beds start on the frame they are asked for.** 🧑: *"Remove the audio
   playback delay when transitioning from the intro video"* and *"Remove the audio
   latency during round initialization"*. The delay was never a timer — it was
@@ -809,6 +862,28 @@ what specifically. **Tick only your own section.**
   reason this is filed rather than done. ⚠️ **`Body/CollisionShape3D` must STAY** —
   `lata.gd::_fit_collision_to_mesh()` writes it per skin (§2.23) and it relies on
   that shape keeping `resource_local_to_scene = true`.
+
+**Filed by 🔊 `build sound` 2026-08-01, found while moving the sari-sari store on
+direct human instruction:**
+
+- [ ] 5.23 ⚠️ **`Placer.report()` truncates its skip list to the first FOUR names, and a
+  landmark was missing from the shipped map because of it.** `mapkit.py:278` is
+  `", ".join(self.skips[:4])`. Eskinita skips 14–16 pieces on every build, the first four
+  are always the same trees, and `SariSari_W` sat past the cut — pinned at z 12.0 its
+  footprint was blocked, `try_place` dropped it, and the map shipped with ONE sari-sari
+  store while the builder's own loop reads as two and its comment calls the piece "the
+  narrative centre of this map". That is precisely the *"a silent skip is how a map loses
+  a landmark without anyone noticing"* failure `try_place`'s docstring is about, defeated
+  by its own reporting. **The store is fixed** (build_eskinita.py asserts both now); the
+  REPORT is not, and it is `mapkit.py`, which is your row. Printing all skips, or marking
+  which ones were `ladder=False`, would have made this visible on any build.
+- [ ] 5.24 **The tall `atip_yero` lean-tos sit at |x| 7.35 against a 7.0 box — 0.35 m
+  outside the chalk, 2.34 m tall.** Not touched: 🧑 has twice said to keep them
+  (*"i liked the tires and the tables and the yero walls"*) and they read as canopies on
+  legs rather than as walls, which is why they survived the complaint the store did not.
+  Recording it only because `CLUTTER_TALL`'s own header still says this tier lives at
+  |x| > 6.5 "against the wall line", a clearance written when the box was 5.0. It is
+  0.35 m now. Your call whether that is still what the header means.
 
 ### 🤖 `build ai` — Single Player *(RUNS LAST)*  ·  items **6.x**
 
@@ -1294,6 +1369,31 @@ redeclaring a const that already exists on its parent, which is an error and not
 shadow). It only appeared when the scene was actually RUN. **Run the probe once before
 believing it exists**, the same way §3 says to run it once before believing it passes.
 
+**18 · AN ASSET'S EXTENSION IS THE ONE THING YOU CANNOT CHECK BY LOOKING.** Two
+deliveries on this project have been misnamed: the OST masters were MP3 data called
+`.wav`, and the whole VO batch was **AAC in a 3GP container** called `.wav`. Godot
+imports MP3, so the first only cost file size; it has no AAC decoder, so the second
+made `load()` return null for every file — and the failure is silent by construction,
+because `_load_vo()` skips a null and an absent pool is the SAME state as "not
+recorded yet". **The folder was full, the names were right, the wiring was right, and
+the game was silent.** Sniff the magic bytes (`tools/audio/vo_import.py`), never the
+suffix. ⚠️ And the general form: when a subsystem's "nothing delivered yet" state is
+indistinguishable from its "delivery is broken" state, it needs a probe that counts
+FILES ON DISK against STREAMS LOADED, or the bug hides in the expected case.
+
+**19 · A NUDGE LADDER'S REACH IS PART OF ANY KEEP-AWAY AND MUST BE SUBTRACTED FROM
+IT — AND A SKIP IS ONLY HALF OF WHAT CAN GO WRONG.** `mapkit.try_place` walks a
+ladder of offsets and returns a bool, so the position it was ASKED for is not the
+position it used. A sari-sari store nominally 12 m up the alley, with a ±6 m ladder,
+walked to 2 m outside the play box and became the same "big grey block" the move was
+meant to remove — in the render sent as proof of the fix. Two rules came out of it:
+**bound the ladder and subtract its longest step from the nominal** before claiming a
+clearance, and **assert the PLACED position, not just that something placed.** A piece
+that lands in the wrong place reports as a success and is counted under "nudged
+clear". ⚠️ Related: `Placer.report()` truncates its skip list to four names, which is
+how the west store stayed missing from the shipped map without anyone noticing — if a
+landmark must exist, `assert` it rather than printing a count.
+
 **11 · BLENDER IS OUT OF THE PIPELINE — a recorded finding, do not re-litigate.**
 A full session was spent editing the Kenney rigs through Blender MCP and was
 rejected. The repo already has a deterministic procedural pipeline; the glTF round
@@ -1756,3 +1856,86 @@ describe a deleted game.
 ⚠️ **Not verified:** anything by ear; two real peers; what any of the feedback LOOKS like
 in play. ⚠️ **Not reached:** §2.3 (blocked on the shove's frequency, not on effort),
 §2.10 beyond the two probes rewritten, §2.12, §2.13, §2.19, §2.24.
+
+**2026-08-01 · 🔊 `build sound`** — the VO landed, and the mix finally had something
+to be balanced against.
+
+*The delivery was not a WAV.* Eleven files named `*.wav` were **AAC audio in a 3GP
+container** — a phone voice-recorder export. Godot has no AAC decoder, so `load()`
+returns null, `_load_vo()` skips the file, and the pooling reports exactly what it
+reported when the folder was empty. **The failure mode is that everything looks
+right**: the drive folder is full, the filenames are correct, the code is wired, and
+the game is silent. `tools/audio/vo_import.py` sniffs the container and never trusts
+the suffix, for that reason. It is the second time — TABLE D's OST masters were MP3
+called `.wav`, and that one also cost a session before anyone checked the bytes.
+
+*The ids were right and the filenames still could not be used.*
+`_vo_id_from_filename()` strips `vo_` and then the LAST underscore-separated segment,
+because that segment is the recorder's name. An id that contains an underscore and
+has no name after it therefore eats its own tail: `clock_10.wav` resolves to
+**`clock`**. Eight of the eleven delivered names have that shape. The importer writes
+`vo_<id>_<take>.wav`, and `docs/HUMAN.md`'s naming section now asks for the plain id
+rather than a name, because a name in the middle is what makes the parse ambiguous in
+the first place.
+
+*Three edits nobody asked for and all three were load-bearing.* 0.15–0.28 s of head
+silence trimmed (docs/HUMAN.md actively ASKS for a leading second, and a `count_3`
+that arrives after the "3" is off screen is worse than no line at all); normalised to
+−6 dBFS from a delivered −0.9 to **+0.2**; 5 ms fades at the cuts, because a trim that
+lands mid-waveform is a tick on every play.
+
+*The countdown needed the one thing this lane could not see.* `play("countdown_tick")`
+is the same string for 3, 2 and 1, so `count_3`/`count_2`/`count_1` could not be told
+apart from inside `audio_manager.gd`. A tick COUNTER was the obvious answer and is
+wrong — it infers `main.gd`'s literal `["3","2","1"]` and speaks a wrong number the day
+that loop changes length. `play_countdown(text)` reads the digit instead, so a 5-count
+asks for `count_5`, which is a real id with no take, and degrades to SILENCE rather
+than to a lie. ⚠️ **Out of row**: one line in `hud.gd` (🖥️ `build ui`'s) — the SFX call
+it replaces was written by this lane and cites checklist 4.1, and the new call keeps
+that file at exactly one audio line.
+
+*§4.7's actual defect was that the voice had no level control at all.* `play()` and
+`play_at()` subtract `HEADROOM_DB`; `play_vo()` never did. Measured, that ships the
+announcer ~7 dB over every sound effect while ducking the music 10 dB each time it
+speaks. With `VO_TRIM_DB` the voice measures +2.1 dB peak / −1.1 dB RMS against the
+effects and +5.6 dB over the bed, full mix peaking −4.7 dBFS. **`MUSIC_BASE_DB` was
+not moved, and that is the result rather than an omission** — the bed already sits
+5.5 dB under the effects.
+
+⚠️ **The first version of the mix probe measured 5 s windows and the two match phases
+disagreed by 7.3 dB on SFX RMS.** Not a mix difference — two different five-second
+slices of one round, one holding the countdown burst. A level tuned on that window is
+tuned to whichever events happened to land in it. 14 s now.
+
+⚠️ **Out of row, twice more, both on direct instruction and both recorded rather than
+quietly done.**
+* **The crude verbatim quotes in the comments were paraphrased** across 21 files, 55
+  of them, including one racial slur in `build_footwear.py`. 🧑: *"yo can u remove
+  quotes like that"*. The convention of quoting the human next to the code their
+  report caused is what makes this repo traceable and it stays; only the register
+  moved, word-for-word, with the original line breaks and comment prefixes preserved.
+* **`tools/maps/build_eskinita.py`** — the "big grey rectangular block". See below;
+  it is 🎨 `build model`'s file.
+
+⚠️ **AND THE FIRST FIX OF THAT BLOCK MADE A SECOND ONE, WHICH IS THE PART WORTH
+KEEPING.** The reported object was not the tall-clutter tier that had already been
+moved for the identical complaint — tinting every tall piece on that edge left it
+untinted. It was the **sari-sari store**, reading as a blank slab because `front_yaw`
+aims the counter at the alley, so the court only ever sees its back. Moving it
+surfaced that the WEST store had never been on the map at all: pinned, its footprint
+was blocked, `try_place` dropped it, and `Placer.report` truncates its skip list to
+four names so nobody read it. Restoring it at z 9.0 — 2 m past a 7.0 box — put a fresh
+2.6 m blank panel at the court corner, and **the render sent as proof of the fix had
+the block in it.** 🧑: *"in the pic u sent me the block is STILL THERE"*. Two lessons,
+both now enforced in the builder: **a nudge ladder's reach is part of a keep-away and
+must be subtracted from it** (nominal |z| 12 with a ±6 ladder guarantees |z| 6), and
+**a skip is only half of what can go wrong — a piece that places in the WRONG place
+reports as a success.** Both stores' PLACED z is asserted now, captured through a
+wrapped `place_fn` because `try_place` returns only a bool.
+
+⚠️ **Not verified:** that the recordings say the words they are named for. Nothing in
+this repo can assert that `vo_count_3_1.wav` is somebody saying *"Tatlo!"* — the probe
+checks format, pooling, routing and level, and a human has to check the rest.
+⚠️ **Still owed:** `tumbang` above all (the lata going over is the whole game and it
+is silent), plus `taya`, `ayos`, `bilis`, `title`, `lata_restored` — all wired, all
+empty, all live the moment a file lands.
