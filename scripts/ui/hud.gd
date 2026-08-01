@@ -240,6 +240,8 @@ func _process(delta: float) -> void:
 	offscreen_indicators.update(local_char)
 	_refresh_status_stack(local_char)
 	_refresh_stamina(local_char)
+	_refresh_danger(local_char)
+	_refresh_vulnerable_text(local_char)
 
 ## ---------------------------------------------------------------------------
 ## ⚠️⚠️ THE STATUS STACK — every stun and every status effect, with a number on it.
@@ -321,11 +323,117 @@ func _status_colour(label: String) -> Color:
 		_:
 			return UiTheme.HIGHLIGHT
 
+## ---------------------------------------------------------------------------
+## ⚠⚠ THE DANGER VIGNETTE — A HELD STATE, AND IT IS THE SECOND TIME THIS NODE HAS
+## CHANGED KIND. New 2026-08-01, on human instruction:
+##   * *"The full-screen red vignette should only appear on the Defender's screen
+##     when the Lata is knocked over. The effect should remain active until the can
+##     is stood back up."*
+##   * *"Trigger the red vignette on an attacker's screen immediately when they
+##     become vulnerable ... until the attacker either safely crosses the boundary
+##     line back into the Safe Zone or gets tagged."*
+##
+## ⚠️ BOTH OF THOSE ARE STATES THAT LAST TENS OF SECONDS, AND THE FILE ALREADY
+## RECORDS WHY THAT WENT WRONG BEFORE. `set_downed_flash()`'s own note: a
+## full-screen red `ColorRect` held on *"does not read as feedback. It reads as the
+## renderer being broken: measured on the first captured frame of a live match, the
+## entire arena was washed red."* So the previous lane replaced the state with a
+## 0.45 s pulse.
+##
+## The instruction and that finding are both right, and the thing that reconciles
+## them is ALPHA, not duration. `DOWNED_FLASH_PEAK` is 0.45 — fine for a flash, a
+## wash if held. `DANGER_HOLD_ALPHA` is 0.16: enough to tint the frame red and be
+## noticed in peripheral vision, low enough to read the arena through for a whole
+## round. The knockdown PULSE is kept on top of it, so the moment still punches.
+##
+## ⚠️ AND IT IS PER-SCREEN, WHICH IS THE HALF THAT MAKES IT INFORMATION. The two
+## conditions are asked of the LOCAL character only — a defender sees their can is
+## down, an attacker sees they are catchable, and neither sees the other's warning.
+## A vignette everybody gets at the same time tells nobody anything.
+const DANGER_HOLD_ALPHA: float = 0.16
+var _danger_held: bool = false
+
+func _refresh_danger(local_char: CharacterBase) -> void:
+	var want := false
+	if local_char != null and is_instance_valid(local_char):
+		if local_char.is_defender:
+			# The can is down and it is your job to fix it.
+			var can := RoundManager.lata
+			want = can != null and not can.is_upright and RoundManager.round_active
+		else:
+			# ⚠️ `is_taggable()` IS THE WHOLE CONDITION AND IT IS DELIBERATELY THE SAME
+			# FUNCTION THE TAG ASKS (`Design.md` §5.2). "Until they cross back out or get
+			# tagged" is not two extra checks — it is exactly what that function stops
+			# returning true for, so the warning cannot disagree with the rule.
+			want = local_char.is_taggable()
+	if want == _danger_held:
+		return
+	_danger_held = want
+	_apply_danger_hold()
+
+## Applied separately from the pulse so the two can coexist: the pulse tweens
+## `modulate:a` down to zero and then hands back to whatever the held state wants.
+func _apply_danger_hold() -> void:
+	if _flash_tween != null and _flash_tween.is_valid():
+		return # a pulse owns the alpha right now; it restores the hold when it ends
+	downed_flash.visible = _danger_held
+	downed_flash.modulate.a = DANGER_HOLD_ALPHA if _danger_held else 0.0
+
+## ⚠️ THE CROSSHAIR SAYS IT IN WORDS NOW. 🧑: *"Remove the vulnerable timer bar and
+## replace it with static text directly below the crosshair reading: YOU ARE
+## VULNERABLE."* The bar was the one row in the status stack with no countdown — it
+## lasts exactly as long as you choose to stand in the box holding a slipper — so it
+## was already a bar pretending to be a timer. Text at the crosshair is where the
+## player is looking, and it needs no legend.
+var _vulnerable_label: Label = null
+
+func _ensure_vulnerable_label() -> Label:
+	if _vulnerable_label != null and is_instance_valid(_vulnerable_label):
+		return _vulnerable_label
+	var label := Label.new()
+	label.name = "VulnerableWarning"
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.text = "YOU ARE VULNERABLE"
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# ⚠️ BIGGER THAN THE STATUS ROWS ON PURPOSE. 🧑 asked for HUD text to grow
+	# *"to improve readability during fast-paced movement"*, and this is the one line
+	# that means "you are about to lose 5 seconds". Same INK outline everything over
+	# the 3D scene uses.
+	label.add_theme_font_size_override("font_size", 22)
+	label.add_theme_color_override("font_color", UiTheme.OFFENSE)
+	label.add_theme_color_override("font_outline_color", UiTheme.INK)
+	label.add_theme_constant_override("outline_size", TEXT_OUTLINE)
+	# Dead centre, just under the crosshair — where the eye already is.
+	label.set_anchors_preset(Control.PRESET_CENTER)
+	label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	label.position = Vector2(-160.0, 34.0)
+	label.custom_minimum_size = Vector2(320.0, 0.0)
+	label.visible = false
+	add_child(label)
+	_vulnerable_label = label
+	return label
+
+func _refresh_vulnerable_text(local_char: CharacterBase) -> void:
+	var vulnerable_label := _ensure_vulnerable_label()
+	if vulnerable_label == null:
+		return
+	var live := local_char != null and is_instance_valid(local_char) 			and local_char.is_taggable()
+	vulnerable_label.visible = live
+
 func _refresh_status_stack(local_char: CharacterBase) -> void:
 	var root := _ensure_status_root()
 	var effects: Array[Dictionary] = []
 	if local_char != null and is_instance_valid(local_char):
-		effects = local_char.status_effects()
+		# ⚠️ VULNERABLE IS FILTERED OUT HERE, NOT REMOVED FROM `status_effects()`.
+		# 🧑 2026-08-01: *"Remove the vulnerable timer bar and replace it with static
+		# text directly below the crosshair"* — `_refresh_vulnerable_text()` draws it
+		# now. The RULE stays where it was: `is_taggable()` is read by the tag, by the
+		# vignette and by that label, and `status_effects()` is still the honest list
+		# of what is live on this body. This is a presentation choice about one row,
+		# so it is made in the thing doing the presenting.
+		for effect in local_char.status_effects():
+			if String(effect.get("label", "")) != "VULNERABLE":
+				effects.append(effect)
 	# ⚠️ THE LATA COUNTDOWN IS APPENDED HERE, NOT IN `status_effects()`, AND THAT IS A
 	# REAL DISTINCTION. Everything the character returns is a fact about YOUR OWN BODY;
 	# this is a fact about the ROUND, it is the same number for all four players, and it
@@ -868,7 +976,12 @@ func set_downed_flash(active: bool) -> void:
 	downed_flash.modulate.a = DOWNED_FLASH_PEAK
 	_flash_tween = create_tween()
 	_flash_tween.tween_property(downed_flash, "modulate:a", 0.0, DOWNED_FLASH_TIME)
-	_flash_tween.tween_callback(func() -> void: downed_flash.visible = false)
+	# ⚠️ HANDS BACK TO THE HELD STATE rather than hiding outright — the knockdown
+	# pulse and the defender's "your can is down" hold fire on the same frame, and
+	# a bare `visible = false` here would cancel the hold the pulse announced.
+	_flash_tween.tween_callback(func() -> void:
+		_flash_tween = null
+		_apply_danger_hold())
 
 ## How long the knockdown vignette lasts. Long enough to register as a hit landing,
 ## short enough that it is gone before the player looks for the lata.

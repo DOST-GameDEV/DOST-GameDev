@@ -157,7 +157,13 @@ func _step_grab() -> void:
 	var target := _find_grabbable()
 	if target == null:
 		return
-	_character.play_visual_action("grab")
+	# ⚠⚠ BROADCAST, NOT LOCAL. 🧑 2026-08-01: *"make sure theres an animation for
+	# all hand movements even shove or tag or anything"*. This was
+	# `play_visual_action`, which plays the clip on THIS MACHINE ONLY — so the
+	# one moment an attacker is committed and vulnerable, bending down for their
+	# slipper inside the box, was invisible to the taya trying to read it. The
+	# same reason `broadcast_visual_action` exists for the throw and the shove.
+	_character.broadcast_visual_action("grab")
 	_request_grab(target)
 
 ## ⚠️ NEAREST, NOT FIRST. Three attackers converge on one box and slippers land in
@@ -208,7 +214,9 @@ func _step_reset_channel(delta: float) -> void:
 	if _channel_time < _reset_channel_time():
 		return
 	_cancel_channel()
-	_character.play_visual_action("grab")
+	# Broadcast for the same reason as the pickup above: standing the lata back up
+	# is the taya's longest commitment and every attacker needs to see it happen.
+	_character.broadcast_visual_action("grab")
 	_request_reset()
 
 func _cancel_channel() -> void:

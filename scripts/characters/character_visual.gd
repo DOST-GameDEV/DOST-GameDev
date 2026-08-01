@@ -163,6 +163,15 @@ const ACTION_CLIPS: Dictionary = {
 	# Task 1 — reaching down for a loose tsinelas. `pick-up` is the literal clip
 	# for this and the reason the brief called it out.
 	"grab": ["pick-up", "interact-right", "interact-left"] as Array[String],
+	# ⚠️ THE TAYA'S TWO TAG VERBS GET THEIR OWN READS, new 2026-08-01. Both used
+	# to broadcast `"shove"`, so the taya's 1 m lunge and their close-range jab
+	# played the identical clip as an attacker shoving a rival — three different
+	# commitments with one animation between them. `attack-kick-right` leads with
+	# the body, which is what a dash INTO somebody looks like; `attack-melee-right`
+	# is the arm, which is the punch. Both fall back to the other, so a rig missing
+	# either still animates.
+	"lunge": ["attack-kick-right", "attack-melee-right", "interact-right"] as Array[String],
+	"punch": ["attack-melee-right", "attack-kick-right", "interact-right"] as Array[String],
 }
 
 ## The Kenney rig is authored ~0.67 units tall with its origin at the feet, so
@@ -1764,6 +1773,31 @@ func _drive_charge_pose() -> void:
 		var shove := _character.observed_shove_charge()
 		if shove >= 0.0:
 			power = clampf(shove, 0.0, 1.0)
+	if power < 0.0:
+		# ⚠️⚠️ THE LUNGE, AND WITHOUT IT THE TAYA POSED NOTHING AT ALL. Added
+		# 2026-08-01 — 🧑: *"is that on purpose theres no taya animation? can u make
+		# sure theres an animation or atleast a hand movement for all movements"*.
+		#
+		# The two branches above are the only ones that existed, and NEITHER can fire
+		# for a defender any more. The throw branch needs `carrier.held() != null` and
+		# a defender holds nothing. The shove branch was the taya's tell back when the
+		# shove was a 1.25 s hold — but the shove became a single tap on 2026-08-01
+		# (`SHOVE_CHARGE_TIME` 0.0) AND was taken away from the defender entirely, so
+		# that clock now jumps 0 → 1 in one frame for an attacker and never runs for a
+		# taya.
+		#
+		# So the exact bug this function was written to fix in the first place came
+		# back through a different door: the note above records *"the attacker got an
+		# arm; the defender got a statue"*, and that was true again for the whole
+		# defending role. The lunge is the taya's 0.5 s commitment and it is the one
+		# thing an attacker has to read to dodge it.
+		#
+		# `observed_lunge_charge()` already returns a 0..1 ratio with -1.0 at rest —
+		# the same contract the other two keep — so this composes without any of the
+		# three learning about the others.
+		var lunge := _character.observed_lunge_charge()
+		if lunge >= 0.0:
+			power = clampf(lunge, 0.0, 1.0)
 	var winding := power >= 0.0 and _character.state == CharacterBase.State.NORMAL
 	if not winding:
 		if _charge_posing:

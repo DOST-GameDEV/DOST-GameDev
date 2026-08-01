@@ -811,10 +811,9 @@ func _step_punch(_delta: float) -> void:
 	if not input_just_pressed("special_ability"):
 		return
 	_punch_cooldown_left = PUNCH_COOLDOWN
-	# The same swing the shove and the lunge broadcast, so a punch is visible on
-	# every machine and not only on the presser's — the reason
-	# `broadcast_visual_action` exists at all.
-	broadcast_visual_action("shove")
+	# Its own clip since 2026-08-01 — the arm, not the body. Broadcast so a punch is
+	# visible on every machine and not only on the presser's.
+	broadcast_visual_action("punch")
 	AudioManager.play_at("bump_swing", global_position)
 	# Host-only: a tag writes a score, and a score may only be created where
 	# `MatchManager.add_score()` is reachable (`Design.md` §8).
@@ -934,7 +933,8 @@ func _cancel_lunge() -> void:
 func _release_lunge(power: float) -> void:
 	_lunge_cooldown_left = LUNGE_COOLDOWN
 	_lunge_active_left = LUNGE_ACTIVE_TIME
-	broadcast_visual_action("shove")
+	# The body-led clip: a dash INTO somebody reads differently from a jab at them.
+	broadcast_visual_action("lunge")
 	AudioManager.play_at("bump_swing", global_position)
 	# ⚠️ A VELOCITY IMPULSE, NOT A TELEPORT. The friction model integrates it down to
 	# ~2.5 m at full power (v²/60), and the intervening frames are what the sweep
