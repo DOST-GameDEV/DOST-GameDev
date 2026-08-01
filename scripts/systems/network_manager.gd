@@ -209,6 +209,28 @@ func playing_peer_count() -> int:
 			count += 1
 	return maxi(1, count)
 
+## ⚠️⚠️ HOW MANY PEOPLE ACTUALLY HOLD A SEAT. NOT `playing_peer_count()`, AND THE
+## DIFFERENCE IS THE POINT. 🧑 2026-08-02: *"spectator shouldnt be counted towards
+## players"* — correct, and `playing_peer_count()` does count one, deliberately.
+##
+## That function answers "who is the rematch vote waiting on", and it carves itself out
+## (`peer_id == get_unique_id()`) plus floors at 1 because SOMEBODY has to be able to
+## end the vote and a spectating host is the only peer that can. `main.gd`'s vote
+## denominator depends on that, `match_setup.gd`'s `_refresh_primary_button` documents
+## it, and `spec_probe` asserts `playing_peer_count() == 1` for exactly the host-
+## spectating case. It is right for its own question and it must not be "fixed".
+##
+## It is the wrong number to SHOW someone. A lobby of one spectating host is 0 players,
+## not 1, and advertising "1/4" to a LAN browser would put a row in somebody's list
+## promising a game that nobody is in. So: no self carve-out, no floor. The two counts
+## are allowed to disagree, and this comment is why.
+func seated_peer_count() -> int:
+	var count := 0
+	for peer_id in connected_peer_ids:
+		if not is_spectator(peer_id):
+			count += 1
+	return count
+
 ## This process's own three picks, read off GameLaunch. Kept here rather than
 ## inlined at both call sites so the host's self-seed and the client's RPC cannot
 ## drift on which preferences count as "my picks".
@@ -291,6 +313,11 @@ func host_game(port: int = DEFAULT_PORT) -> Error:
 	peer_characters.clear()
 	peer_characters[multiplayer.get_unique_id()] = local_picks
 	match_in_progress = false
+	# ⚠️ THE LAN BEACON IS STARTED HERE AND NOWHERE ELSE, because this is the one line
+	# that knows a server now exists. It is fire-and-forget by design: `start_advertising`
+	# swallows its own failure (see `lan_beacon.gd`), so a machine that cannot broadcast
+	# still hosts and is still reachable by a typed address. Nothing below may branch on it.
+	LanBeacon.start_advertising()
 	server_created.emit()
 	return OK
 
@@ -352,6 +379,12 @@ func _rpc_host_closing() -> void:
 	_on_server_disconnected()
 
 func disconnect_network() -> void:
+	# ⚠️ FIRST, AND BEFORE `_is_networked` GOES FALSE. `_step_advertise` stops itself
+	# when `is_host()` stops being true, but that check runs on the next frame — and a
+	# beacon sent in that gap advertises a lobby whose socket is already closed, which
+	# puts a row in somebody's list that cannot be joined. Closing it here makes the
+	# frame-later check a backstop rather than the mechanism.
+	LanBeacon.stop_advertising()
 	if multiplayer.multiplayer_peer:
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = null
