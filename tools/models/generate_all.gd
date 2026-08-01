@@ -125,7 +125,9 @@ func _lata_specs() -> Array:
 			"name": "lata_boyben",
 			"texture": "lata_boyben.png",
 			"radius": 0.1425, "height": 0.385,
-			"cap_v": Vector2(0.070, 0.930), "front_u": 0.22,
+			# 0.95 rather than 0.93: measured, that row is the dark grey lid band
+			# (76/75/74) while 0.93 is still the brown of the label edge.
+			"cap_v": Vector2(0.050, 0.950), "front_u": 0.22,
 			"profile": [
 				Vector2(0.86, 0.000), Vector2(0.97, 0.025), Vector2(1.00, 0.050),
 				Vector2(1.00, 0.905), Vector2(0.97, 0.928), Vector2(1.00, 0.958),
@@ -257,11 +259,25 @@ func _build_lata(spec: Dictionary) -> void:
 	# row from the middle of the wrap, where the rust is. The three labelled cans
 	# keep sampling their own drawn rim bands, because a lid wearing a slice of
 	# the nutrition panel would be worse than a white one.
+	# ⚠️ A CAP SAMPLES ONE POINT, NOT ONE ROW, AND THAT IS WHAT STOPPED THE LIDS
+	# READING AS WHITE. Letting `u` follow the angle sweeps an entire horizontal
+	# LINE of the label radially across the disc — a pinwheel of whatever the
+	# wrap happens to show at that height, which on the pale rows blows out to
+	# flat white under a light hitting a horizontal face square on. 🧑, pointing at
+	# it: *"fill that shit in with somehting why is it just white"*.
+	#
+	# Fixing `u` as well as `v` makes the whole cap one texel, so it renders as a
+	# solid stamped can end in the metal colour the human actually drew on that
+	# can's rim. Measured at these rows: Pasip 114/115/115 grey, Boyben 76/75/74
+	# dark grey, Decades 127/125/125 grey, Latang Kalawang 115/96/90 rust.
+	#
+	# u = 0.5 is the middle of the wrap, deliberately far from the seam at u = 0/1
+	# where a texture's edge filtering can pull in the opposite side of the label.
 	var cap_v: Vector2 = spec["cap_v"]
-	var base_uv := func(_y: float, angle: float) -> Vector2:
-		return Vector2(1.0 - angle / TAU, cap_v.x)
-	var lid_uv := func(_y: float, angle: float) -> Vector2:
-		return Vector2(1.0 - angle / TAU, cap_v.y)
+	var base_uv := func(_y: float, _angle: float) -> Vector2:
+		return Vector2(0.5, cap_v.x)
+	var lid_uv := func(_y: float, _angle: float) -> Vector2:
+		return Vector2(0.5, cap_v.y)
 	# ⚠️ THE CAPS ARE STEPPED, NOT FLAT DISCS — 🧑: *"make sure the can has a top
 	# and bottom bcz the metal can has no top haha"*. A single flat disc spanning
 	# the rim is geometrically a lid, but it lights as one uniform facet, so at any
