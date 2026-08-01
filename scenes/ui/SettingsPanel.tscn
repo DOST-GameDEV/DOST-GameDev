@@ -271,5 +271,14 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
 size_flags_horizontal = 3
-theme_type_variation = &"WoodPrimaryButton"
+theme_type_variation = &"WoodButton"
 text = "◀  BACK"
+
+[node name="ApplyButton" type="Button" parent="Card/Margin/Layout/ButtonRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"WoodPrimaryButton"
+disabled = true
+text = "APPLY CHANGES"

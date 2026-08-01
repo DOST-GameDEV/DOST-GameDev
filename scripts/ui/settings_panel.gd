@@ -21,6 +21,7 @@ const ACTION_LABEL_WIDTH: float = 260.0
 @onready var status_label: Label = %SettingsStatusLabel
 @onready var reset_all_button: Button = %ResetAllButton
 @onready var back_button: Button = %BackButton
+@onready var apply_button: Button = %ApplyButton
 @onready var sensitivity_slider: HSlider = %SensitivitySlider
 @onready var sensitivity_value_label: Label = %SensitivityValueLabel
 @onready var invert_y_check: CheckBox = %InvertYCheck
@@ -42,13 +43,23 @@ func _ready() -> void:
 	_build_rows()
 	reset_all_button.pressed.connect(_on_reset_all_pressed)
 	back_button.pressed.connect(_on_back_pressed)
+	apply_button.pressed.connect(_on_apply_pressed)
+	# ⚠️ THE TRANSACTION OPENS WITH THE PANEL AND IT MUST. Every `SettingsManager` setter
+	# writes `settings.cfg` on its own; `begin_edit()` is the only thing that stops that,
+	# so opening it late by even one signal means whatever the player touched first was
+	# already on disk and is no longer revertible. See § STAGED EDITS in that file.
+	SettingsManager.begin_edit()
 	SettingsManager.binding_changed.connect(_on_binding_changed)
 	# Item 14.
 	sensitivity_slider.value = SettingsManager.mouse_sensitivity
 	sensitivity_value_label.text = "%.1fx" % SettingsManager.mouse_sensitivity
 	invert_y_check.button_pressed = SettingsManager.invert_y
 	sensitivity_slider.value_changed.connect(_on_sensitivity_changed)
-	invert_y_check.toggled.connect(SettingsManager.set_invert_y)
+	# ⚠️ NO LONGER CONNECTED STRAIGHT TO THE SETTER. It has to go through a handler now
+	# so APPLY can be re-evaluated after it; a direct connection is the one change point
+	# on this screen that would silently leave the button disabled with a real edit
+	# pending, because nothing else would notice the toggle happened.
+	invert_y_check.toggled.connect(_on_invert_y_toggled)
 	_init_volume_rows()
 	_build_name_row()
 
@@ -89,6 +100,7 @@ func _build_name_row() -> void:
 func _on_player_name_submitted(value: String) -> void:
 	SettingsManager.set_player_name(value)
 	AudioManager.play("ui_click")
+	_refresh_apply_state()
 	# ⚠️ APPLIED TO THE LIVE CHARACTER TOO, NOT JUST SAVED. This panel is reachable
 	# from the in-match pause menu, and a rename that only took effect on the next
 	# launch would read as the control not working. `player_name` is a replicated
@@ -102,6 +114,11 @@ func _on_player_name_submitted(value: String) -> void:
 func _on_sensitivity_changed(value: float) -> void:
 	SettingsManager.set_mouse_sensitivity(value)
 	sensitivity_value_label.text = "%.1fx" % value
+	_refresh_apply_state()
+
+func _on_invert_y_toggled(value: bool) -> void:
+	SettingsManager.set_invert_y(value)
+	_refresh_apply_state()
 
 ## 4.1 — Master / SFX / Ambience.
 ##
@@ -142,6 +159,7 @@ func _on_volume_changed(value: float, label: Label, setter: Callable) -> void:
 	label.text = _volume_text(value)
 	if setter != Callable(SettingsManager, "set_music_volume"):
 		AudioManager.play("ui_click")
+	_refresh_apply_state()
 
 func _volume_text(value: float) -> String:
 	return "%d%%" % roundi(value * 100.0)
@@ -251,13 +269,84 @@ func _unhandled_input(event: InputEvent) -> void:
 func _on_binding_changed(action: String) -> void:
 	if _action_buttons.has(action):
 		_action_buttons[action].text = SettingsManager.get_binding_display_name(action)
+	_refresh_apply_state()
 
 func _on_reset_all_pressed() -> void:
 	AudioManager.play("ui_click")
 	SettingsManager.reset_all_to_default()
-	status_label.text = "All controls reset to default."
+	# ⚠️ RESET IS NOW A STAGED EDIT LIKE ANY OTHER, and the wording has to say so or the
+	# button lies. It used to write to disk immediately; inside the transaction it does
+	# not, so "All controls reset to default." would promise something that has not
+	# happened until APPLY is pressed.
+	status_label.text = "All controls reset — press APPLY CHANGES to keep it."
+	_refresh_apply_state()
+
+## ---------------------------------------------------------------------------
+## § THE APPLY / DISCARD PAIR. 🧑 2026-08-02: *"add apply box in settings ... reset all
+## back apply changes"*.
+##
+## ⚠️ BACK DISCARDS, AND IT ASKS FIRST ONLY WHEN THERE IS SOMETHING TO LOSE. An APPLY
+## button that does not have a matching discard is a save button wearing the wrong word:
+## the reason to want one is to be able to change your mind, and the only control that
+## can mean "no" here is BACK. `has_unsaved_changes()` gates the prompt so that leaving a
+## panel you only looked at costs nothing.
+##
+## ⚠️ THE CONFIRM IS A SECOND PRESS OF BACK, NOT A DIALOG. This panel is instanced into
+## MainMenu and has no popup layer of its own; a ConfirmationDialog here would be the
+## only modal in the menu and would need its own focus handling on a screen whose
+## REACHABILITY RULE is already fiddly. Arming the button instead — the label changes to
+## say what the next press does — costs one bool and no new nodes.
+##
+## ⚠️ THE GREEN MOVED FROM BACK TO APPLY, AND THAT IS THE THEME'S OWN RULE RATHER THAN
+## A PREFERENCE. 🧑 asked for colour on the apply box; `ui_theme.gd` reserves
+## `WoodPrimaryButton` for *"the one action a screen wants you to take"*, and once this
+## screen has an APPLY that is no longer BACK — leaving is the neutral option and
+## committing is the one the screen is for. So APPLY takes PLAY's green and BACK drops to
+## plain `WoodButton`. RESET ALL keeps QUIT's red. Painting APPLY green while BACK stayed
+## green would have put two primaries in one row, which is the same as having none.
+## ---------------------------------------------------------------------------
+
+## True once BACK has been pressed with unsaved changes pending. Cleared by anything
+## that resolves the question, so an armed BACK cannot survive an APPLY.
+var _back_armed: bool = false
+
+func _on_apply_pressed() -> void:
+	AudioManager.play("ui_click")
+	SettingsManager.commit_edit()
+	# Straight back into a new transaction: the panel is still open, so the next change
+	# the player makes has to be revertible too.
+	SettingsManager.begin_edit()
+	_back_armed = false
+	status_label.text = "Settings saved."
+	_refresh_apply_state()
 
 func _on_back_pressed() -> void:
+	if SettingsManager.has_unsaved_changes() and not _back_armed:
+		_back_armed = true
+		AudioManager.play("ui_error")
+		back_button.text = "◀  DISCARD & GO BACK"
+		status_label.text = "You have unsaved changes. Press BACK again to discard them."
+		_refresh_apply_state()
+		return
 	AudioManager.play("ui_back")
+	# ⚠️ REVERT, NOT JUST CLOSE. Nothing has been written since `begin_edit()`, so the
+	# FILE is already right — but the running process is not: a rebind is live in the
+	# InputMap and a volume is live on the bus. Leaving without this would give a player
+	# who pressed BACK the settings they rejected, until the next restart put the saved
+	# ones back and made it look like the panel had forgotten them.
+	SettingsManager.revert_edit()
+	_back_armed = false
+	back_button.text = "◀  BACK"
 	status_label.text = ""
 	back_pressed.emit()
+
+## APPLY is live only when there is something to apply, and BACK goes back to saying
+## BACK the moment the player un-does whatever armed it.
+func _refresh_apply_state() -> void:
+	if apply_button == null or not is_instance_valid(apply_button):
+		return
+	var dirty := SettingsManager.has_unsaved_changes()
+	apply_button.disabled = not dirty
+	if not dirty and _back_armed:
+		_back_armed = false
+		back_button.text = "◀  BACK"

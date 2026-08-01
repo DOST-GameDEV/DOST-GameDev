@@ -349,7 +349,126 @@ func set_player_name(value: String, persist: bool = true) -> void:
 		_save()
 	player_name_changed.emit(player_name)
 
+## ---------------------------------------------------------------------------
+## § STAGED EDITS — the settings panel's APPLY CHANGES button. 🧑 2026-08-02:
+## *"add apply box in settings ... reset all back apply changes"*.
+##
+## ⚠️⚠️ EVERY SETTER IN THIS FILE ALREADY WROTE TO DISK ON EVERY KEYSTROKE AND SLIDER
+## FRAME, so before this there was nothing for an APPLY button to apply and one would
+## have been a control that does nothing — which this codebase calls a defect in its own
+## comments and is not going to ship on purpose. The transaction is what gives the button
+## something to do.
+##
+## ⚠️ AN EDIT STILL APPLIES LIVE; ONLY THE **WRITE** IS DEFERRED. `_editing` gates
+## `_save()`, not the setters, so a volume slider is still heard while you drag it, a
+## sensitivity change is still felt, and a rebind still takes effect immediately. Staging
+## the apply as well would mean a player tuning audio against silence, and a rebind you
+## cannot test before committing to it. What APPLY buys is the ability to WALK AWAY —
+## which is the actual expectation behind an apply button — not a preview mode.
+##
+## ⚠️ THE SNAPSHOT IS TAKEN FROM LIVE STATE, NOT RE-READ FROM THE FILE. `settings.cfg` is
+## not necessarily what is in memory: `set_ai_difficulty(persist=false)` exists precisely
+## so a client can run the host's tier without saving it, so a revert that reloaded the
+## file would hand that client back its own saved tier mid-match. Snapshot what IS.
+var _editing: bool = false
+var _snapshot: Dictionary = {}
+
+func begin_edit() -> void:
+	if _editing:
+		return
+	_editing = true
+	_snapshot = {
+		"bindings": _current_binding_map(),
+		"mouse_sensitivity": mouse_sensitivity,
+		"invert_y": invert_y,
+		"master_volume": master_volume,
+		"sfx_volume": sfx_volume,
+		"music_volume": music_volume,
+		"ai_difficulty": ai_difficulty,
+		"player_name": player_name,
+	}
+
+func is_editing() -> bool:
+	return _editing
+
+## True once anything in the open edit differs from the snapshot. The panel asks this to
+## decide whether APPLY is worth enabling and whether BACK needs to warn — a "discard
+## your changes?" prompt in front of somebody who changed nothing is its own small bug.
+func has_unsaved_changes() -> bool:
+	if not _editing:
+		return false
+	return (_snapshot.get("bindings", {}) != _current_binding_map()
+		or not is_equal_approx(float(_snapshot.get("mouse_sensitivity", 0.0)), mouse_sensitivity)
+		or bool(_snapshot.get("invert_y", false)) != invert_y
+		or not is_equal_approx(float(_snapshot.get("master_volume", 0.0)), master_volume)
+		or not is_equal_approx(float(_snapshot.get("sfx_volume", 0.0)), sfx_volume)
+		or not is_equal_approx(float(_snapshot.get("music_volume", 0.0)), music_volume)
+		or int(_snapshot.get("ai_difficulty", 0)) != ai_difficulty
+		or String(_snapshot.get("player_name", "")) != player_name)
+
+## Write everything the edit touched and close the transaction.
+func commit_edit() -> void:
+	_editing = false
+	_snapshot.clear()
+	_save()
+
+## Put every value back the way it was when `begin_edit()` ran, re-applying the live
+## effects as it goes, and close the transaction WITHOUT writing. Nothing was written
+## while `_editing` was true, so the file on disk is already correct — this only has to
+## repair the process's own state.
+func revert_edit() -> void:
+	if not _editing:
+		return
+	var snapshot := _snapshot.duplicate(true)
+	# ⚠️ CLEARED BEFORE THE RESTORE, NOT AFTER. The setters below call `_save()`, and
+	# `_save()` is a no-op while `_editing` — so leaving the flag up would make the
+	# revert itself unsaveable, and a later commit from a fresh edit would then be the
+	# first thing to write the reverted values. Closing first makes the restore write
+	# through, which is what puts the file and memory back in agreement.
+	_editing = false
+	_snapshot.clear()
+	# ⚠️ `_replace_key_binding()`, NOT `_set_binding()`. The latter calls `_save()` per
+	# action, which would be fifteen ConfigFile writes for one press of BACK, and it also
+	# runs the conflict check — wrong here for the same reason `reset_action_to_default()`
+	# bypasses it: mid-restore, an action not yet put back may still be sitting on a key
+	# that collides with the one being restored. That collision is the state being
+	# undone, so refusing to undo it is the opposite of the intent. One `_save()` at the
+	# bottom covers the lot.
+	var bindings: Dictionary = snapshot.get("bindings", {})
+	for action in bindings:
+		_replace_key_binding(String(action), int(bindings[action]))
+		binding_changed.emit(String(action))
+	mouse_sensitivity = float(snapshot.get("mouse_sensitivity", mouse_sensitivity))
+	invert_y = bool(snapshot.get("invert_y", invert_y))
+	master_volume = float(snapshot.get("master_volume", master_volume))
+	sfx_volume = float(snapshot.get("sfx_volume", sfx_volume))
+	music_volume = float(snapshot.get("music_volume", music_volume))
+	_apply_volumes()
+	ai_difficulty = int(snapshot.get("ai_difficulty", ai_difficulty))
+	_apply_ai_difficulty()
+	var restored_name := String(snapshot.get("player_name", player_name))
+	if restored_name != player_name:
+		player_name = restored_name
+		player_name_changed.emit(player_name)
+	_save()
+
+## action -> physical keycode, for the snapshot and the dirty check. Uses the same
+## `_first_physical_keycode()` `_save()` writes with, so "changed" here means exactly
+## what "different in the file" would have meant.
+func _current_binding_map() -> Dictionary:
+	var out: Dictionary = {}
+	for action in REBINDABLE_ACTIONS:
+		out[action] = _first_physical_keycode(action)
+	return out
+
 func _save() -> void:
+	# ⚠️ THE ONE LINE THAT MAKES THE WHOLE TRANSACTION WORK. Every setter still calls
+	# `_save()` exactly as it did; inside an edit, that call stops at this return and the
+	# value lives in memory only until `commit_edit()`. Gating here rather than at each
+	# of the eight setters means a setter added later is staged by construction instead
+	# of being the one that quietly writes through.
+	if _editing:
+		return
 	var config := ConfigFile.new()
 	# Load first so we don't clobber other sections/keys some later feature
 	# might add to the same file.
