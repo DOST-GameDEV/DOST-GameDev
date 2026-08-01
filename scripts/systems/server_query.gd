@@ -122,7 +122,32 @@ func _ready() -> void:
 	if pool_ports.is_empty():
 		for port in range(POOL_PORT_FIRST, POOL_PORT_LAST + 1):
 			pool_ports.append(port)
+	_read_pool_override()
 	set_process(true)
+
+## ---------------------------------------------------------------------------
+## § TESTING THE POOL WITHOUT A POOL — `--pool=127.0.0.1`
+##
+## `POOL_ADDRESS` is empty until a VM exists, which means a developer cannot see the
+## server browser work at all without editing a const and remembering to put it back.
+## That is precisely the kind of edit that gets committed by accident, so the override
+## is a command-line argument instead:
+##
+##     godot --path . -- --pool=127.0.0.1
+##
+## Then start some lobbies locally (`tools/server/lobby-pool.ps1 start 2`) and the
+## browser lists them, join codes and all — the whole online path, on one machine, with
+## nobody else online.
+##
+## ⚠️ DELIBERATELY NOT A SETTING. It is not a preference a player should ever have, and
+## a saved value would outlive the test session it was meant for and quietly point a
+## shipped build at somebody's old localhost.
+## ---------------------------------------------------------------------------
+func _read_pool_override() -> void:
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--pool="):
+			pool_address = arg.substr(len("--pool=")).strip_edges()
+			print("ServerQuery: pool address overridden to '%s' for this run." % pool_address)
 
 ## The port a server on `game_port` answers status queries on. One function, used by both
 ## ends, so the two can never disagree about where the conversation happens.
