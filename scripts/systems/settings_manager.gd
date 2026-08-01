@@ -23,6 +23,9 @@ class_name SettingsManagerScript
 ## duplicate hardcoded list of the original keys.
 
 signal binding_changed(action: String)
+## Fires when the player renames themselves, so every screen showing a name can
+## re-read it without polling.
+signal player_name_changed(new_name: String)
 
 const SETTINGS_PATH: String = "user://settings.cfg"
 const SETTINGS_SECTION: String = "input"
@@ -38,17 +41,55 @@ const SETTINGS_SECTION: String = "input"
 ## rebound keys silently gets the defaults back once. Harmless, and cheaper than
 ## a migration for a pre-release build, but it IS a real (one-time) loss of the
 ## player's settings rather than a no-op.
+## ⚠️ `clean_feed` IS IN HERE BECAUSE A KEY NOBODY CAN SEE OR CHANGE IS NOT A CONTROL.
+## It hides the whole HUD while spectating, for the trailer and the demo capture, and it
+## shipped 2026-07-31 as a hardcoded `KEY_H` compared straight off `event.keycode` — no
+## InputMap action, no settings row, no way to rebind it, and invisible to the conflict
+## check that stops two actions sharing a key. Every other control in the game is an
+## action; this one is now too. Default H.
+## ⚠️⚠️ `grab` AND `ready_up` WERE IN THE INPUTMAP AND NOT IN THIS LIST, WHICH MADE THEM
+## UNREBINDABLE GAMEPLAY CONTROLS. Swept 2026-07-31 by comparing `project.godot`'s
+## `[input]` block against this array: every action was present except those two.
+##
+## `grab` is not a convenience key. It is **pick up the tsinelas** and it is **hold for
+## `RESET_CHANNEL_TIME` beside your own lata** — the taya's only answer to a stranded lata
+## (`Design.md` §5.2), i.e. the defence's entire counterplay to the countdown that decides
+## every round. A player who cannot reach `E` could not perform the defence's one verb.
+## `ready_up` starts the round and a player who cannot press it cannot start a match.
+##
+## ⚠️ `grab` ALSO CARRIES A MOUSE BINDING (LMB) and rebinding does not disturb it —
+## `_replace_key_binding()` erases only `InputEventKey` events. Note the LMB half is
+## double-bound with `special_ability`, which is a separate open question on §4.19.
 const REBINDABLE_ACTIONS: Array[String] = [
 	"move_left", "move_right", "move_up", "move_down",
-	"bump", "guard_dash", "special_ability", "jump",
+	"special_ability", "grab", "jump", "sprint",
+	"grab", "ready_up", "clean_feed",
 ]
 
 ## Human-readable labels for the panel — action string -> display text.
+##
+## ⚠️ THE LABELS CHANGED WITH THE 2026-07-30 OVERHAUL AND THE ACTION NAMES DID NOT.
+## `guard_dash` no longer guards — a lata's Guard was removed outright and the slot
+## is Can-Dash / Flick Dash now (`Design.md` §5.3, §6). `bump` is Can-Smash on a lata
+## and Ground Smash on an airborne tsinelas. Renaming the ACTIONS would invalidate
+## every saved `settings.cfg` key and every `input_probe` assertion for a cosmetic
+## gain; the display string is the part a player reads.
 const ACTION_LABELS: Dictionary = {
 	"move_left": "Move Left", "move_right": "Move Right",
 	"move_up": "Move Up", "move_down": "Move Down",
-	"bump": "Bump", "guard_dash": "Guard/Dash",
-	"special_ability": "Special Ability", "jump": "Jump",
+	# ⚠️ `bump` AND `guard_dash` WERE REMOVED FROM BOTH TABLES. Their input actions are
+	# deleted from `project.godot`, and `_replace_key_binding()` calls
+	# `InputMap.action_add_event()` on every rebindable action at boot — which errors
+	# out loudly for an action that does not exist. A stale row here is not cosmetic.
+	"special_ability": "Throw", "jump": "Jump", "sprint": "Sprint",
+	# Named for both jobs, because the second one is the one a defender needs and the
+	# one nobody guesses from the word "grab": it is also the hold that carries a
+	# displaced lata home (`Design.md` §5.2).
+	"grab": "Grab",
+	"ready_up": "Ready Up",
+	# Named for what it DOES to the recording, not for what it hides — the operator
+	# reading this row is looking for the setting that gives them a clean plate.
+	"clean_feed": "Hide HUD (Spectator)",
 }
 
 ## action -> physical_keycode captured from the project's InputMap defaults,
@@ -276,6 +317,38 @@ func reset_all_to_default() -> void:
 	for action in REBINDABLE_ACTIONS:
 		reset_action_to_default(action)
 
+## ---------------------------------------------------------------------------
+## THE PLAYER'S NAME. 🧑 2026-07-31: *"add the option to change name in settings so
+## that P1 is an actual username"*.
+##
+## ⚠️ IT IS SANITISED ON THE WAY IN, NOT ON THE WAY OUT. This string is drawn on a
+## scoreboard, on a 3D nameplate and in toasts, and it arrives over the wire from
+## another peer — so it is trimmed and length-capped ONCE, here, rather than at each
+## of the places that draw it. A name that is empty after trimming falls back to the
+## seat label, which is why nothing downstream needs a null check.
+const PLAYER_NAME_MAX: int = 14
+const DEFAULT_PLAYER_NAME: String = ""
+
+var player_name: String = DEFAULT_PLAYER_NAME
+
+static func sanitise_name(raw: String) -> String:
+	var clean := raw.strip_edges()
+	# One line, one row on a scoreboard: newlines and tabs would break the layout
+	# of a control that has no business re-wrapping.
+	clean = clean.replace("\n", " ").replace("\t", " ").replace("\r", " ")
+	if clean.length() > PLAYER_NAME_MAX:
+		clean = clean.substr(0, PLAYER_NAME_MAX)
+	return clean
+
+func set_player_name(value: String, persist: bool = true) -> void:
+	var clean := sanitise_name(value)
+	if clean == player_name:
+		return
+	player_name = clean
+	if persist:
+		_save()
+	player_name_changed.emit(player_name)
+
 func _save() -> void:
 	var config := ConfigFile.new()
 	# Load first so we don't clobber other sections/keys some later feature
@@ -289,13 +362,14 @@ func _save() -> void:
 	config.set_value(SETTINGS_SECTION_AUDIO, "sfx_volume", sfx_volume)
 	config.set_value(SETTINGS_SECTION_AUDIO, "music_volume", music_volume)
 	config.set_value(SETTINGS_SECTION_MATCH, "ai_difficulty", ai_difficulty)
+	config.set_value(SETTINGS_SECTION_MATCH, "player_name", player_name)
 	var err := config.save(SETTINGS_PATH)
 	if err != OK:
 		push_warning("SettingsManager: failed to save %s (error %d)" % [SETTINGS_PATH, err])
 
 ## Bump this when a DEFAULT binding moves, and add the migration below. Written into
 ## `settings.cfg` so an existing file can be told apart from a fresh one.
-const BINDINGS_VERSION: int = 2
+const BINDINGS_VERSION: int = 3
 const SETTINGS_SECTION_META: String = "meta"
 
 ## ⚠️⚠️ A SAVED BINDING OUTLIVES A DEFAULT, AND THAT IS HOW THE LAST TWO CONTROL BUGS
@@ -314,11 +388,19 @@ const SETTINGS_SECTION_META: String = "meta"
 ##
 ## Deliberately drops ONLY the stale rows and only once. A migration that reset every
 ## binding would throw away rebinds the player made on purpose.
+## ⚠️ v3, 2026-07-30 — SPRINT TOOK SHIFT AND `guard_dash` MOVED TO CTRL. Stamina
+## (`Design.md` §2) needs a sprint key and Shift is the only one a player will reach for.
+## `guard_dash` held Left Shift (physical 4194325) since it shipped, so every
+## `settings.cfg` on disk carries that value — without this row the two actions would
+## BOTH answer Shift on the next launch for everyone who has ever run the game, which is
+## exactly the Space/jump/bump conflict from v2 in a new place. The project file would
+## look correct the whole time.
 const MOVED_BINDINGS: Dictionary = {
 	# action -> the default keycode it used to have. A saved value equal to the old default
 	# is a stale copy of that default, not a choice; anything else is a real rebind and is
 	# left alone.
 	"bump": 32, # Space, now jump's alone
+	"guard_dash": 4194325, # Left Shift, now sprint's
 }
 
 func _migrate_bindings(config: ConfigFile) -> void:
@@ -381,3 +463,5 @@ func _load_and_apply() -> void:
 	# AIController. `persist` false: loading is not a change worth writing back.
 	set_ai_difficulty(int(config.get_value(SETTINGS_SECTION_MATCH, "ai_difficulty",
 		DEFAULT_DIFFICULTY)), false)
+	set_player_name(String(config.get_value(SETTINGS_SECTION_MATCH, "player_name",
+		DEFAULT_PLAYER_NAME)), false)

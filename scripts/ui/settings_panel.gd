@@ -50,6 +50,54 @@ func _ready() -> void:
 	sensitivity_slider.value_changed.connect(_on_sensitivity_changed)
 	invert_y_check.toggled.connect(SettingsManager.set_invert_y)
 	_init_volume_rows()
+	_build_name_row()
+
+## ---------------------------------------------------------------------------
+## THE PLAYER NAME ROW. 🧑 2026-07-31: *"add the option to change name in settings
+## so that P1 is an actual username"*.
+##
+## ⚠️ BUILT IN CODE, AT THE TOP OF THE BINDINGS LIST. `SettingsPanel.tscn` is the UI
+## lane's file and this is a mechanics-and-UX commit; adding the row here keeps the
+## scene theirs to restructure while the control still exists and still works. It is
+## first in the list on purpose — it is the only row that is about WHO you are rather
+## than about how the game reads your hardware.
+##
+## ⚠️ COMMITTED ON `text_submitted` AND ON FOCUS LOSS, NOT ON EVERY KEYSTROKE.
+## `SettingsManager.set_player_name()` writes `settings.cfg`, and saving a config
+## file once per typed character is a real cost for a control the player is holding
+## down backspace in.
+## ---------------------------------------------------------------------------
+## ⚠️ IT BINDS NOW, IT NO LONGER BUILDS — § CHECKLIST 1.9. The row is authored in
+## `SettingsPanel.tscn`; this wires it. A control created at runtime sits outside the
+## focus order the scene defines, which is the half of the REACHABILITY RULE that is
+## easy to miss: it was operable with a mouse and unreachable by keyboard.
+##
+## ⚠️ THE FIELD IS STILL POPULATED FROM `SettingsManager` HERE rather than in the
+## scene, because the saved name is not known until run time — the scene can only
+## state the placeholder.
+func _build_name_row() -> void:
+	var field := get_node_or_null("%PlayerNameField") as LineEdit
+	if field == null:
+		push_error("SettingsPanel: PlayerNameField missing from SettingsPanel.tscn")
+		return
+	field.text = SettingsManager.player_name
+	field.max_length = SettingsManagerScript.PLAYER_NAME_MAX
+	if not field.text_submitted.is_connected(_on_player_name_submitted):
+		field.text_submitted.connect(_on_player_name_submitted)
+		field.focus_exited.connect(func() -> void: _on_player_name_submitted(field.text))
+
+func _on_player_name_submitted(value: String) -> void:
+	SettingsManager.set_player_name(value)
+	AudioManager.play("ui_click")
+	# ⚠️ APPLIED TO THE LIVE CHARACTER TOO, NOT JUST SAVED. This panel is reachable
+	# from the in-match pause menu, and a rename that only took effect on the next
+	# launch would read as the control not working. `player_name` is a replicated
+	# property, so writing it on the seat this peer has authority over is what carries
+	# it to the other three scoreboards.
+	for node in RoundManager.players():
+		var who := node as CharacterBase
+		if who != null and who.is_multiplayer_authority() and not who.is_ai_driven():
+			who.player_name = SettingsManager.player_name
 
 func _on_sensitivity_changed(value: float) -> void:
 	SettingsManager.set_mouse_sensitivity(value)
@@ -98,8 +146,20 @@ func _on_volume_changed(value: float, label: Label, setter: Callable) -> void:
 func _volume_text(value: float) -> String:
 	return "%d%%" % roundi(value * 100.0)
 
+## ⚠️ MUST SKIP `PlayerNameRow`. It is authored as `BindingsList`'s first child
+## (§ CHECKLIST 1.9's own note in `SettingsPanel.tscn`), and this used to
+## `queue_free()` every child indiscriminately before rebuilding the rebind
+## rows — which frees it in the same frame `_build_name_row()` (called later in
+## `_ready()`) still finds it under its unique name and wires it up. The field
+## worked for exactly one frame and then vanished with everything else this
+## loop cleared, which is why it read as "disappeared" rather than as "never
+## built" — 🧑: *"the username change option disappeared from settings"*.
+## `add_child()` below still appends the rebind rows AFTER it, so skipping it
+## here is enough; nothing about the ordering needs restating.
 func _build_rows() -> void:
 	for child in bindings_list.get_children():
+		if child.name == "PlayerNameRow":
+			continue
 		child.queue_free()
 	_action_buttons.clear()
 	for action in SettingsManager.REBINDABLE_ACTIONS:

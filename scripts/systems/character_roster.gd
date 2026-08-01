@@ -157,8 +157,12 @@ const ROSTER: Array[Dictionary] = [
 	{
 		"id": &"kuya_boy",
 		"name": "KUYA BOY",
-		"tagline": "Eldest of seven. He has been the defender since before he could count, and his arm knows it.",
-		"traits": {&"bilis": 2, &"lakas": 5, &"tatag": 4},
+		# ⚠️ 2/5/4 -> 3/5/3, 2026-08-01. It was byte-identical to BEBANG's row, so
+		# two of the twelve were one character wearing two rigs. He is the one who
+		# has actually WORKED the box, so the mobility comes up and the padding
+		# comes off; Bebang keeps the immovability, which is her whole joke.
+		"tagline": "Eldest of seven. He has been the taya since before he could count, and both the arm and the footwork know it.",
+		"traits": {&"bilis": 3, &"lakas": 5, &"tatag": 3},
 		"model": MODEL_DIR + "character-male-b.glb",
 		"material": MATERIAL_DIR + "person_kuya-boy.tres",
 	},
@@ -181,8 +185,10 @@ const ROSTER: Array[Dictionary] = [
 	{
 		"id": &"bebang",
 		"name": "BEBANG",
-		"tagline": "Hits like a jeepney door closing. Do not tease her about it, and do not stand in front of her.",
-		"traits": {&"bilis": 2, &"lakas": 5, &"tatag": 4},
+		# GRIT 4 -> 5. "Do not stand in front of her" is a claim about being
+		# immovable, and 4 left her tied with three other entries on it.
+		"tagline": "Hits like a jeepney door closing, and moves about as easily. Do not tease her about it, and do not stand in front of her.",
+		"traits": {&"bilis": 2, &"lakas": 5, &"tatag": 5},
 		"model": MODEL_DIR + "character-female-c.glb",
 		"material": MATERIAL_DIR + "person_bebang.tres",
 	},
@@ -197,16 +203,22 @@ const ROSTER: Array[Dictionary] = [
 	{
 		"id": &"lola_pacing",
 		"name": "LOLA PACING",
-		"tagline": "Watches from the window most afternoons. On the good ones she comes down to play, and she does not miss.",
-		"traits": {&"bilis": 1, &"lakas": 3, &"tatag": 5},
+		# POWER 3 -> 4. "She does not miss" promised something the meters did not
+		# pay out; there is no accuracy stat in this game, so the sentence cashes
+		# out as the hit landing hard when it lands.
+		"tagline": "Watches from the window most afternoons. On the good ones she comes down to play, and she does not miss twice.",
+		"traits": {&"bilis": 1, &"lakas": 4, &"tatag": 5},
 		"model": MODEL_DIR + "character-female-d.glb",
 		"material": MATERIAL_DIR + "person_lola-pacing.tres",
 	},
 	{
 		"id": &"mang_kanor",
 		"name": "MANG KANOR",
-		"tagline": "Tricycle driver. He knows every corner of this town by its potholes, and he takes them at speed.",
-		"traits": {&"bilis": 4, &"lakas": 3, &"tatag": 3},
+		# ⚠️ 4/3/3 -> 5/3/2, 2026-08-01. It was byte-identical to ATE GIRLIE's row.
+		# "Takes them at speed" is the loudest speed claim in the cast after
+		# JUN-JUN, so it is paid in full and paid for out of GRIT.
+		"tagline": "Tricycle driver. He knows every corner of this town by its potholes and he takes them at speed. Braking was never the strong suit.",
+		"traits": {&"bilis": 5, &"lakas": 3, &"tatag": 2},
 		"model": MODEL_DIR + "character-male-e.glb",
 		"material": MATERIAL_DIR + "person_mang-kanor.tres",
 	},
@@ -248,144 +260,216 @@ const ROSTER: Array[Dictionary] = [
 ## never go near `OFFENSE` #f87020 or `DEFENSE` #0080e8 in hue, because those two
 ## mean "which side is this". Every tint below clears that bar.
 
-## ⚠️ `ability` IS WHAT MAKES A PICK MECHANICAL, NOT JUST COSMETIC (3.3 / B-76).
-## This roster began as appearance only — a rig and a palette — and the kit a Prop
-## carried was still hardcoded per TEAM in `main.gd` (`TSINELAS_ABILITY_TEAM_A` /
-## `_TEAM_B`), so the three Tsinelas throw identities were unreachable by choice
-## and the two spare Can specials were unreachable at all.
+## ⚠️ THE `ability` KEY IS GONE FROM BOTH TABLES — 2026-08-01, 🎨 `build model`,
+## Agent_Prompts.md § 5.7.
 ##
-## Attaching the kit to the SKIN, rather than adding a fourth and fifth picker,
-## is deliberate. A player already picks a Can and a Slipper separately here, and
-## the reason that split exists is the reason a paired "fighter" would not work:
-## a Prop is a lata one round and a tsinelas the next, so its kit has to be
-## re-picked on every role swap. These two lists already have exactly the right
-## shape for that — `main.gd::_prop_ability_for()` asks the one that matches the
-## side being played THIS round and gets the right answer without branching.
+## It used to hold a `res://scripts/abilities/resources/*.tres` path, and the long
+## note that stood here explained how attaching a kit to a SKIN made the character
+## screen's picks mechanical rather than cosmetic. **`scripts/abilities/**` was
+## deleted outright in the HARRYDAKS pivot** (Design.md § 12 — eight verbs nobody
+## asked for), so every one of those paths pointed at a file that no longer
+## exists, and `CharacterRoster.ability_path_at()`, the only reader, had no
+## callers left after `main.gd::_prop_ability_for()` went with it. The key and
+## that function are both removed here rather than left to read as live design.
 ##
-## ⚠️ SIX LOOKS, THREE KITS PER SIDE — two skins share each ability, because
-## three `.tres` exist per side and six entries do not. Entry 0 of each list
-## keeps TODAY'S behaviour (`quick_stand` / the light throw), so a player who
-## never opens the screen is where they always were. The pairings follow the
-## taglines that were already written here rather than being imposed on them:
-## `bakya` is "kahoy, mabigat tumama" and gets Bakya Bash; `sardinas` names the
-## ability Quick Stand is already called after; `pintura` is leftover rusting
-## paint and gets Shatter Trap's hazard patch. **First pass, and a balance
-## surface** — see the Phase 9 fairness log before moving any of them.
+## `ROSTER`'s twelve Persons never carried the key at all — a Person's `ability`
+## slot was emptied on 2026-07-30 when the Tag replaced it (see main.gd's header),
+## so "drop it from all three tables" was already true for one of the three.
+##
+## ⚠️⚠️ §2.8 IS DECIDED AND THE ANSWER IS YES — THE PROP TABS CARRY REAL STATS.
+## **2026-08-01, ⚖️ `build fair`, on direct human instruction**: 🧑 *"also make sure
+## the stats actually apply u can also change the stats around for slippers, cans,
+## characters, be creative with it, try to edit their descirptions too to match the
+## stats"*. The traits below were carried verbatim through the model pass with
+## nothing reading them; they are now tuned, they are read live, and each tagline
+## was rewritten so the sentence and the meters agree.
+##
+## ⚠️ A PROP TRAIT MEANS SOMETHING DIFFERENT FROM A PERSON TRAIT, AND IT HAS TO.
+## A Person walks, shoves and gets stunned, so SPEED/POWER/GRIT map onto it
+## directly. A lata is a target that stands or lies, and a tsinelas is ammunition —
+## neither of them walks. The three meters are re-read per tab, and the rule from
+## the ROSTER header still governs: **the number must be readable off the sentence.**
+##
+##   TSINELAS — you throw it, every round you are an attacker (it is yours,
+##              `Slipper.owner_slot`, `Design.md` §5.2):
+##     SPEED → launch speed. A flatter, faster arc, and less time for the taya to
+##             read it. ⚠️ NARROW ON PURPOSE, 2..4 — see `Slipper.speed_scale()`.
+##     POWER → how hard a body-block hurts the blocker. It is the only thing that
+##             makes blocking cost the taya anything (§2.11).
+##     GRIT  → how quickly it is ready to throw again after a pickup
+##             (`Carrier.THROW_LOCK_TIME`). Retrieval is the game's thesis, so
+##             this is the stat that plays it.
+##
+##   LATA — your can, on the mark during YOUR taya round (`Design.md` §9):
+##     SPEED → how fast you can stand it back up (`Lata.RESET_CHANNEL_TIME`).
+##     POWER → how far it knocks the tsinelas away when it takes a hit, which buys
+##             the taya time by lengthening somebody's retrieval.
+##     GRIT  → how hard it is to knock over at all (the hit window).
+##
+## ⚠️ THE THREE LATA STATS ARE THREE ROUTES TO ONE GOAL AND THAT IS THE DESIGN.
+## A taya wants the can UPRIGHT (it is what passive defence is paid for). GRIT
+## refuses the knockdown, SPEED shortens the recovery, POWER punishes the attempt.
+## A can that did all three would be the correct answer; each of these does one
+## well and pays for it somewhere else.
+##
+## ⚠️ SIX CANS AND SEVEN SLIPPERS BECAME FOUR AND FOUR, because the human drew
+## four of each and these tables now describe real meshes rather than tints. The
+## dropped entries' traits are recorded in § LOG so `build fair` can see the full
+## range that used to exist. THIS RENUMBERS THE INDICES, which cross the wire as
+## `can_index`/`slipper_index` — safe only because every peer runs one build; the
+## old append-only rule still applies to anything added from here on.
 
-## ⚠️ A PROP'S TRAITS ARE READ THE SAME WAY A PERSON'S ARE, and they mean the
-## same three things — but on an object rather than a player, which is where the
-## lore has to do more work. A lata's BILIS is how quickly it can shuffle off its
-## own mark; its TATAG is how well it shrugs off a hit that would send a lighter
-## can rolling. A tsinelas' LAKAS rides on top of its ThrowProfile, so a heavy
-## bakya is heavy twice over and that is intended: the profile decides HOW it
-## flies, the trait decides how much it hurts when it arrives.
+## ⚠️ `model` IS NEW AND IT IS WHAT MAKES THESE FOUR DIFFERENT OBJECTS.
+## Until now a skin was a TINT and nothing else, so all six cans were one mesh in
+## six colours. The human's four drawings are four genuinely different cans — a
+## slim soda can, a squat paint tin, a tuna can and a ribbed bare tin — and the
+## shape is most of what tells them apart at arena distance, so the mesh has to
+## travel with the pick. `lata.gd::apply_skin()` reads this and swaps the mesh.
+##
+## ⚠️ AND `tint` IS WHITE ON EVERY ENTRY, WHICH IS NOT A COP-OUT.
+## These meshes are TEXTURED with the human's own flattened label art, and the
+## toon shader multiplies `albedo_color` INTO the texture rather than replacing
+## it (toon.gdshader's fragment()). `lata.gd::_tint_meshes()` writes this value
+## into `albedo_color` on every surface, so white multiplies to a no-op and the
+## label reads exactly as drawn. A coloured tint here would stain the artwork.
+## The tint machinery is untouched and still works — it is simply not what
+## distinguishes these four any more.
 const CANS: Array[Dictionary] = [
 	{
-		"id": &"sarsi",
-		"name": "SARSILYA",
-		"tagline": "The classic. Red, stubborn, and loud enough that the whole street hears it go over.",
-		"traits": {&"bilis": 3, &"lakas": 3, &"tatag": 3},
-		"ability": "res://scripts/abilities/resources/quick_stand.tres",
-		# The signed-off default — UiTheme.PROP_SARSI_RED, so the stock lata is
-		# entry 0 and an unpicked Prop looks exactly as it always has. Its traits
-		# are the neutral 3/3/3 for the same reason: a player who never opens the
-		# CHARACTER screen must get the balance everything else was tuned against.
-		"tint": Color("d8221c"),
+		"id": &"pasip",
+		"name": "PASIP",
+		# SPEED 5 "back up before you have turned around" · POWER 1 "barely a knock"
+		# · GRIT 1 "goes over if you look at it hard". The glass cannon of cans:
+		# it concedes the knockdown and wins the time back on the reset.
+		"tagline": "Softdrink na hindi Pepsi. Tall, thin and empty, so it goes over if you look at it hard. It is also back up before you have turned around.",
+		"traits": {&"bilis": 5, &"lakas": 1, &"tatag": 1},
+		"model": "res://assets/models/lata_pasip.obj",
+		"tint": Color.WHITE,
 	},
 	{
-		"id": &"gatas",
-		"name": "LATA NG GATAS",
-		"tagline": "Condensed milk, drunk years ago. Small, dense, and far harder to topple than it looks.",
-		"traits": {&"bilis": 2, &"lakas": 3, &"tatag": 5},
-		"ability": "res://scripts/abilities/resources/spin_guard.tres",
-		"tint": Color("2f6ea8"),
-	},
-	{
-		"id": &"sardinas",
-		"name": "LATA NG SARDINAS",
-		"tagline": "Straight off the shelf at Aling Nena's. Flat, wide, and it always lands on its feet.",
-		"traits": {&"bilis": 3, &"lakas": 2, &"tatag": 4},
-		"ability": "res://scripts/abilities/resources/quick_stand.tres",
-		"tint": Color("c8a02a"),
-	},
-	{
-		"id": &"kape",
-		"name": "LATA NG KAPE",
-		"tagline": "Completely empty, and it knows it. Skitters away from anything that comes near.",
-		"traits": {&"bilis": 5, &"lakas": 2, &"tatag": 1},
-		"ability": "res://scripts/abilities/resources/spin_guard.tres",
-		"tint": Color("7a4a24"),
-	},
-	{
-		"id": &"pintura",
-		"name": "LATA NG PINTURA",
-		"tagline": "Leftover paint from the fence, gone to rust. Heavy, mean, and it leaves a mess where it falls.",
+		"id": &"boyben",
+		"name": "BOYBEN PERMAGAD",
+		# SPEED 1 "half set solid, slow to right" · POWER 5 "sends it back across
+		# the street" · GRIT 4 "takes a real hit". The fortress, and the slowest
+		# thing on the mark to stand back up once it does go.
+		"tagline": "Leftover fence paint, half set solid. It takes a real hit to move, it sends the tsinelas back across the street, and righting it is a job.",
 		"traits": {&"bilis": 1, &"lakas": 5, &"tatag": 4},
-		"ability": "res://scripts/abilities/resources/shatter_trap.tres",
-		"tint": Color("4f8c6a"),
+		"model": "res://assets/models/lata_boyben.obj",
+		"tint": Color.WHITE,
 	},
 	{
-		"id": &"biskwit",
-		"name": "LATA NG BISKWIT",
-		"tagline": "Lola's biscuit tin. The biscuits never came back and neither will your throw.",
-		"traits": {&"bilis": 2, &"lakas": 4, &"tatag": 4},
-		"ability": "res://scripts/abilities/resources/shatter_trap.tres",
-		"tint": Color("b0552a"),
+		"id": &"decades",
+		"name": "DECADES TUNA",
+		# SPEED 3 · POWER 2 · GRIT 5 "getting it over is the hard part". The
+		# hardest can in the game to knock down and almost nothing else.
+		"tagline": "Flakes in oil, straight off the shelf at Aling Nena's. Squat, low and stubborn, so getting it over at all is the hard part.",
+		"traits": {&"bilis": 3, &"lakas": 2, &"tatag": 5},
+		"model": "res://assets/models/lata_decades.obj",
+		"tint": Color.WHITE,
+	},
+	{
+		"id": &"metal",
+		"name": "LATANG KALAWANG",
+		# SPEED 2 · POWER 4 "does not go quietly" · GRIT 3. The middleweight:
+		# heavy enough to punish a throw, ordinary at everything else.
+		"tagline": "No label left at all, just ribs and rust. Heavy for its size, and it does not go quietly when it goes.",
+		"traits": {&"bilis": 2, &"lakas": 4, &"tatag": 3},
+		"model": "res://assets/models/lata_metal.obj",
+		"tint": Color.WHITE,
 	},
 ]
 
+## The four slippers, named by the human 2026-08-01: *"the 4 slipeprs are /
+## Tsinelas / Crocs / Bakya / Sike (nike reference)"*. Same `model` and white
+## `tint` contract as CANS above — see that block's header.
 const SLIPPERS: Array[Dictionary] = [
 	{
-		"id": &"goma",
-		"name": "TSINELAS NA GOMA",
-		"tagline": "Plain rubber, one peso of it. Every child on this street has thrown a pair.",
+		"id": &"tsinelas",
+		"name": "TSINELAS",
+		# 3/3/3, and this one stays neutral ON PURPOSE. It is entry 0, which is what
+		# an unpicked slipper and every -1 fallback resolve to (`_trait_value()`), so
+		# making it anything else would silently retune every AI seat and every peer
+		# that never reached the CHARACTER screen.
+		"tagline": "Plain rubber, one peso of it. Every child on this street has thrown a pair, and it does everything well enough.",
 		"traits": {&"bilis": 3, &"lakas": 3, &"tatag": 3},
-		"ability": "res://scripts/abilities/resources/flick_dash.tres",
-		# UiTheme.PROP_FOAM — the signed-off default, so entry 0 is the stock look
-		# and the neutral 3/3/3, same contract as SARSILYA above.
-		"tint": Color("7a5741"),
+		"model": "res://assets/models/tsinelas_classic.obj",
+		"tint": Color.WHITE,
 	},
 	{
-		"id": &"bakya",
-		"name": "BAKYA",
-		"tagline": "Solid wood. It lands like a dropped brick and it moves like one too.",
-		"traits": {&"bilis": 1, &"lakas": 5, &"tatag": 5},
-		"ability": "res://scripts/abilities/resources/bakya_bash.tres",
-		"tint": Color("8a5a2a"),
+		"id": &"crocs",
+		"name": "CROCS",
+		# SPEED 2 "does not fly straight" · POWER 5 "knows about it" · GRIT 2. The
+		# heavy one: slowest through the air, and the only slipper that genuinely
+		# punishes a taya for standing in the lane.
+		"tagline": "Holes in the top, strap at the back. It is heavy and it does not fly straight, but whoever body-blocks it knows all about it.",
+		"traits": {&"bilis": 2, &"lakas": 5, &"tatag": 2},
+		"model": "res://assets/models/tsinelas_crocs.obj",
+		"tint": Color.WHITE,
 	},
 	{
-		"id": &"pula",
-		"name": "TSINELAS NA PULA",
-		"tagline": "Kept for church, borrowed for this. Somebody is going to be in trouble later.",
-		"traits": {&"bilis": 3, &"lakas": 4, &"tatag": 2},
-		"ability": "res://scripts/abilities/resources/bagsak_bomb.tres",
-		"tint": Color("a83a3a"),
+		# ⚠️ THIS SEAT WAS `bakya` AND THE HUMAN REPLACED IT OUTRIGHT, 2026-08-01:
+		# *"replace bakya with this (yes we wont do abkay anymore just outright use
+		# this model) call it Pantulog or something"*. The carved-wood bakya is
+		# gone from the game; a pantulog is the soft house slipper you actually
+		# wear indoors, which is just as Filipino and reads far better in flight.
+		"id": &"pantulog",
+		"name": "PANTULOG",
+		# SPEED 3 · POWER 1 "no weight behind it" · GRIT 5 "back in your hand
+		# before the taya has turned around". The retrieval slipper: it hits like
+		# nothing and it is ready again fastest, which is the trade the whole game
+		# is about (`Design.md` §0 — the tension is the retrieval, not the throw).
+		# ⚠️ Was 1/5/5, carried off the deleted `bakya` seat and never tuned; a
+		# soft house slipper reading POWER 5 was the clearest case on the board of
+		# a meter contradicting its own sentence.
+		"tagline": "Lola's house slipper, worn soft. There is no weight behind it at all, but it is back in your hand before the taya has turned around.",
+		"traits": {&"bilis": 3, &"lakas": 1, &"tatag": 5},
+		"model": "res://assets/models/tsinelas_pantulog.obj",
+		"tint": Color.WHITE,
 	},
 	{
-		"id": &"asul",
-		"name": "TSINELAS NA ASUL",
-		"tagline": "Bleached pale by ten summers on the windowsill. Still nobody else is allowed to touch it.",
-		"traits": {&"bilis": 4, &"lakas": 3, &"tatag": 3},
-		"ability": "res://scripts/abilities/resources/bakya_bash.tres",
-		"tint": Color("3a6a8a"),
-	},
-	{
-		"id": &"dilaw",
-		"name": "TSINELAS NA DILAW",
-		"tagline": "So bright you can find it from across the plaza, which is the entire point of owning it.",
+		# ⚠️ DISPLAY NAME SHORTENED "SIKE" → "IKE", 2026-08-01, ON DIRECT HUMAN
+		# INSTRUCTION: *"sike only says IKE so js change the name to ike on
+		# everything"*. The model carries the real Nike wordmark as geometry
+		# (Art_Direction.md §4b — the N could not be swapped for an S without
+		# editing the mesh, which is out of scope), and in play only "IKE" reads
+		# legibly off it. `id` stays `&"sike"` — every asset path, the roster key
+		# and every internal reference are unaffected; only the string a player
+		# sees changes. Out of row: `character_roster.gd`'s SLIPPERS table is
+		# 🎨 `build model`'s per §3.
+		"id": &"sike",
+		"name": "IKE",
+		# SPEED 4 "quickest thing off a hand" · POWER 2 · GRIT 3. The flat, fast
+		# arc: least reaction time for the taya, least consequence if it is read.
+		"tagline": "Definitely not the real brand. Light, loud, and the quickest thing off a hand on this street.",
 		"traits": {&"bilis": 4, &"lakas": 2, &"tatag": 3},
-		"ability": "res://scripts/abilities/resources/bagsak_bomb.tres",
-		"tint": Color("c9a52a"),
-	},
-	{
-		"id": &"luma",
-		"name": "TSINELAS NA LUMA",
-		"tagline": "The sole is worn through to nothing. Weighs almost as little, and flies like it.",
-		"traits": {&"bilis": 5, &"lakas": 1, &"tatag": 2},
-		"ability": "res://scripts/abilities/resources/flick_dash.tres",
-		"tint": Color("5c5248"),
+		"model": "res://assets/models/tsinelas_sike.obj",
+		"tint": Color.WHITE,
 	},
 ]
+
+## ⚠️ MAX POWER, FOR THE TSINELAS DESCRIPTION ON THE CHARACTER SCREEN. Human
+## instruction: *"display the max power in the custom slipper description UI."*
+##
+## Read off the skin's own `ThrowProfile.launch_speed` rather than stored as a second
+## number here, which is the whole point: the two lists already disagree about nothing
+## because there is only ever one place a slipper's launch speed lives. A hand-copied
+## "power: 4" beside it would be true on the day it was typed.
+##
+## Returned in metres/second, so the screen can present it however it likes.
+## -1.0 only for the -1 "no pick" sentinel.
+##
+## ⚠️ IT IS THE SAME NUMBER FOR ALL FOUR SLIPPERS AND THAT IS NOT A BUG.
+## Per-class `ThrowProfile`s are deleted (Design.md § 12 — "every slipper flies
+## the same way now"), so there is exactly one launch speed in the game and this
+## reports it. It used to gate on the entry's `ability` path first and return
+## -1.0 when there was none; with `ability` dropped (§ 5.7) that gate would have
+## returned -1.0 for EVERY slipper and silently blanked the MAX POWER row on the
+## character screen — a dead row on a live control, which is the second half of
+## THE REACHABILITY RULE. Removed rather than left to rot.
+static func slipper_max_power(index: int) -> float:
+	if index < 0 or index >= SLIPPERS.size():
+		return -1.0
+	return Slipper.LAUNCH_SPEED
 
 ## The three tabs, in the order the screen shows them. A list rather than three
 ## hardcoded branches so `character_select.gd` cycles tabs the same way it cycles
@@ -398,6 +482,34 @@ const CATEGORIES: Array[Dictionary] = [
 	{"id": &"can",    "label": "LATA",     "slot": &"can",       "entries": CANS},
 	{"id": &"slipper","label": "TSINELAS", "slot": &"slipper",   "entries": SLIPPERS},
 ]
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ ALL THREE TABS STAY, AND THE TWO PROP TABS NOW DRIVE SOMETHING AGAIN.
+## 🧑 2026-07-31: *"make slipper can and human still selectable in char select"*.
+##
+## They were nearly lost with the prop rewrite, and the reason is worth recording so
+## it is not re-derived: these tabs used to pick which skin the PLAYER-DRIVEN lata
+## and tsinelas units wore, and those units no longer exist. For one commit the picks
+## therefore read nothing — **a tab that picks something nothing reads is worse than
+## no tab**, because it costs a player real time and teaches them the choice matters.
+##
+## They are wired to the real props instead: `Lata.apply_skin()` and
+## `Slipper.apply_skin()` take the `tint` from these tables, and `main.gd` pushes the
+## host's pick to every peer at each round start so all four machines see one lata.
+##
+## ⚠️ THE "SOFT STATS" QUESTION IS ANSWERED — ALL THREE TABS REACH GAMEPLAY.
+## §2.8, closed 2026-08-01 by ⚖️ `build fair` on direct human instruction. Every
+## entry here carries `bilis` / `lakas` / `tatag` at ±5–7% per point on 1..5; the
+## Person ones were already read live by `character_base.gd`, and the LATA and
+## TSINELAS ones are now read by `lata.gd` and `slipper.gd`. See the CANS header
+## for what each meter means on a prop and why it is not the same thing it means
+## on a Person. `tools/trait_probe.tscn` asserts that all nine reach the game.
+##
+## ⚠️ THE `ability` FIELD ON EVERY ENTRY IS NOW INERT. `scripts/abilities/**` is
+## deleted. The keys are left in place rather than stripped out of thirty-odd
+## dictionary literals in a mechanics commit; whoever re-authors this table for the
+## new models should drop them.
+## ---------------------------------------------------------------------------
 
 static func category(index: int) -> Dictionary:
 	return CATEGORIES[posmod(index, CATEGORIES.size())]
@@ -449,22 +561,13 @@ static func name_at(index: int) -> String:
 	return String(entry["name"]) if entry.has("name") else "?"
 
 
-## The ability `.tres` a Prop carries THIS round, given the two skin indices its
-## player picked and which side the round put it on. Returns "" when the pick is
-## unknown — index -1 is the "no pick" sentinel `character_visual.gd` already
-## uses for an AI slot or a peer on an older build — and `main.gd` falls back to
-## its own defaults for that. Never assume a pick exists.
-##
-## Indices, not ids, because that is what crosses the wire: `CharacterBase`
-## replicates `can_index`/`slipper_index` as ints, so this is answerable on every
-## peer from what the spawn already carried. See the ROSTER header's note on
-## append-only ordering — the same contract applies to both lists below.
-static func ability_path_at(can_index: int, slipper_index: int, is_can: bool) -> String:
-	var list: Array[Dictionary] = CANS if is_can else SLIPPERS
-	var index: int = can_index if is_can else slipper_index
-	if index < 0 or index >= list.size():
-		return ""
-	return String(list[index].get("ability", ""))
+## ⚠️ `ability_path_at()` WAS DELETED HERE — 2026-08-01, § 5.7. It returned the
+## `.tres` a Prop's skin carried for the round. `scripts/abilities/**` is deleted,
+## so every path it could return pointed at a missing file, and its only caller
+## (`main.gd::_prop_ability_for()`) was itself deleted in the pivot — main.gd's
+## own line 1595 records that. Recorded rather than silently dropped, because a
+## lookup that still compiles is exactly the kind of thing a later lane restores a
+## caller for.
 
 ## ---------------------------------------------------------------------------
 ## TRAIT LOOKUP
@@ -489,13 +592,38 @@ static func traits_in(entries: Array, index: int) -> Dictionary:
 static func person_trait(index: int, key: StringName) -> int:
 	return _trait_value(traits_in(ROSTER, index), key)
 
-## One trait's points for a Prop pick. `is_can` chooses which of the player's two
-## Prop skins is being asked about — a Prop is a lata one round and a tsinelas the
-## next, so the answer genuinely changes between rounds and must never be cached.
+## One trait's points for a LATA pick. `index` is `Lata.skin_index`, which is -1
+## until a pick is pushed — and -1 resolving to neutral is the contract, not a
+## bug: an unpicked can must play exactly like the balance everything else was
+## measured against.
+static func can_trait(index: int, key: StringName) -> int:
+	return _trait_value(traits_in(CANS, index), key)
+
+## One trait's points for a TSINELAS pick. `index` is `Slipper.skin_index`.
+static func slipper_trait(index: int, key: StringName) -> int:
+	return _trait_value(traits_in(SLIPPERS, index), key)
+
+## ⚠️ KEPT, AND NOW A THIN WRAPPER RATHER THAN A SECOND IMPLEMENTATION. Its
+## `is_can` argument dates from the deleted design in which ONE player unit was a
+## lata one round and a tsinelas the next, so a single call site had to ask about
+## both. The props are props now and each one knows its own skin, so the two
+## lookups above are what the game actually calls; this stays because it is the
+## documented API and routing it through them is what keeps one conversion.
 static func prop_trait(can_index: int, slipper_index: int, is_can: bool, key: StringName) -> int:
-	var entries: Array[Dictionary] = CANS if is_can else SLIPPERS
-	var index: int = can_index if is_can else slipper_index
-	return _trait_value(traits_in(entries, index), key)
+	return can_trait(can_index, key) if is_can else slipper_trait(slipper_index, key)
+
+## ⚠️⚠️ THE ONE CONVERSION FROM POINTS TO A MULTIPLIER, FOR ALL THREE TABS.
+## `character_base.gd`'s `trait_speed_scale()` / `trait_power_scale()` /
+## `trait_grit_scale()` route through this, and so do `slipper.gd`'s and
+## `lata.gd`'s. Three points below neutral and three above, times a per-point
+## constant the CALLER owns — because a point of SPEED is worth 5% and a point of
+## POWER is worth 7%, and which constant applies is a property of the stat, not of
+## this function.
+##
+## ⚠️ NEUTRAL IS EXACTLY 1.0 BY CONSTRUCTION. That is what makes "no pick",
+## "an AI seat", "a peer on an older build" and "entry 0" all play the same game.
+static func trait_scale(points: int, per_point: float) -> float:
+	return 1.0 + float(clampi(points, TRAIT_MIN, TRAIT_MAX) - TRAIT_NEUTRAL) * per_point
 
 static func _trait_value(traits: Dictionary, key: StringName) -> int:
 	if traits.is_empty() or not traits.has(key):

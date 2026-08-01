@@ -43,27 +43,35 @@ func _ready() -> void:
 		get_tree().quit(1)
 		return
 
-	for case in CASES:
-		await _shoot(String(case[0]), bool(case[1]), float(case[2]), bool(case[3]))
+	# ⚠️ THE FOUR "REASON" CASES ARE GONE. `CASES` drove the card through TAGGED /
+	# DENTED / LATA_DOWN / TIME — four win conditions, none of which exists: a round is
+	# 90 s of scoring and ends on the clock, every time (`Design.md` §12). The card
+	# itself already says so (`_show_reason()` prints the round's headline stat now), so
+	# the only thing left worth capturing is the ROTATION, once per boundary.
+	for next_round in [2, 3, 4]:
+		await _shoot(next_round)
 	await _shoot_match_result()
 	get_tree().quit(0)
 
-func _shoot(tag: String, can_team_won: bool, time_left: float, option_a: bool) -> void:
-	RoundManager.time_left = time_left
-	GameLaunch.game_mode = GameLaunch.GameMode.OPTION_A if option_a \
-		else GameLaunch.GameMode.OPTION_B
+## ⚠️ THE SIGNAL TAKES TWO ARGUMENTS NOW, NOT THREE. This emitted
+## `(2, true, can_team_won)` — the 2v2 shape — and every listener rejected it at run
+## time with "Method expected 2 argument(s), but called with 3", so nothing this tool
+## captured of the card was real. It is `(next_round, next_defender_slot)`.
+func _shoot(next_round: int) -> void:
+	RoundManager.time_left = 0.0
+	var next_defender: int = MatchManager.defender_slot_for(next_round)
+	MatchManager.round_number = next_round - 1
+	MatchManager.defender_slot = MatchManager.defender_slot_for(next_round - 1)
 	# Through the signal the card is connected to, not by calling its handler — same rule
 	# every other shot tool in this directory follows.
-	MatchManager.round_intermission_started.emit(2, true, can_team_won)
+	MatchManager.round_intermission_started.emit(next_round, next_defender)
 	await get_tree().process_frame
 	await get_tree().process_frame
 	await RenderingServer.frame_post_draw
-	var label: Label = _card.reason_label
-	var ok := label.text.to_lower().replace(" ", "_") == tag
-	print("[%s] resolved=%-10s colour=%s  %s" % [tag, label.text,
-		label.get_theme_color("font_color").to_html(false), "ok" if ok else "** MISMATCH **"])
+	print("[round %d] reason=%s | result=%s" % [next_round,
+		_card.reason_label.text, _card.result_label.text])
 	get_viewport().get_texture().get_image().save_png(
-		"%sintermission_%s.png" % [_out, tag])
+		"%sintermission_r%d.png" % [_out, next_round])
 
 ## The match-end screen, which R-29 also touches (REMATCH takes focus) and B-143 restyled.
 func _shoot_match_result() -> void:
@@ -72,15 +80,36 @@ func _shoot_match_result() -> void:
 	if result == null:
 		print("FAIL: no MatchResult in Main.tscn")
 		return
-	MatchManager.team_a_wins = 3
-	MatchManager.team_b_wins = 1
-	MatchManager.match_won.emit(0)
-	await get_tree().process_frame
-	await get_tree().process_frame
-	await RenderingServer.frame_post_draw
-	print("[match_result] focus=%s  rematch_visible=%s" % [
-		str(result.get_viewport().gui_get_focus_owner()), result.rematch_button.visible])
-	get_viewport().get_texture().get_image().save_png("%smatch_result.png" % _out)
+	# ⚠️ THIS SET `team_a_wins` / `team_b_wins` AND THREW ON EVERY RUN. Neither exists
+	# since the pivot (`Design.md` §12) — the same stale-2v2-property defect that was
+	# crashing `main.gd::_try_late_join` on every join. §2.10 warned that every probe in
+	# `tools/` asserts deleted mechanics; this is one of them, and it is in this lane's
+	# own row so it is fixed rather than filed.
+	#
+	# ⚠️ BOTH OUTCOMES ARE RENDERED, and the draw is the reason this function was worth
+	# repairing rather than deleting. § CHECKLIST 1.3 asks for `winning_slot == -1` to be
+	# a first-class result; a screenshot of a clear win says nothing about whether the
+	# draw path draws anything sensible.
+	for shot in [{"name": "win", "scores": [820, 610, 450, 300], "winner": 0},
+			{"name": "draw", "scores": [700, 700, 450, 300], "winner": -1}]:
+		for slot in range(MatchManagerScript.PLAYER_COUNT):
+			MatchManager.scores[slot] = int(shot["scores"][slot])
+		MatchManager.match_won.emit(int(shot["winner"]))
+		# ⚠️ UNPAUSE BEFORE THE AWAITS, NOT AFTER. `MatchResult._on_match_won()` pauses
+		# the tree on its single-player branch, and this probe is not
+		# `PROCESS_MODE_ALWAYS` — so an `await process_frame` placed after the emit and
+		# before this line never resumes. That is exactly how the first version of this
+		# loop hung the whole capture run past its timeout.
+		get_tree().paused = false
+		await get_tree().process_frame
+		await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		print("[match_result %s] headline=%s  focus=%s" % [shot["name"],
+			result.message_label.text,
+			str(result.get_viewport().gui_get_focus_owner())])
+		get_viewport().get_texture().get_image().save_png(
+			"%smatch_result_%s.png" % [_out, shot["name"]])
+		get_tree().paused = false
 	# The probe pauses the tree via MatchResult's own single-player branch; clear it so the
 	# quit below is not waiting on a frozen tree.
 	get_tree().paused = false

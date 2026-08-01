@@ -9,12 +9,10 @@ class_name GameLaunchScript
 ## `--host` / `--join=<ip>` command-line-args flow (still handy for
 ## Debug > Run Multiple Instances) if nothing was set here.
 
-enum GameMode {
-	OPTION_B, ## Capture-the-base + Downed/Seal.
-	OPTION_A, ## Stock/Health (dents) — 3 dents on a Can ends the round for the
-	          ## Slippers (both Cans must be fully dented). Session 7: both modes
-	          ## are now real, see round_manager.gd / hitbox.gd.
-}
+## ⚠️ `enum GameMode` AND `var game_mode` WERE DELETED HERE. 2026-07-31, 📋 `build rules`
+## §8.2 — the game shipped two win-condition sets and let the host pick between them.
+## There is now one ruleset (the circle countdown) and therefore nothing to select.
+## `Design.md` §7.2 records what Option A was and why it went.
 
 ## Checklist 3.5 — THE MAP REGISTRY, and the single place a map is named.
 ##
@@ -96,6 +94,12 @@ var selected_character: StringName = &"berto"
 ## Roster index for `selected_character`, or 0 if the id is unknown — which is
 ## what a preference saved by a newer build looks like to an older one. Falls
 ## back to the signed-off Person rather than to nothing.
+## The name this peer plays under, straight from Settings. Exposed here rather than
+## read from `SettingsManager` at each call site so the lobby, the spawn path and the
+## HUD all take it from the same place a roster pick comes from.
+func player_name() -> String:
+	return SettingsManager.player_name
+
 func character_index() -> int:
 	var index := CharacterRoster.index_of(selected_character)
 	return index if index >= 0 else 0
@@ -116,7 +120,6 @@ func slipper_index() -> int:
 
 var pending_action: String = "" ## "", "host", "join", or "local"
 var pending_join_address: String = ""
-var game_mode: GameMode = GameMode.OPTION_B
 ## Q-1/B-62: set by main.gd right before bouncing back to MainMenu.tscn after
 ## a network teardown the player didn't initiate (host quit, connection
 ## failed), so main_menu.gd can explain why they're back here instead of a
@@ -155,7 +158,48 @@ var seat_tokens: Dictionary = {}
 
 ## Single Player only: which seat the human takes. Networked seating goes through
 ## `seat_tokens` above, which has no meaning without a NetworkManager session.
-var solo_seat: int = 0
+##
+## ⚠️⚠️ DEFAULTS TO 1, NOT 0, AND THAT IS THE WHOLE OF "SINGLE PLAYER ALWAYS
+## STARTS YOU AS TAYA". 🧑 2026-08-01: *"SINGLE PLAYER ALWAYS STARTS YOU AS TAYA
+## no matter which player number is chosen."*
+##
+## ⚠️ NOTHING WAS BROKEN, WHICH IS WHY THIS WAS WORTH MEASURING BEFORE CHANGING.
+## `tools/ui/solo_seat_probe.tscn` presses all four lobby rows through their real
+## `pressed` signal and every one of them stores its seat; `fpp_carry_probe
+## --seat=N` then confirms 0..3 really do drive P1..P4, with only P1 defending.
+## The trap is that the two correct halves compose badly: this defaulted to 0,
+## and `MatchManager.defender_slot_for(1)` is `(1 - 1) % 4` = **slot 0**, so the
+## default seat is by construction the one that defends first. A player who never
+## noticed the seat board — and nothing made them — opened every single match as
+## the taya and concluded the choice did nothing.
+##
+## ⚠️ THE ROTATION IS NOT RE-BASED, DELIBERATELY. The obvious alternative is to
+## offset `defender_slot_for()` by the human's seat, and it is the wrong trade:
+## that function being a PURE function of the round number is the entire fairness
+## argument (`Design.md` §1 — "everyone defends exactly once, clockwise" is true
+## by construction), it is shared with multiplayer where four humans hold four
+## seats and there is no "the human" to re-base on, and it is `build fair`'s
+## number besides. Moving a Single-Player-only default costs none of that: every
+## seat is still pickable, everyone still defends exactly once, and the player now
+## opens as an ATTACKER — which is the role the tutorial teaches first and the one
+## with something to do in the opening seconds.
+var solo_seat: int = 1
+
+## ⚠️ SEAT -1 IS THE SPECTATOR SEAT, AND IT IS A SEAT RATHER THAN A MODE ON PURPOSE.
+## `Design.md` §9.
+##
+## Everything downstream of seating already handles "this peer holds no seat": an
+## unclaimed slot is filled with a negative-sentinel AI by
+## `main.gd::_fill_empty_slots_with_placeholders`, which has existed since before
+## spectating did. So a spectator is not a new branch through the spawn path — it is the
+## ABSENCE of one, plus a camera. That is why this is one bool and four guards rather
+## than a mode with its own flow.
+##
+## A PREFERENCE, not a one-shot handoff, so it is NOT cleared by `reset()` — same
+## lifetime and same reasoning as `selected_map` and the three character picks. A player
+## who spectated one match and wants to spectate the next should not have to say so
+## again; the setup screen is where they change their mind.
+var spectator: bool = false
 
 ## Cleared when a NEW session is being set up, not by `reset()` — `main.gd` calls
 ## `reset()` inside its own `_ready()`, after reading `pending_action` but BEFORE

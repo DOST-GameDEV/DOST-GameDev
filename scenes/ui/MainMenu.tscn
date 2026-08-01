@@ -11,6 +11,7 @@
 [ext_resource type="Texture2D" path="res://assets/ui/main-menu/MENU BACKDROP.png" id="9"]
 [ext_resource type="Texture2D" path="res://assets/ui/main-menu/TUTORIAL BUTTON.png" id="10"]
 [ext_resource type="PackedScene" path="res://scenes/ui/Tutorial.tscn" id="11"]
+[ext_resource type="PackedScene" path="res://scenes/ui/CreditsPanel.tscn" id="12"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_bg"]
 shader = ExtResource("3")
@@ -64,9 +65,11 @@ offset_left = 92.0
 offset_top = 303.0
 offset_right = 996.0
 offset_bottom = 335.0
-theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 0.75)
+theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 1)
+theme_override_colors/font_outline_color = Color(0.078, 0.071, 0.063, 1)
+theme_override_constants/outline_size = 8
 theme_override_font_sizes/font_size = 24
-text = "2v2 ARENA BRAWLER — CANS VS TSINELAS"
+text = "FREE FOR ALL · 1v1v1v1 · ONE LATA, EVERY PLAYER FOR THEMSELVES"
 
 [node name="StartButton" parent="." instance=ExtResource("4")]
 unique_name_in_owner = true
@@ -134,10 +137,43 @@ pole_distance = 315.0
 text_indent = 318.0
 tip_padding = 209.0
 
+; ⚠️ § CHECKLIST 1.11 — LICENCE COMPLIANCE, NOT POLISH. Three CC-BY-4.0 models
+; ship (CROCS, PANTULOG, IKE — Art_Direction.md §4b) and the one thing their
+; licence requires is that the author be reachable from somewhere the game
+; actually ships. Bottom-right corner, out of the pennant column entirely,
+; because there is no fifth pennant artwork and this button is not trying to
+; look like one — see credits_panel.gd's own header for the rest of the
+; reasoning.
+; ⚠️ offset_bottom -40 CLIPPED IN REAL FULLSCREEN, 🧑 2026-08-01: *"credits not
+; seen much in full screen raise it a bit"*. Same class of bug MatchSetup.tscn
+; already documents on its own BackButton — a control this close to the true
+; bottom edge is inside the OS taskbar/safe-area strip on a real monitor even
+; though it previews fine in the editor's own viewport. Matched to that fix's
+; clearance (96px) rather than picked by eye.
+[node name="CreditsButton" type="Button" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -246.0
+offset_top = -152.0
+offset_right = -40.0
+offset_bottom = -96.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_type_variation = &"WoodButton"
+text = "CREDITS"
+
 [node name="SettingsPanel" parent="." instance=ExtResource("2")]
 unique_name_in_owner = true
 visible = false
 
 [node name="TutorialPanel" parent="." instance=ExtResource("11")]
+unique_name_in_owner = true
+visible = false
+
+[node name="CreditsPanel" parent="." instance=ExtResource("12")]
 unique_name_in_owner = true
 visible = false

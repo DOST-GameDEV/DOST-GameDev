@@ -93,6 +93,57 @@ const DOWNED_TILT_TIME: float = 0.28
 const WALK_SPEED_THRESHOLD: float = 0.4
 const RUN_SPEED_THRESHOLD: float = 7.5
 
+## ⚠️⚠️ EVERY CHARACTER THIS PEER DOES NOT SIMULATE HAS NO `velocity` AND NO
+## `is_on_floor()`, AND THESE THREE CONSTANTS ARE THE ANSWER. Measured on two real
+## peers 2026-08-01 (`tools/ui/net_twopeer_probe.tscn`), reported by a human as
+## *"some of them were just stuck in jump position"*.
+##
+## `character_base.gd::_physics_process` returns at its authority gate before
+## `_move_and_confine()` — which is the only caller of `move_and_slide()`. So on any
+## peer that is not the authority for a body:
+##
+##   * `is_on_floor()` is never updated and reads `false` FOREVER, and
+##   * `velocity` is never written and is not in `CharacterBase.tscn`'s replication
+##     config (`position`, `rotation`, `state`, `character_index`, `is_defender`,
+##     `player_slot`, `player_name` — no `velocity`), so it reads ZERO forever.
+##
+## `_play_locomotion()` read both directly, so a remote unit took the airborne branch
+## on every frame with `velocity.y == 0.0` and played `fall` for the entire match —
+## and, because its horizontal speed was also always zero, could never reach `walk` or
+## `sprint` either. In a four-player match that is THREE OF FOUR characters on every
+## screen, on every peer, including every frame the trailer is filmed in. It is
+## invisible in Single Player, where the host simulates all four.
+##
+## The replicated `position` is the one motion fact a non-authority peer genuinely has,
+## so locomotion for those units is derived from it — no new state, no new input and
+## nothing added to the replication config, which is the rule this file already sets
+## for itself in `_play_locomotion()`.
+##
+## Seconds for the smoothed observation to converge. Replicated position arrives on the
+## NETWORK tick, not the render tick, so a raw per-frame delta is zero on most frames
+## and spikes on the few that carry an update — unsmoothed, the animation flaps between
+## `walk` and `idle` at the replication rate instead of tracking the movement.
+const OBSERVED_SMOOTHING: float = 0.12
+## Vertical speed above which an observed unit counts as airborne. Comfortably above
+## the noise of walking over a kerb and far below a real jump, which leaves the ground
+## at `JUMP_VELOCITY` 5.8 and is pulled down at `GRAVITY` 20.
+const OBSERVED_AIRBORNE_SPEED: float = 1.8
+## ⚠️ A LATCH, NOT A TEST. Vertical speed passes through zero at the apex of every
+## jump, so a bare threshold drops the unit back to `idle` for a frame or two at the
+## top of its own arc — the one moment the pose is most visible.
+const OBSERVED_AIRBORNE_HOLD: float = 0.18
+## ⚠️ TELEPORTS ARE NOT MOTION, AND THIS GAME TELEPORTS CONSTANTLY. The tag penalty
+## drops the attacker in the Safe Zone (`TAG_STUN_TIME`, Design.md §6), the round reset
+## returns all four to spawn, and a late joiner is placed outright — the two-peer run
+## on 2026-08-01 took SIX tags in a single 90 s round. Observed from position alone
+## each of those is one frame of enormous displacement, which would otherwise smear a
+## bogus sprint-and-airborne reading across the following `OBSERVED_SMOOTHING`. Above
+## this, the sample is discarded and the observation re-seeded at the new position.
+## Chosen well clear of anything the rules can produce: sprint is 6.90 m/s
+## (`SPEED` 4.6 × `SPRINT_SCALE` 1.50), a shove opens at 7.75 and `MAX_FALL_SPEED`
+## bounds the rest.
+const OBSERVED_TELEPORT_SPEED: float = 30.0
+
 ## One-shot clips per action, in preference order — the first one the model
 ## actually has wins. Kenney's roster ships all 32 for the Persons; a Prop has no
 ## AnimationPlayer at all and `play_action` no-ops there.
@@ -100,8 +151,11 @@ const ACTION_CLIPS: Dictionary = {
 	# The Person's Tag/Throw. `pick-up` is the grab read the brief asked for;
 	# the holding-*-shoot pair are the throw follow-through.
 	"throw": ["holding-right-shoot", "pick-up", "interact-right"] as Array[String],
-	# Bump — a shove, so a melee swing rather than a throw.
-	"bump": ["attack-melee-right", "attack-kick-right", "interact-right"] as Array[String],
+	# The Attacker's shove — a two-handed push, so a melee swing rather than a
+	# throw. ⚠️ RENAMED FROM `"bump"` 2026-07-31: the bump meter it was built for is
+	# deleted, and a clip key naming a mechanic that no longer exists is how the
+	# next reader concludes the mechanic still does.
+	"shove": ["attack-melee-right", "attack-kick-right", "interact-right"] as Array[String],
 	# 7.7 — the ready-up press, so everyone ELSE can see who has readied without
 	# looking at a HUD. `emote-yes` is literally a thumbs-up on this rig; it was
 	# one of the 24 clips shipping unused.
@@ -109,6 +163,15 @@ const ACTION_CLIPS: Dictionary = {
 	# Task 1 — reaching down for a loose tsinelas. `pick-up` is the literal clip
 	# for this and the reason the brief called it out.
 	"grab": ["pick-up", "interact-right", "interact-left"] as Array[String],
+	# ⚠️ THE TAYA'S TWO TAG VERBS GET THEIR OWN READS, new 2026-08-01. Both used
+	# to broadcast `"shove"`, so the taya's 1 m lunge and their close-range jab
+	# played the identical clip as an attacker shoving a rival — three different
+	# commitments with one animation between them. `attack-kick-right` leads with
+	# the body, which is what a dash INTO somebody looks like; `attack-melee-right`
+	# is the arm, which is the punch. Both fall back to the other, so a rig missing
+	# either still animates.
+	"lunge": ["attack-kick-right", "attack-melee-right", "interact-right"] as Array[String],
+	"punch": ["attack-melee-right", "attack-kick-right", "interact-right"] as Array[String],
 }
 
 ## The Kenney rig is authored ~0.67 units tall with its origin at the feet, so
@@ -358,6 +421,10 @@ var _current_key: String = ""
 ## The roster palette currently applied, so apply() can tell "same rig, different
 ## character" from "nothing changed" — see its own note.
 var _current_material_key: String = ""
+## B-145. The lata/tsinelas roster index this model was last painted for, or -1.
+## Part of the rebuild key — see `apply()` for why the mesh path alone is not
+## enough for a Prop.
+var _current_skin_key: int = -1
 ## The per-surface materials this unit owns, not the MeshInstance3Ds — a model
 ## can have several surfaces per mesh, and keying the flash off surface 0 would
 ## silently miss the rest and desync from the albedo list.
@@ -383,6 +450,13 @@ var _animator: AnimationPlayer = null
 ## Name of the one-shot action clip currently playing; empty when locomotion owns
 ## the animator. Guards _play_locomotion from stomping a throw mid-swing.
 var _action_clip: String = ""
+
+## Motion observed from the replicated `position`, for units this peer does not
+## simulate. See the OBSERVED_* constants.
+var _observed_velocity: Vector3 = Vector3.ZERO
+var _observed_prev_position: Vector3 = Vector3.ZERO
+var _observed_has_prev: bool = false
+var _observed_airborne_left: float = 0.0
 ## Cached BoneAttachment3D child marking the hand. Rebuilt lazily rather than in
 ## apply(), because apply() also runs for Cans and Tsinelas that will never carry
 ## anything and a BoneAttachment3D on a model with no Skeleton3D is just waste.
@@ -406,13 +480,12 @@ func _ready() -> void:
 	_character = get_parent() as CharacterBase
 	if _character == null:
 		return
-	_character.dents_changed.connect(_on_dents_changed)
+	# ⚠️ `dents_changed` WAS CONNECTED HERE AND THE SIGNAL NO LONGER EXISTS (§8.2,
+	# 2026-07-31). With Option A deleted the lata has no damage number, so nothing ever
+	# advances `_refresh_can_damage` past index 0 — see CAN_MESHES. Whether the lata
+	# should still get a visible damage read off some OTHER quantity is 🎨 `build model`'s
+	# call, and it is filed as §5.11.
 	_character.state_changed.connect(_on_state_changed)
-
-## Option A: swap in the lata carrying this many dents. Nothing else in the
-## codebase needs to know these meshes exist.
-func _on_dents_changed(new_dents: int) -> void:
-	_refresh_can_damage(new_dents)
 
 func _on_state_changed(new_state: CharacterBase.State) -> void:
 	_refresh_downed_tilt(new_state == CharacterBase.State.DOWNED)
@@ -454,7 +527,13 @@ func _refresh_can_damage(dent_count: int) -> void:
 	var model := get_child(0) as Node3D if get_child_count() > 0 else null
 	if model == null:
 		return
-	var meshes := model.find_children("*", "MeshInstance3D", true, false)
+	# ⚠️ THE CAN'S OWN MESH, NOT ITS CLASS JUNK. Attachments are MeshInstance3D children
+	# of the same model (see PROP_ATTACHMENT_GROUP), and `meshes[0]` swapping a wire
+	# handle for a crushed can would be a silent, extremely funny bug.
+	var meshes: Array[Node] = []
+	for node in model.find_children("*", "MeshInstance3D", true, false):
+		if not (node as Node).is_in_group(PROP_ATTACHMENT_GROUP):
+			meshes.append(node)
 	if meshes.is_empty():
 		return
 	var index := clampi(dent_count, 0, CAN_MESHES.size() - 1)
@@ -483,17 +562,126 @@ func _refresh_can_damage(dent_count: int) -> void:
 	# never announced itself would render solid in first person (B-61).
 	model_changed.emit()
 
-## Tips the can onto its side while Downed and stands it back up on recovery.
-## Only ever a Can — a toppled Person or Tsinelas would read as a bug.
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE KNOCKDOWN ROLLS NOW. Human report, 2026-07-30: *"it is hard to tell the can
+## fell — improve the physics so it looks like it is physically rolling when knocked
+## down."*
+##
+## The old read was a single tween of `rotation.z` to 78 degrees over 0.28 s: correct,
+## cheap, and completely static once it arrived. A lata that has just taken 2.6x
+## knockback (`CharacterBase.CAN_KNOCKBACK_SCALE`) is now travelling roughly a metre
+## across the ground while lying at 78 degrees and not turning, which reads as a
+## cardboard cutout being dragged rather than as a can going over.
+##
+## ⚠️ IT IS STILL NOT A RAGDOLL, AND IT MUST NOT BECOME ONE. Nothing simulates limbs or
+## hands the body to the physics server. What changed is that the tilt is now the START
+## of a roll whose RATE is derived from the body's own measured travel:
+##
+##     radians this frame = distance travelled / capsule radius
+##
+## i.e. rolling without slipping, which is the one relationship that makes a rolling
+## object look attached to the ground rather than skating on it. The axis is the
+## horizontal perpendicular to travel, so it rolls the way it is going.
+##
+## ⚠️ THE ROLL IS WRITTEN ONTO THE MODEL NODE'S TRANSFORM, NOT ONTO THIS ONE, AND NOT
+## ONTO A NEW PIVOT NODE. Two constraints force that and both are load-bearing:
+##
+##   * `_process_remote_smoothing` writes `position` and `rotation.y` on THIS node every
+##     frame for a remote unit, and its own docstring promises that only `.y` is its to
+##     write. A full-basis roll here would fight it.
+##   * `get_child(0)` IS THE MODEL, and four other functions in this file rely on that —
+##     `_refresh_can_damage`, `_build_hand_attachment`, `_align_to_capsule_floor` and
+##     `apply()`'s own teardown. Inserting a pivot node between them would break all
+##     four silently, in the quiet way a wrong node path always does here.
+##
+## So the roll is a rotation of the model ABOUT THE VISUAL CENTRE, composed by hand:
+## `T = C + R*(rest - C)`. Rotating about the model's own origin instead would swing the
+## can around a point on the road surface, because `_align_to_capsule_floor` deliberately
+## drops the model so its BOTTOM sits on the capsule floor.
+const DOWNED_ROLL_SETTLE: float = 0.35 ## m/s below which a downed can stops rolling
+var _roll_angle: float = 0.0
+var _roll_axis: Vector3 = Vector3.RIGHT
+var _roll_rest: Transform3D = Transform3D.IDENTITY
+var _last_roll_position: Vector3 = Vector3.ZERO
+var _rolling: bool = false
+
 func _refresh_downed_tilt(is_downed: bool) -> void:
 	if _character == null or not _character.is_can:
 		rotation.z = 0.0
+		_end_roll()
 		return
 	if _tilt_tween != null and _tilt_tween.is_valid():
 		_tilt_tween.kill()
 	_tilt_tween = create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_tilt_tween.tween_property(self, "rotation:z",
 		deg_to_rad(DOWNED_TILT_DEGREES) if is_downed else 0.0, DOWNED_TILT_TIME)
+	if is_downed:
+		_begin_roll()
+	else:
+		_end_roll()
+
+func _begin_roll() -> void:
+	var model := _model_node()
+	if model == null:
+		return
+	_rolling = true
+	_roll_angle = 0.0
+	# Snapshotted at the START of the roll rather than read live every frame: the roll
+	# itself is what writes this transform, so reading it back mid-roll would compound
+	# the rotation into itself and spin the can at an accelerating rate.
+	_roll_rest = model.transform
+	_last_roll_position = _character.global_position
+	# The axis is fixed at the moment of the knockdown rather than re-derived each
+	# frame. A can that slows, stops and is nudged again would otherwise pick a new axis
+	# mid-roll and visibly snap; taking the impulse's own direction once means the whole
+	# tumble reads as one event, which is what it is.
+	var travel := _character.velocity
+	travel.y = 0.0
+	if travel.length() < 0.05:
+		travel = -_character.global_transform.basis.z
+		travel.y = 0.0
+	if travel.length() < 0.05:
+		travel = Vector3.FORWARD
+	_roll_axis = travel.normalized().cross(Vector3.UP).normalized()
+
+func _end_roll() -> void:
+	if not _rolling:
+		return
+	_rolling = false
+	_roll_angle = 0.0
+	var model := _model_node()
+	if model != null:
+		model.transform = _roll_rest
+
+## `get_child(0)`, guarded — the model, or null between a teardown and a rebuild.
+func _model_node() -> Node3D:
+	if get_child_count() == 0:
+		return null
+	return get_child(0) as Node3D
+
+## Called from `_process`. Cheap: one distance, one basis build, and only while a can is
+## actually down and actually moving.
+func _process_downed_roll(_delta: float) -> void:
+	if not _rolling or _character == null or not is_instance_valid(_character):
+		return
+	var here := _character.global_position
+	var moved := Vector3(here.x - _last_roll_position.x, 0.0, here.z - _last_roll_position.z)
+	_last_roll_position = here
+	var speed_flat := Vector2(_character.velocity.x, _character.velocity.z).length()
+	if speed_flat < DOWNED_ROLL_SETTLE:
+		return # come to rest: a can lying still must lie still, not creep
+	var radius: float = maxf(0.05, _character.capsule_radius())
+	# Signed by which way we are going along the roll axis' own forward, so reversing
+	# direction reverses the roll instead of always spinning one way.
+	var forward := Vector3.UP.cross(_roll_axis).normalized()
+	_roll_angle += moved.dot(forward) / radius
+	var model := _model_node()
+	if model == null:
+		return
+	var rotation_basis := Basis(_roll_axis, _roll_angle)
+	var centre := _visual_centre_offset
+	model.transform = Transform3D(rotation_basis * _roll_rest.basis,
+		centre + rotation_basis * (_roll_rest.origin - centre))
 
 ## Builds (or rebuilds) the model for this unit. Safe to call every round.
 func apply(is_person: bool, is_can: bool, team: int) -> void:
@@ -504,11 +692,30 @@ func apply(is_person: bool, is_can: bool, team: int) -> void:
 	# make switching between two same-rig characters a no-op — you would pick
 	# Bebang, get Inday's palette, and nothing would look broken enough to
 	# explain why.
-	var material_path := _person_material_path(is_person)
-	if key == _current_key and material_path == _current_material_key:
+	var material_path := _person_material_path(is_person, team)
+	# ⚠️⚠️ B-145 — THE PROP SKIN IS PART OF THE CACHE KEY, AND LEAVING IT OUT IS
+	# 🧑's *"i pick coffee, if i switch to can, old model stays"*.
+	#
+	# Every lata shares ONE mesh (`CAN_VISUAL`) and every tsinelas shares one
+	# (`TSINELAS_VISUAL`) — the pick is a TINT, applied at the bottom of this
+	# function. So for a Prop the key above is identical for all six skins, and
+	# the early return below skipped the whole function whenever `can_index`
+	# changed without `is_can` changing. That is not a corner case: since B-145
+	# the index frequently arrives AFTER the unit is built (the host sends the
+	# picks table on join), so the common path is "spawn with -1, draw the stock
+	# skin, receive the real pick, and never redraw".
+	#
+	# Exactly the reasoning the material path is already in this key for, one
+	# type down — two roster entries sharing a rig must still repaint.
+	var skin_key := -1
+	if not is_person and _character != null:
+		skin_key = _character.can_index if is_can else _character.slipper_index
+	if key == _current_key and material_path == _current_material_key \
+			and skin_key == _current_skin_key:
 		return
 	_current_key = key
 	_current_material_key = material_path
+	_current_skin_key = skin_key
 
 	if _flash_tween != null and _flash_tween.is_valid():
 		_flash_tween.kill()
@@ -527,6 +734,9 @@ func apply(is_person: bool, is_can: bool, team: int) -> void:
 	# reference here would make the first play_action() after a role swap throw.
 	_animator = null
 	_action_clip = ""
+	# The roll's snapshot describes a model that has just been freed. Restoring it onto
+	# the incoming one would offset a brand-new mesh by the last one's tumble.
+	_rolling = false
 	# Same reasoning: the BoneAttachment3D was a child of the outgoing skeleton
 	# and has just been freed with it. Null it rather than rebuilding eagerly —
 	# get_hand_attachment() rebuilds on demand, and most units never carry.
@@ -561,6 +771,12 @@ func apply(is_person: bool, is_can: bool, team: int) -> void:
 	# would put it in the shared resource and recolour both teams' props at once.
 	_apply_prop_tint(is_person, is_can)
 	_align_to_capsule_floor(model)
+	# ⚠️ AFTER `_collect_meshes` AND AFTER THE TINT, DELIBERATELY. The attachments are
+	# junk bolted to a can, not part of it: they must not be swept into `_materials`
+	# (which is what the hit flash writes into, and a wire handle flashing white on a
+	# hit reads as the handle being hit) and they must not take the skin's `albedo_color`
+	# (a green paint-tin's rusted lid is not green). They carry their own colours.
+	_build_prop_attachments(is_person, is_can)
 	_play_idle(model)
 	model_changed.emit()
 	# A rebuild produces a pristine model, so re-apply whatever damage and
@@ -568,8 +784,229 @@ func apply(is_person: bool, is_can: bool, team: int) -> void:
 	# Tsinelas -> Can mid-match would come back with a clean lata and stand
 	# upright while still Downed.
 	if _character != null:
-		_refresh_can_damage(_character.dents)
+		# ⚠️ CONSTANT 0, NOT `_character.dents` — that field is deleted (§8.2). The call
+		# is KEPT rather than removed because it is also what installs the pristine can
+		# mesh on a rebuild, so deleting it would change how a lata LOOKS, which is a
+		# 🎨 `build model` decision and not a side effect this lane gets to cause.
+		_refresh_can_damage(0)
 		_refresh_downed_tilt(_character.state == CharacterBase.State.DOWNED)
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ PROP CLASS ATTACHMENTS — the junk that tells six latas and six tsinelas apart.
+##
+## Human instruction, 2026-07-30: *"create new Can and Slipper models to represent
+## different classes. Edit existing can models to differentiate classes creatively (e.g.
+## add new visual elements/junk attached to the can)."* And, from the standing art rule
+## the human set earlier: *"dont create other models use existing ones, js edit these
+## models."*
+##
+## Both hold at once, which is why this is ATTACHMENTS rather than twelve new meshes.
+## Every lata is still Kenney's `soda-can.glb` and every tsinelas is still the project's
+## own `tsinelas.obj`; what a class adds is a handful of primitives bolted on — a wire
+## handle, a sardine key, a paint drip, a coat hanger — built from `TorusMesh`,
+## `CylinderMesh` and `BoxMesh` at load time. No new asset files, no import step, and a
+## silhouette that reads across the arena, which is the only test that matters.
+##
+## ⚠️⚠️ AN ATTACHMENT CANNOT AFFECT PHYSICS, BY CONSTRUCTION AND NOT BY CARE. The human
+## asked to *"ensure these attachments do not break physics"*, and the answer is
+## structural: every node built here is a `MeshInstance3D` parented under the MODEL,
+## which is under `Visual`, which is a plain `Node3D` under the body. The body's
+## `CollisionShape3D`, `Hurtbox` and `Hitbox` are siblings of `Visual` and are sized
+## exclusively by `CharacterBase._apply_role_collision()` from `_COLLISION_BY_ROLE` — a
+## table that names three roles and knows nothing about skins. There is no code path
+## from a mesh under `Visual` to a collision shape. A hanger that sticks out 0.3 m
+## changes what you SEE and not what you can HIT, which is exactly the contract.
+##
+## ⚠️ PARENTED UNDER THE MODEL, NOT UNDER `Visual`. The knockdown roll rotates the model
+## about the visual centre; junk parented a level higher would stay resolutely upright
+## while the can it is welded to tumbled away underneath it.
+##
+## Each entry is a list of parts. `kind` picks the primitive; the rest is geometry:
+##   ring      torus, `r` outer / `t` tube            handles, lids, straps
+##   rod       cylinder, `r` radius / `h` height      keys, dowels, hooks
+##   slab      box, `size`                            labels, planks, tags
+## `pos` and `rot` are in the MODEL's own local space, `rot` in degrees.
+const PROP_ATTACHMENT_UNSHADED_ROUGHNESS: float = 0.85
+## Every part built here joins this group, and two measurement passes skip it — see
+## `_collect_meshes` (the hit flash) and `_align_to_capsule_floor` (the ground drop).
+const PROP_ATTACHMENT_GROUP: StringName = &"prop_attachment"
+
+## THE LATAS. Every part is drawn against the can's own ~0.34 m height, so nothing here
+## is taller than the object it hangs on — a class marker that changes the unit's
+## effective silhouette height would quietly change how a throw has to be aimed.
+const CAN_ATTACHMENTS: Dictionary = {
+	# SARSILYA — the stock lata. Deliberately BARE: entry 0 of every roster list is the
+	# signed-off default and must look exactly as it always has, or a player who never
+	# opens the CHARACTER screen gets a surprise.
+	&"sarsi": [],
+	# LATA NG GATAS — condensed milk. Two punched holes in the lid, the way you actually
+	# open one, and the dense little body reads as heavy.
+	&"gatas": [
+		{"kind": "rod", "r": 0.022, "h": 0.012, "pos": Vector3(0.035, 0.175, 0.02),
+			"colour": Color("2b2b30")},
+		{"kind": "rod", "r": 0.022, "h": 0.012, "pos": Vector3(-0.035, 0.175, -0.02),
+			"colour": Color("2b2b30")},
+	],
+	# LATA NG SARDINAS — flat and wide, with the roll-back key still attached. The key is
+	# the single most recognisable thing about a sardine tin.
+	&"sardinas": [
+		{"kind": "ring", "r": 0.045, "t": 0.008, "pos": Vector3(0.0, 0.19, -0.06),
+			"rot": Vector3(90, 0, 0), "colour": Color("cfd4d8")},
+		{"kind": "rod", "r": 0.006, "h": 0.07, "pos": Vector3(0.0, 0.19, -0.02),
+			"rot": Vector3(90, 0, 0), "colour": Color("cfd4d8")},
+	],
+	# LATA NG KAPE — empty and skittish. A crumpled foil lid peeled half off, so it
+	# visibly rattles even standing still.
+	&"kape": [
+		{"kind": "slab", "size": Vector3(0.13, 0.006, 0.10), "pos": Vector3(0.03, 0.185, 0.0),
+			"rot": Vector3(0, 15, 22), "colour": Color("d8d2c4")},
+	],
+	# LATA NG PINTURA — leftover fence paint, gone to rust. A wire bail handle over the
+	# top and a run of dried paint down one side.
+	&"pintura": [
+		{"kind": "ring", "r": 0.115, "t": 0.007, "pos": Vector3(0.0, 0.17, 0.0),
+			"rot": Vector3(0, 0, 90), "colour": Color("6b6b70")},
+		{"kind": "slab", "size": Vector3(0.03, 0.16, 0.012), "pos": Vector3(0.09, 0.07, 0.04),
+			"colour": Color("4f8c6a")},
+		{"kind": "rod", "r": 0.013, "h": 0.03, "pos": Vector3(0.09, -0.02, 0.04),
+			"colour": Color("4f8c6a")},
+	],
+	# LATA NG BISKWIT — Lola's biscuit tin. Wide pressed lid with a rim, and a scrap of
+	# masking tape somebody labelled it with years ago.
+	&"biskwit": [
+		{"kind": "ring", "r": 0.125, "t": 0.014, "pos": Vector3(0.0, 0.175, 0.0),
+			"rot": Vector3(90, 0, 0), "colour": Color("caa06a")},
+		{"kind": "slab", "size": Vector3(0.10, 0.045, 0.004), "pos": Vector3(0.0, 0.06, 0.105),
+			"colour": Color("efe4cd")},
+	],
+}
+
+## THE TSINELAS. Drawn against a mesh that is 0.432 long x 0.166 wide x 0.078 tall in
+## its own space, before `TsinelasVisual.tscn`'s 1.6x — so these numbers are pre-scale
+## and grow with the slipper, which is what keeps a hanger looking bolted on rather than
+## floating beside a bigger shoe.
+const SLIPPER_ATTACHMENTS: Dictionary = {
+	# TSINELAS NA GOMA — plain rubber, entry 0, the signed-off default. Bare.
+	&"goma": [],
+	# BAKYA — solid wood. A raised heel block and a nailed leather toe strap: the two
+	# things that make a bakya a bakya rather than a thick flip-flop.
+	&"bakya": [
+		{"kind": "slab", "size": Vector3(0.13, 0.05, 0.14), "pos": Vector3(0.0, -0.05, 0.13),
+			"colour": Color("6b4a28")},
+		{"kind": "slab", "size": Vector3(0.16, 0.02, 0.05), "pos": Vector3(0.0, 0.055, -0.09),
+			"rot": Vector3(12, 0, 0), "colour": Color("3d2a18")},
+	],
+	# TSINELAS NA PULA — kept for church. A buckle on the strap, because it is the good
+	# pair and the good pair has a buckle.
+	&"pula": [
+		{"kind": "ring", "r": 0.028, "t": 0.007, "pos": Vector3(0.0, 0.06, -0.05),
+			"rot": Vector3(0, 0, 90), "colour": Color("d8c47a")},
+	],
+	# TSINELAS NA ASUL — bleached pale by ten summers on a windowsill. A sun-faded strip
+	# down the footbed, lighter than the tint.
+	&"asul": [
+		{"kind": "slab", "size": Vector3(0.05, 0.004, 0.30), "pos": Vector3(0.0, 0.045, 0.0),
+			"colour": Color("cfe0ea")},
+	],
+	# TSINELAS NA DILAW — so bright you can find it from across the plaza, which is the
+	# whole point of owning it. A reflective toe patch that says so.
+	&"dilaw": [
+		{"kind": "slab", "size": Vector3(0.09, 0.005, 0.07), "pos": Vector3(0.0, 0.046, -0.14),
+			"colour": Color("fff2a8")},
+	],
+	# TSINELAS NA LUMA — the sole worn through to nothing. A hole in the footbed and a
+	# strap repaired with a twist of wire.
+	&"luma": [
+		{"kind": "ring", "r": 0.035, "t": 0.006, "pos": Vector3(0.0, 0.042, 0.10),
+			"rot": Vector3(90, 0, 0), "colour": Color("3a342e")},
+		{"kind": "rod", "r": 0.004, "h": 0.05, "pos": Vector3(0.045, 0.05, -0.06),
+			"rot": Vector3(0, 0, 40), "colour": Color("9aa3a2")},
+	],
+	# ⚠️ TSINELAS NA SABIT — THE HANGER. Human instruction: *"add a hanger to the slipper
+	# customization options."* A wire coat hanger through the strap, the way a tsinelas
+	# actually ends up hung on a nail by the door.
+	#
+	# It is the largest attachment in the game — the hook stands 0.19 above the footbed,
+	# which after the 1.6x visual scale is 0.30 m of extra silhouette — and it changes
+	# NOTHING about the collision capsule, the hurtbox, the hitbox, the grab radius or
+	# the throw profile. That is the whole demonstration this row exists to be: see the
+	# structural argument in this block's header.
+	&"sabit": [
+		{"kind": "ring", "r": 0.055, "t": 0.006, "pos": Vector3(0.0, 0.12, -0.02),
+			"rot": Vector3(0, 90, 0), "colour": Color("b8bec4")},
+		{"kind": "rod", "r": 0.005, "h": 0.09, "pos": Vector3(0.0, 0.185, -0.02),
+			"colour": Color("b8bec4")},
+		{"kind": "ring", "r": 0.022, "t": 0.005, "pos": Vector3(0.0, 0.235, -0.045),
+			"rot": Vector3(0, 90, 0), "colour": Color("b8bec4")},
+		{"kind": "slab", "size": Vector3(0.10, 0.008, 0.02), "pos": Vector3(0.0, 0.065, -0.02),
+			"colour": Color("8a7f6a")},
+	],
+}
+
+func _build_prop_attachments(is_person: bool, is_can: bool) -> void:
+	if is_person or _character == null:
+		return
+	var model := _model_node()
+	if model == null:
+		return
+	var index: int = _character.can_index if is_can else _character.slipper_index
+	var entries: Array = CharacterRoster.CANS if is_can else CharacterRoster.SLIPPERS
+	# -1 is the honest "no pick" sentinel an AI slot and a command-line session carry.
+	# It resolves to entry 0, which is bare by design — see `sarsi`/`goma` above.
+	if index < 0 or index >= entries.size():
+		return
+	var id: StringName = entries[index].get("id", &"")
+	var table: Dictionary = CAN_ATTACHMENTS if is_can else SLIPPER_ATTACHMENTS
+	if not table.has(id):
+		return
+	for part in table[id]:
+		var node := _build_attachment_part(part)
+		if node != null:
+			model.add_child(node)
+
+func _build_attachment_part(part: Dictionary) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	match String(part.get("kind", "slab")):
+		"ring":
+			var torus := TorusMesh.new()
+			var outer: float = float(part.get("r", 0.05))
+			var tube: float = float(part.get("t", 0.008))
+			torus.outer_radius = outer
+			torus.inner_radius = maxf(0.001, outer - tube)
+			torus.rings = 12
+			torus.ring_segments = 8
+			mesh_instance.mesh = torus
+		"rod":
+			var cylinder := CylinderMesh.new()
+			cylinder.top_radius = float(part.get("r", 0.01))
+			cylinder.bottom_radius = cylinder.top_radius
+			cylinder.height = float(part.get("h", 0.05))
+			cylinder.radial_segments = 8
+			cylinder.rings = 1
+			mesh_instance.mesh = cylinder
+		_:
+			var box := BoxMesh.new()
+			box.size = part.get("size", Vector3(0.05, 0.01, 0.05))
+			mesh_instance.mesh = box
+	mesh_instance.position = part.get("pos", Vector3.ZERO)
+	var euler: Vector3 = part.get("rot", Vector3.ZERO)
+	mesh_instance.rotation = Vector3(
+		deg_to_rad(euler.x), deg_to_rad(euler.y), deg_to_rad(euler.z))
+	# Its own material, never a shared one — two latas of the same class would otherwise
+	# hand each other their colours, which is the exact bug `_collect_meshes` duplicates
+	# materials to avoid.
+	var material := StandardMaterial3D.new()
+	material.albedo_color = part.get("colour", Color.WHITE)
+	material.roughness = PROP_ATTACHMENT_UNSHADED_ROUGHNESS
+	mesh_instance.material_override = material
+	# Small junk casts no shadow: both maps carry 500-640 instances and the shadow of a
+	# 6 mm wire is a cost with no read at arena distance.
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# The group is how `_collect_meshes` and `_align_to_capsule_floor` recognise junk.
+	# A group rather than a name check, because a name is a string somebody will
+	# reasonably change and a group is a declaration of what the node IS.
+	mesh_instance.add_to_group(PROP_ATTACHMENT_GROUP)
+	return mesh_instance
 
 ## Task 1 — the node a carried tsinelas snaps to. Returns null for anything with
 ## no skeleton (a Can, a Tsinelas, or a Person whose model has not been instanced
@@ -618,6 +1055,37 @@ func _build_hand_attachment() -> Node3D:
 		point.position = HAND_CARRY_OFFSET / PERSON_SCALE
 		attachment.add_child(point)
 		return point
+
+	# ⚠️⚠️ NAMED BONES ARE NOT GUARANTEED ACROSS TWELVE RIGS, AND RETURNING NULL
+	# PUTS THE SLIPPER IN SOMEBODY'S HEAD. `slipper.gd::_step_carried()` falls back
+	# to `carrier.global_position + UP * 1.0` when there is no attachment, and a
+	# CharacterBase's origin is the middle of its 1.6-unit capsule — so one metre
+	# up lands just about exactly inside the skull. 🧑 2026-08-01: *"the slippers
+	# are inside the head of the attackers when they charge it"*.
+	#
+	# The roster carries twelve CC0 rigs and `HAND_BONE_CANDIDATES` names only the
+	# two bones the FIRST ones happened to use. Rather than enumerate every rig's
+	# naming, fall back to any bone whose name looks like an arm or a hand — a
+	# skeleton that has neither is not a humanoid and there is nothing sensible to
+	# do with it anyway.
+	for index in range(skeleton.get_bone_count()):
+		var found := skeleton.get_bone_name(index).to_lower()
+		if not (found.contains("hand") or found.contains("arm")
+				or found.contains("wrist")):
+			continue
+		var fallback := BoneAttachment3D.new()
+		fallback.name = "HandAttachment"
+		fallback.bone_name = skeleton.get_bone_name(index)
+		skeleton.add_child(fallback)
+		var fallback_point := Node3D.new()
+		fallback_point.name = "HandPoint"
+		fallback_point.position = HAND_CARRY_OFFSET / PERSON_SCALE
+		fallback.add_child(fallback_point)
+		push_warning("CharacterVisual: no %s bone; carrying from '%s' instead"
+			% [str(HAND_BONE_CANDIDATES), fallback.bone_name])
+		return fallback_point
+	push_warning("CharacterVisual: this rig has no arm or hand bone at all; "
+		+ "a carried slipper will ride the body instead of a hand")
 	return null
 
 ## Drops the model so its lowest point rests on the bottom of CharacterBase's
@@ -631,6 +1099,15 @@ func _align_to_capsule_floor(model: Node3D) -> void:
 	var bounds := AABB()
 	var first := true
 	for node in model.find_children("*", "VisualInstance3D", true, false):
+		# ⚠️ CLASS JUNK IS NOT PART OF THE OBJECT'S HEIGHT. A hanger that stands 0.19
+		# above the footbed would otherwise grow the measured AABB, and this function
+		# drops the model by its LOWEST point — so a part hanging below the sole (the
+		# bakya's heel block, the paint tin's drip) would lift the whole prop off the
+		# road by the height of its own decoration. The attachments are cosmetic and
+		# they stay out of every measurement, exactly as they stay out of every
+		# collision shape. See PROP_ATTACHMENT_GROUP.
+		if (node as Node).is_in_group(PROP_ATTACHMENT_GROUP):
+			continue
 		var box: AABB = (node as VisualInstance3D).get_aabb()
 		box = (node as Node3D).transform * box
 		if first:
@@ -704,9 +1181,40 @@ func _model_path(is_person: bool, is_can: bool, team: int) -> String:
 ## The palette material for this unit's roster pick, or "" to keep whatever the
 ## .glb imported with (which is person_a/person_b — see the roster's note on why
 ## those two are hand-authored rather than generated).
-func _person_material_path(is_person: bool) -> String:
+## ⚠️⚠️ A PERSON WITH NO ROSTER PICK USED TO GET NO MATERIAL AT ALL, AND THAT IS
+## WHY TWO CHARACTERS RENDERED FLAT AND OUTLINE-LESS. 🧑: *"why is this character
+## in a completley diff texture and outline"*, and their own diagnosis — *"i think
+## old agents js forgot to apply tint and outline and stuff to them"* — was right.
+##
+## The two halves of a Person's look are applied by two functions that BOTH
+## early-out, and nothing covered the gap between them:
+##   · `_apply_toon_pass()` returns immediately `if is_person` — a Person's toon
+##     shading and its ink outline come from its palette `.tres`, which carries
+##     `next_pass = person_outline.tres`;
+##   · `_apply_person_material()` returned immediately when this function handed
+##     back "".
+##
+## So an AI-driven seat, a local-test dummy, or a peer that never opened the
+## CHARACTER screen — anything with `character_index < 0` — got the raw material
+## the `.glb` imported with: no palette, no toon banding, and **no outline**,
+## standing next to picked characters that had all three. It reads exactly like a
+## character from a different game, which is what was reported.
+##
+## Falling back per TEAM mirrors `_model_path()`'s own fallback one function up,
+## so the default model and the default palette stay in step. `person_a`/`person_b`
+## are the hand-authored pair Art_Direction.md pins for arena-distance contrast.
+const PERSON_FALLBACK_MATERIALS: Array[String] = [
+	"res://assets/characters/persons/materials/person_a.tres",
+	"res://assets/characters/persons/materials/person_b.tres",
+]
+
+func _person_material_path(is_person: bool, team: int = 0) -> String:
+	if not is_person:
+		return ""
 	var entry := _roster_entry(is_person)
-	return String(entry["material"]) if entry.has("material") else ""
+	if entry.has("material"):
+		return String(entry["material"])
+	return PERSON_FALLBACK_MATERIALS[team % PERSON_FALLBACK_MATERIALS.size()]
 
 ## Recolours this Prop to the lata or tsinelas skin its owner picked.
 ##
@@ -820,6 +1328,11 @@ func _apply_person_material(model: Node3D, material_path: String) -> void:
 ## flashing?") instead of a colour uniform that happened to correlate.
 func _collect_meshes(model: Node3D) -> void:
 	for node in model.find_children("*", "MeshInstance3D", true, false):
+		# Class junk keeps its own colours and does not flash — see PROP_ATTACHMENT_GROUP.
+		# `_refresh_can_damage` re-runs this whole function on every dent, so without the
+		# skip a can that took a hit would start flashing its wire handle white.
+		if (node as Node).is_in_group(PROP_ATTACHMENT_GROUP):
+			continue
 		var mesh_instance := node as MeshInstance3D
 		for surface in range(mesh_instance.get_surface_override_material_count()):
 			var source: Material = mesh_instance.get_active_material(surface)
@@ -913,6 +1426,47 @@ func _play_idle(model: Node3D) -> void:
 ## Driven from _process rather than from a signal because velocity is a
 ## continuously-varying value, not an event. `CharacterBase` is not told any of
 ## this: it owns the velocity, this file owns what the velocity looks like.
+## Does THIS peer run the physics for this body? Solo is always yes; networked, only
+## the authority reaches `_move_and_confine()`. Everything the locomotion picker needs
+## — `velocity`, `is_on_floor()` — is a by-product of `move_and_slide()`, so this is
+## exactly the question "are those two values real here".
+##
+## ⚠️ AN AI-DRIVEN UNIT ON THE HOST ANSWERS YES, which is correct: the host IS its
+## authority and does simulate it. The split is by authority, never by "is a bot".
+func _simulated_here() -> bool:
+	if _character == null:
+		return false
+	if not NetworkManager.is_networked():
+		return true
+	return _character.is_multiplayer_authority()
+
+## Derives a velocity for units this peer does not simulate, from the one motion fact
+## it does legitimately have: the replicated `position`. Cheap enough to run for every
+## unit, so it is not gated on `_simulated_here()` — a body that later CHANGES
+## authority (reclaim, late join, a seat handed to a bot) then already has a warm
+## observation instead of one frame of garbage from a stale `_observed_prev_position`.
+func _observe_motion(delta: float) -> void:
+	if _character == null or delta <= 0.0:
+		return
+	var here := _character.global_position
+	if not _observed_has_prev:
+		_observed_prev_position = here
+		_observed_has_prev = true
+		return
+	var raw := (here - _observed_prev_position) / delta
+	_observed_prev_position = here
+	# A teleport is a discontinuity, not a velocity — re-seed rather than smooth it in.
+	if raw.length() > OBSERVED_TELEPORT_SPEED:
+		_observed_velocity = Vector3.ZERO
+		_observed_airborne_left = 0.0
+		return
+	_observed_velocity = _observed_velocity.lerp(raw,
+		clampf(delta / OBSERVED_SMOOTHING, 0.0, 1.0))
+	if absf(_observed_velocity.y) >= OBSERVED_AIRBORNE_SPEED:
+		_observed_airborne_left = OBSERVED_AIRBORNE_HOLD
+	elif _observed_airborne_left > 0.0:
+		_observed_airborne_left = maxf(0.0, _observed_airborne_left - delta)
+
 func _play_locomotion() -> void:
 	# The wind-up pose outranks locomotion the same way a one-shot does: an `idle`
 	# re-played every frame would key the same arm bone straight back over it. See
@@ -921,7 +1475,14 @@ func _play_locomotion() -> void:
 		return
 	if _animator == null or _character == null or _action_clip != "":
 		return
-	var speed := Vector2(_character.velocity.x, _character.velocity.z).length()
+	# ⚠️ NOT `_character.velocity` / `is_on_floor()` DIRECTLY ANY MORE — both are dead
+	# on a peer that does not simulate this body. See the OBSERVED_* constants.
+	var simulated := _simulated_here()
+	var motion := _character.velocity if simulated else _observed_velocity
+	var airborne := (not _character.is_on_floor()) if simulated \
+		else _observed_airborne_left > 0.0
+	var vertical := motion.y
+	var speed := Vector2(motion.x, motion.z).length()
 	var wanted := "idle"
 	# ⚠️ B-90 — CARRY_IDLE_CLIP now wins over walk/sprint OUTRIGHT, checked
 	# before speed at all, not just when standing still. It used to be the
@@ -957,8 +1518,26 @@ func _play_locomotion() -> void:
 	# what keeps animation work in the design lane.
 	if _character.state == CharacterBase.State.DOWNED:
 		wanted = "die"
-	elif not _character.is_on_floor():
-		wanted = "jump" if _character.velocity.y > 0.0 else "fall"
+	elif airborne:
+		wanted = "jump" if vertical > 0.0 else "fall"
+	elif _character.is_fatigued():
+		# ⚠️⚠️ `crouch`, AND THE RIG HAS NO PANTING CLIP — THIS IS THE NEAREST READ.
+		# 🧑 2026-08-01 asked for *"a heavy panting animation"* on the fatigued state.
+		# The Kenney rig ships 32 clips and none of them is breathing: enumerated in
+		# full, they are attack-kick/melee ×4, crouch, die, drive, emote-no, emote-yes,
+		# fall, holding-* ×6, idle, interact-* ×2, jump, pick-up, sit, sprint, static,
+		# walk and wheelchair-* ×6. Inventing one is the ART lane's call and would mean
+		# authoring a clip onto a CC0 rig this project ships unmodified.
+		#
+		# `crouch` is doubled-over with the weight forward — the universal "hands on
+		# knees, out of breath" silhouette, and the only pose here that reads as
+		# exhaustion rather than as an action. It is legible at arena distance, which
+		# `idle` played faster would not be.
+		#
+		# ⚠️ IT OUTRANKS WALK AND SPRINT, NOT DOWNED OR AIRBORNE. A fatigued player is
+		# still moving (at `FATIGUE_SPEED_SCALE` 0.75), and the whole point is that the
+		# state is visible to the three people deciding whether to chase them.
+		wanted = "crouch"
 	elif _is_holding():
 		wanted = CARRY_IDLE_CLIP
 	elif speed > RUN_SPEED_THRESHOLD:
@@ -971,9 +1550,13 @@ func _play_locomotion() -> void:
 		_animator.play(wanted)
 
 func _process(delta: float) -> void:
+	# ⚠️ BEFORE _play_locomotion(), which reads what this leaves behind for any unit
+	# this peer does not simulate.
+	_observe_motion(delta)
 	# ⚠️ BEFORE _play_locomotion(), which returns early while a charge pose is held.
 	_drive_charge_pose()
 	_play_locomotion()
+	_process_downed_roll(delta)
 	_spin_while_airborne(delta)
 	_drive_viewmodel_charge()
 	_process_remote_smoothing(delta)
@@ -1021,8 +1604,10 @@ func _should_smooth_remote() -> bool:
 		return false
 	if _character.is_multiplayer_authority():
 		return false
-	var carriable := _character.get_node_or_null("Carriable") as Carriable
-	return carriable == null or not carriable.drives_movement()
+	# ⚠️ WAS GATED ON `Carriable.drives_movement()` — a Prop being driven by its own
+	# player used to move the CharacterBase directly, so smoothing had to stand
+	# aside for it. No unit drives another's movement any more.
+	return true
 
 ## Resets the smoothing state to "caught up, right now" — called whenever the
 ## body's position was just TELEPORTED rather than walked (a round reset, a
@@ -1150,19 +1735,70 @@ var _charge_skeleton: Skeleton3D = null
 func _drive_charge_pose() -> void:
 	if _animator == null or _character == null or not _character.is_person:
 		return
+	# ⚠️⚠️ TWO CHARGES WIND THIS ARM UP, AND ONLY ONE OF THEM USED TO.
+	#
+	# 🧑 2026-07-31: *"no hand animation kapag nag tag ka as defender."* The verb being
+	# described is the charged BUMP (the tag was deleted 2026-07-30). This function read
+	# the CARRIER — the throw charge — and required `carrier.held() != null`, i.e. the
+	# Person had to be holding a slipper. **A defender holds nothing**, so the condition
+	# was false for the entire defending role and the taya's 1.35 s wind-up posed
+	# nothing at all. The attacker got an arm; the defender got a statue.
+	#
+	# ⚠️ IT IS NOT ONLY AN ANIMATION BUG. `Design.md` §4 says the whole 1.35 s "is
+	# visible on **every peer** ... so the attacker can dash, jump or throw through the
+	# commitment", and §11's counterplay table answers the power bump with exactly
+	# *"1.35 s of visible wind-up"*. That counterplay was unreadable on the body — the
+	# one place an opponent actually looks — so the bump's price was being paid by the
+	# defender and not shown to anyone.
+	#
+	# ⚠️ THE THREE-CONDITION RULE BELOW IS KEPT, and it is why this is a widening rather
+	# than a second system. `observed_*` are clocks started and stopped by broadcast, and
+	# a held pose driven by a clock alone freezes the body for good if a stop is missed —
+	# measured: a bot switched off mid-charge left the arm cocked and locomotion
+	# suppressed for the rest of the round. State NORMAL plus a live clock plus (for the
+	# throw) something in hand are all facts every peer already has.
 	var carrier := _character.get_node_or_null("Carrier") as Carrier
-	if carrier == null:
-		return
-	# ⚠️ THREE CONDITIONS, NOT ONE. `observed_charge_power()` is a clock that is
-	# started and stopped by broadcast, and a held pose driven by a clock alone freezes
-	# the body for good if a stop is ever missed — measured: a bot switched off
-	# mid-charge left the arm cocked and locomotion suppressed for the rest of the
-	# round. A Person can only be winding up if they are on their feet and holding
-	# something, which are both facts every peer already has, so they are cheap
-	# insurance against a stale clock.
-	var power := carrier.observed_charge_power()
-	var winding := power >= 0.0 and carrier.held() != null \
-		and _character.state == CharacterBase.State.NORMAL
+	var power := -1.0
+	if carrier != null and carrier.held() != null:
+		power = carrier.observed_charge_power()
+	if power < 0.0:
+		# The SHOVE meter, mirrored to every peer by `_rpc_shove_charge_visual`. -1.0
+		# is its idle value, the same contract `observed_charge_power()` keeps, so the
+		# two compose without either learning about the other.
+		# ⚠️ WAS THE BUMP METER. Bump is deleted; the shove is the one charged melee
+		# commitment left, and it needs this tell for exactly the reason bump did —
+		# a 1.25 s wind-up nobody else can see is a wind-up nobody can dodge.
+		# `observed_shove_charge()` already returns a 0..1 ratio, so unlike
+		# `observed_bump_charge()` it needs no division here.
+		var shove := _character.observed_shove_charge()
+		if shove >= 0.0:
+			power = clampf(shove, 0.0, 1.0)
+	if power < 0.0:
+		# ⚠️⚠️ THE LUNGE, AND WITHOUT IT THE TAYA POSED NOTHING AT ALL. Added
+		# 2026-08-01 — 🧑: *"is that on purpose theres no taya animation? can u make
+		# sure theres an animation or atleast a hand movement for all movements"*.
+		#
+		# The two branches above are the only ones that existed, and NEITHER can fire
+		# for a defender any more. The throw branch needs `carrier.held() != null` and
+		# a defender holds nothing. The shove branch was the taya's tell back when the
+		# shove was a 1.25 s hold — but the shove became a single tap on 2026-08-01
+		# (`SHOVE_CHARGE_TIME` 0.0) AND was taken away from the defender entirely, so
+		# that clock now jumps 0 → 1 in one frame for an attacker and never runs for a
+		# taya.
+		#
+		# So the exact bug this function was written to fix in the first place came
+		# back through a different door: the note above records *"the attacker got an
+		# arm; the defender got a statue"*, and that was true again for the whole
+		# defending role. The lunge is the taya's 0.5 s commitment and it is the one
+		# thing an attacker has to read to dodge it.
+		#
+		# `observed_lunge_charge()` already returns a 0..1 ratio with -1.0 at rest —
+		# the same contract the other two keep — so this composes without any of the
+		# three learning about the others.
+		var lunge := _character.observed_lunge_charge()
+		if lunge >= 0.0:
+			power = clampf(lunge, 0.0, 1.0)
+	var winding := power >= 0.0 and _character.state == CharacterBase.State.NORMAL
 	if not winding:
 		if _charge_posing:
 			_clear_charge_pose()
@@ -1243,41 +1879,12 @@ func _drive_viewmodel_charge() -> void:
 ## same reasoning _play_locomotion already documents for reading velocity. It
 ## also sidesteps a sibling-ready ordering question: Carriable and this node are
 ## both children of CharacterBase, and nothing guarantees which is ready first.
-func _spin_while_airborne(delta: float) -> void:
-	if _character == null:
-		return
-	var carriable: Carriable = _character.get_node_or_null("Carriable") as Carriable
-	if carriable == null:
-		return
-	if carriable.state != Carriable.CarryState.FLYING:
-		# Land flat. Not an else-branch on a tween: a slipper that stops spinning
-		# mid-tumble and freezes at 37° looks like a physics bug.
-		if rotation != Vector3.ZERO:
-			rotation = Vector3.ZERO
-		return
-	# ⚠️ TWO AXES, NOT ONE, AND THAT IS THE WHOLE POINT. This used to advance
-	# `rotation.x` alone, which rotates the slipper about a single axis — from
-	# the side that reads as a sole turning in place, and it is what made the
-	# throw look "perfectly flat" however fast the number was cranked. A real
-	# thrown tsinelas also flips END OVER END, and it is the combination of the
-	# two that the eye reads as tumbling.
-	#
-	# ⚠️ WRITES ONLY .x AND .z. NOT `basis`, AND NOT .y. Two other things own
-	# rotation on this node and both would silently undo a wholesale basis
-	# write: `_process_remote_smoothing()` writes `rotation.y` and runs AFTER
-	# this in _process(), and `_refresh_downed_tilt()` tweens `rotation:z`.
-	# Assigning a full basis here (the tempting way to tumble about an arbitrary
-	# travel-relative axis) survives exactly until either of those touches a
-	# single Euler component, which re-derives the whole rotation and throws the
-	# off-axis part away. Staying inside the two components this function
-	# already owned keeps the existing division of labour intact.
-	#
-	# `_refresh_downed_tilt()` is the one that also writes .z, but it is
-	# signal-driven off a Downed transition and a slipper in mid-air is not
-	# changing Downed state, so the two never write in the same frame. The
-	# landing branch above zeroes all three regardless.
-	rotation.x += deg_to_rad(carriable.spin_speed_deg()) * delta
-	rotation.z += deg_to_rad(carriable.tumble_speed_deg()) * delta
+## ⚠️ THE AIRBORNE SPIN MOVED TO THE SLIPPER ITSELF. It used to live here because
+## the tsinelas was a `CharacterBase` and this was its visual; it is a prop now and
+## `scripts/objects/slipper.gd::_spin()` owns both axes of it. Kept as a no-op
+## because `_process` calls it unconditionally.
+func _spin_while_airborne(_delta: float) -> void:
+	pass
 
 ## Whether this Person currently has something in their hand. Asked of the
 ## Carrier component (the holder's side), not of Carriable (the held thing's

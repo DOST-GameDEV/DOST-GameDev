@@ -377,6 +377,24 @@ def _civic_blocked(mesh_name, x, z, yaw, scale):
     return False
 
 
+def _play_box_blocked(mesh_name, x, z, yaw, scale):
+    """True if a piece placed here would reach into the Defender's Box.
+
+    ⚠️ A FREE FUNCTION RATHER THAN `Placer.in_play_box`, because the tree ring is
+    built several hundred lines BEFORE the `Placer` exists — the first version of
+    this called `placer.in_play_box` and died on a `NameError` at import time.
+    Same test, same constant, no ordering to get right.
+
+    ⚠️ THE BOX IS A SQUARE (`Design.md` §2), so this is a box-vs-box separation
+    test. A radial one would admit pieces on the diagonals that the square really
+    does contain — the 2.07-unit disagreement that section warns about.
+    """
+    e = piece_extent(mesh_name, yaw, scale)
+    limit = CONFINEMENT_BOX_RADIUS + Placer.PLAY_BOX_MARGIN
+    return not (x + e[1] <= -limit or x + e[0] >= limit
+                or z + e[3] <= -limit or z + e[2] >= limit)
+
+
 # --- The tree ring. TWO layers, and the second is a DIFFERENT SPECIES as well
 # --- as further out — the board rings Province with depth, and depth here is
 # --- silhouette. Seeded spacing, never random.
@@ -459,7 +477,13 @@ while _t <= BOUND:
         near_mesh = RING_MIX[(k + int(sx) + int(sz)) % len(RING_MIX)]
         near_yaw = (k % 7) * 0.91
         near_s = TOWN_SCALE * PUNO_SCALE[k % len(PUNO_SCALE)]             * (1.0 if near_mesh == PUNO_MESH else 0.7)
-        if not _civic_blocked(near_mesh, x, z, near_yaw, near_s):
+        # ⚠️ AND THE PLAY BOX, on the canopy's footprint. Same rule Eskinita's
+        # trunks got on 2026-08-01 (🧑: *"js put the tree out of the play area"*):
+        # this ring is the plaza's only dressing that is a solid wall at running
+        # height, and a crown overhanging the chalk reads as a tree in the court
+        # whatever its trunk is doing.
+        if not _civic_blocked(near_mesh, x, z, near_yaw, near_s) \
+                and not _play_box_blocked(near_mesh, x, z, near_yaw, near_s):
             add_kit("Dressing/TreesNear", f"Puno_{n}", near_mesh, x, z,
                     near_yaw, near_s)
         n += 1
@@ -566,8 +590,13 @@ for k, (x, z) in enumerate([(-SLAB, -SLAB), (SLAB, -SLAB),
 # approves cannot be reported by that one afterwards — the guard and the audit
 # are looking at the same thing by construction rather than by coincidence.
 PLACE_AVOID = ["Monument", "Clutter", "Furniture", "Landmarks", "Ground",
-               "Vehicles", "KanalVisual"]
+               "Vehicles"]
 placer = Placer(surfaces, piece_extent, PLACE_AVOID)
+# ⚠️ NOTHING DRESSING GOES IN THE DEFENDER'S BOX. See `Placer.play_box`. This
+# map's monument sat at (-7.60, 6.40) with a solid `MonumentBody` collider, which
+# is inside the box the moment `CONFINEMENT_RADIUS` reaches 7.6 — it did on
+# 2026-08-01.
+placer.play_box = CONFINEMENT_BOX_RADIUS
 
 
 def _put_kit(group):
@@ -739,8 +768,48 @@ for k, (x, z, yaw, piece) in enumerate([
 # The enclosure is RECTANGULAR (4 wide, 6 long) for exactly this reason: a 6 x 6
 # square is what the composition wants and its east rail would land at x = -4.4,
 # inside the confinement box. 4 x 6 keeps the long axis where there is room.
+# ⚠️⚠️ MOVED WEST 2026-08-01 (-7.6 -> -10.2) BECAUSE THE BOX GREW INTO IT.
+# The note above reasons about a 6 x 6 enclosure whose east rail "would land at
+# x = -4.4, inside the confinement box" — which was written when the box was 5.0.
+# At 7.5 the WHOLE monument was inside it, including `Obstacles/MonumentBody`,
+# a solid collider: a landmark the taya could be pinned against, inside the
+# defender's box, on one map only.
+#
+# ⚠️ THE MONUMENT ITSELF STAYS PUT AND THE ENCLOSURE IS CLIPPED INSTEAD.
+# Moving the whole landmark west was tried first and is wrong: at MON_X -10.2 the
+# ring lands on the bench row (`SLAB + 0.9` = x -10.9) and the builder's own
+# interior-overlap report went 0 -> 4 (Bench_8, Bench_10, Stall_2 twice). The
+# plaza's west strip is its busiest 1.5 m and the file already says so twice.
+#
+# The monument BODY is at Chebyshev 7.60, which is outside a 7.5 box on its own.
+# The only pieces that intrude are the EAST rails and the east hedge, so those are
+# skipped rather than the landmark relocated. A monument enclosure that is open on
+# the court side is also what the comment below already wants ("a plaza monument
+# you cannot walk into is a prop rather than a place") — this just makes the
+# opening as wide as the rules need.
 MON_X, MON_Z = -7.6, 6.4
 MON_HALF_X, MON_HALF_Z = 2.0, 3.0     # the railing ring, in bay-multiples of 2.0
+
+## Nothing belonging to the monument may reach into the defender's box.
+## `Placer.PLAY_BOX_MARGIN` is the same half-body clearance the placer uses, so
+## the two agree by construction rather than by two numbers being kept in step.
+_MON_KEEPOUT = CONFINEMENT_BOX_RADIUS + Placer.PLAY_BOX_MARGIN
+
+
+def _mon_ok(x, z, half=0.6):
+    """True if a monument piece at (x, z) stays wholly clear of the play box.
+
+    The box is a SQUARE (`Design.md` §2 — `_move_and_confine()` clamps X and Z
+    independently), so this is a box-vs-box separation test: the piece is clear
+    when its footprint is entirely off one of the four sides. Written as the four
+    separating cases rather than as a distance, because a radial test would pass
+    pieces sitting on the diagonals that the square actually contains — the exact
+    2.07-unit disagreement §2 warns about.
+    """
+    L = _MON_KEEPOUT
+    return (x - half >= L or x + half <= -L
+            or z - half >= L or z + half <= -L)
+
 
 add("Dressing/Monument", "Monument", "monument", MON_X, MON_Z)
 
@@ -751,16 +820,19 @@ add("Dressing/Monument", "Monument", "monument", MON_X, MON_Z)
 _rail = 0
 for _bx in (-1.0, 1.0):
     for _side in (-1.0, 1.0):
-        add("Dressing/Monument", f"Rail_{_rail}", "railing",
-            MON_X + _bx, MON_Z + _side * MON_HALF_Z, 0.0)
-        _rail += 1
+        _rx, _rz = MON_X + _bx, MON_Z + _side * MON_HALF_Z
+        if _mon_ok(_rx, _rz, 1.05):
+            add("Dressing/Monument", f"Rail_{_rail}", "railing", _rx, _rz, 0.0)
+            _rail += 1
 for _bz in (-2.0, 0.0, 2.0):
     for _side in (-1.0, 1.0):
         if _side > 0 and _bz < 0.0:
             continue   # the entrance, facing the court
-        add("Dressing/Monument", f"Rail_{_rail}", "railing",
-            MON_X + _side * MON_HALF_X, MON_Z + _bz, math.pi * 0.5)
-        _rail += 1
+        _rx, _rz = MON_X + _side * MON_HALF_X, MON_Z + _bz
+        if _mon_ok(_rx, _rz, 1.05):
+            add("Dressing/Monument", f"Rail_{_rail}", "railing", _rx, _rz,
+                math.pi * 0.5)
+            _rail += 1
 
 # Gate lamps, flanking the entrance. Same thin-vertical trick as the slab-corner
 # lanterns: they read at distance and there is nothing to a lantern's silhouette
@@ -775,9 +847,10 @@ for _bz in (-2.0, 0.0, 2.0):
 # the overlap report, not by looking at a render.
 _lamp = 0
 for _sz in (-1.0, 1.0):
-    add_kit("Dressing/Monument", f"MonLantern_{_lamp}", "kits/town/lantern",
-            MON_X + MON_HALF_X, MON_Z + _sz * MON_HALF_Z,
-            _lamp * 1.57, TOWN_SCALE)
+    _lx, _lz = MON_X + MON_HALF_X, MON_Z + _sz * MON_HALF_Z
+    if _mon_ok(_lx, _lz, 0.35):
+        add_kit("Dressing/Monument", f"MonLantern_{_lamp}", "kits/town/lantern",
+                _lx, _lz, _lamp * 1.57, TOWN_SCALE)
     _lamp += 1
 
 # Clipped hedges in planters. TWO inside the enclosure, on its long axis — the
@@ -786,8 +859,11 @@ for _sz in (-1.0, 1.0):
 # eyeballed; the first layout put four in the corners and every one of them
 # grew through either the monument's bottom step or the railing.
 for _p, _pz in enumerate((-2.25, 2.25)):
-    add("Dressing/Monument", f"MonHedge_{_p}", "planter_hedge",
-        MON_X, MON_Z + _pz)
+    # Same play-box guard as the rails: a planter is 1.20 across and the
+    # monument sits 0.10 outside the chalk, so the inner one reaches in.
+    if _mon_ok(MON_X, MON_Z + _pz, 0.60):
+        add("Dressing/Monument", f"MonHedge_{_p}", "planter_hedge",
+            MON_X, MON_Z + _pz)
 # ... and five more ringing the slab edge, which is the other half of what the
 # reference has: the plaza's rim is planted, not bare. All five sit outside both
 # throwing approaches and outside the confinement box.
@@ -820,81 +896,34 @@ for _v, (_vx, _vz, _vyaw) in enumerate([
         (-8.8, 11.9, 3.0), (0.6, 11.7, 1.2), (9.0, 11.9, -2.4)]):
     add("Dressing/Vehicles", f"Tricycle_{_v}", "tricycle", _vx, _vz, _vyaw)
 
-# --- The hazard's visual tell (open item 4). ---------------------------------
+# --- The hazard and its kanal bed are GONE. ----------------------------------
 #
-# ⚠️ THE `HazardZone` BELOW IS A LIVE GAMEPLAY VOLUME — speed_multiplier 0.5,
-# permanent, a 5x5 box centred on (-6.5, -4.0) — AND IT HAD NO VISUAL AT ALL.
-# An invisible slow field in the play area is not a missing decoration, it is a
-# player being punished by something they cannot see or learn.
+# REMOVED 2026-08-01 ON DIRECT HUMAN INSTRUCTION, alongside Eskinita's. The
+# human, with screenshots of the flickering tiles: "this keeps bugging/ clipping
+# these things. can u js remove them", "this looks bad it keeps phasing in and
+# out"; then, asked which element: "yes remove slow zone, Tan slabs in a line
+# (kanal / gutter)".
 #
-# Solved the way Eskinita solved exactly this problem after its pink chalk was
-# deleted: with REAL 3D GEOMETRY that explains the slowdown physically rather
-# than with a decal that decorates it. `gutter_tile` again, and deliberately the
-# same mesh rather than a new one — the markings section below states the rule
-# that a player must not have to relearn what a thing means when the map
-# changes, and that applies at least as much to "this ground is slow" as it does
-# to a base circle.
+# WHAT WENT: the nine `gutter_tile` slabs centred on (-6.5, -4.0), the four
+# `bollard` corner posts that were added because the bed alone did not read, and
+# the `HazardZone` all of it existed to explain (speed_multiplier 0.5, permanent,
+# a 5 x 5 box).
 #
-# On a plaza it reads as the drainage bed every real Philippine plaza has along
-# its low corner, rather than as Eskinita's roadside kanal, but it is the same
-# object and the same lesson.
+# THE MARKER AND THE ZONE GO TOGETHER. The note that stood here was emphatic
+# that an invisible slow field "is not a missing decoration, it is a player being
+# punished by something they cannot see or learn" -- so removing the tiles and
+# keeping the volume would have recreated precisely the bug this section was
+# written to close. Both, or neither.
 #
-# Sunk so its TOP lands on GROUND_Y (the mesh is 0.15 tall, measured, not
-# assumed), so it is flush with the paving and nothing stands on a lip.
-_HAZ_X, _HAZ_Z = -6.5, -4.0
-_gut_lo, _gut_hi = mesh_bounds("gutter_tile")
-_gut_top = _gut_hi[1] - _gut_lo[1]
-_hn = 0
-# ⚠️ NINE TILES, NOT SIX, AND WIDER. Rendered from where a player actually meets
-# it (bp_hazard), the six-tile bed read as a faint tan smudge two metres across on
-# a five-metre slow field — technically a tell, practically invisible, which is the
-# same defect as having none. The bed now covers the HazardZone's own footprint
-# instead of a strip through the middle of it, so the thing you can see and the
-# thing that slows you are the same size.
-for _gx in (-2.0, 0.0, 2.0):
-    for _gz in (-2.0, 0.0, 2.0):
-        add("Hazards/KanalVisual", f"Kanal_{_hn}", "gutter_tile",
-            _HAZ_X + _gx, _HAZ_Z + _gz, 0.0, base_y=GROUND_Y - _gut_top)
-        _hn += 1
-
-# ⚠️ AND FOUR BOLLARDS AT ITS CORNERS, BECAUSE THE BED ALONE DOES NOT READ — BUT
-# NOT A KERB, AND THE BUILD ITSELF IS WHAT RULED THAT OUT.
+# AND IT MAKES THE TWO MAPS SYMMETRICAL, which is `build fair`'s reason for
+# signing it off rather than only doing as asked. This zone sat at (-6.5, -4.0)
+# with a 5 x 5 footprint, i.e. straddling the confinement box's west edge, while
+# Eskinita's sat at x=5.4 inside the box. Two maps whose boxes play differently
+# make the map pick a balance pick, on a board scored for Esports Potential.
 #
-# Rendered from a player's eye at bp_hazard, nine flush gutter tiles are a faint
-# tan discolouration on grey paving and nothing more. That is the cost of the
-# grounding contract: the tiles are sunk so their TOP lands on GROUND_Y and
-# nothing stands on a lip, and a channel with its walls buried is just a
-# differently-coloured floor.
-#
-# The obvious fix was to EDGE it — `kerb_tile` laid round the outside, which is
-# what a real plaza drain has. floorcheck ABORTED THE BUILD: `kerb_tile` is in
-# GROUND_MESHES, so a ring of them 0.15 tall becomes a SURFACE at 0.250, and this
-# hazard sits at (-6.5, -4.0) INSIDE the court — so CourtWest, ConfinementNorth
-# and ThrowingLineNorth all suddenly spanned two surface heights and no single Y
-# was flush for any of them. Exactly the bug that guard exists for, caught before
-# it reached the scene rather than in a playtest. A raised edge cannot go where
-# painted lines already run.
-#
-# So the tell is VERTICAL instead of raised: four bollards, one per corner of the
-# zone. They are dressing (not GROUND_MESHES, so no marking measures against
-# them), they are 0.90 tall — inside this file's 1.10 interior tier, so an FPP
-# Person at 1.25 aims straight over them — and a drain corner marked with a post
-# is what a plaza actually looks like. The lane law is asserted on each.
-#
-# ⚠️ AND THEY ASK, like everything else placed after the clutter. The first run put
-# KanalPost_9 through the broken fence line at (-9.0, -6.5) — a 0.20 graze, the
-# same size as the eight this map shipped. The ladder walks it clear.
-def _put_hazard(name, mesh_name, x, z, yaw, _scale):
-    add("Hazards/KanalVisual", name, mesh_name, x, z, yaw)
-
-
-for _bx in (-1.0, 1.0):
-    for _bz in (-1.0, 1.0):
-        placer.try_place(_put_hazard, f"KanalPost_{_hn}", "bollard",
-                         _HAZ_X + _bx * 2.5, _HAZ_Z + _bz * 2.5, 0.0, 1.0)
-        _hn += 1
-
-
+# `scripts/systems/hazard_zone.gd` still exists and still works; nothing places
+# one now. Left in the tree rather than deleted -- it is a working system, and a
+# later map may want a slow field that is designed rather than inherited.
 # =============================================================================
 # THE FOUR-RING VOID KILL, ported verbatim in principle from Eskinita.
 # Art_Direction.md Part 6 §8.1. Ring 0 is the Floor box (widened in SUBS below),
@@ -1007,16 +1036,20 @@ def court_line(name, axis, at, half_len, mesh_name=SIDE_LINE_MESH):
 
 
 add_mark("BaseCircle", "base_circle_decal", 0.0, 0.0)
-court_line("CourtEast", "z", COURT_X, COURT_Z)
-court_line("CourtWest", "z", -COURT_X, COURT_Z)
-court_line("CourtNorth", "x", -COURT_Z, COURT_X)
-court_line("CourtSouth", "x", COURT_Z, COURT_X)
-# The confinement square mirrors CharacterBase.CONFINEMENT_RADIUS, same as
-# Eskinita — its east/west edges ARE the court sides, so they are not redrawn.
+# ⚠️ TWO MARKINGS, AND ONLY TWO — see the same block in build_eskinita.py for
+# why the outer court rectangle was removed. A CLOSED SQUARE for the Defender's
+# Box and one throwing line each side, and nothing else on the floor.
+court_line("ConfinementEast", "z", COURT_X, CONFINEMENT_BOX_RADIUS)
+court_line("ConfinementWest", "z", -COURT_X, CONFINEMENT_BOX_RADIUS)
 court_line("ConfinementNorth", "x", -CONFINEMENT_BOX_RADIUS, COURT_X)
 court_line("ConfinementSouth", "x", CONFINEMENT_BOX_RADIUS, COURT_X)
-court_line("ThrowingLineNorth", "x", -6.0, COURT_X, "throwing_line_decal")
-court_line("ThrowingLineSouth", "x", 6.0, COURT_X, "throwing_line_decal")
+# ⚠️ DERIVED FROM THE BOX, NOT WRITTEN OUT — see the same block in
+# build_eskinita.py for why. A literal here silently put the throwing line inside
+# the play area the moment the box was widened on 2026-08-01.
+THROWING_LINE_OFFSET = 1.0
+THROWING_LINE_Z = CONFINEMENT_BOX_RADIUS + THROWING_LINE_OFFSET
+court_line("ThrowingLineNorth", "x", -THROWING_LINE_Z, COURT_X, "throwing_line_decal")
+court_line("ThrowingLineSouth", "x", THROWING_LINE_Z, COURT_X, "throwing_line_decal")
 
 # =============================================================================
 # THE PLAY-AREA BOUNDARY, MADE VISIBLE.
@@ -1070,7 +1103,7 @@ BOUNDARY_HEDGE_INSET = 0.9
 ## A knee-high hedge standing under a canopy 2 m above it is correct planting and
 ## correct composition; the trunk is 0.46 wide and nowhere near it.
 BOUNDARY_AVOID_GROUPS = ["Clutter", "Furniture", "Landmarks", "Ground",
-                         "Vehicles", "Monument", "KanalVisual"]
+                         "Vehicles", "Monument"]
 
 court_line("BoundaryNorth", "x", -BOUND, BOUND)
 court_line("BoundarySouth", "x", BOUND, BOUND)
@@ -1143,8 +1176,6 @@ ext_lines = [
     for i, p, kit in ext
 ]
 ext_lines.append('[ext_resource type="Script" '
-                 'path="res://scripts/systems/hazard_zone.gd" id="H"]')
-ext_lines.append('[ext_resource type="Script" '
                  'path="res://scripts/systems/kill_plane.gd" id="K"]')
 ext_lines.append('[ext_resource type="Script" '
                  'path="res://scripts/systems/env_toon_pass.gd" id="T"]')
@@ -1207,9 +1238,6 @@ size = Vector3(26, 12, 1)
 
 [sub_resource type="BoxShape3D" id="Shape_killplane"]
 size = Vector3(260, 4, 260)
-
-[sub_resource type="BoxShape3D" id="Shape_hazard"]
-size = Vector3(5, 3, 5)
 
 [sub_resource type="BoxShape3D" id="Shape_monument"]
 size = Vector3(2.6, 5, 2.6)
@@ -1333,19 +1361,6 @@ volume_db = -14.0
 
 [node name="Hazards" type="Node3D" parent="."]
 
-[node name="HazardZone" type="Area3D" parent="Hazards"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.5, 1.5, -4.0)
-collision_layer = 0
-collision_mask = 2
-script = ExtResource("H")
-speed_multiplier = 0.5
-lifetime = 0.0
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Hazards/HazardZone"]
-shape = SubResource("Shape_hazard")
-
-[node name="KanalVisual" type="Node3D" parent="Hazards"]
-
 [node name="SpawnPoints" type="Node3D" parent="."]
 
 [node name="Spawn0" type="Marker3D" parent="SpawnPoints"]
@@ -1432,7 +1447,7 @@ n_marks = surfaces.verify()
 # a tree canopy over a kerb from two solids in the same volume. LOOK AT WHAT IT
 # PRINTS; do not assume an empty list because the build succeeded.
 _INTERIOR = ["Monument", "Clutter", "Furniture", "Landmarks", "Ground",
-             "Vehicles", "KanalVisual"]
+             "Vehicles"]
 
 
 def _shared_pier(a, b):

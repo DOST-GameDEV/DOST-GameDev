@@ -578,6 +578,11 @@ for _end in (-1.0, 1.0):
 # thing you changed passes anyway.
 _placer = Placer(surfaces, piece_extent,
                  ["Bahay", "Kanto", "Likod", "Kalat", "Bakod", "Puno"])
+# ⚠️ NOTHING DRESSING GOES IN THE DEFENDER'S BOX. See `Placer.play_box`. Read
+# straight from the const rather than through this file's own
+# `CONFINEMENT_BOX_RADIUS`, which is not defined until the MARKINGS section
+# several hundred lines below — the clutter is placed before the chalk is drawn.
+_placer.play_box = read_confinement_radius()
 
 
 def _put(group):
@@ -717,7 +722,7 @@ for side in (-1.0, 1.0):
 # I generated three Philippine species in env_kit.gd — saging, niyog, mangga — to
 # replace the Kenney conifers, because a pine on a Philippine residential street is
 # the loudest wrong thing either map had. The human rejected them twice on sight:
-# "holy shit theyre so ugly and they clip into the houses" and then "still, the
+# "oh man theyre so ugly and they clip into the houses" and then "still, the
 # trees are so ugly, they dont look like trees so pls js use different assets."
 # That is a look call and the look call is theirs, so the generated puno are OUT of
 # both maps.
@@ -841,7 +846,17 @@ for side, zlist in ((1.0, _PUNO_Z_E), (-1.0, _PUNO_Z_W)):
         x = _puno_x(mesh_name, 8.2 + _PUNO_XJIT[k] * 0.35, yaw, sc,
                     max(abs(lx), abs(lz)))
         # Structures only — NOT `Puno`. Interleaving canopies is what a clump is.
-        if _placer.clear_at(mesh_name, side * x, zz, yaw, sc, _PUNO_AVOID):
+        # ⚠️ AND NOT THE PLAY AREA. 🧑 2026-08-01: *"js put the tree out of the
+        # play area"*. A trunk is the one piece of dressing on this street that is
+        # a WALL — the litter, the tyres and the yero sheets are set dressing and
+        # stay (*"i was okay with the clutter earlier"*, *"i liked the tires and
+        # the tables and the yero walls"*), but a tree you cannot run past inside
+        # the taya's box is an obstacle nobody designed. Tested on the CANOPY's
+        # footprint, not the trunk's: these are deliberately placed so the crown
+        # overhangs the road (see `_puno_x` above), which is exactly what reads as
+        # "there is a tree in the play area".
+        if not _placer.in_play_box(mesh_name, side * x, zz, yaw, sc) \
+                and _placer.clear_at(mesh_name, side * x, zz, yaw, sc, _PUNO_AVOID):
             add_tree("Dressing/Puno", f"Puno_{n}_{tag}", mesh_name,
                      side * x, zz, yaw, sc, lx, lz)
             _placer.placed += 1
@@ -860,9 +875,11 @@ _PLANT_AT = [(-7.6, -12.8), (-7.9, -11.0), (7.9, -16.4), (7.6, -9.2),
              (-7.7, 2.8), (7.8, 3.6), (7.6, 9.8), (-7.9, 11.6),
              (-7.6, 19.4), (7.9, 17.1)]
 for n, (px, pz) in enumerate(_PLANT_AT):
+    # `keep_out` for the same reason the trunks have it: these sit AT the trunks,
+    # so an understory clump inside the box is a tree inside the box.
     _placer.try_place(_put("Puno"), f"Halaman_{n}", "kits/forest/plant",
                       px, pz, (n % 4) * 1.5, TOWN_SCALE * 1.5,
-                      avoid=_PUNO_AVOID)
+                      avoid=_PUNO_AVOID, keep_out=True)
 
 # --- Layer 3: overhead. Highest read-per-triangle in the kit. ---------------
 # ⚠️⚠️ THE WIRE SPAN IS 6.0 AND THE POST SPACING MUST EQUAL IT, OR THE WIRES
@@ -952,10 +969,104 @@ for n, zz in enumerate(SAMPAY_Z):
 # store standing in the road. If one is ever genuinely blocked the honest outcome
 # is a reported skip, and the FRONT YAW comes from mapkit.front_yaw so the counter
 # faces the alley by derivation rather than by a hand-written sign.
-for _sn, (_sx, _sz) in enumerate([(W - 0.85, -1.0), (-(W - 0.85), 12.0)]):
-    _placer.try_place(_put_gen("Kalat"), f"SariSari_{'E' if _sx > 0 else 'W'}",
-                      "sari_sari_store", _sx, _sz,
-                      front_yaw(_sx, _sz, 0.0, _sz), 1.0, ladder=False)
+# ⚠️⚠️ BOTH STORES MOVED DOWN THE ALLEY, 2026-08-01, ON DIRECT HUMAN INSTRUCTION.
+# 🧑, circling the east one in a screenshot: "check if this big grey rectangular
+# block still exists and pls delete it", then, when it turned out to BE a store:
+# "i wanna keep the stores man js not the grey block".
+#
+# ⚠️ THE "GREY BLOCK" AND THE STORE ARE THE SAME OBJECT, and that is the whole
+# finding. It had been read twice as a `CLUTTER_TALL` yero wall — that list's own
+# header records the identical complaint and moved the whole tier out to the facade
+# — and it was never that tier at all: tinting every tall piece on the east edge
+# left the reported object untinted. It is `sari_sari_store`, 2.40 x 2.60 x 1.70,
+# at x 7.15 against a `ConfinementEast` line at x 7.00, at z -1.0, i.e. level with
+# the centre circle and square in the east throwing lane.
+#
+# ⚠️ AND IT READ AS A BLANK SLAB BECAUSE THE COURT ONLY EVER SAW ITS BACK.
+# `front_yaw` aims the counter at the ALLEY. That is right for a shop and it means
+# the face pointed at the players is the one with nothing on it — 2.6 m of
+# featureless wall against a 1.25 m eye. Rotating it to face the court would fix the
+# blankness and keep the obstruction; moving it fixes both.
+#
+# So: same two stores, same pinned-not-laddered rule, both relocated up/down the
+# alley where the counter faces the street it serves and neither one stands in a
+# throwing lane. z -12.5 and +12.0 are a full alley-length off the box (7.0) and
+# clear of the throwing line at 8.0.
+#
+# ⚠️ THE WEST ONE HAD BEEN SILENTLY SKIPPED SINCE IT WAS WRITTEN. At z 12.0 pinned,
+# its footprint was blocked and `try_place` dropped it, so the shipped map carried
+# ONE store while this loop reads as two — exactly the "a map loses a landmark
+# without anyone noticing" failure `mapkit.try_place`'s own docstring is about, and
+# it survived because the count was printed and the name was past the report's
+# truncation. Both are asserted below now rather than trusted.
+# ⚠️⚠️ A Z-ONLY LADDER. THE STORE MAY SLIDE ALONG THE WALL AND MAY NOT LEAVE IT.
+#
+# Both stock ladders are wrong for this piece and each is wrong in its own way.
+# Pinning (`False`) is what silently dropped the west store. `COARSE_LADDER` was
+# tried and moved the east one to **x = 3.75** — a 3.4 m step across the road, so
+# the fix for "a store standing in the throwing lane" was a store standing in the
+# middle of the street. Both stock ladders offer X and Z equally, and for THIS
+# piece the two axes are not equally free: its X is load-bearing (the note below —
+# "its position against the wall line is the whole point of it") and its Z is not.
+# A shop can be anywhere along the street it faces.
+#
+# So the offsets are Z-only, and BOUNDED, which is the half that was got wrong the
+# first time.
+#
+# ⚠️⚠️ THE LADDER'S REACH IS PART OF THE KEEP-AWAY AND MUST BE ADDED TO IT.
+# The first attempt put the stores at |z| 12 with a ±6.0 ladder. The west one
+# walked to **z 9.0** — 2 m past a 7.0 box — and the render showed a fresh pale
+# slab at the court's north-west corner. 🧑, circling it in the picture that was
+# supposed to show the fix: "in the pic u sent me the block is STILL THERE".
+#
+# So the guarantee has to be nominal MINUS the ladder's longest step, not the
+# nominal alone. |z| 17.0 with a ±3.0 reach is a hard floor of |z| 14.0, which is
+# double the box and 6 m past the throwing line, and it sits the stores with the
+# `wall_corrugated` run at |z| 15.5-16.5 where the alley genuinely turns into
+# street. Asserted below against the PLACED position rather than the nominal.
+_ALLEY_LADDER = [(0.0, 0.0),
+                 (0.0, 1.5), (0.0, -1.5), (0.0, 3.0), (0.0, -3.0)]
+_STORE_MIN_ABS_Z = 14.0
+_stores_placed = {}
+_store_z = {}
+
+
+def _put_store():
+    """`_put_gen`, but it remembers where the piece actually LANDED.
+
+    `try_place` walks the ladder internally and returns only True/False, so the
+    nominal z it was asked for is not the z it used. The check below is about the
+    final position, so the final position has to be captured here.
+    """
+    inner = _put_gen("Kalat")
+
+    def go(name, mesh_name, x, z, yaw, scale):
+        _store_z[name] = z
+        inner(name, mesh_name, x, z, yaw, scale)
+    return go
+
+
+for _sn, (_sx, _sz) in enumerate([(W - 0.85, 14.5), (-(W - 0.85), -17.0)]):
+    _sname = f"SariSari_{'E' if _sx > 0 else 'W'}"
+    _stores_placed[_sname] = _placer.try_place(
+        _put_store(), _sname, "sari_sari_store", _sx, _sz,
+        front_yaw(_sx, _sz, 0.0, _sz), 1.0, ladder=_ALLEY_LADDER)
+# ⚠️ ASSERTED, NOT REPORTED, AND ON THE PLACED POSITION. `Placer.report()`
+# truncates its skip list to the first four names, which is exactly how the west
+# store went missing without anybody reading it; and a skip is only half of what
+# can go wrong — a piece that PLACES in the wrong spot reports as a success. Both
+# fail the build now.
+_missing = [n for n, ok in _stores_placed.items() if not ok]
+assert not _missing, (
+    "sari-sari store(s) skipped: %s — a landmark was dropped to resolve a graze, "
+    "which mapkit.try_place's own docstring calls the worst outcome. Move the "
+    "coordinates rather than accepting the skip." % ", ".join(_missing))
+_too_close = [(n, z) for n, z in _store_z.items() if abs(z) < _STORE_MIN_ABS_Z]
+assert not _too_close, (
+    "sari-sari store(s) inside the court's view: %s — a 2.6 m blank back panel "
+    "within %.1f m of the centre circle is the 'big grey block' report, twice over. "
+    "Move the nominal z or shorten _ALLEY_LADDER."
+    % (", ".join("%s at z=%.1f" % t for t in _too_close), _STORE_MIN_ABS_Z))
 
 
 # --- THE BARANGAY BASKETBALL RING. There is one of these on every street in the
@@ -1044,7 +1155,7 @@ CLUTTER_LOW = [
     ("halaman_lata", -5.95, 16.8, 0.6, None), ("halaman_lata", -5.65, 17.25, 1.5, None),
     ("halaman_lata", 6.0, -13.2, 0.0, None), ("halaman_lata", 5.7, -12.75, 1.1, None),
     # --- plywood and seating. Universal, and right for the place.
-    # ⚠️ `kits/town/planks` REMOVED — reported as "gray shit thats clipping thru the
+    # ⚠️ `kits/town/planks` REMOVED — reported as "gray thing thats clipping thru the
     # ground". They were placed as "patched paving", and floorcheck confirms they
     # ARE grounded, so this is not a height bug: a 1.6 m flat tan slab lying on grey
     # asphalt at a jaunty yaw does not read as a repair, it reads as a board half
@@ -1082,25 +1193,74 @@ for n, (piece, x, zz, yaw, scale) in enumerate(CLUTTER_LOW):
 #
 # Generated pieces pass `None` for scale, same convention as CLUTTER_LOW.
 CLUTTER_TALL = [
+    # ⚠⚠ THE WHOLE TIER MOVED OUT TO THE FACADE ON 2026-08-01, x = ±(WALL_FACE_X
+    # - 0.35). 🧑, twice, pointing at one of these: *"what is this big plain grey block
+    # man"* and *"why is this grey box still in ur test man"*.
+    #
+    # The header above says this tier lives "against the wall line only, |x| > 6.5"
+    # — and 6.5 was written when the confinement box WAS 5.0, so a sheet at 7.05 or
+    # 7.9 genuinely was against the wall relative to the court. The box is 7.0 now
+    # and those same numbers put a 2.4-2.9 m blank GI panel a metre from the chalk,
+    # standing in the middle of everybody's view.
+    #
+    # ⚠️ THEY ARE NOT DELETED, AND THAT IS THE POINT. 🧑: *"i liked the tires and the
+    # tables and the yero walls"*. This tier is the one at eye level and it is what
+    # makes the alley Filipino; it just belongs ON the houses rather than in the
+    # street. Derived from `WALL_FACE_X` so the next time either number moves they
+    # stay attached to the facade instead of drifting back into the court.
+    #
+    # `keep_out=True` at the placement below is the belt: if a future box ever grows
+    # past even this, the piece is evicted rather than left standing in play.
     # ATIP NA YERO — the lean-to. Roofs the alley edge at eye level, which is
     # the half of "roofed by wires" that wires physically cannot do.
-    ("atip_yero", -7.05, -7.5, 0.0, None),
-    ("atip_yero", 7.05, 10.5, math.pi, None),
-    ("atip_yero", -7.05, 5.5, 0.0, None),
-    ("atip_yero", 7.05, -3.5, math.pi, None),
+    ("atip_yero", -(WALL_FACE_X - 0.35), -7.5, 0.0, None),
+    ("atip_yero", WALL_FACE_X - 0.35, 10.5, math.pi, None),
+    ("atip_yero", -(WALL_FACE_X - 0.35), 5.5, 0.0, None),
+    ("atip_yero", WALL_FACE_X - 0.35, -3.5, math.pi, None),
     # BAKOD NA YERO — corrugated GI fence, closing the gaps between houses.
     # Long in its own X (2.00 wide, 0.21 deep), so a run along Z wants a quarter
     # turn — measured off the mesh, not guessed.
-    ("wall_corrugated", -7.9, 11.5, math.pi * 0.5, None),
-    ("wall_corrugated", -7.9, 13.6, math.pi * 0.5, None),
-    ("wall_corrugated", 7.9, 16.0, math.pi * 0.5, None),
-    ("wall_corrugated", 7.9, 6.5, math.pi * 0.5, None),
-    ("wall_corrugated", -7.9, -16.5, math.pi * 0.5, None),
-    ("wall_corrugated", 7.9, -15.5, math.pi * 0.5, None),
+    ("wall_corrugated", -(WALL_FACE_X - 0.2), 11.5, math.pi * 0.5, None),
+    ("wall_corrugated", -(WALL_FACE_X - 0.2), 13.6, math.pi * 0.5, None),
+    ("wall_corrugated", WALL_FACE_X - 0.2, 16.0, math.pi * 0.5, None),
+    # ⚠️ THE ONE AT z = 6.5 ON THE EAST SIDE IS DELETED, 2026-08-01. 🧑, circling it
+    # in a screenshot: *"js remove THAT block i pointed out nothing else"*. It is
+    # the only piece of this tier that sits level with the court rather than up or
+    # down the alley from it, so it is the one that fills the frame from a player's
+    # eye on the east throwing line. The other five stay — *"dont remove the other
+    # yero walls js this one block"*.
+    ("wall_corrugated", -(WALL_FACE_X - 0.2), -16.5, math.pi * 0.5, None),
+    ("wall_corrugated", WALL_FACE_X - 0.2, -15.5, math.pi * 0.5, None),
     # Planting, kept.
-    ("kits/town/hedge", -7.5, 1.5, 0.0, TOWN_SCALE),
-    ("kits/town/hedge", 7.5, -10.5, 0.0, TOWN_SCALE),
+    ("kits/town/hedge", -(WALL_FACE_X - 0.9), 1.5, 0.0, TOWN_SCALE),
+    ("kits/town/hedge", WALL_FACE_X - 0.9, -10.5, 0.0, TOWN_SCALE),
 ]
+# ⚠⚠ `keep_out=True` ON THIS TIER AND NOT ON `CLUTTER_LOW`. The comment above
+# restricts these to |x| > 6.5 "against the wall line" — which was outside the box
+# when the box was 5.0 and then 6.5, and is INSIDE it at 7.5. The `atip_yero` sheets
+# sit at x = ±7.05 and are **2.92 m tall**, so growing the box parked a solid
+# untextured slab in the middle of the street. 🧑, with a screenshot: *"what is this
+# big plain grey block man"*.
+#
+# This is the same line the trees are on, and it is the line the human drew: *"i was
+# okay with the clutter earlier, js put the tree out of the play area"*, *"i liked
+# the tires and the tables and the yero walls"*. The yero walls stay ON THE MAP —
+# they are the tier that makes an alley a Philippine alley — they just stop standing
+# in the court. Tyres and tables are set dressing you run over; a 2.92 m GI sheet is
+# a wall.
+#
+# ⚠️ AND IT IS DERIVED, so the next resize moves them again rather than re-creating
+# this. `_placer.play_box` is read from `CONFINEMENT_RADIUS`.
+# ⚠⚠ `keep_out` IS OFF AGAIN FOR THIS TIER, AND THAT IS NOT A REVERSAL. It was
+# switched on while these pieces were hand-placed at |x| = 7.05-7.9, where a growing
+# box could swallow them. Their X is DERIVED FROM `WALL_FACE_X` now, so they are on
+# the facade by construction and cannot be in the court whatever the box does.
+#
+# Leaving the guard on actively cost content: an `atip_yero` lean-to is wide, so its
+# FOOTPRINT still reached inside the keep-out band even with its origin on the wall,
+# and all four were evicted. 🧑: *"hey dont remove the other yero walls js this one
+# block"* — the lean-tos are wanted, it was the one standing in the street that was
+# not. Position fixes that; eviction was removing the wrong four.
 for n, (piece, x, zz, yaw, scale) in enumerate(CLUTTER_TALL):
     if scale is None:
         _placer.try_place(_put_gen("Kalat"), f"KalatTaas_{n}", piece, x, zz, yaw, 1.0)
@@ -1118,33 +1278,34 @@ for n, (x, zz, yaw) in enumerate([
     _placer.try_place(_put_gen("Kalat"), f"Traysikel_{n}", "tricycle",
                       x, zz, yaw, 1.0)
 
-# --- The kanal. This REPLACES the pink jeepney-lane chalk. -------------------
+# --- The kanal and its slow zone are GONE. -----------------------------------
 #
-# ⚠️ 2026-07-29, EXPLICIT HUMAN INSTRUCTION: "completely remove and delete all
-# pink chalk lines and their generation logic ... do not render them at all."
-# `env_jeepney_lane_decal` was the only piece on this map using the `hazard`
-# material (#F468A8), it ran z=-6..+6 at x=4.07..6.33, and that band crosses the
-# confinement box's whole east edge — which is exactly the reported "the pink
-# lines overshoot and merge with the white lines". It is gone, and so is its
-# `_jeepney_lane_decal()` generator in env_kit.gd.
+# ⚠️⚠️ REMOVED 2026-08-01 ON DIRECT HUMAN INSTRUCTION, with two screenshots.
+# 🧑: *"this keeps bugging/ clipping these things. can u js remove them"* and
+# *"this looks bad it keeps phasing in and out"*; then, asked which element it
+# was: *"yes remove slow zone, Tan slabs in a line (kanal / gutter)"*.
 #
-# ⚠️ BUT THE `HazardZone` AT x=5.4 IS A LIVE GAMEPLAY VOLUME (speed_multiplier
-# 0.5, permanent) AND THE PINK STRIP WAS ITS ONLY TELL. Deleting the marking and
-# stopping there would have left an INVISIBLE slow-field in the play area, which
-# is a worse bug than the one being fixed. So the hazard keeps a visual — as
-# real 3D geometry rather than chalk: a `gutter_tile` kanal, which is what a
-# Philippine side street actually has running along its edge and which explains
-# the slow zone physically instead of decorating it. Same footprint, no pink,
-# no chalk, and it reads at a glance.
-_kanal_lo, _kanal_hi = mesh_bounds("gutter_tile")
-_kanal_len = _kanal_hi[2] - _kanal_lo[2]
-_kn = 0
-_kz = -5.5
-while _kz < 5.5:
-    add("Hazards/KanalVisual", f"Kanal_{_kn}", "gutter_tile", 5.4,
-        _kz + _kanal_len * 0.5, 0.0, base_y=GROUND_Y - 0.15)
-    _kn += 1
-    _kz += _kanal_len
+# WHAT WENT: the six `gutter_tile` slabs at x=5.4, AND the `HazardZone` they
+# existed to explain (`speed_multiplier` 0.5, permanent, a 3.6 × 11 box).
+#
+# ⚠️ BOTH HAD TO GO TOGETHER AND THAT IS THE WHOLE POINT. The note that stood
+# here recorded why the tiles were laid in the first place: the pink jeepney-lane
+# chalk was deleted on 2026-07-29 and the hazard was left with no tell, so these
+# tiles were added to explain it physically instead. Removing the tiles ALONE
+# would have restored exactly that bug — an invisible slow-field inside the play
+# area, which that note itself calls "a worse bug than the one being fixed". The
+# zone goes with its marker.
+#
+# ⚠️ THE SINKING WAS THE FLICKER. The tiles sat at `GROUND_Y - 0.15`, so their
+# top face was a hair under a coplanar road surface: that z-fights, and "phasing
+# in and out" is exactly what z-fighting looks like. Raising them would have
+# fixed the flicker and kept a slow zone nobody asked for; neither was wanted.
+#
+# ⚠️ AND IT MAKES THE TWO MAPS SYMMETRICAL, which is ⚖️ `build fair`'s own reason
+# for signing this off rather than only doing as asked. Eskinita carried a
+# permanent 50% slow field INSIDE the confinement box; Bayan Plaza's equivalent
+# sits outside the play area. Two maps whose boxes play differently make the map
+# pick a balance pick, on a board scored for Esports Potential.
 
 
 # =============================================================================
@@ -1153,7 +1314,7 @@ while _kz < 5.5:
 #
 # Human ask: "add random child chalk scribbles in eskinita on the floor, make it
 # look like real drawings", then immediately: "make sure ur chalk drawings are not
-# covered by assets or intersect with random shit/clip."
+# covered by assets or intersect with random stuff/clip."
 #
 # The second half is the hard half, and it is why this block sits HERE - after every
 # piece of dressing on the map has been placed. A marking does not go through
@@ -1179,7 +1340,7 @@ CHALK_ART = [
 ## absent - a drawing is chalk ON the road, so `Kalsada` is what it is drawn on, not
 ## something to dodge. Including it would refuse every candidate, which is the exact
 ## trap `try_edge_hedge` documents on the plaza.
-_ART_AVOID = ["Bahay", "Kanto", "Likod", "Kalat", "Bakod", "Puno", "KanalVisual"]
+_ART_AVOID = ["Bahay", "Kanto", "Likod", "Kalat", "Bakod", "Puno"]
 _art_placed = 0
 _art_skipped = []
 for _an, _am, _ax, _az, _ayaw in CHALK_ART:
@@ -1332,23 +1493,41 @@ COURT_Z = 13.0
 # The base circle sits at the centre of the court, on flat paving.
 add_mark("BaseCircle", "base_circle_decal", 0.0, 0.0)
 
-# The two long sides. These are what every other line terminates on.
-court_line("CourtEast", "z", COURT_X, COURT_Z)
-court_line("CourtWest", "z", -COURT_X, COURT_Z)
-# The two ends.
-court_line("CourtNorth", "x", -COURT_Z, COURT_X)
-court_line("CourtSouth", "x", COURT_Z, COURT_X)
-
-# The confinement square's north/south edges — the Can/Taya's actual restricted
-# play area (CharacterBase.CONFINEMENT_RADIUS). Kept as a SQUARE per user
-# feedback ("the circle you made was ugly ... can we just use a square").
+# ⚠️ TWO MARKINGS, AND ONLY TWO. Human instruction, 2026-08-01: *"make sure its
+# this simple / an area where defender can tag and a 2nd line wherein attacker is
+# only allowed to throw from"*.
+#
+# The floor used to carry SIX lines: a 13-unit-long outer court rectangle, the
+# confinement box's two cross-lines, and the two throwing lines. Because the
+# court's own sides sat at exactly ±CONFINEMENT_BOX_RADIUS, the box never read as
+# a box — it read as a 6.5 x 26 corridor with four stripes across it, and the one
+# shape a player actually needs to judge (am I inside the taya's reach?) was the
+# hardest thing on the floor to see. The outer rectangle is gone.
+#
+# What is left says the rules out loud:
+#   · a CLOSED SQUARE at |x| = |z| = CONFINEMENT_BOX_RADIUS — the Defender's Box.
+#     The taya cannot leave it and an Attacker inside it can be tagged.
+#   · one THROWING LINE on each side, further out — behind which a throw is legal.
+# The gap between them is the corridor an attacker crosses to retrieve, which is
+# the whole tension of the game (Design.md § 0) and is now literally drawn.
+court_line("ConfinementEast", "z", COURT_X, CONFINEMENT_BOX_RADIUS)
+court_line("ConfinementWest", "z", -COURT_X, CONFINEMENT_BOX_RADIUS)
 court_line("ConfinementNorth", "x", -CONFINEMENT_BOX_RADIUS, COURT_X)
 court_line("ConfinementSouth", "x", CONFINEMENT_BOX_RADIUS, COURT_X)
 
-# The throwing lines, at the 6.0 distance Art_Direction §9 derived — the mark an
-# attacker must stay behind.
-court_line("ThrowingLineNorth", "x", -6.0, COURT_X, "throwing_line_decal")
-court_line("ThrowingLineSouth", "x", 6.0, COURT_X, "throwing_line_decal")
+# The throwing lines — the mark an attacker must stay behind.
+#
+# ⚠️ DERIVED FROM THE BOX, NOT WRITTEN OUT. This was a literal `6.0` beside a
+# confinement box of 5.0, i.e. the gap was the real number and it was implicit.
+# When `build model` widened the box to 6.5 on 2026-08-01 the literal stayed put
+# and the throwing line landed INSIDE the play area — the chalk telling an
+# attacker to stand somewhere the throw gate would refuse them. Same failure the
+# `read_confinement_radius()` docstring describes for the box itself, one line
+# over, so it gets the same fix: state the offset, derive the position.
+THROWING_LINE_OFFSET = 1.0
+THROWING_LINE_Z = CONFINEMENT_BOX_RADIUS + THROWING_LINE_OFFSET
+court_line("ThrowingLineNorth", "x", -THROWING_LINE_Z, COURT_X, "throwing_line_decal")
+court_line("ThrowingLineSouth", "x", THROWING_LINE_Z, COURT_X, "throwing_line_decal")
 
 # =============================================================================
 
@@ -1357,8 +1536,6 @@ ext_lines = [
     % ("PackedScene" if kit else "Mesh", p, i)
     for i, p, kit in ext
 ]
-ext_lines.append('[ext_resource type="Script" '
-                 'path="res://scripts/systems/hazard_zone.gd" id="H"]')
 ext_lines.append('[ext_resource type="Script" '
                  'path="res://scripts/systems/kill_plane.gd" id="K"]')
 ext_lines.append('[ext_resource type="Script" '
@@ -1460,9 +1637,6 @@ size = Vector3(20, 12, 1)
 
 [sub_resource type="BoxShape3D" id="Shape_killplane"]
 size = Vector3(260, 4, 260)
-
-[sub_resource type="BoxShape3D" id="Shape_hazard"]
-size = Vector3(3.6, 3, 11)
 
 [sub_resource type="PanoramaSkyMaterial" id="Sky_mat"]
 panorama = ExtResource("SKY")
@@ -1671,19 +1845,6 @@ bus = &"Music"
 volume_db = -12.0
 
 [node name="Hazards" type="Node3D" parent="."]
-
-[node name="HazardZone" type="Area3D" parent="Hazards"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.4, 1.5, 0)
-collision_layer = 0
-collision_mask = 2
-script = ExtResource("H")
-speed_multiplier = 0.5
-lifetime = 0.0
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Hazards/HazardZone"]
-shape = SubResource("Shape_hazard")
-
-[node name="KanalVisual" type="Node3D" parent="Hazards"]
 
 [node name="SpawnPoints" type="Node3D" parent="."]
 

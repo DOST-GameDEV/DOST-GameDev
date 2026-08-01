@@ -29,9 +29,28 @@ signal server_disconnected
 ## token has necessarily arrived over the wire — see `_rpc_identify`'s own
 ## doc for the race this exists to close.
 signal player_identified(peer_id: int, token: String)
+## HOST-ONLY, and it fires for a peer's FIRST declaration as well as for every later
+## change — see `publish_spectator`. `match_setup.gd` listens: a peer that starts
+## watching has to give its seat back to the bot pool and leave the ready count, and
+## the lobby board is the only thing that can show that happening.
+##
+## Emitted from `_rpc_identify` too (not only from a mid-lobby toggle), because a peer
+## that walked into the lobby ALREADY spectating declares it in its identify packet and
+## the board would otherwise seat it like anybody else.
+signal peer_spectator_changed(peer_id: int, spectating: bool)
 
 const DEFAULT_PORT: int = 8910
 const MAX_PLAYERS: int = 4
+## ⚠️ NOT THE SAME NUMBER AS `MAX_PLAYERS`, ON PURPOSE. `create_server()`'s
+## client limit used to just BE `MAX_PLAYERS`, which caps the whole SESSION at
+## four connections — host plus three — with no room left for anyone who only
+## wants to watch. 🧑 2026-08-01: *"spectate feels redundant... there could be
+## 4 ppl playing and im a 5th or 6th guy just wathcing thru spectate."`
+## `MAX_PLAYERS` stays 4 everywhere else in this file and in `main.gd` /
+## `match_setup.gd` — it is a real game-design invariant (four seats, always)
+## and none of that seat-indexing code changes. Only the SOCKET's own ceiling
+## moves, and only here.
+const MAX_CONNECTIONS: int = 12
 const MAIN_SCENE_PATH: String = "res://scenes/main/Main.tscn"
 ## Hamachi (or any VPN-tunnelled LAN) carries more jitter than a same-router
 ## LAN, and ENet's built-in defaults (timeout_limit 32 / timeout_min 5000ms /
@@ -104,13 +123,91 @@ var peer_characters: Dictionary = {} # peer_id -> {character, can, slipper}
 ## What THIS process picked, published to the host on connect. Snapshotted at
 ## connect time rather than read live, so a menu the player wanders back into
 ## mid-connection cannot change what the host was already told.
-var local_picks: Dictionary = {"character": -1, "can": -1, "slipper": -1}
+var local_picks: Dictionary = {"character": -1, "can": -1, "slipper": -1, "name": ""}
 
 ## What `peer_id` picked, or all -1 if it never said. Host-side lookup so main.gd
 ## does not have to know this dictionary exists, mirroring how it reaches tokens
 ## through `peer_tokens` rather than through the wire format.
 func picks_for(peer_id: int) -> Dictionary:
-	return peer_characters.get(peer_id, {"character": -1, "can": -1, "slipper": -1})
+	return peer_characters.get(peer_id,
+		{"character": -1, "can": -1, "slipper": -1, "spectator": 0, "name": ""})
+
+## Whether `peer_id` joined to WATCH rather than to play. Host-side, read by
+## `main.gd::_spawn_player` (which skips them entirely) and by
+## `_expected_ready_count()` (which must not wait for a READY press from somebody with
+## no character to ready). See `GameLaunch.spectator`.
+func is_spectator(peer_id: int) -> bool:
+	return int(picks_for(peer_id).get("spectator", 0)) != 0
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE SPECTATE CHOICE IS MADE **AFTER** THE IDENTIFY PACKET HAS ALREADY GONE, AND
+## WITHOUT THIS NOTHING EVER TOLD THE HOST.
+##
+## `_local_picks()` is snapshotted once — at `host_game()` for the host, at
+## `_on_connected_to_server()` for a client — and the SPECTATE toggle lives one screen
+## LATER, in the lobby the peer is sitting in while connected. So every consumer of
+## `is_spectator()` (the ready gate, `_spawn_player`, `playing_peer_count`) was reading a
+## value frozen before the player had been given any way to set it:
+##
+##   * a CLIENT that pressed SPECTATE in the lobby was spawned a character anyway and
+##     counted in the ready gate — the toggle did nothing at all off the local machine;
+##   * a HOST that pressed it got a body too, because `host_game()` had already written
+##     `peer_characters[1]` with `spectator = 0` before the lobby existed.
+##
+## Solo is unaffected and deliberately does not come through here: `main.gd::
+## _start_local_test` reads `GameLaunch.spectator` directly and there is no host to tell.
+##
+## Host-authoritative like every other pick: the sender proposes, the host records. A
+## client never writes another peer's flag, and its own copy of `peer_characters` stays
+## empty exactly as it is for the three character indices.
+func publish_spectator(spectating: bool) -> void:
+	local_picks["spectator"] = 1 if spectating else 0
+	if not is_networked():
+		return
+	if is_host():
+		_apply_spectator(multiplayer.get_unique_id(), spectating)
+		return
+	# Same window `match_setup.gd::_can_rpc` documents: `join_game()` returns when the
+	# socket opens, not when the handshake completes, and the SPECTATE button is
+	# clickable throughout. A press inside that window is not lost — `local_picks` above
+	# already carries it, and `_on_connected_to_server` sends the packet.
+	if multiplayer.multiplayer_peer == null:
+		return
+	if multiplayer.multiplayer_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
+		return
+	_rpc_set_spectator.rpc_id(1, spectating)
+
+## Any peer -> host: "I am watching / I am playing after all."
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_set_spectator(spectating: bool) -> void:
+	if not is_host():
+		return
+	_apply_spectator(multiplayer.get_remote_sender_id(), spectating)
+
+## HOST ONLY. Writes the flag into the same `peer_characters` entry `_rpc_identify`
+## builds, rather than into a parallel dictionary, so `is_spectator()` has exactly one
+## source and cannot answer two different things depending on which one was written last.
+func _apply_spectator(peer_id: int, spectating: bool) -> void:
+	var picks: Dictionary = peer_characters.get(peer_id,
+		{"character": -1, "can": -1, "slipper": -1, "spectator": 0})
+	picks["spectator"] = 1 if spectating else 0
+	peer_characters[peer_id] = picks
+	peer_spectator_changed.emit(peer_id, spectating)
+
+## How many connected peers are actually PLAYING. The ready gate counts these, not
+## `connected_peer_ids.size()` — a lobby of two players and two spectators must start on
+## two presses, and counting all four would hang it forever on people who cannot press.
+##
+## Floored at 1 for the same reason `_expected_ready_count` already floors: a host whose
+## own peer list has not populated yet still owes its own press. Note that a host who is
+## ITSELF spectating still counts here — somebody has to be able to start the match, and
+## the host is the only peer that can.
+func playing_peer_count() -> int:
+	var count := 0
+	for peer_id in connected_peer_ids:
+		if peer_id == multiplayer.get_unique_id() or not is_spectator(peer_id):
+			count += 1
+	return maxi(1, count)
 
 ## This process's own three picks, read off GameLaunch. Kept here rather than
 ## inlined at both call sites so the host's self-seed and the client's RPC cannot
@@ -120,6 +217,21 @@ func _local_picks() -> Dictionary:
 		"character": GameLaunch.character_index(),
 		"can": GameLaunch.can_index(),
 		"slipper": GameLaunch.slipper_index(),
+		# ⚠️ THE NAME RIDES THE SAME PACKET, for the same reason spectating does: it
+		# answers "who is this peer" and the host needs it BEFORE it spawns anybody. A
+		# separate RPC would open the window where the host has seated a player it
+		# cannot yet label.
+		"name": GameLaunch.player_name(),
+		# ⚠️ SPECTATING RIDES THE PICKS PACKET RATHER THAN GETTING AN RPC OF ITS OWN.
+		# It is answered by the same question the three picks answer — "who is this peer,
+		# and what should the host build for them" — and it has to be known BEFORE the
+		# host spawns anybody. A second RPC would create exactly the window
+		# `peer_characters`' own doc describes for the character index: the host knows a
+		# peer exists but not yet what it is, precisely when it is about to seat it.
+		#
+		# An int, not a bool: this dictionary crosses the wire and every other value in
+		# it is an int, so a mixed-type payload buys nothing and costs a type surprise.
+		"spectator": 1 if GameLaunch.spectator else 0,
 	}
 ## Host-only: true once the host has left the pre-match lobby and is
 ## actually running Main.tscn — set by `main.gd::_start_hosting()`, cleared
@@ -159,7 +271,7 @@ func _ready() -> void:
 ## player (host's own peer id, `1`, never fires `peer_connected`).
 func host_game(port: int = DEFAULT_PORT) -> Error:
 	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_server(port, MAX_PLAYERS)
+	var err := peer.create_server(port, MAX_CONNECTIONS)
 	if err != OK:
 		push_error("NetworkManager: failed to host on port %d (error %d)" % [port, err])
 		return err
@@ -191,6 +303,53 @@ func join_game(address: String, port: int = DEFAULT_PORT) -> Error:
 	multiplayer.multiplayer_peer = peer
 	_is_networked = true
 	return OK
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE HOST SAYS GOODBYE BEFORE IT CLOSES THE SOCKET. Human report, 2026-07-30:
+## *"the host must notify clients it is leaving before it closes the server. Currently,
+## quitting politely strands everyone for ~5 seconds."*
+##
+## MEASURED before this existed, on real peers: an ABRUPT quit (alt-F4) and a GRACEFUL
+## one (the pause menu's QUIT TO MENU) produced the SAME teardown time — 5.20 s and
+## 5.40 s. That is not a coincidence, it is `ENET_TIMEOUT_MIN` (10 000 ms, halved by
+## ENet's own adaptive window): a closed socket is indistinguishable from a silent one,
+## so a client learns about a polite exit exactly as slowly as about a yanked cable, by
+## waiting for the timeout to expire. `_on_server_disconnected` was already wired and
+## already correct; nothing was ever telling it.
+##
+## ⚠️ DO NOT "FIX" THIS BY SHORTENING `ENET_TIMEOUT_MIN`. That window is deliberately
+## wide because this game is played over Hamachi, where an ordinary latency spike would
+## otherwise be flagged as a drop and cost somebody their round. The fix is an
+## announcement, not a shorter fuse — the timeout stays exactly where it is and remains
+## the backstop for the abrupt case, which by definition cannot be announced.
+##
+## ⚠️ IT YIELDS TWO FRAMES BEFORE CLOSING. `rpc()` hands the packet to ENet, which
+## flushes on its own poll — calling `close()` on the same frame discards the queued
+## packet and the announcement never leaves the building, which is exactly the bug this
+## is fixing wearing a different hat. Two `process_frame` awaits is a handful of
+## milliseconds and is invisible next to the 5 s it removes.
+##
+## `await`, so callers must `await` it too if they intend to change scene afterwards —
+## `main.gd::_on_return_to_menu_pressed` does.
+func announce_host_leaving() -> void:
+	if not is_host():
+		return
+	_rpc_host_closing.rpc()
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree != null:
+		await tree.process_frame
+		await tree.process_frame
+
+## Host -> every client. Deliberately does the SAME teardown a real timeout would, by
+## going through the same signal: `server_disconnected` is what `main.gd` already
+## listens to, and it already bounces to MultiplayerSetup with a status message. A
+## second, parallel "the host left politely" path would be a second thing to keep
+## correct, and the two would drift the first time either was touched.
+@rpc("authority", "call_remote", "reliable")
+func _rpc_host_closing() -> void:
+	if is_host():
+		return
+	_on_server_disconnected()
 
 func disconnect_network() -> void:
 	if multiplayer.multiplayer_peer:
@@ -301,9 +460,23 @@ func _rpc_identify(token: String, picks: Dictionary = {}) -> void:
 		"character": _validated(picks, "character", CharacterRoster.ROSTER.size()),
 		"can": _validated(picks, "can", CharacterRoster.CANS.size()),
 		"slipper": _validated(picks, "slipper", CharacterRoster.SLIPPERS.size()),
+		# Absent (a peer on an older build) reads as 0, i.e. a player. That is the right
+		# default: an unknown peer that is silently never spawned would be a black screen
+		# with no error, which is the worst failure this could have.
+		"spectator": 1 if int(picks.get("spectator", 0)) != 0 else 0,
+		# ⚠️ SANITISED HERE, ON THE HOST, ON ARRIVAL. Same rule as the three indices
+		# above — the sender proposes, the host decides. This string is drawn on every
+		# peer's scoreboard and on a 3D label in the world, so an untrimmed one from a
+		# careless (or hostile) client would be everybody's problem, not just its own.
+		"name": SettingsManagerScript.sanitise_name(String(picks.get("name", ""))),
 	}
 	if match_in_progress:
 		_rpc_route_to_running_match.rpc_id(peer_id)
+	# ⚠️ FIRED FOR A PLAYER TOO, NOT ONLY FOR A SPECTATOR, AND THE LOBBY RELIES ON THAT.
+	# `player_connected` fires the instant ENet completes its handshake — BEFORE this
+	# packet arrives — so the lobby has already auto-seated this peer by now and cannot
+	# know yet whether it wanted a seat. This is the first moment anybody does.
+	peer_spectator_changed.emit(peer_id, is_spectator(peer_id))
 	player_identified.emit(peer_id, token)
 
 ## One client-sent pick, range-checked against the roster it indexes. -1 is

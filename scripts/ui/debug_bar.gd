@@ -40,7 +40,7 @@ func _ready() -> void:
 	# are holding is now the Can — is_can and team_is_can_side both flip here.
 	MatchManager.round_started.connect(_on_round_started)
 
-func _on_round_started(_round_number: int, _team_a_is_can: bool) -> void:
+func _on_round_started(_round_number: int, _defender_slot: int) -> void:
 	DebugPlayerSwitcher.debug_refresh_readout()
 
 func debug_refresh(driven_text: String) -> void:

@@ -605,6 +605,40 @@ def build_boot():
            peak=0.72)
 
 
+def build_pivot_extras():
+    """
+    🔊 `build sound`, HARRYDAKS pivot. Three names with no orphaned asset close
+    enough to repurpose (see audio_manager.gd's SFX_ALIASES for the ones that
+    WERE close enough - the shove reuses `bump`/`dash`, the reset/pickup/throw
+    reuse the lata/slipper set verbatim).
+    """
+    # Stamina hits zero. A deflate, not an impact - the bar emptying is a
+    # state change, not a hit, so this is breath and pitch-drop rather than a
+    # transient. Short enough not to still be running when fatigue's speed
+    # penalty actually kicks the player.
+    breath = biquad(noise("stamina_empty", 0.30), "lp", 900.0) * env(0.30, 0.01, power=1.6)
+    drop = sweep(0.30, 260.0, 90.0, curve=1.4) * env(0.30, 0.01, power=1.8) * 0.4
+    _write("stamina_empty", soft_clip(mix(breath * 0.8, drop), 1.2), peak=0.6)
+
+    # The round ends. There is no per-round winner any more (see round_manager.gd's
+    # own header) so this has to read as NEUTRAL - not a win, not a loss, just
+    # "that's time" - a two-note buzzer landing on the same note it starts on,
+    # the way a sports buzzer does rather than a fanfare resolving up or down.
+    end = mix(note(392.0, 0.16, 0.00, 0.42, duty=0.5),
+              note(392.0, 0.22, 0.20, 0.42, duty=0.5, amp=0.85))
+    _write("round_end", soft_clip(end, 1.25), peak=0.6)
+
+    # A score award (LATA DOWN / TAG / SABOTAGE - never DEFENSE, see
+    # MatchManager.score_changed's own reason string and the class doc's note
+    # on why). One bright short ding, deliberately smaller than round_win/
+    # match_win: it fires several times a round and has to sit UNDER the
+    # positional impact sound that already played a frame earlier, not compete
+    # with it.
+    ding = note(1568.0, 0.09, 0.00, 0.11, duty=0.3)
+    ding2 = note(2093.0, 0.09, 0.02, 0.11, duty=0.25, amp=0.5)
+    _write("score_award", soft_clip(mix(ding, ding2), 1.15), peak=0.5)
+
+
 def build_ui():
     _write("ui_click", soft_clip(note(1046.0, 0.055, 0.0, 0.06, duty=0.3), 1.2), peak=0.55)
     _write("ui_hover", soft_clip(note(1568.0, 0.035, 0.0, 0.04, duty=0.2), 1.1), peak=0.32)
@@ -631,6 +665,7 @@ def main():
     build_abilities()
     build_match()
     build_boot()
+    build_pivot_extras()
     build_ui()
 
     print("wrote %d sfx to %s/" % (len(_written), OUT_DIR.replace(os.sep, "/")))

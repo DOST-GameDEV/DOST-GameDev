@@ -69,14 +69,20 @@ func update(local_character: CharacterBase) -> void:
 		teammate_arrow.visible = false
 		can_arrow.visible = false
 		return
-	_update_one(teammate_arrow, camera, _find_teammate(local_character))
-	_update_one(can_arrow, camera, _find_can(local_character))
+	_update_one(teammate_arrow, camera, _find_own_slipper(local_character))
+	# ⚠️ THE LATA IS READ STRAIGHT OFF `RoundManager`, NOT FOUND BY A TREE SCAN. There
+	# is exactly one of it and the manager already holds the reference, so a recursive
+	# `_find_character` walk every frame would be a search for something never lost.
+	_update_one(can_arrow, camera, RoundManager.lata)
 
 ## The standard "radar arrow" recipe: project the target, detect off-screen
 ## (including behind-camera, which `unproject_position` does not itself
 ## flag), then clamp the centre-to-target ray to the inset screen rect and
 ## point the arrow along it.
-func _update_one(arrow: Control, camera: Camera3D, target: CharacterBase) -> void:
+## ⚠️ `target` IS A `Node3D`, NOT A `CharacterBase`. The lata is a plain prop now, and
+## it is the one target this still points at — everything below only ever reads
+## `global_position` and `is_inside_tree()`, so widening the type costs nothing.
+func _update_one(arrow: Control, camera: Camera3D, target: Node3D) -> void:
 	# `is_inside_tree()`, not just `is_instance_valid()` — measured live during
 	# 4.3's peer-drop testing: a character mid-`queue_free()` (main.gd's
 	# `_on_player_disconnected`, fired on every peer, not just the host —
@@ -133,19 +139,66 @@ func _update_one(arrow: Control, camera: Camera3D, target: CharacterBase) -> voi
 
 ## Same team, not yourself — a team is 1 Person + 1 Prop (never two of the
 ## same kind), so this is unambiguous without checking is_person at all.
-func _find_teammate(local_character: CharacterBase) -> CharacterBase:
-	return _find_character(get_tree().current_scene, func(c: CharacterBase) -> bool:
-		return c != local_character and c.team == local_character.team)
+## ⚠️⚠️ THIS ARROW NOW POINTS AT **YOUR OWN SLIPPER**, and that is § CHECKLIST 1.6
+## answered by 🧑's own mechanics revision rather than by this lane guessing.
+##
+## The history: it pointed at your teammate; the pivot deleted teams and left it a
+## null-returning stub, with 1.6 asking whether a "nearest threat" arrow earned the
+## slot or whether the arrow should be deleted outright. Neither, as it turns out —
+## 🧑 2026-08-01: *"Directional Arrow: A dynamic UI arrow floats around the Attacker's
+## feet pointing directly toward their uncollected slipper."*
+##
+## ⚠️ IT IS ONLY MEANINGFUL BECAUSE SLIPPERS NOW HAVE OWNERS. Under the old
+## any-attacker-may-take-any-slipper rule there was no such thing as "your"
+## slipper, so this arrow could not have existed as specified; `slipper.gd::
+## can_be_grabbed_by()` is what makes it well-defined.
+##
+## Nothing is drawn while you are holding it — an arrow pointing at your own hand is
+## noise, and it is the retrieval this exists to guide.
+func _find_own_slipper(local_character: CharacterBase) -> Node3D:
+	if local_character == null or local_character.is_defender:
+		return null
+	if local_character.holding_slipper():
+		return null
+	# ⚠️⚠️ YOURS FIRST, THEN THE NEAREST ONE YOU COULD ACTUALLY GRAB.
+	#
+	# 🧑 asked for *"an arrow on my hud showing where MY tsinelas is"* and, in the
+	# same breath, for anybody to be able to pick up anybody's slipper. Those two
+	# pull in opposite directions: once pickups are open, "mine" can be in a rival's
+	# hand for most of a round, and an arrow that points at nothing for that whole
+	# time is the §1.6 complaint again from a new direction.
+	#
+	# So it degrades rather than gives up. `owner_slot` still decides the FIRST
+	# choice, because that is the slipper the player thinks of as theirs and the one
+	# the owner glow lights. If it is in somebody's hand, the arrow falls through to
+	# the nearest LOOSE one — which, under the new rule, is genuinely yours to take.
+	var fallback: Slipper = null
+	var fallback_d := INF
+	for node in get_tree().get_nodes_in_group("slippers"):
+		var slipper := node as Slipper
+		if slipper == null or slipper.state == Slipper.CarryState.CARRIED:
+			continue
+		if slipper.owner_slot == local_character.player_slot:
+			return slipper
+		var d := local_character.global_position.distance_to(slipper.global_position)
+		if d < fallback_d:
+			fallback_d = d
+			fallback = slipper
+	return fallback
 
 ## Reads RoundManager's own tracked-Can list rather than re-scanning for
 ## `is_can` — that is the one place this is already kept correct across a
 ## role swap (see round_manager.gd::get_tracked_cans doc). Skips yourself:
 ## if you ARE the tracked Can, you don't need an arrow pointing at your own
 ## body.
-func _find_can(local_character: CharacterBase) -> CharacterBase:
-	for can in RoundManager.get_tracked_cans():
-		if is_instance_valid(can) and can != local_character:
-			return can
+## ⚠️ WAS `RoundManager.get_tracked_cans()`. The lata is a single world object now
+## rather than whichever Prop was playing the can this round, so there is nothing to
+## track and nothing to pick from.
+##
+## ⚠️ RETURNS `null` AND THE CALLER READS THE LATA DIRECTLY. `Lata` is not a
+## `CharacterBase` — that is the whole point of the rewrite — so it cannot be
+## returned through this signature. `update()` handles the lata arrow itself.
+func _find_can(_local_character: CharacterBase) -> CharacterBase:
 	return null
 
 func _find_character(node: Node, matches: Callable) -> CharacterBase:

@@ -69,7 +69,7 @@ const STAGGER: float = 0.09
 ## the same reason the tabs are built from `CATEGORIES`: adding a fourth trait
 ## should be one entry in the roster and nothing here or in the scene.
 const TRAIT_SLOTS: int = 5
-const TRAIT_PIP_SIZE: Vector2 = Vector2(46, 14)
+const TRAIT_PIP_SIZE: Vector2 = Vector2(42, 12)
 const TRAIT_PIP_GAP: int = 6
 ## Chalk. `UiTheme.HIGHLIGHT` is the same yellow the base-circle decal and the
 ## round timer's urgency state use, so a full meter reads as "the same game
@@ -91,7 +91,7 @@ func _refresh_traits(entry: Dictionary) -> void:
 	# by a roster change.
 	var hint := Label.new()
 	hint.text = "Drag to turn the view  ·  scroll to zoom  ·  right-click to reset"
-	hint.add_theme_font_size_override("font_size", 18)
+	hint.add_theme_font_size_override("font_size", 15)
 	hint.add_theme_color_override("font_color", Color(0.961, 0.902, 0.784, 0.5))
 	trait_rows.add_child(hint)
 
@@ -108,7 +108,7 @@ func _build_trait_row(label: Dictionary, traits: Dictionary) -> HBoxContainer:
 	var name_label := Label.new()
 	name_label.text = String(label["name"])
 	name_label.custom_minimum_size = Vector2(126, 0)
-	name_label.add_theme_font_size_override("font_size", 24)
+	name_label.add_theme_font_size_override("font_size", 21)
 	name_label.add_theme_color_override("font_color", TRAIT_PIP_FILLED)
 	name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.add_child(name_label)
@@ -270,7 +270,30 @@ func _apply() -> void:
 	var entry: Dictionary = entries[index]
 
 	name_label.text = String(entry["name"])
-	tagline_label.text = String(entry["tagline"])
+	# ⚠️ MAX POWER RIDES THE DESCRIPTION, IT DOES NOT GET A ROW OF ITS OWN. Human
+	# instruction: *"display the max power in the custom slipper description UI."*
+	#
+	# The three chalk meters below already carry SPEED / POWER / GRIT, and those are the
+	# CHARACTER's traits — a 1..5 scale that means "how much of the shared baseline does
+	# this one get". Launch speed is a different kind of number entirely (metres per
+	# second, off the skin's own ThrowProfile) and putting it in the same column would
+	# read as a fourth trait on the same scale, which it is not. Appending it to the
+	# sentence keeps the two apart and costs no layout.
+	var detail := String(entry["tagline"])
+	if String(CharacterRoster.category(_tab)["slot"]) == "slipper":
+		var power := CharacterRoster.slipper_max_power(index)
+		if power > 0.0:
+			# ⚠️ ONE NEWLINE, NOT TWO, AND `ui_layout_probe` IS WHY. The blank separator
+			# line read better and cost 39 px of a panel that has 30 to spare: the probe
+			# went from 196/196 to 192/196 with `TabBar` and `TraitRows` both **PUSHED
+			# OUT OF ITS BOX** on the tsinelas tab and nowhere else, because `ConfigPanel`
+			# is a fixed 246..726 and `TaglineLabel` autowraps into whatever is left.
+			#
+			# Measured either way: two newlines put `TraitRows` at y 585..735 against the
+			# lata tab's 546..696 — nine pixels past the panel's own bottom edge. One
+			# newline is the whole fix and the row still reads as its own line.
+			detail += "\nMAX POWER  %.0f m/s" % power
+	tagline_label.text = detail
 	# The meters sit directly under the sentence they are supposed to agree with,
 	# which is the point of putting them on this screen at all — see
 	# `character_roster.gd`'s own rule that a stat must be readable off the lore.

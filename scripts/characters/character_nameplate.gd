@@ -67,7 +67,10 @@ const PERSON_CAPSULE_HEIGHT: float = 1.6
 ## "the circle is still attached to slipper even when it's held". A ground
 ## ring makes no sense for an object that is not standing on the ground.
 ## Hidden outright below, in _process(), rather than sized to nothing.
-@onready var _carriable: Carriable = get_node_or_null("../Carriable") as Carriable
+## ⚠️ WAS A `Carriable` LOOKUP. The unit this nameplate hangs on is always a
+## Person now, so it is never itself a carried object and the ring never has to
+## hide for that reason. Kept as a stub read so the `_process` test below stays
+## one expression rather than becoming a special case.
 
 var _character: CharacterBase = null
 var _ring_material: StandardMaterial3D = null
@@ -116,7 +119,7 @@ func apply_sizing() -> void:
 ## Harmless if this fires before a round reset's explicit apply_sizing() call
 ## happens to land first — idempotent, same numbers either way, this is just a
 ## safety net for the (already-correct) round-2-onward case.
-func _on_round_started(_round_number: int, _team_a_is_can: bool) -> void:
+func _on_round_started(_round_number: int, _defender_slot: int) -> void:
 	apply_sizing()
 	refresh()
 
@@ -127,7 +130,7 @@ func refresh() -> void:
 		return
 	# §4.2: the ACCENT tracks role. Team identity is carried by the letter mark
 	# in the tag below, never by hue.
-	var is_defense: bool = _character.team_is_can_side
+	var is_defense: bool = _character.is_defender
 	_role_color = UiTheme.DEFENSE if is_defense else UiTheme.OFFENSE
 	_ring_material.albedo_color = Color(_role_color.r, _role_color.g, _role_color.b, 0.8)
 
@@ -135,10 +138,11 @@ func refresh() -> void:
 	# the two units on it. The Person is always 1 and the Prop always 2, which
 	# is stable across a role swap (is_person is fixed for the match; is_can is
 	# not), so a player's own tag never changes mid-match.
-	var team_letter := "A" if _character.team == 0 else "B"
-	var unit_digit := "1" if _character.is_person else "2"
-	var role_glyph := "DEF" if is_defense else "OFF"
-	_label.text = "%s%s · %s" % [team_letter, unit_digit, role_glyph]
+	# ⚠️ THE SEAT IS STABLE FOR THE MATCH; THE ROLE IS NOT. That split is the whole
+	# point of the tag: "P3" is who you have been chasing all match, "TAYA" is what
+	# they happen to be doing this round.
+	var role_glyph := "TAYA" if is_defense else "ATK"
+	_label.text = "%s · %s" % [_character.display_name(), role_glyph]
 	_label.modulate = _role_color
 
 ## The tag fade (§4.5). Polled rather than signalled because distance to the
@@ -148,7 +152,7 @@ func refresh() -> void:
 ## whichever unit this peer is looking through, in either FPP or TPP, with no
 ## reference back to CameraRig.
 func _process(_delta: float) -> void:
-	var carried := _carriable != null and _carriable.state == Carriable.CarryState.CARRIED
+	var carried := false
 	_ring.visible = not carried
 	_label.visible = not carried
 	if carried:

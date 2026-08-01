@@ -31,7 +31,10 @@ const READY_FLASH_DURATION: float = 0.2
 const CHARGE_SHADER_PARAM: StringName = &"charge_ratio"
 
 @onready var card: PanelContainer = %Card
-@onready var header_label: Label = %HeaderLabel
+## ⚠️ `HeaderLabel` AND `HoldLabel` ARE DELETED FROM THE SCENE — 🧑 2026-08-01:
+## *"too ugly, too much stuff happening in that box. confusing"*. "YOU" was a word on
+## the only card pinned to your own corner, and "GO GET IT" duplicated the LataCard's
+## objective line in the opposite corner. See `YouCard.tscn` for the full reasoning.
 @onready var class_label: Label = %ClassLabel
 @onready var detail_label: Label = %DetailLabel
 @onready var guard_dash_row: HBoxContainer = %GuardDashRow
@@ -43,7 +46,6 @@ const CHARGE_SHADER_PARAM: StringName = &"charge_ratio"
 ## channel applies only to the defending Person (the defender). Mirrors the split
 ## the moodboard itself draws: THE ATTACKER card shows the charged-throw glow,
 ## THE DEFENDER card shows the lata reset channel.
-@onready var hold_label: Label = %HoldLabel
 @onready var charge_row: HBoxContainer = %ChargeRow
 @onready var charge_key_label: Label = %ChargeKeyLabel
 @onready var charge_bar: ProgressBar = %ChargeBar
@@ -67,7 +69,7 @@ var _channeling: bool = false
 func _ready() -> void:
 	# is_can / team_is_can_side flip on every role swap — a card populated
 	# once here would be wrong from round 2 onward.
-	MatchManager.round_started.connect(func(_round_number, _team_a_is_can): refresh())
+	MatchManager.round_started.connect(func(_round_number, _defender_slot): refresh())
 	guard_dash_bar.add_theme_stylebox_override("fill", _bar_style(UiTheme.HIGHLIGHT))
 	guard_dash_bar.add_theme_stylebox_override("background", _bar_style(UiTheme.CARD))
 	# Plain, role-consistent colours (§4.2: orange = offense, blue = defence) —
@@ -86,6 +88,7 @@ func _process(delta: float) -> void:
 		_refresh_accum = 0.0
 		refresh()
 	_update_guard_dash_meter()
+	_update_bump_meter()
 
 ## Public so a late-joining client can force an immediate refresh (see
 ## main.gd::_sync_state_to_late_joiner, B-29) instead of waiting up to
@@ -97,12 +100,20 @@ func refresh() -> void:
 		_set_carrier(null)
 		return
 	visible = true
-	class_label.text = "PERSON" if _character.is_person else ("CAN (LATA)" if _character.is_can else "TSINELAS")
-	var is_defense := _character.team_is_can_side
-	var team_letter := "A" if _character.team == 0 else "B"
+	# ⚠️ THE CLASS ROW IS THE ROLE ROW NOW. It used to name which of three unit
+	# KINDS you were driving (Person / lata / tsinelas); there is only one kind, and
+	# the thing a player actually needs telling is which of the two JOBS they have this
+	# round — they are different games.
+	var is_defense := _character.is_defender
+	class_label.text = "TAYA (DEFENDER)" if is_defense else "ATTACKER"
 	# §4.2 hard rule: team identity is the letter mark, never hue — only the
 	# accent bar and the OFFENSE/DEFENSE word track role colour.
-	detail_label.text = "TEAM %s · %s" % [team_letter, "DEFENSE" if is_defense else "OFFENSE"]
+	# ⚠️ THE SCORE WAS REMOVED FROM THIS ROW. 🧑 2026-07-31: *"why are there points
+	# here, it's already up top it feels redundant"* — and it was: the scoreboard four
+	# inches away carries all four scores including this one. The row says who you are
+	# instead, which is the thing this card is for and the only place the player's own
+	# chosen name appears to them.
+	detail_label.text = _character.display_name()
 	var accent := UiTheme.DEFENSE if is_defense else UiTheme.OFFENSE
 	# ⚠️ WOOD, MATCHING THE TEAM CARDS AND THE MENU — 2026-07-30. This was a navy
 	# translucent `card_style` with a role-coloured left bar, which is the treatment the
@@ -117,14 +128,15 @@ func refresh() -> void:
 	sb.content_margin_top = 8.0
 	sb.content_margin_bottom = 8.0
 	card.add_theme_stylebox_override("panel", sb)
-	header_label.add_theme_color_override("font_color", UiTheme.AMBER)
 	class_label.add_theme_color_override("font_color", UiTheme.CREAM)
 	detail_label.add_theme_color_override("font_color", accent)
 	# Q-6: Persons have no Guard/Dash (their assist slot is Tag/Throw) — an
 	# always-empty bar would read as a bug, not as "not applicable to you".
-	guard_dash_row.visible = not _character.is_person
-	if guard_dash_row.visible:
-		guard_dash_key_label.text = _guard_dash_key_label(_character)
+	# ⚠️ EVERY UNIT NOW, not Props only. The row used to be the Guard/Dash meter, which
+	# only a Prop had; it is the STAMINA bar since 2026-07-30 and stamina is universal.
+	# See `_update_guard_dash_meter`.
+	guard_dash_row.visible = true
+	guard_dash_key_label.text = _guard_dash_key_label(_character)
 	# 0.1: role flips every round (team_is_can_side), so which of the two rows
 	# below applies has to be re-derived here too, same trap as guard_dash_row
 	# above — B-42/B-80(c) both hit "resolved once in _ready()".
@@ -137,19 +149,53 @@ func refresh() -> void:
 	_set_carrier(_character.get_node_or_null("Carrier") as Carrier)
 	_update_row_visibility()
 
-## One bar with two meanings, picked by is_can: GUARD (stamina, drains as
-## held) or DASH (cooldown, refills to ready). Updated every frame — unlike
-## refresh() above, a meter that only moves every REFRESH_INTERVAL would
-## visibly stutter.
+## ⚠️⚠️ THIS BAR IS STAMINA NOW, FOR ALL FOUR UNITS. Guard was removed on 2026-07-30
+## (`CharacterBase.is_guarding()`'s own note) and `get_guard_stamina_ratio()` went with
+## it, so the bar it drove was about to become a bar with nothing behind it.
+##
+## It reads `get_stamina_ratio()` instead, and the change is a strict widening: the row
+## used to be drawn for PROPS ONLY (`is_person` early-returned), because only a Prop had
+## a Guard or a Dash. Every unit sprints, so every unit now has something to show here —
+## which is also the readout that makes the lower base speed legible rather than just
+## slower. See `CharacterBase.SPEED`.
+##
+## Updated every frame rather than every REFRESH_INTERVAL: a meter that moves nine times
+## a second visibly stutters, and this one is watched while running away.
 func _update_guard_dash_meter() -> void:
-	if _character == null or not is_instance_valid(_character) or _character.is_person:
+	if _character == null or not is_instance_valid(_character):
 		return
-	var ratio: float = _character.get_guard_stamina_ratio() if _character.is_can else _character.get_dash_cooldown_ratio()
+	var ratio: float = _character.get_stamina_ratio()
 	guard_dash_bar.value = ratio * guard_dash_bar.max_value
+	# ⚠️ FATIGUE IS SHOWN HERE BECAUSE IT IS THE SAME BAR. Emptying the meter now
+	# costs a 2.5 s lockout, and a bar that simply sits at zero does not say that —
+	# it reads as "wait for it to refill", which is the wrong instruction. Red plus
+	# the word is the difference between empty and punished.
+	var fatigued: bool = _character.is_fatigued()
+	if fatigued != _was_fatigued:
+		_was_fatigued = fatigued
+		guard_dash_bar.add_theme_stylebox_override("fill",
+			_bar_style(UiTheme.DANGER if fatigued else UiTheme.HIGHLIGHT))
+		guard_dash_key_label.text = "FATIGUED" if fatigued else _sprint_key_text()
+		guard_dash_key_label.add_theme_color_override("font_color",
+			UiTheme.DANGER if fatigued else UiTheme.CREAM_MUTED)
 	var is_ready := ratio >= 1.0
-	if is_ready and not _was_ready:
+	if is_ready and not _was_ready and not fatigued:
 		_flash_bar_ready()
 	_was_ready = is_ready
+
+var _was_fatigued: bool = false
+
+## ⚠️ THE SPRINT ROW IS SILENT AT REST, AND THAT IS THE POINT. It read
+## `SPRINT [SHIFT]` next to the bar, every frame of every match — a key binding the
+## tutorial and the Settings screen both already teach, printed permanently in the
+## busiest corner of the HUD. 🧑 2026-08-01: *"too much stuff happening in that box"*.
+##
+## The bar is the only bar on your own card; it does not need a caption to be read as
+## your stamina. What it DOES need words for is the one state that is not obvious from
+## a bar length — being locked out — so `FATIGUED` is the only text this row ever
+## shows, and it now means something when it appears.
+func _sprint_key_text() -> String:
+	return ""
 
 ## Q-6: flash to CARD (~off-white) for ~0.2s when the bar returns to full so
 ## 'ready again' is readable without watching the bar.
@@ -167,10 +213,11 @@ func _bar_style(fill: Color) -> StyleBoxFlat:
 	sb.set_corner_radius_all(UiTheme.CORNER_RADIUS)
 	return sb
 
-## Reads the InputMap directly so a Settings rebind of guard_dash_p<N> keeps
-## this label truthful without the card needing to know about Settings at all.
-func _guard_dash_key_label(character: CharacterBase) -> String:
-	return _action_key_label(character, "guard_dash")
+## Reads the InputMap directly so a Settings rebind keeps this label truthful without
+## the card needing to know about Settings at all. Now labels the SPRINT key, because
+## that is what the bar beside it measures — see `_update_guard_dash_meter`.
+func _guard_dash_key_label(_character_unused: CharacterBase) -> String:
+	return _sprint_key_text()
 
 ## General form of the above — same InputMap read, any base action name.
 ## character.action_name() already applies the per-player _p<N> suffix
@@ -203,7 +250,6 @@ func _set_carrier(carrier: Carrier) -> void:
 	_carrier = carrier
 	_charging = false
 	_channeling = false
-	hold_label.text = "GO GET IT"
 	if _carrier != null:
 		_carrier.charge_changed.connect(_on_charge_changed)
 		_carrier.held_changed.connect(_on_held_changed)
@@ -222,8 +268,12 @@ func _set_charge_shader_param(ratio: float) -> void:
 	if mat is ShaderMaterial:
 		(mat as ShaderMaterial).set_shader_parameter(CHARGE_SHADER_PARAM, ratio)
 
-func _on_held_changed(held: Carriable) -> void:
-	hold_label.text = "SLIPPER READY" if held != null else "GO GET IT"
+## ⚠️ THE CARD NO LONGER NARRATES WHAT YOU ARE HOLDING. The LataCard says what to do
+## about it, and the charge meter below appears the moment it matters. Kept as a hook
+## because `carrier.gd`'s signal is connected here and a dangling connection is worse
+## than an empty handler.
+func _on_held_changed(_held: Slipper) -> void:
+	pass
 
 func _on_reset_channel_changed(progress: float) -> void:
 	_channeling = progress >= 0.0
@@ -238,9 +288,56 @@ func _on_reset_channel_changed(progress: float) -> void:
 ## redundant and is the difference between the card fitting in the space a
 ## Prop's single Guard/Dash row already uses and needing more of it.
 func _update_row_visibility() -> void:
-	hold_label.visible = _is_attacker_person and not _charging
-	charge_row.visible = _is_attacker_person and _charging
+	# ⚠️ THE CHARGE ROW IS SHARED BY THE ATTACKER'S THROW AND THE TAYA'S LUNGE, and
+	# sharing is now trivially safe in a way it was not before: the two belong to
+	# DIFFERENT ROLES, so no player can ever be charging both. It used to be shared by
+	# the throw and the shove, which were the same role and genuinely could collide.
+	charge_row.visible = (_is_attacker_person and _charging) or _bump_charging
 	reset_channel_row.visible = _is_defender_person and _channeling
+
+## ---------------------------------------------------------------------------
+## THE BUMP METER, drawn on the same bar as the throw charge. `Design.md` §4.
+##
+## ⚠️ POLLED, NOT SIGNAL-DRIVEN, unlike the throw charge beside it. The throw lives on
+## `Carrier`, which already had signals this card connects to; the bump meter lives on
+## `CharacterBase` itself, and adding a signal there purely for one HUD row would put a
+## UI concern in the file whose whole discipline is not knowing what carrying or
+## rendering is. A poll is also self-healing across the role swap that re-resolves
+## `_character` every round — the same reasoning `character_visual.gd` records for
+## polling the charge pose rather than listening for it.
+var _bump_charging: bool = false
+
+## ⚠️⚠️ THIS ROW WAS THE BUMP METER, THEN THE SHOVE METER, AND SINCE 2026-08-01 IT IS
+## THE TAYA'S **LUNGE** METER. The chain is worth stating because the row keeps
+## outliving the mechanic it was built for: bump was deleted with the 2v2 pivot; the
+## shove inherited it; and the shove then became a **single tap with no charge at
+## all** (🧑: *"Single tap of E (No charge time)"*), which leaves nothing to draw.
+##
+## The lunge took its place because it is now the only charged commitment in the
+## game — hold right-click, 0.5 s to full power, release to dash and tag — and it
+## belongs to the one role that previously had no meter at all. The taya's card
+## showed a reset channel and nothing else; now the verb that scores their points
+## has a readout, which is the whole of `Design.md` §11's argument applied to a new
+## mechanic.
+##
+## ⚠️ THE ROLE GATE INVERTED WITH IT. This used to bail on `is_defender`; it now bails
+## on everyone EXCEPT the defender. Still polled rather than signalled, for the reason
+## recorded above.
+func _update_bump_meter() -> void:
+	if _character == null or not is_instance_valid(_character) or not _character.is_defender:
+		_bump_charging = false
+		return
+	var ratio: float = _character.observed_lunge_charge()
+	var was := _bump_charging
+	_bump_charging = ratio >= 0.0
+	if _bump_charging:
+		charge_bar.value = ratio * charge_bar.max_value
+		_set_charge_shader_param(ratio)
+		charge_key_label.text = "LUNGE [%s]" % _action_key_label(_character, "lunge")
+	elif was:
+		_set_charge_shader_param(0.0)
+	if was != _bump_charging:
+		_update_row_visibility()
 
 ## Returns the locally-controlled character resolved by the last refresh cycle.
 ## Use this from sibling HUD nodes rather than duplicating the scan logic —

@@ -88,7 +88,18 @@ mouse_filter = 2
 theme_override_constants/margin_left = 83
 theme_override_constants/margin_top = 196
 theme_override_constants/margin_right = 96
-theme_override_constants/margin_bottom = 44
+; ⚠️ 96, NOT 44, AND IT IS A REPORTED BUG RATHER THAN A TASTE CALL. 🧑 2026-08-01:
+; *"a reoccuring bug, in fullscreen back button is cut off in lobby and other
+; places so can u pls raise it a bit up"*. This column is a VBox that pushes
+; BackButton to its bottom edge, so this margin IS the button's clearance — and at
+; 44 it was the tightest bottom margin on any screen in the project (BACK ends
+; ~154 px clear on MultiplayerSetup, ~141 on CharacterSelect, ~104 on Tutorial).
+; `match_setup.gd::_refresh_detail` already documents an earlier, worse version of
+; the same bug — four concatenated paragraphs left "seventeen pixels of margin" and
+; pushed BACK off the bottom entirely. That fix removed the VARIABLE height; this
+; one removes the remaining fixed tightness, which is what survived it. 96 matches
+; margin_right, so the frame is symmetric rather than arbitrary.
+theme_override_constants/margin_bottom = 96
 
 [node name="Columns" type="HBoxContainer" parent="Body"]
 layout_mode = 2
@@ -104,6 +115,7 @@ theme_override_constants/separation = 8
 
 [node name="ConfigPanel" type="PanelContainer" parent="Body/Columns/LeftColumn"]
 layout_mode = 2
+size_flags_horizontal = 0
 size_flags_vertical = 0
 theme_type_variation = &"WoodPanel"
 
@@ -126,7 +138,7 @@ mouse_filter = 1
 theme_override_constants/separation = 46
 
 [node name="MapCaption" type="Label" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/MapRow"]
-custom_minimum_size = Vector2(250, 0)
+custom_minimum_size = Vector2(300, 0)
 layout_mode = 2
 size_flags_horizontal = 0
 theme_type_variation = &"MenuDisplay"
@@ -190,7 +202,7 @@ mouse_filter = 1
 theme_override_constants/separation = 46
 
 [node name="ModeCaption" type="Label" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/ModeRow"]
-custom_minimum_size = Vector2(250, 0)
+custom_minimum_size = Vector2(300, 0)
 layout_mode = 2
 size_flags_horizontal = 0
 theme_type_variation = &"MenuDisplay"
@@ -254,7 +266,7 @@ mouse_filter = 1
 theme_override_constants/separation = 46
 
 [node name="DifficultyCaption" type="Label" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/DifficultyRow"]
-custom_minimum_size = Vector2(250, 0)
+custom_minimum_size = Vector2(300, 0)
 layout_mode = 2
 size_flags_horizontal = 0
 theme_type_variation = &"MenuDisplay"
@@ -318,7 +330,7 @@ mouse_filter = 1
 theme_override_constants/separation = 46
 
 [node name="FighterCaption" type="Label" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/FighterRow"]
-custom_minimum_size = Vector2(250, 0)
+custom_minimum_size = Vector2(300, 0)
 layout_mode = 2
 size_flags_horizontal = 0
 theme_type_variation = &"MenuDisplay"
@@ -329,7 +341,7 @@ text = "CHARACTER:"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(380, 84)
 layout_mode = 2
-size_flags_horizontal = 3
+size_flags_horizontal = 0
 size_flags_vertical = 4
 theme_type_variation = &"WoodButton"
 theme_override_font_sizes/font_size = 24
@@ -441,7 +453,7 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 theme_type_variation = &"MenuCaption"
-text = "A team is one person and one object."
+text = "Four players, one taya. The taya rotates every round."
 autowrap_mode = 2
 
 [node name="SeatButton0" type="Button" parent="Body/Columns/RightColumn/SeatPanel/SeatMargin/Rows"]
@@ -451,7 +463,7 @@ layout_mode = 2
 theme_type_variation = &"WoodButton"
 theme_override_font_sizes/font_size = 30
 alignment = 0
-text = "TEAM A · PERSON"
+text = "P1"
 clip_text = true
 text_overrun_behavior = 3
 
@@ -462,7 +474,7 @@ layout_mode = 2
 theme_type_variation = &"WoodButton"
 theme_override_font_sizes/font_size = 30
 alignment = 0
-text = "TEAM A · OBJECT"
+text = "P2"
 clip_text = true
 text_overrun_behavior = 3
 
@@ -473,7 +485,7 @@ layout_mode = 2
 theme_type_variation = &"WoodButton"
 theme_override_font_sizes/font_size = 30
 alignment = 0
-text = "TEAM B · PERSON"
+text = "P3"
 clip_text = true
 text_overrun_behavior = 3
 
@@ -484,7 +496,7 @@ layout_mode = 2
 theme_type_variation = &"WoodButton"
 theme_override_font_sizes/font_size = 30
 alignment = 0
-text = "TEAM B · OBJECT"
+text = "P4"
 clip_text = true
 text_overrun_behavior = 3
 
