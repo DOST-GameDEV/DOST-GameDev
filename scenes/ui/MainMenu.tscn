@@ -65,7 +65,9 @@ offset_left = 92.0
 offset_top = 303.0
 offset_right = 996.0
 offset_bottom = 335.0
-theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 0.75)
+theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 1)
+theme_override_colors/font_outline_color = Color(0.078, 0.071, 0.063, 1)
+theme_override_constants/outline_size = 8
 theme_override_font_sizes/font_size = 24
 text = "FREE FOR ALL · 1v1v1v1 · ONE LATA, EVERY PLAYER FOR THEMSELVES"
 
