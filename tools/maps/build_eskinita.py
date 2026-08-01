@@ -578,6 +578,11 @@ for _end in (-1.0, 1.0):
 # thing you changed passes anyway.
 _placer = Placer(surfaces, piece_extent,
                  ["Bahay", "Kanto", "Likod", "Kalat", "Bakod", "Puno"])
+# ⚠️ NOTHING DRESSING GOES IN THE DEFENDER'S BOX. See `Placer.play_box`. Read
+# straight from the const rather than through this file's own
+# `CONFINEMENT_BOX_RADIUS`, which is not defined until the MARKINGS section
+# several hundred lines below — the clutter is placed before the chalk is drawn.
+_placer.play_box = read_confinement_radius()
 
 
 def _put(group):
@@ -841,7 +846,17 @@ for side, zlist in ((1.0, _PUNO_Z_E), (-1.0, _PUNO_Z_W)):
         x = _puno_x(mesh_name, 8.2 + _PUNO_XJIT[k] * 0.35, yaw, sc,
                     max(abs(lx), abs(lz)))
         # Structures only — NOT `Puno`. Interleaving canopies is what a clump is.
-        if _placer.clear_at(mesh_name, side * x, zz, yaw, sc, _PUNO_AVOID):
+        # ⚠️ AND NOT THE PLAY AREA. 🧑 2026-08-01: *"js put the tree out of the
+        # play area"*. A trunk is the one piece of dressing on this street that is
+        # a WALL — the litter, the tyres and the yero sheets are set dressing and
+        # stay (*"i was okay with the clutter earlier"*, *"i liked the tires and
+        # the tables and the yero walls"*), but a tree you cannot run past inside
+        # the taya's box is an obstacle nobody designed. Tested on the CANOPY's
+        # footprint, not the trunk's: these are deliberately placed so the crown
+        # overhangs the road (see `_puno_x` above), which is exactly what reads as
+        # "there is a tree in the play area".
+        if not _placer.in_play_box(mesh_name, side * x, zz, yaw, sc) \
+                and _placer.clear_at(mesh_name, side * x, zz, yaw, sc, _PUNO_AVOID):
             add_tree("Dressing/Puno", f"Puno_{n}_{tag}", mesh_name,
                      side * x, zz, yaw, sc, lx, lz)
             _placer.placed += 1
@@ -860,9 +875,11 @@ _PLANT_AT = [(-7.6, -12.8), (-7.9, -11.0), (7.9, -16.4), (7.6, -9.2),
              (-7.7, 2.8), (7.8, 3.6), (7.6, 9.8), (-7.9, 11.6),
              (-7.6, 19.4), (7.9, 17.1)]
 for n, (px, pz) in enumerate(_PLANT_AT):
+    # `keep_out` for the same reason the trunks have it: these sit AT the trunks,
+    # so an understory clump inside the box is a tree inside the box.
     _placer.try_place(_put("Puno"), f"Halaman_{n}", "kits/forest/plant",
                       px, pz, (n % 4) * 1.5, TOWN_SCALE * 1.5,
-                      avoid=_PUNO_AVOID)
+                      avoid=_PUNO_AVOID, keep_out=True)
 
 # --- Layer 3: overhead. Highest read-per-triangle in the kit. ---------------
 # ⚠️⚠️ THE WIRE SPAN IS 6.0 AND THE POST SPACING MUST EQUAL IT, OR THE WIRES
@@ -1118,33 +1135,34 @@ for n, (x, zz, yaw) in enumerate([
     _placer.try_place(_put_gen("Kalat"), f"Traysikel_{n}", "tricycle",
                       x, zz, yaw, 1.0)
 
-# --- The kanal. This REPLACES the pink jeepney-lane chalk. -------------------
+# --- The kanal and its slow zone are GONE. -----------------------------------
 #
-# ⚠️ 2026-07-29, EXPLICIT HUMAN INSTRUCTION: "completely remove and delete all
-# pink chalk lines and their generation logic ... do not render them at all."
-# `env_jeepney_lane_decal` was the only piece on this map using the `hazard`
-# material (#F468A8), it ran z=-6..+6 at x=4.07..6.33, and that band crosses the
-# confinement box's whole east edge — which is exactly the reported "the pink
-# lines overshoot and merge with the white lines". It is gone, and so is its
-# `_jeepney_lane_decal()` generator in env_kit.gd.
+# ⚠️⚠️ REMOVED 2026-08-01 ON DIRECT HUMAN INSTRUCTION, with two screenshots.
+# 🧑: *"this keeps bugging/ clipping these shits. can u js remove them"* and
+# *"this looks bad it keeps phasing in and out"*; then, asked which element it
+# was: *"yes remove slow zone, Tan slabs in a line (kanal / gutter)"*.
 #
-# ⚠️ BUT THE `HazardZone` AT x=5.4 IS A LIVE GAMEPLAY VOLUME (speed_multiplier
-# 0.5, permanent) AND THE PINK STRIP WAS ITS ONLY TELL. Deleting the marking and
-# stopping there would have left an INVISIBLE slow-field in the play area, which
-# is a worse bug than the one being fixed. So the hazard keeps a visual — as
-# real 3D geometry rather than chalk: a `gutter_tile` kanal, which is what a
-# Philippine side street actually has running along its edge and which explains
-# the slow zone physically instead of decorating it. Same footprint, no pink,
-# no chalk, and it reads at a glance.
-_kanal_lo, _kanal_hi = mesh_bounds("gutter_tile")
-_kanal_len = _kanal_hi[2] - _kanal_lo[2]
-_kn = 0
-_kz = -5.5
-while _kz < 5.5:
-    add("Hazards/KanalVisual", f"Kanal_{_kn}", "gutter_tile", 5.4,
-        _kz + _kanal_len * 0.5, 0.0, base_y=GROUND_Y - 0.15)
-    _kn += 1
-    _kz += _kanal_len
+# WHAT WENT: the six `gutter_tile` slabs at x=5.4, AND the `HazardZone` they
+# existed to explain (`speed_multiplier` 0.5, permanent, a 3.6 × 11 box).
+#
+# ⚠️ BOTH HAD TO GO TOGETHER AND THAT IS THE WHOLE POINT. The note that stood
+# here recorded why the tiles were laid in the first place: the pink jeepney-lane
+# chalk was deleted on 2026-07-29 and the hazard was left with no tell, so these
+# tiles were added to explain it physically instead. Removing the tiles ALONE
+# would have restored exactly that bug — an invisible slow-field inside the play
+# area, which that note itself calls "a worse bug than the one being fixed". The
+# zone goes with its marker.
+#
+# ⚠️ THE SINKING WAS THE FLICKER. The tiles sat at `GROUND_Y - 0.15`, so their
+# top face was a hair under a coplanar road surface: that z-fights, and "phasing
+# in and out" is exactly what z-fighting looks like. Raising them would have
+# fixed the flicker and kept a slow zone nobody asked for; neither was wanted.
+#
+# ⚠️ AND IT MAKES THE TWO MAPS SYMMETRICAL, which is ⚖️ `build fair`'s own reason
+# for signing this off rather than only doing as asked. Eskinita carried a
+# permanent 50% slow field INSIDE the confinement box; Bayan Plaza's equivalent
+# sits outside the play area. Two maps whose boxes play differently make the map
+# pick a balance pick, on a board scored for Esports Potential.
 
 
 # =============================================================================
@@ -1179,7 +1197,7 @@ CHALK_ART = [
 ## absent - a drawing is chalk ON the road, so `Kalsada` is what it is drawn on, not
 ## something to dodge. Including it would refuse every candidate, which is the exact
 ## trap `try_edge_hedge` documents on the plaza.
-_ART_AVOID = ["Bahay", "Kanto", "Likod", "Kalat", "Bakod", "Puno", "KanalVisual"]
+_ART_AVOID = ["Bahay", "Kanto", "Likod", "Kalat", "Bakod", "Puno"]
 _art_placed = 0
 _art_skipped = []
 for _an, _am, _ax, _az, _ayaw in CHALK_ART:
@@ -1376,8 +1394,6 @@ ext_lines = [
     for i, p, kit in ext
 ]
 ext_lines.append('[ext_resource type="Script" '
-                 'path="res://scripts/systems/hazard_zone.gd" id="H"]')
-ext_lines.append('[ext_resource type="Script" '
                  'path="res://scripts/systems/kill_plane.gd" id="K"]')
 ext_lines.append('[ext_resource type="Script" '
                  'path="res://scripts/systems/env_toon_pass.gd" id="T"]')
@@ -1478,9 +1494,6 @@ size = Vector3(20, 12, 1)
 
 [sub_resource type="BoxShape3D" id="Shape_killplane"]
 size = Vector3(260, 4, 260)
-
-[sub_resource type="BoxShape3D" id="Shape_hazard"]
-size = Vector3(3.6, 3, 11)
 
 [sub_resource type="PanoramaSkyMaterial" id="Sky_mat"]
 panorama = ExtResource("SKY")
@@ -1689,19 +1702,6 @@ bus = &"Music"
 volume_db = -12.0
 
 [node name="Hazards" type="Node3D" parent="."]
-
-[node name="HazardZone" type="Area3D" parent="Hazards"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.4, 1.5, 0)
-collision_layer = 0
-collision_mask = 2
-script = ExtResource("H")
-speed_multiplier = 0.5
-lifetime = 0.0
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Hazards/HazardZone"]
-shape = SubResource("Shape_hazard")
-
-[node name="KanalVisual" type="Node3D" parent="Hazards"]
 
 [node name="SpawnPoints" type="Node3D" parent="."]
 

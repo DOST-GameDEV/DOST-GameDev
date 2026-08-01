@@ -142,8 +142,42 @@ const FATIGUE_SPEED_SCALE: float = 0.75
 ## that it also pulls on §2.1, since a box three attackers can enter more easily is
 ## a taya who collects less uncontested passive defence.
 ##
+## ⚠️⚠️ RAISED 6.5 -> 7.5 BY ⚖️ `build fair` ON 2026-08-01, ON HUMAN INSTRUCTION.
+## 🧑: *"can you pls make it bigger, it hsould be like up to here"*, and *"pls just
+## make our chalk lines longer ... also please edit the actual defender area"*.
+## This is §2.2/§2.21 — the box has been this lane's number since the map lane
+## moved it, and it had still never been re-tuned for one taya against three.
+##
+## +15% on the edge and **+33% on the AREA** (169 -> 225 square units).
+##
+## ⚠️⚠️ 8.0 WAS TRIED FIRST AND ESKINITA REJECTED IT — THE ALLEY IS EXACTLY THAT
+## WIDE. `build_eskinita.py`'s `W = 8.0` is "half-width of the playable alley",
+## so a box at 8.0 puts the chalk ON the walls: `can_throw()` gates on
+## `max(|x|,|z|) >= radius`, which would have left an attacker no legal ground to
+## throw from on the EAST and WEST sides at all — only the two open ends. That is
+## not a bigger arena, it is a corridor with two firing positions, and it would
+## have made the two maps play completely differently. **The throwing line, not
+## the box, is what has to fit**: at 7.5 it lands at 8.5, just onto the apron
+## outside the paved core, and all four bearings stay usable.
+##
+## The other two limits are unchanged and both comfortable:
+##   * **the throw has to reach.** Shortest legal throw is now 7.5 m against a
+##     45-degree range of `LAUNCH_SPEED`^2 / `GRAVITY` = 14.45 m. The per-skin
+##     speed scale (§2.8) moves that range 13.0-15.9, so even the slowest slipper
+##     clears 7.5 easily.
+##   * **the court has to hold it.** `COURT_Z` is 13.0 on both maps and the spawn
+##     ring is radius + `SAFE_ZONE_MARGIN` = 9.5. Both builders re-verify and abort.
+##
+## ⚠️ IT IS ONE NUMBER AND ONE REBUILD. `tools/maps/floorcheck.py` regexes this
+## const and both builders draw the chalk from it, so moving it and re-running the
+## two builders is the whole change — the painted box, the throwing line at
+## radius + 1.0 and the spawn ring all follow. ⚠️ AND SO DOES THE PLAY-AREA
+## KEEP-OUT: `mapkit.Placer.play_box` is set from this const, so growing the box
+## now EVICTS the street clutter that would otherwise end up inside it (29 pieces
+## on Eskinita, 13 on Bayan Plaza at the first rebuild).
+##
 ## ⚠️ CHANGING THIS AT RUNTIME MOVES THE PHYSICS BOX AND NOT THE PAINTED ONE.
-const CONFINEMENT_RADIUS: float = 6.5
+const CONFINEMENT_RADIUS: float = 7.5
 ## The live value every gameplay read goes through, promoted so a probe can sweep
 ## the box size without editing this file.
 static var confinement_radius: float = CONFINEMENT_RADIUS

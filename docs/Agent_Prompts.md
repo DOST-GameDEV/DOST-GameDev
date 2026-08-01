@@ -379,14 +379,56 @@ what specifically. **Tick only your own section.**
   with the HIGHEST passive share (P4, 68.4%) finished **last**. Full record in
   `Design.md` §8.1. ⚠️ **Still unmeasured: a real human**, but the degenerate
   strategy the arithmetic predicted is dominated, which is the half that mattered.
-- [ ] 2.2 `CONFINEMENT_RADIUS` has never been tuned for 1-vs-3. ⚠️ A retune needs a
-  map rebuild — `tools/maps/floorcheck.py` regexes the `const` out of
-  `character_base.gd` and both builders draw the chalk from it.
-- [ ] 2.3 `SABOTAGE_WINDOW` 2.5 s is a guess.
-- [ ] 2.4 The shove has never been measured.
-- [ ] 2.5 Stamina has never been measured in play.
-- [ ] 2.6 `LUNGE_TAG_RADIUS` was never measured against a moving target.
-- [ ] 2.7 `TAG_STUN_TIME` 5.0 s is 5.6% of a round spent doing nothing.
+- [x] 2.2 ⚠️ **RAISED 6.5 -> 7.5 AND BOTH MAPS REBUILT**, on direct human instruction
+  (🧑: *"can you pls make it bigger"*, *"pls just make our chalk lines longer ...
+  also please edit the actual defender area"*), with the reason stated: *"the rsn we
+  did bigger area is to make it harder for attackers"*. ⚠️ **8.0 was tried first and
+  Eskinita rejected it** — the alley half-width IS 8.0, so the chalk landed on the
+  walls and `can_throw()` would have left no legal ground on the east/west sides at
+  all. **The throwing line is what has to fit, not the box.** *Verified: both builders
+  re-run clean, chalk at ±7.5 and throwing lines at ±8.5 in both scenes, `court_shot`
+  rendered from above on BOTH maps (it could only photograph one before — it takes a
+  map argument now), and a whole 4-round `ai_probe` match PASSes at the new size.*
+  ⚠️ **The measured cost is recorded in `Design.md` §2: throws 71 -> 17 and DEFENSE
+  39% -> 73.8%.** That is the intended direction and a large step; `fair_probe` is the
+  instrument that will say if it goes too far.
+- [ ] 2.3 `SABOTAGE_WINDOW` 2.5 s is a guess. ⚠️ **Still unmeasured, and it is
+  blocked on FREQUENCY rather than on effort** — 0 sabotages in every whole-match run
+  taken on 2026-08-01 (`ai_probe` x 3 tiers, `fair_probe` x 3 policies). The window
+  cannot be measured until the event happens; work it with 🤖 `build ai` §6.10,
+  which is the same question from the other side. **What IS measured**: the shove's
+  real price is 0.63 s of sprint (3.2 m of escape), not its 25 stamina — see 2.4.
+- [x] 2.4 ⚠️ **MEASURED** (`tools/mech_probe.tscn`, rewritten this session; both
+  sides pinned to neutral traits so the constant is not silently multiplied by a
+  roster pick). Knockback **2.40 m** against a predicted 2.50; stamina **25.0 of 50.0**
+  exactly; the cooldown allows at most 12 shoves a round. Stun reads **0.55 s**
+  observed against the 1.25 const — the difference is the victim recovering while
+  still sliding, so 1.25 is the stun and ~0.55 is how long they cannot act.
+  ⚠️ **The finding: the real price is the SPRINT.** Half a stamina bar is 0.63 s of
+  sprint = **3.2 m of escape distance**, out of the same pool that gets you back out
+  of the box.
+- [x] 2.5 ⚠️ **MEASURED** (`tools/mech_probe.tscn`): sprint to empty **1.25 s**,
+  fatigue lockout **2.00 s**, empty -> full **2.97 s**. Every constant does exactly what
+  `Design.md` §3 says. ⚠️⚠️ **The finding is the DISTANCE, not the time: one full
+  sprint covers 6.84 m**, which was almost exactly one box half-width when it was
+  measured (6.5). The stamina bar is dimensioned to **one crossing of the danger
+  zone** — the retrieval the whole game is about — and nothing had written that down.
+  It makes `STAMINA_MAX`, `STAMINA_DRAIN_RATE`, `SPRINT_SCALE` and
+  `CONFINEMENT_RADIUS` one interlocked set: **move the box and you change what a
+  sprint buys**, which is part of why 2.2 hit offence as hard as it did.
+- [x] 2.6 ⚠️ **MEASURED AGAINST A MOVING TARGET AT LAST, AND THERE IS NO
+  TUNNELLING.** The furthest start from which a lunge still tags is **3.20 m**
+  stationary — the 2.5 m dash plus the 1.3 m sweep, minus the charge — **and 3.20 m
+  against a target crossing at the full 3.45 m/s attacker walk. Identical.** The
+  every-frame sweep does exactly what its comment claims, and §2.6's worry ("a moving
+  body sampled at 60 Hz can step over a narrow band") is answered. **The tag is a LEAD
+  problem, not a reach problem**: the taya has to aim it, and that is the counterplay.
+  `tools/mech_probe.tscn` scans start distances 0.6-4.2 m in both conditions.
+- [x] 2.7 ⚠️ **MEASURED, AND 5.0 s IS NOT THE HARSH NUMBER IT READS AS.** The stun
+  is **5.6%** of a round; stun plus a full re-charge is **7.5 s = 8.3%** — about a
+  twelfth of one round's throwing, against +100 for the taya. And the attacker keeps
+  their slipper (§6's anti-camping rule), so there is no retrieval trip on top of it.
+  Left at 5.0.
 - [x] 2.8 ⚠️ **DECIDED: YES, ALL THREE TABS CARRY REAL STATS.** On direct human
   instruction (🧑: *"also make sure the stats actually apply u can also change the
   stats around for slippers, cans, characters, be creative with it, try to edit
@@ -433,7 +475,15 @@ what specifically. **Tick only your own section.**
 - [ ] 2.14 The tag's wind-up, animation and contact moment. Decide with 2.6/2.7.
 - [ ] 2.15 Confirm the shove wind-up is visible on a second peer — it is the only
   thing that makes it dodgeable, and therefore 2.4's numbers fair.
-- [ ] 2.16 Verify the trajectory preview still lands where the slipper lands.
+- [x] 2.16 ⚠️ **VERIFIED, AND THIS LANE PUT IT AT RISK THIS SESSION.** §2.8 made
+  `LAUNCH_SPEED` per-skin, and the aim arc and the flight only ever agreed because
+  BOTH come out of `Slipper.launch_velocity_for()` — scaling one and not the other
+  would have re-opened this silently. `carrier.gd` passes the held slipper's own
+  scale. *Verified per skin: miss **0.000 m** on TSINELAS, PANTULOG and IKE.*
+  ⚠️ **CROCS misses by 0.263 m**, and the cause is not the arc: a crocs rests
+  **0.161 m** off the ground against the others' 0.034-0.056, while `TrajectoryPreview`
+  stops its line at a fixed `FLOOR_EPSILON`. The line is right; the tall skin stops
+  higher. Filed to 🖥️ `build ui` as §1.19.
 - [~] 2.17 ⚠️ **FIXED — the plain-miss branch has a caller now.** `slipper_land` was
   registered with its own mix level and had never been played: a throw that hit a
   body played `hit_body`, one that hit the can played `can_knockdown`, and one that
@@ -1623,3 +1673,60 @@ rather than more code; and a real human taya, which is the half of §2.1 a bot h
 cannot reach by construction. ⚠️ **Not reached:** the shove, stamina, the tag and the box
 (§2.28 records what the runs did show about each, so the next pass starts from evidence
 rather than from the same blank items).
+
+**2026-08-01 · ⚖️ `build fair` (follow-up)** — the mechanics bench, the box, and two
+maps' worth of furniture moved on live human direction.
+
+*`tools/mech_probe.tscn` rewritten from 355 lines of deleted 2v2 into a bench for the
+four items that were all "this number has never been measured".* §2.4 the shove, §2.5
+stamina, §2.6 the tag against a MOVING target, §2.7 what a tag costs, §2.16 the preview.
+Every unit is PUPPETED — an `AIController` subclass that presses exactly what the bench
+says, through the same intent harness a keyboard feeds — because a live bot walking
+through a measurement is indistinguishable from the mechanic under test.
+
+*Two findings worth more than the numbers they came from.* **One full sprint covers
+6.84 m**, which was one box half-width: the stamina bar is dimensioned to one crossing of
+the danger zone, so `STAMINA_MAX`, `SPRINT_SCALE` and `CONFINEMENT_RADIUS` are one
+interlocked set and nothing had written that down. And **the shove's real price is
+0.63 s of sprint**, not its 25 stamina — it is paid for in escape distance out of the
+same pool that gets you out of the box.
+
+*§2.6 is answered and the answer is "no tunnelling".* The lunge tags from **3.20 m**
+against a stationary target and **3.20 m** against one crossing at full attacker walk —
+identical. The every-frame sweep does what it claims; the tag is a LEAD problem.
+
+*The bench lied to me three times before it told the truth, and each lie looked like a
+game bug.* A shove reporting 0.00 m (a slipper inside `PICKUP_RADIUS` had eaten the E
+press — the contextual-E rule working correctly); a sprint reporting 0.99 m of a
+predicted 6.5 (it ran into the body the previous test left in front of it); and a
+crossing-target tag reporting 0.00 m, which reads EXACTLY like the tunnelling failure
+being hunted — the 38-trial scan simply outlasted the 90 s round, so everything gated on
+`can_act()` started refusing. ⚠️ **A harness that runs out of clock reports the bug it
+was looking for.** The round is held open now.
+
+*The box went 6.5 → 7.5 on human instruction*, with the reason stated (*"the rsn we did
+bigger area is to make it harder for attackers"*). **8.0 was tried first and Eskinita
+rejected it**: the alley half-width IS 8.0, so the chalk landed on the walls and
+`can_throw()` would have left no legal ground on the east/west sides at all. The throwing
+line is what has to fit. ⚠️ **Cost recorded, not argued**: throws 71 → 17 and DEFENSE
+39% → 73.8% over a whole match. Intended direction, large step, and `fair_probe` is the
+instrument that will say if it went too far.
+
+⚠️ **Out of row, all on direct instruction, all recorded**: `tools/maps/**` and
+`scenes/maps/**` are 🎨 `build model`'s. Both maps lost the `gutter_tile` kanal beds AND
+the `HazardZone` volumes they existed to explain (🧑: *"this looks bad it keeps phasing in
+and out"*, *"yes remove slow zone"*) — **both had to go together**, because the tiles were
+laid precisely so the slow field would not be invisible, and Eskinita's sat INSIDE the
+box while the plaza's straddled its edge, which made the map pick a balance pick.
+`mapkit.Placer` gained an opt-in `play_box` keep-out; it was blanket for one iteration
+and evicted 39 props, which was wrong (🧑: *"i was okay with the clutter earlier"*, *"i
+liked the tires and the tables and the yero walls"*) — **trees only** now.
+`spectator_camera.gd` (nobody's row, §2.19 for the third time) had `BASE_SPEED` 12.0,
+2.6× a walk: 6.0 now, floor 3.0 → 1.2 (🧑: *"why is it so fast, barely controllable"*).
+Its `_follow_name()` also **threw on every call** — it read `character.team`, renamed to
+`player_slot` in the pivot — and built the string "TEAM A · LATA" out of three words that
+describe a deleted game.
+
+⚠️ **Not verified:** anything by ear; two real peers; what any of the feedback LOOKS like
+in play. ⚠️ **Not reached:** §2.3 (blocked on the shove's frequency, not on effort),
+§2.10 beyond the two probes rewritten, §2.12, §2.13, §2.19, §2.24.

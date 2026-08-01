@@ -49,16 +49,29 @@ class_name SpectatorCamera
 ## If a "cinematic auto-cam" is ever wanted it is a new node with a new name, not an
 ## `AIController` bolted onto this one.
 
-## Metres per second at the base speed. Deliberately faster than a Person's 4.6 walk —
-## a spectator is covering a whole map, not a lane, and the point of the mode is to get
-## to the interesting corner before the interesting thing stops happening.
-const BASE_SPEED: float = 12.0
+## Metres per second at the base speed. Faster than a Person's 4.6 walk — a spectator
+## is covering a whole map, not a lane, and the point of the mode is to get to the
+## interesting corner before the interesting thing stops happening.
+##
+## ⚠️⚠️ 12.0 -> 6.0 ON 2026-08-01, ON DIRECT HUMAN INSTRUCTION. 🧑: *"can u allow
+## spectator to slow down huhu why is it so fast, barely controllable"*. 12.0 is
+## **2.6x a Person's walk** and it crosses the whole 15 m court in 1.25 s, so every
+## framing input was an overshoot-and-correct: the camera was tuned for TRAVELLING
+## and the thing it is actually used for is WATCHING. 6.0 is still 30% faster than
+## the players it follows, which keeps the "get there before it stops happening"
+## property the note above is about, and Shift still triples it to 18.0 for the
+## crossing case — so the fast camera is now a held key instead of the default.
+##
+## ⚠️ AND THE FLOOR CAME DOWN WITH IT. The wheel's range mattered less than it
+## looks: at `SPEED_MIN` 3.0 the slowest the camera could go was still two thirds
+## of a walk, which is not slow enough to hold a shot on the can. 1.2 is.
+const BASE_SPEED: float = 6.0
 ## Hold `sprint` (Shift) to boost. No stamina: the whole meter exists to make a chase a
 ## decision, and a spectator has nothing to decide.
 const BOOST_SCALE: float = 3.0
 ## Mouse wheel adjusts the base speed between these, so a player framing a close shot of
 ## the can and a player crossing Bayan Plaza are not fighting the same number.
-const SPEED_MIN: float = 3.0
+const SPEED_MIN: float = 1.2
 const SPEED_MAX: float = 40.0
 const SPEED_STEP: float = 1.35
 ## Matches `CameraRig.PITCH_MIN_DEG` / `PITCH_MAX_DEG` in spirit but is wider, because
@@ -370,11 +383,29 @@ func _pov_eye_height() -> float:
 	return POV_EYE_HEIGHT_PROP
 
 ## The followed unit's name, in the words the rest of the game uses for it rather than
-## its node name — "TEAM A · OBJECT" is what the lobby called that seat, and a legend
-## that says `TeamAProp@3` is a debug print with a nicer font.
+## its node name — a legend that says `TeamAProp@3` is a debug print with a nicer font.
+##
+## ⚠️⚠️ THIS THREW ON EVERY CALL UNTIL 2026-08-01 AND NOTHING CAUGHT IT. It read
+## `character.team`, a property the HARRYDAKS pivot renamed to `player_slot` on
+## 2026-07-31 — so every frame the spectator legend drew, this raised
+## *"Invalid access to property or key 'team'"*. It survived because the spectator's
+## own probes never render the legend and because a GDScript property error does not
+## stop the frame; it just fills the log. Found while running `mech_probe`, which
+## boots through `GameLaunch.spectator` like every other bench here.
+##
+## ⚠️ AND THE STRING IT WAS BUILDING DESCRIBED A DELETED GAME. There are no teams
+## (`Design.md` §1 — four players, one taya, role derived from the round number) and
+## no playable props (§12), so "TEAM A · LATA" was three wrong words out of three.
+## It reads the player's own name and their role this round now, which is what a
+## spectator actually needs to know and what every other screen already says
+## (`CharacterBase.display_name()`).
+##
+## ⚠️ Out of row: `spectator_camera.gd` is in nobody's §3 table — 👁️ `build spec` is
+## closed — which is the §2.19 ownerless-file problem for the third file. Recorded
+## in §7 rather than quietly done.
 func _follow_name() -> String:
 	var character := _follow as CharacterBase
 	if character == null:
 		return String(_follow.name)
-	return "TEAM %s · %s" % ["A" if character.team == 0 else "B",
-		"PERSON" if character.is_person else ("LATA" if character.is_can else "TSINELAS")]
+	return "%s · %s" % [character.display_name(),
+		"TAYA" if character.is_defender else "ATTACKER"]

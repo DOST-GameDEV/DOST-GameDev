@@ -54,9 +54,9 @@ rotates. **There is no per-round winner.**
 
 | Constant | Value | Note |
 |---|---|---|
-| `CONFINEMENT_RADIUS` | **6.5** | `character_base.gd`. A **square** at \|x\| = \|z\| = 6.5 |
-| `SAFE_ZONE_MARGIN` | 2.0 | Attackers spawn on a ring at 6.5 + 2.0 = **8.5** |
-| throwing line | **7.5** | = `CONFINEMENT_RADIUS` + 1.0, derived in both map builders |
+| `CONFINEMENT_RADIUS` | **7.5** | `character_base.gd`. A **square** at \|x\| = \|z\| = 7.5 |
+| `SAFE_ZONE_MARGIN` | 2.0 | Attackers spawn on a ring at 7.5 + 2.0 = **9.5** |
+| throwing line | **8.5** | = `CONFINEMENT_RADIUS` + 1.0, derived in both map builders |
 | `DEFENDER_START_OFFSET` | 2.5 | the taya's mark inside its own box |
 | `INTERACTION_RADIUS` | 1.6 | the lata's reset ring, `lata.gd` |
 
@@ -76,25 +76,83 @@ exactly where a taya moves when covering a corner. Human call, 2026-07-29.
 `character_base.gd`,** and both map builders draw the chalk from it. Delete or reshape
 that const and every map build aborts.
 
-⚠️ **RAISED 5.0 → 6.5 ON 2026-08-01 BY 🎨 `build model`, ON HUMAN INSTRUCTION** — 🧑,
-twice: *"the current play area feels too small"*, *"play area needs to be bigger"*. 5.0
-was measured for one taya against one attacker and had never been re-tuned for one taya
-against three. +30% on the edge, **+69% on the area** (100 → 169 sq units).
+⚠️ **RAISED 5.0 → 6.5 ON 2026-08-01 BY 🎨 `build model`** (*"the current play area feels
+too small"*), then **6.5 → 7.5 ON 2026-08-01 BY ⚖️ `build fair`**, both on human
+instruction. 🧑: *"can you pls make it bigger, it hsould be like up to here"*, *"pls just
+make our chalk lines longer ... also please edit the actual defender area"*. From 5.0 the
+box is now **+50% on the edge and +125% on the area** (100 → 225 sq units).
 
-Bounded by two things rather than picked by taste: the shortest legal throw becomes 6.5 m
-against a 45° range of `LAUNCH_SPEED`² / `GRAVITY` = **14.45 m**, so the throw still
-reaches comfortably; and the spawn ring moves to 8.5 against a `COURT_Z` of 13.0 on both
-maps, so it still lands on paving. Both map builders re-verify the second one on every
-run.
+⚠️⚠️ **THE STATED REASON IS THE ONE THAT MATTERS, AND IT IS NOT AESTHETIC.** 🧑: *"the
+rsn we did bigger area is to make it harder for attackers"*. The box is the danger zone;
+making it wider lengthens every retrieval run and every throw, which is a deliberate
+shift of power toward the taya.
 
-⚠️ **THE VALUE IS STILL UNMEASURED IN PLAY, AND IT IS ⚖️ `build fair`'s NUMBER** (§2.2).
-It moved in a map lane only because the chalk is derived from it. It also pulls on §2.1:
-a box three attackers can enter more easily is a taya collecting less uncontested passive
-defence, so 2.1 must be re-measured at 6.5 and not at 5.0.
+⚠️ **8.0 WAS TRIED FIRST AND ESKINITA REJECTED IT.** `build_eskinita.py`'s `W = 8.0` is
+the half-width of the playable alley, so a box at 8.0 puts the chalk **on the walls** —
+`can_throw()` gates on `max(|x|,|z|) >= radius`, so an attacker would have had no legal
+ground to throw from on the east and west sides at all, only the two open ends. **The
+throwing line, not the box, is what has to fit.** At 7.5 it lands at 8.5, just onto the
+apron, and all four bearings stay usable.
+
+The other two bounds are unchanged and both comfortable: the shortest legal throw is
+7.5 m against a 45° range of `LAUNCH_SPEED`² / `GRAVITY` = **14.45 m** (13.0–15.9 across
+the per-skin speed scales, §9), and the spawn ring is 9.5 against a `COURT_Z` of 13.0 on
+both maps. Both builders re-verify and abort.
+
+⚠️ **THE MEASURED COST, RECORDED RATHER THAN ARGUED.** One whole 4-round match at NORMAL,
+before and after: throws **71 → 17**, and DEFENSE's share of all points **39% → 73.8%**.
+That is the intended direction — attacking got harder — but it is a large step, and 73.8%
+is close to the **77%** profile §2.25 measured when the offence could not score at all,
+which §8.1 identifies as the one condition under which passive defence really does
+dominate. **Not acted on**: the size is a human design call with a stated reason, and
+`fair_probe`'s gate is the instrument that will say if it has gone too far. Re-run
+`tools/fair_probe.tscn -- policy=turtle` after any further change here.
+
+⚠️ **THE BOX IS ALSO A KEEP-OUT NOW.** `mapkit.Placer.play_box` is set from this const, so
+growing it EVICTS map dressing that would end up inside — but only for pieces that opt in
+with `keep_out=True`, which is **trees only**. 🧑: *"i was okay with the clutter earlier,
+js put the tree out of the play area"*, *"i liked the tires and the tables and the yero
+walls"*. Litter on the road is the setting; a trunk is a wall.
 
 ⚠️ **Spawns are computed from the box, not read from map markers** (`main.gd`). "Outside
 the box" is the rule; a marker drifting half a metre inside `CONFINEMENT_RADIUS` would
 spawn an Attacker VULNERABLE on frame one and read as a rules bug rather than a map bug.
+
+### 2.1 · There are no hazard zones any more, and both boxes are now identical
+
+⚠️⚠️ **BOTH MAPS' `HazardZone` VOLUMES AND THEIR `gutter_tile` KANAL BEDS WERE DELETED
+2026-08-01, ON DIRECT HUMAN INSTRUCTION.** 🧑, with two screenshots of the tiles
+flickering: *"this keeps bugging/ clipping these shits. can u js remove them"*, *"this
+looks bad it keeps phasing in and out"*, and then, asked which element: *"yes remove
+slow zone, Tan slabs in a line (kanal / gutter)"*.
+
+| map | zone was | footprint | tiles |
+|---|---|---|---|
+| Eskinita | x 5.4, `speed_multiplier` **0.5**, permanent | 3.6 × 11 | 6, sunk `GROUND_Y − 0.15` |
+| Bayan Plaza | (−6.5, −4.0), `speed_multiplier` **0.5**, permanent | 5 × 5 | 9 + 4 corner bollards |
+
+⚠️ **THE MARKER AND THE VOLUME HAD TO GO TOGETHER.** Both builders carried an emphatic
+note saying an unmarked slow field *"is not a missing decoration, it is a player being
+punished by something they cannot see or learn"* — the tiles existed only to explain the
+zone, after Eskinita's pink chalk was deleted on 2026-07-29 and left it invisible.
+Deleting the tiles alone would have restored exactly that bug. Both, or neither.
+
+⚠️ **THE SINKING WAS THE FLICKER.** Eskinita's tiles sat 0.15 below the road, so their
+top face was a hair under a coplanar surface — that z-fights, and *"phasing in and out"*
+is what z-fighting looks like. Raising them would have fixed the flicker and kept a slow
+zone nobody wanted.
+
+⚠️ **AND IT IS A FAIRNESS FIX, WHICH IS WHY ⚖️ `build fair` SIGNED IT OFF RATHER THAN
+ONLY DOING AS ASKED.** Eskinita's zone sat **inside** the confinement box; Bayan Plaza's
+straddled its west edge. A permanent 50% slow field in one box and not the other makes
+**the map pick a balance pick** — on a board scored for Esports Potential, the two
+arenas now play identically and the only difference between them is what they look like.
+
+⚠️ `scripts/systems/hazard_zone.gd` **still exists and still works; nothing places one.**
+Kept rather than deleted — it is a working system and a later map may want a slow field
+that is designed rather than inherited. `main.gd`'s `get_nodes_in_group("hazard_zone")`
+sweep is now a no-op over an empty group. **The speed-zone STACK it feeds
+(`enter_speed_zone`/`exit_speed_zone`) is still live** — fatigue rides it (§3).
 
 ## 3 · Movement and stamina — every player
 
@@ -124,6 +182,19 @@ on a sub-tick rhythm.
 with sprint locked out **and the bar refusing to refill at all**. Previously it
 refilled at full rate during the penalty, so the punishment did not touch the
 resource it was punishing.
+
+⚠️ **§2.5 MEASURED 2026-08-01** (`tools/mech_probe.tscn`): sprint to empty **1.25 s**
+exactly, fatigue lockout **2.00 s** exactly, and empty → full again in **2.97 s**. Every
+constant does what the table says.
+
+⚠️⚠️ **THE FINDING IS THE DISTANCE, NOT THE TIME. One full sprint covers 6.84 m** — and
+that is almost exactly one box half-width (6.5 at the time of measurement; 91% of the
+current 7.5). So the stamina bar is dimensioned to **one crossing of the danger zone**,
+which is the retrieval the whole game is about (§0). Nothing had written that down, and
+it means `STAMINA_MAX`, `STAMINA_DRAIN_RATE`, `SPRINT_SCALE` and `CONFINEMENT_RADIUS` are
+one interlocked set: **move the box and you change what a sprint buys.** At 7.5 a sprint
+no longer quite crosses the box, which is part of why the box change hit offence as hard
+as it did.
 
 **Fatigue rides the speed-zone stack** (`enter_speed_zone`/`exit_speed_zone`) rather
 than being multiplied in, so it composes with a hazard zone instead of one silently
@@ -174,6 +245,15 @@ neither pickup nor channel consumed reaches the shove.
 3. **outside the box** — `max(|x|,|z|) >= 5.0`;
 4. the post-restore cooldown has expired.
 
+⚠️ **§2.16 MEASURED 2026-08-01 — THE DOTTED ARC LANDS WHERE THE SLIPPER LANDS.**
+`tools/mech_probe.tscn` integrates the preview's own scheme from the velocity it is
+handed and compares it with where the thrown slipper actually stops, **for every slipper
+skin**, because §2.8's per-skin launch speed is exactly what could have broken it. Miss:
+**0.000 m** on TSINELAS, PANTULOG and IKE. ⚠️ **CROCS misses by 0.263 m**, and the cause
+is real but not the arc: a crocs rests **0.161 m** off the ground against the other three
+at 0.034–0.056, while `TrajectoryPreview` stops its line at a fixed `FLOOR_EPSILON`. The
+line is right; the tall skin simply stops higher. Filed to 🖥️ `build ui` as §1.19.
+
 ⚠️ **THE CROSSHAIR ASKS THE SAME FUNCTION.** It is shown only when a throw would
 actually be accepted, so it greys out for exactly the reasons the throw refuses. A
 second opinion about legality is a crosshair that promises a throw the rules then
@@ -219,6 +299,17 @@ on the last frame of the reset channel.
 
 **Attackers shove Attackers.** The Defender cannot be shoved and cannot shove — they
 have the tag, and giving them both would make the box unenterable.
+
+⚠️ **§2.4 MEASURED 2026-08-01** (`tools/mech_probe.tscn`, both sides pinned to neutral
+traits): knockback **2.40 m** against the predicted 2.50, stun **0.55 s** observed
+against a 1.25 const — the gap is the victim recovering while still sliding, so the
+*stun* is 1.25 and the *time they cannot act while being pushed* is about half that.
+Stamina **25.0 of 50.0** exactly, and the cooldown allows at most 12 shoves a round.
+
+⚠️ **THE REAL PRICE IS THE SPRINT, NOT THE 25 POINTS.** That half-bar is **0.63 s of
+sprint = 3.2 m of running**, and the bar is the same one that gets you back out of the
+box. A shove is paid for in escape distance, which is why it stays rare (§6.10 measures
+0–1 a match) without needing a bigger number on it.
 
 ⚠️ **7.75 IS SALVAGED, NOT RE-DERIVED.** The GDD asks for 1 metre of knockback. The
 deleted power bump was already tuned to 7.75 m/s against `FRICTION` 30, and
@@ -286,6 +377,20 @@ Danger Zone slipper camping)."* The old rule compounded with itself: every tag l
 another slipper inside the box, so a taya who tagged well ended up standing on a heap
 of them. The penalty that remains is real — the safe-zone teleport, 5 s stunned, and
 the whole trip to make again.
+
+⚠️ **§2.6 MEASURED 2026-08-01, INCLUDING THE MOVING CASE THAT HAD NEVER BEEN RUN**
+(`tools/mech_probe.tscn`). The furthest start from which a lunge still tags is **3.20 m**
+against a stationary target — the dash (2.5 m) plus the sweep radius (1.3 m), minus the
+charge — **and 3.20 m against a target crossing at the full 3.45 m/s attacker walk. The
+two are identical.** There is no tunnelling: the every-frame sweep does exactly what its
+comment claims, and §2.6's worry ("a moving body sampled at 60 Hz can step over a narrow
+band") is answered. **The tag is a lead problem, not a reach problem** — the taya has to
+aim it, which is the counterplay.
+
+⚠️ **§2.7 MEASURED.** `TAG_STUN_TIME` 5.0 s is **5.6%** of a round; stun plus a full
+re-charge is **7.5 s = 8.3%**. Against +100 for the taya, the attacker loses about a
+twelfth of one round's throwing — and keeps their slipper (§6's anti-camping rule). The
+5.0 is not the harsh number it reads as.
 
 ⚠️ **THE TAG IS NO LONGER PASSIVE — IT IS THE LUNGE.** Replaced 2026-08-01. It used to
 fire every physics frame on adjacency, with no input and no animation: 100 points for
