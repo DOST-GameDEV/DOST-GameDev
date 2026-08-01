@@ -38,11 +38,32 @@ func _ready() -> void:
 		elif arg.begins_with("secs="):
 			_secs = float(arg.substr(5))
 	print("[lan_probe] role=%s secs=%.0f port=%d" % [_role, _secs, LanBeaconScript.DISCOVERY_PORT])
+	# ⚠️⚠️ THE INTERFACE TABLE IS PRINTED FIRST BECAUSE IT IS THE ANSWER MOST OF THE TIME.
+	# The first version of this probe passed `role=both` on a machine where discovery was
+	# completely broken across two real PCs: the beacon was leaving via a Radmin VPN
+	# adapter and the LAN never saw it. The evidence was in the output already — one
+	# source IP nobody cross-checked against the machine's own address list. Printing the
+	# list beside the destinations makes that comparison unavoidable.
+	print("[lan_probe] local IPv4 interfaces:")
+	for entry in IP.get_local_interfaces():
+		for address in entry.get("addresses", []):
+			if not (":" in String(address)):
+				print("    %-16s %s" % [address, entry.get("friendly", "?")])
+	# ⚠️ PRINTED WHETHER OR NOT THIS PROCESS MANAGES TO HOST. The first run of this
+	# diagnostic printed an empty destination list, because `host_game()` had failed with
+	# ERR_ALREADY_IN_USE — the human's real game was holding 8910 — and the list is only
+	# populated by `start_advertising()`. The one line you most need when discovery is
+	# broken must not be conditional on the probe winning a port race.
+	print("[lan_probe] a beacon would go to: %s" % ", ".join(LanBeacon._broadcast_destinations()))
 	if _role == "host" or _role == "both":
 		SettingsManager.player_name = "PROBE"
 		var err := NetworkManager.host_game()
 		print("[lan_probe] host_game() -> %s | advertising=%s"
 			% [error_string(err), NetworkManager.is_host()])
+		# ⚠️ EVERY ADDRESS THE BEACON IS ACTUALLY SENT TO. Cross-read this against the
+		# interface table above: if the LAN card's subnet is not in this list, no amount
+		# of listening on the other machine will help.
+		print("[lan_probe] broadcasting to: %s" % ", ".join(LanBeacon._destinations))
 	if _role == "listen" or _role == "both":
 		LanBeacon.start_listening()
 		print("[lan_probe] listening=%s" % LanBeacon.is_listening())
