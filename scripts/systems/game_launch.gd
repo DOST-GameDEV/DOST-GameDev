@@ -158,7 +158,32 @@ var seat_tokens: Dictionary = {}
 
 ## Single Player only: which seat the human takes. Networked seating goes through
 ## `seat_tokens` above, which has no meaning without a NetworkManager session.
-var solo_seat: int = 0
+##
+## ⚠️⚠️ DEFAULTS TO 1, NOT 0, AND THAT IS THE WHOLE OF "SINGLE PLAYER ALWAYS
+## STARTS YOU AS TAYA". 🧑 2026-08-01: *"SINGLE PLAYER ALWAYS STARTS YOU AS TAYA
+## no matter which player number is chosen."*
+##
+## ⚠️ NOTHING WAS BROKEN, WHICH IS WHY THIS WAS WORTH MEASURING BEFORE CHANGING.
+## `tools/ui/solo_seat_probe.tscn` presses all four lobby rows through their real
+## `pressed` signal and every one of them stores its seat; `fpp_carry_probe
+## --seat=N` then confirms 0..3 really do drive P1..P4, with only P1 defending.
+## The trap is that the two correct halves compose badly: this defaulted to 0,
+## and `MatchManager.defender_slot_for(1)` is `(1 - 1) % 4` = **slot 0**, so the
+## default seat is by construction the one that defends first. A player who never
+## noticed the seat board — and nothing made them — opened every single match as
+## the taya and concluded the choice did nothing.
+##
+## ⚠️ THE ROTATION IS NOT RE-BASED, DELIBERATELY. The obvious alternative is to
+## offset `defender_slot_for()` by the human's seat, and it is the wrong trade:
+## that function being a PURE function of the round number is the entire fairness
+## argument (`Design.md` §1 — "everyone defends exactly once, clockwise" is true
+## by construction), it is shared with multiplayer where four humans hold four
+## seats and there is no "the human" to re-base on, and it is `build fair`'s
+## number besides. Moving a Single-Player-only default costs none of that: every
+## seat is still pickable, everyone still defends exactly once, and the player now
+## opens as an ATTACKER — which is the role the tutorial teaches first and the one
+## with something to do in the opening seconds.
+var solo_seat: int = 1
 
 ## ⚠️ SEAT -1 IS THE SPECTATOR SEAT, AND IT IS A SEAT RATHER THAN A MODE ON PURPOSE.
 ## `Design.md` §9.

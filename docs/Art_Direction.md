@@ -51,27 +51,75 @@ A square and a circle of the same "radius" agree only at the four edge midpoints
 diagonals they differ by 2.07 units. The physics clamps X and Z independently to match the
 drawn square.
 
-## 4 · The models — kits, not new assets
+## 4 · The models — where every asset comes from
+
+⚠️ **ONE OUTPUT PATH, ONE PRODUCER. This is the rule that has broken twice.**
+`generate_all.gd` silently overwrote the sourced slippers for hours because both
+wrote the same filenames, and `build_prop_textures.py` was still writing three of
+`build_footwear.py`'s texture files when that was found on 2026-08-01. If you add a
+generator, give it paths nothing else writes.
+
+| Asset | Produced by | Run it with |
+|---|---|---|
+| The four **cans** (`lata_*.obj`) + the viewmodel arm + the whole `env_kit` | `tools/models/generate_all.gd` | `godot --headless -s tools/models/generate_all.gd` |
+| The four **can textures** (`textures/lata_*.png`) | `tools/models/build_prop_textures.py` | `python tools/models/build_prop_textures.py` (needs Pillow) |
+| The four **slippers** (`tsinelas_*.obj`) + their textures | `tools/models/build_footwear.py` | `python tools/models/build_footwear.py` |
+| The twelve **Person palettes** (`person_*.tres`) | `tools/models/generate_person_palettes.py` | `python …` |
+| Both **maps** | `tools/maps/build_*.py` | `python …` |
+
+**Acceptance test for every one of them: run it twice and `git status` must be clean.**
 
 Everything in the world is CC0 Kenney (City/Suburban, Fantasy Town, Mini Forest, Food,
-Furniture, Car) plus the project's own generated `env_kit` decals and `tsinelas.obj`.
+Furniture, Car) plus the project's own generated `env_kit` decals.
+
+### 4a · The four slippers — SOURCED MODELS, NOT THE DRAWINGS
+
+⚠️ **THE DRAWING-DERIVED SLIPPERS ARE DELETED AND MUST NOT BE REBUILT.** 🧑
+2026-08-01, shown the old drawing sheets: *"yo thats old stale shit · dont"*, and
+earlier: *"i think u gen js suck in 3d modelling ahah … js look for assets that look
+like them"*.
+
+Four procedural slippers were built from `docs/refs/props/tsinelas_sheet*.png` and
+rejected four times on look. They are gone: `tsinelas_bakya.*`, `tsinelas_tsinelas.*`
+and their textures were deleted on 2026-08-01, along with `build_prop_textures.py`'s
+whole slipper half. **The sheets survive in `docs/refs/` as history only — nothing
+reads them.**
+
+What ships is three sourced CC-BY models converted by `build_footwear.py`, plus the
+project's own original mesh:
+
+| Roster id | Mesh | Origin |
+|---|---|---|
+| `tsinelas` | `tsinelas_classic.obj` | this project's own, restored from git |
+| `crocs` | `tsinelas_crocs.obj` | sourced, CC-BY — see §4b |
+| `pantulog` | `tsinelas_pantulog.obj` | sourced, CC-BY — see §4b |
+| `sike` | `tsinelas_sike.obj` | sourced, CC-BY — see §4b |
+
+All four are normalised to **0.432 m** toe-to-heel and centred on their volume
+centroid, so `Slipper.HIT_RADIUS` and the two-axis spin hold for every skin.
+`tools/models/skin_probe.gd` gates all eight prop skins; `tools/models/charprop_probe.tscn`
+gates that the CHARACTER screen previews each one's own mesh rather than a shared one.
 
 **A character is a rig plus a palette, never a new model** — twelve Kenney rigs carry twelve
 roster Persons through `person_palette.gdshader` and a generated `.tres`
 (`tools/models/generate_person_palettes.py`). Do not hand-edit a `person_*.tres`.
 
-**A prop class is a tint plus ATTACHMENTS, never a new base mesh.** Each lata and each
-tsinelas skin carries a small procedural kit of junk — a wire handle, a sardine key, a paint
-drip, a hanger — built at runtime in `character_visual.gd` from primitive meshes and
-parented under the `Visual` node.
+**A PROP SKIN IS A MESH, AND SINCE 2026-08-01 THAT IS THE WHOLE OF IT.** This law used
+to read *"a tint plus ATTACHMENTS, never a new base mesh"* and it is now the opposite:
+each `CANS`/`SLIPPERS` entry names its own `model`, `lata.gd`/`slipper.gd` swap the mesh
+in `apply_skin()`, and `tint` is **white** on all eight — a no-op that exists so a
+coloured variant is still possible later.
 
-> ⚠️ **Attachments are visual-only children of `Visual`, never of the body.** The collision
-> capsule, the hurtbox and the hitbox are sized by `CharacterBase._apply_role_collision()`
-> from `_COLLISION_BY_ROLE`, which knows nothing about them. That is the whole reason an
-> attachment cannot break physics, and it is the rule to keep if you add more.
+> ⚠️ **Anything that shows a prop must swap the MESH, not just recolour.** Three places
+> do it and all three must stay in step: `lata.gd::_apply_model()`,
+> `slipper.gd::_apply_model()` and `character_preview.gd::_apply_model()` (the CHARACTER
+> screen, which for one commit previewed every lata as the same can because it only
+> tinted). `camera_rig.gd::_sync_viewmodel_slipper()` is the fourth — the first-person
+> held slipper, which copies the mesh off the world slipper rather than re-deriving it.
 
-⚠️ **Twelve skins exist in code and none has ever been rendered.** See `Agent_Prompts.md`
-§4.
+⚠️ **THE PROCEDURAL ATTACHMENT KIT IS DEAD CODE.** `character_visual.gd`'s
+`SLIPPER_ATTACHMENTS` is keyed by roster ids (`sabit`) that no longer exist, so nothing
+reaches it. Left in place, unreferenced; delete it when something else touches that file.
 
 ## 4b · Third-party assets and credit — **read before shipping**
 
@@ -118,6 +166,13 @@ supplied flattened 360° label wraps for the purpose. 🧑: *"you can use the
 flattened shit for textures bcz its easier that way, you cant redraw this too
 bro"*. Stripped to a flat `Kd`, a Pasip and a Decades are the same grey cylinder
 and all of the Filipino specificity is gone with the label.
+
+⚠️ **THE SLIPPERS ARE THE OTHER WAY ROUND AND IT IS NOT AN INCONSISTENCY.** Two of
+them (CROCS, PANTULOG) carry a `map_Kd` extracted from their source `.glb`; the
+other two carry none at all — `tsinelas_classic` is generated flat colour, and the
+SIKE's every colour lives in a per-material `baseColorFactor` (which is why it is a
+black sandal with a white swoosh and no image file anywhere). All four therefore
+still take `tint` **white**, and the one-material rule below still binds.
 
 **It costs the tint system nothing**, which was the objection. `toon.gdshader`
 already had a textured path (added for the Kenney kit atlas), and on it
