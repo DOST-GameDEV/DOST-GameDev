@@ -291,7 +291,107 @@ func _ready() -> void:
 
 ## Starts a server on `port` and marks the host itself as the first connected
 ## player (host's own peer id, `1`, never fires `peer_connected`).
-func host_game(port: int = DEFAULT_PORT) -> Error:
+## ---------------------------------------------------------------------------
+## § DEDICATED HOSTING — a referee with nobody sitting at it.
+##
+## `host_game(port, dedicated = true)` starts a server that arbitrates the match but
+## takes no seat. It exists so a machine with no player at it — one of a fixed pool of
+## lobby processes on a VM — can run a match for four humans, instead of the four
+## seats being three humans and whoever's PC is hosting.
+##
+## ⚠️ THE ONLY DIFFERENCE IS THE SELF-SEEDING BELOW, AND THAT IS DELIBERATE.
+## Everything else about hosting is unchanged, because everything else is already
+## right: the server is still `is_host()`, still the authority at all 66 call sites
+## that ask, still the one running RoundManager. What a listen-host additionally does
+## is enter ITSELF into `connected_peer_ids`, `peer_tokens` and `peer_characters` —
+## which is what `main.gd::_start_hosting` iterates to decide who gets a character.
+## Skip those three and the server spawns nobody for itself; `_fill_empty_slots_with_placeholders`
+## then covers all four seats with bots until humans take them. No seat logic changes.
+##
+## ⚠️ ONE PROCESS IS STILL ONE MATCH. `RoundManager`/`MatchManager` are autoloads —
+## one instance each per running process, holding one score and one timer. Several
+## concurrent lobbies means several processes on different ports, NOT several matches
+## inside one. Nothing here makes this process re-entrant and nothing should try.
+##
+## ⚠️ NOBODY HERE PICKS THE MAP. A listen-host is also the player who chose the map
+## and mode on the setup screen; a dedicated server has no such player, so whatever it
+## booted with stands unless a client is given those controls. See the lobby-leader
+## work that goes with this — without it, an online lobby is stuck on the default map.
+## ---------------------------------------------------------------------------
+
+## True when this process is refereeing without playing. Read by anything that would
+## otherwise assume the server owns a character.
+var is_dedicated: bool = false
+
+## ---------------------------------------------------------------------------
+## § THE LOBBY LEADER — who is allowed to pick the map, when the referee is a robot.
+##
+## On a listen host these are the same person, and this changes nothing: the leader is
+## peer 1, which is the host, which is who could already pick. On a DEDICATED server
+## there is no such person, so the first human through the door gets those controls.
+##
+## ⚠️ THE LEADER IS NOT AN AUTHORITY. It is permission to ASK. The server still owns
+## the settings and still broadcasts them — a leader's map change is a request the
+## server validates against this id and then applies, exactly like a seat request. Any
+## other shape would let a client mutate lobby state directly, which is the one thing
+## the whole host-authoritative model exists to prevent.
+##
+## ⚠️ IT MUST SURVIVE THE LEADER LEAVING. A lobby whose leader quit and which nobody
+## can change the map on is stuck, and on a persistent server it stays stuck for
+## everyone who arrives later. Handover is not polish here — see `_reassign_leader`.
+## ---------------------------------------------------------------------------
+
+signal lobby_leader_changed(peer_id: int)
+
+## 0 means nobody holds it — a dedicated server before its first human arrives.
+var lobby_leader_id: int = 0
+
+func is_lobby_leader() -> bool:
+	return _is_networked and lobby_leader_id == multiplayer.get_unique_id()
+
+## Host-only. Gives the role to `peer_id` and tells everyone, including itself, so a
+## listen host's own UI and a client's take the same path.
+##
+## ⚠️ UNCONDITIONAL — it will take the role off whoever holds it. Only `_reassign_leader`
+## may do that, and only because the holder has left. A peer ARRIVING must go through
+## `_claim_lobby_leader_if_vacant`, which is where the "first one in, and only the first"
+## rule lives so it cannot be forgotten at a call site.
+func _set_lobby_leader(peer_id: int) -> void:
+	if not is_host() or lobby_leader_id == peer_id:
+		return
+	_rpc_announce_leader.rpc(peer_id)
+
+## Host-only. The arrival path: takes the role only if nobody holds it, and otherwise
+## just tells this peer who does — an announcement it was not connected in time to hear.
+func _claim_lobby_leader_if_vacant(peer_id: int) -> void:
+	if not is_host():
+		return
+	if lobby_leader_id == 0:
+		_set_lobby_leader(peer_id)
+	else:
+		_rpc_announce_leader.rpc_id(peer_id, lobby_leader_id)
+
+## Host-only, on a peer leaving. Hands the role to whoever is still connected, oldest
+## first, so it lands on the person who has been waiting longest rather than at random.
+## Falls back to 0 — an empty dedicated lobby has no leader until someone arrives, and
+## that is a real state, not an error.
+func _reassign_leader(departed_id: int) -> void:
+	if not is_host() or lobby_leader_id != departed_id:
+		return
+	for candidate in connected_peer_ids:
+		if candidate != departed_id:
+			_rpc_announce_leader.rpc(candidate)
+			return
+	_rpc_announce_leader.rpc(0)
+
+## `call_local` so the host applies it through the same line the clients do — one code
+## path, so a listen host cannot drift from what it told everyone else.
+@rpc("authority", "call_local", "reliable")
+func _rpc_announce_leader(peer_id: int) -> void:
+	lobby_leader_id = peer_id
+	lobby_leader_changed.emit(peer_id)
+
+func host_game(port: int = DEFAULT_PORT, dedicated: bool = false) -> Error:
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_server(port, MAX_CONNECTIONS)
 	if err != OK:
@@ -299,19 +399,31 @@ func host_game(port: int = DEFAULT_PORT) -> Error:
 		return err
 	multiplayer.multiplayer_peer = peer
 	_is_networked = true
-	connected_peer_ids = [multiplayer.get_unique_id()]
-	# 4.3/B-65: the host never sends itself `_rpc_identify` (there is no
-	# connection to send it over), so its own token is seeded directly —
-	# main.gd's `_spawn_player` looks every peer's token up here, host
-	# included, and must not special-case peer_id == 1.
+	is_dedicated = dedicated
 	peer_tokens.clear()
-	peer_tokens[multiplayer.get_unique_id()] = local_player_token
-	# The host never sends itself `_rpc_identify` either, so its own pick has to
-	# be seeded here too — otherwise the hosting player is the one person in the
-	# match wearing the fallback Person instead of who they actually chose.
-	local_picks = _local_picks()
 	peer_characters.clear()
-	peer_characters[multiplayer.get_unique_id()] = local_picks
+	# A dedicated server seeds none of the three — see this function's header. It is
+	# the referee, not a player, so it must not appear in the list `_start_hosting`
+	# spawns characters from.
+	if dedicated:
+		connected_peer_ids = []
+		# Nobody to lead yet. The first peer to identify takes it.
+		lobby_leader_id = 0
+	else:
+		connected_peer_ids = [multiplayer.get_unique_id()]
+		# A listen host leads its own lobby, which is what it has always done —
+		# this just names the existing behaviour so one gate covers both cases.
+		lobby_leader_id = multiplayer.get_unique_id()
+		# 4.3/B-65: the host never sends itself `_rpc_identify` (there is no
+		# connection to send it over), so its own token is seeded directly —
+		# main.gd's `_spawn_player` looks every peer's token up here, host
+		# included, and must not special-case peer_id == 1.
+		peer_tokens[multiplayer.get_unique_id()] = local_player_token
+		# The host never sends itself `_rpc_identify` either, so its own pick has to
+		# be seeded here too — otherwise the hosting player is the one person in the
+		# match wearing the fallback Person instead of who they actually chose.
+		local_picks = _local_picks()
+		peer_characters[multiplayer.get_unique_id()] = local_picks
 	match_in_progress = false
 	# ⚠️ THE LAN BEACON IS STARTED HERE AND NOWHERE ELSE, because this is the one line
 	# that knows a server now exists. It is fire-and-forget by design: `start_advertising`
@@ -390,6 +502,11 @@ func disconnect_network() -> void:
 	multiplayer.multiplayer_peer = null
 	connected_peer_ids.clear()
 	_is_networked = false
+	# Same lifetime as `_is_networked`: this described the session that just ended,
+	# and a process that hosts again must be told again what it is.
+	is_dedicated = false
+	# Same lifetime as the session it described.
+	lobby_leader_id = 0
 	peer_tokens.clear()
 	# Same lifetime as peer_tokens — a hosting SESSION ending abandons both.
 	peer_characters.clear()
@@ -436,6 +553,8 @@ func _on_peer_connected(id: int) -> void:
 ## player, not a stranger.
 func _on_peer_disconnected(id: int) -> void:
 	connected_peer_ids.erase(id)
+	# After the erase, so the departed peer cannot be handed the role it just gave up.
+	_reassign_leader(id)
 	player_disconnected.emit(id)
 
 func _on_connected_to_server() -> void:
@@ -510,6 +629,11 @@ func _rpc_identify(token: String, picks: Dictionary = {}) -> void:
 	# packet arrives — so the lobby has already auto-seated this peer by now and cannot
 	# know yet whether it wanted a seat. This is the first moment anybody does.
 	peer_spectator_changed.emit(peer_id, is_spectator(peer_id))
+	# A dedicated server starts with nobody leading; the first peer to get this far
+	# takes it. Deliberately here rather than in `_on_peer_connected`: a peer that has
+	# not identified has no token and no picks, and handing the lobby to it would put
+	# the settings in the hands of something we cannot yet name.
+	_claim_lobby_leader_if_vacant(peer_id)
 	player_identified.emit(peer_id, token)
 
 ## One client-sent pick, range-checked against the roster it indexes. -1 is

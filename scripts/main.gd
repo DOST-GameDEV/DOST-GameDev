@@ -463,6 +463,14 @@ func _seat_on_floor(character: CharacterBase) -> void:
 		return
 	character.global_position.y = (hit["position"] as Vector3).y 		+ character.capsule_height() * 0.5 + SPAWN_FLOOR_CLEARANCE
 
+## Set by `--dedicated`, read once by `_start_hosting`. Command-line only: there is no
+## button for it, because a player clicking HOST is by definition sitting at the machine
+## and wants a seat.
+var _dedicated: bool = false
+## Set by `--port=`, so a pool of lobby processes on one machine can each take a port.
+## Defaults to the same port hosting has always used.
+var _host_port: int = NetworkManagerScript.DEFAULT_PORT
+
 var _spawned_peer_ids: Dictionary = {}
 ## B-21, superseded by 4.3/B-65: token -> permanently-assigned join index
 ## (0..3), separate from _spawned_peer_ids.size(). B-21 keyed this by peer_id
@@ -579,6 +587,19 @@ func _ready() -> void:
 		for arg in OS.get_cmdline_user_args():
 			if arg == "--host":
 				should_host = true
+			# ⚠️ HOSTS WITHOUT PLAYING — see NetworkManager.host_game's dedicated
+			# header. This is how one of a fixed pool of lobby processes on a server
+			# is started: `--headless -- --dedicated --port=8912`. It implies
+			# `--host`, because a dedicated server that does not host is nothing.
+			elif arg == "--dedicated":
+				should_host = true
+				_dedicated = true
+			elif arg.begins_with("--port="):
+				var port_text := arg.substr(len("--port="))
+				if port_text.is_valid_int():
+					_host_port = int(port_text)
+				else:
+					push_error("main: --port= needs a number, got '%s'" % port_text)
 			elif arg.begins_with("--join="):
 				join_target = arg.substr(len("--join="))
 			elif arg == "--spectate":
@@ -1065,7 +1086,7 @@ func _start_hosting() -> void:
 	# second host_game() call (it would fail with "port in use"). Fall through
 	# to signal wiring and spawning, which still need to happen here.
 	if not NetworkManager.is_networked():
-		if NetworkManager.host_game() != OK:
+		if NetworkManager.host_game(_host_port, _dedicated) != OK:
 			return
 	NetworkManager.player_connected.connect(_on_player_connected)
 	NetworkManager.player_disconnected.connect(_on_player_disconnected)
