@@ -93,6 +93,57 @@ const DOWNED_TILT_TIME: float = 0.28
 const WALK_SPEED_THRESHOLD: float = 0.4
 const RUN_SPEED_THRESHOLD: float = 7.5
 
+## ⚠️⚠️ EVERY CHARACTER THIS PEER DOES NOT SIMULATE HAS NO `velocity` AND NO
+## `is_on_floor()`, AND THESE THREE CONSTANTS ARE THE ANSWER. Measured on two real
+## peers 2026-08-01 (`tools/ui/net_twopeer_probe.tscn`), reported by a human as
+## *"some of them were just stuck in jump position"*.
+##
+## `character_base.gd::_physics_process` returns at its authority gate before
+## `_move_and_confine()` — which is the only caller of `move_and_slide()`. So on any
+## peer that is not the authority for a body:
+##
+##   * `is_on_floor()` is never updated and reads `false` FOREVER, and
+##   * `velocity` is never written and is not in `CharacterBase.tscn`'s replication
+##     config (`position`, `rotation`, `state`, `character_index`, `is_defender`,
+##     `player_slot`, `player_name` — no `velocity`), so it reads ZERO forever.
+##
+## `_play_locomotion()` read both directly, so a remote unit took the airborne branch
+## on every frame with `velocity.y == 0.0` and played `fall` for the entire match —
+## and, because its horizontal speed was also always zero, could never reach `walk` or
+## `sprint` either. In a four-player match that is THREE OF FOUR characters on every
+## screen, on every peer, including every frame the trailer is filmed in. It is
+## invisible in Single Player, where the host simulates all four.
+##
+## The replicated `position` is the one motion fact a non-authority peer genuinely has,
+## so locomotion for those units is derived from it — no new state, no new input and
+## nothing added to the replication config, which is the rule this file already sets
+## for itself in `_play_locomotion()`.
+##
+## Seconds for the smoothed observation to converge. Replicated position arrives on the
+## NETWORK tick, not the render tick, so a raw per-frame delta is zero on most frames
+## and spikes on the few that carry an update — unsmoothed, the animation flaps between
+## `walk` and `idle` at the replication rate instead of tracking the movement.
+const OBSERVED_SMOOTHING: float = 0.12
+## Vertical speed above which an observed unit counts as airborne. Comfortably above
+## the noise of walking over a kerb and far below a real jump, which leaves the ground
+## at `JUMP_VELOCITY` 5.8 and is pulled down at `GRAVITY` 20.
+const OBSERVED_AIRBORNE_SPEED: float = 1.8
+## ⚠️ A LATCH, NOT A TEST. Vertical speed passes through zero at the apex of every
+## jump, so a bare threshold drops the unit back to `idle` for a frame or two at the
+## top of its own arc — the one moment the pose is most visible.
+const OBSERVED_AIRBORNE_HOLD: float = 0.18
+## ⚠️ TELEPORTS ARE NOT MOTION, AND THIS GAME TELEPORTS CONSTANTLY. The tag penalty
+## drops the attacker in the Safe Zone (`TAG_STUN_TIME`, Design.md §6), the round reset
+## returns all four to spawn, and a late joiner is placed outright — the two-peer run
+## on 2026-08-01 took SIX tags in a single 90 s round. Observed from position alone
+## each of those is one frame of enormous displacement, which would otherwise smear a
+## bogus sprint-and-airborne reading across the following `OBSERVED_SMOOTHING`. Above
+## this, the sample is discarded and the observation re-seeded at the new position.
+## Chosen well clear of anything the rules can produce: sprint is 6.90 m/s
+## (`SPEED` 4.6 × `SPRINT_SCALE` 1.50), a shove opens at 7.75 and `MAX_FALL_SPEED`
+## bounds the rest.
+const OBSERVED_TELEPORT_SPEED: float = 30.0
+
 ## One-shot clips per action, in preference order — the first one the model
 ## actually has wins. Kenney's roster ships all 32 for the Persons; a Prop has no
 ## AnimationPlayer at all and `play_action` no-ops there.
@@ -390,6 +441,13 @@ var _animator: AnimationPlayer = null
 ## Name of the one-shot action clip currently playing; empty when locomotion owns
 ## the animator. Guards _play_locomotion from stomping a throw mid-swing.
 var _action_clip: String = ""
+
+## Motion observed from the replicated `position`, for units this peer does not
+## simulate. See the OBSERVED_* constants.
+var _observed_velocity: Vector3 = Vector3.ZERO
+var _observed_prev_position: Vector3 = Vector3.ZERO
+var _observed_has_prev: bool = false
+var _observed_airborne_left: float = 0.0
 ## Cached BoneAttachment3D child marking the hand. Rebuilt lazily rather than in
 ## apply(), because apply() also runs for Cans and Tsinelas that will never carry
 ## anything and a BoneAttachment3D on a model with no Skeleton3D is just waste.
@@ -1297,6 +1355,47 @@ func _play_idle(model: Node3D) -> void:
 ## Driven from _process rather than from a signal because velocity is a
 ## continuously-varying value, not an event. `CharacterBase` is not told any of
 ## this: it owns the velocity, this file owns what the velocity looks like.
+## Does THIS peer run the physics for this body? Solo is always yes; networked, only
+## the authority reaches `_move_and_confine()`. Everything the locomotion picker needs
+## — `velocity`, `is_on_floor()` — is a by-product of `move_and_slide()`, so this is
+## exactly the question "are those two values real here".
+##
+## ⚠️ AN AI-DRIVEN UNIT ON THE HOST ANSWERS YES, which is correct: the host IS its
+## authority and does simulate it. The split is by authority, never by "is a bot".
+func _simulated_here() -> bool:
+	if _character == null:
+		return false
+	if not NetworkManager.is_networked():
+		return true
+	return _character.is_multiplayer_authority()
+
+## Derives a velocity for units this peer does not simulate, from the one motion fact
+## it does legitimately have: the replicated `position`. Cheap enough to run for every
+## unit, so it is not gated on `_simulated_here()` — a body that later CHANGES
+## authority (reclaim, late join, a seat handed to a bot) then already has a warm
+## observation instead of one frame of garbage from a stale `_observed_prev_position`.
+func _observe_motion(delta: float) -> void:
+	if _character == null or delta <= 0.0:
+		return
+	var here := _character.global_position
+	if not _observed_has_prev:
+		_observed_prev_position = here
+		_observed_has_prev = true
+		return
+	var raw := (here - _observed_prev_position) / delta
+	_observed_prev_position = here
+	# A teleport is a discontinuity, not a velocity — re-seed rather than smooth it in.
+	if raw.length() > OBSERVED_TELEPORT_SPEED:
+		_observed_velocity = Vector3.ZERO
+		_observed_airborne_left = 0.0
+		return
+	_observed_velocity = _observed_velocity.lerp(raw,
+		clampf(delta / OBSERVED_SMOOTHING, 0.0, 1.0))
+	if absf(_observed_velocity.y) >= OBSERVED_AIRBORNE_SPEED:
+		_observed_airborne_left = OBSERVED_AIRBORNE_HOLD
+	elif _observed_airborne_left > 0.0:
+		_observed_airborne_left = maxf(0.0, _observed_airborne_left - delta)
+
 func _play_locomotion() -> void:
 	# The wind-up pose outranks locomotion the same way a one-shot does: an `idle`
 	# re-played every frame would key the same arm bone straight back over it. See
@@ -1305,7 +1404,14 @@ func _play_locomotion() -> void:
 		return
 	if _animator == null or _character == null or _action_clip != "":
 		return
-	var speed := Vector2(_character.velocity.x, _character.velocity.z).length()
+	# ⚠️ NOT `_character.velocity` / `is_on_floor()` DIRECTLY ANY MORE — both are dead
+	# on a peer that does not simulate this body. See the OBSERVED_* constants.
+	var simulated := _simulated_here()
+	var motion := _character.velocity if simulated else _observed_velocity
+	var airborne := (not _character.is_on_floor()) if simulated \
+		else _observed_airborne_left > 0.0
+	var vertical := motion.y
+	var speed := Vector2(motion.x, motion.z).length()
 	var wanted := "idle"
 	# ⚠️ B-90 — CARRY_IDLE_CLIP now wins over walk/sprint OUTRIGHT, checked
 	# before speed at all, not just when standing still. It used to be the
@@ -1341,8 +1447,8 @@ func _play_locomotion() -> void:
 	# what keeps animation work in the design lane.
 	if _character.state == CharacterBase.State.DOWNED:
 		wanted = "die"
-	elif not _character.is_on_floor():
-		wanted = "jump" if _character.velocity.y > 0.0 else "fall"
+	elif airborne:
+		wanted = "jump" if vertical > 0.0 else "fall"
 	elif _is_holding():
 		wanted = CARRY_IDLE_CLIP
 	elif speed > RUN_SPEED_THRESHOLD:
@@ -1355,6 +1461,9 @@ func _play_locomotion() -> void:
 		_animator.play(wanted)
 
 func _process(delta: float) -> void:
+	# ⚠️ BEFORE _play_locomotion(), which reads what this leaves behind for any unit
+	# this peer does not simulate.
+	_observe_motion(delta)
 	# ⚠️ BEFORE _play_locomotion(), which returns early while a charge pose is held.
 	_drive_charge_pose()
 	_play_locomotion()
