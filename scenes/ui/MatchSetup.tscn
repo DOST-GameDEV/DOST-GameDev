@@ -138,7 +138,7 @@ mouse_filter = 1
 theme_override_constants/separation = 46
 
 [node name="MapCaption" type="Label" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/MapRow"]
-custom_minimum_size = Vector2(250, 0)
+custom_minimum_size = Vector2(300, 0)
 layout_mode = 2
 size_flags_horizontal = 0
 theme_type_variation = &"MenuDisplay"
@@ -202,7 +202,7 @@ mouse_filter = 1
 theme_override_constants/separation = 46
 
 [node name="ModeCaption" type="Label" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/ModeRow"]
-custom_minimum_size = Vector2(250, 0)
+custom_minimum_size = Vector2(300, 0)
 layout_mode = 2
 size_flags_horizontal = 0
 theme_type_variation = &"MenuDisplay"
@@ -266,7 +266,7 @@ mouse_filter = 1
 theme_override_constants/separation = 46
 
 [node name="DifficultyCaption" type="Label" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/DifficultyRow"]
-custom_minimum_size = Vector2(250, 0)
+custom_minimum_size = Vector2(300, 0)
 layout_mode = 2
 size_flags_horizontal = 0
 theme_type_variation = &"MenuDisplay"
@@ -330,7 +330,7 @@ mouse_filter = 1
 theme_override_constants/separation = 46
 
 [node name="FighterCaption" type="Label" parent="Body/Columns/LeftColumn/ConfigPanel/ConfigMargin/Rows/FighterRow"]
-custom_minimum_size = Vector2(250, 0)
+custom_minimum_size = Vector2(300, 0)
 layout_mode = 2
 size_flags_horizontal = 0
 theme_type_variation = &"MenuDisplay"
