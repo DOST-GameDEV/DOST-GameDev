@@ -66,6 +66,9 @@ const ENTRY_TIMEOUT: float = 4.0
 signal servers_changed
 
 var _advertiser: PacketPeerUDP = null
+## Every address a beacon is sent to each tick — see `_broadcast_destinations()` for why
+## this is a list and not the single limited-broadcast address it started as.
+var _destinations: Array[String] = []
 var _listener: PacketPeerUDP = null
 var _since_beacon: float = 0.0
 ## ip:port -> {ip, port, name, players, max, in_match, age}
@@ -90,14 +93,61 @@ func start_advertising() -> void:
 	stop_advertising()
 	_advertiser = PacketPeerUDP.new()
 	_advertiser.set_broadcast_enabled(true)
-	var err := _advertiser.set_dest_address("255.255.255.255", DISCOVERY_PORT)
-	if err != OK:
-		push_warning("LanBeacon: cannot broadcast (error %d); this host is typed-address only." % err)
+	_destinations = _broadcast_destinations()
+	if _destinations.is_empty():
+		push_warning("LanBeacon: no broadcast destination; this host is typed-address only.")
 		_advertiser = null
 		return
 	# Shout once immediately. A host that has to wait a full interval before its first
 	# packet is a host that is invisible for a second to somebody already watching.
 	_since_beacon = BEACON_INTERVAL
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ ONE BEACON PER INTERFACE, AND 255.255.255.255 ALONE IS NOT ENOUGH. This is the
+## bug that made the feature not work at all on the machine it was written on.
+##
+## 🧑 2026-08-02, testing host-here / join-on-a-spare-laptop: *"cant detect the lan for
+## some reason"*. The limited broadcast address goes out exactly ONE interface — whichever
+## the routing table picks — and `tools/lan_probe.tscn` had already printed which one
+## without anybody reading it properly: source IP **26.190.106.234**. That is the Radmin
+## VPN adapter. `IP.get_local_interfaces()` on this PC lists FOUR IPv4 interfaces:
+##
+##     Ethernet      192.168.1.7        <- the actual LAN, and the only one that matters
+##     Hamachi       25.5.84.39
+##     Radmin VPN    26.190.106.234     <- where every beacon was going
+##     Loopback      127.0.0.1
+##
+## So the packet was real, well-formed, and delivered to a virtual network with nobody on
+## it. The one-machine `role=both` probe passed throughout, because the loopback path does
+## not care which adapter the datagram left by — which is exactly the blind spot that
+## probe's own header warns about, one paragraph that then went unheeded.
+##
+## The fix is to stop letting the routing table choose. Every non-loopback IPv4 gets a
+## SUBNET-DIRECTED broadcast of its own, so the Ethernet card is addressed by name rather
+## than by luck, and the limited address is kept as well for anything the /24 guess misses.
+##
+## ⚠️ THE /24 IS A GUESS AND IT IS ONLY SAFE BECAUSE A WRONG ONE IS INERT. Godot exposes
+## addresses but no NETMASKS (`get_local_interfaces()` returns name/friendly/index/
+## addresses and nothing else), so the subnet broadcast is built by replacing the last
+## octet. That is right for the 192.168.x.x/24 and 10.x.x.x/24 home LANs this game is
+## played on, and WRONG for Hamachi and Radmin, which are /8 — 25.5.84.255 is a perfectly
+## ordinary host address on 25.0.0.0/8, not a broadcast. Sending there does nothing and
+## harms nothing: it is one 200-byte datagram a second to an address that ignores it.
+## Guessing narrow costs a wasted packet; guessing wide would mean not covering the LAN.
+func _broadcast_destinations() -> Array[String]:
+	var out: Array[String] = ["255.255.255.255"]
+	for address in IP.get_local_addresses():
+		if ":" in address: # IPv6 has no broadcast at all — it uses multicast
+			continue
+		if address.begins_with("127."):
+			continue
+		var octets := address.split(".")
+		if octets.size() != 4:
+			continue
+		var subnet := "%s.%s.%s.255" % [octets[0], octets[1], octets[2]]
+		if not out.has(subnet):
+			out.append(subnet)
+	return out
 
 func stop_advertising() -> void:
 	if _advertiser != null:
@@ -169,7 +219,7 @@ func _step_advertise(delta: float) -> void:
 	if _since_beacon < BEACON_INTERVAL:
 		return
 	_since_beacon = 0.0
-	_advertiser.put_packet(JSON.stringify({
+	var payload := JSON.stringify({
 		"magic": MAGIC,
 		# ⚠️ THE BUILD VERSION RIDES ALONG AND IS CHECKED ON RECEIPT. Two different
 		# builds on one LAN can see each other's beacons and cannot play together; a
@@ -185,7 +235,14 @@ func _step_advertise(delta: float) -> void:
 		"players": NetworkManager.seated_peer_count(),
 		"max": NetworkManagerScript.MAX_PLAYERS,
 		"in_match": NetworkManager.match_in_progress,
-	}).to_utf8_buffer())
+	}).to_utf8_buffer()
+	# ⚠️ `set_dest_address` PER DESTINATION, PER TICK. It is a property of the socket, not
+	# an argument to the send, so the address in force is whatever was set last — a loop
+	# that set it once outside would post every packet to the final entry.
+	for destination in _destinations:
+		if _advertiser.set_dest_address(destination, DISCOVERY_PORT) != OK:
+			continue
+		_advertiser.put_packet(payload)
 
 ## The hosting player's own name, which is what somebody scanning a list recognises.
 ## Falls back rather than showing an empty row: `player_name()` is free text and a

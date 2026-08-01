@@ -1290,7 +1290,31 @@ func _build_address_row(rows: Container, at_index: int) -> void:
 ## firewall lets packets reach it or not), so this is the fix that fits: tell
 ## the one person who can act on it, next to the address they are about to
 ## hand out.
+##
+## ⚠️⚠️ IT IS ONE LINE AND THE REST IS ON HOVER. 🧑 2026-08-02, looking at the lobby:
+## *"fix ui here, looks too long maybe make it something to hover"*. Three wrapped lines
+## of firewall troubleshooting sat permanently above the seat rows and pushed P1 to the
+## bottom of the card — advice for a problem MOST hosts do not have, occupying more of
+## the screen than the four seats the screen is about.
+##
+## ⚠️ THE PROMPT STAYS VISIBLE; ONLY THE INSTRUCTIONS COLLAPSE. "Nobody connecting?" is
+## the half that has to be readable without knowing to hover, because a host who does not
+## already suspect the firewall is exactly who this is for — they have to be told a
+## question is being answered before they will go looking for the answer. Hiding the
+## whole thing behind a hover would make it findable only by people who no longer need it.
+##
+## ⚠️ THE TOOLTIP IS ON A `Label`, WHICH NEEDS `mouse_filter` SET. Godot 4 gives Labels
+## `MOUSE_FILTER_IGNORE` by default, so a tooltip on one is never shown and never errors —
+## it simply does nothing, which is the kind of silence this file has been bitten by
+## before. `MOUSE_FILTER_STOP` is what makes the hover arrive at all.
 var _firewall_hint: Label = null
+
+const FIREWALL_DETAIL: String = ("Windows Firewall may be blocking this game silently.\n"
+	+ "Check Windows Security ▸ Firewall & network protection ▸\n"
+	+ "\"Allow an app through firewall\", and make sure BOTH\n"
+	+ "Private and Public are ticked for this game.\n\n"
+	+ "The host sees nothing wrong when this happens — the\n"
+	+ "socket is open and listening either way.")
 
 func _build_firewall_hint(rows: Container, at_index: int) -> void:
 	_firewall_hint = Label.new()
@@ -1298,9 +1322,9 @@ func _build_firewall_hint(rows: Container, at_index: int) -> void:
 	_firewall_hint.theme_type_variation = &"MenuCaption"
 	_firewall_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_firewall_hint.visible = false
-	_firewall_hint.text = ("Nobody connecting? Windows Firewall may be blocking this game" +
-		" silently — check Windows Security ▸ Firewall & network protection ▸" +
-		" \"Allow an app through firewall\", and make sure both Private and Public are checked.")
+	_firewall_hint.text = "Nobody connecting?  ▸  hover here"
+	_firewall_hint.mouse_filter = Control.MOUSE_FILTER_STOP
+	_firewall_hint.tooltip_text = FIREWALL_DETAIL
 	rows.add_child(_firewall_hint)
 	rows.move_child(_firewall_hint, at_index)
 
