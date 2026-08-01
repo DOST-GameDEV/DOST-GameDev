@@ -36,18 +36,36 @@ reaches the fourth lobby in the pool. A bare address falls back to 8910.
 ## 2. ⚠️ The one command, and the one way to get it wrong
 
 ```
-godot --headless --path /opt/tumbang-preso/game res://scenes/main/Main.tscn -- --dedicated --port=8910
+godot --headless --path /opt/tumbang-preso/game res://scenes/ui/MatchSetup.tscn -- --dedicated --port=8910
 ```
 
 Two parts of that are load-bearing and neither fails loudly.
 
-**`res://scenes/main/Main.tscn` is required.** `project.godot` sets
+**`res://scenes/ui/MatchSetup.tscn` is required.** `project.godot` sets
 `run/main_scene` to `res://scenes/ui/SplashScreen.tscn`. The `--dedicated` and
-`--port=` parsing lives in `scripts/main.gd::_ready`, which never runs if the
-splash screen is what booted. Measured on the dev machine 2026-08-02: launched
-without the scene path, the process ran for 18 seconds, used the same ~215 MB as
-a working server, logged nothing but the engine banner, exited nothing, and
-**never bound its UDP port**. `systemctl status` would call that unit active.
+`--port=` parsing lives in `scripts/ui/match_setup.gd::_read_dedicated_args`,
+which never runs if the splash screen is what booted. Measured on the dev machine
+2026-08-02: launched without the scene path, the process ran for 18 seconds, used
+the same ~215 MB as a working server, logged nothing but the engine banner,
+exited nothing, and **never bound its UDP port**. `systemctl status` would call
+that unit active.
+
+**⚠️ It must be `MatchSetup.tscn`, NOT `Main.tscn`, and this one is even quieter.**
+`scripts/main.gd` also understands `--dedicated`, so naming `Main.tscn` produces a
+server that starts, binds both ports and accepts connections — and is wrong. It
+drops straight into a running match, so `NetworkManager.match_in_progress` is true
+from frame one, every row in the players' server list reads *in a match* before
+anyone has joined, and a joining player is routed into a live game with no seat to
+pick and no ready-up. `MatchSetup.tscn` is the waiting room a listen host already
+uses, and parking there is what makes the lobby joinable.
+
+Measured on the dev machine 2026-08-02, same port, same flags, only the scene
+changed:
+
+| Boot scene | status reply |
+| --- | --- |
+| `res://scenes/ui/MatchSetup.tscn` | `code=DE23 players=0/4 in_progress=false` — joinable |
+| `res://scenes/main/Main.tscn` | `code=CRG6 players=0/4 in_progress=true` — unjoinable, silently |
 There is no error anywhere.
 
 **`--` is required, and everything game-related goes after it.** `main.gd` reads
@@ -524,7 +542,7 @@ sudo chmod +x /opt/tumbang-preso/godot
 
 # 5. Prove ONE lobby works before installing anything else.
 /opt/tumbang-preso/godot --headless --path /opt/tumbang-preso/game \
-    res://scenes/main/Main.tscn -- --dedicated --port=8910
+    res://scenes/ui/MatchSetup.tscn -- --dedicated --port=8910
 #    ^ in another shell: ss -lun | grep 8910   -> must show a line.
 #      If it does not, re-read §2 before doing anything else.
 
