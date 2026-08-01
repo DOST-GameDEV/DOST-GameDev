@@ -1332,23 +1332,41 @@ COURT_Z = 13.0
 # The base circle sits at the centre of the court, on flat paving.
 add_mark("BaseCircle", "base_circle_decal", 0.0, 0.0)
 
-# The two long sides. These are what every other line terminates on.
-court_line("CourtEast", "z", COURT_X, COURT_Z)
-court_line("CourtWest", "z", -COURT_X, COURT_Z)
-# The two ends.
-court_line("CourtNorth", "x", -COURT_Z, COURT_X)
-court_line("CourtSouth", "x", COURT_Z, COURT_X)
-
-# The confinement square's north/south edges — the Can/Taya's actual restricted
-# play area (CharacterBase.CONFINEMENT_RADIUS). Kept as a SQUARE per user
-# feedback ("the circle you made was ugly ... can we just use a square").
+# ⚠️ TWO MARKINGS, AND ONLY TWO. Human instruction, 2026-08-01: *"make sure its
+# this simple / an area where defender can tag and a 2nd line wherein attacker is
+# only allowed to throw from"*.
+#
+# The floor used to carry SIX lines: a 13-unit-long outer court rectangle, the
+# confinement box's two cross-lines, and the two throwing lines. Because the
+# court's own sides sat at exactly ±CONFINEMENT_BOX_RADIUS, the box never read as
+# a box — it read as a 6.5 x 26 corridor with four stripes across it, and the one
+# shape a player actually needs to judge (am I inside the taya's reach?) was the
+# hardest thing on the floor to see. The outer rectangle is gone.
+#
+# What is left says the rules out loud:
+#   · a CLOSED SQUARE at |x| = |z| = CONFINEMENT_BOX_RADIUS — the Defender's Box.
+#     The taya cannot leave it and an Attacker inside it can be tagged.
+#   · one THROWING LINE on each side, further out — behind which a throw is legal.
+# The gap between them is the corridor an attacker crosses to retrieve, which is
+# the whole tension of the game (Design.md § 0) and is now literally drawn.
+court_line("ConfinementEast", "z", COURT_X, CONFINEMENT_BOX_RADIUS)
+court_line("ConfinementWest", "z", -COURT_X, CONFINEMENT_BOX_RADIUS)
 court_line("ConfinementNorth", "x", -CONFINEMENT_BOX_RADIUS, COURT_X)
 court_line("ConfinementSouth", "x", CONFINEMENT_BOX_RADIUS, COURT_X)
 
-# The throwing lines, at the 6.0 distance Art_Direction §9 derived — the mark an
-# attacker must stay behind.
-court_line("ThrowingLineNorth", "x", -6.0, COURT_X, "throwing_line_decal")
-court_line("ThrowingLineSouth", "x", 6.0, COURT_X, "throwing_line_decal")
+# The throwing lines — the mark an attacker must stay behind.
+#
+# ⚠️ DERIVED FROM THE BOX, NOT WRITTEN OUT. This was a literal `6.0` beside a
+# confinement box of 5.0, i.e. the gap was the real number and it was implicit.
+# When `build model` widened the box to 6.5 on 2026-08-01 the literal stayed put
+# and the throwing line landed INSIDE the play area — the chalk telling an
+# attacker to stand somewhere the throw gate would refuse them. Same failure the
+# `read_confinement_radius()` docstring describes for the box itself, one line
+# over, so it gets the same fix: state the offset, derive the position.
+THROWING_LINE_OFFSET = 1.0
+THROWING_LINE_Z = CONFINEMENT_BOX_RADIUS + THROWING_LINE_OFFSET
+court_line("ThrowingLineNorth", "x", -THROWING_LINE_Z, COURT_X, "throwing_line_decal")
+court_line("ThrowingLineSouth", "x", THROWING_LINE_Z, COURT_X, "throwing_line_decal")
 
 # =============================================================================
 

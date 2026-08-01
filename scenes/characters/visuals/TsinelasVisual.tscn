@@ -1,6 +1,17 @@
 [gd_scene load_steps=2 format=3 uid="uid://ctsinelas1slip2"]
 
-[ext_resource type="Mesh" uid="uid://huxf5m15sgb2" path="res://assets/models/tsinelas.obj" id="1"]
+; The slipper's visual. ONE MeshInstance3D whose `mesh` is swapped by
+; `slipper.gd::apply_skin()` from the roster entry's `model` path.
+;
+; ⚠️ THE 1.6 SCALE IS Art_Direction.md §2's, AND IT STAYS. "Tsinelas visual scale
+; 1.60 — bigger for drama". `Slipper.HIT_RADIUS` and `REST_HEIGHT` are both in
+; WORLD units, so they are quoted against the mesh AFTER this multiply; the
+; generator prints each slipper's centroid height in both spaces for exactly that
+; reason. Changing this number silently invalidates both of them.
+;
+; The mesh is the default (entry 0, TSINELAS — the plain green rubber flip-flop).
+
+[ext_resource type="Mesh" path="res://assets/models/tsinelas_classic.obj" id="1"]
 
 [node name="TsinelasVisual" type="Node3D"]
 transform = Transform3D(1.6, 0, 0, 0, 1.6, 0, 0, 0, 1.6, 0, 0, 0)

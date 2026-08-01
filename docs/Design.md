@@ -54,8 +54,9 @@ rotates. **There is no per-round winner.**
 
 | Constant | Value | Note |
 |---|---|---|
-| `CONFINEMENT_RADIUS` | **5.0** | `character_base.gd`. A **square** at \|x\| = \|z\| = 5.0 |
-| `SAFE_ZONE_MARGIN` | 2.0 | Attackers spawn on a ring at 5.0 + 2.0 = **7.0** |
+| `CONFINEMENT_RADIUS` | **6.5** | `character_base.gd`. A **square** at \|x\| = \|z\| = 6.5 |
+| `SAFE_ZONE_MARGIN` | 2.0 | Attackers spawn on a ring at 6.5 + 2.0 = **8.5** |
+| throwing line | **7.5** | = `CONFINEMENT_RADIUS` + 1.0, derived in both map builders |
 | `DEFENDER_START_OFFSET` | 2.5 | the taya's mark inside its own box |
 | `INTERACTION_RADIUS` | 1.6 | the lata's reset ring, `lata.gd` |
 
@@ -75,9 +76,21 @@ exactly where a taya moves when covering a corner. Human call, 2026-07-29.
 `character_base.gd`,** and both map builders draw the chalk from it. Delete or reshape
 that const and every map build aborts.
 
-⚠️ **5.0 IS INHERITED AND HAS NOT BEEN RE-TUNED FOR FOUR PLAYERS.** It was measured for
-one taya and one attacker. It now has to hold one taya against three converging
-attackers. Backlog.
+⚠️ **RAISED 5.0 → 6.5 ON 2026-08-01 BY 🎨 `build model`, ON HUMAN INSTRUCTION** — 🧑,
+twice: *"the current play area feels too small"*, *"play area needs to be bigger"*. 5.0
+was measured for one taya against one attacker and had never been re-tuned for one taya
+against three. +30% on the edge, **+69% on the area** (100 → 169 sq units).
+
+Bounded by two things rather than picked by taste: the shortest legal throw becomes 6.5 m
+against a 45° range of `LAUNCH_SPEED`² / `GRAVITY` = **14.45 m**, so the throw still
+reaches comfortably; and the spawn ring moves to 8.5 against a `COURT_Z` of 13.0 on both
+maps, so it still lands on paving. Both map builders re-verify the second one on every
+run.
+
+⚠️ **THE VALUE IS STILL UNMEASURED IN PLAY, AND IT IS ⚖️ `build fair`'s NUMBER** (§2.2).
+It moved in a map lane only because the chalk is derived from it. It also pulls on §2.1:
+a box three attackers can enter more easily is a taya collecting less uncontested passive
+defence, so 2.1 must be re-measured at 6.5 and not at 5.0.
 
 ⚠️ **Spawns are computed from the box, not read from map markers** (`main.gd`). "Outside
 the box" is the rule; a marker drifting half a metre inside `CONFINEMENT_RADIUS` would
@@ -265,7 +278,28 @@ overlap, and it can only happen where the score is written.
 | `INTERACTION_RADIUS` | 1.6 m |
 | `DOWNED_TILT_DEG` | 88° |
 | `TOPPLE_TIME` | 0.22 s |
-| hurtbox | 0.28 r / 0.62 h |
+| body cylinder | **0.13 r / 0.385 h** |
+| hurtbox | **0.30 r / 0.70 h** |
+
+⚠️ **BOTH MOVED 2026-08-01 WITH THE NEW MESHES** (§5.4). There are four cans now,
+built from the human's drawings at four different profiles, and `Lata.tscn`
+carries ONE collision for whichever is worn — so the body cylinder is the mean
+(0.13) rather than any one can's radius, and the heights follow the meshes'
+0.377–0.385. The hurtbox keeps its deliberate generosity (🧑 2026-07-31: *"make
+can's hitbox larger it's ass to hit it bro"*), scaled with the mesh.
+
+⚠️ **THE WORST-CASE MESH/HITBOX DISAGREEMENT IS PASIP, AT 22 mm.** Its radius is
+0.108 against the 0.130 cylinder, so a player stops about a fifth of a can early
+on the slimmest skin. Filed to ⚖️ `build fair` §2.19 rather than hidden — the fix
+is a per-skin collision, which needs `lata.gd`.
+
+⚠️ **A TOPPLED CAN IS LIFTED BY ITS OWN RADIUS, AND THAT IS LOAD-BEARING.** The
+tilt rotates the visual about its BASE, so a lying-down cylinder's axis would sit
+at floor level and half the can would be underground — reported directly (🧑:
+*"the cans are phasing thru the floor"*). `lata.gd` measures the lift off the
+mesh's own AABB so it follows the skin. **Verified: `tools/models/lata_floor_probe.gd`
+reports all four skins at +0.0001 or better, upright and downed** — it exits
+non-zero if any skin sinks, so re-run it after touching a profile or the topple.
 
 `is_upright` gates **four** separate rules: the throw, the tag, passive scoring and the
 reset channel. It is host-authoritative and replicated through an **explicit RPC, not a

@@ -11,7 +11,7 @@ extends Node3D
 ## command line so a model can be eyeballed without editing this file:
 ##
 ##     godot --path . res://tools/models/preview.tscn -- \
-##         --model=res://assets/models/lata.obj --shot=user://lata.png
+##         --model=res://assets/models/lata_pasip.obj --shot=user://lata.png
 ##
 ## With --shot the window renders a few frames, writes the PNG and exits, which
 ## is what makes "show me the mesh" a single command instead of a manual pose-
@@ -29,11 +29,21 @@ var _screenshot_path: String = ""
 func _ready() -> void:
 	var model_path := DEFAULT_MODEL
 	var distance := CAMERA_DISTANCE
+	# Defaults reproduce the old fixed (1, 0.7, 1) bearing exactly, so every
+	# existing invocation frames what it always framed.
+	var yaw_deg := 45.0
+	var elev_deg := 26.3
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--model="):
 			model_path = arg.substr(len("--model="))
 		elif arg.begins_with("--shot="):
 			_screenshot_path = arg.substr(len("--shot="))
+		elif arg.begins_with("--yaw="):
+			# Degrees around Y. 0 looks along +Z at the model's heel.
+			yaw_deg = arg.substr(len("--yaw=")).to_float()
+		elif arg.begins_with("--elev="):
+			# Degrees above the horizon. Use 6-12 to look THROUGH a strap arch.
+			elev_deg = arg.substr(len("--elev=")).to_float()
 		elif arg.begins_with("--dist="):
 			# Judge silhouette and readability at the default 4.5; drop closer
 			# only to inspect a detail. A model that only works up close is not
@@ -91,9 +101,20 @@ func _ready() -> void:
 	light.shadow_enabled = true
 	add_child(light)
 
+	# ⚠️ THE CAMERA IS AIMABLE NOW, AND IT HAD TO BECOME SO. The fixed
+	# (1, 0.7, 1) bearing looks DOWN on the model at ~35 degrees, which is the
+	# worst possible angle for judging a slipper: the whole point of a strap is
+	# the daylight gap between it and the sole, and from above the sole sits
+	# directly behind that gap and fills it in. 🧑, looking at exactly that shot:
+	# *"i dont even see the straps bruh"*. A low `--elev` puts the horizon
+	# through the gap and the arch reads instantly.
+	var yaw_rad := deg_to_rad(yaw_deg)
+	var elev_rad := deg_to_rad(elev_deg)
+	var offset := Vector3(
+		cos(elev_rad) * sin(yaw_rad), sin(elev_rad), cos(elev_rad) * cos(yaw_rad))
 	var camera := Camera3D.new()
 	add_child(camera)
-	camera.global_position = focus + Vector3(1.0, 0.7, 1.0).normalized() * distance
+	camera.global_position = focus + offset.normalized() * distance
 	camera.look_at(focus, Vector3.UP)
 	camera.current = true
 

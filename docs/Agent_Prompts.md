@@ -408,6 +408,21 @@ invalidate a whole recording session, and it is the only one nobody has ever run
   and unreachable by keyboard. The saved value is still applied here rather than in the
   scene, because the scene can only state the placeholder.
 
+**Filed by 🎨 `build model` 2026-08-01:**
+
+- [ ] 1.11 **Three CC-BY models now ship in the game and their credit is not
+  reachable from any screen.** The CROCS, PANTULOG and SIKE props are sourced
+  models under **CC-BY-4.0**, whose one requirement is that the author is
+  credited: **fnk**, **The Withered Rose** and **les03** respectively. Full table,
+  links and licence text in `docs/Art_Direction.md` §4b, and each `.glb` ships its
+  own `*_LICENSE.txt` beside it in `assets/models/kits/footwear/`. A licence line
+  in a design doc that never ships does not satisfy the licence — these belong on
+  a credits screen or in the submission's asset list, next to the existing Kenney
+  CC0 and OpenGameArt CC0 credits. **This is a compliance item, not a nicety.**
+  ⚠️ Also note `Art_Direction.md` §4b's box on the SIKE: it renders a real Nike
+  swoosh and wordmark, as GEOMETRY (so it could not be edited to the human's
+  "SIKE" parody without modelling). Accepted by the human as a known risk.
+
 **Filed by `build sound` 2026-08-01:**
 
 - [x] 1.10 **The round label prints "TAYA: P3", never the taya's set name.**
@@ -496,6 +511,35 @@ wind-up, no animation and no contact moment. They also shared files.
   all assert deleted mechanics. They still parse only because nothing runs them. You are
   the lane that needs them; budget for rewriting the two or three that earn it rather
   than all of them.
+
+**Filed by 🎨 `build model` 2026-08-01:**
+
+- [ ] 2.22 **A thrown slipper STOPS DEAD on contact and it does not read as
+  physics.** 🧑 2026-08-01: *"the slippers should bounce back a bit when it hits
+  shit, it doesn tlook like real physics haha"*. `slipper.gd::_step_flying()` has
+  three contact branches — a body block, the lata, and the plain-miss landing —
+  and every one of them calls `_apply_landed(_ground_under(...))` immediately, so
+  the slipper teleports from full flight to lying flat on the floor in one frame.
+  Nothing decelerates, nothing rebounds, and the spin cuts out at the same instant.
+  It is most obvious on the body block, which is the taya's entire passive verb and
+  the moment a spectator is most likely to be watching. **This is the same finding
+  as §2.11** ("a blocked slipper just stops") seen from the physics side rather than
+  the feedback side — decide them together. A small reflected impulse with a
+  restitution well under 1, bleeding out over a few tenths, is probably all it
+  needs; the flight integrator to hang it on is already there. ⚠️ Whatever it
+  becomes, contact must still resolve HOST-SIDE ONLY, or a bounce lands the slipper
+  somewhere different on every machine.
+- [ ] 2.19 **The lata's collision is the MEAN of four cans, not any one of them.**
+  `Lata.tscn` carries one cylinder (r 0.13) and one hurtbox (r 0.30) for whichever
+  skin is worn, against mesh radii of Pasip 0.108, Decades 0.123, Metal 0.125 and
+  Boyben 0.143. Worst case is **22 mm** on Pasip — a player stops about a fifth of
+  a can early on the slimmest skin. The fix is per-skin collision applied from
+  `lata.gd::apply_skin()`, where the mesh swap already happens.
+- [ ] 2.21 **`CONFINEMENT_RADIUS` was moved to 6.5 by a map lane and needs your
+  measurement.** It is §2.2's number and the reasoning is in `Design.md` §2. ⚠️ **It
+  also invalidates §2.1's baseline**: a box three attackers can enter more easily
+  is a taya collecting less uncontested passive defence, so re-measure 2.1 at 6.5
+  and not at 5.0.
 
 **Filed by `build sound` 2026-08-01:**
 
@@ -620,41 +664,84 @@ wind-up, no animation and no contact moment. They also shared files.
 > no round trip. See § WHY BLENDER WAS DROPPED below — it is a recorded finding, not a
 > preference, and re-introducing it re-runs a failed session.
 
-- [ ] 5.1 ⚠️⚠️ **THE PLAY AREA IS TOO SMALL AND IT IS THE FIRST ITEM.** 🧑, 2026-08-01:
-  *"We recently overhauled the mechanics of the game and the current play area feels too
-  small"* and *"i said bugs like play area needs to be bigger"*. Expand the Defender's
-  allowed area, adjust the map meshes to suit, and **redraw the chalk on BOTH maps** so
-  the play area and the throwing line visually demarcate the new boundary.
-  ⚠️ The box is `CharacterBase.CONFINEMENT_RADIUS` (5.0), which
-  `tools/maps/floorcheck.py` regexes straight out of the `.gd` and both map builders draw
-  the chalk from — so a retune is a map rebuild, and **the `const` itself is
-  ⚖️ `build fair`'s file, not this lane's** (§2.2 is the same number). Move the maps and
-  the chalk; agree the value with them or file it.
-- [ ] 5.2 The slipper — the object the game is named after — **built new** from the
-  human's drawing, in `tools/models/generate_all.gd`. Its origin must sit at its centre
-  of mass: it spins on two axes in flight (`SPIN_SPEED_DEG` 900 about its long axis,
-  `TUMBLE_SPEED_DEG` 520 end over end) and an off-centre origin wobbles like a bent wheel.
-- [ ] 5.3 The lata **built new** from the human's drawing, same generator. Its silhouette
-  has to read as a can from across the arena, at spectator camera distance, **while lying
-  on its side at 88°**. That readability is a gameplay requirement, not a look: a crowd
-  that cannot tell a fallen lata from a standing one cannot follow the round.
-- [ ] 5.4 ⚠️ **SIZES MAY CHANGE — PHYSICS CONSTANTS MOVE WITH THEM.** The old fixed-size
-  rules are lifted (🧑 2026-08-01). Scale either prop to match the drawings, then update
-  `Slipper.HIT_RADIUS` / `REST_HEIGHT` and the lata's body and hurtbox radii to match the
-  new mesh **in the same commit**, and move the same numbers in `Design.md`.
-- [ ] 5.5 **Tint-friendly materials.** `lata.gd` and `slipper.gd` walk every
-  `MeshInstance3D` and write `albedo_color` from the roster entry's `tint`. A fully baked
-  multi-colour texture fights that; author for a tint.
-- [ ] 5.6 **LOW POLY ONLY.** Match the existing assets. No subdivision surfaces, no
-  high-res detailing, no smooth shading that breaks the flat toon style.
-- [ ] 5.7 `CANS` / `SLIPPERS` re-authored against the new meshes, and the dead `ability`
-  key dropped from every entry in all three tables — `scripts/abilities/**` is deleted and
-  the field is inert. **`ROSTER` is otherwise untouched**: the twelve characters stay.
-- [ ] 5.8 **Carry the `traits` dictionaries across unchanged.** ⚖️ `build fair` §2.8
-  decides whether prop skins carry soft stats and it runs *after* this lane, so preserving
-  them is how that decision stays open.
-- [ ] 5.9 Orphaned assets swept: `lata_dent1..3.obj` and the dent generator in
-  `tools/models/generate_all.gd` describe a mechanic that no longer exists.
+- [x] 5.1 **THE PLAY AREA IS BIGGER.** `CONFINEMENT_RADIUS` 5.0 → **6.5** (+69% area),
+  both maps rebuilt from it, the throwing line derived at box + 1.0 = **7.5**
+  instead of a literal `6.0` that the widened box would have swallowed. **The chalk
+  was also simplified to the two markings the rules actually have** — 🧑: *"an area
+  where defender can tag and a 2nd line wherein attacker is only allowed to throw
+  from"* — so the 6.5 × 26 outer court rectangle is gone and the Defender's Box is
+  a closed square for the first time. *Verified: both builders' `surfaces.verify()`
+  pass; `tools/maps/court_shot.tscn` renders a plan view of each map and prints
+  the three derived numbers.* ⚠️ **The value is `build fair`'s (§2.2) and is still
+  unmeasured in play** — see §2.2 and §2.1, both re-filed below.
+- [x] 5.2 **The slipper.** Four skins, origins on their **volume centroid** so the
+  two-axis spin does not wobble. ⚠️ **NOT built from the drawings in the end** —
+  four procedural ones were built and rejected (🧑: *"the slippers are so bad"*),
+  and the human then sourced CC-BY models and instructed this lane to use them.
+  Now: TSINELAS (the project's own original mesh, restored from git on request),
+  CROCS, PANTULOG, SIKE. *Verified: `tools/models/prop_probe.tscn`, 45 s of live
+  match — 3-6 throws per run, states LOOSE/CARRIED/FLYING all reached.*
+- [x] 5.3 **The lata.** Four cans built from the human's drawings in
+  `generate_all.gd`, at the drawings' own measured height:diameter ratios (Pasip
+  1.75, Decades 1.56, Metal 1.53, Boyben 1.35) and carrying their flattened label
+  wraps as textures. Stepped, recessed end caps so a fallen can reads as a circle.
+  *Verified: turntable renders at three angles each, plus a live-match capture.*
+- [x] 5.4 **Physics moved with the meshes, same commit.** `Slipper.REST_HEIGHT`
+  0.08 → **0.045** (the origin moved to the centroid, so "resting" is half a
+  slipper up); the lata's body cylinder 0.14/0.42 → **0.13/0.385** and its hurtbox
+  0.28/0.62 → **0.30/0.70**; all four numbers moved in `Design.md` §7 in this
+  commit. `HIT_RADIUS` 0.23 is deliberately UNCHANGED — every slipper is
+  normalised to the same 0.691 length it already had, so the number is still
+  correct and moving it would have been churn.
+- [x] 5.5 **Tint-friendly.** The props are textured now (§ Art_Direction 5, amended
+  on human ruling) and the tint system is untouched: `albedo_color` MULTIPLIES the
+  texture on the toon shader, so a textured skin carries `tint` white. ⚠️ **White
+  now means "do not tint" in both props** — it was a no-op on a textured prop and
+  a disaster on an untextured one, which is what painted the restored tsinelas
+  solid white (🧑: *"it has just white for its bottom"*).
+- [~] 5.6 **Low poly.** The four cans are 400-900 tris and the original tsinelas is
+  276. **The two sourced Sketchfab models are not**: crocs 7 064 and sike 65 974.
+  Decimation to ~1 300 was tried and destroyed them (🧑: *"what happened to sike
+  HAHAHAAH its js shit now"*), and the human then ruled the poly count acceptable
+  (*"U dont have to compress ... its fine gang"*). **Unverified: frame cost has not
+  been measured on the recording machine.** `tools/models/glb_tool.py` keeps a
+  gentle-decimation knob if it ever needs one.
+- [x] 5.7 `CANS` / `SLIPPERS` re-authored against the new meshes, with a new
+  `model` key that makes a skin a MESH as well as a tint. The dead `ability` key
+  is dropped from both tables, and its two now-unreachable readers
+  (`ability_path_at()`, and `slipper_max_power()`'s gate on it) with them.
+  `ROSTER`'s twelve Persons never carried the key. *Verified: clean `--import`.*
+- [x] 5.8 **`traits` carried across unchanged**, every one copied verbatim off the
+  entry it replaces and the source named in a comment beside it. Six cans and
+  seven slippers became four and four; the dropped entries' values are in § LOG so
+  ⚖️ `build fair` §2.8 can still see the full range.
+- [x] 5.9 **Orphans swept.** `lata_dent1..3` (obj/mtl/import), `_apply_dents()`,
+  `DENT_*`, the layered-strip printed wall and the Sarsi livery are all deleted —
+  they served Option A's "the dent count IS the health bar", which the pivot
+  removed. `lata.obj`/`tsinelas.obj` are superseded by the per-skin meshes.
+
+**Found and fixed while verifying, all reported by the human from play:**
+
+- [x] 5.10 **The lata clipped through the floor.** The topple is a rotation of
+  `Visual` about the can's own BASE, so a lying-down cylinder's axis sat at floor
+  level and a full radius of can went underground. Now lifted by a radius measured
+  off the mesh's own AABB (so it follows the skin). ⚠️ **And the lift is driven
+  from the ANGLE, not tweened in parallel** — the required lift is `radius·sin(θ)`,
+  so two linear tweens agreed only at the endpoints and the can dipped 22 mm
+  mid-animation. *Verified twice: `tools/models/lata_floor_probe.gd` (static, all
+  four skins, both states) and `prop_probe.tscn` (every frame of a live match).*
+- [x] 5.11 **The carried slipper floated 98 mm off the hand — fixed, and measured
+  at 0.3 mm.** It copied the carrier's `BoneAttachment3D` transform in
+  `_physics_process`, i.e. from BEFORE the animation moved that bone, so it
+  trailed the palm permanently. Re-synced late in `_process` (`process_priority`
+  100) instead. *Verified: `prop_probe.tscn`, 13 503 samples with the carrier
+  standing still, worst gap 0.0003 m.* This is the human's *"in earlier iterations
+  the shoe would float"*, closed.
+- [ ] 5.13 **The old `_lata_wall()` / drawing-derived procedural slippers are still
+  in `generate_all.gd`** but nothing builds them any more. Left in place
+  deliberately for one commit so the four rejected slippers are recoverable if the
+  sourced models turn out to have a licence problem; delete once the CC-BY credits
+  are on a screen (`build ui` §1.11).
 
 #### WHY BLENDER WAS DROPPED — a recorded finding, do not re-litigate
 
@@ -1603,3 +1690,173 @@ to sprint a 50-point bar to zero, and the glow needs the local player to be an A
 with a loose slipper; `harrydaks_shot` puts the local seat on the taya, who by
 construction owns no slipper, so the glow is correctly OFF in every capture taken. A
 screenshot of a thing not happening is not evidence that it happens.
+### 2026-08-01 · 🎨 `build model` · §5 · branch `HARRYDAKS` — the props and the play area
+
+**The play area first, because the human raised it twice.**
+`CONFINEMENT_RADIUS` 5.0 → **6.5**: +30% on the edge, **+69% on the area**. It is
+⚖️ `build fair`'s number (§2.2) and was moved from a map lane only because the chalk
+is derived FROM it and the item could not be delivered otherwise — filed back as
+§2.21, with the warning that it invalidates §2.1's baseline. The value was bounded
+rather than picked: the shortest legal throw becomes 6.5 m against a 45° range of
+`LAUNCH_SPEED`² / `GRAVITY` = 14.45 m, and the spawn ring moves to 8.5 against a
+`COURT_Z` of 13.0. **The point of a bigger box is that it restricts ATTACKERS** —
+the throw gate is `max(|x|,|z|) >= radius`, so every throw is now taken from
+1.5 m further out.
+
+**A literal `6.0` in both map builders was the bug hiding behind it.** The throwing
+line's real number was never 6.0, it was "the box plus one" — so widening the box
+left the chalk mark 0.5 units INSIDE the area the throw gate refuses from. Both
+builders derive it now. Same class as the `read_confinement_radius()` docstring's
+own warning, one line over.
+
+**Then the chalk was cut down**, on 🧑: *"make sure its this simple / an area where
+defender can tag and a 2nd line wherein attacker is only allowed to throw from"*.
+The floor carried six lines and the Defender's Box was not one of the shapes you
+could see — the court's sides sat at exactly ±`CONFINEMENT_BOX_RADIUS`, so the box
+read as a 6.5 × 26 corridor with four stripes across it. The outer rectangle is
+deleted; what is left is a CLOSED SQUARE and one throwing line per side.
+
+**THE CANS ARE THE HUMAN'S DRAWINGS AND THE SLIPPERS ARE NOT, AND THAT IS THE
+STORY OF THE SESSION.**
+
+Four cans were built procedurally from the four drawings — Pasip, Boyben Permagad,
+Decades Tuna, Latang Kalawang — at the drawings' own measured height:diameter
+ratios (1.75 / 1.35 / 1.56 / 1.53, taken off each drawing's ink bounding box rather
+than guessed). They work.
+
+Four slippers were built the same way and were **rejected four times**: *"the
+fucking slippers arent 3d"*, *"theyre still really bad"*, *"the slippers are so bad
+HAHAHAH"*, and finally *"i think u gen js suck in 3d modelling ahah ... js look for
+assets that look like them"*. Each round found a real defect and fixing it was not
+enough:
+
+* the side walls sampled the drawing's black keyline or the white page beyond it,
+  putting a white rim around every sole — precisely what a paper cutout looks like,
+  and the single reason they read flat;
+* the straps were modelled and INVISIBLE, arching so little over the footbed that,
+  painted by the same top-down projection as the sole beneath them, there was no
+  silhouette gap and no colour break;
+* every strap was in the WRONG HALF of the slipper. Measuring them off the drawings
+  (`docs/refs/props/*.png`, by colour) put the Bakya's band at z +0.283 and the
+  Sike's at +0.300 against the −0.13 they had been placed at by eye. 🧑: *"u made
+  random ass straps on the back part of the slippers"*.
+
+**So three of the four slippers are now sourced CC-BY models**, on human
+instruction, and the fourth is this project's own original mesh restored from git
+(*"can we js use old slippers that already exist ... the one working in the game"*).
+`tools/models/glb_tool.py` reads a `.glb` without Blender and converts it into the
+game's own `.obj` + `.mtl` + texture, normalising scale, origin and orientation.
+Three findings there worth keeping:
+
+* **The first crocs model was a photogrammetry scan of a crocs sitting on a wooden
+  table, and the table came with it.** Most of its 100k triangles were tabletop, so
+  "keep the biggest island" kept the TABLE, and normalising a tabletop to slipper
+  length shrank the shoe to a speck. It rendered as shredded foil and looked exactly
+  like a decimation failure — with decimation already off.
+* **"Keep the biggest island" is wrong for a shoe anyway**: a sole and its strap are
+  separate objects that touch nowhere, so it returned 82 of 252 triangles and threw
+  the strap away. Components are grouped by position now.
+* **Bounding boxes cannot tell you which way a shoe points.** Three of these are
+  posed diagonally, and a diagonal shoe has a near-square axis-aligned box. PCA on
+  the vertex cloud finds the real long axis whatever the pose.
+
+**DECIMATION WAS TRIED, BACKED OUT, AND THE ARGUMENT FOR IT WAS OVERSTATED.**
+Clustering the two heavy models to ~26 cells destroyed them. When the human asked
+*"whats bad with us using a model thats a bit high poly? will it make the game lag
+or smth"*, the honest answer was no: 131k triangles is nothing to a modern GPU, a
+slipper is one to four draw calls whatever its density, and this map already places
+~600 mesh instances. The real costs are repo size and style-match. The knob survives
+in `glb_tool.decimate` for a gentle pass if repo size ever binds.
+
+**TEXTURES ARE NOW ALLOWED ON THE TWO HERO PROPS**, amending `Art_Direction.md` §5
+rather than quietly breaking it. 🧑: *"you can use the flattened shit for textures
+bcz its easier that way, you cant redraw this too bro"*. Reduced to a flat `Kd`, a
+Pasip and a Decades are the same grey cylinder and the whole joke is gone.
+**It cost the tint system nothing**: `toon.gdshader` already had a textured path
+(added for the Kenney atlas) on which `albedo_color` MULTIPLIES the texture, so a
+textured skin carries `tint` white. `obj_writer.gd` gained UV emission and `map_Kd`,
+and the untextured path is byte-identical — every environment mesh regenerates
+unchanged, which is how that change was proved safe.
+
+**Four bugs the human reported from play, all real, three fixed:**
+
+1. **Labels mirrored.** `u = angle/TAU` wraps a label the wrong way round a
+   counter-clockwise revolve; "BOYBEN" rendered as "NEBYOB". Invisible in a UV dump,
+   instant in a screenshot.
+2. **White can lids.** The caps sampled `v = 1.0`, and these wraps are cropped
+   drawings whose outermost rows are blank page (Pasip has 12 of 512). Pinned inside;
+   the bare Latang Kalawang samples mid-wrap rust instead, as asked.
+3. **The lata clipped through the floor.** The topple rotates `Visual` about the
+   can's BASE, so a lying-down cylinder's axis sat at floor level and a full radius
+   went underground. ⚠️ **The interesting half is the second bug inside it**: lifting
+   by a radius fixed the END state and the can still dipped 22 mm MID-ANIMATION,
+   because the required lift is `radius·sin(θ)` and two parallel linear tweens agree
+   only at the endpoints. One tweened angle drives both now. A static end-state check
+   passed it; `prop_probe.gd`, sampling every frame, caught it.
+4. **The restored tsinelas rendered solid white.** Every roster entry carried
+   `tint: WHITE`, which is a no-op on a textured prop and a repaint on an untextured
+   one. White now means "do not tint" on both props.
+
+**⚠️ VERIFY BY MEASURING THE WHOLE MATCH, NOT BY LOOKING ONCE.** Two probes were
+written and both earned their keep. `tools/models/lata_floor_probe.gd` is a static
+gate over four skins × two states. `tools/models/prop_probe.tscn` watches a
+45-second live match every frame and gates the four things the human asked to be
+sure of. **Its first run failed two of the four**, including the mid-topple dip no
+still frame would ever have shown. Final state:
+
+    1 lata vs floor    : lowest point -0.0000 m                    PASS
+    2 slipper in hand  : worst-while-still 0.0003 m                PASS
+    3 lata topples     : 1 knockdown                               PASS
+    4 slippers thrown  : 3 flights, LOOSE/CARRIED/FLYING reached   PASS
+
+**Item 2 took two passes and is the one worth reading.** A carried slipper copies
+the hand `BoneAttachment3D` once a frame, and that bone is moved by the animation
+AFTER `_physics_process` — so the copy was always reading last frame's hand and the
+slipper trailed the palm by 98 mm with the carrier standing perfectly still. Moving
+the copy to a late `_process` (priority 100) took it to 44 mm, and rebasing onto
+🖥️ `build ui`'s character work closed the rest: **0.3 mm over 13 503 still
+samples.** ⚠️ The measurement only became readable once the probe separated STILL
+samples from MOVING ones — a sprinting carrier is one frame ahead of their own
+slipper by construction, which is 115 mm of entirely correct gap and reads as a
+float if you do not split the two.
+
+**Multiplayer and spectator were checked and needed nothing.**
+`main.gd::_push_prop_skins()` is already a host-authoritative `call_local` reliable
+RPC re-sent at every round start, so all four peers and the spectator resolve the
+same lata and slipper skins, and they re-push on every taya rotation.
+
+**A late fix worth its own line: the converter was dropping FACES but keeping their
+VERTICES.** Every measurement downstream — the PCA that finds a shoe's long axis, the
+scale normalisation, the volume centroid — reads the vertex list, so a slipper split
+out of a pair was still being measured AS a pair. The crocs printed a plausible
+L 0.432 while rendering at a third of that, and Godot's importer inherited the same
+wrong AABB. Silent, and it survived several rounds of chasing the wrong cause; the
+tell was a mesh whose printed dimensions and rendered size disagreed. Pruning the
+orphans also made the last constant fall over honestly: with real per-mesh bounds the
+crocs needs its origin 0.161 above the floor against the other three's ~0.04, because
+it is a tall hollow shell whose centroid sits at 53% of its height. `REST_HEIGHT` is
+now MEASURED per skin (`Slipper._measure_rest_height()`) with the constant as a
+fallback, which retires that whole class of bug and closes what had been filed as
+§2.18.
+
+**`traits` preserved unchanged, per §5.8**, every value copied verbatim off the entry
+it replaces with the source named beside it. Six cans → four (dropped: `kape` 5/2/1,
+`biskwit` 2/4/4) and seven slippers → four (dropped: `pula` 3/4/2, `luma` 5/1/2,
+`sabit` 2/5/4), recorded here so `build fair` §2.8 can still see the range that
+existed. ⚠️ `sabit` had procedural attachments keyed by its id in
+`character_visual.gd::SLIPPER_ATTACHMENTS`, which are now unreachable.
+
+**⚠️ THREE CC-BY MODELS SHIP AND THEIR CREDIT IS NOT ON A SCREEN.** fnk, The Withered
+Rose and les03 — table in `Art_Direction.md` §4b, licence files beside each `.glb`.
+Filed to 🖥️ `build ui` as §1.11 (the human is re-running that lane after this one);
+a licence line in a doc that never ships does not satisfy the licence. The SIKE also
+renders a real Nike swoosh and wordmark as GEOMETRY, so it could not be edited into
+the human's "SIKE" parody without modelling — accepted by the human as a known risk
+and recorded as one.
+
+**Verified:** whole-project `--headless --import` with no Parse Error; the generator
+run twice leaves `git status` clean (its determinism contract); both map builders'
+`surfaces.verify()` pass; plan-view renders of both maps; three-angle turntables of
+all eight props; a live match capture; and the two probes above.
+**Not verified:** anything on two real peers, and frame cost on the recording machine
+with the 65k-triangle SIKE in play.

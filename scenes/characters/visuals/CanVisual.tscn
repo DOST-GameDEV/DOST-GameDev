@@ -1,7 +1,22 @@
 [gd_scene load_steps=2 format=3 uid="uid://cvcan1lata2v3"]
 
-[ext_resource type="PackedScene" path="res://assets/models/kits/food/soda-can.glb" id="1"]
+; The lata's visual. ONE MeshInstance3D whose `mesh` is swapped by
+; `lata.gd::apply_skin()` from the roster entry's `model` path — see that
+; function, and the CANS header in character_roster.gd.
+;
+; ⚠️ THIS USED TO INSTANCE assets/models/kits/food/soda-can.glb, A KENNEY KIT
+; PROP, and that is worth recording. The repo's own generator has built
+; `lata.obj` since the first model pass, but this scene pointed at the kit mesh
+; instead — so the generated can was dead art that nothing in a match ever
+; rendered, and every screenshot of "the lata" was actually a Kenney soda can.
+; Replaced 2026-08-01 with the four cans built from the human's own drawings.
+;
+; The mesh here is the default (entry 0, PASIP) and is what an unpicked lata
+; wears — the same contract roster entry 0 keeps everywhere else.
+
+[ext_resource type="Mesh" path="res://assets/models/lata_pasip.obj" id="1"]
 
 [node name="CanVisual" type="Node3D"]
 
-[node name="Can" parent="." instance=ExtResource("1")]
+[node name="Can" type="MeshInstance3D" parent="."]
+mesh = ExtResource("1")

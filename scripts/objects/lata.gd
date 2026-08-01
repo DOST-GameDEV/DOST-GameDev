@@ -165,19 +165,71 @@ func _apply_place(where: Vector3) -> void:
 ## X axis plus a drop to the floor, so the silhouette from a spectator camera is
 ## unambiguous at any distance — that readability is the reason it is 88° and not
 ## a subtle lean.
+## ⚠️ A TOPPLED CAN HAS TO BE LIFTED BY ITS OWN RADIUS, OR HALF OF IT IS UNDER
+## THE FLOOR. Reported directly — 🧑 2026-08-01: *"the cans are phasing thru ...
+## the floor"*.
+##
+## The tilt is a rotation of `Visual` about ITS OWN ORIGIN, and that origin is at
+## the BASE of the can (the mesh is authored standing on y = 0). Rotating a
+## cylinder 88 degrees about a point on its base circle lays it down with its
+## AXIS at floor level — so everything below the axis, a full radius of can, ends
+## up underground. Upright it is invisible because a standing can genuinely does
+## touch the floor at its base.
+##
+## It was always wrong; the new cans just made it obvious. The old lata was 0.102
+## in radius and sank ten centimetres, which reads as "sitting low"; these are up
+## to 0.143 and sink half a can.
+##
+## The lift is MEASURED from the mesh rather than stored as a constant, because
+## the four cans have four different radii (Pasip 0.108 to Boyben 0.143) and a
+## constant would be wrong for three of them the moment a skin changed.
+var _downed_lift: float = 0.0
+
+func _measure_downed_lift() -> void:
+	_downed_lift = 0.0
+	if _visual == null:
+		return
+	for node in _visual.find_children("*", "VisualInstance3D", true, false):
+		var box: AABB = (node as VisualInstance3D).get_aabb()
+		# Half the can's WIDTH is what it rests on when lying on its side. Taken
+		# from the mesh's own bounds so it follows the skin automatically.
+		_downed_lift = maxf(_downed_lift, maxf(box.size.x, box.size.z) * 0.5)
+
 func _apply_upright_visual(now_upright: bool, animate: bool) -> void:
 	if _visual == null:
 		return
-	var target := Vector3.ZERO if now_upright else Vector3(deg_to_rad(DOWNED_TILT_DEG), 0.0, 0.0)
+	if _downed_lift <= 0.0:
+		_measure_downed_lift()
+	var target_angle := 0.0 if now_upright else deg_to_rad(DOWNED_TILT_DEG)
 	if _topple_tween != null and _topple_tween.is_valid():
 		_topple_tween.kill()
 	if not animate:
-		_visual.rotation = target
+		_set_tilt(target_angle)
 		return
+	# ⚠️ ONE TWEENED VALUE, NOT TWO PARALLEL ONES, AND THAT IS THE FIX FOR THE
+	# CAN SINKING *DURING* THE TOPPLE. Tilt and lift are not independent: at angle
+	# t the can's lowest point is -radius * sin(t), so the lift that keeps it on
+	# the floor is radius * sin(t) — a SINE, not a straight line. Tweening
+	# `rotation` and `position` as two parallel linear properties therefore agreed
+	# only at the two ends and disagreed everywhere in between: measured at the
+	# halfway point, the rotation needed 0.076 of lift and the linear one supplied
+	# 0.054, so the can dipped 22 mm through the floor mid-animation and popped
+	# back. It read as a flicker, which is why a static end-state check passed it.
+	# `prop_probe.gd` samples every frame and caught it.
 	_topple_tween = create_tween()
 	_topple_tween.set_trans(Tween.TRANS_BACK if now_upright else Tween.TRANS_BOUNCE)
 	_topple_tween.set_ease(Tween.EASE_OUT)
-	_topple_tween.tween_property(_visual, "rotation", target, TOPPLE_TIME)
+	_topple_tween.tween_method(_set_tilt, _visual.rotation.x, target_angle, TOPPLE_TIME)
+
+## Applies a tilt and the lift that exactly matches it. The single place the two
+## are allowed to be set, so they cannot drift apart again.
+func _set_tilt(angle: float) -> void:
+	if _visual == null:
+		return
+	_visual.rotation = Vector3(angle, 0.0, 0.0)
+	# `absf` because a bouncing tween can pass slightly either side of zero, and a
+	# negative lift would drive the can down rather than up.
+	_visual.position = Vector3(0.0, _downed_lift * absf(sin(angle)), 0.0)
 
 ## Late joiners get the current state pushed by `main.gd`'s sync path; this is the
 ## receiving half, kept separate from `_rpc_set_upright` so a correction never
@@ -206,14 +258,64 @@ func adopt_state(now_upright: bool, where: Vector3) -> void:
 ## Which roster entry this prop is wearing. -1 is "stock, never picked".
 var skin_index: int = -1
 
+## ⚠️ A SKIN IS A MESH **AND** A TINT SINCE 2026-08-01, AND IT HAD TO BECOME ONE.
+## It used to be a tint alone, which was correct while all six cans were one
+## cylinder in six colours. The human's four drawings are four different objects —
+## a slim soda can, a squat paint tin, a tuna can and a ribbed bare tin — and at
+## arena distance under the toon pass it is the SHAPE that tells them apart, not
+## the colour. A pick that changed only the tint would have been a control that
+## looks like it does something and does almost nothing, which is the exact
+## failure THE REACHABILITY RULE's second half was written for.
 func apply_skin(index: int) -> void:
 	if index < 0 or index == skin_index:
 		return
 	skin_index = index
 	var entry: Dictionary = CharacterRoster.can_at(index)
+	_apply_model(entry)
 	if not entry.has("tint"):
 		return
-	_tint_meshes(entry["tint"])
+	# ⚠️ WHITE MEANS "DO NOT TINT" — see the twin note in `slipper.gd::apply_skin()`
+	# for the full reasoning. On these textured cans white already multiplied to a
+	# no-op, so this changes nothing here; it is kept identical on both props so
+	# the two cannot drift, and so an untextured can added later cannot be
+	# silently painted white.
+	var tint: Color = entry["tint"]
+	if tint == Color.WHITE:
+		return
+	_tint_meshes(tint)
+
+## Swaps the mesh under `Visual` to the one this skin names.
+##
+## ⚠️ ORDER MATTERS: THIS RUNS BEFORE `_tint_meshes()`. The tint is written as a
+## per-surface OVERRIDE material, and Godot does not clear overrides when the
+## `mesh` beneath them changes — so tinting first and swapping second would leave
+## the old can's override materials sitting on the new can's surfaces, with a
+## surface count that need not even match.
+##
+## Missing or unloadable `model` leaves whatever the scene shipped with, which is
+## roster entry 0. A prop that fails to find its mesh should look like the default
+## can, not like nothing at all.
+func _apply_model(entry: Dictionary) -> void:
+	if not entry.has("model"):
+		return
+	var visual := get_node_or_null("Visual")
+	if visual == null:
+		return
+	var target := visual.find_children("*", "MeshInstance3D", true, false)
+	if target.is_empty():
+		return
+	var mesh := load(String(entry["model"])) as Mesh
+	if mesh == null:
+		push_warning("Lata.apply_skin: cannot load %s" % entry["model"])
+		return
+	var instance := target[0] as MeshInstance3D
+	for surface in range(instance.get_surface_override_material_count()):
+		instance.set_surface_override_material(surface, null)
+	instance.mesh = mesh
+	# The four cans have four different radii, so the topple lift has to be
+	# re-measured whenever the mesh changes — see `_measure_downed_lift`.
+	_measure_downed_lift()
+	_apply_upright_visual(is_upright, false)
 
 func _tint_meshes(tint: Color) -> void:
 	var visual := get_node_or_null("Visual")
