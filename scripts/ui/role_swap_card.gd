@@ -88,7 +88,7 @@ func _style_panel(panel: PanelContainer, team: Label, arrow: Label, role_colour:
 ## saying instead is what the round actually produced.
 func _show_reason() -> void:
 	var taya := MatchManager.defender_slot
-	reason_label.text = "TAYA P%d HELD FOR %d PTS" % [taya + 1, MatchManager.score_for(taya)]
+	reason_label.text = "TAYA %s HELD FOR %d PTS" % [_name_of(taya), MatchManager.score_for(taya)]
 	reason_label.add_theme_color_override("font_color", UiTheme.DEFENSE)
 
 ## `_on_time_up()` reports at exactly `time_left == 0.0`, so this only has to be wider than
@@ -99,11 +99,26 @@ const TIME_EPSILON: float = 0.05
 ## round ends, the scores persist, and the taya rotates clockwise — so what the card
 ## has to say is who defends next, which is the one thing every player must know
 ## before the next round starts.
+## The player's set name, or their seat label. Same call the scoreboard, the round
+## label and the lobby all make now — `display_name()` falls back on an empty name
+## (`Design.md` §10), so nothing here needs a null check.
+func _name_of(slot: int) -> String:
+	var who := RoundManager.player_at(slot)
+	return who.display_name() if who != null else "P%d" % [slot + 1]
+
 func _on_intermission_started(next_round: int, next_defender_slot: int) -> void:
+	# ⚠️ § CHECKLIST 1.4 ASKED WHETHER THIS READS CORRECTLY AT THE ROUND-4 BOUNDARY,
+	# "where there is no next round". IT CANNOT REACH IT, and that is by construction
+	# rather than by luck: `MatchManager.report_round_result()` returns into
+	# `_finish_match()` when `round_number >= ROUNDS` and never emits
+	# `round_intermission_started`, so the last thing after round 4 is the result
+	# screen. `next_round` is therefore always 2..4 here and "ROUND 5 — FIGHT!" is
+	# unreachable. Verified by reading the one call site; left as a note because the
+	# next person to read this card will ask the same question.
 	_show_reason()
 	var leader: int = MatchManager.ranking()[0]
-	result_label.text = "END OF ROUND %d  ·  P%d LEADS  %d PTS" % [
-		maxi(1, next_round - 1), leader + 1, MatchManager.score_for(leader)]
+	result_label.text = "END OF ROUND %d  ·  %s LEADS  %d PTS" % [
+		maxi(1, next_round - 1), _name_of(leader), MatchManager.score_for(leader)]
 	fight_label.visible = false
 	visible = true
 	modulate.a = 1.0
@@ -112,14 +127,14 @@ func _on_intermission_started(next_round: int, next_defender_slot: int) -> void:
 	# names the other three at once, because they all have the same job and listing
 	# them separately would imply they do not.
 	var outgoing := MatchManager.defender_slot
-	team_a_label.text = "P%d · TAYA" % [next_defender_slot + 1]
+	team_a_label.text = "%s · TAYA" % [_name_of(next_defender_slot)]
 	role_arrow_a.text = "was ATTACKER →"
 	var others := PackedStringArray()
 	for slot in range(MatchManagerScript.PLAYER_COUNT):
 		if slot != next_defender_slot:
-			others.append("P%d" % [slot + 1])
+			others.append(_name_of(slot))
 	team_b_label.text = "%s · ATTACKERS" % " ".join(others)
-	role_arrow_b.text = "P%d was TAYA →" % [outgoing + 1]
+	role_arrow_b.text = "%s was TAYA →" % [_name_of(outgoing)]
 	_style_panel(left_panel, team_a_label, role_arrow_a, UiTheme.DEFENSE)
 	_style_panel(right_panel, team_b_label, role_arrow_b, UiTheme.OFFENSE)
 

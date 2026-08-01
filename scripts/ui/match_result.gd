@@ -13,8 +13,9 @@ class_name MatchResult
 
 @onready var card: PanelContainer = %Card
 @onready var message_label: Label = %MessageLabel
-@onready var team_a_pips: HBoxContainer = %TeamAPips
-@onready var team_b_pips: HBoxContainer = %TeamBPips
+## ⚠️ THE TWO PIP ROWS ARE GONE FROM THE SCENE — § CHECKLIST 1.3. They counted sets
+## won by two teams; there are neither. `%Standings` holds four authored rows now.
+@onready var standings: VBoxContainer = %Standings
 @onready var rematch_button: Button = %RematchButton
 @onready var menu_button: Button = %MenuButton
 
@@ -63,10 +64,16 @@ func _on_match_won(winning_team: int) -> void:
 	# something to break arbitrarily — `MatchManager._leading_slot()` reports it as -1
 	# on purpose.
 	if winning_team < 0:
-		message_label.text = "DRAW"
+		# ⚠️ THE HEADLINE NAMES THE TIED PLAYERS. "DRAW" alone left the player to work
+		# out who drew with whom off a table below it, on a screen they look at for
+		# four seconds. The standings mark the same players with "=".
+		message_label.text = "DRAW  —  %s" % [_tied_names()]
 	else:
-		message_label.text = "P%d WINS THE MATCH!  %d PTS" % [
-			winning_team + 1, MatchManager.score_for(winning_team)]
+		var champ := RoundManager.player_at(winning_team)
+		var champ_name: String = champ.display_name() if champ != null \
+			else "P%d" % [winning_team + 1]
+		message_label.text = "%s WINS THE MATCH!  %d PTS" % [
+			champ_name, MatchManager.score_for(winning_team)]
 	# Q-4/§4.2 hard rule: the accent bar tracks ROLE, not team — colour the
 	# winning team's card by which side it held in the FINAL round
 	# (MatchManager.team_a_is_can), not by team identity. Nothing has reset
@@ -78,15 +85,7 @@ func _on_match_won(winning_team: int) -> void:
 	var sb := UiTheme.wood_style(UiTheme.WOOD_DEEP, accent)
 	card.add_theme_stylebox_override("panel", sb)
 	message_label.add_theme_color_override("font_color", UiTheme.CREAM)
-	# Same rule applied to both team blocks' pip fill colour, not just the
-	# winner's accent bar — each team's pips read as whichever role it held
-	# this same final round.
-	# ⚠️ THE TWO PIP ROWS ARE HIDDEN, NOT REPURPOSED. They counted sets won by two
-	# teams; four cumulative scores do not fit in three pips, and inventing a mapping
-	# would be a chart that lies. The final standings are drawn as text instead.
-	team_a_pips.visible = false
-	team_b_pips.visible = false
-	_render_standings()
+	_render_standings(winning_team)
 	visible = true
 	# B-51: main.gd captures the cursor for the whole match and nothing released
 	# it when the match ended, so this screen appeared with an invisible, captured
@@ -120,37 +119,64 @@ func _on_match_won(winning_team: int) -> void:
 	if not NetworkManager.is_networked():
 		get_tree().paused = true
 
-## Bo5 pip grid, three squares per team, filled for rounds won. fill_color is
-## that team's role colour THIS final round (see _on_match_won) — a plain
-## INK/CARD square would lose the role-colour read the moodboard specifies,
-## and reusing UiTheme.card_style keeps the border/radius identical to every
-## other box in the theme instead of a one-off number.
-## ⚠️ `_fill_pips()` WAS REPLACED BY `_render_standings()`. It drew one team's set
-## wins as three filled squares. Four cumulative scores are a table, not a pip row,
-## and squeezing them into one would be a chart that lies about the margin.
+## Everyone level on the top score, joined for the headline.
+func _tied_names() -> String:
+	var order := MatchManager.ranking()
+	if order.is_empty():
+		return ""
+	var top: int = MatchManager.score_for(order[0])
+	var names := PackedStringArray()
+	for slot in order:
+		if MatchManager.score_for(slot) != top:
+			break # `ranking()` is sorted, so the first miss ends the tie
+		var who := RoundManager.player_at(slot)
+		names.append(who.display_name() if who != null else "P%d" % [slot + 1])
+	return "  ·  ".join(names)
+
+## Fills the four authored rows. Place, name, points.
 ##
-## Built as text into `%TeamAPips`'s parent rather than as new scene nodes, so the
-## card keeps the anchors and the wood face the rest of the mid-game flow uses.
-func _render_standings() -> void:
-	var holder := team_a_pips.get_parent() as Control
-	if holder == null:
-		return
-	var existing := holder.get_node_or_null("Standings") as Label
-	if existing == null:
-		existing = Label.new()
-		existing.name = "Standings"
-		existing.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		existing.add_theme_font_size_override("font_size", 18)
-		existing.add_theme_color_override("font_color", UiTheme.CREAM)
-		existing.add_theme_color_override("font_outline_color", UiTheme.INK)
-		existing.add_theme_constant_override("outline_size", 4)
-		holder.add_child(existing)
-	var lines := PackedStringArray()
-	var place := 1
-	for slot in MatchManager.ranking():
-		lines.append("%d.  P%d      %d PTS" % [place, slot + 1, MatchManager.score_for(slot)])
-		place += 1
-	existing.text = "\n".join(lines)
+## ⚠️ IT WAS A NEWLINE-JOINED LABEL APPENDED INTO THE PIP ROW'S PARENT, which is what
+## § CHECKLIST 1.3 meant by "gutted, not designed" — the pips were replaced by a text
+## blob rather than by a layout. Now the rows are in the scene and this fills them.
+##
+## ⚠️ NAMES, NOT SEAT NUMBERS. It printed "P1" for everyone; `display_name()` is the
+## same call the scoreboard and the round label already make, and falls back to the
+## seat label on an unset name (`Design.md` §10), so no null check is needed.
+##
+## ⚠️ A DRAW IS MARKED ON EVERY TIED ROW, NOT JUST ANNOUNCED IN THE HEADLINE. `-1` is a
+## first-class result (`MatchManager._leading_slot()` reports it deliberately), and a
+## board that shows "DRAW" above a list with a single row at the top reads as a bug.
+## Everyone level on the top score gets the highlight and the "=" place marker.
+func _render_standings(winning_slot: int) -> void:
+	var order := MatchManager.ranking()
+	var top_score: int = MatchManager.score_for(order[0]) if not order.is_empty() else 0
+	var drawn := winning_slot < 0
+	for i in range(4):
+		var row := standings.get_node_or_null("Place%d" % [i]) as Control
+		if row == null:
+			continue
+		if i >= order.size():
+			row.visible = false
+			continue
+		row.visible = true
+		var slot: int = order[i]
+		var points: int = MatchManager.score_for(slot)
+		var tied_at_top := points == top_score
+		var who := RoundManager.player_at(slot)
+		var display: String = who.display_name() if who != null else "P%d" % [slot + 1]
+		# "=" rather than a number for a shared place — two players cannot both be 1st
+		# in a numbered list without one of them being wrong.
+		var place_text := "=" if (drawn and tied_at_top) else "%d" % [i + 1]
+		var colour: Color = UiTheme.HIGHLIGHT if tied_at_top else UiTheme.CREAM
+		for cell_name in ["Place", "Name", "Points"]:
+			var cell := row.get_node_or_null(cell_name) as Label
+			if cell == null:
+				continue
+			cell.add_theme_color_override("font_color", colour)
+			cell.add_theme_color_override("font_outline_color", UiTheme.INK)
+		(row.get_node("Place") as Label).text = place_text
+		(row.get_node("Name") as Label).text = display
+		(row.get_node("Points") as Label).text = "%d PTS" % [points]
 
 ## Resets in place — no scene reload — so a networked rematch doesn't tear
 ## down the connection or any spawned character. main.gd::_on_match_round_started

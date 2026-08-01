@@ -67,31 +67,24 @@ func _ready() -> void:
 ## file once per typed character is a real cost for a control the player is holding
 ## down backspace in.
 ## ---------------------------------------------------------------------------
+## ⚠️ IT BINDS NOW, IT NO LONGER BUILDS — § CHECKLIST 1.9. The row is authored in
+## `SettingsPanel.tscn`; this wires it. A control created at runtime sits outside the
+## focus order the scene defines, which is the half of the REACHABILITY RULE that is
+## easy to miss: it was operable with a mouse and unreachable by keyboard.
+##
+## ⚠️ THE FIELD IS STILL POPULATED FROM `SettingsManager` HERE rather than in the
+## scene, because the saved name is not known until run time — the scene can only
+## state the placeholder.
 func _build_name_row() -> void:
-	if bindings_list.has_node("PlayerNameRow"):
+	var field := get_node_or_null("%PlayerNameField") as LineEdit
+	if field == null:
+		push_error("SettingsPanel: PlayerNameField missing from SettingsPanel.tscn")
 		return
-	var row := HBoxContainer.new()
-	row.name = "PlayerNameRow"
-	row.add_theme_constant_override("separation", 12)
-	var label := Label.new()
-	label.text = "Player name"
-	label.custom_minimum_size = Vector2(220, 0)
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	row.add_child(label)
-	var field := LineEdit.new()
-	field.name = "PlayerNameField"
 	field.text = SettingsManager.player_name
-	# Empty is legal and means "use the seat label", so the placeholder shows what
-	# the player will be called if they leave it alone rather than nagging them.
-	field.placeholder_text = "P1"
 	field.max_length = SettingsManagerScript.PLAYER_NAME_MAX
-	field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	field.custom_minimum_size = Vector2(220, 0)
-	row.add_child(field)
-	bindings_list.add_child(row)
-	bindings_list.move_child(row, 0)
-	field.text_submitted.connect(_on_player_name_submitted)
-	field.focus_exited.connect(func() -> void: _on_player_name_submitted(field.text))
+	if not field.text_submitted.is_connected(_on_player_name_submitted):
+		field.text_submitted.connect(_on_player_name_submitted)
+		field.focus_exited.connect(func() -> void: _on_player_name_submitted(field.text))
 
 func _on_player_name_submitted(value: String) -> void:
 	SettingsManager.set_player_name(value)
