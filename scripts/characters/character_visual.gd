@@ -683,7 +683,7 @@ func apply(is_person: bool, is_can: bool, team: int) -> void:
 	# make switching between two same-rig characters a no-op — you would pick
 	# Bebang, get Inday's palette, and nothing would look broken enough to
 	# explain why.
-	var material_path := _person_material_path(is_person)
+	var material_path := _person_material_path(is_person, team)
 	# ⚠️⚠️ B-145 — THE PROP SKIN IS PART OF THE CACHE KEY, AND LEAVING IT OUT IS
 	# 🧑's *"i pick coffee, if i switch to can, old model stays"*.
 	#
@@ -1172,9 +1172,40 @@ func _model_path(is_person: bool, is_can: bool, team: int) -> String:
 ## The palette material for this unit's roster pick, or "" to keep whatever the
 ## .glb imported with (which is person_a/person_b — see the roster's note on why
 ## those two are hand-authored rather than generated).
-func _person_material_path(is_person: bool) -> String:
+## ⚠️⚠️ A PERSON WITH NO ROSTER PICK USED TO GET NO MATERIAL AT ALL, AND THAT IS
+## WHY TWO CHARACTERS RENDERED FLAT AND OUTLINE-LESS. 🧑: *"why is this character
+## in a completley diff texture and outline"*, and their own diagnosis — *"i think
+## old agents js forgot to apply tint and outline and shit to them"* — was right.
+##
+## The two halves of a Person's look are applied by two functions that BOTH
+## early-out, and nothing covered the gap between them:
+##   · `_apply_toon_pass()` returns immediately `if is_person` — a Person's toon
+##     shading and its ink outline come from its palette `.tres`, which carries
+##     `next_pass = person_outline.tres`;
+##   · `_apply_person_material()` returned immediately when this function handed
+##     back "".
+##
+## So an AI-driven seat, a local-test dummy, or a peer that never opened the
+## CHARACTER screen — anything with `character_index < 0` — got the raw material
+## the `.glb` imported with: no palette, no toon banding, and **no outline**,
+## standing next to picked characters that had all three. It reads exactly like a
+## character from a different game, which is what was reported.
+##
+## Falling back per TEAM mirrors `_model_path()`'s own fallback one function up,
+## so the default model and the default palette stay in step. `person_a`/`person_b`
+## are the hand-authored pair Art_Direction.md pins for arena-distance contrast.
+const PERSON_FALLBACK_MATERIALS: Array[String] = [
+	"res://assets/characters/persons/materials/person_a.tres",
+	"res://assets/characters/persons/materials/person_b.tres",
+]
+
+func _person_material_path(is_person: bool, team: int = 0) -> String:
+	if not is_person:
+		return ""
 	var entry := _roster_entry(is_person)
-	return String(entry["material"]) if entry.has("material") else ""
+	if entry.has("material"):
+		return String(entry["material"])
+	return PERSON_FALLBACK_MATERIALS[team % PERSON_FALLBACK_MATERIALS.size()]
 
 ## Recolours this Prop to the lata or tsinelas skin its owner picked.
 ##
