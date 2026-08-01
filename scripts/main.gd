@@ -552,6 +552,13 @@ func _start_local_test() -> void:
 	# the player's own name on the three bots they are playing against, which is worse
 	# than no names at all.
 	picked_unit.player_name = SettingsManager.player_name
+	# ⚠️ AND THE OTHER THREE GET A REAL PERSON EACH, rather than the -1 sentinel
+	# that made every bot wear the same model. Called BEFORE the visual loop
+	# below so `apply()` draws the pick first time instead of drawing the stock
+	# rig and being corrected. Single Player never reaches the networked call
+	# site (`_rpc_begin_ready_countdown` gates it on `NetworkManager.is_host()`,
+	# which is false with no session), so it has to be invoked here as well.
+	_refresh_ai_prop_picks()
 	# ⚠️ ROUND 1'S ROLES COME FROM THE SCHEDULE UP FRONT, NOT FROM THE SCENE'S
 	# EXPORT DEFAULTS. `is_defender` is an `@export` on `CharacterBase.tscn`, so
 	# without this every unit loads with whatever the scene file happened to say and
@@ -779,22 +786,16 @@ func _reassert_spectated_bots() -> void:
 ##
 ## ⚠️ It only ever fills a MISSING pick (`< 0`), so the one unit the spectator chose
 ## before vacating its seat keeps what it chose.
+## ⚠️ NOW ONE LINE, AND THE DUPLICATE RULE IT USED TO HOLD IS GONE. This dealt
+## `i % ROSTER.size()` — 0/1/2/3, four ADJACENT roster entries — while
+## `_refresh_ai_prop_picks()` deals the same kind of pick for ordinary play. Two
+## functions answering "which Person does an unpicked seat wear" is two answers
+## that drift, and this was already the worse of the two: adjacent entries are the
+## least likely to read apart at arena distance, which is the one thing a filmed
+## match needs. Both callers now get the spread version, and the anti-mirror rule
+## still holds because that function only ever fills a MISSING pick.
 func _dress_spectated_units() -> void:
-	# A spectator picked no character, so nobody has a roster index and every unit
-	# would draw the stock model at neutral traits. Deal distinct picks around the
-	# table so a filmed match has four readable silhouettes instead of four clones.
-	for i in range(_local_roster.size()):
-		var character := _local_roster[i]
-		if not is_instance_valid(character):
-			continue
-		if character.character_index < 0:
-			character.character_index = i % CharacterRoster.ROSTER.size()
-		# ⚠️ AND THE MODEL HAS TO BE TOLD. `_visual.apply()` runs at `_ready()` and on
-		# a role rotation; neither happens here, so without this the units keep
-		# wearing whatever they were drawn with before the picks landed.
-		var visual: Node = character.get_node_or_null("Visual")
-		if visual != null and visual.has_method("apply"):
-			visual.apply(character.is_person, character.is_can, character.player_slot)
+	_refresh_ai_prop_picks()
 
 func _enter_spectator_mode() -> void:
 	if _spectator != null and is_instance_valid(_spectator):
@@ -1152,13 +1153,101 @@ func _rpc_client_ready_for_spawn() -> void:
 ## picks, then tells everybody. Idempotent and cheap: a Prop that already has an
 ## answer is skipped, and a team whose Person is still a bot legitimately stays
 ## at -1 (the neutral 3/3/3 is correct when there is nobody to inherit from).
-## ⚠️ `_refresh_ai_prop_picks()`'s BODY WAS DELETED HERE. It inherited a human's
-## lata and tsinelas skin picks onto their bot teammate's Prop. There are no Prop
-## seats and no prop picks — a player picks a Person and nothing else. Kept as a
-## no-op because three call sites on the lobby path invoke it and reshaping that
-## path is not this rewrite's job.
+## ⚠️ `_refresh_ai_prop_picks()`'s ORIGINAL BODY WAS DELETED IN THE PIVOT. It
+## inherited a human's lata and tsinelas skin picks onto their bot teammate's
+## Prop. There are no Prop seats and no prop picks — a player picks a Person and
+## nothing else. It was left as a no-op; it now deals the BOTS their Persons.
+##
+## ⚠️⚠️ EVERY BOT WORE THE SAME FACE UNTIL 2026-08-01. 🧑: *"RANDOMISE THE BOTS'
+## CHARACTER SKINS."* An AI seat is never given a `character_index`, so it keeps
+## the -1 sentinel, and `character_visual.gd::_model_path()` then falls back to
+## `PERSON_MODELS[team]` — one model for every bot in the match. Twelve roster
+## entries exist and a four-player match was showing two.
+##
+## ⚠️ HOST-DECIDED AND REPLICATED, NOT COMPUTED PER PEER, AND `randi()` WOULD BE
+## WRONG TWICE OVER. The obvious fix is a random pick at spawn, which gives two
+## peers two different faces for the same bot; the next-most-obvious is a pure
+## function of the slot computed everywhere, which is deterministic but cannot see
+## which Persons the HUMANS took and so happily dresses a bot as the player. This
+## runs on the host, where both facts are known, and every caller already follows
+## it with `_rpc_sync_picks(_picks_table())` — a table that has carried
+## `character_index` since the pivot. So the wire format, the late-join catch-up
+## and the client-side apply all already exist and none of them changes.
+##
+## ⚠️ SEATS ARE WALKED IN NUMERIC ORDER, NOT IN DICTIONARY ORDER. `taken`
+## accumulates as it goes, so the order decides the answer — and `_index_to_
+## character`'s insertion order is connection order, which differs per session and
+## per peer. `range()` is what makes the same match deal the same four Persons
+## every time.
+##
+## Idempotent: a seat that already has a pick is skipped, so re-running this at
+## every ready gate and every late join cannot reshuffle a match in progress.
 func _refresh_ai_prop_picks() -> void:
-	pass
+	var seats := _seat_characters()
+	var taken: Array[int] = []
+	for slot in range(NetworkManagerScript.MAX_PLAYERS):
+		var who: CharacterBase = seats.get(slot)
+		if who != null and who.character_index >= 0:
+			taken.append(who.character_index)
+	for slot in range(NetworkManagerScript.MAX_PLAYERS):
+		var who: CharacterBase = seats.get(slot)
+		# ⚠️ "< 0" IS THE WHOLE TEST FOR "THIS IS A BOT", and it is better than
+		# asking about the AIController. It is exactly the condition
+		# `_model_path()` falls back on, so this fills precisely the gap that
+		# produces the duplicate model — and a human seat is never negative
+		# (`GameLaunch.character_index()` floors at 0), so this cannot overwrite
+		# a player's own pick even if it ran on the wrong seat.
+		if who == null or who.character_index >= 0:
+			continue
+		var pick := _ai_character_index(slot, taken)
+		taken.append(pick)
+		who.character_index = pick
+		# The model has to be told: `_visual.apply()` runs at `_ready()` and on a
+		# role rotation, and this is neither.
+		var visual: Node = who.get_node_or_null("Visual")
+		if visual != null and visual.has_method("apply"):
+			visual.apply(who.is_person, who.is_can, who.player_slot)
+
+
+## Roster indices the four seats reach for first, spread across the twelve rather
+## than taken in order. 0/1/2/3 would deal the four Persons the roster happens to
+## list first, which are also the four most likely to be adjacent in palette;
+## quartering the list makes four bots read apart at arena distance, which is the
+## entire point of dealing them at all.
+const AI_PERSON_SPREAD: Array[int] = [0, 3, 6, 9]
+
+## The first roster entry at or after this seat's preferred index that nobody has
+## taken. Walking forward on collision (rather than, say, adding a random offset)
+## keeps the whole thing a pure function of the seat and the set already taken.
+func _ai_character_index(slot: int, taken: Array[int]) -> int:
+	var size := CharacterRoster.ROSTER.size()
+	if size <= 0:
+		return 0
+	var start: int = AI_PERSON_SPREAD[slot % AI_PERSON_SPREAD.size()] % size
+	for step in range(size):
+		var candidate := (start + step) % size
+		if not (candidate in taken):
+			return candidate
+	return start
+
+
+## slot -> CharacterBase, for whichever spawn path this session used.
+##
+## ⚠️ TWO PATHS BUILD THE FOUR UNITS AND THEY STORE THEM IN DIFFERENT PLACES:
+## Single Player fills `_local_roster` from the authored scene, and a networked
+## match fills `_index_to_character` from the spawner. Anything that wants to
+## reason about "the four seats" has to ask both or it silently works in one mode
+## only — which is how a bug gets described as "it only happens in multiplayer".
+func _seat_characters() -> Dictionary:
+	var seats: Dictionary = {}
+	for character in _local_roster:
+		if character != null and is_instance_valid(character):
+			seats[int(character.player_slot)] = character
+	for index in _index_to_character:
+		var character: CharacterBase = _index_to_character[index]
+		if character != null and is_instance_valid(character):
+			seats[int(index)] = character
+	return seats
 
 ## [[index, character_index, can_index, slipper_index], ...] for every spawned
 ## seat. Built on the host, where the answer is known.

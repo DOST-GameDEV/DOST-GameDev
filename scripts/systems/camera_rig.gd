@@ -507,9 +507,11 @@ func _update_viewmodel_carry(delta: float) -> void:
 	# viewmodel in the first place. The world slipper sits in the real hand and
 	# is correct in third person; `HeldSlipper` under the fist is what the local
 	# player sees, posed for their frame and nobody else's.
-	var slipper := pivot.get_node_or_null("Arm/HeldSlipper") as Node3D
+	var slipper := pivot.get_node_or_null("Arm/HeldSlipper") as MeshInstance3D
 	if slipper != null:
 		slipper.visible = holding
+		if holding:
+			_sync_viewmodel_slipper(slipper, held)
 	# Per-frame, because what this character is holding changes DURING a round —
 	# _apply_fpp_self_hide only re-runs on activation and model changes, so a
 	# pick-up mid-round would otherwise show both slippers until the next swap.
@@ -530,6 +532,64 @@ func _update_viewmodel_carry(delta: float) -> void:
 
 	pivot.transform = pivot.transform.interpolate_with(
 		wanted, clampf(VIEWMODEL_REACH_SPEED * delta, 0.0, 1.0))
+
+
+## Toe-to-heel length the held slipper presents IN THE WORLD, in metres, so it
+## reads at arm's length in the first-person frame.
+##
+## ⚠️ MEASURED, NOT TYPED, AND THE OLD VALUE WAS 0.171 m. `ViewmodelArms.tscn`
+## authors `HeldSlipper` at mesh scale, and it then inherits TWO nested shrinks —
+## the arms' own `VIEWMODEL_SCALE` 0.72 and the carry pose's
+## `VIEWMODEL_CARRY_SCALE` 0.55 — so a 0.432 m mesh arrived on screen at 0.396 of
+## its size. `tools/models/fpp_carry_probe.tscn` reported it visible, meshed and
+## inside the frustum the whole time, which is exactly why this was reported as
+## "it doesnt get seen in first person" rather than as a size bug: nothing was
+## switched off, it was just too small to notice at the fingertip.
+##
+## Applied as a per-frame local scale computed against the parent's CURRENT world
+## scale, so the slipper keeps this size while the carry pose is still
+## interpolating in rather than growing as the arm settles.
+const VIEWMODEL_SLIPPER_LENGTH: float = 0.34
+
+## ⚠️ THE VIEWMODEL SLIPPER WEARS THE PICKED SKIN NOW, AND IT USED NOT TO.
+## `ViewmodelArms.tscn` hardcodes `tsinelas_classic.obj` on this node, so a player
+## who chose CROCS, PANTULOG or SIKE on the CHARACTER screen held a brown flip-flop
+## in their own hands while every other peer correctly saw what they had picked.
+## That is the second half of THE REACHABILITY RULE — a control that does not do
+## what it says — seen from inside the player's own view.
+##
+## ⚠️ COPIED FROM THE WORLD SLIPPER, NOT LOOKED UP IN THE ROSTER. `slipper.gd`
+## already resolves `skin_index` -> mesh, normalises downloaded models at runtime
+## and clears stale surface overrides; asking the roster again here would be a
+## second implementation of that, free to drift from the first. Reading the object
+## that is actually in the player's hand cannot disagree with it.
+func _sync_viewmodel_slipper(node: MeshInstance3D, held: Slipper) -> void:
+	var visual := held.get_node_or_null("Visual") as Node3D
+	if visual == null:
+		return
+	var source: MeshInstance3D = null
+	for child in visual.find_children("*", "MeshInstance3D", true, false):
+		source = child as MeshInstance3D
+		break
+	if source == null or source.mesh == null:
+		return
+	if node.mesh != source.mesh:
+		node.mesh = source.mesh
+		# Overrides do not clear themselves when the mesh under them changes, and
+		# the surface counts need not match — the same rule `slipper.gd` and
+		# `lata.gd` both keep at their own mesh swaps.
+		for surface in range(node.get_surface_override_material_count()):
+			node.set_surface_override_material(surface, null)
+	for surface in range(source.get_surface_override_material_count()):
+		node.set_surface_override_material(surface,
+			source.get_surface_override_material(surface))
+
+	var length: float = maxf(source.mesh.get_aabb().size.z, 0.001)
+	var parent := node.get_parent_node_3d()
+	var parent_scale: float = 1.0
+	if parent != null:
+		parent_scale = maxf(parent.global_transform.basis.get_scale().z, 0.0001)
+	node.scale = Vector3.ONE * (VIEWMODEL_SLIPPER_LENGTH / (length * parent_scale))
 
 
 ## B-91 — "slippers camera is completely broken right now", and specifically:

@@ -328,12 +328,14 @@ var _vo_next: int = 0
 ## frame `time_left` sits at or below the threshold.
 var _clock_30_said: bool = false
 var _clock_10_said: bool = false
-## Edge-detected in `_process()`, NOT read once at boot — see that function's
-## note. `false` at startup deliberately: the splash screen is up first, and
-## the edge into `MainMenu` (splash finishing, OR returning from a match by
-## any path at all — the result screen's "menu" button, a network
-## disconnect bounce, a solo quit) is what actually starts the menu bed.
-var _was_main_menu: bool = false
+## "" / "splash" / "match" / "menu" — see `_scene_state()`. Edge-detected in
+## `_process()` rather than read once at boot, and EMPTY at startup so the very
+## first transition is a real edge whichever state the game opens in.
+##
+## ⚠️ REPLACED `_was_main_menu` ON 2026-08-01. A bool could only express "are we
+## on the title screen", which answers where the menu bed starts and not where it
+## has to stop — see `_poll_scene_state()` for the leak that cost.
+var _music_scene_state: String = ""
 
 ## 0..1, mirrored from SettingsManager (which owns persistence). Kept here too so
 ## the bus state and the saved state can be compared without reaching across.
@@ -366,8 +368,8 @@ func _ready() -> void:
 	# ⚠️ NOT STARTED HERE ANY MORE. Starting the menu bed straight from `_ready()`
 	# raced `SplashScreen`'s intro clip — the bed was audible under the intro
 	# video before the video's own `AudioManager.play("boot_sting")` had even
-	# finished. `_process()`'s `MainMenu` scene-edge check below is what
-	# actually starts it, the instant the splash hands off — see that function.
+	# finished. `_poll_scene_state()` below is what actually starts it, the
+	# instant the splash hands off — see that function.
 	MatchManager.round_started.connect(_on_round_started_music)
 	MatchManager.match_won.connect(_on_match_won_music)
 	MatchManager.score_changed.connect(_on_score_changed_audio)
@@ -461,32 +463,96 @@ func _music_target_db() -> float:
 	return MUSIC_BASE_DB + (MUSIC_LIFT_DB if _music_lift_on else 0.0)
 
 
-## ⚠️ THIS IS THE MENU-BED ENTRY POINT, NOT `_ready()`. Filed bug: the menu bed
-## used to start straight from `_ready()`, which raced `SplashScreen`'s intro
-## clip — the bed was audible under the boot video, ahead of the video's own
-## sting. `MainMenu` is a `class_name`-registered scene root
-## (`scripts/ui/main_menu.gd`) this lane can check for BY TYPE without owning
-## or editing that file — reading a class name is not writing to its file.
+## ⚠️⚠️ THE MENU BED IS OWNED BY A SCENE STATE, NOT BY A LIST OF EVENTS, AND
+## THAT REPLACED A `MainMenu`-ONLY EDGE CHECK ON 2026-08-01.
 ##
-## ⚠️ ALSO THE FIX FOR "MENU MUSIC KEEPS PLAYING AFTER A MATCH ENDS."
-## `_on_match_won_music` already crossfades to "menu", but that only covers
-## the ONE path that emits `match_won`. A network disconnect bounce
-## (`server_disconnected`), the match-result screen's own "back to menu"
-## button, and a solo quit-to-menu all land here too, by construction, because
-## every single one of them ends with `MainMenu.tscn` becoming the current
-## scene — checking the SCENE rather than chasing every path that can produce
-## it is what makes this correct for paths this lane has never even read.
-func _poll_main_menu_edge() -> void:
+## 🧑, twice in one message, after playing it: *"the main menu ost audio still
+## leaks to start"* and *"also main menu ost audio still leaks into game, pls js
+## abruptly cut it so that it doesnt play anymore when start"*.
+##
+## ⚠️ AND THE MEASUREMENT SAID IT WAS FINE, WHICH IS THE INTERESTING PART.
+## `tools/audio/music_probe.tscn` reported the round bed up and the menu bed
+## silent once the round was running — because it only ever asserted DURING the
+## round. The leak is in the window the probe deliberately skipped: `Main.tscn`
+## loads, the player walks around in the free-roam window before pressing [R],
+## and the match bed does not start until the first `countdown_tick`. So the
+## player is standing in the arena, in the game, listening to the title screen.
+## Both of 🧑's sentences describe exactly that window.
+##
+## The old check asked "is the current scene MainMenu" and started the bed on
+## the false->true edge. That answers where the bed STARTS and says nothing about
+## where it must STOP, which is the half that was wrong. This asks which of three
+## states the game is in and hands each one its own rule:
+##
+##   splash  silence. The intro clip has its own sting and nothing may sit under it.
+##   match   silence, ABRUPTLY. The round bed then starts on its own cue.
+##   menu    the menu bed.
+##
+## ⚠️ "MENU" IS EVERYTHING THAT IS NEITHER OF THE OTHER TWO, deliberately, rather
+## than a list of menu scenes. A list would have to be edited every time a screen
+## is added, and the failure mode of forgetting is silence on the new screen. It
+## also fixes a path no list would have covered: a network-disconnect bounce
+## lands on `MultiplayerSetup`, not `MainMenu`, so the old check left the MATCH
+## bed playing over a menu.
+const MATCH_SCENE_PATH: String = "res://scenes/main/Main.tscn"
+
+func _scene_state() -> String:
 	var scene := get_tree().current_scene
-	var is_main_menu := scene is MainMenu
-	if is_main_menu and not _was_main_menu:
-		play_music("menu")
-		play_vo("title")
-	_was_main_menu = is_main_menu
+	# ⚠️ NULL IS "DON'T KNOW", NOT "MENU". `change_scene_to_file` leaves
+	# `current_scene` null for a frame, and at boot it is null before the splash
+	# is ready — treating that as a menu state starts the bed under the intro
+	# video, which is the first of the two bugs above.
+	if scene == null or not is_instance_valid(scene):
+		return ""
+	if scene is SplashScreen:
+		return "splash"
+	if scene.scene_file_path == MATCH_SCENE_PATH:
+		return "match"
+	return "menu"
+
+
+func _poll_scene_state() -> void:
+	var state := _scene_state()
+	if state == "" or state == _music_scene_state:
+		return
+	_music_scene_state = state
+	match state:
+		"menu":
+			play_music("menu")
+			play_vo("title")
+		"match":
+			# ⚠️ STOPPED, NOT CROSSFADED, AND THAT IS THE LITERAL ASK.
+			# `play_music()` would fade the menu bed out over
+			# `MUSIC_CROSSFADE_TIME`, and 1.5 s of title-screen music over the
+			# arena is precisely what was reported. 🧑: *"pls js abruptly cut
+			# it"*.
+			stop_music_now()
+		"splash":
+			stop_music_now()
+
+
+## Kills both music players dead, this frame, with no fade.
+##
+## ⚠️ IT MUST CLEAR `_current_music_name` AND THAT IS NOT BOOKKEEPING.
+## `play_music()` opens with `if track_name == _current_music_name: return`, so
+## stopping the players while the name still says "menu" would make the next
+## `play_music("menu")` a no-op and the menu bed would never come back — silence
+## for the rest of the session, from the function whose job is to be quiet.
+func stop_music_now() -> void:
+	for i in _music_players.size():
+		if _music_fade_tweens[i] != null and _music_fade_tweens[i].is_valid():
+			_music_fade_tweens[i].kill()
+		_music_players[i].stop()
+		_music_players[i].volume_db = -80.0
+	if _music_duck_tween != null and _music_duck_tween.is_valid():
+		_music_duck_tween.kill()
+	_music_duck_tween = null
+	_music_lift_on = false
+	_current_music_name = ""
 
 
 func _process(_delta: float) -> void:
-	_poll_main_menu_edge()
+	_poll_scene_state()
 	var should_lift := RoundManager.round_active \
 		and RoundManager.time_left <= MUSIC_LIFT_SECONDS_LEFT \
 		and RoundManager.time_left > 0.0

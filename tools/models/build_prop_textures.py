@@ -1,12 +1,35 @@
-"""Turns the human's own 2D prop drawings into the game's prop textures.
+"""Turns the human's own 2D CAN drawings into the game's can textures.
 
     python tools/models/build_prop_textures.py
 
+⚠️⚠️ THE CANS ONLY. THE SLIPPER HALF OF THIS SCRIPT WAS DELETED 2026-08-01 AND
+MUST NOT COME BACK -- IT WAS A SECOND GENERATOR WRITING ANOTHER GENERATOR'S
+OUTPUT FILES.
+
+It used to crop four slippers out of the two `tsinelas_sheet*.png` drawings and
+write them to `textures/tsinelas_{crocs,bakya,tsinelas,sike}.png`. Three of those
+four names are ALSO written by `tools/models/build_footwear.py`, which extracts
+the real base-colour image out of each sourced `.glb`. Two scripts, one set of
+paths, and whichever ran last won -- exactly the failure that had
+`generate_all.gd` silently overwriting the sourced slippers for hours (see
+docs/Agent_Prompts.md's LOG). The evidence was still on disk when this was
+found: `tsinelas_crocs.png` AND `tsinelas_crocs.jpg` both present, from the two
+different producers.
+
+⚠️ THE OWNERSHIP RULE, WHICH IS THE POINT: **slippers come from
+`build_footwear.py` ONLY; cans and the env kit come from `generate_all.gd`;
+can TEXTURES come from here.** One output path, one producer, always.
+
+The drawings the slipper half read are also no longer what the game ships. The
+four procedural drawing-derived slippers were rejected on look and replaced with
+sourced 3D models (Art_Direction.md 4b), so cropping those sheets produced
+textures for meshes that no longer exist. 🧑 2026-08-01: *"yo thats old stale
+shit"*.
+
 WHY THIS SCRIPT EXISTS AT ALL, given docs/Art_Direction.md said "no textures".
 
-The lata and the tsinelas are the only two hero props in the game and the human
-drew all eight of them by hand -- four cans (three of them parody liveries with
-readable wordmarks: PASIP, BOYBEN PERMAGAD, DECADES TUNA) and four slippers.
+The lata is a hero prop and the human drew all four cans by hand -- three of them
+parody liveries with readable wordmarks: PASIP, BOYBEN PERMAGAD, DECADES TUNA.
 None of that survives being reduced to a flat `Kd` colour: a Pasip can and a
 Decades can with their labels removed are the same grey cylinder, and the joke,
 the Filipino specificity and the Originality marks all live in the label.
@@ -41,7 +64,6 @@ from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.normpath(os.path.join(HERE, "..", ".."))
-REFS = os.path.join(REPO, "docs", "refs", "props")
 OUT = os.path.join(REPO, "assets", "models", "textures")
 
 # Where the human's originals live. Kept out of the repo's asset tree on purpose:
@@ -63,53 +85,19 @@ CANS = [
     ("Flattened Metal Can.png", "lata_metal.png"),
 ]
 
-# --- The slippers -------------------------------------------------------------
+# --- The slippers: DELETED, see the module header -----------------------------
 #
-# The two sheets are 2-up, one pair per sheet, drawn TOP-DOWN -- which is exactly
-# the projection `add_extrude`'s `uv_map` applies, so these need no unwrapping
-# step at all, only cropping. Toe is at the top of every drawing and `uv_map`
-# sends the toe (-Z) to v = 0, so the art lands the right way round with no flip.
-SLIPPER_SIZE = (512, 512)
-SLIPPERS = [
-    ("tsinelas_sheet1_crocs_bakya.png", "left", "tsinelas_crocs.png"),
-    ("tsinelas_sheet1_crocs_bakya.png", "right", "tsinelas_bakya.png"),
-    ("tsinelas_sheet2_rubber_sike.png", "left", "tsinelas_tsinelas.png"),
-    ("tsinelas_sheet2_rubber_sike.png", "right", "tsinelas_sike.png"),
-]
-
-# Padding around a cropped slipper, as a fraction of its longest side. The sole
-# mesh's own outline is slightly tighter than the drawing's silhouette, so a
-# crop with no margin clips the art at the widest point of the ball of the foot.
-SLIPPER_PAD = 0.04
+# `SLIPPER_SIZE`, `SLIPPERS` and `SLIPPER_PAD` lived here and produced four
+# textures for four meshes the game no longer has, at three paths
+# `build_footwear.py` also writes. Both halves of that are reasons to delete it
+# rather than to keep it "in case": a dead generator that still writes live files
+# is worse than no generator at all.
 
 
-def ink_bbox(image):
-    """Bounding box of everything that is not the white page.
-
-    Alpha is unreliable here -- the exports carry a soft alpha halo well outside
-    the drawn shape (measured: 100 px of it on every side), so `getbbox()`
-    returns a box that is visibly too large and leaves the art floating small in
-    the middle of its texture. Thresholding on ink finds the real edge.
-    """
-    rgb = image.convert("RGB")
-    width, height = rgb.size
-    pixels = rgb.load()
-    min_x, min_y, max_x, max_y = width, height, -1, -1
-    for y in range(height):
-        for x in range(width):
-            r, g, b = pixels[x, y]
-            if r + g + b < 720:  # anything meaningfully darker than paper
-                if x < min_x:
-                    min_x = x
-                if x > max_x:
-                    max_x = x
-                if y < min_y:
-                    min_y = y
-                if y > max_y:
-                    max_y = y
-    if max_x < 0:
-        raise SystemExit("build_prop_textures: found no ink in an image")
-    return (min_x, min_y, max_x + 1, max_y + 1)
+## `ink_bbox()` WENT WITH `build_slippers()`. It thresholded a drawing down to
+## its real inked edge so a slipper could be cropped out of a 2-up sheet; the
+## cans need no crop at all (each source is already a full 2:1 wrap), so it had
+## exactly one caller and that caller is gone.
 
 
 def flatten_on_white(image):
@@ -130,28 +118,9 @@ def build_cans():
         print("  %-22s <- %s" % (out_name, source_name))
 
 
-def build_slippers():
-    for source_name, side, out_name in SLIPPERS:
-        path = os.path.join(REFS, source_name)
-        sheet = flatten_on_white(Image.open(path).convert("RGBA"))
-        width, height = sheet.size
-        half = sheet.crop((0, 0, width // 2, height)) if side == "left" \
-            else sheet.crop((width // 2, 0, width, height))
-        box = ink_bbox(half)
-        cropped = half.crop(box)
-
-        # Square canvas, art centred, aspect preserved. The sole's UV map spans
-        # the mesh's own bounding box in x and z, so a non-square texture would
-        # stretch the art along whichever axis it disagreed on.
-        longest = max(cropped.size)
-        pad = int(longest * SLIPPER_PAD)
-        canvas_side = longest + 2 * pad
-        canvas = Image.new("RGB", (canvas_side, canvas_side), (255, 255, 255))
-        canvas.paste(cropped, ((canvas_side - cropped.size[0]) // 2,
-                               (canvas_side - cropped.size[1]) // 2))
-        canvas = canvas.resize(SLIPPER_SIZE, Image.NEAREST)
-        canvas.save(os.path.join(OUT, out_name))
-        print("  %-22s <- %s (%s)" % (out_name, source_name, side))
+## `build_slippers()` WAS DELETED HERE — see the module header. It cropped the
+## two drawing sheets into four slipper textures, three of which shared a path
+## with `build_footwear.py`'s glb-extracted output.
 
 
 def main():
@@ -159,7 +128,6 @@ def main():
         os.makedirs(OUT)
     print("prop textures ->", os.path.relpath(OUT, REPO))
     build_cans()
-    build_slippers()
 
 
 if __name__ == "__main__":

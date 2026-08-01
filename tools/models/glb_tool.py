@@ -650,9 +650,17 @@ def cmd_obj(path, out_base, target_length, texture_rel, yaw_deg=0.0, cells=0, ha
     # purple strap; a black sandal with a white swoosh). The roster tint cannot
     # put that back either — one tint over every surface repaints the swoosh too,
     # which is why those entries carry no `tint` key at all.
+    # ⚠️ `newline="\n"` ON BOTH WRITES, AND IT IS THE DETERMINISM CONTRACT.
+    # Without it Python uses the platform default, which on Windows is CRLF, so
+    # every re-run rewrote all six slipper files with different bytes and
+    # identical content — `git status` came back dirty and the generator's own
+    # acceptance test ("run it twice, the tree stays clean") could not be
+    # performed at all on the machine this project is built on. `recentre_obj()`
+    # a few lines up already did this; `cmd_obj` did not, so the two halves of
+    # one script disagreed.
     used = sorted(set(f[3] for f in faces))
     materials = gltf.get("materials", [])
-    with open(out_base + ".mtl", "w") as fh:
+    with open(out_base + ".mtl", "w", newline="\n") as fh:
         fh.write("# Converted from %s by tools/models/glb_tool.py - DO NOT EDIT BY HAND.\n"
                  % os.path.basename(path))
         for mi in used:
@@ -670,7 +678,7 @@ def cmd_obj(path, out_base, target_length, texture_rel, yaw_deg=0.0, cells=0, ha
             if texture_rel and pbr.get("baseColorTexture") is not None:
                 fh.write("map_Kd %s\n" % texture_rel)
 
-    with open(out_base + ".obj", "w") as fh:
+    with open(out_base + ".obj", "w", newline="\n") as fh:
         fh.write("# Converted from %s by tools/models/glb_tool.py - DO NOT EDIT BY HAND.\n"
                  % os.path.basename(path))
         fh.write("# Geometry is carried through unchanged; only scale, yaw and origin move.\n")
