@@ -443,6 +443,8 @@ var _windup_wait: float = 0.0
 var _blundering: bool = false
 
 var _lunge_held: float = -1.0
+## Who this bot guarded on the previous evaluation — see `_live_threat()`.
+var _last_threat: CharacterBase = null
 var _loiter_phase: float = 0.0
 var _stalk_time: float = 0.0
 var _stuck_time: float = 0.0
@@ -1479,11 +1481,30 @@ func _live_threat() -> CharacterBase:
 			score += 1.0
 		var carrier := who.get_node_or_null("Carrier") as Carrier
 		if carrier != null and carrier.observed_charge_power() >= 0.0:
-			score += 4.0 + carrier.observed_charge_power() * 2.0
+			# ⚠⚠ WAS `4.0 + power * 2.0`, i.e. up to +6, AND IT SINGLED OUT HUMANS.
+			# 2026-08-01, from a playtest: *"the defender ai only attack him"*.
+			#
+			# Nothing here reads whether a player is human — the bias is emergent and
+			# it is entirely about TIME. `CHARGE_FULL_TIME` is 2.5 s and a person aims
+			# for most of it; `_do_windup()` releases the moment it has enough power,
+			# so a bot is "charging" for a fraction of a second. A +6 that only one of
+			# the three attackers ever holds is not a threat model, it is a lock, and
+			# the taya spent whole rounds standing in front of one player.
+			#
+			# At +2 max it is what it was meant to be: a tiebreak that says "this one
+			# is about to throw", which distance and possession can still outweigh.
+			score += 1.0 + carrier.observed_charge_power() * 1.0
 		score -= 0.08 * _flat(character.global_position, _at(who))
+		# ⚠️ ANTI-FIXATION. Whoever this bot guarded last tick is worth slightly less
+		# than an equal rival, so a genuine tie rotates instead of sticking. Small on
+		# purpose — it must not pull the taya off somebody who is actually the threat,
+		# only break the deadlock that made one attacker feel hunted.
+		if who == _last_threat:
+			score -= 0.6
 		if score > best_score:
 			best_score = score
 			best = who
+	_last_threat = best
 	return best
 
 ## Where to stand to put a body in front of a slipper already in the air.
@@ -1689,7 +1710,14 @@ func _safe_spot() -> Vector3:
 		reach = 1.0
 	var ring: float = CharacterBase.confinement_radius + THROW_STANDOFF
 	flat *= ring / reach
-	return Vector3(flat.x, 0.0, flat.y)
+	# ⚠⚠ CLAMPED TO THE MAP'S OWN WALLS. This ring is `confinement_radius + 1.2`
+	# and it knows nothing about the world it is drawn in — on 2026-08-01 the box
+	# grew until it landed 0.1 m past Eskinita's house facades, and every bot on an
+	# east or west bearing walked into a wall and pressed into it for the rest of its
+	# plan. 🧑: *"the bots legit just go up random shit without doing anything, they
+	# just walk up the houses"*. `main.gd` measures the walls at load; a goal outside
+	# them is now impossible to hand out rather than merely unlikely.
+	return CharacterBase.clamp_to_playable(Vector3(flat.x, 0.0, flat.y))
 
 ## A point on the square ring at `ring` Chebyshev radius, on the given bearing.
 ## Same projection as `_safe_spot()`, for a bearing this bot chose rather than
@@ -1700,7 +1728,10 @@ func _ring_point(bearing: float, ring: float) -> Vector3:
 	if reach < 0.001:
 		return Vector3(0.0, 0.0, ring)
 	direction *= ring / reach
-	return Vector3(direction.x, 0.0, direction.y)
+	# Clamped for the same reason `_safe_spot()` is: every bearing this returns is a
+	# place a bot will walk to, and a bearing pointing at a wall used to mean walking
+	# into it until the plan changed.
+	return CharacterBase.clamp_to_playable(Vector3(direction.x, 0.0, direction.y))
 
 ## The shortest way out of the box from here, as a unit heading.
 func _out_of_box_dir() -> Vector3:

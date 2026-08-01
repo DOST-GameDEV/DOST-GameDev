@@ -1099,24 +1099,47 @@ for n, (piece, x, zz, yaw, scale) in enumerate(CLUTTER_LOW):
 #
 # Generated pieces pass `None` for scale, same convention as CLUTTER_LOW.
 CLUTTER_TALL = [
+    # ⚠⚠ THE WHOLE TIER MOVED OUT TO THE FACADE ON 2026-08-01, x = ±(WALL_FACE_X
+    # - 0.35). 🧑, twice, pointing at one of these: *"tf is this big ass grey block
+    # HAHA"* and *"why is this grey box still in ur test haha"*.
+    #
+    # The header above says this tier lives "against the wall line only, |x| > 6.5"
+    # — and 6.5 was written when the confinement box WAS 5.0, so a sheet at 7.05 or
+    # 7.9 genuinely was against the wall relative to the court. The box is 7.0 now
+    # and those same numbers put a 2.4-2.9 m blank GI panel a metre from the chalk,
+    # standing in the middle of everybody's view.
+    #
+    # ⚠️ THEY ARE NOT DELETED, AND THAT IS THE POINT. 🧑: *"i liked the tires and the
+    # tables and the yero walls"*. This tier is the one at eye level and it is what
+    # makes the alley Filipino; it just belongs ON the houses rather than in the
+    # street. Derived from `WALL_FACE_X` so the next time either number moves they
+    # stay attached to the facade instead of drifting back into the court.
+    #
+    # `keep_out=True` at the placement below is the belt: if a future box ever grows
+    # past even this, the piece is evicted rather than left standing in play.
     # ATIP NA YERO — the lean-to. Roofs the alley edge at eye level, which is
     # the half of "roofed by wires" that wires physically cannot do.
-    ("atip_yero", -7.05, -7.5, 0.0, None),
-    ("atip_yero", 7.05, 10.5, math.pi, None),
-    ("atip_yero", -7.05, 5.5, 0.0, None),
-    ("atip_yero", 7.05, -3.5, math.pi, None),
+    ("atip_yero", -(WALL_FACE_X - 0.35), -7.5, 0.0, None),
+    ("atip_yero", WALL_FACE_X - 0.35, 10.5, math.pi, None),
+    ("atip_yero", -(WALL_FACE_X - 0.35), 5.5, 0.0, None),
+    ("atip_yero", WALL_FACE_X - 0.35, -3.5, math.pi, None),
     # BAKOD NA YERO — corrugated GI fence, closing the gaps between houses.
     # Long in its own X (2.00 wide, 0.21 deep), so a run along Z wants a quarter
     # turn — measured off the mesh, not guessed.
-    ("wall_corrugated", -7.9, 11.5, math.pi * 0.5, None),
-    ("wall_corrugated", -7.9, 13.6, math.pi * 0.5, None),
-    ("wall_corrugated", 7.9, 16.0, math.pi * 0.5, None),
-    ("wall_corrugated", 7.9, 6.5, math.pi * 0.5, None),
-    ("wall_corrugated", -7.9, -16.5, math.pi * 0.5, None),
-    ("wall_corrugated", 7.9, -15.5, math.pi * 0.5, None),
+    ("wall_corrugated", -(WALL_FACE_X - 0.2), 11.5, math.pi * 0.5, None),
+    ("wall_corrugated", -(WALL_FACE_X - 0.2), 13.6, math.pi * 0.5, None),
+    ("wall_corrugated", WALL_FACE_X - 0.2, 16.0, math.pi * 0.5, None),
+    # ⚠️ THE ONE AT z = 6.5 ON THE EAST SIDE IS DELETED, 2026-08-01. 🧑, circling it
+    # in a screenshot: *"js remove THAT block i pointed out nothing else"*. It is
+    # the only piece of this tier that sits level with the court rather than up or
+    # down the alley from it, so it is the one that fills the frame from a player's
+    # eye on the east throwing line. The other five stay — *"dont remove the other
+    # yero walls js this fkng block"*.
+    ("wall_corrugated", -(WALL_FACE_X - 0.2), -16.5, math.pi * 0.5, None),
+    ("wall_corrugated", WALL_FACE_X - 0.2, -15.5, math.pi * 0.5, None),
     # Planting, kept.
-    ("kits/town/hedge", -7.5, 1.5, 0.0, TOWN_SCALE),
-    ("kits/town/hedge", 7.5, -10.5, 0.0, TOWN_SCALE),
+    ("kits/town/hedge", -(WALL_FACE_X - 0.9), 1.5, 0.0, TOWN_SCALE),
+    ("kits/town/hedge", WALL_FACE_X - 0.9, -10.5, 0.0, TOWN_SCALE),
 ]
 # ⚠⚠ `keep_out=True` ON THIS TIER AND NOT ON `CLUTTER_LOW`. The comment above
 # restricts these to |x| > 6.5 "against the wall line" — which was outside the box
@@ -1134,13 +1157,21 @@ CLUTTER_TALL = [
 #
 # ⚠️ AND IT IS DERIVED, so the next resize moves them again rather than re-creating
 # this. `_placer.play_box` is read from `CONFINEMENT_RADIUS`.
+# ⚠⚠ `keep_out` IS OFF AGAIN FOR THIS TIER, AND THAT IS NOT A REVERSAL. It was
+# switched on while these pieces were hand-placed at |x| = 7.05-7.9, where a growing
+# box could swallow them. Their X is DERIVED FROM `WALL_FACE_X` now, so they are on
+# the facade by construction and cannot be in the court whatever the box does.
+#
+# Leaving the guard on actively cost content: an `atip_yero` lean-to is wide, so its
+# FOOTPRINT still reached inside the keep-out band even with its origin on the wall,
+# and all four were evicted. 🧑: *"hey dont remove the other yero walls js this fkng
+# block"* — the lean-tos are wanted, it was the one standing in the street that was
+# not. Position fixes that; eviction was removing the wrong four.
 for n, (piece, x, zz, yaw, scale) in enumerate(CLUTTER_TALL):
     if scale is None:
-        _placer.try_place(_put_gen("Kalat"), f"KalatTaas_{n}", piece, x, zz, yaw, 1.0,
-                          keep_out=True)
+        _placer.try_place(_put_gen("Kalat"), f"KalatTaas_{n}", piece, x, zz, yaw, 1.0)
     else:
-        _placer.try_place(_put("Kalat"), f"KalatTaas_{n}", piece, x, zz, yaw, scale,
-                          keep_out=True)
+        _placer.try_place(_put("Kalat"), f"KalatTaas_{n}", piece, x, zz, yaw, scale)
 
 # --- Tricycles. Waist-cover tier, against the wall line, never loose. --------
 # ⚠️ THESE ASK TOO, and they were the last unguarded placements on the map — all
