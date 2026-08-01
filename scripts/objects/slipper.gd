@@ -34,7 +34,30 @@ signal carry_state_changed(new_state: CarryState)
 ## Metres/second at a full-charge throw. One number for every slipper — the four
 ## per-class `ThrowProfile` resources are deleted along with the classes that
 ## justified them.
-const LAUNCH_SPEED: float = 17.0
+##
+## ⚠️⚠️ 17.0 -> 20.0 ON 2026-08-01, ON HUMAN INSTRUCTION: *"can u make the throws a
+## bit more powerful (stronger and faster and reaches a bit farther)"*. One number
+## buys all three, because they are the same number: the 45-degree range is
+## `v² / GRAVITY`, so **14.45 m -> 17.11 m** (+18%), the flight is 9% faster, and
+## every impulse derived from this scales with it — the body-block deflection
+## (`DEFLECT_SPEED_SCALE`) and the lata recoil (`LATA_RECOIL_SCALE`) both get harder
+## without a second edit.
+##
+## ⚠️ IT DOES NOT BREAK CONTACT SAMPLING, WHICH IS THE ONE THING THAT COULD HAVE
+## GONE WRONG QUIETLY. The lata's hit window is `HIT_RADIUS + Lata.HIT_MARGIN` =
+## **0.53 m** and it is tested once per physics frame, so a slipper must advance
+## less than that per step or it can pass straight through. At 60 Hz: 17.0 gave
+## 0.28 m/step and 18.5 gives **0.31 m/step**, still comfortably inside the window.
+## `ai_probe`'s § TIME SCALE note is about exactly this failure and it is the
+## reason the tick rate is raised with `Engine.time_scale` rather than instead of.
+##
+## ⚠️ AND NOTHING HAD TO BE RE-TUNED AROUND IT. `ai_controller::_min_power_for()`
+## inverts the range equation against this constant rather than storing a table, and
+## `trajectory_preview.gd` draws from `launch_velocity_for()`, so the bots' charge
+## solve and the player's dotted arc both followed it on their own. *Verified after
+## the change: `mech_probe`'s §2.16 check still reports the preview and the flight
+## landing in the same place on every skin.*
+const LAUNCH_SPEED: float = 18.5
 ## A tap still throws, at this fraction of full speed, so an accidental click is a
 ## weak throw and not a dropped input. Mirrors `Carrier.CHARGE_MIN_POWER`.
 const MIN_POWER_SCALE: float = 0.35
@@ -629,8 +652,23 @@ func _physics_process(delta: float) -> void:
 	_update_owner_glow()
 	match state:
 		CarryState.CARRIED:
-			# Only when reparenting could not take: a slipper that IS a child of
-			# the hand already has the hand's transform, exactly, for free.
+			# ⚠⚠ RETRY THE ATTACH BEFORE FALLING BACK, AND THAT IS THE FIX FOR
+			# "THE SLIPPER IS IN HER BODY". 🧑 2026-08-01, with a screenshot: *"why is
+			# the slipper inside her body, make it go to her hand"*.
+			#
+			# `_attach_to_hand()` returns silently when `get_hand_attachment()` is
+			# null, and `character_visual.gd` BUILDS that attachment at runtime — so
+			# a slipper handed over before the rig finishes never becomes a child of
+			# the hand, and `_step_carried()`'s last-resort branch parks it at
+			# chest height relative to the BODY. That fallback exists for a rig with
+			# no skeleton at all; it was catching a rig that simply was not ready yet.
+			#
+			# The round-start auto-equip made it the common case rather than a rare
+			# one: it fires the moment a round begins, which is exactly when every
+			# visual is being rebuilt. Retrying each frame costs one comparison and
+			# snaps the slipper into the hand as soon as the bone exists.
+			if carrier != null and is_instance_valid(carrier) 					and get_parent() != carrier.get_hand_attachment():
+				_attach_to_hand()
 			if carrier == null or get_parent() != carrier.get_hand_attachment():
 				_step_carried()
 		CarryState.FLYING:

@@ -95,7 +95,7 @@ throwing line, not the box, is what has to fit.** At 7.5 it lands at 8.5, just o
 apron, and all four bearings stay usable.
 
 The other two bounds are unchanged and both comfortable: the shortest legal throw is
-7.5 m against a 45° range of `LAUNCH_SPEED`² / `GRAVITY` = **14.45 m** (13.0–15.9 across
+7.5 m against a 45° range of `LAUNCH_SPEED`² / `GRAVITY` = **17.11 m** (13.0–15.9 across
 the per-skin speed scales, §9), and the spawn ring is 9.5 against a `COURT_Z` of 13.0 on
 both maps. Both builders re-verify and abort.
 
@@ -280,7 +280,7 @@ file is 🤖 `build ai`'s; a second binding for one verb costs a human nothing.
 | `CHARGE_FULL_TIME` | **2.5 s** | `carrier.gd` |
 | `CHARGE_MIN_POWER` | 0.35 | a tap still throws |
 | `THROW_LOCK_TIME` | **1.25 s** | after a pickup; ÷ the tsinelas' GRIT (§9) → 1.03–1.42 s |
-| `LAUNCH_SPEED` | **17.0 m/s** | at full charge, `slipper.gd`; × the tsinelas' SPEED (§9) → 16.15–17.85 |
+| `LAUNCH_SPEED` | **18.5 m/s** | at full charge, `slipper.gd`; × the tsinelas' SPEED (§9) → 17.6–19.4 |
 | `PICKUP_RADIUS` | 1.4 | |
 | `MUZZLE_FORWARD` | 0.15 | |
 | `HIT_RADIUS` | 0.23 | the slipper's contact radius |
