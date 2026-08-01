@@ -1,0 +1,71 @@
+# Templated unit — one lobby per instance, the instance name IS the UDP port:
+#
+#   systemctl enable --now tumbang-preso-lobby@8910.service
+#
+# WHY TEMPLATED AND NOT ONE UNIT WRAPPING lobby-pool.sh: systemd's whole value
+# here is per-process supervision. A single unit running the pool script would
+# hand systemd one PID that exits immediately, and a lobby that crashed at 3am
+# would stay dead until somebody looked. One unit per port means Restart= is
+# real, and `systemctl status tumbang-preso-lobby@8913` answers "is lobby 4 up"
+# without parsing anything.
+#
+# ⚠️ THE SCRIPT AND THIS UNIT ARE ALTERNATIVES, NOT LAYERS. Do not run
+# `lobby-pool.sh start` on a box where these units are enabled — the second
+# starter finds the port bound and refuses, which is a confusing way to
+# discover you have two supervisors.
+#
+# Install: copy to /etc/systemd/system/, edit the paths below, then
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now tumbang-preso-lobby@891{0,1,2,3,4,5,6,7}
+
+[Unit]
+Description=Tumbang Preso dedicated lobby on udp/%i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gameserver
+Group=gameserver
+
+# ⚠️⚠️ res://scenes/main/Main.tscn IS LOAD-BEARING AND ITS ABSENCE IS SILENT.
+# project.godot's run/main_scene is res://scenes/ui/SplashScreen.tscn, and the
+# --dedicated / --port= parsing lives in scripts/main.gd::_ready — which only
+# runs if Main.tscn is what booted. Drop this argument and systemd reports the
+# unit as active and running forever, with nothing listening on the port.
+#
+# ⚠️ THE `--` MATTERS TOO. main.gd reads OS.get_cmdline_user_args(), which is
+# only what follows `--`. Anything before it is parsed by the engine, which
+# rejects --dedicated as an unknown option.
+ExecStart=/opt/tumbang-preso/godot --headless --path /opt/tumbang-preso/game res://scenes/main/Main.tscn -- --dedicated --port=%i
+
+# A crashed match is four players staring at a disconnect dialog. Come back
+# fast; the process is ~200 MB and takes a couple of seconds to boot.
+Restart=always
+RestartSec=3
+
+# ⚠️ WITHOUT THIS A CRASH LOOP LOOKS LIKE A HEALTHY SERVER. If the game cannot
+# start at all (bad path, missing pack, port stolen), Restart=always will spin
+# it forever and `systemctl status` will keep saying "activating". StartLimit
+# turns that into a unit in the `failed` state, which is a thing monitoring can
+# actually see.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# Godot writes to stdout/stderr; journald takes it from there.
+#   journalctl -u tumbang-preso-lobby@8910 -f
+StandardOutput=journal
+StandardError=journal
+
+# The server writes nothing it needs to keep, so give it nothing it can break.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+# ⚠️ Godot still wants a writable user data dir for its own state, or it errors
+# out on boot. Points at /var/lib/tumbang-preso-lobby-<port>, created by systemd.
+StateDirectory=tumbang-preso-lobby-%i
+Environment=HOME=/var/lib/tumbang-preso-lobby-%i
+
+[Install]
+WantedBy=multi-user.target

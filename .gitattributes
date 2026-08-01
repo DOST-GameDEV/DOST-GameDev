@@ -39,6 +39,12 @@
 # filename, not a suffix — so the sidecars need their own line or they churn
 # exactly like the `.import` files did.
 *.uid text eol=lf
+## ⚠️ THE SHEBANG BREAKS WITH CRLF. `tools/server/lobby-pool.sh` is authored on Windows
+## and run on a Linux VM; checked out with core.autocrlf=true its `#!/bin/sh` gains a
+## carriage return and the kernel looks for an interpreter literally named `/bin/sh\r`,
+## failing with `bad interpreter: /bin/sh^M`. Same class of bug as the .obj rule above,
+## with a worse symptom: the file looks fine in every editor.
+*.sh text eol=lf
 
 # Third-party licence texts — never converted, never normalised. These are
 # vendored documents that Form 03 quotes verbatim; `git add --renormalize .`
