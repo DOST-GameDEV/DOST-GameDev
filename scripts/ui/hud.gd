@@ -858,7 +858,16 @@ func show_countdown_tick(text: String) -> void:
 	# 4.1. Played from here rather than from main.gd's countdown loop so that
 	# every caller of this function gets it for free and the pop animation and
 	# its sound can never drift apart by a frame.
-	AudioManager.play("countdown_go" if text == "GO!" else "countdown_tick")
+	#
+	# 4.4, 2026-08-01 — now ALSO the announcer's "Tatlo! Dalawa! Isa! Simula!".
+	# ⚠️ Same one call as before, and the SFX behaviour is byte-for-byte
+	# unchanged: `play_countdown()` wraps the exact `play("countdown_go" if ...)`
+	# line this used to be. It exists because `countdown_tick` is the same string
+	# for 3, 2 and 1, so AudioManager cannot tell them apart from the inside, and
+	# `text` is the only place the number exists. Adding the mapping THERE rather
+	# than a second `AudioManager.play_vo(...)` line here keeps every audio
+	# decision in 🔊 `build sound`'s own file and leaves this one at one line.
+	AudioManager.play_countdown(text)
 	countdown_label.text = text
 	countdown_label.visible = true
 	countdown_label.modulate = UiTheme.HIGHLIGHT
@@ -1030,7 +1039,7 @@ func _build_scoreboard() -> void:
 	# stock theme: a flat white box next to a wood-and-amber timer, which is exactly
 	# the "doesn't look like our theme" complaint the wood restyle was done to fix.
 	# 🧑 2026-07-31, on the first screenshot of this build: *"ugly ui btw, not even
-	# same theme wtf is that white shit"*.
+	# same theme what is that white box"*.
 	_style_team_card(scoreboard_panel, score_title, UiTheme.AMBER)
 	score_title.add_theme_color_override("font_color", UiTheme.AMBER)
 	for slot in range(MatchManagerScript.PLAYER_COUNT):

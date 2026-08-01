@@ -35,10 +35,33 @@ it is what an audience at the demo will repeat back.
 | **Bit depth** | **24-bit** when recording |
 | **Peak level** | Aim **−6 dBFS**. Never let it touch 0. If it ever sounds crunchy, it is ruined — redo it |
 
+> ⚠️ **The 2026-08-01 batch came in at −0.9 to +0.2 dBFS**, i.e. at and slightly over full scale,
+> against the −6 this table asks for. Phone recorders normalise on export and there is usually no
+> setting for it, so this is not really something you can fix at your end — `vo_import.py`
+> normalises every take down to −6 on the way in, which also makes the takes match each other.
+> **It only matters if a take actually clipped while recording**, which no amount of turning down
+> afterwards can undo. That is what "if it sounds crunchy, redo it" is for.
+
 > **Record at 48 kHz / 24-bit and send us that.** Everything already in the game is **mono /
 > 44 100 Hz / 16-bit**, and `build sound` converts down to match. Do not convert it yourself —
 > converting twice loses quality that cannot come back, and the conversion is one command on our
 > end. **Send the masters.**
+
+> ### ⚠️⚠️ SEND WHAT YOUR RECORDER MAKES. DO NOT RENAME IT TO `.wav`.
+>
+> **The 2026-08-01 batch arrived as AAC audio in a 3GP container with a `.wav` extension** —
+> i.e. a phone voice-recorder export that had been renamed. Renaming a file does not convert it,
+> and **Godot has no AAC decoder**, so all eleven loaded as `null`: the pool stayed empty, every
+> line stayed silent, and the folder looked full the whole time. The audio itself was fine (mono,
+> 48 kHz, clean) — only the wrapper was wrong.
+>
+> So: if your recorder saves `.m4a`, `.3gp`, `.aac` or `.opus`, **send it with that extension.**
+> `tools/audio/vo_import.py` runs it through ffmpeg and it costs us nothing. A `.wav` that is not
+> a WAV costs an entire session, because everything downstream looks like it is working.
+>
+> This is the second time a delivery has been misnamed this way — see TABLE D, where the OST
+> masters arrived as MP3 data called `.wav`. Nobody is in trouble; it is just worth knowing that
+> the extension is the one thing we cannot check by looking.
 
 **If your recorder can only do 44.1 kHz / 16-bit mono, that is completely fine** — it is the
 format we ship anyway. Do not buy anything.
@@ -69,8 +92,13 @@ format we ship anyway. Do not buy anything.
    do not move. Name it `vo_roomtone_<yourname>.wav`. This lets us subtract the room's hiss out of
    every other file — it is the single most useful thing on this page and it costs 10 seconds.
 2. **One file per line ID.** Not one long file for everything.
-3. **Three takes inside each file**, back to back, with about a second of silence between them.
-   Vary them a little: one straight, one bigger, one smaller. We keep the best.
+3. **One take per file, and use `_1` / `_2` for extra takes** — `tumbang_1.wav`, `tumbang_2.wav`,
+   `tumbang_3.wav`. Vary them a little: one straight, one bigger, one smaller. The game keeps them
+   ALL and picks a different one each time, so extra takes are the single cheapest thing on this
+   page.
+   ⚠️ **This replaces the old "three takes inside one file" instruction.** The import does not
+   split a file, so three takes in one file becomes one long clip with two pauses in it. The
+   2026-08-01 batch got this right — one take per file — and the note was simply stale.
 4. **Leave one second of silence at the start of every file.** Do not start talking immediately.
 5. **No music, no effects, no reverb, no editing.** Send it raw. We do the rest.
 6. If you fluff a take, **do not stop the file** — pause, breathe, and do it again. Extra takes
@@ -79,19 +107,62 @@ format we ship anyway. Do not buy anything.
 ### Naming the files
 
 ```
-vo_<id>_<yourname>.wav
+<id>.wav              one take
+<id>_1.wav  <id>_2.wav    two or more takes of the same line
 ```
 
-The `<id>` is the **ID column** of the tables below, exactly as written. So Cy recording the
-"Tumbang!" line sends `vo_tumbang_cy.wav`. Room tone is `vo_roomtone_cy.wav`.
+The `<id>` is the **ID column** of the tables below, exactly as written. So the "Tumbang!" line
+is `tumbang.wav`, and two takes of it are `tumbang_1.wav` and `tumbang_2.wav`. Room tone is
+`vo_roomtone_<yourname>.wav`.
 
 **Do not rename the IDs.** They are what the code looks the file up by.
+
+> ✅ **This is what the 2026-08-01 batch already did, and it was right.** That delivery came in
+> as `clock_10.wav`, `count_go_1.wav`, `match_win_2.wav` — all eleven IDs correct, all eleven
+> takes correctly numbered. Keep doing exactly that.
+>
+> ⚠️ **Do not add the `vo_` prefix yourself, and do not put your name in the file.** The repo
+> filename is `vo_<id>_<take>.wav` and `tools/audio/vo_import.py` writes it — because the ID and
+> the take number are the only two things the code needs, and a name in the middle of them makes
+> `clock_10` parse as `clock`. Send the plain IDs; the import does the rest.
 
 ### Sending it
 
 Drop the whole folder in the shared drive — **do not commit audio yourself.** `.wav` is Git LFS
 tracked in this repo and a wrong `git add` on a big folder is annoying to undo. `build sound`
 takes it from the drive and commits it properly.
+
+## ✅ WHAT IS IN THE GAME RIGHT NOW — and what we are still waiting on
+
+**Delivered 2026-08-01 and playing: 11 takes across 8 IDs.** All of Table A's clock and result
+lines, and the whole round-start count.
+
+| ID | Takes in | Fires on |
+|---|---|---|
+| `count_3` `count_2` `count_1` | 1 each | the pre-round 3 · 2 · 1 |
+| `count_go` | 2 | "GO!" |
+| `clock_30` `clock_10` | 1 each | 30 s and 10 s left |
+| `match_win` | 2 | the match ends with a leader |
+| `match_draw` | 2 | the match ends tied |
+
+**Still empty, and every one of them is already wired — a file lands and it plays, no code:**
+
+| ID | Line | Why it matters |
+|---|---|---|
+| `tumbang` | **"TUMBANG!"** | ⭐ the money line. The lata going over is the whole game and it is silent |
+| `taya` | **"Taya!"** | round 1 start, and every tag |
+| `ayos` | **"Ayos!"** | a tag lands |
+| `bilis` | **"Bilis!"** | last 15 s, same beat as the music lift |
+| `title` | **"TUMBANG PRESO!"** | the main menu, once — the first thing anyone hears |
+| `lata_restored` | **"Nakatayo na!"** | the taya finishes the reset channel |
+
+> 🙋 **Which of these are still coming?** The list was deliberately trimmed and that is fine —
+> but the board needs to know the difference between "cut" and "not recorded yet", because a cut
+> line gets struck from this page and a pending one stays wired. **If only one more gets
+> recorded, make it `tumbang`.**
+>
+> ⚠️ `count_5` and `count_4` were correctly NOT recorded — the countdown is 3 · 2 · 1. Nothing
+> is missing there.
 
 > ✅ **The wiring is already built and waiting.** Every ID on this page has an event hooked up
 > in `audio_manager.gd` (or is filed above as needing one first) — the moment a file lands at
