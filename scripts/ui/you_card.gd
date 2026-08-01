@@ -31,7 +31,10 @@ const READY_FLASH_DURATION: float = 0.2
 const CHARGE_SHADER_PARAM: StringName = &"charge_ratio"
 
 @onready var card: PanelContainer = %Card
-@onready var header_label: Label = %HeaderLabel
+## ⚠️ `HeaderLabel` AND `HoldLabel` ARE DELETED FROM THE SCENE — 🧑 2026-08-01:
+## *"too ugly, too much shit happening in that box. confusing"*. "YOU" was a word on
+## the only card pinned to your own corner, and "GO GET IT" duplicated the LataCard's
+## objective line in the opposite corner. See `YouCard.tscn` for the full reasoning.
 @onready var class_label: Label = %ClassLabel
 @onready var detail_label: Label = %DetailLabel
 @onready var guard_dash_row: HBoxContainer = %GuardDashRow
@@ -43,7 +46,6 @@ const CHARGE_SHADER_PARAM: StringName = &"charge_ratio"
 ## channel applies only to the defending Person (the defender). Mirrors the split
 ## the moodboard itself draws: THE ATTACKER card shows the charged-throw glow,
 ## THE DEFENDER card shows the lata reset channel.
-@onready var hold_label: Label = %HoldLabel
 @onready var charge_row: HBoxContainer = %ChargeRow
 @onready var charge_key_label: Label = %ChargeKeyLabel
 @onready var charge_bar: ProgressBar = %ChargeBar
@@ -126,7 +128,6 @@ func refresh() -> void:
 	sb.content_margin_top = 8.0
 	sb.content_margin_bottom = 8.0
 	card.add_theme_stylebox_override("panel", sb)
-	header_label.add_theme_color_override("font_color", UiTheme.AMBER)
 	class_label.add_theme_color_override("font_color", UiTheme.CREAM)
 	detail_label.add_theme_color_override("font_color", accent)
 	# Q-6: Persons have no Guard/Dash (their assist slot is Tag/Throw) — an
@@ -184,12 +185,17 @@ func _update_guard_dash_meter() -> void:
 
 var _was_fatigued: bool = false
 
-## The label the sprint row returns to once fatigue clears. Pulled out so the
-## fatigue swap above and the initial paint cannot drift apart.
+## ⚠️ THE SPRINT ROW IS SILENT AT REST, AND THAT IS THE POINT. It read
+## `SPRINT [SHIFT]` next to the bar, every frame of every match — a key binding the
+## tutorial and the Settings screen both already teach, printed permanently in the
+## busiest corner of the HUD. 🧑 2026-08-01: *"too much shit happening in that box"*.
+##
+## The bar is the only bar on your own card; it does not need a caption to be read as
+## your stamina. What it DOES need words for is the one state that is not obvious from
+## a bar length — being locked out — so `FATIGUED` is the only text this row ever
+## shows, and it now means something when it appears.
 func _sprint_key_text() -> String:
-	if _character == null or not is_instance_valid(_character):
-		return "SPRINT"
-	return "SPRINT [%s]" % _action_key_label(_character, "sprint")
+	return ""
 
 ## Q-6: flash to CARD (~off-white) for ~0.2s when the bar returns to full so
 ## 'ready again' is readable without watching the bar.
@@ -210,8 +216,8 @@ func _bar_style(fill: Color) -> StyleBoxFlat:
 ## Reads the InputMap directly so a Settings rebind keeps this label truthful without
 ## the card needing to know about Settings at all. Now labels the SPRINT key, because
 ## that is what the bar beside it measures — see `_update_guard_dash_meter`.
-func _guard_dash_key_label(character: CharacterBase) -> String:
-	return "SPRINT [%s]" % _action_key_label(character, "sprint")
+func _guard_dash_key_label(_character_unused: CharacterBase) -> String:
+	return _sprint_key_text()
 
 ## General form of the above — same InputMap read, any base action name.
 ## character.action_name() already applies the per-player _p<N> suffix
@@ -244,7 +250,6 @@ func _set_carrier(carrier: Carrier) -> void:
 	_carrier = carrier
 	_charging = false
 	_channeling = false
-	hold_label.text = "GO GET IT"
 	if _carrier != null:
 		_carrier.charge_changed.connect(_on_charge_changed)
 		_carrier.held_changed.connect(_on_held_changed)
@@ -263,8 +268,12 @@ func _set_charge_shader_param(ratio: float) -> void:
 	if mat is ShaderMaterial:
 		(mat as ShaderMaterial).set_shader_parameter(CHARGE_SHADER_PARAM, ratio)
 
-func _on_held_changed(held: Slipper) -> void:
-	hold_label.text = "SLIPPER READY" if held != null else "GO GET IT"
+## ⚠️ THE CARD NO LONGER NARRATES WHAT YOU ARE HOLDING. The LataCard says what to do
+## about it, and the charge meter below appears the moment it matters. Kept as a hook
+## because `carrier.gd`'s signal is connected here and a dangling connection is worse
+## than an empty handler.
+func _on_held_changed(_held: Slipper) -> void:
+	pass
 
 func _on_reset_channel_changed(progress: float) -> void:
 	_channeling = progress >= 0.0
@@ -279,7 +288,6 @@ func _on_reset_channel_changed(progress: float) -> void:
 ## redundant and is the difference between the card fitting in the space a
 ## Prop's single Guard/Dash row already uses and needing more of it.
 func _update_row_visibility() -> void:
-	hold_label.visible = _is_attacker_person and not _charging and not _bump_charging
 	# ⚠️ THE CHARGE ROW IS SHARED BY THE ATTACKER'S THROW AND THE TAYA'S LUNGE, and
 	# sharing is now trivially safe in a way it was not before: the two belong to
 	# DIFFERENT ROLES, so no player can ever be charging both. It used to be shared by

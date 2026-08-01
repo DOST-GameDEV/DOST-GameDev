@@ -1512,3 +1512,44 @@ probe actually ran the script. **A screen that renders is not a script that load
 **Verified:** both result outcomes and all three intermission boundaries rendered at
 1920×1080 off the real `Main.tscn` and looked at; the taya rotates P1 → P2 → P3;
 clean `--headless --import`.
+
+### 2026-08-01 · 🖥️ `build ui` · the YOU card, and a bounds sweep · branch `HARRYDAKS`
+
+🧑, with a screenshot: *"fix this, implement this thing better, u can separate them if
+that helps, too ugly, too much shit happening in that box. confusing"*.
+
+**Five things were competing in one corner box**: a "YOU" header, the role, the name, a
+`SPRINT [SHIFT]` caption beside a bar, and an objective line. Three are gone.
+
+**"YOU" is deleted** — it is the only card pinned to the player's own corner, the only
+one with the HIGHLIGHT border, and it names the player inside it.
+
+**"GO GET IT" is deleted, and this is the separation the human offered.** It duplicated
+the LataCard's line in the OPPOSITE corner — "RETRIEVE A SLIPPER", "GET OUT OF THE BOX
+TO THROW", "HOLD E IN THE RING" — so two cards were answering *"what do I do now"* with
+different words. The split is now clean: **this card is who you are and what you have**
+(role, name, stamina, whichever action meter is live); **the LataCard is what to do**.
+
+**The sprint row is silent at rest.** It printed a key binding the tutorial and the
+Settings screen both teach, permanently, in the busiest corner of the HUD. The only
+word it shows now is `FATIGUED`, which is the one state a bar length cannot express.
+
+Role and name are one line: role is the hero (it changes every round and decides what
+every other control does), name is a quiet tail (it never changes).
+
+**⚠️ AND A BOUNDS SWEEP, because the same class of bug had been found by eye twice.**
+🧑: *"make sure nothing goes beyond screen too when we change resolution or smth"*.
+`tools/ui/bounds_sweep.tscn` instantiates **9 screens at 5 aspect ratios** and compares
+every visible `Control`'s `get_global_rect()` against the viewport, reporting the axis
+and the overhang. **PASS, 45 combinations.** Three things it taught while being built,
+all of them reasons a naive version would have been useless:
+
+* **Wait for the intro tween.** Sampled two frames in, every `ArrowButton` on MainMenu
+  is still at its off-screen rest position — eight false failures on one screen.
+* **Skip `ScrollContainer` contents.** SettingsPanel's volume rows sit 57 px below the
+  fold and are reached by scrolling, which is what a scroll view is FOR. The container
+  itself is still checked, so a scroll view that is off-screen is still caught.
+* **The pennants bleed off the LEFT on purpose**, and the proof is that the overhang is
+  identical at 16:9, 16:10, 21:9 and 4:3 — a resolution bug moves with the resolution.
+  Exempted on the left edge ONLY; top, right and bottom still apply, so the failure
+  actually reported (BACK falling off the bottom) would still be caught.
