@@ -2413,6 +2413,68 @@ func _rpc_reclaim_character(index: int, new_peer_id: int) -> void:
 		return
 	_apply_reclaim(character, index, new_peer_id)
 
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ SLIPPER RPCs ARE ROUTED THROUGH MAIN, NOT CALLED ON THE SLIPPER ITSELF.
+## THIS IS THE FIX FOR "non-host players and spectators cannot see thrown
+## slippers — only the host renders them."
+##
+## `slipper.gd`'s `_attach_to_hand()`/`_detach_from_hand()` reparent a slipper
+## onto a per-peer, runtime-built path under its carrier's hand
+## (`Skeleton3D/HandAttachment/HandPoint`) and back again on every pickup and
+## throw — see `_attach_to_hand()`'s own §2.24 doc. That doc already diagnosed
+## and fixed this exact "packets naming a node the receiver may not have
+## finished constructing" problem for the automatic `MultiplayerSynchronizer`
+## (silenced via `_set_sync_enabled` while carried), but `slipper.gd`'s five
+## explicit `@rpc` methods (`_rpc_owner`, `_rpc_grabbed`, `_rpc_thrown`,
+## `_rpc_landed`, `_rpc_deflected`) used the exact same node-path-based RPC
+## targeting under the hood and were never covered by that fix.
+##
+## Measured live, not assumed: a real host + join test, 46 seconds, the host
+## AI cycling through 20+ throw/catch loops — the join client received the
+## very first round-start equip (sent while every slipper was still at its
+## original, since-scene-load path) and NOTHING else for the rest of the
+## match. Every slipper stayed frozen mid-air in its carrier's hand on the
+## client's screen, exactly matching the bug report.
+##
+## Main.tscn's own root never reparents, so routing every slipper mutation
+## through it and re-dispatching by `slipper_index` (a plain int, immune to
+## path instability — see that var's own doc on `Slipper`) sidesteps the
+## problem instead of patching around it path-by-path.
+## ---------------------------------------------------------------------------
+
+@rpc("authority", "call_local", "reliable")
+func _rpc_slipper_owner(slipper_index: int, slot: int) -> void:
+	if slipper_index < 0 or slipper_index >= slippers.size():
+		return
+	slippers[slipper_index]._apply_owner(slot)
+
+@rpc("authority", "call_local", "reliable")
+func _rpc_slipper_grabbed(slipper_index: int, slot: int) -> void:
+	if slipper_index < 0 or slipper_index >= slippers.size():
+		return
+	slippers[slipper_index]._apply_grabbed(slot)
+
+@rpc("authority", "call_local", "reliable")
+func _rpc_slipper_thrown(slipper_index: int, slot: int, origin: Vector3, launch_velocity: Vector3) -> void:
+	if slipper_index < 0 or slipper_index >= slippers.size():
+		return
+	slippers[slipper_index]._apply_thrown(slot, origin, launch_velocity)
+
+## `audible` defaults so a caller that never needs the sound (a round reset
+## teleporting three slippers home on one frame — see `_apply_landed`'s own
+## doc) can omit it, same contract the old per-node RPC kept.
+@rpc("authority", "call_local", "reliable")
+func _rpc_slipper_landed(slipper_index: int, where: Vector3, audible: bool = false) -> void:
+	if slipper_index < 0 or slipper_index >= slippers.size():
+		return
+	slippers[slipper_index]._apply_landed(where, audible)
+
+@rpc("authority", "call_local", "reliable")
+func _rpc_slipper_deflected(slipper_index: int, from: Vector3, new_velocity: Vector3) -> void:
+	if slipper_index < 0 or slipper_index >= slippers.size():
+		return
+	slippers[slipper_index]._apply_deflected(from, new_velocity)
+
 ## The reclaim itself, split out so the spawn path can run it for a character that
 ## arrived AFTER the RPC did. See `_rpc_reclaim_character`'s note.
 func _apply_reclaim(character: CharacterBase, index: int, new_peer_id: int) -> void:
