@@ -54,23 +54,37 @@ theme_type_variation = &"HudCard"
 [node name="VBoxContainer" type="VBoxContainer" parent="Card"]
 layout_mode = 2
 
-[node name="HeaderLabel" type="Label" parent="Card/VBoxContainer"]
-unique_name_in_owner = true
+; ═══ IDENTITY: ONE LINE, NOT THREE ═══
+; ⚠️ THIS WAS "YOU" / "ATTACKER" / "P1" ON THREE SEPARATE ROWS. 🧑 2026-08-01:
+; *"too ugly, too much shit happening in that box. confusing"*.
+;
+; `HeaderLabel` ("YOU") is DELETED outright: it is the only card pinned to the
+; player's own corner, it is the only one with the HIGHLIGHT border, and it names
+; the player inside it — three things already saying "you" before the word does.
+;
+; The role and the name are one row now. The role is the hero (it changes every
+; round and decides what every other control does); the name is a quiet tail on the
+; same line, because it never changes and is only there to confirm which seat you are.
+[node name="IdentityRow" type="HBoxContainer" parent="Card/VBoxContainer"]
 layout_mode = 2
-theme_type_variation = &"HudCaption"
-text = "YOU"
+theme_override_constants/separation = 10
 
-[node name="ClassLabel" type="Label" parent="Card/VBoxContainer"]
+[node name="ClassLabel" type="Label" parent="Card/VBoxContainer/IdentityRow"]
 unique_name_in_owner = true
 layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"HudCaption"
+vertical_alignment = 1
+text = "ATTACKER"
+
+[node name="DetailLabel" type="Label" parent="Card/VBoxContainer/IdentityRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 0
 theme_type_variation = &"HudBody"
-text = "PERSON"
-
-[node name="DetailLabel" type="Label" parent="Card/VBoxContainer"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_type_variation = &"HudCaption"
-text = "TEAM A · DEFENSE"
+horizontal_alignment = 2
+vertical_alignment = 1
+text = "P1"
 
 [node name="GuardDashSpacer" type="Control" parent="Card/VBoxContainer"]
 layout_mode = 2
@@ -94,13 +108,13 @@ layout_mode = 2
 size_flags_horizontal = 3
 show_percentage = false
 
-[node name="HoldLabel" type="Label" parent="Card/VBoxContainer"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_type_variation = &"HudCaption"
-text = "GO GET IT"
-visible = false
-
+; ⚠️ `HoldLabel` IS DELETED. It printed "GO GET IT" / "SLIPPER READY" — the same
+; instruction the LataCard already gives in the opposite corner ("RETRIEVE A SLIPPER",
+; "GET OUT OF THE BOX TO THROW", "HOLD E IN THE RING"), which is most of what made this
+; box confusing: two cards answering "what do I do now" with different words.
+;
+; The split is now clean. THIS card is WHO YOU ARE and WHAT YOU HAVE — role, name,
+; stamina, and whichever action meter is live. The LataCard is WHAT TO DO.
 [node name="ChargeRow" type="HBoxContainer" parent="Card/VBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2
