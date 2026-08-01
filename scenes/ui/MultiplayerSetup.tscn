@@ -101,7 +101,7 @@ offset_top = 495.0
 offset_right = 960.0
 offset_bottom = 539.0
 theme_type_variation = &"MenuHeading"
-text = "JOIN A HOST"
+text = "JOIN A HOST OR A CODE"
 
 [node name="JoinField" type="TextureRect" parent="."]
 layout_mode = 0
@@ -131,7 +131,7 @@ theme_override_font_sizes/font_size = 45
 theme_override_styles/normal = SubResource("StyleBoxEmpty_flat")
 theme_override_styles/focus = SubResource("StyleBoxEmpty_flat")
 theme_override_styles/read_only = SubResource("StyleBoxEmpty_flat")
-placeholder_text = "192.168.1.12"
+placeholder_text = "192.168.1.12   or   A7SF"
 
 [node name="JoinButton" parent="." instance=ExtResource("2")]
 unique_name_in_owner = true
@@ -155,7 +155,7 @@ offset_top = 657.0
 offset_right = 960.0
 offset_bottom = 691.0
 theme_type_variation = &"MenuBody"
-text = "The host's address, port optional — 8910 is used if you leave it off. You pick your own seat and fighter; the host picks the map."
+text = "A host's address (port optional — 8910 is used if you leave it off), or an online server's 4-character code. You pick your own seat and fighter; the host picks the map."
 autowrap_mode = 2
 
 [node name="StatusLabel" type="Label" parent="."]
