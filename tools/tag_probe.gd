@@ -15,18 +15,33 @@ extends Node3D
 ##
 ## 🧑 2026-08-02: *"AI cant tag human for some reason? I thhink thats why u dont
 ## teleport like bots"*. `ai_probe` and `fair_probe` both run through
-## `GameLaunch.spectator`, which makes all four seats bots — so the one
-## configuration a player actually plays (one seat with `ai_controller == null`,
-## three with one) has never been under a probe at all. A rule that works between
+## `GameLaunch.spectator`, which makes all four seats bots — so the seat a player
+## actually drives has never been under a probe at all. A rule that works between
 ## two bots and fails against a human would be invisible to the entire board.
+##
+## ⚠️ THE VICTIM SEAT IS THE HUMAN'S SEAT, NOT AN UNCONTROLLED ONE. This header
+## used to say `victim=human` gives a seat with `ai_controller == null`. It does
+## not, and the probe's own second line has always said so (`victim seat=1
+## ai_controller=true`). `main.gd::_setup_local_match()` gives EVERY unit a
+## controller and creates the human's DISABLED — its own ⚠️ calls that out as
+## closing the last asymmetry, because `is_ai_driven()` is `ai_controller != null
+## AND is_enabled()`. So `solo_seat` is a real human seat; what it does not have
+## is a brain driving it.
 ##
 ## ⚠️ IT IS A ONE-VARIABLE EXPERIMENT AND THAT IS THE WHOLE DESIGN. Both runs put
 ## a victim in the SAME pose: standing still, inside the box, holding a slipper,
 ## a short walk from the taya, with the lata held upright so the tag is legal.
-## `victim=human` uses the seat the shipping single-player path leaves without a
-## controller; `victim=bot` uses a seat that has one, with its brain silenced so
-## it stands just as still. The only difference between the two runs is whether
-## the victim has an `AIController`, which is exactly the thing being accused.
+## `victim=human` uses `GameLaunch.solo_seat`, the seat the shipping single-player
+## path hands to the player; `victim=bot` uses a seat whose controller is enabled
+## in normal play, silenced here so it stands just as still. The only difference
+## between the two runs is whether anything is driving the victim.
+##
+## ⚠️⚠️ IT FORCES THE LATA UPRIGHT, SO IT CANNOT SEE THE COMMONEST ZERO. A real
+## round has the can DOWN 60-70% of the time and no tag verb is legal then — see
+## `ai_controller.gd::_plan_defender()`. A player reporting "the taya never tags
+## me" is usually reading that window, or is standing in the box EMPTY-HANDED,
+## which `is_taggable()` makes 100% safe by design. Six tags in 25 s here does not
+## mean six tags in 25 s of play, and this probe cannot tell you that it does.
 ##
 ## ⚠️ IT DIAGNOSES, IT DOES NOT ONLY GRADE. Frame by frame it records the victim
 ## side of the rule (`is_taggable()` and each of its three terms) and the taya
