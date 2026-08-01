@@ -1744,6 +1744,25 @@ func _heading_for(point: Vector3, launch: Vector3, lata: Lata) -> bool:
 
 ## Where a taya should wait for a retrieval: between a loose slipper in its box
 ## and the attacker who has to come and get it.
+## The attacker most likely to come for `slipper`: the nearest one with free hands.
+## Mirrors the attackers' own claim rule (`_is_nearest_claimant`), so the taya camps
+## the line the bot that is actually coming will walk up.
+func _nearest_claimant_to(slipper: Slipper) -> CharacterBase:
+	var best: CharacterBase = null
+	var best_d := INF
+	for slot in range(4):
+		var who := RoundManager.player_at(slot)
+		if who == null or who.is_defender or not who.can_act():
+			continue
+		if who.holding_slipper():
+			continue
+		var d := who.global_position.distance_to(slipper.global_position)
+		if d < best_d:
+			best_d = d
+			best = who
+	return best
+
+
 func _cover_point(lata: Lata) -> Vector3:
 	if lata == null:
 		return Vector3.INF
@@ -1756,8 +1775,16 @@ func _cover_point(lata: Lata) -> Vector3:
 		if maxf(absf(slipper.global_position.x), absf(slipper.global_position.z)) \
 				>= CharacterBase.confinement_radius:
 			continue # outside the box: not the taya's problem and not reachable
-		var holder := RoundManager.player_at(slipper.owner_slot)
-		if holder == null or holder.is_defender:
+		# ⚠️⚠️ WHOEVER IS ACTUALLY COMING, NOT WHOEVER OWNS IT. This used to read
+		# `RoundManager.player_at(slipper.owner_slot)` and camp the line from the
+		# slipper to its OWNER — correct while a slipper could only be picked up by
+		# one attacker, and wrong since pickups were opened on 2026-08-01
+		# (`slipper.gd::can_be_grabbed_by`). The nearest free attacker is the one who
+		# will walk in for it, and camping the owner's bearing instead put the taya
+		# on an approach nobody was using. It also skipped the slipper entirely when
+		# `owner_slot` was -1, which is every spare slipper in a short-handed match.
+		var holder := _nearest_claimant_to(slipper)
+		if holder == null:
 			continue
 		var toward := _at(holder) - slipper.global_position
 		toward.y = 0.0

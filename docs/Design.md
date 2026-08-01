@@ -387,8 +387,10 @@ deleted power bump was already tuned to 7.75 m/s against `FRICTION` 30, and
 
 ## 6 · The Defender (the taya)
 
-* **Body-block.** Physically stop a slipper before it reaches the lata. It deflects out
-  of the box, and **it pushes you** — see 6.1.
+* **Body-block.** Physically stop a slipper before it reaches the lata. It drops **just
+  short of you, inside the box**, and **it pushes you** — see 6.1. ⚠️ It used to be
+  kicked clear of the court; see §6.2 for why that quietly removed the taya's only way
+  to score.
 * **Reset the lata.** Stand in the ring, hold **E** for `RESET_CHANNEL_TIME` **1.5 s at
   neutral**, divided by the can's own SPEED (§9): 1.30 s on PASIP, 1.79 s on BOYBEN.
   It goes back on its mark **and then** stands up, in that order — a lata that stands
@@ -488,10 +490,31 @@ uses), and any vulnerable Attacker swept inside `LUNGE_TAG_RADIUS` during
 frame the lunge is live**, not once at the end, or a 2.5 m dash at 60 Hz tunnels past
 a body standing halfway along it.
 
-⚠️ **A BLOCKED SLIPPER DEFLECTS, IT DOES NOT DROP DEAD.** `DEFLECT_SPEED_SCALE` 0.62 of
-`LAUNCH_SPEED`, lifted by 5.0, directed **away from the blocker** rather than mirrored —
-a true reflection sends it wherever the incoming angle points, which is as often as not
-deeper into the box, i.e. the clustering this exists to remove.
+⚠️⚠️ **A BLOCKED SLIPPER DEFLECTS A SHORT WAY AND STAYS IN THE BOX — AND THAT IS THE
+TAYA'S WHOLE SCORING VERB.** `DEFLECT_SPEED_SCALE` **0.27** of `LAUNCH_SPEED`, lifted by
+5.0, directed **away from the blocker** rather than mirrored — a true reflection sends it
+wherever the incoming angle points, which is as often as not deeper into the box.
+
+⚠️ **IT WAS 0.62 AND THE CHANGE IS A RULE CHANGE, NOT A TUNE.** At 0.62 a block threw the
+slipper **5.7 m**, from the mark to the chalk or past it. An attacker is taggable exactly
+while holding a slipper INSIDE the box (`is_taggable()`), so a block that put the slipper
+OUTSIDE meant the retrieval never entered the box and **the tag could never happen** —
+measured at 22.5% of all points before, **1.8%** after the offence got strong enough to
+keep the can down (§2.30). At 0.27 it travels **2.5 m**: the attacker has to walk well
+inside the chalk for it, and is taggable from the moment they pick it up.
+🧑 2026-08-01: *"taya cant tag while can is down, to make it playable for defender, make
+the rebound/recoil of slippers weaker so that the attackers have to pick up the slippers
+inside the box and risk getting tagged"*, settled at *"im talking abt the slippers btw
+for 2.5 m"*.
+
+⚠️ **THE CLUSTERING THE OLD VALUE FIXED DOES NOT COME BACK.** The direction is still
+away-from-the-blocker, so a block still moves the slipper off the taya's own feet; it
+just no longer clears the court with it. `LATA_RECOIL_SCALE` **0.25** — a fraction of `LAUNCH_SPEED`
+in its own right, no longer nested inside the block's scale — is the slipper coming off
+the CAN, about **1.3 m**. 🧑: *"NO LATA RECOIL STAYS AT 1-1.5 m"*. The two were one
+constant until 2026-08-01 and had to move in opposite directions, which is exactly the
+hazard of a derived number: cutting the block for the tag fix silently collapsed the can
+knock to 0.3 m for a reason that had nothing to do with it.
 
 ⚠️ **AND A SLIPPER THAT SIMPLY LANDS NOW MAKES A SOUND — §2.17, fixed 2026-08-01.**
 `slipper_land` had been registered in `audio_manager.gd` with a mix level of its own
