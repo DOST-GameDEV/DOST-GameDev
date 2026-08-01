@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://bf1g67ajwlnf"
+path="res://.godot/imported/tsinelas_classic.obj-d001bfe7c544b077af21bba319b70fae.mesh"
+
+[deps]
+
+files=["res://.godot/imported/tsinelas_classic.obj-d001bfe7c544b077af21bba319b70fae.mesh"]
+
+source_file="res://assets/models/tsinelas_classic.obj"
+dest_files=["res://.godot/imported/tsinelas_classic.obj-d001bfe7c544b077af21bba319b70fae.mesh", "res://.godot/imported/tsinelas_classic.obj-d001bfe7c544b077af21bba319b70fae.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

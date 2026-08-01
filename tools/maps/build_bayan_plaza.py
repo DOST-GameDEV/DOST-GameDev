@@ -1007,16 +1007,20 @@ def court_line(name, axis, at, half_len, mesh_name=SIDE_LINE_MESH):
 
 
 add_mark("BaseCircle", "base_circle_decal", 0.0, 0.0)
-court_line("CourtEast", "z", COURT_X, COURT_Z)
-court_line("CourtWest", "z", -COURT_X, COURT_Z)
-court_line("CourtNorth", "x", -COURT_Z, COURT_X)
-court_line("CourtSouth", "x", COURT_Z, COURT_X)
-# The confinement square mirrors CharacterBase.CONFINEMENT_RADIUS, same as
-# Eskinita — its east/west edges ARE the court sides, so they are not redrawn.
+# ⚠️ TWO MARKINGS, AND ONLY TWO — see the same block in build_eskinita.py for
+# why the outer court rectangle was removed. A CLOSED SQUARE for the Defender's
+# Box and one throwing line each side, and nothing else on the floor.
+court_line("ConfinementEast", "z", COURT_X, CONFINEMENT_BOX_RADIUS)
+court_line("ConfinementWest", "z", -COURT_X, CONFINEMENT_BOX_RADIUS)
 court_line("ConfinementNorth", "x", -CONFINEMENT_BOX_RADIUS, COURT_X)
 court_line("ConfinementSouth", "x", CONFINEMENT_BOX_RADIUS, COURT_X)
-court_line("ThrowingLineNorth", "x", -6.0, COURT_X, "throwing_line_decal")
-court_line("ThrowingLineSouth", "x", 6.0, COURT_X, "throwing_line_decal")
+# ⚠️ DERIVED FROM THE BOX, NOT WRITTEN OUT — see the same block in
+# build_eskinita.py for why. A literal here silently put the throwing line inside
+# the play area the moment the box was widened on 2026-08-01.
+THROWING_LINE_OFFSET = 1.0
+THROWING_LINE_Z = CONFINEMENT_BOX_RADIUS + THROWING_LINE_OFFSET
+court_line("ThrowingLineNorth", "x", -THROWING_LINE_Z, COURT_X, "throwing_line_decal")
+court_line("ThrowingLineSouth", "x", THROWING_LINE_Z, COURT_X, "throwing_line_decal")
 
 # =============================================================================
 # THE PLAY-AREA BOUNDARY, MADE VISIBLE.

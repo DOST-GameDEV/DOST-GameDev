@@ -1,0 +1,11 @@
+Model Information:
+* title:	Low Poly Nike Sandals
+* source:	https://sketchfab.com/3d-models/low-poly-nike-sandals-8e77c949319148afb9134ba13f64046f
+* author:	les03 (https://sketchfab.com/les03official)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Low Poly Nike Sandals" (https://sketchfab.com/3d-models/low-poly-nike-sandals-8e77c949319148afb9134ba13f64046f) by les03 (https://sketchfab.com/les03official) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

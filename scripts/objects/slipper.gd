@@ -46,8 +46,28 @@ const HIT_RADIUS: float = 0.23
 const MAX_FLIGHT_TIME: float = 6.0
 ## The thrower cannot block their own throw for this long after release.
 const THROWER_IGNORE_TIME: float = 0.25
-## Where a LOOSE slipper sits relative to the floor it landed on.
-const REST_HEIGHT: float = 0.08
+## Where a LOOSE slipper sits relative to the floor it landed on — i.e. the height
+## of the mesh ORIGIN above the ground when the slipper is lying still.
+##
+## ⚠️ 0.08 -> 0.045 ON 2026-08-01, BECAUSE THE MESH ORIGIN MOVED (§ 5.2/5.4).
+## The four new slippers are centred on their VOLUME CENTROID rather than on the
+## sole's underside, which `Agent_Prompts.md` § 5.2 requires: the `Visual` node is
+## spun about the mesh origin on two axes at once (SPIN_SPEED_DEG 900,
+## TUMBLE_SPEED_DEG 520), so an origin at the underside made a thrown slipper
+## orbit its own sole instead of spinning in place. With the origin at the middle
+## of the slipper, "resting on the floor" is half a slipper up, not zero.
+##
+## ⚠️ THIS IS ONLY THE FALLBACK NOW — the live value is `_rest_height`, MEASURED
+## off whichever mesh the skin swapped in. One constant could not serve four
+## slippers: in world units they need tsinelas 0.034 · sike 0.043 ·
+## pantulog 0.056 · **crocs 0.161**, because a crocs is a tall hollow shell whose
+## centroid sits at 53% of its height rather than near the sole. Any constant that
+## suits the three flat ones buries the crocs to the laces. See
+## `_measure_rest_height()`.
+##
+## 0.045 is kept as the value a slipper uses before any skin is applied, which is
+## the three-flat-slipper average and cannot look wrong on the default.
+const REST_HEIGHT: float = 0.045
 ## Visual spin about the long axis while airborne, degrees/second.
 const SPIN_SPEED_DEG: float = 900.0
 ## End-over-end tumble, degrees/second. A real thrown slipper does both at once;
@@ -80,7 +100,27 @@ func _ready() -> void:
 	# `carrier.gd::_find_grabbable()` scans this group rather than the scene tree,
 	# so a slipper spawned anywhere is pickable without anybody registering it.
 	add_to_group("slippers")
+	# ⚠️ RUNS LAST IN `_process`, AND THAT IS WHAT PUTS THE SLIPPER IN THE HAND.
+	# A carried slipper copies its carrier's hand transform, and that hand is a
+	# `BoneAttachment3D` driven by the SKELETON, which the AnimationPlayer moves
+	# during idle processing. Copying it from `_physics_process` therefore reads
+	# the hand's position from BEFORE this frame's animation ran, so the slipper
+	# trails the palm permanently — measured at 98 mm with the carrier standing
+	# perfectly still, which is the reported "the shoe would float". A high
+	# priority makes this node process after the characters, so `_step_carried()`
+	# re-syncs against the hand's FINAL position for the frame.
+	process_priority = 100
 	_set_state(CarryState.LOOSE)
+
+## ⚠️ THE CARRY POSE IS UPDATED HERE, NOT ONLY IN `_physics_process`, for the
+## frame-ordering reason in `_ready()`. Flight and contact stay in the physics
+## step where they belong — this is a visual re-sync of a transform that is
+## already being driven, so doing it twice in a frame costs two vector copies and
+## cannot desync anything: it is derived entirely from the carrier's own
+## replicated transform, on every peer, exactly as `_step_carried()` documents.
+func _process(_delta: float) -> void:
+	if state == CarryState.CARRIED:
+		_step_carried()
 
 ## ---------------------------------------------------------------------------
 ## QUERIES — the gates `carrier.gd` and the HUD ask.
@@ -247,7 +287,7 @@ func _apply_landed(where: Vector3) -> void:
 	carrier = null
 	_thrower = null
 	_velocity = Vector3.ZERO
-	global_position = Vector3(where.x, maxf(where.y, REST_HEIGHT), where.z)
+	global_position = Vector3(where.x, maxf(where.y, _rest_height), where.z)
 	rotation = Vector3.ZERO
 	if _visual != null:
 		_visual.rotation = Vector3.ZERO
@@ -351,7 +391,7 @@ func _step_flying(delta: float) -> void:
 			_apply_landed(_ground_under(global_position))
 		return
 
-	if global_position.y <= REST_HEIGHT:
+	if global_position.y <= _rest_height:
 		if NetworkManager.is_networked():
 			_rpc_landed.rpc(_ground_under(global_position))
 		else:
@@ -383,7 +423,7 @@ func _flat_distance(a: Vector3, b: Vector3) -> float:
 	return Vector2(a.x - b.x, a.z - b.z).length()
 
 func _ground_under(where: Vector3) -> Vector3:
-	return Vector3(where.x, REST_HEIGHT, where.z)
+	return Vector3(where.x, _rest_height, where.z)
 
 func _spin(delta: float) -> void:
 	if _visual == null:
@@ -445,14 +485,153 @@ static func launch_velocity_for(origin: Vector3, target: Vector3, power: float) 
 ## Which roster entry this prop is wearing. -1 is "stock, never picked".
 var skin_index: int = -1
 
+## ⚠️ A SKIN IS A MESH **AND** A TINT SINCE 2026-08-01 — see the twin note in
+## `lata.gd::apply_skin()` for the full reasoning. It matters more here than it
+## does on the can: a Tsinelas, a Crocs, a Bakya and a Sike are four different
+## silhouettes, and the slipper is the object the player tracks through the air.
 func apply_skin(index: int) -> void:
 	if index < 0 or index == skin_index:
 		return
 	skin_index = index
 	var entry: Dictionary = CharacterRoster.slipper_at(index)
+	_apply_model(entry)
 	if not entry.has("tint"):
 		return
-	_tint_meshes(entry["tint"])
+	# ⚠️ WHITE MEANS "DO NOT TINT", AND THAT IS NOT A MICRO-OPTIMISATION.
+	# `_tint_meshes()` writes the tint into `albedo_color` on EVERY surface. On a
+	# TEXTURED prop that multiplies the art, so white is already a no-op. On an
+	# UNTEXTURED one `albedo_color` IS the colour, so white repaints the whole
+	# model white — which is exactly what happened to the classic tsinelas the
+	# moment it was restored: a brown foam sole with a tan strap rendered as a
+	# blank white slipper. 🧑: *"what happened to my orig sliupper bruh? it has
+	# just white for its bottom"*.
+	#
+	# Every prop now carries its own colour, either in its texture or in its
+	# materials, so white is the honest way to say "this skin brings its own
+	# look". Skipping the walk makes that true for textured and untextured props
+	# alike instead of only for textured ones.
+	var tint: Color = entry["tint"]
+	if tint == Color.WHITE:
+		return
+	_tint_meshes(tint)
+
+## How long a slipper is in world units, toe to heel. Every skin is normalised to
+## this regardless of what scale its author saved it at.
+##
+## ⚠️ IT IS THE NUMBER `HIT_RADIUS` AND `REST_HEIGHT` ARE QUOTED AGAINST, so it
+## is a gameplay constant wearing a cosmetic hat. 0.691 is what the generated
+## meshes already measured (0.432 mesh x the 1.6 visual scale in
+## `TsinelasVisual.tscn`), kept exactly so those two constants did not have to
+## move again when downloaded models arrived.
+const MODEL_LENGTH: float = 0.691
+
+## How high THIS skin's origin sits when the slipper is lying on the ground,
+## measured off the mesh rather than assumed. Falls back to `REST_HEIGHT`.
+##
+## ⚠️ ONE CONSTANT COULD NOT SERVE FOUR SLIPPERS, AND THE CROCS IS WHY.
+## Every mesh is centred on its volume centroid, so "resting on the floor" means
+## "origin one half-slipper up" — and that half differs per skin. Measured, in
+## world units: tsinelas 0.034 · sike 0.043 · pantulog 0.056 · **crocs 0.161**.
+## A crocs is a tall hollow shell, so its centroid sits at 53% of its height
+## rather than near the sole, and any constant that suits the three flat ones
+## buries it to the laces. Measuring it per skin retires the whole class of bug —
+## and it means a model dropped in later cannot float or sink either.
+var _rest_height: float = REST_HEIGHT
+
+func _measure_rest_height(visual: Node3D) -> void:
+	var lowest := INF
+	for node in visual.find_children("*", "VisualInstance3D", true, false):
+		var mesh_node := node as VisualInstance3D
+		var box: AABB = mesh_node.get_aabb()
+		# Relative to the Slipper, so `Visual`'s 1.6 drama scale is included —
+		# `REST_HEIGHT` has always been a world-space number.
+		var relative: Transform3D = global_transform.affine_inverse() \
+			* mesh_node.global_transform
+		for i in range(8):
+			lowest = minf(lowest, (relative * box.get_endpoint(i)).y)
+	if lowest < INF:
+		_rest_height = -lowest
+
+## Swaps the model under `Visual` to the one this skin names.
+##
+## ⚠️ IT TAKES A BARE MESH **OR** A WHOLE SCENE, and the second case is why this
+## is more than one line. The four generated props are `.obj` files that load as
+## a `Mesh`; the models the human sourced from Sketchfab and Poly Pizza are
+## `.glb` files that load as a `PackedScene` carrying their own node hierarchy,
+## materials and embedded textures. Instancing those wholesale is the ONLY way
+## they keep the look they were downloaded for.
+##
+## ⚠️ AND IT NORMALISES THEM AT RUNTIME RATHER THAN FROM HAND-TUNED CONSTANTS.
+## Downloaded models arrive at whatever scale and origin their author used — the
+## Pantulog's bounding box is 41 units across and starts 18 units off its own
+## origin, the Sike's is 22. Rather than storing a bespoke scale and offset per
+## entry (four more numbers to get wrong, and wrong again for the next model
+## somebody drops in), the AABB is measured after instancing and the wrapper is
+## scaled and re-centred from it. Any model dropped into the roster comes out the
+## right size, centred, with no per-model tuning at all.
+func _apply_model(entry: Dictionary) -> void:
+	if not entry.has("model"):
+		return
+	var visual := get_node_or_null("Visual")
+	if visual == null:
+		return
+	var resource := load(String(entry["model"]))
+	if resource == null:
+		push_warning("Slipper.apply_skin: cannot load %s" % entry["model"])
+		return
+
+	if resource is Mesh:
+		var target := visual.find_children("*", "MeshInstance3D", true, false)
+		if target.is_empty():
+			return
+		var instance := target[0] as MeshInstance3D
+		# Overrides do NOT clear themselves when the mesh beneath them changes,
+		# and the surface counts need not even match — see the twin note in lata.gd.
+		for surface in range(instance.get_surface_override_material_count()):
+			instance.set_surface_override_material(surface, null)
+		instance.mesh = resource
+		_measure_rest_height(visual)
+		return
+
+	if resource is PackedScene:
+		_swap_scene_model(visual, resource as PackedScene)
+
+## Replaces `Visual`'s contents with a normalised instance of `scene`.
+func _swap_scene_model(visual: Node3D, scene: PackedScene) -> void:
+	for child in visual.get_children():
+		child.queue_free()
+		visual.remove_child(child)
+	var holder := Node3D.new()
+	visual.add_child(holder)
+	var model := scene.instantiate()
+	holder.add_child(model)
+
+	var bounds := _merged_bounds(holder)
+	if bounds.size.z <= 0.0001:
+		return
+	# `Visual` already carries Art_Direction §2's 1.6 drama scale, so the target
+	# here is expressed in the mesh's own space and that multiply still applies.
+	var factor: float = (MODEL_LENGTH / 1.6) / bounds.size.z
+	holder.scale = Vector3.ONE * factor
+	# Re-centre on the bounding box, in the PARENT's space (hence the factor).
+	holder.position = -bounds.get_center() * factor
+
+## Union of every visual's bounds under `root`, in `root`'s own space.
+func _merged_bounds(root: Node3D) -> AABB:
+	var bounds := AABB()
+	var first := true
+	for node in root.find_children("*", "VisualInstance3D", true, false):
+		var visual_node := node as VisualInstance3D
+		var box: AABB = visual_node.get_aabb()
+		var relative: Transform3D = root.global_transform.affine_inverse() \
+			* visual_node.global_transform
+		box = relative * box
+		if first:
+			bounds = box
+			first = false
+		else:
+			bounds = bounds.merge(box)
+	return bounds
 
 ## ⚠️⚠️ THE FLOOR GLOW THAT SAYS WHICH SLIPPER IS YOURS. 🧑 2026-08-01: *"Your
 ## personal slipper glows with an outline on the arena floor."* It pairs with the foot

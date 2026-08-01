@@ -37,8 +37,14 @@ the game and has to read against asphalt. It may not approach the role hues.
 |---|---|---|
 | Base circle | ring at r **0.70**, world origin | `env_kit.gd::_base_circle_decal` |
 | Lata "home" for the countdown | r **0.9** | `Design.md` §5.2 |
-| Confinement marker | **SQUARE** at \|x\| = \|z\| = **5.0** | `CharacterBase.CONFINEMENT_RADIUS`, parsed out of the .gd by both map builders — **do not reshape that `const` line** |
-| Throwing line | **6.0** from centre, 8.0 wide, one per side | `throwing_line_decal` |
+| Confinement marker | **SQUARE** at \|x\| = \|z\| = **6.5** | `CharacterBase.CONFINEMENT_RADIUS`, parsed out of the .gd by both map builders — **do not reshape that `const` line** |
+| Throwing line | **7.5** from centre (= box + 1.0), one per side | `throwing_line_decal`, position derived from the box in both builders |
+
+⚠️ **THE BOX WENT 5.0 → 6.5 ON 2026-08-01** (human ask, twice). The court width follows it
+automatically — `COURT_X = CONFINEMENT_BOX_RADIUS` — but the throwing line did **not**: it
+was a literal `6.0`, which the widened box swallowed, putting the chalk mark 0.5 inside
+the area the throw gate refuses from. It is derived now. `Design.md` §2 carries the
+reasoning for the value.
 | Team-side line | 6.0 × 0.08, `PANEL` at 40 % | subordinate to the throwing line on purpose |
 
 A square and a circle of the same "radius" agree only at the four edge midpoints; on the
@@ -67,9 +73,69 @@ parented under the `Visual` node.
 ⚠️ **Twelve skins exist in code and none has ever been rendered.** See `Agent_Prompts.md`
 §4.
 
+## 4b · Third-party assets and credit — **read before shipping**
+
+Everything in this table is **CC-BY-4.0**: free to use commercially, and the
+author **must be credited**. Each `.glb` ships with its own `*_LICENSE.txt`
+beside it in `assets/models/kits/footwear/`, exactly as delivered — do not delete
+those files, they are the licence compliance.
+
+| Prop | Model | Author | Source | Licence |
+|---|---|---|---|---|
+| TSINELAS | — | *this project* | `tools/models/generate_all.gd` | project's own |
+| CROCS | "crocs" | **fnk** | [sketchfab.com/3d-models/crocs-fbede59e…](https://sketchfab.com/3d-models/crocs-fbede59e03394e928ed0eccf27e8fc23) | CC-BY-4.0 |
+| PANTULOG | "Pink Slipper" | **The Withered Rose** | [sketchfab.com/3d-models/pink-slipper-af5b6388…](https://sketchfab.com/3d-models/pink-slipper-af5b6388d4f240389591a4ac09fedf06) | CC-BY-4.0 |
+| SIKE | "Low Poly Nike Sandals" | **les03** | [sketchfab.com/3d-models/low-poly-nike-sandals-8e77c949…](https://sketchfab.com/3d-models/low-poly-nike-sandals-8e77c949319148afb9134ba13f64046f) | CC-BY-4.0 |
+
+**The credit has to be REACHABLE, not just written here.** A licence that says
+"author must be credited" is not satisfied by a line in a design doc nobody
+ships. These four belong on a credits screen or in the submission's asset list
+alongside the existing Kenney CC0 and OpenGameArt CC0 credits.
+**Filed to 🖥️ `build ui` as § CHECKLIST 1.11.**
+
+> ### ⚠️ THE SIKE CARRIES REAL NIKE TRADE DRESS, AND THAT IS A KNOWN, ACCEPTED RISK
+>
+> The human's own drawing is a parody — "SIKE" with a swoosh — and the intent was
+> to swap the N for an S on the model. **That could not be done.** The model's
+> wordmark and swoosh are **geometry, not texture** (the file carries no images at
+> all; every colour is a `baseColorFactor`), so changing the letter means editing
+> the mesh, which is modelling, which is the Blender step this lane is forbidden.
+>
+> The model therefore renders an actual Nike swoosh and wordmark. 🧑, told this:
+> *"im lowk okay with nike as long as it doesnt make shit lag man"*. Recorded as a
+> decision, not an oversight — for a competition submission a real trademark on a
+> hero prop is a small but genuine risk, and the two ways out are a different
+> slide model or deleting the wordmark's faces.
+
 ## 5 · The toon pass
 
-Flat colour, no textures, no UVs, no PBR. Two shaders: `toon.gdshader` (banded lambert + a
+⚠️ **"NO TEXTURES" IS NO LONGER TRUE OF THE TWO HERO PROPS, AS OF 2026-08-01.**
+This law used to read *"Flat colour, no textures, no UVs"* without exception, and
+it still governs the environment and the characters. The lata and the tsinelas
+are now textured, on a direct human ruling: they drew four cans by hand — three
+carrying readable parody wordmarks (PASIP, BOYBEN PERMAGAD, DECADES TUNA) — and
+supplied flattened 360° label wraps for the purpose. 🧑: *"you can use the
+flattened shit for textures bcz its easier that way, you cant redraw this too
+bro"*. Stripped to a flat `Kd`, a Pasip and a Decades are the same grey cylinder
+and all of the Filipino specificity is gone with the label.
+
+**It costs the tint system nothing**, which was the objection. `toon.gdshader`
+already had a textured path (added for the Kenney kit atlas), and on it
+`albedo_color` MULTIPLIES the sampled texture rather than replacing it — so a
+textured skin carries `tint` **white**, which multiplies to a no-op, and
+`lata.gd::_tint_meshes()` is untouched and still works for anyone who wants a
+coloured variant. `obj_writer.gd` gained UV emission and `map_Kd`; the untextured
+path is byte-identical, so every environment mesh regenerates unchanged.
+
+**One material per hero prop, and that is forced.** The tint walk overwrites
+every surface it finds, so a second untextured material would be repainted flat
+white by a white tint. Where a part needs a different colour it gets it by being
+projected onto a different part of the ONE texture — which is why the cans' end
+caps are UV-pinned to their wrap's rim bands.
+
+Everything else below still holds:
+
+Flat colour, no PBR. Two shaders: `toon.gdshader` (banded lambert + a
 rim term) and `outline.gdshader` (inverted hull). Prop outlines are sized in **world** units
 (`OUTLINE_WORLD_WIDTH` 0.012) because meshes differ in scale; Persons take an early-out and
 keep `person_outline.tres`. Large environment silhouette pieces get an outline; small

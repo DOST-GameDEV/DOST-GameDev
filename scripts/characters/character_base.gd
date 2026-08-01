@@ -116,10 +116,34 @@ const FATIGUE_SPEED_SCALE: float = 0.75
 ## ⚠️ IT NOW MEANS SOMETHING SLIGHTLY DIFFERENT AND THE NUMBER HAS NOT BEEN
 ## RE-TUNED FOR IT. It used to confine the defending Person and the lata in a 2v2.
 ## It now confines ONE Defender while THREE Attackers converge on the same box.
-## 5.0 is inherited, not measured against the new shape — filed to the backlog.
+##
+## ⚠️ RAISED 5.0 -> 6.5 BY 🎨 `build model` ON 2026-08-01, ON HUMAN INSTRUCTION.
+## 🧑, twice: *"the current play area feels too small"* and *"i said bugs like play
+## area needs to be bigger"*. 5.0 was measured for ONE taya against ONE attacker;
+## it now has to hold one taya against three converging ones, and a box that three
+## people can flood is a box with no defensive play in it.
+##
+## 6.5 is +30% on the edge and +69% on the AREA (100 -> 169 square units), which is
+## the largest step that still leaves the box coverable. It was chosen against two
+## hard limits rather than by taste:
+##   · the throw has to reach. The gate is `max(|x|,|z|) >= radius`, so the
+##     shortest legal throw is now 6.5 m. `LAUNCH_SPEED` 17.0 against `GRAVITY`
+##     20.0 gives a 45-degree range of v^2/g = 14.45 m, so 6.5 sits comfortably
+##     inside it — 7.5 would too, 12.0 would not.
+##   · the court has to hold it. `COURT_Z` is 13.0 on both maps and the Attacker
+##     spawn ring is radius + `SAFE_ZONE_MARGIN` = 8.5, so the ring still lands on
+##     paving. Both map builders' `surfaces.verify()` re-checks this on every run.
+##
+## ⚠️ THIS CONST IS ⚖️ `build fair`'s FILE, NOT `build model`'s, AND THE VALUE IS A
+## STARTING POINT THEY OWN. It is moved here only because the maps and the chalk
+## are derived FROM it and the human asked for the bigger area twice — a map lane
+## that could not move it could not deliver the item at all. `build fair` §2.2 is
+## the same number and is filed to re-measure it against a real 1-vs-3 match; note
+## that it also pulls on §2.1, since a box three attackers can enter more easily is
+## a taya who collects less uncontested passive defence.
 ##
 ## ⚠️ CHANGING THIS AT RUNTIME MOVES THE PHYSICS BOX AND NOT THE PAINTED ONE.
-const CONFINEMENT_RADIUS: float = 5.0
+const CONFINEMENT_RADIUS: float = 6.5
 ## The live value every gameplay read goes through, promoted so a probe can sweep
 ## the box size without editing this file.
 static var confinement_radius: float = CONFINEMENT_RADIUS
