@@ -54,6 +54,19 @@ the lata and slipper as props; stamina, shove, the lunge tag, the throw gate;
 the HUD, tutorial, lobby, result screen; spectator; netcode and late-join;
 four cans and four slippers with per-skin meshes; both maps at the 6.5 box.
 
+> ### 🧑 STANDING ORDER, 2026-08-01 — THE LAST TWO LANES ARE DEFERRED
+>
+> * **⚖️ `build fair` RUNS LAST, after everything else.** Verbatim: *"we will do
+>   fairness last"*, and the reason given is a play observation rather than a
+>   schedule preference — *"the game already feels fair, its js that the ai is so
+>   horrible"*. So the numbers are not the thing in front of the player. **This
+>   moves `build fair` from run 4 to run 6**; §3's table is updated to match.
+> * **🔊 `build sound` RUNS WHENEVER THE AUDIO EXISTS** — *"do audio whenever its
+>   available"*. It is not blocked on a lane, it is blocked on files. Its §4.7
+>   (nobody has ever heard this game) does not close until they land.
+> * Both are **deferrals, not cancellations.** §2.1 in particular now has its first
+>   real measurement to work from — see §7's `build ai` entry and §2.25.
+
 **The three things most likely to be wrong, in order:**
 
 1. **`build fair` §2.1 — passive defence pays the taya 900 points a round
@@ -160,8 +173,16 @@ above it has committed.
 | **1** | 🎨 `build model` | Opus 5 · medium | the lata, the tsinelas, the play area | Graphics · Aesthetics |
 | **2** | 🔊 `build sound` | Sonnet 5 · medium | music, VO, SFX, the mix | Music and Sound Design |
 | **3** | 🖥️ `build ui` | Sonnet 5 · high | `scripts/ui/**`, `scenes/ui/**`, the tutorial | Gameplay · Esports |
-| **4** | ⚖️ `build fair` | Opus 5 · xhigh | every number, and the feedback that sells it | **Esports Potential** |
-| **5** | 🤖 `build ai` | Opus 5 · high | `ai_controller.gd`, Single Player | Gameplay · Completeness |
+| **4** | 🤖 `build ai` | Opus 5 · high | `ai_controller.gd`, Single Player | Gameplay · Completeness |
+| **5** | 🔊 `build sound` *(again)* | Sonnet 5 · medium | the mix, once the files exist | Music and Sound Design |
+| **6** | ⚖️ `build fair` | Opus 5 · xhigh | every number, and the feedback that sells it | **Esports Potential** |
+
+⚠️ **REORDERED 2026-08-01 ON HUMAN INSTRUCTION — see the standing order in §1.**
+`build fair` was run 4 and is now run 6 (*"we will do fairness last"*), and
+`build ai` moved up into its place because the human's own reading was that the
+AI, not the balance, was what the game was failing on. `build ai` ran on
+2026-08-01 and its §6 is closed; §8's ship list is closed except 8.4, which the
+same human deferred explicitly.
 
 ⚠️ **`build ai` runs LAST on human instruction** — *"we will focus on making
 multiplayer first then single player next time."* Do not promote it. It also
@@ -253,6 +274,55 @@ what specifically. **Tick only your own section.**
   `character_index=0,0,6,9` for P1..P4, byte-identical on both host and client
   FIN snapshots. ⚠️ The same run surfaced a real, unrelated networking bug —
   filed to `build fair` as §2.24, since it lives in files this lane does not own.*
+**Filed by 🤖 `build ai` 2026-08-01:**
+
+- [x] 1.17 ⚠️ **The CREDITS screen was missing the one third-party asset that is not
+  CC0, and its AUDIO line had gone stale.** Fixed in `credits_panel.gd`
+  **out of row, on direct human instruction** (🧑: *"add ccby i missed"*, *"add
+  it to credits too in the game lowkey"*). Two changes:
+  * **TYPEFACE row added.** `Darumadrop One` is **SIL Open Font License 1.1**, not
+    CC0. The OFL is satisfied by shipping the licence text — and
+    `assets/ui/fonts/DarumadropOne_LICENSE.txt` does ship — so this was not a
+    breach. But a screen that lists eight CC0 Kenney kits and omits the only
+    licensed asset in the build reads as an oversight, because it was one. The
+    three CC-BY-4.0 models were already correct and untouched.
+  * **AUDIO line corrected.** It claimed *"all music and sound effects are
+    original, synthesised in-house by this project's own tools"*, which stopped
+    being true when the OST landed — 🧑: *"we made the OST tracks btw and will
+    add our own sfx later"*. The tracks are **written by the team**, not emitted
+    by `generate_sfx.py`. Still all ours; no longer all synthesised.
+
+  *Verified: rendered through `MainMenu.tscn`'s own CREDITS button at 1600×900 and
+  looked at — both rows on screen and legible.*
+- [x] 1.18 **`tools/ui/credits_shot.gd` takes an optional scroll offset now**, added
+  out of row for the same instruction. **The courtesy credits had never been
+  photographed**: the panel is a fixed-size `ScrollContainer` so every capture this
+  tool had ever produced stopped at the "EVERYTHING ELSE" heading, and a taller
+  `--resolution` does not help because the panel does not grow with the window. A
+  licence line added below that fold was unverifiable by the only tool that exists
+  for it — which is precisely the *"the control is added to the tree is not the
+  claim"* failure this probe's own header warns about. The argument is **additive**:
+  omit it and the tool behaves exactly as before.
+  `... tools/ui/credits_shot.tscn -- <out_dir> 420`
+- [ ] 1.16 ⚠️ **The BOTS picker on `MatchSetup.tscn` describes a game that no longer
+  exists, in measured-sounding numbers that were never true of this build.**
+  `match_setup.gd::DIFFICULTIES[].detail` sells EASY as *"it blocks 29% of throws"*,
+  NORMAL *"blocks about 38%"*, HARD *"blocks 62% of throws and rounds end fast"* —
+  sourced, per the comment above the table, from `Checklist.md` §Phase 9 RUN 12/14,
+  i.e. the deleted 2v2. Nothing in the current build measures "blocks % of throws"
+  and the AI those runs measured was replaced today. **This is the reachable-control
+  problem from the other side: the control works, and its explanation lies.**
+  `scripts/ui/**` is yours, so here are the real numbers, measured over one
+  complete 4-round match per tier (`tools/ai_probe.tscn`, mean physics step 0.0167 s)
+  — paste or paraphrase, but the figures are honest:
+  * **EASY** — hits the lata with **10%** of its throws, and throws the most of the
+    three because it will not wait for a clear lane. Never leads a moving target,
+    burns its whole stamina bar, and blunders roughly one plan in three.
+  * **NORMAL** — **45%**. Reads your wind-up, waits about a second for a throwing
+    lane to clear, leads what it chases, and keeps a quarter of its stamina back.
+  * **HARD** — **59%**. Steps into slippers already in the air to body-block them,
+    camps the loose slipper in its box waiting for the retrieval, and almost never
+    makes a mistake.
 - [ ] 1.13 **`colormap.png` UID mismatch still warns once per character per load.**
   The twelve rigs reference `uid://dpu4hdrq88up6`; `colormap.png.import` declares
   `uid://c0kd7i625gon4`, so Godot falls back to the text path and prints a WARNING
@@ -335,6 +405,49 @@ what specifically. **Tick only your own section.**
   case **22 mm** on Pasip. The fix is per-skin collision from `lata.gd::apply_skin()`,
   where the mesh swap already happens. *(Was numbered 2.19 by its filer, which
   collided with the ownership item above.)*
+
+**Filed by 🤖 `build ai` 2026-08-01 — §2.1 finally has numbers. Read 2.25 FIRST.**
+
+- [ ] 2.25 ⚠️⚠️ **PASSIVE DEFENCE MEASURED AT LAST, AND THE 900-POINT ALARM IS
+  CONDITIONAL ON THE OFFENCE BEING BROKEN.** §2.1 has been the board's number-one
+  suspect on arithmetic alone (+10/s × 90 s = 900 against +100 a knockdown) and
+  nobody had ever measured it, because until this session no attacker could score
+  at all. `tools/ai_probe.tscn` now reports where every point in a whole 4-round
+  match came from. Four runs, one complete match each, mean physics step verified
+  at 0.0167 s:
+
+  | run | DEFENSE | LATA DOWN | TAG | note |
+  |---|---|---|---|---|
+  | **AI with the old broken throw** | **76.6%** | 0.0% | 22.4% | 329 throws, **0** knockdowns |
+  | EASY | 47.5% | 19.0% | 33.5% | |
+  | NORMAL | 31.5% | 50.8% | 17.7% | |
+  | HARD | 21.3% | 51.5% | 27.2% | |
+
+  **Passive defence is 21–32% of all points against a competent offence, and 77%
+  against none.** So the term is not dominant by construction — it is dominant
+  exactly when the attackers cannot convert, and it degrades smoothly as they get
+  better. That is arguably the right shape for a catch-up term. ⚠️ **Two things
+  this does NOT settle**, and both are yours: this is bot-vs-bot, and a human taya
+  who simply hides behind the lata may collect the uncontested 900 the arithmetic
+  warns about; and the taya still wins on cumulative score in most runs. Re-measure
+  against a human before moving the number, and note that lowering it now would be
+  tuning against the AI's competence rather than against the rule.
+- [ ] 2.26 ⚠️ **`RESET_CHANNEL_TIME` disagrees with itself in three places.**
+  `lata.gd` has `const RESET_CHANNEL_TIME: float = 1.5`; `Design.md` §6's table
+  says **1.5 s**; `Design.md` §4's control table and §6's prose both say **hold E
+  for 2.5 s**, and `carrier.gd::_step_reset_channel`'s own doc comment says *"runs
+  the 2.5 s channel"* while calling `Lata.RESET_CHANNEL_TIME`. The CODE is 1.5 and
+  is self-consistent; three pieces of prose describe a different game. Not touched
+  — `Design.md` and the number are both yours.
+- [ ] 2.27 **The AI is now a measuring instrument for anything in your list.**
+  `tools/ai_probe.tscn` plays whole matches with four bots and prints throws,
+  knockdowns, hit rate, near misses, tags, sabotages, metres travelled, seconds
+  spent taggable and the full point breakdown, with pass/fail gates and a non-zero
+  exit. `AIController.DIFFICULTY_TIERS` is where the bots' own numbers live and is
+  **`build ai`'s file, not yours** — but sweeping a GAME number (`SABOTAGE_WINDOW`,
+  `TAG_STUN_TIME`, `CONFINEMENT_RADIUS`) and re-running the probe at a fixed tier
+  is now a real experiment instead of a look. ⚠️ It refuses to grade if the physics
+  step drifted, so `scale=` cannot quietly distort a result.
 
 **Filed by 🖥️ `build ui` 2026-08-01, found while verifying §1.12 on two real peers:**
 
@@ -490,29 +603,132 @@ what specifically. **Tick only your own section.**
 
 ### 🤖 `build ai` — Single Player *(RUNS LAST)*  ·  items **6.x**
 
-- [ ] 6.1 **`ai_controller.gd` is a placeholder, not a baseline.** ~250 lines against
-  the 3 172 it replaced. **Do not tune it. Replace it.**
-- [ ] 6.2 No lookahead, no dodging, no shove, no body-blocking intent.
-- [ ] 6.3 **1-vs-3 is an asymmetry nothing here has ever measured.** Three attackers
-  chasing one slipper is the obvious failure mode.
-- [ ] 6.4 **Keep the intent harness** — every decision through
-  `CharacterBase.ai_set_intent()`.
-- [ ] 6.5 `tools/ai_probe.gd` is stale and is yours.
-- [ ] 6.6 ⚠️ **0 KNOCKDOWNS.** The bots throw and miss. Measured: **51 flights, 0
-  knockdowns** over a 40 s match (`prop_probe.tscn`). That is aim, and aim is yours.
-- [ ] 6.7 The bots barely move: **P3 = 14.2 m, P4 = 26.0 m** over a 90 s round
-  against a 3.45 m/s walk.
+**Every measurement below is `tools/ai_probe.tscn`, one whole 4-round match
+(360 live seconds) at `scale=6`, mean physics step verified at 0.0167 s.**
+
+- [x] 6.1 **Replaced, not tuned.** The placeholder is gone; `ai_controller.gd` is a
+  three-layer controller (observe with tier-scaled lag → plan one enum on a think
+  tick → act every frame) with thirteen plans, a shared read-only board for
+  spacing, and a per-seat personality. *Verified: `ai_probe` PASSes every gate at
+  all three tiers; the run at HEAD is in §7.*
+- [x] 6.2 **Lookahead, dodging, the shove and body-blocking all exist and all
+  measure.** Lookahead: `_lane_blocked()` walks the real launch velocity and asks
+  the same question `Slipper._first_body_hit()` will. Body-block:
+  `_intercept_point()` predicts a slipper already in the air and only commits to
+  a point the taya can physically reach in time. Dodging: reads
+  `observed_lunge_charge()`, the tell that is replicated for exactly that reason.
+  Shove: the sabotage play, +50. *Verified: measured tags 15–29 per match and
+  DEFENSE falling 47.5% → 21.3% from EASY to HARD as the offence gets better —
+  the two sides scale against each other rather than one being inert.*
+- [x] 6.3 **1-vs-3 measured, and the "obvious failure mode" was a rules bug rather
+  than a coordination problem.** `_nearest_loose_slipper()` sent all three bots at
+  whichever slipper was nearest — but a slipper has belonged to ONE attacker since
+  2026-08-01 (`Design.md` §5.2) and `can_be_grabbed_by()` refuses everybody else,
+  so two of the three were always standing on a prop pressing a button it would
+  never answer. Each bot now fetches its OWN slipper, and the real three-body
+  problem — one taya can only cover one bearing — is answered by `spacing`, which
+  scores sixteen bearings against where the taya is and where its rivals have
+  already committed. **Nobody cooperates**; reading the court is individually
+  rational. *Verified over a whole match at NORMAL: throws 18/18/21/22 and
+  knockdowns 9/11/11/12 across the four seats, seat score spread **0.23**.*
+- [x] 6.4 **Intent harness kept, and narrowed.** Every decision still leaves through
+  `ai_set_intent()`. It also now emits only the **eight headings a keyboard has**
+  (`_drive()`, threshold sin 22.5°) — the bot has a human's movement vocabulary,
+  not an analogue one, which is what makes a fairness number a comparison rather
+  than a category error. *Verified: `grep` shows no write to `velocity` in the
+  file.*
+- [x] 6.5 **`tools/ai_probe.gd` rewritten** — 1 579 lines asserting a deleted 2v2
+  down to a fairness harness that plays whole matches through the game's own
+  spectator path. Its `_take_over_human_slot()` hack, flagged for removal since
+  2026-07-30, is **gone**: `GameLaunch.spectator` is the shipping version of it.
+- [x] 6.6 ⚠️ **FIXED: 0 knockdowns → 35–59 per 4-round match, and the cause was
+  not aim.** Every throw was released at power ≈ 0.36 because the old plateau
+  detector compared a `0.005` epsilon against the **0.0043** one 60 Hz frame
+  actually adds — so it fired on the third frame of every wind-up, for ever.
+  Power is a SPEED scale (`17.0 × lerp(0.35, 1, power)`), so 0.36 is 10.6 m/s,
+  whose range is **5.6 m**, against a shortest legal throw of **6.5 m**. There was
+  no launch angle; `_solve_arc()` fell back to "throw along the line and fall
+  short", exactly as its own comment promises. `_min_power_for()` now inverts the
+  range equation and the bot charges to a real margin over it.
+  *Verified BOTH WAYS. Green: 79 throws / 43 knockdowns (54.4%) at NORMAL. **Red:
+  re-shim the predecessor's 3-frame release into the new controller and the same
+  probe reports `throws 329 knockdowns 0` and exits 1** — the §6.6 signature
+  reproduced on demand.*
+- [x] 6.7 **FIXED: 14.2 m → 171–250 m per round, every seat.** Two causes. Two of
+  three attackers had nothing to do (6.3), and every plan that reached its goal
+  called `_stop()` — including one that legally *cannot act*, an armed attacker
+  waiting for a lata that is lying down. Measured on the first run of the new
+  probe: two bots standing still for 22 s and 57 s, with the lata down for ~70 of
+  180 live seconds. Arrival now loiters instead of freezing.
+- [x] 6.8 **Three difficulty tiers that are three different opponents**, 17 knobs
+  each, every one of them something the bot visibly does (§ DIFFICULTY in the
+  file). *Measured, one whole match each:*
+
+  | tier | throws | knockdowns | hit rate | tags | DEFENSE | LATA DOWN | TAG |
+  |---|---|---|---|---|---|---|---|
+  | EASY | 129 | 13 | **10.1%** | 23 | 47.5% | 19.0% | 33.5% |
+  | NORMAL | 83 | 37 | **44.6%** | 21 | 32.4% | 43.1% | 24.5% |
+  | HARD | 94 | 55 | **58.5%** | 29 | 21.3% | 51.5% | 27.2% |
+
+  EASY throws the MOST and scores the least — it will not wait for a lane and it
+  blunders — which is the shape a weak player actually has.
+- [x] 6.9 **The bots stopped moving in lockstep.** 🧑: *"the ai is so horrible they
+  all move at the same time"*. Three controllers built in one `for` loop shared one
+  think interval started on one frame. Each bot now boots on a random think phase
+  and carries a `_Personality` seeded **from its seat** — tempo, hands, nerve,
+  hesitation and a favourite bearing — so the four differ from each other while two
+  runs of the same match still give the same four characters.
+- [~] 6.10 **Sabotage is wired, geometrically correct and measured RARE** — 0–1 per
+  match. The shove sends the victim along `shover → victim`, so it only pays if it
+  points at the taya; that filter is in. What makes it rare is real and not a bug:
+  it needs a rival vulnerable inside the box, the taya within a few metres of them,
+  the shover in a 1.6 m arc on the correct side, 25 of a 50-point stamina bar, and
+  a 7.5 s cooldown up — while `spacing` is deliberately keeping the attackers
+  apart. **Unverified: that this is the right frequency rather than merely the
+  honest one.** Left for whoever owns `SABOTAGE_WINDOW` (§2.3).
+- [~] 6.11 **Nothing here has been seen by a human on two real peers.** AI is
+  host-only by construction (`main.gd::_attach_ai` under `is_host()`), so this
+  should be structurally fine — but "should be" is not a measurement, and
+  `net_twopeer_probe` has never been run with bots playing well enough to matter.
 
 ### 📦 Ship checklist — **not a lane**  ·  items **8.x**
 
 Done by whoever runs `build ai`, at the end of that session.
 
-- [ ] 8.1 `export_presets.cfg` is only true about code that has since been deleted.
-- [ ] 8.2 Probes and `tools/**` must not ship in the export.
-- [ ] 8.3 A clean-clone build test.
-- [ ] 8.4 ⚠️ **The build in `build/` is from 2026-07-31 14:19 and is badly stale** —
-  it predates every music fix, the prop meshes and the two-peer bug fixes. If
-  anyone is playtesting from that zip they are testing a different game.
+- [x] 8.1 **`export_presets.cfg` audited, and the premise of this item was wrong —
+  the real defect was 8.2.** Read end to end against the current tree: neither
+  preset names a deleted class, scene or feature, so there was nothing "only true
+  about code that has since been deleted" to remove. What WAS untrue: the Windows
+  preset carried an empty `export_path` while the macOS one had a path, so the
+  Windows preset could not be exported from the editor at all and the documented
+  one-liner had to supply it. Set to `build/TumbangPreso.exe`, matching
+  `tools/export.md`. *Recorded rather than silently reworded — an item that says
+  "this file is wrong" and does not say how is an item the next person re-audits
+  from scratch.*
+- [x] 8.2 ⚠️ **FIXED, AND IT WAS REAL: the probes were shipping.**
+  `export_filter="all_resources"` with an empty `exclude_filter` puts every
+  resource in the project into the `.pck`, and nothing shipped references `tools/`
+  or `docs/` (grepped), so 35 probe scenes, their scripts, the Python map builders
+  and every design document were riding along in the build handed to judges.
+  Both presets now carry
+  `*/tools/*, */docs/*, */.worktrees/*, */__pycache__/*, *.md, *.py, *.blend, *.blend1, *.xcf`.
+  *Verified by exporting the same clean tree twice and searching the two `.pck`s:
+  **`ai_probe` appears 8 times before and 0 after**, `tools/` 0 after, and the pack
+  drops 38 644 400 → 38 179 772 bytes. The "before" run is the red proof.*
+- [~] 8.3 **The export itself is proven; the clean-CLONE half is not.** Both
+  `--export-release "Windows Desktop"` runs above were done in a **fresh
+  `git worktree` at `HEAD`** — a tree with no `.godot/` and no local edits, which
+  is most of what a clean clone tests — and both produced a complete `.exe` +
+  `.pck` with export templates `4.7.1.stable`. **Unverified: that the exported
+  build RUNS**, and a real clone into another directory.
+- [ ] 8.4 ⚠️ **The build in `build/` is older than the board says — both zips are
+  from 2026-07-29 23:14, which predates the entire HARRYDAKS pivot**, not just the
+  music fixes. Anyone playtesting from `TumbangPreso-win64.zip` is playing the 2v2
+  game with playable props. **DELIBERATELY NOT REFRESHED THIS SESSION, on direct
+  human instruction** — 🧑, during this session: *"dont do it yet"*, *"we will edit
+  mroe shit pa"*, *"odnt fix the .exe yet"*. The presets are now correct, so the
+  refresh is the two commands in `tools/export.md` and nothing else; do it when the
+  edits stop.
 
 ---
 
@@ -571,9 +787,25 @@ THIS LANE ABSORBED `build feel`. You own the FEEDBACK for the things you tune as
 well as the values: you cannot decide whether the tag is worth 100 points without
 also noticing what it looks like when it lands.
 
-Start with §2.1. Passive defence pays the taya +10/s for 90 seconds —
-900 points — against +100 for a knockdown. Measure a real match before you decide;
-do not reason your way to a number. Re-measure at the 6.5 box, not 5.0.
+Start with §2.25, NOT §2.1 — they are the same subject and 2.25 is the evidence.
+Passive defence pays the taya +10/s for 90 seconds (900 points) against +100 for a
+knockdown, and until 2026-08-01 nobody had measured it because no attacker could
+score at all. It is measured now: DEFENSE is **21-32% of every point** against a
+competent offence and **77%** against a broken one. The alarming arithmetic is real
+but conditional. Read 2.25's table before you touch the number, then go and get the
+half it does not have — this is all bot-vs-bot, and a HUMAN taya who hides behind
+the lata is the case the arithmetic actually warns about.
+
+You have a real instrument now. `tools/ai_probe.tscn` (🤖 `build ai`'s file — read
+it, do not edit it) plays whole 4-round matches with four bots and prints the full
+point breakdown, throws, knockdowns, hit rate, near misses, tags, metres travelled
+and seconds spent taggable, with gates and a non-zero exit. Sweep one of YOUR
+numbers, hold `tier=` fixed, re-run, compare. It refuses to grade if the physics
+step drifted, so a fast run cannot quietly lie to you.
+
+⚠️ Do not tune a game number to compensate for how good the bots are. The AI is
+three configurable tiers and its knobs are `AIController.DIFFICULTY_TIERS`, which is
+not your file. If a number only looks wrong at HARD, it is probably not the number.
 
 Then work the rest. Some are deliberately one decision made twice: 2.6/2.7/2.14
 are all the tag; 2.4/2.15 are both the shove; 2.11/2.22 are both "a blocked
@@ -771,6 +1003,35 @@ which slipper is theirs. ⚠️ **If a value must always hold, write it directly
 not infer it from an action that has its own preconditions.** The tell was a field
 whose own comment claimed it was assigned at spawn while grep showed two writers,
 both of them state transitions.
+
+**13 · A BODY ONLY TURNS ON A FRAME IT WALKS, SO ANYTHING AIMED ALONG `-basis.z`
+CANNOT BE AIMED STANDING STILL.** `character_base.gd` calls `look_at()` inside the
+`if direction:` branch of `_physics_process`. The lunge and the shove both fire
+along the facing. So a controller that walks up to its target and then politely
+stops has frozen its own aim at whatever heading the last step happened to end on —
+and it can never correct, because correcting requires moving. Measured: a taya
+standing 0.78 m from a vulnerable attacker for **42.9 s of a 90 s round**, charging
+and firing lunges into empty air. **If it is aimed by the body, it is aimed by
+walking.** The same shape bit the shove's 70° arc in the same session.
+
+**14 · "NOT MOVING" AND "NOT TRYING TO MOVE" ARE DIFFERENT BUGS AND ONE METRIC
+CANNOT SEE BOTH.** `move_and_slide()` writes the RESOLVED velocity back onto the
+body, so a unit leaning on a prop or on another capsule reads exactly like a unit
+pressing nothing at all. `ai_probe`'s first version gated on speed alone and failed
+a good run for "P1 stood still 20.3 s" while P1 was walking into someone every one
+of those frames. Ask the game's own `input_pressed()` alongside the speed: still +
+no intent is a frozen brain, still + intent is a stuck body, and they need opposite
+fixes. **Both are real** — the same split later caught a bot wedged for **64.4 s**
+that the speed-only metric would have reported identically to a healthy one.
+
+**15 · A RELEASE CONDITION MUST BE BOUNDED IN SECONDS BY A CLOCK YOU OWN.** The
+predecessor AI released a charge when the power "stopped rising", comparing a 0.005
+epsilon against the 0.0043 that one 60 Hz frame adds — permanently true, so every
+throw fired on frame three at minimum power, and minimum power cannot reach the
+lata from outside the box. Its author had already been bitten the other way (a
+wind-up held for a whole round) and reached for a condition about a value another
+file owns. **51 flights, 0 knockdowns** was the visible result and it read as bad
+aim for two sessions. If a commitment must end, end it on your own timer.
 
 **11 · BLENDER IS OUT OF THE PIPELINE — a recorded finding, do not re-litigate.**
 A full session was spent editing the Kenney rigs through Blender MCP and was
@@ -989,3 +1250,111 @@ session (*"fix bugs firs thto, do lan ltr"*) — `NetworkManager.MAX_PLAYERS` is
 used correctly everywhere as the SEAT count (4, a real game-design invariant) and
 only incorrectly reused as the ENet connection cap at `network_manager.gd:264`;
 decoupling those two is the shape of that fix when it is picked back up.
+
+**2026-08-01 · 🤖 `build ai`** — the AI replaced, measured over whole matches, and
+the ship list closed except the one item the human deferred.
+
+*The headline number was not about aim.* §6.6 read "51 flights, 0 knockdowns" and
+had been read as an aiming problem since it was taken. It was a release-power
+problem: the plateau detector compared a `0.005` epsilon against the **0.0043** one
+60 Hz frame adds to `charge_power()`, so it fired on the third frame of every
+wind-up and every throw left at power ≈ 0.36. Power is a speed scale, 0.36 is
+10.6 m/s, and that reaches **5.6 m** against a shortest legal throw of **6.5 m** —
+so `_solve_arc()`'s discriminant went negative on every single shot and it fell back
+to "throw along the line and fall short", exactly as its own comment promises. The
+replacement inverts the range equation (`v_min = sqrt(g(Δy + sqrt(Δy² + d²)))`) and
+charges to a margin over it. **79 throws / 43 knockdowns at NORMAL**, and re-shimming
+the 3-frame release into the new controller reproduces `throws 329 knockdowns 0` on
+demand — the red proof §6 trap 3 asks for.
+
+*§6.3's "three bots chasing one slipper" was a rules bug, not a coordination
+problem.* `_nearest_loose_slipper()` predates ownership. A slipper has belonged to
+one attacker since 2026-08-01 and `can_be_grabbed_by()` refuses everybody else, so
+two of three bots were always standing on a prop pressing a button it would never
+answer — which is also most of §6.7's missing 280 metres. What is left of 1-vs-3 is
+a genuine three-body problem (one taya covers one bearing) and it is answered by
+scoring sixteen bearings against where the taya is and where the other two have
+already committed. **Nobody cooperates** — they are rivals, and reading the court is
+individually rational.
+
+*The human's own report was the most useful bug description of the session.* 🧑:
+*"the ai is so horrible they all move at the same time"*. Three controllers built in
+one `for` loop, one think interval, started on one frame. Random think phase plus a
+`_Personality` seeded from the SEAT (so bots differ from each other while two runs
+of one match still give the same four characters) is the whole fix, and it is the
+difference between three bodies and three players.
+
+*Three things the probe found that no amount of reading would have.* An armed
+attacker whose lata is lying down is refused the throw and had nowhere to put the
+waiting, so it stood still — two bots for 22 s and 57 s, with the lata down ~70 of
+180 live seconds. A taya that walks up to its target and stops can never aim its
+lunge again, because `look_at()` only runs on a frame the body moves (§6 trap 13):
+42.9 s adjacent to a vulnerable attacker, lunging at nothing. And one bot spent
+**64.4 s** wedged, which the first version of the metric could not distinguish from
+idling at all (§6 trap 14) — patience is now bounded and there is a general
+unstick step.
+
+*Three tiers that are three opponents,* 17 knobs each, all measured: EASY hits
+**10%** of its throws (and throws the most, because it will not wait for a lane),
+NORMAL **45%**, HARD **59%**. 🧑 asked for exactly this — *"i think its realistic if
+the ai sometimes make mistakes and theyre not perma perfect"* — and it is `mistake`,
+`react`, `aim_error`, `sprint_reserve` and `hesitation` rather than one difficulty
+multiplier.
+
+*§2.1 has evidence for the first time,* filed as §2.25: passive defence is **21-32%**
+of every point against a competent offence and **77%** against the broken one, so
+the 900-point alarm is real but conditional on the attackers not converting. Not
+acted on — it is `build fair`'s number and this is bot-vs-bot.
+
+*The ship list.* 8.2 was real and measurable: `exclude_filter` was empty, so 35
+probe scenes, the Python map builders and every design doc were shipping to judges —
+`ai_probe` appears **8 times** in the exported `.pck` before the fix and **0** after.
+8.1's premise was not: neither preset names deleted code, and what was actually
+wrong was a missing `export_path` on the Windows preset. ⚠️ **8.4 deliberately left
+open on direct instruction** — 🧑: *"dont do it yet"*, *"odnt fix the .exe yet"*,
+*"we will edit mroe shit pa"*. Both zips in `build/` are from **2026-07-29**, which
+is older than the board said and predates the whole pivot.
+
+**2026-08-01 · 🤖 `build ai` (follow-up)** — a stale-documentation sweep, on direct
+instruction (🧑: *"can you actually scan read me and docs to make sure theres no
+stale shit"*). Sixteen present-tense claims across four documents were describing a
+game that had been deleted, and three of them were instructions somebody would have
+followed:
+
+* **`README.md` told a new contributor to branch from `feature/objects-overhaul-v2`**
+  — a branch of the 2v2 design — and `docs/README.md` said the same. Both now name
+  `HANSDAKS-test`.
+* **`README.md`'s "how to verify visual work" command did not run.**
+  `tools/render_probe.tscn` builds its match out of `team_is_can_side`, `is_can` and
+  `report_round_result()`, all deleted on 2026-07-31, so it cannot boot. Replaced
+  with `harrydaks_shot.tscn` and `ai_probe.tscn`, and the dead one is called dead.
+* **`docs/README.md` named `--check-only` as *"the one cheap real gate"*.** It is
+  not: it does not load autoloads, so it reports a false "Identifier not found" for
+  every autoload reference in a file. The real gate is `--headless --path <abs>
+  --import` grepped for `Parse Error`. This one cost time in this very session.
+
+Also corrected: the controls table was missing **`lunge` (RMB)** entirely — the only
+verb the taya scores with — and `clean_feed` (H); it still described the shove as a
+1.25 s hold and the lata reset as 2.5 s (it is a tap and 1.5 s); "there is still no
+music" against two OST tracks that play; "thirteen binaries are LFS-tracked" against
+**176**; a `scripts/` tree listing `carriable`, `hitbox`, `hurtbox` and
+`scripts/abilities/`, none of which exist; "docs/ four files" beside a five-file
+table; and a camera directive whose second half directed a camera for props that
+stopped being players. `docs/HUMAN.md`'s **"do not record these"** section was the
+worst of them and is inverted now: it told the team to hold back round numbers
+because 📋 `build rules` was about to introduce paired sets — **the opposite
+happened**, paired sets were deleted, and round numbers have been safe to record for
+a day while "round winner" and "match point" describe rules the game does not have.
+
+⚠️ **Out of row, all of it recorded**: `docs/Design.md` is ⚖️ `build fair`'s and two
+lines of its prose said the reset channel was 2.5 s while its own table and the code
+both said 1.5 — prose corrected to the authoritative value, and the decision itself
+left filed as §2.26. `docs/HUMAN.md` is 🔊 `build sound`'s. `scripts/ui/credits_panel.gd`
+and `tools/ui/credits_shot.gd` are 🖥️ `build ui`'s — see §1.17 and §1.18.
+
+⚠️ **Not verified:** any of this on two real peers (§6.11); that the exported build
+RUNS (§8.3); whether sabotage's measured 0-1 per match is the right frequency
+(§6.10). ⚠️ **Worked in a `git worktree` for most of the session** because another
+lane had an uncommitted parse error in `main.gd` — a file §2.19 still flags as
+having no owner, and the second time this session that being ownerless cost
+somebody time.
