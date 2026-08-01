@@ -152,9 +152,34 @@ func is_flying() -> bool:
 ## what makes the floor glow and the foot arrow legible: an indicator can only point
 ## at YOUR slipper if the word "yours" means something.
 ##
-## ⚠️ `owner_slot` IS ASSIGNED AT SPAWN AND NEVER REASSIGNED NOW. `host_grab()` still
-## writes it, harmlessly, to the slot that already owns it — left in place rather
-## than removed so the spawn path and the grab path keep one writer.
+## ⚠️⚠️ `owner_slot` IS ASSIGNED AT EVERY ROUND RESET — AND UNTIL 2026-08-01 THIS
+## COMMENT CLAIMED THAT AND IT WAS NOT TRUE. Nothing wrote the field at spawn:
+## the only writers were `_apply_grabbed()` and `_apply_thrown()`, so a slipper
+## nobody had yet touched carried `-1`, and "yours" was undefined precisely when
+## the player most needs to be told which one is theirs.
+##
+## `main.gd::_reset_slippers()` appeared to cover it — it hands each attacker
+## their slipper with `host_grab()` at the top of a round — but that is a courtesy
+## pickup, not an assignment, and it can silently refuse. `can_be_grabbed_by()`
+## requires `who.can_act()`, which is `round_active and state == NORMAL`, and a
+## character that is still settling at a reset is neither. **Measured**
+## (`fpp_carry_probe`, solo, seat 1): `Slipper1 owner_slot=-1 state=0
+## carrier=false d=0.02` — sitting at its own player's feet, unowned — while the
+## two the grab did reach read 2 and 3.
+##
+## Three shipped things read this field and every one of them fails OPEN or
+## SILENT on `-1`:
+##   · the foot arrow (`offscreen_indicators.gd`) never points at anything;
+##   · the owner glow (`_update_owner_glow`) never lights;
+##   · **the ownership RULE itself is unenforced** — the gate below opens with
+##     `owner_slot >= 0`, so an unowned slipper is grabbable by ANY attacker,
+##     which is exactly the rule `Design.md` §5.2 exists to impose.
+##
+## It is `host_assign_owner()` now, called from the reset before the grab is
+## attempted, so ownership is a property of the SEAT and no longer a side effect
+## of a pickup that may or may not land. `_apply_grabbed()`/`_apply_thrown()` still
+## write the field and are now genuinely harmless: the gate below has already
+## refused anybody but the owner, so they can only ever rewrite the same slot.
 func can_be_grabbed_by(who: CharacterBase) -> bool:
 	if who == null or state != CarryState.LOOSE:
 		return false
@@ -167,6 +192,39 @@ func can_be_grabbed_by(who: CharacterBase) -> bool:
 ## ---------------------------------------------------------------------------
 ## STATE TRANSITIONS. Host decides; every peer is told.
 ## ---------------------------------------------------------------------------
+
+## Host-side. Says which seat this slipper belongs to for the round, or -1 for
+## "nobody" (the spare slipper in a match with fewer than three attackers).
+##
+## ⚠️ REPLICATED, LIKE EVERY OTHER STATE CHANGE ON THIS OBJECT, and for the reason
+## `Design.md` §7 gives about the lata's `is_upright`: a `MultiplayerSynchronizer`
+## writes a property directly, so the setter's side effects never run on the peer
+## that RECEIVED it. The owner glow is driven off this value on every peer
+## independently, so it has to arrive as a call, not as a silent property write.
+##
+## ⚠️ IT DOES NOT TOUCH `carrier` OR `state`. Ownership and possession are
+## different questions — a loose slipper lying in the box still belongs to
+## somebody, and that is the whole point of the field.
+func host_assign_owner(slot: int) -> void:
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		return
+	if NetworkManager.is_networked():
+		_rpc_owner.rpc(slot)
+	else:
+		_apply_owner(slot)
+
+@rpc("authority", "call_local", "reliable")
+func _rpc_owner(slot: int) -> void:
+	_apply_owner(slot)
+
+func _apply_owner(slot: int) -> void:
+	if owner_slot == slot:
+		return
+	owner_slot = slot
+	# The glow is per-peer and polls, but ownership also changes when the ROLE
+	# rotates and no state change on this slipper fires for that — so nudge it
+	# here rather than waiting for a poll that may be gated on state.
+	_update_owner_glow()
 
 func host_grab(by: CharacterBase) -> void:
 	if NetworkManager.is_networked() and not NetworkManager.is_host():

@@ -75,6 +75,7 @@ four cans and four slippers with per-skin meshes; both maps at the 6.5 box.
 | `tools/models/lata_floor_probe.gd` | the can against the floor, 4 skins × 2 states |
 | `tools/models/fpp_carry_probe.tscn` | the held slipper is visible and correct in FIRST PERSON |
 | `tools/models/roster_spread_probe.tscn` | four seats wear four different Persons, and every viewer agrees |
+| `tools/models/slipper_owner_probe.tscn` | every slipper is owned, ownership rotates with the taya, and non-owners are refused |
 | `tools/audio/music_probe.tscn` | menu bed / round bed play in the right states and nowhere else |
 | `tools/ui/solo_seat_probe.tscn` | the Single Player seat board actually stores a seat |
 | `tools/ui/net_twopeer_probe.tscn` | two real peers produce identical causal event streams |
@@ -234,23 +235,13 @@ what specifically. **Tick only your own section.**
   `uid://c0kd7i625gon4`, so Godot falls back to the text path and prints a WARNING
   for each. Harmless on screen, four lines of noise in every probe run and every
   session. In nobody's §3 row — the rigs are explicitly out of `build model`'s.
-- [ ] 1.14 ⚠️ **`Slipper.owner_slot` IS NOT SET AT SPAWN, so "your slipper" is
-  undefined until you have already picked it up once.** `slipper.gd`'s own comment
-  claims it "IS ASSIGNED AT SPAWN AND NEVER REASSIGNED"; measured, it is only
-  written by `_apply_grabbed()`/`_apply_thrown()`. `main.gd::_reset_slippers()`
-  hands each attacker their slipper with `host_grab()` at round start, which is
-  what usually masks it — but when that grab does not take, the slipper sits LOOSE
-  with `owner_slot = -1`. **Measured** (`fpp_carry_probe`, solo, seat 1):
-  `Slipper1 owner_slot=-1 state=0 carrier=false d=0.02` at the local player's own
-  feet, while the two bot-held ones read 2 and 3. Two shipped features read this
-  field and both silently do nothing when it is -1: the foot arrow
-  (`offscreen_indicators.gd`, `slipper.owner_slot != local.player_slot`) and the
-  owner glow (`slipper.gd::_update_owner_glow`, `owner_slot >= 0`). ⚠️ It also
-  means the ownership RULE is unenforced in that window —
-  `can_be_grabbed_by()` opens with `if owner_slot >= 0`, so a `-1` slipper is
-  grabbable by any attacker, which is exactly the rule `Design.md` §5.2 added.
-  `slipper.gd` is ⚖️ `build fair`'s and `main.gd` is nobody's; filed to the lane
-  that owns the two READERS.
+- [x] 1.14 **`Slipper.owner_slot` was not set at spawn — FIXED by 🎨 `build model`
+  2026-08-01, out of row, on direct human instruction** (*"fix the bug u found"*).
+  Filed here first because this lane owns the two READERS; the fix landed in
+  `slipper.gd` and `main.gd` instead. Full record in §4.4 item 5.20. **Your two
+  features now have something to read**: the foot arrow (1.6) and the owner glow
+  (2.20) can resolve "yours" from the first frame of a round, so both are worth
+  re-checking on sight.
 
 **Filed by `build ui` 2026-08-01 — two visual claims that need a PLAYED match:**
 
@@ -391,6 +382,22 @@ what specifically. **Tick only your own section.**
 - [x] 5.18 **The menu OST is hard-cut when a match starts.** Out of this lane's row,
   on direct human instruction (🧑: *"pls js abruptly cut it"*). See §4.3 item 4.2
   and §6.
+- [x] 5.20 **Every slipper knows whose it is, from the first frame of a round.**
+  `owner_slot` had no writer but the grab and the throw, so a slipper nobody had
+  touched carried `-1` — and `main.gd::_reset_slippers()`'s courtesy `host_grab()`
+  at round start only *looked* like an assignment: it can silently refuse, because
+  `can_be_grabbed_by()` needs `can_act()` = `round_active and state == NORMAL`, and
+  a character mid-reset is neither. Ownership is now assigned explicitly by
+  `Slipper.host_assign_owner()` (a replicated call, not a synchronised property —
+  the glow's setter has to run on the peer that RECEIVES it), from seats walked in
+  numeric order so every peer and every round agree. ⚠️ **The rotation was the half
+  a one-round test would have missed**: the old gate
+  (`owner_slot >= 0 and who.player_slot != owner_slot`) *refused* the new owner's
+  pickup on round 2, because the slipper still held round 1's slot. *Verified:
+  `tools/models/slipper_owner_probe.tscn` (new) checks round 1 AND the rotation into
+  round 2, asserts the three owners are exactly the three attacker seats, and asks
+  the game's own `can_be_grabbed_by()` whether a non-owner is refused — PASS, and
+  it goes RED on the unfixed code (`Slipper1 owner_slot=-1`).*
 - [x] 5.19 **Generator ownership is documented and enforced** — `Art_Direction.md`
   §4 now carries the produced-by table, and `glb_tool.py` writes `newline="\n"` so
   the determinism contract can actually be tested on Windows. *Verified: run twice,
@@ -662,6 +669,16 @@ tree and it is exact on every frame, at any framerate. ⚠️ Re-parenting inher
 SCALE: the hand hangs off a `Skeleton3D` carrying the rig's 2.38, so divide it
 back out, read off the parent's real basis rather than hard-coded.
 
+**12 · A COURTESY CALL IS NOT AN ASSIGNMENT.** `Slipper.owner_slot` was supposed to
+be set at round start, and the code that "set" it was `host_grab()` — a *pickup*,
+gated on `can_act()`, which is false for a character that is still settling. So the
+field was assigned only when the grab happened to land, the failure was
+intermittent, and it read as `-1` at the one moment the player most needs to know
+which slipper is theirs. ⚠️ **If a value must always hold, write it directly; do
+not infer it from an action that has its own preconditions.** The tell was a field
+whose own comment claimed it was assigned at spawn while grep showed two writers,
+both of them state transitions.
+
 **11 · BLENDER IS OUT OF THE PIPELINE — a recorded finding, do not re-litigate.**
 A full session was spent editing the Kenney rigs through Blender MCP and was
 rejected. The repo already has a deterministic procedural pipeline; the glTF round
@@ -768,6 +785,15 @@ generator's output paths, the same trap that had already cost hours.
 fixes"*, *"fix everything"*): `audio_manager.gd` is `build sound`'s,
 `camera_rig.gd` is `build ui`'s, and `main.gd` / `game_launch.gd` are nobody's.
 Recorded rather than quietly done.
+
+**2026-08-01 · 🎨 `build model` (follow-up 3)** — fixed the bug the previous pass
+only filed. `Slipper.owner_slot` had no writer but the grab and the throw, so
+ownership rode on a courtesy pickup that can silently refuse (§6 trap 12). It is an
+explicit replicated assignment now, from seats walked in numeric order. The half
+worth keeping: a one-round test would have passed the old code, because the bug
+that actually bites on round 2 is the *opposite* one — the stale owner from round 1
+made the gate refuse the new owner's pickup. `slipper_owner_probe` checks the
+rotation for that reason, and goes red on the unfixed code.
 
 ⚠️ **Not verified:** any of this on two real peers (filed as 1.12); the mix by ear;
 frame cost with the 65k-triangle SIKE. `build_prop_textures.py` was edited but not
