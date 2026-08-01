@@ -32,3 +32,14 @@ Thumbs.db
 
 # Python bytecode from the dev-time map builders
 __pycache__/
+
+# Probe output. `flow_probe` and `hud_probe` default their capture path to `res://`,
+# so a run drops PNGs (and Godot then generates an `.import` sidecar for each) into the
+# repo root. They are regenerable evidence, never source — and a permanently dirty tree
+# is what hides a real uncommitted change on submission day. See Agent_Prompts 4.13/10.3.
+/flow_*.png
+/flow_*.png.import
+/hud_*.png
+/hud_*.png.import
+/spectator_pov.png
+/spectator_pov.png.import

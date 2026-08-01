@@ -67,7 +67,19 @@ visible = false
 ; would collapse the word to nothing. The two role strings are fixed constants of known
 ; length, so they are allowed to size the card. Anything variable-length must not go in
 ; here without giving the card a floor back.
-[node name="TopLeft" type="PanelContainer" parent="."]
+; ═══ THE SCOREBOARD ═══
+; ⚠️ THIS PANEL WAS `TopLeft`, A 2v2 TEAM CARD, AND EVERYTHING IN IT IS NEW.
+; It held a big "A" letter mark, an OFFENSE/DEFENSE caption and a three-pip win row,
+; and there was a `TopRight` mirroring it node-for-node for team B. Four players do not
+; have teams and rounds are scored rather than won (`Design.md` §1, §8), so none of
+; those five things describes anything that exists.
+;
+; `hud.gd` had been drawing the real scoreboard in CODE on top of them — hiding six
+; nodes at `_build_scoreboard()` and appending four rows it built by hand — because the
+; scene is this lane's file and `build core`'s pivot could not touch it. That was
+; deliberate and it is § CHECKLIST 1.1. The four rows are AUTHORED HERE now; `hud.gd`
+; binds them and fills them in.
+[node name="Scoreboard" type="PanelContainer" parent="."]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 0
@@ -77,114 +89,110 @@ offset_right = 16.0
 offset_bottom = 28.0
 mouse_filter = 2
 
-[node name="Row" type="HBoxContainer" parent="TopLeft"]
+[node name="Column" type="VBoxContainer" parent="Scoreboard"]
 layout_mode = 2
-theme_override_constants/separation = 12
+size_flags_vertical = 4
+theme_override_constants/separation = 4
 mouse_filter = 2
 
-[node name="TeamALetter" type="Label" parent="TopLeft/Row"]
+[node name="ScoreTitle" type="Label" parent="Scoreboard/Column"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_font_sizes/font_size = 48
+theme_override_font_sizes/font_size = 22
+text = "SCORES"
+mouse_filter = 2
+
+[node name="ScoreRow0" type="HBoxContainer" parent="Scoreboard/Column"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 14
+mouse_filter = 2
+
+[node name="Name" type="Label" parent="Scoreboard/Column/ScoreRow0"]
+custom_minimum_size = Vector2(132, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+theme_override_constants/outline_size = 5
 vertical_alignment = 1
-text = "A"
-
-[node name="VBoxContainer" type="VBoxContainer" parent="TopLeft/Row"]
-layout_mode = 2
-size_flags_vertical = 4
-theme_override_constants/separation = 4
 mouse_filter = 2
 
-[node name="TeamALabel" type="Label" parent="TopLeft/Row/VBoxContainer"]
-unique_name_in_owner = true
+[node name="Score" type="Label" parent="Scoreboard/Column/ScoreRow0"]
+custom_minimum_size = Vector2(64, 0)
 layout_mode = 2
-theme_override_font_sizes/font_size = 22
-text = "OFFENSE"
-
-[node name="TeamAPipsBox" type="HBoxContainer" parent="TopLeft/Row/VBoxContainer"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_constants/separation = 2
-mouse_filter = 2
-
-[node name="TeamAPip0" type="Panel" parent="TopLeft/Row/VBoxContainer/TeamAPipsBox"]
-layout_mode = 2
-custom_minimum_size = Vector2(14, 14)
-mouse_filter = 2
-
-[node name="TeamAPip1" type="Panel" parent="TopLeft/Row/VBoxContainer/TeamAPipsBox"]
-layout_mode = 2
-custom_minimum_size = Vector2(14, 14)
-mouse_filter = 2
-
-[node name="TeamAPip2" type="Panel" parent="TopLeft/Row/VBoxContainer/TeamAPipsBox"]
-layout_mode = 2
-custom_minimum_size = Vector2(14, 14)
-mouse_filter = 2
-
-; ═══ TEAM CARD, RIGHT ═══ Mirrors TopLeft node-for-node; read its comment.
-; The letter mark is the LAST child here and the first one there, so both cards put the
-; glyph on their own outer edge and the two read as a matched pair rather than as one
-; layout and its copy.
-[node name="TopRight" type="PanelContainer" parent="."]
-unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = 1
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -16.0
-offset_top = 28.0
-offset_right = -16.0
-offset_bottom = 28.0
-grow_horizontal = 0
-mouse_filter = 2
-
-[node name="Row" type="HBoxContainer" parent="TopRight"]
-layout_mode = 2
-theme_override_constants/separation = 12
-mouse_filter = 2
-
-[node name="VBoxContainer" type="VBoxContainer" parent="TopRight/Row"]
-layout_mode = 2
-size_flags_vertical = 4
-theme_override_constants/separation = 4
-mouse_filter = 2
-
-[node name="TeamBLabel" type="Label" parent="TopRight/Row/VBoxContainer"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 20
+theme_override_constants/outline_size = 5
 horizontal_alignment = 2
-text = "DEFENSE"
-
-[node name="TeamBPipsBox" type="HBoxContainer" parent="TopRight/Row/VBoxContainer"]
-unique_name_in_owner = true
-layout_mode = 2
-alignment = 2
-theme_override_constants/separation = 2
-mouse_filter = 2
-
-[node name="TeamBPip0" type="Panel" parent="TopRight/Row/VBoxContainer/TeamBPipsBox"]
-layout_mode = 2
-custom_minimum_size = Vector2(14, 14)
-mouse_filter = 2
-
-[node name="TeamBPip1" type="Panel" parent="TopRight/Row/VBoxContainer/TeamBPipsBox"]
-layout_mode = 2
-custom_minimum_size = Vector2(14, 14)
-mouse_filter = 2
-
-[node name="TeamBPip2" type="Panel" parent="TopRight/Row/VBoxContainer/TeamBPipsBox"]
-layout_mode = 2
-custom_minimum_size = Vector2(14, 14)
-mouse_filter = 2
-
-[node name="TeamBLetter" type="Label" parent="TopRight/Row"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_font_sizes/font_size = 48
 vertical_alignment = 1
-text = "B"
+mouse_filter = 2
+
+[node name="ScoreRow1" type="HBoxContainer" parent="Scoreboard/Column"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 14
+mouse_filter = 2
+
+[node name="Name" type="Label" parent="Scoreboard/Column/ScoreRow1"]
+custom_minimum_size = Vector2(132, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+theme_override_constants/outline_size = 5
+vertical_alignment = 1
+mouse_filter = 2
+
+[node name="Score" type="Label" parent="Scoreboard/Column/ScoreRow1"]
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+theme_override_constants/outline_size = 5
+horizontal_alignment = 2
+vertical_alignment = 1
+mouse_filter = 2
+
+[node name="ScoreRow2" type="HBoxContainer" parent="Scoreboard/Column"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 14
+mouse_filter = 2
+
+[node name="Name" type="Label" parent="Scoreboard/Column/ScoreRow2"]
+custom_minimum_size = Vector2(132, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+theme_override_constants/outline_size = 5
+vertical_alignment = 1
+mouse_filter = 2
+
+[node name="Score" type="Label" parent="Scoreboard/Column/ScoreRow2"]
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+theme_override_constants/outline_size = 5
+horizontal_alignment = 2
+vertical_alignment = 1
+mouse_filter = 2
+
+[node name="ScoreRow3" type="HBoxContainer" parent="Scoreboard/Column"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 14
+mouse_filter = 2
+
+[node name="Name" type="Label" parent="Scoreboard/Column/ScoreRow3"]
+custom_minimum_size = Vector2(132, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+theme_override_constants/outline_size = 5
+vertical_alignment = 1
+mouse_filter = 2
+
+[node name="Score" type="Label" parent="Scoreboard/Column/ScoreRow3"]
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+theme_override_constants/outline_size = 5
+horizontal_alignment = 2
+vertical_alignment = 1
+mouse_filter = 2
 
 [node name="TopCentre" type="VBoxContainer" parent="."]
 layout_mode = 1
@@ -248,28 +256,9 @@ layout_mode = 2
 theme_type_variation = &"HudCaption"
 text = "LATA"
 
-[node name="DentPipsBox" type="HBoxContainer" parent="LataCard/VBoxContainer"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_constants/separation = 2
-mouse_filter = 2
-
-[node name="DentPip0" type="Panel" parent="LataCard/VBoxContainer/DentPipsBox"]
-layout_mode = 2
-custom_minimum_size = Vector2(14, 14)
-mouse_filter = 2
-
-[node name="DentPip1" type="Panel" parent="LataCard/VBoxContainer/DentPipsBox"]
-layout_mode = 2
-custom_minimum_size = Vector2(14, 14)
-mouse_filter = 2
-
-[node name="DentPip2" type="Panel" parent="LataCard/VBoxContainer/DentPipsBox"]
-layout_mode = 2
-custom_minimum_size = Vector2(14, 14)
-mouse_filter = 2
-
-[node name="DentTextLabel" type="Label" parent="LataCard/VBoxContainer"]
+; ⚠️ WAS `DentTextLabel`, AND DENTS DO NOT EXIST (`Design.md` §12). It has carried the
+; lata card's second line — what YOU can do about the lata right now — since the pivot.
+[node name="LataHintLabel" type="Label" parent="LataCard/VBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"HudBody"

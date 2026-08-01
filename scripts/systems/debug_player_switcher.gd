@@ -33,7 +33,10 @@ extends Node
 ## reassigning `player_id` would be meaningless).
 
 ## Main.tscn order, which is also the Tab cycle order (§3.5.1).
-const UNIT_NAMES: Array[String] = ["TeamAProp", "TeamAPerson", "TeamBProp", "TeamBPerson"]
+## ⚠️ RENAMED WITH THE SEATS. These are `Main.tscn` node names and they were
+## `TeamAProp / TeamAPerson / TeamBProp / TeamBPerson`, which no longer exist — the
+## debug bar rendered "TeamAPerson (missing)" over a live match because of it.
+const UNIT_NAMES: Array[String] = ["Player1", "Player2", "Player3", "Player4"]
 ## ⚠️ ONE SLOT, NOT TWO — rewritten 2026-07-29 with the input overhaul.
 ##
 ## This used to hold two slots (P1/P2, Shift+F1-F4 driving the second) and park
@@ -62,7 +65,7 @@ const UNIT_NAMES: Array[String] = ["TeamAProp", "TeamAPerson", "TeamBProp", "Tea
 ## ⚠️ A FALLBACK NOW, NOT THE ANSWER — see `_default_unit()` directly below.
 ## Hardcoding this name meant the bar stole the player's own seat the moment it
 ## registered.
-const DEFAULT_UNIT: String = "TeamAPerson"
+const DEFAULT_UNIT: String = "Player1"
 
 ## Unit name currently driven by the human, or "" for none (every unit under AI).
 var _slot_unit: String = DEFAULT_UNIT
@@ -369,9 +372,8 @@ func _describe() -> String:
 func _describe_unit(unit: CharacterBase, label: String) -> String:
 	if unit == null:
 		return "%s (missing)" % label
-	var role := "Person" if unit.is_person else ("Can" if unit.is_can else "Tsinelas")
-	var side := "DEFENSE" if unit.team_is_can_side else "OFFENSE"
-	return "%s (%s · Team %s · %s)" % [label, role, "A" if unit.team == 0 else "B", side]
+	var side := "TAYA" if unit.is_defender else "ATTACKER"
+	return "%s (P%d · %s)" % [label, unit.player_slot + 1, side]
 
 ## Re-read and re-describe both slots without changing them. Called by the bar
 ## on MatchManager.round_started, since is_can/team_is_can_side flip there.

@@ -1,8 +1,0 @@
-[gd_resource type="Resource" script_class="BakyaBash" load_steps=2 format=3]
-
-[ext_resource type="Script" path="res://scripts/abilities/bakya_bash.gd" id="1"]
-
-[resource]
-script = ExtResource("1")
-ability_name = "Bakya Bash"
-cooldown = 18.0

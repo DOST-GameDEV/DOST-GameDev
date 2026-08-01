@@ -84,6 +84,35 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 8
 
+; ═══ PLAYER NAME ═══ § CHECKLIST 1.9.
+; ⚠️ AUTHORED HERE RATHER THAN BUILT BY `_build_name_row()`, for the same reason the
+; HUD's scoreboard was: a control that exists only at runtime is a control the scene
+; cannot describe, cannot be styled with the rest of the panel, and — the part that
+; matters — sits OUTSIDE the focus order the .tscn defines. It is first in the list on
+; purpose: it is the only row about WHO you are rather than about how the game reads
+; your hardware.
+[node name="PlayerNameRow" type="HBoxContainer" parent="Card/Margin/Layout/Scroll/Content/BindingsList"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="PlayerNameLabel" type="Label" parent="Card/Margin/Layout/Scroll/Content/BindingsList/PlayerNameRow"]
+custom_minimum_size = Vector2(220, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+vertical_alignment = 1
+text = "Username"
+
+[node name="PlayerNameField" type="LineEdit" parent="Card/Margin/Layout/Scroll/Content/BindingsList/PlayerNameRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+max_length = 14
+; Empty is legal and means "use the seat label" (Design.md 10), so the placeholder
+; shows what you WILL be called rather than nagging you to fill it in.
+placeholder_text = "P1"
+
 [node name="MouseHeading" type="Label" parent="Card/Margin/Layout/Scroll/Content"]
 layout_mode = 2
 theme_type_variation = &"MenuCaption"
@@ -195,7 +224,7 @@ custom_minimum_size = Vector2(260, 0)
 layout_mode = 2
 theme_type_variation = &"MenuBody"
 vertical_alignment = 1
-text = "Ambience Volume"
+text = "Music Volume"
 
 [node name="MusicVolumeSlider" type="HSlider" parent="Card/Margin/Layout/Scroll/Content/MusicVolumeRow"]
 unique_name_in_owner = true

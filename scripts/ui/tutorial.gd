@@ -9,22 +9,36 @@ class_name TutorialPanel
 ## and rebuild the title screen behind it for a panel the player is going to
 ## close in twenty seconds.
 ##
-## THE CONTENT IS THE POINT, so a note on where it comes from. Every number and
-## every rule below was read out of the code that implements it, not out of the
-## design doc, because the two have disagreed before:
+## ⚠️⚠️ REWRITTEN 2026-08-01 FOR THE HARRYDAKS PIVOT (§ CHECKLIST 1.2). The nine pages
+## this replaces taught a game that no longer exists, and not at the margins: 2v2 and
+## paired sets, best-of-5, the lata and the tsinelas as PLAYABLE units with eight
+## abilities between them, dents, ring-outs, two selectable win modes, and a control
+## list in which every single key was wrong — Bump on F, Guard/dash on Shift, Tag on
+## Q. `Design.md` §12 is the list of what went; every one of those pages described
+## something on it. A tutorial that teaches deleted mechanics is worse than no
+## tutorial, because the player trusts it.
 ##
-##   * 90s rounds, best-of-5, the 5-fall cap and the 3 ring-outs are
-##     `RoundManager.ROUND_TIME` / `MatchManager.WINS_NEEDED` /
-##     `RoundManager.FALL_LIMIT` / `RoundManager.RING_OUT_LIMIT`.
-##   * The 0.9s charge and the 1.5s reset channel are `Carrier.CHARGE_FULL_TIME`
-##     and `Carrier.RESET_CHANNEL_TIME`.
-##   * The key names are the `[input]` block of `project.godot`, p1's bindings.
+## THE CONTENT IS THE POINT, so a note on where it comes from. Every number and every
+## rule below was read out of the code that implements it, and cross-checked against
+## `Design.md`, which is the balance source of truth:
 ##
-## ⚠️ THE CONFINEMENT RADIUS IS DELIBERATELY NOT GIVEN A NUMBER. The GDD says 3
-## units and `CharacterBase.CONFINEMENT_RADIUS` says 5.0. Rather than print
-## whichever one happens to be right this week, page 2 describes the rule — the
-## defender cannot leave its post — which is the part a player needs and the part
-## both sources agree on. Put a number here once they agree.
+##   * 4 players, 4 rounds, the clockwise rotation — `MatchManager.PLAYER_COUNT` /
+##     `ROUNDS` / `defender_slot_for()`. §0 and §1.
+##   * 90 s rounds — `RoundManager.ROUND_TIME`. §1.
+##   * The 2.5 s charge, the 1.25 s throw lock, the 1.5 s reset channel —
+##     `Carrier.CHARGE_FULL_TIME` / `THROW_LOCK_TIME` / `Lata.RESET_CHANNEL_TIME`.
+##   * The lunge, the shove and the speed split — `CharacterBase.LUNGE_*` / `SHOVE_*` /
+##     `ATTACKER_SPEED_SCALE`. All revised 2026-08-01 on human instruction.
+##   * The scores — `RoundManager.SCORE_*` and `Design.md` §8.
+##   * The keys are the `[input]` block of `project.godot`.
+##
+## ⚠️ THE BOX IS STILL DELIBERATELY NOT GIVEN A NUMBER, for a NEW reason. It is a
+## SQUARE at |x| = |z| = 5.0 (`Design.md` §2), not a radius, and "5 units square" means
+## nothing to a player who has never seen the chalk. The pages describe the rule — the
+## taya cannot leave the box, and outside it you cannot be tagged — which is what the
+## player acts on. ⚠️ It is also the one number on this screen most likely to move:
+## `build fair` §2.2 owns retuning it for 1-vs-3 and `build model` §5.1 redraws the
+## chalk with it, so a printed figure here would go stale in someone else's commit.
 
 signal back_pressed
 
@@ -32,63 +46,76 @@ signal back_pressed
 ## wrapping body line — see `_build_row`. `tiles` is the PREMISE card's own shape and
 ## only page 1 has it — see `_build_premise_tile`.
 ##
-## ⚠️ PAGE 1 IS FOUR PICTURES AND TWELVE WORDS, and the eight reference pages behind
-## it are unchanged. The reference pages answer "what does SHIFT do"; they cannot
+## ⚠️ PAGE 1 IS FOUR PICTURES AND TWELVE WORDS, and the reference pages sit behind it. The reference pages answer "what does SHIFT do"; they cannot
 ## answer "what am I looking at", because a player who does not yet know what a lata
 ## is has no hook to hang `["90 SECONDS", ...]` on. So the premise goes IN FRONT and
 ## stays wordless enough to be read in one glance:
 ##
-##   LATA / can · DEFENDER / holds the post   are the DEFENCE pair, and their words are blue
-##   TSINELAS / slipper · ATTACKER / throws, then runs   are the OFFENCE pair, and their words are orange
+##   LATA / the can · TAYA / guards it, alone   are the DEFENCE pair, and their words are blue
+##   TSINELAS / the slipper · ATTACKER / throws, then runs   are the OFFENCE pair, in orange
 ##
 ## which teaches the colour rule by using it rather than by stating it — the same way
 ## the vocabulary itself is taught. Word count is the whole budget, lede included:
-## four glosses, four headwords, and a four-word lede is twelve. ⚠️ Only LATA and
-## TSINELAS are still Filipino — 🧑 2026-07-30 kept exactly those two plus
-## "person"; TAYA and TAKBO became DEFENDER and ATTACKER.
+## four glosses, four headwords, and a four-word lede is twelve. ⚠️ LATA, TSINELAS and
+## TAYA are Filipino; ATTACKER is not. TAYA was DEFENDER until 2026-08-01 — see the
+## tile's own note, which is about matching the HUD rather than about vocabulary.
 const PAGES: Array[Dictionary] = [
 	{
 		"title": "TUMBANG PRESO",
-		"lede": "One can. Two sides.",
+		"lede": "Four players. One taya.",
 		"tiles": [
 			# ⚠️ Two DIFFERENT roster entries for the two person tiles. Both concepts are
 			# "a person", and rendering the same rig twice would read as a duplicated
 			# picture rather than as two jobs — the role colour alone cannot carry that
 			# when the silhouette is identical.
-			{"kind": "can", "fil": "LATA", "eng": "can", "role": "defense"},
-			{"kind": "person", "index": 0, "fil": "DEFENDER", "eng": "holds the post", "role": "defense"},
-			{"kind": "slipper", "fil": "TSINELAS", "eng": "slipper", "role": "offense"},
+			# ⚠️ "TAYA", NOT "DEFENDER", AND THE HUD IS WHY. Every readout in the match
+			# says taya — the round label ("TAYA: P2"), the YOU card ("TAYA (DEFENDER)")
+			# and the scoreboard's own marker. The premise card is where a player learns
+			# the word, so teaching them a different one and then showing this one on
+			# screen for six minutes is the one thing this page must not do. The gloss
+			# carries the English, which is the same trick LATA and TSINELAS already use.
+			{"kind": "can", "fil": "LATA", "eng": "the can", "role": "defense"},
+			{"kind": "person", "index": 0, "fil": "TAYA", "eng": "guards it, alone", "role": "defense"},
+			{"kind": "slipper", "fil": "TSINELAS", "eng": "the slipper", "role": "offense"},
 			{"kind": "person", "index": 1, "fil": "ATTACKER", "eng": "throws, then runs", "role": "offense"},
 		],
 	},
 	{
 		"title": "THE GAME",
-		"lede": "Tumbang preso, played as a sport. One side guards the lata. The other side throws a tsinelas at it.",
+		"lede": "Tumbang preso, played as a sport. One player guards the lata. The other three throw slippers at it.",
 		"rows": [
-			["2 v 2", "Each team is one PERSON and one OBJECT. The object is a lata when you defend and a tsinelas when you attack. Every unit is driven by somebody: a player, or a bot filling an empty seat."],
-			["90 SECONDS", "How long a round lasts. If nothing else has decided it by then, the defending side keeps the round."],
-			["BEST OF 5", "First team to 3 round wins takes the match."],
-			["SWAP EVERY ROUND", "You attack one round and defend the next. Both teams play both jobs, so the match is never decided by which side you drew."],
+			["4 PLAYERS", "One taya and three attackers. Empty seats are filled by bots, so a match always runs four."],
+			["90 SECONDS", "How long one round lasts. The clock is the only thing that ends it — there is no sudden win."],
+			["4 ROUNDS", "The taya role moves one seat clockwise after every round, so everybody is taya exactly once. Nobody can be handed the easy job twice."],
+			["POINTS, NOT WINS", "Rounds are scored, not won. Your score carries across all four rounds and the highest total at the end takes the match. Level scores at the top is an honest draw."],
 		],
 	},
 	{
-		"title": "THE TWO SIDES",
-		"lede": "Orange is offense and blue is defense. The colours track the ROLE, not the team, so they swap when you do.",
+		"title": "THE TWO JOBS",
+		"lede": "Blue is the taya and orange is the attack. The colours track the ROLE, so yours changes when your turn comes.",
 		"rows": [
-			["LATA SIDE\nDEFENSE", "Your person is the defender. You and your lata are pinned inside a chalk square around the base circle for the whole round, so you cannot chase the attacker back to the throwing line. Holding the post IS the job."],
-			["TSINELAS SIDE\nOFFENSE", "Your person carries the tsinelas, throws it at the lata, and then has to go out into the open and get it back."],
-			["NOBODY IS OUT", "Contact stuns and knocks back. Nobody is ever eliminated, so one bad tag never puts a round out of reach."],
+			["TAYA\none player", "You guard the lata and you cannot leave the chalk box around it, all round. You stop throws with your body, stand the lata back up when it goes down, and tag attackers who come in. Holding the post IS the job."],
+			["ATTACKERS\nthree players", "You throw a tsinelas at the lata from outside the box — and then you have to walk in and get it back. You are also each other's rivals: only one of you gets paid for knocking it down."],
+			["NOBODY IS OUT", "Being tagged costs you position and time, never the round. There is no elimination, so a bad start is always recoverable."],
 		],
 	},
 	{
 		"title": "HOW A ROUND GOES",
-		"lede": "Five beats, and the third one is where the whole game lives.",
+		"lede": "Four beats, and the third one is the whole game.",
 		"rows": [
-			["1.  CARRY", "The attacking person picks the tsinelas up and walks it out to the throwing line."],
-			["2.  THROW", "Hold the ability button to charge, release to let it go. It leaves the hand on a real ballistic arc, aimed with the camera."],
-			["3.  SCRAMBLE", "The tsinelas lands loose on the ground. Either the attacker sprints out and grabs it, or the slipper's own player crawls it home, slowly and completely exposed. Both routes can be tagged."],
-			["4.  DEFEND", "The defender body-blocks the throw, tags the attacker, and stands the lata back up when it goes over. Standing it up takes 2.2 seconds of holding still, so it is a commitment, not a reflex."],
-			["5.  END", "On a win condition below, or on the 90-second timer."],
+			["1.  THROW", "You start every round with your slipper already in hand. From outside the box, hold LEFT CLICK to charge and release. 2.5 seconds to full power, so the taya can see it coming. Throwing is free — nothing can happen to you while you do it."],
+			["2.  IT LANDS", "Hit the lata and it goes over. Miss and your slipper is lying on the ground. If the taya blocks it with their body it only drops a couple of metres away — INSIDE the box, near them. That is the taya's reward for blocking: you now have to come and get it under their nose."],
+			["3.  RETRIEVE", "This is the risk, and it is the entire point of the game. An arrow at your feet points to your own slipper, but ANY loose one will do. Walking in is safe; the instant it is in your hand you can be tagged, until you carry it back out — and a blocked slipper is lying right next to the taya."],
+			["4.  RESET", "The taya stands the lata back up by holding E in its ring. It takes 1.5 seconds of standing still, and nobody may throw for a moment afterwards."],
+		],
+	},
+	{
+		"title": "THE RISK",
+		"lede": "Three rules decide every round. They are all about the moment you are holding a slipper.",
+		"rows": [
+			["SAFE UNTIL YOU GRAB", "An attacker inside the box cannot be tagged at all until they pick a slipper up. Empty-handed you can stand on the taya's toes. The danger is entirely self-inflicted."],
+			["TAGGED", "The taya LUNGES and catches you holding your slipper: you are thrown back to the safe zone and stunned for 5 seconds. Your slipper comes with you, so there is nothing to camp over — but the whole trip has to be made again."],
+			["YOU CANNOT THROW FROM INSIDE", "A throw only leaves your hand if you are outside the box, the lata is standing, and your pickup cooldown has expired. The crosshair asks the same question the rules do, so if it is greyed out, the throw would have been refused."],
 		],
 	},
 	{
@@ -97,50 +124,62 @@ const PAGES: Array[Dictionary] = [
 		"rows": [
 			["W A S D", "Move."],
 			["MOUSE", "Look, and aim your throw. The slipper flies to the point your crosshair is actually on, not just along the line it points down."],
-			# 🧑 2026-07-30: Space is JUMP only. It used to drive both, so one press jumped
-			# AND melee'd — `input_probe`'s conflict check found it and the human made the
-			# call. Bump moved to F. This page is the only place the game tells a player
-			# what the keys are, so it moves with the binding or it lies.
+			["SHIFT", "Sprint. The bar is short — about 1.5 seconds flat out, roughly one crossing of the box — and it starts refilling a second after you let go. Empty it completely and you are winded for 2 seconds: slower, no sprint, and the bar will not refill at all until it passes."],
 			["SPACE", "Jump."],
-			["F", "Bump: a light melee with a small stagger and no cooldown."],
-			["SHIFT", "Guard if you are a Can, dash-evade if you are a Tsinelas."],
-		],
-	},
-	{
-		"title": "CONTROLS  ·  HANDS",
-		"lede": "The two buttons that decide rounds.",
-		"rows": [
-			["E", "Grab the tsinelas. As the defender, HOLD it beside your knocked-over lata to stand it back up. That takes 2.2 seconds and being tagged out of it cancels the whole thing, with no partial credit."],
-			["Q  /  LEFT CLICK", "Special. With a tsinelas in hand, holding it charges the throw: 0.9 seconds to full power, and a tap still throws. Empty-handed it is your person's Tag."],
-			["R", "Ready up, in the match itself, before the first round. Everybody walks around freely until every player has pressed it, then the 3, 2, 1 runs and the round starts."],
+			# ⚠️ THE TWO MENU KEYS LIVE ON THIS PAGE, NOT ON THE NEXT ONE, AND IT IS A
+			# LAYOUT FIX RATHER THAN A CATEGORY JUDGEMENT. HANDS with six rows raised a
+			# scrollbar and clipped its own last row at 1920×1080 — rendered and looked
+			# at. This page had a third of its panel empty. A reference page the player
+			# has to scroll is the failure the premise card's own note already calls out.
 			["ESC", "Pause."],
 		],
 	},
 	{
-		"title": "HOW YOU WIN",
-		"lede": "Two round-win modes. Pick one on the setup screen before you start. In multiplayer only the host picks, and it applies to everyone.",
+		"title": "CONTROLS  ·  ATTACKER",
+		"lede": "Your two buttons. Any slipper on the ground is fair game.",
 		"rows": [
-			["CAPTURE\nlata side", "Tag the attacking person, with the always-on Bump or with the Tag ability, and the round ends in your favour immediately. Or simply survive to the 90-second timer."],
-			["CAPTURE\ntsinelas side", "Knock the lata down and stop it getting back up. A fall nobody recovers inside its self-right window ends the round, and knocking it down 4 times wins outright whether or not the defender saved every one. Now and then it lands on its head and rights itself for free, which costs you the throw and nothing else."],
-			["DENTS", "The lata carries a health bar instead. The tsinelas side wins by fully denting it. The lata side wins on the timer, by beating dents back out with the reset channel, or by knocking the tsinelas out of bounds 3 times."],
+			["LEFT CLICK", "Hold to charge a throw, release to throw. 2.5 seconds to full power — a long, visible commitment the taya can react to. A tap still throws, weakly."],
+			["E  ·  tap", "Pick up ANY loose slipper you are standing near — yours or somebody else's. You start the round with your own, and an arrow points to it, but if a rival leaves theirs lying in the open you can take it and throw it. You can only carry one."],
+			["E  ·  tap (nothing to grab)", "SHOVE. No wind-up — it fires instantly, blasting a rival back 2.5 metres and stunning them. Costs a quarter of your stamina either way; 7.5-second cooldown if it lands, only 2 seconds if you whiff. Shove someone who is then tagged and you are paid +50 for it."],
 		],
 	},
 	{
-		"title": "THE LATA",
-		"lede": "Three kits on the defending side. These are BUTTONS: press the special while you are the lata.",
+		"title": "CONTROLS  ·  TAYA",
+		"lede": "You are faster than every attacker. Closing them down is your whole job.",
 		"rows": [
-			["QUICK STAND\nSarsilya · Sardinas", "Stand straight back up out of a knockdown, instantly. Once per round, so spend it on the fall that actually decides something."],
-			["SPIN GUARD\nGatas · Kape", "A knockback pulse that shoves whoever is crowding you off the mark."],
-			["SHATTER TRAP\nPintura · Biskwit", "Arm it, and the next time you go over you leave a patch behind that slows anyone coming through it."],
+			["LEFT CLICK", "PUNCH. A quick jab straight ahead, no wind-up. Any attacker holding their slipper within arm's reach in front of you is tagged instantly. Short cooldown — this is your answer to somebody standing next to you. ⚠ It only works while the lata is STANDING (see below)."],
+			["E  ·  hold", "LUNGE. Hold half a second to charge, release to dash a metre forward. Anyone holding their slipper caught in the path is tagged — this is your answer to somebody running PAST you. (Right click does the same thing.)"],
+			["E  ·  in the ring", "Standing in the lata's ring with it knocked over: hold E to set it back up. Letting go loses all of it — and while you are doing that, E is the reset and not the lunge."],
+			["⚠  NO TAGS WHILE IT IS DOWN", "Neither the punch nor the lunge can tag anybody while the lata is lying over. Standing it back up is not just tidying — it is what re-arms both of your tagging verbs. Reset first, then hunt."],
+			["YOU ARE FASTER", "Attackers move at 75% of your speed, permanently. Any chase in the open is one you win if you commit to it."],
+			["TAGGING IS A PRESS", "Neither verb fires by standing close. Both are aimed along the way you are FACING, and you only turn on a frame you are walking — so keep moving into them."],
 		],
 	},
 	{
-		"title": "THE TSINELAS",
-		"lede": "Three kits on the attacking side. A tsinelas special is NOT a button. It is HOW that slipper flies when your Tao throws it, so you choose it before the match and then you live with it.",
+		"title": "SCORING",
+		"lede": "Every point in the game comes from one of these four. Your total carries across all four rounds.",
 		"rows": [
-			["BAGSAK BOMB\nPula · Dilaw", "The lob. High arc and heavy gravity, so it comes down onto the lata from above and bursts wide where it lands. The throw to pick when a defender is standing in your lane."],
-			["BAKYA BASH\nBakya · Asul", "The heavy. Flattest arc, barely steerable once it leaves your hand, and a direct hit knocks the lata flat outright."],
-			["FLICK DASH\nGoma · Luma", "The line drive. Fastest launch and the most steering in mid-air, but it is the one throw that will not knock the lata down on its own. It sets up the next one."],
+			# ⚠️ ONE-LINE CHIPS ON THIS PAGE, DELIBERATELY. Every other page's chip is a
+			# key name and fits on a line; these were "+100\nknock it down" style
+			# two-liners, and with four rows that alone overflowed the panel by 37 px —
+			# `tutorial_shot.gd` measures it. Three passes of trimming the BODIES moved
+			# the number by exactly zero, because each row's height was set by its chip,
+			# not by its text. The chip carries the number and the verb; the body carries
+			# the reasoning.
+			["+100  KNOCKDOWN", "To the attacker whose slipper hit the lata. Only the thrower is paid, so the other two attackers are your rivals as much as the taya is."],
+			["+100  TAG", "To the taya, for lunging and catching an attacker who is holding a slipper inside the box."],
+			["+10 / s  DEFENCE", "To the taya, every second the lata is standing. A taya nobody troubles is quietly winning the whole round."],
+			["+50  SABOTAGE", "To an attacker who shoves a rival who is then tagged. Selling out the person beside you is a real strategy."],
+		],
+	},
+	{
+		"title": "READING THE HUD",
+		"lede": "Everything the game will not say out loud is on screen somewhere.",
+		"rows": [
+			["SCOREBOARD\ntop left", "All four players, ranked, with the taya marked. The arrow is you."],
+			["THE LATA\nbottom right", "Whether it is up or down, and what YOU can do about it right now — which differs depending on whether you are the taya or an attacker."],
+			["STATUS ROWS", "Stuns, knockdowns and cooldowns each draw a row with its own countdown, so you can time playing around them. VULNERABLE has no timer on purpose: it lasts exactly as long as you choose to stand in the box holding a slipper."],
+			["CROSSHAIR", "Only shown when a throw would actually be allowed. If it is not there, check the three rules on THE RISK."],
 		],
 	},
 ]
@@ -377,7 +416,24 @@ func _show_subject(icon: CharacterPreview, tile: Dictionary) -> void:
 		"can":
 			icon.show_prop(CharacterRoster.can_at(0), true)
 		"slipper":
-			icon.show_prop(CharacterRoster.slipper_at(0), false)
+			# ⚠️ CROCS, NOT SLIPPER 0. 🧑 2026-08-01, looking at this card: *"use ike
+			# tsinelas here the tsinelas model here looks ugly"*, then, shown the
+			# result, *"js do crocs"*. Index 0 is `tsinelas` — this project's own
+			# procedural mesh, 276 triangles — and at icon size it reads as a brown
+			# smear rather than as footwear.
+			#
+			# ⚠️ IKE WAS TRIED FIRST AND RENDERED AS A BLACK BLOB. Its texture is
+			# nearly black and this tile's lighting is flat and head-on, so the model
+			# that looks best on the CHARACTER screen (which orbits it under a key
+			# light) loses all its shape at 120 px. **A prop that previews well in one
+			# frame is not a prop that reads as an icon** — check the tile, not the
+			# model. Crocs is mid-tone and holds its silhouette at this size.
+			#
+			# ⚠️ LOOKED UP BY ID, NOT HARDCODED TO 3. `SLIPPERS` is `build model`'s
+			# table and has been re-ordered before; an index here would silently
+			# become a different shoe the next time somebody inserts an entry.
+			icon.show_prop(CharacterRoster.slipper_at(
+				CharacterRoster.index_in(CharacterRoster.SLIPPERS, &"crocs")), false)
 		_:
 			icon.show_character(CharacterRoster.at(int(tile.get("index", 0))))
 

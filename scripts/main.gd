@@ -26,10 +26,17 @@ extends Node3D
 ## Round-swap (Can vs Slipper side) is wired for this flow too — see
 ## _on_match_round_started.
 
-@onready var team_a_prop: CharacterBase = $TeamAProp
-@onready var team_a_person: CharacterBase = $TeamAPerson
-@onready var team_b_prop: CharacterBase = $TeamBProp
-@onready var team_b_person: CharacterBase = $TeamBPerson
+## ⚠️ FOUR PERSONS, INDEXED BY SEAT. Was `TeamAProp / TeamAPerson / TeamBProp /
+## TeamBPerson` — two teams of one Person and one playable Prop. The props are
+## props now (`scripts/objects/`), so all four seats are people and the only thing
+## that distinguishes them in a round is which one `MatchManager.defender_slot`
+## points at.
+@onready var players: Array[CharacterBase] = [$Player1, $Player2, $Player3, $Player4]
+## The lata and the three slippers are WORLD objects, not seats. They take no
+## place in the lobby, claim no peer and are never AI-driven — which is the whole
+## practical difference between this build and the one it replaced.
+@onready var lata: Lata = $Lata
+@onready var slippers: Array[Slipper] = [$Slipper1, $Slipper2, $Slipper3]
 @onready var players_root: Node3D = $Players
 @onready var spawner: MultiplayerSpawner = $MultiplayerSpawner
 @onready var hud: Hud = $HUDLayer/HUD
@@ -63,16 +70,22 @@ var kill_plane: KillPlane = null
 @onready var pause_layer: PauseLayer = $PauseLayer
 
 const CHARACTER_SCENE: PackedScene = preload("res://scenes/characters/CharacterBase.tscn")
-## Every Person — networked or local — gets its own Tag/Throw ability
-## instance, `.duplicate()`d from this one preloaded Resource rather than
-## shared directly, since AbilityBase.tick()/is_ready() carry per-instance
-## cooldown state (_time_since_use, _used_this_round) on the Resource itself;
-## two Persons sharing the same instance would incorrectly share a cooldown.
-## Same trap applies to roster Prop abilities (Quick Stand, etc.) once THEIR
-## networked-spawn assignment gets built — today only the local flow's
-## TeamAProp has one wired directly in Main.tscn, since it's the only
-## character using that particular resource instance.
-const PERSON_ACTION_ABILITY: AbilityBase = preload("res://scripts/abilities/resources/person_action.tres")
+## ⚠️⚠️ A PERSON CARRIES NO `ability` AT ALL SINCE 2026-07-30, AND THAT IS THE TAG BEING
+## GONE RATHER THAN AN OVERSIGHT.
+##
+## `PERSON_ACTION_ABILITY` used to be preloaded here and duplicated onto every Person on
+## both spawn paths. The ability it pointed at was the Tag — the defender's round-winning
+## tap-out — and the whole of it was deleted with `person_action.gd` and its `.tres`
+## (`Design.md` §1, `hitbox.gd`'s round-win branch).
+##
+## What a Person presses `special_ability` for now is decided entirely by what is in
+## their hands, and neither half is an `AbilityBase`:
+##   * holding a tsinelas -> the charged throw, `carrier.gd`
+##   * empty-handed       -> the charged bump meter, `character_base.gd`
+##
+## `character_base.gd` guards every ability call with `if ability:`, so a null slot is
+## already a supported state — it was the Person's own state before Session 8 built the
+## Tag. The duplication rule below still governs every PROP ability and is unchanged.
 ## B-76: every networked and local-test Prop used to get Quick Stand
 ## regardless of which side of the round it was playing. Quick Stand has no
 ## get_throw_profile(), so a Prop on the offence side threw with no identity
@@ -88,17 +101,38 @@ const PERSON_ACTION_ABILITY: AbilityBase = preload("res://scripts/abilities/reso
 ## (_reset_world) — is_can flips every round, so a Prop's ability has to be
 ## re-picked every round or it goes stale exactly one round after spawn, which
 ## is the same "resolved once, wrong from round 2" trap as B-42/B-80(c).
-## `.duplicate()` at every call site per PERSON_ACTION_ABILITY doc.
-const CAN_ABILITY: AbilityBase = preload("res://scripts/abilities/resources/quick_stand.tres")
-## Two of the three Tsinelas identities, picked one per team for the biggest
-## contrast a 2-Prop match can show: Bakya Bash is the heavy knockdown
-## (forces_downed, flattest-but-one arc), Flick Dash is the fast curving poke
-## (steers hardest, never forces downed). A 2v2 match only ever has 2 Props,
-## so a single sitting cannot reach all three roster identities regardless of
-## which two are picked here — that needs 3.3 (character select). Bagsak Bomb
-## (the lob) is reachable today only by swapping one of these two constants.
-const TSINELAS_ABILITY_TEAM_A: AbilityBase = preload("res://scripts/abilities/resources/bakya_bash.tres")
-const TSINELAS_ABILITY_TEAM_B: AbilityBase = preload("res://scripts/abilities/resources/flick_dash.tres")
+## `.duplicate()` at every call site — an AbilityBase carries per-instance cooldown
+## state on the Resource itself, so two Props sharing one instance share a cooldown.
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THESE THREE ARE TYPED `Resource`, NOT `AbilityBase`, AND THAT IS NOT SLOPPINESS —
+## IT IS WHAT MAKES THIS FILE PASS THE PROJECT'S ONE CHEAP GATE.
+##
+## `docs/README.md` calls grepping `--check-only` output for `Parse Error` *"the one cheap
+## real gate"*. Annotated as `AbilityBase`, this file did not pass it:
+##
+##   Parse Error: Cannot assign a value of type Resource to constant
+##   "TSINELAS_ABILITY_TEAM_A" with specified type AbilityBase.   (main.gd:107, :108)
+##
+## A `.tres` records `type="Resource" script_class="BakyaBash"`, so the static analyser
+## has to go through the global class cache to learn that a `BakyaBash` IS an
+## `AbilityBase`. When it cannot, `preload()` comes back as a bare `Resource` and a
+## const's declared type is checked at parse time, with no runtime cast available to
+## rescue it.
+##
+## ⚠️ AND IT WAS INCONSISTENT, WHICH IS WHY IT SURVIVED. `CAN_ABILITY` on this same
+## pattern resolved fine while the two below did not, on the same run — so the file looked
+## like it had two broken lines rather than one unreliable idiom, and the gate was
+## quietly useless for the largest file in the project instead of obviously so.
+##
+## Measured 2026-07-31: warm class cache → exactly these 2 Parse Errors; emptied cache →
+## 345. So the cache state changes HOW MUCH resolves, and no cache state makes the const
+## annotation dependable. The type is asserted at the one place it is actually consumed
+## (`_prop_ability_for`) instead, where a cast is available and a mismatch would be a
+## null rather than a file that will not parse.
+## ⚠️ `CAN_ABILITY`, `TSINELAS_ABILITY_TEAM_A` AND `TSINELAS_ABILITY_TEAM_B` WERE
+## DELETED HERE, along with the `.tres` files they preloaded. They named the
+## fallback kit a Prop carried when its roster skin did not specify one. There are
+## no abilities and no Props (`Design.md` §Removed).
 ## Local-test roster, in a flat array so round-swap/registration code (below)
 ## can treat all 4 the same way it treats _spawned_characters for the
 ## networked flow, rather than hand-writing 4 near-identical blocks.
@@ -188,6 +222,7 @@ func _load_map() -> void:
 	map_root.add_child(instance)
 
 	kill_plane = instance.find_child("KillPlane", true, false) as KillPlane
+	_publish_playable_extent(instance)
 
 	var points := instance.get_node_or_null("SpawnPoints")
 	if points == null:
@@ -257,125 +292,176 @@ func _load_map() -> void:
 ## (Art_Direction.md §9's own "why 6.0" derivation), Spawn3 is that round's
 ## loose Tsinelas beside the Attacker (see _reset_world's auto-grab, below,
 ## for why it does not usually stay loose for long).
-const SLOT_CAN: int = 0
-const SLOT_TAYA: int = 1
-const SLOT_ATTACKER: int = 2
-const SLOT_TSINELAS: int = 3
-
-## Maps a unit's CURRENT role to its spawn slot. `is_can` already implies
-## `is_person == false` (CharacterBase's own contract), so checking it first is
-## exhaustive: Can, then Taya-or-Attacker by is_person, then whatever Prop is
-## left over must be this round's Tsinelas.
-func _role_slot(is_can: bool, is_person: bool, team_is_can_side: bool) -> int:
-	if is_can:
-		return SLOT_CAN
-	if is_person:
-		return SLOT_TAYA if team_is_can_side else SLOT_ATTACKER
-	return SLOT_TSINELAS
-
-## Where slot `index` spawns. Prefers the map's markers and falls back to
-## SPAWN_POINTS, so a map with no SpawnPoints still plays.
-func _spawn_point(index: int) -> Vector3:
-	return _spawn_transform(index).origin
-
-## The full spawn transform. POSITION comes from the marker; its yaw is used only
-## as a fallback — see _spawn_yaw() for why facing is computed instead.
-func _spawn_transform(index: int) -> Transform3D:
-	if not _map_spawns.is_empty():
-		return _map_spawns[index % _map_spawns.size()]
-	return Transform3D(Basis.IDENTITY, SPAWN_POINTS[index % SPAWN_POINTS.size()])
-
-## Which slot each slot must be LOOKING AT. The attacker and its tsinelas face
-## the can they are throwing at; the taya faces the attacker it is guarding
-## against. The can itself is absent on purpose — it is an object, its facing is
-## cosmetic, and it keeps whatever yaw its marker was authored with.
-const SLOT_FACES: Dictionary = {
-	SLOT_TAYA: SLOT_ATTACKER,
-	SLOT_ATTACKER: SLOT_CAN,
-	SLOT_TSINELAS: SLOT_CAN,
-}
-
-## The yaw a unit in `slot` spawns with — DERIVED from where the thing it cares
-## about actually is, not read off the marker.
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ SPAWNS ARE COMPUTED FROM THE BOX, NOT READ FROM MAP MARKERS. That is a
+## correctness change, not a convenience one.
 ##
-## ⚠️⚠️ THE MARKER'S OWN YAW IS NO LONGER TRUSTED FOR FACING. DO NOT GO BACK. ⚠️⚠️
+## The GDD states the rule as a GEOMETRIC relationship — *"positions reset to the
+## Safe Zone"*, and the Safe Zone is defined as "outside the Defender's box". The
+## map's `SpawnPoints/Spawn0..3` markers were authored for the 2v2 layout (can on
+## the base circle, taya beside it, attacker on the 6.0 throwing line, tsinelas
+## next to the attacker) and nothing validates them against the box. A marker that
+## drifts half a metre inside `CONFINEMENT_RADIUS` would spawn an Attacker
+## VULNERABLE on frame one, and it would read as a rules bug rather than a map one.
 ##
-## "the attacker spawns facing away from the can" has been reported across more
-## than ten sessions. Every fix so far has re-authored marker rotations, and the
-## reason that keeps failing is structural: a hand-authored yaw is a THIRD copy
-## of a fact already stated twice (this slot's position, and the can's), it is
-## invisible in the editor viewport unless you look down the gizmo, and nothing
-## validates it. Measured on Eskinita with tools/net_spawn_probe.gd: Spawn1's
-## authored 180 degrees puts the taya **55.7 degrees off** the can it is standing
-## next to, and Spawn2's attacker was correct only by the coincidence that the
-## marker sits on the +Z axis with an identity basis, so the default -Z facing
-## happened to point at the origin. Move that marker sideways on any new map —
-## Bayan Plaza is a plaza, not a corridor — and it silently breaks again.
+## Deriving them from `CharacterBase.confinement_radius` means the two cannot
+## disagree, and retuning the box moves the spawns with it. The markers are still
+## loaded into `_map_spawns` because the map tooling reads them.
 ##
-## Computing it removes the failure mode instead of fixing this instance of it:
-## there is no authored value left to get wrong, on this map or any future one.
+## ⚠️ THE MARKER'S OWN YAW WAS ALREADY NOT TRUSTED FOR FACING AND STILL IS NOT.
+## "the attacker spawns facing away from the can" was reported across more than ten
+## sessions, and every fix that re-authored marker rotations failed for the same
+## structural reason: an authored yaw is a THIRD copy of a fact already stated
+## twice, it is invisible in the editor viewport unless you look down the gizmo,
+## and nothing validates it. Measured with `tools/net_spawn_probe.gd`, Spawn1's
+## authored 180° put the taya **55.7° off** the can it was standing next to.
 ##
-## ⚠️ YAW ONLY, via atan2 — NOT `look_at()`. `look_at` writes a full basis, so a
-## target at a different height tilts the body, and camera_rig.gd's whole
-## _apply_upright_pose()/_body_yaw() machinery exists because a body with pitch
-## or roll in it puts that tilt straight into the player's eye (its own doc calls
-## that "THE INVARIANT", after three separate reports). A Y-rotation can never
-## do that. The sign convention matches camera_rig.gd::_body_yaw()'s inverse:
-## a body's forward is -basis.z, which for yaw t is (-sin t, 0, -cos t).
-func _spawn_yaw(slot: int) -> float:
-	var here := _spawn_transform(slot)
-	if not SLOT_FACES.has(slot):
-		return here.basis.get_euler().y
-	var delta := _spawn_transform(int(SLOT_FACES[slot])).origin - here.origin
-	delta.y = 0.0
+## ⚠️ YAW ONLY, via `atan2` — NOT `look_at()`. `look_at` writes a full basis, so a
+## target at a different height tilts the body, and `camera_rig.gd` puts that tilt
+## straight into the player's eye (its own doc calls that "THE INVARIANT", after
+## three separate reports). A Y-rotation cannot. The sign convention matches
+## `camera_rig.gd::_body_yaw()`'s inverse: forward is `-basis.z`, which for yaw t
+## is `(-sin t, 0, -cos t)`.
+## ---------------------------------------------------------------------------
+
+## How far outside the box edge the Attackers start. Far enough to be
+## unambiguously in the Safe Zone, close enough to be in throwing range.
+const SAFE_ZONE_MARGIN: float = 2.0
+## Where the Defender starts inside their own box — not on top of the lata, but
+## already between it and somebody.
+const DEFENDER_START_OFFSET: float = 2.5
+## Height a spawn starts from before `_seat_on_floor()` does the real work.
+const SPAWN_START_HEIGHT: float = 1.0
+
+## How far apart the three Attackers stand on their shared line. Two body widths:
+## close enough to read as one group, far enough that nobody spawns inside anybody
+## and `SPAWN_SETTLE_FRAMES` has nothing to untangle.
+const ATTACKER_SPAWN_SPACING: float = 1.8
+
+## `role_index` 0 is the Defender; 1..3 are the three Attackers.
+##
+## ⚠️⚠️ THE THREE ATTACKERS SHARE ONE SIDE NOW, AND THE TAYA STANDS BEHIND THE CAN
+## FACING THEM. Changed 2026-08-01 on human instruction: *"Attackers should spawn in
+## one safe zone next to each others"* and *"The Defender should spawn behind the
+## can in the danger zone, where in front they see the attackers"*.
+##
+## They used to be spread on a ring at 120° — deliberately, so *"no mark is handed a
+## better angle on the lata than another"*. That is a fair layout and a bad opening:
+## the taya was surrounded on frame one, the three attackers could not see each
+## other, and the round began with the defence already beaten on bearing rather than
+## on play. Symmetry between the three attackers is preserved by putting them on ONE
+## line at equal spacing — they still get identical angles as a group.
+##
+## ⚠️ THE SIDE IS +Z AND THE TAYA IS AT -Z, so the taya's `_role_spawn_yaw()` — which
+## already points everyone at the lata — now also points them at the attackers,
+## because the attackers are directly beyond it. One rule, two jobs, nothing extra
+## to keep in step.
+
+
+## ⚠️⚠️ TELLS THE REST OF THE GAME WHERE THIS MAP'S WALLS ARE. Read off the map's
+## own `Bounds` colliders at load, so a map that moves its walls moves this with
+## them and nothing has to be kept in step by hand.
+##
+## WHY IT EXISTS: `ai_controller` sends attackers to a square ring at
+## `confinement_radius + THROW_STANDOFF` and had no way to know a map has edges. On
+## 2026-08-01 the box grew until that ring landed past Eskinita's house facades, and
+## every bot on an east or west bearing walked into a wall and pressed into it for
+## the rest of its plan — 🧑: *"they just walk up the houses"*. Pulling the radius
+## back fixed that map at that size; publishing the extent makes the whole class of
+## bug impossible to generate.
+##
+## ⚠️ IT TAKES THE NEAREST WALL ON EACH AXIS, not the bounding box. A map whose east
+## wall is closer than its west one is a map whose narrow side is the real limit,
+## and a symmetric answer would let a bot walk into the near one.
+func _publish_playable_extent(map: Node3D) -> void:
+	var bounds := map.get_node_or_null("Bounds")
+	if bounds == null:
+		return
+	var half_x := INF
+	var half_z := INF
+	for child in bounds.get_children():
+		var body := child as Node3D
+		if body == null:
+			continue
+		var here := body.position
+		# A wall is named for the axis it blocks; its offset on that axis is how far
+		# out it sits. The other axis is the run of the wall and says nothing.
+		if absf(here.x) > absf(here.z):
+			half_x = minf(half_x, absf(here.x))
+		elif absf(here.z) > 0.01:
+			half_z = minf(half_z, absf(here.z))
+	if is_finite(half_x) and half_x > 0.5:
+		CharacterBase.playable_half_x = half_x
+	if is_finite(half_z) and half_z > 0.5:
+		CharacterBase.playable_half_z = half_z
+	print("[main] playable extent x=%.2f z=%.2f (walls, measured)"
+		% [CharacterBase.playable_half_x, CharacterBase.playable_half_z])
+
+func _role_spawn_point(role_index: int) -> Vector3:
+	if role_index <= 0:
+		# BEHIND the can from the attackers' point of view: they are at +Z, the can
+		# is at the origin, so the taya's mark is at -Z and the can is between them.
+		return Vector3(0.0, SPAWN_START_HEIGHT, -DEFENDER_START_OFFSET)
+	var ring: float = CharacterBase.confinement_radius + SAFE_ZONE_MARGIN
+	# -1, 0, +1 across the line, so the middle attacker is on the centre line and
+	# the layout is symmetric about it.
+	var offset := (float(role_index) - 2.0) * ATTACKER_SPAWN_SPACING
+	return Vector3(offset, SPAWN_START_HEIGHT, ring)
+
+## Everyone faces the lata at the start of a round — the Defender because it is
+## what they are guarding, the Attackers because it is what they are aiming at.
+func _role_spawn_yaw(role_index: int) -> float:
+	var here := _role_spawn_point(role_index)
+	var delta := -Vector3(here.x, 0.0, here.z)
 	if delta.length() < 0.01:
-		# Degenerate (two slots stacked): keep whatever the marker said rather
-		# than snapping to an arbitrary axis.
-		return here.basis.get_euler().y
+		return 0.0
 	return atan2(-delta.x, -delta.z)
 
-## Places a character at its slot, facing the way the map says. Kept separate
-## from _spawn_point() so the two call sites cannot drift apart on the rotation.
-func _place_at_spawn(character: CharacterBase, slot: int) -> void:
-	var t := _spawn_transform(slot)
-	character.position = t.origin
-	# ⚠️ THE WHOLE `rotation`, NOT JUST `.y`. Writing only the yaw component left
-	# whatever pitch and roll the body already carried, and a Prop routinely
-	# carries plenty: carriable.gd::_step_carried() snaps a CARRIED unit to the
-	# hand's full basis every physics frame, CARRY_TILT_DEG (55 degrees) included,
-	# and Carriable.reset_for_new_round() — unlike _rpc_set_loose(), which does
-	# zero it — never cleared that. So the tsinelas the attacker was holding when
-	# the round ended started the next round tilted 55 degrees, which is both
-	# visible and, per camera_rig.gd's _apply_upright_pose() note, the class of
-	# leftover basis that ends up in a player's eye.
-	character.rotation = Vector3(0.0, _spawn_yaw(slot), 0.0)
-	# ⚠️⚠️ PUSH THE NEW TRANSFORM TO THE PHYSICS SERVER *NOW*. DO NOT REMOVE.
+## Places a player at the mark for the role it is about to play. `role_index` 0 is
+## the Defender, 1..3 the Attackers — NOT the player's seat, which is a different
+## number and rotates independently of the mark.
+func _place_at_spawn(character: CharacterBase, role_index: int) -> void:
+	character.position = _role_spawn_point(role_index)
+	# ⚠️ THE WHOLE `rotation`, NOT JUST `.y`. Writing only the yaw component leaves
+	# whatever pitch and roll the body already carried, and per `camera_rig.gd`'s
+	# `_apply_upright_pose()` note that is exactly the class of leftover basis that
+	# ends up in a player's eye.
+	character.rotation = Vector3(0.0, _role_spawn_yaw(role_index), 0.0)
+	_seat_on_floor(character)
+	# ⚠️⚠️ NOBODY MOVES UNTIL THE BROADPHASE HAS SEEN THE WRITE. DO NOT REMOVE.
 	#
 	# Writing `position` on a PhysicsBody3D updates the SCENE TREE immediately and
-	# the physics broadphase only at the next flush. Within one frame, every
-	# other body's `move_and_slide()` therefore still collides with this
-	# character's PREVIOUS collider position.
-	#
-	# That is what B-100's "park everyone at y=500 first" was really fighting,
-	# and why it could not work: the parking write is invisible to the server for
-	# the same reason the placement write is. Roles swap every round, so the two
-	# Persons trade marks — measured with tools/jump_probe.gd, the incoming Taya
-	# was placed correctly at (2.2, 0.9, -1.5), then on the very next physics step
-	# `move_and_slide()` reported three contacts with the OUTGOING Person (normal
-	# 0,1,0 — stacked on its head), shoved it 1.60 up to y=2.50, and the frame
-	# after that slid it 9.84 units into WallWest. Reported as characters "flung
-	# many units off their real spawn markers, sometimes airborne" (B-100) and as
-	# weird physics bounces.
-	#
-	# force_update_transform() flushes this body's transform to the server
-	# synchronously, so by the time the next character is placed — and by the time
-	# anyone's move_and_slide() runs — the space is genuinely vacated.
+	# the physics broadphase only at the next flush, so within one frame every other
+	# body's `move_and_slide()` still collides with this character's PREVIOUS
+	# collider. Roles rotate every round, so seats trade marks — measured with
+	# `tools/jump_probe.gd`, the incoming unit was placed correctly, then on the very
+	# next physics step `move_and_slide()` reported three contacts with the outgoing
+	# one (normal 0,1,0 — stacked on its head), shoved it 1.60 up, and the frame
+	# after that slid it 9.84 units into a wall. Reported as characters "flung many
+	# units off their real spawn markers, sometimes airborne" (B-100).
 	character.begin_spawn_settle()
-	# 4.2: this is a TELEPORT, not a walk — every round reset routes through
-	# here, and without this a remote peer's interpolated visual would glide
-	# across the map from its previous position to the new spawn point
-	# instead of snapping there with everyone else.
+	# This is a TELEPORT, not a walk. Every round reset routes through here, and
+	# without this a remote peer's interpolated visual would glide across the map
+	# from its previous position instead of snapping there with everyone else.
 	character.snap_visual_interpolation()
+
+const SPAWN_FLOOR_PROBE_HEIGHT: float = 2.0
+const SPAWN_FLOOR_PROBE_DEPTH: float = 6.0
+## A hair of clearance so the capsule rests ON the floor rather than exactly touching it,
+## which `move_and_slide` resolves as a contact on the very first frame.
+const SPAWN_FLOOR_CLEARANCE: float = 0.02
+
+func _seat_on_floor(character: CharacterBase) -> void:
+	var space := character.get_world_3d().direct_space_state
+	var from := character.global_position + Vector3.UP * SPAWN_FLOOR_PROBE_HEIGHT
+	var to := from + Vector3.DOWN * SPAWN_FLOOR_PROBE_DEPTH
+	var query := PhysicsRayQueryParameters3D.create(from, to)
+	# Exclude ourselves, or the ray hits the capsule we are about to move.
+	query.exclude = [character.get_rid()]
+	var hit := space.intersect_ray(query)
+	if hit.is_empty():
+		return
+	character.global_position.y = (hit["position"] as Vector3).y 		+ character.capsule_height() * 0.5 + SPAWN_FLOOR_CLEARANCE
 
 var _spawned_peer_ids: Dictionary = {}
 ## B-21, superseded by 4.3/B-65: token -> permanently-assigned join index
@@ -392,13 +478,20 @@ var _token_join_index: Dictionary = {}
 ## join order" 1v1 smoke-test placeholder. First two peers to connect are
 ## Team A, next two are Team B (GDD: 2v2, teams swap Attacker/Defender role
 ## each round, per-team not per-player).
-var _peer_teams: Dictionary = {}
+var _peer_slots: Dictionary = {}
+## 🧑 2026-08-01: *"allow bots in single player to have random cans and random
+## slippers, their respective cans show when theyre defender, let my
+## respective can show when im defender as well."* slot (0..3) -> {"can": int,
+## "slipper": int}, host-decided and replicated the same way `character_index`
+## already is (§ `_refresh_ai_prop_picks`'s own doc — a peer computing its own
+## random pick gives two peers two different answers for the same bot).
+## Populated by `_refresh_seat_prop_picks()`, read by `_push_prop_skins()`.
+var _seat_prop_picks: Dictionary = {}
 ## Session 7: a team is 1 Person + 1 Can/Slipper Prop, NOT two identical Props
 ## (corrects the Session 5/6 placeholder, which spawned two interchangeable
 ## Can/Tsinelas units per team). peer_id -> bool, true if that peer is the
-## team's Person. Fixed for the whole match, same lifetime as _peer_teams —
+## team's Person. Fixed for the whole match, same lifetime as _peer_slots —
 ## see _spawn_player for how it's assigned.
-var _peer_is_person: Dictionary = {}
 var _spawned_characters: Dictionary = {} # peer_id -> CharacterBase
 ## Abandoned-body placeholder (2026-07-28, user feedback: "instead of
 ## disappearing it should transition to an AI... just make it stationary and
@@ -429,6 +522,11 @@ var _spawned_characters: Dictionary = {} # peer_id -> CharacterBase
 ## four suffixed action sets into one. Isolation is now `_ai_driven()` plus
 ## `CharacterBase.input_parked`.
 var _index_to_character: Dictionary = {}
+
+## join index -> the peer_id that reclaimed it, for a reclaim whose RPC beat the
+## character's own spawn to this peer. Consumed once, from `_build_networked_character`.
+## Same shape and same reason as `_known_picks` — see `_rpc_reclaim_character`.
+var _pending_reclaims: Dictionary = {}
 
 func _ready() -> void:
 	# B-14: MatchManager/RoundManager are autoloads and previously carried a
@@ -483,6 +581,14 @@ func _ready() -> void:
 				should_host = true
 			elif arg.begins_with("--join="):
 				join_target = arg.substr(len("--join="))
+			elif arg == "--spectate":
+				# ⚠️ THE ONLY WAY TO REACH SPECTATOR MODE WITHOUT CLICKING THROUGH THE
+				# SETUP SCREEN, and it exists for the same reason `--host`/`--join=` do:
+				# this project is developed by launching Main.tscn directly, and a mode
+				# that can only be entered through three screens is a mode nobody
+				# verifies. Deliberately inside the command-line branch, so it can never
+				# override a real `GameLaunch.spectator` set by the lobby.
+				GameLaunch.spectator = true
 
 	if should_host:
 		_start_hosting()
@@ -494,7 +600,7 @@ func _ready() -> void:
 ## Session 9: local single-PC/split-keyboard flow, now spawning the real
 ## 4-unit Person+Prop structure instead of the old 1v1 Can/Tsinelas smoke
 ## test. TeamA's Person (P2) needs its own Tag/Throw instance same as any
-## networked Person — see PERSON_ACTION_ABILITY doc. TeamB's Person is a
+## networked Person — see the note where PERSON_ACTION_ABILITY was. TeamB's Person is a
 ## local-test dummy (unbound input, see Main.tscn/project.godot) but still
 ## gets its own duplicated instance too, rather than sharing TeamA Person's:
 ## AbilityBase.tick() runs every physics frame regardless of whether the
@@ -502,77 +608,54 @@ func _ready() -> void:
 ## still incorrectly share cooldown state even though the dummy can never
 ## press the button itself.
 func _start_local_test() -> void:
-	_local_roster = [team_a_prop, team_a_person, team_b_prop, team_b_person]
-	# B-09: give every local-test unit a team id — without this they all sat at
-	# the CharacterBase default (team = 0), which would have made Hitbox's new
-	# same-team check treat all four as one team and block every bump.
-	team_a_prop.team = 0
-	team_a_person.team = 0
-	team_b_prop.team = 1
-	team_b_person.team = 1
-	team_a_person.ability = PERSON_ACTION_ABILITY.duplicate()
-	team_b_person.ability = PERSON_ACTION_ABILITY.duplicate()
-	# The CHARACTER panel's picks go to the unit the human is actually going to
-	# play — the seat they chose (10.5), not always Team A's Person. The other
-	# three are deliberately left at -1 and keep the signed-off defaults: the
-	# pair at PERSON_MODELS[0]/[1] was chosen specifically to read apart at arena
-	# distance (Art_Direction.md), and handing the player's own pick to an
-	# opponent too would let someone play a match against a character wearing
+	_local_roster = players.duplicate()
+	# Seats are 0..3 and fixed for the match; the ROLE rotates over them. Set here
+	# rather than trusted from the scene's exports, because `_reset_world()` keys
+	# every role decision off `player_slot` — a duplicated seat would silently give
+	# one player two turns as Defender and another none.
+	for i in range(_local_roster.size()):
+		_local_roster[i].player_slot = i
+		_local_roster[i].player_id = i + 1
+	# The CHARACTER panel's pick goes to the seat the human is actually going to
+	# play. The other three keep the signed-off defaults: the roster's models were
+	# chosen to read apart at arena distance, and handing the player's own pick to
+	# an opponent too would let someone play a match against a character wearing
 	# their exact silhouette.
-	#
-	# ⚠️ THE PROP PICKS GO ON A PROP AND THE PERSON PICK ON A PERSON. A Prop seat
-	# takes BOTH skins for the same reason its networked counterpart does —
-	# `is_can` flips every round and it will be each in turn — and since 10.5 a
-	# skin also carries that round's ability (`character_roster.gd`), so putting
-	# them on the wrong unit would silently cost the player their kit, not just
-	# their colour.
 	var picked_unit := _local_unit_for_seat(GameLaunch.solo_seat)
-	if picked_unit.is_person:
-		picked_unit.character_index = GameLaunch.character_index()
-	else:
-		picked_unit.can_index = GameLaunch.can_index()
-		picked_unit.slipper_index = GameLaunch.slipper_index()
-	# NET-1, the solo half — and solo is where it bites HARDEST. The networked
-	# path is a 2-of-4 shortfall; here exactly one of the four seats is human, so
-	# three are always AI, and if the player sits in a Person seat then BOTH the
-	# lata they defend and the tsinelas they throw are bots wearing the neutral
-	# 3/3/3. Same rule as `_team_prop_picks`: the Prop seat on the human's own
-	# team wears the human's picks. Written against the two Main.tscn nodes rather
-	# than through `_local_unit_for_seat` because the local flow has no seat
-	# table — the units are authored in the scene.
-	var team_prop: CharacterBase = (
-		team_a_prop if GameLaunch.solo_seat / 2 == 0 else team_b_prop)
-	if team_prop != picked_unit:
-		team_prop.can_index = GameLaunch.can_index()
-		team_prop.slipper_index = GameLaunch.slipper_index()
-	# B-76: Main.tscn no longer hardcodes a Prop ability (see its own node
-	# comment) — assign the role-correct one here, same as the networked spawn
-	# path. _reset_world() re-picks this every round; this is just the round-1
-	# value so there's no null/wrong-ability window before the first
-	# begin_next_round() below runs it.
-	team_a_prop.ability = _prop_ability_for(team_a_prop).duplicate()
-	team_b_prop.ability = _prop_ability_for(team_b_prop).duplicate()
-	# 2026-07-28: user report — "u didnt fix spawn in logic". Local test units
-	# used to just sit at Main.tscn's own hand-authored default transforms,
-	# which predate the role-based SpawnPoints redesign (2.6) entirely and
-	# were never actually seen before this session — _start_local_test() used
-	# to call begin_next_round() immediately, and _reset_world() (which DOES
-	# use role-based spawns) ran before the first frame was ever shown. Now
-	# that there's a pre-round free-roam window, those stale positions are
-	# visible and wrong: the Can not on the base circle, the Attacker not
-	# facing the Can/Taya, etc. Placing everyone at their real role spawn
-	# up front, the same way _reset_world() does every round, fixes it.
+	picked_unit.character_index = GameLaunch.character_index()
+	# ⚠️ ONLY THE HUMAN'S SEAT TAKES THE SAVED NAME. Handing it to all four would put
+	# the player's own name on the three bots they are playing against, which is worse
+	# than no names at all.
+	picked_unit.player_name = SettingsManager.player_name
+	# ⚠️ AND THE OTHER THREE GET A REAL PERSON EACH, rather than the -1 sentinel
+	# that made every bot wear the same model. Called BEFORE the visual loop
+	# below so `apply()` draws the pick first time instead of drawing the stock
+	# rig and being corrected. Single Player never reaches the networked call
+	# site (`_rpc_begin_ready_countdown` gates it on `NetworkManager.is_host()`,
+	# which is false with no session), so it has to be invoked here as well.
+	_refresh_ai_prop_picks()
+	_refresh_seat_prop_picks()
+	# ⚠️ ROUND 1'S ROLES COME FROM THE SCHEDULE UP FRONT, NOT FROM THE SCENE'S
+	# EXPORT DEFAULTS. `is_defender` is an `@export` on `CharacterBase.tscn`, so
+	# without this every unit loads with whatever the scene file happened to say and
+	# the free-roam window before READY shows the wrong player confined to the box.
+	# One writer for the role — `MatchManager.defender_slot_for()` — from frame one.
+	var opening_defender := MatchManager.defender_slot_for(1)
+	var attacker_index := 0
 	for character in _local_roster:
-		_place_at_spawn(character, _role_slot(character.is_can, character.is_person, character.team_is_can_side))
-	_wire_downed_flash(team_a_prop)
-	_wire_downed_flash(team_b_prop)
-	_register_local_can()
-	# Checklist 5.5 — Single Player. The human plays the seat they picked in the
-	# setup screen (10.5); the other three units on the roster get real AI
-	# instead of sitting on unbound input. Attached once, here, not re-attached
-	# every round: AIController re-derives its role from
-	# is_can/is_person/team_is_can_side on every decide() call, so it stays
-	# correct across every role swap without needing to know one happened.
+		character.is_defender = character.player_slot == opening_defender
+		var role_index := 0
+		if not character.is_defender:
+			attacker_index += 1
+			role_index = attacker_index
+		var unit_visual: Node = character.get_node_or_null("Visual")
+		if unit_visual != null and unit_visual.has_method("apply"):
+			unit_visual.apply(character.is_person, character.is_can, character.player_slot)
+		_place_at_spawn(character, role_index)
+		character.spawn_position = character.position
+		RoundManager.register_player(character)
+	RoundManager.lata = lata
+	_wire_downed_flash(lata)
 	var human := _local_unit_for_seat(GameLaunch.solo_seat)
 	_give_human_player_one(human)
 	# ⚠️ EVERY UNIT GETS A CONTROLLER, INCLUDING THE HUMAN'S — the human's is
@@ -597,6 +680,11 @@ func _start_local_test() -> void:
 	# consequence (2 units answering one keypress, 3 after two Tabs).
 	for character in _local_roster:
 		_attach_ai(character, character != human)
+		# Follow targets for the spectator's `Tab`. Single Player builds its four units
+		# from the scene rather than through `_build_networked_character`, so the group
+		# has to be joined here as well — one line, in both places, beats a scan that has
+		# to know which units are real.
+		character.add_to_group("spectatable")
 	# Item 13: no authority concept in local test, unlike networked play,
 	# where each rig can activate itself from is_multiplayer_authority(). One
 	# rig has to be picked explicitly.
@@ -614,15 +702,46 @@ func _start_local_test() -> void:
 	# session where the player chose another seat snaps p1 back to Team A's
 	# Person. Debug-only path, left alone deliberately: that file is the harness,
 	# not the game, and 5.5 removes the overlay from the shipping build anyway.
-	var default_rig := human.get_node("CameraRig") as CameraRig
-	default_rig.set_active(true)
-	default_rig.set_aim_source(CameraRig.AimSource.MOUSE)
+	# ⚠️ A SPECTATOR ACTIVATES NO RIG AT ALL. `_attach_ai` above already gave every unit
+	# a controller (the human's is created DISABLED); re-enabling the human's is what
+	# turns a four-unit Single Player match into something worth watching, and skipping
+	# the rig is what stops the camera being welded inside a Person's head. See
+	# `_enter_spectator_mode`.
+	if GameLaunch.spectator:
+		if human.ai_controller != null:
+			human.ai_controller.set_enabled(true)
+		human.input_parked = true
+		_enter_spectator_mode()
+		# ⚠️ RE-ASSERTED A FRAME LATER, BECAUSE SOMETHING TURNS IT BACK OFF.
+		# Measured by `spec_probe --solo`: "every seat including the vacated one is
+		# bot-held — FAIL, 3 of 4 ai-driven". `debug_player_switcher.gd::_apply_slots()`
+		# runs when the DebugBar registers, claims `DEFAULT_P1_UNIT` ("TeamAPerson") for
+		# player 1 and DISABLES that unit's controller — which in a spectated solo match
+		# is precisely the seat the spectator just vacated. The result is a 2v2 with one
+		# unit standing still for the whole round, filmed.
+		# Deferred rather than ordered: the switcher registers on its own schedule and
+		# this is the cheap half of the fix. The switcher itself is `scripts/ui/**` and
+		# therefore `build ux`'s — filed as §4.11.
+		_reassert_spectated_bots.call_deferred()
+	else:
+		var default_rig := human.get_node("CameraRig") as CameraRig
+		default_rig.set_active(true)
+		default_rig.set_aim_source(CameraRig.AimSource.MOUSE)
 	# 2026-07-28: begin_next_round() is deliberately NOT called here any more —
 	# see _awaiting_local_ready's own doc. Everyone is already spawned at their
 	# role position, but the round (and confinement, which is gated on
 	# RoundManager.round_active) doesn't start until the player readies up.
 	_awaiting_local_ready = true
 	hud.show_ready_prompt(true)
+	# ⚠️ A SOLO SPECTATOR HAS NOBODY TO READY UP, AND THE PROMPT ASKING THEM TO IS HIDDEN.
+	# `hud.enter_spectator_mode()` strips `ready_prompt` along with every other element
+	# that describes a character — correctly, it says "press [R] to start" to somebody who
+	# is not in the match — so a spectated Single Player sat in the pre-round window with
+	# no instruction on screen and no round ever starting. Measured: `spec_probe --solo`
+	# read the §2.7 round strip as '' because `RoundManager.round_active` was still false
+	# forty seconds in. There is no second player to wait for here, so waiting is the bug.
+	if GameLaunch.spectator:
+		_run_ready_countdown.call_deferred()
 
 ## Single Player's seat choice, resolved to one of Main.tscn's four hand-placed
 ## units. The seat numbering is the networked one, unchanged — `team = seat / 2`,
@@ -630,11 +749,9 @@ func _start_local_test() -> void:
 ## different things by "Team B's Prop". Falls back to Team A's Person, the
 ## historical default, rather than erroring on a seat that cannot exist.
 func _local_unit_for_seat(seat: int) -> CharacterBase:
-	match seat:
-		1: return team_a_prop
-		2: return team_b_person
-		3: return team_b_prop
-		_: return team_a_person
+	if seat < 0 or seat >= _local_roster.size():
+		return _local_roster[0]
+	return _local_roster[seat]
 
 ## ⚠️ WITHOUT THIS, CHOOSING ANY SEAT BUT TEAM A'S PERSON GIVES YOU A CHARACTER
 ## YOU CANNOT MOVE. Main.tscn assigns player_id 1/2/3/4 to its four units, and
@@ -663,6 +780,114 @@ func _give_human_player_one(human: CharacterBase) -> void:
 			character.player_id = human.player_id
 			break
 	human.player_id = 1
+
+## ---------------------------------------------------------------------------
+## ⚠️ SPECTATOR MODE, ENTRY POINT. `Design.md` §9. Called from exactly two places — the
+## Single Player branch above, and `_spawn_player` when the LOCAL peer identified itself
+## as a spectator — and it is deliberately the only thing either of them does
+## differently. There is no spectator flow: there is the ordinary flow with a spawn
+## skipped and a camera added.
+##
+## ⚠️ ADDED TO THIS SCENE, NOT TO `Main.tscn`. The node has no authored content — it is a
+## `Node3D` that builds its own `Camera3D` in `_ready()` — so putting it in the scene
+## file would mean a camera that exists, and is `current`, for every player who is NOT
+## spectating. `Main.tscn` is also a shared-lock file and this needs no lock.
+##
+## Idempotent: a second call while a spectator already exists is a no-op rather than a
+## second camera fighting the first for `current`.
+var _spectator: SpectatorCamera = null
+
+## Single Player only. Every one of the four units is a bot while this peer is watching —
+## there is no human in the match at all — so nothing local should ever be reading the
+## keyboard. Idempotent and cheap; see the call site for the measurement that made it
+## necessary and for who owns the real fix.
+##
+## ⚠️ THE SPECTATOR ITSELF IS NOT IN `_local_roster` AND GETS NO CONTROLLER. 🧑 2026-07-31:
+## *"dont give spectator AI... spectator should only be controllable by a person."* This
+## loop walks characters; the camera is a `Node3D` with no `CharacterBase` on it and
+## cannot be reached from here. `spec_probe --solo` asserts that directly.
+func _reassert_spectated_bots() -> void:
+	for character in _local_roster:
+		if not is_instance_valid(character):
+			continue
+		if character.ai_controller != null:
+			character.ai_controller.set_enabled(true)
+		character.input_parked = true
+		# ⚠️⚠️ AND EVERY RIG GOES OFF, WHICH IS THE HALF I MISSED THE FIRST TIME.
+		#
+		# 🧑 report, 2026-07-31: *"i dont see one of the characters bruh in spectator"*,
+		# with a screenshot showing two Person nameplates over one visible model. Measured
+		# by `spec_probe --solo`: `TeamAPerson rig_active=true` while spectating, with the
+		# other three false — `debug_player_switcher.gd::_apply_slots()` had claimed that
+		# unit and called `set_active(true)` on its rig.
+		#
+		# An active rig is not just a camera. `camera_rig.gd::_apply_fpp_self_hide()` drops
+		# that character's HEAD MESH and its CARRIED SLIPPER for as long as the rig is
+		# active, because the peer looking through it is supposed to be looking PAST its
+		# own body — and it shows the viewmodel arms in their place. On a spectator's
+		# screen that is a unit missing pieces of itself, seen from the outside.
+		#
+		# I took `Camera3D.current` back off this same mechanism earlier and stopped there,
+		# which fixed the picture and left a body broken inside it. That is why this
+		# deactivates the rig outright rather than fighting it property by property: a
+		# spectated match has NO local peer holding any character, so there is no rig here
+		# that should be active, and every symptom is downstream of that one fact.
+		#
+		# `set_active()` is CameraRig's own public API — called, not edited. `camera_rig.gd`
+		# is `build ux`'s file and stays untouched.
+		var rig := character.get_node_or_null("CameraRig") as CameraRig
+		if rig != null:
+			rig.set_active(false)
+	_dress_spectated_units()
+
+## ⚠️⚠️ A SPECTATED MATCH WAS BEING FILMED IN THE STOCK SKIN. 🧑 2026-07-31:
+## *"the skins/chara models that are chosen by everyone in char select dont change in
+## spectator mode"*, clarified as *"it sees the models BUT it doesnt have custom skin."*
+##
+## The solo path deliberately writes picks onto ONLY the human's own seat and that
+## team's Prop, and leaves every other unit at `character_index`/`can_index` = -1. That
+## rule is CORRECT for a playing human and its reason is recorded where it is written:
+## handing the player's own pick to an opponent would let somebody play a match against
+## a character wearing their exact silhouette. **But a spectator holds no seat**, so in
+## a spectated match the rule has nothing to protect and leaves three of four units on
+## the neutral 3/3/3 default — which is precisely the match that gets recorded.
+##
+## ⚠️ SPECTATOR ONLY. This is reached from `_reassert_spectated_bots()`, which runs
+## only under `GameLaunch.spectator`, so ordinary play keeps the anti-mirror rule intact.
+##
+## ⚠️ PERSONS TAKE ROSTER 0 AND 1 ON PURPOSE, not an arbitrary spread.
+## `character_roster.gd` pins its first two entries as the signed-off pair chosen to
+## read apart at arena distance (`Art_Direction.md`), so this dresses them in real
+## roster entries without spending the readability that pinning exists to protect.
+##
+## ⚠️ It only ever fills a MISSING pick (`< 0`), so the one unit the spectator chose
+## before vacating its seat keeps what it chose.
+## ⚠️ NOW ONE LINE, AND THE DUPLICATE RULE IT USED TO HOLD IS GONE. This dealt
+## `i % ROSTER.size()` — 0/1/2/3, four ADJACENT roster entries — while
+## `_refresh_ai_prop_picks()` deals the same kind of pick for ordinary play. Two
+## functions answering "which Person does an unpicked seat wear" is two answers
+## that drift, and this was already the worse of the two: adjacent entries are the
+## least likely to read apart at arena distance, which is the one thing a filmed
+## match needs. Both callers now get the spread version, and the anti-mirror rule
+## still holds because that function only ever fills a MISSING pick.
+func _dress_spectated_units() -> void:
+	_refresh_ai_prop_picks()
+	_refresh_seat_prop_picks()
+
+func _enter_spectator_mode() -> void:
+	if _spectator != null and is_instance_valid(_spectator):
+		return
+	_spectator = SpectatorCamera.new()
+	_spectator.name = "Spectator"
+	add_child(_spectator)
+	# The YOU card, the crosshair and the charge meters all describe a character this
+	# player does not have. `you_card.get_local_character()` would return null and most
+	# of the HUD would simply draw nothing, but "mostly blank UI" reads as broken rather
+	# than as deliberate — so the whole gameplay layer goes, and the legend replaces it.
+	# ⚠️ THE CAMERA GOES WITH IT NOW, not just its static legend: §2.7 needs a live
+	# readout (speed, follow target) that only the node itself can answer, and §2.6's
+	# whole point is that those two are being changed while a shot is being framed.
+	hud.enter_spectator_mode(_spectator)
 
 ## 2026-07-28 — the other half of the pre-round free-roam window. Pressing
 ## ready_up while waiting simply calls begin_next_round(); MatchManager's own
@@ -713,8 +938,12 @@ func _enter_net_ready_phase() -> void:
 ##
 ## Floored at 1 so a host whose peer list has not populated yet still needs its
 ## own press rather than starting instantly on an empty count.
+## ⚠️ SPECTATORS ARE NOT COUNTED. They hold no seat and own no character, so they have
+## nothing to ready — counting them would hang the gate forever on a press nobody can
+## make, which is the same deadlock `_on_player_disconnected` already has to unwind for
+## a peer that leaves mid-vote. See `NetworkManager.playing_peer_count()`.
 func _expected_ready_count() -> int:
-	return maxi(1, NetworkManager.connected_peer_ids.size())
+	return NetworkManager.playing_peer_count()
 
 ## Any peer -> host: "I am ready." `call_remote`, because the host's own press
 ## routes here through `rpc_id(1)` on itself... which Godot delivers locally with
@@ -728,6 +957,16 @@ func _rpc_declare_ready() -> void:
 	var sender := multiplayer.get_remote_sender_id()
 	if sender == 0:
 		sender = multiplayer.get_unique_id() # our own press, delivered locally
+	# ⚠️ A SPECTATOR'S PRESS DOES NOT COUNT, and it has to be dropped HERE rather than
+	# simply excluded from `_expected_ready_count()`. With one player and one spectator,
+	# expected is 1 — so a spectator who presses R first would satisfy the gate on their
+	# own and start the match without the person actually playing it. The count and the
+	# quorum have to agree about who is in the electorate.
+	#
+	# The HOST is exempt even when spectating: somebody has to be able to start a match,
+	# and it is the only peer that can. Same carve-out `playing_peer_count()` documents.
+	if NetworkManager.is_spectator(sender) and sender != multiplayer.get_unique_id():
+		return
 	_net_ready_peers[sender] = true
 	var ready_count: int = _net_ready_peers.size()
 	var expected := _expected_ready_count()
@@ -759,6 +998,30 @@ func _rpc_begin_ready_countdown() -> void:
 	if _counting_down:
 		return
 	_awaiting_net_ready = false
+	# ⚠️⚠️ THE LAST CHANCE TO GET EVERY PICK ONTO EVERY UNIT, AND IT IS THE ONE MOMENT
+	# THAT IS GUARANTEED TO BE AFTER ALL OF THEM HAVE ARRIVED.
+	#
+	# Human report, 2026-07-30: *"the character settings (Lata and Slippers) do not
+	# update in actual play — no matter what is picked, the default loads."*
+	#
+	# Every individual link in the chain is correct and has been fixed once already:
+	# `_rpc_identify` carries the picks, `_build_networked_character` reads them,
+	# `_apply_known_picks` re-applies a pick that lands late, `_refresh_ai_prop_picks`
+	# lends a human's picks to their AI teammate's Prop, and `character_visual.gd`'s
+	# cache key includes the skin index so a redraw is not skipped. What none of them
+	# guarantees is ORDER: a character is built when its peer connects, and a pick is
+	# known when that peer's identify packet lands, and those two events race for every
+	# peer except the host — so on any given run some units are drawn from a pick and
+	# some from the -1 sentinel, which is exactly "sometimes it works" reported as
+	# "it never works".
+	#
+	# The ready gate is the fix because it is the only point in the flow where every peer
+	# has connected, every peer has identified, and no round has started. One sweep here
+	# is worth another five conditional re-applications scattered along the join path.
+	if NetworkManager.is_host():
+		_refresh_ai_prop_picks()
+		_refresh_seat_prop_picks()
+		_rpc_sync_picks.rpc(_picks_table())
 	_run_ready_countdown()
 
 ## 2026-07-28 — "add a 3 2 1 timer before each match starts too." Runs once,
@@ -791,11 +1054,10 @@ func _run_ready_countdown() -> void:
 ## _start_local_test() and again every round from _on_match_round_started
 ## once the swap below has updated is_can, so Option A/B win-checks always
 ## watch the right one instead of staying locked to whoever was Can in round 1.
-func _register_local_can() -> void:
-	RoundManager.clear_tracked_cans()
-	for character in [team_a_prop, team_b_prop]:
-		if character.is_can:
-			RoundManager.register_can(character)
+## ⚠️ `_register_local_can()` WAS DELETED HERE. It registered whichever authored
+## Prop was playing the lata this round so `RoundManager` could watch its state.
+## The lata is a single world object now and `_reset_world()` hands it over
+## directly, so there is nothing per-round to re-register.
 
 func _start_hosting() -> void:
 	_clear_local_test_characters()
@@ -830,6 +1092,26 @@ func _start_hosting() -> void:
 
 func _start_joining(address: String) -> void:
 	_clear_local_test_characters()
+	# ⚠️⚠️ A SPECTATING **CLIENT** GOT NO CAMERA AT ALL, AND NOTHING ANYWHERE CALLED FOR ONE.
+	#
+	# Measured by `spec_probe --lobby-join`: "IN THE MATCH: the client got a free camera —
+	# FAIL", with `/root/Main/Spectator` absent while every seat and ready-gate check on
+	# the same match passed. `_enter_spectator_mode()` had exactly two call sites — the
+	# Single Player branch, and `_spawn_player()` — and **`_spawn_player` is host-only**
+	# (it is driven by the host's own connect loop and by `_try_late_join`). So the entire
+	# spectator path existed for a solo player and for a host, and a joining client fell
+	# through it silently: no camera added, no HUD strip, and the view left on whatever
+	# `Camera3D` happened to be current in `Main.tscn`.
+	#
+	# That is the "boots, single-peer only" line in § SALVAGE, and it is the actual reason
+	# spectating could never have been used to film a LAN match.
+	#
+	# Here rather than in `_spawn_player` because a client is never spawned BY anything
+	# local — the host decides who gets a body and the client only ever receives the
+	# result. `GameLaunch.spectator` is this peer's own choice, known locally, and this is
+	# the first moment on the client where the HUD exists to be stripped.
+	if GameLaunch.spectator:
+		_enter_spectator_mode()
 	NetworkManager.player_connected.connect(_on_player_connected)
 	NetworkManager.player_disconnected.connect(_on_player_disconnected)
 	# Q-1/B-62: only a client can lose its server or fail to reach one — a host
@@ -859,12 +1141,11 @@ func _on_joined_ready_for_spawn() -> void:
 	_rpc_client_ready_for_spawn.rpc_id(1)
 
 func _clear_local_test_characters() -> void:
-	RoundManager.clear_tracked_cans()
+	RoundManager.clear_players()
 	# The scene-level ArenaCamera is removed — B-03 is closed, B-58 is closed.
-	team_a_prop.queue_free()
-	team_a_person.queue_free()
-	team_b_prop.queue_free()
-	team_b_person.queue_free()
+	for character in players:
+		if is_instance_valid(character):
+			character.queue_free()
 	_local_roster.clear()
 
 ## 4.3/B-65: this used to be the ONE trigger for spawning + catching up a
@@ -908,6 +1189,205 @@ func _rpc_client_ready_for_spawn() -> void:
 ## that fires before NetworkManager.peer_tokens has this peer's entry simply
 ## does nothing rather than spawning them into the wrong slot — whichever
 ## trigger fires once BOTH conditions are true is the one that actually acts.
+## ---------------------------------------------------------------------------
+## B-145 · THE PICKS DO REACH THE UNIT — AND THEN NOT EVERY PEER SEES IT.
+##
+## 🧑 Reported from play: *"the models we pick don't show up"*, *"i pick coffee,
+## if i switch to can, old model stays"*, *"character settings dont update in
+## actual play"*. All three are one thing seen from three angles.
+##
+## ⚠️ MEASURED ON FOUR REAL PEERS FROM A VERIFIED-CLEAN START, and the split is
+## exact. For any one Prop there are three kinds of peer:
+##
+##   the HOST      — `picks_for()` is host-side, so it is right.
+##   the OWNER     — writes its own `GameLaunch` (`_apply_reclaimed_picks`), right.
+##   EVERYBODY ELSE — reads `can_index = -1` and draws the stock skin at 3/3/3.
+##
+## **With two peers there is no everybody-else**, which is why every two-instance
+## run this project has ever done was green and the game was broken in a real
+## four-player match. Host and owner read `can_index=3`; the two third-party
+## clients read `-1` for the same unit in the same round.
+##
+## ⚠️ TWO PLAUSIBLE FIXES WERE TRIED FIRST AND BOTH MEASURED NO CHANGE — recorded
+## so nobody spends the afternoon re-trying them:
+##
+##   1. `_build_networked_character` stamping -1 over a replicated value. Real,
+##      and guarded now (a peer with no answer must leave the value alone — the
+##      rule `_apply_reclaimed_picks` already states), but NOT the cause: the
+##      third-party clients still read -1 afterwards.
+##   2. Flipping the three properties from `replication_mode` ON_CHANGE to ALWAYS
+##      in `CharacterBase.tscn`. Also no change. The state is not arriving at
+##      all, so how often it would be re-sent is beside the point.
+##
+## So the value never crosses to a peer that owns neither the node nor the
+## session, and it is sent HERE instead — on the same trigger, to the same one
+## peer, as the round-state catch-up directly above, which exists because a
+## joiner misses things that happened before it existed. **This is not U-8.**
+## U-8 is a second path for something the host already delivers; nothing
+## delivered this.
+## ---------------------------------------------------------------------------
+
+## HOST-ONLY. Re-asks `_team_prop_picks` for every AI-held Prop that still has no
+## picks, then tells everybody. Idempotent and cheap: a Prop that already has an
+## answer is skipped, and a team whose Person is still a bot legitimately stays
+## at -1 (the neutral 3/3/3 is correct when there is nobody to inherit from).
+## ⚠️ `_refresh_ai_prop_picks()`'s ORIGINAL BODY WAS DELETED IN THE PIVOT. It
+## inherited a human's lata and tsinelas skin picks onto their bot teammate's
+## Prop. There are no Prop seats and no prop picks — a player picks a Person and
+## nothing else. It was left as a no-op; it now deals the BOTS their Persons.
+##
+## ⚠️⚠️ EVERY BOT WORE THE SAME FACE UNTIL 2026-08-01. 🧑: *"RANDOMISE THE BOTS'
+## CHARACTER SKINS."* An AI seat is never given a `character_index`, so it keeps
+## the -1 sentinel, and `character_visual.gd::_model_path()` then falls back to
+## `PERSON_MODELS[team]` — one model for every bot in the match. Twelve roster
+## entries exist and a four-player match was showing two.
+##
+## ⚠️ HOST-DECIDED AND REPLICATED, NOT COMPUTED PER PEER, AND `randi()` WOULD BE
+## WRONG TWICE OVER. The obvious fix is a random pick at spawn, which gives two
+## peers two different faces for the same bot; the next-most-obvious is a pure
+## function of the slot computed everywhere, which is deterministic but cannot see
+## which Persons the HUMANS took and so happily dresses a bot as the player. This
+## runs on the host, where both facts are known, and every caller already follows
+## it with `_rpc_sync_picks(_picks_table())` — a table that has carried
+## `character_index` since the pivot. So the wire format, the late-join catch-up
+## and the client-side apply all already exist and none of them changes.
+##
+## ⚠️ SEATS ARE WALKED IN NUMERIC ORDER, NOT IN DICTIONARY ORDER. `taken`
+## accumulates as it goes, so the order decides the answer — and `_index_to_
+## character`'s insertion order is connection order, which differs per session and
+## per peer. `range()` is what makes the same match deal the same four Persons
+## every time.
+##
+## Idempotent: a seat that already has a pick is skipped, so re-running this at
+## every ready gate and every late join cannot reshuffle a match in progress.
+func _refresh_ai_prop_picks() -> void:
+	var seats := _seat_characters()
+	var taken: Array[int] = []
+	for slot in range(NetworkManagerScript.MAX_PLAYERS):
+		var who: CharacterBase = seats.get(slot)
+		if who != null and who.character_index >= 0:
+			taken.append(who.character_index)
+	for slot in range(NetworkManagerScript.MAX_PLAYERS):
+		var who: CharacterBase = seats.get(slot)
+		# ⚠️ "< 0" IS THE WHOLE TEST FOR "THIS IS A BOT", and it is better than
+		# asking about the AIController. It is exactly the condition
+		# `_model_path()` falls back on, so this fills precisely the gap that
+		# produces the duplicate model — and a human seat is never negative
+		# (`GameLaunch.character_index()` floors at 0), so this cannot overwrite
+		# a player's own pick even if it ran on the wrong seat.
+		if who == null or who.character_index >= 0:
+			continue
+		var pick := _ai_character_index(slot, taken)
+		taken.append(pick)
+		who.character_index = pick
+		# The model has to be told: `_visual.apply()` runs at `_ready()` and on a
+		# role rotation, and this is neither.
+		var visual: Node = who.get_node_or_null("Visual")
+		if visual != null and visual.has_method("apply"):
+			visual.apply(who.is_person, who.is_can, who.player_slot)
+
+
+## Roster indices the four seats reach for first, spread across the twelve rather
+## than taken in order. 0/1/2/3 would deal the four Persons the roster happens to
+## list first, which are also the four most likely to be adjacent in palette;
+## quartering the list makes four bots read apart at arena distance, which is the
+## entire point of dealing them at all.
+const AI_PERSON_SPREAD: Array[int] = [0, 3, 6, 9]
+
+## The first roster entry at or after this seat's preferred index that nobody has
+## taken. Walking forward on collision (rather than, say, adding a random offset)
+## keeps the whole thing a pure function of the seat and the set already taken.
+func _ai_character_index(slot: int, taken: Array[int]) -> int:
+	var size := CharacterRoster.ROSTER.size()
+	if size <= 0:
+		return 0
+	var start: int = AI_PERSON_SPREAD[slot % AI_PERSON_SPREAD.size()] % size
+	for step in range(size):
+		var candidate := (start + step) % size
+		if not (candidate in taken):
+			return candidate
+	return start
+
+
+## slot -> CharacterBase, for whichever spawn path this session used.
+##
+## ⚠️ TWO PATHS BUILD THE FOUR UNITS AND THEY STORE THEM IN DIFFERENT PLACES:
+## Single Player fills `_local_roster` from the authored scene, and a networked
+## match fills `_index_to_character` from the spawner. Anything that wants to
+## reason about "the four seats" has to ask both or it silently works in one mode
+## only — which is how a bug gets described as "it only happens in multiplayer".
+func _seat_characters() -> Dictionary:
+	var seats: Dictionary = {}
+	for character in _local_roster:
+		if character != null and is_instance_valid(character):
+			seats[int(character.player_slot)] = character
+	for index in _index_to_character:
+		var character: CharacterBase = _index_to_character[index]
+		if character != null and is_instance_valid(character):
+			seats[int(index)] = character
+	return seats
+
+## [index, character_index, player_name, can_index, slipper_index] for every
+## spawned seat. Built on the host, where the answer is known. The last two
+## columns are `_seat_prop_picks`', not a `CharacterBase` property — see that
+## var's own doc for why this feature does not touch `character_base.gd`.
+func _picks_table() -> Array:
+	var table: Array = []
+	for index in _index_to_character:
+		var character: CharacterBase = _index_to_character[index]
+		if character == null or not is_instance_valid(character):
+			continue
+		var props: Dictionary = _seat_prop_picks.get(index, {})
+		table.append([int(index), character.character_index, character.player_name,
+			int(props.get("can", -1)), int(props.get("slipper", -1))])
+	return table
+
+## Host → ONE peer. Applies to the units that already exist here, and is kept so
+## a unit that has not arrived yet can be answered when it does — the spawn order
+## and this message have no guaranteed relationship, and assuming one is how the
+## first version of this dropped the seat that arrived a frame late.
+var _known_picks: Dictionary = {}
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_sync_picks(table: Array) -> void:
+	for row in table:
+		if typeof(row) != TYPE_ARRAY or (row as Array).size() < 2:
+			continue
+		var index := int(row[0])
+		_known_picks[index] = row
+		var character: CharacterBase = _index_to_character.get(index)
+		if character != null and is_instance_valid(character):
+			_apply_known_picks(character, index)
+
+## ⚠️ NEVER WRITES A -1. Same rule as everywhere else in this file: a peer with
+## no answer leaves the value it was given alone.
+func _apply_known_picks(character: CharacterBase, index: int) -> void:
+	var row: Array = _known_picks.get(index, [])
+	if row.size() < 2:
+		return
+	if int(row[1]) >= 0:
+		character.character_index = int(row[1])
+	# ⚠️ SANITISED ON ARRIVAL. This string came off the wire from another peer and is
+	# about to be drawn on a scoreboard and a 3D label; `SettingsManager` owns the one
+	# trim-and-cap so a hostile or merely careless client cannot post a novel.
+	if row.size() >= 3:
+		character.player_name = SettingsManagerScript.sanitise_name(String(row[2]))
+	# ⚠️ THE MODEL HAS TO BE TOLD. `_visual.apply()` runs at `_ready()` and on every
+	# role rotation — neither of which happens when a pick lands mid-round, so
+	# without this the unit keeps wearing whatever it was drawn with.
+	var visual: Node = character.get_node_or_null("Visual")
+	if visual != null and visual.has_method("apply"):
+		visual.apply(character.is_person, character.is_can, character.player_slot)
+	# Cached client-side, not written onto `character` — see `_seat_prop_picks`'
+	# own doc. `_rpc_sync_picks` is `call_remote`, so the host never runs this
+	# branch on itself; it already populated `_seat_prop_picks` directly in
+	# `_refresh_seat_prop_picks()`.
+	if row.size() >= 5:
+		var can := int(row[3])
+		var slipper := int(row[4])
+		if can >= 0 or slipper >= 0:
+			_seat_prop_picks[index] = {"can": can, "slipper": slipper}
+
 func _try_late_join(peer_id: int) -> void:
 	if _spawned_peer_ids.has(peer_id):
 		return
@@ -917,15 +1397,44 @@ func _try_late_join(peer_id: int) -> void:
 	# B-29/B-48: _start_hosting() already called MatchManager.begin_next_round()
 	# before anyone could possibly be connected (see B-13), so every joining
 	# peer — not just a "late" one — missed the one-shot _sync_round_started
-	# broadcast and is stuck at round_number 0. GameLaunch.game_mode is also
-	# never networked at all; each peer reads its own menu selection, so a
-	# client's copy can silently disagree with the host's. Catch this one
-	# peer up on both in a single reliable RPC.
+	# broadcast and is stuck at round_number 0. Catch this one peer up in a single
+	# reliable RPC.
+	#
+	# ⚠️⚠️ THIS CALL USED TO PASS THE 2v2 ARGUMENT LIST AND THREW ON EVERY SINGLE JOIN.
+	# Measured on two real peers 2026-08-01 (`tools/ui/net_twopeer_probe.tscn`): the
+	# host printed `Invalid access to property or key 'team_a_wins' on a base object of
+	# type 'Node (MatchManagerScript)'` the instant the client identified.
+	#
+	# The HARRYDAKS pivot rewrote the RECEIVER below to the four-player shape —
+	# `(round_number, defender_slot, scores, time_left, round_active, lata_upright)` —
+	# and did not update this one call site, which still sent `team_a_wins`,
+	# `team_b_wins`, `set_number` and `round_in_set`. None of those four exist on
+	# `MatchManager` any more (paired sets and Option A went with the 2v2 format,
+	# `Design.md` §12), so the property access threw before the RPC was ever sent.
+	#
+	# ⚠️ AND THE THROW ABORTED THE REST OF `_try_late_join()`, which is why this was
+	# worth finding rather than merely untidy: every line below — the picks catch-up
+	# that carries the PROP SKINS, `_refresh_ai_prop_picks()`, and the ready-phase
+	# hand-off — never ran for any joining peer. A single-machine session never calls
+	# this function at all, so nothing about it is visible in Single Player.
 	_sync_state_to_late_joiner.rpc_id(
-		peer_id, MatchManager.round_number, MatchManager.team_a_is_can,
-		MatchManager.team_a_wins, MatchManager.team_b_wins,
-		RoundManager.time_left, RoundManager.round_active, GameLaunch.game_mode
+		peer_id, MatchManager.round_number, MatchManager.defender_slot,
+		MatchManager.scores, RoundManager.time_left, RoundManager.round_active,
+		lata != null and lata.is_upright
 	)
+	# B-145 — see `_rpc_sync_picks`. The same catch-up, for the three indices the
+	# synchronizer does not deliver to a peer that owns neither the node nor the
+	# session. Sent on the SAME trigger as the round state above, to the same one
+	# peer, for the same reason: it missed a thing that happened before it existed.
+	_rpc_sync_picks.rpc_id(peer_id, _picks_table())
+	# B-145, second half. NET-1 gave an AI-held Prop its human teammate's picks —
+	# but `_fill_empty_slots_with_placeholders()` runs in `_start_hosting()`,
+	# BEFORE a single client has connected, so `_team_prop_picks` had nobody to
+	# inherit from and wrote -1. Nothing ever asked again, so a bot Prop sitting
+	# beside a human who joined thirty seconds later wore the stock 3/3/3 for the
+	# whole match. Measured: the last remaining red row on the four-peer run.
+	_refresh_ai_prop_picks()
+	_refresh_seat_prop_picks()
 	# A peer arriving DURING the ready phase joins the vote rather than watching
 	# it: broadcast rather than rpc_id, because `_expected_ready_count()` just went
 	# up and everybody's "2 / 3 ready" line is now wrong. A peer arriving after the
@@ -943,13 +1452,10 @@ func _try_late_join(peer_id: int) -> void:
 func _on_character_respawned(character: CharacterBase) -> void:
 	if not NetworkManager.is_networked() or character.is_multiplayer_authority():
 		hud.show_toast("OUT OF BOUNDS")
-	# Dev_Plan.md §3's second Option A win path for the Can side — see
-	# RoundManager.register_ring_out()'s own doc for why this was missing and
-	# what it filters down to. Called unconditionally (not gated on this being
-	# "our" character, unlike the toast above): it's a round-win decision, not
-	# a per-viewer cosmetic, and register_ring_out() already gates itself to
-	# the host.
-	RoundManager.register_ring_out(character)
+	# ⚠️ `RoundManager.register_ring_out(character)` WAS CALLED HERE and is deleted
+	# with Option A (§8.2) — ring-outs were that mode's second win path for the can
+	# side. The respawn itself is unchanged: a unit that falls off the arena still
+	# comes back, it just no longer scores anything for anybody.
 
 ## Focus loss always releases the mouse outright: alt-tabbing away with the
 ## cursor still captured is a bad experience regardless of what's on screen.
@@ -992,7 +1498,7 @@ func _notification(what: int) -> void:
 ## character_base.gd:347's gate). This function now finishes the ask: the
 ## character is handed to AIController instead of staying frozen, via
 ## _rpc_convert_to_ai below. Deliberately does NOT free the node or erase
-## _spawned_characters/_peer_teams/_peer_is_person directly here — that
+## _spawned_characters/_peer_slots/_peer_is_person directly here — that
 ## bookkeeping migration is _rpc_convert_to_ai's job (same shape as
 ## _rpc_reclaim_character's own migration), so every peer updates its local
 ## dictionaries identically instead of only the host's.
@@ -1008,7 +1514,6 @@ func _on_player_disconnected(peer_id: int) -> void:
 	# throughout).
 	if not NetworkManager.is_host():
 		return
-	_reregister_tracked_cans()
 	# ⚠️ A PEER THAT LEAVES MID-VOTE MUST NOT DEADLOCK THE READY PHASE. Without
 	# this, `_expected_ready_count()` drops by one while `_net_ready_peers` keeps
 	# the departed peer's tick, so the counter reads "3 / 2 ready" and the equality
@@ -1061,6 +1566,19 @@ func _spawn_player(peer_id: int) -> void:
 	var token: String = NetworkManager.peer_tokens.get(peer_id, "")
 	if token == "":
 		push_warning("main.gd: _spawn_player(%d) called with no registered token; skipping." % peer_id)
+		return
+	# ⚠️ A SPECTATOR IS NOT SEATED AT ALL. Marked as spawned first, deliberately, so a
+	# later `_try_late_join` cannot come back for the same peer and seat it anyway — the
+	# dictionary means "this peer has been dealt with", not "this peer has a body".
+	#
+	# The seat it would have taken is left empty and is filled by
+	# `_fill_empty_slots_with_placeholders`, the path that has always filled an unfilled
+	# slot. That is the whole implementation: a spectator is the ABSENCE of a spawn, not
+	# a second kind of one. See `GameLaunch.spectator`.
+	if NetworkManager.is_spectator(peer_id):
+		_spawned_peer_ids[peer_id] = true
+		if peer_id == multiplayer.get_unique_id():
+			_enter_spectator_mode()
 		return
 	_spawned_peer_ids[peer_id] = true
 	# B-21, superseded by 4.3/B-65: was keyed by peer_id, which meant a
@@ -1186,61 +1704,18 @@ func _seat_is_taken(seat: int) -> bool:
 ## stamping -1 over it — losing the teammate's pick to a peer that expressed no
 ## preference would be a downgrade, not a correction.
 func _apply_reclaimed_picks(character: CharacterBase, new_peer_id: int) -> void:
-	# ⚠️ TWO WRITERS, AND BOTH ARE NEEDED — this is the part that took two runs to
-	# get right, and the first version was measurably wrong.
-	#
-	# The host is the only peer that KNOWS everyone's picks (`peer_characters` is
-	# host-side). But `_rpc_reclaim_character` also hands this node's multiplayer
-	# authority to the arriving peer, and after that hand-over the ARRIVING PEER is
-	# the one whose values the synchronizer pushes. The first attempt wrote the
-	# correct index on the host after the hand-over and measured no change at all:
-	# the host set can_index 4 -> 3, the client — now authority, still holding the
-	# 4 it was spawned with — pushed 4 straight back, on both machines.
-	#
-	# So the write happens BEFORE the hand-over (see the call site), and the peer
-	# taking ownership ALSO writes its own picks from its own GameLaunch. That
-	# second write is not a second broadcast path and not U-8: it is the node's
-	# new authority setting a property it owns, carried by the synchronizer that
-	# was already replicating it. It closes the race rather than racing it.
 	var picks := {}
 	if NetworkManager.is_host():
 		picks = NetworkManager.picks_for(new_peer_id)
 	if new_peer_id == multiplayer.get_unique_id():
-		# This peer's own preferences, straight off GameLaunch — the same source
-		# `NetworkManager._local_picks()` snapshots to tell the host in the first
-		# place, so the two writers cannot disagree.
-		picks = {
-			"character": GameLaunch.character_index(),
-			"can": GameLaunch.can_index(),
-			"slipper": GameLaunch.slipper_index(),
-		}
+		picks = {"character": GameLaunch.character_index()}
 	if picks.is_empty():
 		return
-	if character.is_person:
-		var person := int(picks.get("character", -1))
-		if person >= 0:
-			character.character_index = person
-		return
-	var can := int(picks.get("can", -1))
-	var slipper := int(picks.get("slipper", -1))
-	if can < 0 and slipper < 0:
-		return
-	character.can_index = can
-	character.slipper_index = slipper
-	# The skin carries this round's ability (`_prop_ability_for`), so a changed
-	# pick is a changed kit. `_reset_world()` re-picks it every round anyway; this
-	# closes the window between reclaiming and the next round starting.
-	character.ability = _prop_ability_for(character).duplicate()
+	var person := int(picks.get("character", -1))
+	if person >= 0:
+		character.character_index = person
 
-func _team_prop_picks(team: int) -> Dictionary:
-	var person_seat := team * 2 # seats are [person, prop] per team — _build_spawn_data
-	for token in _token_join_index:
-		if int(_token_join_index[token]) != person_seat:
-			continue
-		for peer_id in NetworkManager.peer_tokens:
-			if String(NetworkManager.peer_tokens[peer_id]) == String(token):
-				return NetworkManager.picks_for(int(peer_id))
-	return {"character": -1, "can": -1, "slipper": -1}
+## ⚠️ `_team_prop_picks()` WAS DELETED HERE along with the prop seats it read.
 
 ## Lowest seat nobody holds. Falls back to 0 rather than -1 if all four are
 ## somehow taken: a fifth peer cannot connect (ENet is created with
@@ -1255,8 +1730,9 @@ func _first_free_seat() -> int:
 ## The seat a character sits in, from the two facts every code path here already
 ## has. Same derivation `_build_spawn_data` and `match_setup.gd` use, written
 ## once so the three cannot drift.
-static func _seat_of(team: int, is_person: bool) -> int:
-	return team * 2 + (0 if is_person else 1)
+## A seat IS a player slot now — there is no team/role packing left to undo.
+static func _seat_of(slot: int) -> int:
+	return slot
 
 ## Shared by _spawn_player (a real peer) and _fill_empty_slots_with_placeholders
 ## (an unfilled team/role slot, given a synthetic negative peer_id nothing
@@ -1264,66 +1740,30 @@ static func _seat_of(team: int, is_person: bool) -> int:
 ## controlling the resulting character, not in how team/role/position are
 ## derived from `index`.
 func _build_spawn_data(peer_id: int, index: int) -> Dictionary:
-	var team := index / 2 # 0, 0, 1, 1 for up to MAX_PLAYERS = 4
-	var is_person := index % 2 == 0 # first peer of each team pair is the Person
-	var team_is_can_side := (team == 0) == MatchManager.team_a_is_can
-	var is_can := team_is_can_side and not is_person
-	# Spawn POSITION is role-based (_role_slot), not the team-fixed `index` —
-	# see the doc above _role_slot for why. `player_id` below stays index-based
-	# on purpose: it is a fixed-for-the-match input-binding assignment, a
-	# different question from where this round's fight actually starts.
-	var spawn_pos: Vector3 = _spawn_point(_role_slot(is_can, is_person, team_is_can_side))
-	# ⚠️ B-130, AND THE HISTORY IS THE POINT — DO NOT "RESTORE" INPUT MEANING HERE.
-	#
-	# B-30 set this because CharacterBase.player_id was never assigned on a
-	# networked spawn: every networked character kept the scene default of 1 and
-	# read *_p1 actions. B-30's own note called that "harmless by accident (one
-	# human per LAN machine binds p1 and controls whichever single character is
-	# theirs)" and changed it to the index-based split below so the Settings
-	# panel's P2 rebind column would work in networked play.
-	#
-	# That accident was load-bearing and the trade was a bad one. Each LAN peer is
-	# a separate machine with its own keyboard, so the peer dealt an odd index got
-	# player_id 2 — arrow keys — and pressing WASD did nothing. `grab_p2` carried
-	# no mouse binding at all, so that player could not grab either. Reported
-	# 2026-07-29 as "In lan multiplayer we cant move any character". The P2 rebind
-	# column it was paying for had itself been removed from the panel on
-	# 2026-07-28, so by then it bought nothing.
-	#
-	# Both ends are settled now: the input overhaul collapsed *_p1..*_p4 into one
-	# unsuffixed action set, so this value no longer selects any input at all. It
-	# is kept as the match-slot identity — shipped in the spawn payload, read by
-	# you_card.gd to find the local character — and the 3/4 range still marks an
-	# AI-held slot for bookkeeping (see _attach_ai's doc for why that is no longer
-	# an isolation mechanism either).
-	var player_id := (index % 2) + (3 if peer_id < 0 else 1)
+	# ⚠️ ONE SEAT PER PLAYER, NOT TWO PER TEAM. `index` used to be packed —
+	# `index / 2` was the team and `index % 2` chose Person or Prop. Every seat is
+	# a Person now, so the index IS the player slot and no unpacking survives.
+	var slot := index
+	var opening_defender := MatchManager.defender_slot_for(maxi(1, MatchManager.round_number))
+	var is_defender := slot == opening_defender
+	# Role index, not seat: the Defender takes mark 0 and the three Attackers take
+	# 1..3, so a rotation moves people between marks rather than renumbering them.
+	var role_index := 0
+	if not is_defender:
+		role_index = 1 + (slot if slot < opening_defender else slot - 1)
+	# ⚠️ `player_id` IS THE INPUT-BINDING SEAT AND IT IS FIXED FOR THE MATCH — a
+	# different question from where this round's fight starts (B-130). It used to
+	# be `index % 2` plus an offset, which packed two players per team; it is the
+	# slot now, for the same reason everything else here is.
 	return {
-		"peer_id": peer_id, "position": spawn_pos, "is_can": is_can,
-		"is_person": is_person, "team": team, "team_is_can_side": team_is_can_side,
-		"player_id": player_id,
+		"peer_id": peer_id,
+		"position": _role_spawn_point(role_index),
+		"yaw": _role_spawn_yaw(role_index),
+		"is_defender": is_defender,
+		"player_slot": slot,
+		"player_id": slot + 1,
 	}
 
-## 2026-07-28, user feedback: "when playing multiplayer, for example only 2
-## people is playing, there's only 2 characters. it should have 4... make the
-## other 2 stationary for the meantime as it's only a placeholder." A 2v2
-## match with fewer than 4 real peers connected used to leave the unfilled
-## team's slots with no character at all — _start_hosting only ever spawned
-## _spawn_player for peers that actually connected.
-##
-## Fills every remaining slot (0..MAX_PLAYERS-1) with a negative sentinel
-## peer_id (real ENet peer ids are always positive, so it can never collide
-## with, or ever be reconnected to by, an actual connection) — the bookkeeping
-## key _build_networked_character reads to know "no real human owns this
-## one," which it answers by giving the character to the host's own
-## AIController instead of a real player's Input (see that function's own
-## doc, and _index_to_character's).
-##
-## Deliberately does NOT touch _token_join_index: a REAL
-## peer connecting later still gets the next free index normally, finds this
-## placeholder already sitting in _index_to_character for that index, and
-## reclaims it via the exact same _rpc_reclaim_character a reconnecting real
-## peer uses (see _spawn_player) — a new player taking an empty slot and a
-## dropped player's own slot coming back are the same event to this code.
 func _fill_empty_slots_with_placeholders() -> void:
 	for index in range(NetworkManager.MAX_PLAYERS):
 		var existing_character: CharacterBase = _index_to_character.get(index)
@@ -1344,283 +1784,329 @@ func _fill_empty_slots_with_placeholders() -> void:
 ## The constants below stay as the fallback and are still reachable: an AI slot
 ## has no picks, and neither does a `--host`/`--join=` command-line session that
 ## never passed through the setup screen.
-func _prop_ability_for(character: CharacterBase) -> AbilityBase:
-	var path := CharacterRoster.ability_path_at(
-		character.can_index, character.slipper_index, character.is_can)
-	if path != "":
-		var picked := load(path) as AbilityBase
-		if picked != null:
-			return picked
-		push_warning("main.gd: a roster skin names a missing ability '%s'; using the default." % path)
-	if character.is_can:
-		return CAN_ABILITY
-	return TSINELAS_ABILITY_TEAM_A if character.team == 0 else TSINELAS_ABILITY_TEAM_B
+## ⚠️ `_prop_ability_for()` WAS DELETED HERE, along with `scripts/abilities/**`. It
+## picked which `AbilityBase` a Prop carried this round from its skin and which
+## side it was playing. There are no abilities and no Props.
 
 ## Runs on every peer (host and clients) when the spawner replicates a spawn.
 func _build_networked_character(data: Dictionary) -> Node:
 	var character: CharacterBase = CHARACTER_SCENE.instantiate()
 	character.name = str(data["peer_id"])
 	character.position = data["position"]
-	character.spawn_position = data["position"] # B-15/B-35: where KillPlane sends it back to
-	character.is_can = data["is_can"]
-	character.is_person = data["is_person"]
-	character.team_is_can_side = data["team_is_can_side"]
-	# 2026-07-29 — this function set POSITION and nothing whatsoever about
-	# rotation, so every networked character entered its first round on the
-	# scene default (identity, i.e. facing -Z) no matter what its spawn marker
-	# said. It has looked correct on Eskinita purely because the attacker's
-	# marker sits on the +Z axis, where -Z happens to point at the can; the taya
-	# has been facing 55 degrees wrong since networked play existed, and any map
-	# whose attacker slot is not on that axis would put the attacker's back to
-	# the can on round 1. This is the half of the spawn bug that
-	# tools/spawn_probe.gd could never see: it drives _start_local_test(), which
-	# goes through _place_at_spawn() for all four units and so was always right.
-	#
-	# Derived here rather than carried in `data`: MultiplayerSpawner's custom
-	# spawn data silently truncates past 7 entries once it crosses the network
-	# (measured — see _spawn_player), `data` is already at exactly 7, and an 8th
-	# "yaw" key would vanish on the receiving peer with no error at all. Every
-	# input _spawn_yaw() needs is already present and every peer derives the same
-	# value from it, exactly as `index` is derived rather than sent.
-	character.rotation = Vector3(0.0, _spawn_yaw(
-		_role_slot(data["is_can"], data["is_person"], data["team_is_can_side"])), 0.0)
-	character.team = data["team"] # B-09: no team identity on CharacterBase before this
-	character.player_id = data["player_id"] # B-30: was never assigned, stuck at the scene default of 1
-	# Which roster character this peer picked on the CHARACTER screen.
-	#
-	# Looked up from NetworkManager rather than carried in `data` for the reason
-	# `character.rotation` above is derived rather than sent: this dictionary is
-	# already at MultiplayerSpawner's silent 7-entry ceiling and an 8th key would
-	# vanish on the receiving peer with no error at all.
-	#
-	# ⚠️ ONLY THE HOST'S ANSWER IS RIGHT, AND ONLY THE HOST NEEDS IT TO BE. This
-	# spawn function runs on every peer, but `peer_characters` is host-only — a
-	# client asking it about somebody else gets -1. That is correct and not a bug
-	# to route around: `character_index` is a REPLICATED property with
-	# `spawn = true` (CharacterBase.tscn), so the host's value arrives with the
-	# character itself and overwrites the client's -1 before it is ever drawn.
-	# Trying to make every peer compute this independently would need every peer
-	# to know every other peer's pick, which is exactly the state the
-	# synchronizer already carries.
-	# Person picks and Prop picks are set on the unit they belong to. A Prop takes
-	# BOTH lata and tsinelas skins because `is_can` flips every round and it will
-	# be each of them in turn — see CharacterBase.can_index.
+	# B-15/B-35: also where the KillPlane and a TAG send this player back to.
+	character.spawn_position = data["position"]
+	character.rotation = Vector3(0.0, float(data["yaw"]), 0.0)
+	character.is_defender = data["is_defender"]
+	character.player_slot = data["player_slot"]
+	# B-30: was never assigned and stuck at the scene default of 1, so every
+	# networked character read player one's bindings.
+	character.player_id = data["player_id"]
 	var picks := NetworkManager.picks_for(int(data["peer_id"]))
-	if character.is_person:
-		character.character_index = int(picks.get("character", -1))
-	else:
-		character.can_index = int(picks.get("can", -1))
-		character.slipper_index = int(picks.get("slipper", -1))
-		# NET-1 — see `_team_prop_picks` for the whole account. A Prop seat nobody
-		# is sitting in inherits its human teammate's lata and tsinelas picks
-		# instead of falling through to the neutral 3/3/3.
-		if character.can_index < 0 and character.slipper_index < 0:
-			var inherited := _team_prop_picks(int(data["team"]))
-			character.can_index = int(inherited.get("can", -1))
-			character.slipper_index = int(inherited.get("slipper", -1))
-	if data["is_person"]:
-		# Session 8: Person's Tag/Throw, replacing the previously-null `ability`
-		# for Person (see PersonAction doc). .duplicate() per PERSON_ACTION_ABILITY
-		# doc above — don't share cooldown state across the two Persons in a match.
-		character.ability = PERSON_ACTION_ABILITY.duplicate()
-	else:
-		# B-76: the class ability depends on which side of the round this Prop
-		# is playing — see _prop_ability_for() doc.
-		character.ability = _prop_ability_for(character).duplicate()
+	var person := int(picks.get("character", -1))
+	if person >= 0:
+		character.character_index = person
+	character.player_name = SettingsManagerScript.sanitise_name(
+		String(picks.get("name", "")))
 	var peer_id: int = data["peer_id"]
-	# AI takeover: a negative peer_id is the sentinel for "no real human owns
-	# this slot" (see _fill_empty_slots_with_placeholders / _rpc_convert_to_ai)
-	# — no real ENet connection can ever present one, so it used to mean
-	# "frozen forever" (nobody's is_multiplayer_authority() ever true for it).
-	# It now means "the HOST's machine runs this one," same authority the host
-	# already has for round logic — real authority is the host's own peer_id
-	# (always 1), while `peer_id` itself stays the negative sentinel for
-	# bookkeeping (the _spawned_characters/_index_to_character keys below,
-	# and character.name) so multiple AI slots don't collide on the same
-	# dictionary key the way they would if they all shared authority id 1 there
-	# too.
 	var is_ai := peer_id < 0
-	# ⚠️ B-133 — THIS LINE IS IMPLICATED IN A MEASURED LATE-JOIN REPLICATION
-	# FAULT. DO NOT "TIDY" IT WITHOUT READING docs/Handoff.md B-133 FIRST.
-	#
-	# Deferring this assignment past the spawn's replication flush takes a real
-	# four-peer session's discarded sync packets from 12,731 / 25,218 (peers 3 and
-	# 4) to 0 / 0 — but it also races `_rpc_reclaim_character`, which is what
-	# actually hands a slot to a joining human, and cost this peer its own
-	# character in tools/net_spawn_probe.tscn. So the fix is NOT applied here yet
-	# and this line is deliberately unchanged. Measurements, the three candidate
-	# fixes tried, and what each one did are in Handoff.md B-133; the harness is
-	# tools/hit_probe.tscn.
 	character.set_multiplayer_authority(1 if is_ai else peer_id)
-	_peer_teams[peer_id] = data["team"]
-	_peer_is_person[peer_id] = data["is_person"]
+	_peer_slots[peer_id] = data["player_slot"]
 	_spawned_characters[peer_id] = character
-	# 2026-07-28: keyed by INDEX (derived here identically to _spawn_player's
-	# own derivation, from data this spawn already carries), not peer_id, and
-	# never erased on disconnect (unlike _spawned_characters above) — see
-	# _spawn_player's reclaim check and _on_player_disconnected's own doc for
-	# why a stale peer_id's body needs to stay findable by something that
-	# survives a reconnect.
-	var index: int = _seat_of(data["team"], data["is_person"])
+	var index: int = _seat_of(int(data["player_slot"]))
 	_index_to_character[index] = character
-	if is_ai:
-		# Only the host's own local instance of this spawn_function call
-		# attaches a driving AIController (add_child, never baked into
-		# CharacterBase.tscn — see ai_controller.gd's own class doc): the
-		# spawn function runs identically on every peer (that's how
-		# MultiplayerSpawner replicates a spawn at all), but only the host is
-		# ever this character's multiplayer authority, so only the host's
-		# presses through Input.action_press() do anything once
-		# _physics_process's own authority gate is reached. Attaching it
-		# anywhere else would just press dead, unread Input state on that
-		# other peer's machine — harmless, but pointless.
-		if NetworkManager.is_host():
-			_attach_ai(character)
-	elif peer_id == multiplayer.get_unique_id() and character.is_can:
-		# This is the character we personally control — DownedFlash should
-		# only ever reflect what's happening to OUR Can, never a teammate's
-		# Person or an opponent's (GDD Section 6: "clear visual read",
-		# per-player). Guard on is_can here since the local player might be
-		# controlling their team's Person this match, not its Prop.
-		_wire_downed_flash.call_deferred(character)
+	_apply_known_picks(character, index)
+	if _pending_reclaims.has(index):
+		var reclaim_peer: int = _pending_reclaims[index]
+		_pending_reclaims.erase(index)
+		_apply_reclaim.call_deferred(character, index, reclaim_peer)
+	if is_ai and NetworkManager.is_host():
+		_attach_ai(character)
+	# Follow targets for the spectator's `Tab`.
+	character.add_to_group("spectatable")
 	return character
 
-## Fires on every peer identically (host emits locally, clients receive it via
-## MatchManager._sync_round_started — see match_manager.gd) since it's driven
-## by fields (team_a_is_can) that are already synced.
-func _on_match_round_started(_round_number: int, team_a_is_can: bool) -> void:
-	_reset_world(team_a_is_can)
+## ⚠️ SIGNATURE FOLLOWS `MatchManager.round_started`, WHICH NOW NAMES A SLOT
+## RATHER THAN A SIDE. A bool could describe a 2v2; it cannot name one of four.
+func _on_match_round_started(_round_number: int, defender_slot: int) -> void:
+	_reset_world(defender_slot)
 	RoundManager.start_round()
+	# ⚠⚠ THE SLIPPER GOES INTO THE HAND HERE, NOT IN `_reset_slippers()`.
+	# 2026-08-01, on human instruction: *"At the beginning of each round,
+	# automatically equip each player's personal slipper in their hand. This should
+	# eliminate the need for players to manually pick it up at the start of the
+	# round."*
+	#
+	# ⚠️ DEFERRED BY A FRAME, DELIBERATELY. `RoundManager.start_round()` above has
+	# just called `reset_for_new_round()` on every character, which re-runs
+	# `character_visual.gd::apply()` — and that REBUILDS the `HandAttachment` a
+	# carried slipper reparents onto. Handing a slipper over on the same frame is
+	# §2.24's reparent-vs-reset race, and forcing it there produced a whole match
+	# with 0 throws and every attacker frozen in FETCH.
+	_equip_owned_slippers.call_deferred()
 
-## Item 10 / B-37: called twice per round transition now instead of once —
-## immediately when MatchManager.round_intermission_started fires (so the
-## world is already reset while the intermission banner shows, per
-## Dev_Plan.md §4.6's "WORLD RESET" beat) and again, idempotently, from
-## _on_match_round_started when the round actually begins. Recomputes is_can
-## for every spawned character from that character's fixed team, which every
-## peer already knows from spawn data — no RPC needed, this runs identically
-## on every peer. Also frees any live HazardZone / transient ability hitbox
-## (B-43) so nothing from the previous round survives into the next.
-func _reset_world(team_a_is_can: bool) -> void:
+
+## Puts each attacker's own slipper in their hand, host-side. Idempotent: a
+## slipper already carried by its owner is left alone.
+##
+## ⚠️ IT ASKS THE SAME OWNERSHIP RULE EVERYTHING ELSE DOES (`Design.md` §5.2) via
+## `Slipper.host_force_equip()`, which keeps the two gates that are about the RULES
+## — a defender never holds one, nobody holds somebody else's — and drops only the
+## `can_act()` timing gate, which is what made the old courtesy pickup a coin flip.
+func _equip_owned_slippers() -> void:
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		return
+	if not RoundManager.round_active:
+		return
+	for slipper in slippers:
+		if not is_instance_valid(slipper) or slipper.owner_slot < 0:
+			continue
+		var owner := RoundManager.player_at(slipper.owner_slot)
+		if owner == null or owner.is_defender:
+			continue
+		slipper.global_position = owner.global_position
+		slipper.host_force_equip(owner)
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE ROLE ROTATION HAPPENS HERE AND NOWHERE ELSE. Everything downstream —
+## the confinement clamp, the throw gate, the tag, the passive score, the HUD's
+## defender marker — reads `is_defender`, and this is the only function that
+## writes it. One writer, so four machines cannot end a round disagreeing about
+## who was defending it.
+## ---------------------------------------------------------------------------
+func _reset_world(defender_slot: int) -> void:
 	for node in get_tree().get_nodes_in_group("hazard_zone"):
 		if is_instance_valid(node):
 			node.queue_free()
-	for node in get_tree().get_nodes_in_group("transient_hitbox"):
-		if is_instance_valid(node):
-			node.queue_free()
-	# Build a unified roster — {character, team, is_person} — per mode. Networked:
-	# _spawned_characters keyed by peer_id. Local: _local_roster, order
-	# [TeamAProp, TeamAPerson, TeamBProp, TeamBPerson] (only used to derive team/
-	# is_person below, not for spawn position any more — see _role_slot).
-	var roster: Array = []
-	if NetworkManager.is_networked():
-		for peer_id in _spawned_characters.keys():
-			var character: CharacterBase = _spawned_characters[peer_id]
-			if not is_instance_valid(character):
-				continue
-			roster.append({
-				"character": character,
-				"team": _peer_teams.get(peer_id, 0),
-				"is_person": _peer_is_person.get(peer_id, false),
-			})
-	elif not _local_roster.is_empty():
-		for i in range(_local_roster.size()):
-			roster.append({
-				"character": _local_roster[i],
-				"team": _local_roster[i].team,
-				"is_person": _local_roster[i].is_person,
-			})
 
-	RoundManager.clear_tracked_cans()
-	# B-100 — park every character somewhere nobody could possibly overlap
-	# BEFORE any of them move to a real spot. Roles swap every round, so two
-	# characters routinely trade positions with each other; repositioning
-	# them one at a time straight to their new spots otherwise leaves a real
-	# window where the second character hasn't vacated a spot the first one
-	# just arrived at, and the physics engine depenetrates that overlap with
-	# a genuine impulse — confirmed via tools/render_probe.gd's round2 mode,
-	# characters ended up flung many units off their real spawn markers,
-	# sometimes airborne, sometimes far enough to clear the confinement box
-	# or the floor collision entirely. Reported as "cann fell off map again"
-	# and the spawn layout looking "completely different" from what the code
-	# says it should be.
-	# ⚠️ Toggling CollisionShape3D.disabled around the reposition was tried
-	# first and did NOT reliably fix it — disable, reposition and re-enable
-	# all happen within the same script frame, before any physics step, and
-	# Godot's physics server appears to sync only the FINAL state (enabled,
-	# new position) rather than replaying the toggle, so the depenetration
-	# still fired. This works instead because it is purely geometric: widely
-	# separated, per-character-index parking spots can never overlap ANY
-	# other character's parking spot or real spawn point, so there is
-	# nothing for the physics engine to resolve regardless of when it syncs.
+	var roster := _all_characters()
+	RoundManager.clear_players()
+
+	# ⚠️ PARK EVERYONE OFF THE MAP FIRST, THEN PLACE THEM. Roles rotate, so seats
+	# trade marks — and placing player B on a mark player A has not left yet is
+	# exactly the stacked-collider case `SPAWN_SETTLE_FRAMES` exists for. Lifting
+	# them out of each other's way first means the settle only has to absorb the
+	# world geometry, not each other.
 	for i in range(roster.size()):
-		(roster[i]["character"] as CharacterBase).position = Vector3(0.0, 500.0 + i * 20.0, 0.0)
-	var attacker: CharacterBase = null
-	var tsinelas: CharacterBase = null
-	for entry in roster:
-		var character: CharacterBase = entry["character"]
-		var team_is_can_side: bool = (entry["team"] == 0) == team_a_is_can
-		# Session 8: every character on the team tracks team_is_can_side now,
-		# not just the Prop — Person needs it too. Only the team's Prop can be
-		# a Can (Session 7: 1 Person + 1 Prop per team, not two Props).
-		character.team_is_can_side = team_is_can_side
-		character.is_can = team_is_can_side and not entry["is_person"]
-		# B-76: is_can just flipped (or held) above — a Prop's ability has to be
-		# re-picked every round or a Tsinelas keeps last round's Can ability
-		# (Quick Stand, no throw profile) one round after it stops being one.
-		# Persons never change class ability by role, only Props do.
-		if not entry["is_person"]:
-			character.ability = _prop_ability_for(character).duplicate()
-		# B-10: reset + reposition every unit — Persons and the off-side Prop
-		# were carrying downed/sealed state, dents, and speed multipliers into
-		# the next round before this. Position is now ROLE-based, not the old
-		# team-fixed slot — see _role_slot's doc above _spawn_point.
+		roster[i].position = Vector3(0.0, 500.0 + i * 20.0, 0.0)
+
+	# Attackers take marks 1..3 in seat order, which is stable across a match, so
+	# the same seat does not draw the same corner every round it attacks.
+	var attacker_index := 0
+	for character in roster:
+		character.is_defender = character.player_slot == defender_slot
+		var role_index := 0
+		if not character.is_defender:
+			attacker_index += 1
+			role_index = attacker_index
 		character.reset_for_new_round()
-		_place_at_spawn(character, _role_slot(character.is_can, entry["is_person"], team_is_can_side))
-		character.spawn_position = character.position # B-15/B-35
-		if character.is_can:
-			RoundManager.register_can(character)
-		elif entry["is_person"] and not team_is_can_side:
-			attacker = character
-		elif not entry["is_person"] and not team_is_can_side:
-			tsinelas = character
-	# User feedback, 2026-07-28: "the attacking Person carries the tsinelas"
-	# (Dev_Plan.md §3's beat-by-beat loop, step 1) reads as the opening state of
-	# a round, not a first chore before it — a real taya at a real tumbang
-	# preso match is not waiting for the attacker to walk over and pick up
-	# their own teammate. host_grab() is already host-gated internally (see its
-	# own doc in carriable.gd), so calling it unconditionally here — this
-	# function runs on every peer identically — is safe: only the host's call
-	# actually does anything.
-	if attacker != null and tsinelas != null:
-		var carriable := tsinelas.get_node_or_null("Carriable") as Carriable
-		if carriable != null:
-			carriable.host_grab(attacker)
+		_place_at_spawn(character, role_index)
+		# B-15/B-35: the Safe Zone mark is also where a TAG sends this player back
+		# to, so it has to be re-captured every round rather than being whatever the
+		# scene file said at load.
+		character.spawn_position = character.position
+		RoundManager.register_player(character)
 
-## Item 10 / B-37: fires on every peer (see MatchManager._sync_intermission_started)
-## the moment a round ends without finishing the match — the gap that never
-## used to exist between report_round_win and the next round's timer
-## starting. Resets the world early (so players see themselves back at spawn
-## during the card animation, not just when the fight starts).
-## U-3: RoleSwapCard connects to round_intermission_started directly and
-## handles all display — this function retains only the world reset.
-func _on_round_intermission_started(_next_round_number: int, next_team_a_is_can: bool, _can_team_won: bool) -> void:
-	_reset_world(next_team_a_is_can)
+	RoundManager.lata = lata
+	if lata != null:
+		lata.host_reset_for_new_round()
 
-## 2026-07-28 — user report: "when round ends the can falls thru the world."
-## Root cause: unlike every OTHER round transition, the match's FINAL round
-## never gets a _reset_world() call afterward (match_won fires instead of
-## round_intermission_started, see match_manager.gd::report_round_result),
-## so nothing ever clears velocity again. RoundManager.round_active is false
-## from here on and character_base.gd's own freeze gate stops it from
-## MOVING, but gravity is still applied every physics frame regardless
-## (deliberately, so a unit mid-jump still settles) — with no reset ever
-## coming, a unit that was airborne right as the match ended just keeps
-## falling under gravity for as long as the result screen is up, long
-## enough to tunnel through the floor's thin collision shape. This is the
-## same root cause as B-93, just on a code path B-93 didn't cover because it
-## isn't a round reset at all. Zeroing velocity once, here, is enough —
-## nothing moves it again once round_active is permanently false.
+	_reset_slippers(roster, defender_slot)
+	_push_prop_skins(defender_slot)
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ REWRITTEN 2026-08-01, ON DIRECT HUMAN INSTRUCTION — EVERY SEAT NOW OWNS
+## ITS OWN LATA AND TSINELAS, NOT ONE SHARED PAIR.
+##
+## This used to broadcast ONE can pick and ONE slipper pick for the whole
+## match, read once from `GameLaunch` — the local peer's own preference,
+## applied to everybody. That was the documented design (`Design.md` §9: "the
+## host's pick is the one that wins") and it is now wrong on purpose: 🧑,
+## *"allow bots in single player to have random cans and random slippers,
+## their respective cans show when theyre defender, let my respective can
+## show when im defender as well."*
+##
+## THE LATA NOW SHOWS THE CURRENT DEFENDER'S OWN CAN, RE-APPLIED EVERY ROUND.
+## Every seat has its own can + slipper pick — a real player's own CHARACTER-
+## screen choice (already crossing the wire in `NetworkManager.peer_characters`
+## as `"can"`/`"slipper"`, unused by anything until now) or, for a bot, a
+## host-rolled random pick from `_refresh_seat_prop_picks()`. Since only ONE
+## lata exists in the arena, it wears whichever seat currently defends —
+## looked up here rather than stored on `CharacterBase`, which this lane does
+## not own and does not need to touch for this.
+## ---------------------------------------------------------------------------
+func _push_prop_skins(defender_slot: int) -> void:
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		return
+	var can_pick := int(_seat_prop_picks.get(defender_slot, {}).get("can", -1))
+	# Each slipper already knows its own owner by the time this runs —
+	# `_reset_slippers()` (called immediately above, same host-only branch)
+	# assigns `owner_slot` synchronously on the host's own instances, so
+	# reading it back here needs no extra bookkeeping. Keyed by NAME rather
+	# than by owner slot on the wire, so a client applies the right skin to
+	# the right node without having to already agree on ownership timing.
+	var slipper_skins: Dictionary = {}
+	for slipper in slippers:
+		if not is_instance_valid(slipper):
+			continue
+		var owner: int = slipper.owner_slot
+		slipper_skins[slipper.name] = int(_seat_prop_picks.get(owner, {}).get("slipper", -1))
+	if NetworkManager.is_networked():
+		_rpc_prop_skins.rpc(can_pick, slipper_skins)
+	else:
+		_apply_prop_skins(can_pick, slipper_skins)
+
+@rpc("authority", "call_local", "reliable")
+func _rpc_prop_skins(can_pick: int, slipper_skins: Dictionary) -> void:
+	_apply_prop_skins(can_pick, slipper_skins)
+
+func _apply_prop_skins(can_pick: int, slipper_skins: Dictionary) -> void:
+	if lata != null and is_instance_valid(lata):
+		lata.apply_skin(can_pick)
+	for slipper in slippers:
+		if is_instance_valid(slipper) and slipper_skins.has(slipper.name):
+			slipper.apply_skin(int(slipper_skins[slipper.name]))
+
+## ---------------------------------------------------------------------------
+## Host-only. Deals a can + slipper pick to every seat that does not have one
+## yet — a real player's own CHARACTER-screen pick if one is reachable, a
+## random one otherwise. Same idempotency and same call sites as
+## `_refresh_ai_prop_picks()`, and deliberately a separate pass rather than
+## folded into it: that function's whole test for "is this a bot" is
+## `character_index < 0`, which says nothing about whether a can/slipper pick
+## is reachable for a human seat that HASN'T been resolved yet (mid-connect).
+func _refresh_seat_prop_picks() -> void:
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		return
+	var seats := _seat_characters()
+	var taken_cans: Array[int] = []
+	var taken_slippers: Array[int] = []
+	for slot in _seat_prop_picks:
+		var existing: Dictionary = _seat_prop_picks[slot]
+		taken_cans.append(int(existing.get("can", -1)))
+		taken_slippers.append(int(existing.get("slipper", -1)))
+	for slot in range(NetworkManagerScript.MAX_PLAYERS):
+		if _seat_prop_picks.has(slot) or seats.get(slot) == null:
+			continue
+		var human_picks: Variant = _human_prop_picks_for_slot(slot)
+		if human_picks != null:
+			_seat_prop_picks[slot] = human_picks
+			continue
+		var can := _ai_prop_index(CharacterRoster.CANS.size(), taken_cans)
+		var slipper := _ai_prop_index(CharacterRoster.SLIPPERS.size(), taken_slippers)
+		taken_cans.append(can)
+		taken_slippers.append(slipper)
+		_seat_prop_picks[slot] = {"can": can, "slipper": slipper}
+
+## A human's own pick for `slot`, or null if `slot` is not a human seat (an
+## unfilled AI slot, in either mode). Solo test has no peer_id to look up —
+## the human IS `GameLaunch.solo_seat`, read straight from the same place the
+## CHARACTER screen wrote it.
+func _human_prop_picks_for_slot(slot: int) -> Variant:
+	if not NetworkManager.is_networked():
+		if slot == GameLaunch.solo_seat:
+			return {"can": GameLaunch.can_index(), "slipper": GameLaunch.slipper_index()}
+		return null
+	for peer_id in _peer_slots:
+		if int(_peer_slots[peer_id]) != slot:
+			continue
+		var picks := NetworkManager.picks_for(peer_id)
+		var can := int(picks.get("can", -1))
+		var slipper := int(picks.get("slipper", -1))
+		return {"can": can, "slipper": slipper} if can >= 0 or slipper >= 0 else null
+	return null
+
+## Random, favouring a roster entry no other bot this match already wears —
+## §5.16's `AI_PERSON_SPREAD` is a fixed quartering because faces have to stay
+## apart from HUMAN picks too; a can or a slipper has no such collision to
+## avoid, so true randomness is what was actually asked for.
+func _ai_prop_index(size: int, taken: Array[int]) -> int:
+	if size <= 0:
+		return 0
+	var available: Array[int] = []
+	for i in range(size):
+		if not (i in taken):
+			available.append(i)
+	if available.is_empty():
+		return randi() % size
+	return available[randi() % available.size()]
+
+## Every Attacker starts a round holding a slipper, so the first throw does not
+## need a retrieval run in front of it. The Defender holds nothing — they have
+## never been able to throw and now the rules say so.
+##
+## ⚠️ THE HAND-OVER IS HOST-ONLY AND IT HAS TO BE. `host_grab()` refuses on a
+## client, so calling this everywhere is harmless — but the RPC it fans out is what
+## actually puts the slipper in the right hand on the other three machines.
+func _reset_slippers(roster: Array[CharacterBase], defender_slot: int) -> void:
+	for slipper in slippers:
+		if is_instance_valid(slipper):
+			slipper.host_reset_for_new_round()
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		return
+	# ⚠️⚠️ OWNERSHIP IS ASSIGNED HERE, EXPLICITLY, AND NO LONGER RIDES ON THE GRAB
+	# BELOW SUCCEEDING. `Slipper.owner_slot` was only ever written by
+	# `_apply_grabbed()`/`_apply_thrown()`, so it depended entirely on this
+	# courtesy pickup landing — and `host_grab()` can silently refuse, because
+	# `can_be_grabbed_by()` requires `can_act()`, which is
+	# `round_active and state == NORMAL`, and a character mid-reset is neither.
+	# Measured: one of three slippers left LOOSE at its own player's feet with
+	# `owner_slot = -1`. See `slipper.gd::can_be_grabbed_by()` for what reads the
+	# field and how each of them fails on -1.
+	#
+	# ⚠️ SEATS IN NUMERIC ORDER, NOT `roster` ORDER. `roster` is built per session
+	# and its order is not a promise; the slipper-to-seat mapping has to be the
+	# same on every peer and the same every round, or the foot arrow points at
+	# somebody else's slipper on one machine.
+	var attackers: Array[int] = []
+	for slot in range(NetworkManagerScript.MAX_PLAYERS):
+		if slot != defender_slot:
+			attackers.append(slot)
+	for index in range(slippers.size()):
+		var slipper := slippers[index]
+		if not is_instance_valid(slipper):
+			continue
+		# A slipper with no attacker to own it (a short-handed match) is explicitly
+		# disowned rather than left holding last round's slot — a stale owner is
+		# worse than none, because the gate would refuse everybody.
+		slipper.host_assign_owner(attackers[index] if index < attackers.size() else -1)
+	for index in range(slippers.size()):
+		if index >= attackers.size():
+			break
+		var slipper := slippers[index]
+		if not is_instance_valid(slipper):
+			continue
+		var character := _character_in_seat(roster, attackers[index])
+		if character == null:
+			continue
+		# Park it on the attacker before handing it over, so the pickup radius test
+		# inside `host_grab()` cannot miss by one frame of interpolation.
+		#
+		# ⚠⚠ THIS STAYS A COURTESY GRAB, AND FORCING IT HERE BROKE THE GAME OUTRIGHT.
+		# The obvious way to deliver *"automatically equip each player's personal
+		# slipper"* was to bypass `can_be_grabbed_by()`'s `can_act()` gate right here.
+		# Measured result: **0 throws, 0 knockdowns, three bots stuck in FETCH for a
+		# whole match, DEFENSE 100% of every point.** Forcing the equip mid-reset
+		# reparents the slipper onto a `HandAttachment` that
+		# `character_visual.gd::apply()` is REBUILDING on the same frame — which is
+		# §2.24, already filed, already measured on two peers.
+		#
+		# The refusal was accidentally protecting against that race. The equip now
+		# happens at ROUND START instead (`_equip_owned_slippers()`), where the
+		# visuals are built, the players are registered and `can_act()` is true — so
+		# the preconditions this call could never satisfy are simply all met.
+		slipper.global_position = character.global_position
+		slipper.host_grab(character)
+
+
+func _character_in_seat(roster: Array[CharacterBase], slot: int) -> CharacterBase:
+	for character in roster:
+		if is_instance_valid(character) and character.player_slot == slot:
+			return character
+	return null
+
+func _on_round_intermission_started(_next_round_number: int, next_defender_slot: int) -> void:
+	_reset_world(next_defender_slot)
+
 func _on_match_won_freeze_physics(_winning_team: int) -> void:
 	for character in _all_characters():
 		character.velocity = Vector3.ZERO
@@ -1651,29 +2137,28 @@ func _all_characters() -> Array[CharacterBase]:
 ## already-known Cans with RoundManager for completeness — both side-effect
 ## free, unlike a full reset.
 @rpc("authority", "call_remote", "reliable")
-func _sync_state_to_late_joiner(new_round_number: int, new_team_a_is_can: bool, new_team_a_wins: int, new_team_b_wins: int, new_time_left: float, new_round_active: bool, new_game_mode: GameLaunch.GameMode) -> void:
+func _sync_state_to_late_joiner(new_round_number: int, new_defender_slot: int,
+		new_scores: Array, new_time_left: float, new_round_active: bool,
+		new_lata_upright: bool) -> void:
 	MatchManager.round_number = new_round_number
-	MatchManager.team_a_is_can = new_team_a_is_can
-	MatchManager.team_a_wins = new_team_a_wins
-	MatchManager.team_b_wins = new_team_b_wins
+	MatchManager.defender_slot = new_defender_slot
+	for slot in range(mini(MatchManager.scores.size(), new_scores.size())):
+		MatchManager.scores[slot] = int(new_scores[slot])
 	RoundManager.time_left = new_time_left
 	RoundManager.round_active = new_round_active
-	GameLaunch.game_mode = new_game_mode
-	hud.set_round_display(new_round_number, new_team_a_is_can)
-	hud.refresh_you_card()
-	_reregister_tracked_cans()
+	RoundManager.lata = lata
+	if lata != null:
+		lata.adopt_state(new_lata_upright, lata.home_position)
+	hud.set_round_display(new_round_number, new_defender_slot)
 
 ## Q-2/B-63: shared by _sync_state_to_late_joiner (a joining peer needs to know
 ## about every already-spawned Can) and _on_player_disconnected (a leaving Can
 ## must stop being tracked, not leave RoundManager holding a freed reference —
 ## its own is_instance_valid() guard would otherwise just silently no-op
 ## forever and the round could then only ever end on the timer).
-func _reregister_tracked_cans() -> void:
-	RoundManager.clear_tracked_cans()
-	for peer_id in _spawned_characters:
-		var character: CharacterBase = _spawned_characters[peer_id]
-		if is_instance_valid(character) and character.is_can:
-			RoundManager.register_can(character)
+## ⚠️ `_reregister_tracked_cans()` WAS DELETED HERE. It re-registered whichever
+## Prop was playing the lata after a late join. There is one lata, it is a world
+## object, and `_sync_state_to_late_joiner` hands it over directly.
 
 ## Q-5: the "YOU" card's networked path (scripts/ui/you_card.gd) — the one
 ## character out of _spawned_characters that this peer actually controls.
@@ -1714,29 +2199,21 @@ func _rpc_show_toast(text: String) -> void:
 ## Props, and — as of Session 7/8's role-swap — networked Props too) instead
 ## of only ever reflecting whatever is_can happened to be true the one time
 ## this was called.
-func _wire_downed_flash(character: CharacterBase) -> void:
-	character.state_changed.connect(func(new_state: CharacterBase.State) -> void:
-		if character.is_can:
-			hud.set_downed_flash(new_state == CharacterBase.State.DOWNED)
-	)
-	character.dents_changed.connect(func(new_dents: int) -> void:
-		if character.is_can and GameLaunch.game_mode == GameLaunch.GameMode.OPTION_A:
-			hud.set_dents(new_dents, CharacterBase.MAX_DENTS)
+## ⚠️ NOW WIRED TO THE LATA, NOT TO A PLAYER. This used to hook whichever Prop was
+## playing the can this round, and its own note recorded the trouble that caused:
+## the `is_can` test had to live INSIDE the callback because the flag flipped every
+## round. There is one lata, it never changes identity, and it is not a player — so
+## the hook is a single connection made once.
+##
+## ⚠️ A `dents_changed` HOOK DRIVING `hud.set_dents()` WAS ALSO HERE. The signal,
+## the field and the mode are all gone (`Design.md` §Removed).
+func _wire_downed_flash(target: Lata) -> void:
+	if target == null:
+		return
+	target.upright_changed.connect(func(now_upright: bool) -> void:
+		hud.set_downed_flash(not now_upright)
 	)
 
-## Checklist 5.5, later reused for networked AI takeover (see
-## _build_networked_character / _rpc_convert_to_ai) — instances an
-## AIController and hands it to `character` (CharacterBase.ai_controller —
-## see that var's own doc for why this can't just be an @onready node
-## reference on the character itself). A plain `Node`, `add_child()`'d rather
-## than baked into CharacterBase.tscn, since that scene is shared by every
-## spawn path and most characters (every human-controlled one) never have an
-## unpiloted unit to drive.
-## `enabled` false attaches a controller that is present but silent — the unit
-## still reads the keyboard (`CharacterBase.is_ai_driven()` requires BOTH a
-## controller and an enabled one), and anything that later wants the AI to take
-## over just calls `set_enabled(true)` instead of having to construct one. Used
-## for the human's own Single Player seat; see _start_local_test's own note.
 func _attach_ai(character: CharacterBase, enabled: bool = true) -> void:
 	var controller := AIController.new()
 	character.add_child(controller)
@@ -1800,6 +2277,16 @@ func _on_return_to_menu_pressed() -> void:
 	# (Godot doesn't auto-unpause across change_scene_to_file).
 	get_tree().paused = false
 	if NetworkManager.is_networked():
+		# ⚠️ ANNOUNCE BEFORE CLOSING, AND `await` IT. Human report: quitting politely
+		# stranded every client for ~5 s, because a closed socket and a silent one are
+		# the same thing to ENet and both cost `ENET_TIMEOUT_MIN`. The announcement is
+		# what tells them; the await is what lets the packet actually leave before the
+		# socket goes. See `NetworkManager.announce_host_leaving()`.
+		#
+		# A CLIENT quitting needs none of this — the host learns about it from
+		# `peer_disconnected`, which fires on a clean close immediately.
+		if NetworkManager.is_host():
+			await NetworkManager.announce_host_leaving()
 		NetworkManager.disconnect_network()
 	# B-14: leaving a match should reset the same as starting a fresh one does
 	# (see main_menu.gd's _on_local_pressed()/_on_host_pressed()/_on_join_pressed(),
@@ -1859,17 +2346,15 @@ func _rpc_convert_to_ai(index: int) -> void:
 	for old_peer_id in _spawned_characters.keys():
 		if _spawned_characters[old_peer_id] == character:
 			_spawned_characters.erase(old_peer_id)
-			_peer_teams.erase(old_peer_id)
-			_peer_is_person.erase(old_peer_id)
+			_peer_slots.erase(old_peer_id)
 			_spawned_peer_ids.erase(old_peer_id)
 			break
 	var sentinel_peer_id := -1 - index
 	character.name = str(sentinel_peer_id)
 	character.set_multiplayer_authority(1) # host runs AI-driven physics — see _build_networked_character
-	character.player_id = (index % 2) + 3 # AI-safe range — see _build_spawn_data's own doc
+	character.player_id = index + 1
 	_spawned_characters[sentinel_peer_id] = character
-	_peer_teams[sentinel_peer_id] = character.team
-	_peer_is_person[sentinel_peer_id] = character.is_person
+	_peer_slots[sentinel_peer_id] = character.player_slot
 	_spawned_peer_ids[sentinel_peer_id] = true
 	if NetworkManager.is_host() and character.ai_controller == null:
 		_attach_ai(character)
@@ -1881,7 +2366,7 @@ func _rpc_convert_to_ai(index: int) -> void:
 ## Host → all peers (2026-07-28): hands `index`'s existing, still-standing
 ## character over to `new_peer_id` instead of spawning a second body for the
 ## same slot. Runs identically on every peer (call_local, like every other
-## bookkeeping RPC here) since _spawned_characters/_peer_teams/_peer_is_person
+## bookkeeping RPC here) since _spawned_characters/_peer_slots/_peer_is_person
 ## are all per-peer local state, not replicated automatically.
 ##
 ## Migrates bookkeeping from whichever peer_id key currently points at this
@@ -1904,12 +2389,39 @@ func _rpc_convert_to_ai(index: int) -> void:
 func _rpc_reclaim_character(index: int, new_peer_id: int) -> void:
 	var character: CharacterBase = _index_to_character.get(index)
 	if character == null or not is_instance_valid(character):
+		# ⚠️⚠️ THIS EARLY RETURN WAS THE BLANK SCREEN ON REJOIN. 🧑 2026-07-31:
+		# *"blank screen when rejoining sa ongoing na match."*
+		#
+		# A REJOINING PEER HAS A FRESHLY LOADED `Main.tscn`, so its own
+		# `_index_to_character` is EMPTY — the four characters reach it as
+		# `MultiplayerSpawner` deliveries, and this reliable RPC races them. When it
+		# lost that race the function returned silently and NOTHING else ever retried:
+		# no authority migration, no `_refresh_rig_ownership()`, so no rig ever became
+		# current and the rejoiner sat looking at whatever the engine fell back to.
+		# The bookkeeping that makes rejoin work at all (B-65's token-keyed seat) had
+		# already succeeded, which is exactly why this looked like "the match is gone"
+		# rather than like a seating bug.
+		#
+		# ⚠️ THE FIX IS THE ONE THIS FILE ALREADY LEARNED ONCE. `_rpc_sync_picks` hit
+		# the identical race and its note states the rule: *"a unit that has not
+		# arrived yet can be answered when it does — the spawn order and this message
+		# have no guaranteed relationship, and assuming one is how the first version
+		# of this dropped the seat that arrived a frame late."* It remembers in
+		# `_known_picks` and re-applies from the spawn path. This now does the same
+		# through `_pending_reclaims`, so both orderings resolve.
+		_pending_reclaims[index] = new_peer_id
+		return
+	_apply_reclaim(character, index, new_peer_id)
+
+## The reclaim itself, split out so the spawn path can run it for a character that
+## arrived AFTER the RPC did. See `_rpc_reclaim_character`'s note.
+func _apply_reclaim(character: CharacterBase, index: int, new_peer_id: int) -> void:
+	if character == null or not is_instance_valid(character):
 		return
 	for old_peer_id in _spawned_characters.keys():
 		if _spawned_characters[old_peer_id] == character and old_peer_id != new_peer_id:
 			_spawned_characters.erase(old_peer_id)
-			_peer_teams.erase(old_peer_id)
-			_peer_is_person.erase(old_peer_id)
+			_peer_slots.erase(old_peer_id)
 			_spawned_peer_ids.erase(old_peer_id)
 			break
 	if character.ai_controller != null:
@@ -1921,10 +2433,9 @@ func _rpc_reclaim_character(index: int, new_peer_id: int) -> void:
 	# the new authority immediately overwrites with its own stale copy.
 	_apply_reclaimed_picks(character, new_peer_id)
 	character.set_multiplayer_authority(new_peer_id)
-	character.player_id = (index % 2) + 1
+	character.player_id = index + 1
 	_spawned_characters[new_peer_id] = character
-	_peer_teams[new_peer_id] = character.team
-	_peer_is_person[new_peer_id] = character.is_person
+	_peer_slots[new_peer_id] = character.player_slot
 	_spawned_peer_ids[new_peer_id] = true
 	# ⚠️⚠️ WITHOUT THIS A RECONNECTING PLAYER GETS NO CAMERA AT ALL.
 	#
@@ -1942,11 +2453,6 @@ func _rpc_reclaim_character(index: int, new_peer_id: int) -> void:
 	# rejoin the match later" — the bookkeeping half has worked since 2026-07-28;
 	# it was the view that never came back.
 	_refresh_rig_ownership(character)
-	if new_peer_id == multiplayer.get_unique_id() and character.is_can:
-		# Mirrors _build_networked_character's own DownedFlash wiring — this
-		# process never ran that function for this character (it already
-		# existed before this peer connected), so nothing wired it up yet.
-		_wire_downed_flash.call_deferred(character)
 	if NetworkManager.is_host():
 		_rpc_show_toast.rpc("A player reconnected to their character")
 

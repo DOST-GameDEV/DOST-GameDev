@@ -110,7 +110,43 @@ func _ready() -> void:
 			_can_id = StringName(token.substr(4))
 		elif token.begins_with("slipper="):
 			_slipper_id = StringName(token.substr(8))
+		elif token == "graceful":
+			_host_quit_graceful = true
+		elif token.begins_with("token="):
+			# R-24 · HARNESS-ONLY IDENTITY OVERRIDE, and the rejoin case cannot
+			# be tested locally without it. `_load_or_create_token()` mints a
+			# FRESH token per process on purpose (its own doc: two instances
+			# sharing one `user://` would collide on the same join index), so a
+			# "reconnecting" process on this machine is a stranger to the host
+			# and gets the next free seat instead of its own back. Passing the
+			# same token to the second process is what makes it the same PLAYER.
+			_token_override = token.substr(6)
+		elif token.begins_with("dropat="):
+			# R-24. This client dies at N seconds — the process, not a tidy
+			# in-process disconnect, because that is what a drop is.
+			_drop_at = float(token.substr(7))
+		elif token == "carrying":
+			# R-24. This client grabs the tsinelas before it dies.
+			_drop_carrying = true
+		elif token == "charging":
+			# R-24. This client is mid-charge when it dies.
+			_drop_charging = true
+		elif token.begins_with("dropwatch="):
+			# R-24, HOST side: how many peers are expected to vanish, and how
+			# long to keep watching afterwards.
+			_drop_watch = float(token.substr(10))
+		elif token.begins_with("hostquit="):
+			# R-25. Passed to BOTH peers: the host to know when to die, the
+			# client to know it is running the host-quit beats rather than the
+			# round loop.
+			_host_quit_at = float(token.substr(9))
 	_tag = "HOST" if _is_host else "CLIENT"
+	# ⚠️ BEFORE Main.tscn, like the map and the picks — `_rpc_identify` sends this
+	# during Main's own _ready, so a token written afterwards is a token the host
+	# never hears and the reclaim it exists to trigger never fires.
+	if _token_override != "":
+		NetworkManager.local_player_token = _token_override
+		print("[%s] identity forced to token=%s" % [_tag, _token_override])
 	# ⚠️ BEFORE Main.tscn is instantiated — main.gd reads selected_map_scene() as
 	# it builds the world, so setting it afterwards silently measures Eskinita
 	# while claiming to measure the plaza. That is B-104's failure mode exactly.
@@ -149,6 +185,17 @@ func _ready() -> void:
 	await get_tree().create_timer(CONNECT_WAIT).timeout
 	_sample("initial spawn")
 	await _check_local_input()
+
+	# R-25 · THE HOST QUITS MID-ROUND. Branches before the round loop so the
+	# quit lands with a round genuinely live, which is the case that matters —
+	# a host leaving between rounds tears down far less.
+	if _host_quit_at > 0.0:
+		await _run_host_quit()
+		return
+	# R-24 · A PEER DROPS. Same reason: the round has to be live.
+	if _drop_at > 0.0 or _drop_watch > 0.0:
+		await _run_drop()
+		return
 
 	if _is_host:
 		# Only the host drives rounds; the client observes what it was told.
@@ -351,6 +398,11 @@ func _sample(label: String) -> void:
 		_report_facing("TAYA", taya, can, false)
 	_report_carry(characters)
 	_report_prop_picks(characters)
+	# NET-1(c) — LAST in the sample, deliberately. It shoves and walks the units
+	# it measures, so anything above it would be reading a world this had already
+	# perturbed. It restores what it touched; the next round's _reset_world()
+	# re-places everyone regardless.
+	await _measure_prop_observable(characters)
 
 ## One unit's facing, measured two independent ways. Both must agree with the
 ## direction to the can, and the disagreement between them is itself diagnostic:
@@ -549,6 +601,600 @@ func _report_prop_picks(characters: Array[CharacterBase]) -> void:
 		elif index == 0:
 			print("[%s]             ⚠️ entry 0 — the stock 3/3/3. Correct if nobody picked," % _tag)
 			print("[%s]                indistinguishable from the fallback if somebody did." % _tag)
+
+## ---------------------------------------------------------------------------
+## NET-1(c) · DOES A PROP'S TRAIT REACH ANYTHING PHYSICAL?
+##
+## ⚠️ THE HALF NOTHING HAD EVER MEASURED. `_report_prop_picks()` above proves the
+## INDEX arrives and that both peers resolve the same one — verified over four
+## rounds and both sides of a role swap. It does not prove the trait reaches the
+## object: `trait_points()` returning 5 proves a dictionary lookup. The Person
+## path has its physical half (`phys_probe -- traits`); `prop_trait` is a
+## DIFFERENT function against DIFFERENT lists and has never had one.
+##
+## Same three observables as that block, so the two are comparable:
+##
+##   BILIS -> metres actually travelled in a fixed number of frames
+##   LAKAS -> m/s of shove this unit's own Hitbox produces
+##   TATAG -> m/s KEPT of a fixed shove
+##
+## ⚠️ RUN ON THE AUTHORITY ONLY. Every one of these is a physics question and a
+## peer that does not own the body is reading a replicated transform, so a
+## non-authoritative row would measure the synchroniser. Each peer measures the
+## Props it owns and the two logs are read side by side.
+##
+## ⚠️ AND IT RUNS ON EVERY ROUND SAMPLE FOR THE REASON THE PICKS BLOCK DOES:
+## `is_can` flips, so the SAME unit answers off the CANS list one round and the
+## SLIPPERS list the next. The role swap is the test — a build that cached the
+## trait at spawn passes every single-round check and fails here.
+
+## Frames to walk. At SPEED 6.0 a full BILIS spread is +/-10%, so 40 frames
+## (0.67 s) separates a 1 from a 5 by ~0.8 m — far above depenetration jitter.
+const PROP_WALK_FRAMES: int = 40
+## The fixed shove TATAG is asked to absorb, m/s. Same value the Person block
+## used, so the two tables can be read against each other. Well under
+## MAX_KNOCKBACK_SPEED (14.0), or the clamp would flatten the trait.
+const PROP_SHOVE: float = 10.0
+## Metres of clear floor a walk direction needs before it is used.
+const PROP_WALK_CLEARANCE: float = 3.0
+
+func _measure_prop_observable(characters: Array[CharacterBase]) -> void:
+	for ch in characters:
+		if ch.is_person or not ch.is_multiplayer_authority():
+			continue
+		var list_name: String = "CANS" if ch.is_can else "SLIPPERS"
+		var bilis := ch.trait_points(&"bilis")
+		var lakas := ch.trait_points(&"lakas")
+		var tatag := ch.trait_points(&"tatag")
+
+		# ---- LAKAS: what this unit's own Hitbox delivers ---------------------
+		# ⚠️ TWO BRANCHES, AND ONLY ONE OF THEM CARRIES THE TRAIT — see the
+		# finding printed below. hitbox.gd::_impulse_for asks the Carriable
+		# FIRST, and Carriable.knockback_impulse() is the ThrowProfile path.
+		var hitbox := ch.get_node_or_null("Hitbox") as Hitbox
+		var carriable := ch.get_node_or_null("Carriable") as Carriable
+		var flying: bool = carriable != null and carriable.state == Carriable.CarryState.FLYING
+		var shove := -1.0
+		if hitbox != null and not flying:
+			var keep_velocity := ch.velocity
+			ch.velocity = Vector3.ZERO
+			var impulse: Vector3 = hitbox._impulse_for(false)
+			shove = Vector2(impulse.x, impulse.z).length()
+			ch.velocity = keep_velocity
+
+		# ---- TATAG: what it accepts of a fixed shove -------------------------
+		# ⚠️ apply_knockback REFUSES between rounds, when SEALED and while
+		# guarding, all three by design. A refused row reads as a dead trait, so
+		# the gates are printed rather than silently producing a 0.
+		var kept := -1.0
+		var gated: bool = not RoundManager.round_active \
+			or ch.state == CharacterBase.State.SEALED
+		if not gated:
+			var keep_velocity := ch.velocity
+			ch.velocity = Vector3.ZERO
+			ch.apply_knockback(Vector3(PROP_SHOVE, 0.0, 0.0))
+			kept = absf(ch.velocity.x)
+			ch.velocity = keep_velocity
+
+		# ---- BILIS: how fast the body actually travels -----------------------
+		var walk: Dictionary = await _measure_prop_walk(ch)
+		var walked: float = walk.get("speed", -1.0)
+
+		# ⚠️ ONE LINE, FIXED ORDER, SO THE ROLE SWAP IS A MECHANICAL DIFF. Grep
+		# both logs for PROPOBS and one unit name: the row must CHANGE between a
+		# round where is_can=true and one where it is false, because the unit is
+		# answering off a different list. Two identical rows across a swap is the
+		# cached-at-spawn bug and is the whole reason this runs every round.
+		print("[%s]    PROPOBS  %-11s is_can=%-5s %-8s[%2d]  bilis=%d lakas=%d tatag=%d  ->  walked=%s  shove=%s  kept=%s" % [
+			_tag, ch.name, str(ch.is_can), list_name,
+			(ch.can_index if ch.is_can else ch.slipper_index), bilis, lakas, tatag,
+			"%.3f m/s over %.2f m" % [walked, float(walk.get("metres", 0.0))] if walked >= 0.0
+				else ("obstructed" if walked < -1.5 else "carried/flying"),
+			"%.3f m/s" % shove if shove >= 0.0 else ("flying — ThrowProfile" if flying else "n/a"),
+			"%.3f m/s" % kept if kept >= 0.0 else "gated"])
+
+## Walks a Prop under its own body and returns
+## `{"speed": median m/s per frame, "metres": total flat distance}`, restoring
+## where it stood. `speed` is -1.0 when the unit cannot be measured.
+##
+## ⚠️ A CARRIED OR FLYING PROP CANNOT MOVE ITSELF AND THAT IS NOT A DEAD TRAIT.
+## `Carriable.drives_movement()` hands the whole frame to the carry code, so a
+## tsinelas in somebody's hand reads 0.000 m on a perfectly healthy build — the
+## same trap `_check_local_input()` above fell into and documents. `_reset_world()`
+## auto-grabs the tsinelas for the attacking Person every round, so the SLIPPER
+## side of the swap is unmeasurable for BILIS by design, and says so rather than
+## reporting a zero.
+##
+## ⚠️⚠️ THE HEADLINE IS THE MEDIAN PER-FRAME STEP, NOT THE TOTAL DISTANCE, AND
+## THE FIRST CUT OF THIS WAS TOTAL DISTANCE AND WAS WRONG. It ran on two real
+## peers and reported a NEUTRAL bilis=3 can travelling 1.034 m while a bilis=1
+## can travelled 3.022 m — a slower pick out-walking a faster one, which cannot
+## be true, so the metric was the bug (this repo's method note, again). Total
+## distance over 40 frames is contaminated two ways at once and both are the
+## GAME WORKING: `CONFINEMENT_RADIUS` (5.0) clamps a Can that walks off its base
+## circle, and `eskinita` is a narrow alley where 4 m of walk meets the dressing.
+## A median step is immune to both — a wall or a clamp shortens the tail, not the
+## middle — as long as the unit is free for most of the window.
+func _measure_prop_walk(who: CharacterBase) -> Dictionary:
+	var blocked := {"speed": -1.0, "metres": 0.0}
+	var carriable := who.get_node_or_null("Carriable") as Carriable
+	if carriable != null and carriable.drives_movement():
+		return blocked
+	# Walk toward the most open direction rather than the first passable one:
+	# on a map this tight, "not blocked within 3 m" is satisfied by directions
+	# with a wall at 3.1 m.
+	var space := who.get_world_3d().direct_space_state
+	var heading := Vector3.ZERO
+	var best := 0.0
+	for candidate in [Vector3.RIGHT, Vector3.LEFT, Vector3.FORWARD, Vector3.BACK,
+			Vector3(1, 0, 1).normalized(), Vector3(1, 0, -1).normalized(),
+			Vector3(-1, 0, 1).normalized(), Vector3(-1, 0, -1).normalized()]:
+		var from := who.global_position + Vector3.UP * 0.3
+		var query := PhysicsRayQueryParameters3D.create(
+			from, from + candidate * PROP_WALK_CLEARANCE)
+		query.exclude = [who.get_rid()]
+		var hit := space.intersect_ray(query)
+		var free: float = PROP_WALK_CLEARANCE
+		if not hit.is_empty():
+			free = from.distance_to(hit["position"])
+		if free > best:
+			best = free
+			heading = candidate
+	if best < 1.5:
+		return blocked
+	var start := who.global_position
+	var keep_transform := who.global_transform
+	var keep_velocity := who.velocity
+	var speed: float = CharacterBase.SPEED * who.trait_speed_scale()
+	var steps: Array[float] = []
+	for _frame in PROP_WALK_FRAMES:
+		var was := who.global_position
+		who.velocity.x = heading.x * speed
+		who.velocity.z = heading.z * speed
+		await get_tree().physics_frame
+		steps.append(Vector2(who.global_position.x - was.x,
+			who.global_position.z - was.z).length())
+	var travelled := Vector2(who.global_position.x - start.x,
+		who.global_position.z - start.z).length()
+	who.global_transform = keep_transform
+	who.velocity = keep_velocity
+	steps.sort()
+	var median: float = steps[steps.size() / 2] / _physics_delta()
+	# ⚠️ A MEDIAN IS ONLY IMMUNE TO A WALL WHILE THE UNIT IS FREE FOR MOST OF THE
+	# WINDOW, AND ON THIS MAP IT SOMETIMES IS NOT. Measured on two real peers: a
+	# free tsinelas printed 0.006 m/s beside a total of 1.14 m — pinned for most
+	# of the 40 frames and shoved along in a few. Half a metre per second cannot
+	# also be 1.14 m of travel, so the row is refused rather than reported.
+	if median < speed * 0.5:
+		return {"speed": -2.0, "metres": travelled}
+	return {"speed": median, "metres": travelled}
+
+func _physics_delta() -> float:
+	return 1.0 / float(Engine.physics_ticks_per_second)
+
+## ---------------------------------------------------------------------------
+## R-24 · STRESS THE AI FALLBACK WITH REAL DROPS.
+##
+## `_rpc_convert_to_ai`, `_rpc_reclaim_character` and the empty-seat fill are
+## complete, correct-looking, and had only ever been exercised by a two-peer
+## loopback that never actually dropped anybody.
+##
+##   # (a) one peer dies mid-round; its unit must keep playing under AI
+##   godot ... -- --host dropwatch=22
+##   godot ... -- --join=127.0.0.1 token=alpha dropat=10
+##   godot ... -- --join=127.0.0.1
+##
+##   # (b) the same peer comes back — start it once the first one is gone
+##   godot ... -- --join=127.0.0.1 token=alpha
+##
+##   # (c) two at once: two clients with the same dropat=
+##   # (d) holding the tsinelas / mid-charge: add `carrying` or `charging`
+##
+## ⚠️ THE UNIT MUST KEEP PLAYING, NOT MERELY KEEP EXISTING. A character that is
+## still in the tree and standing perfectly still is the failure this is for —
+## the seat looks filled and the team is a man down. So the host measures the
+## dropped unit's DISPLACEMENT over a window after the drop, which is the same
+## trick `_check_local_input` uses and the one that caught B-130.
+##
+## ⚠️ AND "IT GOT A SEAT" IS NOT "IT GOT ITS OWN SEAT BACK." The rejoin check
+## compares the seat INDEX before and after, which is the only thing that makes
+## the identity token worth having.
+## ⚠️ THIS HAS TO CLEAR ENet's OWN DETECTION TIME AND THE FIRST VERSION DID NOT.
+## At 6.0 s the host reported "nobody dropped" for a peer that had provably
+## exited — R-25 measured on this same machine that a dead peer takes ~5 s to be
+## noticed (`ENET_TIMEOUT_MIN` is deliberately 10000 ms so a Hamachi spike is not
+## read as a drop). A probe that looks before the game can possibly know is
+## measuring the timeout, not the fallback.
+const DROP_SETTLE: float = 14.0
+## Frames watched on a dropped unit before deciding the AI took over. Four
+## seconds: this project's own fairness table records 3-6 s still runs as
+## ordinary, pre-existing behaviour, so a shorter window measures that instead.
+const DROP_MOVE_FRAMES: int = 240
+## A dropped unit must reach at least this speed under AI, in m/s. Well above
+## depenetration jitter and comfortably under the Can's own 1.8 m/s shuffle gait,
+## so the one role that is supposed to stay on its mark still passes.
+const DROP_MOVE_MIN_SPEED: float = 0.50
+
+var _drop_at: float = -1.0
+var _drop_watch: float = -1.0
+var _drop_carrying: bool = false
+var _drop_charging: bool = false
+var _token_override: String = ""
+
+func _run_drop() -> void:
+	if not _is_host:
+		await _drop_client_beats()
+		return
+
+	# The host drives a live round, exactly as the round loop does.
+	MatchManager.report_round_result(true)
+	await get_tree().create_timer(ROUND_WAIT).timeout
+
+	var before := _seat_snapshot()
+	print("[%s] R-24 · before the drop: %d peers seated %s" % [_tag, before.size(), str(before)])
+	var round_before: int = MatchManager.round_number
+
+	await get_tree().create_timer(DROP_SETTLE).timeout
+	var after := _seat_snapshot()
+	var gone: Array = []
+	for tok in before:
+		if not after.has(tok):
+			gone.append(tok)
+	_samples += 1
+	if gone.is_empty():
+		_fails += 1
+		print("[%s]    *** FAIL: nobody dropped — there is nothing to measure ***" % _tag)
+	else:
+		print("[%s]    OK — %d peer(s) dropped: %s" % [_tag, gone.size(), str(gone)])
+
+	# (a) the dropped unit must KEEP PLAYING.
+	for tok in gone:
+		var seat: int = int(before[tok])
+		var unit := _unit_in_seat(seat)
+		_samples += 1
+		if unit == null:
+			_fails += 1
+			print("[%s]    *** FAIL: seat %d is EMPTY after the drop — the unit vanished ***"
+				% [_tag, seat])
+			continue
+		var has_ai: bool = unit.ai_controller != null
+		# ⚠️ PEAK SPEED, NOT DISTANCE, AND THE FIRST VERSION USED DISTANCE AND WAS
+		# WRONG. It failed a perfectly healthy AI Can at 0.199 m over 90 frames —
+		# but seat 1 is a PROP, and a Can holding its circle is INTENDED
+		# (`CAN_HOLD_RADIUS`: it shuffles on the mark like a keeper shifting
+		# weight, deliberately at a slow gait). Displacement asks "did it go
+		# somewhere", which is the wrong question for the one role whose job is
+		# to stay. Peak speed asks "is anything driving this body at all", which
+		# is the question — and it separates a shuffling can from a dead one.
+		var start := unit.global_position
+		var peak := 0.0
+		var was_tracing: bool = AIController.trace_enabled
+		AIController.trace_enabled = true
+		for _i in DROP_MOVE_FRAMES:
+			await get_tree().physics_frame
+			peak = maxf(peak, Vector2(unit.velocity.x, unit.velocity.z).length())
+		var moved := Vector2(unit.global_position.x - start.x,
+			unit.global_position.z - start.z).length()
+		# A carried or flying Prop hands its whole frame to the carry code and
+		# cannot self-move — the same trap `_check_local_input()` documents.
+		var carriable := unit.get_node_or_null("Carriable") as Carriable
+		if carriable != null and carriable.drives_movement():
+			print("[%s]    OK — seat %d is a %s prop: ai_controller=%s, and a carried unit"
+				% [_tag, seat, "carried" if carriable.state == Carriable.CarryState.CARRIED
+					else "flying", str(has_ai)])
+			print("[%s]         cannot self-move by design, so movement is not evidence here."
+				% _tag)
+			if not has_ai:
+				_fails += 1
+				print("[%s]    *** FAIL: ...and it has no AI either ***" % _tag)
+			continue
+		# ⚠️ AND EVEN PEAK SPEED IS NOT ENOUGH ON ITS OWN — SECOND CORRECTION, SAME
+		# CAUSE. The two-at-once case then failed a Person at peak 0.000 m/s, and
+		# a Taya standing at a post it has already reached is ALSO intended
+		# (`hold-post` walks to a post it is on, and `_move_toward` releases the
+		# keys inside `ARRIVE_DISTANCE`). This project's own fairness table
+		# already reports 3–6 s still runs as a known, pre-existing, non-drop
+		# behaviour — so "it did not move for a second and a half" cannot be
+		# evidence of a broken fallback.
+		#
+		# The claim R-24 actually makes is "the character KEEPS PLAYING", so the
+		# gate is DIRECT evidence of that: the controller exists, is ENABLED, and
+		# is producing a behaviour-tree decision this frame. Speed and distance
+		# are printed beside it as context and are not gated — a unit with a live
+		# trace that never moves is worth seeing, not worth failing.
+		var enabled: bool = has_ai and unit.ai_controller.is_enabled()
+		# ⚠️ `bt_trace()` IS EMPTY UNLESS `trace_enabled` WAS TRUE FOR THAT TICK —
+		# its own doc says so, and the run before this one duly reported
+		# trace="" on two units that were provably moving at 6.0 and 5.0 m/s.
+		# Turned on for the window (restored below), which makes an empty trace
+		# mean "the tree did not tick" instead of "nobody asked".
+		var trace: String = unit.ai_controller.bt_trace() if has_ai else ""
+		AIController.trace_enabled = was_tracing
+		# EITHER piece of evidence is enough and neither alone is reliable: a
+		# Taya at its post and a Can on its mark are both legitimately still, and
+		# a tree can tick without producing motion. Both are printed.
+		var ok: bool = enabled and (trace != "" or peak >= DROP_MOVE_MIN_SPEED)
+		if not ok:
+			_fails += 1
+		print("[%s]    %s seat %d kept playing: ai=%s enabled=%s trace=\"%s\" | peak %.3f m/s, moved %.3f m %s"
+			% [_tag, "OK —" if ok else "*** FAIL:", seat, str(has_ai), str(enabled),
+				trace, peak, moved,
+				"" if ok else "— nothing is driving this body ***"])
+
+	# (d) THE OBJECT THE DEPARTING PLAYER WAS HOLDING. This is the whole point of
+	# dropping mid-carry and mid-charge: a `Carrier._held` still pointing at a
+	# tsinelas whose `carrier` no longer points back is what keeps that slipper
+	# INVISIBLE (`camera_rig.gd::_apply_carried_self_hide` hides it for as long
+	# as its carrier believes it holds something), and a slipper nobody can see
+	# or pick up ends the round by timeout with everyone hunting for it.
+	# `_report_carry` already owns that invariant — reused rather than restated.
+	var cast: Array[CharacterBase] = []
+	for node in get_tree().root.find_children("*", "CharacterBase", true, false):
+		var ch := node as CharacterBase
+		if ch != null:
+			cast.append(ch)
+	print("[%s] R-24 · the carry invariant AFTER the drop:" % _tag)
+	_report_carry(cast)
+
+	# (a2) the round still resolves.
+	MatchManager.report_round_result(false)
+	await get_tree().create_timer(ROUND_WAIT).timeout
+	_samples += 1
+	if MatchManager.round_number > round_before:
+		print("[%s]    OK — the round still resolved after the drop (round %d -> %d)"
+			% [_tag, round_before, MatchManager.round_number])
+	else:
+		_fails += 1
+		print("[%s]    *** FAIL: the match stalled at round %d after the drop ***"
+			% [_tag, round_before])
+
+	# (b) the rejoin, if one was launched. Watched for the rest of the window.
+	var waited := 0.0
+	var rejoined := {}
+	while waited < _drop_watch:
+		await get_tree().create_timer(0.25).timeout
+		waited += 0.25
+		var now := _seat_snapshot()
+		for tok in gone:
+			if now.has(tok) and not rejoined.has(tok):
+				rejoined[tok] = int(now[tok])
+	if not rejoined.is_empty():
+		for tok in rejoined:
+			_samples += 1
+			var was: int = int(before[tok])
+			var got: int = int(rejoined[tok])
+			if was == got:
+				print("[%s]    OK — token %s came back to ITS OWN seat %d" % [_tag, tok, got])
+			else:
+				_fails += 1
+				print("[%s]    *** FAIL: token %s left seat %d and came back to %d ***"
+					% [_tag, tok, was, got])
+			# ITS CAMERA BACK — the half the spec calls out by name. A reclaimed
+			# unit whose authority is still the host is a player watching an AI
+			# play their character, which looks exactly like a working rejoin.
+			var unit := _unit_in_seat(got)
+			_samples += 1
+			if unit == null:
+				_fails += 1
+				print("[%s]    *** FAIL: seat %d has no unit after the reclaim ***" % [_tag, got])
+			else:
+				var owned_by_host: bool = unit.get_multiplayer_authority() == 1
+				var still_ai: bool = unit.ai_controller != null
+				if owned_by_host or still_ai:
+					_fails += 1
+					print("[%s]    *** FAIL: reclaimed unit still authority=%d ai=%s — the player got a spectator seat ***"
+						% [_tag, unit.get_multiplayer_authority(), str(still_ai)])
+				else:
+					print("[%s]    OK — reclaimed unit is authority=%d with the AI removed"
+						% [_tag, unit.get_multiplayer_authority()])
+
+	print("\n[%s] === %s (%d/%d checks clean) ===" % [
+		_tag, "ALL CHECKS PASSED" if _fails == 0 else "%d FAILURES" % _fails,
+		_samples - _fails, _samples])
+	get_tree().quit(1 if _fails > 0 else 0)
+
+## token -> seat index, for every peer the host currently believes is CONNECTED.
+##
+## ⚠️ `main.gd::_token_join_index`, NOT `GameLaunch.seat_tokens`. The first cut
+## read `seat_tokens` and every snapshot came back EMPTY — `{ }` for four
+## connected peers — because that dictionary is filled by the LOBBY, and this
+## probe goes straight into Main.tscn on `--host`/`--join=` and never opens one.
+## `_token_join_index` is the map the spawn path itself uses, so it is populated
+## on exactly the path under test.
+##
+## ⚠️ AND IT IS DELIBERATELY NEVER ERASED ON DISCONNECT (its own doc says so —
+## that is what lets a returning token find its old seat), so "who is here" has
+## to come from `connected_peer_ids`, not from the seat table.
+func _seat_snapshot() -> Dictionary:
+	var out := {}
+	var main := get_tree().root.get_node_or_null("Main")
+	if main == null:
+		return out
+	var seats: Dictionary = main.get("_token_join_index")
+	if seats == null:
+		return out
+	for token in seats:
+		for peer_id in NetworkManager.peer_tokens:
+			if String(NetworkManager.peer_tokens[peer_id]) == String(token) \
+					and NetworkManager.connected_peer_ids.has(int(peer_id)):
+				out[String(token)] = int(seats[token])
+	return out
+
+## The CharacterBase sitting in `seat`, by the same [person, prop] per team
+## layout `_build_spawn_data` uses.
+func _unit_in_seat(seat: int) -> CharacterBase:
+	var want_team: int = seat / 2
+	var want_person: bool = seat % 2 == 0
+	for node in get_tree().root.find_children("*", "CharacterBase", true, false):
+		var ch := node as CharacterBase
+		if ch != null and ch.team == want_team and ch.is_person == want_person:
+			return ch
+	return null
+
+func _drop_client_beats() -> void:
+	if _drop_at <= 0.0:
+		# A survivor, or the rejoining process. It only has to stay alive and be
+		# seen; every assertion is the host's.
+		await get_tree().create_timer(_drop_watch if _drop_watch > 0.0 else 40.0).timeout
+		get_tree().quit(0)
+		return
+	await get_tree().create_timer(_drop_at).timeout
+	var mine: CharacterBase = null
+	for node in get_tree().root.find_children("*", "CharacterBase", true, false):
+		var ch := node as CharacterBase
+		if ch != null and ch.is_multiplayer_authority() and ch.ai_controller == null:
+			mine = ch
+			break
+	if mine != null and (_drop_carrying or _drop_charging):
+		var carrier := mine.get_node_or_null("Carrier") as Carrier
+		if carrier != null:
+			# Grab whatever loose tsinelas is nearest, through the real action, so
+			# the drop lands on a genuinely held object rather than a staged one.
+			Input.action_press(mine.action_name("grab"))
+			await get_tree().create_timer(1.0).timeout
+			Input.action_release(mine.action_name("grab"))
+			print("[%s]    holding=%s at drop time" % [_tag, str(carrier.held())])
+			if _drop_charging:
+				Input.action_press(mine.action_name("special_ability"))
+				await get_tree().create_timer(0.4).timeout
+				print("[%s]    charge=%.3f at drop time" % [_tag, carrier.charge_power()])
+	print("[%s] R-24 · dropping now (dropat=%.1f, carrying=%s charging=%s)"
+		% [_tag, _drop_at, str(_drop_carrying), str(_drop_charging)])
+	get_tree().quit(0)
+
+## ---------------------------------------------------------------------------
+## R-25 · A CLEAN HOST-QUIT STORY. `hostquit=SECONDS` on BOTH peers.
+##
+##   godot --path . --headless tools/net_spawn_probe.tscn -- --host hostquit=10
+##   godot --path . --headless tools/net_spawn_probe.tscn -- --join=127.0.0.1 hostquit=10
+##
+## There is no host migration and there will not be one, so the honest version
+## is: every client gets off the dead match promptly, lands somewhere it can
+## rejoin from, and leaves nothing behind.
+##
+## ⚠️ THE 3 s IS MEASURED FROM `server_disconnected`, NOT FROM THE HOST'S QUIT,
+## and that is deliberate rather than generous. The gap between a host process
+## dying and ENet noticing is a TIMEOUT, not this game's teardown — it is set by
+## the peer's own keep-alive and no amount of work in `main.gd` shortens it.
+## Both numbers are printed so the split is visible; only the second is gated.
+##
+## ⚠️ AND THE ORPHAN CHECK IS THE HALF THAT ACTUALLY BITES. Reaching the menu
+## while `/root/Main` is still parented — or with four CharacterBase nodes still
+## in the tree under a freed scene — is the soft-leak that shows up two rejoins
+## later as a match that starts with eight characters. Gated separately from the
+## scene change for that reason: they fail differently and mean different things.
+const HOST_QUIT_MENU: String = "res://scenes/ui/MultiplayerSetup.tscn"
+## Seconds a client may take to leave the dead match, measured from
+## `server_disconnected`.
+const HOST_QUIT_GRACE: float = 3.0
+## How long a client waits for that signal before giving up on the run.
+const HOST_QUIT_WAIT: float = 25.0
+
+var _host_quit_at: float = -1.0
+var _host_quit_graceful: bool = false
+var _disconnect_seen_at: float = -1.0
+## ⚠️ CAPTURED IN THE SIGNAL HANDLER, NOT READ OFF GameLaunch LATER. The first
+## version checked it after the scene change and reported "landed on the menu
+## with no explanation" on both clients — but the message is CONSUMED by the
+## screen that shows it (`mode_select.gd` reads it and blanks it), so the probe
+## was measuring its own lateness. `main.gd::_on_server_disconnected` connects
+## before this does and therefore runs first, so by the time this handler is
+## called the message is set and not yet consumed.
+var _status_at_disconnect: String = ""
+
+func _on_server_disconnected_probe() -> void:
+	_disconnect_seen_at = Time.get_ticks_msec() / 1000.0
+	_status_at_disconnect = String(GameLaunch.pending_status_message)
+	print("[%s]    server_disconnected at %.2fs" % [_tag, _disconnect_seen_at])
+
+func _run_host_quit() -> void:
+	if _is_host:
+		# ⚠️ MID-ROUND, AND THE FIRST RUN OF THIS WAS NOT. It quit at
+		# round_active=false round=0 — a host leaving the ready phase, which
+		# tears down far less than R-25 is about. The host drives one round
+		# first, exactly as the round loop above does, and the state it quit in
+		# is PRINTED rather than assumed.
+		MatchManager.report_round_result(true)
+		await get_tree().create_timer(_host_quit_at).timeout
+		print("[%s] round_active=%s round=%d — QUITTING NOW (%s)" % [
+			_tag, str(RoundManager.round_active), MatchManager.round_number,
+			"graceful: disconnect_network() first" if _host_quit_graceful
+			else "abrupt: the process simply dies"])
+		# R-25 · THE TWO QUITS ARE NOT THE SAME EVENT AND THE DIFFERENCE IS THE
+		# WHOLE FINDING. An abrupt death (alt-F4, power, crash) gives the clients
+		# nothing but silence, so they wait out ENET_TIMEOUT_MIN — deliberately
+		# 10 s, widened for Hamachi jitter, and not a defect. A graceful quit can
+		# CLOSE the peer, which ENet announces immediately. Measured both ways.
+		if _host_quit_graceful:
+			NetworkManager.disconnect_network()
+			await get_tree().create_timer(0.5).timeout
+		# ⚠️ THE PROCESS DIES. Calling `disconnect_network()` would test a tidy
+		# in-process teardown that a real host-quit does not necessarily take —
+		# a player alt-F4ing, losing power or closing the window gives the
+		# clients nothing but silence, and silence is the case worth proving.
+		get_tree().quit(0)
+		return
+
+	NetworkManager.server_disconnected.connect(_on_server_disconnected_probe)
+	var waited := 0.0
+	while _disconnect_seen_at < 0.0 and waited < HOST_QUIT_WAIT:
+		await get_tree().create_timer(0.1).timeout
+		waited += 0.1
+	_samples += 1
+	if _disconnect_seen_at < 0.0:
+		_fails += 1
+		print("[%s]    *** FAIL: the host quit and this client was never told ***" % _tag)
+		print("[%s] === 1 FAILURES ===" % _tag)
+		get_tree().quit(1)
+		return
+	print("[%s]    OK — told the host was gone (ENet took %.2fs to notice)" % [_tag, waited])
+
+	var left_at := -1.0
+	var elapsed := 0.0
+	while elapsed < HOST_QUIT_GRACE + 2.0:
+		await get_tree().create_timer(0.05).timeout
+		elapsed += 0.05
+		var scene := get_tree().current_scene
+		if scene != null and scene.scene_file_path == HOST_QUIT_MENU:
+			left_at = elapsed
+			break
+	_samples += 1
+	if left_at < 0.0:
+		_fails += 1
+		print("[%s]    *** FAIL: still on the dead match %.1fs after being told ***"
+			% [_tag, elapsed])
+	elif left_at > HOST_QUIT_GRACE:
+		_fails += 1
+		print("[%s]    *** FAIL: took %.2fs to reach %s (grace %.1fs) ***"
+			% [_tag, left_at, HOST_QUIT_MENU, HOST_QUIT_GRACE])
+	else:
+		print("[%s]    OK — reached MultiplayerSetup in %.2fs (grace %.1fs)"
+			% [_tag, left_at, HOST_QUIT_GRACE])
+
+	# One frame for the freed scene to actually leave the tree.
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var orphan_main := get_tree().root.get_node_or_null("Main")
+	var orphan_characters := get_tree().root.find_children("*", "CharacterBase", true, false)
+	_samples += 1
+	if orphan_main != null or not orphan_characters.is_empty():
+		_fails += 1
+		print("[%s]    *** FAIL: orphans left behind — /root/Main=%s, %d CharacterBase ***"
+			% [_tag, str(orphan_main != null), orphan_characters.size()])
+	else:
+		print("[%s]    OK — nothing orphaned: no /root/Main, 0 CharacterBase" % _tag)
+	_samples += 1
+	var message := _status_at_disconnect
+	if message == "":
+		_fails += 1
+		print("[%s]    *** FAIL: landed on the menu with no explanation for the player ***" % _tag)
+	else:
+		print("[%s]    OK — the player is told why: \"%s\"" % [_tag, message])
+
+	print("\n[%s] === %s (%d/%d checks clean) ===" % [
+		_tag, "ALL CHECKS PASSED" if _fails == 0 else "%d FAILURES" % _fails,
+		_samples - _fails, _samples])
+	get_tree().quit(1 if _fails > 0 else 0)
 
 func _off_axis(forward: Vector3, target: Vector3) -> float:
 	if forward.length() < 0.001:

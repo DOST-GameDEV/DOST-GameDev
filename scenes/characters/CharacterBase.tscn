@@ -1,11 +1,8 @@
-[gd_scene load_steps=14 format=3 uid="uid://b8g1c2xw3q4r5"]
+[gd_scene load_steps=6 format=3 uid="uid://b8g1c2xw3q4r5"]
 
 [ext_resource type="Script" path="res://scripts/characters/character_base.gd" id="1"]
-[ext_resource type="Script" path="res://scripts/characters/hurtbox.gd" id="2"]
-[ext_resource type="Script" path="res://scripts/characters/hitbox.gd" id="3"]
 [ext_resource type="PackedScene" path="res://scenes/characters/CameraRig.tscn" id="4"]
 [ext_resource type="Script" path="res://scripts/characters/character_visual.gd" id="5"]
-[ext_resource type="Script" path="res://scripts/characters/carriable.gd" id="6"]
 [ext_resource type="Script" path="res://scripts/characters/carrier.gd" id="7"]
 [ext_resource type="Script" path="res://scripts/characters/character_nameplate.gd" id="8"]
 
@@ -19,16 +16,16 @@ properties/1/replication_mode = 1
 properties/2/path = NodePath(".:state")
 properties/2/spawn = true
 properties/2/replication_mode = 2
-properties/3/path = NodePath(".:dents")
+properties/3/path = NodePath(".:character_index")
 properties/3/spawn = true
 properties/3/replication_mode = 2
-properties/4/path = NodePath(".:character_index")
+properties/4/path = NodePath(".:is_defender")
 properties/4/spawn = true
 properties/4/replication_mode = 2
-properties/5/path = NodePath(".:can_index")
+properties/5/path = NodePath(".:player_slot")
 properties/5/spawn = true
 properties/5/replication_mode = 2
-properties/6/path = NodePath(".:slipper_index")
+properties/6/path = NodePath(".:player_name")
 properties/6/spawn = true
 properties/6/replication_mode = 2
 
@@ -36,19 +33,6 @@ properties/6/replication_mode = 2
 resource_local_to_scene = true
 radius = 0.4
 height = 1.6
-
-[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_hurtbox"]
-resource_local_to_scene = true
-radius = 0.45
-height = 1.7
-
-[sub_resource type="SphereShape3D" id="SphereShape3D_hitbox"]
-resource_local_to_scene = true
-radius = 0.5
-
-[sub_resource type="SphereShape3D" id="SphereShape3D_grab"]
-resource_local_to_scene = true
-radius = 1.7
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_ring"]
 resource_local_to_scene = true
@@ -74,36 +58,8 @@ script = ExtResource("5")
 
 [node name="CameraRig" parent="." instance=ExtResource("4")]
 
-[node name="Hurtbox" type="Area3D" parent="."]
-script = ExtResource("2")
-collision_layer = 2
-collision_mask = 0
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Hurtbox"]
-shape = SubResource("CapsuleShape3D_hurtbox")
-
-[node name="Hitbox" type="Area3D" parent="."]
-script = ExtResource("3")
-collision_layer = 0
-collision_mask = 2
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, -0.6)
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Hitbox"]
-shape = SubResource("SphereShape3D_hitbox")
-
-[node name="Carriable" type="Node" parent="."]
-script = ExtResource("6")
-
 [node name="Carrier" type="Node" parent="."]
 script = ExtResource("7")
-
-[node name="GrabArea" type="Area3D" parent="."]
-collision_layer = 0
-collision_mask = 2
-monitorable = false
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="GrabArea"]
-shape = SubResource("SphereShape3D_grab")
 
 [node name="Nameplate" type="Node3D" parent="."]
 script = ExtResource("8")

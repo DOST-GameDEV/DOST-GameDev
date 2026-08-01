@@ -62,15 +62,23 @@ var _verts: PackedVector3Array = PackedVector3Array()
 var _vert_index: Dictionary = {}
 var _normals: PackedVector3Array = PackedVector3Array()
 var _normal_index: Dictionary = {}
+## Texture coordinates, same weld-on-the-printed-form contract as `_verts`.
+## Empty until something actually passes UVs, which is what keeps every
+## previously-generated mesh byte-identical — see `_write_obj`.
+var _uvs: PackedVector2Array = PackedVector2Array()
+var _uv_index: Dictionary = {}
 
 ## One entry per triangle: {"v": PackedInt32Array, "n": PackedInt32Array,
-## "mat": String}. Emitted in insertion order, grouped by material at write time.
+## "t": PackedInt32Array (empty when the face carries no UVs), "mat": String}.
+## Emitted in insertion order, grouped by material at write time.
 var _faces: Array[Dictionary] = []
 
 ## Material names in declaration order, plus their colours. Kept as a parallel
 ## Array so the .mtl is written in a stable order (rule 2).
 var _material_names: Array[String] = []
 var _material_colors: Dictionary = {}
+## name -> res:// path of a diffuse map, for the materials that have one.
+var _material_textures: Dictionary = {}
 
 func _init(object_name: String = "mesh") -> void:
 	_object_name = object_name
@@ -78,17 +86,33 @@ func _init(object_name: String = "mesh") -> void:
 ## Declares a material and its diffuse colour. Call with a `UiTheme` constant —
 ## never a retyped hex — so the models and the UI palette cannot drift apart.
 ## Re-declaring an existing name updates its colour without reordering it.
-func set_material(name: String, color: Color) -> void:
+##
+## `texture`, if given, is a res:// path written as the .mtl's `map_Kd`. Godot's
+## .obj importer turns that into `StandardMaterial3D.albedo_texture`, and
+## `character_visual.gd::_apply_toon_pass()` then carries it onto the toon
+## shader's `albedo_texture` and sets `use_texture` — so a textured generated prop
+## takes exactly the path the Kenney kit meshes already take, and `albedo_color`
+## becomes a MULTIPLY over the art instead of a replacement for it.
+##
+## ⚠️ THAT MULTIPLY IS WHAT KEEPS SKINS WORKING. `lata.gd::_tint_meshes()` and its
+## slipper twin walk every surface and write the roster entry's `tint` into
+## `albedo_color`. On an untextured prop that IS the colour; on a textured one it
+## tints the art. A textured skin therefore carries `tint` WHITE, which multiplies
+## to a no-op and shows the label as drawn. See character_roster.gd's CANS header.
+func set_material(name: String, color: Color, texture: String = "") -> void:
 	if not _material_colors.has(name):
 		_material_names.append(name)
 	_material_colors[name] = color
+	if texture != "":
+		_material_textures[name] = texture
 
 # --- Primitive operations -----------------------------------------------------
 
 ## One triangle. With `normals` empty every vertex takes the flat face normal —
 ## which is usually what this art style wants. Pass three normals to shade it
 ## smoothly (`add_revolve` does this for curved walls).
-func add_tri(a: Vector3, b: Vector3, c: Vector3, material: String, normals: Array = []) -> void:
+## `uvs`, if given, is three Vector2s in the same order as the corners.
+func add_tri(a: Vector3, b: Vector3, c: Vector3, material: String, normals: Array = [], uvs: Array = []) -> void:
 	var na: Vector3
 	var nb: Vector3
 	var nc: Vector3
@@ -103,18 +127,29 @@ func add_tri(a: Vector3, b: Vector3, c: Vector3, material: String, normals: Arra
 		nc = face_normal
 	var vi := PackedInt32Array([_add_vert(a), _add_vert(b), _add_vert(c)])
 	var ni := PackedInt32Array([_add_normal(na), _add_normal(nb), _add_normal(nc)])
-	_faces.append({"v": vi, "n": ni, "mat": material})
+	var ti := PackedInt32Array()
+	if uvs.size() == 3:
+		ti = PackedInt32Array([_add_uv(uvs[0]), _add_uv(uvs[1]), _add_uv(uvs[2])])
+	_faces.append({"v": vi, "n": ni, "t": ti, "mat": material})
 
 ## One quad as two triangles, wound a-b-c / a-c-d. Vertices must be given in
 ## order around the face (not criss-cross) and counter-clockwise seen from
 ## outside. `normals`, if given, is four normals in the same order.
-func add_quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3, material: String, normals: Array = []) -> void:
+## `uvs`, if given, is four Vector2s in the same order as the corners — split
+## across the two triangles the same way the positions and normals are.
+func add_quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3, material: String, normals: Array = [], uvs: Array = []) -> void:
+	var n_abc: Array = []
+	var n_acd: Array = []
 	if normals.size() == 4:
-		add_tri(a, b, c, material, [normals[0], normals[1], normals[2]])
-		add_tri(a, c, d, material, [normals[0], normals[2], normals[3]])
-	else:
-		add_tri(a, b, c, material)
-		add_tri(a, c, d, material)
+		n_abc = [normals[0], normals[1], normals[2]]
+		n_acd = [normals[0], normals[2], normals[3]]
+	var t_abc: Array = []
+	var t_acd: Array = []
+	if uvs.size() == 4:
+		t_abc = [uvs[0], uvs[1], uvs[2]]
+		t_acd = [uvs[0], uvs[2], uvs[3]]
+	add_tri(a, b, c, material, n_abc, t_abc)
+	add_tri(a, c, d, material, n_acd, t_acd)
 
 ## Spins a 2D profile around the Y axis — the workhorse for every rotationally
 ## symmetric object in this game (the lata, a bollard, a tricycle wheel).
@@ -140,7 +175,18 @@ func add_quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3, material: String, 
 ## `recalculate_normals()`. Determinism holds regardless — `_fmt` snaps the
 ## PRINTED form after the transform, and the weld key is that printed form, so
 ## two vertices that transform to the same point still weld identically.
-func add_revolve(profile: PackedVector2Array, segments: int, material: String, smooth: bool = true, deform: Callable = Callable(), transform: Transform3D = Transform3D.IDENTITY) -> void:
+## `uv_map`, if given, is called as `uv_map.call(y, angle) -> Vector2` for each
+## corner and turns the revolve into a textured surface. That signature is the
+## natural one for a can: `u` from the angle wraps a label right around it, `v`
+## from the profile height runs it top to bottom, and because the callable sees
+## the UNDEFORMED profile values the mapping is stable under a `deform`.
+##
+## ⚠️ THE SEAM NEEDS u = 1.0 AT THE LAST SEGMENT, NOT u = 0.0. Angle `TAU` and
+## angle `0` are the same point in space but must be different points in the
+## texture, or the last strip squeezes the entire label backwards into itself.
+## `add_revolve` passes the raw `a1` (which reaches TAU) rather than a wrapped
+## one, so a `uv_map` of `angle / TAU` gets 1.0 there and the wrap closes.
+func add_revolve(profile: PackedVector2Array, segments: int, material: String, smooth: bool = true, deform: Callable = Callable(), transform: Transform3D = Transform3D.IDENTITY, uv_map: Callable = Callable()) -> void:
 	if profile.size() < 2 or segments < 3:
 		push_error("ObjWriter.add_revolve: need >= 2 profile points and >= 3 segments")
 		return
@@ -184,19 +230,32 @@ func add_revolve(profile: PackedVector2Array, segments: int, material: String, s
 					_ring_normal(flat, a0), _ring_normal(flat, a0),
 					_ring_normal(flat, a1), _ring_normal(flat, a1),
 				]
+			# Same four corners, same order, as the positions and normals above.
+			var uvs: Array = []
+			if uv_map.is_valid():
+				uvs = [
+					uv_map.call(y0, a0), uv_map.call(y1, a0),
+					uv_map.call(y1, a1), uv_map.call(y0, a1),
+				]
 			if r0 < EPSILON:
 				# Collapsed at the bottom: the quad degenerates to one triangle.
 				var tri_normals: Array = []
 				if smooth:
 					tri_normals = [normals[0], normals[1], normals[2]]
-				add_tri(v00, v01, v11, material, tri_normals)
+				var tri_uvs: Array = []
+				if uv_map.is_valid():
+					tri_uvs = [uvs[0], uvs[1], uvs[2]]
+				add_tri(v00, v01, v11, material, tri_normals, tri_uvs)
 			elif r1 < EPSILON:
 				var tri_normals2: Array = []
 				if smooth:
 					tri_normals2 = [normals[0], normals[2], normals[3]]
-				add_tri(v00, v11, v10, material, tri_normals2)
+				var tri_uvs2: Array = []
+				if uv_map.is_valid():
+					tri_uvs2 = [uvs[0], uvs[2], uvs[3]]
+				add_tri(v00, v11, v10, material, tri_normals2, tri_uvs2)
 			else:
-				add_quad(v00, v01, v11, v10, material, normals)
+				add_quad(v00, v01, v11, v10, material, normals, uvs)
 
 ## Extrudes a closed outline in the XZ plane along +Y, with both caps.
 ##
@@ -212,19 +271,41 @@ func add_revolve(profile: PackedVector2Array, segments: int, material: String, s
 ## the moment `transform` isn't a pure translation, so ALWAYS follow a
 ## non-identity call with `recalculate_normals()`, which rebuilds every normal
 ## from the (already-transformed) face geometry and ignores what's passed here.
-func add_extrude(outline: PackedVector2Array, y_bottom: float, y_top: float, material: String, transform: Transform3D = Transform3D.IDENTITY) -> void:
+## `uv_map`, if given, is called as `uv_map.call(x, z) -> Vector2` — a straight
+## top-down planar projection, which is the right one for the slipper: the human's
+## drawings ARE top-down views, so the art maps onto the footbed with no
+## unwrapping step at all. Side walls take the projection of the outline point
+## they stand on, which stretches the art down the 3 mm rim and is invisible.
+## ⚠️ `uv_wall_inset` EXISTS BECAUSE THE SIDE WALLS SAMPLED THE PAGE, NOT THE ART.
+## A wall stands ON an outline point, and an outline point is by definition the
+## OUTERMOST edge of the shape — which in a cropped drawing is the last pixel of
+## the black outline, or the white paper just past it. Sampling there gave every
+## slipper a white rim all the way round its sole, and that single texel is what
+## made four modelled objects read as flat paper cutouts in the first render.
+##
+## The fix is to sample from slightly INSIDE the silhouette instead: the wall's
+## UV is taken at `point * uv_wall_inset` (the outlines are centred on the origin,
+## so scaling toward it moves the sample inward). 0.86 lands a comfortable way
+## into the drawn sole on every one of the four. The GEOMETRY is untouched —
+## this only moves where the wall looks up its colour.
+func add_extrude(outline: PackedVector2Array, y_bottom: float, y_top: float, material: String, transform: Transform3D = Transform3D.IDENTITY, uv_map: Callable = Callable(), uv_wall_inset: float = 1.0) -> void:
 	if outline.size() < 3:
 		push_error("ObjWriter.add_extrude: outline needs >= 3 points")
 		return
 	for i in range(outline.size()):
 		var p0 := outline[i]
 		var p1 := outline[(i + 1) % outline.size()]
+		var wall_uvs: Array = []
+		if uv_map.is_valid():
+			var u0: Vector2 = uv_map.call(p0.x * uv_wall_inset, p0.y * uv_wall_inset)
+			var u1: Vector2 = uv_map.call(p1.x * uv_wall_inset, p1.y * uv_wall_inset)
+			wall_uvs = [u0, u0, u1, u1]
 		add_quad(
 			transform * Vector3(p0.x, y_bottom, p0.y),
 			transform * Vector3(p0.x, y_top, p0.y),
 			transform * Vector3(p1.x, y_top, p1.y),
 			transform * Vector3(p1.x, y_bottom, p1.y),
-			material
+			material, [], wall_uvs
 		)
 	# Geometry2D's ear clipping is deterministic for a given input, so the caps
 	# do not break the determinism contract.
@@ -236,8 +317,11 @@ func add_extrude(outline: PackedVector2Array, y_bottom: float, y_top: float, mat
 		var a := outline[indices[i]]
 		var b := outline[indices[i + 1]]
 		var c := outline[indices[i + 2]]
-		_add_cap_tri(transform * Vector3(a.x, y_top, a.y), transform * Vector3(b.x, y_top, b.y), transform * Vector3(c.x, y_top, c.y), Vector3.UP, material)
-		_add_cap_tri(transform * Vector3(a.x, y_bottom, a.y), transform * Vector3(b.x, y_bottom, b.y), transform * Vector3(c.x, y_bottom, c.y), Vector3.DOWN, material)
+		var cap_uvs: Array = []
+		if uv_map.is_valid():
+			cap_uvs = [uv_map.call(a.x, a.y), uv_map.call(b.x, b.y), uv_map.call(c.x, c.y)]
+		_add_cap_tri(transform * Vector3(a.x, y_top, a.y), transform * Vector3(b.x, y_top, b.y), transform * Vector3(c.x, y_top, c.y), Vector3.UP, material, cap_uvs)
+		_add_cap_tri(transform * Vector3(a.x, y_bottom, a.y), transform * Vector3(b.x, y_bottom, b.y), transform * Vector3(c.x, y_bottom, c.y), Vector3.DOWN, material, cap_uvs)
 
 # --- Shading ------------------------------------------------------------------
 
@@ -302,6 +386,105 @@ func recalculate_normals(angle_threshold_deg: float = 40.0) -> void:
 			ni.append(_add_normal(sum.normalized()))
 		_faces[f]["n"] = ni
 
+# --- Recentring ---------------------------------------------------------------
+
+## Translates every vertex so the mesh's VOLUME CENTROID lands on the origin,
+## and returns the offset that was applied.
+##
+## ⚠️ THIS IS A GAMEPLAY REQUIREMENT ON THE TSINELAS, NOT TIDINESS.
+## `slipper.gd` spins a thrown slipper on two axes at once — `SPIN_SPEED_DEG` 900
+## about its long axis and `TUMBLE_SPEED_DEG` 520 end over end — by rotating the
+## `Visual` node, which pivots about the MESH ORIGIN. A sole authored with its
+## origin at one corner (which is what `add_extrude` naturally produces: y = 0 is
+## the underside, and x/z run either side of whatever the outline used) therefore
+## orbits that corner instead of spinning in place, and reads as a bent wheel
+## rather than as a thrown slipper. Agent_Prompts.md 5.2 calls this out by name.
+##
+## ⚠️ VOLUME CENTROID, NOT THE CENTRE OF THE BOUNDING BOX. They are the same
+## thing only for a symmetric shape, and none of these are: the crocs carries a
+## domed toe box over the front half, the bakya a heel block under the back. The
+## bounding-box centre of the crocs sits ~8 mm ahead of where its mass actually
+## is, which is a visible wobble at 900 deg/s.
+##
+## Uses the divergence theorem over the triangle soup — each triangle forms a
+## tetrahedron with the origin, signed by its winding, and the signed volumes of
+## the ones facing away cancel the ones facing toward. That needs a CLOSED,
+## consistently-wound surface to be exact. The straps and bands here are open at
+## one end (see `_strap_band`'s cap note), so their contribution carries a small
+## error — bounded by the volume of the open cap, which on the widest band is
+## about 0.3% of the slipper. Assert-free on purpose: the fallback below is what
+## matters, and 0.3% of a slipper is far under a pixel at throwing distance.
+##
+## Falls back to the bounding-box centre if the signed volume is degenerate,
+## which is what an unclosed or inverted mesh would produce. A silent NaN origin
+## would put the prop at the world origin and read as "the slipper never spawned".
+func center_on_volume_centroid() -> Vector3:
+	var total_volume := 0.0
+	var accumulated := Vector3.ZERO
+	for face in _faces:
+		var vi: PackedInt32Array = face["v"]
+		var a := _verts[vi[0] - 1]
+		var b := _verts[vi[1] - 1]
+		var c := _verts[vi[2] - 1]
+		var signed_volume := a.dot(b.cross(c)) / 6.0
+		total_volume += signed_volume
+		accumulated += signed_volume * (a + b + c) / 4.0
+	var centre: Vector3
+	if absf(total_volume) < EPSILON:
+		push_warning("ObjWriter.center_on_volume_centroid: degenerate volume, "
+			+ "falling back to the bounding-box centre")
+		centre = _bounds_centre()
+	else:
+		centre = accumulated / total_volume
+	translate_all(-centre)
+	return centre
+
+## Centre of the axis-aligned bounding box. Exposed because it is the honest
+## comparison for the above — a slipper whose two centres disagree by more than a
+## few millimetres is telling you its mass is somewhere you did not expect.
+func _bounds_centre() -> Vector3:
+	if _verts.is_empty():
+		return Vector3.ZERO
+	var lo := _verts[0]
+	var hi := _verts[0]
+	for v in _verts:
+		lo = Vector3(minf(lo.x, v.x), minf(lo.y, v.y), minf(lo.z, v.z))
+		hi = Vector3(maxf(hi.x, v.x), maxf(hi.y, v.y), maxf(hi.z, v.z))
+	return (lo + hi) * 0.5
+
+func bounds_centre() -> Vector3:
+	return _bounds_centre()
+
+func bounds_size() -> Vector3:
+	if _verts.is_empty():
+		return Vector3.ZERO
+	var lo := _verts[0]
+	var hi := _verts[0]
+	for v in _verts:
+		lo = Vector3(minf(lo.x, v.x), minf(lo.y, v.y), minf(lo.z, v.z))
+		hi = Vector3(maxf(hi.x, v.x), maxf(hi.y, v.y), maxf(hi.z, v.z))
+	return hi - lo
+
+## Moves every vertex. Rebuilds the weld table from scratch rather than shifting
+## it, because two vertices that were distinct before the move can become
+## identical after it once both are snapped to the printed precision — leaving
+## the old table in place would keep them as two entries and quietly break the
+## "same printed point is one vertex" invariant the determinism contract rests on.
+func translate_all(offset: Vector3) -> void:
+	var moved := PackedVector3Array()
+	for v in _verts:
+		moved.append(v + offset)
+	_verts = PackedVector3Array()
+	_vert_index = {}
+	var remap := PackedInt32Array()
+	for v in moved:
+		remap.append(_add_vert(v))
+	for face in _faces:
+		var vi: PackedInt32Array = face["v"]
+		face["v"] = PackedInt32Array([
+			remap[vi[0] - 1], remap[vi[1] - 1], remap[vi[2] - 1],
+		])
+
 # --- Output -------------------------------------------------------------------
 
 ## Writes `<path>.obj` and a sibling `<path>.mtl`. `path` is a res:// path
@@ -327,6 +510,20 @@ func _write_obj(path: String, mtl_filename: String) -> void:
 	file.store_line("o " + _object_name)
 	for v in _verts:
 		file.store_line("v %s %s %s" % [_fmt(v.x), _fmt(v.y), _fmt(v.z)])
+	# ⚠️ THE WHOLE UV BLOCK IS SKIPPED WHEN NOTHING ASKED FOR ONE, and that is what
+	# makes this change safe to land on a repo full of already-generated meshes:
+	# an untextured prop emits `f v//n` exactly as before, byte for byte, so the
+	# determinism test still passes on every mesh nobody touched.
+	var textured := not _uvs.is_empty()
+	# A mesh may be PARTLY textured — the tsinelas' straps carry no UVs while its
+	# footbed does. The .obj format needs one consistent `f` form per file, so the
+	# untextured faces are pointed at a single throwaway (0,0) coordinate rather
+	# than the file switching syntax halfway down.
+	var fallback_uv := 0
+	if textured:
+		fallback_uv = _add_uv(Vector2.ZERO)
+		for t in _uvs:
+			file.store_line("vt %s %s" % [_fmt(t.x), _fmt(t.y)])
 	for n in _normals:
 		file.store_line("vn %s %s %s" % [_fmt(n.x), _fmt(n.y), _fmt(n.z)])
 	# Grouped by material in declaration order so the importer produces one
@@ -342,7 +539,15 @@ func _write_obj(path: String, mtl_filename: String) -> void:
 				wrote_header = true
 			var vi: PackedInt32Array = face["v"]
 			var ni: PackedInt32Array = face["n"]
-			file.store_line("f %d//%d %d//%d %d//%d" % [vi[0], ni[0], vi[1], ni[1], vi[2], ni[2]])
+			if not textured:
+				file.store_line("f %d//%d %d//%d %d//%d"
+					% [vi[0], ni[0], vi[1], ni[1], vi[2], ni[2]])
+				continue
+			var ti: PackedInt32Array = face.get("t", PackedInt32Array())
+			if ti.size() != 3:
+				ti = PackedInt32Array([fallback_uv, fallback_uv, fallback_uv])
+			file.store_line("f %d/%d/%d %d/%d/%d %d/%d/%d"
+				% [vi[0], ti[0], ni[0], vi[1], ti[1], ni[1], vi[2], ti[2], ni[2]])
 	file.close()
 
 func _write_mtl(path: String) -> void:
@@ -381,6 +586,11 @@ func _write_mtl(path: String) -> void:
 		file.store_line("Ns 1000.00000")
 		file.store_line("d %s" % _fmt(color.a))
 		file.store_line("illum 1")
+		# ⚠️ WRITTEN LAST, AND AS A BARE FILENAME-OR-PATH. Godot's .obj importer
+		# resolves `map_Kd` relative to the .mtl's own directory, so a res:// path
+		# is passed through unchanged and a plain name looks beside the .mtl.
+		if _material_textures.has(material_name):
+			file.store_line("map_Kd %s" % String(_material_textures[material_name]))
 	file.close()
 
 # --- Internals ----------------------------------------------------------------
@@ -400,11 +610,18 @@ func _face_normal(a: Vector3, b: Vector3, c: Vector3) -> Vector3:
 ## Adds a cap triangle, flipping its winding if it would face the wrong way.
 ## Cheaper and far more robust than reasoning about what winding
 ## `Geometry2D.triangulate_polygon` happens to return for a given outline.
-func _add_cap_tri(a: Vector3, b: Vector3, c: Vector3, want: Vector3, material: String) -> void:
+## ⚠️ `uvs` HAS TO BE REORDERED WITH THE WINDING, not passed through. A cap that
+## flips to a-c-b and keeps its UVs in a-b-c order mirrors the texture on exactly
+## the caps that needed flipping — which is half of them, so the art comes out
+## right on the top face and reversed on the bottom.
+func _add_cap_tri(a: Vector3, b: Vector3, c: Vector3, want: Vector3, material: String, uvs: Array = []) -> void:
 	if _face_normal(a, b, c).dot(want) < 0.0:
-		add_tri(a, c, b, material, [want, want, want])
+		var flipped: Array = []
+		if uvs.size() == 3:
+			flipped = [uvs[0], uvs[2], uvs[1]]
+		add_tri(a, c, b, material, [want, want, want], flipped)
 	else:
-		add_tri(a, b, c, material, [want, want, want])
+		add_tri(a, b, c, material, [want, want, want], uvs)
 
 ## Welds on the PRINTED form, not the raw float — see the determinism note above.
 func _add_vert(v: Vector3) -> int:
@@ -423,6 +640,15 @@ func _add_normal(n: Vector3) -> int:
 	_normals.append(n)
 	var index := _normals.size()
 	_normal_index[key] = index
+	return index
+
+func _add_uv(uv: Vector2) -> int:
+	var key := "%s/%s" % [_fmt(uv.x), _fmt(uv.y)]
+	if _uv_index.has(key):
+		return _uv_index[key]
+	_uvs.append(uv)
+	var index := _uvs.size()
+	_uv_index[key] = index
 	return index
 
 ## Snaps to the output precision FIRST, then formats. Both steps matter:

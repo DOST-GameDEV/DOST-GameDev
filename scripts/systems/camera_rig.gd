@@ -82,6 +82,13 @@ const FPP_HIDDEN_MESH_HINT: String = "head"
 ## ⚠️ Only ever shown on a Person, and only in FPP on the LOCAL unit. A Prop has
 ## no arms, and a remote player's rig is never the one being looked through.
 const VIEWMODEL_ARMS_SCENE: String = "res://scenes/characters/visuals/ViewmodelArms.tscn"
+## Uniform scale applied to the arms when they are mounted — § CHECKLIST 1.7. See the
+## comment at the mount site for why it lives here and not in the scene.
+const VIEWMODEL_SCALE: float = 0.72
+## Pushed down and away from the eye after scaling, so shrinking them does not just
+## leave a smaller pair of arms in the same commanding spot. Down clears the centre of
+## frame; back is what actually stops them subtending half the vertical FOV.
+const VIEWMODEL_SEAT: Vector3 = Vector3(0.0, -0.10, -0.16)
 
 ## B-91 — mirrors the .tscn's own baked `TppArm.position = (0, 1.2, 0)`, used
 ## by `_update_tpp_carry_follow()` below to mount the carried-slipper's camera
@@ -185,7 +192,11 @@ var _tpp_carry_pitch_deg: float = 0.0
 ## carried" without character_base.gd having to learn what carrying is (the
 ## same information-hiding rule carriable.gd's own header states). Null for a
 ## Can (never carried) and for a Person (never carriable at all).
-@onready var _carriable: Carriable = get_node_or_null("../Carriable") as Carriable
+## ⚠️ WAS `@onready var _carriable: Carriable`. This rig belonged to a unit that
+## could ITSELF be picked up and carried — a lata or a tsinelas with a camera in
+## it — so the framing had to stand aside while it rode in somebody's hand. Every
+## unit is a Person now and no camera is ever carried, so the three branches that
+## read this are gone with it.
 ## Which carrier's body the spring arm currently excludes from its own
 ## shapecast, so add/remove_excluded_object is only called on an actual
 ## CHANGE of carrier (pick up, drop, round reset) rather than every frame.
@@ -198,6 +209,35 @@ var _arms: Node3D = null
 ## first time it is needed. The carry pose is computed from the slipper, so
 ## this is what the hand returns to when nothing is held.
 var _viewmodel_rest: Transform3D = Transform3D.IDENTITY
+
+## ⚠️⚠️ THE FIRST-PERSON HALF OF EVERY VERB, WHICH DID NOT EXIST.
+## 🧑 2026-08-01: *"add visual cue for first person and for everyone else that shove
+## and sunok and other skills and abilities shit is happening, maybe an animation"*.
+##
+## The THIRD-person half was already right — `broadcast_visual_action()` plays a clip
+## on every machine for grab, throw, punch, lunge and shove, and its own header
+## records why (an action nobody else can see is an action nobody else can answer).
+## But in first person the body is `SHADOWS_ONLY` and the player sees only the
+## viewmodel arms, which never reacted to anything. So the one person who most needs
+## to know the punch came out — the person who pressed it — got no feedback at all.
+##
+## ⚠️ A KICK ON THE EXISTING POSE, NOT A NEW ANIMATION TRACK. `_update_viewmodel_carry`
+## already lerps `RightPivot` to a computed pose every frame, so a transient offset
+## layered on top costs one Vector3 and cannot fight the carry pose the way a second
+## AnimationPlayer would. It decays on a real timer and is purely cosmetic: nothing
+## reads it, and it never touches the body, the hitbox or the facing.
+const VM_KICK_TIME: float = 0.22
+## Per verb: how far the hand is thrown, along the view's own -Z, and how much it
+## rolls. Tuned to read at 60 fps without covering the crosshair.
+const VM_KICKS: Dictionary = {
+	"punch": {"push": 0.30, "lift": -0.04, "roll": 0.10},
+	"shove": {"push": 0.24, "lift": 0.05, "roll": -0.14},
+	"lunge": {"push": 0.34, "lift": 0.07, "roll": 0.05},
+	"throw": {"push": 0.26, "lift": 0.10, "roll": -0.08},
+	"grab": {"push": 0.06, "lift": -0.22, "roll": 0.0},
+}
+var _vm_kick_left: float = 0.0
+var _vm_kick: Dictionary = {}
 
 ## Q-8: decaying camera-shake offset, applied to whichever camera this rig's
 ## _mode actually uses — never by writing the character body's rotation
@@ -343,8 +383,6 @@ func _apply_upright_pose() -> void:
 	# to the CARRIER rather than to this body — see _update_tpp_carry_follow().
 	# Overwriting it here would undo the anchoring and snap the view back onto a
 	# slipper that is being swung around by someone else's arm.
-	if _carriable != null and _carriable.state == Carriable.CarryState.CARRIED:
-		return
 	tpp_arm.global_transform = Transform3D(
 		yaw * Basis(Vector3.RIGHT, deg_to_rad(_tpp_pitch_deg)),
 		_character.global_position + Vector3.UP * _tpp_mount_height)
@@ -383,6 +421,20 @@ func set_active(active: bool) -> void:
 	# through, so it has to be re-evaluated whenever that changes — not just
 	# once at _ready().
 	_apply_fpp_self_hide()
+
+## True only when this rig is the one the local screen is looking THROUGH, in
+## first person. Both halves matter and `_active` alone is not enough: a rig can
+## be active while rendering TPP (spectator, prop cameras), and every character in
+## a single-process debug session reports `is_multiplayer_authority()`.
+##
+## Added 2026-08-01 for the aiming arc. 🧑: *"make sure that only first person sees
+## that, dont show it for others"*. Networked play was already correct by accident
+## — `carrier.gd` gated on multiplayer authority, which is per-peer — but "the
+## local player is the authority" and "the local player is LOOKING THROUGH THIS
+## CHARACTER'S EYES" are different claims, and only the second one is what the arc
+## should be drawn for.
+func is_local_fpp() -> bool:
+	return _active and _mode == Mode.FPP
 
 ## The rig mode (FPP/TPP) is derived and untouchable (§0.1) — this only
 ## chooses how the ACTIVE rig reads aim input, never what mode it renders in.
@@ -478,7 +530,7 @@ func _update_viewmodel_carry(delta: float) -> void:
 		_viewmodel_rest = pivot.transform
 
 	var carrier := _character.get_node_or_null("Carrier") as Carrier
-	var held: Carriable = carrier.held() if carrier != null else null
+	var held: Slipper = carrier.held() if carrier != null else null
 	var holding := held != null and is_instance_valid(held)
 	# ⚠️ 7.3 — THE VIEWMODEL CARRIES ITS OWN SLIPPER NOW, and no longer chases
 	# the world one. That inversion is the whole fix for "slipper floating".
@@ -498,13 +550,17 @@ func _update_viewmodel_carry(delta: float) -> void:
 	# viewmodel in the first place. The world slipper sits in the real hand and
 	# is correct in third person; `HeldSlipper` under the fist is what the local
 	# player sees, posed for their frame and nobody else's.
-	var slipper := pivot.get_node_or_null("Arm/HeldSlipper") as Node3D
+	var slipper := pivot.get_node_or_null("Arm/HeldSlipper") as MeshInstance3D
 	if slipper != null:
 		slipper.visible = holding
+		if holding:
+			_sync_viewmodel_slipper(slipper, held)
 	# Per-frame, because what this character is holding changes DURING a round —
 	# _apply_fpp_self_hide only re-runs on activation and model changes, so a
 	# pick-up mid-round would otherwise show both slippers until the next swap.
 	_apply_carried_self_hide(true)
+	if _vm_kick_left > 0.0:
+		_vm_kick_left = maxf(0.0, _vm_kick_left - delta)
 	var wanted := _viewmodel_rest
 	if holding:
 		# A FIXED carry pose, not a chase. Nothing here reads the world slipper's
@@ -521,6 +577,79 @@ func _update_viewmodel_carry(delta: float) -> void:
 
 	pivot.transform = pivot.transform.interpolate_with(
 		wanted, clampf(VIEWMODEL_REACH_SPEED * delta, 0.0, 1.0))
+	# ⚠️ APPLIED AFTER THE LERP, NOT BLENDED INTO `wanted`. The lerp is a slow chase
+	# (`VIEWMODEL_REACH_SPEED`) and a kick folded into its target would be smoothed
+	# into nothing — the whole point is that it snaps out and eases back. Written
+	# straight onto the transform, so it decays as `_vm_kick_left` runs down and
+	# leaves the carry pose exactly where it was.
+	if _vm_kick_left > 0.0 and not _vm_kick.is_empty():
+		var t: float = _vm_kick_left / VM_KICK_TIME
+		# Fast out, slow back: t^2 spends most of the window near the extreme.
+		var amount: float = t * t
+		pivot.transform.origin += Vector3(
+			0.0,
+			float(_vm_kick["lift"]) * amount,
+			-float(_vm_kick["push"]) * amount)
+		pivot.transform.basis = pivot.transform.basis.rotated(
+			Vector3.FORWARD, float(_vm_kick["roll"]) * amount)
+
+
+## Toe-to-heel length the held slipper presents IN THE WORLD, in metres, so it
+## reads at arm's length in the first-person frame.
+##
+## ⚠️ MEASURED, NOT TYPED, AND THE OLD VALUE WAS 0.171 m. `ViewmodelArms.tscn`
+## authors `HeldSlipper` at mesh scale, and it then inherits TWO nested shrinks —
+## the arms' own `VIEWMODEL_SCALE` 0.72 and the carry pose's
+## `VIEWMODEL_CARRY_SCALE` 0.55 — so a 0.432 m mesh arrived on screen at 0.396 of
+## its size. `tools/models/fpp_carry_probe.tscn` reported it visible, meshed and
+## inside the frustum the whole time, which is exactly why this was reported as
+## "it doesnt get seen in first person" rather than as a size bug: nothing was
+## switched off, it was just too small to notice at the fingertip.
+##
+## Applied as a per-frame local scale computed against the parent's CURRENT world
+## scale, so the slipper keeps this size while the carry pose is still
+## interpolating in rather than growing as the arm settles.
+const VIEWMODEL_SLIPPER_LENGTH: float = 0.34
+
+## ⚠️ THE VIEWMODEL SLIPPER WEARS THE PICKED SKIN NOW, AND IT USED NOT TO.
+## `ViewmodelArms.tscn` hardcodes `tsinelas_classic.obj` on this node, so a player
+## who chose CROCS, PANTULOG or SIKE on the CHARACTER screen held a brown flip-flop
+## in their own hands while every other peer correctly saw what they had picked.
+## That is the second half of THE REACHABILITY RULE — a control that does not do
+## what it says — seen from inside the player's own view.
+##
+## ⚠️ COPIED FROM THE WORLD SLIPPER, NOT LOOKED UP IN THE ROSTER. `slipper.gd`
+## already resolves `skin_index` -> mesh, normalises downloaded models at runtime
+## and clears stale surface overrides; asking the roster again here would be a
+## second implementation of that, free to drift from the first. Reading the object
+## that is actually in the player's hand cannot disagree with it.
+func _sync_viewmodel_slipper(node: MeshInstance3D, held: Slipper) -> void:
+	var visual := held.get_node_or_null("Visual") as Node3D
+	if visual == null:
+		return
+	var source: MeshInstance3D = null
+	for child in visual.find_children("*", "MeshInstance3D", true, false):
+		source = child as MeshInstance3D
+		break
+	if source == null or source.mesh == null:
+		return
+	if node.mesh != source.mesh:
+		node.mesh = source.mesh
+		# Overrides do not clear themselves when the mesh under them changes, and
+		# the surface counts need not match — the same rule `slipper.gd` and
+		# `lata.gd` both keep at their own mesh swaps.
+		for surface in range(node.get_surface_override_material_count()):
+			node.set_surface_override_material(surface, null)
+	for surface in range(source.get_surface_override_material_count()):
+		node.set_surface_override_material(surface,
+			source.get_surface_override_material(surface))
+
+	var length: float = maxf(source.mesh.get_aabb().size.z, 0.001)
+	var parent := node.get_parent_node_3d()
+	var parent_scale: float = 1.0
+	if parent != null:
+		parent_scale = maxf(parent.global_transform.basis.get_scale().z, 0.0001)
+	node.scale = Vector3.ONE * (VIEWMODEL_SLIPPER_LENGTH / (length * parent_scale))
 
 
 ## B-91 — "slippers camera is completely broken right now", and specifically:
@@ -544,9 +673,8 @@ func _update_viewmodel_carry(delta: float) -> void:
 func _update_tpp_carry_follow() -> void:
 	if _mode != Mode.TPP:
 		return
+	# Nothing carries a camera any more — see the note where `_carriable` was.
 	var carrier: CharacterBase = null
-	if _carriable != null and _carriable.state == Carriable.CarryState.CARRIED:
-		carrier = _carriable.carrier
 	# Exclusion list only changes on an actual pick-up/drop/carrier swap, not
 	# every frame — SpringArm3D's exclusion list has no "is this already in
 	# there" query, so add/remove is gated on a real transition.
@@ -640,6 +768,25 @@ func _viewmodel_arms() -> Node3D:
 		return null
 	_arms = scene.instantiate() as Node3D
 	fpp_pivot.add_child(_arms)
+	# ⚠️⚠️ THE ARMS ARE SEATED HERE, NOT IN THEIR OWN SCENE — § CHECKLIST 1.7.
+	# 🧑: *"The FPP viewmodel arms are enormous and dominate the lower third of every
+	# frame"*, and every capture in § LOG shows it: two orange slabs across the bottom
+	# of the shot the trailer is filmed in.
+	#
+	# `ViewmodelArms.tscn` puts a 0.84 m mesh 0.34 m in front of the camera, which is
+	# why it fills the frame — at that distance the arm subtends most of the vertical
+	# FOV. Scaled down and pushed further out and down, it reads as a pair of hands at
+	# the bottom of the view instead of as a wall.
+	#
+	# ⚠️ APPLIED FROM THIS FILE RATHER THAN BY EDITING THE SCENE, deliberately.
+	# `scenes/characters/visuals/**` is not this lane's row in § PATHS; `camera_rig.gd`
+	# is, and it is the only thing that mounts these arms. A uniform scale on the root
+	# also keeps `VIEWMODEL_ARM_LENGTH`, `VIEWMODEL_CARRY_ANCHOR` and the carry solve
+	# consistent with each other, because every one of them works in the arms' own
+	# local space and scales with it — which editing individual offsets in the scene
+	# would not have.
+	_arms.scale = Vector3.ONE * VIEWMODEL_SCALE
+	_arms.position += VIEWMODEL_SEAT
 	return _arms
 
 
@@ -712,9 +859,27 @@ func play_viewmodel_action(kind: String) -> void:
 	if arms == null or not arms.visible:
 		return
 	var player := arms.get_node_or_null("AnimationPlayer") as AnimationPlayer
-	if player == null or not player.has_animation(kind):
+	if player != null and player.has_animation(kind):
+		player.play(kind)
 		return
-	player.play(kind)
+	# ⚠️⚠️ AND A PROCEDURAL KICK WHEN THERE IS NO CLIP, WHICH IS EVERY VERB BUT THE
+	# THROW. 🧑 2026-08-01: *"add visual cue for first person and for everyone else
+	# that shove and sunok and other skills and abilities shit is happening"*.
+	#
+	# This function already existed and was already called for every action, and it
+	# RETURNED SILENTLY on any kind the arms had no animation for — which is the
+	# punch, the shove, the lunge and the grab. Its own doc called that a feature
+	# ("a new action kind never has to be mirrored here to avoid an error"), and it
+	# is, right up until the actions that matter are the ones with no clip. In first
+	# person the body is SHADOWS_ONLY, so those four verbs had NO first-person
+	# feedback whatsoever: you pressed shove and the screen did not move.
+	#
+	# The kick is not a substitute for an authored clip — it is what makes the verb
+	# legible until somebody animates it, and it disappears on its own the day a
+	# clip with that name is added, because the branch above wins.
+	if VM_KICKS.has(kind):
+		_vm_kick = VM_KICKS[kind]
+		_vm_kick_left = VM_KICK_TIME
 
 
 ## Shows/hides the unit THIS character is carrying, for this peer only.
@@ -729,11 +894,13 @@ func _apply_carried_self_hide(hide_it: bool) -> void:
 	var wanted: Node3D = null
 	if hide_it:
 		var carrier := _character.get_node_or_null("Carrier") as Carrier
-		var held: Carriable = carrier.held() if carrier != null else null
+		var held: Slipper = carrier.held() if carrier != null else null
 		if held != null and is_instance_valid(held):
-			var holder := held.get_parent() as Node3D
-			if holder != null:
-				wanted = holder.get_node_or_null("Visual") as Node3D
+			# ⚠️ THE SLIPPER'S OWN VISUAL, NOT ITS HOLDER'S. A carried slipper used to
+			# be a whole `CharacterBase` and the thing to hide was that unit's `Visual`
+			# child; the prop IS the visual now, so hiding the parent would hide the
+			# player holding it.
+			wanted = held.get_node_or_null("Visual") as Node3D
 	if wanted == _hidden_carried_visual:
 		return
 	if _hidden_carried_visual != null and is_instance_valid(_hidden_carried_visual):
@@ -749,7 +916,7 @@ func _apply_carried_self_hide(hide_it: bool) -> void:
 ## Takes the same `_active and _mode == Mode.FPP` gate _apply_fpp_self_hide()
 ## uses rather than a bare `true`, so a rig nobody is looking through can never
 ## hide a slipper on this machine.
-func _on_held_changed(_held: Carriable) -> void:
+func _on_held_changed(_held: Slipper) -> void:
 	_apply_carried_self_hide(_active and _mode == Mode.FPP)
 
 func _apply_fpp_self_hide() -> void:
@@ -841,7 +1008,10 @@ func apply_mouse_delta(relative: Vector2) -> void:
 	# carriable.gd::_step_carried(), so it has no visible effect here. Track a
 	# separate look offset instead — see _tpp_carry_yaw_deg's own doc and
 	# _update_tpp_carry_follow(), which is what actually reads it.
-	if _mode == Mode.TPP and _carriable != null and _carriable.state == Carriable.CarryState.CARRIED:
+	# ⚠️ THIS BRANCH IS UNREACHABLE NOW AND IS KEPT AS A GUARD, NOT AS LOGIC. It
+	# steered the look of a unit that was ITSELF being carried; no unit is carried
+	# any more, so the condition is false by construction rather than by accident.
+	if false:
 		_tpp_carry_yaw_deg -= relative.x * sensitivity
 		var carry_pitch_delta := relative.y * (-1.0 if SettingsManager.invert_y else 1.0)
 		_tpp_carry_pitch_deg = clamp(

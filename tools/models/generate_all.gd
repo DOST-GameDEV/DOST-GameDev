@@ -15,7 +15,7 @@ extends SceneTree
 ## cannot drift apart (Dev_Plan.md §4.2).
 ##
 ## Look at what you made:
-##     godot --path . res://tools/models/preview.tscn -- --model=res://assets/models/lata.obj
+##     godot --path . res://tools/models/preview.tscn -- --model=res://assets/models/lata_pasip.obj
 
 const ObjWriter = preload("res://tools/models/obj_writer.gd")
 const EnvKit = preload("res://tools/models/env_kit.gd")
@@ -26,439 +26,358 @@ const OUTPUT_DIR: String = "res://assets/models/"
 ## 12 is visibly polygonal on a shape this smooth; 24 is spent for nothing.
 const REVOLVE_SEGMENTS: int = 16
 
-# --- Lata (the can) -----------------------------------------------------------
-#
-# ⚠️ Art_Direction.md §1 — the proportion audit. This profile used to build a can
-# 1.125 units tall against a real 0.12m can (9.3x oversized) — taller than the
-# 0.89-unit monobloc chair standing next to it. LATA_SCALE brings it down to the
-# audit's target of 0.30x, landing at ~0.34 units tall, WITHOUT touching a single
-# profile coordinate below: it is applied as a post-deform `transform` on every
-# add_revolve call (the 2.1b-0 parameter), so the dent maths, which is tuned
-# against the UNSCALED radius/y values, is completely unaffected. CharacterBase's
-# collision no longer assumes a fixed prop footprint at all — see
-# character_base.gd::_apply_role_collision() — so this is safe to change alone.
-const LATA_RADIUS: float = 0.34
-const LATA_SCALE: float = 0.30
 
-## The lid plane, and how far across it the flat part runs.
+# ==============================================================================
+# THE TWO HERO PROPS — four lata and four tsinelas, built from the human's own
+# drawings. Rewritten 2026-08-01 by 🎨 `build model` (Agent_Prompts.md § 5).
+# ==============================================================================
+#
+# ⚠️ WHAT THIS REPLACED, so nobody restores it. There used to be ONE can (a Sarsi
+# livery, painted with a layered-strip wall so the sail could be non-symmetric)
+# and ONE slipper, plus `lata_dent1..3.obj` and a `_apply_dents()` deform that
+# drove Option A's "the dent count IS the health bar" mechanic. That mechanic was
+# deleted in the HARRYDAKS pivot (Design.md § 12 — `FALL_LIMIT`, ring-outs, dents
+# and the seal all went together), so the dents described a health bar that no
+# longer exists and are swept here (§ 5.9). The layered-strip wall went with them:
+# its whole reason for existing was that a `deform` would shear a decal off the
+# can, and there is no deform any more.
+#
+# ⚠️ THESE ARE TEXTURED, WHICH Art_Direction.md PART 5 USED TO FORBID.
+# The human drew four cans and four slippers by hand, three of the cans carrying
+# readable parody wordmarks, and supplied FLATTENED 360-degree label wraps for
+# exactly this purpose — then ruled on it directly (2026-08-01): *"you can use
+# the flattened art for textures bcz its easier that way, you cant redraw this
+# too bro"*. Reduced to a flat `Kd`, a Pasip and a Decades are the same grey
+# cylinder and every bit of the Filipino specificity is gone. Art_Direction.md
+# Part 5 is amended to match rather than silently broken.
+#
+# ⚠️ AND IT DOES NOT FIGHT THE SKIN TINT, which was the standing objection
+# (§ 5.5). `lata.gd::_tint_meshes()` writes the roster `tint` into `albedo_color`;
+# on the toon shader that MULTIPLIES the texture rather than replacing it, so a
+# textured skin carries `tint` WHITE and the label reads as drawn. Not one line
+# outside this lane's paths had to change to make that work — see
+# `toon.gdshader`'s header, which added the textured path for the Kenney kits.
+#
+# ⚠️ ONE MATERIAL PER PROP, AND THAT IS FORCED BY THE TINT WALK.
+# `_tint_meshes()` overwrites EVERY surface it finds. A second, untextured
+# material for (say) a bare metal lid would therefore be repainted flat white by
+# a white tint — so where a part needs a different colour, it gets it by being
+# projected onto a different part of the ONE texture, never by a second material.
+# That is why the can's caps are UV-pinned to the wrap's rim bands below.
+
+const TEXTURE_DIR: String = "textures/"
+
+## How far into the label wrap the can wall stops sampling, at each end.
+## The wraps are cropped drawings with a few blank rows of page top and bottom
+## (measured: Pasip 12 and 10 of 512, Latang Kalawang 7 and 5), and sampling them
+## puts a white band around the can right where the rim meets the lid. 0.03 clears
+## the worst of the four with margin. See `_build_lata`'s `wall_uv`.
+const UV_V_INSET: float = 0.03
+
+# --- The lata (the can) -------------------------------------------------------
+#
+# ⚠️ FOUR CANS, FOUR DIFFERENT SHAPES, AND THAT IS AN INSTRUCTION NOT A FLOURISH.
+# 🧑 2026-08-01: *"Pls don't just blindly copy paste the same can size for them
+# all."* The four drawings really are four different objects — a slim soda can, a
+# squat paint tin, a tuna can and a ribbed bare tin — and their height:diameter
+# ratios were measured off the drawings' own ink bounding boxes rather than
+# guessed: Pasip 1.75, Decades 1.56, Metal 1.53, Boyben 1.35.
+#
+# ⚠️ THE SILHOUETTE HAS TO SURVIVE LYING ON ITS SIDE AT 88 DEGREES (§ 5.3), and
+# that is a gameplay requirement: a crowd that cannot tell a fallen lata from a
+# standing one cannot follow the round. Two things carry it, neither of them
+# colour, because the toon pass flattens colour at distance:
+#   · the ASPECT. Every can is meaningfully taller than it is wide, so upright is
+#     a tall thin silhouette and fallen is a wide flat one. That is the whole
+#     read, and it is why even the squat Boyben stays at 1.35 rather than going
+#     to a true 1:1 paint tin.
+#   · the END CAPS. A fallen can shows the camera a circle. Every profile below
+#     ends in a rolled rim that is PROUD of the wall, so the disc reads as a hard
+#     bright ellipse against the body instead of dissolving into it.
+#
+# ⚠️ THE DIAMETERS ARE DELIBERATELY CLOSER TOGETHER THAN THE DRAWINGS ARE.
+# There is only ONE lata in the world and `Lata.tscn` carries ONE collision
+# cylinder and ONE hurtbox for whichever skin is worn, so a true-to-drawing spread
+# from a slim soda can to a fat paint tin would leave the hitbox wrong for three
+# of the four — exactly the mesh-and-hitbox disagreement § 5.4 exists to prevent.
+# So HEIGHT is held near-constant (0.377..0.385) and the identity is carried by
+# the profile shape, which costs nothing in collision terms. Residual worst case
+# is Pasip at r 0.108 against a 0.130 body cylinder — 22 mm, about a fifth of a
+# can — and it is filed to ⚖️ `build fair` rather than hidden.
+
+## Profile points are (radius fraction, height fraction) — fractions of the can's
+## own max radius and total height, bottom to top, EXCLUDING the two centre
+## points. The caps are emitted separately so their UVs can be pinned; see
+## `_build_lata`.
+func _lata_specs() -> Array:
+	return [
+		# The slim soda can. Necked in at BOTH ends, which is the one profile
+		# feature no other can here has and is what makes it identifiable in
+		# silhouette alone at arena distance.
+		{
+			"name": "lata_pasip",
+			"texture": "lata_pasip.png",
+			"radius": 0.1075, "height": 0.377,
+			"cap_v": Vector2(0.070, 0.930), "front_u": 0.38,
+			"profile": [
+				Vector2(0.70, 0.000), Vector2(0.88, 0.035), Vector2(1.00, 0.080),
+				Vector2(1.00, 0.870), Vector2(0.88, 0.940), Vector2(0.66, 0.980),
+				Vector2(0.62, 1.000),
+			],
+		},
+		# The paint tin. Straight-walled with a rolled lid lip standing PROUD of
+		# the wall — the one detail that says "paint" rather than "food", and the
+		# thing a real bakod-side paint can is opened by.
+		{
+			"name": "lata_boyben",
+			"texture": "lata_boyben.png",
+			"radius": 0.1425, "height": 0.385,
+			# 0.95 rather than 0.93: measured, that row is the dark grey lid band
+			# (76/75/74) while 0.93 is still the brown of the label edge.
+			"cap_v": Vector2(0.050, 0.950), "front_u": 0.22,
+			"profile": [
+				Vector2(0.86, 0.000), Vector2(0.97, 0.025), Vector2(1.00, 0.050),
+				Vector2(1.00, 0.905), Vector2(0.97, 0.928), Vector2(1.00, 0.958),
+				Vector2(0.95, 0.988), Vector2(0.92, 1.000),
+			],
+		},
+		# The tuna can. Rolled rims proud at BOTH ends with the wall inset
+		# between them, which is what a seamed food can actually looks like and
+		# reads as two bright rings around a darker body under the toon bands.
+		{
+			"name": "lata_decades",
+			"texture": "lata_decades.png",
+			"radius": 0.1225, "height": 0.382,
+			"cap_v": Vector2(0.070, 0.930), "front_u": 0.22,
+			"profile": [
+				Vector2(0.90, 0.000), Vector2(1.00, 0.030), Vector2(0.96, 0.072),
+				Vector2(0.96, 0.928), Vector2(1.00, 0.970), Vector2(0.90, 1.000),
+			],
+		},
+		# The bare ribbed tin — profile built in code, see `_metal_can_profile`.
+		{
+			"name": "lata_metal",
+			"texture": "lata_metal.png",
+			"radius": 0.1250, "height": 0.383,
+			# ⚠️ RUST, AND FROM THE DARK END OF THE WRAP RATHER THAN THE MIDDLE.
+			# 🧑: *"u made the can top ugly, it ssupposed to rusty too"*. The
+			# mid-wrap rows this used to sample (0.40/0.62) are a pale grey-brown
+			# around 115/96/90, and a cap is a flat horizontal face taking the light
+			# square on, so it lit up to near-silver — the one thing a bare rusted
+			# tin must not look like. The low rows are the deep corroded end of the
+			# drawing: 0.04 measures ~75/55/50 and 0.07 ~100/75/68, so both ends read
+			# as rust and the two still differ from each other.
+			"cap_v": Vector2(0.040, 0.070), "front_u": 0.50,
+			"profile": _metal_can_profile(),
+		},
+	]
+
+## How many ribs the bare tin carries, and how deep. Straight off the drawing,
+## which shows eight of them across the middle two-thirds of the wall.
 ##
-## ⚠️ FLAT, NOT DOMED, and that is a placement constraint rather than a styling
-## one. The lid used to rise from 1.100 at the rim to 1.115 at the centre. The
-## pull tab is a flat piece lying ON this plane and reaching out to x = 0.223, so
-## against a domed lid its far end would have hung ~0.015 clear of the surface —
-## Art_Direction.md Part 4's floating-geometry rule, in miniature, on the one
-## surface a knocked-down can shows the camera. A flat lid makes contact true at
-## every radius the tab reaches instead of only at its centre.
-const LATA_LID_Y: float = 1.098
-const LATA_LID_RADIUS: float = 0.250
+## ⚠️ THESE ARE REAL GEOMETRY, NOT PAINTED ON, and that is the point of this can.
+## The other three are identified by their labels, which is a texture read and
+## therefore dies at distance under the toon pass. The metal can has no label at
+## all — it is a bare tin — so its ONLY identity is its silhouette, and a ribbed
+## silhouette is one of the few that survives being 40 units from the camera and
+## two shading bands deep. 0.055 of the radius is shallow enough to stay low poly
+## (two extra profile points per rib, 32 rings total) and deep enough to catch a
+## shadow band on every rib.
+const METAL_RIB_COUNT: int = 8
+const METAL_RIB_DEPTH: float = 0.055
+const METAL_RIB_FROM: float = 0.190
+const METAL_RIB_TO: float = 0.865
+
+func _metal_can_profile() -> Array:
+	var profile: Array = [
+		Vector2(0.90, 0.000), Vector2(1.00, 0.030), Vector2(0.945, 0.070),
+	]
+	var span := (METAL_RIB_TO - METAL_RIB_FROM) / float(METAL_RIB_COUNT)
+	for i in range(METAL_RIB_COUNT):
+		var base := METAL_RIB_FROM + span * float(i)
+		# Each rib is a shallow valley between two full-radius shoulders, so the
+		# wall leaves and returns to 0.945 and no rib can open a seam against the
+		# straight sections either side of the run.
+		profile.append(Vector2(0.945, base))
+		profile.append(Vector2(0.945 - METAL_RIB_DEPTH, base + span * 0.5))
+	profile.append(Vector2(0.945, METAL_RIB_TO))
+	profile.append(Vector2(1.00, 0.958))
+	profile.append(Vector2(0.90, 1.000))
+	return profile
+
+func _build_lata(spec: Dictionary) -> void:
+	var writer := ObjWriter.new("Lata")
+	var radius: float = spec["radius"]
+	var height: float = spec["height"]
+	# ⚠️ Kd IS WHITE AND MUST STAY WHITE. Godot's .obj importer multiplies
+	# `albedo_color` (from Kd) by `albedo_texture` (from map_Kd), so any Kd but
+	# white darkens the human's art before the skin tint ever gets to it.
+	writer.set_material("label", Color.WHITE, TEXTURE_DIR + String(spec["texture"]))
+
+	# The wrap covers the FULL height of the can including both rim bands, so `v`
+	# is simply the height fraction and `u` the angle. `a1` reaches TAU on the last
+	# segment rather than wrapping to 0, which is what closes the seam — see
+	# add_revolve's uv note.
+	# ⚠️ `u` RUNS 1 -> 0, NOT 0 -> 1, AND THAT IS THE MIRRORING FIX.
+	# `add_revolve` sweeps counter-clockwise seen from +Y, so a naive
+	# `angle / TAU` wraps the label around the can the wrong way and every
+	# wordmark reads back to front — the first render had "BOYBEN" as "NEBYOB"
+	# and "Decades" reversed, which is invisible in a UV dump and instantly
+	# obvious in a screenshot. Reversing `u` mirrors the wrap back.
+	# ⚠️ `v` IS INSET AT BOTH ENDS, AND THAT IS THE WHITE RING BETWEEN THE WALL AND
+	# THE LID. The wraps are CROPPED DRAWINGS, so their outermost rows are blank
+	# page — measured, the Pasip has 12 empty rows of 512 at the top and 10 at the
+	# bottom, the Latang Kalawang 7 and 5. Mapping the wall's height straight onto
+	# v 0..1 therefore samples that blank margin along the can's very top and
+	# bottom edge, and it renders as a hard white band right where the rolled rim
+	# meets the lid. 🧑, circling it: *"theres a white space in between lid and
+	# rim"*.
+	#
+	# Squeezing the wall into v 0.03..0.97 keeps every ring inside the drawn area
+	# on all four wraps, at the cost of losing 3% of the label off each end — which
+	# is 3% of a margin nobody drew anything in. Same root cause as the caps below;
+	# this is the ring the cap fix did not cover.
+	var wall_uv := func(y: float, angle: float) -> Vector2:
+		return Vector2(1.0 - angle / TAU,
+			lerpf(UV_V_INSET, 1.0 - UV_V_INSET, y / height))
+
+	# ⚠️ THE CAN IS YAWED SO ITS LABEL'S FRONT FACES THE DEFAULT VIEW, and this is
+	# a restatement of the deleted `LATA_LABEL_FACE` rather than a new idea. The
+	# lata has no canonical facing in play — it spends the match being knocked
+	# over and stood back up — so the angle is free, and it is spent on making the
+	# livery REVIEWABLE. Without it the wrap's seam lands wherever it lands, and
+	# the first render framed all four cans from behind: three nutrition panels
+	# and a barcode, with every wordmark facing away from the camera.
+	#
+	# `front_u` is where that can's logo sits along its own wrap, measured off the
+	# flattened source. The mesh is turned so that texel arrives on the preview
+	# camera's bearing (+X +Z, 45 degrees).
+	var front_u: float = spec["front_u"]
+	var yaw := PI / 4.0 - (1.0 - front_u) * TAU
+	var facing := Transform3D(Basis(Vector3.UP, yaw), Vector3.ZERO)
+
+	var profile: Array = spec["profile"]
+	var wall := PackedVector2Array()
+	for point in profile:
+		wall.append(Vector2(point.x * radius, point.y * height))
+	writer.add_revolve(wall, REVOLVE_SEGMENTS, "label", true, Callable(),
+		facing, wall_uv)
+
+	# ⚠️ THE CAPS ARE UV-PINNED TO THE WRAP'S RIM BANDS, and that is what lets the
+	# whole can be one material (see this section's header). A cap that took the
+	# same y-derived `v` as the wall would smear whatever the label happens to
+	# show at that height radially across the disc — and the lid disc is exactly
+	# what a knocked-down can points at the camera, so it is the most-looked-at
+	# surface on the prop for most of a round. Pinned to v = 0 / v = 1 it samples
+	# the uniform metal band the human drew along the very top and bottom edge of
+	# every one of the four wraps, and reads as a plain stamped can end.
+	# ⚠️ THE CAP SAMPLE ROWS ARE PER-CAN, AND 0.02/0.98 WAS NOT FAR ENOUGH IN.
+	# The wraps are CROPPED DRAWINGS, so their outermost rows are blank page —
+	# measured on the sources, Pasip has 12 empty rows at the top of 512 and the
+	# Latang Kalawang has 7. v = 0.98 is row 10, which is still inside Pasip's
+	# blank margin, so the lid came out flat white twice. 🧑: *"theres still white
+	# on the metal can"*.
+	#
+	# The Latang Kalawang gets a different answer from the other three, and it is
+	# the one the human asked for directly — *"cant u js put rusty texture there"*.
+	# It is a BARE tin: it has no printed rim band to sample, so its cap takes a
+	# row from the middle of the wrap, where the rust is. The three labelled cans
+	# keep sampling their own drawn rim bands, because a lid wearing a slice of
+	# the nutrition panel would be worse than a white one.
+	# ⚠️ A CAP SAMPLES ONE POINT, NOT ONE ROW, AND THAT IS WHAT STOPPED THE LIDS
+	# READING AS WHITE. Letting `u` follow the angle sweeps an entire horizontal
+	# LINE of the label radially across the disc — a pinwheel of whatever the
+	# wrap happens to show at that height, which on the pale rows blows out to
+	# flat white under a light hitting a horizontal face square on. 🧑, pointing at
+	# it: *"fill that stuff in with somehting why is it just white"*.
+	#
+	# Fixing `u` as well as `v` makes the whole cap one texel, so it renders as a
+	# solid stamped can end in the metal colour the human actually drew on that
+	# can's rim. Measured at these rows: Pasip 114/115/115 grey, Boyben 76/75/74
+	# dark grey, Decades 127/125/125 grey, Latang Kalawang 115/96/90 rust.
+	#
+	# u = 0.5 is the middle of the wrap, deliberately far from the seam at u = 0/1
+	# where a texture's edge filtering can pull in the opposite side of the label.
+	var cap_v: Vector2 = spec["cap_v"]
+	var base_uv := func(_y: float, _angle: float) -> Vector2:
+		return Vector2(0.5, cap_v.x)
+	var lid_uv := func(_y: float, _angle: float) -> Vector2:
+		return Vector2(0.5, cap_v.y)
+	# ⚠️ THE CAPS ARE STEPPED, NOT FLAT DISCS — 🧑: *"make sure the can has a top
+	# and bottom bcz the metal can has no top man"*. A single flat disc spanning
+	# the rim is geometrically a lid, but it lights as one uniform facet, so at any
+	# angle where it catches the same band as the wall it disappears and the can
+	# reads as an open tube. Every real can is RECESSED at the top (the lid sits
+	# below its own rolled rim) and CONCAVE at the bottom (which is what makes it
+	# stand on a ring rather than a disc). Two extra rings each buys a hard shading
+	# break right where the eye looks for the end of the can — and it is the same
+	# 88-degree readability argument as the profile itself, since a knocked-over
+	# can points one of these two faces straight at the camera.
+	var first: Vector2 = profile[0]
+	var last: Vector2 = profile[profile.size() - 1]
+	var base_y := first.y * height
+	var lid_y := last.y * height
+	writer.add_revolve(PackedVector2Array([
+		Vector2(0.0, base_y + height * 0.022),
+		Vector2(first.x * radius * 0.86, base_y + height * 0.016),
+		Vector2(first.x * radius, base_y),
+	]), REVOLVE_SEGMENTS, "label", true, Callable(), facing, base_uv)
+	writer.add_revolve(PackedVector2Array([
+		Vector2(last.x * radius, lid_y),
+		Vector2(last.x * radius * 0.88, lid_y - height * 0.018),
+		Vector2(0.0, lid_y - height * 0.018),
+	]), REVOLVE_SEGMENTS, "label", true, Callable(), facing, lid_uv)
+
+	# 40 degrees smooths the 22.5-degree step of a 16-segment revolve while
+	# leaving every rim, rib shoulder and cap edge hard — see recalculate_normals.
+	writer.recalculate_normals(40.0)
+	writer.write(OUTPUT_DIR + String(spec["name"]))
+	var size := writer.bounds_size()
+	print("  %-14s  d %.3f  h %.3f  ratio %.2f" % [
+		spec["name"], size.x, size.y, size.y / maxf(size.x, 0.0001)])
+
+# --- The tsinelas (the slipper) -----------------------------------------------
+#
+# ⚠️⚠️ THE SLIPPERS ARE NOT BUILT HERE ANY MORE, AND LEAVING THEM HERE WAS A LIVE
+# BUG RATHER THAN CLUTTER.
+#
+# Four slippers were built procedurally from the human's drawings, rejected four
+# times on look, and replaced with sourced CC-BY models converted by
+# `tools/models/build_footwear.py` (see its header). The procedural builders were
+# left in place for one commit "in case the sourced models have a licence
+# problem" — but `_initialize()` still CALLED them, and they wrote to the same
+# filenames the converter does.
+#
+# So every run of this generator silently overwrote the sourced CROCS and SIKE
+# with the rejected procedural ones. It went unnoticed because the two pipelines
+# were usually run together, in the order that happened to leave the right files
+# on disk; the moment this file was re-run alone for an unrelated fix to the can
+# lids, the slippers reverted. 🧑, looking at the character screen: *"nigag what
+# is this these are not the models we used"*.
+#
+# ⚠️ TWO GENERATORS MUST NEVER SHARE AN OUTPUT PATH. That is the whole finding.
+# The dead code is deleted rather than commented out, because a commented-out
+# builder cannot overwrite anything and a "temporarily disabled" one eventually
+# gets re-enabled by somebody who does not know why it was off. The procedural
+# slippers remain recoverable from git history, which is what history is for.
+#
+# The slippers now come from ONE place:
+#     python tools/models/build_footwear.py
 
 func _initialize() -> void:
-	_build_lata("lata", [])
-	# Option A's three dent stages. Fixed angles and depths, never random — a
-	# generator that rolled dice would fail the determinism test on run two.
-	#
-	# These are tuned to be legible AT THE 4.5-UNIT TPP CAMERA DISTANCE, which is
-	# the only distance that matters: the dent count IS the health bar under
-	# Option A, so a player who cannot count them at a glance has no health bar.
-	# The first attempt used a 1.1-radian half-arc spread over most of the wall
-	# height and rendered as an almost invisible taper — deep enough in the
-	# numbers, far too diffuse to read as damage. Localised and deepened here.
-	_build_lata("lata_dent1", [
-		{"angle": 0.0, "y": 0.52, "depth": 0.105},
-	])
-	_build_lata("lata_dent2", [
-		{"angle": 0.0, "y": 0.52, "depth": 0.115},
-		{"angle": 2.4, "y": 0.38, "depth": 0.100},
-	])
-	_build_lata("lata_dent3", [
-		{"angle": 0.0, "y": 0.52, "depth": 0.125},
-		{"angle": 2.4, "y": 0.38, "depth": 0.115},
-		{"angle": 4.4, "y": 0.68, "depth": 0.105},
-	])
-	_build_tsinelas()
+	print("lata:")
+	for spec in _lata_specs():
+		_build_lata(spec)
 	_build_viewmodel_arm()
-	# Checklist 2.1b — the environment kit, built to docs/Art_Direction.md.
-	# In its own file because it is ~25 pieces and this one is where a reader goes
-	# to understand the five PROP meshes; burying those under the scenery would be
-	# a net loss. Same rules apply to it — determinism, UiTheme constants, and no
-	# OFFENSE or DEFENSE hue anywhere on a map.
+	# The environment kit, built to docs/Art_Direction.md. In its own file because
+	# it is ~25 pieces and this one is where a reader goes to understand the HERO
+	# props; burying those under the scenery would be a net loss. Same rules apply
+	# to it — determinism, UiTheme constants, and no OFFENSE or DEFENSE hue on a map.
 	EnvKit.new().build_all(OUTPUT_DIR)
 	print("Model generation complete.")
 	quit(0)
 
-## One can. `dents` is a list of {angle, depth}; empty builds the pristine one.
-##
-## ⚠️ SARSI LIVERY — 2026-07-28. This used to be a blue body with a yellow label
-## band and a near-black rim, which was the abstract "a can" the first moodboard
-## record described. The human supplied an asset moodboard of a
-## **Sarsi** can — the Philippine sarsaparilla a real tumbang preso is actually
-## played with — and asked for it by name: *"u can reproduce sarsi logo, we have
-## to showcase PH in this project, js give credits."* Credit is recorded in
-## `docs/Art_Direction.md` Part 2 and `docs/README.md`; Sarsi is a trademark of
-## its owner and is used here as homage, not endorsement.
-##
-## Base, shoulder and lid are stacked revolves, as before. The printed wall
-## between them is `_lata_wall()` and is NOT a revolve — see that function.
-## Adjacent sub-profiles share their boundary ring, and ObjWriter welds on the
-## printed coordinate, so every seam closes exactly.
-func _build_lata(file_name: String, dents: Array) -> void:
-	var writer := ObjWriter.new("Lata")
-	# Named for the PART, not for the palette token — the same rule the tsinelas
-	# adopted in B-81, and the reason its old `defense`/`highlight` names are gone.
-	# A material called "defense" on the can's LABEL is a bug that reads as correct
-	# in every diff.
-	writer.set_material("aluminium", UiTheme.PANEL)
-	writer.set_material("aluminium_shade", UiTheme.PANEL.darkened(0.30))
-	writer.set_material("body_deep", UiTheme.DEFENSE.darkened(0.30))
-	writer.set_material("body", UiTheme.DEFENSE)
-	# The moodboard's can is a vertical cyan-to-blue gradient. Flat-colour .mtl
-	# cannot gradient, so it is BANDED instead — bright low, mid, deep at the
-	# shoulder. At the 4.5-unit TPP distance three bands read as a gradient and
-	# cost nothing, which is the same trade the painted facades already make.
-	writer.set_material("body_bright", UiTheme.DEFENSE.lightened(0.24))
-	writer.set_material("wave", UiTheme.CARD)
-	writer.set_material("sail", UiTheme.PROP_SARSI_RED)
 
-	var deform := Callable()
-	if not dents.is_empty():
-		deform = func(radius: float, y: float, angle: float) -> float:
-			return _apply_dents(radius, y, angle, dents)
-
-	# LATA_SCALE applied as a post-deform transform (2.1b-0), not by touching the
-	# profile coordinates: `deform` still runs against the UNSCALED radius/y, so
-	# every dent number above stays valid at its originally-tuned depth, and only
-	# the final emitted vertex shrinks. See the header comment above this function.
-	var scale_xf := Transform3D.IDENTITY.scaled(Vector3.ONE * LATA_SCALE)
-
-	# Base: a concave dome lifted off the floor by a crimp ring, which is what
-	# makes a can read as a can rather than as a tube — the contact shadow sits
-	# on a ring, not a disc.
-	writer.add_revolve(PackedVector2Array([
-		Vector2(0.000, 0.055),
-		Vector2(0.180, 0.025),
-		Vector2(0.265, 0.000),
-		Vector2(0.315, 0.035),
-	]), REVOLVE_SEGMENTS, "aluminium_shade", true, deform, scale_xf)
-
-	# Lower wall, flaring from the crimp out to full radius. Deep blue, so the
-	# bright body above it lifts off a shadow line at the base.
-	writer.add_revolve(PackedVector2Array([
-		Vector2(0.315, 0.035),
-		Vector2(LATA_RADIUS, LATA_WALL_BOTTOM),
-	]), REVOLVE_SEGMENTS, "body_deep", true, deform, scale_xf)
-
-	# The printed wall — everything between the base flare and the shoulder.
-	_lata_wall(writer, deform, scale_xf)
-
-	# Shoulder, rolled rim, and the flat lid. The rim rolls OVER: y goes up to
-	# 1.118 and then back down to the lid plane as the profile turns inward, which
-	# is why the profile is not monotonic in height.
-	writer.add_revolve(PackedVector2Array([
-		Vector2(LATA_RADIUS, LATA_WALL_TOP),
-		Vector2(0.315, 1.020),
-	]), REVOLVE_SEGMENTS, "body_deep", true, deform, scale_xf)
-	writer.add_revolve(PackedVector2Array([
-		Vector2(0.315, 1.020),
-		Vector2(0.290, 1.070),
-		Vector2(0.305, 1.100),
-		Vector2(0.272, 1.118),
-		Vector2(LATA_LID_RADIUS, LATA_LID_Y),
-		Vector2(0.000, LATA_LID_Y),
-	]), REVOLVE_SEGMENTS, "aluminium", true, deform, scale_xf)
-
-	_lata_pull_tab(writer, scale_xf)
-
-	# Smooth by angle, always — not only for the dented variants. The analytic
-	# normals are per-sub-profile, so without this the boundary rings between the
-	# five revolves above shade as visible bands around the can.
-	writer.recalculate_normals(40.0)
-	writer.write(OUTPUT_DIR + file_name)
-	print("  ", file_name)
-
-## Half-width of a dent in radians (~34 degrees each side) and half its height.
-## Both deliberately small: a crumple is local damage, and a wide shallow dimple
-## reads as a manufacturing taper rather than as a hit that landed.
-const DENT_ARC: float = 0.60
-const DENT_REACH: float = 0.22
-## Sharpens the cosine falloff. 1.0 is a plain raised cosine — smooth, but so
-## gradual that the deepest point is the only part that visibly moves. Squaring
-## it keeps the rim of the dent shallow and drops the middle out fast, which is
-## what gives a readable crease at gameplay distance.
-const DENT_SHARPNESS: float = 2.0
-
-## Pushes a localised wedge of wall inward. Returns `radius` untouched outside
-## the dent's band, which is what keeps the base crimp and the rolled rim welded
-## to the wall — the deform is applied to every segment of the can, so a falloff
-## that reached the rigid geometry would tear the mesh open at the seam.
-func _apply_dents(radius: float, y: float, angle: float, dents: Array) -> float:
-	var result := radius
-	for dent in dents:
-		# Wrap into [-PI, PI] so a dent centred near 0 still bites at TAU - 0.1.
-		var delta: float = fposmod(angle - float(dent["angle"]) + PI, TAU) - PI
-		if absf(delta) > DENT_ARC:
-			continue
-		var y_delta: float = (y - float(dent["y"])) / DENT_REACH
-		if absf(y_delta) > 1.0:
-			continue
-		var falloff_angle := pow(0.5 * (1.0 + cos(PI * delta / DENT_ARC)), DENT_SHARPNESS)
-		var falloff_height := pow(0.5 * (1.0 + cos(PI * y_delta)), DENT_SHARPNESS)
-		result -= float(dent["depth"]) * falloff_angle * falloff_height
-	return result
-
-# --- The lata's printed wall --------------------------------------------------
-#
-# ⚠️ WHY THIS IS NOT A REVOLVE, so nobody "simplifies" it back into one.
-#
-# `add_revolve` paints ONE material per sub-profile, and a sub-profile is a full
-# 360-degree ring — so it can express a horizontal BAND and nothing else. That was
-# fine for a yellow label band. It cannot express Sarsi's mark, which is a sail:
-# a triangle across about a third of the circumference, a red ball beside it, and
-# a wavy white band beneath. None of those are rotationally symmetric.
-#
-# ⚠️ AND WHY IT IS NOT DECALS ON TOP OF A PLAIN WALL, which is the obvious other
-# answer and is the wrong one HERE for a specific reason: this wall gets DENTED.
-# `_apply_dents` pushes a wedge of it inward, and a decal shell offset a couple of
-# millimetres off the surface does not move with it — the first dent would shear
-# the sail off the can and leave it hanging in the air over the crease. That is
-# the floating-geometry failure of Art_Direction.md Part 4 arriving through a side
-# door, on the one prop in the game whose whole job is to get hit.
-#
-# So the sail IS the wall, in a different colour. The wall is emitted strip by
-# strip as STACKED LAYERS SHARING BOUNDARY FUNCTIONS:
-#
-#   - Nothing is offset off the surface, so nothing can float, z-fight or shear.
-#     Every layer runs through the same `deform` as the geometry around it, so a
-#     dent through the sail dents the sail.
-#   - Two neighbouring layers read their shared edge from the SAME function at the
-#     SAME angle, so they weld on the printed coordinate and no seam can open.
-#   - A layer may be degenerate (bottom == top) at a given angle. That is how the
-#     sail and the ball stop existing outside their arc without the layers above
-#     them needing to know anything about them.
-
-const LATA_WALL_BOTTOM: float = 0.075
-const LATA_WALL_TOP: float = 0.950
-## Where the printed face points, in the revolve's own angle space.
-##
-## The Can has no canonical facing in play — it spends the match being knocked
-## over and reset — so this angle is free, and it is spent on making the livery
-## REVIEWABLE: `preview.gd`'s camera is fixed on the (1, 0.7, 1) diagonal, so
-## pointing the label down that same bearing is what puts the sail and the ball in
-## frame together in a preview shot. Any other value renders half the mark facing
-## away from every screenshot anyone will ever take of it.
-const LATA_LABEL_FACE: float = PI / 4.0
-
-## The bright skirt under the wave.
-const SKIRT_TOP_Y: float = 0.150
-
-## The wavy white band low on the can. `sin` of the angle, so it closes seamlessly
-## around it — a non-integer lobe count would not.
-const WAVE_Y: float = 0.240
-const WAVE_AMPLITUDE: float = 0.034
-const WAVE_LOBES: float = 4.0
-
-## The sail. Half-arc 1.35 rad is ~43% of the circumference, which is roughly what
-## the moodboard's label occupies and, at REVOLVE_SEGMENTS = 16, is a shade under
-## seven strips — enough to read the diagonal as a diagonal rather than a stair.
-##
-## ⚠️ TALL. The first pass ran 0.430 to 0.690 on an 0.875-high wall — 30% of it —
-## and rendered as a red smear low on the body rather than as a sail, with a slab
-## of navy above it taking the space the mark should have had. Sarsi's sail is the
-## dominant feature of that can and has to be sized like it: base just above the
-## wave, apex just under the shoulder, ~57% of the wall.
-const SAIL_HALF_ARC: float = 1.35
-const SAIL_BASE_Y: float = 0.330
-const SAIL_APEX_Y: float = 0.830
-## Where along the arc the apex sits. Positive puts the tall near-vertical edge on
-## the trailing side, which is the way Sarsi's sail leans.
-const SAIL_PEAK_T: float = 0.55
-
-## The red ball, up and to the leading side of the sail — where the sail's own
-## edge is still low, which is what leaves room for it.
-const BALL_FROM_T: float = -0.88
-const BALL_TO_T: float = -0.42
-const BALL_BOTTOM_Y: float = 0.600
-const BALL_TOP_Y: float = 0.760
-const BODY_TOP_Y: float = 0.845
-
-## One entry per layer, bottom to top — so exactly one fewer than the number of
-## boundaries `_lata_wall_stops` returns. Kept beside that function: the two are a
-## matched pair and editing either alone silently repaints the can.
-const LATA_WALL_MATERIALS := [
-	"body_bright",   # skirt, below the wave
-	"wave",          # the wavy white band
-	"body_bright",   # the bright lower body the sail sits on
-	"sail",          # the sail
-	"body",          # body, between sail and ball
-	"sail",          # the ball
-	"body",          # body, above the ball
-	"body_deep",     # the darker band under the shoulder
-]
-
-## Below this a layer counts as degenerate at that corner and collapses.
-const LAYER_EPSILON: float = 0.0005
-
-func _lata_wall(writer: ObjWriter, deform: Callable, scale_xf: Transform3D) -> void:
-	for s in range(REVOLVE_SEGMENTS):
-		var a0 := TAU * float(s) / float(REVOLVE_SEGMENTS)
-		var a1 := TAU * float(s + 1) / float(REVOLVE_SEGMENTS)
-		var stops0 := _lata_wall_stops(a0)
-		var stops1 := _lata_wall_stops(a1)
-		for layer in range(LATA_WALL_MATERIALS.size()):
-			var material: String = LATA_WALL_MATERIALS[layer]
-			var flat0: bool = absf(stops0[layer + 1] - stops0[layer]) < LAYER_EPSILON
-			var flat1: bool = absf(stops1[layer + 1] - stops1[layer]) < LAYER_EPSILON
-			if flat0 and flat1:
-				continue
-			# ⚠️ Corner order is add_revolve's, exactly: bottom@a0, top@a0, top@a1,
-			# bottom@a1. See obj_writer.gd's winding note before touching it — the
-			# familiar counter-clockwise test reports every face here as inverted
-			# and that is the correct result, not a bug.
-			var v00 := scale_xf * _lata_wall_point(stops0[layer], a0, deform)
-			var v01 := scale_xf * _lata_wall_point(stops0[layer + 1], a0, deform)
-			var v11 := scale_xf * _lata_wall_point(stops1[layer + 1], a1, deform)
-			var v10 := scale_xf * _lata_wall_point(stops1[layer], a1, deform)
-			# A layer degenerate at ONE end is a triangle and has to be emitted as
-			# one. Handing it to add_quad prints a zero-area face, and that face's
-			# meaningless normal then pollutes recalculate_normals()' average for
-			# every vertex it touches — a shading bug with no visible geometry to
-			# trace it back to.
-			if flat0:
-				writer.add_tri(v00, v11, v10, material)
-			elif flat1:
-				writer.add_tri(v00, v01, v11, material)
-			else:
-				writer.add_quad(v00, v01, v11, v10, material)
-
-## The nine layer boundaries of the printed wall at one angle, bottom to top.
-##
-## ⚠️ MUST BE NON-DECREASING at every angle, or a layer inverts and renders
-## inside-out. The constants above are chosen so it is: the wave tops out at 0.356
-## below the sail's 0.430 base, and the sail's arc and the ball's do not overlap,
-## so the sail is never higher than 0.527 where the ball starts at 0.560.
-func _lata_wall_stops(angle: float) -> PackedFloat64Array:
-	var t := _lata_label_t(angle)
-	var sail_top := SAIL_BASE_Y
-	if absf(t) <= 1.0:
-		if t <= SAIL_PEAK_T:
-			sail_top = lerpf(SAIL_BASE_Y, SAIL_APEX_Y, (t + 1.0) / (SAIL_PEAK_T + 1.0))
-		else:
-			sail_top = lerpf(SAIL_APEX_Y, SAIL_BASE_Y, (t - SAIL_PEAK_T) / (1.0 - SAIL_PEAK_T))
-	# Collapsed against the body's top boundary where the ball is absent, so the
-	# two body layers either side of it simply meet.
-	var ball_bottom := BODY_TOP_Y
-	var ball_top := BODY_TOP_Y
-	if t >= BALL_FROM_T and t <= BALL_TO_T:
-		ball_bottom = BALL_BOTTOM_Y
-		ball_top = BALL_TOP_Y
-	return PackedFloat64Array([
-		LATA_WALL_BOTTOM,
-		SKIRT_TOP_Y,
-		WAVE_Y + WAVE_AMPLITUDE * sin(WAVE_LOBES * angle),
-		SAIL_BASE_Y,
-		sail_top,
-		ball_bottom,
-		ball_top,
-		BODY_TOP_Y,
-		LATA_WALL_TOP,
-	])
-
-## Signed position across the label's arc: 0 at the centre of the printed face,
-## +/-1 at its edges, beyond +/-1 off the label entirely. Wrapped the same way
-## `_apply_dents` wraps, so a label centred near 0 still resolves at TAU - 0.1.
-func _lata_label_t(angle: float) -> float:
-	var delta := fposmod(angle - LATA_LABEL_FACE + PI, TAU) - PI
-	return delta / SAIL_HALF_ARC
-
-func _lata_wall_point(y: float, angle: float, deform: Callable) -> Vector3:
-	var radius := LATA_RADIUS
-	if deform.is_valid():
-		radius = deform.call(LATA_RADIUS, y, angle)
-	return Vector3(radius * cos(angle), y, radius * sin(angle))
-
-## The lid's pull tab, worth its ~40 triangles: the game's own logo replaces the
-## O of PRESO with a top-down can lid AND ITS TAB (Art_Direction.md Part 2, M-8),
-## so this is a brand shape rather than a detail — and the knocked-down Can shows
-## the camera its lid, which is exactly when it is most visible.
-##
-## Sits flat ON the lid plane; see LATA_LID_Y for why that plane is flat.
-func _lata_pull_tab(writer: ObjWriter, scale_xf: Transform3D) -> void:
-	const CAP_SEGMENTS: int = 5
-	const TAB_RADIUS: float = 0.048
-	const TAB_NEAR_X: float = 0.055
-	const TAB_FAR_X: float = 0.175
-	const TAB_THICKNESS: float = 0.014
-	# A stadium: two half-circle caps, both swept with the angle INCREASING, which
-	# is the same sense the tsinelas' toe post uses and is what add_extrude's
-	# "counter-clockwise in (x, z)" means here.
-	var outline := PackedVector2Array()
-	for i in range(CAP_SEGMENTS + 1):
-		var far_angle := -PI / 2.0 + PI * float(i) / float(CAP_SEGMENTS)
-		outline.append(Vector2(TAB_FAR_X + TAB_RADIUS * cos(far_angle),
-		                       TAB_RADIUS * sin(far_angle)))
-	for i in range(CAP_SEGMENTS + 1):
-		var near_angle := PI / 2.0 + PI * float(i) / float(CAP_SEGMENTS)
-		outline.append(Vector2(TAB_NEAR_X + TAB_RADIUS * cos(near_angle),
-		                       TAB_RADIUS * sin(near_angle)))
-	writer.add_extrude(outline, LATA_LID_Y, LATA_LID_Y + TAB_THICKNESS,
-		"aluminium_shade", scale_xf)
-
-# --- Tsinelas (the slipper) ---------------------------------------------------
-#
-# Orientation: character faces -Z; toe is at Z = -0.675, heel at Z = +0.675 in
-# the UNSCALED profile below (X is width). Every add_extrude/_strap_band call
-# applies TSINELAS_SCALE, so the emitted mesh is 0.32x that: length 1.35 -> 0.432.
-#
-# ⚠️ Art_Direction.md §1 — the proportion audit. TSINELAS_SCALE is not a fresh
-# number: `character_visual.gd::TSINELAS_CARRY_SCALE` was already 0.32, applied
-# only while the slipper was CARRIED, and arrived at independently by rendering
-# — 0.32 x 1.35 = 0.432 is exactly the audit's target. The carried slipper was
-# ALREADY the right size; only the loose and flying ones (mesh at native scale
-# 1.0) were the outliers. Baking 0.32 in here natively and deleting
-# TSINELAS_CARRY_SCALE / _scale_while_carried() / CARRY_SCALE_LERP from
-# character_visual.gd (done in the same pass) turns a per-frame runtime hack
-# into nothing: the mesh just IS the right size in every carry state.
-# ⚠️ B-81 — WHY THE SOLE IS NOT BLUE, so nobody "restores" it.
-#
-# The sole used to be UiTheme.DEFENSE, and Art_Direction.md §2's palette
-# table told it to be. Both were wrong. A Prop is a Tsinelas exactly when its
-# team is on OFFENCE (carriable.gd::is_throwable — not a Person, not a Can), so
-# a blue sole painted the ATTACKING team's prop in the DEFENDING colour. That
-# breaks Dev_Plan.md §4.2's hard rule directly: a player has to be able to learn
-# one colour pair and read every screen, and the slipper is the most-looked-at
-# object in the game. The moodboard agrees independently — THE SLIPPER's card
-# accent is magenta, and §4.2's own token table lists IMPACT as the
-# "Slipper/Can accent".
-#
-# ⚠️ AND WHY IT IS NO LONGER MAGENTA EITHER — 2026-07-28, same day, one step on.
-#
-# B-81's magenta was correct about the RULE and was only ever a placeholder for
-# the COLOUR: "the magenta shit is just placeholder, we can update it with the
-# new ones" (the human, supplying an asset moodboard for this exact
-# prop). The moodboard's tsinelas is a worn brown foam sole with a tan fabric
-# Y-strap — which is what a street tsinelas actually is, and which still satisfies
-# B-81 completely, because brown and tan are neither role hue. The rule survives;
-# only the stand-in colours it was demonstrated with are gone.
-#
-# So: PROP_FOAM footbed over a PROP_FOAM_DARK outsole, PROP_WEBBING straps and
-# toe post. Neither role hue appears. See `UiTheme`'s PROP_* band for why these
-# are their own tokens rather than borrowed UI or ENV_* ones.
-#
-# ⚠️ The materials are named for the PART, not for the palette token. That is
-# deliberate and it is the second half of the fix: a material literally called
-# "defense" is a bug that reads as correct in every diff. The lata now follows
-# the same rule — it was renamed in the moodboard pass, when its colours changed
-# anyway and the .obj churn was going to happen regardless.
-#
-# ⚠️ Renaming the materials also changes the .obj, which is what forces Godot to
-# reimport. obj_writer.gd's header warns that the .mtl is NOT in the .obj's
-# [deps], so a colour-only change rewrites the .mtl and the engine keeps serving
-# the OLD colours from its cache — you would measure the previous values and
-# conclude the fix did nothing.
-
-## Sole outline is 12 points, CCW in the XZ plane viewed from above (+Y).
-## CCW from above means the right side runs toe->heel (+Z), and the left
-## side runs heel->toe (-Z), completing the loop at the toe tip.
-## Width profile: ±0.26 at ball, ±0.18 waisted at arch, ±0.22 at heel.
 ## A first-person viewmodel forearm and fist. Playtest 0.4: "don't see arms of ppl".
 ##
 ## ⚠️ THE RIG'S OWN ARMS CANNOT BE USED FOR THIS, and it is worth knowing why
@@ -517,189 +436,3 @@ func _build_viewmodel_arm() -> void:
 	writer.recalculate_normals(40.0)
 	writer.write(OUTPUT_DIR + "viewmodel_arm")
 	print("  viewmodel_arm")
-
-
-## One arm of the Y-strap: a rectangular cross-section swept along a quadratic
-## Bezier from `start` (anchored on the footbed edge) through `control` (the
-## apex, above where the top of a foot would be) to `finish` (the top of the toe
-## post). Both arms meet at `finish`, which is what makes the Y.
-##
-## Swept rather than extruded because the arch is the point. `add_extrude` only
-## walks a 2D outline up the Y axis, so it cannot produce a band that leaves the
-## sole, rises, and comes back down to a single shared point.
-##
-## Winding: each ring's four corners are emitted in a fixed order around the
-## tangent, and consecutive rings are stitched with that same order, so every
-## side face inherits the outward direction from the first ring. Getting this
-## backwards makes the whole strap render inside-out, which is loud and obvious
-## in any render rather than silent — deliberately preferred over the
-## double-winding trick used for the building windows, because this band is
-## chunky enough that a hidden inverted face would also break the M-4 outline
-## pass (an inverted hull on inverted geometry produces no outline at all).
-## `scale`, Art_Direction.md §1: `add_extrude` gets a `transform` param for this
-## (2.1b-0), but this function builds its band from raw `add_quad` calls, which
-## has none — so the control points AND the cross-section (HALF_WIDTH/HALF_THICK)
-## are scaled directly here instead. Without scaling the cross-section too, a
-## shrunk strap arc with an unscaled ~0.03 band width would come out relatively
-## fatter than before, not merely smaller.
-func _strap_band(writer: ObjWriter, start: Vector3, control: Vector3,
-		finish: Vector3, scale: float = 1.0) -> void:
-	const SEGMENTS: int = 7
-	# ⚠️ WIDE AND FLAT, from the 2026-07-28 moodboard. The strap on a real
-	# tsinelas is a broad flat webbing band, roughly a fifth of the sole's width;
-	# the previous 0.032/0.017 section was near-square and read as a piece of
-	# cord, which is the one thing a flip-flop strap never looks like.
-	const HALF_WIDTH: float = 0.046
-	const HALF_THICK: float = 0.013
-	var half_width := HALF_WIDTH * scale
-	var half_thick := HALF_THICK * scale
-	start *= scale
-	control *= scale
-	finish *= scale
-
-	var rings: Array[Array] = []
-	for i in range(SEGMENTS + 1):
-		var t := float(i) / float(SEGMENTS)
-		var inv := 1.0 - t
-		# Quadratic Bezier and its analytic derivative — the derivative gives the
-		# tangent directly, which is cheaper and steadier than differencing
-		# neighbouring samples (that degenerates at the endpoints).
-		var point: Vector3 = inv * inv * start + 2.0 * inv * t * control + t * t * finish
-		var tangent: Vector3 = (2.0 * inv * (control - start) + 2.0 * t * (finish - control)).normalized()
-		# The band should stay flat-side-up along its whole run, so the frame is
-		# built from world up rather than from a rotation-minimising frame. The
-		# arc never approaches vertical, so `up` and `tangent` never align and
-		# the cross product is always well conditioned.
-		var right := tangent.cross(Vector3.UP).normalized()
-		var up := right.cross(tangent).normalized()
-		rings.append([
-			point + right * half_width + up * half_thick,
-			point - right * half_width + up * half_thick,
-			point - right * half_width - up * half_thick,
-			point + right * half_width - up * half_thick,
-		])
-
-	for i in range(SEGMENTS):
-		var a: Array = rings[i]
-		var b: Array = rings[i + 1]
-		for corner in range(4):
-			var nxt := (corner + 1) % 4
-			writer.add_quad(a[corner], b[corner], b[nxt], a[nxt], "strap")
-
-	# Cap only the footbed end. The toe-post end is buried inside the post knob,
-	# so a cap there would z-fight with it for no visible gain.
-	var first: Array = rings[0]
-	writer.add_quad(first[3], first[2], first[1], first[0], "strap")
-
-
-const TSINELAS_SCALE: float = 0.32
-
-func _build_tsinelas() -> void:
-	var writer := ObjWriter.new("Tsinelas")
-	writer.set_material("outsole", UiTheme.PROP_FOAM_DARK)
-	writer.set_material("foam", UiTheme.PROP_FOAM_DARK.lerp(UiTheme.PROP_FOAM, 0.55))
-	writer.set_material("footbed", UiTheme.PROP_FOAM)
-	writer.set_material("strap", UiTheme.PROP_WEBBING)
-	writer.set_material("post", UiTheme.PROP_WEBBING.darkened(0.24))
-	var scale_xf := Transform3D.IDENTITY.scaled(Vector3.ONE * TSINELAS_SCALE)
-
-	# --- Sole ---
-	# 12-point CCW outline in (x, z) — side walls face outward, caps correct.
-	var sole_outline := PackedVector2Array([
-		Vector2( 0.10, -0.620),  #  1  toe-right
-		Vector2( 0.26, -0.300),  #  2  ball-right (widest, ±0.26)
-		Vector2( 0.18,  0.050),  #  3  arch-right (waisted, ±0.18)
-		Vector2( 0.22,  0.500),  #  4  heel-right (±0.22)
-		Vector2( 0.10,  0.650),  #  5  heel-tip-right (rounds the heel)
-		Vector2( 0.00,  0.675),  #  6  heel-tip center
-		Vector2(-0.10,  0.650),  #  7  heel-tip-left (rounds the heel)
-		Vector2(-0.22,  0.500),  #  8  heel-left
-		Vector2(-0.18,  0.050),  #  9  arch-left
-		Vector2(-0.26, -0.300),  # 10  ball-left
-		Vector2(-0.10, -0.620),  # 11  toe-left
-		Vector2( 0.00, -0.675),  # 12  toe-tip center
-	])
-	# THREE layers, not one slab and no longer two. A real tsinelas has a darker
-	# rubber outsole under a moulded foam midsole under a lighter footbed, and the
-	# steps between them catch shadow lines that make the whole thing read as an
-	# object rather than as a flat lozenge. The footbed is inset so that step is
-	# visible from directly above, which is the angle a loose Prop is usually seen
-	# from, and the outsole is inset MORE so the widest point of the slab sits at
-	# mid-height — that is what reads as a moulded bevel rather than as a
-	# cake-slice, and it is the silhouette the moodboard's side view shows.
-	#
-	# ⚠️ Bottom stays at y = 0.0. The sole's Y is its UNDERSIDE, not its centre
-	# (Art_Direction.md Part 4, STANDING RULE — FLOATING GEOMETRY): the loose
-	# slipper is placed by this face, so lifting it "for clearance" is exactly how
-	# a prop ends up hovering.
-	var footbed_outline := PackedVector2Array()
-	var outsole_outline := PackedVector2Array()
-	for p in sole_outline:
-		footbed_outline.append(p * 0.94)
-		outsole_outline.append(p * 0.88)
-	# Total 0.120 against a 1.35 length. The old 0.10 was measured off a thinner
-	# reference; the moodboard's foam is visibly chunkier, and chunky is also what
-	# Art_Direction.md §0's readability pillar wants at throwing distance.
-	writer.add_extrude(outsole_outline, 0.0, 0.022, "outsole", scale_xf)
-	writer.add_extrude(sole_outline, 0.022, 0.085, "foam", scale_xf)
-	writer.add_extrude(footbed_outline, 0.085, 0.120, "footbed", scale_xf)
-
-	# --- Toe post ---
-	# Small cylindrical knob between the toes, sitting on top of the sole.
-	# 8-point circle at (x=0, z=-0.55), extruded y=0.10 to y=0.165.
-	# CCW from above (angle increases CCW in XZ) keeps side walls facing out.
-	var post_cx: float = 0.0
-	var post_cz: float = -0.55
-	var post_r: float = 0.050
-	var post_segs: int = 8
-	var post_outline := PackedVector2Array()
-	for i in range(post_segs):
-		var angle: float = TAU * float(i) / float(post_segs)
-		post_outline.append(Vector2(post_cx + post_r * cos(angle),
-		                            post_cz + post_r * sin(angle)))
-	writer.add_extrude(post_outline, 0.120, 0.195, "post", scale_xf)
-
-	# --- Y-straps ---
-	# ⚠️ THESE USED TO BE FLAT QUADS AT strap_y = 0.10 — which is EXACTLY the top
-	# face of the sole. A strap lying in the same plane as the footbed is not a
-	# strap, it is a decal painted on the footbed, and that is precisely how it
-	# rendered: a yellow chevron drawn on a pink lozenge, with no silhouette of
-	# its own from any angle. It was the single thing making the hero prop read
-	# as unfinished.
-	#
-	# They are now swept bands that ARCH over where a foot would be, so the
-	# slipper has a hole through it — which is the whole visual signature of a
-	# tsinelas and the thing that makes it readable in flight.
-	# ⚠️ The footbed anchors must sit INSIDE the footbed outline at that z, not on
-	# the nominal half-width — and the check is on the OUTER EDGE of the band,
-	# `x + HALF_WIDTH`, not on its centreline. The waist of the sole is only
-	# +/-0.18 at z=0 and the footbed is inset a further 6%, so the old anchor
-	# (centre 0.163 + half-width 0.032 = 0.195 against a 0.176 footbed edge) hung
-	# 0.019 of every strap off the side in mid-air. Widening the band to 0.052
-	# would have tripled that overhang.
-	#
-	# Fixed by moving the anchors FORWARD rather than inward, to z = -0.04 where
-	# the sole is 0.201 wide (0.189 on the footbed): 0.134 + 0.046 = 0.180, which
-	# lands inside with margin. That is also roughly where a real tsinelas anchors
-	# its strap — ahead of the waist — so the moodboard and the geometry agree.
-	#
-	# ⚠️ NOT further forward than that, which the first attempt tried (z = -0.15,
-	# where the sole is wider and the margin is easier). It rendered wrong: the
-	# whole Y crowded into the front quarter of the slipper and read as one band
-	# across the toe rather than as two arms meeting at a post. The span from
-	# anchor to post is the shape, so it is the thing to protect — win the width
-	# margin back from the band section instead, which is what HALF_WIDTH 0.046 is.
-	#
-	# ⚠️ Anchor y = 0.105 is BELOW the footbed top (0.120) on purpose: the band is
-	# 0.013 half-thick, so its underside sits at 0.092, buried in the foam. An
-	# anchor placed ON the surface at 0.120 would leave the band's lower face
-	# floating 0.013 clear of it — the same class of bug as the decals, on a
-	# surface small enough that nobody would spot it until it was in a screenshot.
-	_strap_band(writer, Vector3(0.134, 0.105, -0.04),
-		Vector3(0.118, 0.285, -0.30), Vector3(0.0, 0.190, -0.505), TSINELAS_SCALE)
-	_strap_band(writer, Vector3(-0.134, 0.105, -0.04),
-		Vector3(-0.118, 0.285, -0.30), Vector3(0.0, 0.190, -0.505), TSINELAS_SCALE)
-
-	writer.recalculate_normals(40.0)
-	writer.write(OUTPUT_DIR + "tsinelas")
-	print("  tsinelas")

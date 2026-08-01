@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3 uid="uid://c3f7h9j1k2l4m"]
+[gd_scene load_steps=10 format=3 uid="uid://c3f7h9j1k2l4m"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="0"]
 [ext_resource type="PackedScene" path="res://scenes/ui/SettingsPanel.tscn" id="11"]
@@ -7,41 +7,45 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/MatchResult.tscn" id="6"]
 [ext_resource type="PackedScene" path="res://scenes/ui/DebugBar.tscn" id="7"]
 [ext_resource type="Script" path="res://scripts/ui/pause_layer.gd" id="8"]
+[ext_resource type="PackedScene" path="res://scenes/objects/Lata.tscn" id="12"]
+[ext_resource type="PackedScene" path="res://scenes/objects/Slipper.tscn" id="13"]
 
 [node name="Main" type="Node3D"]
 script = ExtResource("0")
 
 [node name="Map" type="Node3D" parent="."]
 
-[node name="TeamAProp" parent="." instance=ExtResource("1")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 1, -2)
-is_can = true
-is_person = false
-team_is_can_side = true
-player_id = 2
-
-[node name="TeamAPerson" parent="." instance=ExtResource("1")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 1, -2)
-is_can = false
-is_person = true
-team_is_can_side = true
+[node name="Player1" parent="." instance=ExtResource("1")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 2.5)
+is_defender = true
+player_slot = 0
 player_id = 1
 
-[node name="TeamBProp" parent="." instance=ExtResource("1")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 1, 2)
-is_can = false
-is_person = false
-team_is_can_side = false
-team = 1
+[node name="Player2" parent="." instance=ExtResource("1")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 7)
+player_slot = 1
+player_id = 2
+
+[node name="Player3" parent="." instance=ExtResource("1")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.06, 1, -3.5)
+player_slot = 2
 player_id = 3
 
-[node name="TeamBPerson" parent="." instance=ExtResource("1")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 1, 2)
-is_can = false
-is_person = true
-team_is_can_side = false
-team = 1
+[node name="Player4" parent="." instance=ExtResource("1")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.06, 1, -3.5)
+player_slot = 3
 player_id = 4
+
+[node name="Lata" parent="." instance=ExtResource("12")]
+
+[node name="Slipper1" parent="." instance=ExtResource("13")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.08, 7)
+
+[node name="Slipper2" parent="." instance=ExtResource("13")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.06, 0.08, -3.5)
+
+[node name="Slipper3" parent="." instance=ExtResource("13")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.06, 0.08, -3.5)
 
 [node name="Players" type="Node3D" parent="."]
 
