@@ -69,13 +69,38 @@ theme_override_font_sizes/font_size = 68
 vertical_alignment = 1
 text = "MULTIPLAYER"
 
+[node name="HostOnlineButton" parent="." instance=ExtResource("2")]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 95.0
+offset_top = 190.0
+offset_right = 709.0
+offset_bottom = 291.0
+texture = ExtResource("5")
+caption = "HOST ONLINE"
+text_color = Color(1, 0.729, 0, 1)
+label_size = 53
+pole_distance = 300.0
+text_indent = 40.0
+tip_padding = 40.0
+
+[node name="HostOnlineCaption" type="Label" parent="."]
+layout_mode = 0
+offset_left = 110.0
+offset_top = 296.0
+offset_right = 960.0
+offset_bottom = 366.0
+theme_type_variation = &"MenuBody"
+text = "Takes a free online server and gives you a 4-character code. Read the code out and your friends type it in — nobody has to be on your network."
+autowrap_mode = 2
+
 [node name="HostButton" parent="." instance=ExtResource("2")]
 unique_name_in_owner = true
 layout_mode = 0
 offset_left = 95.0
-offset_top = 285.0
+offset_top = 372.0
 offset_right = 709.0
-offset_bottom = 386.0
+offset_bottom = 473.0
 texture = ExtResource("5")
 caption = "HOST GAME (LAN)"
 text_color = Color(1, 1, 1, 1)
@@ -87,28 +112,28 @@ tip_padding = 40.0
 [node name="HostCaption" type="Label" parent="."]
 layout_mode = 0
 offset_left = 110.0
-offset_top = 393.0
+offset_top = 478.0
 offset_right = 960.0
-offset_bottom = 427.0
+offset_bottom = 548.0
 theme_type_variation = &"MenuBody"
-text = "You open the lobby and you alone pick the map and the mode. Your LAN address is shown there for the others to type in."
+text = "Runs the lobby on this PC. Only reaches people on the same network as you, and your address is shown there for them to type in."
 autowrap_mode = 2
 
 [node name="JoinHeading" type="Label" parent="."]
 layout_mode = 0
 offset_left = 95.0
-offset_top = 495.0
+offset_top = 552.0
 offset_right = 960.0
-offset_bottom = 539.0
+offset_bottom = 596.0
 theme_type_variation = &"MenuHeading"
-text = "JOIN A HOST OR A CODE"
+text = "JOIN WITH A CODE"
 
 [node name="JoinField" type="TextureRect" parent="."]
 layout_mode = 0
 offset_left = 95.0
-offset_top = 549.0
+offset_top = 600.0
 offset_right = 709.0
-offset_bottom = 650.0
+offset_bottom = 701.0
 mouse_filter = 1
 texture = ExtResource("6")
 expand_mode = 1
@@ -131,15 +156,15 @@ theme_override_font_sizes/font_size = 45
 theme_override_styles/normal = SubResource("StyleBoxEmpty_flat")
 theme_override_styles/focus = SubResource("StyleBoxEmpty_flat")
 theme_override_styles/read_only = SubResource("StyleBoxEmpty_flat")
-placeholder_text = "192.168.1.12   or   A7SF"
+placeholder_text = "A7SF   or   192.168.1.12"
 
 [node name="JoinButton" parent="." instance=ExtResource("2")]
 unique_name_in_owner = true
 layout_mode = 0
 offset_left = 727.0
-offset_top = 549.0
+offset_top = 600.0
 offset_right = 968.0
-offset_bottom = 650.0
+offset_bottom = 701.0
 texture = ExtResource("7")
 caption = "JOIN"
 text_color = Color(0.153, 0.263, 0.106, 1)
@@ -151,20 +176,20 @@ tip_padding = 30.0
 [node name="JoinCaption" type="Label" parent="."]
 layout_mode = 0
 offset_left = 110.0
-offset_top = 657.0
+offset_top = 706.0
 offset_right = 960.0
-offset_bottom = 691.0
+offset_bottom = 776.0
 theme_type_variation = &"MenuBody"
-text = "A host's address (port optional — 8910 is used if you leave it off), or an online server's 4-character code. You pick your own seat and fighter; the host picks the map."
+text = "A 4-character code from whoever is hosting online, or a host's address for a LAN game (port optional — 8910 is used if you leave it off). You pick your own seat and fighter."
 autowrap_mode = 2
 
 [node name="StatusLabel" type="Label" parent="."]
 unique_name_in_owner = true
 layout_mode = 0
 offset_left = 95.0
-offset_top = 745.0
-offset_right = 960.0
-offset_bottom = 825.0
+offset_top = 780.0
+offset_right = 1140.0
+offset_bottom = 860.0
 theme_override_colors/font_color = Color(0.957, 0.408, 0.659, 1)
 theme_override_font_sizes/font_size = 28
 autowrap_mode = 2
