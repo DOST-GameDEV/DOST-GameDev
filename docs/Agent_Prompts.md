@@ -6,7 +6,7 @@ scoring. **The base game is built and playable.** The goal is a recordable
 gameplay video.
 
 > **RESTRUCTURED 2026-08-01.** 🧑: *"also clean up agent prompts · its so hard to
-> naviagte · remove shit there that i dont need to run or wont need to see"*.
+> naviagte · remove stuff there that i dont need to run or wont need to see"*.
 > This file was 1 632 lines, more than half of it narrative LOG. What was cut:
 > the session-by-session story of work already finished, the § REMOVED IN THE
 > HARRYDAKS PIVOT table, the § FUTURE LANES duplicate of the lane prompts, and
@@ -279,7 +279,7 @@ what specifically. **Tick only your own section.**
 - [x] 1.17 ⚠️ **The CREDITS screen was missing the one third-party asset that is not
   CC0, and its AUDIO line had gone stale.** Fixed in `credits_panel.gd`
   **out of row, on direct human instruction** (🧑: *"add ccby i missed"*, *"add
-  it to credits too in the game lowkey"*). Two changes:
+  it to credits too in the game tbh"*). Two changes:
   * **TYPEFACE row added.** `Darumadrop One` is **SIL Open Font License 1.1**, not
     CC0. The OFL is satisfied by shipping the licence text — and
     `assets/ui/fonts/DarumadropOne_LICENSE.txt` does ship — so this was not a
@@ -506,7 +506,7 @@ what specifically. **Tick only your own section.**
 - [ ] 2.21 **`CONFINEMENT_RADIUS` was moved to 6.5 by a map lane and needs your
   measurement.** It also invalidates 2.1's baseline.
 - [~] 2.22 **A thrown slipper STOPS DEAD on contact and does not read as physics.**
-  🧑: *"the slippers should bounce back a bit when it hits shit"*. The lata recoil
+  🧑: *"the slippers should bounce back a bit when it hits stuff"*. The lata recoil
   and the body-block deflection had both landed; this session added the third
   missing half — **the thing that was hit now reacts too** (2.11) — and made the can's
   recoil scale with its own POWER stat, so a heavy can throws the tsinelas 14%
@@ -717,7 +717,7 @@ what specifically. **Tick only your own section.**
 - [x] 5.12 **The bots throw again** (51 flights measured) and their safe spot
   projects onto the square rather than a circle.
 - [x] 5.13 **The rejected drawing-derived slippers are DELETED.** 🧑: *"yo thats old
-  stale shit"*, *"delete the old fucking models that design lane tried to make"*.
+  stale stuff"*, *"delete the old stale models that design lane tried to make"*.
   `tsinelas_bakya.*`, `tsinelas_tsinelas.*`, four orphan textures, and the whole
   slipper half of `build_prop_textures.py` (which was a SECOND generator writing
   `build_footwear.py`'s output paths — see §6). *Verified: grep shows no remaining
@@ -959,7 +959,7 @@ Done by whoever runs `build ai`, at the end of that session.
   music fixes. Anyone playtesting from `TumbangPreso-win64.zip` is playing the 2v2
   game with playable props. **DELIBERATELY NOT REFRESHED THIS SESSION, on direct
   human instruction** — 🧑, during this session: *"dont do it yet"*, *"we will edit
-  mroe shit pa"*, *"odnt fix the .exe yet"*. The presets are now correct, so the
+  mroe stuff pa"*, *"odnt fix the .exe yet"*. The presets are now correct, so the
   refresh is the two commands in `tools/export.md` and nothing else; do it when the
   edits stop.
 
@@ -1573,12 +1573,12 @@ probe scenes, the Python map builders and every design doc were shipping to judg
 8.1's premise was not: neither preset names deleted code, and what was actually
 wrong was a missing `export_path` on the Windows preset. ⚠️ **8.4 deliberately left
 open on direct instruction** — 🧑: *"dont do it yet"*, *"odnt fix the .exe yet"*,
-*"we will edit mroe shit pa"*. Both zips in `build/` are from **2026-07-29**, which
+*"we will edit mroe stuff pa"*. Both zips in `build/` are from **2026-07-29**, which
 is older than the board said and predates the whole pivot.
 
 **2026-08-01 · 🤖 `build ai` (follow-up)** — a stale-documentation sweep, on direct
 instruction (🧑: *"can you actually scan read me and docs to make sure theres no
-stale shit"*). Sixteen present-tense claims across four documents were describing a
+stale stuff"*). Sixteen present-tense claims across four documents were describing a
 game that had been deleted, and three of them were instructions somebody would have
 followed:
 

@@ -46,7 +46,7 @@ const REVOLVE_SEGMENTS: int = 16
 # The human drew four cans and four slippers by hand, three of the cans carrying
 # readable parody wordmarks, and supplied FLATTENED 360-degree label wraps for
 # exactly this purpose — then ruled on it directly (2026-08-01): *"you can use
-# the flattened shit for textures bcz its easier that way, you cant redraw this
+# the flattened art for textures bcz its easier that way, you cant redraw this
 # too bro"*. Reduced to a flat `Kd`, a Pasip and a Decades are the same grey
 # cylinder and every bit of the Filipino specificity is gone. Art_Direction.md
 # Part 5 is amended to match rather than silently broken.
@@ -231,7 +231,7 @@ func _build_lata(spec: Dictionary) -> void:
 	# v 0..1 therefore samples that blank margin along the can's very top and
 	# bottom edge, and it renders as a hard white band right where the rolled rim
 	# meets the lid. 🧑, circling it: *"theres a white space in between lid and
-	# shit"*.
+	# rim"*.
 	#
 	# Squeezing the wall into v 0.03..0.97 keeps every ring inside the drawn area
 	# on all four wraps, at the cost of losing 3% of the label off each end — which
@@ -289,7 +289,7 @@ func _build_lata(spec: Dictionary) -> void:
 	# LINE of the label radially across the disc — a pinwheel of whatever the
 	# wrap happens to show at that height, which on the pale rows blows out to
 	# flat white under a light hitting a horizontal face square on. 🧑, pointing at
-	# it: *"fill that shit in with somehting why is it just white"*.
+	# it: *"fill that stuff in with somehting why is it just white"*.
 	#
 	# Fixing `u` as well as `v` makes the whole cap one texel, so it renders as a
 	# solid stamped can end in the metal colour the human actually drew on that
@@ -304,7 +304,7 @@ func _build_lata(spec: Dictionary) -> void:
 	var lid_uv := func(_y: float, _angle: float) -> Vector2:
 		return Vector2(0.5, cap_v.y)
 	# ⚠️ THE CAPS ARE STEPPED, NOT FLAT DISCS — 🧑: *"make sure the can has a top
-	# and bottom bcz the metal can has no top haha"*. A single flat disc spanning
+	# and bottom bcz the metal can has no top man"*. A single flat disc spanning
 	# the rim is geometrically a lid, but it lights as one uniform facet, so at any
 	# angle where it catches the same band as the wall it disappears and the can
 	# reads as an open tube. Every real can is RECESSED at the top (the lid sits

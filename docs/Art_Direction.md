@@ -75,7 +75,7 @@ Furniture, Car) plus the project's own generated `env_kit` decals.
 ### 4a · The four slippers — SOURCED MODELS, NOT THE DRAWINGS
 
 ⚠️ **THE DRAWING-DERIVED SLIPPERS ARE DELETED AND MUST NOT BE REBUILT.** 🧑
-2026-08-01, shown the old drawing sheets: *"yo thats old stale shit · dont"*, and
+2026-08-01, shown the old drawing sheets: *"yo thats old stale stuff · dont"*, and
 earlier: *"i think u gen js suck in 3d modelling ahah … js look for assets that look
 like them"*.
 
@@ -150,7 +150,7 @@ alongside the existing Kenney CC0 and OpenGameArt CC0 credits.
 > the mesh, which is modelling, which is the Blender step this lane is forbidden.
 >
 > The model therefore renders an actual Nike swoosh and wordmark. 🧑, told this:
-> *"im lowk okay with nike as long as it doesnt make shit lag man"*. Recorded as a
+> *"im kinda okay with nike as long as it doesnt make things lag man"*. Recorded as a
 > decision, not an oversight — for a competition submission a real trademark on a
 > hero prop is a small but genuine risk, and the two ways out are a different
 > slide model or deleting the wordmark's faces.
@@ -163,7 +163,7 @@ it still governs the environment and the characters. The lata and the tsinelas
 are now textured, on a direct human ruling: they drew four cans by hand — three
 carrying readable parody wordmarks (PASIP, BOYBEN PERMAGAD, DECADES TUNA) — and
 supplied flattened 360° label wraps for the purpose. 🧑: *"you can use the
-flattened shit for textures bcz its easier that way, you cant redraw this too
+flattened art for textures bcz its easier that way, you cant redraw this too
 bro"*. Stripped to a flat `Kd`, a Pasip and a Decades are the same grey cylinder
 and all of the Filipino specificity is gone with the label.
 
@@ -217,6 +217,6 @@ did.
 | Board said | Build does | Why |
 |---|---|---|
 | Yellow/blue/orange school outfits | Green sando + maroon top | §1 — those hues mean role |
-| Magenta slipper / can accents | `PROP_FOAM` brown and Sarsi livery | superseded by the human's own second prop moodboard: *"the magenta shit is just placeholder"* |
+| Magenta slipper / can accents | `PROP_FOAM` brown and Sarsi livery | superseded by the human's own second prop moodboard: *"the magenta stuff is just placeholder"* |
 | 1024² PBR on both props | Flat colour | the pipeline emits no UVs and the stated reference is flat colour |
 | Props at hero scale | Real scale, then the 1.6× slipper for drama | the board had no environment to be out of proportion with |

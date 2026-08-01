@@ -900,7 +900,7 @@ for _v, (_vx, _vz, _vyaw) in enumerate([
 #
 # REMOVED 2026-08-01 ON DIRECT HUMAN INSTRUCTION, alongside Eskinita's. The
 # human, with screenshots of the flickering tiles: "this keeps bugging/ clipping
-# these shits. can u js remove them", "this looks bad it keeps phasing in and
+# these things. can u js remove them", "this looks bad it keeps phasing in and
 # out"; then, asked which element: "yes remove slow zone, Tan slabs in a line
 # (kanal / gutter)".
 #

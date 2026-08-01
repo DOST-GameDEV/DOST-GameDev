@@ -4,7 +4,7 @@
 
 ; ⚠️ 64px OF CLEARANCE UNDER THIS CARD, NOT 16 — 🧑, after seeing the numbers: *"the ui
 ; huds midgame still go BELOW the screen, could u js make it smaller or dont force it to
-; be so down there ... we dont have to do some complicated shit to fix that bruh"*. Fair.
+; be so down there ... we dont have to do some complicated stuff to fix that man"*. Fair.
 ;
 ; The window fix (`game_launch.gd::fit_window_to_usable_screen`) makes the whole content
 ; rect visible, and this is the belt to that braces: a card whose last row sits 16px off
@@ -56,7 +56,7 @@ layout_mode = 2
 
 ; ═══ IDENTITY: ONE LINE, NOT THREE ═══
 ; ⚠️ THIS WAS "YOU" / "ATTACKER" / "P1" ON THREE SEPARATE ROWS. 🧑 2026-08-01:
-; *"too ugly, too much shit happening in that box. confusing"*.
+; *"too ugly, too much stuff happening in that box. confusing"*.
 ;
 ; `HeaderLabel` ("YOU") is DELETED outright: it is the only card pinned to the
 ; player's own corner, it is the only one with the HIGHLIGHT border, and it names

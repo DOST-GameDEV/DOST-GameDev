@@ -63,8 +63,8 @@ LENGTH = 0.432
 # a pair shows up as a width at or above the model's own length.
 ## ⚠️ DECIMATION IS OFF ON ALL FOUR, AND THAT IS A CORRECTED CALL.
 ## The first pass clustered the two heavy models to ~26 cells and the human's
-## verdict was immediate and right — *"nigga what happened to sike HAHAHAAH its js
-## shit now"*. The crocs came out as shredded foil. Worse, the argument for
+## verdict was immediate and right — *"man what happened to sike, honestly its js
+## bad now"*. The crocs came out as shredded foil. Worse, the argument for
 ## decimating in the first place was overstated: 🧑 asked *"whats bad with us
 ## using a model thats a bit high poly? will it make the game lag or smth"*, and
 ## the honest answer is NO. 131k triangles is nothing to a modern GPU — a slipper
