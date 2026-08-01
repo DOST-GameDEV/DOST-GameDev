@@ -1118,11 +1118,29 @@ CLUTTER_TALL = [
     ("kits/town/hedge", -7.5, 1.5, 0.0, TOWN_SCALE),
     ("kits/town/hedge", 7.5, -10.5, 0.0, TOWN_SCALE),
 ]
+# ⚠⚠ `keep_out=True` ON THIS TIER AND NOT ON `CLUTTER_LOW`. The comment above
+# restricts these to |x| > 6.5 "against the wall line" — which was outside the box
+# when the box was 5.0 and then 6.5, and is INSIDE it at 7.5. The `atip_yero` sheets
+# sit at x = ±7.05 and are **2.92 m tall**, so growing the box parked a solid
+# untextured slab in the middle of the street. 🧑, with a screenshot: *"tf is this
+# big ass grey block HAHA"*.
+#
+# This is the same line the trees are on, and it is the line the human drew: *"i was
+# okay with the clutter earlier, js put the tree out of the play area"*, *"i liked
+# the tires and the tables and the yero walls"*. The yero walls stay ON THE MAP —
+# they are the tier that makes an alley a Philippine alley — they just stop standing
+# in the court. Tyres and tables are set dressing you run over; a 2.92 m GI sheet is
+# a wall.
+#
+# ⚠️ AND IT IS DERIVED, so the next resize moves them again rather than re-creating
+# this. `_placer.play_box` is read from `CONFINEMENT_RADIUS`.
 for n, (piece, x, zz, yaw, scale) in enumerate(CLUTTER_TALL):
     if scale is None:
-        _placer.try_place(_put_gen("Kalat"), f"KalatTaas_{n}", piece, x, zz, yaw, 1.0)
+        _placer.try_place(_put_gen("Kalat"), f"KalatTaas_{n}", piece, x, zz, yaw, 1.0,
+                          keep_out=True)
     else:
-        _placer.try_place(_put("Kalat"), f"KalatTaas_{n}", piece, x, zz, yaw, scale)
+        _placer.try_place(_put("Kalat"), f"KalatTaas_{n}", piece, x, zz, yaw, scale,
+                          keep_out=True)
 
 # --- Tricycles. Waist-cover tier, against the wall line, never loose. --------
 # ⚠️ THESE ASK TOO, and they were the last unguarded placements on the map — all
