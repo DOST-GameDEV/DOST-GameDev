@@ -655,20 +655,39 @@ what specifically. **Tick only your own section.**
 
 ### 🔊 `build sound` — music, voice and the mix  ·  items **4.x**
 
-- [~] 4.1 Two of five OST tracks delivered and playing. **Unverified by ear.**
+- [x] 4.1 **The OST is in and it has been listened to.** 🧑 2026-08-01: *"everyones
+  listened to the audio, we've put the ost"*. The team wrote the tracks; the menu bed
+  and the round bed both play from the scene-state model in 4.2. ⚠️ **The track list
+  was TRIMMED** — the "five tracks" this item used to be counting against is not the
+  plan any more, and only what the team kept will be uploaded. Do not treat a missing
+  track as an outstanding delivery; ask what is still coming.
 - [x] 4.2 **Menu bed and round bed are owned by a SCENE STATE, not by a list of
   events.** *Verified: `tools/audio/music_probe.tscn`, 8 checks over the real
   chain splash → menu → mode select → lobby → match → back, and the new
   free-roam check FAILS on the pre-fix code.* See §6.
-- [~] 4.3 Round-end / match-win / round-lose register real streams. *Unverified by ear.*
-- [~] 4.4 **Voice-over pooling built, zero lines recorded.** Does not close until
-  the team records against `docs/HUMAN.md`.
+- [x] 4.3 Round-end / match-win / round-lose register real streams. **Heard.**
+- [ ] 4.4 ⚠⚠ **THE VO IS THE ONE REMAINING JOB, AND IT IS THE WHOLE LANE NOW.**
+  🧑 2026-08-01: *"we js have to make it put in the VOs, we trimmed a lot of its plan
+  but we will upload only what we kept"*. The pooling is built and every pool
+  activates the moment a file lands — `assets/audio/vo/` is simply empty.
+  ⚠️ **`docs/HUMAN.md`'s script is LONGER THAN WHAT IS COMING.** The team cut the
+  list down; treat the recorded set as the spec and the document as the superset,
+  and **file, do not force**, any line whose trigger does not exist. A pool with no
+  file is expected, not a defect.
 - [~] 4.5 Five of six previously-silent call sites now have a sound. The sixth is
   filed as 2.17.
-- [~] 4.6 Ducking implemented inside `play()`. *Unverified by ear.*
-- [ ] 4.7 **THE MIX HAS NEVER BEEN HEARD.** No session has had an audio output
-  device. Balance the three buses against a real match. `tools/audio_mix_probe.gd`
-  is the probe that should move `MUSIC_BASE_DB`.
+- [x] 4.6 Ducking implemented inside `play()`. **Heard.**
+- [~] 4.7 ⚠️ **THE MIX HAS BEEN HEARD — this item is no longer "nobody has ever
+  heard this game".** 🧑 2026-08-01: *"everyones listened to the audio"*. What is left
+  is not a first listen, it is a BALANCE pass with the VO in it, because the three
+  buses cannot be set against each other until the thing that has to sit on top of
+  them exists. `tools/audio_mix_probe.gd` still moves `MUSIC_BASE_DB`.
+- [x] 4.8 **Both beds start on the frame they are asked for.** 🧑: *"Remove the audio
+  playback delay when transitioning from the intro video"* and *"Remove the audio
+  latency during round initialization"*. The delay was never a timer — it was
+  `MUSIC_CROSSFADE_TIME`, 1.5 s of ramp on a track starting from silence, at two
+  edges where there is nothing to fade FROM. Both call sites pass a 0.0 fade now.
+  *Fixed by ⚖️ `build fair`, out of row, on direct instruction.*
 
 ### 🎨 `build model` — the props, the play area  ·  items **5.x**
 
@@ -1070,20 +1089,27 @@ exactly. git pull --rebase before you start and before every commit.
 You own systems/audio_manager.gd, assets/audio/**, default_bus_layout.tres, the
 audio rows of ui/settings_panel.gd, docs/HUMAN.md and tools/audio/**.
 
-**The human has now listened to the mix, in this prompt session.** The actual
-audio files (VO and any new OST) will be uploaded LATER, not this session. When
-they land, they go in assets/audio/** per the existing layout (VO under
-assets/audio/vo/, matching whatever pooling already expects them) — put each
-file exactly where the code that plays it already looks, don't invent a new
-path. Ask the human where a specific file goes if the existing call sites don't
-make it obvious.
+THE OST IS IN AND THE TEAM HAS LISTENED TO IT. 2026-08-01: "everyones listened
+to the audio, we've put the ost". So the old framing of this lane — "nobody has
+ever heard this game" — is dead, and so is the five-track plan: "we trimmed a
+lot of its plan but we will upload only what we kept". Do NOT treat a track
+that is not there as an outstanding delivery. Ask what is still coming.
 
-YOUR ONE REMAINING ITEM THAT MATTERS IS §4.7: NOBODY HAS EVER HEARD
-THIS GAME. Every other box in your section is `[~]` for the same reason — no
-session has had an audio output device, so the mix has never been balanced
-against a real match. If you have audio, that is the job: play four rounds and
-balance Master / SFX / Music against each other. tools/audio_mix_probe.gd is the
-probe that should move MUSIC_BASE_DB.
+YOUR ONE REMAINING JOB IS THE VO (§4.4). The pooling is built and every pool
+activates the moment a file lands; assets/audio/vo/ is simply empty. "we js
+have to make it put in the VOs". Files go in assets/audio/** per the existing
+layout — VO under assets/audio/vo/, named as the pooling already expects. Put
+each file exactly where the code that plays it already looks; don't invent a
+path, and ask if the call sites don't make it obvious.
+
+⚠️ docs/HUMAN.md's script is a SUPERSET of what is coming. The list was cut
+down. Treat the recorded set as the spec and the document as the wish list, and
+FILE rather than force any line whose trigger does not exist.
+
+AFTER THE VO, §4.7 IS A BALANCE PASS AND NOT A FIRST LISTEN. The three buses
+cannot be set against each other until the thing that has to sit on top of them
+exists. Play four rounds with voice in the mix and balance Master / SFX / Music.
+tools/audio_mix_probe.gd is the probe that should move MUSIC_BASE_DB.
 
 The music lifecycle was rewritten on 2026-08-01 and is now gated by
 tools/audio/music_probe.tscn — read § 6 before changing it, because the obvious

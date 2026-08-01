@@ -481,6 +481,32 @@ func _set_state(new_state: CarryState) -> void:
 	state = new_state
 	carry_state_changed.emit(new_state)
 
+## ⚠⚠ THE SYNCHRONIZER IS SILENCED FOR AS LONG AS THIS PROP IS IN A HAND, AND
+## THAT IS THE FIX FOR §2.24. A `MultiplayerSynchronizer` identifies its node to
+## every peer BY NODE PATH. Re-parenting the slipper onto the carrier's hand moves
+## it to `Main/Players/-4/Visual/<rig>/Skeleton3D/HandAttachment/HandPoint/Slipper3`
+## — a path `character_visual.gd` BUILDS AT RUNTIME, independently, on each peer —
+## so every position packet sent while carried names a node the receiver may not
+## have finished constructing. Measured on two real peers before this fix:
+## **123 `Node not found` / "Invalid packet received" errors on the client in one
+## round**, and it got worse the moment every attacker started each round holding
+## a slipper.
+##
+## Silencing costs nothing, which is why this is the right lever rather than a
+## workaround: `_step_carried()`'s own note already says a carried slipper "never
+## needs its own position packets while it is held", because every peer derives it
+## from the CARRIER's replicated transform. The synchronizer was sending packets
+## that were redundant when they arrived and errors when they did not.
+##
+## ⚠️ `owner_slot` IS NOT LOST WITH IT. That field is replicated by an explicit
+## RPC (`_rpc_owner`), for the reason `host_assign_owner()` documents — a
+## synchronizer writes a property directly and the glow's side effect never runs on
+## the peer that received it. So ownership survives the quiet period intact.
+func _set_sync_enabled(enabled: bool) -> void:
+	var sync := get_node_or_null("MultiplayerSynchronizer") as MultiplayerSynchronizer
+	if sync != null:
+		sync.public_visibility = enabled
+
 func _attach_to_hand() -> void:
 	if carrier == null or not is_instance_valid(carrier):
 		return
@@ -491,6 +517,7 @@ func _attach_to_hand() -> void:
 		_home_parent = get_parent()
 	if get_parent() == hand:
 		return
+	_set_sync_enabled(false)
 	var keep := global_transform
 	get_parent().remove_child(self)
 	hand.add_child(self)
@@ -523,6 +550,8 @@ func _detach_from_hand() -> void:
 	get_parent().remove_child(self)
 	_home_parent.add_child(self)
 	global_transform = keep
+	# Back at a path every peer has had since the scene loaded, so it may talk again.
+	_set_sync_enabled(true)
 	# The hand's inherited scale was divided out on the way in; a slipper back in
 	# the world owns its own scale again. Set explicitly rather than left to the
 	# restored basis, so a rounding drift cannot accumulate over a match's worth
