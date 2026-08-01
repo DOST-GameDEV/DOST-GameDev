@@ -369,6 +369,9 @@ func _setup_host() -> void:
 	NetworkManager.player_connected.connect(_on_peer_joined)
 	NetworkManager.player_disconnected.connect(_on_peer_left)
 	NetworkManager.peer_spectator_changed.connect(_on_peer_spectator_changed)
+	# Named here as well as on the join path: a listen host leads its own lobby, and
+	# routing both through one signal keeps the two from drifting.
+	NetworkManager.lobby_leader_changed.connect(_on_lobby_leader_changed)
 
 	# The host is peer 1 and `peer_connected` never fires for self on a server,
 	# so it seats itself. Seat 0 (Team A's Person) rather than "first free": it
@@ -414,6 +417,9 @@ func _setup_join() -> void:
 	NetworkManager.connection_failed.connect(_on_connection_failed)
 	NetworkManager.server_disconnected.connect(_on_server_disconnected)
 	NetworkManager.player_disconnected.connect(_on_peer_left)
+	# On a dedicated server nobody is host, so this is the only thing that will ever
+	# unlock the map picker for this client.
+	NetworkManager.lobby_leader_changed.connect(_on_lobby_leader_changed)
 	status_label.text = "Connecting…"
 	_refresh_seats()
 	_refresh_primary_button()
@@ -510,6 +516,49 @@ func _is_networked_lobby() -> bool:
 
 func _is_lobby_host() -> bool:
 	return _action == "host" and multiplayer.multiplayer_peer != null and multiplayer.is_server()
+
+## ---------------------------------------------------------------------------
+## § WHO MAY CHANGE THE MAP — the host, until there isn't one.
+##
+## On a listen host this is the same person as `_is_lobby_host()` and nothing about
+## this screen changes. On a DEDICATED server the referee is a machine with no player
+## at it, so `_is_lobby_host()` is false for everybody and the map controls would be
+## locked for the entire lobby, permanently. The leader is the first human through the
+## door (`NetworkManager.lobby_leader_id`), and it moves on when they leave.
+##
+## ⚠️ THIS UNLOCKS A CONTROL, IT DOES NOT GRANT AUTHORITY. A leader that is not the
+## server cannot broadcast — it asks, via `_rpc_request_config`, and the server checks
+## the request came from the peer it actually named leader before applying it. The
+## comment on `_setup_join`'s lock still holds: the lock is a convenience, and the
+## host ignoring a stray RPC is the thing that actually enforces it.
+## ---------------------------------------------------------------------------
+func _is_lobby_leader() -> bool:
+	if not _is_networked_lobby():
+		return true # local play: there is nobody to negotiate with
+	return NetworkManager.is_lobby_leader()
+
+## Locked or unlocked to match who currently leads. Called on entry and again whenever
+## the server announces a change, since a leader can be made mid-lobby by somebody else
+## leaving — a player staring at a locked map picker that has just become theirs would
+## have no way to know it.
+func _refresh_leader_controls() -> void:
+	if _is_lobby_leader():
+		_unlock_leader_controls()
+	else:
+		_lock_host_only_controls()
+
+func _unlock_leader_controls() -> void:
+	for button in [map_prev_button, map_next_button, mode_prev_button, mode_next_button,
+			difficulty_prev_button, difficulty_next_button]:
+		button.disabled = false
+		button.modulate = Color.WHITE
+
+func _on_lobby_leader_changed(peer_id: int) -> void:
+	_refresh_leader_controls()
+	if peer_id == multiplayer.get_unique_id() and not _is_lobby_host():
+		# Worth saying out loud: this player did nothing to earn it, the previous
+		# leader left. Without a line here the picker silently turns clickable.
+		status_label.text = "You are now the lobby leader — you pick the map and the mode."
 
 ## ⚠️ EVERY OUTGOING RPC FROM A BUTTON PRESS HAS TO GO THROUGH THIS FIRST.
 ## A client sits in this screen for the whole handshake — `join_game()` returns
@@ -805,6 +854,39 @@ func _apply_difficulty() -> void:
 func _broadcast_config() -> void:
 	if _is_lobby_host():
 		_rpc_sync_config.rpc(GameLaunch.selected_map, SettingsManager.ai_difficulty)
+	elif _is_lobby_leader() and _can_rpc():
+		# A leader on a dedicated server owns the CHOICE but not the BROADCAST — it
+		# asks, and the server decides. See `_is_lobby_leader`'s header.
+		_rpc_request_config.rpc_id(1, GameLaunch.selected_map, SettingsManager.ai_difficulty)
+
+## Leader -> host: "make the match this." Refereed rather than applied, exactly like
+## `_rpc_request_seat`: the server is the only writer of the lobby's config, so a peer
+## that is not the leader — or a stale packet from one that just stopped being it —
+## changes nothing.
+##
+## ⚠️ THE SENDER IS CHECKED AGAINST `lobby_leader_id`, NOT TRUSTED. `any_peer` means
+## any peer can send this, which is exactly why the host must not act on it without
+## asking who it came from.
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_request_config(map_id: StringName, difficulty: int) -> void:
+	if not _is_lobby_host():
+		return
+	if multiplayer.get_remote_sender_id() != NetworkManager.lobby_leader_id:
+		return
+	# Range-checked host-side for the same reason every other client-sent value here
+	# is: the sender proposes, the host decides. An unknown map id would otherwise
+	# reach `GameLaunch.selected_map` and be broadcast to everyone.
+	if not _is_known_map(map_id):
+		return
+	GameLaunch.selected_map = map_id
+	SettingsManager.set_ai_difficulty(clampi(difficulty, 0, DIFFICULTIES.size() - 1), false)
+	_rpc_sync_config.rpc(GameLaunch.selected_map, SettingsManager.ai_difficulty)
+
+static func _is_known_map(map_id: StringName) -> bool:
+	for entry in GameLaunch.MAPS:
+		if entry["id"] == map_id:
+			return true
+	return false
 
 ## Opens the CHARACTER panel in place rather than changing scene — see
 ## `character_select.gd`'s own note for why a scene change would be wrong here
