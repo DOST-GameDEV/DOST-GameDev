@@ -1823,20 +1823,52 @@ func _reset_slippers(roster: Array[CharacterBase], defender_slot: int) -> void:
 			slipper.host_reset_for_new_round()
 	if NetworkManager.is_networked() and not NetworkManager.is_host():
 		return
-	var next := 0
-	for character in roster:
-		if character.player_slot == defender_slot:
-			continue
-		if next >= slippers.size():
-			break
-		var slipper := slippers[next]
-		next += 1
+	# ⚠️⚠️ OWNERSHIP IS ASSIGNED HERE, EXPLICITLY, AND NO LONGER RIDES ON THE GRAB
+	# BELOW SUCCEEDING. `Slipper.owner_slot` was only ever written by
+	# `_apply_grabbed()`/`_apply_thrown()`, so it depended entirely on this
+	# courtesy pickup landing — and `host_grab()` can silently refuse, because
+	# `can_be_grabbed_by()` requires `can_act()`, which is
+	# `round_active and state == NORMAL`, and a character mid-reset is neither.
+	# Measured: one of three slippers left LOOSE at its own player's feet with
+	# `owner_slot = -1`. See `slipper.gd::can_be_grabbed_by()` for what reads the
+	# field and how each of them fails on -1.
+	#
+	# ⚠️ SEATS IN NUMERIC ORDER, NOT `roster` ORDER. `roster` is built per session
+	# and its order is not a promise; the slipper-to-seat mapping has to be the
+	# same on every peer and the same every round, or the foot arrow points at
+	# somebody else's slipper on one machine.
+	var attackers: Array[int] = []
+	for slot in range(NetworkManagerScript.MAX_PLAYERS):
+		if slot != defender_slot:
+			attackers.append(slot)
+	for index in range(slippers.size()):
+		var slipper := slippers[index]
 		if not is_instance_valid(slipper):
+			continue
+		# A slipper with no attacker to own it (a short-handed match) is explicitly
+		# disowned rather than left holding last round's slot — a stale owner is
+		# worse than none, because the gate would refuse everybody.
+		slipper.host_assign_owner(attackers[index] if index < attackers.size() else -1)
+	for index in range(slippers.size()):
+		if index >= attackers.size():
+			break
+		var slipper := slippers[index]
+		if not is_instance_valid(slipper):
+			continue
+		var character := _character_in_seat(roster, attackers[index])
+		if character == null:
 			continue
 		# Park it on the attacker before handing it over, so the pickup radius test
 		# inside `host_grab()` cannot miss by one frame of interpolation.
 		slipper.global_position = character.global_position
 		slipper.host_grab(character)
+
+
+func _character_in_seat(roster: Array[CharacterBase], slot: int) -> CharacterBase:
+	for character in roster:
+		if is_instance_valid(character) and character.player_slot == slot:
+			return character
+	return null
 
 func _on_round_intermission_started(_next_round_number: int, next_defender_slot: int) -> void:
 	_reset_world(next_defender_slot)
