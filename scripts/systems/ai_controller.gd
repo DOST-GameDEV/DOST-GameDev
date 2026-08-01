@@ -759,28 +759,24 @@ func _plan_defender(delta: float) -> Plan:
 	if lata == null:
 		return Plan.IDLE
 	if not lata.is_upright:
-		# ⚠️⚠️ A TAG THAT IS ALREADY IN RANGE OUTRANKS THE RESET, AND WITHOUT THIS
-		# THE TAYA NEVER TAGS AT ALL.
+		# ⚠️⚠️ RESET RETURNS UNCONDITIONALLY HERE, AND HUNT DOES NOT PREEMPT IT.
+		# THAT IS DELIBERATE. DO NOT "FIX" IT.
 		#
-		# Reported by a teammate playing the build: *"AI still doesnt TAG"*.
-		# Measured, two rounds at NORMAL: **1 tag**, while attackers spent 20-26 s
-		# EACH standing inside the box holding a slipper — 67 s of combined,
-		# uncontested vulnerability, and TAG worth 4.9% of every point against the
-		# 24.5% in §6.8's own table.
+		# A preempt was written and REVERTED in `c133bf2`: while the lata is down
+		# there is no legal tag to preempt FOR. `host_resolve_punch()` and
+		# `_sweep_lunge_tag()` both open with *"a tag requires the can standing"*
+		# and return early, so letting HUNT win here only sends the taya to swing
+		# at somebody untouchable and burn its punch cooldown doing it. The gate is
+		# also carried in `_tag_target()`, which returns null while the lata is
+		# over — so this branch and that one agree by construction.
 		#
-		# Nothing was wrong with `_tag_target()` or with the lunge. `RESET` simply
-		# sits above `HUNT` in this function and returns unconditionally, so the
-		# taya hunts only while the lata is UP — and the lata now spends most of the
-		# round down, because the offence got fixed (LATA DOWN is 60%+ of all points
-		# where it used to be 0%). **The better the attackers got, the less the taya
-		# was allowed to tag them.** That is a plan-ordering bug that only became
-		# visible once something else was working.
-		#
-		# ⚠️ RANGE-LIMITED, DELIBERATELY. The reset is the taya's job and abandoning
-		# it to chase somebody across the court would be the opposite mistake. This
-		# only preempts for a target already inside the dash — a tag is instant and
-		# pays 100, the channel is 1.5 s and can be re-started, so taking the free
-		# one first is what a person does. Out of range, the reset still wins.
+		# ⚠️ THE TAG WINDOW IS SMALL AND THAT IS A BALANCE QUESTION, NOT A BUG HERE.
+		# LATA DOWN went from 0% of all points to 60-70% as the offence got fixed,
+		# so the taya's only scoring verb is legal for the minority of the round —
+		# measured at 1-2 tags a match against §6.8's table of 24.5%. **The better
+		# the attackers got, the less the taya was allowed to tag them.** Whether
+		# the tag should survive a downed lata at all is filed as 2.30 for
+		# `build fair` to weigh. It is not this function's call to make.
 		return Plan.RESET
 	if _intercept > 0.0 and _intercept_point(lata) != Vector3.INF:
 		if _reacted("incoming", true, delta):
