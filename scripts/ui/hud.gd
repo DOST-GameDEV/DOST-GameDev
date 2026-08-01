@@ -307,11 +307,42 @@ func _ensure_status_root(right_side: bool) -> VBoxContainer:
 	else:
 		root.position = Vector2(STATUS_MARGIN.x, STATUS_MARGIN.y)
 	add_child(root)
+	if not right_side:
+		# ⚠️⚠️ THE LEFT STACK SAT ON TOP OF THE SCOREBOARD. Reported 2026-08-02 with a
+		# screenshot of `STUNNED 0.2s` and its red bar drawn straight through the P2
+		# and P4 score rows: *"put you are stunned somewhere else"*.
+		#
+		# Both are anchored TOP_LEFT — the board at (16, 28) and this at a hardcoded
+		# (38, 150) — and 150 px is simply inside the board, which is four score rows
+		# plus a title and grows with the font. The constant was written when the
+		# stack was centred under the timer and was never re-checked after Handoff A
+		# split it into two corners.
+		#
+		# ⚠️ DERIVED FROM THE BOARD'S REAL HEIGHT, NOT NUDGED TO A BIGGER NUMBER. A
+		# second literal would be wrong again the next time a row is added, the font
+		# grows, or a name wraps — so it asks the panel where it actually ends.
+		_follow_scoreboard(root)
+		if scoreboard_panel != null:
+			scoreboard_panel.resized.connect(_follow_scoreboard.bind(root))
 	if right_side:
 		_status_root_right = root
 	else:
 		_status_root_left = root
 	return root
+
+## Park the left status stack under the scoreboard, whatever height that board is.
+## `STATUS_MARGIN.y` stays the floor, so a board that is somehow shorter than the
+## old literal cannot pull the stack UP into the top corner.
+const STATUS_UNDER_BOARD_GAP: float = 18.0
+
+func _follow_scoreboard(root: VBoxContainer) -> void:
+	if root == null or not is_instance_valid(root):
+		return
+	var top := STATUS_MARGIN.y
+	if scoreboard_panel != null and is_instance_valid(scoreboard_panel):
+		top = maxf(top, scoreboard_panel.position.y + scoreboard_panel.size.y \
+			+ STATUS_UNDER_BOARD_GAP)
+	root.position = Vector2(STATUS_MARGIN.x, top)
 
 func _build_status_row() -> Control:
 	var row := VBoxContainer.new()
@@ -430,11 +461,26 @@ func _ensure_vulnerable_label() -> Label:
 	label.add_theme_color_override("font_color", UiTheme.OFFENSE)
 	label.add_theme_color_override("font_outline_color", UiTheme.INK)
 	label.add_theme_constant_override("outline_size", TEXT_OUTLINE)
-	# Dead centre, just under the crosshair — where the eye already is.
-	label.set_anchors_preset(Control.PRESET_CENTER)
+	# ⚠️⚠️ MOVED OFF DEAD CENTRE 2026-08-02, ON A PLAYTEST REPORT. 🧑, with a
+	# first-person screenshot of the line sitting across the middle of the frame:
+	# *"You are vulnerable not in middle"*.
+	#
+	# The original instruction was *"directly below the crosshair"* and that is where
+	# it went, 34 px under centre. In first person the thing you are looking at while
+	# this warning is live is the slipper you are bending down to pick up, which is
+	# the bottom-middle of the screen — so the one line that means "you are about to
+	# lose 5 seconds" was drawn over the exact object it is about. It is bottom-centre
+	# now: still on the centre line the eye tracks, out of the sightline entirely.
+	#
+	# ⚠️ ABOVE `ReadyPrompt`'S BAND AND INSIDE THE 64 px BOTTOM SAFE BAND. The prompt
+	# occupies -158..-118 and is hidden during a live round (`show_ready_prompt`), and
+	# `YouCard.tscn`'s header records why nothing bottom-anchored may sit closer than
+	# 64 px to the frame edge. -104..-64 clears both.
+	label.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	label.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	label.position = Vector2(-160.0, 34.0)
-	label.custom_minimum_size = Vector2(320.0, 0.0)
+	label.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	label.position = Vector2(-200.0, -104.0)
+	label.custom_minimum_size = Vector2(400.0, 0.0)
 	label.visible = false
 	add_child(label)
 	_vulnerable_label = label

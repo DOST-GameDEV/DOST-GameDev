@@ -797,6 +797,10 @@ func _plan_defender(delta: float) -> Plan:
 ## § ACTING.
 ## ---------------------------------------------------------------------------
 func _act(delta: float) -> void:
+	# Which actions THIS frame's plan wrote. Cleared here so the release sweep at
+	# the bottom can ask "did the plan that just ran touch this button" rather than
+	# inferring it from the plan id — see the note down there for what that cost.
+	_touched.clear()
 	match _plan:
 		Plan.IDLE:
 			_do_idle()
@@ -828,13 +832,40 @@ func _act(delta: float) -> void:
 	# DICTIONARY IS STICKY: it holds whatever was last written, so a plan that
 	# simply stops mentioning `special_ability` leaves the previous plan's charge
 	# held for the rest of the round.
-	if _plan != Plan.WINDUP:
+	#
+	# ⚠️⚠️ THIS TESTED THE PLAN ID AND NOT WHETHER THE BUTTON WAS TOUCHED, AND THAT
+	# COST THE TAYA ITS PUNCH ENTIRELY. Fixed 2026-08-02, reported by 🧑 as *"AI cant
+	# tag human for some reason"*.
+	#
+	# The list read `if _plan != Plan.WINDUP: _press("special_ability", false)`, which
+	# was correct while WINDUP (the attacker's throw charge) was the only thing that
+	# pressed that action. The PUNCH was added on 2026-08-01 as the taya's second tag
+	# verb and presses the SAME action from `_step_lunge_intent()`, under Plan.HUNT —
+	# so every frame went: `_do_hunt()` taps `special_ability` true, and three lines
+	# later this cleanup set it back to false, in the same frame, before
+	# `CharacterBase._step_punch()` ever ran. **The tap could not survive the janitor
+	# that ran after it**, so the punch fired exactly zero times in the game's life.
+	#
+	# Measured before and after with `tools/tag_probe.tscn`, holding one attacker
+	# taggable in front of the taya for 25 game-seconds: `special_ability held 0.0%,
+	# edges 0` on the old code, with the taya in HUNT for 81% of those frames, inside
+	# `PUNCH_RANGE` for 80% and facing the victim for 84%. Every precondition the
+	# punch has was true and the button was never pressed.
+	#
+	# ⚠️ THE FIX IS TO TEST WHAT THE COMMENT ALREADY SAID. `_press()` records into
+	# `_touched` and `_act()` clears it before dispatching, so "buttons this plan did
+	# not touch" is now literally what is asked rather than a plan whitelist that has
+	# to be updated by hand every time a verb gains a second caller. The next verb to
+	# share an action is handled by construction; this one was not.
+	if not _touched.has("special_ability"):
 		_press("special_ability", false)
+	if _plan != Plan.WINDUP:
 		_windup = false
+	if not _touched.has("lunge"):
+		_press("lunge", false)
 	if _plan != Plan.HUNT:
 		_lunge_held = -1.0
-		_press("lunge", false)
-	if not (_plan in [Plan.FETCH, Plan.RESET, Plan.SABOTAGE]):
+	if not _touched.has("grab"):
 		_press("grab", false)
 
 ## --- attacker verbs ------------------------------------------------------
@@ -2033,11 +2064,18 @@ func _release_all() -> void:
 			"grab", "special_ability", "jump", "lunge"]:
 		_press(action, false)
 
+## Actions written during the current `_act()` frame, so the release sweep can tell
+## "the plan chose to hold this" from "the plan forgot about it". An explicit
+## release counts as a touch: the value is what it is, and re-writing false over
+## false is the same state.
+var _touched: Dictionary = {}
+
 func _press(action: String, pressed: bool) -> void:
 	if character == null:
 		return
 	character.ai_set_intent(action, pressed)
 	_pressed[action] = pressed
+	_touched[action] = true
 
 ## Produces a real press EDGE by alternating. `_step_grab()` and `_step_shove()`
 ## both read `input_just_pressed`, which needs a false frame before every true
