@@ -1046,6 +1046,37 @@ func _build_hand_attachment() -> Node3D:
 		point.position = HAND_CARRY_OFFSET / PERSON_SCALE
 		attachment.add_child(point)
 		return point
+
+	# ⚠️⚠️ NAMED BONES ARE NOT GUARANTEED ACROSS TWELVE RIGS, AND RETURNING NULL
+	# PUTS THE SLIPPER IN SOMEBODY'S HEAD. `slipper.gd::_step_carried()` falls back
+	# to `carrier.global_position + UP * 1.0` when there is no attachment, and a
+	# CharacterBase's origin is the middle of its 1.6-unit capsule — so one metre
+	# up lands just about exactly inside the skull. 🧑 2026-08-01: *"the slippers
+	# are inside the head of the attackers when they charge it"*.
+	#
+	# The roster carries twelve CC0 rigs and `HAND_BONE_CANDIDATES` names only the
+	# two bones the FIRST ones happened to use. Rather than enumerate every rig's
+	# naming, fall back to any bone whose name looks like an arm or a hand — a
+	# skeleton that has neither is not a humanoid and there is nothing sensible to
+	# do with it anyway.
+	for index in range(skeleton.get_bone_count()):
+		var found := skeleton.get_bone_name(index).to_lower()
+		if not (found.contains("hand") or found.contains("arm")
+				or found.contains("wrist")):
+			continue
+		var fallback := BoneAttachment3D.new()
+		fallback.name = "HandAttachment"
+		fallback.bone_name = skeleton.get_bone_name(index)
+		skeleton.add_child(fallback)
+		var fallback_point := Node3D.new()
+		fallback_point.name = "HandPoint"
+		fallback_point.position = HAND_CARRY_OFFSET / PERSON_SCALE
+		fallback.add_child(fallback_point)
+		push_warning("CharacterVisual: no %s bone; carrying from '%s' instead"
+			% [str(HAND_BONE_CANDIDATES), fallback.bone_name])
+		return fallback_point
+	push_warning("CharacterVisual: this rig has no arm or hand bone at all; "
+		+ "a carried slipper will ride the body instead of a hand")
 	return null
 
 ## Drops the model so its lowest point rests on the bottom of CharacterBase's

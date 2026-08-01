@@ -1860,3 +1860,68 @@ run twice leaves `git status` clean (its determinism contract); both map builder
 all eight props; a live match capture; and the two probes above.
 **Not verified:** anything on two real peers, and frame cost on the recording machine
 with the 65k-triangle SIKE in play.
+
+
+### 2026-08-01 · 🎨 `build model` · §5 · branch `HARRYDAKS` (follow-up) — six bugs from play
+
+**All six were reported from real play, all six were real, and the two that
+mattered most came from the same wrong assumption.**
+
+**1 · THE CHARACTER SCREEN LIED ABOUT EVERY PROP.** `character_preview.gd`
+instantiated the SHARED `CanVisual`/`TsinelasVisual` scene and only recoloured it,
+which was right while a skin WAS only a colour. Since a skin became a MODEL, every
+lata previewed as the same can and every tsinelas as the same slipper — and because
+the slippers are untextured, the white tint painted them featureless white. A
+control that shows you the wrong object is the second half of THE REACHABILITY
+RULE. It swaps the mesh now, and treats white as "do not tint".
+
+**2 · THE FLOOR IS AT y = 0.1 AND EVERY PROP ASSUMED 0.** Both maps sit their road
+and paving there while `Main.tscn` places the lata and the slippers at 0 — so the
+can stood 100 mm inside the road (🧑: *"can is in the floor"*) and landed slippers
+sank with it. Both props find the ground now instead of assuming it.
+
+**3 · ...AND FINDING IT NAIVELY BROKE THE ENTIRE MATCH.** The first fix raycast
+down from above the slipper every frame. A `CharacterBase` is a `CharacterBody3D`
+and a slipper leaves the hand INSIDE its thrower's own capsule, so the ray
+reported "the ground is at head height" and every throw landed on the frame it was
+released. **Zero flights in a 50-second match, zero knockdowns, and three bots that
+looked frozen mid-wind-up.** Nothing about that symptom points at a raycast. The
+same query rebuilt per frame also hung the game outright. It is one cached sample
+now, taken once, with the players excluded.
+
+**4 · THE SLIPPER-IN-HAND BUG IS FIXED PROPERLY, BY RE-PARENTING.** 🧑: *"its a
+reoccuring problem that keeps coming back"* — and it kept coming back because every
+attempt COPIED the hand's transform once a frame. A copy has three independent ways
+to be wrong and all three were observed: read before the animation moves the bone
+(98 mm of lag with the carrier standing perfectly still); a fallback for a rig with
+no hand bone that put the slipper inside the carrier's SKULL (🧑: *"the slippers are
+inside the head of the attackers"*); and a schedule that is wrong on every frame it
+misses. The slipper is now a CHILD of the hand attachment, so it inherits the
+transform through the scene tree — exact on every frame, on every peer, at any
+framerate. **Measured: 0.0000 m over 1 800 samples with the carrier still.**
+
+⚠️ Re-parenting has one trap and it bit immediately: the hand hangs off the
+`Skeleton3D`, which carries the rig's 2.38 `PERSON_SCALE`, so a held slipper came
+out 2.38x size (🧑: *"the slippers are massive HAAHAH"*). The inherited scale is
+divided back out, read off the parent's real basis rather than hard-coded to 2.38.
+
+**5 · TWELVE RIGS, TWO NAMED BONES.** `HAND_BONE_CANDIDATES` lists only
+`arm-right`/`arm-left`; a rig with neither returned null and triggered the skull
+fallback. It falls back to any arm/hand/wrist bone now before giving up, and the
+last-resort position is chest height and forward rather than dead centre of the head.
+
+**6 · THE BOTS COULD NOT THROW FROM A DIAGONAL, EVER.** `_safe_spot()` sent them to
+a point on a CIRCLE while the Defender's Box is a SQUARE, and a circle of radius r
+sits inside a square of half-width r everywhere except four points. On a diagonal
+the bot's `max(|x|,|z|)` came out at ring / sqrt(2) — 5.30 against a 6.5
+requirement — so it walked to its "safe spot", was refused the throw by the gate,
+and walked there again forever. Latent before this session; widening the box only
+changed which bearings hit it. It projects onto the square now.
+
+**Verified:** `tools/models/skin_probe.gd` (new) walks every CANS and SLIPPERS
+entry and checks that the mesh loads, is the right size, is not still a PAIR, and
+that its `map_Kd` texture exists — **all eight pass**. `prop_probe.tscn` over a live
+match: floor +0.1000 PASS, slipper-in-hand 0.0000 PASS, **27 flights** PASS.
+
+⚠️ **STILL FAILING: 0 KNOCKDOWNS.** The bots now throw and miss, which is aim, and
+aim is 🤖 `build ai`'s. Left there deliberately — the human asked for the AI last.

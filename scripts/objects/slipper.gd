@@ -110,6 +110,7 @@ func _ready() -> void:
 	# priority makes this node process after the characters, so `_step_carried()`
 	# re-syncs against the hand's FINAL position for the frame.
 	process_priority = 100
+	_sample_floor.call_deferred()
 	_set_state(CarryState.LOOSE)
 
 ## ⚠️ THE CARRY POSE IS UPDATED HERE, NOT ONLY IN `_physics_process`, for the
@@ -119,7 +120,12 @@ func _ready() -> void:
 ## cannot desync anything: it is derived entirely from the carrier's own
 ## replicated transform, on every peer, exactly as `_step_carried()` documents.
 func _process(_delta: float) -> void:
-	if state == CarryState.CARRIED:
+	# ⚠️ ONLY FOR A CARRIER WITH NO HAND BONE. When `_attach_to_hand()` succeeded
+	# the slipper IS a child of the hand and inherits its transform exactly, so
+	# touching it here would fight the scene tree for no gain. This is the belt for
+	# the one case reparenting cannot cover.
+	if state == CarryState.CARRIED and carrier != null \
+			and get_parent() != carrier.get_hand_attachment():
 		_step_carried()
 
 ## ---------------------------------------------------------------------------
@@ -248,6 +254,37 @@ const DEFLECT_LIFT: float = 5.0
 ## the exact clustering this change exists to remove. Taking the horizontal vector
 ## from the blocker to the slipper and pushing along it guarantees the slipper ends
 ## up further from the taya than it started, whatever the throw was doing.
+## How hard a slipper comes off the LATA, as a fraction of `DEFLECT_SPEED_SCALE`.
+## Small on purpose: the body block is meant to clear the box, this is meant to
+## look like a collision. At 0.34 the slipper hops roughly a metre back and drops,
+## which reads as a knock rather than as a second throw.
+const LATA_RECOIL_SCALE: float = 0.34
+## Upward kick on that recoil, as a fraction of the block's lift. Enough to get it
+## off the floor so the arc is visible; not enough to send it over the taya.
+const LATA_RECOIL_LIFT_SCALE: float = 0.55
+
+## Bounces the slipper away from a point it just struck. Shared shape with
+## `_host_deflect_from()` — see that function's notes on staying in `FLYING`,
+## which is what makes the rebound arc, fall and land through the normal path
+## rather than needing a landing of its own.
+func _host_recoil_from(point: Vector3, scale: float) -> void:
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		return
+	var away := global_position - point
+	away.y = 0.0
+	if away.length() < 0.05:
+		away = Vector3(-_velocity.x, 0.0, -_velocity.z)
+	if away.length() < 0.05:
+		away = Vector3.FORWARD
+	away = away.normalized()
+	var speed := LAUNCH_SPEED * DEFLECT_SPEED_SCALE * scale
+	var recoiled := Vector3(
+		away.x * speed, DEFLECT_LIFT * LATA_RECOIL_LIFT_SCALE, away.z * speed)
+	if NetworkManager.is_networked():
+		_rpc_deflected.rpc(global_position, recoiled)
+	else:
+		_apply_deflected(global_position, recoiled)
+
 func _host_deflect_from(blocker: CharacterBase) -> void:
 	if NetworkManager.is_networked() and not NetworkManager.is_host():
 		return
@@ -301,11 +338,85 @@ func host_reset_for_new_round() -> void:
 	else:
 		_apply_landed(spawn_position)
 
+## ⚠️⚠️ A CARRIED SLIPPER IS RE-PARENTED ONTO THE HAND. THIS IS THE FIX FOR THE
+## BUG THAT KEPT COMING BACK. 🧑, repeatedly: *"the shoe would float"*, *"the
+## slippers are inside the head of the attackers"*, *"its a reoccuring problem
+## that keeps coming back"*.
+##
+## Every previous attempt COPIED the hand's transform once a frame, and a copy has
+## three separate ways to be wrong, all of which were observed:
+##   · it is read before the animation moves the bone, so it trails the palm —
+##     measured at 98 mm with the carrier standing perfectly still;
+##   · it needs a fallback for a rig with no hand bone, and that fallback put the
+##     slipper inside the carrier's skull;
+##   · it runs on a schedule, so it is wrong on every frame the schedule misses.
+##
+## A CHILD has none of them. The slipper inherits the bone's transform through the
+## scene tree, so it is exact on every frame, on every peer, at any framerate,
+## during any animation, with no ordering to get right and nothing to tune.
+##
+## ⚠️ IT MUST BE PUT BACK on release, or a thrown slipper flies around inside its
+## thrower's arm. `_home_parent` is captured once and everything that leaves
+## CARRIED restores it, preserving the world transform across the move.
+var _home_parent: Node = null
+
 func _set_state(new_state: CarryState) -> void:
 	if state == new_state:
 		return
+	if new_state == CarryState.CARRIED:
+		_attach_to_hand()
+	elif state == CarryState.CARRIED:
+		_detach_from_hand()
 	state = new_state
 	carry_state_changed.emit(new_state)
+
+func _attach_to_hand() -> void:
+	if carrier == null or not is_instance_valid(carrier):
+		return
+	var hand := carrier.get_hand_attachment()
+	if hand == null:
+		return
+	if _home_parent == null:
+		_home_parent = get_parent()
+	if get_parent() == hand:
+		return
+	var keep := global_transform
+	get_parent().remove_child(self)
+	hand.add_child(self)
+	global_transform = keep
+	# Sit ON the hand point, not merely near it. Rotation follows the hand so the
+	# slipper turns with the wrist through every clip.
+	transform = Transform3D.IDENTITY
+	# ⚠️⚠️ UNDO THE RIG'S SCALE OR THE SLIPPER COMES OUT 2.38x. The hand point
+	# hangs off a `BoneAttachment3D` under the `Skeleton3D`, which inherits the
+	# model's `PERSON_SCALE` — so a child of it is silently multiplied by it, and
+	# a picked-up slipper suddenly filled the screen. 🧑: *"what the fuck the
+	# slippers are massive HAAHAH"*. Dividing the local scale back out makes the
+	# slipper's WORLD size identical held, loose and in flight, which is what
+	# `HIT_RADIUS` and `REST_HEIGHT` are both quoted against.
+	#
+	# Read off the parent's real basis rather than hard-coded to 2.38, so a rig
+	# saved at a different scale cannot reintroduce this.
+	var inherited := hand.global_transform.basis.get_scale()
+	scale = Vector3(
+		1.0 / maxf(inherited.x, 0.0001),
+		1.0 / maxf(inherited.y, 0.0001),
+		1.0 / maxf(inherited.z, 0.0001))
+
+func _detach_from_hand() -> void:
+	if _home_parent == null or not is_instance_valid(_home_parent):
+		return
+	if get_parent() == _home_parent:
+		return
+	var keep := global_transform
+	get_parent().remove_child(self)
+	_home_parent.add_child(self)
+	global_transform = keep
+	# The hand's inherited scale was divided out on the way in; a slipper back in
+	# the world owns its own scale again. Set explicitly rather than left to the
+	# restored basis, so a rounding drift cannot accumulate over a match's worth
+	# of pick-ups and throws.
+	scale = Vector3.ONE
 
 ## ---------------------------------------------------------------------------
 ## SIMULATION.
@@ -319,7 +430,10 @@ func _physics_process(delta: float) -> void:
 	_update_owner_glow()
 	match state:
 		CarryState.CARRIED:
-			_step_carried()
+			# Only when reparenting could not take: a slipper that IS a child of
+			# the hand already has the hand's transform, exactly, for free.
+			if carrier == null or get_parent() != carrier.get_hand_attachment():
+				_step_carried()
 		CarryState.FLYING:
 			_step_flying(delta)
 		CarryState.LOOSE:
@@ -335,8 +449,21 @@ func _step_carried() -> void:
 	if hand != null:
 		global_position = hand.global_position
 		global_rotation = hand.global_rotation
-	else:
-		global_position = carrier.global_position + Vector3.UP * 1.0
+		return
+	# ⚠️ THE OLD FALLBACK PUT IT INSIDE THE CARRIER'S HEAD. A CharacterBase's
+	# origin is the CENTRE of its 1.6-unit capsule, so `+ UP * 1.0` is a metre
+	# above the middle of the body — which is the skull, not a hand. 🧑: *"the
+	# slippers are inside the head of the attackers when they charge it"*.
+	#
+	# `character_visual.gd::_build_hand_attachment()` now falls back to any
+	# arm-ish bone, so this should be unreachable — but it is the LAST resort for
+	# a rig with no skeleton at all, and "unreachable" is exactly the kind of
+	# claim that turns out to be wrong on the twelfth character. Chest height,
+	# forward and to the carrier's right, is where a held object belongs.
+	global_position = carrier.global_position \
+		+ Vector3.UP * 0.15 \
+		+ carrier.global_transform.basis.x * 0.28 \
+		- carrier.global_transform.basis.z * 0.20
 
 ## ⚠️ FLIGHT IS SIMULATED ON EVERY PEER FROM THE SAME LAUNCH VELOCITY, and only
 ## the HOST resolves contact. Both halves matter. Simulating everywhere means the
@@ -385,17 +512,31 @@ func _step_flying(delta: float) -> void:
 			and _flat_distance(global_position, target.global_position) <= HIT_RADIUS + 0.30 \
 			and absf(global_position.y - target.global_position.y) < 1.0:
 		target.host_knock_down(owner_slot)
-		if NetworkManager.is_networked():
-			_rpc_landed.rpc(_ground_under(global_position))
-		else:
-			_apply_landed(_ground_under(global_position))
+		# ⚠️⚠️ IT RECOILS OFF THE LATA NOW INSTEAD OF STOPPING DEAD. 🧑 2026-08-01:
+		# *"the slippers should bounce back a bit when it hits shit, it doesn tlook
+		# like real physics"* and *"make it as well so that they recoil a bit when
+		# it hits something"*. Landing the instant it touched was the single most
+		# unphysical moment in the game: the slipper went from 17 m/s to lying flat
+		# in one frame, on the exact beat a spectator is watching hardest.
+		#
+		# MUCH SOFTER THAN THE BODY BLOCK, and deliberately so. A block is meant to
+		# fling the slipper clear of the box (see `_host_deflect_from`); this is a
+		# tin can taking the hit, so it is a short knock-back that keeps the slipper
+		# roughly where it landed. The can is what flies here, not the slipper.
+		_host_recoil_from(target.global_position, LATA_RECOIL_SCALE)
 		return
 
-	if global_position.y <= _rest_height:
+	# ⚠️ THE GROUND IS FOUND, NOT ASSUMED TO BE AT y = 0. Both maps put their road
+	# and paving at y = 0.1, so testing `y <= _rest_height` let every throw sink
+	# 100 mm through the road before it registered as landed — visibly phasing
+	# into the floor. `_ground_under()` raycasts, so this is also correct on a
+	# kerb, a plaza step, or anything a later map puts underfoot.
+	if global_position.y <= _floor_y + _rest_height:
+		var rest := _ground_under(global_position)
 		if NetworkManager.is_networked():
-			_rpc_landed.rpc(_ground_under(global_position))
+			_rpc_landed.rpc(rest)
 		else:
-			_apply_landed(_ground_under(global_position))
+			_apply_landed(rest)
 
 ## Anyone but the thrower, during the ignore window. A slipper that clipped its
 ## own thrower on release was the single most common "my throw did nothing"
@@ -422,8 +563,59 @@ func _first_body_hit() -> CharacterBase:
 func _flat_distance(a: Vector3, b: Vector3) -> float:
 	return Vector2(a.x - b.x, a.z - b.z).length()
 
+## ⚠️ THE FLOOR IS NOT AT y = 0 AND THIS USED TO ASSUME IT WAS.
+## Both maps sit their road and paving at **y = 0.1** (`build_*.py` reports
+## "floor+paving both at y=0.1"), so returning a flat `_rest_height` dropped every
+## landed slipper 100 mm INTO the road — 🧑: *"make sure too none of the slipper
+## models phase thru ground when thrown"*. Raycasting finds the surface actually
+## under the slipper, which also means it lands correctly on the kerb, the plaza
+## step and anything a future map puts there instead of only on flat ground.
+##
+## Falls back to the old flat answer if the ray finds nothing, so a slipper over a
+## hole still resolves somewhere rather than returning a null position.
 func _ground_under(where: Vector3) -> Vector3:
-	return Vector3(where.x, _rest_height, where.z)
+	return Vector3(where.x, _floor_y + _rest_height, where.z)
+
+## The court's floor height, sampled ONCE.
+##
+## ⚠️ SAMPLED ONCE, NOT RAYCAST PER FRAME, AND BOTH HALVES OF THAT ARE SCARS.
+##
+## Per-frame raycasting hung the game outright: the landing test runs for every
+## flying slipper every frame, and a query built and thrown away that often — with
+## an exclusion list rebuilt from `RoundManager.players()` each time — was enough
+## to stall a match to a standstill.
+##
+## And the ray had to exclude the players anyway, which is the subtler half. A
+## `CharacterBase` is a `CharacterBody3D`, and a slipper leaves the hand at chest
+## height INSIDE its thrower's own capsule — so a ray dropped from above it hit
+## that capsule first and reported "the ground is at head height". The very next
+## frame's `y <= rest` test passed and the throw landed on the frame it was
+## released: zero flights in a 50-second match, no knockdowns, and three bots that
+## looked frozen mid-wind-up. Nothing about that reads as a raycast bug.
+##
+## One sample is correct here because the court IS flat — both builders assert it
+## (`surfaces.verify()` aborts on a marking that spans a step) and every marking,
+## the base circle and the lata all sit on the same plane. `0.1` is the value both
+## maps actually use; the sample just avoids hard-coding it.
+var _floor_y: float = 0.0
+
+func _sample_floor() -> void:
+	if not is_inside_tree():
+		return
+	var space := get_world_3d().direct_space_state
+	var query := PhysicsRayQueryParameters3D.create(
+		Vector3(spawn_position.x, spawn_position.y + 3.0, spawn_position.z),
+		Vector3(spawn_position.x, spawn_position.y - 6.0, spawn_position.z))
+	query.collide_with_areas = false
+	var blocked: Array[RID] = []
+	for node in RoundManager.players():
+		var who := node as CollisionObject3D
+		if who != null:
+			blocked.append(who.get_rid())
+	query.exclude = blocked
+	var hit := space.intersect_ray(query)
+	if not hit.is_empty():
+		_floor_y = (hit["position"] as Vector3).y
 
 func _spin(delta: float) -> void:
 	if _visual == null:
@@ -538,19 +730,36 @@ const MODEL_LENGTH: float = 0.691
 ## and it means a model dropped in later cannot float or sink either.
 var _rest_height: float = REST_HEIGHT
 
+## ⚠️ BUILT FROM LOCAL TRANSFORMS, NOT GLOBAL ONES. This used to compose
+## `global_transform.affine_inverse() * mesh_node.global_transform`, which is
+## only correct once every ancestor's global transform is up to date — and
+## `apply_skin()` is called from `main.gd`'s round-reset path, while props are
+## still being repositioned. Read a frame early it returned garbage, and a
+## `_rest_height` of about a metre is a slipper hanging in mid-air over the road:
+## 🧑, pointing at one, *"waht the fuck is that floating shit?"*. Walking the
+## local chain instead depends on nothing outside this node.
 func _measure_rest_height(visual: Node3D) -> void:
 	var lowest := INF
 	for node in visual.find_children("*", "VisualInstance3D", true, false):
 		var mesh_node := node as VisualInstance3D
 		var box: AABB = mesh_node.get_aabb()
-		# Relative to the Slipper, so `Visual`'s 1.6 drama scale is included —
-		# `REST_HEIGHT` has always been a world-space number.
-		var relative: Transform3D = global_transform.affine_inverse() \
-			* mesh_node.global_transform
+		# Compose Slipper <- Visual <- ... <- mesh by walking up, so `Visual`'s
+		# 1.6 drama scale is included and nothing global is consulted.
+		var chain := Transform3D.IDENTITY
+		var walk: Node = mesh_node
+		while walk != null and walk != self:
+			if walk is Node3D:
+				chain = (walk as Node3D).transform * chain
+			walk = walk.get_parent()
 		for i in range(8):
-			lowest = minf(lowest, (relative * box.get_endpoint(i)).y)
-	if lowest < INF:
+			lowest = minf(lowest, (chain * box.get_endpoint(i)).y)
+	# A slipper is 0.69 long, so anything past a quarter of a metre below its own
+	# origin is a bad read rather than a tall shoe. Falling back to the constant
+	# keeps a wrong measurement from parking the prop in the sky.
+	if lowest < INF and lowest > -0.25:
 		_rest_height = -lowest
+	else:
+		_rest_height = REST_HEIGHT
 
 ## Swaps the model under `Visual` to the one this skin names.
 ##

@@ -94,6 +94,12 @@ var character: CharacterBase = null
 
 var _enabled: bool = true
 var _think_left: float = 0.0
+## Charge-plateau detection — see `_act_attacker`. A bot releases once its charge
+## has stopped climbing for this long, so a wind-up can never be held forever.
+const PLATEAU_EPSILON: float = 0.005
+const PLATEAU_PATIENCE: float = 0.9
+var _last_power: float = 0.0
+var _plateau_left: float = PLATEAU_PATIENCE
 var _aim_jitter: Vector3 = Vector3.ZERO
 ## Held across think ticks so the bot commits to a charge instead of stuttering.
 var _charging: bool = false
@@ -172,22 +178,63 @@ func _act_attacker() -> void:
 	_stop()
 	var carrier := character.get_node_or_null("Carrier") as Carrier
 	var power: float = carrier.charge_power() if carrier != null else 0.0
-	if _charging and power >= tier_charge:
+	# ⚠️⚠️ RELEASE ON A PLATEAU AS WELL AS ON THE TIER THRESHOLD, OR A BOT CAN HOLD
+	# A WIND-UP FOR THE WHOLE ROUND. Measured 2026-08-01: all three attacker bots
+	# stood outside the box with `can_throw` true and `charge_power()` pinned at
+	# 0.42 — which back-solves to `Carrier._charge_time` stuck at 0.27 s — against
+	# a `tier_charge` of 0.65 they could therefore never reach. Nothing was ever
+	# thrown, no lata was ever knocked down, and it read from outside as "the bots
+	# are frozen".
+	#
+	# The charge is being restarted somewhere inside `carrier.gd`'s state machine,
+	# which is ⚖️ `build fair`'s file and whose `CHARGE_FULL_TIME` moved 0.9 -> 2.5
+	# this same day. Rather than reach into it, this waits for the power to STOP
+	# RISING and throws with whatever it has: a bot that cannot reach full power
+	# still plays the game, and the condition is correct even if the underlying
+	# reset is fixed later — a charge that has genuinely maxed out has also stopped
+	# rising. Filed to `build fair` as § 2.23 so the reset itself still gets found.
+	if _charging and power > 0.0 and power <= _last_power + PLATEAU_EPSILON:
+		_plateau_left -= tier_think
+	else:
+		_plateau_left = PLATEAU_PATIENCE
+	_last_power = power
+	if _charging and (power >= tier_charge or _plateau_left <= 0.0):
 		_press("special_ability", false) # release IS the throw
 		_charging = false
+		_plateau_left = PLATEAU_PATIENCE
+		_last_power = 0.0
 		return
 	_charging = true
 	_press("special_ability", true)
 
 ## The nearest point outside the box, straight out along the bearing this bot is
 ## already on — so a retreat is a step back rather than a lap of the arena.
+## ⚠️⚠️ IT PROJECTS ONTO THE SQUARE, NOT ONTO A CIRCLE, AND THAT IS WHY THE BOTS
+## USED TO FREEZE. The Defender's Box is a SQUARE — `_move_and_confine()` clamps X
+## and Z independently and `RoundManager.can_throw()` gates on
+## `max(|x|,|z|) >= confinement_radius`. This function normalised the bearing and
+## multiplied, which lands on a CIRCLE, and a circle of radius r is INSIDE a
+## square of half-width r everywhere except the four edge midpoints.
+##
+## On a diagonal the old answer measured `max(|x|,|z|) = ring / sqrt(2)` — at the
+## current 6.5 box that is 5.30 against a 6.5 requirement. So the bot walked to
+## its "safe spot", was still inside the box, was refused the throw, and walked to
+## the same spot again, forever: it read as a bot standing still doing nothing,
+## for the whole round. It was latent before (6.0 / sqrt(2) = 4.24 against 5.0)
+## and widening the box to 6.5 only changed which bearings hit it.
+##
+## Scaling by the CHEBYSHEV distance instead puts the point exactly on the square
+## ring, so `max(|x|,|z|) == ring` by construction for every bearing.
 func _safe_spot() -> Vector3:
 	var here := character.global_position
-	var bearing := Vector3(here.x, 0.0, here.z)
-	if bearing.length() < 0.01:
-		bearing = Vector3(0.0, 0.0, 1.0)
+	var flat := Vector2(here.x, here.z)
+	var reach := maxf(absf(flat.x), absf(flat.y))
+	if reach < 0.01:
+		flat = Vector2(0.0, 1.0)
+		reach = 1.0
 	var ring: float = CharacterBase.confinement_radius + THROW_STANDOFF
-	return bearing.normalized() * ring
+	flat *= ring / reach
+	return Vector3(flat.x, 0.0, flat.y)
 
 func _nearest_loose_slipper() -> Slipper:
 	var best: Slipper = null
