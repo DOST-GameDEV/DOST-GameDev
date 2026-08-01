@@ -276,6 +276,34 @@ what specifically. **Tick only your own section.**
   filed to `build fair` as §2.24, since it lives in files this lane does not own.*
 **Filed by 🤖 `build ai` 2026-08-01:**
 
+- [x] 1.17 ⚠️ **The CREDITS screen was missing the one third-party asset that is not
+  CC0, and its AUDIO line had gone stale.** Fixed in `credits_panel.gd`
+  **out of row, on direct human instruction** (🧑: *"add ccby i missed"*, *"add
+  it to credits too in the game lowkey"*). Two changes:
+  * **TYPEFACE row added.** `Darumadrop One` is **SIL Open Font License 1.1**, not
+    CC0. The OFL is satisfied by shipping the licence text — and
+    `assets/ui/fonts/DarumadropOne_LICENSE.txt` does ship — so this was not a
+    breach. But a screen that lists eight CC0 Kenney kits and omits the only
+    licensed asset in the build reads as an oversight, because it was one. The
+    three CC-BY-4.0 models were already correct and untouched.
+  * **AUDIO line corrected.** It claimed *"all music and sound effects are
+    original, synthesised in-house by this project's own tools"*, which stopped
+    being true when the OST landed — 🧑: *"we made the OST tracks btw and will
+    add our own sfx later"*. The tracks are **written by the team**, not emitted
+    by `generate_sfx.py`. Still all ours; no longer all synthesised.
+
+  *Verified: rendered through `MainMenu.tscn`'s own CREDITS button at 1600×900 and
+  looked at — both rows on screen and legible.*
+- [x] 1.18 **`tools/ui/credits_shot.gd` takes an optional scroll offset now**, added
+  out of row for the same instruction. **The courtesy credits had never been
+  photographed**: the panel is a fixed-size `ScrollContainer` so every capture this
+  tool had ever produced stopped at the "EVERYTHING ELSE" heading, and a taller
+  `--resolution` does not help because the panel does not grow with the window. A
+  licence line added below that fold was unverifiable by the only tool that exists
+  for it — which is precisely the *"the control is added to the tree is not the
+  claim"* failure this probe's own header warns about. The argument is **additive**:
+  omit it and the tool behaves exactly as before.
+  `... tools/ui/credits_shot.tscn -- <out_dir> 420`
 - [ ] 1.16 ⚠️ **The BOTS picker on `MatchSetup.tscn` describes a game that no longer
   exists, in measured-sounding numbers that were never true of this build.**
   `match_setup.gd::DIFFICULTIES[].detail` sells EASY as *"it blocks 29% of throws"*,
@@ -1286,6 +1314,43 @@ wrong was a missing `export_path` on the Windows preset. ⚠️ **8.4 deliberate
 open on direct instruction** — 🧑: *"dont do it yet"*, *"odnt fix the .exe yet"*,
 *"we will edit mroe shit pa"*. Both zips in `build/` are from **2026-07-29**, which
 is older than the board said and predates the whole pivot.
+
+**2026-08-01 · 🤖 `build ai` (follow-up)** — a stale-documentation sweep, on direct
+instruction (🧑: *"can you actually scan read me and docs to make sure theres no
+stale shit"*). Sixteen present-tense claims across four documents were describing a
+game that had been deleted, and three of them were instructions somebody would have
+followed:
+
+* **`README.md` told a new contributor to branch from `feature/objects-overhaul-v2`**
+  — a branch of the 2v2 design — and `docs/README.md` said the same. Both now name
+  `HANSDAKS-test`.
+* **`README.md`'s "how to verify visual work" command did not run.**
+  `tools/render_probe.tscn` builds its match out of `team_is_can_side`, `is_can` and
+  `report_round_result()`, all deleted on 2026-07-31, so it cannot boot. Replaced
+  with `harrydaks_shot.tscn` and `ai_probe.tscn`, and the dead one is called dead.
+* **`docs/README.md` named `--check-only` as *"the one cheap real gate"*.** It is
+  not: it does not load autoloads, so it reports a false "Identifier not found" for
+  every autoload reference in a file. The real gate is `--headless --path <abs>
+  --import` grepped for `Parse Error`. This one cost time in this very session.
+
+Also corrected: the controls table was missing **`lunge` (RMB)** entirely — the only
+verb the taya scores with — and `clean_feed` (H); it still described the shove as a
+1.25 s hold and the lata reset as 2.5 s (it is a tap and 1.5 s); "there is still no
+music" against two OST tracks that play; "thirteen binaries are LFS-tracked" against
+**176**; a `scripts/` tree listing `carriable`, `hitbox`, `hurtbox` and
+`scripts/abilities/`, none of which exist; "docs/ four files" beside a five-file
+table; and a camera directive whose second half directed a camera for props that
+stopped being players. `docs/HUMAN.md`'s **"do not record these"** section was the
+worst of them and is inverted now: it told the team to hold back round numbers
+because 📋 `build rules` was about to introduce paired sets — **the opposite
+happened**, paired sets were deleted, and round numbers have been safe to record for
+a day while "round winner" and "match point" describe rules the game does not have.
+
+⚠️ **Out of row, all of it recorded**: `docs/Design.md` is ⚖️ `build fair`'s and two
+lines of its prose said the reset channel was 2.5 s while its own table and the code
+both said 1.5 — prose corrected to the authoritative value, and the decision itself
+left filed as §2.26. `docs/HUMAN.md` is 🔊 `build sound`'s. `scripts/ui/credits_panel.gd`
+and `tools/ui/credits_shot.gd` are 🖥️ `build ui`'s — see §1.17 and §1.18.
 
 ⚠️ **Not verified:** any of this on two real peers (§6.11); that the exported build
 RUNS (§8.3); whether sabotage's measured 0-1 per match is the right frequency

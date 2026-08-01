@@ -46,14 +46,32 @@ const CC_BY_CREDITS: Array[Dictionary] = [
 ## Courtesy credits — none of these require attribution (CC0 / in-house), but
 ## they sit on the same screen as the CC-BY table rather than in a docs file,
 ## per `Art_Direction.md` §4b: "alongside the existing Kenney CC0 ... credits".
+##
+## ⚠️ THE FONT WAS THE ONE THIRD-PARTY ASSET MISSING FROM THIS SCREEN, and it
+## is the only entry here that carries a real obligation. `Darumadrop One` is
+## SIL Open Font License 1.1, not CC0: the OFL is satisfied by shipping the
+## licence text (`assets/ui/fonts/DarumadropOne_LICENSE.txt`, which does ship)
+## rather than by an on-screen line — but a credits screen that lists every
+## CC0 kit and omits the one licensed asset it does not own reads as an
+## oversight, because it was one. Added 2026-08-01 on direct human instruction
+## (🧑: *"add ccby i missed"*, *"add it to credits too in the game lowkey"*).
 const COURTESY_CREDITS: Array[Dictionary] = [
 	{
 		"chip": "ENVIRONMENT & KITS",
 		"body": "Kenney kits (Mini Characters, City, Suburban, Fantasy Town, Mini Forest, Food, Furniture, Car) — CC0, kenney.nl. Attribution is courtesy, not required.",
 	},
 	{
+		"chip": "TYPEFACE",
+		"body": "Darumadrop One — Copyright 2020 The Darumadrop One Project Authors (github.com/ManiackersDesign/darumadrop), licensed under the SIL Open Font License 1.1.",
+	},
+	{
+		# ⚠️ REWORDED 2026-08-01. It read "all music and sound effects are
+		# original, synthesised in-house by this project's own tools", which
+		# stopped being true when the OST landed: the two tracks that ship were
+		# WRITTEN by the team (🧑: *"we made the OST tracks btw"*), not emitted
+		# by `generate_sfx.py`. Still all ours; no longer all synthesised.
 		"chip": "AUDIO",
-		"body": "All music and sound effects are original, synthesised in-house by this project's own tools. No third-party audio ships in this build.",
+		"body": "All music and sound effects are original. The OST is written by the team; the SFX and ambience beds are synthesised in-house by this project's own tools. No third-party audio ships in this build.",
 	},
 	{
 		"chip": "TSINELAS",
