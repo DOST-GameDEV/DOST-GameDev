@@ -78,6 +78,7 @@ four cans and four slippers with per-skin meshes; both maps at the 6.5 box.
 | `tools/models/slipper_owner_probe.tscn` | every slipper is owned, ownership rotates with the taya, and non-owners are refused |
 | `tools/audio/music_probe.tscn` | menu bed / round bed play in the right states and nowhere else |
 | `tools/ui/solo_seat_probe.tscn` | the Single Player seat board actually stores a seat |
+| `tools/ui/lobby_address_shot.tscn` | the host address is ranked correctly, legible and copyable |
 | `tools/ui/net_twopeer_probe.tscn` | two real peers produce identical causal event streams |
 | `tools/ui/bounds_sweep.tscn` | 9 screens × 5 aspect ratios, nothing off-screen |
 
@@ -382,6 +383,29 @@ what specifically. **Tick only your own section.**
 - [x] 5.18 **The menu OST is hard-cut when a match starts.** Out of this lane's row,
   on direct human instruction (🧑: *"pls js abruptly cut it"*). See §4.3 item 4.2
   and §6.
+- [x] 5.21 **"Only the PC that set up Hamachi can host" — and hosting was never
+  broken.** `NetworkManager.host_game()` calls `create_server()`, which binds
+  **every** interface, so every machine on the tunnel could always accept
+  connections. What differed was the address the lobby PRINTED: it returned the
+  first non-loopback IPv4 `IP.get_local_addresses()` happened to list, which is
+  normally the real adapter (`192.168.x.x`) and is unreachable from across the
+  VPN. `host_addresses()` now RANKS them — Hamachi's `25.x` first, then private
+  LAN, with `169.254.x` (APIPA, never hostable; this machine reports three) thrown
+  out — and offers all of them, because which network the other four people are on
+  cannot be known from inside the process. ⚠️ **Nothing is hardcoded**: the list is
+  read from the OS at lobby time. *Verified: `tools/ui/lobby_address_shot.tscn`
+  (new) renders the HOST and JOIN lobbies and prints the ranked list.*
+- [x] 5.22 **The host address is legible and copy-pasteable.** 🧑, with a
+  screenshot reading `CONNECTING TO 25.…`: *"cant see ip also make it copy
+  pastable rlly easy, make spectate button smaller so that whole ip can be seen,
+  make ip smaller too"*. It was interpolated into `%SeatHeading`, which shares an
+  HBox with SPECTATE and carries `OVERRUN_TRIM_ELLIPSIS` — so the longest kind of
+  address this game shows was trimmed to four characters, and a `Label` cannot be
+  selected anyway. It is a read-only `LineEdit` in its own row now (selection and
+  Ctrl+C for free), font 20, with COPY and a cycle button when there is more than
+  one adapter; SPECTATE went 286×62/27 → 176×46/19. *Verified: both lobbies
+  rendered at 1600×900 and looked at — `25.114.207.183:8910` fits whole — and
+  `bounds_sweep` still PASSes 9 screens × 5 aspect ratios.*
 - [x] 5.20 **Every slipper knows whose it is, from the first frame of a round.**
   `owner_slot` had no writer but the grab and the throw, so a slipper nobody had
   touched carried `-1` — and `main.gd::_reset_slippers()`'s courtesy `host_grab()`
@@ -785,6 +809,18 @@ generator's output paths, the same trap that had already cost hours.
 fixes"*, *"fix everything"*): `audio_manager.gd` is `build sound`'s,
 `camera_rig.gd` is `build ui`'s, and `main.gd` / `game_launch.gd` are nobody's.
 Recorded rather than quietly done.
+
+**2026-08-01 · 🎨 `build model` (follow-up 4)** — the Hamachi lobby. The report was
+*"it only works on the pc that configured the hamachi"* and the answer is that
+hosting was never the broken part: `create_server()` binds every interface, so any
+machine on the tunnel could always host. The lobby just advertised the wrong
+address, because "first non-loopback IPv4" is whatever order the OS returns and
+that is normally the physical adapter. Ranked now, all candidates offered, APIPA
+discarded. ⚠️ **The general lesson: a symptom phrased as a capability ("X can't
+host") can be a display bug.** The address also moved out of an ellipsis-trimmed
+`Label` into a selectable read-only `LineEdit` with COPY, which is the half that
+was actually asked for. Out of row (`scripts/ui/**` is 🖥️ `build ui`'s) on direct
+instruction — *"pls fix this! first prioritze this"*.
 
 **2026-08-01 · 🎨 `build model` (follow-up 3)** — fixed the bug the previous pass
 only filed. `Slipper.owner_slot` had no writer but the grab and the throw, so

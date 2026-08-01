@@ -350,8 +350,12 @@ func _setup_host() -> void:
 		start_button.visible = false
 		seat_heading.text = "NOT HOSTING"
 		return
-	seat_heading.text = "LOBBY  ·  HOST %s" % _lan_address()
-	seat_hint.text = "You pick the map and the mode for everyone. Click a seat to move. Empty seats are played by bots."
+	# ⚠️ THE ADDRESS IS NO LONGER IN THE HEADING — see `_build_address_row()`. The
+	# heading shares an HBox with the SPECTATE toggle and trims to an ellipsis, so
+	# a Hamachi address rendered as `HOST 25.…` and could not be selected anyway.
+	seat_heading.text = "LOBBY  ·  YOU ARE HOSTING"
+	_show_addresses(_host_addresses_with_port())
+	seat_hint.text = "You pick the map and the mode for everyone. Click a seat to move. Empty seats are played by bots. Give the address below to the others."
 	_seat_hint_base = seat_hint.text
 	primary_button.caption = "READY"
 	start_button.visible = true
@@ -392,7 +396,8 @@ func _setup_join() -> void:
 	var parts := MultiplayerSetupScreen.split_address(GameLaunch.pending_join_address)
 	var host: String = String(parts[0])
 	var port: int = int(parts[1])
-	seat_heading.text = "CONNECTING TO %s…" % GameLaunch.pending_join_address
+	seat_heading.text = "CONNECTING…"
+	_show_addresses(PackedStringArray([GameLaunch.pending_join_address]))
 	if host.is_empty() or NetworkManager.join_game(host, port) != OK:
 		AudioManager.play("ui_error")
 		status_label.text = "Could not reach %s." % GameLaunch.pending_join_address
@@ -408,16 +413,86 @@ func _setup_join() -> void:
 	_refresh_seats()
 	_refresh_primary_button()
 
-## Reported the same way the old lobby did — first non-loopback IPv4 address.
-## Static and self-contained so it can be read without an instance.
-static func _lan_address() -> String:
+## ⚠️⚠️ "ONLY THE PC THAT SET UP HAMACHI CAN HOST" WAS THIS FUNCTION, AND HOSTING
+## WAS NEVER BROKEN.
+##
+## 🧑 2026-08-01: *"we are using hamachi to run lan and for some reason it only
+## works on the pc that configured the hamachi but it shouldnt be like that,
+## anyone in hamachi should be able to host"*.
+##
+## `NetworkManager.host_game()` calls `ENetMultiplayerPeer.create_server()`, which
+## binds **every** interface — so every machine in the Hamachi network really can
+## host, and always could. What differed per machine is the address the lobby
+## PRINTS for other people to type in. This used to return the FIRST non-loopback
+## IPv4 `IP.get_local_addresses()` happened to list, and on a laptop that is
+## normally the real adapter (`192.168.x.x`), which nobody on the far side of the
+## VPN can reach. The one PC where Hamachi's adapter happened to sort first
+## advertised a reachable address; everyone else advertised an unreachable one and
+## it looked like they could not host.
+##
+## ⚠️ SO THE ADDRESSES ARE RANKED, NOT PICKED. Hamachi's `25.x.x.x` block first
+## because a tunnelled address is reachable by definition from inside the tunnel,
+## then ordinary private LAN ranges, then anything else. All of them are offered
+## (see `_build_address_row`) rather than only the winner, because this cannot be
+## decided correctly from inside the process: a player on the same physical router
+## wants the 192.168 one, and only the human knows which network the other four
+## people are on.
+const HAMACHI_PREFIX: String = "25."
+
+static func host_addresses() -> PackedStringArray:
+	var hamachi := PackedStringArray()
+	var private := PackedStringArray()
+	var other := PackedStringArray()
 	for addr in IP.get_local_addresses():
 		if ":" in addr:
 			continue # IPv6 — see multiplayer_setup.gd::split_address for why
 		if addr.begins_with("127."):
 			continue
-		return addr
-	return "127.0.0.1"
+		# ⚠️ 169.254.x.x IS APIPA AND IS NEVER HOSTABLE. Windows assigns one to
+		# every adapter that failed to get a DHCP lease — this machine reports
+		# THREE of them — so without this the cycle button offered "1/4" where
+		# three of the four could not be reached by anybody, which is worse than
+		# offering one: it makes the working address look like a guess.
+		if addr.begins_with("169.254."):
+			continue
+		if addr.begins_with(HAMACHI_PREFIX):
+			hamachi.append(addr)
+		elif addr.begins_with("192.168.") or addr.begins_with("10.") \
+				or _is_172_private(addr):
+			private.append(addr)
+		else:
+			other.append(addr)
+	var ranked := PackedStringArray()
+	ranked.append_array(hamachi)
+	ranked.append_array(private)
+	ranked.append_array(other)
+	if ranked.is_empty():
+		ranked.append("127.0.0.1")
+	return ranked
+
+## 172.16.0.0 – 172.31.255.255. Spelled out because `begins_with("172.")` would
+## also claim public 172.x space, which is a real routable range.
+static func _is_172_private(addr: String) -> bool:
+	if not addr.begins_with("172."):
+		return false
+	var second := addr.split(".")[1] if addr.split(".").size() > 1 else ""
+	if not second.is_valid_int():
+		return false
+	var octet := int(second)
+	return octet >= 16 and octet <= 31
+
+static func _lan_address() -> String:
+	return host_addresses()[0]
+
+## The same list with the listening port appended, which is what somebody actually
+## has to type. `multiplayer_setup.gd::split_address()` parses `host:port`, so a
+## copied string works verbatim with no explaining — and including the port means
+## a future non-default port is not a silent trap.
+static func _host_addresses_with_port() -> PackedStringArray:
+	var out := PackedStringArray()
+	for addr in host_addresses():
+		out.append("%s:%d" % [addr, NetworkManagerScript.DEFAULT_PORT])
+	return out
 
 func _lock_host_only_controls() -> void:
 	for button in [map_prev_button, map_next_button, mode_prev_button, mode_next_button,
@@ -450,7 +525,8 @@ func _can_rpc() -> bool:
 func _on_connected_to_host() -> void:
 	# The host answers with `_rpc_sync_state` from its own `_on_peer_joined`,
 	# which is what fills in the seats, the ready flags, the map and the mode.
-	seat_heading.text = "LOBBY  ·  HOST %s" % GameLaunch.pending_join_address
+	seat_heading.text = "LOBBY  ·  CONNECTED"
+	_show_addresses(PackedStringArray([GameLaunch.pending_join_address]))
 	status_label.text = "Connected. Pick your character, then press READY."
 
 func _on_connection_failed() -> void:
@@ -1015,8 +1091,19 @@ var _spectate_button: Button = null
 ## first pass was 300x56 at font 22 and 🧑 called it *"too small/ugly"*: a short label
 ## floating in a wide empty plank reads as a control that failed to load, not as a button.
 ## The text now carries the box instead of rattling around in it.
-const SPECTATE_BUTTON_SIZE: Vector2 = Vector2(286, 62)
-const SPECTATE_FONT_SIZE: int = 27
+## ⚠️ SHRUNK FROM 286x62 / 27 ON 2026-08-01, AND THE REASON IS THE HEADING BESIDE
+## IT. 🧑, with a screenshot of `CONNECTING TO 25.…`: *"cant see ip also make it
+## copy pastable rlly easy, make spectate button smaller so that whole ip can be
+## seen, make ip smaller too"*. The heading and this button share one HBox and the
+## heading takes the ellipsis, so every pixel this button holds is a pixel of
+## address the player cannot read. It is a toggle with one short word in it and it
+## does not need a third of the panel.
+##
+## ⚠️ The address does NOT live in that heading any more either — see
+## `_build_address_row()`. Shrinking the button alone would have bought a few more
+## characters of a string that still could not be selected or copied.
+const SPECTATE_BUTTON_SIZE: Vector2 = Vector2(176, 46)
+const SPECTATE_FONT_SIZE: int = 19
 
 ## ---------------------------------------------------------------------------
 ## ⚠️⚠️ THE ON STATE IS A FILLED AMBER PLANK WITH DARK LETTERING, AND IT IS BUILT HERE
@@ -1105,6 +1192,134 @@ func _build_spectate_button() -> void:
 	# 4.1: a plain Button carries no audio of its own — same wiring the four seat rows get.
 	_spectate_button.mouse_entered.connect(func() -> void: AudioManager.play("ui_hover"))
 	_refresh_spectate_button()
+	_build_address_row(rows, header_row.get_index() + 1)
+
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE HOST ADDRESS GETS ITS OWN SELECTABLE ROW, BECAUSE A HEADING CANNOT BE
+## COPIED AND WAS NOT EVEN LEGIBLE.
+##
+## 🧑 2026-08-01, with a screenshot reading `CONNECTING TO 25.…`: *"cant see ip
+## also make it copy pastable rlly easy, make spectate button smaller so that
+## whole ip can be seen, make ip smaller too"*.
+##
+## The address used to be interpolated into `%SeatHeading`, which shares an HBox
+## with the SPECTATE toggle and carries `OVERRUN_TRIM_ELLIPSIS` — so a Hamachi
+## address (`25.x.x.x`, the longest kind this game will ever show) was trimmed to
+## four characters, and even when it fit, a `Label` cannot be selected. The player
+## was expected to read a dotted quad off a screen and retype it into another
+## machine.
+##
+## ⚠️ A READ-ONLY `LineEdit`, NOT A `Label`. Selection, drag-highlight and Ctrl+C
+## all come for free and behave the way every other text field on the OS does; the
+## COPY button is for people who will not think to try. It is `editable = false`
+## so the text cannot be altered into something that no longer matches the socket
+## actually listening.
+##
+## ⚠️ AND IT OFFERS EVERY ADDRESS, NOT THE BEST ONE. See `host_addresses()`: which
+## interface the other four players can reach is not knowable from inside this
+## process — the Hamachi one is right for a VPN lobby and the `192.168` one is
+## right for a room with one router — so the ranking chooses the DEFAULT and the
+## cycle button hands the decision to the human, who knows.
+var _address_row: HBoxContainer = null
+var _address_edit: LineEdit = null
+var _address_copy: Button = null
+var _address_cycle: Button = null
+var _address_options: PackedStringArray = PackedStringArray()
+var _address_index: int = 0
+
+const ADDRESS_FONT_SIZE: int = 20
+const ADDRESS_BUTTON_FONT_SIZE: int = 16
+
+func _build_address_row(rows: Container, at_index: int) -> void:
+	_address_row = HBoxContainer.new()
+	_address_row.name = "AddressRow"
+	_address_row.add_theme_constant_override("separation", 10)
+	_address_row.visible = false
+	rows.add_child(_address_row)
+	rows.move_child(_address_row, at_index)
+
+	_address_edit = LineEdit.new()
+	_address_edit.name = "AddressEdit"
+	_address_edit.editable = false
+	_address_edit.selecting_enabled = true
+	_address_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_address_edit.add_theme_font_size_override("font_size", ADDRESS_FONT_SIZE)
+	_address_edit.add_theme_color_override("font_color", UiTheme.CREAM)
+	_address_edit.add_theme_color_override("font_uneditable_color", UiTheme.CREAM)
+	_address_edit.add_theme_stylebox_override("normal",
+		UiTheme.wood_style(UiTheme.WOOD_DARK, UiTheme.WOOD_EDGE))
+	_address_edit.add_theme_stylebox_override("read_only",
+		UiTheme.wood_style(UiTheme.WOOD_DARK, UiTheme.WOOD_EDGE))
+	_address_row.add_child(_address_edit)
+
+	_address_copy = _small_button("COPY")
+	_address_copy.pressed.connect(_on_address_copy_pressed)
+	_address_row.add_child(_address_copy)
+
+	# Only shown when there is genuinely a choice to make.
+	_address_cycle = _small_button("OTHER")
+	_address_cycle.visible = false
+	_address_cycle.pressed.connect(_on_address_cycle_pressed)
+	_address_row.add_child(_address_cycle)
+
+
+func _small_button(label: String) -> Button:
+	var button := Button.new()
+	button.text = label
+	button.focus_mode = Control.FOCUS_ALL
+	button.theme_type_variation = &"WoodButton"
+	button.add_theme_font_size_override("font_size", ADDRESS_BUTTON_FONT_SIZE)
+	button.custom_minimum_size = Vector2(96, 40)
+	button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	button.mouse_entered.connect(func() -> void: AudioManager.play("ui_hover"))
+	return button
+
+
+## Shows `options` in the row, defaulting to the first. Hides the row entirely for
+## Single Player, which has no address and no one to give it to.
+func _show_addresses(options: PackedStringArray) -> void:
+	if _address_row == null:
+		return
+	_address_options = options
+	_address_index = 0
+	_address_row.visible = not options.is_empty()
+	if options.is_empty():
+		return
+	_address_cycle.visible = options.size() > 1
+	_refresh_address_text()
+
+
+func _refresh_address_text() -> void:
+	if _address_edit == null or _address_options.is_empty():
+		return
+	var shown := String(_address_options[_address_index])
+	_address_edit.text = shown
+	# ⚠️ THE TOOLTIP CARRIES THE WHOLE LIST. With more than one adapter the player
+	# needs to know what they are cycling between without clicking through it.
+	_address_edit.tooltip_text = "\n".join(Array(_address_options))
+	if _address_cycle != null and _address_options.size() > 1:
+		_address_cycle.text = "%d/%d" % [_address_index + 1, _address_options.size()]
+
+
+func _on_address_copy_pressed() -> void:
+	if _address_options.is_empty():
+		return
+	AudioManager.play("ui_click")
+	DisplayServer.clipboard_set(String(_address_options[_address_index]))
+	_address_copy.text = "COPIED"
+	_address_edit.select_all()
+	await get_tree().create_timer(1.2).timeout
+	if is_instance_valid(_address_copy):
+		_address_copy.text = "COPY"
+
+
+func _on_address_cycle_pressed() -> void:
+	if _address_options.size() <= 1:
+		return
+	AudioManager.play("ui_click")
+	_address_index = (_address_index + 1) % _address_options.size()
+	_refresh_address_text()
 
 func _on_spectate_pressed() -> void:
 	AudioManager.play("ui_click")
