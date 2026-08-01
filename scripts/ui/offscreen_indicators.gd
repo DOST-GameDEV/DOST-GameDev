@@ -160,14 +160,31 @@ func _find_own_slipper(local_character: CharacterBase) -> Node3D:
 		return null
 	if local_character.holding_slipper():
 		return null
+	# ⚠️⚠️ YOURS FIRST, THEN THE NEAREST ONE YOU COULD ACTUALLY GRAB.
+	#
+	# 🧑 asked for *"an arrow on my hud showing where MY tsinelas is"* and, in the
+	# same breath, for anybody to be able to pick up anybody's slipper. Those two
+	# pull in opposite directions: once pickups are open, "mine" can be in a rival's
+	# hand for most of a round, and an arrow that points at nothing for that whole
+	# time is the §1.6 complaint again from a new direction.
+	#
+	# So it degrades rather than gives up. `owner_slot` still decides the FIRST
+	# choice, because that is the slipper the player thinks of as theirs and the one
+	# the owner glow lights. If it is in somebody's hand, the arrow falls through to
+	# the nearest LOOSE one — which, under the new rule, is genuinely yours to take.
+	var fallback: Slipper = null
+	var fallback_d := INF
 	for node in get_tree().get_nodes_in_group("slippers"):
 		var slipper := node as Slipper
-		if slipper == null or slipper.owner_slot != local_character.player_slot:
+		if slipper == null or slipper.state == Slipper.CarryState.CARRIED:
 			continue
-		if slipper.state == Slipper.CarryState.CARRIED:
-			continue
-		return slipper
-	return null
+		if slipper.owner_slot == local_character.player_slot:
+			return slipper
+		var d := local_character.global_position.distance_to(slipper.global_position)
+		if d < fallback_d:
+			fallback_d = d
+			fallback = slipper
+	return fallback
 
 ## Reads RoundManager's own tracked-Can list rather than re-scanning for
 ## `is_can` — that is the one place this is already kept correct across a

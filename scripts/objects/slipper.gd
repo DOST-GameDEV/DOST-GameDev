@@ -546,7 +546,48 @@ func _set_state(new_state: CarryState) -> void:
 	# silent, anything else means talking — that is a property of the STATE, and it
 	# is now set from the state on every transition, whatever the reparent did.
 	_set_sync_enabled(new_state != CarryState.CARRIED)
+	if new_state != CarryState.CARRIED:
+		_restore_shadow_casting()
 	carry_state_changed.emit(new_state)
+
+
+## ⚠️⚠️ THE FIX FOR "SLIPPERS RANDOMLY DISAPPEAR AND ARE JUST A SHADOW".
+##
+## 🧑 2026-08-01: *"sometimes the slippers randomly disappear and are just a
+## shadow"*. That is not a network bug and it is not a `visible` flag — it is
+## literally `SHADOW_CASTING_SETTING_SHADOWS_ONLY`, and the mechanism is a
+## collision between two features that never knew about each other:
+##
+##   1. `camera_rig.gd::_apply_fpp_self_hide()` blanks the local player's own body
+##      in first person with SHADOWS_ONLY rather than `hide()`, deliberately —
+##      its own comment: *"losing your own shadow in FPP destroys the ground
+##      read, so the body still casts, it just isn't drawn."* Correct, and it
+##      applies that to every `GeometryInstance3D` it finds under `Visual`.
+##   2. A CARRIED slipper is re-parented onto a `HandAttachment`, which lives
+##      UNDER that same `Visual`. So the held slipper is swept into that sweep and
+##      set to SHADOWS_ONLY along with the arms and the torso.
+##
+## The restore loop only walks what is under `Visual` NOW. Throw the slipper and it
+## leaves that subtree while still flagged — so nothing ever puts it back, and it
+## spends the rest of the match invisible with a shadow, on the thrower's machine
+## only. `_detach_from_hand()` could not be trusted with this either: it has two
+## early returns, which is the same thing that stranded the synchronizer above.
+##
+## So it is driven from the STATE, like the sync flag, and it is unconditional:
+## anything not in a hand draws normally. Cheap, and it cannot be stranded.
+func _restore_shadow_casting() -> void:
+	var visual := get_node_or_null("Visual")
+	if visual == null:
+		return
+	for node in visual.find_children("*", "GeometryInstance3D", true, false):
+		(node as GeometryInstance3D).cast_shadow = \
+			GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	if visual is GeometryInstance3D:
+		(visual as GeometryInstance3D).cast_shadow = \
+			GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	# The self-hide sets `visible` on the slipper's own Visual too (see
+	# `_apply_carried_self_hide`), and that restore has the same shape of hole.
+	(visual as Node3D).visible = true
 
 ## ⚠⚠ THE SYNCHRONIZER IS SILENCED FOR AS LONG AS THIS PROP IS IN A HAND, AND
 ## THAT IS THE FIX FOR §2.24. A `MultiplayerSynchronizer` identifies its node to
