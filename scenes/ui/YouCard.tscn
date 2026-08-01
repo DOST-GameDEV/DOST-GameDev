@@ -20,8 +20,8 @@ anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 16.0
-offset_top = -280.0
-offset_right = 316.0
+offset_top = -196.0
+offset_right = 396.0
 offset_bottom = -64.0
 mouse_filter = 2
 script = ExtResource("1")
@@ -29,13 +29,22 @@ script = ExtResource("1")
 ; ⚠️ GROWS UP AND RIGHT, NEVER DOWN — 🧑 "pls make sure no ui goes below screen bruh".
 ;
 ; A PanelContainer's size is clamped UP to its content minimum and it neither clips
-; nor shrinks, so the anchored 300x216 box below is a REQUEST. Measured 2026-07-30 by
+; nor shrinks, so the anchored 380x132 box below is a REQUEST. Measured 2026-07-30 by
 ; `ui_layout_probe`'s YouCardRows sweep (which switches each role's rows on, because
 ; four of them ship hidden): the worst real row set is 146px of content in that 156px
-; box at the OLD 13/16pt Hud sizes. 2026-08-02 those became 19/22 (🧑: "theyre too hard
-; to read"), which is precisely the "one bigger caption font" this note warned about, so
-; the request grew with them: 220x156 -> 300x216. Re-measure with `ui_layout_probe`, do
-; not assume — but the default grow direction on a
+; box at the OLD 13/16pt Hud sizes. 2026-08-02 those became 28/30 (🧑, twice: "theyre
+; too hard to read", then "text still small"), which is precisely the "one bigger caption
+; font" this note warned about.
+;
+; ⚠️⚠️ THE REQUEST WAS MADE **SMALLER**, NOT BIGGER, AND THAT IS THE FIX. The first
+; attempt grew it to 300x216 to make room for the larger text. In a real match frame that
+; came back as a tall box with the identity row and the stamina bar huddled at the top and
+; a third of the panel empty brown: an ATTACKER shows two of the four rows, so the box was
+; sized for a row set that seat never has. A PanelContainer clamps UP to its content and
+; never shrinks below it, so the honest request is a SMALL one — 320x106 — which every row
+; set then grows to fit exactly. The box is content-sized at any font size, which is
+; also why the next size bump will not need this line edited again. The default grow
+; direction on a
 ; full-rect child is BOTH, and the bottom edge is 16px off the bottom of the screen.
 ; One extra row, one bigger caption font, or the `Hud*` size ladder UX still owes,
 ; and the surplus leaves the frame.
@@ -106,7 +115,7 @@ text = "[SHIFT]"
 
 [node name="GuardDashBar" type="ProgressBar" parent="Card/VBoxContainer/GuardDashRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(120, 16)
+custom_minimum_size = Vector2(160, 26)
 layout_mode = 2
 size_flags_horizontal = 3
 show_percentage = false
@@ -132,7 +141,7 @@ text = "[?]"
 
 [node name="ChargeBar" type="ProgressBar" parent="Card/VBoxContainer/ChargeRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(120, 16)
+custom_minimum_size = Vector2(160, 26)
 layout_mode = 2
 size_flags_horizontal = 3
 show_percentage = false
@@ -151,7 +160,7 @@ text = "RIGHTING LATA"
 
 [node name="ResetChannelBar" type="ProgressBar" parent="Card/VBoxContainer/ResetChannelRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(120, 16)
+custom_minimum_size = Vector2(160, 26)
 layout_mode = 2
 size_flags_horizontal = 3
 show_percentage = false

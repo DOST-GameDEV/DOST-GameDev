@@ -614,9 +614,9 @@ corner_radius_bottom_left = 6
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_vkaxf"]
 content_margin_left = 24.0
-content_margin_top = 17.0
+content_margin_top = 12.0
 content_margin_right = 24.0
-content_margin_bottom = 7.0
+content_margin_bottom = 12.0
 bg_color = Color(0.11372549, 0.05490196, 0.023529412, 1)
 border_width_left = 5
 border_width_top = 5
@@ -627,6 +627,9 @@ corner_radius_top_left = 12
 corner_radius_top_right = 12
 corner_radius_bottom_right = 12
 corner_radius_bottom_left = 12
+shadow_color = Color(0.015686275, 0.03137255, 0.21960784, 0.55)
+shadow_size = 6
+shadow_offset = Vector2(0, 5)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_o6x0a"]
 content_margin_left = 24.0
@@ -703,9 +706,9 @@ corner_radius_bottom_left = 12
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_weqtb"]
 content_margin_left = 24.0
-content_margin_top = 17.0
+content_margin_top = 12.0
 content_margin_right = 24.0
-content_margin_bottom = 7.0
+content_margin_bottom = 12.0
 bg_color = Color(0.11372549, 0.05490196, 0.023529412, 1)
 border_width_left = 5
 border_width_top = 5
@@ -716,6 +719,9 @@ corner_radius_top_left = 12
 corner_radius_top_right = 12
 corner_radius_bottom_right = 12
 corner_radius_bottom_left = 12
+shadow_color = Color(0.015686275, 0.03137255, 0.21960784, 0.55)
+shadow_size = 6
+shadow_offset = Vector2(0, 5)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_n3dym"]
 content_margin_left = 24.0
@@ -811,9 +817,9 @@ shadow_offset = Vector2(0, 5)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_b20jj"]
 content_margin_left = 24.0
-content_margin_top = 17.0
+content_margin_top = 12.0
 content_margin_right = 24.0
-content_margin_bottom = 7.0
+content_margin_bottom = 12.0
 bg_color = Color(0.11372549, 0.05490196, 0.023529412, 1)
 border_width_left = 5
 border_width_top = 5
@@ -824,6 +830,9 @@ corner_radius_top_left = 12
 corner_radius_top_right = 12
 corner_radius_bottom_right = 12
 corner_radius_bottom_left = 12
+shadow_color = Color(0.015686275, 0.03137255, 0.21960784, 0.55)
+shadow_size = 6
+shadow_offset = Vector2(0, 5)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_smxoq"]
 content_margin_left = 24.0
@@ -971,19 +980,19 @@ HudBody/base_type = &"Label"
 HudBody/colors/font_color = Color(0.9607843, 0.96862745, 0.98039216, 1)
 HudBody/colors/font_outline_color = Color(0.015686275, 0.03137255, 0.21960784, 1)
 HudBody/constants/outline_size = 6
-HudBody/font_sizes/font_size = 16
+HudBody/font_sizes/font_size = 34
 HudCaption/base_type = &"Label"
 HudCaption/colors/font_color = Color(0.9607843, 0.96862745, 0.98039216, 1)
 HudCaption/colors/font_outline_color = Color(0.015686275, 0.03137255, 0.21960784, 1)
 HudCaption/constants/outline_size = 6
-HudCaption/font_sizes/font_size = 13
+HudCaption/font_sizes/font_size = 32
 HudCard/base_type = &"PanelContainer"
 HudCard/styles/panel = SubResource("StyleBoxFlat_ath56")
 HudScore/base_type = &"Label"
 HudScore/colors/font_color = Color(0.9607843, 0.96862745, 0.98039216, 1)
 HudScore/colors/font_outline_color = Color(0.015686275, 0.03137255, 0.21960784, 1)
 HudScore/constants/outline_size = 6
-HudScore/font_sizes/font_size = 24
+HudScore/font_sizes/font_size = 32
 HudTimer/base_type = &"Label"
 HudTimer/colors/font_color = Color(0.9607843, 0.96862745, 0.98039216, 1)
 HudTimer/colors/font_outline_color = Color(0.015686275, 0.03137255, 0.21960784, 1)
@@ -993,7 +1002,7 @@ HudToast/base_type = &"Label"
 HudToast/colors/font_color = Color(0.972549, 0, 0, 1)
 HudToast/colors/font_outline_color = Color(0.015686275, 0.03137255, 0.21960784, 1)
 HudToast/constants/outline_size = 6
-HudToast/font_sizes/font_size = 26
+HudToast/font_sizes/font_size = 28
 Label/colors/font_color = Color(0.015686275, 0.03137255, 0.21960784, 1)
 Label/font_sizes/font_size = 16
 LineEdit/colors/caret_color = Color(0.015686275, 0.03137255, 0.21960784, 1)

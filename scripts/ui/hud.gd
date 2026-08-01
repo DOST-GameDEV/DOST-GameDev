@@ -103,10 +103,16 @@ const CROSSHAIR_OUTLINE: int = 5
 ## button (24px sides) and a HUD card that hugs a glyph and a word cannot afford them.
 func _hud_wood_style(fill: Color, border: Color, sink: bool = false) -> StyleBoxFlat:
 	var sb := UiTheme.wood_style(fill, border, sink)
-	sb.content_margin_left = 14.0
-	sb.content_margin_right = 14.0
-	sb.content_margin_top = 8.0
-	sb.content_margin_bottom = 8.0
+	# ⚠️ 22/16 FROM 14/8, TO MATCH THE 2026-08-02 HUD FONT SIZES. 🧑: *"GOOD TEXT NOW
+	# ... js make box bigger"*. These margins were chosen against 13/16pt lettering; at
+	# 32/34 the same numbers read as text jammed against a border. Padding rather than a
+	# taller anchored rect for the reason `you_card.gd` records at its own copy of these
+	# four lines: margins scale WITH the content, so no row set ends up rattling around
+	# inside a box sized for a different one.
+	sb.content_margin_left = 22.0
+	sb.content_margin_right = 22.0
+	sb.content_margin_top = 16.0
+	sb.content_margin_bottom = 16.0
 	return sb
 
 func _apply_wood_skin() -> void:
