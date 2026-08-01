@@ -387,6 +387,13 @@ func _setup_host() -> void:
 	# first frame in which the preference and the session both exist.
 	if GameLaunch.spectator:
 		NetworkManager.publish_spectator(true)
+	# ⚠️ READ, DO NOT WAIT TO BE TOLD. `host_game()` writes `lobby_leader_id` directly
+	# rather than through `_rpc_announce_leader`, so a listen host emits NO
+	# `lobby_leader_changed` for its own opening claim — a two-instance run measured
+	# exactly zero events for a host's own lobby. Wiring the signal and nothing else
+	# leaves the initial state to whatever the scene happened to be saved with, which
+	# is right here only by luck. Derive it instead.
+	_refresh_leader_controls()
 	_refresh_seats()
 	_refresh_primary_button()
 
@@ -399,7 +406,12 @@ func _setup_join() -> void:
 	# A client may look at the host's map and mode but not change them — this is
 	# the whole fix for the conflicting-map defect, so it is enforced on the
 	# control itself, not only by the host ignoring a stray RPC.
-	_lock_host_only_controls()
+	#
+	# Derived rather than hard-locked: on a DEDICATED server this same client may be
+	# handed the lobby a moment from now, and `_on_lobby_leader_changed` will unlock
+	# it then. Nobody leads yet at this point, so this still evaluates to locked — the
+	# difference is that it stays correct if that ever stops being true.
+	_refresh_leader_controls()
 
 	var parts := MultiplayerSetupScreen.split_address(GameLaunch.pending_join_address)
 	var host: String = String(parts[0])
