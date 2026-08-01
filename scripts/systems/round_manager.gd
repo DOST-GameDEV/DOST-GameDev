@@ -255,6 +255,103 @@ func _sync_tag(defender_slot: int, victim_slot: int) -> void:
 	attacker_tagged.emit(defender_slot, victim_slot)
 
 ## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE MULTIPLAYER SOFTLOCK, AND WHY IT LIVES HERE RATHER THAN ON THE PLAYER.
+## Fixed 2026-08-01. 🧑: *"non-host players can become softlocked and unable to
+## move, throw, or interact after being tagged."*
+##
+## `main.gd` gives every human's character `set_multiplayer_authority(peer_id)` —
+## a player owns their own body, which is what lets them drive it without asking.
+## But four state changes on a character are decided by the HOST and have to reach
+## everybody: the tag penalty, the shove, the body block, and the shove cooldown.
+## Each of those was `@rpc("authority", "call_local", "reliable")` **declared on
+## `character_base.gd`** — and in that mode the only peer allowed to call the RPC
+## is the node's own authority, which is the VICTIM, not the host.
+##
+## So the host was calling four RPCs it had no right to call, on somebody else's
+## node. `call_local` meant the host still ran the handler on ITS OWN copy of that
+## character — teleporting it, stunning it, and starting a `SPAWN_SETTLE_FRAMES`
+## freeze — while the victim's own machine, the one actually driving that body,
+## either never heard about it or heard about it inconsistently. Two peers then
+## disagreed about where a player was and whether they were stunned, and the
+## MultiplayerSynchronizer replicates `position`/`state` FROM the authority, so
+## the argument never resolved.
+##
+## ⚠️ THE FIX IS NOT "LOOSEN THE RPC MODE". Switching them to `any_peer` would let
+## any client stun any other player, which is worse than the bug. They move to
+## THIS node instead: `RoundManager` is an autoload, so its authority is the
+## default — peer 1, the host — and `@rpc("authority")` on it means exactly what it
+## is supposed to mean. The host is allowed to broadcast; nobody else is; every
+## peer applies it to its own copy of the named seat.
+##
+## ⚠️ AND THE VICTIM IS NAMED BY SLOT, NOT BY NODE PATH. A `NodePath` to a
+## character is per-peer (`Main/Players/-4/...` differs by spawn order and by
+## whether a seat is a bot), and §2.24 records what happens when an RPC references
+## a path a peer has not finished building. A slot is an int that means the same
+## thing on all four machines.
+## ---------------------------------------------------------------------------
+
+## Host-side entry points. Each broadcasts, then every peer applies it locally.
+func host_broadcast_tag_penalty(victim_slot: int, stun: float, safe_spot: Vector3) -> void:
+	if NetworkManager.is_networked():
+		_sync_tag_penalty.rpc(victim_slot, stun, safe_spot)
+	else:
+		_apply_tag_penalty_to(victim_slot, stun, safe_spot)
+
+@rpc("authority", "call_local", "reliable")
+func _sync_tag_penalty(victim_slot: int, stun: float, safe_spot: Vector3) -> void:
+	_apply_tag_penalty_to(victim_slot, stun, safe_spot)
+
+func _apply_tag_penalty_to(victim_slot: int, stun: float, safe_spot: Vector3) -> void:
+	var who := player_at(victim_slot)
+	if who != null:
+		who.apply_tag_penalty_local(stun, safe_spot)
+
+func host_broadcast_shove(victim_slot: int, impulse: Vector3, stun: float) -> void:
+	if NetworkManager.is_networked():
+		_sync_shove.rpc(victim_slot, impulse, stun)
+	else:
+		_apply_shove_to(victim_slot, impulse, stun)
+
+@rpc("authority", "call_local", "reliable")
+func _sync_shove(victim_slot: int, impulse: Vector3, stun: float) -> void:
+	_apply_shove_to(victim_slot, impulse, stun)
+
+func _apply_shove_to(victim_slot: int, impulse: Vector3, stun: float) -> void:
+	var who := player_at(victim_slot)
+	if who != null:
+		who.apply_shove_local(impulse, stun)
+
+func host_broadcast_block(blocker_slot: int, impulse: Vector3) -> void:
+	if NetworkManager.is_networked():
+		_sync_block.rpc(blocker_slot, impulse)
+	else:
+		_apply_block_to(blocker_slot, impulse)
+
+@rpc("authority", "call_local", "reliable")
+func _sync_block(blocker_slot: int, impulse: Vector3) -> void:
+	_apply_block_to(blocker_slot, impulse)
+
+func _apply_block_to(blocker_slot: int, impulse: Vector3) -> void:
+	var who := player_at(blocker_slot)
+	if who != null:
+		who.apply_block_local(impulse)
+
+func host_broadcast_shove_cooldown(shover_slot: int) -> void:
+	if NetworkManager.is_networked():
+		_sync_shove_cooldown.rpc(shover_slot)
+	else:
+		_apply_shove_cooldown_to(shover_slot)
+
+@rpc("authority", "call_local", "reliable")
+func _sync_shove_cooldown(shover_slot: int) -> void:
+	_apply_shove_cooldown_to(shover_slot)
+
+func _apply_shove_cooldown_to(shover_slot: int) -> void:
+	var who := player_at(shover_slot)
+	if who != null:
+		who.apply_shove_cooldown_local()
+
+## ---------------------------------------------------------------------------
 ## THE ROUND.
 ## ---------------------------------------------------------------------------
 

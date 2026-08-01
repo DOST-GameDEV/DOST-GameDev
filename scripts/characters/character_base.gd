@@ -1030,13 +1030,10 @@ func _release_shove() -> void:
 
 ## Host -> the shover. Called only when a shove actually landed on somebody.
 func host_start_shove_cooldown() -> void:
-	if NetworkManager.is_networked():
-		_rpc_shove_cooldown.rpc()
-	else:
-		_apply_shove_cooldown()
+	RoundManager.host_broadcast_shove_cooldown(player_slot)
 
-@rpc("authority", "call_local", "reliable")
-func _rpc_shove_cooldown() -> void:
+## Called on EVERY peer by `RoundManager` — see the note on `host_apply_tag_penalty`.
+func apply_shove_cooldown_local() -> void:
 	_apply_shove_cooldown()
 
 ## ⚠️ `maxf`, NOT AN ASSIGNMENT. The miss cooldown is already running by the time
@@ -1089,13 +1086,10 @@ func host_apply_shove(impulse: Vector3, stun: float, from_slot: int) -> void:
 	# Recorded BEFORE the stun, so a shove that leads straight into a tag still
 	# pays the shover even if the tag lands on the very next frame.
 	RoundManager.note_shove(player_slot, from_slot)
-	if NetworkManager.is_networked():
-		_rpc_apply_shove.rpc(impulse, stun)
-	else:
-		_apply_shove(impulse, stun)
+	RoundManager.host_broadcast_shove(player_slot, impulse, stun)
 
-@rpc("authority", "call_local", "reliable")
-func _rpc_apply_shove(impulse: Vector3, stun: float) -> void:
+## Called on EVERY peer by `RoundManager` — see the note on `host_apply_tag_penalty`.
+func apply_shove_local(impulse: Vector3, stun: float) -> void:
 	_apply_shove(impulse, stun)
 
 func _apply_shove(impulse: Vector3, stun: float) -> void:
@@ -1144,13 +1138,10 @@ func observed_shove_charge() -> float:
 ## the taya POSITION is bounded and costing them AGENCY is not.
 ## ---------------------------------------------------------------------------
 func host_apply_block(impulse: Vector3) -> void:
-	if NetworkManager.is_networked():
-		_rpc_apply_block.rpc(impulse)
-	else:
-		_apply_block(impulse)
+	RoundManager.host_broadcast_block(player_slot, impulse)
 
-@rpc("authority", "call_local", "reliable")
-func _rpc_apply_block(impulse: Vector3) -> void:
+## Called on EVERY peer by `RoundManager` — see the note on `host_apply_tag_penalty`.
+func apply_block_local(impulse: Vector3) -> void:
 	_apply_block(impulse)
 
 func _apply_block(impulse: Vector3) -> void:
@@ -1167,14 +1158,19 @@ func _apply_block(impulse: Vector3) -> void:
 ## THE TAG PENALTY. Called host-side by `RoundManager._resolve_tag()`.
 ## ---------------------------------------------------------------------------
 
+## ⚠⚠ BROADCAST THROUGH `RoundManager`, NOT FROM THIS NODE. A player's character
+## is authoritative on THEIR OWN PEER (`main.gd`: `set_multiplayer_authority(peer_id)`),
+## so an `@rpc("authority")` declared here may only be called BY THE VICTIM — and
+## the host was calling it. See `round_manager.gd`'s § THE MULTIPLAYER SOFTLOCK
+## for the full post-mortem; the short version is that `call_local` made the host
+## apply the change to its own copy while the peer that actually drives that body
+## did not, and the synchronizer then argued about it for ever.
 func host_apply_tag_penalty(stun: float) -> void:
-	if NetworkManager.is_networked():
-		_rpc_tag_penalty.rpc(stun, spawn_position)
-	else:
-		_apply_tag_penalty(stun, spawn_position)
+	RoundManager.host_broadcast_tag_penalty(player_slot, stun, spawn_position)
 
-@rpc("authority", "call_local", "reliable")
-func _rpc_tag_penalty(stun: float, safe_spot: Vector3) -> void:
+## Called on EVERY peer by `RoundManager`. Public because the caller is another
+## file; the leading verb says it is already-decided rather than a request.
+func apply_tag_penalty_local(stun: float, safe_spot: Vector3) -> void:
 	_apply_tag_penalty(stun, safe_spot)
 
 ## ⚠️⚠️ REVERSED 2026-08-01: THE SLIPPER NOW COMES WITH THEM, AND IT IS AN
