@@ -248,6 +248,12 @@ const AIM_SETTLE_FLOOR: float = 0.55
 ## round. **A bot's commitment is bounded in SECONDS, by its own clock, or it is
 ## not bounded at all.**
 const WINDUP_TIMEOUT: float = 3.6
+## What fraction of a tier's `aim_settle` a bot holds a charged shot for before it
+## lets go — see `_do_windup()`. It buys two things at once: the scatter is still
+## closing over that window (`AIM_SETTLE_FLOOR`), so the hold is not dead time, and
+## the wind-up becomes visible to everyone else, which is what the 2.5 s charge is
+## for in the first place.
+const WINDUP_MIN_HOLD_SHARE: float = 0.65
 
 ## Lane sampling. `_lane_blocked()` walks the real launch velocity forward in
 ## steps short enough that a body cannot fall between two of them: the step is
@@ -940,7 +946,34 @@ func _do_windup(delta: float) -> void:
 		return
 	if power < _windup_power:
 		return
-	# Charged. Now the only question left is whether the lane is open.
+	# ⚠⚠ A BOT HOLDS THE SHOT NOW INSTEAD OF FIRING THE INSTANT IT IS CHARGED.
+	# 2026-08-01, on human instruction: *"yea so make the bots charge too or smth"*,
+	# after a playtest reported the taya AI singling out the one human.
+	#
+	# NOTHING IN THIS FILE READS WHETHER A PLAYER IS HUMAN — the bias was entirely
+	# about TIME. `_live_threat()` pays a bonus for "is charging", `CHARGE_FULL_TIME`
+	# is 2.5 s and a person aims for most of it, while a bot released the moment
+	# `_plan_power()` was satisfied (about 0.9 s for a throw from the ring). So the
+	# only attacker who was ever visibly winding up was the human, and the taya
+	# guarded them permanently. Weakening that bonus treated the symptom; a bot that
+	# actually commits removes the asymmetry.
+	#
+	# ⚠️ IT IS ALSO THE COUNTERPLAY THE CHARGE EXISTS FOR, IN THE OTHER DIRECTION.
+	# `Design.md` §5.1 says the 2.5 s wind-up is there so *"the taya can see it
+	# coming"* — which was true of every human throw and no bot throw. Now a human
+	# taya can read a bot the same way a bot taya reads them.
+	#
+	# ⚠️ DERIVED FROM `aim_settle`, NOT A NEW TIER KNOB, so the three tiers keep their
+	# characters without `DIFFICULTY_TIERS` (🤖 `build ai`'s table) being touched: EASY
+	# carries the 99.0 "never settles" sentinel and therefore holds NOTHING, which is
+	# exactly the impatient kid it is meant to be; NORMAL holds 0.91 s and HARD 0.52 s,
+	# because a better player lines a shot up faster rather than staring at it longer.
+	var min_hold := 0.0
+	if _aim_settle < 90.0:
+		min_hold = minf(_aim_settle, Carrier.CHARGE_FULL_TIME) * WINDUP_MIN_HOLD_SHARE
+	if _windup_time < min_hold:
+		return
+	# Charged and committed. Now the only question left is whether the lane is open.
 	var origin := Carrier.throw_origin_for(character, character.ai_aim_point)
 	if not _blundering and _lane_blocked(origin, character.ai_aim_point, power):
 		_windup_wait += delta
