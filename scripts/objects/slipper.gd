@@ -523,6 +523,29 @@ func _set_state(new_state: CarryState) -> void:
 	elif state == CarryState.CARRIED:
 		_detach_from_hand()
 	state = new_state
+	# ⚠️⚠️ THE SYNCHRONIZER IS DRIVEN FROM THE STATE, NOT FROM THE REPARENT, AND
+	# THAT IS THE FIX FOR "SLIPPERS DISAPPEAR SOMETIMES POST THROW".
+	#
+	# 🧑 2026-08-01, with a screenshot: *"slippers disappear sometimes post throw"*.
+	# Both halves of the quiet period used to be side effects of the two functions
+	# above — and BOTH of those can return early. `_attach_to_hand()` silences the
+	# sync only after it has found a carrier and a hand attachment; `_detach_from_
+	# hand()` re-enables it only after `_home_parent` checks out AND the node is not
+	# already parented there. So any path that put the slipper back by some other
+	# route — `main.gd::_reset_slippers`, or the reparent-vs-RPC race in §2.24 —
+	# hit `if get_parent() == _home_parent: return` and **never re-opened the
+	# synchronizer**. From then on that slipper never sent another position packet:
+	# on every remote peer it froze wherever it was last seen, which is exactly what
+	# "it disappeared after I threw it" looks like from the other machine. It is
+	# intermittent because it needs the race, which is why it read as random.
+	#
+	# ⚠️ §6 TRAP 12, THE SAME SHAPE A THIRD TIME. `owner_slot` was assigned by a
+	# courtesy `host_grab()` that could refuse; the hand attachment was a copied
+	# transform that could miss; this was a network flag set by a reparent that could
+	# decline. **If a value must always hold, write it directly.** Carried means
+	# silent, anything else means talking — that is a property of the STATE, and it
+	# is now set from the state on every transition, whatever the reparent did.
+	_set_sync_enabled(new_state != CarryState.CARRIED)
 	carry_state_changed.emit(new_state)
 
 ## ⚠⚠ THE SYNCHRONIZER IS SILENCED FOR AS LONG AS THIS PROP IS IN A HAND, AND
