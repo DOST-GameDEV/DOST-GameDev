@@ -722,7 +722,7 @@ for side in (-1.0, 1.0):
 # I generated three Philippine species in env_kit.gd — saging, niyog, mangga — to
 # replace the Kenney conifers, because a pine on a Philippine residential street is
 # the loudest wrong thing either map had. The human rejected them twice on sight:
-# "holy shit theyre so ugly and they clip into the houses" and then "still, the
+# "oh man theyre so ugly and they clip into the houses" and then "still, the
 # trees are so ugly, they dont look like trees so pls js use different assets."
 # That is a look call and the look call is theirs, so the generated puno are OUT of
 # both maps.
@@ -969,10 +969,66 @@ for n, zz in enumerate(SAMPAY_Z):
 # store standing in the road. If one is ever genuinely blocked the honest outcome
 # is a reported skip, and the FRONT YAW comes from mapkit.front_yaw so the counter
 # faces the alley by derivation rather than by a hand-written sign.
-for _sn, (_sx, _sz) in enumerate([(W - 0.85, -1.0), (-(W - 0.85), 12.0)]):
-    _placer.try_place(_put_gen("Kalat"), f"SariSari_{'E' if _sx > 0 else 'W'}",
-                      "sari_sari_store", _sx, _sz,
-                      front_yaw(_sx, _sz, 0.0, _sz), 1.0, ladder=False)
+# ⚠️⚠️ BOTH STORES MOVED DOWN THE ALLEY, 2026-08-01, ON DIRECT HUMAN INSTRUCTION.
+# 🧑, circling the east one in a screenshot: "check if this big grey rectangular
+# block still exists and pls delete it", then, when it turned out to BE a store:
+# "i wanna keep the stores man js not the grey block".
+#
+# ⚠️ THE "GREY BLOCK" AND THE STORE ARE THE SAME OBJECT, and that is the whole
+# finding. It had been read twice as a `CLUTTER_TALL` yero wall — that list's own
+# header records the identical complaint and moved the whole tier out to the facade
+# — and it was never that tier at all: tinting every tall piece on the east edge
+# left the reported object untinted. It is `sari_sari_store`, 2.40 x 2.60 x 1.70,
+# at x 7.15 against a `ConfinementEast` line at x 7.00, at z -1.0, i.e. level with
+# the centre circle and square in the east throwing lane.
+#
+# ⚠️ AND IT READ AS A BLANK SLAB BECAUSE THE COURT ONLY EVER SAW ITS BACK.
+# `front_yaw` aims the counter at the ALLEY. That is right for a shop and it means
+# the face pointed at the players is the one with nothing on it — 2.6 m of
+# featureless wall against a 1.25 m eye. Rotating it to face the court would fix the
+# blankness and keep the obstruction; moving it fixes both.
+#
+# So: same two stores, same pinned-not-laddered rule, both relocated up/down the
+# alley where the counter faces the street it serves and neither one stands in a
+# throwing lane. z -12.5 and +12.0 are a full alley-length off the box (7.0) and
+# clear of the throwing line at 8.0.
+#
+# ⚠️ THE WEST ONE HAD BEEN SILENTLY SKIPPED SINCE IT WAS WRITTEN. At z 12.0 pinned,
+# its footprint was blocked and `try_place` dropped it, so the shipped map carried
+# ONE store while this loop reads as two — exactly the "a map loses a landmark
+# without anyone noticing" failure `mapkit.try_place`'s own docstring is about, and
+# it survived because the count was printed and the name was past the report's
+# truncation. Both are asserted below now rather than trusted.
+# ⚠️⚠️ A Z-ONLY LADDER. THE STORE MAY SLIDE ALONG THE WALL AND MAY NOT LEAVE IT.
+#
+# Both stock ladders are wrong for this piece and each is wrong in its own way.
+# Pinning (`False`) is what silently dropped the west store. `COARSE_LADDER` was
+# tried and moved the east one to **x = 3.75** — a 3.4 m step across the road, so
+# the fix for "a store standing in the throwing lane" was a store standing in the
+# middle of the street. Both stock ladders offer X and Z equally, and for THIS
+# piece the two axes are not equally free: its X is load-bearing (the note below —
+# "its position against the wall line is the whole point of it") and its Z is not.
+# A shop can be anywhere along the street it faces.
+#
+# So the offsets are Z-only and generous, because the free axis can afford to be.
+_ALLEY_LADDER = [(0.0, 0.0),
+                 (0.0, 1.5), (0.0, -1.5), (0.0, 3.0), (0.0, -3.0),
+                 (0.0, 4.5), (0.0, -4.5), (0.0, 6.0), (0.0, -6.0)]
+_stores_placed = []
+for _sn, (_sx, _sz) in enumerate([(W - 0.85, -12.5), (-(W - 0.85), 12.0)]):
+    _stores_placed.append(_placer.try_place(
+        _put_gen("Kalat"), f"SariSari_{'E' if _sx > 0 else 'W'}",
+        "sari_sari_store", _sx, _sz,
+        front_yaw(_sx, _sz, 0.0, _sz), 1.0, ladder=_ALLEY_LADDER))
+# ⚠️ ASSERTED, NOT REPORTED. `Placer.report()` truncates its skip list to the first
+# four names, which is exactly how the west store went missing without anybody
+# reading it. A landmark this file calls "the narrative centre of this map" should
+# fail the BUILD rather than be counted in a number nobody reads.
+assert all(_stores_placed), (
+    "sari-sari store(s) skipped: %s — a landmark was dropped to resolve a graze, "
+    "which mapkit.try_place's own docstring calls the worst outcome. Move the "
+    "coordinates rather than accepting the skip."
+    % ", ".join(n for n, ok in zip(("east", "west"), _stores_placed) if not ok))
 
 
 # --- THE BARANGAY BASKETBALL RING. There is one of these on every street in the
@@ -1061,7 +1117,7 @@ CLUTTER_LOW = [
     ("halaman_lata", -5.95, 16.8, 0.6, None), ("halaman_lata", -5.65, 17.25, 1.5, None),
     ("halaman_lata", 6.0, -13.2, 0.0, None), ("halaman_lata", 5.7, -12.75, 1.1, None),
     # --- plywood and seating. Universal, and right for the place.
-    # ⚠️ `kits/town/planks` REMOVED — reported as "gray shit thats clipping thru the
+    # ⚠️ `kits/town/planks` REMOVED — reported as "gray thing thats clipping thru the
     # ground". They were placed as "patched paving", and floorcheck confirms they
     # ARE grounded, so this is not a height bug: a 1.6 m flat tan slab lying on grey
     # asphalt at a jaunty yaw does not read as a repair, it reads as a board half
@@ -1100,8 +1156,8 @@ for n, (piece, x, zz, yaw, scale) in enumerate(CLUTTER_LOW):
 # Generated pieces pass `None` for scale, same convention as CLUTTER_LOW.
 CLUTTER_TALL = [
     # ⚠⚠ THE WHOLE TIER MOVED OUT TO THE FACADE ON 2026-08-01, x = ±(WALL_FACE_X
-    # - 0.35). 🧑, twice, pointing at one of these: *"tf is this big ass grey block
-    # HAHA"* and *"why is this grey box still in ur test haha"*.
+    # - 0.35). 🧑, twice, pointing at one of these: *"what is this big plain grey block
+    # man"* and *"why is this grey box still in ur test man"*.
     #
     # The header above says this tier lives "against the wall line only, |x| > 6.5"
     # — and 6.5 was written when the confinement box WAS 5.0, so a sheet at 7.05 or
@@ -1134,7 +1190,7 @@ CLUTTER_TALL = [
     # the only piece of this tier that sits level with the court rather than up or
     # down the alley from it, so it is the one that fills the frame from a player's
     # eye on the east throwing line. The other five stay — *"dont remove the other
-    # yero walls js this fkng block"*.
+    # yero walls js this one block"*.
     ("wall_corrugated", -(WALL_FACE_X - 0.2), -16.5, math.pi * 0.5, None),
     ("wall_corrugated", WALL_FACE_X - 0.2, -15.5, math.pi * 0.5, None),
     # Planting, kept.
@@ -1145,8 +1201,8 @@ CLUTTER_TALL = [
 # restricts these to |x| > 6.5 "against the wall line" — which was outside the box
 # when the box was 5.0 and then 6.5, and is INSIDE it at 7.5. The `atip_yero` sheets
 # sit at x = ±7.05 and are **2.92 m tall**, so growing the box parked a solid
-# untextured slab in the middle of the street. 🧑, with a screenshot: *"tf is this
-# big ass grey block HAHA"*.
+# untextured slab in the middle of the street. 🧑, with a screenshot: *"what is this
+# big plain grey block man"*.
 #
 # This is the same line the trees are on, and it is the line the human drew: *"i was
 # okay with the clutter earlier, js put the tree out of the play area"*, *"i liked
@@ -1164,7 +1220,7 @@ CLUTTER_TALL = [
 #
 # Leaving the guard on actively cost content: an `atip_yero` lean-to is wide, so its
 # FOOTPRINT still reached inside the keep-out band even with its origin on the wall,
-# and all four were evicted. 🧑: *"hey dont remove the other yero walls js this fkng
+# and all four were evicted. 🧑: *"hey dont remove the other yero walls js this one
 # block"* — the lean-tos are wanted, it was the one standing in the street that was
 # not. Position fixes that; eviction was removing the wrong four.
 for n, (piece, x, zz, yaw, scale) in enumerate(CLUTTER_TALL):
@@ -1187,7 +1243,7 @@ for n, (x, zz, yaw) in enumerate([
 # --- The kanal and its slow zone are GONE. -----------------------------------
 #
 # ⚠️⚠️ REMOVED 2026-08-01 ON DIRECT HUMAN INSTRUCTION, with two screenshots.
-# 🧑: *"this keeps bugging/ clipping these shits. can u js remove them"* and
+# 🧑: *"this keeps bugging/ clipping these things. can u js remove them"* and
 # *"this looks bad it keeps phasing in and out"*; then, asked which element it
 # was: *"yes remove slow zone, Tan slabs in a line (kanal / gutter)"*.
 #
@@ -1220,7 +1276,7 @@ for n, (x, zz, yaw) in enumerate([
 #
 # Human ask: "add random child chalk scribbles in eskinita on the floor, make it
 # look like real drawings", then immediately: "make sure ur chalk drawings are not
-# covered by assets or intersect with random shit/clip."
+# covered by assets or intersect with random stuff/clip."
 #
 # The second half is the hard half, and it is why this block sits HERE - after every
 # piece of dressing on the map has been placed. A marking does not go through
