@@ -136,10 +136,34 @@ DARK = {
 ## guaranteed to land on every character and should be the one you would name if
 ## asked what they wear.
 ROSTER = [
-    # ⚠️ person_a.tres / person_b.tres are NOT emitted by this script and must not
-    # be: they are the two match Persons the art direction was signed off
-    # against, and Art_Direction.md pins their look. They are listed in
-    # character_roster.gd pointing at the existing files.
+    # ⚠️⚠️ person_a / person_b ARE EMITTED HERE NOW, AND THE COMMENT THAT SAID THEY
+    # MUST NOT BE IS DELETED RATHER THAN AMENDED. It read: "they are the two match
+    # Persons the art direction was signed off against, and Art_Direction.md pins
+    # their look."
+    #
+    # That sign-off is from 2026-07-28, when a match had exactly TWO Persons. The
+    # twelve-character roster landed the NEXT DAY (08efb6e, 2026-07-29) and generated
+    # the other ten through this script — so for four days BERTO and MARING have been
+    # the only two characters in the game wearing a palette authored against a
+    # different brief, by a different method, for a game with a different player count.
+    #
+    # 🧑 2026-08-01, on seeing it in a live match: *"why is there one thats a
+    # completely diff texture and no outline"* and *"that hand authoed shit is stale
+    # shit from the model overhaul that we stopped"*. Rendered side by side
+    # (`tools/ui/person_lineup_shot.tscn`) the two of them read visibly flatter and
+    # more washed-out than the ten beside them, which is what a hand-tuned palette
+    # against a superseded moodboard looks like next to a generated set.
+    #
+    # ⚠️ THE FILENAMES ARE KEPT (`id="a"` / `id="b"` → person_a.tres / person_b.tres)
+    # so `character_roster.gd` needs no edit and nothing else in the project has to
+    # learn a new path. What changes is that all twelve palettes now come out of one
+    # generator, one BASE table and one face-luminance check.
+    dict(id="a", name="BERTO", tagline="Ang bida. Laging nasa kalye.",
+         model="character-male-f", skin="warm", dark="ink",
+         colourway=["3f8f5c", "b0864a", "3a4238"]),
+    dict(id="b", name="MARING", tagline="Kalaro mula pagkabata. Mahirap talunin.",
+         model="character-female-f", skin="fair", dark="coffee",
+         colourway=["8a3446", "e8d8c0", "3a4a5c"]),
     dict(id="totoy", name="TOTOY", tagline="Palaboy ng eskinita. Mabilis tumakbo.",
          model="character-male-a", skin="warm", dark="ink",
          colourway=["2f7d4f", "d8b04a", "3b4252", "e0702c"]),

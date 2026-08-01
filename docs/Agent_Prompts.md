@@ -1259,3 +1259,53 @@ with a human on the controls — the bots played every round.
 the four bots covered very little ground in three runs (`[INFO] travel` in the probe;
 `build ai` §6.1 already calls the controller a placeholder), and `docs/README.md`'s
 Godot path says `C:\Users\matth\...` where this machine has `C:\Users\Matthew\...`.
+
+### 2026-08-01 · 🖥️ `build ui` · out-of-row · branch `HARRYDAKS`
+
+**BERTO and MARING were the last two characters wearing the abandoned model pass, and
+they are now generated like the other ten.** 🧑: *"why is there one thats a completely
+diff texture and no outline"*, then *"that hand authoed shit is stale shit from the
+model overhaul that we stopped"*, then *"fix all character model shits that model lane
+did earlier"*.
+
+**First, what was NOT wrong, because it was worth ruling out before touching anything.**
+All twelve `.glb` rigs are byte-identical to their original Kenney import commits
+(`262ed49` / `2b183dd`, 2026-07-27), the working tree is clean against HEAD, and the
+files are UnityGLTF-authored — **no Blender-session geometry survived the revert**. All
+twelve roster entries have a `material` key, every referenced `person_*.tres` exists,
+and every one of them chains `next_pass = person_outline.tres`. None of that is visible
+by reading, which is why `tools/ui/person_lineup_shot.tscn` exists: it renders all
+twelve through `CharacterPreview.show_character()` — the same call the CHARACTER screen
+makes — and prints each entry's material, whether it resolves, and what it chains.
+
+**What WAS wrong.** `generate_person_palettes.py` emitted TEN palettes and carried a
+comment forbidding it from emitting the other two: *"person_a.tres / person_b.tres are
+NOT emitted by this script and must not be: they are the two match Persons the art
+direction was signed off against."* That sign-off is dated 2026-07-28, when a match had
+exactly **two** Persons. The twelve-character roster landed the next day and generated
+everything else. So for four days BERTO and MARING were the only two characters in the
+game wearing a palette authored against a superseded brief by a different method — and
+side by side they read flatter and more washed-out than the ten beside them.
+
+**Both are now entries in the generator**, keeping the `person_a` / `person_b`
+filenames so `character_roster.gd` needs no edit and nothing else learns a new path.
+All twelve palettes now come from one BASE table, one colourway mapping and one
+face-luminance check — the check that makes "slot 8 stays dark" a build failure rather
+than a thing somebody remembers.
+
+**Verified:** the generator's own acceptance test — run twice, and `git status` shows
+the same two files both times and no churn in the other ten, i.e. it is deterministic
+and the other ten regenerate byte-identical. Clean `--headless --import`. Rendered
+before-and-after lineups of all twelve and looked at them.
+
+⚠️ **OUT OF EVERY LANE'S ROW, ON DIRECT HUMAN INSTRUCTION.** `generate_person_palettes.py`
+and `person_*.tres` are named in § CHECKLIST §5 as explicitly NOT 🎨 `build model`'s, and
+they are in nobody else's row either — the third unowned file this session, after
+`main.gd` and `character_visual.gd`. Filed as §2.19.
+
+⚠️ **NOT done, and not silently folded in:** the `colormap.png` UID mismatch. The rigs
+reference `uid://dpu4hdrq88up6` and `colormap.png.import` declares
+`uid://c0kd7i625gon4`, so Godot falls back to the text path and warns once per character
+on every load. It resolves to the same texture, so it changes nothing on screen — but
+there is also an untracked `colormap.png.import~RFdd6c817.TMP` sitting beside it from an
+interrupted import. Residue of the reverted session, left for whoever owns those files.
