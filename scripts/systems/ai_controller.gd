@@ -1394,6 +1394,23 @@ func _claim(bearing: float) -> void:
 ## a bot with no claim and nothing else to do should still go and get one rather
 ## than stand still (§6.7).
 func _my_slipper() -> Slipper:
+	# ⚠️⚠️ A SLIPPER I THREW AND IS STILL IN THE AIR COMES FIRST, AND LEAVING THIS
+	# OUT COST HALF THE OFFENCE.
+	#
+	# `_pick_plan()` asks this while `not holding_slipper()` and immediately tests
+	# `mine.is_flying()` — the bot walks to where its own throw will land so the
+	# retrieval starts from the right side of the court (§6.7). The first version of
+	# this rewrite only considered LOOSE slippers, so the instant a bot released a
+	# throw its slipper became invisible to it, `mine` came back null, and
+	# `_pick_plan()` fell straight to `Plan.IDLE`. **Measured: throws 27 -> 14, hit
+	# rate 48.1% -> 28.6%, DEFENSE 31.7% -> 70.8% of every point** — the bots threw
+	# once and then stood still for the rest of the round. The probe still reported
+	# PASS, because its gate is "at least one knockdown per match".
+	for node in get_tree().get_nodes_in_group("slippers"):
+		var flying := node as Slipper
+		if flying != null and flying.is_flying() \
+				and flying.owner_slot == character.player_slot:
+			return flying
 	var best: Slipper = null
 	var best_score := INF
 	var fallback: Slipper = null
