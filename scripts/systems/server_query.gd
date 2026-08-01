@@ -285,12 +285,26 @@ func servers() -> Array[Dictionary]:
 ## 31^4 is 923 521 and eight servers make 28 pairs, so it happens about three times in a
 ## hundred thousand deployments and costs one player a wrong lobby, not a crash. Detecting
 ## it would need the very central authority this design exists to avoid.
+## ⚠️ SEARCHES THE LAN AS WELL AS THE POOL, and the LAN comes FIRST.
+##
+## A code is one handle for "the game my friend is in", and a player has no idea
+## whether that game is a pool server or somebody's PC across the room — so a code that
+## only worked for one of the two would be a code that mysteriously works half the time.
+## `LanBeacon` carries the same code in its broadcast for exactly this.
+##
+## LAN first because it is the cheaper and more certain answer: a beacon that has already
+## been heard is a machine known to be reachable from here, whereas a pool entry may be
+## on the far side of an internet path. On the vanishingly unlikely collision (31^4 across
+## one LAN plus eight servers) the near one is also the better guess.
 func resolve_code(code: String) -> String:
 	var wanted := code.strip_edges().to_upper()
 	if wanted.is_empty():
 		return ""
+	for entry in LanBeacon.servers():
+		if String(entry.get("code", "")).to_upper() == wanted:
+			return "%s:%d" % [String(entry.get("ip", "")), int(entry.get("port", 0))]
 	for entry in servers():
-		if String(entry.get("code", "")) == wanted:
+		if String(entry.get("code", "")).to_upper() == wanted:
 			return "%s:%d" % [String(entry.get("ip", "")), int(entry.get("port", 0))]
 	return ""
 

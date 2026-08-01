@@ -427,6 +427,7 @@ func _setup_host() -> void:
 	# Named here as well as on the join path: a listen host leads its own lobby, and
 	# routing both through one signal keeps the two from drifting.
 	NetworkManager.lobby_leader_changed.connect(_on_lobby_leader_changed)
+	NetworkManager.join_code_changed.connect(func(_c: String) -> void: _show_join_code())
 
 	# The host is peer 1 and `peer_connected` never fires for self on a server,
 	# so it seats itself. Seat 0 (Team A's Person) rather than "first free": it
@@ -460,7 +461,9 @@ func _setup_host() -> void:
 
 func _setup_join() -> void:
 	banner_label.text = "LOBBY"
-	seat_hint.text = "The host picks the map and the mode. Click a free seat to move. Empty seats are played by bots."
+	# The opening guess, and only that: `_refresh_leader_controls()` below re-picks it from
+	# the role, and swaps it again if this client is later handed the lobby.
+	seat_hint.text = JOINER_SEAT_HINT
 	_seat_hint_base = seat_hint.text
 	primary_button.caption = "READY"
 	start_button.visible = false
@@ -479,6 +482,7 @@ func _setup_join() -> void:
 	var port: int = int(parts[1])
 	seat_heading.text = "CONNECTING…"
 	_show_addresses(PackedStringArray([GameLaunch.pending_join_address]))
+	_show_join_code()
 	if host.is_empty() or NetworkManager.join_game(host, port) != OK:
 		AudioManager.play("ui_error")
 		status_label.text = "Could not reach %s." % GameLaunch.pending_join_address
@@ -493,6 +497,7 @@ func _setup_join() -> void:
 	# On a dedicated server nobody is host, so this is the only thing that will ever
 	# unlock the map picker for this client.
 	NetworkManager.lobby_leader_changed.connect(_on_lobby_leader_changed)
+	NetworkManager.join_code_changed.connect(func(_c: String) -> void: _show_join_code())
 	status_label.text = "Connecting…"
 	_refresh_seats()
 	_refresh_primary_button()
@@ -614,11 +619,26 @@ func _is_lobby_leader() -> bool:
 ## the server announces a change, since a leader can be made mid-lobby by somebody else
 ## leaving — a player staring at a locked map picker that has just become theirs would
 ## have no way to know it.
+## ⚠️ "THE HOST PICKS THE MAP" IS A LIE TO A CLIENT LEADER, and it was printed directly
+## above the pickers that player owns. On a dedicated server nobody is host, so the joiner
+## copy written in `_setup_join` describes a person who does not exist — a HOST ONLINE
+## player saw "The host picks the map and the mode" on the same screen as an unlocked map
+## picker and a START MATCH button. The two hints are chosen by ROLE here rather than once
+## at setup, because the role can change under a player who is already looking at it.
+const JOINER_SEAT_HINT: String = "The host picks the map and the mode. Click a free seat to move. Empty seats are played by bots."
+const LEADER_SEAT_HINT: String = "You pick the map and the mode for everyone. Click a free seat to move. Empty seats are played by bots. Read the code above out to the others."
+
 func _refresh_leader_controls() -> void:
 	if _is_lobby_leader():
 		_unlock_leader_controls()
 	else:
 		_lock_host_only_controls()
+	# ⚠️ CLIENTS ONLY. A listen host's hint names its own address and is already correct;
+	# rewriting it here would replace "give the address below to the others" with copy that
+	# never mentions how anyone reaches them.
+	if _is_networked_lobby() and not _is_lobby_host():
+		_seat_hint_base = LEADER_SEAT_HINT if _is_lobby_leader() else JOINER_SEAT_HINT
+		_refresh_seat_hint()
 
 func _unlock_leader_controls() -> void:
 	for button in [map_prev_button, map_next_button, mode_prev_button, mode_next_button,
@@ -658,6 +678,7 @@ func _on_connected_to_host() -> void:
 	# which is what fills in the seats, the ready flags, the map and the mode.
 	seat_heading.text = "LOBBY  ·  CONNECTED"
 	_show_addresses(PackedStringArray([GameLaunch.pending_join_address]))
+	_show_join_code()
 	status_label.text = "Connected. Pick your character, then press READY."
 
 func _on_connection_failed() -> void:
@@ -1370,6 +1391,7 @@ func _build_spectate_button() -> void:
 	_spectate_button.mouse_entered.connect(func() -> void: AudioManager.play("ui_hover"))
 	_refresh_spectate_button()
 	_build_address_row(rows, header_row.get_index() + 1)
+	_build_code_row(rows, header_row.get_index() + 2)
 
 
 ## ---------------------------------------------------------------------------
@@ -1398,6 +1420,8 @@ func _build_spectate_button() -> void:
 ## process — the Hamachi one is right for a VPN lobby and the `192.168` one is
 ## right for a room with one router — so the ranking chooses the DEFAULT and the
 ## cycle button hands the decision to the human, who knows.
+var _code_row: HBoxContainer = null
+var _code_edit: LineEdit = null
 var _address_row: HBoxContainer = null
 var _address_edit: LineEdit = null
 var _address_copy: Button = null
@@ -1407,6 +1431,57 @@ var _address_index: int = 0
 
 const ADDRESS_FONT_SIZE: int = 20
 const ADDRESS_BUTTON_FONT_SIZE: int = 16
+
+## ---------------------------------------------------------------------------
+## § THE JOIN CODE, WITH ITS OWN ROW AND ITS OWN COPY BUTTON.
+##
+## This is the handle you give people, so it gets the same treatment as the address
+## rather than a sentence at the end of a paragraph. An address is what you fall back
+## to; a code is what you actually read out, and on the online path it is the ONLY
+## thing worth sharing — the pool's address is the same for everybody and tells a
+## friend nothing about which of the eight lobbies you are sitting in.
+##
+## ⚠️ SHOWN TO CLIENTS TOO, NOT JUST THE HOST. On a pool server the person inviting a
+## friend IS a client — the host is a machine in a datacentre. Gating this on hosting
+## would hide the code from everyone who has a use for it.
+## ---------------------------------------------------------------------------
+func _build_code_row(rows: Container, at_index: int) -> void:
+	_code_row = HBoxContainer.new()
+	_code_row.name = "CodeRow"
+	_code_row.add_theme_constant_override("separation", 10)
+	_code_row.visible = false
+	rows.add_child(_code_row)
+	rows.move_child(_code_row, at_index)
+
+	var caption := Label.new()
+	caption.text = "CODE"
+	caption.add_theme_color_override("font_color", UiTheme.HIGHLIGHT)
+	caption.add_theme_font_size_override("font_size", ADDRESS_FONT_SIZE)
+	caption.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_code_row.add_child(caption)
+
+	_code_edit = LineEdit.new()
+	_code_edit.name = "CodeEdit"
+	_code_edit.editable = false
+	_code_edit.selecting_enabled = true
+	_code_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_code_edit.add_theme_font_size_override("font_size", ADDRESS_FONT_SIZE)
+	_code_edit.add_theme_color_override("font_color", UiTheme.CREAM)
+	_code_edit.add_theme_color_override("font_uneditable_color", UiTheme.CREAM)
+	_code_edit.add_theme_stylebox_override("normal",
+		UiTheme.wood_style(UiTheme.WOOD_DARK, UiTheme.WOOD_EDGE))
+	_code_edit.add_theme_stylebox_override("read_only",
+		UiTheme.wood_style(UiTheme.WOOD_DARK, UiTheme.WOOD_EDGE))
+	_code_row.add_child(_code_edit)
+
+	var copy := _small_button("COPY")
+	copy.pressed.connect(_on_code_copy_pressed)
+	_code_row.add_child(copy)
+
+func _on_code_copy_pressed() -> void:
+	AudioManager.play("ui_click")
+	DisplayServer.clipboard_set(_code_edit.text)
+	status_label.text = "Join code copied — send it to whoever you want in the game."
 
 func _build_address_row(rows: Container, at_index: int) -> void:
 	_address_row = HBoxContainer.new()
@@ -1520,17 +1595,29 @@ func _small_button(label: String) -> Button:
 ## who have any use for it.
 ## ---------------------------------------------------------------------------
 func _show_join_code() -> void:
-	if not _is_networked_lobby():
+	if _code_row == null:
 		return
-	var code: String = NetworkManager.join_code
-	if code.is_empty():
-		# A client learns the code from the server's own status reply, which it may not
-		# have asked for. Silent rather than showing "????" — an absent code is not an
-		# error, it is a build that was reached by typing an address.
-		return
-	seat_hint.text = "%s   Your join code is %s — read it out and they can type it instead of an address." % [
-		seat_hint.text, code]
-	_seat_hint_base = seat_hint.text
+	var code: String = _local_join_code()
+	# Hidden rather than shown empty or as "????". A lobby reached by typing an address
+	# on a build with no beacon and no pool genuinely has no code to share, and an empty
+	# box invites the player to wait for one that is never coming.
+	_code_row.visible = not code.is_empty()
+	if not code.is_empty():
+		_code_edit.text = code
+
+## The code for the lobby THIS peer is in. One line, because `NetworkManager.join_code`
+## is authoritative on BOTH sides: the host mints it in `host_game()`, and a client is
+## told it by the server in `_rpc_announce_join_code` the moment it identifies.
+##
+## ⚠️ IT USED TO SEARCH THE SERVER BROWSER'S CACHE FOR A MATCHING ADDRESS, AND THAT IS
+## WHY THE ROW NEVER APPEARED. A two-process run measured the client holding the right
+## code (`39T2`) with the row still hidden: the caches are populated by BROWSING, and a
+## peer that arrived by typing an address — or by a code someone read out — has never
+## browsed, so both lists were empty and the lookup returned "". Asking a stale local
+## cache what the server it is already connected to is called was the wrong question;
+## the server answers it directly now.
+func _local_join_code() -> String:
+	return NetworkManager.join_code
 
 func _show_addresses(options: PackedStringArray) -> void:
 	if _address_row == null:

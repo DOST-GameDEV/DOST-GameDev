@@ -390,6 +390,10 @@ func _mint_join_code() -> String:
 ## everyone who arrives later. Handover is not polish here — see `_reassign_leader`.
 ## ---------------------------------------------------------------------------
 
+## Fired when this peer learns or mints the lobby's join code — the host on host_game,
+## a client when the server tells it on identify. The lobby screen listens so the code
+## appears the moment it is known rather than only if something else redraws.
+signal join_code_changed(code: String)
 signal lobby_leader_changed(peer_id: int)
 
 ## 0 means nobody holds it — a dedicated server before its first human arrives.
@@ -478,6 +482,7 @@ func host_game(port: int = DEFAULT_PORT, dedicated: bool = false) -> Error:
 	# opens the socket that reports it, and a query arriving in the gap would answer with
 	# an empty code that a player could not then type back in.
 	join_code = _mint_join_code()
+	join_code_changed.emit(join_code)
 	# ⚠️ SAME FIRE-AND-FORGET CONTRACT AS THE BEACON BELOW. `start_responding` swallows its
 	# own failure (see `server_query.gd`), so a server that cannot bind its status port
 	# still referees its match and is still reachable by a typed address. Nothing here may
@@ -560,6 +565,7 @@ func disconnect_network() -> void:
 	# with it — an empty code is what a non-hosting process truthfully has.
 	ServerQuery.stop_responding()
 	join_code = ""
+	join_code_changed.emit("")
 	if multiplayer.multiplayer_peer:
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = null
@@ -697,7 +703,20 @@ func _rpc_identify(token: String, picks: Dictionary = {}) -> void:
 	# not identified has no token and no picks, and handing the lobby to it would put
 	# the settings in the hands of something we cannot yet name.
 	_claim_lobby_leader_if_vacant(peer_id)
+	# ⚠️ THE SERVER TELLS THE CLIENT THE CODE; the client does not look it up.
+	# The alternative is reading it out of whatever the server browser last heard, which
+	# is stale by construction and simply absent for anyone who arrived by typing an
+	# address. The code is the thing a player reads out to invite a friend, so the peer
+	# that owns it authoritatively is the one that should say what it is.
+	_rpc_announce_join_code.rpc_id(peer_id, join_code)
 	player_identified.emit(peer_id, token)
+
+## Host -> one peer. Mirrors `_rpc_announce_leader`: sent on identify so a peer knows it
+## the moment it is in the lobby, rather than when something happens to refresh a cache.
+@rpc("authority", "call_remote", "reliable")
+func _rpc_announce_join_code(code: String) -> void:
+	join_code = code
+	join_code_changed.emit(code)
 
 ## One client-sent pick, range-checked against the roster it indexes. -1 is
 ## itself meaningful ("no pick") so it survives rather than being clamped to 0.

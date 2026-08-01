@@ -21,6 +21,7 @@ const MODE_SELECT_PATH: String = "res://scenes/ui/ModeSelect.tscn"
 
 const STAGGER: float = 0.09
 
+@onready var host_online_button: ArrowButton = %HostOnlineButton
 @onready var host_button: ArrowButton = %HostButton
 @onready var join_button: ArrowButton = %JoinButton
 @onready var join_address_edit: LineEdit = %JoinAddressEdit
@@ -32,6 +33,7 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	GameVersion.attach_to(self)
 
+	host_online_button.pressed.connect(_on_host_online_pressed)
 	host_button.pressed.connect(_on_host_pressed)
 	join_button.pressed.connect(_on_join_pressed)
 	back_button.pressed.connect(_on_back_pressed)
@@ -59,7 +61,7 @@ func _ready() -> void:
 	_build_lan_browser()
 	_build_online_browser()
 
-	var buttons: Array[ArrowButton] = [host_button, join_button]
+	var buttons: Array[ArrowButton] = [host_online_button, host_button, join_button]
 	for i in buttons.size():
 		buttons[i].animate_in(i * STAGGER)
 
@@ -649,7 +651,9 @@ func _on_online_row_pressed(index: int) -> void:
 	AudioManager.play("ui_click")
 	if index < 0 or index >= _online_addresses.size():
 		return
-	_cancel_pending_code() # picking a server supersedes a code you were waiting on
+	# Picking a server supersedes both waits — you have just named the one you want.
+	_cancel_pending_code()
+	_cancel_hosting_online()
 	join_address_edit.text = _online_addresses[index]
 	GameLaunch.pending_join_address = join_address_edit.text
 	# Names the slot, not the code — same reason the row does. See `_refresh_online_browser`.
@@ -734,6 +738,12 @@ func _process(delta: float) -> void:
 			and _browsed_for >= POOL_PATIENCE_SECONDS:
 		_silence_reported = true
 		_refresh_online_browser()
+	# ⚠️ BEFORE THE CODE WAIT, AND THE TWO CANNOT BOTH BE ARMED — every entry point into
+	# either cancels the other, so this order is about reading clearly rather than about
+	# precedence between two live waits.
+	if _hosting_online:
+		_tick_hosting_online()
+		return
 	if _pending_code.is_empty():
 		return
 	var address := ServerQuery.resolve_code(_pending_code)
@@ -757,6 +767,27 @@ func _process(delta: float) -> void:
 		AudioManager.play("ui_error")
 		status_label.text = ("Could not reach the online servers to look up %s. Try again, or "
 			+ "type the host's address instead.") % unanswered
+
+## The armed half of HOST ONLINE. Mirrors the `_pending_code` block above line for line,
+## including both ways of giving up — "they answered and all eight are busy" and "nothing
+## answered at all" are different problems and get different sentences.
+func _tick_hosting_online() -> void:
+	var address := _free_pool_address()
+	if not address.is_empty():
+		_cancel_hosting_online()
+		_claim_online_server(address)
+		return
+	if _pool_answered_enough():
+		_cancel_hosting_online()
+		AudioManager.play("ui_error")
+		status_label.text = ("Every online server is in use right now. Open ONLINE SERVERS to "
+			+ "join one of them, or try again in a minute.")
+		return
+	if _browsed_for - _hosting_online_since >= POOL_PATIENCE_SECONDS:
+		_cancel_hosting_online()
+		AudioManager.play("ui_error")
+		status_label.text = ("Could not reach the online servers. They may be down, or your "
+			+ "network may be blocking them — HOST GAME (LAN) still works.")
 
 ## ⚠️ THE LISTENER IS CLOSED ON THE WAY OUT, not left to the autoload's lifetime.
 ## `LanBeacon` is an autoload and survives every scene change, so a socket opened here
@@ -785,13 +816,105 @@ func _unhandled_input(event: InputEvent) -> void:
 		# ⚠️ AND AN ARMED CODE IS THE SAME ARGUMENT ONE LAYER DOWN. A player who mistyped
 		# and sees "Looking for A7SF…" presses Escape to take it back, not to leave; an
 		# Escape that walked out would change scene the instant the code then resolved.
-		if _cancel_pending_code():
+		if _cancel_pending_code() or _cancel_hosting_online():
 			AudioManager.play("ui_back")
 			status_label.text = "Stopped looking."
 			return
 		_on_back_pressed()
 
+## ---------------------------------------------------------------------------
+## § HOST ONLINE — 🧑 2026-08-02: *"i told you to add a HOST ONLINE button. when you host
+## an online game the code shows and you share it to your friends to give"*, and *"we're
+## trying to move away from LAN"*.
+##
+## ⚠️⚠️ IT DOES NOT HOST. It CLAIMS. There is no process to start on the player's machine
+## and no port to open on their router — the pool is eight dedicated processes that are
+## already running on the VM (see `docs/Dedicated_Server_Deployment.md`), and "hosting
+## online" means taking an idle one. So this press is a JOIN, aimed at an EMPTY server,
+## and it funnels through `_begin_join` like every other join on this screen.
+##
+## ⚠️ WHAT MAKES IT FEEL LIKE HOSTING IS THE LOBBY LEADER RULE, not anything here. A
+## dedicated server hands the role to the first peer that identifies (see
+## `NetworkManager._claim_lobby_leader_if_vacant`), so the player who claims an empty
+## server picks the map, the mode and when to start — and `match_setup.gd` shows them the
+## four-character code to read out. Land on an EMPTY one and you are the leader; land on
+## an occupied one and you are a guest, which is why "empty" here means BOTH `players == 0`
+## AND `in_progress == false` rather than merely "has a free seat".
+##
+## ⚠️ TWO PLAYERS CAN CLAIM THE SAME SERVER, and nothing in this design prevents it.
+## `server_query.gd`'s header says there is no registry; a slot is only known to be free
+## because it said so up to a second ago, and two people pressing this at once both believe
+## it. The loser is not broken — they are a guest in a lobby with a stranger leading — but
+## it is not what they asked for. Picking at RANDOM among the free servers rather than
+## always the lowest-numbered one is the cheap half of the fix: it turns a guaranteed
+## collision between two simultaneous presses into a 1-in-N one. The expensive half is a
+## claim the server itself arbitrates, which is a change on the host side, not here.
+## ---------------------------------------------------------------------------
+
+## Set while a HOST ONLINE press is waiting for the pool to answer. Exactly the armed shape
+## `_pending_code` has, and for exactly the reason § JOINING BY CODE gives: the table this
+## reads is filled by UDP replies, so a press made the instant the screen opens is asking a
+## list that is legitimately still empty, and calling that "no servers free" is the fastest
+## way to make a working feature look broken.
+var _hosting_online: bool = false
+var _hosting_online_since: float = 0.0
+
+## An idle pool server, or "" if none is known to be idle right now. Random among the free
+## ones rather than the first — see the § ⚠️ on simultaneous presses.
+func _free_pool_address() -> String:
+	var free: Array[String] = []
+	for entry in ServerQuery.servers():
+		if bool(entry.get("in_progress", false)):
+			continue
+		if int(entry.get("players", 0)) > 0:
+			continue
+		free.append("%s:%d" % [String(entry.get("ip", "")), int(entry.get("port", 0))])
+	if free.is_empty():
+		return ""
+	return free[randi() % free.size()]
+
+## Returns whether a wait was actually cancelled, so Escape can tell the two cases apart —
+## same contract as `_cancel_pending_code`.
+func _cancel_hosting_online() -> bool:
+	if not _hosting_online:
+		return false
+	_hosting_online = false
+	return true
+
+func _on_host_online_pressed() -> void:
+	# A HOST ONLINE press supersedes a code the player was waiting on, exactly as a second
+	# JOIN press does: two armed waits could otherwise both resolve and change scene twice.
+	_cancel_pending_code()
+	if not _pool_configured():
+		AudioManager.play("ui_error")
+		status_label.text = ("This build has no online server address in it yet, so there is "
+			+ "nothing to host on. Use HOST GAME (LAN) for now.")
+		return
+	var address := _free_pool_address()
+	if not address.is_empty():
+		_claim_online_server(address)
+		return
+	if _pool_answered_enough():
+		# The pool spoke and every one of them is occupied. A real answer, not a timeout —
+		# and the honest thing to offer is the browser, since a busy lobby is still joinable.
+		AudioManager.play("ui_error")
+		status_label.text = ("Every online server is in use right now. Open ONLINE SERVERS to "
+			+ "join one of them, or try again in a minute.")
+		return
+	AudioManager.play("ui_click") # not an error — the replies are still in the air
+	_hosting_online = true
+	_hosting_online_since = _browsed_for
+	status_label.text = "Finding you a free online server…"
+	ServerQuery.query_pool() # do not sit out the rest of this second's interval
+
+func _claim_online_server(address: String) -> void:
+	AudioManager.play("ui_click")
+	status_label.text = "Taking server %d — your code is on the next screen." % _pool_slot_of_address(address)
+	_begin_join(address)
+
 func _on_host_pressed() -> void:
+	_cancel_pending_code()
+	_cancel_hosting_online()
 	GameLaunch.pending_action = "host"
 	GameLaunch.clear_seating()
 	_reset_match_state()
@@ -799,8 +922,10 @@ func _on_host_pressed() -> void:
 
 func _on_join_pressed() -> void:
 	# A second press supersedes a code the first one is still waiting on — otherwise the
-	# old wait could resolve and change scene out from under the new one.
+	# old wait could resolve and change scene out from under the new one. A HOST ONLINE
+	# wait is superseded for the same reason: it would change scene to a different server.
 	_cancel_pending_code()
+	_cancel_hosting_online()
 	var typed := join_address_edit.text.strip_edges()
 	if typed.is_empty():
 		AudioManager.play("ui_error") # 4.1
