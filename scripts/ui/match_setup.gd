@@ -539,6 +539,14 @@ func _on_connection_failed() -> void:
 	get_tree().change_scene_to_file(MULTIPLAYER_SETUP_PATH)
 
 func _on_server_disconnected() -> void:
+	# ⚠️ A DELIBERATE RECONNECT LOOKS LIKE THIS TOO. `_rpc_route_to_running_match`
+	# (network_manager.gd) disconnects on purpose and reconnects fresh from
+	# `Main.tscn` — see that function's own doc for why. Without this check,
+	# this handler would race its own bounce to MULTIPLAYER_SETUP_PATH against
+	# that reconnect's change to Main.tscn, and "Host ended the session" would
+	# flash on screen for a host that never left.
+	if NetworkManager.rerouting_to_running_match:
+		return
 	GameLaunch.pending_status_message = "Host ended the session."
 	get_tree().change_scene_to_file(MULTIPLAYER_SETUP_PATH)
 
