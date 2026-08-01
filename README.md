@@ -7,7 +7,7 @@ One player is the **taya** (defender), locked inside a chalk box guarding a **la
 The other three are **attackers**, throwing **tsinelas** (rubber slippers) at it from outside the
 box. Throwing is safe and free — the tension is the **retrieval**: your slipper lands inside the
 taya's box, and the moment you pick it up you can be tagged. Knock the lata over and the taya has
-to spend 2.5 seconds standing it back up, which is the one window they cannot defend.
+to spend 1.5 seconds standing it back up, which is the one window they cannot defend.
 
 **Four rounds of 90 seconds. The taya role rotates clockwise, so everyone plays it exactly once.**
 Scores are cumulative and personal; highest total after round 4 takes the match.
@@ -26,10 +26,16 @@ taken all the way down, not two taken halfway · **Format:** 4-player LAN
 ## Where the project stands
 
 The LAN loop hosts, joins, spawns, syncs late joiners, runs a 90-second round, rotates the taya and
-completes a four-round match. Two maps are built (**Eskinita**, **Bayan Plaza**), audio is in
-(SFX + ambience beds, all synthesised in-repo — **there is still no music**), and there is a themed
-main menu, a lobby with ready-up, character select, settings, pause, a match-result screen, a
-role-swap card, nameplates, a spectator camera and a HUD.
+completes a four-round match. Two maps are built (**Eskinita**, **Bayan Plaza**); the lata and the
+tsinelas have four skins each with their own meshes; **two of five OST tracks are in and playing**,
+written by the team, over SFX and ambience beds synthesised in-repo; and there is a themed main
+menu, a lobby with ready-up, character select, settings, pause, a match-result screen, a credits
+screen, a role-swap card, nameplates, a spectator camera and a HUD. **Single Player is three bots
+that actually play** — they retrieve, take an angle, throw at real power, body-block, chase and
+tag, at three difficulties that measure apart.
+
+**Still missing:** every voice line (`docs/HUMAN.md` is the brief), three of the five OST tracks,
+the team's own SFX, and a balance pass over the numbers.
 
 **The 2v2 design was removed on 2026-07-31**, on branch `HARRYDAKS`. Until then the lata and the
 tsinelas were themselves playable characters, with eight abilities between them, dashes, shockwaves
@@ -38,17 +44,23 @@ four players free-for-all, and the rules are the ones the street game actually h
 tag, reset. `docs/Design.md` §12 lists everything that went and why.
 
 **👉 [`docs/Agent_Prompts.md`](docs/Agent_Prompts.md) is the single place progress is tracked.**
-**Five** `build xxx` lanes, run one at a time in board order — currently 🎨 model → 🔊 sound →
-🖥️ ui → ⚖️ fair → 🤖 ai, with the three presentation lanes pulled to the front for a demo
-recording. The first unticked box in a lane's
+**Five** `build xxx` lanes, run one at a time in board order. The first unticked box in a lane's
 section is the next thing to do. Five and not more is deliberate: the board this replaced had
 eleven and never finished them, and a lane is a whole session with a cold start — so the count is
 a schedule, not a taxonomy.
 
-**🔊 `build voice` runs next, at position 3, and it is the one lane that blocks on people rather
-than on code** — the team is recording Filipino voice lines and composing a five-track chiptune
-OST, and that takes calendar time nothing else on the board can compress. **[`docs/HUMAN.md`](docs/HUMAN.md)
-is the brief: what to record, how, and in what format.**
+| | lane | state |
+|---|---|---|
+| 1 | 🎨 `build model` | **closed** — the props, both maps, the play area |
+| 2 | 🖥️ `build ui` | **closed** — HUD, tutorial, lobby, result screen, credits |
+| 3 | 🤖 `build ai` | **closed 2026-08-01** — the bots play, and three difficulties measure apart |
+| 4 | 🔊 `build sound` | **blocked on people, not on code.** Every hook is wired and most are silent |
+| 5 | ⚖️ `build fair` | **last, by human call** — *"we will do fairness last"*, because *"the game already feels fair"* |
+
+**🔊 `build sound` is the one lane that blocks on people rather than on code** — the team is
+recording Filipino voice lines and writing a five-track OST, and that takes calendar time nothing
+else on the board can compress. It runs whenever files land rather than at a fixed position.
+**[`docs/HUMAN.md`](docs/HUMAN.md) is the brief: what to record, how, and in what format.**
 
 ---
 
@@ -79,9 +91,11 @@ single-PC flow: **one human unit, three bots**, with a switcher for which unit i
 | **Space** | `jump` | |
 | **Shift** | `sprint` | costs stamina |
 | **Ctrl** | `spectator_down` | descend, spectator camera only |
-| **E** *or* **LMB** | `grab` | **tap** to pick up a slipper · **hold 1.25 s** to shove another attacker · **hold 2.5 s** as the taya, in the lata’s ring, to stand it back up |
-| **Q** *or* **LMB / RMB** | `special_ability` | hold to charge a throw, release to throw |
+| **E** *or* **LMB** | `grab` | **tap** to pick up a slipper · **tap** with nothing to pick up to shove another attacker · **hold 1.5 s** as the taya, in the lata’s ring, to stand it back up |
+| **Q** *or* **LMB** | `special_ability` | hold to charge a throw, release to throw |
+| **RMB** | `lunge` | **taya only** — hold 0.5 s to charge, release to dash 2.5 m and tag |
 | **R** | `ready_up` | before the first round |
+| **H** | `clean_feed` | hides the HUD, for recording |
 | **Esc** | pause | |
 
 - **Tab / F1–F4 / F6** — the debug switcher, to choose which of the four players you drive
@@ -96,8 +110,15 @@ single-PC flow: **one human unit, three bots**, with a switcher for which unit i
 > bump meter, Can-Dash, Flick Dash, Can-Smash and Ground Smash. The spectator camera’s descend
 > key kept Ctrl but has its own action now (`spectator_down`) rather than borrowing a gameplay one.
 >
-> ⚠️ **This table is the `[input]` block of `project.godot`, and three earlier
-> claims here were wrong.** **There is no P2 binding set** — the file defines exactly eleven
+> ⚠️ **THE SHOVE IS A TAP AND THE TAYA HAS A LUNGE, AND THIS TABLE SAID NEITHER.** Both changed
+> on 2026-08-01. The shove was a 1.25 s hold and is now a single tap (`SHOVE_CHARGE_TIME` is
+> **0.0**, kept rather than deleted because three files read it as a 0..1 ratio). The tag stopped
+> being passive — it used to fire every physics frame on adjacency, for no input and no animation
+> — and became a charged right-click dash. **`lunge` and `clean_feed` were never added to this
+> table at all**, so the one verb the defender scores with was undocumented.
+>
+> ⚠️ **This table is the `[input]` block of `project.godot`, and several earlier
+> claims here were wrong.** **There is no P2 binding set** — the file defines exactly twelve
 > actions and not one of them is per-player. 🧑 2026-07-31: *"theres no p2 at all — only one
 > settings bcz back then ppl could play on one pc but now its local multiplayer not same pc."*
 > **The second seat was removed when the project moved from same-PC to LAN**, and the
@@ -112,7 +133,7 @@ single-PC flow: **one human unit, three bots**, with a switcher for which unit i
 >
 > ⚠️ **`LMB` is bound to BOTH `grab` and `special_ability`** in `project.godot`. That is recorded
 > here as an observation, not a decision — one left-click can fire both actions. `scripts/ui/**`
-> is 🖥️ `build ux`'s and the conflict is filed on its checklist.
+> is 🖥️ `build ui`'s and the conflict is filed on its checklist.
 
 **LAN:** **Host Game** on one machine, **Join** with the host's local IP on the others. To test on
 one PC, use **Debug → Run Multiple Instances → 2** with per-instance arguments `--host` and
@@ -124,17 +145,31 @@ one PC, use **Debug → Run Multiple Instances → 2** with per-instance argumen
 ### Verifying visual work
 
 `--headless` renders nothing and `--quit` never executes a single frame of `_process()`. Between
-them they missed four live bugs. To actually look at the game:
+them they missed four live bugs. To actually look at the game, run a probe as a `.tscn` with the
+**plain** exe:
 
 ```bash
-godot --path . tools/render_probe.tscn --quit-after 400 --resolution 1280x720 -- match /tmp/
+godot --path . tools/harrydaks_shot.tscn -- C:/tmp/
+```
+
+⚠️ **`tools/render_probe.tscn` is DEAD, and the command that used to be printed here did not
+run.** It builds its match by hand out of `team_is_can_side`, `is_can` and `report_round_result()`
+— three things the 2026-07-31 pivot deleted — so it cannot boot at all. `harrydaks_shot.tscn`
+replaced it: it loads the real `Main.tscn`, starts the round through the same path a human's READY
+press takes, saves frames and prints the match state. Rewriting `render_probe` is filed as
+`build fair` §2.10.
+
+To watch four bots play a whole match and get numbers out of it:
+
+```bash
+godot --path . tools/ai_probe.tscn -- matches=1 scale=6 tier=NORMAL
 ```
 
 ---
 
 ## Setup
 
-1. **`git lfs install` FIRST, before you clone.** Thirteen binaries are LFS-tracked. Cloning
+1. **`git lfs install` FIRST, before you clone.** **176 binaries** are LFS-tracked. Cloning
    without LFS makes every character invisible, and it does not present as an LFS problem — it
    presents as broken art. `git lfs install && git lfs pull` fixes it in place.
 2. Install [Godot 4.7](https://godotengine.org/download), **Standard** build (not .NET — this is a
@@ -148,9 +183,12 @@ godot --path . tools/render_probe.tscn --quit-after 400 --resolution 1280x720 --
    **Every commit is authored by that name and nobody else.** No `Co-Authored-By:` trailer, no
    "Generated with", no 🤖 line, no model or tool named in the message. This is submitted as one
    person's work and the history has to read that way.
-5. **Branch from `feature/objects-overhaul-v2`** for overhaul work; `integration` is the stable
-   line. Never from `main`. One lane at a time, one writer per file — the ownership table is in
-   `docs/Agent_Prompts.md` § PATHS.
+5. **`HANSDAKS-test` is the working line** — branch from it, push to it, and open a branch of your
+   own for a lane that will take a while. `integration` is the older stable line and `main` is
+   older still; never branch from either. ⚠️ **`feature/objects-overhaul-v2` was named here until
+   2026-08-01, and it belongs to the deleted 2v2 design** — anyone who followed this step branched
+   off the game this one replaced. One lane at a time, one writer per file — the ownership table
+   is `docs/Agent_Prompts.md` §3.
 
 ---
 
@@ -165,12 +203,13 @@ scenes/
   ui/              MainMenu, HUD, MatchSetup, MultiplayerSetup, CharacterSelect, SettingsPanel, …
   main/            Main.tscn — the match scene
 scripts/
-  characters/      character_base, character_visual, carriable, carrier, hitbox, hurtbox, …
+  characters/      character_base, character_visual, carrier, character_nameplate
+  objects/         lata.gd, slipper.gd — the two props. NOT players; see Design.md §12
   systems/         round_manager, match_manager, network_manager, spectator_camera, ai_controller, …
-  abilities/       ability_base.gd + one script per special + resources/*.tres
-  ui/              hud, main_menu, match_setup, character_select, ui_theme, …
+  ui/              hud, main_menu, match_setup, character_select, credits_panel, ui_theme, …
+  main.gd          the match scene's entry point
 tools/             non-shipping: model generator, map builders, probes, render harnesses
-docs/              four files — see the table above
+docs/              five files — see the table above
 ```
 
 ---
@@ -185,6 +224,9 @@ codebase has a documented history of code that was written, reviewed and never r
 same commit as the feature. A command-line flag is not an entry point. See the reachability rule
 in `docs/Agent_Prompts.md`.
 
-**The camera directive is not negotiable.** Person → first person, always. Prop (Can or Tsinelas) →
-third person, always. Derived from `is_person` at `_ready()`, with no toggle, no export and no
-per-map exception. Any doc implying otherwise is stale — fix the doc.
+**The camera directive is not negotiable.** A player is a person, and a person is **first person,
+always** — no toggle, no export, no per-map exception. ⚠️ This rule used to have a second half
+("Prop → third person") and it went with the thing it described: the lata and the tsinelas were
+playable characters until 2026-07-31 and are props now, so there is no prop camera to direct. The
+spectator camera is the only other view in the game. Any doc implying otherwise is stale — fix
+the doc.
