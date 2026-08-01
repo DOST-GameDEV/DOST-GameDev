@@ -571,6 +571,22 @@ doesnt TAG"*:**
   swinging at people the rules will not let it touch, but **the balance question is
   yours**: either the tag survives a downed lata, or the taya needs a scoring verb
   that does, or DEFENSE is meant to carry that window (it measures 34%).
+
+  ⚠️ **CONFIRMED AT HARD, WHERE THE BOTS ARE GOOD AND IT IS WORSE.** Whole match:
+  hit rate **63.4%** (§6.8 baseline 58.5% — the offence is in fine shape), and the
+  four attackers spent **33.9 / 33.7 / 38.9 / 52.4 s** each `is_taggable()`. That is
+  **158 combined seconds of standing, uncontested vulnerability converted into 2
+  tags.** No amount of AI work moves that number; the verb is switched off for most
+  of the window it is needed in. LATA DOWN 69.9%, TAG 3.1%.
+
+- [ ] 2.32 **SABOTAGE IS 0 FOR THE SAME REASON AND IS NOT AN INDEPENDENT ITEM.**
+  Sabotage pays +50 only when the shoved rival is then TAGGED inside
+  `SABOTAGE_WINDOW` — so a verb whose entire payoff is downstream of the tag cannot
+  fire more often than the tag does. §6.10 left this *"unverified: that this is the
+  right frequency rather than merely the honest one"*; it is now measurable that the
+  frequency is not the shove's own gates at all. **Fix 2.30 and re-measure this
+  before touching `SABOTAGE_WINDOW` (§2.3) — tuning it now would be tuning against a
+  term that is zero for an unrelated reason.**
 - [ ] 2.31 **The punch out-ranges the lunge's own tag radius, so inside 1.7 m the
   lunge is never the right button.** `PUNCH_RANGE` is **1.7 m** and instant;
   `LUNGE_TAG_RADIUS` is **1.3 m** behind a 0.5 s charge. The split the punch was
