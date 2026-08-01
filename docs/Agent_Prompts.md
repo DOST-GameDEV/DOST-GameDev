@@ -423,6 +423,17 @@ invalidate a whole recording session, and it is the only one nobody has ever run
   somehow empty. *Verified: `--headless --check-only` clean, no Parse Error.
   Unverified by eye — no rendered capture taken.*
 
+**Filed by `build ui` 2026-08-01 — two visual claims that need a PLAYED match:**
+
+- [ ] 2.20 **The fatigue pose and the slipper glow are wired and unseen.** Both landed
+  2026-08-01 (§ LOG). `character_visual.gd` plays `crouch` while
+  `CharacterBase.is_fatigued()`, and `slipper.gd` drives `toon.gdshader`'s
+  `rim_strength` to 0.85 on the local player's own loose slipper. Neither has been
+  observed: the fatigue pose needs someone to sprint a 50-point bar to zero, and the
+  glow needs the local seat to be an ATTACKER — `harrydaks_shot` drives the taya, who
+  owns no slipper, so every capture correctly shows no glow. You are the lane that runs
+  real matches with real input; confirm or reject both on sight.
+
 ### 2 · ⚖️ `build fair` — every number, and the feedback that sells it *(Opus 5 · xhigh)*
 
 **⚠️ THIS SECTION ABSORBED `build feel` (the old §3) ON 2026-07-31.** Items 2.11–2.16
@@ -1553,3 +1564,42 @@ all of them reasons a naive version would have been useless:
   identical at 16:9, 16:10, 21:9 and 4:3 — a resolution bug moves with the resolution.
   Exempted on the left edge ONLY; top, right and bottom still apply, so the failure
   actually reported (BACK falling off the bottom) would still be caught.
+
+### 2026-08-01 · 🖥️ `build ui` · the last two spec items · branch `HARRYDAKS`
+
+🧑 asked why the last three were skipped and whether they were other lanes. **Only one
+was.** `ai_controller.gd` is 🤖 `build ai` §6's row, runs last, and its own header says
+*"do not tune it, replace it"* — left there. The other two were not blocked by anything
+and are done here.
+
+**THE FATIGUE POSE, AND THE RIG HAS NO PANTING CLIP.** 🧑 asked for *"a heavy panting
+animation"*. Enumerated the Kenney rig's animation list rather than assuming: 32 clips,
+and the complete set is attack-kick/melee ×4, **crouch**, die, drive, emote-no,
+emote-yes, fall, holding-* ×6, idle, interact-* ×2, jump, pick-up, sit, sprint, static,
+walk, wheelchair-* ×6. There is no breathing clip and authoring one onto a CC0 rig this
+project ships unmodified is the ART lane's call. `crouch` is the nearest true read —
+doubled over, weight forward, the universal hands-on-knees silhouette — and it is
+legible at arena distance, which `idle` at a faster `speed_scale` would not be. It
+outranks walk and sprint but not DOWNED or airborne, because a fatigued player is still
+moving at 0.75 speed and the whole value of the state is that the other three can SEE it.
+
+**THE SLIPPER GLOW, AND WHY IT IS A RIM AND NOT A RECOLOUR.** 🧑: *"Your personal
+slipper glows with an outline on the arena floor."* The obvious implementation —
+tinting each slipper by owner slot — was rejected: it would override the tsinelas pick
+from the CHARACTER screen, which is precisely the *"a control that is reachable and
+does nothing"* failure THE REACHABILITY RULE was extended to forbid after this branch
+shipped exactly that bug for one commit. Instead it drives **`rim_strength`, a uniform
+`toon.gdshader` has carried since 7.1 and every prop shipped at 0.0** — built and never
+switched on. A rim is one dot product, it survives the flat two-band ramp where a
+specular lobe would not, and it leaves `albedo_color` — the skin tint — untouched.
+⚠️ **Per-peer and never replicated**: "yours" is a different slipper on every machine,
+so a networked glow would light one slipper for everybody. Polled rather than driven off
+`carry_state_changed`, because ownership also changes when the ROLE rotates and no state
+change on the slipper fires for that.
+
+⚠️ **BOTH ARE `[~]`, NOT `[x]`, AND THE REASON IS THE BOARD'S OWN RULE.** Each is wired,
+parses, and imports clean — but neither has been SEEN. The fatigue pose needs a player
+to sprint a 50-point bar to zero, and the glow needs the local player to be an ATTACKER
+with a loose slipper; `harrydaks_shot` puts the local seat on the taya, who by
+construction owns no slipper, so the glow is correctly OFF in every capture taken. A
+screenshot of a thing not happening is not evidence that it happens.

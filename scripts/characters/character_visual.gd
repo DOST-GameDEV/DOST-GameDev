@@ -1449,6 +1449,24 @@ func _play_locomotion() -> void:
 		wanted = "die"
 	elif airborne:
 		wanted = "jump" if vertical > 0.0 else "fall"
+	elif _character.is_fatigued():
+		# ⚠️⚠️ `crouch`, AND THE RIG HAS NO PANTING CLIP — THIS IS THE NEAREST READ.
+		# 🧑 2026-08-01 asked for *"a heavy panting animation"* on the fatigued state.
+		# The Kenney rig ships 32 clips and none of them is breathing: enumerated in
+		# full, they are attack-kick/melee ×4, crouch, die, drive, emote-no, emote-yes,
+		# fall, holding-* ×6, idle, interact-* ×2, jump, pick-up, sit, sprint, static,
+		# walk and wheelchair-* ×6. Inventing one is the ART lane's call and would mean
+		# authoring a clip onto a CC0 rig this project ships unmodified.
+		#
+		# `crouch` is doubled-over with the weight forward — the universal "hands on
+		# knees, out of breath" silhouette, and the only pose here that reads as
+		# exhaustion rather than as an action. It is legible at arena distance, which
+		# `idle` played faster would not be.
+		#
+		# ⚠️ IT OUTRANKS WALK AND SPRINT, NOT DOWNED OR AIRBORNE. A fatigued player is
+		# still moving (at `FATIGUE_SPEED_SCALE` 0.75), and the whole point is that the
+		# state is visible to the three people deciding whether to chase them.
+		wanted = "crouch"
 	elif _is_holding():
 		wanted = CARRY_IDLE_CLIP
 	elif speed > RUN_SPEED_THRESHOLD:

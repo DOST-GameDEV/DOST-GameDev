@@ -272,6 +272,11 @@ func _set_state(new_state: CarryState) -> void:
 ## ---------------------------------------------------------------------------
 
 func _physics_process(delta: float) -> void:
+	# ⚠️ POLLED, NOT DRIVEN OFF `carry_state_changed`. "Yours" also changes when the
+	# ROLE rotates — the taya owns no slipper, and next round they will — and no state
+	# change on this object fires for that. `_update_owner_glow()` early-outs on every
+	# frame the answer has not changed, so the poll costs one comparison.
+	_update_owner_glow()
 	match state:
 		CarryState.CARRIED:
 			_step_carried()
@@ -448,6 +453,62 @@ func apply_skin(index: int) -> void:
 	if not entry.has("tint"):
 		return
 	_tint_meshes(entry["tint"])
+
+## ⚠️⚠️ THE FLOOR GLOW THAT SAYS WHICH SLIPPER IS YOURS. 🧑 2026-08-01: *"Your
+## personal slipper glows with an outline on the arena floor."* It pairs with the foot
+## arrow (§1.6): the arrow points across the map, the glow confirms it once you are
+## close enough to see the thing itself.
+##
+## ⚠️ IT USES `rim_strength`, A UNIFORM `toon.gdshader` HAS CARRIED SINCE 7.1 AND THAT
+## EVERY PROP SHIPPED AT 0.0 — built and never switched on. A rim is a single dot
+## product, it survives the flat two-band toon ramp (a specular lobe would either
+## vanish into the lit band or sit on it as a white blob), and it does not touch
+## `albedo_color`, so the OWNER'S CHOSEN SKIN TINT IS UNAFFECTED. That last part is the
+## constraint that decided the whole approach: recolouring the slipper by owner slot
+## would have overridden the tsinelas pick from the CHARACTER screen, which is exactly
+## the "a control that is reachable and does nothing" failure the board's own
+## REACHABILITY RULE was extended to forbid.
+##
+## ⚠️ AND IT IS PER-PEER, DELIBERATELY NOT REPLICATED. "Yours" is a different slipper
+## on every machine, so this is computed locally each time it changes and never sent —
+## a networked glow would light one slipper for everybody.
+const OWNER_RIM_STRENGTH: float = 0.85
+const OWNER_RIM_COLOR: Color = Color(1.0, 0.86, 0.35)
+
+var _glow_on: bool = false
+
+func _update_owner_glow() -> void:
+	# Only a LOOSE slipper is worth pointing at. Carried, it is already in your hand;
+	# in flight, it is the thing everybody is watching anyway.
+	var mine := state == CarryState.LOOSE and owner_slot >= 0 		and owner_slot == _local_owner_slot()
+	if mine == _glow_on:
+		return
+	_glow_on = mine
+	_set_rim(OWNER_RIM_STRENGTH if mine else 0.0)
+
+## The seat this machine is playing, or -1 for a spectator or a peer with no character.
+func _local_owner_slot() -> int:
+	var main := get_tree().current_scene
+	if main == null or not main.has_method("get_local_character"):
+		return -1
+	var who := main.get_local_character() as CharacterBase
+	return who.player_slot if who != null and is_instance_valid(who) else -1
+
+func _set_rim(strength: float) -> void:
+	var visual := get_node_or_null("Visual")
+	if visual == null:
+		return
+	for node in visual.find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		for surface in range(mesh.get_surface_override_material_count()):
+			# ⚠️ THE OVERRIDE, NOT `get_active_material()`. The outline pass is chained
+			# as `next_pass` and carries none of these uniforms — writing the rim
+			# through the active material would land on whichever of the two answered.
+			var material := mesh.get_surface_override_material(surface)
+			if material is ShaderMaterial:
+				var shader_mat := material as ShaderMaterial
+				shader_mat.set_shader_parameter("rim_strength", strength)
+				shader_mat.set_shader_parameter("rim_color", OWNER_RIM_COLOR)
 
 func _tint_meshes(tint: Color) -> void:
 	var visual := get_node_or_null("Visual")
