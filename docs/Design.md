@@ -342,8 +342,19 @@ shortens stagger. Per point: speed ±5%, power ±7%, grit ±7%, on 1..5 with 3 n
 Narrow on purpose — a pick must be a personality, not the correct answer.
 
 **Character select keeps all three tabs** (PERSON / LATA / TSINELAS). The Person pick
-drives the model and the traits above; the lata and tsinelas picks tint the real props,
-pushed from the host so all four peers see one lata.
+drives the model and the traits above; the lata and tsinelas picks tint the real props.
+
+⚠️ **REVERSED 2026-08-01, ON DIRECT HUMAN INSTRUCTION — EVERY SEAT OWNS ITS OWN LATA
+AND TSINELAS NOW, NOT ONE SHARED PAIR.** This used to say "pushed from the host so all
+four peers see one lata" and that was the whole design: one can pick and one slipper
+pick, read once from the host's own `GameLaunch`, applied to everybody. 🧑: *"allow
+bots in single player to have random cans and random slippers, their respective cans
+show when theyre defender, let my respective can show when im defender as well."*
+Every seat — a real player's own CHARACTER-screen pick, or a bot's host-rolled random
+one — now has its own can and slipper. Only one lata physically exists, so it wears
+**whichever seat currently defends**, re-applied every round as the role rotates; each
+slipper wears its own owner's pick. `main.gd::_seat_prop_picks` / `_refresh_seat_prop_
+picks()` / `_push_prop_skins()`. Out of row — this file is `build fair`'s.
 
 ⚠️ **THE "SOFT STATS" QUESTION IS OPEN.** Every roster entry — Person, lata and tsinelas
 alike — already carries `bilis`/`lakas`/`tatag`. The Person ones reach gameplay. Whether
