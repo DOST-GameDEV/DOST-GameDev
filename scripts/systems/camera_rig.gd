@@ -393,6 +393,20 @@ func set_active(active: bool) -> void:
 	# once at _ready().
 	_apply_fpp_self_hide()
 
+## True only when this rig is the one the local screen is looking THROUGH, in
+## first person. Both halves matter and `_active` alone is not enough: a rig can
+## be active while rendering TPP (spectator, prop cameras), and every character in
+## a single-process debug session reports `is_multiplayer_authority()`.
+##
+## Added 2026-08-01 for the aiming arc. 🧑: *"make sure that only first person sees
+## that, dont show it for others"*. Networked play was already correct by accident
+## — `carrier.gd` gated on multiplayer authority, which is per-peer — but "the
+## local player is the authority" and "the local player is LOOKING THROUGH THIS
+## CHARACTER'S EYES" are different claims, and only the second one is what the arc
+## should be drawn for.
+func is_local_fpp() -> bool:
+	return _active and _mode == Mode.FPP
+
 ## The rig mode (FPP/TPP) is derived and untouchable (§0.1) — this only
 ## chooses how the ACTIVE rig reads aim input, never what mode it renders in.
 func set_aim_source(source: AimSource) -> void:

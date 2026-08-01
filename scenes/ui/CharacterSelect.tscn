@@ -191,9 +191,9 @@ text = "CHARACTER"
 [node name="ConfigPanel" type="TextureRect" parent="."]
 layout_mode = 0
 offset_left = 83.0
-offset_top = 246.0
+offset_top = 232.0
 offset_right = 717.0
-offset_bottom = 726.0
+offset_bottom = 772.0
 mouse_filter = 1
 texture = ExtResource("5")
 expand_mode = 1
@@ -208,7 +208,7 @@ offset_left = 45.0
 offset_top = 40.0
 offset_right = -33.0
 offset_bottom = -40.0
-theme_override_constants/separation = 14
+theme_override_constants/separation = 10
 alignment = 1
 
 [node name="TabBar" type="HBoxContainer" parent="ConfigPanel/Rows"]
@@ -279,17 +279,17 @@ stretch_mode = 5
 
 [node name="TaglineLabel" type="Label" parent="ConfigPanel/Rows"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 80)
+custom_minimum_size = Vector2(0, 96)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 1)
-theme_override_font_sizes/font_size = 25
+theme_override_font_sizes/font_size = 22
 vertical_alignment = 1
 autowrap_mode = 2
 text = "The original defender. Immovable, unhurriable, and still standing exactly where you left him."
 
 [node name="TraitRows" type="VBoxContainer" parent="ConfigPanel/Rows"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 124)
+custom_minimum_size = Vector2(0, 104)
 layout_mode = 2
 theme_override_constants/separation = 6
 
@@ -297,9 +297,9 @@ theme_override_constants/separation = 6
 unique_name_in_owner = true
 layout_mode = 0
 offset_left = 95.0
-offset_top = 756.0
+offset_top = 796.0
 offset_right = 709.0
-offset_bottom = 857.0
+offset_bottom = 897.0
 texture = ExtResource("9")
 caption = "CHOOSE"
 text_color = Color(1, 1, 1, 1)
@@ -312,9 +312,9 @@ tip_padding = 40.0
 unique_name_in_owner = true
 layout_mode = 0
 offset_left = 95.0
-offset_top = 881.0
+offset_top = 920.0
 offset_right = 395.0
-offset_bottom = 939.0
+offset_bottom = 978.0
 theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 1)
 theme_override_colors/font_hover_color = Color(1, 0.729, 0, 1)
 theme_override_colors/font_pressed_color = Color(1, 0.729, 0, 1)

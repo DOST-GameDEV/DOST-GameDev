@@ -321,12 +321,32 @@ on the last frame of the reset channel.
 
 ### 5.2 · Retrieval and vulnerability
 
-* ⚠️ **A SLIPPER BELONGS TO ONE ATTACKER AND NOBODY ELSE MAY TOUCH IT.** Reversed
-  2026-08-01 (🧑: *"Each slipper is uniquely color-coded and tied strictly to its
-  owner. Opponents cannot pick up or tamper with another player's slipper."*). The old
-  any-attacker rule quietly deleted the three-way rivalry — if any slipper serves any
-  attacker, the nearest is always correct and there is nothing to contest. Ownership is
-  also what makes the floor glow and the foot arrow well-defined.
+* ⚠️⚠️ **ANY ATTACKER MAY PICK UP ANY SLIPPER. OWNERSHIP IS A LABEL, NOT A LOCK.**
+  Reversed **twice** on 2026-08-01 and both instructions are kept here on purpose,
+  because the second one is not a correction of a mistake — it is a different call on
+  the same trade-off, and whoever reads this next should see that it was weighed:
+  * Morning: *"Each slipper is uniquely color-coded and tied strictly to its owner.
+    Opponents cannot pick up or tamper with another player's slipper."* The argument
+    was that an any-attacker rule deletes the three-way rivalry — if any slipper serves
+    any attacker, the nearest is always correct and there is nothing to contest.
+  * Evening: *"allow bots and humans to pick up the slippers of others, make sure this
+    works in multiplayer"*, then *"let ai grab other slippers too but make it so that
+    they dont perma take from me, they can take from me tho but not all the time"*.
+  **The second version keeps the contest and moves it.** A slipper you can lose to a
+  rival is more contested than one nobody else may touch; what the lock actually bought
+  was that the contest could never happen. The failure mode the morning rule feared —
+  everyone converging on the nearest slipper — is real, and it is answered in the AI by
+  a claim rule (`ai_controller.gd::_is_nearest_claimant`: only the nearest eligible
+  attacker goes for it) plus a **3.5 m distance handicap on a human's own slipper**
+  (`HUMAN_SLIPPER_BIAS`), so a bot takes yours when it is clearly the better play and
+  not merely when it is a metre nearer.
+* **`owner_slot` still exists and is still assigned at round start.** It is what the
+  foot arrow and the owner glow read — "which one is mine" is still a well-defined
+  question. It simply no longer gates `can_be_grabbed_by()`.
+* ⚠️ **Contested pickups resolve HOST-SIDE.** `host_grab()` runs only on the host,
+  re-checks `can_be_grabbed_by()` there and broadcasts; the first grab moves the
+  slipper out of `LOOSE` so a same-frame second grab fails its first line. There is no
+  window in which two attackers both succeed.
 * **An Attacker inside the box is 100% safe until they pick a slipper up.** Once
   `holding_slipper` is true they can be tagged, until they cross back out.
 * `CharacterBase.is_taggable()` is that entire rule, in one function, read by both the
