@@ -99,8 +99,9 @@ theme_override_constants/separation = 12
 [node name="PlayerNameLabel" type="Label" parent="Card/Margin/Layout/Scroll/Content/BindingsList/PlayerNameRow"]
 custom_minimum_size = Vector2(220, 0)
 layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 vertical_alignment = 1
-text = "Player name"
+text = "Username"
 
 [node name="PlayerNameField" type="LineEdit" parent="Card/Margin/Layout/Scroll/Content/BindingsList/PlayerNameRow"]
 unique_name_in_owner = true
@@ -223,7 +224,7 @@ custom_minimum_size = Vector2(260, 0)
 layout_mode = 2
 theme_type_variation = &"MenuBody"
 vertical_alignment = 1
-text = "Ambience Volume"
+text = "Music Volume"
 
 [node name="MusicVolumeSlider" type="HSlider" parent="Card/Margin/Layout/Scroll/Content/MusicVolumeRow"]
 unique_name_in_owner = true

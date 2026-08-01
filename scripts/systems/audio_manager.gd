@@ -518,7 +518,14 @@ func _poll_scene_state() -> void:
 	_music_scene_state = state
 	match state:
 		"menu":
-			play_music("menu")
+			# ⚠️ FADE 0.0 — THE BED STARTS ON THE FRAME THE INTRO ENDS. 2026-08-01,
+			# on human instruction: *"Remove the audio playback delay when
+			# transitioning from the intro video. MenuMusic should begin playing at
+			# the exact moment the intro video ends."* The delay was never a timer;
+			# it was `MUSIC_CROSSFADE_TIME`, 1.5 s of ramp on a track starting from
+			# silence. A cross-fade needs something to fade FROM, and at this edge
+			# there is nothing — so the ramp was pure latency.
+			play_music("menu", 0.0)
 			play_vo("title")
 		"match":
 			# ⚠️ STOPPED, NOT CROSSFADED, AND THAT IS THE LITERAL ASK.
@@ -845,7 +852,13 @@ func play(sound_name: String, volume_db: float = 0.0) -> void:
 	# countdown's own SFX name, already unique to this one call site, so
 	# hooking it here needs no other file touched, same as the duck above.
 	if sound_name == "countdown_tick":
-		play_music("match")
+		# ⚠️ FADE 0.0, same reason as the menu bed above. 2026-08-01: *"Remove the
+		# audio latency during round initialization. RoundMusic should begin playing
+		# immediately when all 4 players click Ready."* `_poll_scene_state()` has
+		# already `stop_music_now()`d the menu bed by this point (the "match" branch),
+		# so again there is nothing to fade from and the 1.5 s was dead time over the
+		# countdown — the exact window the round is supposed to feel like it starts in.
+		play_music("match", 0.0)
 
 
 ## Positional. Everything that happens at a place in the arena goes through

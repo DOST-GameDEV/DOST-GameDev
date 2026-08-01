@@ -226,6 +226,46 @@ func _apply_owner(slot: int) -> void:
 	# here rather than waiting for a poll that may be gated on state.
 	_update_owner_glow()
 
+## ⚠️⚠️ THE ROUND-START EQUIP. New 2026-08-01, on human instruction: *"At the
+## beginning of each round, automatically equip each player's personal slipper in
+## their hand. This should eliminate the need for players to manually pick it up at
+## the start of the round."*
+##
+## ⚠️ IT IS A SEPARATE ENTRY POINT FROM `host_grab()` ON PURPOSE, AND THE REASON IS
+## §6 TRAP 12 ALMOST EXACTLY. `main.gd::_reset_slippers()` has always ended with a
+## courtesy `host_grab()`, and that call **can silently refuse**:
+## `can_be_grabbed_by()` requires `who.can_act()`, which is `round_active and state
+## == NORMAL`, and a character being reset at a round boundary is neither. So
+## whether you started the round holding your slipper depended on frame timing.
+## That is the same shape as the `owner_slot` bug — a value that must always hold,
+## inferred from an action that has its own preconditions.
+##
+## So the equip WRITES, and it keeps only the two gates that are about the RULES
+## rather than about the moment: a defender never holds a slipper, and nobody ever
+## holds somebody else's (`Design.md` §5.2). It deliberately does not ask
+## `can_act()`, because "the round has not started yet" is precisely when this runs.
+func host_force_equip(who: CharacterBase) -> void:
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		return
+	if who == null or who.is_defender:
+		return
+	if state == CarryState.CARRIED and carrier == who:
+		return
+	if owner_slot >= 0 and who.player_slot != owner_slot:
+		return
+	# ⚠⚠ THE CARRIER MUST ALREADY BE REGISTERED, OR THIS CREATES A SLIPPER
+	# NOBODY HOLDS AND NOBODY CAN FETCH. `_apply_grabbed()` resolves the carrier
+	# through `RoundManager.player_at()`; if that comes back null the prop still
+	# enters CARRIED, so it is no longer LOOSE (fetch refuses it) and no character
+	# knows it is held (throw refuses it). Measured, when this was called during
+	# the round reset: 0 throws in a whole match and three bots stuck in FETCH.
+	if RoundManager.player_at(who.player_slot) != who:
+		return
+	if NetworkManager.is_networked():
+		_rpc_grabbed.rpc(who.player_slot)
+	else:
+		_apply_grabbed(who.player_slot)
+
 func host_grab(by: CharacterBase) -> void:
 	if NetworkManager.is_networked() and not NetworkManager.is_host():
 		return

@@ -73,10 +73,26 @@ const LAND_SFX_MIN_SPEED: float = 2.0
 ## then cost 10 in one frame — a player tapping Shift on a 0.2 s rhythm would sprint
 ## for nothing, which is exactly the feathering `STAMINA_SPRINT_FLOOR` exists to
 ## stop. 40/s continuous spends the identical 10 points per 0.25 s held.
-const STAMINA_MAX: float = 50.0
+## ⚠️⚠️ 50 -> 60 ON 2026-08-01, ON HUMAN INSTRUCTION: *"Increase the maximum
+## stamina pool from 50 to 60 points."* At the unchanged 40/s drain that is
+## **1.50 s of sprint**, up from 1.25 — and the number that actually moved is the
+## DISTANCE: a full sprint now covers **8.2 m** against 6.84 (measured,
+## `mech_probe`). §2.5 established that the bar is dimensioned to one crossing of
+## the danger zone, and the box went to 7.5 in the same session, so this puts the
+## two back in step: one sprint crosses the box again with a little to spare.
+const STAMINA_MAX: float = 60.0
 const STAMINA_DRAIN_RATE: float = 40.0
 const STAMINA_REGEN_RATE: float = 20.0
-const STAMINA_REGEN_DELAY: float = 2.5
+## ⚠️⚠️ 2.5 -> 1.0 ON 2026-08-01, ON HUMAN INSTRUCTION: *"Reduce the stamina
+## recovery delay from 2.5 seconds to 1.0 second of absolute non-usage."*
+##
+## This is the biggest single change to the attacker's tempo in the file. Empty to
+## full was 2.5 s of waiting + 3.0 s of refill = 5.5 s; it is now **1.0 + 3.0 =
+## 4.0 s**, and more importantly a PARTIAL top-up between two runs starts almost
+## immediately instead of after a beat longer than the sprint itself. The retrieval
+## loop (§0) is sprint in, grab, sprint out — and the old delay meant the second
+## sprint of that pair was never available.
+const STAMINA_REGEN_DELAY: float = 1.0
 ## Sprint is +50% speed.
 const SPRINT_SCALE: float = 1.50
 ## You cannot *start* a sprint below this, so the bar cannot be feathered a frame
@@ -210,6 +226,11 @@ const SHOVE_LIFT: float = 2.2
 const SHOVE_STUN: float = 1.25
 const SHOVE_STAMINA_COST: float = 25.0
 const SHOVE_COOLDOWN: float = 7.5
+## ⚠️ WHAT A WHIFF COSTS, new 2026-08-01 — see `_release_shove()`. Deliberately
+## about a quarter of the full one: long enough that mashing E across the box is
+## not a strategy, short enough that trying and missing is not a decision you
+## regret for seven and a half seconds.
+const SHOVE_MISS_COOLDOWN: float = 2.0
 ## How far in front of the shover the push reaches. Two capsule radii (0.40 each)
 ## plus a small band — you have to actually be next to them.
 const SHOVE_RANGE: float = 1.6
@@ -237,7 +258,16 @@ const SHOVE_ARC_DEG: float = 70.0
 ## friction integrates down, NOT a teleport — a teleport would skip the intervening
 ## space, and "caught in the lunge path" requires there to be a path.
 const LUNGE_CHARGE_TIME: float = 0.5
-const LUNGE_SPEED: float = 12.247
+## ⚠️⚠️ 12.247 -> 7.746 ON 2026-08-01, ON HUMAN INSTRUCTION: *"Lunge Tag (Hold E for
+## 0.5s): ... a short 1-meter forward dash."* Re-derived on the same `v²/FRICTION_2`
+## solve every impulse in this file uses rather than nudged: `sqrt(1.0 × 60) =
+## 7.746`. Move `FRICTION` and this number is wrong.
+##
+## The lunge stops being the taya's only verb in the same change — the PUNCH below
+## is the close-range one — so it no longer has to cover the whole box. A 2.5 m dash
+## that missed put the tag on cooldown and left the taya three metres from the can;
+## a 1 m step is a commitment you can make twice.
+const LUNGE_SPEED: float = 7.746
 ## Radius around the taya, swept every frame the lunge is live, inside which a
 ## vulnerable attacker is tagged. Wider than `TAG_RADIUS` was, because a moving body
 ## sampled at 60 Hz covering 2.5 m can otherwise step clean over a narrow band
@@ -251,6 +281,33 @@ const LUNGE_COOLDOWN: float = 1.5
 ## A minimum commitment, so a tapped right-click is not a free full-power tag. Below
 ## this the lunge still fires but travels proportionally less far.
 const LUNGE_MIN_POWER: float = 0.35
+
+## ---------------------------------------------------------------------------
+## THE PUNCH — the taya's quick tag. New 2026-08-01, on human instruction:
+## *"Melee Punch Tag (Left-Click): Implement a quick close-range punch for non-bot
+## defenders. When the punch connects with a vulnerable attacker, it should
+## immediately register a tag."*
+##
+## ⚠️ WHY THE TAYA NEEDED A SECOND VERB. The lunge is a 0.5 s charge, a dash and a
+## 1.5 s cooldown — a COMMITMENT, and the right answer to an attacker who is
+## running past. It is the wrong answer to one standing next to you, because the
+## charge is exactly long enough for them to leave. The punch is the other half:
+## no charge, short reach, short cooldown, and it does not move the taya at all.
+##
+## ⚠️ LEFT-CLICK IS FREE ON A DEFENDER AND ONLY ON A DEFENDER. `special_ability` is
+## the throw charge, and `RoundManager.can_throw()` refuses a defender outright
+## (`Design.md` §5.1), so nothing is being taken away from anybody. `_step_punch()`
+## returns immediately for an attacker for the same reason `_step_lunge()` does.
+##
+## ⚠️ IT IS AIMED, LIKE EVERYTHING ELSE THAT FIRES ALONG `-basis.z`, and therefore
+## subject to §6 trap 13: a taya who walks up and STOPS has frozen their facing.
+## That is deliberate and shared with the shove and the lunge — the counterplay to
+## all three is the same, and a punch with no arc would be a proximity tag, which
+## is exactly what 2026-08-01 deleted.
+const PUNCH_RANGE: float = 1.7
+const PUNCH_ARC_DEG: float = 75.0
+## Short enough to feel like a jab, long enough that mashing is not the strategy.
+const PUNCH_COOLDOWN: float = 0.9
 
 const MAX_KNOCKBACK_SPEED: float = 16.0
 const MAX_KNOCKBACK_LIFT: float = 7.0
@@ -340,6 +397,8 @@ var _observed_shove_charge: float = -1.0
 var _lunge_charge: float = 0.0
 var _lunge_charging: bool = false
 var _lunge_cooldown_left: float = 0.0
+## The taya's quick jab. See § THE PUNCH.
+var _punch_cooldown_left: float = 0.0
 var _lunge_active_left: float = 0.0
 ## Mirrored to every peer so the wind-up is visible to the attacker about to be
 ## lunged at, for the same reason `_observed_shove_charge` exists: a commitment
@@ -547,6 +606,8 @@ func _physics_process(delta: float) -> void:
 		_observed_shove_charge = minf(_observed_shove_charge + delta, SHOVE_CHARGE_TIME)
 	if _lunge_cooldown_left > 0.0:
 		_lunge_cooldown_left = maxf(0.0, _lunge_cooldown_left - delta)
+	if _punch_cooldown_left > 0.0:
+		_punch_cooldown_left = maxf(0.0, _punch_cooldown_left - delta)
 	if _observed_lunge_charge >= 0.0:
 		_observed_lunge_charge = minf(_observed_lunge_charge + delta, LUNGE_CHARGE_TIME)
 	if _fatigue_left > 0.0:
@@ -585,6 +646,7 @@ func _physics_process(delta: float) -> void:
 		_carrier.input_step(delta)
 	if state == State.NORMAL:
 		_step_shove(delta)
+		_step_punch(delta)
 		_step_lunge(delta)
 
 	match state:
@@ -737,7 +799,75 @@ func _step_shove(_delta: float) -> void:
 	_release_shove()
 	_broadcast_shove_charge(false)
 
-## THE TAYA'S LUNGE. Hold right-click, release to dash forward and tag.
+## THE TAYA'S PUNCH. Tap left-click to jab; a vulnerable attacker in front is
+## tagged instantly. See the § THE PUNCH constants for why it exists.
+func _step_punch(_delta: float) -> void:
+	if not is_defender:
+		return # the attackers' left-click is the throw charge
+	if _punch_cooldown_left > 0.0:
+		return
+	if _carrier != null and _carrier.is_busy():
+		return # mid reset-channel; the press belongs to that
+	if not input_just_pressed("special_ability"):
+		return
+	_punch_cooldown_left = PUNCH_COOLDOWN
+	# The same swing the shove and the lunge broadcast, so a punch is visible on
+	# every machine and not only on the presser's — the reason
+	# `broadcast_visual_action` exists at all.
+	broadcast_visual_action("shove")
+	AudioManager.play_at("bump_swing", global_position)
+	# Host-only: a tag writes a score, and a score may only be created where
+	# `MatchManager.add_score()` is reachable (`Design.md` §8).
+	if not NetworkManager.is_networked() or NetworkManager.is_host():
+		host_resolve_punch(player_slot, global_position, -global_transform.basis.z)
+	else:
+		_rpc_request_punch.rpc_id(1, global_position, -global_transform.basis.z)
+
+## ⚠️ RESOLVED ON THE HOST BY DISTANCE, exactly like the shove, the lunge sweep and
+## slipper contact. The client says where it stood and which way it faced; the host
+## decides who that reached.
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_request_punch(from: Vector3, facing: Vector3) -> void:
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		return
+	host_resolve_punch(player_slot, from, facing)
+
+func host_resolve_punch(puncher_slot: int, from: Vector3, facing: Vector3) -> void:
+	if not RoundManager.round_active:
+		return
+	var lata := RoundManager.lata
+	if lata == null or not lata.is_upright:
+		return # a tag requires the can standing, same as the lunge
+	var flat_facing := Vector3(facing.x, 0.0, facing.z)
+	if flat_facing.length() < 0.01:
+		return
+	flat_facing = flat_facing.normalized()
+	var taya := RoundManager.player_at(puncher_slot)
+	if taya == null:
+		return
+	for node in RoundManager.players():
+		var who := node as CharacterBase
+		if who == null or who.player_slot == puncher_slot or who.is_defender:
+			continue
+		# ⚠️ THE SAME `is_taggable()` THE HUD'S `VULNERABLE` ROW ASKS. `Design.md`
+		# §5.2 makes that a rule: the warning a player sees and the check that
+		# catches them must be one function.
+		if not who.is_taggable():
+			continue
+		var to_them := who.global_position - from
+		to_them.y = 0.0
+		var distance := to_them.length()
+		if distance > PUNCH_RANGE or distance < 0.01:
+			continue
+		if rad_to_deg(flat_facing.angle_to(to_them.normalized())) > PUNCH_ARC_DEG:
+			continue
+		RoundManager.host_resolve_lunge_tag(taya, who)
+		return # one tag per punch
+
+func punch_cooldown_left() -> float:
+	return _punch_cooldown_left
+
+## THE TAYA'S LUNGE. Hold E, release to dash forward and tag.
 ##
 ## ⚠️ THE SWEEP RUNS ON EVERY FRAME THE LUNGE IS LIVE, not once on release. A 2.5 m
 ## dash at 60 Hz moves ~0.2 m per frame at its peak, so a single end-of-dash test
@@ -759,20 +889,40 @@ func _step_lunge(delta: float) -> void:
 		_cancel_lunge()
 		return
 	if _lunge_charging:
-		if input_pressed("lunge"):
+		if _lunge_held_now():
 			_lunge_charge = minf(_lunge_charge + delta, LUNGE_CHARGE_TIME)
 			return
 		var power := clampf(_lunge_charge / LUNGE_CHARGE_TIME, LUNGE_MIN_POWER, 1.0)
 		_cancel_lunge()
 		_release_lunge(power)
 		return
-	if _lunge_cooldown_left > 0.0 or not input_just_pressed("lunge"):
+	if _lunge_cooldown_left > 0.0 or not _lunge_pressed_now():
 		return
 	if state != State.NORMAL:
 		return
 	_lunge_charging = true
 	_lunge_charge = 0.0
 	_broadcast_lunge_charge(true)
+
+## ⚠⚠ THE LUNGE MOVED TO **HOLD E** ON 2026-08-01, ON HUMAN INSTRUCTION:
+## *"Lunge Tag (Hold E for 0.5s)"*. Right-click still works and is deliberately
+## kept rather than removed — `ai_controller.gd` presses `lunge` (it is
+## 🤖 `build ai`'s file and this lane does not edit it), and a second binding for
+## the same verb costs a human nothing.
+##
+## ⚠️ E IS CONTEXTUAL AND THE ORDER IS WHAT MAKES IT WORK. `carrier.gd` gets first
+## refusal on the press: for a DEFENDER that is the lata reset channel, which only
+## engages when the can is DOWN and they are in its ring. Any other E press falls
+## through to here, exactly as an attacker's falls through to the shove. And while
+## the channel IS running, `_carrier.is_busy()` above cancels the charge — so
+## resetting the can can never accidentally fire a lunge out of it.
+func _lunge_pressed_now() -> bool:
+	return input_just_pressed("lunge") or input_just_pressed("grab")
+
+
+func _lunge_held_now() -> bool:
+	return input_pressed("lunge") or input_pressed("grab")
+
 
 func _cancel_lunge() -> void:
 	if not _lunge_charging:
@@ -847,16 +997,54 @@ func _cancel_shove() -> void:
 	_shove_charge = 0.0
 	_broadcast_shove_charge(false)
 
+## ⚠️⚠️ A MISS COSTS A SHORT COOLDOWN, A HIT COSTS THE FULL ONE. 2026-08-01, on
+## human instruction — first *"Shove should only enter cooldown when it
+## successfully hits"*, then revised: *"it should enter cooldown even if it doesnt
+## hit anyone, just a shorter one"*.
+##
+## The old rule punished the ATTEMPT, and the attempt is the hard part: the shove
+## reaches 1.6 m inside a 70° arc at a target who is also running, so a 7.5 s
+## lockout on a whiff meant the honest answer was never to press it. Measured
+## consequence: **0 sabotages in every whole-match run taken on 2026-08-01**
+## (`ai_probe` × 3 tiers, `fair_probe` × 3 policies) — a mechanic that never fires.
+## A free miss over-corrected the other way, so the miss has its own price.
+##
+## ⚠️ THE SHORT ONE IS SET LOCALLY AND IMMEDIATELY; the full one arrives from the
+## host, because ONLY THE HOST KNOWS IF IT CONNECTED. A client that started the
+## full cooldown on its own swing would be guessing, and guessing in the direction
+## that costs the player.
+##
+## ⚠️ AND THE STAMINA IS STILL SPENT EITHER WAY, which is the real bound: 25 of 60
+## means two swings before there is nothing left to escape the box with (§2.4 — the
+## shove's real price is the sprint, not the seconds).
 func _release_shove() -> void:
 	if not spend_stamina(SHOVE_STAMINA_COST):
 		return
-	_shove_cooldown_left = SHOVE_COOLDOWN
+	_shove_cooldown_left = SHOVE_MISS_COOLDOWN
 	broadcast_visual_action("shove")
 	AudioManager.play_at("bump_swing", global_position)
 	if not NetworkManager.is_networked() or NetworkManager.is_host():
 		host_resolve_shove(player_slot, global_position, -global_transform.basis.z)
 	else:
 		_rpc_request_shove.rpc_id(1, global_position, -global_transform.basis.z)
+
+## Host -> the shover. Called only when a shove actually landed on somebody.
+func host_start_shove_cooldown() -> void:
+	if NetworkManager.is_networked():
+		_rpc_shove_cooldown.rpc()
+	else:
+		_apply_shove_cooldown()
+
+@rpc("authority", "call_local", "reliable")
+func _rpc_shove_cooldown() -> void:
+	_apply_shove_cooldown()
+
+## ⚠️ `maxf`, NOT AN ASSIGNMENT. The miss cooldown is already running by the time
+## this arrives, and on a client it arrives a round-trip late — so a plain write
+## would SHORTEN a cooldown that had already started ticking down, handing the
+## shover time back for having connected.
+func _apply_shove_cooldown() -> void:
+	_shove_cooldown_left = maxf(_shove_cooldown_left, SHOVE_COOLDOWN)
 
 ## ⚠️ RESOLVED ON THE HOST BY DISTANCE, like the tag and like slipper contact. The
 ## client sends where it was and which way it faced; the host decides who that
@@ -872,6 +1060,7 @@ func host_resolve_shove(shover_slot: int, from: Vector3, facing: Vector3) -> voi
 	if flat_facing.length() < 0.01:
 		return
 	flat_facing = flat_facing.normalized()
+	var connected := false
 	for node in RoundManager.players():
 		var who := node as CharacterBase
 		if who == null or who.player_slot == shover_slot or who.is_defender:
@@ -888,6 +1077,13 @@ func host_resolve_shove(shover_slot: int, from: Vector3, facing: Vector3) -> voi
 		var impulse := to_them.normalized() * SHOVE_SPEED * trait_power_scale() \
 			+ Vector3.UP * SHOVE_LIFT
 		who.host_apply_shove(impulse, SHOVE_STUN, shover_slot)
+		connected = true
+	# ⚠️ ONLY A CONNECT COSTS THE COOLDOWN — see `_release_shove()`. Sent to the
+	# SHOVER, who may be a client and cannot know this for itself.
+	if connected:
+		var shover := RoundManager.player_at(shover_slot)
+		if shover != null:
+			shover.host_start_shove_cooldown()
 
 func host_apply_shove(impulse: Vector3, stun: float, from_slot: int) -> void:
 	# Recorded BEFORE the stun, so a shove that leads straight into a tag still
@@ -999,12 +1195,34 @@ func _rpc_tag_penalty(stun: float, safe_spot: Vector3) -> void:
 ## the attacker loses their position, 5 seconds, and the throw they were about to
 ## make. What they no longer lose is the ability to try again without first solving
 ## a pile of slippers under the taya's feet.
+## ⚠️⚠️ A TAG CLEANSES, 2026-08-01, ON HUMAN INSTRUCTION: *"ensure the attacker is
+## reset to 100% full stamina and has their Fatigued state cleared upon respawning
+## in the Safe Zone."*
+##
+## The reason it matters is compounding. The moment an attacker is most likely to
+## be tagged is the moment they are most likely to be EMPTY — they sprinted in,
+## grabbed, and were caught on the way out — so the old behaviour handed them a
+## 5 s stun AND a spent bar AND, half the time, an active fatigue lockout that
+## started ticking again the instant the stun ended. Three punishments stacked on
+## one mistake, and the two invisible ones outlasted the one the HUD showed.
+##
+## The penalty that remains is the one `Design.md` §6 describes and the one worth
+## having: the safe-zone teleport, 5 seconds, and the whole trip to make again.
 func _apply_tag_penalty(stun: float, safe_spot: Vector3) -> void:
 	global_position = safe_spot
 	velocity = Vector3.ZERO
 	begin_spawn_settle()
 	snap_visual_interpolation()
 	apply_stagger(stun)
+	# ⚠️ `exit_speed_zone` BEFORE zeroing `_fatigue_left`, or the 0.75 multiplier is
+	# orphaned on the speed-zone stack for the rest of the round — `_step_stamina()`
+	# only pops it on the frame the timer reaches zero, and that frame will not come.
+	if _fatigue_left > 0.0:
+		_fatigue_left = 0.0
+		exit_speed_zone(FATIGUE_SPEED_SCALE)
+	_stamina = STAMINA_MAX
+	_stamina_idle = 0.0
+	_is_sprinting = false
 	AudioManager.play_at("tag", global_position)
 
 ## ---------------------------------------------------------------------------

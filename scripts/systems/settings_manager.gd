@@ -81,11 +81,11 @@ const ACTION_LABELS: Dictionary = {
 	# deleted from `project.godot`, and `_replace_key_binding()` calls
 	# `InputMap.action_add_event()` on every rebindable action at boot — which errors
 	# out loudly for an action that does not exist. A stale row here is not cosmetic.
-	"special_ability": "Throw / Bump Meter", "jump": "Jump", "sprint": "Sprint",
+	"special_ability": "Throw", "jump": "Jump", "sprint": "Sprint",
 	# Named for both jobs, because the second one is the one a defender needs and the
 	# one nobody guesses from the word "grab": it is also the hold that carries a
 	# displaced lata home (`Design.md` §5.2).
-	"grab": "Grab / Carry Lata Home",
+	"grab": "Grab",
 	"ready_up": "Ready Up",
 	# Named for what it DOES to the recording, not for what it hides — the operator
 	# reading this row is looking for the setting that gives them a clean plate.

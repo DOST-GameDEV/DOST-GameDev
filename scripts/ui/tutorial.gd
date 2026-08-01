@@ -103,7 +103,7 @@ const PAGES: Array[Dictionary] = [
 		"title": "HOW A ROUND GOES",
 		"lede": "Four beats, and the third one is the whole game.",
 		"rows": [
-			["1.  THROW", "From outside the box, hold LEFT CLICK to charge and release. 2.5 seconds to full power, so the taya can see it coming. Throwing is free — nothing can happen to you while you do it."],
+			["1.  THROW", "You start every round with your slipper already in hand. From outside the box, hold LEFT CLICK to charge and release. 2.5 seconds to full power, so the taya can see it coming. Throwing is free — nothing can happen to you while you do it."],
 			["2.  IT LANDS", "Hit the lata and it goes over. Miss and your slipper is lying on the ground. If the taya blocks it with their body it bounces away into the open field, which is a reprieve — it is not landing at their feet."],
 			["3.  RETRIEVE", "This is the risk, and it is the entire point of the game. Only YOUR slipper answers to you — an arrow at your feet points to it. Walking in is safe; the instant it is in your hand you can be tagged, until you carry it back out."],
 			["4.  RESET", "The taya stands the lata back up by holding E in its ring. It takes 1.5 seconds of standing still, and nobody may throw for a moment afterwards."],
@@ -124,7 +124,7 @@ const PAGES: Array[Dictionary] = [
 		"rows": [
 			["W A S D", "Move."],
 			["MOUSE", "Look, and aim your throw. The slipper flies to the point your crosshair is actually on, not just along the line it points down."],
-			["SHIFT", "Sprint. The bar is short — about 1.25 seconds flat out — and it refills after a pause. Empty it completely and you are winded for 2 seconds: slower, no sprint, and the bar will not refill at all until it passes."],
+			["SHIFT", "Sprint. The bar is short — about 1.5 seconds flat out, roughly one crossing of the box — and it starts refilling a second after you let go. Empty it completely and you are winded for 2 seconds: slower, no sprint, and the bar will not refill at all until it passes."],
 			["SPACE", "Jump."],
 			# ⚠️ THE TWO MENU KEYS LIVE ON THIS PAGE, NOT ON THE NEXT ONE, AND IT IS A
 			# LAYOUT FIX RATHER THAN A CATEGORY JUDGEMENT. HANDS with six rows raised a
@@ -140,16 +140,18 @@ const PAGES: Array[Dictionary] = [
 		"rows": [
 			["LEFT CLICK", "Hold to charge a throw, release to throw. 2.5 seconds to full power — a long, visible commitment the taya can react to. A tap still throws, weakly."],
 			["E  ·  tap", "Pick up YOUR slipper when you are standing near it. Only yours: every slipper belongs to one attacker and nobody else can touch it."],
-			["E  ·  tap (nothing to grab)", "SHOVE. No wind-up — it fires instantly, blasting a rival back 2.5 metres and stunning them. 7.5-second cooldown. Shove someone who is then tagged and you are paid +50 for it."],
+			["E  ·  tap (nothing to grab)", "SHOVE. No wind-up — it fires instantly, blasting a rival back 2.5 metres and stunning them. Costs a quarter of your stamina either way; 7.5-second cooldown if it lands, only 2 seconds if you whiff. Shove someone who is then tagged and you are paid +50 for it."],
 		],
 	},
 	{
 		"title": "CONTROLS  ·  TAYA",
 		"lede": "You are faster than every attacker. Closing them down is your whole job.",
 		"rows": [
-			["RIGHT CLICK", "LUNGE. Hold 0.5 seconds to charge, release to dash 2.5 metres forward. Any attacker holding their slipper caught in the path is tagged. This is the only way to tag — it is a press, not a matter of standing close."],
-			["E  ·  in the ring", "Standing in the lata's ring with it knocked over: hold E for 1.5 seconds to set it back up. Letting go loses all of it."],
+			["LEFT CLICK", "PUNCH. A quick jab straight ahead, no wind-up. Any attacker holding their slipper within arm's reach in front of you is tagged instantly. Short cooldown — this is your answer to somebody standing next to you."],
+			["E  ·  hold", "LUNGE. Hold half a second to charge, release to dash a metre forward. Anyone holding their slipper caught in the path is tagged — this is your answer to somebody running PAST you. (Right click does the same thing.)"],
+			["E  ·  in the ring", "Standing in the lata's ring with it knocked over: hold E to set it back up. Letting go loses all of it — and while you are doing that, E is the reset and not the lunge."],
 			["YOU ARE FASTER", "Attackers move at 75% of your speed, permanently. Any chase in the open is one you win if you commit to it."],
+			["TAGGING IS A PRESS", "Neither verb fires by standing close. Both are aimed along the way you are FACING, and you only turn on a frame you are walking — so keep moving into them."],
 		],
 	},
 	{
