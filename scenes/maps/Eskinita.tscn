@@ -1587,7 +1587,11 @@ transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 0.00
 mesh = ExtResource("32")
 
 [node name="SariSari_E" type="MeshInstance3D" parent="Dressing/Kalat"]
-transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 7.1500, 0.1000, -1.0000)
+transform = Transform3D(0.00000, 0, -1.00000, 0, 1, 0, 1.00000, 0, 0.00000, 7.1500, 0.1000, -11.0000)
+mesh = ExtResource("33")
+
+[node name="SariSari_W" type="MeshInstance3D" parent="Dressing/Kalat"]
+transform = Transform3D(0.00000, 0, 1.00000, 0, 1, 0, -1.00000, 0, 0.00000, -7.1500, 0.1000, 9.0000)
 mesh = ExtResource("33")
 
 [node name="Kalat_0" type="MeshInstance3D" parent="Dressing/Kalat"]
@@ -1723,7 +1727,7 @@ transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, 6.00
 mesh = ExtResource("39")
 
 [node name="Kalat_34" type="MeshInstance3D" parent="Dressing/Kalat"]
-transform = Transform3D(0.45360, 0, -0.89121, 0, 1, 0, 0.89121, 0, 0.45360, 6.6000, 0.1000, -11.8500)
+transform = Transform3D(0.45360, 0, -0.89121, 0, 1, 0, 0.89121, 0, 0.45360, 4.8000, 0.1000, -11.8500)
 mesh = ExtResource("39")
 
 [node name="Kalat_35" type="MeshInstance3D" parent="Dressing/Kalat"]
@@ -1751,7 +1755,7 @@ transform = Transform3D(-1.17983, 0, -1.08074, 0, 1.60000, 0, 1.08074, 0, -1.179
 transform = Transform3D(0.03327, 0, -1.59965, 0, 1.60000, 0, 1.59965, 0, 0.03327, -6.0000, 0.1000, 4.6000)
 
 [node name="Kalat_42" parent="Dressing/Kalat" instance=ExtResource("41")]
-transform = Transform3D(0.03327, 0, 1.59965, 0, 1.60000, 0, -1.59965, 0, 0.03327, 5.2000, 0.1000, 0.1000)
+transform = Transform3D(0.03327, 0, 1.59965, 0, 1.60000, 0, -1.59965, 0, 0.03327, 6.1000, 0.1000, -0.8000)
 
 [node name="KalatTaas_0" type="MeshInstance3D" parent="Dressing/Kalat"]
 transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, -7.3500, 0.1000, -6.6000)
@@ -1762,7 +1766,7 @@ transform = Transform3D(1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, 1.00000, -7.3
 mesh = ExtResource("42")
 
 [node name="KalatTaas_3" type="MeshInstance3D" parent="Dressing/Kalat"]
-transform = Transform3D(-1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, -1.00000, 7.3500, 0.1000, -4.4000)
+transform = Transform3D(-1.00000, 0, -0.00000, 0, 1, 0, 0.00000, 0, -1.00000, 7.3500, 0.1000, -2.6000)
 mesh = ExtResource("42")
 
 [node name="KalatTaas_5" type="MeshInstance3D" parent="Dressing/Kalat"]
