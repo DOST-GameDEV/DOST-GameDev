@@ -1517,6 +1517,14 @@ func get_hand_attachment() -> Node3D:
 
 func play_visual_action(kind: String) -> void:
 	_visual.play_action(kind)
+	# ⚠️ AND THE FIRST-PERSON HAND, WHICH THE BODY CLIP CANNOT COVER. In FPP the
+	# body is SHADOWS_ONLY and the player sees the viewmodel instead, so every verb
+	# animated on the body was invisible to the one person who pressed it. Hooked
+	# HERE rather than at each call site so it can never disagree with the clip —
+	# both come off the same call, including the replicated one.
+	var rig := get_node_or_null("CameraRig") as CameraRig
+	if rig != null:
+		rig.play_viewmodel_action(kind)
 
 func broadcast_visual_action(kind: String) -> void:
 	if NetworkManager.is_networked():

@@ -210,6 +210,35 @@ var _arms: Node3D = null
 ## this is what the hand returns to when nothing is held.
 var _viewmodel_rest: Transform3D = Transform3D.IDENTITY
 
+## ⚠️⚠️ THE FIRST-PERSON HALF OF EVERY VERB, WHICH DID NOT EXIST.
+## 🧑 2026-08-01: *"add visual cue for first person and for everyone else that shove
+## and sunok and other skills and abilities shit is happening, maybe an animation"*.
+##
+## The THIRD-person half was already right — `broadcast_visual_action()` plays a clip
+## on every machine for grab, throw, punch, lunge and shove, and its own header
+## records why (an action nobody else can see is an action nobody else can answer).
+## But in first person the body is `SHADOWS_ONLY` and the player sees only the
+## viewmodel arms, which never reacted to anything. So the one person who most needs
+## to know the punch came out — the person who pressed it — got no feedback at all.
+##
+## ⚠️ A KICK ON THE EXISTING POSE, NOT A NEW ANIMATION TRACK. `_update_viewmodel_carry`
+## already lerps `RightPivot` to a computed pose every frame, so a transient offset
+## layered on top costs one Vector3 and cannot fight the carry pose the way a second
+## AnimationPlayer would. It decays on a real timer and is purely cosmetic: nothing
+## reads it, and it never touches the body, the hitbox or the facing.
+const VM_KICK_TIME: float = 0.22
+## Per verb: how far the hand is thrown, along the view's own -Z, and how much it
+## rolls. Tuned to read at 60 fps without covering the crosshair.
+const VM_KICKS: Dictionary = {
+	"punch": {"push": 0.30, "lift": -0.04, "roll": 0.10},
+	"shove": {"push": 0.24, "lift": 0.05, "roll": -0.14},
+	"lunge": {"push": 0.34, "lift": 0.07, "roll": 0.05},
+	"throw": {"push": 0.26, "lift": 0.10, "roll": -0.08},
+	"grab": {"push": 0.06, "lift": -0.22, "roll": 0.0},
+}
+var _vm_kick_left: float = 0.0
+var _vm_kick: Dictionary = {}
+
 ## Q-8: decaying camera-shake offset, applied to whichever camera this rig's
 ## _mode actually uses — never by writing the character body's rotation
 ## (which would fight _is_mouse_aimed() and reproduce B-60).
@@ -530,6 +559,8 @@ func _update_viewmodel_carry(delta: float) -> void:
 	# _apply_fpp_self_hide only re-runs on activation and model changes, so a
 	# pick-up mid-round would otherwise show both slippers until the next swap.
 	_apply_carried_self_hide(true)
+	if _vm_kick_left > 0.0:
+		_vm_kick_left = maxf(0.0, _vm_kick_left - delta)
 	var wanted := _viewmodel_rest
 	if holding:
 		# A FIXED carry pose, not a chase. Nothing here reads the world slipper's
@@ -546,6 +577,21 @@ func _update_viewmodel_carry(delta: float) -> void:
 
 	pivot.transform = pivot.transform.interpolate_with(
 		wanted, clampf(VIEWMODEL_REACH_SPEED * delta, 0.0, 1.0))
+	# ⚠️ APPLIED AFTER THE LERP, NOT BLENDED INTO `wanted`. The lerp is a slow chase
+	# (`VIEWMODEL_REACH_SPEED`) and a kick folded into its target would be smoothed
+	# into nothing — the whole point is that it snaps out and eases back. Written
+	# straight onto the transform, so it decays as `_vm_kick_left` runs down and
+	# leaves the carry pose exactly where it was.
+	if _vm_kick_left > 0.0 and not _vm_kick.is_empty():
+		var t: float = _vm_kick_left / VM_KICK_TIME
+		# Fast out, slow back: t^2 spends most of the window near the extreme.
+		var amount: float = t * t
+		pivot.transform.origin += Vector3(
+			0.0,
+			float(_vm_kick["lift"]) * amount,
+			-float(_vm_kick["push"]) * amount)
+		pivot.transform.basis = pivot.transform.basis.rotated(
+			Vector3.FORWARD, float(_vm_kick["roll"]) * amount)
 
 
 ## Toe-to-heel length the held slipper presents IN THE WORLD, in metres, so it
@@ -813,9 +859,27 @@ func play_viewmodel_action(kind: String) -> void:
 	if arms == null or not arms.visible:
 		return
 	var player := arms.get_node_or_null("AnimationPlayer") as AnimationPlayer
-	if player == null or not player.has_animation(kind):
+	if player != null and player.has_animation(kind):
+		player.play(kind)
 		return
-	player.play(kind)
+	# ⚠️⚠️ AND A PROCEDURAL KICK WHEN THERE IS NO CLIP, WHICH IS EVERY VERB BUT THE
+	# THROW. 🧑 2026-08-01: *"add visual cue for first person and for everyone else
+	# that shove and sunok and other skills and abilities shit is happening"*.
+	#
+	# This function already existed and was already called for every action, and it
+	# RETURNED SILENTLY on any kind the arms had no animation for — which is the
+	# punch, the shove, the lunge and the grab. Its own doc called that a feature
+	# ("a new action kind never has to be mirrored here to avoid an error"), and it
+	# is, right up until the actions that matter are the ones with no clip. In first
+	# person the body is SHADOWS_ONLY, so those four verbs had NO first-person
+	# feedback whatsoever: you pressed shove and the screen did not move.
+	#
+	# The kick is not a substitute for an authored clip — it is what makes the verb
+	# legible until somebody animates it, and it disappears on its own the day a
+	# clip with that name is added, because the branch above wins.
+	if VM_KICKS.has(kind):
+		_vm_kick = VM_KICKS[kind]
+		_vm_kick_left = VM_KICK_TIME
 
 
 ## Shows/hides the unit THIS character is carrying, for this peer only.

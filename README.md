@@ -5,9 +5,20 @@ A **4-player LAN party game** built on the Filipino street game *tumbang preso*,
 
 One player is the **taya** (defender), locked inside a chalk box guarding a **lata** (tin can).
 The other three are **attackers**, throwing **tsinelas** (rubber slippers) at it from outside the
-box. Throwing is safe and free — the tension is the **retrieval**: your slipper lands inside the
+box. Throwing is safe and free — the tension is the **retrieval**: the slipper lands inside the
 taya's box, and the moment you pick it up you can be tagged. Knock the lata over and the taya has
 to spend 1.5 seconds standing it back up, which is the one window they cannot defend.
+
+Two rules make that trade sharper than it looks, and both changed on 2026-08-01:
+
+* **Any attacker may pick up any loose slipper.** You start a round with your own and an arrow
+  points at it, but a rival's is fair game if they leave it lying in the open. Ownership is now a
+  label, not a lock (`Design.md` §5.2).
+* **Neither the punch nor the lunge can tag anybody while the lata is lying over.** Standing it
+  back up is what re-arms the taya's only scoring verb — so the reset is not tidying, it is the
+  taya loading their weapon. And a slipper the taya body-blocks now drops **2.5 m** from them
+  rather than being kicked clear of the court, which is what puts the retrieval back inside
+  tagging range (`Design.md` §6.2).
 
 **Four rounds of 90 seconds. The taya role rotates clockwise, so everyone plays it exactly once.**
 Scores are cumulative and personal; highest total after round 4 takes the match.
@@ -92,8 +103,8 @@ single-PC flow: **one human unit, three bots**, with a switcher for which unit i
 | **Shift** | `sprint` | costs stamina |
 | **Ctrl** | `spectator_down` | descend, spectator camera only |
 | **E** *or* **LMB** | `grab` | **tap** to pick up a slipper · **tap** with nothing to pick up to shove another attacker · **hold** as the taya, in the lata’s ring, to stand it back up · **hold 0.5 s** as the taya anywhere else to charge a **lunge** |
-| **Q** *or* **LMB** | `special_ability` | attacker: hold to charge a throw, release to throw. **Taya: tap to PUNCH** — a quick close-range tag |
-| **RMB** | `lunge` | **taya only** — hold 0.5 s to charge, release to dash 1 m and tag. Same verb as hold-E, kept as a second binding |
+| **Q** *or* **LMB** | `special_ability` | attacker: hold to charge a throw, release to throw. **Taya: tap to PUNCH** — a quick close-range tag, 1.7 m in a forward arc, no wind-up. ⚠️ Refused while the lata is down |
+| **RMB** | `lunge` | **taya only** — hold 0.5 s to charge, release to dash and tag anyone within 1.3 m of the path. Same verb as hold-E, kept as a second binding. ⚠️ Also refused while the lata is down. It is a GAP-CLOSER: inside 1.7 m the punch reaches further and is instant |
 | **R** | `ready_up` | before the first round |
 | **H** | `clean_feed` | hides the HUD, for recording |
 | **Esc** | pause | |
