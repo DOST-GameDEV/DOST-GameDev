@@ -136,10 +136,10 @@ const PAGES: Array[Dictionary] = [
 	},
 	{
 		"title": "CONTROLS  ·  ATTACKER",
-		"lede": "Your two buttons. Only your own slipper answers to you.",
+		"lede": "Your two buttons. Any slipper on the ground is fair game.",
 		"rows": [
 			["LEFT CLICK", "Hold to charge a throw, release to throw. 2.5 seconds to full power — a long, visible commitment the taya can react to. A tap still throws, weakly."],
-			["E  ·  tap", "Pick up YOUR slipper when you are standing near it. Only yours: every slipper belongs to one attacker and nobody else can touch it."],
+			["E  ·  tap", "Pick up ANY loose slipper you are standing near — yours or somebody else's. You start the round with your own, and an arrow points to it, but if a rival leaves theirs lying in the open you can take it and throw it. You can only carry one."],
 			["E  ·  tap (nothing to grab)", "SHOVE. No wind-up — it fires instantly, blasting a rival back 2.5 metres and stunning them. Costs a quarter of your stamina either way; 7.5-second cooldown if it lands, only 2 seconds if you whiff. Shove someone who is then tagged and you are paid +50 for it."],
 		],
 	},
@@ -147,9 +147,10 @@ const PAGES: Array[Dictionary] = [
 		"title": "CONTROLS  ·  TAYA",
 		"lede": "You are faster than every attacker. Closing them down is your whole job.",
 		"rows": [
-			["LEFT CLICK", "PUNCH. A quick jab straight ahead, no wind-up. Any attacker holding their slipper within arm's reach in front of you is tagged instantly. Short cooldown — this is your answer to somebody standing next to you."],
+			["LEFT CLICK", "PUNCH. A quick jab straight ahead, no wind-up. Any attacker holding their slipper within arm's reach in front of you is tagged instantly. Short cooldown — this is your answer to somebody standing next to you. ⚠ It only works while the lata is STANDING (see below)."],
 			["E  ·  hold", "LUNGE. Hold half a second to charge, release to dash a metre forward. Anyone holding their slipper caught in the path is tagged — this is your answer to somebody running PAST you. (Right click does the same thing.)"],
 			["E  ·  in the ring", "Standing in the lata's ring with it knocked over: hold E to set it back up. Letting go loses all of it — and while you are doing that, E is the reset and not the lunge."],
+			["⚠  NO TAGS WHILE IT IS DOWN", "Neither the punch nor the lunge can tag anybody while the lata is lying over. Standing it back up is not just tidying — it is what re-arms both of your tagging verbs. Reset first, then hunt."],
 			["YOU ARE FASTER", "Attackers move at 75% of your speed, permanently. Any chase in the open is one you win if you commit to it."],
 			["TAGGING IS A PRESS", "Neither verb fires by standing close. Both are aimed along the way you are FACING, and you only turn on a frame you are walking — so keep moving into them."],
 		],
