@@ -122,10 +122,20 @@ func observed_charge_power() -> float:
 		return -1.0
 	return clampf(_observed_charge_time / CHARGE_FULL_TIME, 0.0, 1.0)
 
+## ⚠️ BOTH THIS AND THE COMPLETION TEST ASK THE LATA, NOT THE CONST (§2.8). The
+## channel length is per-can now, and a progress bar filling against 1.5 while the
+## test fires at 1.79 is the "the HUD promises what the rule refuses" failure this
+## file's own header keeps warning about. `RESET_CHANNEL_TIME` is still the neutral
+## value and still the number in `Design.md`; `reset_channel_time()` is what the
+## can on the mark actually costs.
 func channel_progress() -> float:
 	if not _channelling:
 		return -1.0
-	return clampf(_channel_time / Lata.RESET_CHANNEL_TIME, 0.0, 1.0)
+	return clampf(_channel_time / _reset_channel_time(), 0.0, 1.0)
+
+func _reset_channel_time() -> float:
+	var lata := RoundManager.lata
+	return lata.reset_channel_time() if lata != null else Lata.RESET_CHANNEL_TIME
 
 ## ---------------------------------------------------------------------------
 ## THE FRAME. Order matters: `grab` gets first refusal on an E press, then the
@@ -166,11 +176,18 @@ func _find_grabbable() -> Slipper:
 			best = slipper
 	return best
 
-## ⚠️ THE DEFENDER'S ONLY BUTTON. Hold E in the ring for 2.5 s and the lata goes
-## back on its mark AND stands up. The price is 2.5 s of standing still inside a
-## box with three attackers in it, which is the one moment the offence gets to
-## punish — so it must NOT be cancellable-and-resumable at no cost. Letting go
-## zeroes it.
+## ⚠️ THE DEFENDER'S ONLY BUTTON. Hold E in the ring for `Lata.RESET_CHANNEL_TIME`
+## and the lata goes back on its mark AND stands up. The price is that long stood
+## still inside a box with three attackers in it, which is the one moment the
+## offence gets to punish — so it must NOT be cancellable-and-resumable at no cost.
+## Letting go zeroes it.
+##
+## ⚠️ THE DURATION IS QUOTED BY NAME, NOT BY VALUE, AND THAT IS THE FIX FOR §2.26.
+## This comment said "2.5 s" twice while calling `Lata.RESET_CHANNEL_TIME`, which
+## has been **1.5** since 2026-08-01 — three pieces of prose across three files
+## described a slower game than the one that shipped. The code was always
+## self-consistent; only the prose disagreed, so the prose stopped naming a number
+## it does not own.
 func _step_reset_channel(delta: float) -> void:
 	if not _character.is_defender or _held != null:
 		_cancel_channel()
@@ -188,7 +205,7 @@ func _step_reset_channel(delta: float) -> void:
 		AudioManager.play_at("reset_channel_start", _character.global_position)
 	_channel_time += delta
 	reset_channel_changed.emit(channel_progress())
-	if _channel_time < Lata.RESET_CHANNEL_TIME:
+	if _channel_time < _reset_channel_time():
 		return
 	_cancel_channel()
 	_character.play_visual_action("grab")
@@ -315,8 +332,16 @@ func _update_trajectory() -> void:
 	# ⚠️ `CharacterBase.GRAVITY` PLAIN — the per-profile `gravity_scale` is deleted
 	# with the profiles, so the preview and the flight now share one constant
 	# rather than two agreeing lookups.
+	#
+	# ⚠️ AND THE HELD SLIPPER'S OWN SPEED SCALE IS PASSED THROUGH (§2.8). The whole
+	# reason `launch_velocity_for()` is shared with `slipper.gd::host_throw()` is
+	# that the aim line and the flight line are then one line BY CONSTRUCTION
+	# (`Design.md` §12). A per-skin launch speed applied to only one of them would
+	# have quietly broken that and re-opened §2.16 — the dotted arc would land
+	# where a neutral slipper lands and the real one would land 5% away.
 	_trajectory.draw_arc(origin,
-		Slipper.launch_velocity_for(origin, _aim_point(), charge_power()),
+		Slipper.launch_velocity_for(origin, _aim_point(), charge_power(),
+			_held.speed_scale()),
 		CharacterBase.GRAVITY, UiTheme.OFFENSE)
 
 ## ---------------------------------------------------------------------------
@@ -378,10 +403,16 @@ func _rpc_request_reset() -> void:
 ## ---------------------------------------------------------------------------
 
 ## Called by `slipper.gd` on both halves of the relationship.
+## ⚠️ THE LOCK IS DIVIDED BY THE SLIPPER'S OWN GRIT (§2.8), and this is the stat
+## that plays the game's actual thesis — `Design.md` §0: *"the tension is the
+## retrieval, not the throw"*. A slipper that is ready sooner shortens the one
+## window in which its owner is standing inside the box and taggable, so GRIT buys
+## exposure back rather than buying damage. PANTULOG (tatag 5) is armed in 1.03 s
+## against CROCS (tatag 2) at 1.42 s, either side of the neutral 1.25.
 func notify_holding(what: Slipper) -> void:
 	_set_held(what)
 	if what != null:
-		_throw_lock_left = THROW_LOCK_TIME
+		_throw_lock_left = THROW_LOCK_TIME / what.grit_scale()
 
 func _set_held(what: Slipper) -> void:
 	if _held == what:

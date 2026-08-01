@@ -337,15 +337,20 @@ const TRAIT_GRIT_PER_POINT: float = 0.07
 func trait_points(key: StringName) -> int:
 	return CharacterRoster.person_trait(character_index, key)
 
+## ⚠️ ALL THREE ROUTE THROUGH `CharacterRoster.trait_scale()` SINCE 2026-08-01, and
+## so do `slipper.gd`'s and `lata.gd`'s. §2.8 made the two prop tabs live, which
+## meant a second and third copy of `1.0 + (points - 3) * per_point` — three
+## implementations of one rule is how "neutral is exactly 1.0" stops being true on
+## one of them. The per-point constants stay HERE because which one applies is a
+## property of the stat, not of the conversion.
 func trait_speed_scale() -> float:
-	return 1.0 + float(trait_points(&"bilis") - CharacterRoster.TRAIT_NEUTRAL) * TRAIT_SPEED_PER_POINT
+	return CharacterRoster.trait_scale(trait_points(&"bilis"), TRAIT_SPEED_PER_POINT)
 
 func trait_power_scale() -> float:
-	return 1.0 + float(trait_points(&"lakas") - CharacterRoster.TRAIT_NEUTRAL) * TRAIT_POWER_PER_POINT
+	return CharacterRoster.trait_scale(trait_points(&"lakas"), TRAIT_POWER_PER_POINT)
 
 func trait_grit_scale() -> float:
-	return maxf(0.1,
-		1.0 + float(trait_points(&"tatag") - CharacterRoster.TRAIT_NEUTRAL) * TRAIT_GRIT_PER_POINT)
+	return maxf(0.1, CharacterRoster.trait_scale(trait_points(&"tatag"), TRAIT_GRIT_PER_POINT))
 
 func _is_mouse_aimed() -> bool:
 	return _camera_rig != null and _camera_rig.aim_source == CameraRig.AimSource.MOUSE
@@ -487,6 +492,12 @@ func _ready() -> void:
 ## ---------------------------------------------------------------------------
 
 func _physics_process(delta: float) -> void:
+	# ⚠️ BEFORE THE SETTLE GATE AND BEFORE THE AUTHORITY GATE, DELIBERATELY. Both
+	# of those `return` early, and a hitstop left running because every live unit
+	# happened to be settling or remote is the same engine-wide 5% speed the fix
+	# below exists to prevent (§6 trap 7 is the same shape: a gate that silently
+	# breaks everything downstream of it).
+	_step_hitstop()
 	if _spawn_settle > 0:
 		_spawn_settle -= 1
 		global_transform = _spawn_settle_at
@@ -653,9 +664,13 @@ func spend_stamina(amount: float) -> bool:
 ## ---------------------------------------------------------------------------
 ## THE SHOVE. `Design.md` §Attacker — hold E, release, push a neighbour.
 ##
-## ⚠️ E IS CONTEXTUAL AND THAT IS DELIBERATE. The GDD gives E three jobs: tap to
-## pick a slipper up, hold 1.25 s to shove, hold 2.5 s (as Defender) to reset the
-## lata. Rather than inventing two more keybinds for a game whose whole brief is
+## ⚠️ E IS CONTEXTUAL AND THAT IS DELIBERATE. E does three jobs: tap to pick a
+## slipper up, tap to shove, hold `Lata.RESET_CHANNEL_TIME` (as Defender) to reset
+## the lata. ⚠️ THIS SENTENCE DESCRIBED THE PRE-2026-08-01 GAME UNTIL §2.26 WAS
+## CLOSED — it said the shove was a 1.25 s hold (it has been `SHOVE_CHARGE_TIME`
+## 0.0, a single tap, since the same day this file's own §THE SHOVE header records)
+## and the channel 2.5 s (it is 1.5). Rather than inventing two more keybinds for a
+## game whose whole brief is
 ## "simpler", the press resolves against what is actually in front of you.
 ## `carrier.gd` gets first refusal — if there is a slipper at your feet or a lata
 ## to channel, the press is that. Only a press with nothing to act on charges a
@@ -885,6 +900,40 @@ func observed_shove_charge() -> float:
 	return clampf(_observed_shove_charge / SHOVE_CHARGE_TIME, 0.0, 1.0)
 
 ## ---------------------------------------------------------------------------
+## THE BODY BLOCK'S RECEIVING END. Called host-side by `slipper.gd` when this body
+## stops a thrown slipper. §2.11 / §2.22.
+##
+## ⚠️ IT IS A PUSH AND A FLASH, DELIBERATELY NOT `_flash_hit()`. That helper also
+## fires `_hitstop()`, which writes `Engine.time_scale` globally for 60 ms — fine
+## for a shove on a 7.5 s cooldown, wrong for a block, because three attackers
+## throwing at one box can produce blocks a few frames apart and the game would
+## stutter for the whole round. The sound is already played by the caller at the
+## contact point, so playing one here as well would double it.
+##
+## ⚠️ AND IT IS NOT A STAGGER. See `Slipper.BLOCK_KNOCKBACK_SPEED` for why costing
+## the taya POSITION is bounded and costing them AGENCY is not.
+## ---------------------------------------------------------------------------
+func host_apply_block(impulse: Vector3) -> void:
+	if NetworkManager.is_networked():
+		_rpc_apply_block.rpc(impulse)
+	else:
+		_apply_block(impulse)
+
+@rpc("authority", "call_local", "reliable")
+func _rpc_apply_block(impulse: Vector3) -> void:
+	_apply_block(impulse)
+
+func _apply_block(impulse: Vector3) -> void:
+	apply_knockback(impulse)
+	_visual.flash_hit()
+	# The blocker's own camera, and only theirs — a block is a thing that happened
+	# TO you, and the shake is what makes a stopped throw feel stopped.
+	var is_mine := (is_multiplayer_authority() and ai_controller == null) \
+		if NetworkManager.is_networked() else player_id == 1
+	if is_mine and _camera_rig != null:
+		_camera_rig.shake()
+
+## ---------------------------------------------------------------------------
 ## THE TAG PENALTY. Called host-side by `RoundManager._resolve_tag()`.
 ## ---------------------------------------------------------------------------
 
@@ -1027,17 +1076,62 @@ func _flash_hit(sfx: String = "") -> void:
 	if is_mine and _camera_rig != null:
 		_camera_rig.shake()
 
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE HITSTOP OUTLIVED THE CHARACTER THAT STARTED IT, AND IT LEFT THE WHOLE
+## ENGINE AT 5% SPEED. Found and fixed 2026-08-01 by ⚖️ `build fair`.
+##
+## This used to be `create_timer(...).timeout.connect(_end_hitstop)` — a
+## `SceneTreeTimer` whose one listener is an **instance** method — guarding a pair
+## of **static** flags. Free that instance inside the 60 ms window and the
+## connection dies with it, so `_end_hitstop()` never ran: `Engine.time_scale`
+## stayed at **0.05** for the rest of the process and `_hitstop_active` stayed
+## true, which also silently disabled every future hitstop in the game.
+##
+## ⚠️ IT IS NOT A THEORETICAL LIFETIME BUG — IT COST THIS SESSION A MEASUREMENT.
+## `ai_probe.tscn -- matches=3` frees the whole `Main.tscn` between matches
+## (`_end_match`). A hit landing on the last frame of a match orphaned the timer,
+## and match 2 then ran at time_scale 0.05 against the probe's own 6.0 — a **120x**
+## slowdown that reads exactly like a hang. It reproduces on demand: `matches=1`
+## always finished, `matches=3` never got past match 2. The shipping game has the
+## same shape — `main.gd` frees every character on RETURN TO MENU, so quitting a
+## match on the same frame somebody was hit left the menus running at 5% speed.
+##
+## THE FIX HAS NO OWNER PROBLEM: a wall-clock deadline that ANY live character
+## clears, plus a forced restore when a character leaves the tree with one
+## outstanding. Nothing depends on a particular instance surviving.
+##
+## ⚠️ `Time.get_ticks_msec()` AND NOT A `delta` ACCUMULATOR, because the thing
+## being timed is a deliberate distortion of `delta`. Sixty milliseconds of
+## hitstop measured in scaled time would last 60 / 0.05 = 1.2 REAL seconds.
+static var _hitstop_until_msec: int = 0
+
 func _hitstop() -> void:
 	if _hitstop_active:
 		return
 	_hitstop_active = true
 	_hitstop_restore_scale = Engine.time_scale
+	_hitstop_until_msec = Time.get_ticks_msec() + int(HITSTOP_DURATION * 1000.0)
 	Engine.time_scale = HITSTOP_TIME_SCALE
-	get_tree().create_timer(HITSTOP_DURATION, true, false, true).timeout.connect(_end_hitstop)
 
-func _end_hitstop() -> void:
+## Called at the top of every character's `_physics_process`, so whichever units
+## are alive share the job and none of them owns it.
+static func _step_hitstop() -> void:
+	if not _hitstop_active or Time.get_ticks_msec() < _hitstop_until_msec:
+		return
+	_end_hitstop()
+
+## ⚠️ STATIC, so the last character in the world can still end a hitstop it did
+## not start.
+static func _end_hitstop() -> void:
+	if not _hitstop_active:
+		return
 	Engine.time_scale = _hitstop_restore_scale
 	_hitstop_active = false
+
+## The belt for the case the deadline cannot cover: the tree is being torn down
+## and there may be no `_physics_process` left to run at all.
+func _exit_tree() -> void:
+	_end_hitstop()
 
 func _on_state_changed_audio(new_state: State) -> void:
 	match new_state:

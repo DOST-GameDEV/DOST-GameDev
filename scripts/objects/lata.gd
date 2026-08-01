@@ -33,8 +33,9 @@ class_name Lata
 signal upright_changed(now_upright: bool)
 
 ## How close the Defender must be to channel a reset. Generous on purpose: the
-## channel already costs 2.5 s of standing still, which is the real price, and a
-## ring you keep sliding out of turns one commitment into a positioning minigame.
+## channel already costs `RESET_CHANNEL_TIME` of standing still, which is the real
+## price, and a ring you keep sliding out of turns one commitment into a
+## positioning minigame.
 const INTERACTION_RADIUS: float = 1.6
 ## How long the Defender must hold E in the ring to stand it back up.
 ## `Design.md` §Defender.
@@ -55,7 +56,47 @@ const DOWNED_TILT_DEG: float = 88.0
 ## arena, short enough that the +100 toast and the fall are the same beat.
 const TOPPLE_TIME: float = 0.22
 
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE HIT WINDOW — THE NUMBER THAT DECIDES EVERY KNOCKDOWN IN THE GAME, AND
+## UNTIL 2026-08-01 IT WAS AN UNNAMED LITERAL IN ANOTHER FILE.
+##
+## A thrown slipper connects when its flat distance to the can is inside
+## `Slipper.HIT_RADIUS + this`, tested per physics frame, host-side
+## (`slipper.gd::_step_flying`). `Design.md` §7 has always listed a "hurtbox
+## 0.30 r / 0.70 h" and `Lata.tscn` has always carried an `Area3D` authored to
+## exactly that — and **grep found no reader for either**. The rule ran off a bare
+## `0.30` typed into `slipper.gd`, so the balance source of truth was describing a
+## shape the game did not consult and the scene shipped a node that did nothing.
+## Three numbers that were supposed to be one.
+##
+## ⚠️ 0.30 IS UNCHANGED. This is a renaming, not a retune: the window every
+## measurement on the board was taken against is exactly the window that is still
+## here at neutral. `_fit_collision_to_mesh()` writes the `Area3D` from this value
+## so the editor gizmo finally shows the real rule, and `hit_margin()` is what
+## `slipper.gd` asks.
+##
+## ⚠️ AND IT IS THE ONE PLACE A LATA SKIN'S GRIT LANDS (§2.8). It is DIVIDED by
+## the grit scale, so a tough can presents a smaller window: DECADES (tatag 5)
+## shrinks it 12.3% to 0.263 and PASIP (tatag 1) opens it 16.3% to 0.349. Total
+## window against `HIT_RADIUS` 0.23: 0.493 m to 0.579 m, either side of 0.53.
+##
+## ⚠️⚠️ AND IT IS DELIBERATELY *NOT* DERIVED FROM THE MESH, WHICH IS THE WHOLE
+## FAIRNESS RULING HERE. The four cans measure 0.108 to 0.143 in radius — a 32%
+## spread — and deriving the scoring window from geometry would have made the
+## CHARACTER screen's prettiest can quietly the hardest to hit, with nothing on
+## screen saying so. A competitive difference between cosmetic picks has to be
+## DECLARED, and the meters declare it. The mesh drives the physical collider
+## (see `_fit_collision_to_mesh`) and nothing else.
+const HIT_MARGIN: float = 0.30
+
 @onready var _visual: Node3D = $Visual
+## ⚠️ DEAD, AND KNOWINGLY SO — FILED, NOT DELETED. This `Area3D` has no reader
+## anywhere in the project: slipper contact is a distance test against
+## `HIT_MARGIN` (see that constant), and reintroducing overlap-based contact is
+## forbidden by the recorded `hit_probe` measurement (`Design.md` §6 — 16 of 36
+## overlaps did not land). Removing the node means editing `scenes/objects/
+## Lata.tscn`, which is 🎨 `build model`'s row per §3, so it is filed as §5.23
+## rather than deleted from outside that lane.
 @onready var _hurtbox: Area3D = $Hurtbox
 
 ## Host-authoritative. Never written directly on a client — see the header.
@@ -73,6 +114,12 @@ func _ready() -> void:
 	# that is the whole difference between this and what it replaced.
 	set_multiplayer_authority(1)
 	_snap_home_to_ground.call_deferred()
+	# ⚠️ FITTED HERE TOO, NOT ONLY ON A SKIN SWAP. `CanVisual.tscn` ships PASIP as
+	# the default mesh, and PASIP is the 22 mm worst case in §2.23 — so a lata that
+	# nobody ever picked a skin for (an AI seat before the deal, a `--host`
+	# command-line session, any peer that never reached the CHARACTER screen) was
+	# precisely the one wearing the biggest disagreement.
+	_fit_collision_to_mesh()
 	_apply_upright_visual(true, false)
 
 ## ⚠️ THE FLOOR IS NOT AT y = 0, AND `Main.tscn` PLACES THE LATA AS IF IT WERE.
@@ -111,6 +158,41 @@ func _snap_home_to_ground() -> void:
 	home_position.y = (hit["position"] as Vector3).y
 	global_position = home_position
 
+## ---------------------------------------------------------------------------
+## § SOFT STATS — §2.8, closed 2026-08-01. The LATA tab decides three things.
+##
+## ⚠️ THESE ARE READ OFF `skin_index`, WHICH IS WHICHEVER SEAT IS CURRENTLY THE
+## TAYA. There is only one lata in the world, so it wears the defending seat's
+## pick and `main.gd` re-applies it as the role rotates (`Design.md` §9). A
+## player's can therefore matters on exactly the one round they defend, which is
+## the round it is standing on the mark — the stat and the object are on screen
+## together or not at all. -1 resolves to neutral, i.e. 1.0.
+## ---------------------------------------------------------------------------
+
+## How long the Defender's reset channel takes for THIS can. SPEED shortens it.
+## ⚠️ DIVIDED, so more points is less time: PASIP (bilis 5) rights in 1.30 s and
+## BOYBEN (bilis 1) takes 1.79 s, against the neutral `RESET_CHANNEL_TIME` 1.5.
+## `carrier.gd` asks this rather than the const, so the progress bar and the
+## completion test cannot disagree about how long the hold is.
+func reset_channel_time() -> float:
+	return RESET_CHANNEL_TIME / _scale(&"bilis", CharacterBase.TRAIT_SPEED_PER_POINT)
+
+## How hard this can knocks a slipper away when it takes a hit. Scales
+## `slipper.gd::LATA_RECOIL_SCALE` — the taya's way of buying time by lengthening
+## somebody's retrieval.
+func power_scale() -> float:
+	return _scale(&"lakas", CharacterBase.TRAIT_POWER_PER_POINT)
+
+## The live hit window — `HIT_MARGIN` divided by GRIT. See that constant.
+func hit_margin() -> float:
+	return HIT_MARGIN / _scale(&"tatag", CharacterBase.TRAIT_GRIT_PER_POINT)
+
+## ⚠️ FLOORED AT 0.1, because two of the three callers DIVIDE by it and a zero on
+## the spawn path would be a division by zero rather than a balance question.
+func _scale(key: StringName, per_point: float) -> float:
+	return maxf(0.1, CharacterRoster.trait_scale(
+		CharacterRoster.can_trait(skin_index, key), per_point))
+
 ## Radius test rather than an `Area3D`, for the same reason `RoundManager._step_tag`
 ## is: this is asked on the host, about the host's own view of a position, on the
 ## frame the answer is used. An overlap signal would answer about whichever peer
@@ -148,7 +230,7 @@ func host_knock_down(by_slot: int) -> bool:
 	RoundManager.host_note_lata_knocked(by_slot)
 	return true
 
-## Called by `carrier.gd` when the Defender's 2.5 s channel completes.
+## Called by `carrier.gd` when the Defender's `RESET_CHANNEL_TIME` channel completes.
 func host_restore() -> void:
 	if NetworkManager.is_networked() and not NetworkManager.is_host():
 		return
@@ -226,11 +308,68 @@ func _measure_downed_lift() -> void:
 	_downed_lift = 0.0
 	if _visual == null:
 		return
+	var bounds := _mesh_bounds()
+	# Half the can's WIDTH is what it rests on when lying on its side. Taken from
+	# the mesh's own bounds so it follows the skin automatically.
+	_downed_lift = maxf(bounds.size.x, bounds.size.z) * 0.5
+
+## The union of every mesh under `Visual`, in this node's own space.
+##
+## ⚠️ RAW `get_aabb()`, NOT A GLOBAL COMPOSE, and that is correct HERE and would
+## not be in `slipper.gd`. `CanVisual.tscn` is one `MeshInstance3D` at identity
+## under a root at identity, so mesh space IS Lata space; the slipper's visual
+## carries a 1.6 drama scale and therefore has to walk its local chain. If a can
+## visual ever grows a transform this has to grow the same walk.
+func _mesh_bounds() -> AABB:
+	var bounds := AABB()
+	var first := true
+	if _visual == null:
+		return bounds
 	for node in _visual.find_children("*", "VisualInstance3D", true, false):
 		var box: AABB = (node as VisualInstance3D).get_aabb()
-		# Half the can's WIDTH is what it rests on when lying on its side. Taken
-		# from the mesh's own bounds so it follows the skin automatically.
-		_downed_lift = maxf(_downed_lift, maxf(box.size.x, box.size.z) * 0.5)
+		if first:
+			bounds = box
+			first = false
+		else:
+			bounds = bounds.merge(box)
+	return bounds
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ §2.23 — THE PHYSICAL COLLIDER FOLLOWS THE MESH. It did not until
+## 2026-08-01, and the disagreement was measured: `Lata.tscn` carries ONE cylinder
+## at **r 0.13**, which is the MEAN of the four cans' radii (0.108 / 0.123 / 0.125
+## / 0.143), so it was wrong for all four and worst on PASIP at **22 mm** — a
+## player stopped about a fifth of a can early on the slimmest skin, and clipped
+## into the widest.
+##
+## The mesh swap already happens in `_apply_model()` and already re-measures the
+## topple lift, so the collider is measured in the same place off the same bounds
+## and the two cannot drift apart.
+##
+## ⚠️ SAFE TO WRITE BECAUSE `Lata.tscn` MARKS BOTH SHAPES `resource_local_to_scene`.
+## Without that flag a `Shape3D` sub-resource is shared by every instance of the
+## scene in the project, and resizing one here would resize the CHARACTER screen's
+## preview and any other lata in the tree at the same time.
+##
+## ⚠️ THIS IS THE COLLIDER, NOT THE SCORING WINDOW. What a body bumps into follows
+## the art; what a slipper has to hit to score does NOT — see `HIT_MARGIN`. Keeping
+## those two separate is the fairness ruling, and putting them in one function
+## would be the easiest possible way to lose it.
+## ---------------------------------------------------------------------------
+func _fit_collision_to_mesh() -> void:
+	var bounds := _mesh_bounds()
+	if bounds.size.y <= 0.001:
+		return
+	var shape_node := get_node_or_null("Body/CollisionShape3D") as CollisionShape3D
+	if shape_node == null or not (shape_node.shape is CylinderShape3D):
+		return
+	var cylinder := shape_node.shape as CylinderShape3D
+	cylinder.radius = maxf(bounds.size.x, bounds.size.z) * 0.5
+	cylinder.height = bounds.size.y
+	# A `CylinderShape3D` is centred on its own origin, and the meshes are authored
+	# standing on y = 0 — so the shape sits at half its height, exactly as the
+	# scene's hand-authored 0.1925 did for the old 0.385.
+	shape_node.position = Vector3(0.0, bounds.position.y + bounds.size.y * 0.5, 0.0)
 
 func _apply_upright_visual(now_upright: bool, animate: bool) -> void:
 	if _visual == null:
@@ -349,9 +488,11 @@ func _apply_model(entry: Dictionary) -> void:
 	for surface in range(instance.get_surface_override_material_count()):
 		instance.set_surface_override_material(surface, null)
 	instance.mesh = mesh
-	# The four cans have four different radii, so the topple lift has to be
-	# re-measured whenever the mesh changes — see `_measure_downed_lift`.
+	# The four cans have four different radii, so the topple lift AND the physical
+	# collider both have to be re-measured whenever the mesh changes — see
+	# `_measure_downed_lift` and `_fit_collision_to_mesh` (§2.23).
 	_measure_downed_lift()
+	_fit_collision_to_mesh()
 	_apply_upright_visual(is_upright, false)
 
 func _tint_meshes(tint: Color) -> void:

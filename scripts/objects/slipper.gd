@@ -257,7 +257,13 @@ func host_throw(from: CharacterBase, origin: Vector3, target_point: Vector3,
 		return
 	if state != CarryState.CARRIED or from == null:
 		return
-	var speed: float = LAUNCH_SPEED * lerpf(MIN_POWER_SCALE, 1.0, clampf(power, 0.0, 1.0))
+	# ⚠️ THE SKIN'S SPEED SCALE IS APPLIED HERE AND IN `launch_velocity_for()`, AND
+	# IT HAS TO BE BOTH. `trajectory_preview.gd` draws the dotted arc from that
+	# static, and `Design.md` §12 keeps it shared precisely so the aim line and the
+	# flight line are one line by construction. Scaling only one of them would have
+	# reintroduced the drift that sharing it exists to prevent (§2.16).
+	var speed: float = LAUNCH_SPEED * lerpf(MIN_POWER_SCALE, 1.0, clampf(power, 0.0, 1.0)) \
+		* speed_scale()
 	var direction := _solve_arc(origin, target_point, speed)
 	if NetworkManager.is_networked():
 		_rpc_thrown.rpc(from.player_slot, origin, direction * speed)
@@ -293,9 +299,12 @@ func host_drop() -> void:
 	else:
 		_apply_landed(global_position)
 
+## ⚠️ `audible` DEFAULTS, so a peer calling the one-argument form still resolves
+## rather than failing the RPC outright — the same contract `RoundManager.
+## _sync_state()`'s third argument keeps, and for the same reason.
 @rpc("authority", "call_local", "reliable")
-func _rpc_landed(where: Vector3) -> void:
-	_apply_landed(where)
+func _rpc_landed(where: Vector3, audible: bool = false) -> void:
+	_apply_landed(where, audible)
 
 ## How fast a blocked slipper leaves the blocker, and how steeply. The speed is a
 ## fraction of `LAUNCH_SPEED` rather than a fresh constant so a deflection can never
@@ -376,7 +385,7 @@ func _apply_deflected(from: Vector3, new_velocity: Vector3) -> void:
 	# The thrower can block their own deflected slipper a moment later otherwise.
 	_flight_time = 0.0
 
-func _apply_landed(where: Vector3) -> void:
+func _apply_landed(where: Vector3, audible: bool = false) -> void:
 	if carrier != null:
 		carrier.notify_holding(null)
 	carrier = null
@@ -387,6 +396,10 @@ func _apply_landed(where: Vector3) -> void:
 	if _visual != null:
 		_visual.rotation = Vector3.ZERO
 	_set_state(CarryState.LOOSE)
+	# Every peer runs this handler, so the thud is heard on all four machines at
+	# the position it happened — which is what `play_at` is for.
+	if audible:
+		AudioManager.play_at("slipper_land", global_position)
 
 func host_reset_for_new_round() -> void:
 	if NetworkManager.is_networked() and not NetworkManager.is_host():
@@ -477,6 +490,65 @@ func _detach_from_hand() -> void:
 	scale = Vector3.ONE
 
 ## ---------------------------------------------------------------------------
+## § SOFT STATS — §2.8, closed 2026-08-01. The TSINELAS tab decides three things.
+##
+## ⚠️ THE SCALES ARE READ OFF `skin_index`, WHICH IS THIS SLIPPER'S OWNER'S PICK.
+## Every seat owns one slipper (`Design.md` §5.2/§9) and `main.gd` pushes that
+## seat's tsinelas skin onto it, so the prop already knows whose it is and no
+## seat lookup is needed. -1 (never picked, an AI seat before the deal, a peer on
+## an older build) resolves to neutral and therefore to 1.0 — see
+## `CharacterRoster.trait_scale()`.
+##
+## ⚠️ SPEED IS DELIBERATELY THE NARROWEST OF THE THREE. The table only spans
+## `bilis` 2..4 on slippers, i.e. **±5% of `LAUNCH_SPEED`**, and that ceiling is
+## not taste. `ai_controller.gd::_min_power_for()` inverts the range equation
+## against `Slipper.LAUNCH_SPEED` to decide how long to charge; a per-skin launch
+## speed is therefore an error term in somebody else's solve, and that file is
+## 🤖 `build ai`'s. 5% sits inside the margin it already charges to (measured: hit
+## rate unmoved), where 20% would have quietly made every bot holding a slow
+## slipper fall short — a balance change masquerading as an AI regression, which
+## is exactly what this lane's prompt warns against.
+## ---------------------------------------------------------------------------
+
+## Metres/second the blocker is pushed back at neutral POWER. Solved off the same
+## `distance = v² / FRICTION_2` model `SHOVE_SPEED` and `LUNGE_SPEED` use, so all
+## three impulses in the game are derived from `CharacterBase.FRICTION` rather
+## than being three independently-tuned magic numbers:
+## `v = sqrt(0.35 × 60) = 4.583` → **0.35 m** at neutral, 0.26–0.46 m across the
+## table's `lakas` range.
+##
+## ⚠️ A PUSH AND NOT A STUN, AND THAT WAS A DELIBERATE REVERSAL. `apply_stagger()`
+## was the obvious way to make a block cost the taya something, and it is wrong
+## here: three attackers throwing at one box would chain 0.3 s stuns onto the
+## defender, and `apply_stagger()`'s `max()` bounds the DURATION of one stun
+## without bounding how often the next one starts. Knockback costs the taya
+## POSITION, which is the resource the body block is actually about, and it cannot
+## lock anybody out of the game.
+##
+## ⚠️ AND IT COMPOSES WITH THE PERSON TABLE FOR FREE. `apply_knockback()` divides
+## by the RECEIVER's `trait_grit_scale()`, so a CROCS thrown at BEBANG (grit 5)
+## barely moves her and the same throw rocks JUN-JUN (grit 2). Neither table knows
+## about the other; the interaction falls out of both being real.
+const BLOCK_KNOCKBACK_SPEED: float = 4.583
+
+func speed_scale() -> float:
+	return CharacterRoster.trait_scale(
+		CharacterRoster.slipper_trait(skin_index, &"bilis"),
+		CharacterBase.TRAIT_SPEED_PER_POINT)
+
+func power_scale() -> float:
+	return CharacterRoster.trait_scale(
+		CharacterRoster.slipper_trait(skin_index, &"lakas"),
+		CharacterBase.TRAIT_POWER_PER_POINT)
+
+## ⚠️ FLOORED AT 0.1 like `CharacterBase.trait_grit_scale()`, because every caller
+## DIVIDES by it and a zero would be a division by zero on the spawn path.
+func grit_scale() -> float:
+	return maxf(0.1, CharacterRoster.trait_scale(
+		CharacterRoster.slipper_trait(skin_index, &"tatag"),
+		CharacterBase.TRAIT_GRIT_PER_POINT))
+
+## ---------------------------------------------------------------------------
 ## SIMULATION.
 ## ---------------------------------------------------------------------------
 
@@ -560,14 +632,38 @@ func _step_flying(delta: float) -> void:
 		# never leaves. Deflecting keeps the block (the throw is still stopped, the
 		# lata still stands) and removes the clustering.
 		AudioManager.play_at("hit_body", global_position)
+		# ⚠️⚠️ §2.11 — THE BLOCK NOW DOES SOMETHING TO THE BLOCKER, AND UNTIL
+		# 2026-08-01 IT DID NOT. Body-blocking is the taya's entire passive verb and
+		# the only thing it produced was a sound at a world position: no flash on the
+		# body that made the block, no recoil, nothing at all on the blocker's own
+		# screen. A verb with no feedback is a verb the player cannot tell they
+		# performed, which is most of why §2.11 and §2.22 are the same complaint
+		# written from two sides.
+		#
+		# The push is scaled by the THROWER's slipper POWER and divided by the
+		# BLOCKER's own GRIT inside `apply_knockback()`, so both stat tables are live
+		# in a single contact. See § SOFT STATS.
+		var push := Vector3(_velocity.x, 0.0, _velocity.z)
+		if push.length() > 0.01:
+			blocker.host_apply_block(
+				push.normalized() * BLOCK_KNOCKBACK_SPEED * power_scale())
 		_host_deflect_from(blocker)
 		return
 
 	# ⚠️ NOT NAMED `lata` — a local of that name SHADOWS the `Lata` class, and every
 	# member access on it then resolves against nothing.
+	# ⚠️ THE `0.30` LITERAL THAT USED TO BE HERE IS NOW `Lata.hit_margin()`, AND
+	# THAT WAS A REAL DEFECT AND NOT A TIDY-UP. `Design.md` §7 lists the lata's
+	# hurtbox as 0.30 r / 0.70 h, `Lata.tscn` carries an `Area3D` authored to
+	# exactly that — and NOTHING READ EITHER OF THEM. The number that actually
+	# decided every knockdown in the game was this bare literal, so the balance
+	# source of truth documented a shape the rules ignored and the scene shipped a
+	# node with no reader. The margin has a name and an owner now, and it is where
+	# the lata's GRIT stat lands.
 	var target: Lata = RoundManager.lata
 	if target != null and target.is_upright \
-			and _flat_distance(global_position, target.global_position) <= HIT_RADIUS + 0.30 \
+			and _flat_distance(global_position, target.global_position) \
+				<= HIT_RADIUS + target.hit_margin() \
 			and absf(global_position.y - target.global_position.y) < 1.0:
 		target.host_knock_down(owner_slot)
 		# ⚠️⚠️ IT RECOILS OFF THE LATA NOW INSTEAD OF STOPPING DEAD. 🧑 2026-08-01:
@@ -581,7 +677,15 @@ func _step_flying(delta: float) -> void:
 		# fling the slipper clear of the box (see `_host_deflect_from`); this is a
 		# tin can taking the hit, so it is a short knock-back that keeps the slipper
 		# roughly where it landed. The can is what flies here, not the slipper.
-		_host_recoil_from(target.global_position, LATA_RECOIL_SCALE)
+		#
+		# ⚠️ SCALED BY THE CAN'S OWN POWER STAT SINCE 2026-08-01 (§2.8). This is
+		# where a heavy can pays off defensively: it throws the tsinelas further
+		# from the mark, so the retrieval that follows is longer — which is the
+		# taya buying time in the one currency `Design.md` §0 says the game is
+		# about. BOYBEN (lakas 5) sends it 14% further than PASIP (lakas 1) sends
+		# it 14% less.
+		_host_recoil_from(target.global_position,
+			LATA_RECOIL_SCALE * target.power_scale())
 		return
 
 	# ⚠️ THE GROUND IS FOUND, NOT ASSUMED TO BE AT y = 0. Both maps put their road
@@ -590,11 +694,24 @@ func _step_flying(delta: float) -> void:
 	# into the floor. `_ground_under()` raycasts, so this is also correct on a
 	# kerb, a plaza step, or anything a later map puts underfoot.
 	if global_position.y <= _floor_y + _rest_height:
+		# ⚠️⚠️ §2.17 — `audible` IS TRUE HERE AND NOWHERE ELSE, AND THAT IS THE FIX.
+		# `slipper_land` has been registered in `audio_manager.gd` with a mix level
+		# of its own since the sound pass and had **never had a caller**: a throw
+		# that hit a body played `hit_body`, a throw that hit the can played
+		# `can_knockdown`, and a throw that simply missed — by far the most common
+		# outcome, 38 of 71 flights in the 2026-08-01 baseline — landed in total
+		# silence. The one shot the attacker most needs to hear the result of was
+		# the one shot the game said nothing about.
+		#
+		# It is a parameter rather than a line inside `_apply_landed()` because that
+		# function is shared with `host_drop()` and `host_reset_for_new_round()`, and
+		# a round reset teleports three slippers home on one frame — putting the
+		# sound in there would have played a triple thud at the start of every round.
 		var rest := _ground_under(global_position)
 		if NetworkManager.is_networked():
-			_rpc_landed.rpc(rest)
+			_rpc_landed.rpc(rest, true)
 		else:
-			_apply_landed(rest)
+			_apply_landed(rest, true)
 
 ## Anyone but the thrower, during the ignore window. A slipper that clipped its
 ## own thrower on release was the single most common "my throw did nothing"
@@ -714,8 +831,15 @@ static func _solve_arc(origin: Vector3, target: Vector3, speed: float) -> Vector
 
 ## Used by `trajectory_preview.gd` so the dotted line is sampled from the same
 ## launch velocity the throw will actually use.
-static func launch_velocity_for(origin: Vector3, target: Vector3, power: float) -> Vector3:
-	var speed: float = LAUNCH_SPEED * lerpf(MIN_POWER_SCALE, 1.0, clampf(power, 0.0, 1.0))
+##
+## ⚠️ `skin_speed_scale` DEFAULTS TO 1.0 rather than being required, so every
+## existing caller still resolves and an aim line drawn before a skin is pushed is
+## the neutral one — which is exactly what an unpicked slipper throws. `carrier.gd`
+## passes the held slipper's own `speed_scale()`.
+static func launch_velocity_for(origin: Vector3, target: Vector3, power: float,
+		skin_speed_scale: float = 1.0) -> Vector3:
+	var speed: float = LAUNCH_SPEED * lerpf(MIN_POWER_SCALE, 1.0, clampf(power, 0.0, 1.0)) \
+		* skin_speed_scale
 	return _solve_arc(origin, target, speed) * speed
 
 ## ---------------------------------------------------------------------------
