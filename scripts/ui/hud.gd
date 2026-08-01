@@ -8,20 +8,17 @@ class_name Hud
 @onready var timer_label: Label = %TimerLabel
 @onready var timer_card: PanelContainer = %TimerCard
 @onready var round_label: Label = %RoundLabel
-@onready var top_left_panel: PanelContainer = %TopLeft
-@onready var top_right_panel: PanelContainer = %TopRight
-@onready var team_a_label: Label = %TeamALabel
-@onready var team_b_label: Label = %TeamBLabel
-## The A/B glyphs. Team identity is the LETTER and never the hue, so these are the only
-## thing on a team card that does not move when the roles swap — see `_apply_wood_skin`.
-@onready var team_a_letter: Label = %TeamALetter
-@onready var team_b_letter: Label = %TeamBLetter
-@onready var team_a_pips_box: HBoxContainer = %TeamAPipsBox
-@onready var team_b_pips_box: HBoxContainer = %TeamBPipsBox
+## ⚠️ THE 2v2 TEAM CARDS ARE GONE FROM THE SCENE — § CHECKLIST 1.1. `TopLeft` and its
+## `TopRight` mirror carried an A/B letter mark, an OFFENSE/DEFENSE caption and a
+## three-pip win row each; `LataCard` carried a dent counter. None of those five things
+## exists in a four-player scored match (`Design.md` §1, §8, §12), and this file used to
+## hide all of them at `_build_scoreboard()` and draw the real board on top in code.
+## The four rows are authored in `HUD.tscn` now and bound here.
+@onready var scoreboard_panel: PanelContainer = %Scoreboard
+@onready var score_title: Label = %ScoreTitle
 @onready var lata_card: PanelContainer = %LataCard
 @onready var lata_label: Label = %LataLabel
-@onready var dent_pips_box: HBoxContainer = %DentPipsBox
-@onready var dent_text_label: Label = %DentTextLabel
+@onready var lata_hint_label: Label = %LataHintLabel
 @onready var downed_flash: ColorRect = %DownedFlash
 @onready var toast_label: Label = %ToastLabel
 @onready var ready_prompt: Label = %ReadyPrompt
@@ -127,15 +124,15 @@ func _apply_wood_skin() -> void:
 	round_label.add_theme_color_override("font_outline_color", UiTheme.INK)
 	round_label.add_theme_constant_override("outline_size", TEXT_OUTLINE)
 
-	# The letter marks: amber, and deliberately NOT role-coloured. This is the one thing
-	# on the card that identifies the team, and it has to stay put when the roles swap.
-	for letter in [team_a_letter, team_b_letter]:
-		letter.add_theme_color_override("font_color", UiTheme.AMBER)
+	# ⚠️ THE A/B LETTER MARKS ARE GONE WITH THE TEAM CARDS. The comment here read "this
+	# is the one thing on the card that identifies the team, and it has to stay put when
+	# the roles swap" — true of a 2v2, meaningless with four independent players. The
+	# scoreboard's own title takes the amber instead, in `_build_scoreboard()`.
 
 	lata_card.add_theme_stylebox_override("panel",
 		_hud_wood_style(UiTheme.WOOD_DEEP, UiTheme.WOOD_EDGE))
 	lata_label.add_theme_color_override("font_color", UiTheme.AMBER)
-	dent_text_label.add_theme_color_override("font_color", UiTheme.CREAM)
+	lata_hint_label.add_theme_color_override("font_color", UiTheme.CREAM)
 
 	# ⚠️ THE THREE FLOATING LINES ARE STYLIZED TEXT, NOT PANELS, AND THAT IS THE SECOND
 	# ANSWER. They started as bare text — the ready prompt in DANGER red, illegible over
@@ -906,15 +903,13 @@ var _score_rows: Array[Control] = []
 ## four `StyleBoxFlat` allocations a frame for a thing that moves twice a round.
 var _score_stamp: String = ""
 
+## ⚠️ IT BINDS NOW, IT NO LONGER BUILDS. The rows are authored in `HUD.tscn`, so this
+## walks `%ScoreRow0..3` instead of allocating four `HBoxContainer`s and eight `Label`s
+## at runtime — and the six-node hide list that used to sit at the top of this function
+## is gone with the nodes it was hiding.
 func _build_scoreboard() -> void:
 	if not _score_rows.is_empty():
 		return
-	# Hide what the 2v2 layout put here, without removing it from the scene.
-	for node in [team_a_letter, team_b_letter, team_a_pips_box, team_b_pips_box,
-			team_b_label, dent_pips_box]:
-		if node != null and is_instance_valid(node):
-			(node as CanvasItem).visible = false
-	top_right_panel.visible = false
 	# ⚠️⚠️ THE PANEL HAS TO BE RE-SKINNED HERE. `_apply_wood_skin()` styles the timer
 	# and the lata card but NOT the two team panels — those were painted by
 	# `set_round_display()` calling `_style_team_card()` with a role colour, and that
@@ -923,36 +918,29 @@ func _build_scoreboard() -> void:
 	# the "doesn't look like our theme" complaint the wood restyle was done to fix.
 	# 🧑 2026-07-31, on the first screenshot of this build: *"ugly ui btw, not even
 	# same theme wtf is that white shit"*.
-	_style_team_card(top_left_panel, team_a_label, UiTheme.AMBER)
-	team_a_label.text = "SCORES"
-	team_a_label.add_theme_color_override("font_color", UiTheme.AMBER)
-	var column := team_a_label.get_parent() as VBoxContainer
-	if column == null:
-		return
+	_style_team_card(scoreboard_panel, score_title, UiTheme.AMBER)
+	score_title.add_theme_color_override("font_color", UiTheme.AMBER)
 	for slot in range(MatchManagerScript.PLAYER_COUNT):
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 14)
-		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		row.add_child(_score_cell("Name", 132, HORIZONTAL_ALIGNMENT_LEFT))
-		row.add_child(_score_cell("Score", 64, HORIZONTAL_ALIGNMENT_RIGHT))
-		column.add_child(row)
+		var row := get_node_or_null("%%ScoreRow%d" % [slot]) as Control
+		if row == null:
+			push_error("HUD: ScoreRow%d missing from HUD.tscn" % [slot])
+			return
+		# The outline colour is the one thing the scene cannot state: it is a theme
+		# constant, not a per-node property, and both cells need it against a live 3D
+		# background rather than against the panel.
+		for cell_name in ["Name", "Score"]:
+			var cell := row.get_node_or_null(cell_name) as Label
+			if cell != null:
+				cell.add_theme_color_override("font_outline_color", UiTheme.INK)
 		_score_rows.append(row)
 
-## ⚠️ 20 px, NOT 15. The scoreboard sits next to a 48 px timer and a 22 px header,
-## and at 15 it read as a debug printout rather than as part of the HUD — 🧑 2026-07-31:
-## *"the text look bad too"*. It is the only place in the match a player reads four
-## numbers at a glance, so it gets close to the header's weight rather than the
-## status stack's.
-func _score_cell(cell_name: String, width: int, align: int) -> Label:
-	var label := Label.new()
-	label.name = cell_name
-	label.custom_minimum_size = Vector2(width, 0)
-	label.horizontal_alignment = align
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", 20)
-	label.add_theme_color_override("font_outline_color", UiTheme.INK)
-	label.add_theme_constant_override("outline_size", 5)
-	return label
+## ⚠️ `_score_cell()` IS DELETED AND ITS ONE LOAD-BEARING FACT MOVED INTO `HUD.tscn`.
+## It built the Name/Score labels at runtime; the scene authors them now (§ CHECKLIST
+## 1.1). The fact worth keeping is the font size: **20 px, not 15**. The scoreboard sits
+## beside a 48 px timer and a 22 px header, and at 15 it read as a debug printout rather
+## than as part of the HUD — 🧑 2026-07-31: *"the text look bad too"*. It is the only
+## place in the match a player reads four numbers at a glance, so it is set close to the
+## header's weight in the scene, on every `ScoreRow`'s two cells.
 
 ## ⚠️ SORTED BY SCORE, NOT BY SEAT, AND THE MARKER SAYS WHO IS DEFENDING. Both halves
 ## matter to a spectator: the ranking is the story of the match, and the defender
@@ -1006,7 +994,7 @@ func _refresh_lata_card() -> void:
 		UiTheme.DEFENSE if lata.is_upright else UiTheme.OFFENSE)
 	var local_char := you_card.get_local_character()
 	if local_char == null or not is_instance_valid(local_char):
-		dent_text_label.visible = false
+		lata_hint_label.visible = false
 		return
 	# The second line is what THIS player can do about it, which differs by role and
 	# is the whole reason the card is not just a coloured light.
@@ -1023,8 +1011,8 @@ func _refresh_lata_card() -> void:
 		line = "RETRIEVE A SLIPPER"
 	elif local_char.is_inside_box():
 		line = "GET OUT OF THE BOX TO THROW"
-	dent_text_label.text = line
-	dent_text_label.visible = line != ""
+	lata_hint_label.text = line
+	lata_hint_label.visible = line != ""
 
 ## ⚠️ FATIGUE IS SHOWN ON THE BAR AS WELL AS IN THE STATUS STACK, and that is not a
 ## duplicate. The stack row says how long it lasts; the bar says why it happened. A

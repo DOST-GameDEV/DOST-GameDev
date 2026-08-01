@@ -288,12 +288,16 @@ specifically is unverified. Tick only your own section.
 **⚠️ START AT 1.8, NOT 1.1.** A two-peer smoke test is the only item here that can
 invalidate a whole recording session, and it is the only one nobody has ever run.
 
-- [ ] 1.1 **`HUD.tscn` still carries the 2v2 layout underneath the new HUD.** The
-  scoreboard, the lata card's second line and the status stack are all built in
-  **code** by `hud.gd`, on top of scene nodes that are hidden rather than removed —
-  `TeamALetter`, `TeamBLetter`, `TeamAPipsBox`, `TeamBPipsBox`, `TeamBLabel`,
-  `DentPipsBox`, and the whole `TopRight` panel. That was deliberate (the scene is your
-  file, not `build core`'s) and it is now yours to restructure properly.
+- [x] 1.1 **`HUD.tscn` RESTRUCTURED 2026-08-01.** Every 2v2 node is deleted rather
+  than hidden: the `TeamALetter`/`TeamBLetter` marks, both three-pip win rows, the
+  `TeamBLabel`, the `DentPipsBox`, and the entire `TopRight` mirror panel. `TopLeft`
+  is now `Scoreboard`, with a `ScoreTitle` and **four `ScoreRow`s authored in the
+  scene**; `hud.gd` binds them instead of allocating four `HBoxContainer`s and eight
+  `Label`s at `_build_scoreboard()`, and `_score_cell()` is deleted with the one fact
+  worth keeping (20 px, not 15) moved into the scene. `DentTextLabel` is
+  `LataHintLabel` — dents do not exist. *Verified: 1600×900 render off
+  `harrydaks_shot.tscn` over a live match, looked at — themed panel, four ranked rows,
+  the TAYA marker and the ▸ you-marker both correct.*
 - [x] 1.2 **The tutorial teaches a game that no longer exists — REWRITTEN 2026-08-01.**
   All eight reference pages replaced; only the premise card survived, and its lede and
   one tile changed (DEFENDER → **TAYA**, to match what the HUD says for six minutes).
@@ -335,10 +339,15 @@ invalidate a whole recording session, and it is the only one nobody has ever run
   Hidden while you are holding it (an arrow pointing at your own hand is noise) and
   for the taya, who has no slipper. *Unverified: rendered in the menus but no capture
   yet shows it tracking a loose slipper mid-match.*
-- [ ] 1.7 **The FPP viewmodel arms are enormous** and dominate the lower third of every
-  frame — visible in every capture in § LOG. That is the shot the trailer is filmed in.
-  ⚠️ **Confirmed again 2026-08-01** on both peers of the two-peer run — see the
-  `net_twopeer_probe` captures. Still open.
+- [x] 1.7 **The FPP viewmodel arms — FIXED 2026-08-01.** `ViewmodelArms.tscn` seats a
+  0.84 m mesh 0.34 m from the eye, which is why it subtended most of the vertical FOV.
+  Scaled to 0.72 and pushed down and back at the mount site. ⚠️ **Applied from
+  `camera_rig.gd`, not by editing the scene** — `scenes/characters/visuals/**` is not
+  this lane's row, and a uniform root scale also keeps `VIEWMODEL_ARM_LENGTH`, the
+  carry anchor and the carry solve consistent, because all three work in the arms'
+  local space. *Verified: before/after 1600×900 renders over a live match. The
+  crosshair, the lata and the horizon are all visible now; before, the arms covered
+  them.*
 - [x] 1.8 ⚠️⚠️ **DONE 2026-08-01 — two real peers, a full 90 s round, and a diff.**
   The named probe is **`tools/ui/net_twopeer_probe.tscn`** (`--host` / `--join=`), a new
   file in this lane's own `tools/ui/**` row; `aim_probe`'s harness shape was copied and
@@ -1398,3 +1407,48 @@ outcomes — `build fair` owns measuring whether they are fun.
 mechanics revisions"*, *"fix everything do everything"*). `character_base.gd`,
 `round_manager.gd`, `carrier.gd`, `slipper.gd`, `lata.gd` and `Design.md` are
 ⚖️ `build fair`'s; `project.godot` is nobody's. Recorded rather than quietly done.
+
+### 2026-08-01 · 🖥️ `build ui` · §1.1 · §1.7 · branch `HARRYDAKS`
+
+**The HUD scene, the viewmodel arms, and a regression the mechanics revision caused.**
+
+**§1.1 — the 2v2 nodes are DELETED, not hidden.** `hud.gd` had been drawing the real
+scoreboard in code on top of six hidden scene nodes and a whole mirrored `TopRight`
+panel. That was the right call at the time (the scene is this lane's file) and it is
+what the item existed to close. `TopLeft` → `Scoreboard`, four `ScoreRow`s authored in
+the scene, `hud.gd` binds rather than builds.
+
+**§1.7 — the arms.** Scaled 0.72 and seated down-and-back from `camera_rig.gd`. The
+before/after renders are the whole argument: the same frame previously had two orange
+slabs across the lower third and now shows the crosshair, the lata and the horizon.
+
+**⚠️ AND A REGRESSION THIS SESSION'S OWN MECHANICS REVISION INTRODUCED, caught by the
+probe rather than by reasoning.** Replacing the passive proximity tag with the lunge
+meant the tag now needs a BUTTON — and `ai_controller.gd` did not know the button
+existed. Its defender branch still carried the comment *"The tag needs no button —
+walking into them is the whole verb"*, which was true right up until it was not.
+Measured on two peers: a full 90 s round produced **six tags before the change and
+zero after it**. Three of four seats are bots in the demo, so that is a taya who can
+never score. The bot now charges the lunge inside 3.2 m and releases on a full charge,
+through the same `ai_set_intent()` harness a human's right-click uses. ⚠️ It
+deliberately does not aim independently of where it is walking — `build ai` §6 owns
+making it GOOD; this only makes it exist.
+
+**⚠️ THE BOTS BARELY MOVE, AND HERE IS THE NUMBER.** 🧑 reported *"also no ones fkn
+moving"*. Measured over a 90 s round by `net_twopeer_probe`'s travel integrator:
+**P3 = 14.2 m, P4 = 26.0 m** — against a 3.45 m/s walk speed that is under 0.3 m/s
+averaged. It is not a bug in movement (a human peer moves normally); it is §6.1's
+placeholder AI, which its own header calls *"a placeholder, not a baseline"*. Left to
+`build ai` rather than tuned here, but the measurement is now on the board instead of
+being an impression.
+
+**⚠️ AND ON "THE BLENDER WORK THAT SURVIVED" — IT DID NOT, AND THE RECORD SHOULD SAY SO.**
+🧑 asked for it to be mentioned. It is worth being exact, because the next lane will
+otherwise go looking for Blender residue that is not there: all twelve `.glb` rigs are
+**byte-identical to their original Kenney import commits** (`262ed49` / `2b183dd`,
+2026-07-27), the working tree was clean against HEAD, and the files are UnityGLTF-
+authored. The revert was complete. What actually survived was `person_a.tres` /
+`person_b.tres` from **`9f0c6f8`, 2026-07-28, "Restyle the two match Persons to the
+moodboard"** — a *different* abandoned model pass, three days EARLIER than the Blender
+session, from when a match had exactly two Persons. That is why BERTO and MARING were
+the only two characters wearing hand-tuned palettes while the other ten were generated.

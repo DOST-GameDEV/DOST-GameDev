@@ -82,6 +82,13 @@ const FPP_HIDDEN_MESH_HINT: String = "head"
 ## ⚠️ Only ever shown on a Person, and only in FPP on the LOCAL unit. A Prop has
 ## no arms, and a remote player's rig is never the one being looked through.
 const VIEWMODEL_ARMS_SCENE: String = "res://scenes/characters/visuals/ViewmodelArms.tscn"
+## Uniform scale applied to the arms when they are mounted — § CHECKLIST 1.7. See the
+## comment at the mount site for why it lives here and not in the scene.
+const VIEWMODEL_SCALE: float = 0.72
+## Pushed down and away from the eye after scaling, so shrinking them does not just
+## leave a smaller pair of arms in the same commanding spot. Down clears the centre of
+## frame; back is what actually stops them subtending half the vertical FOV.
+const VIEWMODEL_SEAT: Vector3 = Vector3(0.0, -0.10, -0.16)
 
 ## B-91 — mirrors the .tscn's own baked `TppArm.position = (0, 1.2, 0)`, used
 ## by `_update_tpp_carry_follow()` below to mount the carried-slipper's camera
@@ -641,6 +648,25 @@ func _viewmodel_arms() -> Node3D:
 		return null
 	_arms = scene.instantiate() as Node3D
 	fpp_pivot.add_child(_arms)
+	# ⚠️⚠️ THE ARMS ARE SEATED HERE, NOT IN THEIR OWN SCENE — § CHECKLIST 1.7.
+	# 🧑: *"The FPP viewmodel arms are enormous and dominate the lower third of every
+	# frame"*, and every capture in § LOG shows it: two orange slabs across the bottom
+	# of the shot the trailer is filmed in.
+	#
+	# `ViewmodelArms.tscn` puts a 0.84 m mesh 0.34 m in front of the camera, which is
+	# why it fills the frame — at that distance the arm subtends most of the vertical
+	# FOV. Scaled down and pushed further out and down, it reads as a pair of hands at
+	# the bottom of the view instead of as a wall.
+	#
+	# ⚠️ APPLIED FROM THIS FILE RATHER THAN BY EDITING THE SCENE, deliberately.
+	# `scenes/characters/visuals/**` is not this lane's row in § PATHS; `camera_rig.gd`
+	# is, and it is the only thing that mounts these arms. A uniform scale on the root
+	# also keeps `VIEWMODEL_ARM_LENGTH`, `VIEWMODEL_CARRY_ANCHOR` and the carry solve
+	# consistent with each other, because every one of them works in the arms' own
+	# local space and scales with it — which editing individual offsets in the scene
+	# would not have.
+	_arms.scale = Vector3.ONE * VIEWMODEL_SCALE
+	_arms.position += VIEWMODEL_SEAT
 	return _arms
 
 

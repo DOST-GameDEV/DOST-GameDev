@@ -75,6 +75,18 @@ const GUARD_RADIUS: float = 2.2
 ## "the AI just gives up" looks like from the outside.
 const SPRINT_DISTANCE: float = 6.0
 
+## ⚠️ THE BOT LUNGES FROM FURTHER OUT THAN IT CAN TAG, and that gap is the whole
+## point. `LUNGE_TAG_RADIUS` is 1.3 m, but the lunge exists to COVER 2.5 m — firing
+## only once already inside tag range would make it a worse version of walking. This
+## is the range at which the dash is worth spending.
+const LUNGE_RANGE: float = 3.2
+## Held this long before release. `LUNGE_CHARGE_TIME` is 0.5 s; a bot that released
+## instantly would only ever get `LUNGE_MIN_POWER` and cover about a third of the
+## distance, which reads on camera as a taya twitching rather than lunging.
+const LUNGE_HOLD_TIME: float = 0.5
+
+var _lunge_held: float = -1.0
+
 ## ⚠️ PUBLIC AND NAMED `character`, because `main.gd::_attach_ai` constructs this
 ## with a bare `.new()` and assigns afterwards. Resolved from the parent in
 ## `_ready()` as well, so either order works.
@@ -191,6 +203,32 @@ func _nearest_loose_slipper() -> Slipper:
 	return best
 
 ## ---------------------------------------------------------------------------
+## Charges the lunge while closing, and releases it inside `LUNGE_RANGE`.
+##
+## ⚠️ IT DELIBERATELY DOES NOT AIM. `_walk_to()` already turns the body toward the
+## target every frame and the lunge fires along `-basis.z`, so the dash goes where the
+## bot is already facing. An AI that aimed the lunge independently of where it was
+## walking would be strictly better than a human at the one verb this lane is not
+## allowed to tune — `build ai` §6 owns making it good, this only makes it EXIST.
+func _step_lunge_intent(target: CharacterBase) -> void:
+	if character.lunge_cooldown_left() > 0.0:
+		_lunge_held = -1.0
+		_press("lunge", false)
+		return
+	var distance := character.global_position.distance_to(target.global_position)
+	if _lunge_held < 0.0:
+		if distance > LUNGE_RANGE:
+			_press("lunge", false)
+			return
+		_lunge_held = 0.0
+	_lunge_held += character.get_physics_process_delta_time()
+	# Release on the charge being full — the release edge is what fires it.
+	if _lunge_held >= LUNGE_HOLD_TIME:
+		_lunge_held = -1.0
+		_press("lunge", false)
+		return
+	_press("lunge", true)
+
 ## THE DEFENDER: stand the lata back up → chase a vulnerable Attacker → guard.
 ## ---------------------------------------------------------------------------
 func _act_defender() -> void:
@@ -209,9 +247,22 @@ func _act_defender() -> void:
 	_press("grab", false)
 	var target := _nearest_taggable()
 	if target != null:
-		# The tag needs no button — walking into them is the whole verb.
 		_walk_to(target.global_position)
+		# ⚠️⚠️ THE TAG NEEDS A BUTTON NOW, AND THIS COMMENT USED TO SAY IT DID NOT.
+		# It read *"The tag needs no button — walking into them is the whole verb"*,
+		# which was true of the passive proximity tag and became false the moment the
+		# lunge replaced it (2026-08-01). Measured by
+		# `tools/ui/net_twopeer_probe.tscn`: a full 90 s round produced **six tags**
+		# before the change and **zero** after it — a taya bot that can never score,
+		# in a demo where three of the four seats are bots.
+		#
+		# ⚠️ IT CHARGES BY HOLDING AND FIRES BY RELEASING, which is the same contract a
+		# human's right-click has: `_step_lunge()` reads `input_pressed("lunge")` to
+		# accumulate and the release edge to fire. Holding it forever would charge and
+		# never lunge.
+		_step_lunge_intent(target)
 		return
+	_press("lunge", false)
 	# Nothing to chase: stand between the lata and the nearest Attacker rather than
 	# on top of the lata, so the body actually blocks a throwing lane.
 	var threat := _nearest_attacker()
@@ -273,8 +324,12 @@ func _stop() -> void:
 
 func _release_all() -> void:
 	_charging = false
+	# ⚠️ `_lunge_held` RESETS HERE TOO, not just the button. A bot stunned mid-charge
+	# otherwise resumes from wherever its accumulator stopped and fires the instant it
+	# recovers, which is a lunge nobody saw wind up.
+	_lunge_held = -1.0
 	for action in ["move_left", "move_right", "move_up", "move_down", "sprint",
-			"grab", "special_ability", "jump"]:
+			"grab", "special_ability", "jump", "lunge"]:
 		_press(action, false)
 
 func _press(action: String, pressed: bool) -> void:
