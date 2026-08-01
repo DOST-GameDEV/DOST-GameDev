@@ -102,6 +102,14 @@ const VOID_Y: float = -12.0
 
 @onready var _visual: Node3D = $Visual
 
+## This slipper's own position in `main.gd`'s `slippers` array (0/1/2 for
+## Slipper1/2/3 — set directly on each instance in Main.tscn). A plain int
+## rather than looked up at call time on purpose: it is the stable identifier
+## every mutation RPC is now addressed by (see `_main_rpc`'s own doc), and
+## "a value that must always hold, write it directly" is the exact rule
+## `owner_slot` already learned the hard way.
+@export var slipper_index: int = -1
+
 ## 0..3, whoever last held it. -1 when nobody has. The score for knocking the lata
 ## down is credited to this slot.
 var owner_slot: int = -1
@@ -221,7 +229,8 @@ func is_flying() -> bool:
 ##
 ## ⚠️ MULTIPLAYER-SAFE BY CONSTRUCTION, NOT BY LUCK. Every grab funnels through
 ## `host_grab()`, which runs ONLY on the host (clients `rpc_id(1, ...)` and return),
-## re-checks this function there, and broadcasts `_rpc_grabbed`. Two attackers
+## re-checks this function there, and broadcasts `_rpc_slipper_grabbed` (via
+## `main.gd` — see `_main_rpc`'s own doc). Two attackers
 ## reaching for one slipper on the same frame therefore resolve in host order: the
 ## first `_apply_grabbed` moves it out of `CarryState.LOOSE`, and the second call
 ## fails the very first line below. There is no window in which both succeed,
@@ -232,6 +241,36 @@ func can_be_grabbed_by(who: CharacterBase) -> bool:
 	if who.is_defender or not who.can_act():
 		return false
 	return not who.holding_slipper()
+
+## ⚠️⚠️ EVERY MUTATION RPC GOES THROUGH `main.gd`, NOT THROUGH `self`. THIS IS
+## THE FIX FOR "non-host players and spectators cannot see thrown slippers."
+##
+## `_attach_to_hand()`/`_detach_from_hand()` reparent this node onto a
+## per-peer, runtime-built path under its carrier's hand and back again on
+## every pickup and throw (see `_attach_to_hand()`'s own §2.24 doc). That doc
+## already fixed the identical "packets naming a node the receiver may not
+## have finished constructing" problem for the automatic
+## `MultiplayerSynchronizer` — silenced via `_set_sync_enabled` while carried —
+## but an `@rpc` method called directly on THIS node uses the same underlying
+## node-path-based targeting, and nothing ever covered that half.
+##
+## Measured live: a host + join test, the host AI cycling through 20+
+## throw/catch loops over 46 seconds — the join client received the very
+## first round-start equip (sent while every slipper was still at its
+## original, since-scene-load path) and NOTHING else for the rest of the
+## match. Once reparented even once, every subsequent RPC aimed directly at
+## this node silently stopped arriving on non-host peers.
+##
+## Main.tscn's own root never reparents, so every call below routes through
+## it instead, re-dispatched by `slipper_index` — a plain int, immune to path
+## instability by construction, unlike a `NodePath`.
+func _main_rpc(method: StringName, args: Array) -> void:
+	var main := get_tree().current_scene
+	if main == null:
+		return
+	var full_args: Array = [method, slipper_index]
+	full_args.append_array(args)
+	main.callv("rpc", full_args)
 
 ## ---------------------------------------------------------------------------
 ## STATE TRANSITIONS. Host decides; every peer is told.
@@ -253,13 +292,9 @@ func host_assign_owner(slot: int) -> void:
 	if NetworkManager.is_networked() and not NetworkManager.is_host():
 		return
 	if NetworkManager.is_networked():
-		_rpc_owner.rpc(slot)
+		_main_rpc("_rpc_slipper_owner", [slot])
 	else:
 		_apply_owner(slot)
-
-@rpc("authority", "call_local", "reliable")
-func _rpc_owner(slot: int) -> void:
-	_apply_owner(slot)
 
 func _apply_owner(slot: int) -> void:
 	if owner_slot == slot:
@@ -306,7 +341,7 @@ func host_force_equip(who: CharacterBase) -> void:
 	if RoundManager.player_at(who.player_slot) != who:
 		return
 	if NetworkManager.is_networked():
-		_rpc_grabbed.rpc(who.player_slot)
+		_main_rpc("_rpc_slipper_grabbed", [who.player_slot])
 	else:
 		_apply_grabbed(who.player_slot)
 
@@ -316,13 +351,9 @@ func host_grab(by: CharacterBase) -> void:
 	if not can_be_grabbed_by(by):
 		return
 	if NetworkManager.is_networked():
-		_rpc_grabbed.rpc(by.player_slot)
+		_main_rpc("_rpc_slipper_grabbed", [by.player_slot])
 	else:
 		_apply_grabbed(by.player_slot)
-
-@rpc("authority", "call_local", "reliable")
-func _rpc_grabbed(slot: int) -> void:
-	_apply_grabbed(slot)
 
 func _apply_grabbed(slot: int) -> void:
 	owner_slot = slot
@@ -350,13 +381,9 @@ func host_throw(from: CharacterBase, origin: Vector3, target_point: Vector3,
 		* speed_scale()
 	var direction := _solve_arc(origin, target_point, speed)
 	if NetworkManager.is_networked():
-		_rpc_thrown.rpc(from.player_slot, origin, direction * speed)
+		_main_rpc("_rpc_slipper_thrown", [from.player_slot, origin, direction * speed])
 	else:
 		_apply_thrown(from.player_slot, origin, direction * speed)
-
-@rpc("authority", "call_local", "reliable")
-func _rpc_thrown(slot: int, origin: Vector3, launch_velocity: Vector3) -> void:
-	_apply_thrown(slot, origin, launch_velocity)
 
 func _apply_thrown(slot: int, origin: Vector3, launch_velocity: Vector3) -> void:
 	owner_slot = slot
@@ -379,16 +406,9 @@ func host_drop() -> void:
 	if state != CarryState.CARRIED:
 		return
 	if NetworkManager.is_networked():
-		_rpc_landed.rpc(global_position)
+		_main_rpc("_rpc_slipper_landed", [global_position])
 	else:
 		_apply_landed(global_position)
-
-## ⚠️ `audible` DEFAULTS, so a peer calling the one-argument form still resolves
-## rather than failing the RPC outright — the same contract `RoundManager.
-## _sync_state()`'s third argument keeps, and for the same reason.
-@rpc("authority", "call_local", "reliable")
-func _rpc_landed(where: Vector3, audible: bool = false) -> void:
-	_apply_landed(where, audible)
 
 ## How fast a blocked slipper leaves the blocker, and how steeply. The speed is a
 ## fraction of `LAUNCH_SPEED` rather than a fresh constant so a deflection can never
@@ -488,7 +508,7 @@ func _host_recoil_from(point: Vector3, scale: float) -> void:
 	var recoiled := Vector3(
 		away.x * speed, DEFLECT_LIFT * LATA_RECOIL_LIFT_SCALE, away.z * speed)
 	if NetworkManager.is_networked():
-		_rpc_deflected.rpc(global_position, recoiled)
+		_main_rpc("_rpc_slipper_deflected", [global_position, recoiled])
 	else:
 		_apply_deflected(global_position, recoiled)
 
@@ -506,13 +526,9 @@ func _host_deflect_from(blocker: CharacterBase) -> void:
 	var speed := LAUNCH_SPEED * DEFLECT_SPEED_SCALE
 	var deflected := Vector3(away.x * speed, DEFLECT_LIFT, away.z * speed)
 	if NetworkManager.is_networked():
-		_rpc_deflected.rpc(global_position, deflected)
+		_main_rpc("_rpc_slipper_deflected", [global_position, deflected])
 	else:
 		_apply_deflected(global_position, deflected)
-
-@rpc("authority", "call_local", "reliable")
-func _rpc_deflected(from: Vector3, new_velocity: Vector3) -> void:
-	_apply_deflected(from, new_velocity)
 
 ## ⚠️ IT STAYS IN `FLYING`, WHICH IS WHAT MAKES THE BOUNCE REAL. The slipper keeps
 ## being integrated by `_step_flying()`, so it arcs, falls and lands through the same
@@ -545,7 +561,7 @@ func host_reset_for_new_round() -> void:
 	if NetworkManager.is_networked() and not NetworkManager.is_host():
 		return
 	if NetworkManager.is_networked():
-		_rpc_landed.rpc(spawn_position)
+		_main_rpc("_rpc_slipper_landed", [spawn_position])
 	else:
 		_apply_landed(spawn_position)
 
@@ -663,7 +679,8 @@ func _restore_shadow_casting() -> void:
 ## that were redundant when they arrived and errors when they did not.
 ##
 ## ⚠️ `owner_slot` IS NOT LOST WITH IT. That field is replicated by an explicit
-## RPC (`_rpc_owner`), for the reason `host_assign_owner()` documents — a
+## RPC (`_rpc_slipper_owner`, routed through `main.gd`), for the reason
+## `host_assign_owner()` documents — a
 ## synchronizer writes a property directly and the glow's side effect never runs on
 ## the peer that received it. So ownership survives the quiet period intact.
 func _set_sync_enabled(enabled: bool) -> void:
@@ -957,7 +974,7 @@ func _step_flying(delta: float) -> void:
 		# sound in there would have played a triple thud at the start of every round.
 		var rest := _ground_under(global_position)
 		if NetworkManager.is_networked():
-			_rpc_landed.rpc(rest, true)
+			_main_rpc("_rpc_slipper_landed", [rest, true])
 		else:
 			_apply_landed(rest, true)
 
