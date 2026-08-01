@@ -1220,16 +1220,27 @@ func _try_late_join(peer_id: int) -> void:
 	# broadcast and is stuck at round_number 0. Catch this one peer up in a single
 	# reliable RPC.
 	#
-	# ⚠️ `GameLaunch.game_mode` USED TO RIDE ALONG HERE and is gone with Option A
-	# (§8.2) — there is one ruleset, so there is nothing per-peer left to disagree
-	# about. The set cursor replaces it: under paired sets (§8.1) `round_number`
-	# alone no longer tells a joiner where the match is, because the role schedule is
-	# a function of (set, round-in-set).
+	# ⚠️⚠️ THIS CALL USED TO PASS THE 2v2 ARGUMENT LIST AND THREW ON EVERY SINGLE JOIN.
+	# Measured on two real peers 2026-08-01 (`tools/ui/net_twopeer_probe.tscn`): the
+	# host printed `Invalid access to property or key 'team_a_wins' on a base object of
+	# type 'Node (MatchManagerScript)'` the instant the client identified.
+	#
+	# The HARRYDAKS pivot rewrote the RECEIVER below to the four-player shape —
+	# `(round_number, defender_slot, scores, time_left, round_active, lata_upright)` —
+	# and did not update this one call site, which still sent `team_a_wins`,
+	# `team_b_wins`, `set_number` and `round_in_set`. None of those four exist on
+	# `MatchManager` any more (paired sets and Option A went with the 2v2 format,
+	# `Design.md` §12), so the property access threw before the RPC was ever sent.
+	#
+	# ⚠️ AND THE THROW ABORTED THE REST OF `_try_late_join()`, which is why this was
+	# worth finding rather than merely untidy: every line below — the picks catch-up
+	# that carries the PROP SKINS, `_refresh_ai_prop_picks()`, and the ready-phase
+	# hand-off — never ran for any joining peer. A single-machine session never calls
+	# this function at all, so nothing about it is visible in Single Player.
 	_sync_state_to_late_joiner.rpc_id(
 		peer_id, MatchManager.round_number, MatchManager.defender_slot,
-		MatchManager.team_a_wins, MatchManager.team_b_wins,
-		RoundManager.time_left, RoundManager.round_active,
-		MatchManager.set_number, MatchManager.round_in_set
+		MatchManager.scores, RoundManager.time_left, RoundManager.round_active,
+		lata != null and lata.is_upright
 	)
 	# B-145 — see `_rpc_sync_picks`. The same catch-up, for the three indices the
 	# synchronizer does not deliver to a peer that owns neither the node nor the

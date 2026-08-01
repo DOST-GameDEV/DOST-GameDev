@@ -311,9 +311,33 @@ invalidate a whole recording session, and it is the only one nobody has ever run
   slot, or delete the arrow and its node.
 - [ ] 1.7 **The FPP viewmodel arms are enormous** and dominate the lower third of every
   frame — visible in every capture in § LOG. That is the shot the trailer is filmed in.
-- [ ] 1.8 ⚠️⚠️ **DO THIS ONE FIRST, BEFORE ANYTHING ELSE IN THIS SECTION. NOTHING ON
-  THIS BRANCH HAS EVER RUN ON TWO REAL PEERS, AND THE DEMO IS BEING RECORDED IN
-  MULTIPLAYER.** 🧑 2026-07-31: *"the record is in multiplayer bruh"*.
+- [x] 1.8 ⚠️⚠️ **DONE 2026-08-01 — two real peers, a full 90 s round, and a diff.**
+  The named probe is **`tools/ui/net_twopeer_probe.tscn`** (`--host` / `--join=`), a new
+  file in this lane's own `tools/ui/**` row; `aim_probe`'s harness shape was copied and
+  its assertions discarded, all of which name deleted mechanics (§2.10).
+  **Result: the replication is sound and two real bugs fell out of it.**
+  *Measured:* host and client produced **byte-identical `[EV]` streams — 33 causal
+  events** across a full round and the rotation into round 2: 6 tags, the knockdown,
+  every score award with its reason string, the intermission, the role rotation, and an
+  identical `[FIN]` snapshot (scores, player names off the identify packet, prop
+  `skin_index` on the lata and all four slippers, lata upright, defense-tick totals).
+  ⚠️ **The stream freezes on a CAUSAL marker (`STOP_AT_ROUND`), not on the clock** — the
+  first run reported a 280-point "desync" that was purely the host lingering 8 s past
+  the client (2 tags + 8 DEFENSE ticks). A probe that compares two peers at two
+  different instants measures its own shutdown skew. Fixed, then re-run.
+  **Bug 1, FIXED — `main.gd::_try_late_join` threw on every single join.** It still
+  passed the 2v2 argument list (`team_a_wins`, `team_b_wins`, `set_number`,
+  `round_in_set` — none of which exist on `MatchManager` any more) to a receiver the
+  pivot had already rewritten to the four-player shape. The throw **aborted the rest of
+  the function**, so no joining peer ever got the round-state catch-up, the picks table
+  that carries the **prop skins**, `_refresh_ai_prop_picks()`, or the ready-phase
+  hand-off. Invisible in Single Player, which never calls it.
+  **Bug 2, FILED as 2.18 — `RoundManager.round_ended` never reaches a client.** It is
+  emitted past the host guard in `_on_time_up()` and is never RPC'd; it was the ONLY
+  line differing between the two peers' streams. Not live today (grep: zero subscribers
+  in `scripts/**`), which is exactly why it needs writing down.
+  ⚠️ **Still unverified on more than two peers, and both peers were on one machine over
+  loopback** — no real LAN, no four-player session, and no human input: the bots played.
   Every one of these resolves host-side and is therefore untested by definition on a
   single machine: the tag (`RoundManager._step_tag`), slipper contact
   (`Slipper._first_body_hit`), the shove request (`_rpc_request_shove`), every score
@@ -415,6 +439,30 @@ wind-up, no animation and no contact moment. They also shared files.
   `audio_manager.gd`'s `SFX_NAMES`) and has been since the 4.1 pass; it has simply never
   had a caller for this specific path. `slipper.gd`'s flight is this lane's file, not
   🔊 `build sound`'s, which is why this is filed rather than fixed directly.
+
+**Filed by `build ui` 2026-08-01:**
+
+- [ ] 2.18 **`RoundManager.round_ended` is emitted on the HOST ONLY and never reaches a
+  client.** Measured by `tools/ui/net_twopeer_probe.tscn` on two real peers: it was the
+  single line differing between two otherwise byte-identical 33-event streams — present
+  on the host, absent on the client, across two separate runs.
+  `_on_time_up()` returns early for a non-host (`round_manager.gd:301`) and then emits;
+  nothing RPCs it, unlike `_sync_state`, `_sync_tag` and `_sync_lata_event` beside it.
+  ⚠️ **It is NOT causing a live bug — grep for `round_ended` across `scripts/**` returns
+  zero subscribers**, which is precisely why it is worth writing down rather than
+  fixing quietly: the next lane to want a round-end beat (a card, a sting, a stat flush)
+  will wire it, watch it work on the host, and ship three clients that get nothing. The
+  adjacent `round_intermission_started` and `match_won` DO cross correctly, so the
+  asymmetry is invisible by inspection. `round_manager.gd` is `build fair`'s file.
+
+- [ ] 2.19 **`character_visual.gd` and `main.gd` have NO OWNER in § PATHS, and both were
+  carrying live multiplayer bugs.** Two of the three defects this lane found on
+  2026-08-01 were in those two files, and neither appears in any lane's row — the same
+  failure mode this board already names for `audio_manager.gd` (*"a file with no owner
+  gets no work"*). Both fixes were made by `build ui` on direct human instruction
+  (🧑: *"dont give to toher shit thats a major bug"*) and are recorded in § LOG. **Give
+  both files an owner before the next lane starts**, or the next cross-file defect in
+  them is found by a player.
 
 ### 4 · 🔊 `build sound` — music, voice and the mix *(Sonnet 5 · medium)*
 
@@ -1146,3 +1194,68 @@ the only one of the three that is not blocked on a drawing.
 
 ⚠️ **NOT verified, because nothing was built:** no Godot render, no `--import`, no
 determinism run of `generate_all.gd`. No § CHECKLIST box is ticked.
+
+### 2026-08-01 · 🖥️ `build ui` · §1.8 · branch `HARRYDAKS`
+
+**Two real peers, and the answer is "the replication is sound, and two things in front
+of it were broken."** § CHECKLIST §1.8 has the measurement; this is what it cost and
+what it means.
+
+**The probe is `tools/ui/net_twopeer_probe.tscn`**, `--host` / `--join=127.0.0.1`, two
+processes on one machine over loopback. `main.gd` already parses both flags, so the
+probe only has to avoid consuming them. It does **not** synthesise input: the unclaimed
+seats are bot-filled and the bots play the round. Driving the match by hand would have
+tested the harness.
+
+**What agrees across the wire, exactly:** 33 causal events, byte-identical on both ends
+— six tags, the knockdown, every score award with its reason string, the intermission,
+the rotation into round 2 — plus an identical end snapshot of scores, player names off
+the identify packet, prop `skin_index` on the lata and all four slippers, and the lata's
+upright flag. Contact-by-distance-on-the-host does what `build core` claimed for it.
+
+**⚠️ THE FIRST RUN REPORTED A DESYNC THAT WAS NOT ONE, and that is the finding worth
+keeping.** Host and client disagreed by 280 points. The 280 was 2 tags plus 8 DEFENSE
+ticks — the host lingers 8 s past the client so a client can finish and report, and the
+probe was snapshotting each peer *at its own exit*. Two peers compared at two different
+instants measure shutdown skew, not consistency. The stream now freezes on a **causal**
+marker (`STOP_AT_ROUND`, the start of round 2), which is the same point of the match on
+both machines however far apart in wall-clock terms it lands. Re-run: one line differed.
+
+**Bug 1 — `main.gd::_try_late_join` threw on every join.** `Invalid access to property
+or key 'team_a_wins'`, printed the instant the client identified. The pivot rewrote the
+RECEIVER `_sync_state_to_late_joiner` to the four-player shape and left this one call
+site sending the 2v2 list. The throw aborted the remainder of `_try_late_join()`, so a
+joining peer got no round-state catch-up, no picks table (**the prop skins**), no
+`_refresh_ai_prop_picks()` and no ready-phase hand-off. **Fixed.**
+
+**Bug 2 — every character a peer does not simulate was frozen in the `fall` pose.**
+🧑: *"some of them were just stuck in jump position"*. `character_base.gd`'s
+`_physics_process` returns at its authority gate **before** `_move_and_confine()`, the
+only caller of `move_and_slide()` — so on a non-authority peer `is_on_floor()` is never
+updated (reads `false` forever) and `velocity` is never written and is not replicated
+(reads zero forever). `_play_locomotion()` read both directly, took the airborne branch
+every frame, and could never reach `walk` or `sprint` either. **Three of four characters
+on every screen, on every peer, including every frame the trailer is filmed in — and
+invisible in Single Player, where the host simulates all four.** Locomotion for those
+units is now derived from the replicated `position`, smoothed against the network tick,
+latched across the apex of a jump, and discarding teleports (the tag penalty alone
+relocates an attacker six times a round). **Fixed and measured**: 24 samples across both
+peers, `[ANIM]` rows in the probe, zero `fall`/`jump` clips on non-simulated units where
+previously every one of them was permanently in `fall`.
+
+**⚠️ BOTH BUGS WERE IN FILES NO LANE OWNS.** `main.gd` and `character_visual.gd` appear
+in nobody's § PATHS row. Fixed here on direct human instruction (🧑: *"dont give to
+toher shit thats a major bug, pls push and commit as soon as u fix that bug"*) rather
+than filed, and the ownership gap itself is filed as §2.19 — this board already knows
+what happens to a file with no owner, because that is how it ended up with a `Music` bus
+and no music.
+
+**Verified:** clean `--headless --import` (no Parse Error) before and after; three
+two-peer runs; rendered 1280×720 captures from both peers with the PLAIN exe.
+**Not verified:** more than two peers, a real LAN rather than loopback, and any of it
+with a human on the controls — the bots played every round.
+
+⚠️ **Two things observed and NOT yet actioned, both handed on rather than half-done:**
+the four bots covered very little ground in three runs (`[INFO] travel` in the probe;
+`build ai` §6.1 already calls the controller a placeholder), and `docs/README.md`'s
+Godot path says `C:\Users\matth\...` where this machine has `C:\Users\Matthew\...`.
