@@ -854,7 +854,7 @@ func _seat_detail() -> String:
 	# (`Design.md` §12) and all four seats are the same kind of thing, so the copy
 	# says what the ROUND does to you instead of what kind of unit you are.
 	var seat := _local_seat()
-	var opens_as_taya := seat == MatchManagerScript.defender_slot_for(1)
+	var opens_as_taya := seat == MatchManager.defender_slot_for(1)
 	var role_line := "You defend FIRST — round 1 is yours in the box." if opens_as_taya \
 		else "You attack first; your turn as taya comes in round %d." % [seat + 1]
 	return "P%d   %s Every player is taya exactly once across the four rounds, and scores carry the whole way. Your lata and tsinelas picks are %s and %s — they tint the props everyone sees." % [
@@ -904,9 +904,13 @@ static func _seat_is_person(seat: int) -> bool:
 ## the one thing about a seat that is decided before the match starts and it is the
 ## only asymmetry left in the lobby — `MatchManager.defender_slot_for(1)` is a pure
 ## function of the round number, so the board can state it honestly up front.
-static func _seat_name(seat: int) -> String:
+## ⚠️ NO LONGER `static`. It asks `MatchManager.defender_slot_for()`, which is an
+## instance method on the autoload — calling it through the CLASS is a parse error that
+## takes this whole script down with it, and the seat labels then silently fall back to
+## whatever `MatchSetup.tscn` authored. Its one caller is an instance method anyway.
+func _seat_name(seat: int) -> String:
 	var label := "P%d" % [seat + 1]
-	if seat == MatchManagerScript.defender_slot_for(1):
+	if seat == MatchManager.defender_slot_for(1):
 		label += "  ·  TAYA FIRST"
 	return label
 

@@ -312,12 +312,28 @@ invalidate a whole recording session, and it is the only one nobody has ever run
   clipped row, and SCORING by 37 px. Three passes of trimming SCORING's body text
   moved the number by exactly zero, because each row's height was set by its two-line
   CHIP, not its text — the fix was one-line chips. All ten now report `fits`.
-- [ ] 1.3 **The match-result screen was gutted, not designed.** `_fill_pips` is replaced
-  by a text standings list appended in code. Give it a real final-standings layout, and
-  handle `winning_slot == -1` (an honest draw) as a first-class result.
-- [ ] 1.4 **The role-swap card announces a round with no winner.** It now shows who
-  defends next and who leads; check it reads correctly at the round-4 boundary, where
-  there is no next round.
+- [x] 1.3 **The match-result screen — DESIGNED 2026-08-01.** The two three-pip rows are
+  deleted from `MatchResult.tscn` and replaced by four authored `Place` rows (place ·
+  name · points); `match_result.gd` fills them instead of appending a newline-joined
+  Label into the pip row's parent. Names come from `display_name()`, not `P%d`.
+  **The draw is first-class**: the headline names every tied player
+  (`DRAW — P1 · P2`), and each of them takes `=` for their place and the highlight
+  colour, because a board reading "DRAW" above a list with one row on top reads as a
+  bug. *Verified: both outcomes rendered at 1920×1080 off the real `Main.tscn`
+  (`match_result_win.png`, `match_result_draw.png`) and looked at, with the headline
+  and the focus owner printed alongside.*
+- [x] 1.4 **The role-swap card — CHECKED 2026-08-01, and the round-4 boundary is
+  UNREACHABLE.** `MatchManager.report_round_result()` returns into `_finish_match()`
+  when `round_number >= ROUNDS` and never emits `round_intermission_started`, so
+  `next_round` here is always 2..4 and "ROUND 5 — FIGHT!" cannot be produced. That is a
+  property of the one call site, not luck, and it is now written at the handler so the
+  next reader does not re-derive it. The card also names players instead of printing
+  `P%d`. *Verified: rendered at all three real boundaries — the taya rotates
+  P1 → P2 → P3 across rounds 2, 3, 4.* ⚠️ **Getting there meant repairing
+  `tools/ui/intermission_shot.gd`, which had been failing silently**: it emitted the
+  2v2 three-argument `round_intermission_started` (every listener rejected it with
+  "expected 2 argument(s), but called with 3") and set `MatchManager.team_a_wins`,
+  which no longer exists — so nothing it ever captured of this card was real.
 - [x] 1.5 **Show names in the lobby — DONE 2026-08-01**, and the row it sat in was
   worse than "Player 3": the whole seat board still read **`TEAM A · PERSON` /
   `TEAM A · OBJECT` / `TEAM B · …`** over a hint saying *"A team is one person and one
@@ -384,8 +400,13 @@ invalidate a whole recording session, and it is the only one nobody has ever run
   that has four people in a room. `tools/aim_probe.gd` has a `--host` / `--join`
   harness to copy, and `tools/harrydaks_shot.tscn` already prints per-player match state
   — point one at each end and diff the two reports.
-- [ ] 1.9 **Settings has a player-name row built in code** (`_build_name_row`), for the
-  same reason as 1.1. Promote it into `SettingsPanel.tscn` and into the focus order.
+- [x] 1.9 **The player-name row is in `SettingsPanel.tscn` — DONE 2026-08-01.**
+  `_build_name_row()` binds and populates it instead of constructing an `HBoxContainer`,
+  a `Label` and a `LineEdit` at run time. ⚠️ **The focus order is the point, and it is
+  the half of THE REACHABILITY RULE that is easiest to miss** — a control created in
+  code sits outside the order the scene defines, so the row was operable with a mouse
+  and unreachable by keyboard. The saved value is still applied here rather than in the
+  scene, because the scene can only state the placeholder.
 
 **Filed by `build sound` 2026-08-01:**
 
@@ -1452,3 +1473,42 @@ authored. The revert was complete. What actually survived was `person_a.tres` /
 moodboard"** — a *different* abandoned model pass, three days EARLIER than the Blender
 session, from when a match had exactly two Persons. That is why BERTO and MARING were
 the only two characters wearing hand-tuned palettes while the other ten were generated.
+
+### 2026-08-01 · 🖥️ `build ui` · §1.3 · §1.4 · §1.9 · branch `HARRYDAKS`
+
+**The last three screen items, and a probe that had been lying about one of them.**
+
+**§1.3 — the match-result screen.** Four authored rows instead of a text blob appended
+into the old pip row's parent. The **draw** is the half worth calling out: `-1` is a
+deliberate result (`MatchManager._leading_slot()` reports it rather than breaking a tie
+arbitrarily), so the headline names every tied player and each of them takes `=` and the
+highlight. "DRAW" above a list with one row on top would read as a bug.
+
+**§1.4 — the round-4 boundary cannot happen.** The item asked whether the card reads
+correctly where there is no next round; the answer is that it never gets there.
+`report_round_result()` returns into `_finish_match()` at `round_number >= ROUNDS`
+before emitting anything. Recorded at the handler rather than only here.
+
+**§1.9 — the name row is in the scene.** The focus order is the whole reason: a control
+built at run time is outside the order the `.tscn` defines, so it was mouse-operable and
+keyboard-unreachable — the quiet half of THE REACHABILITY RULE.
+
+**⚠️ AND A PROBE THAT HAD BEEN GREEN AND WRONG.** `tools/ui/intermission_shot.gd` could
+not have verified §1.4 at all: it emitted the 2v2 three-argument
+`round_intermission_started`, which every listener rejected at run time
+(*"Method expected 2 argument(s), but called with 3"*), and set `MatchManager.team_a_wins`,
+which does not exist — the same stale-2v2-property defect that was crashing
+`main.gd::_try_late_join`. It wrote PNGs the whole time. **A capture tool that saves a
+file is not a capture tool that captured anything**, and §2.10's warning that every probe
+in `tools/` asserts deleted mechanics is now three-for-three this session.
+
+**⚠️ ONE SELF-INFLICTED BUG WORTH RECORDING BECAUSE THE IMPORT GATE MISSED IT.**
+`_seat_name()` was `static` and called `MatchManagerScript.defender_slot_for()` —
+non-static, so a Parse Error that takes the whole of `match_setup.gd` down with it. It
+did not show up in `--headless --import`, and the lobby still *rendered*, because the
+seat buttons fall back to whatever `MatchSetup.tscn` authored. It surfaced only when a
+probe actually ran the script. **A screen that renders is not a script that loaded.**
+
+**Verified:** both result outcomes and all three intermission boundaries rendered at
+1920×1080 off the real `Main.tscn` and looked at; the taya rotates P1 → P2 → P3;
+clean `--headless --import`.
