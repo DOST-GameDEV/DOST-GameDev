@@ -188,7 +188,7 @@ starting height was not.
 
 ⚠️ **`THROW_RESTORE_COOLDOWN` 1.25 s.** After the taya stands the lata back up, nobody
 may throw. It stops the lata being re-knocked by a slipper already charged and waiting
-on the last frame of the 2.5 s channel.
+on the last frame of the reset channel.
 
 ### 5.2 · Retrieval and vulnerability
 
@@ -229,7 +229,7 @@ deleted power bump was already tuned to 7.75 m/s against `FRICTION` 30, and
 * **Body-block.** Physically stop a slipper before it reaches the lata. A blocked
   slipper drops at the point of contact, which is the trade: the throw stopped, and the
   slipper is now deep inside the box.
-* **Reset the lata.** Stand in the ring, hold **E** for `RESET_CHANNEL_TIME` **2.5 s**.
+* **Reset the lata.** Stand in the ring, hold **E** for `RESET_CHANNEL_TIME` **1.5 s**.
   It goes back on its mark **and then** stands up, in that order — a lata that stands
   up where it was knocked to is a lata the next throw cannot miss. Letting go zeroes the
   channel.

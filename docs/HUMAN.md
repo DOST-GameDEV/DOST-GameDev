@@ -4,7 +4,7 @@
 written for whoever is building; this one is written for whoever is recording. Started
 2026-07-31.
 
-🔊 **`build voice` owns this file.** It writes the line list; you record against it; it does the
+🔊 **`build sound` owns this file.** It writes the line list; you record against it; it does the
 conversion and the wiring. **If a line here is hard to say, wrong in Filipino, or just bad — say
 so and change it.** The team speaks the language and the board does not.
 
@@ -14,8 +14,8 @@ so and change it.** The team speaks the language and the board does not.
 
 *"Game has a decent sound design in which music, sound effects, and **voice casting** that create
 an immersive gaming environment"* — that is the rubric's own wording, and Music and Sound Design
-is **10% of the final score**. Right now the game has **no voice and no music**, which makes this
-the cheapest block of points on the whole board.
+is **10% of the final score**. The game has **two of five OST tracks in and playing** and **not one
+voice line**, which makes the recording below the cheapest block of points left on the board.
 
 It is also the one thing in the entry that no other team can copy: a Filipino street game called
 in Filipino, by the people who made it. It is original by construction, it needs no licence, and
@@ -36,7 +36,7 @@ it is what an audience at the demo will repeat back.
 | **Peak level** | Aim **−6 dBFS**. Never let it touch 0. If it ever sounds crunchy, it is ruined — redo it |
 
 > **Record at 48 kHz / 24-bit and send us that.** Everything already in the game is **mono /
-> 44 100 Hz / 16-bit**, and `build voice` converts down to match. Do not convert it yourself —
+> 44 100 Hz / 16-bit**, and `build sound` converts down to match. Do not convert it yourself —
 > converting twice loses quality that cannot come back, and the conversion is one command on our
 > end. **Send the masters.**
 
@@ -90,7 +90,7 @@ The `<id>` is the **ID column** of the tables below, exactly as written. So Cy r
 ### Sending it
 
 Drop the whole folder in the shared drive — **do not commit audio yourself.** `.wav` is Git LFS
-tracked in this repo and a wrong `git add` on a big folder is annoying to undo. `build voice`
+tracked in this repo and a wrong `git add` on a big folder is annoying to undo. `build sound`
 takes it from the drive and commits it properly.
 
 > ✅ **The wiring is already built and waiting.** Every ID on this page has an event hooked up
@@ -182,16 +182,27 @@ Big. Street-corner big. This is the first thing anyone hears.
 
 ---
 
-## ⏸️ NOT YET — do not record these
+## ✅ UNBLOCKED — these used to be on a "do not record" list
 
-These depend on the match format, and 📋 `build rules` is changing it (single rounds become
-paired sets). **Recording them now means recording them twice.**
+⚠️ **This section said to hold these back because 📋 `build rules` was about to turn single
+rounds into paired sets. The opposite happened.** Paired sets were deleted on 2026-07-31 with the
+whole 2v2 design, `build rules` is closed, and the format has been settled since: **four rounds of
+90 seconds, one taya who rotates clockwise, cumulative personal scores.** So most of the old
+blocklist is now safe, and two entries on it describe things that no longer exist at all.
 
-- Anything naming a round or set number — *"Round three"*, *"Set point"*
-- *"Match point"*, *"Match winner"*
-- Team names
+**Safe to record now:**
 
-`build voice` unblocks these and adds them to a Table D after `build rules` commits.
+- **Round numbers** — *"Round one"* through *"Round four"*, and no further. There are exactly
+  four, always, and which one you are in is a pure function of the round number.
+- **"Match winner"** — highest cumulative score after round four takes it.
+
+**Do NOT record these, because the game has no such concept:**
+
+- **Team names, or anything addressed to a team.** Four players, free-for-all, no teams.
+- **"Set point", "Round winner", "Round point".** **A round is not won by anybody** — it is
+  90 seconds of scoring, the totals persist, and the taya rotates. A line calling a round for
+  somebody would be describing a rule the game does not have.
+- **"Match point".** Scores are cumulative with no target, so there is no last point.
 
 ---
 
