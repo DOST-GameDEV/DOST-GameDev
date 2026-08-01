@@ -215,6 +215,7 @@ carries the three-item ship checklist (§8).
 | 🔊 `build sound` | `systems/audio_manager.gd` · `assets/audio/**` · `default_bus_layout.tres` · the audio rows of `settings_panel.gd` · `docs/HUMAN.md` · `tools/audio/**` |
 | 🎨 `build model` | `character_roster.gd` `CANS`/`SLIPPERS` · `scenes/objects/**` and `scenes/characters/visuals/**` · `assets/models/**` · `tools/models/**` · `tools/maps/**` · `docs/Art_Direction.md` |
 | 🤖 `build ai` | `systems/ai_controller.gd` · `tools/ai_probe.gd` · `export_presets.cfg` · `.gitignore` |
+| 🎬 `build pitch` | `docs/Pitch.md` **only** — writes the trailer, demo and summary; touches no code |
 
 ⚠️ **`main.gd` AND `character_visual.gd` HAVE NO OWNER** and have carried live
 multiplayer bugs three separate times. Filed as §2.19 and still open.
@@ -1300,6 +1301,71 @@ Tick your own boxes in §6 and append to §7 in the same commit.
 ```
 
 ---
+
+### 🎬 `build pitch` — the trailer, the demo and the submission summary
+
+```
+You are `build pitch` on branch ESPORTS of the Tumbang Preso repo. Model: Opus 5,
+effort high.
+
+YOU WRITE WORDS AND SHOT LISTS, NOT CODE. You own docs/Pitch.md (create it) and
+nothing else. Do not edit a .gd, a .tscn or a number. If you find a bug, FILE it
+into the owning lane's §4 section per §2's "IF YOU FLAG IT, FILE IT".
+
+READ, IN THIS ORDER, BEFORE WRITING A SINGLE LINE:
+  1. docs/Agent_Prompts.md §1 — what the board is scored against. The rubric
+     weights are the brief: Screening is Completeness / Theme Relevance /
+     Originality / Gameplay / Aesthetics at 20% each; the final is Gameplay 20,
+     ESPORTS POTENTIAL 20, Graphics 10, MUSIC AND SOUND 10, Creativity 20,
+     Game Feedback 20, with an audience vote off the trailer and the demo.
+  2. docs/Agent_Prompts.md §7, the LOG, end to end. This is the only honest record
+     of what is actually built versus what was planned, and it is long because the
+     plan changed twice. ⚠️ Several §4 items are `[~]` = built but UNVERIFIED.
+  3. docs/Design.md — the rules, and the balance source of truth.
+  4. docs/Art_Direction.md §4b and scripts/ui/credits_panel.gd — the licence
+     position, because a submission asks about assets and three models are CC-BY.
+  5. docs/HUMAN.md § TABLE D and § Paperwork — the music and voice provenance.
+
+WHAT TO PRODUCE, in docs/Pitch.md:
+
+  A. THE ONE-PARAGRAPH SUMMARY. What the game is, in the words a judge who has
+     never seen it would need. Lead with the thing no other entry has.
+  B. THE ORIGINALITY PARAGRAPH. §1 states it: a faithful digital tumbang preso, a
+     Filipino street game nobody else at this competition is adapting, with a role
+     rotation that makes every player play both sides. Theme Relevance and
+     Originality come from FIDELITY, not from invented verbs. The team wrote the
+     OST and recorded the Filipino voice-over themselves — that is original by
+     construction, needs no licence, and is the single strongest provenance claim
+     in the entry. Say what is team-made and what is sourced, precisely.
+  C. THE TRAILER SCRIPT. 60-90 s, shot by shot, each shot naming: what is on
+     screen, what the player is doing, which rubric line it is buying, and HOW TO
+     CAPTURE IT (a real scene or probe from §1's table — tools/map_shot.tscn,
+     tools/harrydaks_shot.tscn, tools/ai_probe.tscn, the maps, the CHARACTER
+     screen). ⚠️ Anything that renders needs the PLAIN exe; `--headless` returns
+     blank frames.
+  D. THE DEMO SCRIPT. What to show live, in what order, with the failure modes
+     called out — what to do if a bot does something odd on stage.
+  E. THE ESPORTS PARAGRAPH. Worth 20 and it is the least self-evident: four
+     players, no teams, cumulative scoring, everybody is taya exactly once so
+     nobody is handed the easy seat, and the format is symmetric by construction
+     (`defender_slot_for()` is a pure function of the round number).
+
+⚠⚠ THE ONE RULE THAT MATTERS MORE THAN THE PROSE: DO NOT CLAIM ANYTHING THE
+BOARD DOES NOT SUPPORT. This project has a documented habit of shipping confident
+text about things that were never verified — §6 trap 3 is entirely about that, and
+a `[~]` box means "built, nobody has checked". A trailer that shows something the
+build does not do is the fastest way to lose Game Feedback and Completeness.
+Before you write a claim, find the §4 item or the §7 measurement behind it. If
+there is neither, either cut the claim or mark it **UNVERIFIED — confirm before
+filming**. Prefer measured numbers, of which there are many: hit rates per tier,
+the point breakdown, the two-peer byte-identical event streams.
+
+⚠️ ASK THE HUMAN for: the team name and member list, the deadline, the submission
+form's actual questions, and whether the trailer has a length limit. Do not invent
+any of them.
+
+Append a short entry to §7 when you finish.
+```
 
 ## 6 · Traps
 
