@@ -393,7 +393,37 @@ func _rpc_landed(where: Vector3, audible: bool = false) -> void:
 ## How fast a blocked slipper leaves the blocker, and how steeply. The speed is a
 ## fraction of `LAUNCH_SPEED` rather than a fresh constant so a deflection can never
 ## out-travel the throw that produced it.
-const DEFLECT_SPEED_SCALE: float = 0.62
+## ⚠️⚠️ 0.24, DOWN FROM 0.62, AND THIS IS THE FIX FOR §2.30 — THE TAYA'S SCORING
+## VERB. 🧑 2026-08-01: *"taya cant tag while can is down, to make it playable for
+## defender, make the rebound/recoil of slippers weaker so that the attackers have
+## to pick up the slippers inside the box and risk getting tagged"*.
+##
+## ⚠️ IT REVERSES AN EARLIER INSTRUCTION AND THE REASON IT CAN IS THAT THE GAME
+## MOVED UNDER IT. 0.62 was set for *"it bounces off a far distance into the open
+## field rather than dropping dead at their feet. This prevents slipper
+## clustering"*, and that was the right call for the game as it stood: the block
+## used to drop the slipper on the taya's own mark, so every block left another
+## slipper on the pile the attackers then had to wade into.
+##
+## What it also did, unnoticed, was **delete the taya's only way to score**. An
+## attacker is taggable exactly while holding a slipper INSIDE the box
+## (`is_taggable()`), so a block that lands the slipper OUTSIDE the box means the
+## retrieval never enters the box, and the tag never gets a chance to happen. That
+## is most of the 22.5% → 1.8% collapse recorded in §2.30.
+##
+## Measured, at `LAUNCH_SPEED` 18.5 and `GRAVITY` 20.0: `DEFLECT_LIFT` 5.0 keeps
+## the slipper airborne 0.50 s either way, so the travel is the speed.
+##   0.62 → 11.5 m/s → **5.7 m**, i.e. from a taya near the mark to the chalk or
+##          past it. Retrieval is safe; nobody is ever taggable.
+##   0.27 →  5.0 m/s → **2.5 m**, which is where it sits. 🧑 settled on it directly:
+##          *"im talking abt the slippers btw for 2.5 m"*. The attacker has to walk
+##          well inside the chalk for it and is taggable from the moment they pick
+##          it up, which is the whole point.
+## The clustering the old value fixed does not come back: the direction is still
+## "away from the blocker, outward from the box" (see `_host_deflect_from`), so a
+## block still moves the slipper off the taya's feet — it just no longer clears
+## the court with it.
+const DEFLECT_SPEED_SCALE: float = 0.27
 const DEFLECT_LIFT: float = 5.0
 
 ## Bounces a blocked slipper back out into the open. Host-side, like every other
@@ -406,10 +436,30 @@ const DEFLECT_LIFT: float = 5.0
 ## from the blocker to the slipper and pushing along it guarantees the slipper ends
 ## up further from the taya than it started, whatever the throw was doing.
 ## How hard a slipper comes off the LATA, as a fraction of `DEFLECT_SPEED_SCALE`.
-## Small on purpose: the body block is meant to clear the box, this is meant to
-## look like a collision. At 0.34 the slipper hops roughly a metre back and drops,
-## which reads as a knock rather than as a second throw.
-const LATA_RECOIL_SCALE: float = 0.34
+## Small on purpose: this is meant to look like a collision, not like a second
+## throw.
+##
+## ⚠️⚠️ NOW A FRACTION OF `LAUNCH_SPEED` IN ITS OWN RIGHT, AND THAT IS THE POINT.
+## 🧑 2026-08-01, having asked for the BLOCK to be weakened: *"yo let the lata recoil
+## a bit tho maybe around 1-1.5 m, js wanted to reduce recoil of slippers"*, then
+## *"actually pull it back, put the recoil above a bit around 2.5m"*.
+##
+## Two different events that happened to share one constant. The block is about
+## making the retrieval dangerous, so it wants to be SHORT; the can knock is about
+## the hit reading as a collision, so it wants to be VISIBLE. Nesting this inside
+## `DEFLECT_SPEED_SCALE` meant the second silently collapsed to 0.3 m the moment the
+## first was cut for the tag fix — a number moving for a reason that had nothing to
+## do with it, which is the whole hazard of a derived constant.
+##
+## ⚠️ THE TWO NUMBERS ARE NOT THE SAME AND WERE ASKED FOR SEPARATELY. 🧑:
+## *"NO LATA RECOIL STAYS AT 1-1.5 m"* — the 2.5 m figure is the BLOCK
+## (`DEFLECT_SPEED_SCALE`), this one is the slipper coming off the CAN and is meant
+## to be the smaller of the two.
+##
+## 0.25 of `LAUNCH_SPEED` 18.5 is 4.6 m/s; with `LATA_RECOIL_LIFT_SCALE` 0.55 of
+## `DEFLECT_LIFT` 5.0 the slipper is airborne 0.275 s, so it travels **≈ 1.3 m** —
+## off the can and onto the mark's own doorstep, which still has to be walked to.
+const LATA_RECOIL_SCALE: float = 0.25
 ## Upward kick on that recoil, as a fraction of the block's lift. Enough to get it
 ## off the floor so the arc is visible; not enough to send it over the taya.
 const LATA_RECOIL_LIFT_SCALE: float = 0.55
@@ -428,7 +478,13 @@ func _host_recoil_from(point: Vector3, scale: float) -> void:
 	if away.length() < 0.05:
 		away = Vector3.FORWARD
 	away = away.normalized()
-	var speed := LAUNCH_SPEED * DEFLECT_SPEED_SCALE * scale
+	# ⚠️ A FRACTION OF `LAUNCH_SPEED`, NOT OF `DEFLECT_SPEED_SCALE`. It used to be
+	# nested inside the block's scale, which meant the two could never be tuned
+	# apart — and on 2026-08-01 they had to be, in opposite directions. Dropping the
+	# block from 0.62 to 0.16 dragged the can's own knock down with it to a third of
+	# a metre, purely because it was expressed relative to a number that was moving
+	# for an unrelated reason. Two events, two constants.
+	var speed := LAUNCH_SPEED * scale
 	var recoiled := Vector3(
 		away.x * speed, DEFLECT_LIFT * LATA_RECOIL_LIFT_SCALE, away.z * speed)
 	if NetworkManager.is_networked():

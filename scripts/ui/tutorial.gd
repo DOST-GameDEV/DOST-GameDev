@@ -104,8 +104,8 @@ const PAGES: Array[Dictionary] = [
 		"lede": "Four beats, and the third one is the whole game.",
 		"rows": [
 			["1.  THROW", "You start every round with your slipper already in hand. From outside the box, hold LEFT CLICK to charge and release. 2.5 seconds to full power, so the taya can see it coming. Throwing is free — nothing can happen to you while you do it."],
-			["2.  IT LANDS", "Hit the lata and it goes over. Miss and your slipper is lying on the ground. If the taya blocks it with their body it bounces away into the open field, which is a reprieve — it is not landing at their feet."],
-			["3.  RETRIEVE", "This is the risk, and it is the entire point of the game. Only YOUR slipper answers to you — an arrow at your feet points to it. Walking in is safe; the instant it is in your hand you can be tagged, until you carry it back out."],
+			["2.  IT LANDS", "Hit the lata and it goes over. Miss and your slipper is lying on the ground. If the taya blocks it with their body it only drops a couple of metres away — INSIDE the box, near them. That is the taya's reward for blocking: you now have to come and get it under their nose."],
+			["3.  RETRIEVE", "This is the risk, and it is the entire point of the game. An arrow at your feet points to your own slipper, but ANY loose one will do. Walking in is safe; the instant it is in your hand you can be tagged, until you carry it back out — and a blocked slipper is lying right next to the taya."],
 			["4.  RESET", "The taya stands the lata back up by holding E in its ring. It takes 1.5 seconds of standing still, and nobody may throw for a moment afterwards."],
 		],
 	},

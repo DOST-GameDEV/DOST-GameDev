@@ -596,6 +596,28 @@ doesnt TAG"*:**
   ✅ DEFENSE measures **34.0%**, comfortably inside `policy=turtle`'s ≤50% gate, so
   the catch-up term is NOT what is eating the round — the tag simply stopped paying.
 
+  ✅ **ACTED ON 2026-08-01 (evening), ON A HUMAN RULING, AND IT MOVED.** 🧑:
+  *"taya cant tag while can is down, to make it playable for defender, make the
+  rebound/recoil of slippers weaker so that the attackers have to pick up the
+  slippers inside the box and risk getting tagged"*. The tag rule is UNCHANGED —
+  the fix is that a blocked slipper now lands **2.5 m** from the taya instead of
+  **5.7 m**, so the retrieval happens inside the box where `is_taggable()` is true.
+  `fair_probe -- policy=bot`, whole match, before → after:
+
+  | | before | after |
+  |---|---|---|
+  | tags | 1 | **3-4** |
+  | TAG share | 1.8% | **5.9-7.8%** |
+  | lata upright | 57.8% | **62.5-64.4%** |
+  | DEFENSE | 34.0% | **41.2-43.1%** |
+
+  ⚠️ **STILL SHORT OF THE 22.5% ⚖️ `build fair` MEASURED, AND THE REST IS NOT THE
+  BLOCK.** The offence is simply much stronger than it was then (the can was upright
+  86% in that run against 62% now), so the tag window is still narrower than the one
+  22.5% was measured in. Closing the rest means toning the OFFENCE down — a separate
+  call, and yours. ⚠️ Watch DEFENSE: it has climbed to 41-43% against
+  `policy=turtle`'s ≤50% gate, so it now has real headroom left but not much.
+
   ⚠️ **CONFIRMED AT HARD, WHERE THE BOTS ARE GOOD AND IT IS WORSE.** Whole match:
   hit rate **63.4%** (§6.8 baseline 58.5% — the offence is in fine shape), and the
   four attackers spent **33.9 / 33.7 / 38.9 / 52.4 s** each `is_taggable()`. That is
