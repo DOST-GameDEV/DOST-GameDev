@@ -1002,6 +1002,68 @@ func _release_lunge(power: float) -> void:
 	var forward := -global_transform.basis.z
 	velocity.x = forward.x * LUNGE_SPEED * power
 	velocity.z = forward.z * LUNGE_SPEED * power
+	# ⚠️⚠️ A JOINED CLIENT'S LUNGE HAD NO PATH TO THE HOST AT ALL, SO A NON-HOST TAYA
+	# COULD NOT TAG WITH IT. Fixed 2026-08-02. The punch and the shove both send
+	# `_rpc_request_punch` / `_rpc_request_shove` when this peer is not the host; the
+	# lunge, added later, only ever guarded its sweep with
+	# `if not is_networked() or is_host()` and had no `else`. On a client that guard
+	# is false, so the sweep never ran there — and it never ran on the HOST either,
+	# because `_physics_process` returns at its authority gate before `_step_lunge()`
+	# for a body this peer does not own (§6 trap 7). The verb was simply dead for
+	# three of the four players in every networked match.
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		_rpc_request_lunge.rpc_id(1, global_position, forward, power)
+
+## ⚠️ RESOLVED ON THE HOST BY DISTANCE, the same contract the punch and the shove
+## already keep: the client says where it stood, which way it faced and how hard it
+## committed, and the host decides who that reached.
+##
+## ⚠️ ONE SWEPT SEGMENT RATHER THAN THE HOST REPLAYING 27 FRAMES. The host cannot
+## step a body it is not the authority for, so it cannot reproduce the per-frame
+## sweep the local peer runs. It tests the DASH PATH instead — from the release
+## point to where the friction model lands it (`v²/FRICTION`, the same solve the
+## impulse above is derived from) — against `LUNGE_TAG_RADIUS`. That is the same
+## region the frame-by-frame sweep covers, decided once, and it cannot tunnel
+## because a segment has no sampling rate.
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_request_lunge(from: Vector3, facing: Vector3, power: float) -> void:
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		return
+	host_resolve_lunge(player_slot, from, facing, power)
+
+func host_resolve_lunge(taya_slot: int, from: Vector3, facing: Vector3, power: float) -> void:
+	if not RoundManager.round_active:
+		return
+	var lata := RoundManager.lata
+	if lata == null or not lata.is_upright:
+		return # a tag requires the can standing, same as the punch and the sweep
+	var taya := RoundManager.player_at(taya_slot)
+	if taya == null or not taya.is_defender:
+		return
+	var flat_facing := Vector3(facing.x, 0.0, facing.z)
+	if flat_facing.length() < 0.01:
+		return
+	flat_facing = flat_facing.normalized()
+	# How far this dash actually carries, by the same `v²/FRICTION` the impulse uses.
+	# ⚠️ `2.0 * FRICTION` IS THE `v²/60` EVERY IMPULSE IN THIS FILE IS DERIVED FROM,
+	# written as the constant it comes from rather than as the literal 60, so moving
+	# `FRICTION` moves this with it instead of silently leaving it wrong.
+	var speed := LUNGE_SPEED * clampf(power, LUNGE_MIN_POWER, 1.0)
+	var dash := (speed * speed) / (2.0 * FRICTION)
+	var start := Vector3(from.x, 0.0, from.z)
+	var end := start + flat_facing * dash
+	for node in RoundManager.players():
+		var who := node as CharacterBase
+		if who == null or who.player_slot == taya_slot or who.is_defender:
+			continue
+		if not who.is_taggable():
+			continue
+		var them := Vector3(who.global_position.x, 0.0, who.global_position.z)
+		if Geometry3D.get_closest_point_to_segment(them, start, end).distance_to(them) \
+			> LUNGE_TAG_RADIUS:
+			continue
+		RoundManager.host_resolve_lunge_tag(taya, who)
+		return # one tag per lunge, exactly as the local sweep rules it
 
 ## Host-side. Any vulnerable attacker within `LUNGE_TAG_RADIUS` is tagged.
 ##

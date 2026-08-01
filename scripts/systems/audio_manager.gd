@@ -131,6 +131,13 @@ const MUSIC_DUCK_RELEASE: float = 0.8
 ## Sounds that ARE the ducking trigger. Every one of these already plays
 ## through `play()` from hud.gd/main.gd — see the class doc's file-you-don't-
 ## own note. Hooking the duck here means no other file has to know it exists.
+## The bed's dip while a VOICE line is playing, as opposed to under a tick.
+## ⚠️ DEEPER THAN `MUSIC_DUCK_DB` ON PURPOSE: a tick is a transient and only has to
+## not collide, a spoken word has to be INTELLIGIBLE over a dense sustained bed, and
+## that is an RMS problem rather than a peak one.
+const VO_DUCK_DB: float = -14.0
+## Floor for the VO duck's hold, for a take shorter than a countdown tick's window.
+const VO_DUCK_MIN_HOLD: float = 0.5
 const MUSIC_DUCK_TRIGGERS: PackedStringArray = [
 	"countdown_tick", "countdown_go", "round_end", "match_win", "round_lose",
 	"score_award",
@@ -173,7 +180,25 @@ const VO_DIR: String = "res://assets/audio/vo/"
 ## `lata_impact`'s ~-8.4, i.e. just under the loudest thing in a fight.
 ## **A starting point measured, not a guess** — see § LOG and
 ## `tools/audio_mix_probe.gd`, which is the probe that should move it.
-const VO_TRIM_DB: float = -4.0
+##
+## ⚠️⚠️ RAISED -4.0 -> -1.0 AND THE DUCK DEEPENED, 2026-08-02, ON THE FIRST REPORT
+## FROM SOMEBODY WHO ACTUALLY HEARD IT. 🧑: *"can you make voicelines sounds louder?
+## usually the bg music overpower them and i cant hear them anymore"*.
+##
+## ⚠️ THE MEASUREMENT WAS NOT WRONG, IT WAS MEASURING THE WRONG THING. §4.7's
+## `vo_mix_probe` put the voice at +5.6 dB peak over the bed and that is still true.
+## But peak is not what an announcer competes with: a chiptune bed is dense and
+## sustained, so it is the RMS that masks speech, and there the voice measured only
+## **-1.1 dB against the effects** with the bed sitting under both. A line that peaks
+## above the music and averages under it reads as "I can tell somebody said
+## something" rather than as a word. **No session that set this number had an audio
+## output device** (§4.7's own "not verified: anything by ear"), so this is the first
+## time the thing being tuned was heard at all, and an ear beats the probe here.
+##
+## -1.0 rather than 0.0 keeps the one property the trim exists for: `lata_impact` is
+## the 0 dB reference the whole SFX table is quieter than, and the voice still sits
+## just under the loudest thing in a fight rather than on top of it.
+const VO_TRIM_DB: float = -1.0
 ## Minimum real-ms gap between two plays of the SAME line id. Per-category
 ## rather than global: `tumbang` and `taya` should not silence each other.
 const VO_COOLDOWN_MS: Dictionary = {
@@ -653,14 +678,23 @@ func _set_music_lift(on: bool) -> void:
 ## bed. Called from `play()` below for the sounds in `MUSIC_DUCK_TRIGGERS`;
 ## every one of those already plays from a file this lane does not own
 ## (hud.gd, main.gd), so hooking it here needs no other file touched.
-func _duck_music() -> void:
+## ⚠️⚠️ THE HOLD IS A PARAMETER SINCE 2026-08-02, BECAUSE A VOICE LINE OUTLASTS IT.
+## 🧑: *"the bg music overpower them and i cant hear them anymore"*. `MUSIC_DUCK_HOLD`
+## is 0.5 s, tuned for a countdown TICK, and the delivered VO takes run **0.74 to
+## 1.45 s** (`vo_probe`). So the bed began climbing back at 0.5 s and had fully
+## returned by 1.3 s — over the back half of every line, which is where the word
+## actually is. Raising `VO_TRIM_DB` alone would have made the voice louder while
+## still letting the music close over the end of it.
+##
+## The tick keeps 0.5 s; a voice line asks for a hold that covers the longest take.
+func _duck_music(hold: float = MUSIC_DUCK_HOLD, depth: float = MUSIC_DUCK_DB) -> void:
 	if _music_duck_tween != null and _music_duck_tween.is_valid():
 		_music_duck_tween.kill()
 	var player := _music_players[_music_active_index]
-	var floor_db := _music_target_db() + MUSIC_DUCK_DB
+	var floor_db := _music_target_db() + depth
 	_music_duck_tween = create_tween()
 	_music_duck_tween.tween_property(player, "volume_db", floor_db, MUSIC_DUCK_ATTACK)
-	_music_duck_tween.tween_interval(MUSIC_DUCK_HOLD)
+	_music_duck_tween.tween_interval(hold)
 	# Reads `_music_target_db()` at release time, not at call time, so a duck
 	# that outlives a lift toggling mid-flight still resolves to wherever the
 	# bed is actually supposed to sit.
@@ -758,7 +792,13 @@ func play_vo(line_id: String) -> void:
 	# voices are pooled and reused, and a future per-line trim belongs here.
 	player.volume_db = VO_TRIM_DB
 	player.play()
-	_duck_music()
+	# Duck for as long as this take actually lasts, not for a countdown tick's 0.5 s,
+	# and deeper: speech is masked by the bed's RMS rather than by its peaks.
+	var take_length: float = VO_DUCK_MIN_HOLD
+	var stream_length := player.stream.get_length() if player.stream != null else 0.0
+	if stream_length > 0.0:
+		take_length = maxf(take_length, stream_length)
+	_duck_music(take_length, VO_DUCK_DB)
 
 
 ## ⚠️ THE 3-2-1 COUNTDOWN'S SFX **AND** ITS VOICE, IN ONE CALL, BECAUSE ONLY THE
