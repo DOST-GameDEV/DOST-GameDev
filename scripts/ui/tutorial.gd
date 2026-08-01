@@ -416,7 +416,24 @@ func _show_subject(icon: CharacterPreview, tile: Dictionary) -> void:
 		"can":
 			icon.show_prop(CharacterRoster.can_at(0), true)
 		"slipper":
-			icon.show_prop(CharacterRoster.slipper_at(0), false)
+			# ⚠️ CROCS, NOT SLIPPER 0. 🧑 2026-08-01, looking at this card: *"use ike
+			# tsinelas here the tsinelas model here looks ugly"*, then, shown the
+			# result, *"js do crocs"*. Index 0 is `tsinelas` — this project's own
+			# procedural mesh, 276 triangles — and at icon size it reads as a brown
+			# smear rather than as footwear.
+			#
+			# ⚠️ IKE WAS TRIED FIRST AND RENDERED AS A BLACK BLOB. Its texture is
+			# nearly black and this tile's lighting is flat and head-on, so the model
+			# that looks best on the CHARACTER screen (which orbits it under a key
+			# light) loses all its shape at 120 px. **A prop that previews well in one
+			# frame is not a prop that reads as an icon** — check the tile, not the
+			# model. Crocs is mid-tone and holds its silhouette at this size.
+			#
+			# ⚠️ LOOKED UP BY ID, NOT HARDCODED TO 3. `SLIPPERS` is `build model`'s
+			# table and has been re-ordered before; an index here would silently
+			# become a different shoe the next time somebody inserts an entry.
+			icon.show_prop(CharacterRoster.slipper_at(
+				CharacterRoster.index_in(CharacterRoster.SLIPPERS, &"crocs")), false)
 		_:
 			icon.show_character(CharacterRoster.at(int(tile.get("index", 0))))
 
