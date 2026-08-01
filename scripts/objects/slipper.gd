@@ -203,12 +203,33 @@ func is_flying() -> bool:
 ## of a pickup that may or may not land. `_apply_grabbed()`/`_apply_thrown()` still
 ## write the field and are now genuinely harmless: the gate below has already
 ## refused anybody but the owner, so they can only ever rewrite the same slot.
+## ⚠️⚠️ ANY ATTACKER MAY PICK UP ANY SLIPPER, 2026-08-01, ON DIRECT HUMAN
+## INSTRUCTION: *"allow bots and humans to pick up the slippers of others, make
+## sure this works in multiplayer"*.
+##
+## The owner gate that used to sit here (`owner_slot >= 0 and who.player_slot !=
+## owner_slot`) is GONE. Everything above it — loose, an attacker, able to act,
+## not already carrying — is untouched, because each of those is a different rule
+## and only the ownership one was asked about.
+##
+## ⚠️ `owner_slot` ITSELF STAYS AND IS STILL ASSIGNED. Ownership and permission
+## were the same field and are now two things: the slipper that spawns with you is
+## still YOURS for as long as the round lasts, which is what the foot arrow
+## (`offscreen_indicators.gd::_find_own_slipper`) and the owner glow read. It just
+## no longer stops anybody else picking it up. Deleting the field would have taken
+## both of those with it for a change that was only ever about the gate.
+##
+## ⚠️ MULTIPLAYER-SAFE BY CONSTRUCTION, NOT BY LUCK. Every grab funnels through
+## `host_grab()`, which runs ONLY on the host (clients `rpc_id(1, ...)` and return),
+## re-checks this function there, and broadcasts `_rpc_grabbed`. Two attackers
+## reaching for one slipper on the same frame therefore resolve in host order: the
+## first `_apply_grabbed` moves it out of `CarryState.LOOSE`, and the second call
+## fails the very first line below. There is no window in which both succeed,
+## because there is only one machine deciding.
 func can_be_grabbed_by(who: CharacterBase) -> bool:
 	if who == null or state != CarryState.LOOSE:
 		return false
 	if who.is_defender or not who.can_act():
-		return false
-	if owner_slot >= 0 and who.player_slot != owner_slot:
 		return false
 	return not who.holding_slipper()
 
@@ -1018,6 +1039,18 @@ const MODEL_LENGTH: float = 0.691
 ## buries it to the laces. Measuring it per skin retires the whole class of bug —
 ## and it means a model dropped in later cannot float or sink either.
 var _rest_height: float = REST_HEIGHT
+
+## How high this skin's own origin sits when it is lying on the ground.
+##
+## ⚠️ PUBLIC BECAUSE THE AIM ARC HAS TO STOP WHERE THE SLIPPER ACTUALLY STOPS.
+## `TrajectoryPreview` used a fixed 0.03 floor, and a CROCS rests at **0.161 m**
+## (tall hollow shell, centroid at 53% of its height) against 0.034-0.056 for the
+## other three — so the preview kept integrating for another 0.13 m of fall and
+## drew its landing point 0.31 m long, on that skin only. Measured by `mech_probe`
+## as an arc-vs-throw mismatch, which read as a preview bug; it was a per-skin
+## constant being treated as a global one.
+func rest_height() -> float:
+	return _rest_height
 
 ## ⚠️ BUILT FROM LOCAL TRANSFORMS, NOT GLOBAL ONES. This used to compose
 ## `global_transform.affine_inverse() * mesh_node.global_transform`, which is

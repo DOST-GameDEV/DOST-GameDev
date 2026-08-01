@@ -69,7 +69,7 @@ const STAGGER: float = 0.09
 ## the same reason the tabs are built from `CATEGORIES`: adding a fourth trait
 ## should be one entry in the roster and nothing here or in the scene.
 const TRAIT_SLOTS: int = 5
-const TRAIT_PIP_SIZE: Vector2 = Vector2(46, 14)
+const TRAIT_PIP_SIZE: Vector2 = Vector2(42, 12)
 const TRAIT_PIP_GAP: int = 6
 ## Chalk. `UiTheme.HIGHLIGHT` is the same yellow the base-circle decal and the
 ## round timer's urgency state use, so a full meter reads as "the same game
@@ -91,7 +91,7 @@ func _refresh_traits(entry: Dictionary) -> void:
 	# by a roster change.
 	var hint := Label.new()
 	hint.text = "Drag to turn the view  ·  scroll to zoom  ·  right-click to reset"
-	hint.add_theme_font_size_override("font_size", 18)
+	hint.add_theme_font_size_override("font_size", 15)
 	hint.add_theme_color_override("font_color", Color(0.961, 0.902, 0.784, 0.5))
 	trait_rows.add_child(hint)
 
@@ -108,7 +108,7 @@ func _build_trait_row(label: Dictionary, traits: Dictionary) -> HBoxContainer:
 	var name_label := Label.new()
 	name_label.text = String(label["name"])
 	name_label.custom_minimum_size = Vector2(126, 0)
-	name_label.add_theme_font_size_override("font_size", 24)
+	name_label.add_theme_font_size_override("font_size", 21)
 	name_label.add_theme_color_override("font_color", TRAIT_PIP_FILLED)
 	name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.add_child(name_label)

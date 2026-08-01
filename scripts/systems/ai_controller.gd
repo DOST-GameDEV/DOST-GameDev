@@ -1372,18 +1372,106 @@ func _claim(bearing: float) -> void:
 ## § READING THE BOARD — the queries every plan is built out of.
 ## ---------------------------------------------------------------------------
 
-## ⚠️ MINE, NOT THE NEAREST. `Design.md` §5.2: a slipper belongs to one attacker
-## and `can_be_grabbed_by()` refuses everybody else. The predecessor asked for
-## the nearest LOOSE one, which is how three bots ended up standing on one prop
-## pressing a button it would never answer.
+## ⚠️⚠️ REWRITTEN 2026-08-01: ANY SLIPPER IS FAIR GAME NOW, SO THIS HAS TO CHOOSE
+## RATHER THAN LOOK UP.
+##
+## The human opened pickups to everybody (`slipper.gd::can_be_grabbed_by`), which
+## deletes the rule this function used to lean on — "mine" was a lookup because
+## ownership made it a lookup. **That re-opens §6.3 exactly as it was**: the
+## predecessor asked for the nearest LOOSE slipper and three bots ended up standing
+## on one prop. The gate no longer refuses them, so today the same code would give
+## three bots wrestling over one slipper and two of them coming away with nothing.
+##
+## ⚠️ SO THE ASSIGNMENT IS DECIDED BY A RULE EVERY BOT CAN EVALUATE ALONE, and that
+## is the whole design: a bot claims a slipper only if IT is the nearest eligible
+## attacker to it. Every bot computes the same comparison from the same world state,
+## so they agree without talking — the same "nobody cooperates, reading the court is
+## individually rational" principle `spacing` already runs on. No shared mutable
+## claim list, nothing to desync, and it stays correct with humans in the mix
+## because a human attacker is counted as a rival like any other.
+##
+## Falls back to the nearest loose slipper outright when the rule picks nothing —
+## a bot with no claim and nothing else to do should still go and get one rather
+## than stand still (§6.7).
 func _my_slipper() -> Slipper:
+	var best: Slipper = null
+	var best_score := INF
+	var fallback: Slipper = null
+	var fallback_d := INF
 	for node in get_tree().get_nodes_in_group("slippers"):
 		var slipper := node as Slipper
-		if slipper == null:
+		if slipper == null or slipper.state != Slipper.CarryState.LOOSE:
 			continue
-		if slipper.owner_slot == character.player_slot:
-			return slipper
-	return null
+		var d := character.global_position.distance_to(slipper.global_position)
+		if d < fallback_d:
+			fallback_d = d
+			fallback = slipper
+		# Scored, not just measured — see HUMAN_SLIPPER_BIAS.
+		var score := d + _claim_penalty(slipper)
+		if _is_nearest_claimant(slipper, d) and score < best_score:
+			best_score = score
+			best = slipper
+	return best if best != null else fallback
+
+
+## ⚠️⚠️ A BOT WILL TAKE A HUMAN'S SLIPPER, BUT IT HAS TO WANT IT MORE.
+##
+## 🧑 2026-08-01, right after asking for open pickups: *"let ai grab other slippers
+## too but make it so that they dont perma take from me, they can take from me tho
+## but not all the time"*. Both halves matter — a bot that never takes yours makes
+## the new rule invisible, and a bot that always takes the nearest makes it
+## miserable, because three bots converge on whatever the human just dropped.
+##
+## This is a DISTANCE HANDICAP in metres, not a dice roll, and that is deliberate:
+## a random refusal is unreadable (the same situation gives a different answer and
+## the player learns nothing), while a handicap is a rule you can feel. A bot
+## takes your slipper when it is genuinely the better option — yours is close and
+## theirs is across the court — and leaves it alone when the choice is marginal.
+##
+## 3.5 m is a little over half the box (7.0), so "clearly closer" means clearly.
+const HUMAN_SLIPPER_BIAS: float = 3.5
+
+
+func _claim_penalty(slipper: Slipper) -> float:
+	if slipper.owner_slot < 0 or slipper.owner_slot == character.player_slot:
+		return 0.0
+	var owner := RoundManager.player_at(slipper.owner_slot)
+	if owner == null or owner.is_ai_driven():
+		return 0.0 # Another bot's. No handicap between bots.
+	return HUMAN_SLIPPER_BIAS
+
+
+## True when no other eligible attacker is closer to `slipper` than we are.
+##
+## ⚠️ WALKS `RoundManager.player_at()` OVER THE FOUR SEATS RATHER THAN A GROUP.
+## The first version of this asked `get_nodes_in_group("players")`, and there is no
+## such group anywhere in the project — it returns an empty array, every bot claims
+## every slipper, and the §6.3 pile-up this function exists to prevent comes back
+## while the code reads as if it prevents it. `RoundManager` already holds the seat
+## table and `player_at()` is how the rest of the codebase asks.
+##
+## ⚠️ TIES BREAK ON `player_slot`, NOT ON WHOEVER ASKS FIRST. Two bots at the same
+## distance would otherwise both claim, or both yield, depending on iteration order.
+func _is_nearest_claimant(slipper: Slipper, my_distance: float) -> bool:
+	for slot in range(4):
+		var rival := RoundManager.player_at(slot)
+		if rival == null or rival == character:
+			continue
+		if rival.is_defender or not rival.can_act() or rival.holding_slipper():
+			continue
+		var d := rival.global_position.distance_to(slipper.global_position)
+		# The rival is judged on the same scoring this bot uses, so a human's own
+		# slipper is not handicapped against the human who owns it.
+		if slipper.owner_slot >= 0 and slipper.owner_slot != rival.player_slot \
+				and rival.is_ai_driven():
+			var owner := RoundManager.player_at(slipper.owner_slot)
+			if owner != null and not owner.is_ai_driven():
+				d += HUMAN_SLIPPER_BIAS
+		if d < my_distance:
+			return false
+		if is_equal_approx(d, my_distance) and rival.player_slot < character.player_slot:
+			return false
+	return true
 
 ## Is the retrieval run worth making right now?
 ##

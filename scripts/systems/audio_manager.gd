@@ -361,6 +361,9 @@ var _vo_next: int = 0
 ## frame `time_left` sits at or below the threshold.
 var _clock_30_said: bool = false
 var _clock_10_said: bool = false
+## The whole second the run-out count last spoke, so 3-2-1 fires once each rather
+## than every frame. 0 means "nothing said this round" — see `_process()`.
+var _count_said: int = 0
 ## "" / "splash" / "match" / "menu" — see `_scene_state()`. Edge-detected in
 ## `_process()` rather than read once at boot, and EMPTY at startup so the very
 ## first transition is a real edge whichever state the game opens in.
@@ -613,9 +616,26 @@ func _process(_delta: float) -> void:
 	if RoundManager.round_active and not _clock_10_said and RoundManager.time_left <= 10.0:
 		_clock_10_said = true
 		play_vo("clock_10")
+	# ⚠️ THE ROUND'S LAST THREE SECONDS REUSE THE ROUND-START COUNT. 🧑 2026-08-01:
+	# *"u dont do countdown for final seconds of match, u have audio for that
+	# already, just reuse"* — and the recorded `count_3`/`count_2`/`count_1` are
+	# plain numbers ("Tatlo! Dalawa! Isa!"), not "starting in three", so they carry
+	# a run-out as naturally as a run-in. No new recording needed.
+	#
+	# ⚠️ CEIL, NOT FLOOR, AND FIRED ONCE PER WHOLE SECOND. `time_left` is a float
+	# ticking down, so `int(time_left)` sits on 2 for the whole of 2.99..2.00 and
+	# would say "Dalawa!" while the clock still reads 3. `ceili()` makes the spoken
+	# number the number the HUD is showing. `_count_said` is the edge guard — the
+	# same job `_clock_10_said` does, one per second instead of one per round.
+	if RoundManager.round_active and RoundManager.time_left > 0.0:
+		var whole := ceili(RoundManager.time_left)
+		if whole <= 3 and whole != _count_said:
+			_count_said = whole
+			play_vo("count_%d" % whole)
 	if not RoundManager.round_active:
 		_clock_30_said = false
 		_clock_10_said = false
+		_count_said = 0
 
 
 func _set_music_lift(on: bool) -> void:

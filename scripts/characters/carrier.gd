@@ -335,6 +335,17 @@ func _ensure_trajectory() -> void:
 func _update_trajectory() -> void:
 	if not _character.is_multiplayer_authority() or _character.is_ai_driven():
 		return
+	# ⚠️ AND THE LOCAL SCREEN HAS TO BE LOOKING THROUGH THIS CHARACTER. 🧑
+	# 2026-08-01: *"make sure that only first person sees that, dont show it for
+	# others"*. The authority gate above is per-peer, so networked play was already
+	# right — but it is NOT right in a single-process session, where every character
+	# reports authority and four aiming arcs can be on screen at once, nor for a
+	# spectator, who is active in TPP and should not be shown somebody's aim line.
+	var rig := _character.get_node_or_null("CameraRig") as CameraRig
+	if rig == null or not rig.is_local_fpp():
+		if _trajectory != null and is_instance_valid(_trajectory):
+			_trajectory.clear()
+		return
 	_ensure_trajectory()
 	var origin := _throw_origin()
 	# ⚠️ `CharacterBase.GRAVITY` PLAIN — the per-profile `gravity_scale` is deleted
@@ -350,7 +361,7 @@ func _update_trajectory() -> void:
 	_trajectory.draw_arc(origin,
 		Slipper.launch_velocity_for(origin, _aim_point(), charge_power(),
 			_held.speed_scale()),
-		CharacterBase.GRAVITY, UiTheme.OFFENSE)
+		CharacterBase.GRAVITY, UiTheme.OFFENSE, _held.rest_height())
 
 ## ---------------------------------------------------------------------------
 ## HOST HANDOFF. Clients ASK, the host DECIDES, the host BROADCASTS — the same
