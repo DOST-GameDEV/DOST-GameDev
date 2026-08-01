@@ -1339,8 +1339,16 @@ func _refresh_address_text() -> void:
 	# ⚠️ THE TOOLTIP CARRIES THE WHOLE LIST. With more than one adapter the player
 	# needs to know what they are cycling between without clicking through it.
 	_address_edit.tooltip_text = "\n".join(Array(_address_options))
+	# ⚠️ IT SAYS "IP", AND THE BARE FRACTION IT USED TO SHOW WAS READ AS A PLAYER COUNT.
+	# 🧑 2026-08-02, looking at a lobby that showed `1/3`: *"why 1/3 if spectating?"* —
+	# reasonably, because the button sits in the top row beside COPY on a screen whose
+	# whole subject is four seats, and `1/3` in that company reads as one-of-three
+	# players. It has never meant that. It is which of this machine's local addresses is
+	# in the field: a PC with a LAN card, a Hamachi adapter and a WSL bridge has three,
+	# and this cycles them. The count is the number of ADAPTERS, which is why it is 3 and
+	# not 4 — nothing here is capped at three of anything.
 	if _address_cycle != null and _address_options.size() > 1:
-		_address_cycle.text = "%d/%d" % [_address_index + 1, _address_options.size()]
+		_address_cycle.text = "IP %d/%d" % [_address_index + 1, _address_options.size()]
 
 
 func _on_address_copy_pressed() -> void:
