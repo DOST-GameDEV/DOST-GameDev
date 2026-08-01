@@ -67,6 +67,13 @@ const REVOLVE_SEGMENTS: int = 16
 
 const TEXTURE_DIR: String = "textures/"
 
+## How far into the label wrap the can wall stops sampling, at each end.
+## The wraps are cropped drawings with a few blank rows of page top and bottom
+## (measured: Pasip 12 and 10 of 512, Latang Kalawang 7 and 5), and sampling them
+## puts a white band around the can right where the rim meets the lid. 0.03 clears
+## the worst of the four with margin. See `_build_lata`'s `wall_uv`.
+const UV_V_INSET: float = 0.03
+
 # --- The lata (the can) -------------------------------------------------------
 #
 # ⚠️ FOUR CANS, FOUR DIFFERENT SHAPES, AND THAT IS AN INSTRUCTION NOT A FLOURISH.
@@ -152,11 +159,15 @@ func _lata_specs() -> Array:
 			"name": "lata_metal",
 			"texture": "lata_metal.png",
 			"radius": 0.1250, "height": 0.383,
-			# Rust from the middle of the wrap at BOTH ends — it has no printed
-			# rim band to sample, and the human asked for the rusty texture there
-			# by name. 0.40 and 0.62 are two different rows so the two ends do not
-			# come out identical.
-			"cap_v": Vector2(0.400, 0.620), "front_u": 0.50,
+			# ⚠️ RUST, AND FROM THE DARK END OF THE WRAP RATHER THAN THE MIDDLE.
+			# 🧑: *"u made the can top ugly, it ssupposed to rusty too"*. The
+			# mid-wrap rows this used to sample (0.40/0.62) are a pale grey-brown
+			# around 115/96/90, and a cap is a flat horizontal face taking the light
+			# square on, so it lit up to near-silver — the one thing a bare rusted
+			# tin must not look like. The low rows are the deep corroded end of the
+			# drawing: 0.04 measures ~75/55/50 and 0.07 ~100/75/68, so both ends read
+			# as rust and the two still differ from each other.
+			"cap_v": Vector2(0.040, 0.070), "front_u": 0.50,
 			"profile": _metal_can_profile(),
 		},
 	]
@@ -213,8 +224,22 @@ func _build_lata(spec: Dictionary) -> void:
 	# wordmark reads back to front — the first render had "BOYBEN" as "NEBYOB"
 	# and "Decades" reversed, which is invisible in a UV dump and instantly
 	# obvious in a screenshot. Reversing `u` mirrors the wrap back.
+	# ⚠️ `v` IS INSET AT BOTH ENDS, AND THAT IS THE WHITE RING BETWEEN THE WALL AND
+	# THE LID. The wraps are CROPPED DRAWINGS, so their outermost rows are blank
+	# page — measured, the Pasip has 12 empty rows of 512 at the top and 10 at the
+	# bottom, the Latang Kalawang 7 and 5. Mapping the wall's height straight onto
+	# v 0..1 therefore samples that blank margin along the can's very top and
+	# bottom edge, and it renders as a hard white band right where the rolled rim
+	# meets the lid. 🧑, circling it: *"theres a white space in between lid and
+	# shit"*.
+	#
+	# Squeezing the wall into v 0.03..0.97 keeps every ring inside the drawn area
+	# on all four wraps, at the cost of losing 3% of the label off each end — which
+	# is 3% of a margin nobody drew anything in. Same root cause as the caps below;
+	# this is the ring the cap fix did not cover.
 	var wall_uv := func(y: float, angle: float) -> Vector2:
-		return Vector2(1.0 - angle / TAU, y / height)
+		return Vector2(1.0 - angle / TAU,
+			lerpf(UV_V_INSET, 1.0 - UV_V_INSET, y / height))
 
 	# ⚠️ THE CAN IS YAWED SO ITS LABEL'S FRONT FACES THE DEFAULT VIEW, and this is
 	# a restatement of the deleted `LATA_LABEL_FACE` rather than a new idea. The
