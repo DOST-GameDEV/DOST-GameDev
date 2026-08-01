@@ -566,9 +566,12 @@ func _refresh_online_browser() -> void:
 	elif not found.is_empty():
 		_online_button.text = "ONLINE SERVERS  ·  %d found" % found.size()
 		_online_title.text = "ONLINE SERVERS"
-		_online_hint.text = ("Click one to fill in its address, then press JOIN. The code in "
-			+ "front of each row is what you read out to a friend — they can type that into "
-			+ "the field instead of an address and land in the same game.")
+		# ⚠️ THIS USED TO POINT AT A CODE IN THE ROW. The rows stopped printing codes
+		# deliberately (see `_refresh_online_browser`), and copy describing a column that
+		# is no longer there is worse than no copy — it sends the player hunting for it.
+		_online_hint.text = ("Click one to fill in its address, then press JOIN. Once you "
+			+ "are in a lobby it shows a four-character code: read that out and a friend "
+			+ "can type it here instead of an address to land in the same game.")
 	elif _silence_reported:
 		_online_button.text = "ONLINE SERVERS  ·  no answer"
 		_online_title.text = "NO ONLINE SERVERS ANSWERED"
@@ -592,9 +595,22 @@ func _refresh_online_browser() -> void:
 			code = "????" # a reply with no code is still a server you can reach by address
 		_online_addresses.append("%s:%d" % [String(entry.get("ip", "")), int(entry.get("port", 0))])
 		_online_codes.append(code)
-		# "A7SF · 2/4 · ESKINITA · IN THE LOBBY" — code first, because it is the handle.
-		row.text = "%s   ·   %d/%d   ·   %s   ·   %s" % [
-			code, int(entry.get("players", 0)),
+		# ⚠️⚠️ THE CODE IS DELIBERATELY NOT PRINTED HERE. A code is what you hand to the
+		# people you want in your game; a public list that prints every code is a list of
+		# everyone's private invites, and reading one off the board is indistinguishable
+		# from being given it. The row still CARRIES the code — `_online_codes` keeps it,
+		# because that is how a click resolves to an address — it just does not show it.
+		#
+		# ⚠️ THIS IS NOT ACCESS CONTROL AND MUST NOT BE SOLD AS ANY. Every listed lobby is
+		# still one click away in this same box; hiding the code stops it being COPIED, not
+		# the lobby being ENTERED. A lobby that genuinely must be private needs the server
+		# to refuse peers that did not present its code, which is a change on the host
+		# side, not in this browser.
+		#
+		# Servers are named by their slot in the pool instead, which is stable across the
+		# whole session and is the same number the operator sees in `lobby-pool status`.
+		row.text = "SERVER %d   ·   %d/%d   ·   %s   ·   %s" % [
+			_pool_slot_of(int(entry.get("port", 0))), int(entry.get("players", 0)),
 			int(entry.get("max", NetworkManagerScript.MAX_PLAYERS)),
 			map_label(String(entry.get("map", ""))),
 			"IN A MATCH" if bool(entry.get("in_progress", false)) else "IN THE LOBBY"]
@@ -602,6 +618,18 @@ func _refresh_online_browser() -> void:
 	# ⚠️ LAST, AND IT HAS TO BE. It measures the column, and the column has just changed
 	# by however many rows this refresh turned on or off.
 	_fit_online_box()
+
+## Which slot in the pool a game port is, counting from 1 — the same number the operator
+## sees in `lobby-pool status`, so a player saying "server 3 is broken" and the person
+## reading the logs mean the same box. Falls back to the raw port for anything outside the
+## configured range rather than inventing a slot that does not exist.
+static func _pool_slot_of(game_port: int) -> int:
+	var slot := game_port - ServerQueryScript.POOL_PORT_FIRST + 1
+	return slot if slot >= 1 else game_port
+
+static func _pool_slot_of_address(address: String) -> int:
+	var parts := split_address(address)
+	return _pool_slot_of(int(parts[1]))
 
 ## The map's display name for an id off the wire. Falls back to the raw id rather than to
 ## a map that happens to be first: a pool server running something this build has never
@@ -624,7 +652,8 @@ func _on_online_row_pressed(index: int) -> void:
 	_cancel_pending_code() # picking a server supersedes a code you were waiting on
 	join_address_edit.text = _online_addresses[index]
 	GameLaunch.pending_join_address = join_address_edit.text
-	status_label.text = "Picked %s (%s) — press JOIN." % [_online_codes[index], _online_addresses[index]]
+	# Names the slot, not the code — same reason the row does. See `_refresh_online_browser`.
+	status_label.text = "Picked server %d — press JOIN." % _pool_slot_of_address(_online_addresses[index])
 	if _online_box != null and is_instance_valid(_online_box):
 		_online_box.visible = false
 	join_button.grab_focus()

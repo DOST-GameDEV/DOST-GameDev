@@ -409,6 +409,7 @@ func _setup_host() -> void:
 	# a Hamachi address rendered as `HOST 25.…` and could not be selected anyway.
 	seat_heading.text = "LOBBY  ·  YOU ARE HOSTING"
 	_show_addresses(_host_addresses_with_port())
+	_show_join_code()
 	# Host-only: the firewall block this warns about is about INBOUND traffic
 	# to this machine, which is not this joiner's problem on the other two
 	# `_show_addresses()` call sites.
@@ -1505,6 +1506,32 @@ func _small_button(label: String) -> Button:
 
 ## Shows `options` in the row, defaulting to the first. Hides the row entirely for
 ## Single Player, which has no address and no one to give it to.
+## ---------------------------------------------------------------------------
+## § THE JOIN CODE HAS TO LIVE SOMEWHERE, AND IT IS HERE.
+##
+## The server browser deliberately stopped printing codes — a public list of everyone's
+## codes is a list of everyone's private invites. That leaves exactly one place a player
+## can learn the code for the lobby they are in, which is this screen, and without it the
+## code would be a handle nobody can ever read.
+##
+## Shown to whoever is in the lobby, host or client, because on a POOL server the person
+## who wants to invite a friend is a client — the host is a machine in a datacentre with
+## nobody at it. Gating this on being the host would hide the code from the only people
+## who have any use for it.
+## ---------------------------------------------------------------------------
+func _show_join_code() -> void:
+	if not _is_networked_lobby():
+		return
+	var code: String = NetworkManager.join_code
+	if code.is_empty():
+		# A client learns the code from the server's own status reply, which it may not
+		# have asked for. Silent rather than showing "????" — an absent code is not an
+		# error, it is a build that was reached by typing an address.
+		return
+	seat_hint.text = "%s   Your join code is %s — read it out and they can type it instead of an address." % [
+		seat_hint.text, code]
+	_seat_hint_base = seat_hint.text
+
 func _show_addresses(options: PackedStringArray) -> void:
 	if _address_row == null:
 		return
