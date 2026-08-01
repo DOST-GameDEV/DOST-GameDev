@@ -489,7 +489,7 @@ func _report_detail_topics() -> void:
 			"ok" if ok else "** BOX DID NOT FOLLOW THE HIGHLIGHT **"])
 
 ## ⚠️ A CONTROL PUSHED OUT OF THE PANEL DRAWN BEHIND IT — 🧑 report, 2026-07-30:
-## *"wtf the text goes out of the boxes now."*
+## *"ugh, the text goes out of the boxes now."*
 ##
 ## ⚠️ THE OBVIOUS VERSION OF THIS CHECK IS VACUOUS, and it was written and run
 ## before this one replaced it. Measuring a Label's string against the Label's OWN

@@ -54,7 +54,7 @@ const CC_BY_CREDITS: Array[Dictionary] = [
 ## rather than by an on-screen line — but a credits screen that lists every
 ## CC0 kit and omits the one licensed asset it does not own reads as an
 ## oversight, because it was one. Added 2026-08-01 on direct human instruction
-## (🧑: *"add ccby i missed"*, *"add it to credits too in the game lowkey"*).
+## (🧑: *"add ccby i missed"*, *"add it to credits too in the game tbh"*).
 const COURTESY_CREDITS: Array[Dictionary] = [
 	{
 		"chip": "ENVIRONMENT & KITS",

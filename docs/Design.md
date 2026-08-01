@@ -111,7 +111,7 @@ Eskinita's `Bounds/WallEast|West` are the house facades at **x = ±8.6**.
 | 7.5 | **8.7** | **0.1 m past the wall** |
 | 7.0 | 8.2 | fits, with the capsule and `ARRIVE_SLOP` |
 
-🧑, with a clip: *"pathfinding broken, sometimes the bots legit just go up random shit
+🧑, with a clip: *"pathfinding broken, sometimes the bots legit just go up random stuff
 without doing anything, they just walk up the houses"*. They were not climbing
 anything — the houses have no collision at all. They were jammed against the wall the
 houses are drawn on, having been sent to a goal they could never reach. **Measured:
@@ -148,7 +148,7 @@ spawn an Attacker VULNERABLE on frame one and read as a rules bug rather than a 
 
 ⚠️⚠️ **BOTH MAPS' `HazardZone` VOLUMES AND THEIR `gutter_tile` KANAL BEDS WERE DELETED
 2026-08-01, ON DIRECT HUMAN INSTRUCTION.** 🧑, with two screenshots of the tiles
-flickering: *"this keeps bugging/ clipping these shits. can u js remove them"*, *"this
+flickering: *"this keeps bugging/ clipping these things. can u js remove them"*, *"this
 looks bad it keeps phasing in and out"*, and then, asked which element: *"yes remove
 slow zone, Tan slabs in a line (kanal / gutter)"*.
 
@@ -800,8 +800,8 @@ how often the next one starts.
 ## 12 · Removed, and why
 
 **Recorded rather than silently dropped.** 🧑 2026-07-31: *"we're making the game way
-simpler basically, there were so many skills and shit earlier, it was too complicated
-and far from tumbang preso"*, and *"drop the irrelevant mechanics now like bump and shit
+simpler basically, there were so many skills and stuff earlier, it was too complicated
+and far from tumbang preso"*, and *"drop the irrelevant mechanics now like bump and stuff
 and slipper being a character and can being a character"*.
 
 | Removed | What it was | Why |

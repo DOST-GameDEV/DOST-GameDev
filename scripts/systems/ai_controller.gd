@@ -1747,7 +1747,7 @@ func _safe_spot() -> Vector3:
 	# and it knows nothing about the world it is drawn in — on 2026-08-01 the box
 	# grew until it landed 0.1 m past Eskinita's house facades, and every bot on an
 	# east or west bearing walked into a wall and pressed into it for the rest of its
-	# plan. 🧑: *"the bots legit just go up random shit without doing anything, they
+	# plan. 🧑: *"the bots legit just go up random stuff without doing anything, they
 	# just walk up the houses"*. `main.gd` measures the walls at load; a goal outside
 	# them is now impossible to hand out rather than merely unlikely.
 	return CharacterBase.clamp_to_playable(Vector3(flat.x, 0.0, flat.y))

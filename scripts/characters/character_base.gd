@@ -9,7 +9,7 @@ class_name CharacterBase
 ## them — carrying every verb any of them had: a charged bump meter with a punt, a
 ## Can-Dash, a Ground Smash, a self-launch, a guard, a seal, a scuff, a dent
 ## counter and an `AbilityBase` slot. 🧑 2026-07-31: *"drop the irrelevant
-## mechanics now like bump and shit and slipper being a character and can being a
+## mechanics now like bump and stuff and slipper being a character and can being a
 ## character"*.
 ##
 ## The lata is now `scripts/objects/lata.gd` and the tsinelas is
@@ -193,7 +193,7 @@ const FATIGUE_SPEED_SCALE: float = 0.75
 ## on Eskinita, 13 on Bayan Plaza at the first rebuild).
 ##
 ## ⚠⚠⚠ AND 7.5 WAS STILL TOO BIG — 7.0 IS THE CEILING THIS MAP ALLOWS. 🧑, with a
-## clip: *"pathfinding broken, sometimes the bots legit just go up random shit
+## clip: *"pathfinding broken, sometimes the bots legit just go up random stuff
 ## without doing anything, they just walk up the houses"*.
 ##
 ## THE THIRD BOUND, AND THE ONE NOBODY HAD WRITTEN DOWN: **the attackers' standoff
@@ -235,7 +235,7 @@ static var confinement_radius: float = CONFINEMENT_RADIUS
 ## sends attackers to a square ring at `confinement_radius + THROW_STANDOFF`, and on
 ## 2026-08-01 the box grew until that ring landed 0.1 m PAST Eskinita's house
 ## facades — so every bot on an east or west bearing walked into a wall and pressed
-## into it for the rest of its plan. 🧑: *"the bots legit just go up random shit
+## into it for the rest of its plan. 🧑: *"the bots legit just go up random stuff
 ## without doing anything, they just walk up the houses"*.
 ##
 ## ⚠️ THE RADIUS WAS PULLED BACK TO FIT (see `CONFINEMENT_RADIUS`), AND THAT ALONE

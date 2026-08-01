@@ -32,7 +32,7 @@ const CHARGE_SHADER_PARAM: StringName = &"charge_ratio"
 
 @onready var card: PanelContainer = %Card
 ## ⚠️ `HeaderLabel` AND `HoldLabel` ARE DELETED FROM THE SCENE — 🧑 2026-08-01:
-## *"too ugly, too much shit happening in that box. confusing"*. "YOU" was a word on
+## *"too ugly, too much stuff happening in that box. confusing"*. "YOU" was a word on
 ## the only card pinned to your own corner, and "GO GET IT" duplicated the LataCard's
 ## objective line in the opposite corner. See `YouCard.tscn` for the full reasoning.
 @onready var class_label: Label = %ClassLabel
@@ -188,7 +188,7 @@ var _was_fatigued: bool = false
 ## ⚠️ THE SPRINT ROW IS SILENT AT REST, AND THAT IS THE POINT. It read
 ## `SPRINT [SHIFT]` next to the bar, every frame of every match — a key binding the
 ## tutorial and the Settings screen both already teach, printed permanently in the
-## busiest corner of the HUD. 🧑 2026-08-01: *"too much shit happening in that box"*.
+## busiest corner of the HUD. 🧑 2026-08-01: *"too much stuff happening in that box"*.
 ##
 ## The bar is the only bar on your own card; it does not need a caption to be read as
 ## your stamina. What it DOES need words for is the one state that is not obvious from

@@ -9,7 +9,7 @@ class_name Slipper
 ## over the defender, dive at 22 m/s, steer mid-flight, dash on a cooldown, scuff
 ## enemy slippers by walking on them, bounce, and win a round outright without its
 ## thrower ever touching it. All of that is deleted. 🧑 2026-07-31: *"there were so
-## many skills and shit earlier ... too complicated and far from tumbang preso"*.
+## many skills and stuff earlier ... too complicated and far from tumbang preso"*.
 ##
 ## WHAT SURVIVED, AND IT IS THE ONE THING WORTH KEEPING: **`_solve_arc()`**. That
 ## quadratic is lifted verbatim from `carriable.gd`, it is measured, and
@@ -551,8 +551,8 @@ func _attach_to_hand() -> void:
 	# ⚠️⚠️ UNDO THE RIG'S SCALE OR THE SLIPPER COMES OUT 2.38x. The hand point
 	# hangs off a `BoneAttachment3D` under the `Skeleton3D`, which inherits the
 	# model's `PERSON_SCALE` — so a child of it is silently multiplied by it, and
-	# a picked-up slipper suddenly filled the screen. 🧑: *"what the fuck the
-	# slippers are massive HAAHAH"*. Dividing the local scale back out makes the
+	# a picked-up slipper suddenly filled the screen. 🧑: *"what the heck the
+	# slippers are massive man"*. Dividing the local scale back out makes the
 	# slipper's WORLD size identical held, loose and in flight, which is what
 	# `HIT_RADIUS` and `REST_HEIGHT` are both quoted against.
 	#
@@ -774,7 +774,7 @@ func _step_flying(delta: float) -> void:
 			and absf(global_position.y - target.global_position.y) < 1.0:
 		target.host_knock_down(owner_slot)
 		# ⚠️⚠️ IT RECOILS OFF THE LATA NOW INSTEAD OF STOPPING DEAD. 🧑 2026-08-01:
-		# *"the slippers should bounce back a bit when it hits shit, it doesn tlook
+		# *"the slippers should bounce back a bit when it hits stuff, it doesn tlook
 		# like real physics"* and *"make it as well so that they recoil a bit when
 		# it hits something"*. Landing the instant it touched was the single most
 		# unphysical moment in the game: the slipper went from 17 m/s to lying flat
@@ -1025,7 +1025,7 @@ var _rest_height: float = REST_HEIGHT
 ## `apply_skin()` is called from `main.gd`'s round-reset path, while props are
 ## still being repositioned. Read a frame early it returned garbage, and a
 ## `_rest_height` of about a metre is a slipper hanging in mid-air over the road:
-## 🧑, pointing at one, *"waht the fuck is that floating shit?"*. Walking the
+## 🧑, pointing at one, *"what the heck is that floating thing?"*. Walking the
 ## local chain instead depends on nothing outside this node.
 func _measure_rest_height(visual: Node3D) -> void:
 	var lowest := INF

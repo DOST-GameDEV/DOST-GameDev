@@ -9,7 +9,7 @@ class_name Lata
 ## rig, a roster entry, stamina, a dash, a shockwave, an evade, a self-right
 ## window, a knockback solver and an AI controller. It was the "objects are
 ## players" thesis, and it is deleted — 🧑 2026-07-31: *"we're making the game way
-## simpler basically, there were so many skills and shit earlier, it was too
+## simpler basically, there were so many skills and stuff earlier, it was too
 ## complicated and far from tumbang preso"*, and *"drop ... slipper being a
 ## character and can being a character"*.
 ##

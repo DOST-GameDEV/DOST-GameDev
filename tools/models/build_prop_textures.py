@@ -24,7 +24,7 @@ The drawings the slipper half read are also no longer what the game ships. The
 four procedural drawing-derived slippers were rejected on look and replaced with
 sourced 3D models (Art_Direction.md 4b), so cropping those sheets produced
 textures for meshes that no longer exist. 🧑 2026-08-01: *"yo thats old stale
-shit"*.
+stuff"*.
 
 WHY THIS SCRIPT EXISTS AT ALL, given docs/Art_Direction.md said "no textures".
 
@@ -36,7 +36,7 @@ the Filipino specificity and the Originality marks all live in the label.
 
 The human supplied FLATTENED 360-degree label wraps alongside the upright
 drawings for exactly this reason, and then ruled on it directly, 2026-08-01:
-"you can use the flattened shit for textures bcz its easier that way, you cant
+"you can use the flattened art for textures bcz its easier that way, you cant
 redraw this too bro". Art_Direction.md Part 5 is amended to match rather than
 quietly broken -- see its "the toon pass" section.
 

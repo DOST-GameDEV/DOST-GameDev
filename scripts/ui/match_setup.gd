@@ -867,7 +867,7 @@ static func _entry_name(list: Array[Dictionary], index: int) -> String:
 ## changes a selection and leaves the explanation describing the previous one.
 ## ⚠️ ONE TOPIC AT A TIME — 🧑 human call, 2026-07-30: *"i want the description
 ## for eskinita/capture/character to only show up when i highlight it, example i
-## highlight map, it will show map desc but if i highlight mode or other shit,
+## highlight map, it will show map desc but if i highlight mode or other stuff,
 ## that text box will change."*
 ##
 ## This used to concatenate ALL FOUR explanations into one Label every refresh,

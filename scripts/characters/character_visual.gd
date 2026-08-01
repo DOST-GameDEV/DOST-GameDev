@@ -1184,7 +1184,7 @@ func _model_path(is_person: bool, is_can: bool, team: int) -> String:
 ## ⚠️⚠️ A PERSON WITH NO ROSTER PICK USED TO GET NO MATERIAL AT ALL, AND THAT IS
 ## WHY TWO CHARACTERS RENDERED FLAT AND OUTLINE-LESS. 🧑: *"why is this character
 ## in a completley diff texture and outline"*, and their own diagnosis — *"i think
-## old agents js forgot to apply tint and outline and shit to them"* — was right.
+## old agents js forgot to apply tint and outline and stuff to them"* — was right.
 ##
 ## The two halves of a Person's look are applied by two functions that BOTH
 ## early-out, and nothing covered the gap between them:

@@ -148,8 +148,8 @@ ROSTER = [
     # different brief, by a different method, for a game with a different player count.
     #
     # 🧑 2026-08-01, on seeing it in a live match: *"why is there one thats a
-    # completely diff texture and no outline"* and *"that hand authoed shit is stale
-    # shit from the model overhaul that we stopped"*. Rendered side by side
+    # completely diff texture and no outline"* and *"that hand authored work is stale
+    # work from the model overhaul that we stopped"*. Rendered side by side
     # (`tools/ui/person_lineup_shot.tscn`) the two of them read visibly flatter and
     # more washed-out than the ten beside them, which is what a hand-tuned palette
     # against a superseded moodboard looks like next to a generated set.

@@ -95,7 +95,7 @@ func draw_arc(origin: Vector3, velocity: Vector3, gravity: float, tint: Color) -
 	# **+0.086 m at 10°, -0.082 m at 20° and -0.227 m at 30°**, and the error grows with
 	# arc height — so a lob was the worst case and a flat poke the best. Stepping at the
 	# physics tick makes it **0.000 m at all three**. That is 🧑's *"slippers trajectory
-	# fucked"* and `build phys` §6.6's acceptance ("the preview arc and the thrown arc
+	# broken"* and `build phys` §6.6's acceptance ("the preview arc and the thrown arc
 	# land in the same place") closed by matching one number.
 	#
 	# Matching the STEP is the fix, not matching the sample count: the drawn polyline
