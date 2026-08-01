@@ -161,10 +161,10 @@ sweep is now a no-op over an empty group. **The speed-zone STACK it feeds
 | `SPEED` | **4.6** | walk — **the taya's speed** |
 | `ATTACKER_SPEED_SCALE` | **0.75** | an Attacker walks at 3.45. Permanent, by ROLE |
 | `SPRINT_SCALE` | **1.50** → 6.90 | hold **Shift**. The GDD's "+50% speed" |
-| `STAMINA_MAX` | **50.0** | points, not seconds |
-| `STAMINA_DRAIN_RATE` | **40.0 /s** | = **1.25 s** of continuous sprint |
-| `STAMINA_REGEN_RATE` | **20.0 /s** | a full bar refills in 5.0 s |
-| `STAMINA_REGEN_DELAY` | **2.5 s** | after the last sprint frame |
+| `STAMINA_MAX` | **60.0** | points, not seconds |
+| `STAMINA_DRAIN_RATE` | **40.0 /s** | = **1.50 s** of continuous sprint = **8.2 m** |
+| `STAMINA_REGEN_RATE` | **20.0 /s** | a full bar refills in 3.0 s |
+| `STAMINA_REGEN_DELAY` | **1.0 s** | after the last sprint frame |
 | `STAMINA_SPRINT_FLOOR` | 7.5 | you cannot *start* a sprint below this, so the bar cannot be feathered |
 | `FATIGUE_TIME` | **2.0 s** | triggered by reaching 0. **Regen is locked for its whole duration** |
 | `FATIGUE_SPEED_SCALE` | **0.75** | −25% speed, sprint locked out |
@@ -219,8 +219,31 @@ neither pickup nor channel consumed reaches the shove.
 |---|---|---|
 | **E tap** | Attacker, loose slipper within `PICKUP_RADIUS` | **pick up** |
 | **E tap** | Attacker, nothing grabbable | **shove**, instantly |
-| **E hold 1.5 s** | Defender, in the lata's ring, lata down | **reset the lata** |
-| **Right-click** | Defender | hold 0.5 s to charge, release to **lunge** and tag |
+| **E hold** | Defender, in the lata's ring, lata down | **reset the lata** |
+| **E hold 0.5 s** | Defender, anything else | charge, release to **lunge** and tag |
+| **Left-click** | Defender | **punch** — a quick close-range tag |
+| **Right-click** | Defender | the lunge again, kept as a second binding |
+
+⚠️⚠️ **THE TAYA HAS TWO TAG VERBS SINCE 2026-08-01**, on human instruction: *"Melee
+Punch Tag (Left-Click) ... a quick close-range punch"* and *"Lunge Tag (Hold E for
+0.5s) ... a short 1-meter forward dash"*. They answer different problems. The lunge is
+a charge, a dash and a 1.5 s cooldown — the right answer to somebody running PAST you,
+and the wrong one to somebody standing next to you, because the charge is exactly long
+enough for them to leave. The punch has no charge, 1.7 m of reach, a 0.9 s cooldown and
+does not move the taya at all.
+
+⚠️ **LEFT-CLICK IS FREE ON A DEFENDER AND ONLY ON A DEFENDER.** It is the throw charge
+for everyone else, and `can_throw()` refuses a defender outright (§5.1), so nothing was
+taken from anybody.
+
+⚠️ **AND E STAYS CONTEXTUAL, WHICH IS WHAT MAKES IT FIT.** `carrier.gd` gets first
+refusal: for a defender that is the lata reset, which only engages with the can DOWN and
+them in its ring. Any other E press falls through to the lunge — exactly as an
+attacker's falls through to the shove. While the channel IS running the lunge charge is
+cancelled, so resetting the can can never fire a lunge out of it.
+
+⚠️ **RIGHT-CLICK IS KEPT DELIBERATELY.** `ai_controller.gd` presses `lunge`, and that
+file is 🤖 `build ai`'s; a second binding for one verb costs a human nothing.
 
 ## 5 · The Attacker (three players)
 
@@ -293,7 +316,8 @@ on the last frame of the reset channel.
 | `SHOVE_LIFT` | 2.2 |
 | `SHOVE_STUN` | **1.25 s** |
 | `SHOVE_STAMINA_COST` | **25.0** |
-| `SHOVE_COOLDOWN` | **7.5 s** |
+| `SHOVE_COOLDOWN` | **7.5 s** on a CONNECT |
+| `SHOVE_MISS_COOLDOWN` | **2.0 s** on a whiff |
 | `SHOVE_RANGE` | 1.6 m |
 | `SHOVE_ARC_DEG` | 70° half-angle |
 
@@ -330,6 +354,9 @@ deleted power bump was already tuned to 7.75 m/s against `FRICTION` 30, and
 | Constant | Value |
 |---|---|
 | `LUNGE_TAG_RADIUS` | **1.3 m** — swept every frame the lunge is live |
+| `LUNGE_SPEED` | **7.746** → a **1.0 m** dash by v²/60 |
+| `PUNCH_RANGE` / `PUNCH_ARC_DEG` | **1.7 m** / **75°** |
+| `PUNCH_COOLDOWN` | **0.9 s** |
 | `TAG_STUN_TIME` | **5.0 s** |
 | `RESET_CHANNEL_TIME` | **1.5 s** at neutral, ÷ the can's SPEED |
 | `BLOCK_KNOCKBACK_SPEED` | **4.583 m/s** → **0.35 m**, × the tsinelas' POWER |
@@ -369,7 +396,21 @@ lock anybody out of the game.
 `Engine.time_scale` globally for 60 ms — fine for a shove on a 7.5 s cooldown, wrong for
 something that can happen every few frames.
 
-**Tag penalty:** the Attacker is teleported to the Safe Zone and stunned 5 s.
+**Tag penalty:** the Attacker is teleported to the Safe Zone and stunned 5 s, **and
+their stamina bar is refilled and any fatigue cleared**.
+
+⚠️⚠️ **A TAG CLEANSES SINCE 2026-08-01, on human instruction**: *"ensure the attacker is
+reset to 100% full stamina and has their Fatigued state cleared upon respawning in the
+Safe Zone."* The reason is compounding. The moment an attacker is most likely to be
+tagged is the moment they are most likely to be EMPTY — they sprinted in, grabbed, and
+were caught on the way out — so the old behaviour stacked a 5 s stun, a spent bar and
+often a live fatigue lockout onto one mistake, and **the two invisible punishments
+outlasted the one the HUD showed**. The penalty that remains is the one this section
+already describes: the teleport, the 5 seconds, and the whole trip to make again.
+
+⚠️ `exit_speed_zone()` is called BEFORE `_fatigue_left` is zeroed, or the 0.75 multiplier
+is orphaned on the speed-zone stack for the rest of the round — `_step_stamina()` only
+pops it on the frame the timer reaches zero, and that frame would never come.
 
 ⚠️ **REVERSED 2026-08-01 — THE SLIPPER GOES HOME WITH THEM, AND IT IS AN ANTI-CAMPING
 RULE.** 🧑: *"The Attacker spawns with their slipper already back in hand (eliminates

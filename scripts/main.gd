@@ -332,14 +332,39 @@ const DEFENDER_START_OFFSET: float = 2.5
 ## Height a spawn starts from before `_seat_on_floor()` does the real work.
 const SPAWN_START_HEIGHT: float = 1.0
 
-## `role_index` 0 is the Defender; 1..3 are the three Attackers, spread evenly
-## around the box so no mark is handed a better angle on the lata than another.
+## How far apart the three Attackers stand on their shared line. Two body widths:
+## close enough to read as one group, far enough that nobody spawns inside anybody
+## and `SPAWN_SETTLE_FRAMES` has nothing to untangle.
+const ATTACKER_SPAWN_SPACING: float = 1.8
+
+## `role_index` 0 is the Defender; 1..3 are the three Attackers.
+##
+## ⚠️⚠️ THE THREE ATTACKERS SHARE ONE SIDE NOW, AND THE TAYA STANDS BEHIND THE CAN
+## FACING THEM. Changed 2026-08-01 on human instruction: *"Attackers should spawn in
+## one safe zone next to each others"* and *"The Defender should spawn behind the
+## can in the danger zone, where in front they see the attackers"*.
+##
+## They used to be spread on a ring at 120° — deliberately, so *"no mark is handed a
+## better angle on the lata than another"*. That is a fair layout and a bad opening:
+## the taya was surrounded on frame one, the three attackers could not see each
+## other, and the round began with the defence already beaten on bearing rather than
+## on play. Symmetry between the three attackers is preserved by putting them on ONE
+## line at equal spacing — they still get identical angles as a group.
+##
+## ⚠️ THE SIDE IS +Z AND THE TAYA IS AT -Z, so the taya's `_role_spawn_yaw()` — which
+## already points everyone at the lata — now also points them at the attackers,
+## because the attackers are directly beyond it. One rule, two jobs, nothing extra
+## to keep in step.
 func _role_spawn_point(role_index: int) -> Vector3:
 	if role_index <= 0:
-		return Vector3(0.0, SPAWN_START_HEIGHT, DEFENDER_START_OFFSET)
+		# BEHIND the can from the attackers' point of view: they are at +Z, the can
+		# is at the origin, so the taya's mark is at -Z and the can is between them.
+		return Vector3(0.0, SPAWN_START_HEIGHT, -DEFENDER_START_OFFSET)
 	var ring: float = CharacterBase.confinement_radius + SAFE_ZONE_MARGIN
-	var angle := TAU * float(role_index - 1) / 3.0
-	return Vector3(sin(angle) * ring, SPAWN_START_HEIGHT, cos(angle) * ring)
+	# -1, 0, +1 across the line, so the middle attacker is on the centre line and
+	# the layout is symmetric about it.
+	var offset := (float(role_index) - 2.0) * ATTACKER_SPAWN_SPACING
+	return Vector3(offset, SPAWN_START_HEIGHT, ring)
 
 ## Everyone faces the lata at the start of a round — the Defender because it is
 ## what they are guarding, the Attackers because it is what they are aiming at.
@@ -1763,6 +1788,41 @@ func _build_networked_character(data: Dictionary) -> Node:
 func _on_match_round_started(_round_number: int, defender_slot: int) -> void:
 	_reset_world(defender_slot)
 	RoundManager.start_round()
+	# ⚠⚠ THE SLIPPER GOES INTO THE HAND HERE, NOT IN `_reset_slippers()`.
+	# 2026-08-01, on human instruction: *"At the beginning of each round,
+	# automatically equip each player's personal slipper in their hand. This should
+	# eliminate the need for players to manually pick it up at the start of the
+	# round."*
+	#
+	# ⚠️ DEFERRED BY A FRAME, DELIBERATELY. `RoundManager.start_round()` above has
+	# just called `reset_for_new_round()` on every character, which re-runs
+	# `character_visual.gd::apply()` — and that REBUILDS the `HandAttachment` a
+	# carried slipper reparents onto. Handing a slipper over on the same frame is
+	# §2.24's reparent-vs-reset race, and forcing it there produced a whole match
+	# with 0 throws and every attacker frozen in FETCH.
+	_equip_owned_slippers.call_deferred()
+
+
+## Puts each attacker's own slipper in their hand, host-side. Idempotent: a
+## slipper already carried by its owner is left alone.
+##
+## ⚠️ IT ASKS THE SAME OWNERSHIP RULE EVERYTHING ELSE DOES (`Design.md` §5.2) via
+## `Slipper.host_force_equip()`, which keeps the two gates that are about the RULES
+## — a defender never holds one, nobody holds somebody else's — and drops only the
+## `can_act()` timing gate, which is what made the old courtesy pickup a coin flip.
+func _equip_owned_slippers() -> void:
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		return
+	if not RoundManager.round_active:
+		return
+	for slipper in slippers:
+		if not is_instance_valid(slipper) or slipper.owner_slot < 0:
+			continue
+		var owner := RoundManager.player_at(slipper.owner_slot)
+		if owner == null or owner.is_defender:
+			continue
+		slipper.global_position = owner.global_position
+		slipper.host_force_equip(owner)
 
 ## ---------------------------------------------------------------------------
 ## ⚠️⚠️ THE ROLE ROTATION HAPPENS HERE AND NOWHERE ELSE. Everything downstream —
@@ -1978,6 +2038,20 @@ func _reset_slippers(roster: Array[CharacterBase], defender_slot: int) -> void:
 			continue
 		# Park it on the attacker before handing it over, so the pickup radius test
 		# inside `host_grab()` cannot miss by one frame of interpolation.
+		#
+		# ⚠⚠ THIS STAYS A COURTESY GRAB, AND FORCING IT HERE BROKE THE GAME OUTRIGHT.
+		# The obvious way to deliver *"automatically equip each player's personal
+		# slipper"* was to bypass `can_be_grabbed_by()`'s `can_act()` gate right here.
+		# Measured result: **0 throws, 0 knockdowns, three bots stuck in FETCH for a
+		# whole match, DEFENSE 100% of every point.** Forcing the equip mid-reset
+		# reparents the slipper onto a `HandAttachment` that
+		# `character_visual.gd::apply()` is REBUILDING on the same frame — which is
+		# §2.24, already filed, already measured on two peers.
+		#
+		# The refusal was accidentally protecting against that race. The equip now
+		# happens at ROUND START instead (`_equip_owned_slippers()`), where the
+		# visuals are built, the players are registered and `can_act()` is true — so
+		# the preconditions this call could never satisfy are simply all met.
 		slipper.global_position = character.global_position
 		slipper.host_grab(character)
 

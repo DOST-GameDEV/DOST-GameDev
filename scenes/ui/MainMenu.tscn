@@ -67,7 +67,7 @@ offset_right = 996.0
 offset_bottom = 335.0
 theme_override_colors/font_color = Color(0.961, 0.902, 0.784, 0.75)
 theme_override_font_sizes/font_size = 24
-text = "2v2 ARENA BRAWLER — CANS VS TSINELAS"
+text = "FOUR PLAYERS · ONE LATA · GUARD IT, THEN GO GET IT"
 
 [node name="StartButton" parent="." instance=ExtResource("4")]
 unique_name_in_owner = true

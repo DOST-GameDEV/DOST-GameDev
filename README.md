@@ -91,9 +91,9 @@ single-PC flow: **one human unit, three bots**, with a switcher for which unit i
 | **Space** | `jump` | |
 | **Shift** | `sprint` | costs stamina |
 | **Ctrl** | `spectator_down` | descend, spectator camera only |
-| **E** *or* **LMB** | `grab` | **tap** to pick up a slipper · **tap** with nothing to pick up to shove another attacker · **hold 1.5 s** as the taya, in the lata’s ring, to stand it back up |
-| **Q** *or* **LMB** | `special_ability` | hold to charge a throw, release to throw |
-| **RMB** | `lunge` | **taya only** — hold 0.5 s to charge, release to dash 2.5 m and tag |
+| **E** *or* **LMB** | `grab` | **tap** to pick up a slipper · **tap** with nothing to pick up to shove another attacker · **hold** as the taya, in the lata’s ring, to stand it back up · **hold 0.5 s** as the taya anywhere else to charge a **lunge** |
+| **Q** *or* **LMB** | `special_ability` | attacker: hold to charge a throw, release to throw. **Taya: tap to PUNCH** — a quick close-range tag |
+| **RMB** | `lunge` | **taya only** — hold 0.5 s to charge, release to dash 1 m and tag. Same verb as hold-E, kept as a second binding |
 | **R** | `ready_up` | before the first round |
 | **H** | `clean_feed` | hides the HUD, for recording |
 | **Esc** | pause | |
