@@ -412,6 +412,14 @@ var _token_join_index: Dictionary = {}
 ## Team A, next two are Team B (GDD: 2v2, teams swap Attacker/Defender role
 ## each round, per-team not per-player).
 var _peer_slots: Dictionary = {}
+## 🧑 2026-08-01: *"allow bots in single player to have random cans and random
+## slippers, their respective cans show when theyre defender, let my
+## respective can show when im defender as well."* slot (0..3) -> {"can": int,
+## "slipper": int}, host-decided and replicated the same way `character_index`
+## already is (§ `_refresh_ai_prop_picks`'s own doc — a peer computing its own
+## random pick gives two peers two different answers for the same bot).
+## Populated by `_refresh_seat_prop_picks()`, read by `_push_prop_skins()`.
+var _seat_prop_picks: Dictionary = {}
 ## Session 7: a team is 1 Person + 1 Can/Slipper Prop, NOT two identical Props
 ## (corrects the Session 5/6 placeholder, which spawned two interchangeable
 ## Can/Tsinelas units per team). peer_id -> bool, true if that peer is the
@@ -559,6 +567,7 @@ func _start_local_test() -> void:
 	# site (`_rpc_begin_ready_countdown` gates it on `NetworkManager.is_host()`,
 	# which is false with no session), so it has to be invoked here as well.
 	_refresh_ai_prop_picks()
+	_refresh_seat_prop_picks()
 	# ⚠️ ROUND 1'S ROLES COME FROM THE SCHEDULE UP FRONT, NOT FROM THE SCENE'S
 	# EXPORT DEFAULTS. `is_defender` is an `@export` on `CharacterBase.tscn`, so
 	# without this every unit loads with whatever the scene file happened to say and
@@ -796,6 +805,7 @@ func _reassert_spectated_bots() -> void:
 ## still holds because that function only ever fills a MISSING pick.
 func _dress_spectated_units() -> void:
 	_refresh_ai_prop_picks()
+	_refresh_seat_prop_picks()
 
 func _enter_spectator_mode() -> void:
 	if _spectator != null and is_instance_valid(_spectator):
@@ -943,6 +953,7 @@ func _rpc_begin_ready_countdown() -> void:
 	# is worth another five conditional re-applications scattered along the join path.
 	if NetworkManager.is_host():
 		_refresh_ai_prop_picks()
+		_refresh_seat_prop_picks()
 		_rpc_sync_picks.rpc(_picks_table())
 	_run_ready_countdown()
 
@@ -1249,15 +1260,19 @@ func _seat_characters() -> Dictionary:
 			seats[int(index)] = character
 	return seats
 
-## [[index, character_index, can_index, slipper_index], ...] for every spawned
-## seat. Built on the host, where the answer is known.
+## [index, character_index, player_name, can_index, slipper_index] for every
+## spawned seat. Built on the host, where the answer is known. The last two
+## columns are `_seat_prop_picks`', not a `CharacterBase` property — see that
+## var's own doc for why this feature does not touch `character_base.gd`.
 func _picks_table() -> Array:
 	var table: Array = []
 	for index in _index_to_character:
 		var character: CharacterBase = _index_to_character[index]
 		if character == null or not is_instance_valid(character):
 			continue
-		table.append([int(index), character.character_index, character.player_name])
+		var props: Dictionary = _seat_prop_picks.get(index, {})
+		table.append([int(index), character.character_index, character.player_name,
+			int(props.get("can", -1)), int(props.get("slipper", -1))])
 	return table
 
 ## Host → ONE peer. Applies to the units that already exist here, and is kept so
@@ -1296,6 +1311,15 @@ func _apply_known_picks(character: CharacterBase, index: int) -> void:
 	var visual: Node = character.get_node_or_null("Visual")
 	if visual != null and visual.has_method("apply"):
 		visual.apply(character.is_person, character.is_can, character.player_slot)
+	# Cached client-side, not written onto `character` — see `_seat_prop_picks`'
+	# own doc. `_rpc_sync_picks` is `call_remote`, so the host never runs this
+	# branch on itself; it already populated `_seat_prop_picks` directly in
+	# `_refresh_seat_prop_picks()`.
+	if row.size() >= 5:
+		var can := int(row[3])
+		var slipper := int(row[4])
+		if can >= 0 or slipper >= 0:
+			_seat_prop_picks[index] = {"can": can, "slipper": slipper}
 
 func _try_late_join(peer_id: int) -> void:
 	if _spawned_peer_ids.has(peer_id):
@@ -1343,6 +1367,7 @@ func _try_late_join(peer_id: int) -> void:
 	# beside a human who joined thirty seconds later wore the stock 3/3/3 for the
 	# whole match. Measured: the last remaining red row on the four-peer run.
 	_refresh_ai_prop_picks()
+	_refresh_seat_prop_picks()
 	# A peer arriving DURING the ready phase joins the vote rather than watching
 	# it: broadcast rather than rpc_id, because `_expected_ready_count()` just went
 	# up and everybody's "2 / 3 ready" line is now wrong. A peer arriving after the
@@ -1784,31 +1809,124 @@ func _reset_world(defender_slot: int) -> void:
 		lata.host_reset_for_new_round()
 
 	_reset_slippers(roster, defender_slot)
-	_push_prop_skins()
+	_push_prop_skins(defender_slot)
 
-## The character screen's LATA and TSINELAS tabs, made real. Broadcast rather than
-## read locally because all four players look at the SAME lata — see
-## `Lata.apply_skin()` for why the host's pick is the one that wins.
-func _push_prop_skins() -> void:
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ REWRITTEN 2026-08-01, ON DIRECT HUMAN INSTRUCTION — EVERY SEAT NOW OWNS
+## ITS OWN LATA AND TSINELAS, NOT ONE SHARED PAIR.
+##
+## This used to broadcast ONE can pick and ONE slipper pick for the whole
+## match, read once from `GameLaunch` — the local peer's own preference,
+## applied to everybody. That was the documented design (`Design.md` §9: "the
+## host's pick is the one that wins") and it is now wrong on purpose: 🧑,
+## *"allow bots in single player to have random cans and random slippers,
+## their respective cans show when theyre defender, let my respective can
+## show when im defender as well."*
+##
+## THE LATA NOW SHOWS THE CURRENT DEFENDER'S OWN CAN, RE-APPLIED EVERY ROUND.
+## Every seat has its own can + slipper pick — a real player's own CHARACTER-
+## screen choice (already crossing the wire in `NetworkManager.peer_characters`
+## as `"can"`/`"slipper"`, unused by anything until now) or, for a bot, a
+## host-rolled random pick from `_refresh_seat_prop_picks()`. Since only ONE
+## lata exists in the arena, it wears whichever seat currently defends —
+## looked up here rather than stored on `CharacterBase`, which this lane does
+## not own and does not need to touch for this.
+## ---------------------------------------------------------------------------
+func _push_prop_skins(defender_slot: int) -> void:
 	if NetworkManager.is_networked() and not NetworkManager.is_host():
 		return
-	var can_pick := GameLaunch.can_index()
-	var slipper_pick := GameLaunch.slipper_index()
+	var can_pick := int(_seat_prop_picks.get(defender_slot, {}).get("can", -1))
+	# Each slipper already knows its own owner by the time this runs —
+	# `_reset_slippers()` (called immediately above, same host-only branch)
+	# assigns `owner_slot` synchronously on the host's own instances, so
+	# reading it back here needs no extra bookkeeping. Keyed by NAME rather
+	# than by owner slot on the wire, so a client applies the right skin to
+	# the right node without having to already agree on ownership timing.
+	var slipper_skins: Dictionary = {}
+	for slipper in slippers:
+		if not is_instance_valid(slipper):
+			continue
+		var owner: int = slipper.owner_slot
+		slipper_skins[slipper.name] = int(_seat_prop_picks.get(owner, {}).get("slipper", -1))
 	if NetworkManager.is_networked():
-		_rpc_prop_skins.rpc(can_pick, slipper_pick)
+		_rpc_prop_skins.rpc(can_pick, slipper_skins)
 	else:
-		_apply_prop_skins(can_pick, slipper_pick)
+		_apply_prop_skins(can_pick, slipper_skins)
 
 @rpc("authority", "call_local", "reliable")
-func _rpc_prop_skins(can_pick: int, slipper_pick: int) -> void:
-	_apply_prop_skins(can_pick, slipper_pick)
+func _rpc_prop_skins(can_pick: int, slipper_skins: Dictionary) -> void:
+	_apply_prop_skins(can_pick, slipper_skins)
 
-func _apply_prop_skins(can_pick: int, slipper_pick: int) -> void:
+func _apply_prop_skins(can_pick: int, slipper_skins: Dictionary) -> void:
 	if lata != null and is_instance_valid(lata):
 		lata.apply_skin(can_pick)
 	for slipper in slippers:
-		if is_instance_valid(slipper):
-			slipper.apply_skin(slipper_pick)
+		if is_instance_valid(slipper) and slipper_skins.has(slipper.name):
+			slipper.apply_skin(int(slipper_skins[slipper.name]))
+
+## ---------------------------------------------------------------------------
+## Host-only. Deals a can + slipper pick to every seat that does not have one
+## yet — a real player's own CHARACTER-screen pick if one is reachable, a
+## random one otherwise. Same idempotency and same call sites as
+## `_refresh_ai_prop_picks()`, and deliberately a separate pass rather than
+## folded into it: that function's whole test for "is this a bot" is
+## `character_index < 0`, which says nothing about whether a can/slipper pick
+## is reachable for a human seat that HASN'T been resolved yet (mid-connect).
+func _refresh_seat_prop_picks() -> void:
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		return
+	var seats := _seat_characters()
+	var taken_cans: Array[int] = []
+	var taken_slippers: Array[int] = []
+	for slot in _seat_prop_picks:
+		var existing: Dictionary = _seat_prop_picks[slot]
+		taken_cans.append(int(existing.get("can", -1)))
+		taken_slippers.append(int(existing.get("slipper", -1)))
+	for slot in range(NetworkManagerScript.MAX_PLAYERS):
+		if _seat_prop_picks.has(slot) or seats.get(slot) == null:
+			continue
+		var human_picks: Variant = _human_prop_picks_for_slot(slot)
+		if human_picks != null:
+			_seat_prop_picks[slot] = human_picks
+			continue
+		var can := _ai_prop_index(CharacterRoster.CANS.size(), taken_cans)
+		var slipper := _ai_prop_index(CharacterRoster.SLIPPERS.size(), taken_slippers)
+		taken_cans.append(can)
+		taken_slippers.append(slipper)
+		_seat_prop_picks[slot] = {"can": can, "slipper": slipper}
+
+## A human's own pick for `slot`, or null if `slot` is not a human seat (an
+## unfilled AI slot, in either mode). Solo test has no peer_id to look up —
+## the human IS `GameLaunch.solo_seat`, read straight from the same place the
+## CHARACTER screen wrote it.
+func _human_prop_picks_for_slot(slot: int) -> Variant:
+	if not NetworkManager.is_networked():
+		if slot == GameLaunch.solo_seat:
+			return {"can": GameLaunch.can_index(), "slipper": GameLaunch.slipper_index()}
+		return null
+	for peer_id in _peer_slots:
+		if int(_peer_slots[peer_id]) != slot:
+			continue
+		var picks := NetworkManager.picks_for(peer_id)
+		var can := int(picks.get("can", -1))
+		var slipper := int(picks.get("slipper", -1))
+		return {"can": can, "slipper": slipper} if can >= 0 or slipper >= 0 else null
+	return null
+
+## Random, favouring a roster entry no other bot this match already wears —
+## §5.16's `AI_PERSON_SPREAD` is a fixed quartering because faces have to stay
+## apart from HUMAN picks too; a can or a slipper has no such collision to
+## avoid, so true randomness is what was actually asked for.
+func _ai_prop_index(size: int, taken: Array[int]) -> int:
+	if size <= 0:
+		return 0
+	var available: Array[int] = []
+	for i in range(size):
+		if not (i in taken):
+			available.append(i)
+	if available.is_empty():
+		return randi() % size
+	return available[randi() % available.size()]
 
 ## Every Attacker starts a round holding a slipper, so the first throw does not
 ## need a retrieval run in front of it. The Defender holds nothing — they have
