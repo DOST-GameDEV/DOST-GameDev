@@ -371,8 +371,17 @@ const SLIPPERS: Array[Dictionary] = [
 		"tint": Color.WHITE,
 	},
 	{
+		# ⚠️ DISPLAY NAME SHORTENED "SIKE" → "IKE", 2026-08-01, ON DIRECT HUMAN
+		# INSTRUCTION: *"sike only says IKE so js change the name to ike on
+		# everything"*. The model carries the real Nike wordmark as geometry
+		# (Art_Direction.md §4b — the N could not be swapped for an S without
+		# editing the mesh, which is out of scope), and in play only "IKE" reads
+		# legibly off it. `id` stays `&"sike"` — every asset path, the roster key
+		# and every internal reference are unaffected; only the string a player
+		# sees changes. Out of row: `character_roster.gd`'s SLIPPERS table is
+		# 🎨 `build model`'s per §3.
 		"id": &"sike",
-		"name": "SIKE",
+		"name": "IKE",
 		"tagline": "Definitely not the real brand. So loud you can find it from across the plaza.",
 		# Carried unchanged from the old `dilaw` — the other light, flashy one.
 		"traits": {&"bilis": 4, &"lakas": 2, &"tatag": 3},

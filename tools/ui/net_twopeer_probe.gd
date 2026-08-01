@@ -353,15 +353,20 @@ func _build_snapshot() -> Array[String]:
 	slipper_lines.sort()
 	out.append_array(slipper_lines)
 
-	# Player rows carry the NAME, which is the identify-packet half of §1.8.
+	# Player rows carry the NAME, which is the identify-packet half of §1.8, and
+	# CHARACTER_INDEX — § CHECKLIST 1.12. Person skins are dealt to bot seats
+	# host-side (§5.16) and replicated through `_rpc_sync_picks`; a
+	# single-process run already proved playing and spectator agree
+	# (`roster_spread_probe`), but nothing had checked it survives the wire to a
+	# SECOND REAL PEER until this line existed to diff against.
 	var player_lines: Array[String] = []
 	for node in RoundManager.players():
 		var who := node as CharacterBase
 		if who == null:
 			continue
-		player_lines.append("[FIN] player slot=%d name=%s defender=%s score=%d"
+		player_lines.append("[FIN] player slot=%d name=%s defender=%s score=%d character_index=%d"
 			% [who.player_slot, who.display_name(), str(who.is_defender),
-				MatchManager.score_for(who.player_slot)])
+				MatchManager.score_for(who.player_slot), who.character_index])
 	player_lines.sort()
 	out.append_array(player_lines)
 	return out

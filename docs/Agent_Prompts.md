@@ -231,25 +231,39 @@ what specifically. **Tick only your own section.**
 
 **Filed by 🎨 `build model` 2026-08-01:**
 
-- [ ] 1.11 ⚠️ **Three CC-BY models ship and their credit is not reachable from any
-  screen.** CROCS, PANTULOG and SIKE are CC-BY-4.0, whose one requirement is
+- [x] 1.11 ⚠️ **Three CC-BY models ship and their credit is not reachable from any
+  screen.** CROCS, PANTULOG and IKE are CC-BY-4.0, whose one requirement is
   attribution: **fnk**, **The Withered Rose**, **les03**. Table and links in
   `Art_Direction.md` §4b; each `.glb` ships its own `*_LICENSE.txt`. A line in a
   design doc that never ships does not satisfy the licence — these belong on a
   credits screen or in the submission's asset list, beside the existing Kenney CC0
-  credits. **Compliance item, not a nicety.**
-- [ ] 1.12 **`net_twopeer_probe`'s `[FIN]` snapshot carries prop `skin_index` but
+  credits. **Compliance item, not a nicety.** *Verified: new `CreditsPanel.tscn`
+  (`credits_panel.gd`), reachable from a CREDITS button on `MainMenu.tscn`,
+  quotes each model's own `*_LICENSE.txt` credit string verbatim. `tools/ui/
+  credits_shot.gd` (new) drives the real button press, not a scene load in
+  isolation, and rendered the result at 1920×1080.*
+- [x] 1.12 **`net_twopeer_probe`'s `[FIN]` snapshot carries prop `skin_index` but
   NOT `character_index`.** Person skins are now dealt to bot seats host-side
   (§5.16) and replicated through the existing `_rpc_sync_picks` table, and
   a single-process run proves the playing and spectator cases agree
   (`roster_spread_probe`, identical `SIGNATURE` lines). **What is still unproven is
   two real peers.** Adding `character_index` to that probe's snapshot is ~2 lines
-  and closes it; the probe is this lane's file.
+  and closes it; the probe is this lane's file. *Verified: added the field and ran
+  two REAL peer processes (`--host` / `--join=127.0.0.1`) over a full round —
+  `character_index=0,0,6,9` for P1..P4, byte-identical on both host and client
+  FIN snapshots. ⚠️ The same run surfaced a real, unrelated networking bug —
+  filed to `build fair` as §2.24, since it lives in files this lane does not own.*
 - [ ] 1.13 **`colormap.png` UID mismatch still warns once per character per load.**
   The twelve rigs reference `uid://dpu4hdrq88up6`; `colormap.png.import` declares
   `uid://c0kd7i625gon4`, so Godot falls back to the text path and prints a WARNING
   for each. Harmless on screen, four lines of noise in every probe run and every
   session. In nobody's §3 row — the rigs are explicitly out of `build model`'s.
+  *Investigated 2026-08-01 by 🖥️ `build ui`: still present, unchanged. The fix is
+  one line (`colormap.png.import`'s `uid=`), but `assets/characters/persons/**`
+  is nobody's §3 row and `build model`'s own lane prompt names `colormap.png`
+  itself as explicitly off-limits — so this is left filed rather than
+  unilaterally fixed outside every lane's paths. Give this file an owner (same
+  ask as §2.19) before anyone patches it.*
 - [x] 1.14 **`Slipper.owner_slot` was not set at spawn — FIXED by 🎨 `build model`
   2026-08-01, out of row, on direct human instruction** (*"fix the bug u found"*).
   Filed here first because this lane owns the two READERS; the fix landed in
@@ -257,12 +271,17 @@ what specifically. **Tick only your own section.**
   features now have something to read**: the foot arrow (§1.6) and the owner glow
   (§1.15) can resolve "yours" from the first frame of a round, so both are worth
   re-checking on sight.
-- [ ] 1.15 **The fatigue pose and the slipper glow are wired and unseen.** The
+- [x] 1.15 **The fatigue pose and the slipper glow are wired and unseen.** The
   fatigue pose needs someone to sprint a 50-point bar to zero; the glow needs the
   local seat to be an ATTACKER. Both are now unblocked — see §1.14. *(This was
   numbered **2.20** until 2026-08-01, in `build fair`'s range, while sitting in
   this lane's section — it is 1.15 now. Any older reference to "§2.20" means this
-  item.)*
+  item.)* *Verified: new `tools/ui/fatigue_glow_shot.gd` seats the local player as
+  an attacker, drives real `Input.action_press` (sprint+move, then a tap-throw) —
+  not synthetic state — through a live `Main.tscn`. Fatigue: `is_fatigued()` true
+  after 166 frames, `crouch` pose rendered with the HUD's `FATIGUED 2.0s` row
+  showing. Glow: the owned slipper (`owner_slot == player_slot`) rendered LOOSE
+  with the rim outline visibly lit, beside the un-lit lata.*
 
 ### ⚖️ `build fair` — every number, and the feedback  ·  items **2.x**
 
@@ -316,6 +335,37 @@ what specifically. **Tick only your own section.**
   case **22 mm** on Pasip. The fix is per-skin collision from `lata.gd::apply_skin()`,
   where the mesh swap already happens. *(Was numbered 2.19 by its filer, which
   collided with the ownership item above.)*
+
+**Filed by 🖥️ `build ui` 2026-08-01, found while verifying §1.12 on two real peers:**
+
+- [ ] 2.24 ⚠️ **A held slipper's reparent onto a dynamically-built hand attachment
+  races the round-reset RPC, and it is not rare.** `net_twopeer_probe.tscn --host`
+  / `--join=127.0.0.1`, one clean round-1→round-2 transition:
+  * **Client: 319 `ERROR: Node not found` / "Invalid packet received"** for paths
+    like `Main/Players/-4/Visual/character-female-d2/.../HandAttachment/HandPoint/
+    Slipper3` (and its `MultiplayerSynchronizer`). `character_visual.gd` builds
+    `HandAttachment`/`HandPoint` at runtime, per peer (~line 1032), independently
+    on host and client — so a slipper RPC referencing that path can arrive before
+    the receiving peer has finished building its own copy of the hierarchy.
+  * **Host: 3× `ERROR: Condition "!is_inside_tree()" is true`**, backtraced to
+    `main.gd::_reset_slippers` (lines 1823, 1851, 1863) calling into
+    `slipper.gd`'s `host_reset_for_new_round()`/`host_assign_owner()`/the
+    `slipper.global_position = character.global_position` line — i.e. the slipper
+    and/or the character it is being parked on is mid-reparent (still a child of
+    the OLD round's `HandPoint`, not yet back under `_home_parent`) at the exact
+    frame the new round's reset runs.
+  * **Consequence, also measured**: the two peers' `[FIN]` snapshots disagree on
+    which slippers exist at all — host reports only `Slipper2`/`Slipper3`
+    (`Slipper1` silently absent from `get_nodes_in_group("slippers")` at
+    snapshot time), client reports all three.
+  Both call sites live in `main.gd` and `character_visual.gd`, which §2.19 already
+  flags as ownerless — filed here rather than fixed blind, since untangling a
+  reparent-vs-RPC ordering bug across two files this lane does not own is exactly
+  the kind of fix that needs the number-owning lane's judgement on sequencing, not
+  a patch from outside. Reproduce with:
+  `Godot_..._console.exe --path <repo> tools/ui/net_twopeer_probe.tscn -- --host --secs=120 --out=<dir>/host_`
+  then a few seconds later `... -- --join=127.0.0.1 --secs=120 --out=<dir>/client_`,
+  and grep both stdout logs for `ERROR`.
 
 ### 🔊 `build sound` — music, voice and the mix  ·  items **4.x**
 
@@ -854,3 +904,88 @@ rotation for that reason, and goes red on the unfixed code.
 frame cost with the 65k-triangle SIKE. `build_prop_textures.py` was edited but not
 run — Pillow is not installed on this machine — so it is `py_compile`-clean only,
 and its can outputs are unchanged and already committed.
+
+**2026-08-01 · 🖥️ `build ui`** — §1.11 through §1.15, plus four live UI notes and
+one rename, all from the human looking at rendered screens in real time.
+
+*§1.11, licence compliance.* New `CreditsPanel.tscn`/`credits_panel.gd`, reached
+from a plain `WoodButton` (bottom-right of `MainMenu.tscn` — no fifth pennant
+exists, and this control was not worth inventing one for) rather than folded into
+SETTINGS or TUTORIAL, because a licence credit search should not require guessing
+which existing screen it hides in. Every CC-BY line is the model's own
+`*_LICENSE.txt` credit string, copied verbatim rather than paraphrased — that is
+what the licence actually asks redistributors to do. *Verified the REACHABILITY
+RULE properly*: new `tools/ui/credits_shot.gd` loads the real `MainMenu.tscn` and
+emits the button's own `pressed` signal rather than instantiating the panel in
+isolation, then renders it.
+
+*§1.12, two real peers.* Added `character_index` to `net_twopeer_probe`'s `[FIN]`
+player row and ran it for real — `--host` and `--join=127.0.0.1` as two separate
+OS processes, not two in-editor instances. Identical on both ends:
+`character_index=0,0,6,9` for P1..P4. ⚠️ **The same run found a live bug this
+lane does not own** — filed as §2.24: a carried slipper's hand attachment is
+built independently, at runtime, on every peer, and the round-reset RPCs do not
+wait for it, producing 319 `Node not found` errors on the client and 3
+`!is_inside_tree()` errors in `main.gd::_reset_slippers` on the host, plus a
+`[FIN]` slipper-count disagreement between peers. Filed, not fixed — both call
+sites are in files §2.19 already flags as ownerless, and this is a reparent-vs-RPC
+ordering question that needs the owning lane's sequencing judgement.
+
+*§1.13, investigated, left open.* The UID mismatch is still there. The one-line
+fix (`colormap.png.import`'s `uid=`) touches a file `build model`'s own lane
+prompt names as explicitly off-limits, and no lane's §3 row covers it at all — so
+it stays filed rather than becoming a second unowned-file patch nobody signed off
+on.
+
+*§1.15, fatigue and the glow.* New `tools/ui/fatigue_glow_shot.gd`: seats the
+local player as an attacker (round 1's defender is always slot 0, so slot 1 is
+guaranteed an attacker), drives real `Input.action_press` — sprint held with
+forward, then a tap-throw — through a live `Main.tscn`, not synthetic state
+pokes. Fatigue: `is_fatigued()` true at frame 166, `crouch` pose rendered with the
+HUD's own `FATIGUED 2.0s` row showing. Glow: found the slipper by
+`owner_slot == player_slot` rather than by what is currently in-hand (the first
+version of this probe assumed "attacker → holding a slipper" and failed dry,
+because by the time fatigue finished the slipper was already loose on the ground
+— which is in fact the state the glow is FOR) and rendered it LOOSE with the rim
+outline lit, beside the unlit lata.
+
+*Four things the human flagged live, from actual screenshots, not from this
+lane's own testing pass:*
+* `scenes/ui/MatchSetup.tscn`'s CHARACTER row stretched wider than MAP/BOTS —
+  `CharacterButton` was the only `size_flags_horizontal = 3` child in its row;
+  every other selector is `0` (fixed to its `custom_minimum_size`). Matched it.
+* Same screen's `ConfigPanel` left a dead strip of wood panel to the right of the
+  (now-narrower) rows, because the panel filled `LeftColumn`'s full 960px while
+  its rows never used more than ~700. `size_flags_horizontal = 0` so the panel
+  hugs its own content instead of the column's width.
+* `ModeSelect.tscn`'s SINGLE PLAYER / MULTIPLAYER buttons sat bunched under the
+  banner with ~260px of dead air above `BACK`. Shifted both buttons, their
+  captions and `StatusLabel` down 80px as one block; `BackButton` untouched.
+* The new CREDITS button's `offset_bottom = -40` clipped in real fullscreen —
+  the same class of bug `MatchSetup.tscn`'s own `BackButton` margin comment
+  already documents (a control this close to the true screen edge previews fine
+  in the editor but not on a real monitor). Matched to that fix's 96px clearance.
+
+*One rename, out of row, on direct human instruction* (*"sike only says IKE so js
+change the name to ike on everything"*): `CharacterRoster.SLIPPERS`'
+`"sike"` entry's display `"name"` is now `"IKE"` — the model carries the real Nike
+wordmark as geometry (`Art_Direction.md` §4b) and only "IKE" reads legibly off it
+in play. `id` and every asset path are untouched; only the string a player sees
+changed. `character_roster.gd`'s SLIPPERS table is `build model`'s per §3 —
+recorded here rather than quietly done.
+
+⚠️ **The Hamachi "only the owner can host" report, re-litigated and closed as
+already-fixed.** Re-read `NetworkManager.host_game()` and `match_setup.gd::
+host_addresses()` end to end: both are already correct (`create_server()` binds
+every interface; addresses are ranked Hamachi-first since commit `0fbb917`,
+2026-08-01). No code changed here. The human found the actual remaining cause
+independently while this was being explained — Windows Firewall silently
+dropping inbound connections on the non-owner's machine, with zero error on the
+host's own screen. **Filed, not built**: an in-game hint (lobby-side troubleshooting
+text) and/or a raised ENet peer cap so a lobby that is already full of players can
+still take a pure spectator (🧑: *"there could be 4 ppl playing and im a 5th or
+6th guy just watching"*) were both requested and explicitly deferred to next
+session (*"fix bugs firs thto, do lan ltr"*) — `NetworkManager.MAX_PLAYERS` is
+used correctly everywhere as the SEAT count (4, a real game-design invariant) and
+only incorrectly reused as the ENet connection cap at `network_manager.gd:264`;
+decoupling those two is the shape of that fix when it is picked back up.
