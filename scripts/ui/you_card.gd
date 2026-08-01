@@ -123,10 +123,16 @@ func refresh() -> void:
 	# exactly the mismatch that was complained about. Role still carries the border and
 	# the OFFENSE/DEFENSE word; team is still the letter, inside `detail_label`.
 	var sb := UiTheme.wood_style(UiTheme.WOOD_DEEP, accent)
-	sb.content_margin_left = 14.0
-	sb.content_margin_right = 14.0
-	sb.content_margin_top = 8.0
-	sb.content_margin_bottom = 8.0
+	# ⚠️ PADDING, NOT A TALLER RECT, IS HOW THIS CARD IS MADE BIGGER. 🧑 2026-08-02:
+	# *"GOOD TEXT NOW ... js make box bigger"*. An earlier pass grew the anchored rect
+	# instead and produced a third-empty panel, because an ATTACKER shows two of the four
+	# rows and a pinned height is sized for a row set that seat never has. Margins scale
+	# WITH the content: every row set gets the same generous frame and none of them can
+	# end up rattling around inside it. 22/16 from 14/8.
+	sb.content_margin_left = 22.0
+	sb.content_margin_right = 22.0
+	sb.content_margin_top = 16.0
+	sb.content_margin_bottom = 16.0
 	card.add_theme_stylebox_override("panel", sb)
 	class_label.add_theme_color_override("font_color", UiTheme.CREAM)
 	detail_label.add_theme_color_override("font_color", accent)

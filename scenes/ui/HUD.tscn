@@ -236,11 +236,17 @@ anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -300.0
+offset_left = -396.0
 offset_top = -172.0
 offset_right = -16.0
 offset_bottom = -64.0
 grow_horizontal = 0
+; ⚠️ GROWS UP, LIKE THE YOU CARD. `grow_vertical = 0` (BEGIN) pins the BOTTOM edge, so
+; the 64px keep-out band along the bottom of the screen survives any content that
+; outgrows the request above. Without it a two-line card at the 2026-08-02 HUD font
+; sizes grows DOWNWARD out of the frame, which is the exact thing YouCard.tscn's own
+; header exists to prevent — and this card had no such guard until now.
+grow_vertical = 0
 grow_vertical = 0
 theme_type_variation = &"HudCard"
 mouse_filter = 2

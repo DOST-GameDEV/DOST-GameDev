@@ -390,20 +390,33 @@ static func _register_variations(theme: Theme) -> void:
 	# They used to inherit the menu's 16 and 13. A menu caption is read on a flat wood
 	# panel, at rest, with nothing else moving; a HUD caption is read in a corner of a
 	# live 3D scene, mid-sprint, over whatever the arena happens to put behind it. Same
-	# number, two very different reading conditions — and the HUD one loses. 22 and 19
-	# are those two bumped by roughly a third, which is the point where the LataCard's
-	# `LATA · UPRIGHT` survives being glanced at rather than read.
+	# number, two very different reading conditions — and the HUD one loses.
+	#
+	# ⚠️⚠️ 34 AND 32 — AND THE FIRST TWO BUMPS DID NOTHING AT ALL, WHICH IS THE REAL
+	# LESSON HERE. 16/13 went to 22/19, then to 30/28, and 🧑 answered a screenshot of
+	# each with *"tet still small"*, *"text still small"*, *"its small still"*. The sizes
+	# were not too timid; they were never running. `assets/ui/tumbang_preso.tres` is
+	# GENERATED from this file (see the header, and `tools/regenerate_ui_theme.gd`) and it
+	# is the generated file the game loads — so editing this dict and rebuilding changes
+	# nothing until the regenerator is run and the .tres is committed alongside.
+	#
+	# ⚠️ IF YOU CHANGE A NUMBER IN THIS FILE, RUN `tools/regenerate_ui_theme.gd`. Three
+	# rounds of "still small" were three rounds of shipping an unregenerated constant.
+	#
+	# On the numbers themselves: these two cards are read at a glance, in peripheral
+	# vision, while running, against a live 3D scene — next to a 44px match timer. They
+	# now sit just under it rather than at menu-caption size.
 	#
 	# ⚠️ DELIBERATELY NOT DONE BY RAISING `FONT_SIZE_BODY`. That constant is the whole
 	# menu's body text and the settings rows are already tight; this dict is the seam
 	# that lets the HUD grow without dragging every screen with it.
 	const HUD_SIZES := {
 		"HudTimer": FONT_SIZE_TIMER,
-		"HudScore": 26,
-		"HudBody": 22,
-		"HudCaption": 19,
+		"HudScore": 32,
+		"HudBody": 34,
+		"HudCaption": 32,
 		"HudBanner": 40,
-		"HudToast": 26,
+		"HudToast": 28,
 	}
 	for variation in HUD_SIZES:
 		theme.set_color("font_color", variation, CARD)
@@ -522,7 +535,14 @@ static func _style_wood_button(theme: Theme, variation: String, fill: Color,
 	theme.set_stylebox("hover", variation, wood_style(lit, HIGHLIGHT))
 	theme.set_stylebox("pressed", variation, wood_style(sunk, HIGHLIGHT, true))
 	theme.set_stylebox("focus", variation, wood_style(lit, IMPACT))
-	theme.set_stylebox("disabled", variation, wood_style(WOOD_DARK, WOOD_EDGE, true))
+	# ⚠️⚠️ NOT SUNK. 🧑 2026-08-02, of a disabled APPLY CHANGES beside RESET ALL and
+	# BACK: *"apply changes is a bit down"*. `sink` is the PRESSED geometry — it adds
+	# `WOOD_SHADOW_OFFSET.y` to `content_margin_top` and takes it off the bottom, which
+	# moves the lettering down inside the box on purpose, because a pressed button should
+	# look pressed. A DISABLED button is not a pressed one: it is at rest, sitting in a
+	# row with two enabled buttons, and borrowing the pressed offset made it the only
+	# label in that row off the shared baseline. Flat and dark reads as inert on its own.
+	theme.set_stylebox("disabled", variation, wood_style(WOOD_DARK, WOOD_EDGE))
 
 	theme.set_color("font_color", variation, ink)
 	theme.set_color("font_hover_color", variation, lit_ink)
