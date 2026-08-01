@@ -294,23 +294,51 @@ invalidate a whole recording session, and it is the only one nobody has ever run
   `TeamALetter`, `TeamBLetter`, `TeamAPipsBox`, `TeamBPipsBox`, `TeamBLabel`,
   `DentPipsBox`, and the whole `TopRight` panel. That was deliberate (the scene is your
   file, not `build core`'s) and it is now yours to restructure properly.
-- [ ] 1.2 **The tutorial teaches a game that no longer exists.** `tutorial.gd` still
-  describes 2v2, the can and slipper as playable, Guard, Bump, dashes and the circle
-  countdown. Every control it names is wrong. Rewrite it against `Design.md` §4.
+- [x] 1.2 **The tutorial teaches a game that no longer exists — REWRITTEN 2026-08-01.**
+  All eight reference pages replaced; only the premise card survived, and its lede and
+  one tile changed (DEFENDER → **TAYA**, to match what the HUD says for six minutes).
+  Ten pages now: the format, the two jobs, how a round goes, the risk, MOVING,
+  ATTACKER, TAYA, scoring, and reading the HUD. Written against `Design.md` and
+  re-checked after the same session's mechanics revision, so it teaches the 2.5 s
+  charge, the tap-shove, the right-click lunge, the 1.5 s reset, slipper ownership and
+  the 75% attacker speed. *Verified: all ten pages rendered at 1920×1080 with the
+  plain exe and looked at.* ⚠️ **And overflow is now MEASURED, not eyeballed** —
+  `tutorial_shot.gd` reads each page's `ScrollContainer` scrollbar and prints
+  `content` vs `box`. It caught two pages a screenshot did not: HANDS overflowed by a
+  clipped row, and SCORING by 37 px. Three passes of trimming SCORING's body text
+  moved the number by exactly zero, because each row's height was set by its two-line
+  CHIP, not its text — the fix was one-line chips. All ten now report `fits`.
 - [ ] 1.3 **The match-result screen was gutted, not designed.** `_fill_pips` is replaced
   by a text standings list appended in code. Give it a real final-standings layout, and
   handle `winning_slot == -1` (an honest draw) as a first-class result.
 - [ ] 1.4 **The role-swap card announces a round with no winner.** It now shows who
   defends next and who leads; check it reads correctly at the round-4 boundary, where
   there is no next round.
-- [ ] 1.5 **Show names in the lobby.** `network_manager.gd::picks_for(peer)["name"]`
-  carries them already; neither `multiplayer_setup.gd` nor `match_setup.gd` displays
-  one. A four-player lobby where everyone is "Player 3" is the first thing a judge sees.
-- [ ] 1.6 **The offscreen indicator for a teammate is a stub returning null.** There are
-  no teammates. Decide whether a "nearest threat" or "your slipper" arrow earns the
-  slot, or delete the arrow and its node.
+- [x] 1.5 **Show names in the lobby — DONE 2026-08-01**, and the row it sat in was
+  worse than "Player 3": the whole seat board still read **`TEAM A · PERSON` /
+  `TEAM A · OBJECT` / `TEAM B · …`** over a hint saying *"A team is one person and one
+  object"*, in both `match_setup.gd` AND baked into `MatchSetup.tscn`'s authored
+  defaults. That is a 2v2 format on the first screen a judge meets. Seats are now
+  `P1..P4` with the round-1 taya marked (`defender_slot_for(1)`, a pure function, so
+  the board can state it honestly before the match), the hint describes four players
+  and a rotating taya, and occupied rows read the peer's real name through
+  `picks_for()` — falling back to `PLAYER n`, because an empty name is legal
+  (`Design.md` §10). Read through `picks_for()` rather than `peer_characters`, which
+  is host-only and would have resolved on the host and blanked everywhere else.
+  *Verified: rendered at 1920×1080 and at 1920×1200 and looked at.*
+- [x] 1.6 **The offscreen teammate arrow now points at YOUR OWN SLIPPER — DONE
+  2026-08-01.** The item asked whether "nearest threat" or "your slipper" earned the
+  slot; 🧑's mechanics revision answered it directly: *"A dynamic UI arrow floats
+  around the Attacker's feet pointing directly toward their uncollected slipper."*
+  ⚠️ **It is only well-defined because slippers now have owners** — under the old
+  any-attacker-may-take-any-slipper rule there was no such thing as "your" slipper.
+  Hidden while you are holding it (an arrow pointing at your own hand is noise) and
+  for the taya, who has no slipper. *Unverified: rendered in the menus but no capture
+  yet shows it tracking a loose slipper mid-match.*
 - [ ] 1.7 **The FPP viewmodel arms are enormous** and dominate the lower third of every
   frame — visible in every capture in § LOG. That is the shot the trailer is filmed in.
+  ⚠️ **Confirmed again 2026-08-01** on both peers of the two-peer run — see the
+  `net_twopeer_probe` captures. Still open.
 - [x] 1.8 ⚠️⚠️ **DONE 2026-08-01 — two real peers, a full 90 s round, and a diff.**
   The named probe is **`tools/ui/net_twopeer_probe.tscn`** (`--host` / `--join=`), a new
   file in this lane's own `tools/ui/**` row; `aim_probe`'s harness shape was copied and
@@ -1309,3 +1337,64 @@ reference `uid://dpu4hdrq88up6` and `colormap.png.import` declares
 on every load. It resolves to the same texture, so it changes nothing on screen — but
 there is also an untracked `colormap.png.import~RFdd6c817.TMP` sitting beside it from an
 interrupted import. Residue of the reverted session, left for whoever owns those files.
+
+### 2026-08-01 · 🖥️ `build ui` · mechanics revision · branch `HARRYDAKS`
+
+**🧑 handed over a written mechanics revision mid-session and asked for it implemented
+and given UI, in one pass.** It is not a balance pass — it changes what the two roles
+DO — so it is recorded here in full rather than as a list of moved numbers.
+
+**The taya stopped being passive.** The tag used to fire every physics frame on
+adjacency: no input, no animation, 100 points for standing close enough — the old
+§2.14's *"you are simply teleported"*. It is now a **lunge**: hold right-click 0.5 s,
+release, dash 2.5 m, and any vulnerable attacker swept up in the path is tagged.
+⚠️ **The sweep runs every frame the lunge is live, not once at the end** — 2.5 m at
+60 Hz is ~0.2 m a frame and a single end-of-dash test tunnels straight past a body
+standing halfway along it. The taya is also now **faster than every attacker by
+construction** (`ATTACKER_SPEED_SCALE` 0.75), which is what makes committing to a
+chase a real decision rather than a coin flip on reaction time.
+
+**The attacker's shove stopped being a hold.** Single tap of E, no charge, 2.5 m of
+knockback, 7.5 s cooldown. `SHOVE_SPEED` was **re-derived, not nudged** —
+`sqrt(2.5 × 60) = 12.247` on the same `v²/FRICTION` solve that made the old 7.75
+exactly one metre. Copying the old constant and hoping would have been wrong by 1.5 m.
+
+**Slippers have owners now, and three things fell out of that.** Nobody may touch
+another player's slipper. That single rule is what restores the three-way rivalry (if
+any slipper serves any attacker, the nearest is always correct and there is nothing to
+contest), what makes §1.6's foot arrow well-defined at all, and what makes a
+colour-coded slipper mean something. A blocked slipper now **deflects away from the
+blocker** instead of dropping dead at their feet — directed outward rather than
+mirrored, because a true reflection sends it wherever the incoming angle points, which
+is as often as not deeper into the box. And a tagged attacker now **keeps their
+slipper**, reversing a rule whose failure mode compounded with the taya's own skill: a
+taya who tagged well used to accumulate a pile of slippers on their own mark.
+
+**Stamina is a 50-point pool draining at 40/s — 1.25 s of sprint, down from 5.0.**
+🧑 specified *"10 points every 0.25 seconds"*; it is implemented as a continuous 40/s,
+which spends the identical 10 per quarter-second and cannot be feathered by tapping
+Shift on a sub-tick rhythm. ⚠️ **Fatigue now locks regeneration**, which it did not:
+the bar previously refilled at full rate DURING the penalty, so the punishment never
+touched the resource it was punishing.
+
+**The UI for it, because a mechanic nobody can read is not implemented.** The YOU
+card's charge row has now been the bump meter, then the shove meter, and is now the
+**lunge** meter — the shove has no charge left to draw, and the lunge belongs to the
+one role that had no meter at all. Sharing that row with the attacker's throw is
+trivially safe in a way it was not before: the two belong to different ROLES, so no
+player can charge both. `LUNGE CD` joins the status stack beside `SHOVE CD`.
+
+**Right-click had to be taken off `special_ability`**, which bound Q + left + right and
+IS the throw. One action, one verb.
+
+**Verified:** clean `--headless --import` after every step; the tutorial re-rendered and
+re-measured (all ten pages `fits`); the lobby and setup screens rendered at 1920×1080
+and 1920×1200 and looked at. `Design.md` §3/§4/§5/§6 moved in this commit, as the rule
+requires. ⚠️ **NOT verified: none of it has been PLAYED.** No probe fires a lunge, no
+capture shows a deflection, and the numbers are 🧑's spec rather than measured
+outcomes — `build fair` owns measuring whether they are fun.
+
+⚠️ **Out of this lane's § PATHS row, on direct human instruction** (🧑: *"prioritize
+mechanics revisions"*, *"fix everything do everything"*). `character_base.gd`,
+`round_manager.gd`, `carrier.gd`, `slipper.gd`, `lata.gd` and `Design.md` are
+⚖️ `build fair`'s; `project.godot` is nobody's. Recorded rather than quietly done.

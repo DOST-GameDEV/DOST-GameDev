@@ -205,21 +205,33 @@ func _sync_lata_event(knocked: bool, by_slot: int) -> void:
 ## nobody. Four players and one 1.1 m radius is sixteen distance checks a frame on
 ## the host; that is cheaper than one correct networked overlap and it can only
 ## happen where the score is written.
+## ⚠️⚠️ THE PASSIVE PROXIMITY TAG WAS DELETED 2026-08-01 AND THIS FUNCTION IS NOW A
+## RECORD OF WHY. It used to run every physics frame and tag any vulnerable attacker
+## within `TAG_RADIUS` of the taya — no input, no animation, no commitment. 100
+## points for standing close enough.
+##
+## 🧑 replaced it with a charged, aimed lunge on right-click: *"Tag Trigger: Any
+## vulnerable Attacker caught in the lunge path is instantly tagged."* The tag is now
+## driven from `CharacterBase._sweep_lunge_tag()`, which calls
+## `host_resolve_lunge_tag()` below — the same resolution, reached by a press instead
+## of by adjacency.
+##
+## ⚠️ IT IS KEPT AS AN EMPTY FRAME HOOK RATHER THAN REMOVED because `_physics_process`
+## calls it and this is the one place contact is allowed to resolve; a future contact
+## rule belongs here, on the physics tick, and not on `_process`.
 func _step_tag() -> void:
+	pass
+
+## Called by the taya's lunge sweep, host-side only. Public because the caller is
+## `character_base.gd` — the same shape `host_note_lata_knocked()` already uses, and
+## the reason the scoring stays in one file (`Design.md` §8: a point can only be
+## created where `MatchManager.add_score()` is reachable).
+func host_resolve_lunge_tag(taya: CharacterBase, victim: CharacterBase) -> void:
 	if NetworkManager.is_networked() and not NetworkManager.is_host():
 		return
-	if not round_active or lata == null or not lata.is_upright:
+	if not round_active or taya == null or victim == null:
 		return
-	var taya := defender()
-	if taya == null or not taya.can_act():
-		return
-	for who in players():
-		if who.is_defender or not who.is_taggable():
-			continue
-		if taya.global_position.distance_to(who.global_position) > TAG_RADIUS:
-			continue
-		_resolve_tag(taya, who)
-		return # one tag per frame; the victim is gone from the box anyway
+	_resolve_tag(taya, victim)
 
 func _resolve_tag(taya: CharacterBase, victim: CharacterBase) -> void:
 	MatchManager.add_score(taya.player_slot, SCORE_TAG, "TAG")

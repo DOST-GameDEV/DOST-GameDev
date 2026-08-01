@@ -87,21 +87,30 @@ spawn an Attacker VULNERABLE on frame one and read as a rules bug rather than a 
 
 | Constant | Value | Note |
 |---|---|---|
-| `SPEED` | **4.6** | walk |
+| `SPEED` | **4.6** | walk — **the taya's speed** |
+| `ATTACKER_SPEED_SCALE` | **0.75** | an Attacker walks at 3.45. Permanent, by ROLE |
 | `SPRINT_SCALE` | **1.50** → 6.90 | hold **Shift**. The GDD's "+50% speed" |
-| `STAMINA_MAX` | **100.0** | points, not seconds |
-| `STAMINA_DRAIN_RATE` | **20.0 /s** | = **5.0 s** of continuous sprint |
+| `STAMINA_MAX` | **50.0** | points, not seconds |
+| `STAMINA_DRAIN_RATE` | **40.0 /s** | = **1.25 s** of continuous sprint |
 | `STAMINA_REGEN_RATE` | **20.0 /s** | a full bar refills in 5.0 s |
 | `STAMINA_REGEN_DELAY` | **2.5 s** | after the last sprint frame |
-| `STAMINA_SPRINT_FLOOR` | 15.0 | you cannot *start* a sprint below this, so the bar cannot be feathered |
-| `FATIGUE_TIME` | **2.5 s** | triggered by reaching 0 |
+| `STAMINA_SPRINT_FLOOR` | 7.5 | you cannot *start* a sprint below this, so the bar cannot be feathered |
+| `FATIGUE_TIME` | **2.0 s** | triggered by reaching 0. **Regen is locked for its whole duration** |
 | `FATIGUE_SPEED_SCALE` | **0.75** | −25% speed, sprint locked out |
 | `JUMP_VELOCITY` | 5.8 | |
 | `GRAVITY` | 20.0 | |
 | `FRICTION` | 30.0 | **knockback distance = v² / 60** |
 
-⚠️ **THE BAR IS IN POINTS NOW AND THE NUMBERS ARE NOT A RESCALE.** It used to be
-`STAMINA_MAX = 4.0` meaning four seconds. 100/20 is **5.0 s**, not 4.0.
+⚠️ **REVISED 2026-08-01 ON HUMAN INSTRUCTION — A 50-POINT POOL DRAINING AT 40/s**,
+i.e. **1.25 s of sprint**, down from 5.0 s. 🧑 specified the drain as *"10 Stamina
+Points every 0.25 seconds"*; it is implemented as a continuous 40/s, which spends the
+identical 10 points per quarter-second held and cannot be feathered by tapping Shift
+on a sub-tick rhythm.
+
+⚠️ **FATIGUE NOW LOCKS REGEN, NOT JUST SPEED.** Reaching 0 costs 2.0 s at 0.75 speed
+with sprint locked out **and the bar refusing to refill at all**. Previously it
+refilled at full rate during the penalty, so the punishment did not touch the
+resource it was punishing.
 
 **Fatigue rides the speed-zone stack** (`enter_speed_zone`/`exit_speed_zone`) rather
 than being multiplied in, so it composes with a hazard zone instead of one silently
@@ -125,8 +134,9 @@ neither pickup nor channel consumed reaches the shove.
 | Press | Condition | Result |
 |---|---|---|
 | **E tap** | Attacker, loose slipper within `PICKUP_RADIUS` | **pick up** |
-| **E hold 1.25 s** | Attacker, nothing grabbable | **shove**, on release |
-| **E hold 2.5 s** | Defender, in the lata's ring, lata down | **reset the lata** |
+| **E tap** | Attacker, nothing grabbable | **shove**, instantly |
+| **E hold 1.5 s** | Defender, in the lata's ring, lata down | **reset the lata** |
+| **Right-click** | Defender | hold 0.5 s to charge, release to **lunge** and tag |
 
 ## 5 · The Attacker (three players)
 
@@ -134,7 +144,7 @@ neither pickup nor channel consumed reaches the shove.
 
 | Constant | Value | Where |
 |---|---|---|
-| `CHARGE_FULL_TIME` | 0.9 s | `carrier.gd` |
+| `CHARGE_FULL_TIME` | **2.5 s** | `carrier.gd` |
 | `CHARGE_MIN_POWER` | 0.35 | a tap still throws |
 | `THROW_LOCK_TIME` | **1.25 s** | after a pickup, before it may be thrown |
 | `LAUNCH_SPEED` | **17.0 m/s** | at full charge, `slipper.gd` |
@@ -169,10 +179,12 @@ on the last frame of the 2.5 s channel.
 
 ### 5.2 · Retrieval and vulnerability
 
-* Any Attacker not already holding one may pick up **any** loose slipper, and doing so
-  reassigns ownership. Deliberately not "your own only": three attackers converging on
-  one box land slippers in a pile, and a rule that makes you hunt for your specific one
-  reads as a bug.
+* ⚠️ **A SLIPPER BELONGS TO ONE ATTACKER AND NOBODY ELSE MAY TOUCH IT.** Reversed
+  2026-08-01 (🧑: *"Each slipper is uniquely color-coded and tied strictly to its
+  owner. Opponents cannot pick up or tamper with another player's slipper."*). The old
+  any-attacker rule quietly deleted the three-way rivalry — if any slipper serves any
+  attacker, the nearest is always correct and there is nothing to contest. Ownership is
+  also what makes the floor glow and the foot arrow well-defined.
 * **An Attacker inside the box is 100% safe until they pick a slipper up.** Once
   `holding_slipper` is true they can be tagged, until they cross back out.
 * `CharacterBase.is_taggable()` is that entire rule, in one function, read by both the
@@ -183,12 +195,12 @@ on the last frame of the 2.5 s channel.
 
 | Constant | Value |
 |---|---|
-| `SHOVE_CHARGE_TIME` | **1.25 s** |
-| `SHOVE_SPEED` | **7.75 m/s** → **1.00 m** by v²/60 |
+| `SHOVE_CHARGE_TIME` | **0.0 s** — single tap |
+| `SHOVE_SPEED` | **12.247 m/s** → **2.50 m** by v²/60 |
 | `SHOVE_LIFT` | 2.2 |
 | `SHOVE_STUN` | **1.25 s** |
 | `SHOVE_STAMINA_COST` | **25.0** |
-| `SHOVE_COOLDOWN` | **10.0 s** |
+| `SHOVE_COOLDOWN` | **7.5 s** |
 | `SHOVE_RANGE` | 1.6 m |
 | `SHOVE_ARC_DEG` | 70° half-angle |
 
@@ -213,17 +225,34 @@ deleted power bump was already tuned to 7.75 m/s against `FRICTION` 30, and
 
 | Constant | Value |
 |---|---|
-| `TAG_RADIUS` | 1.1 m |
+| `LUNGE_TAG_RADIUS` | **1.3 m** — swept every frame the lunge is live |
 | `TAG_STUN_TIME` | **5.0 s** |
-| `RESET_CHANNEL_TIME` | 2.5 s |
+| `RESET_CHANNEL_TIME` | **1.5 s** |
 
 **Tag penalty:** the Attacker is teleported to the Safe Zone and stunned 5 s.
 
-⚠️ **THE SLIPPER IS DROPPED WHERE THEY WERE TAGGED, NOT CARRIED HOME.** That is the
-point of the penalty: the retrieval run has to be made again, against a taya who now
-knows exactly where you are going.
+⚠️ **REVERSED 2026-08-01 — THE SLIPPER GOES HOME WITH THEM, AND IT IS AN ANTI-CAMPING
+RULE.** 🧑: *"The Attacker spawns with their slipper already back in hand (eliminates
+Danger Zone slipper camping)."* The old rule compounded with itself: every tag left
+another slipper inside the box, so a taya who tagged well ended up standing on a heap
+of them. The penalty that remains is real — the safe-zone teleport, 5 s stunned, and
+the whole trip to make again.
 
-⚠️ **THE TAG IS A PROXIMITY CHECK ON THE HOST, NOT AN `Area3D`.** So is slipper contact,
+⚠️ **THE TAG IS NO LONGER PASSIVE — IT IS THE LUNGE.** Replaced 2026-08-01. It used to
+fire every physics frame on adjacency, with no input and no animation: 100 points for
+standing close enough. It is now charged on right-click (`LUNGE_CHARGE_TIME` 0.5 s),
+released as a **2.5 m dash** (`LUNGE_SPEED` 12.247, the same `v²/60` solve the shove
+uses), and any vulnerable Attacker swept inside `LUNGE_TAG_RADIUS` during
+`LUNGE_ACTIVE_TIME` 0.45 s is tagged. `LUNGE_COOLDOWN` 1.5 s. The sweep runs **every
+frame the lunge is live**, not once at the end, or a 2.5 m dash at 60 Hz tunnels past
+a body standing halfway along it.
+
+⚠️ **A BLOCKED SLIPPER DEFLECTS, IT DOES NOT DROP DEAD.** `DEFLECT_SPEED_SCALE` 0.62 of
+`LAUNCH_SPEED`, lifted by 5.0, directed **away from the blocker** rather than mirrored —
+a true reflection sends it wherever the incoming angle points, which is as often as not
+deeper into the box, i.e. the clustering this exists to remove.
+
+⚠️ **CONTACT IS A DISTANCE CHECK ON THE HOST, NOT AN `Area3D`.** So is slipper contact,
 and so is the reset ring. An overlap fires on whichever peer owns the body — `hit_probe`
 measured the consequence directly: **16 of 36 overlaps did not land, split by target**.
 Sixteen distance checks a frame on the host is cheaper than one correct networked
