@@ -165,5 +165,24 @@ func _report() -> void:
 	if not throw_ok:
 		fails += 1
 
+	# ⚠️ WHY THE PER-PLAYER DUMP IS HERE. Items 3 and 4 can only fail because a bot
+	# never threw, and "never threw" has at least five distinct causes — it is not
+	# holding, it is inside the box, the lata is down, the throw is on cooldown, or
+	# it is charging and never releasing. Guessing between them costs a run each;
+	# printing all five costs nothing and ends the question in one.
+	for node in RoundManager.players():
+		var who := node as CharacterBase
+		if who == null:
+			continue
+		var carrier := who.get_node_or_null("Carrier") as Carrier
+		print("   %-4s def=%-5s hold=%-5s inbox=%-5s can_throw=%-5s pos=(%.1f,%.1f) chebyshev=%.2f charge=%.2f vel=%.2f"
+			% [who.display_name(), who.is_defender, who.holding_slipper(),
+				who.is_inside_box(), RoundManager.can_throw(who),
+				who.global_position.x, who.global_position.z,
+				maxf(absf(who.global_position.x), absf(who.global_position.z)),
+				carrier.charge_power() if carrier != null else -1.0,
+				who.velocity.length()])
+	print("   box radius = %.2f" % CharacterBase.confinement_radius)
+
 	print("=== %s ===" % ("ALL PASS" if fails == 0 else "%d FAILURE(S)" % fails))
 	get_tree().quit(1 if fails > 0 else 0)

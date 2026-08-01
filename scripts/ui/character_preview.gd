@@ -475,6 +475,15 @@ func show_prop(entry: Dictionary, is_can: bool) -> void:
 			_current_id = &""
 			return
 		_current = packed.instantiate()
+		# ⚠️ SWAP THE MESH BEFORE TINTING, exactly as `lata.gd`/`slipper.gd` do.
+		# Without this every lata skin previewed as the SAME can and every tsinelas
+		# as the same slipper: this screen instantiated the shared
+		# CanVisual/TsinelasVisual scene and only recoloured it, which was right
+		# while a skin WAS only a colour. Since 2026-08-01 a skin is a MODEL as
+		# well (see character_roster.gd's `model` key), so a preview that only
+		# tints is a control that lies about what you are picking — the exact
+		# failure THE REACHABILITY RULE's second half describes.
+		_apply_model(_current, entry)
 		_tint(_current, entry.get("tint", Color.WHITE))
 		_cache[id] = _current
 
@@ -486,7 +495,34 @@ func show_prop(entry: Dictionary, is_can: bool) -> void:
 ## Recolours a previewed Prop. Duplicates per MeshInstance3D surface first —
 ## without that, tinting one lata skin would recolour every other cached one,
 ## since they all came from the same PackedScene and share its materials.
+## Points the previewed prop at the mesh its roster entry names, so the screen
+## shows the object the match will spawn. Mirrors `Lata::_apply_model()`.
+func _apply_model(model: Node3D, entry: Dictionary) -> void:
+	if not entry.has("model"):
+		return
+	var target := model.find_children("*", "MeshInstance3D", true, false)
+	if target.is_empty():
+		return
+	var mesh := load(String(entry["model"])) as Mesh
+	if mesh == null:
+		push_warning("CharacterPreview: cannot load %s" % entry["model"])
+		return
+	var instance := target[0] as MeshInstance3D
+	# Overrides do not clear themselves when the mesh under them changes, and the
+	# surface counts need not match — same rule as the two props.
+	for surface in range(instance.get_surface_override_material_count()):
+		instance.set_surface_override_material(surface, null)
+	instance.mesh = mesh
+
+## Recolours a previewed Prop.
+##
+## ⚠️ WHITE MEANS "DO NOT TINT", matching `lata.gd`/`slipper.gd`. Writing white
+## into `albedo_color` is a no-op on a TEXTURED prop and a repaint on an
+## UNTEXTURED one, and every slipper is untextured — so the tsinelas skins all
+## previewed as a featureless white blob while the game rendered them correctly.
 func _tint(model: Node3D, colour: Color) -> void:
+	if colour == Color.WHITE:
+		return
 	for node in model.find_children("*", "MeshInstance3D", true, false):
 		var mesh_instance := node as MeshInstance3D
 		for surface in range(mesh_instance.get_surface_override_material_count()):

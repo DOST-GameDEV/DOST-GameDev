@@ -72,7 +72,44 @@ func _ready() -> void:
 	# The host owns the lata outright. There is no owning player to hand it to —
 	# that is the whole difference between this and what it replaced.
 	set_multiplayer_authority(1)
+	_snap_home_to_ground.call_deferred()
 	_apply_upright_visual(true, false)
+
+## ⚠️ THE FLOOR IS NOT AT y = 0, AND `Main.tscn` PLACES THE LATA AS IF IT WERE.
+## Both maps sit their road and paving at **y = 0.1** (`build_*.py` reports
+## "floor+paving both at y=0.1"), while the `Lata` node carries no transform at
+## all — so the can stood 100 mm INSIDE the road, which is a quarter of its own
+## base. 🧑, with a screenshot: *"can is in the floor, part of it is phasing thru
+## floor"*.
+##
+## Snapped by RAYCAST rather than by adding 0.1 somewhere: the two maps could
+## diverge, and the lata's mark is the one spot in the arena whose height a map is
+## most likely to change (the plaza has a step). Deferred so the map's own
+## StaticBodies are in the tree before the ray is cast — at `_ready()` they are
+## not, and the ray finds nothing.
+##
+## `home_position` is what `_broadcast_home()` restores to, so fixing it here fixes
+## the reset and the round rollover too, not just the first spawn.
+func _snap_home_to_ground() -> void:
+	if not is_inside_tree():
+		return
+	var space := get_world_3d().direct_space_state
+	var query := PhysicsRayQueryParameters3D.create(
+		home_position + Vector3.UP * 2.0, home_position + Vector3.DOWN * 6.0)
+	query.collide_with_areas = false
+	# ⚠️ EXCLUDE THE LATA'S OWN BODY OR THE RAY LANDS ON THE CAN ITSELF. `Lata.tscn`
+	# carries a `StaticBody3D` for the can, and a ray dropped from two metres up
+	# hits the top of that collider first — so the "ground" came back as the can's
+	# own lid and the snap lifted it by its full height. Measured: the probe
+	# reported the mesh floating at +0.385, which is the can's height exactly.
+	var body := get_node_or_null("Body") as CollisionObject3D
+	if body != null:
+		query.exclude = [body.get_rid()]
+	var hit := space.intersect_ray(query)
+	if hit.is_empty():
+		return
+	home_position.y = (hit["position"] as Vector3).y
+	global_position = home_position
 
 ## Radius test rather than an `Area3D`, for the same reason `RoundManager._step_tag`
 ## is: this is asked on the host, about the host's own view of a position, on the
