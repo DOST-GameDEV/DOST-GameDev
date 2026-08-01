@@ -222,6 +222,7 @@ func _load_map() -> void:
 	map_root.add_child(instance)
 
 	kill_plane = instance.find_child("KillPlane", true, false) as KillPlane
+	_publish_playable_extent(instance)
 
 	var points := instance.get_node_or_null("SpawnPoints")
 	if points == null:
@@ -355,6 +356,47 @@ const ATTACKER_SPAWN_SPACING: float = 1.8
 ## already points everyone at the lata — now also points them at the attackers,
 ## because the attackers are directly beyond it. One rule, two jobs, nothing extra
 ## to keep in step.
+
+
+## ⚠️⚠️ TELLS THE REST OF THE GAME WHERE THIS MAP'S WALLS ARE. Read off the map's
+## own `Bounds` colliders at load, so a map that moves its walls moves this with
+## them and nothing has to be kept in step by hand.
+##
+## WHY IT EXISTS: `ai_controller` sends attackers to a square ring at
+## `confinement_radius + THROW_STANDOFF` and had no way to know a map has edges. On
+## 2026-08-01 the box grew until that ring landed past Eskinita's house facades, and
+## every bot on an east or west bearing walked into a wall and pressed into it for
+## the rest of its plan — 🧑: *"they just walk up the houses"*. Pulling the radius
+## back fixed that map at that size; publishing the extent makes the whole class of
+## bug impossible to generate.
+##
+## ⚠️ IT TAKES THE NEAREST WALL ON EACH AXIS, not the bounding box. A map whose east
+## wall is closer than its west one is a map whose narrow side is the real limit,
+## and a symmetric answer would let a bot walk into the near one.
+func _publish_playable_extent(map: Node3D) -> void:
+	var bounds := map.get_node_or_null("Bounds")
+	if bounds == null:
+		return
+	var half_x := INF
+	var half_z := INF
+	for child in bounds.get_children():
+		var body := child as Node3D
+		if body == null:
+			continue
+		var here := body.position
+		# A wall is named for the axis it blocks; its offset on that axis is how far
+		# out it sits. The other axis is the run of the wall and says nothing.
+		if absf(here.x) > absf(here.z):
+			half_x = minf(half_x, absf(here.x))
+		elif absf(here.z) > 0.01:
+			half_z = minf(half_z, absf(here.z))
+	if is_finite(half_x) and half_x > 0.5:
+		CharacterBase.playable_half_x = half_x
+	if is_finite(half_z) and half_z > 0.5:
+		CharacterBase.playable_half_z = half_z
+	print("[main] playable extent x=%.2f z=%.2f (walls, measured)"
+		% [CharacterBase.playable_half_x, CharacterBase.playable_half_z])
+
 func _role_spawn_point(role_index: int) -> Vector3:
 	if role_index <= 0:
 		# BEHIND the can from the attackers' point of view: they are at +Z, the can

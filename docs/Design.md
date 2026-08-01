@@ -54,9 +54,9 @@ rotates. **There is no per-round winner.**
 
 | Constant | Value | Note |
 |---|---|---|
-| `CONFINEMENT_RADIUS` | **7.5** | `character_base.gd`. A **square** at \|x\| = \|z\| = 7.5 |
-| `SAFE_ZONE_MARGIN` | 2.0 | Attackers spawn on a ring at 7.5 + 2.0 = **9.5** |
-| throwing line | **8.5** | = `CONFINEMENT_RADIUS` + 1.0, derived in both map builders |
+| `CONFINEMENT_RADIUS` | **7.0** | `character_base.gd`. A **square** at \|x\| = \|z\| = 7.0 |
+| `SAFE_ZONE_MARGIN` | 2.0 | Attackers spawn on a ring at 7.0 + 2.0 = **9.0** |
+| throwing line | **8.0** | = `CONFINEMENT_RADIUS` + 1.0, derived in both map builders |
 | `DEFENDER_START_OFFSET` | 2.5 | the taya's mark inside its own box |
 | `INTERACTION_RADIUS` | 1.6 | the lata's reset ring, `lata.gd` |
 
@@ -98,6 +98,32 @@ The other two bounds are unchanged and both comfortable: the shortest legal thro
 7.5 m against a 45° range of `LAUNCH_SPEED`² / `GRAVITY` = **14.45 m** (13.0–15.9 across
 the per-skin speed scales, §9), and the spawn ring is 9.5 against a `COURT_Z` of 13.0 on
 both maps. Both builders re-verify and abort.
+
+⚠️⚠️ **AND 7.5 WAS STILL TOO BIG — 7.0 IS THE CEILING THIS MAP ALLOWS. THERE IS A
+THIRD BOUND AND NOBODY HAD WRITTEN IT DOWN: the attackers' standoff ring has to fit
+inside the map's walls.** `ai_controller` sends every attacker to a square ring at
+`confinement_radius + THROW_STANDOFF` (1.2) — that is where you stand to throw — and
+Eskinita's `Bounds/WallEast|West` are the house facades at **x = ±8.6**.
+
+| radius | ring | |
+|---|---|---|
+| 6.5 | 7.7 | fits |
+| 7.5 | **8.7** | **0.1 m past the wall** |
+| 7.0 | 8.2 | fits, with the capsule and `ARRIVE_SLOP` |
+
+🧑, with a clip: *"pathfinding broken, sometimes the bots legit just go up random shit
+without doing anything, they just walk up the houses"*. They were not climbing
+anything — the houses have no collision at all. They were jammed against the wall the
+houses are drawn on, having been sent to a goal they could never reach. **Measured:
+throws over a whole match went 14 → 59 and knockdowns 5 → 23 when the ring fitted
+again**, so this was suppressing most of the offence the box change was blamed for.
+
+⚠️ **THE RADIUS ALONE IS NOT THE FIX.** `main.gd` now measures the map's `Bounds`
+colliders at load and publishes `CharacterBase.playable_half_x/z`, and the AI clamps
+every ring point to it. A goal outside the world is impossible to generate rather than
+merely unlikely, on any map at any radius. The limit to remember when growing this:
+**`CONFINEMENT_RADIUS + AIController.THROW_STANDOFF + a capsule <= WALL_FACE_X`**, and
+two of those three numbers live in files this const does not.
 
 ⚠️ **THE MEASURED COST, RECORDED RATHER THAN ARGUED.** One whole 4-round match at NORMAL,
 before and after: throws **71 → 17**, and DEFENSE's share of all points **39% → 73.8%**.

@@ -192,11 +192,70 @@ const FATIGUE_SPEED_SCALE: float = 0.75
 ## now EVICTS the street clutter that would otherwise end up inside it (29 pieces
 ## on Eskinita, 13 on Bayan Plaza at the first rebuild).
 ##
+## ⚠⚠⚠ AND 7.5 WAS STILL TOO BIG — 7.0 IS THE CEILING THIS MAP ALLOWS. 🧑, with a
+## clip: *"pathfinding broken, sometimes the bots legit just go up random shit
+## without doing anything, they just walk up the houses"*.
+##
+## THE THIRD BOUND, AND THE ONE NOBODY HAD WRITTEN DOWN: **the attackers' standoff
+## ring has to fit inside the map's walls.** `ai_controller.gd` sends every attacker
+## to a point on a square ring at `confinement_radius + THROW_STANDOFF` (1.2) — that
+## is where you stand to throw. Eskinita's `Bounds/WallEast|West` are the house
+## facades at **x = ±8.6** and they are the only thing a player cannot walk through.
+##
+##     radius 6.5 -> ring 7.7   fits
+##     radius 7.5 -> ring 8.7   0.1 m BEYOND THE WALL
+##
+## So every bot that picked an east or west bearing walked into a facade and pressed
+## into it for as long as it held that plan. That is the reported "walking up the
+## houses": they are not climbing anything, they are jammed against the wall the
+## houses are drawn on, which is also why it looked like they were *"not doing
+## anything"* — they had arrived at a goal they could never reach.
+##
+## 7.0 puts the ring at 8.2. With a 0.4 capsule radius and `ARRIVE_SLOP` 0.55 the
+## bot settles around 7.65 and never touches the facade. It is still **+7.7% on the
+## edge and +16% on the area** over 6.5, and the chalk is visibly longer, which is
+## what was asked for.
+##
+## ⚠️ THE GENERAL LESSON, because it will bite the next person who grows this: the
+## limit is NOT the throw range and NOT the court size. It is
+## `CONFINEMENT_RADIUS + AIController.THROW_STANDOFF + a capsule <= WALL_FACE_X`,
+## and two of those three numbers live in files this const does not.
+##
 ## ⚠️ CHANGING THIS AT RUNTIME MOVES THE PHYSICS BOX AND NOT THE PAINTED ONE.
-const CONFINEMENT_RADIUS: float = 7.5
+const CONFINEMENT_RADIUS: float = 7.0
 ## The live value every gameplay read goes through, promoted so a probe can sweep
 ## the box size without editing this file.
 static var confinement_radius: float = CONFINEMENT_RADIUS
+
+## ---------------------------------------------------------------------------
+## ⚠⚠ HOW FAR A BODY CAN ACTUALLY GO BEFORE IT MEETS A WALL. Published by
+## `main.gd` from the loaded map's own `Bounds` colliders; huge until it is.
+##
+## THIS EXISTS BECAUSE THE AI HAD NO WAY TO KNOW A MAP HAS EDGES. `ai_controller`
+## sends attackers to a square ring at `confinement_radius + THROW_STANDOFF`, and on
+## 2026-08-01 the box grew until that ring landed 0.1 m PAST Eskinita's house
+## facades — so every bot on an east or west bearing walked into a wall and pressed
+## into it for the rest of its plan. 🧑: *"the bots legit just go up random shit
+## without doing anything, they just walk up the houses"*.
+##
+## ⚠️ THE RADIUS WAS PULLED BACK TO FIT (see `CONFINEMENT_RADIUS`), AND THAT ALONE
+## IS NOT A FIX. It re-tunes one number on one map until the symptom stops; the
+## next map with a narrower street, or the next person who grows the box, gets the
+## same bug with no warning. A goal outside the world should be impossible to
+## generate, not merely unlikely.
+##
+## Measured off the colliders rather than declared, so a map that moves its walls
+## moves this with them and nothing has to be kept in step by hand.
+static var playable_half_x: float = 1000.0
+static var playable_half_z: float = 1000.0
+
+## The nearest point to `where` that a body can actually stand in. `margin` is
+## normally a capsule radius — a goal ON the wall is a goal you press into.
+static func clamp_to_playable(where: Vector3, margin: float = 0.45) -> Vector3:
+	var limit_x := maxf(playable_half_x - margin, 0.5)
+	var limit_z := maxf(playable_half_z - margin, 0.5)
+	return Vector3(clampf(where.x, -limit_x, limit_x), where.y,
+		clampf(where.z, -limit_z, limit_z))
 
 ## ---------------------------------------------------------------------------
 ## THE SHOVE. `Design.md` §Attacker.
