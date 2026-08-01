@@ -265,26 +265,53 @@ func _process(delta: float) -> void:
 ## a variable-length list — a fixed set of nodes in the scene would have to be hidden and
 ## re-labelled, which is more state than building three labels on demand.
 const STATUS_ROW_LIMIT: int = 4
-const STATUS_BAR_SIZE: Vector2 = Vector2(148, 6)
+const STATUS_BAR_SIZE: Vector2 = Vector2(190, 8)
+## ⚠️ FONT 20, UP FROM 15. Handoff A: *"Scale up non-scoreboard HUD text."* The new
+## YOU ARE VULNERABLE label is 22 and is the reference; the status rows were the
+## smallest text in the game and sat over a live 3D scene.
+const STATUS_FONT_SIZE: int = 20
+## How far in from the screen edge each stack sits, and how far down.
+const STATUS_MARGIN: Vector2 = Vector2(38, 150)
 
-var _status_root: VBoxContainer = null
-var _status_rows: Array[Control] = []
+## ⚠️⚠️ TWO STACKS, NOT ONE. Handoff A: status effects on the LEFT, ability
+## cooldowns on the RIGHT. Both used to come out of one `status_effects()` list into
+## one centred stack under the timer, which meant "I am STUNNED" and "my shove is
+## recharging" competed for the same four rows — and the two are read at different
+## moments and mean different things. One is what is being done TO you, the other is
+## what you may do next.
+##
+## ⚠️ IT IS A ROUTING DECISION, NOT A GAMEPLAY ONE. `status_effects()` is untouched
+## and is still the honest list of what is live on the body; every row already
+## carries its own `label`, so the split is a partition of that list here.
+var _status_root_left: VBoxContainer = null
+var _status_root_right: VBoxContainer = null
+var _status_rows_left: Array[Control] = []
+var _status_rows_right: Array[Control] = []
 
-func _ensure_status_root() -> VBoxContainer:
-	if _status_root != null and is_instance_valid(_status_root):
-		return _status_root
-	_status_root = VBoxContainer.new()
-	_status_root.name = "StatusStack"
-	_status_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_status_root.add_theme_constant_override("separation", 4)
-	# Directly under the timer card, top-centre: the one place on the screen a player
-	# already looks at under pressure. Anchored rather than parented to the timer so a
-	# growing stack cannot push the timer around.
-	_status_root.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_status_root.position = Vector2(-STATUS_BAR_SIZE.x * 0.5, 96)
-	_status_root.custom_minimum_size = Vector2(STATUS_BAR_SIZE.x, 0)
-	add_child(_status_root)
-	return _status_root
+func _ensure_status_root(right_side: bool) -> VBoxContainer:
+	var existing := _status_root_right if right_side else _status_root_left
+	if existing != null and is_instance_valid(existing):
+		return existing
+	var root := VBoxContainer.new()
+	root.name = "StatusStackRight" if right_side else "StatusStackLeft"
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_theme_constant_override("separation", 6)
+	# ⚠️ ANCHORED TO ITS OWN CORNER, NOT PARENTED TO A CARD. A growing stack must
+	# never push another element around, which is why the single centred stack was
+	# anchored rather than parented in the first place. Same rule, two corners.
+	root.set_anchors_preset(Control.PRESET_TOP_RIGHT if right_side else Control.PRESET_TOP_LEFT)
+	root.custom_minimum_size = Vector2(STATUS_BAR_SIZE.x, 0)
+	if right_side:
+		root.position = Vector2(-STATUS_BAR_SIZE.x - STATUS_MARGIN.x, STATUS_MARGIN.y)
+		root.alignment = BoxContainer.ALIGNMENT_END
+	else:
+		root.position = Vector2(STATUS_MARGIN.x, STATUS_MARGIN.y)
+	add_child(root)
+	if right_side:
+		_status_root_right = root
+	else:
+		_status_root_left = root
+	return root
 
 func _build_status_row() -> Control:
 	var row := VBoxContainer.new()
@@ -293,7 +320,7 @@ func _build_status_row() -> Control:
 	var label := Label.new()
 	label.name = "Label"
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", 15)
+	label.add_theme_font_size_override("font_size", STATUS_FONT_SIZE)
 	# The same heavy INK outline the objective and the ready prompt use — this text sits
 	# over a live 3D scene and has to survive being drawn over a road, a wall or a
 	# role-orange viewmodel arm.
@@ -421,31 +448,45 @@ func _refresh_vulnerable_text(local_char: CharacterBase) -> void:
 	vulnerable_label.visible = live
 
 func _refresh_status_stack(local_char: CharacterBase) -> void:
-	var root := _ensure_status_root()
-	var effects: Array[Dictionary] = []
+	var states: Array[Dictionary] = []
+	var cooldowns: Array[Dictionary] = []
 	if local_char != null and is_instance_valid(local_char):
 		# ⚠️ VULNERABLE IS FILTERED OUT HERE, NOT REMOVED FROM `status_effects()`.
 		# 🧑 2026-08-01: *"Remove the vulnerable timer bar and replace it with static
 		# text directly below the crosshair"* — `_refresh_vulnerable_text()` draws it
 		# now. The RULE stays where it was: `is_taggable()` is read by the tag, by the
 		# vignette and by that label, and `status_effects()` is still the honest list
-		# of what is live on this body. This is a presentation choice about one row,
-		# so it is made in the thing doing the presenting.
+		# of what is live on this body.
 		for effect in local_char.status_effects():
-			if String(effect.get("label", "")) != "VULNERABLE":
-				effects.append(effect)
-	# ⚠️ THE LATA COUNTDOWN IS APPENDED HERE, NOT IN `status_effects()`, AND THAT IS A
-	# REAL DISTINCTION. Everything the character returns is a fact about YOUR OWN BODY;
-	# this is a fact about the ROUND, it is the same number for all four players, and it
-	# lives on `RoundManager`. Asking a character about it would have four units each
-	# reporting the state of an object none of them is.
+			var label := String(effect.get("label", ""))
+			if label == "VULNERABLE":
+				continue
+			# ⚠️ THE SUFFIX IS THE ROUTING KEY, and it is deliberately the LABEL rather
+			# than a new field on the dictionary. `status_effects()` belongs to
+			# `character_base.gd`, which this lane does not own; a presentation split
+			# should not need a schema change in somebody else's file. "SHOVE CD",
+			# "LUNGE CD" and "THROW CD" are the three cooldowns and they all end the
+			# same way, so a new cooldown routes correctly the day it is added.
+			if label.ends_with(" CD"):
+				cooldowns.append(effect)
+			else:
+				states.append(effect)
+	_fill_status_side(_ensure_status_root(false), _status_rows_left, states, false)
+	_fill_status_side(_ensure_status_root(true), _status_rows_right, cooldowns, true)
+
+
+## One side of the split. `right_side` only decides text alignment — everything
+## else about a row is identical, which is the point of routing rather than
+## building two different widgets.
+func _fill_status_side(root: VBoxContainer, rows: Array[Control],
+		effects: Array[Dictionary], right_side: bool) -> void:
 	var wanted: int = mini(effects.size(), STATUS_ROW_LIMIT)
-	while _status_rows.size() < wanted:
-		var row := _build_status_row()
-		root.add_child(row)
-		_status_rows.append(row)
-	for i in _status_rows.size():
-		var row: Control = _status_rows[i]
+	while rows.size() < wanted:
+		var built := _build_status_row()
+		root.add_child(built)
+		rows.append(built)
+	for i in rows.size():
+		var row: Control = rows[i]
 		if i >= wanted:
 			row.visible = false
 			continue
@@ -456,12 +497,12 @@ func _refresh_status_stack(local_char: CharacterBase) -> void:
 		var colour := _status_colour(text)
 		row.visible = true
 		var label := row.get_node("Label") as Label
-		# ⚠️ A ROW WITH NO COUNTDOWN IS A REAL CASE, NOT A BUG. `VULNERABLE` lasts
-		# exactly as long as the player chooses to stand in the box holding a slipper,
-		# so it reports `seconds` 0 and draws as a solid bar with no timer. Printing
-		# "VULNERABLE  0.0s" would read as an effect that had already expired.
+		# ⚠️ A ROW WITH NO COUNTDOWN IS A REAL CASE, NOT A BUG. An effect that lasts
+		# as long as the player chooses reports `seconds` 0 and draws as a solid bar
+		# with no timer; printing "0.0s" would read as already expired.
 		var timed := seconds > 0.0
 		label.text = ("%s  %.1fs" % [text, seconds]) if timed else text
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if right_side 			else HORIZONTAL_ALIGNMENT_LEFT
 		label.add_theme_color_override("font_color", colour)
 		var bar := row.get_node("Bar") as ProgressBar
 		bar.value = clampf(seconds / total, 0.0, 1.0) if timed else 1.0
