@@ -68,6 +68,24 @@ const ENET_TIMEOUT_MAX: int = 45000
 ## relaunch — the failure mode this exists for is "someone's wifi drops",
 ## which does not guarantee the game process itself kept running.
 const TOKEN_SAVE_PATH: String = "user://player_identity.cfg"
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE JOIN-CODE ALPHABET IS THIS SHORT BECAUSE THE CODE IS READ ALOUD. A player who
+## has a lobby open reads four characters down a phone, across a room, or into a group
+## chat, and every character that has a look-alike is a character that gets typed wrong by
+## somebody who heard it correctly. So: no 0/O, no 1/I/L. Upper case only, because a code
+## spoken has no case and printing one that does implies a distinction that is not there
+## (`ServerQuery.resolve_code` folds the typed string up to match).
+##
+## ⚠️ DO NOT ADD CHARACTERS BACK TO "GET MORE CODES". 31^4 is 923 521 and the pool is
+## EIGHT servers — the space is already five orders of magnitude larger than it needs to
+## be, and the only thing a bigger alphabet buys is somebody's O landing on somebody
+## else's 0.
+const JOIN_CODE_ALPHABET: String = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
+## Exactly four. Short enough to hold in your head between reading it and typing it, and
+## `ServerQuery`'s pool of eight makes collisions a rounding error — see `resolve_code`'s
+## own ⚠️ for what a collision actually costs.
+const JOIN_CODE_LENGTH: int = 4
+## ---------------------------------------------------------------------------
 
 var connected_peer_ids: Array[int] = []
 ## 4.3/B-65 — a stable identity for THIS RUNNING INSTANCE, independent of the
@@ -324,6 +342,37 @@ func _ready() -> void:
 var is_dedicated: bool = false
 
 ## ---------------------------------------------------------------------------
+## THIS SERVER'S 4-CHARACTER JOIN CODE. Minted in `host_game()`, cleared in
+## `disconnect_network()` — the same lifetime as the session it names — and read off this
+## var by `server_query.gd`, which is the only thing that ever tells anybody what it is.
+##
+## ⚠️ IT IS A LABEL, NOT A SECRET AND NOT AN AUTHORITY. Nothing is checked against it: a
+## code resolves to an address and the join proceeds exactly as a typed address would. It
+## is short because it is spoken, and it is per-SESSION because a server that has restarted
+## is a different lobby with a different set of people in it — a code that survived a
+## restart would send a player to the room its old occupants have left.
+##
+## ⚠️ NOT COORDINATED WITH THE REST OF THE POOL, deliberately: `server_query.gd`'s header
+## explains why there is no registry to coordinate through. Two servers CAN roll the same
+## four characters; see `ServerQuery.resolve_code` for what that costs.
+##
+## Empty while this process is not hosting, which is what a client reports too.
+## ---------------------------------------------------------------------------
+var join_code: String = ""
+
+## Four characters from `JOIN_CODE_ALPHABET`. `RandomNumberGenerator` seeded per call for
+## the same reason `_load_or_create_token` does it: two pool processes started by the same
+## script in the same second must not both fall out of an unseeded global generator with
+## the same value.
+func _mint_join_code() -> String:
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	var code := ""
+	for i in range(JOIN_CODE_LENGTH):
+		code += JOIN_CODE_ALPHABET[rng.randi_range(0, JOIN_CODE_ALPHABET.length() - 1)]
+	return code
+
+## ---------------------------------------------------------------------------
 ## § THE LOBBY LEADER — who is allowed to pick the map, when the referee is a robot.
 ##
 ## On a listen host these are the same person, and this changes nothing: the leader is
@@ -425,6 +474,15 @@ func host_game(port: int = DEFAULT_PORT, dedicated: bool = false) -> Error:
 		local_picks = _local_picks()
 		peer_characters[multiplayer.get_unique_id()] = local_picks
 	match_in_progress = false
+	# Minted before anything can be asked for it — `ServerQuery.start_responding()` below
+	# opens the socket that reports it, and a query arriving in the gap would answer with
+	# an empty code that a player could not then type back in.
+	join_code = _mint_join_code()
+	# ⚠️ SAME FIRE-AND-FORGET CONTRACT AS THE BEACON BELOW. `start_responding` swallows its
+	# own failure (see `server_query.gd`), so a server that cannot bind its status port
+	# still referees its match and is still reachable by a typed address. Nothing here may
+	# branch on it.
+	ServerQuery.start_responding(port)
 	# ⚠️ THE LAN BEACON IS STARTED HERE AND NOWHERE ELSE, because this is the one line
 	# that knows a server now exists. It is fire-and-forget by design: `start_advertising`
 	# swallows its own failure (see `lan_beacon.gd`), so a machine that cannot broadcast
@@ -497,6 +555,11 @@ func disconnect_network() -> void:
 	# puts a row in somebody's list that cannot be joined. Closing it here makes the
 	# frame-later check a backstop rather than the mechanism.
 	LanBeacon.stop_advertising()
+	# Closed here for the same reason and at the same moment as the beacon: a status reply
+	# sent after the socket is gone advertises a lobby that cannot be joined. The code goes
+	# with it — an empty code is what a non-hosting process truthfully has.
+	ServerQuery.stop_responding()
+	join_code = ""
 	if multiplayer.multiplayer_peer:
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = null
