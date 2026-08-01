@@ -41,6 +41,16 @@ signal peer_spectator_changed(peer_id: int, spectating: bool)
 
 const DEFAULT_PORT: int = 8910
 const MAX_PLAYERS: int = 4
+## ⚠️ NOT THE SAME NUMBER AS `MAX_PLAYERS`, ON PURPOSE. `create_server()`'s
+## client limit used to just BE `MAX_PLAYERS`, which caps the whole SESSION at
+## four connections — host plus three — with no room left for anyone who only
+## wants to watch. 🧑 2026-08-01: *"spectate feels redundant... there could be
+## 4 ppl playing and im a 5th or 6th guy just wathcing thru spectate."`
+## `MAX_PLAYERS` stays 4 everywhere else in this file and in `main.gd` /
+## `match_setup.gd` — it is a real game-design invariant (four seats, always)
+## and none of that seat-indexing code changes. Only the SOCKET's own ceiling
+## moves, and only here.
+const MAX_CONNECTIONS: int = 12
 const MAIN_SCENE_PATH: String = "res://scenes/main/Main.tscn"
 ## Hamachi (or any VPN-tunnelled LAN) carries more jitter than a same-router
 ## LAN, and ENet's built-in defaults (timeout_limit 32 / timeout_min 5000ms /
@@ -261,7 +271,7 @@ func _ready() -> void:
 ## player (host's own peer id, `1`, never fires `peer_connected`).
 func host_game(port: int = DEFAULT_PORT) -> Error:
 	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_server(port, MAX_PLAYERS)
+	var err := peer.create_server(port, MAX_CONNECTIONS)
 	if err != OK:
 		push_error("NetworkManager: failed to host on port %d (error %d)" % [port, err])
 		return err

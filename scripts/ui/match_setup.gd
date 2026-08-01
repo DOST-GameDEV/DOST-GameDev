@@ -355,6 +355,11 @@ func _setup_host() -> void:
 	# a Hamachi address rendered as `HOST 25.…` and could not be selected anyway.
 	seat_heading.text = "LOBBY  ·  YOU ARE HOSTING"
 	_show_addresses(_host_addresses_with_port())
+	# Host-only: the firewall block this warns about is about INBOUND traffic
+	# to this machine, which is not this joiner's problem on the other two
+	# `_show_addresses()` call sites.
+	if _firewall_hint != null:
+		_firewall_hint.visible = true
 	seat_hint.text = "You pick the map and the mode for everyone. Click a seat to move. Empty seats are played by bots. Give the address below to the others."
 	_seat_hint_base = seat_hint.text
 	primary_button.caption = "READY"
@@ -541,13 +546,22 @@ func _on_peer_joined(peer_id: int) -> void:
 	if not _is_lobby_host():
 		return
 	# Auto-seat into the first free seat so a lobby is always in a startable
-	# state; the player can move afterwards. Four seats and MAX_PLAYERS = 4, so
-	# a connected peer can always be seated — the -1 branch is a guard, not an
-	# expected path.
+	# state; the player can move afterwards.
 	var seat := _first_free_seat()
 	if seat >= 0:
 		_peer_seats[peer_id] = seat
-	_peer_ready[peer_id] = false
+		_peer_ready[peer_id] = false
+	else:
+		# ⚠️ NO LONGER A GUARD-ONLY BRANCH. `NetworkManager.MAX_CONNECTIONS` is now
+		# wider than the four seats, on purpose — 🧑: *"there could be 4 ppl
+		# playing and im a 5th or 6th guy just wathcing."* A peer that connects
+		# with every seat already taken is a real, expected spectator, not an
+		# impossible state: seat it nowhere and mark it watching directly, rather
+		# than leaving it seatless AND not-spectating, which `_refresh_seats()`
+		# has no row for. No `_peer_ready` entry either — `_refresh_start_button()`
+		# only ever asks about peers IN `_peer_seats`, so a peer absent from both
+		# dictionaries is already correctly invisible to the ready gate.
+		_peer_spectating[peer_id] = true
 	# Full snapshot to the newcomer, then the deltas to everyone (including the
 	# newcomer, harmlessly) so nobody is holding a half-built board.
 	_rpc_sync_state.rpc_id(peer_id, _peer_seats, _peer_ready,
@@ -1262,6 +1276,33 @@ func _build_address_row(rows: Container, at_index: int) -> void:
 	_address_cycle.visible = false
 	_address_cycle.pressed.connect(_on_address_cycle_pressed)
 	_address_row.add_child(_address_cycle)
+
+	_build_firewall_hint(rows, at_index + 1)
+
+## ⚠️ HOSTING WAS NEVER ACTUALLY RESTRICTED TO ONE MACHINE — see
+## `host_addresses()`'s own note. 🧑 2026-08-01, after actually finding it:
+## *"its bcz of firewall"*. `create_server()` binds every interface and always
+## could; what silently blocks other people in is Windows dropping inbound
+## traffic to an app that was never explicitly allowed through, with **zero
+## error on the host's own screen** — the host sees nothing wrong because
+## nothing IS wrong on its end. That failure mode cannot be detected from
+## inside this process (a bound, listening socket looks identical whether the
+## firewall lets packets reach it or not), so this is the fix that fits: tell
+## the one person who can act on it, next to the address they are about to
+## hand out.
+var _firewall_hint: Label = null
+
+func _build_firewall_hint(rows: Container, at_index: int) -> void:
+	_firewall_hint = Label.new()
+	_firewall_hint.name = "FirewallHint"
+	_firewall_hint.theme_type_variation = &"MenuCaption"
+	_firewall_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_firewall_hint.visible = false
+	_firewall_hint.text = ("Nobody connecting? Windows Firewall may be blocking this game" +
+		" silently — check Windows Security ▸ Firewall & network protection ▸" +
+		" \"Allow an app through firewall\", and make sure both Private and Public are checked.")
+	rows.add_child(_firewall_hint)
+	rows.move_child(_firewall_hint, at_index)
 
 
 func _small_button(label: String) -> Button:
