@@ -1098,6 +1098,24 @@ func _do_guard() -> void:
 ## that releases while side-stepping dashes past the target at 12 m/s and puts
 ## its own tag on cooldown for 1.5 s. `lunge_cone` is the tier's tolerance.
 func _step_lunge_intent(victim: CharacterBase, delta: float) -> void:
+	# ⚠⚠ THE PUNCH COMES FIRST WHEN IT IS IN RANGE. New verb 2026-08-01: the taya
+	# gained a no-charge close-range jab (`CharacterBase.PUNCH_*`) alongside the
+	# lunge, and a bot that only knew the lunge would charge half a second at a
+	# target standing next to it — which is exactly the case the punch was added for,
+	# and exactly long enough for the attacker to leave.
+	#
+	# ⚠️ IT STILL HAS TO BE AIMED. Both verbs fire along `-basis.z` and the body only
+	# turns on a frame it WALKS (§6 trap 13), so the same `_facing()` gate the lunge
+	# uses applies here — a punch thrown at a target behind you is a wasted cooldown,
+	# not a tag.
+	#
+	# ⚠️ AND IT IS A TAP, NOT A HOLD. `_step_punch()` reads `input_just_pressed`, so
+	# it needs a false frame before the true one — `_tap()` alternates for exactly
+	# that reason, the same way the grab does.
+	if character.punch_cooldown_left() <= 0.0 and victim != null 			and _flat(character.global_position, victim.global_position) <= CharacterBase.PUNCH_RANGE 			and _facing(victim, CharacterBase.PUNCH_ARC_DEG):
+		_tap("special_ability")
+		return
+	_press("special_ability", false)
 	if character.lunge_cooldown_left() > 0.0:
 		_lunge_held = -1.0
 		_press("lunge", false)
