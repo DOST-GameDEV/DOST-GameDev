@@ -62,7 +62,7 @@ four cans and four slippers with per-skin meshes; both maps at the 6.5 box.
 2. **`build ai` §6 — the bots throw and miss, and score 0 knockdowns.** Measured:
    51 flights, 0 knockdowns over a 40 s match. The AI is a placeholder by
    construction; the human asked for it LAST.
-3. **CC-BY credit is not on any screen** (§4.1 item 1.11). This is licence
+3. **CC-BY credit is not on any screen** (§1.11). This is licence
    compliance, not polish.
 
 **What to run to check the game still works** — all of these are one command:
@@ -165,7 +165,7 @@ above it has committed.
 
 ⚠️ **`build ai` runs LAST on human instruction** — *"we will focus on making
 multiplayer first then single player next time."* Do not promote it. It also
-carries the three-item ship checklist (§4.6).
+carries the three-item ship checklist (§8).
 
 ### Paths — one writer per file
 
@@ -178,7 +178,7 @@ carries the three-item ship checklist (§4.6).
 | 🤖 `build ai` | `systems/ai_controller.gd` · `tools/ai_probe.gd` · `export_presets.cfg` · `.gitignore` |
 
 ⚠️ **`main.gd` AND `character_visual.gd` HAVE NO OWNER** and have carried live
-multiplayer bugs three separate times. Filed as §4.4 item 2.19 and still open.
+multiplayer bugs three separate times. Filed as §2.19 and still open.
 
 ⚠️ **`build sound` fires from files it does not own.** It exposes what it needs on
 `AudioManager` and **files** the trigger onto the owning lane. A voice line with no
@@ -191,7 +191,21 @@ trigger is filed, not forced.
 `[x]` = built **and verified**, and say by what. `[~]` = built, unverified, and say
 what specifically. **Tick only your own section.**
 
-### 4.1 · 🖥️ `build ui` — screens and readability
+> **HOW THE NUMBERS WORK — one prefix per lane, and it never changes.**
+> `build ui` items are **1.x**, `build fair` **2.x**, `build sound` **4.x**,
+> `build model` **5.x**, `build ai` **6.x**, the ship list **8.x**. So "§2.1" is
+> always passive defence and "§5.2" is always the slipper, wherever it is quoted —
+> and it is quoted from code comments all over this repo, which is why the prefixes
+> are frozen even though 3 and 7 are gone (`build feel` merged into `build fair`;
+> `build spec` closed).
+>
+> ⚠️ **These headings used to read "4.1", "4.2" … while holding items numbered
+> "1.x", "2.x"** — two numbering systems on one line, which is what made this read
+> as two checklists stapled together. Each heading now names its lane and states
+> its prefix, and carries no section number of its own — so "§2" always means the
+> top-level §2 above, and an item is always written with its dot ("2.1").
+
+### 🖥️ `build ui` — screens and readability  ·  items **1.x**
 
 - [x] 1.1 `HUD.tscn` restructured — every 2v2 node deleted, four authored
   `ScoreRow`s. *Verified: 1600×900 render over a live match.*
@@ -226,7 +240,7 @@ what specifically. **Tick only your own section.**
   credits. **Compliance item, not a nicety.**
 - [ ] 1.12 **`net_twopeer_probe`'s `[FIN]` snapshot carries prop `skin_index` but
   NOT `character_index`.** Person skins are now dealt to bot seats host-side
-  (§4.5 item 5.16) and replicated through the existing `_rpc_sync_picks` table, and
+  (§5.16) and replicated through the existing `_rpc_sync_picks` table, and
   a single-process run proves the playing and spectator cases agree
   (`roster_spread_probe`, identical `SIGNATURE` lines). **What is still unproven is
   two real peers.** Adding `character_index` to that probe's snapshot is ~2 lines
@@ -239,20 +253,18 @@ what specifically. **Tick only your own section.**
 - [x] 1.14 **`Slipper.owner_slot` was not set at spawn — FIXED by 🎨 `build model`
   2026-08-01, out of row, on direct human instruction** (*"fix the bug u found"*).
   Filed here first because this lane owns the two READERS; the fix landed in
-  `slipper.gd` and `main.gd` instead. Full record in §4.4 item 5.20. **Your two
-  features now have something to read**: the foot arrow (1.6) and the owner glow
-  (2.20) can resolve "yours" from the first frame of a round, so both are worth
+  `slipper.gd` and `main.gd` instead. Full record in §5.20. **Your two
+  features now have something to read**: the foot arrow (§1.6) and the owner glow
+  (§1.15) can resolve "yours" from the first frame of a round, so both are worth
   re-checking on sight.
-
-**Filed by `build ui` 2026-08-01 — two visual claims that need a PLAYED match:**
-
-- [ ] 2.20 **The fatigue pose and the slipper glow are wired and unseen.** The
+- [ ] 1.15 **The fatigue pose and the slipper glow are wired and unseen.** The
   fatigue pose needs someone to sprint a 50-point bar to zero; the glow needs the
-  local seat to be an ATTACKER. ⚠️ The glow additionally cannot fire while 1.14 is
-  open. *(Numbered in `build fair`'s range by its filer; left where it is so the
-  reference does not break.)*
+  local seat to be an ATTACKER. Both are now unblocked — see §1.14. *(This was
+  numbered **2.20** until 2026-08-01, in `build fair`'s range, while sitting in
+  this lane's section — it is 1.15 now. Any older reference to "§2.20" means this
+  item.)*
 
-### 4.2 · ⚖️ `build fair` — every number, and the feedback that sells it
+### ⚖️ `build fair` — every number, and the feedback  ·  items **2.x**
 
 - [ ] 2.1 ⚠️ **Passive defence is very probably broken and is the first thing to
   measure.** +10/s for 90 s is **900 points** uncontested against **+100** for a
@@ -305,7 +317,7 @@ what specifically. **Tick only your own section.**
   where the mesh swap already happens. *(Was numbered 2.19 by its filer, which
   collided with the ownership item above.)*
 
-### 4.3 · 🔊 `build sound` — music, voice and the mix
+### 🔊 `build sound` — music, voice and the mix  ·  items **4.x**
 
 - [~] 4.1 Two of five OST tracks delivered and playing. **Unverified by ear.**
 - [x] 4.2 **Menu bed and round bed are owned by a SCENE STATE, not by a list of
@@ -322,7 +334,7 @@ what specifically. **Tick only your own section.**
   device. Balance the three buses against a real match. `tools/audio_mix_probe.gd`
   is the probe that should move `MUSIC_BASE_DB`.
 
-### 4.4 · 🎨 `build model` — the props, the play area *(this lane)*
+### 🎨 `build model` — the props, the play area  ·  items **5.x**
 
 - [x] 5.1 **The play area is bigger** — `CONFINEMENT_RADIUS` 5.0 → **6.5**, both
   maps rebuilt, the throwing line derived at box + 1.0 = 7.5, and the chalk cut to
@@ -381,8 +393,27 @@ what specifically. **Tick only your own section.**
   one that defends first. Default moved to 1. **The rotation is deliberately NOT
   re-based** — see the note on the constant.
 - [x] 5.18 **The menu OST is hard-cut when a match starts.** Out of this lane's row,
-  on direct human instruction (🧑: *"pls js abruptly cut it"*). See §4.3 item 4.2
-  and §6.
+  on direct human instruction (🧑: *"pls js abruptly cut it"*). See §4.2 and §6.
+- [x] 5.19 **Generator ownership is documented and enforced** — `Art_Direction.md`
+  §4 now carries the produced-by table, and `glb_tool.py` writes `newline="\n"` so
+  the determinism contract can actually be tested on Windows. *Verified: run twice,
+  `git status` clean.*
+- [x] 5.20 **Every slipper knows whose it is, from the first frame of a round.**
+  `owner_slot` had no writer but the grab and the throw, so a slipper nobody had
+  touched carried `-1` — and `main.gd::_reset_slippers()`'s courtesy `host_grab()`
+  at round start only *looked* like an assignment: it can silently refuse, because
+  `can_be_grabbed_by()` needs `can_act()` = `round_active and state == NORMAL`, and
+  a character mid-reset is neither. Ownership is now assigned explicitly by
+  `Slipper.host_assign_owner()` (a replicated call, not a synchronised property —
+  the glow's setter has to run on the peer that RECEIVES it), from seats walked in
+  numeric order so every peer and every round agree. ⚠️ **The rotation was the half
+  a one-round test would have missed**: the old gate
+  (`owner_slot >= 0 and who.player_slot != owner_slot`) *refused* the new owner's
+  pickup on round 2, because the slipper still held round 1's slot. *Verified:
+  `tools/models/slipper_owner_probe.tscn` (new) checks round 1 AND the rotation into
+  round 2, asserts the three owners are exactly the three attacker seats, and asks
+  the game's own `can_be_grabbed_by()` whether a non-owner is refused — PASS, and
+  it goes RED on the unfixed code (`Slipper1 owner_slot=-1`).*
 - [x] 5.21 **"Only the PC that set up Hamachi can host" — and hosting was never
   broken.** `NetworkManager.host_game()` calls `create_server()`, which binds
   **every** interface, so every machine on the tunnel could always accept
@@ -406,28 +437,8 @@ what specifically. **Tick only your own section.**
   one adapter; SPECTATE went 286×62/27 → 176×46/19. *Verified: both lobbies
   rendered at 1600×900 and looked at — `25.114.207.183:8910` fits whole — and
   `bounds_sweep` still PASSes 9 screens × 5 aspect ratios.*
-- [x] 5.20 **Every slipper knows whose it is, from the first frame of a round.**
-  `owner_slot` had no writer but the grab and the throw, so a slipper nobody had
-  touched carried `-1` — and `main.gd::_reset_slippers()`'s courtesy `host_grab()`
-  at round start only *looked* like an assignment: it can silently refuse, because
-  `can_be_grabbed_by()` needs `can_act()` = `round_active and state == NORMAL`, and
-  a character mid-reset is neither. Ownership is now assigned explicitly by
-  `Slipper.host_assign_owner()` (a replicated call, not a synchronised property —
-  the glow's setter has to run on the peer that RECEIVES it), from seats walked in
-  numeric order so every peer and every round agree. ⚠️ **The rotation was the half
-  a one-round test would have missed**: the old gate
-  (`owner_slot >= 0 and who.player_slot != owner_slot`) *refused* the new owner's
-  pickup on round 2, because the slipper still held round 1's slot. *Verified:
-  `tools/models/slipper_owner_probe.tscn` (new) checks round 1 AND the rotation into
-  round 2, asserts the three owners are exactly the three attacker seats, and asks
-  the game's own `can_be_grabbed_by()` whether a non-owner is refused — PASS, and
-  it goes RED on the unfixed code (`Slipper1 owner_slot=-1`).*
-- [x] 5.19 **Generator ownership is documented and enforced** — `Art_Direction.md`
-  §4 now carries the produced-by table, and `glb_tool.py` writes `newline="\n"` so
-  the determinism contract can actually be tested on Windows. *Verified: run twice,
-  `git status` clean.*
 
-### 4.5 · 🤖 `build ai` — Single Player *(RUNS LAST)*
+### 🤖 `build ai` — Single Player *(RUNS LAST)*  ·  items **6.x**
 
 - [ ] 6.1 **`ai_controller.gd` is a placeholder, not a baseline.** ~250 lines against
   the 3 172 it replaced. **Do not tune it. Replace it.**
@@ -442,7 +453,7 @@ what specifically. **Tick only your own section.**
 - [ ] 6.7 The bots barely move: **P3 = 14.2 m, P4 = 26.0 m** over a 90 s round
   against a 3.45 m/s walk.
 
-### 4.6 · 📦 Ship checklist — **not a lane**
+### 📦 Ship checklist — **not a lane**  ·  items **8.x**
 
 Done by whoever runs `build ai`, at the end of that session.
 
@@ -488,7 +499,7 @@ believing a probe that only ever passes.
 Verify by measuring a whole match, not by looking once. The probes are listed in
 § 1. prop_probe is stochastic — re-run before believing a failure.
 
-Tick your own boxes in § 4.4 and append to § 7 in the same commit as the work.
+Tick your own boxes in §5 and append to §7 in the same commit as the work.
 ```
 
 ### ⚖️ `build fair`
@@ -510,7 +521,7 @@ THIS LANE ABSORBED `build feel`. You own the FEEDBACK for the things you tune as
 well as the values: you cannot decide whether the tag is worth 100 points without
 also noticing what it looks like when it lands.
 
-Start with § 4.2 item 2.1. Passive defence pays the taya +10/s for 90 seconds —
+Start with §2.1. Passive defence pays the taya +10/s for 90 seconds —
 900 points — against +100 for a knockdown. Measure a real match before you decide;
 do not reason your way to a number. Re-measure at the 6.5 box, not 5.0.
 
@@ -522,7 +533,7 @@ Contact resolves BY DISTANCE ON THE HOST, not through Area3D overlaps, in three
 places: RoundManager._step_tag, Slipper._first_body_hit and Lata.is_in_ring. That
 is deliberate and measured — do not reintroduce overlap-based contact.
 
-Tick your own boxes in § 4.2 and append to § 7 in the same commit.
+Tick your own boxes in §2 and append to §7 in the same commit.
 ```
 
 ### 🖥️ `build ui`
@@ -538,7 +549,7 @@ before you start and before every commit.
 You own scripts/ui/**, scenes/ui/**, systems/camera_rig.gd, trajectory_preview.gd
 and tools/ui/**. You do not write character_base.gd.
 
-Your open items are § 4.1 items 1.11 to 1.14, and 1.11 is first because it is
+Your open items are §1.11 to §1.15, and 1.11 is first because it is
 LICENCE COMPLIANCE, not polish: three CC-BY models ship and their authors are
 credited nowhere a player can reach. 1.14 is the one with real gameplay
 consequence — two shipped features silently do nothing because a field is -1.
@@ -547,7 +558,7 @@ Render every screen you touch and look at it. "The control is added to the tree"
 is not the claim. Use the PLAIN Godot exe for anything that renders; --headless
 captures come back blank.
 
-Tick your own boxes in § 4.1 and append to § 7 in the same commit.
+Tick your own boxes in §1 and append to §7 in the same commit.
 ```
 
 ### 🔊 `build sound`
@@ -563,7 +574,7 @@ exactly. git pull --rebase before you start and before every commit.
 You own systems/audio_manager.gd, assets/audio/**, default_bus_layout.tres, the
 audio rows of ui/settings_panel.gd, docs/HUMAN.md and tools/audio/**.
 
-YOUR ONE REMAINING ITEM THAT MATTERS IS § 4.3 item 4.7: NOBODY HAS EVER HEARD
+YOUR ONE REMAINING ITEM THAT MATTERS IS §4.7: NOBODY HAS EVER HEARD
 THIS GAME. Every other box in your section is `[~]` for the same reason — no
 session has had an audio output device, so the mix has never been balanced
 against a real match. If you have audio, that is the job: play four rounds and
@@ -582,7 +593,7 @@ YOU FIRE FROM FILES YOU DO NOT OWN. Expose what you need on AudioManager and FIL
 the trigger onto the owning lane's § 4 section. A voice line with no trigger is
 filed, not forced.
 
-Tick your own boxes in § 4.3 and append to § 7 in the same commit.
+Tick your own boxes in §4 and append to §7 in the same commit.
 ```
 
 ### 🤖 `build ai`
@@ -596,7 +607,7 @@ scripts/systems/ai_controller.gd in full. Obey § 2 and the COMMIT AUTHORSHIP ru
 exactly. git pull --rebase before you start and before every commit.
 
 You own systems/ai_controller.gd and tools/ai_probe.gd. You also own
-export_presets.cfg and .gitignore for one job: § 4.6, the ship checklist, at the
+export_presets.cfg and .gitignore for one job: §8, the ship checklist, at the
 END of your session.
 
 The AI you are replacing is deliberately minimal — about 250 lines, written so
@@ -607,7 +618,7 @@ THE NUMBER THAT DEFINES YOUR JOB: 51 slipper flights and 0 knockdowns over a
 40-second match. The bots throw and miss. They also barely move — 14.2 m and
 26.0 m over a 90 s round against a 3.45 m/s walk speed.
 
-The hard problem is § 4.5 item 6.3: one defender against three attackers is an
+The hard problem is §6.3: one defender against three attackers is an
 asymmetry nothing in this repo has ever measured, and three bots all chasing the
 same slipper is the obvious failure mode.
 
@@ -618,9 +629,9 @@ the body it is writing to.
 
 Measure fairness with a real probe over many rounds, not by watching one match.
 
-Then do § 4.6 and stop.
+Then do §8 and stop.
 
-Tick your own boxes in § 4.5 and append to § 7 in the same commit.
+Tick your own boxes in §6 and append to §7 in the same commit.
 ```
 
 ---
