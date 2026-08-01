@@ -146,8 +146,20 @@ func _on_volume_changed(value: float, label: Label, setter: Callable) -> void:
 func _volume_text(value: float) -> String:
 	return "%d%%" % roundi(value * 100.0)
 
+## ⚠️ MUST SKIP `PlayerNameRow`. It is authored as `BindingsList`'s first child
+## (§ CHECKLIST 1.9's own note in `SettingsPanel.tscn`), and this used to
+## `queue_free()` every child indiscriminately before rebuilding the rebind
+## rows — which frees it in the same frame `_build_name_row()` (called later in
+## `_ready()`) still finds it under its unique name and wires it up. The field
+## worked for exactly one frame and then vanished with everything else this
+## loop cleared, which is why it read as "disappeared" rather than as "never
+## built" — 🧑: *"the username change option disappeared from settings"*.
+## `add_child()` below still appends the rebind rows AFTER it, so skipping it
+## here is enough; nothing about the ordering needs restating.
 func _build_rows() -> void:
 	for child in bindings_list.get_children():
+		if child.name == "PlayerNameRow":
+			continue
 		child.queue_free()
 	_action_buttons.clear()
 	for action in SettingsManager.REBINDABLE_ACTIONS:
