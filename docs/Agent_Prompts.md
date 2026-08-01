@@ -573,6 +573,29 @@ doesnt TAG"*:**
   yours**: either the tag survives a downed lata, or the taya needs a scoring verb
   that does, or DEFENSE is meant to carry that window (it measures 34%).
 
+  ⚠⚠ **AND IT IS A REGRESSION WITH A BEFORE-AND-AFTER, NOT A STANDING CONDITION.**
+  ⚖️ `build fair` measured this same term earlier the same day and wrote it into
+  2.28: *"The tag pays 22.5% of all points at NORMAL (1700 of 7570) over 17 tags.
+  It is not weak."* It was right when it was written. Re-run tonight on the same
+  probe, `fair_probe -- policy=bot`, one whole match:
+
+  | | ⚖️ `build fair`'s run | tonight |
+  |---|---|---|
+  | lata upright | **86%** of live time | **57.8%** |
+  | tags | **17** | **1** |
+  | TAG share | **22.5%** | **1.8%** |
+
+  Nothing was done to the tag between those two runs. What landed in between was
+  the offence getting stronger — the throw buff and the AI's wind-up hold — and the
+  can therefore spending 28 points of live time more on its side. **2.28's own note
+  says passive defence is paid per second of upright time and calls that "the
+  term's driver"; the tag is paid per second of it too, and nobody wrote that down.**
+  So the decision in front of you is not "is 100 points too much for a tag" —
+  2.6/2.7/2.14 all assume the tag HAPPENS. It is whether the taya should have a
+  scoring verb that survives a downed can at all.
+  ✅ DEFENSE measures **34.0%**, comfortably inside `policy=turtle`'s ≤50% gate, so
+  the catch-up term is NOT what is eating the round — the tag simply stopped paying.
+
   ⚠️ **CONFIRMED AT HARD, WHERE THE BOTS ARE GOOD AND IT IS WORSE.** Whole match:
   hit rate **63.4%** (§6.8 baseline 58.5% — the offence is in fine shape), and the
   four attackers spent **33.9 / 33.7 / 38.9 / 52.4 s** each `is_taggable()`. That is
