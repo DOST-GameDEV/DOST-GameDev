@@ -157,6 +157,34 @@ class Placer:
                      (0.0, 4.4), (0.0, -4.4), (3.4, 3.4), (-3.4, -3.4),
                      (0.0, 6.2), (0.0, -6.2)]
 
+    ## ⚠️⚠️ THE DEFENDER'S BOX IS A KEEP-OUT **FOR PIECES THAT ASK FOR IT**, and
+    ## the opt-in is the whole design. Added 2026-08-01 by ⚖️ `build fair` when
+    ## `CONFINEMENT_RADIUS` grew and the rebuild put clutter, four solid electric
+    ## posts and Bayan Plaza's monument inside the play area.
+    ##
+    ## ⚠️ IT WAS BLANKET FOR ONE ITERATION AND THAT WAS WRONG. Applied to every
+    ## piece it evicted 28 props from Eskinita and 11 from the plaza — 🧑: *"i was
+    ## okay with the clutter earlier, js put the tree out of the play area"*. A
+    ## street with nothing on it is not the fix; the fix is that the things a
+    ## player COLLIDES with at running height stay out. Litter on the road is set
+    ## dressing and reads as the game's whole setting; a tree trunk is a wall.
+    ##
+    ## So `keep_out=True` is passed per call site, by the builder, for the pieces
+    ## that are genuinely obstacles. Everything else places exactly as before.
+    ##
+    ## ⚠️ SET FROM `CONFINEMENT_RADIUS`, NEVER TYPED. Both builders read that const
+    ## through `floorcheck.read_confinement_radius()`, so the keep-out follows the
+    ## box automatically and a future resize cannot leave it stale — which is the
+    ## failure that produced this in the first place.
+    ##
+    ## ⚠️ IT REJECTS ON FOOTPRINT, NOT ON ORIGIN. A canopy whose TRUNK sits outside
+    ## the line while its crown hangs over the court is exactly the piece that
+    ## reads as "a tree in the play area", so the piece's own extent is tested.
+    play_box = None
+    ## How far OUTSIDE the chalk a piece must also stay. Half a body width: a prop
+    ## flush against the line is still something you collide with while running it.
+    PLAY_BOX_MARGIN = 0.45
+
     def __init__(self, surfaces, piece_extent, avoid_groups):
         self._surfaces = surfaces
         self._extent = piece_extent
@@ -165,6 +193,18 @@ class Placer:
         self.nudged = 0
         self.skipped = 0
         self.skips = []
+        self.evicted = 0
+
+    def in_play_box(self, mesh_name, x, z, yaw, scale):
+        """True if any part of this piece's footprint enters the play area."""
+        if self.play_box is None:
+            return False
+        e = self._extent(mesh_name, yaw, scale)
+        limit = self.play_box + Placer.PLAY_BOX_MARGIN
+        # The footprint is a box; it intrudes unless it is wholly on one side.
+        outside = (x + e[1] <= -limit or x + e[0] >= limit
+                   or z + e[3] <= -limit or z + e[2] >= limit)
+        return not outside
 
     def clear_at(self, mesh_name, x, z, yaw, scale, avoid=None):
         """`avoid` overrides the default group list for THIS piece only.
@@ -184,7 +224,7 @@ class Placer:
             self._avoid if avoid is None else avoid)
 
     def try_place(self, place_fn, name, mesh_name, x, z, yaw=0.0, scale=1.0,
-                  ladder=True, avoid=None):
+                  ladder=True, avoid=None, keep_out=False):
         """Places via `place_fn(name, mesh, x, z, yaw, scale)`, or skips.
 
         Returns True if the piece landed.
@@ -205,21 +245,35 @@ class Placer:
             steps = [(0.0, 0.0)]
         else:
             steps = ladder
+        blocked_by_box = False
         for k, (dx, dz) in enumerate(steps):
+            # ⚠️ THE PLAY BOX IS CHECKED FIRST AND SEPARATELY FROM `clear_at`. A
+            # piece that only fails the box test is not a graze against another
+            # prop — it is in the wrong place entirely — and counting the two the
+            # same way would hide a map full of evictions inside the ordinary
+            # "nudged clear" number.
+            if keep_out and self.in_play_box(mesh_name, x + dx, z + dz, yaw, scale):
+                blocked_by_box = True
+                continue
             if self.clear_at(mesh_name, x + dx, z + dz, yaw, scale, avoid):
                 place_fn(name, mesh_name, x + dx, z + dz, yaw, scale)
                 self.placed += 1
                 if k:
                     self.nudged += 1
                 return True
-        self.skipped += 1
-        self.skips.append(name)
+        if blocked_by_box:
+            self.evicted += 1
+        else:
+            self.skipped += 1
+            self.skips.append(name)
         return False
 
     def report(self, label):
         line = ("  %-14s: %d placed" % (label, self.placed))
         if self.nudged:
             line += ", %d nudged clear" % self.nudged
+        if self.evicted:
+            line += ", %d kept out of the play box" % self.evicted
         if self.skipped:
             line += ", %d SKIPPED (%s)" % (
                 self.skipped, ", ".join(self.skips[:4]))

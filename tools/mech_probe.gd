@@ -1,378 +1,619 @@
-extends Node
-## MECHANICS ACCEPTANCE — `build mech`, § CHECKLIST §1. Written 2026-07-31.
+extends Node3D
+## THE MECHANICS BENCH. **Rewritten 2026-08-01 by ⚖️ `build fair`.**
 ##
-## The board's standing rule is that `[x]` needs a named probe, a screenshot or a log,
-## and §1 had none: every mechanic on it was written and predicted and not one was
-## observed. This is the named probe for the two items this lane actually changed
-## behaviour on, plus the three invariants those changes could plausibly have broken.
+##     Godot_v4.7.1-stable_win64_console.exe --path <repo> tools/mech_probe.tscn
 ##
-## ⚠️ NEW FILE, AND A DELIBERATE ONE. § PATHS gives `build mech` no `tools/` row, so this
-## adds a file rather than writing to `phys_probe.gd` / `hit_probe.gd` / `round_probe.gd`,
-## every one of which belongs to a later lane. Nothing else reads it and nothing else
-## writes it; one-writer-per-file is intact.
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ WHAT THIS REPLACES. 355 lines written on 2026-07-31 for `build mech`,
+## measuring `can_out_left()`, the punt's `_rpc_set_loose`, the bump meter and a
+## 2v2 round — every one of which the HARRYDAKS pivot deleted the next day. §2.10
+## files every probe in `tools/` root as stale; this is the second one to earn a
+## rewrite rather than a deletion, because four open items on the board are all
+## "this number has never been measured" and they are all measurable on one bench.
 ##
-##     godot --path . --headless tools/mech_probe.tscn
+## §2.4 the shove · §2.5 stamina · §2.6 the tag against a MOVING target ·
+## §2.7 what a tag actually costs · §2.16 the preview lands where the slipper lands.
 ##
-## Local flow only, and honestly so: every rule under test resolves through
-## `RoundManager` and `CharacterBase`'s own state machine on the body's own peer, and
-## none of the six checks below crosses the host gate. **The two that DO have a
-## networked half — the punt's `_rpc_set_loose` argument and §1.9's read of the 4 Hz
-## `_sync_state` mirror of `can_out_left()` — are NOT proven here**, and the log says so.
+## ⚠️ IT MEASURES, IT DOES NOT JUDGE. Only §2.16 has a pass/fail gate, because only
+## §2.16 is a claim about two things AGREEING. The rest print numbers a human reads
+## against `Design.md`; a probe that failed a run for "2.5 m of knockback feels
+## wrong" would be encoding this session's taste as a gate.
 ##
-## ⚠️ EVERY AI CONTROLLER IS DISABLED, same reason `round_probe.gd` disables them: a bot
-## walking a lata home or throwing a slipper into the middle of a measurement is
-## indistinguishable from the mechanic under test. With them off, any state change is the
-## rules.
+## ⚠️ EVERY UNIT IS PUPPETED, and that is the only way these numbers mean anything.
+## A live bot walking through a measurement is indistinguishable from the mechanic
+## under test (§6 trap 14 — `move_and_slide()` writes the RESOLVED velocity back, so
+## "pushed 2.5 m" and "walked 2.5 m" read identically; `trait_probe` reported a bot's
+## walk speed as a body block to four decimal places before it was parked). The
+## `Puppet` brain below extends `AIController` and presses exactly what this file
+## tells it to, through the same `ai_set_intent()` harness a human's keyboard feeds.
+## `ai_controller.gd` is 🤖 `build ai`'s file and is not edited.
+##
+## ⚠️ TRAITS ARE PINNED TO NEUTRAL FOR EVERY MEASUREMENT. `character_index` is set
+## to a POWER-3 / GRIT-3 entry on both sides of every impulse, so what comes back is
+## the CONSTANT rather than the constant times somebody's roster pick. §2.8 made all
+## nine stats live, which means an unpinned bench would silently report a different
+## number depending on which Person a bot happened to be dealt.
+##
+## ⚠️ RUN IT WITH THE PLAIN EXE OR THE CONSOLE ONE, NEVER `--headless`.
 
-## The pre-round free-roam window (`main.gd::_awaiting_local_ready`) holds `round_active`
-## false until someone presses ready, and every rule here is gated on a live round — so
-## the probe presses it, then waits out main.gd's own 3 · 2 · 1 · GO.
-const BOOT_WAIT: float = 3.0
-const COUNTDOWN_WAIT: float = 5.0
-## Comfortably past `CharacterBase.DOWNED_MAX_TIME` (2.0) and comfortably short of the
-## countdown that would end the round out from under the measurement
-## (`CAN_OUT_LIMIT_BASE`, 5.0). 3.0 s is 1.5x the ceiling it is proving does not fire.
-const STRAND_HOLD: float = 3.0
-## Just past the same ceiling, for the cases that are proving it DOES fire.
-const CEILING_HOLD: float = 2.4
-## Where a stranded lata is put: outside `CAN_HOME_RADIUS` (0.9) and well inside the
-## confinement square (`CONFINEMENT_RADIUS`, 5.0), so nothing clamps it mid-test.
-const OUT_X: float = 2.6
-## Frames to let a punted slipper fly and skid before its displacement is read.
-const PUNT_SETTLE_FRAMES: int = 90
+const MAIN_SCENE: PackedScene = preload("res://scenes/main/Main.tscn")
 
-var _fails: int = 0
-var _checks: int = 0
-var _harness: int = 0
+## Every action the bench ever presses.
+const ACTIONS: Array[String] = ["move_left", "move_right", "move_up", "move_down",
+	"sprint", "grab", "lunge", "special_ability"]
+
+## How close two landing points have to be for §2.16 to call the preview honest.
+## The slipper's own contact radius is 0.23 and the lata's window is 0.53, so a
+## preview inside this cannot mislead an aim into missing.
+const AIM_TOLERANCE: float = 0.25
+
+var _main: Node = null
+var _lines: Array[String] = []
+var _failures: Array[String] = []
+var _puppets: Dictionary = {}
+var _done: bool = false
+
+## A unit that presses exactly what it is told and decides nothing.
+##
+## ⚠️ THE PRESSES ARE APPLIED FROM `decide()`, NOT WRITTEN DIRECTLY BY THE BENCH.
+## `CharacterBase._physics_process()` calls `decide()` and then reads the intent
+## dictionary in the same frame, so a bench writing intents from its own
+## `_physics_process` would be racing node order. Going through `decide()` makes the
+## press land on the frame it was asked for, every time.
+class Puppet extends AIController:
+	var press: Dictionary = {}
+
+	func decide(_delta: float) -> void:
+		if character == null or not is_instance_valid(character):
+			return
+		for action in ACTIONS:
+			_press(action, bool(press.get(action, false)))
 
 func _ready() -> void:
-	# Same parenting rule `scuff_probe.gd` and `net_spawn_probe.gd` both document: Main
-	# must be /root/Main, and the probe must not be the current scene or a scene swap
-	# frees it mid-run.
-	var main: Node = (load("res://scenes/main/Main.tscn") as PackedScene).instantiate()
-	main.name = "Main"
-	get_tree().root.add_child.call_deferred(main)
-	await get_tree().process_frame
-	get_tree().current_scene = main
+	GameLaunch.spectator = true
+	_main = MAIN_SCENE.instantiate()
+	add_child(_main)
+	_run.call_deferred()
 
-	await get_tree().create_timer(BOOT_WAIT).timeout
-	_press_ready()
-	await get_tree().create_timer(COUNTDOWN_WAIT).timeout
-	await _run()
-
-	print("\n=== MECH PROBE: %s (%d/%d checks clean, %d harness) ===" % [
-		"ALL CHECKS PASSED" if _fails == 0 else "%d FAILURES" % _fails,
-		_checks - _fails, _checks, _harness])
-	get_tree().quit(1 if _fails > 0 else 0)
-
-## `main.gd` reads the ready press in `_unhandled_input`, so it has to arrive as a real
-## input event rather than as an `Input.action_press()` — that sets the action's state
-## without ever producing an event for the tree to route.
-func _press_ready() -> void:
-	var event := InputEventAction.new()
-	event.action = &"ready_up"
-	event.pressed = true
-	Input.parse_input_event(event)
-
-func _run() -> void:
-	if not RoundManager.round_active:
-		_harness_note("the round never started — nothing below is testable")
-		return
-
-	var lata: CharacterBase = null
-	var tsinelas: CharacterBase = null
-	for node in get_tree().root.find_children("*", "CharacterBase", true, false):
-		var ch := node as CharacterBase
-		if ch == null or ch.is_person:
-			continue
-		if ch.is_can and lata == null:
-			lata = ch
-		elif not ch.is_can and tsinelas == null:
-			tsinelas = ch
-	if lata == null:
-		_harness_note("no lata in the match")
-		return
-	var taya: CharacterBase = null
-	var attacker: CharacterBase = null
-	for node in get_tree().root.find_children("*", "CharacterBase", true, false):
-		var ch := node as CharacterBase
-		if ch == null or not ch.is_person:
-			continue
-		if ch.team == lata.team:
-			taya = ch
-		else:
-			attacker = ch
-	for node in get_tree().root.find_children("*", "CharacterBase", true, false):
-		var ch := node as CharacterBase
-		if ch != null and ch.ai_controller != null:
-			ch.ai_controller.set_enabled(false)
-
-	print("\n=== MECHANICS ACCEPTANCE (§1.9 · §1.11 · §1.14 · §1.4) ===")
-	print("lata=%s  taya=%s  attacker=%s  tsinelas=%s" % [
-		lata.name, _name_of(taya), _name_of(attacker), _name_of(tsinelas)])
-
-	await _check_strand(lata)
-	await _check_stands_the_moment_it_is_home(lata)
-	await _check_ceiling_at_home(lata)
-	await _check_person_is_exempt(taya)
-	await _check_reset_channel_cures_a_strand(lata, taya)
-	await _check_no_seal_on_hit(lata, attacker)
-	await _check_punt(tsinelas, attacker)
-	# ⚠️ LAST, AND IT HAS TO BE: it ends the round on purpose, and everything above
-	# is gated on `round_active`.
-	await _check_countdown_wins_the_round(lata)
-
-## §1.9 — the headline. A lata knocked out of its circle must NOT get up on its own,
-## and the ceiling that would otherwise stand it at 2.0 s must not fire.
-func _check_strand(lata: CharacterBase) -> void:
-	if not await _put_down_at(lata, OUT_X):
-		return
-	var stacks_before := RoundManager.can_out_stacks()
-	var clock_running := RoundManager.can_out_left() >= 0.0
-	await get_tree().create_timer(STRAND_HOLD).timeout
-	_assert(lata.state == CharacterBase.State.DOWNED,
-		"§1.9 STRAND: lata held down %.1fs off its circle (ceiling is %.1fs) — state=%s" % [
-			STRAND_HOLD, CharacterBase.DOWNED_MAX_TIME, _state_name(lata.state)])
-	_assert(not lata.can_self_right(),
-		"§1.9 STRAND: can_self_right() refuses off the circle")
-	_assert(clock_running,
-		"§1.12 CLOCK: the out-of-circle countdown was running (%.2fs left of %.2f)" % [
-			RoundManager.can_out_left(), RoundManager.can_out_limit()])
-	_assert(RoundManager.can_out_stacks() == stacks_before,
-		"§1.13 no recovery was banked while the lata stayed out")
-
-## The refusal is retried every frame rather than latched — put the same still-DOWNED
-## lata back on its mark and it stands up on its own within a frame or two, with no
-## fresh input and no channel.
-func _check_stands_the_moment_it_is_home(lata: CharacterBase) -> void:
-	if lata.state != CharacterBase.State.DOWNED:
-		_harness_note("lata was not still down entering the home-again check")
-		return
-	lata.global_position = Vector3(0.0, lata.global_position.y, 0.0)
-	lata.velocity = Vector3.ZERO
-	for _i in 6:
-		await get_tree().physics_frame
-	_assert(lata.state == CharacterBase.State.NORMAL,
-		"§1.9 RETRY: a still-DOWNED lata stands up within 6 frames of arriving home")
-
-## §1.11 — the ceiling itself, unchanged, for a lata standing where it belongs.
-func _check_ceiling_at_home(lata: CharacterBase) -> void:
-	if not await _put_down_at(lata, 0.0):
-		return
-	await get_tree().create_timer(CEILING_HOLD).timeout
-	_assert(lata.state == CharacterBase.State.NORMAL,
-		"§1.11 CEILING: a lata ON its circle still gets up by %.1fs" % CharacterBase.DOWNED_MAX_TIME)
-
-## §1.11's other half, and the one §1.9 could most easily have broken: the 2.0 s wall is
-## what stops a Person being left on the floor, and a Person has no circle to be off.
-func _check_person_is_exempt(taya: CharacterBase) -> void:
-	if taya == null:
-		_harness_note("no taya to test the Person exemption on")
-		return
-	taya.global_position = Vector3(OUT_X, taya.global_position.y, OUT_X)
-	taya.velocity = Vector3.ZERO
-	await get_tree().physics_frame
-	taya.go_downed()
-	await get_tree().create_timer(CEILING_HOLD).timeout
-	_assert(taya.state == CharacterBase.State.NORMAL,
-		"§1.11 PERSON: a Person downed far off the circle still gets up by %.1fs" % [
-			CharacterBase.DOWNED_MAX_TIME])
-
-## §1.14 — the defence's answer. This is also the regression test for the ORDER inside
-## `carriable.gd::_rpc_apply_reset`: with the stand-up called before the carry-home, §1.9
-## refuses it and the channel silently does nothing at all.
-func _check_reset_channel_cures_a_strand(lata: CharacterBase, taya: CharacterBase) -> void:
-	if taya == null:
-		_harness_note("no taya to run the reset channel")
-		return
-	if not await _put_down_at(lata, OUT_X):
-		return
-	await get_tree().create_timer(STRAND_HOLD).timeout
-	if lata.state != CharacterBase.State.DOWNED:
-		_harness_note("lata recovered before the channel could be tested")
-		return
-	var limit_before := RoundManager.can_out_limit()
-	var carriable := lata.get_node_or_null("Carriable") as Carriable
-	if carriable == null:
-		_harness_note("lata has no Carriable")
-		return
-	carriable.host_reset_upright(taya)
-	for _i in 8:
-		await get_tree().physics_frame
-	_assert(lata.state == CharacterBase.State.NORMAL,
-		"§1.14 CHANNEL: a completed channel stands a STRANDED lata up")
-	_assert(lata.is_home(),
-		"§1.14 CHANNEL: and puts it back on the mark (%.2fm from centre)" % [
-			Vector2(lata.global_position.x, lata.global_position.z).length()])
-	# The stack is banked by RoundManager's own edge, one _process tick later.
-	await get_tree().create_timer(0.2).timeout
-	_assert(is_equal_approx(limit_before - RoundManager.can_out_limit(),
-			RoundManagerScript.CAN_OUT_RECOVERY_STEP),
-		"§1.13 STACK: the save shortened the next countdown by %.2fs (%.2f -> %.2f)" % [
-			RoundManagerScript.CAN_OUT_RECOVERY_STEP, limit_before, RoundManager.can_out_limit()])
-
-## THE REGRESSION §1.9 NEARLY INTRODUCED. `hitbox.gd` used to seal any lata that was
-## DOWNED past its self-right window, and a sealed lata ends the round. While the lata
-## always stood up at 2.0 s that window was 0.75 s wide; stranded, it never closes — so
-## an attacker could walk over, press bump and win. The branch is deleted; this proves a
-## landed hit on a stranded lata SHOVES it and does not end anything.
-func _check_no_seal_on_hit(lata: CharacterBase, attacker: CharacterBase) -> void:
-	if attacker == null:
-		_harness_note("no attacking Person to test the deleted seal with")
-		return
-	if not await _put_down_at(lata, OUT_X):
-		return
-	# Past the self-right window, which is the state the old branch keyed on.
-	await get_tree().create_timer(CharacterBase.DOWNED_SELF_RIGHT_WINDOW + 0.3).timeout
-	if lata.is_self_rightable():
-		_harness_note("lata was still inside its self-right window; the old branch needs it past")
-		return
-	# ⚠️ THE ATTACKER KEEPS ITS OWN Y AND IS TURNED TO FACE THE CAN. The melee sphere
-	# hangs at `hit_off` (0, -0.05, -0.55) with r 0.72 — i.e. FORWARD of the body, in the
-	# body's own frame — so an offset along world X with the attacker still facing
-	# wherever it spawned puts the box nowhere near the lata, and lifting the attacker to
-	# the lata's own y raises the box clear over it. Both were true on the first run and
-	# the check passed on a hit that never landed.
-	attacker.global_position = Vector3(lata.global_position.x,
-		attacker.global_position.y, lata.global_position.z + 0.7)
-	attacker.velocity = Vector3.ZERO
-	attacker.look_at(Vector3(lata.global_position.x, attacker.global_position.y,
-		lata.global_position.z), Vector3.UP)
-	for _i in 4:
-		await get_tree().physics_frame
-	var where_before := lata.global_position
-	attacker._open_bump_window()
-	for _i in 20:
-		await get_tree().physics_frame
-	var moved := where_before.distance_to(lata.global_position)
-	_assert(lata.state != CharacterBase.State.SEALED,
-		"§7 NO SEAL: a bump on a stranded lata does not seal it (state=%s)" % _state_name(lata.state))
-	_assert(RoundManager.round_active,
-		"§7 NO SEAL: and the round is still live afterwards")
-	if moved < 0.02:
-		_harness_note("the bump did not connect (%.3fm of shove) — the no-seal result is weak" % moved)
-	else:
-		print("      (the hit landed: %.3fm of extra displacement, which is the reward now)" % moved)
-
-## §1.4 — "drops the attacker's tsinelas FAR AWAY". Measured as displacement of the
-## slipper from the hand it left, because that is exactly what the item asks for and
-## what the old code (drop at the carrier's feet) did not do.
-func _check_punt(tsinelas: CharacterBase, attacker: CharacterBase) -> void:
-	if tsinelas == null or attacker == null:
-		_harness_note("no tsinelas/attacker pair to punt")
-		return
-	var carriable := tsinelas.get_node_or_null("Carriable") as Carriable
-	if carriable == null:
-		_harness_note("tsinelas has no Carriable")
-		return
-	# ⚠️⚠️ THE ORIGIN IS PINNED, AND THE FIRST VERSION OF THIS CHECK WAS NOT — WHICH IS
-	# WHY IT PRODUCED AN IMPOSSIBLE NUMBER. It punted from wherever the attacker happened
-	# to be standing after `_check_no_seal_on_hit` had already moved it, so the slipper
-	# started from a different spot, at a different height, over different geometry on
-	# every run. Raising the impulse from 9.0/3.5 to 10.5/3.8 then measured 3.30 m -> 2.69
-	# m: a bigger shove travelling less far. Two numbers that cannot both be right, so the
-	# metric was the bug, exactly as this project's standing rule says.
-	#
-	# Pinned to open floor inside the arena, well clear of the lata on its circle and of
-	# any wall the flight could end against, and punted along +X from there.
-	attacker.global_position = Vector3(-4.0, attacker.global_position.y, 3.5)
-	attacker.velocity = Vector3.ZERO
-	tsinelas.global_position = attacker.global_position
-	await get_tree().physics_frame
-	carriable.host_grab(attacker)
-	for _i in 4:
-		await get_tree().physics_frame
-	if carriable.state != Carriable.CarryState.CARRIED:
-		_harness_note("could not get the tsinelas into the attacker's hands")
-		return
-	var from := attacker.global_position
-	# Full charge, straight along +X. This is what `hitbox.gd` hands it on a landed
-	# power bump; the drop itself is what `_on_carrier_state_changed` would trigger.
-	carriable.host_note_punt(Vector3.RIGHT, 1.0)
-	carriable.host_drop()
-	# ⚠️ WAIT FOR REST, DO NOT COUNT FRAMES. A fixed frame budget measures wherever the
-	# slipper happened to be at frame N, which is a different quantity from where it came
-	# to a stop and is the other half of what made the first reading unreproducible.
-	var frames := 0
-	while frames < PUNT_SETTLE_FRAMES:
-		await get_tree().physics_frame
-		frames += 1
-		if Vector2(tsinelas.velocity.x, tsinelas.velocity.z).length() < 0.05 \
-				and tsinelas.is_on_floor():
-			break
-	var flew := Vector3(tsinelas.global_position.x - from.x, 0.0,
-		tsinelas.global_position.z - from.z).length()
-	_assert(flew >= 2.5,
-		"§1.4 PUNT: a full-charge bump throws the tsinelas %.2fm clear of the hand it left" % flew)
-	print("      (%.1f flat + %.1f lift; came to rest after %d physics frames)" % [
-		Carriable.PUNT_SPEED, Carriable.PUNT_LIFT, frames])
-
-## §1.12 — THE PRIMARY WIN CONDITION, ACTUALLY RUN TO ZERO. Every check above proves the
-## clock ticks; this is the only one that proves what happens when it stops, which is the
-## whole reason the clock exists. Ends the round, so it runs last.
+## ⚠️⚠️ THE BENCH OUTLASTS A ROUND, AND THE FIRST TWO RUNS DID NOT KNOW IT.
+## The tag scan alone is 38 trials, each costing a 0.5 s charge, a dash, and up to
+## `TAG_STUN_TIME` waiting for the victim to recover — well over **200 s of game
+## time against a 90 s round**. So the round quietly ended partway through, and
+## every rule downstream of `can_act()` (which is `round_active and state ==
+## NORMAL`) started refusing: the crossing-target scan reported **0.00 m**, which
+## reads exactly like the tunnelling failure §2.6 was written to look for, and
+## §2.16's grab was refused so the slipper never left the origin.
 ##
-## Deliberately driven by STRANDING the lata rather than by holding it out by hand: that
-## is the real sequence a round dies of, and it exercises §1.9 and §1.12 as one path.
-func _check_countdown_wins_the_round(lata: CharacterBase) -> void:
-	# ⚠️ BOTH FACTS ARE SAMPLED INSIDE THE SIGNAL, NOT AFTER THE WAIT, AND THE FIRST
-	# VERSION OF THIS CHECK GOT IT WRONG IN A WAY WORTH RECORDING. It asserted
-	# `not RoundManager.round_active` once the countdown had elapsed, and read it TRUE
-	# while `round_won` had already fired correctly with the right team — two results that
-	# cannot both describe the same round. They describe two: `main.gd` runs an
-	# intermission and a 3 · 2 · 1 countdown and begins the NEXT round about 3.5 s later,
-	# which is inside this function's own wait. The round-active flag is simply not
-	# samplable from outside the moment it changes.
-	var won_by: Array[int] = []
-	var active_at_win: Array[bool] = []
-	RoundManager.round_won.connect(func(team: int) -> void:
-		won_by.append(team)
-		active_at_win.append(RoundManager.round_active))
-	if not await _put_down_at(lata, OUT_X):
+## **A harness that runs out of clock reports the bug it was hunting.** The clock is
+## held open here rather than the bench being shortened, because shortening it would
+## trade the measurement's resolution for the harness's convenience.
+func _physics_process(_delta: float) -> void:
+	if _done:
 		return
-	var limit := RoundManager.can_out_limit()
-	await get_tree().create_timer(limit + 0.75).timeout
-	_assert(won_by.size() == 1,
-		"§1.12 WIN: the %.2fs countdown reaching zero ended the round (%d win events)" % [
-			limit, won_by.size()])
-	_assert(won_by.size() == 1 and won_by[0] == 1,
-		"§1.12 WIN: and it was awarded to the tsinelas side (round_won=%s)" % str(won_by))
-	_assert(active_at_win.size() == 1 and not active_at_win[0],
-		"§1.12 WIN: and the round was already closed at the instant it fired")
+	_hold_puppets()
+	if RoundManager.round_active and RoundManager.time_left < 30.0:
+		RoundManager.time_left = RoundManagerScript.ROUND_TIME
 
-## Puts the lata at `x` on the X axis and knocks it down there. Returns false and files a
-## HARNESS note if the setup did not take, so a failed setup never reads as a failed rule.
-func _put_down_at(lata: CharacterBase, x: float) -> bool:
-	lata.global_position = Vector3(x, lata.global_position.y, 0.0)
-	lata.velocity = Vector3.ZERO
+func _log(text: String) -> void:
+	_lines.append(text)
+
+## ---------------------------------------------------------------------------
+## PUPPET PLUMBING.
+## ---------------------------------------------------------------------------
+
+## Takes a unit off its own controller and onto the bench's.
+func _puppet(who: CharacterBase) -> Puppet:
+	if _puppets.has(who.player_slot) and is_instance_valid(_puppets[who.player_slot]):
+		var existing: Puppet = _puppets[who.player_slot]
+		who.ai_controller = existing
+		return existing
+	var original := who.ai_controller
+	if original != null:
+		original.set_enabled(false)
+	var brain := Puppet.new()
+	brain.name = "MechProbePuppet"
+	who.add_child(brain)
+	who.ai_controller = brain
+	who.ai_clear_intent()
+	_puppets[who.player_slot] = brain
+	return brain
+
+## ⚠️ RE-ASSERTED EVERY FRAME the bench is running, because
+## `main.gd::_reassert_spectated_bots()` re-enables `character.ai_controller` on a
+## schedule of its own — the same race `fair_probe.gd::_apply_policy()` documents.
+## Here it is harmless (it would re-enable the PUPPET, which is already enabled) but
+## only because the puppet IS `ai_controller`; letting the shipping brain back on
+## would put a decision inside a measurement.
+func _hold_puppets() -> void:
+	for slot in _puppets.keys():
+		var brain = _puppets[slot]
+		if not is_instance_valid(brain):
+			continue
+		var who := RoundManager.player_at(int(slot))
+		if who != null and who.ai_controller != brain:
+			who.ai_controller = brain
+
+## Pins a unit to a neutral roster row so no trait scales the measurement.
+## ATE GIRLIE is 4/3/3 — POWER and GRIT both neutral, which covers every stat any
+## impulse on this bench touches.
+func _neutralise(who: CharacterBase) -> void:
+	who.character_index = CharacterRoster.index_of(&"ate_girlie")
+
+func _place(who: CharacterBase, where: Vector3) -> void:
+	who.global_position = where
+	who.velocity = Vector3.ZERO
+
+## ⚠️⚠️ CLEARS THE BENCH, AND THE FIRST RUN NEEDED ALL THREE HALVES OF IT.
+## Without this the measurements silently measured furniture:
+##   · the sprint test reported **0.99 m of a predicted 6.5** because the sprinter
+##     ran straight into the body the shove test had just left in front of it;
+##   · the shove reported **0.00 m** because a slipper was inside `PICKUP_RADIUS`
+##     and `carrier.gd::_step_grab()` gets FIRST REFUSAL on an E press — the tap was
+##     spent picking something up, which is the contextual-E rule working correctly
+##     and ruining the measurement;
+##   · §2.16 reported the slipper never leaving the origin, because the thrower's
+##     hand was still full from the tag test and `can_be_grabbed_by()` refuses a
+##     carrier who is already holding one.
+## None of the three looked like a harness fault in the output. They looked like
+## broken game numbers, which is exactly how a bench lies.
+func _clear_bench(keep: CharacterBase) -> void:
+	for node in get_tree().get_nodes_in_group("slippers"):
+		var slipper := node as Slipper
+		if slipper == null:
+			continue
+		slipper.host_reset_for_new_round()
+		slipper.global_position = Vector3(-20.0, 0.2, -20.0)
+	for node in RoundManager.players():
+		var who := node as CharacterBase
+		if who == null:
+			continue
+		who.notify_holding(null)
+		if who == keep:
+			continue
+		# Parked in a far corner of the safe zone, well outside anything measured.
+		_place(who, Vector3(-14.0, who.global_position.y, -14.0 + 2.0 * float(who.player_slot)))
+		var brain = _puppets.get(who.player_slot, null)
+		if brain != null and is_instance_valid(brain):
+			_release(brain)
+
+func _release(brain: Puppet) -> void:
+	brain.press.clear()
+
+## Walks a unit toward a point for `frames`, which is also how it is AIMED.
+## ⚠️ §6 trap 13: `look_at()` only runs on a frame the body actually moves, and both
+## the shove and the lunge fire along `-basis.z`. A unit that is placed and then told
+## to act fires at whatever heading it last walked in.
+func _face_by_walking(who: CharacterBase, brain: Puppet, toward: Vector3,
+		frames: int) -> void:
+	for _i in range(frames):
+		_hold_puppets()
+		var delta := toward - who.global_position
+		delta.y = 0.0
+		if delta.length() > 0.001:
+			var flat := delta.normalized()
+			brain.press["move_right"] = flat.x > 0.3827
+			brain.press["move_left"] = flat.x < -0.3827
+			brain.press["move_down"] = flat.z > 0.3827
+			brain.press["move_up"] = flat.z < -0.3827
+		await get_tree().physics_frame
+
+func _tap(brain: Puppet, action: String) -> void:
+	# A real press EDGE: `input_just_pressed` needs a false frame before the true one.
+	brain.press[action] = false
 	await get_tree().physics_frame
-	lata.go_downed()
+	brain.press[action] = true
 	await get_tree().physics_frame
-	if lata.state != CharacterBase.State.DOWNED:
-		_harness_note("lata refused to go down at x=%.2f" % x)
+	brain.press[action] = false
+	await get_tree().physics_frame
+
+func _wait_for_round() -> bool:
+	for _i in range(3000):
+		await get_tree().physics_frame
+		if RoundManager.round_active and RoundManager.lata != null:
+			for _j in range(10):
+				await get_tree().physics_frame
+			return true
+	return false
+
+func _step() -> float:
+	return 1.0 / float(maxi(1, Engine.physics_ticks_per_second))
+
+## ---------------------------------------------------------------------------
+func _run() -> void:
+	if not await _wait_for_round():
+		_failures.append("HARNESS: the match never reached a live round.")
+		_report()
+		return
+	var taya := RoundManager.defender()
+	var attackers: Array[CharacterBase] = []
+	for node in RoundManager.players():
+		var who := node as CharacterBase
+		if who != null and not who.is_defender:
+			attackers.append(who)
+	if taya == null or attackers.size() < 2:
+		_failures.append("HARNESS: need a taya and two attackers.")
+		_report()
+		return
+	for node in RoundManager.players():
+		var who := node as CharacterBase
+		if who != null:
+			_puppet(who)
+			_neutralise(who)
+	await get_tree().physics_frame
+
+	await _measure_shove(attackers[0], attackers[1])
+	await _measure_stamina(attackers[0])
+	await _measure_tag(taya, attackers[0])
+	await _measure_aim(attackers[0])
+	_report()
+
+## ---------------------------------------------------------------------------
+## §2.4 · THE SHOVE. `Design.md` §5.3 predicts 2.50 m by v²/60 and a 1.25 s stun.
+## ---------------------------------------------------------------------------
+func _measure_shove(shover: CharacterBase, victim: CharacterBase) -> void:
+	_log("")
+	_log("--- §2.4  the shove  (Design.md §5.3: 2.50 m, 1.25 s stun, 25 of 50 stamina) ---")
+	var shover_brain: Puppet = _puppets[shover.player_slot]
+	var victim_brain: Puppet = _puppets[victim.player_slot]
+	_release(shover_brain)
+	_release(victim_brain)
+
+	# Out in the safe zone, well clear of the box, the lata and anybody else.
+	_clear_bench(shover)
+	var base := Vector3(0.0, victim.global_position.y, 10.0)
+	_place(shover, base)
+	_place(victim, base + Vector3(0.0, 0.0, -1.0))
+	await get_tree().physics_frame
+	# Walk INTO the victim so the facing is real (§6 trap 13).
+	await _face_by_walking(shover, shover_brain, victim.global_position, 16)
+	_release(shover_brain)
+	await get_tree().physics_frame
+
+	var stamina_before := shover.get_stamina_ratio() * CharacterBase.STAMINA_MAX
+	var from := victim.global_position
+	# ⚠️ THE SETUP IS REPORTED, NOT ASSUMED. A shove that does not fire looks
+	# identical in the output to a shove that fires and does nothing, and this
+	# bench has already been fooled once by that shape (§6 trap 14). Every gate
+	# `host_resolve_shove()` applies is printed, so a 0.00 m result says WHY.
+	var to_them := victim.global_position - shover.global_position
+	to_them.y = 0.0
+	var facing := -shover.global_transform.basis.z
+	facing.y = 0.0
+	var arc := rad_to_deg(facing.normalized().angle_to(to_them.normalized())) \
+		if to_them.length() > 0.01 and facing.length() > 0.01 else 999.0
+	_log("setup: gap %.2f m (range %.2f)  arc %.1f deg (limit %.1f)  stamina %.1f  cd %.2f  victim %s"
+		% [to_them.length(), CharacterBase.SHOVE_RANGE, arc, CharacterBase.SHOVE_ARC_DEG,
+			stamina_before, shover.shove_cooldown_left(),
+			("NORMAL" if victim.state == CharacterBase.State.NORMAL else "STUNNED")])
+	await _tap(shover_brain, "grab")
+
+	var stunned_for := 0.0
+	var settled := 0
+	for _i in range(900):
+		_hold_puppets()
+		await get_tree().physics_frame
+		if victim.state != CharacterBase.State.NORMAL:
+			stunned_for += _step()
+		var speed := Vector2(victim.velocity.x, victim.velocity.z).length()
+		if speed < 0.05:
+			settled += 1
+			if settled > 6:
+				break
+		else:
+			settled = 0
+	var travelled := Vector2(victim.global_position.x - from.x,
+		victim.global_position.z - from.z).length()
+	var spent := stamina_before - shover.get_stamina_ratio() * CharacterBase.STAMINA_MAX
+
+	_log("knockback      %.2f m        (predicted %.2f, from v %.3f by v²/FRICTION_2)"
+		% [travelled, CharacterBase.SHOVE_SPEED * CharacterBase.SHOVE_SPEED / 60.0,
+			CharacterBase.SHOVE_SPEED])
+	_log("stun           %.2f s        (const %.2f)" % [stunned_for, CharacterBase.SHOVE_STUN])
+	_log("stamina spent  %.1f of %.1f   (const %.1f) -> %d shoves per full bar"
+		% [spent, CharacterBase.STAMINA_MAX, CharacterBase.SHOVE_STAMINA_COST,
+			int(CharacterBase.STAMINA_MAX / maxf(CharacterBase.SHOVE_STAMINA_COST, 0.01))])
+	_log("cooldown       %.2f s        -> at most %.1f shoves in a 90 s round"
+		% [CharacterBase.SHOVE_COOLDOWN, 90.0 / CharacterBase.SHOVE_COOLDOWN])
+	# ⚠️ THE NUMBER THAT ACTUALLY DECIDES WHETHER THE SHOVE IS WORTH PRESSING. It
+	# costs half the stamina bar, and that bar is also the sprint that gets you out
+	# of the box — so the real price is not 25 points, it is the escape.
+	_log("⚠️ the real price is the SPRINT: %.1f of the bar is %.2f s of sprint (%.2f m)"
+		% [CharacterBase.SHOVE_STAMINA_COST,
+			CharacterBase.SHOVE_STAMINA_COST / CharacterBase.STAMINA_DRAIN_RATE,
+			CharacterBase.SHOVE_STAMINA_COST / CharacterBase.STAMINA_DRAIN_RATE
+				* CharacterBase.SPEED * CharacterBase.ATTACKER_SPEED_SCALE
+				* CharacterBase.SPRINT_SCALE])
+
+## ---------------------------------------------------------------------------
+## §2.5 · STAMINA. `Design.md` §3 predicts 1.25 s of sprint and a 2.0 s fatigue.
+## ---------------------------------------------------------------------------
+func _measure_stamina(who: CharacterBase) -> void:
+	_log("")
+	_log("--- §2.5  stamina  (Design.md §3: 50 pts, 40/s drain, 1.25 s sprint, 2.0 s fatigue) ---")
+	var brain: Puppet = _puppets[who.player_slot]
+	_release(brain)
+	# ⚠️ EVERY OTHER BODY OUT OF THE LANE FIRST. `move_and_slide()` writes the
+	# resolved velocity back, so a sprint into somebody's chest measures as a slow
+	# walk and nothing in the output says why (§6 trap 14).
+	_clear_bench(who)
+	_place(who, Vector3(0.0, who.global_position.y, 12.0))
+	who.reset_for_new_round()
+	await get_tree().physics_frame
+
+	# ⚠️ ALONG +X, NOT FURTHER OUT IN Z. `COURT_Z` is 13.0 on both maps and the
+	# sprinter starts at z 12, so a 6.5 m run in Z would leave the paving and meet
+	# `kill_plane.gd` — measuring the map edge instead of the stamina bar.
+	brain.press["move_right"] = true
+	brain.press["sprint"] = true
+	var sprint_time := 0.0
+	var from := who.global_position
+	for _i in range(1800):
+		_hold_puppets()
+		await get_tree().physics_frame
+		if who.is_fatigued():
+			break
+		sprint_time += _step()
+	var sprint_distance := Vector2(who.global_position.x - from.x,
+		who.global_position.z - from.z).length()
+	_release(brain)
+
+	var fatigue_time := 0.0
+	for _i in range(1800):
+		_hold_puppets()
+		await get_tree().physics_frame
+		if not who.is_fatigued():
+			break
+		fatigue_time += _step()
+
+	var refill := 0.0
+	for _i in range(3600):
+		_hold_puppets()
+		await get_tree().physics_frame
+		if who.get_stamina_ratio() >= 0.995:
+			break
+		refill += _step()
+
+	_log("sprint to empty     %.2f s   (%.2f m covered)" % [sprint_time, sprint_distance])
+	_log("fatigue lockout     %.2f s   (const %.2f, regen locked throughout)"
+		% [fatigue_time, CharacterBase.FATIGUE_TIME])
+	_log("empty -> full again %.2f s   (%.1f s delay + %.1f s refill)"
+		% [refill, CharacterBase.STAMINA_REGEN_DELAY,
+			CharacterBase.STAMINA_MAX / CharacterBase.STAMINA_REGEN_RATE])
+	# ⚠️⚠️ THE FINDING. One sprint against the box half-width is the retrieval run
+	# the whole game is about (`Design.md` §0).
+	_log("⚠️ one full sprint covers %.2f m against a box half-width of %.2f m (%.0f%%)"
+		% [sprint_distance, CharacterBase.confinement_radius,
+			100.0 * sprint_distance / maxf(CharacterBase.confinement_radius, 0.01)])
+
+## ---------------------------------------------------------------------------
+## §2.6 / §2.7 · THE TAG, INCLUDING AGAINST A MOVING TARGET.
+##
+## ⚠️ THE MOVING CASE IS THE WHOLE POINT AND IT HAD NEVER BEEN RUN. §2.6:
+## *"`LUNGE_TAG_RADIUS` was never measured against a moving target."* The worry is
+## specific — the dash covers 2.5 m and the sweep is tested once per physics frame,
+## so a body crossing the path can in principle be stepped over between two frames.
+## ---------------------------------------------------------------------------
+func _measure_tag(taya: CharacterBase, victim: CharacterBase) -> void:
+	_log("")
+	_log("--- §2.6  the tag  (LUNGE_TAG_RADIUS %.2f m, swept every frame the dash is live) ---"
+		% CharacterBase.LUNGE_TAG_RADIUS)
+	# Everybody else off the court; `_tag_lands()` re-places the victim itself.
+	_clear_bench(taya)
+	await get_tree().physics_frame
+	var still_reach := await _tag_reach(taya, victim, false)
+	var moving_reach := await _tag_reach(taya, victim, true)
+	_log("furthest start that still tags, target STILL     %.2f m" % still_reach)
+	_log("furthest start that still tags, target CROSSING  %.2f m   (at %.2f m/s)"
+		% [moving_reach, CharacterBase.SPEED * CharacterBase.ATTACKER_SPEED_SCALE])
+	if still_reach > 0.0 and moving_reach > 0.0:
+		_log("⚠️ the sweep loses %.2f m (%.0f%%) against a crossing body — a lead problem, not a tunnel."
+			% [still_reach - moving_reach,
+				100.0 * (still_reach - moving_reach) / maxf(still_reach, 0.01)])
+	elif moving_reach <= 0.0:
+		_log("⚠️⚠️ NO RANGE TAGS A CROSSING TARGET — that is the tunnelling failure §2.6 feared.")
+
+	_log("")
+	_log("--- §2.7  what a tag costs  (TAG_STUN_TIME %.1f s of a %.0f s round) ---"
+		% [RoundManagerScript.TAG_STUN_TIME, RoundManagerScript.ROUND_TIME])
+	_log("stun alone            %.1f s = %.1f%% of a round"
+		% [RoundManagerScript.TAG_STUN_TIME,
+			100.0 * RoundManagerScript.TAG_STUN_TIME / RoundManagerScript.ROUND_TIME])
+	# The slipper comes home with them (`Design.md` §6), so the recovery is the stun
+	# plus one charge — not the whole retrieval trip the old rule cost.
+	var to_throw := RoundManagerScript.TAG_STUN_TIME + Carrier.CHARGE_FULL_TIME
+	_log("stun + a full charge  %.1f s = %.1f%%   (the slipper returns with them, §6)"
+		% [to_throw, 100.0 * to_throw / RoundManagerScript.ROUND_TIME])
+	_log("⚠️ the taya gets +100; the attacker loses ~%.0f%% of one round's throwing."
+		% [100.0 * to_throw / RoundManagerScript.ROUND_TIME])
+
+## Walks the taya in from increasing distance and reports the furthest start that
+## still lands a tag.
+## ⚠️ THE SCAN RUNS TO 4.2 m, WELL PAST `LUNGE_TAG_RADIUS`, AND IT HAS TO. The first
+## run capped at 2.2 and reported exactly 2.2 for the stationary case — a scan that
+## returns its own upper bound has not found an edge, it has run out of room. The
+## reach is the DASH plus the radius, not the radius: 2.5 m of travel against a
+## 1.3 m sweep, so anything under ~3.8 m is inside the envelope in principle.
+func _tag_reach(taya: CharacterBase, victim: CharacterBase, crossing: bool) -> float:
+	var best := 0.0
+	for step_index in range(19):
+		var distance := 0.6 + 0.2 * float(step_index)
+		if await _tag_lands(taya, victim, distance, crossing):
+			best = distance
+	return best
+
+func _tag_lands(taya: CharacterBase, victim: CharacterBase, distance: float,
+		crossing: bool) -> bool:
+	var taya_brain: Puppet = _puppets[taya.player_slot]
+	var victim_brain: Puppet = _puppets[victim.player_slot]
+	_release(taya_brain)
+	_release(victim_brain)
+	var lata := RoundManager.lata
+	if lata == null:
 		return false
-	return true
+	lata.host_reset_for_new_round() # a tag requires the can upright
 
-func _assert(condition: bool, what: String) -> void:
-	_checks += 1
-	if not condition:
-		_fails += 1
-	print("  %s  %s" % ["PASS" if condition else "FAIL", what])
+	# Both inside the box, on the +Z line, so the taya's confinement never bites.
+	var origin := Vector3(0.0, taya.global_position.y, 0.0)
+	_place(taya, origin + Vector3(0.0, 0.0, 2.5))
+	_place(victim, origin + Vector3(0.0, 0.0, 2.5 - distance))
+	# ⚠️ THE VICTIM HAS TO BE TAGGABLE OR NOTHING CAN LAND: `is_taggable()` needs a
+	# slipper in hand and a body inside the box. Handing it one is not a cheat — it
+	# is the only state the rule applies to at all.
+	var slipper := _slipper_for(victim)
+	if slipper != null:
+		slipper.host_reset_for_new_round()
+		slipper.host_assign_owner(victim.player_slot)
+		slipper.global_position = victim.global_position
+		await get_tree().physics_frame
+		slipper.host_grab(victim)
+	await get_tree().physics_frame
+	if not victim.is_taggable():
+		return false
 
-## Something about the setup, not about the rules. Counted separately and never as a
-## failure — the standing lesson from `scuff_probe.gd` is that a probe which cannot
-## distinguish "the mechanic is broken" from "the match did not cooperate" is a probe
-## whose red results nobody can act on.
-func _harness_note(what: String) -> void:
-	_harness += 1
-	print("  HARNESS: %s" % what)
+	var hits := [false]
+	var seen := func(_defender_slot: int, victim_slot: int) -> void:
+		if victim_slot == victim.player_slot:
+			hits[0] = true
+	RoundManager.attacker_tagged.connect(seen)
 
-func _name_of(who: CharacterBase) -> String:
-	return str(who.name) if who != null else "none"
+	# Charge while walking in, so the body is aimed (§6 trap 13), then release.
+	taya_brain.press["lunge"] = true
+	await _face_by_walking(taya, taya_brain, victim.global_position,
+		int(ceil(CharacterBase.LUNGE_CHARGE_TIME / _step())) + 6)
+	if crossing:
+		# Perpendicular to the dash, at the attacker's own walk speed.
+		victim_brain.press["move_right"] = true
+	taya_brain.press["lunge"] = false
+	for _i in range(int(ceil(CharacterBase.LUNGE_ACTIVE_TIME / _step())) + 30):
+		_hold_puppets()
+		await get_tree().physics_frame
+		if bool(hits[0]):
+			break
+	RoundManager.attacker_tagged.disconnect(seen)
+	_release(taya_brain)
+	_release(victim_brain)
+	# Clean state for the next trial: the tag penalty teleported and stunned them.
+	victim.global_position = victim.spawn_position
+	victim.velocity = Vector3.ZERO
+	for _i in range(int(ceil(RoundManagerScript.TAG_STUN_TIME / _step())) + 10):
+		await get_tree().physics_frame
+		if victim.state == CharacterBase.State.NORMAL:
+			break
+	return bool(hits[0])
 
-func _state_name(s: int) -> String:
-	match s:
-		CharacterBase.State.NORMAL: return "NORMAL"
-		CharacterBase.State.STAGGERED: return "STAGGERED"
-		CharacterBase.State.DOWNED: return "DOWNED"
-		CharacterBase.State.SEALED: return "SEALED"
-	return "?"
+func _slipper_for(who: CharacterBase) -> Slipper:
+	for node in get_tree().get_nodes_in_group("slippers"):
+		var slipper := node as Slipper
+		if slipper != null and slipper.owner_slot == who.player_slot:
+			return slipper
+	for node in get_tree().get_nodes_in_group("slippers"):
+		return node as Slipper
+	return null
+
+## ---------------------------------------------------------------------------
+## §2.16 · THE PREVIEW LANDS WHERE THE SLIPPER LANDS.
+##
+## ⚠️⚠️ THIS IS THE ONE GATED CHECK, AND IT IS GATED BECAUSE THIS LANE PUT IT AT
+## RISK. §2.8 made `LAUNCH_SPEED` per-skin, and the aim arc and the flight only ever
+## agreed because BOTH come out of `Slipper.launch_velocity_for()` (`Design.md` §12).
+## Scaling one and not the other would have re-opened §2.16 silently — the dotted
+## line would land where a NEUTRAL slipper lands and the real one 5% away, which is
+## precisely the class of bug that shared function exists to make impossible.
+##
+## Every slipper skin is tested, because the per-skin scale is exactly what could
+## break it.
+## ---------------------------------------------------------------------------
+func _measure_aim(who: CharacterBase) -> void:
+	_log("")
+	_log("--- §2.16  the dotted arc vs the flight  (tolerance %.2f m) ---" % AIM_TOLERANCE)
+	var slipper := _slipper_for(who)
+	if slipper == null:
+		_failures.append("HARNESS: no slipper to aim with.")
+		return
+	var brain: Puppet = _puppets[who.player_slot]
+	_release(brain)
+	# Clear the court so no capsule intercepts a test throw, and empty the thrower's
+	# hand so the grab below can actually take — the same two lessons `trait_probe`
+	# learned the hard way.
+	_clear_bench(who)
+	await get_tree().physics_frame
+
+	for index in range(CharacterRoster.SLIPPERS.size()):
+		var entry: Dictionary = CharacterRoster.SLIPPERS[index]
+		# ⚠️⚠️ AIMED 4 m TO THE SIDE OF THE LATA, AND THE RUN THAT AIMED AT IT WAS
+		# MEASURING THE RECOIL. Throwing at the can means the first shot KNOCKS IT
+		# DOWN and bounces off it (`LATA_RECOIL_SCALE`), so the slipper lands
+		# somewhere the preview never claimed — TSINELAS came back 1.43 m out. The
+		# next two shots then flew clean, because a downed can is not tested at all,
+		# and read as OK. **A test whose result depends on the order it ran in.**
+		# §2.16 is about the ARC, so the arc gets an empty patch of road.
+		var lane_x := 4.0
+		var origin := Vector3(lane_x, 1.4, 9.0)
+		var target := Vector3(lane_x, 0.15, 0.0)
+		_place(who, Vector3(lane_x, who.global_position.y, 9.6))
+		slipper.host_reset_for_new_round()
+		slipper.apply_skin(index)
+		slipper.host_assign_owner(who.player_slot)
+		slipper.global_position = origin
+		await get_tree().physics_frame
+		slipper.host_grab(who)
+		await get_tree().physics_frame
+		var velocity := Slipper.launch_velocity_for(origin, target, 1.0, slipper.speed_scale())
+		var predicted := _integrate_like_preview(origin, velocity)
+		slipper.host_throw(who, origin, target, 1.0)
+		for _i in range(1200):
+			await get_tree().physics_frame
+			if not slipper.is_flying():
+				break
+		var observed := slipper.global_position
+		var miss := Vector2(observed.x - predicted.x, observed.z - predicted.z).length()
+		var ok := miss <= AIM_TOLERANCE
+		_log("%-9s speed x%.2f  predicted z %6.2f  observed z %6.2f  miss %.3f m  %s"
+			% [String(entry.get("name", "?")), slipper.speed_scale(),
+				predicted.z, observed.z, miss, "OK" if ok else "FAIL"])
+		if not ok:
+			_failures.append(("§2.16 %s: the preview predicts z %.2f and the slipper lands "
+				+ "z %.2f — %.3f m apart, over the %.2f m tolerance.")
+				% [String(entry.get("name", "?")), predicted.z, observed.z, miss,
+					AIM_TOLERANCE])
+
+## Mirrors `TrajectoryPreview.draw_arc()`'s integration: semi-implicit Euler at the
+## physics step, stopped at the floor.
+##
+## ⚠️ IT IS A MIRROR AND THIS COMMENT SAYS SO. What actually guarantees the two agree
+## is the SHARED INPUT — the arc and the throw both come from
+## `Slipper.launch_velocity_for()`. Walking the same scheme forward here lets a
+## failure be reported as a distance in metres rather than as two unequal vectors,
+## which is the difference between a readable result and a red light.
+func _integrate_like_preview(origin: Vector3, velocity: Vector3) -> Vector3:
+	var step := _step()
+	var position := origin
+	var motion := velocity
+	var floor_y: float = 0.1
+	if RoundManager.lata != null:
+		floor_y = RoundManager.lata.global_position.y
+	for _i in range(int(ceil(TrajectoryPreview.HORIZON / step))):
+		motion.y -= CharacterBase.GRAVITY * step
+		position += motion * step
+		if position.y <= floor_y + Slipper.REST_HEIGHT:
+			break
+	return position
+
+## ---------------------------------------------------------------------------
+func _report() -> void:
+	if _done:
+		return
+	_done = true
+	print("")
+	print("================ MECH PROBE — the numbers nobody had measured ================")
+	for line in _lines:
+		print(line)
+	print("")
+	if _failures.is_empty():
+		print("RESULT: PASS")
+		get_tree().quit(0)
+		return
+	print("RESULT: FAIL — %d check(s)" % _failures.size())
+	for line in _failures:
+		print("  * " + line)
+	get_tree().quit(1)

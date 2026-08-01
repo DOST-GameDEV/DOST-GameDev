@@ -42,6 +42,15 @@ func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	if args.size() > 0:
 		_out = args[0]
+	# ⚠️ SECOND ARGUMENT PICKS THE MAP, and it is additive — omit it and this
+	# behaves exactly as before, photographing whatever `GameLaunch` defaults to.
+	# Added 2026-08-01 because "show me the other map" had no answer: this harness
+	# could only ever photograph one of the two, which is half a floor-plan review.
+	# ⚠️ It sets `GameLaunch.selected_map` BEFORE instancing, because `main.gd`
+	# resolves the scene through `selected_map_scene()` at `_ready()`.
+	if args.size() > 1:
+		GameLaunch.selected_map = StringName(String(args[1]).to_lower())
+	print("[court] map=%s" % GameLaunch.selected_map)
 	add_child(MAIN_SCENE.instantiate())
 	_run.call_deferred()
 
