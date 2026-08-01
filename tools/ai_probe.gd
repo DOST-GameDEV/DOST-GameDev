@@ -76,6 +76,21 @@ const STILL_SPEED: float = 0.35
 ## §6.6 — "51 flights, 0 knockdowns". A match in which nobody knocks the lata
 ## over is not a game, and it is the specific thing that was wrong.
 const GATE_KNOCKDOWNS_PER_MATCH: float = 1.0
+## ⚠️⚠️ A SECOND OFFENCE GATE, BECAUSE THE FIRST ONE PASSED TWO BROKEN BUILDS.
+##
+## 2026-08-01: this probe reported **RESULT: PASS** on a run measuring 7.1% hit rate
+## with DEFENSE at 73.7% of every point (a cascading compile error had killed every
+## script downstream of `trajectory_preview.gd`), and again on a run at 28.6% where
+## every bot went IDLE the moment it threw. Both are the §6.6 signature in all but
+## name, and both cleared `>= 1 knockdown per match` easily — a collapsed offence
+## still lands the occasional lucky shot over four rounds.
+##
+## Knockdowns-per-match measures whether the bots score AT ALL. Hit rate measures
+## whether they are any good, and it is the number that actually moved: 44-50% on a
+## healthy NORMAL build against 7-29% on the two broken ones. 20% sits well under
+## the worst healthy tier (EASY, 10%) — no, it does not: EASY is *meant* to be bad,
+## so this gate is applied at NORMAL and HARD only, where the floor is meaningful.
+const GATE_HIT_RATE_NORMAL: float = 30.0
 ## §6.7 — "P3 = 14.2 m, P4 = 26.0 m over a 90 s round". Ninety seconds of
 ## attacker walk is 310 m of ground available, so 60 is a floor no playing bot
 ## can be under and no frozen bot can reach.
@@ -387,6 +402,14 @@ func _grade() -> void:
 	if per_match < GATE_KNOCKDOWNS_PER_MATCH:
 		failures.append(("OFFENCE: %.2f knockdowns per match against %d throws — "
 			+ "the §6.6 failure, the bots throw and miss.") % [per_match, _throws])
+	# ⚠️ NORMAL AND HARD ONLY. EASY is designed to miss (10% by §6.8's own table),
+	# so a hit-rate floor there would fail a correct build.
+	if _tier_name() != "EASY" and _throws > 0 and hit_rate < GATE_HIT_RATE_NORMAL:
+		failures.append(("OFFENCE: %.1f%% hit rate at tier %s against a floor of "
+			+ "%.0f%% — the bots are throwing and not converting. A healthy NORMAL "
+			+ "build measures 44-50%%; 7%% and 29%% were both real, both broken, and "
+			+ "both PASSED the knockdowns-per-match gate alone.")
+			% [hit_rate, _tier_name(), GATE_HIT_RATE_NORMAL])
 
 	print("")
 	print("--- movement ---")
