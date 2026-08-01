@@ -38,7 +38,15 @@ signal upright_changed(now_upright: bool)
 const INTERACTION_RADIUS: float = 1.6
 ## How long the Defender must hold E in the ring to stand it back up.
 ## `Design.md` §Defender.
-const RESET_CHANNEL_TIME: float = 2.5
+## ⚠️ 1.5 s SINCE 2026-08-01, DOWN FROM 2.5. 🧑: *"Hold E over a fallen Lata for 1.5
+## seconds (reduced from 2.5s) to restore it upright and re-enable tagging."*
+##
+## It moves with the lunge, and the two are one decision. The taya's job got an
+## active verb that costs them a charge and a cooldown; leaving the reset at 2.5 s
+## would have meant a taya who spends the round standing still doing the one thing
+## they cannot be interrupted out of. A shorter channel puts them back on their feet
+## and into lunge range sooner, which is where the round is now decided.
+const RESET_CHANNEL_TIME: float = 1.5
 ## Degrees the visual tips over by when it goes down. Not a ragdoll — a rotation,
 ## which is what the predecessor settled on too after measuring that a simulated
 ## one was unreadable at spectator distance.

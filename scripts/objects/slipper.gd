@@ -92,14 +92,29 @@ func is_loose() -> bool:
 func is_flying() -> bool:
 	return state == CarryState.FLYING
 
-## Any Attacker who is not already holding one may pick up any loose slipper, and
-## picking it up REASSIGNS ownership. Deliberately not "your own slipper only":
-## with three attackers converging on one box, slippers land in a pile, and a rule
-## that makes you hunt for your specific one is a rule that reads as a bug.
+## ⚠️⚠️ REVERSED 2026-08-01: A SLIPPER BELONGS TO ONE ATTACKER AND NOBODY ELSE CAN
+## TOUCH IT. This used to be "any attacker may pick up any loose slipper, and doing
+## so reassigns ownership", on the reasoning that hunting for your specific one
+## *"reads as a bug"*. 🧑 replaced it: *"Personal Ownership: Each slipper is uniquely
+## color-coded and tied strictly to its owner. Opponents cannot pick up or tamper
+## with another player's slipper."*
+##
+## The old rule quietly deleted the three-way rivalry. If any slipper serves any
+## attacker, the nearest one is always the right one and there is nothing to
+## contest — whereas ownership means the pile inside the box is three separate
+## problems, and the shove exists to make somebody else's problem worse. It is also
+## what makes the floor glow and the foot arrow legible: an indicator can only point
+## at YOUR slipper if the word "yours" means something.
+##
+## ⚠️ `owner_slot` IS ASSIGNED AT SPAWN AND NEVER REASSIGNED NOW. `host_grab()` still
+## writes it, harmlessly, to the slot that already owns it — left in place rather
+## than removed so the spawn path and the grab path keep one writer.
 func can_be_grabbed_by(who: CharacterBase) -> bool:
 	if who == null or state != CarryState.LOOSE:
 		return false
 	if who.is_defender or not who.can_act():
+		return false
+	if owner_slot >= 0 and who.player_slot != owner_slot:
 		return false
 	return not who.holding_slipper()
 
@@ -178,6 +193,54 @@ func host_drop() -> void:
 func _rpc_landed(where: Vector3) -> void:
 	_apply_landed(where)
 
+## How fast a blocked slipper leaves the blocker, and how steeply. The speed is a
+## fraction of `LAUNCH_SPEED` rather than a fresh constant so a deflection can never
+## out-travel the throw that produced it.
+const DEFLECT_SPEED_SCALE: float = 0.62
+const DEFLECT_LIFT: float = 5.0
+
+## Bounces a blocked slipper back out into the open. Host-side, like every other
+## state change on this object.
+##
+## ⚠️ THE DIRECTION IS "AWAY FROM THE BLOCKER, OUTWARD FROM THE BOX", NOT A MIRROR
+## REFLECTION. A true reflection off a capsule sends the slipper wherever the
+## incoming angle happens to point, which as often as not is deeper into the box —
+## the exact clustering this change exists to remove. Taking the horizontal vector
+## from the blocker to the slipper and pushing along it guarantees the slipper ends
+## up further from the taya than it started, whatever the throw was doing.
+func _host_deflect_from(blocker: CharacterBase) -> void:
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		return
+	var away := global_position - blocker.global_position
+	away.y = 0.0
+	if away.length() < 0.05:
+		# Dead-centre hit: no usable bearing, so send it back the way it came.
+		away = Vector3(-_velocity.x, 0.0, -_velocity.z)
+	if away.length() < 0.05:
+		away = Vector3.FORWARD
+	away = away.normalized()
+	var speed := LAUNCH_SPEED * DEFLECT_SPEED_SCALE
+	var deflected := Vector3(away.x * speed, DEFLECT_LIFT, away.z * speed)
+	if NetworkManager.is_networked():
+		_rpc_deflected.rpc(global_position, deflected)
+	else:
+		_apply_deflected(global_position, deflected)
+
+@rpc("authority", "call_local", "reliable")
+func _rpc_deflected(from: Vector3, new_velocity: Vector3) -> void:
+	_apply_deflected(from, new_velocity)
+
+## ⚠️ IT STAYS IN `FLYING`, WHICH IS WHAT MAKES THE BOUNCE REAL. The slipper keeps
+## being integrated by `_step_flying()`, so it arcs, falls and lands through the same
+## path a throw does — including the plain-miss landing branch. A deflection that
+## teleported it would have needed its own landing, its own sound and its own
+## ownership handling, all of which already exist here.
+func _apply_deflected(from: Vector3, new_velocity: Vector3) -> void:
+	global_position = from
+	_velocity = new_velocity
+	# The thrower can block their own deflected slipper a moment later otherwise.
+	_flight_time = 0.0
+
 func _apply_landed(where: Vector3) -> void:
 	if carrier != null:
 		carrier.notify_holding(null)
@@ -253,15 +316,21 @@ func _step_flying(delta: float) -> void:
 
 	var blocker := _first_body_hit()
 	if blocker != null:
-		# THE BODY BLOCK. `Design.md` §Defender — a slipper stopped by a body is
-		# the Defender's whole passive verb, so it drops at the point of contact
-		# rather than being absorbed. That is what makes blocking a trade: they
-		# stopped the throw, and now the slipper is deep inside their box.
+		# ⚠️⚠️ THE BODY BLOCK NOW DEFLECTS INSTEAD OF DROPPING DEAD. 🧑 2026-08-01:
+		# *"When a thrown slipper hits the Defender's body-block, it bounces off a
+		# far distance into the open field rather than dropping dead at their feet.
+		# This prevents slipper clustering and gives Attackers room to maneuver for
+		# retrieval."*
+		#
+		# The old comment argued the drop-at-contact WAS the trade — "they stopped
+		# the throw, and now the slipper is deep inside their box". In practice that
+		# compounded with itself: every block left another slipper on the taya's
+		# mark, so a taya who blocked well ended up standing on a heap of them, and
+		# the attackers' only route back was through the one square metre the taya
+		# never leaves. Deflecting keeps the block (the throw is still stopped, the
+		# lata still stands) and removes the clustering.
 		AudioManager.play_at("hit_body", global_position)
-		if NetworkManager.is_networked():
-			_rpc_landed.rpc(_ground_under(global_position))
-		else:
-			_apply_landed(_ground_under(global_position))
+		_host_deflect_from(blocker)
 		return
 
 	# ⚠️ NOT NAMED `lata` — a local of that name SHADOWS the `Lata` class, and every

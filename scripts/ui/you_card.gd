@@ -280,11 +280,10 @@ func _on_reset_channel_changed(progress: float) -> void:
 ## Prop's single Guard/Dash row already uses and needing more of it.
 func _update_row_visibility() -> void:
 	hold_label.visible = _is_attacker_person and not _charging and not _bump_charging
-	# ⚠️ THE CHARGE ROW IS SHARED BY THE THROW AND THE BUMP METER, and that is the same
-	# decision the INPUT makes: one button, and what is in your hands decides which half
-	# of it you get (`CharacterBase._step_bump_meter`). Two separate bars for two
-	# mutually-exclusive readings of one key would be two things to learn, and the card
-	# has no room for a second row anyway.
+	# ⚠️ THE CHARGE ROW IS SHARED BY THE ATTACKER'S THROW AND THE TAYA'S LUNGE, and
+	# sharing is now trivially safe in a way it was not before: the two belong to
+	# DIFFERENT ROLES, so no player can ever be charging both. It used to be shared by
+	# the throw and the shove, which were the same role and genuinely could collide.
 	charge_row.visible = (_is_attacker_person and _charging) or _bump_charging
 	reset_channel_row.visible = _is_defender_person and _channeling
 
@@ -300,30 +299,35 @@ func _update_row_visibility() -> void:
 ## polling the charge pose rather than listening for it.
 var _bump_charging: bool = false
 
-## ⚠️ THIS ROW WAS THE BUMP METER AND IT IS NOW THE SHOVE METER. The bump is deleted
-## (`Design.md` §Removed); the shove is the one charged melee commitment left, it is
-## Attacker-only, and it is bound to `grab` rather than to `special_ability` — so both
-## the source AND the key label changed with it. Still polled rather than signalled,
-## for the reason recorded above: the meter lives on `CharacterBase`, and adding a
-## signal there for one HUD row would put a UI concern in the file whose whole
-## discipline is not knowing what rendering is.
+## ⚠️⚠️ THIS ROW WAS THE BUMP METER, THEN THE SHOVE METER, AND SINCE 2026-08-01 IT IS
+## THE TAYA'S **LUNGE** METER. The chain is worth stating because the row keeps
+## outliving the mechanic it was built for: bump was deleted with the 2v2 pivot; the
+## shove inherited it; and the shove then became a **single tap with no charge at
+## all** (🧑: *"Single tap of E (No charge time)"*), which leaves nothing to draw.
+##
+## The lunge took its place because it is now the only charged commitment in the
+## game — hold right-click, 0.5 s to full power, release to dash and tag — and it
+## belongs to the one role that previously had no meter at all. The taya's card
+## showed a reset channel and nothing else; now the verb that scores their points
+## has a readout, which is the whole of `Design.md` §11's argument applied to a new
+## mechanic.
+##
+## ⚠️ THE ROLE GATE INVERTED WITH IT. This used to bail on `is_defender`; it now bails
+## on everyone EXCEPT the defender. Still polled rather than signalled, for the reason
+## recorded above.
 func _update_bump_meter() -> void:
-	if _character == null or not is_instance_valid(_character) or _character.is_defender:
+	if _character == null or not is_instance_valid(_character) or not _character.is_defender:
 		_bump_charging = false
 		return
-	var ratio := _character.shove_charge_ratio()
+	var ratio: float = _character.observed_lunge_charge()
 	var was := _bump_charging
 	_bump_charging = ratio >= 0.0
 	if _bump_charging:
 		charge_bar.value = ratio * charge_bar.max_value
 		_set_charge_shader_param(ratio)
-		charge_key_label.text = "SHOVE [%s]" % _action_key_label(_character, "grab")
+		charge_key_label.text = "LUNGE [%s]" % _action_key_label(_character, "lunge")
 	elif was:
 		_set_charge_shader_param(0.0)
-		# Handed back to the throw's own label, so an attacker who shoves and then
-		# charges a throw does not keep reading SHOVE over the throw meter.
-		if _is_attacker_person:
-			charge_key_label.text = "[%s]" % _action_key_label(_character, "special_ability")
 	if was != _bump_charging:
 		_update_row_visibility()
 

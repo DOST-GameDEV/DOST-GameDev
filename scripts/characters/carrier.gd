@@ -36,7 +36,17 @@ class_name Carrier
 ## ---------------------------------------------------------------------------
 
 ## Seconds of hold for a full-power throw.
-const CHARGE_FULL_TIME: float = 0.9
+##
+## ⚠️⚠️ 2.5 s SINCE 2026-08-01, UP FROM 0.9. 🧑: *"Charge Time: Takes 2.5 seconds to
+## reach 100% power. Strategic Role: Requires Attackers to commit to standing still
+## or moving slowly while aiming, giving the Defender time to react."*
+##
+## This is a pacing change, not a nerf. At 0.9 s the throw was effectively
+## instantaneous from the taya's point of view — there was nothing to react TO, so
+## the taya's only counterplay was to already be standing in the right place. At 2.5
+## it is a visible commitment, and it is what makes the new lunge worth charging: the
+## taya now has a window in which they can see an attacker winding up and act on it.
+const CHARGE_FULL_TIME: float = 2.5
 ## A tap still throws. `slipper.gd::MIN_POWER_SCALE` is the other half of this.
 const CHARGE_MIN_POWER: float = 0.35
 ## After a pickup, before it may be thrown. Anti-cheese: grab-and-fling at the

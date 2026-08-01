@@ -69,7 +69,7 @@ func update(local_character: CharacterBase) -> void:
 		teammate_arrow.visible = false
 		can_arrow.visible = false
 		return
-	_update_one(teammate_arrow, camera, _find_teammate(local_character))
+	_update_one(teammate_arrow, camera, _find_own_slipper(local_character))
 	# ⚠️ THE LATA IS READ STRAIGHT OFF `RoundManager`, NOT FOUND BY A TREE SCAN. There
 	# is exactly one of it and the manager already holds the reference, so a recursive
 	# `_find_character` walk every frame would be a search for something never lost.
@@ -139,15 +139,34 @@ func _update_one(arrow: Control, camera: Camera3D, target: Node3D) -> void:
 
 ## Same team, not yourself — a team is 1 Person + 1 Prop (never two of the
 ## same kind), so this is unambiguous without checking is_person at all.
-## ⚠️ THERE ARE NO TEAMMATES ANY MORE — it is a four-player free-for-all. The arrow
-## this fed pointed at the one other unit on your side; every other player is now an
-## opponent, and four arrows would be noise rather than information.
+## ⚠️⚠️ THIS ARROW NOW POINTS AT **YOUR OWN SLIPPER**, and that is § CHECKLIST 1.6
+## answered by 🧑's own mechanics revision rather than by this lane guessing.
 ##
-## What survives is the arrow that mattered: the one pointing at the lata, which is
-## the objective for all four of them. Kept as a null-returning stub so `update()`
-## keeps its shape and the UI lane can decide whether a "nearest threat" arrow earns
-## its place.
-func _find_teammate(_local_character: CharacterBase) -> CharacterBase:
+## The history: it pointed at your teammate; the pivot deleted teams and left it a
+## null-returning stub, with 1.6 asking whether a "nearest threat" arrow earned the
+## slot or whether the arrow should be deleted outright. Neither, as it turns out —
+## 🧑 2026-08-01: *"Directional Arrow: A dynamic UI arrow floats around the Attacker's
+## feet pointing directly toward their uncollected slipper."*
+##
+## ⚠️ IT IS ONLY MEANINGFUL BECAUSE SLIPPERS NOW HAVE OWNERS. Under the old
+## any-attacker-may-take-any-slipper rule there was no such thing as "your"
+## slipper, so this arrow could not have existed as specified; `slipper.gd::
+## can_be_grabbed_by()` is what makes it well-defined.
+##
+## Nothing is drawn while you are holding it — an arrow pointing at your own hand is
+## noise, and it is the retrieval this exists to guide.
+func _find_own_slipper(local_character: CharacterBase) -> Node3D:
+	if local_character == null or local_character.is_defender:
+		return null
+	if local_character.holding_slipper():
+		return null
+	for node in get_tree().get_nodes_in_group("slippers"):
+		var slipper := node as Slipper
+		if slipper == null or slipper.owner_slot != local_character.player_slot:
+			continue
+		if slipper.state == Slipper.CarryState.CARRIED:
+			continue
+		return slipper
 	return null
 
 ## Reads RoundManager's own tracked-Can list rather than re-scanning for
