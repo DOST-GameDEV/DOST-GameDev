@@ -19,9 +19,36 @@ class_name MatchResult
 @onready var rematch_button: Button = %RematchButton
 @onready var menu_button: Button = %MenuButton
 
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ REWRITTEN 2026-08-01, ON DIRECT HUMAN INSTRUCTION — EVERY PLAYING PEER
+## VOTES ON A REMATCH NOW, NOT ONLY THE HOST.
+##
+## 🧑: *"in multiplayer only host has rematch and this doesnt disappear... can
+## we make it so that they all can click rematch button (only the humans
+## playing) and if they all check the rematch goes on, also when rematch
+## happens the UI for the scoreboard doesnt dissappear"*, and separately:
+## *"spectator shouldnt see rematch button js scoreboard."*
+##
+## THE "DOESN'T DISAPPEAR" HALF WAS A SEPARATE BUG FROM THE VISIBILITY ONE.
+## The old code hid this screen and unpaused inside `_on_rematch_pressed()`
+## itself — a purely local side effect of a button only the host could ever
+## press, so a CLIENT's copy of this screen never heard about the rematch at
+## all and sat there forever. Hiding now happens in `_on_round_started()`,
+## wired to `MatchManager.round_started` — the SAME signal `main.gd` already
+## uses to drive every peer's round reset, host and client alike, for a
+## rematch exactly as for an ordinary mid-match round transition.
+##
+## peer_id -> true. Broadcast the same way `match_setup.gd`'s own lobby ready
+## gate is (`_rpc_set_ready`) — every peer holds an identical copy via
+## `any_peer` + `call_local`, no host relay needed to keep them in step.
+## ---------------------------------------------------------------------------
+var _rematch_votes: Dictionary = {}
+
 func _ready() -> void:
 	visible = false
 	MatchManager.match_won.connect(_on_match_won)
+	MatchManager.round_started.connect(_on_round_started)
+	NetworkManager.player_disconnected.connect(_on_peer_disconnected)
 	rematch_button.pressed.connect(_on_rematch_pressed)
 	menu_button.pressed.connect(_on_menu_pressed)
 	_style_buttons()
@@ -92,17 +119,19 @@ func _on_match_won(winning_team: int) -> void:
 	# mouse and neither button below could be clicked — you needed the mouse to
 	# reach the button that frees the mouse. Released here, re-captured on Rematch.
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	# Only the host (or non-networked local play) can actually start a
-	# rematch — MatchManager.begin_next_round() is host-gated, so a client
-	# pressing this would be a silent no-op. Hide it there instead.
-	rematch_button.visible = not NetworkManager.is_networked() or NetworkManager.is_host()
+	# Fresh ballot for this result screen. Every PLAYING peer gets a vote now —
+	# a spectator watches and does not hold the vote up, same rule the lobby's
+	# own ready gate follows for who counts.
+	_rematch_votes.clear()
+	rematch_button.visible = not GameLaunch.spectator
+	_refresh_rematch_button()
 	# R-29 — REMATCH TAKES THE FOCUS, so the fastest path off this screen is back into the
 	# game rather than out of it. Enter/Space now does the thing almost everybody wants;
 	# Esc still exits (see `_unhandled_input`), so the way out is unchanged.
 	#
-	# ⚠️ FALLS BACK TO MENU WHEN REMATCH IS HIDDEN. On a client the line above hides it —
-	# `begin_next_round()` is host-gated — and `grab_focus()` on a hidden Control does
-	# nothing, which would leave the screen with NO focus and keyboard navigation dead.
+	# ⚠️ FALLS BACK TO MENU WHEN REMATCH IS HIDDEN. Only a SPECTATOR hides it now
+	# (the line above) — `grab_focus()` on a hidden Control does nothing, which
+	# would leave the screen with NO focus and keyboard navigation dead.
 	if rematch_button.visible:
 		rematch_button.grab_focus()
 	else:
@@ -178,13 +207,91 @@ func _render_standings(winning_slot: int) -> void:
 		(row.get_node("Name") as Label).text = display
 		(row.get_node("Points") as Label).text = "%d PTS" % [points]
 
-## Resets in place — no scene reload — so a networked rematch doesn't tear
-## down the connection or any spawned character. main.gd::_on_match_round_started
-## (fired by the begin_next_round() below) repositions everyone via
-## _reset_world(), same as any other round start.
+## A vote, not an instant trigger, when networked — see this file's own header
+## for why. Solo/local play has nobody else to wait for, so it still goes
+## straight through.
 func _on_rematch_pressed() -> void:
 	AudioManager.play("ui_click") # 4.1
-	visible = false
+	if not NetworkManager.is_networked():
+		_begin_rematch_now()
+		return
+	var my_id := multiplayer.get_unique_id()
+	if bool(_rematch_votes.get(my_id, false)):
+		return # already voted — button is disabled below, but guard anyway
+	_rpc_vote_rematch.rpc(my_id)
+
+## Any peer -> everyone: I want a rematch. `call_local` so the sender's own
+## button reflects the vote on the same frame rather than after a round trip
+## — the same shape as `match_setup.gd`'s `_rpc_set_ready`.
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_vote_rematch(peer_id: int) -> void:
+	_rematch_votes[peer_id] = true
+	_refresh_rematch_button()
+	if NetworkManager.is_host():
+		_check_rematch_ready()
+
+## A peer that leaves mid-vote must not be waited on forever — otherwise three
+## players who all pressed REMATCH sit on this screen because the fourth,
+## disconnected, seat can never tick.
+func _on_peer_disconnected(peer_id: int) -> void:
+	if not visible or not _rematch_votes.has(peer_id):
+		return
+	_rematch_votes.erase(peer_id)
+	_refresh_rematch_button()
+	if NetworkManager.is_host():
+		_check_rematch_ready()
+
+## The peers a rematch actually waits on: connected AND playing. A spectator
+## does not hold up the vote — the same rule `match_setup.gd`'s own ready gate
+## already applies to who counts toward starting.
+func _voting_peer_ids() -> Array:
+	var ids: Array = []
+	for id in NetworkManager.connected_peer_ids:
+		if not NetworkManager.is_spectator(id):
+			ids.append(id)
+	return ids
+
+func _check_rematch_ready() -> void:
+	var required := _voting_peer_ids()
+	if required.is_empty():
+		return
+	for id in required:
+		if not bool(_rematch_votes.get(id, false)):
+			return
+	_begin_rematch_now()
+
+## "REMATCH", then "REMATCH (2/3)" as votes come in, then a disabled
+## "WAITING… (2/3)" for whoever already voted — so three players who pressed
+## it are not left guessing whether the fourth even saw the screen.
+func _refresh_rematch_button() -> void:
+	if not rematch_button.visible:
+		return
+	if not NetworkManager.is_networked():
+		rematch_button.text = "REMATCH"
+		rematch_button.disabled = false
+		return
+	var required := _voting_peer_ids()
+	var voted := 0
+	for id in required:
+		if bool(_rematch_votes.get(id, false)):
+			voted += 1
+	var my_id := multiplayer.get_unique_id()
+	if bool(_rematch_votes.get(my_id, false)):
+		rematch_button.text = "WAITING…  (%d/%d)" % [voted, required.size()]
+		rematch_button.disabled = true
+	else:
+		rematch_button.text = "REMATCH  (%d/%d)" % [voted, required.size()] if voted > 0 else "REMATCH"
+		rematch_button.disabled = false
+
+## Resets in place — no scene reload — so a networked rematch doesn't tear
+## down the connection or any spawned character. Only the HOST (or solo)
+## actually touches match state; `MatchManager.reset()`/`RoundManager.reset()`
+## have no networking awareness of their own, so a client calling them would
+## zero its own scores and round number a beat before the host's real values
+## arrive — `begin_next_round()`'s own broadcast (`_sync_round_started`)
+## already corrects every peer, host included, which is what `_on_round_started`
+## below actually reacts to.
+func _begin_rematch_now() -> void:
 	# Q-4: must clear before begin_next_round() — a paused tree would freeze
 	# the very round it's about to start.
 	get_tree().paused = false
@@ -192,9 +299,22 @@ func _on_rematch_pressed() -> void:
 	# _ready() put it. Without this a rematch runs with a visible OS cursor and
 	# no mouse-look, since camera_rig.gd only aims while the mouse is captured.
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		return
 	MatchManager.reset()
 	RoundManager.reset()
 	MatchManager.begin_next_round()
+
+## The actual "hide and go" — driven by `MatchManager.round_started`, which
+## reaches every peer identically (host and client alike) whether the round
+## beginning is an ordinary mid-match rotation or the first round of a
+## rematch. This is what used to live inline in `_on_rematch_pressed()`,
+## which only the clicking peer's own screen ever ran — see this file's own
+## header for why that was "the UI doesn't disappear."
+func _on_round_started(_round_number: int, _defender_slot: int) -> void:
+	if not visible:
+		return
+	visible = false
 
 func _on_menu_pressed() -> void:
 	AudioManager.play("ui_back") # 4.1
