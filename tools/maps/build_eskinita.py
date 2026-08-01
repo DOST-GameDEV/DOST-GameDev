@@ -1010,25 +1010,63 @@ for n, zz in enumerate(SAMPAY_Z):
 # "its position against the wall line is the whole point of it") and its Z is not.
 # A shop can be anywhere along the street it faces.
 #
-# So the offsets are Z-only and generous, because the free axis can afford to be.
+# So the offsets are Z-only, and BOUNDED, which is the half that was got wrong the
+# first time.
+#
+# ⚠️⚠️ THE LADDER'S REACH IS PART OF THE KEEP-AWAY AND MUST BE ADDED TO IT.
+# The first attempt put the stores at |z| 12 with a ±6.0 ladder. The west one
+# walked to **z 9.0** — 2 m past a 7.0 box — and the render showed a fresh pale
+# slab at the court's north-west corner. 🧑, circling it in the picture that was
+# supposed to show the fix: "in the pic u sent me the block is STILL THERE".
+#
+# So the guarantee has to be nominal MINUS the ladder's longest step, not the
+# nominal alone. |z| 17.0 with a ±3.0 reach is a hard floor of |z| 14.0, which is
+# double the box and 6 m past the throwing line, and it sits the stores with the
+# `wall_corrugated` run at |z| 15.5-16.5 where the alley genuinely turns into
+# street. Asserted below against the PLACED position rather than the nominal.
 _ALLEY_LADDER = [(0.0, 0.0),
-                 (0.0, 1.5), (0.0, -1.5), (0.0, 3.0), (0.0, -3.0),
-                 (0.0, 4.5), (0.0, -4.5), (0.0, 6.0), (0.0, -6.0)]
-_stores_placed = []
-for _sn, (_sx, _sz) in enumerate([(W - 0.85, -12.5), (-(W - 0.85), 12.0)]):
-    _stores_placed.append(_placer.try_place(
-        _put_gen("Kalat"), f"SariSari_{'E' if _sx > 0 else 'W'}",
-        "sari_sari_store", _sx, _sz,
-        front_yaw(_sx, _sz, 0.0, _sz), 1.0, ladder=_ALLEY_LADDER))
-# ⚠️ ASSERTED, NOT REPORTED. `Placer.report()` truncates its skip list to the first
-# four names, which is exactly how the west store went missing without anybody
-# reading it. A landmark this file calls "the narrative centre of this map" should
-# fail the BUILD rather than be counted in a number nobody reads.
-assert all(_stores_placed), (
+                 (0.0, 1.5), (0.0, -1.5), (0.0, 3.0), (0.0, -3.0)]
+_STORE_MIN_ABS_Z = 14.0
+_stores_placed = {}
+_store_z = {}
+
+
+def _put_store():
+    """`_put_gen`, but it remembers where the piece actually LANDED.
+
+    `try_place` walks the ladder internally and returns only True/False, so the
+    nominal z it was asked for is not the z it used. The check below is about the
+    final position, so the final position has to be captured here.
+    """
+    inner = _put_gen("Kalat")
+
+    def go(name, mesh_name, x, z, yaw, scale):
+        _store_z[name] = z
+        inner(name, mesh_name, x, z, yaw, scale)
+    return go
+
+
+for _sn, (_sx, _sz) in enumerate([(W - 0.85, 14.5), (-(W - 0.85), -17.0)]):
+    _sname = f"SariSari_{'E' if _sx > 0 else 'W'}"
+    _stores_placed[_sname] = _placer.try_place(
+        _put_store(), _sname, "sari_sari_store", _sx, _sz,
+        front_yaw(_sx, _sz, 0.0, _sz), 1.0, ladder=_ALLEY_LADDER)
+# ⚠️ ASSERTED, NOT REPORTED, AND ON THE PLACED POSITION. `Placer.report()`
+# truncates its skip list to the first four names, which is exactly how the west
+# store went missing without anybody reading it; and a skip is only half of what
+# can go wrong — a piece that PLACES in the wrong spot reports as a success. Both
+# fail the build now.
+_missing = [n for n, ok in _stores_placed.items() if not ok]
+assert not _missing, (
     "sari-sari store(s) skipped: %s — a landmark was dropped to resolve a graze, "
     "which mapkit.try_place's own docstring calls the worst outcome. Move the "
-    "coordinates rather than accepting the skip."
-    % ", ".join(n for n, ok in zip(("east", "west"), _stores_placed) if not ok))
+    "coordinates rather than accepting the skip." % ", ".join(_missing))
+_too_close = [(n, z) for n, z in _store_z.items() if abs(z) < _STORE_MIN_ABS_Z]
+assert not _too_close, (
+    "sari-sari store(s) inside the court's view: %s — a 2.6 m blank back panel "
+    "within %.1f m of the centre circle is the 'big grey block' report, twice over. "
+    "Move the nominal z or shorten _ALLEY_LADDER."
+    % (", ".join("%s at z=%.1f" % t for t in _too_close), _STORE_MIN_ABS_Z))
 
 
 # --- THE BARANGAY BASKETBALL RING. There is one of these on every street in the
