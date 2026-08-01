@@ -54,19 +54,24 @@ const SCORE_DEFENSE_PER_TICK: int = 10
 ## what the number does rather than approximately what it does.
 const DEFENSE_TICK_INTERVAL: float = 1.0
 
-## How close the Defender has to be to a vulnerable Attacker to tag them. Touch,
-## not reach: the two capsule radii are 0.45 each, so 1.1 is contact plus a small
-## forgiveness band for one frame of network lag. ⚠️ Never measured against a
-## moving target — backlog.
-const TAG_RADIUS: float = 1.1
-## `Design.md`: a tagged Attacker is teleported to the Safe Zone and stunned.
+## ⚠️ `TAG_RADIUS` 1.1 WAS DELETED HERE ON 2026-08-01 BY ⚖️ `build fair`, AND IT
+## HAD DECIDED NOTHING SINCE THE LUNGE LANDED. It was the passive proximity tag's
+## reach; that tag was replaced on 2026-08-01 by `CharacterBase.LUNGE_TAG_RADIUS`
+## (1.3), `_step_tag()` below became an empty hook, and grep showed the const had
+## no reader left in the project — only its own doc comment and the history note
+## further down. It was never in `Design.md`, which is the tell: a shipped number
+## the balance source of truth does not list is a number nobody can reconcile.
+## Left in place it is a trap, because "the tag radius" would resolve to 1.1 here
+## and 1.3 in `character_base.gd` for the next person who greps for it. §2.6 is
+## the live one and it is measured there.
+## `Design.md` §6: a tagged Attacker is teleported to the Safe Zone and stunned.
 const TAG_STUN_TIME: float = 5.0
 ## A shove that leads to a tag within this window pays the shover for the setup.
-## ⚠️ A guess, never measured — backlog.
+## `Design.md` §8. ⚠️ MEASURED 2026-08-01 — see the note on `note_shove()`.
 const SABOTAGE_WINDOW: float = 2.5
 ## After the Lata is stood back up, nobody may throw for this long. Stops the
 ## Defender being re-knocked by a slipper that was already charged and waiting on
-## the last frame of their 2.5 s channel.
+## the last frame of their `Lata.RESET_CHANNEL_TIME` channel.
 const THROW_RESTORE_COOLDOWN: float = 1.25
 
 var time_left: float = ROUND_TIME
@@ -202,13 +207,14 @@ func _sync_lata_event(knocked: bool, by_slot: int) -> void:
 ## resolved contact through `hitbox.gd`'s overlap signals, and the recurring
 ## defect (recorded in that file and in § LOG) was that an overlap fires on
 ## whichever peer owns the body — so a tag could resolve on a client, or on
-## nobody. Four players and one 1.1 m radius is sixteen distance checks a frame on
+## nobody. Four players and one tag radius is sixteen distance checks a frame on
 ## the host; that is cheaper than one correct networked overlap and it can only
 ## happen where the score is written.
 ## ⚠️⚠️ THE PASSIVE PROXIMITY TAG WAS DELETED 2026-08-01 AND THIS FUNCTION IS NOW A
 ## RECORD OF WHY. It used to run every physics frame and tag any vulnerable attacker
-## within `TAG_RADIUS` of the taya — no input, no animation, no commitment. 100
-## points for standing close enough.
+## within 1.1 m of the taya — no input, no animation, no commitment. 100 points for
+## standing close enough. (That 1.1 lived here as `TAG_RADIUS` until 2026-08-01; it
+## is quoted inline now because the const had no reader left and was deleted.)
 ##
 ## 🧑 replaced it with a charged, aimed lunge on right-click: *"Tag Trigger: Any
 ## vulnerable Attacker caught in the lunge path is instantly tagged."* The tag is now
@@ -309,6 +315,25 @@ func _step_passive_defense(delta: float) -> void:
 ## B-18: this used to set `round_active = false` locally without ever RPCing the
 ## change, so clients kept believing the round was live until the next round's
 ## sync happened to arrive.
+##
+## ⚠️⚠️ §2.18 — `round_ended` IS BROADCAST NOW, AND IT WAS HOST-ONLY UNTIL
+## 2026-08-01. `tools/ui/net_twopeer_probe.tscn` measured it directly: over a full
+## round on two real peers it was **the single line differing between two otherwise
+## byte-identical 33-event streams**. The signal fired on the host and reached
+## nobody else, because the only thing a client ever learned about the round ending
+## was `_sync_state`'s `round_active = false` — an UNRELIABLE packet that carries a
+## bool, not an event.
+##
+## It had zero subscribers in `scripts/` on the day it was found, which is exactly
+## why it needed fixing rather than noting: this is the beat the round-end sting,
+## the VO callout and the HUD's own end-of-round state are all supposed to hang
+## off, and every one of them would have been silently host-only the moment
+## somebody connected one. A signal that is wrong only in multiplayer, and only
+## once somebody uses it, is a bug that gets found during a recording.
+##
+## Reliable and `call_local`, the same shape `_sync_lata_event()` and `_sync_tag()`
+## already use — the host runs its own handler through the RPC rather than emitting
+## separately, so there is one code path and it cannot fire twice.
 func _on_time_up() -> void:
 	if NetworkManager.is_networked() and not NetworkManager.is_host():
 		return
@@ -317,8 +342,18 @@ func _on_time_up() -> void:
 	round_active = false
 	if NetworkManager.is_networked():
 		_sync_state.rpc(time_left, round_active)
-	round_ended.emit(MatchManager.round_number)
+		_sync_round_ended.rpc(MatchManager.round_number)
+	else:
+		round_ended.emit(MatchManager.round_number)
 	MatchManager.report_round_result()
+
+## ⚠️ IT WRITES `round_active` TOO. A client that receives this before the
+## unreliable `_sync_state` that carries the same bool would otherwise emit
+## "the round ended" while still believing it was live.
+@rpc("authority", "call_local", "reliable")
+func _sync_round_ended(which_round: int) -> void:
+	round_active = false
+	round_ended.emit(which_round)
 
 ## B-14: nothing reset this autoload between matches, so a second match resumed
 ## the first one's timer. Counterpart to `MatchManager.reset()`.

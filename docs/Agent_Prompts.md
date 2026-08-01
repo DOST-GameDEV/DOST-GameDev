@@ -355,10 +355,30 @@ what specifically. **Tick only your own section.**
 
 ### ⚖️ `build fair` — every number, and the feedback  ·  items **2.x**
 
-- [ ] 2.1 ⚠️ **Passive defence is very probably broken and is the first thing to
-  measure.** +10/s for 90 s is **900 points** uncontested against **+100** for a
-  knockdown. **Measure a real match before choosing.** ⚠️ Re-measure at the 6.5
-  box, not 5.0 — see 2.21.
+- [x] 2.1 ⚠️⚠️ **SETTLED 2026-08-01: THE ARITHMETIC WAS RIGHT, THE CONCLUSION WAS
+  WRONG, AND THE NUMBER DOES NOT MOVE.** The load-bearing word was *uncontested*,
+  and that is not a state this game has. New `tools/fair_probe.tscn` builds the
+  player the alarm predicts — a taya that guards from the shipping bot's own post
+  and resets the can instantly but **never lunges** — and plays whole matches with
+  it. *Verified: three policies, one complete 4-round match each, attackers at
+  NORMAL, mean physics step 0.0167 s.*
+
+  | taya | can upright | DEFENSE/round | of the 900 | DEFENSE share | TAG |
+  |---|---|---|---|---|---|
+  | `idle` (presses nothing) | **4.7%** | 38 | **4%** | 27.3% | 0 |
+  | `turtle` (guards + resets, never lunges) | 86.2% | 733 | 81% | **47.8%** | 0 |
+  | `bot` (plays) | 86.5% | 743 | 83% | 39.2% | 1700 |
+
+  **A taya who does nothing collects 4% of the 900**, because the can spends 95% of
+  the round lying down. The +10/s is the PRIZE for keeping it up, not income —
+  measured spread 600–900 a round, which is a 33% swing of pure defensive skill.
+  **And playing strictly dominates hiding**: `turtle` and `bot` bank the same
+  passive total (2930 v 2970) because the tag stacks on top of defence rather than
+  competing with it, so refusing to play forfeits 1700 points and gains nothing.
+  Structurally capped too — everyone is taya once, and in the `turtle` run the seat
+  with the HIGHEST passive share (P4, 68.4%) finished **last**. Full record in
+  `Design.md` §8.1. ⚠️ **Still unmeasured: a real human**, but the degenerate
+  strategy the arithmetic predicted is dominated, which is the half that mattered.
 - [ ] 2.2 `CONFINEMENT_RADIUS` has never been tuned for 1-vs-3. ⚠️ A retune needs a
   map rebuild — `tools/maps/floorcheck.py` regexes the `const` out of
   `character_base.gd` and both builders draw the chalk from it.
@@ -367,48 +387,97 @@ what specifically. **Tick only your own section.**
 - [ ] 2.5 Stamina has never been measured in play.
 - [ ] 2.6 `LUNGE_TAG_RADIUS` was never measured against a moving target.
 - [ ] 2.7 `TAG_STUN_TIME` 5.0 s is 5.6% of a round spent doing nothing.
-- [ ] 2.8 **Decide whether lata and tsinelas SKINS carry soft stats, and apply it
-  yourself.** The tables carry `bilis`/`lakas`/`tatag` and nothing reads them.
-  `build model` preserved them untouched. Record the decision in `Design.md` §9
-  either way, **including a decision to leave them cosmetic**.
-- [ ] 2.9 `apply_stagger()` uses `max()`, so a short stun inside a longer one is
-  invisible.
+- [x] 2.8 ⚠️ **DECIDED: YES, ALL THREE TABS CARRY REAL STATS.** On direct human
+  instruction (🧑: *"also make sure the stats actually apply u can also change the
+  stats around for slippers, cans, characters, be creative with it, try to edit
+  their descirptions too to match the stats"*). A prop is not a person, so the
+  meters are re-read per tab — LATA: SPEED ÷ reset channel, POWER × the recoil it
+  puts on a slipper, GRIT ÷ the hit window. TSINELAS: SPEED × launch speed, POWER ×
+  the push a body-block deals the blocker, GRIT ÷ `THROW_LOCK_TIME`. Full table and
+  reasoning in `Design.md` §9; all eight prop taglines rewritten so the sentence and
+  the meters agree, and **two Person rows that were byte-identical** (KUYA BOY =
+  BEBANG, MANG KANOR = ATE GIRLIE) are distinct. *Verified: new
+  `tools/trait_probe.tscn` drives REAL call sites on a live `Main.tscn` — a real
+  `host_throw` (16.045 v 17.766 m/s), a real pickup (`throw_lock_left` 1.33 v 1.08 s),
+  a real body block (4.238 v 5.618 m/s), a real reset channel (1.67 v 1.36 s) and a
+  slipper flown 0.536 m past the can that puts PASIP over and misses DECADES. PASS
+  twice; **RED on the old code** — restoring `slipper.gd`'s `0.30` literal makes both
+  cans answer identically and the probe exits 1.*
+- [x] 2.9 ⚠️ **DECIDED: `max()` STAYS AND THE COST IS ACCEPTED.** It is the entire
+  bound on a stun chain, and in a 1-vs-3 game an additive path lets three attackers
+  hold one taya indefinitely. The specific invisible case (a 1.25 s shove inside the
+  5 s tag) is invisible only in the HUD ROW — the shove still announces itself with
+  knockback, a hit flash and `bump_swing`. The real fix is a status stack that draws
+  two rows for one effect, which is `hud.gd` and therefore 🖥️ `build ui`'s row.
+  Reasoning recorded in `Design.md` §11. ⚠️ **It also decided §2.11's shape**: the
+  body block is knockback rather than a short stagger precisely because `max()`
+  bounds one stun's DURATION without bounding how often the next one starts.
 - [ ] 2.10 **Every probe in `tools/` root is stale** — `mech_probe`, `phys_probe`,
   `round_probe`, `hit_probe`, `abil_probe`, `ai_probe`, `scuff_probe`, `spec_probe`
   all assert deleted mechanics. Rewrite the two or three that earn it.
-- [ ] 2.11 A blocked slipper just stops. Body-blocking is the taya's entire passive
-  verb and has almost no feedback. **Decide with 2.22.**
+- [~] 2.11 ⚠️ **THE BLOCK NOW DOES SOMETHING TO THE BLOCKER.** It produced only a
+  sound at a world position: no flash on the body that made it, no recoil, nothing
+  at all on the blocker's own screen — a verb the player cannot tell they performed.
+  The blocker now takes a **0.35 m push** along the slipper's line (`v = sqrt(0.35 ×
+  60) = 4.583`, derived from `FRICTION` like `SHOVE_SPEED` and `LUNGE_SPEED`), plus
+  a hit flash and, for the blocker only, a camera shake. Scaled by the thrower's
+  tsinelas POWER and divided by the blocker's own person GRIT, so both stat tables
+  are live in one contact. ⚠️ **A push and NOT a stun** — see 2.9. ⚠️ **No hitstop**:
+  `_flash_hit()` writes `Engine.time_scale` globally, which is fine on a 7.5 s shove
+  cooldown and wrong for something that can happen every few frames. *Verified: the
+  push is measured live by `trait_probe` at 4.238 v 5.618 m/s across two slipper
+  skins. **Unverified: what it looks like** — no capture shows the flash or the
+  shake, and that is the half 2.22 also needs.*
 - [ ] 2.12 The lata's topple is 88° over 0.22 s — judge it from spectator range.
 - [ ] 2.13 A thrown slipper has no trail and no impact VFX.
 - [ ] 2.14 The tag's wind-up, animation and contact moment. Decide with 2.6/2.7.
 - [ ] 2.15 Confirm the shove wind-up is visible on a second peer — it is the only
   thing that makes it dodgeable, and therefore 2.4's numbers fair.
 - [ ] 2.16 Verify the trajectory preview still lands where the slipper lands.
-- [ ] 2.17 **A slipper that lands without hitting a body or the lata plays no sound
-  at all.** The asset (`slipper_land`) is registered and has never had a caller on
-  the plain-miss branch of `_step_flying`.
-- [ ] 2.18 **`RoundManager.round_ended` is emitted HOST-ONLY and never reaches a
-  client.** Measured on two peers: the single line differing between two otherwise
-  byte-identical streams. Not live today (zero subscribers), which is exactly why
-  it needs writing down.
+- [~] 2.17 ⚠️ **FIXED — the plain-miss branch has a caller now.** `slipper_land` was
+  registered with its own mix level and had never been played: a throw that hit a
+  body played `hit_body`, one that hit the can played `can_knockdown`, and one that
+  simply missed — **38 of 71 flights in the baseline, by far the most common
+  outcome** — landed in silence. It is a parameter on the landing RPC rather than a
+  line inside `_apply_landed()`, because that function is shared with the round
+  reset, which teleports three slippers home on one frame. *Unverified: by ear. No
+  session has had an audio output device (§4.7), so this is proven as a call site
+  and not as a sound.*
+- [~] 2.18 ⚠️ **FIXED — `round_ended` is broadcast now.** Reliable and `call_local`,
+  the same shape `_sync_lata_event()` and `_sync_tag()` already use, and it writes
+  `round_active` itself so a client cannot emit "the round ended" while still
+  believing it is live. It had zero subscribers, which is exactly why it was worth
+  fixing rather than noting: it is the beat the round-end sting, the VO callout and
+  the HUD's end-of-round state all hang off, and every one of them would have been
+  silently host-only the moment somebody connected one. *Unverified: two real peers.
+  `net_twopeer_probe` is the tool and it was not re-run this session.*
 - [ ] 2.19 ⚠️ **`character_visual.gd` and `main.gd` have NO OWNER in §3**, and have
   now carried live bugs across three sessions. **Give both files an owner.**
 - [ ] 2.21 **`CONFINEMENT_RADIUS` was moved to 6.5 by a map lane and needs your
   measurement.** It also invalidates 2.1's baseline.
-- [ ] 2.22 **A thrown slipper STOPS DEAD on contact and does not read as physics.**
-  🧑: *"the slippers should bounce back a bit when it hits shit"*. Partly addressed
-  — the lata recoil and the body-block deflection both landed — but **neither has
-  been seen in play**; confirm they read as physics rather than as a teleport.
-  ⚠️ Contact must still resolve HOST-SIDE ONLY.
-- [ ] 2.23 **The lata's collision is the MEAN of four cans, not any one of them.**
-  One cylinder (r 0.13) against mesh radii 0.108 / 0.123 / 0.125 / 0.143. Worst
-  case **22 mm** on Pasip. The fix is per-skin collision from `lata.gd::apply_skin()`,
-  where the mesh swap already happens. *(Was numbered 2.19 by its filer, which
-  collided with the ownership item above.)*
+- [~] 2.22 **A thrown slipper STOPS DEAD on contact and does not read as physics.**
+  🧑: *"the slippers should bounce back a bit when it hits shit"*. The lata recoil
+  and the body-block deflection had both landed; this session added the third
+  missing half — **the thing that was hit now reacts too** (2.11) — and made the can's
+  recoil scale with its own POWER stat, so a heavy can throws the tsinelas 14%
+  further than a light one. ⚠️ Contact still resolves HOST-SIDE ONLY, by distance,
+  in all three places. *Unverified, and this is now the ONLY thing left on the item:
+  **none of it has been seen in play**. It needs a capture, not more code.*
+- [x] 2.23 ⚠️ **FIXED — the physical collider follows the mesh.** One cylinder at
+  r 0.13, the mean of four cans, against measured radii **0.1075 / 0.1203 / 0.1250 /
+  0.1400** — wrong for all four, worst on PASIP at **22.5 mm**.
+  `lata.gd::_fit_collision_to_mesh()` measures it off the worn mesh's own AABB, in
+  the same place the topple lift is already re-measured so the two cannot drift, and
+  **also at `_ready()`** — the default mesh is PASIP, so the worst case was precisely
+  the can nobody picked. Safe to write because `Lata.tscn` marks the shape
+  `resource_local_to_scene`. ⚠️ **The SCORING window deliberately does NOT follow the
+  mesh** — see `Design.md` §7.1 for that ruling. *Verified: `lata_floor_probe` PASSes
+  all four skins upright and downed (+0.0000 / +0.0001), and its reported lifts are
+  the per-skin radii the collider now uses.*
 
 **Filed by 🤖 `build ai` 2026-08-01 — §2.1 finally has numbers. Read 2.25 FIRST.**
 
-- [ ] 2.25 ⚠️⚠️ **PASSIVE DEFENCE MEASURED AT LAST, AND THE 900-POINT ALARM IS
+- [x] 2.25 ⚠️⚠️ **PASSIVE DEFENCE MEASURED AT LAST, AND THE 900-POINT ALARM IS
   CONDITIONAL ON THE OFFENCE BEING BROKEN.** §2.1 has been the board's number-one
   suspect on arithmetic alone (+10/s × 90 s = 900 against +100 a knockdown) and
   nobody had ever measured it, because until this session no attacker could score
@@ -432,14 +501,41 @@ what specifically. **Tick only your own section.**
   warns about; and the taya still wins on cumulative score in most runs. Re-measure
   against a human before moving the number, and note that lowering it now would be
   tuning against the AI's competence rather than against the rule.
-- [ ] 2.26 ⚠️ **`RESET_CHANNEL_TIME` disagrees with itself in three places.**
-  `lata.gd` has `const RESET_CHANNEL_TIME: float = 1.5`; `Design.md` §6's table
-  says **1.5 s**; `Design.md` §4's control table and §6's prose both say **hold E
-  for 2.5 s**, and `carrier.gd::_step_reset_channel`'s own doc comment says *"runs
-  the 2.5 s channel"* while calling `Lata.RESET_CHANNEL_TIME`. The CODE is 1.5 and
-  is self-consistent; three pieces of prose describe a different game. Not touched
-  — `Design.md` and the number are both yours.
-- [ ] 2.27 **The AI is now a measuring instrument for anything in your list.**
+
+  ⚠️ **CLOSED 2026-08-01 by ⚖️ `build fair`, and this filing was right about
+  everything except which half was missing.** The half it asked for is now measured
+  — `tools/fair_probe.tscn`, a taya that hides and never lunges — and the answer is
+  that **the hiding taya collects the same passive total as the playing one and
+  forfeits every tag**, so the strategy the arithmetic warned about is dominated
+  rather than dominant. The genuinely new finding is the other end of the scale: a
+  taya who does NOTHING collects **4%** of the 900, not most of it, because the can
+  is only upright 4.7% of the round. See 2.1 for the table.
+- [x] 2.26 ⚠️ **FIXED — and the prose stopped naming a number it does not own.**
+  Five stale sites, not three: `lata.gd` ×2, `round_manager.gd`, `carrier.gd` ×2,
+  plus `character_base.gd`'s controls comment, which was wrong on BOTH counts (it
+  called the shove a 1.25 s hold — it has been a single tap since 2026-08-01 — and
+  the channel 2.5 s). Every one now quotes `Lata.RESET_CHANNEL_TIME` by name.
+  **The code was always self-consistent at 1.5; only the prose described a slower
+  game.** ⚠️ The value itself then moved for a different reason: it is divided by
+  the can's SPEED stat now (§2.8), 1.30 s on PASIP to 1.79 s on BOYBEN, and
+  `carrier.gd` asks the lata rather than the const so the progress bar and the
+  completion test cannot disagree. *Verified: grep — no remaining "2.5 s" in the
+  project refers to the channel.*
+
+  *As filed by 🤖 `build ai`:* `lata.gd` has `const RESET_CHANNEL_TIME: float = 1.5`;
+  `Design.md` §6's table says **1.5 s**; `Design.md` §4's control table and §6's
+  prose both say **hold E for 2.5 s**, and `carrier.gd::_step_reset_channel`'s own
+  doc comment says *"runs the 2.5 s channel"* while calling
+  `Lata.RESET_CHANNEL_TIME`. The CODE is 1.5 and is self-consistent; three pieces of
+  prose describe a different game.
+- [x] 2.27 **The AI is now a measuring instrument for anything in your list.**
+  *Used exactly as described, and it held: `ai_probe` supplied the offence baseline
+  (71 throws / 33 knockdowns / 46.5% at NORMAL) that 2.1's whole argument rests on,
+  and `fair_probe` was written to its shape — same spectator path, same time-scale
+  contract, same refusal to grade on a drifted step. ⚠️ **Two things it does NOT
+  do**, both filed below: `matches>1` never completes (6.12), and it is the wrong
+  instrument for anything about a HUMAN, which is why 2.1 needed a second probe
+  rather than another sweep.* Original filing:
   `tools/ai_probe.tscn` plays whole matches with four bots and prints throws,
   knockdowns, hit rate, near misses, tags, sabotages, metres travelled, seconds
   spent taggable and the full point breakdown, with pass/fail gates and a non-zero
@@ -448,6 +544,33 @@ what specifically. **Tick only your own section.**
   `TAG_STUN_TIME`, `CONFINEMENT_RADIUS`) and re-running the probe at a fixed tier
   is now a real experiment instead of a look. ⚠️ It refuses to grade if the physics
   step drifted, so `scale=` cannot quietly distort a result.
+
+**Filed by ⚖️ `build fair` 2026-08-01 — two probes added, and what is still open.**
+
+- [ ] 2.28 ⚠️ **THE SHOVE, STAMINA, THE TAG AND THE BOX ARE STILL UNMEASURED, AND
+  ONE OF THEM IS BLOCKED ON FREQUENCY RATHER THAN ON EFFORT.** 2.3/2.4/2.5/2.6/2.7/
+  2.14/2.15/2.21 were not reached this session. Recording what the runs DID show, so
+  the next pass starts from evidence:
+  * **Sabotage fires essentially never — 0 in every whole-match run taken today**,
+    across `ai_probe` at three tiers and `fair_probe` at three policies. §2.3 asks
+    for `SABOTAGE_WINDOW` to be measured and the event has to happen first, so that
+    item is blocked on the shove's frequency, not on the window. 🤖 `build ai`'s
+    §6.10 already argues the rarity is honest rather than a bug; **the two items are
+    the same question and should be worked together.**
+  * **The box (`CONFINEMENT_RADIUS` 6.5) held up in every run** — the can was upright
+    **86%** of live time with a competent offence, and 4.7% with none, so it is
+    neither uncrackable nor undefendable at this size. That is not a measurement of
+    2.2/2.21, but it is a reason not to touch the number on a hunch.
+  * **The tag pays 22.5% of all points at NORMAL** (1700 of 7570) over 17 tags. It is
+    not weak. 2.6/2.7/2.14 should be worked as "does it FEEL earned", not as "is 100
+    too much".
+- [ ] 2.29 ⚠️ **`Engine.time_scale` HAS ONE OWNER AND FOUR WRITERS.** Fixing the
+  hitstop leak (see §7) left the underlying shape intact: `character_base.gd`
+  dips it globally for feedback, and `ai_probe` / `fair_probe` / `flow_probe` each
+  set it for pacing. They compose only because the hitstop saves and restores
+  whatever it found. **That is one static variable away from being wrong again**, and
+  the failure mode is silent — a 120× slowdown that reads as a hang. Worth a single
+  owner (a small autoload that arbitrates) before somebody adds a fifth writer.
 
 **Filed by 🖥️ `build ui` 2026-08-01, found while verifying §1.12 on two real peers:**
 
@@ -601,6 +724,23 @@ what specifically. **Tick only your own section.**
   rendered at 1600×900 and looked at — `25.114.207.183:8910` fits whole — and
   `bounds_sweep` still PASSes 9 screens × 5 aspect ratios.*
 
+**Filed by ⚖️ `build fair` 2026-08-01:**
+
+- [ ] 5.23 ⚠️ **`Lata.tscn`'s `Hurtbox` `Area3D` IS DEAD AND SHOULD BE DELETED.**
+  Grep found no reader anywhere in the project. Slipper contact is a distance test
+  against `Slipper.HIT_RADIUS + Lata.HIT_MARGIN`, resolved on the host, and
+  reintroducing overlap-based contact is forbidden by the recorded `hit_probe`
+  measurement (16 of 36 overlaps did not land). The node was authored to
+  0.30 r / 0.70 h and `Design.md` §7 listed those as if they were the rule — so the
+  balance source of truth described a shape the game never consulted, while the real
+  number was a bare `0.30` typed into `slipper.gd`. That literal is now
+  `Lata.HIT_MARGIN` (same value) and §7.1 records it. **What is left is the node
+  itself**, plus the unused `@onready var _hurtbox` that points at it, which is
+  commented as dead in `lata.gd`. `scenes/objects/**` is your row, which is the only
+  reason this is filed rather than done. ⚠️ **`Body/CollisionShape3D` must STAY** —
+  `lata.gd::_fit_collision_to_mesh()` writes it per skin (§2.23) and it relies on
+  that shape keeping `resource_local_to_scene = true`.
+
 ### 🤖 `build ai` — Single Player *(RUNS LAST)*  ·  items **6.x**
 
 **Every measurement below is `tools/ai_probe.tscn`, one whole 4-round match
@@ -686,6 +826,30 @@ what specifically. **Tick only your own section.**
   a 7.5 s cooldown up — while `spacing` is deliberately keeping the attackers
   apart. **Unverified: that this is the right frequency rather than merely the
   honest one.** Left for whoever owns `SABOTAGE_WINDOW` (§2.3).
+**Filed by ⚖️ `build fair` 2026-08-01, found while using `ai_probe` as an instrument:**
+
+- [ ] 6.12 ⚠️⚠️ **`ai_probe matches=N` FOR N > 1 HAS NEVER COMPLETED. Match 2 never
+  ends.** Reproduced four times, and it is not caused by anything in this session's
+  changes — it reproduces identically at HEAD with a clean tree:
+  `... tools/ai_probe.tscn -- matches=3 scale=6 tier=NORMAL` prints
+  `[match 1] winner=... scores=[...]` and then nothing, for 15+ minutes, against a
+  match-1 wall time of ~70 s. `matches=1` always finishes. **This matters because
+  every number in §6.8's tier table is a one-match sample**, and the default is
+  `matches=3` — so the documented invocation in this file's own header is the one
+  that hangs.
+  * ⚠️ **The wall-clock cap did not save it either.** `DEFAULT_WALL_CAP` is 900 s and
+    `_grade()` should fire from `_physics_process`; it did not print inside 15 min,
+    which suggests the second match is not stepping physics at all rather than
+    stepping it slowly.
+  * **One real cause was found and fixed** (in `character_base.gd`, ⚖️ `build fair`'s
+    row — see §7): `_hitstop()` guarded two STATIC flags with a `SceneTreeTimer`
+    bound to an INSTANCE method, so a hit landing on the last frame of a match —
+    exactly when `_end_match()` frees `Main.tscn` — orphaned the restore and left
+    `Engine.time_scale` at **0.05** against the probe's 6.0, a 120× slowdown that
+    reads precisely like a hang. **That fix did not make `matches=3` complete**, so
+    it was a real bug on the same path and not the whole story. The remaining
+    suspect is the teardown/rebuild in `_end_match()` / `_start_match()` against
+    `main.gd`'s own lifecycle, and `main.gd` is §2.19's ownerless file again.
 - [~] 6.11 **Nothing here has been seen by a human on two real peers.** AI is
   host-only by construction (`main.gd::_attach_ai` under `is_host()`), so this
   should be structurally fine — but "should be" is not a measurement, and
@@ -1033,6 +1197,27 @@ wind-up held for a whole round) and reached for a condition about a value anothe
 file owns. **51 flights, 0 knockdowns** was the visible result and it read as bad
 aim for two sessions. If a commitment must end, end it on your own timer.
 
+**16 · A GLOBAL SET BY ONE OBJECT MUST NOT BE RESTORED BY THAT OBJECT.**
+`CharacterBase._hitstop()` wrote `Engine.time_scale` — process-wide — and scheduled the
+restore on a `SceneTreeTimer` connected to an **instance** method, while the "is a
+hitstop running" flag was `static`. Free that instance inside the 60 ms window and the
+connection dies with it: the engine stays at **0.05** for the rest of the process, and
+the static flag stays true, which also silently disables every future hitstop. Freeing
+a character mid-hit is not exotic — it is what RETURN TO MENU does, and what
+`ai_probe`'s `_end_match()` does between matches. **The symptom is not "the effect
+stuck", it is "the whole game is 120× slower", which reads as a hang and points at
+nothing.** Fixed with a wall-clock deadline any live character clears, plus a forced
+restore in `_exit_tree()`. ⚠️ And the clock has to be REAL time (`Time.get_ticks_msec`),
+because the thing being timed is a deliberate distortion of `delta` — 60 ms measured in
+scaled time lasts 1.2 real seconds.
+
+**17 · `--headless --import` DOES NOT PROVE A TOOL SCRIPT PARSES.** `docs/README.md`
+calls it *"the one cheap real gate"* and it is the right gate for `scripts/` — but
+`tools/fair_probe.gd` imported clean while containing a hard parse error (a nested class
+redeclaring a const that already exists on its parent, which is an error and not a
+shadow). It only appeared when the scene was actually RUN. **Run the probe once before
+believing it exists**, the same way §3 says to run it once before believing it passes.
+
 **11 · BLENDER IS OUT OF THE PIPELINE — a recorded finding, do not re-litigate.**
 A full session was spent editing the Kenney rigs through Blender MCP and was
 rejected. The repo already has a deterministic procedural pipeline; the glTF round
@@ -1358,3 +1543,83 @@ RUNS (§8.3); whether sabotage's measured 0-1 per match is the right frequency
 lane had an uncommitted parse error in `main.gd` — a file §2.19 still flags as
 having no owner, and the second time this session that being ownerless cost
 somebody time.
+
+**2026-08-01 · ⚖️ `build fair`** — the board's number-one suspect closed, the prop stat
+tabs made real, and a global left at 5% speed by an object that no longer existed.
+
+*§2.1 was right about the arithmetic and wrong about the conclusion, and the error was
+one word.* "+10/s for 90 uncontested seconds is 900 points" has led this board since the
+pivot. **Nothing in this game is uncontested.** New `tools/fair_probe.tscn` builds the
+player the alarm predicts — a taya that guards from the shipping bot's own post and
+resets the can instantly but **never lunges** — and plays whole matches with it through
+the same spectator path and time-scale contract `ai_probe` uses. Three policies, one
+complete match each: a taya that does **nothing** collects **38 of the 900 (4%)**,
+because the can is only upright **4.7%** of the round; a taya that hides collects 733
+(81%); one that plays collects 743. So the term is the PRIZE for keeping the can up, and
+it is fully contested. And hiding is strictly dominated — `turtle` and `bot` bank the
+*same* passive total (2930 v 2970) because the tag stacks on top of defence rather than
+competing with it, so refusing to play forfeits 1700 points for nothing. The seat with
+the highest passive share in the `turtle` run finished **last**. **The number does not
+move.** `Design.md` §8.1 is the record, and the probe gates it at ≤50% (measured 47.8%,
+close on purpose) so an inflation of the term goes red rather than unnoticed.
+
+*The experiment is one-variable by construction.* `turtle` copies the shipping AI's own
+`GUARD_RADIUS` post and its reset behaviour and removes exactly one thing, the lunge —
+so `turtle` minus `bot` is the value of the tag and nothing else. The brains EXTEND
+`AIController` from the probe's own file and override `decide()`; `ai_controller.gd` is
+not edited. ⚠️ The takeover is re-asserted every physics frame rather than on
+`round_started`, because `main.gd::_reassert_spectated_bots()` re-enables controllers on
+a schedule of its own and a taya that quietly reverted for part of a round would report
+a `turtle` number with the lunge back in it.
+
+*§2.8: the two prop tabs were the REACHABILITY RULE's second half, exactly.* 🧑: *"also
+make sure the stats actually apply"*. `CharacterRoster.prop_trait()` was written,
+documented and had **zero callers** — every lata played identically, every tsinelas
+played identically, and the CHARACTER screen drew three meters per pick the whole time.
+All six now reach gameplay, re-glossed per tab because a prop does not walk: the can's
+SPEED shortens its reset channel, its POWER lengthens the retrieval it forces, its GRIT
+shrinks the hit window; the slipper's SPEED is launch speed, its POWER is what a
+body-block costs the blocker, its GRIT is how fast it is armed again. **The two tables
+compose without knowing about each other** — a block scales by the thrower's tsinelas
+POWER and divides by the blocker's own person GRIT (measured 4.238 v 5.618 m/s on one
+blocker).
+
+*Two Person rows were byte-identical and nobody could have seen it.* KUYA BOY and
+BEBANG were both 2/5/4; MANG KANOR and ATE GIRLIE both 4/3/3. Two characters wearing two
+rigs, invisible on the CHARACTER screen because the meters look correct on both.
+`trait_probe` asserts all twelve rows are distinct now, which is the kind of thing that
+only stays true if something checks it.
+
+*The number that decided every knockdown in the game was an unnamed literal in another
+file.* `Design.md` §7 listed a lata "hurtbox 0.30 r / 0.70 h", `Lata.tscn` carries an
+`Area3D` authored to exactly that, and **neither had a reader**: the rule ran off a bare
+`0.30` in `slipper.gd`. It is `Lata.HIT_MARGIN` now, same value, and it is where the
+can's GRIT lands. ⚠️ **The scoring window deliberately does NOT follow the mesh** even
+though §2.23's collider now does — the four cans span 32% in radius, and a competitive
+difference between cosmetic picks has to be *declared* on a meter rather than fall out
+of geometry. Collider follows the art; the rule follows the stat.
+
+*The bug that cost the most time was not a game number.* `matches=3` hung at match 2,
+and the cause was `_hitstop()` guarding two **static** flags with a `SceneTreeTimer`
+bound to an **instance** method — free that character inside 60 ms and `Engine.time_scale`
+stays at 0.05 for ever. It reads as a hang, not as a stuck effect, and it hits the
+shipping game too: RETURN TO MENU frees every character. Fixed with a wall-clock deadline
+any live character clears plus a forced restore in `_exit_tree()`. ⚠️ **It did not fix
+`matches=3`**, so it was a real bug on the same path and not the whole story — filed as
+§6.12 with the reproduction, because the remaining suspect is `main.gd`'s lifecycle and
+that file is §2.19's ownerless one for the fourth time.
+
+*Also closed:* §2.9 (`max()` stays, and it is why the body block is knockback rather
+than a stagger), §2.11 (a block now pushes, flashes and shakes the blocker — it used to
+produce only a sound at a world position), §2.17 (`slipper_land` had a mix level and no
+caller; **38 of 71 flights** in the baseline landed in silence), §2.18 (`round_ended`
+broadcast, reliable and `call_local`), §2.26 (five stale prose sites, not three, and
+`character_base.gd`'s controls comment was wrong about the shove as well).
+
+⚠️ **Not verified:** anything by ear (§4.7 — no audio device, so §2.17 is proven as a
+call site and not as a sound); §2.18 on two real peers; what any of §2.11/§2.22's
+feedback LOOKS like, which is now the only thing left on §2.22 and needs a capture
+rather than more code; and a real human taya, which is the half of §2.1 a bot harness
+cannot reach by construction. ⚠️ **Not reached:** the shove, stamina, the tag and the box
+(§2.28 records what the runs did show about each, so the next pass starts from evidence
+rather than from the same blank items).
