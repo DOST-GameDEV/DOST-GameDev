@@ -574,6 +574,14 @@ exactly. git pull --rebase before you start and before every commit.
 You own systems/audio_manager.gd, assets/audio/**, default_bus_layout.tres, the
 audio rows of ui/settings_panel.gd, docs/HUMAN.md and tools/audio/**.
 
+**The human has now listened to the mix, in this prompt session.** The actual
+audio files (VO and any new OST) will be uploaded LATER, not this session. When
+they land, they go in assets/audio/** per the existing layout (VO under
+assets/audio/vo/, matching whatever pooling already expects them) — put each
+file exactly where the code that plays it already looks, don't invent a new
+path. Ask the human where a specific file goes if the existing call sites don't
+make it obvious.
+
 YOUR ONE REMAINING ITEM THAT MATTERS IS §4.7: NOBODY HAS EVER HEARD
 THIS GAME. Every other box in your section is `[~]` for the same reason — no
 session has had an audio output device, so the mix has never been balanced
