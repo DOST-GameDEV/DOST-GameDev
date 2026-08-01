@@ -854,8 +854,12 @@ func _rpc_seat_denied() -> void:
 func _rpc_set_ready(peer_id: int, is_ready: bool) -> void:
 	_peer_ready[peer_id] = is_ready
 	_refresh_seats()
-	if _is_lobby_host():
-		_refresh_start_button()
+	# ⚠️ NOT `if _is_lobby_host()`. On a dedicated server the START button belongs to
+	# the LEADER, which is a client, and gating this refresh on being the host left that
+	# button disabled no matter who readied up — measured end to end: a lone leader
+	# pressed READY, every seat was ready, and START stayed dead. `_refresh_start_button`
+	# already decides for itself whether this peer owns the button.
+	_refresh_start_button()
 
 ## Host -> everyone: go. Carries the finished seating with it rather than
 ## letting each peer assemble its own from the board it happens to be holding —
