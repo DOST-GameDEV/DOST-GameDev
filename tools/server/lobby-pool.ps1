@@ -54,7 +54,7 @@ if ([string]::IsNullOrEmpty($GamePath)) {
 # Main.tscn is what booted. Measured on this machine 2026-08-02: launched
 # without this argument, the process lived 18 s, logged nothing but the engine
 # banner, and never bound its UDP port. It looks completely healthy.
-$MainScene = "res://scenes/main/Main.tscn"
+$MainScene = "res://scenes/ui/MatchSetup.tscn"
 
 $RunDir = Join-Path $StateDir "run"
 $LogDir = Join-Path $StateDir "log"

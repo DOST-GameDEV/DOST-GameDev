@@ -28,7 +28,7 @@ Type=simple
 User=gameserver
 Group=gameserver
 
-# ⚠️⚠️ res://scenes/main/Main.tscn IS LOAD-BEARING AND ITS ABSENCE IS SILENT.
+# ⚠️⚠️ res://scenes/ui/MatchSetup.tscn IS LOAD-BEARING AND ITS ABSENCE IS SILENT.
 # project.godot's run/main_scene is res://scenes/ui/SplashScreen.tscn, and the
 # --dedicated / --port= parsing lives in scripts/main.gd::_ready — which only
 # runs if Main.tscn is what booted. Drop this argument and systemd reports the
@@ -37,7 +37,7 @@ Group=gameserver
 # ⚠️ THE `--` MATTERS TOO. main.gd reads OS.get_cmdline_user_args(), which is
 # only what follows `--`. Anything before it is parsed by the engine, which
 # rejects --dedicated as an unknown option.
-ExecStart=/opt/tumbang-preso/godot --headless --path /opt/tumbang-preso/game res://scenes/main/Main.tscn -- --dedicated --port=%i
+ExecStart=/opt/tumbang-preso/godot --headless --path /opt/tumbang-preso/game res://scenes/ui/MatchSetup.tscn -- --dedicated --port=%i
 
 # A crashed match is four players staring at a disconnect dialog. Come back
 # fast; the process is ~200 MB and takes a couple of seconds to boot.

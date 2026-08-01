@@ -219,6 +219,9 @@ var _peer_spectating: Dictionary = {}
 var _vacated_seats: Dictionary = {}
 
 func _ready() -> void:
+	# ⚠️ BEFORE the pending_action fallback below, because a dedicated server has no
+	# menu behind it to have set one — see `_read_dedicated_args`.
+	_read_dedicated_args()
 	_action = GameLaunch.pending_action
 	if _action == "":
 		# Reached directly (a tools harness, or a scene run from the editor).
@@ -339,9 +342,60 @@ func _setup_solo() -> void:
 	start_button.visible = false
 	_refresh_seats()
 
+## ---------------------------------------------------------------------------
+## § A LOBBY WITH NOBODY SITTING AT IT — the pre-match half of a pool server.
+##
+## `main.gd` also understands `--dedicated`, and that path drops the process straight
+## into `Main.tscn` with `match_in_progress = true` from frame one. For a POOL that is
+## wrong twice over: every row in the browser reads "in a match" before anyone has
+## joined, and a joining player is routed into a running game with no seat to pick and
+## no ready-up. A pool server has to WAIT somewhere, and this screen is the waiting
+## room the listen host already uses.
+##
+## So a pool process boots THIS scene instead:
+##
+##     godot --headless --path . res://scenes/ui/MatchSetup.tscn -- --dedicated --port=8912
+##
+## ⚠️ THE POSITIONAL SCENE PATH IS STILL REQUIRED, and now it points HERE rather than
+## at Main.tscn. `run/main_scene` is SplashScreen, so a plain boot never reaches any
+## argument parsing at all. Deploy tooling that still names Main.tscn will produce a
+## server that looks healthy and is permanently "in a match".
+##
+## ⚠️ NOTHING ELSE MAKES `match_in_progress` TRUE HERE. `ServerQuery` reports that flag
+## verbatim, and it is only set by `main.gd::_start_hosting()`, so a server parked in
+## this scene advertises itself as joinable for free. That is not a coincidence to be
+## tidied — it is why this screen is the right place to wait.
+##
+## ⚠️ THE MATCH ENDS AND THE PROCESS EXITS. There is deliberately no "return to lobby"
+## path: `Restart=always` in the systemd unit brings the process back into a fresh
+## lobby with a fresh join code, which is both simpler and more robust than trying to
+## scrub a finished match's state back to pristine in place.
+## ---------------------------------------------------------------------------
+
+## Set from `--dedicated`; makes this screen host without taking a seat.
+var _dedicated: bool = false
+## Set from `--port=`, so a pool of processes on one machine can each take one.
+var _dedicated_port: int = NetworkManagerScript.DEFAULT_PORT
+
+## Command-line only. There is no button for this: a player who clicked HOST is sitting
+## at the machine and wants to play, which is exactly what a dedicated server is not.
+func _read_dedicated_args() -> void:
+	for arg in OS.get_cmdline_user_args():
+		if arg == "--dedicated":
+			_dedicated = true
+			# There is no menu behind a pool process to have set this, so it says so
+			# itself — `_ready` would otherwise fall through to "local".
+			GameLaunch.pending_action = "host"
+		elif arg.begins_with("--port="):
+			var port_text := arg.substr(len("--port="))
+			if port_text.is_valid_int():
+				_dedicated_port = int(port_text)
+			else:
+				push_error("MatchSetup: --port= needs a number, got '%s'" % port_text)
+
 func _setup_host() -> void:
 	banner_label.text = "LOBBY"
-	if NetworkManager.host_game() != OK:
+	if NetworkManager.host_game(_dedicated_port, _dedicated) != OK:
 		# Not fatal to the screen: the player can still back out, and the message
 		# says which of the two things went wrong rather than "failed".
 		AudioManager.play("ui_error")
@@ -378,8 +432,14 @@ func _setup_host() -> void:
 	# is the seat `main.gd` puts the default camera on, and a host who never
 	# touches the board should land somewhere deliberate.
 	var host_id := multiplayer.get_unique_id()
-	_peer_seats[host_id] = 0
-	_peer_ready[host_id] = false
+	# ⚠️ A DEDICATED SERVER TAKES NO CHAIR. It is the referee, not a player, and seating
+	# it here would hand one of the four seats to a machine nobody is at — the same
+	# mistake `NetworkManager.host_game` avoids on its own side by not self-seeding
+	# `connected_peer_ids`. Its seat stays empty for a human, and a bot fills it at
+	# kickoff like any other unclaimed chair.
+	if not _dedicated:
+		_peer_seats[host_id] = 0
+		_peer_ready[host_id] = false
 	# ⚠️ SPECTATING IS A PREFERENCE THAT SURVIVES THE MENU (see `GameLaunch.spectator`),
 	# so a host who watched the last match walks in here already watching — seated one
 	# line above by the default path, and holding a chair. Republished rather than
@@ -567,10 +627,14 @@ func _unlock_leader_controls() -> void:
 
 func _on_lobby_leader_changed(peer_id: int) -> void:
 	_refresh_leader_controls()
+	# The leader also owns START MATCH on a dedicated server, so the button has to
+	# appear and disappear with the role rather than being decided once at setup.
+	start_button.visible = _can_start_match()
+	_refresh_start_button()
 	if peer_id == multiplayer.get_unique_id() and not _is_lobby_host():
 		# Worth saying out loud: this player did nothing to earn it, the previous
 		# leader left. Without a line here the picker silently turns clickable.
-		status_label.text = "You are now the lobby leader — you pick the map and the mode."
+		status_label.text = "You are now the lobby leader — you pick the map, the mode, and when to start."
 
 ## ⚠️ EVERY OUTGOING RPC FROM A BUTTON PRESS HAS TO GO THROUGH THIS FIRST.
 ## A client sits in this screen for the whole handshake — `join_game()` returns
@@ -1648,21 +1712,38 @@ func _seat_row_text(seat: int) -> String:
 	var tick := "✓" if bool(_peer_ready.get(occupant, false)) else "…"
 	return "%s   · %s  %s" % [label, who, tick]
 
-func _refresh_start_button() -> void:
-	if not _is_lobby_host():
-		return
+## The rule for "this lobby can begin", as one predicate rather than a button's
+## side effect — the host re-checks it when the leader asks, and it must be the same
+## rule on both sides or the button and the referee would disagree.
+##
+## Safe on a client: `_peer_seats`, `_peer_ready` and `_peer_spectating` all arrive
+## through `_rpc_sync_seats` / `_rpc_sync_state`, so a leader evaluates the same board
+## the host does. A frame stale, which is why the host checks again.
+func _everyone_ready_to_start() -> bool:
 	# No minimum peer COUNT: unclaimed seats are filled with real AI by
-	# `main.gd`, so a lone host is a complete, startable 2v2 rather than an
+	# `main.gd`, so a lone host is a complete, startable match rather than an
 	# incomplete lobby waiting for a second human.
 	for peer_id in _peer_seats:
 		if not bool(_peer_ready.get(peer_id, false)):
-			start_button.disabled = true
-			return
+			return false
 	# ⚠️ AN ALL-SPECTATOR LOBBY IS STARTABLE, AND IT IS THE FILMING CASE. `_peer_seats` is
 	# empty when the only human present is watching — four bots, nobody seated — and the
-	# empty-board guard below would have disabled the one button that can begin the match
+	# empty-board guard would have disabled the one button that can begin the match
 	# a spectator is there to film. §2.4: a spectating host still runs the match.
-	start_button.disabled = _peer_seats.is_empty() and _peer_spectating.is_empty()
+	return not (_peer_seats.is_empty() and _peer_spectating.is_empty())
+
+func _refresh_start_button() -> void:
+	# The leader gets this button too, because on a dedicated server the host is a
+	# machine that will never press it. `_can_start_match()` is what decides who sees
+	# it at all; this only decides whether it is live right now.
+	if not _can_start_match():
+		return
+	start_button.disabled = not _everyone_ready_to_start()
+
+## Who owns the START MATCH button. The host on a listen lobby, the leader on a
+## dedicated one — never both, because on a listen lobby they are the same peer.
+func _can_start_match() -> bool:
+	return _is_lobby_host() or (_is_networked_lobby() and _is_lobby_leader())
 
 # =============================================================================
 # Launch
@@ -1699,8 +1780,33 @@ func _launch_solo() -> void:
 ## HOST ONLY. Turns the board into the two dictionaries `main.gd` reads, then
 ## broadcasts them with the go signal.
 func _on_start_pressed() -> void:
+	# On a dedicated server the host is a machine with no player, so the button that
+	# starts the match belongs to the leader — who is a client and cannot broadcast.
+	# It asks, exactly like the map picker does, and the server decides.
+	if not _is_lobby_host():
+		if _is_lobby_leader() and _can_rpc():
+			_rpc_request_begin_match.rpc_id(1)
+		return
+	_begin_match_as_host()
+
+## Leader -> host: "everyone is ready, start it." Refereed, not applied: the sender is
+## checked against the id the server itself named leader, so a peer that is not the
+## leader — or a stale packet from one that just stopped being it — starts nothing.
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_request_begin_match() -> void:
 	if not _is_lobby_host():
 		return
+	if multiplayer.get_remote_sender_id() != NetworkManager.lobby_leader_id:
+		return
+	# ⚠️ RE-CHECKED HOST-SIDE, NOT TRUSTED FROM THE CLICK. The leader's own button is
+	# gated on the same readiness the host tracks, but that gate lives on the client
+	# and the state it reads can be a frame stale — a peer un-readying in the same
+	# frame as the press would otherwise start a match somebody had just left.
+	if not _everyone_ready_to_start():
+		return
+	_begin_match_as_host()
+
+func _begin_match_as_host() -> void:
 	var seat_tokens: Dictionary = {}
 	for peer_id in _peer_seats:
 		var seat: int = int(_peer_seats[peer_id])

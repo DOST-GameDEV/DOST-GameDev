@@ -47,7 +47,7 @@ LOG_DIR="$STATE_DIR/log"
 # for 18 s at full memory with its UDP port unbound.
 #
 # This is the single most likely deployment mistake. Do not "simplify" it out.
-MAIN_SCENE="res://scenes/main/Main.tscn"
+MAIN_SCENE="res://scenes/ui/MatchSetup.tscn"
 
 # How long `stop` waits for a TERM to be honoured before sending KILL. Godot
 # closes the ENet peer and flushes its log on TERM; five seconds is generous
