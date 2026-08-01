@@ -383,11 +383,25 @@ static func _register_variations(theme: Theme) -> void:
 	# One variation per size rather than one variation plus per-node
 	# `theme_override_font_sizes` — the override is exactly what this file exists
 	# to remove, and it would also drop the outline on whichever nodes used it.
+	# ⚠️⚠️ THE HUD'S BODY AND CAPTION SIZES ARE ITS OWN NUMBERS, NOT `FONT_SIZE_BODY` AND
+	# `FONT_SIZE_CAPTION`. 🧑 2026-08-02, with a screenshot of the YouCard and the
+	# LataCard: *"theyre too hard to read so pls adjust text too to make it a bit bigger"*.
+	#
+	# They used to inherit the menu's 16 and 13. A menu caption is read on a flat wood
+	# panel, at rest, with nothing else moving; a HUD caption is read in a corner of a
+	# live 3D scene, mid-sprint, over whatever the arena happens to put behind it. Same
+	# number, two very different reading conditions — and the HUD one loses. 22 and 19
+	# are those two bumped by roughly a third, which is the point where the LataCard's
+	# `LATA · UPRIGHT` survives being glanced at rather than read.
+	#
+	# ⚠️ DELIBERATELY NOT DONE BY RAISING `FONT_SIZE_BODY`. That constant is the whole
+	# menu's body text and the settings rows are already tight; this dict is the seam
+	# that lets the HUD grow without dragging every screen with it.
 	const HUD_SIZES := {
 		"HudTimer": FONT_SIZE_TIMER,
-		"HudScore": 24,
-		"HudBody": FONT_SIZE_BODY,
-		"HudCaption": FONT_SIZE_CAPTION,
+		"HudScore": 26,
+		"HudBody": 22,
+		"HudCaption": 19,
 		"HudBanner": 40,
 		"HudToast": 26,
 	}
