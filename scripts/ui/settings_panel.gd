@@ -16,6 +16,18 @@ signal back_pressed
 ## Width of a rebind row's action name, so every key button lines up in one
 ## column regardless of how long "Special Ability" is.
 const ACTION_LABEL_WIDTH: float = 260.0
+## ⚠️ THE SIZE OF EVERY CONTROL IN `BindingsList`, SHARED BY THE KEYCAPS AND THE NAME
+## FIELD. 🧑 2026-08-02: *"make the box for name in settings same size as others"*.
+##
+## The name row is authored in the scene and the keybind rows are built here, so the two
+## had drifted: a 220-wide label against 260, and a 220x0 LineEdit against a 170x46
+## Button. Same list, two different grids, and the field sat visibly out of line with
+## everything under it.
+##
+## Read from here in BOTH places rather than typed into the .tscn a second time — a
+## number that appears twice is a number that will disagree with itself the next time
+## one of them is tuned.
+const BINDING_CONTROL_SIZE: Vector2 = Vector2(170, 46)
 
 @onready var bindings_list: VBoxContainer = %BindingsList
 @onready var status_label: Label = %SettingsStatusLabel
@@ -93,6 +105,18 @@ func _build_name_row() -> void:
 		return
 	field.text = SettingsManager.player_name
 	field.max_length = SettingsManagerScript.PLAYER_NAME_MAX
+	# ⚠️ SIZED FROM THE SAME CONSTANTS THE KEYCAP ROWS USE, so this row lines up with the
+	# ones built under it instead of describing its own grid. See BINDING_CONTROL_SIZE.
+	field.custom_minimum_size = BINDING_CONTROL_SIZE
+	field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var name_row := get_node_or_null("%PlayerNameRow") as HBoxContainer
+	var name_label := name_row.get_node_or_null("PlayerNameLabel") as Label if name_row != null else null
+	if name_label != null:
+		name_label.custom_minimum_size = Vector2(ACTION_LABEL_WIDTH, 0)
+	if name_row != null:
+		# The built rows carry no separation override, so the authored 12 here put this
+		# row's control a few pixels off every other one's left edge.
+		name_row.remove_theme_constant_override("separation")
 	if not field.text_submitted.is_connected(_on_player_name_submitted):
 		field.text_submitted.connect(_on_player_name_submitted)
 		field.focus_exited.connect(func() -> void: _on_player_name_submitted(field.text))
@@ -222,7 +246,7 @@ func _build_rows() -> void:
 		label.theme_type_variation = &"MenuBody"
 		row.add_child(label)
 		var button := Button.new()
-		button.custom_minimum_size = Vector2(170, 46)
+		button.custom_minimum_size = BINDING_CONTROL_SIZE
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		# Deliberately the theme's DEFAULT Button — light fill, INK lettering.
 		# It is the one control on this screen that should read as a physical
