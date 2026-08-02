@@ -1808,6 +1808,28 @@ func _build_spawn_data(peer_id: int, index: int) -> Dictionary:
 		"is_defender": is_defender,
 		"player_slot": slot,
 		"player_id": slot + 1,
+		# ⚠️⚠️ THE NAME RIDES THE SPAWN PACKET, AND WITHOUT IT EVERY CLIENT WAS "P2".
+		# 🧑 2026-08-02: *"only host has name, everyone else that joins is p1 p2 p3 etc"*.
+		#
+		# `_build_networked_character` used to read the name from
+		# `NetworkManager.picks_for()`, and that runs ON EVERY PEER — but `peer_characters`
+		# is HOST-ONLY state. A client's copy is empty by design (the same reason its copy
+		# of the three character indices is empty), so on every client the lookup missed
+		# for everybody and stamped `player_name = ""` on all four bodies. The host's own
+		# screen was the only place the dictionary had anything in it, which is exactly the
+		# shape of the report: one machine with names, every other machine with seat labels.
+		#
+		# It was healed afterwards by `_rpc_sync_picks`, which is why this was intermittent
+		# rather than total — a broadcast racing a spawn, with the empty string winning
+		# whenever the body arrived last.
+		#
+		# ⚠️ AND THIS IS THE FIX THIS FILE ALREADY WORKED OUT ONCE, for `character_index`:
+		# see `_fill_empty_slots_with_placeholders()`. Put the value in the spawn packet and a peer
+		# that joins, re-joins or arrives late gets it WITH the body, by the same mechanism
+		# that gives it the body. Resolved here because this function only ever runs on the
+		# host, which is the one place the answer is known.
+		"name": SettingsManagerScript.sanitise_name(
+			String(NetworkManager.picks_for(peer_id).get("name", ""))),
 	}
 
 func _fill_empty_slots_with_placeholders() -> void:
@@ -1880,8 +1902,19 @@ func _build_networked_character(data: Dictionary) -> Node:
 	var person := int(picks.get("character", -1))
 	if person >= 0:
 		character.character_index = person
+	# ⚠️⚠️ FROM THE SPAWN PACKET, NOT FROM `picks` — see `_build_spawn_data`'s note. This
+	# function runs on EVERY peer and `peer_characters` is host-only state, so the old
+	# `picks.get("name")` read an empty dictionary on every machine except the host's and
+	# every joiner came out as their bare seat label. `picks` is still right for
+	# `character_index` above, because that one is ALSO carried in the replicated spawn
+	# state (`CharacterBase.tscn` marks it `spawn = true`) and heals itself; the name is
+	# not, so it has to be handed over explicitly.
+	#
+	# ⚠️ THE FALLBACK IS `picks`, NOT "". A host running a build of this file older than
+	# the packet change would send no `name` key at all, and falling back to the empty
+	# string would silently reintroduce the bug rather than degrade to the old behaviour.
 	character.player_name = SettingsManagerScript.sanitise_name(
-		String(picks.get("name", "")))
+		String(data.get("name", picks.get("name", ""))))
 	var peer_id: int = data["peer_id"]
 	var is_ai := peer_id < 0
 	character.set_multiplayer_authority(1 if is_ai else peer_id)
