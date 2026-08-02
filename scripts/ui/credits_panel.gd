@@ -74,6 +74,13 @@ const COURTESY_CREDITS: Array[Dictionary] = [
 		"body": "All music and sound effects are original. The OST is written by the team; the SFX and ambience beds are synthesised in-house by this project's own tools. No third-party audio ships in this build.",
 	},
 	{
+		# ⚠️ THE FOURTH TSINELAS, NOT ALL FOUR. Three of the four slipper skins are
+		# the CC-BY models credited above; this line is about the one that is not.
+		# `tools/models/generate_all.gd` builds it (its header: "four lata and four
+		# tsinelas"), which is why the DEVELOPMENT TOOLS entry below names this mesh
+		# alongside the lata — the same generator makes both, and disclosing one
+		# while staying silent on the other was an inconsistency Form 03 shared
+		# until it was caught.
 		"chip": "TSINELAS",
 		"body": "This project's own mesh, generated procedurally — not a sourced asset.",
 	},
@@ -114,7 +121,7 @@ const COURTESY_CREDITS: Array[Dictionary] = [
 		# (see the README's setup step 4). Disclosure of a tool and attribution of
 		# authorship are different questions; this answers the first.
 		"chip": "DEVELOPMENT TOOLS",
-		"body": "Claude Code (Anthropic) was used as a coding assistant during development — programming, debugging, testing and documentation. It helped write the bot AI that drives the computer-controlled players, wrote the procedural code that generates the lata mesh and the map geometry, repurposed sourced assets into this game's formats, and wrote the tools that synthesise the SFX and ambience beds. Every skin, texture and drawing is the team's own, and the team wrote the soundtrack. All game logic, mechanics and design decisions are the team's own, and the team takes full responsibility for the code submitted. No generative-AI image, music or video service was used.",
+		"body": "Claude Code (Anthropic) was used as a coding assistant during development — programming, debugging, testing and documentation. It helped write the bot AI that drives the computer-controlled players, wrote the procedural code that generates the lata meshes, this project's own tsinelas mesh and the map geometry, repurposed sourced assets into this game's formats, and wrote the tools that synthesise the SFX and ambience beds. Every skin, texture and drawing is the team's own, and the team wrote the soundtrack. All game logic, mechanics and design decisions are the team's own, and the team takes full responsibility for the code submitted. No generative-AI image, music or video service was used.",
 	},
 ]
 
