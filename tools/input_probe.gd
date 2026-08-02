@@ -327,7 +327,11 @@ func _check_charge_on_shared_button() -> void:
 	print("\n  --- LEFT CLICK: grab and wind-up on one button ---")
 	var attacker := _keyboard_attacker()
 	if attacker == null:
-		MatchManager.report_round_result(true)
+		# ⚠️ NO ARGUMENT. `report_round_result()` took a "did the attackers win" bool when
+		# a round had two teams and one of them won it; scoring is per-seat and
+		# cumulative now, so the function reads the scores itself and there is nothing
+		# left to tell it.
+		MatchManager.report_round_result()
 		await get_tree().create_timer(4.0).timeout
 		attacker = _keyboard_attacker()
 		print("  (swapped roles once so the keyboard unit is on offence)")

@@ -16,6 +16,18 @@ signal back_pressed
 ## Width of a rebind row's action name, so every key button lines up in one
 ## column regardless of how long "Special Ability" is.
 const ACTION_LABEL_WIDTH: float = 260.0
+## ⚠️ THE SIZE OF EVERY CONTROL IN `BindingsList`, SHARED BY THE KEYCAPS AND THE NAME
+## FIELD. 🧑 2026-08-02: *"make the box for name in settings same size as others"*.
+##
+## The name row is authored in the scene and the keybind rows are built here, so the two
+## had drifted: a 220-wide label against 260, and a 220x0 LineEdit against a 170x46
+## Button. Same list, two different grids, and the field sat visibly out of line with
+## everything under it.
+##
+## Read from here in BOTH places rather than typed into the .tscn a second time — a
+## number that appears twice is a number that will disagree with itself the next time
+## one of them is tuned.
+const BINDING_CONTROL_SIZE: Vector2 = Vector2(170, 46)
 
 @onready var bindings_list: VBoxContainer = %BindingsList
 @onready var status_label: Label = %SettingsStatusLabel
@@ -25,6 +37,8 @@ const ACTION_LABEL_WIDTH: float = 260.0
 @onready var sensitivity_slider: HSlider = %SensitivitySlider
 @onready var sensitivity_value_label: Label = %SensitivityValueLabel
 @onready var invert_y_check: CheckBox = %InvertYCheck
+## The other half of the `toggle_fullscreen` key — same setting, two routes in.
+@onready var fullscreen_check: CheckBox = %FullscreenCheck
 ## 4.1 — one row per audio bus (see default_bus_layout.tres).
 @onready var master_volume_slider: HSlider = %MasterVolumeSlider
 @onready var master_volume_value_label: Label = %MasterVolumeValueLabel
@@ -60,6 +74,12 @@ func _ready() -> void:
 	# on this screen that would silently leave the button disabled with a real edit
 	# pending, because nothing else would notice the toggle happened.
 	invert_y_check.toggled.connect(_on_invert_y_toggled)
+	# ⚠️ SEEDED BEFORE CONNECTING, like the sliders: assigning `button_pressed` emits
+	# `toggled`, and connecting first would flip the window mode on every open of this
+	# panel. Harmless-looking, and a mode change is the most visible no-op in the game.
+	fullscreen_check.button_pressed = SettingsManager.fullscreen
+	fullscreen_check.toggled.connect(_on_fullscreen_toggled)
+	SettingsManager.fullscreen_changed.connect(_on_settings_fullscreen_changed)
 	_init_volume_rows()
 	_build_name_row()
 
@@ -93,9 +113,43 @@ func _build_name_row() -> void:
 		return
 	field.text = SettingsManager.player_name
 	field.max_length = SettingsManagerScript.PLAYER_NAME_MAX
+	# ⚠️ SIZED FROM THE SAME CONSTANTS THE KEYCAP ROWS USE, so this row lines up with the
+	# ones built under it instead of describing its own grid. See BINDING_CONTROL_SIZE.
+	field.custom_minimum_size = BINDING_CONTROL_SIZE
+	field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var name_row := get_node_or_null("%PlayerNameRow") as HBoxContainer
+	var name_label := name_row.get_node_or_null("PlayerNameLabel") as Label if name_row != null else null
+	if name_label != null:
+		name_label.custom_minimum_size = Vector2(ACTION_LABEL_WIDTH, 0)
+	if name_row != null:
+		# The built rows carry no separation override, so the authored 12 here put this
+		# row's control a few pixels off every other one's left edge.
+		name_row.remove_theme_constant_override("separation")
 	if not field.text_submitted.is_connected(_on_player_name_submitted):
 		field.text_submitted.connect(_on_player_name_submitted)
 		field.focus_exited.connect(func() -> void: _on_player_name_submitted(field.text))
+		# ⚠️⚠️ `text_changed` TOO, AND WITHOUT IT APPLY COULD NOT BE REACHED AT ALL.
+		# 🧑 2026-08-02: *"changing name doesnt trigger APPLY CHANGES in settings"*.
+		#
+		# The other two signals both need the player to LEAVE the field — Enter, or
+		# focus moving elsewhere — and the obvious way to leave it is to click APPLY.
+		# But APPLY is `disabled` until `has_unsaved_changes()` is true, a disabled
+		# Button takes no focus and emits nothing, so the click did nothing, the focus
+		# never left, the name was never staged, and the button stayed grey. A dead
+		# control whose only route to being live was through itself.
+		#
+		# Typing is the change, so typing is what reports it. Safe per keystroke:
+		# `SettingsManager._save()` returns early inside an edit transaction, so this
+		# stages in memory and touches no disk until APPLY commits.
+		field.text_changed.connect(_on_player_name_typed)
+
+## Keystroke-by-keystroke staging, so APPLY lights up while the caret is still in the
+## field. Deliberately NOT `_on_player_name_submitted`: that one plays a click and
+## pushes the name onto the live character, and doing either per letter would be a
+## click track and a replicated write per keypress.
+func _on_player_name_typed(value: String) -> void:
+	SettingsManager.set_player_name(value)
+	_refresh_apply_state()
 
 func _on_player_name_submitted(value: String) -> void:
 	SettingsManager.set_player_name(value)
@@ -106,6 +160,11 @@ func _on_player_name_submitted(value: String) -> void:
 	# launch would read as the control not working. `player_name` is a replicated
 	# property, so writing it on the seat this peer has authority over is what carries
 	# it to the other three scoreboards.
+	_push_name_to_live_character()
+
+## Writes the saved name onto the seat this peer drives. `player_name` is replicated, so
+## this is what carries a rename to the other three scoreboards mid-match.
+func _push_name_to_live_character() -> void:
 	for node in RoundManager.players():
 		var who := node as CharacterBase
 		if who != null and who.is_multiplayer_authority() and not who.is_ai_driven():
@@ -118,6 +177,18 @@ func _on_sensitivity_changed(value: float) -> void:
 
 func _on_invert_y_toggled(value: bool) -> void:
 	SettingsManager.set_invert_y(value)
+	_refresh_apply_state()
+
+func _on_fullscreen_toggled(value: bool) -> void:
+	SettingsManager.set_fullscreen(value)
+	_refresh_apply_state()
+
+## The `toggle_fullscreen` key works while this panel is open — SettingsManager handles
+## it in `_input`, above every Control — so the box has to follow the window rather than
+## claim the opposite of what the player is looking at. `set_pressed_no_signal` because
+## the change has already been applied; re-entering the handler would only re-save it.
+func _on_settings_fullscreen_changed(value: bool) -> void:
+	fullscreen_check.set_pressed_no_signal(value)
 	_refresh_apply_state()
 
 ## 4.1 — Master / SFX / Ambience.
@@ -195,7 +266,7 @@ func _build_rows() -> void:
 		label.theme_type_variation = &"MenuBody"
 		row.add_child(label)
 		var button := Button.new()
-		button.custom_minimum_size = Vector2(170, 46)
+		button.custom_minimum_size = BINDING_CONTROL_SIZE
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		# Deliberately the theme's DEFAULT Button — light fill, INK lettering.
 		# It is the one control on this screen that should read as a physical
@@ -312,6 +383,12 @@ var _back_armed: bool = false
 
 func _on_apply_pressed() -> void:
 	AudioManager.play("ui_click")
+	# ⚠️ THE LIVE CHARACTER IS UPDATED HERE TOO, not only on Enter/blur. Now that typing
+	# alone can arm APPLY, a player can rename and commit without the field ever losing
+	# focus — so without this the scoreboard in a running match would keep the old name
+	# until the next launch, which is the same "the control does not work" the submit
+	# handler already documents.
+	_push_name_to_live_character()
 	SettingsManager.commit_edit()
 	# Straight back into a new transaction: the panel is still open, so the next change
 	# the player makes has to be revertible too.

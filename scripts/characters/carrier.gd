@@ -426,8 +426,15 @@ func _rpc_request_reset() -> void:
 ## that plays the game's actual thesis — `Design.md` §0: *"the tension is the
 ## retrieval, not the throw"*. A slipper that is ready sooner shortens the one
 ## window in which its owner is standing inside the box and taggable, so GRIT buys
-## exposure back rather than buying damage. PANTULOG (tatag 5) is armed in 1.03 s
-## against CROCS (tatag 2) at 1.42 s, either side of the neutral 1.25.
+## exposure back rather than buying damage. PANTULOG (tatag 5) is armed in 1.10 s
+## against CROCS (tatag 2) at 1.34 s, either side of the neutral 1.25.
+##
+## ⚠️ THOSE TWO NUMBERS READ 1.03 AND 1.42 UNTIL 2026-08-02 AND WERE NEVER RIGHT.
+## `THROW_LOCK_TIME / trait_scale(points, 0.07)` is 1.25/1.14 and 1.25/0.93; the
+## old pair would need about 0.107 per point. Nothing was wrong with the CODE —
+## the comment was quoting a per-point constant the game does not use, which is
+## the failure mode a hand-copied number always has. `tools/trait_probe.gd`
+## measures the real locks off `Carrier` itself if they ever need checking again.
 func notify_holding(what: Slipper) -> void:
 	_set_held(what)
 	if what != null:

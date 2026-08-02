@@ -398,6 +398,15 @@ func _local_picks() -> Dictionary:
 ## peer straight into the running match instead of leaving it stuck showing
 ## "waiting for host to start…" forever. See `_rpc_route_to_running_match`.
 var match_in_progress: bool = false
+## Client-side. True for the brief window between `_rpc_route_to_running_match`
+## deciding to disconnect-and-reconnect (see that function's own doc for why)
+## and the fresh connection it starts actually landing. `match_setup.gd`'s own
+## `server_disconnected` handler checks this so it doesn't read a DELIBERATE
+## disconnect as "the host ended the session" and bounce back to the menu out
+## from under the very reconnect that disconnect exists to enable. Cleared at
+## the top of `join_game()` — any call to it, fresh or a reroute's own retry,
+## means whatever reason this was set for no longer applies.
+var rerouting_to_running_match: bool = false
 ## B-49: Godot 4's `multiplayer.multiplayer_peer` defaults to an
 ## `OfflineMultiplayerPeer` sentinel, NOT null, and `multiplayer.has_multiplayer_peer()`
 ## reports `true` for it — so `is_networked()` used to read `true` even for
@@ -614,6 +623,10 @@ func host_game(port: int = DEFAULT_PORT, dedicated: bool = false) -> Error:
 	return OK
 
 func join_game(address: String, port: int = DEFAULT_PORT) -> Error:
+	# Whatever `rerouting_to_running_match` was guarding against no longer
+	# applies once a new connection attempt is actually underway — see that
+	# var's own doc.
+	rerouting_to_running_match = false
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_client(address, port)
 	if err != OK:
@@ -944,11 +957,62 @@ func _validated(picks: Dictionary, key: String, count: int) -> int:
 ## directly via --join= (Main.tscn already loaded, no Lobby involved at all)
 ## just gets told to "change" to the scene it is already showing, which is a
 ## deliberate no-op guarded below, not a special case to detect and skip.
+##
+## ⚠️⚠️ DISCONNECTS AND RECONNECTS FRESH RATHER THAN CARRYING THE EXISTING
+## CONNECTION ACROSS THE SCENE CHANGE. THIS IS THE FIX FOR "all he sees is
+## grey screen" ON RECONNECT TO AN ONGOING MATCH. 🧑: *"make sure to
+## transition from ai to player once the player rejoins"* — the AI/authority
+## handoff itself (`_apply_reclaim`) was already correct; the screen was grey
+## because the CHARACTERS never arrived at all.
+##
+## MEASURED, not assumed: a real client that connects via `MatchSetup.tscn`
+## (the only way a real reconnect happens — `--join=` loads `Main.tscn`
+## directly and never hits this at all, which is exactly why this bug never
+## showed up in that test path) is, at the moment ENet's handshake completes,
+## a peer with NO `Main.tscn` anywhere in its scene tree yet. Godot's
+## `MultiplayerSpawner`/`MultiplayerSynchronizer` catch-up replay for every
+## ALREADY-spawned entity (every other character, the Lata) fires the INSTANT
+## the peer registers at the ENet level — not gated behind this RPC, not
+## gated behind anything this codebase controls — and it fires exactly once
+## per connection. Confirmed via the engine's own error log on that
+## connection: `Node not found: "Main/MultiplayerSpawner"`,
+## `Node not found: "Main/Lata/MultiplayerSynchronizer"`, one
+## `Ignoring delta for non-authority or invalid synchronizer` per already-
+## spawned character — all of it arriving and being silently dropped while
+## the peer still shows `MatchSetup.tscn`, all of it gone for good the moment
+## it's dropped. The old code's `change_scene_to_file` here only ever loaded
+## `Main.tscn` AFTER that one chance had already been missed, so the screen
+## that loaded was correctly empty: no map, no characters, nothing spawned —
+## the 2D HUD (a separate CanvasLayer, unaffected) is the only reason it read
+## as "grey" rather than "black."
+##
+## The fix does not try to out-race Godot's own catch-up timing — there is no
+## public API to ask it to retry. Instead it sidesteps the race entirely:
+## disconnect, then let `Main.tscn` open a BRAND NEW connection itself via
+## its own ordinary `_start_joining()` path (the exact path `--join=` already
+## takes, already verified working end-to-end) — this time from a process
+## that already has `Main.tscn`, and therefore `Main/MultiplayerSpawner`, on
+## disk and in its tree before the new connection's catch-up ever fires.
+## `GameLaunch.pending_action`/`pending_join_address` are still exactly what
+## they were when this peer first chose "Join" — `match_setup.gd` never
+## consumes them — so `Main.tscn`'s own `_ready()` reads them the same way a
+## fresh `--join=` would. The reconnecting human's own identity token is a
+## per-PROCESS constant (see `local_player_token`'s doc), unaffected by this
+## disconnect, so the new connection's `_rpc_identify` is recognised as the
+## same rejoin B-65's reclaim machinery already handles correctly — this
+## reuses that proven path rather than building a second one.
+##
+## `rerouting_to_running_match` exists so `match_setup.gd`'s own
+## `server_disconnected` handler can tell this deliberate disconnect apart
+## from the host actually dying and not bounce back to the menu out from
+## under its own reconnect.
 @rpc("authority", "call_remote", "reliable")
 func _rpc_route_to_running_match() -> void:
 	var current := get_tree().current_scene
 	if current != null and current.scene_file_path == MAIN_SCENE_PATH:
 		return
+	rerouting_to_running_match = true
+	disconnect_network()
 	get_tree().change_scene_to_file(MAIN_SCENE_PATH)
 
 ## Mints a fresh token for THIS process and writes it to disk — see

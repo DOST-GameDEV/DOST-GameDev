@@ -1,6 +1,6 @@
 # TUMBANG PRESO 🥫🩴
 
-A **4-player game** built on the Filipino street game *tumbang preso*, for the **Gear Up NCR —
+A **4-player LAN game** built on the Filipino street game *tumbang preso*, for the **Gear Up NCR —
 Esports Game Dev Challenge**. Godot 4.7, Forward+, GDScript.
 
 This file explains **how the code is put together**. Progress, checklists and what is left to do
@@ -39,6 +39,41 @@ Scoring is cumulative and personal — highest total after round 4 wins, there i
 All four are in `scripts/systems/round_manager.gd`. `docs/Design.md` is the source of truth for
 balance and a number in code must match it.
 
+### Your three picks are not cosmetic
+
+The CHARACTER screen picks three things — your **person**, your **lata** and your **tsinelas** — and
+all three reach gameplay. Each carries three 1–5 meters, and **each tab names its meters after what
+they actually do**, because a can does not walk and a slipper does not get stunned:
+
+| | **PERSON** | **LATA** — your can, on the mark during *your* taya round | **TSINELAS** — yours, every round you attack |
+|---|---|---|---|
+| | **SPEED** — walk speed | **RESET** — how fast you stand it back up | **FLIGHT** — launch speed; a flatter, faster arc |
+| | **POWER** — outgoing shove | **REBOUND** — how far it flings the tsinelas when hit | **IMPACT** — what a body-block costs the taya |
+| | **GRIT** — resistance to knockback and stagger | **STANCE** — how hard it is to knock over at all | **RECOVERY** — how fast it is throwable after a pickup |
+
+The three lata meters are **three routes to one goal**: the taya wants the can upright, and STANCE
+refuses the knockdown, RESET shortens the recovery, REBOUND punishes the attempt. Each can does one
+well and pays for it elsewhere — PASIP topples instantly and is up again instantly, BOYBEN is
+immovable and a job to right, KALAWANG throws your slipper across the street.
+
+**The spread is deliberately narrow** — ±5% per point on speed, ±7% on power and grit, so the full
+1–5 range is roughly ±10–14%. This is a party game about hitting a can with a slipper; a pick that
+is 40% better than another is not a personality, it is the correct answer. Differences are meant to
+be *felt*, not counted.
+
+Two rules hold this together, both in `scripts/systems/character_roster.gd`:
+
+- **The number must be readable off the sentence.** If a description says something is heavy, its
+  REBOUND is high. A stat nobody can predict from the lore is a random modifier, and a description
+  nothing backs up is a lie the player finds out about in round 2.
+- **A competitive difference between cosmetic picks has to be declared.** The four cans differ in
+  physical collider radius by 32%, but the scoring window is derived from the STANCE meter and not
+  from that geometry — otherwise the prettiest can would quietly be the hardest to hit with nothing
+  on screen saying so.
+
+`docs/Design.md` §9 has the full tables. Empty seats are filled by bots, which are named after the
+character they are wearing rather than P1–P4, and hand the name back when a human takes the seat.
+
 ---
 
 ## How a session moves through the scenes
@@ -52,10 +87,9 @@ SplashScreen ─> MainMenu ─> ModeSelect ─┬─> MatchSetup ─────
                                             (host or join)
 ```
 
-**`MatchSetup` is the lobby and `Main.tscn` is the match.** That split matters more than it looks —
-a dedicated server parks in `MatchSetup` precisely so it is joinable rather than already playing
-(see `docs/Dedicated_Server_Deployment.md` §2, where booting the wrong scene produces a server that
-looks healthy and is silently unjoinable).
+**`MatchSetup` is the lobby and `Main.tscn` is the match**, and they are separate scenes on purpose:
+the lobby is where seats, map and ready-up are negotiated while peers arrive, and the match is what
+starts once they have.
 
 `MultiplayerSetup` deliberately **does not open a socket**. It records *what kind* of session was
 asked for and where to reach the host; the actual `NetworkManager.host_game()` / `join_game()` call
@@ -67,15 +101,14 @@ listener. It is also where a dropped client is bounced back to, carrying a statu
 
 ## Autoloads, and the one rule that follows from them
 
-Nine autoloads, declared in `project.godot`:
+Eight autoloads, declared in `project.godot`:
 
 | autoload | owns |
 |---|---|
-| `NetworkManager` | ENet peer, host/join, peer ids, seats, lobby leader, dedicated mode |
+| `NetworkManager` | ENet peer, host/join, peer ids, seats, lobby leader |
 | `RoundManager` | one round: the timer, the taya, scoring |
 | `MatchManager` | one match: cumulative score across the four rounds |
 | `LanBeacon` | UDP broadcast discovery — the "games on your LAN" list |
-| `ServerQuery` | UDP status protocol for the online pool, and join codes |
 | `GameLaunch` | intent carried between screens (join address, spectator, status message) |
 | `SettingsManager` | settings, persisted |
 | `AudioManager` | music, SFX, UI audio |
@@ -83,87 +116,44 @@ Nine autoloads, declared in `project.godot`:
 
 **⚠️ Because `RoundManager` and `MatchManager` are autoloads, one process holds exactly one score,
 one timer and one round state — so ONE PROCESS IS ONE MATCH.** Nothing here is re-entrant and
-nothing should be made so. Eight concurrent lobbies is eight processes on eight ports, not one
-process juggling eight matches. Every deployment decision follows from this single fact.
+nothing should be made so.
 
 ---
 
-## Networking — three protocols, deliberately independent
+## Networking
 
-**ENet (`network_manager.gd`)** carries the game itself. `host_game(port, dedicated)` starts a
-server; `dedicated = true` makes it referee *without taking a seat*, so all four seats stay open to
-humans and are filled by AI until they arrive. It still owns round logic and still answers
-`is_host()`; it simply never enters itself into `connected_peer_ids`. Set by `--dedicated` on the
-command line only — there is no menu for it.
+**ENet (`network_manager.gd`)** carries the game. One machine hosts and plays; the others join it.
+`MAX_PLAYERS` is 4, and empty seats are filled by AI until a human takes them.
 
-**UDP broadcast (`lan_beacon.gd`)** is LAN discovery. Hosts broadcast, the browse screen listens,
-and rows appear in GAMES ON YOUR LAN. A click **selects** — it fills the address field and leaves
-the press to JOIN. There is no second, hidden way to start a connection.
+**UDP broadcast (`lan_beacon.gd`)** is discovery. Hosts broadcast a packet, the browse screen
+listens, and rows appear under GAMES ON YOUR LAN. **A click selects, it does not join** — it fills
+the address field and leaves the press to JOIN, so the typed field stays the single source of truth
+and there is no second, hidden way to start a connection.
 
-**UDP unicast (`server_query.gd`)** is the online pool's status protocol and the join-code system.
-It runs *beside* ENet, never on top of it, so a build that cannot reach the status ports still plays
-exactly as before by typing an address — which is how this game worked first.
+**⚠️ The address comes from the packet, not from its payload.** A host cannot reliably know its own
+address — a machine here reports its LAN card, a Hamachi 25.x, a Radmin 26.x and some link-local
+169.254s in no promised order. The receiver has no such problem, so the beacon's payload carries the
+port and the listener takes the host half from the datagram's own source. Anything that later
+"helpfully" puts an address in the payload has put the bug back.
 
-Two design choices in `server_query.gd` are worth knowing before touching it:
+### Playing over the internet: Hamachi
 
-- **There is no registry.** No master list, no process to keep alive, no single point whose death
-  takes online mode down. The pool is a small fixed set of ports on one known address, so a client
-  simply asks every one of them and assembles the list itself. A join code is resolved the same
-  way — nothing maps codes to servers; the client asks each server what *its* code is and keeps the
-  match. The price is that the pool is a compile-time constant, so growing it ships a build.
-- **The address comes from the packet, not the payload.** A host cannot reliably know its own
-  address — a machine here reports its LAN card, a Hamachi 25.x, a Radmin 26.x and some link-local
-  169.254s in no promised order, and a VM is worse. The receiver has no such problem, so replies
-  carry only the *port* and the client supplies the host half from the datagram envelope. Anything
-  that later "helpfully" puts an address in the payload has put the bug back.
+**There is no online mode in this branch, and none is needed to play with people elsewhere — LAN
+works over Hamachi.** Everyone installs LogMeIn Hamachi and joins the same network; that hands each
+machine a virtual `25.x.x.x` address on what the game sees as one LAN. One player uses **HOST GAME
+(LAN)**, reads out their Hamachi address, and the rest **JOIN** with it.
 
-**⚠️ Status ports are game port + 10** (`STATUS_PORT_OFFSET`). ENet owns the game port and a second
-socket on it would fight the server for its own datagrams. That +10 spacing is also what bounds the
-pool at ten processes — widen the offset before widening the pool.
+Worth knowing:
 
-### Online play needs a server, and ships without one
-
-`ServerQuery.POOL_ADDRESS` is `""` in the repo. That is the honest state for a build with nowhere
-to point: `multiplayer_setup.gd` checks it and refuses HOST ONLINE with an explanation rather than
-failing obscurely. **LAN play is unaffected and always works.**
-
-To bring online up you need an address reachable by the players, then set that constant — see
-[`docs/Dedicated_Server_Deployment.md`](docs/Dedicated_Server_Deployment.md), which covers the
-launch command, both firewalls, the architecture trap and what it costs. To exercise the whole path
-with no server at all, override it for one run:
-
-```bash
-godot --path . -- --pool=127.0.0.1
-```
-
-…with one or more lobbies running locally:
-
-```bash
-godot --headless --path . res://scenes/ui/MatchSetup.tscn -- --dedicated --port=8910
-```
-
-### Until then: LAN over Hamachi is how people play from different houses
-
-**You do not need the pool to play with someone elsewhere — LAN works over Hamachi.** Everyone
-installs LogMeIn Hamachi and joins the same network; that hands each machine a virtual `25.x.x.x`
-address on what the game sees as one LAN. One player uses **HOST GAME (LAN)**, reads out their
-Hamachi address, and the rest **JOIN** with it. This is what the team actually uses today.
-
-What it does *not* give you is HOST ONLINE, the join codes or the server browser — those need a pool
-at a reachable address. Think of Hamachi as better LAN, not as online play.
-
-- **The host's PC is the server.** It stays in the match, and everyone's traffic goes through it.
+- **The host's PC is the server.** It has to stay in the match, and everyone's traffic goes through
+  its connection.
 - **Type the Hamachi address, do not rely on the browser.** Broadcast discovery over a virtual LAN
   is unreliable; the join field always works.
 - **Free Hamachi networks cap at 5 members**, which fits four players with one spare.
-- **⚠️ Port-forwarding is not an alternative on a CGNAT connection.** Many PH ISPs put subscribers
-  behind carrier-grade NAT, where no rule on your own router is reachable from outside. Check with
-  `tracert 8.8.8.8` — if hop 2 is a `100.64.x.x` address you are behind CGNAT, and an overlay or a
-  real VPS is the only way out. Measured on the dev machine: public IP, but hop 2 is `100.64.0.1`.
-
-`tools/server/lobby-pool.ps1` (Windows) and `lobby-pool.sh` (Linux) start, stop and inspect a whole
-pool. **⚠️ The scene path is required and `--` is required** — without the scene, `--dedicated` is
-never parsed, and the process runs, uses normal memory, logs nothing and never binds its port.
+- **Port-forwarding is not an alternative on a CGNAT connection** — many PH ISPs put subscribers
+  behind carrier-grade NAT, where no forwarding rule on your own router is reachable from outside.
+  Check with `tracert 8.8.8.8`: if hop 2 is a `100.64.x.x` address, you are behind CGNAT and an
+  overlay like Hamachi is the way through. Real code-based online play would need a public server.
 
 ---
 
@@ -181,13 +171,12 @@ scenes/
 scripts/
   characters/      character_base, character_visual, carrier, character_nameplate
   objects/         lata.gd, slipper.gd — props, NOT players (Design.md §12)
-  systems/         the nine autoloads, plus camera_rig, ai_controller, spectator_camera,
+  systems/         the eight autoloads, plus camera_rig, ai_controller, spectator_camera,
                    character_roster, trajectory_preview, hazard_zone, kill_plane, env_toon_pass
   ui/              one script per UI scene, plus ui_theme.gd and arrow_button.gd
   main.gd          the match scene's entry point
-tools/             non-shipping: model generator, map builders, probes, shot harnesses,
-                   server/ — the lobby pool scripts and a systemd unit
-docs/              six files — see below
+tools/             non-shipping: model generator, map builders, probes, shot harnesses
+docs/              five files — see below
 ```
 
 `ArrowButton` is the pennant control every menu uses. It is a `Button` with the artwork behind it
@@ -228,7 +217,9 @@ two players means two machines. Rebinding in **Settings** is therefore one profi
 > decision — one left-click can fire both.
 
 **Multiplayer:** HOST GAME (LAN) on one machine; the others JOIN with the host's address, or pick it
-out of the LAN list. A bare address falls back to port 8910; `<ip>:<port>` reaches a specific lobby.
+out of the LAN list. A bare address falls back to port 8910; `<ip>:<port>` reaches a specific host.
+To test on one PC, use **Debug → Run Multiple Instances → 2** with per-instance arguments `--host`
+and `--join=127.0.0.1`.
 
 ### Looking at the game
 
@@ -240,10 +231,12 @@ godot --path . tools/harrydaks_shot.tscn -- C:/tmp/
 ```
 
 `tools/ui/*_shot.tscn` do the same for individual screens, and several print the measurement beside
-the picture — `mp_shift_shot` prints the multiplayer screen's status-line clearance, so an overflow
-shows up as a negative number rather than as something spotted in a screenshot later.
-`tools/ui/mp_click_probe.tscn` answers "is this button actually reachable" by asking the viewport
-who receives the click, which is a different question from whether the signal is connected.
+the picture, so an overflow shows up as a number rather than as something spotted in a screenshot
+later. To watch four bots play a whole match and get numbers out of it:
+
+```bash
+godot --path . tools/ai_probe.tscn -- matches=1 scale=6 tier=NORMAL
+```
 
 ---
 
@@ -268,14 +261,13 @@ who receives the click, which is a different question from whether the signal is
 
 ---
 
-## Docs — six files
+## Docs — five files
 
 | | |
 |---|---|
 | **[`docs/Agent_Prompts.md`](docs/Agent_Prompts.md)** | **Start here.** The pipeline, execution order, checklist and log. The only place a box is ticked. |
 | [`docs/Design.md`](docs/Design.md) | The rules and every tunable number. Source of truth for balance. |
 | [`docs/Art_Direction.md`](docs/Art_Direction.md) | Colour law, scale law, arena geometry, model and kit rules. |
-| [`docs/Dedicated_Server_Deployment.md`](docs/Dedicated_Server_Deployment.md) | Standing up the online lobby pool: the launch command, both firewalls, free-tier costs, and the four things that fail silently. |
 | **[`docs/HUMAN.md`](docs/HUMAN.md)** | **For teammates with a microphone.** What to record and compose, and in what format. |
 | [`docs/README.md`](docs/README.md) | Index, standing rules, and the machine notes for running Godot here. |
 

@@ -38,6 +38,14 @@ extends SceneTree
 ## Same reason `_nm()` resolves by node path — see `tools/lobby_probe.gd`, which
 ## paid for this lesson first.
 const MAIN_PATH: String = "res://scenes/main/Main.tscn"
+## Where a dedicated referee actually waits — the same scene the systemd unit boots.
+const MATCH_SETUP_PATH: String = "res://scenes/ui/MatchSetup.tscn"
+
+## Whether this process was asked to referee rather than to play. Read from the SAME
+## arguments the game itself reads, not from the probe's own role, so the probe cannot
+## disagree with the thing it is measuring.
+func _is_dedicated() -> bool:
+	return OS.get_cmdline_user_args().has("--dedicated")
 ## Fast enough that a handover lands inside one or two samples, slow enough that
 ## a 60 s run is a few hundred lines rather than a few thousand.
 const STATE_INTERVAL: float = 0.25
@@ -86,7 +94,44 @@ func _begin() -> void:
 	nm.connect("lobby_leader_changed", _on_leader_changed)
 	_say("BOOT", "role=%s port=%d" % [_role, _port])
 	if _role == "server":
-		change_scene_to_file(MAIN_PATH)
+		# ⚠️⚠️ THE WAITING ROOM, NOT `Main.tscn`. This used to boot the referee straight
+		# into the match scene, which put the suite in an arrangement the real product
+		# never produces: a server refereeing a MATCH while its clients sat in the LOBBY.
+		# That was harmless until ESPORTS reworked spawning — a server in `Main` now fills
+		# empty seats with placeholder bodies immediately, and a client that is not in
+		# `Main` cannot resolve the spawner they arrive through:
+		#
+		#     Node not found: "Main/MultiplayerSpawner" (relative to "/root")
+		#     ID 1 not found in cache of peer 1
+		#
+		# The failures cascaded from there and the server ended up registering no peers at
+		# all, so no leader was ever assigned and the whole scenario aborted. Measured
+		# 2026-08-02: the same tree passed `run_dedicated_match.ps1` end to end — claim,
+		# lead, ready, START MATCH, four fighters spawned — because THAT harness moves the
+		# server and the client into the match together, like the game does.
+		#
+		# ⚠️ AND THE LOBBY IS WHERE THIS SUITE'S SUBJECT LIVES ANYWAY. Leader handover,
+		# join codes and seat lists are all waiting-room behaviour; none of them needed a
+		# running match, and `--dedicated --port=` is parsed by `match_setup.gd` on this
+		# path exactly as the deployed systemd unit parses it.
+		#
+		# ⚠️⚠️ THE LISTEN HOST GOES TO THE WAITING ROOM TOO, and it has to be told to host
+		# because `match_setup.gd::_read_dedicated_args` only knows `--dedicated` and
+		# `--port=` — `--host` is a `main.gd` flag. Setting `pending_action` here is
+		# exactly what the MULTIPLAYER screen does before entering this scene, so the
+		# server still hosts through the product's own path rather than a test-only one.
+		#
+		# ⚠️ AND BOTH ENDS MUST BE IN THE SAME ROOM. Leaving the listen host in `Main`
+		# while its clients sat in the lobby is the same broken arrangement the dedicated
+		# role had: the host spawns placeholder bodies immediately, and a client that is
+		# not in `Main` cannot resolve the spawner they arrive through. Measured: client C
+		# logged `Node not found: "Main/MultiplayerSpawner"`, then dropped its connection
+		# entirely (`net=0`) while the host still held its token — so the suite timed out
+		# waiting for a leader announcement that had nowhere to land.
+		if not _is_dedicated():
+			var gl := root.get_node("GameLaunch")
+			gl.set("pending_action", "host")
+		change_scene_to_file(MATCH_SETUP_PATH)
 		return
 	var err: int = nm.call("join_game", "127.0.0.1", _port)
 	if err != OK:

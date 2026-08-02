@@ -161,7 +161,7 @@ alongside the existing Kenney CC0 and OpenGameArt CC0 credits.
 This law used to read *"Flat colour, no textures, no UVs"* without exception, and
 it still governs the environment and the characters. The lata and the tsinelas
 are now textured, on a direct human ruling: they drew four cans by hand — three
-carrying readable parody wordmarks (PASIP, BOYBEN PERMAGAD, DECADES TUNA) — and
+carrying readable parody wordmarks (PASIP, BOYBEN, DECADES TUNA) — and
 supplied flattened 360° label wraps for the purpose. 🧑: *"you can use the
 flattened art for textures bcz its easier that way, you cant redraw this too
 bro"*. Stripped to a flat `Kd`, a Pasip and a Decades are the same grey cylinder

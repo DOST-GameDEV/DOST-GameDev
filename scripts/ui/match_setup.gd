@@ -718,6 +718,14 @@ func _on_connection_failed() -> void:
 	get_tree().change_scene_to_file(MULTIPLAYER_SETUP_PATH)
 
 func _on_server_disconnected() -> void:
+	# ⚠️ A DELIBERATE RECONNECT LOOKS LIKE THIS TOO. `_rpc_route_to_running_match`
+	# (network_manager.gd) disconnects on purpose and reconnects fresh from
+	# `Main.tscn` — see that function's own doc for why. Without this check,
+	# this handler would race its own bounce to MULTIPLAYER_SETUP_PATH against
+	# that reconnect's change to Main.tscn, and "Host ended the session" would
+	# flash on screen for a host that never left.
+	if NetworkManager.rerouting_to_running_match:
+		return
 	GameLaunch.pending_status_message = "Host ended the session."
 	get_tree().change_scene_to_file(MULTIPLAYER_SETUP_PATH)
 
@@ -1826,11 +1834,15 @@ func _peer_display_name(peer_id: int) -> String:
 	var who := String(picks.get("name", "")).strip_edges()
 	return who if who != "" else "PLAYER %d" % [_player_number(peer_id)]
 
+## How a seat says "this one is you", on BOTH boards. One constant because the two
+## lobbies had already drifted apart once — see `_seat_row_text()`'s note on the arrow.
+const SOLO_YOU_MARK: String = "◀ YOU"
+
 func _seat_row_text(seat: int) -> String:
 	var label := _seat_name(seat)
 	if not _is_networked_lobby():
 		if seat == GameLaunch.solo_seat:
-			return "%s   ◀ YOU" % label
+			return "%s   %s" % [label, SOLO_YOU_MARK]
 		return "%s   · BOT" % label
 
 	var occupant := _occupant_of(seat)
@@ -1851,8 +1863,27 @@ func _seat_row_text(seat: int) -> String:
 	# (`Design.md` §10: empty falls back to the seat label), so the row has to stay
 	# populated for a peer who never opened Settings — the same contract
 	# `CharacterBase.display_name()` keeps in the match itself.
-	var who := "YOU" if occupant == multiplayer.get_unique_id() \
-		else _peer_display_name(occupant)
+	# ⚠️⚠️ YOUR OWN SEAT GETS THE ARROW HERE TOO — 🧑 2026-08-02, with both lobbies side
+	# by side: *"i like the arrow in singleplayer for you, put arrow there and keep it to
+	# just YOU ... BUT make it so that everyone else that joins sees my name and sees YOU
+	# for their name"* / *"put arrow there in multiplayer"*.
+	#
+	# The two screens had drifted into saying the same thing two ways: solo drew
+	# "P3   ◀ YOU" and the networked board drew "P3   · YOU  ✓". Same seat, same player,
+	# different mark — and the networked one buried the only row that matters to you in
+	# the same "· " prefix every bot row uses. `SOLO_YOU_MARK` is now the one string both
+	# branches reach for, so they cannot drift again.
+	#
+	# ⚠️ IT IS "YOU" AND NEVER YOUR OWN NAME, WHICH IS THE SECOND HALF OF THE ASK. Your
+	# name is not useful to you — you know it — and it IS useful to everybody else, which
+	# is exactly what `_peer_display_name()` gives them. So the same seat legitimately
+	# reads two different things on two machines: "◀ YOU" on yours, "MATTHEW" on theirs.
+	# The seat labels P1..P4 stay on every row on both screens (*"can keep p1-p4 here"*),
+	# which is what makes the two readings obviously the same chair.
+	if occupant == multiplayer.get_unique_id():
+		var own_tick := "✓" if bool(_peer_ready.get(occupant, false)) else "…"
+		return "%s   %s  %s" % [label, SOLO_YOU_MARK, own_tick]
+	var who := _peer_display_name(occupant)
 	# ⚠️ Deliberately does NOT show the occupant's character picks.
 	# `NetworkManager.peer_characters` is HOST-ONLY by design (see its own doc) —
 	# a client asking about somebody else gets -1 — so a row that named other

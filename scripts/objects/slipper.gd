@@ -100,6 +100,42 @@ const TUMBLE_SPEED_DEG: float = 520.0
 ## returned to its spawn rather than falling forever.
 const VOID_Y: float = -12.0
 
+## How a carried tsinelas is turned in the arm bone's frame. See `_attach_to_hand()`.
+##
+## ⚠️ BOTH HALVES OF THIS ARE MEASURED, AND THE MESHES AGREE. Every tsinelas in the
+## roster is authored the same way — parsed straight out of the .obj files:
+##
+##     classic    x 0.166   y 0.075   z 0.432    sole at y -0.021
+##     crocs      x 0.190   y 0.188   z 0.432    sole at y -0.101
+##     pantulog   x 0.161   y 0.137   z 0.432    sole at y -0.035
+##     sike       x 0.184   y 0.104   z 0.432    sole at y -0.027
+##
+## So the shoe's LENGTH is its local **+Z**, its thickness is **+Y** with the sole just
+## below the origin, and the origin is centred in the other two. That is one convention
+## across all four skins, so one basis covers the roster.
+##
+## The arm bone's rest basis is IDENTITY (`tools/palm_probe.tscn`), so in its frame **-X
+## runs down the limb** and **+Y is the back of the hand**. Left as identity the shoe
+## keeps its length on the bone's +Z — across the arm, not along it — and in
+## `holding-right` the arm is yawed about 73°, which turns that into the diagonal 🧑 saw:
+## *"has a weird orientation"*.
+##
+## Mapping local +Z onto the bone's -X lays the shoe ALONG the limb; keeping local +Y on
+## the bone's +Y keeps the sole down. Those two fix the third: +X → +Z. That is a -90°
+## turn about the bone's own Y, and because it is expressed in the bone's frame it rides
+## every clip rather than being right in one pose.
+##
+## ⚠️ THIS IS NOT `_lay_along_bone()` COMING BACK. That measured the mesh's longest AABB
+## axis at runtime and rotated it onto a bone axis it had guessed at — two unknowns
+## solved against each other. Both ends here are read off files: the .obj bounds above and
+## the rig's rest basis. It is also NOT a contradiction of the viewmodel's identity
+## rotation: `ViewmodelArms.tscn`'s arm is a separate mesh whose own length axis is +Y,
+## a different frame entirely, and its number was authored by eye against that.
+const CARRY_BASIS: Basis = Basis(
+	Vector3(0.0, 0.0, 1.0),
+	Vector3(0.0, 1.0, 0.0),
+	Vector3(-1.0, 0.0, 0.0))
+
 @onready var _visual: Node3D = $Visual
 
 ## This slipper's own position in `main.gd`'s `slippers` array (0/1/2 for
@@ -705,7 +741,7 @@ func _attach_to_hand() -> void:
 	global_transform = keep
 	# Sit ON the hand point, not merely near it. Rotation follows the hand so the
 	# slipper turns with the wrist through every clip.
-	transform = Transform3D.IDENTITY
+	transform = Transform3D(CARRY_BASIS, Vector3.ZERO)
 	# ⚠️⚠️ UNDO THE RIG'S SCALE OR THE SLIPPER COMES OUT 2.38x. The hand point
 	# hangs off a `BoneAttachment3D` under the `Skeleton3D`, which inherits the
 	# model's `PERSON_SCALE` — so a child of it is silently multiplied by it, and
@@ -721,6 +757,108 @@ func _attach_to_hand() -> void:
 		1.0 / maxf(inherited.x, 0.0001),
 		1.0 / maxf(inherited.y, 0.0001),
 		1.0 / maxf(inherited.z, 0.0001))
+	# ⚠️⚠️ THE **MESH** GOES ON THE PALM, NOT THE ORIGIN — 🧑 2026-08-02, checking the
+	# hand fix by hand: *"its clipped on arm but phasing below it"*. Exactly right, and it
+	# is the last piece of this bug rather than a new one: `character_visual.gd`'s carry
+	# point is now measured to the palm, so the slipper's ORIGIN lands on the palm — and
+	# the tsinelas mesh does not sit on its own origin. It is authored around the sole and
+	# drawn at 1.6x (`TsinelasVisual.tscn`), so what a player sees hangs below the point
+	# the code so carefully placed, and it reads as the shoe sinking through the hand.
+	#
+	# ⚠️ MEASURED FROM THE MESH, NOT A CONSTANT, AND THAT IS THE WHOLE LESSON OF THIS BUG.
+	# `HAND_CARRY_OFFSET` was hand-tuned three times and was wrong three times. The centre
+	# of the visible geometry is a fact this node can read at runtime, it is right for
+	# every tsinelas in the roster without enumerating them, and a new skin with a
+	# different footbed height cannot reintroduce this.
+	#
+	# The old code DID have this correction — in `carriable.gd::_step_carried()`, reading
+	# `visual_centre_offset()`. `carriable.gd` was deleted in the pivot and the
+	# compensation went with it, which is why a bug that had been fixed came back.
+	# ⚠️ TURNED BY `CARRY_BASIS`, WHICH IS DERIVED RATHER THAN TUNED — the .obj bounds say
+	# the shoe's length is its local +Z, the rig's rest basis says the limb runs down the
+	# bone's -X, and the basis is just the map between them. Its doc block has the numbers.
+	# Identity was tried first (copying the viewmodel) and 🧑 called it: *"has a weird
+	# orientation"*. It would be, because it lays the shoe ACROSS the arm.
+	#
+	# ⚠️ SET AS A WHOLE `Transform3D`, BEFORE THE SCALE BELOW. `Node3D.scale` recomposes the
+	# basis from the rotation it is holding, so it preserves this turn — but only if the
+	# rotation is already in place when it runs. Writing them the other way round silently
+	# drops the orientation, which is exactly the kind of quiet failure this file collects.
+	# ⚠️⚠️ AND THE SOLE IS DROPPED ONTO THE HAND, WHICH IS PER-SKIN BECAUSE THE FOUR MESHES
+	# DO NOT SHARE AN ORIGIN HEIGHT. `HAND_CARRY_OFFSET.y` is the measured TOP of the hand
+	# (bone-local +0.0555, `tools/palm_probe.tscn`), so putting the origin there buries
+	# however much of the shoe hangs below its own origin — and that varies a lot:
+	#
+	#     classic  sole 0.021 below origin      crocs  sole 0.101 below origin
+	#     sike     sole 0.027 below origin      pantulog  sole 0.035 below origin
+	#
+	# One constant cannot serve a clog and a flip-flop. Reading the bottom of the drawn
+	# bounds and lifting by exactly that rests every skin's sole on the same plane.
+	#
+	# ⚠️ THE BOTTOM, NOT THE CENTRE — and that distinction is the whole difference between
+	# this and the correction removed below. `scale.y` converts it out of this node's own
+	# space (which already includes `Visual`'s 1.6) and into the bone units `position` is
+	# measured in; it is uniform, set two lines up from the rig's uniform scale, so the
+	# axis shuffle in `CARRY_BASIS` cannot skew it.
+	var bounds := _visual_bounds_local()
+	if bounds.size.y > 0.0:
+		position.y = -bounds.position.y * scale.y
+
+	# ⚠️⚠️ NO MESH-*CENTRE* CORRECTION, AND IT WAS THE THING PUTTING THE SHOE ON THE
+	# NECK. This used to shift the prop so its visible CENTRE landed on the carry point,
+	# which sounds obviously right and measured obviously wrong: `carry_probe` prints the
+	# carry point at character-local y **-0.21** and the slipper it holds at y **+0.12** —
+	# the correction was lifting the shoe **0.33 m** off the point the code had just
+	# carefully placed, which on a 1.6 m body is hip to throat. Every "its on the neck"
+	# report survived every change to `HAND_CARRY_OFFSET` because the offset was never what
+	# put it there.
+	#
+	# The `AABB` it trusted is the reason. `get_aabb()` on a mesh with no bones is the
+	# authored bounds, and `TsinelasVisual` draws at 1.6x with the shoe authored around its
+	# sole — so the "centre" it computes is a long way from anything you would call the
+	# middle of a held object, and subtracting it is a large move in a direction nobody
+	# chose.
+	#
+	# 🧑 pointed at the fix: *"why dont u try to copy what we did there to fpp slipper the
+	# one looks really good"*. `ViewmodelArms.tscn` mounts the mesh at a plain offset with
+	# no rotation and no centring, and that is the version everyone agrees looks right. So
+	# this does the same: the prop's ORIGIN goes on the carry point, full stop.
+
+## The centre of what this slipper actually DRAWS, in its own local space.
+##
+## ⚠️ THAT SPACE INCLUDES `Visual`'s 1.6 SCALE, because the box is transformed by every
+## node between here and the mesh. Which is the point: the answer is where the shoe
+## appears, not where its source geometry was authored.
+##
+## Zero when nothing has been instanced yet, which callers must read as "not ready" rather
+## than "no offset" — the same contract `character_visual.gd::visual_centre_offset()`
+## keeps. `_physics_process` retries the attach every frame while carried, so a mesh that
+## arrives a frame late is corrected on the next one.
+func _visual_centre_local() -> Vector3:
+	return _visual_bounds_local().get_center()
+
+## The whole visible box, in this node's own space. Split out from
+## `_visual_centre_local()`, which is now its only caller — kept split because a bounds
+## sweep and "the centre of the bounds" are two different questions and the next thing that
+## needs the size should not have to write a second sweep.
+func _visual_bounds_local() -> AABB:
+	var visual := get_node_or_null("Visual") as Node3D
+	if visual == null:
+		return AABB()
+	var bounds := AABB()
+	var first := true
+	var to_self := global_transform.affine_inverse()
+	for node in visual.find_children("*", "VisualInstance3D", true, false):
+		var instance := node as VisualInstance3D
+		var box: AABB = (to_self * instance.global_transform) * instance.get_aabb()
+		bounds = box if first else bounds.merge(box)
+		first = false
+	if visual is VisualInstance3D:
+		var own_box: AABB = (to_self * visual.global_transform) \
+			* (visual as VisualInstance3D).get_aabb()
+		bounds = own_box if first else bounds.merge(own_box)
+		first = false
+	return AABB() if first else bounds
 
 func _detach_from_hand() -> void:
 	if _home_parent == null or not is_instance_valid(_home_parent):
@@ -738,6 +876,15 @@ func _detach_from_hand() -> void:
 	# restored basis, so a rounding drift cannot accumulate over a match's worth
 	# of pick-ups and throws.
 	scale = Vector3.ONE
+	# ⚠️ THE ORIENTATION IS RESET WITH IT, AND IT IS A GUARD RATHER THAN A FIX NOW. Carrying
+	# no longer rotates the shoe at all (see `_attach_to_hand()` — the viewmodel's known-good
+	# pose is identity), so there is normally nothing to undo. It stays because a slipper
+	# reparented onto a hand inherits that hand's world orientation for a frame, and because
+	# the class of bug it guards against — state applied on the way IN that nothing takes off
+	# on the way OUT — has already cost this file twice: the SHADOWS_ONLY flag that stranded
+	# itself on throw, and the synchroniser that never re-opened. This function is the one
+	# door every exit from CARRIED goes through, which is where such a reset belongs.
+	rotation = Vector3.ZERO
 
 ## ---------------------------------------------------------------------------
 ## § SOFT STATS — §2.8, closed 2026-08-01. The TSINELAS tab decides three things.
@@ -860,6 +1007,53 @@ func _step_carried() -> void:
 		+ carrier.global_transform.basis.x * 0.28 \
 		- carrier.global_transform.basis.z * 0.20
 
+## ⚠️⚠️ THE INVISIBLE BACK WALL — 🧑 2026-08-02, with a screenshot of a slipper sitting
+## in the road well outside the court: *"pls put an invisible barrier that makes it bounce
+## back and not go out of bounds as it's unreachable"*.
+##
+## The arena has real wall colliders (`Bounds`, measured into `CharacterBase.playable_half_x/z`
+## by `main.gd::_publish_playable_extent`) and they stop PEOPLE, because a CharacterBase
+## moves with `move_and_slide()`. A slipper does not: `_step_flying()` integrates a
+## position by hand, so it passes through every collider in the map and lands wherever the
+## arc ends. Every seat owns exactly one slipper (`Design.md` §5.2), so one that leaves the
+## court does not merely look untidy — it takes a quarter of the round's offence with it
+## until the round resets.
+##
+## ⚠️ A REFLECTION, NOT A CLAMP, AND THE DIFFERENCE IS PLAYABLE. Clamping to the wall
+## would stop the slipper dead ON the boundary, which piles them along the edge — the same
+## clustering the body-block deflection below was added to prevent. Reflecting sends it
+## back into the court, where somebody can reach it.
+##
+## ⚠️ IT RUNS BEFORE THE `host_side` GATE, so it runs on EVERY peer. That is required, not
+## incidental: the whole flight is simulated everywhere from one launch velocity (see
+## below), and a bounce applied only on the host would put the slipper somewhere else on
+## every other screen. The rule is a pure function of position and velocity, so every peer
+## computes the same reflection on the same frame.
+##
+## ⚠️ ENERGY IS LOST ON THE BOUNCE. A perfectly elastic wall would return a slipper at
+## throw speed, which is a projectile nobody threw and which can still knock the lata
+## down — a point scored by the wall. 0.45 is enough to carry it clear of the boundary and
+## not enough to be a shot.
+const BOUNCE_RESTITUTION: float = 0.45
+
+## How far inside the wall face the slipper turns around. Its own contact radius, so the
+## visible shoe never buries itself in a facade before reversing.
+const BOUNCE_INSET: float = HIT_RADIUS
+
+func _bounce_off_bounds() -> void:
+	var limit_x: float = CharacterBase.playable_half_x - BOUNCE_INSET
+	var limit_z: float = CharacterBase.playable_half_z - BOUNCE_INSET
+	if limit_x > 0.0 and absf(global_position.x) > limit_x:
+		global_position.x = signf(global_position.x) * limit_x
+		# ⚠️ `-absf`, NOT `-=` OR A FLIP. A plain sign flip would send a slipper that is
+		# somehow already outside and travelling inward back out again — and being outside
+		# is exactly the state this function exists to recover from, so it must not have a
+		# way to make it worse. This form always ends up pointing at the court.
+		_velocity.x = -signf(global_position.x) * absf(_velocity.x) * BOUNCE_RESTITUTION
+	if limit_z > 0.0 and absf(global_position.z) > limit_z:
+		global_position.z = signf(global_position.z) * limit_z
+		_velocity.z = -signf(global_position.z) * absf(_velocity.z) * BOUNCE_RESTITUTION
+
 ## ⚠️ FLIGHT IS SIMULATED ON EVERY PEER FROM THE SAME LAUNCH VELOCITY, and only
 ## the HOST resolves contact. Both halves matter. Simulating everywhere means the
 ## arc is smooth on a client instead of being 4 Hz of interpolated packets, which
@@ -871,6 +1065,7 @@ func _step_flying(delta: float) -> void:
 		_thrower_ignore_left = maxf(0.0, _thrower_ignore_left - delta)
 	_velocity.y -= CharacterBase.GRAVITY * delta
 	global_position += _velocity * delta
+	_bounce_off_bounds()
 	_spin(delta)
 
 	var host_side := not NetworkManager.is_networked() or NetworkManager.is_host()

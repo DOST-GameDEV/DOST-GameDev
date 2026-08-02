@@ -140,25 +140,29 @@ func _run_local() -> void:
 	MatchManager.begin_next_round()
 	await get_tree().create_timer(0.5).timeout
 
+	# ⚠️⚠️ THE SLIPPER COMES OUT OF THE `slippers` GROUP, NOT THE CHARACTER WALK —
+	# 2026-08-02. A tsinelas was a `CharacterBase` with a `Carriable` node until
+	# 3abc019; it is a `Slipper` prop now, so the `not ch.is_person and not ch.is_can`
+	# arm below matched nothing and the type it was cast to no longer exists.
 	var attacker: CharacterBase = null
-	var slipper: CharacterBase = null
+	var slipper: Slipper = null
 	for c in _main.find_children("*", "CharacterBase", true, false):
 		var ch := c as CharacterBase
 		if ch.is_person and not ch.team_is_can_side:
 			attacker = ch
-		elif not ch.is_person and not ch.is_can and slipper == null:
-			slipper = ch
-	# ⚠️ THE ATTACKER'S OWN TEAM'S TSINELAS. `carriable.gd::can_be_grabbed_by()` refuses
-	# an opponent's slipper outright ("shove it, kick it, never pocket it"), so a
-	# `host_grab` of the wrong one is a silent no-op — measured on the networked leg as
-	# `held=<null>` with the button held for a full 1.4 s and no charge at all. Resolved in
-	# a second pass because tree order does not say which team comes first.
 	if attacker != null:
-		for c in _main.find_children("*", "CharacterBase", true, false):
-			var ch := c as CharacterBase
-			if not ch.is_person and not ch.is_can and ch.team == attacker.team:
-				slipper = ch
-				break
+		slipper = _slipper_owned_by(attacker)
+	# ⚠️⚠️ THE SECOND DISCOVERY PASS THAT USED TO SIT HERE IS DELETED — 2026-08-02, and
+	# it was a port miss of mine rather than a design change. It re-scanned every
+	# `CharacterBase` for "not a Person, not a can, same team" and assigned the result
+	# to `slipper`, which is a `Slipper` now — a parse error that took this whole file
+	# down, so the probe could not run at all.
+	#
+	# What it existed for is genuinely gone. Its note said an opponent's slipper is
+	# refused outright, so the pass was there to make sure the RIGHT one was grabbed
+	# when tree order did not say which team came first. `slipper.gd` dropped that owner
+	# gate ("everything above it — loose, an attacker, able to act" is the whole test),
+	# and `_slipper_owned_by()` above already resolves by `owner_slot` in one pass.
 	if attacker == null or slipper == null:
 		print("CHARGE: could not find an attacking Person and a tsinelas")
 		_fails += 1
@@ -195,12 +199,11 @@ func _run_local() -> void:
 	if "--scan" in OS.get_cmdline_user_args():
 		await _scan_pose_clip(attacker)
 
-	var carriable := slipper.get_node("Carriable") as Carriable
-	carriable.host_drop()
+	slipper.host_drop()
 	await get_tree().physics_frame
 	slipper.global_position = attacker.global_position + Vector3(0.4, 0.3, 0.0)
 	await get_tree().physics_frame
-	carriable.host_grab(attacker)
+	slipper.host_grab(attacker)
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 
@@ -525,14 +528,12 @@ func _run_net(mode: String, address: String) -> void:
 	# `carriable.gd::host_grab()` no-ops off the host by design, and carry state is a host
 	# broadcast, so this is the only peer that can set it up — for either Person.
 	if mode == "host":
-		var slipper: CharacterBase = null
-		for c in _main.find_children("*", "CharacterBase", true, false):
-			var ch := c as CharacterBase
-			if not ch.is_person and not ch.is_can and ch.team == subject.team:
-				slipper = ch
-				break
+		# ⚠️ MATCHED ON `owner_slot`, NOT ON `team` — 2026-08-02. Teams were how a prop
+		# was paired to its side when a tsinelas was a character; a `Slipper` carries
+		# `owner_slot` instead, which is the seat it belongs to and the thing
+		# `_reset_world()` assigns every round.
+		var slipper := _slipper_owned_by(subject)
 		if slipper != null:
-			var carriable := slipper.get_node("Carriable") as Carriable
 			# ⚠️ `host_drop()`, NOT `host_land()`. `host_land` only fires from FLYING, so on a
 			# slipper a bot had already picked up it is a no-op — measured as
 			# `grabbable=false` with the slipper CARRIED, after which the re-grab was skipped
@@ -540,16 +541,16 @@ func _run_net(mode: String, address: String) -> void:
 			# on the client beside `held=Carriable:<...>` on the host, for the same unit —
 			# two numbers that cannot both be true). Dropping and re-grabbing forces the
 			# broadcast both peers need.
-			carriable.host_drop()
+			slipper.host_drop()
 			await get_tree().physics_frame
 			slipper.global_position = subject.global_position + Vector3(0.4, 0.3, 0.0)
 			await get_tree().physics_frame
-			carriable.host_grab(subject)
-			print("  slipper  %s team=%d (subject team=%d) grabbable=%s" % [
-				slipper.name, slipper.team, subject.team,
-				str(carriable.can_be_grabbed_by(subject))])
+			slipper.host_grab(subject)
+			print("  slipper  %s owner_slot=%d (subject slot=%d) grabbable=%s" % [
+				slipper.name, slipper.owner_slot, subject.player_slot,
+				str(slipper.can_be_grabbed_by(subject))])
 		else:
-			print("  slipper  NONE on the attacking team — that should be impossible")
+			print("  slipper  NONE owned by this seat — that should be impossible")
 
 	# Both peers wait for the carry to land: the driver needs it because
 	# `carrier.gd::_step_throw` returns immediately with nothing in hand, and the observer
@@ -857,3 +858,13 @@ func _assert(what: String, ok: bool, detail: String) -> void:
 
 func _v(v: Vector3) -> String:
 	return "(%+.3f,%+.3f,%+.3f)" % [v.x, v.y, v.z]
+
+## The `Slipper` belonging to one seat. Replaces the old "walk every CharacterBase
+## looking for one that is neither a Person nor a can, on my team" search, which
+## described a world where a prop was a character (3abc019 ended it).
+func _slipper_owned_by(who: CharacterBase) -> Slipper:
+	for node in get_tree().get_nodes_in_group("slippers"):
+		var s := node as Slipper
+		if s != null and s.owner_slot == who.player_slot:
+			return s
+	return null
