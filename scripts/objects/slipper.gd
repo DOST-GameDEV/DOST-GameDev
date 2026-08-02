@@ -391,14 +391,46 @@ func host_grab(by: CharacterBase) -> void:
 	else:
 		_apply_grabbed(by.player_slot)
 
+## ⚠️⚠️ A GRAB WHOSE SEAT HAS NOT ARRIVED ON THIS PEER YET IS REMEMBERED, NOT DROPPED.
+## `-1` for "nothing outstanding".
+##
+## `host_force_equip()` above guards the HOST against exactly this — its own comment
+## records the measurement, *"0 throws in a whole match and three bots stuck in FETCH"* —
+## but the guard cannot help a RECEIVING peer, which has no say in when the packet
+## arrives. A mid-match joiner is served its four bodies by `MultiplayerSpawner` and its
+## catch-up by reliable RPC, and those two have no ordering relationship (the same race
+## `main.gd::_rpc_reclaim_character` records and solves with `_pending_reclaims`). Land
+## the grab first and the slipper enters CARRIED with nobody holding it: no longer LOOSE,
+## so a fetch refuses it, and unknown to every hand, so a throw refuses it too — a
+## slipper deleted from the round by a packet ordering.
+var _pending_carrier_slot: int = -1
+
 func _apply_grabbed(slot: int) -> void:
 	owner_slot = slot
 	carrier = RoundManager.player_at(slot)
 	_velocity = Vector3.ZERO
 	_set_state(CarryState.CARRIED)
-	if carrier != null:
-		carrier.notify_holding(self)
-		AudioManager.play_at("pickup", global_position)
+	if carrier == null:
+		_pending_carrier_slot = slot
+		return
+	_pending_carrier_slot = -1
+	carrier.notify_holding(self)
+	AudioManager.play_at("pickup", global_position)
+
+## Retried from `_physics_process`'s CARRIED branch, beside the hand-attachment retry that
+## is already there for the same class of reason. Cheap: one dictionary read per frame,
+## and only while something is genuinely outstanding.
+##
+## ⚠️ SILENT, UNLIKE `_apply_grabbed`. This is a catch-up for a pickup that already
+## happened somewhere else, possibly a minute ago; playing the "pickup" cue here would
+## announce a grab to a player who just walked in on it.
+func _resolve_pending_carrier() -> void:
+	var who := RoundManager.player_at(_pending_carrier_slot)
+	if who == null:
+		return
+	carrier = who
+	_pending_carrier_slot = -1
+	who.notify_holding(self)
 
 ## `origin` and `target_point` come from the thrower's own aim solve, so the arc
 ## passes through the crosshair rather than through the character's centre.
@@ -656,6 +688,12 @@ func _set_state(new_state: CarryState) -> void:
 	_set_sync_enabled(new_state != CarryState.CARRIED)
 	if new_state != CarryState.CARRIED:
 		_restore_shadow_casting()
+		# ⚠️ AND THE OUTSTANDING HAND IS FORGOTTEN, FOR THE REASON THIS FUNCTION'S OWN
+		# §6 TRAP 12 NOTE ABOVE GIVES: anything that must always hold is written from the
+		# state, not left to whichever path happened to cause the change. A slipper that
+		# is thrown or dropped before its carrier's body ever arrived must not go back
+		# into that hand a second later.
+		_pending_carrier_slot = -1
 	carry_state_changed.emit(new_state)
 
 
@@ -957,6 +995,12 @@ func _physics_process(delta: float) -> void:
 	_update_owner_glow()
 	match state:
 		CarryState.CARRIED:
+			# ⚠️ THE HAND ITSELF MAY STILL BE ON ITS WAY. See `_pending_carrier_slot`:
+			# this is the same shape as the attach retry below, one level further out —
+			# that one waits for a bone to be built, this one waits for the whole body
+			# to be delivered.
+			if _pending_carrier_slot >= 0:
+				_resolve_pending_carrier()
 			# ⚠⚠ RETRY THE ATTACH BEFORE FALLING BACK, AND THAT IS THE FIX FOR
 			# "THE SLIPPER IS IN HER BODY". 🧑 2026-08-01, with a screenshot: *"why is
 			# the slipper inside her body, make it go to her hand"*.

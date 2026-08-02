@@ -89,11 +89,23 @@ func _ready() -> void:
 	# A distinguishable name per role, so a body in the report can be read back to the
 	# process that owns it without counting peer ids.
 	SettingsManager.player_name = _role.to_upper()
+	# ⚠️ THE ROUND-START BEAT IS TRACED, BECAUSE IT IS WHAT REBUILDS `RoundManager`'s SEAT
+	# TABLE. `main.gd::_on_match_round_started` -> `_reset_world()` is the ONLY place
+	# `RoundManager.register_player()` is ever called on a networked peer, so whether a
+	# returning player's seat table is correct comes down entirely to whether this signal
+	# fired on their process after their bodies arrived. Connected on the autoload, which
+	# outlives every scene change this run makes.
+	MatchManager.round_started.connect(_trace_round_started)
 	match _role:
 		"referee": await _referee()
 		"anchor": await _anchor()
 		"latecomer": await _latecomer()
 		_: await _dropper()
+
+func _trace_round_started(round_number: int, defender_slot: int) -> void:
+	print("[%s TRACE] MatchManager.round_started(round=%d defender=%d) at %.1fs, bodies=%d" % [
+		_role, round_number, defender_slot,
+		Time.get_ticks_msec() / 1000.0, _bodies().size()])
 
 func _address() -> String:
 	return "%s:%d" % [_host, _port]
@@ -168,6 +180,10 @@ func _host_report(t: int) -> void:
 			str(_short_seats(scene.get("_token_join_index"))),
 			str((scene.get("_spawned_peer_ids") as Dictionary).keys())]
 		line += " bodies=%s" % [_bodies_line(scene)]
+		# ⚠️ THE HOST'S OWN COPY OF THE WORLD LINE, so "the returning peer thinks its hand
+		# is empty" can be read against "the host thinks that hand is full". Without this
+		# side the client's report is a claim with nothing to check it.
+		line += " | %s" % [_world_line()]
 	print(line)
 
 ## Tokens are 32 hex characters and there are four of them; the last six are plenty to tell
@@ -252,6 +268,14 @@ func _anchor() -> void:
 		await get_tree().create_timer(5.0).timeout
 		elapsed += 5.0
 		_report("anchor t=%ds" % int(elapsed))
+		# ⚠️ THE CONTROL, MEASURED AT ROUGHLY THE MOMENT THE DROPPER COMES BACK. The
+		# anchor never left, so its body is a normally-spawned one in the SAME match on
+		# the SAME build — which is the only honest thing to diff a reclaimed body
+		# against. 20 s lines up with the dropper's AFTER (it spends ~14 s reconnecting
+		# after a ~7 s pre-round settle), and one shot rather than every tick because the
+		# push probe deliberately staggers the body it tests.
+		if int(elapsed) == 10:
+			await _check_abilities("CONTROL")
 	_done("anchor")
 
 # =============================================================================
@@ -289,7 +313,18 @@ func _dropper() -> void:
 		waited += 0.5
 	_check("the dropper is in the match scene", _scene_name() == "Main")
 	_press_ready_up()
-	await get_tree().create_timer(7.0).timeout
+	# ⚠️ POLLED RATHER THAN SLEPT THROUGH. The first version waited a flat 7 s and printed
+	# once, and that single sample said `round=0 active=false` while the anchor's sample
+	# from the same match said `round=1 active=true` — which reads as the two peers
+	# permanently disagreeing when it may only be that the countdown had not finished. A
+	# state this run's whole conclusion rests on cannot be read once.
+	var settle := 0.0
+	while settle < 14.0:
+		await get_tree().create_timer(1.0).timeout
+		settle += 1.0
+		print("[dropper t=%ds] %s" % [int(settle), _world_line()])
+		if RoundManager.round_active and RoundManager.player_at(1) != null:
+			break
 	print("[dropper] round=%d active=%s" % [MatchManager.round_number, str(RoundManager.round_active)])
 
 	# ---- BEFORE ----------------------------------------------------------------
@@ -336,6 +371,7 @@ func _dropper() -> void:
 		String(after["owned_slot"]) == String(before["owned_slot"])
 			and String(before["owned_slot"]) != "")
 	_check("AFTER: no bot is still driving that body", not bool(after["owned_is_bot"]))
+	await _check_abilities("AFTER")
 	_done("dropper")
 
 # =============================================================================
@@ -366,6 +402,12 @@ func _latecomer() -> void:
 	_check("with a populated world", int(after["bodies"]) == 4)
 	_check("owning a body", String(after["owned"]) != "")
 	_check("and a camera to look through", String(after["camera"]) != "<none>")
+	# ⚠️ THE SAME THREE VERBS, BECAUSE IT IS THE SAME DEFECT. `RoundManager.register_player`
+	# ran only at a round boundary and the slipper carry state was never sent to anybody who
+	# missed the pickup — neither of those cares whether the arriving peer has been in this
+	# match before. A first-time mid-match joiner was as unable to throw, pick up or be
+	# shoved as a returning one, and is proved fixed by the same probe.
+	await _check_abilities("LATECOMER")
 	_done("latecomer")
 
 # =============================================================================
@@ -411,6 +453,11 @@ func _report(tag: String) -> Dictionary:
 	print("[%s] bodies=%d %s" % [tag, bodies.size(), " ".join(lines)])
 	print("[%s] camera=%s get_local_character=%s round=%d hud='%s'" % [
 		tag, camera, local_body, MatchManager.round_number, _hud_text(scene)])
+	# The §THE PROPERTY DIFF block — printed for every body on every report, so a
+	# reclaimed body and an ordinary one can be read against each other line for line.
+	print("[%s] %s" % [tag, _world_line()])
+	for body in bodies:
+		print("[%s] %s" % [tag, _probe_line(body as CharacterBody3D)])
 	return {
 		"scene": _scene_name(),
 		"bodies": bodies.size(),
@@ -419,6 +466,298 @@ func _report(tag: String) -> Dictionary:
 		"owned_is_bot": owned_is_bot,
 		"camera": camera,
 	}
+
+# =============================================================================
+# ⚠️⚠️ § THE PROPERTY DIFF. 🧑 2026-08-02, minutes after the rejoin itself started
+# working: *"no throw, no getting pushed, no pickup"* — a returning player who can WALK
+# and can do nothing else.
+#
+# "No getting pushed" is the one that says where to look. Being pushed is not an input
+# path at all: a shove is decided on the host and arrives as
+# `RoundManager._sync_shove(victim_slot, ...)`, which every peer applies to ITS OWN copy
+# of that seat. So a body that walks but cannot be shoved is not deaf to the keyboard —
+# something on this peer cannot find that seat.
+#
+# Hence this: everything that could plausibly differ between a reclaimed body and a
+# normally-spawned one, dumped as numbers on BOTH processes (the anchor never dropped, so
+# its own body is the control), rather than reasoned about. The autoload half is printed
+# separately because it is PER PROCESS, not per body — and that turned out to be where
+# the whole difference lived.
+# =============================================================================
+
+## The per-process state four separate rules read before a body may do anything: the
+## `RoundManager` seat table (`player_at`, which every host broadcast is addressed
+## through), the lata (half of `can_throw`), and the round clock.
+func _world_line() -> String:
+	var seats: Array[String] = []
+	for slot in range(4):
+		var who: Node = RoundManager.player_at(slot)
+		seats.append("%d=%s" % [slot, String(who.name) if who != null else "<null>"])
+	var slips: Array[String] = []
+	var scene: Node = get_tree().current_scene
+	var list: Variant = scene.get("slippers") if scene != null else null
+	if list is Array:
+		for i in range((list as Array).size()):
+			var slipper: Node = (list as Array)[i]
+			if slipper == null or not is_instance_valid(slipper):
+				continue
+			var holder: Node = slipper.get("carrier")
+			slips.append("s%d(owner=%s state=%s carrier=%s)" % [
+				i, str(slipper.get("owner_slot")), str(slipper.get("state")),
+				String(holder.name) if holder != null else "<null>"])
+	var lata: Node = RoundManager.lata
+	return ("WORLD round=%d round_active=%s lata=%s lata_up=%s throw_cd=%.2f time_left=%.1f "
+		+ "defender_slot=%d rm_seats=[%s] %s") % [
+		MatchManager.round_number, str(RoundManager.round_active), str(lata != null),
+		str(lata != null and bool(lata.get("is_upright"))),
+		RoundManager.throw_cooldown_left(),
+		RoundManager.time_left, MatchManager.defender_slot,
+		", ".join(seats), " ".join(slips)]
+
+## Everything about ONE body that could differ. Read through `get()`/`call()` rather than
+## through typed members so the harness keeps compiling if a field is renamed — a probe
+## that fails to load reports nothing at all, which is worse than reporting a blank.
+func _probe_line(body: CharacterBody3D) -> String:
+	var slot: int = int(body.get("player_slot"))
+	var seated: Node = RoundManager.player_at(slot)
+	var can_throw: bool = RoundManager.can_throw(body as CharacterBase)
+	return ("BODY %s slot=%d player_id=%s auth=%d mine=%s is_bot=%s ai_ctrl=%s "
+		+ "ai_driven=%s input_parked=%s layer=%d mask=%d phys_proc=%s proc=%s "
+		+ "can_process=%s state=%s settle=%s defender=%s holding=%s carrier_held=%s "
+		+ "rm_seat=%s can_act=%s can_throw=%s inside_box=%s shove_cd=%.2f lunge_cd=%.2f "
+		+ "punch_cd=%.2f throw_lock=%.2f") % [
+		body.name, slot, str(body.get("player_id")),
+		body.get_multiplayer_authority(), str(body.is_multiplayer_authority()),
+		str(body.get("is_bot")), str(body.get("ai_controller") != null),
+		str(body.call("is_ai_driven")), str(body.get("input_parked")),
+		body.collision_layer, body.collision_mask,
+		str(body.is_physics_processing()), str(body.is_processing()),
+		str(body.can_process()), str(body.get("state")), str(body.get("_spawn_settle")),
+		str(body.get("is_defender")), str(body.call("holding_slipper")),
+		_carrier_held(body),
+		"self" if seated == body else ("<null>" if seated == null else String(seated.name)),
+		str(body.call("can_act")), str(can_throw), str(body.call("is_inside_box")),
+		float(body.call("shove_cooldown_left")), _f(body, "_lunge_cooldown_left"),
+		_f(body, "_punch_cooldown_left"), _carrier_lock(body)]
+
+## The `Carrier` component's own idea of what is in the hand, which is a SEPARATE fact
+## from `CharacterBase.holding_slipper()` — `notify_holding` writes both, and the whole
+## point of printing them side by side is to catch a hand that only half-heard.
+func _carrier_held(body: Node) -> String:
+	var carrier: Node = body.get_node_or_null("Carrier")
+	if carrier == null:
+		return "<no carrier node>"
+	var held: Node = carrier.call("held")
+	return String(held.name) if held != null else "<null>"
+
+func _carrier_lock(body: Node) -> float:
+	var carrier: Node = body.get_node_or_null("Carrier")
+	return float(carrier.call("throw_lock_left")) if carrier != null else -1.0
+
+func _f(body: Node, field: String) -> float:
+	var value: Variant = body.get(field)
+	return float(value) if value != null else -1.0
+
+# =============================================================================
+# ⚠️⚠️ § THE THREE VERBS, ASSERTED AS STATE. 🧑 2026-08-02: *"no throw, no getting
+# pushed, no pickup"*.
+#
+# Every check below drives the REAL path rather than a convenient shortcut past it:
+# the pickup is an `E` press on a body standing on its own slipper (so it goes out as
+# `_rpc_request_grab` and comes back as `main.gd::_rpc_slipper_grabbed`), and the push
+# is `RoundManager._apply_shove_to`, which is literally the body of the `_sync_shove`
+# handler the host's broadcast lands in. A check that asserted "the harness could call
+# `notify_holding`" would have passed on the broken build.
+# =============================================================================
+
+## The one body this process drives — authority here, and no AI attached. Same test
+## `main.gd::_refresh_rig_ownership` uses to decide whose camera to switch on.
+func _my_body() -> CharacterBase:
+	for node in _bodies():
+		var body := node as CharacterBase
+		if body != null and body.is_multiplayer_authority() and body.ai_controller == null:
+			return body
+	return null
+
+func _check_abilities(tag: String) -> void:
+	var body: CharacterBase = _my_body()
+	if body == null:
+		_check("%s: there is a body to test at all" % tag, false)
+		return
+	var slot: int = body.player_slot
+
+	# ⚠️ THE THREE FACTS EVERY HOST BROADCAST IS ADDRESSED THROUGH. `_sync_shove`,
+	# `_sync_block` and `_sync_tag_penalty` all resolve their victim with
+	# `RoundManager.player_at(slot)`, and `can_throw` needs the lata — so a peer missing
+	# any of them silently drops the message on the floor with no error anywhere.
+	_check("%s: RoundManager on this peer knows the body by its seat" % tag,
+		RoundManager.player_at(slot) == body)
+	_check("%s: this peer has the lata" % tag, RoundManager.lata != null)
+	_check("%s: the round is live on this peer" % tag, RoundManager.round_active)
+
+	if not body.is_defender:
+		await _check_pickup_and_throw(tag, body)
+
+	# ---- BEING PUSHED -------------------------------------------------------
+	# ⚠️ LAST, because it stuns the body it tests and `can_act()` is false for the next
+	# 0.6 s — running it before the pickup would have failed the pickup for the wrong
+	# reason.
+	# ⚠️ READ ON THE SAME LINE, WITH NO `await` AND NO POSITION FALLBACK, AND THE FIRST
+	# VERSION OF THIS CHECK HAD BOTH. `_apply_shove()` writes `velocity` and `state`
+	# synchronously, so anything measured after a physics frame is measuring gravity and
+	# `move_and_slide()` as well — and "the body moved at all" is true of any body standing
+	# on a slope or still settling. Measured: it reported PASS on the broken build, on a
+	# peer whose seat table was empty and where the shove provably went nowhere.
+	body.velocity = Vector3.ZERO
+	body.state = CharacterBase.State.NORMAL
+	RoundManager._apply_shove_to(slot, Vector3(7.0, 0.0, 0.0), 0.6)
+	var pushed := body.velocity.length() > 0.5
+	var stunned := body.state != CharacterBase.State.NORMAL
+	print("[%s] PUSH velocity=%.2f state=%s" % [tag, body.velocity.length(), str(body.state)])
+	_check("%s: a host shove reaches the body (it can be PUSHED)" % tag, pushed and stunned)
+
+## ⚠️ ONE CHECK COVERS BOTH STARTING STATES, ON PURPOSE. The seat was bot-driven for the
+## ~17 s the human was away, so their slipper is either still auto-equipped in the hand
+## (`main.gd::_equip_owned_slippers` at round start) or lying wherever the bot threw it —
+## and which one it is on any given run is the bot's business, not this run's. The end
+## state is the same either way: *an attacker standing on their own slipper with `E` held
+## is holding it*. Both branches were broken before the fix and both are proved by this.
+func _check_pickup_and_throw(tag: String, body: CharacterBase) -> void:
+	var mine: Slipper = _reachable_slipper(body)
+	if mine == null:
+		_check("%s: this peer can see a slipper to pick up at all" % tag, false)
+		return
+	# ⚠️ TELEPORTED, NOT WALKED. This process is the multiplayer authority for this body,
+	# so writing `global_position` is a legal move that the synchronizer carries to the
+	# host within a frame or two — which is what makes the host agree the player is in
+	# range when the grab request arrives. Walking it there would need a pathfinder and
+	# would still be a teleport's worth of trust in the same synchronizer.
+	body.global_position = mine.global_position
+	await get_tree().create_timer(1.0).timeout
+	# `Carrier._step_grab` reads `input_just_pressed`, so the press must be genuinely
+	# NEW — released first, then held across several physics frames while the request
+	# makes its round trip to the host and back.
+	_press("grab", false)
+	await get_tree().physics_frame
+	_press("grab", true)
+	await get_tree().create_timer(1.5).timeout
+	_press("grab", false)
+	await get_tree().create_timer(1.0).timeout
+	_check("%s: a slipper is in this peer's hand after pressing E on one (PICKUP)" % tag,
+		body.holding_slipper())
+	var carrier: Node = body.get_node_or_null("Carrier")
+	_check("%s: and the Carrier component agrees it is holding one" % tag,
+		carrier != null and carrier.call("held") != null)
+
+	# ---- THROW --------------------------------------------------------------
+	# ⚠️ STOOD OUTSIDE THE CHALK FIRST, AND DERIVED FROM `confinement_radius` RATHER THAN
+	# FROM `spawn_position`. `RoundManager.can_throw()` refuses a thrower inside the box
+	# (`Design.md`: the throwing line) and the pickup above walks the body to wherever the
+	# slipper happens to be lying, so the position has to be re-established either way.
+	#
+	# The first version used `spawn_position`, which is right for a REJOINER — its seat was
+	# placed on an attacker mark by `_reset_world` at the whistle — and wrong for a
+	# first-time mid-match joiner, whose `spawn_position` is whatever the spawn packet said
+	# and has never been through `_place_at_spawn`. Measured on the latecomer scenario:
+	# `inside_box=true` at the throw check, i.e. the run failed on where the HOST had put
+	# them rather than on anything about the gate. `confinement_radius` is the same number
+	# `is_inside_box()` tests against, so stepping past it cannot disagree with the rule.
+	# ⚠️ READ OFF THE CLASS, NOT OFF THE INSTANCE. Both are `static var` on `CharacterBase`
+	# (the box and the arena bounds are properties of the MAP, one copy for everybody), and
+	# GDScript will not serve a static through an instance.
+	var clear_of_box: float = CharacterBase.confinement_radius + 1.5
+	if CharacterBase.playable_half_x > 0.0:
+		clear_of_box = minf(clear_of_box, CharacterBase.playable_half_x - 0.5)
+	body.global_position = Vector3(clear_of_box, body.global_position.y, 0.0)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	# ⚠️⚠️ THE GATE IS ASSERTED WITH `lata.is_upright` FACTORED OUT, AND THE FIRST VERSION
+	# OF THIS CHECK WAS VACUOUS WITHOUT THAT. `RoundManager.can_throw()` is six clauses, and
+	# ONE of them — the can standing — is a live game condition the AI taya's own attackers
+	# knock over within seconds of the whistle. Measured across three runs: `lata_up` was
+	# false at this point in all three, so `can_throw == (lata_up and off_cooldown)` reduced
+	# to `false == false` and would have gone green on any build at all.
+	#
+	# The five remaining clauses are precisely the ones a rejoin can break, and each of them
+	# was broken on the build this run was written against: `round_active` and the lata come
+	# from `_sync_state_to_late_joiner`, `holding` from the slipper catch-up, and the seat
+	# table under both. So they are asserted directly, and the can's posture is printed
+	# rather than demanded.
+	# ⚠️⚠️ WAIT OUT THE THROW COOLDOWN, WHICH THIS CHECK STARTS ITSELF. The pickup asserted a
+	# few lines above is a real `E` press, and equipping a slipper arms the throw cooldown —
+	# so asserting `throw_cooldown_left() <= 0.0` immediately afterwards is asserting a normal
+	# game rule against a state this function created. Measured on a HEALTHY build:
+	#
+	#     THROW GATE lata_up=true inside_box=false holding=true defender=false
+	#                round_active=true  throw_cd=0.62  can_throw=false
+	#
+	# Every clause a rejoin can break was already satisfied; only the cooldown was open, and
+	# the run reported FAIL on a correct fix. Poll rather than sleep a fixed time — the
+	# cooldown length is a balance number and this must not re-break when it changes.
+	var cooldown_deadline := Time.get_ticks_msec() + 4000
+	while RoundManager.throw_cooldown_left() > 0.0 and Time.get_ticks_msec() < cooldown_deadline:
+		await get_tree().physics_frame
+	var lata: Node = RoundManager.lata
+	var lata_up: bool = lata != null and bool(lata.get("is_upright"))
+	# ⚠️ THE WHOLE FORMAT STRING IS PARENTHESISED. `%` binds tighter than `+` in GDScript,
+	# so `"a" + "b" % args` formats only the second half and throws on the argument count.
+	print(("[%s] THROW GATE lata_up=%s throw_cd=%.2f inside_box=%s holding=%s defender=%s "
+		+ "round_active=%s can_throw=%s") % [
+		tag, str(lata_up), RoundManager.throw_cooldown_left(),
+		str(body.is_inside_box()), str(body.holding_slipper()), str(body.is_defender),
+		str(RoundManager.round_active), str(RoundManager.can_throw(body))])
+	_check("%s: every clause of the throw gate a rejoin can break is satisfied (THROW)" % tag,
+		RoundManager.round_active
+			and not body.is_defender
+			and body.holding_slipper()
+			and lata != null
+			and RoundManager.throw_cooldown_left() <= 0.0
+			and not body.is_inside_box())
+	# And the whole gate, which is the five above plus the can. Stated separately so a run
+	# that fails only because somebody knocked the lata over says so in one line.
+	_check("%s: ...so the gate is open iff the can is standing" % tag,
+		RoundManager.can_throw(body) == lata_up)
+
+## The slipper this body should be able to end up holding: the one already in its hand,
+## else its own if that is lying loose, else ANY loose one.
+##
+## ⚠️⚠️ THE LAST FALLBACK IS NOT LAZINESS, IT IS THE GAME'S ACTUAL RULE. This function
+## used to demand `owner_slot == player_slot` and went red on a healthy build. Ownership
+## is not fixed for the round: `Slipper._apply_grabbed()` writes `owner_slot = slot` on
+## every pickup, so whoever picks a slipper up OWNS it from then on. Measured on the run
+## that caught this — after ~17 s of bots fetching and throwing, the host itself held
+## `s0(owner=2) s1(owner=3) s2(owner=3)` and NO slipper belonged to the returning seat at
+## all, on the host and on both clients alike. `Slipper.can_be_grabbed_by()` has never
+## consulted ownership, so "your own slipper" was never what a pickup was gated on.
+func _reachable_slipper(body: CharacterBase) -> Slipper:
+	var scene: Node = get_tree().current_scene
+	var list: Variant = scene.get("slippers") if scene != null else null
+	if not (list is Array):
+		return null
+	var own_loose: Slipper = null
+	var any_loose: Slipper = null
+	for entry in (list as Array):
+		var slipper := entry as Slipper
+		if slipper == null or not is_instance_valid(slipper):
+			continue
+		if slipper.carrier == body:
+			return slipper
+		if not slipper.is_loose():
+			continue
+		if any_loose == null:
+			any_loose = slipper
+		if slipper.owner_slot == body.player_slot:
+			own_loose = slipper
+	return own_loose if own_loose != null else any_loose
+
+## ⚠️ `InputEventAction`, THE SAME WAY `_press_ready_up` DOES IT. `Input.action_press()`
+## would also work for the pressed half but leaves the action stuck down for the rest of
+## the process; parsing a real event keeps press and release symmetric.
+func _press(action: String, down: bool) -> void:
+	var event := InputEventAction.new()
+	event.action = action
+	event.pressed = down
+	Input.parse_input_event(event)
 
 ## What the 2D layer is saying — the one thing that stays visible on a grey screen, so it
 ## is the one thing a player could still read while reporting the bug.
