@@ -183,10 +183,25 @@ deliberately, and the choice is invisible until runtime.
 1. **Use Google's `e2-micro`, which is x86-64.** Comes with its own costs (§4).
 2. **Do not export at all.** Put the Linux **editor** binary plus the project
    source on the server and run it with `--path`, exactly as the dev machine
-   does. Godot publishes a Linux arm64 editor build, so this works on Ampere
-   too, and it is how every measurement in §7 was taken. It costs disk and boot
+   does. It is how every measurement in §7 was taken. It costs disk and boot
    time and puts your source on the server, but it removes the export step —
    and the architecture mistake — from the deployment.
+
+   ✅ **This is what `tools/server/` and the systemd unit already do**
+   (`--path /opt/tumbang-preso/game`), so the shipped tooling never touches an
+   export template and the `.tpz` uncertainty above does not apply to it.
+
+   ✅ **The arm64 editor asset is confirmed to exist**, checked 2026-08-02
+   against the release itself rather than a build script — the 4.7.1-stable
+   release lists `Godot_v4.7.1-stable_linux.arm64.zip`
+   ([download](https://github.com/godotengine/godot/releases/download/4.7.1-stable/Godot_v4.7.1-stable_linux.arm64.zip)),
+   alongside `linux.x86_64`, `linux.arm32` and `linux.x86_32`.
+
+   ⚠️ **Match the version to the players' build.** Both ends run 4.7.1 today.
+   Godot's high-level multiplayer checks an RPC method checksum per node, and a
+   mismatch surfaces as `The rpc node checksum failed. Make sure to have the
+   same methods on both nodes` — a message that blames your code rather than
+   your versions. Upgrade the server and the players together, or not at all.
 
 ---
 
@@ -661,6 +676,28 @@ this document are measurements and which are reading.
   round trip; HOST ONLINE picked the free one; the claiming peer became lobby
   leader; and the code the lobby displayed (`56EH`, `T2WK`, … it is minted per
   run) matched the code that server had advertised.
+
+### ⚠️ NOT verified: the systemd path has never run on Linux
+
+`tools/server/install.sh` and `systemd/tumbang-preso-lobby@.service` are
+syntax-checked (`sh -n`) and reasoned through, and **that is all**. There is no
+Linux machine and no WSL on the dev box, so neither has ever executed. The
+things most likely to be wrong on first contact, in order:
+
+1. **`ProtectSystem=strict` versus Godot writing to the project.** `/opt` is
+   read-only under that setting and the engine touches `.godot/` on boot, so the
+   unit now carries `ReadWritePaths=/opt/tumbang-preso/game`. Reasoned, not run.
+   Symptom if wrong: the unit fails immediately, `journalctl` shows a
+   permissions or cache error.
+2. **The asset import.** `install.sh` runs `--import` once as the service user
+   before starting anything, because eight units importing the same tree at once
+   on a 2-core box is its own failure. Untested at this project's size; expect it
+   to take minutes, not seconds.
+3. **`runuser` versus `sudo`.** The import step tries `runuser` first and falls
+   back to `sudo -u`; images ship one or the other.
+
+Step 5 of §9 — run ONE lobby by hand and check `ss -lun` — is what catches all
+three, and it is why that step exists before any of this is installed.
 
 ### ⚠️ NOT verified, and it is the part that matters most
 
