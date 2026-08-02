@@ -561,10 +561,15 @@ measurement on the board was taken against this window and still is.
 COLLIDER IS NOT.** The four cans measure **0.108 to 0.143** in radius — a 32% spread.
 Deriving the scoring window from that geometry would make the prettiest can quietly the
 hardest to hit with nothing on screen saying so. A competitive difference between
-cosmetic picks has to be **declared**, and the CHARACTER screen's GRIT meter declares it:
-DECADES (grit 5) shrinks the window 12.3% to 0.493 m total, PASIP (grit 1) opens it to
-0.579 m. *Verified live: a slipper flown 0.536 m past the can puts PASIP over and misses
+cosmetic picks has to be **declared**, and the CHARACTER screen's STANCE meter declares it:
+BOYBEN (stance 5) shrinks the window 12.3% to 0.493 m total, PASIP (stance 1) opens it to
+0.579 m. *Verified live: a slipper flown 0.545 m past the can puts PASIP over and misses
 DECADES (`tools/trait_probe.tscn`), and goes red on the old literal.*
+
+⚠️ **THE NUMBERS ABOVE MOVED WITH THE 2026-08-02 RETUNE and the meter was renamed.** The
+tatag-5 can is BOYBEN now, not DECADES, and the label on that column is STANCE — see §9.
+The live flight test still uses DECADES (tatag 4) against PASIP, because the two windows
+sit ~86 mm apart and the midpoint of the widest pairing is not the more stable throw.
 
 ⚠️ **§2.23 CLOSED — THE PHYSICAL COLLIDER NOW FOLLOWS THE MESH.** `Lata.tscn` carried ONE
 cylinder at r 0.13, the **mean** of the four cans, so it was wrong for all four and worst

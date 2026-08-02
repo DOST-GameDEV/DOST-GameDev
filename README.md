@@ -39,6 +39,41 @@ Scoring is cumulative and personal — highest total after round 4 wins, there i
 All four are in `scripts/systems/round_manager.gd`. `docs/Design.md` is the source of truth for
 balance and a number in code must match it.
 
+### Your three picks are not cosmetic
+
+The CHARACTER screen picks three things — your **person**, your **lata** and your **tsinelas** — and
+all three reach gameplay. Each carries three 1–5 meters, and **each tab names its meters after what
+they actually do**, because a can does not walk and a slipper does not get stunned:
+
+| | **PERSON** | **LATA** — your can, on the mark during *your* taya round | **TSINELAS** — yours, every round you attack |
+|---|---|---|---|
+| | **SPEED** — walk speed | **RESET** — how fast you stand it back up | **FLIGHT** — launch speed; a flatter, faster arc |
+| | **POWER** — outgoing shove | **REBOUND** — how far it flings the tsinelas when hit | **IMPACT** — what a body-block costs the taya |
+| | **GRIT** — resistance to knockback and stagger | **STANCE** — how hard it is to knock over at all | **RECOVERY** — how fast it is throwable after a pickup |
+
+The three lata meters are **three routes to one goal**: the taya wants the can upright, and STANCE
+refuses the knockdown, RESET shortens the recovery, REBOUND punishes the attempt. Each can does one
+well and pays for it elsewhere — PASIP topples instantly and is up again instantly, BOYBEN is
+immovable and a job to right, KALAWANG throws your slipper across the street.
+
+**The spread is deliberately narrow** — ±5% per point on speed, ±7% on power and grit, so the full
+1–5 range is roughly ±10–14%. This is a party game about hitting a can with a slipper; a pick that
+is 40% better than another is not a personality, it is the correct answer. Differences are meant to
+be *felt*, not counted.
+
+Two rules hold this together, both in `scripts/systems/character_roster.gd`:
+
+- **The number must be readable off the sentence.** If a description says something is heavy, its
+  REBOUND is high. A stat nobody can predict from the lore is a random modifier, and a description
+  nothing backs up is a lie the player finds out about in round 2.
+- **A competitive difference between cosmetic picks has to be declared.** The four cans differ in
+  physical collider radius by 32%, but the scoring window is derived from the STANCE meter and not
+  from that geometry — otherwise the prettiest can would quietly be the hardest to hit with nothing
+  on screen saying so.
+
+`docs/Design.md` §9 has the full tables. Empty seats are filled by bots, which are named after the
+character they are wearing rather than P1–P4, and hand the name back when a human takes the seat.
+
 ---
 
 ## How a session moves through the scenes
