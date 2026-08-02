@@ -45,6 +45,16 @@
 ## failing with `bad interpreter: /bin/sh^M`. Same class of bug as the .obj rule above,
 ## with a worse symptom: the file looks fine in every editor.
 *.sh text eol=lf
+## ⚠️ AND EVERYTHING ELSE THAT LINUX EXECUTES OR PARSES. `tools/server/spawn/*.py` carry
+## `#!/usr/bin/env python3` and fail identically; the systemd units are not executed but
+## are parsed by systemd, which is equally unimpressed by stray carriage returns. Added
+## after `git commit` warned "LF will be replaced by CRLF" on all six files of the spawner
+## — one checkout on a Windows machine followed by a deploy would have shipped a lobby
+## spawner that could not run, with `bad interpreter` as the only clue.
+*.py text eol=lf
+*.service text eol=lf
+*.socket text eol=lf
+*.timer text eol=lf
 
 # Third-party licence texts — never converted, never normalised. These are
 # vendored documents that Form 03 quotes verbatim; `git add --renormalize .`
