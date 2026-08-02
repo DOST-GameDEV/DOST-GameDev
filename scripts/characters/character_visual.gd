@@ -350,7 +350,54 @@ const HAND_BONE_CANDIDATES: Array[String] = ["arm-right", "arm-left"]
 ## correct for the Can as well as the Tsinelas and cannot drift from the drop it
 ## is cancelling. What is left here is a small nudge from the wrist bone into the
 ## palm, which is genuinely a bone-space quantity.
-const HAND_CARRY_OFFSET: Vector3 = Vector3(0.04, 0.03, -0.06)
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ EVERYTHING ABOVE THIS LINE IS THE HISTORY OF A WRONG QUESTION, AND
+## `tools/hand_bone_probe.gd` SETTLED IT ON 2026-08-02. 🧑, reporting it for the third
+## time: *"the slipper floating earlier for others is a repeating problem, pls make sure
+## u fix it, make it so that everyone on multiplayer and singleplayer sees it on the arms
+## of the people"*.
+##
+## **THIS RIG HAS NO WRIST BONE.** It has seven bones in total, `arm-right` IS the whole
+## arm, it has no child bone, and its rest origin is the SHOULDER — measured
+## `(-0.100, 0.288, -0.017)` on a model 0.672 units tall, i.e. at the collarbone. So
+## "a small nudge from the wrist bone into the palm" was describing a bone that does not
+## exist, and an 0.08 m nudge off a shoulder lands in the middle of the chest. That is
+## the floating slipper, in every mode, on every peer, for as long as the report has
+## existed — and it is why re-tuning this constant from a screenshot kept producing a
+## different wrong answer (0.441 m: half an arm out in mid-air; 0.08 m: inside the ribs).
+##
+## ⚠️ SO IT IS MEASURED OFF THE SKIN INSTEAD OF THE SKELETON. The arm's geometry is the
+## only thing in the file that knows how long the arm is: `hand_bone_probe` takes every
+## vertex the mesh weights ≥ 0.5 to `arm-right` and reports the one furthest from the
+## shoulder, in the bone's own frame. Eleven of the twelve roster rigs agree exactly —
+## **tip at (-0.284, -0.040, 0.044), 0.290 out along the bone's local -X** — because they
+## all ship the same skeleton. (`character-female-a` reports 0.451: it has 302 arm-weighted
+## vertices against everyone else's ~140, so its sleeve or hair is painted onto the arm.
+## It is an outlier in the SKIN, not in the skeleton, and taking it would put the slipper
+## past the fingertips of the other eleven.)
+##
+## ⚠️ ALL THE WAY OUT TO THE MEASURED TIP, AND THE FIRST PASS ERRED SHORT. It shipped at
+## 88% of the measurement (0.25) on the reasoning that a held object sits in the palm
+## rather than at the fingertips. 🧑, with a screenshot: *"a bit better but could be
+## improved"* — and the render shows why. Once `slipper.gd` centres the MESH on this point
+## rather than the slipper's origin, the shoe's own half-width extends back from here
+## towards the wrist, so a point at the palm puts half a tsinelas inside the forearm and
+## the whole thing reads as being clutched against the belly. Placing the point at the tip
+## puts the shoe's body in front of the hand, which is what carrying one looks like.
+##
+## The two changes have to be read together: the offset moved out because the thing being
+## positioned changed from a corner of the prop to its centre.
+##
+## ⚠️⚠️ AND IT IS IN BONE-LOCAL UNITS NOW, WRITTEN STRAIGHT ONTO THE NODE. The old
+## constant was documented as WORLD units and `_build_hand_attachment` divided it by
+## `PERSON_SCALE` on the way in. That conversion is deleted, because the probe measures in
+## exactly the frame the node is written in (a `BoneAttachment3D`'s child is positioned in
+## skeleton space, which is model units) — so the number in this file is now the same
+## number the probe prints, and re-measuring is a copy rather than an arithmetic problem.
+## ⚠️ THE X IS MIRRORED FOR A LEFT ARM by `_build_hand_attachment`. `arm-left` is the
+## mirror bone and the fallback path can select it, or any arm-ish bone on a rig that has
+## neither — see there.
+const HAND_CARRY_OFFSET: Vector3 = Vector3(-0.284, -0.040, 0.044)
 
 ## The persistent carry pose. Verified against the actual .glb rather than a
 ## doc: the Kenney rig ships `holding-right` and `holding-right-shoot`, and
@@ -1049,10 +1096,7 @@ func _build_hand_attachment() -> Node3D:
 		# it will here — the item simply sits at the elbow and nothing errors.
 		var point := Node3D.new()
 		point.name = "HandPoint"
-		# Divided by PERSON_SCALE: this node's parent chain runs through the
-		# Skeleton3D, which inherits the model's 2.38 scale, so a raw assignment
-		# lands at 2.38x. See HAND_CARRY_OFFSET's own note.
-		point.position = HAND_CARRY_OFFSET / PERSON_SCALE
+		point.position = _carry_offset_for(bone_name)
 		attachment.add_child(point)
 		return point
 
@@ -1079,7 +1123,7 @@ func _build_hand_attachment() -> Node3D:
 		skeleton.add_child(fallback)
 		var fallback_point := Node3D.new()
 		fallback_point.name = "HandPoint"
-		fallback_point.position = HAND_CARRY_OFFSET / PERSON_SCALE
+		fallback_point.position = _carry_offset_for(fallback.bone_name)
 		fallback.add_child(fallback_point)
 		push_warning("CharacterVisual: no %s bone; carrying from '%s' instead"
 			% [str(HAND_BONE_CANDIDATES), fallback.bone_name])
@@ -1087,6 +1131,19 @@ func _build_hand_attachment() -> Node3D:
 	push_warning("CharacterVisual: this rig has no arm or hand bone at all; "
 		+ "a carried slipper will ride the body instead of a hand")
 	return null
+
+## `HAND_CARRY_OFFSET`, mirrored for a left arm.
+##
+## ⚠️ THE MEASUREMENT WAS TAKEN ON `arm-right` AND THE LEFT BONE IS ITS MIRROR — rest
+## origin `(+0.100, 0.288, -0.017)` against the right's `(-0.100, …)`. Reaching out along
+## the same local -X on that bone would push the slipper INTO the body rather than out to
+## the hand. The left arm is only ever selected by `HAND_BONE_CANDIDATES`' fallback (a rig
+## missing `arm-right` entirely), so this path is rare — which is exactly why it has to be
+## right here rather than discovered later on one character nobody plays.
+func _carry_offset_for(bone_name: String) -> Vector3:
+	if bone_name.to_lower().contains("left"):
+		return Vector3(-HAND_CARRY_OFFSET.x, HAND_CARRY_OFFSET.y, HAND_CARRY_OFFSET.z)
+	return HAND_CARRY_OFFSET
 
 ## Drops the model so its lowest point rests on the bottom of CharacterBase's
 ## capsule, measured from the model that was actually instanced rather than

@@ -2,6 +2,41 @@
 
 [ext_resource type="Script" path="res://scripts/ui/role_swap_card.gd" id="1"]
 
+; ⚠️⚠️ REBUILT 2026-08-02 — TWO FLOATING PANELS BECAME ONE CENTRED COLUMN, AND THE
+; LAYOUT IS NOW DONE BY CONTAINERS RATHER THAN BY OFFSETS. 🧑, with a screenshot:
+; *"i dont get this shit at all, like what is it supposed to tell me? pls revamp the
+; boxes here and whats supposed to go to them"* and *"shit wrapsaround and not proper"*.
+;
+; Both halves of that report have the same cause. The old card was `LeftPanel` and
+; `RightPanel`, two `PanelContainer`s ANCHORED TO THE SCREEN CENTRE and positioned by
+; hand-written offsets (-250..-30 and 30..250) — a rule that knew nothing about the two
+; labels stacked above them. A `PanelContainer` is clamped UP to its content's minimum
+; size, so a long roster name grew each panel past the offset that was supposed to stop
+; it, straight over `ResultLabel`. Autowrap was applied as the fix; it converted a
+; horizontal overlap into a four-line-tall column that covered the banner instead. The
+; offsets were never enforcing anything.
+;
+; Everything is inside ONE `CenterContainer > VBoxContainer` now. A container's children
+; cannot overlap each other — the box gives each one its own band and the column grows
+; downward from the middle of the screen — so a name of any length makes a TALLER card
+; and never a collision. That is the structural fix, and it is why no label here needs a
+; hand-picked offset any more.
+;
+; ⚠️ WHAT THE CARD SAYS CHANGED WITH IT, which was the other half of the report. It used
+; to draw two role boxes reading "LOLA PACING · TAYA / was ATTACKER →" and its mirror —
+; the same swap said twice, in tense-heavy phrasing nobody could parse in four seconds.
+; It now answers the two questions a player actually has between rounds: WHO DEFENDS
+; NEXT, and WHERE DO I STAND. The standings table is the new half; see
+; `role_swap_card.gd`.
+;
+; ⚠️ IT LIVES INSIDE `HUD.tscn` AND THAT IS WHAT MAKES THE CLEAN FEED COVER IT. 🧑:
+; *"again make sure spectator wont see this shit if they click h (turn off huds)"*.
+; `hud.gd::set_clean_feed()` hides the HUD ROOT, and a hidden parent means no descendant
+; draws whatever it sets on itself — so `_on_intermission_started()`'s `visible = true`
+; cannot punch through it. Asserted by `tools/swap_card_probe.gd`, which toggles the clean
+; feed WHILE the card is up rather than before it — the only moment the question has an
+; answer worth having.
+
 [node name="RoleSwapCard" type="Control"]
 layout_mode = 3
 anchors_preset = 15
@@ -16,134 +51,137 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0.015686, 0.031373, 0.219608, 0.78)
+color = Color(0.015686, 0.031373, 0.219608, 0.82)
 mouse_filter = 2
 
-[node name="ResultLabel" type="Label" parent="."]
-unique_name_in_owner = true
+[node name="Center" type="CenterContainer" parent="."]
 layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -320.0
-offset_top = -146.0
-offset_right = 320.0
-offset_bottom = -54.0
-theme_type_variation = &"HudBanner"
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+; ⚠️ A FLOOR ON THE WIDTH, NOT A FIXED WIDTH. The column has to be wide enough that a
+; three-name attacker line and a score column do not wrap on an ordinary round — but it
+; is still a MINIMUM, so a genuinely long pairing makes the card wider rather than
+; clipping. Nothing on this card is allowed a hard maximum; that is what produced the
+; bug this file replaces.
+[node name="Column" type="VBoxContainer" parent="Center"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(860, 0)
+layout_mode = 2
+theme_override_constants/separation = 16
+mouse_filter = 2
+
+[node name="TitleLabel" type="Label" parent="Center/Column"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 34
 horizontal_alignment = 1
-vertical_alignment = 1
-text = "RESULT"
+text = "END OF ROUND 2"
+mouse_filter = 2
 
-; R-29 — WHAT JUST HAPPENED, in display type above the winner line.
+; The round's headline stat in display type: what the defence was actually worth. Sized
+; above the title because it is the news and the title is only the bookmark.
 ;
-; The intermission said only who won, never WHY, so a player who lost a round to the
-; clock and a player who lost it to a tag saw the same card. This is the missing word:
-; TAGGED / LATA DOWN / DENTED / TIME.
-;
-; ⚠️ NO SIGNAL CARRIES THE REASON — it is classified in the UI from public state; see
-; `role_swap_card.gd::_classify_reason()` for how, and for what that cannot distinguish.
-; Colour and outline are set there too, not here.
-;
-; Sits ABOVE ResultLabel and larger than it: the reason is the news, "TEAM A WINS THE
-; ROUND" is the consequence. Costs no new tween beat, so the §4.6 timeline is untouched —
-; nothing may race the world reset at 3.0s.
-[node name="ReasonLabel" type="Label" parent="."]
+; ⚠️ 36, AND THE SIZE IS SET BY THE WORST-CASE SENTENCE RATHER THAN BY TASTE. The line is
+; "<name> HELD THE LATA FOR <n> PTS" (see `role_swap_card.gd::_show_headline()` for why
+; the word TAYA is not in it), so the longest it can be is a 14-character name
+; (`CharacterRoster.NAME_MAX`) and a four-figure score — about 38 glyphs, which is roughly
+; 720 px at this size and fits the column's 860 px floor without wrapping. At 44 it wrapped
+; "PTS" onto its own line on an ordinary round, which is the same class of fault as the
+; layout this card replaced, just one element up.
+[node name="HeadlineLabel" type="Label" parent="Center/Column"]
 unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -460.0
-offset_top = -236.0
-offset_right = 460.0
-offset_bottom = -150.0
-theme_override_font_sizes/font_size = 72
+layout_mode = 2
+theme_override_font_sizes/font_size = 36
+autowrap_mode = 3
 horizontal_alignment = 1
+text = "TAYA INDAY HELD FOR 1770 PTS"
+mouse_filter = 2
+
+[node name="SwapPanel" type="PanelContainer" parent="Center/Column"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Rows" type="VBoxContainer" parent="Center/Column/SwapPanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+mouse_filter = 2
+
+[node name="TayaRow" type="HBoxContainer" parent="Center/Column/SwapPanel/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 22
+mouse_filter = 2
+
+; ⚠️ THE CAPTION COLUMN IS THE ONLY FIXED WIDTH ON THIS CARD, and it is a MINIMUM on two
+; labels whose text never changes ("NEXT TAYA" / "ATTACKERS"). It is what makes the two
+; value columns start at the same x — the same ragged-column fault the scoreboard had,
+; fixed the same way and for the same reason.
+[node name="TayaCaption" type="Label" parent="Center/Column/SwapPanel/Rows/TayaRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(190, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
 vertical_alignment = 1
-text = "TAGGED"
-
-[node name="LeftPanel" type="PanelContainer" parent="."]
-unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -700.0
-offset_top = -45.0
-offset_right = -480.0
-offset_bottom = 45.0
-custom_minimum_size = Vector2(220, 90)
-theme_type_variation = &"OffenseCard"
+text = "NEXT TAYA"
 mouse_filter = 2
 
-[node name="VBoxContainer" type="VBoxContainer" parent="LeftPanel"]
+[node name="TayaName" type="Label" parent="Center/Column/SwapPanel/Rows/TayaRow"]
+unique_name_in_owner = true
 layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 32
+autowrap_mode = 3
+vertical_alignment = 1
+text = "LOLA PACING"
 mouse_filter = 2
 
-[node name="TeamALabel" type="Label" parent="LeftPanel/VBoxContainer"]
-unique_name_in_owner = true
+[node name="AttackRow" type="HBoxContainer" parent="Center/Column/SwapPanel/Rows"]
 layout_mode = 2
-theme_type_variation = &"HudBody"
-text = "A · OFFENSE"
-
-[node name="RoleArrowA" type="Label" parent="LeftPanel/VBoxContainer"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_type_variation = &"HudCaption"
-text = "→ DEFENSE"
-
-[node name="RightPanel" type="PanelContainer" parent="."]
-unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = 480.0
-offset_top = -45.0
-offset_right = 700.0
-offset_bottom = 45.0
-custom_minimum_size = Vector2(220, 90)
-theme_type_variation = &"DefenseCard"
+theme_override_constants/separation = 22
 mouse_filter = 2
 
-[node name="VBoxContainer" type="VBoxContainer" parent="RightPanel"]
+[node name="AttackCaption" type="Label" parent="Center/Column/SwapPanel/Rows/AttackRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(190, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+vertical_alignment = 1
+text = "ATTACKERS"
+mouse_filter = 2
+
+[node name="AttackerNames" type="Label" parent="Center/Column/SwapPanel/Rows/AttackRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 24
+autowrap_mode = 3
+vertical_alignment = 1
+text = "MALLOWS · INDAY · TIKBOY"
+mouse_filter = 2
+
+; The standings rows are BUILT IN CODE (`role_swap_card.gd::_build_standings_rows`), one
+; per `MatchManagerScript.PLAYER_COUNT`, so the seat count lives in exactly one place.
+; Authoring four identical rows here would be that number written down a second time, in
+; a file that does not import the first.
+[node name="StandingsPanel" type="PanelContainer" parent="Center/Column"]
+unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 
-[node name="TeamBLabel" type="Label" parent="RightPanel/VBoxContainer"]
+[node name="Standings" type="VBoxContainer" parent="Center/Column/StandingsPanel"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_type_variation = &"HudBody"
-text = "B · DEFENSE"
+theme_override_constants/separation = 6
+mouse_filter = 2
 
-[node name="RoleArrowB" type="Label" parent="RightPanel/VBoxContainer"]
+[node name="FightLabel" type="Label" parent="Center/Column"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_type_variation = &"HudCaption"
-text = "→ OFFENSE"
-
-[node name="FightLabel" type="Label" parent="."]
-unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -320.0
-offset_top = 34.0
-offset_right = 320.0
-offset_bottom = 126.0
-theme_type_variation = &"HudBanner"
+theme_override_font_sizes/font_size = 48
 horizontal_alignment = 1
-vertical_alignment = 1
-text = "ROUND 1 — FIGHT!"
+text = "ROUND 3 — FIGHT!"
 visible = false
+mouse_filter = 2

@@ -1161,7 +1161,65 @@ func _build_scoreboard() -> void:
 			if cell != null:
 				cell.add_theme_color_override("font_outline_color", UiTheme.INK)
 		_widen_name_cell(row.get_node_or_null("Name") as Label)
+		_build_role_cell(row)
 		_score_rows.append(row)
+
+## ⚠️⚠️ "TAYA" IS ITS OWN CELL NOW, BECAUSE GLUED TO THE NAME IT READ AS PART OF THE
+## NAME. 🧑 2026-08-02, with a screenshot of the board: *"inday taya makes it look like
+## inday taya is her name, not that she is TAYA — make this implementation better"*.
+##
+## Exactly right, and the old row could not have read any other way: `"%s%s" % [name,
+## "  TAYA"]` is ONE string in ONE Label, in ONE colour, at ONE size. Two spaces are not
+## a grammar. Every roster name is uppercase (`display_name()` shouts them all — see its
+## note), several of them are two words ("LOLA PACING"), and the game has a character
+## called INDAY, so "INDAY TAYA" is indistinguishable from a two-word name because at the
+## level of pixels it IS one.
+##
+## A separate Label can differ in the three ways that carry the meaning: it is smaller,
+## it is muted where the name is bright, and it sits in its own column so it starts at
+## the same x on whichever row holds it. That is a role BADGE — the thing the string was
+## always trying to be.
+##
+## ⚠️ MUTED CREAM, NOT `DEFENSE` BLUE, AND THE OBVIOUS CHOICE WAS THE WRONG ONE. §4.2's
+## rule is blue = defence, and the taya's NAME is already painted blue eight lines into
+## `_refresh_scoreboard()` — so a blue badge beside it is the same colour, at nearly the
+## same size, immediately after the name. That is the reported bug again in a new colour.
+## The badge is an annotation ON the row, and it has to look like one.
+##
+## ⚠️ BUILT IN CODE AND MOVED TO INDEX 1, rather than authored in `HUD.tscn`. The four
+## rows are authored there (§ CHECKLIST 1.1) and a new child would land AFTER `Score`,
+## which puts the badge on the wrong side of the number. `move_child` is the one line
+## that fixes that, and it keeps the scene's four rows identical to each other.
+##
+## ⚠️ A FIXED WIDTH, ALWAYS PRESENT, NEVER HIDDEN. The badge is empty text on three rows
+## out of four; hiding the Label instead would let those three rows' scores slide left
+## and the column of numbers — the entire point of the board — would stop being a column.
+## Same reasoning as `_widen_name_cell`, one cell over.
+func _build_role_cell(row: Control) -> void:
+	if row.get_node_or_null("Role") != null:
+		return
+	var badge := Label.new()
+	badge.name = "Role"
+	badge.add_theme_font_size_override("font_size", TAYA_BADGE_FONT_SIZE)
+	badge.add_theme_color_override("font_color", UiTheme.CREAM_MUTED)
+	badge.add_theme_color_override("font_outline_color", UiTheme.INK)
+	badge.add_theme_constant_override("outline_size", 5)
+	badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var font := badge.get_theme_font("font")
+	var needed := 54.0
+	if font != null:
+		needed = ceilf(font.get_string_size(
+			TAYA_BADGE, HORIZONTAL_ALIGNMENT_LEFT, -1, TAYA_BADGE_FONT_SIZE).x)
+	badge.custom_minimum_size.x = needed
+	row.add_child(badge)
+	row.move_child(badge, 1)
+
+## Smaller than the 20 px name beside it, because a badge that matches the name's weight
+## is a second name. Small enough to read as an annotation, large enough to survive being
+## drawn over the road.
+const TAYA_BADGE_FONT_SIZE: int = 15
+const TAYA_BADGE: String = "TAYA"
 
 ## ⚠️⚠️ THE NAME COLUMN IS SIZED FROM THE CAP AND THE FONT, NOT TYPED IN. 🧑
 ## 2026-08-02: *"make sure the 14 character names fit in the hud and if the name is
@@ -1191,7 +1249,10 @@ func _widen_name_cell(cell: Label) -> void:
 	var font_size := cell.get_theme_font_size("font_size")
 	if font == null:
 		return
-	var worst := "W".repeat(CharacterRoster.NAME_MAX) + "  TAYA"
+	# ⚠️ NO LONGER `+ "  TAYA"`. The badge is its own cell with its own width
+	# (`_build_role_cell`), so reserving room for it here would reserve it twice and
+	# push the score column off the panel on every row.
+	var worst := "W".repeat(CharacterRoster.NAME_MAX)
 	var needed := font.get_string_size(worst, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 	cell.custom_minimum_size.x = maxf(cell.custom_minimum_size.x, ceilf(needed))
 
@@ -1253,10 +1314,14 @@ func _refresh_scoreboard() -> void:
 		#
 		# Nothing is lost by deleting it: `slot == mine` already recolours this row to
 		# `UiTheme.HIGHLIGHT` six lines below, which is the same fact said in the way
-		# that costs no width. The taya keeps a trailing word because that is a
-		# different question about a different player.
-		var who_name := seat_name(slot)
-		name_label.text = "%s%s" % [who_name, "  TAYA" if is_taya else ""]
+		# that costs no width. The taya is marked by its own cell, for the same reason
+		# and one column over — see `_build_role_cell()`.
+		# ⚠️ THE NAME CELL HOLDS THE NAME AND NOTHING ELSE — see `_build_role_cell()` for
+		# why "  TAYA" cannot live in this string.
+		name_label.text = seat_name(slot)
+		var badge := row.get_node_or_null("Role") as Label
+		if badge != null:
+			badge.text = TAYA_BADGE if is_taya else ""
 		score_label.text = str(MatchManager.score_for(slot))
 		var colour: Color = UiTheme.DEFENSE if is_taya else UiTheme.OFFENSE
 		if slot == mine:
