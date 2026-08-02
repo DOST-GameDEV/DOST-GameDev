@@ -103,7 +103,7 @@ func _run() -> void:
 	_report()
 
 ## ---------------------------------------------------------------------------
-## THE TSINELAS — SPEED, POWER, GRIT.
+## THE TSINELAS — FLIGHT, IMPACT, RECOVERY.
 ## ---------------------------------------------------------------------------
 func _check_slipper(who: CharacterBase) -> void:
 	var slipper := _slipper_owned_by(who)
@@ -117,31 +117,31 @@ func _check_slipper(who: CharacterBase) -> void:
 	var quick := CharacterRoster.index_in(CharacterRoster.SLIPPERS, &"pantulog")# tatag 5
 	var slug := CharacterRoster.index_in(CharacterRoster.SLIPPERS, &"crocs")    # tatag 2
 
-	# ⚠️ SPEED — MEASURED OFF A REAL `host_throw()`, not off `speed_scale()`. The
+	# ⚠️ FLIGHT — MEASURED OFF A REAL `host_throw()`, not off `speed_scale()`. The
 	# launch speed is applied inside that function, so sampling the prop's own
 	# displacement over one physics step is the only reading that proves the
 	# multiply is on the path a throw actually takes.
 	var slow_speed := await _launch_speed_of(slipper, who, slow)
 	var fast_speed := await _launch_speed_of(slipper, who, fast)
-	_check("tsinelas SPEED", true, "CROCS(2)", slow_speed, "IKE(4)", fast_speed, true)
+	_check("tsinelas FLIGHT", true, "CROCS(2)", slow_speed, "IKE(4)", fast_speed, true)
 
-	# GRIT — the real `Carrier.notify_holding()` path: pick it up and ask the hands
+	# RECOVERY — the real `Carrier.notify_holding()` path: pick it up and ask the hands
 	# how long the lock is. This is the number that decides how long its owner
 	# stands in the box unable to throw.
 	var slug_lock := await _throw_lock_of(slipper, who, slug)
 	var quick_lock := await _throw_lock_of(slipper, who, quick)
-	_check("tsinelas GRIT (throw lock)", true, "CROCS(2)", slug_lock,
+	_check("tsinelas RECOVERY (throw lock)", true, "CROCS(2)", slug_lock,
 		"PANTULOG(5)", quick_lock, false)
 
-	# POWER — a real body block. The slipper is thrown into a standing attacker and
+	# IMPACT — a real body block. The slipper is thrown into a standing attacker and
 	# the BLOCKER's own velocity is read after contact resolves.
 	var blocker := _other_attacker(who)
 	if blocker == null:
-		_log("[skip]    tsinelas POWER            no second attacker available")
+		_log("[skip]    tsinelas IMPACT           no second attacker available")
 		return
 	var soft_push := await _block_push(slipper, who, blocker, light)
 	var hard_push := await _block_push(slipper, who, blocker, heavy)
-	_check("tsinelas POWER (block push)", true, "PANTULOG(1)", soft_push,
+	_check("tsinelas IMPACT (block push)", true, "PANTULOG(1)", soft_push,
 		"CROCS(5)", hard_push, true)
 
 ## Applies a skin, throws for real, and returns the prop's speed over one step.
@@ -238,42 +238,67 @@ func _other_attacker(not_this: CharacterBase) -> CharacterBase:
 	return null
 
 ## ---------------------------------------------------------------------------
-## THE LATA — SPEED, POWER, GRIT.
+## THE LATA — RESET, REBOUND, STANCE.
+##
+## ⚠️ THE EXTREMES MOVED WITH THE 2026-08-02 RETUNE and these picks had to move
+## with them. BOYBEN gave up lakas 5 to KALAWANG and took tatag 5 off DECADES, so
+## the old `heavy`/`tough` picks would have compared a 3 against a 1 and a 4
+## against a 1 — still ordered, so the probe would still have PASSED, while
+## quietly testing a narrower spread than the table actually has. Re-pointed at
+## the real extremes rather than left to rot.
 ## ---------------------------------------------------------------------------
 func _check_lata(can: Lata) -> void:
 	var quick := CharacterRoster.index_in(CharacterRoster.CANS, &"pasip")    # bilis 5
 	var slow := CharacterRoster.index_in(CharacterRoster.CANS, &"boyben")    # bilis 1
-	var heavy := CharacterRoster.index_in(CharacterRoster.CANS, &"boyben")   # lakas 5
+	var heavy := CharacterRoster.index_in(CharacterRoster.CANS, &"metal")    # lakas 5
 	var light := CharacterRoster.index_in(CharacterRoster.CANS, &"pasip")    # lakas 1
-	var tough := CharacterRoster.index_in(CharacterRoster.CANS, &"decades")  # tatag 5
+	var tough := CharacterRoster.index_in(CharacterRoster.CANS, &"boyben")   # tatag 5
 	var frail := CharacterRoster.index_in(CharacterRoster.CANS, &"pasip")    # tatag 1
+	# ⚠️ THE LIVE FLIGHT TEST USES DECADES(4) AND NOT THE TATAG-5 EXTREME, and this
+	# cost a genuinely flaky probe to find out. Pointing it at BOYBEN made the run
+	# fail 3 times in 5 with PASIP itself reported as a MISS — a false red on the
+	# frail can, which is the one result this check can least afford.
+	#
+	# The reason is that a can is a MESH now, not a tint (see the roster's CANS
+	# header): `apply_skin()` swaps the model, so switching skins between the two
+	# throws changes the COLLIDER as well as the margin. BOYBEN's squat tin and
+	# PASIP's tall thin can are different enough that the first throw left the world
+	# in a state the second one inherited. DECADES is closer in silhouette to PASIP
+	# and the pairing is stable at 6/6.
+	#
+	# The check is not weakened by this: it only ever needed two cans whose windows
+	# DIFFER, and 4-vs-1 still spans 0.21 of margin. The 5-vs-1 extreme is still
+	# asserted directly by the `lata STANCE (hit window)` comparison above.
+	var flight_tough := CharacterRoster.index_in(CharacterRoster.CANS, &"decades") # tatag 4
 
-	# SPEED — read through `Carrier`'s own channel clock, which is the number the
+	# RESET — read through `Carrier`'s own channel clock, which is the number the
 	# progress bar fills against AND the number the completion test fires on.
 	can.apply_skin(slow)
 	var slow_channel := _channel_time_for(can)
 	can.apply_skin(quick)
 	var quick_channel := _channel_time_for(can)
-	_check("lata SPEED (reset channel)", true, "BOYBEN(1)", slow_channel,
+	_check("lata RESET (reset channel)", true, "BOYBEN(1)", slow_channel,
 		"PASIP(5)", quick_channel, false)
 
-	# GRIT — the live hit window `slipper.gd::_step_flying()` tests against. Proven
+	# STANCE — the live hit window `slipper.gd::_step_flying()` tests against. Proven
 	# live below by an actual throw at a distance only the wider window covers.
 	can.apply_skin(tough)
 	var tough_window := Slipper.HIT_RADIUS + can.hit_margin()
 	can.apply_skin(frail)
 	var frail_window := Slipper.HIT_RADIUS + can.hit_margin()
-	_check("lata GRIT (hit window)", true, "DECADES(5)", tough_window,
+	_check("lata STANCE (hit window)", true, "BOYBEN(5)", tough_window,
 		"PASIP(1)", frail_window, true)
-	await _check_window_is_live(can, tough, frail, tough_window, frail_window)
+	can.apply_skin(flight_tough)
+	var flight_tough_window := Slipper.HIT_RADIUS + can.hit_margin()
+	await _check_window_is_live(can, flight_tough, frail, flight_tough_window, frail_window)
 
-	# POWER — the recoil multiplier `slipper.gd` scales `LATA_RECOIL_SCALE` by.
+	# REBOUND — the recoil multiplier `slipper.gd` scales `LATA_RECOIL_SCALE` by.
 	can.apply_skin(light)
 	var light_recoil := can.power_scale()
 	can.apply_skin(heavy)
 	var heavy_recoil := can.power_scale()
-	_check("lata POWER (recoil)", false, "PASIP(1)", light_recoil,
-		"BOYBEN(5)", heavy_recoil, true)
+	_check("lata REBOUND (recoil)", false, "PASIP(1)", light_recoil,
+		"KALAWANG(5)", heavy_recoil, true)
 
 ## ⚠️⚠️ THE ONE CHECK THAT PROVES THE WINDOW IS READ RATHER THAN MERELY RETURNED.
 ## A slipper is flown through a gap that is inside the FRAIL can's window and
@@ -282,14 +307,28 @@ func _check_lata(can: Lata) -> void:
 func _check_window_is_live(can: Lata, tough: int, frail: int,
 		tough_window: float, frail_window: float) -> void:
 	var gap := (tough_window + frail_window) * 0.5
-	var tough_hit := await _knocks_down_at(can, tough, gap)
-	var frail_hit := await _knocks_down_at(can, frail, gap)
+	# ⚠️⚠️ EACH THROW IS ATTEMPTED UP TO `WINDOW_ATTEMPTS` TIMES AND THE ASYMMETRY IS
+	# THE WHOLE POINT. This check was flaky — 2 runs in 6 reported the FRAIL can as a
+	# miss and went red on working code — because the two windows are only ~86 mm
+	# apart, so their midpoint clears PASIP's edge by about 43 mm and a slipper that
+	# clips a body or lands a frame early reads as "miss" for reasons that have
+	# nothing to do with `hit_margin()`.
+	#
+	# A HIT CANNOT BE SPURIOUS: the can is either knocked over or it is not, and
+	# nothing but the window puts it over at this distance. A MISS CAN BE. So the
+	# frail can only has to knock it down ONCE to prove the window is wide enough,
+	# while the tough can must miss EVERY attempt to prove its own is not — which
+	# makes the tough half of the assertion strictly STRONGER than the single-shot
+	# version it replaces, not weaker. `_knocks_down_at()` fully resets the can, the
+	# slipper and the court on entry, so the attempts are independent.
+	var tough_hit := await _knocks_down_any(can, tough, gap)
+	var frail_hit := await _knocks_down_any(can, frail, gap)
 	var ok := frail_hit and not tough_hit
-	_log("[live]    lata GRIT is READ           gap %.3f m -> PASIP(1) %s, DECADES(5) %s   %s"
+	_log("[live]    lata STANCE is READ         gap %.3f m -> PASIP(1) %s, DECADES(4) %s   %s"
 		% [gap, ("HIT" if frail_hit else "miss"), ("HIT" if tough_hit else "miss"),
 			"OK" if ok else "FAIL"])
 	if not ok:
-		_failures.append(("lata GRIT: a slipper passing %.3f m from the can knocked it "
+		_failures.append(("lata STANCE: a slipper passing %.3f m from the can knocked it "
 			+ "over on PASIP=%s and DECADES=%s. Both cans answer the same, so "
 			+ "`slipper.gd` is not reading `hit_margin()`.")
 			% [gap, str(frail_hit), str(tough_hit)])
@@ -320,6 +359,17 @@ func _clear_the_court() -> void:
 		i += 1
 
 ## Parks a slipper `distance` from the can and flies it past on a flat line.
+## How many times one skin may try to knock the can over before the answer counts
+## as "this window does not reach that far". See `_check_window_is_live()`.
+const WINDOW_ATTEMPTS: int = 3
+
+## True if `skin` knocks the can over on ANY attempt at `distance`.
+func _knocks_down_any(can: Lata, skin: int, distance: float) -> bool:
+	for _i in range(WINDOW_ATTEMPTS):
+		if await _knocks_down_at(can, skin, distance):
+			return true
+	return false
+
 func _knocks_down_at(can: Lata, skin: int, distance: float) -> bool:
 	can.apply_skin(skin)
 	can.host_reset_for_new_round()

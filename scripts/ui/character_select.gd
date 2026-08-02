@@ -65,9 +65,14 @@ const STAGGER: float = 0.09
 ## are a faint scuff of the same colour. Reads at a glance, counts exactly, needs
 ## no legend, and costs five ColorRects.
 ##
-## ⚠️ BUILT FROM `CharacterRoster.TRAIT_LABELS`, NOT AUTHORED IN THE .tscn, for
+## ⚠️ BUILT FROM `CharacterRoster.trait_labels()`, NOT AUTHORED IN THE .tscn, for
 ## the same reason the tabs are built from `CATEGORIES`: adding a fourth trait
 ## should be one entry in the roster and nothing here or in the scene.
+##
+## ⚠️ AND THE NAMES ARE PER TAB, NOT GLOBAL (🧑 2026-08-02 — see the roster's
+## TRAIT_LABELS_* block). A can shows RESET/REBOUND/STANCE where a person shows
+## SPEED/POWER/GRIT. This screen does not know or care which; it renders the list
+## the roster hands it, so the branch lives in the data and not here.
 const TRAIT_SLOTS: int = 5
 const TRAIT_PIP_SIZE: Vector2 = Vector2(42, 12)
 const TRAIT_PIP_GAP: int = 6
@@ -80,11 +85,13 @@ const TRAIT_PIP_EMPTY: Color = Color(0.961, 0.902, 0.784, 0.20)
 ## One row per trait, rebuilt on every selection change. Rebuilding rather than
 ## re-tinting because the row count is roster-driven and a stale row is a wrong
 ## number on screen, which is worse than a few dozen ColorRects per keypress.
-func _refresh_traits(entry: Dictionary) -> void:
+## `category_index` is passed rather than read off `_tab` so the row set and the
+## entry it describes can never come from two different tabs.
+func _refresh_traits(entry: Dictionary, category_index: int) -> void:
 	for child in trait_rows.get_children():
 		child.queue_free()
 	var traits: Dictionary = entry.get("traits", {})
-	for label in CharacterRoster.TRAIT_LABELS:
+	for label in CharacterRoster.trait_labels(category_index):
 		trait_rows.add_child(_build_trait_row(label, traits))
 	# The camera controls are discoverable only if somebody says they exist. One
 	# line, inside the panel, rebuilt with the meters so it can never be orphaned
@@ -270,19 +277,23 @@ func _apply() -> void:
 	var entry: Dictionary = entries[index]
 
 	name_label.text = String(entry["name"])
-	# ⚠️ MAX POWER RIDES THE DESCRIPTION, IT DOES NOT GET A ROW OF ITS OWN. Human
+	# ⚠️ LAUNCH SPEED RIDES THE DESCRIPTION, IT DOES NOT GET A ROW OF ITS OWN. Human
 	# instruction: *"display the max power in the custom slipper description UI."*
 	#
-	# The three chalk meters below already carry SPEED / POWER / GRIT, and those are the
-	# CHARACTER's traits — a 1..5 scale that means "how much of the shared baseline does
-	# this one get". Launch speed is a different kind of number entirely (metres per
-	# second, off the skin's own ThrowProfile) and putting it in the same column would
-	# read as a fourth trait on the same scale, which it is not. Appending it to the
-	# sentence keeps the two apart and costs no layout.
+	# The three chalk meters below carry a 1..5 scale meaning "how much of the shared
+	# baseline does this one get". Launch speed is a different kind of number entirely
+	# (metres per second) and putting it in the same column would read as a fourth
+	# trait on the same scale, which it is not. Appending it to the sentence keeps the
+	# two apart and costs no layout.
+	#
+	# ⚠️ CALLED "MAX POWER" UNTIL 2026-08-02 AND IT WAS WRONG TWICE OVER: the number
+	# is a speed, not a power, and this tab no longer has a POWER meter for it to be
+	# the maximum OF (it shows FLIGHT / IMPACT / RECOVERY now). It is the baseline the
+	# FLIGHT meter scales, so it is named for the thing it measures.
 	var detail := String(entry["tagline"])
 	if String(CharacterRoster.category(_tab)["slot"]) == "slipper":
-		var power := CharacterRoster.slipper_max_power(index)
-		if power > 0.0:
+		var launch := CharacterRoster.slipper_launch_speed(index)
+		if launch > 0.0:
 			# ⚠️ ONE NEWLINE, NOT TWO, AND `ui_layout_probe` IS WHY. The blank separator
 			# line read better and cost 39 px of a panel that has 30 to spare: the probe
 			# went from 196/196 to 192/196 with `TabBar` and `TraitRows` both **PUSHED
@@ -292,12 +303,15 @@ func _apply() -> void:
 			# Measured either way: two newlines put `TraitRows` at y 585..735 against the
 			# lata tab's 546..696 — nine pixels past the panel's own bottom edge. One
 			# newline is the whole fix and the row still reads as its own line.
-			detail += "\nMAX POWER  %.0f m/s" % power
+			# ⚠️ ONE DECIMAL, NOT ZERO. The four values are 17.6 / 18.5 / 19.4, and
+			# `%.0f` rounded two of them onto the same 19 — which is what made the
+			# old constant row look correct while it was hiding the difference.
+			detail += "\nLAUNCH  %.1f m/s" % launch
 	tagline_label.text = detail
 	# The meters sit directly under the sentence they are supposed to agree with,
 	# which is the point of putting them on this screen at all — see
 	# `character_roster.gd`'s own rule that a stat must be readable off the lore.
-	_refresh_traits(entry)
+	_refresh_traits(entry, _tab)
 
 	# A one-entry category would leave these cycling a list of one.
 	var many := entries.size() > 1
