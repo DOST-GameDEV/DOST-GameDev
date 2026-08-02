@@ -80,7 +80,7 @@ const SAG_WINDOW: float = 3.0
 
 var _main: Node
 var _attacker: CharacterBase
-var _slipper: CharacterBase
+var _slipper: Slipper
 var _results: Array[Dictionary] = []
 
 func _ready() -> void:
@@ -98,12 +98,12 @@ func _ready() -> void:
 ## its own body capsule's largest half-extent, read off the live shape rather
 ## than restated from `character_base.gd::_COLLISION_BY_ROLE`. Measured 0.20 on
 ## the shipped tsinelas (radius 0.20, height 0.40).
+## ⚠️ READ OFF `Slipper.HIT_RADIUS` SINCE 2026-08-02, not off a body capsule. The
+## tsinelas had a `CollisionShape3D` when it was a `CharacterBase`; a `Slipper` is a
+## plain Node3D whose extent IS that constant, so this is the same measurement taken
+## from the one place that still holds it.
 func _slipper_clearance() -> float:
-	var shape := (_slipper.get_node_or_null("CollisionShape3D") as CollisionShape3D)
-	var capsule := shape.shape as CapsuleShape3D if shape != null else null
-	if capsule == null:
-		return 0.0
-	return maxf(capsule.radius, capsule.height * 0.5)
+	return Slipper.HIT_RADIUS
 
 ## Brings up a local match and hands back the attacker's rig with both bots
 ## silenced. Shared by `_run_local()` and `_run_range()` so the two modes cannot
@@ -118,16 +118,19 @@ func _local_setup() -> CameraRig:
 		var ch := c as CharacterBase
 		if ch.is_person and not ch.team_is_can_side:
 			_attacker = ch
-		elif not ch.is_person and not ch.is_can:
-			_slipper = ch
+	# ⚠️ THE SLIPPER IS A PROP IN A GROUP, NOT A CHARACTER (3abc019).
+	for node in get_tree().get_nodes_in_group("slippers"):
+		_slipper = node as Slipper
+		if _slipper != null:
+			break
 	if _attacker == null or _slipper == null:
 		print("AIM: could not find attacker/slipper")
 		return null
 	# The bot would otherwise fight the probe for the same slipper.
 	if _attacker.ai_controller != null:
 		_attacker.ai_controller.set_enabled(false)
-	if _slipper.ai_controller != null:
-		_slipper.ai_controller.set_enabled(false)
+	# ⚠️ NO AI ON THE SLIPPER ANY MORE — a prop does not drive itself, so the second
+	# `set_enabled(false)` that used to sit here has nothing to disable.
 	var rig := _attacker.get_node("CameraRig") as CameraRig
 	rig.set_active(true)
 	return rig
@@ -138,16 +141,15 @@ func _run_local() -> void:
 		get_tree().quit(1)
 		return
 	var camera := rig.fpp_camera as Camera3D
-	var carriable := _slipper.get_node("Carriable") as Carriable
 
 	print("attacker %s   eye height %.2f above body origin"
 		% [_attacker.global_position, camera.global_position.y - _attacker.global_position.y])
 
 	for pitch in PITCHES:
-		carriable.host_land()
+		_slipper.host_drop()
 		_slipper.global_position = _attacker.global_position + Vector3(0.4, 0.3, 0)
 		await get_tree().physics_frame
-		carriable.host_grab(_attacker)
+		_slipper.host_grab(_attacker)
 		await get_tree().physics_frame
 		await get_tree().physics_frame
 		rig.set("_pitch_deg", pitch)
@@ -157,7 +159,7 @@ func _run_local() -> void:
 		var space := _attacker.get_world_3d().direct_space_state
 		var far := camera.global_position + aim * AUDIT_MAX_RANGE
 		var query := PhysicsRayQueryParameters3D.create(camera.global_position, far)
-		query.exclude = [_attacker.get_rid(), _slipper.get_rid()]
+		query.exclude = [_attacker.get_rid()]  # a Slipper is not a physics body
 		var hit := space.intersect_ray(query)
 		var aim_point: Vector3 = hit.get("position", far)
 		# B-144, fault 2 — see the block at the top. Stand the aim point off the
@@ -171,7 +173,7 @@ func _run_local() -> void:
 		# position — see carrier.gd::_throw_origin(). This probe exists to measure
 		# aim accuracy, so it has to throw from where a real throw leaves from.
 		var origin := camera.global_position + aim * Carrier.MUZZLE_FORWARD
-		carriable.host_throw(origin, aim_point, 1.0)
+		_slipper.host_throw(_attacker, origin, aim_point, 1.0)
 		var eye := camera.global_position
 		var sight_len := Vector2(aim_point.x - eye.x, aim_point.z - eye.z).length()
 		var closest := 9999.0
@@ -180,7 +182,7 @@ func _run_local() -> void:
 			await get_tree().physics_frame
 			closest = minf(closest, _slipper.global_position.distance_to(aim_point))
 			max_sag = maxf(max_sag, _sag_below_sight(_slipper.global_position, eye, aim_point, sight_len))
-			if carriable.state != Carriable.CarryState.FLYING:
+			if _slipper.state != Slipper.CarryState.FLYING:
 				break
 		_results.append({
 			"pitch": pitch,
@@ -219,7 +221,6 @@ func _run_range() -> void:
 		get_tree().quit(1)
 		return
 	var camera := rig.fpp_camera as Camera3D
-	var carriable := _slipper.get_node("Carriable") as Carriable
 	var grid: Array[Dictionary] = []
 
 	print("attacker %s   eye height %.2f above body origin"
@@ -227,10 +228,10 @@ func _run_range() -> void:
 
 	for pitch in RANGE_PITCHES:
 		for want_range in RANGES:
-			carriable.host_land()
+			_slipper.host_drop()
 			_slipper.global_position = _attacker.global_position + Vector3(0.4, 0.3, 0)
 			await get_tree().physics_frame
-			carriable.host_grab(_attacker)
+			_slipper.host_grab(_attacker)
 			await get_tree().physics_frame
 			await get_tree().physics_frame
 			rig.set("_pitch_deg", pitch)
@@ -252,18 +253,18 @@ func _run_range() -> void:
 			# had simply stopped where the arena does.
 			var space := _attacker.get_world_3d().direct_space_state
 			var query := PhysicsRayQueryParameters3D.create(eye, aim_point)
-			query.exclude = [_attacker.get_rid(), _slipper.get_rid()]
+			query.exclude = [_attacker.get_rid()]  # a Slipper is not a physics body
 			var blocked := space.intersect_ray(query)
 			if not blocked.is_empty():
 				grid.append({"pitch": pitch, "range": want_range, "closest": -2.0, "y": aim_point.y})
 				continue
 			var origin := eye + aim * Carrier.MUZZLE_FORWARD
-			carriable.host_throw(origin, aim_point, 1.0)
+			_slipper.host_throw(_attacker, origin, aim_point, 1.0)
 			var closest := 9999.0
 			for _i in 400:
 				await get_tree().physics_frame
 				closest = minf(closest, _slipper.global_position.distance_to(aim_point))
-				if carriable.state != Carriable.CarryState.FLYING:
+				if _slipper.state != Slipper.CarryState.FLYING:
 					break
 			grid.append({"pitch": pitch, "range": want_range, "closest": closest, "y": aim_point.y})
 			print("  row pitch %+5.1f range %5.1f m  aim y %5.2f  closest %6.3f m"
@@ -449,12 +450,16 @@ func _net_roles() -> Dictionary:
 			continue
 		if ch.is_can:
 			out["can"] = ch
-		elif not ch.is_person:
-			out["slipper"] = ch
 		elif ch.team_is_can_side:
 			out["taya"] = ch
 		else:
 			out["attacker"] = ch
+	# ⚠️ THE SLIPPER IS NOT A CharacterBase AND SO IS NOT IN THAT WALK (3abc019).
+	for node in get_tree().get_nodes_in_group("slippers"):
+		var s := node as Slipper
+		if s != null:
+			out["slipper"] = s
+			break
 	return out
 
 func _net_drive() -> void:
@@ -473,25 +478,21 @@ func _net_drive() -> void:
 			continue
 		var roles := _net_roles()
 		var attacker: CharacterBase = roles.get("attacker")
-		var slipper: CharacterBase = roles.get("slipper")
+		var slipper: Slipper = roles.get("slipper")
 		var can: CharacterBase = roles.get("can")
 		if attacker == null or slipper == null or can == null:
 			await get_tree().create_timer(0.3).timeout
 			continue
-		var carriable := slipper.get_node_or_null("Carriable") as Carriable
-		if carriable == null:
-			await get_tree().create_timer(0.3).timeout
-			continue
-		carriable.host_land()
+		slipper.host_drop()
 		await get_tree().physics_frame
-		carriable.host_grab(attacker)
+		slipper.host_grab(attacker)
 		await get_tree().physics_frame
-		if carriable.state != Carriable.CarryState.CARRIED:
+		if slipper.state != Slipper.CarryState.CARRIED:
 			continue
 		_net_watch_can = can
 		# ⚠️ SIGHT-LINE ORIGIN (10.6), same helper the production throw uses.
 		var net_aim := can.global_position + Vector3(0.0, 0.25, 0.0)
-		carriable.host_throw(Carrier.throw_origin_for(attacker, net_aim), net_aim, 1.0)
+		slipper.host_throw(attacker, Carrier.throw_origin_for(attacker, net_aim), net_aim, 1.0)
 		thrown += 1
 		# Long enough to cover the flight AND the whole self-right window, because the
 		# outcome under test happens 1.25 s AFTER the knockdown, not at it.
