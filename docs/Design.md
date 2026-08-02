@@ -689,22 +689,35 @@ pick. Every lata played identically and every tsinelas played identically.
 A prop is not a person: a lata is a target that stands or lies and a tsinelas is
 ammunition, so neither of them walks. The meters are re-read per tab.
 
-| | **PERSON** (you) | **LATA** (your can, on the mark during YOUR taya round) | **TSINELAS** (yours, every round you attack) |
+⚠️ **AND EACH TAB NAMES ITS OWN METERS SINCE 2026-08-02.** 🧑: *"its weird that slippers
+and can have grit"* / *"speed and power on can is fkn weird too"* / *"can doesnt move
+bro"*. SPEED/POWER/GRIT is a vocabulary for something that WALKS, THROWS and GETS
+STUNNED; a can only sits and falls over. The mechanics below are unchanged — only the
+words are, and a lata's `bilis` in particular never described the can doing anything.
+
+| `key` | **PERSON** (you) | **LATA** (your can, on the mark during YOUR taya round) | **TSINELAS** (yours, every round you attack) |
 |---|---|---|---|
-| **SPEED** | walk speed | ÷ `RESET_CHANNEL_TIME` — how fast you stand it back up | × `LAUNCH_SPEED` — flatter arc, less reaction time |
-| **POWER** | outgoing shove impulse | × the recoil it puts on a slipper that hits it | × the push a body-block deals to the blocker |
-| **GRIT** | ÷ incoming knockback and stagger | ÷ the hit window — harder to knock over at all | ÷ `THROW_LOCK_TIME` — armed again sooner after a pickup |
+| `bilis` | **SPEED** — walk speed | **RESET** — ÷ `RESET_CHANNEL_TIME`, how fast you stand it back up | **FLIGHT** — × `LAUNCH_SPEED`, flatter arc, less reaction time |
+| `lakas` | **POWER** — outgoing shove impulse | **REBOUND** — × the recoil it puts on a slipper that hits it | **IMPACT** — × the push a body-block deals to the blocker |
+| `tatag` | **GRIT** — ÷ incoming knockback and stagger | **STANCE** — ÷ the hit window, harder to knock over at all | **RECOVERY** — ÷ `THROW_LOCK_TIME`, armed again sooner after a pickup |
+
+⚠️ **`RECOVERY` WAS BRIEFLY `RETURN` AND THAT WAS A LIE** — 🧑 *"return on tsinelas isnt
+real, they dont return"*. Nothing hands a slipper back; `Carrier.notify_holding()` sets
+the lock AFTER a pickup the player already walked over and made.
+
+⚠️ **`RECOVERY` IS ON `tatag` AND `RESET` IS ON `bilis`.** They read alike and sit on
+different keys — the one trap in the table. Check the key, not the word.
 
 ⚠️ **THE THREE LATA STATS ARE THREE ROUTES TO ONE GOAL, AND THAT IS THE DESIGN.** A taya
-wants the can upright, because that is what passive defence is paid for (§8). GRIT
-refuses the knockdown, SPEED shortens the recovery, POWER punishes the attempt by
+wants the can upright, because that is what passive defence is paid for (§8). STANCE
+refuses the knockdown, RESET shortens the recovery, REBOUND punishes the attempt by
 lengthening somebody's retrieval. A can that did all three would be the correct answer.
 
-⚠️ **THE TSINELAS' GRIT PLAYS THE GAME'S ACTUAL THESIS.** §0: *the tension is the
+⚠️ **THE TSINELAS' RECOVERY PLAYS THE GAME'S ACTUAL THESIS.** §0: *the tension is the
 retrieval, not the throw*. A shorter throw lock is less time stood inside the box
-`VULNERABLE`, so GRIT buys exposure back rather than buying damage.
+`VULNERABLE`, so RECOVERY buys exposure back rather than buying damage.
 
-⚠️ **TSINELAS SPEED IS DELIBERATELY THE NARROWEST STAT IN THE GAME — the table only
+⚠️ **TSINELAS FLIGHT IS DELIBERATELY THE NARROWEST STAT IN THE GAME — the table only
 spans `bilis` 2..4, i.e. ±5% of `LAUNCH_SPEED`.** That ceiling is not taste.
 `ai_controller.gd::_min_power_for()` inverts the range equation against
 `Slipper.LAUNCH_SPEED` to decide how long to charge, so a per-skin launch speed is an
@@ -718,18 +731,26 @@ the flight stay one line by construction (§12, and §2.16).
 
 ### 9.2 · The tables
 
-**LATA** — `bilis` / `lakas` / `tatag`:
+**LATA** — `bilis` / `lakas` / `tatag`, **retuned 2026-08-02 against the meshes**
+(🧑 *"make it make sense from the cans and models, like boysen paint should be stable or
+smth"*). Every row is now derivable from the shape the human drew, and each can owns
+exactly one 5:
 
-| can | SPEED | POWER | GRIT | plays as |
+| can | RESET | REBOUND | STANCE | plays as |
 |---|---|---|---|---|
-| **PASIP** | 5 | 1 | 1 | goes over instantly, back up instantly |
-| **BOYBEN PERMAGAD** | 1 | 5 | 4 | the fortress, and slow to right once it does go |
-| **DECADES TUNA** | 3 | 2 | 5 | hardest can in the game to knock over |
-| **LATANG KALAWANG** | 2 | 4 | 3 | middleweight; punishes the throw |
+| **PASIP** | 5 | 1 | 1 | tall, thin, empty — goes over instantly, back up instantly |
+| **BOYBEN** | 1 | 3 | 5 | squat tin half full of set paint: immovable, and a job to right |
+| **DECADES TUNA** | 4 | 1 | 4 | flat disc — hard to tip AND quick to right, no mass to rebound |
+| **LATANG KALAWANG** | 2 | 5 | 3 | solid ribbed tin, heavy for its size; punishes the throw |
 
-**TSINELAS**:
+BOYBEN held GRIT 4 **and** POWER 5 before this and was simply the best can on two axes.
+It now owns STANCE outright and concedes the rebound to KALAWANG. Totals are still not
+budget-balanced, per §9 — DECADES is a 9 and PASIP is a 7, and that is allowed.
 
-| slipper | SPEED | POWER | GRIT | plays as |
+**TSINELAS** — values UNCHANGED 2026-08-02; a rubber clog and a house slipper already
+read exactly like this and only the labels were wrong:
+
+| slipper | FLIGHT | IMPACT | RECOVERY | plays as |
 |---|---|---|---|---|
 | **TSINELAS** | 3 | 3 | 3 | neutral, and **must stay neutral** — see below |
 | **CROCS** | 2 | 5 | 2 | slow through the air, punishes a body block |

@@ -105,10 +105,64 @@ const TRAIT_NEUTRAL: int = 3
 ## label would be a silent flat-3 fallback on every entry — `traits_in()` returns
 ## the entry's dictionary and `_trait_value()` resolves a missing key to
 ## TRAIT_NEUTRAL without erroring. That is precisely the failure NET-1 is chasing.
-const TRAIT_LABELS: Array[Dictionary] = [
+##
+## ⚠️⚠️ ONE LIST BECAME THREE, 🧑 2026-08-02: *"its weird that slippers and can
+## have grit"* / *"speed and power on can is fkn weird too"* / *"can doesnt move
+## bro"*. The human is right and it is worth recording exactly how, because the
+## MECHANICS were never the problem and must not be "fixed":
+##
+##   SPEED/POWER/GRIT is a vocabulary written for a unit that WALKS, THROWS and
+##   GETS STUNNED. A lata only sits on a mark and falls over; a tsinelas only
+##   flies and gets picked up. Stretching one set of three words across three
+##   different body plans is what produced meters that contradict their own
+##   sentence — the exact failure the ROSTER header's "readable off the sentence"
+##   rule exists to prevent, committed by the rule's own labels.
+##
+##   Worst offenders, both now gone: a lata's SPEED never described the can doing
+##   anything (it divides `Lata.RESET_CHANNEL_TIME` — how long the TAYA stands
+##   still), and a tsinelas's GRIT is a readiness stat, not a sturdiness one (it
+##   divides `Carrier.THROW_LOCK_TIME`).
+##
+## So each tab now names what its own meter actually does. Same three `key`s, same
+## three multipliers, same tuning — display only. Nothing crosses the wire.
+const TRAIT_LABELS_PERSON: Array[Dictionary] = [
 	{"key": &"bilis", "name": "SPEED", "gloss": ""},
 	{"key": &"lakas", "name": "POWER", "gloss": ""},
 	{"key": &"tatag", "name": "GRIT", "gloss": ""},
+]
+
+## RESET  · how fast the taya stands it back up (`Lata.RESET_CHANNEL_TIME`).
+## REBOUND· how far it throws the tsinelas off when it takes a hit.
+## STANCE · how hard it is to knock over at all (the hit window).
+##
+## `RESET` is deliberately the codebase's own word for it, so a maintainer reading
+## the meter can grep straight to the constant behind it.
+const TRAIT_LABELS_LATA: Array[Dictionary] = [
+	{"key": &"bilis", "name": "RESET", "gloss": ""},
+	{"key": &"lakas", "name": "REBOUND", "gloss": ""},
+	{"key": &"tatag", "name": "STANCE", "gloss": ""},
+]
+
+## FLIGHT · launch speed — a flatter, faster arc (`Slipper.speed_scale()`).
+## IMPACT · what a body-block costs the taya, and nothing else (§2.11).
+## RECOVERY · how fast it is throwable once picked up (`Carrier.THROW_LOCK_TIME`).
+##
+## ⚠️ THIS SEAT TOOK THREE GOES AND THE TWO REJECTS ARE WORTH KEEPING, 2026-08-02.
+## It was `RETURN` for one commit — 🧑 *"return on
+## tsinelas isnt real, they dont return"*. Correct — nothing in this game hands a
+## slipper back. `Carrier.notify_holding()` sets the lock AFTER a pickup the player
+## has already walked over and made, so the stat covers the beat between having it
+## and being able to throw it, not the trip to go get it. A label that implied the
+## slipper comes to you would have promised a mechanic that does not exist, which
+## is worse than the vague `GRIT` it replaced.
+##
+## ⚠️ `RECOVERY` IS ON `tatag` AND `RESET` ABOVE IS ON `bilis`. Both read as "back to
+## usable" and they sit on DIFFERENT keys — the one trap in this table. A can's is
+## the reset channel (speed); a slipper's is the throw lock (grit). Check the key.
+const TRAIT_LABELS_TSINELAS: Array[Dictionary] = [
+	{"key": &"bilis", "name": "FLIGHT", "gloss": ""},
+	{"key": &"lakas", "name": "IMPACT", "gloss": ""},
+	{"key": &"tatag", "name": "RECOVERY", "gloss": ""},
 ]
 
 ## ---------------------------------------------------------------------------
@@ -292,25 +346,41 @@ const ROSTER: Array[Dictionary] = [
 ##
 ##   TSINELAS — you throw it, every round you are an attacker (it is yours,
 ##              `Slipper.owner_slot`, `Design.md` §5.2):
-##     SPEED → launch speed. A flatter, faster arc, and less time for the taya to
-##             read it. ⚠️ NARROW ON PURPOSE, 2..4 — see `Slipper.speed_scale()`.
-##     POWER → how hard a body-block hurts the blocker. It is the only thing that
-##             makes blocking cost the taya anything (§2.11).
-##     GRIT  → how quickly it is ready to throw again after a pickup
-##             (`Carrier.THROW_LOCK_TIME`). Retrieval is the game's thesis, so
-##             this is the stat that plays it.
+##     FLIGHT → launch speed. A flatter, faster arc, and less time for the taya to
+##              read it. ⚠️ NARROW ON PURPOSE, 2..4 — see `Slipper.speed_scale()`.
+##     IMPACT → how hard a body-block hurts the blocker. It is the only thing that
+##              makes blocking cost the taya anything (§2.11).
+##     RECOVERY → how quickly it is ready to throw again after a pickup
+##              (`Carrier.THROW_LOCK_TIME`). Retrieval is the game's thesis, so
+##              this is the stat that plays it.
 ##
 ##   LATA — your can, on the mark during YOUR taya round (`Design.md` §9):
-##     SPEED → how fast you can stand it back up (`Lata.RESET_CHANNEL_TIME`).
-##     POWER → how far it knocks the tsinelas away when it takes a hit, which buys
-##             the taya time by lengthening somebody's retrieval.
-##     GRIT  → how hard it is to knock over at all (the hit window).
+##     RESET   → how fast you can stand it back up (`Lata.RESET_CHANNEL_TIME`).
+##     REBOUND → how far it knocks the tsinelas away when it takes a hit, which
+##               buys the taya time by lengthening somebody's retrieval.
+##     STANCE  → how hard it is to knock over at all (the hit window).
 ##
 ## ⚠️ THE THREE LATA STATS ARE THREE ROUTES TO ONE GOAL AND THAT IS THE DESIGN.
-## A taya wants the can UPRIGHT (it is what passive defence is paid for). GRIT
-## refuses the knockdown, SPEED shortens the recovery, POWER punishes the attempt.
-## A can that did all three would be the correct answer; each of these does one
-## well and pays for it somewhere else.
+## A taya wants the can UPRIGHT (it is what passive defence is paid for). STANCE
+## refuses the knockdown, RESET shortens the recovery, REBOUND punishes the
+## attempt. A can that did all three would be the correct answer; each of these
+## does one well and pays for it somewhere else.
+##
+## ⚠️ AND THE FOUR CANS WERE RETUNED AGAINST THEIR OWN MESHES, 2026-08-02, 🧑
+## *"make it make sense from the cans and models, like boysen paint should be
+## stable or smth"*. Every value below is now derivable from the shape the human
+## drew — tall empty can topples, flat disc sits low, weighted tin does not move,
+## solid ribbed tin hits back — rather than from an abstract role. One 5 each:
+##
+##   PASIP    RESET 5  · tall, thin, empty
+##   BOYBEN   STANCE 5 · squat and half full of set paint
+##   DECADES  (4/1/4)  · flat disc: stable AND quick to right, no mass to rebound
+##   KALAWANG REBOUND 5· solid ribbed tin, heavy for its size
+##
+## BOYBEN held GRIT 4 *and* POWER 5 before this and was simply the best can on two
+## axes; it now owns stance outright and concedes the rebound to KALAWANG. Totals
+## are still not budget-balanced, per the ROSTER header — DECADES is a 9 and
+## PASIP is a 7, and that is allowed.
 ##
 ## ⚠️ SIX CANS AND SEVEN SLIPPERS BECAME FOUR AND FOUR, because the human drew
 ## four of each and these tables now describe real meshes rather than tints. The
@@ -338,42 +408,51 @@ const CANS: Array[Dictionary] = [
 	{
 		"id": &"pasip",
 		"name": "PASIP",
-		# SPEED 5 "back up before you have turned around" · POWER 1 "barely a knock"
-		# · GRIT 1 "goes over if you look at it hard". The glass cannon of cans:
-		# it concedes the knockdown and wins the time back on the reset.
-		"tagline": "Softdrink na hindi Pepsi. Tall, thin and empty, so it goes over if you look at it hard. It is also back up before you have turned around.",
+		# RESET 5 · REBOUND 1 · STANCE 1. Unchanged by the 2026-08-02 retune and the
+		# only can that was: a tall thin empty soda can topples if you breathe on it,
+		# has no mass to throw a tsinelas anywhere, and weighs nothing to stand up.
+		# The glass cannon — it concedes the knockdown and wins the time back.
+		"tagline": "Softdrink na hindi Pepsi. Tall, thin and empty — it goes over if you look at it hard, and it is back up before you have turned around.",
 		"traits": {&"bilis": 5, &"lakas": 1, &"tatag": 1},
 		"model": "res://assets/models/lata_pasip.obj",
 		"tint": Color.WHITE,
 	},
 	{
 		"id": &"boyben",
-		"name": "BOYBEN PERMAGAD",
-		# SPEED 1 "half set solid, slow to right" · POWER 5 "sends it back across
-		# the street" · GRIT 4 "takes a real hit". The fortress, and the slowest
-		# thing on the mark to stand back up once it does go.
-		"tagline": "Leftover fence paint, half set solid. It takes a real hit to move, it sends the tsinelas back across the street, and righting it is a job.",
-		"traits": {&"bilis": 1, &"lakas": 5, &"tatag": 4},
+		"name": "BOYBEN",
+		# RESET 1 · REBOUND 3 · STANCE 5. 🧑 2026-08-02: *"boysen paint should be
+		# stable or smth"* — and it now is, outright. A squat tin half full of set
+		# paint is the most stable object on this table by some distance, so it takes
+		# GRIT 5 off DECADES and gives up POWER 5 to KALAWANG for it: the immovable
+		# can is not also allowed to be the hardest-hitting one. Slowest to right by
+		# far, which is what the stance is paid for.
+		"tagline": "Leftover fence paint, half set solid. Nothing on the mark stands its ground like it does — but righting it is a proper job.",
+		"traits": {&"bilis": 1, &"lakas": 3, &"tatag": 5},
 		"model": "res://assets/models/lata_boyben.obj",
 		"tint": Color.WHITE,
 	},
 	{
 		"id": &"decades",
 		"name": "DECADES TUNA",
-		# SPEED 3 · POWER 2 · GRIT 5 "getting it over is the hard part". The
-		# hardest can in the game to knock down and almost nothing else.
-		"tagline": "Flakes in oil, straight off the shelf at Aling Nena's. Squat, low and stubborn, so getting it over at all is the hard part.",
-		"traits": {&"bilis": 3, &"lakas": 2, &"tatag": 5},
+		# RESET 4 · REBOUND 1 · STANCE 4. Retuned 2026-08-02 off the MESH: a tuna can
+		# is a flat wide disc, so it is genuinely hard to tip (STANCE 4, second only
+		# to the paint tin) AND trivial to flick back upright (RESET 4) — the two
+		# goods a low centre of gravity actually buys you. It pays for both in
+		# REBOUND 1: there is no height or mass there to send a tsinelas anywhere.
+		"tagline": "Flakes in oil from Aling Nena's. Squat and low, so tipping it is the hard part — and setting it back up is barely a motion.",
+		"traits": {&"bilis": 4, &"lakas": 1, &"tatag": 4},
 		"model": "res://assets/models/lata_decades.obj",
 		"tint": Color.WHITE,
 	},
 	{
 		"id": &"metal",
 		"name": "LATANG KALAWANG",
-		# SPEED 2 · POWER 4 "does not go quietly" · GRIT 3. The middleweight:
-		# heavy enough to punish a throw, ordinary at everything else.
-		"tagline": "No label left at all, just ribs and rust. Heavy for its size, and it does not go quietly when it goes.",
-		"traits": {&"bilis": 2, &"lakas": 4, &"tatag": 3},
+		# RESET 2 · REBOUND 5 · STANCE 3. Takes POWER 5 from BOYBEN 2026-08-02, which
+		# is where "heavy for its size" was always pointing: a solid ribbed tin is the
+		# one can that genuinely punishes a throw by sending the tsinelas somewhere
+		# awkward. Ordinary stance, slow and clumsy to right — it owns one stat.
+		"tagline": "No label left, just ribs and rust. Heavy for its size — it sends the tsinelas across the street, and it is slow to stand back up.",
+		"traits": {&"bilis": 2, &"lakas": 5, &"tatag": 3},
 		"model": "res://assets/models/lata_metal.obj",
 		"tint": Color.WHITE,
 	},
@@ -386,7 +465,8 @@ const SLIPPERS: Array[Dictionary] = [
 	{
 		"id": &"tsinelas",
 		"name": "TSINELAS",
-		# 3/3/3, and this one stays neutral ON PURPOSE. It is entry 0, which is what
+		# FLIGHT 3 · IMPACT 3 · RECOVERY 3, and this one stays neutral ON PURPOSE. It
+		# is entry 0, which is what
 		# an unpicked slipper and every -1 fallback resolve to (`_trait_value()`), so
 		# making it anything else would silently retune every AI seat and every peer
 		# that never reached the CHARACTER screen.
@@ -398,10 +478,11 @@ const SLIPPERS: Array[Dictionary] = [
 	{
 		"id": &"crocs",
 		"name": "CROCS",
-		# SPEED 2 "does not fly straight" · POWER 5 "knows about it" · GRIT 2. The
+		# FLIGHT 2 "does not fly straight" · IMPACT 5 "knows about it" · RECOVERY 2. The
 		# heavy one: slowest through the air, and the only slipper that genuinely
-		# punishes a taya for standing in the lane.
-		"tagline": "Holes in the top, strap at the back. It is heavy and it does not fly straight, but whoever body-blocks it knows all about it.",
+		# punishes a taya for standing in the lane. Values unchanged 2026-08-02 —
+		# a rubber clog reads exactly like this and only the labels were wrong.
+		"tagline": "Holes in the top, strap at the back. Heavy and it does not fly straight — but whoever body-blocks it knows all about it.",
 		"traits": {&"bilis": 2, &"lakas": 5, &"tatag": 2},
 		"model": "res://assets/models/tsinelas_crocs.obj",
 		"tint": Color.WHITE,
@@ -414,14 +495,15 @@ const SLIPPERS: Array[Dictionary] = [
 		# wear indoors, which is just as Filipino and reads far better in flight.
 		"id": &"pantulog",
 		"name": "PANTULOG",
-		# SPEED 3 · POWER 1 "no weight behind it" · GRIT 5 "back in your hand
-		# before the taya has turned around". The retrieval slipper: it hits like
+		# FLIGHT 3 · IMPACT 1 "no weight behind it" · RECOVERY 5 "ready again before
+		# the taya has turned around". The retrieval slipper: it hits like
 		# nothing and it is ready again fastest, which is the trade the whole game
 		# is about (`Design.md` §0 — the tension is the retrieval, not the throw).
 		# ⚠️ Was 1/5/5, carried off the deleted `bakya` seat and never tuned; a
 		# soft house slipper reading POWER 5 was the clearest case on the board of
-		# a meter contradicting its own sentence.
-		"tagline": "Lola's house slipper, worn soft. There is no weight behind it at all, but it is back in your hand before the taya has turned around.",
+		# a meter contradicting its own sentence. `RECOVERY` as a label finally names
+		# what its 5 has always done.
+		"tagline": "Lola's house slipper, worn soft. No weight behind it at all, but it is ready again before the taya has turned around.",
 		"traits": {&"bilis": 3, &"lakas": 1, &"tatag": 5},
 		"model": "res://assets/models/tsinelas_pantulog.obj",
 		"tint": Color.WHITE,
@@ -438,7 +520,7 @@ const SLIPPERS: Array[Dictionary] = [
 		# 🎨 `build model`'s per §3.
 		"id": &"sike",
 		"name": "IKE",
-		# SPEED 4 "quickest thing off a hand" · POWER 2 · GRIT 3. The flat, fast
+		# FLIGHT 4 "quickest thing off a hand" · IMPACT 2 · RECOVERY 3. The flat, fast
 		# arc: least reaction time for the taya, least consequence if it is read.
 		"tagline": "Definitely not the real brand. Light, loud, and the quickest thing off a hand on this street.",
 		"traits": {&"bilis": 4, &"lakas": 2, &"tatag": 3},
@@ -466,10 +548,20 @@ const SLIPPERS: Array[Dictionary] = [
 ## returned -1.0 for EVERY slipper and silently blanked the MAX POWER row on the
 ## character screen — a dead row on a live control, which is the second half of
 ## THE REACHABILITY RULE. Removed rather than left to rot.
-static func slipper_max_power(index: int) -> float:
+## ⚠️ IT IS NO LONGER THE SAME NUMBER FOR ALL FOUR, AND THAT IS THE 2026-08-02 FIX.
+## The paragraph above is why it USED to be constant, and it was right that there is
+## one `LAUNCH_SPEED` in the game — but the skin's own FLIGHT scale multiplies it on
+## the way out (`slipper.gd::_throw()`, `launch_velocity_for()`), so the constant was
+## reporting the baseline and not what the pick in front of the player actually does.
+## Every slipper printing an identical "19 m/s" under four different FLIGHT meters
+## was the same class of lie the labels were: a live row that tells you nothing.
+## Scaled here through the one conversion (`trait_scale`) so it cannot drift from
+## flight — IKE (bilis 4) reads 19.4, CROCS (bilis 2) 17.6, against neutral 18.5.
+static func slipper_launch_speed(index: int) -> float:
 	if index < 0 or index >= SLIPPERS.size():
 		return -1.0
-	return Slipper.LAUNCH_SPEED
+	return Slipper.LAUNCH_SPEED * trait_scale(
+		slipper_trait(index, &"bilis"), CharacterBase.TRAIT_SPEED_PER_POINT)
 
 ## The three tabs, in the order the screen shows them. A list rather than three
 ## hardcoded branches so `character_select.gd` cycles tabs the same way it cycles
@@ -477,10 +569,18 @@ static func slipper_max_power(index: int) -> float:
 ##
 ## `slot` is which `GameLaunch` preference and which `CharacterBase` index this
 ## tab writes — named rather than positional so nothing depends on tab order.
+##
+## `traits` is the tab's meter names (see the TRAIT_LABELS_* block). It lives HERE,
+## on the category, rather than as a branch in `character_select.gd`, for the same
+## reason `entries` does: a fourth tab is one row in this table and nothing in the
+## UI. The screen asks `trait_labels()` and renders whatever it gets back.
 const CATEGORIES: Array[Dictionary] = [
-	{"id": &"person", "label": "PERSON",   "slot": &"character", "entries": ROSTER},
-	{"id": &"can",    "label": "LATA",     "slot": &"can",       "entries": CANS},
-	{"id": &"slipper","label": "TSINELAS", "slot": &"slipper",   "entries": SLIPPERS},
+	{"id": &"person", "label": "PERSON",   "slot": &"character", "entries": ROSTER,
+		"traits": TRAIT_LABELS_PERSON},
+	{"id": &"can",    "label": "LATA",     "slot": &"can",       "entries": CANS,
+		"traits": TRAIT_LABELS_LATA},
+	{"id": &"slipper","label": "TSINELAS", "slot": &"slipper",   "entries": SLIPPERS,
+		"traits": TRAIT_LABELS_TSINELAS},
 ]
 
 ## ---------------------------------------------------------------------------
@@ -516,6 +616,11 @@ static func category(index: int) -> Dictionary:
 
 static func entries_for(category_index: int) -> Array:
 	return category(category_index)["entries"]
+
+## The meter names for one tab. Wrapped like `entries_for()` so the screen never
+## indexes `CATEGORIES` itself and the wrap-around is in one place.
+static func trait_labels(category_index: int) -> Array:
+	return category(category_index)["traits"]
 
 ## Wrapped lookup into one category's list — the CANS/SLIPPERS counterpart of
 ## `at()`, and non-asserting for the same reason: this is read on the spawn path
