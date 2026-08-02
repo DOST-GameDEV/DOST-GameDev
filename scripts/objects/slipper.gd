@@ -721,6 +721,55 @@ func _attach_to_hand() -> void:
 		1.0 / maxf(inherited.x, 0.0001),
 		1.0 / maxf(inherited.y, 0.0001),
 		1.0 / maxf(inherited.z, 0.0001))
+	# ⚠️⚠️ THE **MESH** GOES ON THE PALM, NOT THE ORIGIN — 🧑 2026-08-02, checking the
+	# hand fix by hand: *"its clipped on arm but phasing below it"*. Exactly right, and it
+	# is the last piece of this bug rather than a new one: `character_visual.gd`'s carry
+	# point is now measured to the palm, so the slipper's ORIGIN lands on the palm — and
+	# the tsinelas mesh does not sit on its own origin. It is authored around the sole and
+	# drawn at 1.6x (`TsinelasVisual.tscn`), so what a player sees hangs below the point
+	# the code so carefully placed, and it reads as the shoe sinking through the hand.
+	#
+	# ⚠️ MEASURED FROM THE MESH, NOT A CONSTANT, AND THAT IS THE WHOLE LESSON OF THIS BUG.
+	# `HAND_CARRY_OFFSET` was hand-tuned three times and was wrong three times. The centre
+	# of the visible geometry is a fact this node can read at runtime, it is right for
+	# every tsinelas in the roster without enumerating them, and a new skin with a
+	# different footbed height cannot reintroduce this.
+	#
+	# The old code DID have this correction — in `carriable.gd::_step_carried()`, reading
+	# `visual_centre_offset()`. `carriable.gd` was deleted in the pivot and the
+	# compensation went with it, which is why a bug that had been fixed came back.
+	var centre := _visual_centre_local()
+	if centre != Vector3.ZERO:
+		position -= transform.basis * centre
+
+## The centre of what this slipper actually DRAWS, in its own local space.
+##
+## ⚠️ THAT SPACE INCLUDES `Visual`'s 1.6 SCALE, because the box is transformed by every
+## node between here and the mesh. Which is the point: the answer is where the shoe
+## appears, not where its source geometry was authored.
+##
+## Zero when nothing has been instanced yet, which callers must read as "not ready" rather
+## than "no offset" — the same contract `character_visual.gd::visual_centre_offset()`
+## keeps. `_physics_process` retries the attach every frame while carried, so a mesh that
+## arrives a frame late is corrected on the next one.
+func _visual_centre_local() -> Vector3:
+	var visual := get_node_or_null("Visual") as Node3D
+	if visual == null:
+		return Vector3.ZERO
+	var bounds := AABB()
+	var first := true
+	var to_self := global_transform.affine_inverse()
+	for node in visual.find_children("*", "VisualInstance3D", true, false):
+		var instance := node as VisualInstance3D
+		var box: AABB = (to_self * instance.global_transform) * instance.get_aabb()
+		bounds = box if first else bounds.merge(box)
+		first = false
+	if visual is VisualInstance3D:
+		var own_box: AABB = (to_self * visual.global_transform) \
+			* (visual as VisualInstance3D).get_aabb()
+		bounds = own_box if first else bounds.merge(own_box)
+		first = false
+	return Vector3.ZERO if first else bounds.get_center()
 
 func _detach_from_hand() -> void:
 	if _home_parent == null or not is_instance_valid(_home_parent):
@@ -860,6 +909,53 @@ func _step_carried() -> void:
 		+ carrier.global_transform.basis.x * 0.28 \
 		- carrier.global_transform.basis.z * 0.20
 
+## ⚠️⚠️ THE INVISIBLE BACK WALL — 🧑 2026-08-02, with a screenshot of a slipper sitting
+## in the road well outside the court: *"pls put an invisible barrier that makes it bounce
+## back and not go out of bounds as it's unreachable"*.
+##
+## The arena has real wall colliders (`Bounds`, measured into `CharacterBase.playable_half_x/z`
+## by `main.gd::_publish_playable_extent`) and they stop PEOPLE, because a CharacterBase
+## moves with `move_and_slide()`. A slipper does not: `_step_flying()` integrates a
+## position by hand, so it passes through every collider in the map and lands wherever the
+## arc ends. Every seat owns exactly one slipper (`Design.md` §5.2), so one that leaves the
+## court does not merely look untidy — it takes a quarter of the round's offence with it
+## until the round resets.
+##
+## ⚠️ A REFLECTION, NOT A CLAMP, AND THE DIFFERENCE IS PLAYABLE. Clamping to the wall
+## would stop the slipper dead ON the boundary, which piles them along the edge — the same
+## clustering the body-block deflection below was added to prevent. Reflecting sends it
+## back into the court, where somebody can reach it.
+##
+## ⚠️ IT RUNS BEFORE THE `host_side` GATE, so it runs on EVERY peer. That is required, not
+## incidental: the whole flight is simulated everywhere from one launch velocity (see
+## below), and a bounce applied only on the host would put the slipper somewhere else on
+## every other screen. The rule is a pure function of position and velocity, so every peer
+## computes the same reflection on the same frame.
+##
+## ⚠️ ENERGY IS LOST ON THE BOUNCE. A perfectly elastic wall would return a slipper at
+## throw speed, which is a projectile nobody threw and which can still knock the lata
+## down — a point scored by the wall. 0.45 is enough to carry it clear of the boundary and
+## not enough to be a shot.
+const BOUNCE_RESTITUTION: float = 0.45
+
+## How far inside the wall face the slipper turns around. Its own contact radius, so the
+## visible shoe never buries itself in a facade before reversing.
+const BOUNCE_INSET: float = HIT_RADIUS
+
+func _bounce_off_bounds() -> void:
+	var limit_x: float = CharacterBase.playable_half_x - BOUNCE_INSET
+	var limit_z: float = CharacterBase.playable_half_z - BOUNCE_INSET
+	if limit_x > 0.0 and absf(global_position.x) > limit_x:
+		global_position.x = signf(global_position.x) * limit_x
+		# ⚠️ `-absf`, NOT `-=` OR A FLIP. A plain sign flip would send a slipper that is
+		# somehow already outside and travelling inward back out again — and being outside
+		# is exactly the state this function exists to recover from, so it must not have a
+		# way to make it worse. This form always ends up pointing at the court.
+		_velocity.x = -signf(global_position.x) * absf(_velocity.x) * BOUNCE_RESTITUTION
+	if limit_z > 0.0 and absf(global_position.z) > limit_z:
+		global_position.z = signf(global_position.z) * limit_z
+		_velocity.z = -signf(global_position.z) * absf(_velocity.z) * BOUNCE_RESTITUTION
+
 ## ⚠️ FLIGHT IS SIMULATED ON EVERY PEER FROM THE SAME LAUNCH VELOCITY, and only
 ## the HOST resolves contact. Both halves matter. Simulating everywhere means the
 ## arc is smooth on a client instead of being 4 Hz of interpolated packets, which
@@ -871,6 +967,7 @@ func _step_flying(delta: float) -> void:
 		_thrower_ignore_left = maxf(0.0, _thrower_ignore_left - delta)
 	_velocity.y -= CharacterBase.GRAVITY * delta
 	global_position += _velocity * delta
+	_bounce_off_bounds()
 	_spin(delta)
 
 	var host_side := not NetworkManager.is_networked() or NetworkManager.is_host()

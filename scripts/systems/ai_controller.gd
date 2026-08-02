@@ -702,7 +702,21 @@ func _plan_attacker(delta: float) -> Plan:
 	if not character.holding_slipper():
 		var mine := _my_slipper()
 		if mine == null:
-			return Plan.IDLE
+			# ⚠️⚠️ NOT `Plan.IDLE` — 🧑 2026-08-02, with a screenshot of two attackers
+			# standing in the street: *"ai bug, when the slippers are all thrown or smth
+			# sometimes they js wait outside the box like this"*.
+			#
+			# `_my_slipper()` answers null in exactly one situation: nothing is LOOSE and
+			# nothing this bot threw is in the air. That is not a rare state — it is what
+			# the court looks like for the seconds after a volley, when the other three
+			# slippers are in somebody's hand or still flying. `Plan.IDLE` is `_loiter()`,
+			# so all it did was shuffle on the spot until a slipper happened to land.
+			#
+			# There IS something to do: get to where the next slipper will come down. A
+			# loose slipper belongs to whoever reaches it (that is what
+			# `HUMAN_SLIPPER_BIAS` is about), so the run starts before it lands or it
+			# starts last. `_do_position()` handles the empty-handed case explicitly.
+			return Plan.POSITION
 		if mine.is_flying():
 			# ⚠️ WALK TO WHERE IT WILL LAND, not to where it is. This is most of the
 			# missing ground in §6.7: after a throw the old bot had no slipper, no
@@ -917,12 +931,29 @@ func _do_position() -> void:
 		# Waiting for my own throw to resolve: walk to where it will come down, so
 		# the retrieval starts from the right side of the court.
 		var mine := _my_slipper()
+		if mine == null:
+			# ⚠️ NOTHING IS FETCHABLE, SO GO WHERE ONE WILL BE. See `_plan_attacker()`'s
+			# note: `_my_slipper()` is null whenever every slipper is in a hand or in the
+			# air, and standing still through that window is the reported bug. The
+			# nearest slipper ALREADY IN FLIGHT is the one that becomes available first,
+			# whoever threw it — a landed slipper belongs to whoever gets there.
+			mine = _nearest_flying_slipper()
 		if mine != null and mine.is_flying():
 			var landing := _predicted_landing(mine)
 			if landing != Vector3.INF:
 				_goto(_pull_outside(landing, 0.4), ARRIVE_SLOP, false)
 				return
-		_loiter()
+		# ⚠️ STILL NOTHING IN THE AIR: WAIT ON THE THROWING RING, NOT WHEREVER YOU
+		# HAPPEN TO BE STANDING. `_loiter()` alone is what the screenshot caught — three
+		# empty-handed attackers milling about wherever their last plan left them, which
+		# from outside reads as the bots having given up. The ring is where the next verb
+		# starts from either way, so walking to it costs nothing and is never wrong.
+		if not _goal_valid:
+			_goal = _throw_spot()
+			_goal_valid = true
+		_goto(_goal, ARRIVE_SLOP, false)
+		if _arrived:
+			_loiter()
 		return
 	if not _goal_valid:
 		_goal = _throw_spot()
@@ -1442,6 +1473,25 @@ func _claim(bearing: float) -> void:
 ## Falls back to the nearest loose slipper outright when the rule picks nothing —
 ## a bot with no claim and nothing else to do should still go and get one rather
 ## than stand still (§6.7).
+## The slipper in the air that will land nearest to this bot, whoever threw it.
+##
+## ⚠️ DELIBERATELY IGNORES OWNERSHIP AND CLAIMS, unlike `_my_slipper()`. This is only
+## reached when NOTHING is fetchable — so there is no claim to respect and no rival being
+## cut off, and the alternative is standing still. The claim scoring applies again the
+## moment the slipper is loose and `_my_slipper()` starts answering.
+func _nearest_flying_slipper() -> Slipper:
+	var best: Slipper = null
+	var best_d := INF
+	for node in get_tree().get_nodes_in_group("slippers"):
+		var slipper := node as Slipper
+		if slipper == null or not slipper.is_flying():
+			continue
+		var d := character.global_position.distance_to(slipper.global_position)
+		if d < best_d:
+			best_d = d
+			best = slipper
+	return best
+
 func _my_slipper() -> Slipper:
 	# ⚠️⚠️ A SLIPPER I THREW AND IS STILL IN THE AIR COMES FIRST, AND LEAVING THIS
 	# OUT COST HALF THE OFFENCE.
