@@ -41,6 +41,10 @@ var _failures: Array[String] = []
 var _lines: Array[String] = []
 var _done: bool = false
 
+## The impulse fed to `apply_knockback()` for the GRIT reading. Well under
+## `MAX_KNOCKBACK_SPEED` (14.0), or the clamp would flatten the trait it is measuring.
+const PERSON_TEST_IMPULSE: float = 8.0
+
 func _ready() -> void:
 	GameLaunch.spectator = true
 	_main = MAIN_SCENE.instantiate()
@@ -99,7 +103,11 @@ func _run() -> void:
 
 	await _check_slipper(attackers[0])
 	await _check_lata(can)
-	_check_person()
+	# ⚠️ `await`. `_check_person()` became a coroutine when POWER started driving a real
+	# shove, and calling it bare made it suspend at the first frame wait while `_report()`
+	# ran on regardless — the run printed SPEED, then a PASS, with the two checks that
+	# had not happened yet simply absent. A green result missing half its rows.
+	await _check_person()
 	_report()
 
 ## ---------------------------------------------------------------------------
@@ -438,19 +446,43 @@ func _check_person() -> void:
 	var slow_speed := who.trait_speed_scale()
 	who.character_index = quick
 	var quick_speed := who.trait_speed_scale()
+	# ⚠️ SPEED STAYS `[derived]`, AND THE REASON IS STRUCTURAL RATHER THAN LAZY.
+	# The multiply lives inside the movement step (`character_base.gd:820`), which only
+	# reads a walk intent while `_ai_driven()` is true — and the AIController that makes
+	# it true rewrites `_ai_intent` every frame, so a probe cannot hold a direction
+	# without evicting the thing that gives it permission to steer. Driving it would
+	# mean a test-only input channel, which is a seam in shipping code to serve a probe.
+	# The stat IS live: `ai_controller.gd:1732` and the movement step both read it.
 	_check("person SPEED", false, "LOLA(1)", slow_speed, "JUN-JUN(5)", quick_speed, true)
 
-	who.character_index = weak
-	var weak_power := who.trait_power_scale()
-	who.character_index = strong
-	var strong_power := who.trait_power_scale()
-	_check("person POWER", false, "JUN-JUN(1)", weak_power, "BEBANG(5)", strong_power, true)
+	# ⚠️⚠️ POWER IS A REAL SHOVE NOW, NOT `trait_power_scale()` READ BACK — 2026-08-02.
+	# `host_resolve_shove()` is the function the game calls, and it is where the
+	# multiply actually lives (`character_base.gd:1273`): the impulse handed to the
+	# victim is `SHOVE_SPEED * trait_power_scale()` of the SHOVER. Reading the getter
+	# could never have told a live multiply from a dead one.
+	#
+	# ⚠️ THE VICTIM IS THE SAME PERSON BOTH TIMES, which is what makes the two numbers
+	# comparable: `apply_knockback()` divides by the VICTIM's own grit, so a different
+	# victim would fold their grit into a reading about the shover's power.
+	var victim := _other_attacker(who)
+	if victim == null:
+		_log("[skip]    person POWER              no second attacker to shove")
+	else:
+		var weak_push := await _shove_push(who, victim, weak)
+		var strong_push := await _shove_push(who, victim, strong)
+		_check("person POWER (shove)", true, "JUN-JUN(1)", weak_push,
+			"BEBANG(5)", strong_push, true)
 
+	# ⚠️⚠️ GRIT IS A REAL KNOCKBACK. `apply_knockback()` divides the incoming impulse
+	# by `trait_grit_scale()` before it touches velocity, so handing it a FIXED impulse
+	# and reading the velocity it produced measures the division on the path the game
+	# uses — the same one a body block and a shove both arrive through.
 	who.character_index = frail
-	var frail_grit := who.trait_grit_scale()
+	var frail_push := _knockback_speed(who)
 	who.character_index = tough
-	var tough_grit := who.trait_grit_scale()
-	_check("person GRIT", false, "KANOR(2)", frail_grit, "BEBANG(5)", tough_grit, true)
+	var tough_push := _knockback_speed(who)
+	_check("person GRIT (knockback)", true, "KANOR(2)", frail_push,
+		"BEBANG(5)", tough_push, false)
 
 	# ⚠️ NO TWO ROSTER ENTRIES MAY SHARE ALL THREE NUMBERS. Two identical rows are
 	# one character wearing two rigs, and it is invisible on the CHARACTER screen
@@ -544,3 +576,35 @@ func _recoil_once(can: Lata, skin: int) -> float:
 		if not slipper.is_flying():
 			return 0.0
 	return 0.0
+
+## A fixed impulse through `apply_knockback()`, reporting the planar speed it produced.
+## Velocity is zeroed first so the reading is the knockback and not whatever the AI was
+## already doing with the body.
+func _knockback_speed(who: CharacterBase) -> float:
+	who.velocity = Vector3.ZERO
+	who.apply_knockback(Vector3(PERSON_TEST_IMPULSE, 0.0, 0.0))
+	return Vector2(who.velocity.x, who.velocity.z).length()
+
+## The impulse this shover delivers, read off the VICTIM's velocity after a real
+## `host_resolve_shove()`. Both are parked adjacent and facing first: the shove has a
+## 1.6 m range and a 70 degree arc, so a pair left where the AI happened to put them
+## reports 0.0 for reasons that have nothing to do with the trait.
+func _shove_push(shover: CharacterBase, victim: CharacterBase, skin: int) -> float:
+	shover.character_index = skin
+	# ⚠️⚠️ WAIT OUT THE PREVIOUS SHOVE'S STUN FIRST. `host_resolve_shove()` skips a
+	# victim who cannot act, and `SHOVE_STUN` is 1.25 s — so the SECOND measurement
+	# came back 0.0000 and the check read "BEBANG(5) shoves less hard than JUN-JUN(1)",
+	# which is a wrong-direction failure describing nothing but the harness shoving
+	# twice too quickly.
+	for _i in range(240):
+		if victim.can_act():
+			break
+		await get_tree().physics_frame
+	_park(shover)
+	_park(victim)
+	victim.global_position = shover.global_position + Vector3(1.0, 0.0, 0.0)
+	victim.velocity = Vector3.ZERO
+	await get_tree().physics_frame
+	victim.velocity = Vector3.ZERO
+	shover.host_resolve_shove(shover.player_slot, shover.global_position, Vector3.RIGHT)
+	return Vector2(victim.velocity.x, victim.velocity.z).length()
