@@ -76,6 +76,23 @@ func _run() -> void:
 	await get_tree().process_frame
 	_check("HUD root after H", false, hud.is_visible_in_tree())
 
+	# ⚠️⚠️ THE SPECTATOR'S OWN CHROME IS CHECKED BY NAME, NOT LEFT TO THE ROOT. 🧑
+	# 2026-08-02: *"make sure it disappears in spectator mode too, all huds"*, with a
+	# screenshot of the SCORES panel. Hiding the root does cover it — `Scoreboard` is a
+	# direct child, and so are the spectator status/round labels and the legend, which
+	# `enter_spectator_mode()` ADDS at runtime rather than authoring in the scene.
+	#
+	# That last part is exactly why these are named here. A runtime-added child is the
+	# one thing a "hide the root" fix could plausibly miss if the node were ever
+	# reparented onto another layer, and the spectator chrome is the chrome a camera
+	# operator most needs gone. Asserting the root alone would not notice.
+	for named in ["Scoreboard", "TopCentre", "LataCard"]:
+		var node := hud.get_node_or_null(named) as CanvasItem
+		if node == null:
+			_failures.append("HARNESS: %s is not a child of the HUD." % named)
+			continue
+		_check("%s after H" % named, false, node.is_visible_in_tree())
+
 	# ⚠️⚠️ THE CHECKS THAT ACTUALLY CAUGHT THE BUG. Each of these is a transient that
 	# shows ITSELF with an unconditional `visible = true` somewhere in `hud.gd`, fired
 	# here AFTER the clean feed is already on. The snapshot implementation had no way
