@@ -69,8 +69,8 @@ const PROTOCOL_VERSION: int = 1
 ## ---------------------------------------------------------------------------
 const STATUS_PORT_OFFSET: int = 10
 
-## The address the pool is reachable at from the outside — an Oracle Cloud VM in Singapore,
-## `ap-singapore-1`, standing up since 2026-08-02. Measured from the dev machine in the
+## The address the pool is reachable at from the outside — a Vultr VPS in Singapore, since
+## 2026-08-02, replacing an Oracle free-tier box that could not carry a match. Measured from the dev machine in the
 ## Philippines on that date: the browser listed the lobby, HOST ONLINE claimed it, and the
 ## claiming peer became lobby leader holding code V3M6. That round trip crossed a real NAT,
 ## which no amount of loopback testing had covered.
@@ -85,14 +85,15 @@ const STATUS_PORT_OFFSET: int = 10
 ##
 ## Empty is still a valid, honest state — a build with nowhere to point sends nothing and
 ## says so on screen rather than sitting on "searching…" forever.
-const POOL_ADDRESS: String = "134.185.89.114"
+const POOL_ADDRESS: String = "139.180.212.110"
 ## The pool's game ports, inclusive. One process per port, one match per process. Status
 ## ports are these + `STATUS_PORT_OFFSET`, so this range must stay within ten of its start.
 ##
 ## ⚠️ THE RANGE IS WHAT THE CLIENT ASKS, NOT WHAT THE SERVER RUNS, and the two are allowed
-## to differ. The deployed box is a `VM.Standard.E2.1.Micro` with 946 MB, which holds
-## THREE lobbies (8910-8912) — measured on it: three idle lobbies left 281 MB free and had
-## already touched 159 MB of swap. Asking for eight costs five unanswered datagrams a
+## to differ. The deployed box is a Vultr 1 vCPU / 2 GB in Singapore: 1629 MB free with no
+## lobbies running, against ~186 MB each. `spawner.py` caps it at four and refuses below
+## 400 MB free, because the previous box died twice from a number chosen by arithmetic
+## rather than by watching a real match. Asking for eight costs five unanswered datagrams a
 ## second and nothing else, so this stays wide: the pool can grow to fill it without any
 ## client needing a new build, which is the one upgrade path that does not require
 ## reshipping the game.
