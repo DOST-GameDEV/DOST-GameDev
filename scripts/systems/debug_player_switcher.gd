@@ -373,7 +373,11 @@ func _describe_unit(unit: CharacterBase, label: String) -> String:
 	if unit == null:
 		return "%s (missing)" % label
 	var side := "TAYA" if unit.is_defender else "ATTACKER"
-	return "%s (P%d · %s)" % [label, unit.player_slot + 1, side]
+	# ⚠️ `display_name()`, NOT THE RAW SLOT — 2026-08-02. This bar is the Tab cycle's
+	# own readout, so it is the one place a handover is being WATCHED as it happens;
+	# printing "P2" here while the nameplate over the same unit says MARING is the
+	# readout disagreeing with the world it exists to describe.
+	return "%s (%s · %s)" % [label, unit.display_name(), side]
 
 ## Re-read and re-describe both slots without changing them. Called by the bar
 ## on MatchManager.round_started, since is_can/team_is_can_side flip there.
