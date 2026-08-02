@@ -77,6 +77,32 @@ const COURTESY_CREDITS: Array[Dictionary] = [
 		"chip": "TSINELAS",
 		"body": "This project's own mesh, generated procedurally — not a sourced asset.",
 	},
+	{
+		# ⚠️ THIS ENTRY EXISTS TO SATISFY A COMPETITION RULE, NOT A LICENCE. Gear
+		# Up NCR §8 permits AI for "ideation, game design, programming, debugging,
+		# writing, asset creation, prototyping, balancing, testing, documentation"
+		# and requires that any AI-assisted content "be disclosed during the
+		# competition" — with non-disclosure listed as grounds for disqualification
+		# alongside outright plagiarism. Form 03 is where that disclosure is filed;
+		# this line is the same fact stated somewhere a player can reach, which is
+		# the standard the CC-BY block above is already held to.
+		#
+		# ⚠️ SAYING "ASSISTED", AND SAYING IT ABOUT CODE ONLY, IS THE ACCURATE
+		# CLAIM. No art, audio or model in this build is AI-generated: the meshes
+		# are Kenney CC0, three CC-BY Sketchfab models and this project's own
+		# procedural geometry, and the audio is the team's per the AUDIO entry.
+		# Widening this line to "assets" would disclose something that did not
+		# happen and contradict two entries directly above it.
+		#
+		# ⚠️ THE COMMIT HISTORY DELIBERATELY DOES NOT SAY THIS AND THAT IS NOT A
+		# CONTRADICTION. Authorship of the entry is the team's — §7 requires the
+		# code be the registered members' and the team takes full responsibility
+		# for it, which is why no commit carries a Co-Authored-By or a tool name
+		# (see the README's setup step 4). Disclosure of a tool and attribution of
+		# authorship are different questions; this answers the first.
+		"chip": "DEVELOPMENT TOOLS",
+		"body": "Claude Code (Anthropic) was used as a coding assistant during development — programming, debugging, testing and documentation. All game logic, mechanics and design decisions are the team's own, and the team takes full responsibility for the code submitted. No AI-generated art, audio or 3D assets ship in this build.",
+	},
 ]
 
 ## Matches Tutorial's CHIP_WIDTH so a player who has already seen that screen
