@@ -311,10 +311,45 @@ const UNSTICK_TIME: float = 0.65
 ## How long a written intent stays readable on the shared board (§ SPACING).
 const CLAIM_TTL: float = 1.2
 
-## Idle repositioning: a bot with nothing to do drifts along the ring rather than
-## standing at attention. Small, slow, and it is most of "these look alive".
-const LOITER_SPEED: float = 0.55
-const LOITER_PERIOD: float = 5.5
+## Idle repositioning: a bot with nothing to do shifts its weight rather than
+## standing at attention. See `_loiter()`.
+##
+## ⚠️⚠️ THE OLD PAIR — `LOITER_SPEED 0.55`, `LOITER_PERIOD 5.5` — DESCRIBED A DRIFT THIS
+## FILE COULD NOT PRODUCE, AND THE GAP IS THE WHOLE BUG. 🧑 2026-08-02: *"idk why this ai
+## randomly just goes back and forth sometimes for like 10 seconds then throws, it feels
+## unnatural"*.
+##
+## `_drive()` NORMALISES its direction and emits DIGITAL presses — `move_left` is down or
+## it is not. There is no analogue magnitude anywhere in the chain, so a 0.55 speed scale
+## was multiplied in and then thrown away one line later. The bot loitered at the full
+## `CharacterBase.SPEED` of 4.6 m/s.
+##
+## At 4.6 m/s the old sine's duty cycle (|sin| >= 0.72, so ~1.34 s of every 5.5) is a
+## **6-metre strafe**, and that is what turned a fidget into pacing:
+##
+##   1. `_do_position()` runs `_goto(_goal, ARRIVE_SLOP)` and arrives.
+##   2.  drives sideways at full speed for 1.34 s.
+##   3. The bot is now far outside `ARRIVE_SLOP * ARRIVE_HYSTERESIS` (0.99 m), so the next
+##      frame `_goto()` clears `_arrived` and walks it back at full speed.
+##   4. It arrives. Go to 2.
+##
+## A closed loop, running for as long as the throw gate stays shut — which while the lata
+## is down is most of ten seconds. It was never a decision oscillating; it was one verb
+## fighting another over the same body.
+##
+## So the shuffle is bounded by DISTANCE now rather than described by a speed it cannot
+## have. `LOITER_LEASH` is the furthest it may stray from its anchor, and it is well
+## inside the 0.99 m that would re-trigger the walk-back — that margin is the fix, the
+## rest is what makes it read as a person.
+const LOITER_LEASH: float = 0.45
+## One sidestep, in seconds of held input: 0.07-0.13 s at 4.6 m/s is a 32-60 cm shift.
+const LOITER_STEP_MIN: float = 0.07
+const LOITER_STEP_MAX: float = 0.13
+## And how long it stands between them. Long, and RANDOM — a fixed period is a metronome,
+## which is the other half of what read as machine-like. Roughly a 5% duty cycle: mostly
+## still, occasionally adjusting, which is what someone waiting for a target actually does.
+const LOITER_REST_MIN: float = 1.1
+const LOITER_REST_MAX: float = 2.8
 
 ## ---------------------------------------------------------------------------
 ## § PERSONALITY — why three identical bots are not one bot drawn three times.
@@ -451,7 +486,10 @@ var _blundering: bool = false
 var _lunge_held: float = -1.0
 ## Who this bot guarded on the previous evaluation — see `_live_threat()`.
 var _last_threat: CharacterBase = null
-var _loiter_phase: float = 0.0
+## How long the current loiter beat has left, and which way it goes: -1, 0 (standing) or
+## +1 across the bearing out from the lata. Both are rolled fresh every beat by `_loiter()`.
+var _loiter_left: float = 0.0
+var _loiter_dir: float = 0.0
 var _stalk_time: float = 0.0
 var _stuck_time: float = 0.0
 var _unstick_left: float = 0.0
@@ -506,7 +544,7 @@ func decide(delta: float) -> void:
 		_windup = false
 		return
 	_observe(delta)
-	_loiter_phase += delta
+	_loiter_left = maxf(0.0, _loiter_left - delta)
 	_stalk_time = _stalk_time + delta if _plan == Plan.STALK else 0.0
 	_step_unstick(delta)
 	_think_left -= delta
@@ -544,7 +582,10 @@ func _boot() -> void:
 	# bots re-planning on the same frame is three bots changing direction on the
 	# same frame — the "they all move at the same time" report, in one line.
 	_think_left = randf() * _think
-	_loiter_phase = randf() * LOITER_PERIOD
+	# Standing, for a random slice of a rest, so four bots do not all take their first
+	# sidestep together.
+	_loiter_dir = 0.0
+	_loiter_left = randf() * LOITER_REST_MAX
 
 func _read_tuning() -> void:
 	_stamp = tuning_stamp
@@ -702,7 +743,21 @@ func _plan_attacker(delta: float) -> Plan:
 	if not character.holding_slipper():
 		var mine := _my_slipper()
 		if mine == null:
-			return Plan.IDLE
+			# ⚠️⚠️ NOT `Plan.IDLE` — 🧑 2026-08-02, with a screenshot of two attackers
+			# standing in the street: *"ai bug, when the slippers are all thrown or smth
+			# sometimes they js wait outside the box like this"*.
+			#
+			# `_my_slipper()` answers null in exactly one situation: nothing is LOOSE and
+			# nothing this bot threw is in the air. That is not a rare state — it is what
+			# the court looks like for the seconds after a volley, when the other three
+			# slippers are in somebody's hand or still flying. `Plan.IDLE` is `_loiter()`,
+			# so all it did was shuffle on the spot until a slipper happened to land.
+			#
+			# There IS something to do: get to where the next slipper will come down. A
+			# loose slipper belongs to whoever reaches it (that is what
+			# `HUMAN_SLIPPER_BIAS` is about), so the run starts before it lands or it
+			# starts last. `_do_position()` handles the empty-handed case explicitly.
+			return Plan.POSITION
 		if mine.is_flying():
 			# ⚠️ WALK TO WHERE IT WILL LAND, not to where it is. This is most of the
 			# missing ground in §6.7: after a throw the old bot had no slipper, no
@@ -759,28 +814,24 @@ func _plan_defender(delta: float) -> Plan:
 	if lata == null:
 		return Plan.IDLE
 	if not lata.is_upright:
-		# ⚠️⚠️ A TAG THAT IS ALREADY IN RANGE OUTRANKS THE RESET, AND WITHOUT THIS
-		# THE TAYA NEVER TAGS AT ALL.
+		# ⚠️⚠️ RESET RETURNS UNCONDITIONALLY HERE, AND HUNT DOES NOT PREEMPT IT.
+		# THAT IS DELIBERATE. DO NOT "FIX" IT.
 		#
-		# Reported by a teammate playing the build: *"AI still doesnt TAG"*.
-		# Measured, two rounds at NORMAL: **1 tag**, while attackers spent 20-26 s
-		# EACH standing inside the box holding a slipper — 67 s of combined,
-		# uncontested vulnerability, and TAG worth 4.9% of every point against the
-		# 24.5% in §6.8's own table.
+		# A preempt was written and REVERTED in `c133bf2`: while the lata is down
+		# there is no legal tag to preempt FOR. `host_resolve_punch()` and
+		# `_sweep_lunge_tag()` both open with *"a tag requires the can standing"*
+		# and return early, so letting HUNT win here only sends the taya to swing
+		# at somebody untouchable and burn its punch cooldown doing it. The gate is
+		# also carried in `_tag_target()`, which returns null while the lata is
+		# over — so this branch and that one agree by construction.
 		#
-		# Nothing was wrong with `_tag_target()` or with the lunge. `RESET` simply
-		# sits above `HUNT` in this function and returns unconditionally, so the
-		# taya hunts only while the lata is UP — and the lata now spends most of the
-		# round down, because the offence got fixed (LATA DOWN is 60%+ of all points
-		# where it used to be 0%). **The better the attackers got, the less the taya
-		# was allowed to tag them.** That is a plan-ordering bug that only became
-		# visible once something else was working.
-		#
-		# ⚠️ RANGE-LIMITED, DELIBERATELY. The reset is the taya's job and abandoning
-		# it to chase somebody across the court would be the opposite mistake. This
-		# only preempts for a target already inside the dash — a tag is instant and
-		# pays 100, the channel is 1.5 s and can be re-started, so taking the free
-		# one first is what a person does. Out of range, the reset still wins.
+		# ⚠️ THE TAG WINDOW IS SMALL AND THAT IS A BALANCE QUESTION, NOT A BUG HERE.
+		# LATA DOWN went from 0% of all points to 60-70% as the offence got fixed,
+		# so the taya's only scoring verb is legal for the minority of the round —
+		# measured at 1-2 tags a match against §6.8's table of 24.5%. **The better
+		# the attackers got, the less the taya was allowed to tag them.** Whether
+		# the tag should survive a downed lata at all is filed as 2.30 for
+		# `build fair` to weigh. It is not this function's call to make.
 		return Plan.RESET
 	if _intercept > 0.0 and _intercept_point(lata) != Vector3.INF:
 		if _reacted("incoming", true, delta):
@@ -797,6 +848,10 @@ func _plan_defender(delta: float) -> Plan:
 ## § ACTING.
 ## ---------------------------------------------------------------------------
 func _act(delta: float) -> void:
+	# Which actions THIS frame's plan wrote. Cleared here so the release sweep at
+	# the bottom can ask "did the plan that just ran touch this button" rather than
+	# inferring it from the plan id — see the note down there for what that cost.
+	_touched.clear()
 	match _plan:
 		Plan.IDLE:
 			_do_idle()
@@ -828,13 +883,40 @@ func _act(delta: float) -> void:
 	# DICTIONARY IS STICKY: it holds whatever was last written, so a plan that
 	# simply stops mentioning `special_ability` leaves the previous plan's charge
 	# held for the rest of the round.
-	if _plan != Plan.WINDUP:
+	#
+	# ⚠️⚠️ THIS TESTED THE PLAN ID AND NOT WHETHER THE BUTTON WAS TOUCHED, AND THAT
+	# COST THE TAYA ITS PUNCH ENTIRELY. Fixed 2026-08-02, reported by 🧑 as *"AI cant
+	# tag human for some reason"*.
+	#
+	# The list read `if _plan != Plan.WINDUP: _press("special_ability", false)`, which
+	# was correct while WINDUP (the attacker's throw charge) was the only thing that
+	# pressed that action. The PUNCH was added on 2026-08-01 as the taya's second tag
+	# verb and presses the SAME action from `_step_lunge_intent()`, under Plan.HUNT —
+	# so every frame went: `_do_hunt()` taps `special_ability` true, and three lines
+	# later this cleanup set it back to false, in the same frame, before
+	# `CharacterBase._step_punch()` ever ran. **The tap could not survive the janitor
+	# that ran after it**, so the punch fired exactly zero times in the game's life.
+	#
+	# Measured before and after with `tools/tag_probe.tscn`, holding one attacker
+	# taggable in front of the taya for 25 game-seconds: `special_ability held 0.0%,
+	# edges 0` on the old code, with the taya in HUNT for 81% of those frames, inside
+	# `PUNCH_RANGE` for 80% and facing the victim for 84%. Every precondition the
+	# punch has was true and the button was never pressed.
+	#
+	# ⚠️ THE FIX IS TO TEST WHAT THE COMMENT ALREADY SAID. `_press()` records into
+	# `_touched` and `_act()` clears it before dispatching, so "buttons this plan did
+	# not touch" is now literally what is asked rather than a plan whitelist that has
+	# to be updated by hand every time a verb gains a second caller. The next verb to
+	# share an action is handled by construction; this one was not.
+	if not _touched.has("special_ability"):
 		_press("special_ability", false)
+	if _plan != Plan.WINDUP:
 		_windup = false
+	if not _touched.has("lunge"):
+		_press("lunge", false)
 	if _plan != Plan.HUNT:
 		_lunge_held = -1.0
-		_press("lunge", false)
-	if not (_plan in [Plan.FETCH, Plan.RESET, Plan.SABOTAGE]):
+	if not _touched.has("grab"):
 		_press("grab", false)
 
 ## --- attacker verbs ------------------------------------------------------
@@ -890,12 +972,29 @@ func _do_position() -> void:
 		# Waiting for my own throw to resolve: walk to where it will come down, so
 		# the retrieval starts from the right side of the court.
 		var mine := _my_slipper()
+		if mine == null:
+			# ⚠️ NOTHING IS FETCHABLE, SO GO WHERE ONE WILL BE. See `_plan_attacker()`'s
+			# note: `_my_slipper()` is null whenever every slipper is in a hand or in the
+			# air, and standing still through that window is the reported bug. The
+			# nearest slipper ALREADY IN FLIGHT is the one that becomes available first,
+			# whoever threw it — a landed slipper belongs to whoever gets there.
+			mine = _nearest_flying_slipper()
 		if mine != null and mine.is_flying():
 			var landing := _predicted_landing(mine)
 			if landing != Vector3.INF:
 				_goto(_pull_outside(landing, 0.4), ARRIVE_SLOP, false)
 				return
-		_loiter()
+		# ⚠️ STILL NOTHING IN THE AIR: WAIT ON THE THROWING RING, NOT WHEREVER YOU
+		# HAPPEN TO BE STANDING. `_loiter()` alone is what the screenshot caught — three
+		# empty-handed attackers milling about wherever their last plan left them, which
+		# from outside reads as the bots having given up. The ring is where the next verb
+		# starts from either way, so walking to it costs nothing and is never wrong.
+		if not _goal_valid:
+			_goal = _throw_spot()
+			_goal_valid = true
+		_goto(_goal, ARRIVE_SLOP, false)
+		if _arrived:
+			_loiter()
 		return
 	if not _goal_valid:
 		_goal = _throw_spot()
@@ -1415,6 +1514,25 @@ func _claim(bearing: float) -> void:
 ## Falls back to the nearest loose slipper outright when the rule picks nothing —
 ## a bot with no claim and nothing else to do should still go and get one rather
 ## than stand still (§6.7).
+## The slipper in the air that will land nearest to this bot, whoever threw it.
+##
+## ⚠️ DELIBERATELY IGNORES OWNERSHIP AND CLAIMS, unlike `_my_slipper()`. This is only
+## reached when NOTHING is fetchable — so there is no claim to respect and no rival being
+## cut off, and the alternative is standing still. The claim scoring applies again the
+## moment the slipper is loose and `_my_slipper()` starts answering.
+func _nearest_flying_slipper() -> Slipper:
+	var best: Slipper = null
+	var best_d := INF
+	for node in get_tree().get_nodes_in_group("slippers"):
+		var slipper := node as Slipper
+		if slipper == null or not slipper.is_flying():
+			continue
+		var d := character.global_position.distance_to(slipper.global_position)
+		if d < best_d:
+			best_d = d
+			best = slipper
+	return best
+
 func _my_slipper() -> Slipper:
 	# ⚠️⚠️ A SLIPPER I THREW AND IS STILL IN THE AIR COMES FIRST, AND LEAVING THIS
 	# OUT COST HALF THE OFFENCE.
@@ -1881,22 +1999,56 @@ func _separation() -> Vector3:
 	return push
 
 ## A bot with nothing to do shifts its weight instead of standing at attention.
-## Slow, small, and per-bot out of phase — this is most of "they look alive", and
-## it costs one sine.
+##
+## ⚠️⚠️ LEASHED TO WHERE IT IS STANDING, AND THAT LEASH IS THE BUG FIX. The constants'
+## block has the mechanism in full; the short version is that the old sine drove a
+## 6-metre strafe, `_goto()` walked the bot back, and the two of them paced for as long as
+## the throw gate stayed shut. Nothing here may take the body further than `LOITER_LEASH`
+## from its anchor, so `_arrived` cannot flip and the loop cannot close.
+##
+## ⚠️ THE ANCHOR IS `_goal`, EXCEPT WHEN THAT IS STALE. Every caller but `_do_idle()` runs
+## `_goto()` and checks `_arrived` immediately before this, so `_goal` is this frame's and
+## the bot is already within `ARRIVE_SLOP` of it. An idle bot's `_goal` is left over from
+## whatever it was doing two verbs ago, and leashing to that would drag it across the
+## court — so anything out of arrival range anchors where the bot stands instead.
+##
+## ⚠️ AND THE BEATS ARE ROLLED, NOT PHASED. A sine gives every bot the same rhythm at a
+## different offset, which still reads as clockwork once you watch two of them. Each beat
+## here draws its own length and its own direction, so a bot can step twice the same way
+## or stand for three seconds, and four of them never fall into step.
 func _loiter() -> void:
-	var swing := sin(TAU * _loiter_phase / LOITER_PERIOD)
-	if absf(swing) < 0.72:
+	var here := character.global_position
+	var anchor := _goal if _flat(here, _goal) <= ARRIVE_SLOP else here
+	var out := here - anchor
+	out.y = 0.0
+	if out.length() > LOITER_LEASH:
+		# Past the leash. Come back and stand a while — deliberately NOT "step the other
+		# way", which is the alternation that made it look like pacing in the first place.
+		_loiter_dir = 0.0
+		_loiter_left = randf_range(LOITER_REST_MIN, LOITER_REST_MAX)
+		_drive(-out, false)
+		return
+	if _loiter_left <= 0.0:
+		if _loiter_dir == 0.0:
+			_loiter_dir = 1.0 if randf() < 0.5 else -1.0
+			_loiter_left = randf_range(LOITER_STEP_MIN, LOITER_STEP_MAX)
+		else:
+			_loiter_dir = 0.0
+			_loiter_left = randf_range(LOITER_REST_MIN, LOITER_REST_MAX)
+	if _loiter_dir == 0.0:
 		_stop()
 		return
 	var lata := RoundManager.lata
 	var pivot: Vector3 = lata.global_position if lata != null else Vector3.ZERO
-	var out := character.global_position - pivot
-	out.y = 0.0
-	if out.length() < 0.05:
-		out = Vector3.FORWARD
-	out = out.normalized()
-	var across := Vector3(-out.z, 0.0, out.x)
-	_drive(across * signf(swing) * LOITER_SPEED, false)
+	var radial := here - pivot
+	radial.y = 0.0
+	if radial.length() < 0.05:
+		radial = Vector3.FORWARD
+	radial = radial.normalized()
+	# Across the bearing out from the lata, so the shift never walks into or away from the
+	# thing this bot is lined up on.
+	var across := Vector3(-radial.z, 0.0, radial.x)
+	_drive(across * _loiter_dir, false)
 
 ## The nearest point outside the box, straight out along the bearing this bot is
 ## already on.
@@ -2033,11 +2185,18 @@ func _release_all() -> void:
 			"grab", "special_ability", "jump", "lunge"]:
 		_press(action, false)
 
+## Actions written during the current `_act()` frame, so the release sweep can tell
+## "the plan chose to hold this" from "the plan forgot about it". An explicit
+## release counts as a touch: the value is what it is, and re-writing false over
+## false is the same state.
+var _touched: Dictionary = {}
+
 func _press(action: String, pressed: bool) -> void:
 	if character == null:
 		return
 	character.ai_set_intent(action, pressed)
 	_pressed[action] = pressed
+	_touched[action] = true
 
 ## Produces a real press EDGE by alternating. `_step_grab()` and `_step_shove()`
 ## both read `input_just_pressed`, which needs a false frame before every true

@@ -2,7 +2,6 @@
 
 [ext_resource type="Script" path="res://scripts/ui/credits_panel.gd" id="1"]
 [ext_resource type="Texture2D" path="res://assets/ui/main-menu/MENU BACKDROP.png" id="2"]
-[ext_resource type="Texture2D" path="res://assets/ui/host-game/GAME BANNER.png" id="3"]
 
 [node name="CreditsPanel" type="Control"]
 layout_mode = 3
@@ -32,36 +31,12 @@ anchor_bottom = 1.0
 mouse_filter = 2
 color = Color(0.015686, 0.031373, 0.219608, 0.74)
 
-[node name="Banner" type="TextureRect" parent="."]
-layout_mode = 0
-offset_left = 60.0
-offset_top = 46.0
-offset_right = 708.0
-offset_bottom = 190.0
-mouse_filter = 2
-texture = ExtResource("3")
-expand_mode = 1
-stretch_mode = 0
-
-[node name="BannerLabel" type="Label" parent="Banner"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 128.0
-offset_right = -108.0
-mouse_filter = 2
-theme_override_colors/font_color = Color(0.239, 0.149, 0.024, 1)
-theme_override_font_sizes/font_size = 62
-vertical_alignment = 1
-text = "CREDITS"
-
 [node name="Panel" type="PanelContainer" parent="."]
 layout_mode = 0
 offset_left = 300.0
-offset_top = 226.0
+offset_top = 120.0
 offset_right = 1620.0
-offset_bottom = 832.0
+offset_bottom = 884.0
 theme_type_variation = &"WoodPanel"
 
 [node name="Margin" type="MarginContainer" parent="Panel"]
@@ -75,11 +50,18 @@ theme_override_constants/margin_bottom = 18
 layout_mode = 2
 theme_override_constants/separation = 12
 
+[node name="Title" type="Label" parent="Panel/Margin/Layout"]
+layout_mode = 2
+theme_type_variation = &"MenuHeading"
+theme_override_colors/font_color = Color(1, 0.729, 0, 1)
+theme_override_font_sizes/font_size = 54
+text = "CREDITS"
+
 [node name="PageLede" type="Label" parent="Panel/Margin/Layout"]
 layout_mode = 2
 theme_type_variation = &"MenuBody"
 autowrap_mode = 2
-text = "Every third-party asset this game ships, and what its licence asks for."
+text = "The people who made this game, and every third-party asset it ships."
 
 [node name="Rule" type="ColorRect" parent="Panel/Margin/Layout"]
 layout_mode = 2

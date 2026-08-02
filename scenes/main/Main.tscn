@@ -40,11 +40,14 @@ player_id = 4
 
 [node name="Slipper1" parent="." instance=ExtResource("13")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.08, 7)
+slipper_index = 0
 
 [node name="Slipper2" parent="." instance=ExtResource("13")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.06, 0.08, -3.5)
+slipper_index = 1
 
 [node name="Slipper3" parent="." instance=ExtResource("13")]
+slipper_index = 2
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.06, 0.08, -3.5)
 
 [node name="Players" type="Node3D" parent="."]

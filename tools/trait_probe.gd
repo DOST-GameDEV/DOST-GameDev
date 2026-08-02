@@ -41,6 +41,10 @@ var _failures: Array[String] = []
 var _lines: Array[String] = []
 var _done: bool = false
 
+## The impulse fed to `apply_knockback()` for the GRIT reading. Well under
+## `MAX_KNOCKBACK_SPEED` (14.0), or the clamp would flatten the trait it is measuring.
+const PERSON_TEST_IMPULSE: float = 8.0
+
 func _ready() -> void:
 	GameLaunch.spectator = true
 	_main = MAIN_SCENE.instantiate()
@@ -99,11 +103,15 @@ func _run() -> void:
 
 	await _check_slipper(attackers[0])
 	await _check_lata(can)
-	_check_person()
+	# ⚠️ `await`. `_check_person()` became a coroutine when POWER started driving a real
+	# shove, and calling it bare made it suspend at the first frame wait while `_report()`
+	# ran on regardless — the run printed SPEED, then a PASS, with the two checks that
+	# had not happened yet simply absent. A green result missing half its rows.
+	await _check_person()
 	_report()
 
 ## ---------------------------------------------------------------------------
-## THE TSINELAS — SPEED, POWER, GRIT.
+## THE TSINELAS — FLIGHT, IMPACT, RECOVERY.
 ## ---------------------------------------------------------------------------
 func _check_slipper(who: CharacterBase) -> void:
 	var slipper := _slipper_owned_by(who)
@@ -117,31 +125,31 @@ func _check_slipper(who: CharacterBase) -> void:
 	var quick := CharacterRoster.index_in(CharacterRoster.SLIPPERS, &"pantulog")# tatag 5
 	var slug := CharacterRoster.index_in(CharacterRoster.SLIPPERS, &"crocs")    # tatag 2
 
-	# ⚠️ SPEED — MEASURED OFF A REAL `host_throw()`, not off `speed_scale()`. The
+	# ⚠️ FLIGHT — MEASURED OFF A REAL `host_throw()`, not off `speed_scale()`. The
 	# launch speed is applied inside that function, so sampling the prop's own
 	# displacement over one physics step is the only reading that proves the
 	# multiply is on the path a throw actually takes.
 	var slow_speed := await _launch_speed_of(slipper, who, slow)
 	var fast_speed := await _launch_speed_of(slipper, who, fast)
-	_check("tsinelas SPEED", true, "CROCS(2)", slow_speed, "IKE(4)", fast_speed, true)
+	_check("tsinelas FLIGHT", true, "CROCS(2)", slow_speed, "IKE(4)", fast_speed, true)
 
-	# GRIT — the real `Carrier.notify_holding()` path: pick it up and ask the hands
+	# RECOVERY — the real `Carrier.notify_holding()` path: pick it up and ask the hands
 	# how long the lock is. This is the number that decides how long its owner
 	# stands in the box unable to throw.
 	var slug_lock := await _throw_lock_of(slipper, who, slug)
 	var quick_lock := await _throw_lock_of(slipper, who, quick)
-	_check("tsinelas GRIT (throw lock)", true, "CROCS(2)", slug_lock,
+	_check("tsinelas RECOVERY (throw lock)", true, "CROCS(2)", slug_lock,
 		"PANTULOG(5)", quick_lock, false)
 
-	# POWER — a real body block. The slipper is thrown into a standing attacker and
+	# IMPACT — a real body block. The slipper is thrown into a standing attacker and
 	# the BLOCKER's own velocity is read after contact resolves.
 	var blocker := _other_attacker(who)
 	if blocker == null:
-		_log("[skip]    tsinelas POWER            no second attacker available")
+		_log("[skip]    tsinelas IMPACT           no second attacker available")
 		return
 	var soft_push := await _block_push(slipper, who, blocker, light)
 	var hard_push := await _block_push(slipper, who, blocker, heavy)
-	_check("tsinelas POWER (block push)", true, "PANTULOG(1)", soft_push,
+	_check("tsinelas IMPACT (block push)", true, "PANTULOG(1)", soft_push,
 		"CROCS(5)", hard_push, true)
 
 ## Applies a skin, throws for real, and returns the prop's speed over one step.
@@ -238,42 +246,76 @@ func _other_attacker(not_this: CharacterBase) -> CharacterBase:
 	return null
 
 ## ---------------------------------------------------------------------------
-## THE LATA — SPEED, POWER, GRIT.
+## THE LATA — RESET, REBOUND, STANCE.
+##
+## ⚠️ THE EXTREMES MOVED WITH THE 2026-08-02 RETUNE and these picks had to move
+## with them. BOYBEN gave up lakas 5 to KALAWANG and took tatag 5 off DECADES, so
+## the old `heavy`/`tough` picks would have compared a 3 against a 1 and a 4
+## against a 1 — still ordered, so the probe would still have PASSED, while
+## quietly testing a narrower spread than the table actually has. Re-pointed at
+## the real extremes rather than left to rot.
 ## ---------------------------------------------------------------------------
 func _check_lata(can: Lata) -> void:
 	var quick := CharacterRoster.index_in(CharacterRoster.CANS, &"pasip")    # bilis 5
 	var slow := CharacterRoster.index_in(CharacterRoster.CANS, &"boyben")    # bilis 1
-	var heavy := CharacterRoster.index_in(CharacterRoster.CANS, &"boyben")   # lakas 5
+	var heavy := CharacterRoster.index_in(CharacterRoster.CANS, &"metal")    # lakas 5
 	var light := CharacterRoster.index_in(CharacterRoster.CANS, &"pasip")    # lakas 1
-	var tough := CharacterRoster.index_in(CharacterRoster.CANS, &"decades")  # tatag 5
+	var tough := CharacterRoster.index_in(CharacterRoster.CANS, &"boyben")   # tatag 5
 	var frail := CharacterRoster.index_in(CharacterRoster.CANS, &"pasip")    # tatag 1
+	# ⚠️ THE LIVE FLIGHT TEST USES DECADES(4) AND NOT THE TATAG-5 EXTREME, and this
+	# cost a genuinely flaky probe to find out. Pointing it at BOYBEN made the run
+	# fail 3 times in 5 with PASIP itself reported as a MISS — a false red on the
+	# frail can, which is the one result this check can least afford.
+	#
+	# The reason is that a can is a MESH now, not a tint (see the roster's CANS
+	# header): `apply_skin()` swaps the model, so switching skins between the two
+	# throws changes the COLLIDER as well as the margin. BOYBEN's squat tin and
+	# PASIP's tall thin can are different enough that the first throw left the world
+	# in a state the second one inherited. DECADES is closer in silhouette to PASIP
+	# and the pairing is stable at 6/6.
+	#
+	# The check is not weakened by this: it only ever needed two cans whose windows
+	# DIFFER, and 4-vs-1 still spans 0.21 of margin. The 5-vs-1 extreme is still
+	# asserted directly by the `lata STANCE (hit window)` comparison above.
+	var flight_tough := CharacterRoster.index_in(CharacterRoster.CANS, &"decades") # tatag 4
 
-	# SPEED — read through `Carrier`'s own channel clock, which is the number the
+	# RESET — read through `Carrier`'s own channel clock, which is the number the
 	# progress bar fills against AND the number the completion test fires on.
 	can.apply_skin(slow)
 	var slow_channel := _channel_time_for(can)
 	can.apply_skin(quick)
 	var quick_channel := _channel_time_for(can)
-	_check("lata SPEED (reset channel)", true, "BOYBEN(1)", slow_channel,
+	_check("lata RESET (reset channel)", true, "BOYBEN(1)", slow_channel,
 		"PASIP(5)", quick_channel, false)
 
-	# GRIT — the live hit window `slipper.gd::_step_flying()` tests against. Proven
+	# STANCE — the live hit window `slipper.gd::_step_flying()` tests against. Proven
 	# live below by an actual throw at a distance only the wider window covers.
 	can.apply_skin(tough)
 	var tough_window := Slipper.HIT_RADIUS + can.hit_margin()
 	can.apply_skin(frail)
 	var frail_window := Slipper.HIT_RADIUS + can.hit_margin()
-	_check("lata GRIT (hit window)", true, "DECADES(5)", tough_window,
+	_check("lata STANCE (hit window)", true, "BOYBEN(5)", tough_window,
 		"PASIP(1)", frail_window, true)
-	await _check_window_is_live(can, tough, frail, tough_window, frail_window)
+	can.apply_skin(flight_tough)
+	var flight_tough_window := Slipper.HIT_RADIUS + can.hit_margin()
+	await _check_window_is_live(can, flight_tough, frail, flight_tough_window, frail_window)
 
-	# POWER — the recoil multiplier `slipper.gd` scales `LATA_RECOIL_SCALE` by.
-	can.apply_skin(light)
-	var light_recoil := can.power_scale()
-	can.apply_skin(heavy)
-	var heavy_recoil := can.power_scale()
-	_check("lata POWER (recoil)", false, "PASIP(1)", light_recoil,
-		"BOYBEN(5)", heavy_recoil, true)
+	# ⚠️⚠️ REBOUND IS MEASURED OFF A REAL HIT NOW, NOT OFF `power_scale()` — 2026-08-02.
+	# It was the last `[derived]` prop stat: the old two lines compared the multiplier
+	# with itself, which cannot tell "the recoil is scaled by the can" from "the getter
+	# returns different numbers and nobody calls it". That is precisely the failure
+	# THE REACHABILITY RULE's second half describes, and the whole reason this file
+	# exists — so the one prop stat still asserted that way was the wrong one to leave.
+	#
+	# `slipper.gd::_step_flying()` scales `LATA_RECOIL_SCALE` by `target.power_scale()`
+	# and hands it to `_host_recoil_from()`, which SETS the slipper's speed to
+	# `LAUNCH_SPEED * scale` rather than adding to it — so the slipper's own speed one
+	# step after the can goes over IS the reading, with no need to subtract the
+	# incoming throw.
+	var light_recoil := await _recoil_speed_of(can, light)
+	var heavy_recoil := await _recoil_speed_of(can, heavy)
+	_check("lata REBOUND (recoil)", true, "PASIP(1)", light_recoil,
+		"KALAWANG(5)", heavy_recoil, true)
 
 ## ⚠️⚠️ THE ONE CHECK THAT PROVES THE WINDOW IS READ RATHER THAN MERELY RETURNED.
 ## A slipper is flown through a gap that is inside the FRAIL can's window and
@@ -282,14 +324,28 @@ func _check_lata(can: Lata) -> void:
 func _check_window_is_live(can: Lata, tough: int, frail: int,
 		tough_window: float, frail_window: float) -> void:
 	var gap := (tough_window + frail_window) * 0.5
-	var tough_hit := await _knocks_down_at(can, tough, gap)
-	var frail_hit := await _knocks_down_at(can, frail, gap)
+	# ⚠️⚠️ EACH THROW IS ATTEMPTED UP TO `WINDOW_ATTEMPTS` TIMES AND THE ASYMMETRY IS
+	# THE WHOLE POINT. This check was flaky — 2 runs in 6 reported the FRAIL can as a
+	# miss and went red on working code — because the two windows are only ~86 mm
+	# apart, so their midpoint clears PASIP's edge by about 43 mm and a slipper that
+	# clips a body or lands a frame early reads as "miss" for reasons that have
+	# nothing to do with `hit_margin()`.
+	#
+	# A HIT CANNOT BE SPURIOUS: the can is either knocked over or it is not, and
+	# nothing but the window puts it over at this distance. A MISS CAN BE. So the
+	# frail can only has to knock it down ONCE to prove the window is wide enough,
+	# while the tough can must miss EVERY attempt to prove its own is not — which
+	# makes the tough half of the assertion strictly STRONGER than the single-shot
+	# version it replaces, not weaker. `_knocks_down_at()` fully resets the can, the
+	# slipper and the court on entry, so the attempts are independent.
+	var tough_hit := await _knocks_down_any(can, tough, gap)
+	var frail_hit := await _knocks_down_any(can, frail, gap)
 	var ok := frail_hit and not tough_hit
-	_log("[live]    lata GRIT is READ           gap %.3f m -> PASIP(1) %s, DECADES(5) %s   %s"
+	_log("[live]    lata STANCE is READ         gap %.3f m -> PASIP(1) %s, DECADES(4) %s   %s"
 		% [gap, ("HIT" if frail_hit else "miss"), ("HIT" if tough_hit else "miss"),
 			"OK" if ok else "FAIL"])
 	if not ok:
-		_failures.append(("lata GRIT: a slipper passing %.3f m from the can knocked it "
+		_failures.append(("lata STANCE: a slipper passing %.3f m from the can knocked it "
 			+ "over on PASIP=%s and DECADES=%s. Both cans answer the same, so "
 			+ "`slipper.gd` is not reading `hit_margin()`.")
 			% [gap, str(frail_hit), str(tough_hit)])
@@ -320,6 +376,17 @@ func _clear_the_court() -> void:
 		i += 1
 
 ## Parks a slipper `distance` from the can and flies it past on a flat line.
+## How many times one skin may try to knock the can over before the answer counts
+## as "this window does not reach that far". See `_check_window_is_live()`.
+const WINDOW_ATTEMPTS: int = 3
+
+## True if `skin` knocks the can over on ANY attempt at `distance`.
+func _knocks_down_any(can: Lata, skin: int, distance: float) -> bool:
+	for _i in range(WINDOW_ATTEMPTS):
+		if await _knocks_down_at(can, skin, distance):
+			return true
+	return false
+
 func _knocks_down_at(can: Lata, skin: int, distance: float) -> bool:
 	can.apply_skin(skin)
 	can.host_reset_for_new_round()
@@ -379,19 +446,43 @@ func _check_person() -> void:
 	var slow_speed := who.trait_speed_scale()
 	who.character_index = quick
 	var quick_speed := who.trait_speed_scale()
+	# ⚠️ SPEED STAYS `[derived]`, AND THE REASON IS STRUCTURAL RATHER THAN LAZY.
+	# The multiply lives inside the movement step (`character_base.gd:820`), which only
+	# reads a walk intent while `_ai_driven()` is true — and the AIController that makes
+	# it true rewrites `_ai_intent` every frame, so a probe cannot hold a direction
+	# without evicting the thing that gives it permission to steer. Driving it would
+	# mean a test-only input channel, which is a seam in shipping code to serve a probe.
+	# The stat IS live: `ai_controller.gd:1732` and the movement step both read it.
 	_check("person SPEED", false, "LOLA(1)", slow_speed, "JUN-JUN(5)", quick_speed, true)
 
-	who.character_index = weak
-	var weak_power := who.trait_power_scale()
-	who.character_index = strong
-	var strong_power := who.trait_power_scale()
-	_check("person POWER", false, "JUN-JUN(1)", weak_power, "BEBANG(5)", strong_power, true)
+	# ⚠️⚠️ POWER IS A REAL SHOVE NOW, NOT `trait_power_scale()` READ BACK — 2026-08-02.
+	# `host_resolve_shove()` is the function the game calls, and it is where the
+	# multiply actually lives (`character_base.gd:1273`): the impulse handed to the
+	# victim is `SHOVE_SPEED * trait_power_scale()` of the SHOVER. Reading the getter
+	# could never have told a live multiply from a dead one.
+	#
+	# ⚠️ THE VICTIM IS THE SAME PERSON BOTH TIMES, which is what makes the two numbers
+	# comparable: `apply_knockback()` divides by the VICTIM's own grit, so a different
+	# victim would fold their grit into a reading about the shover's power.
+	var victim := _other_attacker(who)
+	if victim == null:
+		_log("[skip]    person POWER              no second attacker to shove")
+	else:
+		var weak_push := await _shove_push(who, victim, weak)
+		var strong_push := await _shove_push(who, victim, strong)
+		_check("person POWER (shove)", true, "JUN-JUN(1)", weak_push,
+			"BEBANG(5)", strong_push, true)
 
+	# ⚠️⚠️ GRIT IS A REAL KNOCKBACK. `apply_knockback()` divides the incoming impulse
+	# by `trait_grit_scale()` before it touches velocity, so handing it a FIXED impulse
+	# and reading the velocity it produced measures the division on the path the game
+	# uses — the same one a body block and a shove both arrive through.
 	who.character_index = frail
-	var frail_grit := who.trait_grit_scale()
+	var frail_push := _knockback_speed(who)
 	who.character_index = tough
-	var tough_grit := who.trait_grit_scale()
-	_check("person GRIT", false, "KANOR(2)", frail_grit, "BEBANG(5)", tough_grit, true)
+	var tough_push := _knockback_speed(who)
+	_check("person GRIT (knockback)", true, "KANOR(2)", frail_push,
+		"BEBANG(5)", tough_push, false)
 
 	# ⚠️ NO TWO ROSTER ENTRIES MAY SHARE ALL THREE NUMBERS. Two identical rows are
 	# one character wearing two rigs, and it is invisible on the CHARACTER screen
@@ -430,3 +521,90 @@ func _report() -> void:
 	for line in _failures:
 		print("  * " + line)
 	get_tree().quit(1)
+
+## Throws a slipper straight into the can and returns how fast the slipper is moving
+## one physics step after the knockdown — the live counterpart of `power_scale()`.
+##
+## ⚠️ RETRIED LIKE `_knocks_down_any()`, AND FOR THE SAME REASON. The throw has to
+## actually connect for there to be a recoil to read; a deflection off a body or an
+## early landing gives 0.0, which would read as "the stat does not reach the game"
+## when it means "the throw missed". A 0.0 is retried, a real reading is returned.
+func _recoil_speed_of(can: Lata, skin: int) -> float:
+	for _attempt in range(WINDOW_ATTEMPTS):
+		var speed := await _recoil_once(can, skin)
+		if speed > 0.0:
+			return speed
+	return 0.0
+
+func _recoil_once(can: Lata, skin: int) -> float:
+	can.apply_skin(skin)
+	can.host_reset_for_new_round()
+	var slipper := _any_slipper()
+	var attacker := _other_attacker(null)
+	if slipper == null or attacker == null:
+		return 0.0
+	_clear_the_court()
+	await get_tree().physics_frame
+	slipper.host_reset_for_new_round()
+	slipper.host_assign_owner(attacker.player_slot)
+	# Straight at the can, level with it, from far enough out that no body is in the
+	# way — the same geometry `_knocks_down_at()` uses, with the offset set to zero so
+	# it connects instead of passing by.
+	# ⚠️ AIMED 4 m PAST THE CAN, NOT AT IT — the same geometry `_knocks_down_at()`
+	# uses, and the first version got this wrong. `host_throw()` solves an ARC to the
+	# target point, so aiming AT the can makes that point the top of the descent: the
+	# slipper arrives already dropping and lands short instead of striking. Throwing
+	# THROUGH the can means it crosses the mark at speed, which is what a real throw
+	# does and the only way there is a recoil to read. Measured: aiming at the can
+	# returned 0.0000 for both skins, which reads identically to "the stat is dead".
+	var from := can.global_position + Vector3(0.0, 0.0, 4.0)
+	var to := can.global_position + Vector3(0.0, 0.0, -4.0)
+	slipper.global_position = from
+	await get_tree().physics_frame
+	slipper.host_grab(attacker)
+	await get_tree().physics_frame
+	slipper.host_throw(attacker, from, to, 1.0)
+	var step := 1.0 / float(Engine.physics_ticks_per_second)
+	for _i in range(90):
+		await get_tree().physics_frame
+		if not can.is_upright:
+			# The recoil was applied on the frame the can went over; sample the NEXT
+			# step's displacement, which is that velocity expressed as a distance.
+			var before := slipper.global_position
+			await get_tree().physics_frame
+			return (slipper.global_position - before).length() / step
+		if not slipper.is_flying():
+			return 0.0
+	return 0.0
+
+## A fixed impulse through `apply_knockback()`, reporting the planar speed it produced.
+## Velocity is zeroed first so the reading is the knockback and not whatever the AI was
+## already doing with the body.
+func _knockback_speed(who: CharacterBase) -> float:
+	who.velocity = Vector3.ZERO
+	who.apply_knockback(Vector3(PERSON_TEST_IMPULSE, 0.0, 0.0))
+	return Vector2(who.velocity.x, who.velocity.z).length()
+
+## The impulse this shover delivers, read off the VICTIM's velocity after a real
+## `host_resolve_shove()`. Both are parked adjacent and facing first: the shove has a
+## 1.6 m range and a 70 degree arc, so a pair left where the AI happened to put them
+## reports 0.0 for reasons that have nothing to do with the trait.
+func _shove_push(shover: CharacterBase, victim: CharacterBase, skin: int) -> float:
+	shover.character_index = skin
+	# ⚠️⚠️ WAIT OUT THE PREVIOUS SHOVE'S STUN FIRST. `host_resolve_shove()` skips a
+	# victim who cannot act, and `SHOVE_STUN` is 1.25 s — so the SECOND measurement
+	# came back 0.0000 and the check read "BEBANG(5) shoves less hard than JUN-JUN(1)",
+	# which is a wrong-direction failure describing nothing but the harness shoving
+	# twice too quickly.
+	for _i in range(240):
+		if victim.can_act():
+			break
+		await get_tree().physics_frame
+	_park(shover)
+	_park(victim)
+	victim.global_position = shover.global_position + Vector3(1.0, 0.0, 0.0)
+	victim.velocity = Vector3.ZERO
+	await get_tree().physics_frame
+	victim.velocity = Vector3.ZERO
+	shover.host_resolve_shove(shover.player_slot, shover.global_position, Vector3.RIGHT)
+	return Vector2(victim.velocity.x, victim.velocity.z).length()

@@ -103,10 +103,16 @@ const CROSSHAIR_OUTLINE: int = 5
 ## button (24px sides) and a HUD card that hugs a glyph and a word cannot afford them.
 func _hud_wood_style(fill: Color, border: Color, sink: bool = false) -> StyleBoxFlat:
 	var sb := UiTheme.wood_style(fill, border, sink)
-	sb.content_margin_left = 14.0
-	sb.content_margin_right = 14.0
-	sb.content_margin_top = 8.0
-	sb.content_margin_bottom = 8.0
+	# ⚠️ 22/16 FROM 14/8, TO MATCH THE 2026-08-02 HUD FONT SIZES. 🧑: *"GOOD TEXT NOW
+	# ... js make box bigger"*. These margins were chosen against 13/16pt lettering; at
+	# 32/34 the same numbers read as text jammed against a border. Padding rather than a
+	# taller anchored rect for the reason `you_card.gd` records at its own copy of these
+	# four lines: margins scale WITH the content, so no row set ends up rattling around
+	# inside a box sized for a different one.
+	sb.content_margin_left = 22.0
+	sb.content_margin_right = 22.0
+	sb.content_margin_top = 16.0
+	sb.content_margin_bottom = 16.0
 	return sb
 
 func _apply_wood_skin() -> void:
@@ -307,11 +313,42 @@ func _ensure_status_root(right_side: bool) -> VBoxContainer:
 	else:
 		root.position = Vector2(STATUS_MARGIN.x, STATUS_MARGIN.y)
 	add_child(root)
+	if not right_side:
+		# ⚠️⚠️ THE LEFT STACK SAT ON TOP OF THE SCOREBOARD. Reported 2026-08-02 with a
+		# screenshot of `STUNNED 0.2s` and its red bar drawn straight through the P2
+		# and P4 score rows: *"put you are stunned somewhere else"*.
+		#
+		# Both are anchored TOP_LEFT — the board at (16, 28) and this at a hardcoded
+		# (38, 150) — and 150 px is simply inside the board, which is four score rows
+		# plus a title and grows with the font. The constant was written when the
+		# stack was centred under the timer and was never re-checked after Handoff A
+		# split it into two corners.
+		#
+		# ⚠️ DERIVED FROM THE BOARD'S REAL HEIGHT, NOT NUDGED TO A BIGGER NUMBER. A
+		# second literal would be wrong again the next time a row is added, the font
+		# grows, or a name wraps — so it asks the panel where it actually ends.
+		_follow_scoreboard(root)
+		if scoreboard_panel != null:
+			scoreboard_panel.resized.connect(_follow_scoreboard.bind(root))
 	if right_side:
 		_status_root_right = root
 	else:
 		_status_root_left = root
 	return root
+
+## Park the left status stack under the scoreboard, whatever height that board is.
+## `STATUS_MARGIN.y` stays the floor, so a board that is somehow shorter than the
+## old literal cannot pull the stack UP into the top corner.
+const STATUS_UNDER_BOARD_GAP: float = 18.0
+
+func _follow_scoreboard(root: VBoxContainer) -> void:
+	if root == null or not is_instance_valid(root):
+		return
+	var top := STATUS_MARGIN.y
+	if scoreboard_panel != null and is_instance_valid(scoreboard_panel):
+		top = maxf(top, scoreboard_panel.position.y + scoreboard_panel.size.y \
+			+ STATUS_UNDER_BOARD_GAP)
+	root.position = Vector2(STATUS_MARGIN.x, top)
 
 func _build_status_row() -> Control:
 	var row := VBoxContainer.new()
@@ -430,11 +467,26 @@ func _ensure_vulnerable_label() -> Label:
 	label.add_theme_color_override("font_color", UiTheme.OFFENSE)
 	label.add_theme_color_override("font_outline_color", UiTheme.INK)
 	label.add_theme_constant_override("outline_size", TEXT_OUTLINE)
-	# Dead centre, just under the crosshair — where the eye already is.
-	label.set_anchors_preset(Control.PRESET_CENTER)
+	# ⚠️⚠️ MOVED OFF DEAD CENTRE 2026-08-02, ON A PLAYTEST REPORT. 🧑, with a
+	# first-person screenshot of the line sitting across the middle of the frame:
+	# *"You are vulnerable not in middle"*.
+	#
+	# The original instruction was *"directly below the crosshair"* and that is where
+	# it went, 34 px under centre. In first person the thing you are looking at while
+	# this warning is live is the slipper you are bending down to pick up, which is
+	# the bottom-middle of the screen — so the one line that means "you are about to
+	# lose 5 seconds" was drawn over the exact object it is about. It is bottom-centre
+	# now: still on the centre line the eye tracks, out of the sightline entirely.
+	#
+	# ⚠️ ABOVE `ReadyPrompt`'S BAND AND INSIDE THE 64 px BOTTOM SAFE BAND. The prompt
+	# occupies -158..-118 and is hidden during a live round (`show_ready_prompt`), and
+	# `YouCard.tscn`'s header records why nothing bottom-anchored may sit closer than
+	# 64 px to the frame edge. -104..-64 clears both.
+	label.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	label.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	label.position = Vector2(-160.0, 34.0)
-	label.custom_minimum_size = Vector2(320.0, 0.0)
+	label.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	label.position = Vector2(-200.0, -104.0)
+	label.custom_minimum_size = Vector2(400.0, 0.0)
 	label.visible = false
 	add_child(label)
 	_vulnerable_label = label
@@ -576,21 +628,30 @@ var _spectator_round: Label = null
 ## screen to js do record the game bcz we only added spectator for the video record"*,
 ## and then, explicitly: *"the remove hud is only for spectator okay, no one else."*
 ##
-## SPECTATOR ONLY, AND THAT IS ENFORCED RATHER THAN DOCUMENTED. `_unhandled_input`
+## SPECTATOR ONLY, AND THAT IS ENFORCED RATHER THAN DOCUMENTED. `_input()` below
 ## returns immediately unless `_spectating`, so a player in a live match cannot hide
 ## their own timer, status stack or charge meters by leaning on a key — which would be
 ## a competitive advantage handed out by a typo.
 ##
-## ⚠️ IT HIDES THE CHILDREN, NOT `self`, AND THAT IS DELIBERATE. Hiding the HUD root
-## would be the obvious one line, and it risks a one-way trip: input delivery to a
-## hidden Control is not something to bet an operator's recording session on. The root
-## stays visible and empty, so the key that turned the overlay off is guaranteed to
-## still be listening when they press it again.
+## ⚠️⚠️ IT HIDES `self`, AND IT USED TO HIDE THE CHILDREN — THE CHANGE IS THE FIX.
+## This block used to say hiding the root "risks a one-way trip: input delivery to a
+## hidden Control is not something to bet an operator's recording session on", and
+## walked `get_children()` instead. That caution was wrong on the fact and it cost the
+## feature: `_input()` is a Node callback and fires regardless of `visible` — only
+## mouse picking and focus are given up by a hidden Control, and `clean_feed` is a key.
+## Measured on this engine build, hidden root, event delivered.
 ##
-## ⚠️ AND IT RESTORES WHAT WAS THERE, NOT EVERYTHING. `enter_spectator_mode()` has
-## already hidden the YOU card, the crosshair, the lata card and the ready prompt —
-## blanket-showing every child on the way back would resurrect exactly the gameplay
-## chrome a spectator must not have. Prior visibility is recorded on the way out.
+## What the per-child walk actually bought was a SNAPSHOT taken the instant H was
+## pressed, so every transient that shows itself later — toast, countdown, downed
+## flash, lata card, ready row, score rows — came back over a clean plate. 🧑 reported
+## it: *"theres popup huds midgame and shi"*. A hidden parent is a state and cannot
+## be out-voted by a child setting its own `visible`.
+##
+## ⚠️ AND NOTHING NEEDS RESTORING NOW. The old code recorded prior visibility because
+## it OVERWROTE it, and had to avoid blanket-showing on the way back —
+## `enter_spectator_mode()` has already hidden the YOU card, the crosshair, the lata
+## card and the ready prompt, and a spectator must not get those back. Hiding the root
+## overwrites nothing, so that whole class of bug is gone rather than handled.
 ## ⚠️ AN ACTION, NOT A KEYCODE — and the first version of this was the keycode.
 ## It shipped comparing `event.keycode` against a hardcoded `KEY_H`, which meant the one
 ## control the camera operator needs was not in the InputMap, not in the settings panel,
@@ -603,7 +664,6 @@ var _spectator_round: Label = null
 ## the same place, and `SettingsManager` stores `physical_keycode` everywhere else.
 ## `is_action_pressed()` goes through the InputMap and inherits that.
 var _clean_feed: bool = false
-var _clean_feed_restore: Dictionary = {}
 
 ## ⚠️⚠️ `_input`, NOT `_unhandled_input`, AND THE REASON IS MEASURED — BY ANOTHER LANE.
 ## `spectator_camera.gd` moved `Tab`/`F`/`V` to `_input` after `spec_probe --solo` caught
@@ -633,23 +693,29 @@ func set_clean_feed(on: bool) -> void:
 		return
 	_clean_feed = on
 	_apply_clean_feed_to_world(on)
-	if on:
-		_clean_feed_restore.clear()
-		for child in get_children():
-			var item := child as CanvasItem
-			if item == null:
-				continue
-			_clean_feed_restore[item] = item.visible
-			item.visible = false
-		return
-	for child in get_children():
-		var item := child as CanvasItem
-		if item == null:
-			continue
-		# A node added while the feed was clean was never recorded, so it takes the
-		# honest default rather than staying invisible forever.
-		item.visible = bool(_clean_feed_restore.get(item, true))
-	_clean_feed_restore.clear()
+	# ⚠️⚠️ THE ROOT IS HIDDEN, NOT EACH CHILD, AND THE PER-CHILD VERSION WAS A BUG.
+	# 🧑 2026-08-02: *"clicking H doesnt hide all huds for spectator ... theres popup
+	# huds midgame and shi"*. Correct, and the old code could not have done otherwise:
+	# it walked `get_children()` ONCE, at the moment H was pressed, recorded each
+	# child's `visible` and set it false. That is a snapshot, not a state.
+	#
+	# Every transient on this HUD shows ITSELF later and unconditionally — the toast,
+	# the countdown, the downed flash, the lata card, the ready row, the score rows.
+	# Each one is a plain `visible = true` on a timer or a signal, so anything that
+	# fired after H went straight back on screen over a "clean" plate, which is the
+	# one thing a camera operator must be able to rely on mid-take.
+	#
+	# Hiding this Control instead makes the clean feed a STATE: a hidden parent means
+	# no descendant draws whatever it sets on itself, so a popup that fires during a
+	# clean feed stays dark and is simply there again when the operator toggles back.
+	# That also deletes the restore bookkeeping outright — nothing is overwritten, so
+	# nothing has to be put back, and `enter_spectator_mode()`'s own hiding of the YOU
+	# card, crosshair, lata card and ready prompt survives untouched underneath.
+	#
+	# ⚠️ `_input()` STILL FIRES WHILE HIDDEN, which is what makes the toggle reversible.
+	# Input callbacks are Node-level and do not care about `visible`; it is only mouse
+	# picking and focus that a hidden Control gives up, and `clean_feed` is a key.
+	visible = not on
 
 ## ⚠️⚠️ THE NAMEPLATES AND THE GROUND RINGS ARE NOT PART OF THIS HUD, AND A CLEAN FEED
 ## THAT LEAVES THEM ON IS NOT CLEAN. 🧑 2026-07-31, with a screenshot: *"turn off
@@ -734,10 +800,10 @@ func _refresh_spectator_panel() -> void:
 	var up: bool = RoundManager.lata != null and RoundManager.lata.is_upright
 	_spectator_round.add_theme_color_override("font_color",
 		UiTheme.DEFENSE if up else UiTheme.OFFENSE)
-	_spectator_round.text = "ROUND %d/%d   ·   TAYA  P%d   ·   LATA %s   ·   LEADER  P%d  %d" % [
+	_spectator_round.text = "ROUND %d/%d   ·   TAYA  %s   ·   LATA %s   ·   LEADER  %s  %d" % [
 		maxi(1, MatchManager.round_number), MatchManagerScript.ROUNDS,
-		MatchManager.defender_slot + 1, "UP" if up else "DOWN",
-		leader + 1, MatchManager.score_for(leader)]
+		seat_name(MatchManager.defender_slot), "UP" if up else "DOWN",
+		seat_name(leader), MatchManager.score_for(leader)]
 
 ## Kills the pulse tween and resets the timer card to its natural scale.
 func _kill_pulse_tween() -> void:
@@ -943,8 +1009,7 @@ func set_round_display(round_number: int, defender_slot: int) -> void:
 	# screen that most needs to say who is playing. `_refresh_scoreboard()` a
 	# few dozen lines down already reads `display_name()` for every row;
 	# this is the row that didn't.
-	var taya := RoundManager.player_at(defender_slot)
-	var taya_name := taya.display_name() if taya != null else "P%d" % [defender_slot + 1]
+	var taya_name := seat_name(defender_slot)
 	round_label.text = "ROUND %d / %d   ·   TAYA: %s" % [
 		maxi(round_number, 1), MatchManagerScript.ROUNDS, taya_name]
 	# The two top cards are now a scoreboard and a lata readout rather than two team
@@ -1095,7 +1160,101 @@ func _build_scoreboard() -> void:
 			var cell := row.get_node_or_null(cell_name) as Label
 			if cell != null:
 				cell.add_theme_color_override("font_outline_color", UiTheme.INK)
+		_widen_name_cell(row.get_node_or_null("Name") as Label)
+		_build_role_cell(row)
 		_score_rows.append(row)
+
+## ⚠️⚠️ "TAYA" IS ITS OWN CELL NOW, BECAUSE GLUED TO THE NAME IT READ AS PART OF THE
+## NAME. 🧑 2026-08-02, with a screenshot of the board: *"inday taya makes it look like
+## inday taya is her name, not that she is TAYA — make this implementation better"*.
+##
+## Exactly right, and the old row could not have read any other way: `"%s%s" % [name,
+## "  TAYA"]` is ONE string in ONE Label, in ONE colour, at ONE size. Two spaces are not
+## a grammar. Every roster name is uppercase (`display_name()` shouts them all — see its
+## note), several of them are two words ("LOLA PACING"), and the game has a character
+## called INDAY, so "INDAY TAYA" is indistinguishable from a two-word name because at the
+## level of pixels it IS one.
+##
+## A separate Label can differ in the three ways that carry the meaning: it is smaller,
+## it is muted where the name is bright, and it sits in its own column so it starts at
+## the same x on whichever row holds it. That is a role BADGE — the thing the string was
+## always trying to be.
+##
+## ⚠️ MUTED CREAM, NOT `DEFENSE` BLUE, AND THE OBVIOUS CHOICE WAS THE WRONG ONE. §4.2's
+## rule is blue = defence, and the taya's NAME is already painted blue eight lines into
+## `_refresh_scoreboard()` — so a blue badge beside it is the same colour, at nearly the
+## same size, immediately after the name. That is the reported bug again in a new colour.
+## The badge is an annotation ON the row, and it has to look like one.
+##
+## ⚠️ BUILT IN CODE AND MOVED TO INDEX 1, rather than authored in `HUD.tscn`. The four
+## rows are authored there (§ CHECKLIST 1.1) and a new child would land AFTER `Score`,
+## which puts the badge on the wrong side of the number. `move_child` is the one line
+## that fixes that, and it keeps the scene's four rows identical to each other.
+##
+## ⚠️ A FIXED WIDTH, ALWAYS PRESENT, NEVER HIDDEN. The badge is empty text on three rows
+## out of four; hiding the Label instead would let those three rows' scores slide left
+## and the column of numbers — the entire point of the board — would stop being a column.
+## Same reasoning as `_widen_name_cell`, one cell over.
+func _build_role_cell(row: Control) -> void:
+	if row.get_node_or_null("Role") != null:
+		return
+	var badge := Label.new()
+	badge.name = "Role"
+	badge.add_theme_font_size_override("font_size", TAYA_BADGE_FONT_SIZE)
+	badge.add_theme_color_override("font_color", UiTheme.CREAM_MUTED)
+	badge.add_theme_color_override("font_outline_color", UiTheme.INK)
+	badge.add_theme_constant_override("outline_size", 5)
+	badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var font := badge.get_theme_font("font")
+	var needed := 54.0
+	if font != null:
+		needed = ceilf(font.get_string_size(
+			TAYA_BADGE, HORIZONTAL_ALIGNMENT_LEFT, -1, TAYA_BADGE_FONT_SIZE).x)
+	badge.custom_minimum_size.x = needed
+	row.add_child(badge)
+	row.move_child(badge, 1)
+
+## Smaller than the 20 px name beside it, because a badge that matches the name's weight
+## is a second name. Small enough to read as an annotation, large enough to survive being
+## drawn over the road.
+const TAYA_BADGE_FONT_SIZE: int = 15
+const TAYA_BADGE: String = "TAYA"
+
+## ⚠️⚠️ THE NAME COLUMN IS SIZED FROM THE CAP AND THE FONT, NOT TYPED IN. 🧑
+## 2026-08-02: *"make sure the 14 character names fit in the hud and if the name is
+## too short like CP it doesnt look ugly"*. Both ends, and they pull opposite ways:
+##
+##   TOO LONG — `HUD.tscn` authors this cell at 132 px, which was chosen when every
+##   row read "P1".."P4". A 14-character name (`CharacterRoster.NAME_MAX`) plus the
+##   trailing "  TAYA" needs roughly 190 px at font size 20, so the Label would
+##   overrun its column, push the right-aligned score out and ruin the one thing a
+##   scoreboard is for — four numbers readable at a glance, in a line.
+##
+##   TOO SHORT — a 2-character name like CP must NOT let the column collapse, or the
+##   score slides left on that row alone and the numbers stop forming a column. A
+##   FIXED width is what serves both: nothing moves, whatever the name.
+##
+## So the width is measured off the real theme font at the real size, for the longest
+## string this game can now produce. Typing "190" here would be correct until somebody
+## changes the font size in the scene, and then silently wrong — this cannot drift,
+## because it is derived from the same constant the probe enforces.
+##
+## "W" is the widest glyph in most faces, so `NAME_MAX` of them is the true worst case
+## rather than an average-case guess that a name like MMMMMM would beat.
+func _widen_name_cell(cell: Label) -> void:
+	if cell == null:
+		return
+	var font := cell.get_theme_font("font")
+	var font_size := cell.get_theme_font_size("font_size")
+	if font == null:
+		return
+	# ⚠️ NO LONGER `+ "  TAYA"`. The badge is its own cell with its own width
+	# (`_build_role_cell`), so reserving room for it here would reserve it twice and
+	# push the score column off the panel on every row.
+	var worst := "W".repeat(CharacterRoster.NAME_MAX)
+	var needed := font.get_string_size(worst, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	cell.custom_minimum_size.x = maxf(cell.custom_minimum_size.x, ceilf(needed))
 
 ## ⚠️ `_score_cell()` IS DELETED AND ITS ONE LOAD-BEARING FACT MOVED INTO `HUD.tscn`.
 ## It built the Name/Score labels at runtime; the scene authors them now (§ CHECKLIST
@@ -1112,7 +1271,21 @@ func _build_scoreboard() -> void:
 func _refresh_scoreboard() -> void:
 	if _score_rows.is_empty():
 		return
-	var stamp := "%s|%d" % [str(MatchManager.scores), MatchManager.defender_slot]
+	# ⚠️⚠️ THE NAMES ARE PART OF THE STAMP, AND LEAVING THEM OUT WAS A REAL BUG.
+	# This gate exists so a scoreboard is not rebuilt every frame, and it keyed on
+	# scores and the taya alone — which was complete right up until a row could change
+	# for a THIRD reason. Bots took their characters' names on 2026-08-02, so a seat
+	# changing hands (a disconnect converting to AI, a rejoin reclaiming it, the Tab
+	# switcher) renames a row without touching a score: the board would have gone on
+	# showing the name of the human who left until somebody happened to score.
+	#
+	# `display_name()` is cheap and this is four calls on a change check that already
+	# stringifies an array, so the honest fix is to stamp what is actually drawn.
+	var names := PackedStringArray()
+	for slot in range(MatchManagerScript.PLAYER_COUNT):
+		names.append(seat_name(slot))
+	var stamp := "%s|%d|%s" % [str(MatchManager.scores), MatchManager.defender_slot,
+		"|".join(names)]
 	if stamp == _score_stamp:
 		return
 	_score_stamp = stamp
@@ -1129,14 +1302,26 @@ func _refresh_scoreboard() -> void:
 		var is_taya := slot == MatchManager.defender_slot
 		var name_label := row.get_node("Name") as Label
 		var score_label := row.get_node("Score") as Label
-		# The bullet marks YOU; the word marks the taya. Two different questions, so
-		# two different marks rather than one overloaded glyph.
-		# The bullet marks YOU; the word marks the taya. Two different questions, so
-		# two marks rather than one overloaded glyph.
-		var who := RoundManager.player_at(slot)
-		var who_name: String = who.display_name() if who != null else "P%d" % [slot + 1]
-		name_label.text = "%s %s%s" % ["\u25B8" if slot == mine else "  ", who_name,
-			"  TAYA" if is_taya else ""]
+		# \u26A0\uFE0F\u26A0\uFE0F NO LEADING BULLET \u2014 THE COLOUR IS THE MARK. \uD83E\uDDD1 2026-08-02: *"move the
+		# arrow to the right on the p1p2p3p4 top left / make it so that it js
+		# highlights / the arrow makes the names of the characters not aligned"*.
+		#
+		# The report is exactly right and the cause is off-by-one: the prefix was
+		# `"\u25B8"` for your own row against `"  "` for every other, which is ONE
+		# character versus TWO, so all four names started at a different x and the
+		# column read as ragged. It was invisible while every row said "P1".."P4" and
+		# obvious the moment the names became MARING and LOLA PACING.
+		#
+		# Nothing is lost by deleting it: `slot == mine` already recolours this row to
+		# `UiTheme.HIGHLIGHT` six lines below, which is the same fact said in the way
+		# that costs no width. The taya is marked by its own cell, for the same reason
+		# and one column over — see `_build_role_cell()`.
+		# ⚠️ THE NAME CELL HOLDS THE NAME AND NOTHING ELSE — see `_build_role_cell()` for
+		# why "  TAYA" cannot live in this string.
+		name_label.text = seat_name(slot)
+		var badge := row.get_node_or_null("Role") as Label
+		if badge != null:
+			badge.text = TAYA_BADGE if is_taya else ""
 		score_label.text = str(MatchManager.score_for(slot))
 		var colour: Color = UiTheme.DEFENSE if is_taya else UiTheme.OFFENSE
 		if slot == mine:
@@ -1213,7 +1398,7 @@ func _on_lata_knocked(by_slot: int) -> void:
 	if local_char.is_defender:
 		show_toast("LATA DOWN  ·  RESET IT", 1.6)
 	elif by_slot >= 0 and by_slot != local_char.player_slot:
-		show_toast("P%d KNOCKED THE LATA DOWN" % [by_slot + 1], 1.2)
+		show_toast("%s KNOCKED THE LATA DOWN" % [seat_name(by_slot)], 1.2)
 
 func _on_lata_restored() -> void:
 	show_toast("LATA IS BACK UP", 1.2)
@@ -1225,4 +1410,21 @@ func _on_attacker_tagged(defender_slot: int, victim_slot: int) -> void:
 	if local_char.player_slot == victim_slot:
 		show_toast("TAGGED  ·  BACK TO THE SAFE ZONE", 2.0)
 	elif local_char.player_slot == defender_slot:
-		show_toast("TAG  ·  P%d" % [victim_slot + 1], 1.4)
+		show_toast("TAG  ·  %s" % [seat_name(victim_slot)], 1.4)
+
+## ⚠️⚠️ THE NAME FOR A SEAT WHEN ONLY A SLOT NUMBER IS IN HAND. 🧑 2026-08-02:
+## *"make sure the bot names show up everywhere they have to / Not p1 p2 p3 p4"*.
+##
+## Three rows on this HUD built their own "P%d" out of a slot and never asked the
+## character at all — the spectator round line's TAYA and LEADER, the "knocked the
+## lata down" toast and the tag toast — so they kept printing P2 after bots learned
+## their names. Two others already resolved the slot by hand, identically, which is
+## how the three that did not went unnoticed.
+##
+## One function now, for the same reason `CharacterBase.display_name()` is one
+## function: a seat cannot be called two different things on two rows of one screen.
+## The bare seat label survives only as the genuinely nameless case — a slot with no
+## character in it, which happens between a disconnect and the AI conversion.
+static func seat_name(slot: int) -> String:
+	var who := RoundManager.player_at(slot)
+	return who.display_name() if who != null else "P%d" % [slot + 1]

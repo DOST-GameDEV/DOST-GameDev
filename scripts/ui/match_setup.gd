@@ -539,6 +539,14 @@ func _on_connection_failed() -> void:
 	get_tree().change_scene_to_file(MULTIPLAYER_SETUP_PATH)
 
 func _on_server_disconnected() -> void:
+	# ⚠️ A DELIBERATE RECONNECT LOOKS LIKE THIS TOO. `_rpc_route_to_running_match`
+	# (network_manager.gd) disconnects on purpose and reconnects fresh from
+	# `Main.tscn` — see that function's own doc for why. Without this check,
+	# this handler would race its own bounce to MULTIPLAYER_SETUP_PATH against
+	# that reconnect's change to Main.tscn, and "Host ended the session" would
+	# flash on screen for a host that never left.
+	if NetworkManager.rerouting_to_running_match:
+		return
 	GameLaunch.pending_status_message = "Host ended the session."
 	get_tree().change_scene_to_file(MULTIPLAYER_SETUP_PATH)
 
@@ -1290,7 +1298,31 @@ func _build_address_row(rows: Container, at_index: int) -> void:
 ## firewall lets packets reach it or not), so this is the fix that fits: tell
 ## the one person who can act on it, next to the address they are about to
 ## hand out.
+##
+## ⚠️⚠️ IT IS ONE LINE AND THE REST IS ON HOVER. 🧑 2026-08-02, looking at the lobby:
+## *"fix ui here, looks too long maybe make it something to hover"*. Three wrapped lines
+## of firewall troubleshooting sat permanently above the seat rows and pushed P1 to the
+## bottom of the card — advice for a problem MOST hosts do not have, occupying more of
+## the screen than the four seats the screen is about.
+##
+## ⚠️ THE PROMPT STAYS VISIBLE; ONLY THE INSTRUCTIONS COLLAPSE. "Nobody connecting?" is
+## the half that has to be readable without knowing to hover, because a host who does not
+## already suspect the firewall is exactly who this is for — they have to be told a
+## question is being answered before they will go looking for the answer. Hiding the
+## whole thing behind a hover would make it findable only by people who no longer need it.
+##
+## ⚠️ THE TOOLTIP IS ON A `Label`, WHICH NEEDS `mouse_filter` SET. Godot 4 gives Labels
+## `MOUSE_FILTER_IGNORE` by default, so a tooltip on one is never shown and never errors —
+## it simply does nothing, which is the kind of silence this file has been bitten by
+## before. `MOUSE_FILTER_STOP` is what makes the hover arrive at all.
 var _firewall_hint: Label = null
+
+const FIREWALL_DETAIL: String = ("Windows Firewall may be blocking this game silently.\n"
+	+ "Check Windows Security ▸ Firewall & network protection ▸\n"
+	+ "\"Allow an app through firewall\", and make sure BOTH\n"
+	+ "Private and Public are ticked for this game.\n\n"
+	+ "The host sees nothing wrong when this happens — the\n"
+	+ "socket is open and listening either way.")
 
 func _build_firewall_hint(rows: Container, at_index: int) -> void:
 	_firewall_hint = Label.new()
@@ -1298,9 +1330,9 @@ func _build_firewall_hint(rows: Container, at_index: int) -> void:
 	_firewall_hint.theme_type_variation = &"MenuCaption"
 	_firewall_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_firewall_hint.visible = false
-	_firewall_hint.text = ("Nobody connecting? Windows Firewall may be blocking this game" +
-		" silently — check Windows Security ▸ Firewall & network protection ▸" +
-		" \"Allow an app through firewall\", and make sure both Private and Public are checked.")
+	_firewall_hint.text = "Nobody connecting?  ▸  hover here"
+	_firewall_hint.mouse_filter = Control.MOUSE_FILTER_STOP
+	_firewall_hint.tooltip_text = FIREWALL_DETAIL
 	rows.add_child(_firewall_hint)
 	rows.move_child(_firewall_hint, at_index)
 
@@ -1339,8 +1371,16 @@ func _refresh_address_text() -> void:
 	# ⚠️ THE TOOLTIP CARRIES THE WHOLE LIST. With more than one adapter the player
 	# needs to know what they are cycling between without clicking through it.
 	_address_edit.tooltip_text = "\n".join(Array(_address_options))
+	# ⚠️ IT SAYS "IP", AND THE BARE FRACTION IT USED TO SHOW WAS READ AS A PLAYER COUNT.
+	# 🧑 2026-08-02, looking at a lobby that showed `1/3`: *"why 1/3 if spectating?"* —
+	# reasonably, because the button sits in the top row beside COPY on a screen whose
+	# whole subject is four seats, and `1/3` in that company reads as one-of-three
+	# players. It has never meant that. It is which of this machine's local addresses is
+	# in the field: a PC with a LAN card, a Hamachi adapter and a WSL bridge has three,
+	# and this cycles them. The count is the number of ADAPTERS, which is why it is 3 and
+	# not 4 — nothing here is capped at three of anything.
 	if _address_cycle != null and _address_options.size() > 1:
-		_address_cycle.text = "%d/%d" % [_address_index + 1, _address_options.size()]
+		_address_cycle.text = "IP %d/%d" % [_address_index + 1, _address_options.size()]
 
 
 func _on_address_copy_pressed() -> void:
@@ -1486,11 +1526,15 @@ func _peer_display_name(peer_id: int) -> String:
 	var who := String(picks.get("name", "")).strip_edges()
 	return who if who != "" else "PLAYER %d" % [_player_number(peer_id)]
 
+## How a seat says "this one is you", on BOTH boards. One constant because the two
+## lobbies had already drifted apart once — see `_seat_row_text()`'s note on the arrow.
+const SOLO_YOU_MARK: String = "◀ YOU"
+
 func _seat_row_text(seat: int) -> String:
 	var label := _seat_name(seat)
 	if not _is_networked_lobby():
 		if seat == GameLaunch.solo_seat:
-			return "%s   ◀ YOU" % label
+			return "%s   %s" % [label, SOLO_YOU_MARK]
 		return "%s   · BOT" % label
 
 	var occupant := _occupant_of(seat)
@@ -1511,8 +1555,27 @@ func _seat_row_text(seat: int) -> String:
 	# (`Design.md` §10: empty falls back to the seat label), so the row has to stay
 	# populated for a peer who never opened Settings — the same contract
 	# `CharacterBase.display_name()` keeps in the match itself.
-	var who := "YOU" if occupant == multiplayer.get_unique_id() \
-		else _peer_display_name(occupant)
+	# ⚠️⚠️ YOUR OWN SEAT GETS THE ARROW HERE TOO — 🧑 2026-08-02, with both lobbies side
+	# by side: *"i like the arrow in singleplayer for you, put arrow there and keep it to
+	# just YOU ... BUT make it so that everyone else that joins sees my name and sees YOU
+	# for their name"* / *"put arrow there in multiplayer"*.
+	#
+	# The two screens had drifted into saying the same thing two ways: solo drew
+	# "P3   ◀ YOU" and the networked board drew "P3   · YOU  ✓". Same seat, same player,
+	# different mark — and the networked one buried the only row that matters to you in
+	# the same "· " prefix every bot row uses. `SOLO_YOU_MARK` is now the one string both
+	# branches reach for, so they cannot drift again.
+	#
+	# ⚠️ IT IS "YOU" AND NEVER YOUR OWN NAME, WHICH IS THE SECOND HALF OF THE ASK. Your
+	# name is not useful to you — you know it — and it IS useful to everybody else, which
+	# is exactly what `_peer_display_name()` gives them. So the same seat legitimately
+	# reads two different things on two machines: "◀ YOU" on yours, "MATTHEW" on theirs.
+	# The seat labels P1..P4 stay on every row on both screens (*"can keep p1-p4 here"*),
+	# which is what makes the two readings obviously the same chair.
+	if occupant == multiplayer.get_unique_id():
+		var own_tick := "✓" if bool(_peer_ready.get(occupant, false)) else "…"
+		return "%s   %s  %s" % [label, SOLO_YOU_MARK, own_tick]
+	var who := _peer_display_name(occupant)
 	# ⚠️ Deliberately does NOT show the occupant's character picks.
 	# `NetworkManager.peer_characters` is HOST-ONLY by design (see its own doc) —
 	# a client asking about somebody else gets -1 — so a row that named other

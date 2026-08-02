@@ -407,8 +407,10 @@ func _report_detail_fit() -> void:
 	var cases: Array = []
 	for i in range(GameLaunch.MAPS.size()):
 		cases.append(["_map_index", i, 0, "MAP %d" % i])
-	for i in range(MatchSetupScreen.MODES.size()):
-		cases.append(["_mode_index", i, 1, "MODE %s" % MatchSetupScreen.MODES[i]["label"]])
+	# ⚠️ THE MODE SWEEP IS GONE BECAUSE THE PICKER IS. `MatchSetupScreen.MODES` was a
+	# two-entry chooser and 2026-07-31 left nothing to choose, so this loop measured a
+	# control that no longer exists — and naming a deleted const took the whole probe
+	# down with it. Maps and difficulties still sweep below.
 	for i in range(MatchSetupScreen.DIFFICULTIES.size()):
 		cases.append(["_difficulty_index", i, 2,
 			"TIER %s" % MatchSetupScreen.DIFFICULTIES[i]["label"]])

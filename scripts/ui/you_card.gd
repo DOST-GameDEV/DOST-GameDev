@@ -123,10 +123,16 @@ func refresh() -> void:
 	# exactly the mismatch that was complained about. Role still carries the border and
 	# the OFFENSE/DEFENSE word; team is still the letter, inside `detail_label`.
 	var sb := UiTheme.wood_style(UiTheme.WOOD_DEEP, accent)
-	sb.content_margin_left = 14.0
-	sb.content_margin_right = 14.0
-	sb.content_margin_top = 8.0
-	sb.content_margin_bottom = 8.0
+	# ⚠️ PADDING, NOT A TALLER RECT, IS HOW THIS CARD IS MADE BIGGER. 🧑 2026-08-02:
+	# *"GOOD TEXT NOW ... js make box bigger"*. An earlier pass grew the anchored rect
+	# instead and produced a third-empty panel, because an ATTACKER shows two of the four
+	# rows and a pinned height is sized for a row set that seat never has. Margins scale
+	# WITH the content: every row set gets the same generous frame and none of them can
+	# end up rattling around inside it. 22/16 from 14/8.
+	sb.content_margin_left = 22.0
+	sb.content_margin_right = 22.0
+	sb.content_margin_top = 16.0
+	sb.content_margin_bottom = 16.0
 	card.add_theme_stylebox_override("panel", sb)
 	class_label.add_theme_color_override("font_color", UiTheme.CREAM)
 	detail_label.add_theme_color_override("font_color", accent)
@@ -137,6 +143,11 @@ func refresh() -> void:
 	# See `_update_guard_dash_meter`.
 	guard_dash_row.visible = true
 	guard_dash_key_label.text = _guard_dash_key_label(_character)
+	# ⚠️ SET HERE TOO, NOT ONLY IN `_update_guard_dash_meter`. That one is behind a
+	# `fatigued != _was_fatigued` edge check, and at setup both are false — so the
+	# no-change path would leave the empty label visible for the entire round and the
+	# centring fix would only ever apply after the first fatigue and recovery.
+	guard_dash_key_label.visible = guard_dash_key_label.text != ""
 	# 0.1: role flips every round (team_is_can_side), so which of the two rows
 	# below applies has to be re-derived here too, same trap as guard_dash_row
 	# above — B-42/B-80(c) both hit "resolved once in _ready()".
@@ -178,6 +189,21 @@ func _update_guard_dash_meter() -> void:
 		guard_dash_key_label.text = "FATIGUED" if fatigued else _sprint_key_text()
 		guard_dash_key_label.add_theme_color_override("font_color",
 			UiTheme.DANGER if fatigued else UiTheme.CREAM_MUTED)
+		# ⚠️⚠️ HIDDEN WHEN EMPTY, NOT JUST BLANKED — AND THAT IS WHY THE BAR SAT OFF
+		# CENTRE. 🧑 2026-08-02 underlined it in a screenshot: *"center the thing i
+		# underlined"*.
+		#
+		# `_sprint_key_text()` returns "" at rest by design (see its own note — the row
+		# is silent unless you are fatigued). A zero-width Label is still a CHILD of the
+		# HBox, so the container still spends its 8px `separation` on it, and the bar
+		# started 8px right of the content box while ending flush with the right margin.
+		# Eight pixels of one-sided padding is not enough to name but is exactly enough
+		# to look wrong, which is how it survived this long.
+		#
+		# `visible = false` removes it from the container's layout entirely — a hidden
+		# child costs no separation — so the bar spans the full content width and the
+		# card is symmetric again. FATIGUED still pushes it back in when it matters.
+		guard_dash_key_label.visible = guard_dash_key_label.text != ""
 	var is_ready := ratio >= 1.0
 	if is_ready and not _was_ready and not fatigued:
 		_flash_bar_ready()

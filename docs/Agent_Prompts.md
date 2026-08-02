@@ -383,6 +383,46 @@ what specifically. **Tick only your own section.**
   ever counts from 5, `play_countdown` will ask for `count_5`, which is a real
   `docs/HUMAN.md` id with no take, and it will go quiet rather than say a wrong number.
 
+**Filed by 🎬 `build pitch` 2026-08-01, found while fact-checking the submission copy
+against the code:**
+
+- [x] 1.21 ⚠️ **THE LEFT STATUS STACK WAS DRAWN ON TOP OF THE SCOREBOARD.** Reported
+  by a teammate with a screenshot of `STUNNED 0.2s` and its red bar running straight
+  through the P2 and P4 score rows: 🧑 *"put you are stunned somewhere else"*. Both
+  are anchored `TOP_LEFT`, the board at (16, 28) and the stack at a hardcoded
+  (38, **150**) — and 150 px is simply inside a panel that is a title plus four score
+  rows. The constant was written when the stack was one centred column under the
+  timer and was never re-checked when Handoff A split it into two corners.
+  *Fixed: `hud.gd::_follow_scoreboard()` derives the stack's top from the panel's own
+  `position.y + size.y`, re-applied on its `resized` signal, with `STATUS_MARGIN.y`
+  kept as a floor. Derived rather than nudged to a bigger literal, which would be
+  wrong again the next time a row is added or the font grows. **Verified: rendered
+  at 1600×900 through a live `Main.tscn` with a real stagger on the local seat, and
+  looked at — the STUNNED row now sits clear below the board.***
+- [x] 1.22 ⚠️ **`YOU ARE VULNERABLE` SAT ACROSS THE MIDDLE OF THE SCREEN.** 🧑, with
+  a first-person screenshot: *"You are vulnerable not in middle"*. The original
+  instruction was *"directly below the crosshair"* and that is where it went, 34 px
+  under centre — but in first person the thing you are looking at while that warning
+  is live is the slipper you are bending down to pick up, so the one line meaning
+  "you are about to lose 5 seconds" was drawn over the exact object it is about.
+  *Fixed: `PRESET_CENTER_BOTTOM` at −104 px, which clears `ReadyPrompt`'s −158..−118
+  band (hidden during a live round anyway) and stays outside the 64 px bottom safe
+  band `YouCard.tscn`'s header documents.* ⚠️ **Unverified: not photographed.** It
+  cannot share a frame with 1.21's capture — `is_taggable()` opens with
+  `not can_act()`, so a stunned player is not vulnerable by construction — and the
+  two-state capture tool was abandoned rather than finished. **Look at it once in
+  play before filming anything.**
+- [ ] 1.20 **`hud.gd`'s §2.7 comment block (line ~688) explains the HUD in terms of two
+  functions that no longer exist.** It says the round *"is won by the lata being off its
+  circle when the countdown expires"* and that the two numbers explaining the screen are
+  `RoundManager.can_out_left()` and `can_out_stacks()`. Grep finds **no such functions**
+  anywhere in `scripts/` — only this comment and one historical mention in
+  `round_manager.gd`'s own header. Nothing is broken; it is a doc comment, and the code
+  under it is fine. It is filed because it is the exact class of thing 🤖 `build ai`'s
+  stale-documentation sweep was run for: a comment that confidently describes a deleted
+  ruleset is a comment the next person implements against. There is no per-round winner
+  and no out-of-circle countdown (`Design.md` §12).
+
 ### ⚖️ `build fair` — every number, and the feedback  ·  items **2.x**
 
 - [x] 2.1 ⚠️⚠️ **SETTLED 2026-08-01: THE ARITHMETIC WAS RIGHT, THE CONCLUSION WAS
@@ -770,6 +810,58 @@ doesnt TAG"*:**
   then a few seconds later `... -- --join=127.0.0.1 --secs=120 --out=<dir>/client_`,
   and grep both stdout logs for `ERROR`.
 
+**Filed by 🎬 `build pitch` 2026-08-01, found while fact-checking the submission copy
+against the code:**
+
+- [x] 2.34 ⚠️⚠️ **A JOINED CLIENT'S LUNGE HAD NO PATH TO THE HOST, SO ONLY THE HOST
+  COULD TAG WITH IT.** Found 2026-08-02 while answering 🧑: *"make sure this fix
+  works in multiplayer as well, can humans even tag ppl?"* — a fair question, and the
+  answer was no for three players out of four.
+  * `_step_lunge()` guarded its sweep with
+    `if not is_networked() or is_host(): _sweep_lunge_tag()` and had **no `else`**.
+    On a client that guard is false, so the sweep never ran there.
+  * And it never ran on the HOST either, because `_physics_process` returns at its
+    authority gate before `_step_lunge()` for a body this peer does not own (§6 trap
+    7, the same shape a third time).
+  * **The punch and the shove both already had `_rpc_request_punch` /
+    `_rpc_request_shove`.** The lunge, added later, was simply missed — the identical
+    omission to §6.13, one file over: a verb gains a second implementation site and
+    the older machinery is not told.
+
+  *Fixed: `_rpc_request_lunge` → `host_resolve_lunge()`, mirroring the punch's own
+  contract ("the client says where it stood and which way it faced; the host decides
+  who that reached"). The host cannot replay 27 frames of a body it does not
+  simulate, so it tests the **dash path as one swept segment** — release point to
+  `v²/(2·FRICTION)` along the facing, against `LUNGE_TAG_RADIUS` — which covers the
+  same region the local per-frame sweep does and cannot tunnel, because a segment has
+  no sampling rate.* ⚠️ **Unverified: two real peers.** `net_twopeer_probe` is the
+  instrument and it was not re-run. The single-process path is unchanged and still
+  measures (see §6.13). **This is the one item on this page that most needs a
+  two-peer run before the demo.**
+- [ ] 2.33 ⚠️⚠️ **`Design.md` §6 CONTRADICTS ITSELF ABOUT THE LUNGE, AND §2.6'S MEASURED
+  REACH WAS TAKEN BEFORE THE NUMBER MOVED.** The const is
+  `CharacterBase.LUNGE_SPEED = 7.746`, which is a **1.0 m** dash by the file's own
+  `v²/60` solve, and its comment records the change explicitly: *"12.247 -> 7.746 on
+  2026-08-01, on human instruction: a short 1-meter forward dash"*. `Design.md` §6's
+  **table agrees** (`LUNGE_SPEED` 7.746 → a 1.0 m dash). But §6's **prose still says**
+  *"released as a 2.5 m dash (`LUNGE_SPEED` 12.247, the same `v²/60` solve the shove
+  uses)"*, which is the pre-change value and is now describing the SHOVE's number.
+  * ⚠️ **The consequence is not cosmetic: §2.6's headline number is stale too.** It
+    reports the furthest tagging start as **3.20 m** and derives it as *"the 2.5 m dash
+    plus the 1.3 m sweep, minus the charge"*. That arithmetic only works at the old
+    speed. At 1.0 m the same derivation gives roughly 2.3 m before the charge is
+    subtracted, so **the measurement needs re-running on `mech_probe`**, and until it is,
+    3.20 m must not be quoted (it is quoted in §2.6, in `Design.md` §6, and it was about
+    to be quoted in the submission).
+  * ⚠️ **This also changes §2.31's shape.** That item says the punch (1.7 m, instant)
+    out-ranges the lunge's 1.3 m tag radius, so *"inside 1.7 m the lunge is never the
+    right button"*. With the dash at 1.0 m rather than 2.5 m, the lunge's total reach is
+    smaller than that item assumed when it was written, so the overlap it describes is
+    **worse**, not better. Both numbers are yours; 2.31 should be re-read against the
+    current value before either moves.
+  *Evidence: `character_base.gd:319-339` read directly; `Design.md` §6 table against
+  §6 prose; no probe re-run by this lane, which writes no code.*
+
 ### 🔊 `build sound` — music, voice and the mix  ·  items **4.x**
 
 - [x] 4.1 **The OST is in and it has been listened to.** 🧑 2026-08-01: *"everyones
@@ -1076,6 +1168,48 @@ direct human instruction:**
   a 7.5 s cooldown up — while `spacing` is deliberately keeping the attackers
   apart. **Unverified: that this is the right frequency rather than merely the
   honest one.** Left for whoever owns `SABOTAGE_WINDOW` (§2.3).
+**Fixed by 🎬 `build pitch` 2026-08-02, out of row on direct instruction, after a
+teammate report that the taya never catches a human:**
+
+- [x] 6.13 ⚠️⚠️ **THE TAYA'S PUNCH COULD NEVER FIRE. `_act()` WIPED THE BUTTON THE
+  PLAN HAD JUST PRESSED, IN THE SAME FRAME.** 🧑: *"AI cant tag human for some
+  reason? I thhink thats why u dont teleport like bots"*.
+
+  The release sweep at the bottom of `_act()` read
+  `if _plan != Plan.WINDUP: _press("special_ability", false)`. That was correct while
+  WINDUP (the attacker's throw charge) was the only thing that pressed that action.
+  **The punch was added on 2026-08-01 as the taya's second tag verb and presses the
+  SAME action**, from `_step_lunge_intent()` under `Plan.HUNT` — so every frame ran
+  `_do_hunt()` → tap `special_ability` true, and three lines later the sweep set it
+  back to false, before `CharacterBase._step_punch()` ever read it.
+
+  *Measured by new `tools/tag_probe.tscn`, holding one attacker taggable in front of
+  the taya:*
+
+  | | before | after |
+  |---|---|---|
+  | tags in 25 game-seconds | **1** | **6** |
+  | `special_ability` held | **0.0%**, 0 edges | pressed, cooldown consumed |
+  | punch off cooldown | **100%** (never used) | 74% |
+
+  With the taya in `HUNT` for **81%** of those frames, inside `PUNCH_RANGE` for
+  **80%** and facing the victim for **84%** the whole time. Every precondition the
+  punch has was true and the button was never pressed. After the fix a tag lands
+  every **5.0 s**, which is `TAG_STUN_TIME` exactly — the taya re-tags the instant
+  the victim can act again.
+
+  ⚠️ **THE FIX TESTS WHAT THE COMMENT ALREADY CLAIMED.** `_press()` records into a
+  `_touched` dictionary that `_act()` clears before dispatching, so "buttons this
+  plan did not touch" is now literally what is asked instead of a hand-maintained
+  plan whitelist. The next verb to share an action is covered by construction.
+
+  ⚠️ **THIS WAS NEVER HUMAN-SPECIFIC, AND THE REPORT'S OWN THEORY WAS THE USEFUL
+  PART.** The taya could not punch *anybody*. It read as "only the human is safe"
+  because the human is usually the one being chased while the bots are tagged by the
+  human. Related: `main.gd:682` gives the human seat a **disabled** `AIController`,
+  so `ai_controller != null` is true for humans too — anything that tries to tell a
+  human from a bot by that field is wrong.
+
 **Filed by ⚖️ `build fair` 2026-08-01, found while using `ai_probe` as an instrument:**
 
 - [ ] 6.12 ⚠️⚠️ **`ai_probe matches=N` FOR N > 1 HAS NEVER COMPLETED. Match 2 never
@@ -2195,3 +2329,70 @@ either it is already gone or it is a different screen.
 ⚠️ **Still not verified:** that the arrow RENDERS on the screen edge (it now
 resolves a target, which it did not before); that the VO says the words it is named
 for; two real peers on any of today's replication changes.
+
+**2026-08-02 · 🎬 `build pitch`** — the submission copy fact-checked against the code,
+and three bugs that came out of doing it.
+
+*The pitch documents live OUTSIDE this repo, on human instruction.* 🧑: *"put the docs
+here not on the fucking github"*. The synopsis, the trailer storyboard and the demo
+storyboard were rebuilt as `.docx` in the team's own format (their originals' paragraph
+styles, fonts and page setup reused rather than re-authored) and handed over directly.
+Nothing about the pitch is tracked in `docs/` any more.
+
+*Nine claims in the team's drafts described a game this branch has changed.* The three
+that mattered: a body-blocked slipper "bounces far into the field" (it lands **2.5 m**
+from the taya since `DEFLECT_SPEED_SCALE` went 0.62 → 0.27, and that is the whole point
+of the change); "a 2.5-metre dash lunge" (`LUNGE_SPEED` is **7.746**, a **1.0 m** dash —
+2.5 m is the SHOVE); and "three players team up as Attackers" (there are no teams, and
+saying so throws away the Esports argument). Also a 50-point stamina pool that is 60,
+fatigue "disabling abilities" that disables nothing, and colour-coded slippers whose
+tint is white on all eight skins.
+
+⚠️ **The competition PDF answered three things this lane's prompt said to ask about, and
+one of them moves a deliverable.** The trailer is **1-2 minutes and must loop** (it is
+played on repeat at the venue), not 60-90 s. The demo is a **3-5 minute `.mp4`** as well
+as the live pitch. The synopsis is a **500-word** form, not a paragraph.
+
+*Then the fixes, all out of row, all on direct instruction* (*"do this as well"*,
+*"put good effort in fixing the bugs i told u to"*):
+
+⚠️⚠️ **§6.13 IS THE ONE WORTH READING.** The taya's punch could never fire, in any
+match, since the day it was added. `_act()`'s sticky-button sweep released
+`special_ability` whenever the plan was not `WINDUP` — written when WINDUP was the only
+thing that pressed it — and the punch presses the same action under `HUNT`, three lines
+earlier in the same frame. **The janitor ran after the tap and undid it.** New
+`tools/tag_probe.tscn` measured it: `special_ability held 0.0%, 0 edges` with the taya
+hunting 81% of frames, inside `PUNCH_RANGE` 80% and facing the victim 84%. Tags went
+**1 → 6** over 25 game-seconds, and now land every **5.0 s**, which is `TAG_STUN_TIME`
+exactly.
+
+⚠️ **The probe exists because every tag number on this board is bot-versus-bot.**
+`ai_probe` and `fair_probe` both run through `GameLaunch.spectator`, which makes all four
+seats bots — so the configuration a person actually plays had never been under a probe at
+all. That is also why the report arrived from a teammate rather than from the board.
+
+*§2.34, found by asking the human's own follow-up question honestly* (*"can humans even
+tag ppl?"*): a joined client's LUNGE had no path to the host and never resolved for
+anybody but the host. The punch and the shove both had `_rpc_request_*`; the lunge did
+not. It does now, resolved host-side as one swept segment along the dash path.
+**Unverified on two real peers, and it is the item that most needs that run.**
+
+*§1.21 / §1.22, both from screenshots:* the left status stack was drawn on top of the
+scoreboard (both anchored TOP_LEFT, the stack at a hardcoded y=150 that is inside a
+four-row board) — it derives its top from the panel's real height now. And
+`YOU ARE VULNERABLE` sat across the middle of the frame, over the slipper it is warning
+you about; it is bottom-centre now. ⚠️ **1.21 was rendered and looked at. 1.22 was not** —
+the two states cannot share a frame, because `is_taggable()` is false while stunned.
+
+*The VO was raised on the first report from somebody who had actually heard it.* 🧑:
+*"the bg music overpower them"*. `VO_TRIM_DB` −4.0 → −1.0, and the music duck under a
+voice line is now its own depth (−14) and holds for the take's real length instead of a
+countdown tick's 0.5 s — the delivered takes run **0.74-1.45 s**, so the bed was climbing
+back over the second half of every line. ⚠️ **§4.7's measurement was not wrong, it was
+measuring peaks.** A dense sustained bed masks speech by RMS, where the voice measured
+only −1.1 dB against the effects. No session that set that number had an audio device.
+
+⚠️ **Not verified:** two real peers on §2.34; §1.22 on screen; anything by ear.
+⚠️ **Still open and blocking, unchanged:** §8.4 — the build in `build/` is from
+2026-07-29 and predates the pivot, and §8.3, that the exported build RUNS, has never been
+checked. Judges play the artifact.

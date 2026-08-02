@@ -175,6 +175,10 @@ var _user_took_over: bool = false
 ## True when this rig is a centred TILE rather than a screen backdrop — see
 ## `set_tile_framing()`. Zeroes the off-centre `h_offset` below.
 var _centre_subject: bool = false
+## Set with `set_tile_framing()`. See the ⚠️ in `_frame()`.
+var _uniform_extent: bool = false
+## Set with `enable_tile_interaction()`. See that function's ⚠️.
+var _wheel_zooms: bool = true
 
 func _ready() -> void:
 	# A SubViewportContainer defaults to ignoring the mouse. It has to receive
@@ -263,6 +267,30 @@ func _frame(model: Node3D) -> void:
 		(width * FRAME_MARGIN * 0.5) / (half_fov * aspect)),
 		(width * FRAME_MARGIN * 0.5) / half_fov)
 
+	# ⚠️ UNIFORM MODE: EVERY SUBJECT'S LONGEST AXIS GETS THE SAME SCREEN LENGTH.
+	#
+	# 🧑, looking at the tutorial's premise strip: *"why not make everything size
+	# of lata"*. The four tiles are the same box and every subject was "fitted" to
+	# it, yet the can dwarfed the person and the slipper. Fitting is not sizing:
+	# the rule above takes whichever axis needs the camera furthest back, so a TALL
+	# narrow subject (the lata) binds on HEIGHT and fills the tile top to bottom,
+	# while a subject that is as wide as it is tall (a person, arms out) binds on
+	# WIDTH and is then only as tall as its own aspect allows. Both "fill the
+	# frame"; only one looks big. A flat slipper is the extreme case.
+	#
+	# So this mode measures one number per subject — its longest extent, whichever
+	# axis that is — and fits THAT to the frame's short side. The lata's height,
+	# the person's height and the slipper's length all land on the same on-screen
+	# length, which is what "the same size" means to someone looking at the strip.
+	#
+	# ⚠️ OPT-IN, AND THE CHARACTER SCREEN MUST NOT GET IT. There a subject is alone
+	# at full size and should use the whole frame; equalising against a slipper's
+	# length would push a person away for no reason. Only the tutorial's tiles ask
+	# for this, via `set_tile_framing(zoom, true)`.
+	if _uniform_extent:
+		var extent: float = maxf(height, width)
+		distance = (extent * FRAME_MARGIN * 0.5) / (half_fov * minf(aspect, 1.0))
+
 	# Elevated rather than level with the subject, for the same reason: a flat
 	# object seen edge-on from its own height is a sliver. Looking down at it
 	# shows the face that reads as "a slipper", and on a standing Person the same
@@ -323,11 +351,13 @@ func _gui_input(event: InputEvent) -> void:
 					reset_view()
 					accept_event()
 			MOUSE_BUTTON_WHEEL_UP:
-				_zoom_by(-ZOOM_STEP)
-				accept_event()
+				if _wheel_zooms:
+					_zoom_by(-ZOOM_STEP)
+					accept_event()
 			MOUSE_BUTTON_WHEEL_DOWN:
-				_zoom_by(ZOOM_STEP)
-				accept_event()
+				if _wheel_zooms:
+					_zoom_by(ZOOM_STEP)
+					accept_event()
 	elif event is InputEventMouseMotion and _dragging:
 		var motion := (event as InputEventMouseMotion).relative
 		_user_yaw -= motion.x * ORBIT_SENSITIVITY
@@ -362,10 +392,37 @@ func _zoom_by(amount: float) -> void:
 ## ⚠️ DOES NOT SET `_user_took_over`, unlike `_zoom_by()`. That flag means "a human has
 ## taken the camera, stop moving it", and this is the SCREEN choosing its own framing — if
 ## it set the flag it would silently kill the idle turn on all four tiles.
-func set_tile_framing(factor: float) -> void:
+func set_tile_framing(factor: float, uniform_extent: bool = false) -> void:
 	_centre_subject = true
+	_uniform_extent = uniform_extent
 	_user_zoom = clampf(factor, ZOOM_MIN, ZOOM_MAX)
+	# ⚠️ RE-FRAME, DO NOT ONLY RE-AIM. `_uniform_extent` changes what `_frame()`
+	# COMPUTES, and the subject was already framed by `show_prop`/`show_character`
+	# before this call — so applying the camera alone would keep the old distance
+	# and the flag would appear to do nothing.
+	if _current != null and is_instance_valid(_current):
+		_frame(_current)
 	_apply_camera()
+
+## Lets the player turn a TILE's subject, the way the CHARACTER screen lets them
+## turn a full-size one. 🧑: *"in tutorial allow us to play around with the models
+## like in char select"*.
+##
+## ⚠️ THE WHEEL IS DELIBERATELY NOT TAKEN, AND THAT IS THE WHOLE DESIGN OF THIS
+## FUNCTION. These tiles live INSIDE the tutorial page's ScrollContainer, which is
+## why they were `MOUSE_FILTER_IGNORE` in the first place: a preview that consumes
+## the wheel would zoom a slipper while the player was trying to scroll the page,
+## and the tiles are big enough that the cursor is over one most of the time. So
+## drag-to-turn and right-click-to-reset are enabled — both are gestures the
+## ScrollContainer has no use for — and the wheel is left to fall through to the
+## page. Zoom stays exclusive to the CHARACTER screen, which has no scroll to
+## compete with.
+##
+## `MOUSE_FILTER_PASS` rather than `STOP` for the same reason: the events this
+## control does not `accept_event()` must keep travelling to the scroller.
+func enable_tile_interaction() -> void:
+	mouse_filter = Control.MOUSE_FILTER_PASS
+	_wheel_zooms = false
 
 ## Back to the measured shot, and back to turning on its own. Public because the
 ## screen may want to offer it as a button later; bound to right-click today.
