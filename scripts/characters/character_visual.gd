@@ -419,19 +419,31 @@ const HAND_BONE_CANDIDATES: Array[String] = ["arm-right", "arm-left"]
 ## far.
 ##
 ## The value is measured in the frame that cannot lie about it — the live body, where
-## `carry_probe` prints shoulder and carry point together. Three reads bracket it, all
-## from play:
+## `carry_probe` prints shoulder and carry point together. Every read below is from a real
+## match:
 ##
-##     0.284  reach 0.68 m   *"ITS ON EVERYONES NECK"*
-##     0.134  reach 0.32 m   *"its INSIDE THE ARM"*        — shoulder-to-hip, too short
-##     0.190  reach 0.46 m   *"almost there ... not as bad as earlier"*
-##     0.225  reach 0.54 m   ← here
+##     X 0.284  reach 0.68 m   *"ITS ON EVERYONES NECK"*
+##     X 0.134  reach 0.32 m   *"its INSIDE THE ARM"*
+##     X 0.190  reach 0.46 m   *"almost there ... not as bad as earlier"*
+##     X 0.225  reach 0.54 m   *"now its on their face/neck"* — **worse, not warmer**
 ##
-## The bracket is what makes this a measurement rather than a fourth guess: the answer is
-## known to sit between 0.32 and 0.68 m, and each step has halved the remaining interval
-## against a report from a real match. The Z is scaled with it so the point keeps its
-## small bias off the limb's axis — the shoe is a flat object and needs to clear the
-## forearm sideways as well as reach past it.
+## ⚠️⚠️ AND THAT LAST LINE IS THE IMPORTANT ONE, BECAUSE IT KILLS THE WHOLE APPROACH. An
+## 0.08 m step cannot move a shoe from "just inside the arm" to a face — unless the
+## direction being stepped in is wrong. It is: X is the ARM BONE'S OWN AXIS, and in
+## `CARRY_IDLE_CLIP` (`holding-right`) that axis points up and inward across the chest. So
+## more reach travels TOWARDS THE HEAD, and less reach retreats INTO THE FOREARM. There is
+## no value of X that is outside the arm and away from the face at the same time; bisecting
+## it was converging on a point that does not exist.
+##
+## ⚠️ SO THE CLEARANCE IS ON Z, WHICH IS PERPENDICULAR TO THE LIMB. `carry_probe` prints
+## each hand axis's world-up component and Z measures **≈ 0.00 in every pose** — it is
+## horizontal, and square to the bone. Moving along it takes the shoe off the side of the
+## arm without moving it along the arm at all, so it cannot reach the head no matter how
+## the clip swings. X stays at 0.190, the best reading anybody reported, and Z does the
+## job X could not.
+##
+## ⚠️ Y REMAINS EXACTLY ZERO — the bone's own centre line. Same reason: a vertical nudge
+## large enough to matter with the arm down is a throat with the arm up.
 ##
 ## ⚠️ THE LIFT STAYS AT EXACTLY ZERO — the arm bone's own axis. The vertex sweep put it at
 ## y = -0.040, a BOTTOM corner of the fist, which is what "sitting perfectly under the arm"
@@ -448,7 +460,7 @@ const HAND_BONE_CANDIDATES: Array[String] = ["arm-right", "arm-left"]
 ## ⚠️ THE X IS MIRRORED FOR A LEFT ARM by `_build_hand_attachment`. `arm-left` is the
 ## mirror bone and the fallback path can select it, or any arm-ish bone on a rig that has
 ## neither — see there.
-const HAND_CARRY_OFFSET: Vector3 = Vector3(-0.225, 0.000, 0.036)
+const HAND_CARRY_OFFSET: Vector3 = Vector3(-0.190, 0.000, 0.055)
 
 ## The persistent carry pose. Verified against the actual .glb rather than a
 ## doc: the Kenney rig ships `holding-right` and `holding-right-shoot`, and
