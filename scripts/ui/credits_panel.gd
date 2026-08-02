@@ -190,9 +190,9 @@ const LOGO_HEIGHT: float = 104.0
 const TEAM_CREDITS: Array[Dictionary] = [
 	{"name": "MATTHEW LABRADOR", "role": "Lead Developer  ·  UI Designer  ·  3D Asset Editor  ·  Poster Design"},
 	{"name": "PAUL RECIO", "role": "Developer  ·  Video Editor"},
-	{"name": "HARRY GOMEZ", "role": "Composer, Original Soundtrack  ·  Logo & UI Design"},
-	{"name": "CLARENCE PAGADUAN", "role": "UI Designer  ·  Game Asset Artist"},
-	{"name": "HANS LAO", "role": "QA Tester & Validation  ·  Administration"},
+	{"name": "HARRY GOMEZ", "role": "Composer, Original Soundtrack  ·  Logo & UI Design  ·  Game Voice Over"},
+	{"name": "CLARENCE PAGADUAN", "role": "UI Designer  ·  Game Asset Artist  ·  Audio Composer"},
+	{"name": "HANS LAO", "role": "QA Tester & Validation  ·  Administration  ·  Cinematics Director"},
 ]
 
 func _build_made_by() -> VBoxContainer:

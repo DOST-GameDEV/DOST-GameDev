@@ -292,9 +292,9 @@ Made by **BH Studios**.
 |---|---|
 | **Matthew Labrador** | Lead Developer · UI Designer · 3D Asset Editor · Poster Design |
 | **Paul Recio** | Developer · Video Editor |
-| **Harry Gomez** | Composer, Original Soundtrack · Logo & UI Design |
-| **Clarence Pagaduan** | UI Designer · Game Asset Artist |
-| **Hans Lao** | QA Tester & Validation · Administration |
+| **Harry Gomez** | Composer, Original Soundtrack · Logo & UI Design · Game Voice Over |
+| **Clarence Pagaduan** | UI Designer · Game Asset Artist · Audio Composer |
+| **Hans Lao** | QA Tester & Validation · Administration · Cinematics Director |
 
 ### Third-party assets — CC-BY-4.0, attribution required
 
