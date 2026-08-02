@@ -1,0 +1,31 @@
+# The always-on half of on-demand lobbies -- and it is not a process.
+#
+# systemd holds this UDP socket while nothing is running. A datagram on it starts
+# tumbang-preso-spawn.service, which starts a lobby and exits. Idle cost: one file
+# descriptor, zero memory.
+#
+# ⚠️ THE PORT IS ONE BELOW THE POOL. Game ports are 8910-8917 and their status
+# ports are those + 10 (8920-8927), so 8909 is the only number adjacent to the pool
+# that collides with neither. It must also be open in BOTH firewalls -- the VCN
+# security list and the box's own -- or HOST ONLINE will simply never get a lobby
+# and will report the pool as unreachable.
+#
+# Install: copy to /etc/systemd/system/, then
+#   sudo systemctl enable --now tumbang-preso-spawn.socket
+
+[Unit]
+Description=Tumbang Preso lobby spawn request socket (udp/8909)
+
+[Socket]
+ListenDatagram=8909
+# ⚠️ Accept=no is REQUIRED and is not the default mental model. With Accept=yes
+# systemd would try to spawn one service instance per connection, which is a TCP
+# idea; for a datagram socket the service must receive the SOCKET ITSELF on fd 3
+# and read from it, which is what spawner.py does.
+Accept=no
+# One instance at a time. A burst of requests is drained by the single running
+# instance rather than starting a process per packet.
+MaxConnectionsPerSource=8
+
+[Install]
+WantedBy=sockets.target
