@@ -142,6 +142,25 @@ godot --path . -- --pool=127.0.0.1
 godot --headless --path . res://scenes/ui/MatchSetup.tscn -- --dedicated --port=8910
 ```
 
+### Until then: LAN over Hamachi is how people play from different houses
+
+**You do not need the pool to play with someone elsewhere — LAN works over Hamachi.** Everyone
+installs LogMeIn Hamachi and joins the same network; that hands each machine a virtual `25.x.x.x`
+address on what the game sees as one LAN. One player uses **HOST GAME (LAN)**, reads out their
+Hamachi address, and the rest **JOIN** with it. This is what the team actually uses today.
+
+What it does *not* give you is HOST ONLINE, the join codes or the server browser — those need a pool
+at a reachable address. Think of Hamachi as better LAN, not as online play.
+
+- **The host's PC is the server.** It stays in the match, and everyone's traffic goes through it.
+- **Type the Hamachi address, do not rely on the browser.** Broadcast discovery over a virtual LAN
+  is unreliable; the join field always works.
+- **Free Hamachi networks cap at 5 members**, which fits four players with one spare.
+- **⚠️ Port-forwarding is not an alternative on a CGNAT connection.** Many PH ISPs put subscribers
+  behind carrier-grade NAT, where no rule on your own router is reachable from outside. Check with
+  `tracert 8.8.8.8` — if hop 2 is a `100.64.x.x` address you are behind CGNAT, and an overlay or a
+  real VPS is the only way out. Measured on the dev machine: public IP, but hop 2 is `100.64.0.1`.
+
 `tools/server/lobby-pool.ps1` (Windows) and `lobby-pool.sh` (Linux) start, stop and inspect a whole
 pool. **⚠️ The scene path is required and `--` is required** — without the scene, `--dedicated` is
 never parsed, and the process runs, uses normal memory, logs nothing and never binds its port.
