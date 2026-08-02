@@ -241,6 +241,63 @@ Code comments still name documents that no longer exist (`Dev_Plan.md`, `Handoff
 
 ---
 
+## Credits
+
+Made by **BH Studios**.
+
+| | |
+|---|---|
+| **Matthew Labrador** | Lead Developer · UI Designer · 3D Asset Editor · Poster Design |
+| **Paul Recio** | Developer · Video Editor |
+| **Harry Gomez** | Composer, Original Soundtrack · Logo & UI Design |
+| **Clarence Pagaduan** | UI Designer · Game Asset Artist |
+| **Hans Lao** | QA Tester & Validation · Administration |
+
+### Third-party assets — CC-BY-4.0, attribution required
+
+These three ship in the build and their licence requires the credit below, which is reproduced
+verbatim on the in-game CREDITS screen and in each model's `LICENSE.txt`:
+
+- **CROCS** — based on *"crocs"* by fnk (sketchfab.com/fnk), CC-BY-4.0
+- **PANTULOG** — based on *"Pink Slipper"* by The Withered Rose (sketchfab.com/TheWitheredRose), CC-BY-4.0
+- **IKE** — based on *"Low Poly Nike Sandals"* by les03 (sketchfab.com/les03official), CC-BY-4.0
+
+### Everything else
+
+- **Environment & kits** — Kenney kits (Mini Characters, City, Suburban, Fantasy Town, Mini Forest,
+  Food, Furniture, Car), CC0, kenney.nl. Attribution is courtesy, not required.
+- **Typeface** — Darumadrop One, © 2020 The Darumadrop One Project Authors, SIL Open Font License 1.1.
+- **Audio** — all original. The OST is written by the team; the SFX and ambience beds are synthesised
+  in-house by this project's own tools. No third-party audio ships.
+- **Tsinelas** — the fourth slipper is this project's own mesh, generated procedurally. The other
+  three are the CC-BY models above.
+
+### AI usage disclosure
+
+Declared on **Form 03: Asset and AI Usage Disclosure**, and repeated here and on the in-game credits
+screen so the three cannot drift apart. Gear Up NCR §8 permits AI across development and requires
+that it be disclosed; §7 requires the code be the registered team's, which is why no commit carries
+a tool name or a `Co-Authored-By` trailer. **Disclosure of a tool and attribution of authorship are
+different questions** — this answers the first, the history answers the second.
+
+**Claude Code (Anthropic)** was used as a coding assistant — programming, debugging, testing and
+documentation. It helped write the bot AI that drives the computer-controlled players, wrote the
+procedural code that generates the lata meshes, this project's own tsinelas mesh and the map
+geometry, repurposed sourced assets into this game's formats, and wrote the tools that synthesise
+the SFX and ambience beds.
+
+Every skin, texture and drawing is the team's own, and the team wrote the soundtrack. All game logic,
+mechanics and design decisions are the team's own, and the team takes full responsibility for all
+code submitted. **No generative-AI image, music or video service was used**, and no AI-generated
+voice appears in the game — where AI touched an asset it did so by writing code that produces it
+deterministically, not by generating art or audio from a prompt.
+
+Also declared: **Godot 4.7** (MIT) as engine and runtime, with no third-party plugins or addons;
+**NumPy / SciPy / Pillow** for offline asset generation, development-time only; and **LogMeIn
+Hamachi**, which is where local multiplayer was tested between members in different locations.
+
+---
+
 ## Three things this project is strict about
 
 **Verify before you claim it works.** The legend is `[x]` built *and verified* — say by what —
