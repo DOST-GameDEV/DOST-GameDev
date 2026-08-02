@@ -74,6 +74,52 @@ var _live: float = 75.0
 ## already running when the second client first arrives.
 var _wait_for: int = 1
 
+# =============================================================================
+# ⚠️⚠️ § THE ROSTER PICK. 🧑 2026-08-02, after the rejoin itself started working:
+# *"The player rejoins on a different player character and not the same character they
+# were on."* Right seat, working controls, WRONG FIGHTER.
+#
+# ⚠️ THE RUN HAS TO MAKE A PICK OR IT CANNOT SEE THIS AT ALL. `GameLaunch.selected_
+# character` defaults to `&"berto"`, roster index 0, and a harness that never opens the
+# CHARACTER screen leaves it there — so before this block every peer in every run of this
+# file was BERTO, and a rejoin that came back as somebody else's Person would have been
+# indistinguishable from one that came back correct. The dropper is deliberately given a
+# pick that is
+#
+#   · not the default (0),
+#   · not in `main.gd::AI_PERSON_SPREAD` ([0, 3, 6, 9], what a bot is dealt), and
+#   · not the anchor's,
+#
+# so "the returning player is wearing somebody else's face" cannot be true by accident on
+# any of the three processes.
+#
+# ⚠️ ALL THREE TABS ARE PICKED, NOT JUST THE PERSON. `NetworkManager.picks_for()` carries
+# `character`, `can` and `slipper` in ONE dictionary and one `_rpc_identify` packet, so a
+# defect in how that table is re-read on reclaim can only be scoped by measuring all
+# three. See § THE PICKS REPORT.
+## Roster ids this process picks on the CHARACTER screen, or "" to leave the preference
+## alone. Stable ids rather than indices, exactly as `GameLaunch` stores them.
+var _character_id: String = ""
+var _can_id: String = ""
+var _slipper_id: String = ""
+## What the DROPPER picked, so the referee and the anchor — neither of which owns that
+## seat — can assert about it. Passed in rather than inferred: a peer that is not the
+## host cannot ask `picks_for()` about anybody (see `network_manager.gd`), which is
+## precisely the asymmetry this bug lives in.
+var _expect_character: String = ""
+var _expect_can: String = ""
+var _expect_slipper: String = ""
+
+## The one body the whole run is about, found by the NAME its process plays under rather
+## than by seat or peer id.
+##
+## ⚠️ THE NAME IS THE ONLY HANDLE THAT SURVIVES THE WHOLE RUN. The peer id changes on
+## reconnect (ENet mints a fresh one), the authority changes twice (human → host → human),
+## `is_bot` flips twice, and `character_index` is the thing under test and so cannot be
+## used to find it. `player_name` is written from the spawn packet and is touched by
+## nothing on either the convert-to-AI or the reclaim path, so it is stable across both.
+const DROPPER_NAME: String = "DROPPER"
+
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--role="):
@@ -86,9 +132,35 @@ func _ready() -> void:
 			_live = float(a.substr(len("--live=")))
 		elif a.begins_with("--wait-for="):
 			_wait_for = int(a.substr(len("--wait-for=")))
+		elif a.begins_with("--character="):
+			_character_id = a.substr(len("--character="))
+		elif a.begins_with("--can="):
+			_can_id = a.substr(len("--can="))
+		elif a.begins_with("--slipper="):
+			_slipper_id = a.substr(len("--slipper="))
+		elif a.begins_with("--expect-character="):
+			_expect_character = a.substr(len("--expect-character="))
+		elif a.begins_with("--expect-can="):
+			_expect_can = a.substr(len("--expect-can="))
+		elif a.begins_with("--expect-slipper="):
+			_expect_slipper = a.substr(len("--expect-slipper="))
 	# A distinguishable name per role, so a body in the report can be read back to the
 	# process that owns it without counting peer ids.
 	SettingsManager.player_name = _role.to_upper()
+	# ⚠️ WRITTEN STRAIGHT ONTO `GameLaunch`, WHICH IS WHAT THE CHARACTER SCREEN DOES.
+	# `character_select.gd` sets these three preferences and nothing else; every consumer
+	# downstream (`GameLaunch.character_index()`, the identify packet, the spawn path)
+	# reads them from here. So this is the real pick, not a shortcut past one.
+	if _character_id != "":
+		GameLaunch.selected_character = StringName(_character_id)
+	if _can_id != "":
+		GameLaunch.selected_can = StringName(_can_id)
+	if _slipper_id != "":
+		GameLaunch.selected_slipper = StringName(_slipper_id)
+	print("[%s] PICKED character=%s(%d) can=%s(%d) slipper=%s(%d)" % [
+		_role, GameLaunch.selected_character, GameLaunch.character_index(),
+		GameLaunch.selected_can, GameLaunch.can_index(),
+		GameLaunch.selected_slipper, GameLaunch.slipper_index()])
 	# ⚠️ THE ROUND-START BEAT IS TRACED, BECAUSE IT IS WHAT REBUILDS `RoundManager`'s SEAT
 	# TABLE. `main.gd::_on_match_round_started` -> `_reset_world()` is the ONLY place
 	# `RoundManager.register_player()` is ever called on a networked peer, so whether a
@@ -185,6 +257,15 @@ func _host_report(t: int) -> void:
 		# side the client's report is a claim with nothing to check it.
 		line += " | %s" % [_world_line()]
 	print(line)
+	if scene != null and String(scene.name) == "Main":
+		# ⚠️ THE HOST'S OWN PICK TABLE, PRINTED EVERY TICK. `main.gd::_apply_reclaimed_picks`
+		# runs here first and reads `picks_for()`, which is host-side state — so if the
+		# fighter is wrong ON THE REFEREE the fault is upstream of every client and no
+		# amount of client-side catch-up can repair it. This is the control line for the
+		# whole run.
+		for body in _bodies():
+			print("[referee t=%ds] %s" % [t, _pick_line(body)])
+		_watch_dropper_seat("referee")
 
 ## Tokens are 32 hex characters and there are four of them; the last six are plenty to tell
 ## two peers apart and keep a report line readable.
@@ -265,8 +346,16 @@ func _anchor() -> void:
 
 	var elapsed := 0.0
 	while elapsed < _live:
-		await get_tree().create_timer(5.0).timeout
-		elapsed += 5.0
+		await get_tree().create_timer(1.0).timeout
+		elapsed += 1.0
+		# ⚠️ POLLED AT 1 Hz WHILE REPORTING AT 0.2 Hz, AND THE TWO RATES ARE DELIBERATE.
+		# `_watch_dropper_seat` is looking for an EDGE (`is_bot` going false again) that
+		# lands wherever the day's scene-load time puts it, so it has to be sampled far
+		# more often than a report anybody reads. The report itself stays at five seconds
+		# because it prints a line per body and this loop runs for over a minute.
+		_watch_dropper_seat("anchor")
+		if int(elapsed) % 5 != 0:
+			continue
 		_report("anchor t=%ds" % int(elapsed))
 		# ⚠️ THE CONTROL, MEASURED AT ROUGHLY THE MOMENT THE DROPPER COMES BACK. The
 		# anchor never left, so its body is a normally-spawned one in the SAME match on
@@ -276,6 +365,14 @@ func _anchor() -> void:
 		# push probe deliberately staggers the body it tests.
 		if int(elapsed) == 10:
 			await _check_abilities("CONTROL")
+	# ⚠️ A CHECK THAT NEVER RAN MUST NOT READ AS A PASS. The anchor's whole contribution to
+	# this run is the third-party view of the reclaim; if the dropper never came back
+	# inside `--live` the run has measured nothing about it, and reporting green would be
+	# worse than reporting red. Only in the rejoin scenario — the latecomer one has no
+	# dropper and no reclaim to watch.
+	if _wait_for > 0 and _expect_character != "":
+		_check("the anchor actually witnessed the reclaim it is here to judge",
+			_reclaim_checked)
 	_done("anchor")
 
 # =============================================================================
@@ -323,6 +420,14 @@ func _dropper() -> void:
 		await get_tree().create_timer(1.0).timeout
 		settle += 1.0
 		print("[dropper t=%ds] %s" % [int(settle), _world_line()])
+		# ⚠️ THE CLIENT'S OWN COPY OF ITS OWN `character_index`, SAMPLED FROM THE FIRST
+		# SECOND IN `Main`. Measured 2026-08-03: the REFEREE printed `char=-1` for both
+		# human bodies for the first eight seconds of the match while its Visual showed
+		# the right face — i.e. the host set the pick at spawn and something wiped it
+		# afterwards. The only other writer is the synchronizer, whose authority for a
+		# human body IS that human's own client, so this line is what separates "the
+		# client never had the value" from "the host lost it on its own".
+		print("[dropper t=%ds] %s" % [int(settle), _pick_line(_body_named(DROPPER_NAME))])
 		if RoundManager.round_active and RoundManager.player_at(1) != null:
 			break
 	print("[dropper] round=%d active=%s" % [MatchManager.round_number, str(RoundManager.round_active)])
@@ -331,6 +436,19 @@ func _dropper() -> void:
 	var before := _report("dropper BEFORE")
 	_check("BEFORE: the dropper owns a body", before["owned"] != "")
 	_check("BEFORE: the dropper is looking through a camera", before["camera"] != "<none>")
+	# ⚠️ THE PICK IS RECORDED BEFORE THE DROP AND COMPARED AFTERWARDS, rather than only
+	# compared against the command line. "They came back on the same fighter they left on"
+	# is the player's actual claim, and it is a strictly stronger statement than "they came
+	# back on the fighter the harness asked for" — it also catches a match in which the
+	# pick never arrived in the first place, which would otherwise make both halves of the
+	# run agree on the same wrong number.
+	var before_body := _body_named(DROPPER_NAME)
+	_check("BEFORE: the dropper's own body carries their pick",
+		before_body != null and before_body.character_index
+			== CharacterRoster.index_of(StringName(_expect_character)))
+	var before_index: int = before_body.character_index if before_body != null else -1
+	var before_props := _seat_props(before_body.player_slot) if before_body != null else {}
+	print("[dropper BEFORE] %s" % [_pick_line(before_body)])
 
 	# ---- THE DROP --------------------------------------------------------------
 	# ⚠️ THE SCENE TEARDOWN IS COPIED FROM `main.gd::_on_server_disconnected`, ON PURPOSE.
@@ -371,6 +489,21 @@ func _dropper() -> void:
 		String(after["owned_slot"]) == String(before["owned_slot"])
 			and String(before["owned_slot"]) != "")
 	_check("AFTER: no bot is still driving that body", not bool(after["owned_is_bot"]))
+	# ---- THE FIGHTER ------------------------------------------------------------
+	# ⚠️ ASSERTED ON THIS PROCESS TOO, NOT ONLY ON THE TWO THAT STAYED. This is the screen
+	# in the report. `_watch_dropper_seat` cannot fire here — this process was not running
+	# while a bot held the seat, so it never sees the edge — so the same assertion is
+	# invoked directly.
+	var after_body := _body_named(DROPPER_NAME)
+	_assert_dropper_picks("dropper AFTER")
+	_check("AFTER: it is the SAME fighter they dropped out on",
+		after_body != null and before_index >= 0
+			and after_body.character_index == before_index)
+	if not before_props.is_empty():
+		var after_props := _seat_props(after_body.player_slot) if after_body != null else {}
+		print("[dropper AFTER] props before=%s after=%s" % [str(before_props), str(after_props)])
+		_check("AFTER: the same lata and tsinelas they dropped out with",
+			after_props == before_props)
 	await _check_abilities("AFTER")
 	_done("dropper")
 
@@ -407,6 +540,18 @@ func _latecomer() -> void:
 	# missed the pickup — neither of those cares whether the arriving peer has been in this
 	# match before. A first-time mid-match joiner was as unable to throw, pick up or be
 	# shoved as a returning one, and is proved fixed by the same probe.
+	# ⚠️ THE SAME PICK QUESTION, ASKED OF A PEER WITH NOTHING TO RESTORE. A first-time
+	# mid-match joiner steps into a seat a bot has been holding since `_start_hosting`, by
+	# the SAME `_rpc_reclaim_character` path a returning player takes — the host does not
+	# branch on whether it has seen this token before, only on whether the seat has a body.
+	# So if the reclaim path drops the arriving human's roster pick, it drops it here too,
+	# and this is the cheaper of the two reproductions.
+	if _expect_character != "":
+		var body := _my_body()
+		var want := CharacterRoster.index_of(StringName(_expect_character))
+		print("[latecomer] %s" % [_pick_line(body)])
+		_check("a mid-match newcomer wears the fighter they picked (%s)"
+			% _roster_name(want), body != null and body.character_index == want)
 	await _check_abilities("LATECOMER")
 	_done("latecomer")
 
@@ -458,6 +603,11 @@ func _report(tag: String) -> Dictionary:
 	print("[%s] %s" % [tag, _world_line()])
 	for body in bodies:
 		print("[%s] %s" % [tag, _probe_line(body as CharacterBody3D)])
+		# § THE PICKS REPORT — printed beside the property diff rather than instead of it,
+		# because "the returning player has the wrong face" and "the returning player
+		# cannot be shoved" were reported by the same human about the same rejoin and both
+		# have to be readable off one run.
+		print("[%s] %s" % [tag, _pick_line(body)])
 	return {
 		"scene": _scene_name(),
 		"bodies": bodies.size(),
@@ -557,6 +707,191 @@ func _carrier_lock(body: Node) -> float:
 func _f(body: Node, field: String) -> float:
 	var value: Variant = body.get(field)
 	return float(value) if value != null else -1.0
+
+# =============================================================================
+# ⚠️⚠️ § THE PICKS REPORT. 🧑 2026-08-02: *"The player rejoins on a different player
+# character and not the same character they were on."*
+#
+# Three separate facts are printed per body and they are deliberately NOT collapsed,
+# because the whole bug class this file keeps finding is one of them being right while
+# another is stale:
+#
+#   character_index  the replicated int — what this peer has been TOLD to wear.
+#   model / material what `CharacterVisual` last actually INSTANCED. `apply()` is keyed
+#                    on the model path AND the palette path (two roster entries can share
+#                    a rig), and it is only ever called from `_ready()`, a role rotation
+#                    and `main.gd::_apply_known_picks` — so an index that changes with
+#                    nobody to tell the Visual leaves the player looking at the old face
+#                    while every number in the log says the pick arrived.
+#   can / slipper    `main.gd::_seat_prop_picks[slot]`, which is a SEPARATE table from the
+#                    character index and is not a `CharacterBase` property at all. Same
+#                    `picks_for()` dictionary feeds both, so a defect in re-reading it on
+#                    reclaim cannot be scoped without measuring all three.
+# =============================================================================
+
+func _roster_name(index: int) -> String:
+	return "<none>" if index < 0 else CharacterRoster.name_at(index)
+
+## The lata/tsinelas picks `main.gd` holds for `slot` on THIS peer, or an empty dictionary
+## when this peer has not been told. ⚠️ "not been told" is a real, expected state and not
+## a failure by itself: `_rpc_sync_picks` reaches a client at the ready gate and again as
+## an `rpc_id` to a late joiner, so a third-party peer's copy can legitimately predate the
+## reclaim. It is reported as `<none>` rather than asserted against.
+func _seat_props(slot: int) -> Dictionary:
+	var scene: Node = get_tree().current_scene
+	if scene == null:
+		return {}
+	var table: Variant = scene.get("_seat_prop_picks")
+	if not (table is Dictionary):
+		return {}
+	var row: Variant = (table as Dictionary).get(slot)
+	return row if row is Dictionary else {}
+
+## Everything about what one body is WEARING, on one line.
+##
+## ⚠️ `_current_key`/`_current_material_key` ARE READ OFF `CharacterVisual` ON PURPOSE.
+## They are the paths it last actually instanced, which is the only honest answer to "what
+## is on screen" on a process with no rendering device (`--headless`, and the referee is
+## one). Deriving the model from `character_index` here would re-implement `_model_path()`
+## and would agree with itself no matter what the player could see.
+func _pick_line(body: Node) -> String:
+	if body == null:
+		return "<no body>"
+	var index: int = int(body.get("character_index"))
+	var visual: Node = body.get_node_or_null("Visual")
+	var model := "<no visual>"
+	var material := ""
+	if visual != null:
+		model = String(visual.get("_current_key")).get_file()
+		material = String(visual.get("_current_material_key")).get_file()
+	var slot: int = int(body.get("player_slot"))
+	var props := _seat_props(slot)
+	var props_text := "<none>"
+	if not props.is_empty():
+		var can := int(props.get("can", -1))
+		var slipper := int(props.get("slipper", -1))
+		props_text = "can=%d/%s slipper=%d/%s" % [
+			can, String(CharacterRoster.can_at(can).get("name", "<none>")) if can >= 0 else "<none>",
+			slipper,
+			String(CharacterRoster.slipper_at(slipper).get("name", "<none>")) if slipper >= 0 else "<none>"]
+	return "PICK %s slot=%d player_name='%s' is_bot=%s auth=%d char=%d/%s model=%s mat=%s %s" % [
+		body.name, slot, String(body.get("player_name")), str(body.get("is_bot")),
+		body.get_multiplayer_authority(), index, _roster_name(index), model, material,
+		props_text]
+
+## The body the run is about, wherever it currently lives. See DROPPER_NAME.
+func _body_named(who: String) -> CharacterBase:
+	for node in _bodies():
+		var body := node as CharacterBase
+		if body != null and body.player_name == who:
+			return body
+	return null
+
+# =============================================================================
+# ⚠️⚠️ § THE RECLAIM WATCH, AND WHY IT IS EVENT-DRIVEN ON THREE PROCESSES.
+#
+# The returning player's fighter has to be right on EVERY screen, and the three screens
+# learn about it by three different mechanisms, so one process asserting is not evidence
+# about the other two:
+#
+#   the referee  wrote the value itself (`main.gd::_apply_reclaimed_picks` reads
+#                `picks_for()`, which is host-side state and correct there by
+#                construction). It is the control: if the HOST is wrong, nothing
+#                downstream can be right.
+#   the dropper  rebuilt `Main.tscn` from nothing, so every body it has arrived through
+#                the spawner plus the late-joiner catch-up. This is the player's own
+#                screen and the one in the report.
+#   the anchor   never left. It owns neither the node nor the session for that seat, which
+#                is exactly the peer class `main.gd`'s B-145 note measured reading -1 while
+#                the host and the owner both read the right value.
+#
+# ⚠️ WATCHED RATHER THAN SAMPLED ON A CLOCK. The interesting transition is `is_bot` going
+# true and then false again on one body, and it lands somewhere inside a ~20 s window
+# whose position depends on how long a scene load takes on the day. A fixed sample would
+# report whichever side of it the machine happened to be on.
+# =============================================================================
+
+## True once this process has seen the dropper's seat handed to a bot, which is what makes
+## a later `is_bot == false` a RECLAIM rather than the original human still sitting there.
+var _saw_bot_hold: bool = false
+## Guards the assertion to one shot: it is a statement about an event, not about a state
+## that can be re-read, and re-running it every tick would multiply one finding into twenty.
+var _reclaim_checked: bool = false
+
+func _watch_dropper_seat(tag: String) -> void:
+	if _reclaim_checked or _expect_character == "":
+		return
+	var body := _body_named(DROPPER_NAME)
+	if body == null:
+		return
+	if body.is_bot:
+		if not _saw_bot_hold:
+			_saw_bot_hold = true
+			# ⚠️ THE MIDDLE MEASUREMENT THE TASK ASKS FOR — what the seat wears while the
+			# bot has it. The prime hypothesis was that a bot stamps its OWN roster index
+			# onto the body it takes over; this line is what settles that, on the two
+			# processes still running while the human is away.
+			print("[%s] BOT-HOLDS %s" % [tag, _pick_line(body)])
+		return
+	if not _saw_bot_hold:
+		return # still the original human: the drop has not happened yet
+	_reclaim_checked = true
+	_assert_dropper_picks(tag)
+
+## The verdict, printed as one machine-readable line so `run_rejoin.ps1` can require it to
+## be PRESENT in each process's log rather than merely require no failures — a check that
+## never ran and a check that passed look identical to a grep for "FAIL".
+func _assert_dropper_picks(tag: String) -> void:
+	var body := _body_named(DROPPER_NAME)
+	if body == null:
+		print("[%s] RECLAIM-CHECK ok=false reason=no-body-named-%s" % [tag, DROPPER_NAME])
+		_check("%s: the returning player's body exists at all" % tag, false)
+		return
+	var want_person := CharacterRoster.index_of(StringName(_expect_character))
+	var got_person := body.character_index
+	var person_ok := got_person == want_person
+	print("[%s] RECLAIM-CHECK char=%d/%s expect=%d/%s ok=%s" % [
+		tag, got_person, _roster_name(got_person),
+		want_person, _roster_name(want_person), str(person_ok)])
+	print("[%s] %s" % [tag, _pick_line(body)])
+	_check("%s: the returning player is on their OWN fighter (%s), not %s" % [
+		tag, _roster_name(want_person), _roster_name(got_person)], person_ok)
+
+	# ⚠️ THE MODEL IS ASSERTED SEPARATELY FROM THE INDEX, AND THAT IS THE POINT. They are
+	# written by different code on different triggers, so a run in which the index is right
+	# and the mesh is the bot's would otherwise report a clean PASS while the player is
+	# still looking at the wrong person.
+	var visual: Node = body.get_node_or_null("Visual")
+	var want_entry := CharacterRoster.at(want_person)
+	if visual != null and want_entry.has("model"):
+		var model := String(visual.get("_current_key"))
+		var material := String(visual.get("_current_material_key"))
+		_check("%s: ...and the MODEL on screen is that fighter's" % tag,
+			model == String(want_entry["model"]))
+		_check("%s: ...and so is the palette" % tag,
+			material == String(want_entry["material"]))
+
+	# ⚠️ THE PROP PICKS RIDE THE SAME `picks_for()` DICTIONARY as the character, one packet
+	# and one host-side table, so they are checked here rather than in a run of their own.
+	# Skipped — reported, not failed — on a peer that has not been sent the table; see
+	# `_seat_props()`.
+	var props := _seat_props(body.player_slot)
+	if props.is_empty():
+		print("[%s] RECLAIM-PROPS <none on this peer>" % tag)
+		return
+	var want_can := CharacterRoster.index_in(CharacterRoster.CANS, StringName(_expect_can))
+	var want_slipper := CharacterRoster.index_in(
+		CharacterRoster.SLIPPERS, StringName(_expect_slipper))
+	var got_can := int(props.get("can", -1))
+	var got_slipper := int(props.get("slipper", -1))
+	print("[%s] RECLAIM-PROPS can=%d expect=%d slipper=%d expect=%d ok=%s" % [
+		tag, got_can, want_can, got_slipper, want_slipper,
+		str(got_can == want_can and got_slipper == want_slipper)])
+	if want_can >= 0:
+		_check("%s: the returning player's own LATA came back" % tag, got_can == want_can)
+	if want_slipper >= 0:
+		_check("%s: the returning player's own TSINELAS came back" % tag,
+			got_slipper == want_slipper)
 
 # =============================================================================
 # ⚠️⚠️ § THE THREE VERBS, ASSERTED AS STATE. 🧑 2026-08-02: *"no throw, no getting
