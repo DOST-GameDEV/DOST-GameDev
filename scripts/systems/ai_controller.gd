@@ -311,10 +311,45 @@ const UNSTICK_TIME: float = 0.65
 ## How long a written intent stays readable on the shared board (§ SPACING).
 const CLAIM_TTL: float = 1.2
 
-## Idle repositioning: a bot with nothing to do drifts along the ring rather than
-## standing at attention. Small, slow, and it is most of "these look alive".
-const LOITER_SPEED: float = 0.55
-const LOITER_PERIOD: float = 5.5
+## Idle repositioning: a bot with nothing to do shifts its weight rather than
+## standing at attention. See `_loiter()`.
+##
+## ⚠️⚠️ THE OLD PAIR — `LOITER_SPEED 0.55`, `LOITER_PERIOD 5.5` — DESCRIBED A DRIFT THIS
+## FILE COULD NOT PRODUCE, AND THE GAP IS THE WHOLE BUG. 🧑 2026-08-02: *"idk why this ai
+## randomly just goes back and forth sometimes for like 10 seconds then throws, it feels
+## unnatural"*.
+##
+## `_drive()` NORMALISES its direction and emits DIGITAL presses — `move_left` is down or
+## it is not. There is no analogue magnitude anywhere in the chain, so a 0.55 speed scale
+## was multiplied in and then thrown away one line later. The bot loitered at the full
+## `CharacterBase.SPEED` of 4.6 m/s.
+##
+## At 4.6 m/s the old sine's duty cycle (|sin| >= 0.72, so ~1.34 s of every 5.5) is a
+## **6-metre strafe**, and that is what turned a fidget into pacing:
+##
+##   1. `_do_position()` runs `_goto(_goal, ARRIVE_SLOP)` and arrives.
+##   2.  drives sideways at full speed for 1.34 s.
+##   3. The bot is now far outside `ARRIVE_SLOP * ARRIVE_HYSTERESIS` (0.99 m), so the next
+##      frame `_goto()` clears `_arrived` and walks it back at full speed.
+##   4. It arrives. Go to 2.
+##
+## A closed loop, running for as long as the throw gate stays shut — which while the lata
+## is down is most of ten seconds. It was never a decision oscillating; it was one verb
+## fighting another over the same body.
+##
+## So the shuffle is bounded by DISTANCE now rather than described by a speed it cannot
+## have. `LOITER_LEASH` is the furthest it may stray from its anchor, and it is well
+## inside the 0.99 m that would re-trigger the walk-back — that margin is the fix, the
+## rest is what makes it read as a person.
+const LOITER_LEASH: float = 0.45
+## One sidestep, in seconds of held input: 0.07-0.13 s at 4.6 m/s is a 32-60 cm shift.
+const LOITER_STEP_MIN: float = 0.07
+const LOITER_STEP_MAX: float = 0.13
+## And how long it stands between them. Long, and RANDOM — a fixed period is a metronome,
+## which is the other half of what read as machine-like. Roughly a 5% duty cycle: mostly
+## still, occasionally adjusting, which is what someone waiting for a target actually does.
+const LOITER_REST_MIN: float = 1.1
+const LOITER_REST_MAX: float = 2.8
 
 ## ---------------------------------------------------------------------------
 ## § PERSONALITY — why three identical bots are not one bot drawn three times.
@@ -451,7 +486,10 @@ var _blundering: bool = false
 var _lunge_held: float = -1.0
 ## Who this bot guarded on the previous evaluation — see `_live_threat()`.
 var _last_threat: CharacterBase = null
-var _loiter_phase: float = 0.0
+## How long the current loiter beat has left, and which way it goes: -1, 0 (standing) or
+## +1 across the bearing out from the lata. Both are rolled fresh every beat by `_loiter()`.
+var _loiter_left: float = 0.0
+var _loiter_dir: float = 0.0
 var _stalk_time: float = 0.0
 var _stuck_time: float = 0.0
 var _unstick_left: float = 0.0
@@ -506,7 +544,7 @@ func decide(delta: float) -> void:
 		_windup = false
 		return
 	_observe(delta)
-	_loiter_phase += delta
+	_loiter_left = maxf(0.0, _loiter_left - delta)
 	_stalk_time = _stalk_time + delta if _plan == Plan.STALK else 0.0
 	_step_unstick(delta)
 	_think_left -= delta
@@ -544,7 +582,10 @@ func _boot() -> void:
 	# bots re-planning on the same frame is three bots changing direction on the
 	# same frame — the "they all move at the same time" report, in one line.
 	_think_left = randf() * _think
-	_loiter_phase = randf() * LOITER_PERIOD
+	# Standing, for a random slice of a rest, so four bots do not all take their first
+	# sidestep together.
+	_loiter_dir = 0.0
+	_loiter_left = randf() * LOITER_REST_MAX
 
 func _read_tuning() -> void:
 	_stamp = tuning_stamp
@@ -702,7 +743,21 @@ func _plan_attacker(delta: float) -> Plan:
 	if not character.holding_slipper():
 		var mine := _my_slipper()
 		if mine == null:
-			return Plan.IDLE
+			# ⚠️⚠️ NOT `Plan.IDLE` — 🧑 2026-08-02, with a screenshot of two attackers
+			# standing in the street: *"ai bug, when the slippers are all thrown or smth
+			# sometimes they js wait outside the box like this"*.
+			#
+			# `_my_slipper()` answers null in exactly one situation: nothing is LOOSE and
+			# nothing this bot threw is in the air. That is not a rare state — it is what
+			# the court looks like for the seconds after a volley, when the other three
+			# slippers are in somebody's hand or still flying. `Plan.IDLE` is `_loiter()`,
+			# so all it did was shuffle on the spot until a slipper happened to land.
+			#
+			# There IS something to do: get to where the next slipper will come down. A
+			# loose slipper belongs to whoever reaches it (that is what
+			# `HUMAN_SLIPPER_BIAS` is about), so the run starts before it lands or it
+			# starts last. `_do_position()` handles the empty-handed case explicitly.
+			return Plan.POSITION
 		if mine.is_flying():
 			# ⚠️ WALK TO WHERE IT WILL LAND, not to where it is. This is most of the
 			# missing ground in §6.7: after a throw the old bot had no slipper, no
@@ -917,12 +972,29 @@ func _do_position() -> void:
 		# Waiting for my own throw to resolve: walk to where it will come down, so
 		# the retrieval starts from the right side of the court.
 		var mine := _my_slipper()
+		if mine == null:
+			# ⚠️ NOTHING IS FETCHABLE, SO GO WHERE ONE WILL BE. See `_plan_attacker()`'s
+			# note: `_my_slipper()` is null whenever every slipper is in a hand or in the
+			# air, and standing still through that window is the reported bug. The
+			# nearest slipper ALREADY IN FLIGHT is the one that becomes available first,
+			# whoever threw it — a landed slipper belongs to whoever gets there.
+			mine = _nearest_flying_slipper()
 		if mine != null and mine.is_flying():
 			var landing := _predicted_landing(mine)
 			if landing != Vector3.INF:
 				_goto(_pull_outside(landing, 0.4), ARRIVE_SLOP, false)
 				return
-		_loiter()
+		# ⚠️ STILL NOTHING IN THE AIR: WAIT ON THE THROWING RING, NOT WHEREVER YOU
+		# HAPPEN TO BE STANDING. `_loiter()` alone is what the screenshot caught — three
+		# empty-handed attackers milling about wherever their last plan left them, which
+		# from outside reads as the bots having given up. The ring is where the next verb
+		# starts from either way, so walking to it costs nothing and is never wrong.
+		if not _goal_valid:
+			_goal = _throw_spot()
+			_goal_valid = true
+		_goto(_goal, ARRIVE_SLOP, false)
+		if _arrived:
+			_loiter()
 		return
 	if not _goal_valid:
 		_goal = _throw_spot()
@@ -1442,6 +1514,25 @@ func _claim(bearing: float) -> void:
 ## Falls back to the nearest loose slipper outright when the rule picks nothing —
 ## a bot with no claim and nothing else to do should still go and get one rather
 ## than stand still (§6.7).
+## The slipper in the air that will land nearest to this bot, whoever threw it.
+##
+## ⚠️ DELIBERATELY IGNORES OWNERSHIP AND CLAIMS, unlike `_my_slipper()`. This is only
+## reached when NOTHING is fetchable — so there is no claim to respect and no rival being
+## cut off, and the alternative is standing still. The claim scoring applies again the
+## moment the slipper is loose and `_my_slipper()` starts answering.
+func _nearest_flying_slipper() -> Slipper:
+	var best: Slipper = null
+	var best_d := INF
+	for node in get_tree().get_nodes_in_group("slippers"):
+		var slipper := node as Slipper
+		if slipper == null or not slipper.is_flying():
+			continue
+		var d := character.global_position.distance_to(slipper.global_position)
+		if d < best_d:
+			best_d = d
+			best = slipper
+	return best
+
 func _my_slipper() -> Slipper:
 	# ⚠️⚠️ A SLIPPER I THREW AND IS STILL IN THE AIR COMES FIRST, AND LEAVING THIS
 	# OUT COST HALF THE OFFENCE.
@@ -1908,22 +1999,56 @@ func _separation() -> Vector3:
 	return push
 
 ## A bot with nothing to do shifts its weight instead of standing at attention.
-## Slow, small, and per-bot out of phase — this is most of "they look alive", and
-## it costs one sine.
+##
+## ⚠️⚠️ LEASHED TO WHERE IT IS STANDING, AND THAT LEASH IS THE BUG FIX. The constants'
+## block has the mechanism in full; the short version is that the old sine drove a
+## 6-metre strafe, `_goto()` walked the bot back, and the two of them paced for as long as
+## the throw gate stayed shut. Nothing here may take the body further than `LOITER_LEASH`
+## from its anchor, so `_arrived` cannot flip and the loop cannot close.
+##
+## ⚠️ THE ANCHOR IS `_goal`, EXCEPT WHEN THAT IS STALE. Every caller but `_do_idle()` runs
+## `_goto()` and checks `_arrived` immediately before this, so `_goal` is this frame's and
+## the bot is already within `ARRIVE_SLOP` of it. An idle bot's `_goal` is left over from
+## whatever it was doing two verbs ago, and leashing to that would drag it across the
+## court — so anything out of arrival range anchors where the bot stands instead.
+##
+## ⚠️ AND THE BEATS ARE ROLLED, NOT PHASED. A sine gives every bot the same rhythm at a
+## different offset, which still reads as clockwork once you watch two of them. Each beat
+## here draws its own length and its own direction, so a bot can step twice the same way
+## or stand for three seconds, and four of them never fall into step.
 func _loiter() -> void:
-	var swing := sin(TAU * _loiter_phase / LOITER_PERIOD)
-	if absf(swing) < 0.72:
+	var here := character.global_position
+	var anchor := _goal if _flat(here, _goal) <= ARRIVE_SLOP else here
+	var out := here - anchor
+	out.y = 0.0
+	if out.length() > LOITER_LEASH:
+		# Past the leash. Come back and stand a while — deliberately NOT "step the other
+		# way", which is the alternation that made it look like pacing in the first place.
+		_loiter_dir = 0.0
+		_loiter_left = randf_range(LOITER_REST_MIN, LOITER_REST_MAX)
+		_drive(-out, false)
+		return
+	if _loiter_left <= 0.0:
+		if _loiter_dir == 0.0:
+			_loiter_dir = 1.0 if randf() < 0.5 else -1.0
+			_loiter_left = randf_range(LOITER_STEP_MIN, LOITER_STEP_MAX)
+		else:
+			_loiter_dir = 0.0
+			_loiter_left = randf_range(LOITER_REST_MIN, LOITER_REST_MAX)
+	if _loiter_dir == 0.0:
 		_stop()
 		return
 	var lata := RoundManager.lata
 	var pivot: Vector3 = lata.global_position if lata != null else Vector3.ZERO
-	var out := character.global_position - pivot
-	out.y = 0.0
-	if out.length() < 0.05:
-		out = Vector3.FORWARD
-	out = out.normalized()
-	var across := Vector3(-out.z, 0.0, out.x)
-	_drive(across * signf(swing) * LOITER_SPEED, false)
+	var radial := here - pivot
+	radial.y = 0.0
+	if radial.length() < 0.05:
+		radial = Vector3.FORWARD
+	radial = radial.normalized()
+	# Across the bearing out from the lata, so the shift never walks into or away from the
+	# thing this bot is lined up on.
+	var across := Vector3(-radial.z, 0.0, radial.x)
+	_drive(across * _loiter_dir, false)
 
 ## The nearest point outside the box, straight out along the bearing this bot is
 ## already on.

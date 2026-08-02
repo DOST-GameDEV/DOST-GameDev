@@ -107,10 +107,30 @@ unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 8
 
+; ⚠️⚠️ THE THREE KEY LABELS ARE 20px, NOT THE `HudCaption` LADDER'S 32 — 🧑 2026-08-02,
+; with the `[Q]` circled: *"make this thing smaller, it doesnt match the thing next to
+; it anymore"*. Exactly right, and it is a knock-on of the readability bump: the `Hud*`
+; sizes went 13/16 → 28/30 → 32 because the ROLE and NAME row was too small to read at a
+; glance, and these three inherited it because they were on the same variation.
+;
+; They are not the same kind of text. The identity row is read once a round from across
+; the room; a key cap is read beside the bar it operates, and it is only ever three or
+; four glyphs. At 32 it was taller than the 26px bar it sits next to, so the row grew to
+; the LABEL's height and the meter — the thing the row exists to show — looked like the
+; smaller of the two. 20 sits just inside the bar height, which is what makes the row
+; read as one control rather than as a word and a bar.
+;
+; ⚠️ AN EXPLICIT `font_size` OVERRIDE, NOT A NEW THEME VARIATION. The variations live in
+; `ui_theme.gd`, which is ART's file (same reason `hud.gd` builds its styleboxes in
+; code); filed for ART to promote to a `HudKeyCap` variation. Until then this must stay
+; on all three rows or they will disagree — `ui_layout_probe.gd::_report_you_card()`
+; sweeps every row set and will catch a fourth row that forgets it.
 [node name="GuardDashKeyLabel" type="Label" parent="Card/VBoxContainer/GuardDashRow"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"HudCaption"
+theme_override_font_sizes/font_size = 20
+vertical_alignment = 1
 text = "[SHIFT]"
 
 [node name="GuardDashBar" type="ProgressBar" parent="Card/VBoxContainer/GuardDashRow"]
@@ -137,6 +157,8 @@ visible = false
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"HudCaption"
+theme_override_font_sizes/font_size = 20
+vertical_alignment = 1
 text = "[?]"
 
 [node name="ChargeBar" type="ProgressBar" parent="Card/VBoxContainer/ChargeRow"]
@@ -156,6 +178,8 @@ visible = false
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"HudCaption"
+theme_override_font_sizes/font_size = 20
+vertical_alignment = 1
 text = "RIGHTING LATA"
 
 [node name="ResetChannelBar" type="ProgressBar" parent="Card/VBoxContainer/ResetChannelRow"]

@@ -700,6 +700,7 @@ func _start_local_test() -> void:
 	# asymmetry left and it is pre-existing", and tools/input_probe.gd measured the
 	# consequence (2 units answering one keypress, 3 after two Tabs).
 	for character in _local_roster:
+		character.is_bot = character != human
 		_attach_ai(character, character != human)
 		# Follow targets for the spectator's `Tab`. Single Player builds its four units
 		# from the scene rather than through `_build_networked_character`, so the group
@@ -1283,6 +1284,7 @@ func _rpc_client_ready_for_spawn() -> void:
 ## every ready gate and every late join cannot reshuffle a match in progress.
 func _refresh_ai_prop_picks() -> void:
 	var seats := _seat_characters()
+	_release_bot_picks_colliding_with_humans(seats)
 	var taken: Array[int] = []
 	for slot in range(NetworkManagerScript.MAX_PLAYERS):
 		var who: CharacterBase = seats.get(slot)
@@ -1307,6 +1309,50 @@ func _refresh_ai_prop_picks() -> void:
 		if visual != null and visual.has_method("apply"):
 			visual.apply(who.is_person, who.is_can, who.player_slot)
 
+
+## ⚠️⚠️ SENDS A BOT BACK TO -1 IF IT IS WEARING A HUMAN'S PERSON, so the dealer below
+## re-fills it. New 2026-08-02, and it is what makes dealing bots at spawn safe.
+##
+## `_fill_empty_slots_with_placeholders()` now deals AI seats the moment they spawn, so
+## their names exist from the first frame instead of appearing at the ready gate (see that
+## function's note — it is the multiplayer names fix). But it runs inside `_start_hosting()`,
+## before a single client has connected, so the dealer cannot yet see which Persons the
+## humans took: a bot can quite legitimately be given the face somebody picks later.
+##
+## The old dealer could not fix that. It is idempotent by design — `character_index >= 0`
+## is skipped — which is what stops a re-run reshuffling a match in progress, and it also
+## means a wrong early guess would stick for the whole match. Releasing the collision
+## first keeps both properties: a bot that is NOT clashing is still never touched again, and
+## a bot that IS gets re-dealt from the same deterministic spread, this time with the human
+## picks in `taken`.
+##
+## ⚠️ THE HUMAN IS NEVER THE ONE MOVED, even though the collision is symmetric. Their pick
+## came from the CHARACTER screen and is the one choice in this function anybody made on
+## purpose.
+func _release_bot_picks_colliding_with_humans(seats: Dictionary) -> void:
+	var human_picks: Array[int] = []
+	for slot in seats:
+		var who: CharacterBase = seats[slot]
+		if who == null or not is_instance_valid(who):
+			continue
+		# ⚠️ `is_bot or is_ai_driven()` — the same pair `display_name()` asks, and for the
+		# same reason: `is_bot` is intent set by `call_local` RPCs on every peer, and
+		# `is_ai_driven()` catches Single Player and the Tab switcher, which never go
+		# through those RPCs. Asking only one of them misclassifies a seat in one mode.
+		if who.is_bot or who.is_ai_driven():
+			continue
+		if who.character_index >= 0:
+			human_picks.append(who.character_index)
+	if human_picks.is_empty():
+		return
+	for slot in seats:
+		var who: CharacterBase = seats[slot]
+		if who == null or not is_instance_valid(who):
+			continue
+		if not (who.is_bot or who.is_ai_driven()):
+			continue
+		if who.character_index in human_picks:
+			who.character_index = -1
 
 ## Roster indices the four seats reach for first, spread across the twelve rather
 ## than taken in order. 0/1/2/3 would deal the four Persons the roster happens to
@@ -2038,6 +2084,28 @@ func _build_spawn_data(peer_id: int, index: int) -> Dictionary:
 		"is_defender": is_defender,
 		"player_slot": slot,
 		"player_id": slot + 1,
+		# ⚠️⚠️ THE NAME RIDES THE SPAWN PACKET, AND WITHOUT IT EVERY CLIENT WAS "P2".
+		# 🧑 2026-08-02: *"only host has name, everyone else that joins is p1 p2 p3 etc"*.
+		#
+		# `_build_networked_character` used to read the name from
+		# `NetworkManager.picks_for()`, and that runs ON EVERY PEER — but `peer_characters`
+		# is HOST-ONLY state. A client's copy is empty by design (the same reason its copy
+		# of the three character indices is empty), so on every client the lookup missed
+		# for everybody and stamped `player_name = ""` on all four bodies. The host's own
+		# screen was the only place the dictionary had anything in it, which is exactly the
+		# shape of the report: one machine with names, every other machine with seat labels.
+		#
+		# It was healed afterwards by `_rpc_sync_picks`, which is why this was intermittent
+		# rather than total — a broadcast racing a spawn, with the empty string winning
+		# whenever the body arrived last.
+		#
+		# ⚠️ AND THIS IS THE FIX THIS FILE ALREADY WORKED OUT ONCE, for `character_index`:
+		# see `_fill_empty_slots_with_placeholders()`. Put the value in the spawn packet and a peer
+		# that joins, re-joins or arrives late gets it WITH the body, by the same mechanism
+		# that gives it the body. Resolved here because this function only ever runs on the
+		# host, which is the one place the answer is known.
+		"name": SettingsManagerScript.sanitise_name(
+			String(NetworkManager.picks_for(peer_id).get("name", ""))),
 	}
 
 func _fill_empty_slots_with_placeholders() -> void:
@@ -2048,6 +2116,35 @@ func _fill_empty_slots_with_placeholders() -> void:
 		var sentinel_peer_id := -1 - index
 		_spawned_peer_ids[sentinel_peer_id] = true
 		spawner.spawn(_build_spawn_data(sentinel_peer_id, index))
+	# ⚠️⚠️ THE BOTS ARE NAMED HERE, AT SPAWN, AND NOT ONLY AT THE READY GATE — 🧑
+	# 2026-08-02: *"fix multiplayer names showing up pls"*, with a scoreboard reading
+	# P1/P2/P3/P4 in a networked match while the same build named everyone correctly in
+	# Single Player.
+	#
+	# A bot's name IS its `character_index` (`CharacterBase._character_name()`), and until
+	# today the only place an AI seat was dealt one was `_rpc_begin_ready_countdown`. That
+	# is late: it is after the lobby, after the scene change, after every peer has pressed
+	# R — so for the whole of that window every bot on every screen answers the bare seat
+	# label, and the scoreboard behind the ready prompt says P2 and P4 because that is
+	# genuinely all it has been told.
+	#
+	# ⚠️ AND IT IS ALSO FRAGILE, WHICH IS THE HALF THAT PRODUCES "SOMETIMES". Dealing at
+	# the ready gate means every client learns the names from ONE `_rpc_sync_picks`
+	# broadcast plus an ON_CHANGE synchroniser update. Dealing them BEFORE the spawn puts
+	# `character_index` in the spawn packet itself (`CharacterBase.tscn` marks it
+	# `spawn = true`), so a client that joins, re-joins or arrives late gets the name with
+	# the body, by the same mechanism that gives it the body. Single Player never had the
+	# bug because `_build_local_roster` deals its bots inline — this makes the networked
+	# path do what the working path already did.
+	#
+	# ⚠️ THE COLLISION IT RISKS IS HANDLED IN `_refresh_ai_prop_picks` ITSELF. No client has
+	# identified yet at `_start_hosting()` time, so a bot dealt now can take the Person a
+	# human picks thirty seconds later. That is exactly why the deal used to wait. The
+	# dealer re-runs at the ready gate and now RELEASES any bot wearing a human's pick
+	# before it fills the gaps — so the early deal is a good guess that gets corrected,
+	# rather than a claim that sticks.
+	if NetworkManager.is_host():
+		_refresh_ai_prop_picks()
 
 ## B-76. Picks the ability class a Prop should carry THIS round, given its
 ## role (is_can) and team. Never cached on the caller's side — call this again
@@ -2081,8 +2178,19 @@ func _build_networked_character(data: Dictionary) -> Node:
 	var person := int(picks.get("character", -1))
 	if person >= 0:
 		character.character_index = person
+	# ⚠️⚠️ FROM THE SPAWN PACKET, NOT FROM `picks` — see `_build_spawn_data`'s note. This
+	# function runs on EVERY peer and `peer_characters` is host-only state, so the old
+	# `picks.get("name")` read an empty dictionary on every machine except the host's and
+	# every joiner came out as their bare seat label. `picks` is still right for
+	# `character_index` above, because that one is ALSO carried in the replicated spawn
+	# state (`CharacterBase.tscn` marks it `spawn = true`) and heals itself; the name is
+	# not, so it has to be handed over explicitly.
+	#
+	# ⚠️ THE FALLBACK IS `picks`, NOT "". A host running a build of this file older than
+	# the packet change would send no `name` key at all, and falling back to the empty
+	# string would silently reintroduce the bug rather than degrade to the old behaviour.
 	character.player_name = SettingsManagerScript.sanitise_name(
-		String(picks.get("name", "")))
+		String(data.get("name", picks.get("name", ""))))
 	var peer_id: int = data["peer_id"]
 	var is_ai := peer_id < 0
 	character.set_multiplayer_authority(1 if is_ai else peer_id)
@@ -2095,6 +2203,7 @@ func _build_networked_character(data: Dictionary) -> Node:
 		var reclaim_peer: int = _pending_reclaims[index]
 		_pending_reclaims.erase(index)
 		_apply_reclaim.call_deferred(character, index, reclaim_peer)
+	character.is_bot = is_ai
 	if is_ai and NetworkManager.is_host():
 		_attach_ai(character)
 	# Follow targets for the spectator's `Tab`.
@@ -2643,6 +2752,11 @@ func _rpc_convert_to_ai(index: int) -> void:
 	_spawned_characters[sentinel_peer_id] = character
 	_peer_slots[sentinel_peer_id] = character.player_slot
 	_spawned_peer_ids[sentinel_peer_id] = true
+	# ⚠️ SET ON EVERY PEER, UNLIKE THE CONTROLLER BELOW. `_attach_ai` is host-only
+	# because the host runs AI physics; the NAME this seat draws is not a host concern
+	# and must be identical on every screen, a spectator's included. See
+	# `CharacterBase.is_bot`.
+	character.is_bot = true
 	if NetworkManager.is_host() and character.ai_controller == null:
 		_attach_ai(character)
 	# The departing peer's own machine is gone, so this is really about the OTHER
@@ -2773,6 +2887,7 @@ func _apply_reclaim(character: CharacterBase, index: int, new_peer_id: int) -> v
 			_peer_slots.erase(old_peer_id)
 			_spawned_peer_ids.erase(old_peer_id)
 			break
+	character.is_bot = false
 	if character.ai_controller != null:
 		character.ai_controller.queue_free()
 		character.ai_controller = null

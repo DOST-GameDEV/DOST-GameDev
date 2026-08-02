@@ -15,7 +15,7 @@ config/description="4-player tumbang preso. One taya guards the lata, three atta
 config/version="4.68"
 run/main_scene="res://scenes/ui/SplashScreen.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
-config/icon="res://icon.svg"
+config/icon="res://icon.png"
 
 [autoload]
 
@@ -33,6 +33,11 @@ DebugPlayerSwitcher="*res://scripts/systems/debug_player_switcher.gd"
 
 window/size/viewport_width=1920
 window/size/viewport_height=1080
+; 4 == EXCLUSIVE_FULLSCREEN. The exported build was windowed-only and had no key to
+; escape it; see settings_manager.gd's FULLSCREEN block for why exclusive and not the
+; borderless kind. Set here as well as in code so the window never opens windowed for
+; a frame, and so a player who has never touched the panel still gets fullscreen.
+window/size/mode=4
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 
@@ -45,6 +50,11 @@ theme/custom="res://assets/ui/tumbang_preso.tres"
 ready_up={
 "deadzone": 0.5,
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":82,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
+toggle_fullscreen={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194342,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
 ]
 }
 jump={

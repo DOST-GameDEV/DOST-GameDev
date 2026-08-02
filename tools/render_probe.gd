@@ -133,10 +133,23 @@ func _build_viewmodel() -> void:
 	add_child(ground)
 	ground.position = Vector3(0, -0.5, 0)
 
+	# ⚠️⚠️ THE SLIPPER AND THE CAN ARE THEIR OWN SCENES NOW, NOT `CharacterBase`
+	# INSTANCES — 2026-08-02. All three units here used to come off
+	# `CharacterBase.tscn` with `is_person`/`is_can` flags flipped, because that is
+	# genuinely what they were: a prop was a character that happened not to walk.
+	# 3abc019 split them into `Slipper` and `Lata` (plain Node3D props), so building
+	# them from the character scene produced units with no mesh, no collider and no
+	# `apply_skin()` — and the `Carriable` grab below could not compile at all.
 	var scene := load("res://scenes/characters/CharacterBase.tscn") as PackedScene
 	add_child(_unit(scene, "P", true, false, 0, 1, Vector3(0, 0.8, 0)))
-	add_child(_unit(scene, "S", false, false, 0, 3, Vector3(1.5, 0.8, 0)))
-	add_child(_unit(scene, "C", false, true, 1, 4, Vector3(0, 0.8, -4.0)))
+	var slipper := (load("res://scenes/objects/Slipper.tscn") as PackedScene).instantiate() as Slipper
+	slipper.name = "S"
+	slipper.position = Vector3(1.5, 0.8, 0)
+	add_child(slipper)
+	var can := (load("res://scenes/objects/Lata.tscn") as PackedScene).instantiate() as Lata
+	can.name = "C"
+	can.position = Vector3(0, 0.8, -4.0)
+	add_child(can)
 
 	_side_cam = Camera3D.new()
 	_side_cam.fov = 45.0
@@ -213,8 +226,7 @@ func _process(_delta: float) -> void:
 		# The real host-side transition, not a hand-set state — host_grab() is
 		# what disables the slipper's collision (_set_physics_enabled), and
 		# without it the two capsules depenetrate and launch the pair skyward.
-		var slipper := get_node("S") as CharacterBase
-		(slipper.get_node("Carriable") as Carriable).host_grab(get_node("P") as CharacterBase)
+		(get_node("S") as Slipper).host_grab(get_node("P") as CharacterBase)
 	if _frames == 50:
 		(get_node("P/CameraRig") as CameraRig).set_active(true)
 	if _frames == 70:

@@ -81,10 +81,21 @@ function Start-Probe {
 
 # The handoff's own command line, unwrapped. No probe, no -s: this exists to
 # prove the documented invocation is the one that works.
+#
+# ⚠️⚠️ IT SAYS MatchSetup.tscn NOW, AND THE CHANGE IS THE POINT OF THIS SCENARIO. It named
+# `Main.tscn` when written, before §2 of docs/Dedicated_Server_Deployment.md established
+# that that form is WRONG: main.gd also understands --dedicated, so the server starts,
+# binds both ports and accepts connections while sitting inside a running match — every
+# pool row reads "in a match" before anyone joins, and joiners are routed into a live game
+# with no seat to pick. This scenario existed to prove the documented line works, so
+# leaving it on the disproven line made it prove the opposite.
+#
+# It is also what the deployed systemd unit runs, which is the thing worth pinning: if
+# these two ever disagree again, this check is where it surfaces.
 function Start-DocumentedServer {
     param([int]$Port, [string]$Log)
     $argv = @('--headless', '--path', ('"' + $Project + '"'),
-              'res://scenes/main/Main.tscn', '--', '--dedicated', ('--port=' + $Port))
+              'res://scenes/ui/MatchSetup.tscn', '--', '--dedicated', ('--port=' + $Port))
     $p = Start-Process -FilePath $Godot -ArgumentList $argv -PassThru `
         -RedirectStandardOutput $Log -RedirectStandardError ($Log + '.err')
     $script:Procs += $p
@@ -339,7 +350,15 @@ Add-Check 'dedicated: the server was told to the client (is_dedicated crosses th
 Add-Check 'dedicated: server counts three seated humans'      3 (Get-Field $sState 'seated')
 Add-Check 'dedicated: a client counts the referee OUT (seated)'  3 (Get-Field $aState 'seated')
 Add-Check 'dedicated: a client counts the referee OUT (playing)' 3 (Get-Field $bState 'playing')
-Add-Check 'dedicated: the REMATCH denominator excludes the referee' 3 (Get-Field $dState 'voting')
+# ⚠️ THE REMATCH DENOMINATOR IS NOT ASSERTED HERE ANY MORE, because it cannot be: it is
+# read off `match_result.gd`, which only exists once a match has been played, and this
+# scenario now keeps the referee in the WAITING ROOM where it belongs (see the probe's
+# ⚠️⚠️ on MATCH_SETUP_PATH). The field reads `-` in the lobby, and asserting 3 against it
+# was testing the harness's old arrangement rather than the product.
+#
+# The referee exclusion it was guarding is still asserted two lines up, by `seated` and
+# `playing` — the same predicate (`is_seatless_referee`) feeds all three. The voting path
+# specifically is covered where a match actually runs: tools/net/run_dedicated_match.ps1.
 
 Write-Host '  -- the leader leaves (two candidates remain)'
 New-Item -ItemType File -Path $aLeave -Force | Out-Null
@@ -397,23 +416,22 @@ Wait-ForPattern $sLog '^NETPROBE S EVENT .*leader=0\s*$' 60 'the role never retu
 # that change: `players=0 occupied=0 in_progress=true` for as long as anyone watched, and
 # HOST ONLINE could never claim it again.
 #
-# ⚠️⚠️ SO WAIT FOR THE RECYCLE ITSELF, NOT FOR AN EMPTY ROOM. `peers=- tokens=-` is now
-# ALSO the state a dedicated server boots into, so waiting on it matches the FIRST line of
-# the log and the suite then samples the middle of the run — measured: it matched at line 5
-# of 58 and reported a peer still seated. The old pattern used a non-empty token list as
-# the discriminator; now that an abandoned lobby clears those too, the only unambiguous
-# signal is the server announcing the recycle.
+# ⚠️⚠️ BUT NOT IN THIS SCENARIO ANY MORE. Recycling is a MATCH-END behaviour: it is
+# triggered from `main.gd`, which only runs once a match has started, and this scenario now
+# keeps the referee in the waiting room for the whole run (see the probe's ⚠️⚠️ on
+# MATCH_SETUP_PATH). There is nothing here to recycle — the lobby never left the room it
+# would be returning to — so waiting for the announcement times out on healthy code.
 #
-# Deliberately matched on ASCII only — the message contains an em dash, and the log is not
-# read back as UTF-8 on this machine.
-Wait-ForPattern $sLog 'dedicated lobby recycled' 30 'the abandoned lobby never recycled' | Out-Null
-# ⚠️ AND THEN WAIT FOR THE NEXT SAMPLE, because the announcement and the probe's periodic
-# STATE line are not the same event. The probe samples every ~0.25 s, so the recycle
-# message reliably lands BEFORE the first state line that reflects it — measured: the wait
-# above returned and `Get-LastState` still read a pre-recycle line holding three tokens.
-# This is not a blind sleep: it waits for a specific observation (a sample showing the
-# emptied room) rather than for a duration.
-$deadline = (Get-Date).AddSeconds(15)
+# Recycling is asserted where a match actually runs: tools/net/run_dedicated_recycle.ps1,
+# which plays a match, abandons it, and proves `in_progress` goes back to false and a second
+# client can claim the lobby.
+#
+# ⚠️ SO peer_tokens SURVIVES HERE, and that is the original B-65 contract rather than a
+# regression: a referee sitting in its waiting room keeps what it knows about a peer that
+# dropped, so the peer can come back to its seat. Wait for the room to empty by polling the
+# probe's own samples — `peers=-` alone cannot be pattern-matched, because it is also the
+# state a server boots into.
+$deadline = (Get-Date).AddSeconds(20)
 while ((Get-Date) -lt $deadline) {
     if ((Get-Field (Get-LastState $sLog 'S') 'peers') -eq '-') { break }
     Start-Sleep -Milliseconds 250
@@ -424,12 +442,12 @@ $sState  = Get-LastState $sLog 'S'
 Add-Check 'dedicated: role returns to 0 when the last peer leaves' 0 $sEvents[3]
 Add-Check 'dedicated: exactly four leader changes over the run'    4 $sEvents.Count
 Add-Check 'dedicated: the empty lobby seats nobody'              '-' (Get-Field $sState 'peers')
-# ⚠️ THE ABANDONED LOBBY MUST FORGET, so that it is claimable again rather than a room
-# holding three ghosts and an old code. This is the assertion that would have caught the
-# 2026-08-02 outage, where a lobby everyone had left kept advertising `in_progress=true`
-# and HOST ONLINE could never take it — with only one lobby deployed, that stopped hosting
-# working for everybody until an operator restarted the service.
-Add-Check 'dedicated: an abandoned lobby clears its tokens and recycles' '-' (Get-Field $sState 'tokens')
+# Documented behaviour, asserted so a "tidy up on disconnect" change trips here:
+# peer_tokens deliberately outlives a departure so a reconnecting peer keeps its slot
+# (B-65). See peer_tokens' own doc, and the ⚠️ above for why this scenario — which never
+# starts a match — is the one where that contract still holds.
+Add-Check 'dedicated: peer_tokens survives departure (B-65 rejoin)' `
+    (Get-IdSet ($aId + ',' + $bId + ',' + $dId)) (Get-IdSet (Get-Field $sState 'tokens'))
 
 # The header's promise is about EVERY moment, not the moments sampled above.
 $selfSeated = @(Get-ProbeLines $sLog 'S' 'STATE' | Where-Object {
@@ -491,7 +509,11 @@ $cState = Get-LastState $cLog 'C'
 Add-Check 'listen: the client is NOT told it is a dedicated lobby' 0 (Get-Field $cState 'dedicated')
 Add-Check 'listen: host counts itself plus the client'     2 (Get-Field $hState 'seated')
 Add-Check 'listen: the client still counts the HOST as a player' 2 (Get-Field $cState 'seated')
-Add-Check 'listen: the REMATCH denominator still includes the host' 2 (Get-Field $cState 'voting')
+# ⚠️ NOT ASSERTED HERE, for the same reason as the dedicated scenario's: `voting` comes off
+# `match_result.gd`, which only exists after a match, and both ends now stay in the waiting
+# room. The counterpart property — that a listen host IS counted, unlike a dedicated
+# referee — is still asserted by the `seated` and `playing` checks above, which read the
+# same `is_seatless_referee` predicate.
 
 # ==========================================================================
 Write-Host ''
@@ -502,10 +524,28 @@ $dLog = Join-Path $LogDir 'documented-server.log'
 $eLog = Join-Path $LogDir 'documented-client-E.log'
 
 Start-DocumentedServer $P_DOCUMENTED $dLog | Out-Null
-# `_load_map()` runs inside the same `_ready()` as `_start_hosting()`, a couple
-# of lines earlier -- so its print is the last observable thing before the socket
-# opens, and the only progress signal a non-probe server gives.
-Wait-ForPattern $dLog '\[main\] playable extent' 90 'the documented command never reached Main._ready' | Out-Null
+# ⚠️ A WAITING-ROOM SERVER NEVER PRINTS `[main] playable extent`, and that is correct.
+# That line comes from `_load_map()` inside `Main._ready()`, which was the only progress
+# signal a non-probe server gave while this scenario still launched `Main.tscn`. Booting
+# the documented `MatchSetup.tscn` means Main never runs, so the wait timed out on a server
+# that was up and listening.
+#
+# There is no equivalent print in the waiting room, so wait on the thing that actually
+# matters and that this scenario exists to prove: the UDP port being open. `Test-Bound`
+# below polls the socket, which is also the check `lobby-pool.sh status` and
+# tools/server/install.sh use -- "active" is not "listening", and only one of them is
+# worth asserting.
+$deadline = (Get-Date).AddSeconds(90)
+$bound = $false
+while ((Get-Date) -lt $deadline) {
+    if (Get-NetUDPEndpoint -LocalPort $P_DOCUMENTED -ErrorAction SilentlyContinue) { $bound = $true; break }
+    Start-Sleep -Milliseconds 500
+}
+if (-not $bound) {
+    Add-Check 'documented: the command binds its UDP port' $true $false
+} else {
+    Add-Check 'documented: the command binds its UDP port' $true $true
+}
 Start-Sleep -Seconds 2
 
 Start-Probe 'E' @("--probe-role=client", "--probe-tag=E", "--probe-port=$P_DOCUMENTED",
@@ -515,7 +555,7 @@ $eId = Get-Field $eJoined 'self'
 Wait-ForPattern $eLog '^NETPROBE E EVENT ' 60 'the documented server handed out no lobby leader' | Out-Null
 $eEvents = @(Get-LeaderEvents $eLog 'E')
 $eState  = Get-LastState $eLog 'E'
-Add-Check 'documented: `Main.tscn -- --dedicated --port=` accepts a connection' 1 (Get-Field $eState 'net')
+Add-Check 'documented: `MatchSetup.tscn -- --dedicated --port=` accepts a connection' 1 (Get-Field $eState 'net')
 Add-Check 'documented: the first peer is made lobby leader'                 $eId $eEvents[0]
 Add-Check 'documented: that peer reports is_lobby_leader()'                 1    (Get-Field $eState 'isleader')
 
