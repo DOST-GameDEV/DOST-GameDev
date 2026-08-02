@@ -27,9 +27,30 @@ round logic, still answers `is_host()`, and simply does not enter itself into
 `connected_peer_ids` — so all four seats stay available to humans, filled by AI
 until they arrive.
 
-Players reach a specific lobby by typing `<vm-ip>:<port>` into the join field.
-`multiplayer_setup.gd::split_address()` splits host from port, so `203.0.113.9:8913`
-reaches the fourth lobby in the pool. A bare address falls back to 8910.
+### What a player actually does
+
+Nobody types an IP. On the MULTIPLAYER screen:
+
+* **HOST ONLINE** takes an idle server out of the pool and drops that player in as
+  lobby leader. The lobby then shows them a four-character code to read out.
+* **JOIN** takes that code. `server_query.gd::resolve_code()` turns it into an
+  address by matching it against what the pool answered.
+* **ONLINE SERVERS** lists the pool — `SERVER 3 · 2/4 · ESKINITA · IN THE LOBBY`.
+  Codes are deliberately **not** shown in that list; see the ⚠️ in
+  `multiplayer_setup.gd::_refresh_online_browser`.
+
+Typing `<vm-ip>:<port>` still works and is the fallback when something is wrong:
+`split_address()` splits host from port, so `203.0.113.9:8913` reaches the fourth
+lobby in the pool, and a bare address falls back to 8910. It is also the only one
+of the four that does not depend on the status-query socket, which makes it the
+right thing to try first when the pool looks dead.
+
+"Hosting online" is a claim, not a launch. The eight processes are already
+running; HOST ONLINE picks one reporting `players == 0` and `in_progress == false`,
+and the leader role goes to the first peer that identifies. So the number of
+people who can host **at the same time** is the pool size, not the player count —
+§7 is therefore a question about how many simultaneous hosts you want, not just
+how much RAM you have.
 
 ---
 
@@ -76,6 +97,48 @@ instead.
 If you only remember one diagnostic from this document: a lobby that is up but
 not listening is almost always the missing scene path. `lobby-pool.sh status`
 prints `BOUND=NO` next to a live PID for exactly that case.
+
+---
+
+## 2b. ⚠️ The half nobody remembers: pointing the GAME at the VM
+
+Standing up the pool is only one end of it. **The client build has to be told
+where the pool is**, and that is a constant in the game, not a setting on the box:
+
+```gdscript
+# scripts/systems/server_query.gd
+const POOL_ADDRESS: String = ""   # <- put the VM's public IP or hostname here
+```
+
+It ships **empty**, deliberately — there is no VM yet, and a constant pointing at
+somebody's old test box would be worse than one pointing nowhere. But until it is
+filled in, three of the four ways into a game are dead:
+
+| With `POOL_ADDRESS` empty | What the player sees |
+| --- | --- |
+| HOST ONLINE | *"This build has no online server address in it yet…"* |
+| ONLINE SERVERS | button reads `ONLINE SERVERS · UNAVAILABLE` |
+| a four-character code | *"Join codes need the online servers…"* |
+| typing `<vm-ip>:<port>` | **works** — it never asks the pool |
+
+This is why the screen names the unconfigured case explicitly instead of sitting
+on *searching…*: an empty constant and a dead VM look identical from the player's
+side, and only one of them is worth debugging the network over.
+
+**So a deployment is two artefacts, not one:** the pool running on the VM, and a
+build of the game with the VM's address compiled into it. Change the VM's IP and
+every existing build stops finding it — which is the argument for a hostname you
+control rather than a raw IP, if you have one.
+
+Verify from a dev machine without touching the constant:
+
+```
+Godot_v4.7.1-stable_win64.exe --path . tools/ui/host_online_shot.tscn -- --pool=<vm-ip> %TEMP%\
+```
+
+`--pool=` overrides `POOL_ADDRESS` at runtime (see `_read_pool_override`). It
+exists for exactly this check and for local testing against `127.0.0.1`; it is
+not something a player ever passes.
 
 ---
 
@@ -548,13 +611,29 @@ sudo chmod +x /opt/tumbang-preso/godot
 
 # 6. Then join it from a real client at <vm-ip>:8910 — the only test that
 #    covers both firewalls. `nc -u -z` proves almost nothing about UDP.
+#    Type the ADDRESS for this one: it is the only path that does not depend
+#    on POOL_ADDRESS being set yet. §2b.
 
 # 7. Then the pool, then systemd.
+
+# 8. ⚠️ Then point the GAME at the box — §2b. Set POOL_ADDRESS in
+#    scripts/systems/server_query.gd to the VM's address and rebuild.
+#    Until this is done HOST ONLINE, the server browser and join codes are
+#    all switched off in every copy of the game, however healthy the pool is.
+
+# 9. Prove it from a client BEFORE handing builds out: press HOST ONLINE,
+#    read the four-character code off the lobby, and join it from a second
+#    machine on a DIFFERENT network — not a second window on the same one.
+#    Loopback and a shared router both skip the NAT this whole design exists
+#    to get around.
 ```
 
 Step 5 is not optional ceremony. Every silent failure in this document produces
 a process that looks fine; the only cheap thing that distinguishes a working
 lobby from a broken one is whether the UDP port is bound.
+
+Steps 8 and 9 are the two that get skipped because the pool looks finished
+without them. A pool nobody's build can see is indistinguishable from no pool.
 
 ---
 
@@ -577,6 +656,20 @@ this document are measurements and which are reading.
   `kill -9` produced `port 8965 exited with status 137` in that port's log and
   removed the pidfile; `stop` produced status 143 and released both ports; a
   second `stop` was a clean no-op; a bad `GODOT_BIN` failed preflight.
+- **The player's path, against two real dedicated lobbies on loopback**
+  (`tools/ui/host_online_shot.gd`): the browser listed both over a real UDP
+  round trip; HOST ONLINE picked the free one; the claiming peer became lobby
+  leader; and the code the lobby displayed (`56EH`, `T2WK`, … it is minted per
+  run) matched the code that server had advertised.
+
+### ⚠️ NOT verified, and it is the part that matters most
+
+**Nothing here has crossed a real network.** Every measurement above is
+loopback: no NAT, no packet loss, no MTU limit, sub-millisecond latency. The
+entire reason this design exists is to get four people on four home connections
+into one game, and that is precisely the condition not yet tested. Until step 9
+of §9 has been done from two different networks, treat "it works" as meaning
+"it works on one machine".
 
 ### Read from the source, not run
 
