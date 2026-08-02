@@ -88,6 +88,27 @@ const TRAIT_MIN: int = 1
 const TRAIT_MAX: int = 5
 const TRAIT_NEUTRAL: int = 3
 
+## ⚠️⚠️ THE LONGEST A NAME IN THIS FILE MAY BE, AND IT IS A RULE RATHER THAN A CLAMP.
+## 🧑 2026-08-02: *"try to resolve it so that character name length doesnt break shit
+## / actually just add a maximum character length for names"*, then *"lets not
+## truncate the names / lets js put a limit to how long names can be"*.
+##
+## The two are the same instruction and this is where it lands. Nothing clips a name
+## at draw time — a "LOLA PACIN…" on a card is the layout bug wearing a disguise, and
+## it gets found by a player rather than by a probe. Instead every name authored below
+## must fit, and `tools/bot_name_probe.tscn` fails the build if one does not.
+##
+## ⚠️ 14 IS `SettingsManagerScript.PLAYER_NAME_MAX`, NOT A SECOND NUMBER. Human names
+## have been sanitised to 14 since the settings screen shipped, and these names now sit
+## on the same rows as those (bots got names 2026-08-02) — the scoreboard, the toasts,
+## the role-swap cards. Two different caps on one row is how a layout gets tuned
+## against one and broken by the other.
+##
+## Longest today is LOLA PACING at 11, so this bounds a future addition rather than
+## anything currently here. It is the WORST CASE the UI is allowed to be designed
+## against; `role_swap_card.gd` autowraps so that even the worst case survives.
+const NAME_MAX: int = SettingsManagerScript.PLAYER_NAME_MAX
+
 ## Display metadata for the meters on the CHARACTER screen.
 ##
 ## ⚠️ THESE WERE `BILIS` / `LAKAS` / `TATAG` WITH THE ENGLISH AS A GLOSS UNDERNEATH,
@@ -446,7 +467,7 @@ const CANS: Array[Dictionary] = [
 	},
 	{
 		"id": &"metal",
-		"name": "LATANG KALAWANG",
+		"name": "KALAWANG",
 		# RESET 2 · REBOUND 5 · STANCE 3. Takes POWER 5 from BOYBEN 2026-08-02, which
 		# is where "heavy for its size" was always pointing: a solid ribbed tin is the
 		# one can that genuinely punishes a throw by sending the tsinelas somewhere

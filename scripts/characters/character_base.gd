@@ -408,6 +408,17 @@ enum State { NORMAL, STAGGERED, DOWNED }
 ## draws a name has to know whether one exists.
 @export var player_name: String = ""
 
+## ⚠️⚠️ "NO HUMAN IS BEHIND THIS SEAT", AS INTENT RATHER THAN AS A NODE LOOKUP.
+## Set inside `main.gd`'s `_rpc_convert_to_ai` / `_rpc_reclaim_character`, which are
+## `@rpc("authority", "call_local")` and therefore run on EVERY peer — unlike the
+## `AIController` those functions attach, which is guarded by `NetworkManager.is_host()`
+## and so exists on exactly one machine.
+##
+## That difference is the whole reason this exists: `display_name()` needs an answer
+## that is the same on the host, on every client and on a spectator, and
+## `is_ai_driven()` is only ever true on the host in a networked match.
+@export var is_bot: bool = false
+
 ## The name to actually draw. One function, so the scoreboard, the 3D nameplate, the
 ## YOU card and every toast cannot disagree about what an unnamed player is called.
 ##
@@ -442,8 +453,33 @@ enum State { NORMAL, STAGGERED, DOWNED }
 ## `character_index` is assigned in five places (`_rpc_reclaim_character` and the
 ## late-join table among them) so the label could move under a player mid-match. The
 ## seat number cannot move. Humans read exactly what they read before this feature.
+## ⚠️ NAMES ARE NOT TRUNCATED HERE. 🧑 2026-08-02: *"lets not truncate the names /
+## lets js put a limit to how long names can be"*. The limit is a RULE ON THE DATA
+## (`CharacterRoster.NAME_MAX`, asserted by `tools/bot_name_probe.tscn`), not a haircut
+## at draw time — a clipped "LOLA PACIN…" on the card would be the layout bug wearing
+## a disguise, and it would be found by a player instead of by the probe.
+##
+## ⚠️⚠️ IT ASKS `is_bot` FIRST, AND ON A CLIENT THAT IS THE ONLY THING THAT WORKS.
+## 🧑 2026-08-02: *"make sure multiplayer names work too"* / *"make sure everyone
+## including spectator sees names"*. The first version asked `is_ai_driven()` alone,
+## which is `ai_controller != null` — and `main.gd` attaches that controller behind
+## `if NetworkManager.is_host()`, in BOTH `_rpc_convert_to_ai` and
+## `_build_networked_character`. So on every peer that is not the host the node is
+## null, the seat did not look AI-driven, and the row fell back to `player_name`: a bot
+## wearing the name of the human who disconnected, on all the other screens, including
+## a spectator's. Exactly the bug the derivation was supposed to make impossible,
+## reintroduced by deriving from a mechanism instead of from intent.
+##
+## `is_bot` is that intent, and it is set inside the RPCs themselves — which are
+## `call_local` and therefore run on every peer — so all four screens agree without
+## depending on the synchroniser or on who owns the node.
+##
+## `is_ai_driven()` is still consulted because Single Player never goes through those
+## RPCs: it attaches a controller per seat directly, and `debug_player_switcher.gd`
+## flips `set_enabled()` on Tab without touching `is_bot`. Either being true means "no
+## human is driving this", which is the question being asked.
 func display_name() -> String:
-	if is_ai_driven():
+	if is_bot or is_ai_driven():
 		return _character_name()
 	return player_name if player_name != "" else "P%d" % [player_slot + 1]
 

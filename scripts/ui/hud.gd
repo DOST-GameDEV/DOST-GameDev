@@ -1160,7 +1160,40 @@ func _build_scoreboard() -> void:
 			var cell := row.get_node_or_null(cell_name) as Label
 			if cell != null:
 				cell.add_theme_color_override("font_outline_color", UiTheme.INK)
+		_widen_name_cell(row.get_node_or_null("Name") as Label)
 		_score_rows.append(row)
+
+## ⚠️⚠️ THE NAME COLUMN IS SIZED FROM THE CAP AND THE FONT, NOT TYPED IN. 🧑
+## 2026-08-02: *"make sure the 14 character names fit in the hud and if the name is
+## too short like CP it doesnt look ugly"*. Both ends, and they pull opposite ways:
+##
+##   TOO LONG — `HUD.tscn` authors this cell at 132 px, which was chosen when every
+##   row read "P1".."P4". A 14-character name (`CharacterRoster.NAME_MAX`) plus the
+##   trailing "  TAYA" needs roughly 190 px at font size 20, so the Label would
+##   overrun its column, push the right-aligned score out and ruin the one thing a
+##   scoreboard is for — four numbers readable at a glance, in a line.
+##
+##   TOO SHORT — a 2-character name like CP must NOT let the column collapse, or the
+##   score slides left on that row alone and the numbers stop forming a column. A
+##   FIXED width is what serves both: nothing moves, whatever the name.
+##
+## So the width is measured off the real theme font at the real size, for the longest
+## string this game can now produce. Typing "190" here would be correct until somebody
+## changes the font size in the scene, and then silently wrong — this cannot drift,
+## because it is derived from the same constant the probe enforces.
+##
+## "W" is the widest glyph in most faces, so `NAME_MAX` of them is the true worst case
+## rather than an average-case guess that a name like MMMMMM would beat.
+func _widen_name_cell(cell: Label) -> void:
+	if cell == null:
+		return
+	var font := cell.get_theme_font("font")
+	var font_size := cell.get_theme_font_size("font_size")
+	if font == null:
+		return
+	var worst := "W".repeat(CharacterRoster.NAME_MAX) + "  TAYA"
+	var needed := font.get_string_size(worst, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	cell.custom_minimum_size.x = maxf(cell.custom_minimum_size.x, ceilf(needed))
 
 ## ⚠️ `_score_cell()` IS DELETED AND ITS ONE LOAD-BEARING FACT MOVED INTO `HUD.tscn`.
 ## It built the Name/Score labels at runtime; the scene authors them now (§ CHECKLIST
@@ -1177,7 +1210,21 @@ func _build_scoreboard() -> void:
 func _refresh_scoreboard() -> void:
 	if _score_rows.is_empty():
 		return
-	var stamp := "%s|%d" % [str(MatchManager.scores), MatchManager.defender_slot]
+	# ⚠️⚠️ THE NAMES ARE PART OF THE STAMP, AND LEAVING THEM OUT WAS A REAL BUG.
+	# This gate exists so a scoreboard is not rebuilt every frame, and it keyed on
+	# scores and the taya alone — which was complete right up until a row could change
+	# for a THIRD reason. Bots took their characters' names on 2026-08-02, so a seat
+	# changing hands (a disconnect converting to AI, a rejoin reclaiming it, the Tab
+	# switcher) renames a row without touching a score: the board would have gone on
+	# showing the name of the human who left until somebody happened to score.
+	#
+	# `display_name()` is cheap and this is four calls on a change check that already
+	# stringifies an array, so the honest fix is to stamp what is actually drawn.
+	var names := PackedStringArray()
+	for slot in range(MatchManagerScript.PLAYER_COUNT):
+		names.append(seat_name(slot))
+	var stamp := "%s|%d|%s" % [str(MatchManager.scores), MatchManager.defender_slot,
+		"|".join(names)]
 	if stamp == _score_stamp:
 		return
 	_score_stamp = stamp

@@ -50,6 +50,8 @@ func _run() -> void:
 	for _j in range(8):
 		await get_tree().physics_frame
 
+	_check_name_lengths()
+
 	var seats := RoundManager.players()
 	if seats.is_empty():
 		_failures.append("HARNESS: no seats in the live round.")
@@ -72,36 +74,56 @@ func _run() -> void:
 			_failures.append("seat %d still answers the bare seat label %s."
 				% [who.player_slot, seat_label])
 
-		# 2. HANDOVER TO A HUMAN. The controller is disabled rather than freed,
-		# which is what `_rpc_reclaim_character` does on a rejoin.
+		# ⚠️⚠️ THERE ARE TWO DIFFERENT "TAKEOVERS" AND THEY MEAN DIFFERENT THINGS.
+		# Conflating them is what this block got wrong first time round.
+		#
+		#   SOLO / Tab — `debug_player_switcher.gd` flips `set_enabled()` on a seat so
+		#   the keyboard drives it. `is_bot` is untouched, and the name STAYS the
+		#   character's: you have taken over LOLA PACING, you have not become her.
+		#   That is the L4D2 reading the human asked for.
+		#
+		#   MULTIPLAYER reclaim — `_rpc_reclaim_character` hands the seat back to a
+		#   returning human and clears `is_bot` on every peer, so their own name comes
+		#   back on every screen.
+		#
+		# 2. SOLO / Tab: control moves, the name does not.
+		# ⚠️ `is_bot` IS SET EXPLICITLY RATHER THAN ASSUMED. The harness seeds one seat
+		# as the local human (`is_bot = character != human` in `main.gd`), so reading
+		# whatever the seat happened to start as made this check pass on three seats
+		# and fail on the fourth for a reason that had nothing to do with the code
+		# under test. A probe states the state it is testing.
+		who.is_bot = true
 		who.player_name = "HUMAN%d" % who.player_slot
 		who.ai_controller.set_enabled(false)
 		await get_tree().physics_frame
-		_check("seat %d after human takeover" % who.player_slot,
-			who.display_name(), "HUMAN%d" % who.player_slot)
-
-		# 3. HANDOVER BACK TO A BOT — the disconnect case. `player_name` is
-		# deliberately left set, because a rejoining human owns it; the name must
-		# come off the character anyway.
-		who.ai_controller.set_enabled(true)
-		await get_tree().physics_frame
-		_check("seat %d after handover back to bot" % who.player_slot,
+		_check("seat %d solo Tab takeover keeps character" % who.player_slot,
 			who.display_name(), roster_name)
 
-		# 4. ⚠️ AN UNNAMED HUMAN KEEPS THE SEAT LABEL, IT DOES NOT BORROW THE
-		# CHARACTER. 🧑 *"make sure human's name doesnt change too"*. Two reasons and
-		# the second is the hard one: a human reading MARING is indistinguishable from
-		# a bot, and `character_index` is reassigned in five places, so a
-		# character-derived label for a human is not even stable across a reclaim.
-		# `player_slot` is.
-		who.ai_controller.set_enabled(false)
+		# 3. MULTIPLAYER reclaim: the human's own name returns.
+		who.is_bot = false
+		await get_tree().physics_frame
+		_check("seat %d mp reclaim shows human" % who.player_slot,
+			who.display_name(), "HUMAN%d" % who.player_slot)
+
+		# 4. AND BACK TO A BOT on a disconnect. `player_name` is deliberately left
+		# set - a rejoining human owns it - so this is the check that catches a bot
+		# wearing the name of whoever just quit.
+		who.is_bot = true
+		await get_tree().physics_frame
+		_check("seat %d disconnect back to bot" % who.player_slot,
+			who.display_name(), roster_name)
+
+		# 5. An unnamed human keeps the SEAT LABEL, never the character. 🧑 *"make
+		# sure human's name doesnt change too"*.
+		who.is_bot = false
 		who.player_name = ""
 		await get_tree().physics_frame
 		_check("seat %d unnamed human keeps seat label" % who.player_slot,
 			who.display_name(), seat_label)
 
-		# 5. And a named human survives a character re-pick, which is the drift the
-		# check above exists to prevent.
+		# 6. A named human survives a character re-pick - `character_index` is
+		# reassigned in five places, so a character-derived label for a human would
+		# not be stable across a reclaim. `player_slot` is.
 		who.player_name = "HUMAN%d" % who.player_slot
 		var was := who.character_index
 		who.character_index = (was + 1) % CharacterRoster.size()
@@ -110,6 +132,7 @@ func _run() -> void:
 			who.display_name(), "HUMAN%d" % who.player_slot)
 		who.character_index = was
 		who.player_name = ""
+		who.is_bot = true
 		who.ai_controller.set_enabled(true)
 
 	_report()
@@ -125,3 +148,33 @@ func _report() -> void:
 		for f in _failures:
 			print("  * %s" % f)
 	get_tree().quit(0 if _failures.is_empty() else 1)
+
+## ⚠️⚠️ THE LENGTH LIMIT IS ENFORCED HERE RATHER THAN CLIPPED AT DRAW TIME. 🧑
+## 2026-08-02: *"lets not truncate the names / lets js put a limit to how long names
+## can be"*. So nothing in the game shortens a name; instead a name that would break a
+## layout fails this probe, which is the difference between the bug being found by the
+## build and being found by a player mid-match.
+##
+## All three tables, not just the Persons: a can and a slipper name share the CHARACTER
+## screen's one `NAME` row, and the role-swap cards that were reported overlapping put
+## two Person names side by side inside a fixed 220 px panel.
+func _check_name_lengths() -> void:
+	var tables := {
+		"person": CharacterRoster.ROSTER,
+		"lata": CharacterRoster.CANS,
+		"tsinelas": CharacterRoster.SLIPPERS,
+	}
+	var worst := 0
+	var worst_name := ""
+	for kind in tables:
+		for entry in tables[kind]:
+			var name_text := String(entry.get("name", ""))
+			if name_text.length() > worst:
+				worst = name_text.length()
+				worst_name = name_text
+			if name_text.length() > CharacterRoster.NAME_MAX:
+				_failures.append("%s name %s is %d chars, over NAME_MAX %d."
+					% [kind, name_text, name_text.length(), CharacterRoster.NAME_MAX])
+	_log("%-44s worst %-14s %d/%d chars    %s" % ["every roster name within NAME_MAX",
+		worst_name, worst, CharacterRoster.NAME_MAX,
+		"OK" if worst <= CharacterRoster.NAME_MAX else "FAIL"])
