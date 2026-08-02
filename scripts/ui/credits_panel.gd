@@ -74,8 +74,54 @@ const COURTESY_CREDITS: Array[Dictionary] = [
 		"body": "All music and sound effects are original. The OST is written by the team; the SFX and ambience beds are synthesised in-house by this project's own tools. No third-party audio ships in this build.",
 	},
 	{
+		# ⚠️ THE FOURTH TSINELAS, NOT ALL FOUR. Three of the four slipper skins are
+		# the CC-BY models credited above; this line is about the one that is not.
+		# `tools/models/generate_all.gd` builds it (its header: "four lata and four
+		# tsinelas"), which is why the DEVELOPMENT TOOLS entry below names this mesh
+		# alongside the lata — the same generator makes both, and disclosing one
+		# while staying silent on the other was an inconsistency Form 03 shared
+		# until it was caught.
 		"chip": "TSINELAS",
 		"body": "This project's own mesh, generated procedurally — not a sourced asset.",
+	},
+	{
+		# ⚠️ THIS ENTRY EXISTS TO SATISFY A COMPETITION RULE, NOT A LICENCE. Gear
+		# Up NCR §8 permits AI for "ideation, game design, programming, debugging,
+		# writing, asset creation, prototyping, balancing, testing, documentation"
+		# and requires that any AI-assisted content "be disclosed during the
+		# competition" — with non-disclosure listed as grounds for disqualification
+		# alongside outright plagiarism. Form 03 is where that disclosure is filed;
+		# this line is the same fact stated somewhere a player can reach, which is
+		# the standard the CC-BY block above is already held to.
+		#
+		# ⚠️ THE LATA IS NAMED HERE ON PURPOSE, AND AN EARLIER VERSION OF THIS LINE
+		# WAS WRONG. It used to end "No AI-generated art, audio or 3D assets ship
+		# in this build", which was written before anyone checked how the lata is
+		# actually built. The can's meshes are `.obj` files emitted by
+		# `tools/models/generate_all.gd` — procedural code that Claude Code wrote —
+		# so a flat "no AI 3D assets" claim was false in exactly the place a judge
+		# would look. What is true, and what this now says, is that the MESH comes
+		# from code and the SKIN does not: the can's artwork is the team's own
+		# drawing, flattened and applied as a texture.
+		#
+		# ⚠️ "NO GENERATIVE-AI IMAGE, MUSIC OR VIDEO SERVICE" IS THE CLAIM, AND THE
+		# WORDING IS DOING REAL WORK. The line cannot say "no AI-generated assets"
+		# — the SFX and ambience beds come out of `tools/audio/`, which Claude Code
+		# wrote, and sourced assets were repurposed into this game's formats the
+		# same way. What separates that from a prompt-to-asset generator is that
+		# the AI wrote CODE and the code produced the asset deterministically, so
+		# the distinction the sentence draws is the honest one and the reason the
+		# AUDIO entry above ("all music and sound effects are original") is still
+		# true rather than contradicted.
+		#
+		# ⚠️ THE COMMIT HISTORY DELIBERATELY DOES NOT SAY THIS AND THAT IS NOT A
+		# CONTRADICTION. Authorship of the entry is the team's — §7 requires the
+		# code be the registered members' and the team takes full responsibility
+		# for it, which is why no commit carries a Co-Authored-By or a tool name
+		# (see the README's setup step 4). Disclosure of a tool and attribution of
+		# authorship are different questions; this answers the first.
+		"chip": "DEVELOPMENT TOOLS",
+		"body": "Claude Code (Anthropic) was used as a coding assistant during development — programming, debugging, testing and documentation. It helped write the bot AI that drives the computer-controlled players, wrote the procedural code that generates the lata meshes, this project's own tsinelas mesh and the map geometry, repurposed sourced assets into this game's formats, and wrote the tools that synthesise the SFX and ambience beds. Every skin, texture and drawing is the team's own, and the team wrote the soundtrack. All game logic, mechanics and design decisions are the team's own, and the team takes full responsibility for the code submitted. No generative-AI image, music or video service was used.",
 	},
 ]
 
@@ -105,6 +151,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _build() -> void:
 	for child in rows.get_children():
 		child.queue_free()
+	rows.add_child(_build_made_by())
 	rows.add_child(_build_heading("THIRD-PARTY MODELS  ·  CC-BY-4.0"))
 	for entry in CC_BY_CREDITS:
 		rows.add_child(_build_row(String(entry["chip"]), String(entry["body"])))
@@ -118,6 +165,95 @@ func _build_heading(text: String) -> Label:
 	label.text = text
 	label.theme_type_variation = &"MenuHeading"
 	return label
+
+## ---------------------------------------------------------------------------
+## § MADE BY. 🧑: *"put the people that made it next to made by BH studios"*, and
+## *"also put our logo next to made by or something"*.
+##
+## ⚠️ THIS SITS ABOVE THE LICENCE BLOCKS ON PURPOSE. Everything below it answers
+## "what did you borrow and what does its licence demand"; this answers "who made
+## it", which is the thing a player opening CREDITS is actually looking for. It is
+## the only block on this screen that carries no obligation — which is precisely
+## why it would have ended up last if nobody said otherwise.
+##
+## ⚠️ THE LOGO IS A `TextureRect` WITH `expand_mode = IGNORE_SIZE` AND A FIXED
+## HEIGHT, NOT A RAW TEXTURE. The source art is 445x370 with a transparent
+## ground; dropped in at its native size it is taller than the heading beside it
+## and shoves the first credit row down the page. Constraining the height and
+## letting `KEEP_ASPECT_CENTERED` find the width keeps it optically level with
+## the wordmark whatever the art is replaced with later.
+const LOGO_PATH: String = "res://assets/ui/brand/bh_studios_logo.png"
+const LOGO_HEIGHT: float = 104.0
+
+## Names as the team gave them, in the roles they gave. Order is the order they
+## were listed in, which is not alphabetical and is not seniority — leave it.
+const TEAM_CREDITS: Array[Dictionary] = [
+	{"name": "MATTHEW LABRADOR", "role": "Lead Developer  ·  UI Designer  ·  3D Asset Editor  ·  Poster Design"},
+	{"name": "PAUL RECIO", "role": "Developer  ·  Video Editor"},
+	{"name": "HARRY GOMEZ", "role": "Composer, Original Soundtrack  ·  Logo & UI Design  ·  Game Voice Over"},
+	{"name": "CLARENCE PAGADUAN", "role": "UI Designer  ·  Game Asset Artist  ·  Audio Composer"},
+	{"name": "HANS LAO", "role": "QA Tester & Validation  ·  Administration  ·  Cinematics Director"},
+]
+
+func _build_made_by() -> VBoxContainer:
+	var block := VBoxContainer.new()
+	block.add_theme_constant_override("separation", 14)
+
+	# ⚠️ THE MARK STACKS ON TOP OF THE WORDMARK, IT DOES NOT SIT BESIDE IT.
+	# 🧑: *"logo placement is weird af"* — and it was. The logo is a near-square
+	# badge (445x370); parked to the LEFT of two stacked lines it has no edge to
+	# align to, so it read as a loose object floating next to the text rather than
+	# as part of one lockup. Centred above the words it has an axis, and the whole
+	# thing becomes a masthead instead of a row that lost its body copy.
+	var banner := VBoxContainer.new()
+	banner.add_theme_constant_override("separation", 4)
+	banner.alignment = BoxContainer.ALIGNMENT_CENTER
+	block.add_child(banner)
+
+	# ⚠️ "MADE BY" GOES ABOVE THE MARK AND THERE IS NO "BH STUDIOS" LABEL, BECAUSE
+	# THE LOGO ALREADY IS ONE. The artwork is a wordmark — it reads "BH studios"
+	# in the image itself — so setting a big amber "BH STUDIOS" underneath it
+	# printed the studio's name twice in a row, one line apart, which is what made
+	# the lockup look wrong rather than the placement alone. The words above the
+	# mark now complete a sentence into it: MADE BY → [BH studios].
+	var made := Label.new()
+	made.text = "MADE BY"
+	made.theme_type_variation = &"MenuBody"
+	made.add_theme_font_size_override("font_size", 22)
+	made.add_theme_color_override("font_color", UiTheme.CREAM_MUTED)
+	made.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	made.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	banner.add_child(made)
+
+	var logo := TextureRect.new()
+	logo.texture = load(LOGO_PATH) as Texture2D
+	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	logo.custom_minimum_size = Vector2(0, LOGO_HEIGHT)
+	logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# ⚠️ THE SHIPPED PNG IS ALREADY CREAM, AND `modulate` CANNOT DO THIS JOB.
+	# The team's logo is drawn black-on-transparent — correct for the poster it
+	# was made for, nearly invisible on this `WOOD_DEEP` panel. `modulate`
+	# MULTIPLIES, and black times any colour is still black, so tinting it in
+	# code looked like a no-op. The asset is instead recoloured on disk to
+	# `CREAM` with the original alpha kept as the mask; the untouched black
+	# original stays the team's master copy for print.
+	logo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	banner.add_child(logo)
+
+	var spacer := Control.new()
+	spacer.custom_minimum_size = Vector2(0, 8)
+	block.add_child(spacer)
+
+	for entry in TEAM_CREDITS:
+		block.add_child(_build_row(String(entry["name"]), String(entry["role"])))
+
+	# Closes the block off, so the licence headings below read as a new section
+	# rather than as more of this one.
+	var rule := HSeparator.new()
+	rule.add_theme_constant_override("separation", 18)
+	block.add_child(rule)
+	return block
 
 ## One row: a fixed-width recessed chip carrying the asset name, and the
 ## credit line wrapping beside it. Same shape as `TutorialPanel._build_row` —

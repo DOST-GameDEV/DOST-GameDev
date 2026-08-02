@@ -350,6 +350,25 @@ func _apply_slots() -> void:
 		if unit.ai_controller != null:
 			unit.ai_controller.set_enabled(not is_driven)
 
+		# ⚠️⚠️ THE NAME FOLLOWS THE BODY YOU ARE IN. 🧑 2026-08-02: *"i want the
+		# character im playing currently to say my name and for the bot to get their
+		# supposed name if i leave their body"*.
+		#
+		# So Tab is a handover like any other and has to say so. `is_bot` is what
+		# `CharacterBase.display_name()` reads, and without these two lines it kept
+		# whatever `main.gd` seeded at spawn — every non-human seat true, forever — so
+		# Tabbing into LOLA PACING left her still called LOLA PACING while you drove
+		# her, and the seat you LEFT went on wearing your name.
+		#
+		# ⚠️ `player_name` IS WRITTEN, NOT JUST THE FLAG. A bot seat has never had one
+		# (only the picked unit gets `SettingsManager.player_name` in `main.gd`), so
+		# clearing `is_bot` alone would have shown the bare seat label "P3" instead of
+		# the player. It is left in place on the way out rather than cleared: `is_bot`
+		# stops it being read, and the next Tab back finds it already correct.
+		unit.is_bot = not is_driven
+		if is_driven and unit.player_name == "":
+			unit.player_name = SettingsManager.player_name
+
 		# §3.5.3: the switcher picks WHICH rig is active via the rig's ordinary
 		# public API; it never touches the FPP/TPP mode, which stays derived
 		# from is_person (§0.1). The driven unit is the camera holder, since it
@@ -373,7 +392,11 @@ func _describe_unit(unit: CharacterBase, label: String) -> String:
 	if unit == null:
 		return "%s (missing)" % label
 	var side := "TAYA" if unit.is_defender else "ATTACKER"
-	return "%s (P%d · %s)" % [label, unit.player_slot + 1, side]
+	# ⚠️ `display_name()`, NOT THE RAW SLOT — 2026-08-02. This bar is the Tab cycle's
+	# own readout, so it is the one place a handover is being WATCHED as it happens;
+	# printing "P2" here while the nameplate over the same unit says MARING is the
+	# readout disagreeing with the world it exists to describe.
+	return "%s (%s · %s)" % [label, unit.display_name(), side]
 
 ## Re-read and re-describe both slots without changing them. Called by the bar
 ## on MatchManager.round_started, since is_can/team_is_can_side flip there.

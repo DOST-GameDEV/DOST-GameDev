@@ -408,10 +408,105 @@ enum State { NORMAL, STAGGERED, DOWNED }
 ## draws a name has to know whether one exists.
 @export var player_name: String = ""
 
+## ⚠️⚠️ "NO HUMAN IS BEHIND THIS SEAT", AS INTENT RATHER THAN AS A NODE LOOKUP.
+## Set inside `main.gd`'s `_rpc_convert_to_ai` / `_rpc_reclaim_character`, which are
+## `@rpc("authority", "call_local")` and therefore run on EVERY peer — unlike the
+## `AIController` those functions attach, which is guarded by `NetworkManager.is_host()`
+## and so exists on exactly one machine.
+##
+## That difference is the whole reason this exists: `display_name()` needs an answer
+## that is the same on the host, on every client and on a spectator, and
+## `is_ai_driven()` is only ever true on the host in a networked match.
+@export var is_bot: bool = false
+
 ## The name to actually draw. One function, so the scoreboard, the 3D nameplate, the
 ## YOU card and every toast cannot disagree about what an unnamed player is called.
+##
+## ⚠️⚠️ A BOT IS CALLED BY ITS CHARACTER, NOT "P2" — 🧑 2026-08-02: *"give the bots
+## names, not just p1 p2, give them the names of their characters ... KIND OF LIKE
+## L4D2!"*. A seat driven by AI reads BEBANG or JUN-JUN off the roster; a seat with a
+## human behind it keeps that human's own name, exactly as before.
+##
+## ⚠️⚠️ AND IT IS DERIVED EVERY CALL RATHER THAN WRITTEN AT THE SWITCH. This is the
+## whole reason the fix is four lines instead of a patch in every handover path. 🧑
+## flagged it: *"make sure that when human switches to bot or smth the name doesnt bug
+## as there are many ways for human and bot to switch (tab, singleplayer and when
+## someone disconnects reconnects in multiplayer)"*. There are at least four:
+## `_fill_empty_slots_with_placeholders`, `_rpc_convert_to_ai` on a disconnect,
+## `_rpc_reclaim_character` on a rejoin, and the Tab switcher. Storing a name at each
+## of those is four places to forget — and the forgetting is silent, leaving a bot
+## wearing the name of the human who just quit.
+##
+## `is_ai_driven()` is the same live condition `main.gd` gates input on, and every
+## drawer of this name polls rather than caching (`character_nameplate.gd` rebuilds
+## its label each update for the role glyph already), so a handover in either
+## direction is reflected on the next frame with no notification of any kind.
+##
+## ⚠️ `player_name` IS DELIBERATELY NOT CLEARED WHEN A SEAT CONVERTS TO AI. It is
+## replicated state belonging to the human who may rejoin into it, and this function
+## simply stops consulting it while a bot is driving — so a reclaim restores the right
+## name without having to have preserved it anywhere special.
+## ⚠️⚠️ A HUMAN'S NAME IS UNTOUCHED BY ALL OF THIS, AND THE FIRST VERSION GOT IT
+## WRONG — 🧑 2026-08-02: *"make sure human's name doesnt change too"*. That version
+## fell an unnamed human through to the character name as well, which was wrong twice:
+## it made a human indistinguishable from a bot, and it was not even STABLE, because
+## `character_index` is assigned in five places (`_rpc_reclaim_character` and the
+## late-join table among them) so the label could move under a player mid-match. The
+## seat number cannot move. Humans read exactly what they read before this feature.
+## ⚠️ NAMES ARE NOT TRUNCATED HERE. 🧑 2026-08-02: *"lets not truncate the names /
+## lets js put a limit to how long names can be"*. The limit is a RULE ON THE DATA
+## (`CharacterRoster.NAME_MAX`, asserted by `tools/bot_name_probe.tscn`), not a haircut
+## at draw time — a clipped "LOLA PACIN…" on the card would be the layout bug wearing
+## a disguise, and it would be found by a player instead of by the probe.
+##
+## ⚠️⚠️ IT ASKS `is_bot` FIRST, AND ON A CLIENT THAT IS THE ONLY THING THAT WORKS.
+## 🧑 2026-08-02: *"make sure multiplayer names work too"* / *"make sure everyone
+## including spectator sees names"*. The first version asked `is_ai_driven()` alone,
+## which is `ai_controller != null` — and `main.gd` attaches that controller behind
+## `if NetworkManager.is_host()`, in BOTH `_rpc_convert_to_ai` and
+## `_build_networked_character`. So on every peer that is not the host the node is
+## null, the seat did not look AI-driven, and the row fell back to `player_name`: a bot
+## wearing the name of the human who disconnected, on all the other screens, including
+## a spectator's. Exactly the bug the derivation was supposed to make impossible,
+## reintroduced by deriving from a mechanism instead of from intent.
+##
+## `is_bot` is that intent, and it is set inside the RPCs themselves — which are
+## `call_local` and therefore run on every peer — so all four screens agree without
+## depending on the synchroniser or on who owns the node.
+##
+## `is_ai_driven()` is still consulted because Single Player never goes through those
+## RPCs: it attaches a controller per seat directly, and `debug_player_switcher.gd`
+## flips `set_enabled()` on Tab without touching `is_bot`. Either being true means "no
+## human is driving this", which is the question being asked.
+## ⚠️⚠️ UPPERCASED HERE, ONCE, FOR EVERY NAME THE GAME DRAWS. 🧑 2026-08-02, with a
+## screenshot of the scoreboard: *"can u make all names in the same case no matter
+## what"*. A typed name arrives in whatever case the player used, and it sat in a
+## column beside MARING and LOLA PACING — which are uppercase because the roster is
+## authored that way, not because anything enforced it. One mixed-case row in a column
+## of shouted ones reads as a rendering fault.
+##
+## ⚠️ IT IS A DISPLAY TRANSFORM, NOT A WRITE. `player_name` keeps the case the player
+## typed, so the settings field still shows them their own name as they entered it and
+## nothing about the stored or replicated value changes. This is the same reason the
+## length limit is a rule on the data rather than a clamp here: the two decisions are
+## deliberately opposite, because case is cosmetic and length is structural.
+##
+## ⚠️ `to_upper()` IS UNICODE-AWARE IN GODOT, so a name in any script this font can
+## render either uppercases correctly or is left alone, rather than being mangled.
 func display_name() -> String:
-	return player_name if player_name != "" else "P%d" % [player_slot + 1]
+	if is_bot or is_ai_driven():
+		return _character_name().to_upper()
+	if player_name != "":
+		return player_name.to_upper()
+	return "P%d" % [player_slot + 1]
+
+## The roster pick's name, falling back to the seat number. `character_index` is -1
+## until a pick arrives (an AI seat on a peer that has not received one yet), and
+## `name_at()` answers "?" for that, which is not a name to put over somebody's head.
+func _character_name() -> String:
+	if character_index < 0 or character_index >= CharacterRoster.size():
+		return "P%d" % [player_slot + 1]
+	return CharacterRoster.name_at(character_index)
 
 ## Roster pick, for the model and the traits. -1 until a pick arrives.
 var character_index: int = -1
@@ -1002,6 +1097,68 @@ func _release_lunge(power: float) -> void:
 	var forward := -global_transform.basis.z
 	velocity.x = forward.x * LUNGE_SPEED * power
 	velocity.z = forward.z * LUNGE_SPEED * power
+	# ⚠️⚠️ A JOINED CLIENT'S LUNGE HAD NO PATH TO THE HOST AT ALL, SO A NON-HOST TAYA
+	# COULD NOT TAG WITH IT. Fixed 2026-08-02. The punch and the shove both send
+	# `_rpc_request_punch` / `_rpc_request_shove` when this peer is not the host; the
+	# lunge, added later, only ever guarded its sweep with
+	# `if not is_networked() or is_host()` and had no `else`. On a client that guard
+	# is false, so the sweep never ran there — and it never ran on the HOST either,
+	# because `_physics_process` returns at its authority gate before `_step_lunge()`
+	# for a body this peer does not own (§6 trap 7). The verb was simply dead for
+	# three of the four players in every networked match.
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		_rpc_request_lunge.rpc_id(1, global_position, forward, power)
+
+## ⚠️ RESOLVED ON THE HOST BY DISTANCE, the same contract the punch and the shove
+## already keep: the client says where it stood, which way it faced and how hard it
+## committed, and the host decides who that reached.
+##
+## ⚠️ ONE SWEPT SEGMENT RATHER THAN THE HOST REPLAYING 27 FRAMES. The host cannot
+## step a body it is not the authority for, so it cannot reproduce the per-frame
+## sweep the local peer runs. It tests the DASH PATH instead — from the release
+## point to where the friction model lands it (`v²/FRICTION`, the same solve the
+## impulse above is derived from) — against `LUNGE_TAG_RADIUS`. That is the same
+## region the frame-by-frame sweep covers, decided once, and it cannot tunnel
+## because a segment has no sampling rate.
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_request_lunge(from: Vector3, facing: Vector3, power: float) -> void:
+	if NetworkManager.is_networked() and not NetworkManager.is_host():
+		return
+	host_resolve_lunge(player_slot, from, facing, power)
+
+func host_resolve_lunge(taya_slot: int, from: Vector3, facing: Vector3, power: float) -> void:
+	if not RoundManager.round_active:
+		return
+	var lata := RoundManager.lata
+	if lata == null or not lata.is_upright:
+		return # a tag requires the can standing, same as the punch and the sweep
+	var taya := RoundManager.player_at(taya_slot)
+	if taya == null or not taya.is_defender:
+		return
+	var flat_facing := Vector3(facing.x, 0.0, facing.z)
+	if flat_facing.length() < 0.01:
+		return
+	flat_facing = flat_facing.normalized()
+	# How far this dash actually carries, by the same `v²/FRICTION` the impulse uses.
+	# ⚠️ `2.0 * FRICTION` IS THE `v²/60` EVERY IMPULSE IN THIS FILE IS DERIVED FROM,
+	# written as the constant it comes from rather than as the literal 60, so moving
+	# `FRICTION` moves this with it instead of silently leaving it wrong.
+	var speed := LUNGE_SPEED * clampf(power, LUNGE_MIN_POWER, 1.0)
+	var dash := (speed * speed) / (2.0 * FRICTION)
+	var start := Vector3(from.x, 0.0, from.z)
+	var end := start + flat_facing * dash
+	for node in RoundManager.players():
+		var who := node as CharacterBase
+		if who == null or who.player_slot == taya_slot or who.is_defender:
+			continue
+		if not who.is_taggable():
+			continue
+		var them := Vector3(who.global_position.x, 0.0, who.global_position.z)
+		if Geometry3D.get_closest_point_to_segment(them, start, end).distance_to(them) \
+			> LUNGE_TAG_RADIUS:
+			continue
+		RoundManager.host_resolve_lunge_tag(taya, who)
+		return # one tag per lunge, exactly as the local sweep rules it
 
 ## Host-side. Any vulnerable attacker within `LUNGE_TAG_RADIUS` is tagged.
 ##

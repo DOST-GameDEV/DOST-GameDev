@@ -59,10 +59,39 @@ signal back_pressed
 ## four glosses, four headwords, and a four-word lede is twelve. ⚠️ LATA, TSINELAS and
 ## TAYA are Filipino; ATTACKER is not. TAYA was DEFENDER until 2026-08-01 — see the
 ## tile's own note, which is about matching the HUD rather than about vocabulary.
+## ⚠️⚠️ EVERY BODY LINE IS ONE SENTENCE, AND THAT IS A HARD RULE RATHER THAN A STYLE.
+## 🧑 2026-08-02, relaying playtest feedback: *"make tutorial shorter or easier to
+## understand, comments was it was too long"*. It was ten pages of forty-to-sixty-word
+## paragraphs — about 1 400 words of reading standing between a player and a game they
+## wanted to play, which is not a tutorial anyone finishes.
+##
+## What was cut, and why it was safe:
+##
+##   · THE TWO JOBS folded into THE GAME. It restated the premise card in prose; only
+##     the two role definitions were new, and they fit as two more rows.
+##   · READING THE HUD dropped whole. The scoreboard, the lata panel and the status rows
+##     are all legible ON SCREEN, in front of the player, labelled — a page describing
+##     them teaches nothing the first ten seconds of a round does not. CROSSHAIR was the
+##     one line carrying a RULE rather than a description, so it moved to THE RISK, which
+##     is where the rule it enforces already lives.
+##   · Every remaining body was cut to the fact and its consequence. The reasoning that
+##     went with them ("that is the taya's reward for blocking", "selling out the person
+##     beside you is a real strategy") is good writing and it is why the page was long;
+##     a player discovers all of it in one round anyway.
+##
+## Nothing MECHANICAL was dropped. Every number a player cannot discover by looking —
+## 2.5 s charge, 1.5 s reset, 5 s stun, 2.5 m shove, the four scoring values — is still
+## on a page. Ten pages became eight and the word count roughly halved.
+##
+## ⚠️ AND THE ROW COUNT IS THE REAL CEILING, NOT THE WORD COUNT. `_build_row` gives every
+## row a fixed-height amber chip, so a page's height is driven by how MANY rows it has far
+## more than by how long they are — HANDS overflowed at six rows and clipped its own last
+## line at 1920×1080. Five is the most any page here carries, and a merge that would have
+## made seven is why THE GAME lost two rows on the way in rather than gaining three.
 const PAGES: Array[Dictionary] = [
 	{
 		"title": "TUMBANG PRESO",
-		"lede": "Four players. One taya.",
+		"lede": "1v1v1v1. One taya.",
 		"tiles": [
 			# ⚠️ Two DIFFERENT roster entries for the two person tiles. Both concepts are
 			# "a person", and rendering the same rig twice would read as a duplicated
@@ -82,40 +111,39 @@ const PAGES: Array[Dictionary] = [
 	},
 	{
 		"title": "THE GAME",
-		"lede": "Tumbang preso, played as a sport. One player guards the lata. The other three throw slippers at it.",
+		# The colour rule was THE TWO JOBS' lede and it survives the merge, because it is
+		# the one thing on this screen a player must carry into the match: the colours
+		# track the ROLE, so a player's own colour changes when their turn as taya comes.
+		"lede": "Blue is the taya, orange is the attack. The colours follow the ROLE, so yours changes.",
 		"rows": [
-			["4 PLAYERS", "One taya and three attackers. Empty seats are filled by bots, so a match always runs four."],
-			["90 SECONDS", "How long one round lasts. The clock is the only thing that ends it — there is no sudden win."],
-			["4 ROUNDS", "The taya role moves one seat clockwise after every round, so everybody is taya exactly once. Nobody can be handed the easy job twice."],
-			["POINTS, NOT WINS", "Rounds are scored, not won. Your score carries across all four rounds and the highest total at the end takes the match. Level scores at the top is an honest draw."],
-		],
-	},
-	{
-		"title": "THE TWO JOBS",
-		"lede": "Blue is the taya and orange is the attack. The colours track the ROLE, so yours changes when your turn comes.",
-		"rows": [
-			["TAYA\none player", "You guard the lata and you cannot leave the chalk box around it, all round. You stop throws with your body, stand the lata back up when it goes down, and tag attackers who come in. Holding the post IS the job."],
-			["ATTACKERS\nthree players", "You throw a tsinelas at the lata from outside the box — and then you have to walk in and get it back. You are also each other's rivals: only one of you gets paid for knocking it down."],
-			["NOBODY IS OUT", "Being tagged costs you position and time, never the round. There is no elimination, so a bad start is always recoverable."],
+			["1v1v1v1", "Four players, four separate scores. No teams, no allies — empty seats are bots."],
+			["90s × 4 ROUNDS", "The taya moves one seat clockwise each round, so everybody is taya exactly once."],
+			["POINTS, NOT WINS", "You carry your own score across all four rounds. Highest total takes the match."],
+			["TAYA", "Guard the lata and never leave the box. Block throws, stand it back up, tag attackers."],
+			["ATTACKERS", "Throw from outside the box, then walk in and get your slipper back."],
 		],
 	},
 	{
 		"title": "HOW A ROUND GOES",
 		"lede": "Four beats, and the third one is the whole game.",
 		"rows": [
-			["1.  THROW", "You start every round with your slipper already in hand. From outside the box, hold LEFT CLICK to charge and release. 2.5 seconds to full power, so the taya can see it coming. Throwing is free — nothing can happen to you while you do it."],
-			["2.  IT LANDS", "Hit the lata and it goes over. Miss and your slipper is lying on the ground. If the taya blocks it with their body it only drops a couple of metres away — INSIDE the box, near them. That is the taya's reward for blocking: you now have to come and get it under their nose."],
-			["3.  RETRIEVE", "This is the risk, and it is the entire point of the game. An arrow at your feet points to your own slipper, but ANY loose one will do. Walking in is safe; the instant it is in your hand you can be tagged, until you carry it back out — and a blocked slipper is lying right next to the taya."],
-			["4.  RESET", "The taya stands the lata back up by holding E in its ring. It takes 1.5 seconds of standing still, and nobody may throw for a moment afterwards."],
+			["1.  THROW", "You start holding your slipper. From outside the box, hold LEFT CLICK to charge and release."],
+			["2.  IT LANDS", "Hit the lata and it goes over. If the taya blocks it, it drops right beside them."],
+			["3.  RETRIEVE", "Walk in and pick it up. This is the risk, and the entire point of the game."],
+			["4.  RESET", "The taya holds E by the lata for 1.5 seconds to stand it up. No throws for a moment after."],
 		],
 	},
 	{
 		"title": "THE RISK",
-		"lede": "Three rules decide every round. They are all about the moment you are holding a slipper.",
+		"lede": "Three rules decide every round, and they are all about the moment you hold a slipper.",
 		"rows": [
-			["SAFE UNTIL YOU GRAB", "An attacker inside the box cannot be tagged at all until they pick a slipper up. Empty-handed you can stand on the taya's toes. The danger is entirely self-inflicted."],
-			["TAGGED", "The taya LUNGES and catches you holding your slipper: you are thrown back to the safe zone and stunned for 5 seconds. Your slipper comes with you, so there is nothing to camp over — but the whole trip has to be made again."],
-			["YOU CANNOT THROW FROM INSIDE", "A throw only leaves your hand if you are outside the box, the lata is standing, and your pickup cooldown has expired. The crosshair asks the same question the rules do, so if it is greyed out, the throw would have been refused."],
+			["SAFE UNTIL YOU GRAB", "Empty-handed you cannot be tagged at all, even inside the box. The danger is self-inflicted."],
+			["TAGGED", "Thrown back to the safe zone and stunned for 5 seconds. Nobody is ever out of the round."],
+			["NO THROWING FROM INSIDE", "A throw needs you outside the box, the lata standing, and your pickup cooldown expired."],
+			# ⚠️ MOVED HERE FROM THE DELETED HUD PAGE, because it is a RULE and not a
+			# description: the crosshair is the only feedback the game gives for the row
+			# above it, and on its own page a player met it before the rule it answers.
+			["CROSSHAIR", "It only appears when a throw would be allowed. No crosshair means the throw is refused."],
 		],
 	},
 	{
@@ -123,14 +151,14 @@ const PAGES: Array[Dictionary] = [
 		"lede": "Keyboard and mouse. Rebind any of it under SETTINGS.",
 		"rows": [
 			["W A S D", "Move."],
-			["MOUSE", "Look, and aim your throw. The slipper flies to the point your crosshair is actually on, not just along the line it points down."],
-			["SHIFT", "Sprint. The bar is short — about 1.5 seconds flat out, roughly one crossing of the box — and it starts refilling a second after you let go. Empty it completely and you are winded for 2 seconds: slower, no sprint, and the bar will not refill at all until it passes."],
+			["MOUSE", "Look, and aim your throw at the point your crosshair is actually on."],
+			["SHIFT", "Sprint, about 1.5 seconds' worth. Empty it completely and you are winded for 2 seconds."],
 			["SPACE", "Jump."],
-			# ⚠️ THE TWO MENU KEYS LIVE ON THIS PAGE, NOT ON THE NEXT ONE, AND IT IS A
-			# LAYOUT FIX RATHER THAN A CATEGORY JUDGEMENT. HANDS with six rows raised a
-			# scrollbar and clipped its own last row at 1920×1080 — rendered and looked
-			# at. This page had a third of its panel empty. A reference page the player
-			# has to scroll is the failure the premise card's own note already calls out.
+			# ⚠️ THE MENU KEY LIVES ON THIS PAGE, NOT ON THE NEXT ONE, AND IT IS A LAYOUT
+			# FIX RATHER THAN A CATEGORY JUDGEMENT. HANDS with six rows raised a scrollbar
+			# and clipped its own last row at 1920×1080 — rendered and looked at. A
+			# reference page the player has to scroll is the failure the premise card's
+			# own note already calls out.
 			["ESC", "Pause."],
 		],
 	},
@@ -138,48 +166,36 @@ const PAGES: Array[Dictionary] = [
 		"title": "CONTROLS  ·  ATTACKER",
 		"lede": "Your two buttons. Any slipper on the ground is fair game.",
 		"rows": [
-			["LEFT CLICK", "Hold to charge a throw, release to throw. 2.5 seconds to full power — a long, visible commitment the taya can react to. A tap still throws, weakly."],
-			["E  ·  tap", "Pick up ANY loose slipper you are standing near — yours or somebody else's. You start the round with your own, and an arrow points to it, but if a rival leaves theirs lying in the open you can take it and throw it. You can only carry one."],
-			["E  ·  tap (nothing to grab)", "SHOVE. No wind-up — it fires instantly, blasting a rival back 2.5 metres and stunning them. Costs a quarter of your stamina either way; 7.5-second cooldown if it lands, only 2 seconds if you whiff. Shove someone who is then tagged and you are paid +50 for it."],
+			["LEFT CLICK", "Hold to charge, release to throw. 2.5 seconds to full power; a tap still throws, weakly."],
+			["E  ·  tap", "Pick up any loose slipper you are standing near, yours or not. You can carry one."],
+			["E  ·  tap (nothing to grab)", "SHOVE a rival 2.5 metres back. If they are tagged after it, you are paid +50."],
 		],
 	},
 	{
 		"title": "CONTROLS  ·  TAYA",
 		"lede": "You are faster than every attacker. Closing them down is your whole job.",
 		"rows": [
-			["LEFT CLICK", "PUNCH. A quick jab straight ahead, no wind-up. Any attacker holding their slipper within arm's reach in front of you is tagged instantly. Short cooldown — this is your answer to somebody standing next to you. ⚠ It only works while the lata is STANDING (see below)."],
-			["E  ·  hold", "LUNGE. Hold half a second to charge, release to dash a metre forward. Anyone holding their slipper caught in the path is tagged — this is your answer to somebody running PAST you. (Right click does the same thing.)"],
-			["E  ·  in the ring", "Standing in the lata's ring with it knocked over: hold E to set it back up. Letting go loses all of it — and while you are doing that, E is the reset and not the lunge."],
-			["⚠  NO TAGS WHILE IT IS DOWN", "Neither the punch nor the lunge can tag anybody while the lata is lying over. Standing it back up is not just tidying — it is what re-arms both of your tagging verbs. Reset first, then hunt."],
-			["YOU ARE FASTER", "Attackers move at 75% of your speed, permanently. Any chase in the open is one you win if you commit to it."],
-			["TAGGING IS A PRESS", "Neither verb fires by standing close. Both are aimed along the way you are FACING, and you only turn on a frame you are walking — so keep moving into them."],
+			["LEFT CLICK", "PUNCH. An instant jab ahead, tagging any attacker in front of you holding a slipper."],
+			["E  ·  hold", "LUNGE. Hold half a second, release to dash a metre and tag anyone in the path."],
+			["E  ·  in the ring", "With the lata down, hold E to set it back up. Letting go loses all of it."],
+			["⚠  NO TAGS WHILE IT IS DOWN", "Neither verb can tag until the lata is standing. Reset first, then hunt."],
+			["YOU ARE FASTER", "Both verbs aim where you FACE, and you only turn while walking — keep moving into them."],
 		],
 	},
 	{
 		"title": "SCORING",
-		"lede": "Every point in the game comes from one of these four. Your total carries across all four rounds.",
+		"lede": "Every point in the game comes from one of these four, and your total carries across all four rounds.",
 		"rows": [
 			# ⚠️ ONE-LINE CHIPS ON THIS PAGE, DELIBERATELY. Every other page's chip is a
 			# key name and fits on a line; these were "+100\nknock it down" style
 			# two-liners, and with four rows that alone overflowed the panel by 37 px —
-			# `tutorial_shot.gd` measures it. Three passes of trimming the BODIES moved
+			# `tutorial_shot.gd` measured it. Three passes of trimming the BODIES moved
 			# the number by exactly zero, because each row's height was set by its chip,
-			# not by its text. The chip carries the number and the verb; the body carries
-			# the reasoning.
-			["+100  KNOCKDOWN", "To the attacker whose slipper hit the lata. Only the thrower is paid, so the other two attackers are your rivals as much as the taya is."],
-			["+100  TAG", "To the taya, for lunging and catching an attacker who is holding a slipper inside the box."],
-			["+10 / s  DEFENCE", "To the taya, every second the lata is standing. A taya nobody troubles is quietly winning the whole round."],
-			["+50  SABOTAGE", "To an attacker who shoves a rival who is then tagged. Selling out the person beside you is a real strategy."],
-		],
-	},
-	{
-		"title": "READING THE HUD",
-		"lede": "Everything the game will not say out loud is on screen somewhere.",
-		"rows": [
-			["SCOREBOARD\ntop left", "All four players, ranked, with the taya marked. The arrow is you."],
-			["THE LATA\nbottom right", "Whether it is up or down, and what YOU can do about it right now — which differs depending on whether you are the taya or an attacker."],
-			["STATUS ROWS", "Stuns, knockdowns and cooldowns each draw a row with its own countdown, so you can time playing around them. VULNERABLE has no timer on purpose: it lasts exactly as long as you choose to stand in the box holding a slipper."],
-			["CROSSHAIR", "Only shown when a throw would actually be allowed. If it is not there, check the three rules on THE RISK."],
+			# not by its text. The chip carries the number and the verb.
+			["+100  KNOCKDOWN", "To the attacker whose slipper hit the lata. Only the thrower is paid."],
+			["+100  TAG", "To the taya, for catching an attacker who is holding a slipper inside the box."],
+			["+10 / s  DEFENCE", "To the taya, for every second the lata is left standing."],
+			["+50  SABOTAGE", "To an attacker who shoves a rival who is then tagged."],
 		],
 	},
 ]
@@ -397,16 +413,20 @@ func _populate_premise(strip: HBoxContainer, tiles: Array) -> void:
 		var icon := strip.get_child(i).get_child(0) as CharacterPreview
 		if icon == null:
 			continue
-		# These four sit INSIDE the page's ScrollContainer, and `CharacterPreview`
-		# takes the mouse for drag-to-turn and wheel-to-zoom. Left alone, the wheel
-		# over a tile would zoom a slipper instead of scrolling the page. The tiles are
-		# pictures; the CHARACTER screen is where inspecting the model belongs.
-		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		# ⚠️ TURNABLE, BUT THE WHEEL STILL SCROLLS THE PAGE. 🧑: *"in tutorial allow
+		# us to play around with the models like in char select"*. These four sit
+		# INSIDE this page's ScrollContainer, which is why they used to take no mouse
+		# at all — a preview that ate the wheel would zoom a slipper while the player
+		# was trying to scroll, and the tiles are big enough that the cursor is over
+		# one most of the time. `enable_tile_interaction()` takes the two gestures the
+		# scroller has no use for (drag to turn, right-click to reset) and leaves the
+		# wheel to fall through. See that function for the full reasoning.
+		icon.enable_tile_interaction()
 		_show_subject(icon, tiles[i] as Dictionary)
 		# ⚠️ AFTER the subject, because `set_frame_zoom` multiplies the MEASURED framing and
 		# `show_prop`/`show_character` are what measure it. Called the other way round it
 		# would be overwritten by the frame that follows.
-		icon.set_tile_framing(TILE_ZOOM)
+		icon.set_tile_framing(TILE_ZOOM, true)
 
 ## Puts the right rig in the tile. Through `CharacterPreview`'s own public calls, so
 ## the framing, the material and the prop tint are all the ones the CHARACTER screen

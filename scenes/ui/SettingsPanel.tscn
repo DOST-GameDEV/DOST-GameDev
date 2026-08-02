@@ -96,10 +96,24 @@ unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 12
 
+; ⚠️ `MenuBody` LIKE EVERY OTHER ROW LABEL, AND IT IS WHY THIS ONE LOOKED WRONG. It was
+; the only label on the panel with no variation at all, so it fell through to the theme's
+; default Label — a different size, a different weight and no outline — sitting directly
+; above eleven keycap rows that `settings_panel.gd::_rebuild_bindings()` builds with
+; `MenuBody`. 🧑 2026-08-02: *"Username is standing out bcz its the only one that isnt
+; caps"*. Not the letter case; the typeface. The rest of this row was already matched to
+; the built ones (`_build_name_row()` copies ACTION_LABEL_WIDTH and drops the separation
+; override) and only the type was left behind.
+;
+; ⚠️ THE FLAT WHITE OVERRIDE GOES WITH IT. It predates the Menu* set and was the only
+; thing keeping this label legible on the dark wood — the same patch the built rows
+; carried until they were moved onto the variation. `MenuBody` supplies the cream and the
+; navy outline that the panel is actually designed around, and an override on top of it
+; would just reintroduce the odd one out in a new colour.
 [node name="PlayerNameLabel" type="Label" parent="Card/Margin/Layout/Scroll/Content/BindingsList/PlayerNameRow"]
-custom_minimum_size = Vector2(220, 0)
+custom_minimum_size = Vector2(260, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_type_variation = &"MenuBody"
 vertical_alignment = 1
 text = "Username"
 
@@ -271,5 +285,14 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
 size_flags_horizontal = 3
-theme_type_variation = &"WoodPrimaryButton"
+theme_type_variation = &"WoodButton"
 text = "◀  BACK"
+
+[node name="ApplyButton" type="Button" parent="Card/Margin/Layout/ButtonRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"WoodPrimaryButton"
+disabled = true
+text = "APPLY CHANGES"
