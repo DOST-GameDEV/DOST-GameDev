@@ -366,10 +366,19 @@ func _setup_solo() -> void:
 ## this scene advertises itself as joinable for free. That is not a coincidence to be
 ## tidied — it is why this screen is the right place to wait.
 ##
-## ⚠️ THE MATCH ENDS AND THE PROCESS EXITS. There is deliberately no "return to lobby"
-## path: `Restart=always` in the systemd unit brings the process back into a fresh
-## lobby with a fresh join code, which is both simpler and more robust than trying to
-## scrub a finished match's state back to pristine in place.
+## ⚠️⚠️ THE MATCH ENDS AND THE PROCESS COMES BACK HERE. THIS PARAGRAPH USED TO SAY THE
+## OPPOSITE — *"the match ends and the process exits… `Restart=always` brings the process
+## back into a fresh lobby"* — AND IT WAS NOT TRUE. Nothing ever exited: the process sat in
+## `Main.tscn` with `match_in_progress` still true, and MEASURED ON THE LIVE VM on
+## 2026-08-02 that meant `players=0, occupied=0, in_progress=true` with nobody connected,
+## forever. `multiplayer_setup.gd::_free_pool_address()` refuses a row with that flag set,
+## so ONE abandoned match made HOST ONLINE stop working for everybody.
+##
+## There is a return path now and it lands on this scene — see `main.gd`'s § BACK TO THE
+## WAITING ROOM for the two events that take it and why they are not the same event. What
+## comes back is the SAME process with the SAME sockets: a restart would have been simpler
+## if it were free, and it is not — it drops the lobby out of the pool for as long as the
+## rebind takes, which is the same outage in a smaller window.
 ## ---------------------------------------------------------------------------
 
 ## Set from `--dedicated`; makes this screen host without taking a seat.
@@ -395,7 +404,30 @@ func _read_dedicated_args() -> void:
 
 func _setup_host() -> void:
 	banner_label.text = "LOBBY"
-	if NetworkManager.host_game(_dedicated_port, _dedicated) != OK:
+	# ---------------------------------------------------------------------------
+	# ⚠️⚠️ THE SOCKET MAY ALREADY BE OPEN, AND CALLING `host_game()` AGAIN WOULD BREAK THE
+	# LOBBY RATHER THAN REBUILD IT.
+	#
+	# A DEDICATED server comes back through this screen after a match — see
+	# `main.gd`'s § BACK TO THE WAITING ROOM, which changes scene to here WITHOUT closing
+	# ENet, the status responder or the LAN beacon, because dropping the lobby out of the
+	# pool for as long as it took to rebind is the same outage in a smaller window.
+	# `create_server()` on a port this very process is already bound to fails, and the
+	# failure branch below would then park a perfectly healthy, listening server on
+	# "NOT HOSTING" with no seats, no signals and no START button.
+	#
+	# ⚠️ SAME SHAPE AND SAME REASON AS `main.gd::_start_hosting`'s U-4 GUARD, which skips
+	# `host_game()` on the way INTO a match for exactly this. This is that guard on the way
+	# back OUT, and the two are now symmetric.
+	#
+	# ⚠️ NOTHING IS RE-ESTABLISHED HERE. `main.gd` already minted the fresh join code,
+	# cleared the peer maps and put `match_in_progress` back to false before it changed
+	# scene; everything below this point — the seating, the signal wiring, the code row —
+	# reads that state and works identically whether the session is one second old or one
+	# match old.
+	# ---------------------------------------------------------------------------
+	var already_hosting := NetworkManager.is_networked() and NetworkManager.is_host()
+	if not already_hosting and NetworkManager.host_game(_dedicated_port, _dedicated) != OK:
 		# Not fatal to the screen: the player can still back out, and the message
 		# says which of the two things went wrong rather than "failed".
 		AudioManager.play("ui_error")
