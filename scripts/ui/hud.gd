@@ -800,10 +800,10 @@ func _refresh_spectator_panel() -> void:
 	var up: bool = RoundManager.lata != null and RoundManager.lata.is_upright
 	_spectator_round.add_theme_color_override("font_color",
 		UiTheme.DEFENSE if up else UiTheme.OFFENSE)
-	_spectator_round.text = "ROUND %d/%d   ·   TAYA  P%d   ·   LATA %s   ·   LEADER  P%d  %d" % [
+	_spectator_round.text = "ROUND %d/%d   ·   TAYA  %s   ·   LATA %s   ·   LEADER  %s  %d" % [
 		maxi(1, MatchManager.round_number), MatchManagerScript.ROUNDS,
-		MatchManager.defender_slot + 1, "UP" if up else "DOWN",
-		leader + 1, MatchManager.score_for(leader)]
+		seat_name(MatchManager.defender_slot), "UP" if up else "DOWN",
+		seat_name(leader), MatchManager.score_for(leader)]
 
 ## Kills the pulse tween and resets the timer card to its natural scale.
 func _kill_pulse_tween() -> void:
@@ -1009,8 +1009,7 @@ func set_round_display(round_number: int, defender_slot: int) -> void:
 	# screen that most needs to say who is playing. `_refresh_scoreboard()` a
 	# few dozen lines down already reads `display_name()` for every row;
 	# this is the row that didn't.
-	var taya := RoundManager.player_at(defender_slot)
-	var taya_name := taya.display_name() if taya != null else "P%d" % [defender_slot + 1]
+	var taya_name := seat_name(defender_slot)
 	round_label.text = "ROUND %d / %d   ·   TAYA: %s" % [
 		maxi(round_number, 1), MatchManagerScript.ROUNDS, taya_name]
 	# The two top cards are now a scoreboard and a lata readout rather than two team
@@ -1195,14 +1194,22 @@ func _refresh_scoreboard() -> void:
 		var is_taya := slot == MatchManager.defender_slot
 		var name_label := row.get_node("Name") as Label
 		var score_label := row.get_node("Score") as Label
-		# The bullet marks YOU; the word marks the taya. Two different questions, so
-		# two different marks rather than one overloaded glyph.
-		# The bullet marks YOU; the word marks the taya. Two different questions, so
-		# two marks rather than one overloaded glyph.
-		var who := RoundManager.player_at(slot)
-		var who_name: String = who.display_name() if who != null else "P%d" % [slot + 1]
-		name_label.text = "%s %s%s" % ["\u25B8" if slot == mine else "  ", who_name,
-			"  TAYA" if is_taya else ""]
+		# \u26A0\uFE0F\u26A0\uFE0F NO LEADING BULLET \u2014 THE COLOUR IS THE MARK. \uD83E\uDDD1 2026-08-02: *"move the
+		# arrow to the right on the p1p2p3p4 top left / make it so that it js
+		# highlights / the arrow makes the names of the characters not aligned"*.
+		#
+		# The report is exactly right and the cause is off-by-one: the prefix was
+		# `"\u25B8"` for your own row against `"  "` for every other, which is ONE
+		# character versus TWO, so all four names started at a different x and the
+		# column read as ragged. It was invisible while every row said "P1".."P4" and
+		# obvious the moment the names became MARING and LOLA PACING.
+		#
+		# Nothing is lost by deleting it: `slot == mine` already recolours this row to
+		# `UiTheme.HIGHLIGHT` six lines below, which is the same fact said in the way
+		# that costs no width. The taya keeps a trailing word because that is a
+		# different question about a different player.
+		var who_name := seat_name(slot)
+		name_label.text = "%s%s" % [who_name, "  TAYA" if is_taya else ""]
 		score_label.text = str(MatchManager.score_for(slot))
 		var colour: Color = UiTheme.DEFENSE if is_taya else UiTheme.OFFENSE
 		if slot == mine:
@@ -1279,7 +1286,7 @@ func _on_lata_knocked(by_slot: int) -> void:
 	if local_char.is_defender:
 		show_toast("LATA DOWN  ·  RESET IT", 1.6)
 	elif by_slot >= 0 and by_slot != local_char.player_slot:
-		show_toast("P%d KNOCKED THE LATA DOWN" % [by_slot + 1], 1.2)
+		show_toast("%s KNOCKED THE LATA DOWN" % [seat_name(by_slot)], 1.2)
 
 func _on_lata_restored() -> void:
 	show_toast("LATA IS BACK UP", 1.2)
@@ -1291,4 +1298,21 @@ func _on_attacker_tagged(defender_slot: int, victim_slot: int) -> void:
 	if local_char.player_slot == victim_slot:
 		show_toast("TAGGED  ·  BACK TO THE SAFE ZONE", 2.0)
 	elif local_char.player_slot == defender_slot:
-		show_toast("TAG  ·  P%d" % [victim_slot + 1], 1.4)
+		show_toast("TAG  ·  %s" % [seat_name(victim_slot)], 1.4)
+
+## ⚠️⚠️ THE NAME FOR A SEAT WHEN ONLY A SLOT NUMBER IS IN HAND. 🧑 2026-08-02:
+## *"make sure the bot names show up everywhere they have to / Not p1 p2 p3 p4"*.
+##
+## Three rows on this HUD built their own "P%d" out of a slot and never asked the
+## character at all — the spectator round line's TAYA and LEADER, the "knocked the
+## lata down" toast and the tag toast — so they kept printing P2 after bots learned
+## their names. Two others already resolved the slot by hand, identically, which is
+## how the three that did not went unnoticed.
+##
+## One function now, for the same reason `CharacterBase.display_name()` is one
+## function: a seat cannot be called two different things on two rows of one screen.
+## The bare seat label survives only as the genuinely nameless case — a slot with no
+## character in it, which happens between a disconnect and the AI conversion.
+static func seat_name(slot: int) -> String:
+	var who := RoundManager.player_at(slot)
+	return who.display_name() if who != null else "P%d" % [slot + 1]
