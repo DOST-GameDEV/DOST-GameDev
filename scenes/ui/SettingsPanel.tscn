@@ -167,6 +167,20 @@ layout_mode = 2
 theme_type_variation = &"MenuCheckBox"
 text = "Invert Y (mouse look)"
 
+[node name="DisplayHeading" type="Label" parent="Card/Margin/Layout/Scroll/Content"]
+layout_mode = 2
+theme_type_variation = &"MenuCaption"
+text = "DISPLAY"
+
+; The same setting the `toggle_fullscreen` key flips (default F11, rebindable in the
+; CONTROLS list below). Both routes go through `SettingsManager.set_fullscreen()`, so
+; the box and the window can never disagree — see settings_panel.gd `_sync_from_settings`.
+[node name="FullscreenCheck" type="CheckBox" parent="Card/Margin/Layout/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"MenuCheckBox"
+text = "Fullscreen"
+
 [node name="AudioHeading" type="Label" parent="Card/Margin/Layout/Scroll/Content"]
 layout_mode = 2
 theme_type_variation = &"MenuCaption"

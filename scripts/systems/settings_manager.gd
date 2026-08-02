@@ -26,6 +26,9 @@ signal binding_changed(action: String)
 ## Fires when the player renames themselves, so every screen showing a name can
 ## re-read it without polling.
 signal player_name_changed(new_name: String)
+## Fires whenever the window mode changes, from the key OR from the Settings checkbox,
+## so the box can follow a key press made while the panel is open.
+signal fullscreen_changed(is_fullscreen: bool)
 
 const SETTINGS_PATH: String = "user://settings.cfg"
 const SETTINGS_SECTION: String = "input"
@@ -64,6 +67,7 @@ const REBINDABLE_ACTIONS: Array[String] = [
 	"move_left", "move_right", "move_up", "move_down",
 	"special_ability", "grab", "jump", "sprint",
 	"grab", "ready_up", "clean_feed",
+	"toggle_fullscreen",
 ]
 
 ## Human-readable labels for the panel — action string -> display text.
@@ -90,6 +94,9 @@ const ACTION_LABELS: Dictionary = {
 	# Named for what it DOES to the recording, not for what it hides — the operator
 	# reading this row is looking for the setting that gives them a clean plate.
 	"clean_feed": "Hide HUD (Spectator)",
+	# Rebindable for the same reason `clean_feed` is: it is a key that changes what the
+	# player sees, so it belongs in the panel next to the toggle that persists it.
+	"toggle_fullscreen": "Toggle Fullscreen",
 }
 
 ## action -> physical_keycode captured from the project's InputMap defaults,
@@ -159,9 +166,63 @@ const DEFAULT_DIFFICULTY: int = 1
 
 var ai_difficulty: int = DEFAULT_DIFFICULTY
 
+## ---------------------------------------------------------------------------
+## FULLSCREEN — the exported build shipped windowed-only, with no way out.
+##
+## 🧑 2026-08-02: *"make sure u can fullscreen bcz currently the .exe only works
+## with windows[ed]"*. `project.godot` had no `window/size/mode` at all, which means
+## `WINDOWED`, and nothing anywhere called `DisplayServer.window_set_mode()` — so a
+## player on the .exe got a 1920x1080 window on a 1920x1080 monitor with the title bar
+## eating the bottom of the canvas, and no key to fix it.
+##
+## ⚠️ `EXCLUSIVE_FULLSCREEN`, NOT `FULLSCREEN`, ON THE HUMAN'S EXPLICIT CALL: 🧑 *"make sure
+## its real fullscreen not windowed fullscreen"*. Godot's `WINDOW_MODE_FULLSCREEN` is the
+## borderless-window kind — it looks identical and it is NOT what was asked for. Exclusive
+## takes the display outright, which is the mode that gets the flip-model presentation path
+## (no compositor in between) and the one a capture/booth setup expects.
+##
+## ⚠️ THE DEFAULT IS ON, AND THE PROJECT SETTING IS SET TO MATCH (`display/window/size/mode=4`).
+## Both, deliberately: the project setting is what the window opens as, before this autoload's
+## `_ready()` has run, so leaving it windowed would flash a window for a frame on every launch.
+## This value then re-asserts it (or overrides it with the player's saved choice).
+##
+## The fullscreen UI is already swept for clipping at four aspect ratios by
+## `tools/ui/bounds_sweep.gd`, which exists because of the BACK-button bug this default
+## would otherwise have shipped into everyone's face.
+const SETTINGS_SECTION_DISPLAY: String = "display"
+const DEFAULT_FULLSCREEN: bool = true
+
+var fullscreen: bool = DEFAULT_FULLSCREEN
+
 func _ready() -> void:
 	_capture_defaults()
 	_load_and_apply()
+
+## ⚠️ `_input`, NOT `_unhandled_input`. Every menu in this game is a `Control` tree and
+## a focused Button consumes the event before `_unhandled_input` ever fires, so the key
+## would work in a match and do nothing in the lobby — which is exactly where a player
+## sizing up their window is standing. An autoload sees `_input` first, everywhere.
+##
+## ⚠️ It reads the ACTION, not a hardcoded keycode, so a rebind in the Settings panel
+## actually moves this key. `clean_feed` shipped as a hardcoded `KEY_H` and that is
+## documented above as a bug, not a pattern.
+func _input(event: InputEvent) -> void:
+	if event.is_action_pressed("toggle_fullscreen", false, true):
+		set_fullscreen(not fullscreen)
+		get_viewport().set_input_as_handled()
+
+func set_fullscreen(value: bool, persist: bool = true) -> void:
+	var changed := value != fullscreen
+	fullscreen = value
+	_apply_fullscreen()
+	if changed:
+		fullscreen_changed.emit(fullscreen)
+	if persist:
+		_save()
+
+func _apply_fullscreen() -> void:
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN if fullscreen
+		else DisplayServer.WINDOW_MODE_WINDOWED)
 
 ## R-09. Sets the tier AND pushes it into the live AI knobs. One function, because a
 ## stored value that is not applied is the shape of the bug this item exists to fix —
@@ -386,6 +447,7 @@ func begin_edit() -> void:
 		"music_volume": music_volume,
 		"ai_difficulty": ai_difficulty,
 		"player_name": player_name,
+		"fullscreen": fullscreen,
 	}
 
 func is_editing() -> bool:
@@ -404,7 +466,8 @@ func has_unsaved_changes() -> bool:
 		or not is_equal_approx(float(_snapshot.get("sfx_volume", 0.0)), sfx_volume)
 		or not is_equal_approx(float(_snapshot.get("music_volume", 0.0)), music_volume)
 		or int(_snapshot.get("ai_difficulty", 0)) != ai_difficulty
-		or String(_snapshot.get("player_name", "")) != player_name)
+		or String(_snapshot.get("player_name", "")) != player_name
+		or bool(_snapshot.get("fullscreen", DEFAULT_FULLSCREEN)) != fullscreen)
 
 ## Write everything the edit touched and close the transaction.
 func commit_edit() -> void:
@@ -446,6 +509,11 @@ func revert_edit() -> void:
 	_apply_volumes()
 	ai_difficulty = int(snapshot.get("ai_difficulty", ai_difficulty))
 	_apply_ai_difficulty()
+	# ⚠️ THE WINDOW MODE IS A LIVE EFFECT, so BACK has to put the display back too — a
+	# revert that leaves the player staring at a fullscreen window while `settings.cfg`
+	# says windowed is exactly the memory/disk split this whole transaction exists to stop.
+	fullscreen = bool(snapshot.get("fullscreen", fullscreen))
+	_apply_fullscreen()
 	var restored_name := String(snapshot.get("player_name", player_name))
 	if restored_name != player_name:
 		player_name = restored_name
@@ -482,6 +550,7 @@ func _save() -> void:
 	config.set_value(SETTINGS_SECTION_AUDIO, "music_volume", music_volume)
 	config.set_value(SETTINGS_SECTION_MATCH, "ai_difficulty", ai_difficulty)
 	config.set_value(SETTINGS_SECTION_MATCH, "player_name", player_name)
+	config.set_value(SETTINGS_SECTION_DISPLAY, "fullscreen", fullscreen)
 	var err := config.save(SETTINGS_PATH)
 	if err != OK:
 		push_warning("SettingsManager: failed to save %s (error %d)" % [SETTINGS_PATH, err])
@@ -557,6 +626,10 @@ func _load_and_apply() -> void:
 		# whatever the class initialiser left them, which is NORMAL, and a first-time
 		# player must get the same tier a returning one does rather than a coincidence.
 		_apply_ai_difficulty()
+		# And the window mode, for the third time for the same reason: `project.godot`
+		# already opens exclusive-fullscreen, but a build launched with `--windowed` or
+		# resized by the window manager before this ran would otherwise stay that way.
+		_apply_fullscreen()
 		return
 	_migrate_bindings(config)
 	for action in REBINDABLE_ACTIONS:
@@ -584,3 +657,6 @@ func _load_and_apply() -> void:
 		DEFAULT_DIFFICULTY)), false)
 	set_player_name(String(config.get_value(SETTINGS_SECTION_MATCH, "player_name",
 		DEFAULT_PLAYER_NAME)), false)
+	# `persist` false, same as the two above: re-applying what we just read is not a change.
+	set_fullscreen(bool(config.get_value(SETTINGS_SECTION_DISPLAY, "fullscreen",
+		DEFAULT_FULLSCREEN)), false)
