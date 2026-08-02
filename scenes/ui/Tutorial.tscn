@@ -61,9 +61,9 @@ text = "TUTORIAL"
 [node name="Panel" type="PanelContainer" parent="."]
 layout_mode = 0
 offset_left = 300.0
-offset_top = 226.0
+offset_top = 196.0
 offset_right = 1620.0
-offset_bottom = 832.0
+offset_bottom = 890.0
 theme_type_variation = &"WoodPanel"
 
 [node name="Margin" type="MarginContainer" parent="Panel"]
