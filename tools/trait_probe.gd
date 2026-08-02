@@ -292,12 +292,21 @@ func _check_lata(can: Lata) -> void:
 	var flight_tough_window := Slipper.HIT_RADIUS + can.hit_margin()
 	await _check_window_is_live(can, flight_tough, frail, flight_tough_window, frail_window)
 
-	# REBOUND — the recoil multiplier `slipper.gd` scales `LATA_RECOIL_SCALE` by.
-	can.apply_skin(light)
-	var light_recoil := can.power_scale()
-	can.apply_skin(heavy)
-	var heavy_recoil := can.power_scale()
-	_check("lata REBOUND (recoil)", false, "PASIP(1)", light_recoil,
+	# ⚠️⚠️ REBOUND IS MEASURED OFF A REAL HIT NOW, NOT OFF `power_scale()` — 2026-08-02.
+	# It was the last `[derived]` prop stat: the old two lines compared the multiplier
+	# with itself, which cannot tell "the recoil is scaled by the can" from "the getter
+	# returns different numbers and nobody calls it". That is precisely the failure
+	# THE REACHABILITY RULE's second half describes, and the whole reason this file
+	# exists — so the one prop stat still asserted that way was the wrong one to leave.
+	#
+	# `slipper.gd::_step_flying()` scales `LATA_RECOIL_SCALE` by `target.power_scale()`
+	# and hands it to `_host_recoil_from()`, which SETS the slipper's speed to
+	# `LAUNCH_SPEED * scale` rather than adding to it — so the slipper's own speed one
+	# step after the can goes over IS the reading, with no need to subtract the
+	# incoming throw.
+	var light_recoil := await _recoil_speed_of(can, light)
+	var heavy_recoil := await _recoil_speed_of(can, heavy)
+	_check("lata REBOUND (recoil)", true, "PASIP(1)", light_recoil,
 		"KALAWANG(5)", heavy_recoil, true)
 
 ## ⚠️⚠️ THE ONE CHECK THAT PROVES THE WINDOW IS READ RATHER THAN MERELY RETURNED.
@@ -480,3 +489,58 @@ func _report() -> void:
 	for line in _failures:
 		print("  * " + line)
 	get_tree().quit(1)
+
+## Throws a slipper straight into the can and returns how fast the slipper is moving
+## one physics step after the knockdown — the live counterpart of `power_scale()`.
+##
+## ⚠️ RETRIED LIKE `_knocks_down_any()`, AND FOR THE SAME REASON. The throw has to
+## actually connect for there to be a recoil to read; a deflection off a body or an
+## early landing gives 0.0, which would read as "the stat does not reach the game"
+## when it means "the throw missed". A 0.0 is retried, a real reading is returned.
+func _recoil_speed_of(can: Lata, skin: int) -> float:
+	for _attempt in range(WINDOW_ATTEMPTS):
+		var speed := await _recoil_once(can, skin)
+		if speed > 0.0:
+			return speed
+	return 0.0
+
+func _recoil_once(can: Lata, skin: int) -> float:
+	can.apply_skin(skin)
+	can.host_reset_for_new_round()
+	var slipper := _any_slipper()
+	var attacker := _other_attacker(null)
+	if slipper == null or attacker == null:
+		return 0.0
+	_clear_the_court()
+	await get_tree().physics_frame
+	slipper.host_reset_for_new_round()
+	slipper.host_assign_owner(attacker.player_slot)
+	# Straight at the can, level with it, from far enough out that no body is in the
+	# way — the same geometry `_knocks_down_at()` uses, with the offset set to zero so
+	# it connects instead of passing by.
+	# ⚠️ AIMED 4 m PAST THE CAN, NOT AT IT — the same geometry `_knocks_down_at()`
+	# uses, and the first version got this wrong. `host_throw()` solves an ARC to the
+	# target point, so aiming AT the can makes that point the top of the descent: the
+	# slipper arrives already dropping and lands short instead of striking. Throwing
+	# THROUGH the can means it crosses the mark at speed, which is what a real throw
+	# does and the only way there is a recoil to read. Measured: aiming at the can
+	# returned 0.0000 for both skins, which reads identically to "the stat is dead".
+	var from := can.global_position + Vector3(0.0, 0.0, 4.0)
+	var to := can.global_position + Vector3(0.0, 0.0, -4.0)
+	slipper.global_position = from
+	await get_tree().physics_frame
+	slipper.host_grab(attacker)
+	await get_tree().physics_frame
+	slipper.host_throw(attacker, from, to, 1.0)
+	var step := 1.0 / float(Engine.physics_ticks_per_second)
+	for _i in range(90):
+		await get_tree().physics_frame
+		if not can.is_upright:
+			# The recoil was applied on the frame the can went over; sample the NEXT
+			# step's displacement, which is that velocity expressed as a distance.
+			var before := slipper.global_position
+			await get_tree().physics_frame
+			return (slipper.global_position - before).length() / step
+		if not slipper.is_flying():
+			return 0.0
+	return 0.0
