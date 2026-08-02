@@ -23,6 +23,19 @@ Description=Tumbang Preso dedicated lobby on udp/%i
 After=network-online.target
 Wants=network-online.target
 
+# ⚠️ WITHOUT THIS A CRASH LOOP LOOKS LIKE A HEALTHY SERVER. If the game cannot
+# start at all (bad path, missing pack, port stolen), Restart=always spins it
+# forever and `systemctl status` keeps saying "activating". StartLimit turns that
+# into a unit in the `failed` state, which monitoring can actually see.
+#
+# ⚠️⚠️ THESE BELONG IN [Unit], NOT [Service], AND PUTTING THEM IN THE WRONG
+# SECTION FAILS SILENTLY. They sat under [Service] until 2026-08-02, where
+# systemd ignored them and said so only in the journal — `Unknown key name
+# 'StartLimitIntervalSec' in section 'Service', ignoring.` — so the unit looked
+# correct, started correctly, and simply had none of this protection.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
 [Service]
 Type=simple
 User=gameserver
@@ -50,13 +63,10 @@ ExecStart=/opt/tumbang-preso/godot --headless --path /opt/tumbang-preso/game res
 Restart=always
 RestartSec=3
 
-# ⚠️ WITHOUT THIS A CRASH LOOP LOOKS LIKE A HEALTHY SERVER. If the game cannot
-# start at all (bad path, missing pack, port stolen), Restart=always will spin
-# it forever and `systemctl status` will keep saying "activating". StartLimit
-# turns that into a unit in the `failed` state, which is a thing monitoring can
-# actually see.
-StartLimitIntervalSec=60
-StartLimitBurst=5
+# ⚠️ StartLimit* MOVED TO [Unit] — SEE THE TOP OF THIS FILE. They lived here and
+# systemd ignored them, silently: `Unknown key name 'StartLimitIntervalSec' in
+# section 'Service', ignoring.` in the journal on the live box, 2026-08-02. The
+# protection they describe was never actually on.
 
 # Godot writes to stdout/stderr; journald takes it from there.
 #   journalctl -u tumbang-preso-lobby@8910 -f
