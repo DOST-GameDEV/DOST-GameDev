@@ -406,7 +406,7 @@ func _populate_premise(strip: HBoxContainer, tiles: Array) -> void:
 		# ⚠️ AFTER the subject, because `set_frame_zoom` multiplies the MEASURED framing and
 		# `show_prop`/`show_character` are what measure it. Called the other way round it
 		# would be overwritten by the frame that follows.
-		icon.set_tile_framing(TILE_ZOOM)
+		icon.set_tile_framing(TILE_ZOOM, true)
 
 ## Puts the right rig in the tile. Through `CharacterPreview`'s own public calls, so
 ## the framing, the material and the prop tint are all the ones the CHARACTER screen
