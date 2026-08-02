@@ -1263,6 +1263,7 @@ func _rpc_client_ready_for_spawn() -> void:
 ## every ready gate and every late join cannot reshuffle a match in progress.
 func _refresh_ai_prop_picks() -> void:
 	var seats := _seat_characters()
+	_release_bot_picks_colliding_with_humans(seats)
 	var taken: Array[int] = []
 	for slot in range(NetworkManagerScript.MAX_PLAYERS):
 		var who: CharacterBase = seats.get(slot)
@@ -1287,6 +1288,50 @@ func _refresh_ai_prop_picks() -> void:
 		if visual != null and visual.has_method("apply"):
 			visual.apply(who.is_person, who.is_can, who.player_slot)
 
+
+## ⚠️⚠️ SENDS A BOT BACK TO -1 IF IT IS WEARING A HUMAN'S PERSON, so the dealer below
+## re-fills it. New 2026-08-02, and it is what makes dealing bots at spawn safe.
+##
+## `_fill_empty_slots_with_placeholders()` now deals AI seats the moment they spawn, so
+## their names exist from the first frame instead of appearing at the ready gate (see that
+## function's note — it is the multiplayer names fix). But it runs inside `_start_hosting()`,
+## before a single client has connected, so the dealer cannot yet see which Persons the
+## humans took: a bot can quite legitimately be given the face somebody picks later.
+##
+## The old dealer could not fix that. It is idempotent by design — `character_index >= 0`
+## is skipped — which is what stops a re-run reshuffling a match in progress, and it also
+## means a wrong early guess would stick for the whole match. Releasing the collision
+## first keeps both properties: a bot that is NOT clashing is still never touched again, and
+## a bot that IS gets re-dealt from the same deterministic spread, this time with the human
+## picks in `taken`.
+##
+## ⚠️ THE HUMAN IS NEVER THE ONE MOVED, even though the collision is symmetric. Their pick
+## came from the CHARACTER screen and is the one choice in this function anybody made on
+## purpose.
+func _release_bot_picks_colliding_with_humans(seats: Dictionary) -> void:
+	var human_picks: Array[int] = []
+	for slot in seats:
+		var who: CharacterBase = seats[slot]
+		if who == null or not is_instance_valid(who):
+			continue
+		# ⚠️ `is_bot or is_ai_driven()` — the same pair `display_name()` asks, and for the
+		# same reason: `is_bot` is intent set by `call_local` RPCs on every peer, and
+		# `is_ai_driven()` catches Single Player and the Tab switcher, which never go
+		# through those RPCs. Asking only one of them misclassifies a seat in one mode.
+		if who.is_bot or who.is_ai_driven():
+			continue
+		if who.character_index >= 0:
+			human_picks.append(who.character_index)
+	if human_picks.is_empty():
+		return
+	for slot in seats:
+		var who: CharacterBase = seats[slot]
+		if who == null or not is_instance_valid(who):
+			continue
+		if not (who.is_bot or who.is_ai_driven()):
+			continue
+		if who.character_index in human_picks:
+			who.character_index = -1
 
 ## Roster indices the four seats reach for first, spread across the twelve rather
 ## than taken in order. 0/1/2/3 would deal the four Persons the roster happens to
@@ -1773,6 +1818,35 @@ func _fill_empty_slots_with_placeholders() -> void:
 		var sentinel_peer_id := -1 - index
 		_spawned_peer_ids[sentinel_peer_id] = true
 		spawner.spawn(_build_spawn_data(sentinel_peer_id, index))
+	# ⚠️⚠️ THE BOTS ARE NAMED HERE, AT SPAWN, AND NOT ONLY AT THE READY GATE — 🧑
+	# 2026-08-02: *"fix multiplayer names showing up pls"*, with a scoreboard reading
+	# P1/P2/P3/P4 in a networked match while the same build named everyone correctly in
+	# Single Player.
+	#
+	# A bot's name IS its `character_index` (`CharacterBase._character_name()`), and until
+	# today the only place an AI seat was dealt one was `_rpc_begin_ready_countdown`. That
+	# is late: it is after the lobby, after the scene change, after every peer has pressed
+	# R — so for the whole of that window every bot on every screen answers the bare seat
+	# label, and the scoreboard behind the ready prompt says P2 and P4 because that is
+	# genuinely all it has been told.
+	#
+	# ⚠️ AND IT IS ALSO FRAGILE, WHICH IS THE HALF THAT PRODUCES "SOMETIMES". Dealing at
+	# the ready gate means every client learns the names from ONE `_rpc_sync_picks`
+	# broadcast plus an ON_CHANGE synchroniser update. Dealing them BEFORE the spawn puts
+	# `character_index` in the spawn packet itself (`CharacterBase.tscn` marks it
+	# `spawn = true`), so a client that joins, re-joins or arrives late gets the name with
+	# the body, by the same mechanism that gives it the body. Single Player never had the
+	# bug because `_build_local_roster` deals its bots inline — this makes the networked
+	# path do what the working path already did.
+	#
+	# ⚠️ THE COLLISION IT RISKS IS HANDLED IN `_refresh_ai_prop_picks` ITSELF. No client has
+	# identified yet at `_start_hosting()` time, so a bot dealt now can take the Person a
+	# human picks thirty seconds later. That is exactly why the deal used to wait. The
+	# dealer re-runs at the ready gate and now RELEASES any bot wearing a human's pick
+	# before it fills the gaps — so the early deal is a good guess that gets corrected,
+	# rather than a claim that sticks.
+	if NetworkManager.is_host():
+		_refresh_ai_prop_picks()
 
 ## B-76. Picks the ability class a Prop should carry THIS round, given its
 ## role (is_can) and team. Never cached on the caller's side — call this again

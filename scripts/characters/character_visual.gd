@@ -437,7 +437,7 @@ const HAND_BONE_CANDIDATES: Array[String] = ["arm-right", "arm-left"]
 ## ⚠️ THE X IS MIRRORED FOR A LEFT ARM by `_build_hand_attachment`. `arm-left` is the
 ## mirror bone and the fallback path can select it, or any arm-ish bone on a rig that has
 ## neither — see there.
-const HAND_CARRY_OFFSET: Vector3 = Vector3(-0.134, 0.000, 0.021)
+const HAND_CARRY_OFFSET: Vector3 = Vector3(-0.190, 0.000, 0.030)
 
 ## The persistent carry pose. Verified against the actual .glb rather than a
 ## doc: the Kenney rig ships `holding-right` and `holding-right-shoot`, and
