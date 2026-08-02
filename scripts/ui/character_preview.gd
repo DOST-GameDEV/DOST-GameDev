@@ -177,6 +177,8 @@ var _user_took_over: bool = false
 var _centre_subject: bool = false
 ## Set with `set_tile_framing()`. See the ⚠️ in `_frame()`.
 var _uniform_extent: bool = false
+## Set with `enable_tile_interaction()`. See that function's ⚠️.
+var _wheel_zooms: bool = true
 
 func _ready() -> void:
 	# A SubViewportContainer defaults to ignoring the mouse. It has to receive
@@ -349,11 +351,13 @@ func _gui_input(event: InputEvent) -> void:
 					reset_view()
 					accept_event()
 			MOUSE_BUTTON_WHEEL_UP:
-				_zoom_by(-ZOOM_STEP)
-				accept_event()
+				if _wheel_zooms:
+					_zoom_by(-ZOOM_STEP)
+					accept_event()
 			MOUSE_BUTTON_WHEEL_DOWN:
-				_zoom_by(ZOOM_STEP)
-				accept_event()
+				if _wheel_zooms:
+					_zoom_by(ZOOM_STEP)
+					accept_event()
 	elif event is InputEventMouseMotion and _dragging:
 		var motion := (event as InputEventMouseMotion).relative
 		_user_yaw -= motion.x * ORBIT_SENSITIVITY
@@ -399,6 +403,26 @@ func set_tile_framing(factor: float, uniform_extent: bool = false) -> void:
 	if _current != null and is_instance_valid(_current):
 		_frame(_current)
 	_apply_camera()
+
+## Lets the player turn a TILE's subject, the way the CHARACTER screen lets them
+## turn a full-size one. 🧑: *"in tutorial allow us to play around with the models
+## like in char select"*.
+##
+## ⚠️ THE WHEEL IS DELIBERATELY NOT TAKEN, AND THAT IS THE WHOLE DESIGN OF THIS
+## FUNCTION. These tiles live INSIDE the tutorial page's ScrollContainer, which is
+## why they were `MOUSE_FILTER_IGNORE` in the first place: a preview that consumes
+## the wheel would zoom a slipper while the player was trying to scroll the page,
+## and the tiles are big enough that the cursor is over one most of the time. So
+## drag-to-turn and right-click-to-reset are enabled — both are gestures the
+## ScrollContainer has no use for — and the wheel is left to fall through to the
+## page. Zoom stays exclusive to the CHARACTER screen, which has no scroll to
+## compete with.
+##
+## `MOUSE_FILTER_PASS` rather than `STOP` for the same reason: the events this
+## control does not `accept_event()` must keep travelling to the scroller.
+func enable_tile_interaction() -> void:
+	mouse_filter = Control.MOUSE_FILTER_PASS
+	_wheel_zooms = false
 
 ## Back to the measured shot, and back to turning on its own. Public because the
 ## screen may want to offer it as a button later; bound to right-click today.

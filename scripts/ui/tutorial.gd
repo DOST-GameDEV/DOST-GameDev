@@ -62,7 +62,7 @@ signal back_pressed
 const PAGES: Array[Dictionary] = [
 	{
 		"title": "TUMBANG PRESO",
-		"lede": "Four players. One taya.",
+		"lede": "1v1v1v1. One taya.",
 		"tiles": [
 			# ⚠️ Two DIFFERENT roster entries for the two person tiles. Both concepts are
 			# "a person", and rendering the same rig twice would read as a duplicated
@@ -82,12 +82,12 @@ const PAGES: Array[Dictionary] = [
 	},
 	{
 		"title": "THE GAME",
-		"lede": "Tumbang preso, played as a sport. One player guards the lata. The other three throw slippers at it.",
+		"lede": "Tumbang preso, played as a sport. A free-for-all: four players, four separate scores, no teams and no allies.",
 		"rows": [
-			["4 PLAYERS", "One taya and three attackers. Empty seats are filled by bots, so a match always runs four."],
+			["1v1v1v1", "Four players, each playing for themselves. One is the taya and three attack, but the three are not a team - they are rivals who happen to want the same thing. Empty seats are filled by bots, so a match always runs four."],
 			["90 SECONDS", "How long one round lasts. The clock is the only thing that ends it — there is no sudden win."],
 			["4 ROUNDS", "The taya role moves one seat clockwise after every round, so everybody is taya exactly once. Nobody can be handed the easy job twice."],
-			["POINTS, NOT WINS", "Rounds are scored, not won. Your score carries across all four rounds and the highest total at the end takes the match. Level scores at the top is an honest draw."],
+			["POINTS, NOT WINS", "Rounds are scored, not won. There is no team total - you carry your OWN score across all four rounds, and the highest at the end takes the match. Level scores at the top is an honest draw."],
 		],
 	},
 	{
@@ -95,7 +95,7 @@ const PAGES: Array[Dictionary] = [
 		"lede": "Blue is the taya and orange is the attack. The colours track the ROLE, so yours changes when your turn comes.",
 		"rows": [
 			["TAYA\none player", "You guard the lata and you cannot leave the chalk box around it, all round. You stop throws with your body, stand the lata back up when it goes down, and tag attackers who come in. Holding the post IS the job."],
-			["ATTACKERS\nthree players", "You throw a tsinelas at the lata from outside the box — and then you have to walk in and get it back. You are also each other's rivals: only one of you gets paid for knocking it down."],
+			["ATTACKERS\nthree rivals", "You throw a tsinelas at the lata from outside the box, then walk in and get it back. The other two are NOT your team: only the thrower who lands it is paid, and shoving a rival into a tag pays you too."],
 			["NOBODY IS OUT", "Being tagged costs you position and time, never the round. There is no elimination, so a bad start is always recoverable."],
 		],
 	},
@@ -105,7 +105,7 @@ const PAGES: Array[Dictionary] = [
 		"rows": [
 			["1.  THROW", "You start every round with your slipper already in hand. From outside the box, hold LEFT CLICK to charge and release. 2.5 seconds to full power, so the taya can see it coming. Throwing is free — nothing can happen to you while you do it."],
 			["2.  IT LANDS", "Hit the lata and it goes over. Miss and your slipper is lying on the ground. If the taya blocks it with their body it only drops a couple of metres away — INSIDE the box, near them. That is the taya's reward for blocking: you now have to come and get it under their nose."],
-			["3.  RETRIEVE", "This is the risk, and it is the entire point of the game. An arrow at your feet points to your own slipper, but ANY loose one will do. Walking in is safe; the instant it is in your hand you can be tagged, until you carry it back out — and a blocked slipper is lying right next to the taya."],
+			["3.  RETRIEVE", "The risk, and the entire point of the game. An arrow points to your own slipper, but ANY loose one will do. Walking in is safe; the instant it is in your hand you can be tagged, until you carry it out — and a blocked slipper lies right next to the taya."],
 			["4.  RESET", "The taya stands the lata back up by holding E in its ring. It takes 1.5 seconds of standing still, and nobody may throw for a moment afterwards."],
 		],
 	},
@@ -147,12 +147,11 @@ const PAGES: Array[Dictionary] = [
 		"title": "CONTROLS  ·  TAYA",
 		"lede": "You are faster than every attacker. Closing them down is your whole job.",
 		"rows": [
-			["LEFT CLICK", "PUNCH. A quick jab straight ahead, no wind-up. Any attacker holding their slipper within arm's reach in front of you is tagged instantly. Short cooldown — this is your answer to somebody standing next to you. ⚠ It only works while the lata is STANDING (see below)."],
-			["E  ·  hold", "LUNGE. Hold half a second to charge, release to dash a metre forward. Anyone holding their slipper caught in the path is tagged — this is your answer to somebody running PAST you. (Right click does the same thing.)"],
-			["E  ·  in the ring", "Standing in the lata's ring with it knocked over: hold E to set it back up. Letting go loses all of it — and while you are doing that, E is the reset and not the lunge."],
-			["⚠  NO TAGS WHILE IT IS DOWN", "Neither the punch nor the lunge can tag anybody while the lata is lying over. Standing it back up is not just tidying — it is what re-arms both of your tagging verbs. Reset first, then hunt."],
-			["YOU ARE FASTER", "Attackers move at 75% of your speed, permanently. Any chase in the open is one you win if you commit to it."],
-			["TAGGING IS A PRESS", "Neither verb fires by standing close. Both are aimed along the way you are FACING, and you only turn on a frame you are walking — so keep moving into them."],
+			["LEFT CLICK", "PUNCH. A jab straight ahead, no wind-up. Any attacker holding a slipper within arm's reach in front of you is tagged instantly. Short cooldown — your answer to somebody standing on you. ⚠ Only while the lata is STANDING."],
+			["E  ·  hold", "LUNGE. Hold half a second, release to dash a metre forward. Anyone holding a slipper in the path is tagged — your answer to somebody running PAST you. (Right click does the same.)"],
+			["E  ·  in the ring", "In the lata's ring with it down: hold E to set it back up. Letting go loses all of it, and while you are there E is the reset, not the lunge."],
+			["⚠  NO TAGS WHILE IT IS DOWN", "Neither verb can tag while the lata is over. Standing it up is not tidying — it re-arms both. Reset first, then hunt."],
+			["YOU ARE FASTER", "Attackers move at 75% of your speed, permanently, so any chase in the open is yours if you commit. But neither verb fires by standing close: both aim along the way you FACE, and you only turn while walking — keep moving into them."],
 		],
 	},
 	{
@@ -176,7 +175,7 @@ const PAGES: Array[Dictionary] = [
 		"title": "READING THE HUD",
 		"lede": "Everything the game will not say out loud is on screen somewhere.",
 		"rows": [
-			["SCOREBOARD\ntop left", "All four players, ranked, with the taya marked. The arrow is you."],
+			["SCOREBOARD\ntop left", "All four ranked against each other - there are no team totals in a free-for-all. The taya is marked and the arrow is you."],
 			["THE LATA\nbottom right", "Whether it is up or down, and what YOU can do about it right now — which differs depending on whether you are the taya or an attacker."],
 			["STATUS ROWS", "Stuns, knockdowns and cooldowns each draw a row with its own countdown, so you can time playing around them. VULNERABLE has no timer on purpose: it lasts exactly as long as you choose to stand in the box holding a slipper."],
 			["CROSSHAIR", "Only shown when a throw would actually be allowed. If it is not there, check the three rules on THE RISK."],
@@ -397,11 +396,15 @@ func _populate_premise(strip: HBoxContainer, tiles: Array) -> void:
 		var icon := strip.get_child(i).get_child(0) as CharacterPreview
 		if icon == null:
 			continue
-		# These four sit INSIDE the page's ScrollContainer, and `CharacterPreview`
-		# takes the mouse for drag-to-turn and wheel-to-zoom. Left alone, the wheel
-		# over a tile would zoom a slipper instead of scrolling the page. The tiles are
-		# pictures; the CHARACTER screen is where inspecting the model belongs.
-		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		# ⚠️ TURNABLE, BUT THE WHEEL STILL SCROLLS THE PAGE. 🧑: *"in tutorial allow
+		# us to play around with the models like in char select"*. These four sit
+		# INSIDE this page's ScrollContainer, which is why they used to take no mouse
+		# at all — a preview that ate the wheel would zoom a slipper while the player
+		# was trying to scroll, and the tiles are big enough that the cursor is over
+		# one most of the time. `enable_tile_interaction()` takes the two gestures the
+		# scroller has no use for (drag to turn, right-click to reset) and leaves the
+		# wheel to fall through. See that function for the full reasoning.
+		icon.enable_tile_interaction()
 		_show_subject(icon, tiles[i] as Dictionary)
 		# ⚠️ AFTER the subject, because `set_frame_zoom` multiplies the MEASURED framing and
 		# `show_prop`/`show_character` are what measure it. Called the other way round it
