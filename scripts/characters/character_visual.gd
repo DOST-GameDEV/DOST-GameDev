@@ -236,231 +236,74 @@ const CAPSULE_HALF_HEIGHT_DOWN: float = -0.8
 ## right arm is the one the animation set is built around. `arm-left` is only a
 ## fallback for a model that somehow lacks the right one.
 const HAND_BONE_CANDIDATES: Array[String] = ["arm-right", "arm-left"]
-## Offset from the arm bone to the point a carried unit's ORIGIN should sit —
-## note: its origin, not its palm. A CharacterBase's origin is the centre of its
-## 1.6-unit capsule, while its visible model is dropped to the capsule floor by
-## _align_to_capsule_floor, so parking the origin exactly at the palm would hang
-## the slipper most of a metre below the hand. This offset absorbs that, and it
-## lives HERE rather than in carriable.gd on purpose: it is a fact about how the
-## model is laid out, and character_base.gd must never learn it — same rule that
-## keeps dents out of it.
+## Offset from the arm bone to the point a carried tsinelas' ORIGIN sits, in the BONE'S
+## OWN local space, which is what a `Node3D` under a `BoneAttachment3D` is measured in.
 ##
-## ⚠️ WORLD UNITS, in the arm bone's rotated frame — NOT bone-local units.
-## `_build_hand_attachment` divides by PERSON_SCALE before writing it, because
-## the HandPoint hangs off a BoneAttachment3D whose global basis already carries
-## the model's 2.38 scale. The original code wrote this constant straight onto
-## the node, so every component was silently multiplied by 2.38: the measured
-## result was a slipper parked at CharacterBase-local (-1.00, +1.12, -0.45) —
-## a metre out to the character's left and above the top of its own head, which
-## is where "the held slipper isn't in their hand" came from. Verified in-engine
-## by rendering it, not by reading it.
-## ⚠️ RE-MEASURED for Art_Direction.md §1 — the tsinelas mesh is now natively
-## 0.32x scale (generate_all.gd's TSINELAS_SCALE) instead of being shrunk at
-## runtime by the since-deleted TSINELAS_CARRY_SCALE. That runtime scale used to
-## apply to the `Visual` node itself, about ITS OWN ORIGIN — so while carried,
-## the slipper's sole (dropped to local y = -0.8 by _align_to_capsule_floor) was
-## effectively lifted to -0.8 * 0.32 = -0.256. With no runtime scaling left,
-## Visual.scale is always Vector3.ONE, so the sole sits at the FULL -0.8 in
-## every carry state unless the target absorbs it.
+## ⚠️⚠️ THIS NUMBER IS MEASURED OFF THE SKIN AND IT IS THE ONLY WAY IT CAN BE RIGHT.
+## Eight values before it were guessed, bisected, or derived from the bone rest, and every
+## one came back wrong in a different category — in the chest, under the arm, inside the
+## forearm, on the neck, on the face. That history is preserved in git and in
+## `tools/palm_probe.gd`; the short version is that all of it was measured in the wrong
+## frame, so the search had no correct answer to converge on.
 ##
-## Re-measured by rendering, not by keeping the old apparent position: the first
-## attempt held the mesh's apparent height constant (target.y 0.470 -> 1.014,
-## same -0.8 drop applied), which put the slipper at the same HEIGHT as before —
-## but forward distance (Z) was unchanged, and unlike the old dynamically-shrunk
-## mesh, this one is elongated along its own local axis and the arm bone's fixed
-## rotation turns that axis nearly broadside to the FPP camera. Broadside and
-## close together is worse than either alone: `tools/render_probe.gd`'s
-## viewmodel mode showed it filling most of the frame. Pushing it further out
-## (larger |Z|) and back down closer to the old un-compensated height (Y well
-## below the +0.45 eye, rather than above it) reads correctly in both the FPP
-## screenshot and the third-person one — small, forward, off to the side of
-## the crosshair, and visibly attached to the hand rather than floating loose.
-## ⚠️ MEASURED BY CALIBRATION, NOT GUESSED — and it is only valid for the
-## `holding-right` pose. Change that pose and this is wrong again; re-measure
-## rather than nudging it by eye.
+## The frame that is not a matter of opinion is the one Godot skins in:
 ##
-## The offset is applied in the ARM BONE's rotated frame, so it is not readable
-## by inspection. Calibrated by sampling the HandPoint that render_probe reports
-## at four offsets — (0,0,0) and the three unit axes — which gives the map
-## exactly:
+##     skeleton_vertex = bone_global_pose[b] * skin.bind_pose[b] * v
 ##
-##     world = t + R * offset
-##     t = (-0.2378, -0.1152, -0.0411)   (the arm bone's origin, character-local)
-##     R = a +60 degree rotation about Y:  x -> (0.5, 0, -0.866)
-##                                         z -> (0.866, 0, 0.5)
+## and a `BoneAttachment3D` sits at exactly `bone_global_pose[b]`. So a child of it at
+## local position `p` lands on vertex `v` when `p == bind_pose[b] * v` — **for every pose
+## of every clip**, because the animated part cancels out of both sides. Push the arm's
+## own skinned vertices through that product and the hand's coordinates fall out.
 ##
-## Inverting that puts the slipper wherever you want it in CHARACTER space:
-##     offset = R⁻¹ * (target - t),  R⁻¹: x -> 0.5x - 0.866z,  z -> 0.866x + 0.5z
+## `tools/palm_probe.tscn` does exactly that: it takes every vertex `body-mesh` weights
+## ≥ 0.5 to `arm-right`, converts by the skin bind, and averages the far eighth of the
+## limb — 36 vertices, the hand blob. It reports
 ##
-## THE TARGET WAS CHOSEN FOR FIRST PERSON, because a Person is always FPP and
-## the carried slipper is the thing they aim with. Its origin lands at
-## (0.260, 0.600, -0.750): the ORIGIN sits a little above the eye (+0.45), but
-## the visible mesh drops 0.8 below that once instanced, landing it comfortably
-## below the eyeline. Forward and to the right so it never covers the
-## crosshair, and far enough out that the mesh's long axis (turned nearly
-## broadside to the camera by the arm bone's own fixed rotation) doesn't fill
-## the frame the way a closer placement did.
+##     palm centre (bone-local)  (-0.2666, -0.0062, +0.0613)
+##     hand blob radius           0.0780
+##     bone global rest basis     IDENTITY, origin (-0.100, +0.288, -0.017) = the shoulder
 ##
-## Three earlier attempts are worth recording so nobody repeats them. Targeting
-## "chest height" put it beside the head — this rig is chibi and its head spans
-## +0.017 to +0.798, so ordinary human landmarks do not transfer. Targeting the
-## palm itself buried it inside the arm mesh and dropped it ~60 degrees below the
-## camera, i.e. outside a 75-degree FOV entirely: correct in the hand, invisible
-## to the player. Targeting the SAME apparent height the old dynamically-shrunk
-## mesh read at (character-local Y 0.214, i.e. target.y 1.014) put the object
-## close to the eye's own height, which put it close to the CAMERA in total 3D
-## distance too — broadside and close together filled most of the frame.
-## ⚠️ 7.3 — RE-TARGETED TO THE ACTUAL HAND, 2026-07-28. Everything above this
-## line describes the FIRST-PERSON composition this constant used to serve, and
-## that is exactly what was wrong with it: the target was chosen so the slipper
-## sat "a little above the eye", forward and right of the crosshair. That is a
-## viewmodel pose, and putting a REAL object there parks it beside the carrier's
-## head in world space — which is what every other player saw, and what was
-## reported over and over as the slipper floating.
+## ⚠️ THE REST BASIS BEING IDENTITY IS WHY THE OLD NOTES IN THIS BLOCK READ AS NONSENSE.
+## They record bone axes sampled on a live, animated carrier and then reason about them as
+## if they were fixed — but the bone rotates, so those samples describe one frame of one
+## clip and nothing else. In the rest frame the axes are plain: **-X runs down the limb**
+## (the shoulder is at model x -0.100 and the palm at bone x -0.267, so the arm is 0.267
+## model units long), **+Y is the back of the hand** and **+Z is forward**. Anything the
+## animation does to that is carried by the attachment, which is the whole point of using
+## one.
 ##
-## Re-measuring it could never have fixed that. The offset was doing precisely
-## what it was written to do; the mistake was asking one object to compose two
-## views at once. `camera_rig.gd` now gives the viewmodel its own `HeldSlipper`
-## (see `VIEWMODEL_CARRY_ANCHOR`), which frees this to mean what its name says:
-## put the slipper in the hand. Solved with the same inversion the whole
-## viewmodel already exists for.
+## ⚠️ IT SITS **ON** THE HAND, NOT IN A GRIP. 🧑 2026-08-02: *"this is a low poly game,
+## cant grip slipper so js put it on the hand like on top not floating"*. So Y is not the
+## palm's centre but the hand's TOP SURFACE, and that is measured too — the same 36
+## vertices, boxed in bone-local space:
 ##
-## ⚠️ THIS IS A PALM NUDGE ONLY. IT IS NOT WHERE THE MESH-DROP IS COMPENSATED.
+##     hand box   x -0.2837 .. -0.2337   y -0.0555 .. +0.0555   z +0.0241 .. +0.1166
 ##
-## It used to be Vector3(0.237, 0.135, -0.347) — magnitude **0.441 m** measured
-## bone-to-point in world space, on a character 1.6 m tall. That is over a
-## quarter of body height, and it is the reported "floating slipper when held":
-## the tsinelas hung in mid-air roughly half an arm's length away from the hand.
+##     x  -0.2666   the palm centre, along the limb. More negative reaches past the tips.
+##     y  +0.0555   the top of the hand — the plane a shoe rests on.
+##     z  +0.0613   the hand's forward offset in the rest frame.
 ##
-## The intent behind it was right and the execution was not. `_align_to_capsule_floor`
-## drops a carried unit's MESH below its origin (measured: -0.160 for the
-## tsinelas, exactly its capsule half-height), so putting the origin on the hand
-## bone leaves the visible slipper hanging under the hand. Someone compensated
-## with this constant — but a 0.160 vertical correction was needed and 0.441 was
-## applied, two thirds of it sideways and forward.
+## ⚠️ +0.0400 WAS TRIED FIRST AND IT IS INSIDE THE BOX ABOVE, which is exactly what 🧑
+## saw: *"its almost on the arm, js phasing a bit thru it"*. The surface was guessed at as
+## "about half the blob radius" when it could simply be measured.
 ##
-## ⚠️ AND IT COULD NEVER HAVE WORKED AS A CONSTANT ANYWAY. HandPoint is a child
-## of a BoneAttachment3D, so this offset is expressed in the HAND BONE's local
-## frame, and that frame rotates with every animation clip. A vector that means
-## "up out of the palm" in `holding-right` means something else in `walk`, which
-## is why the slipper looked worse while moving.
+## ⚠️ THIS PUTS THE SHOE'S **ORIGIN** ON THAT PLANE, AND ITS SOLE HANGS BELOW ITS ORIGIN BY
+## AN AMOUNT THAT DIFFERS PER SKIN. `slipper.gd::_attach_to_hand()` adds that last lift
+## from the drawn bounds, because a clog and a flip-flop cannot share one number. Do not
+## try to bake it in here.
 ##
-## The mesh drop is now compensated in carriable.gd::_step_carried() from the
-## carried unit's OWN measured `visual_centre_offset()`, in world space, so it is
-## correct for the Can as well as the Tsinelas and cannot drift from the drop it
-## is cancelling. What is left here is a small nudge from the wrist bone into the
-## palm, which is genuinely a bone-space quantity.
-## ---------------------------------------------------------------------------
-## ⚠️⚠️ EVERYTHING ABOVE THIS LINE IS THE HISTORY OF A WRONG QUESTION, AND
-## `tools/hand_bone_probe.gd` SETTLED IT ON 2026-08-02. 🧑, reporting it for the third
-## time: *"the slipper floating earlier for others is a repeating problem, pls make sure
-## u fix it, make it so that everyone on multiplayer and singleplayer sees it on the arms
-## of the people"*.
+## ⚠️ A LIFT ALONG THE HAND'S OWN +Y, NOT ALONG WORLD UP. It rides the hand through every
+## clip; a fixed world-space nudge is what put the shoe on people's necks the last time a
+## vertical correction was tried.
 ##
-## **THIS RIG HAS NO WRIST BONE.** It has seven bones in total, `arm-right` IS the whole
-## arm, it has no child bone, and its rest origin is the SHOULDER — measured
-## `(-0.100, 0.288, -0.017)` on a model 0.672 units tall, i.e. at the collarbone. So
-## "a small nudge from the wrist bone into the palm" was describing a bone that does not
-## exist, and an 0.08 m nudge off a shoulder lands in the middle of the chest. That is
-## the floating slipper, in every mode, on every peer, for as long as the report has
-## existed — and it is why re-tuning this constant from a screenshot kept producing a
-## different wrong answer (0.441 m: half an arm out in mid-air; 0.08 m: inside the ribs).
+## ⚠️ UNITS ARE BONE-LOCAL, i.e. MODEL units. The parent chain applies `PERSON_SCALE`, so
+## 0.1 here is 0.24 in world; it must NOT be divided out here.
 ##
-## ⚠️ SO IT IS MEASURED OFF THE SKIN INSTEAD OF THE SKELETON. The arm's geometry is the
-## only thing in the file that knows how long the arm is: `hand_bone_probe` takes every
-## vertex the mesh weights ≥ 0.5 to `arm-right` and reports the one furthest from the
-## shoulder, in the bone's own frame. Eleven of the twelve roster rigs agree exactly —
-## **tip at (-0.284, -0.040, 0.044), 0.290 out along the bone's local -X** — because they
-## all ship the same skeleton. (`character-female-a` reports 0.451: it has 302 arm-weighted
-## vertices against everyone else's ~140, so its sleeve or hair is painted onto the arm.
-## It is an outlier in the SKIN, not in the skeleton, and taking it would put the slipper
-## past the fingertips of the other eleven.)
-##
-## ⚠️ ALL THE WAY OUT TO THE MEASURED TIP, AND THE FIRST PASS ERRED SHORT. It shipped at
-## 88% of the measurement (0.25) on the reasoning that a held object sits in the palm
-## rather than at the fingertips. 🧑, with a screenshot: *"a bit better but could be
-## improved"* — and the render shows why. Once `slipper.gd` centres the MESH on this point
-## rather than the slipper's origin, the shoe's own half-width extends back from here
-## towards the wrist, so a point at the palm puts half a tsinelas inside the forearm and
-## the whole thing reads as being clutched against the belly. Placing the point at the tip
-## puts the shoe's body in front of the hand, which is what carrying one looks like.
-##
-## The two changes have to be read together: the offset moved out because the thing being
-## positioned changed from a corner of the prop to its centre.
-##
-## ⚠️⚠️ THE Y IS LIFTED OFF THE MEASUREMENT, AND THAT IS DELIBERATE — 🧑 2026-08-02:
-## *"its sitting perfectly UNDER THE ARM NOW! JUST PUT IT UP!!!"*. Correct, and it follows
-## from HOW the tip is found: `hand_bone_probe` takes the arm vertex FURTHEST from the
-## shoulder, and the furthest point of a hand is a bottom corner of it — measured at
-## y = -0.040 in bone space. Sitting the shoe's centre exactly there hangs it off the
-## underside of the fist. Half the hand's own thickness back up puts it in the grip.
-##
-## ⚠️ +Y IS UP AND THAT WAS MEASURED TOO, NOT ASSUMED. This offset lives in the arm bone's
-## rotated frame, which no one can read by inspection — the note at the top of this block
-## records a previous author getting exactly that wrong. `carry_probe` now prints the
-## world-up component of each of the hand's local axes on a live carrier: **y +0.96** with
-## the arm at rest and +0.71 with it raised, x +0.26/+0.71, z ≈ 0. So +Y it is, on every
-## clip.
-##
-## ⚠️⚠️ AND THE REACH IS 0.134, NOT THE 0.290 THE VERTEX SWEEP REPORTED, BECAUSE THAT
-## MEASUREMENT WAS WRONG BY ABOUT A FACTOR OF TWO. It shipped at 0.284 and 🧑 caught it
-## twice — *"its sitting perfectly UNDER THE ARM NOW! JUST PUT IT UP!!!"*, then, after a
-## vertical nudge that did not address the real fault, *"ITS ON EVERYONES NECK IN UR LAST
-## PIC"*.
-##
-## Nudging Y was treating a symptom. `carry_probe` now prints the SHOULDER and the carry
-## point together, in character-local space, and the number is unarguable: the point sat
-## **0.684 m from the shoulder** — `0.284 × PERSON_SCALE` — on a character 1.6 m tall,
-## with the shoulder at local x +0.24 and the point at **x +0.84**, most of a metre out
-## sideways. No arm on this rig is 0.68 m long. `hand_bone_probe`'s sweep takes mesh
-## vertices in the MeshInstance's own space and inverse-transforms them by a bone rest
-## taken in SKELETON space, so anything between those two frames lands in the answer; it
-## is a good way to find WHICH end of the bone the hand is on and a bad way to measure how
-## far.
-##
-## The value is measured in the frame that cannot lie about it — the live body, where
-## `carry_probe` prints shoulder and carry point together. Every read below is from a real
-## match:
-##
-##     X 0.284  reach 0.68 m   *"ITS ON EVERYONES NECK"*
-##     X 0.134  reach 0.32 m   *"its INSIDE THE ARM"*
-##     X 0.190  reach 0.46 m   *"almost there ... not as bad as earlier"*
-##     X 0.225  reach 0.54 m   *"now its on their face/neck"* — **worse, not warmer**
-##
-## ⚠️⚠️ AND THAT LAST LINE IS THE IMPORTANT ONE, BECAUSE IT KILLS THE WHOLE APPROACH. An
-## 0.08 m step cannot move a shoe from "just inside the arm" to a face — unless the
-## direction being stepped in is wrong. It is: X is the ARM BONE'S OWN AXIS, and in
-## `CARRY_IDLE_CLIP` (`holding-right`) that axis points up and inward across the chest. So
-## more reach travels TOWARDS THE HEAD, and less reach retreats INTO THE FOREARM. There is
-## no value of X that is outside the arm and away from the face at the same time; bisecting
-## it was converging on a point that does not exist.
-##
-## ⚠️ SO THE CLEARANCE IS ON Z, WHICH IS PERPENDICULAR TO THE LIMB. `carry_probe` prints
-## each hand axis's world-up component and Z measures **≈ 0.00 in every pose** — it is
-## horizontal, and square to the bone. Moving along it takes the shoe off the side of the
-## arm without moving it along the arm at all, so it cannot reach the head no matter how
-## the clip swings. X stays at 0.190, the best reading anybody reported, and Z does the
-## job X could not.
-##
-## ⚠️ Y REMAINS EXACTLY ZERO — the bone's own centre line. Same reason: a vertical nudge
-## large enough to matter with the arm down is a throat with the arm up.
-##
-## ⚠️ THE LIFT STAYS AT EXACTLY ZERO — the arm bone's own axis. The vertex sweep put it at
-## y = -0.040, a BOTTOM corner of the fist, which is what "sitting perfectly under the arm"
-## was; the axis is the middle of the grip. And a hand-picked lift cannot be right anyway:
-## +0.14 m above a hand hanging at the hip is the waist, and +0.14 m above a hand raised to
-## the chest is the throat, which is exactly the neck report.
-##
-## ⚠️⚠️ AND IT IS IN BONE-LOCAL UNITS NOW, WRITTEN STRAIGHT ONTO THE NODE. The old
-## constant was documented as WORLD units and `_build_hand_attachment` divided it by
-## `PERSON_SCALE` on the way in. That conversion is deleted, because the probe measures in
-## exactly the frame the node is written in (a `BoneAttachment3D`'s child is positioned in
-## skeleton space, which is model units) — so the number in this file is now the same
-## number the probe prints, and re-measuring is a copy rather than an arithmetic problem.
-## ⚠️ THE X IS MIRRORED FOR A LEFT ARM by `_build_hand_attachment`. `arm-left` is the
-## mirror bone and the fallback path can select it, or any arm-ish bone on a rig that has
-## neither — see there.
-const HAND_CARRY_OFFSET: Vector3 = Vector3(-0.190, 0.000, 0.055)
+## ⚠️ A BONE-SPACE OFFSET AND NOT A BODY-SPACE ONE. Aiming at a fixed place on the torso
+## was tried and does put the shoe at the hip — but it is then rigid to the TORSO, so the
+## arm swings out from under it: *"it doesnt stick to their arm anymore when theyre
+## walking"*. Only an offset in the bone's own frame rides the bone.
+const HAND_CARRY_OFFSET: Vector3 = Vector3(-0.2666, 0.0555, 0.0613)
 
 ## The persistent carry pose. Verified against the actual .glb rather than a
 ## doc: the Kenney rig ships `holding-right` and `holding-right-shoot`, and
@@ -1150,8 +993,22 @@ func _build_hand_attachment() -> Node3D:
 			continue
 		var attachment := BoneAttachment3D.new()
 		attachment.name = "HandAttachment"
-		attachment.bone_name = bone_name
+		# ⚠️⚠️ PARENTED FIRST, BONE SET SECOND, AND THE OTHER ORDER IS WHY THE SLIPPER
+		# WOULD NOT STAY IN THE HAND. `BoneAttachment3D.bone_name`'s setter resolves the
+		# name to a `bone_idx` BY ASKING ITS PARENT SKELETON — and assigned before
+		# `add_child()` there is no parent to ask, so the index never resolves and the node
+		# stops tracking the animated pose. It then sits at the bone's REST transform, which
+		# on this rig is the arms-out bind pose.
+		#
+		# That is the whole "it goes to their neck when they walk" report, and it is why
+		# four rounds of tuning `HAND_CARRY_OFFSET` could not fix it: the constant was
+		# being applied in a frame that never moved. Measured by `carry_probe`'s motion
+		# sweep — over 150 frames of live walking the carry point's character-local x sat
+		# at **+0.68 .. +0.79** and never budged, half a metre out to the side of a body
+		# whose arms were hanging at the hip the whole time.
 		skeleton.add_child(attachment)
+		attachment.bone_name = bone_name
+		attachment.bone_idx = skeleton.find_bone(bone_name)
 		# A separate child, rather than offsetting the BoneAttachment3D itself:
 		# BoneAttachment3D overwrites its own transform from the bone pose every
 		# frame, so anything written directly onto it is silently discarded on
@@ -1159,8 +1016,8 @@ func _build_hand_attachment() -> Node3D:
 		# it will here — the item simply sits at the elbow and nothing errors.
 		var point := Node3D.new()
 		point.name = "HandPoint"
-		point.position = _carry_offset_for(bone_name)
 		attachment.add_child(point)
+		_aim_carry_point(point, bone_name)
 		return point
 
 	# ⚠️⚠️ NAMED BONES ARE NOT GUARANTEED ACROSS TWELVE RIGS, AND RETURNING NULL
@@ -1182,18 +1039,63 @@ func _build_hand_attachment() -> Node3D:
 			continue
 		var fallback := BoneAttachment3D.new()
 		fallback.name = "HandAttachment"
-		fallback.bone_name = skeleton.get_bone_name(index)
+		# Same order as the named path above, for the same reason — see its note.
 		skeleton.add_child(fallback)
+		fallback.bone_name = skeleton.get_bone_name(index)
+		fallback.bone_idx = index
 		var fallback_point := Node3D.new()
 		fallback_point.name = "HandPoint"
-		fallback_point.position = _carry_offset_for(fallback.bone_name)
 		fallback.add_child(fallback_point)
+		_aim_carry_point(fallback_point, fallback.bone_name)
 		push_warning("CharacterVisual: no %s bone; carrying from '%s' instead"
 			% [str(HAND_BONE_CANDIDATES), fallback.bone_name])
 		return fallback_point
 	push_warning("CharacterVisual: this rig has no arm or hand bone at all; "
 		+ "a carried slipper will ride the body instead of a hand")
 	return null
+
+## ⚠️⚠️ AIMS THE CARRY POINT AT A PLACE ON THE BODY, NOT AT A DISTANCE ALONG A BONE, AND
+## THAT CHANGE OF FRAME IS THE FIX. Six values of `HAND_CARRY_OFFSET` were tried against
+## play and every one of them was reported wrong in a different way — under the arm, in the
+## chest, on the neck, inside the forearm, past the hand. That is not a search converging
+## slowly; it is a search in the wrong space.
+##
+## `carry_probe`'s motion sweep says why. Over 150 frames of a bot walking, the carry
+## point's character-local **x never left +0.68 .. +0.79** while y and z swung exactly as a
+## walking arm should. The bone's local -X — the axis every one of those constants reached
+## along — points SIDEWAYS out of the shoulder, not down the limb. So "more reach" meant
+## "further out to the side and up towards the collar", which is precisely the sequence of
+## reports, and no value of it could ever have put the shoe in a hand.
+##
+## `HAND_CARRY_TARGET` says where the shoe goes in the frame the complaint is made in:
+## character-local space, where the capsule runs -0.8 at the feet to +0.8 at the crown and
+## +x is the character's right. Beside the hip, a little forward. This function converts
+## that into whatever local offset the bone's own frame needs to land there, by asking the
+## attachment where it currently is, so nobody has to reason about the bone's axes again.
+##
+## ⚠️ CONVERTED ONCE, THEN IT RIDES THE BONE. The result is a static local position under a
+## `BoneAttachment3D`, so the arm still carries it through every clip, on every peer, with
+## nothing per-frame — the property that made the attachment worth using in the first
+## place. What changes is only how the number is arrived at.
+##
+## ⚠️ MIRRORED BY THE TARGET'S OWN X, so a left-arm rig (the `HAND_BONE_CANDIDATES`
+## fallback) reaches to the character's left instead of across their body.
+const HAND_CARRY_TARGET: Vector3 = Vector3(0.30, -0.30, 0.12)
+
+func _aim_carry_point(point: Node3D, bone_name: String) -> void:
+	var target := HAND_CARRY_TARGET
+	if bone_name.to_lower().contains("left"):
+		target.x = -target.x
+	# ⚠️⚠️ BACK TO A BONE-SPACE OFFSET, BECAUSE A BODY-SPACE ONE DOES NOT SWING. Aiming at
+	# a point in character space was a real improvement over the six bone-space guesses —
+	# it put the shoe at the hip instead of half a metre out — but 🧑 caught what it cost:
+	# *"it doesnt stick to their arm anymore when theyre walking"*. Exactly right. Converting
+	# a body-space target once yields a SHORT lever off the bone, so the point barely
+	# swings while the arm swings a lot, and the hand walks away from the shoe.
+	#
+	# The offset has to be measured in the bone's frame to ride the bone. `target` is kept
+	# only as the fallback below.
+	point.position = _carry_offset_for(bone_name)
 
 ## `HAND_CARRY_OFFSET`, mirrored for a left arm.
 ##
