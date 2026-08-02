@@ -65,10 +65,30 @@ class_name SpectatorCamera
 ## ⚠️ AND THE FLOOR CAME DOWN WITH IT. The wheel's range mattered less than it
 ## looks: at `SPEED_MIN` 3.0 the slowest the camera could go was still two thirds
 ## of a walk, which is not slow enough to hold a shot on the can. 1.2 is.
-const BASE_SPEED: float = 6.0
+## ⚠️⚠️ 6.0 -> 3.6 ON 2026-08-02, ALSO ON DIRECT HUMAN INSTRUCTION, AND FOR A USE THIS
+## CONSTANT HAD NOT BEEN TUNED FOR YET. 🧑: *"slow down spectator bcz it so fast, cant
+## record anything with it ... spectator will be used as camera for cinematics but dont
+## make it too slow"*.
+##
+## The note above tuned 12.0 down to 6.0 for WATCHING. Recording is a third thing again
+## and it is stricter than either: a camera that is merely controllable still ruins a
+## take, because every correction is in the footage. 6.0 is 30% faster than the players
+## being filmed, so holding a player in frame meant riding the stick against them.
+##
+## 3.6 is deliberately BELOW a Person's 4.6 walk. That is the property that matters for a
+## tracking shot — the camera drifts back through a moving subject rather than pulling
+## ahead of them, which is the shot people actually want. It still crosses the 15 m court
+## in about four seconds under its own power, so it is not a tripod.
+const BASE_SPEED: float = 3.6
 ## Hold `sprint` (Shift) to boost. No stamina: the whole meter exists to make a chase a
 ## decision, and a spectator has nothing to decide.
-const BOOST_SCALE: float = 3.0
+##
+## ⚠️ 3.0 -> 2.5, BECAUSE THE BOOST IS THE REPOSITIONING GEAR AND NOT A SECOND CAMERA.
+## Against the old 6.0 base it was 18 m/s — four times a walk, and far too fast to stop
+## anywhere on purpose, so the only usable thing to do with it was let go and re-aim.
+## 2.5 against 3.6 is 9.0 m/s: the court in under two seconds when a shot is being SET
+## UP, and still slow enough that the camera can be brought to rest on a mark.
+const BOOST_SCALE: float = 2.5
 ## Mouse wheel adjusts the base speed between these, so a player framing a close shot of
 ## the can and a player crossing Bayan Plaza are not fighting the same number.
 const SPEED_MIN: float = 1.2
