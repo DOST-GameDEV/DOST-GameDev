@@ -44,7 +44,22 @@ PROTOCOL_VERSION = 1
 POOL_PORT_FIRST = 8910
 POOL_PORT_LAST = 8917
 
-# ⚠️⚠️ TWO, AND THE THIRD IS WHAT KILLED THE BOX — TWICE. Measured on this VM with
+# ⚠️⚠️ ONE. NOT A MEMORY LIMIT ANY MORE — A CPU ONE, AND CPU IS WHAT THIS SHAPE HAS
+# ALMOST NONE OF. `VM.Standard.E2.1.Micro` is ONE EIGHTH of an OCPU. Capping the
+# server main loop (see NetworkManager.DEDICATED_MAX_FPS) took an idle lobby from 20%
+# of a core to 0.65% and made an idle pool safe — but a RUNNING MATCH is physics and
+# AI for four characters, and three of those at once wedged the box again even with
+# the cap in place. Measured: SSH failing at banner exchange, console still reporting
+# Running, recovered only by a forced reboot.
+#
+# So the ceiling is the number of concurrent MATCHES this hardware can referee, and
+# on this shape that is one. It is not a memory figure; memory sat at 655 MB free.
+#
+# ⚠️ RAISE THIS ONLY WITH A BIGGER SHAPE, AND MEASURE A REAL MATCH BEFORE TRUSTING IT.
+# An Ampere A1 (2 full OCPUs, 12 GB) is roughly sixteen times the CPU and would carry
+# several; the port range stays wide so that costs one line here and no client build.
+#
+# The memory arithmetic this used to carry, kept because it still bounds the other axis:
 # zero lobbies running: 524 MB available. A lobby costs 186 MB for the first and
 # ~155 MB for each additional one (they share the binary and read-only pages), so:
 #
@@ -55,7 +70,7 @@ POOL_PORT_LAST = 8917
 # This was briefly set to 4, which would have reproduced the crash on demand.
 # The port range stays wider on purpose: a bigger box raises this number and needs
 # no new client build, because the client already asks all eight ports.
-MAX_LOBBIES = 2
+MAX_LOBBIES = 1
 
 # ⚠️ AND A COUNT IS NOT ENOUGH ON ITS OWN. `MAX_LOBBIES` assumes every lobby costs
 # what the measurement said; a match with four humans, a future map or a leak could
