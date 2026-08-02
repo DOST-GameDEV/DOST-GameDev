@@ -188,10 +188,17 @@ var local_picks: Dictionary = {"character": -1, "can": -1, "slipper": -1, "name"
 ## have to know this dictionary exists, mirroring how it reaches tokens through
 ## `peer_tokens` rather than through the wire format.
 ##
-## ⚠️ ANSWERS ON EVERY PEER NOW, NOT ONLY ON THE HOST — see `peer_characters`' own doc
-## for the measured bug that came of it answering `{"name": ""}` on a client, and
-## `_rpc_announce_picks` for what fills it in. A caller that still guards itself with
-## `if NetworkManager.is_host()` is not wrong, just narrower than it needs to be.
+## ⚠️⚠️ HOST-ONLY, AND CALLERS MUST TREAT IT THAT WAY. `peer_characters` is filled in
+## `_rpc_identify`, which returns early on anything but the host, so on a client this
+## answers the fallback for every peer including itself. That is why the player's NAME
+## does not come from here on the way to a body — `main.gd::_build_spawn_data` puts it in
+## the spawn packet, resolved host-side where the answer is known.
+##
+## ⚠️ SO `is_spectator()` IS ALSO ONLY TRUE ON THE HOST. A client reads `false` for
+## everybody, which makes `seated_peer_ids()`, `playing_peer_count()` and the rematch
+## denominator count spectators as players on every peer but the host. Known, pre-existing
+## and deliberately not fixed here: the fix is to carry the flag the same way the name now
+## travels, not to add a second broadcast channel beside it.
 ##
 ## The fallback stays: a seat with no human behind it (`main.gd`'s AI sentinels use
 ## negative peer ids that nothing can ever publish) has no picks and must not get
@@ -232,9 +239,12 @@ func is_spectator(peer_id: int) -> bool:
 ## Solo is unaffected and deliberately does not come through here: `main.gd::
 ## _start_local_test` reads `GameLaunch.spectator` directly and there is no host to tell.
 ##
-## Host-authoritative like every other pick: the sender proposes, the host records, and
-## the host is the only peer that ever tells anybody. A client never writes another
-## peer's flag — it only ever receives the host's ruling through `_rpc_announce_picks`.
+## Host-authoritative like every other pick: the sender proposes and the host records.
+##
+## ⚠️ AND THE RULING GOES NO FURTHER THAN THE HOST. Nothing carries the updated flag to
+## other clients, so their `is_spectator()` keeps whatever it inferred — see `picks_for()`'s
+## ⚠️ for what that costs and why it is left alone rather than patched with a second
+## broadcast alongside the spawn packet the name now rides.
 func publish_spectator(spectating: bool) -> void:
 	local_picks["spectator"] = 1 if spectating else 0
 	if not is_networked():
@@ -267,12 +277,6 @@ func _apply_spectator(peer_id: int, spectating: bool) -> void:
 		{"character": -1, "can": -1, "slipper": -1, "spectator": 0})
 	picks["spectator"] = 1 if spectating else 0
 	peer_characters[peer_id] = picks
-	# ⚠️ AND EVERYBODY IS TOLD, because this is the ONE field in the entry that changes
-	# after `_rpc_identify` has already been and gone — the SPECTATE button lives in the
-	# lobby, a screen later. Without this line a client's `is_spectator()` would be right
-	# for the peers that declared it on arrival and wrong for anyone who pressed the
-	# button, which is a worse failure than being uniformly wrong: it looks like it works.
-	_rpc_announce_picks.rpc(peer_id, picks)
 	peer_spectator_changed.emit(peer_id, spectating)
 
 ## ---------------------------------------------------------------------------
@@ -839,17 +843,11 @@ func _rpc_identify(token: String, picks: Dictionary = {}) -> void:
 		# careless (or hostile) client would be everybody's problem, not just its own.
 		"name": SettingsManagerScript.sanitise_name(String(picks.get("name", ""))),
 	}
-	# ⚠️⚠️ BOTH ANNOUNCEMENTS GO OUT HERE, BEFORE ANYTHING ELSE IN THIS FUNCTION, AND THE
-	# ORDER MATTERS. Everything below either sends this peer into a running match
-	# (`_rpc_route_to_running_match`) or fires `player_identified`, which is what
-	# `main.gd::_try_late_join` spawns a body on — and a body is built by
-	# `_build_networked_character`, which reads `picks_for()`. Publish the answer first
-	# and the spawn cannot race it; publish it afterwards and the peer builds a
-	# nameless, faceless character and nothing comes back to fix it.
-	#
-	# Both are reliable and both come from the host, so they arrive in this order.
-	_rpc_announce_all_picks.rpc_id(peer_id, peer_characters) # everyone who is already here
-	_rpc_announce_picks.rpc(peer_id, peer_characters[peer_id]) # and who just arrived
+	# ⚠️ THE NAME REACHES OTHER PEERS THROUGH THE SPAWN PACKET, NOT FROM HERE. This branch
+	# briefly broadcast the whole `peer_characters` table so `picks_for()` would be correct
+	# on every peer; `main.gd::_build_spawn_data` solves the same problem by putting the
+	# name in the packet that carries the body, which is where `character_index` already
+	# travelled. One mechanism, kept — see that function's ⚠️⚠️.
 	if match_in_progress:
 		_rpc_route_to_running_match.rpc_id(peer_id)
 	# ⚠️ FIRED FOR A PLAYER TOO, NOT ONLY FOR A SPECTATOR, AND THE LOBBY RELIES ON THAT.
@@ -897,54 +895,6 @@ func _rpc_announce_join_code(code: String) -> void:
 @rpc("authority", "call_remote", "reliable")
 func _rpc_announce_dedicated(dedicated: bool) -> void:
 	is_dedicated = dedicated
-
-## ---------------------------------------------------------------------------
-## § WHO EVERYONE IS — the host says, once, and every peer keeps the same answer.
-##
-## The shape is the one `_rpc_announce_join_code` / `_rpc_announce_dedicated` directly
-## above already use, and for the same reason: this is a fact about the SESSION that only
-## the host holds, so the host states it rather than each client guessing. What is new is
-## only that this one is about ANOTHER peer, so it goes to everybody rather than to the
-## one peer it concerns.
-##
-## ⚠️ THE HOST STILL DECIDES. These carry `peer_characters` entries the host has already
-## range-checked and sanitised in `_rpc_identify` — never a client's raw packet. A client
-## receiving this is being told an answer, not asked to trust a stranger.
-##
-## ⚠️ `call_remote`, NOT `call_local`. The host wrote its own copy a few lines before
-## sending, and re-running the write on itself is only ever a chance for the two to
-## disagree — the same reasoning `_rpc_announce_dedicated` states.
-##
-## ⚠️ NO SIGNAL, for the reason `_rpc_announce_dedicated` gives: nothing redraws on this
-## landing. It arrives in the reliable identify burst, long before a lobby board is
-## painted (`match_setup.gd` repaints on the seat/ready syncs that follow it) and long
-## before `main.gd` builds a body from it. A signal here would be a subscriber list with
-## nobody on it.
-## ---------------------------------------------------------------------------
-
-## Host -> everyone: one peer's picks, as recorded. Sent when a peer identifies and again
-## whenever the host changes the entry (`_apply_spectator`).
-@rpc("authority", "call_remote", "reliable")
-func _rpc_announce_picks(peer_id: int, picks: Dictionary) -> void:
-	peer_characters[peer_id] = picks
-
-## Host -> ONE peer, on identify: everybody who was already in the lobby.
-##
-## ⚠️ THIS IS THE HALF THAT IS EASY TO FORGET AND IT IS THE HALF THAT MATTERS MOST. The
-## per-peer announcement above only ever fires for a peer that identifies while you are
-## already connected — so the LAST person into a four-player lobby would learn nothing
-## about the three who were there first, which is exactly the person most likely to be
-## looking at a board full of strangers. Same catch-up shape `main.gd` uses for round
-## state when somebody joins mid-match.
-##
-## ⚠️ MERGED, NOT ASSIGNED. Overwriting the dictionary wholesale would discard anything
-## that arrived by another route in the meantime — this peer's own entry from a
-## `_rpc_announce_picks` broadcast that beat it here, for one — and the two messages are
-## deliberately allowed to overlap so that neither ordering can lose a peer.
-@rpc("authority", "call_remote", "reliable")
-func _rpc_announce_all_picks(table: Dictionary) -> void:
-	for peer_id in table:
-		peer_characters[int(peer_id)] = table[peer_id]
 
 ## One client-sent pick, range-checked against the roster it indexes. -1 is
 ## itself meaningful ("no pick") so it survives rather than being clamped to 0.
