@@ -509,6 +509,39 @@ func _character_name() -> String:
 	return CharacterRoster.name_at(character_index)
 
 ## Roster pick, for the model and the traits. -1 until a pick arrives.
+##
+## ⚠️⚠️ THIS IS A PLAIN VAR AND A SETTER THAT REPAINTED THE MODEL WAS TRIED HERE AND
+## WITHDRAWN, 2026-08-03. Recorded rather than deleted, because it is the obvious fix for
+## a REAL open defect and the next person to reach for it should see the measurement
+## first.
+##
+## THE DEFECT IT WAS AIMED AT IS GENUINE. `CharacterVisual.apply()` is the only thing that
+## instances a model, and it runs from exactly three places: this node's `_ready()`, a
+## role rotation, and the two `main.gd` helpers that call it by hand (`_apply_known_picks`,
+## `_refresh_ai_prop_picks`). `main.gd::_apply_reclaimed_picks` is NOT one of them, so when
+## a mid-match joiner takes a bot's seat, every peer that did not reload the scene keeps
+## the bot's face under the human's number. Measured on `tools/net/run_rejoin.ps1
+## -Scenario latecomer`, on the anchor, twice:
+##
+##     PICK <peer> slot=1 char=11/ALING NENA model=character-female-a.glb mat=person_inday.tres
+##
+## THE SETTER FIXED THAT AND BROKE SOMETHING WORSE. Repainting on every write makes
+## `apply()` fire at an arbitrary moment mid-round, and `apply()` REMOVES AND FREES every
+## child of `Visual` — which is where a carried tsinelas lives, reparented onto
+## `Skeleton3D/HandAttachment/HandPoint` by `slipper.gd::_attach_to_hand()`. The two
+## existing callers are safe only because both fire at a round boundary, when no hand is
+## full. Measured, five runs of the latecomer scenario, and it is not run-to-run noise:
+##
+##     setter absent   3/3 PASS   the newcomer's own peer saw s0(owner=1 state=1 carrier=me)
+##     setter present  0/2 PASS   it saw s0(owner=-1 state=0 carrier=<null>) and could
+##                                neither pick up nor throw, while the HOST still had the
+##                                slipper owned and carried
+##
+## So the seat's slipper was destroyed on the one peer that rebuilt the model. A repaint
+## on reclaim has to detach the hand first, or run at a boundary — it cannot simply hang
+## off this write. Left open deliberately; the reported roster bug is fixed upstream of it
+## in `main.gd::_build_spawn_data`, and that fix needs no repaint because the index no
+## longer CHANGES on the rejoin path.
 var character_index: int = -1
 
 signal state_changed(new_state: State)

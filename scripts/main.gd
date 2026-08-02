@@ -2174,6 +2174,46 @@ func _build_spawn_data(peer_id: int, index: int) -> Dictionary:
 		# host, which is the one place the answer is known.
 		"name": SettingsManagerScript.sanitise_name(
 			String(NetworkManager.picks_for(peer_id).get("name", ""))),
+		# ⚠️⚠️ AND THE PERSON RIDES IT TOO, FOR EXACTLY THE REASON THE NAME DOES.
+		# 🧑 2026-08-02: *"The player rejoins on a different player character and not the
+		# same character they were on."*
+		#
+		# ⚠️ THE REJOIN WAS NEVER THE BROKEN HALF — THE FIRST SPAWN WAS. Measured on
+		# `tools/net/run_rejoin.ps1`, three processes, twice, with the dropper picking
+		# ALING NENA (11) and the anchor BEBANG (7):
+		#
+		#   the CLIENT, its own body, t=1..8s in Main:
+		#       char=-1  model=character-female-f.glb  mat=person_b.tres
+		#   the HOST, the SAME body, the SAME window:
+		#       char=-1  model=character-female-e.glb  mat=person_aling-nena.tres
+		#
+		# Two facts in those four numbers. The host DID resolve the pick — its Visual
+		# instanced ALING NENA at `_ready()` — and then lost it; the client NEVER had it
+		# and was drawing `PERSON_MODELS`' fallback. `_build_networked_character` read the
+		# Person out of `NetworkManager.picks_for()`, which is HOST-ONLY state (see its own
+		# doc), so on the client it answered -1 and the body kept the scene default. The
+		# client is then made the multiplayer authority for that body in the same function
+		# — so its -1 replicated straight back over the host's 11 through the
+		# `character_index` entry in `CharacterBase.tscn`'s SceneReplicationConfig.
+		#
+		# What that -1 cost is the whole bug: at the ready gate `_refresh_ai_prop_picks()`
+		# reads it, and that function's `< 0` test is documented as *"THE WHOLE TEST FOR
+		# THIS IS A BOT"* — so it dealt the two HUMAN seats faces out of `AI_PERSON_SPREAD`
+		# and told their Visuals about it. Measured at the next tick: slot 0 became
+		# 0/BERTO and slot 1 became 3/INDAY, which are precisely `AI_PERSON_SPREAD[0]` and
+		# `[1]`. The players then played the entire match as somebody else, and
+		# `_apply_reclaimed_picks` — which reads the host-side table and is correct —
+		# handed the returning player their REAL pick back on the rejoin. Hence the
+		# report: the fighter changes when you come back, because coming back is the only
+		# path that ever applied your choice.
+		#
+		# So it is resolved here, host-side, where the answer is known, and carried by the
+		# same packet that already carries the body. ⚠️ NO NEW MESSAGE AND NO `@rpc`
+		# TOUCHED — this dictionary is the `MultiplayerSpawner`'s custom spawn payload,
+		# not an RPC signature, so nothing about the deployed server's rpc checksum
+		# changes. A peer reading an older build simply falls back to `picks` below and
+		# behaves exactly as it does today.
+		"character": int(NetworkManager.picks_for(peer_id).get("character", -1)),
 	}
 
 func _fill_empty_slots_with_placeholders() -> void:
@@ -2243,7 +2283,18 @@ func _build_networked_character(data: Dictionary) -> Node:
 	# networked character read player one's bindings.
 	character.player_id = data["player_id"]
 	var picks := NetworkManager.picks_for(int(data["peer_id"]))
-	var person := int(picks.get("character", -1))
+	# ⚠️⚠️ FROM THE SPAWN PACKET FIRST, `picks` ONLY AS THE FALLBACK — see
+	# `_build_spawn_data`'s note for the measurement. This function runs on EVERY peer and
+	# `picks_for()` is host-only, so reading the Person out of `picks` here answered -1 on
+	# every client; the client is made the authority for its own body four lines below, and
+	# `character_index` is a replicated property, so that -1 went back out over the host's
+	# correct value and the ready gate's bot dealer then dressed the human as a bot.
+	#
+	# ⚠️ THE FALLBACK IS `picks`, NOT -1, for the same reason the name's is: a host running
+	# an older build of this file sends no `character` key, and falling through to -1 would
+	# throw away an answer the host DOES have on its own screen rather than degrade to the
+	# previous behaviour.
+	var person := int(data.get("character", picks.get("character", -1)))
 	if person >= 0:
 		character.character_index = person
 	# ⚠️⚠️ FROM THE SPAWN PACKET, NOT FROM `picks` — see `_build_spawn_data`'s note. This
