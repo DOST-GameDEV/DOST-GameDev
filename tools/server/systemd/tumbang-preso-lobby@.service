@@ -30,9 +30,15 @@ Group=gameserver
 
 # ⚠️⚠️ res://scenes/ui/MatchSetup.tscn IS LOAD-BEARING AND ITS ABSENCE IS SILENT.
 # project.godot's run/main_scene is res://scenes/ui/SplashScreen.tscn, and the
-# --dedicated / --port= parsing lives in scripts/main.gd::_ready — which only
-# runs if Main.tscn is what booted. Drop this argument and systemd reports the
-# unit as active and running forever, with nothing listening on the port.
+# --dedicated / --port= parsing lives in the scene that boots — for this line
+# that is scripts/ui/match_setup.gd::_read_dedicated_args. Drop the argument and
+# the splash screen boots instead, which parses neither: systemd reports the
+# unit active and running forever, with nothing listening on the port.
+#
+# ⚠️ AND IT MUST NOT BE Main.tscn, which ALSO understands these flags and is the
+# quieter mistake — it boots into a running match, so every lobby advertises
+# itself as in-progress and joiners are routed into a live game with no seat to
+# pick. See §2 of docs/Dedicated_Server_Deployment.md for the measured A/B.
 #
 # ⚠️ THE `--` MATTERS TOO. main.gd reads OS.get_cmdline_user_args(), which is
 # only what follows `--`. Anything before it is parsed by the engine, which
@@ -62,6 +68,13 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
+# ⚠️ ProtectSystem=strict MAKES /opt READ-ONLY, AND GODOT STILL WRITES INTO THE
+# PROJECT. `.godot/` is the import cache; tools/server/install.sh imports the
+# project once up front so the expensive part is already done, but the engine
+# still touches that directory on boot (uid cache and friends) and a read-only
+# project directory is a startup failure, not a warning. Narrower than dropping
+# ProtectSystem: everything else on the box stays read-only.
+ReadWritePaths=/opt/tumbang-preso/game
 # ⚠️ Godot still wants a writable user data dir for its own state, or it errors
 # out on boot. Points at /var/lib/tumbang-preso-lobby-<port>, created by systemd.
 StateDirectory=tumbang-preso-lobby-%i

@@ -40,8 +40,9 @@ LOG_DIR="$STATE_DIR/log"
 # ⚠️⚠️ THE SCENE PATH IS NOT OPTIONAL AND ITS ABSENCE IS SILENT.
 #
 # `run/main_scene` in project.godot is res://scenes/ui/SplashScreen.tscn. The
-# `--dedicated` / `--port=` parsing lives in scripts/main.gd::_ready, which only
-# runs if Main.tscn is the scene that actually boots. Launch without this path
+# `--dedicated` / `--port=` parsing lives in the scene that boots — for the path
+# below that is scripts/ui/match_setup.gd::_read_dedicated_args, and the splash
+# screen parses neither of them. Launch without this path
 # and you get a healthy-looking process, a normal-looking log, zero errors, and
 # NOTHING LISTENING ON THE PORT. Measured 2026-08-02: the no-scene process ran
 # for 18 s at full memory with its UDP port unbound.
