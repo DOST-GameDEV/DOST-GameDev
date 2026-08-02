@@ -1561,6 +1561,7 @@ func _try_late_join(peer_id: int) -> void:
 	# session. Sent on the SAME trigger as the round state above, to the same one
 	# peer, for the same reason: it missed a thing that happened before it existed.
 	_rpc_sync_picks.rpc_id(peer_id, _picks_table())
+	_sync_slipper_carry_to_late_joiner(peer_id)
 	# B-145, second half. NET-1 gave an AI-held Prop its human teammate's picks —
 	# but `_fill_empty_slots_with_placeholders()` runs in `_start_hosting()`,
 	# BEFORE a single client has connected, so `_team_prop_picks` had nobody to
@@ -2265,6 +2266,43 @@ func _build_networked_character(data: Dictionary) -> Node:
 	_spawned_characters[peer_id] = character
 	var index: int = _seat_of(int(data["player_slot"]))
 	_index_to_character[index] = character
+	# ⚠️⚠️ THE SEAT TABLE IS FILLED HERE, AND UNTIL 2026-08-02 IT WAS ONLY EVER FILLED AT A
+	# ROUND BOUNDARY. 🧑, minutes after the rejoin itself started working: *"no throw, no
+	# getting pushed, no pickup"* — a returning player who could WALK and do nothing else.
+	#
+	# `RoundManager.register_player()` had exactly two call sites: `_build_local_roster()`
+	# (Single Player) and `_reset_world()`, which runs off `MatchManager.round_started`. A
+	# peer that arrives DURING a round — a rejoiner, or any mid-match joiner — misses that
+	# signal by definition, so its `RoundManager._players` stayed `[null, null, null, null]`
+	# until the next round boundary healed it. Measured on `tools/net/run_rejoin.ps1`:
+	# `rm_seats=[0=<null>, 1=<null>, 2=<null>, 3=<null>]` on the returning peer against
+	# `rm_seats=[0=350085074, 1=-2, 2=-3, 3=-4]` on the anchor in the same match, on the
+	# same frame. That one dictionary is every symptom in the report:
+	#
+	#   · NOT BEING PUSHED. A shove, a body block and a tag penalty are all decided on the
+	#     host and arrive as `RoundManager._sync_shove/_sync_block/_sync_tag_penalty`, which
+	#     resolve the victim with `player_at(slot)` — see that file's § THE MULTIPLAYER
+	#     SOFTLOCK for why they are addressed by SLOT and not by node path. `player_at`
+	#     returning null makes every one of them a silent no-op, and because the returning
+	#     player is the AUTHORITY for their own body, the synchroniser then replicates the
+	#     un-shoved position back out. Nobody, anywhere, sees them get pushed.
+	#   · NO PICKUP. `Slipper._apply_grabbed()` runs on every peer and resolves the hand
+	#     the same way. Null carrier means `notify_holding()` never fires, so the returning
+	#     player's own `Carrier` still believes their hands are empty.
+	#   · NO THROW. `Carrier._step_throw()` returns immediately while `_held` is null, so a
+	#     hand that never heard about the pickup can never charge a throw either.
+	#
+	# WALKING KEPT WORKING because it is the one verb that asks nothing of this table:
+	# `_physics_process` reads the keyboard and calls `move_and_slide()`. That is the whole
+	# reason the report reads as "everything except movement".
+	#
+	# ⚠️ DONE AT SPAWN, WHICH IS THE RULE THIS FILE ALREADY STATES ELSEWHERE. The name in
+	# the spawn packet is justified as *"a peer that joins, re-joins or arrives late gets it
+	# WITH the body, by the same mechanism that gives it the body"* — the seat table is the
+	# same kind of fact and now arrives the same way. `_reset_world()` still clears and
+	# rebuilds the whole table every round, so this cannot drift from it; it only closes the
+	# window before the first round boundary the joiner ever sees.
+	RoundManager.register_player(character)
 	_apply_known_picks(character, index)
 	if _pending_reclaims.has(index):
 		var reclaim_peer: int = _pending_reclaims[index]
@@ -2613,6 +2651,49 @@ func _sync_state_to_late_joiner(new_round_number: int, new_defender_slot: int,
 	if lata != null:
 		lata.adopt_state(new_lata_upright, lata.home_position)
 	hud.set_round_display(new_round_number, new_defender_slot)
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ WHO IS HOLDING WHAT, FOR ONE JOINING PEER. THE OTHER HALF OF "no throw, no
+## pickup" (2026-08-02).
+##
+## `Slipper.tscn`'s `SceneReplicationConfig` replicates `position` and `owner_slot` and
+## NOTHING ELSE — `state` and `carrier` are driven purely by the `_rpc_slipper_*`
+## broadcasts below, which is correct while everyone is present and silent about
+## everyone who was not. So a peer arriving mid-round starts with every slipper LOOSE at
+## its default, including one that has been in its own seat's hand since the round-start
+## auto-equip. `Slipper.can_be_grabbed_by()` requires `state == LOOSE` HOST-side, so that
+## player cannot pick their slipper up (the host says it is already held) and cannot
+## throw it either (`Carrier._held` is null on their machine). That is a seat with no
+## offence at all until the next round boundary rebuilds the world.
+##
+## ⚠️ IT REPLAYS EXISTING RPCs RATHER THAN DEFINING A NEW ONE, AND THAT IS DELIBERATE
+## RATHER THAN THRIFTY. Godot checksums a node's RPC method list; adding a method to this
+## script makes every already-deployed dedicated server disagree with every new client and
+## fail the handshake with "the rpc node checksum failed". `_rpc_slipper_grabbed` already
+## says exactly what needs saying, and `rpc_id` aims it at the one peer that missed it.
+##
+## ⚠️ ONLY THE CARRIED ONES. A LOOSE slipper already arrives correct (the synchroniser
+## carries its position, and LOOSE is the local default), and a slipper in FLIGHT
+## corrects itself the moment it lands, because `_rpc_slipper_landed` is a broadcast the
+## new peer is now part of. Sending those two would be two more chances to be wrong.
+##
+## ⚠️ THE RECEIVER MAY NOT HAVE THE BODY YET. The bodies come from `MultiplayerSpawner`
+## and this comes from the reliable RPC channel, with no ordering between them — see
+## `Slipper._pending_carrier_slot`, which is what makes the losing order resolve instead
+## of stranding the slipper.
+## ---------------------------------------------------------------------------
+func _sync_slipper_carry_to_late_joiner(peer_id: int) -> void:
+	for index in range(slippers.size()):
+		var slipper := slippers[index]
+		if not is_instance_valid(slipper) or slipper.state != Slipper.CarryState.CARRIED:
+			continue
+		# The hand, not `owner_slot`: `_apply_grabbed()` writes ownership FROM the grab,
+		# so the two agree today — but reading the fact this message is actually about
+		# means they cannot silently stop agreeing.
+		var holder := slipper.carrier
+		if holder == null or not is_instance_valid(holder):
+			continue
+		_rpc_slipper_grabbed.rpc_id(peer_id, index, holder.player_slot)
 
 ## Q-2/B-63: shared by _sync_state_to_late_joiner (a joining peer needs to know
 ## about every already-spawned Can) and _on_player_disconnected (a leaving Can
