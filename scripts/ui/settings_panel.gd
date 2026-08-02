@@ -37,6 +37,8 @@ const BINDING_CONTROL_SIZE: Vector2 = Vector2(170, 46)
 @onready var sensitivity_slider: HSlider = %SensitivitySlider
 @onready var sensitivity_value_label: Label = %SensitivityValueLabel
 @onready var invert_y_check: CheckBox = %InvertYCheck
+## The other half of the `toggle_fullscreen` key — same setting, two routes in.
+@onready var fullscreen_check: CheckBox = %FullscreenCheck
 ## 4.1 — one row per audio bus (see default_bus_layout.tres).
 @onready var master_volume_slider: HSlider = %MasterVolumeSlider
 @onready var master_volume_value_label: Label = %MasterVolumeValueLabel
@@ -72,6 +74,12 @@ func _ready() -> void:
 	# on this screen that would silently leave the button disabled with a real edit
 	# pending, because nothing else would notice the toggle happened.
 	invert_y_check.toggled.connect(_on_invert_y_toggled)
+	# ⚠️ SEEDED BEFORE CONNECTING, like the sliders: assigning `button_pressed` emits
+	# `toggled`, and connecting first would flip the window mode on every open of this
+	# panel. Harmless-looking, and a mode change is the most visible no-op in the game.
+	fullscreen_check.button_pressed = SettingsManager.fullscreen
+	fullscreen_check.toggled.connect(_on_fullscreen_toggled)
+	SettingsManager.fullscreen_changed.connect(_on_settings_fullscreen_changed)
 	_init_volume_rows()
 	_build_name_row()
 
@@ -169,6 +177,18 @@ func _on_sensitivity_changed(value: float) -> void:
 
 func _on_invert_y_toggled(value: bool) -> void:
 	SettingsManager.set_invert_y(value)
+	_refresh_apply_state()
+
+func _on_fullscreen_toggled(value: bool) -> void:
+	SettingsManager.set_fullscreen(value)
+	_refresh_apply_state()
+
+## The `toggle_fullscreen` key works while this panel is open — SettingsManager handles
+## it in `_input`, above every Control — so the box has to follow the window rather than
+## claim the opposite of what the player is looking at. `set_pressed_no_signal` because
+## the change has already been applied; re-entering the handler would only re-save it.
+func _on_settings_fullscreen_changed(value: bool) -> void:
+	fullscreen_check.set_pressed_no_signal(value)
 	_refresh_apply_state()
 
 ## 4.1 — Master / SFX / Ambience.
