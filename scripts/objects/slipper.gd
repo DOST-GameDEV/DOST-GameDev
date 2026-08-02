@@ -100,6 +100,42 @@ const TUMBLE_SPEED_DEG: float = 520.0
 ## returned to its spawn rather than falling forever.
 const VOID_Y: float = -12.0
 
+## How a carried tsinelas is turned in the arm bone's frame. See `_attach_to_hand()`.
+##
+## ⚠️ BOTH HALVES OF THIS ARE MEASURED, AND THE MESHES AGREE. Every tsinelas in the
+## roster is authored the same way — parsed straight out of the .obj files:
+##
+##     classic    x 0.166   y 0.075   z 0.432    sole at y -0.021
+##     crocs      x 0.190   y 0.188   z 0.432    sole at y -0.101
+##     pantulog   x 0.161   y 0.137   z 0.432    sole at y -0.035
+##     sike       x 0.184   y 0.104   z 0.432    sole at y -0.027
+##
+## So the shoe's LENGTH is its local **+Z**, its thickness is **+Y** with the sole just
+## below the origin, and the origin is centred in the other two. That is one convention
+## across all four skins, so one basis covers the roster.
+##
+## The arm bone's rest basis is IDENTITY (`tools/palm_probe.tscn`), so in its frame **-X
+## runs down the limb** and **+Y is the back of the hand**. Left as identity the shoe
+## keeps its length on the bone's +Z — across the arm, not along it — and in
+## `holding-right` the arm is yawed about 73°, which turns that into the diagonal 🧑 saw:
+## *"has a weird orientation"*.
+##
+## Mapping local +Z onto the bone's -X lays the shoe ALONG the limb; keeping local +Y on
+## the bone's +Y keeps the sole down. Those two fix the third: +X → +Z. That is a -90°
+## turn about the bone's own Y, and because it is expressed in the bone's frame it rides
+## every clip rather than being right in one pose.
+##
+## ⚠️ THIS IS NOT `_lay_along_bone()` COMING BACK. That measured the mesh's longest AABB
+## axis at runtime and rotated it onto a bone axis it had guessed at — two unknowns
+## solved against each other. Both ends here are read off files: the .obj bounds above and
+## the rig's rest basis. It is also NOT a contradiction of the viewmodel's identity
+## rotation: `ViewmodelArms.tscn`'s arm is a separate mesh whose own length axis is +Y,
+## a different frame entirely, and its number was authored by eye against that.
+const CARRY_BASIS: Basis = Basis(
+	Vector3(0.0, 0.0, 1.0),
+	Vector3(0.0, 1.0, 0.0),
+	Vector3(-1.0, 0.0, 0.0))
+
 @onready var _visual: Node3D = $Visual
 
 ## This slipper's own position in `main.gd`'s `slippers` array (0/1/2 for
@@ -705,7 +741,7 @@ func _attach_to_hand() -> void:
 	global_transform = keep
 	# Sit ON the hand point, not merely near it. Rotation follows the hand so the
 	# slipper turns with the wrist through every clip.
-	transform = Transform3D.IDENTITY
+	transform = Transform3D(CARRY_BASIS, Vector3.ZERO)
 	# ⚠️⚠️ UNDO THE RIG'S SCALE OR THE SLIPPER COMES OUT 2.38x. The hand point
 	# hangs off a `BoneAttachment3D` under the `Skeleton3D`, which inherits the
 	# model's `PERSON_SCALE` — so a child of it is silently multiplied by it, and
@@ -738,9 +774,55 @@ func _attach_to_hand() -> void:
 	# The old code DID have this correction — in `carriable.gd::_step_carried()`, reading
 	# `visual_centre_offset()`. `carriable.gd` was deleted in the pivot and the
 	# compensation went with it, which is why a bug that had been fixed came back.
-	var centre := _visual_centre_local()
-	if centre != Vector3.ZERO:
-		position -= transform.basis * centre
+	# ⚠️ TURNED BY `CARRY_BASIS`, WHICH IS DERIVED RATHER THAN TUNED — the .obj bounds say
+	# the shoe's length is its local +Z, the rig's rest basis says the limb runs down the
+	# bone's -X, and the basis is just the map between them. Its doc block has the numbers.
+	# Identity was tried first (copying the viewmodel) and 🧑 called it: *"has a weird
+	# orientation"*. It would be, because it lays the shoe ACROSS the arm.
+	#
+	# ⚠️ SET AS A WHOLE `Transform3D`, BEFORE THE SCALE BELOW. `Node3D.scale` recomposes the
+	# basis from the rotation it is holding, so it preserves this turn — but only if the
+	# rotation is already in place when it runs. Writing them the other way round silently
+	# drops the orientation, which is exactly the kind of quiet failure this file collects.
+	# ⚠️⚠️ AND THE SOLE IS DROPPED ONTO THE HAND, WHICH IS PER-SKIN BECAUSE THE FOUR MESHES
+	# DO NOT SHARE AN ORIGIN HEIGHT. `HAND_CARRY_OFFSET.y` is the measured TOP of the hand
+	# (bone-local +0.0555, `tools/palm_probe.tscn`), so putting the origin there buries
+	# however much of the shoe hangs below its own origin — and that varies a lot:
+	#
+	#     classic  sole 0.021 below origin      crocs  sole 0.101 below origin
+	#     sike     sole 0.027 below origin      pantulog  sole 0.035 below origin
+	#
+	# One constant cannot serve a clog and a flip-flop. Reading the bottom of the drawn
+	# bounds and lifting by exactly that rests every skin's sole on the same plane.
+	#
+	# ⚠️ THE BOTTOM, NOT THE CENTRE — and that distinction is the whole difference between
+	# this and the correction removed below. `scale.y` converts it out of this node's own
+	# space (which already includes `Visual`'s 1.6) and into the bone units `position` is
+	# measured in; it is uniform, set two lines up from the rig's uniform scale, so the
+	# axis shuffle in `CARRY_BASIS` cannot skew it.
+	var bounds := _visual_bounds_local()
+	if bounds.size.y > 0.0:
+		position.y = -bounds.position.y * scale.y
+
+	# ⚠️⚠️ NO MESH-*CENTRE* CORRECTION, AND IT WAS THE THING PUTTING THE SHOE ON THE
+	# NECK. This used to shift the prop so its visible CENTRE landed on the carry point,
+	# which sounds obviously right and measured obviously wrong: `carry_probe` prints the
+	# carry point at character-local y **-0.21** and the slipper it holds at y **+0.12** —
+	# the correction was lifting the shoe **0.33 m** off the point the code had just
+	# carefully placed, which on a 1.6 m body is hip to throat. Every "its on the neck"
+	# report survived every change to `HAND_CARRY_OFFSET` because the offset was never what
+	# put it there.
+	#
+	# The `AABB` it trusted is the reason. `get_aabb()` on a mesh with no bones is the
+	# authored bounds, and `TsinelasVisual` draws at 1.6x with the shoe authored around its
+	# sole — so the "centre" it computes is a long way from anything you would call the
+	# middle of a held object, and subtracting it is a large move in a direction nobody
+	# chose.
+	#
+	# 🧑 pointed at the fix: *"why dont u try to copy what we did there to fpp slipper the
+	# one looks really good"*. `ViewmodelArms.tscn` mounts the mesh at a plain offset with
+	# no rotation and no centring, and that is the version everyone agrees looks right. So
+	# this does the same: the prop's ORIGIN goes on the carry point, full stop.
 
 ## The centre of what this slipper actually DRAWS, in its own local space.
 ##
@@ -753,9 +835,16 @@ func _attach_to_hand() -> void:
 ## keeps. `_physics_process` retries the attach every frame while carried, so a mesh that
 ## arrives a frame late is corrected on the next one.
 func _visual_centre_local() -> Vector3:
+	return _visual_bounds_local().get_center()
+
+## The whole visible box, in this node's own space. Split out from
+## `_visual_centre_local()`, which is now its only caller — kept split because a bounds
+## sweep and "the centre of the bounds" are two different questions and the next thing that
+## needs the size should not have to write a second sweep.
+func _visual_bounds_local() -> AABB:
 	var visual := get_node_or_null("Visual") as Node3D
 	if visual == null:
-		return Vector3.ZERO
+		return AABB()
 	var bounds := AABB()
 	var first := true
 	var to_self := global_transform.affine_inverse()
@@ -769,7 +858,7 @@ func _visual_centre_local() -> Vector3:
 			* (visual as VisualInstance3D).get_aabb()
 		bounds = own_box if first else bounds.merge(own_box)
 		first = false
-	return Vector3.ZERO if first else bounds.get_center()
+	return AABB() if first else bounds
 
 func _detach_from_hand() -> void:
 	if _home_parent == null or not is_instance_valid(_home_parent):
@@ -787,6 +876,15 @@ func _detach_from_hand() -> void:
 	# restored basis, so a rounding drift cannot accumulate over a match's worth
 	# of pick-ups and throws.
 	scale = Vector3.ONE
+	# ⚠️ THE ORIENTATION IS RESET WITH IT, AND IT IS A GUARD RATHER THAN A FIX NOW. Carrying
+	# no longer rotates the shoe at all (see `_attach_to_hand()` — the viewmodel's known-good
+	# pose is identity), so there is normally nothing to undo. It stays because a slipper
+	# reparented onto a hand inherits that hand's world orientation for a frame, and because
+	# the class of bug it guards against — state applied on the way IN that nothing takes off
+	# on the way OUT — has already cost this file twice: the SHADOWS_ONLY flag that stranded
+	# itself on throw, and the synchroniser that never re-opened. This function is the one
+	# door every exit from CARRIED goes through, which is where such a reset belongs.
+	rotation = Vector3.ZERO
 
 ## ---------------------------------------------------------------------------
 ## § SOFT STATS — §2.8, closed 2026-08-01. The TSINELAS tab decides three things.
