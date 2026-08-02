@@ -86,18 +86,32 @@ func _run() -> void:
 		#   returning human and clears `is_bot` on every peer, so their own name comes
 		#   back on every screen.
 		#
-		# 2. SOLO / Tab: control moves, the name does not.
+		# 2. SOLO / Tab: THE NAME FOLLOWS THE BODY. 🧑 *"i want the character im playing
+		# currently to say my name and for the bot to get their supposed name if i
+		# leave their body"*. `debug_player_switcher._apply_slots()` clears `is_bot` on
+		# the unit you take and sets it on the one you leave, so Tab is a handover in
+		# both directions and this simulates exactly that pair of writes.
+		who.is_bot = false
 		# ⚠️ `is_bot` IS SET EXPLICITLY RATHER THAN ASSUMED. The harness seeds one seat
 		# as the local human (`is_bot = character != human` in `main.gd`), so reading
 		# whatever the seat happened to start as made this check pass on three seats
 		# and fail on the fourth for a reason that had nothing to do with the code
 		# under test. A probe states the state it is testing.
-		who.is_bot = true
 		who.player_name = "HUMAN%d" % who.player_slot
 		who.ai_controller.set_enabled(false)
 		await get_tree().physics_frame
-		_check("seat %d solo Tab takeover keeps character" % who.player_slot,
+		_check("seat %d Tab in shows the driver" % who.player_slot,
+			who.display_name(), "HUMAN%d" % who.player_slot)
+
+		# ...and Tabbing back OUT returns the character's own name, with player_name
+		# left in place exactly as the switcher leaves it.
+		who.is_bot = true
+		who.ai_controller.set_enabled(true)
+		await get_tree().physics_frame
+		_check("seat %d Tab out restores character" % who.player_slot,
 			who.display_name(), roster_name)
+		who.is_bot = false
+		who.ai_controller.set_enabled(false)
 
 		# 3. MULTIPLAYER reclaim: the human's own name returns.
 		who.is_bot = false
