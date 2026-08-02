@@ -1155,9 +1155,76 @@ func _start_joining(address: String) -> void:
 	# split) — so that case waits for the real connection_succeeded signal.
 	if NetworkManager.is_networked():
 		_rpc_client_ready_for_spawn.rpc_id(1)
-	else:
-		NetworkManager.connection_succeeded.connect(_on_joined_ready_for_spawn, CONNECT_ONE_SHOT)
-		NetworkManager.join_game(address)
+		return
+	# ---------------------------------------------------------------------------
+	# ⚠️⚠️ B-153 — THE PORT WAS THROWN AWAY HERE, AND THAT IS "you can JOIN it, but
+	# you're stuck on a grey screen."
+	#
+	# 🧑 2026-08-02, from a real player: *"When getting disconnected from a lobby, I want
+	# the ability to rejoin it. Currently you are able to JOIN it, but you're stuck on a
+	# grey screen."*
+	#
+	# `address` arrives as `GameLaunch.pending_join_address`, which is a HOST:PORT string —
+	# `multiplayer_setup.gd::_begin_join()` is the one place a join is recorded and it
+	# stores exactly what the player typed, clicked or resolved from a code, port included
+	# (`_free_pool_address()` and every browsed row produce `"ip:port"`). This line used to
+	# hand that whole string to `NetworkManager.join_game(address)`, whose second argument
+	# is a SEPARATE port defaulting to 8910. `ENetMultiplayerPeer.create_client()` does not
+	# parse a colon, so it tried to resolve the literal host name `127.0.0.1:8941`.
+	#
+	# MEASURED on the returning client (`tools/net/rejoin_run.gd --role=dropper`), verbatim:
+	#
+	#     ERROR: Couldn't resolve the server IP address or domain name.
+	#     ERROR: NetworkManager: failed to connect to 127.0.0.1:8941:8910 (error 20)
+	#         [0] join_game  [1] _start_joining  [2] _ready
+	#
+	# — the port printed twice, which is the bug in one line.
+	#
+	# ⚠️ THIS IS THE SAME MISTAKE `multiplayer_setup.gd::split_address()` WAS WRITTEN TO
+	# FIX, IN THE ONE PATH THAT DID NOT GET IT. That function's own ⚠️ says the address
+	# *"went straight to `NetworkManager.join_game(address)`… which takes host and port as
+	# SEPARATE arguments and does not parse a colon"* — and both UI join sites were
+	# converted. Nothing converted this one, because on the ORDINARY join `MatchSetup` has
+	# already connected and the branch above returns before ever reaching it.
+	#
+	# ⚠️ SO IT ONLY EVER FIRES ON A REJOIN, WHICH IS WHY IT SURVIVED. The only way this
+	# scene dials for itself is `NetworkManager._rpc_route_to_running_match`, which
+	# deliberately drops the connection and re-opens it from here (see that function's own
+	# doc for the spawner race that forces it). The player's JOIN genuinely worked — they
+	# reached the lobby, the host recognised them and rerouted them — and then the *second*
+	# connection, the one nobody watches, died on a malformed address. Hence "you are able
+	# to JOIN it" and a world with nothing in it: `_clear_local_test_characters()` above has
+	# already removed the four scene-authored bodies, and `Main.tscn` carries no camera of
+	# its own (B-03/B-58), so the viewport draws the 2D HUD over nothing. That is the grey.
+	#
+	# ⚠️ AND `create_client()` FAILING IS SILENT. It returns an error rather than emitting
+	# `connection_failed`, so `_on_connection_failed` never ran and the player was left on a
+	# dead scene with no message and no way out but Alt+F4 — the exact soft-lock Q-1/B-62
+	# closed for an unreachable host, reopened by a different route. `_bail_to_browser`
+	# below is that same exit.
+	#
+	# ⚠️ `split_address` IS REUSED, NOT REIMPLEMENTED. A second parser is the U-8 bug class
+	# this project has already paid for twice, and this one would have to agree about the
+	# default port and about rejecting IPv6. `match_setup.gd`'s join branch reaches for the
+	# same static function from the same place.
+	#
+	# Fixes the command-line path too, as a side effect worth stating: `--join=127.0.0.1:8941`
+	# silently ignored its port for exactly as long as this line existed.
+	# ---------------------------------------------------------------------------
+	var parts := MultiplayerSetupScreen.split_address(address)
+	var host: String = String(parts[0])
+	var port: int = int(parts[1])
+	if host.is_empty() or port <= 0 or port > 65535:
+		_bail_to_browser("Could not read the address '%s'." % address)
+		return
+	NetworkManager.connection_succeeded.connect(_on_joined_ready_for_spawn, CONNECT_ONE_SHOT)
+	if NetworkManager.join_game(host, port) != OK:
+		# ⚠️ THE ONE-SHOT IS TAKEN BACK BY HAND. `CONNECT_ONE_SHOT` disconnects itself when
+		# the signal FIRES, and a connection that never opened never fires it — leaving a
+		# live subscription on an autoload that outlives this scene, ready to answer the
+		# NEXT session's success on a freed node.
+		NetworkManager.connection_succeeded.disconnect(_on_joined_ready_for_spawn)
+		_bail_to_browser("Could not reach %s." % address)
 
 func _on_joined_ready_for_spawn() -> void:
 	_rpc_client_ready_for_spawn.rpc_id(1)
@@ -2700,24 +2767,34 @@ func _on_return_to_menu_pressed() -> void:
 ## call (the peer's already gone), plus a status message so the bounce reads
 ## as "the host left", not a crash.
 func _on_server_disconnected() -> void:
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	MatchManager.reset()
-	RoundManager.reset()
-	GameLaunch.reset()
-	GameLaunch.pending_status_message = "Host ended the match."
-	# MultiplayerSetup, not the title screen: it owns the status message and it
-	# is where this player would rejoin or re-host from.
-	get_tree().change_scene_to_file("res://scenes/ui/MultiplayerSetup.tscn")
+	_bail_to_browser("Host ended the match.")
 
 ## Q-1/B-62: a Join to a dead/unreachable address previously left the player on
 ## a black Main.tscn forever — the same soft-lock as a mid-match host quit,
 ## just triggered before anyone ever connected. Same teardown, different message.
 func _on_connection_failed() -> void:
+	_bail_to_browser("Could not reach that host.")
+
+## ---------------------------------------------------------------------------
+## The one way out of a match that has stopped being a match. Three callers, one
+## teardown: the host went away, the connection failed, or (B-153) the address this
+## scene was handed could not be dialled at all.
+##
+## ⚠️ THE THIRD CALLER IS THE REASON THIS IS A FUNCTION. The two handlers above had
+## identical bodies differing only in the message, and `_start_joining` needed the same
+## teardown for a THIRD reason — so the choice was a third copy or one function. A copy
+## that fell behind would strand a player exactly as thoroughly as having no teardown at
+## all, which is precisely the failure B-153 turned out to be.
+##
+## MultiplayerSetup, not the title screen: it owns the status message and it is where
+## somebody in this position would rejoin or re-host from.
+## ---------------------------------------------------------------------------
+func _bail_to_browser(message: String) -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	MatchManager.reset()
 	RoundManager.reset()
 	GameLaunch.reset()
-	GameLaunch.pending_status_message = "Could not reach that host."
+	GameLaunch.pending_status_message = message
 	get_tree().change_scene_to_file("res://scenes/ui/MultiplayerSetup.tscn")
 
 ## Host → all peers: hands `index`'s existing, still-standing character over
