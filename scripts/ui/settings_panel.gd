@@ -96,6 +96,28 @@ func _build_name_row() -> void:
 	if not field.text_submitted.is_connected(_on_player_name_submitted):
 		field.text_submitted.connect(_on_player_name_submitted)
 		field.focus_exited.connect(func() -> void: _on_player_name_submitted(field.text))
+		# ⚠️⚠️ `text_changed` TOO, AND WITHOUT IT APPLY COULD NOT BE REACHED AT ALL.
+		# 🧑 2026-08-02: *"changing name doesnt trigger APPLY CHANGES in settings"*.
+		#
+		# The other two signals both need the player to LEAVE the field — Enter, or
+		# focus moving elsewhere — and the obvious way to leave it is to click APPLY.
+		# But APPLY is `disabled` until `has_unsaved_changes()` is true, a disabled
+		# Button takes no focus and emits nothing, so the click did nothing, the focus
+		# never left, the name was never staged, and the button stayed grey. A dead
+		# control whose only route to being live was through itself.
+		#
+		# Typing is the change, so typing is what reports it. Safe per keystroke:
+		# `SettingsManager._save()` returns early inside an edit transaction, so this
+		# stages in memory and touches no disk until APPLY commits.
+		field.text_changed.connect(_on_player_name_typed)
+
+## Keystroke-by-keystroke staging, so APPLY lights up while the caret is still in the
+## field. Deliberately NOT `_on_player_name_submitted`: that one plays a click and
+## pushes the name onto the live character, and doing either per letter would be a
+## click track and a replicated write per keypress.
+func _on_player_name_typed(value: String) -> void:
+	SettingsManager.set_player_name(value)
+	_refresh_apply_state()
 
 func _on_player_name_submitted(value: String) -> void:
 	SettingsManager.set_player_name(value)
@@ -106,6 +128,11 @@ func _on_player_name_submitted(value: String) -> void:
 	# launch would read as the control not working. `player_name` is a replicated
 	# property, so writing it on the seat this peer has authority over is what carries
 	# it to the other three scoreboards.
+	_push_name_to_live_character()
+
+## Writes the saved name onto the seat this peer drives. `player_name` is replicated, so
+## this is what carries a rename to the other three scoreboards mid-match.
+func _push_name_to_live_character() -> void:
 	for node in RoundManager.players():
 		var who := node as CharacterBase
 		if who != null and who.is_multiplayer_authority() and not who.is_ai_driven():
@@ -312,6 +339,12 @@ var _back_armed: bool = false
 
 func _on_apply_pressed() -> void:
 	AudioManager.play("ui_click")
+	# ⚠️ THE LIVE CHARACTER IS UPDATED HERE TOO, not only on Enter/blur. Now that typing
+	# alone can arm APPLY, a player can rename and commit without the field ever losing
+	# focus — so without this the scoreboard in a running match would keep the old name
+	# until the next launch, which is the same "the control does not work" the submit
+	# handler already documents.
+	_push_name_to_live_character()
 	SettingsManager.commit_edit()
 	# Straight back into a new transaction: the panel is still open, so the next change
 	# the player makes has to be revertible too.

@@ -478,10 +478,27 @@ enum State { NORMAL, STAGGERED, DOWNED }
 ## RPCs: it attaches a controller per seat directly, and `debug_player_switcher.gd`
 ## flips `set_enabled()` on Tab without touching `is_bot`. Either being true means "no
 ## human is driving this", which is the question being asked.
+## ⚠️⚠️ UPPERCASED HERE, ONCE, FOR EVERY NAME THE GAME DRAWS. 🧑 2026-08-02, with a
+## screenshot of the scoreboard: *"can u make all names in the same case no matter
+## what"*. A typed name arrives in whatever case the player used, and it sat in a
+## column beside MARING and LOLA PACING — which are uppercase because the roster is
+## authored that way, not because anything enforced it. One mixed-case row in a column
+## of shouted ones reads as a rendering fault.
+##
+## ⚠️ IT IS A DISPLAY TRANSFORM, NOT A WRITE. `player_name` keeps the case the player
+## typed, so the settings field still shows them their own name as they entered it and
+## nothing about the stored or replicated value changes. This is the same reason the
+## length limit is a rule on the data rather than a clamp here: the two decisions are
+## deliberately opposite, because case is cosmetic and length is structural.
+##
+## ⚠️ `to_upper()` IS UNICODE-AWARE IN GODOT, so a name in any script this font can
+## render either uppercases correctly or is left alone, rather than being mangled.
 func display_name() -> String:
 	if is_bot or is_ai_driven():
-		return _character_name()
-	return player_name if player_name != "" else "P%d" % [player_slot + 1]
+		return _character_name().to_upper()
+	if player_name != "":
+		return player_name.to_upper()
+	return "P%d" % [player_slot + 1]
 
 ## The roster pick's name, falling back to the seat number. `character_index` is -1
 ## until a pick arrives (an AI seat on a peer that has not received one yet), and
