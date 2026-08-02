@@ -13,9 +13,16 @@
 [sub_resource type="Environment" id="Environment_icon"]
 background_mode = 0
 ambient_light_source = 2
-ambient_light_color = Color(0.72, 0.78, 0.9, 1)
-ambient_light_energy = 0.95
-tonemap_mode = 2
+ambient_light_color = Color(0.62745, 0.57647, 0.52157, 1)
+ambient_light_energy = 1.45
+ambient_light_sky_contribution = 0.35
+tonemap_mode = 3
+tonemap_exposure = 0.92
+tonemap_white = 1.9
+adjustment_enabled = true
+adjustment_brightness = 1.0
+adjustment_contrast = 1.03
+adjustment_saturation = 1.18
 
 ; Four of these are alive at once, so SHADOWS ARE OFF — at ~250px a cast shadow is
 ; a smudge, and four shadow atlases for four smudges is the kind of cost that buys
