@@ -679,6 +679,7 @@ func _start_local_test() -> void:
 	# asymmetry left and it is pre-existing", and tools/input_probe.gd measured the
 	# consequence (2 units answering one keypress, 3 after two Tabs).
 	for character in _local_roster:
+		character.is_bot = character != human
 		_attach_ai(character, character != human)
 		# Follow targets for the spectator's `Tab`. Single Player builds its four units
 		# from the scene rather than through `_build_networked_character`, so the group
@@ -1819,6 +1820,7 @@ func _build_networked_character(data: Dictionary) -> Node:
 		var reclaim_peer: int = _pending_reclaims[index]
 		_pending_reclaims.erase(index)
 		_apply_reclaim.call_deferred(character, index, reclaim_peer)
+	character.is_bot = is_ai
 	if is_ai and NetworkManager.is_host():
 		_attach_ai(character)
 	# Follow targets for the spectator's `Tab`.
@@ -2356,6 +2358,11 @@ func _rpc_convert_to_ai(index: int) -> void:
 	_spawned_characters[sentinel_peer_id] = character
 	_peer_slots[sentinel_peer_id] = character.player_slot
 	_spawned_peer_ids[sentinel_peer_id] = true
+	# ⚠️ SET ON EVERY PEER, UNLIKE THE CONTROLLER BELOW. `_attach_ai` is host-only
+	# because the host runs AI physics; the NAME this seat draws is not a host concern
+	# and must be identical on every screen, a spectator's included. See
+	# `CharacterBase.is_bot`.
+	character.is_bot = true
 	if NetworkManager.is_host() and character.ai_controller == null:
 		_attach_ai(character)
 	# The departing peer's own machine is gone, so this is really about the OTHER
@@ -2486,6 +2493,7 @@ func _apply_reclaim(character: CharacterBase, index: int, new_peer_id: int) -> v
 			_peer_slots.erase(old_peer_id)
 			_spawned_peer_ids.erase(old_peer_id)
 			break
+	character.is_bot = false
 	if character.ai_controller != null:
 		character.ai_controller.queue_free()
 		character.ai_controller = null

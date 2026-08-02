@@ -42,6 +42,30 @@ func _apply_wood_skin() -> void:
 	result_label.add_theme_color_override("font_color", UiTheme.CREAM)
 	fight_label.add_theme_color_override("font_color", UiTheme.AMBER)
 
+	# ⚠️⚠️ THE TWO SWAP PANELS OVERLAPPED, AND AUTOWRAP IS THE FIX. 🧑 2026-08-02,
+	# with a screenshot: *"hud bug, winning cards overlap"* — the right card drawn
+	# over the left one, clipping "was ATTACKING" mid-word.
+	#
+	# `LeftPanel`/`RightPanel` are PanelContainers positioned by OFFSETS (see
+	# `_slide_in()`: -250..-30 and 30..250, a deliberate 60 px gutter at the centre).
+	# A Control laid out by offsets is still clamped to its own combined MINIMUM size,
+	# and a PanelContainer's minimum is whatever its content demands — so a Label with
+	# no autowrap reports the full width of its single line and the panel silently
+	# grows past the offset that was supposed to stop it. The gutter is not respected
+	# because the gutter was never enforcing anything.
+	#
+	# ⚠️ AND IT GETS WORSE WITH THE NEW NAMES, WHICH IS WHY IT IS FIXED NOW RATHER
+	# THAN LEFT. These rows read "P3 P4 · ATTACKERS" before today and "LOLA PACING
+	# TIKBOY · ATTACKERS" after it. The report came in on a build still showing P-slots,
+	# so the same screen with character names would have been worse, not the same.
+	#
+	# Autowrapping drops each Label's minimum width to its longest WORD, which is far
+	# inside 220 px, so the offsets win again and a long pairing wraps to two lines
+	# instead of eating its neighbour.
+	for label in [team_a_label, role_arrow_a, team_b_label, role_arrow_b]:
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		label.custom_minimum_size.x = 0.0
+
 ## One swap panel, on the same wood-with-a-role-border face as the HUD's team cards, so
 ## the intermission looks like the screen it interrupts. Margins trimmed off
 ## `wood_style()`'s menu-button defaults for the same reason `hud.gd` trims them.

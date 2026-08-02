@@ -741,7 +741,7 @@ exactly one 5:
 | **PASIP** | 5 | 1 | 1 | tall, thin, empty — goes over instantly, back up instantly |
 | **BOYBEN** | 1 | 3 | 5 | squat tin half full of set paint: immovable, and a job to right |
 | **DECADES TUNA** | 4 | 1 | 4 | flat disc — hard to tip AND quick to right, no mass to rebound |
-| **LATANG KALAWANG** | 2 | 5 | 3 | solid ribbed tin, heavy for its size; punishes the throw |
+| **KALAWANG** | 2 | 5 | 3 | solid ribbed tin, heavy for its size; punishes the throw |
 
 BOYBEN held GRIT 4 **and** POWER 5 before this and was simply the best can on two axes.
 It now owns STANCE outright and concedes the rebound to KALAWANG. Totals are still not
