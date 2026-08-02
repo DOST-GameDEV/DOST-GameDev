@@ -69,14 +69,33 @@ const PROTOCOL_VERSION: int = 1
 ## ---------------------------------------------------------------------------
 const STATUS_PORT_OFFSET: int = 10
 
-## ⚠️ EMPTY BECAUSE THE VM DOES NOT EXIST YET — FILLED IN AT DEPLOYMENT with the address
-## (or DNS name) the pool is actually reachable at from the outside. Empty means
-## `query_pool()` sends nothing and the online list stays empty, which is the honest state
-## for a build with nowhere to point. It must never be inferred at runtime from this
-## machine's own interfaces: that is precisely the mistake the header's ⚠️⚠️ describes.
-const POOL_ADDRESS: String = ""
+## The address the pool is reachable at from the outside — an Oracle Cloud VM in Singapore,
+## `ap-singapore-1`, standing up since 2026-08-02. Measured from the dev machine in the
+## Philippines on that date: the browser listed the lobby, HOST ONLINE claimed it, and the
+## claiming peer became lobby leader holding code V3M6. That round trip crossed a real NAT,
+## which no amount of loopback testing had covered.
+##
+## ⚠️ IT IS COMPILED INTO THE PLAYERS' BUILD, NOT READ FROM THE SERVER. Change the VM's
+## address and every build already handed out stops finding the pool — see §2b of
+## `docs/Dedicated_Server_Deployment.md`. A DNS name you control would survive that; a raw
+## IP is what the free tier gives you.
+##
+## ⚠️ NEVER INFER THIS AT RUNTIME from this machine's own interfaces. That is precisely the
+## mistake the header's ⚠️⚠️ describes: a host cannot know its own reachable address.
+##
+## Empty is still a valid, honest state — a build with nowhere to point sends nothing and
+## says so on screen rather than sitting on "searching…" forever.
+const POOL_ADDRESS: String = "134.185.89.114"
 ## The pool's game ports, inclusive. One process per port, one match per process. Status
 ## ports are these + `STATUS_PORT_OFFSET`, so this range must stay within ten of its start.
+##
+## ⚠️ THE RANGE IS WHAT THE CLIENT ASKS, NOT WHAT THE SERVER RUNS, and the two are allowed
+## to differ. The deployed box is a `VM.Standard.E2.1.Micro` with 946 MB, which holds
+## THREE lobbies (8910-8912) — measured on it: three idle lobbies left 281 MB free and had
+## already touched 159 MB of swap. Asking for eight costs five unanswered datagrams a
+## second and nothing else, so this stays wide: the pool can grow to fill it without any
+## client needing a new build, which is the one upgrade path that does not require
+## reshipping the game.
 const POOL_PORT_FIRST: int = 8910
 const POOL_PORT_LAST: int = 8917
 
