@@ -1,0 +1,17 @@
+# Stops lobbies nobody is in. Driven by tumbang-preso-reap.timer, not enabled itself.
+
+[Unit]
+Description=Tumbang Preso idle lobby reaper
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/opt/tumbang-preso/spawn/reaper.py
+# Where the consecutive-empty counts live between runs.
+StateDirectory=tumbang-preso-reaper
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true

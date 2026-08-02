@@ -1,0 +1,15 @@
+# Install: copy to /etc/systemd/system/, then
+#   sudo systemctl enable --now tumbang-preso-reap.timer
+
+[Unit]
+Description=Check every minute for lobbies nobody is in
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+# ⚠️ Persistent=false on purpose: a missed run while the box was off is not worth
+# catching up on -- every lobby is gone after a reboot anyway.
+Persistent=false
+
+[Install]
+WantedBy=timers.target

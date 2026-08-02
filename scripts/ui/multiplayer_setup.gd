@@ -771,23 +771,34 @@ func _process(delta: float) -> void:
 ## The armed half of HOST ONLINE. Mirrors the `_pending_code` block above line for line,
 ## including both ways of giving up — "they answered and all eight are busy" and "nothing
 ## answered at all" are different problems and get different sentences.
+## ⚠️⚠️ LONGER THAN `POOL_PATIENCE_SECONDS`, AND THE DIFFERENCE IS A MEASUREMENT. That
+## constant bounds "did anybody answer at all", which is a round trip. This bounds "has the
+## lobby I just asked for finished booting", and a cold Godot server takes 5.4 s from
+## `systemctl start` to its port being bound — measured on the deployed VM — before the
+## status query can even see it, plus up to a second of query interval on top. Six seconds
+## would report failure while the thing was still starting, every time.
+const SPAWN_PATIENCE_SECONDS: float = 20.0
+
 func _tick_hosting_online() -> void:
 	var address := _free_pool_address()
 	if not address.is_empty():
 		_cancel_hosting_online()
 		_claim_online_server(address)
 		return
-	if _pool_answered_enough():
+	# ⚠️ `_pool_answered_enough()` IS NO LONGER A FAILURE CONDITION HERE, and removing it
+	# was the point. It means "servers replied and none of them are free", which used to be
+	# terminal — but a lobby has just been requested and does not exist yet, so that state
+	# is now the NORMAL first second of every host. Treating it as an error made HOST ONLINE
+	# fail instantly on a pool that was about to work.
+	if _browsed_for - _hosting_online_since >= SPAWN_PATIENCE_SECONDS:
 		_cancel_hosting_online()
 		AudioManager.play("ui_error")
-		status_label.text = ("Every online server is in use right now. Open ONLINE SERVERS to "
-			+ "join one of them, or try again in a minute.")
-		return
-	if _browsed_for - _hosting_online_since >= POOL_PATIENCE_SECONDS:
-		_cancel_hosting_online()
-		AudioManager.play("ui_error")
-		status_label.text = ("Could not reach the online servers. They may be down, or your "
-			+ "network may be blocking them — HOST GAME (LAN) still works.")
+		# Deliberately covers both shapes of failure, because from here they are
+		# indistinguishable: nothing answered at all, or the pool answered "full". The
+		# browser is the honest next step for either.
+		status_label.text = ("Could not get an online server. They may all be busy, or your "
+			+ "network may be blocking them — open ONLINE SERVERS to look, or use "
+			+ "HOST GAME (LAN).")
 
 ## ⚠️ THE LISTENER IS CLOSED ON THE WAY OUT, not left to the autoload's lifetime.
 ## `LanBeacon` is an autoload and survives every scene change, so a socket opened here
@@ -901,17 +912,19 @@ func _on_host_online_pressed() -> void:
 	if not address.is_empty():
 		_claim_online_server(address)
 		return
-	if _pool_answered_enough():
-		# The pool spoke and every one of them is occupied. A real answer, not a timeout —
-		# and the honest thing to offer is the browser, since a busy lobby is still joinable.
-		AudioManager.play("ui_error")
-		status_label.text = ("Every online server is in use right now. Open ONLINE SERVERS to "
-			+ "join one of them, or try again in a minute.")
-		return
-	AudioManager.play("ui_click") # not an error — the replies are still in the air
+	# ⚠️⚠️ NOTHING FREE IS NO LONGER THE SAME AS NOTHING AVAILABLE. Lobbies are started on
+	# demand now (see `ServerQuery.request_lobby` and `tools/server/spawn/`), so the usual
+	# state of a quiet evening is a pool running ZERO servers — and the old code called that
+	# "every online server is in use", which was both wrong and a dead end.
+	#
+	# So ask for one, then fall into exactly the wait that already existed: the new lobby
+	# turns up in `servers()` within a few seconds and `_tick_hosting_online` claims it like
+	# any other. One claim path, not two.
+	ServerQuery.request_lobby()
+	AudioManager.play("ui_click") # not an error — a lobby is being started for this player
 	_hosting_online = true
 	_hosting_online_since = _browsed_for
-	status_label.text = "Finding you a free online server…"
+	status_label.text = "Starting a server for you…"
 	ServerQuery.query_pool() # do not sit out the rest of this second's interval
 
 func _claim_online_server(address: String) -> void:

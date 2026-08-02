@@ -272,6 +272,49 @@ func query_pool() -> void:
 			continue
 		_client.put_packet(payload)
 
+## ---------------------------------------------------------------------------
+## § ASKING FOR A LOBBY THAT DOES NOT EXIST YET.
+##
+## 🧑 2026-08-02: *"we dont need 3 lobbies running at a time. we just wanna be able to run
+## multiple lobbies when players host lobbies. unless someone is already running a lobby,
+## no lobbies should be showing/running"*.
+##
+## ⚠️⚠️ THE POOL USED TO BE PRE-STARTED, AND IT KILLED THE BOX TWICE. Three idle lobbies on
+## a 946 MB VM exhausted memory mid-match, disconnected everyone and left sshd unable to
+## answer; recovery was a forced reboot from the cloud console, on both occasions. Lobbies
+## now exist only while somebody is in them.
+##
+## ⚠️ THIS IS FIRE-AND-FORGET, AND THE REPLY IS A COURTESY. The caller does NOT wait on it:
+## `multiplayer_setup.gd` arms the wait it already had for a free server, and the new lobby
+## simply turns up in `servers()` a few seconds later like any other. That is deliberate —
+## a lost reply then costs nothing, and there is exactly one code path that claims a lobby
+## rather than two that can disagree.
+##
+## ⚠️ IT DOES NOT NAME A PORT, A UNIT OR A COMMAND. The server picks the port from its own
+## fixed range (see `tools/server/spawn/spawner.py`); this asks a question, it does not give
+## an instruction. The socket is internet-facing, so that distinction is the security model.
+## ---------------------------------------------------------------------------
+
+## One below `POOL_PORT_FIRST`. Game ports are 8910-8917 and their status ports are those
+## + `STATUS_PORT_OFFSET`, so 8909 is the only neighbour that collides with neither.
+const SPAWN_PORT: int = POOL_PORT_FIRST - 1
+
+func request_lobby() -> void:
+	if pool_address.strip_edges().is_empty():
+		return
+	if _client == null:
+		var socket := PacketPeerUDP.new()
+		if socket.bind(0, "*") != OK:
+			return
+		_client = socket
+	if _client.set_dest_address(pool_address, SPAWN_PORT) != OK:
+		return
+	_client.put_packet(JSON.stringify({
+		"magic": MAGIC,
+		"v": PROTOCOL_VERSION,
+		"op": "spawn",
+	}).to_utf8_buffer())
+
 ## Every server that has answered recently, best row first: lobbies you can still get a seat
 ## in, then fuller ones, then in code order so the list does not shuffle under the mouse.
 func servers() -> Array[Dictionary]:
@@ -424,6 +467,19 @@ func _ingest_reply(raw: PackedByteArray, from_ip: String) -> void:
 	if String(packet.get("magic", "")) != MAGIC:
 		return
 	if int(packet.get("v", 0)) != PROTOCOL_VERSION:
+		return
+	# ⚠️⚠️ THE SPAWNER'S REPLY ARRIVES ON THIS SAME SOCKET AND WOULD OTHERWISE BECOME A
+	# LOBBY. `request_lobby()` shares `_client`, and the spawner answers with the same
+	# magic and version plus `{"op": "spawned", "port": N}` — which passes both checks
+	# above and carries the one field this function needs to invent a row. The result
+	# would be a phantom server, reading `0/4` and `in_progress=false` because every
+	# other field defaults, i.e. indistinguishable from an idle lobby that HOST ONLINE
+	# would then try to claim seconds before anything is listening on that port.
+	#
+	# A status reply never carries `op`; every spawn-protocol message does. That is the
+	# discriminator, and it is checked here rather than at the call site so no future
+	# sender of this socket can reintroduce it.
+	if packet.has("op"):
 		return
 	var port := int(packet.get("port", 0))
 	if port <= 0 or port > 65535:
