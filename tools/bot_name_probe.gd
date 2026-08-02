@@ -88,12 +88,28 @@ func _run() -> void:
 		_check("seat %d after handover back to bot" % who.player_slot,
 			who.display_name(), roster_name)
 
-		# 4. And a human with no name set still never reads as blank.
+		# 4. ⚠️ AN UNNAMED HUMAN KEEPS THE SEAT LABEL, IT DOES NOT BORROW THE
+		# CHARACTER. 🧑 *"make sure human's name doesnt change too"*. Two reasons and
+		# the second is the hard one: a human reading MARING is indistinguishable from
+		# a bot, and `character_index` is reassigned in five places, so a
+		# character-derived label for a human is not even stable across a reclaim.
+		# `player_slot` is.
 		who.ai_controller.set_enabled(false)
 		who.player_name = ""
 		await get_tree().physics_frame
-		_check("seat %d unnamed human" % who.player_slot,
-			who.display_name(), roster_name)
+		_check("seat %d unnamed human keeps seat label" % who.player_slot,
+			who.display_name(), seat_label)
+
+		# 5. And a named human survives a character re-pick, which is the drift the
+		# check above exists to prevent.
+		who.player_name = "HUMAN%d" % who.player_slot
+		var was := who.character_index
+		who.character_index = (was + 1) % CharacterRoster.size()
+		await get_tree().physics_frame
+		_check("seat %d named human after re-pick" % who.player_slot,
+			who.display_name(), "HUMAN%d" % who.player_slot)
+		who.character_index = was
+		who.player_name = ""
 		who.ai_controller.set_enabled(true)
 
 	_report()
