@@ -418,9 +418,20 @@ const HAND_BONE_CANDIDATES: Array[String] = ["arm-right", "arm-left"]
 ## is a good way to find WHICH end of the bone the hand is on and a bad way to measure how
 ## far.
 ##
-## 0.134 is measured in the frame that cannot lie about it — the live body. Shoulder to
-## hand on this chibi is about 0.32 m in world units, which is `0.32 / PERSON_SCALE` here.
-## The Z is scaled by the same ratio so the point keeps its small forward bias.
+## The value is measured in the frame that cannot lie about it — the live body, where
+## `carry_probe` prints shoulder and carry point together. Three reads bracket it, all
+## from play:
+##
+##     0.284  reach 0.68 m   *"ITS ON EVERYONES NECK"*
+##     0.134  reach 0.32 m   *"its INSIDE THE ARM"*        — shoulder-to-hip, too short
+##     0.190  reach 0.46 m   *"almost there ... not as bad as earlier"*
+##     0.225  reach 0.54 m   ← here
+##
+## The bracket is what makes this a measurement rather than a fourth guess: the answer is
+## known to sit between 0.32 and 0.68 m, and each step has halved the remaining interval
+## against a report from a real match. The Z is scaled with it so the point keeps its
+## small bias off the limb's axis — the shoe is a flat object and needs to clear the
+## forearm sideways as well as reach past it.
 ##
 ## ⚠️ THE LIFT STAYS AT EXACTLY ZERO — the arm bone's own axis. The vertex sweep put it at
 ## y = -0.040, a BOTTOM corner of the fist, which is what "sitting perfectly under the arm"
@@ -437,7 +448,7 @@ const HAND_BONE_CANDIDATES: Array[String] = ["arm-right", "arm-left"]
 ## ⚠️ THE X IS MIRRORED FOR A LEFT ARM by `_build_hand_attachment`. `arm-left` is the
 ## mirror bone and the fallback path can select it, or any arm-ish bone on a rig that has
 ## neither — see there.
-const HAND_CARRY_OFFSET: Vector3 = Vector3(-0.190, 0.000, 0.030)
+const HAND_CARRY_OFFSET: Vector3 = Vector3(-0.225, 0.000, 0.036)
 
 ## The persistent carry pose. Verified against the actual .glb rather than a
 ## doc: the Kenney rig ships `holding-right` and `holding-right-shoot`, and
