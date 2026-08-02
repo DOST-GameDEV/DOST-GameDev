@@ -628,21 +628,30 @@ var _spectator_round: Label = null
 ## screen to js do record the game bcz we only added spectator for the video record"*,
 ## and then, explicitly: *"the remove hud is only for spectator okay, no one else."*
 ##
-## SPECTATOR ONLY, AND THAT IS ENFORCED RATHER THAN DOCUMENTED. `_unhandled_input`
+## SPECTATOR ONLY, AND THAT IS ENFORCED RATHER THAN DOCUMENTED. `_input()` below
 ## returns immediately unless `_spectating`, so a player in a live match cannot hide
 ## their own timer, status stack or charge meters by leaning on a key — which would be
 ## a competitive advantage handed out by a typo.
 ##
-## ⚠️ IT HIDES THE CHILDREN, NOT `self`, AND THAT IS DELIBERATE. Hiding the HUD root
-## would be the obvious one line, and it risks a one-way trip: input delivery to a
-## hidden Control is not something to bet an operator's recording session on. The root
-## stays visible and empty, so the key that turned the overlay off is guaranteed to
-## still be listening when they press it again.
+## ⚠️⚠️ IT HIDES `self`, AND IT USED TO HIDE THE CHILDREN — THE CHANGE IS THE FIX.
+## This block used to say hiding the root "risks a one-way trip: input delivery to a
+## hidden Control is not something to bet an operator's recording session on", and
+## walked `get_children()` instead. That caution was wrong on the fact and it cost the
+## feature: `_input()` is a Node callback and fires regardless of `visible` — only
+## mouse picking and focus are given up by a hidden Control, and `clean_feed` is a key.
+## Measured on this engine build, hidden root, event delivered.
 ##
-## ⚠️ AND IT RESTORES WHAT WAS THERE, NOT EVERYTHING. `enter_spectator_mode()` has
-## already hidden the YOU card, the crosshair, the lata card and the ready prompt —
-## blanket-showing every child on the way back would resurrect exactly the gameplay
-## chrome a spectator must not have. Prior visibility is recorded on the way out.
+## What the per-child walk actually bought was a SNAPSHOT taken the instant H was
+## pressed, so every transient that shows itself later — toast, countdown, downed
+## flash, lata card, ready row, score rows — came back over a clean plate. 🧑 reported
+## it: *"theres popup huds midgame and shi"*. A hidden parent is a state and cannot
+## be out-voted by a child setting its own `visible`.
+##
+## ⚠️ AND NOTHING NEEDS RESTORING NOW. The old code recorded prior visibility because
+## it OVERWROTE it, and had to avoid blanket-showing on the way back —
+## `enter_spectator_mode()` has already hidden the YOU card, the crosshair, the lata
+## card and the ready prompt, and a spectator must not get those back. Hiding the root
+## overwrites nothing, so that whole class of bug is gone rather than handled.
 ## ⚠️ AN ACTION, NOT A KEYCODE — and the first version of this was the keycode.
 ## It shipped comparing `event.keycode` against a hardcoded `KEY_H`, which meant the one
 ## control the camera operator needs was not in the InputMap, not in the settings panel,
@@ -655,7 +664,6 @@ var _spectator_round: Label = null
 ## the same place, and `SettingsManager` stores `physical_keycode` everywhere else.
 ## `is_action_pressed()` goes through the InputMap and inherits that.
 var _clean_feed: bool = false
-var _clean_feed_restore: Dictionary = {}
 
 ## ⚠️⚠️ `_input`, NOT `_unhandled_input`, AND THE REASON IS MEASURED — BY ANOTHER LANE.
 ## `spectator_camera.gd` moved `Tab`/`F`/`V` to `_input` after `spec_probe --solo` caught
@@ -685,23 +693,29 @@ func set_clean_feed(on: bool) -> void:
 		return
 	_clean_feed = on
 	_apply_clean_feed_to_world(on)
-	if on:
-		_clean_feed_restore.clear()
-		for child in get_children():
-			var item := child as CanvasItem
-			if item == null:
-				continue
-			_clean_feed_restore[item] = item.visible
-			item.visible = false
-		return
-	for child in get_children():
-		var item := child as CanvasItem
-		if item == null:
-			continue
-		# A node added while the feed was clean was never recorded, so it takes the
-		# honest default rather than staying invisible forever.
-		item.visible = bool(_clean_feed_restore.get(item, true))
-	_clean_feed_restore.clear()
+	# ⚠️⚠️ THE ROOT IS HIDDEN, NOT EACH CHILD, AND THE PER-CHILD VERSION WAS A BUG.
+	# 🧑 2026-08-02: *"clicking H doesnt hide all huds for spectator ... theres popup
+	# huds midgame and shi"*. Correct, and the old code could not have done otherwise:
+	# it walked `get_children()` ONCE, at the moment H was pressed, recorded each
+	# child's `visible` and set it false. That is a snapshot, not a state.
+	#
+	# Every transient on this HUD shows ITSELF later and unconditionally — the toast,
+	# the countdown, the downed flash, the lata card, the ready row, the score rows.
+	# Each one is a plain `visible = true` on a timer or a signal, so anything that
+	# fired after H went straight back on screen over a "clean" plate, which is the
+	# one thing a camera operator must be able to rely on mid-take.
+	#
+	# Hiding this Control instead makes the clean feed a STATE: a hidden parent means
+	# no descendant draws whatever it sets on itself, so a popup that fires during a
+	# clean feed stays dark and is simply there again when the operator toggles back.
+	# That also deletes the restore bookkeeping outright — nothing is overwritten, so
+	# nothing has to be put back, and `enter_spectator_mode()`'s own hiding of the YOU
+	# card, crosshair, lata card and ready prompt survives untouched underneath.
+	#
+	# ⚠️ `_input()` STILL FIRES WHILE HIDDEN, which is what makes the toggle reversible.
+	# Input callbacks are Node-level and do not care about `visible`; it is only mouse
+	# picking and focus that a hidden Control gives up, and `clean_feed` is a key.
+	visible = not on
 
 ## ⚠️⚠️ THE NAMEPLATES AND THE GROUND RINGS ARE NOT PART OF THIS HUD, AND A CLEAN FEED
 ## THAT LEAVES THEM ON IS NOT CLEAN. 🧑 2026-07-31, with a screenshot: *"turn off
