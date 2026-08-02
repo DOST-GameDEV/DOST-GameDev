@@ -360,6 +360,18 @@ Add-Check 'dedicated: the handover reaches a BYSTANDER client too'        $bId $
 Add-Check 'dedicated: the promoted peer knows it leads'             1    (Get-Field $bState 'isleader')
 Add-Check 'dedicated: the newest peer still does not lead'          0    (Get-Field $dState 'isleader')
 Add-Check 'dedicated: the departed peer is off connected_peer_ids'  (Get-IdSet ($bId + ',' + $dId)) (Get-IdSet (Get-Field $sState 'peers'))
+# ⚠️⚠️ B-65 IS ASSERTED **HERE**, WHERE PEERS REMAIN — NOT AFTER THE LAST ONE LEAVES.
+# peer_tokens outlives a departure so a peer that drops and reconnects lands back in the
+# seat it chose. That only means anything while the MATCH still exists, which is to say
+# while somebody is still in it. This is that moment: A has gone, B and D are still here,
+# and A's token must still be on the server for A to come back to.
+#
+# It used to be asserted after the LAST peer left instead, and that assertion became wrong
+# the day `main.gd` learned to recycle an abandoned lobby: an empty lobby is not the same
+# lobby waiting for you, it is a fresh waiting room with a new code and no seats, so there
+# is nothing for a token to hold. See the recycle check at the end of this scenario.
+Add-Check 'dedicated: peer_tokens survives a departure while others remain (B-65)' `
+    (Get-IdSet ($aId + ',' + $bId + ',' + $dId)) (Get-IdSet (Get-Field $sState 'tokens'))
 
 Write-Host '  -- the replacement leader leaves too'
 New-Item -ItemType File -Path $bLeave -Force | Out-Null
@@ -374,21 +386,50 @@ Write-Host '  -- the last peer leaves'
 New-Item -ItemType File -Path $dLeave -Force | Out-Null
 Wait-ForPattern $dLog '^NETPROBE D LEAVE ' 30 'client D never acted on its leave file' | Out-Null
 Wait-ForPattern $sLog '^NETPROBE S EVENT .*leader=0\s*$' 60 'the role never returned to nobody' | Out-Null
-# ⚠️ `tokens=` NON-EMPTY IS WHAT MAKES THIS THE *END* AND NOT THE BEGINNING. An
-# empty seat list on its own is also the state a dedicated server boots into;
-# peer_tokens deliberately outlives a departure (B-65) and is the only field that
-# tells the two apart.
-Wait-ForPattern $sLog '^NETPROBE S STATE .* peers=- tokens=[0-9]' 30 'the lobby never emptied' | Out-Null
+# ⚠️⚠️ THE END STATE IS NOW A RECYCLED LOBBY, NOT A REMEMBERING ONE. This used to wait for
+# `peers=- tokens=[0-9]` — everyone gone but the tokens retained — and used the non-empty
+# token list to tell "the end" apart from "a server that just booted", which look otherwise
+# identical.
+#
+# `main.gd`'s § BACK TO THE WAITING ROOM changed that on purpose: when the last human
+# leaves, a dedicated lobby clears its tokens, mints a new join code and returns to
+# MatchSetup, because a lobby nobody is in must become claimable again. Measured before
+# that change: `players=0 occupied=0 in_progress=true` for as long as anyone watched, and
+# HOST ONLINE could never claim it again.
+#
+# ⚠️⚠️ SO WAIT FOR THE RECYCLE ITSELF, NOT FOR AN EMPTY ROOM. `peers=- tokens=-` is now
+# ALSO the state a dedicated server boots into, so waiting on it matches the FIRST line of
+# the log and the suite then samples the middle of the run — measured: it matched at line 5
+# of 58 and reported a peer still seated. The old pattern used a non-empty token list as
+# the discriminator; now that an abandoned lobby clears those too, the only unambiguous
+# signal is the server announcing the recycle.
+#
+# Deliberately matched on ASCII only — the message contains an em dash, and the log is not
+# read back as UTF-8 on this machine.
+Wait-ForPattern $sLog 'dedicated lobby recycled' 30 'the abandoned lobby never recycled' | Out-Null
+# ⚠️ AND THEN WAIT FOR THE NEXT SAMPLE, because the announcement and the probe's periodic
+# STATE line are not the same event. The probe samples every ~0.25 s, so the recycle
+# message reliably lands BEFORE the first state line that reflects it — measured: the wait
+# above returned and `Get-LastState` still read a pre-recycle line holding three tokens.
+# This is not a blind sleep: it waits for a specific observation (a sample showing the
+# emptied room) rather than for a duration.
+$deadline = (Get-Date).AddSeconds(15)
+while ((Get-Date) -lt $deadline) {
+    if ((Get-Field (Get-LastState $sLog 'S') 'peers') -eq '-') { break }
+    Start-Sleep -Milliseconds 250
+}
 
 $sEvents = @(Get-LeaderEvents $sLog 'S')
 $sState  = Get-LastState $sLog 'S'
 Add-Check 'dedicated: role returns to 0 when the last peer leaves' 0 $sEvents[3]
 Add-Check 'dedicated: exactly four leader changes over the run'    4 $sEvents.Count
 Add-Check 'dedicated: the empty lobby seats nobody'              '-' (Get-Field $sState 'peers')
-# Documented behaviour, asserted so a "tidy up on disconnect" change trips here:
-# peer_tokens/peer_characters deliberately outlive a departure so a reconnecting
-# peer keeps its slot (B-65). See peer_tokens' own doc.
-Add-Check 'dedicated: peer_tokens survives departure (B-65 rejoin)' (Get-IdSet ($aId + ',' + $bId + ',' + $dId)) (Get-IdSet (Get-Field $sState 'tokens'))
+# ⚠️ THE ABANDONED LOBBY MUST FORGET, so that it is claimable again rather than a room
+# holding three ghosts and an old code. This is the assertion that would have caught the
+# 2026-08-02 outage, where a lobby everyone had left kept advertising `in_progress=true`
+# and HOST ONLINE could never take it — with only one lobby deployed, that stopped hosting
+# working for everybody until an operator restarted the service.
+Add-Check 'dedicated: an abandoned lobby clears its tokens and recycles' '-' (Get-Field $sState 'tokens')
 
 # The header's promise is about EVERY moment, not the moments sampled above.
 $selfSeated = @(Get-ProbeLines $sLog 'S' 'STATE' | Where-Object {

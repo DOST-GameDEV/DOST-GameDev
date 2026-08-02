@@ -1556,6 +1556,261 @@ func _on_player_disconnected(peer_id: int) -> void:
 		# see _build_networked_character) — kept as a fallback so a disconnect
 		# never silently does nothing if that assumption is ever wrong.
 		_rpc_show_toast.rpc("A player left the match — their character will hold position until they reconnect")
+	# ⚠️ LAST, AND IT MAY CHANGE SCENE OUT FROM UNDER EVERYTHING ABOVE. On a dedicated
+	# referee an empty room means the match is over whatever the scoreboard says — see
+	# § BACK TO THE WAITING ROOM. `change_scene_to_file` is deferred to the end of the
+	# frame, so the bookkeeping above still completes; nothing after this line may not.
+	_recycle_dedicated_lobby_if_abandoned()
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ § BACK TO THE WAITING ROOM — WHY A POOL LOBBY IS NOT A ONE-SHOT.
+##
+## MEASURED ON THE LIVE VM, 2026-08-02: a dedicated server whose match had been
+## abandoned answered the pool query `players=0, occupied=0, in_progress=true`
+## **with nobody connected at all**, indefinitely. Reproduced here on 8971 before
+## this existed — twelve consecutive status replies, one a second, all identical.
+##
+## That is not cosmetic. `multiplayer_setup.gd::_free_pool_address()` skips every row
+## whose `in_progress` is true, so a lobby stuck this way is PERMANENTLY UNHOSTABLE:
+## HOST ONLINE can never hand it to anybody again. The deployment runs a single lobby,
+## so ONE abandoned match killed HOST ONLINE for everyone until an operator restarted
+## the service. A real player hit it.
+##
+## THE CAUSE IS THAT NOTHING EVER TURNED THE FLAG OFF. `match_in_progress` is written
+## `true` in exactly one place (`_start_hosting`, below) and back to `false` in exactly
+## one place — `NetworkManager.disconnect_network()`, which also closes the ENet server
+## and the status socket. A dedicated referee has no human to press QUIT TO MENU, gets no
+## `server_disconnected` (it *is* the server), and `_on_player_disconnected` above only
+## ever handed the leaver's body to a bot. There was no third way out, and the comment in
+## `match_setup.gd`'s § A LOBBY WITH NOBODY SITTING AT IT said so out loud: *"the match
+## ends and the process exits… `Restart=always` brings it back"*. It does not exit. It
+## sits in `Main.tscn` refereeing nothing.
+##
+## ⚠️⚠️ SO THE FIX IS A RETURN, NOT A RESTART, AND IT MUST NOT TOUCH THE SOCKETS.
+## The process goes back to `MatchSetup.tscn` — the waiting room a pool lobby already
+## boots into — while ENet, `ServerQuery`'s status responder and the LAN beacon all stay
+## exactly as they are. Tearing those down is what `disconnect_network()` does, and doing
+## it here would drop the lobby out of the pool for as long as it took to rebind, which is
+## the same outage in a smaller window. `match_setup.gd::_setup_host()` grew the matching
+## half: it does not re-`host_game()` when the socket is already open.
+##
+## ⚠️ GATED ON `NetworkManager.is_dedicated`, NEVER ON "the room is empty".
+## A LISTEN HOST has a human at the keyboard who owns this decision — they may be sitting
+## on the result screen deciding, or alone in a lobby waiting for friends — and yanking
+## their match back to a setup screen because ENet reported nobody else present would be a
+## far worse bug than the one this fixes. `is_dedicated` is only ever true where
+## `host_game(port, dedicated = true)` was called, i.e. on a pool process.
+##
+## ⚠️⚠️ TWO DIFFERENT EVENTS LEAD HERE AND THEY ARE NOT THE SAME EVENT.
+##
+##   THE ROOM EMPTIED (`_on_player_disconnected` above). Immediate, unconditional, and
+##   the one the live incident actually was. A referee with nobody connected is
+##   refereeing nothing, whether the score was 0-0 or the last round was half over.
+##
+##   THE MATCH WAS WON (`_on_match_won_freeze_physics` below). Deliberately NOT immediate.
+##   The result screen carries a REMATCH VOTE (`match_result.gd`) and the players are
+##   still connected and still deciding — recycling on the whistle would tear the world
+##   out from under a rematch that was one click away. So the whistle ARMS a grace window;
+##   a rematch (`MatchManager.round_started`) disarms it, and only if it actually expires
+##   does the referee close the room. That last step is not optional either: without it,
+##   four players who finish a match and then wander off leave the lobby held at
+##   `in_progress = true` behind a result screen nobody is looking at, which is the same
+##   outage arriving the polite way.
+## ---------------------------------------------------------------------------
+
+## Where a recycled lobby goes. The same scene a pool process boots into — see
+## `match_setup.gd`'s § A LOBBY WITH NOBODY SITTING AT IT — so there is one waiting room,
+## not a second one written for coming back to.
+const MATCH_SETUP_SCENE_PATH: String = "res://scenes/ui/MatchSetup.tscn"
+
+## How long a finished match's result screen is left up on a DEDICATED server before the
+## referee closes the room and takes the lobby back. Long enough that a rematch vote is
+## never the thing that times out — the ballot is decided within seconds of the screen
+## appearing — and short enough that a lobby is not held hostage by one person who walked
+## away from their keyboard without quitting.
+##
+## ⚠️ IT IS NOT A LISTEN HOST'S BUSINESS. Nothing below this line runs on one.
+const DEDICATED_POST_MATCH_SECONDS: float = 120.0
+
+## After the referee evicts the room, how long to give ENet to report the disconnections
+## before trying the recycle from this side instead. The clients normally drop themselves
+## on the announcement and `_on_player_disconnected` does the work within a frame or two;
+## this covers the ordering case where they have all gone but the last signal has not been
+## polled yet. It is NOT a way past a peer that is still connected — see `_evict_and_recycle`.
+const DEDICATED_EVICT_BACKSTOP: float = 3.0
+
+## The armed post-match window, or null. Held so a rematch can cancel it — a `SceneTreeTimer`
+## cannot be stopped, so cancelling means dropping the reference and having the callback
+## check whether it is still the armed one.
+var _post_match_timer: SceneTreeTimer = null
+## One-way latch. `change_scene_to_file` only takes effect at the end of the frame, so
+## without this a disconnect burst (four peers dropping together) would queue four scene
+## changes and re-run the whole reset on a lobby that had already been rebuilt.
+var _recycling: bool = false
+
+## The one predicate everything in this section is gated on. Both halves matter: a CLIENT
+## of a dedicated server also has `is_dedicated == true` (the server tells it so — see
+## `NetworkManager._rpc_announce_dedicated`), and a client must obviously not recycle
+## anybody's lobby.
+func _is_dedicated_referee() -> bool:
+	return NetworkManager.is_dedicated and NetworkManager.is_host()
+
+## THE ROOM EMPTIED. Called from `_on_player_disconnected`, which only ever runs on the
+## host, so this is asking "was that the last one out".
+func _recycle_dedicated_lobby_if_abandoned() -> void:
+	if not _is_dedicated_referee():
+		return
+	# ⚠️ `connected_peer_ids` NEVER HOLDS THE SERVER ITSELF on a dedicated process — see
+	# `NetworkManager.host_game`'s ⚠️ THE ONLY DIFFERENCE IS THE SELF-SEEDING. So empty
+	# here means "no humans", not "no peers at all", and no carve-out is needed.
+	if not NetworkManager.connected_peer_ids.is_empty():
+		return
+	_recycle_dedicated_lobby()
+
+## THE MATCH WAS WON. Arms the grace window described in the header. Re-armable: a rematch
+## that is itself won comes back through here.
+##
+## ⚠️ A NAMED METHOD PLUS `.bind()`, NOT A LAMBDA. A `SceneTreeTimer` outlives this scene —
+## the abandonment path can recycle the lobby and free `Main.tscn` while a window is still
+## armed — and Godot cleans a connection up when the RECEIVER object is freed, which it can
+## only do for a callable whose receiver it can see. A lambda's captured `self` is not that.
+func _arm_post_match_reset() -> void:
+	if not _is_dedicated_referee():
+		return
+	var timer := get_tree().create_timer(DEDICATED_POST_MATCH_SECONDS)
+	_post_match_timer = timer
+	timer.timeout.connect(_on_post_match_window_elapsed.bind(timer))
+
+## ⚠️ IT CHECKS WHICH WINDOW FIRED. A `SceneTreeTimer` cannot be stopped, so disarming means
+## dropping the reference — and the timer still fires afterwards. Without this identity test
+## a rematch would be interrupted by the window armed before it started, which is precisely
+## the thing the grace period exists to avoid.
+func _on_post_match_window_elapsed(timer: SceneTreeTimer) -> void:
+	if _post_match_timer != timer:
+		return
+	_post_match_timer = null
+	_close_finished_dedicated_match()
+
+## A rematch carried, or an ordinary round began. Either way the referee is refereeing
+## again and the window it armed at the last whistle is no longer about anything.
+func _disarm_post_match_reset() -> void:
+	_post_match_timer = null
+
+## The grace window expired with the match still over. Clear the room, then take the lobby
+## back.
+##
+## ⚠️ IT ANNOUNCES BEFORE IT EVICTS. `NetworkManager.announce_host_leaving()` is the
+## existing, measured path for "the host is going" — without it a client learns about a
+## closed socket exactly as slowly as about a yanked cable (5.2 s of `ENET_TIMEOUT_MIN`),
+## and lands on MultiplayerSetup with "Host ended the session." either way. The point of
+## the announcement is that it lands NOW rather than in five seconds.
+##
+## ⚠️ AND IT EVICTS EXPLICITLY AFTERWARDS, which is not belt-and-braces. A client that has
+## already stopped answering never acts on the announcement, and a peer left in
+## `connected_peer_ids` keeps `occupied` above zero — which is the OTHER thing
+## `_free_pool_address()` refuses to claim. A lobby that recycled its flag and kept a ghost
+## would be exactly as unhostable as one that did neither.
+func _close_finished_dedicated_match() -> void:
+	if not _is_dedicated_referee():
+		return
+	if NetworkManager.connected_peer_ids.is_empty():
+		_recycle_dedicated_lobby()
+		return
+	_rpc_show_toast.rpc("The match is over — this lobby is going back to its waiting room.")
+	await NetworkManager.announce_host_leaving()
+	# ⚠️ THE ONE `await` HERE NEEDS THIS, and everything after it is a plain call for the
+	# same reason. A peer's disconnect can complete inside that await and recycle the lobby
+	# through `_on_player_disconnected`, which frees this scene — and a coroutine resuming
+	# on a freed node is a hard error, not a silent no-op.
+	if not is_inside_tree():
+		return
+	_evict_and_recycle()
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ `disconnect_peer()` IS CALLED WITHOUT `force`, AND THAT IS NOT A DEFAULT LEFT
+## UNCONSIDERED. Godot's `ENetMultiplayerPeer::disconnect_peer(peer, true)` erases the peer
+## from its own table and then, **if that was the last one, closes the whole host**. On a
+## dedicated server that is the entire ENet listener — the socket this fix exists to keep
+## open — so forcing the eviction would trade a lobby stuck at `in_progress = true` for one
+## that has stopped listening altogether. Strictly worse.
+##
+## ⚠️ SO A PEER THAT HAS ALREADY GONE SILENT IS NOT EVICTED PROMPTLY, and the backstop below
+## will correctly decline to recycle while it is still in `connected_peer_ids`. That case
+## self-heals: ENet reaps it on `ENET_TIMEOUT_MAX` (deliberately wide — 45 s — because this
+## game is played over Hamachi), `_on_player_disconnected` fires, and the abandonment path
+## recycles the lobby then. Late is a real cost; a dead listener is not a cost this may pay.
+## ---------------------------------------------------------------------------
+func _evict_and_recycle() -> void:
+	var enet := multiplayer.multiplayer_peer as ENetMultiplayerPeer
+	if enet != null:
+		# `.duplicate()`: a disconnect can land inside this loop and erase from the very
+		# array it is walking.
+		for peer_id in NetworkManager.connected_peer_ids.duplicate():
+			enet.disconnect_peer(int(peer_id))
+	# Normally nothing below does the work: the announcement above already made every
+	# client drop its own peer, `peer_disconnected` arrives within a frame or two, and
+	# `_on_player_disconnected` recycles as the last one goes. This is the case where it
+	# did not — and `_recycle_dedicated_lobby` declines by itself if the room is not
+	# actually empty yet, so an early fire is harmless.
+	get_tree().create_timer(DEDICATED_EVICT_BACKSTOP).timeout.connect(_recycle_dedicated_lobby)
+
+## ---------------------------------------------------------------------------
+## The reset itself. Everything `host_game()` would have established for a fresh session,
+## MINUS the two sockets — because those are already open and must stay that way.
+##
+## ⚠️ IT RUNS ONLY WITH THE ROOM ALREADY EMPTY, and both callers guarantee that. It clears
+## the identity maps a still-connected peer would depend on (`peer_tokens` decides that
+## peer's seat, `peer_characters` its name and face), so scrubbing them under somebody who
+## is still in the lobby would leave a ghost the board cannot draw and the ready gate
+## cannot count.
+## ---------------------------------------------------------------------------
+func _recycle_dedicated_lobby() -> void:
+	if _recycling or not _is_dedicated_referee():
+		return
+	if not NetworkManager.connected_peer_ids.is_empty():
+		return
+	_recycling = true
+	_disarm_post_match_reset()
+	# A dedicated process never pauses itself today, but a scene change with the tree still
+	# paused loads the next scene paused and every button on it dies — Q-3/B-64, and the
+	# same line `_on_return_to_menu_pressed` opens with.
+	get_tree().paused = false
+	# ⚠️⚠️ THE ONE LINE THE WHOLE INCIDENT WAS ABOUT. `server_query.gd::_status_payload()`
+	# reports this flag verbatim as `in_progress`, and `_free_pool_address()` will not
+	# claim a row that has it set.
+	NetworkManager.match_in_progress = false
+	# ⚠️ A FRESH CODE, BECAUSE THIS IS A DIFFERENT LOBBY. `join_code`'s own doc: a code is
+	# per-SESSION *"because a server that has restarted is a different lobby with a
+	# different set of people in it — a code that survived would send a player to the room
+	# its old occupants have left"*. Coming back from a finished match is that same
+	# sentence without the restart, so it gets the same treatment `host_game()` gives.
+	NetworkManager.join_code = NetworkManager._mint_join_code()
+	NetworkManager.join_code_changed.emit(NetworkManager.join_code)
+	# The three things `host_game()` clears for a new session. Same reason: they described
+	# the match that just ended, and the next lobby's occupants have not identified yet.
+	NetworkManager.peer_tokens.clear()
+	NetworkManager.peer_characters.clear()
+	# ⚠️ AND THE LEADER, WHICH IS THE ONE THAT WOULD BREAK SILENTLY. A dedicated lobby with
+	# a stale non-zero `lobby_leader_id` never runs `_claim_lobby_leader_if_vacant` for the
+	# next person through the door, so nobody can pick the map and nobody can press START —
+	# a lobby that answers every query, accepts every join and cannot begin a match.
+	# `_reassign_leader` normally lands this on 0 as the last peer leaves; setting it here
+	# means the invariant does not depend on that having happened.
+	NetworkManager.lobby_leader_id = 0
+	# Host-authoritative seating from the finished match. `_rpc_begin_match` rewrites it at
+	# the next kickoff, but a stale map keyed by tokens nobody holds any more has no
+	# business surviving into a lobby those players are not in.
+	GameLaunch.clear_seating()
+	# B-14, for the same reason `_ready()` and `_rpc_begin_match` both already do it: these
+	# are autoloads and would otherwise carry this match's score and round into the next.
+	MatchManager.reset()
+	RoundManager.reset()
+	# The pool is operated by reading journalctl, so the recycle says so on stdout. One
+	# line, and it names the new code — which is the only thing about the lobby that
+	# changed and the only thing an operator cannot see any other way.
+	print("main: dedicated lobby recycled — back to the waiting room, code %s." % [
+		NetworkManager.join_code])
+	get_tree().change_scene_to_file(MATCH_SETUP_SCENE_PATH)
 
 ## Finds `character`'s join index by reverse lookup through _index_to_character
 ## — the only direction that dictionary is normally read (index -> character);
@@ -1849,6 +2104,13 @@ func _build_networked_character(data: Dictionary) -> Node:
 ## ⚠️ SIGNATURE FOLLOWS `MatchManager.round_started`, WHICH NOW NAMES A SLOT
 ## RATHER THAN A SIDE. A bool could describe a 2v2; it cannot name one of four.
 func _on_match_round_started(_round_number: int, defender_slot: int) -> void:
+	# ⚠️ FIRST, AND IT IS THE REMATCH CASE. `MatchManager.round_started` is what a carried
+	# rematch vote ends up firing (`match_result.gd::_begin_rematch_now` → `begin_next_round`),
+	# and it is the ONLY signal both a rematch and an ordinary round transition go through —
+	# which is exactly why `match_result.gd` hangs its own "hide the scoreboard" off it. A
+	# dedicated referee that is refereeing again must drop the window it armed at the last
+	# whistle, or it would close a room in the middle of the match that vote just started.
+	_disarm_post_match_reset()
 	_reset_world(defender_slot)
 	RoundManager.start_round()
 	# ⚠⚠ THE SLIPPER GOES INTO THE HAND HERE, NOT IN `_reset_slippers()`.
@@ -2131,6 +2393,10 @@ func _on_round_intermission_started(_next_round_number: int, next_defender_slot:
 func _on_match_won_freeze_physics(_winning_team: int) -> void:
 	for character in _all_characters():
 		character.velocity = Vector3.ZERO
+	# THE MATCH WAS WON — the second of the two ways a dedicated lobby comes back. Armed
+	# rather than done, because the result screen still owns a live rematch vote; see
+	# § BACK TO THE WAITING ROOM for why this one has a grace window and the other does not.
+	_arm_post_match_reset()
 
 ## Every character currently in play, local-test or networked — the same
 ## roster _reset_world() already builds, minus the team/role bookkeeping
