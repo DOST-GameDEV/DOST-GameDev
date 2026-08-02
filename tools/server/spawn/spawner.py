@@ -44,33 +44,27 @@ PROTOCOL_VERSION = 1
 POOL_PORT_FIRST = 8910
 POOL_PORT_LAST = 8917
 
-# ⚠️⚠️ ONE. NOT A MEMORY LIMIT ANY MORE — A CPU ONE, AND CPU IS WHAT THIS SHAPE HAS
-# ALMOST NONE OF. `VM.Standard.E2.1.Micro` is ONE EIGHTH of an OCPU. Capping the
-# server main loop (see NetworkManager.DEDICATED_MAX_FPS) took an idle lobby from 20%
-# of a core to 0.65% and made an idle pool safe — but a RUNNING MATCH is physics and
-# AI for four characters, and three of those at once wedged the box again even with
-# the cap in place. Measured: SSH failing at banner exchange, console still reporting
-# Running, recovered only by a forced reboot.
+# ⚠️⚠️ SIX, AND EVERY DIGIT OF THAT IS MEASURED ON THE BOX IT RUNS ON. This was ONE on
+# the previous host, an Oracle `VM.Standard.E2.1.Micro` — one EIGHTH of an OCPU, where a
+# single running match was enough to wedge the machine: SSH failing at banner exchange,
+# the console still reporting Running, recovered only by a forced reboot. Twice.
 #
-# So the ceiling is the number of concurrent MATCHES this hardware can referee, and
-# on this shape that is one. It is not a memory figure; memory sat at 655 MB free.
+# The pool moved to a Vultr 1 vCPU / 2 GB in Singapore on 2026-08-02, and a real match was
+# measured there before this number was touched:
 #
-# ⚠️ RAISE THIS ONLY WITH A BIGGER SHAPE, AND MEASURE A REAL MATCH BEFORE TRUSTING IT.
-# An Ampere A1 (2 full OCPUs, 12 GB) is roughly sixteen times the CPU and would carry
-# several; the port range stays wide so that costs one line here and no client build.
+#     one lobby refereeing a match:  7.8% of the vCPU, 222 MB resident
+#     load average with it running:  0.11   (1.00 = the whole core busy)
+#     base OS:                       ~268 MB of the 1962 MB
 #
-# The memory arithmetic this used to carry, kept because it still bounds the other axis:
-# zero lobbies running: 524 MB available. A lobby costs 186 MB for the first and
-# ~155 MB for each additional one (they share the binary and read-only pages), so:
+# So six matches is ~47% of the core and ~1600 MB, leaving ~360 MB of headroom. CPU stopped
+# being the binding constraint the moment the shape had a whole core; memory is now the
+# one that runs out first, which is why the live check below is the real backstop.
 #
-#     1 lobby  -> ~338 MB free
-#     2 lobbies -> ~184 MB free
-#     3 lobbies -> ~54 MB free   <- both outages happened here
-#
-# This was briefly set to 4, which would have reproduced the crash on demand.
-# The port range stays wider on purpose: a bigger box raises this number and needs
-# no new client build, because the client already asks all eight ports.
-MAX_LOBBIES = 1
+# ⚠️ RAISE THIS ONLY AFTER MEASURING A REAL MATCH ON THE HARDWARE IT WILL RUN ON. Both
+# outages on the old box came from a number reached by arithmetic instead of by watching
+# one. The port range stays wider than the cap on purpose: a bigger shape raises this in
+# one line and needs no new client build, because the client already asks all eight ports.
+MAX_LOBBIES = 6
 
 # ⚠️ AND A COUNT IS NOT ENOUGH ON ITS OWN. `MAX_LOBBIES` assumes every lobby costs
 # what the measurement said; a match with four humans, a future map or a leak could
@@ -81,7 +75,7 @@ MAX_LOBBIES = 1
 #
 # 260 MB leaves room for one more lobby plus the ~100 MB the OS wants for page
 # cache. Refusing to start is a bad evening; running out of memory is a dead box.
-MIN_AVAILABLE_MB = 260
+MIN_AVAILABLE_MB = 400
 
 
 def available_mb() -> int:
