@@ -152,17 +152,17 @@ func _run_local() -> void:
 			attacker = ch
 	if attacker != null:
 		slipper = _slipper_owned_by(attacker)
-	# ⚠️ THE ATTACKER'S OWN TEAM'S TSINELAS. `carriable.gd::can_be_grabbed_by()` refuses
-	# an opponent's slipper outright ("shove it, kick it, never pocket it"), so a
-	# `host_grab` of the wrong one is a silent no-op — measured on the networked leg as
-	# `held=<null>` with the button held for a full 1.4 s and no charge at all. Resolved in
-	# a second pass because tree order does not say which team comes first.
-	if attacker != null:
-		for c in _main.find_children("*", "CharacterBase", true, false):
-			var ch := c as CharacterBase
-			if not ch.is_person and not ch.is_can and ch.team == attacker.team:
-				slipper = ch
-				break
+	# ⚠️⚠️ THE SECOND DISCOVERY PASS THAT USED TO SIT HERE IS DELETED — 2026-08-02, and
+	# it was a port miss of mine rather than a design change. It re-scanned every
+	# `CharacterBase` for "not a Person, not a can, same team" and assigned the result
+	# to `slipper`, which is a `Slipper` now — a parse error that took this whole file
+	# down, so the probe could not run at all.
+	#
+	# What it existed for is genuinely gone. Its note said an opponent's slipper is
+	# refused outright, so the pass was there to make sure the RIGHT one was grabbed
+	# when tree order did not say which team came first. `slipper.gd` dropped that owner
+	# gate ("everything above it — loose, an attacker, able to act" is the whole test),
+	# and `_slipper_owned_by()` above already resolves by `owner_slot` in one pass.
 	if attacker == null or slipper == null:
 		print("CHARGE: could not find an attacking Person and a tsinelas")
 		_fails += 1
