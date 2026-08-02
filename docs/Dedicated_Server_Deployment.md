@@ -302,6 +302,61 @@ option that fits (§7) — and you have to actually get one.
 
 ---
 
+## 4b. Actually creating the instance (Oracle)
+
+Console UI wording drifts; the decisions below do not.
+
+**Signing up.** `cloud.oracle.com` → *Start for free*. Needs an email, a phone
+number and a **credit or debit card for identity verification** — a small
+temporary authorisation hold, not a charge. The Philippines is supported.
+
+⚠️ **The HOME REGION IS PERMANENT AND IT DECIDES YOUR LATENCY.** It is chosen
+during signup and cannot be changed afterwards, and Always Free resources exist
+*only* there. Pick the nearest: **Singapore**, **Osaka** or **Tokyo**. Choosing
+a US region here is a mistake you fix by making a second account.
+
+**Creating the instance.** Compute → Instances → *Create instance*.
+
+| Field | What to pick |
+| --- | --- |
+| Image | Ubuntu 22.04, or Oracle Linux 9 |
+| Shape | *Change shape* → **Ampere** → `VM.Standard.A1.Flex` → **2 OCPU, 12 GB** |
+| Networking | Default VCN, **assign a public IPv4 address** |
+| SSH keys | *Generate a key pair for me* → **download the private key** |
+
+⚠️ **The private key is offered once.** There is no way to re-download it; a lost
+key means terminating the instance and making another.
+
+⚠️ **2 OCPU / 12 GB is the whole A1 allowance, not a slice of it** (§4). Asking
+for 4/24 because a blog said so gets the request rejected or silently eats the
+budget for a second instance you cannot then create.
+
+⚠️ **"Out of host capacity" is expected, not a fault.** Try another availability
+domain, then wait and retry. If it will not come, `VM.Standard.E2.1.Micro`
+(x86, 1 GB) almost always launches — and holds **three** lobbies, not eight, so
+set `POOL_SIZE=3`.
+
+**Then the ingress rule**, before you SSH anywhere: Networking → Virtual Cloud
+Networks → your VCN → the subnet → its Security List → *Add Ingress Rule*:
+
+    Source CIDR        0.0.0.0/0
+    IP Protocol        UDP
+    Destination Ports  8910-8927
+
+That is layer one of two. §5 is layer two, on the box itself.
+
+### ⚠️ An idle lobby pool is the exact profile Oracle reclaims
+
+Worth reading §4's reclamation bullet again before building a demo on this. The
+published criterion is a 7-day window with 95th-percentile CPU **and** network
+**and** memory all under 20% — and eight empty lobbies waiting for players is
+precisely that. Oracle says "reclaimed" without defining it, so plan for
+termination rather than a stop. If the pool matters on a specific date, verify
+it is still alive that morning; do not assume a box you provisioned two weeks
+ago is still there.
+
+---
+
 ## 5. ⚠️ Firewall: UDP, and BOTH firewalls
 
 This is the second silent failure and it costs people entire afternoons.
@@ -604,9 +659,11 @@ Read from the source, not observed on a deployed server:
 ## 9. First deployment, start to finish
 
 ```bash
-# 1. Create the VM.
-#    Match the Godot binary's architecture to it — §3. On Ampere that is arm64.
-# 2. Provider firewall: UDP 8910-8917 ingress. §5.
+# 1. Create the VM. §4b, start to finish -- home region is permanent, the
+#    private key is offered once, and A1 capacity errors are expected.
+#    install.sh detects the architecture itself, so §3 is FYI, not a step.
+# 2. Provider firewall: UDP 8910-8927 ingress (game ports AND status ports,
+#    which are game + 10). VCN security list -- §4b. Then §5 for the OS.
 # 3. On the box:
 sudo useradd -r -m -d /var/lib/gameserver gameserver
 sudo mkdir -p /opt/tumbang-preso
