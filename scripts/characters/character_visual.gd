@@ -388,6 +388,46 @@ const HAND_BONE_CANDIDATES: Array[String] = ["arm-right", "arm-left"]
 ## The two changes have to be read together: the offset moved out because the thing being
 ## positioned changed from a corner of the prop to its centre.
 ##
+## ⚠️⚠️ THE Y IS LIFTED OFF THE MEASUREMENT, AND THAT IS DELIBERATE — 🧑 2026-08-02:
+## *"its sitting perfectly UNDER THE ARM NOW! JUST PUT IT UP!!!"*. Correct, and it follows
+## from HOW the tip is found: `hand_bone_probe` takes the arm vertex FURTHEST from the
+## shoulder, and the furthest point of a hand is a bottom corner of it — measured at
+## y = -0.040 in bone space. Sitting the shoe's centre exactly there hangs it off the
+## underside of the fist. Half the hand's own thickness back up puts it in the grip.
+##
+## ⚠️ +Y IS UP AND THAT WAS MEASURED TOO, NOT ASSUMED. This offset lives in the arm bone's
+## rotated frame, which no one can read by inspection — the note at the top of this block
+## records a previous author getting exactly that wrong. `carry_probe` now prints the
+## world-up component of each of the hand's local axes on a live carrier: **y +0.96** with
+## the arm at rest and +0.71 with it raised, x +0.26/+0.71, z ≈ 0. So +Y it is, on every
+## clip.
+##
+## ⚠️⚠️ AND THE REACH IS 0.134, NOT THE 0.290 THE VERTEX SWEEP REPORTED, BECAUSE THAT
+## MEASUREMENT WAS WRONG BY ABOUT A FACTOR OF TWO. It shipped at 0.284 and 🧑 caught it
+## twice — *"its sitting perfectly UNDER THE ARM NOW! JUST PUT IT UP!!!"*, then, after a
+## vertical nudge that did not address the real fault, *"ITS ON EVERYONES NECK IN UR LAST
+## PIC"*.
+##
+## Nudging Y was treating a symptom. `carry_probe` now prints the SHOULDER and the carry
+## point together, in character-local space, and the number is unarguable: the point sat
+## **0.684 m from the shoulder** — `0.284 × PERSON_SCALE` — on a character 1.6 m tall,
+## with the shoulder at local x +0.24 and the point at **x +0.84**, most of a metre out
+## sideways. No arm on this rig is 0.68 m long. `hand_bone_probe`'s sweep takes mesh
+## vertices in the MeshInstance's own space and inverse-transforms them by a bone rest
+## taken in SKELETON space, so anything between those two frames lands in the answer; it
+## is a good way to find WHICH end of the bone the hand is on and a bad way to measure how
+## far.
+##
+## 0.134 is measured in the frame that cannot lie about it — the live body. Shoulder to
+## hand on this chibi is about 0.32 m in world units, which is `0.32 / PERSON_SCALE` here.
+## The Z is scaled by the same ratio so the point keeps its small forward bias.
+##
+## ⚠️ THE LIFT STAYS AT EXACTLY ZERO — the arm bone's own axis. The vertex sweep put it at
+## y = -0.040, a BOTTOM corner of the fist, which is what "sitting perfectly under the arm"
+## was; the axis is the middle of the grip. And a hand-picked lift cannot be right anyway:
+## +0.14 m above a hand hanging at the hip is the waist, and +0.14 m above a hand raised to
+## the chest is the throat, which is exactly the neck report.
+##
 ## ⚠️⚠️ AND IT IS IN BONE-LOCAL UNITS NOW, WRITTEN STRAIGHT ONTO THE NODE. The old
 ## constant was documented as WORLD units and `_build_hand_attachment` divided it by
 ## `PERSON_SCALE` on the way in. That conversion is deleted, because the probe measures in
@@ -397,7 +437,7 @@ const HAND_BONE_CANDIDATES: Array[String] = ["arm-right", "arm-left"]
 ## ⚠️ THE X IS MIRRORED FOR A LEFT ARM by `_build_hand_attachment`. `arm-left` is the
 ## mirror bone and the fallback path can select it, or any arm-ish bone on a rig that has
 ## neither — see there.
-const HAND_CARRY_OFFSET: Vector3 = Vector3(-0.284, -0.040, 0.044)
+const HAND_CARRY_OFFSET: Vector3 = Vector3(-0.134, 0.000, 0.021)
 
 ## The persistent carry pose. Verified against the actual .glb rather than a
 ## doc: the Kenney rig ships `holding-right` and `holding-right-shoot`, and

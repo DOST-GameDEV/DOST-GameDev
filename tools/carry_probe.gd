@@ -32,8 +32,14 @@ const MAIN_SCENE: PackedScene = preload("res://scenes/main/Main.tscn")
 
 ## Character-local band the palm must land in. Generous — this is a "not in the chest,
 ## not at the ankle" assertion, not a calibration.
+## ⚠️ THE UPPER BOUND IS 0.25, NOT 0.10, AND THE REASON IS THAT THIS MEASURES THE ORIGIN
+## WHILE THE GAME PLACES THE MESH. `slipper.gd::_attach_to_hand()` now offsets the prop so
+## its VISIBLE CENTRE lands on the carry point, which pushes the origin above the palm by
+## whatever the mesh's own drop is. A band written for the origin therefore has to be
+## looser than one written for the shoe, or it fails a correctly-placed slipper — which it
+## did, on the seat with its arm raised. Still tight enough to catch the chest and the head.
 const PALM_Y_MIN: float = -0.45
-const PALM_Y_MAX: float = 0.10
+const PALM_Y_MAX: float = 0.25
 ## ⚠️⚠️ THERE IS DELIBERATELY NO "OUT TO THE SIDE" THRESHOLD, AND THE FIRST VERSION OF
 ## THIS PROBE HAD ONE AND WAS WRONG. It required the slipper to sit ≥ 0.12 out from the
 ## body's centre line, on the reasoning that a slipper on the centre line is the reported
@@ -110,6 +116,22 @@ func _check(slipper: Slipper, who: CharacterBase) -> void:
 		_failures.append("%s: slipper is not parented to the hand (it is on '%s')."
 			% [label, slipper.get_parent().name if slipper.get_parent() != null else "<none>"])
 
+	# ⚠️ WHICH WAY IS UP IN BONE SPACE — the one thing `HAND_CARRY_OFFSET` cannot be
+	# reasoned about without. The offset is written in the arm bone's own frame and that
+	# frame is rotated by the rig AND by whatever clip is playing, so "raise it a little"
+	# is not a guess anybody should make twice. This prints the world-up component of each
+	# of the hand's local axes: the largest one is the axis to nudge.
+	var b := hand.global_transform.basis.orthonormalized()
+	# ⚠️ THE SHOULDER IS PRINTED BESIDE THE CARRY POINT, and that comparison is what
+	# finally sized the reach. `HAND_CARRY_OFFSET` is a distance FROM the bone origin, so
+	# it can only be judged against where that origin actually is on a live body — in
+	# character-local space, where the capsule runs -0.8 (feet) to +0.8 (crown).
+	var to_char := who.global_transform.affine_inverse()
+	var shoulder: Vector3 = to_char * hand.get_parent().global_position
+	var point: Vector3 = to_char * hand.global_position
+	print("%-28s up-axis y %+.2f · shoulder (%+.2f,%+.2f,%+.2f) · carry point (%+.2f,%+.2f,%+.2f) · reach %.3f m"
+		% [label, b.y.dot(Vector3.UP), shoulder.x, shoulder.y, shoulder.z,
+			point.x, point.y, point.z, (point - shoulder).length()])
 	var local: Vector3 = who.global_transform.affine_inverse() * slipper.global_position
 	var side := absf(local.x)
 	var ok := local.y >= PALM_Y_MIN and local.y <= PALM_Y_MAX and side >= PALM_SIDE_MIN
