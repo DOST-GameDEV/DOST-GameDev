@@ -410,8 +410,43 @@ enum State { NORMAL, STAGGERED, DOWNED }
 
 ## The name to actually draw. One function, so the scoreboard, the 3D nameplate, the
 ## YOU card and every toast cannot disagree about what an unnamed player is called.
+##
+## ⚠️⚠️ A BOT IS CALLED BY ITS CHARACTER, NOT "P2" — 🧑 2026-08-02: *"give the bots
+## names, not just p1 p2, give them the names of their characters ... KIND OF LIKE
+## L4D2!"*. A seat driven by AI reads BEBANG or JUN-JUN off the roster; a seat with a
+## human behind it keeps that human's own name, exactly as before.
+##
+## ⚠️⚠️ AND IT IS DERIVED EVERY CALL RATHER THAN WRITTEN AT THE SWITCH. This is the
+## whole reason the fix is four lines instead of a patch in every handover path. 🧑
+## flagged it: *"make sure that when human switches to bot or smth the name doesnt bug
+## as there are many ways for human and bot to switch (tab, singleplayer and when
+## someone disconnects reconnects in multiplayer)"*. There are at least four:
+## `_fill_empty_slots_with_placeholders`, `_rpc_convert_to_ai` on a disconnect,
+## `_rpc_reclaim_character` on a rejoin, and the Tab switcher. Storing a name at each
+## of those is four places to forget — and the forgetting is silent, leaving a bot
+## wearing the name of the human who just quit.
+##
+## `is_ai_driven()` is the same live condition `main.gd` gates input on, and every
+## drawer of this name polls rather than caching (`character_nameplate.gd` rebuilds
+## its label each update for the role glyph already), so a handover in either
+## direction is reflected on the next frame with no notification of any kind.
+##
+## ⚠️ `player_name` IS DELIBERATELY NOT CLEARED WHEN A SEAT CONVERTS TO AI. It is
+## replicated state belonging to the human who may rejoin into it, and this function
+## simply stops consulting it while a bot is driving — so a reclaim restores the right
+## name without having to have preserved it anywhere special.
 func display_name() -> String:
-	return player_name if player_name != "" else "P%d" % [player_slot + 1]
+	if is_ai_driven():
+		return _character_name()
+	return player_name if player_name != "" else _character_name()
+
+## The roster pick's name, falling back to the seat number. `character_index` is -1
+## until a pick arrives (an AI seat on a peer that has not received one yet), and
+## `name_at()` answers "?" for that, which is not a name to put over somebody's head.
+func _character_name() -> String:
+	if character_index < 0 or character_index >= CharacterRoster.size():
+		return "P%d" % [player_slot + 1]
+	return CharacterRoster.name_at(character_index)
 
 ## Roster pick, for the model and the traits. -1 until a pick arrives.
 var character_index: int = -1
