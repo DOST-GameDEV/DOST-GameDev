@@ -92,16 +92,20 @@ func _physics_process(_delta: float) -> void:
 	for c in _roster:
 		if not is_instance_valid(c):
 			continue
-		# ⚠️ SKIP A PROP THAT CARRIABLE IS DRIVING. _reset_world() ends by having
-		# the attacker grab its own tsinelas (the round opens with it in hand,
-		# per Dev_Plan §3), and _step_carried() then snaps that Prop to the
-		# hand every physics frame. That is a legitimate, intended teleport of
-		# ~1.65 m with zero velocity — the first version of this probe reported
-		# it as drift and failed a run in which nothing was actually wrong.
-		var carriable := c.get_node_or_null("Carriable") as Carriable
-		if carriable != null and carriable.drives_movement():
-			_anchor.erase(c)
-			continue
+		# ⚠️⚠️ THE "SKIP A CARRIED PROP" GUARD THAT USED TO LIVE HERE IS DELETED, NOT
+		# TRANSLATED — 2026-08-02. It read the unit's own `Carriable` node and skipped
+		# it while that node was driving movement, because `_reset_world()` ends by
+		# having the attacker grab its tsinelas and `_step_carried()` then snapped the
+		# Prop to the hand every frame: a legitimate ~1.65 m teleport at zero velocity
+		# that the first version of this probe reported as drift.
+		#
+		# That whole hazard is gone with the prop rewrite (3abc019). `_roster` is
+		# `RoundManager.players()`, which is now four Persons and nothing else — a
+		# tsinelas is a `Slipper` (a plain Node3D prop, not a CharacterBase) and is not
+		# in this list to be skipped. Keeping a guard for a case the loop can no longer
+		# see would be a filter that silently never fires, which is worse than none:
+		# it reads as coverage. If a carried PERSON ever becomes a thing, this is where
+		# it goes back.
 		# First frozen frame of this gap: anchor here, after _reset_world has
 		# already teleported everyone.
 		if not _anchor.has(c):
