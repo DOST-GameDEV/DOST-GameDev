@@ -590,7 +590,9 @@ active round.
   Windows working-set overhead, and the numbers will differ.
 - **It is the editor binary running from source**, not an exported dedicated
   server. An export strips the editor and the rendering server, so the real
-  figure should be **lower** — but by how much is unmeasured.
+  figure should be **lower** — but by how much is unmeasured. §7b now carries a
+  preset that does the stripping, a −67.4% measurement of the **pack** it
+  produces, and an explicit warning against reading that as megabytes of RAM.
 - **It is an idle lobby.** Four connected peers and a live round were not
   measured; there was no way to drive four clients at a real server in this
   environment.
@@ -625,6 +627,185 @@ measured at all, on any tier, and neither was network. On a shared-core
 allowance long before the RAM — and on GCP, 1 GB of monthly egress (§4) is a
 harder ceiling than either. Do not read the table above as a capacity plan; it
 is a RAM floor and nothing else.
+
+---
+
+## 7b. Deploying an EXPORTED server instead of the project source
+
+Everything above serves the project **from source**: `install.sh` copies the whole
+checkout to `/opt/tumbang-preso/game`, runs `--import` once, and every lobby boots the
+editor binary with `--path` at that directory. That means each of the eight processes
+loads textures, meshes and materials it will never draw, on the box where §7 says RAM
+is the thing that runs out first.
+
+Godot 4 has a purpose-built answer: a **dedicated server export**. Same project, same
+scripts, but on the way into the pack every `Texture2D`, `Mesh` and `Material` is
+replaced by a placeholder that keeps only its size or its `AABB`. `export_presets.cfg`
+now carries `preset.2`, `"Linux Server"`, targeting `x86_64` — the architecture of the
+Oracle `E2.1.Micro` this section is about. The mechanics, the exact strip behaviour and
+two traps that each cost an export are in `tools/export.md`; this section is only what
+changes on the VM.
+
+```
+godot --headless --path . --export-release "Linux Server" build/TumbangPreso-server.x86_64
+```
+
+### ⚠️ It has never been built, and therefore never booted
+
+No export templates are installed on the dev machine — `%APPDATA%\Godot\export_templates\`
+is empty for every platform, so `--export-release` cannot run at all. Unblocking it is
+one download, `Godot_v4.7.1-stable_export_templates.tpz` (~1.28 GB), from the 4.7.1-stable
+release page. Until somebody does that:
+
+- **the preset is untested**, in the same sense and to the same degree as the macOS
+  preset in `tools/export.md`;
+- **the numbers below are pack sizes, not memory**;
+- **nothing in `tools/server/` has been changed to use it.** `install.sh` and
+  `tumbang-preso-lobby@.service` still deploy from source, deliberately. What they
+  would need is spelled out below so the change is a decision someone makes, not a
+  surprise they discover.
+
+### What it saves — ⚠️ a proxy, measured, and not a memory measurement
+
+`--export-pack` builds a data pack with no engine binary in it, so it needs no export
+templates and it *does* run here. That gives a real before/after for the **pack**, which
+is not the same quantity as resident set:
+
+| pack | bytes | MiB |
+| --- | --- | --- |
+| all resources (baseline, what the source deployment effectively carries) | 55,172,560 | 52.6 |
+| **dedicated server, visuals stripped** | **18,010,560** | **17.2** |
+
+**−35.4 MiB, −67.4% of the pack.** Of the 17.2 MiB that survives, **10.7 MiB is audio** —
+Godot cannot placeholder an `AudioStream`, so every `.mp3` and `.wav` ships whole. See
+`tools/export.md` for why removing it anyway is measured at a further −10.7 MiB and is
+still switched off.
+
+⚠️ **DO NOT TURN 35 MiB OF PACK INTO 35 MB OF RAM.** They are different numbers and the
+relationship between them is not one-to-one in either direction. A pack is compressed
+and memory-mapped; a stripped texture that was 4 MiB on disk was not necessarily 4 MiB
+resident, and an export also drops editor machinery that never appears in a pack at all.
+The honest statement is: the saving is real and it is in the right direction, and its
+size in megabytes of RSS on Oracle Linux is **unmeasured**.
+
+### The baseline it has to beat
+
+Re-measured for this comparison on 2026-08-02, dev machine, Windows 11, from source,
+one lobby on `--port=8980` sitting in `MatchSetup` with nobody connected:
+
+| metric | value |
+| --- | --- |
+| Working set | **180.4 MB** |
+| Private bytes | **128.4 MB** |
+
+⚠️ **This is a smaller number than §7's 211-212 MB and does not contradict it.** §7
+measured a lobby that had already been driven into a running match — map loaded, four
+seats filled with AI, physics stepping. This one is the lobby *before* that, which is
+what a freshly started pool member actually is. Two different states of the same
+process; compare like with like or the export will appear to save 30 MB it did not.
+
+Also verified in the same run, and the procedure to repeat against the exported build:
+
+```
+# 1. the sockets
+ss -lun | grep -E '8980|8990'          # game port, and status port (= game + 10)
+
+# 2. the protocol
+godot --headless --path . --script tools/server/status_probe.gd -- --host=127.0.0.1 --port=8980
+#    -> status_probe: REPLY {"code":"UEFA","map":"eskinita","players":0,"max":4,...}
+```
+
+`tools/server/status_probe.gd` was added for exactly this: `tools/ui/host_online_shot.gd`
+drives the real HOST ONLINE screen, and that screen can only see ports 8910-8917 because
+`ServerQuery.POOL_PORT_FIRST`/`POOL_PORT_LAST` are compile-time constants. A one-off
+lobby on any other port is invisible to it, not broken.
+
+⚠️ **A "no reply" from a port that `ss` says is bound usually means you are talking to a
+corpse.** That happened here: an earlier server had been reaped and something else held
+the socket. Confirm the PID holding the port is the PID you started before believing any
+negative result.
+
+### What would change in `tools/server/install.sh`
+
+⚠️ **Not done. Described only.** These are the edits, not a diff to apply blindly.
+
+1. **`--path` disappears.** The exported binary carries the project inside it
+   (`binary_format/embed_pck=true` — one file, not a binary plus a `.pck`). There is no
+   `/opt/tumbang-preso/game` any more, so the `tar`-pipe that copies the checkout goes
+   away, and with it the `GAME_SRC` requirement to run from the project directory.
+2. **The Godot download goes away.** `install.sh` currently fetches
+   `Godot_v4.7.1-stable_linux.<arch>.zip` and installs it as `$PREFIX/godot`. An export
+   template *is* the engine, so the exported artifact replaces both files. What gets
+   copied to the box is `TumbangPreso-server.x86_64`, built on a dev machine and shipped
+   — `install.sh` would fetch it from wherever you publish it, or you `scp` it.
+3. **⚠️ The architecture check gets MORE important, not less.** It currently picks the
+   right Godot build for `uname -m`, and it exists because Oracle's Always Free capacity
+   is Ampere A1 (aarch64). With an export, arch is baked in at export time on a Windows
+   machine that cannot see the VM — so the check becomes "does this artifact match this
+   box", and there is currently **only an x86_64 preset**. An A1 deployment needs a
+   second preset with `binary_format/architecture="arm64"`. Getting this wrong still
+   produces `cannot execute binary file`, just earlier and further from the box.
+4. **The `--import` step disappears entirely.** It is the slowest thing `install.sh`
+   does — a few hundred MB of 3D and audio imported on first boot, done once up front
+   precisely so eight units do not all attempt it at the same second. An exported pack
+   is already imported. The whole section, and the `.godot` cache reasoning attached to
+   it, becomes dead.
+5. **`chmod +x` still matters**, and `install -m 0755` already does it.
+
+Everything else — the service account, the unit installation, the `ss`-based proof, the
+two things it deliberately does not do — is unaffected.
+
+### What would change in `tools/server/systemd/tumbang-preso-lobby@.service`
+
+⚠️ **Not done. Described only.**
+
+```ini
+# from
+ExecStart=/opt/tumbang-preso/godot --headless --path /opt/tumbang-preso/game res://scenes/ui/MatchSetup.tscn -- --dedicated --port=%i
+# to
+ExecStart=/opt/tumbang-preso/tumbang-preso-server res://scenes/ui/MatchSetup.tscn -- --dedicated --port=%i
+```
+
+- **`--headless` becomes redundant.** The `dedicated_server` feature tag is baked into
+  the exported `project.binary`, and the engine reads it at boot and forces
+  `--display-driver headless --audio-driver Dummy` on itself. Keeping the flag is
+  harmless and arguably self-documenting; dropping it changes nothing.
+- **`res://scenes/ui/MatchSetup.tscn` stays, and stays load-bearing.** Every ⚠️ already
+  in that unit file about the scene argument and about the `--` still applies word for
+  word. An exported binary does honour a positional scene path — that is read from the
+  engine's argument handling, not run here — but ⚠️ **that is precisely the sort of claim
+  this deployment has been bitten by before**, so prove it with the two commands above
+  before trusting it. If it turns out not to hold, the durable fix is a per-feature
+  override in `project.godot`, `run/main_scene.dedicated_server="res://scenes/ui/MatchSetup.tscn"`,
+  which makes the exported server boot the right scene with no argument at all and
+  leaves the players' build untouched. That is a `project.godot` edit and is not made
+  here.
+- **⚠️⚠️ `ReadWritePaths=/opt/tumbang-preso/game` MUST BE DELETED, AND LEAVING IT IN IS A
+  STARTUP FAILURE, NOT A WARNING.** The directory will not exist. systemd cannot set up
+  the mount namespace for a path that is not there and refuses to start the unit — which
+  looks like the export being broken and is not. Its own comment explains it was added
+  because `ProtectSystem=strict` makes `/opt` read-only while Godot still writes into the
+  project directory; with no project directory there is nothing to grant.
+- **`StateDirectory=` and `Environment=HOME=` stay.** Godot still wants a writable user
+  data directory and still errors out on boot without one. That is unrelated to how the
+  project is packaged.
+- **`Restart=always` / `RestartSec=3` stay.** The comment there says the process is
+  ~200 MB and takes a couple of seconds to boot; both halves of that will want
+  re-measuring once an export exists, but neither changes the setting.
+
+### Is it worth doing
+
+Yes, on the evidence available — and the evidence available is a pack size, so the
+honest answer is "yes, and go measure it". On the 1 GB `E2.1.Micro` in §7, ~498 MB
+usable against 186 MB per lobby is what limits the box to a single match. The export is
+the only lever in this document that reduces per-lobby footprint at all rather than
+rearranging what fits; everything else here is provisioning and firewalls. It costs one
+1.28 GB download and one export command, and it removes `install.sh`'s slowest step as
+a side effect.
+
+⚠️ **It is not a free win until somebody boots one.** A stripped server that cannot
+referee a match is worse than 186 MB per lobby, and this preset has been built as a
+pack only. Two commands stand between it and being trustworthy; they are above.
 
 ---
 
@@ -733,6 +914,22 @@ this document are measurements and which are reading.
   round trip; HOST ONLINE picked the free one; the claiming peer became lobby
   leader; and the code the lobby displayed (`56EH`, `T2WK`, … it is minted per
   run) matched the code that server had advertised.
+- **§7b's baseline**: a from-source lobby on 8980 bound UDP 8980 and 8990 and
+  answered `tools/server/status_probe.gd` with a real status payload, at
+  180.4 MB working set / 128.4 MB private bytes.
+- **§7b's pack sizes**, both produced with `--export-pack`: 55,172,560 bytes for
+  all resources against 18,010,560 for the stripped dedicated-server preset.
+  ⚠️ A pack is not a resident set — see the ⚠️ in §7b before quoting it.
+
+### ⚠️ NOT verified: the dedicated-server export has never been built
+
+`export_presets.cfg`'s `preset.2` `"Linux Server"` (§7b) has produced a data pack
+and **nothing else**. No export templates are installed on the dev machine, for
+any platform, so `--export-release` cannot run and there is no binary to boot.
+`tools/server/install.sh` and the systemd unit were therefore left deploying from
+source on purpose; §7b describes what would change in each and neither file was
+edited. The blocker is one 1.28 GB download — `tools/export.md` has the exact
+name and the exact error it fails with today.
 
 ### ⚠️ NOT verified: the systemd path has never run on Linux
 
