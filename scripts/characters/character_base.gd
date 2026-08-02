@@ -435,10 +435,17 @@ enum State { NORMAL, STAGGERED, DOWNED }
 ## replicated state belonging to the human who may rejoin into it, and this function
 ## simply stops consulting it while a bot is driving — so a reclaim restores the right
 ## name without having to have preserved it anywhere special.
+## ⚠️⚠️ A HUMAN'S NAME IS UNTOUCHED BY ALL OF THIS, AND THE FIRST VERSION GOT IT
+## WRONG — 🧑 2026-08-02: *"make sure human's name doesnt change too"*. That version
+## fell an unnamed human through to the character name as well, which was wrong twice:
+## it made a human indistinguishable from a bot, and it was not even STABLE, because
+## `character_index` is assigned in five places (`_rpc_reclaim_character` and the
+## late-join table among them) so the label could move under a player mid-match. The
+## seat number cannot move. Humans read exactly what they read before this feature.
 func display_name() -> String:
 	if is_ai_driven():
 		return _character_name()
-	return player_name if player_name != "" else _character_name()
+	return player_name if player_name != "" else "P%d" % [player_slot + 1]
 
 ## The roster pick's name, falling back to the seat number. `character_index` is -1
 ## until a pick arrives (an AI seat on a peer that has not received one yet), and
