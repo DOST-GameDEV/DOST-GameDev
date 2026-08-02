@@ -212,6 +212,37 @@ func _apply_spectator(peer_id: int, spectating: bool) -> void:
 	peer_characters[peer_id] = picks
 	peer_spectator_changed.emit(peer_id, spectating)
 
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE ONE PEER THAT IS REFEREEING RATHER THAN PLAYING. A dedicated server takes no
+## seat (see § DEDICATED HOSTING), so it must never land in a number that answers "how
+## many people are here" — and every count below, plus `match_result.gd`'s rematch
+## denominator, walks `connected_peer_ids` to work that out.
+##
+## ⚠️⚠️ THIS EXISTS BECAUSE THE SERVER'S OWN LIST AND A CLIENT'S LIST DO NOT AGREE, AND
+## ONLY THE CLIENT'S IS WRONG. `host_game(dedicated = true)` leaves `connected_peer_ids`
+## empty, so a count taken ON the referee was already correct and always was. A CLIENT
+## builds the same list from `_on_connected_to_server` (itself) plus every `peer_connected`
+## Godot hands it — and Godot fires that for peer 1 the instant the handshake lands, so
+## the referee is in there like anybody else.
+##
+## MEASURED, two real clients against a real dedicated server on port 8941, before this
+## existed: the server reported `peers=94997600,13230293 seated=2`, while BOTH clients
+## reported `peers=<self>,1,<other> seated=3`. Two humans in the lobby, three on their
+## screens. The same run against a LISTEN host on 8942 had every peer agreeing on 3 with
+## three humans present, which is the case that ships today and the case this must not
+## touch.
+##
+## ⚠️ IT IS ONLY EVER TRUE WHEN THE SERVER SAID SO. `is_dedicated` is set locally in
+## `host_game()` on the server and delivered to a client by `_rpc_announce_dedicated`;
+## a client cannot infer it, and guessing from something like "the lobby leader is not
+## peer 1" would quietly delete a listen host — a real player, holding a real seat —
+## from everybody's count.
+## ---------------------------------------------------------------------------
+func is_seatless_referee(peer_id: int) -> bool:
+	# 1 is the server from every peer's point of view, its own included — the same
+	# literal `_on_connected_to_server` and every `rpc_id(1, ...)` in this file uses.
+	return is_dedicated and peer_id == 1
+
 ## How many connected peers are actually PLAYING. The ready gate counts these, not
 ## `connected_peer_ids.size()` — a lobby of two players and two spectators must start on
 ## two presses, and counting all four would hang it forever on people who cannot press.
@@ -223,6 +254,12 @@ func _apply_spectator(peer_id: int, spectating: bool) -> void:
 func playing_peer_count() -> int:
 	var count := 0
 	for peer_id in connected_peer_ids:
+		# ⚠️ A DEDICATED REFEREE PRESSES NOTHING, so counting it would raise the quorum
+		# by one press that can never arrive. A no-op on the server (its own list never
+		# holds itself) and a no-op on a listen host (peer 1 there is a player) — this
+		# only ever fires on a CLIENT of a dedicated server. See `is_seatless_referee`.
+		if is_seatless_referee(peer_id):
+			continue
 		if peer_id == multiplayer.get_unique_id() or not is_spectator(peer_id):
 			count += 1
 	return maxi(1, count)
@@ -243,11 +280,28 @@ func playing_peer_count() -> int:
 ## promising a game that nobody is in. So: no self carve-out, no floor. The two counts
 ## are allowed to disagree, and this comment is why.
 func seated_peer_count() -> int:
-	var count := 0
+	return seated_peer_ids().size()
+
+## ⚠️ THE LIST BEHIND `seated_peer_count()`, AND THE ONLY DEFINITION OF "HOLDS A SEAT".
+## Split out rather than duplicated because `match_result.gd::_voting_peer_ids` needs the
+## IDS, not the size, and used to walk `connected_peer_ids` with its own copy of this
+## filter — which is exactly how the rematch denominator ended up counting a dedicated
+## referee as a player while the server it was talking to did not. One predicate, two
+## callers, no way for them to drift again.
+##
+## `Array[int]`, not `Array`, so a caller cannot quietly put a peer id of another type in
+## it — every id in this file is an int and the seat maps that consume these are keyed on
+## ints.
+func seated_peer_ids() -> Array[int]:
+	var ids: Array[int] = []
 	for peer_id in connected_peer_ids:
+		# The referee holds no seat by construction — see `is_seatless_referee` for the
+		# measured numbers this line exists for.
+		if is_seatless_referee(peer_id):
+			continue
 		if not is_spectator(peer_id):
-			count += 1
-	return count
+			ids.append(peer_id)
+	return ids
 
 ## This process's own three picks, read off GameLaunch. Kept here rather than
 ## inlined at both call sites so the host's self-seed and the client's RPC cannot
@@ -599,6 +653,17 @@ func is_host() -> bool:
 ## switcher to stay inert (each peer owns exactly one character, so there is
 ## nothing to hand player_id to). Neither restriction protects anyone when
 ## there is nobody else in the session for it to protect.
+##
+## ⚠️⚠️ DELIBERATELY DOES **NOT** SUBTRACT A DEDICATED REFEREE, unlike `seated_peer_ids()`
+## and `playing_peer_count()` above. The lone client of a dedicated server has
+## `connected_peer_ids == [self, 1]` and therefore answers `false` here, even though it is
+## the only human in the session — and that is what this question wants. It is not asking
+## "am I alone", it is asking "is it safe to freeze this machine's tree". It is not: the
+## referee is a SEPARATE PROCESS still running `RoundManager`/`MatchManager`, so a client
+## that hard-paused would come back to a round that had carried on without it. A listen
+## host solo may freeze everything precisely because the timer is in the same process it
+## is freezing. Reading one high here is the conservative answer, not the bug the counts
+## above had — do not "fix" it to match them.
 func is_solo_session() -> bool:
 	return is_networked() and connected_peer_ids.size() <= 1
 
@@ -651,6 +716,13 @@ func _on_server_disconnected() -> void:
 	multiplayer.multiplayer_peer = null
 	connected_peer_ids.clear()
 	_is_networked = false
+	# Same lifetime as `_is_networked`, and the same line `disconnect_network()` already
+	# carries — this is the OTHER way a client's session ends (the server went away rather
+	# than we left), and it was the one path that let a value describing a finished session
+	# outlive it. A client that walked out of a dedicated lobby and into a listen host's
+	# would otherwise spend the gap before `_rpc_announce_dedicated` lands subtracting a
+	# referee from a lobby that has a real player sitting at peer 1.
+	is_dedicated = false
 	peer_tokens.clear()
 	# Same lifetime as peer_tokens — a hosting SESSION ending abandons both.
 	peer_characters.clear()
@@ -709,6 +781,16 @@ func _rpc_identify(token: String, picks: Dictionary = {}) -> void:
 	# address. The code is the thing a player reads out to invite a friend, so the peer
 	# that owns it authoritatively is the one that should say what it is.
 	_rpc_announce_join_code.rpc_id(peer_id, join_code)
+	# ⚠️ THE SERVER TELLS THE CLIENT WHAT KIND OF HOST IT IS, for the same reason it tells
+	# it the code one line up: it is a fact about the SESSION that only the server knows,
+	# and nothing on the client can derive it. Without it a client counts the referee as a
+	# player in every number it computes — see `is_seatless_referee` for the measurement.
+	#
+	# Sent to a listen host's clients too, carrying `false`. Announcing "not dedicated"
+	# costs one reliable bool and means the client's `is_dedicated` is always something the
+	# SERVER said, never a default that happens to be right — the shape every other fact
+	# in this handshake already has.
+	_rpc_announce_dedicated.rpc_id(peer_id, is_dedicated)
 	player_identified.emit(peer_id, token)
 
 ## Host -> one peer. Mirrors `_rpc_announce_leader`: sent on identify so a peer knows it
@@ -717,6 +799,17 @@ func _rpc_identify(token: String, picks: Dictionary = {}) -> void:
 func _rpc_announce_join_code(code: String) -> void:
 	join_code = code
 	join_code_changed.emit(code)
+
+## Host -> one peer, on identify. `call_remote`: the server already wrote its own copy in
+## `host_game()` and re-running this on itself would only be a chance to disagree with it.
+##
+## ⚠️ NO SIGNAL. Unlike the join code and the lobby leader, nothing redraws when this
+## lands — it is read on demand by `is_seatless_referee`, and it arrives in the same
+## reliable identify burst, long before a lobby board or a rematch button has a count to
+## show. A signal here would be a subscriber list with nobody on it.
+@rpc("authority", "call_remote", "reliable")
+func _rpc_announce_dedicated(dedicated: bool) -> void:
+	is_dedicated = dedicated
 
 ## One client-sent pick, range-checked against the roster it indexes. -1 is
 ## itself meaningful ("no pick") so it survives rather than being clamped to 0.

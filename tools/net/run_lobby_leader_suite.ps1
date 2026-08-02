@@ -15,6 +15,13 @@
     2. LISTEN      the unchanged case. A listen host must still seat itself in
                    all three dictionaries and must still lead its own lobby --
                    the dedicated work is only allowed to have added a branch.
+  Scenarios 1 and 2 also diff the PEER COUNTS the two sides compute -- how many
+  people the server thinks are here versus how many each client thinks are, for
+  the LAN-browser number, the ready quorum and the REMATCH denominator. That is
+  a comparison no single process can make, which is why it lives here and not in
+  an assertion inside the probe. See the block above the checks for the numbers
+  measured when they disagreed.
+
     3. DOCUMENTED  the literal launch line from the handoff, verbatim, with no
                    probe wrapped around the server. Scenario 1 reaches Main.tscn
                    through `change_scene_to_file` so the probe can outlive the
@@ -301,6 +308,39 @@ Add-Check 'dedicated: a third peer is also told the incumbent'    $aId $dEvents[
 Add-Check 'dedicated: a third peer does not steal it either'      1    $sEvents.Count
 Add-Check 'dedicated: all three peers seated, server still is not' (Get-IdSet ($aId + ',' + $bId + ',' + $dId)) (Get-IdSet (Get-Field $sState 'peers'))
 
+# --------------------------------------------------------------------------
+# ⚠️⚠️ THE COUNT A CLIENT SHOWS, WHICH IS NOT THE SAME ARITHMETIC AS THE COUNT THE SERVER
+# TAKES. The server's `connected_peer_ids` never holds itself when it is dedicated, so its
+# own count was always right and the checks above already cover it. A CLIENT builds that
+# list from itself plus every `peer_connected` Godot hands it -- and Godot fires that for
+# peer 1 the instant the handshake lands, so the referee was in the list like anybody else
+# and every number a client computed read one high.
+#
+# MEASURED before `NetworkManager.is_seatless_referee` existed, two clients on a real
+# dedicated server: server `seated=2 playing=2 voting=2`, BOTH clients `seated=3 playing=3
+# voting=3`. Two humans present, three on their screens.
+#
+#   seated  -> what the LAN browser advertises (`server_query.gd` / `lan_beacon.gd`)
+#   playing -> the ready-gate quorum (`main.gd::_expected_ready_count`)
+#   voting  -> read off the REAL `match_result.gd::_voting_peer_ids()`, i.e. the
+#              denominator in "WAITING...  (2/3)" under the REMATCH button
+#
+# ⚠️ WAITED FOR, NOT SAMPLED. A client's count climbs as it is told about each peer, so
+# reading `Get-LastState` straight after D's handshake can legitimately catch a 2. Same
+# rule as everywhere else in this file: wait for the line that proves the step landed.
+# --------------------------------------------------------------------------
+Wait-ForPattern $aLog '^NETPROBE A STATE .*seated=3 ' 30 'client A never counted the three humans' | Out-Null
+Wait-ForPattern $bLog '^NETPROBE B STATE .*seated=3 ' 30 'client B never counted the three humans' | Out-Null
+Wait-ForPattern $dLog '^NETPROBE D STATE .*seated=3 ' 30 'client D never counted the three humans' | Out-Null
+$aState = Get-LastState $aLog 'A'
+$bState = Get-LastState $bLog 'B'
+$dState = Get-LastState $dLog 'D'
+Add-Check 'dedicated: the server was told to the client (is_dedicated crosses the wire)' 1 (Get-Field $aState 'dedicated')
+Add-Check 'dedicated: server counts three seated humans'      3 (Get-Field $sState 'seated')
+Add-Check 'dedicated: a client counts the referee OUT (seated)'  3 (Get-Field $aState 'seated')
+Add-Check 'dedicated: a client counts the referee OUT (playing)' 3 (Get-Field $bState 'playing')
+Add-Check 'dedicated: the REMATCH denominator excludes the referee' 3 (Get-Field $dState 'voting')
+
 Write-Host '  -- the leader leaves (two candidates remain)'
 New-Item -ItemType File -Path $aLeave -Force | Out-Null
 Wait-ForPattern $aLog '^NETPROBE A LEAVE ' 30 'client A never acted on its leave file' | Out-Null
@@ -396,6 +436,21 @@ Add-Check 'listen: the host keeps the role when a peer joins' 1 (Get-Field $hSta
 # for a listen host's own opening claim. Any UI that only listens and never
 # reads the initial value would render blank until the first real change.
 Add-Check 'listen: host emits no lobby_leader_changed for its own opening claim' 0 $hEvents.Count
+
+# ⚠️⚠️ THE CASE THAT SHIPS TODAY, AND THE ONE THE REFEREE FIX WAS MOST ABLE TO BREAK.
+# Peer 1 on a listen host is a PLAYER holding a real seat, so a client counting it is
+# correct and must keep doing so: host + C is 2, on both ends. Anything that subtracted
+# peer 1 by guessing -- "the leader is not 1", "nobody identified as 1" -- would delete a
+# human from every count here. `is_seatless_referee` only ever fires on `is_dedicated`,
+# which a listen host never sets and never announces, and this is the check that says so.
+Wait-ForPattern $hLog '^NETPROBE H STATE .*seated=2 ' 30 'listen host never counted the joined client' | Out-Null
+Wait-ForPattern $cLog '^NETPROBE C STATE .*seated=2 ' 30 'client C never counted the host as a player' | Out-Null
+$hState = Get-LastState $hLog 'H'
+$cState = Get-LastState $cLog 'C'
+Add-Check 'listen: the client is NOT told it is a dedicated lobby' 0 (Get-Field $cState 'dedicated')
+Add-Check 'listen: host counts itself plus the client'     2 (Get-Field $hState 'seated')
+Add-Check 'listen: the client still counts the HOST as a player' 2 (Get-Field $cState 'seated')
+Add-Check 'listen: the REMATCH denominator still includes the host' 2 (Get-Field $cState 'voting')
 
 # ==========================================================================
 Write-Host ''

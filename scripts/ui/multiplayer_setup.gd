@@ -861,12 +861,19 @@ var _hosting_online_since: float = 0.0
 
 ## An idle pool server, or "" if none is known to be idle right now. Random among the free
 ## ones rather than the first — see the § ⚠️ on simultaneous presses.
+##
+## ⚠️⚠️ "FREE" IS `occupied`, NOT `players`. `players` is the count of SEATS taken, so a
+## lobby whose only occupant is a spectator advertises `0/4` and reads as empty — and that
+## spectator, having identified first, already holds the lobby leader role. Claiming that
+## server would drop the player into a lobby they cannot pick the map in, cannot start,
+## and were told they were hosting. `occupied` counts every human attached whether seated
+## or not; see the field's own ⚠️⚠️ in `server_query.gd::_status_payload`.
 func _free_pool_address() -> String:
 	var free: Array[String] = []
 	for entry in ServerQuery.servers():
 		if bool(entry.get("in_progress", false)):
 			continue
-		if int(entry.get("players", 0)) > 0:
+		if int(entry.get("occupied", entry.get("players", 0))) > 0:
 			continue
 		free.append("%s:%d" % [String(entry.get("ip", "")), int(entry.get("port", 0))])
 	if free.is_empty():
