@@ -356,6 +356,18 @@ func _status_payload() -> PackedByteArray:
 		# for why the two exist and must disagree: a lobby whose only occupant is a
 		# spectator is 0 players, and the other count would advertise a game nobody is in.
 		"players": NetworkManager.seated_peer_count(),
+		# ⚠️⚠️ NOT THE SAME QUESTION AS `players`, AND HOST ONLINE DEPENDS ON THE DIFFERENCE.
+		# `players` counts SEATS taken, so a lobby whose only occupant is a spectator
+		# reports 0 — correct for a row that says "how full is this game", and wrong for
+		# "is this server free to take". `_free_pool_address()` claims a server it believes
+		# is empty and expects to be handed the lobby leader role; walk into one holding a
+		# lone spectator and that spectator already has it, so the player who pressed HOST
+		# ONLINE silently becomes a guest who cannot pick the map or start the match.
+		#
+		# So: every human attached, seated or not. On a dedicated server `connected_peer_ids`
+		# excludes the server itself (see `host_game`), which is exactly the number wanted;
+		# on a listen host it includes the host, which is also right — that host is a person.
+		"occupied": NetworkManager.connected_peer_ids.size(),
 		"max": NetworkManagerScript.MAX_PLAYERS,
 		# The map this process booted with, or whatever the lobby leader has since chosen —
 		# on a dedicated server nobody at the keyboard picks it. See
@@ -408,6 +420,12 @@ func _ingest_reply(raw: PackedByteArray, from_ip: String) -> void:
 		# against, wherever the string came from.
 		"code": String(packet.get("code", "")).to_upper(),
 		"players": int(packet.get("players", 0)),
+		# ⚠️ FALLS BACK TO `players`, NOT TO 0. A server on an older build does not send this
+		# field, and defaulting it to 0 would report every such lobby as EMPTY — handing
+		# HOST ONLINE a busy server to claim. Falling back to the seat count is the same
+		# answer this had before the field existed: never worse than the old behaviour, and
+		# right whenever nobody is spectating.
+		"occupied": int(packet.get("occupied", packet.get("players", 0))),
 		"max": int(packet.get("max", NetworkManagerScript.MAX_PLAYERS)),
 		"map": String(packet.get("map", "")),
 		"in_progress": bool(packet.get("in_progress", false)),

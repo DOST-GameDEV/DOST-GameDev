@@ -159,7 +159,15 @@ func _snapshot(kind: String) -> void:
 	var networked: bool = nm.call("is_networked")
 	var host: bool = nm.call("is_host")
 	var is_leader: bool = nm.call("is_lobby_leader")
-	_say(kind, "t=%.2f self=%d net=%d host=%d dedicated=%d leader=%d isleader=%d peers=%s tokens=%s chars=%s" % [
+	# ⚠️ REPORTED FROM EVERY ROLE, BECAUSE THE TWO ROLES DISAGREED AND THAT WAS THE BUG.
+	# A server's `connected_peer_ids` never holds itself when it is dedicated, so a count
+	# taken there was always right; a CLIENT's list holds peer 1 (Godot fires
+	# `peer_connected(1)` at it on handshake) and every count taken there read one high.
+	# Printing both counts from both sides is what lets the driver diff them instead of
+	# trusting either one — see `is_seatless_referee` in `network_manager.gd`.
+	var seated: int = nm.call("seated_peer_count")
+	var playing: int = nm.call("playing_peer_count")
+	_say(kind, "t=%.2f self=%d net=%d host=%d dedicated=%d leader=%d isleader=%d peers=%s tokens=%s chars=%s seated=%d playing=%d voting=%s" % [
 		_t, _uid(),
 		1 if networked else 0,
 		1 if host else 0,
@@ -167,7 +175,29 @@ func _snapshot(kind: String) -> void:
 		leader,
 		1 if is_leader else 0,
 		_ids(peers), _ids(tokens.keys()), _ids(chars.keys()),
+		seated, playing, _voting(),
 	])
+
+## ⚠️⚠️ THE NUMBER UNDER THE REMATCH BUTTON, READ OFF THE REAL NODE — not this file's
+## own idea of what that number should be. `match_result.gd::_voting_peer_ids()` is the
+## denominator a player literally sees in "WAITING…  (2/3)", and it is a count taken on a
+## CLIENT, which is the side that used to include the dedicated referee. A probe that
+## recomputed the rule here would only ever agree with itself.
+##
+## ⚠️ AVAILABLE BECAUSE THE CLIENTS ARE IN `Main.tscn`, WHICH IS NOT A DETOUR. A dedicated
+## server sets `match_in_progress` in `_start_hosting()`, so `_rpc_identify` answers every
+## client with `_rpc_route_to_running_match` — see this file's own header. The node is
+## therefore present on a client from the moment it has identified, long before a match
+## could actually end. "-" on the server, which loads that scene by a different route and
+## whose own count was never the one in question.
+func _voting() -> String:
+	var scene := current_scene
+	if scene == null:
+		return "-"
+	var result := scene.find_child("MatchResult", true, false)
+	if result == null or not result.has_method("_voting_peer_ids"):
+		return "-"
+	return str((result.call("_voting_peer_ids") as Array).size())
 
 func _uid() -> int:
 	var nm := _nm()
