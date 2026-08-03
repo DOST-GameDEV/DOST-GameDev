@@ -205,6 +205,50 @@ foreach ($side in @('referee', 'anchor')) {
 }
 if ($sideFail -gt 0) { $exit += $sideFail }
 
+# =============================================================================
+# ⚠️⚠️ THE THROW IS REQUIRED TO HAVE BEEN **WITNESSED**, NOT MERELY NOT TO HAVE FAILED.
+#
+# 🧑 2026-08-04: *"still cant throw on rejoin.. i have the throw animation and chargup now
+# but it doesnt actually throw."* That reached a player because the check this file used to
+# make asserted `RoundManager.can_throw()` -- PERMISSION -- and nothing about the prop. It
+# passed on a build where the host silently refused every request.
+#
+# So two independent facts are demanded here, and the SECOND is the one that cannot be
+# faked by the process under test:
+#
+#   THROW-CHECK    the thrower's own machine saw the tsinelas leave the hand and travel.
+#   THROW-OBSERVED the REFEREE saw the same transition on its own copy. Throwing is
+#                  host-authoritative -- the client asks, the host validates, the host
+#                  broadcasts -- so this line is the host agreeing it accepted the request.
+#                  `rejoin_run.gd::_watch_throws` latches only NON-BOT hands, and the only
+#                  human seats in this run are the client and the anchor (who is the taya
+#                  and may not throw at all), so any line here is the client's throw.
+#
+# ⚠️ PRESENCE, NOT THE ABSENCE OF "FAIL", for the reason the reclaim block above already
+# states: a check that never ran and a check that passed are the same thing to a grep.
+# =============================================================================
+$throwFail = 0
+$clientLines = @(Get-Content (Join-Path $OutDir 'client.log') -ErrorAction SilentlyContinue)
+$throwChecks = @($clientLines | Select-String -Pattern 'THROW-CHECK')
+Write-Host "`nthrow verdict (thrower's own machine):"
+if ($throwChecks.Count -eq 0) {
+    Write-Host "  (none) - the run never drove a throw at all"
+    $throwFail += 1
+} else {
+    $throwChecks | ForEach-Object { Write-Host ("  " + $_.Line) }
+}
+
+$refLines = @(Get-Content (Join-Path $OutDir 'referee.log') -ErrorAction SilentlyContinue)
+$observed = @($refLines | Select-String -Pattern 'THROW-OBSERVED')
+Write-Host "throw verdict (referee, host side):"
+if ($observed.Count -eq 0) {
+    Write-Host "  (none) - the HOST never saw a slipper leave a human hand"
+    $throwFail += 1
+} else {
+    $observed | ForEach-Object { Write-Host ("  " + $_.Line) }
+}
+if ($throwFail -gt 0) { $exit += $throwFail }
+
 if ($exit -eq 0) {
     if ($Scenario -eq 'latecomer') {
         Write-Host "`nPASS - a first-time joiner landed in the running match."
