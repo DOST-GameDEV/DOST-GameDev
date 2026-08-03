@@ -1504,8 +1504,36 @@ func _apply_known_picks(character: CharacterBase, index: int) -> void:
 	# ⚠️ SANITISED ON ARRIVAL. This string came off the wire from another peer and is
 	# about to be drawn on a scoreboard and a 3D label; `SettingsManager` owns the one
 	# trim-and-cap so a hostile or merely careless client cannot post a novel.
+	#
+	# ⚠️⚠️ AND AN EMPTY NAME IS NOT WRITTEN, WHICH IS THIS FUNCTION'S OWN "NEVER WRITES A -1"
+	# RULE APPLIED TO THE COLUMN BESIDE IT. Without this guard the mid-match joiner's name is
+	# repaired by `_apply_reclaim` and then destroyed again ~one packet later, and the whole
+	# fix reads as if it never ran.
+	#
+	# The ordering is fixed and host-side, in `_try_late_join()`: `_spawn_player()` sends
+	# `_rpc_reclaim_character` FIRST (line ~1994) and `_rpc_sync_picks.rpc_id()` a few lines
+	# LATER (~1563). Both are reliable, so they arrive in that order — and at the moment the
+	# host builds `_picks_table()` the arriving peer has not yet even RECEIVED the reclaim, let
+	# alone written its own name and replicated it back. So row[2] is `""` by construction for
+	# exactly the seat that just got fixed, and it landed on top of it. Measured 2026-08-04 on
+	# `tools/net/run_rejoin.ps1 -Scenario latecomer` WITH the `_apply_reclaim` write in place:
+	#
+	#     [latecomer] NAME-CHECK body=709897223 slot=1 got='' expect='LATECOMER' display='P2'
+	#     [referee #1] NAME-CHECK body=709897223 slot=1 got='' expect='LATECOMER' display='P2'
+	#     [anchor #1]  NAME-CHECK body=709897223 slot=1 got='' expect='LATECOMER' display='P2'
+	#
+	# — the joiner's OWN machine reading empty, which nothing but a later local write can do.
+	#
+	# ⚠️ NOTHING NEEDS `""` TO MEAN "CLEAR THIS". `player_name` is deliberately never cleared
+	# when a seat converts to AI (see `character_base.gd`'s note on it — it belongs to the human
+	# who may rejoin into that body), and `display_name()` simply stops consulting it while
+	# `is_bot`. So an empty column is always "this peer has no answer", never "the answer is
+	# nothing" — which is precisely the case the `>= 0` test on `character_index` above already
+	# covers, and for the same reason.
 	if row.size() >= 3:
-		character.player_name = SettingsManagerScript.sanitise_name(String(row[2]))
+		var told_name := SettingsManagerScript.sanitise_name(String(row[2]))
+		if told_name != "":
+			character.player_name = told_name
 	# ⚠️ THE MODEL HAS TO BE TOLD. `_visual.apply()` runs at `_ready()` and on every
 	# role rotation — neither of which happens when a pick lands mid-round, so
 	# without this the unit keeps wearing whatever it was drawn with.
@@ -3132,6 +3160,65 @@ func _apply_reclaim(character: CharacterBase, index: int, new_peer_id: int) -> v
 	# the new authority immediately overwrites with its own stale copy.
 	_apply_reclaimed_picks(character, new_peer_id)
 	character.set_multiplayer_authority(new_peer_id)
+	# ⚠️⚠️ THE JOINER STAMPS ITS OWN NAME ON THE BODY IT JUST TOOK OVER, AND NOBODY ELSE CAN
+	# DO IT FOR THEM. 🧑: a player who joins (or rejoins) a match ALREADY IN PROGRESS has a
+	# blank name on every peer.
+	#
+	# `player_name` rides the `MultiplayerSpawner`'s custom spawn packet (`_build_spawn_data`),
+	# and a mid-match joiner NEVER GETS A SPAWN — it steps into a body a bot has been driving
+	# since `_fill_empty_slots_with_placeholders()`, which built that body from
+	# `picks_for(-1 - index)`: a sentinel peer with no picks and therefore no name. So the one
+	# packet that carries a name never runs for the one peer that needs it. Measured
+	# 2026-08-04 on `tools/net/run_rejoin.ps1 -Scenario latecomer`, the SAME body on all three
+	# processes at the same moment:
+	#
+	#     latecomer  PICK 1927296562 slot=1 player_name='' is_bot=false auth=1927296562
+	#     referee    PICK 1927296562 slot=1 player_name='' is_bot=false auth=1927296562
+	#     anchor     PICK 1927296562 slot=1 player_name='' is_bot=false auth=1927296562
+	#
+	# `display_name()` then falls through to `"P%d" % [player_slot + 1]`, so the 3D nameplate
+	# and the scoreboard row both read P2 for a live human — while the anchor beside them, who
+	# was seated in the LOBBY and so did get a spawn, reads ANCHOR on the same frame.
+	#
+	# ⚠️⚠️ IT IS WRITTEN HERE, BY THE OWNER, AND A HOST-SIDE WRITE WOULD BE UNDONE. Four lines
+	# above, this function makes `new_peer_id` the multiplayer authority for this body, and
+	# `player_name` is a replicated property on `CharacterBase.tscn` (`properties/6`,
+	# `replication_mode = 2`, ON_CHANGE). The host resolving the name out of `picks_for()` and
+	# writing it would therefore be overwritten within a frame or two by the new authority's
+	# own copy — which is `""`, because that is what the placeholder was spawned with. That is
+	# not a hypothesis: it is exactly how `character_index` failed (7c5eac1), and the reason
+	# `_apply_reclaimed_picks` is documented as having to run BEFORE the authority moves.
+	#
+	# So the value comes from where it is known locally and correct by construction —
+	# `SettingsManager.player_name`, this machine's own Settings screen — and replicates
+	# outward from the new authority for free, reaching the host and every other client by the
+	# same synchroniser that was going to overwrite a host-side write anyway.
+	#
+	# ⚠️ AFTER `set_multiplayer_authority`, NOT BEFORE, AND THE OPPOSITE OF THE LINE ABOVE IT.
+	# `_apply_reclaimed_picks` runs first because its interesting writer is the HOST, which is
+	# LOSING ownership here. This one's only writer is the peer GAINING it, so it has to land
+	# after the handover or it is a write from a non-authority that the synchroniser has no
+	# reason to send.
+	#
+	# ⚠️ SANITISED, LIKE EVERY OTHER WRITER OF THIS PROPERTY. This name is drawn on other
+	# people's scoreboards and over their heads in 3D; `sanitise_name()` is the single
+	# trim-and-cap `_build_spawn_data`, `_rpc_sync_picks` and `SettingsManager.set_player_name`
+	# all already share, and skipping it here would let one path admit a name no other path can.
+	#
+	# ⚠️ AN EMPTY NAME IS NOT WRITTEN, AND THAT GUARD IS LOAD-BEARING FOR THE REJOIN.
+	# `SettingsManager.DEFAULT_PLAYER_NAME` is `""` — a `--host`/`--join=` session that never
+	# opened Settings genuinely has no name. On a REJOIN the body still carries the name it was
+	# spawned with (it survives the AI window on purpose — see `character_base.gd`'s note on
+	# `player_name` not being cleared when a seat converts to AI), so stamping `""` over it
+	# would take a working case and break it to fix a different one.
+	#
+	# ⚠️ NO `@rpc` SIGNATURE CHANGED AND NO NEW MESSAGE EXISTS. This is a local property write
+	# inside a function every peer already runs; the wire format of `_rpc_reclaim_character` is
+	# untouched, so the deployed servers need no lockstep redeploy.
+	if new_peer_id == multiplayer.get_unique_id():
+		var my_name := SettingsManagerScript.sanitise_name(SettingsManager.player_name)
+		if my_name != "":
+			character.player_name = my_name
 	character.player_id = index + 1
 	_spawned_characters[new_peer_id] = character
 	_peer_slots[new_peer_id] = character.player_slot

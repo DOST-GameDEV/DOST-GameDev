@@ -82,6 +82,28 @@ Start-Sleep -Seconds 2
 if ($Scenario -eq 'latecomer') { $ClientRole = 'latecomer'; $WaitFor = 0 }
 else                           { $ClientRole = 'dropper';   $WaitFor = 1 }
 
+# ⚠️⚠️ THE NAME IS PART OF THE FIXTURE TOO, AND IT IS HANDED TO ALL THREE PROCESSES.
+# 🧑: a player who joins (or rejoins) a match ALREADY IN PROGRESS has a blank name on every
+# peer, and their 3D nameplate and scoreboard row fall back to the bare seat label "P2".
+#
+# `rejoin_run.gd::_ready()` already gave each process a distinguishable name
+# (`SettingsManager.player_name = _role.to_upper()`) so bodies could be told apart in a log --
+# but nothing ever ASSERTED it, which is why the defect survived every run of this file.
+# Measured 2026-08-04 on the latecomer scenario, the same body on all three processes:
+#
+#     latecomer  PICK 1927296562 slot=1 player_name='' is_bot=false auth=1927296562
+#     referee    PICK 1927296562 slot=1 player_name=''
+#     anchor     PICK 1927296562 slot=1 player_name=''
+#
+# ...and the run said PASS.
+#
+# ⚠️ PASSED IN RATHER THAN LEFT TO EACH PROCESS TO DERIVE. On the client, `--expect-name` and
+# `SettingsManager.player_name` come from the same `--role` by two different routes, so the
+# comparison is against an EXTERNAL expectation rather than against the harness agreeing with
+# itself. On the referee and the anchor it is the only way to know it at all: neither owns that
+# seat, and a non-host peer cannot ask `picks_for()` about anybody.
+$ExpectName = $ClientRole.ToUpper()
+
 Write-Host ("{0} run on port {1}, logs -> {2}" -f $Scenario, $Port, $OutDir)
 
 # ⚠️ `--dedicated` IS NOT OPTIONAL HERE AND IS NOT THE HARNESS'S OWN FLAG. It is read by
@@ -99,7 +121,8 @@ $referee = Start-Process -FilePath $Godot -WindowStyle Hidden -PassThru -Argumen
     '--headless', '--path', $Project, 'tools/net/rejoin_run.tscn',
     '--', '--role=referee', '--dedicated', ('--port=' + $Port),
     ('--expect-character=' + $DropperCharacter),
-    ('--expect-can=' + $DropperCan), ('--expect-slipper=' + $DropperSlipper)
+    ('--expect-can=' + $DropperCan), ('--expect-slipper=' + $DropperSlipper),
+    ('--expect-name=' + $ExpectName)
 ) -RedirectStandardOutput (Join-Path $OutDir 'referee.log') `
   -RedirectStandardError  (Join-Path $OutDir 'referee.err')
 
@@ -119,7 +142,8 @@ $anchor = Start-Process -FilePath $Godot -PassThru -ArgumentList @(
     ('--character=' + $AnchorCharacter),
     ('--can=' + $AnchorCan), ('--slipper=' + $AnchorSlipper),
     ('--expect-character=' + $DropperCharacter),
-    ('--expect-can=' + $DropperCan), ('--expect-slipper=' + $DropperSlipper)
+    ('--expect-can=' + $DropperCan), ('--expect-slipper=' + $DropperSlipper),
+    ('--expect-name=' + $ExpectName)
 ) -RedirectStandardOutput (Join-Path $OutDir 'anchor.log') `
   -RedirectStandardError  (Join-Path $OutDir 'anchor.err')
 
@@ -142,7 +166,8 @@ try {
         ('--character=' + $DropperCharacter),
         ('--can=' + $DropperCan), ('--slipper=' + $DropperSlipper),
         ('--expect-character=' + $DropperCharacter),
-        ('--expect-can=' + $DropperCan), ('--expect-slipper=' + $DropperSlipper)
+        ('--expect-can=' + $DropperCan), ('--expect-slipper=' + $DropperSlipper),
+        ('--expect-name=' + $ExpectName)
     ) -RedirectStandardOutput (Join-Path $OutDir 'client.log') `
       -RedirectStandardError  (Join-Path $OutDir 'client.err')
     $exit = $client.ExitCode
@@ -248,6 +273,36 @@ if ($observed.Count -eq 0) {
     $observed | ForEach-Object { Write-Host ("  " + $_.Line) }
 }
 if ($throwFail -gt 0) { $exit += $throwFail }
+
+# =============================================================================
+# ⚠️⚠️ THE NAME MUST BE RIGHT ON ALL THREE PROCESSES, AND EACH MUST HAVE SAID SO.
+#
+# 🧑: a player who joins (or rejoins) a match ALREADY IN PROGRESS has a blank name on every
+# peer. The fix writes `player_name` on the peer that OWNS the reclaimed body -- it has to be
+# written there, because that peer becomes the multiplayer authority for it and a host-side
+# write would be replicated over within a frame or two (`main.gd::_apply_reclaim`'s own note,
+# and the identical failure `character_index` had). That shape makes the joiner's OWN log the
+# one place the value is guaranteed to look right whether or not it ever reached the wire.
+#
+# So a green client is explicitly NOT the verdict. The referee and the anchor each have to
+# print their own NAME-CHECK, and all three lines must be present -- a check that never ran and
+# a check that passed are the same thing to a grep for FAIL, the rule the two blocks above
+# already state. `ok=false` is caught by the per-side FAIL sweep; this block is about SILENCE.
+# =============================================================================
+$nameFail = 0
+Write-Host "`nname verdict (a blank name here is the reported bug):"
+foreach ($side in @(@{ n = $ClientRole; f = 'client' }, @{ n = 'referee'; f = 'referee' },
+                    @{ n = 'anchor'; f = 'anchor' })) {
+    $lines = @(Get-Content (Join-Path $OutDir ($side.f + '.log')) -ErrorAction SilentlyContinue)
+    $checks = @($lines | Select-String -Pattern 'NAME-CHECK')
+    if ($checks.Count -eq 0) {
+        Write-Host ("  {0}: (none) - this process never reported on the joiner's name" -f $side.n)
+        $nameFail += 1
+    } else {
+        $checks | ForEach-Object { Write-Host ("  " + $_.Line) }
+    }
+}
+if ($nameFail -gt 0) { $exit += $nameFail }
 
 if ($exit -eq 0) {
     if ($Scenario -eq 'latecomer') {
