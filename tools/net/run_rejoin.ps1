@@ -36,10 +36,16 @@ param(
     [string]$Project = 'C:\Users\StarX\Desktop\SCHOOL\dostgame\DOST-GameDev',
     [int]$Port       = 8941,
     # 'rejoin'    the reported bug: a player who was IN the match, drops, and comes back.
-    # 'latecomer' the regression beside it: somebody who was never in this match joining
-    #             while it runs. Same `main.gd::_start_joining` dial-out, so the same line
-    #             broke both -- see rejoin_run.gd's § THE REGRESSION HALF.
-    [ValidateSet('rejoin', 'latecomer')]
+    # 'latecomer' somebody who was NEVER in this match knocking while it runs. ⚠️⚠️ THIS
+    #             SCENARIO ASSERTS THE OPPOSITE OF WHAT IT USED TO. It proved a first-time
+    #             mid-match joiner got a body straight away; under the 2026-08-04 rule that
+    #             IS the defect. It now proves the newcomer is admitted as a SPECTATOR with
+    #             no body, and is seated at the next ROLE ROTATION. See rejoin_run.gd's
+    #             § THE WAITING ROOM INSIDE A RUNNING MATCH.
+    # 'capacity'  the other half of that rule: with every free seat already claimed by
+    #             people ahead of it in the queue, the next newcomer is REFUSED and bounced
+    #             with a legible message. Six processes -- see § THE CAPACITY CASE.
+    [ValidateSet('rejoin', 'latecomer', 'capacity')]
     [string]$Scenario = 'rejoin',
     [string]$OutDir  = ''
 )
@@ -79,8 +85,35 @@ New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 Get-Process -Name 'Godot*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 2
 
-if ($Scenario -eq 'latecomer') { $ClientRole = 'latecomer'; $WaitFor = 0 }
-else                           { $ClientRole = 'dropper';   $WaitFor = 1 }
+# ⚠️ THE PER-SCENARIO FIXTURE, IN ONE PLACE.
+#
+#   $ClientRole  which role the process this script WAITS on plays. It is the one under test.
+#   $WaitFor     how many other humans the anchor waits for before it presses START MATCH.
+#                1 for a rejoin (the dropper must be seated before it can drop out of
+#                anything); 0 wherever the premise is that the match is already running when
+#                the client first arrives.
+#   $JoinAfter   how long that client sits before it knocks. It must be AFTER the round is
+#                genuinely under way, and for 'capacity' also after every filler is queued.
+#   $Fillers     extra headless newcomers that occupy the waiting queue -- see § THE CAPACITY
+#                CASE in rejoin_run.gd.
+#   $RefereeArgs '--nudge-round' cuts the running round's clock short once somebody is
+#                actually waiting, so the ROTATION happens inside a run somebody will sit
+#                through. It is a fixture over WHEN the clock reaches zero and nothing else;
+#                the rotation itself is still the real `_on_time_up` chain.
+$Fillers     = 0
+$RefereeArgs = @()
+if ($Scenario -eq 'latecomer') {
+    $ClientRole = 'latecomer'; $WaitFor = 0; $JoinAfter = 30
+    $RefereeArgs = @('--nudge-round')
+} elseif ($Scenario -eq 'capacity') {
+    # ⚠️ THREE FILLERS, AND THE NUMBER IS THE SEAT ARITHMETIC, NOT A GUESS. Four seats; the
+    # anchor holds one; the referee is a seatless dedicated server. So `free_seat_count()` is
+    # 3 and the queue is full at 3 -- the fourth newcomer is the one that must be refused.
+    $ClientRole = 'refused'; $WaitFor = 0; $JoinAfter = 55
+    $Fillers = 3
+} else {
+    $ClientRole = 'dropper'; $WaitFor = 1; $JoinAfter = 30
+}
 
 # ⚠️⚠️ THE NAME IS PART OF THE FIXTURE TOO, AND IT IS HANDED TO ALL THREE PROCESSES.
 # 🧑: a player who joins (or rejoins) a match ALREADY IN PROGRESS has a blank name on every
@@ -117,13 +150,15 @@ Write-Host ("{0} run on port {1}, logs -> {2}" -f $Scenario, $Port, $OutDir)
 # itself -- a dedicated lobby has no player at it. `--expect-*` is read-only: the referee
 # uses it to judge a seat it does not own. It cannot short-circuit the thing under test,
 # because nothing in `main.gd` ever reads a command-line pick for somebody else's peer.
-$referee = Start-Process -FilePath $Godot -WindowStyle Hidden -PassThru -ArgumentList @(
+$refereeArgList = @(
     '--headless', '--path', $Project, 'tools/net/rejoin_run.tscn',
     '--', '--role=referee', '--dedicated', ('--port=' + $Port),
     ('--expect-character=' + $DropperCharacter),
     ('--expect-can=' + $DropperCan), ('--expect-slipper=' + $DropperSlipper),
     ('--expect-name=' + $ExpectName)
-) -RedirectStandardOutput (Join-Path $OutDir 'referee.log') `
+) + $RefereeArgs
+$referee = Start-Process -FilePath $Godot -WindowStyle Hidden -PassThru -ArgumentList $refereeArgList `
+  -RedirectStandardOutput (Join-Path $OutDir 'referee.log') `
   -RedirectStandardError  (Join-Path $OutDir 'referee.err')
 
 # The ENet listener has to be up before anybody types its address at it.
@@ -147,6 +182,32 @@ $anchor = Start-Process -FilePath $Godot -PassThru -ArgumentList @(
 ) -RedirectStandardOutput (Join-Path $OutDir 'anchor.log') `
   -RedirectStandardError  (Join-Path $OutDir 'anchor.err')
 
+# =============================================================================
+# ⚠️⚠️ § THE CAPACITY CASE. The fillers exist to make the queue FULL, and nothing else.
+#
+# ⚠️ HEADLESS, UNLIKE THE ANCHOR AND THE CLIENT UNDER TEST. This file's header explains why
+# the clients render: the run asks whether a CAMERA is current, which has no honest answer on
+# a process with no rendering device. A filler is never asked that -- it asserts that it was
+# ADMITTED to the queue and that it holds NO body -- so three more windows would buy nothing
+# and cost a machine already running six Godot processes.
+#
+# ⚠️ THEY ALL KNOCK AT THE SAME MOMENT, ON PURPOSE. `_rule_on_mid_match_arrival` is driven by
+# `_rpc_identify`, which the host processes one packet at a time, so three simultaneous
+# arrivals see a queue of 0, 1 and 2 against three free seats and all three are admitted.
+# Staggering them would test the same thing more slowly and hide any ordering fault.
+# =============================================================================
+$fillerProcs = @()
+for ($i = 1; $i -le $Fillers; $i++) {
+    $fillerProcs += Start-Process -FilePath $Godot -WindowStyle Hidden -PassThru -ArgumentList @(
+        '--headless', '--path', $Project, 'tools/net/rejoin_run.tscn',
+        # ⚠️ 30, NOT `$JoinAfter`. The fillers have to be QUEUED before the peer under test
+        # knocks, or the queue it finds is not full and the refusal it is measuring is a
+        # different event. `$JoinAfter` is 55 for this scenario, 25 s later.
+        '--', '--role=filler', ('--port=' + $Port), '--host=127.0.0.1', '--join-after=30'
+    ) -RedirectStandardOutput (Join-Path $OutDir ('filler' + $i + '.log')) `
+      -RedirectStandardError  (Join-Path $OutDir ('filler' + $i + '.err'))
+}
+
 # ⚠️ Start-Process WITH REDIRECTS, NOT `& godot ... 2>&1 | Tee-Object`. Windows PowerShell
 # 5.1 wraps every stderr line of a NATIVE executable in a NativeCommandError record, and
 # with `$ErrorActionPreference = 'Stop'` the first harmless Godot warning
@@ -167,11 +228,12 @@ try {
         ('--can=' + $DropperCan), ('--slipper=' + $DropperSlipper),
         ('--expect-character=' + $DropperCharacter),
         ('--expect-can=' + $DropperCan), ('--expect-slipper=' + $DropperSlipper),
-        ('--expect-name=' + $ExpectName)
+        ('--expect-name=' + $ExpectName), ('--join-after=' + $JoinAfter)
     ) -RedirectStandardOutput (Join-Path $OutDir 'client.log') `
       -RedirectStandardError  (Join-Path $OutDir 'client.err')
     $exit = $client.ExitCode
 } finally {
+    foreach ($f in $fillerProcs) { Stop-Process -Id $f.Id -Force -ErrorAction SilentlyContinue }
     Stop-Process -Id $anchor.Id  -Force -ErrorAction SilentlyContinue
     Stop-Process -Id $referee.Id -Force -ErrorAction SilentlyContinue
 }
@@ -187,6 +249,36 @@ Get-Content (Join-Path $OutDir 'referee.log') -ErrorAction SilentlyContinue |
 Write-Host "`n--- anchor ---"
 Get-Content (Join-Path $OutDir 'anchor.log') -ErrorAction SilentlyContinue |
     Select-String -Pattern '\[anchor|\[run\] FAIL' | Select-Object -Last 20
+
+# =============================================================================
+# ⚠️⚠️ THE FILLERS COUNT TOWARDS THE RESULT TOO, AND IF THEY DID NOT THIS SCENARIO WOULD
+# PASS FOR THE WRONG REASON. `capacity` asserts that the fourth newcomer is refused BECAUSE
+# the queue is full -- so a run in which a filler was itself refused (or seated) has an empty
+# queue and is measuring a completely different event with the same green tick.
+#
+# ⚠️ PRESENCE, NOT MERELY THE ABSENCE OF "FAIL", the rule every block in this file follows.
+# A filler that never printed FILL-CHECK never reached the host at all.
+# =============================================================================
+$fillFail = 0
+if ($Fillers -gt 0) {
+    Write-Host "`nqueue verdict (the fillers that make the queue full):"
+    for ($i = 1; $i -le $Fillers; $i++) {
+        $lines = @(Get-Content (Join-Path $OutDir ('filler' + $i + '.log')) -ErrorAction SilentlyContinue)
+        $checks = @($lines | Select-String -Pattern 'FILL-CHECK')
+        if ($checks.Count -eq 0) {
+            Write-Host ("  filler{0}: (none) - this process never reached the host" -f $i)
+            $fillFail += 1
+        } else {
+            $checks | ForEach-Object { Write-Host ("  " + $_.Line) }
+        }
+        $failed = @($lines | Select-String -Pattern '^\[filler\] FAIL')
+        if ($failed.Count -gt 0) {
+            $failed | ForEach-Object { Write-Host ("  " + $_.Line) }
+            $fillFail += $failed.Count
+        }
+    }
+}
+$exit += $fillFail
 
 # =============================================================================
 # ⚠️⚠️ THE OTHER TWO PROCESSES NOW COUNT TOWARDS THE RESULT, AND UNTIL NOW THEY DID NOT.
@@ -251,26 +343,38 @@ if ($sideFail -gt 0) { $exit += $sideFail }
 #
 # ⚠️ PRESENCE, NOT THE ABSENCE OF "FAIL", for the reason the reclaim block above already
 # states: a check that never ran and a check that passed are the same thing to a grep.
+#
+# ⚠️⚠️ DEMANDED IN THE `rejoin` SCENARIO ONLY, AND THE REASON IS THE RULES OF THE GAME RATHER
+# THAN A GAP IN THE COVERAGE. Under § THE WAITING ROOM the promotion happens at a ROLE
+# ROTATION, and the seat arithmetic is fixed: the anchor identifies first and takes seat 0,
+# the promoted newcomer takes `_first_free_seat()` = seat 1, and `defender_slot_for(2)` is
+# `(2 - 1) % 4` = 1. So the newcomer is round 2's TAYA -- the one player who may not throw at
+# all -- and `_check_abilities` correctly skips the throw for it. Demanding a THROW-CHECK
+# here would be demanding the game break its own rule. The `capacity` scenario has no seated
+# newcomer at all. Everything else `_check_abilities` asserts (the seat table, the lata, the
+# live round, the shove) still runs in every scenario.
 # =============================================================================
 $throwFail = 0
-$clientLines = @(Get-Content (Join-Path $OutDir 'client.log') -ErrorAction SilentlyContinue)
-$throwChecks = @($clientLines | Select-String -Pattern 'THROW-CHECK')
-Write-Host "`nthrow verdict (thrower's own machine):"
-if ($throwChecks.Count -eq 0) {
-    Write-Host "  (none) - the run never drove a throw at all"
-    $throwFail += 1
-} else {
-    $throwChecks | ForEach-Object { Write-Host ("  " + $_.Line) }
-}
+if ($Scenario -eq 'rejoin') {
+    $clientLines = @(Get-Content (Join-Path $OutDir 'client.log') -ErrorAction SilentlyContinue)
+    $throwChecks = @($clientLines | Select-String -Pattern 'THROW-CHECK')
+    Write-Host "`nthrow verdict (thrower's own machine):"
+    if ($throwChecks.Count -eq 0) {
+        Write-Host "  (none) - the run never drove a throw at all"
+        $throwFail += 1
+    } else {
+        $throwChecks | ForEach-Object { Write-Host ("  " + $_.Line) }
+    }
 
-$refLines = @(Get-Content (Join-Path $OutDir 'referee.log') -ErrorAction SilentlyContinue)
-$observed = @($refLines | Select-String -Pattern 'THROW-OBSERVED')
-Write-Host "throw verdict (referee, host side):"
-if ($observed.Count -eq 0) {
-    Write-Host "  (none) - the HOST never saw a slipper leave a human hand"
-    $throwFail += 1
-} else {
-    $observed | ForEach-Object { Write-Host ("  " + $_.Line) }
+    $refLines = @(Get-Content (Join-Path $OutDir 'referee.log') -ErrorAction SilentlyContinue)
+    $observed = @($refLines | Select-String -Pattern 'THROW-OBSERVED')
+    Write-Host "throw verdict (referee, host side):"
+    if ($observed.Count -eq 0) {
+        Write-Host "  (none) - the HOST never saw a slipper leave a human hand"
+        $throwFail += 1
+    } else {
+        $observed | ForEach-Object { Write-Host ("  " + $_.Line) }
+    }
 }
 if ($throwFail -gt 0) { $exit += $throwFail }
 
@@ -289,24 +393,44 @@ if ($throwFail -gt 0) { $exit += $throwFail }
 # a check that passed are the same thing to a grep for FAIL, the rule the two blocks above
 # already state. `ok=false` is caught by the per-side FAIL sweep; this block is about SILENCE.
 # =============================================================================
+#
+# ⚠️ SKIPPED FOR `capacity`, WHERE THERE IS NO JOINER TO NAME. Every newcomer in that
+# scenario is either still in the queue or was turned away at the door, so no body anywhere
+# in the match belongs to one and a NAME-CHECK would be a check about nothing. The refusal's
+# own words are asserted inside `rejoin_run.gd::_refused` instead.
 $nameFail = 0
-Write-Host "`nname verdict (a blank name here is the reported bug):"
-foreach ($side in @(@{ n = $ClientRole; f = 'client' }, @{ n = 'referee'; f = 'referee' },
-                    @{ n = 'anchor'; f = 'anchor' })) {
-    $lines = @(Get-Content (Join-Path $OutDir ($side.f + '.log')) -ErrorAction SilentlyContinue)
-    $checks = @($lines | Select-String -Pattern 'NAME-CHECK')
-    if ($checks.Count -eq 0) {
-        Write-Host ("  {0}: (none) - this process never reported on the joiner's name" -f $side.n)
-        $nameFail += 1
-    } else {
-        $checks | ForEach-Object { Write-Host ("  " + $_.Line) }
+if ($Scenario -ne 'capacity') {
+    Write-Host "`nname verdict (a blank name here is the reported bug):"
+    foreach ($side in @(@{ n = $ClientRole; f = 'client' }, @{ n = 'referee'; f = 'referee' },
+                        @{ n = 'anchor'; f = 'anchor' })) {
+        $lines = @(Get-Content (Join-Path $OutDir ($side.f + '.log')) -ErrorAction SilentlyContinue)
+        $checks = @($lines | Select-String -Pattern 'NAME-CHECK')
+        if ($checks.Count -eq 0) {
+            Write-Host ("  {0}: (none) - this process never reported on the joiner's name" -f $side.n)
+            $nameFail += 1
+        } else {
+            $checks | ForEach-Object { Write-Host ("  " + $_.Line) }
+        }
     }
 }
 if ($nameFail -gt 0) { $exit += $nameFail }
 
+# ⚠️ THE WAITING-ROOM EVIDENCE, QUOTED VERBATIM. These are the lines a reader needs to
+# believe the three rules, so they are printed whether the run passed or failed.
+Write-Host "`nmid-match arrival evidence (host side):"
+Get-Content (Join-Path $OutDir 'referee.log') -ErrorAction SilentlyContinue |
+    Select-String -Pattern 'waiting=\d+ free_seats=\d+|NUDGE' | Select-Object -Last 12 |
+    ForEach-Object { Write-Host ("  " + $_.Line) }
+Write-Host "mid-match arrival evidence (the peer under test):"
+Get-Content (Join-Path $OutDir 'client.log') -ErrorAction SilentlyContinue |
+    Select-String -Pattern 'WAIT-CHECK|PROMOTE-CHECK|REFUSE-CHECK' |
+    ForEach-Object { Write-Host ("  " + $_.Line) }
+
 if ($exit -eq 0) {
     if ($Scenario -eq 'latecomer') {
-        Write-Host "`nPASS - a first-time joiner landed in the running match."
+        Write-Host "`nPASS - a mid-match newcomer waited as a spectator and was seated at the rotation."
+    } elseif ($Scenario -eq 'capacity') {
+        Write-Host "`nPASS - a newcomer arriving at a full waiting queue was refused and told why."
     } else {
         Write-Host "`nPASS - a dropped player got back into the running match."
     }

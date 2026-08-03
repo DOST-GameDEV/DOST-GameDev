@@ -618,6 +618,43 @@ func enter_spectator_mode(camera: SpectatorCamera) -> void:
 	legend.text += "   ·   %s clean feed" % SettingsManager.get_binding_display_name("clean_feed")
 	set_process_input(true)
 
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THERE IS A WAY OUT NOW, AND `enter_spectator_mode()`'s *"there is no leaving it"*
+## ABOVE IS WHY IT NEEDED WRITING RATHER THAN JUST CALLING SOMETHING.
+##
+## `NetworkManager`'s § MID-MATCH ARRIVALS parks a newcomer as a spectator and PROMOTES it
+## into a seat at the next role rotation, so this HUD now has to be able to become a
+## player's again. Called from `main.gd::_exit_spectator_mode`, and from nowhere else.
+##
+## ⚠️ IT RESTORES ONLY THE ALWAYS-ON GAMEPLAY ELEMENTS. `downed_flash`, `ready_prompt` and
+## `ready_objective_row` are TRANSIENTS — each is shown by its own driver on its own event
+## (`show_ready_prompt`, the downed signal, `_rpc_ready_phase`) — and blanket-showing them
+## here would put a stale ready prompt over a live round. Their drivers were free to fire
+## while this peer was watching and will fire again; the four below have no driver because
+## they are simply meant to be on.
+##
+## ⚠️ AND IT LIFTS THE CLEAN FEED. `set_clean_feed(true)` hides `self`, and a promoted player
+## who had pressed H would otherwise walk into a live round with no HUD at all and no way
+## back — `_input()` returns immediately once `_spectating` is false, so the key that turned
+## it off has just stopped working.
+## ---------------------------------------------------------------------------
+func exit_spectator_mode() -> void:
+	if not _spectating:
+		return
+	set_clean_feed(false)
+	_spectating = false
+	_spectator_camera = null
+	for label in [get_node_or_null("SpectatorLegend"), _spectator_status, _spectator_round]:
+		if label != null and is_instance_valid(label):
+			label.queue_free()
+	_spectator_status = null
+	_spectator_round = null
+	you_card.visible = true
+	crosshair.visible = true
+	lata_card.visible = true
+	offscreen_indicators.visible = true
+	set_process_input(false)
+
 var _spectating: bool = false
 var _spectator_camera: SpectatorCamera = null
 var _spectator_status: Label = null

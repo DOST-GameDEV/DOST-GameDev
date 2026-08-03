@@ -81,6 +81,63 @@ var _live: float = 130.0
 var _wait_for: int = 1
 
 # =============================================================================
+# ⚠️⚠️ § THE WAITING ROOM INSIDE A RUNNING MATCH — WHAT THIS FILE NOW MEASURES.
+#
+# 🧑 2026-08-04: *"or we could make them spectators until the next role rotation. but only
+# until the lobby is full, we can't keep accepting 5 spectators for a lobby that has only 2
+# bot slots open."*
+#
+# ⚠️⚠️ THE `latecomer` SCENARIO NOW ASSERTS THE OPPOSITE OF WHAT IT USED TO, DELIBERATELY.
+# It proved a first-time mid-match joiner *lands in the match* and gets a body immediately.
+# Under the rule above that is the DEFECT: it is the arrival-time reclaim every mid-match
+# joiner bug of 2026-08-04 came out of (blank nameplate, the placeholder's face, silent
+# throws, spawning inside the chalk box). What it must prove now is
+#
+#   ADMITTED    it reaches `Main.tscn` rather than being turned away, and
+#   WATCHING    with the spectator camera and NO body of its own while it waits, and
+#   SEATED      at the next ROLE ROTATION, wearing its own name and its own fighter.
+#
+# The `capacity` scenario is the other half: with every free seat already claimed by
+# somebody ahead of it in the queue, the next newcomer is REFUSED and bounced with a legible
+# message rather than admitted to a queue that can never be drained.
+# =============================================================================
+
+## Seconds this process waits before it even opens the browser. The latecomer/filler/refused
+## roles all knock on a match that must already be RUNNING, and how long that takes depends
+## on the lobby dance the anchor has to complete first.
+var _join_after: float = 30.0
+
+## Referee only. Cut the running round's clock short once somebody is actually waiting for a
+## seat, so the ROTATION — the thing under test — happens inside a run somebody will sit
+## through rather than 90 s later.
+##
+## ⚠️⚠️ THIS IS A FIXTURE, NOT A SHORTCUT PAST THE RULE. The rotation is still produced by
+## the real `RoundManager._on_time_up()` -> `MatchManager.report_round_result()` ->
+## `begin_next_round()` chain, on the real host, with the real intermission — nothing here
+## calls `begin_next_round()` or `_promote_waiting_spectators()` itself. All that is moved is
+## WHEN the clock reaches zero, which is a thing every real match does. Compare the rule this
+## file already follows for the taya's restore (§ THE ANCHOR PLAYS TAYA): drive the real
+## verb, never manufacture the state it produces.
+var _nudge_round: bool = false
+## How long after a peer is first seen waiting before the clock is cut. Not zero, and the
+## number is the whole reason the "no body while it waits" check can be believed: the
+## latecomer needs a window in which it is demonstrably admitted, watching and seatless
+## BEFORE the rotation it is waiting for arrives. Measured against the latecomer's own
+## timeline — it reports its waiting state ~12 s after `_begin_join`, so 20 s leaves ~8 s of
+## margin at the tightest point and ~25 s at the loosest.
+const NUDGE_ARM_DELAY_MS: int = 20000
+## What the clock is cut TO. Long enough that the cut is not mistaken for a round that never
+## ran; short enough that two of them plus two intermissions fit inside `--live`.
+const NUDGE_TARGET_SECONDS: float = 8.0
+## ⚠️ ONLY ROUND 1 IS CUT. Round 2 is the round the promoted newcomer is measured in — its
+## seat table, its fighter, its name, its shove — and cutting that one too would race the
+## measurement against `round_active` going false underneath it. One cut is all the rotation
+## needs.
+const NUDGE_LAST_ROUND: int = 1
+## When the referee first saw somebody waiting, in ms, or 0 for "not yet".
+var _nudge_armed_ms: int = 0
+
+# =============================================================================
 # ⚠️⚠️ § THE ROSTER PICK. 🧑 2026-08-02, after the rejoin itself started working:
 # *"The player rejoins on a different player character and not the same character they
 # were on."* Right seat, working controls, WRONG FIGHTER.
@@ -170,6 +227,10 @@ func _ready() -> void:
 			_expect_slipper = a.substr(len("--expect-slipper="))
 		elif a.begins_with("--expect-name="):
 			_expect_name = a.substr(len("--expect-name="))
+		elif a.begins_with("--join-after="):
+			_join_after = float(a.substr(len("--join-after=")))
+		elif a == "--nudge-round":
+			_nudge_round = true
 	# A distinguishable name per role, so a body in the report can be read back to the
 	# process that owns it without counting peer ids.
 	SettingsManager.player_name = _role.to_upper()
@@ -198,6 +259,8 @@ func _ready() -> void:
 		"referee": await _referee()
 		"anchor": await _anchor()
 		"latecomer": await _latecomer()
+		"filler": await _filler()
+		"refused": await _refused()
 		_: await _dropper()
 
 # =============================================================================
@@ -344,8 +407,39 @@ func _referee() -> void:
 	while elapsed < _live + 30.0:
 		await get_tree().create_timer(2.0).timeout
 		elapsed += 2.0
+		_nudge_round_clock()
 		_host_report(int(elapsed))
 	_done("referee")
+
+## HOST ONLY, and only under `--nudge-round`. See `_nudge_round`'s own doc for why cutting
+## the clock is a fixture rather than a shortcut past the rule under test.
+##
+## ⚠️ IT ARMS ON THE QUEUE, NOT ON A STOPWATCH. The first cut waits until
+## `waiting_seat_tokens` is actually non-empty — i.e. until the host has genuinely admitted
+## somebody as a provisional spectator — so a build that refuses or seats the newcomer
+## instead never gets its round shortened, and the run fails on the check rather than on a
+## timing coincidence.
+func _nudge_round_clock() -> void:
+	if not _nudge_round or not NetworkManager.is_host():
+		return
+	if not RoundManager.round_active or MatchManager.round_number < 1:
+		return
+	if MatchManager.round_number > NUDGE_LAST_ROUND:
+		return
+	if _nudge_armed_ms == 0:
+		if NetworkManager.waiting_seat_tokens.is_empty():
+			return
+		_nudge_armed_ms = Time.get_ticks_msec()
+		print("[referee] NUDGE armed — %d peer(s) waiting for a seat" % [
+			NetworkManager.waiting_seat_tokens.size()])
+		return
+	if Time.get_ticks_msec() - _nudge_armed_ms < NUDGE_ARM_DELAY_MS:
+		return
+	if RoundManager.time_left <= NUDGE_TARGET_SECONDS:
+		return
+	RoundManager.time_left = NUDGE_TARGET_SECONDS
+	print("[referee] NUDGE round=%d clock cut to %.0fs (the rotation is the thing under test)" % [
+		MatchManager.round_number, NUDGE_TARGET_SECONDS])
 
 ## Everything the host knows about who is who. Printed on a clock rather than on an event
 ## because the interesting window (identify → reroute → disconnect → identify again) is
@@ -357,6 +451,12 @@ func _host_report(t: int) -> void:
 		t, where, str(NetworkManager.match_in_progress),
 		str(NetworkManager.connected_peer_ids)]
 	if scene != null and String(scene.name) == "Main":
+		# § THE WAITING ROOM INSIDE A RUNNING MATCH. The queue and the seat supply are the
+		# two numbers every ruling in `NetworkManager._rule_on_mid_match_arrival` is made
+		# from, so they are printed side by side: a refusal is only correct if `free` was
+		# genuinely exhausted, and a promotion is only correct if `free` said there was room.
+		line += " waiting=%d free_seats=%d" % [
+			NetworkManager.waiting_seat_tokens.size(), NetworkManager.free_seat_count()]
 		line += " tokens=%s seats=%s spawned=%s" % [
 			str(_short_tokens(NetworkManager.peer_tokens)),
 			str(_short_seats(scene.get("_token_join_index"))),
@@ -670,6 +770,41 @@ func _dropper() -> void:
 	_done("dropper")
 
 # =============================================================================
+# ⚠️⚠️ § SHARED BY THE THREE MID-MATCH ARRIVAL ROLES (latecomer, filler, refused).
+# =============================================================================
+
+## Knock on a match that is already running, by the route a real player takes: the server
+## browser, a typed address, `_begin_join`. Returns once the join has had `settle` seconds to
+## resolve into whatever the host ruled.
+func _knock_mid_match(settle: float) -> void:
+	await get_tree().create_timer(_join_after).timeout
+	var screen: Node = await _open_setup()
+	screen.call("_begin_join", _address())
+	await get_tree().create_timer(settle).timeout
+
+## Whatever the browser is telling this player, or "" off any other screen. Read off the
+## LABEL rather than off `GameLaunch.pending_status_message` — `multiplayer_setup.gd::_ready`
+## consumes that var into the label and clears it, so by the time anything can look the var
+## is empty on a healthy build and on a broken one alike.
+func _status_text() -> String:
+	var scene: Node = get_tree().current_scene
+	if scene == null or String(scene.name) != "MultiplayerSetup":
+		return ""
+	var label := scene.get_node_or_null("%StatusLabel") as Label
+	if label == null:
+		label = _first_named(scene, "StatusLabel") as Label
+	return label.text if label != null else ""
+
+## Is this peer being shown the spectator's view — the camera `main.gd::_enter_spectator_mode`
+## adds to `Main` under that exact name? Asked of the TREE rather than of a flag, because a
+## flag set without a camera is precisely the "grey screen" this harness exists for.
+func _has_spectator_camera() -> bool:
+	var scene: Node = get_tree().current_scene
+	if scene == null or String(scene.name) != "Main":
+		return false
+	return scene.get_node_or_null("Spectator") != null
+
+# =============================================================================
 # ⚠️ THE REGRESSION HALF. A FIRST-TIME JOINER MID-MATCH TAKES THE SAME BROKEN LINE.
 #
 # `main.gd::_start_joining()` is reached with a live `join_game()` to make in exactly one
@@ -687,14 +822,44 @@ func _dropper() -> void:
 func _latecomer() -> void:
 	# The anchor needs to have claimed the lobby, readied, started the match and loaded it
 	# before this client knocks — the whole premise is arriving at a room that is already
-	# playing. Generous: it is the same 9 s scene-load budget plus the lobby dance.
-	await get_tree().create_timer(30.0).timeout
-	var screen: Node = await _open_setup()
-	screen.call("_begin_join", _address())
-	await get_tree().create_timer(14.0).timeout
-	var after := _report("latecomer")
-	_check("a mid-match newcomer lands in the match scene", String(after["scene"]) == "Main")
-	_check("with a populated world", int(after["bodies"]) == 4)
+	# playing. `--join-after=` is generous: the same 9 s scene-load budget plus the lobby dance.
+	await _knock_mid_match(12.0)
+
+	# ---- ADMITTED, AND WATCHING ---------------------------------------------
+	# ⚠️⚠️ THIS BLOCK IS THE ONE THAT INVERTED. It used to demand a body here; a body here
+	# is now the defect. See § THE WAITING ROOM INSIDE A RUNNING MATCH at the top of this file.
+	var waiting := _report("latecomer waiting")
+	print("[latecomer] WAIT-CHECK scene=%s provisional=%s spectator_cam=%s body=%s" % [
+		_scene_name(), str(NetworkManager.provisional_spectator),
+		str(_has_spectator_camera()), str(_my_body() != null)])
+	_check("a mid-match newcomer is admitted rather than turned away",
+		String(waiting["scene"]) == "Main")
+	_check("...as a SPECTATOR, because the host said so", NetworkManager.provisional_spectator)
+	_check("...with a camera to watch through", _has_spectator_camera())
+	# ⚠️ THE NEGATIVE IS THE POINT OF THE WHOLE CHANGE. Every mid-match-joiner defect found on
+	# 2026-08-04 came out of the arrival-time reclaim this asserts did NOT happen.
+	_check("...and NO body of its own while it waits", _my_body() == null)
+	_check("...while the match it is watching is still fully populated",
+		int(waiting["bodies"]) == 4)
+
+	# ---- SEATED AT THE NEXT ROLE ROTATION ------------------------------------
+	# Polled rather than slept on: the rotation lands wherever the day's round clock and the
+	# referee's cut put it, and a fixed sleep would report whichever side of it we woke on.
+	var start_round := MatchManager.round_number
+	var waited := 0.0
+	while waited < 100.0 and _my_body() == null:
+		await get_tree().create_timer(1.0).timeout
+		waited += 1.0
+	var after := _report("latecomer seated")
+	print("[latecomer] PROMOTE-CHECK round %d -> %d after %.0fs body=%s spectator_cam=%s" % [
+		start_round, MatchManager.round_number, waited,
+		str(_my_body() != null), str(_has_spectator_camera())])
+	_check("a waiting newcomer is given a real seat", _my_body() != null)
+	# ⚠️ "IT HAPPENED **AT** A ROTATION" IS A SEPARATE FACT FROM "IT HAPPENED". A build that
+	# seated the newcomer on arrival would satisfy the line above and fail this one, which is
+	# exactly the regression this scenario is here to catch from now on.
+	_check("...at a ROLE ROTATION, not on arrival", MatchManager.round_number > start_round)
+	_check("...and the spectator camera is gone with it", not _has_spectator_camera())
 	_check("owning a body", String(after["owned"]) != "")
 	_check("and a camera to look through", String(after["camera"]) != "<none>")
 	# ⚠️ THE SAME THREE VERBS, BECAUSE IT IS THE SAME DEFECT. `RoundManager.register_player`
@@ -712,15 +877,76 @@ func _latecomer() -> void:
 		var body := _my_body()
 		var want := CharacterRoster.index_of(StringName(_expect_character))
 		print("[latecomer] %s" % [_pick_line(body)])
-		_check("a mid-match newcomer wears the fighter they picked (%s)"
+		_check("a promoted newcomer wears the fighter they picked (%s)"
 			% _roster_name(want), body != null and body.character_index == want)
 	# ⚠️ AND THE NAME, WHICH IS THE OTHER THING THAT ONLY EVER ARRIVED IN THE SPAWN PACKET.
 	# A first-time mid-match joiner takes over a placeholder built from `picks_for(-1 - index)`
 	# — a sentinel peer with no name — so before the fix this read `player_name=''` here and on
 	# both other processes, and `display_name()` fell through to the seat label "P2".
 	_assert_own_name("latecomer")
+	# ⚠️ THE THROW HALF OF THIS IS SKIPPED BY `_check_abilities` ITSELF WHEN THE PROMOTED SEAT
+	# IS THIS ROUND'S TAYA, AND THAT IS THE RULES, NOT A GAP. The anchor identifies first and
+	# takes seat 0; the promotion takes `_first_free_seat()` = seat 1; `defender_slot_for(2)`
+	# is `(2 - 1) % 4` = 1. So in round 2 the newcomer IS the defender, and a defender may not
+	# throw. `run_rejoin.ps1` therefore demands THROW-CHECK/THROW-OBSERVED only in the
+	# `rejoin` scenario — see the ⚠️ on that block. Everything else here (the seat table, the
+	# lata, the live round, the shove) is asserted for both.
 	await _check_abilities("LATECOMER")
+	# ⚠️⚠️ IT STAYS IN THE MATCH FOR A FEW SECONDS AFTER ITS OWN CHECKS, AND WITHOUT THIS THE
+	# OTHER TWO PROCESSES CANNOT REPORT AT ALL. `run_rejoin.ps1` kills the anchor and the
+	# referee the instant THIS process exits, and their NAME-CHECK is deliberately not
+	# instantaneous — `_watch_joiner_name` gives the replicated `player_name` `NAME_SETTLE_MS`
+	# (2 s) to arrive before it judges. Measured 2026-08-04: without this wait the promotion
+	# landed at t≈70 s, this process was done at t≈75 s, and both observers were killed
+	# mid-settle with zero NAME-CHECK lines — reported as two failures against a build where
+	# the name was provably correct on the peer that owns it.
+	await get_tree().create_timer(10.0).timeout
 	_done("latecomer")
+
+# =============================================================================
+# ⚠️⚠️ § THE CAPACITY CASE. 🧑: *"we can't keep accepting 5 spectators for a lobby that has
+# only 2 bot slots open."*
+#
+# Two roles, and neither of them is interesting alone:
+#
+#   filler   a newcomer that IS admitted to the queue and then simply stays in it. Its whole
+#            job is to occupy one of the free seats' worth of queue so the next arrival has
+#            nowhere to go. Headless: it asks nothing about a camera.
+#   refused  the arrival after the queue is full. The one under test.
+#
+# ⚠️ THE FILLERS ASSERT THEIR OWN ADMISSION, which is what stops this scenario passing for
+# the wrong reason. If a filler were refused (or seated) the queue would not actually be full
+# when `refused` knocks, and its bounce would be measuring something else entirely.
+# =============================================================================
+
+func _filler() -> void:
+	await _knock_mid_match(14.0)
+	print("[filler] FILL-CHECK scene=%s provisional=%s body=%s" % [
+		_scene_name(), str(NetworkManager.provisional_spectator), str(_my_body() != null)])
+	_check("a filler is admitted to the waiting queue", NetworkManager.provisional_spectator)
+	_check("...and holds no seat while it waits there", _my_body() == null)
+	# Then it just sits, holding its place in the queue for the rest of the run. Without this
+	# the process would exit, the host would drop its token at the next rotation, and the seat
+	# it was occupying would be free again by the time `refused` arrives.
+	await get_tree().create_timer(_live).timeout
+	_done("filler")
+
+func _refused() -> void:
+	await _knock_mid_match(16.0)
+	var status := _status_text()
+	print("[refused] REFUSE-CHECK scene=%s networked=%s body=%s status='%s'" % [
+		_scene_name(), str(NetworkManager.is_networked()), str(_my_body() != null), status])
+	_check("a newcomer arriving at a full waiting queue is bounced back to the browser",
+		_scene_name() == "MultiplayerSetup")
+	# ⚠️ THE WORDS ARE ASSERTED, NOT JUST THE BOUNCE. A silent return to the browser is the
+	# soft-lock Q-1/B-62 closed once already: the player is looking at the screen they started
+	# from with no idea why, which reads as the JOIN button being broken.
+	_check("...and told why, in words that name the cause",
+		status.to_lower().contains("already started"))
+	_check("...and is not left holding a connection to a match it is not in",
+		not NetworkManager.is_networked())
+	_check("...and never gets a body", _my_body() == null)
+	_done("refused")
 
 # =============================================================================
 # Reporting
