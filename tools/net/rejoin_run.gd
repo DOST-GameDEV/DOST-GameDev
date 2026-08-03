@@ -652,9 +652,29 @@ func _world_line() -> String:
 			if slipper == null or not is_instance_valid(slipper):
 				continue
 			var holder: Node = slipper.get("carrier")
-			slips.append("s%d(owner=%s state=%s carrier=%s)" % [
+			# ⚠️⚠️ THE WORLD POSITION IS PART OF THE STATE AND WAS MISSING UNTIL 2026-08-04.
+			# 🧑: *"upon rejoining i dont have a slipper, only until the next round"*. Answering
+			# that needs the distinction between "the bot legitimately threw it, so it is lying
+			# on the floor where anyone can see it" and "this peer has a slipper object in the
+			# wrong place" — and owner/state/carrier alone cannot tell those apart. `Slipper.tscn`
+			# replicates ONLY `position` and `owner_slot`; `state` and `carrier` come from the
+			# `_rpc_slipper_*` broadcasts a joiner missed by definition, so the position is
+			# precisely the field whose replication has to be READ rather than assumed.
+			#
+			# ⚠️ PRINTED ON ALL THREE PROCESSES SO IT CAN BE DIFFED ACROSS THEM. A LOOSE slipper
+			# is static, so the same line logged on the referee, the anchor and the dropper
+			# within a second of each other is a fair comparison; a FLYING one is not, and
+			# `state` on the same line is what says which you are looking at.
+			#
+			# ⚠️ `global_position`, NOT `position`. A CARRIED slipper is reparented onto its
+			# carrier's `HandAttachment` (`slipper.gd::_attach_to_hand()`), so its LOCAL position
+			# is bone-space and near zero — which would read as "at the origin" and invent a bug
+			# that is not there.
+			var at: Vector3 = slipper.get("global_position")
+			slips.append("s%d(owner=%s state=%s carrier=%s at=%.2f,%.2f,%.2f)" % [
 				i, str(slipper.get("owner_slot")), str(slipper.get("state")),
-				String(holder.name) if holder != null else "<null>"])
+				String(holder.name) if holder != null else "<null>",
+				at.x, at.y, at.z])
 	var lata: Node = RoundManager.lata
 	return ("WORLD round=%d round_active=%s lata=%s lata_up=%s throw_cd=%.2f time_left=%.1f "
 		+ "defender_slot=%d rm_seats=[%s] %s") % [
@@ -962,6 +982,16 @@ func _check_pickup_and_throw(tag: String, body: CharacterBase) -> void:
 	if mine == null:
 		_check("%s: this peer can see a slipper to pick up at all" % tag, false)
 		return
+	# ⚠️ WHICH slipper this landed on is PRINTED, NOT ASSERTED, and the distinction matters.
+	# `_reachable_slipper()` falls back to ANY loose slipper on purpose (see its own doc:
+	# ownership is not what a pickup is gated on), so a PASS below is a PASS for the game's
+	# real rule — but it does not by itself say the returning player got THEIR seat's
+	# slipper back. Printing the choice keeps a run that passed via the fallback readable
+	# against one that did not, without asserting a rule the game does not have.
+	print("[%s] TARGET slipper=%s owner=%d mine=%s state=%d in_hand=%s dist=%.2f" % [
+		tag, mine.name, mine.owner_slot, str(mine.owner_slot == body.player_slot),
+		int(mine.state), str(mine.carrier == body),
+		body.global_position.distance_to(mine.global_position)])
 	# ⚠️ TELEPORTED, NOT WALKED. This process is the multiplayer authority for this body,
 	# so writing `global_position` is a legal move that the synchronizer carries to the
 	# host within a frame or two — which is what makes the host agree the player is in

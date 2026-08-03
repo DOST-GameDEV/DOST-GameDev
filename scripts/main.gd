@@ -2728,6 +2728,32 @@ func _sync_state_to_late_joiner(new_round_number: int, new_defender_slot: int,
 ## corrects itself the moment it lands, because `_rpc_slipper_landed` is a broadcast the
 ## new peer is now part of. Sending those two would be two more chances to be wrong.
 ##
+## ⚠️⚠️ THAT PARAGRAPH IS NOW MEASURED RATHER THAN ARGUED, 2026-08-04, AND A LOOSE
+## CATCH-UP BROADCAST WAS INVESTIGATED AND IS NOT NEEDED. 🧑: *"upon rejoining i dont have
+## a slipper, only until the next round/roles rotation."* The obvious reading is that this
+## function replays only CARRIED slippers, so a slipper the stand-in bot had THROWN would
+## reach the returning peer as nothing at all. It does not: `tools/net/run_rejoin.ps1` now
+## prints each slipper's `global_position` beside its owner/state/carrier on all three
+## processes, and the three logs are identical at the instant of return. Three runs, three
+## different game states, referee · anchor · dropper:
+##
+##     thrown, lying loose   s0(owner=1 state=0 carrier=<null> at=-1.34,0.14,1.52)  ×3 peers
+##     taken by a rival bot  s0(owner=2 state=1 carrier=-3)   s2(owner=3 state=0
+##                           carrier=<null> at=-0.82,0.13,-0.31)                    ×3 peers
+##
+## The LOOSE positions agree to 2 dp on every peer — the synchroniser's `position` really
+## does heal a joiner, exactly as claimed — and the second run also proves the CARRIED half
+## of this function on the REJOIN path specifically (two slippers in bot hands, both
+## arriving with the right `state` and the right `carrier`). In every run the returning peer
+## then picked its slipper up on one `E` press and the host agreed.
+##
+## SO "I COME BACK EMPTY-HANDED" IS GAME STATE, NOT A REPLICATION HOLE. The seat was
+## bot-driven for ~17 s and a bot with a tsinelas throws it within seconds; the slipper is
+## on the floor, or in a rival's hand under the open-pickup rule, and either way the player
+## has to go and fetch it. Adding a LOOSE catch-up here would replay a state the joiner
+## already has. If this is to be softened it is a DESIGN change (re-equip on reclaim), and
+## note that it hands anyone who alt-F4s a free teleport of their slipper into their hand.
+##
 ## ⚠️ THE RECEIVER MAY NOT HAVE THE BODY YET. The bodies come from `MultiplayerSpawner`
 ## and this comes from the reliable RPC channel, with no ordering between them — see
 ## `Slipper._pending_carrier_slot`, which is what makes the losing order resolve instead
