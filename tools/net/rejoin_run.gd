@@ -67,7 +67,13 @@ var _host: String = "127.0.0.1"
 var _fail: int = 0
 ## How long the anchor stays in the match holding the room open. Long enough to cover the
 ## dropper's whole drop-and-return, with slack.
-var _live: float = 75.0
+##
+## ⚠️ 75 -> 130 ON 2026-08-04, WHEN THE RUN STARTED DRIVING REAL THROWS. The dropper now
+## does a full charge-and-release BEFORE the drop (the control) and again AFTER it, and each
+## of those first has to wait for a legal throwing moment — the can standing, off cooldown.
+## At 75 the anchor was walking out of the match while the returning player was still
+## measuring, which reports as "this process never witnessed the reclaim".
+var _live: float = 130.0
 ## How many OTHER humans the anchor waits for before it presses START MATCH. 1 for the
 ## rejoin scenario (the dropper must be seated and playing before it can drop out of
 ## anything); 0 for the latecomer scenario, where the whole point is that the match is
@@ -173,6 +179,89 @@ func _ready() -> void:
 		"anchor": await _anchor()
 		"latecomer": await _latecomer()
 		_: await _dropper()
+
+# =============================================================================
+# ⚠️⚠️ § THE THIRD-PARTY THROW WATCH, AND WHY IT IS PER-FRAME.
+#
+# The client under test can only report what its OWN copy of the prop did. The task this
+# file answers — *"it doesnt actually throw"* — needs the REFEREE to agree, because the
+# throw is host-authoritative: the client asks, the host validates, and the host broadcasts.
+# A host that never accepted the request is the whole hypothesis, so the host's own view has
+# to be recorded rather than inferred.
+#
+# ⚠️ POLLED EVERY FRAME, NOT ON THE REPORT CLOCK. `Slipper.CarryState.FLYING` lasts about a
+# second and the referee reports every two, so a sampled watch would miss most throws and
+# report "the host never saw it" about a build where the host saw it fine. This is three
+# dictionary reads a frame.
+#
+# ⚠️ ONLY NON-BOT HANDS ARE LATCHED. The AI attackers throw constantly and their throws say
+# nothing about this run; a seat is only interesting once a HUMAN is driving it, which is
+# exactly `is_bot == false`. That also makes the latch a fair discriminator on the dropper's
+# seat, which is bot-held for the ~17 s the human is away.
+# =============================================================================
+
+## slipper array index -> the `player_name` of the last HUMAN seen holding it, or "" for
+## "nothing worth reporting". Cleared on the transition so one throw prints one line.
+var _carry_watch: Dictionary = {}
+
+func _process(_delta: float) -> void:
+	if _scene_name() != "Main":
+		return
+	_watch_throws()
+	# ⚠️ MOVED HERE FROM THE ANCHOR'S REPORT LOOP, 2026-08-04. That loop now `await`s a
+	# throw drive that can legitimately block for tens of seconds waiting for the can to be
+	# stood back up, and a seat watch that stops sampling for that long can miss the whole
+	# bot-holds window — which would turn a green run into "this process never witnessed the
+	# reclaim". This is idempotent and one-shot guarded, so running it per frame is strictly
+	# safer than running it on a clock.
+	if _role == "referee" or _role == "anchor":
+		_watch_dropper_seat(_role)
+
+func _watch_throws() -> void:
+	var scene: Node = get_tree().current_scene
+	var list: Variant = scene.get("slippers") if scene != null else null
+	if not (list is Array):
+		return
+	for i in range((list as Array).size()):
+		var slipper: Node = (list as Array)[i]
+		if slipper == null or not is_instance_valid(slipper):
+			continue
+		var carried: bool = int(slipper.get("state")) == Slipper.CarryState.CARRIED
+		var holder: Node = slipper.get("carrier")
+		if carried and holder != null and not bool(holder.get("is_bot")):
+			# ⚠️ THE SEAT IS THE FALLBACK, AND WITHOUT IT THIS WATCH IS BLIND TO THE ONE
+			# SCENARIO IT MATTERS MOST IN. `player_name` is written from the SPAWN packet,
+			# and a mid-match joiner does not get a spawn — it takes over a placeholder's
+			# existing body through `_rpc_reclaim_character`, which never touches the name.
+			# Measured 2026-08-04 on the referee: `PICK 863342991 slot=1 player_name=''` for
+			# a live human. Latching on that empty string made every throw the latecomer made
+			# invisible to this function on all three processes, which read as "the host never
+			# saw it" on a run where the host saw it fine. (The empty name itself is a real,
+			# separate defect and is NOT this run's business.)
+			var who := String(holder.get("player_name"))
+			if who == "":
+				who = "slot%d" % [int(holder.get("player_slot"))]
+			_carry_watch[i] = who
+			continue
+		if carried:
+			# A bot's hand, or a hand this peer has not resolved yet. Neither is a throw
+			# this run has anything to say about.
+			_carry_watch[i] = ""
+			continue
+		var was: String = String(_carry_watch.get(i, ""))
+		if was == "":
+			continue
+		_carry_watch[i] = ""
+		var at: Vector3 = slipper.get("global_position")
+		# ⚠️ A THROW AND A DROP ARE NOT THE SAME EVENT AND ARE NOT REPORTED AS ONE. A carrier
+		# who is stunned, tagged, or caught by a round reset leaves CARRIED straight for
+		# LOOSE (`_apply_landed`); only `_apply_thrown` goes to FLYING. Folding the two
+		# together would let a shove that knocked the tsinelas out of somebody's hand pass
+		# for the throw this run exists to witness.
+		var flying: bool = int(slipper.get("state")) == Slipper.CarryState.FLYING
+		print("[%s] %s thrower=%s slipper=%d state=%d at=%.2f,%.2f,%.2f" % [
+			_role, "THROW-OBSERVED" if flying else "DROP-OBSERVED",
+			was, i, int(slipper.get("state")), at.x, at.y, at.z])
 
 func _trace_round_started(round_number: int, defender_slot: int) -> void:
 	print("[%s TRACE] MatchManager.round_started(round=%d defender=%d) at %.1fs, bodies=%d" % [
@@ -354,6 +443,7 @@ func _anchor() -> void:
 		# more often than a report anybody reads. The report itself stays at five seconds
 		# because it prints a line per body and this loop runs for over a minute.
 		_watch_dropper_seat("anchor")
+		_keep_lata_up()
 		if int(elapsed) % 5 != 0:
 			continue
 		_report("anchor t=%ds" % int(elapsed))
@@ -374,6 +464,37 @@ func _anchor() -> void:
 		_check("the anchor actually witnessed the reclaim it is here to judge",
 			_reclaim_checked)
 	_done("anchor")
+
+# =============================================================================
+# ⚠️⚠️ § THE ANCHOR PLAYS TAYA, AND WITHOUT THIS NO THROW IN THIS HARNESS IS EVER LEGAL.
+#
+# `RoundManager.can_throw()` refuses everybody while the lata is DOWN, and in this run
+# nothing ever stood it back up: the anchor connects first, so it takes seat 0, which is
+# round 1's defender — and a defender that just stands there is the one player who CAN
+# restore the can and never does. Measured on the run that added the throw drive: the AI
+# attackers put the can over within seconds of the whistle and `lata_up=false` on all three
+# processes for the remaining 80 s, so the throw check timed out with
+# `reason=gate-never-opened` on a build where nothing about throwing had been tested at all.
+#
+# ⚠️ IT IS THE REAL BUTTON, NOT `lata.host_restore()`. Holding `grab` inside the ring is the
+# taya's only verb (`carrier.gd::_step_reset_channel` -> `_request_reset` -> the host's
+# `host_restore`), and reaching past it would have this harness manufacture a game state no
+# player can produce — the exact failure this file's own § THE THREE VERBS header refuses.
+#
+# ⚠️ THE KEY IS SIMPLY LEFT DOWN. `grab` does nothing else for a defender (`_step_grab`
+# returns immediately for one), the channel zeroes itself on release, and re-pressing it on
+# a 1 Hz poll would restart a 1.5 s channel forever without ever completing one.
+func _keep_lata_up() -> void:
+	var body: CharacterBase = _my_body()
+	var lata: Node = RoundManager.lata
+	if body == null or lata == null or not body.is_defender:
+		return
+	if bool(lata.get("is_upright")):
+		return
+	# Stand on the mark. The taya spawns there anyway; this only recovers from a shove.
+	var mark: Vector3 = lata.get("global_position")
+	body.global_position = Vector3(mark.x, body.global_position.y, mark.z)
+	_press("grab", true)
 
 # =============================================================================
 # THE DROPPER. The player in the report.
@@ -449,6 +570,20 @@ func _dropper() -> void:
 	var before_index: int = before_body.character_index if before_body != null else -1
 	var before_props := _seat_props(before_body.player_slot) if before_body != null else {}
 	print("[dropper BEFORE] %s" % [_pick_line(before_body)])
+	# ⚠️⚠️ THE CONTROL, AND IT IS THIS PROCESS RATHER THAN THE ANCHOR'S. 🧑 2026-08-04:
+	# *"still cant throw on rejoin"* — a claim about a DIFFERENCE, so the run is worthless
+	# without a same-build, same-match measurement of a player who has NOT rejoined.
+	#
+	# The anchor cannot be that control: it connects first, so it takes seat 0, which is
+	# round 1's DEFENDER — and a defender may not throw at all (`can_throw` refuses one
+	# outright), so `_check_abilities` skips the whole pickup-and-throw branch for it. That
+	# is not a fixable ordering detail; it is what the anchor is FOR.
+	#
+	# So the control is the dropper itself, five seconds before it drops: same process, same
+	# match, same seat, same build, one rejoin apart. If this FAILS and AFTER fails too,
+	# throwing is broken for everybody and the rejoin is a red herring; if this passes and
+	# AFTER fails, the defect is rejoin-specific. One run answers it either way.
+	await _check_abilities("BEFORE")
 
 	# ---- THE DROP --------------------------------------------------------------
 	# ⚠️ THE SCENE TEARDOWN IS COPIED FROM `main.gd::_on_server_disconnected`, ON PURPOSE.
@@ -671,10 +806,10 @@ func _world_line() -> String:
 			# is bone-space and near zero — which would read as "at the origin" and invent a bug
 			# that is not there.
 			var at: Vector3 = slipper.get("global_position")
-			slips.append("s%d(owner=%s state=%s carrier=%s at=%.2f,%.2f,%.2f)" % [
+			slips.append("s%d(owner=%s state=%s carrier=%s at=%.2f,%.2f,%.2f)%s" % [
 				i, str(slipper.get("owner_slot")), str(slipper.get("state")),
 				String(holder.name) if holder != null else "<null>",
-				at.x, at.y, at.z])
+				at.x, at.y, at.z, _carry_path(slipper)])
 	var lata: Node = RoundManager.lata
 	return ("WORLD round=%d round_active=%s lata=%s lata_up=%s throw_cd=%.2f time_left=%.1f "
 		+ "defender_slot=%d rm_seats=[%s] %s") % [
@@ -683,6 +818,25 @@ func _world_line() -> String:
 		RoundManager.throw_cooldown_left(),
 		RoundManager.time_left, MatchManager.defender_slot,
 		", ".join(seats), " ".join(slips)]
+
+## ⚠️⚠️ THE SCENE-TREE PATH OF A **CARRIED** SLIPPER, PRINTED ON ALL THREE PROCESSES SO THE
+## THREE CAN BE DIFFED. This is not decoration and it is not a debug leftover: it is the
+## measurement the throw investigation turns on.
+##
+## `slipper.gd::_attach_to_hand()` re-parents a carried tsinelas onto
+## `<body>/Visual/<model root>/Skeleton3D/HandAttachment/HandPoint`, and **every component
+## of that path after `Visual` is built at runtime, per peer, from that peer's own idea of
+## which MODEL this character is wearing**. `carrier.gd::_request_throw()` puts
+## `slipper.get_path()` on the wire and the host resolves it with `get_node_or_null()` — so
+## two peers that disagree about the model disagree about the path, and the host answers
+## `null` and drops the throw on the floor with no error anywhere.
+##
+## Empty for a LOOSE or FLYING slipper: those sit at the home path every peer has had since
+## the scene loaded, which is exactly why the PICKUP half of the same mechanism works.
+func _carry_path(slipper: Node) -> String:
+	if int(slipper.get("state")) != Slipper.CarryState.CARRIED:
+		return ""
+	return " path=%s" % [String(slipper.get_path())]
 
 ## Everything about ONE body that could differ. Read through `get()`/`call()` rather than
 ## through typed members so the harness keeps compiling if a field is renamed — a probe
@@ -988,26 +1142,50 @@ func _check_pickup_and_throw(tag: String, body: CharacterBase) -> void:
 	# real rule — but it does not by itself say the returning player got THEIR seat's
 	# slipper back. Printing the choice keeps a run that passed via the fallback readable
 	# against one that did not, without asserting a rule the game does not have.
-	print("[%s] TARGET slipper=%s owner=%d mine=%s state=%d in_hand=%s dist=%.2f" % [
+	# ⚠️ THE BUTTON STATES ARE PRINTED WITH THE TARGET, because `special_ability` and `grab`
+	# SHARE MOUSE BUTTON 1 in `project.godot` (`grab` is E or MB1; `special_ability` is Q or
+	# MB1). Two actions on one physical button is a real binding a player uses, and a harness
+	# that pressed one and assumed nothing about the other would misread a charge it started
+	# itself as a defect in the build.
+	print(("[%s] TARGET slipper=%s owner=%d mine=%s state=%d in_hand=%s dist=%.2f "
+		+ "held_ability=%s held_grab=%s charging=%s") % [
 		tag, mine.name, mine.owner_slot, str(mine.owner_slot == body.player_slot),
 		int(mine.state), str(mine.carrier == body),
-		body.global_position.distance_to(mine.global_position)])
+		body.global_position.distance_to(mine.global_position),
+		str(Input.is_action_pressed("special_ability")),
+		str(Input.is_action_pressed("grab")),
+		str(body.get_node("Carrier").call("is_charging"))])
 	# ⚠️ TELEPORTED, NOT WALKED. This process is the multiplayer authority for this body,
 	# so writing `global_position` is a legal move that the synchronizer carries to the
 	# host within a frame or two — which is what makes the host agree the player is in
 	# range when the grab request arrives. Walking it there would need a pathfinder and
 	# would still be a teleport's worth of trust in the same synchronizer.
-	body.global_position = mine.global_position
-	await get_tree().create_timer(1.0).timeout
-	# `Carrier._step_grab` reads `input_just_pressed`, so the press must be genuinely
-	# NEW — released first, then held across several physics frames while the request
-	# makes its round trip to the host and back.
-	_press("grab", false)
-	await get_tree().physics_frame
-	_press("grab", true)
-	await get_tree().create_timer(1.5).timeout
-	_press("grab", false)
-	await get_tree().create_timer(1.0).timeout
+	# ⚠️⚠️ THE `E` PRESS IS SKIPPED WHEN THE HAND IS ALREADY FULL, AND THAT IS NOT A
+	# SHORTCUT — IT IS REMOVING ONE. `Carrier._step_grab()` returns on its FIRST line while
+	# `_held != null`, so an E press with a slipper already in hand cannot possibly prove
+	# anything about pickup. What it does instead is fall through to `character_base.gd`'s
+	# `_step_shove` — E is the shove button too, and this check holds it for 1.5 s, which is
+	# a full shove charge and release. Measured 2026-08-04, a latecomer that arrived already
+	# holding its slipper: `shove_cd=0.23` before the check had pressed anything, and the
+	# tsinelas left the hand mid-check, so the pickup, the gate and the throw all reported
+	# FAIL on a build where all three were fine. A harness must not fight the body it is
+	# about to measure.
+	#
+	# The assertion below is unchanged and still covers both starting states, exactly as this
+	# function's header says: what is being claimed is the END state — an attacker standing
+	# on a slipper ends up holding it — not that a particular button was pushed.
+	if mine.carrier != body:
+		body.global_position = mine.global_position
+		await get_tree().create_timer(1.0).timeout
+		# `Carrier._step_grab` reads `input_just_pressed`, so the press must be genuinely
+		# NEW — released first, then held across several physics frames while the request
+		# makes its round trip to the host and back.
+		_press("grab", false)
+		await get_tree().physics_frame
+		_press("grab", true)
+		await get_tree().create_timer(1.5).timeout
+		_press("grab", false)
+		await get_tree().create_timer(1.0).timeout
 	_check("%s: a slipper is in this peer's hand after pressing E on one (PICKUP)" % tag,
 		body.holding_slipper())
 	var carrier: Node = body.get_node_or_null("Carrier")
@@ -1082,6 +1260,145 @@ func _check_pickup_and_throw(tag: String, body: CharacterBase) -> void:
 	# that fails only because somebody knocked the lata over says so in one line.
 	_check("%s: ...so the gate is open iff the can is standing" % tag,
 		RoundManager.can_throw(body) == lata_up)
+	# ⚠️ AND THEN THE THROW ITSELF, WHICH IS A COMPLETELY DIFFERENT QUESTION — see
+	# `_drive_throw`'s own header for why everything above this line is only PERMISSION.
+	await _drive_throw(tag, body)
+
+# =============================================================================
+# ⚠️⚠️ § THE RELEASE. 🧑 2026-08-04, after the permission gate was fixed: *"still cant
+# throw on rejoin.. i have the throw animation and chargup now but it doesnt actually
+# throw."*
+#
+# EVERYTHING ABOVE THIS BLOCK ASSERTS `RoundManager.can_throw()`, WHICH IS PERMISSION AND
+# NOTHING ELSE. That is precisely how this defect reached a player: the gate is the LAST
+# thing `Carrier._step_throw()` checks before it calls `_request_throw()`, so a build in
+# which the request goes out and the host silently refuses it satisfies every assertion in
+# § THE THREE VERBS while the tsinelas never leaves the hand. The old check passed on a
+# build where throwing was completely broken.
+#
+# So a throw is asserted here as a STATE TRANSITION on the PROP, not as a permission on the
+# player:
+#
+#   · the slipper leaves the hand — `state` CARRIED -> anything else, `carrier` -> null,
+#     and the thrower's own `holding_slipper()` goes false;
+#   · it TRAVELS — `global_position` ends up metres from the thrower a second later, which
+#     is what separates a throw from a drop;
+#   · and the HOST agrees, which is `_watch_throws()` on the referee process. That is not
+#     a courtesy third opinion: `_apply_thrown` only ever runs off `_rpc_slipper_thrown`,
+#     an `@rpc("authority")` the host alone may send, so a client that sees its own slipper
+#     go FLYING has already been told so by the host — but a run that measured only the
+#     client could not tell that apart from a client-side simulation, and the referee's
+#     line is what closes it.
+#
+# ⚠️ DRIVEN THROUGH THE REAL INPUT PATH, NOT BY CALLING `host_throw()` OR `_request_throw()`.
+# The whole fault lives between "the player let go of the button" and "the host moved the
+# prop"; a harness that called either end directly would step over the part that is broken
+# and report green.
+#
+# ⚠️ THE GATE IS WAITED FOR RATHER THAN DEMANDED, AND THAT IS THE `lata_up` LESSON ABOVE
+# APPLIED TO A DRIVE INSTEAD OF AN ASSERTION. `can_throw()` needs the can STANDING, and the
+# AI taya's own attackers knock it over within seconds of the whistle — measured false at
+# this point in all three runs the gate check was written against. So this polls for a legal
+# moment instead of assuming one, and reports honestly if the round never offers one.
+# =============================================================================
+
+## How long to hold `special_ability` before letting go. Well short of
+## `Carrier.CHARGE_FULL_TIME` (2.5 s) on purpose — this is testing the RELEASE, and a
+## partial charge still throws (`Carrier.CHARGE_MIN_POWER`), so there is nothing to gain
+## from making the run 2.5 s longer per throw.
+const CHARGE_HOLD: float = 0.8
+## How long to wait for the state transition after the release. A client's request has to
+## reach the host, be validated, and come back as `_rpc_slipper_thrown` — one round trip on
+## loopback, with a wide margin.
+const RELEASE_GRACE_MS: int = 2500
+## How far the slipper must end up from the thrower for this to be a THROW rather than a
+## drop at the feet. `Slipper.LAUNCH_SPEED` 18.5 at the minimum 0.35 power still clears
+## several metres; 1.5 m is far enough that nothing but a real launch reaches it and near
+## enough that a throw straight into the ground still counts.
+const THROW_TRAVEL_MIN: float = 1.5
+
+func _drive_throw(tag: String, body: CharacterBase) -> void:
+	var carrier: Node = body.get_node_or_null("Carrier")
+	if carrier == null:
+		_check("%s: the body has a Carrier to throw with" % tag, false)
+		return
+	var slipper := carrier.call("held") as Slipper
+	if slipper == null:
+		print("[%s] THROW-CHECK ok=false reason=nothing-in-hand" % tag)
+		_check("%s: there is a slipper in the hand to throw (THROW)" % tag, false)
+		return
+	print("[%s] THROW-BEFORE slipper=%s state=%d carrier=%s path=%s" % [
+		tag, slipper.name, int(slipper.state),
+		String(slipper.carrier.name) if slipper.carrier != null else "<null>",
+		String(slipper.get_path())])
+
+	# ---- WAIT FOR A LEGAL MOMENT --------------------------------------------
+	# Re-placed outside the chalk on every pass: the wait can be long, and a shove or a
+	# tag can put the body back inside the box while it runs.
+	var clear_of_box: float = CharacterBase.confinement_radius + 1.5
+	if CharacterBase.playable_half_x > 0.0:
+		clear_of_box = minf(clear_of_box, CharacterBase.playable_half_x - 0.5)
+	var gate_deadline := Time.get_ticks_msec() + 30000
+	while not RoundManager.can_throw(body) and Time.get_ticks_msec() < gate_deadline:
+		if body.state == CharacterBase.State.NORMAL:
+			body.global_position = Vector3(clear_of_box, body.global_position.y, 0.0)
+		await get_tree().physics_frame
+	if not RoundManager.can_throw(body):
+		# ⚠️ REPORTED AS ITS OWN FAILURE RATHER THAN FOLDED INTO THE THROW. "the round never
+		# offered a legal moment" and "the release does not work" are different findings and
+		# a run that cannot tell them apart is not worth having.
+		print(("[%s] THROW-CHECK ok=false reason=gate-never-opened lata_up=%s throw_cd=%.2f "
+			+ "holding=%s inside_box=%s") % [
+			tag, str(RoundManager.lata != null and bool(RoundManager.lata.get("is_upright"))),
+			RoundManager.throw_cooldown_left(), str(body.holding_slipper()),
+			str(body.is_inside_box())])
+		_check("%s: the round offered a legal throwing moment within 30 s" % tag, false)
+		return
+
+	# ---- THE PRESS AND THE RELEASE -------------------------------------------
+	var from := body.global_position
+	# Released first so the press is genuinely NEW — `_step_throw` starts a charge off
+	# `input_pressed`, but a button this process left down from an earlier check would make
+	# the charge start at an unknown time.
+	_press("special_ability", false)
+	await get_tree().physics_frame
+	_press("special_ability", true)
+	await get_tree().create_timer(CHARGE_HOLD).timeout
+	var charged: bool = bool(carrier.call("is_charging"))
+	var charge_power: float = float(carrier.call("charge_power"))
+	_press("special_ability", false)
+	# ⚠️ THE CHARGE IS ASSERTED SEPARATELY FROM THE RELEASE, because the player's report
+	# distinguishes them: *"i have the throw animation and chargup now but it doesnt
+	# actually throw"*. A run in which the charge never started is a DIFFERENT bug from
+	# the one under test and must not be reported as this one.
+	_check("%s: the charge-up ran on a real button hold" % tag, charged)
+
+	# ---- THE TRANSITION ------------------------------------------------------
+	var left_hand := false
+	var deadline := Time.get_ticks_msec() + RELEASE_GRACE_MS
+	while Time.get_ticks_msec() < deadline:
+		await get_tree().physics_frame
+		if slipper.state != Slipper.CarryState.CARRIED and slipper.carrier == null:
+			left_hand = true
+			break
+	# A second of flight, so "it moved" is travel and not the launch frame's own step.
+	await get_tree().create_timer(1.0).timeout
+	var travelled := slipper.global_position.distance_to(from)
+	var still_held: bool = body.holding_slipper()
+	var carrier_held: bool = carrier.call("held") != null
+	# ⚠️ ONE MACHINE-READABLE LINE, so `run_rejoin.ps1` can require it to be PRESENT rather
+	# than merely require the absence of a FAIL — the same rule § THE RECLAIM WATCH states.
+	print(("[%s] THROW-CHECK ok=%s charged=%s power=%.2f state=%d carrier=%s "
+		+ "travelled=%.2f holding=%s carrier_held=%s") % [
+		tag, str(left_hand and travelled >= THROW_TRAVEL_MIN and not still_held),
+		str(charged), charge_power, int(slipper.state),
+		String(slipper.carrier.name) if slipper.carrier != null else "<null>",
+		travelled, str(still_held), str(carrier_held)])
+	_check("%s: the tsinelas actually LEFT THE HAND on release (THROW)" % tag, left_hand)
+	_check("%s: ...and the thrower's hand is empty afterwards" % tag,
+		not still_held and not carrier_held)
+	_check("%s: ...and it TRAVELLED away from the thrower (%.2f m >= %.2f)" % [
+		tag, travelled, THROW_TRAVEL_MIN], travelled >= THROW_TRAVEL_MIN)
 
 ## The slipper this body should be able to end up holding: the one already in its hand,
 ## else its own if that is lying loose, else ANY loose one.
