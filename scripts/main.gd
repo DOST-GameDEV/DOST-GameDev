@@ -896,6 +896,126 @@ func _dress_spectated_units() -> void:
 	_refresh_ai_prop_picks()
 	_refresh_seat_prop_picks()
 
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ § THE WAITING ROOM INSIDE A RUNNING MATCH — THIS PEER'S HALF.
+##
+## `NetworkManager`'s § MID-MATCH ARRIVALS decides, host-side, that a newcomer waits as a
+## spectator until the next role rotation. Everything below is what that ruling looks like
+## on the peer it is about.
+##
+## ⚠️ IT REUSES THE SPECTATOR THAT ALREADY EXISTS RATHER THAN ADDING A SECOND WATCHING MODE.
+## A waiting newcomer and a person who came to film get the identical camera, the identical
+## stripped HUD and the identical `is_spectator()` answer host-side — the ONLY difference is
+## that one of them is in `waiting_seat_tokens` and will be promoted. One mode, one set of
+## bugs.
+## ---------------------------------------------------------------------------
+
+## The host has ruled on whether this peer is watching. See
+## `NetworkManager.provisional_spectator_changed`.
+func _on_provisional_spectator_changed(spectating: bool) -> void:
+	if spectating:
+		_enter_spectator_mode()
+	else:
+		_exit_spectator_mode()
+
+## ---------------------------------------------------------------------------
+## The promotion's client half: stop watching, one beat before the reclaimed body's own
+## camera rig is made current by `_apply_reclaim` -> `_refresh_rig_ownership`.
+##
+## ⚠️ THE SPECTATOR CAMERA MUST BE FREED, NOT MERELY IGNORED. `SpectatorCamera` makes itself
+## `current` and drives itself from `_input`; leaving it in the tree means two cameras both
+## believing they are the view, and which one wins is decided by whichever called
+## `make_current()` last — i.e. by packet ordering.
+##
+## ⚠️ A NO-OP FOR A PEER THAT NEVER WATCHED, which is most of them: the host broadcasts
+## nothing here, but `seat_provisional_spectator` sends `false` to a peer that may already
+## have exited (the ruling is idempotent by design), and a solo/local spectator never had a
+## provisional ruling at all.
+## ---------------------------------------------------------------------------
+func _exit_spectator_mode() -> void:
+	if _spectator == null or not is_instance_valid(_spectator):
+		return
+	_spectator.queue_free()
+	_spectator = null
+	hud.exit_spectator_mode()
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ HOST-ONLY. HOW MANY SEATS A WAITING NEWCOMER COULD BE PROMOTED INTO — and the ONLY
+## definition of "free seat" in the project. `NetworkManager.free_seat_count()` calls this
+## by name off `current_scene`; see its own doc for why the number is pulled from here
+## rather than cached over there.
+##
+## A seat is free when BOTH are true:
+##
+##   NO TOKEN HAS EVER CLAIMED IT (`_seat_is_taken`, i.e. `_token_join_index`). ⚠️⚠️ THIS IS
+##   THE HALF THAT PROTECTS A RETURNING PLAYER. A human who dropped mid-round has their body
+##   handed to a bot (`_rpc_convert_to_ai`) — so "a bot is driving it" is true of their chair
+##   too, and counting it would let a newcomer be promoted into the exact seat B-65's rejoin
+##   exists to give back. The token map is never erased on disconnect, precisely so this
+##   question has an answer.
+##
+##   AND A BOT IS ACTUALLY DRIVING IT. `is_bot` rather than "no peer owns it": the seat has
+##   to contain a body a promotion can RECLAIM, because promotion is
+##   `_spawn_player` -> `_rpc_reclaim_character`, the same path a rejoin takes. A slot with
+##   no character in it at all (there should be none after
+##   `_fill_empty_slots_with_placeholders`, but this must not assume it) is not something to
+##   promise anybody.
+## ---------------------------------------------------------------------------
+func free_seat_count() -> int:
+	var free := 0
+	for index in range(NetworkManager.MAX_PLAYERS):
+		if _seat_is_taken(index):
+			continue
+		var seat_body: CharacterBase = _index_to_character.get(index)
+		if seat_body == null or not is_instance_valid(seat_body):
+			continue
+		if seat_body.is_bot:
+			free += 1
+	return free
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ HOST-ONLY. THE ROLE ROTATION IS WHERE A WAITING NEWCOMER GETS ITS SEAT.
+##
+## 🧑 2026-08-04: *"we could make them spectators until the next role rotation."*
+##
+## ⚠️ CALLED FROM `_on_match_round_started` **BEFORE** `_reset_world()`, AND THE ORDER IS THE
+## ANSWER TO "does the promoted player wear the bot's face". `_apply_reclaim` ->
+## `_apply_reclaimed_picks` writes the human's real `character_index` onto the body; the very
+## next thing `_reset_world` does is call `reset_for_new_round()` on every character, which
+## re-runs `CharacterVisual.apply()` — so the repaint that a mid-round reclaim never gets is
+## simply the round reset this promotion is deliberately standing in front of.
+##
+## ⚠️⚠️ AND THAT IS WHY PROMOTION IS PINNED TO THE ROTATION RATHER THAN DONE ON ARRIVAL. It
+## is NOT the withdrawn repaint fix at `character_base.gd:513` (`CharacterVisual.apply()`
+## freeing the carried tsinelas) and must not become it: at this instant every hand is empty
+## by construction — `_reset_slippers()` runs inside `_reset_world` and `_equip_owned_slippers`
+## is deferred to the frame AFTER it — so the repaint that happens here cannot free a prop
+## anybody is holding. A repaint driven from the reclaim itself, mid-round, could.
+##
+## ⚠️ A PROMOTED PEER IS ALSO WHERE IT SHOULD BE STANDING. `_reset_world` places every seat
+## at its role mark a beat later, so a promotion cannot drop somebody inside the chalk box —
+## which is what an arrival-time reclaim does, because it inherits wherever the bot happened
+## to be.
+##
+## ⚠️ `_spawned_peer_ids` HAS TO BE UN-MARKED FIRST. `_spawn_player` writes that key for a
+## spectator too (the dictionary means "this peer has been dealt with", not "has a body"), so
+## without the erase the promotion would return at its very first line.
+## ---------------------------------------------------------------------------
+func _promote_waiting_spectators() -> void:
+	if not NetworkManager.is_host():
+		return
+	if NetworkManager.waiting_seat_tokens.is_empty():
+		return
+	var seats := free_seat_count()
+	for token in NetworkManager.take_promotable_tokens(seats):
+		var peer_id := NetworkManager.peer_id_for_token(String(token))
+		if peer_id == 0:
+			continue
+		NetworkManager.seat_provisional_spectator(peer_id)
+		_spawned_peer_ids.erase(peer_id)
+		_spawn_player(peer_id)
+		print("[main] promoted waiting spectator peer %d into a seat" % [peer_id])
+
 func _enter_spectator_mode() -> void:
 	if _spectator != null and is_instance_valid(_spectator):
 		return
@@ -1132,8 +1252,18 @@ func _start_joining(address: String) -> void:
 	# local — the host decides who gets a body and the client only ever receives the
 	# result. `GameLaunch.spectator` is this peer's own choice, known locally, and this is
 	# the first moment on the client where the HUD exists to be stripped.
-	if GameLaunch.spectator:
+	# ⚠️ TWO WAYS TO BE WATCHING, AND ONLY ONE OF THEM IS THIS PLAYER'S OWN CHOICE.
+	# `GameLaunch.spectator` is the SPECTATE toggle, a preference. `provisional_spectator`
+	# is the host's ruling on a newcomer that knocked mid-match (§ THE WAITING ROOM INSIDE A
+	# RUNNING MATCH) — it arrives over the wire, survives the reroute that follows it, and is
+	# read here because the reroute means this scene loads AFTER the ruling was made.
+	if GameLaunch.spectator or NetworkManager.provisional_spectator:
 		_enter_spectator_mode()
+	# ⚠️ CONNECTED BEFORE `join_game()` BELOW, WHICH IS THE ONLY ORDERING THAT WORKS. The host
+	# re-sends the ruling on every identify (it is idempotent on purpose), so the promotion —
+	# and, for a peer that reached `Main.tscn` without a reroute, the ruling itself — lands as
+	# an RPC on a connection this function is about to open.
+	NetworkManager.provisional_spectator_changed.connect(_on_provisional_spectator_changed)
 	NetworkManager.player_connected.connect(_on_player_connected)
 	NetworkManager.player_disconnected.connect(_on_player_disconnected)
 	# Q-1/B-62: only a client can lose its server or fail to reach one — a host
@@ -2404,6 +2534,12 @@ func _on_match_round_started(_round_number: int, defender_slot: int) -> void:
 	# dedicated referee that is refereeing again must drop the window it armed at the last
 	# whistle, or it would close a room in the middle of the match that vote just started.
 	_disarm_post_match_reset()
+	# ⚠️ BEFORE `_reset_world`, AND THE ORDER IS LOAD-BEARING — see this function's own doc.
+	# Host-only inside; every other peer no-ops. A rematch reaches here too, which is what
+	# gives a newcomer who knocked during the result screen its seat: `match_result.gd`
+	# leaves `match_in_progress` true for the whole recap, so the door never closes, it only
+	# stops having rotations to open on until somebody votes REMATCH.
+	_promote_waiting_spectators()
 	_reset_world(defender_slot)
 	RoundManager.start_round()
 	# ⚠⚠ THE SLIPPER GOES INTO THE HAND HERE, NOT IN `_reset_slippers()`.
