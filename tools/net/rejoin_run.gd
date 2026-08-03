@@ -116,6 +116,24 @@ var _expect_character: String = ""
 var _expect_can: String = ""
 var _expect_slipper: String = ""
 
+# =============================================================================
+# ⚠️⚠️ § THE NAME. 🧑: a player who joins (or rejoins) a match ALREADY IN PROGRESS has a
+# blank name on every peer, and their nameplate and scoreboard row fall back to "P2".
+#
+# ⚠️ THE EXPECTED NAME IS PASSED IN RATHER THAN DERIVED, ON ALL THREE PROCESSES. The client
+# sets `SettingsManager.player_name` from its own `--role`, so a check that compared the body
+# against `SettingsManager.player_name` on the client's own machine would be comparing one
+# derivation of `--role` with another and would pass on a build that never wrote the property
+# at all. `--expect-name=` comes off the command line in `run_rejoin.ps1`, which is outside
+# every mechanism under test — and it is the SAME string on the referee and the anchor, which
+# is what makes "the name is right on the other peers" a statement those peers can make.
+var _expect_name: String = ""
+
+## The anchor's own name, which is how the two OBSERVER processes tell the anchor's body apart
+## from the joiner's without consulting the property under test on the joiner (see
+## `_joiner_body()`). Uppercase because `_ready()` writes `_role.to_upper()`.
+const ANCHOR_NAME: String = "ANCHOR"
+
 ## The one body the whole run is about, found by the NAME its process plays under rather
 ## than by seat or peer id.
 ##
@@ -150,6 +168,8 @@ func _ready() -> void:
 			_expect_can = a.substr(len("--expect-can="))
 		elif a.begins_with("--expect-slipper="):
 			_expect_slipper = a.substr(len("--expect-slipper="))
+		elif a.begins_with("--expect-name="):
+			_expect_name = a.substr(len("--expect-name="))
 	# A distinguishable name per role, so a body in the report can be read back to the
 	# process that owns it without counting peer ids.
 	SettingsManager.player_name = _role.to_upper()
@@ -216,6 +236,7 @@ func _process(_delta: float) -> void:
 	# safer than running it on a clock.
 	if _role == "referee" or _role == "anchor":
 		_watch_dropper_seat(_role)
+		_watch_joiner_name(_role)
 
 func _watch_throws() -> void:
 	var scene: Node = get_tree().current_scene
@@ -631,6 +652,12 @@ func _dropper() -> void:
 	# invoked directly.
 	var after_body := _body_named(DROPPER_NAME)
 	_assert_dropper_picks("dropper AFTER")
+	# ⚠️ THE NAME IS ASSERTED SEPARATELY FROM THE FIGHTER, on the same body and at the same
+	# moment. A rejoiner's body kept its name across the AI window on purpose, so this half is
+	# expected to have been green before the fix as well as after it — and that is the point:
+	# the fix must not be a trade that repairs the latecomer by breaking the rejoiner. This is
+	# the line that would catch that.
+	_assert_own_name("dropper AFTER")
 	_check("AFTER: it is the SAME fighter they dropped out on",
 		after_body != null and before_index >= 0
 			and after_body.character_index == before_index)
@@ -687,6 +714,11 @@ func _latecomer() -> void:
 		print("[latecomer] %s" % [_pick_line(body)])
 		_check("a mid-match newcomer wears the fighter they picked (%s)"
 			% _roster_name(want), body != null and body.character_index == want)
+	# ⚠️ AND THE NAME, WHICH IS THE OTHER THING THAT ONLY EVER ARRIVED IN THE SPAWN PACKET.
+	# A first-time mid-match joiner takes over a placeholder built from `picks_for(-1 - index)`
+	# — a sentinel peer with no name — so before the fix this read `player_name=''` here and on
+	# both other processes, and `display_name()` fell through to the seat label "P2".
+	_assert_own_name("latecomer")
 	await _check_abilities("LATECOMER")
 	_done("latecomer")
 
@@ -960,6 +992,133 @@ func _body_named(who: String) -> CharacterBase:
 		if body != null and body.player_name == who:
 			return body
 	return null
+
+# =============================================================================
+# ⚠️⚠️ § THE NAME WATCH, AND WHY IT MAY NOT USE `_body_named()`.
+#
+# Every other check in this file finds the joiner's body by `player_name == "DROPPER"` — see
+# DROPPER_NAME, which says so and says why. That handle is USELESS HERE and worse than
+# useless: the name is the thing under test, so a check that located the body by its name and
+# then asserted its name would be a tautology that passes on any build, and in the LATECOMER
+# scenario it cannot even find a body (the measurement is `player_name=''`).
+#
+# So the joiner is identified by two facts that have nothing to do with the property being
+# measured:
+#
+#   · a human is driving it — `is_bot == false`, which `_rpc_reclaim_character` writes on
+#     EVERY peer (`call_local`), so all three processes agree without asking the synchroniser;
+#   · and it is not THIS process's own body, nor the anchor's.
+#
+# On the anchor its own body is excluded by ownership (`_my_body()`), which is a fact about
+# this machine and cannot be wrong. On the referee — a dedicated server that owns no seat, and
+# whose four AI bodies all fail the `is_bot` test — the only other human is the anchor, whose
+# name IS reliable: the anchor was seated in the LOBBY, so its body came through the ordinary
+# `MultiplayerSpawner` path that carries the name in the spawn packet. Confirmed on the
+# baseline run of this fix, in the same log line that recorded the defect:
+#
+#     [referee t=44s] PICK 438837950 slot=0 player_name='ANCHOR' ...
+#     [referee t=44s] PICK 1927296562 slot=1 player_name=''      ...   <- the latecomer
+#
+# ⚠️ NOT IDENTIFIED BY SEAT, although slot 1 would have worked on every run so far. Which seat
+# a joiner lands in is `main.gd::_first_free_seat()`'s business and is exactly the kind of rule
+# this harness must not quietly assume — see the file's own rule about asserting a game rule
+# against a state the test created.
+# =============================================================================
+
+## The mid-match joiner's body as seen from a process that is NOT the joiner: the one
+## human-driven body that is neither this machine's own nor the anchor's. Null while the seat
+## is bot-held (the window between the drop and the reclaim) and null before the joiner
+## arrives at all — both are real, expected states and neither is a failure by itself.
+func _joiner_body() -> CharacterBase:
+	var mine: CharacterBase = _my_body()
+	for node in _bodies():
+		var body := node as CharacterBase
+		if body == null or body == mine or body.is_bot:
+			continue
+		if body.player_name == ANCHOR_NAME:
+			continue
+		return body
+	return null
+
+## True while a foreign human body is present, so the check below can fire on the RISING EDGE
+## of one appearing rather than on a clock.
+var _joiner_present: bool = false
+## When that presence began, in ms. `_NAME_SETTLE_MS` after it the name is asserted — once per
+## presence, by pushing this far into the future.
+var _joiner_seen_ms: int = 0
+## How many NAME-CHECK lines this process has printed. Capped so the rejoin scenario's two
+## presences (before the drop, and again after the reclaim) each produce exactly one.
+var _name_checks: int = 0
+
+## ⚠️ THE VALUE IS GIVEN TIME TO ARRIVE BEFORE IT IS JUDGED, AND THAT IS NOT SLACK FOR A
+## BROKEN BUILD. `player_name` is `replication_mode = 2` (ON_CHANGE) on `CharacterBase.tscn`:
+## the joiner writes it on ITS machine at the reclaim and the synchroniser carries it outward
+## on a later frame, so an observer that measured on the same frame `is_bot` went false would
+## be measuring the network's latency rather than the fix. Two seconds is ~120 frames — orders
+## of magnitude more than one ON_CHANGE update needs on loopback, and far short of anything
+## that could hide a value that is never coming.
+const NAME_SETTLE_MS: int = 2000
+const NAME_CHECKS_MAX: int = 2
+
+func _watch_joiner_name(tag: String) -> void:
+	if _expect_name == "":
+		return
+	var body := _joiner_body()
+	if body == null:
+		# The seat went back to a bot (the drop) or the joiner has not arrived yet. Re-arm:
+		# the rejoin scenario legitimately produces a SECOND presence, and it is the
+		# interesting one.
+		_joiner_present = false
+		return
+	if not _joiner_present:
+		_joiner_present = true
+		_joiner_seen_ms = Time.get_ticks_msec()
+		return
+	if _name_checks >= NAME_CHECKS_MAX:
+		return
+	if Time.get_ticks_msec() - _joiner_seen_ms < NAME_SETTLE_MS:
+		return
+	# One shot per presence. Pushed an hour out rather than latched with a bool, so the
+	# re-arm above is the only thing that can make this fire again.
+	_joiner_seen_ms = Time.get_ticks_msec() + 3_600_000
+	_name_checks += 1
+	_assert_joiner_name("%s #%d" % [tag, _name_checks], body)
+
+## The verdict, as one machine-readable line so `run_rejoin.ps1` can require it to be PRESENT
+## rather than merely require the absence of a FAIL — the rule § THE RECLAIM WATCH states.
+func _assert_joiner_name(tag: String, body: CharacterBase) -> void:
+	if body == null:
+		print("[%s] NAME-CHECK ok=false reason=no-joiner-body expect='%s'" % [tag, _expect_name])
+		_check("%s: there is a joiner body to read a name off" % tag, false)
+		return
+	var got := body.player_name
+	var shown := body.display_name()
+	var ok := got == _expect_name
+	# ⚠️ `display_name()` IS PRINTED BESIDE THE RAW PROPERTY, because that is what a player
+	# actually reads on the 3D nameplate and the scoreboard row, and the two can disagree: a
+	# seat whose `is_bot` is still true would show a roster name over a correct `player_name`.
+	# Asserted as well as printed — an empty name shows as the bare seat label "P2", which is
+	# the exact symptom in the report.
+	print("[%s] NAME-CHECK body=%s slot=%d got='%s' expect='%s' display='%s' is_bot=%s ok=%s" % [
+		tag, body.name, body.player_slot, got, _expect_name, shown, str(body.is_bot), str(ok)])
+	# ⚠️ THE MEASURED VALUE COMES FIRST IN THE MESSAGE, so the line reads correctly whether it
+	# is prefixed with PASS or with FAIL. The first version said "is 'X', not 'Y'" and printed
+	# "PASS  the joiner's name is 'DROPPER', not 'DROPPER'" on a healthy run.
+	_check("%s: the joiner's name reads '%s' on this peer (want '%s')" % [
+		tag, got, _expect_name], ok)
+	_check("%s: ...so the label drawn over them is not the bare seat number" % tag,
+		shown != "P%d" % [body.player_slot + 1])
+
+## The same verdict from the JOINER'S OWN machine, where the body is found by ownership
+## instead. ⚠️ NOT SUFFICIENT ON ITS OWN, WHICH IS WHY IT IS ONLY ONE OF THREE. The fix writes
+## this property on the peer that owns the body, so this process is the one place it is
+## guaranteed to look right whether or not it ever reached the wire — "a name that is only
+## right locally is the bug half-fixed". The referee's and the anchor's NAME-CHECK lines are
+## what make this one mean anything.
+func _assert_own_name(tag: String) -> void:
+	if _expect_name == "":
+		return
+	_assert_joiner_name(tag, _my_body())
 
 # =============================================================================
 # ⚠️⚠️ § THE RECLAIM WATCH, AND WHY IT IS EVENT-DRIVEN ON THREE PROCESSES.
@@ -1316,6 +1475,21 @@ const RELEASE_GRACE_MS: int = 2500
 ## several metres; 1.5 m is far enough that nothing but a real launch reaches it and near
 ## enough that a throw straight into the ground still counts.
 const THROW_TRAVEL_MIN: float = 1.5
+## How many times to press before calling the charge broken. Three because the two things
+## that eat a press — the taya's can being down, and `input_parked` during the ready
+## countdown — both clear on their own within a second or two.
+const CHARGE_ATTEMPTS: int = 3
+
+## Everything that has to be true for a press to be able to START a charge, which is strictly
+## more than `can_throw()`. `Carrier._step_throw()` reads the button through
+## `CharacterBase.input_pressed()`, which returns false outright while `input_parked` is set
+## (the ready countdown, the pause menu), and `_step_throw` itself refuses while the throw lock
+## is up. Waiting on `can_throw()` alone is what let the run press into a body that could not
+## hear it and report `charged=false power=0.00` on a healthy build.
+func _throw_moment_is_legal(body: CharacterBase) -> bool:
+	if body == null or not is_instance_valid(body):
+		return false
+	return RoundManager.can_throw(body) and body.can_act() and not body.input_parked
 
 func _drive_throw(tag: String, body: CharacterBase) -> void:
 	var carrier: Node = body.get_node_or_null("Carrier")
@@ -1339,7 +1513,7 @@ func _drive_throw(tag: String, body: CharacterBase) -> void:
 	if CharacterBase.playable_half_x > 0.0:
 		clear_of_box = minf(clear_of_box, CharacterBase.playable_half_x - 0.5)
 	var gate_deadline := Time.get_ticks_msec() + 30000
-	while not RoundManager.can_throw(body) and Time.get_ticks_msec() < gate_deadline:
+	while not _throw_moment_is_legal(body) and Time.get_ticks_msec() < gate_deadline:
 		if body.state == CharacterBase.State.NORMAL:
 			body.global_position = Vector3(clear_of_box, body.global_position.y, 0.0)
 		await get_tree().physics_frame
@@ -1357,15 +1531,57 @@ func _drive_throw(tag: String, body: CharacterBase) -> void:
 
 	# ---- THE PRESS AND THE RELEASE -------------------------------------------
 	var from := body.global_position
-	# Released first so the press is genuinely NEW — `_step_throw` starts a charge off
-	# `input_pressed`, but a button this process left down from an earlier check would make
-	# the charge start at an unknown time.
-	_press("special_ability", false)
-	await get_tree().physics_frame
-	_press("special_ability", true)
-	await get_tree().create_timer(CHARGE_HOLD).timeout
-	var charged: bool = bool(carrier.call("is_charging"))
-	var charge_power: float = float(carrier.call("charge_power"))
+	var charged := false
+	var charge_power := 0.0
+	# ⚠️⚠️ THE PRESS IS RETRIED, AND THAT IS THE KNOWN FLAKE IN THIS HARNESS RATHER THAN A
+	# DEFECT IN THE GAME. The pre-drop control intermittently reported
+	# `charged=false power=0.00` — the run pressing at a moment the body could not accept.
+	# `Carrier._step_throw()` refuses to START a charge unless `can_throw()` holds AND
+	# `_throw_lock_left` is clear, and it CANCELS one mid-hold the instant `can_throw()` stops
+	# holding — and the can is knocked over by the AI attackers several times a round, so a
+	# 0.8 s hold that begins one frame before that is lost through no fault of the build.
+	# `CharacterBase.input_pressed()` is deaf while `input_parked` is set as well, which is
+	# true through the ready countdown the run presses into.
+	#
+	# This is the treatment § THE RELEASE already gives the GATE — *"polls for a legal moment
+	# instead of assuming one, and reports honestly if the round never offers one"* — applied
+	# to the press itself: re-wait the gate, press again, and only report failure once the
+	# round has genuinely refused three separate attempts. The assertion below is unchanged, so
+	# a build where the charge really is broken still fails; it just no longer fails on a build
+	# where the taya's can happened to be lying down for a second.
+	for attempt in range(CHARGE_ATTEMPTS):
+		# Re-wait rather than assume: an earlier attempt may have spent seconds discovering
+		# the can was down, and the position has to be re-established each pass for the same
+		# reason the gate wait re-establishes it.
+		var retry_deadline := Time.get_ticks_msec() + 10000
+		while not _throw_moment_is_legal(body) and Time.get_ticks_msec() < retry_deadline:
+			if body.state == CharacterBase.State.NORMAL:
+				body.global_position = Vector3(clear_of_box, body.global_position.y, 0.0)
+			await get_tree().physics_frame
+		from = body.global_position
+		# Released first so the press is genuinely NEW — `_step_throw` starts a charge off
+		# `input_pressed`, but a button this process left down from an earlier check would make
+		# the charge start at an unknown time.
+		_press("special_ability", false)
+		await get_tree().physics_frame
+		_press("special_ability", true)
+		await get_tree().create_timer(CHARGE_HOLD).timeout
+		charged = bool(carrier.call("is_charging"))
+		charge_power = float(carrier.call("charge_power"))
+		if charged:
+			break
+		# ⚠️ RELEASED BEFORE LOOPING. A button left down is exactly the "charge started at an
+		# unknown time" trap the line above guards against, and `special_ability` shares MOUSE
+		# BUTTON 1 with `grab` — leaving it held would also be pressing somebody else's verb.
+		_press("special_ability", false)
+		print("[%s] THROW-RETRY attempt=%d charged=false can_throw=%s parked=%s state=%s cd=%.2f" % [
+			tag, attempt + 1, str(RoundManager.can_throw(body)), str(body.input_parked),
+			str(body.state), RoundManager.throw_cooldown_left()])
+		await get_tree().create_timer(0.5).timeout
+		# The hand can be emptied by a shove or a tag while this waits, and charging with
+		# nothing in it is not the thing under test.
+		if carrier.call("held") == null:
+			break
 	_press("special_ability", false)
 	# ⚠️ THE CHARGE IS ASSERTED SEPARATELY FROM THE RELEASE, because the player's report
 	# distinguishes them: *"i have the throw animation and chargup now but it doesnt
