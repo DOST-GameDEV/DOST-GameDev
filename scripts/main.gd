@@ -2175,8 +2175,9 @@ func _sync_state_to_late_joiner(new_round_number: int, new_defender_slot: int,
 ## "mine" from "the host's machine happens to also simulate this one."
 func get_local_character() -> CharacterBase:
 	for peer_id in _spawned_characters:
-		var character: CharacterBase = _spawned_characters[peer_id]
-		if is_instance_valid(character) and character.is_multiplayer_authority() and character.ai_controller == null:
+		var character = _spawned_characters[peer_id]
+		if character is CharacterBase and is_instance_valid(character) \
+				and character.is_multiplayer_authority() and character.ai_controller == null:
 			return character
 	return null
 
