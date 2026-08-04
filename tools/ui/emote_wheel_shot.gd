@@ -30,6 +30,18 @@ func _ready() -> void:
 		push_error("emote_wheel_shot: no EmoteWheel under Main — is it in HUD.tscn?")
 		get_tree().quit(1)
 		return
+	# ⚠️ THE OVERFLOW CHECK RUNS BEFORE ANY PICTURE IS TAKEN. A screenshot shows one
+	# slice in one selection state; this walks all of them, selected and resting.
+	var bad: Array = wheel.overflow_report()
+	if bad.is_empty():
+		print("[wheel] LABEL FIT: all %d labels fit, selected and resting"
+			% wheel.EMOTES.size())
+	else:
+		for line in bad:
+			print("[wheel] %s" % line)
+	for line in wheel.bad_detail:
+		print("[wheel]%s" % line)
+
 	wheel.open()
 	await _shot("wheel_neutral")
 

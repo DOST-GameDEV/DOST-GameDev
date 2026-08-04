@@ -75,6 +75,49 @@ func _ready() -> void:
 	await get_tree().create_timer(3.0).timeout
 	_check(me.is_emoting(), "still emoting after 3 s — the clip loops")
 	_check(rig.is_emote_view(), "and the camera is still in the emote view")
+	_check(visual._animator.is_playing(), "a LOOPING emote is still playing at 3 s")
+	me.stop_emote()
+	await get_tree().process_frame
+
+	# 2c — ⚠️ AND A HOLDING EMOTE HOLDS. 🧑: *"play dead looks hella weird rn im perma
+	# jumping up and down the floor and lying down"* — `die` drops the body, ends,
+	# restarts from standing and drops again, which is a corpse doing burpees. A held
+	# emote must finish ONCE and stay on its last frame: still emoting, but the
+	# AnimationPlayer no longer running.
+	me.play_emote("dead")
+	await get_tree().create_timer(3.0).timeout
+	_check(me.is_emoting(), "PLAY DEAD is still held at 3 s")
+	_check(not visual._animator.is_playing(),
+		"and it is NOT replaying — the body stays on the floor")
+	_check(rig.is_emote_view(), "camera still in the emote view while held")
+	me.stop_emote()
+	await get_tree().process_frame
+	_check(not me.is_emoting() and not rig.is_emote_view(), "and it releases cleanly")
+	me.play_emote(EMOTE)
+	await get_tree().process_frame
+
+	# 2d — ⚠️⚠️ IS THE PLAYER'S OWN BODY ACTUALLY VISIBLE? A pose render showed our
+	# character with a featureless black head while every other player's looked
+	# normal — the first-person self-hide (B-73 drops `head-mesh` to SHADOWS_ONLY so
+	# you are not staring at the inside of your own skull) leaking into the emote
+	# camera. Swinging to third person to watch a headless man is the exact failure
+	# `begin_emote_view` calls `_apply_fpp_self_hide()` to avoid, so this checks the
+	# meshes rather than trusting the call.
+	me.play_emote(EMOTE)
+	await get_tree().process_frame
+	var visual_root: Node = me.get_node_or_null("Visual")
+	var hidden: Array[String] = []
+	if visual_root != null:
+		for node in visual_root.find_children("*", "GeometryInstance3D", true, false):
+			var gi := node as GeometryInstance3D
+			if gi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY:
+				hidden.append(gi.name)
+	_check(hidden.is_empty(), "the whole body is drawn in the emote view%s"
+		% ("" if hidden.is_empty() else " — still hidden: " + ", ".join(hidden)))
+	me.stop_emote()
+	await get_tree().process_frame
+	me.play_emote(EMOTE)
+	await get_tree().process_frame
 
 	# 3 — ⚠️ THE CAMERA IS LOCAL. The OTHER body must not have moved its own view
 	# just because this one danced.

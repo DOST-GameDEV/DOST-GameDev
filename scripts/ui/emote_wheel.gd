@@ -28,29 +28,42 @@ class_name EmoteWheel
 ## an ordered array rather than reading the dictionary's keys because a wheel has a
 ## clockwise order and a Dictionary does not promise one.
 const EMOTES: Array[Dictionary] = [
-	{"id": "yes", "label": "NICE"},
+	{"id": "yes", "label": "NOD"},
 	{"id": "no", "label": "NOPE"},
 	{"id": "sit", "label": "SIT"},
-	{"id": "crouch", "label": "DUCK"},
+	{"id": "crouch", "label": "VICTORY POSE"},
 	{"id": "dead", "label": "PLAY DEAD"},
+	{"id": "tpose", "label": "T-POSE"},
+	{"id": "bow", "label": "BOW"},
 ]
 
 ## How far the stick has to travel from centre before a slice counts as chosen.
 ## Below it, releasing closes the wheel and plays nothing.
 const DEAD_ZONE: float = 40.0
-const RADIUS_OUTER: float = 190.0
-const RADIUS_INNER: float = 72.0
+## ⚠️ SIZED FOR THE LABELS, NOT PICKED BY EYE — 🧑: *"so that it doesnt overflow js
+## make the circle a bit bigger to account for it burh"*. At 190/72 with seven
+## slices, "PLAY DEAD" and "VICTORY POSE" only fitted by wrapping onto two lines;
+## the wedge is wider the further out you go, so growing the wheel buys single-line
+## labels at full size. `overflow_report()` prints the font size and line count each
+## label resolves to, which is how these two numbers were chosen rather than guessed.
+const RADIUS_OUTER: float = 270.0
+const RADIUS_INNER: float = 104.0
 ## How far the highlighted slice pushes out past the others.
-const SELECT_BULGE: float = 12.0
+const SELECT_BULGE: float = 14.0
 ## Where the label sits between the inner and outer radius. Deliberately past the
 ## midpoint — the wedge widens outward, and the label needs the room. See the
 ## ⚠️⚠️ at the fit code in `_draw()`.
 const LABEL_RADIUS_FRACTION: float = 0.62
-## Fraction of the chord a label may occupy. The gap is what stops a horizontal
-## text box clipping the wedge's diagonal edges at its corners.
-const LABEL_FIT_MARGIN: float = 0.80
 const LABEL_FONT_SIZE: int = 20
 const LABEL_FONT_MIN: int = 13
+## Multiplied by the font height to space stacked lines.
+const LABEL_LINE_SPACING: float = 0.92
+## Clearance kept between the label block and the wedge's edges, in pixels. Without
+## it a label that technically fits sits with its letters touching the border.
+const LABEL_PADDING: float = 6.0
+## The angular gap drawn between neighbouring slices, in radians. Used by the fit
+## test too, so a label can never stray into the seam.
+const SLICE_GAP: float = 0.012
 ## Relative-motion pixels are raw mouse counts; this scales them to something that
 ## crosses DEAD_ZONE with a normal flick rather than a shove.
 const STICK_GAIN: float = 0.55
@@ -123,49 +136,45 @@ func _draw() -> void:
 		return
 	var centre := size / 2.0
 	var span := TAU / float(EMOTES.size())
+	var font := get_theme_default_font()
 	for i in EMOTES.size():
 		var chosen := i == _selection
-		# Godot's arc angles run from +X too, so the same -90° rotation applies,
+		# Godot's arc angles run from +X too, so the same -90 degree rotation applies,
 		# and the slice is drawn a hair short of `span` to leave a visible gap.
-		var from := -TAU / 4.0 + span * float(i) + 0.012
-		var to := -TAU / 4.0 + span * float(i + 1) - 0.012
+		var from := -TAU / 4.0 + span * float(i) + SLICE_GAP
+		var to := -TAU / 4.0 + span * float(i + 1) - SLICE_GAP
 		_draw_slice(centre, from, to, chosen)
 		var mid := (from + to) * 0.5
-		# ⚠️⚠️ SEATED OUTWARD AND SHRUNK TO FIT, BECAUSE "PLAY DEAD" RAN OUT OF ITS
-		# OWN SLICE. 🧑: *"it goes out the circle u made"*, with the top-left wedge
-		# circled. A label is a HORIZONTAL box and a wedge is bounded by two RADIAL
-		# edges, so on the diagonal slices the corners of the box cross the boundary
-		# long before the word is as wide as the arc — which is why the top and bottom
-		# slices looked fine and the corners did not.
-		#
-		# Two fixes, together: sit the text further out, where the wedge is widest
-		# (LABEL_RADIUS_FRACTION), and measure it against the chord actually available
-		# there, shrinking the font until it fits. The measure is what stops this
-		# coming back — a longer emote name added later shrinks instead of spilling.
-		var span_radius := RADIUS_OUTER - RADIUS_INNER + (SELECT_BULGE if chosen else 0.0)
-		var label_radius := RADIUS_INNER + span_radius * LABEL_RADIUS_FRACTION
-		var label_at := centre + Vector2(cos(mid), sin(mid)) * label_radius
-		var text := String(EMOTES[i]["label"])
-		var font := get_theme_default_font()
-		# The chord across the wedge at this radius, with a margin for the box corners.
-		var available := 2.0 * label_radius * sin(span * 0.5) * LABEL_FIT_MARGIN
-		var font_size := LABEL_FONT_SIZE
-		while font_size > LABEL_FONT_MIN and font.get_string_size(
-				text, HORIZONTAL_ALIGNMENT_CENTER, -1.0, font_size).x > available:
-			font_size -= 1
-		var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1.0, font_size)
-		var text_at := label_at - text_size / 2.0 + Vector2(0, text_size.y * 0.35)
-		# ⚠️⚠️ THE OUTLINE FLIPS WITH THE FILL, AND NOT DOING THAT MADE THE SELECTED
-		# LABEL UNREADABLE. 🧑: *"it look a bit ugly when i select / i cant see text"*.
-		# Both the text AND its 6 px outline were INK, so on the amber slice the
-		# letterforms were ink drawn on top of an ink blob the same shape — the outline
-		# filled the counters in and swallowed the word. Ink on cream is the same
-		# emboss the wood buttons use, and it only reads if the two are opposites.
-		var ink_on_amber := chosen
-		draw_string_outline(font, text_at, text, HORIZONTAL_ALIGNMENT_CENTER, -1.0,
-			font_size, 5, UiTheme.CREAM if ink_on_amber else UiTheme.INK)
-		draw_string(font, text_at, text, HORIZONTAL_ALIGNMENT_CENTER, -1.0, font_size,
-			UiTheme.INK if ink_on_amber else UiTheme.CREAM)
+		var outer := RADIUS_OUTER + (SELECT_BULGE if chosen else 0.0)
+		var label_radius := RADIUS_INNER + (outer - RADIUS_INNER) * LABEL_RADIUS_FRACTION
+		var offset := Vector2(cos(mid), sin(mid)) * label_radius
+
+		# ⚠️⚠️ EVERY LABEL GOES THROUGH `_resolve_label`, WHICH IS ALSO WHAT
+		# `overflow_report()` CALLS. Two copies of this logic is how a wheel ends up
+		# passing its own fit check and still overflowing on screen.
+		var resolved := _resolve_label(font, String(EMOTES[i]["label"]), offset, mid, span, outer)
+		var lines: Array[String] = resolved["lines"]
+		var font_size: int = resolved["font_size"]
+
+		# ⚠️⚠️ THE OUTLINE FLIPS WITH THE FILL, AND NOT DOING THAT MADE THE
+		# SELECTED LABEL UNREADABLE. 🧑: *"it look a bit ugly when i select / i cant see
+		# text"*. Both the text AND its outline were INK, so on the amber slice the
+		# letterforms were ink drawn over an ink blob of the same shape — the outline
+		# filled the counters in and swallowed the word. Ink on cream is the emboss the
+		# wood buttons use, and it only reads because the two are opposites.
+		var fill: Color = UiTheme.INK if chosen else UiTheme.CREAM
+		var halo: Color = UiTheme.CREAM if chosen else UiTheme.INK
+		var line_h := font.get_height(font_size) * LABEL_LINE_SPACING
+		var block_h := line_h * float(lines.size())
+		for l in lines.size():
+			var text: String = lines[l]
+			var ts := font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1.0, font_size)
+			var at := centre + offset + Vector2(
+				-ts.x / 2.0,
+				-block_h / 2.0 + line_h * (float(l) + 0.5) + ts.y * 0.32)
+			draw_string_outline(font, at, text, HORIZONTAL_ALIGNMENT_CENTER, -1.0,
+				font_size, 5, halo)
+			draw_string(font, at, text, HORIZONTAL_ALIGNMENT_CENTER, -1.0, font_size, fill)
 	# ⚠️ A RIM AROUND THE WHOLE THING. Without it the wheel dissolves into the
 	# street at the outer edge — the slices are translucent by design, so the only
 	# thing giving it an outline is this.
@@ -182,6 +191,128 @@ func _draw() -> void:
 		var knob := centre + _stick.limit_length(RADIUS_OUTER - 14.0)
 		draw_circle(knob, 10.0, Color(UiTheme.INK, 0.9))
 		draw_circle(knob, 7.0, UiTheme.AMBER)
+
+## ⚠⚠ THE ONE PLACE A LABEL'S LAYOUT IS DECIDED — `_draw()` and
+## `overflow_report()` both call this, so the check and the drawing can never
+## disagree. They did briefly, and a fit report that describes different geometry
+## from the thing on screen is worse than no report.
+##
+## ⚠️ ORDER MATTERS: FULL SIZE ON ONE LINE FIRST. The first version split on a
+## space unconditionally, so "PLAY DEAD" and "VICTORY POSE" wrapped to two lines
+## even once the wheel was big enough to hold them whole — the wrap was never a
+## last resort, it was the default. Now each option is tried in order of how much
+## it costs the reader: one line at full size, then two lines at full size, then
+## shrinking, and only then breaking a single long word.
+func _resolve_label(font: Font, label: String, offset: Vector2, mid: float,
+		span: float, outer: float) -> Dictionary:
+	var one: Array[String] = [label]
+	if _label_fits(font, one, LABEL_FONT_SIZE, offset, mid, span, outer):
+		return {"lines": one, "font_size": LABEL_FONT_SIZE}
+	var candidates: Array = [_label_lines(label), _label_lines(label, true)]
+	for lines in candidates:
+		if lines.size() > 1 and _label_fits(font, lines, LABEL_FONT_SIZE, offset, mid, span, outer):
+			return {"lines": lines, "font_size": LABEL_FONT_SIZE}
+	# Nothing fits at full size — shrink, preferring the fewest lines that work.
+	for lines in ([one] as Array) + candidates:
+		var font_size := LABEL_FONT_SIZE
+		while font_size > LABEL_FONT_MIN and not _label_fits(
+				font, lines, font_size, offset, mid, span, outer):
+			font_size -= 1
+		if _label_fits(font, lines, font_size, offset, mid, span, outer):
+			return {"lines": lines, "font_size": font_size}
+	return {"lines": one, "font_size": LABEL_FONT_MIN}
+
+## Splits a label for drawing. Normally at its spaces ("PLAY DEAD" -> two lines);
+## with `force` it will also break a single long word in half, which is the last
+## resort before the type goes unreadably small.
+func _label_lines(label: String, force: bool = false) -> Array[String]:
+	var out: Array[String] = []
+	if label.contains(" "):
+		for part in label.split(" ", false):
+			out.append(String(part))
+		return out
+	if force and label.length() > 5:
+		var cut := int(ceil(float(label.length()) / 2.0))
+		out.append(label.substr(0, cut))
+		out.append(label.substr(cut))
+		return out
+	out.append(label)
+	return out
+
+## Is every corner of this text block inside this wedge?
+##
+## ⚠️ THE WHOLE POINT IS THE CORNERS. The wedge is bounded by two RADIAL edges and
+## two arcs, and the text block is axis-aligned — so the failure mode is always a
+## corner crossing a radial edge while the centre still has room. Checking the
+## block's width against the arc cannot see that, which is how "PLAY DEAD" and then
+## "DUCK" both shipped hanging out of their slices.
+##
+## `offset` is the block's centre relative to the wheel's centre.
+func _label_fits(font: Font, lines: Array[String], font_size: int, offset: Vector2,
+		mid: float, span: float, outer: float) -> bool:
+	var line_h := font.get_height(font_size) * LABEL_LINE_SPACING
+	var block_h := line_h * float(lines.size())
+	var widest := 0.0
+	for text in lines:
+		widest = maxf(widest,
+			font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1.0, font_size).x)
+	var half := Vector2(widest, block_h) * 0.5 + Vector2(LABEL_PADDING, LABEL_PADDING)
+	var half_span := span * 0.5 - SLICE_GAP
+	for sx in [-1.0, 1.0]:
+		for sy in [-1.0, 1.0]:
+			var corner := offset + Vector2(half.x * sx, half.y * sy)
+			var radius := corner.length()
+			if radius < RADIUS_INNER or radius > outer:
+				return false
+			if absf(angle_difference(mid, corner.angle())) > half_span:
+				return false
+	return true
+
+## ⚠️⚠️ THE OVERFLOW CHECK, EXPOSED SO A PROBE CAN ASSERT IT INSTEAD OF A HUMAN
+## SQUINTING AT A SCREENSHOT. 🧑 reported a label hanging out of its slice three
+## separate times — "it goes out the circle u made", "still overflows", "yea lmao
+## still overflows lel" — and each time the check was a render I looked at, for ONE
+## slice, in ONE selection state. That is exactly the kind of thing eyes are bad at
+## and a loop is good at: five slices times selected/unselected is ten cases, and
+## the bulge changes the geometry of the selected one.
+##
+## Returns a list of human-readable failures, empty when every label fits.
+func overflow_report() -> Array[String]:
+	var bad: Array[String] = []
+	bad_detail.clear()
+	var span := TAU / float(EMOTES.size())
+	var font := get_theme_default_font()
+	if font == null:
+		bad.append("no theme font — cannot measure anything")
+		return bad
+	for i in EMOTES.size():
+		for chosen in [false, true]:
+			var from := -TAU / 4.0 + span * float(i) + SLICE_GAP
+			var to := -TAU / 4.0 + span * float(i + 1) - SLICE_GAP
+			var mid := (from + to) * 0.5
+			var outer := RADIUS_OUTER + (SELECT_BULGE if chosen else 0.0)
+			var label_radius := RADIUS_INNER + (outer - RADIUS_INNER) * LABEL_RADIUS_FRACTION
+			var offset := Vector2(cos(mid), sin(mid)) * label_radius
+			var label := String(EMOTES[i]["label"])
+			var resolved := _resolve_label(font, label, offset, mid, span, outer)
+			var lines: Array[String] = resolved["lines"]
+			var font_size: int = resolved["font_size"]
+			if not _label_fits(font, lines, font_size, offset, mid, span, outer):
+				bad.append("'%s' OVERFLOWS its slice (%s, smallest font %d)"
+					% [label, "selected" if chosen else "resting", font_size])
+			elif not chosen:
+				# Not a failure — but a label that only fits by wrapping or shrinking is
+				# the wheel telling you it wants to be bigger. Reported so that is a
+				# number rather than a judgement call.
+				bad_detail.append("  %-14s font %d, %d line(s)%s"
+					% [label, font_size, lines.size(),
+						"" if font_size == LABEL_FONT_SIZE and lines.size() == 1
+						else "   <- shrunk/wrapped"])
+	return bad
+
+## Companion to `overflow_report()` — how each label actually resolved. Filled by
+## the same pass, so the two can never describe different geometry.
+var bad_detail: Array[String] = []
 
 func _draw_slice(centre: Vector2, from: float, to: float, chosen: bool) -> void:
 	var steps := 18
