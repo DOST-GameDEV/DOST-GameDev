@@ -31,6 +31,7 @@ class_name Hud
 @onready var crosshair: Control = %Crosshair
 @onready var crosshair_label: Label = %CrosshairLabel
 @onready var offscreen_indicators: OffscreenIndicators = %OffscreenIndicators
+@onready var emote_wheel: EmoteWheel = %EmoteWheel
 
 var _toast_time_left: float = 0.0
 var _pulse_tween: Tween = null
@@ -71,6 +72,7 @@ func _set_timer_urgent(urgent: bool) -> void:
 		UiTheme.HIGHLIGHT if urgent else UiTheme.AMBER)
 
 func _ready() -> void:
+	emote_wheel.emote_chosen.connect(_on_emote_chosen)
 	MatchManager.round_started.connect(_on_round_started)
 	MatchManager.match_won.connect(_on_match_won)
 	# 4.1 — round result. See _on_round_intermission_audio for why this signal
@@ -752,6 +754,11 @@ var _clean_feed: bool = false
 ## first and the event is consumed ONLY when the action actually matches, so nothing else
 ## on screen — the pause toggle above all — ever loses an event to this.
 func _input(event: InputEvent) -> void:
+	# ⚠️ BEFORE THE `_spectating` GATE. Everything below this line is the spectator's
+	# clean-feed key and returns early for an ordinary player — which is exactly who
+	# the emote wheel is for.
+	if _handle_emote_input(event):
+		return
 	if not _spectating:
 		return
 	# `allow_echo` defaults false, which is the guard the first version spelled out by
@@ -761,6 +768,69 @@ func _input(event: InputEvent) -> void:
 		return
 	get_viewport().set_input_as_handled()
 	set_clean_feed(not _clean_feed)
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE EMOTE WHEEL'S KEY. Hold to open, release to play the highlighted slice.
+##
+## ⚠️ IT LIVES ON THE HUD RATHER THAN ON `character_base.gd`, deliberately. The
+## wheel is a screen, and this file already owns every screen the player sees mid
+## match AND already resolves "which body is mine" through `you_card`. Putting the
+## open/close on the character would make a second answer to that question and give
+## the four bodies in a local match four wheels between them.
+##
+## Returns true when it consumed the event, so `_input` above can stop.
+func _handle_emote_input(event: InputEvent) -> bool:
+	if emote_wheel == null:
+		return false
+	# ⚠️ SPECTATORS CANNOT EMOTE, BUT THEY SEE EVERY EMOTE. 🧑 2026-08-04: *"make
+	# sure spectators dont emote HAHA but they can see emotes"*. Both fall out of
+	# where the two halves live: opening the wheel is gated HERE, on the local
+	# screen, while the clip itself is replicated by `character_base.gd::_rpc_emote`
+	# onto every peer's copy of that body — so a spectator watching someone else
+	# dance is just watching a body animate, exactly like a walk cycle. A spectator
+	# also has no `get_local_character()` to emote WITH, so this gate is the second
+	# lock rather than the only one.
+	#
+	# ⚠️ AND THE CLEAN FEED STILL HIDES EVERYTHING. *"make sure huds still dont show
+	# up for spectator if they choose to turn it off"*. The wheel is a CHILD of this
+	# HUD, and `set_clean_feed()` hides this whole Control rather than each child —
+	# so a hidden parent means the wheel cannot draw, by construction, and it needs
+	# no entry in any restore list. That is the same property the comment on
+	# `set_clean_feed` explains for the toast and the countdown.
+	#
+	# The wheel closes without playing if it is somehow up when it should not be —
+	# a pause, a round end, spectating, or the local body going away mid-hold.
+	var allowed := not _spectating and not get_tree().paused
+	if not allowed:
+		if emote_wheel.is_open():
+			emote_wheel.close(false)
+		return false
+	if event.is_action_pressed("emote_wheel", false, true):
+		var local_char := you_card.get_local_character()
+		# ⚠️ ASKED BEFORE OPENING, NOT BEFORE PLAYING. A wheel that opens and then
+		# refuses on release reads as a broken button; one that never opens reads as
+		# "not now", which is the truth.
+		if local_char == null or not is_instance_valid(local_char) or not local_char.can_emote():
+			return false
+		emote_wheel.open()
+		get_viewport().set_input_as_handled()
+		return true
+	if event.is_action_released("emote_wheel"):
+		if not emote_wheel.is_open():
+			return false
+		emote_wheel.close(true)
+		get_viewport().set_input_as_handled()
+		return true
+	return false
+
+func _on_emote_chosen(id: String) -> void:
+	var local_char := you_card.get_local_character()
+	if local_char == null or not is_instance_valid(local_char):
+		return
+	# `try_emote` re-checks `can_emote()` and the authority. Between opening the
+	# wheel and releasing it the player can have been tagged, knocked down or had
+	# the round end under them.
+	local_char.try_emote(id)
 
 ## Public so `spec_probe` can drive it without synthesising a key event.
 func set_clean_feed(on: bool) -> void:

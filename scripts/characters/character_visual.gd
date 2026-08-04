@@ -1947,9 +1947,87 @@ func play_action(kind: String) -> void:
 			_animator.play(clip)
 			return
 
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ EMOTES — 🧑 2026-08-04: *"start building emotes if i have animations
+## already from existing assets ... Like fortnite ig, we click a button and we
+## could choose from a set"*.
+##
+## ⚠️ EVERY CLIP HERE ALREADY SHIPS ON THE RIG. Kenney's persons carry 32 clips and
+## the match uses eleven of them; these are picked from what is already in the .glb,
+## so an emote costs no new asset, no licence line on the disclosure form, and works
+## on all twelve characters the moment it is listed.
+##
+## ⚠️ AND THAT IS NOT A COMPROMISE, IT IS THE ONLY OPTION THIS RIG HAS.
+## `character-male-a.glb` skins SEVEN bones — root, torso, head, two arms, two legs.
+## A Mixamo or CMU clip is authored for ~65, with a spine chain, shoulders,
+## forearms and fingers this skeleton simply does not have; retargeting one onto
+## seven rigid blocks is not a bone mapping, it is a re-animation. Downloaded
+## humanoid mocap is out for this game no matter whose account it comes from.
+##
+## The dictionary is emote id -> clip candidates, in preference order, exactly like
+## `ACTION_CLIPS` above — the first clip the model actually has wins, so a model
+## missing one still animates instead of freezing.
+const EMOTE_CLIPS: Dictionary = {
+	# A literal thumbs-up on this rig. Also what `"ready"` plays, deliberately:
+	# the gesture means the same thing in both places.
+	"yes": ["emote-yes", "interact-right"] as Array[String],
+	"no": ["emote-no", "interact-left"] as Array[String],
+	"sit": ["sit", "crouch"] as Array[String],
+	"crouch": ["crouch", "sit"] as Array[String],
+	# The taunt. `die` is the knockdown clip played on purpose.
+	"dead": ["die", "crouch"] as Array[String],
+}
+
+## Fires on the peer that owns this body when the emote clip ends on its own, so
+## `character_base.gd` can put the camera back without polling for it.
+signal emote_finished
+
+## The clip an EMOTE is currently holding, or "". Separate from `_action_clip`
+## even though both block locomotion, because only this one owns the camera and
+## only this one can be cancelled by the player.
+var _emote_clip: String = ""
+
+func is_emoting() -> bool:
+	return _emote_clip != ""
+
+## ⚠️ RETURNS FALSE RATHER THAN PUSHING AN ERROR for an unknown id or a rig with no
+## AnimationPlayer — the Cans and Tsinelas have neither, and the caller uses the
+## bool to decide whether the camera is allowed to change. A camera that swings to
+## third person for an emote that never plays is the worst version of this feature.
+func play_emote(id: String) -> bool:
+	if _animator == null:
+		return false
+	var candidates: Array[String] = EMOTE_CLIPS.get(id, [] as Array[String])
+	for clip in candidates:
+		if _animator.has_animation(clip):
+			_emote_clip = clip
+			# Blocks `_play_locomotion()` for as long as it is held — same
+			# mechanism the one-shot actions use.
+			_action_clip = clip
+			_animator.play(clip)
+			return true
+	return false
+
+## Cancels early — the player moved, or was hit. Safe to call when not emoting.
+func stop_emote() -> void:
+	if _emote_clip == "":
+		return
+	_emote_clip = ""
+	_action_clip = ""
+	_play_locomotion()
+
 func _on_animation_finished(anim_name: StringName) -> void:
 	# Hand control back to locomotion once the one-shot is done, otherwise the
 	# character freezes on the last frame of its throw.
+	if String(anim_name) == _emote_clip:
+		# ⚠️ CLEARED BEFORE THE SIGNAL. The handler calls back into this node to put
+		# the camera back and may start another emote; leaving the old clip name in
+		# place through the emit makes `is_emoting()` lie for the length of that call.
+		_emote_clip = ""
+		_action_clip = ""
+		_play_locomotion()
+		emote_finished.emit()
+		return
 	if String(anim_name) == _action_clip:
 		_action_clip = ""
 		_play_locomotion()
