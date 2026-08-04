@@ -33,10 +33,6 @@ DebugPlayerSwitcher="*res://scripts/systems/debug_player_switcher.gd"
 
 window/size/viewport_width=1920
 window/size/viewport_height=1080
-; 4 == EXCLUSIVE_FULLSCREEN. The exported build was windowed-only and had no key to
-; escape it; see settings_manager.gd's FULLSCREEN block for why exclusive and not the
-; borderless kind. Set here as well as in code so the window never opens windowed for
-; a frame, and so a player who has never touched the panel still gets fullscreen.
 window/size/mode=4
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
