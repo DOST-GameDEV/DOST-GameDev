@@ -69,6 +69,13 @@ func _ready() -> void:
 	_check(me.is_emoting(), "is_emoting() true after play_emote")
 	_check(rig.is_emote_view(), "the camera went to the emote view")
 
+	# 2b — ⚠️ IT LOOPS UNTIL INTERRUPTED. 🧑: *"let them continue until i interrupt
+	# it with my movement"*. Held for three seconds, which is several times the
+	# length of any clip on this rig, so a one-shot would have ended long before.
+	await get_tree().create_timer(3.0).timeout
+	_check(me.is_emoting(), "still emoting after 3 s — the clip loops")
+	_check(rig.is_emote_view(), "and the camera is still in the emote view")
+
 	# 3 — ⚠️ THE CAMERA IS LOCAL. The OTHER body must not have moved its own view
 	# just because this one danced.
 	var other_rig := other.get_node_or_null("CameraRig")
@@ -162,6 +169,91 @@ func _ready() -> void:
 		_check(parented_always, "the slipper stayed parented to the hand bone throughout")
 		print("    (worst grip drift %.4f m, during '%s')" % [worst, worst_emote])
 		_check(worst < 0.01, "the grip never shifted (%.2f mm worst)" % (worst * 1000.0))
+
+	# 8 — ⚠️⚠️ INTERRUPTING IT REPEATEDLY, WHICH IS WHERE THIS WOULD ACTUALLY BREAK.
+	# 🧑: *"make sure it doesnt bug and shit when i interrupt the emote"*. An emote now
+	# loops, so the only exits are the player and a loss of control — which makes every
+	# one of them a chance to leave the body half-out of an emote: still holding
+	# `_action_clip` (so locomotion never resumes and the character freezes mid-pose),
+	# or still in `_emote_view` (so the player is stuck in third person). Both are
+	# invisible to the single start/stop the checks above make.
+	var stuck := ""
+	for i in 12:
+		me.play_emote(EMOTE)
+		# Interrupt at a different point in the loop each pass — the same frame it
+		# started, one frame in, several frames in.
+		for _f in (i % 4):
+			await get_tree().process_frame
+		me.stop_emote()
+		await get_tree().process_frame
+		if me.is_emoting():
+			stuck = "still emoting after stop (pass %d)" % i
+			break
+		if rig.is_emote_view():
+			stuck = "still in emote view after stop (pass %d)" % i
+			break
+		# The body has to be animating again, not frozen on the emote's last frame.
+		if visual._action_clip != "":
+			stuck = "locomotion still blocked by '%s' (pass %d)" % [visual._action_clip, i]
+			break
+	_check(stuck == "", "12 start/interrupt cycles left no stuck state%s"
+		% ("" if stuck == "" else " — " + stuck))
+
+	# Stopping when not emoting, and starting twice, are both things a mashing player
+	# will do within a second of finding the key.
+	me.stop_emote()
+	me.stop_emote()
+	await get_tree().process_frame
+	_check(not me.is_emoting() and not rig.is_emote_view(),
+		"stop_emote() twice with nothing playing is a no-op")
+	me.play_emote(EMOTE)
+	me.play_emote("sit")
+	await get_tree().process_frame
+	_check(me.is_emoting(), "starting a second emote over the first still leaves one running")
+	me.stop_emote()
+	await get_tree().process_frame
+	_check(not me.is_emoting() and not rig.is_emote_view() and visual._action_clip == "",
+		"and one stop clears it")
+
+	# 9 — ⚠️⚠️ THE CAMERA ITSELF, NOT JUST THE FLAG. 🧑: *"make sure camera doesnt bug
+	# and glitch"*. `is_emote_view()` going false only says the rig THINKS it is back;
+	# the things a player would actually see wrong are one level down. `begin/end` has
+	# to re-assert four separate pieces of state that nothing else in the game ever
+	# changes — which camera is `current`, the self-hide, the viewmodel arms and the
+	# spring-arm framing — so each is checked against the resting first-person values
+	# rather than against the flag.
+	var cam_bad := ""
+	var fpp: Camera3D = rig.fpp_camera
+	var tpp: Camera3D = rig.tpp_camera
+	var pitch_before: float = fpp.get_parent().rotation.x
+	for i in 8:
+		me.play_emote(EMOTE)
+		await get_tree().process_frame
+		# Mid-emote: third person is the one drawing, and exactly one camera is.
+		if not tpp.current or fpp.current:
+			cam_bad = "mid-emote the wrong camera was current (pass %d)" % i
+			break
+		me.stop_emote()
+		await get_tree().process_frame
+		# ⚠️ EXACTLY ONE CURRENT. Two `current` cameras is the classic symptom of a
+		# mode restore that set one without clearing the other, and it renders as the
+		# view snapping between them.
+		if not fpp.current or tpp.current:
+			cam_bad = "after the emote the wrong camera was current (pass %d)" % i
+			break
+		if rig._mode != rig.Mode.FPP:
+			cam_bad = "mode did not return to FPP (pass %d)" % i
+			break
+		var arms = rig._arms
+		if arms != null and is_instance_valid(arms) and not arms.visible:
+			cam_bad = "the viewmodel arms stayed hidden (pass %d)" % i
+			break
+	_check(cam_bad == "", "8 emote cycles left the camera clean%s"
+		% ("" if cam_bad == "" else " — " + cam_bad))
+	# The look direction must survive the round trip — an emote that quietly re-aims
+	# the player is a glitch even though every flag above is correct.
+	_check(absf(fpp.get_parent().rotation.x - pitch_before) < 0.001,
+		"first-person pitch came back unchanged")
 
 	_finish()
 

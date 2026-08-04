@@ -687,6 +687,15 @@ func apply(is_person: bool, is_can: bool, team: int) -> void:
 	# reference here would make the first play_action() after a role swap throw.
 	_animator = null
 	_action_clip = ""
+	# ⚠️⚠️ AND THE EMOTE, WITH A SIGNAL — OTHERWISE THE ROUND SWAP STRANDS THE PLAYER
+	# IN THIRD PERSON. An emote loops until it is interrupted, so the only things that
+	# end one are the player and this: the taya rotates every round and the model tree
+	# is rebuilt from scratch, taking the AnimationPlayer and the clip with it. Clearing
+	# `_emote_clip` silently would leave `character_base.gd` believing it was still
+	# emoting, so `stop_emote()` would early-out and the camera would never come back.
+	if _emote_clip != "":
+		_emote_clip = ""
+		emote_finished.emit()
 	# The roll's snapshot describes a model that has just been freed. Restoring it onto
 	# the incoming one would offset a brand-new mesh by the last one's tumble.
 	_rolling = false
@@ -2019,14 +2028,18 @@ func stop_emote() -> void:
 func _on_animation_finished(anim_name: StringName) -> void:
 	# Hand control back to locomotion once the one-shot is done, otherwise the
 	# character freezes on the last frame of its throw.
+	# ⚠️⚠️ AN EMOTE LOOPS — 🧑 2026-08-04: *"make emotes a bit longer / let them
+	# continue until i interrupt it with my movement"*. So the clip ending is not the
+	# end of the emote; it is the end of one repetition, and the only things that stop
+	# one are the player moving, losing control, or the model being rebuilt.
+	#
+	# ⚠️ REPLAYED HERE RATHER THAN SET TO `LOOP_LINEAR` ON THE ANIMATION. These clips
+	# are shared resources loaded from the .glb — `emote-yes` is also what `"ready"`
+	# plays — so flipping the loop mode on the Animation would make every OTHER user
+	# of that clip loop forever too, including the ready-up thumbs-up. Replaying keeps
+	# the change to this one playback.
 	if String(anim_name) == _emote_clip:
-		# ⚠️ CLEARED BEFORE THE SIGNAL. The handler calls back into this node to put
-		# the camera back and may start another emote; leaving the old clip name in
-		# place through the emit makes `is_emoting()` lie for the length of that call.
-		_emote_clip = ""
-		_action_clip = ""
-		_play_locomotion()
-		emote_finished.emit()
+		_animator.play(_emote_clip)
 		return
 	if String(anim_name) == _action_clip:
 		_action_clip = ""
