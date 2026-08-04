@@ -27,14 +27,30 @@ class_name EmoteWheel
 ## clip plays; this owns what the player is offered and what it is called. Kept as
 ## an ordered array rather than reading the dictionary's keys because a wheel has a
 ## clockwise order and a Dictionary does not promise one.
+## ⚠️⚠️ TWO NAMES PER EMOTE, AND THAT IS THE FIX FOR A BUG I CHASED FOUR TIMES.
+##
+## `label` is the SHORT word drawn inside the slice. `name` is the full one, drawn
+## in the hole in the middle when that slice is highlighted.
+##
+## 🧑 reported a label hanging out of its wedge four separate times — "it goes out
+## the circle u made", "still overflows", "yea lmao still overflows lel", "IT DIDNT
+## FIT ALLL I SAW" — and each of my fixes made the MEASUREMENT better while leaving
+## the real problem alone: a two-word label in a 51-degree wedge is a bad fit even
+## when the arithmetic says it clears the edges by four pixels. Bigger radii, corner
+## tests and auto-shrinking all made it *technically* fit and still look wrong.
+##
+## So no long string is ever drawn in a wedge again. The slice gets a word that
+## cannot overflow, and the full name goes in the middle — 208 px of empty hole that
+## was doing nothing, which is also where Fortnite puts it and where the eye already
+## is while steering.
 const EMOTES: Array[Dictionary] = [
-	{"id": "yes", "label": "NOD"},
-	{"id": "no", "label": "NOPE"},
-	{"id": "sit", "label": "SIT"},
-	{"id": "crouch", "label": "VICTORY POSE"},
-	{"id": "dead", "label": "PLAY DEAD"},
-	{"id": "tpose", "label": "T-POSE"},
-	{"id": "bow", "label": "BOW"},
+	{"id": "yes", "label": "NOD", "name": "NOD"},
+	{"id": "no", "label": "NOPE", "name": "NOPE"},
+	{"id": "sit", "label": "SIT", "name": "SIT DOWN"},
+	{"id": "crouch", "label": "VICTORY", "name": "VICTORY POSE"},
+	{"id": "dead", "label": "DEAD", "name": "PLAY DEAD"},
+	{"id": "tpose", "label": "T-POSE", "name": "T-POSE"},
+	{"id": "bow", "label": "BOW", "name": "BOW"},
 ]
 
 ## How far the stick has to travel from centre before a slice counts as chosen.
@@ -48,8 +64,22 @@ const DEAD_ZONE: float = 40.0
 ## label resolves to, which is how these two numbers were chosen rather than guessed.
 const RADIUS_OUTER: float = 270.0
 const RADIUS_INNER: float = 104.0
-## How far the highlighted slice pushes out past the others.
-const SELECT_BULGE: float = 14.0
+## ⚠️⚠️ THE HIGHLIGHT NO LONGER CHANGES THE WHEEL'S SHAPE, AND THIS WAS THE BUG.
+##
+## 🧑, after four rounds of me measuring the wrong thing: *"overflow is the shape
+## man! it overflows when u hover"*, with the highlighted wedge circled poking out
+## past the rim. It was never the text. The selected slice grew 14 px past
+## RADIUS_OUTER while the rim arc stayed at RADIUS_OUTER + 2, so hovering broke the
+## circle's silhouette — and every "fix" I shipped before this made the label
+## arithmetic more precise while leaving that alone.
+##
+## The affordance is now colour and border weight only, plus the emote's full name
+## in the middle. The outer edge is a constant, so the wheel is a circle in every
+## state and there is nothing left that CAN overflow it.
+##
+## ⚠️ DO NOT REINTRODUCE AN OUTWARD BULGE. If a size change is ever wanted back, it
+## has to grow INWARD (a smaller inner radius) so the silhouette is untouched.
+const SELECT_BULGE: float = 0.0
 ## Where the label sits between the inner and outer radius. Deliberately past the
 ## midpoint — the wedge widens outward, and the label needs the room. See the
 ## ⚠️⚠️ at the fit code in `_draw()`.
@@ -68,8 +98,15 @@ const SLICE_GAP: float = 0.012
 ## crosses DEAD_ZONE with a normal flick rather than a shove.
 const STICK_GAIN: float = 0.55
 const STICK_CLAMP: float = 220.0
+## The full name in the middle. Bigger than a slice label because it has the room.
+const CENTRE_FONT_SIZE: int = 26
 
 signal emote_chosen(id: String)
+
+## ⚠️ DIAGNOSTIC ONLY, OFF IN THE GAME. Draws each label's real bounding box and
+## the wedge edges it is tested against, so "does it overflow" stops being a matter
+## of squinting at a screenshot. tools/ui/emote_wheel_shot.tscn turns it on.
+var debug_bounds: bool = false
 
 var _open: bool = false
 var _stick: Vector2 = Vector2.ZERO
@@ -117,7 +154,18 @@ func _input(event: InputEvent) -> void:
 	_stick += (event as InputEventMouseMotion).relative * STICK_GAIN
 	if _stick.length() > STICK_CLAMP:
 		_stick = _stick.normalized() * STICK_CLAMP
+	var was := _selection
 	_update_selection()
+	# ⚠️ ON THE CHANGE, NOT ON THE MOTION. 🧑: *"add sound effect for mhovering thru
+	# it, not too loud"*. This runs on every mouse-move event while the wheel is
+	# open — firing per event would be dozens of overlapping voices a second. Only a
+	# slice actually changing under the stick makes a sound, which is also the only
+	# moment worth a sound. `ui_hover` already carries a -8 dB trim in
+	# audio_manager.gd, whose own note says it "fires on every mouse move across a
+	# menu", so the quiet level is the catalogue's decision rather than a number
+	# invented here.
+	if _selection != was and _selection >= 0:
+		AudioManager.play("ui_hover")
 	get_viewport().set_input_as_handled()
 	queue_redraw()
 
@@ -162,6 +210,8 @@ func _draw() -> void:
 		# letterforms were ink drawn over an ink blob of the same shape — the outline
 		# filled the counters in and swallowed the word. Ink on cream is the emboss the
 		# wood buttons use, and it only reads because the two are opposites.
+		if debug_bounds:
+			_draw_label_bounds(centre, offset, font, lines, font_size, from, to, outer)
 		var fill: Color = UiTheme.INK if chosen else UiTheme.CREAM
 		var halo: Color = UiTheme.CREAM if chosen else UiTheme.INK
 		var line_h := font.get_height(font_size) * LABEL_LINE_SPACING
@@ -181,14 +231,31 @@ func _draw() -> void:
 	draw_arc(centre, RADIUS_OUTER + 2.0, 0.0, TAU, 72, Color(UiTheme.INK, 0.85), 3.0, true)
 	draw_arc(centre, RADIUS_INNER - 2.0, 0.0, TAU, 48, Color(UiTheme.INK, 0.85), 3.0, true)
 
+	# ⚠️ THE FULL NAME GOES IN THE HOLE. The slice carries a short word that cannot
+	# overflow a 51-degree wedge; the middle is 200 px of empty space the eye is
+	# already on while steering, so the long form costs nothing and reads better.
+	if _selection >= 0 and _selection < EMOTES.size():
+		var full := String(EMOTES[_selection].get("name", EMOTES[_selection]["label"]))
+		var nf := get_theme_default_font()
+		var ns := nf.get_string_size(full, HORIZONTAL_ALIGNMENT_CENTER, -1.0, CENTRE_FONT_SIZE)
+		var nat := centre - ns / 2.0 + Vector2(0, ns.y * 0.32)
+		draw_string_outline(nf, nat, full, HORIZONTAL_ALIGNMENT_CENTER, -1.0,
+			CENTRE_FONT_SIZE, 6, UiTheme.INK)
+		draw_string(nf, nat, full, HORIZONTAL_ALIGNMENT_CENTER, -1.0,
+			CENTRE_FONT_SIZE, UiTheme.AMBER)
+
 	# The stick, so the player can see what the wheel thinks they are pointing at.
 	# A ring rather than a disc: the hole in the middle is the clearest place to
 	# keep an eye on the match, and filling it in is the one thing this overlay
 	# should not do.
 	draw_arc(centre, RADIUS_INNER * 0.30, 0.0, TAU, 32,
 		Color(UiTheme.CREAM, 0.30 if _selection < 0 else 0.16), 2.0, true)
+	# ⚠️ THE KNOB RIDES THE INNER RING, NOT THE STICK'S RAW LENGTH. Left free it
+	# wanders into the label band and sits on top of a word — visible in the first
+	# render of this fix, straddling "BOW". Direction is the only part that carries
+	# meaning; how far the stick has travelled is already said by the highlight.
 	if _stick.length() >= 1.0:
-		var knob := centre + _stick.limit_length(RADIUS_OUTER - 14.0)
+		var knob := centre + _stick.normalized() * (RADIUS_INNER - 16.0)
 		draw_circle(knob, 10.0, Color(UiTheme.INK, 0.9))
 		draw_circle(knob, 7.0, UiTheme.AMBER)
 
@@ -314,6 +381,22 @@ func overflow_report() -> Array[String]:
 ## the same pass, so the two can never describe different geometry.
 var bad_detail: Array[String] = []
 
+## Red box = what the label actually occupies. Green = the wedge it must stay in.
+func _draw_label_bounds(centre: Vector2, offset: Vector2, font: Font,
+		lines: Array[String], font_size: int, from: float, to: float, outer: float) -> void:
+	var line_h := font.get_height(font_size) * LABEL_LINE_SPACING
+	var widest := 0.0
+	for text in lines:
+		widest = maxf(widest,
+			font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1.0, font_size).x)
+	var half := Vector2(widest, line_h * float(lines.size())) * 0.5 		+ Vector2(LABEL_PADDING, LABEL_PADDING)
+	draw_rect(Rect2(centre + offset - half, half * 2.0), Color(1, 0, 0, 1), false, 2.0)
+	for a in [from, to]:
+		draw_line(centre + Vector2(cos(a), sin(a)) * RADIUS_INNER,
+			centre + Vector2(cos(a), sin(a)) * outer, Color(0, 1, 0, 1), 2.0)
+	draw_arc(centre, outer, from, to, 24, Color(0, 1, 0, 1), 2.0, true)
+	draw_arc(centre, RADIUS_INNER, from, to, 24, Color(0, 1, 0, 1), 2.0, true)
+
 func _draw_slice(centre: Vector2, from: float, to: float, chosen: bool) -> void:
 	var steps := 18
 	# ⚠️ THE CHOSEN SLICE GROWS OUTWARD. On a wheel held for a fraction of a second
@@ -333,4 +416,7 @@ func _draw_slice(centre: Vector2, from: float, to: float, chosen: bool) -> void:
 	# that the player can still see who is running at them while they pick.
 	var fill: Color = UiTheme.AMBER if chosen else Color(UiTheme.INK, 0.58)
 	draw_colored_polygon(points, fill)
-	draw_polyline(points, Color(UiTheme.CREAM, 0.7 if chosen else 0.22), 2.0, true)
+	# ⚠️ WEIGHT, NOT SIZE. The selected slice reads by a brighter, thicker border and
+	# the amber fill — never by growing past the rim. See SELECT_BULGE.
+	draw_polyline(points, Color(UiTheme.CREAM, 0.85 if chosen else 0.22),
+		3.5 if chosen else 2.0, true)
