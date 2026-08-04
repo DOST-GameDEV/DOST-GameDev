@@ -75,12 +75,23 @@ const SETTINGS_SECTION: String = "input"
 ## and nothing is lost by removing it.
 ##
 ## ⚠️ `lunge` AND `spectator_down` ARE IN THE INPUTMAP AND STILL NOT HERE, and that
-## is deliberate rather than the same bug again. `lunge` is not its own verb —
-## `character_base.gd` reads `input_just_pressed("lunge") or
-## input_just_pressed("grab")`, so it is a SECOND KEY for the row above, and giving
-## it a row would put two differently-named controls on screen that do the same
-## thing. That is the confusion this fix exists to remove, not a second instance of
-## it. `spectator_down` belongs to the spectator camera, not to a player.
+## is deliberate rather than the same bug again.
+##
+## ⚠️ LUNGE TAG IS ABSOLUTELY ITS OWN SKILL — it is the taya's tag, with its own
+## charge, its own cooldown and its own clip. What it is not is its own KEY. It
+## moved to **hold E** on 2026-08-01 ("Lunge Tag (Hold E for 0.5s)"), so
+## `character_base.gd::_lunge_pressed_now()` reads `input_just_pressed("lunge") or
+## input_just_pressed("grab")` and the `lunge` action is the legacy right-click
+## half, kept only because `ai_controller.gd` presses it. Rebinding the Grab row
+## already moves the lunge with it.
+##
+## So one row is right, and it is right for a reason that goes wider than this
+## action: **E is contextual**. Tap it to pick up, hold 0.5 s to lunge-tag, hold
+## 1.25 s to shove, hold 2.5 s as the taya to reset the lata. Several skills, one
+## key, one row — the panel binds KEYS, and a row per skill would promise four
+## keys that do not exist.
+##
+## `spectator_down` drives the spectator camera, not a player.
 const REBINDABLE_ACTIONS: Array[String] = [
 	"move_left", "move_right", "move_up", "move_down",
 	"special_ability", "grab", "jump", "sprint",
