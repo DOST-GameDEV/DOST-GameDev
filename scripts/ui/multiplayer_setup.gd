@@ -117,7 +117,22 @@ func _ready() -> void:
 ## so their poles line up with the backdrop art), so a container idiom would have found
 ## no parent to add to and silently built nothing. The box is one Panel placed by rect
 ## with a VBox inside it, and the rows go inside THAT.
-const BROWSE_RECT: Rect2 = Rect2(427.0, 868.0, 700.0, 58.0)
+## ⚠️⚠️ y=980, WAS 868 — AND THIS CONSTANT IS WHAT WAS CRAMPING THE WHOLE SCREEN.
+## 🧑 2026-08-04: *"fix ui a but more push some stuff down / so cramped up there for
+## no rsn"*. Exactly right, and the reason is not in the .tscn where it looks like
+## it should be: the two browser pennants are hand-positioned HERE, in code, and the
+## BACK button in `MultiplayerSetup.tscn` is lined up with them. So the whole column
+## above had to fit between the banner and 868, squeezing eight elements into the top
+## four fifths of the screen while ~150 px sat empty underneath.
+##
+## Moving the row to 980 leaves a 42 px bottom margin (58 tall, 1080 tall viewport)
+## and hands 112 px back to the column above, which `MultiplayerSetup.tscn` now
+## spends on gaps rather than on elements.
+##
+## ⚠️ CHANGE THIS AND `ONLINE_BROWSE_RECT` AND `BackButton` TOGETHER — three
+## positions, one row. `tools/ui/mp_shift_shot.tscn` measures the status line's
+## clearance against this y and is the check that they still agree.
+const BROWSE_RECT: Rect2 = Rect2(427.0, 980.0, 700.0, 58.0)
 ## Centred over the screen rather than anchored to the button: it is a dialog, it covers
 ## the pennants while it is up, and 1920x1080 is the viewport (`project.godot`).
 ##
@@ -319,7 +334,8 @@ func _on_lan_row_pressed(index: int) -> void:
 ## button sits third in the bottom row (BACK, LAN, ONLINE) and ends at 1825 — 95 from the
 ## right edge, mirroring BACK's own 95 from the left.
 ## ---------------------------------------------------------------------------
-const ONLINE_BROWSE_RECT: Rect2 = Rect2(1159.0, 868.0, 666.0, 58.0)
+## The other half of the bottom row — moves with `BROWSE_RECT`, see its note.
+const ONLINE_BROWSE_RECT: Rect2 = Rect2(1159.0, 980.0, 666.0, 58.0)
 ## ⚠️⚠️ THIS BOX IS SIZED TO ITS CONTENTS, WHERE THE LAN BOX IS A FIXED RECT — and that
 ## difference is not tidiness, it is the shipped state. `BOX_RECT` can be a constant
 ## because the LAN box is either empty or full of rows and both look like a list. This one
