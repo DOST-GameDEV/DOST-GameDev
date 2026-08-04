@@ -62,8 +62,8 @@ const SETTINGS_SECTION: String = "input"
 ## double-bound with `special_ability`, which is a separate open question on §4.19.
 const REBINDABLE_ACTIONS: Array[String] = [
 	"move_left", "move_right", "move_up", "move_down",
-	"special_ability", "grab", "jump", "sprint",
-	"grab", "ready_up", "clean_feed",
+	"special_ability", "grab", "lunge", "jump", "sprint",
+	"ready_up", "clean_feed",
 ]
 
 ## Human-readable labels for the panel — action string -> display text.
@@ -86,6 +86,9 @@ const ACTION_LABELS: Dictionary = {
 	# one nobody guesses from the word "grab": it is also the hold that carries a
 	# displaced lata home (`Design.md` §5.2).
 	"grab": "Grab",
+	# The taya's tag: the only way to stop an attacker retrieving a slipper inside
+	# the box (`Design.md` §5.2, §6).
+	"lunge": "Lunge",
 	"ready_up": "Ready Up",
 	# Named for what it DOES to the recording, not for what it hides — the operator
 	# reading this row is looking for the setting that gives them a clean plate.
