@@ -36,6 +36,40 @@ var _toast_time_left: float = 0.0
 var _pulse_tween: Tween = null
 var _countdown_tween: Tween = null
 
+## ⚠️⚠️ THESE THREE EXIST ONLY TO STOP `_process` REWRITING THINGS THAT HAVE NOT
+## CHANGED, and they were added off a measurement, not a hunch.
+## `tools/perf_attrib.tscn` brackets the frame's whole script `_process` pass
+## between two sentinel nodes and reports it per subsystem. On eskinita, in a real
+## four-body match, the HUD was 0.20 ms of a 0.47 ms total — more than all four
+## `character_visual.gd` `_process` calls put together, for a screen that changes
+## a handful of times a second.
+##
+## The cause was three unconditional writes per frame: the clock string, the clock
+## colour, and the whole lata card. `add_theme_color_override()` in particular is
+## not a field assignment — it writes into the Control's theme override map and
+## notifies the control (and its children) that the theme changed, every single
+## call, whether or not the Color differs from the one already there.
+##
+## ⚠️ NONE OF THIS CHANGES WHAT IS DRAWN. Each guard reproduces the previous
+## behaviour exactly on the frame the value actually changes, and skips the
+## identical rewrite on the frames in between. -1 and "" are "nothing shown yet",
+## so the first frame always writes.
+var _timer_seconds_shown: int = -1
+var _timer_urgent: int = -1 # -1 unknown, 0 amber, 1 highlight
+var _lata_upright_shown: int = -1
+var _lata_hint_shown: String = "￿" # never equal to a real hint, so frame 1 writes
+
+## ⚠️ SET BACK TO AMBER, NOT `remove_theme_color_override`. Removing it would fall
+## through to the HudTimer variation's near-white, which is the pre-wood colour —
+## so the timer would go white the moment it climbed back over 15s.
+func _set_timer_urgent(urgent: bool) -> void:
+	var want := 1 if urgent else 0
+	if want == _timer_urgent:
+		return
+	_timer_urgent = want
+	timer_label.add_theme_color_override("font_color",
+		UiTheme.HIGHLIGHT if urgent else UiTheme.AMBER)
+
 func _ready() -> void:
 	MatchManager.round_started.connect(_on_round_started)
 	MatchManager.match_won.connect(_on_match_won)
@@ -189,12 +223,19 @@ func _refresh_role_accents() -> void:
 
 func _process(delta: float) -> void:
 	var t := int(ceil(RoundManager.time_left))
-	timer_label.text = "%02d:%02d" % [t / 60, t % 60]
+	# ⚠️ ONLY ON THE SECOND, NOT EVERY FRAME. The clock has one-second resolution, so
+	# at 120 fps this formatted and assigned the same two-digit string 119 times out of
+	# 120 for nothing. `Label.text` is not a plain setter — an assignment invalidates
+	# the text buffer and queues a reshape whether or not the characters changed.
+	# See the ⚠️ on `_timer_urgent` for how this pair was found.
+	if t != _timer_seconds_shown:
+		_timer_seconds_shown = t
+		timer_label.text = "%02d:%02d" % [t / 60, t % 60]
 
 	# Timer urgency (§4.4): HIGHLIGHT colour under 15s, scale pulse under 10s.
 	# Scale tween instead of colour flash to avoid collision with the downed vignette.
 	if RoundManager.time_left < 15.0:
-		timer_label.add_theme_color_override("font_color", UiTheme.HIGHLIGHT)
+		_set_timer_urgent(true)
 		if RoundManager.time_left < 10.0:
 			if _pulse_tween == null or not _pulse_tween.is_running():
 				timer_card.pivot_offset = timer_card.size / 2
@@ -204,10 +245,7 @@ func _process(delta: float) -> void:
 		else:
 			_kill_pulse_tween()
 	else:
-		# ⚠️ SET BACK TO AMBER, NOT `remove_theme_color_override`. Removing it would fall
-		# through to the HudTimer variation's near-white, which is the pre-wood colour —
-		# so the timer would go white the moment it climbed back over 15s.
-		timer_label.add_theme_color_override("font_color", UiTheme.AMBER)
+		_set_timer_urgent(false)
 		_kill_pulse_tween()
 
 	# Polled each frame, but `_fill_pips` early-outs unless the value actually
@@ -1374,9 +1412,15 @@ func _refresh_lata_card() -> void:
 		lata_card.visible = false
 		return
 	lata_card.visible = true
-	lata_label.text = "LATA  ·  UPRIGHT" if lata.is_upright else "LATA  ·  DOWN"
-	lata_label.add_theme_color_override("font_color",
-		UiTheme.DEFENSE if lata.is_upright else UiTheme.OFFENSE)
+	# ⚠️ THE UPRIGHT LINE CHANGES ONLY WHEN THE LATA TIPS, which is a handful of times
+	# a round — but the text and the colour override below it were both rewritten every
+	# frame. Gated on the bool itself rather than on a stamp string, because that is the
+	# entire input to both writes. See the ⚠️⚠️ block on `_timer_seconds_shown`.
+	if _lata_upright_shown != int(lata.is_upright):
+		_lata_upright_shown = int(lata.is_upright)
+		lata_label.text = "LATA  ·  UPRIGHT" if lata.is_upright else "LATA  ·  DOWN"
+		lata_label.add_theme_color_override("font_color",
+			UiTheme.DEFENSE if lata.is_upright else UiTheme.OFFENSE)
 	var local_char := you_card.get_local_character()
 	if local_char == null or not is_instance_valid(local_char):
 		lata_hint_label.visible = false
@@ -1396,8 +1440,14 @@ func _refresh_lata_card() -> void:
 		line = "RETRIEVE A SLIPPER"
 	elif local_char.is_inside_box():
 		line = "GET OUT OF THE BOX TO THROW"
-	lata_hint_label.text = line
-	lata_hint_label.visible = line != ""
+	# ⚠️ The two live hints ("RESETTING 42%", "THROW LOCKED 1.2s") DO change most frames,
+	# and this guard deliberately does not try to be clever about them — it compares the
+	# finished string, so those two still write when they tick and the other four states,
+	# which are constant for as long as they hold, write once.
+	if line != _lata_hint_shown:
+		_lata_hint_shown = line
+		lata_hint_label.text = line
+		lata_hint_label.visible = line != ""
 
 ## ⚠️ FATIGUE IS SHOWN ON THE BAR AS WELL AS IN THE STATUS STACK, and that is not a
 ## duplicate. The stack row says how long it lasts; the bar says why it happened. A
