@@ -123,6 +123,14 @@ custom_minimum_size = Vector2(220, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 max_length = 14
+; ⚠️ CENTRED, LIKE EVERY OTHER VALUE IN THIS LIST. 🧑 2026-08-04: *"the username
+; doesnt start in middle in UI for settings pls fix that it stands out"*. The row
+; had already been matched to the keycaps in size (see BINDING_CONTROL_SIZE in
+; settings_panel.gd) but not in alignment — a LineEdit defaults to left, while every
+; Button under it centres its label. So one box in a column of fourteen put its text
+; hard against the left edge, which is exactly the kind of single-item difference the
+; eye catches before it reads any of the words.
+alignment = 1
 ; Empty is legal and means "use the seat label" (Design.md 10), so the placeholder
 ; shows what you WILL be called rather than nagging you to fill it in.
 placeholder_text = "P1"
@@ -180,6 +188,69 @@ unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"MenuCheckBox"
 text = "Fullscreen"
+
+; ⚠️ AUTHORED HERE, NOT BUILT IN settings_panel.gd, and that is the REACHABILITY
+; RULE this panel already learned once: a control created at run time sits outside
+; the focus order the scene defines, so it is operable with a mouse and unreachable
+; by keyboard. settings_panel.gd binds these by unique name; it does not create them.
+;
+; ⚠️ EVERY ONE OF THESE IS OFF IN THIS FILE. That is only the authoring state —
+; SettingsManager pushes the real value into each box when the panel opens, and the
+; four shipped effects (SDFGI/SSIL/SSAO/glow) default ON there so the game looks
+; exactly as it always has. The three above them default OFF. See the ⚠️⚠️ GRAPHICS
+; block in scripts/systems/settings_manager.gd for why the two groups differ.
+[node name="GraphicsHeading" type="Label" parent="Card/Margin/Layout/Scroll/Content"]
+layout_mode = 2
+theme_type_variation = &"MenuCaption"
+text = "GRAPHICS"
+
+[node name="MotionBlurCheck" type="CheckBox" parent="Card/Margin/Layout/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"MenuCheckBox"
+text = "Motion blur"
+
+[node name="SsrCheck" type="CheckBox" parent="Card/Margin/Layout/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"MenuCheckBox"
+text = "Screen-space reflections"
+
+[node name="TaaCheck" type="CheckBox" parent="Card/Margin/Layout/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"MenuCheckBox"
+text = "Temporal anti-aliasing (TAA)"
+
+[node name="SdfgiCheck" type="CheckBox" parent="Card/Margin/Layout/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"MenuCheckBox"
+text = "Global illumination (SDFGI)"
+
+[node name="SsilCheck" type="CheckBox" parent="Card/Margin/Layout/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"MenuCheckBox"
+text = "Indirect lighting (SSIL)"
+
+[node name="SsaoCheck" type="CheckBox" parent="Card/Margin/Layout/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"MenuCheckBox"
+text = "Ambient occlusion (SSAO)"
+
+[node name="GlowCheck" type="CheckBox" parent="Card/Margin/Layout/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"MenuCheckBox"
+text = "Glow"
+
+[node name="GraphicsHint" type="Label" parent="Card/Margin/Layout/Scroll/Content"]
+layout_mode = 2
+theme_type_variation = &"MenuCaption"
+autowrap_mode = 2
+text = "Turning the bottom four off is worth about 30% more frames on a weak GPU."
 
 [node name="AudioHeading" type="Label" parent="Card/Margin/Layout/Scroll/Content"]
 layout_mode = 2
