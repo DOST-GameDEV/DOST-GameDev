@@ -687,6 +687,16 @@ func apply(is_person: bool, is_can: bool, team: int) -> void:
 	# reference here would make the first play_action() after a role swap throw.
 	_animator = null
 	_action_clip = ""
+	# ⚠️⚠️ AND THE EMOTE, WITH A SIGNAL — OTHERWISE THE ROUND SWAP STRANDS THE PLAYER
+	# IN THIRD PERSON. An emote loops until it is interrupted, so the only things that
+	# end one are the player and this: the taya rotates every round and the model tree
+	# is rebuilt from scratch, taking the AnimationPlayer and the clip with it. Clearing
+	# `_emote_clip` silently would leave `character_base.gd` believing it was still
+	# emoting, so `stop_emote()` would early-out and the camera would never come back.
+	if _emote_clip != "":
+		_emote_clip = ""
+		_emote_id = ""
+		emote_finished.emit()
 	# The roll's snapshot describes a model that has just been freed. Restoring it onto
 	# the incoming one would offset a brand-new mesh by the last one's tumble.
 	_rolling = false
@@ -1947,9 +1957,145 @@ func play_action(kind: String) -> void:
 			_animator.play(clip)
 			return
 
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ EMOTES — 🧑 2026-08-04: *"start building emotes if i have animations
+## already from existing assets ... Like fortnite ig, we click a button and we
+## could choose from a set"*.
+##
+## ⚠️ EVERY CLIP HERE ALREADY SHIPS ON THE RIG. Kenney's persons carry 32 clips and
+## the match uses eleven of them; these are picked from what is already in the .glb,
+## so an emote costs no new asset, no licence line on the disclosure form, and works
+## on all twelve characters the moment it is listed.
+##
+## ⚠️ AND THAT IS NOT A COMPROMISE, IT IS THE ONLY OPTION THIS RIG HAS.
+## `character-male-a.glb` skins SEVEN bones — root, torso, head, two arms, two legs.
+## A Mixamo or CMU clip is authored for ~65, with a spine chain, shoulders,
+## forearms and fingers this skeleton simply does not have; retargeting one onto
+## seven rigid blocks is not a bone mapping, it is a re-animation. Downloaded
+## humanoid mocap is out for this game no matter whose account it comes from.
+##
+## The dictionary is emote id -> clip candidates, in preference order, exactly like
+## `ACTION_CLIPS` above — the first clip the model actually has wins, so a model
+## missing one still animates instead of freezing.
+const EMOTE_CLIPS: Dictionary = {
+	# A literal thumbs-up on this rig. Also what `"ready"` plays, deliberately:
+	# the gesture means the same thing in both places.
+	"yes": ["emote-yes", "interact-right"] as Array[String],
+	"no": ["emote-no", "interact-left"] as Array[String],
+	"sit": ["sit", "crouch"] as Array[String],
+	# ⚠️ RELABELLED "VICTORY", STILL THE `crouch` CLIP — 🧑 asked for a victory pose,
+	# and this rig does not have one. Its 32 clips are locomotion, combat, wheelchair
+	# and exactly two gestures; nothing on it reads as arms-up celebration. `crouch` is
+	# the closest thing available (a low, braced pose that reads as a crouched
+	# fist-pump) and it is the honest placeholder rather than a promise the animation
+	# does not keep. See EMOTE_LOOPS for the shortlist of what else could be added.
+	"crouch": ["crouch", "sit"] as Array[String],
+	# The taunt. `die` is the knockdown clip played on purpose.
+	"dead": ["die", "crouch"] as Array[String],
+	# ⚠️ `static` IS THE RIG'S UNANIMATED BIND POSE — arms out, feet together — which
+	# is exactly the T-pose the joke is about. It was one of the fifteen clips in the
+	# .glb that nothing in the game had ever played.
+	"tpose": ["static", "idle"] as Array[String],
+	# `pick-up` bends the torso forward over the legs; standing still it reads as a
+	# bow rather than as a grab. The clip already has a gameplay job — nothing stops
+	# one clip having two, and this costs no new asset.
+	"bow": ["pick-up", "interact-right"] as Array[String],
+}
+
+## ⚠️⚠️ WHICH EMOTES LOOP AND WHICH HOLD THEIR LAST FRAME.
+##
+## 🧑 2026-08-04: *"play dead looks hella weird rn im perma jumping up and down the
+## floor and lying down"*, and *"for play dead can u NOT loop the animation and
+## instead js let me stay on the floor till i stop"*.
+##
+## Exactly right, and it is what a looping one-shot does to a clip with a beginning
+## and an end: `die` drops the body to the floor, ends, restarts from standing, and
+## drops again — a corpse doing burpees. A gesture like a nod or a head shake reads
+## fine repeated; a state change does not, because the thing the player wants is the
+## END of it, held.
+##
+## So a looping emote replays on `animation_finished` and a holding one simply does
+## not — the AnimationPlayer leaves the final frame applied, and `_action_clip` is
+## still set so locomotion cannot overwrite it. The pose stays until the player
+## moves, exactly as asked.
+const EMOTE_LOOPS: Dictionary = {
+	"yes": true,
+	"no": true,
+	"sit": false,   # sitting down ends sitting; standing back up every 2 s does not read as sitting
+	"crouch": false,
+	"dead": false,
+	# A T-pose is a POSE — there is nothing to repeat, and `static` is the bind pose.
+	"tpose": false,
+	# A bow is a gesture with a return, so repeating it reads as bowing over and over,
+	# which is the joke. Contrast `dead`, where the player wants the END held.
+	"bow": true,
+}
+
+## Fires on the peer that owns this body when the emote clip ends on its own, so
+## `character_base.gd` can put the camera back without polling for it.
+signal emote_finished
+
+## The clip an EMOTE is currently holding, or "". Separate from `_action_clip`
+## even though both block locomotion, because only this one owns the camera and
+## only this one can be cancelled by the player.
+var _emote_clip: String = ""
+## The emote id currently playing, so `_on_animation_finished` can ask EMOTE_LOOPS
+## whether to replay. The clip name cannot answer that — two ids can share a clip.
+var _emote_id: String = ""
+
+func is_emoting() -> bool:
+	return _emote_clip != ""
+
+## ⚠️ RETURNS FALSE RATHER THAN PUSHING AN ERROR for an unknown id or a rig with no
+## AnimationPlayer — the Cans and Tsinelas have neither, and the caller uses the
+## bool to decide whether the camera is allowed to change. A camera that swings to
+## third person for an emote that never plays is the worst version of this feature.
+func play_emote(id: String) -> bool:
+	if _animator == null:
+		return false
+	var candidates: Array[String] = EMOTE_CLIPS.get(id, [] as Array[String])
+	for clip in candidates:
+		if _animator.has_animation(clip):
+			_emote_clip = clip
+			_emote_id = id
+			# Blocks `_play_locomotion()` for as long as it is held — same
+			# mechanism the one-shot actions use.
+			_action_clip = clip
+			_animator.play(clip)
+			return true
+	return false
+
+## Cancels early — the player moved, or was hit. Safe to call when not emoting.
+func stop_emote() -> void:
+	if _emote_clip == "":
+		return
+	_emote_clip = ""
+	_emote_id = ""
+	_action_clip = ""
+	_play_locomotion()
+
 func _on_animation_finished(anim_name: StringName) -> void:
 	# Hand control back to locomotion once the one-shot is done, otherwise the
 	# character freezes on the last frame of its throw.
+	# ⚠️⚠️ AN EMOTE LOOPS — 🧑 2026-08-04: *"make emotes a bit longer / let them
+	# continue until i interrupt it with my movement"*. So the clip ending is not the
+	# end of the emote; it is the end of one repetition, and the only things that stop
+	# one are the player moving, losing control, or the model being rebuilt.
+	#
+	# ⚠️ REPLAYED HERE RATHER THAN SET TO `LOOP_LINEAR` ON THE ANIMATION. These clips
+	# are shared resources loaded from the .glb — `emote-yes` is also what `"ready"`
+	# plays — so flipping the loop mode on the Animation would make every OTHER user
+	# of that clip loop forever too, including the ready-up thumbs-up. Replaying keeps
+	# the change to this one playback.
+	if String(anim_name) == _emote_clip:
+		# ⚠️ A HOLDING EMOTE DOES NOTHING HERE ON PURPOSE. The AnimationPlayer leaves
+		# the last frame applied, and `_action_clip` is still set so `_play_locomotion`
+		# cannot overwrite it — so the body stays in the final pose until the player
+		# moves. Replaying it instead is what had 🧑 "perma jumping up and down the
+		# floor". See EMOTE_LOOPS.
+		if bool(EMOTE_LOOPS.get(_emote_id, true)):
+			_animator.play(_emote_clip)
+		return
 	if String(anim_name) == _action_clip:
 		_action_clip = ""
 		_play_locomotion()

@@ -63,10 +63,40 @@ const SETTINGS_SECTION: String = "input"
 ## ⚠️ `grab` ALSO CARRIES A MOUSE BINDING (LMB) and rebinding does not disturb it —
 ## `_replace_key_binding()` erases only `InputEventKey` events. Note the LMB half is
 ## double-bound with `special_ability`, which is a separate open question on §4.19.
+## ⚠️ `grab` APPEARED TWICE HERE AND THE PANEL DREW BOTH — two rows reading
+## "Grab · E", one above the other, for a year. 🧑 spotted it in a render.
+##
+## It was not a lost action with the wrong name, which is the thing worth checking
+## before deleting either copy. `git log -L` on this block: `e801fc4` added the
+## `"grab", "ready_up", "clean_feed"` line, and `3abc019` (the four-player rebuild)
+## then deleted `bump` and `guard_dash` — whose input actions it had just removed
+## from `project.godot` — and dropped `grab` into the hole they left, not noticing
+## the line underneath already had it. So the second copy is a duplicate outright
+## and nothing is lost by removing it.
+##
+## ⚠️ `lunge` AND `spectator_down` ARE IN THE INPUTMAP AND STILL NOT HERE, and that
+## is deliberate rather than the same bug again.
+##
+## ⚠️ LUNGE TAG IS ABSOLUTELY ITS OWN SKILL — it is the taya's tag, with its own
+## charge, its own cooldown and its own clip. What it is not is its own KEY. It
+## moved to **hold E** on 2026-08-01 ("Lunge Tag (Hold E for 0.5s)"), so
+## `character_base.gd::_lunge_pressed_now()` reads `input_just_pressed("lunge") or
+## input_just_pressed("grab")` and the `lunge` action is the legacy right-click
+## half, kept only because `ai_controller.gd` presses it. Rebinding the Grab row
+## already moves the lunge with it.
+##
+## So one row is right, and it is right for a reason that goes wider than this
+## action: **E is contextual**. Tap it to pick up, hold 0.5 s to lunge-tag, hold
+## 1.25 s to shove, hold 2.5 s as the taya to reset the lata. Several skills, one
+## key, one row — the panel binds KEYS, and a row per skill would promise four
+## keys that do not exist.
+##
+## `spectator_down` drives the spectator camera, not a player.
 const REBINDABLE_ACTIONS: Array[String] = [
 	"move_left", "move_right", "move_up", "move_down",
 	"special_ability", "grab", "jump", "sprint",
-	"grab", "ready_up", "clean_feed",
+	"ready_up", "clean_feed",
+	"emote_wheel",
 	"toggle_fullscreen",
 ]
 
@@ -91,6 +121,9 @@ const ACTION_LABELS: Dictionary = {
 	# displaced lata home (`Design.md` §5.2).
 	"grab": "Grab",
 	"ready_up": "Ready Up",
+	# Hold it to open the wheel, release on a slice to play it — so the row reads
+	# as the thing the player holds, not as a menu they open and close.
+	"emote_wheel": "Emote Wheel",
 	# Named for what it DOES to the recording, not for what it hides — the operator
 	# reading this row is looking for the setting that gives them a clean plate.
 	"clean_feed": "Hide HUD (Spectator)",

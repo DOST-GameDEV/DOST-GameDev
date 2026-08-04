@@ -31,12 +31,48 @@ class_name Hud
 @onready var crosshair: Control = %Crosshair
 @onready var crosshair_label: Label = %CrosshairLabel
 @onready var offscreen_indicators: OffscreenIndicators = %OffscreenIndicators
+@onready var emote_wheel: EmoteWheel = %EmoteWheel
 
 var _toast_time_left: float = 0.0
 var _pulse_tween: Tween = null
 var _countdown_tween: Tween = null
 
+## ⚠️⚠️ THESE THREE EXIST ONLY TO STOP `_process` REWRITING THINGS THAT HAVE NOT
+## CHANGED, and they were added off a measurement, not a hunch.
+## `tools/perf_attrib.tscn` brackets the frame's whole script `_process` pass
+## between two sentinel nodes and reports it per subsystem. On eskinita, in a real
+## four-body match, the HUD was 0.20 ms of a 0.47 ms total — more than all four
+## `character_visual.gd` `_process` calls put together, for a screen that changes
+## a handful of times a second.
+##
+## The cause was three unconditional writes per frame: the clock string, the clock
+## colour, and the whole lata card. `add_theme_color_override()` in particular is
+## not a field assignment — it writes into the Control's theme override map and
+## notifies the control (and its children) that the theme changed, every single
+## call, whether or not the Color differs from the one already there.
+##
+## ⚠️ NONE OF THIS CHANGES WHAT IS DRAWN. Each guard reproduces the previous
+## behaviour exactly on the frame the value actually changes, and skips the
+## identical rewrite on the frames in between. -1 and "" are "nothing shown yet",
+## so the first frame always writes.
+var _timer_seconds_shown: int = -1
+var _timer_urgent: int = -1 # -1 unknown, 0 amber, 1 highlight
+var _lata_upright_shown: int = -1
+var _lata_hint_shown: String = "￿" # never equal to a real hint, so frame 1 writes
+
+## ⚠️ SET BACK TO AMBER, NOT `remove_theme_color_override`. Removing it would fall
+## through to the HudTimer variation's near-white, which is the pre-wood colour —
+## so the timer would go white the moment it climbed back over 15s.
+func _set_timer_urgent(urgent: bool) -> void:
+	var want := 1 if urgent else 0
+	if want == _timer_urgent:
+		return
+	_timer_urgent = want
+	timer_label.add_theme_color_override("font_color",
+		UiTheme.HIGHLIGHT if urgent else UiTheme.AMBER)
+
 func _ready() -> void:
+	emote_wheel.emote_chosen.connect(_on_emote_chosen)
 	MatchManager.round_started.connect(_on_round_started)
 	MatchManager.match_won.connect(_on_match_won)
 	# 4.1 — round result. See _on_round_intermission_audio for why this signal
@@ -189,12 +225,19 @@ func _refresh_role_accents() -> void:
 
 func _process(delta: float) -> void:
 	var t := int(ceil(RoundManager.time_left))
-	timer_label.text = "%02d:%02d" % [t / 60, t % 60]
+	# ⚠️ ONLY ON THE SECOND, NOT EVERY FRAME. The clock has one-second resolution, so
+	# at 120 fps this formatted and assigned the same two-digit string 119 times out of
+	# 120 for nothing. `Label.text` is not a plain setter — an assignment invalidates
+	# the text buffer and queues a reshape whether or not the characters changed.
+	# See the ⚠️ on `_timer_urgent` for how this pair was found.
+	if t != _timer_seconds_shown:
+		_timer_seconds_shown = t
+		timer_label.text = "%02d:%02d" % [t / 60, t % 60]
 
 	# Timer urgency (§4.4): HIGHLIGHT colour under 15s, scale pulse under 10s.
 	# Scale tween instead of colour flash to avoid collision with the downed vignette.
 	if RoundManager.time_left < 15.0:
-		timer_label.add_theme_color_override("font_color", UiTheme.HIGHLIGHT)
+		_set_timer_urgent(true)
 		if RoundManager.time_left < 10.0:
 			if _pulse_tween == null or not _pulse_tween.is_running():
 				timer_card.pivot_offset = timer_card.size / 2
@@ -204,10 +247,7 @@ func _process(delta: float) -> void:
 		else:
 			_kill_pulse_tween()
 	else:
-		# ⚠️ SET BACK TO AMBER, NOT `remove_theme_color_override`. Removing it would fall
-		# through to the HudTimer variation's near-white, which is the pre-wood colour —
-		# so the timer would go white the moment it climbed back over 15s.
-		timer_label.add_theme_color_override("font_color", UiTheme.AMBER)
+		_set_timer_urgent(false)
 		_kill_pulse_tween()
 
 	# Polled each frame, but `_fill_pips` early-outs unless the value actually
@@ -618,6 +658,43 @@ func enter_spectator_mode(camera: SpectatorCamera) -> void:
 	legend.text += "   ·   %s clean feed" % SettingsManager.get_binding_display_name("clean_feed")
 	set_process_input(true)
 
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THERE IS A WAY OUT NOW, AND `enter_spectator_mode()`'s *"there is no leaving it"*
+## ABOVE IS WHY IT NEEDED WRITING RATHER THAN JUST CALLING SOMETHING.
+##
+## `NetworkManager`'s § MID-MATCH ARRIVALS parks a newcomer as a spectator and PROMOTES it
+## into a seat at the next role rotation, so this HUD now has to be able to become a
+## player's again. Called from `main.gd::_exit_spectator_mode`, and from nowhere else.
+##
+## ⚠️ IT RESTORES ONLY THE ALWAYS-ON GAMEPLAY ELEMENTS. `downed_flash`, `ready_prompt` and
+## `ready_objective_row` are TRANSIENTS — each is shown by its own driver on its own event
+## (`show_ready_prompt`, the downed signal, `_rpc_ready_phase`) — and blanket-showing them
+## here would put a stale ready prompt over a live round. Their drivers were free to fire
+## while this peer was watching and will fire again; the four below have no driver because
+## they are simply meant to be on.
+##
+## ⚠️ AND IT LIFTS THE CLEAN FEED. `set_clean_feed(true)` hides `self`, and a promoted player
+## who had pressed H would otherwise walk into a live round with no HUD at all and no way
+## back — `_input()` returns immediately once `_spectating` is false, so the key that turned
+## it off has just stopped working.
+## ---------------------------------------------------------------------------
+func exit_spectator_mode() -> void:
+	if not _spectating:
+		return
+	set_clean_feed(false)
+	_spectating = false
+	_spectator_camera = null
+	for label in [get_node_or_null("SpectatorLegend"), _spectator_status, _spectator_round]:
+		if label != null and is_instance_valid(label):
+			label.queue_free()
+	_spectator_status = null
+	_spectator_round = null
+	you_card.visible = true
+	crosshair.visible = true
+	lata_card.visible = true
+	offscreen_indicators.visible = true
+	set_process_input(false)
+
 var _spectating: bool = false
 var _spectator_camera: SpectatorCamera = null
 var _spectator_status: Label = null
@@ -677,6 +754,11 @@ var _clean_feed: bool = false
 ## first and the event is consumed ONLY when the action actually matches, so nothing else
 ## on screen — the pause toggle above all — ever loses an event to this.
 func _input(event: InputEvent) -> void:
+	# ⚠️ BEFORE THE `_spectating` GATE. Everything below this line is the spectator's
+	# clean-feed key and returns early for an ordinary player — which is exactly who
+	# the emote wheel is for.
+	if _handle_emote_input(event):
+		return
 	if not _spectating:
 		return
 	# `allow_echo` defaults false, which is the guard the first version spelled out by
@@ -686,6 +768,69 @@ func _input(event: InputEvent) -> void:
 		return
 	get_viewport().set_input_as_handled()
 	set_clean_feed(not _clean_feed)
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE EMOTE WHEEL'S KEY. Hold to open, release to play the highlighted slice.
+##
+## ⚠️ IT LIVES ON THE HUD RATHER THAN ON `character_base.gd`, deliberately. The
+## wheel is a screen, and this file already owns every screen the player sees mid
+## match AND already resolves "which body is mine" through `you_card`. Putting the
+## open/close on the character would make a second answer to that question and give
+## the four bodies in a local match four wheels between them.
+##
+## Returns true when it consumed the event, so `_input` above can stop.
+func _handle_emote_input(event: InputEvent) -> bool:
+	if emote_wheel == null:
+		return false
+	# ⚠️ SPECTATORS CANNOT EMOTE, BUT THEY SEE EVERY EMOTE. 🧑 2026-08-04: *"make
+	# sure spectators dont emote HAHA but they can see emotes"*. Both fall out of
+	# where the two halves live: opening the wheel is gated HERE, on the local
+	# screen, while the clip itself is replicated by `character_base.gd::_rpc_emote`
+	# onto every peer's copy of that body — so a spectator watching someone else
+	# dance is just watching a body animate, exactly like a walk cycle. A spectator
+	# also has no `get_local_character()` to emote WITH, so this gate is the second
+	# lock rather than the only one.
+	#
+	# ⚠️ AND THE CLEAN FEED STILL HIDES EVERYTHING. *"make sure huds still dont show
+	# up for spectator if they choose to turn it off"*. The wheel is a CHILD of this
+	# HUD, and `set_clean_feed()` hides this whole Control rather than each child —
+	# so a hidden parent means the wheel cannot draw, by construction, and it needs
+	# no entry in any restore list. That is the same property the comment on
+	# `set_clean_feed` explains for the toast and the countdown.
+	#
+	# The wheel closes without playing if it is somehow up when it should not be —
+	# a pause, a round end, spectating, or the local body going away mid-hold.
+	var allowed := not _spectating and not get_tree().paused
+	if not allowed:
+		if emote_wheel.is_open():
+			emote_wheel.close(false)
+		return false
+	if event.is_action_pressed("emote_wheel", false, true):
+		var local_char := you_card.get_local_character()
+		# ⚠️ ASKED BEFORE OPENING, NOT BEFORE PLAYING. A wheel that opens and then
+		# refuses on release reads as a broken button; one that never opens reads as
+		# "not now", which is the truth.
+		if local_char == null or not is_instance_valid(local_char) or not local_char.can_emote():
+			return false
+		emote_wheel.open()
+		get_viewport().set_input_as_handled()
+		return true
+	if event.is_action_released("emote_wheel"):
+		if not emote_wheel.is_open():
+			return false
+		emote_wheel.close(true)
+		get_viewport().set_input_as_handled()
+		return true
+	return false
+
+func _on_emote_chosen(id: String) -> void:
+	var local_char := you_card.get_local_character()
+	if local_char == null or not is_instance_valid(local_char):
+		return
+	# `try_emote` re-checks `can_emote()` and the authority. Between opening the
+	# wheel and releasing it the player can have been tagged, knocked down or had
+	# the round end under them.
+	local_char.try_emote(id)
 
 ## Public so `spec_probe` can drive it without synthesising a key event.
 func set_clean_feed(on: bool) -> void:
@@ -1337,9 +1482,15 @@ func _refresh_lata_card() -> void:
 		lata_card.visible = false
 		return
 	lata_card.visible = true
-	lata_label.text = "LATA  ·  UPRIGHT" if lata.is_upright else "LATA  ·  DOWN"
-	lata_label.add_theme_color_override("font_color",
-		UiTheme.DEFENSE if lata.is_upright else UiTheme.OFFENSE)
+	# ⚠️ THE UPRIGHT LINE CHANGES ONLY WHEN THE LATA TIPS, which is a handful of times
+	# a round — but the text and the colour override below it were both rewritten every
+	# frame. Gated on the bool itself rather than on a stamp string, because that is the
+	# entire input to both writes. See the ⚠️⚠️ block on `_timer_seconds_shown`.
+	if _lata_upright_shown != int(lata.is_upright):
+		_lata_upright_shown = int(lata.is_upright)
+		lata_label.text = "LATA  ·  UPRIGHT" if lata.is_upright else "LATA  ·  DOWN"
+		lata_label.add_theme_color_override("font_color",
+			UiTheme.DEFENSE if lata.is_upright else UiTheme.OFFENSE)
 	var local_char := you_card.get_local_character()
 	if local_char == null or not is_instance_valid(local_char):
 		lata_hint_label.visible = false
@@ -1359,8 +1510,14 @@ func _refresh_lata_card() -> void:
 		line = "RETRIEVE A SLIPPER"
 	elif local_char.is_inside_box():
 		line = "GET OUT OF THE BOX TO THROW"
-	lata_hint_label.text = line
-	lata_hint_label.visible = line != ""
+	# ⚠️ The two live hints ("RESETTING 42%", "THROW LOCKED 1.2s") DO change most frames,
+	# and this guard deliberately does not try to be clever about them — it compares the
+	# finished string, so those two still write when they tick and the other four states,
+	# which are constant for as long as they hold, write once.
+	if line != _lata_hint_shown:
+		_lata_hint_shown = line
+		lata_hint_label.text = line
+		lata_hint_label.visible = line != ""
 
 ## ⚠️ FATIGUE IS SHOWN ON THE BAR AS WELL AS IN THE STATUS STACK, and that is not a
 ## duplicate. The stack row says how long it lasts; the bar says why it happened. A

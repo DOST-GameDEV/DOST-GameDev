@@ -463,6 +463,14 @@ func _seat_on_floor(character: CharacterBase) -> void:
 		return
 	character.global_position.y = (hit["position"] as Vector3).y 		+ character.capsule_height() * 0.5 + SPAWN_FLOOR_CLEARANCE
 
+## Set by `--dedicated`, read once by `_start_hosting`. Command-line only: there is no
+## button for it, because a player clicking HOST is by definition sitting at the machine
+## and wants a seat.
+var _dedicated: bool = false
+## Set by `--port=`, so a pool of lobby processes on one machine can each take a port.
+## Defaults to the same port hosting has always used.
+var _host_port: int = NetworkManagerScript.DEFAULT_PORT
+
 var _spawned_peer_ids: Dictionary = {}
 ## B-21, superseded by 4.3/B-65: token -> permanently-assigned join index
 ## (0..3), separate from _spawned_peer_ids.size(). B-21 keyed this by peer_id
@@ -579,6 +587,19 @@ func _ready() -> void:
 		for arg in OS.get_cmdline_user_args():
 			if arg == "--host":
 				should_host = true
+			# ⚠️ HOSTS WITHOUT PLAYING — see NetworkManager.host_game's dedicated
+			# header. This is how one of a fixed pool of lobby processes on a server
+			# is started: `--headless -- --dedicated --port=8912`. It implies
+			# `--host`, because a dedicated server that does not host is nothing.
+			elif arg == "--dedicated":
+				should_host = true
+				_dedicated = true
+			elif arg.begins_with("--port="):
+				var port_text := arg.substr(len("--port="))
+				if port_text.is_valid_int():
+					_host_port = int(port_text)
+				else:
+					push_error("main: --port= needs a number, got '%s'" % port_text)
 			elif arg.begins_with("--join="):
 				join_target = arg.substr(len("--join="))
 			elif arg == "--spectate":
@@ -875,6 +896,126 @@ func _dress_spectated_units() -> void:
 	_refresh_ai_prop_picks()
 	_refresh_seat_prop_picks()
 
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ § THE WAITING ROOM INSIDE A RUNNING MATCH — THIS PEER'S HALF.
+##
+## `NetworkManager`'s § MID-MATCH ARRIVALS decides, host-side, that a newcomer waits as a
+## spectator until the next role rotation. Everything below is what that ruling looks like
+## on the peer it is about.
+##
+## ⚠️ IT REUSES THE SPECTATOR THAT ALREADY EXISTS RATHER THAN ADDING A SECOND WATCHING MODE.
+## A waiting newcomer and a person who came to film get the identical camera, the identical
+## stripped HUD and the identical `is_spectator()` answer host-side — the ONLY difference is
+## that one of them is in `waiting_seat_tokens` and will be promoted. One mode, one set of
+## bugs.
+## ---------------------------------------------------------------------------
+
+## The host has ruled on whether this peer is watching. See
+## `NetworkManager.provisional_spectator_changed`.
+func _on_provisional_spectator_changed(spectating: bool) -> void:
+	if spectating:
+		_enter_spectator_mode()
+	else:
+		_exit_spectator_mode()
+
+## ---------------------------------------------------------------------------
+## The promotion's client half: stop watching, one beat before the reclaimed body's own
+## camera rig is made current by `_apply_reclaim` -> `_refresh_rig_ownership`.
+##
+## ⚠️ THE SPECTATOR CAMERA MUST BE FREED, NOT MERELY IGNORED. `SpectatorCamera` makes itself
+## `current` and drives itself from `_input`; leaving it in the tree means two cameras both
+## believing they are the view, and which one wins is decided by whichever called
+## `make_current()` last — i.e. by packet ordering.
+##
+## ⚠️ A NO-OP FOR A PEER THAT NEVER WATCHED, which is most of them: the host broadcasts
+## nothing here, but `seat_provisional_spectator` sends `false` to a peer that may already
+## have exited (the ruling is idempotent by design), and a solo/local spectator never had a
+## provisional ruling at all.
+## ---------------------------------------------------------------------------
+func _exit_spectator_mode() -> void:
+	if _spectator == null or not is_instance_valid(_spectator):
+		return
+	_spectator.queue_free()
+	_spectator = null
+	hud.exit_spectator_mode()
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ HOST-ONLY. HOW MANY SEATS A WAITING NEWCOMER COULD BE PROMOTED INTO — and the ONLY
+## definition of "free seat" in the project. `NetworkManager.free_seat_count()` calls this
+## by name off `current_scene`; see its own doc for why the number is pulled from here
+## rather than cached over there.
+##
+## A seat is free when BOTH are true:
+##
+##   NO TOKEN HAS EVER CLAIMED IT (`_seat_is_taken`, i.e. `_token_join_index`). ⚠️⚠️ THIS IS
+##   THE HALF THAT PROTECTS A RETURNING PLAYER. A human who dropped mid-round has their body
+##   handed to a bot (`_rpc_convert_to_ai`) — so "a bot is driving it" is true of their chair
+##   too, and counting it would let a newcomer be promoted into the exact seat B-65's rejoin
+##   exists to give back. The token map is never erased on disconnect, precisely so this
+##   question has an answer.
+##
+##   AND A BOT IS ACTUALLY DRIVING IT. `is_bot` rather than "no peer owns it": the seat has
+##   to contain a body a promotion can RECLAIM, because promotion is
+##   `_spawn_player` -> `_rpc_reclaim_character`, the same path a rejoin takes. A slot with
+##   no character in it at all (there should be none after
+##   `_fill_empty_slots_with_placeholders`, but this must not assume it) is not something to
+##   promise anybody.
+## ---------------------------------------------------------------------------
+func free_seat_count() -> int:
+	var free := 0
+	for index in range(NetworkManager.MAX_PLAYERS):
+		if _seat_is_taken(index):
+			continue
+		var seat_body: CharacterBase = _index_to_character.get(index)
+		if seat_body == null or not is_instance_valid(seat_body):
+			continue
+		if seat_body.is_bot:
+			free += 1
+	return free
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ HOST-ONLY. THE ROLE ROTATION IS WHERE A WAITING NEWCOMER GETS ITS SEAT.
+##
+## 🧑 2026-08-04: *"we could make them spectators until the next role rotation."*
+##
+## ⚠️ CALLED FROM `_on_match_round_started` **BEFORE** `_reset_world()`, AND THE ORDER IS THE
+## ANSWER TO "does the promoted player wear the bot's face". `_apply_reclaim` ->
+## `_apply_reclaimed_picks` writes the human's real `character_index` onto the body; the very
+## next thing `_reset_world` does is call `reset_for_new_round()` on every character, which
+## re-runs `CharacterVisual.apply()` — so the repaint that a mid-round reclaim never gets is
+## simply the round reset this promotion is deliberately standing in front of.
+##
+## ⚠️⚠️ AND THAT IS WHY PROMOTION IS PINNED TO THE ROTATION RATHER THAN DONE ON ARRIVAL. It
+## is NOT the withdrawn repaint fix at `character_base.gd:513` (`CharacterVisual.apply()`
+## freeing the carried tsinelas) and must not become it: at this instant every hand is empty
+## by construction — `_reset_slippers()` runs inside `_reset_world` and `_equip_owned_slippers`
+## is deferred to the frame AFTER it — so the repaint that happens here cannot free a prop
+## anybody is holding. A repaint driven from the reclaim itself, mid-round, could.
+##
+## ⚠️ A PROMOTED PEER IS ALSO WHERE IT SHOULD BE STANDING. `_reset_world` places every seat
+## at its role mark a beat later, so a promotion cannot drop somebody inside the chalk box —
+## which is what an arrival-time reclaim does, because it inherits wherever the bot happened
+## to be.
+##
+## ⚠️ `_spawned_peer_ids` HAS TO BE UN-MARKED FIRST. `_spawn_player` writes that key for a
+## spectator too (the dictionary means "this peer has been dealt with", not "has a body"), so
+## without the erase the promotion would return at its very first line.
+## ---------------------------------------------------------------------------
+func _promote_waiting_spectators() -> void:
+	if not NetworkManager.is_host():
+		return
+	if NetworkManager.waiting_seat_tokens.is_empty():
+		return
+	var seats := free_seat_count()
+	for token in NetworkManager.take_promotable_tokens(seats):
+		var peer_id := NetworkManager.peer_id_for_token(String(token))
+		if peer_id == 0:
+			continue
+		NetworkManager.seat_provisional_spectator(peer_id)
+		_spawned_peer_ids.erase(peer_id)
+		_spawn_player(peer_id)
+		print("[main] promoted waiting spectator peer %d into a seat" % [peer_id])
+
 func _enter_spectator_mode() -> void:
 	if _spectator != null and is_instance_valid(_spectator):
 		return
@@ -1066,7 +1207,7 @@ func _start_hosting() -> void:
 	# second host_game() call (it would fail with "port in use"). Fall through
 	# to signal wiring and spawning, which still need to happen here.
 	if not NetworkManager.is_networked():
-		if NetworkManager.host_game() != OK:
+		if NetworkManager.host_game(_host_port, _dedicated) != OK:
 			return
 	NetworkManager.player_connected.connect(_on_player_connected)
 	NetworkManager.player_disconnected.connect(_on_player_disconnected)
@@ -1111,8 +1252,18 @@ func _start_joining(address: String) -> void:
 	# local — the host decides who gets a body and the client only ever receives the
 	# result. `GameLaunch.spectator` is this peer's own choice, known locally, and this is
 	# the first moment on the client where the HUD exists to be stripped.
-	if GameLaunch.spectator:
+	# ⚠️ TWO WAYS TO BE WATCHING, AND ONLY ONE OF THEM IS THIS PLAYER'S OWN CHOICE.
+	# `GameLaunch.spectator` is the SPECTATE toggle, a preference. `provisional_spectator`
+	# is the host's ruling on a newcomer that knocked mid-match (§ THE WAITING ROOM INSIDE A
+	# RUNNING MATCH) — it arrives over the wire, survives the reroute that follows it, and is
+	# read here because the reroute means this scene loads AFTER the ruling was made.
+	if GameLaunch.spectator or NetworkManager.provisional_spectator:
 		_enter_spectator_mode()
+	# ⚠️ CONNECTED BEFORE `join_game()` BELOW, WHICH IS THE ONLY ORDERING THAT WORKS. The host
+	# re-sends the ruling on every identify (it is idempotent on purpose), so the promotion —
+	# and, for a peer that reached `Main.tscn` without a reroute, the ruling itself — lands as
+	# an RPC on a connection this function is about to open.
+	NetworkManager.provisional_spectator_changed.connect(_on_provisional_spectator_changed)
 	NetworkManager.player_connected.connect(_on_player_connected)
 	NetworkManager.player_disconnected.connect(_on_player_disconnected)
 	# Q-1/B-62: only a client can lose its server or fail to reach one — a host
@@ -1134,9 +1285,76 @@ func _start_joining(address: String) -> void:
 	# split) — so that case waits for the real connection_succeeded signal.
 	if NetworkManager.is_networked():
 		_rpc_client_ready_for_spawn.rpc_id(1)
-	else:
-		NetworkManager.connection_succeeded.connect(_on_joined_ready_for_spawn, CONNECT_ONE_SHOT)
-		NetworkManager.join_game(address)
+		return
+	# ---------------------------------------------------------------------------
+	# ⚠️⚠️ B-153 — THE PORT WAS THROWN AWAY HERE, AND THAT IS "you can JOIN it, but
+	# you're stuck on a grey screen."
+	#
+	# 🧑 2026-08-02, from a real player: *"When getting disconnected from a lobby, I want
+	# the ability to rejoin it. Currently you are able to JOIN it, but you're stuck on a
+	# grey screen."*
+	#
+	# `address` arrives as `GameLaunch.pending_join_address`, which is a HOST:PORT string —
+	# `multiplayer_setup.gd::_begin_join()` is the one place a join is recorded and it
+	# stores exactly what the player typed, clicked or resolved from a code, port included
+	# (`_free_pool_address()` and every browsed row produce `"ip:port"`). This line used to
+	# hand that whole string to `NetworkManager.join_game(address)`, whose second argument
+	# is a SEPARATE port defaulting to 8910. `ENetMultiplayerPeer.create_client()` does not
+	# parse a colon, so it tried to resolve the literal host name `127.0.0.1:8941`.
+	#
+	# MEASURED on the returning client (`tools/net/rejoin_run.gd --role=dropper`), verbatim:
+	#
+	#     ERROR: Couldn't resolve the server IP address or domain name.
+	#     ERROR: NetworkManager: failed to connect to 127.0.0.1:8941:8910 (error 20)
+	#         [0] join_game  [1] _start_joining  [2] _ready
+	#
+	# — the port printed twice, which is the bug in one line.
+	#
+	# ⚠️ THIS IS THE SAME MISTAKE `multiplayer_setup.gd::split_address()` WAS WRITTEN TO
+	# FIX, IN THE ONE PATH THAT DID NOT GET IT. That function's own ⚠️ says the address
+	# *"went straight to `NetworkManager.join_game(address)`… which takes host and port as
+	# SEPARATE arguments and does not parse a colon"* — and both UI join sites were
+	# converted. Nothing converted this one, because on the ORDINARY join `MatchSetup` has
+	# already connected and the branch above returns before ever reaching it.
+	#
+	# ⚠️ SO IT ONLY EVER FIRES ON A REJOIN, WHICH IS WHY IT SURVIVED. The only way this
+	# scene dials for itself is `NetworkManager._rpc_route_to_running_match`, which
+	# deliberately drops the connection and re-opens it from here (see that function's own
+	# doc for the spawner race that forces it). The player's JOIN genuinely worked — they
+	# reached the lobby, the host recognised them and rerouted them — and then the *second*
+	# connection, the one nobody watches, died on a malformed address. Hence "you are able
+	# to JOIN it" and a world with nothing in it: `_clear_local_test_characters()` above has
+	# already removed the four scene-authored bodies, and `Main.tscn` carries no camera of
+	# its own (B-03/B-58), so the viewport draws the 2D HUD over nothing. That is the grey.
+	#
+	# ⚠️ AND `create_client()` FAILING IS SILENT. It returns an error rather than emitting
+	# `connection_failed`, so `_on_connection_failed` never ran and the player was left on a
+	# dead scene with no message and no way out but Alt+F4 — the exact soft-lock Q-1/B-62
+	# closed for an unreachable host, reopened by a different route. `_bail_to_browser`
+	# below is that same exit.
+	#
+	# ⚠️ `split_address` IS REUSED, NOT REIMPLEMENTED. A second parser is the U-8 bug class
+	# this project has already paid for twice, and this one would have to agree about the
+	# default port and about rejecting IPv6. `match_setup.gd`'s join branch reaches for the
+	# same static function from the same place.
+	#
+	# Fixes the command-line path too, as a side effect worth stating: `--join=127.0.0.1:8941`
+	# silently ignored its port for exactly as long as this line existed.
+	# ---------------------------------------------------------------------------
+	var parts := MultiplayerSetupScreen.split_address(address)
+	var host: String = String(parts[0])
+	var port: int = int(parts[1])
+	if host.is_empty() or port <= 0 or port > 65535:
+		_bail_to_browser("Could not read the address '%s'." % address)
+		return
+	NetworkManager.connection_succeeded.connect(_on_joined_ready_for_spawn, CONNECT_ONE_SHOT)
+	if NetworkManager.join_game(host, port) != OK:
+		# ⚠️ THE ONE-SHOT IS TAKEN BACK BY HAND. `CONNECT_ONE_SHOT` disconnects itself when
+		# the signal FIRES, and a connection that never opened never fires it — leaving a
+		# live subscription on an autoload that outlives this scene, ready to answer the
+		# NEXT session's success on a freed node.
+		NetworkManager.connection_succeeded.disconnect(_on_joined_ready_for_spawn)
+		_bail_to_browser("Could not reach %s." % address)
 
 func _on_joined_ready_for_spawn() -> void:
 	_rpc_client_ready_for_spawn.rpc_id(1)
@@ -1416,8 +1634,36 @@ func _apply_known_picks(character: CharacterBase, index: int) -> void:
 	# ⚠️ SANITISED ON ARRIVAL. This string came off the wire from another peer and is
 	# about to be drawn on a scoreboard and a 3D label; `SettingsManager` owns the one
 	# trim-and-cap so a hostile or merely careless client cannot post a novel.
+	#
+	# ⚠️⚠️ AND AN EMPTY NAME IS NOT WRITTEN, WHICH IS THIS FUNCTION'S OWN "NEVER WRITES A -1"
+	# RULE APPLIED TO THE COLUMN BESIDE IT. Without this guard the mid-match joiner's name is
+	# repaired by `_apply_reclaim` and then destroyed again ~one packet later, and the whole
+	# fix reads as if it never ran.
+	#
+	# The ordering is fixed and host-side, in `_try_late_join()`: `_spawn_player()` sends
+	# `_rpc_reclaim_character` FIRST (line ~1994) and `_rpc_sync_picks.rpc_id()` a few lines
+	# LATER (~1563). Both are reliable, so they arrive in that order — and at the moment the
+	# host builds `_picks_table()` the arriving peer has not yet even RECEIVED the reclaim, let
+	# alone written its own name and replicated it back. So row[2] is `""` by construction for
+	# exactly the seat that just got fixed, and it landed on top of it. Measured 2026-08-04 on
+	# `tools/net/run_rejoin.ps1 -Scenario latecomer` WITH the `_apply_reclaim` write in place:
+	#
+	#     [latecomer] NAME-CHECK body=709897223 slot=1 got='' expect='LATECOMER' display='P2'
+	#     [referee #1] NAME-CHECK body=709897223 slot=1 got='' expect='LATECOMER' display='P2'
+	#     [anchor #1]  NAME-CHECK body=709897223 slot=1 got='' expect='LATECOMER' display='P2'
+	#
+	# — the joiner's OWN machine reading empty, which nothing but a later local write can do.
+	#
+	# ⚠️ NOTHING NEEDS `""` TO MEAN "CLEAR THIS". `player_name` is deliberately never cleared
+	# when a seat converts to AI (see `character_base.gd`'s note on it — it belongs to the human
+	# who may rejoin into that body), and `display_name()` simply stops consulting it while
+	# `is_bot`. So an empty column is always "this peer has no answer", never "the answer is
+	# nothing" — which is precisely the case the `>= 0` test on `character_index` above already
+	# covers, and for the same reason.
 	if row.size() >= 3:
-		character.player_name = SettingsManagerScript.sanitise_name(String(row[2]))
+		var told_name := SettingsManagerScript.sanitise_name(String(row[2]))
+		if told_name != "":
+			character.player_name = told_name
 	# ⚠️ THE MODEL HAS TO BE TOLD. `_visual.apply()` runs at `_ready()` and on every
 	# role rotation — neither of which happens when a pick lands mid-round, so
 	# without this the unit keeps wearing whatever it was drawn with.
@@ -1473,6 +1719,7 @@ func _try_late_join(peer_id: int) -> void:
 	# session. Sent on the SAME trigger as the round state above, to the same one
 	# peer, for the same reason: it missed a thing that happened before it existed.
 	_rpc_sync_picks.rpc_id(peer_id, _picks_table())
+	_sync_slipper_carry_to_late_joiner(peer_id)
 	# B-145, second half. NET-1 gave an AI-held Prop its human teammate's picks —
 	# but `_fill_empty_slots_with_placeholders()` runs in `_start_hosting()`,
 	# BEFORE a single client has connected, so `_team_prop_picks` had nobody to
@@ -1581,6 +1828,261 @@ func _on_player_disconnected(peer_id: int) -> void:
 		# see _build_networked_character) — kept as a fallback so a disconnect
 		# never silently does nothing if that assumption is ever wrong.
 		_rpc_show_toast.rpc("A player left the match — their character will hold position until they reconnect")
+	# ⚠️ LAST, AND IT MAY CHANGE SCENE OUT FROM UNDER EVERYTHING ABOVE. On a dedicated
+	# referee an empty room means the match is over whatever the scoreboard says — see
+	# § BACK TO THE WAITING ROOM. `change_scene_to_file` is deferred to the end of the
+	# frame, so the bookkeeping above still completes; nothing after this line may not.
+	_recycle_dedicated_lobby_if_abandoned()
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ § BACK TO THE WAITING ROOM — WHY A POOL LOBBY IS NOT A ONE-SHOT.
+##
+## MEASURED ON THE LIVE VM, 2026-08-02: a dedicated server whose match had been
+## abandoned answered the pool query `players=0, occupied=0, in_progress=true`
+## **with nobody connected at all**, indefinitely. Reproduced here on 8971 before
+## this existed — twelve consecutive status replies, one a second, all identical.
+##
+## That is not cosmetic. `multiplayer_setup.gd::_free_pool_address()` skips every row
+## whose `in_progress` is true, so a lobby stuck this way is PERMANENTLY UNHOSTABLE:
+## HOST ONLINE can never hand it to anybody again. The deployment runs a single lobby,
+## so ONE abandoned match killed HOST ONLINE for everyone until an operator restarted
+## the service. A real player hit it.
+##
+## THE CAUSE IS THAT NOTHING EVER TURNED THE FLAG OFF. `match_in_progress` is written
+## `true` in exactly one place (`_start_hosting`, below) and back to `false` in exactly
+## one place — `NetworkManager.disconnect_network()`, which also closes the ENet server
+## and the status socket. A dedicated referee has no human to press QUIT TO MENU, gets no
+## `server_disconnected` (it *is* the server), and `_on_player_disconnected` above only
+## ever handed the leaver's body to a bot. There was no third way out, and the comment in
+## `match_setup.gd`'s § A LOBBY WITH NOBODY SITTING AT IT said so out loud: *"the match
+## ends and the process exits… `Restart=always` brings it back"*. It does not exit. It
+## sits in `Main.tscn` refereeing nothing.
+##
+## ⚠️⚠️ SO THE FIX IS A RETURN, NOT A RESTART, AND IT MUST NOT TOUCH THE SOCKETS.
+## The process goes back to `MatchSetup.tscn` — the waiting room a pool lobby already
+## boots into — while ENet, `ServerQuery`'s status responder and the LAN beacon all stay
+## exactly as they are. Tearing those down is what `disconnect_network()` does, and doing
+## it here would drop the lobby out of the pool for as long as it took to rebind, which is
+## the same outage in a smaller window. `match_setup.gd::_setup_host()` grew the matching
+## half: it does not re-`host_game()` when the socket is already open.
+##
+## ⚠️ GATED ON `NetworkManager.is_dedicated`, NEVER ON "the room is empty".
+## A LISTEN HOST has a human at the keyboard who owns this decision — they may be sitting
+## on the result screen deciding, or alone in a lobby waiting for friends — and yanking
+## their match back to a setup screen because ENet reported nobody else present would be a
+## far worse bug than the one this fixes. `is_dedicated` is only ever true where
+## `host_game(port, dedicated = true)` was called, i.e. on a pool process.
+##
+## ⚠️⚠️ TWO DIFFERENT EVENTS LEAD HERE AND THEY ARE NOT THE SAME EVENT.
+##
+##   THE ROOM EMPTIED (`_on_player_disconnected` above). Immediate, unconditional, and
+##   the one the live incident actually was. A referee with nobody connected is
+##   refereeing nothing, whether the score was 0-0 or the last round was half over.
+##
+##   THE MATCH WAS WON (`_on_match_won_freeze_physics` below). Deliberately NOT immediate.
+##   The result screen carries a REMATCH VOTE (`match_result.gd`) and the players are
+##   still connected and still deciding — recycling on the whistle would tear the world
+##   out from under a rematch that was one click away. So the whistle ARMS a grace window;
+##   a rematch (`MatchManager.round_started`) disarms it, and only if it actually expires
+##   does the referee close the room. That last step is not optional either: without it,
+##   four players who finish a match and then wander off leave the lobby held at
+##   `in_progress = true` behind a result screen nobody is looking at, which is the same
+##   outage arriving the polite way.
+## ---------------------------------------------------------------------------
+
+## Where a recycled lobby goes. The same scene a pool process boots into — see
+## `match_setup.gd`'s § A LOBBY WITH NOBODY SITTING AT IT — so there is one waiting room,
+## not a second one written for coming back to.
+const MATCH_SETUP_SCENE_PATH: String = "res://scenes/ui/MatchSetup.tscn"
+
+## How long a finished match's result screen is left up on a DEDICATED server before the
+## referee closes the room and takes the lobby back. Long enough that a rematch vote is
+## never the thing that times out — the ballot is decided within seconds of the screen
+## appearing — and short enough that a lobby is not held hostage by one person who walked
+## away from their keyboard without quitting.
+##
+## ⚠️ IT IS NOT A LISTEN HOST'S BUSINESS. Nothing below this line runs on one.
+const DEDICATED_POST_MATCH_SECONDS: float = 120.0
+
+## After the referee evicts the room, how long to give ENet to report the disconnections
+## before trying the recycle from this side instead. The clients normally drop themselves
+## on the announcement and `_on_player_disconnected` does the work within a frame or two;
+## this covers the ordering case where they have all gone but the last signal has not been
+## polled yet. It is NOT a way past a peer that is still connected — see `_evict_and_recycle`.
+const DEDICATED_EVICT_BACKSTOP: float = 3.0
+
+## The armed post-match window, or null. Held so a rematch can cancel it — a `SceneTreeTimer`
+## cannot be stopped, so cancelling means dropping the reference and having the callback
+## check whether it is still the armed one.
+var _post_match_timer: SceneTreeTimer = null
+## One-way latch. `change_scene_to_file` only takes effect at the end of the frame, so
+## without this a disconnect burst (four peers dropping together) would queue four scene
+## changes and re-run the whole reset on a lobby that had already been rebuilt.
+var _recycling: bool = false
+
+## The one predicate everything in this section is gated on. Both halves matter: a CLIENT
+## of a dedicated server also has `is_dedicated == true` (the server tells it so — see
+## `NetworkManager._rpc_announce_dedicated`), and a client must obviously not recycle
+## anybody's lobby.
+func _is_dedicated_referee() -> bool:
+	return NetworkManager.is_dedicated and NetworkManager.is_host()
+
+## THE ROOM EMPTIED. Called from `_on_player_disconnected`, which only ever runs on the
+## host, so this is asking "was that the last one out".
+func _recycle_dedicated_lobby_if_abandoned() -> void:
+	if not _is_dedicated_referee():
+		return
+	# ⚠️ `connected_peer_ids` NEVER HOLDS THE SERVER ITSELF on a dedicated process — see
+	# `NetworkManager.host_game`'s ⚠️ THE ONLY DIFFERENCE IS THE SELF-SEEDING. So empty
+	# here means "no humans", not "no peers at all", and no carve-out is needed.
+	if not NetworkManager.connected_peer_ids.is_empty():
+		return
+	_recycle_dedicated_lobby()
+
+## THE MATCH WAS WON. Arms the grace window described in the header. Re-armable: a rematch
+## that is itself won comes back through here.
+##
+## ⚠️ A NAMED METHOD PLUS `.bind()`, NOT A LAMBDA. A `SceneTreeTimer` outlives this scene —
+## the abandonment path can recycle the lobby and free `Main.tscn` while a window is still
+## armed — and Godot cleans a connection up when the RECEIVER object is freed, which it can
+## only do for a callable whose receiver it can see. A lambda's captured `self` is not that.
+func _arm_post_match_reset() -> void:
+	if not _is_dedicated_referee():
+		return
+	var timer := get_tree().create_timer(DEDICATED_POST_MATCH_SECONDS)
+	_post_match_timer = timer
+	timer.timeout.connect(_on_post_match_window_elapsed.bind(timer))
+
+## ⚠️ IT CHECKS WHICH WINDOW FIRED. A `SceneTreeTimer` cannot be stopped, so disarming means
+## dropping the reference — and the timer still fires afterwards. Without this identity test
+## a rematch would be interrupted by the window armed before it started, which is precisely
+## the thing the grace period exists to avoid.
+func _on_post_match_window_elapsed(timer: SceneTreeTimer) -> void:
+	if _post_match_timer != timer:
+		return
+	_post_match_timer = null
+	_close_finished_dedicated_match()
+
+## A rematch carried, or an ordinary round began. Either way the referee is refereeing
+## again and the window it armed at the last whistle is no longer about anything.
+func _disarm_post_match_reset() -> void:
+	_post_match_timer = null
+
+## The grace window expired with the match still over. Clear the room, then take the lobby
+## back.
+##
+## ⚠️ IT ANNOUNCES BEFORE IT EVICTS. `NetworkManager.announce_host_leaving()` is the
+## existing, measured path for "the host is going" — without it a client learns about a
+## closed socket exactly as slowly as about a yanked cable (5.2 s of `ENET_TIMEOUT_MIN`),
+## and lands on MultiplayerSetup with "Host ended the session." either way. The point of
+## the announcement is that it lands NOW rather than in five seconds.
+##
+## ⚠️ AND IT EVICTS EXPLICITLY AFTERWARDS, which is not belt-and-braces. A client that has
+## already stopped answering never acts on the announcement, and a peer left in
+## `connected_peer_ids` keeps `occupied` above zero — which is the OTHER thing
+## `_free_pool_address()` refuses to claim. A lobby that recycled its flag and kept a ghost
+## would be exactly as unhostable as one that did neither.
+func _close_finished_dedicated_match() -> void:
+	if not _is_dedicated_referee():
+		return
+	if NetworkManager.connected_peer_ids.is_empty():
+		_recycle_dedicated_lobby()
+		return
+	_rpc_show_toast.rpc("The match is over — this lobby is going back to its waiting room.")
+	await NetworkManager.announce_host_leaving()
+	# ⚠️ THE ONE `await` HERE NEEDS THIS, and everything after it is a plain call for the
+	# same reason. A peer's disconnect can complete inside that await and recycle the lobby
+	# through `_on_player_disconnected`, which frees this scene — and a coroutine resuming
+	# on a freed node is a hard error, not a silent no-op.
+	if not is_inside_tree():
+		return
+	_evict_and_recycle()
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ `disconnect_peer()` IS CALLED WITHOUT `force`, AND THAT IS NOT A DEFAULT LEFT
+## UNCONSIDERED. Godot's `ENetMultiplayerPeer::disconnect_peer(peer, true)` erases the peer
+## from its own table and then, **if that was the last one, closes the whole host**. On a
+## dedicated server that is the entire ENet listener — the socket this fix exists to keep
+## open — so forcing the eviction would trade a lobby stuck at `in_progress = true` for one
+## that has stopped listening altogether. Strictly worse.
+##
+## ⚠️ SO A PEER THAT HAS ALREADY GONE SILENT IS NOT EVICTED PROMPTLY, and the backstop below
+## will correctly decline to recycle while it is still in `connected_peer_ids`. That case
+## self-heals: ENet reaps it on `ENET_TIMEOUT_MAX` (deliberately wide — 45 s — because this
+## game is played over Hamachi), `_on_player_disconnected` fires, and the abandonment path
+## recycles the lobby then. Late is a real cost; a dead listener is not a cost this may pay.
+## ---------------------------------------------------------------------------
+func _evict_and_recycle() -> void:
+	var enet := multiplayer.multiplayer_peer as ENetMultiplayerPeer
+	if enet != null:
+		# `.duplicate()`: a disconnect can land inside this loop and erase from the very
+		# array it is walking.
+		for peer_id in NetworkManager.connected_peer_ids.duplicate():
+			enet.disconnect_peer(int(peer_id))
+	# Normally nothing below does the work: the announcement above already made every
+	# client drop its own peer, `peer_disconnected` arrives within a frame or two, and
+	# `_on_player_disconnected` recycles as the last one goes. This is the case where it
+	# did not — and `_recycle_dedicated_lobby` declines by itself if the room is not
+	# actually empty yet, so an early fire is harmless.
+	get_tree().create_timer(DEDICATED_EVICT_BACKSTOP).timeout.connect(_recycle_dedicated_lobby)
+
+## ---------------------------------------------------------------------------
+## The reset itself. Everything `host_game()` would have established for a fresh session,
+## MINUS the two sockets — because those are already open and must stay that way.
+##
+## ⚠️ IT RUNS ONLY WITH THE ROOM ALREADY EMPTY, and both callers guarantee that. It clears
+## the identity maps a still-connected peer would depend on (`peer_tokens` decides that
+## peer's seat, `peer_characters` its name and face), so scrubbing them under somebody who
+## is still in the lobby would leave a ghost the board cannot draw and the ready gate
+## cannot count.
+## ---------------------------------------------------------------------------
+func _recycle_dedicated_lobby() -> void:
+	if _recycling or not _is_dedicated_referee():
+		return
+	if not NetworkManager.connected_peer_ids.is_empty():
+		return
+	_recycling = true
+	_disarm_post_match_reset()
+	# A dedicated process never pauses itself today, but a scene change with the tree still
+	# paused loads the next scene paused and every button on it dies — Q-3/B-64, and the
+	# same line `_on_return_to_menu_pressed` opens with.
+	get_tree().paused = false
+	# ⚠️⚠️ THE ONE LINE THE WHOLE INCIDENT WAS ABOUT. `server_query.gd::_status_payload()`
+	# reports this flag verbatim as `in_progress`, and `_free_pool_address()` will not
+	# claim a row that has it set.
+	NetworkManager.match_in_progress = false
+	# ⚠️ A FRESH CODE, BECAUSE THIS IS A DIFFERENT LOBBY. `join_code`'s own doc: a code is
+	# per-SESSION *"because a server that has restarted is a different lobby with a
+	# different set of people in it — a code that survived would send a player to the room
+	# its old occupants have left"*. Coming back from a finished match is that same
+	# sentence without the restart, so it gets the same treatment `host_game()` gives.
+	NetworkManager.join_code = NetworkManager._mint_join_code()
+	NetworkManager.join_code_changed.emit(NetworkManager.join_code)
+	# The three things `host_game()` clears for a new session. Same reason: they described
+	# the match that just ended, and the next lobby's occupants have not identified yet.
+	NetworkManager.peer_tokens.clear()
+	NetworkManager.peer_characters.clear()
+	# ⚠️ AND THE LEADER, WHICH IS THE ONE THAT WOULD BREAK SILENTLY. A dedicated lobby with
+	# a stale non-zero `lobby_leader_id` never runs `_claim_lobby_leader_if_vacant` for the
+	# next person through the door, so nobody can pick the map and nobody can press START —
+	# a lobby that answers every query, accepts every join and cannot begin a match.
+	# `_reassign_leader` normally lands this on 0 as the last peer leaves; setting it here
+	# means the invariant does not depend on that having happened.
+	NetworkManager.lobby_leader_id = 0
+	# Host-authoritative seating from the finished match. `_rpc_begin_match` rewrites it at
+	# the next kickoff, but a stale map keyed by tokens nobody holds any more has no
+	# business surviving into a lobby those players are not in.
+	GameLaunch.clear_seating()
+	# B-14, for the same reason `_ready()` and `_rpc_begin_match` both already do it: these
+	# are autoloads and would otherwise carry this match's score and round into the next.
+	MatchManager.reset()
+	RoundManager.reset()
+	# The pool is operated by reading journalctl, so the recycle says so on stdout. One
+	# line, and it names the new code — which is the only thing about the lobby that
+	# changed and the only thing an operator cannot see any other way.
+	print("main: dedicated lobby recycled — back to the waiting room, code %s." % [
+		NetworkManager.join_code])
+	get_tree().change_scene_to_file(MATCH_SETUP_SCENE_PATH)
 
 ## Finds `character`'s join index by reverse lookup through _index_to_character
 ## — the only direction that dictionary is normally read (index -> character);
@@ -1830,6 +2332,46 @@ func _build_spawn_data(peer_id: int, index: int) -> Dictionary:
 		# host, which is the one place the answer is known.
 		"name": SettingsManagerScript.sanitise_name(
 			String(NetworkManager.picks_for(peer_id).get("name", ""))),
+		# ⚠️⚠️ AND THE PERSON RIDES IT TOO, FOR EXACTLY THE REASON THE NAME DOES.
+		# 🧑 2026-08-02: *"The player rejoins on a different player character and not the
+		# same character they were on."*
+		#
+		# ⚠️ THE REJOIN WAS NEVER THE BROKEN HALF — THE FIRST SPAWN WAS. Measured on
+		# `tools/net/run_rejoin.ps1`, three processes, twice, with the dropper picking
+		# ALING NENA (11) and the anchor BEBANG (7):
+		#
+		#   the CLIENT, its own body, t=1..8s in Main:
+		#       char=-1  model=character-female-f.glb  mat=person_b.tres
+		#   the HOST, the SAME body, the SAME window:
+		#       char=-1  model=character-female-e.glb  mat=person_aling-nena.tres
+		#
+		# Two facts in those four numbers. The host DID resolve the pick — its Visual
+		# instanced ALING NENA at `_ready()` — and then lost it; the client NEVER had it
+		# and was drawing `PERSON_MODELS`' fallback. `_build_networked_character` read the
+		# Person out of `NetworkManager.picks_for()`, which is HOST-ONLY state (see its own
+		# doc), so on the client it answered -1 and the body kept the scene default. The
+		# client is then made the multiplayer authority for that body in the same function
+		# — so its -1 replicated straight back over the host's 11 through the
+		# `character_index` entry in `CharacterBase.tscn`'s SceneReplicationConfig.
+		#
+		# What that -1 cost is the whole bug: at the ready gate `_refresh_ai_prop_picks()`
+		# reads it, and that function's `< 0` test is documented as *"THE WHOLE TEST FOR
+		# THIS IS A BOT"* — so it dealt the two HUMAN seats faces out of `AI_PERSON_SPREAD`
+		# and told their Visuals about it. Measured at the next tick: slot 0 became
+		# 0/BERTO and slot 1 became 3/INDAY, which are precisely `AI_PERSON_SPREAD[0]` and
+		# `[1]`. The players then played the entire match as somebody else, and
+		# `_apply_reclaimed_picks` — which reads the host-side table and is correct —
+		# handed the returning player their REAL pick back on the rejoin. Hence the
+		# report: the fighter changes when you come back, because coming back is the only
+		# path that ever applied your choice.
+		#
+		# So it is resolved here, host-side, where the answer is known, and carried by the
+		# same packet that already carries the body. ⚠️ NO NEW MESSAGE AND NO `@rpc`
+		# TOUCHED — this dictionary is the `MultiplayerSpawner`'s custom spawn payload,
+		# not an RPC signature, so nothing about the deployed server's rpc checksum
+		# changes. A peer reading an older build simply falls back to `picks` below and
+		# behaves exactly as it does today.
+		"character": int(NetworkManager.picks_for(peer_id).get("character", -1)),
 	}
 
 func _fill_empty_slots_with_placeholders() -> void:
@@ -1899,7 +2441,18 @@ func _build_networked_character(data: Dictionary) -> Node:
 	# networked character read player one's bindings.
 	character.player_id = data["player_id"]
 	var picks := NetworkManager.picks_for(int(data["peer_id"]))
-	var person := int(picks.get("character", -1))
+	# ⚠️⚠️ FROM THE SPAWN PACKET FIRST, `picks` ONLY AS THE FALLBACK — see
+	# `_build_spawn_data`'s note for the measurement. This function runs on EVERY peer and
+	# `picks_for()` is host-only, so reading the Person out of `picks` here answered -1 on
+	# every client; the client is made the authority for its own body four lines below, and
+	# `character_index` is a replicated property, so that -1 went back out over the host's
+	# correct value and the ready gate's bot dealer then dressed the human as a bot.
+	#
+	# ⚠️ THE FALLBACK IS `picks`, NOT -1, for the same reason the name's is: a host running
+	# an older build of this file sends no `character` key, and falling through to -1 would
+	# throw away an answer the host DOES have on its own screen rather than degrade to the
+	# previous behaviour.
+	var person := int(data.get("character", picks.get("character", -1)))
 	if person >= 0:
 		character.character_index = person
 	# ⚠️⚠️ FROM THE SPAWN PACKET, NOT FROM `picks` — see `_build_spawn_data`'s note. This
@@ -1922,6 +2475,43 @@ func _build_networked_character(data: Dictionary) -> Node:
 	_spawned_characters[peer_id] = character
 	var index: int = _seat_of(int(data["player_slot"]))
 	_index_to_character[index] = character
+	# ⚠️⚠️ THE SEAT TABLE IS FILLED HERE, AND UNTIL 2026-08-02 IT WAS ONLY EVER FILLED AT A
+	# ROUND BOUNDARY. 🧑, minutes after the rejoin itself started working: *"no throw, no
+	# getting pushed, no pickup"* — a returning player who could WALK and do nothing else.
+	#
+	# `RoundManager.register_player()` had exactly two call sites: `_build_local_roster()`
+	# (Single Player) and `_reset_world()`, which runs off `MatchManager.round_started`. A
+	# peer that arrives DURING a round — a rejoiner, or any mid-match joiner — misses that
+	# signal by definition, so its `RoundManager._players` stayed `[null, null, null, null]`
+	# until the next round boundary healed it. Measured on `tools/net/run_rejoin.ps1`:
+	# `rm_seats=[0=<null>, 1=<null>, 2=<null>, 3=<null>]` on the returning peer against
+	# `rm_seats=[0=350085074, 1=-2, 2=-3, 3=-4]` on the anchor in the same match, on the
+	# same frame. That one dictionary is every symptom in the report:
+	#
+	#   · NOT BEING PUSHED. A shove, a body block and a tag penalty are all decided on the
+	#     host and arrive as `RoundManager._sync_shove/_sync_block/_sync_tag_penalty`, which
+	#     resolve the victim with `player_at(slot)` — see that file's § THE MULTIPLAYER
+	#     SOFTLOCK for why they are addressed by SLOT and not by node path. `player_at`
+	#     returning null makes every one of them a silent no-op, and because the returning
+	#     player is the AUTHORITY for their own body, the synchroniser then replicates the
+	#     un-shoved position back out. Nobody, anywhere, sees them get pushed.
+	#   · NO PICKUP. `Slipper._apply_grabbed()` runs on every peer and resolves the hand
+	#     the same way. Null carrier means `notify_holding()` never fires, so the returning
+	#     player's own `Carrier` still believes their hands are empty.
+	#   · NO THROW. `Carrier._step_throw()` returns immediately while `_held` is null, so a
+	#     hand that never heard about the pickup can never charge a throw either.
+	#
+	# WALKING KEPT WORKING because it is the one verb that asks nothing of this table:
+	# `_physics_process` reads the keyboard and calls `move_and_slide()`. That is the whole
+	# reason the report reads as "everything except movement".
+	#
+	# ⚠️ DONE AT SPAWN, WHICH IS THE RULE THIS FILE ALREADY STATES ELSEWHERE. The name in
+	# the spawn packet is justified as *"a peer that joins, re-joins or arrives late gets it
+	# WITH the body, by the same mechanism that gives it the body"* — the seat table is the
+	# same kind of fact and now arrives the same way. `_reset_world()` still clears and
+	# rebuilds the whole table every round, so this cannot drift from it; it only closes the
+	# window before the first round boundary the joiner ever sees.
+	RoundManager.register_player(character)
 	_apply_known_picks(character, index)
 	if _pending_reclaims.has(index):
 		var reclaim_peer: int = _pending_reclaims[index]
@@ -1937,6 +2527,19 @@ func _build_networked_character(data: Dictionary) -> Node:
 ## ⚠️ SIGNATURE FOLLOWS `MatchManager.round_started`, WHICH NOW NAMES A SLOT
 ## RATHER THAN A SIDE. A bool could describe a 2v2; it cannot name one of four.
 func _on_match_round_started(_round_number: int, defender_slot: int) -> void:
+	# ⚠️ FIRST, AND IT IS THE REMATCH CASE. `MatchManager.round_started` is what a carried
+	# rematch vote ends up firing (`match_result.gd::_begin_rematch_now` → `begin_next_round`),
+	# and it is the ONLY signal both a rematch and an ordinary round transition go through —
+	# which is exactly why `match_result.gd` hangs its own "hide the scoreboard" off it. A
+	# dedicated referee that is refereeing again must drop the window it armed at the last
+	# whistle, or it would close a room in the middle of the match that vote just started.
+	_disarm_post_match_reset()
+	# ⚠️ BEFORE `_reset_world`, AND THE ORDER IS LOAD-BEARING — see this function's own doc.
+	# Host-only inside; every other peer no-ops. A rematch reaches here too, which is what
+	# gives a newcomer who knocked during the result screen its seat: `match_result.gd`
+	# leaves `match_in_progress` true for the whole recap, so the door never closes, it only
+	# stops having rotations to open on until somebody votes REMATCH.
+	_promote_waiting_spectators()
 	_reset_world(defender_slot)
 	RoundManager.start_round()
 	# ⚠⚠ THE SLIPPER GOES INTO THE HAND HERE, NOT IN `_reset_slippers()`.
@@ -2219,6 +2822,10 @@ func _on_round_intermission_started(_next_round_number: int, next_defender_slot:
 func _on_match_won_freeze_physics(_winning_team: int) -> void:
 	for character in _all_characters():
 		character.velocity = Vector3.ZERO
+	# THE MATCH WAS WON — the second of the two ways a dedicated lobby comes back. Armed
+	# rather than done, because the result screen still owns a live rematch vote; see
+	# § BACK TO THE WAITING ROOM for why this one has a grace window and the other does not.
+	_arm_post_match_reset()
 
 ## Every character currently in play, local-test or networked — the same
 ## roster _reset_world() already builds, minus the team/role bookkeeping
@@ -2259,6 +2866,75 @@ func _sync_state_to_late_joiner(new_round_number: int, new_defender_slot: int,
 	if lata != null:
 		lata.adopt_state(new_lata_upright, lata.home_position)
 	hud.set_round_display(new_round_number, new_defender_slot)
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ WHO IS HOLDING WHAT, FOR ONE JOINING PEER. THE OTHER HALF OF "no throw, no
+## pickup" (2026-08-02).
+##
+## `Slipper.tscn`'s `SceneReplicationConfig` replicates `position` and `owner_slot` and
+## NOTHING ELSE — `state` and `carrier` are driven purely by the `_rpc_slipper_*`
+## broadcasts below, which is correct while everyone is present and silent about
+## everyone who was not. So a peer arriving mid-round starts with every slipper LOOSE at
+## its default, including one that has been in its own seat's hand since the round-start
+## auto-equip. `Slipper.can_be_grabbed_by()` requires `state == LOOSE` HOST-side, so that
+## player cannot pick their slipper up (the host says it is already held) and cannot
+## throw it either (`Carrier._held` is null on their machine). That is a seat with no
+## offence at all until the next round boundary rebuilds the world.
+##
+## ⚠️ IT REPLAYS EXISTING RPCs RATHER THAN DEFINING A NEW ONE, AND THAT IS DELIBERATE
+## RATHER THAN THRIFTY. Godot checksums a node's RPC method list; adding a method to this
+## script makes every already-deployed dedicated server disagree with every new client and
+## fail the handshake with "the rpc node checksum failed". `_rpc_slipper_grabbed` already
+## says exactly what needs saying, and `rpc_id` aims it at the one peer that missed it.
+##
+## ⚠️ ONLY THE CARRIED ONES. A LOOSE slipper already arrives correct (the synchroniser
+## carries its position, and LOOSE is the local default), and a slipper in FLIGHT
+## corrects itself the moment it lands, because `_rpc_slipper_landed` is a broadcast the
+## new peer is now part of. Sending those two would be two more chances to be wrong.
+##
+## ⚠️⚠️ THAT PARAGRAPH IS NOW MEASURED RATHER THAN ARGUED, 2026-08-04, AND A LOOSE
+## CATCH-UP BROADCAST WAS INVESTIGATED AND IS NOT NEEDED. 🧑: *"upon rejoining i dont have
+## a slipper, only until the next round/roles rotation."* The obvious reading is that this
+## function replays only CARRIED slippers, so a slipper the stand-in bot had THROWN would
+## reach the returning peer as nothing at all. It does not: `tools/net/run_rejoin.ps1` now
+## prints each slipper's `global_position` beside its owner/state/carrier on all three
+## processes, and the three logs are identical at the instant of return. Three runs, three
+## different game states, referee · anchor · dropper:
+##
+##     thrown, lying loose   s0(owner=1 state=0 carrier=<null> at=-1.34,0.14,1.52)  ×3 peers
+##     taken by a rival bot  s0(owner=2 state=1 carrier=-3)   s2(owner=3 state=0
+##                           carrier=<null> at=-0.82,0.13,-0.31)                    ×3 peers
+##
+## The LOOSE positions agree to 2 dp on every peer — the synchroniser's `position` really
+## does heal a joiner, exactly as claimed — and the second run also proves the CARRIED half
+## of this function on the REJOIN path specifically (two slippers in bot hands, both
+## arriving with the right `state` and the right `carrier`). In every run the returning peer
+## then picked its slipper up on one `E` press and the host agreed.
+##
+## SO "I COME BACK EMPTY-HANDED" IS GAME STATE, NOT A REPLICATION HOLE. The seat was
+## bot-driven for ~17 s and a bot with a tsinelas throws it within seconds; the slipper is
+## on the floor, or in a rival's hand under the open-pickup rule, and either way the player
+## has to go and fetch it. Adding a LOOSE catch-up here would replay a state the joiner
+## already has. If this is to be softened it is a DESIGN change (re-equip on reclaim), and
+## note that it hands anyone who alt-F4s a free teleport of their slipper into their hand.
+##
+## ⚠️ THE RECEIVER MAY NOT HAVE THE BODY YET. The bodies come from `MultiplayerSpawner`
+## and this comes from the reliable RPC channel, with no ordering between them — see
+## `Slipper._pending_carrier_slot`, which is what makes the losing order resolve instead
+## of stranding the slipper.
+## ---------------------------------------------------------------------------
+func _sync_slipper_carry_to_late_joiner(peer_id: int) -> void:
+	for index in range(slippers.size()):
+		var slipper := slippers[index]
+		if not is_instance_valid(slipper) or slipper.state != Slipper.CarryState.CARRIED:
+			continue
+		# The hand, not `owner_slot`: `_apply_grabbed()` writes ownership FROM the grab,
+		# so the two agree today — but reading the fact this message is actually about
+		# means they cannot silently stop agreeing.
+		var holder := slipper.carrier
+		if holder == null or not is_instance_valid(holder):
+			continue
+		_rpc_slipper_grabbed.rpc_id(peer_id, index, holder.player_slot)
 
 ## Q-2/B-63: shared by _sync_state_to_late_joiner (a joining peer needs to know
 ## about every already-spawned Can) and _on_player_disconnected (a leaving Can
@@ -2413,24 +3089,34 @@ func _on_return_to_menu_pressed() -> void:
 ## call (the peer's already gone), plus a status message so the bounce reads
 ## as "the host left", not a crash.
 func _on_server_disconnected() -> void:
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	MatchManager.reset()
-	RoundManager.reset()
-	GameLaunch.reset()
-	GameLaunch.pending_status_message = "Host ended the match."
-	# MultiplayerSetup, not the title screen: it owns the status message and it
-	# is where this player would rejoin or re-host from.
-	get_tree().change_scene_to_file("res://scenes/ui/MultiplayerSetup.tscn")
+	_bail_to_browser("Host ended the match.")
 
 ## Q-1/B-62: a Join to a dead/unreachable address previously left the player on
 ## a black Main.tscn forever — the same soft-lock as a mid-match host quit,
 ## just triggered before anyone ever connected. Same teardown, different message.
 func _on_connection_failed() -> void:
+	_bail_to_browser("Could not reach that host.")
+
+## ---------------------------------------------------------------------------
+## The one way out of a match that has stopped being a match. Three callers, one
+## teardown: the host went away, the connection failed, or (B-153) the address this
+## scene was handed could not be dialled at all.
+##
+## ⚠️ THE THIRD CALLER IS THE REASON THIS IS A FUNCTION. The two handlers above had
+## identical bodies differing only in the message, and `_start_joining` needed the same
+## teardown for a THIRD reason — so the choice was a third copy or one function. A copy
+## that fell behind would strand a player exactly as thoroughly as having no teardown at
+## all, which is precisely the failure B-153 turned out to be.
+##
+## MultiplayerSetup, not the title screen: it owns the status message and it is where
+## somebody in this position would rejoin or re-host from.
+## ---------------------------------------------------------------------------
+func _bail_to_browser(message: String) -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	MatchManager.reset()
 	RoundManager.reset()
 	GameLaunch.reset()
-	GameLaunch.pending_status_message = "Could not reach that host."
+	GameLaunch.pending_status_message = message
 	get_tree().change_scene_to_file("res://scenes/ui/MultiplayerSetup.tscn")
 
 ## Host → all peers: hands `index`'s existing, still-standing character over
@@ -2610,6 +3296,65 @@ func _apply_reclaim(character: CharacterBase, index: int, new_peer_id: int) -> v
 	# the new authority immediately overwrites with its own stale copy.
 	_apply_reclaimed_picks(character, new_peer_id)
 	character.set_multiplayer_authority(new_peer_id)
+	# ⚠️⚠️ THE JOINER STAMPS ITS OWN NAME ON THE BODY IT JUST TOOK OVER, AND NOBODY ELSE CAN
+	# DO IT FOR THEM. 🧑: a player who joins (or rejoins) a match ALREADY IN PROGRESS has a
+	# blank name on every peer.
+	#
+	# `player_name` rides the `MultiplayerSpawner`'s custom spawn packet (`_build_spawn_data`),
+	# and a mid-match joiner NEVER GETS A SPAWN — it steps into a body a bot has been driving
+	# since `_fill_empty_slots_with_placeholders()`, which built that body from
+	# `picks_for(-1 - index)`: a sentinel peer with no picks and therefore no name. So the one
+	# packet that carries a name never runs for the one peer that needs it. Measured
+	# 2026-08-04 on `tools/net/run_rejoin.ps1 -Scenario latecomer`, the SAME body on all three
+	# processes at the same moment:
+	#
+	#     latecomer  PICK 1927296562 slot=1 player_name='' is_bot=false auth=1927296562
+	#     referee    PICK 1927296562 slot=1 player_name='' is_bot=false auth=1927296562
+	#     anchor     PICK 1927296562 slot=1 player_name='' is_bot=false auth=1927296562
+	#
+	# `display_name()` then falls through to `"P%d" % [player_slot + 1]`, so the 3D nameplate
+	# and the scoreboard row both read P2 for a live human — while the anchor beside them, who
+	# was seated in the LOBBY and so did get a spawn, reads ANCHOR on the same frame.
+	#
+	# ⚠️⚠️ IT IS WRITTEN HERE, BY THE OWNER, AND A HOST-SIDE WRITE WOULD BE UNDONE. Four lines
+	# above, this function makes `new_peer_id` the multiplayer authority for this body, and
+	# `player_name` is a replicated property on `CharacterBase.tscn` (`properties/6`,
+	# `replication_mode = 2`, ON_CHANGE). The host resolving the name out of `picks_for()` and
+	# writing it would therefore be overwritten within a frame or two by the new authority's
+	# own copy — which is `""`, because that is what the placeholder was spawned with. That is
+	# not a hypothesis: it is exactly how `character_index` failed (7c5eac1), and the reason
+	# `_apply_reclaimed_picks` is documented as having to run BEFORE the authority moves.
+	#
+	# So the value comes from where it is known locally and correct by construction —
+	# `SettingsManager.player_name`, this machine's own Settings screen — and replicates
+	# outward from the new authority for free, reaching the host and every other client by the
+	# same synchroniser that was going to overwrite a host-side write anyway.
+	#
+	# ⚠️ AFTER `set_multiplayer_authority`, NOT BEFORE, AND THE OPPOSITE OF THE LINE ABOVE IT.
+	# `_apply_reclaimed_picks` runs first because its interesting writer is the HOST, which is
+	# LOSING ownership here. This one's only writer is the peer GAINING it, so it has to land
+	# after the handover or it is a write from a non-authority that the synchroniser has no
+	# reason to send.
+	#
+	# ⚠️ SANITISED, LIKE EVERY OTHER WRITER OF THIS PROPERTY. This name is drawn on other
+	# people's scoreboards and over their heads in 3D; `sanitise_name()` is the single
+	# trim-and-cap `_build_spawn_data`, `_rpc_sync_picks` and `SettingsManager.set_player_name`
+	# all already share, and skipping it here would let one path admit a name no other path can.
+	#
+	# ⚠️ AN EMPTY NAME IS NOT WRITTEN, AND THAT GUARD IS LOAD-BEARING FOR THE REJOIN.
+	# `SettingsManager.DEFAULT_PLAYER_NAME` is `""` — a `--host`/`--join=` session that never
+	# opened Settings genuinely has no name. On a REJOIN the body still carries the name it was
+	# spawned with (it survives the AI window on purpose — see `character_base.gd`'s note on
+	# `player_name` not being cleared when a seat converts to AI), so stamping `""` over it
+	# would take a working case and break it to fix a different one.
+	#
+	# ⚠️ NO `@rpc` SIGNATURE CHANGED AND NO NEW MESSAGE EXISTS. This is a local property write
+	# inside a function every peer already runs; the wire format of `_rpc_reclaim_character` is
+	# untouched, so the deployed servers need no lockstep redeploy.
+	if new_peer_id == multiplayer.get_unique_id():
+		var my_name := SettingsManagerScript.sanitise_name(SettingsManager.player_name)
+		if my_name != "":
+			character.player_name = my_name
 	character.player_id = index + 1
 	_spawned_characters[new_peer_id] = character
 	_peer_slots[new_peer_id] = character.player_slot

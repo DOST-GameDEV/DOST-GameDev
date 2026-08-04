@@ -378,7 +378,7 @@ func _request_grab(target: Slipper) -> void:
 func _rpc_request_grab(target_path: NodePath) -> void:
 	if NetworkManager.is_networked() and not NetworkManager.is_host():
 		return
-	var target := get_node_or_null(target_path) as Slipper
+	var target := _resolve_slipper(target_path)
 	if target != null:
 		target.host_grab(_character)
 
@@ -398,9 +398,78 @@ func _rpc_request_throw(target_path: NodePath, origin: Vector3, point: Vector3,
 		power: float) -> void:
 	if NetworkManager.is_networked() and not NetworkManager.is_host():
 		return
-	var target := get_node_or_null(target_path) as Slipper
+	var target := _resolve_slipper(target_path)
 	if target != null:
 		target.host_throw(_character, origin, point, clampf(power, 0.0, 1.0))
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ WHICH SLIPPER THE ASKER MEANT — RESOLVED BY **NODE NAME**, NOT BY THE PATH ON THE
+## WIRE. THIS IS THE FIX FOR 🧑 2026-08-04: *"still cant throw on rejoin.. i have the throw
+## animation and chargup now but it doesnt actually throw."*
+##
+## THE TWO REQUESTS ABOVE NAME THEIR TARGET WITH `slipper.get_path()`, AND FOR A **CARRIED**
+## SLIPPER THAT PATH IS PER-PEER. `slipper.gd::_attach_to_hand()` re-parents a held tsinelas
+## onto `<body>/Visual/<model root>/Skeleton3D/HandAttachment/HandPoint`, and `<model root>`
+## is whichever rig THAT peer's `CharacterVisual` happened to instance. Two peers that
+## disagree about the model disagree about the path, `get_node_or_null()` answers null on the
+## host, and `_rpc_request_throw` returns without a word: the client charges, plays its throw
+## clip, and the prop never moves. Silent on both machines, which is why it reads to a player
+## as *"it just doesn't throw"*.
+##
+## ⚠️ THAT DISAGREEMENT IS A REAL, STILL-OPEN, DOCUMENTED STATE — see `character_base.gd`'s
+## `character_index` note (the withdrawn repaint setter). A peer that took over a bot's seat
+## mid-match keeps the BOT's face on every process that did not reload `Main.tscn`, the host
+## included, while the peer that DID reload instances its own pick. Measured 2026-08-04,
+## `run_rejoin.ps1 -Scenario latecomer`, the same Slipper3 in the same hand on the same
+## frame:
+##
+##     host   .../Players/863342991/Visual/character-female-a2/character-female-a/...
+##     client .../Players/863342991/Visual/character-female-e2/character-female-e/...
+##
+## with `THROW GATE ... can_throw=true`, `charged=true`, and the slipper still reading
+## `state=1 carrier=863342991 travelled=0.72` a second after the release — on the host, on
+## the anchor and on the thrower alike.
+##
+## ⚠️ THE PICKUP KEPT WORKING THROUGHOUT, AND THAT IS THE TELL RATHER THAN A COINCIDENCE. A
+## grab always targets a LOOSE slipper, which is sitting at the home path every peer has had
+## since the scene loaded; only the throw names a node that has been re-parented. Both are
+## routed through here anyway, because the grab's immunity is a property of the game's
+## current rules and not of this message.
+##
+## ⚠️ THE `@rpc` NAMES AND SIGNATURES ARE UNCHANGED, SO NO LOCKSTEP REDEPLOY IS NEEDED.
+## Godot checksums a node's RPC method list; adding or re-typing a parameter here would make
+## every deployed dedicated server fail the handshake with *"the rpc node checksum failed"*.
+## The wire format still carries the full `NodePath` — an older client's packet resolves
+## through the same fallback, and a newer client's through an older host exactly as well (or
+## as badly) as it does today.
+##
+## ⚠️ THE NAME IS THE STABLE IDENTITY AND THE PATH IS NOT. `Slipper1/2/3` are authored
+## directly in `Main.tscn`, so every peer has the same three names for the whole match, and a
+## node keeps its name through any number of re-parents. It is the same reasoning `main.gd`'s
+## § SLIPPER RPCs block already applied to the BROADCAST half with `slipper_index` — that fix
+## routed the host's outbound messages through `Main` and re-dispatched them by a plain int,
+## and simply never covered the two inbound REQUESTS, because their target is an ARGUMENT
+## rather than the RPC's own delivery address.
+##
+## ⚠️ THE DIRECT LOOKUP IS TRIED FIRST, so a peer whose paths do agree costs one
+## `get_node_or_null` and nothing else. The group scan is three comparisons and only runs on
+## the path that used to fail outright.
+## ---------------------------------------------------------------------------
+func _resolve_slipper(target_path: NodePath) -> Slipper:
+	var direct := get_node_or_null(target_path) as Slipper
+	if direct != null:
+		return direct
+	var parts := target_path.get_name_count()
+	if parts == 0:
+		return null
+	# `add_to_group("slippers")` happens in `Slipper._ready()` and survives re-parenting,
+	# so this reaches a held slipper as readily as a loose one — unlike the path above.
+	var wanted := target_path.get_name(parts - 1)
+	for node in get_tree().get_nodes_in_group("slippers"):
+		var slipper := node as Slipper
+		if slipper != null and slipper.name == wanted:
+			return slipper
+	return null
 
 func _request_reset() -> void:
 	if not NetworkManager.is_networked() or NetworkManager.is_host():

@@ -225,6 +225,12 @@ func _step_advertise(delta: float) -> void:
 		# builds on one LAN can see each other's beacons and cannot play together; a
 		# row that always fails to connect is worse than no row.
 		"version": GameVersion.string(),
+		# ⚠️ THE JOIN CODE RIDES THE BEACON TOO, so a LAN lobby has a working code and
+		# not just an online one. Codes are resolved by matching what a server SAYS it
+		# is called against what was typed, and until this was here the only servers
+		# that ever said were pool servers — a LAN host could be shown a code that
+		# nothing on earth could look up.
+		"code": NetworkManager.join_code,
 		"port": NetworkManagerScript.DEFAULT_PORT,
 		"name": _host_label(),
 		# ⚠️ `seated_peer_count()`, NOT `playing_peer_count()` — see that function's own
@@ -282,6 +288,7 @@ func _ingest(raw: PackedByteArray, from_ip: String) -> void:
 		"ip": from_ip,
 		"port": port,
 		"name": String(packet.get("name", "A TUMBANG PRESO GAME")),
+		"code": String(packet.get("code", "")),
 		"players": int(packet.get("players", 0)),
 		"max": int(packet.get("max", NetworkManagerScript.MAX_PLAYERS)),
 		"in_match": bool(packet.get("in_match", false)),

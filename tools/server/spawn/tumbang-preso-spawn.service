@@ -1,0 +1,22 @@
+# Started by tumbang-preso-spawn.socket, runs for a fraction of a second, exits.
+# Never enabled directly -- enabling the SOCKET is what makes this reachable.
+
+[Unit]
+Description=Tumbang Preso lobby spawner
+Requires=tumbang-preso-spawn.socket
+After=tumbang-preso-spawn.socket
+
+[Service]
+Type=oneshot
+# ⚠️ ROOT, BECAUSE IT CALLS systemctl start. That is the whole reason spawner.py
+# is written to be unable to name a unit: the port is chosen inside the script
+# from a fixed range, never taken from the request. Read its header before
+# widening anything here.
+User=root
+ExecStart=/opt/tumbang-preso/spawn/spawner.py
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true

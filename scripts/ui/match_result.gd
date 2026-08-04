@@ -244,12 +244,21 @@ func _on_peer_disconnected(peer_id: int) -> void:
 ## The peers a rematch actually waits on: connected AND playing. A spectator
 ## does not hold up the vote — the same rule `match_setup.gd`'s own ready gate
 ## already applies to who counts toward starting.
+##
+## ⚠️⚠️ THIS USED TO WALK `connected_peer_ids` ITSELF, AND ON A CLIENT THAT LIST HOLDS
+## THE SERVER. Harmless behind a listen host, where peer 1 is a player who really does
+## owe a vote — but a DEDICATED server is a referee that votes on nothing, and it was
+## still in the denominator on every client's button. MEASURED against a real dedicated
+## server on port 8941 with two humans connected: the server's own count was 2 and both
+## clients' was 3, so the button would sit on "WAITING…  (2/3)" for a vote that had
+## already carried and a rematch the server had already started.
+##
+## ⚠️ THE FILTER IS NOT REPEATED HERE ANY MORE, ON PURPOSE. `NetworkManager.
+## seated_peer_ids()` is the one definition of "holds a seat", and `seated_peer_count()`
+## — what the LAN browser advertises — is literally its size. A second copy of the rule
+## in this file is what let the two answers drift apart in the first place.
 func _voting_peer_ids() -> Array:
-	var ids: Array = []
-	for id in NetworkManager.connected_peer_ids:
-		if not NetworkManager.is_spectator(id):
-			ids.append(id)
-	return ids
+	return NetworkManager.seated_peer_ids()
 
 func _check_rematch_ready() -> void:
 	var required := _voting_peer_ids()

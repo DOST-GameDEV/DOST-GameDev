@@ -1,21 +1,21 @@
 extends Node
 class_name NetworkManagerScript
 
-## Autoload singleton "NetworkManager" — rough LAN pass (Session 5).
+## Autoload singleton "NetworkManager" â€” rough LAN pass (Session 5).
 ## ENet over Godot's high-level multiplayer API. Deliberately minimal for now:
-## no lobby UI, no reconnect handling, no NAT/relay traversal — same-LAN only,
+## no lobby UI, no reconnect handling, no NAT/relay traversal â€” same-LAN only,
 ## which is exactly what the GDD calls for. See docs/Handoff.md.
 ##
 ## - Host-authoritative: Downed state, seal/capture checks, timer, score
 ##   (all already live on the autoloads below RoundManager/MatchManager, which
-##   only the host drives — clients just read the results).
+##   only the host drives â€” clients just read the results).
 ## - Client-authoritative movement for this rough pass: each peer owns and
 ##   simulates its own CharacterBase locally, replicated to everyone else via
-##   MultiplayerSynchronizer. No server reconciliation/anti-cheat yet — fine
+##   MultiplayerSynchronizer. No server reconciliation/anti-cheat yet â€” fine
 ##   for LAN prototyping, NOT fine to ship as-is.
 ##
 ## Test with Debug > Run Multiple Instances in the editor before testing
-## across real devices — much faster iteration loop.
+## across real devices â€” much faster iteration loop.
 
 signal server_created
 signal connection_succeeded
@@ -26,11 +26,11 @@ signal server_disconnected
 ## 4.3/B-65: host-only, fired once a peer's `_rpc_identify` lands with a
 ## token main.gd can look up in `peer_tokens`. Separate from `player_connected`
 ## because that fires the instant ENet completes its handshake, before the
-## token has necessarily arrived over the wire — see `_rpc_identify`'s own
+## token has necessarily arrived over the wire â€” see `_rpc_identify`'s own
 ## doc for the race this exists to close.
 signal player_identified(peer_id: int, token: String)
 ## HOST-ONLY, and it fires for a peer's FIRST declaration as well as for every later
-## change — see `publish_spectator`. `match_setup.gd` listens: a peer that starts
+## change â€” see `publish_spectator`. `match_setup.gd` listens: a peer that starts
 ## watching has to give its seat back to the bot pool and leave the ready count, and
 ## the lobby board is the only thing that can show that happening.
 ##
@@ -38,24 +38,38 @@ signal player_identified(peer_id: int, token: String)
 ## that walked into the lobby ALREADY spectating declares it in its identify packet and
 ## the board would otherwise seat it like anybody else.
 signal peer_spectator_changed(peer_id: int, spectating: bool)
+## CLIENT-SIDE, and the exact mirror of `peer_spectator_changed` seen from the other end:
+## the HOST has just ruled that THIS peer is watching (true) or has just been given a seat
+## (false). Fired from `_rpc_set_spectator`'s host -> client direction — see
+## § MID-MATCH ARRIVALS below and `provisional_spectator`'s own doc.
+##
+## A signal rather than a poll because `main.gd` has to react at the moment the ruling
+## lands: entering spectator mode builds a camera and strips the HUD, and leaving it frees
+## that camera one beat before the reclaimed body's own rig is made current.
+signal provisional_spectator_changed(spectating: bool)
 
 const DEFAULT_PORT: int = 8910
 const MAX_PLAYERS: int = 4
-## ⚠️ NOT THE SAME NUMBER AS `MAX_PLAYERS`, ON PURPOSE. `create_server()`'s
+## âš ï¸ NOT THE SAME NUMBER AS `MAX_PLAYERS`, ON PURPOSE. `create_server()`'s
 ## client limit used to just BE `MAX_PLAYERS`, which caps the whole SESSION at
-## four connections — host plus three — with no room left for anyone who only
-## wants to watch. 🧑 2026-08-01: *"spectate feels redundant... there could be
+## four connections â€” host plus three â€” with no room left for anyone who only
+## wants to watch. ðŸ§‘ 2026-08-01: *"spectate feels redundant... there could be
 ## 4 ppl playing and im a 5th or 6th guy just wathcing thru spectate."`
 ## `MAX_PLAYERS` stays 4 everywhere else in this file and in `main.gd` /
-## `match_setup.gd` — it is a real game-design invariant (four seats, always)
+## `match_setup.gd` â€” it is a real game-design invariant (four seats, always)
 ## and none of that seat-indexing code changes. Only the SOCKET's own ceiling
 ## moves, and only here.
 const MAX_CONNECTIONS: int = 12
 const MAIN_SCENE_PATH: String = "res://scenes/main/Main.tscn"
+## Where a REFUSED mid-match arrival lands. The same screen `main.gd::_bail_to_browser` and
+## `match_setup.gd`'s own disconnect handler already bounce to, for the same reason: it owns
+## `GameLaunch.pending_status_message` and it is where somebody in this position would try
+## again from. One landing pad, not a second one written for being turned away.
+const MULTIPLAYER_SETUP_PATH: String = "res://scenes/ui/MultiplayerSetup.tscn"
 ## Hamachi (or any VPN-tunnelled LAN) carries more jitter than a same-router
 ## LAN, and ENet's built-in defaults (timeout_limit 32 / timeout_min 5000ms /
 ## timeout_max 30000ms) can flag a live connection as dead during an ordinary
-## latency spike over the tunnel, not just an actual drop — the exact
+## latency spike over the tunnel, not just an actual drop â€” the exact
 ## "someone's wifi blips" failure mode B-65 already designed the rejoin
 ## identity token around. Widened here so a spike has room to recover before
 ## ENet gives up; kept finite (not "increase forever") so a real drop still
@@ -65,33 +79,51 @@ const ENET_TIMEOUT_MIN: int = 10000
 const ENET_TIMEOUT_MAX: int = 45000
 ## 4.3/B-65: where this install's stable player token is persisted. `user://`
 ## rather than an in-memory value only, so identity survives a full game
-## relaunch — the failure mode this exists for is "someone's wifi drops",
+## relaunch â€” the failure mode this exists for is "someone's wifi drops",
 ## which does not guarantee the game process itself kept running.
 const TOKEN_SAVE_PATH: String = "user://player_identity.cfg"
+## ---------------------------------------------------------------------------
+## âš ï¸âš ï¸ THE JOIN-CODE ALPHABET IS THIS SHORT BECAUSE THE CODE IS READ ALOUD. A player who
+## has a lobby open reads four characters down a phone, across a room, or into a group
+## chat, and every character that has a look-alike is a character that gets typed wrong by
+## somebody who heard it correctly. So: no 0/O, no 1/I/L. Upper case only, because a code
+## spoken has no case and printing one that does implies a distinction that is not there
+## (`ServerQuery.resolve_code` folds the typed string up to match).
+##
+## âš ï¸ DO NOT ADD CHARACTERS BACK TO "GET MORE CODES". 31^4 is 923 521 and the pool is
+## EIGHT servers â€” the space is already five orders of magnitude larger than it needs to
+## be, and the only thing a bigger alphabet buys is somebody's O landing on somebody
+## else's 0.
+const JOIN_CODE_ALPHABET: String = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
+## Exactly four. Short enough to hold in your head between reading it and typing it, and
+## `ServerQuery`'s pool of eight makes collisions a rounding error â€” see `resolve_code`'s
+## own âš ï¸ for what a collision actually costs.
+const JOIN_CODE_LENGTH: int = 4
+## ---------------------------------------------------------------------------
 
 var connected_peer_ids: Array[int] = []
-## 4.3/B-65 — a stable identity for THIS RUNNING INSTANCE, independent of the
+## 4.3/B-65 â€” a stable identity for THIS RUNNING INSTANCE, independent of the
 ## ENet peer id ENet hands out fresh on every connection (a reconnect gets a
 ## new peer id; this does not). Minted once by `_load_or_create_token()` when
 ## this autoload's `_ready()` runs and held for the process's whole lifetime
-## — exactly long enough to cover the actual demo-day failure mode this
+## â€” exactly long enough to cover the actual demo-day failure mode this
 ## exists for (B-65: "someone's wifi blips", not "someone's game crashed"),
 ## and presented to the host on every connect via `_rpc_identify`.
 ##
-## ⚠️ Deliberately NOT re-loaded from a previous run's saved value, even
-## though one is written to disk (see `_load_or_create_token`) — two
+## âš ï¸ Deliberately NOT re-loaded from a previous run's saved value, even
+## though one is written to disk (see `_load_or_create_token`) â€” two
 ## instances on the SAME machine sharing one `user://` (exactly how this
 ## project's own two-instance test works: `Debug > Run Multiple Instances`,
 ## or two `godot --path .` processes) would otherwise read back the identical
 ## token and collide on the same join index, one silently overwriting the
 ## other's team/role. Confirmed by running that exact setup while building
 ## this. A token that does not survive a full relaunch is a real, smaller
-## scope than "persisted client-side" first suggests — recorded here rather
+## scope than "persisted client-side" first suggests â€” recorded here rather
 ## than silently narrowed.
 var local_player_token: String = ""
 ## Host-only: peer_id -> the token that peer identified itself with.
 ## Deliberately NOT cleared on a single peer's disconnect (`_on_peer_disconnected`
-## below) — the entire point is remembering which token `peer_id` USED to
+## below) â€” the entire point is remembering which token `peer_id` USED to
 ## belong to, so main.gd's `_token_join_index` can hand a reconnecting peer
 ## (new peer_id, same token) back its own original team/role instead of the
 ## next free slot. Cleared only when a hosting SESSION ends (`host_game()`,
@@ -102,7 +134,7 @@ var peer_tokens: Dictionary = {}
 ## CHARACTER screen. Populated by `_rpc_identify` alongside the token, from the
 ## same packet, because the two are answers to the same question ("who is this
 ## peer") and splitting them across two RPCs would create a window where the host
-## knows a peer's identity but not its face — precisely when it is about to spawn
+## knows a peer's identity but not its face â€” precisely when it is about to spawn
 ## it.
 ##
 ## Cleared on the same schedule as `peer_tokens`, and for the same reason: a
@@ -113,10 +145,51 @@ var peer_tokens: Dictionary = {}
 ## which `character_visual.gd` reads as "no pick" and answers with the
 ## signed-off default look.
 ##
-## ⚠️ ALL THREE PICKS ARE SENT BY EVERY PEER EVEN THOUGH EACH PEER USES ONLY ONE.
+## ---------------------------------------------------------------------------
+## âš ï¸âš ï¸ NOT HOST-ONLY ANY MORE, AND THAT WAS "THE USERNAMES WE CHOOSE DON'T SHOW".
+##
+## ðŸ§‘ 2026-08-02, from a real player: *"the usernames we choose in the settings don't
+## show in the game"* â€” every seat read P1/P2/P3/P4, on the 3D nameplates and on the
+## scoreboard, for everybody.
+##
+## This dictionary used to be written ONLY on the host. Nothing carried it outward, so
+## `picks_for()` on a client answered `{"name": ""}` for every peer INCLUDING ITSELF â€”
+## and the damage was not merely local, because of what happens next:
+##
+##   1. `main.gd::_build_networked_character` runs on EVERY peer, and stamps
+##      `character.player_name` from `picks_for()`. On a client that is `""`, on every
+##      body in the match, its own included.
+##   2. `main.gd` then hands each human body's authority to the peer that owns it, and
+##      `player_name` is a replicated property on `CharacterBase.tscn`. So each client
+##      is the AUTHORITY for the empty string it just wrote, and pushes it to everybody
+##      â€” INCLUDING BACK OVER THE HOST'S CORRECT VALUE.
+##   3. `main.gd::_picks_table()` â€” the hostâ†’all catch-up that exists precisely to
+##      repair a late-arriving pick â€” is built by reading `character.player_name` off
+##      the host's own bodies. Those had just been overwritten with `""`, so the one
+##      mechanism that could have healed this was faithfully broadcasting the damage.
+##
+## MEASURED, two real clients (ALICE, BENJIE) against a real dedicated server on port
+## 8960, before the broadcast below existed. On the SERVER, in the same sample:
+##
+##     picks={766454980: {... "name": "ALICE"}, 1672734453: {... "name": "BENJIE"}}
+##     node=766454980  player_name=''  display='P1'
+##     node=1672734453 player_name=''  display='P2'
+##
+## The host knew both names and its own two bodies read empty â€” that is step 2 caught in
+## the act, and it is why "the name is sent to the host" and "nobody sees the name" were
+## both true at once.
+##
+## âš ï¸ THE DEDICATED SERVER IS WHY NOBODY SAW ANYTHING AT ALL. On a listen host the
+## hosting player's own body is authored and owned by the peer that has the right value,
+## so THAT one name survived; every client's did not. The deployed server is a referee
+## with no player at it (Â§ DEDICATED HOSTING), so every human is a client and every
+## single name was lost.
+## ---------------------------------------------------------------------------
+##
+## âš ï¸ ALL THREE PICKS ARE SENT BY EVERY PEER EVEN THOUGH EACH PEER USES ONLY ONE.
 ## A peer controls a Person OR a Prop, never both (`_build_spawn_data` derives
 ## that from its join index), so a Prop peer's character pick and a Person peer's
-## lata pick are both dead weight — three ints. The alternative is deciding what
+## lata pick are both dead weight â€” three ints. The alternative is deciding what
 ## to send based on a slot assignment the peer does not know yet at connect time,
 ## which is a race for no saving worth having.
 var peer_characters: Dictionary = {} # peer_id -> {character, can, slipper}
@@ -125,41 +198,67 @@ var peer_characters: Dictionary = {} # peer_id -> {character, can, slipper}
 ## mid-connection cannot change what the host was already told.
 var local_picks: Dictionary = {"character": -1, "can": -1, "slipper": -1, "name": ""}
 
-## What `peer_id` picked, or all -1 if it never said. Host-side lookup so main.gd
-## does not have to know this dictionary exists, mirroring how it reaches tokens
-## through `peer_tokens` rather than through the wire format.
+## What `peer_id` picked, or all -1 if it never said. One lookup so main.gd does not
+## have to know this dictionary exists, mirroring how it reaches tokens through
+## `peer_tokens` rather than through the wire format.
+##
+## âš ï¸âš ï¸ HOST-ONLY, AND CALLERS MUST TREAT IT THAT WAY. `peer_characters` is filled in
+## `_rpc_identify`, which returns early on anything but the host, so on a client this
+## answers the fallback for every peer including itself. That is why the player's NAME
+## does not come from here on the way to a body â€” `main.gd::_build_spawn_data` puts it in
+## the spawn packet, resolved host-side where the answer is known.
+##
+## âš ï¸ SO `is_spectator()` IS ALSO ONLY TRUE ON THE HOST. A client reads `false` for
+## everybody, which makes `seated_peer_ids()`, `playing_peer_count()` and the rematch
+## denominator count spectators as players on every peer but the host. Known, pre-existing
+## and deliberately not fixed here: the fix is to carry the flag the same way the name now
+## travels, not to add a second broadcast channel beside it.
+##
+## The fallback stays: a seat with no human behind it (`main.gd`'s AI sentinels use
+## negative peer ids that nothing can ever publish) has no picks and must not get
+## somebody else's.
 func picks_for(peer_id: int) -> Dictionary:
 	return peer_characters.get(peer_id,
 		{"character": -1, "can": -1, "slipper": -1, "spectator": 0, "name": ""})
 
-## Whether `peer_id` joined to WATCH rather than to play. Host-side, read by
+## Whether `peer_id` joined to WATCH rather than to play. Read by
 ## `main.gd::_spawn_player` (which skips them entirely) and by
 ## `_expected_ready_count()` (which must not wait for a READY press from somebody with
 ## no character to ready). See `GameLaunch.spectator`.
+##
+## âš ï¸ THIS USED TO ANSWER `false` ON A CLIENT NO MATTER WHO WAS WATCHING, and it was the
+## same root cause as the missing usernames rather than a second bug: it reads
+## `peer_characters`, and nothing sent that to a client. Every count built on it â€”
+## `playing_peer_count()`, `seated_peer_ids()`, and through them `match_result.gd`'s
+## rematch denominator â€” therefore counted spectators as players on every peer except
+## the host. Fixed by the same broadcast, which is why the two are one change.
 func is_spectator(peer_id: int) -> bool:
 	return int(picks_for(peer_id).get("spectator", 0)) != 0
 
 ## ---------------------------------------------------------------------------
-## ⚠️⚠️ THE SPECTATE CHOICE IS MADE **AFTER** THE IDENTIFY PACKET HAS ALREADY GONE, AND
+## âš ï¸âš ï¸ THE SPECTATE CHOICE IS MADE **AFTER** THE IDENTIFY PACKET HAS ALREADY GONE, AND
 ## WITHOUT THIS NOTHING EVER TOLD THE HOST.
 ##
-## `_local_picks()` is snapshotted once — at `host_game()` for the host, at
-## `_on_connected_to_server()` for a client — and the SPECTATE toggle lives one screen
+## `_local_picks()` is snapshotted once â€” at `host_game()` for the host, at
+## `_on_connected_to_server()` for a client â€” and the SPECTATE toggle lives one screen
 ## LATER, in the lobby the peer is sitting in while connected. So every consumer of
 ## `is_spectator()` (the ready gate, `_spawn_player`, `playing_peer_count`) was reading a
 ## value frozen before the player had been given any way to set it:
 ##
 ##   * a CLIENT that pressed SPECTATE in the lobby was spawned a character anyway and
-##     counted in the ready gate — the toggle did nothing at all off the local machine;
+##     counted in the ready gate â€” the toggle did nothing at all off the local machine;
 ##   * a HOST that pressed it got a body too, because `host_game()` had already written
 ##     `peer_characters[1]` with `spectator = 0` before the lobby existed.
 ##
 ## Solo is unaffected and deliberately does not come through here: `main.gd::
 ## _start_local_test` reads `GameLaunch.spectator` directly and there is no host to tell.
 ##
-## Host-authoritative like every other pick: the sender proposes, the host records. A
-## client never writes another peer's flag, and its own copy of `peer_characters` stays
-## empty exactly as it is for the three character indices.
+## Host-authoritative like every other pick: the sender proposes and the host records.
+##
+## âš ï¸ AND THE RULING GOES NO FURTHER THAN THE HOST. Nothing carries the updated flag to
+## other clients, so their `is_spectator()` keeps whatever it inferred â€” see `picks_for()`'s
+## âš ï¸ for what that costs and why it is left alone rather than patched with a second
+## broadcast alongside the spawn packet the name now rides.
 func publish_spectator(spectating: bool) -> void:
 	local_picks["spectator"] = 1 if spectating else 0
 	if not is_networked():
@@ -169,7 +268,7 @@ func publish_spectator(spectating: bool) -> void:
 		return
 	# Same window `match_setup.gd::_can_rpc` documents: `join_game()` returns when the
 	# socket opens, not when the handshake completes, and the SPECTATE button is
-	# clickable throughout. A press inside that window is not lost — `local_picks` above
+	# clickable throughout. A press inside that window is not lost â€” `local_picks` above
 	# already carries it, and `_on_connected_to_server` sends the packet.
 	if multiplayer.multiplayer_peer == null:
 		return
@@ -177,12 +276,39 @@ func publish_spectator(spectating: bool) -> void:
 		return
 	_rpc_set_spectator.rpc_id(1, spectating)
 
+## ---------------------------------------------------------------------------
 ## Any peer -> host: "I am watching / I am playing after all."
+##
+## ⚠️⚠️ AND, SINCE 2026-08-04, HOST -> ONE CLIENT AS WELL: "I have parked you as a
+## provisional spectator" / "your seat is ready." See § MID-MATCH ARRIVALS.
+##
+## ⚠️⚠️ THE ANNOTATION AND THE SIGNATURE ARE BYTE-FOR-BYTE UNCHANGED, AND THAT IS THE WHOLE
+## REASON THE SECOND DIRECTION LIVES HERE RATHER THAN IN A NEW METHOD. Godot's
+## `SceneRPCInterface::get_rpc_md5()` hashes the concatenated rpc method NAMES of a node —
+## so ADDING an `@rpc` to this autoload changes NetworkManager's checksum and every peer on
+## an older build fails EVERY NetworkManager RPC with *"The rpc node checksum failed"*,
+## including the identify packet, i.e. it cannot connect at all. Reusing a method that
+## already exists changes nothing on the wire: the deployed servers keep the same checksum,
+## and an un-updated peer talking to an updated one still completes its handshake.
+##
+## `any_peer` is what makes this legal in both directions — it is the mode that puts NO
+## sender restriction on the call, unlike `authority`, which would refuse a client's own
+## SPECTATE press. The direction is told apart by `is_host()` inside, and the client half
+## additionally demands the sender be peer 1.
+## ---------------------------------------------------------------------------
 @rpc("any_peer", "call_remote", "reliable")
 func _rpc_set_spectator(spectating: bool) -> void:
-	if not is_host():
+	var sender := multiplayer.get_remote_sender_id()
+	if is_host():
+		_apply_spectator(sender, spectating)
 		return
-	_apply_spectator(multiplayer.get_remote_sender_id(), spectating)
+	# ⚠️ HOST -> THIS CLIENT: "you are watching for now" / "you have a seat now". Only peer 1
+	# may say so — `any_peer` puts no sender check of its own on this method, and a ruling
+	# about who plays is not something another client gets to make.
+	if sender != 1:
+		return
+	provisional_spectator = spectating
+	provisional_spectator_changed.emit(spectating)
 
 ## HOST ONLY. Writes the flag into the same `peer_characters` entry `_rpc_identify`
 ## builds, rather than into a parallel dictionary, so `is_spectator()` has exactly one
@@ -194,24 +320,61 @@ func _apply_spectator(peer_id: int, spectating: bool) -> void:
 	peer_characters[peer_id] = picks
 	peer_spectator_changed.emit(peer_id, spectating)
 
+## ---------------------------------------------------------------------------
+## âš ï¸âš ï¸ THE ONE PEER THAT IS REFEREEING RATHER THAN PLAYING. A dedicated server takes no
+## seat (see Â§ DEDICATED HOSTING), so it must never land in a number that answers "how
+## many people are here" â€” and every count below, plus `match_result.gd`'s rematch
+## denominator, walks `connected_peer_ids` to work that out.
+##
+## âš ï¸âš ï¸ THIS EXISTS BECAUSE THE SERVER'S OWN LIST AND A CLIENT'S LIST DO NOT AGREE, AND
+## ONLY THE CLIENT'S IS WRONG. `host_game(dedicated = true)` leaves `connected_peer_ids`
+## empty, so a count taken ON the referee was already correct and always was. A CLIENT
+## builds the same list from `_on_connected_to_server` (itself) plus every `peer_connected`
+## Godot hands it â€” and Godot fires that for peer 1 the instant the handshake lands, so
+## the referee is in there like anybody else.
+##
+## MEASURED, two real clients against a real dedicated server on port 8941, before this
+## existed: the server reported `peers=94997600,13230293 seated=2`, while BOTH clients
+## reported `peers=<self>,1,<other> seated=3`. Two humans in the lobby, three on their
+## screens. The same run against a LISTEN host on 8942 had every peer agreeing on 3 with
+## three humans present, which is the case that ships today and the case this must not
+## touch.
+##
+## âš ï¸ IT IS ONLY EVER TRUE WHEN THE SERVER SAID SO. `is_dedicated` is set locally in
+## `host_game()` on the server and delivered to a client by `_rpc_announce_dedicated`;
+## a client cannot infer it, and guessing from something like "the lobby leader is not
+## peer 1" would quietly delete a listen host â€” a real player, holding a real seat â€”
+## from everybody's count.
+## ---------------------------------------------------------------------------
+func is_seatless_referee(peer_id: int) -> bool:
+	# 1 is the server from every peer's point of view, its own included â€” the same
+	# literal `_on_connected_to_server` and every `rpc_id(1, ...)` in this file uses.
+	return is_dedicated and peer_id == 1
+
 ## How many connected peers are actually PLAYING. The ready gate counts these, not
-## `connected_peer_ids.size()` — a lobby of two players and two spectators must start on
+## `connected_peer_ids.size()` â€” a lobby of two players and two spectators must start on
 ## two presses, and counting all four would hang it forever on people who cannot press.
 ##
 ## Floored at 1 for the same reason `_expected_ready_count` already floors: a host whose
 ## own peer list has not populated yet still owes its own press. Note that a host who is
-## ITSELF spectating still counts here — somebody has to be able to start the match, and
+## ITSELF spectating still counts here â€” somebody has to be able to start the match, and
 ## the host is the only peer that can.
 func playing_peer_count() -> int:
 	var count := 0
 	for peer_id in connected_peer_ids:
+		# âš ï¸ A DEDICATED REFEREE PRESSES NOTHING, so counting it would raise the quorum
+		# by one press that can never arrive. A no-op on the server (its own list never
+		# holds itself) and a no-op on a listen host (peer 1 there is a player) â€” this
+		# only ever fires on a CLIENT of a dedicated server. See `is_seatless_referee`.
+		if is_seatless_referee(peer_id):
+			continue
 		if peer_id == multiplayer.get_unique_id() or not is_spectator(peer_id):
 			count += 1
 	return maxi(1, count)
 
-## ⚠️⚠️ HOW MANY PEOPLE ACTUALLY HOLD A SEAT. NOT `playing_peer_count()`, AND THE
-## DIFFERENCE IS THE POINT. 🧑 2026-08-02: *"spectator shouldnt be counted towards
-## players"* — correct, and `playing_peer_count()` does count one, deliberately.
+## âš ï¸âš ï¸ HOW MANY PEOPLE ACTUALLY HOLD A SEAT. NOT `playing_peer_count()`, AND THE
+## DIFFERENCE IS THE POINT. ðŸ§‘ 2026-08-02: *"spectator shouldnt be counted towards
+## players"* â€” correct, and `playing_peer_count()` does count one, deliberately.
 ##
 ## That function answers "who is the rematch vote waiting on", and it carves itself out
 ## (`peer_id == get_unique_id()`) plus floors at 1 because SOMEBODY has to be able to
@@ -225,11 +388,28 @@ func playing_peer_count() -> int:
 ## promising a game that nobody is in. So: no self carve-out, no floor. The two counts
 ## are allowed to disagree, and this comment is why.
 func seated_peer_count() -> int:
-	var count := 0
+	return seated_peer_ids().size()
+
+## âš ï¸ THE LIST BEHIND `seated_peer_count()`, AND THE ONLY DEFINITION OF "HOLDS A SEAT".
+## Split out rather than duplicated because `match_result.gd::_voting_peer_ids` needs the
+## IDS, not the size, and used to walk `connected_peer_ids` with its own copy of this
+## filter â€” which is exactly how the rematch denominator ended up counting a dedicated
+## referee as a player while the server it was talking to did not. One predicate, two
+## callers, no way for them to drift again.
+##
+## `Array[int]`, not `Array`, so a caller cannot quietly put a peer id of another type in
+## it â€” every id in this file is an int and the seat maps that consume these are keyed on
+## ints.
+func seated_peer_ids() -> Array[int]:
+	var ids: Array[int] = []
 	for peer_id in connected_peer_ids:
+		# The referee holds no seat by construction â€” see `is_seatless_referee` for the
+		# measured numbers this line exists for.
+		if is_seatless_referee(peer_id):
+			continue
 		if not is_spectator(peer_id):
-			count += 1
-	return count
+			ids.append(peer_id)
+	return ids
 
 ## This process's own three picks, read off GameLaunch. Kept here rather than
 ## inlined at both call sites so the host's self-seed and the client's RPC cannot
@@ -239,14 +419,14 @@ func _local_picks() -> Dictionary:
 		"character": GameLaunch.character_index(),
 		"can": GameLaunch.can_index(),
 		"slipper": GameLaunch.slipper_index(),
-		# ⚠️ THE NAME RIDES THE SAME PACKET, for the same reason spectating does: it
+		# âš ï¸ THE NAME RIDES THE SAME PACKET, for the same reason spectating does: it
 		# answers "who is this peer" and the host needs it BEFORE it spawns anybody. A
 		# separate RPC would open the window where the host has seated a player it
 		# cannot yet label.
 		"name": GameLaunch.player_name(),
-		# ⚠️ SPECTATING RIDES THE PICKS PACKET RATHER THAN GETTING AN RPC OF ITS OWN.
-		# It is answered by the same question the three picks answer — "who is this peer,
-		# and what should the host build for them" — and it has to be known BEFORE the
+		# âš ï¸ SPECTATING RIDES THE PICKS PACKET RATHER THAN GETTING AN RPC OF ITS OWN.
+		# It is answered by the same question the three picks answer â€” "who is this peer,
+		# and what should the host build for them" â€” and it has to be known BEFORE the
 		# host spawns anybody. A second RPC would create exactly the window
 		# `peer_characters`' own doc describes for the character index: the host knows a
 		# peer exists but not yet what it is, precisely when it is about to seat it.
@@ -256,12 +436,12 @@ func _local_picks() -> Dictionary:
 		"spectator": 1 if GameLaunch.spectator else 0,
 	}
 ## Host-only: true once the host has left the pre-match lobby and is
-## actually running Main.tscn — set by `main.gd::_start_hosting()`, cleared
+## actually running Main.tscn â€” set by `main.gd::_start_hosting()`, cleared
 ## on `disconnect_network()`. A peer that connects (or reconnects) while this
 ## is true has missed the Lobby's ready-up gate entirely: the host has no
 ## MatchSetup.tscn left to answer a Start press on, so `_rpc_identify` routes that
 ## peer straight into the running match instead of leaving it stuck showing
-## "waiting for host to start…" forever. See `_rpc_route_to_running_match`.
+## "waiting for host to startâ€¦" forever. See `_rpc_route_to_running_match`.
 var match_in_progress: bool = false
 ## Client-side. True for the brief window between `_rpc_route_to_running_match`
 ## deciding to disconnect-and-reconnect (see that function's own doc for why)
@@ -269,19 +449,91 @@ var match_in_progress: bool = false
 ## `server_disconnected` handler checks this so it doesn't read a DELIBERATE
 ## disconnect as "the host ended the session" and bounce back to the menu out
 ## from under the very reconnect that disconnect exists to enable. Cleared at
-## the top of `join_game()` — any call to it, fresh or a reroute's own retry,
+## the top of `join_game()` â€” any call to it, fresh or a reroute's own retry,
 ## means whatever reason this was set for no longer applies.
 var rerouting_to_running_match: bool = false
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ § MID-MATCH ARRIVALS — THE WAITING ROOM INSIDE A RUNNING MATCH.
+##
+## 🧑 2026-08-04: *"if we restrict the game to only disconnected people can rejoin the
+## lobby, those trying to join midway says 'match already started'"* — and then, revising
+## it: *"or we could make them spectators until the next role rotation. but only until the
+## lobby is full, we can't keep accepting 5 spectators for a lobby that has only 2 bot
+## slots open."*
+##
+## So a peer knocking on a RUNNING match gets one of four rulings, decided host-side in
+## `_rule_on_mid_match_arrival` and nowhere else:
+##
+##   RETURNING   its token was already in this match. Reclaims its own seat immediately,
+##               by the B-65 path that has worked since 2026-07-28. UNCHANGED.
+##   SPECTATING  it asked to WATCH (`GameLaunch.spectator`, in its identify packet). Takes
+##               no seat, so the cap below is not its business and it is never promoted.
+##   WAITING     a newcomer, and a bot seat is free for it. Admitted as a spectator NOW and
+##               seated at the next role rotation — see `_promote_waiting_spectators` in
+##               `main.gd`.
+##   REFUSED     a newcomer, and every free seat is already spoken for by somebody ahead of
+##               it in the queue. Bounced to MultiplayerSetup with a legible message.
+##
+## ⚠️⚠️ THE CAP IS THE POINT, AND IT IS COUNTED IN SEATS, NOT IN PEOPLE. The queue may never
+## be longer than the number of seats a bot is currently holding — five people waiting for
+## two bot slots is the failure the human named, and it is worse than a refusal because
+## three of those five would sit through a whole round before finding out.
+##
+## ⚠️ A SEAT A DISCONNECTED HUMAN LEFT BEHIND IS **NOT** FREE, even though a bot is driving
+## it. `main.gd::free_seat_count()` skips every seat any token has ever claimed, precisely
+## so promoting a newcomer can never take the chair RETURNING exists to give back. The two
+## rules would otherwise fight over the same body.
+## ---------------------------------------------------------------------------
+
+## The four rulings above. Host-only; a client never computes one.
+enum MidMatchRuling { RETURNING, SPECTATING, WAITING, REFUSED }
+
+## What a REFUSED arrival is told. Phrased as the human phrased it — the player's question
+## is "why can I not get in", and "the lobby is full" answers a different one.
+const MATCH_FULL_MESSAGE: String = "Match already started — every open seat is taken. Try again when it ends."
+
+## HOST-ONLY. Stable tokens admitted to the running match as provisional spectators, in
+## ARRIVAL ORDER, waiting for the next role rotation to seat them.
+##
+## ⚠️ KEYED BY TOKEN, NOT BY PEER ID, AND IT HAS TO BE. Admission is followed immediately by
+## `_rpc_route_to_running_match`, which deliberately drops the connection and dials again
+## (see that function's own ⚠️⚠️) — so the peer id this queue was built from is dead within
+## a second of being written. The token is the one thing that survives it.
+##
+## ⚠️ ARRIVAL ORDER IS THE PROMOTION ORDER. First knock, first seat: it is the only order
+## every waiting player can predict, and the only one that cannot be gamed by reconnecting.
+##
+## ⚠️ NOT PRUNED ON DISCONNECT, for the same reason `peer_tokens` is not — the reroute IS a
+## disconnect, and a queue that forgot everybody who dropped would forget everybody it just
+## admitted. A token whose owner really did leave for good costs one waiting slot until the
+## next rotation, where `_promote_waiting_spectators` drops it for having no live peer.
+var waiting_seat_tokens: Array[String] = []
+
+## CLIENT-SIDE. True while the host has parked THIS peer as a provisional spectator — it
+## arrived at a running match, was not in it, and is waiting for a rotation.
+##
+## ⚠️ NOT `GameLaunch.spectator`, AND THAT IS DELIBERATE. That one is a PREFERENCE with the
+## same lifetime as the map and the character picks (see its own doc): a player who chose to
+## watch should not have to choose again next match. This is a RULING about one session that
+## the player did not make and must not inherit — writing it into the preference would make
+## somebody who once arrived a minute late spectate every match afterwards.
+##
+## ⚠️ SURVIVES `disconnect_network()` ON PURPOSE. The ruling arrives, then the reroute drops
+## the connection — clearing it there would throw the ruling away one frame after receiving
+## it. Cleared instead where the SESSION genuinely ends: `host_game()` and
+## `_on_server_disconnected()`.
+var provisional_spectator: bool = false
 ## B-49: Godot 4's `multiplayer.multiplayer_peer` defaults to an
 ## `OfflineMultiplayerPeer` sentinel, NOT null, and `multiplayer.has_multiplayer_peer()`
-## reports `true` for it — so `is_networked()` used to read `true` even for
+## reports `true` for it â€” so `is_networked()` used to read `true` even for
 ## the plain single-PC/split-keyboard local-test flow, which never calls
 ## `host_game()`/`join_game()` at all. That silently sent every
 ## `if NetworkManager.is_networked(): ...` branch throughout the codebase down
 ## its "networked" path in local play. Most of those happened to be harmless
 ## (`is_host()` was ALSO accidentally true, since the default peer reports as
 ## server too, so "networked and not host" gates never actually skipped
-## anything) — but main.gd::_on_match_round_started branches on `is_networked()`
+## anything) â€” but main.gd::_on_match_round_started branches on `is_networked()`
 ## alone with no such accidental save: it took the networked branch and
 ## iterated `_spawned_characters`, which is always empty in local test, so the
 ## ENTIRE per-round reset (position, is_can/team_is_can_side recompute,
@@ -300,7 +552,150 @@ func _ready() -> void:
 
 ## Starts a server on `port` and marks the host itself as the first connected
 ## player (host's own peer id, `1`, never fires `peer_connected`).
-func host_game(port: int = DEFAULT_PORT) -> Error:
+## ---------------------------------------------------------------------------
+## Â§ DEDICATED HOSTING â€” a referee with nobody sitting at it.
+##
+## `host_game(port, dedicated = true)` starts a server that arbitrates the match but
+## takes no seat. It exists so a machine with no player at it â€” one of a fixed pool of
+## lobby processes on a VM â€” can run a match for four humans, instead of the four
+## seats being three humans and whoever's PC is hosting.
+##
+## âš ï¸ THE ONLY DIFFERENCE IS THE SELF-SEEDING BELOW, AND THAT IS DELIBERATE.
+## Everything else about hosting is unchanged, because everything else is already
+## right: the server is still `is_host()`, still the authority at all 66 call sites
+## that ask, still the one running RoundManager. What a listen-host additionally does
+## is enter ITSELF into `connected_peer_ids`, `peer_tokens` and `peer_characters` â€”
+## which is what `main.gd::_start_hosting` iterates to decide who gets a character.
+## Skip those three and the server spawns nobody for itself; `_fill_empty_slots_with_placeholders`
+## then covers all four seats with bots until humans take them. No seat logic changes.
+##
+## âš ï¸ ONE PROCESS IS STILL ONE MATCH. `RoundManager`/`MatchManager` are autoloads â€”
+## one instance each per running process, holding one score and one timer. Several
+## concurrent lobbies means several processes on different ports, NOT several matches
+## inside one. Nothing here makes this process re-entrant and nothing should try.
+##
+## âš ï¸ NOBODY HERE PICKS THE MAP. A listen-host is also the player who chose the map
+## and mode on the setup screen; a dedicated server has no such player, so whatever it
+## booted with stands unless a client is given those controls. See the lobby-leader
+## work that goes with this â€” without it, an online lobby is stuck on the default map.
+## ---------------------------------------------------------------------------
+
+## True when this process is refereeing without playing. Read by anything that would
+## otherwise assume the server owns a character.
+var is_dedicated: bool = false
+
+## The process-loop ceiling for a dedicated server â€” see `host_game`'s âš ï¸âš ï¸.
+##
+## Matches `physics_ticks_per_second` deliberately: one process frame per physics tick is
+## the most a headless referee can usefully do, since everything a client sees is decided
+## on the physics clock. Lower would start delaying RPC dispatch, which runs on the process
+## loop; higher is pure waste on a machine with no screen.
+const DEDICATED_MAX_FPS: int = 60
+
+## ---------------------------------------------------------------------------
+## THIS SERVER'S 4-CHARACTER JOIN CODE. Minted in `host_game()`, cleared in
+## `disconnect_network()` â€” the same lifetime as the session it names â€” and read off this
+## var by `server_query.gd`, which is the only thing that ever tells anybody what it is.
+##
+## âš ï¸ IT IS A LABEL, NOT A SECRET AND NOT AN AUTHORITY. Nothing is checked against it: a
+## code resolves to an address and the join proceeds exactly as a typed address would. It
+## is short because it is spoken, and it is per-SESSION because a server that has restarted
+## is a different lobby with a different set of people in it â€” a code that survived a
+## restart would send a player to the room its old occupants have left.
+##
+## âš ï¸ NOT COORDINATED WITH THE REST OF THE POOL, deliberately: `server_query.gd`'s header
+## explains why there is no registry to coordinate through. Two servers CAN roll the same
+## four characters; see `ServerQuery.resolve_code` for what that costs.
+##
+## Empty while this process is not hosting, which is what a client reports too.
+## ---------------------------------------------------------------------------
+var join_code: String = ""
+
+## Four characters from `JOIN_CODE_ALPHABET`. `RandomNumberGenerator` seeded per call for
+## the same reason `_load_or_create_token` does it: two pool processes started by the same
+## script in the same second must not both fall out of an unseeded global generator with
+## the same value.
+func _mint_join_code() -> String:
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	var code := ""
+	for i in range(JOIN_CODE_LENGTH):
+		code += JOIN_CODE_ALPHABET[rng.randi_range(0, JOIN_CODE_ALPHABET.length() - 1)]
+	return code
+
+## ---------------------------------------------------------------------------
+## Â§ THE LOBBY LEADER â€” who is allowed to pick the map, when the referee is a robot.
+##
+## On a listen host these are the same person, and this changes nothing: the leader is
+## peer 1, which is the host, which is who could already pick. On a DEDICATED server
+## there is no such person, so the first human through the door gets those controls.
+##
+## âš ï¸ THE LEADER IS NOT AN AUTHORITY. It is permission to ASK. The server still owns
+## the settings and still broadcasts them â€” a leader's map change is a request the
+## server validates against this id and then applies, exactly like a seat request. Any
+## other shape would let a client mutate lobby state directly, which is the one thing
+## the whole host-authoritative model exists to prevent.
+##
+## âš ï¸ IT MUST SURVIVE THE LEADER LEAVING. A lobby whose leader quit and which nobody
+## can change the map on is stuck, and on a persistent server it stays stuck for
+## everyone who arrives later. Handover is not polish here â€” see `_reassign_leader`.
+## ---------------------------------------------------------------------------
+
+## Fired when this peer learns or mints the lobby's join code â€” the host on host_game,
+## a client when the server tells it on identify. The lobby screen listens so the code
+## appears the moment it is known rather than only if something else redraws.
+signal join_code_changed(code: String)
+signal lobby_leader_changed(peer_id: int)
+
+## 0 means nobody holds it â€” a dedicated server before its first human arrives.
+var lobby_leader_id: int = 0
+
+func is_lobby_leader() -> bool:
+	return _is_networked and lobby_leader_id == multiplayer.get_unique_id()
+
+## Host-only. Gives the role to `peer_id` and tells everyone, including itself, so a
+## listen host's own UI and a client's take the same path.
+##
+## âš ï¸ UNCONDITIONAL â€” it will take the role off whoever holds it. Only `_reassign_leader`
+## may do that, and only because the holder has left. A peer ARRIVING must go through
+## `_claim_lobby_leader_if_vacant`, which is where the "first one in, and only the first"
+## rule lives so it cannot be forgotten at a call site.
+func _set_lobby_leader(peer_id: int) -> void:
+	if not is_host() or lobby_leader_id == peer_id:
+		return
+	_rpc_announce_leader.rpc(peer_id)
+
+## Host-only. The arrival path: takes the role only if nobody holds it, and otherwise
+## just tells this peer who does â€” an announcement it was not connected in time to hear.
+func _claim_lobby_leader_if_vacant(peer_id: int) -> void:
+	if not is_host():
+		return
+	if lobby_leader_id == 0:
+		_set_lobby_leader(peer_id)
+	else:
+		_rpc_announce_leader.rpc_id(peer_id, lobby_leader_id)
+
+## Host-only, on a peer leaving. Hands the role to whoever is still connected, oldest
+## first, so it lands on the person who has been waiting longest rather than at random.
+## Falls back to 0 â€” an empty dedicated lobby has no leader until someone arrives, and
+## that is a real state, not an error.
+func _reassign_leader(departed_id: int) -> void:
+	if not is_host() or lobby_leader_id != departed_id:
+		return
+	for candidate in connected_peer_ids:
+		if candidate != departed_id:
+			_rpc_announce_leader.rpc(candidate)
+			return
+	_rpc_announce_leader.rpc(0)
+
+## `call_local` so the host applies it through the same line the clients do â€” one code
+## path, so a listen host cannot drift from what it told everyone else.
+@rpc("authority", "call_local", "reliable")
+func _rpc_announce_leader(peer_id: int) -> void:
+	lobby_leader_id = peer_id
+	lobby_leader_changed.emit(peer_id)
+
+func host_game(port: int = DEFAULT_PORT, dedicated: bool = false) -> Error:
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_server(port, MAX_CONNECTIONS)
 	if err != OK:
@@ -308,21 +703,70 @@ func host_game(port: int = DEFAULT_PORT) -> Error:
 		return err
 	multiplayer.multiplayer_peer = peer
 	_is_networked = true
-	connected_peer_ids = [multiplayer.get_unique_id()]
-	# 4.3/B-65: the host never sends itself `_rpc_identify` (there is no
-	# connection to send it over), so its own token is seeded directly —
-	# main.gd's `_spawn_player` looks every peer's token up here, host
-	# included, and must not special-case peer_id == 1.
+	is_dedicated = dedicated
+	# âš ï¸âš ï¸ A HEADLESS SERVER RUNS ITS MAIN LOOP AS FAST AS THE CPU ALLOWS, AND THAT IS
+	# WHAT KILLED THE DEPLOYED BOX. There is no window and no vsync, so nothing throttles
+	# `_process`; `Engine.max_fps` defaults to 0, meaning unlimited. On a developer machine
+	# that is invisible â€” there is CPU to spare. On the Always Free shape it runs on
+	# (`VM.Standard.E2.1.Micro`, ONE EIGHTH of an OCPU) it is fatal: measured 2026-08-02,
+	# a real match drove CPU to 65% and the instance stopped answering SSH entirely
+	# ("Connection timed out during banner exchange" while the console still said Running),
+	# needing a forced reboot from the cloud console. It happened three times.
+	#
+	# âš ï¸ PHYSICS IS NOT AFFECTED, WHICH IS WHY THIS IS SAFE. Gameplay runs on
+	# `physics_ticks_per_second` (60), a separate clock that `_physics_process` and every
+	# ability in `ai_controller.gd` already step against. Capping the RENDER/process loop
+	# only stops the server spinning between those ticks doing nothing anybody can see â€”
+	# there is nothing to draw.
+	#
+	# Dedicated only. A listen host has a window, a player looking at it, and a machine
+	# with a real CPU; capping its frame rate would be a visible downgrade for no gain.
+	if dedicated:
+		Engine.max_fps = DEDICATED_MAX_FPS
 	peer_tokens.clear()
-	peer_tokens[multiplayer.get_unique_id()] = local_player_token
-	# The host never sends itself `_rpc_identify` either, so its own pick has to
-	# be seeded here too — otherwise the hosting player is the one person in the
-	# match wearing the fallback Person instead of who they actually chose.
-	local_picks = _local_picks()
 	peer_characters.clear()
-	peer_characters[multiplayer.get_unique_id()] = local_picks
+	# A dedicated server seeds none of the three â€” see this function's header. It is
+	# the referee, not a player, so it must not appear in the list `_start_hosting`
+	# spawns characters from.
+	if dedicated:
+		connected_peer_ids = []
+		# Nobody to lead yet. The first peer to identify takes it.
+		lobby_leader_id = 0
+	else:
+		connected_peer_ids = [multiplayer.get_unique_id()]
+		# A listen host leads its own lobby, which is what it has always done â€”
+		# this just names the existing behaviour so one gate covers both cases.
+		lobby_leader_id = multiplayer.get_unique_id()
+		# 4.3/B-65: the host never sends itself `_rpc_identify` (there is no
+		# connection to send it over), so its own token is seeded directly â€”
+		# main.gd's `_spawn_player` looks every peer's token up here, host
+		# included, and must not special-case peer_id == 1.
+		peer_tokens[multiplayer.get_unique_id()] = local_player_token
+		# The host never sends itself `_rpc_identify` either, so its own pick has to
+		# be seeded here too â€” otherwise the hosting player is the one person in the
+		# match wearing the fallback Person instead of who they actually chose.
+		local_picks = _local_picks()
+		peer_characters[multiplayer.get_unique_id()] = local_picks
 	match_in_progress = false
-	# ⚠️ THE LAN BEACON IS STARTED HERE AND NOWHERE ELSE, because this is the one line
+	# § MID-MATCH ARRIVALS. Both describe a session that is over, and this process is
+	# starting a new one as its HOST: it queues nobody yet, and it is certainly not
+	# somebody else's provisional spectator. `rerouting_to_running_match` goes with them —
+	# a host has no reroute in flight and a stale `true` would suppress the one bounce
+	# `match_setup.gd` owes a player whose next host dies.
+	waiting_seat_tokens.clear()
+	provisional_spectator = false
+	rerouting_to_running_match = false
+	# Minted before anything can be asked for it â€” `ServerQuery.start_responding()` below
+	# opens the socket that reports it, and a query arriving in the gap would answer with
+	# an empty code that a player could not then type back in.
+	join_code = _mint_join_code()
+	join_code_changed.emit(join_code)
+	# âš ï¸ SAME FIRE-AND-FORGET CONTRACT AS THE BEACON BELOW. `start_responding` swallows its
+	# own failure (see `server_query.gd`), so a server that cannot bind its status port
+	# still referees its match and is still reachable by a typed address. Nothing here may
+	# branch on it.
+	ServerQuery.start_responding(port)
+	# âš ï¸ THE LAN BEACON IS STARTED HERE AND NOWHERE ELSE, because this is the one line
 	# that knows a server now exists. It is fire-and-forget by design: `start_advertising`
 	# swallows its own failure (see `lan_beacon.gd`), so a machine that cannot broadcast
 	# still hosts and is still reachable by a typed address. Nothing below may branch on it.
@@ -332,7 +776,7 @@ func host_game(port: int = DEFAULT_PORT) -> Error:
 
 func join_game(address: String, port: int = DEFAULT_PORT) -> Error:
 	# Whatever `rerouting_to_running_match` was guarding against no longer
-	# applies once a new connection attempt is actually underway — see that
+	# applies once a new connection attempt is actually underway â€” see that
 	# var's own doc.
 	rerouting_to_running_match = false
 	var peer := ENetMultiplayerPeer.new()
@@ -345,31 +789,31 @@ func join_game(address: String, port: int = DEFAULT_PORT) -> Error:
 	return OK
 
 ## ---------------------------------------------------------------------------
-## ⚠️⚠️ THE HOST SAYS GOODBYE BEFORE IT CLOSES THE SOCKET. Human report, 2026-07-30:
+## âš ï¸âš ï¸ THE HOST SAYS GOODBYE BEFORE IT CLOSES THE SOCKET. Human report, 2026-07-30:
 ## *"the host must notify clients it is leaving before it closes the server. Currently,
 ## quitting politely strands everyone for ~5 seconds."*
 ##
 ## MEASURED before this existed, on real peers: an ABRUPT quit (alt-F4) and a GRACEFUL
-## one (the pause menu's QUIT TO MENU) produced the SAME teardown time — 5.20 s and
+## one (the pause menu's QUIT TO MENU) produced the SAME teardown time â€” 5.20 s and
 ## 5.40 s. That is not a coincidence, it is `ENET_TIMEOUT_MIN` (10 000 ms, halved by
 ## ENet's own adaptive window): a closed socket is indistinguishable from a silent one,
 ## so a client learns about a polite exit exactly as slowly as about a yanked cable, by
 ## waiting for the timeout to expire. `_on_server_disconnected` was already wired and
 ## already correct; nothing was ever telling it.
 ##
-## ⚠️ DO NOT "FIX" THIS BY SHORTENING `ENET_TIMEOUT_MIN`. That window is deliberately
+## âš ï¸ DO NOT "FIX" THIS BY SHORTENING `ENET_TIMEOUT_MIN`. That window is deliberately
 ## wide because this game is played over Hamachi, where an ordinary latency spike would
 ## otherwise be flagged as a drop and cost somebody their round. The fix is an
-## announcement, not a shorter fuse — the timeout stays exactly where it is and remains
+## announcement, not a shorter fuse â€” the timeout stays exactly where it is and remains
 ## the backstop for the abrupt case, which by definition cannot be announced.
 ##
-## ⚠️ IT YIELDS TWO FRAMES BEFORE CLOSING. `rpc()` hands the packet to ENet, which
-## flushes on its own poll — calling `close()` on the same frame discards the queued
+## âš ï¸ IT YIELDS TWO FRAMES BEFORE CLOSING. `rpc()` hands the packet to ENet, which
+## flushes on its own poll â€” calling `close()` on the same frame discards the queued
 ## packet and the announcement never leaves the building, which is exactly the bug this
 ## is fixing wearing a different hat. Two `process_frame` awaits is a handful of
 ## milliseconds and is invisible next to the 5 s it removes.
 ##
-## `await`, so callers must `await` it too if they intend to change scene afterwards —
+## `await`, so callers must `await` it too if they intend to change scene afterwards â€”
 ## `main.gd::_on_return_to_menu_pressed` does.
 func announce_host_leaving() -> void:
 	if not is_host():
@@ -392,23 +836,43 @@ func _rpc_host_closing() -> void:
 	_on_server_disconnected()
 
 func disconnect_network() -> void:
-	# ⚠️ FIRST, AND BEFORE `_is_networked` GOES FALSE. `_step_advertise` stops itself
-	# when `is_host()` stops being true, but that check runs on the next frame — and a
+	# âš ï¸ FIRST, AND BEFORE `_is_networked` GOES FALSE. `_step_advertise` stops itself
+	# when `is_host()` stops being true, but that check runs on the next frame â€” and a
 	# beacon sent in that gap advertises a lobby whose socket is already closed, which
 	# puts a row in somebody's list that cannot be joined. Closing it here makes the
 	# frame-later check a backstop rather than the mechanism.
 	LanBeacon.stop_advertising()
+	# Closed here for the same reason and at the same moment as the beacon: a status reply
+	# sent after the socket is gone advertises a lobby that cannot be joined. The code goes
+	# with it â€” an empty code is what a non-hosting process truthfully has.
+	ServerQuery.stop_responding()
+	join_code = ""
+	join_code_changed.emit("")
 	if multiplayer.multiplayer_peer:
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = null
 	connected_peer_ids.clear()
 	_is_networked = false
+	# Same lifetime as `_is_networked`: this described the session that just ended,
+	# and a process that hosts again must be told again what it is.
+	is_dedicated = false
+	# Same lifetime as the session it described.
+	lobby_leader_id = 0
 	peer_tokens.clear()
-	# Same lifetime as peer_tokens — a hosting SESSION ending abandons both.
+	# Same lifetime as peer_tokens â€” a hosting SESSION ending abandons both.
 	peer_characters.clear()
 	match_in_progress = false
+	# HOST-side queue, same lifetime as `peer_tokens` it is keyed against — a hosting
+	# session ending abandons the people waiting in it along with everybody else.
+	#
+	# ⚠️ `provisional_spectator` IS DELIBERATELY **NOT** CLEARED HERE. That is the CLIENT's
+	# copy of a ruling it has just been given, and this function is called by the reroute
+	# that ruling triggers (`_rpc_route_to_running_match`) — clearing it here would throw
+	# the ruling away one frame after receiving it and the newcomer would load `Main.tscn`
+	# expecting a body. See that var's own doc for where it IS cleared.
+	waiting_seat_tokens.clear()
 
-## True once host_game()/join_game() actually ran — false for the plain
+## True once host_game()/join_game() actually ran â€” false for the plain
 ## single-PC/split-keyboard prototype flow. See _is_networked doc (B-49) for
 ## why this can't just be multiplayer.has_multiplayer_peer().
 func is_networked() -> bool:
@@ -418,14 +882,25 @@ func is_host() -> bool:
 	return is_networked() and multiplayer.is_server()
 
 ## Solo-host QoL (2026-07-28+): true once actually networked AND at most one
-## peer is connected — i.e., the human at this machine is alone in the
+## peer is connected â€” i.e., the human at this machine is alone in the
 ## session, almost always because they hosted and nobody has joined yet.
 ## Distinct from is_networked() alone: a real 2v2 needs pause to stay
-## non-freezing (Q-3/B-64 — a client pausing its own tree stops sending its
+## non-freezing (Q-3/B-64 â€” a client pausing its own tree stops sending its
 ## own movement while the host keeps simulating it regardless) and the debug
 ## switcher to stay inert (each peer owns exactly one character, so there is
 ## nothing to hand player_id to). Neither restriction protects anyone when
 ## there is nobody else in the session for it to protect.
+##
+## âš ï¸âš ï¸ DELIBERATELY DOES **NOT** SUBTRACT A DEDICATED REFEREE, unlike `seated_peer_ids()`
+## and `playing_peer_count()` above. The lone client of a dedicated server has
+## `connected_peer_ids == [self, 1]` and therefore answers `false` here, even though it is
+## the only human in the session â€” and that is what this question wants. It is not asking
+## "am I alone", it is asking "is it safe to freeze this machine's tree". It is not: the
+## referee is a SEPARATE PROCESS still running `RoundManager`/`MatchManager`, so a client
+## that hard-paused would come back to a round that had carried on without it. A listen
+## host solo may freeze everything precisely because the timer is in the same process it
+## is freezing. Reading one high here is the conservative answer, not the bug the counts
+## above had â€” do not "fix" it to match them.
 func is_solo_session() -> bool:
 	return is_networked() and connected_peer_ids.size() <= 1
 
@@ -433,7 +908,7 @@ func _on_peer_connected(id: int) -> void:
 	if not connected_peer_ids.has(id):
 		connected_peer_ids.append(id)
 	# call_deferred: ENet's own internal peer registry isn't always populated
-	# by the instant this signal fires — get_peer(id) inside
+	# by the instant this signal fires â€” get_peer(id) inside
 	# _apply_peer_timeout can race it and hit ENetMultiplayerPeer's own
 	# "!peers.has(p_id)" guard (measured live: reproduced on a client the
 	# moment it connects, calling this for peer_id 1 before ENet had
@@ -442,25 +917,27 @@ func _on_peer_connected(id: int) -> void:
 	_apply_peer_timeout.call_deferred(id)
 	player_connected.emit(id)
 
-## Deliberately does NOT touch `peer_tokens` — see that var's own doc. Losing
+## Deliberately does NOT touch `peer_tokens` â€” see that var's own doc. Losing
 ## the peer_id -> token record the instant a peer disconnects would defeat
 ## the entire point of it existing (B-65): the next peer to present that same
 ## token, under a brand-new peer_id, needs to be recognisable as the SAME
 ## player, not a stranger.
 func _on_peer_disconnected(id: int) -> void:
 	connected_peer_ids.erase(id)
+	# After the erase, so the departed peer cannot be handed the role it just gave up.
+	_reassign_leader(id)
 	player_disconnected.emit(id)
 
 func _on_connected_to_server() -> void:
 	connected_peer_ids = [multiplayer.get_unique_id()]
 	# The host is always peer id 1 from a client's own point of view.
-	# call_deferred — see _on_peer_connected's own doc for why.
+	# call_deferred â€” see _on_peer_connected's own doc for why.
 	_apply_peer_timeout.call_deferred(1)
-	# 4.3/B-65: present our stable token to the host immediately — before
+	# 4.3/B-65: present our stable token to the host immediately â€” before
 	# main.gd exists to ask for it, and regardless of whether we are about to
 	# sit in MatchSetup.tscn or (a rejoin) get redirected straight back into a
 	# running match. See _rpc_identify for what the host does with it.
-	# Snapshotted here rather than read live inside the RPC — see
+	# Snapshotted here rather than read live inside the RPC â€” see
 	# `local_character_index`, so a menu the player wanders back into
 	# mid-connection cannot change what the host was already told.
 	local_picks = _local_picks()
@@ -476,19 +953,35 @@ func _on_server_disconnected() -> void:
 	multiplayer.multiplayer_peer = null
 	connected_peer_ids.clear()
 	_is_networked = false
+	# Same lifetime as `_is_networked`, and the same line `disconnect_network()` already
+	# carries â€” this is the OTHER way a client's session ends (the server went away rather
+	# than we left), and it was the one path that let a value describing a finished session
+	# outlive it. A client that walked out of a dedicated lobby and into a listen host's
+	# would otherwise spend the gap before `_rpc_announce_dedicated` lands subtracting a
+	# referee from a lobby that has a real player sitting at peer 1.
+	is_dedicated = false
 	peer_tokens.clear()
-	# Same lifetime as peer_tokens — a hosting SESSION ending abandons both.
+	# Same lifetime as peer_tokens â€” a hosting SESSION ending abandons both.
 	peer_characters.clear()
 	match_in_progress = false
+	waiting_seat_tokens.clear()
+	# ⚠️ THE ONE PLACE THE CLIENT'S RULING IS DROPPED, AND IT IS GUARDED. This handler fires
+	# for a genuinely lost server — and ALSO, on some ENet orderings, for the deliberate
+	# `disconnect_network()` inside `_rpc_route_to_running_match`, which is the reroute that
+	# a WAITING ruling triggers. `rerouting_to_running_match` is the existing flag that tells
+	# those two apart (it is why `match_setup.gd` does not bounce on the same event), so the
+	# ruling survives its own reroute and is dropped only when the session really ended.
+	if not rerouting_to_running_match:
+		provisional_spectator = false
 	server_disconnected.emit()
 
-## 4.3/B-65 — host-only. Records which token this connecting peer presented,
+## 4.3/B-65 â€” host-only. Records which token this connecting peer presented,
 ## then either lets main.gd's own listeners handle spawning it (still in
 ## MatchSetup.tscn, or a normal --host/--join test with Main.tscn already loaded
 ## on both ends) or, if the match is already running and this peer has no
 ## Lobby left to wait in, tells it to load Main.tscn directly.
 ##
-## "any_peer" because this is sent BY the connecting peer TO the host — the
+## "any_peer" because this is sent BY the connecting peer TO the host â€” the
 ## host is not this token's authority, the sender is (same reasoning every
 ## other any_peer RPC in this codebase documents at its own call site).
 @rpc("any_peer", "call_remote", "reliable")
@@ -496,6 +989,11 @@ func _rpc_identify(token: String, picks: Dictionary = {}) -> void:
 	if not is_host():
 		return
 	var peer_id := multiplayer.get_remote_sender_id()
+	# ⚠️ ASKED BEFORE `peer_tokens` IS WRITTEN ONE LINE DOWN, AND THE ORDER IS THE WHOLE
+	# CORRECTNESS ARGUMENT. `_token_was_in_this_match` answers by looking for the token in
+	# `peer_tokens`; writing this peer's entry first would make every stranger answer "yes"
+	# about itself and hand a seat to exactly the peer § MID-MATCH ARRIVALS exists to queue.
+	var was_here := _token_was_in_this_match(token)
 	peer_tokens[peer_id] = token
 	# Range-checked host-side rather than trusted. This value arrives from a
 	# client and is used to index an array on the spawn path, and -1 is itself
@@ -510,20 +1008,219 @@ func _rpc_identify(token: String, picks: Dictionary = {}) -> void:
 		# default: an unknown peer that is silently never spawned would be a black screen
 		# with no error, which is the worst failure this could have.
 		"spectator": 1 if int(picks.get("spectator", 0)) != 0 else 0,
-		# ⚠️ SANITISED HERE, ON THE HOST, ON ARRIVAL. Same rule as the three indices
-		# above — the sender proposes, the host decides. This string is drawn on every
+		# âš ï¸ SANITISED HERE, ON THE HOST, ON ARRIVAL. Same rule as the three indices
+		# above â€” the sender proposes, the host decides. This string is drawn on every
 		# peer's scoreboard and on a 3D label in the world, so an untrimmed one from a
 		# careless (or hostile) client would be everybody's problem, not just its own.
 		"name": SettingsManagerScript.sanitise_name(String(picks.get("name", ""))),
 	}
+	# âš ï¸ THE NAME REACHES OTHER PEERS THROUGH THE SPAWN PACKET, NOT FROM HERE. This branch
+	# briefly broadcast the whole `peer_characters` table so `picks_for()` would be correct
+	# on every peer; `main.gd::_build_spawn_data` solves the same problem by putting the
+	# name in the packet that carries the body, which is where `character_index` already
+	# travelled. One mechanism, kept â€” see that function's âš ï¸âš ï¸.
 	if match_in_progress:
+		var ruling := _rule_on_mid_match_arrival(token, peer_id, was_here)
+		if ruling == MidMatchRuling.REFUSED:
+			# ⚠️ EVERY TRACE OF THIS PEER GOES BACK OUT, AND NOTHING BELOW RUNS FOR IT.
+			# A peer being turned away must not end up holding the lobby leadership
+			# (`_claim_lobby_leader_if_vacant`), must not stay in `peer_tokens` — where it
+			# would read as "was in this match" on its next attempt and be handed a seat by
+			# the RETURNING branch — and must not fire `player_identified`, which is what
+			# `main.gd::_try_late_join` spawns from.
+			peer_tokens.erase(peer_id)
+			peer_characters.erase(peer_id)
+			_rpc_route_to_running_match.rpc_id(peer_id, MATCH_FULL_MESSAGE)
+			return
+		if ruling == MidMatchRuling.WAITING:
+			# ⚠️ THE HOST'S OWN BOOKKEEPING FIRST, THEN THE CLIENT'S. `_apply_spectator` is
+			# what makes `main.gd::_spawn_player` decline to seat this peer (its
+			# `is_spectator` guard), and it has to be true BEFORE `player_identified` fires
+			# at the bottom of this function — that signal is what drives `_try_late_join`,
+			# and a frame of disagreement here is a body nobody asked for.
+			_apply_spectator(peer_id, true)
+			# ⚠️⚠️ NO NEW `@rpc` AND NO CHANGED SIGNATURE — see `_rpc_set_spectator`'s own
+			# ⚠️⚠️. This is the SAME method the SPECTATE toggle already uses, sent in the
+			# other direction; only that function's BODY learned to answer the host.
+			_rpc_set_spectator.rpc_id(peer_id, true)
 		_rpc_route_to_running_match.rpc_id(peer_id)
-	# ⚠️ FIRED FOR A PLAYER TOO, NOT ONLY FOR A SPECTATOR, AND THE LOBBY RELIES ON THAT.
-	# `player_connected` fires the instant ENet completes its handshake — BEFORE this
-	# packet arrives — so the lobby has already auto-seated this peer by now and cannot
+	# âš ï¸ FIRED FOR A PLAYER TOO, NOT ONLY FOR A SPECTATOR, AND THE LOBBY RELIES ON THAT.
+	# `player_connected` fires the instant ENet completes its handshake â€” BEFORE this
+	# packet arrives â€” so the lobby has already auto-seated this peer by now and cannot
 	# know yet whether it wanted a seat. This is the first moment anybody does.
 	peer_spectator_changed.emit(peer_id, is_spectator(peer_id))
+	# A dedicated server starts with nobody leading; the first peer to get this far
+	# takes it. Deliberately here rather than in `_on_peer_connected`: a peer that has
+	# not identified has no token and no picks, and handing the lobby to it would put
+	# the settings in the hands of something we cannot yet name.
+	_claim_lobby_leader_if_vacant(peer_id)
+	# âš ï¸ THE SERVER TELLS THE CLIENT THE CODE; the client does not look it up.
+	# The alternative is reading it out of whatever the server browser last heard, which
+	# is stale by construction and simply absent for anyone who arrived by typing an
+	# address. The code is the thing a player reads out to invite a friend, so the peer
+	# that owns it authoritatively is the one that should say what it is.
+	_rpc_announce_join_code.rpc_id(peer_id, join_code)
+	# âš ï¸ THE SERVER TELLS THE CLIENT WHAT KIND OF HOST IT IS, for the same reason it tells
+	# it the code one line up: it is a fact about the SESSION that only the server knows,
+	# and nothing on the client can derive it. Without it a client counts the referee as a
+	# player in every number it computes â€” see `is_seatless_referee` for the measurement.
+	#
+	# Sent to a listen host's clients too, carrying `false`. Announcing "not dedicated"
+	# costs one reliable bool and means the client's `is_dedicated` is always something the
+	# SERVER said, never a default that happens to be right â€” the shape every other fact
+	# in this handshake already has.
+	_rpc_announce_dedicated.rpc_id(peer_id, is_dedicated)
 	player_identified.emit(peer_id, token)
+
+## ---------------------------------------------------------------------------
+## HOST ONLY. The one place a mid-match arrival is judged — see § MID-MATCH ARRIVALS.
+##
+## `was_here` is passed in rather than recomputed because the caller has to ask it BEFORE
+## writing this peer's `peer_tokens` entry, and a second call from in here would read that
+## write and answer "yes" for everybody.
+##
+## ⚠️ THE ORDER OF THE FOUR TESTS IS LOAD-BEARING AND IS NOT ALPHABETICAL.
+##
+##   1. ALREADY QUEUED comes first because a queued peer's own reroute reconnect lands
+##      right back here — and by then its token IS in `peer_tokens` (its first identify put
+##      it there), so test 3 would promote it straight into a seat, which is precisely the
+##      mid-match seating this whole change exists to stop. Also makes the ruling idempotent,
+##      which every RPC-driven decision in this file has to be.
+##   2. CAME TO WATCH before "was in this match", so somebody who played, left, and came
+##      back holding the SPECTATE toggle gets what they asked for rather than their old chair.
+##   3. WAS IN THIS MATCH — rule 1, untouched.
+##   4. Otherwise a stranger, and the only question left is whether a bot seat is free.
+## ---------------------------------------------------------------------------
+func _rule_on_mid_match_arrival(token: String, peer_id: int, was_here: bool) -> MidMatchRuling:
+	if waiting_seat_tokens.has(token):
+		return MidMatchRuling.WAITING
+	if int(picks_for(peer_id).get("spectator", 0)) != 0:
+		return MidMatchRuling.SPECTATING
+	if was_here:
+		return MidMatchRuling.RETURNING
+	# ⚠️ `<`, NOT `<=`. The queue must never GROW to the seat count and then admit one more;
+	# a queue the same length as the free seats is already full.
+	if waiting_seat_tokens.size() < free_seat_count():
+		waiting_seat_tokens.append(token)
+		return MidMatchRuling.WAITING
+	return MidMatchRuling.REFUSED
+
+## HOST ONLY. Has this stable token already been part of the running match?
+##
+## Two sources, deliberately, because neither covers the other:
+##
+##   `GameLaunch.seat_tokens` is the seating the LOBBY broadcast at kickoff. It is the
+##   authoritative "who was in this match" for every ordinary online session.
+##
+##   `peer_tokens` is every peer that has identified to this hosting session at all, and it
+##   is NOT cleared when a peer drops (see its own doc — that is the whole of B-65). It is
+##   the only source for a `--host`/`--join=` session, which never passes through a setup
+##   screen and therefore has an EMPTY `seat_tokens`. Every net harness in `tools/net`
+##   arrives that way, so dropping this source would silently refuse every returning player
+##   in every test while looking correct in the editor.
+func _token_was_in_this_match(token: String) -> bool:
+	if token == "":
+		return false
+	if GameLaunch.seat_tokens.has(token):
+		return true
+	for id in peer_tokens:
+		if String(peer_tokens[id]) == token:
+			return true
+	return false
+
+## ---------------------------------------------------------------------------
+## HOST ONLY. How many seats a waiting newcomer could be promoted into.
+##
+## ⚠️⚠️ THE ANSWER LIVES IN `main.gd`, NOT HERE, AND IS PULLED RATHER THAN PUSHED. Seat
+## occupancy is `main.gd`'s state — `_token_join_index`, `_index_to_character`, and
+## `CharacterBase.is_bot` — and it changes on five different events (spawn, reclaim,
+## convert-to-AI, placeholder fill, round reset). A copy of the number cached over here
+## would have five chances to go stale and no way to notice; asking at the moment the
+## question is put has none.
+##
+## Answers 0 when there is no `Main.tscn` to ask, which is exactly right: no match is
+## running, so `match_in_progress` is false and nothing calls this.
+## ---------------------------------------------------------------------------
+func free_seat_count() -> int:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null:
+		return 0
+	var scene: Node = tree.current_scene
+	if scene == null or not scene.has_method("free_seat_count"):
+		return 0
+	return int(scene.call("free_seat_count"))
+
+## HOST ONLY. Which peer id currently holds `token`, or 0 for "nobody is connected under it".
+## The inverse of `peer_tokens`, walked rather than indexed because the map is small (at most
+## MAX_CONNECTIONS entries) and a second dictionary kept in step would be a second thing to
+## get wrong.
+##
+## ⚠️ THE **LAST** MATCH WINS. A token that reconnected has an entry under its dead peer id
+## AND under its live one (`peer_tokens` deliberately never erases the old — see its doc), and
+## `connected_peer_ids` is what tells them apart.
+func peer_id_for_token(token: String) -> int:
+	for id in peer_tokens:
+		if String(peer_tokens[id]) == token and connected_peer_ids.has(int(id)):
+			return int(id)
+	return 0
+
+## ---------------------------------------------------------------------------
+## HOST ONLY. Called by `main.gd` at the role rotation: hand back the tokens that should be
+## seated now, longest-waiting first, and forget them.
+##
+## ⚠️ IT DROPS TOKENS WITH NO LIVE PEER, which is the queue's only garbage collection. A
+## newcomer that was admitted and then closed the game leaves an entry nothing else erases
+## (see `waiting_seat_tokens`' own note on why disconnect cannot erase it — the admission is
+## FOLLOWED by a deliberate disconnect). Here, one rotation later, "is anybody actually
+## holding this token" is finally a safe question to ask.
+##
+## ⚠️ CAPPED AT `limit` AGAIN, not trusted to the admission check. Seats can be lost between
+## admission and rotation — a player who dropped mid-round leaves a seat that RETURNING is
+## holding for them, and `free_seat_count()` correctly stops counting it. Re-asking here is
+## what keeps the queue from seating somebody into a chair that stopped being free.
+## ---------------------------------------------------------------------------
+func take_promotable_tokens(limit: int) -> Array[String]:
+	var out: Array[String] = []
+	var kept: Array[String] = []
+	for token in waiting_seat_tokens:
+		if out.size() < limit and peer_id_for_token(token) != 0:
+			out.append(token)
+		elif peer_id_for_token(token) != 0:
+			kept.append(token) # still waiting: no seat for them this rotation
+	waiting_seat_tokens = kept
+	return out
+
+## HOST ONLY. The promotion's other half: this peer stops watching, here and on its own
+## machine. Called by `main.gd::_promote_waiting_spectators` immediately before it runs the
+## ordinary `_spawn_player` reclaim for the same peer.
+##
+## ⚠️ THE TWO MESSAGES ARE BOTH RELIABLE AND THEREFORE ORDERED, and the order matters: the
+## client must leave spectator mode (freeing the spectator camera) BEFORE
+## `_rpc_reclaim_character` makes its new body's rig current, or two cameras race to be
+## `current` and the loser is whichever ran last.
+func seat_provisional_spectator(peer_id: int) -> void:
+	if not is_host():
+		return
+	_apply_spectator(peer_id, false)
+	_rpc_set_spectator.rpc_id(peer_id, false)
+
+## Host -> one peer. Mirrors `_rpc_announce_leader`: sent on identify so a peer knows it
+## the moment it is in the lobby, rather than when something happens to refresh a cache.
+@rpc("authority", "call_remote", "reliable")
+func _rpc_announce_join_code(code: String) -> void:
+	join_code = code
+	join_code_changed.emit(code)
+
+## Host -> one peer, on identify. `call_remote`: the server already wrote its own copy in
+## `host_game()` and re-running this on itself would only be a chance to disagree with it.
+##
+## âš ï¸ NO SIGNAL. Unlike the join code and the lobby leader, nothing redraws when this
+## lands â€” it is read on demand by `is_seatless_referee`, and it arrives in the same
+## reliable identify burst, long before a lobby board or a rematch button has a count to
+## show. A signal here would be a subscriber list with nobody on it.
+@rpc("authority", "call_remote", "reliable")
+func _rpc_announce_dedicated(dedicated: bool) -> void:
+	is_dedicated = dedicated
 
 ## One client-sent pick, range-checked against the roster it indexes. -1 is
 ## itself meaningful ("no pick") so it survives rather than being clamped to 0.
@@ -537,56 +1234,98 @@ func _validated(picks: Dictionary, key: String, count: int) -> int:
 ## just gets told to "change" to the scene it is already showing, which is a
 ## deliberate no-op guarded below, not a special case to detect and skip.
 ##
-## ⚠️⚠️ DISCONNECTS AND RECONNECTS FRESH RATHER THAN CARRYING THE EXISTING
+## âš ï¸âš ï¸ DISCONNECTS AND RECONNECTS FRESH RATHER THAN CARRYING THE EXISTING
 ## CONNECTION ACROSS THE SCENE CHANGE. THIS IS THE FIX FOR "all he sees is
-## grey screen" ON RECONNECT TO AN ONGOING MATCH. 🧑: *"make sure to
-## transition from ai to player once the player rejoins"* — the AI/authority
+## grey screen" ON RECONNECT TO AN ONGOING MATCH. ðŸ§‘: *"make sure to
+## transition from ai to player once the player rejoins"* â€” the AI/authority
 ## handoff itself (`_apply_reclaim`) was already correct; the screen was grey
 ## because the CHARACTERS never arrived at all.
 ##
 ## MEASURED, not assumed: a real client that connects via `MatchSetup.tscn`
-## (the only way a real reconnect happens — `--join=` loads `Main.tscn`
+## (the only way a real reconnect happens â€” `--join=` loads `Main.tscn`
 ## directly and never hits this at all, which is exactly why this bug never
 ## showed up in that test path) is, at the moment ENet's handshake completes,
 ## a peer with NO `Main.tscn` anywhere in its scene tree yet. Godot's
 ## `MultiplayerSpawner`/`MultiplayerSynchronizer` catch-up replay for every
 ## ALREADY-spawned entity (every other character, the Lata) fires the INSTANT
-## the peer registers at the ENet level — not gated behind this RPC, not
-## gated behind anything this codebase controls — and it fires exactly once
+## the peer registers at the ENet level â€” not gated behind this RPC, not
+## gated behind anything this codebase controls â€” and it fires exactly once
 ## per connection. Confirmed via the engine's own error log on that
 ## connection: `Node not found: "Main/MultiplayerSpawner"`,
 ## `Node not found: "Main/Lata/MultiplayerSynchronizer"`, one
 ## `Ignoring delta for non-authority or invalid synchronizer` per already-
-## spawned character — all of it arriving and being silently dropped while
+## spawned character â€” all of it arriving and being silently dropped while
 ## the peer still shows `MatchSetup.tscn`, all of it gone for good the moment
 ## it's dropped. The old code's `change_scene_to_file` here only ever loaded
 ## `Main.tscn` AFTER that one chance had already been missed, so the screen
-## that loaded was correctly empty: no map, no characters, nothing spawned —
+## that loaded was correctly empty: no map, no characters, nothing spawned â€”
 ## the 2D HUD (a separate CanvasLayer, unaffected) is the only reason it read
 ## as "grey" rather than "black."
 ##
-## The fix does not try to out-race Godot's own catch-up timing — there is no
+## The fix does not try to out-race Godot's own catch-up timing â€” there is no
 ## public API to ask it to retry. Instead it sidesteps the race entirely:
 ## disconnect, then let `Main.tscn` open a BRAND NEW connection itself via
 ## its own ordinary `_start_joining()` path (the exact path `--join=` already
-## takes, already verified working end-to-end) — this time from a process
+## takes, already verified working end-to-end) â€” this time from a process
 ## that already has `Main.tscn`, and therefore `Main/MultiplayerSpawner`, on
 ## disk and in its tree before the new connection's catch-up ever fires.
 ## `GameLaunch.pending_action`/`pending_join_address` are still exactly what
-## they were when this peer first chose "Join" — `match_setup.gd` never
-## consumes them — so `Main.tscn`'s own `_ready()` reads them the same way a
+## they were when this peer first chose "Join" â€” `match_setup.gd` never
+## consumes them â€” so `Main.tscn`'s own `_ready()` reads them the same way a
 ## fresh `--join=` would. The reconnecting human's own identity token is a
 ## per-PROCESS constant (see `local_player_token`'s doc), unaffected by this
 ## disconnect, so the new connection's `_rpc_identify` is recognised as the
-## same rejoin B-65's reclaim machinery already handles correctly — this
+## same rejoin B-65's reclaim machinery already handles correctly â€” this
 ## reuses that proven path rather than building a second one.
 ##
 ## `rerouting_to_running_match` exists so `match_setup.gd`'s own
 ## `server_disconnected` handler can tell this deliberate disconnect apart
 ## from the host actually dying and not bounce back to the menu out from
 ## under its own reconnect.
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ `refusal` IS THE ONE WIRE CHANGE IN § MID-MATCH ARRIVALS, AND IT IS AN **OPTIONAL**
+## PARAMETER ON PURPOSE. Read this before touching it.
+##
+## A refused newcomer has to be told WHY, in words, on the screen it lands on — and it is
+## sitting in `MatchSetup.tscn` at the time, so `main.gd`'s toast cannot reach it and
+## `_rpc_host_closing` would land it on "Host ended the session.", which is a different and
+## wrong sentence. The reason therefore has to cross the wire, and this is the function whose
+## entire job is already "what happens to a peer that knocked on a running match".
+##
+## WHAT IT COSTS, EXACTLY:
+##
+##   * THE RPC CHECKSUM DOES NOT CHANGE. Godot hashes rpc method NAMES, not signatures
+##     (`SceneRPCInterface::get_rpc_md5`), so no peer anywhere starts failing with
+##     *"The rpc node checksum failed"* — the failure mode a NEW method would have caused
+##     across every NetworkManager RPC at once.
+##   * OLD SERVER -> NEW CLIENT IS FINE. The default `""` means a host on the deployed build,
+##     which sends zero arguments, still drives this correctly.
+##   * NEW SERVER -> OLD CLIENT BREAKS THIS ONE CALL, and only when it carries a refusal:
+##     a client on the old build receives one argument for a zero-argument method and errors
+##     instead of bouncing. It is not stranded — it stays in the lobby it was already in.
+##
+##   ⚠️ THE SERVERS NEED A REDEPLOY REGARDLESS. Every ruling in § MID-MATCH ARRIVALS is made
+##   HOST-SIDE; a server on the old build simply keeps seating newcomers mid-match and none
+##   of this exists. The parameter does not create the redeploy, it just does not make it
+##   worse than it already is.
+## ---------------------------------------------------------------------------
 @rpc("authority", "call_remote", "reliable")
-func _rpc_route_to_running_match() -> void:
+func _rpc_route_to_running_match(refusal: String = "") -> void:
+	if refusal != "":
+		# ⚠️ THE REROUTE FLAG IS SET FOR A DISCONNECT WE ARE NOT COMING BACK FROM, WHICH LOOKS
+		# BACKWARDS AND IS NOT. It is read by exactly one thing — `match_setup.gd`'s own
+		# `server_disconnected` handler — and its only job there is "do not bounce to
+		# MultiplayerSetup with YOUR message, this disconnect is mine". That is precisely the
+		# situation here; the difference is that this branch does the bouncing itself, with
+		# the sentence the host actually sent. Cleared by the next `join_game()`.
+		rerouting_to_running_match = true
+		disconnect_network()
+		# `reset()` first, then the message: it clears `pending_status_message` along with
+		# the rest of the one-shot handoff, so writing the message before it would erase it.
+		GameLaunch.reset()
+		GameLaunch.pending_status_message = refusal
+		get_tree().change_scene_to_file(MULTIPLAYER_SETUP_PATH)
+		return
 	var current := get_tree().current_scene
 	if current != null and current.scene_file_path == MAIN_SCENE_PATH:
 		return
@@ -594,11 +1333,11 @@ func _rpc_route_to_running_match() -> void:
 	disconnect_network()
 	get_tree().change_scene_to_file(MAIN_SCENE_PATH)
 
-## Mints a fresh token for THIS process and writes it to disk — see
+## Mints a fresh token for THIS process and writes it to disk â€” see
 ## `local_player_token`'s own doc for why the disk copy is write-only (never
 ## read back to decide identity): two local test instances would otherwise
 ## share it via one `user://` and collide on the same join index.
-## `RandomNumberGenerator`, not `UUID` — Godot has no built-in UUID type, and
+## `RandomNumberGenerator`, not `UUID` â€” Godot has no built-in UUID type, and
 ## 128 bits from four `randi()` calls is more than enough entropy that two
 ## real installs colliding is not a risk for a LAN prototype's player count.
 func _load_or_create_token() -> String:
@@ -609,10 +1348,10 @@ func _load_or_create_token() -> String:
 	cfg.set_value("identity", "token", token)
 	var err := cfg.save(TOKEN_SAVE_PATH)
 	if err != OK:
-		push_warning("NetworkManager: could not write player token to disk (error %d) — harmless, it is never read back; see local_player_token's own doc." % err)
+		push_warning("NetworkManager: could not write player token to disk (error %d) â€” harmless, it is never read back; see local_player_token's own doc." % err)
 	return token
 
-## Widens ENet's per-peer disconnect-timeout window for `peer_id` — see the
+## Widens ENet's per-peer disconnect-timeout window for `peer_id` â€” see the
 ## ENET_TIMEOUT_* constants' own doc for why. Called from both ends of a
 ## connection (host, once a remote peer's handshake completes; client, once
 ## connected to the host) since ENet tracks timeout state per direction.

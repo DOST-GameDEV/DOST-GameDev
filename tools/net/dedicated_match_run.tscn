@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tools/net/dedicated_match_run.gd" id="1"]
+
+[node name="DedicatedMatchRun" type="Node"]
+script = ExtResource("1")

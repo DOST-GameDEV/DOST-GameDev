@@ -123,6 +123,11 @@ custom_minimum_size = Vector2(220, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 max_length = 14
+; ⚠️ CENTRED, LIKE EVERY OTHER VALUE IN THIS LIST. 🧑 2026-08-04: *"the username
+; doesnt start in middle in UI for settings pls fix that it stands out"*. A LineEdit
+; defaults to left-aligned while every Button under it centres its label, so one box
+; in a column of fourteen put its text hard against the left edge.
+alignment = 1
 ; Empty is legal and means "use the seat label" (Design.md 10), so the placeholder
 ; shows what you WILL be called rather than nagging you to fill it in.
 placeholder_text = "P1"
@@ -286,14 +291,6 @@ layout_mode = 2
 alignment = 1
 theme_override_constants/separation = 16
 
-[node name="ResetAllButton" type="Button" parent="Card/Margin/Layout/ButtonRow"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 60)
-layout_mode = 2
-size_flags_horizontal = 3
-theme_type_variation = &"WoodDangerButton"
-text = "RESET ALL"
-
 [node name="BackButton" type="Button" parent="Card/Margin/Layout/ButtonRow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 60)
@@ -301,6 +298,14 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_type_variation = &"WoodButton"
 text = "◀  BACK"
+
+[node name="ResetAllButton" type="Button" parent="Card/Margin/Layout/ButtonRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"WoodDangerButton"
+text = "RESET ALL"
 
 [node name="ApplyButton" type="Button" parent="Card/Margin/Layout/ButtonRow"]
 unique_name_in_owner = true

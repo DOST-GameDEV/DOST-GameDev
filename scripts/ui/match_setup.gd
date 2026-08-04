@@ -219,6 +219,9 @@ var _peer_spectating: Dictionary = {}
 var _vacated_seats: Dictionary = {}
 
 func _ready() -> void:
+	# ⚠️ BEFORE the pending_action fallback below, because a dedicated server has no
+	# menu behind it to have set one — see `_read_dedicated_args`.
+	_read_dedicated_args()
 	_action = GameLaunch.pending_action
 	if _action == "":
 		# Reached directly (a tools harness, or a scene run from the editor).
@@ -339,9 +342,92 @@ func _setup_solo() -> void:
 	start_button.visible = false
 	_refresh_seats()
 
+## ---------------------------------------------------------------------------
+## § A LOBBY WITH NOBODY SITTING AT IT — the pre-match half of a pool server.
+##
+## `main.gd` also understands `--dedicated`, and that path drops the process straight
+## into `Main.tscn` with `match_in_progress = true` from frame one. For a POOL that is
+## wrong twice over: every row in the browser reads "in a match" before anyone has
+## joined, and a joining player is routed into a running game with no seat to pick and
+## no ready-up. A pool server has to WAIT somewhere, and this screen is the waiting
+## room the listen host already uses.
+##
+## So a pool process boots THIS scene instead:
+##
+##     godot --headless --path . res://scenes/ui/MatchSetup.tscn -- --dedicated --port=8912
+##
+## ⚠️ THE POSITIONAL SCENE PATH IS STILL REQUIRED, and now it points HERE rather than
+## at Main.tscn. `run/main_scene` is SplashScreen, so a plain boot never reaches any
+## argument parsing at all. Deploy tooling that still names Main.tscn will produce a
+## server that looks healthy and is permanently "in a match".
+##
+## ⚠️ NOTHING ELSE MAKES `match_in_progress` TRUE HERE. `ServerQuery` reports that flag
+## verbatim, and it is only set by `main.gd::_start_hosting()`, so a server parked in
+## this scene advertises itself as joinable for free. That is not a coincidence to be
+## tidied — it is why this screen is the right place to wait.
+##
+## ⚠️⚠️ THE MATCH ENDS AND THE PROCESS COMES BACK HERE. THIS PARAGRAPH USED TO SAY THE
+## OPPOSITE — *"the match ends and the process exits… `Restart=always` brings the process
+## back into a fresh lobby"* — AND IT WAS NOT TRUE. Nothing ever exited: the process sat in
+## `Main.tscn` with `match_in_progress` still true, and MEASURED ON THE LIVE VM on
+## 2026-08-02 that meant `players=0, occupied=0, in_progress=true` with nobody connected,
+## forever. `multiplayer_setup.gd::_free_pool_address()` refuses a row with that flag set,
+## so ONE abandoned match made HOST ONLINE stop working for everybody.
+##
+## There is a return path now and it lands on this scene — see `main.gd`'s § BACK TO THE
+## WAITING ROOM for the two events that take it and why they are not the same event. What
+## comes back is the SAME process with the SAME sockets: a restart would have been simpler
+## if it were free, and it is not — it drops the lobby out of the pool for as long as the
+## rebind takes, which is the same outage in a smaller window.
+## ---------------------------------------------------------------------------
+
+## Set from `--dedicated`; makes this screen host without taking a seat.
+var _dedicated: bool = false
+## Set from `--port=`, so a pool of processes on one machine can each take one.
+var _dedicated_port: int = NetworkManagerScript.DEFAULT_PORT
+
+## Command-line only. There is no button for this: a player who clicked HOST is sitting
+## at the machine and wants to play, which is exactly what a dedicated server is not.
+func _read_dedicated_args() -> void:
+	for arg in OS.get_cmdline_user_args():
+		if arg == "--dedicated":
+			_dedicated = true
+			# There is no menu behind a pool process to have set this, so it says so
+			# itself — `_ready` would otherwise fall through to "local".
+			GameLaunch.pending_action = "host"
+		elif arg.begins_with("--port="):
+			var port_text := arg.substr(len("--port="))
+			if port_text.is_valid_int():
+				_dedicated_port = int(port_text)
+			else:
+				push_error("MatchSetup: --port= needs a number, got '%s'" % port_text)
+
 func _setup_host() -> void:
 	banner_label.text = "LOBBY"
-	if NetworkManager.host_game() != OK:
+	# ---------------------------------------------------------------------------
+	# ⚠️⚠️ THE SOCKET MAY ALREADY BE OPEN, AND CALLING `host_game()` AGAIN WOULD BREAK THE
+	# LOBBY RATHER THAN REBUILD IT.
+	#
+	# A DEDICATED server comes back through this screen after a match — see
+	# `main.gd`'s § BACK TO THE WAITING ROOM, which changes scene to here WITHOUT closing
+	# ENet, the status responder or the LAN beacon, because dropping the lobby out of the
+	# pool for as long as it took to rebind is the same outage in a smaller window.
+	# `create_server()` on a port this very process is already bound to fails, and the
+	# failure branch below would then park a perfectly healthy, listening server on
+	# "NOT HOSTING" with no seats, no signals and no START button.
+	#
+	# ⚠️ SAME SHAPE AND SAME REASON AS `main.gd::_start_hosting`'s U-4 GUARD, which skips
+	# `host_game()` on the way INTO a match for exactly this. This is that guard on the way
+	# back OUT, and the two are now symmetric.
+	#
+	# ⚠️ NOTHING IS RE-ESTABLISHED HERE. `main.gd` already minted the fresh join code,
+	# cleared the peer maps and put `match_in_progress` back to false before it changed
+	# scene; everything below this point — the seating, the signal wiring, the code row —
+	# reads that state and works identically whether the session is one second old or one
+	# match old.
+	# ---------------------------------------------------------------------------
+	var already_hosting := NetworkManager.is_networked() and NetworkManager.is_host()
+	if not already_hosting and NetworkManager.host_game(_dedicated_port, _dedicated) != OK:
 		# Not fatal to the screen: the player can still back out, and the message
 		# says which of the two things went wrong rather than "failed".
 		AudioManager.play("ui_error")
@@ -355,6 +441,7 @@ func _setup_host() -> void:
 	# a Hamachi address rendered as `HOST 25.…` and could not be selected anyway.
 	seat_heading.text = "LOBBY  ·  YOU ARE HOSTING"
 	_show_addresses(_host_addresses_with_port())
+	_show_join_code()
 	# Host-only: the firewall block this warns about is about INBOUND traffic
 	# to this machine, which is not this joiner's problem on the other two
 	# `_show_addresses()` call sites.
@@ -369,14 +456,24 @@ func _setup_host() -> void:
 	NetworkManager.player_connected.connect(_on_peer_joined)
 	NetworkManager.player_disconnected.connect(_on_peer_left)
 	NetworkManager.peer_spectator_changed.connect(_on_peer_spectator_changed)
+	# Named here as well as on the join path: a listen host leads its own lobby, and
+	# routing both through one signal keeps the two from drifting.
+	NetworkManager.lobby_leader_changed.connect(_on_lobby_leader_changed)
+	NetworkManager.join_code_changed.connect(func(_c: String) -> void: _show_join_code())
 
 	# The host is peer 1 and `peer_connected` never fires for self on a server,
 	# so it seats itself. Seat 0 (Team A's Person) rather than "first free": it
 	# is the seat `main.gd` puts the default camera on, and a host who never
 	# touches the board should land somewhere deliberate.
 	var host_id := multiplayer.get_unique_id()
-	_peer_seats[host_id] = 0
-	_peer_ready[host_id] = false
+	# ⚠️ A DEDICATED SERVER TAKES NO CHAIR. It is the referee, not a player, and seating
+	# it here would hand one of the four seats to a machine nobody is at — the same
+	# mistake `NetworkManager.host_game` avoids on its own side by not self-seeding
+	# `connected_peer_ids`. Its seat stays empty for a human, and a bot fills it at
+	# kickoff like any other unclaimed chair.
+	if not _dedicated:
+		_peer_seats[host_id] = 0
+		_peer_ready[host_id] = false
 	# ⚠️ SPECTATING IS A PREFERENCE THAT SURVIVES THE MENU (see `GameLaunch.spectator`),
 	# so a host who watched the last match walks in here already watching — seated one
 	# line above by the default path, and holding a chair. Republished rather than
@@ -384,25 +481,40 @@ func _setup_host() -> void:
 	# first frame in which the preference and the session both exist.
 	if GameLaunch.spectator:
 		NetworkManager.publish_spectator(true)
+	# ⚠️ READ, DO NOT WAIT TO BE TOLD. `host_game()` writes `lobby_leader_id` directly
+	# rather than through `_rpc_announce_leader`, so a listen host emits NO
+	# `lobby_leader_changed` for its own opening claim — a two-instance run measured
+	# exactly zero events for a host's own lobby. Wiring the signal and nothing else
+	# leaves the initial state to whatever the scene happened to be saved with, which
+	# is right here only by luck. Derive it instead.
+	_refresh_leader_controls()
 	_refresh_seats()
 	_refresh_primary_button()
 
 func _setup_join() -> void:
 	banner_label.text = "LOBBY"
-	seat_hint.text = "The host picks the map and the mode. Click a free seat to move. Empty seats are played by bots."
+	# The opening guess, and only that: `_refresh_leader_controls()` below re-picks it from
+	# the role, and swaps it again if this client is later handed the lobby.
+	seat_hint.text = JOINER_SEAT_HINT
 	_seat_hint_base = seat_hint.text
 	primary_button.caption = "READY"
 	start_button.visible = false
 	# A client may look at the host's map and mode but not change them — this is
 	# the whole fix for the conflicting-map defect, so it is enforced on the
 	# control itself, not only by the host ignoring a stray RPC.
-	_lock_host_only_controls()
+	#
+	# Derived rather than hard-locked: on a DEDICATED server this same client may be
+	# handed the lobby a moment from now, and `_on_lobby_leader_changed` will unlock
+	# it then. Nobody leads yet at this point, so this still evaluates to locked — the
+	# difference is that it stays correct if that ever stops being true.
+	_refresh_leader_controls()
 
 	var parts := MultiplayerSetupScreen.split_address(GameLaunch.pending_join_address)
 	var host: String = String(parts[0])
 	var port: int = int(parts[1])
 	seat_heading.text = "CONNECTING…"
 	_show_addresses(PackedStringArray([GameLaunch.pending_join_address]))
+	_show_join_code()
 	if host.is_empty() or NetworkManager.join_game(host, port) != OK:
 		AudioManager.play("ui_error")
 		status_label.text = "Could not reach %s." % GameLaunch.pending_join_address
@@ -414,6 +526,10 @@ func _setup_join() -> void:
 	NetworkManager.connection_failed.connect(_on_connection_failed)
 	NetworkManager.server_disconnected.connect(_on_server_disconnected)
 	NetworkManager.player_disconnected.connect(_on_peer_left)
+	# On a dedicated server nobody is host, so this is the only thing that will ever
+	# unlock the map picker for this client.
+	NetworkManager.lobby_leader_changed.connect(_on_lobby_leader_changed)
+	NetworkManager.join_code_changed.connect(func(_c: String) -> void: _show_join_code())
 	status_label.text = "Connecting…"
 	_refresh_seats()
 	_refresh_primary_button()
@@ -511,6 +627,68 @@ func _is_networked_lobby() -> bool:
 func _is_lobby_host() -> bool:
 	return _action == "host" and multiplayer.multiplayer_peer != null and multiplayer.is_server()
 
+## ---------------------------------------------------------------------------
+## § WHO MAY CHANGE THE MAP — the host, until there isn't one.
+##
+## On a listen host this is the same person as `_is_lobby_host()` and nothing about
+## this screen changes. On a DEDICATED server the referee is a machine with no player
+## at it, so `_is_lobby_host()` is false for everybody and the map controls would be
+## locked for the entire lobby, permanently. The leader is the first human through the
+## door (`NetworkManager.lobby_leader_id`), and it moves on when they leave.
+##
+## ⚠️ THIS UNLOCKS A CONTROL, IT DOES NOT GRANT AUTHORITY. A leader that is not the
+## server cannot broadcast — it asks, via `_rpc_request_config`, and the server checks
+## the request came from the peer it actually named leader before applying it. The
+## comment on `_setup_join`'s lock still holds: the lock is a convenience, and the
+## host ignoring a stray RPC is the thing that actually enforces it.
+## ---------------------------------------------------------------------------
+func _is_lobby_leader() -> bool:
+	if not _is_networked_lobby():
+		return true # local play: there is nobody to negotiate with
+	return NetworkManager.is_lobby_leader()
+
+## Locked or unlocked to match who currently leads. Called on entry and again whenever
+## the server announces a change, since a leader can be made mid-lobby by somebody else
+## leaving — a player staring at a locked map picker that has just become theirs would
+## have no way to know it.
+## ⚠️ "THE HOST PICKS THE MAP" IS A LIE TO A CLIENT LEADER, and it was printed directly
+## above the pickers that player owns. On a dedicated server nobody is host, so the joiner
+## copy written in `_setup_join` describes a person who does not exist — a HOST ONLINE
+## player saw "The host picks the map and the mode" on the same screen as an unlocked map
+## picker and a START MATCH button. The two hints are chosen by ROLE here rather than once
+## at setup, because the role can change under a player who is already looking at it.
+const JOINER_SEAT_HINT: String = "The host picks the map and the mode. Click a free seat to move. Empty seats are played by bots."
+const LEADER_SEAT_HINT: String = "You pick the map and the mode for everyone. Click a free seat to move. Empty seats are played by bots. Read the code above out to the others."
+
+func _refresh_leader_controls() -> void:
+	if _is_lobby_leader():
+		_unlock_leader_controls()
+	else:
+		_lock_host_only_controls()
+	# ⚠️ CLIENTS ONLY. A listen host's hint names its own address and is already correct;
+	# rewriting it here would replace "give the address below to the others" with copy that
+	# never mentions how anyone reaches them.
+	if _is_networked_lobby() and not _is_lobby_host():
+		_seat_hint_base = LEADER_SEAT_HINT if _is_lobby_leader() else JOINER_SEAT_HINT
+		_refresh_seat_hint()
+
+func _unlock_leader_controls() -> void:
+	for button in [map_prev_button, map_next_button, mode_prev_button, mode_next_button,
+			difficulty_prev_button, difficulty_next_button]:
+		button.disabled = false
+		button.modulate = Color.WHITE
+
+func _on_lobby_leader_changed(peer_id: int) -> void:
+	_refresh_leader_controls()
+	# The leader also owns START MATCH on a dedicated server, so the button has to
+	# appear and disappear with the role rather than being decided once at setup.
+	start_button.visible = _can_start_match()
+	_refresh_start_button()
+	if peer_id == multiplayer.get_unique_id() and not _is_lobby_host():
+		# Worth saying out loud: this player did nothing to earn it, the previous
+		# leader left. Without a line here the picker silently turns clickable.
+		status_label.text = "You are now the lobby leader — you pick the map, the mode, and when to start."
+
 ## ⚠️ EVERY OUTGOING RPC FROM A BUTTON PRESS HAS TO GO THROUGH THIS FIRST.
 ## A client sits in this screen for the whole handshake — `join_game()` returns
 ## the instant the socket is opened, not when the connection is up — so there is
@@ -532,6 +710,7 @@ func _on_connected_to_host() -> void:
 	# which is what fills in the seats, the ready flags, the map and the mode.
 	seat_heading.text = "LOBBY  ·  CONNECTED"
 	_show_addresses(PackedStringArray([GameLaunch.pending_join_address]))
+	_show_join_code()
 	status_label.text = "Connected. Pick your character, then press READY."
 
 func _on_connection_failed() -> void:
@@ -737,8 +916,12 @@ func _rpc_seat_denied() -> void:
 func _rpc_set_ready(peer_id: int, is_ready: bool) -> void:
 	_peer_ready[peer_id] = is_ready
 	_refresh_seats()
-	if _is_lobby_host():
-		_refresh_start_button()
+	# ⚠️ NOT `if _is_lobby_host()`. On a dedicated server the START button belongs to
+	# the LEADER, which is a client, and gating this refresh on being the host left that
+	# button disabled no matter who readied up — measured end to end: a lone leader
+	# pressed READY, every seat was ready, and START stayed dead. `_refresh_start_button`
+	# already decides for itself whether this peer owns the button.
+	_refresh_start_button()
 
 ## Host -> everyone: go. Carries the finished seating with it rather than
 ## letting each peer assemble its own from the board it happens to be holding —
@@ -813,6 +996,39 @@ func _apply_difficulty() -> void:
 func _broadcast_config() -> void:
 	if _is_lobby_host():
 		_rpc_sync_config.rpc(GameLaunch.selected_map, SettingsManager.ai_difficulty)
+	elif _is_lobby_leader() and _can_rpc():
+		# A leader on a dedicated server owns the CHOICE but not the BROADCAST — it
+		# asks, and the server decides. See `_is_lobby_leader`'s header.
+		_rpc_request_config.rpc_id(1, GameLaunch.selected_map, SettingsManager.ai_difficulty)
+
+## Leader -> host: "make the match this." Refereed rather than applied, exactly like
+## `_rpc_request_seat`: the server is the only writer of the lobby's config, so a peer
+## that is not the leader — or a stale packet from one that just stopped being it —
+## changes nothing.
+##
+## ⚠️ THE SENDER IS CHECKED AGAINST `lobby_leader_id`, NOT TRUSTED. `any_peer` means
+## any peer can send this, which is exactly why the host must not act on it without
+## asking who it came from.
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_request_config(map_id: StringName, difficulty: int) -> void:
+	if not _is_lobby_host():
+		return
+	if multiplayer.get_remote_sender_id() != NetworkManager.lobby_leader_id:
+		return
+	# Range-checked host-side for the same reason every other client-sent value here
+	# is: the sender proposes, the host decides. An unknown map id would otherwise
+	# reach `GameLaunch.selected_map` and be broadcast to everyone.
+	if not _is_known_map(map_id):
+		return
+	GameLaunch.selected_map = map_id
+	SettingsManager.set_ai_difficulty(clampi(difficulty, 0, DIFFICULTIES.size() - 1), false)
+	_rpc_sync_config.rpc(GameLaunch.selected_map, SettingsManager.ai_difficulty)
+
+static func _is_known_map(map_id: StringName) -> bool:
+	for entry in GameLaunch.MAPS:
+		if entry["id"] == map_id:
+			return true
+	return false
 
 ## Opens the CHARACTER panel in place rather than changing scene — see
 ## `character_select.gd`'s own note for why a scene change would be wrong here
@@ -1215,6 +1431,7 @@ func _build_spectate_button() -> void:
 	_spectate_button.mouse_entered.connect(func() -> void: AudioManager.play("ui_hover"))
 	_refresh_spectate_button()
 	_build_address_row(rows, header_row.get_index() + 1)
+	_build_code_row(rows, header_row.get_index() + 2)
 
 
 ## ---------------------------------------------------------------------------
@@ -1243,6 +1460,8 @@ func _build_spectate_button() -> void:
 ## process — the Hamachi one is right for a VPN lobby and the `192.168` one is
 ## right for a room with one router — so the ranking chooses the DEFAULT and the
 ## cycle button hands the decision to the human, who knows.
+var _code_row: HBoxContainer = null
+var _code_edit: LineEdit = null
 var _address_row: HBoxContainer = null
 var _address_edit: LineEdit = null
 var _address_copy: Button = null
@@ -1252,6 +1471,57 @@ var _address_index: int = 0
 
 const ADDRESS_FONT_SIZE: int = 20
 const ADDRESS_BUTTON_FONT_SIZE: int = 16
+
+## ---------------------------------------------------------------------------
+## § THE JOIN CODE, WITH ITS OWN ROW AND ITS OWN COPY BUTTON.
+##
+## This is the handle you give people, so it gets the same treatment as the address
+## rather than a sentence at the end of a paragraph. An address is what you fall back
+## to; a code is what you actually read out, and on the online path it is the ONLY
+## thing worth sharing — the pool's address is the same for everybody and tells a
+## friend nothing about which of the eight lobbies you are sitting in.
+##
+## ⚠️ SHOWN TO CLIENTS TOO, NOT JUST THE HOST. On a pool server the person inviting a
+## friend IS a client — the host is a machine in a datacentre. Gating this on hosting
+## would hide the code from everyone who has a use for it.
+## ---------------------------------------------------------------------------
+func _build_code_row(rows: Container, at_index: int) -> void:
+	_code_row = HBoxContainer.new()
+	_code_row.name = "CodeRow"
+	_code_row.add_theme_constant_override("separation", 10)
+	_code_row.visible = false
+	rows.add_child(_code_row)
+	rows.move_child(_code_row, at_index)
+
+	var caption := Label.new()
+	caption.text = "CODE"
+	caption.add_theme_color_override("font_color", UiTheme.HIGHLIGHT)
+	caption.add_theme_font_size_override("font_size", ADDRESS_FONT_SIZE)
+	caption.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_code_row.add_child(caption)
+
+	_code_edit = LineEdit.new()
+	_code_edit.name = "CodeEdit"
+	_code_edit.editable = false
+	_code_edit.selecting_enabled = true
+	_code_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_code_edit.add_theme_font_size_override("font_size", ADDRESS_FONT_SIZE)
+	_code_edit.add_theme_color_override("font_color", UiTheme.CREAM)
+	_code_edit.add_theme_color_override("font_uneditable_color", UiTheme.CREAM)
+	_code_edit.add_theme_stylebox_override("normal",
+		UiTheme.wood_style(UiTheme.WOOD_DARK, UiTheme.WOOD_EDGE))
+	_code_edit.add_theme_stylebox_override("read_only",
+		UiTheme.wood_style(UiTheme.WOOD_DARK, UiTheme.WOOD_EDGE))
+	_code_row.add_child(_code_edit)
+
+	var copy := _small_button("COPY")
+	copy.pressed.connect(_on_code_copy_pressed)
+	_code_row.add_child(copy)
+
+func _on_code_copy_pressed() -> void:
+	AudioManager.play("ui_click")
+	DisplayServer.clipboard_set(_code_edit.text)
+	status_label.text = "Join code copied — send it to whoever you want in the game."
 
 func _build_address_row(rows: Container, at_index: int) -> void:
 	_address_row = HBoxContainer.new()
@@ -1351,6 +1621,44 @@ func _small_button(label: String) -> Button:
 
 ## Shows `options` in the row, defaulting to the first. Hides the row entirely for
 ## Single Player, which has no address and no one to give it to.
+## ---------------------------------------------------------------------------
+## § THE JOIN CODE HAS TO LIVE SOMEWHERE, AND IT IS HERE.
+##
+## The server browser deliberately stopped printing codes — a public list of everyone's
+## codes is a list of everyone's private invites. That leaves exactly one place a player
+## can learn the code for the lobby they are in, which is this screen, and without it the
+## code would be a handle nobody can ever read.
+##
+## Shown to whoever is in the lobby, host or client, because on a POOL server the person
+## who wants to invite a friend is a client — the host is a machine in a datacentre with
+## nobody at it. Gating this on being the host would hide the code from the only people
+## who have any use for it.
+## ---------------------------------------------------------------------------
+func _show_join_code() -> void:
+	if _code_row == null:
+		return
+	var code: String = _local_join_code()
+	# Hidden rather than shown empty or as "????". A lobby reached by typing an address
+	# on a build with no beacon and no pool genuinely has no code to share, and an empty
+	# box invites the player to wait for one that is never coming.
+	_code_row.visible = not code.is_empty()
+	if not code.is_empty():
+		_code_edit.text = code
+
+## The code for the lobby THIS peer is in. One line, because `NetworkManager.join_code`
+## is authoritative on BOTH sides: the host mints it in `host_game()`, and a client is
+## told it by the server in `_rpc_announce_join_code` the moment it identifies.
+##
+## ⚠️ IT USED TO SEARCH THE SERVER BROWSER'S CACHE FOR A MATCHING ADDRESS, AND THAT IS
+## WHY THE ROW NEVER APPEARED. A two-process run measured the client holding the right
+## code (`39T2`) with the row still hidden: the caches are populated by BROWSING, and a
+## peer that arrived by typing an address — or by a code someone read out — has never
+## browsed, so both lists were empty and the lookup returned "". Asking a stale local
+## cache what the server it is already connected to is called was the wrong question;
+## the server answers it directly now.
+func _local_join_code() -> String:
+	return NetworkManager.join_code
+
 func _show_addresses(options: PackedStringArray) -> void:
 	if _address_row == null:
 		return
@@ -1585,21 +1893,38 @@ func _seat_row_text(seat: int) -> String:
 	var tick := "✓" if bool(_peer_ready.get(occupant, false)) else "…"
 	return "%s   · %s  %s" % [label, who, tick]
 
-func _refresh_start_button() -> void:
-	if not _is_lobby_host():
-		return
+## The rule for "this lobby can begin", as one predicate rather than a button's
+## side effect — the host re-checks it when the leader asks, and it must be the same
+## rule on both sides or the button and the referee would disagree.
+##
+## Safe on a client: `_peer_seats`, `_peer_ready` and `_peer_spectating` all arrive
+## through `_rpc_sync_seats` / `_rpc_sync_state`, so a leader evaluates the same board
+## the host does. A frame stale, which is why the host checks again.
+func _everyone_ready_to_start() -> bool:
 	# No minimum peer COUNT: unclaimed seats are filled with real AI by
-	# `main.gd`, so a lone host is a complete, startable 2v2 rather than an
+	# `main.gd`, so a lone host is a complete, startable match rather than an
 	# incomplete lobby waiting for a second human.
 	for peer_id in _peer_seats:
 		if not bool(_peer_ready.get(peer_id, false)):
-			start_button.disabled = true
-			return
+			return false
 	# ⚠️ AN ALL-SPECTATOR LOBBY IS STARTABLE, AND IT IS THE FILMING CASE. `_peer_seats` is
 	# empty when the only human present is watching — four bots, nobody seated — and the
-	# empty-board guard below would have disabled the one button that can begin the match
+	# empty-board guard would have disabled the one button that can begin the match
 	# a spectator is there to film. §2.4: a spectating host still runs the match.
-	start_button.disabled = _peer_seats.is_empty() and _peer_spectating.is_empty()
+	return not (_peer_seats.is_empty() and _peer_spectating.is_empty())
+
+func _refresh_start_button() -> void:
+	# The leader gets this button too, because on a dedicated server the host is a
+	# machine that will never press it. `_can_start_match()` is what decides who sees
+	# it at all; this only decides whether it is live right now.
+	if not _can_start_match():
+		return
+	start_button.disabled = not _everyone_ready_to_start()
+
+## Who owns the START MATCH button. The host on a listen lobby, the leader on a
+## dedicated one — never both, because on a listen lobby they are the same peer.
+func _can_start_match() -> bool:
+	return _is_lobby_host() or (_is_networked_lobby() and _is_lobby_leader())
 
 # =============================================================================
 # Launch
@@ -1636,8 +1961,33 @@ func _launch_solo() -> void:
 ## HOST ONLY. Turns the board into the two dictionaries `main.gd` reads, then
 ## broadcasts them with the go signal.
 func _on_start_pressed() -> void:
+	# On a dedicated server the host is a machine with no player, so the button that
+	# starts the match belongs to the leader — who is a client and cannot broadcast.
+	# It asks, exactly like the map picker does, and the server decides.
+	if not _is_lobby_host():
+		if _is_lobby_leader() and _can_rpc():
+			_rpc_request_begin_match.rpc_id(1)
+		return
+	_begin_match_as_host()
+
+## Leader -> host: "everyone is ready, start it." Refereed, not applied: the sender is
+## checked against the id the server itself named leader, so a peer that is not the
+## leader — or a stale packet from one that just stopped being it — starts nothing.
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_request_begin_match() -> void:
 	if not _is_lobby_host():
 		return
+	if multiplayer.get_remote_sender_id() != NetworkManager.lobby_leader_id:
+		return
+	# ⚠️ RE-CHECKED HOST-SIDE, NOT TRUSTED FROM THE CLICK. The leader's own button is
+	# gated on the same readiness the host tracks, but that gate lives on the client
+	# and the state it reads can be a frame stale — a peer un-readying in the same
+	# frame as the press would otherwise start a match somebody had just left.
+	if not _everyone_ready_to_start():
+		return
+	_begin_match_as_host()
+
+func _begin_match_as_host() -> void:
 	var seat_tokens: Dictionary = {}
 	for peer_id in _peer_seats:
 		var seat: int = int(_peer_seats[peer_id])

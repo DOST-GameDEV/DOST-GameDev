@@ -48,9 +48,9 @@ stretch_mode = 0
 
 [node name="Banner" type="TextureRect" parent="."]
 layout_mode = 0
-offset_top = 40.0
+offset_top = 80.0
 offset_right = 648.0
-offset_bottom = 184.0
+offset_bottom = 224.0
 mouse_filter = 2
 texture = ExtResource("4")
 expand_mode = 1
@@ -69,13 +69,38 @@ theme_override_font_sizes/font_size = 68
 vertical_alignment = 1
 text = "MULTIPLAYER"
 
+[node name="HostOnlineButton" parent="." instance=ExtResource("2")]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 95.0
+offset_top = 276.0
+offset_right = 709.0
+offset_bottom = 377.0
+texture = ExtResource("5")
+caption = "HOST ONLINE"
+text_color = Color(1, 1, 1, 1)
+label_size = 53
+pole_distance = 300.0
+text_indent = 40.0
+tip_padding = 40.0
+
+[node name="HostOnlineCaption" type="Label" parent="."]
+layout_mode = 0
+offset_left = 110.0
+offset_top = 388.0
+offset_right = 1300.0
+offset_bottom = 432.0
+theme_type_variation = &"MenuBody"
+text = "Free server with a 4-character code. Friends join from anywhere."
+autowrap_mode = 2
+
 [node name="HostButton" parent="." instance=ExtResource("2")]
 unique_name_in_owner = true
 layout_mode = 0
 offset_left = 95.0
-offset_top = 285.0
+offset_top = 472.0
 offset_right = 709.0
-offset_bottom = 386.0
+offset_bottom = 573.0
 texture = ExtResource("5")
 caption = "HOST GAME (LAN)"
 text_color = Color(1, 1, 1, 1)
@@ -87,28 +112,28 @@ tip_padding = 40.0
 [node name="HostCaption" type="Label" parent="."]
 layout_mode = 0
 offset_left = 110.0
-offset_top = 393.0
-offset_right = 960.0
-offset_bottom = 427.0
+offset_top = 584.0
+offset_right = 1300.0
+offset_bottom = 628.0
 theme_type_variation = &"MenuBody"
-text = "You open the lobby and you alone pick the map and the mode. Your LAN address is shown there for the others to type in."
+text = "Runs on this PC. Only players on your network can join."
 autowrap_mode = 2
 
 [node name="JoinHeading" type="Label" parent="."]
 layout_mode = 0
 offset_left = 95.0
-offset_top = 495.0
+offset_top = 668.0
 offset_right = 960.0
-offset_bottom = 539.0
+offset_bottom = 712.0
 theme_type_variation = &"MenuHeading"
-text = "JOIN A HOST"
+text = "JOIN WITH A CODE"
 
 [node name="JoinField" type="TextureRect" parent="."]
 layout_mode = 0
 offset_left = 95.0
-offset_top = 549.0
+offset_top = 722.0
 offset_right = 709.0
-offset_bottom = 650.0
+offset_bottom = 823.0
 mouse_filter = 1
 texture = ExtResource("6")
 expand_mode = 1
@@ -131,15 +156,15 @@ theme_override_font_sizes/font_size = 45
 theme_override_styles/normal = SubResource("StyleBoxEmpty_flat")
 theme_override_styles/focus = SubResource("StyleBoxEmpty_flat")
 theme_override_styles/read_only = SubResource("StyleBoxEmpty_flat")
-placeholder_text = "192.168.1.12"
+placeholder_text = "A7SF   or   192.168.1.12"
 
 [node name="JoinButton" parent="." instance=ExtResource("2")]
 unique_name_in_owner = true
 layout_mode = 0
 offset_left = 727.0
-offset_top = 549.0
+offset_top = 722.0
 offset_right = 968.0
-offset_bottom = 650.0
+offset_bottom = 823.0
 texture = ExtResource("7")
 caption = "JOIN"
 text_color = Color(0.153, 0.263, 0.106, 1)
@@ -151,30 +176,30 @@ tip_padding = 30.0
 [node name="JoinCaption" type="Label" parent="."]
 layout_mode = 0
 offset_left = 110.0
-offset_top = 657.0
-offset_right = 960.0
-offset_bottom = 691.0
+offset_top = 834.0
+offset_right = 1300.0
+offset_bottom = 878.0
 theme_type_variation = &"MenuBody"
-text = "The host's address, port optional — 8910 is used if you leave it off. You pick your own seat and fighter; the host picks the map."
+text = "An online code, or a LAN address. Port defaults to 8910."
 autowrap_mode = 2
 
 [node name="StatusLabel" type="Label" parent="."]
 unique_name_in_owner = true
 layout_mode = 0
 offset_left = 95.0
-offset_top = 745.0
-offset_right = 960.0
-offset_bottom = 825.0
+offset_top = 904.0
+offset_right = 1830.0
+offset_bottom = 952.0
 theme_override_colors/font_color = Color(0.957, 0.408, 0.659, 1)
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 24
 autowrap_mode = 2
 
 [node name="BackButton" type="Button" parent="."]
 unique_name_in_owner = true
 layout_mode = 0
 offset_left = 95.0
-offset_top = 868.0
+offset_top = 980.0
 offset_right = 395.0
-offset_bottom = 926.0
+offset_bottom = 1038.0
 theme_type_variation = &"WoodButton"
 text = "◀  BACK"
