@@ -82,46 +82,6 @@ func _ready() -> void:
 	SettingsManager.fullscreen_changed.connect(_on_settings_fullscreen_changed)
 	_init_volume_rows()
 	_build_name_row()
-	_bind_graphics_rows()
-
-## ---------------------------------------------------------------------------
-## THE GRAPHICS TICKS. 🧑 2026-08-04: *"add motion blur tick in settings as well as
-## other probably good graphics settings that ppl can turn on in settings"*.
-##
-## ⚠️ ONE LOOP OVER `SettingsManager.GRAPHICS_KEYS`, NOT SEVEN HANDLERS. The keys,
-## the labels, the defaults, the save, the load, the snapshot and the revert are all
-## driven off that one list — a checkbox wired by hand here is the eighth place an
-## option can be forgotten, and the first seven are already written not to allow it.
-##
-## ⚠️ SEEDED BEFORE CONNECTING, exactly like `fullscreen_check` above: assigning
-## `button_pressed` emits `toggled`, so connecting first would re-apply every effect
-## (and dirty the APPLY button) on every open of this panel.
-var _graphics_checks: Dictionary = {}
-
-const GRAPHICS_CHECK_NODES: Dictionary = {
-	"motion_blur": "%MotionBlurCheck",
-	"ssr": "%SsrCheck",
-	"taa": "%TaaCheck",
-	"sdfgi": "%SdfgiCheck",
-	"ssil": "%SsilCheck",
-	"ssao": "%SsaoCheck",
-	"glow": "%GlowCheck",
-}
-
-func _bind_graphics_rows() -> void:
-	for key in SettingsManagerScript.GRAPHICS_KEYS:
-		var path: String = GRAPHICS_CHECK_NODES.get(key, "")
-		var box := get_node_or_null(path) as CheckBox
-		if box == null:
-			push_error("SettingsPanel: %s missing from SettingsPanel.tscn" % path)
-			continue
-		box.button_pressed = SettingsManager.graphics_option(key)
-		box.toggled.connect(_on_graphics_toggled.bind(key))
-		_graphics_checks[key] = box
-
-func _on_graphics_toggled(pressed: bool, key: String) -> void:
-	SettingsManager.set_graphics_option(key, pressed)
-	_refresh_apply_state()
 
 ## ---------------------------------------------------------------------------
 ## THE PLAYER NAME ROW. 🧑 2026-07-31: *"add the option to change name in settings
