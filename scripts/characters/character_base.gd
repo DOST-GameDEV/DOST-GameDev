@@ -766,6 +766,17 @@ func _ready() -> void:
 	spawn_position = global_position
 	_visual.apply(is_person, is_can, player_slot)
 	state_changed.connect(_on_state_changed_audio)
+	# The clip ending on its own is the ordinary way an emote finishes; the camera
+	# has to come back from that path as well as from the cancel.
+	_visual.emote_finished.connect(_restore_emote_camera)
+	# ⚠️ ANY LOSS OF CONTROL KILLS THE EMOTE. Being tagged, shoved or knocked down
+	# mid-dance must not leave the player watching themselves in third person while
+	# the round carries on without them.
+	state_changed.connect(_on_state_changed_emote)
+
+func _on_state_changed_emote(new_state: State) -> void:
+	if new_state != State.NORMAL:
+		stop_emote()
 
 ## ---------------------------------------------------------------------------
 ## THE FRAME.
@@ -785,6 +796,11 @@ func _physics_process(delta: float) -> void:
 		return
 	if ai_controller != null:
 		ai_controller.decide(delta)
+
+	# ⚠️ CHECKED EVERY FRAME RATHER THAN ON A PRESS EDGE, because holding a
+	# direction when the emote starts must cancel it too — a player who never
+	# released W would otherwise dance all the way across the arena.
+	_cancel_emote_on_input()
 
 	# Cooldowns tick on every peer so the HUD row is honest on a client too.
 	if _shove_cooldown_left > 0.0:
@@ -1715,6 +1731,108 @@ func play_visual_action(kind: String) -> void:
 	var rig := get_node_or_null("CameraRig") as CameraRig
 	if rig != null:
 		rig.play_viewmodel_action(kind)
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ EMOTES. 🧑 2026-08-04: a wheel like Fortnite's, third person for the
+## duration and back after, *"make sure everyone can see me emoting"*, *"make sure
+## it works in multiplayer lan and online and singleplayer"*, and cancel by moving.
+##
+## ⚠️ IT RIDES `broadcast_visual_action`'s EXACT PATTERN, which is why the three
+## modes come free. That helper already answers "networked or not" — `.rpc()` when
+## a peer set exists, a direct local call when it does not — so LAN, online and
+## single player are one code path here rather than three. An emote that only the
+## presser can see is the failure that helper was written for in the first place.
+##
+## ⚠️ THE CLIP IS REPLICATED, THE CAMERA IS NOT. `_rpc_emote` runs on every peer
+## and animates the body on all of them; the third-person swing happens only inside
+## `is_multiplayer_authority()`, i.e. on the machine of the player who pressed it.
+## ---------------------------------------------------------------------------
+
+## Guard on starting one at all. Deliberately permissive — an emote is a social
+## verb and the game is at its funniest when somebody does it at a stupid moment —
+## but never while the body is not the player's to drive.
+func can_emote() -> bool:
+	return state == State.NORMAL and not _visual.is_emoting()
+
+func is_emoting() -> bool:
+	return _visual.is_emoting()
+
+## The one entry point a player's input reaches. Bots never call it — 🧑: *"no need
+## to give bots emotes lmao"* — and `ai_controller.gd` presses input actions rather
+## than calling this, so there is nothing to exclude: it simply has no route in.
+func try_emote(id: String) -> void:
+	if not is_multiplayer_authority() or not can_emote():
+		return
+	broadcast_emote(id)
+
+func broadcast_emote(id: String) -> void:
+	if NetworkManager.is_networked():
+		_rpc_emote.rpc(id)
+	else:
+		play_emote(id)
+
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_emote(id: String) -> void:
+	play_emote(id)
+
+func play_emote(id: String) -> void:
+	# ⚠️ THE CAMERA ONLY MOVES IF THE CLIP ACTUALLY STARTED. `play_emote` returns
+	# false for an unknown id or a rig with no AnimationPlayer (every Can and
+	# Tsinelas), and swinging to third person to watch a body that is not animating
+	# is worse than ignoring the press.
+	if not _visual.play_emote(id):
+		return
+	if not is_multiplayer_authority():
+		return
+	var rig := get_node_or_null("CameraRig") as CameraRig
+	if rig != null:
+		rig.begin_emote_view()
+
+## Ends one early. Called by the movement cancel below, and by anything that takes
+## control of the body away — a stagger, a knockdown, the round ending.
+func stop_emote() -> void:
+	if not _visual.is_emoting():
+		return
+	if NetworkManager.is_networked():
+		_rpc_stop_emote.rpc()
+	else:
+		_apply_stop_emote()
+
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_stop_emote() -> void:
+	_apply_stop_emote()
+
+func _apply_stop_emote() -> void:
+	_visual.stop_emote()
+	_restore_emote_camera()
+
+## ⚠️ SPLIT OUT AND CALLED FROM BOTH ENDS — the early cancel above and the clip
+## running out (`emote_finished`). The camera has to come back whichever way the
+## emote ended, and a player stuck in third person with no way out is the one bug
+## in this feature that would make the game unplayable rather than untidy.
+func _restore_emote_camera() -> void:
+	if not is_multiplayer_authority():
+		return
+	var rig := get_node_or_null("CameraRig") as CameraRig
+	if rig != null:
+		rig.end_emote_view()
+
+## Movement cancels, per 🧑: *"make it so taht u can manually stop it too if u move
+## while emoting"*. Read from the same `input_*` helpers every other verb uses, so
+## a rebound key cancels exactly as the default one does.
+##
+## ⚠️ JUMP AND THE TWO ACTION KEYS COUNT AS MOVEMENT HERE. The instruction says
+## "if u move", and a player who presses throw or grab to get out of an emote has
+## unambiguously asked to stop emoting — leaving those to play the clip out would
+## read as the input being eaten.
+func _cancel_emote_on_input() -> void:
+	if not _visual.is_emoting() or not is_multiplayer_authority():
+		return
+	if (input_pressed("move_left") or input_pressed("move_right")
+			or input_pressed("move_up") or input_pressed("move_down")
+			or input_just_pressed("jump") or input_just_pressed("sprint")
+			or input_just_pressed("grab") or input_just_pressed("special_ability")):
+		stop_emote()
 
 func broadcast_visual_action(kind: String) -> void:
 	if NetworkManager.is_networked():

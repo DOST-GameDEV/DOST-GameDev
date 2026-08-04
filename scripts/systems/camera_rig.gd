@@ -373,6 +373,16 @@ func _body_yaw() -> float:
 func _apply_upright_pose() -> void:
 	if _character == null:
 		return
+	# ⚠️ THE ORBIT IS ANCHORED TO THE BODY, NOT DRIVEN BY IT. Same position the
+	# ordinary TPP case uses — `_character.global_position` — so the camera stays on
+	# the emoting player; only the direction it looks from is this rig's own, which
+	# is what lets the player circle their own character while it animates.
+	if _emote_view:
+		tpp_arm.global_transform = Transform3D(
+			Basis(Vector3.UP, deg_to_rad(_emote_yaw_deg))
+				* Basis(Vector3.RIGHT, deg_to_rad(_emote_pitch_deg)),
+			_character.global_position + Vector3.UP * _tpp_mount_height)
+		return
 	var yaw := Basis(Vector3.UP, _body_yaw())
 	if _mode == Mode.FPP:
 		fpp_pivot.global_transform = Transform3D(
@@ -411,6 +421,69 @@ func _mount_height_for(capsule_height: float) -> float:
 ## with, and what a networked spawn calls on itself above. Disables _process
 ## on an inactive rig so four idle rigs aren't doing four cameras' worth of
 ## work for nothing.
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE EMOTE CAMERA. 🧑 2026-08-04: *"i want the emotes to switch camera to
+## TPP js for the emote and go back to FPP after the emote ends"*, and *"make srue
+## i can move camera around while im emoting but its anchored to my body"*.
+##
+## ⚠️ THIS IS THE ONLY THING IN THE GAME THAT MOVES A PERSON OFF FPP, and `_ready()`
+## asserts the opposite ("Person is always FPP, Prop is always TPP"). That assert is
+## about the RESTING mode and still holds: this restores whatever it found on the
+## way out, so a Person is FPP before the emote and FPP after it. Nothing else may
+## write `_mode` while `_emote_view` is up.
+##
+## ⚠️ LOCAL ONLY, ALWAYS. Only the peer that owns this body ever calls these — the
+## emote itself is replicated (character_base.gd::broadcast_emote), the camera is
+## not. A remote peer swinging to third person because somebody else danced would
+## take the game away from them mid-round.
+const EMOTE_PITCH_MIN_DEG: float = -35.0
+const EMOTE_PITCH_MAX_DEG: float = 20.0
+
+var _emote_view: bool = false
+var _emote_yaw_deg: float = 0.0
+var _emote_pitch_deg: float = 0.0
+var _mode_before_emote: Mode = Mode.FPP
+
+func is_emote_view() -> bool:
+	return _emote_view
+
+func begin_emote_view() -> void:
+	if _emote_view:
+		return
+	_mode_before_emote = _mode
+	_emote_view = true
+	# ⚠️ SEEDED FROM THE BODY'S CURRENT FACING so the camera opens behind the
+	# character it is about to orbit, rather than snapping to world north.
+	_emote_yaw_deg = rad_to_deg(_body_yaw())
+	_emote_pitch_deg = _tpp_pitch_deg
+	_mode = Mode.TPP
+	_apply_emote_view()
+
+func end_emote_view() -> void:
+	if not _emote_view:
+		return
+	_emote_view = false
+	_mode = _mode_before_emote
+	_apply_emote_view()
+
+## Re-asserts everything that reads `_mode`. Each of these is set once elsewhere on
+## a mode that never changed before this feature existed, so all four have to be
+## re-run by hand here.
+func _apply_emote_view() -> void:
+	fpp_camera.current = _active and _mode == Mode.FPP
+	tpp_camera.current = _active and _mode == Mode.TPP
+	# ⚠️ THE POINT OF THE WHOLE SWITCH: in FPP your own body is SHADOWS_ONLY, so
+	# without this the third-person camera would swing around to look at an emote
+	# performed by an invisible man.
+	_apply_fpp_self_hide()
+	# The arms are a first-person prop and read as two slabs floating beside the
+	# character from outside.
+	var arms := _arms
+	if arms != null and is_instance_valid(arms):
+		arms.visible = _active and _mode == Mode.FPP
+	# The spring arm has not been framing anything while the rig was in FPP.
+	_apply_tpp_framing()
+
 func set_active(active: bool) -> void:
 	_active = active
 	fpp_camera.current = active and _mode == Mode.FPP
@@ -1016,6 +1089,20 @@ func apply_mouse_delta(relative: Vector2) -> void:
 		var carry_pitch_delta := relative.y * (-1.0 if SettingsManager.invert_y else 1.0)
 		_tpp_carry_pitch_deg = clamp(
 			_tpp_carry_pitch_deg - carry_pitch_delta * sensitivity, PITCH_MIN_DEG, PITCH_MAX_DEG)
+		return
+	# ⚠️⚠️ AN EMOTE ORBITS, IT DOES NOT STEER. 🧑 2026-08-04: *"make srue i can move
+	# camera around while im emoting but its anchored to my body"*. Writing
+	# `_character.rotation.y` here — what every other frame does — would spin the
+	# BODY under the emote clip, so a player looking around would turn their own
+	# dancing character on the spot for everyone else watching. The look is held as
+	# this rig's own yaw/pitch instead and the body is left alone; see
+	# `_apply_upright_pose()`, which reads these two instead of `_body_yaw()` while
+	# the orbit is up.
+	if _emote_view:
+		_emote_yaw_deg -= relative.x * sensitivity
+		var emote_pitch_delta := relative.y * (-1.0 if SettingsManager.invert_y else 1.0)
+		_emote_pitch_deg = clamp(_emote_pitch_deg - emote_pitch_delta * sensitivity,
+			EMOTE_PITCH_MIN_DEG, EMOTE_PITCH_MAX_DEG)
 		return
 	_character.rotation.y -= deg_to_rad(relative.x * sensitivity)
 	if _mode == Mode.FPP:

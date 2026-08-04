@@ -96,6 +96,7 @@ const REBINDABLE_ACTIONS: Array[String] = [
 	"move_left", "move_right", "move_up", "move_down",
 	"special_ability", "grab", "jump", "sprint",
 	"ready_up", "clean_feed",
+	"emote_wheel",
 	"toggle_fullscreen",
 ]
 
@@ -120,6 +121,9 @@ const ACTION_LABELS: Dictionary = {
 	# displaced lata home (`Design.md` §5.2).
 	"grab": "Grab",
 	"ready_up": "Ready Up",
+	# Hold it to open the wheel, release on a slice to play it — so the row reads
+	# as the thing the player holds, not as a menu they open and close.
+	"emote_wheel": "Emote Wheel",
 	# Named for what it DOES to the recording, not for what it hides — the operator
 	# reading this row is looking for the setting that gives them a clean plate.
 	"clean_feed": "Hide HUD (Spectator)",
