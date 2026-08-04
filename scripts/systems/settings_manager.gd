@@ -63,10 +63,28 @@ const SETTINGS_SECTION: String = "input"
 ## ⚠️ `grab` ALSO CARRIES A MOUSE BINDING (LMB) and rebinding does not disturb it —
 ## `_replace_key_binding()` erases only `InputEventKey` events. Note the LMB half is
 ## double-bound with `special_ability`, which is a separate open question on §4.19.
+## ⚠️ `grab` APPEARED TWICE HERE AND THE PANEL DREW BOTH — two rows reading
+## "Grab · E", one above the other, for a year. 🧑 spotted it in a render.
+##
+## It was not a lost action with the wrong name, which is the thing worth checking
+## before deleting either copy. `git log -L` on this block: `e801fc4` added the
+## `"grab", "ready_up", "clean_feed"` line, and `3abc019` (the four-player rebuild)
+## then deleted `bump` and `guard_dash` — whose input actions it had just removed
+## from `project.godot` — and dropped `grab` into the hole they left, not noticing
+## the line underneath already had it. So the second copy is a duplicate outright
+## and nothing is lost by removing it.
+##
+## ⚠️ `lunge` AND `spectator_down` ARE IN THE INPUTMAP AND STILL NOT HERE, and that
+## is deliberate rather than the same bug again. `lunge` is not its own verb —
+## `character_base.gd` reads `input_just_pressed("lunge") or
+## input_just_pressed("grab")`, so it is a SECOND KEY for the row above, and giving
+## it a row would put two differently-named controls on screen that do the same
+## thing. That is the confusion this fix exists to remove, not a second instance of
+## it. `spectator_down` belongs to the spectator camera, not to a player.
 const REBINDABLE_ACTIONS: Array[String] = [
 	"move_left", "move_right", "move_up", "move_down",
 	"special_ability", "grab", "jump", "sprint",
-	"grab", "ready_up", "clean_feed",
+	"ready_up", "clean_feed",
 	"toggle_fullscreen",
 ]
 
