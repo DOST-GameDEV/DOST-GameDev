@@ -194,204 +194,9 @@ const DEFAULT_FULLSCREEN: bool = true
 
 var fullscreen: bool = DEFAULT_FULLSCREEN
 
-## ---------------------------------------------------------------------------
-## ⚠️⚠️ GRAPHICS — THE ONLY PERFORMANCE LEVER THIS GAME ACTUALLY HAS.
-##
-## 🧑 2026-08-04: *"optimize the gameplay for all gamemodes ... without making the
-## game break or making graphics drop"*, then *"make sure optimization doesnt only
-## work for this pc but for others as well"*, then *"add motion blur tick in
-## settings as well as other probably good graphics settings that ppl can turn on
-## in settings BUT make them OFF"*.
-##
-## `tools/perf_attrib.tscn` settled where the frame goes: the ENTIRE script
-## `_process` pass of a real four-body match is under half a millisecond, and the
-## AI is free. There is no CPU optimization worth making — script work is not what
-## a weak machine is short of. `tools/perf_probe.tscn`'s fps column is: turning
-## GI, SSAO and glow off takes eskinita from 90 fps to 118 on an RX 6600, ~30%,
-## and every one of those is a GPU cost that scales badly downward on a laptop.
-##
-## That is the same failure this project has already shipped once — the toon pass
-## was reverted on 2026-07-29 for "causing severe lag on other PCs" (see
-## env_toon_pass.gd). The fix then was deletion. The fix now is a switch, so the
-## look survives on hardware that can afford it.
-##
-## ⚠️ THE TWO GROUPS HAVE OPPOSITE DEFAULTS, DELIBERATELY, AND THE INSTRUCTION
-## READS BOTH WAYS. "Make them OFF" and "don't make graphics drop" cannot both be
-## true of one list, so they are split by which promise applies:
-##
-##   - EXTRAS (SSR, TAA) are new and default OFF. Nothing on screen changes for
-##     anyone who never opens this panel — which is what "make them OFF whenever
-##     someone opens the game" asks for.
-##   - THE SHIPPED LOOK (SDFGI, SSIL, SSAO, glow) defaults ON, exactly as the map
-##     scenes already author it, so no graphics drop. It is only newly *reachable*,
-##     which is what gives a weak PC its 30% back.
-##
-## Flipping any default is one constant below if that reading is wrong.
-##
-## ⚠️ MOTION BLUR IS OURS, BECAUSE GODOT 4.7 HAS NONE.
-## `ClassDB.class_get_property_list("Environment")` has no `motion` or `blur`
-## property and no `rendering/**` project setting provides one — checked on this
-## build, not assumed. 🧑 asked for it anyway (*"can u build ur own motion blur but
-## keep it off unless ticked on in settings"*), so it is a depth-reprojection
-## post-process of our own: `assets/shaders/motion_blur.gdshader` plus
-## `scripts/systems/motion_blur.gd`. With the tick off the node is not created at
-## all, so it costs exactly nothing — see `_apply_motion_blur()`.
-const SETTINGS_SECTION_GRAPHICS: String = "graphics"
-
-## ⚠️ ONE LIST, WALKED BY SAVE, LOAD, THE SNAPSHOT AND THE DIRTY CHECK. Each of
-## those four is a place a newly-added option gets silently forgotten — the panel
-## would show a tick that never persists, or BACK would fail to undo it. Adding a
-## key here is the whole job; `graphics_option()` and `set_graphics_option()` are
-## the only other places that name one.
-const GRAPHICS_KEYS: Array[String] = ["motion_blur", "ssr", "taa",
-	"sdfgi", "ssil", "ssao", "glow"]
-
-## Label shown in the panel, per key, and the order they appear in.
-const GRAPHICS_LABELS: Dictionary = {
-	"motion_blur": "Motion blur",
-	"ssr": "Screen-space reflections",
-	"taa": "Temporal anti-aliasing (TAA)",
-	"sdfgi": "Global illumination (SDFGI)",
-	"ssil": "Indirect lighting (SSIL)",
-	"ssao": "Ambient occlusion (SSAO)",
-	"glow": "Glow",
-}
-
-## Extras — off unless asked for.
-const DEFAULT_SSR: bool = false
-const DEFAULT_TAA: bool = false
-const DEFAULT_MOTION_BLUR: bool = false
-## The shipped look — on, matching what the map scenes author.
-const DEFAULT_SDFGI: bool = true
-const DEFAULT_SSIL: bool = true
-const DEFAULT_SSAO: bool = true
-const DEFAULT_GLOW: bool = true
-
-var ssr_enabled: bool = DEFAULT_SSR
-var taa_enabled: bool = DEFAULT_TAA
-var motion_blur_enabled: bool = DEFAULT_MOTION_BLUR
-var sdfgi_enabled: bool = DEFAULT_SDFGI
-var ssil_enabled: bool = DEFAULT_SSIL
-var ssao_enabled: bool = DEFAULT_SSAO
-var glow_enabled: bool = DEFAULT_GLOW
-
-signal graphics_changed
-
-func _assign_graphics(key: String, value: bool) -> void:
-	match key:
-		"ssr": ssr_enabled = value
-		"taa": taa_enabled = value
-		"motion_blur": motion_blur_enabled = value
-		"sdfgi": sdfgi_enabled = value
-		"ssil": ssil_enabled = value
-		"ssao": ssao_enabled = value
-		"glow": glow_enabled = value
-		_: push_error("SettingsManager: unknown graphics option '%s'" % key)
-
-func _graphics_default(key: String) -> bool:
-	match key:
-		"ssr": return DEFAULT_SSR
-		"taa": return DEFAULT_TAA
-		"motion_blur": return DEFAULT_MOTION_BLUR
-		"sdfgi": return DEFAULT_SDFGI
-		"ssil": return DEFAULT_SSIL
-		"ssao": return DEFAULT_SSAO
-		"glow": return DEFAULT_GLOW
-	return false
-
-func set_graphics_option(key: String, value: bool, persist: bool = true) -> void:
-	if not GRAPHICS_KEYS.has(key):
-		push_error("SettingsManager: unknown graphics option '%s'" % key)
-		return
-	_assign_graphics(key, value)
-	apply_graphics()
-	graphics_changed.emit()
-	if persist:
-		_save()
-
-func graphics_option(key: String) -> bool:
-	match key:
-		"ssr": return ssr_enabled
-		"taa": return taa_enabled
-		"motion_blur": return motion_blur_enabled
-		"sdfgi": return sdfgi_enabled
-		"ssil": return ssil_enabled
-		"ssao": return ssao_enabled
-		"glow": return glow_enabled
-	return false
-
-## ⚠️ FINDS THE ENVIRONMENT RATHER THAN HOLDING A REFERENCE TO IT. Each map scene
-## authors its own `WorldEnvironment`, and the menus have none at all — so there is
-## no single node this autoload could keep. A search costs nothing here because
-## this runs on a toggle and on a scene change, never per frame.
-##
-## ⚠️ TAA IS A VIEWPORT PROPERTY, NOT AN ENVIRONMENT ONE, which is why it is set
-## separately and why it survives a scene with no WorldEnvironment in it.
-func apply_graphics() -> void:
-	var tree := get_tree()
-	if tree == null:
-		return
-	var vp := tree.root as Viewport
-	if vp != null:
-		vp.use_taa = taa_enabled
-	for node in tree.root.find_children("*", "WorldEnvironment", true, false):
-		var env: Environment = (node as WorldEnvironment).environment
-		if env == null:
-			continue
-		env.ssr_enabled = ssr_enabled
-		env.sdfgi_enabled = sdfgi_enabled
-		env.ssil_enabled = ssil_enabled
-		env.ssao_enabled = ssao_enabled
-		env.glow_enabled = glow_enabled
-	_apply_motion_blur()
-
-## ⚠️ CREATED AND FREED, NOT SHOWN AND HIDDEN. A hidden fullscreen quad still costs
-## a cull every frame and still keeps the screen-texture copy alive, and this effect
-## is off for everyone by default — so "off" has to mean the node does not exist.
-##
-## ⚠️ IT IS NOT PARENTED HERE. `motion_blur.gd` attaches itself to whatever camera
-## the viewport reports as current and re-attaches when that changes, which is the
-## only version that survives the FPP/TPP switch and the per-round rig change. All
-## this does is decide whether one exists.
-var _motion_blur: MotionBlur = null
-
-func _apply_motion_blur() -> void:
-	var tree := get_tree()
-	if tree == null:
-		return
-	if not motion_blur_enabled:
-		if _motion_blur != null and is_instance_valid(_motion_blur):
-			_motion_blur.queue_free()
-		_motion_blur = null
-		return
-	if _motion_blur != null and is_instance_valid(_motion_blur):
-		return
-	var cam := tree.root.get_camera_3d()
-	if cam == null:
-		# No 3D camera yet — the menus have none. It will be built on the next
-		# apply, which a scene change already triggers.
-		return
-	_motion_blur = MotionBlur.new()
-	_motion_blur.name = "MotionBlur"
-	cam.add_child(_motion_blur)
-
 func _ready() -> void:
 	_capture_defaults()
 	_load_and_apply()
-	# ⚠️ RE-APPLIED ON EVERY SCENE CHANGE. A map scene brings its own authored
-	# Environment with it, which arrives holding the values the .tscn was saved
-	# with — so a player who turned SDFGI off in the menu would get it back the
-	# moment a match loaded if this only ran once at startup.
-	get_tree().node_added.connect(_on_node_added)
-
-## ⚠️ CAMERAS AS WELL AS ENVIRONMENTS. The environment carries the four shipped
-## effects, but the motion-blur quad needs a camera to hang off — and the menus have
-## none, so with the tick on it can only be built when a match brings one in.
-func _on_node_added(node: Node) -> void:
-	if node is WorldEnvironment:
-		apply_graphics()
-	elif node is Camera3D and motion_blur_enabled:
-		_apply_motion_blur()
 
 ## ⚠️ `_input`, NOT `_unhandled_input`. Every menu in this game is a `Control` tree and
 ## a focused Button consumes the event before `_unhandled_input` ever fires, so the key
@@ -643,17 +448,7 @@ func begin_edit() -> void:
 		"ai_difficulty": ai_difficulty,
 		"player_name": player_name,
 		"fullscreen": fullscreen,
-		# ⚠️ GRAPHICS ARE LIVE EFFECTS, so they belong in the transaction for the
-		# same reason `fullscreen` does — a player who ticks motion blur, dislikes
-		# it and presses BACK must get the frame they had back, not just the file.
-		"graphics": _current_graphics_map(),
 	}
-
-func _current_graphics_map() -> Dictionary:
-	var out: Dictionary = {}
-	for key in GRAPHICS_KEYS:
-		out[key] = graphics_option(key)
-	return out
 
 func is_editing() -> bool:
 	return _editing
@@ -672,8 +467,7 @@ func has_unsaved_changes() -> bool:
 		or not is_equal_approx(float(_snapshot.get("music_volume", 0.0)), music_volume)
 		or int(_snapshot.get("ai_difficulty", 0)) != ai_difficulty
 		or String(_snapshot.get("player_name", "")) != player_name
-		or bool(_snapshot.get("fullscreen", DEFAULT_FULLSCREEN)) != fullscreen
-		or _snapshot.get("graphics", {}) != _current_graphics_map())
+		or bool(_snapshot.get("fullscreen", DEFAULT_FULLSCREEN)) != fullscreen)
 
 ## Write everything the edit touched and close the transaction.
 func commit_edit() -> void:
@@ -720,13 +514,6 @@ func revert_edit() -> void:
 	# says windowed is exactly the memory/disk split this whole transaction exists to stop.
 	fullscreen = bool(snapshot.get("fullscreen", fullscreen))
 	_apply_fullscreen()
-	# ⚠️ Same rule as the window mode above, and one `apply_graphics()` for the lot
-	# rather than one per key — each apply walks the tree for WorldEnvironments.
-	var graphics: Dictionary = snapshot.get("graphics", {})
-	for key in graphics:
-		_assign_graphics(String(key), bool(graphics[key]))
-	if not graphics.is_empty():
-		apply_graphics()
 	var restored_name := String(snapshot.get("player_name", player_name))
 	if restored_name != player_name:
 		player_name = restored_name
@@ -764,8 +551,6 @@ func _save() -> void:
 	config.set_value(SETTINGS_SECTION_MATCH, "ai_difficulty", ai_difficulty)
 	config.set_value(SETTINGS_SECTION_MATCH, "player_name", player_name)
 	config.set_value(SETTINGS_SECTION_DISPLAY, "fullscreen", fullscreen)
-	for key in GRAPHICS_KEYS:
-		config.set_value(SETTINGS_SECTION_GRAPHICS, key, graphics_option(key))
 	var err := config.save(SETTINGS_PATH)
 	if err != OK:
 		push_warning("SettingsManager: failed to save %s (error %d)" % [SETTINGS_PATH, err])
@@ -875,10 +660,3 @@ func _load_and_apply() -> void:
 	# `persist` false, same as the two above: re-applying what we just read is not a change.
 	set_fullscreen(bool(config.get_value(SETTINGS_SECTION_DISPLAY, "fullscreen",
 		DEFAULT_FULLSCREEN)), false)
-	# ⚠️ ASSIGNED THEN APPLIED ONCE, not seven calls to `set_graphics_option()` —
-	# each of those applies and emits, so loading would rebuild the environment
-	# seven times and fire `graphics_changed` at a panel that is reading it.
-	for key in GRAPHICS_KEYS:
-		_assign_graphics(key, bool(config.get_value(SETTINGS_SECTION_GRAPHICS, key,
-			_graphics_default(key))))
-	apply_graphics()
