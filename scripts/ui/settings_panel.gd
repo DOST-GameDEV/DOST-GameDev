@@ -39,6 +39,8 @@ const BINDING_CONTROL_SIZE: Vector2 = Vector2(170, 46)
 @onready var invert_y_check: CheckBox = %InvertYCheck
 ## The other half of the `toggle_fullscreen` key — same setting, two routes in.
 @onready var fullscreen_check: CheckBox = %FullscreenCheck
+## § THE LANDED-SLIPPER HIGHLIGHT — one picker whose first row is "Off".
+@onready var slipper_highlight_picker: OptionButton = %SlipperHighlightPicker
 ## 4.1 — one row per audio bus (see default_bus_layout.tres).
 @onready var master_volume_slider: HSlider = %MasterVolumeSlider
 @onready var master_volume_value_label: Label = %MasterVolumeValueLabel
@@ -80,8 +82,85 @@ func _ready() -> void:
 	fullscreen_check.button_pressed = SettingsManager.fullscreen
 	fullscreen_check.toggled.connect(_on_fullscreen_toggled)
 	SettingsManager.fullscreen_changed.connect(_on_settings_fullscreen_changed)
+	_init_slipper_highlight_row()
 	_init_volume_rows()
 	_build_name_row()
+
+## ---------------------------------------------------------------------------
+## § THE LANDED-SLIPPER HIGHLIGHT ROW. 🧑 2026-08-06: *"players can choose in the
+## settings to pick a highlight color or to disable the highlights."*
+##
+## ⚠️ THE ITEM LIST IS BUILT FROM `SettingsManager.SLIPPER_HIGHLIGHTS`, NOT TYPED OUT
+## HERE. The palette is a gameplay-visibility decision and it lives with the value it
+## describes; a second copy in the view is a list that will disagree with the first the
+## next time a colour is tuned. Adding a row to that constant is the whole edit.
+##
+## ⚠️ EACH ROW IS DRAWN IN ITS OWN COLOUR, which is the entire point of an
+## accessibility picker. A player choosing between "Purple" and "Blue" by reading two
+## identical grey words is being asked to imagine the thing the control exists to let
+## them SEE. `set_item_icon()` with a generated swatch is the honest version — a
+## `GradientTexture2D` of one flat colour, so no image asset is added for five squares.
+## "Off" gets no swatch: there is no colour to show, and a black square next to four
+## bright ones reads as a fifth colour rather than as an absence.
+##
+## ⚠️ SELECTED BEFORE CONNECTING `item_selected`, for the reason `_init_volume_rows()`
+## documents at length for the sliders. `select()` does NOT emit on an OptionButton, so
+## this one is safe either way today — the ordering is kept because it is the house rule
+## on this screen and the exception is not worth remembering.
+func _init_slipper_highlight_row() -> void:
+	slipper_highlight_picker.clear()
+	for index in SettingsManagerScript.SLIPPER_HIGHLIGHTS.size():
+		var choice: Dictionary = SettingsManagerScript.SLIPPER_HIGHLIGHTS[index]
+		slipper_highlight_picker.add_item(String(choice["label"]), index)
+		if index != SettingsManagerScript.HIGHLIGHT_OFF:
+			slipper_highlight_picker.set_item_icon(index, _colour_swatch(choice["color"]))
+	slipper_highlight_picker.select(clampi(SettingsManager.slipper_highlight, 0,
+		SettingsManagerScript.SLIPPER_HIGHLIGHTS.size() - 1))
+	slipper_highlight_picker.item_selected.connect(_on_slipper_highlight_selected)
+	# ⚠️⚠️ THE PICKER FOLLOWS THE MANAGER, IT DOES NOT ONLY DRIVE IT — the same shape as
+	# `fullscreen_changed` above, and here it is what makes DISCARD honest.
+	#
+	# This panel is HIDDEN and re-SHOWN, never re-instanced (`main_menu.gd` sets
+	# `visible`, `main.gd` calls `hide()`/`show()`), so `_ready()` seeds every control
+	# exactly once per process. A BACK-with-discard calls `SettingsManager.revert_edit()`,
+	# which puts the VALUE back — and any control seeded only in `_ready()` then reopens
+	# still displaying the choice that was just thrown away, claiming a setting the game is
+	# not running. Following the signal is the only reason the fullscreen box does not have
+	# that problem today, so this row does the same rather than inventing a second answer.
+	SettingsManager.slipper_highlight_changed.connect(_on_settings_slipper_highlight_changed)
+
+## Re-seeds the picker from whatever the manager now holds. `select()` does not emit
+## `item_selected`, so this cannot loop back into the handler that may have caused it.
+func _on_settings_slipper_highlight_changed() -> void:
+	slipper_highlight_picker.select(clampi(SettingsManager.slipper_highlight, 0,
+		SettingsManagerScript.SLIPPER_HIGHLIGHTS.size() - 1))
+
+## Side of the colour square on a picker row, in pixels. Sized against the row's own
+## 46-pixel height (`BINDING_CONTROL_SIZE`) so the swatch sits inside the text line
+## rather than stretching it.
+const SWATCH_SIZE: int = 24
+
+## A flat square of `colour`, for the picker's rows. `GradientTexture2D` with both stops
+## on one colour is the cheapest texture Godot will make from code and needs no file.
+func _colour_swatch(colour: Color) -> GradientTexture2D:
+	var gradient := Gradient.new()
+	gradient.set_color(0, colour)
+	gradient.set_color(1, colour)
+	var texture := GradientTexture2D.new()
+	texture.gradient = gradient
+	texture.width = SWATCH_SIZE
+	texture.height = SWATCH_SIZE
+	return texture
+
+## ⚠️ THE PICK IS LIVE IMMEDIATELY, LIKE EVERY OTHER EDIT ON THIS SCREEN — only the
+## WRITE waits for APPLY (see SettingsManager § STAGED EDITS). That matters more here
+## than for a volume slider: this panel opens from the in-match pause menu, so a player
+## choosing a highlight colour can be looking straight at a slipper wearing it, and
+## picking a colour you cannot preview is picking blind.
+func _on_slipper_highlight_selected(index: int) -> void:
+	SettingsManager.set_slipper_highlight(index)
+	AudioManager.play("ui_click")
+	_refresh_apply_state()
 
 ## ---------------------------------------------------------------------------
 ## THE PLAYER NAME ROW. 🧑 2026-07-31: *"add the option to change name in settings

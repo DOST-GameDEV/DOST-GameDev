@@ -179,6 +179,10 @@ func _ready() -> void:
 	process_priority = 100
 	_sample_floor.call_deferred()
 	_set_state(CarryState.LOOSE)
+	# § THE LANDED HIGHLIGHT — repaint when the player changes the colour or switches it
+	# off, so the panel's effect is visible on slippers already lying on the arena rather
+	# than only on the next landing. See `_refresh_highlight()`.
+	SettingsManager.slipper_highlight_changed.connect(_refresh_highlight)
 
 ## ⚠️ THE CARRY POSE IS UPDATED HERE, NOT ONLY IN `_physics_process`, for the
 ## frame-ordering reason in `_ready()`. Flight and contact stay in the physics
@@ -609,7 +613,24 @@ func _apply_deflected(from: Vector3, new_velocity: Vector3) -> void:
 	# The thrower can block their own deflected slipper a moment later otherwise.
 	_flight_time = 0.0
 
-func _apply_landed(where: Vector3, audible: bool = false) -> void:
+## ⚠️⚠️ `audible` IS NOW `from_flight`, AND IT IS A RENAME RATHER THAN A NEW PARAMETER
+## ON PURPOSE. § THE LANDED HIGHLIGHT needs to know exactly one thing this function
+## cannot otherwise tell: did this slipper ARRIVE here through the air, or was it put
+## here? The flag that already distinguishes those two is this one — its own note in
+## `_step_flying()` records that it is *"TRUE HERE AND NOWHERE ELSE"*, i.e. true for the
+## end of a flight and false for `host_drop()` and `host_reset_for_new_round()`.
+##
+## Adding a second parameter that is always equal to the first would have been two names
+## for one fact, and the next person to touch either would have had to work out which of
+## them was the real one. So the flag is named for the EVENT, and the thud and the rim are
+## both consequences of it — which is what they always were; the sound just got there first.
+##
+## ⚠️ THE HIGHLIGHT IS WRITTEN AFTER `_set_state()`, NOT BEFORE. That function clears the
+## rim on every transition out of LOOSE (see its own note), and it early-returns when the
+## state has not actually changed — a `host_drop()` on an already-LOOSE slipper never
+## reaches the clear. Writing it here, unconditionally, after the transition, means the
+## rim is a function of how the slipper GOT here and nothing else, on every path in.
+func _apply_landed(where: Vector3, from_flight: bool = false) -> void:
 	if carrier != null:
 		carrier.notify_holding(null)
 	carrier = null
@@ -620,9 +641,10 @@ func _apply_landed(where: Vector3, audible: bool = false) -> void:
 	if _visual != null:
 		_visual.rotation = Vector3.ZERO
 	_set_state(CarryState.LOOSE)
+	_set_landed_highlight(from_flight)
 	# Every peer runs this handler, so the thud is heard on all four machines at
 	# the position it happened — which is what `play_at` is for.
-	if audible:
+	if from_flight:
 		AudioManager.play_at("slipper_land", global_position)
 
 func host_reset_for_new_round() -> void:
@@ -694,6 +716,16 @@ func _set_state(new_state: CarryState) -> void:
 		# is thrown or dropped before its carrier's body ever arrived must not go back
 		# into that hand a second later.
 		_pending_carrier_slot = -1
+	# ⚠️ § THE LANDED HIGHLIGHT IS CLEARED BY LEAVING `LOOSE`, WHICH IS THE SAME §6 TRAP 12
+	# LESSON THE TWO NOTES ABOVE RECORD. The rim answers "where did the one you just threw
+	# end up", so it has to go out the moment that stops being a live question — and the
+	# obvious places to clear it (`_apply_grabbed`, `_apply_thrown`) are two of the several
+	# paths that can move a slipper out of LOOSE, not all of them. Driven from the STATE it
+	# cannot be stranded lit on a slipper somebody is already holding, whatever route put it
+	# in their hand. Turning it back ON is not symmetric and deliberately does not live here:
+	# only `_apply_landed()` knows whether an arrival at LOOSE was a flight or a teleport.
+	if new_state != CarryState.LOOSE:
+		_set_landed_highlight(false)
 	carry_state_changed.emit(new_state)
 
 
@@ -1198,7 +1230,7 @@ func _step_flying(delta: float) -> void:
 	# into the floor. `_ground_under()` raycasts, so this is also correct on a
 	# kerb, a plaza step, or anything a later map puts underfoot.
 	if global_position.y <= _floor_y + _rest_height:
-		# ⚠️⚠️ §2.17 — `audible` IS TRUE HERE AND NOWHERE ELSE, AND THAT IS THE FIX.
+		# ⚠️⚠️ §2.17 — `from_flight` IS TRUE HERE AND NOWHERE ELSE, AND THAT IS THE FIX.
 		# `slipper_land` has been registered in `audio_manager.gd` with a mix level
 		# of its own since the sound pass and had **never had a caller**: a throw
 		# that hit a body played `hit_body`, a throw that hit the can played
@@ -1211,6 +1243,10 @@ func _step_flying(delta: float) -> void:
 		# function is shared with `host_drop()` and `host_reset_for_new_round()`, and
 		# a round reset teleports three slippers home on one frame — putting the
 		# sound in there would have played a triple thud at the start of every round.
+		#
+		# ⚠️ § THE LANDED HIGHLIGHT NOW RIDES THE SAME FLAG, which is why it was renamed
+		# from `audible`: "this landing ended a flight" is the fact, and the thud and the
+		# rim are two consequences of it. Both want it true in exactly this one place.
 		var rest := _ground_under(global_position)
 		if NetworkManager.is_networked():
 			_main_rpc("_rpc_slipper_landed", [rest, true])
@@ -1383,8 +1419,6 @@ func apply_skin(index: int) -> void:
 	if not _apply_model(entry):
 		return
 	skin_index = index
-	if not entry.has("tint"):
-		return
 	# ⚠️ WHITE MEANS "DO NOT TINT", AND THAT IS NOT A MICRO-OPTIMISATION.
 	# `_tint_meshes()` writes the tint into `albedo_color` on EVERY surface. On a
 	# TEXTURED prop that multiplies the art, so white is already a no-op. On an
@@ -1398,10 +1432,21 @@ func apply_skin(index: int) -> void:
 	# materials, so white is the honest way to say "this skin brings its own
 	# look". Skipping the walk makes that true for textured and untextured props
 	# alike instead of only for textured ones.
-	var tint: Color = entry["tint"]
-	if tint == Color.WHITE:
-		return
-	_tint_meshes(tint)
+	#
+	# ⚠️ A MISSING `tint` KEY READS AS WHITE rather than as its own early return. The two
+	# meant the same thing already — "this skin brings its own look" — and collapsing them
+	# is what lets the rim re-assert below run on every path out of this function instead
+	# of on one of three.
+	var tint: Color = entry.get("tint", Color.WHITE)
+	if tint != Color.WHITE:
+		_tint_meshes(tint)
+	# ⚠️ THE RIM IS RE-WRITTEN AFTER EVERY SKIN CHANGE, AND IT HAS TO BE. Both paths above
+	# throw the old surface materials away — `_apply_model()` nulls every override before
+	# swapping the mesh, `_swap_scene_model()` frees the whole subtree, and `_tint_meshes()`
+	# replaces each override with a fresh duplicate. Any rim written before this point is
+	# gone with them. Cheap, and it means a mid-match skin push cannot silently extinguish
+	# a highlight or an owner glow that is supposed to be lit.
+	_refresh_highlight()
 
 ## How long a slipper is in world units, toe to heel. Every skin is normalised to
 ## this regardless of what scale its author saved it at.
@@ -1572,10 +1617,59 @@ func _merged_bounds(root: Node3D) -> AABB:
 ## ⚠️ AND IT IS PER-PEER, DELIBERATELY NOT REPLICATED. "Yours" is a different slipper
 ## on every machine, so this is computed locally each time it changes and never sent —
 ## a networked glow would light one slipper for everybody.
+##
+## ⚠️⚠️ CORRECTION, 2026-08-06: EVERY WORD ABOVE ABOUT `rim_strength` IS THE PLAN, NOT
+## WHAT SHIPPED. The uniform is real and `toon.gdshader` does carry it — but nothing in
+## this project ever puts that shader on a SLIPPER, so this glow wrote a parameter into
+## a material that has none and lit nothing, from the day it shipped until the branch
+## this note is on. The measurement, and why the failure was silent, are in
+## `_set_rim()`'s `StandardMaterial3D` branch. Read that before touching either rim.
 const OWNER_RIM_STRENGTH: float = 0.85
 const OWNER_RIM_COLOR: Color = Color(1.0, 0.86, 0.35)
 
 var _glow_on: bool = false
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ § THE LANDED HIGHLIGHT — "WHERE DID IT GO". 🧑 2026-08-06: *"after a
+## slipper is thrown and landed, it will be highlighted"*, with Valorant's
+## enemy-outline colourblind settings as the reference for the colours.
+##
+## It reuses the rim lever above rather than growing a second one, but it answers
+## a DIFFERENT question and so is tracked independently:
+##
+##   · the owner glow is **"which slipper is MINE"** — per-peer, computed from
+##     `_local_owner_slot()`, a different slipper on every machine, never sent;
+##   · this is **"where did the one that was just thrown END UP"** — the same
+##     answer on all four machines, because it falls straight out of `state` plus
+##     the one bit `_apply_landed()` carries. Every peer already receives every
+##     state change this slipper makes, through the same `_rpc_slipper_*` calls
+##     that move it at all, so **this feature adds no packet**.
+##
+## ⚠️ THE COLOUR IS THE ONE PART THAT IS LOCAL. `SettingsManager.slipper_highlight`
+## is read fresh on every repaint and is never replicated — see that file's § note
+## on why a shared colour would be worse than no setting. Two peers running Red
+## and Yellow light the same slippers in different colours, which is correct.
+##
+## ⚠️ IT STAYS ON THROUGH THE WHOLE LOOSE REST, NOT FOR A TIMED FLASH. A throw
+## that missed is exactly the moment its owner has lost track of the thing; a cue
+## that expired after two seconds would be gone by the time they finished looking
+## for it. `_set_state()` takes it off when the slipper leaves LOOSE, which is to
+## say when somebody has it — i.e. when the question is answered rather than when
+## a timer says it should be.
+##
+## ⚠️ AND IT IS ON EVERY LANDED SLIPPER, NOT ONLY YOUR OWN. `can_be_grabbed_by()`
+## has let anybody pick up anybody's slipper since 2026-08-01, so "a tsinelas is
+## lying loose over there" is information for all three attackers and for the
+## taya. The owner glow is still what says which one is yours.
+const LANDED_RIM_STRENGTH: float = 0.85
+
+var _landed_highlight_on: bool = false
+
+func _set_landed_highlight(on: bool) -> void:
+	if on == _landed_highlight_on:
+		return
+	_landed_highlight_on = on
+	_refresh_highlight()
 
 func _update_owner_glow() -> void:
 	# Only a LOOSE slipper is worth pointing at. Carried, it is already in your hand;
@@ -1584,7 +1678,7 @@ func _update_owner_glow() -> void:
 	if mine == _glow_on:
 		return
 	_glow_on = mine
-	_set_rim(OWNER_RIM_STRENGTH if mine else 0.0)
+	_refresh_highlight()
 
 ## The seat this machine is playing, or -1 for a spectator or a peer with no character.
 func _local_owner_slot() -> int:
@@ -1594,7 +1688,39 @@ func _local_owner_slot() -> int:
 	var who := main.get_local_character() as CharacterBase
 	return who.player_slot if who != null and is_instance_valid(who) else -1
 
-func _set_rim(strength: float) -> void:
+## Whichever of the two rims wins right now. Called whenever ANY input to that
+## decision moves — the landed flag, the owner flag, the player's colour pick, or
+## a skin swap that threw the old materials away.
+##
+## ⚠️ THE LANDED HIGHLIGHT WINS, AND THE TIE IS NOT ARBITRARY. Your own slipper
+## coming to rest after a throw is the single most likely moment you have actually
+## lost track of it, which is precisely when the owner glow's "this one is yours"
+## has the least to add — you already know it is yours, you threw it. The glow
+## resumes on its own the moment the highlight clears, because both are recomputed
+## from here.
+##
+## ⚠️ THE SETTING IS READ HERE RATHER THAN CACHED, so "Off" is honoured by every
+## repaint including ones triggered by something else entirely, and there is no
+## second copy of the player's choice to fall out of date.
+func _refresh_highlight() -> void:
+	# ⚠️ A SLIPPER ON ITS WAY OUT DOES NOT REPAINT. This is the one entry point that can be
+	# reached from OUTSIDE this node's own lifetime: it is connected to an autoload signal,
+	# and an autoload outlives every scene. Godot disconnects on free, but `queue_free()` is
+	# deferred — so a settings change landing inside that window writes materials onto a
+	# node that is already going away. Measured under `--headless`: five
+	# `material_get_instance_shader_parameters: Parameter "material" is null` errors, one
+	# per surface, from a slipper freed a moment earlier. Harmless where it was found (a
+	# probe tearing down) and cheap to make impossible everywhere else.
+	if is_queued_for_deletion():
+		return
+	if _landed_highlight_on and SettingsManager.slipper_highlight_enabled():
+		_set_rim(LANDED_RIM_STRENGTH, SettingsManager.slipper_highlight_color())
+	elif _glow_on:
+		_set_rim(OWNER_RIM_STRENGTH, OWNER_RIM_COLOR)
+	else:
+		_set_rim(0.0, OWNER_RIM_COLOR)
+
+func _set_rim(strength: float, color: Color) -> void:
 	var visual := get_node_or_null("Visual")
 	if visual == null:
 		return
@@ -1605,10 +1731,135 @@ func _set_rim(strength: float) -> void:
 			# as `next_pass` and carries none of these uniforms — writing the rim
 			# through the active material would land on whichever of the two answered.
 			var material := mesh.get_surface_override_material(surface)
+			if material == null:
+				# ⚠️ NOTHING TO UNLIGHT. Turning a rim OFF on a surface that has no
+				# override is already true, and building one to say so would convert
+				# the mesh's shared material into five per-instance copies on every
+				# repaint — including the one `apply_skin()` now ends with, i.e. three
+				# slippers x five surfaces at every round reset, for no visible change.
+				if strength <= 0.0:
+					continue
+				# ⚠️⚠️ "NO OVERRIDE" IS NOT "NO MATERIAL", AND BOTH RIMS WERE SILENTLY
+				# DEAD ON EVERY WHITE-TINT SKIN UNTIL THIS. The only thing that ever
+				# CREATES an override here is `_tint_meshes()`, and `apply_skin()`
+				# skips calling it on a white tint for the reason its own note gives:
+				# *"WHITE MEANS DO NOT TINT"*. White is the textured-prop-keeps-its-
+				# own-look case — the COMMON skin, not an edge one — so a slipper
+				# wearing one reached this loop with nothing to write the rim onto and
+				# no highlight ever appeared. The owner glow has had this hole since it
+				# shipped; it is fixed here because the landed highlight would
+				# otherwise have inherited it.
+				#
+				# Duplicated for the same reason `_tint_meshes()` duplicates: the
+				# source material is one shared `Resource` across every instance of
+				# that mesh in the project, so writing to it directly would light every
+				# copy in the scene rather than this slipper.
+				var base := mesh.get_active_material(surface)
+				if base == null:
+					continue
+				material = base.duplicate()
+				mesh.set_surface_override_material(surface, material)
 			if material is ShaderMaterial:
 				var shader_mat := material as ShaderMaterial
 				shader_mat.set_shader_parameter("rim_strength", strength)
-				shader_mat.set_shader_parameter("rim_color", OWNER_RIM_COLOR)
+				shader_mat.set_shader_parameter("rim_color", color)
+			elif material is StandardMaterial3D:
+				# ⚠️⚠️ THIS IS NOT THE FALLBACK BRANCH. IT IS THE ONLY ONE THAT EVER
+				# RUNS, AND THE `ShaderMaterial` ARM ABOVE HAS NEVER EXECUTED ON A
+				# SLIPPER IN THIS PROJECT. **Measured** 2026-08-06, dumping
+				# `get_active_material()` for every surface of the stock prop:
+				#
+				#     mesh=Slipper surfaces=5
+				#       outsole · foam · footbed · strap · post
+				#       -> all five StandardMaterial3D, from tsinelas_classic.obj
+				#
+				# and all four roster entries (`tsinelas`, `crocs`, `pantulog`, `sike`)
+				# are .obj files imported the same way. NOTHING puts `toon.gdshader` on
+				# this prop: `character_visual.gd::_apply_toon_pass()` is the only
+				# caller in the project and its own doc says it *"runs on characters and
+				# Props exclusively"*; `env_toon_pass.gd` stopped applying it entirely
+				# on 2026-07-29. So a slipper has no `rim_strength` uniform to write to.
+				#
+				# ⚠️ WHICH MEANS THE OWNER GLOW HAS BEEN DEAD SINCE IT SHIPPED. § THE
+				# FLOOR GLOW above describes a feature — *"Your personal slipper glows
+				# with an outline on the arena floor"* — that could not have lit a
+				# single pixel: `_set_rim()` wrote `rim_strength` into a material with
+				# no such uniform, which Godot accepts in silence. It is not a
+				# regression and it is not this commit's doing; it is a control that
+				# was reachable and did nothing, exactly the failure this board's own
+				# REACHABILITY RULE exists to forbid, and it went unnoticed because a
+				# shader uniform that does not exist raises no error. This branch is
+				# what makes BOTH rims real.
+				#
+				# `emission` is the equivalent lever on this material type: a colour
+				# that ADDS rather than replaces, so like the shader's rim term it
+				# leaves `albedo_color` — and therefore the owner's chosen skin tint —
+				# untouched. That constraint is the one the whole approach was built
+				# around; see § THE FLOOR GLOW's note above.
+				#
+				# ⚠️ THE `ShaderMaterial` ARM STAYS. It is correct, it is what runs the
+				# moment anything does put the toon pass on this prop, and deleting it
+				# would make that change silently un-rim the slipper again.
+				var std_mat := material as StandardMaterial3D
+				std_mat.emission_enabled = strength > 0.0
+				std_mat.emission = color
+				std_mat.emission_energy_multiplier = strength * EMISSION_SCALE
+			_set_outline(mesh, material, strength, color)
+
+## ⚠️⚠️ THE HIGHLIGHT IS AN **OUTLINE**, AND THE EMISSION ABOVE IS ONLY ITS BACKING
+## LIGHT. This is the half that makes the feature look like the thing the human asked
+## for — the reference image is Valorant's enemy outline, where the silhouette is
+## traced in the chosen colour and the character underneath keeps every one of its own.
+##
+## ⚠️ EMISSION ALONE WAS TRIED FIRST AND IT WAS WRONG, VISIBLY. At the 0.85 the rim
+## strength asks for, a flat additive `emission` does not trace anything: it floods the
+## whole surface, and a rendered palette check came back with four slippers that were
+## simply *painted* blue, purple, red and yellow. That is not a highlight, it is a
+## re-skin — and it destroys the tsinelas the player chose on the CHARACTER screen,
+## which is the exact failure § THE FLOOR GLOW's note says decided the whole approach.
+## `EMISSION_SCALE` cuts what is left to a lift that keeps the slipper out of shadow
+## and lets its own colour through.
+##
+## ⚠️ THE PROJECT ALREADY OWNED THIS SHADER AND THIS TECHNIQUE. `outline.gdshader` is
+## `character_visual.gd::_apply_toon_pass()`'s inverted hull, chained the same way, as
+## `next_pass`. Nothing new is invented here and the two borders match by construction.
+##
+## ⚠️ THE WIDTH IS DIVIDED BY THE NODE'S OWN SCALE, which is the fix that file records
+## as `Handoff.md` §0.12: the shader inflates along the normal in MESH space, so one
+## shared constant renders as a hairline on a big mesh and as dark slabs down the sides
+## of a small one. `Visual` carries Art_Direction §2's 1.6 drama scale and a carried
+## slipper divides out the rig's 2.38 on top of that, so this prop's scale genuinely
+## moves at run time.
+const OUTLINE_SHADER: Shader = preload("res://assets/models/materials/outline.gdshader")
+## In WORLD units, then converted per mesh. Deliberately finer than the character
+## outline's 0.025: a tsinelas is 0.69 long where a person is 1.6 tall, and a border
+## that reads as ink on a body reads as a slab on a flip-flop.
+const OUTLINE_WORLD_WIDTH: float = 0.011
+## What is left of the emission once the outline carries the signal — enough to lift the
+## prop out of shadow, not enough to repaint it. See the note above.
+const EMISSION_SCALE: float = 0.12
+
+func _set_outline(mesh: MeshInstance3D, material: Material, strength: float,
+		color: Color) -> void:
+	if strength <= 0.0:
+		material.next_pass = null
+		return
+	var outline := material.next_pass as ShaderMaterial
+	if outline == null or outline.shader != OUTLINE_SHADER:
+		outline = ShaderMaterial.new()
+		outline.shader = OUTLINE_SHADER
+		material.next_pass = outline
+	outline.set_shader_parameter("outline_color", color)
+	# ⚠️ `global_transform` IS ONLY VALID IN THE TREE, and this runs from `_ready()`'s
+	# `_set_state()` before that is guaranteed. Falling back to `Visual`'s authored 1.6
+	# keeps the width sane in that window rather than erroring; the next repaint — and
+	# there is always one, because the highlight is written on landing — corrects it.
+	var scale := 1.6
+	if mesh.is_inside_tree():
+		var basis_scale := mesh.global_transform.basis.get_scale()
+		scale = maxf(maxf(absf(basis_scale.x), absf(basis_scale.y)), absf(basis_scale.z))
+	outline.set_shader_parameter("outline_width",
+		OUTLINE_WORLD_WIDTH / maxf(scale, 0.0001))
 
 func _tint_meshes(tint: Color) -> void:
 	var visual := get_node_or_null("Visual")
