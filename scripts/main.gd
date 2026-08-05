@@ -629,6 +629,9 @@ func _ready() -> void:
 ## still incorrectly share cooldown state even though the dummy can never
 ## press the button itself.
 func _start_local_test() -> void:
+	# NOCHARA: empty-map recording branch. Forces free-cam spectator mode and
+	# hides every character below so the arena renders with nobody in it.
+	GameLaunch.spectator = true
 	_local_roster = players.duplicate()
 	# Seats are 0..3 and fixed for the match; the ROLE rotates over them. Set here
 	# rather than trusted from the scene's exports, because `_reset_world()` keys
@@ -707,6 +710,9 @@ func _start_local_test() -> void:
 		# has to be joined here as well — one line, in both places, beats a scan that has
 		# to know which units are real.
 		character.add_to_group("spectatable")
+	# NOCHARA: keep every unit out of frame for the empty-map recording.
+	for character in _local_roster:
+		character.hide()
 	# Item 13: no authority concept in local test, unlike networked play,
 	# where each rig can activate itself from is_multiplayer_authority(). One
 	# rig has to be picked explicitly.
