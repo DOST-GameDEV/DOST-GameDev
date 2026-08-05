@@ -539,10 +539,46 @@ func _character_name() -> String:
 ##
 ## So the seat's slipper was destroyed on the one peer that rebuilt the model. A repaint
 ## on reclaim has to detach the hand first, or run at a boundary — it cannot simply hang
-## off this write. Left open deliberately; the reported roster bug is fixed upstream of it
-## in `main.gd::_build_spawn_data`, and that fix needs no repaint because the index no
-## longer CHANGES on the rejoin path.
-var character_index: int = -1
+## off this write.
+##
+## ⚠️⚠️ THE SETTER IS BACK, 2026-08-05, AND IT TAKES THE SECOND OF THE TWO OPTIONS THAT
+## NOTE ITSELF PRESCRIBES: *"or run at a boundary"*. It repaints ONLY when this unit's
+## hand is empty, and defers to `reset_for_new_round()` when it is not — so the measured
+## failure above (repaint frees `Visual`'s children, and a carried tsinelas is one of
+## them) is unreachable by construction rather than by luck of the caller.
+##
+## It is needed because REPLICATION writes this property with no repaint at all, and that
+## is the whole of the skin bug: measured on two headless peers in the same match, the
+## host drawing the roster models and the client drawing `PERSON_MODELS`' -1 fallback off
+## an IDENTICAL `character_index`. Every previous fix verified the number and never looked
+## at the mesh. `main.gd`'s hand-written `apply()` calls stay exactly as they are — this
+## only closes the path none of them cover, which is the synchroniser's own silent write.
+var character_index: int = -1:
+	set(value):
+		if character_index == value:
+			return
+		character_index = value
+		_repaint_for_pick()
+
+## True while this unit's roster pick changed at a moment it was not safe to rebuild the
+## model. Flushed at the next round boundary — see `character_index`'s own note.
+var _pick_repaint_pending: bool = false
+
+## Rebuilds the model for a changed roster pick, but ONLY when doing so cannot destroy a
+## carried tsinelas. `CharacterVisual.apply()` removes and frees every child of `Visual`,
+## and `slipper.gd::_attach_to_hand()` reparents a carried slipper under this unit's
+## `Skeleton3D`, so a repaint with a full hand deletes the slipper on this peer only.
+func _repaint_for_pick() -> void:
+	# Before `_ready()` — the `@onready` `_visual` does not exist yet, and `_ready()`'s own
+	# `apply()` will use whatever value we have settled on by then.
+	if _visual == null or not is_instance_valid(_visual):
+		return
+	var carrier := get_node_or_null("Carrier") as Carrier
+	if carrier != null and carrier.held() != null:
+		_pick_repaint_pending = true
+		return
+	_pick_repaint_pending = false
+	_visual.apply(is_person, is_can, player_slot)
 
 signal state_changed(new_state: State)
 
@@ -1112,6 +1148,16 @@ func _step_lunge(delta: float) -> void:
 ## 🤖 `build ai`'s file and this lane does not edit it), and a second binding for
 ## the same verb costs a human nothing.
 ##
+## ⚠️⚠️ E IS `lunge`'S OWN BINDING NOW, NOT BORROWED FROM `grab`. It used to read
+## `input_just_pressed("grab")` as well, because `grab` already owned E and adding
+## a second real keybind to `lunge` felt redundant — but `grab`'s E is a SEPARATE,
+## independently rebindable key, and reading it here meant `Settings > Lunge` had
+## no effect on the key that actually fired the lunge: a player who rebound Lunge
+## away from E could still lunge themselves forward by pressing E, because that
+## press was landing on `grab`, not on `lunge`. `project.godot` now gives `lunge`
+## its own `E` `InputEventKey` (alongside its right-click), so rebinding the
+## `lunge` action is what changes this, exactly as the Settings row promises.
+##
 ## ⚠️ E IS CONTEXTUAL AND THE ORDER IS WHAT MAKES IT WORK. `carrier.gd` gets first
 ## refusal on the press: for a DEFENDER that is the lata reset channel, which only
 ## engages when the can is DOWN and they are in its ring. Any other E press falls
@@ -1119,11 +1165,11 @@ func _step_lunge(delta: float) -> void:
 ## the channel IS running, `_carrier.is_busy()` above cancels the charge — so
 ## resetting the can can never accidentally fire a lunge out of it.
 func _lunge_pressed_now() -> bool:
-	return input_just_pressed("lunge") or input_just_pressed("grab")
+	return input_just_pressed("lunge")
 
 
 func _lunge_held_now() -> bool:
-	return input_pressed("lunge") or input_pressed("grab")
+	return input_pressed("lunge")
 
 
 func _cancel_lunge() -> void:
@@ -1760,8 +1806,27 @@ func is_emoting() -> bool:
 ## The one entry point a player's input reaches. Bots never call it — 🧑: *"no need
 ## to give bots emotes lmao"* — and `ai_controller.gd` presses input actions rather
 ## than calling this, so there is nothing to exclude: it simply has no route in.
+##
+## ⚠️ `is_multiplayer_authority()` ALONE ONLY EVER LIED IN ONE SEQUENCE: SINGLE
+## PLAYER, AFTER A LAN/ONLINE MATCH IN THE SAME PROCESS. Every other authority
+## check in this file that runs unconditionally in local test already guards
+## itself with `NetworkManager.is_networked()` first (`_apply_block()`,
+## `_flash_hit()`) or short-circuits on it before ever reaching the
+## authority read (`_physics_process`'s `if NetworkManager.is_networked() and
+## not is_multiplayer_authority(): return`). This was the one emote check that
+## did not, and `is_multiplayer_authority()` reads whether `multiplayer_authority`
+## (default 1) matches `multiplayer.get_unique_id()` — which is 1 by the engine's
+## own `OfflineMultiplayerPeer` default on a never-networked process, but
+## `NetworkManager.disconnect_network()`/`_on_connection_failed()`/
+## `_on_server_disconnected()` all tear a session down with
+## `multiplayer.multiplayer_peer = null` rather than restoring that default, so a
+## process that has ever hosted or joined stops reading 1 for the rest of its
+## life. Every other check surviving that off-by-something is luck, not design;
+## this one made it visible because it is the only emote gate with no
+## `is_networked()` short-circuit in front of it.
 func try_emote(id: String) -> void:
-	if not is_multiplayer_authority() or not can_emote():
+	var is_mine := is_multiplayer_authority() if NetworkManager.is_networked() else player_id == 1
+	if not is_mine or not can_emote():
 		return
 	broadcast_emote(id)
 
@@ -1782,7 +1847,9 @@ func play_emote(id: String) -> void:
 	# is worse than ignoring the press.
 	if not _visual.play_emote(id):
 		return
-	if not is_multiplayer_authority():
+	# See `try_emote()`'s own note: guarded the same way for the same reason.
+	var is_mine := is_multiplayer_authority() if NetworkManager.is_networked() else player_id == 1
+	if not is_mine:
 		return
 	var rig := get_node_or_null("CameraRig") as CameraRig
 	if rig != null:
@@ -1811,7 +1878,9 @@ func _apply_stop_emote() -> void:
 ## emote ended, and a player stuck in third person with no way out is the one bug
 ## in this feature that would make the game unplayable rather than untidy.
 func _restore_emote_camera() -> void:
-	if not is_multiplayer_authority():
+	# See `try_emote()`'s own note: guarded the same way for the same reason.
+	var is_mine := is_multiplayer_authority() if NetworkManager.is_networked() else player_id == 1
+	if not is_mine:
 		return
 	var rig := get_node_or_null("CameraRig") as CameraRig
 	if rig != null:
@@ -1826,7 +1895,11 @@ func _restore_emote_camera() -> void:
 ## unambiguously asked to stop emoting — leaving those to play the clip out would
 ## read as the input being eaten.
 func _cancel_emote_on_input() -> void:
-	if not _visual.is_emoting() or not is_multiplayer_authority():
+	if not _visual.is_emoting():
+		return
+	# See `try_emote()`'s own note: guarded the same way for the same reason.
+	var is_mine := is_multiplayer_authority() if NetworkManager.is_networked() else player_id == 1
+	if not is_mine:
 		return
 	if (input_pressed("move_left") or input_pressed("move_right")
 			or input_pressed("move_up") or input_pressed("move_down")
@@ -1873,6 +1946,15 @@ func respawn() -> void:
 	_fall_speed = 0.0
 
 func reset_for_new_round() -> void:
+	# ⚠️ THE DEFERRED PICK REPAINT, FLUSHED AT THE BOUNDARY THAT MAKES IT SAFE. A roster
+	# pick that landed while this unit was carrying could not rebuild the model then
+	# without freeing the slipper in its hand — see `character_index`'s own note. A round
+	# reset is exactly the "run at a boundary" the withdrawn setter's measurement asked
+	# for: hands are emptied by the reset itself.
+	if _pick_repaint_pending:
+		_pick_repaint_pending = false
+		if _visual != null and is_instance_valid(_visual):
+			_visual.apply(is_person, is_can, player_slot)
 	velocity = Vector3.ZERO
 	_staggered_time_left = 0.0
 	_downed_time_left = 0.0

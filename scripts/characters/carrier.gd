@@ -333,7 +333,18 @@ func _ensure_trajectory() -> void:
 	_character.get_tree().current_scene.add_child(_trajectory)
 
 func _update_trajectory() -> void:
-	if not _character.is_multiplayer_authority() or _character.is_ai_driven():
+	# ⚠️ `is_multiplayer_authority()` ALONE LIES IN ONE SEQUENCE: SINGLE PLAYER,
+	# AFTER A LAN/ONLINE MATCH IN THE SAME PROCESS. `NetworkManager.disconnect_network()`
+	# (and its failure/disconnect siblings) tear a session down with
+	# `multiplayer.multiplayer_peer = null` rather than restoring the engine's own
+	# offline default, so `multiplayer.get_unique_id()` stops returning 1 for the
+	# rest of the process's life even though this character's own
+	# `multiplayer_authority` is still 1 and `NetworkManager.is_networked()`
+	# correctly reports false. Same fix, same shape, as
+	# `character_base.gd::try_emote()`'s own note.
+	var is_mine := _character.is_multiplayer_authority() if NetworkManager.is_networked() \
+		else _character.player_id == 1
+	if not is_mine or _character.is_ai_driven():
 		return
 	# ⚠️ AND THE LOCAL SCREEN HAS TO BE LOOKING THROUGH THIS CHARACTER. 🧑
 	# 2026-08-01: *"make sure that only first person sees that, dont show it for

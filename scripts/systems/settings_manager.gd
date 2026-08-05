@@ -94,7 +94,12 @@ const SETTINGS_SECTION: String = "input"
 ## `spectator_down` drives the spectator camera, not a player.
 const REBINDABLE_ACTIONS: Array[String] = [
 	"move_left", "move_right", "move_up", "move_down",
-	"special_ability", "grab", "jump", "sprint",
+	# ⚠️ BOTH SIDES OF A MERGE ADDED A ROW HERE AND BOTH BELONG. `lunge` came from
+	# fix/trajectory-lunge-backup, where this list held "grab" TWICE and never held the
+	# taya's only scoring verb, so it had no rebind row at all; `emote_wheel` came from
+	# the emote work. Taking either side alone silently drops the other's control off the
+	# Settings panel, which is a defect nobody would look for.
+	"special_ability", "grab", "lunge", "jump", "sprint",
 	"ready_up", "clean_feed",
 	"emote_wheel",
 	"toggle_fullscreen",
@@ -120,6 +125,9 @@ const ACTION_LABELS: Dictionary = {
 	# one nobody guesses from the word "grab": it is also the hold that carries a
 	# displaced lata home (`Design.md` §5.2).
 	"grab": "Grab",
+	# The taya's tag: the only way to stop an attacker retrieving a slipper inside
+	# the box (`Design.md` §5.2, §6).
+	"lunge": "Lunge",
 	"ready_up": "Ready Up",
 	# Hold it to open the wheel, release on a slice to play it — so the row reads
 	# as the thing the player holds, not as a menu they open and close.
