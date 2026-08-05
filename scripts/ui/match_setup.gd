@@ -1048,9 +1048,9 @@ func _on_character_panel_closed() -> void:
 	_refresh_character_button()
 	if not _can_rpc():
 		return
-	# Tell the host what was actually picked — see `NetworkManager.publish_picks()`'s
-	# own doc for the bug this closes: without it, the host (and therefore every
-	# peer, picker included) kept spawning whatever `GameLaunch` held from the
+	# Tell the host what was actually picked — see `publish_picks()`'s own doc
+	# for the bug this closes: without it, the host (and therefore every peer,
+	# picker included) kept spawning whatever `GameLaunch` held from the
 	# previous match instead of the skin just chosen here.
 	NetworkManager.publish_picks()
 	var peer_id := multiplayer.get_unique_id()
