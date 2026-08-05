@@ -710,9 +710,15 @@ func _start_local_test() -> void:
 		# has to be joined here as well — one line, in both places, beats a scan that has
 		# to know which units are real.
 		character.add_to_group("spectatable")
-	# NOCHARA: keep every unit out of frame for the empty-map recording.
+	# NOCHARA: keep every unit out of frame AND frozen for the empty-map
+	# recording — hiding alone still left AI controllers driving them around
+	# and throwing props while invisible.
 	for character in _local_roster:
 		character.hide()
+		character.input_parked = true
+		if character.ai_controller != null:
+			character.ai_controller.set_enabled(false)
+		character.set_physics_process(false)
 	# Item 13: no authority concept in local test, unlike networked play,
 	# where each rig can activate itself from is_multiplayer_authority(). One
 	# rig has to be picked explicitly.
@@ -735,6 +741,12 @@ func _start_local_test() -> void:
 	# turns a four-unit Single Player match into something worth watching, and skipping
 	# the rig is what stops the camera being welded inside a Person's head. See
 	# `_enter_spectator_mode`.
+	# NOCHARA: the debug player-switcher's own deferred bar-registration
+	# (DebugPlayerSwitcher._resolve_default) fires after this function returns
+	# and re-grants a unit's rig control, stealing the camera back from the
+	# spectator cam set up below. Unregistering the bar makes that call — and
+	# every later F1-F4/Tab press — a no-op, so nothing can hijack the camera.
+	DebugPlayerSwitcher.debug_unregister_bar()
 	if GameLaunch.spectator:
 		if human.ai_controller != null:
 			human.ai_controller.set_enabled(true)
