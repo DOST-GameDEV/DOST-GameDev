@@ -1096,6 +1096,16 @@ func _step_lunge(delta: float) -> void:
 ## 🤖 `build ai`'s file and this lane does not edit it), and a second binding for
 ## the same verb costs a human nothing.
 ##
+## ⚠️⚠️ E IS `lunge`'S OWN BINDING NOW, NOT BORROWED FROM `grab`. It used to read
+## `input_just_pressed("grab")` as well, because `grab` already owned E and adding
+## a second real keybind to `lunge` felt redundant — but `grab`'s E is a SEPARATE,
+## independently rebindable key, and reading it here meant `Settings > Lunge` had
+## no effect on the key that actually fired the lunge: a player who rebound Lunge
+## away from E could still lunge themselves forward by pressing E, because that
+## press was landing on `grab`, not on `lunge`. `project.godot` now gives `lunge`
+## its own `E` `InputEventKey` (alongside its right-click), so rebinding the
+## `lunge` action is what changes this, exactly as the Settings row promises.
+##
 ## ⚠️ E IS CONTEXTUAL AND THE ORDER IS WHAT MAKES IT WORK. `carrier.gd` gets first
 ## refusal on the press: for a DEFENDER that is the lata reset channel, which only
 ## engages when the can is DOWN and they are in its ring. Any other E press falls
@@ -1103,11 +1113,11 @@ func _step_lunge(delta: float) -> void:
 ## the channel IS running, `_carrier.is_busy()` above cancels the charge — so
 ## resetting the can can never accidentally fire a lunge out of it.
 func _lunge_pressed_now() -> bool:
-	return input_just_pressed("lunge") or input_just_pressed("grab")
+	return input_just_pressed("lunge")
 
 
 func _lunge_held_now() -> bool:
-	return input_pressed("lunge") or input_pressed("grab")
+	return input_pressed("lunge")
 
 
 func _cancel_lunge() -> void:
