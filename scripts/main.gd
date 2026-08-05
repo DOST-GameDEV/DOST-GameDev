@@ -753,6 +753,9 @@ func _start_local_test() -> void:
 	# see _awaiting_local_ready's own doc. Everyone is already spawned at their
 	# role position, but the round (and confinement, which is gated on
 	# RoundManager.round_active) doesn't start until the player readies up.
+	# Single Player never reaches either networked call site, and the can was equally
+	# stock here until the first round reset — see `_push_pre_round_prop_skins()`.
+	_push_pre_round_prop_skins()
 	_awaiting_local_ready = true
 	hud.show_ready_prompt(true)
 	# ⚠️ A SOLO SPECTATOR HAS NOBODY TO READY UP, AND THE PROMPT ASKING THEM TO IS HIDDEN.
@@ -1238,6 +1241,9 @@ func _start_hosting() -> void:
 	# 2026-07-28, user feedback: "when playing multiplayer, for example only
 	# 2 people is playing, there's only 2 characters. it should have 4."
 	_fill_empty_slots_with_placeholders()
+	# The lata wears the defending seat's own can from here, not from the first round
+	# reset — see `_push_pre_round_prop_skins()`.
+	_push_pre_round_prop_skins()
 	# ⚠️ NOT begin_next_round() ANY MORE — see _awaiting_net_ready's own doc.
 	# The round starts when the players say so, not when the scene finishes
 	# loading. Until then RoundManager.round_active is false and
@@ -1462,6 +1468,11 @@ func _rpc_client_ready_for_spawn() -> void:
 	# dropped with "Node not found: Main" (measured). Safe to repaint here for the same
 	# reason the ready gate is: it is before the round, so no hand is full.
 	_rpc_sync_picks.rpc_id(sender, _picks_table())
+	# ⚠️ AND RE-RESOLVE THE PROPS NOW THIS PEER'S OWN PICKS ARE IN. `_start_joining()`
+	# sends `publish_picks()` immediately before this ping, both reliable to peer 1, so
+	# they arrive in that order — this is the first moment the host can dress the lata
+	# with a joiner's own can, and it is still before the round.
+	_push_pre_round_prop_skins()
 
 ## Shared by all three triggers above. Idempotent both ways: _spawned_peer_ids
 ## guards against spawning twice, and the missing-token return means a trigger
@@ -2757,6 +2768,27 @@ func _reset_world(defender_slot: int) -> void:
 ## looked up here rather than stored on `CharacterBase`, which this lane does
 ## not own and does not need to touch for this.
 ## ---------------------------------------------------------------------------
+## Resolves and pushes the prop skins for the round that is ABOUT to start, so the lata
+## already wears the defender's own can during the free-roam window before READY.
+##
+## ⚠️⚠️ THE CAN ONLY APPEARED AFTER READYING UP, AND THIS IS WHY. `_push_prop_skins()`
+## had exactly one call site — `_reset_world()`, which runs off `MatchManager.round_started`,
+## i.e. after the ready gate and the 3·2·1. Everything it needs is known well before that:
+## the picks are in `peer_characters` and the defending seat comes from the schedule. So it
+## is pushed here as well, at every entry into a match. Not a second source of truth —
+## the same function, from the same table, just no longer waiting for the whistle.
+##
+## ⚠️ THE TSINELAS LEGITIMATELY STAY STOCK UNTIL THE ROUND STARTS. `_push_prop_skins()`
+## keys them by `owner_slot`, which `_reset_slippers()` assigns at the round reset, so
+## before that they resolve to -1 — and BOTH props' `apply_skin()` return immediately on a
+## negative index, so this cannot paint a slipper wrong, only leave it alone. The can is
+## keyed by the defender SEAT, which is known from frame one, so it resolves now.
+func _push_pre_round_prop_skins() -> void:
+	_refresh_seat_prop_picks()
+	# Same derivation `_build_spawn_data` uses for the opening round, so the can worn
+	# before READY and the seat that actually defends cannot disagree.
+	_push_prop_skins(MatchManager.defender_slot_for(maxi(1, MatchManager.round_number)))
+
 func _push_prop_skins(defender_slot: int) -> void:
 	if NetworkManager.is_networked() and not NetworkManager.is_host():
 		return
