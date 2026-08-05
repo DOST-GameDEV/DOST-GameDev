@@ -1370,9 +1370,19 @@ var skin_index: int = -1
 func apply_skin(index: int) -> void:
 	if index < 0 or index == skin_index:
 		return
-	skin_index = index
 	var entry: Dictionary = CharacterRoster.slipper_at(index)
-	_apply_model(entry)
+	# ⚠️⚠️ LATCHED ONLY AFTER THE MESH ACTUALLY SWAPPED — the identical trap `lata.gd`'s
+	# twin note describes, and it has to be fixed in both or the two drift. `_apply_model()`
+	# below can return without doing anything (no `model` key, no `Visual`, no
+	# `MeshInstance3D` under it yet, resource fails to load, or a resource that is neither
+	# a Mesh nor a PackedScene). Writing `skin_index` first meant one such miss left the
+	# number claiming the skin was already on while the mesh was still the scene default —
+	# and the `index == skin_index` guard above then turned every later retry, including
+	# the round-reset push, into an immediate return. The tsinelas stuck on its default for
+	# the rest of the process and nothing could shift it.
+	if not _apply_model(entry):
+		return
+	skin_index = index
 	if not entry.has("tint"):
 		return
 	# ⚠️ WHITE MEANS "DO NOT TINT", AND THAT IS NOT A MICRO-OPTIMISATION.
@@ -1476,21 +1486,23 @@ func _measure_rest_height(visual: Node3D) -> void:
 ## somebody drops in), the AABB is measured after instancing and the wrapper is
 ## scaled and re-centred from it. Any model dropped into the roster comes out the
 ## right size, centred, with no per-model tuning at all.
-func _apply_model(entry: Dictionary) -> void:
+## Returns true only when the model was actually replaced — `apply_skin()` latches
+## `skin_index` on that answer, so a miss here is retried rather than remembered.
+func _apply_model(entry: Dictionary) -> bool:
 	if not entry.has("model"):
-		return
+		return false
 	var visual := get_node_or_null("Visual")
 	if visual == null:
-		return
+		return false
 	var resource := load(String(entry["model"]))
 	if resource == null:
 		push_warning("Slipper.apply_skin: cannot load %s" % entry["model"])
-		return
+		return false
 
 	if resource is Mesh:
 		var target := visual.find_children("*", "MeshInstance3D", true, false)
 		if target.is_empty():
-			return
+			return false
 		var instance := target[0] as MeshInstance3D
 		# Overrides do NOT clear themselves when the mesh beneath them changes,
 		# and the surface counts need not even match — see the twin note in lata.gd.
@@ -1498,10 +1510,12 @@ func _apply_model(entry: Dictionary) -> void:
 			instance.set_surface_override_material(surface, null)
 		instance.mesh = resource
 		_measure_rest_height(visual)
-		return
+		return true
 
 	if resource is PackedScene:
 		_swap_scene_model(visual, resource as PackedScene)
+		return true
+	return false
 
 ## Replaces `Visual`'s contents with a normalised instance of `scene`.
 func _swap_scene_model(visual: Node3D, scene: PackedScene) -> void:
