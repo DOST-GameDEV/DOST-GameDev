@@ -1214,9 +1214,6 @@ func _start_hosting() -> void:
 	# 4.3/B-65: a peer that connects (or reconnects) from here on has missed
 	# the lobby entirely — see NetworkManager.match_in_progress's own doc.
 	NetworkManager.player_identified.connect(_on_player_identified)
-	# See `_on_peer_picks_changed()`'s own doc: a pick made after a peer's own body
-	# already exists otherwise never reaches it.
-	NetworkManager.peer_picks_changed.connect(_on_peer_picks_changed)
 	NetworkManager.match_in_progress = true
 	# U-4: after the lobby all connected peers are already known; iterate over
 	# connected_peer_ids so everyone gets a spawner entry. In a fresh (non-
@@ -1403,8 +1400,45 @@ func _on_player_identified(peer_id: int, _token: String) -> void:
 ## never needed a ping at all.
 @rpc("any_peer", "call_remote", "reliable")
 func _rpc_client_ready_for_spawn() -> void:
-	if NetworkManager.is_host():
-		_try_late_join(multiplayer.get_remote_sender_id())
+	if not NetworkManager.is_host():
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	_try_late_join(sender)
+	# ⚠️⚠️ AND THE PICKS TABLE, UNCONDITIONALLY — NOT ONLY WHEN `_try_late_join` ACTUALLY
+	# SPAWNS SOMEBODY. This is the skin bug, and the reason every previous attempt at it
+	# "verified" clean: the DATA was always right and only the MODEL was stale.
+	#
+	# `_rpc_sync_picks` is the only thing that makes a client re-instance a model —
+	# `_apply_known_picks` calls `CharacterVisual.apply()` by hand, and `apply()` is the
+	# one function that instances one. A replicated `character_index` arriving on the
+	# synchroniser writes the property SILENTLY: it is a plain var with no setter (and
+	# `character_base.gd:513` documents, with measurements, why a repainting setter was
+	# tried and withdrawn — `apply()` frees every child of `Visual`, including a carried
+	# tsinelas). So a client whose seat's index changed after `_ready()` keeps drawing
+	# whatever it drew first.
+	#
+	# `_try_late_join` sent the table, but its FIRST LINE is `if _spawned_peer_ids.has(
+	# peer_id): return` — and in the ordinary lobby flow every peer was already spawned by
+	# `_start_hosting()`'s own loop before this ping arrives. So the table was sent to
+	# exactly the peers that did NOT need it (mid-match joiners) and never to the peers
+	# that did. The bots are dealt their faces host-side by `_refresh_ai_prop_picks()`
+	# inside `_fill_empty_slots_with_placeholders()`, which — alone among that function's
+	# callers — broadcasts nothing, so a client had NO repaint trigger until the ready
+	# gate's own `_rpc_sync_picks`. That is the report, both halves of it: the wrong
+	# faces on screen, and *"the skin changes after all players ready up"* being the
+	# moment they correct themselves.
+	#
+	# Measured on two headless peers, same match, before this line — identical
+	# `character_index` on both, different model on each:
+	#     HOST    s2[idx 7 female-c]  s3[idx 9 female-d]   <- the roster models
+	#     CLIENT  s2[idx 7 male-a  ]  s3[idx 9 female-a]   <- PERSON_MODELS, the -1 fallback
+	#
+	# ⚠️ SENT FROM HERE RATHER THAN BROADCAST FROM `_start_hosting()`, and that is the whole
+	# reason this RPC exists: it is the moment the client states its own `Main.tscn` is
+	# built. A table broadcast from `_start_hosting()` races the client's scene load and is
+	# dropped with "Node not found: Main" (measured). Safe to repaint here for the same
+	# reason the ready gate is: it is before the round, so no hand is full.
+	_rpc_sync_picks.rpc_id(sender, _picks_table())
 
 ## Shared by all three triggers above. Idempotent both ways: _spawned_peer_ids
 ## guards against spawning twice, and the missing-token return means a trigger
@@ -1682,39 +1716,6 @@ func _apply_known_picks(character: CharacterBase, index: int) -> void:
 		var slipper := int(row[4])
 		if can >= 0 or slipper >= 0:
 			_seat_prop_picks[index] = {"can": can, "slipper": slipper}
-
-## HOST-ONLY. `NetworkManager.publish_picks()` writes a changed pick into
-## `peer_characters` — the bookkeeping table `_build_spawn_data`/`_build_networked_character`
-## read at SPAWN — but nothing else ever re-reads that table onto an ALREADY-spawned
-## character: `_apply_known_picks()` above heals a client's REPLICATION lag from the
-## host's own already-correct property, and the ready gate's `_rpc_sync_picks(_picks_table())`
-## reads `character.character_index` itself (see `_picks_table()`'s own doc), not
-## `peer_characters` — so a pick made anywhere after a peer's OWN body already exists
-## (any time after `match_setup.gd`'s CHARACTER panel closes and the lobby's identify
-## snapshot has already been spawned from) silently never reached that body at all: it
-## stayed on whatever the connect-time snapshot gave it, which reads as the CHOSEN skin
-## showing up nowhere and an AI's `AI_PERSON_SPREAD` deal (0/3/6/9 — usually the first
-## entry a player browses to per tab) coincidentally matching it on some OTHER seat.
-##
-## Connected only in `_start_hosting()`, so this never runs on a client — a client's own
-## `peer_characters` is intentionally empty (`picks_for()`'s own doc), and the signal
-## itself only ever fires from `NetworkManager._apply_picks()`, which is HOST-ONLY too.
-func _on_peer_picks_changed(peer_id: int) -> void:
-	var character: CharacterBase = _spawned_characters.get(peer_id)
-	if character == null or not is_instance_valid(character):
-		return # not spawned yet — the normal spawn path reads the fresh pick itself
-	var picks := NetworkManager.picks_for(peer_id)
-	var person := int(picks.get("character", -1))
-	if person >= 0:
-		character.character_index = person
-	var visual: Node = character.get_node_or_null("Visual")
-	if visual != null and visual.has_method("apply"):
-		visual.apply(character.is_person, character.is_can, character.player_slot)
-	# The same collision this function's own doc describes can now run the other way —
-	# a human picking AFTER a bot was already dealt that same face — so re-resolve it
-	# immediately rather than leaving the duplicate up until the ready gate.
-	_refresh_ai_prop_picks()
-	_rpc_sync_picks.rpc(_picks_table())
 
 func _try_late_join(peer_id: int) -> void:
 	if _spawned_peer_ids.has(peer_id):
