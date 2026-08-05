@@ -62,6 +62,56 @@ func _ready() -> void:
 		_check(visual.EMOTE_CLIPS.has(id),
 			"wheel offers '%s' and EMOTE_CLIPS has it" % id)
 
+	# 1b — ⚠️⚠️ § THE DANCE IS THE ONE EMOTE WHOSE CLIP IS NOT ON THE RIG. Every other
+	# entry reuses one of Kenney's 32; `dance` is built at run time against this
+	# skeleton's seven bones, because no downloadable animation targets a rig this
+	# sparse (see `character_visual.gd` § THE DANCE). So the thing that can fail here
+	# is not "is the clip named correctly" but "did it get BUILT at all" — and a
+	# missing one fails soft: `play_emote()` walks to the fallback and the player gets
+	# a thumbs-up where they asked for a dance, with nothing in the log.
+	_check(visual._animator != null
+		and visual._animator.has_animation(visual.DANCE_CLIP),
+		"the generated dance clip is on this body's AnimationPlayer")
+	var dance: Animation = (visual._animator.get_animation(visual.DANCE_CLIP)
+		if visual._animator != null
+			and visual._animator.has_animation(visual.DANCE_CLIP) else null)
+	_check(dance != null and dance.get_track_count() == 8,
+		"it has a track per bone plus the root's position (%d)"
+			% (dance.get_track_count() if dance != null else -1))
+	# ⚠️ THE TRACKS MUST RESOLVE ON **THIS** MODEL. An imported track path carries the
+	# model's own name (`character-male-f/Skeleton3D:head`), so a clip authored against
+	# one of the twelve characters animates NOTHING on the other eleven — silently,
+	# because a track pointing at a missing node is not an error. This is the check
+	# that would catch the paths being hard-coded rather than read off the instance.
+	var resolved := 0
+	if dance != null:
+		var animator_root: Node = visual._animator.get_node(visual._animator.root_node)
+		for track in range(dance.get_track_count()):
+			var path: NodePath = dance.track_get_path(track)
+			var target: Node = animator_root.get_node_or_null(NodePath(path.get_concatenated_names()))
+			if target is Skeleton3D \
+					and (target as Skeleton3D).find_bone(path.get_concatenated_subnames()) >= 0:
+				resolved += 1
+	_check(dance != null and resolved == dance.get_track_count(),
+		"every dance track resolves to a real bone on this model (%d of %d)"
+			% [resolved, dance.get_track_count() if dance != null else -1])
+	# ⚠️ THE LOOP SEAM. `EMOTE_LOOPS["dance"]` replays the clip from `animation_finished`,
+	# so the last key has to equal the first or every bar snaps back to the downbeat.
+	if dance != null:
+		var seam_ok := true
+		for track in range(dance.get_track_count()):
+			var last := dance.track_get_key_count(track) - 1
+			if last < 1:
+				continue
+			var first_value = dance.track_get_key_value(track, 0)
+			var last_value = dance.track_get_key_value(track, last)
+			if typeof(first_value) == TYPE_QUATERNION:
+				if not (first_value as Quaternion).is_equal_approx(last_value):
+					seam_ok = false
+			elif not (first_value as Vector3).is_equal_approx(last_value):
+				seam_ok = false
+		_check(seam_ok, "the loop is seamless — last key equals first on every track")
+
 	# 2 — it plays, and it blocks locomotion while it does.
 	_check(me.can_emote(), "can_emote() true at rest")
 	me.play_emote(EMOTE)
@@ -79,16 +129,21 @@ func _ready() -> void:
 	me.stop_emote()
 	await get_tree().process_frame
 
-	# 2c — ⚠️ AND A HOLDING EMOTE HOLDS. 🧑: *"play dead looks hella weird rn im perma
-	# jumping up and down the floor and lying down"* — `die` drops the body, ends,
-	# restarts from standing and drops again, which is a corpse doing burpees. A held
-	# emote must finish ONCE and stay on its last frame: still emoting, but the
-	# AnimationPlayer no longer running.
-	me.play_emote("dead")
+	# 2c — ⚠️ AND A HOLDING EMOTE HOLDS. A held emote must finish ONCE and stay on its
+	# last frame: still emoting, but the AnimationPlayer no longer running.
+	#
+	# ⚠️ THIS USED TO BE `dead`, WHICH IS THE EMOTE THAT TAUGHT US THE DISTINCTION —
+	# 🧑 2026-08-04: *"play dead looks hella weird rn im perma jumping up and down the
+	# floor and lying down"*, because `die` drops the body, ends, restarts from standing
+	# and drops again: a corpse doing burpees. PLAY DEAD was replaced by DANCE on
+	# 2026-08-06, so the case moves to `sit`, which holds for the same reason — sitting
+	# down ends sitting, and standing back up every two seconds does not read as sitting.
+	# The rule outlived the emote that found it.
+	me.play_emote("sit")
 	await get_tree().create_timer(3.0).timeout
-	_check(me.is_emoting(), "PLAY DEAD is still held at 3 s")
+	_check(me.is_emoting(), "SIT DOWN is still held at 3 s")
 	_check(not visual._animator.is_playing(),
-		"and it is NOT replaying — the body stays on the floor")
+		"and it is NOT replaying — the pose stays put")
 	_check(rig.is_emote_view(), "camera still in the emote view while held")
 	me.stop_emote()
 	await get_tree().process_frame
