@@ -235,6 +235,100 @@ const DEFAULT_FULLSCREEN: bool = true
 
 var fullscreen: bool = DEFAULT_FULLSCREEN
 
+## ---------------------------------------------------------------------------
+## § THE LANDED-SLIPPER HIGHLIGHT. 🧑 2026-08-06: *"after a slipper is thrown and
+## landed, it will be highlighted ... players can choose in the settings to pick a
+## highlight color or to disable the highlights."*
+##
+## ⚠️⚠️ IT IS A **LOCAL** PREFERENCE ON A **SHARED** FACT, AND KEEPING THOSE TWO
+## APART IS THE WHOLE DESIGN. *Which* slippers are lit is the same answer on all
+## four machines — it falls straight out of `Slipper`'s replicated state, so no
+## packet is added for it (see `Slipper._refresh_highlight`). *What colour* they
+## are lit is this value, and it is never sent anywhere: two players can run Red
+## and Yellow in the same match and neither is wrong. Replicating the colour
+## would be strictly worse than not having the setting — it would let one peer
+## overwrite another's accessibility choice, which is the one thing an
+## accessibility control must never do.
+##
+## ⚠️ THE PALETTE IS FOUR HUES BECAUSE OF WHAT THE FOUR ARE FOR, NOT FOR VARIETY.
+## The reference the human gave is Valorant's enemy-outline colourblind set —
+## one default plus one tuned per deficiency type — and the useful property of
+## that set is that no two of its members collapse into each other under ANY of
+## the three common deficiencies. Red/blue survives deuteranopia and protanopia
+## (both red-green); yellow/purple survives tritanopia (blue-yellow). A palette
+## picked for looks would fail exactly the player it exists for.
+##
+## ⚠️ THE LABELS ARE PLAIN COLOUR NAMES, NOT DEFICIENCY NAMES. Valorant names its
+## rows "Deuteranopia"/"Protanopia" because it ships one preset per condition;
+## this ships four colours and lets the player look at them. A row reading
+## "Tritanopia" asks a nine-year-old at a barangay demo to self-diagnose before
+## they can pick a colour they can see — the colour name asks them to pick the
+## one that looks clearest, which is the same choice without the diagnosis.
+##
+## ⚠️ OFF IS INDEX 0 RATHER THAN A SEPARATE BOOL, and that is what makes this ONE
+## control instead of two. A checkbox plus a picker has a dead state (a colour
+## chosen while the feature is off) that has to be styled and explained; a list
+## whose first row is "Off" cannot represent it. It also makes the clamp on load
+## honest — `clampi` over the whole list, exactly like `ai_difficulty`, with no
+## sentinel value living outside the range it is clamped to.
+##
+## ⚠️ STORED AS AN INT FOR THE REASON `ai_difficulty` RECORDS: `settings.cfg` is
+## read back by builds whose palette may have grown a row, and an int with a
+## clamp survives that.
+const HIGHLIGHT_OFF: int = 0
+
+## Ordered for display — the Settings picker iterates this directly, so a row
+## added here appears in the panel with no second edit.
+##
+## The colours are written for a RIM term, not for a fill: `toon.gdshader` mixes
+## `rim_color` into the lit base by a facing-angle ramp, so a desaturated hue
+## arrives washed out. These are pushed to the saturated corner on purpose.
+const SLIPPER_HIGHLIGHTS: Array[Dictionary] = [
+	{"label": "Off", "color": Color(0.0, 0.0, 0.0)},
+	{"label": "Blue", "color": Color(0.18, 0.55, 1.0)},
+	{"label": "Purple", "color": Color(0.79, 0.13, 1.0)},
+	{"label": "Red", "color": Color(1.0, 0.16, 0.16)},
+	{"label": "Yellow", "color": Color(1.0, 0.95, 0.05)},
+]
+
+## Blue, and it is the one choice in this block that is about THIS game rather
+## than about the reference. The owner glow this rim shares a channel with is
+## gold (`Slipper.OWNER_RIM_COLOR` = 1.0, 0.86, 0.35), the arena is warm dust and
+## wood, and both maps are lit warm — so blue is the only entry in the palette
+## that cannot be mistaken for either the other indicator or the floor behind it.
+## Yellow as a default would have shipped a "where did it go" cue the same colour
+## as the "this one is yours" cue.
+const DEFAULT_SLIPPER_HIGHLIGHT: int = 1
+
+## Fires when the player picks a different colour or switches the highlight off,
+## so every slipper already lying on the arena repaints itself now rather than at
+## the next landing. The panel is reachable from the IN-MATCH pause menu, so
+## "takes effect next round" reads as the control not working — the same reason
+## the name row pushes onto the live character instead of only saving.
+signal slipper_highlight_changed
+
+var slipper_highlight: int = DEFAULT_SLIPPER_HIGHLIGHT
+
+## ⚠️ NO EARLY RETURN ON AN UNCHANGED VALUE, deliberately, unlike `set_player_name()`.
+## `revert_edit()` and `_load_and_apply()` both call this to re-assert a value that is
+## usually already correct, and the emit is what repaints; swallowing it would leave a
+## slipper wearing the colour the player just discarded.
+func set_slipper_highlight(value: int, persist: bool = true) -> void:
+	slipper_highlight = clampi(value, 0, SLIPPER_HIGHLIGHTS.size() - 1)
+	if persist:
+		_save()
+	slipper_highlight_changed.emit()
+
+func slipper_highlight_enabled() -> bool:
+	return slipper_highlight != HIGHLIGHT_OFF
+
+## The rim colour for the current pick. Meaningless while `slipper_highlight_enabled()`
+## is false — callers ask that first — but it still returns a real Color rather than
+## anything nullable, so a caller that forgets gets a black rim and not a crash.
+func slipper_highlight_color() -> Color:
+	var index := clampi(slipper_highlight, 0, SLIPPER_HIGHLIGHTS.size() - 1)
+	return SLIPPER_HIGHLIGHTS[index]["color"]
+
 func _ready() -> void:
 	_capture_defaults()
 	_load_and_apply()
@@ -489,6 +583,7 @@ func begin_edit() -> void:
 		"ai_difficulty": ai_difficulty,
 		"player_name": player_name,
 		"fullscreen": fullscreen,
+		"slipper_highlight": slipper_highlight,
 	}
 
 func is_editing() -> bool:
@@ -508,7 +603,9 @@ func has_unsaved_changes() -> bool:
 		or not is_equal_approx(float(_snapshot.get("music_volume", 0.0)), music_volume)
 		or int(_snapshot.get("ai_difficulty", 0)) != ai_difficulty
 		or String(_snapshot.get("player_name", "")) != player_name
-		or bool(_snapshot.get("fullscreen", DEFAULT_FULLSCREEN)) != fullscreen)
+		or bool(_snapshot.get("fullscreen", DEFAULT_FULLSCREEN)) != fullscreen
+		or int(_snapshot.get("slipper_highlight", DEFAULT_SLIPPER_HIGHLIGHT))
+			!= slipper_highlight)
 
 ## Write everything the edit touched and close the transaction.
 func commit_edit() -> void:
@@ -555,6 +652,10 @@ func revert_edit() -> void:
 	# says windowed is exactly the memory/disk split this whole transaction exists to stop.
 	fullscreen = bool(snapshot.get("fullscreen", fullscreen))
 	_apply_fullscreen()
+	# ⚠️ A LIVE EFFECT LIKE THE WINDOW MODE ABOVE, so BACK has to repaint the arena too.
+	# The setter emits unconditionally, which is what makes this put the rim back rather
+	# than merely put the number back.
+	set_slipper_highlight(int(snapshot.get("slipper_highlight", slipper_highlight)), false)
 	var restored_name := String(snapshot.get("player_name", player_name))
 	if restored_name != player_name:
 		player_name = restored_name
@@ -592,6 +693,7 @@ func _save() -> void:
 	config.set_value(SETTINGS_SECTION_MATCH, "ai_difficulty", ai_difficulty)
 	config.set_value(SETTINGS_SECTION_MATCH, "player_name", player_name)
 	config.set_value(SETTINGS_SECTION_DISPLAY, "fullscreen", fullscreen)
+	config.set_value(SETTINGS_SECTION_DISPLAY, "slipper_highlight", slipper_highlight)
 	var err := config.save(SETTINGS_PATH)
 	if err != OK:
 		push_warning("SettingsManager: failed to save %s (error %d)" % [SETTINGS_PATH, err])
@@ -701,3 +803,8 @@ func _load_and_apply() -> void:
 	# `persist` false, same as the two above: re-applying what we just read is not a change.
 	set_fullscreen(bool(config.get_value(SETTINGS_SECTION_DISPLAY, "fullscreen",
 		DEFAULT_FULLSCREEN)), false)
+	# Clamped through the setter for the reason `ai_difficulty` above is: a `settings.cfg`
+	# written by a build with a longer palette must not index off the end of this one.
+	# `persist` false — re-applying what we just read is not a change worth writing back.
+	set_slipper_highlight(int(config.get_value(SETTINGS_SECTION_DISPLAY, "slipper_highlight",
+		DEFAULT_SLIPPER_HIGHLIGHT)), false)

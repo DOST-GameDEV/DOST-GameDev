@@ -48,7 +48,10 @@ const EMOTES: Array[Dictionary] = [
 	{"id": "no", "label": "NOPE", "name": "NOPE"},
 	{"id": "sit", "label": "SIT", "name": "SIT DOWN"},
 	{"id": "crouch", "label": "VICTORY", "name": "VICTORY POSE"},
-	{"id": "dead", "label": "DEAD", "name": "PLAY DEAD"},
+	# Replaced PLAY DEAD 2026-08-06 — 🧑: *"lets remove the play dead emote and replace
+	# it with a dance emote instead"*. One word in the wedge and one in the hole, both
+	# short, so this is the one entry that could never have caused the overflow above.
+	{"id": "dance", "label": "DANCE", "name": "DANCE"},
 	{"id": "tpose", "label": "T-POSE", "name": "T-POSE"},
 	{"id": "bow", "label": "BOW", "name": "BOW"},
 ]

@@ -1449,7 +1449,172 @@ func _play_idle(model: Node3D) -> void:
 		return
 	if not _animator.animation_finished.is_connected(_on_animation_finished):
 		_animator.animation_finished.connect(_on_animation_finished)
+	_ensure_dance_clip(model)
 	_play_locomotion()
+
+## ---------------------------------------------------------------------------
+## § THE DANCE. 🧑 2026-08-06: *"lets remove the play dead emote and replace it with a
+## dance emote instead. search online for a dance emote that is compatible with our
+## overall rig and models."*
+##
+## ⚠️⚠️ NOTHING ONLINE IS COMPATIBLE, AND THE REASON IS THE SKELETON. Dumped from
+## `character-male-f.glb`, which every Person in the game is one of twelve variants of:
+##
+##     Skeleton3D bones=7
+##     root · leg-left · leg-right · torso · arm-left · arm-right · head
+##
+## Seven bones. **No elbows, no knees, no wrists, no spine chain, no neck, no feet, no
+## fingers.** Every free dance animation worth having — Mixamo, and every mocap library
+## that follows its convention — is authored for a humanoid of 20 to 65+ bones, and
+## Godot's own retargeting works by mapping a source onto `SkeletonProfileHumanoid`,
+## which *requires* hips, spine, chest, neck, head, shoulders, upper and lower arms,
+## hands, upper and lower legs and feet. This rig can satisfy roughly a third of that
+## profile. Retargeting a mocap dance onto it is not a retarget, it is a re-authoring
+## with 90% of the source's channels thrown away and the survivors landing on bones
+## whose rest orientations and proportions were never the ones the mocap assumed.
+##
+## ⚠️ AND KENNEY DOES NOT SHIP ONE. The pack is Mini Characters 1 (CC0), advertised as
+## *"32 animations including several for wheelchair use"*, and the dump above enumerates
+## all 32: locomotion, combat, wheelchair, `sit`/`crouch`/`die`/`pick-up`, and exactly
+## two gestures (`emote-yes`, `emote-no`). There is no dance, cheer, wave or celebrate
+## clip to borrow — which is the same wall `"crouch"` hit when a victory pose was asked
+## for, and why that entry is still an honest placeholder rather than a promise.
+##
+## ⚠️ SO IT IS BUILT, NOT DOWNLOADED — and that is cheaper here than it sounds, because
+## seven bones is few enough to pose by hand and a groove is periodic, so the whole clip
+## is a handful of sine terms rather than a hand-keyed performance. It also adds NO
+## ASSET: no new file, no import step, no licence to track, and it fits all twelve
+## character models for free because the node paths are read off whichever one was
+## instanced (see `_ensure_dance_clip()`).
+##
+## ⚠️ THE MOVE IS CHOSEN FOR A RIG WITH RIGID LIMBS. Anything that depends on a bent
+## elbow, a wrist flick or a knee is unavailable, so the dance is built from the four
+## things this skeleton CAN say clearly: a two-beat hop on `root`, a side-to-side sway
+## with the hips and torso counter-twisting against each other, alternating straight-arm
+## raises, and a head that tilts into the sway. Read at gameplay distance on a blocky
+## character, that is a legible party-game groove; a subtle one would read as a bug.
+const DANCE_LIBRARY: StringName = &"generated"
+## Library-qualified, which is how an `AnimationPlayer` addresses anything outside the
+## unnamed library the .glb imported into. `has_animation()` and `play()` both take this
+## exact string, so `EMOTE_CLIPS` can name it like any shipped clip.
+const DANCE_CLIP: String = "generated/dance"
+## One bar at 120 BPM. Four beats: two hops, one full left-right sway, one arm swap.
+const DANCE_LENGTH: float = 2.0
+## Keys per track. The motion is sinusoidal and the interpolation is linear, so this is
+## a sampling rate: 24 over 2 s is one key every 83 ms, well inside what reads as smooth
+## and small enough that the whole clip is a few kilobytes of runtime data.
+const DANCE_KEYS: int = 24
+## Every bone gets a rotation track. `root` gets a position track too — the hop and the
+## side-step are translation, and it is the only bone whose movement carries the body.
+const DANCE_BONES: Array[String] = [
+	"root", "torso", "head", "arm-left", "arm-right", "leg-left", "leg-right",
+]
+
+## Adds the built clip to this model's own `AnimationPlayer`, once.
+##
+## ⚠️ A **NEW** LIBRARY, NEVER THE IMPORTED ONE. The unnamed library belongs to the
+## `.glb` and is shared by every instance of that file through the resource cache, so
+## adding to it would mutate an imported resource out from under every other character
+## wearing the same model. A library of our own is per-`AnimationPlayer`, which is
+## per-character, and costs one small `Animation` per body.
+##
+## ⚠️ THE TRACK PATHS ARE READ OFF THE INSTANCED MODEL, NOT HARD-CODED, AND THAT IS WHAT
+## MAKES ONE BUILDER SERVE TWELVE MODELS. An imported track is addressed
+## `character-male-f/Skeleton3D:head` — the model's own name is IN the path, so a clip
+## authored for one character would silently animate nothing on the other eleven.
+## `get_path_to()` asks the model that is actually here.
+func _ensure_dance_clip(model: Node3D) -> void:
+	if _animator == null or _animator.has_animation(DANCE_CLIP):
+		return
+	var skeleton := model.find_child("Skeleton3D", true, false) as Skeleton3D
+	if skeleton == null:
+		return # a Prop, or a model still being built — nothing to dance with
+	var animator_root := _animator.get_node_or_null(_animator.root_node)
+	if animator_root == null:
+		return
+	var library := AnimationLibrary.new()
+	library.add_animation(&"dance", _build_dance_animation(
+		String(animator_root.get_path_to(skeleton))))
+	_animator.add_animation_library(DANCE_LIBRARY, library)
+
+## The groove itself. `prefix` is the path from the animator's root to the Skeleton3D.
+##
+## ⚠️ `LOOP_NONE`, DELIBERATELY, ON A CLIP THAT IS MEANT TO REPEAT. Every one of the
+## rig's 32 imported clips is authored `LOOP_NONE` and the emote system replays the
+## looping ones from `animation_finished` (see `EMOTE_LOOPS`). A clip carrying its own
+## `LOOP_LINEAR` never emits that signal, so it would repeat correctly while quietly
+## bypassing the one mechanism every other emote goes through — two ways to loop, and
+## the next person to touch `EMOTE_LOOPS` would find one emote it does not govern.
+##
+## ⚠️ THE SEAM IS CLOSED BY CONSTRUCTION. The last key is written at `phase == TAU`,
+## where every term below returns exactly its `phase == 0` value, so the replay lands on
+## the pose it left. That is what lets the loop live in `EMOTE_LOOPS` without a visible
+## snap back to the downbeat on every bar.
+func _build_dance_animation(prefix: String) -> Animation:
+	var anim := Animation.new()
+	anim.length = DANCE_LENGTH
+	anim.loop_mode = Animation.LOOP_NONE
+	var rotation_tracks: Dictionary = {}
+	for bone in DANCE_BONES:
+		var track := anim.add_track(Animation.TYPE_ROTATION_3D)
+		anim.track_set_path(track, NodePath("%s:%s" % [prefix, bone]))
+		rotation_tracks[bone] = track
+	var root_position := anim.add_track(Animation.TYPE_POSITION_3D)
+	anim.track_set_path(root_position, NodePath("%s:root" % prefix))
+
+	for i in range(DANCE_KEYS + 1):
+		var time: float = DANCE_LENGTH * float(i) / float(DANCE_KEYS)
+		var phase: float = TAU * float(i) / float(DANCE_KEYS)
+		# One cycle per bar — the weight shifting left, then right.
+		var sway: float = sin(phase)
+		# Two per bar — the beat itself, for the hop and every accent that rides it.
+		var beat: float = sin(phase * 2.0)
+		# ⚠️ `(1 - cos)/2` RATHER THAN `sin`, so the hop is never NEGATIVE. `root` carries
+		# the legs, so a downward key drives the feet through the road — and the road is
+		# at y 0.1 on both maps, which is exactly the sinking `Slipper.REST_HEIGHT` had to
+		# be measured against. This form is 0 at the loop seam and 0 at its minimum.
+		var hop: float = (1.0 - cos(phase * 2.0)) * 0.5
+		# The arms alternate: one up while the other is down, swapping with the sway.
+		var raise_left: float = 0.5 + 0.5 * sway
+		var raise_right: float = 0.5 - 0.5 * sway
+
+		# ⚠️ UNITS ARE BONE-LOCAL, i.e. MODEL units — the parent chain applies
+		# `PERSON_SCALE` (2.38), so 0.02 here is ~48 mm in the arena. The same convention
+		# the hand-offset constants in this file are quoted in.
+		anim.position_track_insert_key(root_position, time,
+			Vector3(0.042 * sway, 0.050 * hop, 0.0))
+		# Hips lead the sway and twist with it.
+		anim.rotation_track_insert_key(rotation_tracks["root"], time,
+			Quaternion.from_euler(Vector3(0.0, deg_to_rad(14.0 * sway),
+				deg_to_rad(-9.0 * sway))))
+		# ⚠️ THE TORSO TWISTS **AGAINST** THE HIPS, and that counter-rotation is most of
+		# what makes this read as dancing rather than as a body being slid sideways. It is
+		# also the only articulation available: with no spine chain, the single torso bone
+		# is the entire upper body's contribution.
+		anim.rotation_track_insert_key(rotation_tracks["torso"], time,
+			Quaternion.from_euler(Vector3(deg_to_rad(7.0 * beat),
+				deg_to_rad(-20.0 * sway), deg_to_rad(14.0 * sway))))
+		anim.rotation_track_insert_key(rotation_tracks["head"], time,
+			Quaternion.from_euler(Vector3(deg_to_rad(9.0 * beat),
+				deg_to_rad(10.0 * sway), deg_to_rad(13.0 * sway))))
+		# ⚠️ MIRRORED SIGNS ON Z, BECAUSE THE ARMS HANG ON OPPOSITE SIDES. A rotation
+		# about +Z swings a downward-pointing bone toward +X, which is OUTWARD for the
+		# left arm and INWARD for the right — so the right arm negates, or both arms
+		# swing the same way and the character salutes instead of dancing.
+		anim.rotation_track_insert_key(rotation_tracks["arm-left"], time,
+			Quaternion.from_euler(Vector3(deg_to_rad(8.0 * beat), 0.0,
+				deg_to_rad(lerpf(25.0, 160.0, raise_left)))))
+		anim.rotation_track_insert_key(rotation_tracks["arm-right"], time,
+			Quaternion.from_euler(Vector3(deg_to_rad(-8.0 * beat), 0.0,
+				deg_to_rad(-lerpf(25.0, 160.0, raise_right)))))
+		# Knee-less legs can only swing from the hip, so they step rather than bend.
+		anim.rotation_track_insert_key(rotation_tracks["leg-left"], time,
+			Quaternion.from_euler(Vector3(deg_to_rad(16.0 * sway), 0.0,
+				deg_to_rad(11.0 * sway))))
+		anim.rotation_track_insert_key(rotation_tracks["leg-right"], time,
+			Quaternion.from_euler(Vector3(deg_to_rad(-16.0 * sway), 0.0,
+				deg_to_rad(11.0 * sway))))
+	return anim
 
 ## Kenney's rig ships 32 clips and only `idle` was ever wired, so a Person slid
 ## around the arena frozen in its rest pose — which reads as broken art more
@@ -1990,8 +2155,15 @@ const EMOTE_CLIPS: Dictionary = {
 	# fist-pump) and it is the honest placeholder rather than a promise the animation
 	# does not keep. See EMOTE_LOOPS for the shortlist of what else could be added.
 	"crouch": ["crouch", "sit"] as Array[String],
-	# The taunt. `die` is the knockdown clip played on purpose.
-	"dead": ["die", "crouch"] as Array[String],
+	# ⚠️⚠️ THE DANCE REPLACES PLAY DEAD, 2026-08-06, ON HUMAN INSTRUCTION: *"lets remove
+	# the play dead emote and replace it with a dance emote instead"*.
+	#
+	# ⚠️ AND IT IS THE ONLY EMOTE HERE THAT IS NOT A CLIP THIS RIG SHIPPED. Every other
+	# line above is a reused Kenney clip, which is why "victory" is honestly labelled a
+	# placeholder — there was nothing better to point at. `dance` is BUILT, at run time,
+	# against the seven bones this skeleton actually has. See § THE DANCE below for why
+	# nothing could be downloaded instead.
+	"dance": [DANCE_CLIP, "emote-yes"] as Array[String],
 	# ⚠️ `static` IS THE RIG'S UNANIMATED BIND POSE — arms out, feet together — which
 	# is exactly the T-pose the joke is about. It was one of the fifteen clips in the
 	# .glb that nothing in the game had ever played.
@@ -2014,6 +2186,10 @@ const EMOTE_CLIPS: Dictionary = {
 ## fine repeated; a state change does not, because the thing the player wants is the
 ## END of it, held.
 ##
+## ⚠️ PLAY DEAD ITSELF IS GONE — replaced by DANCE on 2026-08-06 — so do not go looking
+## for the `dead` row this quote is about. The rule it bought outlived it and still
+## governs `sit`, `crouch` and `tpose`, which hold for exactly the reason above.
+##
 ## So a looping emote replays on `animation_finished` and a holding one simply does
 ## not — the AnimationPlayer leaves the final frame applied, and `_action_clip` is
 ## still set so locomotion cannot overwrite it. The pose stays until the player
@@ -2023,7 +2199,11 @@ const EMOTE_LOOPS: Dictionary = {
 	"no": true,
 	"sit": false,   # sitting down ends sitting; standing back up every 2 s does not read as sitting
 	"crouch": false,
-	"dead": false,
+	# ⚠️ A DANCE IS THE PUREST LOOPING CASE THERE IS — it is a groove, not a gesture with
+	# an end, and stopping after one bar would read as the emote breaking. The clip is
+	# authored so its last key equals its first (see `_build_dance_animation()`), so the
+	# replay this flag drives is seamless rather than a visible snap back to the downbeat.
+	"dance": true,
 	# A T-pose is a POSE — there is nothing to repeat, and `static` is the bind pose.
 	"tpose": false,
 	# A bow is a gesture with a return, so repeating it reads as bowing over and over,

@@ -3447,14 +3447,18 @@ func _rpc_slipper_thrown(slipper_index: int, slot: int, origin: Vector3, launch_
 		return
 	slippers[slipper_index]._apply_thrown(slot, origin, launch_velocity)
 
-## `audible` defaults so a caller that never needs the sound (a round reset
-## teleporting three slippers home on one frame — see `_apply_landed`'s own
-## doc) can omit it, same contract the old per-node RPC kept.
+## `from_flight` defaults so a caller that is not ending a flight (a round reset
+## teleporting three slippers home on one frame, or a drop — see `_apply_landed`'s
+## own doc) can omit it, same contract the old per-node RPC kept.
+##
+## ⚠️ IT DRIVES THE LANDING THUD **AND** THE LANDED HIGHLIGHT, which is why it is
+## named for the event rather than for either one. It was `audible` until the
+## highlight needed the same bit; `_apply_landed()`'s doc has the full reasoning.
 @rpc("authority", "call_local", "reliable")
-func _rpc_slipper_landed(slipper_index: int, where: Vector3, audible: bool = false) -> void:
+func _rpc_slipper_landed(slipper_index: int, where: Vector3, from_flight: bool = false) -> void:
 	if slipper_index < 0 or slipper_index >= slippers.size():
 		return
-	slippers[slipper_index]._apply_landed(where, audible)
+	slippers[slipper_index]._apply_landed(where, from_flight)
 
 @rpc("authority", "call_local", "reliable")
 func _rpc_slipper_deflected(slipper_index: int, from: Vector3, new_velocity: Vector3) -> void:
