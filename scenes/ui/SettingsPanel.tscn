@@ -186,6 +186,34 @@ layout_mode = 2
 theme_type_variation = &"MenuCheckBox"
 text = "Fullscreen"
 
+; § THE LANDED-SLIPPER HIGHLIGHT. The rim a tsinelas wears once it has been thrown and
+; has come to rest, so it can be found again — see slipper.gd § THE LANDED HIGHLIGHT.
+;
+; Authored here rather than built in settings_panel.gd, per § CHECKLIST 1.9 and the same
+; note the PlayerNameRow above carries: a control created at runtime sits outside the
+; focus order this scene defines, which is the half of the REACHABILITY RULE that is easy
+; to miss — operable with a mouse and unreachable by keyboard.
+;
+; The ITEMS are filled in from SettingsManager.SLIPPER_HIGHLIGHTS at run time, because the
+; palette is that file's to own; a copy of the list typed in here is a second list that
+; will disagree with the first.
+[node name="SlipperHighlightRow" type="HBoxContainer" parent="Card/Margin/Layout/Scroll/Content"]
+layout_mode = 2
+
+[node name="SlipperHighlightLabel" type="Label" parent="Card/Margin/Layout/Scroll/Content/SlipperHighlightRow"]
+custom_minimum_size = Vector2(260, 0)
+layout_mode = 2
+theme_type_variation = &"MenuBody"
+vertical_alignment = 1
+text = "Landed Slipper Highlight"
+
+[node name="SlipperHighlightPicker" type="OptionButton" parent="Card/Margin/Layout/Scroll/Content/SlipperHighlightRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(170, 46)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+
 [node name="AudioHeading" type="Label" parent="Card/Margin/Layout/Scroll/Content"]
 layout_mode = 2
 theme_type_variation = &"MenuCaption"
