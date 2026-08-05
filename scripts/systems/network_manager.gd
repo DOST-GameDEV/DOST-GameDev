@@ -400,58 +400,6 @@ func is_seatless_referee(peer_id: int) -> bool:
 	# literal `_on_connected_to_server` and every `rpc_id(1, ...)` in this file uses.
 	return is_dedicated and peer_id == 1
 
-## ⚠️⚠️ THE SAME BUG `publish_spectator()` FIXES, FOR THE OTHER THREE PICKS. Just
-## like SPECTATE, CHARACTER/CAN/SLIPPER are chosen in the lobby the peer is
-## sitting in AFTER `_local_picks()` was already snapshotted and sent — so
-## opening the CHARACTER panel and changing a skin never told the host anything.
-## Every peer spawned that unit from whatever `GameLaunch.selected_*` happened to
-## hold at connect time, which is a leftover preference from the PREVIOUS match
-## (`GameLaunch`'s own doc: these three are not cleared by `reset()`) rather than
-## the pick just made — read by everyone, including the picker's own machine,
-## via `main.gd::_build_networked_character`'s `picks_for()` lookup.
-##
-## `match_setup.gd::_on_character_panel_closed()` used to carry a comment
-## claiming "NetworkManager republishes this peer's picks to the host on its
-## own" — describing exactly this function, except it never existed. Call this
-## from there instead, mirroring `publish_spectator()`'s shape exactly: the
-## sender proposes, the host records.
-func publish_picks() -> void:
-	local_picks["character"] = GameLaunch.character_index()
-	local_picks["can"] = GameLaunch.can_index()
-	local_picks["slipper"] = GameLaunch.slipper_index()
-	if not is_networked():
-		return
-	if is_host():
-		_apply_picks(multiplayer.get_unique_id(),
-			local_picks["character"], local_picks["can"], local_picks["slipper"])
-		return
-	# Same window `match_setup.gd::_can_rpc` documents: a press before the
-	# handshake completes is not lost — `local_picks` above already carries it,
-	# and `_on_connected_to_server` sends the packet with today's values.
-	if multiplayer.multiplayer_peer == null:
-		return
-	if multiplayer.multiplayer_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
-		return
-	_rpc_set_picks.rpc_id(1, local_picks["character"], local_picks["can"], local_picks["slipper"])
-
-## Any peer -> host: "here is what I actually picked."
-@rpc("any_peer", "call_remote", "reliable")
-func _rpc_set_picks(character: int, can: int, slipper: int) -> void:
-	if not is_host():
-		return
-	_apply_picks(multiplayer.get_remote_sender_id(), character, can, slipper)
-
-## HOST ONLY. Same shape as `_apply_spectator()` — writes into the one
-## `peer_characters` entry `_rpc_identify` builds, so a later pick can only ever
-## overwrite that entry's own fields, never create a second source of truth.
-func _apply_picks(peer_id: int, character: int, can: int, slipper: int) -> void:
-	var picks: Dictionary = peer_characters.get(peer_id,
-		{"character": -1, "can": -1, "slipper": -1, "spectator": 0, "name": ""})
-	picks["character"] = character
-	picks["can"] = can
-	picks["slipper"] = slipper
-	peer_characters[peer_id] = picks
-
 ## How many connected peers are actually PLAYING. The ready gate counts these, not
 ## `connected_peer_ids.size()` â€” a lobby of two players and two spectators must start on
 ## two presses, and counting all four would hang it forever on people who cannot press.
