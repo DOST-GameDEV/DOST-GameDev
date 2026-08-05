@@ -753,6 +753,8 @@ func _start_local_test() -> void:
 	# see _awaiting_local_ready's own doc. Everyone is already spawned at their
 	# role position, but the round (and confinement, which is gated on
 	# RoundManager.round_active) doesn't start until the player readies up.
+	# Single Player reaches neither networked call site above.
+	_push_pre_round_prop_skins()
 	_awaiting_local_ready = true
 	hud.show_ready_prompt(true)
 	# ⚠️ A SOLO SPECTATOR HAS NOBODY TO READY UP, AND THE PROMPT ASKING THEM TO IS HIDDEN.
@@ -1238,6 +1240,9 @@ func _start_hosting() -> void:
 	# 2026-07-28, user feedback: "when playing multiplayer, for example only
 	# 2 people is playing, there's only 2 characters. it should have 4."
 	_fill_empty_slots_with_placeholders()
+	# The lata wears the defending seat's own can from here, not only from the round
+	# reset — see `_push_pre_round_prop_skins()`.
+	_push_pre_round_prop_skins()
 	# ⚠️ NOT begin_next_round() ANY MORE — see _awaiting_net_ready's own doc.
 	# The round starts when the players say so, not when the scene finishes
 	# loading. Until then RoundManager.round_active is false and
@@ -1462,6 +1467,10 @@ func _rpc_client_ready_for_spawn() -> void:
 	# dropped with "Node not found: Main" (measured). Safe to repaint here for the same
 	# reason the ready gate is: it is before the round, so no hand is full.
 	_rpc_sync_picks.rpc_id(sender, _picks_table())
+	# This peer's own picks arrived immediately before this ping (both reliable to peer 1,
+	# sent in that order by `_start_joining`), so this is the first moment the lata can be
+	# dressed with a joiner's own can — and it is still before the round.
+	_push_pre_round_prop_skins()
 
 ## Shared by all three triggers above. Idempotent both ways: _spawned_peer_ids
 ## guards against spawning twice, and the missing-token return means a trigger
@@ -2779,6 +2788,35 @@ func _reset_world(defender_slot: int) -> void:
 ## looked up here rather than stored on `CharacterBase`, which this lane does
 ## not own and does not need to touch for this.
 ## ---------------------------------------------------------------------------
+## Dresses the props for the round that is ABOUT to start, so the lata already wears the
+## defending seat's own can during the free-roam window before READY.
+##
+## ⚠️⚠️ THIS WAS TRIED ONCE (e2c86b3), BROKE THE SKINS OUTRIGHT, AND WAS REVERTED. It is
+## safe now and it was not then, and the difference is not in this function. `apply_skin()`
+## used to write `skin_index` BEFORE `_apply_model()` could report failure, so an early
+## push — arriving while a prop's `Visual` had no `MeshInstance3D` yet — latched the number
+## without swapping the mesh, and the `index == skin_index` guard then killed every later
+## retry including the round-reset one. Adding an early push to that made the can
+## unrecoverable. `lata.gd`/`slipper.gd` now latch only after the swap actually happened
+## (d79d01c), so an early miss is a no-op that the round reset simply retries.
+##
+## ⚠️ WITHOUT THIS THE PRE-ROUND LATA WEARS WHATEVER IT WORE LAST. On a fresh scene that is
+## the shipped default; on a DEDICATED server, whose `Main.tscn` is never reloaded between
+## matches, it is **the previous match's can** — which is the reported symptom exactly.
+## Measured before this: 4 consecutive pre-ready samples on both peers reading the default
+## while the table already held the defender's real pick.
+##
+## ⚠️ THE TSINELAS LEGITIMATELY STAY AS THEY ARE UNTIL THE ROUND RESET. `_push_prop_skins()`
+## keys them by `owner_slot`, which `_reset_slippers()` assigns there, so they resolve to -1
+## beforehand — and both props' `apply_skin()` return immediately on a negative index, so
+## this can only leave a slipper alone, never paint one wrong.
+func _push_pre_round_prop_skins() -> void:
+	NetworkManager.publish_picks()
+	_refresh_seat_prop_picks()
+	# Same derivation `_build_spawn_data` uses for the opening round, so the can worn
+	# before READY and the seat that actually defends cannot disagree.
+	_push_prop_skins(MatchManager.defender_slot_for(maxi(1, MatchManager.round_number)))
+
 func _push_prop_skins(defender_slot: int) -> void:
 	if NetworkManager.is_networked() and not NetworkManager.is_host():
 		return
