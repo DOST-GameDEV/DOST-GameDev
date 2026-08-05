@@ -1003,3 +1003,67 @@ that could **not** be confirmed are marked as such and repeated here:
   shell script was exercised under Git Bash on Windows, which shares its syntax
   but not its process model, signals, or `ss`.
 - **A four-player match against a pooled server**, from a client on the internet.
+
+---
+
+## 11. Redeploying — and who can do it
+
+**One command, from the project root, on any machine holding the SSH key:**
+
+```
+./tools/server/deploy.sh
+```
+
+It packs the checkout, uploads it, reinstalls, reimports, and then prints the
+server's checksums beside your own. **Those hashes matching is the only proof
+the deploy landed** — read them, do not assume.
+
+### ⚠️ When a redeploy is required
+
+The server has no screen, so most changes do not need one.
+
+| Change | Redeploy? |
+| --- | --- |
+| UI, menus, HUD, art, audio, settings panels | no |
+| Client-only logic — aiming arc, input, camera | no |
+| **Adding / removing / renaming an `@rpc` method** | **yes, urgently** |
+| **Host-side rules — who may join, seating, scoring, round flow** | **yes** |
+| **`_build_spawn_data` contents** | **yes** |
+
+Rule of thumb: if it touches `network_manager.gd`, `main.gd`,
+`round_manager.gd` or `character_base.gd`, redeploy.
+
+### ⚠️⚠️ The failure mode is silent, and it has already cost days
+
+A server on old code keeps answering, keeps hosting, and keeps broadcasting its
+own stale decisions. The game half-works and the bug looks like it is in the
+client. Nothing warns anybody.
+
+That is exactly what happened with the prop-skin failure: it could not be
+reproduced for days, `Handoff_Open_Issues.md` §1 had already guessed *"a
+dedicated server process still running old code"*, and it was right — the box
+was missing `emote_wheel.gd` entirely and running a stale `character_base.gd`,
+the file that carries the skin logic. The team's fix had been correct the whole
+time.
+
+An `@rpc` change is the loud version of the same problem: Godot hashes a node's
+RPC method names, so a mismatch makes clients fail to connect at all with
+`The rpc node checksum failed` — a message that blames the code rather than the
+deploy.
+
+### ⚠️ Do not leave this with one person
+
+The deploy lived in one person's terminal history for two days, which meant a
+change that needed a redeploy waited on that person being free. To add somebody:
+
+1. They run `ssh-keygen -t ed25519 -f ~/.ssh/tumbang-preso` and send the
+   **`.pub`** file only — never the private key.
+2. Append that line to `/root/.ssh/authorized_keys` on the server.
+3. They can then run `./tools/server/deploy.sh` like anybody else.
+
+Verify a lobby still starts afterwards — from a dev machine, without editing any
+constant:
+
+```
+Godot_v4.7.1-stable_win64.exe --path . tools/ui/host_online_shot.tscn -- %TEMP%\
+```
