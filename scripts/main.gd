@@ -2734,6 +2734,28 @@ func _reset_world(defender_slot: int) -> void:
 		lata.host_reset_for_new_round()
 
 	_reset_slippers(roster, defender_slot)
+	# ⚠️⚠️ RE-RESOLVED EVERY ROUND, NOT ONLY AT THE READY GATE, AND THIS IS THE LATA AND
+	# TSINELAS SHOWING THE PREVIOUS MATCH'S PICK.
+	#
+	# `_seat_prop_picks` is filled once and NEVER cleared, and the only thing that used to
+	# refresh it was `_rpc_begin_ready_countdown`. Two live paths reach a new round without
+	# passing through that gate at all, and both keep the old table:
+	#
+	#   · A REMATCH. `match_result.gd::_begin_rematch_now()` calls
+	#     `MatchManager.begin_next_round()` directly — no scene reload, no `_start_hosting()`,
+	#     no ready gate. Measured: after a rematch with the pick changed to BOYBEN (1), the
+	#     table still read `s0can=3` — the previous match's METAL.
+	#   · A DEDICATED SERVER. Its `Main.tscn` is never reloaded between matches (that is the
+	#     entire point of a lobby pool), so its `_seat_prop_picks` outlives every match it
+	#     referees while the CLIENTS reload and republish around it. The host keeps
+	#     broadcasting the first match's cans for the life of the process.
+	#
+	# `publish_picks()` first so this peer's own entry in `peer_characters` is current —
+	# host-side that is a local write with no wire involved — then re-resolve. Human seats
+	# have re-read rather than been skipped since the pick-lag fix, so this is enough to
+	# make the table follow the picks; bot seats keep their own randoms and do not reshuffle.
+	NetworkManager.publish_picks()
+	_refresh_seat_prop_picks()
 	_push_prop_skins(defender_slot)
 
 ## ---------------------------------------------------------------------------
