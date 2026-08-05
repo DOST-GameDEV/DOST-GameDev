@@ -76,9 +76,10 @@ class_name MatchSetupScreen
 ## person or the same tsinelas is not a conflict — they are in different seats,
 ## and `main.gd` `.duplicate()`s the ability Resource per character anyway, so
 ## they never share cooldown state. It is also not carried by this screen at all:
-## `NetworkManager.peer_characters` already publishes each peer's picks to the
-## host on connect, and `CharacterBase.character_index`/`can_index`/`slipper_index`
-## are replicated with the spawn. This screen only opens the panel.
+## `NetworkManager.publish_picks()` already tells the host each peer's picks, both
+## at connect and whenever the CHARACTER panel closes (`_on_character_panel_closed()`
+## below), and `CharacterBase.character_index`/`can_index`/`slipper_index` are
+## replicated with the spawn. This screen only opens the panel.
 
 const MAIN_SCENE_PATH: String = "res://scenes/main/Main.tscn"
 const MODE_SELECT_PATH: String = "res://scenes/ui/ModeSelect.tscn"
@@ -1047,9 +1048,12 @@ func _on_character_panel_closed() -> void:
 	_refresh_character_button()
 	if not _can_rpc():
 		return
+	# Tell the host what was actually picked — see `NetworkManager.publish_picks()`'s
+	# own doc for the bug this closes: without it, the host (and therefore every
+	# peer, picker included) kept spawning whatever `GameLaunch` held from the
+	# previous match instead of the skin just chosen here.
+	NetworkManager.publish_picks()
 	var peer_id := multiplayer.get_unique_id()
-	# NetworkManager republishes this peer's picks to the host on its own; all
-	# this has to do is retract a ready that is no longer about the same match.
 	if bool(_peer_ready.get(peer_id, false)):
 		primary_button.caption = "READY"
 		status_label.text = "Character changed. Press READY again."
