@@ -753,6 +753,8 @@ func _start_local_test() -> void:
 	# see _awaiting_local_ready's own doc. Everyone is already spawned at their
 	# role position, but the round (and confinement, which is gated on
 	# RoundManager.round_active) doesn't start until the player readies up.
+	# Single Player reaches neither networked call site above.
+	_push_pre_round_prop_skins()
 	_awaiting_local_ready = true
 	hud.show_ready_prompt(true)
 	# ⚠️ A SOLO SPECTATOR HAS NOBODY TO READY UP, AND THE PROMPT ASKING THEM TO IS HIDDEN.
@@ -1215,6 +1217,20 @@ func _start_hosting() -> void:
 	# the lobby entirely — see NetworkManager.match_in_progress's own doc.
 	NetworkManager.player_identified.connect(_on_player_identified)
 	NetworkManager.match_in_progress = true
+	# ⚠️⚠️ RE-PUBLISH THIS PEER'S OWN THREE PICKS BEFORE ANYBODY IS SPAWNED FROM THEM.
+	# `peer_characters` is a SNAPSHOT taken at `host_game()`/`_rpc_identify` time and only
+	# refreshed if `NetworkManager.publish_picks()` actually ran — which depends on the
+	# lobby's CHARACTER panel emitting `closed` and `_can_rpc()` passing. Anything that
+	# misses that leaves the host spawning from CONNECT-TIME values, i.e. last match's,
+	# since `GameLaunch`'s picks survive `reset()` by design. That is the reported
+	# one-match lag, and it reaches the lata and tsinelas as well as the Person.
+	#
+	# Here it cannot be missed: this line runs on the way into every hosted match, with
+	# `GameLaunch` holding whatever the player last chose, and BEFORE the spawn loop that
+	# reads the table. Host-side it applies straight into `peer_characters` with no wire
+	# involved. Belt and braces with `match_setup.gd`'s own call rather than a replacement
+	# for it — that one is still the thing that keeps the LOBBY board honest.
+	NetworkManager.publish_picks()
 	# U-4: after the lobby all connected peers are already known; iterate over
 	# connected_peer_ids so everyone gets a spawner entry. In a fresh (non-
 	# lobby) host flow, connected_peer_ids = [host_id] so behaviour is the same
@@ -1224,6 +1240,9 @@ func _start_hosting() -> void:
 	# 2026-07-28, user feedback: "when playing multiplayer, for example only
 	# 2 people is playing, there's only 2 characters. it should have 4."
 	_fill_empty_slots_with_placeholders()
+	# The lata wears the defending seat's own can from here, not only from the round
+	# reset — see `_push_pre_round_prop_skins()`.
+	_push_pre_round_prop_skins()
 	# ⚠️ NOT begin_next_round() ANY MORE — see _awaiting_net_ready's own doc.
 	# The round starts when the players say so, not when the scene finishes
 	# loading. Until then RoundManager.round_active is false and
@@ -1284,6 +1303,15 @@ func _start_joining(address: String) -> void:
 	# guessed: the two-instance test threw exactly that before this was
 	# split) — so that case waits for the real connection_succeeded signal.
 	if NetworkManager.is_networked():
+		# ⚠️ THIS PEER'S OWN THREE PICKS, RE-SENT ON THE WAY INTO THE MATCH — the client
+		# half of the same guarantee `_start_hosting()` makes; see its note. The host
+		# resolves the lata and tsinelas from `peer_characters` at the ready gate
+		# (`_refresh_seat_prop_picks`), which is long after this reliable RPC lands, so a
+		# pick the lobby failed to publish still reaches the host in time to be worn.
+		# `character_index` does not depend on this — the owner writes its own at spawn
+		# (`_apply_own_pick`) precisely so it cannot race — but the prop picks have no
+		# per-character property to ride, so they have to travel this way.
+		NetworkManager.publish_picks()
 		_rpc_client_ready_for_spawn.rpc_id(1)
 		return
 	# ---------------------------------------------------------------------------
@@ -1400,8 +1428,49 @@ func _on_player_identified(peer_id: int, _token: String) -> void:
 ## never needed a ping at all.
 @rpc("any_peer", "call_remote", "reliable")
 func _rpc_client_ready_for_spawn() -> void:
-	if NetworkManager.is_host():
-		_try_late_join(multiplayer.get_remote_sender_id())
+	if not NetworkManager.is_host():
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	_try_late_join(sender)
+	# ⚠️⚠️ AND THE PICKS TABLE, UNCONDITIONALLY — NOT ONLY WHEN `_try_late_join` ACTUALLY
+	# SPAWNS SOMEBODY. This is the skin bug, and the reason every previous attempt at it
+	# "verified" clean: the DATA was always right and only the MODEL was stale.
+	#
+	# `_rpc_sync_picks` is the only thing that makes a client re-instance a model —
+	# `_apply_known_picks` calls `CharacterVisual.apply()` by hand, and `apply()` is the
+	# one function that instances one. A replicated `character_index` arriving on the
+	# synchroniser writes the property SILENTLY: it is a plain var with no setter (and
+	# `character_base.gd:513` documents, with measurements, why a repainting setter was
+	# tried and withdrawn — `apply()` frees every child of `Visual`, including a carried
+	# tsinelas). So a client whose seat's index changed after `_ready()` keeps drawing
+	# whatever it drew first.
+	#
+	# `_try_late_join` sent the table, but its FIRST LINE is `if _spawned_peer_ids.has(
+	# peer_id): return` — and in the ordinary lobby flow every peer was already spawned by
+	# `_start_hosting()`'s own loop before this ping arrives. So the table was sent to
+	# exactly the peers that did NOT need it (mid-match joiners) and never to the peers
+	# that did. The bots are dealt their faces host-side by `_refresh_ai_prop_picks()`
+	# inside `_fill_empty_slots_with_placeholders()`, which — alone among that function's
+	# callers — broadcasts nothing, so a client had NO repaint trigger until the ready
+	# gate's own `_rpc_sync_picks`. That is the report, both halves of it: the wrong
+	# faces on screen, and *"the skin changes after all players ready up"* being the
+	# moment they correct themselves.
+	#
+	# Measured on two headless peers, same match, before this line — identical
+	# `character_index` on both, different model on each:
+	#     HOST    s2[idx 7 female-c]  s3[idx 9 female-d]   <- the roster models
+	#     CLIENT  s2[idx 7 male-a  ]  s3[idx 9 female-a]   <- PERSON_MODELS, the -1 fallback
+	#
+	# ⚠️ SENT FROM HERE RATHER THAN BROADCAST FROM `_start_hosting()`, and that is the whole
+	# reason this RPC exists: it is the moment the client states its own `Main.tscn` is
+	# built. A table broadcast from `_start_hosting()` races the client's scene load and is
+	# dropped with "Node not found: Main" (measured). Safe to repaint here for the same
+	# reason the ready gate is: it is before the round, so no hand is full.
+	_rpc_sync_picks.rpc_id(sender, _picks_table())
+	# This peer's own picks arrived immediately before this ping (both reliable to peer 1,
+	# sent in that order by `_start_joining`), so this is the first moment the lata can be
+	# dressed with a joiner's own can — and it is still before the round.
+	_push_pre_round_prop_skins()
 
 ## Shared by all three triggers above. Idempotent both ways: _spawned_peer_ids
 ## guards against spawning twice, and the missing-token return means a trigger
@@ -1629,7 +1698,18 @@ func _apply_known_picks(character: CharacterBase, index: int) -> void:
 	var row: Array = _known_picks.get(index, [])
 	if row.size() < 2:
 		return
-	if int(row[1]) >= 0:
+	# ⚠️⚠️ NEVER OVER THE OWNER'S OWN PICK. This table is built from the HOST's copy of
+	# `character_index`, and for a client's own body the host's copy is the one that can be
+	# behind: the owner writes its real pick locally at spawn (`_apply_own_pick`) and it
+	# reaches the host by replication a frame or so later. Without this guard the two fight
+	# and the stale one wins — measured, the client set its pick to 11 and this line stamped
+	# the host's 0 straight back over it, which is the whole skin bug wearing a new hat.
+	#
+	# A peer is authority for exactly one non-bot body: its own. Every other seat here —
+	# bots (authority 1, `is_bot`) and other people's characters — still applies normally,
+	# which is what this function exists for.
+	var owned_by_me := character.is_multiplayer_authority() and not character.is_bot
+	if int(row[1]) >= 0 and not owned_by_me:
 		character.character_index = int(row[1])
 	# ⚠️ SANITISED ON ARRIVAL. This string came off the wire from another peer and is
 	# about to be drawn on a scoreboard and a 3D label; `SettingsManager` owns the one
@@ -1679,6 +1759,17 @@ func _apply_known_picks(character: CharacterBase, index: int) -> void:
 		var slipper := int(row[4])
 		if can >= 0 or slipper >= 0:
 			_seat_prop_picks[index] = {"can": can, "slipper": slipper}
+
+## Writes THIS peer's own roster pick onto its own body, one frame after the spawn so the
+## synchroniser's `spawn = true` state cannot land on top of it — see the call site in
+## `_build_networked_character` for the measurement. `character_index`'s setter does the
+## repaint, and does it safely (it defers to the round boundary if a hand is full).
+func _apply_own_pick(character: CharacterBase) -> void:
+	if character == null or not is_instance_valid(character):
+		return
+	var mine := GameLaunch.character_index()
+	if mine >= 0:
+		character.character_index = mine
 
 func _try_late_join(peer_id: int) -> void:
 	if _spawned_peer_ids.has(peer_id):
@@ -2455,6 +2546,35 @@ func _build_networked_character(data: Dictionary) -> Node:
 	var person := int(data.get("character", picks.get("character", -1)))
 	if person >= 0:
 		character.character_index = person
+	# ⚠️⚠️ MY OWN BODY TAKES MY OWN LOCAL PICK, AND THAT IS THE ONLY COPY THAT CANNOT BE
+	# STALE. Everything above comes from the host's `peer_characters`, which is a SNAPSHOT:
+	# it is written at `host_game()`/`_rpc_identify` time and only updated afterwards if
+	# `NetworkManager.publish_picks()` actually ran. Any path that leaves the CHARACTER
+	# panel without that call — and any pick made outside it — leaves the host holding the
+	# value from CONNECT time, which is last match's preference, because `GameLaunch`'s
+	# three picks deliberately survive `reset()`. That is the reported one-match lag
+	# exactly: the match you pick in shows the previous pick, and the pick you just made
+	# shows up the NEXT time you connect.
+	#
+	# `GameLaunch.character_index()` on this peer is what the player actually chose, right
+	# now, with no wire and no snapshot in between. This peer is ALSO made the multiplayer
+	# authority for this body four lines below, and `character_index` is a replicated
+	# property — so writing it here is the one write that propagates OUTWARD to everyone
+	# else for free, which is the same argument `_rpc_reclaim_character` already makes for
+	# doing the identical thing on the reclaim path (`_apply_reclaimed_picks`).
+	#
+	# ⚠️ NEVER FOR AN AI SEAT (negative sentinel peer_id): those bodies are dealt their
+	# faces by `_refresh_ai_prop_picks()` and have no local preference to read.
+	#
+	# ⚠️⚠️ DEFERRED, AND THAT ONE WORD IS THE DIFFERENCE BETWEEN WORKING AND NOT. Writing it
+	# inline here is silently undone: `character_index` is a `spawn = true` property in
+	# `CharacterBase.tscn`'s SceneReplicationConfig, so the synchroniser applies the HOST's
+	# spawn state to this node AFTER the spawn function returns — measured, the inline
+	# write produced `s1[idx 0]` on both peers with the client's own pick of 11 thrown
+	# away. A frame later the spawn state is in, this peer owns the body, and the write
+	# both sticks and replicates outward.
+	if int(data["peer_id"]) == multiplayer.get_unique_id():
+		_apply_own_pick.call_deferred(character)
 	# ⚠️⚠️ FROM THE SPAWN PACKET, NOT FROM `picks` — see `_build_spawn_data`'s note. This
 	# function runs on EVERY peer and `peer_characters` is host-only state, so the old
 	# `picks.get("name")` read an empty dictionary on every machine except the host's and
@@ -2623,6 +2743,28 @@ func _reset_world(defender_slot: int) -> void:
 		lata.host_reset_for_new_round()
 
 	_reset_slippers(roster, defender_slot)
+	# ⚠️⚠️ RE-RESOLVED EVERY ROUND, NOT ONLY AT THE READY GATE, AND THIS IS THE LATA AND
+	# TSINELAS SHOWING THE PREVIOUS MATCH'S PICK.
+	#
+	# `_seat_prop_picks` is filled once and NEVER cleared, and the only thing that used to
+	# refresh it was `_rpc_begin_ready_countdown`. Two live paths reach a new round without
+	# passing through that gate at all, and both keep the old table:
+	#
+	#   · A REMATCH. `match_result.gd::_begin_rematch_now()` calls
+	#     `MatchManager.begin_next_round()` directly — no scene reload, no `_start_hosting()`,
+	#     no ready gate. Measured: after a rematch with the pick changed to BOYBEN (1), the
+	#     table still read `s0can=3` — the previous match's METAL.
+	#   · A DEDICATED SERVER. Its `Main.tscn` is never reloaded between matches (that is the
+	#     entire point of a lobby pool), so its `_seat_prop_picks` outlives every match it
+	#     referees while the CLIENTS reload and republish around it. The host keeps
+	#     broadcasting the first match's cans for the life of the process.
+	#
+	# `publish_picks()` first so this peer's own entry in `peer_characters` is current —
+	# host-side that is a local write with no wire involved — then re-resolve. Human seats
+	# have re-read rather than been skipped since the pick-lag fix, so this is enough to
+	# make the table follow the picks; bot seats keep their own randoms and do not reshuffle.
+	NetworkManager.publish_picks()
+	_refresh_seat_prop_picks()
 	_push_prop_skins(defender_slot)
 
 ## ---------------------------------------------------------------------------
@@ -2646,6 +2788,35 @@ func _reset_world(defender_slot: int) -> void:
 ## looked up here rather than stored on `CharacterBase`, which this lane does
 ## not own and does not need to touch for this.
 ## ---------------------------------------------------------------------------
+## Dresses the props for the round that is ABOUT to start, so the lata already wears the
+## defending seat's own can during the free-roam window before READY.
+##
+## ⚠️⚠️ THIS WAS TRIED ONCE (e2c86b3), BROKE THE SKINS OUTRIGHT, AND WAS REVERTED. It is
+## safe now and it was not then, and the difference is not in this function. `apply_skin()`
+## used to write `skin_index` BEFORE `_apply_model()` could report failure, so an early
+## push — arriving while a prop's `Visual` had no `MeshInstance3D` yet — latched the number
+## without swapping the mesh, and the `index == skin_index` guard then killed every later
+## retry including the round-reset one. Adding an early push to that made the can
+## unrecoverable. `lata.gd`/`slipper.gd` now latch only after the swap actually happened
+## (d79d01c), so an early miss is a no-op that the round reset simply retries.
+##
+## ⚠️ WITHOUT THIS THE PRE-ROUND LATA WEARS WHATEVER IT WORE LAST. On a fresh scene that is
+## the shipped default; on a DEDICATED server, whose `Main.tscn` is never reloaded between
+## matches, it is **the previous match's can** — which is the reported symptom exactly.
+## Measured before this: 4 consecutive pre-ready samples on both peers reading the default
+## while the table already held the defender's real pick.
+##
+## ⚠️ THE TSINELAS LEGITIMATELY STAY AS THEY ARE UNTIL THE ROUND RESET. `_push_prop_skins()`
+## keys them by `owner_slot`, which `_reset_slippers()` assigns there, so they resolve to -1
+## beforehand — and both props' `apply_skin()` return immediately on a negative index, so
+## this can only leave a slipper alone, never paint one wrong.
+func _push_pre_round_prop_skins() -> void:
+	NetworkManager.publish_picks()
+	_refresh_seat_prop_picks()
+	# Same derivation `_build_spawn_data` uses for the opening round, so the can worn
+	# before READY and the seat that actually defends cannot disagree.
+	_push_prop_skins(MatchManager.defender_slot_for(maxi(1, MatchManager.round_number)))
+
 func _push_prop_skins(defender_slot: int) -> void:
 	if NetworkManager.is_networked() and not NetworkManager.is_host():
 		return
@@ -2697,11 +2868,26 @@ func _refresh_seat_prop_picks() -> void:
 		taken_cans.append(int(existing.get("can", -1)))
 		taken_slippers.append(int(existing.get("slipper", -1)))
 	for slot in range(NetworkManagerScript.MAX_PLAYERS):
-		if _seat_prop_picks.has(slot) or seats.get(slot) == null:
+		if seats.get(slot) == null:
 			continue
+		# ⚠️⚠️ A HUMAN'S OWN PICK IS RE-READ EVERY PASS AND OVERWRITES AN EARLIER FILL.
+		# It used to share the `_seat_prop_picks.has(slot)` skip below with the bots, and
+		# that is the lata/tsinelas half of the skin bug: the first pass to run for a seat
+		# wins FOREVER, and the first pass happens while `NetworkManager.picks_for()` still
+		# holds the CONNECT-TIME snapshot — last match's lata and tsinelas, because
+		# `GameLaunch`'s three picks deliberately survive `reset()`. So the lag could never
+		# correct itself, not even at the ready gate, which is why the cans and slippers
+		# stayed a match behind after the Person's own pick was fixed.
+		#
+		# The idempotency the skip was protecting only ever mattered for BOTS: their picks
+		# are RANDOM (`_ai_prop_index`), so re-rolling them every pass would reshuffle a
+		# match in progress. A human's pick is not a roll — it is a preference that is
+		# either known or not, and re-reading it is how a late-arriving one lands.
 		var human_picks: Variant = _human_prop_picks_for_slot(slot)
 		if human_picks != null:
 			_seat_prop_picks[slot] = human_picks
+			continue
+		if _seat_prop_picks.has(slot):
 			continue
 		var can := _ai_prop_index(CharacterRoster.CANS.size(), taken_cans)
 		var slipper := _ai_prop_index(CharacterRoster.SLIPPERS.size(), taken_slippers)
