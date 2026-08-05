@@ -1214,6 +1214,9 @@ func _start_hosting() -> void:
 	# 4.3/B-65: a peer that connects (or reconnects) from here on has missed
 	# the lobby entirely — see NetworkManager.match_in_progress's own doc.
 	NetworkManager.player_identified.connect(_on_player_identified)
+	# See `_on_peer_picks_changed()`'s own doc: a pick made after a peer's own body
+	# already exists otherwise never reaches it.
+	NetworkManager.peer_picks_changed.connect(_on_peer_picks_changed)
 	NetworkManager.match_in_progress = true
 	# U-4: after the lobby all connected peers are already known; iterate over
 	# connected_peer_ids so everyone gets a spawner entry. In a fresh (non-
@@ -1679,6 +1682,39 @@ func _apply_known_picks(character: CharacterBase, index: int) -> void:
 		var slipper := int(row[4])
 		if can >= 0 or slipper >= 0:
 			_seat_prop_picks[index] = {"can": can, "slipper": slipper}
+
+## HOST-ONLY. `NetworkManager.publish_picks()` writes a changed pick into
+## `peer_characters` — the bookkeeping table `_build_spawn_data`/`_build_networked_character`
+## read at SPAWN — but nothing else ever re-reads that table onto an ALREADY-spawned
+## character: `_apply_known_picks()` above heals a client's REPLICATION lag from the
+## host's own already-correct property, and the ready gate's `_rpc_sync_picks(_picks_table())`
+## reads `character.character_index` itself (see `_picks_table()`'s own doc), not
+## `peer_characters` — so a pick made anywhere after a peer's OWN body already exists
+## (any time after `match_setup.gd`'s CHARACTER panel closes and the lobby's identify
+## snapshot has already been spawned from) silently never reached that body at all: it
+## stayed on whatever the connect-time snapshot gave it, which reads as the CHOSEN skin
+## showing up nowhere and an AI's `AI_PERSON_SPREAD` deal (0/3/6/9 — usually the first
+## entry a player browses to per tab) coincidentally matching it on some OTHER seat.
+##
+## Connected only in `_start_hosting()`, so this never runs on a client — a client's own
+## `peer_characters` is intentionally empty (`picks_for()`'s own doc), and the signal
+## itself only ever fires from `NetworkManager._apply_picks()`, which is HOST-ONLY too.
+func _on_peer_picks_changed(peer_id: int) -> void:
+	var character: CharacterBase = _spawned_characters.get(peer_id)
+	if character == null or not is_instance_valid(character):
+		return # not spawned yet — the normal spawn path reads the fresh pick itself
+	var picks := NetworkManager.picks_for(peer_id)
+	var person := int(picks.get("character", -1))
+	if person >= 0:
+		character.character_index = person
+	var visual: Node = character.get_node_or_null("Visual")
+	if visual != null and visual.has_method("apply"):
+		visual.apply(character.is_person, character.is_can, character.player_slot)
+	# The same collision this function's own doc describes can now run the other way —
+	# a human picking AFTER a bot was already dealt that same face — so re-resolve it
+	# immediately rather than leaving the duplicate up until the ready gate.
+	_refresh_ai_prop_picks()
+	_rpc_sync_picks.rpc(_picks_table())
 
 func _try_late_join(peer_id: int) -> void:
 	if _spawned_peer_ids.has(peer_id):
