@@ -445,9 +445,25 @@ var skin_index: int = -1
 func apply_skin(index: int) -> void:
 	if index < 0 or index == skin_index:
 		return
-	skin_index = index
 	var entry: Dictionary = CharacterRoster.can_at(index)
-	_apply_model(entry)
+	# ⚠️⚠️ THE INDEX IS LATCHED ONLY ONCE THE MESH HAS ACTUALLY SWAPPED, AND WRITING IT
+	# FIRST WAS A TRAP THAT COULD NOT BE RECOVERED FROM. `_apply_model()` has four silent
+	# early-returns (no `model` key, no `Visual`, no `MeshInstance3D` under it yet, mesh
+	# fails to load) — and the third one is REACHABLE, because this can be called before
+	# the prop's own tree is built. The old order set `skin_index = index` first, so a
+	# single failed call left the number saying "already wearing skin 3" while the mesh was
+	# still the one the scene shipped with. Every later call — including the round-reset
+	# push that exists precisely to get this right — then hit the `index == skin_index`
+	# guard above and returned immediately. One early miss and the skin was unrecoverable
+	# for the whole process: the can silently stuck on its default and no amount of
+	# re-picking or re-pushing could move it.
+	#
+	# Latching after the swap makes a failed apply a NO-OP rather than a poisoning, so the
+	# next push simply retries and succeeds. `_push_prop_skins()` runs on every round
+	# reset, so the retry is already there and always was — it just had no way through.
+	if not _apply_model(entry):
+		return
+	skin_index = index
 	if not entry.has("tint"):
 		return
 	# ⚠️ WHITE MEANS "DO NOT TINT" — see the twin note in `slipper.gd::apply_skin()`
@@ -471,19 +487,21 @@ func apply_skin(index: int) -> void:
 ## Missing or unloadable `model` leaves whatever the scene shipped with, which is
 ## roster entry 0. A prop that fails to find its mesh should look like the default
 ## can, not like nothing at all.
-func _apply_model(entry: Dictionary) -> void:
+## Returns true only when the mesh was actually replaced — `apply_skin()` latches
+## `skin_index` on that answer, so a miss here is retried rather than remembered.
+func _apply_model(entry: Dictionary) -> bool:
 	if not entry.has("model"):
-		return
+		return false
 	var visual := get_node_or_null("Visual")
 	if visual == null:
-		return
+		return false
 	var target := visual.find_children("*", "MeshInstance3D", true, false)
 	if target.is_empty():
-		return
+		return false
 	var mesh := load(String(entry["model"])) as Mesh
 	if mesh == null:
 		push_warning("Lata.apply_skin: cannot load %s" % entry["model"])
-		return
+		return false
 	var instance := target[0] as MeshInstance3D
 	for surface in range(instance.get_surface_override_material_count()):
 		instance.set_surface_override_material(surface, null)
@@ -494,6 +512,7 @@ func _apply_model(entry: Dictionary) -> void:
 	_measure_downed_lift()
 	_fit_collision_to_mesh()
 	_apply_upright_visual(is_upright, false)
+	return true
 
 func _tint_meshes(tint: Color) -> void:
 	var visual := get_node_or_null("Visual")
