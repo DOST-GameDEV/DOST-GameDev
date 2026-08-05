@@ -38,13 +38,6 @@ signal player_identified(peer_id: int, token: String)
 ## that walked into the lobby ALREADY spectating declares it in its identify packet and
 ## the board would otherwise seat it like anybody else.
 signal peer_spectator_changed(peer_id: int, spectating: bool)
-## HOST-SIDE: a peer's character/can/slipper pick just changed in `peer_characters`,
-## via `_apply_picks()` below. `main.gd` listens for this (host-only) to push the new
-## pick onto that peer's LIVE character if one is already spawned — `_apply_picks()`
-## only ever writes the bookkeeping dictionary, which nothing else re-reads onto an
-## already-spawned node, so without this signal a pick made after your own body
-## exists (any time after the lobby's `_rpc_identify` snapshot) never reaches it.
-signal peer_picks_changed(peer_id: int)
 ## CLIENT-SIDE, and the exact mirror of `peer_spectator_changed` seen from the other end:
 ## the HOST has just ruled that THIS peer is watching (true) or has just been given a seat
 ## (false). Fired from `_rpc_set_spectator`'s host -> client direction — see
@@ -375,7 +368,6 @@ func _apply_picks(peer_id: int, character: int, can: int, slipper: int) -> void:
 	picks["can"] = can
 	picks["slipper"] = slipper
 	peer_characters[peer_id] = picks
-	peer_picks_changed.emit(peer_id)
 
 ## ---------------------------------------------------------------------------
 ## âš ï¸âš ï¸ THE ONE PEER THAT IS REFEREEING RATHER THAN PLAYING. A dedicated server takes no
