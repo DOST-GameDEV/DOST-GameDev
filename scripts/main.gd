@@ -1215,6 +1215,20 @@ func _start_hosting() -> void:
 	# the lobby entirely — see NetworkManager.match_in_progress's own doc.
 	NetworkManager.player_identified.connect(_on_player_identified)
 	NetworkManager.match_in_progress = true
+	# ⚠️⚠️ RE-PUBLISH THIS PEER'S OWN THREE PICKS BEFORE ANYBODY IS SPAWNED FROM THEM.
+	# `peer_characters` is a SNAPSHOT taken at `host_game()`/`_rpc_identify` time and only
+	# refreshed if `NetworkManager.publish_picks()` actually ran — which depends on the
+	# lobby's CHARACTER panel emitting `closed` and `_can_rpc()` passing. Anything that
+	# misses that leaves the host spawning from CONNECT-TIME values, i.e. last match's,
+	# since `GameLaunch`'s picks survive `reset()` by design. That is the reported
+	# one-match lag, and it reaches the lata and tsinelas as well as the Person.
+	#
+	# Here it cannot be missed: this line runs on the way into every hosted match, with
+	# `GameLaunch` holding whatever the player last chose, and BEFORE the spawn loop that
+	# reads the table. Host-side it applies straight into `peer_characters` with no wire
+	# involved. Belt and braces with `match_setup.gd`'s own call rather than a replacement
+	# for it — that one is still the thing that keeps the LOBBY board honest.
+	NetworkManager.publish_picks()
 	# U-4: after the lobby all connected peers are already known; iterate over
 	# connected_peer_ids so everyone gets a spawner entry. In a fresh (non-
 	# lobby) host flow, connected_peer_ids = [host_id] so behaviour is the same
@@ -1284,6 +1298,15 @@ func _start_joining(address: String) -> void:
 	# guessed: the two-instance test threw exactly that before this was
 	# split) — so that case waits for the real connection_succeeded signal.
 	if NetworkManager.is_networked():
+		# ⚠️ THIS PEER'S OWN THREE PICKS, RE-SENT ON THE WAY INTO THE MATCH — the client
+		# half of the same guarantee `_start_hosting()` makes; see its note. The host
+		# resolves the lata and tsinelas from `peer_characters` at the ready gate
+		# (`_refresh_seat_prop_picks`), which is long after this reliable RPC lands, so a
+		# pick the lobby failed to publish still reaches the host in time to be worn.
+		# `character_index` does not depend on this — the owner writes its own at spawn
+		# (`_apply_own_pick`) precisely so it cannot race — but the prop picks have no
+		# per-character property to ride, so they have to travel this way.
+		NetworkManager.publish_picks()
 		_rpc_client_ready_for_spawn.rpc_id(1)
 		return
 	# ---------------------------------------------------------------------------
@@ -2785,11 +2808,26 @@ func _refresh_seat_prop_picks() -> void:
 		taken_cans.append(int(existing.get("can", -1)))
 		taken_slippers.append(int(existing.get("slipper", -1)))
 	for slot in range(NetworkManagerScript.MAX_PLAYERS):
-		if _seat_prop_picks.has(slot) or seats.get(slot) == null:
+		if seats.get(slot) == null:
 			continue
+		# ⚠️⚠️ A HUMAN'S OWN PICK IS RE-READ EVERY PASS AND OVERWRITES AN EARLIER FILL.
+		# It used to share the `_seat_prop_picks.has(slot)` skip below with the bots, and
+		# that is the lata/tsinelas half of the skin bug: the first pass to run for a seat
+		# wins FOREVER, and the first pass happens while `NetworkManager.picks_for()` still
+		# holds the CONNECT-TIME snapshot — last match's lata and tsinelas, because
+		# `GameLaunch`'s three picks deliberately survive `reset()`. So the lag could never
+		# correct itself, not even at the ready gate, which is why the cans and slippers
+		# stayed a match behind after the Person's own pick was fixed.
+		#
+		# The idempotency the skip was protecting only ever mattered for BOTS: their picks
+		# are RANDOM (`_ai_prop_index`), so re-rolling them every pass would reshuffle a
+		# match in progress. A human's pick is not a roll — it is a preference that is
+		# either known or not, and re-reading it is how a late-arriving one lands.
 		var human_picks: Variant = _human_prop_picks_for_slot(slot)
 		if human_picks != null:
 			_seat_prop_picks[slot] = human_picks
+			continue
+		if _seat_prop_picks.has(slot):
 			continue
 		var can := _ai_prop_index(CharacterRoster.CANS.size(), taken_cans)
 		var slipper := _ai_prop_index(CharacterRoster.SLIPPERS.size(), taken_slippers)
