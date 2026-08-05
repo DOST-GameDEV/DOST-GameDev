@@ -629,9 +629,12 @@ func _ready() -> void:
 ## still incorrectly share cooldown state even though the dummy can never
 ## press the button itself.
 func _start_local_test() -> void:
-	# NOCHARA: empty-map recording branch. Forces free-cam spectator mode and
-	# hides every character below so the arena renders with nobody in it.
-	GameLaunch.spectator = true
+	# NOCHARA: empty-map recording branch. Deliberately NOT forcing
+	# GameLaunch.spectator here any more — that flag's whole job is "start the
+	# round and watch the bots play it" (see _reassert_spectated_bots /
+	# _run_ready_countdown below), which is the opposite of what a static,
+	# nobody's-here recording needs. The free camera is granted directly at
+	# the bottom of this function instead, without any of that.
 	_local_roster = players.duplicate()
 	# Seats are 0..3 and fixed for the match; the ROLE rotates over them. Set here
 	# rather than trusted from the scene's exports, because `_reset_world()` keys
@@ -747,41 +750,13 @@ func _start_local_test() -> void:
 	# spectator cam set up below. Unregistering the bar makes that call — and
 	# every later F1-F4/Tab press — a no-op, so nothing can hijack the camera.
 	DebugPlayerSwitcher.debug_unregister_bar()
-	if GameLaunch.spectator:
-		if human.ai_controller != null:
-			human.ai_controller.set_enabled(true)
-		human.input_parked = true
-		_enter_spectator_mode()
-		# ⚠️ RE-ASSERTED A FRAME LATER, BECAUSE SOMETHING TURNS IT BACK OFF.
-		# Measured by `spec_probe --solo`: "every seat including the vacated one is
-		# bot-held — FAIL, 3 of 4 ai-driven". `debug_player_switcher.gd::_apply_slots()`
-		# runs when the DebugBar registers, claims `DEFAULT_P1_UNIT` ("TeamAPerson") for
-		# player 1 and DISABLES that unit's controller — which in a spectated solo match
-		# is precisely the seat the spectator just vacated. The result is a 2v2 with one
-		# unit standing still for the whole round, filmed.
-		# Deferred rather than ordered: the switcher registers on its own schedule and
-		# this is the cheap half of the fix. The switcher itself is `scripts/ui/**` and
-		# therefore `build ux`'s — filed as §4.11.
-		_reassert_spectated_bots.call_deferred()
-	else:
-		var default_rig := human.get_node("CameraRig") as CameraRig
-		default_rig.set_active(true)
-		default_rig.set_aim_source(CameraRig.AimSource.MOUSE)
-	# 2026-07-28: begin_next_round() is deliberately NOT called here any more —
-	# see _awaiting_local_ready's own doc. Everyone is already spawned at their
-	# role position, but the round (and confinement, which is gated on
-	# RoundManager.round_active) doesn't start until the player readies up.
-	_awaiting_local_ready = true
-	hud.show_ready_prompt(true)
-	# ⚠️ A SOLO SPECTATOR HAS NOBODY TO READY UP, AND THE PROMPT ASKING THEM TO IS HIDDEN.
-	# `hud.enter_spectator_mode()` strips `ready_prompt` along with every other element
-	# that describes a character — correctly, it says "press [R] to start" to somebody who
-	# is not in the match — so a spectated Single Player sat in the pre-round window with
-	# no instruction on screen and no round ever starting. Measured: `spec_probe --solo`
-	# read the §2.7 round strip as '' because `RoundManager.round_active` was still false
-	# forty seconds in. There is no second player to wait for here, so waiting is the bug.
-	if GameLaunch.spectator:
-		_run_ready_countdown.call_deferred()
+	# NOCHARA: everything below this point (`if GameLaunch.spectator: ... else:
+	# ...`, the ready prompt, `_run_ready_countdown`) exists to either attach a
+	# character's camera or start the round so bots have something to play.
+	# Neither applies here — the round must never start (that turns AI back on
+	# and gets props thrown around) and no character should hold the camera.
+	# Grant the free camera directly and stop, skipping all of it.
+	_enter_spectator_mode()
 
 ## Single Player's seat choice, resolved to one of Main.tscn's four hand-placed
 ## units. The seat numbering is the networked one, unchanged — `team = seat / 2`,
