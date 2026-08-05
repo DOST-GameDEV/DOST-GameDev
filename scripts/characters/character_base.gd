@@ -1806,8 +1806,27 @@ func is_emoting() -> bool:
 ## The one entry point a player's input reaches. Bots never call it — 🧑: *"no need
 ## to give bots emotes lmao"* — and `ai_controller.gd` presses input actions rather
 ## than calling this, so there is nothing to exclude: it simply has no route in.
+##
+## ⚠️ `is_multiplayer_authority()` ALONE ONLY EVER LIED IN ONE SEQUENCE: SINGLE
+## PLAYER, AFTER A LAN/ONLINE MATCH IN THE SAME PROCESS. Every other authority
+## check in this file that runs unconditionally in local test already guards
+## itself with `NetworkManager.is_networked()` first (`_apply_block()`,
+## `_flash_hit()`) or short-circuits on it before ever reaching the
+## authority read (`_physics_process`'s `if NetworkManager.is_networked() and
+## not is_multiplayer_authority(): return`). This was the one emote check that
+## did not, and `is_multiplayer_authority()` reads whether `multiplayer_authority`
+## (default 1) matches `multiplayer.get_unique_id()` — which is 1 by the engine's
+## own `OfflineMultiplayerPeer` default on a never-networked process, but
+## `NetworkManager.disconnect_network()`/`_on_connection_failed()`/
+## `_on_server_disconnected()` all tear a session down with
+## `multiplayer.multiplayer_peer = null` rather than restoring that default, so a
+## process that has ever hosted or joined stops reading 1 for the rest of its
+## life. Every other check surviving that off-by-something is luck, not design;
+## this one made it visible because it is the only emote gate with no
+## `is_networked()` short-circuit in front of it.
 func try_emote(id: String) -> void:
-	if not is_multiplayer_authority() or not can_emote():
+	var is_mine := is_multiplayer_authority() if NetworkManager.is_networked() else player_id == 1
+	if not is_mine or not can_emote():
 		return
 	broadcast_emote(id)
 
@@ -1828,7 +1847,9 @@ func play_emote(id: String) -> void:
 	# is worse than ignoring the press.
 	if not _visual.play_emote(id):
 		return
-	if not is_multiplayer_authority():
+	# See `try_emote()`'s own note: guarded the same way for the same reason.
+	var is_mine := is_multiplayer_authority() if NetworkManager.is_networked() else player_id == 1
+	if not is_mine:
 		return
 	var rig := get_node_or_null("CameraRig") as CameraRig
 	if rig != null:
@@ -1857,7 +1878,9 @@ func _apply_stop_emote() -> void:
 ## emote ended, and a player stuck in third person with no way out is the one bug
 ## in this feature that would make the game unplayable rather than untidy.
 func _restore_emote_camera() -> void:
-	if not is_multiplayer_authority():
+	# See `try_emote()`'s own note: guarded the same way for the same reason.
+	var is_mine := is_multiplayer_authority() if NetworkManager.is_networked() else player_id == 1
+	if not is_mine:
 		return
 	var rig := get_node_or_null("CameraRig") as CameraRig
 	if rig != null:
@@ -1872,7 +1895,11 @@ func _restore_emote_camera() -> void:
 ## unambiguously asked to stop emoting — leaving those to play the clip out would
 ## read as the input being eaten.
 func _cancel_emote_on_input() -> void:
-	if not _visual.is_emoting() or not is_multiplayer_authority():
+	if not _visual.is_emoting():
+		return
+	# See `try_emote()`'s own note: guarded the same way for the same reason.
+	var is_mine := is_multiplayer_authority() if NetworkManager.is_networked() else player_id == 1
+	if not is_mine:
 		return
 	if (input_pressed("move_left") or input_pressed("move_right")
 			or input_pressed("move_up") or input_pressed("move_down")
