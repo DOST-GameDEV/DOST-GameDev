@@ -1666,7 +1666,18 @@ func _apply_known_picks(character: CharacterBase, index: int) -> void:
 	var row: Array = _known_picks.get(index, [])
 	if row.size() < 2:
 		return
-	if int(row[1]) >= 0:
+	# ⚠️⚠️ NEVER OVER THE OWNER'S OWN PICK. This table is built from the HOST's copy of
+	# `character_index`, and for a client's own body the host's copy is the one that can be
+	# behind: the owner writes its real pick locally at spawn (`_apply_own_pick`) and it
+	# reaches the host by replication a frame or so later. Without this guard the two fight
+	# and the stale one wins — measured, the client set its pick to 11 and this line stamped
+	# the host's 0 straight back over it, which is the whole skin bug wearing a new hat.
+	#
+	# A peer is authority for exactly one non-bot body: its own. Every other seat here —
+	# bots (authority 1, `is_bot`) and other people's characters — still applies normally,
+	# which is what this function exists for.
+	var owned_by_me := character.is_multiplayer_authority() and not character.is_bot
+	if int(row[1]) >= 0 and not owned_by_me:
 		character.character_index = int(row[1])
 	# ⚠️ SANITISED ON ARRIVAL. This string came off the wire from another peer and is
 	# about to be drawn on a scoreboard and a 3D label; `SettingsManager` owns the one
@@ -1716,6 +1727,17 @@ func _apply_known_picks(character: CharacterBase, index: int) -> void:
 		var slipper := int(row[4])
 		if can >= 0 or slipper >= 0:
 			_seat_prop_picks[index] = {"can": can, "slipper": slipper}
+
+## Writes THIS peer's own roster pick onto its own body, one frame after the spawn so the
+## synchroniser's `spawn = true` state cannot land on top of it — see the call site in
+## `_build_networked_character` for the measurement. `character_index`'s setter does the
+## repaint, and does it safely (it defers to the round boundary if a hand is full).
+func _apply_own_pick(character: CharacterBase) -> void:
+	if character == null or not is_instance_valid(character):
+		return
+	var mine := GameLaunch.character_index()
+	if mine >= 0:
+		character.character_index = mine
 
 func _try_late_join(peer_id: int) -> void:
 	if _spawned_peer_ids.has(peer_id):
@@ -2492,6 +2514,35 @@ func _build_networked_character(data: Dictionary) -> Node:
 	var person := int(data.get("character", picks.get("character", -1)))
 	if person >= 0:
 		character.character_index = person
+	# ⚠️⚠️ MY OWN BODY TAKES MY OWN LOCAL PICK, AND THAT IS THE ONLY COPY THAT CANNOT BE
+	# STALE. Everything above comes from the host's `peer_characters`, which is a SNAPSHOT:
+	# it is written at `host_game()`/`_rpc_identify` time and only updated afterwards if
+	# `NetworkManager.publish_picks()` actually ran. Any path that leaves the CHARACTER
+	# panel without that call — and any pick made outside it — leaves the host holding the
+	# value from CONNECT time, which is last match's preference, because `GameLaunch`'s
+	# three picks deliberately survive `reset()`. That is the reported one-match lag
+	# exactly: the match you pick in shows the previous pick, and the pick you just made
+	# shows up the NEXT time you connect.
+	#
+	# `GameLaunch.character_index()` on this peer is what the player actually chose, right
+	# now, with no wire and no snapshot in between. This peer is ALSO made the multiplayer
+	# authority for this body four lines below, and `character_index` is a replicated
+	# property — so writing it here is the one write that propagates OUTWARD to everyone
+	# else for free, which is the same argument `_rpc_reclaim_character` already makes for
+	# doing the identical thing on the reclaim path (`_apply_reclaimed_picks`).
+	#
+	# ⚠️ NEVER FOR AN AI SEAT (negative sentinel peer_id): those bodies are dealt their
+	# faces by `_refresh_ai_prop_picks()` and have no local preference to read.
+	#
+	# ⚠️⚠️ DEFERRED, AND THAT ONE WORD IS THE DIFFERENCE BETWEEN WORKING AND NOT. Writing it
+	# inline here is silently undone: `character_index` is a `spawn = true` property in
+	# `CharacterBase.tscn`'s SceneReplicationConfig, so the synchroniser applies the HOST's
+	# spawn state to this node AFTER the spawn function returns — measured, the inline
+	# write produced `s1[idx 0]` on both peers with the client's own pick of 11 thrown
+	# away. A frame later the spawn state is in, this peer owns the body, and the write
+	# both sticks and replicates outward.
+	if int(data["peer_id"]) == multiplayer.get_unique_id():
+		_apply_own_pick.call_deferred(character)
 	# ⚠️⚠️ FROM THE SPAWN PACKET, NOT FROM `picks` — see `_build_spawn_data`'s note. This
 	# function runs on EVERY peer and `peer_characters` is host-only state, so the old
 	# `picks.get("name")` read an empty dictionary on every machine except the host's and
