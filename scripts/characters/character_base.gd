@@ -708,8 +708,37 @@ func is_inside_box() -> bool:
 ## their slipper up. This one function is the entire vulnerability rule, and
 ## `RoundManager._step_tag()` and the HUD's `VULNERABLE` row both read it — so the
 ## warning the player sees cannot disagree with the rule that tags them.
+## ⚠️⚠️ IT ASKS `round_active`, NOT `can_act()`, AND THAT ONE WORD IS A SHIPPED BUG FIX.
+## 🧑 2026-08-06: *"a player that has been sabotaged by a player cannot be tagged by the
+## defender. when the attacker is in a frozen state, it cannot be tagged."*
+##
+## `can_act()` is `round_active and state == State.NORMAL`. The second half is a rule
+## about whether this player can DO something; being tagged is something DONE TO them,
+## and the two are not the same question. Reading it here made a stunned attacker
+## **immune**, which is exactly backwards: standing in the box, holding a slipper, unable
+## to move is the most vulnerable a player is ever going to be.
+##
+## ⚠️ AND IT MADE THE SABOTAGE SCORE UNREACHABLE — the proof this was never intended.
+## `RoundManager._resolve_tag()` pays `SCORE_SABOTAGE` (50) to whoever shoved the victim
+## within `SABOTAGE_WINDOW` (2.5 s), and `note_shove()` is the ONLY thing that records
+## that credit. But a shove is `_apply_shove()` -> `apply_stagger()`, so the very act
+## that earns the credit put the victim into `STAGGERED` and made this function refuse
+## the tag that would have paid it. Shove -> tag -> sabotage is a designed combo whose
+## middle step could not happen; the 50-point award has never once been reachable in
+## play. Whole mechanic, dead, behind one condition.
+##
+## ⚠️ IT DOES NOT OPEN A CHAIN-TAG, AND THE GUARD IS POSITIONAL RATHER THAN THIS ONE.
+## The obvious worry is that a tag itself applies a 5 s stagger, so allowing STAGGERED
+## to be tagged lets the taya re-lunge (cooldown 1.5 s) and cash the same victim twice.
+## It cannot: `_apply_tag_penalty()` teleports the victim to their safe spot, so
+## `is_inside_box()` below is already false for the whole stun. The victim is protected
+## by where they ARE, which is the check that was doing the work all along.
+##
+## ⚠️ `round_active` IS KEPT because it is the half of `can_act()` that genuinely belongs
+## — nobody is taggable between rounds — and dropping it would let a lunge left over
+## from the last frame of a round score into the intermission.
 func is_taggable() -> bool:
-	if is_defender or not can_act():
+	if is_defender or not RoundManager.round_active:
 		return false
 	if not holding_slipper():
 		return false
