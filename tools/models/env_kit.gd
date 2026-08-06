@@ -29,8 +29,10 @@ extends RefCounted
 ##     MEASURED, 2026-07-29, from the geometry in this file rather than from the
 ##     convention: `_church_facade` puts its doorway and rose window at z = -0.76,
 ##     `_sari_sari_store` puts its counter and awning at z = -0.62..-1.16, and
-##     `_basketball_ring` puts the rim on the origin with the backboard and post
-##     BEHIND it at z = +0.52/+0.62 — so a player shoots at it from -Z. Every
+##     `_basketball_ring` puts the rim NEAR the origin (z = +0.32, moved forward
+##     off z = 0 on 2026-08-07 to close the gap to the board — see that
+##     function's own note) with the backboard and post further BEHIND it at
+##     z = +0.52/+0.62 — so a player shoots at it from -Z. Every
 ##     plaza piece here agrees; only this comment disagreed.
 ##     The consequence: a piece placed at NEGATIVE z on a map, facing the middle,
 ##     needs yaw = PI, and a piece at POSITIVE z needs yaw = 0. Bayan Plaza had
@@ -603,6 +605,27 @@ func _sari_sari_store() -> void:
 	# The strip of hanging sachets every one of these has.
 	for i in range(6):
 		_box(w, -0.55 + 0.22 * float(i), -1.16, 0.10, 0.02, 1.55, 1.95, "stripe")
+
+	# ⚠️⚠️ THE BACK. 🧑 2026-08-07: *"rotate the 'tindahan' floating box in the
+	# poste"* — and it turned out the store was never misrotated. Rendered from
+	# where a player near `Poste_11` actually stands (the store's own back is
+	# only 0.6-0.7 m from that pole): every fixture above is placed at NEGATIVE
+	# local z ONLY — the counter, the barred window, the awning, the sachets —
+	# so the front is the ONE face with anything on it. From the back, or from
+	# either side, this was 2.6 m of flat "concrete" colour with no opening, no
+	# trim, nothing to read as a wall rather than a floating slab. That is
+	# exactly the "floating box" report, and no yaw fixes it — a store facing
+	# the court (the correct, intended orientation, confirmed by rendering the
+	# front) always has ITS OWN BACK toward whatever is behind it.
+	#
+	# So the back gets a fixture of its own: a small barred stockroom vent,
+	# the same construction as the front window at roughly half the size — a
+	# real sari-sari's back wall is plain block with at most a service vent,
+	# not a second shopfront, so this stays modest rather than mirroring the
+	# front outright.
+	_box(w, 0, 0.50, 0.60, 0.06, 1.30, 1.80, "dark")
+	for i in range(3):
+		_box(w, -0.20 + 0.20 * float(i), 0.54, 0.04, 0.04, 1.30, 1.80, "timber")
 	_finish(w, "env_sari_sari_store")
 
 ## Layer 2 of the boundary — plain masses standing behind the wall line so the
@@ -1235,26 +1258,73 @@ func _church_facade() -> void:
 ## MANDATORY. It IS the Philippine plaza — if exactly one piece of the plaza set
 ## ships, it is this one.
 ##
-## The HOOP sits at the origin and the post is offset behind it, not the other
+## The HOOP sits NEAR the origin and the post is offset behind it, not the other
 ## way round: a hoop is horizontal so it is a legal Y-axis revolve, and putting
 ## the gameplay-relevant part on the axis is what lets the whole piece exist
 ## before 2.1b-0 lands.
+##
+## ⚠️⚠️ THE RIM USED TO SIT AT THE **LITERAL** ORIGIN, AND THAT WAS THE BUG. 🧑
+## 2026-08-07: *"the basketball rim is floating with no net and no connection
+## towards the basketball board."* Measured against the numbers this function
+## already had: the rim revolve's own profile puts its BACK edge at radius 0.17,
+## and the board's FRONT face sits at z = 0.52 - 0.03 = 0.49 — a 0.32 m gap
+## between them with nothing spanning it. Rendered and confirmed: from the side
+## the rim reads as a ring hanging in mid-air well short of the board, exactly
+## the report.
+##
+## ⚠️ THE RIM MOVES, NOT THE BOARD. `add_revolve()`'s own `transform` parameter
+## translates the finished ring without touching its shape — the axisymmetric
+## math still runs around a Y axis through the object's local origin, then the
+## whole result is shifted, so this stays "an ordinary revolve" as the comment
+## below always claimed, just no longer left at z = 0. Moving the board instead
+## would also have dragged the post’s BACKBOARD READS AS A LANDMARK FROM ACROSS
+## THE COURT with it, which is the thing worth keeping fixed in place.
+const RING_RIM_Z: float = 0.32
+## The board's front face, so the bracket and the clearance check are both
+## quoted against the actual number rather than re-typed.
+const RING_BOARD_FRONT_Z: float = 0.52 - 0.03
+
 func _basketball_ring() -> void:
 	var w := ObjWriter.new("BasketballRing")
 	w.set_material("board", UiTheme.ENV_WOOD)
 	w.set_material("edge", UiTheme.PANEL)
 	w.set_material("post", UiTheme.ENV_CONCRETE)
 	w.set_material("ring", UiTheme.PANEL)
+	w.set_material("net", UiTheme.ENV_CONCRETE_DARK)
 
 	w.add_extrude(_ngon(0.0, 0.62, 0.12, 8), 0.00, 3.05, "post")
 	_box(w, 0.0, 0.52, 1.20, 0.06, 2.95, 3.85, "board")
 	_box(w, 0.0, 0.49, 0.62, 0.02, 3.02, 3.48, "edge")
-	# The rim: a horizontal torus, i.e. an ordinary revolve.
+
+	var rim_xform := Transform3D(Basis.IDENTITY, Vector3(0.0, 0.0, RING_RIM_Z))
+	# The rim: a horizontal torus, i.e. an ordinary revolve, now pulled forward
+	# toward the board by `rim_xform` instead of left at the local origin.
 	w.add_revolve(PackedVector2Array([
 		Vector2(0.21, 3.05), Vector2(0.25, 3.07),
 		Vector2(0.21, 3.09), Vector2(0.17, 3.07),
 		Vector2(0.21, 3.05),
-	]), 12, "ring")
+	]), 12, "ring", true, Callable(), rim_xform)
+
+	# ⚠️ THE BRACKET IS WHAT "CONNECTION" MEANT. Proximity alone (moving the rim
+	# forward) closes the GAP but still leaves two meshes merely near each other
+	# with nothing visibly joining them — a real rim is bolted to the board
+	# through a flat mounting plate, and this is that plate: a short bar spanning
+	# from the rim's own back edge to the board's front face, at the rim's height.
+	var bracket_z0 := RING_RIM_Z - 0.17
+	var bracket_z1 := RING_BOARD_FRONT_Z
+	_box(w, 0.0, (bracket_z0 + bracket_z1) * 0.5, 0.22, bracket_z1 - bracket_z0,
+		3.02, 3.11, "post")
+
+	# ⚠️ THE NET. There was none — a content gap, not a placement bug, but the
+	# same report named it. Stylised rather than literal cord (nothing in this
+	# kit models individual strands): a tapered revolve hanging from the rim,
+	# using the SAME `rim_xform` so it hangs from where the rim actually is
+	# rather than from the pre-fix origin. `net`'s colour is deliberately darker
+	# than the rim's so it reads as the open weave in shadow underneath, not as
+	# a second ring merging into the first.
+	w.add_revolve(PackedVector2Array([
+		Vector2(0.20, 3.03), Vector2(0.15, 2.86), Vector2(0.095, 2.68),
+	]), 12, "net", true, Callable(), rim_xform)
 	_finish(w, "env_basketball_ring")
 
 # =============================================================================

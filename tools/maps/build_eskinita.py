@@ -437,8 +437,14 @@ BAY_GAP = 0.35              # alley-side alcove between neighbours, in metres
 ## It is also what stops the wall line reading as one extruded ribbon.
 DRIVEWAY_EVERY = 4
 
-CARS = ["kits/car/van", "kits/car/sedan", "kits/car/delivery",
-        "kits/car/taxi", "kits/car/truck"]
+# ⚠️ VAN AND SEDAN DROPPED, 2026-08-07, ON HUMAN INSTRUCTION: *"just the red sedan
+# and a blue van [remove]"*. Neither model is tinted at placement — colour comes
+# straight from each .glb's own baked material — so "the red sedan" and "a blue
+# van" name the MODELS, not one driveway instance: sedan.glb is always that red,
+# van.glb is always that blue, in every one of the ~12 driveway slots this list
+# cycles through. Delivery, taxi and truck are unaffected and now cycle through
+# the same driveways alone.
+CARS = ["kits/car/delivery", "kits/car/taxi", "kits/car/truck"]
 
 _bay = {-1.0: -Z_END, 1.0: -Z_END}   # each side advances independently now
 _i = {-1.0: 0, 1.0: 0}
