@@ -1,9 +1,4 @@
 extends Node
-## One-off: is the player-name row actually visible on SETTINGS, reached the
-## way a player reaches it? 🧑 reported it "disappeared" — checked whether that
-## is a real regression before touching anything.
-##
-##   godot --path <repo> tools/ui/settings_shot_check.tscn -- out=C:/tmp/
 
 var _out: String = ""
 var _menu: Control = null
@@ -26,3 +21,4 @@ func _run() -> void:
 	get_viewport().get_texture().get_image().save_png(_out + "settings_check.png")
 	print("wrote settings_check")
 	get_tree().quit(0)
+

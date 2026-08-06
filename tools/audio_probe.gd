@@ -1,31 +1,4 @@
 extends Node3D
-## Checklist 4.1 verification harness. Proves the audio workstream actually
-## RUNS, rather than merely parsing.
-##
-##   godot --path . tools/audio_probe.tscn --quit-after 400
-##
-## Reports, and fails loudly on, the six things that can each be wrong while
-## every other check in the smoke gate still passes:
-##
-##   1. The three buses exist and are named what the code thinks they are. A
-##      typo'd or unregistered default_bus_layout.tres does NOT error — Godot
-##      silently ships one bus called Master, `AudioServer.get_bus_index("SFX")`
-##      returns -1, and every sound plays at the wrong level forever.
-##   2. Every name in AudioManager.SFX_NAMES resolved to a real stream. A
-##      missing .wav is a push_warning, which nobody reads.
-##   3. The streams have NO LEADING SILENCE at the sample level. This is the
-##      property the lata impact's hitstop sync depends on (see the header of
-##      tools/audio/generate_sfx.py) and it is checked here, on the IMPORTED
-##      resource, not on the source file — Godot's wav importer can trim,
-##      normalise and resample, so the generator's own assertion proves nothing
-##      about what the game actually loads.
-##   4. play() and play_at() genuinely start a voice.
-##   5. Both maps carry an Ambience/AmbienceLoop, autoplaying, on the Music bus.
-##   6. Those ambience streams actually LOOP. Godot's ogg importer defaults
-##      loop=false; a bed that plays once and stops leaves the map silent for
-##      the rest of the match, and nothing anywhere reports it.
-##
-## Exits non-zero if any check fails, so it is usable as a gate.
 
 var _failures: Array[String] = []
 var _checks: int = 0
@@ -61,8 +34,6 @@ func _check_buses() -> void:
 		print("   %-7s index=%d  volume=%.1f dB  muted=%s"
 			% [bus_name, index, AudioServer.get_bus_volume_db(index) if index >= 0 else 0.0,
 				AudioServer.is_bus_mute(index) if index >= 0 else "?"])
-	# SFX and Music must route INTO Master, or the master slider does nothing to
-	# them and the three controls stop being a hierarchy.
 	for bus_name in ["SFX", "Music"]:
 		var index := AudioServer.get_bus_index(bus_name)
 		if index >= 0:
@@ -85,16 +56,11 @@ func _check_streams() -> void:
 		if lead > 0:
 			padded.append("%s (%d frames)" % [sound_name, lead])
 	_ok(missing.is_empty(), "streams missing or not AudioStreamWAV: %s" % ", ".join(missing))
-	# THE HITSTOP-SYNC CHECK. See the class doc.
 	_ok(padded.is_empty(), "streams with leading silence: %s" % ", ".join(padded))
 	print("   loaded  : %d" % (AudioManager.SFX_NAMES.size() - missing.size()))
 	print("   padded  : %d" % padded.size())
 
 
-## Number of leading frames below -60 dBFS in the IMPORTED sample. Reads the raw
-## PCM out of the resource, which is why the .import files pin compress/mode=0
-## (PCM) — a lossy codec would make this measurement meaningless as well as
-## smearing the transient it is measuring.
 func _leading_silent_frames(stream: AudioStreamWAV) -> int:
 	var data := stream.data
 	if data.is_empty():
@@ -102,7 +68,7 @@ func _leading_silent_frames(stream: AudioStreamWAV) -> int:
 	var stereo := stream.stereo
 	var is16 := stream.format == AudioStreamWAV.FORMAT_16_BITS
 	if not is16:
-		return 0 # not PCM16 — nothing to measure, and the import is what's wrong
+		return 0
 	var step := 4 if stereo else 2
 	var floor_value := 32768.0 * pow(10.0, -60.0 / 20.0)
 	var frame := 0
@@ -138,9 +104,6 @@ func _check_playback() -> void:
 	_ok(world_playing > 0, "AudioManager.play_at() started no voice")
 	_ok(placed, "play_at() did not move the voice to the requested world position")
 
-	# The retrigger guard: a second identical call inside RETRIGGER_MS must be
-	# dropped, or a sustained slipper-on-lata overlap becomes a metallic scream
-	# (see AudioManager.RETRIGGER_MS).
 	var before := _count_playing_3d()
 	for i in 8:
 		AudioManager.play_at("lata_impact", Vector3.ZERO)
@@ -167,8 +130,6 @@ func _check_map_ambience(path: String) -> void:
 		return
 	var map := packed.instantiate() as Node3D
 	add_child(map)
-	# autoplay starts on tree entry, but not until the node has actually been
-	# processed — one frame is enough and costs nothing.
 	await get_tree().process_frame
 
 	var player := map.get_node_or_null("Ambience/AmbienceLoop") as AudioStreamPlayer
@@ -180,11 +141,6 @@ func _check_map_ambience(path: String) -> void:
 	_ok(player.bus == &"Music", "%s ambience is on bus '%s', not Music"
 		% [path.get_file(), player.bus])
 	_ok(player.playing, "%s ambience did not start playing" % path.get_file())
-	# B-123: the beds are generated PCM .wav now, not sourced .ogg — see
-	# tools/audio/generate_ambience.py for why. Godot's wav importer defaults
-	# edit/loop_mode to 0 (no loop), the same silent failure the ogg importer
-	# had with loop=false: the bed plays once and the map is quiet for the rest
-	# of the match with nothing reporting it.
 	var wav := player.stream as AudioStreamWAV
 	_ok(wav != null, "%s ambience stream is not an AudioStreamWAV" % path.get_file())
 	if wav != null:
@@ -194,3 +150,4 @@ func _check_map_ambience(path: String) -> void:
 			% [wav.get_length(), wav.loop_mode, player.bus, player.volume_db])
 	map.queue_free()
 	await get_tree().process_frame
+

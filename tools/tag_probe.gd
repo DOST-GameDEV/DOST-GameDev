@@ -1,64 +1,8 @@
 extends Node3D
-## CAN THE AI TAYA TAG A HUMAN SEAT? **Written 2026-08-02.**
-##
-##     Godot_v4.7.1-stable_win64_console.exe --path <repo> tools/tag_probe.tscn -- \
-##         victim=human secs=25 tier=NORMAL
-##
-## | argument | default | what it does |
-## |---|---|---|
-## | `victim=human/bot` | human | which kind of seat is held in the taggable pose |
-## | `secs=N` | 25 | game seconds to hold the pose for |
-## | `tier=EASY/NORMAL/HARD` | NORMAL | the bots' difficulty |
-##
-## ---------------------------------------------------------------------------
-## ⚠️⚠️ WHY THIS EXISTS: EVERY TAG MEASUREMENT ON THIS BOARD IS BOT-VERSUS-BOT.
-##
-## 🧑 2026-08-02: *"AI cant tag human for some reason? I thhink thats why u dont
-## teleport like bots"*. `ai_probe` and `fair_probe` both run through
-## `GameLaunch.spectator`, which makes all four seats bots — so the seat a player
-## actually drives has never been under a probe at all. A rule that works between
-## two bots and fails against a human would be invisible to the entire board.
-##
-## ⚠️ THE VICTIM SEAT IS THE HUMAN'S SEAT, NOT AN UNCONTROLLED ONE. This header
-## used to say `victim=human` gives a seat with `ai_controller == null`. It does
-## not, and the probe's own second line has always said so (`victim seat=1
-## ai_controller=true`). `main.gd::_setup_local_match()` gives EVERY unit a
-## controller and creates the human's DISABLED — its own ⚠️ calls that out as
-## closing the last asymmetry, because `is_ai_driven()` is `ai_controller != null
-## AND is_enabled()`. So `solo_seat` is a real human seat; what it does not have
-## is a brain driving it.
-##
-## ⚠️ IT IS A ONE-VARIABLE EXPERIMENT AND THAT IS THE WHOLE DESIGN. Both runs put
-## a victim in the SAME pose: standing still, inside the box, holding a slipper,
-## a short walk from the taya, with the lata held upright so the tag is legal.
-## `victim=human` uses `GameLaunch.solo_seat`, the seat the shipping single-player
-## path hands to the player; `victim=bot` uses a seat whose controller is enabled
-## in normal play, silenced here so it stands just as still. The only difference
-## between the two runs is whether anything is driving the victim.
-##
-## ⚠️⚠️ IT FORCES THE LATA UPRIGHT, SO IT CANNOT SEE THE COMMONEST ZERO. A real
-## round has the can DOWN 60-70% of the time and no tag verb is legal then — see
-## `ai_controller.gd::_plan_defender()`. A player reporting "the taya never tags
-## me" is usually reading that window, or is standing in the box EMPTY-HANDED,
-## which `is_taggable()` makes 100% safe by design. Six tags in 25 s here does not
-## mean six tags in 25 s of play, and this probe cannot tell you that it does.
-##
-## ⚠️ IT DIAGNOSES, IT DOES NOT ONLY GRADE. Frame by frame it records the victim
-## side of the rule (`is_taggable()` and each of its three terms) and the taya
-## side (distance, whether the punch is in range, whether the taya is facing the
-## victim, and the cooldowns), so a zero-tag run says WHICH term was false rather
-## than only that nothing happened.
-##
-## ⚠️ RUN IT WITH THE CONSOLE EXE. It renders nothing and prints everything.
 
 const MAIN_SCENE: PackedScene = preload("res://scenes/main/Main.tscn")
 
-## Game seconds per real second. Modest on purpose: the punch is gated on a 0.9 s
-## cooldown and the lunge on a 0.5 s charge, and a large scale makes a physics
-## step long enough to step over both.
 const SCALE: float = 3.0
-## Where the victim is pinned, as a distance from the lata. Inside the box (7.0)
-## and inside the taya's guard post, so the taya has no reason not to close.
 const VICTIM_RADIUS: float = 2.2
 
 var _victim_kind: String = "human"
@@ -73,7 +17,6 @@ var _running: bool = false
 var _tags: int = 0
 var _tag_log: Array[String] = []
 
-# Frame counters, all of them "how many frames was this true".
 var _f_total: int = 0
 var _f_taggable: int = 0
 var _f_holding: int = 0
@@ -103,8 +46,6 @@ func _ready() -> void:
 			_tier = arg.substr(5)
 	print("[tag_probe] victim=%s secs=%.0f tier=%s" % [_victim_kind, _secs, _tier])
 	Engine.time_scale = SCALE
-	# The shipping single-player path: one human seat, three bots. NOT `spectator`,
-	# which is what every other probe uses and is precisely what hides this case.
 	GameLaunch.spectator = false
 	GameLaunch.solo_seat = 1
 	AIController.apply_difficulty(_tier_enum())
@@ -138,8 +79,6 @@ func _boot() -> void:
 		% [_victim.player_slot, _victim.ai_controller != null,
 		   _taya.player_slot, _taya.ai_controller != null])
 	if _victim_kind == "bot":
-		# Control group: use a seat that HAS a controller, and silence it so it
-		# stands as still as the human does. One variable, not two.
 		_victim = RoundManager.player_at(2)
 		if _victim == null:
 			print("[tag_probe] FAIL: no seat 2")
@@ -172,26 +111,20 @@ func _physics_process(delta: float) -> void:
 		return
 
 	var lata := RoundManager.lata
-	# Hold the lata up. A tag is illegal while it is over, and the bots will keep
-	# knocking it down, so without this the experiment measures the offence.
 	if lata != null and not lata.is_upright:
 		lata.host_restore()
 
-	# Pin the victim: inside the box, a short walk from the taya, standing still.
 	if lata != null:
 		var mark: Vector3 = lata.global_position + Vector3(VICTIM_RADIUS, 0.0, 0.0)
 		mark.y = _victim.global_position.y
 		_victim.global_position = mark
 		_victim.velocity = Vector3.ZERO
-	# And armed, which is the other half of `is_taggable()`.
 	if not _victim.holding_slipper():
 		_arm_victim()
 
 	_sample()
 
 
-## Put a slipper in the victim's hand by the game's own route, so the probe cannot
-## pass on a state the game would never produce.
 func _arm_victim() -> void:
 	for node in get_tree().get_nodes_in_group("slippers"):
 		var slipper := node as Slipper
@@ -236,7 +169,6 @@ func _sample() -> void:
 				_f_punch_facing += 1
 	if _taya.punch_cooldown_left() <= 0.0:
 		_f_punch_ready += 1
-	# Did the taya's brain even decide to hunt this player, and did it press?
 	if _taya.ai_controller != null:
 		var plan: String = _taya.ai_controller.current_plan()
 		_plans[plan] = int(_plans.get(plan, 0)) + 1
@@ -285,12 +217,6 @@ func _report() -> void:
 	for line in _tag_log:
 		print("      " + line)
 	var verdict := 0
-	# ⚠️ TAGS ARE CHECKED FIRST, AND THE ORDER IS THE WHOLE POINT. The low-taggable
-	# gate below reads as "the pose failed" — but a SUCCESSFUL run drives that same
-	# number to the floor, because every tag stuns the victim for `TAG_STUN_TIME` and
-	# `can_act()` is false throughout it. Graded the other way round, the fixed build
-	# reported the failure message while landing a tag every five seconds. That is §6
-	# trap 3's "a probe that reports the bug it was looking for", from the green side.
 	if _tags > 0:
 		print("    >> tags landed, one roughly every %.1f s (TAG_STUN_TIME is %.1f)."
 			% [_elapsed / float(_tags), RoundManager.TAG_STUN_TIME])
@@ -311,3 +237,4 @@ func _finish(code: int) -> void:
 	Engine.time_scale = 1.0
 	await get_tree().process_frame
 	get_tree().quit(code)
+

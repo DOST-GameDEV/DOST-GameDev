@@ -1,107 +1,15 @@
 extends Node3D
-## THE PASSIVE-DEFENCE EXPERIMENT. **Written 2026-08-01 by ⚖️ `build fair`.**
-##
-##     Godot_v4.7.1-stable_win64_console.exe --path <repo> tools/fair_probe.tscn -- \
-##         policy=turtle matches=1 scale=6 tier=NORMAL
-##
-## | argument | default | what it does |
-## |---|---|---|
-## | `policy=bot/idle/turtle` | turtle | what the taya does (see § THE THREE TAYAS) |
-## | `matches=N` | 1 | whole 4-round matches, played back to back |
-## | `scale=X` | 6 | game seconds per real second |
-## | `tier=EASY/NORMAL/HARD` | NORMAL | the ATTACKERS' difficulty |
-## | `seats=all/N` | all | which seats play the policy when THEY are taya |
-## | `secs=N` | 900 | wall-clock safety cap |
-##
-## ---------------------------------------------------------------------------
-## ⚠️⚠️ WHY THIS EXISTS AND WHY `ai_probe` COULD NOT ANSWER IT.
-##
-## `Agent_Prompts.md` §2.1 has been the board's number-one balance suspect since
-## the pivot, on ARITHMETIC alone: passive defence pays the taya +10/s for a 90 s
-## round, which is **900 points uncontested**, against **+100** for a knockdown.
-## §2.25 measured it for the first time on 2026-08-01 and found DEFENSE is
-## **21–32%** of every point against a competent offence and **77%** against a
-## broken one — so the term is dominant exactly when the attackers cannot convert,
-## and it degrades as they get better.
-##
-## ⚠️ BUT THAT MEASUREMENT IS ENTIRELY BOT-VS-BOT, AND THE BOT TAYA PLAYS THE GAME.
-## It guards, it intercepts, it hunts, and it LUNGES — `ai_probe` at NORMAL reports
-## 21 tags a match. The case §2.25's own note says it does not settle is the one the
-## arithmetic actually warns about: **a HUMAN taya who simply hides behind the lata**
-## and never risks anything. Nothing in this repo could produce that player, so the
-## 900 has never been observed — only reasoned about.
-##
-## This probe produces that player, and it does it through the game's own intent
-## harness (`CharacterBase.ai_set_intent`), so the passive taya presses the same
-## eight-way keyboard a human presses. A policy that wrote `velocity` directly
-## would be measuring a unit the game cannot contain, and the number that came
-## back would not be about the rule.
-##
-## ⚠️ `ai_controller.gd` IS 🤖 `build ai`'s FILE AND IS NOT EDITED. The two brains
-## below EXTEND `AIController` from this file and override `decide()`, and the
-## real controller is disabled (not destroyed) for exactly the rounds the policy
-## is in force, then handed back. Nothing about the shipping AI changes.
-## ---------------------------------------------------------------------------
-##
-## § THE THREE TAYAS. Each one is the same game with one thing removed, so the
-## difference between two runs is attributable to that one thing.
-##
-##   `bot`    — the shipping `AIController`, untouched. The CONTROL. Should
-##              reproduce `ai_probe` at the same tier; if it does not, the
-##              takeover machinery is lying and every other row is void.
-##   `idle`   — the taya presses NOTHING. The floor: what does zero effort
-##              collect? ⚠️ Not the 900 — an idle taya never stands the lata back
-##              up, so its passive income stops at the first knockdown. That is
-##              itself a finding and it is why "uncontested" was always the load
-##              -bearing word in §2.1's arithmetic.
-##   `turtle` — the exploit. It guards from the SAME post the shipping bot guards
-##              from and it resets the lata the moment it goes down, but it
-##              **never lunges**. So `turtle` minus `bot` is exactly the value of
-##              the tag, and `turtle` is the best passive game the rules allow.
-##
-## ⚠️ THE STANDOFF IS DELIBERATELY THE BOT'S OWN `GUARD_RADIUS` (2.2 m). Copying
-## the shipping positioning is what makes `bot` vs `turtle` a one-variable
-## experiment. A hand-tuned "better" post would have measured this probe's
-## author's positioning instead of measuring the rule.
-##
-## ⚠️ RUN IT WITH THE PLAIN EXE OR THE CONSOLE ONE, NEVER `--headless` — it boots
-## the real `Main.tscn` with cameras and a HUD on it, and headless has no
-## rendering device.
 
 const MAIN_SCENE: PackedScene = preload("res://scenes/main/Main.tscn")
 
-## ⚠️ THE SAME TIME-SCALE CONTRACT `ai_probe` KEEPS, AND FOR THE SAME REASON.
-## `Engine.time_scale` alone makes every physics STEP longer, and a slipper at
-## 17 m/s against the lata's 0.53 m hit window then advances 1.7 m per step and
-## sails through the can — which would report an offence that never scores while
-## it was in fact hitting, i.e. a number that agrees with the bug being hunted.
-## The tick rate is raised by the same factor so the step stays 1/60 s of game
-## time, and `_grade()` refuses to grade if it drifted.
 const BASE_TICKS: int = 60
 const STEP_TOLERANCE: float = 1.0 / 45.0
 const DEFAULT_SCALE: float = 6.0
 const DEFAULT_MATCHES: int = 1
 const DEFAULT_WALL_CAP: float = 900.0
 
-## ---------------------------------------------------------------------------
-## § THE GATE. One claim, falsifiable, and it goes RED on the shipping numbers.
-##
-## The claim under test is **"passive defence is not the game"**. Under `turtle`
-## every one of the four seats plays the best passive taya the rules allow for
-## its own round, so the seat asymmetry cancels and what is left is the size of
-## the term itself. If more than this share of every point in a whole match comes
-## from the one verb that costs nothing and risks nothing, the term IS the game.
-##
-## ⚠️ 50% IS THE HONEST LINE AND NOT A ROUND NUMBER PICKED TO PASS. Four rounds
-## have exactly one taya and three attackers each; a rule that pays one player
-## more than the other three combined, for standing still, is not a catch-up term
-## any more. ⚠️ IT IS ONLY APPLIED UNDER `turtle` — grading `bot` on it would be
-## grading the AI's competence, which is not this lane's row (§2.27).
 const GATE_PASSIVE_SHARE: float = 50.0
 
-## Under `turtle` the taya concedes every tag by construction, so a passive seat
-## that STILL out-scores the field is a dominant degenerate strategy — the thing
-## "Esports Potential" cannot survive. Reported always; gated under `turtle`.
 const GATE_TURTLE_MAY_WIN: bool = false
 
 enum Policy { BOT, IDLE, TURTLE }
@@ -111,7 +19,6 @@ var _matches_target: int = DEFAULT_MATCHES
 var _scale: float = DEFAULT_SCALE
 var _wall_cap: float = DEFAULT_WALL_CAP
 var _tier: int = AIController.Difficulty.NORMAL
-## -1 is "every seat, on its own round".
 var _seat_filter: int = -1
 
 var _main: Node = null
@@ -120,13 +27,11 @@ var _rounds_seen: int = 0
 var _finished: bool = false
 var _wall_start: float = 0.0
 
-## Live brains, and the shipping controllers they displaced. Keyed by seat.
 var _brains: Dictionary = {}
 var _origins: Dictionary = {}
 
 var _score_total: Array[int] = [0, 0, 0, 0]
 var _score_by_reason: Dictionary = {}
-## Per seat, points earned WHILE THAT SEAT WAS THE TAYA. The passive income.
 var _defense_by_slot: Array[int] = [0, 0, 0, 0]
 var _tags_by_slot: Array[int] = [0, 0, 0, 0]
 var _knockdowns_by_slot: Array[int] = [0, 0, 0, 0]
@@ -139,20 +44,13 @@ var _knockdowns: int = 0
 var _tags: int = 0
 var _slipper_was: Dictionary = {}
 
-## The driver of the whole defence term: how long the can spent standing.
 var _upright_time: float = 0.0
 var _round_live_time: float = 0.0
 
 var _step_samples: int = 0
 var _step_total: float = 0.0
 
-## ---------------------------------------------------------------------------
-## § THE BRAINS. Both extend the shipping controller and override `decide()`,
-## so they inherit `_press()`/`_drive()`/`_stop()` — the eight-way keyboard —
-## and nothing else about `AIController` runs.
-## ---------------------------------------------------------------------------
 
-## A taya that does nothing at all. The floor.
 class IdleBrain extends AIController:
 	func decide(_delta: float) -> void:
 		if character == null or not is_instance_valid(character):
@@ -162,24 +60,13 @@ class IdleBrain extends AIController:
 		_press("lunge", false)
 		_press("special_ability", false)
 
-## A taya that plays the best passive game the rules allow, and never lunges.
 class TurtleBrain extends AIController:
-	## The shipping bot's own `GUARD_RADIUS`. See the header on why it is copied.
 	const BLOCK_STANDOFF: float = 2.2
-	## ⚠️ NOT `ARRIVE_SLOP` — that name already exists on `AIController` and a
-	## subclass redeclaring a parent's const is a PARSE ERROR, not a shadow.
-	## ⚠️ AND `--headless --import` DID NOT REPORT IT. The documented "one cheap
-	## real gate" (docs/README.md) came back clean while this file could not load
-	## at all; the parse error only appeared when the scene was actually run. A
-	## tool script is not proven by an import.
 	const POST_SLOP: float = 0.55
 
 	func decide(_delta: float) -> void:
 		if character == null or not is_instance_valid(character):
 			return
-		# ⚠️ THE ENTIRE EXPERIMENT IS THIS LINE. Everything else here is ordinary
-		# defensive play; refusing to lunge is what makes it PASSIVE, and the
-		# difference between this run and `policy=bot` is the value of the tag.
 		_press("lunge", false)
 		_press("special_ability", false)
 		if not RoundManager.round_active or not character.can_act():
@@ -192,9 +79,6 @@ class TurtleBrain extends AIController:
 			_press("grab", false)
 			return
 		if not can.is_upright:
-			# Uptime IS the score, so the channel is the highest-value thing a
-			# passive taya can be doing. ⚠️ HELD, NOT TAPPED: `carrier.gd`'s
-			# channel reads `input_pressed` and zeroes on any false frame.
 			var inside := can.is_in_ring(character.global_position)
 			if inside:
 				_stop()
@@ -203,8 +87,6 @@ class TurtleBrain extends AIController:
 			_press("grab", inside)
 			return
 		_press("grab", false)
-		# Hide behind the can: stand on the line between it and whoever is most
-		# likely to throw next, which is what makes the body a block.
 		var threat := _worst_threat(can)
 		if threat == null:
 			_walk_to(can.global_position, POST_SLOP)
@@ -216,9 +98,6 @@ class TurtleBrain extends AIController:
 			return
 		_walk_to(can.global_position + toward.normalized() * BLOCK_STANDOFF, POST_SLOP)
 
-	## ⚠️ NEVER SPRINTS. A passive taya has no reason to spend a 1.25 s bar it
-	## cannot convert into a tag, and spending it would import the fatigue rule
-	## into a measurement that is not about fatigue.
 	func _walk_to(point: Vector3, stop_at: float) -> void:
 		var delta := point - character.global_position
 		delta.y = 0.0
@@ -227,9 +106,6 @@ class TurtleBrain extends AIController:
 			return
 		_drive(delta, false)
 
-	## The armed attacker nearest the can, preferring one already winding up.
-	## Deliberately simpler than the shipping `_live_threat()` — a human hiding
-	## behind a can is not running a sixteen-bearing solver.
 	func _worst_threat(can: Lata) -> CharacterBase:
 		var best: CharacterBase = null
 		var best_score := -INF
@@ -251,9 +127,6 @@ class TurtleBrain extends AIController:
 				best = who
 		return best
 
-## ---------------------------------------------------------------------------
-## THE RUN.
-## ---------------------------------------------------------------------------
 
 func _ready() -> void:
 	_parse_args()
@@ -303,8 +176,6 @@ func _parse_args() -> void:
 
 func _start_match() -> void:
 	_match_index += 1
-	# `spectator` makes all four seats bots through the SHIPPING code path — the
-	# same one `ai_probe` uses, so the two harnesses cannot diverge on setup.
 	GameLaunch.spectator = true
 	_main = MAIN_SCENE.instantiate()
 	add_child(_main)
@@ -313,7 +184,6 @@ func _start_match() -> void:
 	_origins.clear()
 
 func _end_match() -> void:
-	# The brains are children of characters under `_main`, so they die with it.
 	_brains.clear()
 	_origins.clear()
 	if _main != null and is_instance_valid(_main):
@@ -344,17 +214,6 @@ func _on_match_won(winning_slot: int) -> void:
 func _on_round_ended(_round_number: int) -> void:
 	_rounds_seen += 1
 
-## ---------------------------------------------------------------------------
-## THE TAKEOVER. Re-asserted every physics frame rather than driven off
-## `round_started`, and that is not laziness.
-##
-## ⚠️ `main.gd::_reassert_spectated_bots()` RE-ENABLES `character.ai_controller`
-## on a schedule of its own, and the role rotates at a round boundary this node
-## does not own the ordering of. An idempotent check every frame cannot be raced
-## by either; a one-shot on a signal can be, and a taya that quietly reverted to
-## the shipping brain for part of a round would report a `turtle` number that had
-## the lunge back in it.
-## ---------------------------------------------------------------------------
 func _apply_policy() -> void:
 	if _policy == Policy.BOT:
 		return
@@ -375,14 +234,10 @@ func _apply_policy() -> void:
 func _take_over(who: CharacterBase, slot: int) -> void:
 	var original := who.ai_controller
 	if original != null:
-		# Releases everything it is mid-press on and wipes the intent dictionary,
-		# so nothing stays "held" across the swap.
 		original.set_enabled(false)
 	_origins[slot] = original
 	var brain: AIController = IdleBrain.new() if _policy == Policy.IDLE else TurtleBrain.new()
 	brain.name = "FairProbeBrain"
-	# `AIController._ready()` reads `character` off its parent, so parenting to
-	# the unit is what wires it up.
 	who.add_child(brain)
 	who.ai_controller = brain
 	who.ai_clear_intent()
@@ -401,9 +256,6 @@ func _hand_back(who: CharacterBase, slot: int) -> void:
 	_brains.erase(slot)
 	_origins.erase(slot)
 
-## ---------------------------------------------------------------------------
-## SAMPLING.
-## ---------------------------------------------------------------------------
 func _physics_process(delta: float) -> void:
 	if _finished:
 		return
@@ -451,9 +303,6 @@ func _on_tagged(defender_slot: int, _victim_slot: int) -> void:
 	if defender_slot >= 0 and defender_slot < 4:
 		_tags_by_slot[defender_slot] += 1
 
-## ---------------------------------------------------------------------------
-## § THE REPORT.
-## ---------------------------------------------------------------------------
 func _grade() -> void:
 	if _finished:
 		return
@@ -469,8 +318,6 @@ func _grade() -> void:
 	print("matches %d   rounds %d   live game time %.1f s   mean physics step %.4f s"
 		% [matches, _rounds_seen, _round_live_time, mean_step])
 
-	# ⚠️ THE HARNESS IS GRADED BEFORE THE RULE IS. A drifted step makes every
-	# contact number below a measurement of the time scale.
 	if mean_step > STEP_TOLERANCE:
 		failures.append(("HARNESS: mean physics step %.4f s exceeds %.4f — contact "
 			+ "sampling too coarse to trust. Re-run at scale=1.")
@@ -521,9 +368,6 @@ func _grade() -> void:
 	print("           a taya collects %.0f of the theoretical 900 per round (%.0f%% of it)."
 		% [per_round_defense, 100.0 * per_round_defense / 900.0])
 
-	# ⚠️ GATED ONLY UNDER `turtle`. Grading `bot` here would be grading how good
-	# `build ai`'s controller is, which is explicitly not this lane's number
-	# (§2.27, and the lane prompt's own warning about tuning against the AI).
 	if _policy == Policy.TURTLE and _completed_matches >= 1:
 		print("")
 		print("passive share %.1f%%   (gate: <= %.1f%% under `turtle`)"
@@ -569,3 +413,4 @@ func _tier_name() -> String:
 	if _tier == AIController.Difficulty.ASTIG:
 		return "HARD"
 	return "NORMAL"
+

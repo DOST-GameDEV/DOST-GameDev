@@ -1,14 +1,4 @@
 extends Node
-## § THE STUN FROST, on a real body in a real match, photographed at both ends.
-##
-##     godot --path <repo> tools/ui/frost_shot.tscn -- out=/tmp/
-##
-## ⚠️ PLAIN EXE, NOT --headless. The whole thing is two shaders; a run with no
-## rendering device proves nothing about either.
-##
-## ⚠️ IT STUNS THE **LOCAL** ATTACKER ON PURPOSE. The two halves go to different
-## audiences — the body ices for everybody, the screen frosts only for the victim —
-## so the only camera that sees both at once is the stunned player's own.
 var _out: String = ""
 var _fails: int = 0
 
@@ -36,10 +26,6 @@ func _ready() -> void:
 		break
 	_check(visual != null, "it has a CharacterVisual")
 
-	# ⚠️ THE GAP THIS PROBE EXISTS FOR. A Person wears `person_palette.gdshader`, which
-	# `_collect_meshes()` used to skip outright — so nothing was duplicated for a body and
-	# there was no per-unit material to write frost into. An empty list here means the
-	# feature is silently dead, which looks exactly like "nobody got stunned".
 	_check(not visual._frost_materials.is_empty(),
 		"per-unit frost materials were collected (%d)" % visual._frost_materials.size())
 
@@ -51,7 +37,6 @@ func _ready() -> void:
 	_check(is_zero_approx(visual._frost_level), "body is unfrosted at rest (%.2f)" % visual._frost_level)
 	_check(frost_rect == null or not frost_rect.visible, "screen is clear at rest")
 
-	# The real thing: the tag penalty, through the same call the tag makes.
 	me.apply_stagger(RoundManagerScript.TAG_STUN_TIME)
 	_check(me.state == CharacterBase.State.STAGGERED, "the attacker is STAGGERED")
 	await get_tree().create_timer(0.9).timeout
@@ -61,9 +46,7 @@ func _ready() -> void:
 	var peak: float = frost_rect.material.get_shader_parameter("coverage") if frost_rect else 0.0
 	_check(peak > 0.85, "screen coverage is at full (%.2f)" % peak)
 
-	# ⚠️ AND IT MUST RECEDE. Holding full for five seconds then snapping off is the thing
-	# the accessible-status guidance says not to do: the player is never told it is ending.
-	await get_tree().create_timer(3.6).timeout   # ~4.5s in, inside the thaw window
+	await get_tree().create_timer(3.6).timeout
 	var thaw: float = frost_rect.material.get_shader_parameter("coverage") if frost_rect else 0.0
 	await _shot("frost_thaw", "4.5s in — receding")
 	_check(thaw < peak, "screen frost is receding (%.2f -> %.2f)" % [peak, thaw])
@@ -75,10 +58,6 @@ func _ready() -> void:
 	_check(is_zero_approx(visual._frost_level), "body cleared (%.2f)" % visual._frost_level)
 	_check(not frost_rect.visible, "screen cleared")
 
-	# ⚠️ THE BODY HALF NEEDS A DIFFERENT CAMERA. Everything above is the victim's own
-	# screen, and in first person a player cannot see their own frozen body — which is
-	# precisely why the body half exists at all: it is for the taya who landed the tag.
-	# So this stuns SOMEBODY ELSE and looks at them from outside.
 	await _shoot_a_bystander(main)
 	_finish()
 
@@ -96,8 +75,6 @@ func _shoot_a_bystander(main: Node) -> void:
 	for n in victim.find_children("*", "CharacterVisual", true, false):
 		vis = n
 		break
-	# A camera of our own, close in on the body — the match cameras are wherever the
-	# players left them and would photograph the back of somebody's head.
 	var cam := Camera3D.new()
 	main.add_child(cam)
 	cam.global_position = victim.global_position + Vector3(2.9, 2.1, 3.4)
@@ -128,3 +105,4 @@ func _finish() -> void:
 	print("[frost probe] %s" % ("ALL CHECKS PASSED" if _fails == 0
 		else "*** %d FAILED ***" % _fails))
 	get_tree().quit(1 if _fails > 0 else 0)
+

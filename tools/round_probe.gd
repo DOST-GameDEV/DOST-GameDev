@@ -1,52 +1,14 @@
 extends Node3D
-## ROUND TRANSITION AUDIT — "whenever a round ends, players get launched to
-## multiple directions" (user report, 2026-07-29).
-##
-## Drives several round transitions back to back and measures, for every
-## character, whether it MOVES AT ALL between the round ending and the next one
-## starting. Between rounds every unit is teleported to its role spawn marker
-## (main.gd::_reset_world) and is supposed to stay there; any motion at all in
-## that window is the bug.
-##
-## ⚠️ EVERY AI CONTROLLER IS DISABLED. This is the difference between a probe
-## that measures the engine and one that measures the bots: a bot walking at
-## SPEED (6.0) or launching a slipper at 26.0 is indistinguishable from a
-## physics launch in a raw velocity sample. With the controllers off, ANY
-## nonzero speed around a transition is the engine.
-##
-## ⚠️ IT DELIBERATELY FIRES AN IMPULSE INTO THE FROZEN GAP. Simply letting the
-## rounds tick over reports a clean pass even when the bug is present — the
-## reset itself was never the problem. What breaks is an impulse ARRIVING during
-## the gap, and there are two routine sources of one: the round-winning tag
-## applies knockback in the same frame it ends the round, and networked,
-## `_apply_hit_result` is an rpc_id to the struck peer that can land frames
-## after the reset has already teleported everyone home. The probe reproduces
-## exactly that.
-##
-##   godot --path . tools/round_probe.tscn
-##
-## Never `--headless` — same rule as smoke-gate 3 and 4.
 
-## How many round transitions to drive.
 const TRANSITIONS: int = 6
-## Impulse fired into the frozen gap, in m/s. Deliberately large and diagonal so
-## a failure is unmistakable and obviously not gravity.
 const PROBE_IMPULSE := Vector3(9.0, 4.0, 4.0)
-## Speed below which a character counts as genuinely stationary.
 const STILL_EPSILON: float = 0.15
-## How far a character may drift from where the reset parked it before it counts
-## as having moved. Generous enough to absorb the spawn-settle transform write.
 const DRIFT_EPSILON: float = 0.10
 
 var _main: Node
 var _roster: Array[CharacterBase] = []
 var _max_speed: Dictionary = {}
 var _max_drift: Dictionary = {}
-## Where each character was on the first frozen frame of the current gap — the
-## control for the drift number. ⚠️ NOT `spawn_position`: _reset_world() rewrites
-## that field mid-transition, so measuring against it reports the marker moving
-## rather than the character moving, which is how the first version of this
-## probe produced a meaningless 1.65 m "drift" on a run where nothing moved.
 var _anchor: Dictionary = {}
 var _was_active: bool = false
 var _transitions_done: int = 0
@@ -71,7 +33,6 @@ func _ready() -> void:
 		await get_tree().create_timer(1.5).timeout
 		RoundManager.report_round_win(i % 2 == 0)
 		_transitions_done += 1
-		# Two frames in: past _reset_world(), squarely inside the frozen gap.
 		await get_tree().physics_frame
 		await get_tree().physics_frame
 		for c in _roster:
@@ -92,22 +53,6 @@ func _physics_process(_delta: float) -> void:
 	for c in _roster:
 		if not is_instance_valid(c):
 			continue
-		# ⚠️⚠️ THE "SKIP A CARRIED PROP" GUARD THAT USED TO LIVE HERE IS DELETED, NOT
-		# TRANSLATED — 2026-08-02. It read the unit's own `Carriable` node and skipped
-		# it while that node was driving movement, because `_reset_world()` ends by
-		# having the attacker grab its tsinelas and `_step_carried()` then snapped the
-		# Prop to the hand every frame: a legitimate ~1.65 m teleport at zero velocity
-		# that the first version of this probe reported as drift.
-		#
-		# That whole hazard is gone with the prop rewrite (3abc019). `_roster` is
-		# `RoundManager.players()`, which is now four Persons and nothing else — a
-		# tsinelas is a `Slipper` (a plain Node3D prop, not a CharacterBase) and is not
-		# in this list to be skipped. Keeping a guard for a case the loop can no longer
-		# see would be a filter that silently never fires, which is worse than none:
-		# it reads as coverage. If a carried PERSON ever becomes a thing, this is where
-		# it goes back.
-		# First frozen frame of this gap: anchor here, after _reset_world has
-		# already teleported everyone.
 		if not _anchor.has(c):
 			_anchor[c] = c.global_position
 		_max_speed[c] = maxf(_max_speed[c], c.velocity.length())
@@ -128,3 +73,4 @@ func _report() -> void:
 	print("  VERDICT: %s" % ("PASS — every character stayed exactly where the reset put it"
 		if ok else "*** FAIL — characters move between rounds (worst %.2f m/s, %.2f m) ***"
 			% [worst_speed, worst_drift]))
+

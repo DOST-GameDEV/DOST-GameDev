@@ -1,14 +1,4 @@
 extends Node
-## EVERY EMOTE, PLAYED ON A REAL BODY, PHOTOGRAPHED FROM THE EMOTE CAMERA.
-##
-##     Godot_v4.7.1-stable_win64.exe --path <repo> tools/ui/emote_pose_shot.tscn -- <out-dir/>
-##
-## ⚠️ PLAIN EXE, NOT --headless — no rendering device under headless here.
-##
-## ⚠️ THIS EXISTS BECAUSE A CLIP NAME IS NOT A POSE. "T-POSE" is a promise about
-## what the player will see, and `static` is only the rig's bind pose if you have
-## actually looked at it. Naming a slice off a guess is how a wheel ends up offering
-## something the animation does not do.
 const SETTLE: float = 0.6
 
 var _out: String = ""
@@ -34,7 +24,6 @@ func _ready() -> void:
 	for entry in EmoteWheel.EMOTES:
 		var id: String = String(entry["id"])
 		me.play_emote(id)
-		# Long enough for a one-shot to reach its held final frame.
 		await get_tree().create_timer(SETTLE).timeout
 		await RenderingServer.frame_post_draw
 		await RenderingServer.frame_post_draw
@@ -44,3 +33,4 @@ func _ready() -> void:
 		me.stop_emote()
 		await get_tree().create_timer(0.3).timeout
 	get_tree().quit()
+

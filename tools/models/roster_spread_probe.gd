@@ -1,33 +1,4 @@
 extends Node
-## DO THE FOUR SEATS WEAR FOUR DIFFERENT PEOPLE — AND DOES EVERY VIEWER AGREE?
-##
-##     Godot_v4.7.1-stable_win64.exe --path <repo> tools/models/roster_spread_probe.tscn -- out=C:/tmp/
-##     ... -- spectate                (the filmed case: no human seat at all)
-##
-## ⚠️ PLAIN EXE — it renders a group shot at the end.
-##
-## 🧑 2026-08-01: *"RANDOMISE THE BOTS' CHARACTER SKINS"*, and separately *"make
-## sure as well that it works in multiplayer, that other people and the spectator
-## all see the same skins"*.
-##
-## Those are two different questions and this answers both:
-##
-##   DISTINCT  every seat resolves a real roster entry, and no two seats resolve
-##             the same one. That is the reported bug — `character_index` stays
-##             -1 on an AI seat and `character_visual.gd::_model_path()` then
-##             falls back to `PERSON_MODELS[team]`, so a four-player match
-##             rendered two models.
-##   AGREED    the seat -> Person mapping is a property of the MATCH, not of the
-##             machine looking at it. This prints the mapping as a signature so a
-##             second peer's run can be diffed against the first — the same
-##             byte-identical-stream trick `net_twopeer_probe` uses, which is the
-##             only honest way to check "everyone sees the same skins" without
-##             four people in a room.
-##
-## ⚠️ IT READS THE MODEL THAT IS ACTUALLY LOADED, NOT `character_index`. An index
-## agreeing on two peers while the mesh under it does not is exactly the class of
-## bug this is looking for, so the check walks each unit's `Visual` for the real
-## `.glb` path — the thing a viewer can actually see.
 
 const MAIN_SCENE: PackedScene = preload("res://scenes/main/Main.tscn")
 
@@ -43,9 +14,6 @@ func _ready() -> void:
 		if text.begins_with("out="):
 			_out = text.substr(4)
 		elif text == "spectate":
-			# The filmed case. A spectator holds no seat, so ALL FOUR units are
-			# unpicked — which is the harshest version of the test and the one
-			# `_dress_spectated_units()` exists for.
 			GameLaunch.spectator = true
 	if _out == "":
 		_out = ProjectSettings.globalize_path("user://")
@@ -107,9 +75,6 @@ func _run() -> void:
 		else:
 			seen_models.append(model)
 
-	# ⚠️ THE SIGNATURE IS THE MULTIPLAYER HALF. Run this on two peers and diff the
-	# one line; identical means every viewer resolves the same person for the same
-	# seat, which is what was actually asked.
 	var signature := PackedStringArray()
 	for row in rows:
 		signature.append("%d:%s" % [int(row["slot"]), String(row["model"]).get_file()])
@@ -136,8 +101,6 @@ func _roster_name(index: int) -> String:
 	return String(CharacterRoster.ROSTER[index].get("name", "?"))
 
 
-## The .glb actually instanced under this unit's Visual — not the index that was
-## supposed to produce it.
 func _loaded_model(who: CharacterBase) -> String:
 	var visual := who.get_node_or_null("Visual") as Node3D
 	if visual == null:
@@ -146,9 +109,8 @@ func _loaded_model(who: CharacterBase) -> String:
 		var instance := node as MeshInstance3D
 		if instance.mesh != null and instance.mesh.resource_path != "":
 			return instance.mesh.resource_path
-		# A rig arrives as a PackedScene, so the mesh has no path of its own —
-		# fall back to the scene file the instance came out of.
 		var owner_scene := instance.owner
 		if owner_scene != null and owner_scene.scene_file_path != "":
 			return owner_scene.scene_file_path
 	return ""
+

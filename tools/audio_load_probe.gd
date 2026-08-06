@@ -1,32 +1,13 @@
 extends Node3D
-## B-119/B-120 diagnostic. Answers ONE question with numbers instead of
-## reasoning: during a real match, which sounds actually start, how often, and
-## how many are ringing at the same time?
-##
-##   godot --path . tools/audio_load_probe.tscn --quit-after 1800
-##
-## Two agents have now patched the "loud buzz in gameplay" report without a
-## Godot binary, from the source of generate_sfx.py rather than from a running
-## game. This is the measurement neither could take.
-##
-## HOW IT MEASURES. It does not instrument AudioManager (which would mean
-## shipping debug code in a gameplay path — Dev_Plan.md §0.3). It polls the
-## voice pools every frame and counts a START whenever a voice goes from
-## not-playing to playing, OR its playback position jumps backwards (which is
-## the same voice being retriggered inside one frame boundary). Peak
-## concurrency is the max number of voices playing simultaneously in any single
-## frame — that is the number that decides whether the mix clips.
 
 const REPORT_EVERY_FRAMES: int = 600
 
-var _starts: Dictionary = {}          ## sound name -> times it began playing
-var _last_playing: Dictionary = {}    ## voice id -> was it playing last frame
-var _last_pos: Dictionary = {}        ## voice id -> playback position last frame
+var _starts: Dictionary = {}
+var _last_playing: Dictionary = {}
+var _last_pos: Dictionary = {}
 var _peak_concurrent: int = 0
 var _peak_at_frame: int = 0
 var _frames: int = 0
-## Frame-by-frame concurrency, so a sustained pile-up is distinguishable from
-## one unlucky spike.
 var _concurrency_histogram: Dictionary = {}
 
 
@@ -34,9 +15,6 @@ func _ready() -> void:
 	var main: Node = (load("res://scenes/main/Main.tscn") as PackedScene).instantiate()
 	add_child(main)
 	await get_tree().process_frame
-	# Drive it past the ready-up gate so the round actually runs — otherwise this
-	# measures the free-roam window, where almost nothing fires, and reports a
-	# clean bill of health for a bug that only happens in combat.
 	MatchManager.begin_next_round()
 
 
@@ -51,7 +29,6 @@ func _process(_delta: float) -> void:
 		var last_pos: float = _last_pos.get(id, 0.0)
 		if playing:
 			concurrent += 1
-			# Fresh start, or a retrigger on the same voice (position rewound).
 			if not was or pos < last_pos - 0.001:
 				var stream_name := "?"
 				if voice.stream != null:
@@ -99,3 +76,4 @@ func _report() -> void:
 
 func _exit_tree() -> void:
 	_report()
+

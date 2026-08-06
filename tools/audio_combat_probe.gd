@@ -1,18 +1,4 @@
 extends Node3D
-## B-122 diagnostic. Drives the COMBAT state machine directly and counts what
-## it makes noise about.
-##
-##   godot --path . tools/audio_combat_probe.tscn --quit-after 1200
-##
-## WHY. audio_load_probe.gd measured a real match and reported a clean bill of
-## health — but in that run nothing was ever knocked down (lata_impact fired
-## once in 1800 frames, and no unit entered DOWNED or SEALED at all). So it
-## measured the throw loop and never touched the stagger/downed/self-right path,
-## which is most of what a human actually generates in a fight.
-##
-## This drives those transitions on purpose: repeated staggers, a knockdown, an
-## early self-right, then more staggers. If a sound fires on a transition it has
-## no business firing on, it shows up here as a count that should be zero.
 
 var _starts: Dictionary = {}
 var _last_playing: Dictionary = {}
@@ -38,26 +24,17 @@ func _ready() -> void:
 	var unit := _units[0]
 	print("driving: %s (is_can=%s is_person=%s)" % [unit.name, unit.is_can, unit.is_person])
 
-	# 1. Three plain staggers on a NORMAL unit. Nothing about a stagger should
-	#    make a recovery noise — the impact that caused it already sounded.
 	await _phase("three staggers, no knockdown", func() -> void:
 		for i in 3:
 			unit.apply_stagger(0.25)
 			await get_tree().create_timer(0.45).timeout)
 
-	# 2. A knockdown, then an EARLY self-right (Quick Stand / the taya's reset
-	#    channel). This is the one transition that legitimately makes a recovery
-	#    sound.
 	await _phase("knockdown + early self-right", func() -> void:
 		unit.go_downed()
 		await get_tree().create_timer(0.4).timeout
 		unit.self_right()
 		await get_tree().create_timer(0.4).timeout)
 
-	# 3. THE ACTUAL TEST. More plain staggers, AFTER that knockdown. Identical
-	#    to phase 1, so the counts must be identical too. If recovery sounds
-	#    appear here and not in phase 1, state from the knockdown is leaking
-	#    into every subsequent stagger.
 	await _phase("three MORE staggers (same as phase 1)", func() -> void:
 		for i in 3:
 			unit.apply_stagger(0.25)
@@ -104,3 +81,4 @@ func _process(_delta: float) -> void:
 			_starts[n] = int(_starts.get(n, 0)) + 1
 		_last_playing[id] = playing
 		_last_pos[id] = pos
+

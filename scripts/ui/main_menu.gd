@@ -1,17 +1,9 @@
 extends Control
 class_name MainMenu
 
-## The title screen: the TUMP logo, the backdrop plate and the four pennant
-## buttons. No longer the game's literal entry point — `SplashScreen.tscn` is
-## `run/main_scene` now and hands off to this once the opening sting has played.
-##
-## PLAY hands off to ModeSelect.tscn, which owns map/mode selection and the
-## offline/host/join launch. The two used to share this scene; they share no
-## nodes and only ever hand off to each other, so they are separate scenes.
 
 const MODE_SELECT_PATH: String = "res://scenes/ui/ModeSelect.tscn"
 
-## Stagger between consecutive pennants unfurling.
 const STAGGER: float = 0.09
 
 @onready var settings_panel: SettingsPanel = %SettingsPanel
@@ -27,7 +19,7 @@ func _ready() -> void:
 	settings_panel.visible = false
 	tutorial_panel.visible = false
 	credits_panel.visible = false
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE # Main.tscn captures it for a match
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	GameVersion.attach_to(self)
 
 	start_button.pressed.connect(_on_start_pressed)
@@ -49,16 +41,9 @@ func _unfurl() -> void:
 func _on_start_pressed() -> void:
 	get_tree().change_scene_to_file(MODE_SELECT_PATH)
 
-## Title-screen-only, deliberately. A mid-match quit that skips
-## NetworkManager.disconnect_network() would strand the other peers — the same
-## soft-lock Q-1 fixed, just from the other end. Return to Menu → Quit is two
-## clear steps instead.
 func _on_quit_pressed() -> void:
 	get_tree().quit()
 
-## Shown in place rather than switched to, same as SETTINGS — a scene change
-## would tear down and rebuild the title screen behind a panel the player is
-## about to close.
 func _on_tutorial_pressed() -> void:
 	tutorial_panel.reset_to_first_page()
 	tutorial_panel.visible = true
@@ -67,9 +52,6 @@ func _on_tutorial_back_pressed() -> void:
 	tutorial_panel.visible = false
 	_unfurl()
 
-## § CHECKLIST 1.11. Shown in place, same reasoning as SETTINGS and TUTORIAL —
-## a scene change would tear down the title screen behind a panel the player
-## is about to close in a few seconds.
 func _on_credits_pressed() -> void:
 	credits_panel.visible = true
 
@@ -83,3 +65,4 @@ func _on_settings_pressed() -> void:
 func _on_settings_back_pressed() -> void:
 	settings_panel.visible = false
 	_unfurl()
+

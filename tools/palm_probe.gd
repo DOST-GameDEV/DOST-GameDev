@@ -1,34 +1,8 @@
 extends Node
-## WHERE IS THE PALM IN **BONE-LOCAL** SPACE? **Written 2026-08-02.**
-##
-##     Godot_v4.7.1-stable_win64_console.exe --headless --path <repo> tools/palm_probe.tscn
-##
-## ⚠️⚠️ THIS IS THE MEASUREMENT `hand_bone_probe` GOT WRONG, AND ITS ERROR IS WHY SIX
-## VALUES OF `HAND_CARRY_OFFSET` IN A ROW WERE WRONG. That sweep took mesh vertices and
-## inverse-transformed them by the bone's rest in SKELETON space. The frame a
-## `BoneAttachment3D` child actually lives in is the bone's own, reached by the SKIN's
-## bind pose — and on this rig the two are not the same, because the skin binds are not
-## the plain inverse of the global rests.
-##
-## The skinning Godot performs is
-##
-##     world_vertex = bone_global_pose[b] * skin.bind_pose[b] * v
-##
-## and a `BoneAttachment3D` sits at exactly `bone_global_pose[b]`. So a child of it at
-## local position `p` lands on that vertex when `p == bind_pose[b] * v`. That product is
-## the number this probe prints, and it is `HAND_CARRY_OFFSET` directly — no scaling, no
-## guessing which local axis runs down the limb, no bisecting between two wrong answers.
-##
-## It also prints where the bone's own axes point in bone-local terms, so the shoe can be
-## nudged OFF the limb (the standing complaint is "inside the arm") along a direction that
-## is measured rather than assumed.
 
 const MODEL: String = "res://assets/characters/persons/character-male-f.glb"
 const BONE: String = "arm-right"
-## A vertex belongs to the arm when the arm carries most of it.
 const OWN: float = 0.5
-## The far end of the limb, as a fraction of the arm's own length. The hand on these
-## chibi rigs is a stubby blob; the last eighth of the arm is it.
 const TIP: float = 0.125
 
 func _ready() -> void:
@@ -70,7 +44,6 @@ func _measure(mi: MeshInstance3D, skeleton: Skeleton3D, bone: int) -> void:
 	var skin := mi.skin
 	if skin == null:
 		return
-	# Which entry of the skin's bind list is our bone, and what does it bind with?
 	var bind := -1
 	for i in range(skin.get_bind_count()):
 		var b := skin.get_bind_bone(i)
@@ -108,7 +81,6 @@ func _measure(mi: MeshInstance3D, skeleton: Skeleton3D, bone: int) -> void:
 		print("  no vertices weighted >= %.2f to the arm" % OWN)
 		return
 
-	# The limb's length axis, in bone-local space: the direction of greatest spread.
 	var mean := Vector3.ZERO
 	for p in pts:
 		mean += p
@@ -130,7 +102,6 @@ func _measure(mi: MeshInstance3D, skeleton: Skeleton3D, bone: int) -> void:
 	print("  %d arm vertices; local axis (%+.3f, %+.3f, %+.3f); reach %.4f .. %.4f"
 		% [pts.size(), axis.x, axis.y, axis.z, lo, hi])
 
-	# The hand: centroid of the far TIP fraction of that span.
 	var cut := hi - (hi - lo) * TIP
 	var hand := Vector3.ZERO
 	var n := 0
@@ -139,7 +110,6 @@ func _measure(mi: MeshInstance3D, skeleton: Skeleton3D, bone: int) -> void:
 			hand += p
 			n += 1
 	hand /= float(n)
-	# How fat is the hand there? Half of this, along a direction off the limb, clears it.
 	var radius := 0.0
 	for p in pts:
 		if p.dot(axis) >= cut:
@@ -149,8 +119,6 @@ func _measure(mi: MeshInstance3D, skeleton: Skeleton3D, bone: int) -> void:
 	print("  >> PALM (bone-local, = HAND_CARRY_OFFSET) (%+.4f, %+.4f, %+.4f)  from %d verts"
 		% [hand.x, hand.y, hand.z, n])
 	print("  >> hand blob radius %.4f (bone units)" % radius)
-	# The hand's own box in bone-local terms. +Y is the back of the hand, so hi.y is the
-	# surface a carried shoe rests ON — the number HAND_CARRY_OFFSET.y wants.
 	var blo := Vector3(INF, INF, INF)
 	var bhi := Vector3(-INF, -INF, -INF)
 	for p in pts:
@@ -159,17 +127,10 @@ func _measure(mi: MeshInstance3D, skeleton: Skeleton3D, bone: int) -> void:
 			bhi = Vector3(maxf(bhi.x, p.x), maxf(bhi.y, p.y), maxf(bhi.z, p.z))
 	print("  >> hand box x %+.4f..%+.4f  y %+.4f..%+.4f  z %+.4f..%+.4f"
 		% [blo.x, bhi.x, blo.y, bhi.y, blo.z, bhi.z])
-	# Two useful sidesteps, in bone-local terms, for lifting the shoe off the limb.
 	var up := (Vector3.UP - axis * Vector3.UP.dot(axis)).normalized()
 	print("  >> 'away from the limb, upward' unit dir (%+.3f, %+.3f, %+.3f)" % [up.x, up.y, up.z])
 
 
-## ⚠️ DOES THE ATTACHMENT ACTUALLY FOLLOW THE ANIMATION? Asserted three times in this
-## bug's history and never once proven. If a 's transform ever differs
-## from  for its bone, the carry point is frozen in the
-## bind pose — the arms-out T-pose — and NO value of  can be right,
-## because the frame it is applied in does not move. This walks the real carry clip and
-## compares the two every frame.
 func _track(model: Node3D, skeleton: Skeleton3D, bone: int) -> void:
 	var players := model.find_children("*", "AnimationPlayer", true, false)
 	if players.is_empty():
@@ -206,3 +167,4 @@ func _track(model: Node3D, skeleton: Skeleton3D, bone: int) -> void:
 	print("  >> the bone itself moved %.4f over those frames (0 would mean a frozen pose)" % moved)
 	var hp := skeleton.get_bone_global_pose(bone) * Vector3(-0.2666, 0.0400, 0.0613)
 	print("  >> HandPoint now lands at skeleton-space (%+.4f, %+.4f, %+.4f)" % [hp.x, hp.y, hp.z])
+

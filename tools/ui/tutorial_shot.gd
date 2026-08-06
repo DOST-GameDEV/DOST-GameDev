@@ -1,9 +1,4 @@
 extends Node
-## Screenshots every page of Tutorial.tscn, so the screen is verified by looking
-## at it rather than by "the scene loads". `tools/ui_shot.gd`'s equivalent for a
-## panel that has six states instead of one.
-##
-##   godot --path . tools/ui/tutorial_shot.tscn --resolution 1920x1080 -- /out/
 
 var _out: String = ""
 var _page: int = 0
@@ -30,20 +25,9 @@ func _process(_d: float) -> void:
 		set_process(false)
 		get_tree().quit(0)
 		return
-	# Driven through the button rather than by poking _page, so this exercises
-	# the same path a player does.
 	_panel.get_node("%NextButton").pressed.emit()
 	_settle = 6
 
-## ⚠️ "NOTHING GETS CUT OFF" IS A MEASUREMENT, NOT A SQUINT. 🧑 2026-08-01: *"make sure
-## nothing truncates or gets cut off btw make sure all text looks good"*. Ten pages at
-## one screenshot each is ten chances to miss a scrollbar by eye — and the failure is
-## quiet, because an overflowing page still renders a perfectly good screenshot of its
-## first two-thirds.
-##
-## The `ScrollContainer` knows. If its content is taller than the box, its vertical
-## scrollbar has a usable range; if it fits, `max_value <= page`. That is the same fact
-## the scrollbar itself draws, read as a number instead of as pixels.
 func _report_overflow() -> void:
 	var scroll := _panel.get_node_or_null("%Scroll") as ScrollContainer
 	var page_name: String = String(TutorialPanel.PAGES[_page]["title"])
@@ -53,7 +37,8 @@ func _report_overflow() -> void:
 	var bar := scroll.get_v_scroll_bar()
 	var content := bar.max_value
 	var box := bar.page
-	var overflows := content > box + 1.0 # a pixel of slack for rounding
+	var overflows := content > box + 1.0
 	print("[page %d] %-22s content=%.0f box=%.0f %s"
 		% [_page + 1, page_name, content, box,
 			"⚠️ OVERFLOWS BY %.0f px" % [content - box] if overflows else "fits"])
+

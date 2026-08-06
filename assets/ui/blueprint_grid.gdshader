@@ -7,3 +7,4 @@ void fragment() {
 	float on_line = step(grid_size - 1.0, grid.x) + step(grid_size - 1.0, grid.y);
 	COLOR = mix(bg_color, vec4(line_color.rgb, 1.0), clamp(on_line, 0.0, 1.0) * line_color.a * 11.0);
 }
+

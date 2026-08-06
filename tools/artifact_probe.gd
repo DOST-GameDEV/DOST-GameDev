@@ -1,8 +1,4 @@
 extends Node3D
-## Isolates WHICH post-process is drawing the horizontal stripes reported
-## 2026-07-29 ("why are there lines in what u made"). Renders one fixed view
-## with a single effect disabled per shot, so the cause is identified by
-## elimination instead of by guessing which slider to move.
 const MAP := "res://scenes/maps/Eskinita.tscn"
 var _out: String = ""
 var _camera: Camera3D
@@ -52,3 +48,4 @@ func _process(_delta: float) -> void:
 		get_tree().quit(0)
 		return
 	_apply_case()
+

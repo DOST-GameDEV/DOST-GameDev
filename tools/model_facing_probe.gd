@@ -1,23 +1,9 @@
 extends Node3D
 
-## WHICH WAY DOES A PERSON RIG ACTUALLY FACE IN ITS OWN LOCAL SPACE?
-##
-## Reported across sessions as "the attacker spawns facing backward and the AI
-## moves/attacks in reverse. Check if the model's face is incorrectly configured
-## to its back." `main.gd::_spawn_yaw()` and every directional ability agree on
-## Godot's convention — a body's forward is `-basis.z` — so if the imported .glb
-## has its face on +Z, every one of them is correct and the CHARACTER still looks
-## backwards, which is exactly the shape of a bug that survives being "fixed"
-## repeatedly in the yaw maths.
-##
-## Renders the rig at yaw 0 from the -Z side (where Godot says its face is) and
-## from the +Z side. Whichever shot shows a FACE is the model's real front.
-##
-##     godot --path . tools/model_facing_probe.tscn --resolution 640x640 -- C:\tmp\
 
 const MODEL := "res://assets/characters/persons/character-male-f.glb"
 const VIEWS := [
-	["front_if_negZ", Vector3(0, 1.9, -4.2)],  # Godot's "front" for a -Z facer
+	["front_if_negZ", Vector3(0, 1.9, -4.2)],
 	["front_if_posZ", Vector3(0, 1.9, 4.2)],
 ]
 
@@ -70,3 +56,4 @@ func _process(_d: float) -> void:
 		get_tree().quit(0)
 		return
 	_place()
+

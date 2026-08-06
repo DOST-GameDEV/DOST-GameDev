@@ -1,28 +1,4 @@
 extends Node
-## DOES THE CHARACTER SCREEN SHOW THE SKIN YOU ACTUALLY PICKED?
-##
-##     godot --path . tools/models/charprop_probe.tscn -- out=C:/tmp/
-##
-## ⚠️ NOT `--headless` — it renders, and a headless capture comes back blank.
-##
-## `skin_probe.gd` already gates the ROSTER side: every `model` path exists,
-## loads, and is the right size. This gates the SCREEN side, which is a
-## different question and has been wrong before: `character_preview.gd`
-## instantiated the SHARED `CanVisual`/`TsinelasVisual` scene and only
-## recoloured it, so every lata previewed as the same can and every tsinelas as
-## the same slipper (§ LOG, 2026-08-01, bug 1). `_apply_model()` was added to fix
-## that and has never been verified by anything but eye.
-##
-## ⚠️ IT COMPARES MESH PATHS, IT DOES NOT JUST TAKE A PICTURE. A screenshot
-## proves something rendered; it does not prove it rendered the RIGHT can, and
-## four cans that all look like cans is exactly the failure that survived a look.
-## So for every entry this asserts that the `MeshInstance3D` the preview is
-## actually showing carries the mesh `CharacterRoster` names for it — the same
-## comparison the eye cannot make reliably at 250 px.
-##
-## The PNGs are still written, because "it is the right mesh" and "it is framed
-## and lit so a player can tell" are two different claims and the second one
-## needs a human to look.
 
 const CHARACTER_SELECT := "res://scenes/ui/CharacterSelect.tscn"
 
@@ -54,9 +30,6 @@ func _ready() -> void:
 		_finish()
 		return
 
-	# Every prop skin, in the order the picker cycles them. The Persons are in the
-	# same screen and are checked the same way — `show_character()` has its own
-	# path to get wrong and `person_lineup_shot` only ever covered the palette.
 	for entry in CharacterRoster.CANS:
 		_jobs.append({"entry": entry, "kind": "can"})
 	for entry in CharacterRoster.SLIPPERS:
@@ -72,11 +45,6 @@ func _begin_job() -> void:
 	var job := _jobs[_job]
 	var entry: Dictionary = job["entry"]
 	_preview.show_prop(entry, String(job["kind"]) == "can")
-	# ⚠️ SETTLE BEFORE MEASURING AND BEFORE CAPTURING. `show_prop()` adds the model
-	# to the tree and `_frame()` reads `global_transform`, which is only correct
-	# once the tree has processed — and the SubViewport needs a frame to draw at
-	# all. Two frames rather than one, because the container's own `resized`
-	# re-frame lands on the frame after the add.
 	_settle = 3
 
 
@@ -92,8 +60,6 @@ func _process(_delta: float) -> void:
 	_begin_job()
 
 
-## The assertion. Walks whatever the preview is currently showing and compares
-## the mesh it holds against the roster entry's `model` path.
 func _check_job() -> void:
 	var job := _jobs[_job]
 	var entry: Dictionary = job["entry"]
@@ -113,8 +79,6 @@ func _check_job() -> void:
 	elif shown.is_empty():
 		_fail(label, "the preview is showing no mesh at all")
 	elif not (want in shown):
-		# ⚠️ THE FAILURE THIS FILE EXISTS FOR. A wrong-but-present mesh renders
-		# perfectly and looks like art, not like a bug.
 		_fail(label, "showing %s, roster says %s" % [", ".join(shown), want])
 	else:
 		_emit("  PASS  %s  %s" % [label, want.get_file()])
@@ -148,3 +112,4 @@ func _finish() -> void:
 		file.store_string("\n".join(_log) + "\n")
 		file.close()
 	get_tree().quit(0 if _fails.is_empty() else 1)
+

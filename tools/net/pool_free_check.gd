@@ -1,23 +1,4 @@
 extends Node
-## IS A LOBBY HOLDING ONLY A SPECTATOR "FREE"? — the case `players` cannot answer.
-##
-## Two roles, one script:
-##
-##   --role=spectator --port=<p>   joins that lobby as a SPECTATOR and sits there
-##   --role=probe                  asks the pool what it sees and whether HOST ONLINE
-##                                 would claim it
-##
-##     Godot_v4.7.1-stable_win64.exe --path <repo> tools/net/pool_free_check.tscn -- \
-##         --pool=127.0.0.1 --role=probe
-##
-## ⚠️ THE POINT OF THE SPECTATOR. `seated_peer_count()` counts SEATS, so a lobby whose
-## only occupant is watching advertises `players=0` — indistinguishable from empty on the
-## wire. That occupant identified first, so it holds the lobby leader role; a HOST ONLINE
-## press that claimed this server would hand the player a lobby somebody else runs. The
-## probe therefore checks `occupied`, not `players`, and this harness is what proves the
-## two genuinely disagree rather than being the same number twice.
-##
-## ⚠️ --headless IS FINE HERE. Nothing is rendered — this prints numbers.
 
 const SCREEN: String = "res://scenes/ui/MultiplayerSetup.tscn"
 
@@ -36,9 +17,6 @@ func _ready() -> void:
 	else:
 		await _probe()
 
-## Joins and declares itself a watcher, then stays up so the probe has something to look
-## at. Deliberately does NOT go through the lobby screen: this is a body in a chair, not a
-## UI test, and the fewer moving parts holding the seat open the better.
 func _be_a_spectator() -> void:
 	GameLaunch.spectator = true
 	if NetworkManager.join_game("127.0.0.1", _port) != OK:
@@ -48,13 +26,12 @@ func _be_a_spectator() -> void:
 	await get_tree().create_timer(2.0).timeout
 	NetworkManager.publish_spectator(true)
 	print("[spec] watching lobby on %d" % _port)
-	# Long enough for the probe to start, query, settle and report.
 	await get_tree().create_timer(25.0).timeout
 	get_tree().quit()
 
 func _probe() -> void:
 	var screen: Node = load(SCREEN).instantiate()
-	get_tree().root.add_child.call_deferred(screen) # root is still setting THIS node up
+	get_tree().root.add_child.call_deferred(screen)
 	await get_tree().process_frame
 	get_tree().current_scene = screen
 	await get_tree().create_timer(5.0).timeout
@@ -79,3 +56,4 @@ func _check(what: String, ok: bool) -> void:
 	if not ok:
 		_fail += 1
 	print("[probe] %s  %s" % ["PASS" if ok else "FAIL", what])
+

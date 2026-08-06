@@ -1,23 +1,6 @@
 extends Node
-## § CHECKLIST 1.15 — "the fatigue pose and the slipper glow are wired and
-## unseen." Both were unblocked by 1.14 (`Slipper.owner_slot` now assigned at
-## round start instead of riding a courtesy pickup that could silently
-## refuse), which is what makes this probe possible: before that fix, a probe
-## seated at an attacker slot could not reliably get an OWNED slipper to test
-## the glow with.
-##
-## Drives real input through the ordinary path — `Input.action_press`, read by
-## `CharacterBase.input_pressed()` exactly as a human's keyboard would be — so
-## this exercises the same code a player's own session does, not a shortcut
-## that pokes state directly.
-##
-##     Godot_v4.7.1-stable_win64.exe --path <repo> tools/ui/fatigue_glow_shot.tscn -- out=C:/tmp/
-##
-## Writes `fatigue_pose.png` and `slipper_glow.png`.
 
 const MAIN_SCENE: PackedScene = preload("res://scenes/main/Main.tscn")
-## Seat 1: round 1's defender is always slot 0 (`defender_slot_for(1)`), so
-## seat 1 is guaranteed an ATTACKER — the glow's whole precondition.
 const SEAT: int = 1
 
 var _out: String = ""
@@ -63,10 +46,6 @@ func _run() -> void:
 	await _shoot_glow(local)
 	_finish(0)
 
-## SPRINT the local seat's own bar to empty, the way item 1.15 asks — "someone
-## has to sprint a 50-point bar to zero" — then frame the THIRD-PERSON body
-## from outside, because the fatigue pose is what the other three players see,
-## not what the sprinting player sees of themselves.
 func _shoot_fatigue(local: CharacterBase) -> void:
 	Input.action_press("move_up")
 	Input.action_press("sprint")
@@ -82,14 +61,8 @@ func _shoot_fatigue(local: CharacterBase) -> void:
 	await RenderingServer.frame_post_draw
 	var path := _out + "fatigue_pose.png"
 	_emit("[fatigue] frame -> %s" % (path if get_viewport().get_texture().get_image().save_png(path) == OK else "FAILED"))
-	# Let the character actually come out of fatigue before the next stage —
-	# FATIGUE_TIME locks regen too, so waiting it out is the only way back.
 	await get_tree().create_timer(3.0).timeout
 
-## THROW the owned slipper a short distance so it goes LOOSE (the glow's own
-## gate — `_update_owner_glow()` only lights a slipper that is not being
-## carried), then frame it close, because `OWNER_RIM_STRENGTH` 0.85 is a rim
-## term and reads best near-on rather than at arena distance.
 func _shoot_glow(local: CharacterBase) -> void:
 	var slipper := _owned_slipper(local)
 	if slipper == null:
@@ -102,14 +75,10 @@ func _shoot_glow(local: CharacterBase) -> void:
 				% [each.name, each.owner_slot, each.state, each.carrier])
 		return
 	_emit("[glow] owns %s owner_slot=%d state=%d" % [slipper.name, slipper.owner_slot, int(slipper.state)])
-	# CarryState.CARRIED == 2 — throw it loose first; already LOOSE (0) needs no help.
 	if int(slipper.state) == 2:
-		# A tap: `CHARGE_MIN_POWER` still throws, and a short flight lands close
-		# enough for the next shot to frame without hunting for it.
 		Input.action_press("special_ability")
 		await get_tree().create_timer(0.1).timeout
 		Input.action_release("special_ability")
-		# MAX_FLIGHT_TIME is 6.0s; give it a beat longer to settle on the ground.
 		await get_tree().create_timer(4.0).timeout
 	_emit("[glow] state=%d (0=LOOSE) at shot time" % [int(slipper.state)])
 	_frame_on(slipper, Vector3(0, 0.6, 1.1))
@@ -148,3 +117,4 @@ func _finish(code: int) -> void:
 		file.store_string("\n".join(_log) + "\n")
 		file.close()
 	get_tree().quit(code)
+

@@ -1,8 +1,4 @@
 extends Node3D
-## Which way does a Kenney City Kit building FACE in its own local space?
-## Everything about the alley's rotation math depends on the answer and nothing
-## in the project had ever measured it. Places one building at yaw 0 and shoots
-## it from all four cardinal directions.
 var _out := ""
 var _i := 0
 var _settle := 0
@@ -51,3 +47,4 @@ func _process(_d: float) -> void:
 		get_tree().quit(0)
 		return
 	_place()
+

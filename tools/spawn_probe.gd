@@ -1,14 +1,4 @@
 extends Node3D
-## Verifies spawn CORRECTNESS and CONSISTENCY across several role swaps.
-##
-## Two things the human asked for, 2026-07-29:
-##   1. "attackers spawn facing the defenders"
-##   2. "supposed attackers and defenders always spawn in the right place ...
-##       make sure they consistently switch spawns each round"
-##
-## Samples every unit the frame AFTER each round begins — before any AI has had
-## time to walk away from its mark, which is what made earlier manual checks
-## ambiguous.
 const ROUNDS := 5
 var _main: Node
 var _round := 0
@@ -51,8 +41,6 @@ func _sample() -> void:
 			rad_to_deg(ch.rotation.y)])
 	if attacker == null or can == null:
 		return
-	# Facing check: the attacker's forward is -Z rotated by its yaw. It must
-	# point at the Can, which is what "spawn facing the defenders" means.
 	var forward := Vector3(0, 0, -1).rotated(Vector3.UP, attacker.rotation.y)
 	var to_can := can.global_position - attacker.global_position
 	to_can.y = 0.0
@@ -62,7 +50,6 @@ func _sample() -> void:
 	print("   attacker->can  off-axis %.1f deg   %s" % [deg, "OK" if ok else "*** FACING WRONG ***"])
 	if not ok:
 		_fails += 1
-	# Distance check: the attacker must start OUTSIDE the confinement box.
 	var d := Vector2(attacker.global_position.x - can.global_position.x,
 		attacker.global_position.z - can.global_position.z).length()
 	var outside: bool = d > CharacterBase.CONFINEMENT_RADIUS
@@ -70,3 +57,4 @@ func _sample() -> void:
 		d, CharacterBase.CONFINEMENT_RADIUS, "OK" if outside else "*** INSIDE THE BOX ***"])
 	if not outside:
 		_fails += 1
+

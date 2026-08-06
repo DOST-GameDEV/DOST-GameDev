@@ -1,15 +1,4 @@
 extends Node
-## Does each seat actually get its own can/slipper, and does the lata follow
-## the CURRENT DEFENDER rather than showing one skin for the whole match?
-## 🧑 2026-08-01: *"allow bots in single player to have random cans and random
-## slippers, their respective cans show when theyre defender, let my
-## respective can show when im defender as well."*
-##
-##     godot --path <repo> tools/ui/prop_picks_shot.tscn -- out=C:/tmp/
-##
-## Prints each seat's {can, slipper} and the lata's skin_index at round 1 and
-## again after forcing the round to end, so the CAN CHANGING when the
-## defender changes is a measured fact, not a glance.
 
 const MAIN_SCENE: PackedScene = preload("res://scenes/main/Main.tscn")
 
@@ -42,8 +31,6 @@ func _run() -> void:
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_png(_out + "props_round1.png")
 
-	# Force the round to end so the defender rotates and the lata's skin has
-	# to move with it.
 	RoundManager.time_left = 0.01
 	await get_tree().create_timer(0.3).timeout
 	await get_tree().create_timer(4.0).timeout
@@ -71,3 +58,4 @@ func _frame_lata() -> void:
 	cam.current = true
 	cam.global_position = lata.global_position + Vector3(0, 0.8, 1.4)
 	cam.look_at(lata.global_position + Vector3(0, 0.3, 0), Vector3.UP)
+

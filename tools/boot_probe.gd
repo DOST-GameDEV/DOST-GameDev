@@ -1,7 +1,4 @@
 extends SceneTree
-## Verifies the boot chain end to end: SplashScreen plays the sting, then hands
-## off to MainMenu. A SceneTree script is used deliberately — a probe NODE would
-## be freed by change_scene_to_file(), which is the whole thing being tested.
 var _out := ""
 var _t := 0.0
 var _stage := 0
@@ -28,3 +25,4 @@ func _process(delta: float) -> bool:
 		print("RESULT: ", "BOOT CHAIN OK" if cur.name == "MainMenu" else "*** DID NOT REACH MAIN MENU ***")
 		return true
 	return false
+

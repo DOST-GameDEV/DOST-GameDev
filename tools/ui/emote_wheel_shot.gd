@@ -1,17 +1,4 @@
 extends Node
-## THE EMOTE WHEEL, OPEN, OVER A REAL MATCH FRAME.
-##
-##     Godot_v4.7.1-stable_win64.exe --path <repo> tools/ui/emote_wheel_shot.tscn -- \
-##         <out-dir-with-trailing-slash>
-##
-## ⚠️ PLAIN EXE, NOT --headless — the wheel is drawn, and there is no rendering
-## device under headless on this machine.
-##
-## ⚠️ SHOT OVER THE MATCH, NOT OVER A FLAT COLOUR. The whole question 🧑 asked is
-## whether it reads as transparent and on-theme, and a wheel that looks fine on grey
-## can be unreadable over a sunlit street. Two captures: one with nothing selected,
-## one with the stick pushed into a slice, because the highlight is the part that
-## has to survive the background.
 
 const NUDGE: Vector2 = Vector2(0, -150)
 
@@ -30,8 +17,6 @@ func _ready() -> void:
 		push_error("emote_wheel_shot: no EmoteWheel under Main — is it in HUD.tscn?")
 		get_tree().quit(1)
 		return
-	# ⚠️ THE OVERFLOW CHECK RUNS BEFORE ANY PICTURE IS TAKEN. A screenshot shows one
-	# slice in one selection state; this walks all of them, selected and resting.
 	var bad: Array = wheel.overflow_report()
 	if bad.is_empty():
 		print("[wheel] LABEL FIT: all %d labels fit, selected and resting"
@@ -45,7 +30,6 @@ func _ready() -> void:
 	wheel.open()
 	await _shot("wheel_neutral")
 
-	# Drive it the way a player would: relative motion, not a cursor position.
 	var motion := InputEventMouseMotion.new()
 	motion.relative = NUDGE
 	wheel._input(motion)
@@ -59,3 +43,4 @@ func _shot(name: String) -> void:
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(_out + name + ".png")
 	print("[wheel] wrote %s" % name)
+

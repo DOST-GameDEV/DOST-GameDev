@@ -1,106 +1,20 @@
 extends Node3D
-## The AI harness. **Rewritten 2026-08-01 by 🤖 `build ai`.**
-##
-##     Godot_v4.7.1-stable_win64_console.exe --path <repo> tools/ai_probe.tscn -- \
-##         matches=3 scale=6 tier=NORMAL
-##
-## | argument | default | what it does |
-## |---|---|---|
-## | `matches=N` | 3 | whole 4-round matches, played back to back |
-## | `rounds=N` | — | stop after N rounds total, whatever match they fall in |
-## | `scale=X` | 6 | game seconds per real second (see § TIME SCALE) |
-## | `tier=EASY/NORMAL/HARD` | NORMAL | which difficulty to measure |
-## | `trace` | off | `AIController.trace_enabled` — one line per plan change |
-## | `secs=N` | 900 | wall-clock safety cap |
-##
-## ⚠️ WHY THE PREDECESSOR WAS DELETED RATHER THAN EXTENDED. It was 1 579 lines
-## measuring a game that no longer exists: `taya_pursue_radius`,
-## `attacker_lob_overhold`, `CAN_EVADE_LOOKAHEAD` and `_take_over_human_slot()`
-## are all names of things the HARRYDAKS pivot removed, and it asserted against a
-## 2v2 with playable props. §2.10 files every probe in `tools/` root as stale;
-## this is the one that earned a rewrite, because §6 needs a number.
-##
-## ⚠️ AND ITS FLAGGED-FOR-REMOVAL HACK IS GONE FOR REAL. The old file carried
-## `_take_over_human_slot()` — a fourth `AIController` bolted onto the human's
-## seat plus a camera-rig fiddle — under a human instruction to flag it
-## (*"maybe allow option to switch the user with ai as well js for testing ai
-## fairness? flag this"*). The shipping game grew the correct version of that in
-## the meantime: `GameLaunch.spectator` makes `main.gd::_start_local_test()`
-## enable the human seat's own (normally disabled) controller, park its input and
-## run the ready countdown itself. **This probe measures four bots through the
-## game's own spectator path, so there is no test-only code inside the
-## measurement at all.**
-##
-## ⚠️ RUN IT WITH THE PLAIN EXE OR THE CONSOLE ONE, NEVER `--headless`. Same rule
-## as everything else here: headless has no rendering device, and this boots the
-## real `Main.tscn` with cameras, viewmodels and a HUD on it.
-##
-## ⚠️ IT EXITS NON-ZERO WHEN A GATE FAILS, and the gates are chosen so the code
-## this replaced goes RED on them — see § GATES. A probe that cannot fail is
-## worse than no probe (§6 trap 3), and the two headline numbers on the board
-## (51 flights / 0 knockdowns, and 14.2 m of travel) are exactly the shape of
-## failure it has to be able to report.
 
 const MAIN_SCENE: PackedScene = preload("res://scenes/main/Main.tscn")
 
-## ---------------------------------------------------------------------------
-## § TIME SCALE — and why this probe does not just set `time_scale` and hope.
-##
-## ⚠️⚠️ `Engine.time_scale` ALONE MAKES EVERY PHYSICS STEP LONGER, WHICH BREAKS
-## THE EXACT THING BEING MEASURED. A slipper flies at up to 17 m/s and the lata's
-## hit window is `HIT_RADIUS + 0.30` = **0.53 m** wide, tested once per physics
-## frame. At 60 Hz a slipper advances 0.28 m per step and cannot miss the window;
-## at `time_scale = 6` with the tick rate left alone it advances **1.7 m** and
-## sails straight through the can. The run would then report an AI that never
-## scores while the AI was in fact hitting it — the worst kind of wrong number,
-## because it agrees with the bug you are looking for.
-##
-## So the tick rate is raised by the same factor, which keeps the STEP SIZE at
-## 1/60 s of game time and buys the speed-up out of more steps per rendered frame
-## instead. `_grade()` then re-checks the mean observed step and REFUSES TO GRADE
-## if it drifted: an impossible number is a broken harness, not a result.
 const DEFAULT_SCALE: float = 6.0
 const BASE_TICKS: int = 60
-## The step size this probe promises. Beyond this the run is void.
 const STEP_TOLERANCE: float = 1.0 / 45.0
 
 const DEFAULT_MATCHES: int = 3
 const DEFAULT_WALL_CAP: float = 900.0
 
-## Below this planar speed a unit counts as standing still.
 const STILL_SPEED: float = 0.35
 
-## ---------------------------------------------------------------------------
-## § GATES. Each one names the measured failure it exists to catch.
-## ---------------------------------------------------------------------------
-## §6.6 — "51 flights, 0 knockdowns". A match in which nobody knocks the lata
-## over is not a game, and it is the specific thing that was wrong.
 const GATE_KNOCKDOWNS_PER_MATCH: float = 1.0
-## ⚠️⚠️ A SECOND OFFENCE GATE, BECAUSE THE FIRST ONE PASSED TWO BROKEN BUILDS.
-##
-## 2026-08-01: this probe reported **RESULT: PASS** on a run measuring 7.1% hit rate
-## with DEFENSE at 73.7% of every point (a cascading compile error had killed every
-## script downstream of `trajectory_preview.gd`), and again on a run at 28.6% where
-## every bot went IDLE the moment it threw. Both are the §6.6 signature in all but
-## name, and both cleared `>= 1 knockdown per match` easily — a collapsed offence
-## still lands the occasional lucky shot over four rounds.
-##
-## Knockdowns-per-match measures whether the bots score AT ALL. Hit rate measures
-## whether they are any good, and it is the number that actually moved: 44-50% on a
-## healthy NORMAL build against 7-29% on the two broken ones. 20% sits well under
-## the worst healthy tier (EASY, 10%) — no, it does not: EASY is *meant* to be bad,
-## so this gate is applied at NORMAL and HARD only, where the floor is meaningful.
 const GATE_HIT_RATE_NORMAL: float = 30.0
-## §6.7 — "P3 = 14.2 m, P4 = 26.0 m over a 90 s round". Ninety seconds of
-## attacker walk is 310 m of ground available, so 60 is a floor no playing bot
-## can be under and no frozen bot can reach.
 const GATE_METRES_PER_ROUND: float = 60.0
-## A bot that stands still for eight live seconds is not making a decision.
 const GATE_MAX_STILL: float = 8.0
-## Fairness. Every seat defends exactly once and attacks three times, so four
-## bots of one tier should land within a band of each other. Wide on purpose: it
-## is a check that the roles are playable from BOTH sides, not a claim that four
-## bots should tie.
 const GATE_FAIRNESS_SPREAD: float = 0.62
 
 var _matches_target: int = DEFAULT_MATCHES
@@ -114,50 +28,32 @@ var _match_index: int = 0
 var _rounds_seen: int = 0
 var _finished: bool = false
 
-## Accumulated over the whole run, indexed by seat.
 var _score_total: Array[int] = [0, 0, 0, 0]
 var _score_by_reason: Dictionary = {}
 var _metres: Array[float] = [0.0, 0.0, 0.0, 0.0]
 var _still_run: Array[float] = [0.0, 0.0, 0.0, 0.0]
 var _still_worst: Array[float] = [0.0, 0.0, 0.0, 0.0]
 var _still_plan: Array[String] = ["-", "-", "-", "-"]
-## Pressing a direction and going nowhere: blocked by a body or by geometry.
 var _blocked_run: Array[float] = [0.0, 0.0, 0.0, 0.0]
 var _blocked_worst: Array[float] = [0.0, 0.0, 0.0, 0.0]
 var _blocked_plan: Array[String] = ["-", "-", "-", "-"]
 var _taggable_time: Array[float] = [0.0, 0.0, 0.0, 0.0]
 var _wins: Array[int] = [0, 0, 0, 0]
 var _draws: int = 0
-## Matches that ran all four rounds. The fairness gate needs these; a run that
-## stops mid-rotation has not measured fairness at all.
 var _completed_matches: int = 0
 var _last_pos: Array = [null, null, null, null]
 
-## Slipper flights. One record per launch, closed when the slipper stops flying.
 var _throws: int = 0
 var _throws_by_slot: Array[int] = [0, 0, 0, 0]
 var _knockdowns: int = 0
 var _knockdowns_by_slot: Array[int] = [0, 0, 0, 0]
 var _tags: int = 0
 var _sabotages: int = 0
-## Flights that got inside a metre of the can without putting it over — the body
-## block and the near miss, which are a different failure from a throw that never
-## arrived at all, and telling them apart is the whole point (§6.6 was the
-## second kind being read as the first).
 var _near_misses: int = 0
 var _flight_open: Dictionary = {}
-## ⚠️ A SEPARATE SET, BECAUSE THE FIRST VERSION DOUBLE-COUNTED AND THE TOTAL SAID
-## SO. It marked a flight resolved by writing `INF` back into its closest
-## approach — but a slipper that knocks the lata over **keeps flying**: it recoils
-## (`slipper.gd::LATA_RECOIL_SCALE`) and then bounces around within a metre of the
-## can, so the minimum immediately fell back under the near-miss threshold and the
-## same flight was counted twice. The tell was an impossible number: 33
-## knockdowns + 44 near misses out of **51** throws. Two outcomes of one flight
-## cannot exceed the flights.
 var _flight_scored: Dictionary = {}
 var _slipper_was: Dictionary = {}
 
-## Physics-step honesty (§ TIME SCALE).
 var _step_samples: int = 0
 var _step_total: float = 0.0
 
@@ -168,7 +64,6 @@ func _ready() -> void:
 	_parse_args()
 	_wall_start = Time.get_ticks_msec() / 1000.0
 	AIController.apply_difficulty(_tier as AIController.Difficulty)
-	# ⚠️ RAISED TOGETHER, NEVER SEPARATELY — see § TIME SCALE.
 	Engine.physics_ticks_per_second = int(round(BASE_TICKS * _scale))
 	Engine.max_physics_steps_per_frame = maxi(8, int(round(16.0 * _scale)))
 	Engine.time_scale = _scale
@@ -203,13 +98,8 @@ func _parse_args() -> void:
 			else:
 				_tier = AIController.Difficulty.NORMAL
 
-## ---------------------------------------------------------------------------
-## THE RUN. One whole match at a time, through the game's own spectator path.
-## ---------------------------------------------------------------------------
 func _start_match() -> void:
 	_match_index += 1
-	# ⚠️ `spectator` IS WHAT MAKES ALL FOUR SEATS BOTS, and it is a SHIPPING code
-	# path rather than a probe hack — see the header.
 	GameLaunch.spectator = true
 	_main = MAIN_SCENE.instantiate()
 	add_child(_main)
@@ -249,10 +139,6 @@ func _on_round_ended(_round_number: int) -> void:
 	if _rounds_target > 0 and _rounds_seen >= _rounds_target and not _finished:
 		_grade()
 
-## ---------------------------------------------------------------------------
-## SAMPLING. Everything is measured off the game's own signals and transforms —
-## nothing here asks `AIController` what it MEANT to do.
-## ---------------------------------------------------------------------------
 func _physics_process(delta: float) -> void:
 	if _finished:
 		return
@@ -284,17 +170,6 @@ func _sample_players(delta: float) -> void:
 			_metres[slot] += Vector2(here.x - previous.x, here.z - previous.z).length()
 		_last_pos[slot] = here
 		var speed := Vector2(who.velocity.x, who.velocity.z).length()
-		# ⚠️⚠️ NOT MOVING AND NOT TRYING TO ARE DIFFERENT FAILURES, AND THE FIRST
-		# VERSION OF THIS CONFLATED THEM. It gated on speed alone and then failed a
-		# HARD run for "P1 stood still 20.3 s" — while P1 was in fact walking into a
-		# body every one of those frames. `move_and_slide()` writes the RESOLVED
-		# velocity back, so a unit pressing into another capsule reads exactly like a
-		# unit pressing nothing at all.
-		#
-		# The gated number is now "still AND pressing nothing", which is the frozen
-		# bot this probe exists to catch. Blocked-but-pushing is reported beside it,
-		# because a bot that leans on a wall for a whole round is also wrong — just
-		# wrong in a way that needs a different fix.
 		var trying := who.input_pressed("move_left") or who.input_pressed("move_right") 			or who.input_pressed("move_up") or who.input_pressed("move_down")
 		if speed < STILL_SPEED and not trying:
 			_still_run[slot] += delta
@@ -313,8 +188,6 @@ func _sample_players(delta: float) -> void:
 		if who.is_taggable():
 			_taggable_time[slot] += delta
 
-## Flights, opened on the transition into `FLYING` and closed on the way out.
-## The closest approach is recorded WHILE it flies rather than inferred after.
 func _sample_slippers() -> void:
 	var lata := RoundManager.lata
 	for node in get_tree().get_nodes_in_group("slippers"):
@@ -341,7 +214,6 @@ func _sample_slippers() -> void:
 			_flight_open.erase(id)
 			_flight_scored.erase(id)
 
-## The bot's own word for what it is doing, when it has one.
 func _plan_of(who: CharacterBase) -> String:
 	if who.ai_controller == null or not who.ai_controller.has_method("current_plan"):
 		return "-"
@@ -358,16 +230,12 @@ func _on_lata_knocked(by_slot: int) -> void:
 	_knockdowns += 1
 	if by_slot >= 0 and by_slot < 4:
 		_knockdowns_by_slot[by_slot] += 1
-	# A knockdown resolves whichever flights are open as HITS, not near misses.
 	for id in _flight_open.keys():
 		_flight_scored[id] = true
 
 func _on_tagged(_defender_slot: int, _victim_slot: int) -> void:
 	_tags += 1
 
-## ---------------------------------------------------------------------------
-## § THE REPORT AND THE GATES.
-## ---------------------------------------------------------------------------
 func _grade() -> void:
 	if _finished:
 		return
@@ -383,8 +251,6 @@ func _grade() -> void:
 	print("matches %d   rounds %d   live game time %.1f s   mean physics step %.4f s"
 		% [matches, _rounds_seen, _round_live_time, mean_step])
 
-	# ⚠️ THE HARNESS IS GRADED BEFORE THE AI IS. If the step drifted, every contact
-	# number below is measuring the time scale rather than the bots.
 	if mean_step > STEP_TOLERANCE:
 		failures.append(("HARNESS: mean physics step %.4f s exceeds %.4f — flight "
 			+ "sampling too coarse to trust. Re-run at scale=1.")
@@ -402,8 +268,6 @@ func _grade() -> void:
 	if per_match < GATE_KNOCKDOWNS_PER_MATCH:
 		failures.append(("OFFENCE: %.2f knockdowns per match against %d throws — "
 			+ "the §6.6 failure, the bots throw and miss.") % [per_match, _throws])
-	# ⚠️ NORMAL AND HARD ONLY. EASY is designed to miss (10% by §6.8's own table),
-	# so a hit-rate floor there would fail a correct build.
 	if _tier_name() != "EASY" and _throws > 0 and hit_rate < GATE_HIT_RATE_NORMAL:
 		failures.append(("OFFENCE: %.1f%% hit rate at tier %s against a floor of "
 			+ "%.0f%% — the bots are throwing and not converting. A healthy NORMAL "
@@ -437,11 +301,6 @@ func _grade() -> void:
 		var points := int(_score_by_reason[reason])
 		print("%-10s %6d   %5.1f%% of every point scored"
 			% [reason, points, 100.0 * float(points) / maxf(float(grand), 1.0)])
-	# ⚠️ THIS BLOCK IS ⚖️ `build fair`'s §2.1 EVIDENCE AND NOT THIS LANE'S TO ACT
-	# ON. Passive defence pays +10/s for 90 s uncontested against +100 for a
-	# knockdown; the DEFENSE percentage above is the first measurement of that
-	# ratio ever taken over whole matches. Printed, never gated — moving the
-	# number is another lane's row.
 
 	print("")
 	print("--- fairness over %d match(es) ---" % matches)
@@ -457,13 +316,6 @@ func _grade() -> void:
 	var spread := 1.0 - (float(low) / maxf(float(high), 1.0))
 	print("seat score spread %.2f   (gate: <= %.2f — every seat defends exactly once)"
 		% [spread, GATE_FAIRNESS_SPREAD])
-	# ⚠️⚠️ THE GATE ONLY APPLIES TO WHOLE MATCHES, AND ITS FIRST RUN PROVED WHY.
-	# A `rounds=2` run stopped after P1 and P2 had defended and P3 and P4 never
-	# had, then failed the fairness gate on a 500..2160 spread — which is not
-	# unfairness, it is **half a rotation**. The whole reason the schedule is a
-	# pure function of the round number (`Design.md` §1) is that fairness here is
-	# a property of the completed cycle; measuring it mid-cycle measures the
-	# rotation, and a gate that fires on a correct game is worse than no gate.
 	if _completed_matches < 1:
 		print("       ^ NOT GATED: %d complete match(es). Fairness needs a whole"
 			% _completed_matches)
@@ -489,3 +341,4 @@ func _tier_name() -> String:
 	if _tier == AIController.Difficulty.ASTIG:
 		return "HARD"
 	return "NORMAL"
+

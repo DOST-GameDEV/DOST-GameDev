@@ -1,6 +1,4 @@
 extends Node
-## Screenshots each menu screen after the UI-redesign merge, so the merge is
-## verified by looking at it rather than by "all scenes load".
 const SCREENS := ["res://scenes/ui/MainMenu.tscn", "res://scenes/ui/ModeSelect.tscn",
 	"res://scenes/ui/MultiplayerSetup.tscn", "res://scenes/ui/MatchSetup.tscn"]
 var _out := ""
@@ -34,3 +32,4 @@ func _process(_d: float) -> void:
 		get_tree().quit(0)
 		return
 	_load()
+

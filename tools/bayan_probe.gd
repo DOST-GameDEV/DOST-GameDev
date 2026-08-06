@@ -1,14 +1,5 @@
 extends Node3D
-## Bayan Plaza held to Eskinita's acceptance bar: five void shots plus a
-## street-level view, and a scene-integrity read.
 const MAP := "res://scenes/maps/BayanPlaza.tscn"
-## ⚠️ FIVE VOID SHOTS, NOT THREE — this is Eskinita's acceptance bar, ported.
-## tools/void_probe.tscn takes the y=30 overhead plus ALL FOUR corners, because
-## the void it exists to catch does not have to appear on the two corners somebody
-## happened to pick: each corner looks down a different diagonal, past a different
-## part of the belt, with a different amount of fog in the way. This map had NE and
-## SW only, so half its perimeter had never been looked at from eye level. That is
-## R-20's "no five-shot void acceptance", and it was a missing pair of array rows.
 const SHOTS := [
 	["bp_overhead", Vector3(0, 30, 30), Vector3(0, 0, 0)],
 	["bp_corner_ne", Vector3(12.0, 1.6, -12.0), Vector3(60, 6, -60)],
@@ -16,25 +7,8 @@ const SHOTS := [
 	["bp_corner_se", Vector3(12.0, 1.6, 12.0), Vector3(60, 6, 60)],
 	["bp_corner_sw", Vector3(-12.0, 1.6, 12.0), Vector3(-60, 6, 60)],
 	["bp_eye", Vector3(0, 1.6, 11.0), Vector3(0, 1.4, -14.0)],
-	# The monument, from the attacker's own spawn (SpawnPoints/Spawn2 is at
-	# 0, y, 6) at FPP eye height. ⚠️ THIS SHOT EXISTS BECAUSE THE OTHER FOUR
-	# CANNOT SEE THE THING THE MAP WAS REDRESSED FOR. The brief was "make it
-	# seen and we're playing near it", and bp_eye looks straight down the long
-	# axis with the monument off-frame to the left — so the map could have
-	# shipped with the centrepiece invisible from every shot in the probe and
-	# every shot would still have looked fine. Aimed from where a player
-	# actually stands, not from a vantage chosen to flatter it.
 	["bp_monument", Vector3(0, 1.25, 6.0), Vector3(-7.6, 2.2, 6.4)],
-	# ⚠️ THE HAZARD, AIMED AT FROM WHERE A PLAYER MEETS IT. HazardZone is a live
-	# 5x5 slow field (speed_multiplier 0.5, permanent) centred on (-6.5, -4.0) and
-	# R-20 asks for it to be VISIBLE in a render — which no existing shot could
-	# show, because bp_eye looks straight down the long axis and the hazard sits
-	# off to one side. An invisible slow field is a player being punished by
-	# something they cannot see or learn, so the tell gets its own shot rather
-	# than being assumed from the fact that geometry was placed.
 	["bp_hazard", Vector3(-1.5, 1.25, -1.0), Vector3(-6.5, 0.2, -4.0)],
-	# The plaza read at eye height from the north approach, for the R-33 contrast
-	# pair against Eskinita's street_eye: open, civic, paved, fought ACROSS.
 	["bp_civic", Vector3(2.0, 1.6, 7.5), Vector3(-2.0, 3.0, -14.0)],
 ]
 var _out := ""
@@ -78,3 +52,4 @@ func _process(_d: float) -> void:
 		get_tree().quit(0)
 		return
 	_place()
+

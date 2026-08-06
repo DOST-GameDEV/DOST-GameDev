@@ -1,26 +1,7 @@
 extends Node
-## Boots a real match and saves frames of it. Written 2026-07-31, branch `HARRYDAKS`.
-##
-## ⚠️ WHY A NEW PROBE RATHER THAN `render_probe.gd`. That one builds its match by
-## hand out of `team_is_can_side`, `is_can` and `report_round_result()` — three
-## things this branch deleted — so it cannot boot at all. Rewriting it is the UI
-## lane's job; this is the minimum needed to answer one question the whole rewrite
-## turns on: **does the HUD actually draw the new mechanics, or does it merely fail
-## to crash?**
-##
-## ⚠️ IT LOADS `Main.tscn` WHOLE. Nothing is faked. The round starts through
-## `_run_ready_countdown()`, the same path a human's READY press takes, so what is
-## captured is the real HUD over the real match and not a mock of it.
-##
-## ⚠️ RUN IT WITH THE PLAIN EXE, NOT `--headless`. Headless has no rendering device
-## and every capture comes back blank.
-##
-##     Godot_v4.7.1-stable_win64.exe --path <repo> tools/harrydaks_shot.tscn -- <out_dir>
 
 const MAIN_SCENE: PackedScene = preload("res://scenes/main/Main.tscn")
 
-## When to grab each frame, in seconds after the round starts, and what to call it.
-## Spread so the shots catch different states rather than three of the same frame.
 const SHOTS: Array = [
 	[1.5, "01_round_open"],
 	[6.0, "02_midround"],
@@ -39,12 +20,9 @@ func _ready() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	# Let the world build, the map load and the four seats settle before pressing
-	# anything — `SPAWN_SETTLE_FRAMES` alone is three physics frames.
 	await get_tree().create_timer(1.5).timeout
 	if _main.has_method("_run_ready_countdown"):
 		_main._run_ready_countdown()
-	# The ready countdown is 3 ticks of 1 s plus its own tween settle.
 	await get_tree().create_timer(4.5).timeout
 	var last := 0.0
 	for shot in SHOTS:
@@ -55,9 +33,6 @@ func _run() -> void:
 	get_tree().quit()
 
 func _capture(name: String) -> void:
-	# Two frame waits, not one: `get_texture()` returns the texture the GPU has
-	# finished with, and a single wait after a state change captures the frame
-	# BEFORE it.
 	await RenderingServer.frame_post_draw
 	var image := get_viewport().get_texture().get_image()
 	var path := _out + name + ".png"
@@ -65,9 +40,6 @@ func _capture(name: String) -> void:
 	print("[shot] %s -> %s (%dx%d)" % [name, path if err == OK else "FAILED",
 		image.get_width(), image.get_height()])
 
-## ⚠️ THE NUMBERS MATTER AS MUCH AS THE PICTURE. A screenshot proves the HUD drew
-## something; this proves it drew the truth. Printed rather than asserted because
-## this probe is a look, not a gate.
 func _report() -> void:
 	print("[state] round=%d/%d  defender_slot=%d  round_active=%s  time_left=%.1f"
 		% [MatchManager.round_number, MatchManagerScript.ROUNDS,
@@ -96,3 +68,4 @@ func _report() -> void:
 			% [who.player_slot + 1, who.is_defender, who.holding_slipper(),
 				who.is_inside_box(), who.is_taggable(), who.get_stamina_ratio(),
 				MatchManager.score_for(who.player_slot)])
+

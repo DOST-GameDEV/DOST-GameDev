@@ -1,31 +1,6 @@
 extends Node3D
-## Checklist 4.7 — the balance pass, WITH THE VOICE IN IT.
-##
-##   Godot_v4.7.1-stable_win64.exe --path . tools/audio/vo_mix_probe.tscn \
-##       --resolution 800x450
-##
-## ⚠️ THE PLAIN EXE, NEVER `--headless`. Headless selects the Dummy audio driver,
-## `AudioEffectCapture` then never fills, and every bus reports "silent" — which
-## looks like a measurement and is the absence of one.
-##
-## WHY THIS EXISTS BESIDE `tools/audio_mix_probe.gd` RATHER THAN INSTEAD OF IT.
-## That probe answered B-121 ("is the buzz the effects or the ambience") and is
-## still the right tool for it — but it plays a match and never speaks, and 4.7 is
-## no longer a first listen. It is a BALANCE, and the three buses cannot be set
-## against each other until the thing that has to sit on top of them exists. It is
-## also ⚖️ `build fair`'s file per § 3; this one is `build sound`'s.
-##
-## ⚠️ THE VOICE SHARES THE SFX BUS, so a single whole-match number cannot separate
-## them. That is what the phases are for: a VO-ONLY window and an SFX-ONLY window
-## measured under identical conditions, so `VO_TRIM_DB` is set from the difference
-## between two measurements rather than from a guess about one.
 
 const SETTLE_S := 1.0
-## ⚠️ 14 s, NOT 5. The first run of this probe used 5 s windows and the SFX RMS
-## between the two match phases disagreed by 7.3 dB — not a mix difference, just
-## two different five-second slices of a round (one holding the countdown burst
-## and the round start, the other a quiet patch). A level you tune on a window
-## that short is a level tuned to whichever events happened to land in it.
 const PHASE_S := 14.0
 
 enum { SETTLE, VO_ONLY, MATCH_NO_VO, MATCH_WITH_VO, DONE }
@@ -47,7 +22,6 @@ var _results: Dictionary = {}
 var _log: PackedStringArray = []
 var _main: Node = null
 
-## Every id with a delivered take, cycled so the window is continuously voiced.
 const VO_CYCLE := ["count_3", "count_2", "count_1", "count_go",
 	"clock_30", "clock_10", "match_win", "match_draw"]
 
@@ -98,11 +72,9 @@ func _process(delta: float) -> void:
 
 	_phase_t += delta
 	if _phase == VO_ONLY or _phase == MATCH_WITH_VO:
-		# One line every 0.7 s, so the window is never silent between takes.
 		if int(_phase_t / 0.7) > _vo_i:
 			_vo_i += 1
 			var id: String = VO_CYCLE[_vo_i % VO_CYCLE.size()]
-			# Bypass the per-id cooldown: this is a level measurement, not play.
 			AudioManager._vo_cooldown_until_ms[id] = 0
 			AudioManager.play_vo(id)
 
@@ -157,8 +129,6 @@ func _finish() -> void:
 					"   <-- CLIPPING" if v["peak"] >= -0.1 else ""])
 		_emit("")
 
-	# The number 4.7 is actually about: where the voice sits against the effects
-	# it has to be heard over, and against the bed it has to cut through.
 	var vo = _results.get(VO_ONLY, {}).get("SFX")
 	var sfx = _results.get(MATCH_NO_VO, {}).get("SFX")
 	var mus = _results.get(MATCH_NO_VO, {}).get("Music")
@@ -179,3 +149,4 @@ func _finish() -> void:
 		file.close()
 		print("wrote ", ProjectSettings.globalize_path("user://vo_mix_probe.txt"))
 	get_tree().quit(0)
+

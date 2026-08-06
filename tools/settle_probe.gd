@@ -1,27 +1,7 @@
 extends Node3D
 
-## SETTLE PROBE — "does anything fall through the floor, and where does it end
-## up?", measured rather than reasoned about.
-##
-## Loads the REAL Main.tscn on the Single Player flow (so `_start_local_test`,
-## `_place_at_spawn`, `begin_spawn_settle` and the AI all run exactly as they do
-## in a match), presses `ready_up` once the free-roam window opens, and then
-## samples every character's Y every frame for the whole run.
-##
-## Reports, per unit: min Y ever seen, final Y, whether it ever went below the
-## map's own floor top, and whether the KillPlane ever had to catch it. A
-## KillPlane catch is a FAILURE here, not a save — it means the unit left the
-## world under its own weight.
-##
-##     godot --path . tools/settle_probe.tscn --quit-after 1400 -- map=bayan_plaza
-##
-## ⚠️ RUN IT WITH THE PLAIN EXE, NOT --headless. Main.tscn brings a
-## WorldEnvironment and camera rigs; headless has no rendering device and the
-## flow behaves differently enough that a pass there proves less.
 
 const MAIN := "res://scenes/main/Main.tscn"
-## Floor collision top on both shipped maps (build_*.py's GROUND_Y). Anything
-## whose capsule bottom goes meaningfully below this has left the floor.
 const FLOOR_TOP := 0.1
 
 var _main: Node = null
@@ -40,8 +20,6 @@ func _ready() -> void:
 		if arg.begins_with("map="):
 			map = StringName(arg.substr(4))
 		elif arg.begins_with("seat="):
-			# Which seat the (absent) human takes. Everything else is AI, so this
-			# is how "does the OTHER Person's AI run" gets asked directly.
 			GameLaunch.solo_seat = int(arg.substr(5))
 	GameLaunch.selected_map = map
 	print("settle_probe: solo_seat=", GameLaunch.solo_seat)
@@ -61,8 +39,6 @@ func _physics_process(_delta: float) -> void:
 		return
 	if not _readied and _frames > 30:
 		_readied = true
-		# The free-roam window ends on `ready_up`; main.gd runs a 3-2-1 countdown
-		# and only then calls begin_next_round().
 		var ev := InputEventAction.new()
 		ev.action = "ready_up"
 		ev.pressed = true
@@ -72,14 +48,10 @@ func _physics_process(_delta: float) -> void:
 		var bottom: float = c.global_position.y - c.capsule_height() * 0.5
 		if not _min_y.has(key) or bottom < _min_y[key]:
 			_min_y[key] = bottom
-		# AI ACTIVITY. "only one AI person works at a time" is a claim about
-		# MOVEMENT, so measure movement: total ground distance covered, per unit.
-		# A bot that is thinking but never moving and a bot that is not running at
-		# all look identical from outside and are told apart by nothing else.
 		var here := Vector3(c.global_position.x, 0.0, c.global_position.z)
 		if _last_pos.has(key):
 			var step: float = here.distance_to(_last_pos[key])
-			if step < 2.0: # ignore teleports (round reset, respawn)
+			if step < 2.0:
 				_travel[key] = _travel.get(key, 0.0) + step
 		_last_pos[key] = here
 		if c.ai_controller != null:
@@ -118,11 +90,10 @@ func _exit_tree() -> void:
 			key, _min_y[key], _travel.get(key, 0.0),
 			"yes" if _ai_units.has(key) else "NO",
 			"FELL" if below else "ok"])
-	# The "only one AI works at a time" test: every AI-driven unit must have
-	# covered real ground. A bot under 2 m over the whole run is parked.
 	var idle: Array[String] = []
 	for key in _ai_units:
 		if _travel.get(key, 0.0) < 2.0:
 			idle.append(key)
 	print("IDLE AI UNITS: ", idle if not idle.is_empty() else "none")
 	print("RESULT: ", "FAIL — something left the floor" if failed else "PASS — nothing left the floor")
+

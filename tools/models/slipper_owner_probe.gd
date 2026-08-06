@@ -1,30 +1,4 @@
 extends Node
-## DOES EVERY SLIPPER KNOW WHOSE IT IS — IN ROUND 1, AND AFTER THE TAYA ROTATES?
-##
-##     Godot_v4.7.1-stable_win64.exe --path <repo> tools/models/slipper_owner_probe.tscn
-##
-## `Slipper.owner_slot` decides three shipped things, and every one of them fails
-## SILENT or fails OPEN when it is -1:
-##
-##   · the foot arrow      `offscreen_indicators.gd` compares it to your own slot,
-##                          so -1 never matches and the arrow never appears;
-##   · the owner glow      `_update_owner_glow()` gates on `owner_slot >= 0`;
-##   · **the rule itself**  `can_be_grabbed_by()` opens with `owner_slot >= 0`, so
-##                          an unowned slipper is grabbable by ANY attacker —
-##                          which is the exact rule `Design.md` §5.2 imposes.
-##
-## Nothing assigned the field until 2026-08-01: the only writers were the grab and
-## the throw, so ownership rode entirely on `main.gd::_reset_slippers()`'s courtesy
-## pickup landing — and that pickup can silently refuse, because
-## `can_be_grabbed_by()` needs `can_act()`, which is `round_active and state ==
-## NORMAL`, and a character mid-reset is neither.
-##
-## ⚠️ IT CHECKS THE ROTATION, NOT JUST ROUND 1, AND THAT IS THE HALF A ONE-ROUND
-## TEST WOULD MISS. The taya rotates every round, so which three seats own
-## slippers changes every round — and the OLD code could not re-assign at all: on
-## round 2 the gate `owner_slot >= 0 and who.player_slot != owner_slot` refuses
-## the new owner's pickup, because the slipper still holds round 1's slot. A test
-## that stopped after round 1 would have passed that.
 
 const MAIN_SCENE: PackedScene = preload("res://scenes/main/Main.tscn")
 
@@ -53,9 +27,6 @@ func _run() -> void:
 
 	_check_round(MatchManager.defender_slot_for(1), "round 1")
 
-	# ⚠️ DRIVEN THROUGH `_reset_world()`, WHICH IS THE FUNCTION UNDER TEST. Waiting
-	# out a real 90 s round would measure the same code an hour later; this is the
-	# exact call `_on_round_intermission_started` makes at every rotation.
 	var next_defender := MatchManager.defender_slot_for(2)
 	_emit("--- rotating the taya to slot %d ---" % next_defender)
 	_main.call("_reset_world", next_defender)
@@ -108,12 +79,9 @@ func _check_round(defender_slot: int, label: String) -> void:
 	else:
 		_emit("  OK  the three attacker seats %s each own exactly one" % [expected])
 
-	# The rule the field exists to enforce: nobody may take somebody else's.
 	_check_rule_enforced(slippers, defender_slot)
 
 
-## ⚠️ THE FIELD BEING SET IS NOT THE SAME CLAIM AS THE RULE HOLDING. Ask the
-## game's own predicate, with a character who is not the owner.
 func _check_rule_enforced(slippers: Array, defender_slot: int) -> void:
 	var by_slot := {}
 	for node in _main.find_children("*", "CharacterBase", true, false):
@@ -136,3 +104,4 @@ func _check_rule_enforced(slippers: Array, defender_slot: int) -> void:
 func _fail(why: String) -> void:
 	_emit("  FAIL  " + why)
 	_failures += 1
+

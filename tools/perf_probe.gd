@@ -1,18 +1,7 @@
 extends Node3D
-## Checklist 8.3f — the frame-time capture Phase 8 shipped without.
-##
-## SDFGI, SSIL, glow, 4096 directional shadows, MSAA and ~510 dressing instances
-## all landed in one phase on hardware nobody had profiled. This measures the
-## real match scene, and then measures it again with the expensive effects off,
-## so the cost is attributed rather than guessed.
-##
-##   godot --path . tools/perf_probe.tscn --quit-after 2000 --resolution 1920x1080
-##
-## Run WITHOUT --headless. Reports median and 95th-percentile frame time; the
-## 95th is what a judge feels as a hitch, the median is what they see as smooth.
 
-const SAMPLES := 180          # ~3 s per case at 60fps
-const WARMUP := 90            # SDFGI needs time to converge its cascades
+const SAMPLES := 180
+const WARMUP := 90
 var _env: Environment
 var _light: DirectionalLight3D
 var _case := 0
@@ -21,14 +10,6 @@ var _times: Array[float] = []
 var _results: Array = []
 const CASES := ["everything on", "no SDFGI", "no SDFGI+SSIL", "no GI/SSAO/glow"]
 
-## `-- map=eskinita|bayan_plaza`. Ids come from GameLaunch.MAPS, not from a path.
-##
-## ⚠️ THIS DID NOT EXIST, WHICH IS WHY BAYAN PLAZA HAD NEVER BEEN PERF-MEASURED.
-## The probe always loaded whatever `GameLaunch.selected_map` happened to default
-## to (eskinita), so every frame-time number ever recorded here describes one map
-## while reading as though it described the project. That matters now: the plaza's
-## instance count went 506 -> 655 in the redress pass and it is the denser of the
-## two by some margin.
 var _map_id := &"eskinita"
 
 func _ready() -> void:
@@ -36,7 +17,6 @@ func _ready() -> void:
 		var token := String(arg)
 		if token.begins_with("map="):
 			_map_id = StringName(token.substr(4))
-	# Must precede the instantiate — main.gd resolves the map scene as it builds.
 	GameLaunch.selected_map = _map_id
 	var main: Node = load("res://scenes/main/Main.tscn").instantiate()
 	add_child(main)
@@ -72,10 +52,6 @@ func _process(_d: float) -> void:
 	_case += 1
 	if _case >= CASES.size():
 		set_process(false)
-		# ⚠️ The map is NAMED here rather than hardcoded to "Eskinita" as it used
-		# to be. The old header asserted a map the probe never actually selected,
-		# which is how the plaza went unmeasured while the numbers read as though
-		# they covered the project.
 		print("\n=== 8.3f FRAME TIME — %s, real match scene ===" % _map_id)
 		print("  viewport: ", get_viewport().size)
 		print("  mesh instances in scene: %d" % _count_instances())
@@ -87,11 +63,9 @@ func _process(_d: float) -> void:
 		return
 	_apply()
 
-## Instance count, printed next to the frame times so density and cost can be
-## read together. The plaza's redress took it 506 -> 655 and that is the number
-## the frame time has to be interpreted against.
 func _count_instances() -> int:
 	var n := 0
 	for node in get_tree().root.find_children("*", "MeshInstance3D", true, false):
 		n += 1
 	return n
+

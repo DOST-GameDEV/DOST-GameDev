@@ -1,18 +1,10 @@
 extends Node3D
-## B-121 diagnostic, part 2. Captures the SFX bus and the Music bus SEPARATELY
-## during a real match and reports what each actually contributes.
-##
-##   godot --path . tools/audio_mix_probe.tscn --quit-after 1800
-##
-## This is the measurement that decides whether the "loud buzz during gameplay"
-## is coming from the sound effects or from the map's ambience bed. Both prior
-## fixes (B-119, B-120) assumed the former without being able to run anything.
 
 const REPORT_EVERY: int = 600
 
-var _cap: Dictionary = {}     ## bus name -> AudioEffectCapture
-var _sum_sq: Dictionary = {}  ## bus name -> running sum of squares
-var _count: Dictionary = {}   ## bus name -> samples counted
+var _cap: Dictionary = {}
+var _sum_sq: Dictionary = {}
+var _count: Dictionary = {}
 var _peak: Dictionary = {}
 var _frames: int = 0
 
@@ -68,8 +60,6 @@ func _report() -> void:
 			linear_to_db(maxf(rms, 0.000001)),
 			linear_to_db(maxf(float(_peak[bus_name]), 0.000001)),
 			"   <-- CLIPPING" if float(_peak[bus_name]) >= 0.999 else ""])
-	# The number that matters: a background bed should sit well UNDER the
-	# effects it is a background for.
 	if _count.get("SFX", 0) > 0 and _count.get("Music", 0) > 0:
 		var sfx_rms: float = sqrt(float(_sum_sq["SFX"]) / int(_count["SFX"]))
 		var mus_rms: float = sqrt(float(_sum_sq["Music"]) / int(_count["Music"]))
@@ -79,9 +69,6 @@ func _report() -> void:
 			"(AMBIENCE DOMINATES THE MIX)" if delta_db > -6.0 else "(sits under, ok)"])
 
 
-## B-121 regression gate. The bug was that the SFX bus clipped at +2.0 dBFS
-## while Master read a healthy -1.4 — so a check that only watches Master is
-## exactly the check that missed it. Fails on ANY bus going over.
 func _exit_tree() -> void:
 	_report()
 	var clipped: Array[String] = []
@@ -95,3 +82,4 @@ func _exit_tree() -> void:
 	else:
 		print("")
 		print("  RESULT: CLIPPING on %s — FAIL" % ", ".join(clipped))
+
