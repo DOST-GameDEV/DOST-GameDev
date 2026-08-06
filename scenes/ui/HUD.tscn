@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3 uid="uid://d5k8m2n4p6q9r"]
+[gd_scene load_steps=11 format=3 uid="uid://d5k8m2n4p6q9r"]
 
 [ext_resource type="Script" path="res://scripts/ui/hud.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/ui/YouCard.tscn" id="2"]
@@ -6,10 +6,18 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/RoleSwapCard.tscn" id="4"]
 [ext_resource type="PackedScene" path="res://scenes/ui/OffscreenIndicators.tscn" id="5"]
 [ext_resource type="Script" path="res://scripts/ui/emote_wheel.gd" id="6"]
+[ext_resource type="Shader" path="res://assets/ui/frost_vignette.gdshader" id="7"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_1"]
 shader = ExtResource("3")
 shader_parameter/vignette_color = Color(0.97, 0.0, 0.0, 0.6)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_frost"]
+shader = ExtResource("7")
+shader_parameter/coverage = 0.0
+shader_parameter/frost_tint = Color(0.66, 0.9, 0.95, 1)
+shader_parameter/crack_color = Color(0.8, 0.98, 1, 1)
+shader_parameter/max_reach = 0.36
 
 [node name="HUD" type="Control"]
 layout_mode = 3
@@ -26,6 +34,28 @@ anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 material = SubResource("ShaderMaterial_1")
+mouse_filter = 2
+visible = false
+
+; § THE STUN FROST — the screen half, for the player who is stunned.
+;
+; ⚠️ A SEPARATE NODE FROM `DownedFlash`, NOT A SECOND MODE OF IT. The two can be live on
+; the same frame and mean different things: an attacker inside the box is VULNERABLE
+; (red hold), and the moment they are tagged they become STUNNED (frost). Sharing one
+; ColorRect would make the tag cancel its own warning colour, and `_apply_danger_hold()`
+; would fight the frost for `modulate:a` — the exact ownership problem that function's
+; own note already had to solve once for the pulse.
+;
+; ⚠️ DRAWN AFTER `DownedFlash`, so the ice sits over the red rather than under it. A
+; tagged attacker stops being taggable, so the red is on its way out on the same frame;
+; the frost being on top is what makes that handover read as one event.
+[node name="FrostVignette" type="ColorRect" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+material = SubResource("ShaderMaterial_frost")
 mouse_filter = 2
 visible = false
 

@@ -509,6 +509,10 @@ func _refresh_can_damage(dent_count: int) -> void:
 	_materials.clear()
 	_base_albedos.clear()
 	_shader_materials.clear()
+	# § THE STUN FROST — the duplicates belonged to the model that just went away, and a
+	# stale entry here would write frost into a freed material on the next stun.
+	_frost_materials.clear()
+	_frost_level = 0.0
 	_collect_meshes(model)
 	_align_to_capsule_floor(model)
 	# camera_rig.gd re-applies the FPP self-hide on this signal; a new mesh that
@@ -683,6 +687,10 @@ func apply(is_person: bool, is_can: bool, team: int) -> void:
 	_materials.clear()
 	_base_albedos.clear()
 	_shader_materials.clear()
+	# § THE STUN FROST — the duplicates belonged to the model that just went away, and a
+	# stale entry here would write frost into a freed material on the next stun.
+	_frost_materials.clear()
+	_frost_level = 0.0
 	# The old AnimationPlayer went with the old model tree; holding a freed
 	# reference here would make the first play_action() after a role swap throw.
 	_animator = null
@@ -1371,6 +1379,18 @@ func _collect_meshes(model: Node3D) -> void:
 			if source is ShaderMaterial:
 				var shader_mat := source as ShaderMaterial
 				if shader_mat.get_shader_parameter("flash_amount") == null:
+					# ⚠️⚠️ § THE STUN FROST — AND THIS `continue` IS WHY A PERSON HAD NO
+					# PER-UNIT MATERIAL AT ALL. The filter above is `flash_amount`, a
+					# `toon.gdshader` uniform, and `_apply_toon_pass()` returns early for
+					# a Person — so a Person wears `person_palette.gdshader`, fails this
+					# test, is not a `BaseMaterial3D` either, and therefore fell through
+					# BOTH branches. Nothing was ever duplicated for a body.
+					#
+					# That matters beyond the frost: a palette `.tres` is ONE shared
+					# resource across every Person wearing that character, in this match
+					# and in the CHARACTER-screen preview at the same time. Writing a
+					# status effect into it would freeze all of them together.
+					_collect_frost_material(mesh_instance, surface, shader_mat)
 					continue
 				var duped := shader_mat.duplicate() as ShaderMaterial
 				mesh_instance.set_surface_override_material(surface, duped)
@@ -1383,6 +1403,76 @@ func _collect_meshes(model: Node3D) -> void:
 				mesh_instance.set_surface_override_material(surface, mat)
 				_materials.append(mat)
 				_base_albedos.append(mat.albedo_color)
+
+## ---------------------------------------------------------------------------
+## § THE STUN FROST. 🧑 2026-08-06: *"can we have like a frost effect to indicate that
+## an attacker is stunned after getting tagged?"*
+##
+## ⚠️ THE BODY HALF. The other half is the screen vignette in `hud.gd`, and the split is
+## the same one the danger vignette already documents: a screen effect is for the player
+## it happens TO, and it *"tells nobody anything"* about anyone else. The taya who just
+## spent their one scoring verb on a tag needs to SEE the attacker freeze, and the two
+## other attackers need to know that seat is out of the round for five seconds. So the
+## body ices over for everybody and the screen frosts only for the victim.
+##
+## ⚠️ IT IS NOT REPLICATED, AND DOES NOT NEED TO BE. `state` is already replicated on
+## `CharacterBase`, so every peer independently sees the same seat enter `STAGGERED` and
+## drives this from it — the same reasoning `Slipper`'s landed highlight records. No
+## packet is added.
+var _frost_materials: Array[ShaderMaterial] = []
+
+## Per-unit duplicate of a Person's palette material, so frost is this body's own.
+##
+## ⚠️⚠️ THE UNIFORM IS LOOKED UP ON THE **SHADER**, NOT WITH `get_shader_parameter()`.
+## That function returns the value **set on that material** — null for a uniform the
+## material never assigned, *even when the shader declares it with a default*. Every
+## `person_*.tres` predates `frost_amount`, so all of them answered null, the guard
+## rejected all of them, and `_frost_materials` came back empty: measured by
+## `tools/ui/frost_shot.tscn`, which reported `per-unit frost materials collected (0)`
+## while the screen half worked perfectly.
+##
+## ⚠️ AND THE PROJECT ALREADY KNEW. `person_palette.gdshader`'s own header says it in as
+## many words — *"`ShaderMaterial.get_shader_parameter()` returns null for a parameter
+## that was never assigned — it does NOT fall back to the default declared here"* — as a
+## warning about `albedo_color` and the hit flash. Recorded again here because the note
+## lives with the shader and the trap springs in this file, and reading only one of the
+## two is exactly how it was walked into.
+##
+## ⚠️ WHICH MEANS THE `flash_amount` TEST IN `_collect_meshes` ABOVE IS THE SAME SHAPE OF
+## CLAIM. It works today only because the toon `.tres` files do assign that uniform; a
+## future material that merely inherits the default would be skipped just as silently.
+## Left alone here rather than "fixed" in passing — it is not this commit's bug and it is
+## currently true — but this is the note to read when it stops being.
+func _collect_frost_material(mesh_instance: MeshInstance3D, surface: int,
+		source: ShaderMaterial) -> void:
+	if not _shader_declares(source.shader, "frost_amount"):
+		return # not a Person palette — nothing here can be frosted
+	var duped := source.duplicate() as ShaderMaterial
+	mesh_instance.set_surface_override_material(surface, duped)
+	_frost_materials.append(duped)
+
+## Does `shader` actually declare `uniform_name`? Asks the shader's own uniform list, so
+## an unassigned default answers honestly — see `_collect_frost_material()`'s note.
+func _shader_declares(shader: Shader, uniform_name: String) -> bool:
+	if shader == null:
+		return false
+	for uniform in shader.get_shader_uniform_list():
+		if String(uniform["name"]) == uniform_name:
+			return true
+	return false
+
+## 0 = normal, 1 = fully iced. Driven every frame from the remaining stun so the frost
+## RECEDES as it wears off, which is what tells the player it is nearly over — the same
+## job the countdown bar in the status stack does, in the channel they are looking at.
+func set_frost(amount: float) -> void:
+	var clamped := clampf(amount, 0.0, 1.0)
+	if is_equal_approx(clamped, _frost_level):
+		return
+	_frost_level = clamped
+	for material in _frost_materials:
+		material.set_shader_parameter("frost_amount", clamped)
+
+var _frost_level: float = 0.0
 
 ## M-4: replaces every surface material on `model` with a toon ShaderMaterial,
 ## then chains an inverted-hull outline as next_pass. Called in apply() before
@@ -1757,6 +1847,48 @@ func _process(delta: float) -> void:
 	_spin_while_airborne(delta)
 	_drive_viewmodel_charge()
 	_process_remote_smoothing(delta)
+	_process_frost(delta)
+
+## ---------------------------------------------------------------------------
+## § THE STUN FROST — the per-frame driver.
+##
+## ⚠️⚠️ IT RAMPS RATHER THAN SNAPS, AND ON A REMOTE PEER THE RAMP IS THE WHOLE EFFECT.
+## `state` is replicated but `_staggered_time_left` is NOT — see `CharacterBase.tscn`'s
+## `SceneReplicationConfig`, which carries position, rotation, state, character_index,
+## is_defender, player_slot and player_name and nothing else. So only the peer running
+## the physics knows how much stun is left; everybody else knows only *that* the seat is
+## `STAGGERED`.
+##
+## ⚠️ AND THE TIMER IS DELIBERATELY NOT ADDED TO THAT LIST. It changes every physics
+## frame, so replicating it is a float per character per tick, forever, to drive a
+## cosmetic taper — the same trade `Slipper` refused when it derived its highlight from
+## already-replicated state instead of sending a packet. The ramp below buys the same
+## smoothness for nothing: frost eases in when the state arrives and eases out when it
+## clears, on every machine, and the peer that DOES own the countdown additionally
+## tapers over the last `FROST_THAW_TIME` so its own player is told the stun is ending.
+##
+## ⚠️ THE VICTIM IS NEVER LEFT GUESSING EITHER WAY. The accessible-status guidance this
+## was designed against asks for the end of an effect to be signalled, and two channels
+## already do it exactly: the HUD status stack's "STUNNED" countdown bar, and the screen
+## vignette in `hud.gd`, both of which run on the machine that has the real number.
+const FROST_RAMP_IN: float = 0.18
+const FROST_RAMP_OUT: float = 0.45
+## How long before the stun ends the body starts thawing, where the countdown is known.
+const FROST_THAW_TIME: float = 1.2
+
+func _process_frost(delta: float) -> void:
+	if _frost_materials.is_empty() or _character == null or not is_instance_valid(_character):
+		return
+	var target := 0.0
+	if _character.state == CharacterBase.State.STAGGERED:
+		target = 1.0
+		var left: float = _character.stagger_time_left()
+		# `left` is 0 on any peer that is not simulating this body — there, frost simply
+		# holds until the replicated state clears, which the ramp-out then smooths.
+		if left > 0.0 and left < FROST_THAW_TIME:
+			target = left / FROST_THAW_TIME
+	var rate := FROST_RAMP_IN if target > _frost_level else FROST_RAMP_OUT
+	set_frost(move_toward(_frost_level, target, delta / maxf(rate, 0.001)))
 
 ## 4.2 — lags this node's position/rotation.y behind the body's own (already
 ## snapped) global position/yaw, for a remote character only. Explicitly
