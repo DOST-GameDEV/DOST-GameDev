@@ -51,22 +51,26 @@ does not warn, export just fails with "export templates not found." Verify befor
 an install: the folder above should contain `windows_release_x86_64.exe` regardless of
 which OS you installed on (templates for every export target ship together).
 
-## macOS — a preset exists, but it is UNTESTED
+## macOS — `preset.1`, verified to launch on real macOS
 
-`export_presets.cfg` has a `macOS` preset (`preset.1`) added 2026-07-29, cross-exported
-*from a Windows machine* with:
+`export_presets.cfg` has a `macOS` preset (`preset.1`) added 2026-07-29:
 
 ```
-godot --headless --path . --export-release "macOS" build/TumbangPreso-macos-UNTESTED.zip
+godot --headless --path . --export-release "macOS" build/TumbangPreso-macos.zip
 ```
 
-This actually completes and produces a real `Tumbang Preso.app` bundle (a universal
-binary, `Info.plist`, `.icns`, the `.pck`) inside the zip — Godot's macOS export doesn't
-require running on a Mac to produce the bundle, only to sign or run one. **Nobody has
-opened, run, or even unzipped this on a Mac.** Concretely unverified:
+This produces a real `Tumbang Preso.app` bundle (a universal binary, `Info.plist`,
+`.icns`, the `.pck`) inside the zip. It was first cross-exported *from a Windows
+machine* — Godot's macOS export doesn't require running on a Mac to produce the
+bundle, only to sign or run one — and stayed unverified until **2026-08-07**, when it
+was actually unzipped and run on macOS: `xattr -cr "Tumbang Preso.app"` to clear the
+quarantine flag from an unsigned download, then launched directly. It boots past the
+Godot splash into a live match with the HUD (scoreboard, round timer) rendering
+correctly, confirming the icon conversion and the ETC2/ASTC texture path both work at
+runtime, not just at export time.
 
-- Whether it actually launches. Untested code paths, a bad icon conversion, or anything
-  else that only shows up at runtime would not be caught by a successful export.
+Still open:
+
 - Codesigning and notarization are **off** (`codesign/codesign=0`,
   `notarization/notarization=0`) — this is explicitly a human/paid-account decision, not
   something to attempt here. Expect macOS Gatekeeper to be considerably stricter about
@@ -78,6 +82,9 @@ opened, run, or even unzipped this on a Mac.** Concretely unverified:
 - `application/min_macos_version="10.13"` and the Xcode/SDK fields are left blank
   (defaults) — nobody has confirmed what that resolves to at export time or whether it's
   reasonable for this project's dependencies.
+- The verification run above only exercised the opening seconds of a match (HUD, timer,
+  scoreboard). It has not been played through a full round, and network/multiplayer
+  flows on macOS remain untested.
 
 Enabling this preset required `textures/vram_compression/import_etc2_astc=true` in
 `project.godot` (`[rendering]`) — the export fails outright without it, with an explicit
@@ -85,9 +92,6 @@ error naming the setting. This adds an ETC2/ASTC-compressed variant to every imp
 texture (visible as a second `path.etc2`/`imported_formats` entry in each `.import` file)
 on top of the existing `s3tc_bptc` variant already used by Windows/desktop; it does not
 remove or replace anything, so it should not affect the Windows build.
-
-**Do not report macOS as supported or working until someone actually runs the app on a
-Mac.** This preset exists so that step is possible, not so that it can be skipped.
 
 ## Linux dedicated server — `preset.2`, "Linux Server"
 
