@@ -88,6 +88,33 @@ uniform sampler2D source_map : source_color, filter_nearest, repeat_disable;
 uniform vec4 palette[16] : source_color;
 uniform vec4 albedo_color : source_color = vec4(1.0, 1.0, 1.0, 0.0);
 
+// ⚠️⚠️ § THE STUN FROST. 🧑 2026-08-06: *"can we have like a frost effect to indicate
+// that an attacker is stunned after getting tagged?"*
+//
+// ⚠️ IT HAD TO BE ADDED HERE, BECAUSE A PERSON HAS NO OTHER LEVER. This is the same
+// trap the slipper highlight hit from the other side: `character_visual.gd::
+// _apply_toon_pass()` returns immediately `if is_person`, so a Person never receives
+// `toon.gdshader` and therefore has none of its `rim_strength`/`flash_amount`
+// uniforms. A Person's whole look is this shader plus the ink outline its `.tres`
+// chains as `next_pass`. There was nothing already on a body that could be turned icy,
+// so the frost is a term in the shader that actually draws them.
+//
+// ⚠️ `frost_amount` IS ALSO WHAT `_collect_meshes()` NOW LOOKS FOR. That function
+// filters ShaderMaterials on `flash_amount`, which this shader does not have — so a
+// Person's materials landed in NEITHER of its lists and no per-unit duplicate was ever
+// made. Duplicating matters here: a palette `.tres` is one shared resource across every
+// Person wearing that character, so writing frost into it directly would freeze all of
+// them at once.
+uniform float frost_amount : hint_range(0.0, 1.0) = 0.0;
+// The body ices over toward this.
+uniform vec4 frost_color : source_color = vec4(0.62, 0.87, 0.95, 1.0);
+// And catches a brighter edge, so the silhouette reads as frozen from across the arena
+// rather than only up close. Same single dot product `toon.gdshader`'s rim uses.
+uniform vec4 frost_rim_color : source_color = vec4(0.85, 0.98, 1.0, 1.0);
+// The most of the body's own colour the ice is ever allowed to take. See the note at
+// the mix itself for why this is a hard ceiling and not a taste knob.
+const float FROST_MAX_MIX = 0.68;
+
 void fragment() {
 	vec2 cell = floor(clamp(UV, vec2(0.0), vec2(0.9999)) * 16.0);
 	int col = int(cell.x);
@@ -104,4 +131,35 @@ void fragment() {
 	ROUGHNESS = 1.0;
 	METALLIC = 0.0;
 	SPECULAR = 0.0;
+
+	// § THE STUN FROST. Applied AFTER the palette so it reads as ice ON the character
+	// rather than as a different character — the same constraint the slipper highlight
+	// settled on, and for the same reason: the player picked that look on the CHARACTER
+	// screen and a status effect must not overwrite it.
+	if (frost_amount > 0.0) {
+		// ⚠️ IT SETTLES FROM ABOVE, like real rime, which is what stops a flat tint from
+		// reading as "somebody recoloured the model". Upward-facing surfaces take it
+		// first; undersides keep more of their own colour.
+		//
+		// ⚠️ `NORMAL` IS VIEW-SPACE IN `fragment()`, so it is pushed back to world space
+		// before its Y means "up". Read straight, the frost would rotate with the camera
+		// and settle on whichever side the player happened to be looking from.
+		vec3 world_normal = (INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz;
+		float settle = mix(0.42, 1.0, clamp(world_normal.y * 0.5 + 0.5, 0.0, 1.0));
+		// ⚠️ CAPPED WELL BELOW A FULL REPAINT, and the cap is the whole point. Rendered
+		// at an uncapped mix the body went solid pale blue: the character the player
+		// picked on the CHARACTER screen vanished into an anonymous ice block, which is
+		// the same thing the slipper highlight refused to do to a tsinelas skin. A status
+		// effect says "this body is frozen", never "this is a different body". At the cap
+		// roughly a third of the original palette still reads through.
+		ALBEDO = mix(ALBEDO, frost_color.rgb, frost_amount * settle * FROST_MAX_MIX);
+		// The icy edge. `diffuse_toon` flattens the interior into two bands, so without
+		// this the frozen body loses its silhouette against a pale background.
+		float rim = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 3.0);
+		ALBEDO = mix(ALBEDO, frost_rim_color.rgb, rim * frost_amount);
+		// Ice is slick where cloth is not — the one lighting cue that says "this surface
+		// changed material", not just "this surface changed colour".
+		ROUGHNESS = mix(1.0, 0.25, frost_amount);
+		SPECULAR = mix(0.0, 0.5, frost_amount);
+	}
 }
