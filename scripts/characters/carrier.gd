@@ -73,6 +73,28 @@ var _is_charging: bool = false
 var _throw_lock_left: float = 0.0
 var _channel_time: float = 0.0
 var _channelling: bool = false
+## ⚠️⚠️ § THE GRAB-SHOVE DOUBLE-FIRE. 🧑 2026-08-06: *"when trying to pick up a slipper,
+## it accidentally triggers shove since both keybind is left click."*
+##
+## Not a keybind collision — `grab` and `special_ability` sharing LMB is a DIFFERENT,
+## already-documented trade-off (§4.19). This is `is_busy()`'s own contract going
+## unmet: its doc already says it exists *"so `character_base.gd::_step_shove` knows an
+## E press was already spent on something else"*, and `_step_grab()` never told it.
+## A throw charge sets `_is_charging`; the reset channel sets `_channelling`; a grab
+## fires `_request_grab()` and sets NEITHER, because picking something up has no
+## multi-frame state to hold — it is one RPC and done. So on the exact frame a grab
+## connects, `is_busy()` still read false, `_step_shove()`'s guard let the frame
+## through, and `input_just_pressed("grab")` was — correctly — still true for anyone
+## ELSE reading it that frame, because Godot's polled input has no notion of a value
+## being "consumed" by the first reader. Bending to pick up a slipper also threw a
+## shove: burning cooldown and stamina, and shoving anyone standing in front.
+##
+## One-frame flag, not a third addition to `is_busy()`'s two persistent ones — a grab
+## has nothing to stay busy WITH once the request is sent, so it only needs to say
+## "already spent" for the remainder of the frame it fired on. Reset at the top of
+## every `input_step()`, so a later frame's `grab` press (rebind, re-press, whatever)
+## is never shadowed by an old one.
+var _grab_consumed_this_frame: bool = false
 var _trajectory: TrajectoryPreview = null
 
 ## Ticks on every peer off the charge broadcast — see the header.
@@ -106,8 +128,12 @@ func throw_lock_left() -> float:
 
 ## True while this player is mid-commitment, so `character_base.gd::_step_shove`
 ## knows an E press was already spent on something else.
+##
+## ⚠️ `_grab_consumed_this_frame` IS THE THIRD CASE, ADDED FOR § THE GRAB-SHOVE
+## DOUBLE-FIRE — see that var's own note. The other two are held across several
+## frames; this one is true for exactly the frame a grab connected on.
 func is_busy() -> bool:
-	return _is_charging or _channelling
+	return _is_charging or _channelling or _grab_consumed_this_frame
 
 func charge_power() -> float:
 	if not _is_charging:
@@ -145,6 +171,10 @@ func _reset_channel_time() -> float:
 
 func input_step(delta: float) -> void:
 	held() # prunes a stale reference before anything reads it
+	# ⚠️ CLEARED HERE, ONCE, BEFORE `_step_grab()` CAN SET IT — see § THE GRAB-SHOVE
+	# DOUBLE-FIRE at the var's declaration. A flag that lived past this frame would
+	# shadow a later, unrelated `grab` press instead of only the one that set it.
+	_grab_consumed_this_frame = false
 	_step_grab()
 	_step_reset_channel(delta)
 	_step_throw(delta)
@@ -165,6 +195,12 @@ func _step_grab() -> void:
 	# same reason `broadcast_visual_action` exists for the throw and the shove.
 	_character.broadcast_visual_action("grab")
 	_request_grab(target)
+	# ⚠️ SET AFTER THE PICKUP IS ALREADY COMMITTED, NOT AS A GATE ABOVE. § THE
+	# GRAB-SHOVE DOUBLE-FIRE. This is the whole fix: `_step_shove()` runs immediately
+	# after this function returns and reads `is_busy()` before re-reading the same
+	# `input_just_pressed("grab")` this frame — so a connecting grab now shows up as
+	# "already spent" and the shove refuses to fire on top of it.
+	_grab_consumed_this_frame = true
 
 ## ⚠️ NEAREST, NOT FIRST. Three attackers converge on one box and slippers land in
 ## a pile; picking whichever happened to be earlier in the tree makes the pickup
