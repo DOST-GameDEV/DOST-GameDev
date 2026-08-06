@@ -20,6 +20,8 @@ class_name Hud
 @onready var lata_label: Label = %LataLabel
 @onready var lata_hint_label: Label = %LataHintLabel
 @onready var downed_flash: ColorRect = %DownedFlash
+## § THE STUN FROST — the screen half. See `_refresh_frost()`.
+@onready var frost_vignette: ColorRect = %FrostVignette
 @onready var toast_label: Label = %ToastLabel
 @onready var ready_prompt: Label = %ReadyPrompt
 @onready var ready_objective: Label = %ReadyObjective
@@ -86,6 +88,10 @@ func _ready() -> void:
 	RoundManager.lata_restored.connect(_on_lata_restored)
 	RoundManager.attacker_tagged.connect(_on_attacker_tagged)
 	downed_flash.visible = false
+	# § THE STUN FROST rides along: it is a transient like the flash above, and a
+	# spectator has no stun of their own to be told about.
+	frost_vignette.visible = false
+	_frost_coverage = 0.0
 	toast_label.visible = false
 	lata_card.visible = false
 	# Keep pivot at the TimerCard's centre so the pulse tween scales from the middle.
@@ -288,6 +294,7 @@ func _process(delta: float) -> void:
 	_refresh_stamina(local_char)
 	_refresh_danger(local_char)
 	_refresh_vulnerable_text(local_char)
+	_refresh_frost(local_char, get_process_delta_time())
 
 ## ---------------------------------------------------------------------------
 ## ⚠️⚠️ THE STATUS STACK — every stun and every status effect, with a number on it.
@@ -475,6 +482,69 @@ func _refresh_danger(local_char: CharacterBase) -> void:
 	_danger_held = want
 	_apply_danger_hold()
 
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ § THE STUN FROST — THE SCREEN HALF. 🧑 2026-08-06: *"can we have like a frost
+## effect to indicate that an attacker is stunned after getting tagged?"*, with a
+## reference image of an icy frame around a clear centre.
+##
+## ⚠️ IT IS THE VICTIM'S SCREEN ONLY, and the body half in `character_visual.gd` is what
+## everybody else sees. That split is `_refresh_danger()`'s own rule applied again: *"A
+## vignette everybody gets at the same time tells nobody anything."* The taya spent their
+## one scoring verb on that tag and needs to watch the attacker freeze; the attacker
+## needs to know why their controls stopped answering. Those are two different messages
+## and they go to two different places.
+##
+## ⚠️⚠️ AND IT IS WHY THE SHAPE MATTERS RATHER THAN THE ALPHA. `set_downed_flash()`
+## records the measurement that governs this whole file: a held full-screen tint *"reads
+## as the renderer being broken ... the entire arena was washed red"*, which is why held
+## states sit at `DANGER_HOLD_ALPHA` 0.16 while only a 0.45 s pulse goes to 0.45. A tag
+## stun is FIVE SECONDS — too long for a flash, far too punchy to hold at flash strength,
+## and too important to drop to 0.16, because it is the single biggest moment in the
+## defender's game.
+##
+## The reference image resolves it, and that is the reason it was worth following: put
+## the opacity where the player is NOT looking. The frost is heavy at the frame and clear
+## through the middle, so it can be genuinely strong without hiding the round the stunned
+## player is stuck watching. There is no `modulate` alpha ceiling here at all — the
+## shader's own `coverage` is the dial, and the centre stays readable at coverage 1.0.
+##
+## ⚠️ IT RECEDES. `coverage` tracks the stun down, so the ice visibly retreats toward the
+## frame as the five seconds run out. That is the accessible-status requirement to signal
+## when an effect is ending, and it is a channel the player already has their eyes on —
+## unlike the countdown bar in the status stack, which is correct and easy to miss.
+const FROST_RAMP_IN: float = 0.14
+const FROST_RAMP_OUT: float = 0.5
+## Coverage is held at full until the stun has this long left, then thaws to zero.
+const FROST_THAW_TIME: float = 1.6
+
+var _frost_coverage: float = 0.0
+
+func _refresh_frost(local_char: CharacterBase, delta: float) -> void:
+	var target := 0.0
+	if local_char != null and is_instance_valid(local_char) \
+			and local_char.state == CharacterBase.State.STAGGERED:
+		# ⚠️ THE LOCAL CHARACTER IS ALWAYS THE ONE THIS PEER SIMULATES, so unlike the
+		# body half this side can always trust the countdown — `stagger_time_left()`
+		# returns 0 only for a body somebody else is running, and that is never this one.
+		var left := local_char.stagger_time_left()
+		target = clampf(left / FROST_THAW_TIME, 0.0, 1.0) if left < FROST_THAW_TIME else 1.0
+	var rate := FROST_RAMP_IN if target > _frost_coverage else FROST_RAMP_OUT
+	_frost_coverage = move_toward(_frost_coverage, target, delta / maxf(rate, 0.001))
+	# Hidden outright at zero rather than left drawing a fully transparent full-screen
+	# quad every frame for the whole match.
+	frost_vignette.visible = _frost_coverage > 0.001
+	if frost_vignette.visible:
+		var material := frost_vignette.material as ShaderMaterial
+		material.set_shader_parameter("coverage", _frost_coverage)
+		# ⚠️ THE SHADER CANNOT WORK THIS OUT FOR ITSELF. `UV` is 0..1 on both axes
+		# whatever the window's shape, so without the real ratio the frost band is ~1.8x
+		# thicker in pixels down the sides than across the top on 16:9 — rendered and
+		# confirmed. Pushed every frame rather than on `resized` because the window can
+		# also change shape via the fullscreen toggle, which fires no resize on this node.
+		var size := frost_vignette.size
+		if size.y > 0.0:
+			material.set_shader_parameter("aspect", size.x / size.y)
+
 ## Applied separately from the pulse so the two can coexist: the pulse tweens
 ## `modulate:a` down to zero and then hands back to whatever the held state wants.
 func _apply_danger_hold() -> void:
@@ -629,6 +699,10 @@ func enter_spectator_mode(camera: SpectatorCamera) -> void:
 	crosshair.visible = false
 	lata_card.visible = false
 	downed_flash.visible = false
+	# § THE STUN FROST rides along: it is a transient like the flash above, and a
+	# spectator has no stun of their own to be told about.
+	frost_vignette.visible = false
+	_frost_coverage = 0.0
 	ready_prompt.visible = false
 	ready_objective_row.visible = false
 	offscreen_indicators.visible = false

@@ -1589,6 +1589,13 @@ func apply_knockback(impulse: Vector3) -> void:
 ## reads `[{label, seconds, total}]` and draws a labelled bar per row; every row
 ## below is new but the contract is the one it already had.
 ## ---------------------------------------------------------------------------
+## Seconds of stun left, or 0 on a peer that is not simulating this body — the timer is
+## local (only `state` is in the replication config), so a remote caller gets 0 and must
+## treat that as "unknown", not as "about to end". § THE STUN FROST relies on exactly
+## that distinction; see `character_visual.gd::_process_frost()`.
+func stagger_time_left() -> float:
+	return _staggered_time_left
+
 func status_effects() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	match state:
