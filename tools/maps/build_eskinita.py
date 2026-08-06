@@ -345,8 +345,8 @@ parent_mark = "Markings"
 # suck" failure in its purest form, so the factor lives here, once, per kit.
 CITY_SCALE = 5.0   # a City Kit house is 0.74-1.24 tall natively -- SHORTER than
                    # a Person. 5x puts it at 2-3 believable storeys.
-CAR_SCALE = 1.75   # a van is 2.75 long / 1.45 tall natively; 1.75x reaches the
-                   # ~4.8 length a real one has against a 1.6-unit Person.
+# ⚠️ CAR_SCALE REMOVED, 2026-08-07 — no car is placed on this map any more (see
+# the driveway loop's own note), and this was the only thing that read it.
 ## ⚠️ THE ONLY BROADLEAF TREE IN THE REPO, AND IT IS DECLARED HERE BECAUSE THE
 ## HORIZON RING USES IT BEFORE THE STREET ROW DOES. Measured by rendering all eight
 ## tree assets: every other one is a stepped cone. See the long note at the street
@@ -437,14 +437,25 @@ BAY_GAP = 0.35              # alley-side alcove between neighbours, in metres
 ## It is also what stops the wall line reading as one extruded ribbon.
 DRIVEWAY_EVERY = 4
 
-# ⚠️ VAN AND SEDAN DROPPED, 2026-08-07, ON HUMAN INSTRUCTION: *"just the red sedan
-# and a blue van [remove]"*. Neither model is tinted at placement — colour comes
-# straight from each .glb's own baked material — so "the red sedan" and "a blue
-# van" name the MODELS, not one driveway instance: sedan.glb is always that red,
-# van.glb is always that blue, in every one of the ~12 driveway slots this list
-# cycles through. Delivery, taxi and truck are unaffected and now cycle through
-# the same driveways alone.
-CARS = ["kits/car/delivery", "kits/car/taxi", "kits/car/truck"]
+# ⚠️⚠️ EVERY CAR REMOVED, 2026-08-07, ON HUMAN INSTRUCTION: *"just remove all
+# cars from the eskinita map"* — supersedes the same day's earlier van/sedan-only
+# removal (that edit is why this comment used to be about two specific models;
+# the ask widened to all five before that ever shipped).
+#
+# ⚠️ THE DRIVEWAY BAY STAYS EMPTY, NOT GONE. `DRIVEWAY_EVERY` still skips a
+# house every 4th bay — deleting the whole bay concept would put the wall line
+# back to reading as "one extruded ribbon", which is the exact complaint that
+# introduced driveways in the first place. What is gone is only the vehicle
+# mesh; the fence-and-hedge treatment a few lines down is what keeps an empty
+# bay reading as a driveway rather than a hole, same as it always was.
+#
+# `DRIVEWAY_WIDTH` replaces `piece_extent()` measured off a car for the
+# bay-advance math below — there is no longer a car to measure. 4.8 m is not a
+# guess: it is the same number this file already quoted for a car's own length
+# ("Nose-in... turns the car's 4.8 m LENGTH into its world-X footprint"), kept
+# so the driveway gaps stay the width they always were rather than silently
+# shrinking to nothing now that nothing occupies them.
+DRIVEWAY_WIDTH = 4.8
 
 _bay = {-1.0: -Z_END, 1.0: -Z_END}   # each side advances independently now
 _i = {-1.0: 0, 1.0: 0}
@@ -477,25 +488,18 @@ for side in (-1.0, 1.0):
     while _bay[side] <= Z_END:
         i = _i[side]
         if (i + (0 if side > 0 else 2)) % DRIVEWAY_EVERY == 0:
-            car = CARS[i % len(CARS)]
-            # ⚠️ PARALLEL-PARKED, NOT NOSE-IN, AND THE LANE LAW IS WHY.
-            # Nose-in (yaw ±90°) turns the car's 4.8 m LENGTH into its world-X
-            # footprint, which reaches 3.2 m from the alley centre — straight
-            # through the throwing corridor. `assert_clear_of_lane()` failed the
-            # build on the first run and named the car. At yaw 0 the length runs
-            # down Z against the kerb, which is how a car is parked on a street
-            # this narrow anyway, and its 2.6 m width stays outside the wall.
-            cyaw = 0.0 if i % 2 else math.pi
-            cext = piece_extent(car, cyaw, CAR_SCALE)
-            cx = ((WALL_FACE_X - cext[0]) if side > 0
-                  else (-WALL_FACE_X - cext[1]))
-            add_kit("Dressing/Bahay", f"Sasakyan_{i}_{tag}", car, cx,
-                    _bay[side] - cext[2], cyaw, CAR_SCALE)
-            # ⚠️ A DRIVEWAY IS NOT A HOLE. The bay is deliberately empty of
-            # HOUSE, but leaving it empty of everything is what read as the
-            # street missing a tooth. A fence line plus a hedge closes the gap
-            # at eye level while keeping the bay itself legible as a gap.
-            _fz = _bay[side] - cext[2]
+            # ⚠️ A DRIVEWAY IS NOT A HOLE, EVEN WITH NOTHING PARKED IN IT. The bay
+            # is deliberately empty of HOUSE; leaving it empty of everything else
+            # too is what read as the street missing a tooth before driveways
+            # existed at all. A fence line plus a hedge closes the gap at eye
+            # level while keeping the bay itself legible as a gap — unchanged by
+            # the car's removal, since neither ever depended on a car being there.
+            #
+            # `_fz` used to be measured off the car's own placement (`_bay[side]
+            # - cext[2]`, i.e. the car's centre). `DRIVEWAY_WIDTH * 0.5` is the
+            # same idea with no mesh to read it from: the centre of a symmetric
+            # footprint sits half its width past the bay's leading edge.
+            _fz = _bay[side] + DRIVEWAY_WIDTH * 0.5
             add_kit("Dressing/Bakod", f"BakodPanel_{i}_{tag}",
                     "kits/city/fence" if i % 2 else "kits/city/fence-low",
                     side * (WALL_FACE_X + 0.15), _fz - 2.6,
@@ -503,7 +507,7 @@ for side in (-1.0, 1.0):
             add_kit("Dressing/Bakod", f"BakodHalaman_{i}_{tag}", "kits/town/hedge",
                     side * (WALL_FACE_X + 0.5), _fz + 2.6,
                     0.0, TOWN_SCALE)
-            _bay[side] += (cext[3] - cext[2]) + BAY_GAP
+            _bay[side] += DRIVEWAY_WIDTH + BAY_GAP
         else:
             kind = BUILDING_TYPES[i % len(BUILDING_TYPES)]
             piece = f"kits/city/building-type-{kind}"
