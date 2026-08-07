@@ -722,15 +722,16 @@ func _on_match_won_music(_winning_slot: int) -> void:
 ## arrive per-recorder (`vo_tumbang_cy.wav`, `vo_tumbang_jo.wav`, ...) and the
 ## count per line is not known until the team's drive folder is committed —
 ## see docs/HUMAN.md's naming convention, which this reads exactly.
+##
+## Uses `ResourceLoader.list_directory()`, not `DirAccess`. In an exported PCK,
+## `DirAccess.list_dir_begin()` on this folder returns the import-metadata
+## stub names (`vo_clock_10_1.wav.import`) instead of the real resource names
+## (`vo_clock_10_1.wav`), so the `.wav` suffix check never matched and every
+## voice line silently failed to load outside the editor. `ResourceLoader`
+## resolves the PCK's remap table and returns the real names in both cases.
 func _load_vo() -> void:
-	var dir := DirAccess.open(VO_DIR)
-	if dir == null:
-		return # No folder yet — every category below is empty and play_vo() no-ops.
-	dir.list_dir_begin()
-	var file_name := dir.get_next()
-	while file_name != "":
-		if not dir.current_is_dir() and file_name.begins_with("vo_") \
-				and file_name.ends_with(".wav"):
+	for file_name: String in ResourceLoader.list_directory(VO_DIR):
+		if file_name.begins_with("vo_") and file_name.ends_with(".wav"):
 			var line_id := _vo_id_from_filename(file_name)
 			if line_id != "":
 				var stream := load(VO_DIR + file_name) as AudioStream
@@ -738,8 +739,6 @@ func _load_vo() -> void:
 					if not _vo_takes.has(line_id):
 						_vo_takes[line_id] = []
 					(_vo_takes[line_id] as Array).append(stream)
-		file_name = dir.get_next()
-	dir.list_dir_end()
 
 
 ## `vo_<id>_<name>.wav` -> `<id>`. `<id>` itself may contain underscores
