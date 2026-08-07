@@ -27,6 +27,7 @@ LanBeacon="*res://scripts/systems/lan_beacon.gd"
 GameLaunch="*res://scripts/systems/game_launch.gd"
 SettingsManager="*res://scripts/systems/settings_manager.gd"
 DebugPlayerSwitcher="*res://scripts/systems/debug_player_switcher.gd"
+UpdateCheck="*res://scripts/systems/update_check.gd"
 
 [display]
 

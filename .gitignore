@@ -20,6 +20,11 @@ mono_crash.*.json
 build/*
 !build/*.zip
 !build/README.txt
+# The update manifest. `scripts/systems/update_check.gd` fetches this file from
+# `main` to decide whether a running copy is out of date, so it is the one thing
+# in here that MUST ship to GitHub — an ignored manifest is an update prompt that
+# never fires. Written by `tools/release.py`, never by hand.
+!build/latest.json
 
 # OS
 .DS_Store
