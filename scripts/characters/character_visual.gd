@@ -2196,7 +2196,40 @@ func _drive_viewmodel_charge() -> void:
 	var carrier := _character.get_node_or_null("Carrier") as Carrier
 	if carrier == null:
 		return
-	rig.set_viewmodel_charge(carrier.charge_power() if carrier.is_charging() else -1.0)
+	# ⚠️⚠️ THE ARM RETRACTS FOR A SPECTATOR NOW, WHICH NEEDS THE OTHER CLOCK.
+	# `Master_Prompt_Spectator_Player_POV.md` § C.5: `charge_power()`/`is_charging()`
+	# only tick where `carrier.input_step()` actually runs real input for THIS unit on
+	# THIS machine — per-character, and gated the same way `_physics_process()`'s own
+	# authority check and `input_pressed()`'s `_reads_hardware()` gate it. A spectator's
+	# borrowed POV is never that unit — a spectator drives nothing, ever, and its
+	# `ai_controller` is force-enabled the moment Single Player spectates (see
+	# `main.gd::_reassert_spectated_bots()`), so `is_ai_driven()` alone already answers
+	# "not mine" for every unit in that mode. For anybody not mine this reads
+	# `observed_charge_power()` instead: the same every-peer broadcast channel
+	# `_drive_charge_pose()` already uses for the third-person arm, ticking correctly
+	# in Single Player and over the network alike.
+	#
+	# ⚠️ `rig.aim_source == MOUSE` IS NOT THIS PREDICATE, AND WAS TRIED AND WRONG. It
+	# answers a different question — "does THIS rig read this machine's mouse for
+	# camera look" — and Single Player's spectator flow leaves the nominal seat-0
+	# rig's `aim_source` sitting at whatever the .tscn baked (MOUSE), unrelated to
+	# whether that seat's INPUT is still real. Measured: a spectated seat-0 bot read
+	# `charge_power()` (always 0, nothing sets `_is_charging` for it) instead of the
+	# observed clock this function had just been fed, and the arm never moved.
+	# `is_multiplayer_authority()`/`player_id` — same "is this really mine" pattern
+	# `carrier.gd::_update_trajectory()` already uses, for the same reason its own
+	# comment gives: `is_multiplayer_authority()` alone lies after a LAN test in the
+	# same process without a real disconnect.
+	var is_mine := (_character.is_multiplayer_authority() if NetworkManager.is_networked()
+		else _character.player_id == 1) and not _character.is_ai_driven()
+	# ⚠️ NOT COLLAPSED INTO ONE BRANCH. The two are not the same number —
+	# `charge_power()` lerps `CHARGE_MIN_POWER..1`, `observed_charge_power()` is a
+	# plain `0..1` — and changing the felt wind-up under the player actually holding
+	# the button was never the ask; only somebody ELSE'S view of it was broken.
+	if is_mine:
+		rig.set_viewmodel_charge(carrier.charge_power() if carrier.is_charging() else -1.0)
+	else:
+		rig.set_viewmodel_charge(carrier.observed_charge_power())
 
 ## Task 0 — the moodboard's THE SLIPPER card asks for "thrown trajectory (spin +
 ## motion blur)", and a slipper that flies without tumbling reads as a floating

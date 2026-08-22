@@ -281,6 +281,16 @@ func _process(delta: float) -> void:
 		# stack count a spectator needs and a player does not, so calling both would print
 		# the countdown twice with two different amounts of context. See §2.7.
 		_refresh_spectator_panel()
+		# ⚠️⚠️ THE FROST, NOW THAT A POV IS A REAL FIRST-PERSON FRAME.
+		# `Master_Prompt_Spectator_Player_POV.md` § C.4: this early return used to skip
+		# `_refresh_frost()` outright — a spectator's own body has no stagger of its
+		# own, which was true of the OLD placement-only POV and is no longer the whole
+		# story now that a POV borrows a real player's rig. `spectated_pov_character()`
+		# is null in free flight and over-the-shoulder follow (both correctly draw no
+		# frost) and the watched unit only while an actual borrow is up.
+		_refresh_frost(_spectator_camera.spectated_pov_character()
+			if _spectator_camera != null and is_instance_valid(_spectator_camera) else null,
+			get_process_delta_time())
 		return
 	# ⚠️ THE CROSSHAIR IS THE THROW-LEGALITY TELL, and it asks the SAME function the
 	# throw itself asks. A second opinion about legality is a crosshair that promises
@@ -523,11 +533,21 @@ func _refresh_frost(local_char: CharacterBase, delta: float) -> void:
 	var target := 0.0
 	if local_char != null and is_instance_valid(local_char) \
 			and local_char.state == CharacterBase.State.STAGGERED:
-		# ⚠️ THE LOCAL CHARACTER IS ALWAYS THE ONE THIS PEER SIMULATES, so unlike the
-		# body half this side can always trust the countdown — `stagger_time_left()`
-		# returns 0 only for a body somebody else is running, and that is never this one.
+		# ⚠️⚠️ NOT ALWAYS THIS PEER'S OWN BODY ANY MORE. `local_char` used to be, always
+		# — this function's only caller was the player's own crosshair block, so
+		# `stagger_time_left()` could be trusted unconditionally. `Master_Prompt_
+		# Spectator_Player_POV.md` § C.4 added a second caller: a spectator's borrowed
+		# POV, which is a body THIS peer very much does not simulate over the network.
+		# `_staggered_time_left` is deliberately not replicated (see `character_visual.
+		# gd::_process_frost()`'s own header — the same fix, mirrored here) so
+		# `stagger_time_left()` returns a bare 0 there, and reading that as "0 seconds
+		# left" would thaw the frost on the very frame it should be at its heaviest.
+		# Hold at full until a REAL countdown says otherwise, same rule that function
+		# already uses.
+		target = 1.0
 		var left := local_char.stagger_time_left()
-		target = clampf(left / FROST_THAW_TIME, 0.0, 1.0) if left < FROST_THAW_TIME else 1.0
+		if left > 0.0 and left < FROST_THAW_TIME:
+			target = left / FROST_THAW_TIME
 	var rate := FROST_RAMP_IN if target > _frost_coverage else FROST_RAMP_OUT
 	_frost_coverage = move_toward(_frost_coverage, target, delta / maxf(rate, 0.001))
 	# Hidden outright at zero rather than left drawing a fully transparent full-screen

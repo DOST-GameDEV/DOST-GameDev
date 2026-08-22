@@ -2460,3 +2460,93 @@ filed here rather than silently left red:**
 skins now — the spectator has no design-doc section any more. Says so plainly instead:
 this file is the description. `controls_text()` rewritten for the new `Tab` and the new
 click.
+
+**2026-08-22 · 👁️ spectator: the PLAYER'S POV, reversing the placement design**
+(`docs/Master_Prompt_Spectator_Player_POV.md`, branch `updated-spectator`) — 🧑, with a
+reference frame: *"it's only a camera pov. it should have the player's pov instead. like
+the reference picture. it should also reflect when they've been tagged (frost effect).
+and the arm retracts when they're charging their tsinelas."* The same session's earlier
+entry built POV as a camera PLACEMENT at the unit's eyes; this reverses that call because
+a placement shows none of what the player is doing — no arms, no tsinelas, no wind-up, no
+frost — and every one of those already exists on `CameraRig`, gated behind `_active and
+_mode == FPP`.
+
+**`CameraRig.set_spectated(on)` is a new third state**, alongside `set_active()`'s real
+takeover and the deleted placement — *"renders like an active rig and reads like a dead
+one."* It flips everything `set_active(true)` does for rendering (fpp_camera.current,
+`set_process(true)`, `_apply_fpp_self_hide()`) and explicitly writes
+`set_process_unhandled_input(false)` regardless of `aim_source`, rather than trusting the
+`aim_source != MOUSE` coincidence bots happen to hold. `set_active()` and
+`set_aim_source()` are both gated to no-op while spectated, so nothing else — the debug
+switcher, `main.gd::_reassert_spectated_bots()`, a role rotation — can reopen the one path
+that would let this machine's mouse steer a body it does not own. `is_local_fpp()` was
+left returning true for a spectated rig, deliberately and in writing: its only consumer
+already double-gates on multiplayer authority, which a spectator can never hold.
+
+**`spectator_camera.gd`**: `_begin_borrow()`/`_release_borrow()`/`_sync_from_borrowed_rig()`
+replace the old eye-placement math entirely; `POV_EYE_HEIGHT_PERSON`,
+`POV_EYE_HEIGHT_PROP` and `POV_FORWARD_OFFSET` are deleted (the rig already solves all
+three, correctly, per-bot). Exactly one rig is ever borrowed — every place that changes
+`_follow`/`_pov` releases first. The wheel is now inert during POV (it used to silently
+adjust `_follow_distance`, which did nothing visible but violated "the wheel does not
+touch a borrowed rig" once written down). ⚠️ **TRAP #1 hit exactly as predicted**: the
+camera's own authoritative `current` reclaim in `_process` had to be gated on
+`_borrowed_rig == null`, or it fought the rig's `fpp_camera` for `current` every frame.
+
+**`hud.gd`**: the spectator branch's early return used to skip `_refresh_frost()`
+outright; now it calls it with `SpectatorCamera.spectated_pov_character()` (null outside
+an actual POV). `_refresh_frost()` itself had a latent bug this exposed rather than
+created: its "always trust the countdown" comment was true only because its one caller
+was always the local player's own body; a spectated remote unit's `stagger_time_left()`
+returns a bare 0 (the timer is deliberately unreplicated), which read as "stun already
+over" and would have zeroed the frost the instant it should be heaviest. Fixed with the
+same `left > 0.0` guard `character_visual.gd::_process_frost()` already carries for the
+identical reason.
+
+**`character_visual.gd::_drive_viewmodel_charge()`**: reads `observed_charge_power()`
+for any unit this peer does not truly drive, `charge_power()`/`is_charging()` only for
+its own. ⚠️⚠️ **First attempt gated on `rig.aim_source == MOUSE` and was measurably
+wrong** — Single Player's spectator flow (`main.gd`) never resets the nominal seat-0
+rig's `aim_source` away from whatever the `.tscn` baked (`MOUSE`), so a spectated seat-0
+bot kept reading its own always-zero `charge_power()` and the arm never moved.
+`spec_probe`'s new WIND-UP check caught it directly: `rotation.x -0.045 -> -0.000 rad`
+against an expected `-0.347`. Replaced with the same `is_mine` pattern
+`carrier.gd::_update_trajectory()` already uses (`is_multiplayer_authority()` if
+networked else `player_id == 1`, `and not is_ai_driven()`), which is correct because
+Single Player force-enables every unit's `ai_controller` the moment it spectates — see
+`_reassert_spectated_bots()`. Re-measured after the fix: `-0.045 -> -0.347 rad` over 1.4 s
+of a 2.5 s charge, which is `-0.62 × (1.4/2.5)` to three decimals.
+
+**`main.gd::_reassert_spectated_bots()`** — TRAP #2. This function calls
+`rig.set_active(false)` on every unit's rig, unconditionally, and still has to: it is
+what stops a DIFFERENT unit's rig stealing the viewport. Left untouched and noted why it
+is safe: `CameraRig.set_active()` is a no-op while `set_spectated(true)` is up, so the
+one rig a spectator is standing inside of enforces its own exception rather than needing
+this file to know it exists.
+
+**Extended `tools/spec_probe.gd`** — the POV block's assertions were inverted rather than
+extended (the old contract asserted the rig was NEVER activated; the new one asserts it
+renders like one and never processes input), plus new checks: exactly one rig borrowed
+and it is the current target's; the borrowed rig's own `fpp_camera` is the one actually
+rendered; the spectator's own camera stands down while borrowing and reclaims on release;
+`aim_source` is bit-for-bit unchanged across a full borrow+release cycle; the viewmodel
+arms are visible in POV and hidden again after release; the released unit's meshes are
+back to real shadows (not `SHADOWS_ONLY`); staggering the spectated player raises and
+later clears the screen frost; the viewmodel arm visibly retracts from an
+`observed_charge_power()` broadcast. ⚠️ **The frost check only proves the wiring, not the
+unreplicated-countdown fallback** — Single Player simulates the bot directly, so
+`stagger_time_left()` returns a real number there; the networked case where it returns a
+genuine 0 is code-reviewed (see `_refresh_frost()`'s fix above) but not dynamically
+measured this session. Verified `--solo` (59/60 — the one failure is §3.11, unrelated:
+this run's roster had zero Props), rendered `--shots=` and looked at both frames — the POV
+shot matches the reference exactly: real viewmodel arms in the lower third, no head, the
+name legible over both the sky and the scoreboard panel — and both two-peer modes
+(`--lobby-host` 22/22, `--lobby-join` 8/8, unchanged).
+
+⚠️ **Not run this session**: `tools/charge_tell_probe.tscn`, the instrument the master
+prompt names for measuring the wind-up against its 0.247 m first-person reference. It is
+already broken independent of this work — `Invalid access to property or key
+'team_is_can_side'`, a stale reference to a deleted team mechanic — and fixing an
+unrelated probe file was out of scope for this pass. `spec_probe`'s own WIND-UP check
+measures the same mechanism (an observed-clock charge reaching the visible arm through a
+borrowed rig) as a bone-rotation delta rather than a metres-of-travel figure.

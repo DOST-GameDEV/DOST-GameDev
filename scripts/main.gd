@@ -859,6 +859,18 @@ func _reassert_spectated_bots() -> void:
 		#
 		# `set_active()` is CameraRig's own public API — called, not edited. `camera_rig.gd`
 		# is `build ux`'s file and stays untouched.
+		#
+		# ⚠️⚠️ TRAP #2 OF THE PLAYER-POV REWRITE — THIS CANNOT BE ALLOWED TO STRIP A
+		# BORROWED RIG. `Master_Prompt_Spectator_Player_POV.md` § THE THREE TRAPS: this
+		# function runs deferred and can fire AFTER the spectator has borrowed a unit's
+		# rig to show its real first-person view — a live wind-up, arms, the works — and
+		# unconditionally calling `set_active(false)` here on every rig, including that
+		# one, would silently strip it back to a placement's worth of nothing on the very
+		# next frame. It is not special-cased below: `CameraRig.set_active()` itself is a
+		# no-op while `set_spectated(true)` is up (see that function's own class doc),
+		# so THIS reasoning — "no local peer holds any character, so no rig here should
+		# be active" — stays correct for every rig except the one a spectator is
+		# currently standing inside of, and that one rig enforces its own exception.
 		var rig := character.get_node_or_null("CameraRig") as CameraRig
 		if rig != null:
 			rig.set_active(false)

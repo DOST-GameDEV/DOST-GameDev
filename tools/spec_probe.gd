@@ -606,14 +606,46 @@ func _run_solo(spectating: bool = true) -> void:
 	_check("POV: the yaw is TAKEN from the unit",
 		absf(angle_difference(spectator._yaw, target.global_rotation.y)) < 0.05,
 		"camera %.3f rad vs unit %.3f rad" % [spectator._yaw, target.global_rotation.y])
-	# ⚠️ THE POINT OF DOING THIS WITHOUT THE RIG: watching must not change what they do.
+	# --- Master_Prompt_Spectator_Player_POV.md §A/§C.1 · THE BORROW, READ-ONLY ---------
+	# The old contract here asserted the rig was NEVER activated — that placement design
+	# is reversed. The new contract: the rig DOES render (arms, self-hide, its own
+	# camera), and DOES NOT read this machine's input under any circumstance.
 	var rig := target.get_node_or_null("CameraRig") as CameraRig
-	_check("POV: the watched unit's own rig was NOT activated",
-		rig == null or not rig._active,
-		"rig active=%s" % ["no rig" if rig == null else str(rig._active)])
-	_check("POV: the spectator still owns the rendered view",
+	_check("POV: exactly one rig is borrowed, and it is this unit's",
+		rig != null and spectator._borrowed_rig == rig and rig.is_spectated())
+	_check("POV: the borrowed rig renders like an active rig",
+		rig != null and rig._active and rig.fpp_camera.current)
+	_check("POV: the borrowed rig's OWN camera is the one being rendered, not the spectator's",
 		get_viewport().get_camera_3d() != null
-			and get_viewport().get_camera_3d().get_parent() == spectator)
+			and get_viewport().get_camera_3d() == rig.fpp_camera,
+		"viewport camera is %s" % ["none" if get_viewport().get_camera_3d() == null
+			else String(get_viewport().get_camera_3d().get_path())])
+	_check("POV: the spectator's OWN camera stood down while borrowing",
+		not spectator._camera.current)
+	# ⚠️⚠️ THE ONE THING THAT MUST STAY IMPOSSIBLE — watching must not change what they
+	# do. Asserted directly against the Node-level processing flag, not inferred from
+	# `aim_source`, because `aim_source` alone would pass even if `set_active()`'s old
+	# `set_process_unhandled_input(active and aim_source == MOUSE)` line had leaked back
+	# in — this is the actual gate that decides whether this machine's mouse can reach
+	# the body.
+	_check("POV: the borrowed rig NEVER processes unhandled input",
+		rig != null and not rig.is_processing_unhandled_input())
+	# `aim_source` is whatever this MACHINE already computed for this unit at spawn
+	# (MOVEMENT for the bot this test happens to land on) — not asserted against that
+	# specific value, since the point is that the borrow never WRITES it, not what it
+	# happened to already be. Snapshotted here and compared again after release below.
+	var aim_source_before_borrow := rig.aim_source
+	# The arms are the visible half of the borrow actually working — the reference frame
+	# 🧑 gave this brief for is an FPP shot WITH arms, not an eye placement without them.
+	var arms := rig.get_node_or_null("FppPivot/ViewmodelArms") as Node3D
+	if arms == null:
+		# Built lazily by `_viewmodel_arms()` — find it by scanning FppPivot's children
+		# instead of assuming the scene-authored node name.
+		for child in rig.fpp_pivot.get_children():
+			if child.name != "FppCamera":
+				arms = child as Node3D
+				break
+	_check("POV: the viewmodel arms are visible", arms != null and arms.visible)
 	if hud != null:
 		_check("HUD: the spectated name matches display_name(), plus role",
 			hud._spectator_target_name != null
@@ -621,6 +653,45 @@ func _run_solo(spectating: bool = true) -> void:
 					"TAYA" if target.is_defender else "ATTACKER"],
 			"'%s'" % [hud._spectator_target_name.text if hud._spectator_target_name != null
 				else "<none>"])
+
+		# --- Master_Prompt_Spectator_Player_POV.md § C.4 · the frost runs off THEM ------
+		# ⚠️ SOLO ONLY PROVES THE WIRING, NOT THE UNREPLICATED-COUNTDOWN FALLBACK. This
+		# peer simulates the bot directly, so `stagger_time_left()` returns a real
+		# number here the same way it would for this peer's OWN body — the networked
+		# case, where a spectated unit's countdown is genuinely unreplicated and
+		# `_refresh_frost()` must hold at full coverage instead of reading a bare 0,
+		# is not exercised by this run. Left as a known gap rather than claimed.
+		var target_char := target as CharacterBase
+		target_char.apply_stagger(3.0)
+		await _wait(0.5)
+		_check("FROST: staggering the spectated player raises screen frost",
+			hud._frost_coverage > 0.5,
+			"coverage=%.2f" % hud._frost_coverage)
+		await _wait(3.5)
+		_check("FROST: it clears once the spectated player's stun ends",
+			hud._frost_coverage < 0.05,
+			"coverage=%.2f" % hud._frost_coverage)
+
+	# --- Master_Prompt_Spectator_Player_POV.md § C.5 · the arm retracts for a
+	# spectator too, off `observed_charge_power()` rather than the silent-here
+	# `charge_power()`/`is_charging()`. Driven directly through the observed clock's
+	# own RPC handler rather than a real held-slipper charge, so this measures the
+	# mechanism (borrowed rig + every-peer clock reaches the visible arm) without
+	# needing an attacker mid-round to already be holding something.
+	var vm_arm: Node3D = null
+	if arms != null:
+		vm_arm = arms.get_node_or_null("RightPivot/Arm") as Node3D
+	if vm_arm != null:
+		var target_carrier := (target as CharacterBase).get_node_or_null("Carrier") as Carrier
+		var rot_before: float = vm_arm.rotation.x
+		target_carrier._rpc_charge_visual(true)
+		await _wait(1.4)
+		var rot_mid: float = vm_arm.rotation.x
+		_check("WIND-UP: the spectated arm retracts from an observed charge",
+			absf(rot_mid - rot_before) > 0.05,
+			"rotation.x %.3f -> %.3f rad" % [rot_before, rot_mid])
+		target_carrier._rpc_charge_visual(false)
+		await _wait(0.3)
 
 	# --- V still toggles POV <-> over-the-shoulder on the SAME target -------------------
 	_send_key(KEY_V)
@@ -651,6 +722,27 @@ func _run_solo(spectating: bool = true) -> void:
 	await _wait(0.05)
 	_check("LEFT CLICK drops the follow target", spectator._follow == null)
 	_check("LEFT CLICK clears POV", not spectator._pov)
+	# --- Master_Prompt_Spectator_Player_POV.md §C.3 · the release restores the unit ----
+	_check("LEFT CLICK releases the borrowed rig", spectator._borrowed_rig == null)
+	_check("LEFT CLICK: the released rig is no longer spectated, current, or processing",
+		not rig.is_spectated() and not rig.fpp_camera.current
+			and not rig.is_processing_unhandled_input())
+	_check("LEFT CLICK: the spectator's OWN camera reclaimed the view",
+		spectator._camera.current and get_viewport().get_camera_3d() == spectator._camera)
+	_check("LEFT CLICK: the arms are hidden again", arms == null or not arms.visible)
+	_check("aim_source was never written across the whole POV cycle (borrow + release)",
+		rig.aim_source == aim_source_before_borrow,
+		"before=%s after=%s" % [aim_source_before_borrow, rig.aim_source])
+	var visual_root := target.get_node_or_null("Visual")
+	var meshes: Array[Node] = visual_root.find_children("*", "GeometryInstance3D", true, false) \
+		if visual_root != null else []
+	var still_shadows_only := 0
+	for mesh in meshes:
+		if (mesh as GeometryInstance3D).cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY:
+			still_shadows_only += 1
+	_check("LEFT CLICK: the unit's own body casts real shadows again, not SHADOWS_ONLY",
+		not meshes.is_empty() and still_shadows_only == 0,
+		"%d of %d meshes still SHADOWS_ONLY" % [still_shadows_only, meshes.size()])
 	_check("LEFT CLICK moves the camera only a few centimetres that frame",
 		spectator.global_position.distance_to(pos_before_click) < 0.05,
 		"%.4f m" % spectator.global_position.distance_to(pos_before_click))
@@ -726,14 +818,23 @@ func _run_solo(spectating: bool = true) -> void:
 		get_viewport().get_texture().get_image().save_png(
 			_shots_dir.path_join("spectator_ingame.png"))
 		print("[%s]  wrote spectator_ingame.png" % _tag)
-		# POV of a PERSON specifically — the Prop case is a slipper on the road and reads
-		# as a bug in a still even when it is correct.
+		# POV of a PERSON specifically — every `spectatable` unit already is one (Lata
+		# and Slipper are plain Node3D, not CharacterBase), but this is the shot the
+		# reference frame is judged against, so pick one explicitly rather than
+		# trusting list order.
 		for unit in units:
 			if (unit as CharacterBase).is_person:
 				spectator._follow = unit as Node3D
 				break
 		spectator._pov = true
-		spectator._pitch_deg = -6.0
+		# ⚠️ `_begin_borrow()`, NOT A BARE FLAG FLIP. Since POV became a real rig
+		# borrow, setting `_follow`/`_pov` alone leaves `_borrowed_rig` null — the
+		# camera's own `_process` would then sync from nothing and sit frozen wherever
+		# the free-flight shot above left it, rendering THAT camera's stale frame
+		# under a filename that claims to be somebody's first-person view. Measured
+		# once already: exactly the "picture is wrong, every check is green" failure
+		# this probe's own header warns about.
+		spectator._begin_borrow(spectator._follow)
 		await _wait(1.5)
 		await RenderingServer.frame_post_draw
 		get_viewport().get_texture().get_image().save_png(
@@ -744,8 +845,11 @@ func _run_solo(spectating: bool = true) -> void:
 	# Last, because it strips the whole spectator HUD (restores you_card etc.) and every
 	# earlier check above depends on that HUD still being in spectator mode.
 	if hud != null:
+		spectator._release_borrow() # clean handoff from the POV shot above, if any
 		spectator._follow = units.front() if not units.is_empty() else null
 		spectator._pov = spectator._follow != null
+		if spectator._pov:
+			spectator._begin_borrow(spectator._follow)
 		await get_tree().process_frame
 		_check("the spectated-name label exists before exit", hud._spectator_target_name != null
 			and is_instance_valid(hud._spectator_target_name))

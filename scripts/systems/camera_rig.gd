@@ -484,7 +484,17 @@ func _apply_emote_view() -> void:
 	# The spring arm has not been framing anything while the rig was in FPP.
 	_apply_tpp_framing()
 
+## ⚠️⚠️ IGNORED WHILE SPECTATED — SEE `set_spectated()`. `main.gd::
+## _reassert_spectated_bots()` calls `set_active(false)` on every rig in the match,
+## unconditionally, and it has to keep doing that (it is what stops a DIFFERENT
+## unit's rig stealing the viewport — see that function's own header). Without
+## this guard the very next reassert would silently strip the one rig the
+## spectator is standing inside of. This is the "teach it about the borrow"
+## the master prompt asks for: not by making main.gd special-case a node it does
+## not otherwise know about, but by making the call it already makes harmless.
 func set_active(active: bool) -> void:
+	if _spectated:
+		return
 	_active = active
 	fpp_camera.current = active and _mode == Mode.FPP
 	tpp_camera.current = active and _mode == Mode.TPP
@@ -506,14 +516,93 @@ func set_active(active: bool) -> void:
 ## local player is the authority" and "the local player is LOOKING THROUGH THIS
 ## CHARACTER'S EYES" are different claims, and only the second one is what the arc
 ## should be drawn for.
+##
+## ⚠️⚠️ A SPECTATED RIG COUNTS, DELIBERATELY, AND THIS IS THE DECISION IN WRITING.
+## `Master_Prompt_Spectator_Player_POV.md` §1 asks for exactly that: a spectator
+## borrowing this rig sees a real first-person frame, and `is_local_fpp()`'s own
+## consumer (`carrier.gd::_update_trajectory()`) gates on it plus a SEPARATE
+## authority check the borrow can never satisfy (a spectator holds no authority
+## over anybody), so the trajectory preview cannot leak into a spectated frame
+## through this door regardless. Nothing else reads this. `_active` already
+## reads true while spectated (see `set_spectated()`), so this needed no code
+## change — only the sentence saying it was not an accident.
 func is_local_fpp() -> bool:
 	return _active and _mode == Mode.FPP
 
 ## The rig mode (FPP/TPP) is derived and untouchable (§0.1) — this only
 ## chooses how the ACTIVE rig reads aim input, never what mode it renders in.
+##
+## ⚠️⚠️ NEVER RE-ENABLES UNHANDLED INPUT WHILE SPECTATED, UNDER ANY `source`. This is
+## the second of the two doors `set_spectated()`'s class doc names — the first is
+## `set_active()` above, gated the same way. Something re-applying an aim source
+## (the debug switcher's `_apply_slots()`, a role rotation) must not be able to
+## reopen the one path that would let this machine's mouse steer a body it does
+## not own.
 func set_aim_source(source: AimSource) -> void:
 	aim_source = source
+	if _spectated:
+		set_process_unhandled_input(false)
+		return
 	set_process_unhandled_input(_active and aim_source == AimSource.MOUSE)
+
+## ---------------------------------------------------------------------------
+## ⚠️⚠️ THE SPECTATOR BORROW — READ-ONLY, NEVER A TAKEOVER.
+## `Master_Prompt_Spectator_Player_POV.md` §A reverses the old spectator design
+## (a camera placed at the unit's eye height, seeing none of what they are
+## doing) in favour of this: the spectator borrows the rig itself, because
+## every piece of a real first-person frame — the arms, the tsinelas in hand,
+## the self-hide, the carry solve, the eye height and pitch limits — already
+## lives here, tuned, and re-deriving a worse copy of it on the spectator's own
+## camera was always going to lose detail the real rig does not.
+##
+## The one thing a placement was actually protecting — `set_active(true)` also
+## flips `set_process_unhandled_input(active and aim_source == MOUSE)`, and an
+## active rig whose `aim_source` is MOUSE reads THIS MACHINE'S MOUSE and writes
+## yaw onto somebody else's body — is still exactly as dangerous. So this is a
+## THIRD state, not `set_active(true)` and not a placement:
+##
+## ⚠️⚠️ THE INVARIANT, IN ONE LINE: A SPECTATED RIG RENDERS LIKE AN ACTIVE RIG
+## AND READS LIKE A DEAD ONE.
+##
+## RENDERS like active: `fpp_camera.current`, `set_process(true)` so the carry
+## solve/kicks/shake keep running, and `_apply_fpp_self_hide()` so the body goes
+## SHADOWS_ONLY, the arms appear, and the world slipper is swapped for the
+## viewmodel's — the exact rows `Master_Prompt_Spectator_Player_POV.md` §B's
+## "free" table lists.
+##
+## READS like dead: `set_process_unhandled_input(false)` is written EXPLICITLY,
+## never left to fall out of `aim_source != MOUSE` happening to be true for a
+## bot — that coincidence is not a guarantee, and `set_active()`/
+## `set_aim_source()` above are both gated so nothing else can flip it back
+## while this is up. Nothing here writes `_character` at all: no rotation, no
+## state, no RPC. `aim_source` itself is never touched, so whatever it already
+## was (MOVEMENT for a bot, whatever this machine's own copy of a remote human's
+## rig already computed) is exactly what it still is on release.
+var _spectated: bool = false
+## `_active`'s value from immediately before the borrow began, so releasing
+## restores it rather than assuming "false" — a spectator can only ever borrow a
+## rig that was not already the one being looked through on THIS machine (this
+## machine holds no seat), so in every real case that is false, but the field is
+## kept rather than the assumption so a future caller cannot silently disagree.
+var _pre_borrow_active: bool = false
+
+func set_spectated(on: bool) -> void:
+	if _spectated == on:
+		return
+	_spectated = on
+	if on:
+		_pre_borrow_active = _active
+		_active = true
+	else:
+		_active = _pre_borrow_active
+	fpp_camera.current = _active and _mode == Mode.FPP
+	tpp_camera.current = _active and _mode == Mode.TPP
+	set_process(_active)
+	set_process_unhandled_input(false)
+	_apply_fpp_self_hide()
+
+func is_spectated() -> bool:
+	return _spectated
 
 ## Where this rig is looking, in world space, for anything that needs to fire
 ## along the player's aim rather than along the body's facing (Task 0's

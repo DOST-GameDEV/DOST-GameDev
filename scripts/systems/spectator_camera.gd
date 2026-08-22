@@ -121,45 +121,55 @@ const FOLLOW_DISTANCE_MAX: float = 30.0
 const FOLLOW_LIFT_RATIO: float = 0.34
 
 ## ---------------------------------------------------------------------------
-## ⚠️⚠️ POV MODE — `V` — AND IT IS **THIS** CAMERA AT THEIR EYES, NOT THEIR RIG.
+## ⚠️⚠️ POV MODE — `V`/`Tab` — WAS A PLACEMENT, IS NOW A READ-ONLY BORROW OF THE
+## TARGET'S OWN `CameraRig`. `Master_Prompt_Spectator_Player_POV.md` §A reverses the
+## design this block used to argue for; the argument is kept rather than deleted,
+## because the next person deserves the reversal and the reason, not a silent gap.
 ##
 ## 🧑 human instruction, 2026-07-31: *"spectator should be allowed to go to anywhere in the
-## map and watch the povs of people/ai, thats why its called camera."* The first half was
-## already true; this is the second.
+## map and watch the povs of people/ai, thats why its called camera."* — and then, with a
+## reference frame of a live first-person view, 2026-08-22: *"it's only a camera pov. it
+## should have the player's pov instead. like the reference picture. it should also
+## reflect when they've been tagged (frost effect). and the arm retracts when they're
+## charging their tsinelas."*
 ##
-## ⚠️ IT DOES NOT ACTIVATE THE TARGET'S `CameraRig`, AND THAT IS NOT A SHORTCUT — IT IS THE
-## RULE. `Agent_Prompts.md` § PATHS: *"The spectator is not an exception to it either — it
-## is a separate camera for a unit that has no body, not a third mode on the rig, which is
-## why the two files can sit in different lanes at all."* `camera_rig.gd` is 🖥️ `build ux`'s
-## file and the camera directive on it is marked non-negotiable.
+## THIS BLOCK ORIGINALLY ARGUED: *"POV is a placement, not a takeover: this camera is
+## parked at the unit's eye height and its YAW is locked to the unit's facing. Nothing is
+## written to the unit at all."* That was correct about the DANGER and wrong about the
+## PICTURE. A camera merely parked at eye height sees what the eyes see and shows NONE of
+## what the player is doing — no arms, no tsinelas in hand, no wind-up, no ice on the frame
+## when they get tagged. Every one of those already exists on `CameraRig`, gated behind
+## `_active and _mode == FPP` — the arms (`_viewmodel_arms()`), the self-hide
+## (`_apply_fpp_self_hide()`), the carry solve (`_update_viewmodel_carry()`), the eye
+## height and pitch limits. Re-deriving a worse copy of all of it here, by hand, was never
+## going to catch up to the real thing.
 ##
-## And going through the rig would not have been free even if it were allowed:
-## `CameraRig.set_active(true)` also calls `set_process(true)` and
-## `set_process_unhandled_input()` on that rig, so a spectator pressing `V` would start
-## running a live AI unit's aim pipeline and feeding it this machine's mouse — from a node
-## whose entire contract is that it writes no gameplay state. Watching somebody must not
-## change what they do.
+## ⚠️ THE DANGER THE OLD ARGUMENT NAMED IS STILL REAL, AND IT IS NARROWER THAN THE OLD
+## TEXT MADE IT SOUND. It is not "the rig is active" — a rig renders exactly this picture
+## while active and that picture is the whole point. It is these two lines in
+## `CameraRig.set_active()`: `set_process(active)` and `set_process_unhandled_input(active
+## and aim_source == AimSource.MOUSE)`. An active rig whose `aim_source` is `MOUSE` reads
+## THIS MACHINE'S MOUSE and writes yaw onto somebody else's body — that is what "watching
+## somebody must not change what they do" is actually about, and it is the one thing that
+## has to remain impossible.
 ##
-## So POV is a placement, not a takeover: this camera is parked at the unit's eye height
-## and its YAW is locked to the unit's facing. Nothing is written to the unit at all — it
-## does not know it is being watched, which is the only correct relationship here.
+## So this borrows the rig — `CameraRig.set_spectated(true)` — rather than either
+## activating it fully or faking a placement. See that function's own class doc for the
+## invariant it keeps (*"renders like an active rig and reads like a dead one"*) and for
+## why it is a THIRD state and not `set_active(true)`. This node never calls
+## `set_active()` on anybody else's rig, never touches `aim_source`, and writes nothing
+## to `_character` — the borrow does that work, and it is `camera_rig.gd`'s file to keep
+## that promise, not this one's.
 ##
-## ⚠️ PITCH STAYS WITH THE OPERATOR. A unit's pitch lives on its rig, not on its body
-## (`camera_rig.gd`'s own class doc), and that rig is inactive for a bot — so there is no
-## honest pitch to copy, and inventing one would be a made-up number presented as somebody
-## else's view. Leaving pitch on the mouse is also the better camera: it is what lets a
-## POV shot tilt down to the lata without leaving the shot.
-const POV_EYE_HEIGHT_PERSON: float = 1.45
-## A lata or a tsinelas is ankle-height and its "eyes" are a fiction anyway — low enough to
-## read as the object's own view of the street, high enough not to sit inside the mesh.
-const POV_EYE_HEIGHT_PROP: float = 0.42
-## ⚠️ AND IT SITS SLIGHTLY IN FRONT OF THE EYES, NOT INSIDE THE HEAD. Rendered a POV shot
-## and looked at it: the watched Person's own hat and shoulder hung in the bottom-left of
-## the frame, because a real FPP rig HIDES the head mesh (`CameraRig.FPP_HIDDEN_MESH_HINT`)
-## and this camera is a bystander that has not been given the right to hide anything.
-## Stepping forward off the unit's own facing clears the model without writing a single
-## property to it, which is the whole reason POV is a placement rather than a takeover.
-const POV_FORWARD_OFFSET: float = 0.34
+## ⚠️ PITCH IS NO LONGER THE OPERATOR'S. It never was, honestly — the old placement's
+## "pitch stays with the mouse" was a workaround for having no rig to read a real pitch
+## from. A borrowed rig HAS a real pitch (the bot's own aim, or a live human's), and
+## showing anything else would be inventing a number and presenting it as somebody else's
+## view — the exact failure the old text warned about from the other direction. The
+## spectator's own mouse motion still updates `_yaw`/`_pitch_deg` every frame regardless of
+## borrow state (see `_process()`), continuously re-synced from the borrowed camera so
+## release — by `V`, `F`, `Tab`, or the target dying — always hands back exactly where the
+## eyes were with no stale drift to snap out of.
 
 var _yaw: float = 0.0
 var _pitch_deg: float = -18.0
@@ -174,6 +184,11 @@ var _follow_distance: float = FOLLOW_DISTANCE
 ## Sticky across a `Tab` cycle on purpose: somebody filming POV shots wants to step
 ## through all four units in POV, not re-press `V` at every one.
 var _pov: bool = false
+## The rig this camera is currently reading a real first-person frame through, or null
+## in free flight and over-the-shoulder follow alike. Exactly one is ever borrowed —
+## every place that changes it releases whatever this already holds first, so the
+## invariant never needs re-proving by inspection.
+var _borrowed_rig: CameraRig = null
 
 func _ready() -> void:
 	_camera = Camera3D.new()
@@ -216,36 +231,41 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed:
 		var button := (event as InputEventMouseButton).button_index
-		# Following: the wheel pulls in and pushes out. Free: it retunes the fly speed.
-		# See FOLLOW_DISTANCE's own note for why one control does both.
-		var following := _follow != null and is_instance_valid(_follow)
-		if button == MOUSE_BUTTON_WHEEL_UP:
-			if following:
-				_follow_distance = clampf(_follow_distance / SPEED_STEP,
-					FOLLOW_DISTANCE_MIN, FOLLOW_DISTANCE_MAX)
-			else:
-				_speed = clampf(_speed * SPEED_STEP, SPEED_MIN, SPEED_MAX)
-		elif button == MOUSE_BUTTON_WHEEL_DOWN:
-			if following:
-				_follow_distance = clampf(_follow_distance * SPEED_STEP,
-					FOLLOW_DISTANCE_MIN, FOLLOW_DISTANCE_MAX)
-			else:
-				_speed = clampf(_speed / SPEED_STEP, SPEED_MIN, SPEED_MAX)
-		elif button == MOUSE_BUTTON_LEFT:
-			# ⚠️⚠️ LEAVES POV ONLY — `Master_Prompt_Updated_Spectator.md` § B: "the
+		# ⚠️⚠️ THE WHEEL DOES NOT TOUCH A BORROWED RIG.
+		# `Master_Prompt_Spectator_Player_POV.md` § C.3: no FOV, no spring length, no
+		# offset — both of the wheel's meanings (fly speed, follow distance) belong to
+		# THIS camera, and inside a POV this camera is not the one rendering.
+		if _pov:
+			pass
+		else:
+			# Following: the wheel pulls in and pushes out. Free: it retunes the fly
+			# speed. See FOLLOW_DISTANCE's own note for why one control does both.
+			var following := _follow != null and is_instance_valid(_follow)
+			if button == MOUSE_BUTTON_WHEEL_UP:
+				if following:
+					_follow_distance = clampf(_follow_distance / SPEED_STEP,
+						FOLLOW_DISTANCE_MIN, FOLLOW_DISTANCE_MAX)
+				else:
+					_speed = clampf(_speed * SPEED_STEP, SPEED_MIN, SPEED_MAX)
+			elif button == MOUSE_BUTTON_WHEEL_DOWN:
+				if following:
+					_follow_distance = clampf(_follow_distance * SPEED_STEP,
+						FOLLOW_DISTANCE_MIN, FOLLOW_DISTANCE_MAX)
+				else:
+					_speed = clampf(_speed / SPEED_STEP, SPEED_MIN, SPEED_MAX)
+		if button == MOUSE_BUTTON_LEFT:
+			# ⚠️⚠️ LEAVES POV ONLY — `Master_Prompt_Spectator_Player_POV.md` § C.3: "the
 			# spectator ... leaves a POV with left click". Over-the-shoulder follow and
 			# free flight both ignore it: `Tab`/`V` already own entering and toggling
 			# POV, and `F` already owns dropping a follow entirely, so a click here has
 			# exactly one job and does nothing when there is nothing to leave.
 			if _pov:
-				# Come to rest exactly where the eyes already are, current yaw/pitch
-				# kept. Snapping the smoothing target to the current position is the same
-				# rule `_cycle_follow()` uses when handing the camera back to free flight
-				# — without it the next frame's lerp starts from wherever
-				# `_target_position` was last written (the unit's eyes, which just moved
-				# on) and the release reads as a pull across the map instead of a clean
-				# stop.
-				_target_position = global_position
+				# `_release_borrow()` hands the borrowed rig back — restoring the
+				# watched unit's own body and world slipper through the same door
+				# `set_active(false)` uses — and syncs this camera's position/yaw/pitch
+				# to exactly where the rig's own camera was, so free flight resumes
+				# from there with no jump.
+				_release_borrow()
 				_follow = null
 				_follow_index = -1
 				_pov = false
@@ -285,8 +305,13 @@ func _input(event: InputEvent) -> void:
 			_cycle_follow()
 			get_viewport().set_input_as_handled()
 		KEY_F:
-			# Same "hand it back where it currently IS" rule the left-click POV exit
-			# uses — see that comment in `_unhandled_input` for why.
+			# `_release_borrow()` is a no-op unless a rig is actually borrowed (over-the-
+			# shoulder follow and free flight both leave it null already), so this is safe
+			# to call unconditionally rather than branching on `_pov` first.
+			_release_borrow()
+			# "Hand it back where it currently IS" — matters most leaving over-the-
+			# shoulder follow, where `global_position` is mid-lerp toward the chase
+			# target; idempotent if a POV release (or free flight already) left it here.
 			_target_position = global_position
 			_follow = null
 			_follow_index = -1
@@ -297,6 +322,10 @@ func _input(event: InputEvent) -> void:
 			# a key that silently arms a mode you cannot see is worse than one that waits.
 			if _follow != null and is_instance_valid(_follow):
 				_pov = not _pov
+				if _pov:
+					_begin_borrow(_follow)
+				else:
+					_release_borrow()
 			get_viewport().set_input_as_handled()
 
 func _process(delta: float) -> void:
@@ -319,17 +348,28 @@ func _process(delta: float) -> void:
 	# that is the correct reading rather than a workaround: a spectator has no rig, no
 	# body and no seat, so for as long as this node exists there is no other legitimate
 	# owner of the view. One bool compare per frame.
-	if _camera != null and not _camera.current:
+	#
+	# ⚠️⚠️ GUARDED ON `_borrowed_rig == null` NOW — TRAP #1 OF THE PLAYER-POV REWRITE.
+	# While a rig is borrowed, ITS `fpp_camera` is the one that should be `current`, and
+	# the moment it is, `Camera3D.current` (winner-takes-all, see above) reads false on
+	# THIS node's own `_camera` — which this same authoritative reclaim would otherwise
+	# read as "something stole the view" and fight, every single frame, forever. The
+	# reclaim's job (recover from a DIFFERENT stolen camera) still matters and still
+	# runs in every other state; it just has to stand down for the one state where this
+	# camera is correctly, deliberately, not the one rendering.
+	if _camera != null and _borrowed_rig == null and not _camera.current:
 		_camera.current = true
 	# ⚠️ A FOLLOW TARGET THAT DIES MID-POV MUST NOT LEAVE THE CAMERA PARKED AT A DEAD
-	# NODE. `_cycle_follow()` rebuilds its list from live nodes on every `Tab`, but
-	# nothing was clearing `_follow` on the frames BETWEEN presses — a unit freed or
-	# role-swapped mid-round left `is_instance_valid(_follow)` false forever after,
-	# which every read below already guards, but the on-screen name (`spectated_
-	# label()`) and the wrap order both needed the field actually cleared. Falls back
-	# to free flight from `_target_position`, which POV's own snap already left equal
-	# to `global_position` — the last good spot, not wherever follow started.
+	# NODE, AND MUST NOT LEAVE A RIG BORROWED WITH NOBODY EVER GIVING IT BACK.
+	# `_cycle_follow()` rebuilds its list from live nodes on every `Tab`, but nothing was
+	# clearing `_follow` on the frames BETWEEN presses — a unit freed or role-swapped
+	# mid-round left `is_instance_valid(_follow)` false forever after, which every read
+	# below already guards, but the on-screen name (`spectated_label()`), the wrap order
+	# and now the borrowed rig itself all needed the field actually cleared.
+	# `_release_borrow()` is itself guarded against a freed rig — see its own doc — so
+	# this is safe even if the CameraRig child died in the same sweep as its parent.
 	if _follow != null and not is_instance_valid(_follow):
+		_release_borrow()
 		_follow = null
 		_follow_index = -1
 		_pov = false
@@ -339,17 +379,13 @@ func _process(delta: float) -> void:
 	# is interpolated afterwards.
 	if _follow != null and is_instance_valid(_follow):
 		if _pov:
-			# ⚠️ SNAPPED, NOT SMOOTHED. `MOVE_SMOOTH_RATE` is what makes a flown camera
-			# read as flown, and it is exactly wrong here: an eye that lags its own head
-			# by a few frames is the one camera artefact everybody reads as nauseating.
-			# A POV shot is rigid or it is not a POV shot.
-			_target_position = (_follow.global_position
-				+ Vector3.UP * _pov_eye_height()
-				+ (-_follow.global_transform.basis.z) * POV_FORWARD_OFFSET)
-			global_position = _target_position
-			# Yaw is TAKEN from the unit; pitch stays on the mouse. See POV_EYE_HEIGHT_*.
-			_yaw = _follow.global_rotation.y
-			_apply_rotation()
+			# The borrowed rig's OWN `_process` is what actually moves its camera — see
+			# `CameraRig.set_spectated()`. All this does is keep this node's own
+			# transform in lockstep with it, every frame rather than only at release,
+			# because a mid-POV `Tab`, a left click or `F` can each end the borrow on
+			# ANY frame and every one of them needs "exactly where the eyes were" to
+			# already be true rather than computed retroactively.
+			_sync_from_borrowed_rig()
 			return
 		# Follow mode holds a fixed offset in the camera's own current bearing, so the
 		# player still owns the angle and only gives up the position.
@@ -385,11 +421,14 @@ func _camera_forward() -> Vector3:
 func _camera_right() -> Vector3:
 	return global_transform.basis.x
 
-## ⚠️⚠️ `Tab` IS THE CAMERA SWITCHER NOW, AND A CAMERA MEANS A UNIT'S POV.
-## `Master_Prompt_Updated_Spectator.md` § B: from free flight the first `Tab` places the
-## camera at the first spectatable unit's eyes IN POV, immediately — not over-the-shoulder
-## first — and each further `Tab` advances and WRAPS rather than falling out to free
-## flight, because left click is now the dedicated way out (see `_unhandled_input`).
+## ⚠️⚠️ `Tab` IS THE CAMERA SWITCHER NOW, AND A CAMERA MEANS A UNIT'S REAL POV.
+## `Master_Prompt_Spectator_Player_POV.md` § C.2: from free flight the first `Tab`
+## borrows the first spectatable unit's own rig IN POV, immediately — not over-the-
+## shoulder first — and each further `Tab` advances and WRAPS rather than falling out
+## to free flight, because left click is now the dedicated way out (see
+## `_unhandled_input`). Every unit in `spectatable` is a Person — `Lata` and `Slipper`
+## are plain `Node3D`s, not `CharacterBase` — so this is a description of the group,
+## not a filter this function has to enforce.
 ##
 ## Rebuilt on every press rather than cached: a unit can be spawned, freed or handed to an
 ## AI mid-match, and a stale list would follow a dangling node.
@@ -404,6 +443,12 @@ func _cycle_follow() -> void:
 		# go through it.
 		for node in get_tree().current_scene.find_children("*", "CharacterBase", true, false):
 			units.append(node)
+	# ⚠️⚠️ ALWAYS RELEASED FIRST, EVEN WHEN THE NEXT TARGET IS ABOUT TO BORROW ANOTHER.
+	# `Master_Prompt_Spectator_Player_POV.md` § C.2: "release the previous one before
+	# you take the next, in that order, every time." A no-op when nothing is borrowed
+	# (over-the-shoulder follow, free flight), so this is safe unconditionally rather
+	# than branching on `_pov` first.
+	_release_borrow()
 	if units.is_empty():
 		_follow = null
 		_follow_index = -1
@@ -417,6 +462,59 @@ func _cycle_follow() -> void:
 	_follow = units[_follow_index] as Node3D
 	if was_free:
 		_pov = true
+	if _pov:
+		_begin_borrow(_follow)
+
+## Starts the borrow onto `character`'s own `CameraRig` — see `CameraRig.
+## set_spectated()` for what "borrow" means and what it can never do. Always
+## releases whatever this camera already holds first (§ THE INVARIANT: exactly one
+## rig, ever). No-ops into free-flight-shaped POV (harmless: `status_text()` and
+## `spectated_label()` still show the target's name, there is simply no first-person
+## frame to show) if the target has no rig — every real `spectatable` unit is a
+## Person and every Person has one, but a hand-built probe scene might not.
+func _begin_borrow(character: Node3D) -> void:
+	_release_borrow()
+	var rig := character.get_node_or_null("CameraRig") as CameraRig
+	if rig == null:
+		return
+	rig.set_spectated(true)
+	_borrowed_rig = rig
+	_sync_from_borrowed_rig()
+
+## Hands the rig back — restoring the watched unit's body, arms and world slipper
+## through the exact door `CameraRig.set_active(false)` uses, since `set_spectated()`
+## routes release through it — and syncs this camera to exactly where the rig's own
+## camera was rendering, so whatever comes next (free flight, over-the-shoulder
+## follow) resumes with no jump. Safe to call when nothing is borrowed (a no-op) and
+## safe to call after the borrowed rig's own CharacterBase died (guarded below).
+func _release_borrow() -> void:
+	if _borrowed_rig == null:
+		return
+	if is_instance_valid(_borrowed_rig):
+		_sync_from_borrowed_rig()
+		_borrowed_rig.set_spectated(false)
+	_borrowed_rig = null
+	# The rig's `fpp_camera` just stopped being `current` (or never was, if it was
+	# already dead) — reclaim on the spot rather than waiting for `_process()`'s own
+	# reclaim next frame, so there is never a frame with no camera `current` at all.
+	if _camera != null:
+		_camera.current = true
+
+## This camera's own position/yaw/pitch, read live off the borrowed rig's actual
+## camera rather than off the character body — the rig already solves the forward
+## clearance the old placement's deleted `POV_FORWARD_OFFSET` was faking (it hides
+## the head instead of stepping past it) and knows the exact pitch (the target's
+## own aim, not a fiction).
+func _sync_from_borrowed_rig() -> void:
+	if _borrowed_rig == null or not is_instance_valid(_borrowed_rig):
+		return
+	var cam := _borrowed_rig.fpp_camera
+	global_position = cam.global_position
+	_target_position = global_position
+	var cam_rotation := cam.global_rotation
+	_yaw = cam_rotation.y
+	_pitch_deg = clampf(rad_to_deg(cam_rotation.x), -PITCH_LIMIT_DEG, PITCH_LIMIT_DEG)
+	_apply_rotation()
 
 ## The on-screen legend. Built by `main.gd` rather than here so the spectator node stays
 ## a camera and nothing else — same rule that keeps gameplay state out of it.
@@ -441,7 +539,7 @@ func status_text() -> String:
 	return "FREE FLIGHT  ·  %.1f m/s" % _speed
 
 ## ⚠️⚠️ WHO IS BEING WATCHED, FOR THE HUD'S ON-SCREEN NAME — POV OR OVER-THE-SHOULDER,
-## "" IN FREE FLIGHT. `Master_Prompt_Updated_Spectator.md` § B.3: the name is
+## "" IN FREE FLIGHT. `Master_Prompt_Spectator_Player_POV.md` § C.6: the name is
 ## `CharacterBase.display_name()` and nothing else, so this is a thin wrapper over
 ## `_follow_name()` rather than a second answer to "who is this" — same one string the
 ## scoreboard, the 3D nameplate and the result screen already agree on.
@@ -456,14 +554,15 @@ func spectated_label() -> String:
 		return _follow_name()
 	return ""
 
-## Where this unit's eyes are. A Person stands; a lata and a tsinelas lie on the street.
-## Read off `is_person` — the same property the camera directive itself is derived from —
-## rather than off a per-class table, so a new roster entry needs no edit here.
-func _pov_eye_height() -> float:
-	var character := _follow as CharacterBase
-	if character == null or character.is_person:
-		return POV_EYE_HEIGHT_PERSON
-	return POV_EYE_HEIGHT_PROP
+## The unit whose rig is actually borrowed right now, or null — over-the-shoulder
+## follow and free flight both return null, since neither one is looking through
+## anybody's own eyes. `hud.gd` polls this to run the screen frost off the SPECTATED
+## player's own stagger, per `Master_Prompt_Spectator_Player_POV.md` § C.4, rather
+## than off `you_card`'s local character (a spectator has none).
+func spectated_pov_character() -> CharacterBase:
+	if _pov and _follow != null and is_instance_valid(_follow):
+		return _follow as CharacterBase
+	return null
 
 ## The followed unit's name, in the words the rest of the game uses for it rather than
 ## its node name — a legend that says `TeamAProp@3` is a debug print with a nicer font.
