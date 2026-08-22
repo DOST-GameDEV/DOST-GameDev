@@ -2396,3 +2396,67 @@ only −1.1 dB against the effects. No session that set that number had an audio
 ⚠️ **Still open and blocking, unchanged:** §8.4 — the build in `build/` is from
 2026-07-29 and predates the pivot, and §8.3, that the exported build RUNS, has never been
 checked. Judges play the artifact.
+
+**2026-08-22 · 👁️ spectator POV switching** (`docs/Master_Prompt_Updated_Spectator.md`,
+branch `updated-spectator`) — `Tab` is the camera switcher now: from free flight it places
+the camera directly in a unit's POV (not over-the-shoulder first), and it wraps at the end
+of the roster instead of falling out to free flight — `_cycle_follow()` forces `_pov = true`
+only on the frame that leaves free flight, and index math moved to `%` so the list never
+drops out. Left click is the new way out of POV: a raw `MOUSE_BUTTON_LEFT` check beside the
+wheel's in `_unhandled_input`, gated on `_pov` so it does nothing in free flight or in plain
+follow, snapping `_target_position` to the current spot first so the release does not lerp
+across the map — same rule `F` now also takes explicitly rather than relying on the POV
+snap's invariant. `V` and `F` are unchanged.
+
+The spectated unit's name — `CharacterBase.display_name()` plus TAYA/ATTACKER — is a new
+`Label` owned by `hud.gd` (`_spectator_target_name`, top-centre, built in
+`enter_spectator_mode()`, freed in `exit_spectator_mode()`), polled every frame off a new
+public `SpectatorCamera.spectated_label()` that just wraps the existing (private)
+`_follow_name()` — the HUD still has never heard of anything camera-internal, same
+one-way dependency `status_text()` already kept. Empty string in free flight, so nothing
+draws; inherits the clean feed for free because it is a plain child of the HUD root.
+
+⚠️ **A follow target that dies mid-POV used to leave the camera parked on a dead node
+forever** — `_process` checked `is_instance_valid(_follow)` everywhere it read the field
+but never actually cleared it, so status text and the HUD label were guarded correctly but
+`_follow` itself stayed non-null. Added an explicit clear at the top of `_process`; the
+camera already fell back to the right position by accident (`_target_position` was last
+written by the POV snap), so this is a correctness fix for the STATE, not the picture.
+
+**Extended `spec_probe.gd`** — 15 new checks: Tab-enters-POV-immediately, POV placement
+(reused from the old `V`-specific checks, since Tab now does that job), `V` still toggles
+POV/over-the-shoulder on the same target, the wheel/follow-distance checks moved after that
+toggle, left click (drops follow, clears POV, moves the camera <5 cm that frame, keeps
+yaw/pitch, still holds a beat later), left click as a free-flight no-op, N+1 Tabs never
+falling back to free flight and wrapping to the same first unit, the HUD name matching
+`display_name()` while spectating and being empty in free flight, and
+`exit_spectator_mode()` actually freeing the label (moved to the very end of `_run_solo`,
+after the shot capture — it strips the whole spectator HUD, so nothing after it can still
+assume spectator state). Verified `--solo` (46/47 — the one failure is §3.11, an unrelated
+pre-existing environment issue: this run's Single Player roster spawned four Persons and no
+Props at all, nothing to do with this feature), rendered `--shots=` and looked at both
+frames (no viewmodel arms, no head in shot, `BERTO · TAYA` legible over both the sky and the
+scoreboard panel in POV; nothing drawn in the free-flight shot), and both two-peer modes
+(`--lobby-host` 22/22, `--lobby-join` 8/8 — the seat/ready-gate/no-character guarantees are
+untouched).
+
+⚠️ **Two pre-existing, unrelated bugs found and fixed while re-running this probe, both
+filed here rather than silently left red:**
+* `spec_probe.gd`'s own §2.2 flight section called `Input.action_press("guard_dash")`, an
+  action deleted along with Can-Dash and Flick Dash — `spectator_camera.gd::_process`'s own
+  comment already documents the rename to `spectator_down` and dates it well before this
+  session. It threw every frame of that section and never failed a `_check` for it, so the
+  ground/ceiling/fence claims had been silently unverified for a while. Fixed the action
+  name; that then exposed the wait durations were sized for the old `BASE_SPEED` (12.0,
+  since tuned down twice to 3.6 — see that constant's own doc) and no longer cleared their
+  thresholds, so those were re-derived from the current speed too.
+* `hud.gd::_refresh_lata_card()` runs unconditionally every frame from `_process` and was
+  re-asserting `lata_card.visible = true` the instant a round went live, one frame after
+  `enter_spectator_mode()` had hidden it — a spectator watching a live round had the lata
+  card back on screen with no HUD control able to remove it again. Gated the whole function
+  on `not _spectating`, the same rule `enter_spectator_mode()` uses everywhere else.
+
+**Also:** `spectator_camera.gd`'s class doc pointed at `Design.md` §9, which is traits and
+skins now — the spectator has no design-doc section any more. Says so plainly instead:
+this file is the description. `controls_text()` rewritten for the new `Tab` and the new
+click.

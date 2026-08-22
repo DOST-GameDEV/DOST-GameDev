@@ -513,12 +513,22 @@ func _run_solo(spectating: bool = true) -> void:
 
 	# --- §2.2 it flies, and it flies THROUGH things -----------------------------------
 	var start: Vector3 = spectator.global_position
-	# Straight down, from 9 m up, for two seconds at 12 m/s: far past the road surface.
-	# Nothing here asks physics for permission, so "did it stop at the ground" is a real
-	# question with a real answer.
-	Input.action_press("guard_dash")
-	await _wait(2.0)
-	Input.action_release("guard_dash")
+	# Straight down, from 9 m up, far past the road surface. Nothing here asks physics
+	# for permission, so "did it stop at the ground" is a real question with a real
+	# answer.
+	# ⚠️ `spectator_down`, NOT `guard_dash` — see `spectator_camera.gd::_process`'s own
+	# note: `guard_dash` was deleted along with Can-Dash and Flick Dash, and this probe
+	# was still asking for it, which threw every single frame of this section without
+	# ever failing a `_check` for it — the same "GDScript error fills the log and
+	# nothing stops the frame" trap `_follow_name()`'s doc warns about.
+	# ⚠️ WAIT TIMES ARE SIZED TO `BASE_SPEED`/`BOOST_SCALE` AS THEY STAND TODAY (3.6 and
+	# 2.5×), NOT TO THE 12.0 THIS SECTION WAS ORIGINALLY WRITTEN AGAINST. `BASE_SPEED` was
+	# tuned down twice on direct human instruction (see its own doc) and this section's
+	# durations were never re-derived — at the old 2.0 s / 3.0 s / 4.0 s they measured
+	# nothing but noise once `spectator_down` actually started arriving.
+	Input.action_press("spectator_down")
+	await _wait(3.0) # 3.6 m/s * 3.0 s = 10.8 m, past the 9 m start height
+	Input.action_release("spectator_down")
 	await _wait(0.5)
 	var descended: float = start.y - spectator.global_position.y
 	_check("§2.2 it flies", descended > 4.0, "descended %.2f m" % descended)
@@ -534,15 +544,15 @@ func _run_solo(spectating: bool = true) -> void:
 	# is a claim, and it is cheap to actually measure.
 	Input.action_press("sprint") # boost, so the sample is unambiguous
 	Input.action_press("jump")
-	await _wait(3.0)
+	await _wait(7.0) # BOOST_SCALE(2.5) * BASE_SPEED(3.6) = 9.0 m/s; 7.0 s clears 60 m
 	Input.action_release("jump")
 	await _wait(0.5)
 	var ceiling: float = spectator.global_position.y
 	_check("§2.2 no ceiling — it climbs past the rooflines", ceiling > 60.0,
 		"y = %.1f m" % ceiling)
 	# ⚠️ AIM LEVEL AND DUE NORTH FIRST. "Forward" is the CAMERA's forward, and by this point
-	# the camera has been flown up and down, so its pitch decides how much of a 4-second
-	# burst goes sideways versus straight up. The first version of this check just held
+	# the camera has been flown up and down, so its pitch decides how much of the burst
+	# goes sideways versus straight up. The first version of this check just held
 	# `move_up` and measured horizontal distance, and it read 115.4 m on one run and 18.0 m
 	# on the next off the same code — the camera was simply pointing somewhere else. That
 	# is a probe measuring its own starting conditions, which is exactly the class of
@@ -554,7 +564,7 @@ func _run_solo(spectating: bool = true) -> void:
 	await _wait(0.2)
 	var out_start := Vector2(spectator.global_position.x, spectator.global_position.z)
 	Input.action_press("move_up") # forward, away from the arena
-	await _wait(4.0)
+	await _wait(12.0) # 9.0 m/s * 12.0 s = 108 m, past the 100 m gate
 	Input.action_release("move_up")
 	Input.action_release("sprint")
 	await _wait(0.5)
@@ -567,17 +577,56 @@ func _run_solo(spectating: bool = true) -> void:
 		get_viewport().get_camera_3d() != null
 			and get_viewport().get_camera_3d().get_parent() == spectator)
 
-	# --- §2.6 filmable: follow cycle, and a speed control that spans wide and close ----
+	# --- §2.6 filmable: a speed control that spans wide and close ----------------------
 	var speed_before: float = spectator._speed
 	_send_wheel(MOUSE_BUTTON_WHEEL_UP)
 	_send_wheel(MOUSE_BUTTON_WHEEL_UP)
 	await _wait(0.2)
 	_check("§2.6 the wheel changes fly speed", spectator._speed > speed_before,
 		"%.1f -> %.1f m/s" % [speed_before, spectator._speed])
+
+	var hud := main.get_node_or_null("HUDLayer/HUD")
+	if hud == null:
+		hud = main.find_children("*", "HUD", true, false).front() if not main.find_children(
+			"*", "HUD", true, false).is_empty() else null
+
+	# --- Master_Prompt_Updated_Spectator.md § B.1 · TAB is the camera switcher, and it
+	# switches straight INTO POV — not over-the-shoulder first. -------------------------
 	_send_key(KEY_TAB)
 	await _wait(0.5)
-	_check("§2.6 TAB picks up a follow target", spectator._follow != null,
+	_check("TAB from free flight lands on a real unit", spectator._follow != null,
 		"following %s" % [spectator._follow.name if spectator._follow != null else "nothing"])
+	_check("TAB's first press is POV IMMEDIATELY, not follow-then-V", spectator._pov)
+	var target: Node3D = spectator._follow
+	var eye: float = spectator.global_position.y - target.global_position.y
+	_check("POV: the camera sits at the unit's eye height, not behind it",
+		spectator.global_position.distance_to(target.global_position) < 1.8 and eye > 0.1,
+		"%.2f m away, %.2f m above" % [
+			spectator.global_position.distance_to(target.global_position), eye])
+	_check("POV: the yaw is TAKEN from the unit",
+		absf(angle_difference(spectator._yaw, target.global_rotation.y)) < 0.05,
+		"camera %.3f rad vs unit %.3f rad" % [spectator._yaw, target.global_rotation.y])
+	# ⚠️ THE POINT OF DOING THIS WITHOUT THE RIG: watching must not change what they do.
+	var rig := target.get_node_or_null("CameraRig") as CameraRig
+	_check("POV: the watched unit's own rig was NOT activated",
+		rig == null or not rig._active,
+		"rig active=%s" % ["no rig" if rig == null else str(rig._active)])
+	_check("POV: the spectator still owns the rendered view",
+		get_viewport().get_camera_3d() != null
+			and get_viewport().get_camera_3d().get_parent() == spectator)
+	if hud != null:
+		_check("HUD: the spectated name matches display_name(), plus role",
+			hud._spectator_target_name != null
+				and hud._spectator_target_name.text == "%s · %s" % [target.display_name(),
+					"TAYA" if target.is_defender else "ATTACKER"],
+			"'%s'" % [hud._spectator_target_name.text if hud._spectator_target_name != null
+				else "<none>"])
+
+	# --- V still toggles POV <-> over-the-shoulder on the SAME target -------------------
+	_send_key(KEY_V)
+	await _wait(0.4)
+	_check("V drops out of POV into over-the-shoulder, same target",
+		not spectator._pov and spectator._follow == target)
 	var dist_before: float = spectator._follow_distance
 	_send_wheel(MOUSE_BUTTON_WHEEL_UP)
 	_send_wheel(MOUSE_BUTTON_WHEEL_UP)
@@ -590,45 +639,74 @@ func _run_solo(spectating: bool = true) -> void:
 		spectator.global_position.distance_to(spectator._follow.global_position) < 12.0,
 		"%.1f m from target" % spectator.global_position.distance_to(
 			spectator._follow.global_position))
-	# --- 2.8 · POV, the human's own ask: watch through a unit's eyes -------------------
 	_send_key(KEY_V)
 	await _wait(0.4)
-	_check("2.8 V enters POV on the followed unit", spectator._pov)
-	var target: Node3D = spectator._follow
-	var eye: float = spectator.global_position.y - target.global_position.y
-	_check("2.8 the camera sits at the unit's eye height, not behind it",
-		spectator.global_position.distance_to(target.global_position) < 1.8 and eye > 0.1,
-		"%.2f m away, %.2f m above" % [
-			spectator.global_position.distance_to(target.global_position), eye])
-	_check("2.8 the yaw is TAKEN from the unit",
-		absf(angle_difference(spectator._yaw, target.global_rotation.y)) < 0.05,
-		"camera %.3f rad vs unit %.3f rad" % [spectator._yaw, target.global_rotation.y])
-	# ⚠️ THE POINT OF DOING THIS WITHOUT THE RIG: watching must not change what they do.
-	var rig := target.get_node_or_null("CameraRig") as CameraRig
-	_check("2.8 the watched unit's own rig was NOT activated",
-		rig == null or not rig._active,
-		"rig active=%s" % ["no rig" if rig == null else str(rig._active)])
-	_check("2.8 the spectator still owns the rendered view",
-		get_viewport().get_camera_3d() != null
-			and get_viewport().get_camera_3d().get_parent() == spectator)
+	_check("V re-enters POV on the same target", spectator._pov and spectator._follow == target)
+
+	# --- Master_Prompt_Updated_Spectator.md § B.2 · left click leaves POV ---------------
+	var pos_before_click: Vector3 = spectator.global_position
+	var yaw_before_click: float = spectator._yaw
+	var pitch_before_click: float = spectator._pitch_deg
+	_send_left_click()
+	await _wait(0.05)
+	_check("LEFT CLICK drops the follow target", spectator._follow == null)
+	_check("LEFT CLICK clears POV", not spectator._pov)
+	_check("LEFT CLICK moves the camera only a few centimetres that frame",
+		spectator.global_position.distance_to(pos_before_click) < 0.05,
+		"%.4f m" % spectator.global_position.distance_to(pos_before_click))
+	_check("LEFT CLICK keeps the operator's yaw/pitch",
+		absf(angle_difference(spectator._yaw, yaw_before_click)) < 0.01
+			and absf(spectator._pitch_deg - pitch_before_click) < 0.01)
+	await _wait(0.3)
+	_check("LEFT CLICK's exit still holds a moment later — no lerp back across the map",
+		spectator.global_position.distance_to(pos_before_click) < 0.5,
+		"%.3f m" % spectator.global_position.distance_to(pos_before_click))
+	if hud != null:
+		_check("HUD: the spectated name is gone in free flight",
+			hud._spectator_target_name != null and hud._spectator_target_name.text == ""
+				and not hud._spectator_target_name.visible)
+	var pos_before_noop_click: Vector3 = spectator.global_position
+	_send_left_click()
+	await _wait(0.1)
+	_check("LEFT CLICK in free flight is a no-op",
+		spectator._follow == null and not spectator._pov
+			and spectator.global_position.distance_to(pos_before_noop_click) < 0.05)
+
+	# --- Master_Prompt_Updated_Spectator.md § B.1 · TAB wraps, it never falls out -------
+	var total_units: int = units0.size()
+	var first_wrapped: Node3D = null
+	var never_dropped_free := true
+	for i in range(total_units + 1):
+		_send_key(KEY_TAB)
+		await _wait(0.15)
+		if spectator._follow == null:
+			never_dropped_free = false
+		if i == 0:
+			first_wrapped = spectator._follow
+	_check("N+1 TABs never fall back out to free flight", never_dropped_free)
+	_check("TAB wraps back to the first unit after a full cycle",
+		spectator._follow == first_wrapped,
+		"first=%s now=%s" % [
+			first_wrapped.name if first_wrapped != null else "?",
+			spectator._follow.name if spectator._follow != null else "?"])
 
 	_send_key(KEY_F)
 	await _wait(0.3)
 	_check("§2.6 F returns to free flight", spectator._follow == null)
-	_check("2.8 F drops POV with it", not spectator._pov)
+	_check("F drops POV with it", not spectator._pov)
 
 	# --- §2.5 / §2.7 the HUD ----------------------------------------------------------
-	var hud := main.get_node_or_null("HUDLayer/HUD")
-	if hud == null:
-		hud = main.find_children("*", "HUD", true, false).front() if not main.find_children(
-			"*", "HUD", true, false).is_empty() else null
 	_check("the HUD is reachable", hud != null)
 	if hud != null:
 		_check("§2.5 the YOU card is gone (it describes a character)", not hud.you_card.visible)
 		_check("§2.5 the crosshair is gone", not hud.crosshair.visible)
 		_check("§2.5 the lata card is gone", not hud.lata_card.visible)
-		_check("§2.5 no orphaned status rows were built", hud._status_rows.is_empty(),
-			"%d rows" % hud._status_rows.size())
+		# ⚠️ `_status_rows_left` / `_status_rows_right`, NOT `_status_rows` — the single
+		# array was split into two sides after this check was written; the old name no
+		# longer exists on `hud.gd` at all.
+		_check("§2.5 no orphaned status rows were built",
+			hud._status_rows_left.is_empty() and hud._status_rows_right.is_empty(),
+			"%d left, %d right" % [hud._status_rows_left.size(), hud._status_rows_right.size()])
 		_check("§2.7 the round readout exists and says something",
 			hud._spectator_round != null and hud._spectator_round.text != "",
 			"'%s'" % (hud._spectator_round.text if hud._spectator_round != null else ""))
@@ -662,6 +740,21 @@ func _run_solo(spectating: bool = true) -> void:
 			_shots_dir.path_join("spectator_pov.png"))
 		print("[%s]  wrote spectator_pov.png" % _tag)
 
+	# --- Master_Prompt_Updated_Spectator.md § B.3 · exit_spectator_mode() frees the label.
+	# Last, because it strips the whole spectator HUD (restores you_card etc.) and every
+	# earlier check above depends on that HUD still being in spectator mode.
+	if hud != null:
+		spectator._follow = units.front() if not units.is_empty() else null
+		spectator._pov = spectator._follow != null
+		await get_tree().process_frame
+		_check("the spectated-name label exists before exit", hud._spectator_target_name != null
+			and is_instance_valid(hud._spectator_target_name))
+		hud.exit_spectator_mode()
+		await get_tree().process_frame
+		await get_tree().process_frame
+		_check("exit_spectator_mode() frees the spectated-name label",
+			hud._spectator_target_name == null)
+
 ## Raw events through `Input.parse_input_event`, so they arrive at
 ## `SpectatorCamera._unhandled_input` down the real chain rather than by calling it.
 ## True while this unit is riding in somebody's hand rather than standing on the street.
@@ -678,5 +771,14 @@ func _send_key(code: Key) -> void:
 func _send_wheel(button: MouseButton) -> void:
 	var event := InputEventMouseButton.new()
 	event.button_index = button
+	event.pressed = true
+	Input.parse_input_event(event)
+
+## Same real chain as `_send_wheel` — `MOUSE_BUTTON_LEFT`, proving the POV-exit click
+## actually arrives at `SpectatorCamera._unhandled_input` rather than being eaten by the
+## HUD's own `_input()` (the emote wheel reads mouse buttons there, and it runs first).
+func _send_left_click() -> void:
+	var event := InputEventMouseButton.new()
+	event.button_index = MOUSE_BUTTON_LEFT
 	event.pressed = true
 	Input.parse_input_event(event)

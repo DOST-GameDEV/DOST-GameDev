@@ -723,6 +723,15 @@ func enter_spectator_mode(camera: SpectatorCamera) -> void:
 	add_child(legend)
 	_spectator_status = _build_spectator_label(-70, -46, 15, UiTheme.CREAM_MUTED)
 	_spectator_round = _build_spectator_label(-104, -70, 21, UiTheme.AMBER)
+	# ⚠️⚠️ WHO YOU ARE WATCHING, ON SCREEN, WHENEVER A UNIT IS BEING SPECTATED.
+	# `Master_Prompt_Updated_Spectator.md` § B.3. Top of the screen rather than the bottom
+	# strip the other two labels share, so it reads at a glance while flying and does not
+	# crowd the wheel/legend/round line already anchored to the bottom. Text and visibility
+	# are set every frame in `_refresh_spectator_panel()`, off `SpectatorCamera.
+	# spectated_label()` — never cached here, so a role rotation or a mid-match joiner
+	# taking a bot's name is reflected the same frame the camera notices it.
+	_spectator_target_name = _build_spectator_label(16, 54, 26, UiTheme.CREAM,
+		Control.PRESET_TOP_WIDE)
 	# The clean feed is only discoverable if it is written down where the operator is
 	# already reading. Appended here rather than inside `SpectatorCamera.controls_text()`
 	# because that static describes the CAMERA's keys and this one is the HUD's.
@@ -758,11 +767,13 @@ func exit_spectator_mode() -> void:
 	set_clean_feed(false)
 	_spectating = false
 	_spectator_camera = null
-	for label in [get_node_or_null("SpectatorLegend"), _spectator_status, _spectator_round]:
+	for label in [get_node_or_null("SpectatorLegend"), _spectator_status, _spectator_round,
+			_spectator_target_name]:
 		if label != null and is_instance_valid(label):
 			label.queue_free()
 	_spectator_status = null
 	_spectator_round = null
+	_spectator_target_name = null
 	you_card.visible = true
 	crosshair.visible = true
 	lata_card.visible = true
@@ -773,6 +784,7 @@ var _spectating: bool = false
 var _spectator_camera: SpectatorCamera = null
 var _spectator_status: Label = null
 var _spectator_round: Label = null
+var _spectator_target_name: Label = null
 
 ## ---------------------------------------------------------------------------
 ## ⚠️⚠️ THE CLEAN FEED — `H`. 🧑 2026-07-31: *"allow option to remove everything in
@@ -986,14 +998,15 @@ func is_clean_feed() -> bool:
 ## ⚠️ WHAT THIS DELIBERATELY DOES NOT DO: draw a countdown for the PLAYERS. `build ux`
 ## §4.9 owns that and must not be pre-empted — this Label is created only inside
 ## `enter_spectator_mode` and only a peer with no character ever sees it.
-func _build_spectator_label(top: float, bottom: float, size: int, colour: Color) -> Label:
+func _build_spectator_label(top: float, bottom: float, size: int, colour: Color,
+		preset: Control.LayoutPreset = Control.PRESET_BOTTOM_WIDE) -> Label:
 	var label := Label.new()
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.add_theme_font_size_override("font_size", size)
 	label.add_theme_color_override("font_color", colour)
 	label.add_theme_color_override("font_outline_color", UiTheme.INK)
 	label.add_theme_constant_override("outline_size", TEXT_OUTLINE)
-	label.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	label.set_anchors_preset(preset)
 	label.offset_top = top
 	label.offset_bottom = bottom
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1004,6 +1017,12 @@ func _refresh_spectator_panel() -> void:
 	if _spectator_status != null and is_instance_valid(_spectator_status):
 		_spectator_status.text = ("" if _spectator_camera == null
 			or not is_instance_valid(_spectator_camera) else _spectator_camera.status_text())
+	if _spectator_target_name != null and is_instance_valid(_spectator_target_name):
+		var label_text := ("" if _spectator_camera == null
+			or not is_instance_valid(_spectator_camera)
+			else _spectator_camera.spectated_label())
+		_spectator_target_name.text = label_text
+		_spectator_target_name.visible = label_text != ""
 	if _spectator_round == null or not is_instance_valid(_spectator_round):
 		return
 	if not RoundManager.round_active:
@@ -1552,7 +1571,13 @@ func _refresh_scoreboard() -> void:
 ## illegal while the lata is down, and the passive score only ticks while it is up.
 func _refresh_lata_card() -> void:
 	var lata := RoundManager.lata
-	if lata == null or not RoundManager.round_active:
+	# ⚠️ A SPECTATOR HAS NO ROLE FOR THIS CARD TO DESCRIBE, AND `_process` CALLS THIS
+	# EVERY FRAME REGARDLESS OF `_spectating`. `enter_spectator_mode()` hides it once at
+	# entry; without this gate the very next frame the round is live, this function
+	# below re-asserts `visible = true` over it — a spectator only, not a player, since
+	# `enter_spectator_mode` is the only thing that ever hides it in the first place.
+	# Caught by `spec_probe --solo`: "§2.5 the lata card is gone — FAIL".
+	if lata == null or not RoundManager.round_active or _spectating:
 		lata_card.visible = false
 		return
 	lata_card.visible = true

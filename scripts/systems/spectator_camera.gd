@@ -1,7 +1,10 @@
 extends Node3D
 class_name SpectatorCamera
 
-## SPECTATOR MODE — a free-flying camera with no body. `Design.md` §9.
+## SPECTATOR MODE — a free-flying camera with no body. THIS FILE IS THE DESCRIPTION: there
+## is no longer a `Design.md` section for the spectator (§9 there is traits and skins), so
+## the behaviour, every tuned constant, and the human instruction behind each one live only
+## here. Read the whole file, not a design doc, before changing any of it.
 ##
 ## Human instruction, 2026-07-30: *"implement a Spectator option available in both
 ## Multiplayer and Singleplayer. The spectator acts as a free-flying camera with no
@@ -228,6 +231,28 @@ func _unhandled_input(event: InputEvent) -> void:
 					FOLLOW_DISTANCE_MIN, FOLLOW_DISTANCE_MAX)
 			else:
 				_speed = clampf(_speed / SPEED_STEP, SPEED_MIN, SPEED_MAX)
+		elif button == MOUSE_BUTTON_LEFT:
+			# ⚠️⚠️ LEAVES POV ONLY — `Master_Prompt_Updated_Spectator.md` § B: "the
+			# spectator ... leaves a POV with left click". Over-the-shoulder follow and
+			# free flight both ignore it: `Tab`/`V` already own entering and toggling
+			# POV, and `F` already owns dropping a follow entirely, so a click here has
+			# exactly one job and does nothing when there is nothing to leave.
+			if _pov:
+				# Come to rest exactly where the eyes already are, current yaw/pitch
+				# kept. Snapping the smoothing target to the current position is the same
+				# rule `_cycle_follow()` uses when handing the camera back to free flight
+				# — without it the next frame's lerp starts from wherever
+				# `_target_position` was last written (the unit's eyes, which just moved
+				# on) and the release reads as a pull across the map instead of a clean
+				# stop.
+				_target_position = global_position
+				_follow = null
+				_follow_index = -1
+				_pov = false
+				# Consumed ONLY because something was actually left — a click that did
+				# nothing must not eat the event out from under anything else on screen
+				# that reads a left click.
+				get_viewport().set_input_as_handled()
 		return
 
 ## ⚠️⚠️ `_input`, NOT `_unhandled_input`, AND ONLY FOR THESE TWO KEYS — BECAUSE TAB NEVER
@@ -260,6 +285,9 @@ func _input(event: InputEvent) -> void:
 			_cycle_follow()
 			get_viewport().set_input_as_handled()
 		KEY_F:
+			# Same "hand it back where it currently IS" rule the left-click POV exit
+			# uses — see that comment in `_unhandled_input` for why.
+			_target_position = global_position
 			_follow = null
 			_follow_index = -1
 			_pov = false
@@ -293,6 +321,18 @@ func _process(delta: float) -> void:
 	# owner of the view. One bool compare per frame.
 	if _camera != null and not _camera.current:
 		_camera.current = true
+	# ⚠️ A FOLLOW TARGET THAT DIES MID-POV MUST NOT LEAVE THE CAMERA PARKED AT A DEAD
+	# NODE. `_cycle_follow()` rebuilds its list from live nodes on every `Tab`, but
+	# nothing was clearing `_follow` on the frames BETWEEN presses — a unit freed or
+	# role-swapped mid-round left `is_instance_valid(_follow)` false forever after,
+	# which every read below already guards, but the on-screen name (`spectated_
+	# label()`) and the wrap order both needed the field actually cleared. Falls back
+	# to free flight from `_target_position`, which POV's own snap already left equal
+	# to `global_position` — the last good spot, not wherever follow started.
+	if _follow != null and not is_instance_valid(_follow):
+		_follow = null
+		_follow_index = -1
+		_pov = false
 	# ⚠️ `_process`, NOT `_physics_process`. There is no physics here — nothing to step,
 	# nothing to collide, nothing another body has to agree with — and a camera that
 	# moves on the render frame is smoother than one that moves on the physics tick and
@@ -345,9 +385,14 @@ func _camera_forward() -> Vector3:
 func _camera_right() -> Vector3:
 	return global_transform.basis.x
 
-## Cycles the follow target through every live CharacterBase in the match, then back to
-## free flight. Rebuilt on every press rather than cached: a unit can be spawned, freed
-## or handed to an AI mid-match, and a stale list would follow a dangling node.
+## ⚠️⚠️ `Tab` IS THE CAMERA SWITCHER NOW, AND A CAMERA MEANS A UNIT'S POV.
+## `Master_Prompt_Updated_Spectator.md` § B: from free flight the first `Tab` places the
+## camera at the first spectatable unit's eyes IN POV, immediately — not over-the-shoulder
+## first — and each further `Tab` advances and WRAPS rather than falling out to free
+## flight, because left click is now the dedicated way out (see `_unhandled_input`).
+##
+## Rebuilt on every press rather than cached: a unit can be spawned, freed or handed to an
+## AI mid-match, and a stale list would follow a dangling node.
 func _cycle_follow() -> void:
 	var units: Array[Node] = []
 	for node in get_tree().get_nodes_in_group("spectatable"):
@@ -363,20 +408,22 @@ func _cycle_follow() -> void:
 		_follow = null
 		_follow_index = -1
 		return
-	_follow_index += 1
-	if _follow_index >= units.size():
-		_follow = null
-		_follow_index = -1
-		# Leaving follow mode hands the camera back where it currently IS rather than
-		# where it was when follow started, or the view would jump across the map.
-		_target_position = global_position
-		return
+	# Whether this press is the one that LEAVES free flight — the only moment POV is
+	# forced on. Once already following, `_pov` stays whatever `V` last set it to
+	# (sticky across the cycle — see `_pov`'s own doc), so stepping through all four
+	# units in POV needs one press of `V`, not four.
+	var was_free := _follow == null
+	_follow_index = (_follow_index + 1) % units.size()
 	_follow = units[_follow_index] as Node3D
+	if was_free:
+		_pov = true
 
 ## The on-screen legend. Built by `main.gd` rather than here so the spectator node stays
 ## a camera and nothing else — same rule that keeps gameplay state out of it.
 static func controls_text() -> String:
-	return "SPECTATOR    WASD fly · SPACE up · CTRL down · SHIFT boost · TAB follow · V POV · F free · WHEEL speed, or follow distance while following"
+	return ("SPECTATOR    WASD fly · SPACE up · CTRL down · SHIFT boost · TAB pov (cycles, " +
+		"wraps) · CLICK leave pov · V pov/follow · F free · WHEEL speed, or follow distance " +
+		"while following")
 
 ## ⚠️ §2.6 — WHAT THE CAMERA IS DOING RIGHT NOW, WHICH THE STATIC LEGEND CANNOT SAY.
 ## Polled once a frame by `hud.gd`'s spectator branch. Both numbers on it are ones a
@@ -392,6 +439,22 @@ func status_text() -> String:
 			return "POV  %s  ·  through their eyes" % _follow_name()
 		return "FOLLOWING  %s  ·  %.1f m" % [_follow_name(), _follow_distance]
 	return "FREE FLIGHT  ·  %.1f m/s" % _speed
+
+## ⚠️⚠️ WHO IS BEING WATCHED, FOR THE HUD'S ON-SCREEN NAME — POV OR OVER-THE-SHOULDER,
+## "" IN FREE FLIGHT. `Master_Prompt_Updated_Spectator.md` § B.3: the name is
+## `CharacterBase.display_name()` and nothing else, so this is a thin wrapper over
+## `_follow_name()` rather than a second answer to "who is this" — same one string the
+## scoreboard, the 3D nameplate and the result screen already agree on.
+##
+## Same one-way dependency `status_text()` keeps: `hud.gd` polls this every frame
+## (`_refresh_spectator_panel`) and owns the Label; this node has never heard of the HUD
+## and returns a plain String. Polled rather than cached at `Tab` time on purpose — the
+## taya rotates every round and a mid-match joiner can take a bot's seat and its name
+## with it, and a cached string would go stale under both.
+func spectated_label() -> String:
+	if _follow != null and is_instance_valid(_follow):
+		return _follow_name()
+	return ""
 
 ## Where this unit's eyes are. A Person stands; a lata and a tsinelas lie on the street.
 ## Read off `is_person` — the same property the camera directive itself is derived from —
